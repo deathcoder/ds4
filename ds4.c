@@ -1594,6 +1594,7 @@ enum {
     DS4_TENSOR_Q4_K     = 12,
     DS4_TENSOR_IQ2_XXS  = 16,
     DS4_TENSOR_I32      = 26,
+    DS4_TENSOR_BF16     = 30,
 };
 
 typedef struct {
@@ -2605,6 +2606,13 @@ static inline float f16_to_f32(uint16_t h) {
     memcpy(&f, &bits, sizeof(f));
     return f;
 #endif
+}
+
+static inline float bf16_to_f32(uint16_t h) {
+    uint32_t bits = (uint32_t)h << 16;
+    float f;
+    memcpy(&f, &bits, sizeof(f));
+    return f;
 }
 
 static inline uint16_t f32_to_f16(float f) {
@@ -3949,38 +3957,6 @@ static void dspark_stage_validate_layout(const ds4_layer_weights *l,
     tensor_expect_layout(l->ffn_down_shexp, DS4_TENSOR_Q8_0, 2, DS4_N_FF_EXP, DS4_N_EMBD, 0);
 }
 
-/* Validate dimensions of a DSpark tensor where the GGUF type may not be in our
- * standard table (e.g. Markov/confidence heads).  Only checks ndim and dims. */
-static void tensor_expect_dims_only(
-        const ds4_tensor *t,
-        uint32_t          ndim,
-        uint64_t          d0,
-        uint64_t          d1,
-        uint64_t          d2) {
-    if (!t) ds4_die("internal error: missing DSpark tensor while validating layout");
-    if (t->ndim != ndim) {
-        fprintf(stderr,
-                "ds4: tensor %.*s has %u dimensions, expected %u\n",
-                (int)t->name.len,
-                t->name.ptr,
-                t->ndim,
-                ndim);
-        exit(1);
-    }
-    const uint64_t want[3] = { d0, d1, d2 };
-    for (uint32_t i = 0; i < ndim; i++) {
-        if (t->dim[i] == want[i]) continue;
-        fprintf(stderr,
-                "ds4: tensor %.*s has dim[%u]=%" PRIu64 ", expected %" PRIu64 "\n",
-                (int)t->name.len,
-                t->name.ptr,
-                i,
-                t->dim[i],
-                want[i]);
-        exit(1);
-    }
-}
-
 static void dspark_weights_validate_layout(const ds4_dspark_weights *w,
                                             const ds4_dspark_config *cfg) {
     const uint64_t hc_dim = (uint64_t)DS4_N_EMBD * DS4_N_HC;
@@ -4001,15 +3977,15 @@ static void dspark_weights_validate_layout(const ds4_dspark_weights *w,
     tensor_expect_plain_layout(w->hc_head_fn, 2, hc_dim, DS4_N_HC, 0);
     tensor_expect_layout(w->hc_head_scale, DS4_TENSOR_F32,  1, 1, 0, 0);
 
-    /* Markov heads: GGUF type may be non-standard, validate dims only. */
-    tensor_expect_dims_only(w->markov_w1, 2,
-                            (uint64_t)cfg->markov_rank, (uint64_t)DS4_N_VOCAB, 0);
-    tensor_expect_dims_only(w->markov_w2, 2,
-                            (uint64_t)cfg->markov_rank, (uint64_t)DS4_N_VOCAB, 0);
+    /* Markov heads: BF16 embedding table and BF16 rank-to-vocab projection. */
+    tensor_expect_layout(w->markov_w1, DS4_TENSOR_BF16, 2,
+                         (uint64_t)cfg->markov_rank, (uint64_t)DS4_N_VOCAB, 0);
+    tensor_expect_layout(w->markov_w2, DS4_TENSOR_BF16, 2,
+                         (uint64_t)cfg->markov_rank, (uint64_t)DS4_N_VOCAB, 0);
 
     /* Confidence head: 1D [N_EMBD + markov_rank]. */
-    tensor_expect_dims_only(w->confidence_proj, 1,
-                            (uint64_t)DS4_N_EMBD + cfg->markov_rank, 0, 0);
+    tensor_expect_layout(w->confidence_proj, DS4_TENSOR_BF16, 1,
+                         (uint64_t)DS4_N_EMBD + cfg->markov_rank, 0, 0);
 }
 
 static bool ds4_shape_matches_metadata(
@@ -10608,6 +10584,9 @@ static void output_logits_one_decode_scratch(
 
 #ifndef DS4_NO_GPU
 static int sample_argmax(const float *logits, uint32_t n_vocab);
+static void logits_top2(const float *logits, uint32_t n_vocab,
+                        int *top0, float *logit0,
+                        int *top1, float *logit1);
 
 /* =========================================================================
  * Metal Reference Comparison Helpers.
@@ -25846,6 +25825,86 @@ static void dspark_probe_hc_head_one(
     free(flat);
 }
 
+typedef struct {
+    float          * out;
+    const uint16_t * data;
+    const float    * x;
+    uint64_t         in_dim;
+} dspark_probe_bf16_matvec_ctx;
+
+static float dspark_probe_dot_bf16_row(const uint16_t *row, const float *x, uint64_t n) {
+    double acc = 0.0;
+    for (uint64_t i = 0; i < n; i++) {
+        acc += (double)bf16_to_f32(row[i]) * (double)x[i];
+    }
+    return (float)acc;
+}
+
+static void dspark_probe_bf16_matvec_worker(void *vctx, uint64_t row0, uint64_t row1) {
+    dspark_probe_bf16_matvec_ctx *ctx = vctx;
+    for (uint64_t r = row0; r < row1; r++) {
+        ctx->out[r] = dspark_probe_dot_bf16_row(ctx->data + r * ctx->in_dim,
+                                                ctx->x,
+                                                ctx->in_dim);
+    }
+}
+
+static void dspark_probe_bf16_matvec(
+        float             * out,
+        const ds4_model   * model,
+        const ds4_tensor  * w,
+        const float       * x) {
+    if (w->type != DS4_TENSOR_BF16 || w->ndim != 2) {
+        ds4_die("expected a 2D BF16 tensor");
+    }
+
+    dspark_probe_bf16_matvec_ctx ctx = {
+        .out = out,
+        .data = tensor_data(model, w),
+        .x = x,
+        .in_dim = w->dim[0],
+    };
+    ds4_parallel_for_min_rows(w->dim[1], dspark_probe_bf16_matvec_worker, &ctx, 256);
+}
+
+static void dspark_probe_markov_embed(
+        float                    * out,
+        const ds4_model          * model,
+        const ds4_dspark_weights * weights,
+        uint32_t                   token,
+        uint32_t                   rank) {
+    const ds4_tensor *w = weights->markov_w1;
+    if (w->type != DS4_TENSOR_BF16 || w->ndim != 2 ||
+        w->dim[0] != rank || w->dim[1] != DS4_N_VOCAB || token >= DS4_N_VOCAB) {
+        ds4_die("unexpected DSpark Markov embedding layout");
+    }
+    const uint16_t *row = (const uint16_t *)tensor_data(model, w) + (uint64_t)token * rank;
+    for (uint32_t i = 0; i < rank; i++) out[i] = bf16_to_f32(row[i]);
+}
+
+static float dspark_probe_confidence_logit(
+        const ds4_model          * model,
+        const ds4_dspark_weights * weights,
+        const float              * hidden,
+        const float              * markov_embed,
+        uint32_t                   rank) {
+    const ds4_tensor *w = weights->confidence_proj;
+    if (w->type != DS4_TENSOR_BF16 || w->ndim != 1 ||
+        w->dim[0] != (uint64_t)DS4_N_EMBD + rank) {
+        ds4_die("unexpected DSpark confidence projection layout");
+    }
+    const uint16_t *data = tensor_data(model, w);
+    double acc = 0.0;
+    for (uint32_t i = 0; i < DS4_N_EMBD; i++) {
+        acc += (double)bf16_to_f32(data[i]) * (double)hidden[i];
+    }
+    for (uint32_t i = 0; i < rank; i++) {
+        acc += (double)bf16_to_f32(data[(uint64_t)DS4_N_EMBD + i]) *
+               (double)markov_embed[i];
+    }
+    return (float)acc;
+}
+
 static void dspark_probe_attention_block(
         float                  * after_attn_hc,
         const ds4_model        * model,
@@ -26192,6 +26251,11 @@ int ds4_engine_dspark_probe(ds4_engine *e, const ds4_tokens *prompt, int ctx_siz
             float *final_plain = xmalloc((size_t)block_size * DS4_N_EMBD * sizeof(final_plain[0]));
             float *final_norm = xmalloc((size_t)block_size * DS4_N_EMBD * sizeof(final_norm[0]));
             float *logits = xmalloc((size_t)DS4_N_VOCAB * sizeof(logits[0]));
+            float *markov_bias = xmalloc((size_t)DS4_N_VOCAB * sizeof(markov_bias[0]));
+            float *corrected_logits = xmalloc((size_t)DS4_N_VOCAB * sizeof(corrected_logits[0]));
+            float *markov_embed = xmalloc((size_t)e->dspark_config.markov_rank *
+                                          sizeof(markov_embed[0]));
+            float *confidence = xmalloc((size_t)block_size * sizeof(confidence[0]));
 
             block_tokens[0] = prompt->v[last];
             for (uint32_t t = 1; t < block_size; t++) {
@@ -26247,24 +26311,65 @@ int ds4_engine_dspark_probe(ds4_engine *e, const ds4_tokens *prompt, int ctx_siz
             print_vec_stats("dspark probe final_norm block",
                             final_norm,
                             (uint64_t)block_size * DS4_N_EMBD);
-            matvec_q8_0(logits,
-                        &e->model,
-                        e->weights.output,
-                        final_norm);
-            print_vec_stats("dspark probe row0 base_logits", logits, DS4_N_VOCAB);
-            int top0 = -1, top1 = -1;
-            float v0 = 0.0f, v1 = 0.0f;
-            logits_top2(logits, DS4_N_VOCAB, &top0, &v0, &top1, &v1);
-            fprintf(stderr,
-                    "ds4: DSpark probe row0 base logits top1=%d %.6g top2=%d %.6g\n",
-                    top0,
-                    v0,
-                    top1,
-                    v1);
-            fprintf(stderr,
-                    "ds4: DSpark probe sidecar backbone completed; Markov, "
-                    "confidence, sampling, acceptance, and speculation were not executed\n");
 
+            fprintf(stderr,
+                    "ds4: DSpark probe Markov/confidence dry-run argmax chain; "
+                    "tokens are not emitted, accepted, or appended\n");
+            uint32_t prev_token = (uint32_t)block_tokens[0];
+            for (uint32_t t = 0; t < block_size; t++) {
+                matvec_q8_0(logits,
+                            &e->model,
+                            e->weights.output,
+                            final_norm + (uint64_t)t * DS4_N_EMBD);
+                dspark_probe_markov_embed(markov_embed,
+                                          &e->dspark_model,
+                                          &e->dspark_weights,
+                                          prev_token,
+                                          e->dspark_config.markov_rank);
+                dspark_probe_bf16_matvec(markov_bias,
+                                         &e->dspark_model,
+                                         e->dspark_weights.markov_w2,
+                                         markov_embed);
+                for (uint32_t v = 0; v < DS4_N_VOCAB; v++) {
+                    corrected_logits[v] = logits[v] + markov_bias[v];
+                }
+                confidence[t] = dspark_probe_confidence_logit(
+                    &e->dspark_model,
+                    &e->dspark_weights,
+                    final_plain + (uint64_t)t * DS4_N_EMBD,
+                    markov_embed,
+                    e->dspark_config.markov_rank);
+
+                int top0 = -1, top1 = -1;
+                float v0 = 0.0f, v1 = 0.0f;
+                logits_top2(corrected_logits, DS4_N_VOCAB, &top0, &v0, &top1, &v1);
+                if (t == 0) {
+                    print_vec_stats("dspark probe row0 base_logits", logits, DS4_N_VOCAB);
+                    print_vec_stats("dspark probe row0 markov_bias", markov_bias, DS4_N_VOCAB);
+                    print_vec_stats("dspark probe row0 markov_logits", corrected_logits, DS4_N_VOCAB);
+                }
+                fprintf(stderr,
+                        "ds4: DSpark probe dry row %u prev=%u top1=%d %.6g "
+                        "top2=%d %.6g confidence_logit=%.6g confidence=%.6g\n",
+                        t,
+                        prev_token,
+                        top0,
+                        v0,
+                        top1,
+                        v1,
+                        confidence[t],
+                        sigmoid_stable(confidence[t]));
+                prev_token = top0 >= 0 ? (uint32_t)top0 : prev_token;
+            }
+            print_vec_stats("dspark probe confidence logits", confidence, block_size);
+            fprintf(stderr,
+                    "ds4: DSpark probe sidecar Markov/confidence dry-run completed; "
+                    "no tokens were emitted, accepted, appended, or speculated\n");
+
+            free(confidence);
+            free(markov_embed);
+            free(corrected_logits);
+            free(markov_bias);
             free(logits);
             free(final_norm);
             free(final_plain);

@@ -8,12 +8,12 @@ particular DSpark change exists.
 
 Branch: `codex/dspark-observability-0`
 
-Phase 0.8 is still intentionally narrow: `--dspark FILE` validates an official
+Phase 0.9 is still intentionally narrow: `--dspark FILE` validates an official
 DSpark drafter GGUF, binds every tensor needed by a future runtime path, checks
 the expected DeepSeek V4 Flash DSpark shapes, and exposes a diagnostic
 `--dspark-probe` bridge for target-layer hidden-state capture plus
-`main_proj/main_norm` plus a backbone-only sidecar block. It does not enable
-DSpark speculative decoding.
+`main_proj/main_norm`, sidecar block execution, Markov-biased logits, and
+confidence scores. It does not enable DSpark speculative decoding.
 
 The design choice was to keep this separate from legacy `--mtp`. We do not
 guess dynamically whether `--mtp` points at legacy MTP or DSpark. The first
@@ -28,9 +28,10 @@ hook is explicit and conservative:
 - `--dspark-probe` is a development diagnostic. It requires `--dspark`, runs a
   prompt through graph layer slices ending at target layers `40,41,42`,
   averages the captured HC streams to 4096-wide context vectors, runs
-  DSpark `main_proj/main_norm`, executes the three-stage sidecar backbone block
-  on CPU, prints vector/logit stats, and exits without Markov sampling,
-  confidence gating, acceptance, generation, or speculative decoding.
+  DSpark `main_proj/main_norm`, executes the three-stage sidecar block on CPU,
+  runs BF16 Markov-biased logits and BF16 confidence scores with an internal
+  dry-run argmax chain, prints vector/logit stats, and exits without emitting,
+  accepting, appending, generating, or speculating tokens.
 - No benchmarks should be run automatically by Codex. The user wants tok/s
   benchmarks to be run manually on an otherwise idle machine.
 
@@ -100,9 +101,9 @@ Phase 0.5 shape/binding facts from the local
   `[3*N_EMBD,N_EMBD]`.
 - Each DSpark stage has the same DS4 layer-style attention/FFN shape as the
   legacy one-block MTP validator expects.
-- `mtp.2.markov_head.markov_w1.weight` and `markov_w2.weight` are validated by
-  dimensions only as `[markov_rank,N_VOCAB]` = `[256,129280]`.
-- `mtp.2.confidence_head.proj.weight` is validated by dimensions only as 1D
+- `mtp.2.markov_head.markov_w1.weight` and `markov_w2.weight` are BF16
+  `[markov_rank,N_VOCAB]` = `[256,129280]`.
+- `mtp.2.confidence_head.proj.weight` is BF16 1D
   `[N_EMBD + markov_rank]` = `[4352]`.
 - The current phase still has no runtime execution, no GPU-heavy generation
   path, no expert stats, and no benchmark claims.
@@ -134,12 +135,11 @@ Phase 0.5 shape/binding facts from the local
   - Added `ds4_engine_dspark_probe`, a graph-backend-only diagnostic that uses
     layer-slice evaluation to capture target-layer HC states, averages HC
     streams into the official DSpark target-state bridge, runs DSpark
-    `main_proj/main_norm`, and now executes a CPU-only diagnostic sidecar
-    backbone block through all three DSpark stages.
-  - DSpark Markov and confidence tensors are dimension-validated only for now;
-    their runtime math is not implemented yet. The sidecar probe prints base
-    LM-head logits from the final stage hidden state but does not run Markov
-    bias, confidence prediction, sampling, acceptance, or speculation.
+    `main_proj/main_norm`, executes a CPU-only diagnostic sidecar block through
+    all three DSpark stages, and now runs BF16 Markov bias plus BF16 confidence
+    prediction in a dry-run argmax chain.
+  - The sidecar probe still does not emit, accept, append, generate, or
+    speculate tokens.
   - Added `dspark_model`, `dspark_config`, and `dspark_ready` to `ds4_engine`.
   - `ds4_engine_open` now rejects `--mtp` plus `--dspark`, opens the DSpark
     sidecar, validates/binds it, and logs that runtime is not enabled yet.
@@ -175,9 +175,11 @@ Phase 0.5 shape/binding facts from the local
 - `implementation_plan.md`
   - Imported from the user/Claude handoff. The plan direction was validated:
     Phase 0.5 should be shape and binding validation only, not runtime work.
-  - Adjustment made during completion: keep Markov/confidence validation
+  - Earlier adjustment made during Phase 0.5: keep Markov/confidence validation
     dimension-only, and do not widen the public API just to expose private
-    shape constants to the model-free test.
+    shape constants to the model-free test. This was superseded in Phase 0.9
+    after the actual sidecar tensors were confirmed as BF16 and the diagnostic
+    probe began executing them.
 
 ## Verification Already Run
 
@@ -291,8 +293,9 @@ layer 42 max_abs=92.0704 rms_abs=4.38825
 Phase 0.8 sidecar-backbone probe checks run on 2026-07-05:
 
 ```sh
-make -B ds4
+make ds4 ds4-server ds4-eval ds4-agent ds4_test
 ./ds4_test --dspark-validation --dspark-shape-binding
+./ds4 --help diagnostics | rg -- '--dspark-probe'
 git diff --check
 ./ds4 \
   --model gguf/DeepSeek-V4-Flash-IQ2XXS-w2Q2K-AProjQ8-SExpQ8-OutQ8-chat-v2-imatrix.gguf \
@@ -315,6 +318,37 @@ stage 2 hc block rms=9.07774
 final_plain block rms=0.192528
 final_norm block rms=0.22184
 row0 base_logits rms=2.7109 top1=19923 logit=18.6582 top2=23166 logit=16.1603
+```
+
+Phase 0.9 Markov/confidence diagnostic checks run on 2026-07-05:
+
+```sh
+make -B ds4
+./ds4_test --dspark-validation --dspark-shape-binding
+git diff --check
+./ds4 \
+  --model gguf/DeepSeek-V4-Flash-IQ2XXS-w2Q2K-AProjQ8-SExpQ8-OutQ8-chat-v2-imatrix.gguf \
+  --dspark gguf/ds4flash-dspark.gguf \
+  --dspark-probe --nothink -p "Hello"
+```
+
+The probe now validates and executes the BF16 Markov and confidence tensors in
+diagnostic mode. It uses an internal dry-run argmax chain to choose the previous
+token id for the next Markov row, but it does not emit, accept, append,
+generate, or speculate those tokens.
+
+Observed stats were finite:
+
+```text
+row0 base_logits rms=2.7109
+row0 markov_bias rms=8.17752
+row0 markov_logits rms=8.45111
+confidence logits min=-0.0725716 max=2.41473 rms=1.1772
+dry row 0 prev=128822 top1=19923 logit=20.6812 confidence=0.917943
+dry row 1 prev=19923 top1=3 logit=19.901 confidence=0.715982
+dry row 2 prev=3 top1=52780 logit=21.2248 confidence=0.559488
+dry row 3 prev=52780 top1=236 logit=28.3849 confidence=0.604713
+dry row 4 prev=236 top1=22651 logit=12.3115 confidence=0.481865
 ```
 
 Downloaded sidecar byte size:
@@ -372,11 +406,11 @@ If continuing from a compacted context, start here:
 
 ## Open Questions
 
-- Should the next probe add Markov-bias and confidence-head math in diagnostic
-  mode before wiring any runtime acceptance?
 - How should DSpark cache state be represented for real runtime: separate
   sidecar KV buffers mirroring the official two-step cache fill/draft flow, or
   a fresh graph path that directly consumes the target hidden-state window?
+- Should the first real runtime experiment start CPU-only with dry-run outputs,
+  or should we wire a Metal sidecar graph before attempting acceptance?
 - Where should DSpark runtime stats live so they are useful for development but
   cannot perturb benchmark measurements unless explicitly enabled?
 - Should future CLI UX stay as `--dspark`, or eventually become a broader

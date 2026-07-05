@@ -700,8 +700,9 @@ expected DSpark `mtp.*` tensors and metadata defaults, then continues with the
 normal non-DSpark runtime; speculative DSpark execution is not wired yet.
 For development, `--dspark-probe` additionally runs a short diagnostic prompt
 through the target-layer mean-HC capture bridge and DSpark
-`main_proj/main_norm`, then executes a backbone-only sidecar block and exits
-without sampling, accepting, or drafting tokens.
+`main_proj/main_norm`, executes the sidecar block, runs Markov-biased logits
+and confidence scores with an internal dry-run argmax chain, then exits without
+emitting, accepting, or drafting tokens.
 
 ## Server
 
