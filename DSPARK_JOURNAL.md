@@ -8,10 +8,11 @@ particular DSpark change exists.
 
 Branch: `codex/dspark-observability-0`
 
-Phase 0.5 is still intentionally narrow: `--dspark FILE` validates an official
-DSpark drafter GGUF, binds every tensor needed by a future runtime path, and
-checks the expected DeepSeek V4 Flash DSpark shapes. It does not enable DSpark
-runtime/speculative decoding.
+Phase 0.6 is still intentionally narrow: `--dspark FILE` validates an official
+DSpark drafter GGUF, binds every tensor needed by a future runtime path, checks
+the expected DeepSeek V4 Flash DSpark shapes, and exposes a diagnostic
+`--dspark-probe` bridge for target-layer hidden-state capture plus
+`main_proj/main_norm`. It does not enable DSpark speculative decoding.
 
 The design choice was to keep this separate from legacy `--mtp`. We do not
 guess dynamically whether `--mtp` points at legacy MTP or DSpark. The first
@@ -23,6 +24,11 @@ hook is explicit and conservative:
 - DSpark validation happens before the `--inspect` early return, so
   `./ds4 --inspect --model base.gguf --dspark ds4-dspark.gguf` should validate
   the sidecar.
+- `--dspark-probe` is a development diagnostic. It requires `--dspark`, runs a
+  prompt through graph layer slices ending at target layers `40,41,42`,
+  collapses the captured HC states to 4096-wide candidate context vectors, runs
+  DSpark `main_proj/main_norm`, prints vector stats, and exits without
+  generating or drafting tokens.
 - No benchmarks should be run automatically by Codex. The user wants tok/s
   benchmarks to be run manually on an otherwise idle machine.
 
@@ -96,6 +102,12 @@ Phase 0.5 shape/binding facts from the local
   `[N_EMBD + markov_rank]` = `[4352]`.
 - The current phase still has no runtime execution, no GPU-heavy generation
   path, no expert stats, and no benchmark claims.
+- The first probe collapse method is intentionally marked as provisional:
+  target layer `40` is collapsed with layer `41`'s attention HC-pre weights,
+  target layer `41` with layer `42`'s attention HC-pre weights, and target layer
+  `42` with the base output HC head. This gives a concrete 4096-wide bridge for
+  `main_proj`; it still needs equivalence validation against official
+  DeepSpec/HF hidden-state captures before becoming runtime contract.
 
 ## Files Changed So Far
 
@@ -115,6 +127,9 @@ Phase 0.5 shape/binding facts from the local
   - Added DSpark layout validation for global inputs, three per-stage
     transformer blocks, final HC head tensors, Markov heads, and the confidence
     head.
+  - Added `ds4_engine_dspark_probe`, a graph-backend-only diagnostic that uses
+    layer-slice evaluation to capture target-layer HC states, performs the
+    provisional HC-to-plain collapse, and runs DSpark `main_proj/main_norm`.
   - DSpark Markov and confidence tensors are dimension-validated only for now;
     runtime math is not implemented yet.
   - Added `dspark_model`, `dspark_config`, and `dspark_ready` to `ds4_engine`.
@@ -127,15 +142,18 @@ Phase 0.5 shape/binding facts from the local
 - Frontend parsers
   - `ds4_cli.c`, `ds4_server.c`, `ds4_eval.c`, and `ds4_agent.c` all accept
     `--dspark FILE`.
+  - `ds4_cli.c` accepts `--dspark-probe` as a one-shot diagnostic; the server,
+    eval, and agent frontends do not expose this probe.
   - `ds4-agent` was easy to miss because shared help mentioned the flag once
     `ds4_help.c` was updated. When adding runtime flags, always check all
     frontends.
 
 - `ds4_help.c`
   - Runtime full help now documents `--dspark FILE`.
+  - Diagnostics help now documents `--dspark-probe`.
 
 - `README.md`
-  - Added a short validation-only note next to the existing MTP text.
+  - Added a short validation/probe note next to the existing MTP text.
 
 - `tests/ds4_test.c`
   - Added `--dspark-validation`, a model-free test for defaults, rejection of
@@ -202,6 +220,35 @@ The inspect output confirmed:
 ds4: DSpark drafter validated: gguf/ds4flash-dspark.gguf (block=5 target_layers=40,41,42 main_proj=[12288,4096] stages=3; runtime not enabled yet)
 ```
 
+Phase 0.6 probe checks run on 2026-07-05:
+
+```sh
+make ds4 ds4-server ds4-eval ds4-agent ds4_test
+./ds4_test --dspark-validation --dspark-shape-binding
+./ds4 --help diagnostics | rg -- '--dspark|--dspark-probe'
+./ds4 --inspect \
+  --model gguf/DeepSeek-V4-Flash-IQ2XXS-w2Q2K-AProjQ8-SExpQ8-OutQ8-chat-v2-imatrix.gguf \
+  --dspark gguf/ds4flash-dspark.gguf
+./ds4 \
+  --model gguf/DeepSeek-V4-Flash-IQ2XXS-w2Q2K-AProjQ8-SExpQ8-OutQ8-chat-v2-imatrix.gguf \
+  --dspark gguf/ds4flash-dspark.gguf \
+  --dspark-probe --nothink -p "Hello"
+git diff --check
+```
+
+The real probe completed on the downloaded base+DSpark GGUFs. It captured
+target layers `40,41,42`, collapsed them with the provisional HC-to-plain
+bridge, ran `main_proj/main_norm`, and exited before generation/speculation.
+Observed last-token vector stats were finite:
+
+```text
+layer 40 hc rms=3.39173 plain rms=3.93296
+layer 41 hc rms=3.54454 plain rms=4.50141
+layer 42 hc rms=5.36406 plain rms=7.51114
+main_proj rms=26.5668
+main_norm rms=0.0882359
+```
+
 Downloaded sidecar byte size:
 
 ```text
@@ -257,10 +304,11 @@ If continuing from a compacted context, start here:
 
 ## Open Questions
 
-- How should DSpark runtime capture hidden states from target base layers
-  `40,41,42` without perturbing the existing generation path?
-- What is the exact first minimal DSpark runtime experiment: CPU-only
-  correctness probe, Metal graph wiring, or an isolated sidecar forward helper?
+- How do we validate the provisional HC-to-plain collapse against official
+  DeepSpec/HF hidden-state captures before using it as runtime contract?
+- What is the exact first minimal DSpark runtime experiment after collapse
+  validation: CPU-only correctness probe, Metal graph wiring, or an isolated
+  sidecar forward helper?
 - Where should DSpark runtime stats live so they are useful for development but
   cannot perturb benchmark measurements unless explicitly enabled?
 - Should future CLI UX stay as `--dspark`, or eventually become a broader

@@ -46,6 +46,7 @@ typedef struct {
     ds4_think_mode think_mode;
     bool head_test;
     bool first_token_test;
+    bool dspark_probe;
     bool metal_graph_test;
     bool metal_graph_full_test;
     bool metal_graph_prompt_test;
@@ -890,6 +891,11 @@ static int run_generation(ds4_engine *engine, const cli_config *cfg) {
         ds4_tokens_free(&prompt);
         return rc;
     }
+    if (cfg->gen.dspark_probe) {
+        rc = ds4_engine_dspark_probe(engine, &prompt, cfg->gen.ctx_size);
+        ds4_tokens_free(&prompt);
+        return rc;
+    }
     if (cfg->gen.dump_logits_path) {
         rc = run_logits_dump(engine, cfg, &prompt);
         ds4_tokens_free(&prompt);
@@ -1574,6 +1580,8 @@ static cli_config parse_options(int argc, char **argv) {
             c.gen.head_test = true;
         } else if (!strcmp(arg, "--first-token-test")) {
             c.gen.first_token_test = true;
+        } else if (!strcmp(arg, "--dspark-probe")) {
+            c.gen.dspark_probe = true;
         } else if (!strcmp(arg, "--metal-graph-test")) {
             c.gen.metal_graph_test = true;
 #ifdef DS4_ROCM_BUILD

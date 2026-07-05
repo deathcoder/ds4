@@ -698,6 +698,9 @@ experimental slight-speedup path.
 DeepSeek/DeepSpec DSpark drafter sidecars. It checks that the GGUF contains the
 expected DSpark `mtp.*` tensors and metadata defaults, then continues with the
 normal non-DSpark runtime; speculative DSpark execution is not wired yet.
+For development, `--dspark-probe` additionally runs a short diagnostic prompt
+through the target-layer hidden-state capture bridge and DSpark
+`main_proj/main_norm`, then exits without drafting tokens.
 
 ## Server
 

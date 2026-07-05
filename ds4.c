@@ -25759,6 +25759,192 @@ int ds4_engine_first_token_test(ds4_engine *e, const ds4_tokens *prompt) {
     return 0;
 }
 
+static void dspark_probe_collapse_target_hc(
+        float             * out,
+        const ds4_model   * model,
+        const ds4_weights * weights,
+        const float       * hc,
+        uint32_t            target_layer,
+        const char       ** method) {
+    if (target_layer + 1u < DS4_N_LAYER) {
+        float post[DS4_MAX_HC];
+        float comb[DS4_MAX_HC * DS4_MAX_HC];
+        const ds4_layer_weights *next = &weights->layer[target_layer + 1u];
+        hc_pre_from_state_one(model,
+                              next->hc_attn_fn,
+                              next->hc_attn_scale,
+                              next->hc_attn_base,
+                              hc,
+                              out,
+                              post,
+                              comb);
+        if (method) *method = "next-layer attn HC pre";
+        return;
+    }
+
+    output_hc_head_one(out, model, weights, hc);
+    if (method) *method = "output HC head";
+}
+
+int ds4_engine_dspark_probe(ds4_engine *e, const ds4_tokens *prompt, int ctx_size) {
+    if (!e || !prompt || prompt->len <= 0) {
+        fprintf(stderr, "ds4: DSpark probe requires a non-empty prompt\n");
+        return 1;
+    }
+    if (!e->dspark_ready) {
+        fprintf(stderr, "ds4: DSpark probe requires --dspark FILE\n");
+        return 1;
+    }
+    if (!ds4_backend_uses_graph(e->backend)) {
+        fprintf(stderr, "ds4: DSpark probe currently requires the graph backend\n");
+        return 1;
+    }
+#ifdef DS4_NO_GPU
+    fprintf(stderr, "ds4: DSpark probe requires GPU graph support\n");
+    return 1;
+#else
+    if (!e->metal_ready) {
+        fprintf(stderr, "ds4: DSpark probe requested but %s backend is unavailable\n",
+                ds4_backend_name(e->backend));
+        return 1;
+    }
+    if (ctx_size <= prompt->len) {
+        fprintf(stderr, "ds4: DSpark probe context is too small for prompt\n");
+        return 1;
+    }
+    if (e->distributed.role != DS4_DISTRIBUTED_NONE) {
+        fprintf(stderr, "ds4: DSpark probe does not run in distributed mode yet\n");
+        return 1;
+    }
+
+    ds4_session *session = NULL;
+    if (ds4_session_create(&session, e, ctx_size) != 0) {
+        fprintf(stderr, "ds4: failed to create DSpark probe session\n");
+        return 1;
+    }
+    const int prefill_cap = ds4_session_prefill_cap(session);
+    if (prompt->len > prefill_cap) {
+        fprintf(stderr,
+                "ds4: DSpark probe prompt has %d tokens, exceeding prefill cap %d\n",
+                prompt->len,
+                prefill_cap);
+        ds4_session_free(session);
+        return 1;
+    }
+
+    const uint64_t hc_dim = (uint64_t)DS4_N_HC * DS4_N_EMBD;
+    const uint64_t hc_values = (uint64_t)prompt->len * hc_dim;
+    float *target_hc[DS4_DSPARK_MTP_LAYERS] = {0};
+    for (uint32_t i = 0; i < DS4_DSPARK_MTP_LAYERS; i++) {
+        target_hc[i] = xmalloc((size_t)hc_values * sizeof(target_hc[i][0]));
+    }
+
+    char err[256];
+    err[0] = '\0';
+    int rc = 0;
+    uint32_t layer_start = 0;
+    for (uint32_t i = 0; i < DS4_DSPARK_MTP_LAYERS; i++) {
+        const uint32_t layer_end = e->dspark_config.target_layer_ids[i];
+        if (layer_end < layer_start || layer_end >= DS4_N_LAYER) {
+            fprintf(stderr,
+                    "ds4: invalid DSpark probe target layer range %u:%u\n",
+                    layer_start,
+                    layer_end);
+            rc = 1;
+            break;
+        }
+        if (ds4_session_layer_slice_reset(session, err, sizeof(err)) != 0) {
+            fprintf(stderr,
+                    "ds4: DSpark probe reset failed before layer %u: %s\n",
+                    layer_end,
+                    err[0] ? err : "unknown error");
+            rc = 1;
+            break;
+        }
+        const float *input_hc = i == 0 ? NULL : target_hc[i - 1u];
+        if (ds4_session_eval_layer_slice(session,
+                                         prompt->v,
+                                         (uint32_t)prompt->len,
+                                         0,
+                                         layer_start,
+                                         layer_end,
+                                         input_hc,
+                                         target_hc[i],
+                                         false,
+                                         NULL,
+                                         err,
+                                         sizeof(err)) != 0) {
+            fprintf(stderr,
+                    "ds4: DSpark probe layer slice %u:%u failed: %s\n",
+                    layer_start,
+                    layer_end,
+                    err[0] ? err : "unknown error");
+            rc = 1;
+            break;
+        }
+        layer_start = layer_end + 1u;
+    }
+
+    if (rc == 0) {
+        const uint32_t last = (uint32_t)prompt->len - 1u;
+        float *context = xmalloc((size_t)DS4_DSPARK_MTP_LAYERS * DS4_N_EMBD *
+                                 sizeof(context[0]));
+        float *projected = xmalloc((size_t)DS4_N_EMBD * sizeof(projected[0]));
+        float *normed = xmalloc((size_t)DS4_N_EMBD * sizeof(normed[0]));
+
+        fprintf(stderr,
+                "ds4: DSpark probe captured prompt_tokens=%d target_layers=%u,%u,%u\n",
+                prompt->len,
+                e->dspark_config.target_layer_ids[0],
+                e->dspark_config.target_layer_ids[1],
+                e->dspark_config.target_layer_ids[2]);
+        for (uint32_t i = 0; i < DS4_DSPARK_MTP_LAYERS; i++) {
+            const uint32_t layer = e->dspark_config.target_layer_ids[i];
+            const float *last_hc = target_hc[i] + (uint64_t)last * hc_dim;
+            char label[96];
+            snprintf(label, sizeof(label), "dspark probe layer %u hc", layer);
+            print_vec_stats(label, last_hc, hc_dim);
+
+            const char *method = NULL;
+            dspark_probe_collapse_target_hc(context + (uint64_t)i * DS4_N_EMBD,
+                                            &e->model,
+                                            &e->weights,
+                                            last_hc,
+                                            layer,
+                                            &method);
+            snprintf(label, sizeof(label), "dspark probe layer %u plain", layer);
+            print_vec_stats(label, context + (uint64_t)i * DS4_N_EMBD, DS4_N_EMBD);
+            fprintf(stderr,
+                    "ds4: DSpark probe layer %u plain collapse: %s\n",
+                    layer,
+                    method ? method : "unknown");
+        }
+
+        matvec_q8_0(projected,
+                    &e->dspark_model,
+                    e->dspark_weights.main_proj,
+                    context);
+        rms_norm_weight(normed,
+                        projected,
+                        tensor_data(&e->dspark_model, e->dspark_weights.main_norm),
+                        DS4_N_EMBD,
+                        DS4_RMS_EPS);
+        print_vec_stats("dspark probe main_proj", projected, DS4_N_EMBD);
+        print_vec_stats("dspark probe main_norm", normed, DS4_N_EMBD);
+        fprintf(stderr,
+                "ds4: DSpark probe completed; no draft runtime or speculation was executed\n");
+
+        free(normed);
+        free(projected);
+        free(context);
+    }
+
+    for (uint32_t i = 0; i < DS4_DSPARK_MTP_LAYERS; i++) free(target_hc[i]);
+    ds4_session_free(session);
+    return rc;
+#endif
+}
+
 static bool ds4_engine_configure_streaming_auto_cache(ds4_engine *e) {
 #ifdef DS4_NO_GPU
     (void)e;
