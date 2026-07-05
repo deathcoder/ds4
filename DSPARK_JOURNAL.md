@@ -8,11 +8,12 @@ particular DSpark change exists.
 
 Branch: `codex/dspark-observability-0`
 
-Phase 0.7 is still intentionally narrow: `--dspark FILE` validates an official
+Phase 0.8 is still intentionally narrow: `--dspark FILE` validates an official
 DSpark drafter GGUF, binds every tensor needed by a future runtime path, checks
 the expected DeepSeek V4 Flash DSpark shapes, and exposes a diagnostic
 `--dspark-probe` bridge for target-layer hidden-state capture plus
-`main_proj/main_norm`. It does not enable DSpark speculative decoding.
+`main_proj/main_norm` plus a backbone-only sidecar block. It does not enable
+DSpark speculative decoding.
 
 The design choice was to keep this separate from legacy `--mtp`. We do not
 guess dynamically whether `--mtp` points at legacy MTP or DSpark. The first
@@ -27,8 +28,9 @@ hook is explicit and conservative:
 - `--dspark-probe` is a development diagnostic. It requires `--dspark`, runs a
   prompt through graph layer slices ending at target layers `40,41,42`,
   averages the captured HC streams to 4096-wide context vectors, runs
-  DSpark `main_proj/main_norm`, prints vector stats, and exits without
-  generating or drafting tokens.
+  DSpark `main_proj/main_norm`, executes the three-stage sidecar backbone block
+  on CPU, prints vector/logit stats, and exits without Markov sampling,
+  confidence gating, acceptance, generation, or speculative decoding.
 - No benchmarks should be run automatically by Codex. The user wants tok/s
   benchmarks to be run manually on an otherwise idle machine.
 
@@ -131,10 +133,13 @@ Phase 0.5 shape/binding facts from the local
     head.
   - Added `ds4_engine_dspark_probe`, a graph-backend-only diagnostic that uses
     layer-slice evaluation to capture target-layer HC states, averages HC
-    streams into the official DSpark target-state bridge, and runs DSpark
-    `main_proj/main_norm`.
+    streams into the official DSpark target-state bridge, runs DSpark
+    `main_proj/main_norm`, and now executes a CPU-only diagnostic sidecar
+    backbone block through all three DSpark stages.
   - DSpark Markov and confidence tensors are dimension-validated only for now;
-    runtime math is not implemented yet.
+    their runtime math is not implemented yet. The sidecar probe prints base
+    LM-head logits from the final stage hidden state but does not run Markov
+    bias, confidence prediction, sampling, acceptance, or speculation.
   - Added `dspark_model`, `dspark_config`, and `dspark_ready` to `ds4_engine`.
   - `ds4_engine_open` now rejects `--mtp` plus `--dspark`, opens the DSpark
     sidecar, validates/binds it, and logs that runtime is not enabled yet.
@@ -283,6 +288,35 @@ layer 41 max_abs=16.5391 rms_abs=2.38056
 layer 42 max_abs=92.0704 rms_abs=4.38825
 ```
 
+Phase 0.8 sidecar-backbone probe checks run on 2026-07-05:
+
+```sh
+make -B ds4
+./ds4_test --dspark-validation --dspark-shape-binding
+git diff --check
+./ds4 \
+  --model gguf/DeepSeek-V4-Flash-IQ2XXS-w2Q2K-AProjQ8-SExpQ8-OutQ8-chat-v2-imatrix.gguf \
+  --dspark gguf/ds4flash-dspark.gguf \
+  --dspark-probe --nothink -p "Hello"
+```
+
+The probe captured target layers, projected all prompt rows through
+`main_proj/main_norm`, built the DSpark noise-token block, executed all three
+sidecar stages on CPU, applied the final DSpark HC head/norm, and computed row-0
+base LM-head logits. Markov bias, confidence prediction, sampling, acceptance,
+generation, and speculation were not executed.
+
+Observed stats were finite:
+
+```text
+stage 0 hc block rms=4.15588
+stage 1 hc block rms=5.53495
+stage 2 hc block rms=9.07774
+final_plain block rms=0.192528
+final_norm block rms=0.22184
+row0 base_logits rms=2.7109 top1=19923 logit=18.6582 top2=23166 logit=16.1603
+```
+
 Downloaded sidecar byte size:
 
 ```text
@@ -338,9 +372,11 @@ If continuing from a compacted context, start here:
 
 ## Open Questions
 
-- What is the exact first minimal DSpark runtime experiment after the mean-HC
-  bridge probe: CPU-only correctness probe, Metal graph wiring, or an isolated
-  sidecar forward helper?
+- Should the next probe add Markov-bias and confidence-head math in diagnostic
+  mode before wiring any runtime acceptance?
+- How should DSpark cache state be represented for real runtime: separate
+  sidecar KV buffers mirroring the official two-step cache fill/draft flow, or
+  a fresh graph path that directly consumes the target hidden-state window?
 - Where should DSpark runtime stats live so they are useful for development but
   cannot perturb benchmark measurements unless explicitly enabled?
 - Should future CLI UX stay as `--dspark`, or eventually become a broader

@@ -25797,6 +25797,206 @@ static void dspark_probe_legacy_collapse_target_hc(
     if (method) *method = "output HC head";
 }
 
+static void rope_tail_dspark_inplace(
+        float    * x,
+        uint32_t   n_head,
+        uint32_t   head_dim,
+        uint32_t   n_rot,
+        uint32_t   pos,
+        bool       inverse) {
+    rope_tail_ext_inplace(x,
+                          n_head,
+                          head_dim,
+                          n_rot,
+                          pos,
+                          0,
+                          DS4_ROPE_FREQ_BASE,
+                          1.0f,
+                          0.0f,
+                          1.0f,
+                          DS4_ROPE_YARN_BETA_FAST,
+                          DS4_ROPE_YARN_BETA_SLOW,
+                          inverse);
+}
+
+static void dspark_probe_hc_head_one(
+        float                  * out,
+        const ds4_model        * model,
+        const ds4_dspark_weights * weights,
+        const float            * inp_hc) {
+    const uint32_t n_hc = DS4_N_HC;
+    const uint64_t hc_dim = (uint64_t)DS4_N_EMBD * n_hc;
+    float *flat = xmalloc((size_t)hc_dim * sizeof(flat[0]));
+    float *pre = xmalloc((size_t)n_hc * sizeof(pre[0]));
+    float *w = xmalloc((size_t)n_hc * sizeof(w[0]));
+
+    rms_norm_no_weight(flat, inp_hc, hc_dim, DS4_RMS_EPS);
+    matvec_any(pre, model, weights->hc_head_fn, flat);
+
+    const float *scale = tensor_data(model, weights->hc_head_scale);
+    const float *base = tensor_data(model, weights->hc_head_base);
+    for (uint32_t i = 0; i < n_hc; i++) {
+        w[i] = sigmoid_stable(pre[i] * scale[0] + base[i]) + DS4_HC_EPS;
+    }
+
+    hc_weighted_sum_one(out, inp_hc, w, DS4_N_EMBD, n_hc);
+
+    free(w);
+    free(pre);
+    free(flat);
+}
+
+static void dspark_probe_attention_block(
+        float                  * after_attn_hc,
+        const ds4_model        * model,
+        const ds4_layer_weights * layer,
+        const float            * inp_hc,
+        const float            * main_x,
+        uint32_t                 context_len,
+        uint32_t                 block_size) {
+    const uint32_t n_hc = DS4_N_HC;
+    const uint64_t hc_dim = (uint64_t)n_hc * DS4_N_EMBD;
+    const uint64_t q_dim = (uint64_t)DS4_N_HEAD * DS4_N_HEAD_DIM;
+    const uint32_t n_kv = context_len + block_size;
+
+    float *attn_cur = xmalloc((size_t)block_size * DS4_N_EMBD * sizeof(attn_cur[0]));
+    float *attn_norm = xmalloc((size_t)block_size * DS4_N_EMBD * sizeof(attn_norm[0]));
+    float *post = xmalloc((size_t)block_size * n_hc * sizeof(post[0]));
+    float *comb = xmalloc((size_t)block_size * n_hc * n_hc * sizeof(comb[0]));
+    float *q = xmalloc((size_t)block_size * q_dim * sizeof(q[0]));
+    float *kv_rows = xmalloc((size_t)n_kv * DS4_N_HEAD_DIM * sizeof(kv_rows[0]));
+    float *heads = xmalloc((size_t)block_size * q_dim * sizeof(heads[0]));
+    float *attn_out = xmalloc((size_t)block_size * DS4_N_EMBD * sizeof(attn_out[0]));
+    const float *attn_norm_w = tensor_data(model, layer->attn_norm);
+
+    for (uint32_t t = 0; t < block_size; t++) {
+        hc_pre_from_state_one(model,
+                              layer->hc_attn_fn,
+                              layer->hc_attn_scale,
+                              layer->hc_attn_base,
+                              inp_hc + (uint64_t)t * hc_dim,
+                              attn_cur + (uint64_t)t * DS4_N_EMBD,
+                              post + (uint64_t)t * n_hc,
+                              comb + (uint64_t)t * n_hc * n_hc);
+        rms_norm_weight(attn_norm + (uint64_t)t * DS4_N_EMBD,
+                        attn_cur + (uint64_t)t * DS4_N_EMBD,
+                        attn_norm_w,
+                        DS4_N_EMBD,
+                        DS4_RMS_EPS);
+        layer_q_projection_normed_one(model,
+                                      layer,
+                                      attn_norm + (uint64_t)t * DS4_N_EMBD,
+                                      q + (uint64_t)t * q_dim);
+        rope_tail_dspark_inplace(q + (uint64_t)t * q_dim,
+                                 DS4_N_HEAD,
+                                 DS4_N_HEAD_DIM,
+                                 DS4_N_ROT,
+                                 context_len + t,
+                                 false);
+    }
+
+    for (uint32_t t = 0; t < context_len; t++) {
+        float *kv = kv_rows + (uint64_t)t * DS4_N_HEAD_DIM;
+        layer_kv_projection_normed_one(model,
+                                       layer,
+                                       main_x + (uint64_t)t * DS4_N_EMBD,
+                                       kv);
+        rope_tail_dspark_inplace(kv,
+                                 DS4_N_HEAD_KV,
+                                 DS4_N_HEAD_DIM,
+                                 DS4_N_ROT,
+                                 t,
+                                 false);
+        dsv4_fp8_kv_quantize_row_inplace_cpu(kv, DS4_N_HEAD_DIM, DS4_N_ROT);
+        f16_round_inplace_cpu(kv, DS4_N_HEAD_DIM);
+    }
+
+    for (uint32_t t = 0; t < block_size; t++) {
+        float *kv = kv_rows + (uint64_t)(context_len + t) * DS4_N_HEAD_DIM;
+        layer_kv_projection_normed_one(model,
+                                       layer,
+                                       attn_norm + (uint64_t)t * DS4_N_EMBD,
+                                       kv);
+        rope_tail_dspark_inplace(kv,
+                                 DS4_N_HEAD_KV,
+                                 DS4_N_HEAD_DIM,
+                                 DS4_N_ROT,
+                                 context_len + t,
+                                 false);
+        dsv4_fp8_kv_quantize_row_inplace_cpu(kv, DS4_N_HEAD_DIM, DS4_N_ROT);
+        f16_round_inplace_cpu(kv, DS4_N_HEAD_DIM);
+    }
+
+    for (uint32_t t = 0; t < block_size; t++) {
+        float *h = heads + (uint64_t)t * q_dim;
+        layer_attention_rows_one(h,
+                                 model,
+                                 layer,
+                                 q + (uint64_t)t * q_dim,
+                                 kv_rows,
+                                 n_kv);
+        rope_tail_dspark_inplace(h,
+                                 DS4_N_HEAD,
+                                 DS4_N_HEAD_DIM,
+                                 DS4_N_ROT,
+                                 context_len + t,
+                                 true);
+        layer_grouped_out_one(attn_out + (uint64_t)t * DS4_N_EMBD,
+                              model,
+                              layer,
+                              h);
+        hc_post_one(after_attn_hc + (uint64_t)t * hc_dim,
+                    attn_out + (uint64_t)t * DS4_N_EMBD,
+                    inp_hc + (uint64_t)t * hc_dim,
+                    post + (uint64_t)t * n_hc,
+                    comb + (uint64_t)t * n_hc * n_hc,
+                    DS4_N_EMBD,
+                    n_hc);
+    }
+
+    free(attn_out);
+    free(heads);
+    free(kv_rows);
+    free(q);
+    free(comb);
+    free(post);
+    free(attn_norm);
+    free(attn_cur);
+}
+
+static void dspark_probe_stage_block(
+        float                  * out_hc,
+        const ds4_model        * model,
+        const ds4_layer_weights * layer,
+        const float            * inp_hc,
+        const float            * main_x,
+        const int              * block_tokens,
+        uint32_t                 context_len,
+        uint32_t                 block_size,
+        uint32_t                 stage) {
+    const uint64_t hc_dim = (uint64_t)DS4_N_HC * DS4_N_EMBD;
+    float *after_attn_hc = xmalloc((size_t)block_size * hc_dim * sizeof(after_attn_hc[0]));
+
+    dspark_probe_attention_block(after_attn_hc,
+                                 model,
+                                 layer,
+                                 inp_hc,
+                                 main_x,
+                                 context_len,
+                                 block_size);
+    layer_ffn_batch(out_hc,
+                    model,
+                    layer,
+                    after_attn_hc,
+                    block_tokens,
+                    block_size,
+                    stage,
+                    NULL,
+                    0.0f);
+
+    free(after_attn_hc);
+}
+
 int ds4_engine_dspark_probe(ds4_engine *e, const ds4_tokens *prompt, int ctx_size) {
     if (!e || !prompt || prompt->len <= 0) {
         fprintf(stderr, "ds4: DSpark probe requires a non-empty prompt\n");
@@ -25898,10 +26098,25 @@ int ds4_engine_dspark_probe(ds4_engine *e, const ds4_tokens *prompt, int ctx_siz
 
     if (rc == 0) {
         const uint32_t last = (uint32_t)prompt->len - 1u;
-        float *context = xmalloc((size_t)DS4_DSPARK_MTP_LAYERS * DS4_N_EMBD *
-                                 sizeof(context[0]));
+        const uint32_t context_len = (uint32_t)prompt->len;
+        const uint32_t block_size = e->dspark_config.block_size;
+        if (context_len > DS4_N_SWA) {
+            fprintf(stderr,
+                    "ds4: DSpark probe sidecar forward currently requires prompt_tokens <= %u\n",
+                    (uint32_t)DS4_N_SWA);
+            rc = 1;
+        }
+        if (block_size == 0 || block_size > 16) {
+            fprintf(stderr,
+                    "ds4: DSpark probe unsupported block size %u\n",
+                    block_size);
+            rc = 1;
+        }
+        float *context = xmalloc((size_t)context_len * DS4_DSPARK_MTP_LAYERS *
+                                 DS4_N_EMBD * sizeof(context[0]));
         float *legacy_context = xmalloc((size_t)DS4_DSPARK_MTP_LAYERS * DS4_N_EMBD *
                                         sizeof(legacy_context[0]));
+        float *main_x = xmalloc((size_t)context_len * DS4_N_EMBD * sizeof(main_x[0]));
         float *projected = xmalloc((size_t)DS4_N_EMBD * sizeof(projected[0]));
         float *normed = xmalloc((size_t)DS4_N_EMBD * sizeof(normed[0]));
 
@@ -25917,14 +26132,18 @@ int ds4_engine_dspark_probe(ds4_engine *e, const ds4_tokens *prompt, int ctx_siz
         for (uint32_t i = 0; i < DS4_DSPARK_MTP_LAYERS; i++) {
             const uint32_t layer = e->dspark_config.target_layer_ids[i];
             const float *last_hc = target_hc[i] + (uint64_t)last * hc_dim;
-            float *mean = context + (uint64_t)i * DS4_N_EMBD;
+            float *mean = context + ((uint64_t)last * DS4_DSPARK_MTP_LAYERS + i) * DS4_N_EMBD;
             float *legacy = legacy_context + (uint64_t)i * DS4_N_EMBD;
             char label[96];
             snprintf(label, sizeof(label), "dspark probe layer %u hc", layer);
             print_vec_stats(label, last_hc, hc_dim);
 
+            for (uint32_t t = 0; t < context_len; t++) {
+                dspark_probe_mean_target_hc(
+                    context + ((uint64_t)t * DS4_DSPARK_MTP_LAYERS + i) * DS4_N_EMBD,
+                    target_hc[i] + (uint64_t)t * hc_dim);
+            }
             const char *method = NULL;
-            dspark_probe_mean_target_hc(mean, last_hc);
             dspark_probe_legacy_collapse_target_hc(legacy,
                                                    &e->model,
                                                    &e->weights,
@@ -25944,22 +26163,119 @@ int ds4_engine_dspark_probe(ds4_engine *e, const ds4_tokens *prompt, int ctx_siz
                     rms_abs_diff(mean, legacy, DS4_N_EMBD));
         }
 
-        matvec_q8_0(projected,
-                    &e->dspark_model,
-                    e->dspark_weights.main_proj,
-                    context);
-        rms_norm_weight(normed,
-                        projected,
-                        tensor_data(&e->dspark_model, e->dspark_weights.main_norm),
-                        DS4_N_EMBD,
-                        DS4_RMS_EPS);
-        print_vec_stats("dspark probe main_proj", projected, DS4_N_EMBD);
-        print_vec_stats("dspark probe main_norm", normed, DS4_N_EMBD);
-        fprintf(stderr,
-                "ds4: DSpark probe completed; no draft runtime or speculation was executed\n");
+        if (rc == 0) {
+            for (uint32_t t = 0; t < context_len; t++) {
+                matvec_q8_0(projected,
+                            &e->dspark_model,
+                            e->dspark_weights.main_proj,
+                            context + (uint64_t)t * DS4_DSPARK_MTP_LAYERS * DS4_N_EMBD);
+                rms_norm_weight(main_x + (uint64_t)t * DS4_N_EMBD,
+                                projected,
+                                tensor_data(&e->dspark_model, e->dspark_weights.main_norm),
+                                DS4_N_EMBD,
+                                DS4_RMS_EPS);
+            }
+            matvec_q8_0(projected,
+                        &e->dspark_model,
+                        e->dspark_weights.main_proj,
+                        context + (uint64_t)last * DS4_DSPARK_MTP_LAYERS * DS4_N_EMBD);
+            memcpy(normed, main_x + (uint64_t)last * DS4_N_EMBD,
+                   (size_t)DS4_N_EMBD * sizeof(normed[0]));
+            print_vec_stats("dspark probe main_proj", projected, DS4_N_EMBD);
+            print_vec_stats("dspark probe main_norm", normed, DS4_N_EMBD);
+
+            const uint64_t block_hc_values = (uint64_t)block_size * hc_dim;
+            int block_tokens[16];
+            float *plain = xmalloc((size_t)DS4_N_EMBD * sizeof(plain[0]));
+            float *cur_hc = xmalloc((size_t)block_hc_values * sizeof(cur_hc[0]));
+            float *next_hc = xmalloc((size_t)block_hc_values * sizeof(next_hc[0]));
+            float *final_plain = xmalloc((size_t)block_size * DS4_N_EMBD * sizeof(final_plain[0]));
+            float *final_norm = xmalloc((size_t)block_size * DS4_N_EMBD * sizeof(final_norm[0]));
+            float *logits = xmalloc((size_t)DS4_N_VOCAB * sizeof(logits[0]));
+
+            block_tokens[0] = prompt->v[last];
+            for (uint32_t t = 1; t < block_size; t++) {
+                block_tokens[t] = (int)e->dspark_config.noise_token_id;
+            }
+            for (uint32_t t = 0; t < block_size; t++) {
+                embed_token_f16(&e->model, &e->weights, block_tokens[t], plain);
+                hc_from_plain_embedding(cur_hc + (uint64_t)t * hc_dim,
+                                        plain,
+                                        DS4_N_EMBD,
+                                        DS4_N_HC);
+            }
+
+            fprintf(stderr,
+                    "ds4: DSpark probe sidecar forward block=%u context_rows=%u "
+                    "anchor_token=%d noise_token=%u\n",
+                    block_size,
+                    context_len,
+                    block_tokens[0],
+                    e->dspark_config.noise_token_id);
+            for (uint32_t stage = 0; stage < DS4_DSPARK_MTP_LAYERS; stage++) {
+                dspark_probe_stage_block(next_hc,
+                                         &e->dspark_model,
+                                         &e->dspark_weights.stage[stage],
+                                         cur_hc,
+                                         main_x,
+                                         block_tokens,
+                                         context_len,
+                                         block_size,
+                                         stage);
+                char label[96];
+                snprintf(label, sizeof(label), "dspark probe stage %u hc block", stage);
+                print_vec_stats(label, next_hc, block_hc_values);
+                float *tmp = cur_hc;
+                cur_hc = next_hc;
+                next_hc = tmp;
+            }
+
+            for (uint32_t t = 0; t < block_size; t++) {
+                dspark_probe_hc_head_one(final_plain + (uint64_t)t * DS4_N_EMBD,
+                                         &e->dspark_model,
+                                         &e->dspark_weights,
+                                         cur_hc + (uint64_t)t * hc_dim);
+                rms_norm_weight(final_norm + (uint64_t)t * DS4_N_EMBD,
+                                final_plain + (uint64_t)t * DS4_N_EMBD,
+                                tensor_data(&e->dspark_model, e->dspark_weights.final_norm),
+                                DS4_N_EMBD,
+                                DS4_RMS_EPS);
+            }
+            print_vec_stats("dspark probe final_plain block",
+                            final_plain,
+                            (uint64_t)block_size * DS4_N_EMBD);
+            print_vec_stats("dspark probe final_norm block",
+                            final_norm,
+                            (uint64_t)block_size * DS4_N_EMBD);
+            matvec_q8_0(logits,
+                        &e->model,
+                        e->weights.output,
+                        final_norm);
+            print_vec_stats("dspark probe row0 base_logits", logits, DS4_N_VOCAB);
+            int top0 = -1, top1 = -1;
+            float v0 = 0.0f, v1 = 0.0f;
+            logits_top2(logits, DS4_N_VOCAB, &top0, &v0, &top1, &v1);
+            fprintf(stderr,
+                    "ds4: DSpark probe row0 base logits top1=%d %.6g top2=%d %.6g\n",
+                    top0,
+                    v0,
+                    top1,
+                    v1);
+            fprintf(stderr,
+                    "ds4: DSpark probe sidecar backbone completed; Markov, "
+                    "confidence, sampling, acceptance, and speculation were not executed\n");
+
+            free(logits);
+            free(final_norm);
+            free(final_plain);
+            free(next_hc);
+            free(cur_hc);
+            free(plain);
+        }
 
         free(normed);
         free(projected);
+        free(main_x);
         free(legacy_context);
         free(context);
     }
