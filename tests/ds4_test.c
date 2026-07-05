@@ -2176,6 +2176,96 @@ static void test_mtp_verify_depth(void) {
 }
 #endif
 
+static void test_dspark_validation_helpers(void) {
+    ds4_dspark_config cfg;
+    ds4_dspark_config_init_defaults(&cfg);
+    TEST_ASSERT(cfg.n_mtp_layers == 3);
+    TEST_ASSERT(cfg.block_size == 5);
+    TEST_ASSERT(cfg.noise_token_id == 128799u);
+    TEST_ASSERT(cfg.markov_rank == 256);
+    TEST_ASSERT(cfg.target_layer_ids[0] == 40);
+    TEST_ASSERT(cfg.target_layer_ids[1] == 41);
+    TEST_ASSERT(cfg.target_layer_ids[2] == 42);
+
+    char err[160];
+    const char *legacy_mtp_names[] = {
+        "token_embd.weight",
+        "mtp.0.e_proj.weight",
+        "mtp.0.h_proj.weight",
+    };
+    err[0] = '\0';
+    TEST_ASSERT(!ds4_dspark_tensor_names_validate(
+        legacy_mtp_names,
+        sizeof(legacy_mtp_names) / sizeof(legacy_mtp_names[0]),
+        err,
+        sizeof(err)));
+    TEST_ASSERT(strstr(err, "mtp.0.main_proj.weight") != NULL);
+
+    enum {
+        DSPARK_GLOBAL_TENSORS = 9,
+        DSPARK_STAGE_TENSORS = 23,
+        DSPARK_MTP_LAYERS = 3,
+        DSPARK_TOTAL_TENSORS = DSPARK_GLOBAL_TENSORS +
+                               DSPARK_STAGE_TENSORS * DSPARK_MTP_LAYERS,
+    };
+    const char *global_names[DSPARK_GLOBAL_TENSORS] = {
+        "mtp.0.main_proj.weight",
+        "mtp.0.main_norm.weight",
+        "mtp.2.norm.weight",
+        "mtp.2.hc_head_base.weight",
+        "mtp.2.hc_head_fn.weight",
+        "mtp.2.hc_head_scale.weight",
+        "mtp.2.markov_head.markov_w1.weight",
+        "mtp.2.markov_head.markov_w2.weight",
+        "mtp.2.confidence_head.proj.weight",
+    };
+    const char *stage_suffixes[DSPARK_STAGE_TENSORS] = {
+        "hc_attn_fn.weight",
+        "hc_attn_scale.weight",
+        "hc_attn_base.weight",
+        "attn_norm.weight",
+        "attn_q_a.weight",
+        "attn_q_a_norm.weight",
+        "attn_q_b.weight",
+        "attn_kv.weight",
+        "attn_kv_a_norm.weight",
+        "attn_sinks.weight",
+        "attn_output_a.weight",
+        "attn_output_b.weight",
+        "hc_ffn_fn.weight",
+        "hc_ffn_scale.weight",
+        "hc_ffn_base.weight",
+        "ffn_norm.weight",
+        "ffn_gate_inp.weight",
+        "ffn_gate_exps.weight",
+        "ffn_up_exps.weight",
+        "ffn_down_exps.weight",
+        "ffn_gate_shexp.weight",
+        "ffn_up_shexp.weight",
+        "ffn_down_shexp.weight",
+    };
+    const char *names[DSPARK_TOTAL_TENSORS];
+    char generated[DSPARK_MTP_LAYERS * DSPARK_STAGE_TENSORS][96];
+    size_t n = 0;
+
+    for (size_t i = 0; i < DSPARK_GLOBAL_TENSORS; i++) {
+        names[n++] = global_names[i];
+    }
+    for (uint32_t stage = 0; stage < DSPARK_MTP_LAYERS; stage++) {
+        for (size_t i = 0; i < DSPARK_STAGE_TENSORS; i++) {
+            char *dst = generated[stage * DSPARK_STAGE_TENSORS + i];
+            int len = snprintf(dst, 96, "mtp.%u.%s", stage, stage_suffixes[i]);
+            TEST_ASSERT(len > 0 && len < 96);
+            names[n++] = dst;
+        }
+    }
+    TEST_ASSERT(n == DSPARK_TOTAL_TENSORS);
+
+    err[0] = 'x';
+    TEST_ASSERT(ds4_dspark_tensor_names_validate(names, n, err, sizeof(err)));
+    TEST_ASSERT(err[0] == '\0');
+}
+
 static void test_server_unit_group(void) {
     ds4_server_unit_tests_run();
 }
@@ -2203,6 +2293,7 @@ static const ds4_test_entry test_entries[] = {
     {"--streaming-decode-prefill-correctness", "streaming-decode-prefill-correctness", "streaming decode-style cold prefill drift and repeatability", test_streaming_decode_prefill_correctness},
     {"--mtp-verify-depth", "mtp-verify-depth", "MTP speculative verify commits autoregressive-identical tokens at draft depth > 2", test_mtp_verify_depth},
 #endif
+    {"--dspark-validation", "dspark-validation", "DSpark sidecar defaults and required tensor-name contract", test_dspark_validation_helpers},
     {"--server", "server", "server parser/rendering/cache unit tests", test_server_unit_group},
 };
 

@@ -694,6 +694,11 @@ path; it is useful only for greedy decoding, currently uses a confidence gate
 (`--mtp-margin`) to avoid slow partial accepts, and should be treated as an
 experimental slight-speedup path.
 
+`--dspark DSpark.gguf` is an early validation-only hook for official
+DeepSeek/DeepSpec DSpark drafter sidecars. It checks that the GGUF contains the
+expected DSpark `mtp.*` tensors and metadata defaults, then continues with the
+normal non-DSpark runtime; speculative DSpark execution is not wired yet.
+
 ## Server
 
 Start a local OpenAI/Anthropic-compatible server:

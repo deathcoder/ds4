@@ -94,6 +94,7 @@ typedef struct {
 typedef struct {
     const char *model_path;
     const char *mtp_path;
+    const char *dspark_path;
     ds4_backend backend;
     int n_threads;
     uint32_t prefill_chunk;
@@ -119,6 +120,18 @@ typedef struct {
     bool load_output;
     ds4_distributed_options distributed;
 } ds4_engine_options;
+
+typedef struct {
+    uint32_t n_mtp_layers;
+    uint32_t block_size;
+    uint32_t noise_token_id;
+    uint32_t markov_rank;
+    uint32_t target_layer_ids[3];
+} ds4_dspark_config;
+
+void ds4_dspark_config_init_defaults(ds4_dspark_config *cfg);
+bool ds4_dspark_tensor_names_validate(const char *const *names, size_t n,
+                                      char *err, size_t errlen);
 
 typedef void (*ds4_token_emit_fn)(void *ud, int token);
 typedef void (*ds4_generation_done_fn)(void *ud);

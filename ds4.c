@@ -2091,6 +2091,213 @@ static ds4_tensor *model_find_tensor(const ds4_model *m, const char *name) {
     return NULL;
 }
 
+enum { DS4_DSPARK_MTP_LAYERS = 3 };
+
+void ds4_dspark_config_init_defaults(ds4_dspark_config *cfg) {
+    if (!cfg) return;
+    memset(cfg, 0, sizeof(*cfg));
+    cfg->n_mtp_layers = DS4_DSPARK_MTP_LAYERS;
+    cfg->block_size = 5;
+    cfg->noise_token_id = 128799u;
+    cfg->markov_rank = 256;
+    cfg->target_layer_ids[0] = 40;
+    cfg->target_layer_ids[1] = 41;
+    cfg->target_layer_ids[2] = 42;
+}
+
+static void ds4_dspark_set_err(char *err, size_t errlen, const char *msg) {
+    if (err && errlen) snprintf(err, errlen, "%s", msg);
+}
+
+static bool ds4_dspark_name_list_has(const char *const *names, size_t n,
+                                     const char *want) {
+    for (size_t i = 0; i < n; i++) {
+        if (names[i] && strcmp(names[i], want) == 0) return true;
+    }
+    return false;
+}
+
+static const char *const ds4_dspark_required_tensors[] = {
+    "mtp.0.main_proj.weight",
+    "mtp.0.main_norm.weight",
+    "mtp.2.norm.weight",
+    "mtp.2.hc_head_base.weight",
+    "mtp.2.hc_head_fn.weight",
+    "mtp.2.hc_head_scale.weight",
+    "mtp.2.markov_head.markov_w1.weight",
+    "mtp.2.markov_head.markov_w2.weight",
+    "mtp.2.confidence_head.proj.weight",
+};
+
+static const char *const ds4_dspark_required_stage_suffixes[] = {
+    "hc_attn_fn.weight",
+    "hc_attn_scale.weight",
+    "hc_attn_base.weight",
+    "attn_norm.weight",
+    "attn_q_a.weight",
+    "attn_q_a_norm.weight",
+    "attn_q_b.weight",
+    "attn_kv.weight",
+    "attn_kv_a_norm.weight",
+    "attn_sinks.weight",
+    "attn_output_a.weight",
+    "attn_output_b.weight",
+    "hc_ffn_fn.weight",
+    "hc_ffn_scale.weight",
+    "hc_ffn_base.weight",
+    "ffn_norm.weight",
+    "ffn_gate_inp.weight",
+    "ffn_gate_exps.weight",
+    "ffn_up_exps.weight",
+    "ffn_down_exps.weight",
+    "ffn_gate_shexp.weight",
+    "ffn_up_shexp.weight",
+    "ffn_down_shexp.weight",
+};
+
+bool ds4_dspark_tensor_names_validate(const char *const *names, size_t n,
+                                      char *err, size_t errlen) {
+    if (!names && n != 0) {
+        ds4_dspark_set_err(err, errlen, "invalid DSpark tensor-name list");
+        return false;
+    }
+
+    for (size_t i = 0; i < sizeof(ds4_dspark_required_tensors) / sizeof(ds4_dspark_required_tensors[0]); i++) {
+        const char *want = ds4_dspark_required_tensors[i];
+        if (!ds4_dspark_name_list_has(names, n, want)) {
+            if (err && errlen) snprintf(err, errlen, "missing required DSpark tensor: %s", want);
+            return false;
+        }
+    }
+
+    for (uint32_t stage = 0; stage < DS4_DSPARK_MTP_LAYERS; stage++) {
+        for (size_t i = 0; i < sizeof(ds4_dspark_required_stage_suffixes) / sizeof(ds4_dspark_required_stage_suffixes[0]); i++) {
+            char want[128];
+            int nwant = snprintf(want, sizeof(want), "mtp.%u.%s",
+                                 stage, ds4_dspark_required_stage_suffixes[i]);
+            if (nwant < 0 || (size_t)nwant >= sizeof(want)) {
+                ds4_dspark_set_err(err, errlen, "internal DSpark tensor name overflow");
+                return false;
+            }
+            if (!ds4_dspark_name_list_has(names, n, want)) {
+                if (err && errlen) snprintf(err, errlen, "missing required DSpark tensor: %s", want);
+                return false;
+            }
+        }
+    }
+
+    if (err && errlen) err[0] = '\0';
+    return true;
+}
+
+static bool ds4_dspark_model_require_tensor(const ds4_model *m,
+                                            const char *name,
+                                            char *err,
+                                            size_t errlen) {
+    if (model_find_tensor(m, name)) return true;
+    if (err && errlen) snprintf(err, errlen, "missing required DSpark tensor: %s", name);
+    return false;
+}
+
+static bool ds4_dspark_model_validate_tensors(const ds4_model *m,
+                                             char *err,
+                                             size_t errlen) {
+    for (size_t i = 0; i < sizeof(ds4_dspark_required_tensors) / sizeof(ds4_dspark_required_tensors[0]); i++) {
+        if (!ds4_dspark_model_require_tensor(m, ds4_dspark_required_tensors[i], err, errlen)) {
+            return false;
+        }
+    }
+
+    for (uint32_t stage = 0; stage < DS4_DSPARK_MTP_LAYERS; stage++) {
+        for (size_t i = 0; i < sizeof(ds4_dspark_required_stage_suffixes) / sizeof(ds4_dspark_required_stage_suffixes[0]); i++) {
+            char name[128];
+            int n = snprintf(name, sizeof(name), "mtp.%u.%s",
+                             stage, ds4_dspark_required_stage_suffixes[i]);
+            if (n < 0 || (size_t)n >= sizeof(name)) {
+                ds4_dspark_set_err(err, errlen, "internal DSpark tensor name overflow");
+                return false;
+            }
+            if (!ds4_dspark_model_require_tensor(m, name, err, errlen)) return false;
+        }
+    }
+
+    if (err && errlen) err[0] = '\0';
+    return true;
+}
+
+static bool ds4_dspark_model_validate_metadata(const ds4_model *m,
+                                              ds4_dspark_config *cfg,
+                                              char *err,
+                                              size_t errlen) {
+    ds4_dspark_config_init_defaults(cfg);
+
+    uint32_t v = 0;
+    if (model_get_u32(m, "deepseek4.dspark.n_mtp_layers", &v)) {
+        if (v != DS4_DSPARK_MTP_LAYERS) {
+            if (err && errlen) snprintf(err, errlen, "DSpark n_mtp_layers=%u, expected %u",
+                                        v, DS4_DSPARK_MTP_LAYERS);
+            return false;
+        }
+        cfg->n_mtp_layers = v;
+    }
+    if (model_get_u32(m, "deepseek4.dspark.block_size", &v)) {
+        if (v != 5u) {
+            if (err && errlen) snprintf(err, errlen, "DSpark block_size=%u, expected 5", v);
+            return false;
+        }
+        cfg->block_size = v;
+    }
+    if (model_get_u32(m, "deepseek4.dspark.noise_token_id", &v)) {
+        if (v != 128799u) {
+            if (err && errlen) snprintf(err, errlen, "DSpark noise_token_id=%u, expected 128799", v);
+            return false;
+        }
+        cfg->noise_token_id = v;
+    }
+    if (model_get_u32(m, "deepseek4.dspark.markov_rank", &v)) {
+        if (v != 256u) {
+            if (err && errlen) snprintf(err, errlen, "DSpark markov_rank=%u, expected 256", v);
+            return false;
+        }
+        cfg->markov_rank = v;
+    }
+    for (uint32_t i = 0; i < 3; i++) {
+        char key[64];
+        int n = snprintf(key, sizeof(key), "deepseek4.dspark.target_layer_ids.%u", i);
+        if (n < 0 || (size_t)n >= sizeof(key)) {
+            ds4_dspark_set_err(err, errlen, "internal DSpark metadata key overflow");
+            return false;
+        }
+        if (model_get_u32(m, key, &v)) {
+            const uint32_t expected = 40u + i;
+            if (v != expected) {
+                if (err && errlen) snprintf(err, errlen,
+                                            "DSpark target_layer_ids[%u]=%u, expected %u",
+                                            i, v, expected);
+                return false;
+            }
+            cfg->target_layer_ids[i] = v;
+        }
+    }
+
+    if (err && errlen) err[0] = '\0';
+    return true;
+}
+
+static bool ds4_dspark_model_validate(const ds4_model *m,
+                                      ds4_dspark_config *cfg,
+                                      char *err,
+                                      size_t errlen) {
+    if (!model_find_tensor(m, "mtp.0.main_proj.weight") ||
+        !model_find_tensor(m, "mtp.2.markov_head.markov_w1.weight")) {
+        ds4_dspark_set_err(err, errlen,
+                           "not a DSpark drafter GGUF: expected mtp.0.main_proj.weight and mtp.2.markov_head.markov_w1.weight");
+        return false;
+    }
+    return ds4_dspark_model_validate_metadata(m, cfg, err, errlen) &&
+           ds4_dspark_model_validate_tensors(m, err, errlen);
+}
+
 #ifndef DS4_NO_GPU
 #ifndef __APPLE__
 typedef struct {
@@ -21808,9 +22015,11 @@ struct ds4_vocab {
 struct ds4_engine {
     ds4_model model;
     ds4_model mtp_model;
+    ds4_model dspark_model;
     ds4_vocab vocab;
     ds4_weights weights;
     ds4_mtp_weights mtp_weights;
+    ds4_dspark_config dspark_config;
     ds4_backend backend;
     int mtp_draft_tokens;
     float mtp_margin;
@@ -21830,6 +22039,7 @@ struct ds4_engine {
     ds4_distributed_options distributed;
     bool metal_ready;
     bool mtp_ready;
+    bool dspark_ready;
 };
 
 static bool cpu_directional_steering_enabled(
@@ -25547,6 +25757,7 @@ int ds4_engine_open(ds4_engine **out, const ds4_engine_options *opt) {
     ds4_engine *e = xcalloc(1, sizeof(*e));
     e->model.fd = -1;
     e->mtp_model.fd = -1;
+    e->dspark_model.fd = -1;
     e->backend = opt->backend;
     e->quality = opt->quality;
     e->ssd_streaming = opt->ssd_streaming;
@@ -25669,6 +25880,37 @@ int ds4_engine_open(ds4_engine **out, const ds4_engine_options *opt) {
                 (double)e->ssd_streaming_cache_bytes / 1073741824.0,
                 (double)per_expert_bytes / 1048576.0,
                 budget);
+    }
+    if (opt->mtp_path && opt->mtp_path[0] &&
+        opt->dspark_path && opt->dspark_path[0]) {
+        fprintf(stderr, "ds4: use only one draft addon: --mtp or --dspark\n");
+        ds4_engine_close(e);
+        *out = NULL;
+        return 1;
+    }
+    if (opt->dspark_path && opt->dspark_path[0]) {
+        char dspark_err[256];
+        dspark_err[0] = '\0';
+        model_open(&e->dspark_model, opt->dspark_path, graph_backend, false);
+        e->dspark_ready = true;
+        if (!ds4_dspark_model_validate(&e->dspark_model,
+                                       &e->dspark_config,
+                                       dspark_err,
+                                       sizeof(dspark_err))) {
+            fprintf(stderr, "ds4: invalid --dspark GGUF '%s': %s\n",
+                    opt->dspark_path,
+                    dspark_err[0] ? dspark_err : "unknown validation error");
+            ds4_engine_close(e);
+            *out = NULL;
+            return 1;
+        }
+        fprintf(stderr,
+                "ds4: DSpark drafter validated: %s (block=%u target_layers=%u,%u,%u; runtime not enabled yet)\n",
+                opt->dspark_path,
+                e->dspark_config.block_size,
+                e->dspark_config.target_layer_ids[0],
+                e->dspark_config.target_layer_ids[1],
+                e->dspark_config.target_layer_ids[2]);
     }
     if (opt->inspect_only) {
         *out = e;
@@ -26025,6 +26267,7 @@ void ds4_engine_close(ds4_engine *e) {
     vocab_free(&e->vocab);
     ds4_threads_shutdown();
     if (e->mtp_ready) model_close(&e->mtp_model);
+    if (e->dspark_ready) model_close(&e->dspark_model);
     model_close(&e->model);
 #ifndef DS4_NO_GPU
     ds4_gpu_cleanup();
