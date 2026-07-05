@@ -25759,7 +25759,18 @@ int ds4_engine_first_token_test(ds4_engine *e, const ds4_tokens *prompt) {
     return 0;
 }
 
-static void dspark_probe_collapse_target_hc(
+static void dspark_probe_mean_target_hc(float *out, const float *hc) {
+    const float inv_hc = 1.0f / (float)DS4_N_HC;
+    for (uint32_t d = 0; d < DS4_N_EMBD; d++) {
+        float acc = 0.0f;
+        for (uint32_t h = 0; h < DS4_N_HC; h++) {
+            acc += hc[(uint64_t)h * DS4_N_EMBD + d];
+        }
+        out[d] = acc * inv_hc;
+    }
+}
+
+static void dspark_probe_legacy_collapse_target_hc(
         float             * out,
         const ds4_model   * model,
         const ds4_weights * weights,
@@ -25889,6 +25900,8 @@ int ds4_engine_dspark_probe(ds4_engine *e, const ds4_tokens *prompt, int ctx_siz
         const uint32_t last = (uint32_t)prompt->len - 1u;
         float *context = xmalloc((size_t)DS4_DSPARK_MTP_LAYERS * DS4_N_EMBD *
                                  sizeof(context[0]));
+        float *legacy_context = xmalloc((size_t)DS4_DSPARK_MTP_LAYERS * DS4_N_EMBD *
+                                        sizeof(legacy_context[0]));
         float *projected = xmalloc((size_t)DS4_N_EMBD * sizeof(projected[0]));
         float *normed = xmalloc((size_t)DS4_N_EMBD * sizeof(normed[0]));
 
@@ -25898,26 +25911,37 @@ int ds4_engine_dspark_probe(ds4_engine *e, const ds4_tokens *prompt, int ctx_siz
                 e->dspark_config.target_layer_ids[0],
                 e->dspark_config.target_layer_ids[1],
                 e->dspark_config.target_layer_ids[2]);
+        fprintf(stderr,
+                "ds4: DSpark probe target bridge: mean over HC streams "
+                "(official DeepSeek-V4-Flash-DSpark inference contract)\n");
         for (uint32_t i = 0; i < DS4_DSPARK_MTP_LAYERS; i++) {
             const uint32_t layer = e->dspark_config.target_layer_ids[i];
             const float *last_hc = target_hc[i] + (uint64_t)last * hc_dim;
+            float *mean = context + (uint64_t)i * DS4_N_EMBD;
+            float *legacy = legacy_context + (uint64_t)i * DS4_N_EMBD;
             char label[96];
             snprintf(label, sizeof(label), "dspark probe layer %u hc", layer);
             print_vec_stats(label, last_hc, hc_dim);
 
             const char *method = NULL;
-            dspark_probe_collapse_target_hc(context + (uint64_t)i * DS4_N_EMBD,
-                                            &e->model,
-                                            &e->weights,
-                                            last_hc,
-                                            layer,
-                                            &method);
-            snprintf(label, sizeof(label), "dspark probe layer %u plain", layer);
-            print_vec_stats(label, context + (uint64_t)i * DS4_N_EMBD, DS4_N_EMBD);
+            dspark_probe_mean_target_hc(mean, last_hc);
+            dspark_probe_legacy_collapse_target_hc(legacy,
+                                                   &e->model,
+                                                   &e->weights,
+                                                   last_hc,
+                                                   layer,
+                                                   &method);
+            snprintf(label, sizeof(label), "dspark probe layer %u mean_hc", layer);
+            print_vec_stats(label, mean, DS4_N_EMBD);
+            snprintf(label, sizeof(label), "dspark probe layer %u legacy_plain", layer);
+            print_vec_stats(label, legacy, DS4_N_EMBD);
             fprintf(stderr,
-                    "ds4: DSpark probe layer %u plain collapse: %s\n",
+                    "ds4: DSpark probe layer %u legacy comparison: %s "
+                    "max_abs=%g rms_abs=%g\n",
                     layer,
-                    method ? method : "unknown");
+                    method ? method : "unknown",
+                    max_abs_diff(mean, legacy, DS4_N_EMBD),
+                    rms_abs_diff(mean, legacy, DS4_N_EMBD));
         }
 
         matvec_q8_0(projected,
@@ -25936,6 +25960,7 @@ int ds4_engine_dspark_probe(ds4_engine *e, const ds4_tokens *prompt, int ctx_siz
 
         free(normed);
         free(projected);
+        free(legacy_context);
         free(context);
     }
 

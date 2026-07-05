@@ -8,7 +8,7 @@ particular DSpark change exists.
 
 Branch: `codex/dspark-observability-0`
 
-Phase 0.6 is still intentionally narrow: `--dspark FILE` validates an official
+Phase 0.7 is still intentionally narrow: `--dspark FILE` validates an official
 DSpark drafter GGUF, binds every tensor needed by a future runtime path, checks
 the expected DeepSeek V4 Flash DSpark shapes, and exposes a diagnostic
 `--dspark-probe` bridge for target-layer hidden-state capture plus
@@ -26,7 +26,7 @@ hook is explicit and conservative:
   the sidecar.
 - `--dspark-probe` is a development diagnostic. It requires `--dspark`, runs a
   prompt through graph layer slices ending at target layers `40,41,42`,
-  collapses the captured HC states to 4096-wide candidate context vectors, runs
+  averages the captured HC streams to 4096-wide context vectors, runs
   DSpark `main_proj/main_norm`, prints vector stats, and exits without
   generating or drafting tokens.
 - No benchmarks should be run automatically by Codex. The user wants tok/s
@@ -38,6 +38,8 @@ Primary references used for the current phase:
 
 - ds4 discussion: <https://github.com/antirez/ds4/issues/468>
 - DeepSpec repo: <https://github.com/deepseek-ai/DeepSpec>
+- Official DeepSeek V4 Flash DSpark inference source:
+  <https://huggingface.co/deepseek-ai/DeepSeek-V4-Flash-DSpark/blob/main/inference/model.py>
 - Converted DSpark GGUF sidecar for validation:
   <https://huggingface.co/buckets/lobanov/ds4/tree/ds4flash-dspark.gguf>
   - Direct download:
@@ -102,12 +104,12 @@ Phase 0.5 shape/binding facts from the local
   `[N_EMBD + markov_rank]` = `[4352]`.
 - The current phase still has no runtime execution, no GPU-heavy generation
   path, no expert stats, and no benchmark claims.
-- The first probe collapse method is intentionally marked as provisional:
-  target layer `40` is collapsed with layer `41`'s attention HC-pre weights,
-  target layer `41` with layer `42`'s attention HC-pre weights, and target layer
-  `42` with the base output HC head. This gives a concrete 4096-wide bridge for
-  `main_proj`; it still needs equivalence validation against official
-  DeepSpec/HF hidden-state captures before becoming runtime contract.
+- Official DeepSeek-V4-Flash-DSpark inference captures each target layer by
+  appending `h.mean(dim=2)` after layers in `dspark_target_layer_ids`. The
+  active probe therefore uses mean over the four HC streams as the DSpark
+  `main_proj` bridge. The earlier next-layer-attn-HC-pre/output-HC-head
+  collapse hypothesis is retained only as a probe comparison, not as runtime
+  contract.
 
 ## Files Changed So Far
 
@@ -128,8 +130,9 @@ Phase 0.5 shape/binding facts from the local
     transformer blocks, final HC head tensors, Markov heads, and the confidence
     head.
   - Added `ds4_engine_dspark_probe`, a graph-backend-only diagnostic that uses
-    layer-slice evaluation to capture target-layer HC states, performs the
-    provisional HC-to-plain collapse, and runs DSpark `main_proj/main_norm`.
+    layer-slice evaluation to capture target-layer HC states, averages HC
+    streams into the official DSpark target-state bridge, and runs DSpark
+    `main_proj/main_norm`.
   - DSpark Markov and confidence tensors are dimension-validated only for now;
     runtime math is not implemented yet.
   - Added `dspark_model`, `dspark_config`, and `dspark_ready` to `ds4_engine`.
@@ -237,8 +240,9 @@ git diff --check
 ```
 
 The real probe completed on the downloaded base+DSpark GGUFs. It captured
-target layers `40,41,42`, collapsed them with the provisional HC-to-plain
-bridge, ran `main_proj/main_norm`, and exited before generation/speculation.
+target layers `40,41,42`, collapsed them with the then-provisional
+HC-to-plain bridge, ran `main_proj/main_norm`, and exited before
+generation/speculation.
 Observed last-token vector stats were finite:
 
 ```text
@@ -247,6 +251,36 @@ layer 41 hc rms=3.54454 plain rms=4.50141
 layer 42 hc rms=5.36406 plain rms=7.51114
 main_proj rms=26.5668
 main_norm rms=0.0882359
+```
+
+Phase 0.7 mean-HC bridge checks run on 2026-07-05:
+
+```sh
+make -B ds4
+./ds4_test --dspark-validation --dspark-shape-binding
+./ds4 \
+  --model gguf/DeepSeek-V4-Flash-IQ2XXS-w2Q2K-AProjQ8-SExpQ8-OutQ8-chat-v2-imatrix.gguf \
+  --dspark gguf/ds4flash-dspark.gguf \
+  --dspark-probe --nothink -p "Hello"
+```
+
+The probe now uses official mean-HC target states and keeps the old collapse
+hypothesis only as a comparison. Observed last-token vector stats were finite:
+
+```text
+layer 40 hc rms=3.39173 mean_hc rms=2.65261 legacy_plain rms=3.93296
+layer 41 hc rms=3.54454 mean_hc rms=2.75814 legacy_plain rms=4.50141
+layer 42 hc rms=5.36406 mean_hc rms=4.00292 legacy_plain rms=7.51114
+main_proj rms=17.8532
+main_norm rms=0.0882224
+```
+
+The legacy comparison diffs for the same token were:
+
+```text
+layer 40 max_abs=7.43734 rms_abs=1.43737
+layer 41 max_abs=16.5391 rms_abs=2.38056
+layer 42 max_abs=92.0704 rms_abs=4.38825
 ```
 
 Downloaded sidecar byte size:
@@ -304,10 +338,8 @@ If continuing from a compacted context, start here:
 
 ## Open Questions
 
-- How do we validate the provisional HC-to-plain collapse against official
-  DeepSpec/HF hidden-state captures before using it as runtime contract?
-- What is the exact first minimal DSpark runtime experiment after collapse
-  validation: CPU-only correctness probe, Metal graph wiring, or an isolated
+- What is the exact first minimal DSpark runtime experiment after the mean-HC
+  bridge probe: CPU-only correctness probe, Metal graph wiring, or an isolated
   sidecar forward helper?
 - Where should DSpark runtime stats live so they are useful for development but
   cannot perturb benchmark measurements unless explicitly enabled?
