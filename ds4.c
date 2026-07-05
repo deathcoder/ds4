@@ -2153,6 +2153,7 @@ static const char *const ds4_dspark_required_stage_suffixes[] = {
     "ffn_gate_shexp.weight",
     "ffn_up_shexp.weight",
     "ffn_down_shexp.weight",
+    "exp_probs_b.bias",
 };
 
 bool ds4_dspark_tensor_names_validate(const char *const *names, size_t n,
@@ -3280,6 +3281,24 @@ typedef struct {
     ds4_layer_weights block;
 } ds4_mtp_weights;
 
+typedef struct {
+    /* Global inputs (stage 0 only). */
+    ds4_tensor *main_proj;         /* mtp.0.main_proj.weight  Q8_0 [3*N_EMBD, N_EMBD] */
+    ds4_tensor *main_norm;         /* mtp.0.main_norm.weight  F32  [N_EMBD]            */
+
+    /* 3 transformer blocks, one per DSpark draft stage. */
+    ds4_layer_weights stage[DS4_DSPARK_MTP_LAYERS];
+
+    /* Final output (stage 2 only). */
+    ds4_tensor *final_norm;        /* mtp.2.norm.weight                                */
+    ds4_tensor *hc_head_base;      /* mtp.2.hc_head_base.weight                        */
+    ds4_tensor *hc_head_fn;        /* mtp.2.hc_head_fn.weight                          */
+    ds4_tensor *hc_head_scale;     /* mtp.2.hc_head_scale.weight                       */
+    ds4_tensor *markov_w1;         /* mtp.2.markov_head.markov_w1.weight                */
+    ds4_tensor *markov_w2;         /* mtp.2.markov_head.markov_w2.weight                */
+    ds4_tensor *confidence_proj;   /* mtp.2.confidence_head.proj.weight                 */
+} ds4_dspark_weights;
+
 /* =========================================================================
  * Fixed Weight Binding and Model Validation.
  * =========================================================================
@@ -3890,6 +3909,107 @@ static void mtp_weights_validate_layout(const ds4_mtp_weights *w) {
     tensor_expect_layout(l->ffn_gate_shexp, DS4_TENSOR_Q8_0, 2, DS4_N_EMBD, DS4_N_FF_EXP, 0);
     tensor_expect_layout(l->ffn_up_shexp,   DS4_TENSOR_Q8_0, 2, DS4_N_EMBD, DS4_N_FF_EXP, 0);
     tensor_expect_layout(l->ffn_down_shexp, DS4_TENSOR_Q8_0, 2, DS4_N_FF_EXP, DS4_N_EMBD, 0);
+}
+
+static void dspark_stage_validate_layout(const ds4_layer_weights *l,
+                                          uint32_t stage) {
+    const uint64_t hc_dim = (uint64_t)DS4_N_EMBD * DS4_N_HC;
+    const uint64_t hc_mix_dim = 2u * DS4_N_HC + (uint64_t)DS4_N_HC * DS4_N_HC;
+    const uint64_t q_dim = (uint64_t)DS4_N_HEAD * DS4_N_HEAD_DIM;
+    const uint64_t out_low_dim = (uint64_t)DS4_N_OUT_GROUP * DS4_N_LORA_O;
+
+    tensor_expect_plain_layout(l->hc_attn_fn, 2, hc_dim, hc_mix_dim, 0);
+    tensor_expect_layout(l->hc_attn_scale,  DS4_TENSOR_F32,  1, 3, 0, 0);
+    tensor_expect_layout(l->hc_attn_base,   DS4_TENSOR_F32,  1, hc_mix_dim, 0, 0);
+    tensor_expect_layout(l->attn_norm,      DS4_TENSOR_F32,  1, DS4_N_EMBD, 0, 0);
+    tensor_expect_layout(l->attn_q_a,       DS4_TENSOR_Q8_0, 2, DS4_N_EMBD, DS4_N_LORA_Q, 0);
+    tensor_expect_layout(l->attn_q_a_norm,  DS4_TENSOR_F32,  1, DS4_N_LORA_Q, 0, 0);
+    tensor_expect_layout(l->attn_q_b,       DS4_TENSOR_Q8_0, 2, DS4_N_LORA_Q, q_dim, 0);
+    tensor_expect_layout(l->attn_kv,        DS4_TENSOR_Q8_0, 2, DS4_N_EMBD, DS4_N_HEAD_DIM, 0);
+    tensor_expect_layout(l->attn_kv_a_norm, DS4_TENSOR_F32,  1, DS4_N_HEAD_DIM, 0, 0);
+    tensor_expect_layout(l->attn_sinks,     DS4_TENSOR_F32,  1, DS4_N_HEAD, 0, 0);
+    tensor_expect_layout(l->attn_output_a,  DS4_TENSOR_Q8_0, 2, DS4_N_HEAD_DIM * (DS4_N_HEAD / DS4_N_OUT_GROUP), out_low_dim, 0);
+    tensor_expect_layout(l->attn_output_b,  DS4_TENSOR_Q8_0, 2, out_low_dim, DS4_N_EMBD, 0);
+
+    tensor_expect_plain_layout(l->hc_ffn_fn, 2, hc_dim, hc_mix_dim, 0);
+    tensor_expect_layout(l->hc_ffn_scale,   DS4_TENSOR_F32,  1, 3, 0, 0);
+    tensor_expect_layout(l->hc_ffn_base,    DS4_TENSOR_F32,  1, hc_mix_dim, 0, 0);
+    tensor_expect_layout(l->ffn_norm,       DS4_TENSOR_F32,  1, DS4_N_EMBD, 0, 0);
+    tensor_expect_plain_layout(l->ffn_gate_inp, 2, DS4_N_EMBD, DS4_N_EXPERT, 0);
+    tensor_expect_layout(l->ffn_exp_probs_b, DS4_TENSOR_F32, 1, DS4_N_EXPERT, 0, 0);
+    tensor_expect_routed_expert(l->ffn_gate_exps, 3, DS4_N_EMBD, DS4_N_FF_EXP, DS4_N_EXPERT);
+    tensor_expect_routed_expert(l->ffn_up_exps,   3, DS4_N_EMBD, DS4_N_FF_EXP, DS4_N_EXPERT);
+    tensor_expect_routed_expert(l->ffn_down_exps, 3, DS4_N_FF_EXP, DS4_N_EMBD, DS4_N_EXPERT);
+    if (l->ffn_gate_exps->type != l->ffn_up_exps->type) {
+        fprintf(stderr, "ds4: DSpark stage %u routed gate/up experts use different quant types\n", stage);
+        exit(1);
+    }
+    tensor_expect_layout(l->ffn_gate_shexp, DS4_TENSOR_Q8_0, 2, DS4_N_EMBD, DS4_N_FF_EXP, 0);
+    tensor_expect_layout(l->ffn_up_shexp,   DS4_TENSOR_Q8_0, 2, DS4_N_EMBD, DS4_N_FF_EXP, 0);
+    tensor_expect_layout(l->ffn_down_shexp, DS4_TENSOR_Q8_0, 2, DS4_N_FF_EXP, DS4_N_EMBD, 0);
+}
+
+/* Validate dimensions of a DSpark tensor where the GGUF type may not be in our
+ * standard table (e.g. Markov/confidence heads).  Only checks ndim and dims. */
+static void tensor_expect_dims_only(
+        const ds4_tensor *t,
+        uint32_t          ndim,
+        uint64_t          d0,
+        uint64_t          d1,
+        uint64_t          d2) {
+    if (!t) ds4_die("internal error: missing DSpark tensor while validating layout");
+    if (t->ndim != ndim) {
+        fprintf(stderr,
+                "ds4: tensor %.*s has %u dimensions, expected %u\n",
+                (int)t->name.len,
+                t->name.ptr,
+                t->ndim,
+                ndim);
+        exit(1);
+    }
+    const uint64_t want[3] = { d0, d1, d2 };
+    for (uint32_t i = 0; i < ndim; i++) {
+        if (t->dim[i] == want[i]) continue;
+        fprintf(stderr,
+                "ds4: tensor %.*s has dim[%u]=%" PRIu64 ", expected %" PRIu64 "\n",
+                (int)t->name.len,
+                t->name.ptr,
+                i,
+                t->dim[i],
+                want[i]);
+        exit(1);
+    }
+}
+
+static void dspark_weights_validate_layout(const ds4_dspark_weights *w,
+                                            const ds4_dspark_config *cfg) {
+    const uint64_t hc_dim = (uint64_t)DS4_N_EMBD * DS4_N_HC;
+
+    /* Global inputs. */
+    tensor_expect_layout(w->main_proj,  DS4_TENSOR_Q8_0, 2,
+                         3u * (uint64_t)DS4_N_EMBD, DS4_N_EMBD, 0);
+    tensor_expect_layout(w->main_norm,  DS4_TENSOR_F32,  1, DS4_N_EMBD, 0, 0);
+
+    /* Per-stage transformer blocks. */
+    for (uint32_t s = 0; s < DS4_DSPARK_MTP_LAYERS; s++) {
+        dspark_stage_validate_layout(&w->stage[s], s);
+    }
+
+    /* Final output (stage 2). */
+    tensor_expect_layout(w->final_norm,    DS4_TENSOR_F32,  1, DS4_N_EMBD, 0, 0);
+    tensor_expect_layout(w->hc_head_base,  DS4_TENSOR_F32,  1, DS4_N_HC, 0, 0);
+    tensor_expect_plain_layout(w->hc_head_fn, 2, hc_dim, DS4_N_HC, 0);
+    tensor_expect_layout(w->hc_head_scale, DS4_TENSOR_F32,  1, 1, 0, 0);
+
+    /* Markov heads: GGUF type may be non-standard, validate dims only. */
+    tensor_expect_dims_only(w->markov_w1, 2,
+                            (uint64_t)cfg->markov_rank, (uint64_t)DS4_N_VOCAB, 0);
+    tensor_expect_dims_only(w->markov_w2, 2,
+                            (uint64_t)cfg->markov_rank, (uint64_t)DS4_N_VOCAB, 0);
+
+    /* Confidence head: 1D [N_EMBD + markov_rank]. */
+    tensor_expect_dims_only(w->confidence_proj, 1,
+                            (uint64_t)DS4_N_EMBD + cfg->markov_rank, 0, 0);
 }
 
 static bool ds4_shape_matches_metadata(
@@ -4679,6 +4799,57 @@ static void mtp_weights_bind(ds4_mtp_weights *w, const ds4_model *m) {
     l->ffn_down_shexp  = required_tensor(m, "mtp.0.ffn_down_shexp.weight");
 
     mtp_weights_validate_layout(w);
+}
+
+static void dspark_weights_bind(ds4_dspark_weights *w,
+                                 const ds4_model *m,
+                                 const ds4_dspark_config *cfg) {
+    memset(w, 0, sizeof(*w));
+
+    /* Global inputs (stage 0). */
+    w->main_proj = required_tensor(m, "mtp.0.main_proj.weight");
+    w->main_norm = required_tensor(m, "mtp.0.main_norm.weight");
+
+    /* Per-stage transformer blocks. */
+    for (uint32_t s = 0; s < DS4_DSPARK_MTP_LAYERS; s++) {
+        ds4_layer_weights *l = &w->stage[s];
+
+        l->hc_attn_fn      = required_tensorf(m, "mtp.%u.hc_attn_fn.weight",      s);
+        l->hc_attn_scale   = required_tensorf(m, "mtp.%u.hc_attn_scale.weight",   s);
+        l->hc_attn_base    = required_tensorf(m, "mtp.%u.hc_attn_base.weight",    s);
+        l->attn_norm       = required_tensorf(m, "mtp.%u.attn_norm.weight",       s);
+        l->attn_q_a        = required_tensorf(m, "mtp.%u.attn_q_a.weight",        s);
+        l->attn_q_a_norm   = required_tensorf(m, "mtp.%u.attn_q_a_norm.weight",   s);
+        l->attn_q_b        = required_tensorf(m, "mtp.%u.attn_q_b.weight",        s);
+        l->attn_kv         = required_tensorf(m, "mtp.%u.attn_kv.weight",         s);
+        l->attn_kv_a_norm  = required_tensorf(m, "mtp.%u.attn_kv_a_norm.weight",  s);
+        l->attn_sinks      = required_tensorf(m, "mtp.%u.attn_sinks.weight",      s);
+        l->attn_output_a   = required_tensorf(m, "mtp.%u.attn_output_a.weight",   s);
+        l->attn_output_b   = required_tensorf(m, "mtp.%u.attn_output_b.weight",   s);
+        l->hc_ffn_fn       = required_tensorf(m, "mtp.%u.hc_ffn_fn.weight",       s);
+        l->hc_ffn_scale    = required_tensorf(m, "mtp.%u.hc_ffn_scale.weight",    s);
+        l->hc_ffn_base     = required_tensorf(m, "mtp.%u.hc_ffn_base.weight",     s);
+        l->ffn_norm        = required_tensorf(m, "mtp.%u.ffn_norm.weight",        s);
+        l->ffn_gate_inp    = required_tensorf(m, "mtp.%u.ffn_gate_inp.weight",    s);
+        l->ffn_exp_probs_b = required_tensorf(m, "mtp.%u.exp_probs_b.bias",       s);
+        l->ffn_gate_exps   = required_tensorf(m, "mtp.%u.ffn_gate_exps.weight",   s);
+        l->ffn_up_exps     = required_tensorf(m, "mtp.%u.ffn_up_exps.weight",     s);
+        l->ffn_down_exps   = required_tensorf(m, "mtp.%u.ffn_down_exps.weight",   s);
+        l->ffn_gate_shexp  = required_tensorf(m, "mtp.%u.ffn_gate_shexp.weight",  s);
+        l->ffn_up_shexp    = required_tensorf(m, "mtp.%u.ffn_up_shexp.weight",    s);
+        l->ffn_down_shexp  = required_tensorf(m, "mtp.%u.ffn_down_shexp.weight",  s);
+    }
+
+    /* Final output (stage 2). */
+    w->final_norm      = required_tensor(m, "mtp.2.norm.weight");
+    w->hc_head_base    = required_tensor(m, "mtp.2.hc_head_base.weight");
+    w->hc_head_fn      = required_tensor(m, "mtp.2.hc_head_fn.weight");
+    w->hc_head_scale   = required_tensor(m, "mtp.2.hc_head_scale.weight");
+    w->markov_w1       = required_tensor(m, "mtp.2.markov_head.markov_w1.weight");
+    w->markov_w2       = required_tensor(m, "mtp.2.markov_head.markov_w2.weight");
+    w->confidence_proj = required_tensor(m, "mtp.2.confidence_head.proj.weight");
+
+    dspark_weights_validate_layout(w, cfg);
 }
 
 static void weights_free(ds4_weights *w) {
@@ -22020,6 +22191,7 @@ struct ds4_engine {
     ds4_weights weights;
     ds4_mtp_weights mtp_weights;
     ds4_dspark_config dspark_config;
+    ds4_dspark_weights dspark_weights;
     ds4_backend backend;
     int mtp_draft_tokens;
     float mtp_margin;
@@ -25904,13 +26076,21 @@ int ds4_engine_open(ds4_engine **out, const ds4_engine_options *opt) {
             *out = NULL;
             return 1;
         }
+        dspark_weights_bind(&e->dspark_weights, &e->dspark_model,
+                            &e->dspark_config);
         fprintf(stderr,
-                "ds4: DSpark drafter validated: %s (block=%u target_layers=%u,%u,%u; runtime not enabled yet)\n",
+                "ds4: DSpark drafter validated: %s "
+                "(block=%u target_layers=%u,%u,%u "
+                "main_proj=[%" PRIu64 ",%" PRIu64 "] stages=%u; "
+                "runtime not enabled yet)\n",
                 opt->dspark_path,
                 e->dspark_config.block_size,
                 e->dspark_config.target_layer_ids[0],
                 e->dspark_config.target_layer_ids[1],
-                e->dspark_config.target_layer_ids[2]);
+                e->dspark_config.target_layer_ids[2],
+                e->dspark_weights.main_proj->dim[0],
+                e->dspark_weights.main_proj->dim[1],
+                DS4_DSPARK_MTP_LAYERS);
     }
     if (opt->inspect_only) {
         *out = e;

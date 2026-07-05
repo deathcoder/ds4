@@ -8,8 +8,9 @@ particular DSpark change exists.
 
 Branch: `codex/dspark-observability-0`
 
-Phase 0 is intentionally narrow: add an explicit `--dspark FILE` sidecar path
-that validates an official DSpark drafter GGUF, but does not enable DSpark
+Phase 0.5 is still intentionally narrow: `--dspark FILE` validates an official
+DSpark drafter GGUF, binds every tensor needed by a future runtime path, and
+checks the expected DeepSeek V4 Flash DSpark shapes. It does not enable DSpark
 runtime/speculative decoding.
 
 The design choice was to keep this separate from legacy `--mtp`. We do not
@@ -20,7 +21,8 @@ hook is explicit and conservative:
 - `--dspark FILE` means "validate this as a DSpark drafter sidecar".
 - Supplying both is an error.
 - DSpark validation happens before the `--inspect` early return, so
-  `./ds4 --inspect --dspark ds4-dspark.gguf` should validate the sidecar.
+  `./ds4 --inspect --model base.gguf --dspark ds4-dspark.gguf` should validate
+  the sidecar.
 - No benchmarks should be run automatically by Codex. The user wants tok/s
   benchmarks to be run manually on an otherwise idle machine.
 
@@ -67,8 +69,8 @@ DSpark contract we encoded for DeepSeek-V4-Flash DSpark:
   `attn_q_b.weight`, `attn_kv.weight`, `attn_kv_a_norm.weight`,
   `attn_sinks.weight`, `attn_output_a.weight`, `attn_output_b.weight`,
   `hc_ffn_fn.weight`, `hc_ffn_scale.weight`, `hc_ffn_base.weight`,
-  `ffn_norm.weight`, `ffn_gate_inp.weight`, `ffn_gate_exps.weight`,
-  `ffn_up_exps.weight`, `ffn_down_exps.weight`,
+  `ffn_norm.weight`, `ffn_gate_inp.weight`, `exp_probs_b.bias`,
+  `ffn_gate_exps.weight`, `ffn_up_exps.weight`, `ffn_down_exps.weight`,
   `ffn_gate_shexp.weight`, `ffn_up_shexp.weight`,
   `ffn_down_shexp.weight`.
 
@@ -77,12 +79,23 @@ optional. If absent, ds4 uses the defaults above. If present, values must match.
 This avoids rejecting current GGUFs that only communicate DSpark-ness through
 tensor names.
 
-Optional/unverified pieces:
+Phase 0.5 shape/binding facts from the local
+`gguf/ds4flash-dspark.gguf` sidecar:
 
-- `exp_probs_b.bias` is not required. Earlier notes treated it as optional.
-- We have not yet validated against a real local DSpark GGUF in this branch.
-- The current phase validates tensor names and optional metadata, not tensor
-  shapes or runtime compatibility.
+- `exp_probs_b.bias` is present in all three stages and is now required. The
+  earlier Phase 0 note that treated it as optional was wrong.
+- The sidecar has 81 tensors: 9 global/output tensors plus 24 per-stage tensors
+  across 3 stages.
+- `mtp.0.main_proj.weight` is Q8_0 `[12288,4096]`, i.e.
+  `[3*N_EMBD,N_EMBD]`.
+- Each DSpark stage has the same DS4 layer-style attention/FFN shape as the
+  legacy one-block MTP validator expects.
+- `mtp.2.markov_head.markov_w1.weight` and `markov_w2.weight` are validated by
+  dimensions only as `[markov_rank,N_VOCAB]` = `[256,129280]`.
+- `mtp.2.confidence_head.proj.weight` is validated by dimensions only as 1D
+  `[N_EMBD + markov_rank]` = `[4352]`.
+- The current phase still has no runtime execution, no GPU-heavy generation
+  path, no expert stats, and no benchmark claims.
 
 ## Files Changed So Far
 
@@ -97,12 +110,19 @@ Optional/unverified pieces:
   - Added DSpark default config and tensor-name validation helpers.
   - Added model-backed DSpark validation for required tensors and optional
     metadata.
+  - Added `ds4_dspark_weights` and `dspark_weights_bind` for the official
+    DSpark sidecar tensor layout.
+  - Added DSpark layout validation for global inputs, three per-stage
+    transformer blocks, final HC head tensors, Markov heads, and the confidence
+    head.
+  - DSpark Markov and confidence tensors are dimension-validated only for now;
+    runtime math is not implemented yet.
   - Added `dspark_model`, `dspark_config`, and `dspark_ready` to `ds4_engine`.
   - `ds4_engine_open` now rejects `--mtp` plus `--dspark`, opens the DSpark
-    sidecar, validates it, and logs that runtime is not enabled yet.
+    sidecar, validates/binds it, and logs that runtime is not enabled yet.
   - `ds4_engine_close` closes the DSpark model if it was opened.
-  - The DSpark path does not set `mtp_ready`, bind draft weights, or affect
-    generation.
+  - The DSpark path does not set `mtp_ready`, bind legacy MTP draft weights, or
+    affect generation.
 
 - Frontend parsers
   - `ds4_cli.c`, `ds4_server.c`, `ds4_eval.c`, and `ds4_agent.c` all accept
@@ -121,14 +141,26 @@ Optional/unverified pieces:
   - Added `--dspark-validation`, a model-free test for defaults, rejection of
     legacy/ordinary MTP-looking names, and acceptance of a synthetic full DSpark
     tensor-name list.
+  - Added `--dspark-shape-binding`, a model-free sanity test for the documented
+    DeepSeek V4 Flash DSpark shape arithmetic. The real GGUF inspect path is
+    what validates those dimensions against `ds4.c`'s private model-shape
+    constants.
+
+- `implementation_plan.md`
+  - Imported from the user/Claude handoff. The plan direction was validated:
+    Phase 0.5 should be shape and binding validation only, not runtime work.
+  - Adjustment made during completion: keep Markov/confidence validation
+    dimension-only, and do not widen the public API just to expose private
+    shape constants to the model-free test.
 
 ## Verification Already Run
 
-Build/check commands run after phase 0 implementation:
+Build/check commands run after Phase 0/0.5 implementation:
 
 ```sh
 make ds4 ds4-server ds4-eval ds4-agent ds4_test
 ./ds4_test --dspark-validation
+./ds4_test --dspark-shape-binding
 ./ds4 --help runtime | rg -- '--dspark'
 ./ds4-server --help runtime | rg -- '--dspark'
 ./ds4-eval --help runtime | rg -- '--dspark'
@@ -149,7 +181,25 @@ Real DSpark sidecar validation:
 Result on 2026-07-05: validation passed.
 
 ```text
-ds4: DSpark drafter validated: /Users/deathcodevision/dev/ds4/gguf/ds4flash-dspark.gguf (block=5 target_layers=40,41,42; runtime not enabled yet)
+ds4: DSpark drafter validated: /Users/deathcodevision/dev/ds4/gguf/ds4flash-dspark.gguf (block=5 target_layers=40,41,42 main_proj=[12288,4096] stages=3; runtime not enabled yet)
+```
+
+Phase 0.5 completion checks run on 2026-07-05:
+
+```sh
+make -B ds4_test
+./ds4_test --dspark-validation --dspark-shape-binding
+make -B ds4
+./ds4 --inspect \
+  --model gguf/DeepSeek-V4-Flash-IQ2XXS-w2Q2K-AProjQ8-SExpQ8-OutQ8-chat-v2-imatrix.gguf \
+  --dspark gguf/ds4flash-dspark.gguf
+make ds4 ds4-server ds4-eval ds4-agent ds4_test
+```
+
+The inspect output confirmed:
+
+```text
+ds4: DSpark drafter validated: gguf/ds4flash-dspark.gguf (block=5 target_layers=40,41,42 main_proj=[12288,4096] stages=3; runtime not enabled yet)
 ```
 
 Downloaded sidecar byte size:
@@ -180,7 +230,7 @@ If continuing from a compacted context, start here:
 3. If testing a real DSpark sidecar, start with inspect/validation only:
 
    ```sh
-   ./ds4 --inspect --dspark /path/to/ds4-dspark.gguf
+   ./ds4 --inspect --model /path/to/base.gguf --dspark /path/to/ds4-dspark.gguf
    ```
 
    If validation fails, record the exact missing tensor/metadata key here before
@@ -207,9 +257,10 @@ If continuing from a compacted context, start here:
 
 ## Open Questions
 
-- Does the actual DSpark GGUF currently available from the issue/HF bucket use
-  exactly these tensor names?
-- Should phase 1 add shape validation before any runtime wiring?
+- How should DSpark runtime capture hidden states from target base layers
+  `40,41,42` without perturbing the existing generation path?
+- What is the exact first minimal DSpark runtime experiment: CPU-only
+  correctness probe, Metal graph wiring, or an isolated sidecar forward helper?
 - Where should DSpark runtime stats live so they are useful for development but
   cannot perturb benchmark measurements unless explicitly enabled?
 - Should future CLI UX stay as `--dspark`, or eventually become a broader

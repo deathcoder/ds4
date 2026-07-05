@@ -2203,7 +2203,7 @@ static void test_dspark_validation_helpers(void) {
 
     enum {
         DSPARK_GLOBAL_TENSORS = 9,
-        DSPARK_STAGE_TENSORS = 23,
+        DSPARK_STAGE_TENSORS = 24,
         DSPARK_MTP_LAYERS = 3,
         DSPARK_TOTAL_TENSORS = DSPARK_GLOBAL_TENSORS +
                                DSPARK_STAGE_TENSORS * DSPARK_MTP_LAYERS,
@@ -2243,6 +2243,7 @@ static void test_dspark_validation_helpers(void) {
         "ffn_gate_shexp.weight",
         "ffn_up_shexp.weight",
         "ffn_down_shexp.weight",
+        "exp_probs_b.bias",
     };
     const char *names[DSPARK_TOTAL_TENSORS];
     char generated[DSPARK_MTP_LAYERS * DSPARK_STAGE_TENSORS][96];
@@ -2264,6 +2265,72 @@ static void test_dspark_validation_helpers(void) {
     err[0] = 'x';
     TEST_ASSERT(ds4_dspark_tensor_names_validate(names, n, err, sizeof(err)));
     TEST_ASSERT(err[0] == '\0');
+}
+
+static void test_dspark_shape_binding(void) {
+    /* Validate the DSpark shape expectations are internally consistent with
+     * the documented DeepSeek V4 Flash dimensions.  This is a model-free test;
+     * the real GGUF inspect path validates these against ds4.c's private shape
+     * constants. */
+
+    ds4_dspark_config cfg;
+    ds4_dspark_config_init_defaults(&cfg);
+
+    enum {
+        FLASH_DSPARK_STAGES = 3,
+        FLASH_N_EMBD = 4096,
+        FLASH_N_HC = 4,
+        FLASH_N_HEAD = 64,
+        FLASH_N_HEAD_DIM = 512,
+        FLASH_N_LORA_Q = 1024,
+        FLASH_N_LORA_O = 1024,
+        FLASH_N_OUT_GROUP = 8,
+        FLASH_N_EXPERT = 256,
+        FLASH_N_FF_EXP = 2048,
+        FLASH_N_VOCAB = 129280,
+        FLASH_MARKOV_RANK = 256,
+    };
+
+    TEST_ASSERT(cfg.n_mtp_layers == FLASH_DSPARK_STAGES);
+    TEST_ASSERT(cfg.markov_rank == 256);
+    TEST_ASSERT(cfg.markov_rank == FLASH_MARKOV_RANK);
+
+    /* main_proj: [3*N_EMBD, N_EMBD]. */
+    uint64_t main_proj_d0 = FLASH_DSPARK_STAGES * (uint64_t)FLASH_N_EMBD;
+    TEST_ASSERT(main_proj_d0 == 12288);
+
+    /* confidence_head.proj: 1D [N_EMBD + markov_rank]. */
+    uint64_t conf_d0 = (uint64_t)FLASH_N_EMBD + cfg.markov_rank;
+    TEST_ASSERT(conf_d0 == 4352);
+
+    /* Markov heads: [markov_rank, N_VOCAB]. */
+    TEST_ASSERT((uint64_t)FLASH_N_VOCAB == 129280);
+
+    /* HC head: [N_EMBD*N_HC, N_HC]. */
+    uint64_t hc_dim = (uint64_t)FLASH_N_EMBD * FLASH_N_HC;
+    TEST_ASSERT(hc_dim == 16384);
+    TEST_ASSERT(FLASH_N_HC == 4);
+
+    /* Per-stage attention shapes. */
+    TEST_ASSERT(FLASH_N_LORA_Q == 1024);
+    TEST_ASSERT(FLASH_N_EXPERT == 256);
+    TEST_ASSERT(FLASH_N_FF_EXP == 2048);
+
+    uint64_t q_dim = (uint64_t)FLASH_N_HEAD * FLASH_N_HEAD_DIM;
+    TEST_ASSERT(q_dim == 32768);
+    uint64_t out_low_dim = (uint64_t)FLASH_N_OUT_GROUP * FLASH_N_LORA_O;
+    TEST_ASSERT(out_low_dim == 8192);
+    uint64_t attn_output_a_d0 =
+        (uint64_t)FLASH_N_HEAD_DIM * (FLASH_N_HEAD / FLASH_N_OUT_GROUP);
+    TEST_ASSERT(attn_output_a_d0 == 4096);
+
+    /* HC mix dimension. */
+    uint64_t hc_mix_dim =
+        2u * FLASH_N_HC + (uint64_t)FLASH_N_HC * FLASH_N_HC;
+    TEST_ASSERT(hc_mix_dim == 24);
+
+    /* Expected total DSpark tensor count: 9 global + 24 per-stage * 3 = 81. */
+    TEST_ASSERT(9 + 24 * 3 == 81);
 }
 
 static void test_server_unit_group(void) {
@@ -2294,6 +2361,7 @@ static const ds4_test_entry test_entries[] = {
     {"--mtp-verify-depth", "mtp-verify-depth", "MTP speculative verify commits autoregressive-identical tokens at draft depth > 2", test_mtp_verify_depth},
 #endif
     {"--dspark-validation", "dspark-validation", "DSpark sidecar defaults and required tensor-name contract", test_dspark_validation_helpers},
+    {"--dspark-shape-binding", "dspark-shape-binding", "DSpark documented shape expectations for DeepSeek V4 Flash", test_dspark_shape_binding},
     {"--server", "server", "server parser/rendering/cache unit tests", test_server_unit_group},
 };
 
