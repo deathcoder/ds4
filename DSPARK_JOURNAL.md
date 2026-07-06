@@ -8,7 +8,7 @@ particular DSpark change exists.
 
 Branch: `codex/dspark-observability-0`
 
-Phase 0.15 is still intentionally narrow: `--dspark FILE` validates an official
+Phase 0.16 is still intentionally narrow: `--dspark FILE` validates an official
 DSpark drafter GGUF, binds every tensor needed by a future runtime path, checks
 the expected DeepSeek V4 Flash DSpark shapes, and exposes a diagnostic
 `--dspark-probe` bridge for target-layer hidden-state capture plus
@@ -23,7 +23,11 @@ target-context-to-sidecar-block preparation now lives behind
 callbacks. A development-only `DS4_DSPARK_PROBE=1` ordinary-session hook now
 captures target hidden states from the normal graph path into session-owned GPU
 scratch and builds session-owned dry draft candidates at sync/eval time without
-emitting or accepting them. It does not enable DSpark speculative decoding.
+emitting or accepting them. A second development-only hook,
+`DS4_DSPARK_VERIFY=1`, uses the same live capture/build path but logs concise
+prepared rows, then verifies the previous first draft candidate against the
+target argmax from the current logits and the actual token passed to eval. It
+does not enable DSpark speculative decoding.
 
 The design choice was to keep this separate from legacy `--mtp`. We do not
 guess dynamically whether `--mtp` points at legacy MTP or DSpark. The first
@@ -49,6 +53,12 @@ hook is explicit and conservative:
   real internal `d->draft[]` candidate block, logs those dry draft rows, and
   then returns to normal generation. It is deliberately diagnostic, non-fatal,
   and not a benchmark or production runtime path.
+- `DS4_DSPARK_VERIFY=1` is the first verifier scaffold. It enables the same
+  live target-state capture as the probe hook, builds `d->draft[]` for each
+  prefix, and on the next eval compares `d->draft[0]` to both the target argmax
+  from the current logits and the actual token selected by the sampler/caller.
+  It logs cumulative `target_hit` and `token_hit` counters, resets the draft
+  after verification, and never accepts, emits, appends, or speculates tokens.
 - No benchmarks should be run automatically by Codex. The user wants tok/s
   benchmarks to be run manually on an otherwise idle machine.
 
@@ -122,8 +132,9 @@ Phase 0.5 shape/binding facts from the local
   `[markov_rank,N_VOCAB]` = `[256,129280]`.
 - `mtp.2.confidence_head.proj.weight` is BF16 1D
   `[N_EMBD + markov_rank]` = `[4352]`.
-- The current phase still has no runtime execution, no GPU-heavy generation
-  path, no expert stats, and no benchmark claims.
+- The current phase still has no DSpark token acceptance/emission, no
+  production GPU sidecar runtime path, no expert stats, and no benchmark
+  claims.
 - Official DeepSeek-V4-Flash-DSpark inference captures each target layer by
   appending `h.mean(dim=2)` after layers in `dspark_target_layer_ids`. The
   active probe therefore uses mean over the four HC streams as the DSpark
@@ -186,6 +197,12 @@ Phase 0.5 shape/binding facts from the local
     candidate rows (`prev_token`, draft token, runner-up, logits, confidence)
     without logging or accepting tokens. The standalone probe and
     `DS4_DSPARK_PROBE=1` logger now consume that state.
+  - Added `DS4_DSPARK_VERIFY=1`, an opt-in verifier scaffold for ordinary
+    graph sessions. It reuses the live capture/build path, keeps cumulative
+    target-argmax and sampled-token hit counters in `dspark_session_state`, and
+    compares the previous first DSpark candidate before normal eval consumes
+    the next token. It is observation-only and resets the draft after each
+    verification attempt.
   - The sidecar probe still does not emit, accept, append, generate, or
     speculate tokens.
   - Added `dspark_model`, `dspark_config`, and `dspark_ready` to `ds4_engine`.
@@ -589,6 +606,44 @@ row 4 prev=7692 top1=304 confidence=0.69097
 
 `make ds4_cpu.o` still reports the same pre-existing CPU-only warning set.
 
+Phase 0.16 verifier-scaffold checks run on 2026-07-06:
+
+```sh
+make ds4 ds4_test
+./ds4_test --dspark-validation --dspark-shape-binding
+git diff --check
+DS4_DSPARK_VERIFY=1 ./ds4 \
+  --model gguf/DeepSeek-V4-Flash-IQ2XXS-w2Q2K-AProjQ8-SExpQ8-OutQ8-chat-v2-imatrix.gguf \
+  --dspark gguf/ds4flash-dspark.gguf \
+  --nothink -n 1 -p "Hello"
+DS4_DSPARK_PROBE=1 ./ds4 \
+  --model gguf/DeepSeek-V4-Flash-IQ2XXS-w2Q2K-AProjQ8-SExpQ8-OutQ8-chat-v2-imatrix.gguf \
+  --dspark gguf/ds4flash-dspark.gguf \
+  --nothink -n 1 -p "Hello"
+make ds4-server ds4-eval ds4-agent
+make ds4_cpu.o
+```
+
+The verifier-only smoke prepared a first draft after sync, then checked that
+draft before normal eval consumed the sampled token:
+
+```text
+prepared at sync: anchor_token=128822 next_draft=19923 confidence=0.917943
+eval next: draft=19923 target_top=19923 token=23166 target_hit=1/1 token_hit=0/1
+prepared at eval: anchor_token=23166 next_draft=3 confidence=0.452657
+```
+
+This shows why the verifier logs both target argmax and selected token: the
+DSpark draft agreed with the target model's greedy next token in this smoke,
+while the normal sampler selected a different token. Generation remained normal
+target-model generation; DSpark emitted, accepted, appended, and speculated no
+tokens. The command prints normal CLI prefill/generation rates, but this was a
+correctness smoke test, not a tok/s benchmark.
+
+The probe-only smoke still printed the verbose `sync`/`eval` dry rows from
+`d->draft[]`. `make ds4_cpu.o` still reports the same eight pre-existing
+CPU-only warnings.
+
 Downloaded sidecar byte size:
 
 ```text
@@ -647,11 +702,12 @@ If continuing from a compacted context, start here:
 - How should DSpark cache state be represented for real runtime: separate
   sidecar KV buffers mirroring the official two-step cache fill/draft flow, or
   a fresh graph path that directly consumes the target hidden-state window?
-- The current `DS4_DSPARK_PROBE=1` hook preserves target-layer context from
-  normal prefill/decode and builds internal `d->draft[]` candidates, but still
-  performs CPU readback and CPU sidecar draft computation for diagnostics. A
-  future runtime path needs an opt-in verifier/acceptance path that consumes
-  those candidates without perturbing normal generation by default.
+- The current `DS4_DSPARK_PROBE=1` / `DS4_DSPARK_VERIFY=1` hooks preserve
+  target-layer context from normal prefill/decode and build internal
+  `d->draft[]` candidates, but still perform CPU readback and CPU sidecar draft
+  computation for diagnostics. A future runtime path needs an opt-in acceptance
+  path that consumes verified candidates without perturbing normal generation
+  by default.
 - Where should DSpark runtime stats live so they are useful for development but
   cannot perturb benchmark measurements unless explicitly enabled?
 - Should future CLI UX stay as `--dspark`, or eventually become a broader

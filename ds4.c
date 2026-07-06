@@ -26267,6 +26267,9 @@ struct dspark_session_state {
     uint32_t stage_raw_rows[DS4_DSPARK_MTP_LAYERS];
     uint32_t draft_rows;
     uint32_t prev_token;
+    uint64_t verify_total;
+    uint64_t verify_target_hit;
+    uint64_t verify_token_hit;
     bool draft_valid;
     dspark_draft_step_scratch step;
     dspark_draft_candidate draft[16];
@@ -26387,6 +26390,9 @@ static bool dspark_session_state_ensure(ds4_session *s, char *err, size_t errlen
 }
 
 static bool dspark_session_probe_env_enabled(void);
+static bool dspark_session_verify_env_enabled(void);
+static bool dspark_session_observe_env_enabled(void);
+static const char *dspark_session_observe_mode_name(void);
 
 static bool dspark_session_target_context_ensure(ds4_session *s, char *err, size_t errlen) {
     if (!dspark_session_state_ensure(s, err, errlen)) return false;
@@ -26420,7 +26426,7 @@ static bool dspark_session_should_capture_target(const ds4_session *s) {
     return s &&
            s->engine &&
            s->engine->dspark_ready &&
-           dspark_session_probe_env_enabled() &&
+           dspark_session_observe_env_enabled() &&
            !s->distributed &&
            !ds4_session_is_cpu(s) &&
            ds4_backend_uses_graph(s->engine->backend);
@@ -26439,7 +26445,8 @@ static bool dspark_session_target_capture_begin(
     err[0] = '\0';
     if (!dspark_session_target_context_ensure(s, err, sizeof(err))) {
         fprintf(stderr,
-                "ds4: DSpark dev probe capture disabled at %s: %s\n",
+                "ds4: DSpark %s capture disabled at %s: %s\n",
+                dspark_session_observe_mode_name(),
                 origin ? origin : "session",
                 err[0] ? err : "unknown error");
         return false;
@@ -26983,11 +26990,25 @@ static bool dspark_session_probe_env_enabled(void) {
     return v && v[0] && strcmp(v, "0") != 0;
 }
 
-static bool dspark_session_can_probe(const ds4_session *s) {
+static bool dspark_session_verify_env_enabled(void) {
+    const char *v = getenv("DS4_DSPARK_VERIFY");
+    return v && v[0] && strcmp(v, "0") != 0;
+}
+
+static bool dspark_session_observe_env_enabled(void) {
+    return dspark_session_probe_env_enabled() ||
+           dspark_session_verify_env_enabled();
+}
+
+static const char *dspark_session_observe_mode_name(void) {
+    return dspark_session_probe_env_enabled() ? "dev probe" : "verifier";
+}
+
+static bool dspark_session_can_observe(const ds4_session *s) {
     return s &&
            s->engine &&
            s->engine->dspark_ready &&
-           dspark_session_probe_env_enabled() &&
+           dspark_session_observe_env_enabled() &&
            !s->distributed &&
            !ds4_session_is_cpu(s) &&
            ds4_backend_uses_graph(s->engine->backend) &&
@@ -26995,15 +27016,67 @@ static bool dspark_session_can_probe(const ds4_session *s) {
            s->checkpoint.len > 0;
 }
 
-static void dspark_session_log_draft_rows(
+static void dspark_session_verify_next_token(
+        ds4_session *s,
+        int          token,
+        const char  *origin) {
+    if (!dspark_session_verify_env_enabled()) return;
+    if (!s || !s->engine || !s->engine->dspark_ready || !s->checkpoint_valid ||
+        s->checkpoint.len <= 0 || !s->logits) {
+        return;
+    }
+    dspark_session_state *d = s->dspark;
+    if (!d || !d->draft_valid || d->draft_rows == 0) return;
+
+    const dspark_draft_candidate *draft = &d->draft[0];
+    const uint32_t checkpoint_prev = (uint32_t)s->checkpoint.v[s->checkpoint.len - 1];
+    if (draft->prev_token != checkpoint_prev) {
+        fprintf(stderr,
+                "ds4: DSpark verifier skipped at %s: stale draft prev=%u checkpoint_prev=%u\n",
+                origin ? origin : "session",
+                draft->prev_token,
+                checkpoint_prev);
+        dspark_session_draft_reset(d);
+        return;
+    }
+
+    const int target_top = sample_argmax(s->logits, DS4_N_VOCAB);
+    const bool target_hit = target_top == draft->token;
+    const bool token_hit = token == draft->token;
+    d->verify_total++;
+    if (target_hit) d->verify_target_hit++;
+    if (token_hit) d->verify_token_hit++;
+
+    fprintf(stderr,
+            "ds4: DSpark verifier %s next draft=%d target_top=%d token=%d "
+            "target_hit=%llu/%llu token_hit=%llu/%llu confidence=%.6g logit=%.6g; "
+            "observation only, no tokens accepted\n",
+            origin ? origin : "session",
+            draft->token,
+            target_top,
+            token,
+            (unsigned long long)d->verify_target_hit,
+            (unsigned long long)d->verify_total,
+            (unsigned long long)d->verify_token_hit,
+            (unsigned long long)d->verify_total,
+            draft->confidence,
+            draft->logit);
+    dspark_session_draft_reset(d);
+}
+
+static void dspark_session_observe_draft_rows(
         ds4_session *s,
         const char  *origin) {
-    if (!dspark_session_can_probe(s)) return;
+    if (!dspark_session_can_observe(s)) return;
 
     const uint32_t n_tokens = (uint32_t)s->checkpoint.len;
+    const bool log_rows = dspark_session_probe_env_enabled();
+    const bool verify = dspark_session_verify_env_enabled();
+    const char *mode = dspark_session_observe_mode_name();
     if (n_tokens > (uint32_t)DS4_N_SWA) {
         fprintf(stderr,
-                "ds4: DSpark dev probe skipped at %s: prefix tokens %u exceed sidecar window %u\n",
+                "ds4: DSpark %s skipped at %s: prefix tokens %u exceed sidecar window %u\n",
+                mode,
                 origin ? origin : "session",
                 n_tokens,
                 (uint32_t)DS4_N_SWA);
@@ -27013,7 +27086,8 @@ static void dspark_session_log_draft_rows(
     dspark_session_state *d = s->dspark;
     if (!d || !d->target_context_valid || d->target_context_rows != n_tokens) {
         fprintf(stderr,
-                "ds4: DSpark dev probe skipped at %s: captured target context is unavailable for %u tokens\n",
+                "ds4: DSpark %s skipped at %s: captured target context is unavailable for %u tokens\n",
+                mode,
                 origin ? origin : "session",
                 n_tokens);
         return;
@@ -27040,36 +27114,56 @@ static void dspark_session_log_draft_rows(
 
     if (ok) {
         d = s->dspark;
-        fprintf(stderr,
-                "ds4: DSpark dev probe at %s prefix_tokens=%u anchor_token=%d; "
-                "dry-run only, no tokens emitted or accepted\n",
-                origin ? origin : "session",
-                n_tokens,
-                d->block_tokens[0]);
-        for (uint32_t t = 0; t < d->draft_rows; t++) {
-            const dspark_draft_candidate *draft = &d->draft[t];
+        if (log_rows) {
             fprintf(stderr,
-                    "ds4: DSpark dev probe %s row %u prev=%u top1=%d %.6g "
-                    "top2=%d %.6g confidence_logit=%.6g confidence=%.6g\n",
+                    "ds4: DSpark dev probe at %s prefix_tokens=%u anchor_token=%d; "
+                    "dry-run only, no tokens emitted or accepted\n",
                     origin ? origin : "session",
-                    t,
-                    draft->prev_token,
+                    n_tokens,
+                    d->block_tokens[0]);
+            for (uint32_t t = 0; t < d->draft_rows; t++) {
+                const dspark_draft_candidate *draft = &d->draft[t];
+                fprintf(stderr,
+                        "ds4: DSpark dev probe %s row %u prev=%u top1=%d %.6g "
+                        "top2=%d %.6g confidence_logit=%.6g confidence=%.6g\n",
+                        origin ? origin : "session",
+                        t,
+                        draft->prev_token,
+                        draft->token,
+                        draft->logit,
+                        draft->alt_token,
+                        draft->alt_logit,
+                        draft->confidence_logit,
+                        draft->confidence);
+            }
+        } else if (verify && d->draft_valid && d->draft_rows > 0) {
+            const dspark_draft_candidate *draft = &d->draft[0];
+            fprintf(stderr,
+                    "ds4: DSpark verifier prepared at %s prefix_tokens=%u "
+                    "anchor_token=%d next_draft=%d confidence=%.6g; "
+                    "observation only, no tokens emitted or accepted\n",
+                    origin ? origin : "session",
+                    n_tokens,
+                    d->block_tokens[0],
                     draft->token,
-                    draft->logit,
-                    draft->alt_token,
-                    draft->alt_logit,
-                    draft->confidence_logit,
                     draft->confidence);
         }
     } else {
         fprintf(stderr,
-                "ds4: DSpark dev probe skipped at %s: %s\n",
+                "ds4: DSpark %s skipped at %s: %s\n",
+                mode,
                 origin ? origin : "session",
                 err[0] ? err : "unknown error");
     }
 }
 #else
-static void dspark_session_log_draft_rows(ds4_session *s, const char *origin) {
+static DS4_MAYBE_UNUSED void dspark_session_verify_next_token(ds4_session *s, int token, const char *origin) {
+    (void)s;
+    (void)token;
+    (void)origin;
+}
+
+static void dspark_session_observe_draft_rows(ds4_session *s, const char *origin) {
     (void)s;
     (void)origin;
 }
@@ -28692,7 +28786,7 @@ int ds4_session_sync(ds4_session *s, const ds4_tokens *prompt, char *err, size_t
         s->checkpoint_valid = true;
         s->mtp_draft_valid = false;
         if (s->progress) s->progress(s->progress_ud, "prefill_chunk", prompt->len, prompt->len);
-        dspark_session_log_draft_rows(s, "sync");
+        dspark_session_observe_draft_rows(s, "sync");
         return 0;
     }
 #ifdef DS4_NO_GPU
@@ -28765,13 +28859,14 @@ int ds4_session_sync(ds4_session *s, const ds4_tokens *prompt, char *err, size_t
                                                           cap_err,
                                                           sizeof(cap_err))) {
                     fprintf(stderr,
-                            "ds4: DSpark dev probe capture skipped at sync: %s\n",
+                            "ds4: DSpark %s capture skipped at sync: %s\n",
+                            dspark_session_observe_mode_name(),
                             cap_err[0] ? cap_err : "unknown error");
                 }
             }
             ds4_tokens_copy(&s->checkpoint, prompt);
             s->checkpoint_valid = true;
-            dspark_session_log_draft_rows(s, "sync");
+            dspark_session_observe_draft_rows(s, "sync");
             return 0;
         }
 
@@ -28813,11 +28908,12 @@ int ds4_session_sync(ds4_session *s, const ds4_tokens *prompt, char *err, size_t
                                                       cap_err,
                                                       sizeof(cap_err))) {
                 fprintf(stderr,
-                        "ds4: DSpark dev probe capture skipped at sync: %s\n",
+                        "ds4: DSpark %s capture skipped at sync: %s\n",
+                        dspark_session_observe_mode_name(),
                         cap_err[0] ? cap_err : "unknown error");
             }
         }
-        dspark_session_log_draft_rows(s, "sync");
+        dspark_session_observe_draft_rows(s, "sync");
         return 0;
     }
 
@@ -28891,7 +28987,8 @@ int ds4_session_sync(ds4_session *s, const ds4_tokens *prompt, char *err, size_t
                                                   cap_err,
                                                   sizeof(cap_err))) {
             fprintf(stderr,
-                    "ds4: DSpark dev probe capture skipped at sync: %s\n",
+                    "ds4: DSpark %s capture skipped at sync: %s\n",
+                    dspark_session_observe_mode_name(),
                     cap_err[0] ? cap_err : "unknown error");
         }
     }
@@ -28899,7 +28996,7 @@ int ds4_session_sync(ds4_session *s, const ds4_tokens *prompt, char *err, size_t
     s->checkpoint_valid = true;
     s->mtp_draft_valid = false;
     s->graph.mtp_n_raw = 0;
-    dspark_session_log_draft_rows(s, "sync");
+    dspark_session_observe_draft_rows(s, "sync");
     return 0;
 #endif
 }
@@ -29105,7 +29202,7 @@ static int ds4_session_eval_internal(ds4_session *s, int token, bool probe_mtp,
         s->checkpoint_valid = true;
         s->mtp_draft_valid = false;
         (void)probe_mtp;
-        dspark_session_log_draft_rows(s, "eval");
+        dspark_session_observe_draft_rows(s, "eval");
         return 0;
     }
 #ifdef DS4_NO_GPU
@@ -29120,6 +29217,7 @@ static int ds4_session_eval_internal(ds4_session *s, int token, bool probe_mtp,
     const bool mtp_should_draft =
         probe_mtp && e->mtp_ready && s->mtp_logits &&
         (e->mtp_draft_tokens > 1 || mtp_probe_log);
+    dspark_session_verify_next_token(s, token, "eval");
     if (probe_mtp && s->mtp_draft_valid) {
         if (mtp_probe_log) {
             s->mtp_probe_total++;
@@ -29161,7 +29259,8 @@ static int ds4_session_eval_internal(ds4_session *s, int token, bool probe_mtp,
                                                   cap_err,
                                                   sizeof(cap_err))) {
             fprintf(stderr,
-                    "ds4: DSpark dev probe capture skipped at eval: %s\n",
+                    "ds4: DSpark %s capture skipped at eval: %s\n",
+                    dspark_session_observe_mode_name(),
                     cap_err[0] ? cap_err : "unknown error");
         }
     }
@@ -29183,7 +29282,7 @@ static int ds4_session_eval_internal(ds4_session *s, int token, bool probe_mtp,
             fprintf(stderr, "ds4: mtp probe draft failed\n");
         }
     }
-    dspark_session_log_draft_rows(s, "eval");
+    dspark_session_observe_draft_rows(s, "eval");
     return 0;
 #endif
 }
