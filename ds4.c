@@ -26409,6 +26409,194 @@ static void dspark_probe_stage_ready(
     snprintf(label, sizeof(label), "dspark probe stage %u hc block", stage);
     print_vec_stats(label, hc, n);
 }
+
+static bool dspark_capture_target_hc(
+        ds4_session            * session,
+        const ds4_dspark_config * cfg,
+        const int              * tokens,
+        uint32_t                 n_tokens,
+        float                  ** target_hc,
+        char                    * err,
+        size_t                    errlen) {
+    uint32_t layer_start = 0;
+    for (uint32_t i = 0; i < DS4_DSPARK_MTP_LAYERS; i++) {
+        const uint32_t layer_end = cfg->target_layer_ids[i];
+        if (layer_end < layer_start || layer_end >= DS4_N_LAYER) {
+            if (errlen) snprintf(err, errlen,
+                                 "invalid DSpark target layer range %u:%u",
+                                 layer_start,
+                                 layer_end);
+            return false;
+        }
+        if (ds4_session_layer_slice_reset(session, err, errlen) != 0) {
+            return false;
+        }
+        const float *input_hc = i == 0 ? NULL : target_hc[i - 1u];
+        if (ds4_session_eval_layer_slice(session,
+                                         tokens,
+                                         n_tokens,
+                                         0,
+                                         layer_start,
+                                         layer_end,
+                                         input_hc,
+                                         target_hc[i],
+                                         false,
+                                         NULL,
+                                         err,
+                                         errlen) != 0) {
+            return false;
+        }
+        layer_start = layer_end + 1u;
+    }
+    return true;
+}
+
+static void dspark_mean_target_context(
+        float          * context,
+        float * const  * target_hc,
+        uint32_t         n_tokens) {
+    const uint64_t hc_dim = (uint64_t)DS4_N_HC * DS4_N_EMBD;
+    for (uint32_t i = 0; i < DS4_DSPARK_MTP_LAYERS; i++) {
+        for (uint32_t t = 0; t < n_tokens; t++) {
+            dspark_probe_mean_target_hc(
+                context + ((uint64_t)t * DS4_DSPARK_MTP_LAYERS + i) * DS4_N_EMBD,
+                target_hc[i] + (uint64_t)t * hc_dim);
+        }
+    }
+}
+
+static bool dspark_session_probe_env_enabled(void) {
+    const char *v = getenv("DS4_DSPARK_PROBE");
+    return v && v[0] && strcmp(v, "0") != 0;
+}
+
+static bool dspark_session_can_probe(const ds4_session *s) {
+    return s &&
+           s->engine &&
+           s->engine->dspark_ready &&
+           dspark_session_probe_env_enabled() &&
+           !s->distributed &&
+           !ds4_session_is_cpu(s) &&
+           ds4_backend_uses_graph(s->engine->backend) &&
+           s->checkpoint_valid &&
+           s->checkpoint.len > 0;
+}
+
+static void dspark_session_log_draft_rows(
+        ds4_session *s,
+        const char  *origin) {
+    if (!dspark_session_can_probe(s)) return;
+
+    ds4_engine *e = s->engine;
+    const uint32_t n_tokens = (uint32_t)s->checkpoint.len;
+    if (n_tokens > (uint32_t)DS4_N_SWA) {
+        fprintf(stderr,
+                "ds4: DSpark dev probe skipped at %s: prefix tokens %u exceed sidecar window %u\n",
+                origin ? origin : "session",
+                n_tokens,
+                (uint32_t)DS4_N_SWA);
+        return;
+    }
+
+    ds4_session *capture = NULL;
+    if (ds4_session_create(&capture, e, s->ctx_size) != 0) {
+        fprintf(stderr, "ds4: DSpark dev probe skipped at %s: failed to create capture session\n",
+                origin ? origin : "session");
+        return;
+    }
+    const int prefill_cap = ds4_session_prefill_cap(capture);
+    if ((int)n_tokens > prefill_cap) {
+        fprintf(stderr,
+                "ds4: DSpark dev probe skipped at %s: prefix tokens %u exceed prefill cap %d\n",
+                origin ? origin : "session",
+                n_tokens,
+                prefill_cap);
+        ds4_session_free(capture);
+        return;
+    }
+
+    const uint64_t hc_dim = (uint64_t)DS4_N_HC * DS4_N_EMBD;
+    const uint64_t hc_values = (uint64_t)n_tokens * hc_dim;
+    float *target_hc[DS4_DSPARK_MTP_LAYERS] = {0};
+    for (uint32_t i = 0; i < DS4_DSPARK_MTP_LAYERS; i++) {
+        target_hc[i] = xmalloc((size_t)hc_values * sizeof(target_hc[i][0]));
+    }
+    float *context = xmalloc((size_t)n_tokens * DS4_DSPARK_MTP_LAYERS *
+                             DS4_N_EMBD * sizeof(context[0]));
+
+    char err[256];
+    err[0] = '\0';
+    bool ok = dspark_capture_target_hc(capture,
+                                       &e->dspark_config,
+                                       s->checkpoint.v,
+                                       n_tokens,
+                                       target_hc,
+                                       err,
+                                       sizeof(err));
+    if (ok) {
+        dspark_mean_target_context(context, target_hc, n_tokens);
+        ok = dspark_session_prepare_from_target_context(s,
+                                                        context,
+                                                        n_tokens,
+                                                        s->checkpoint.v[s->checkpoint.len - 1],
+                                                        NULL,
+                                                        NULL,
+                                                        NULL,
+                                                        err,
+                                                        sizeof(err));
+    }
+
+    if (ok) {
+        dspark_session_state *d = s->dspark;
+        const uint32_t block_size = d->block_size;
+        fprintf(stderr,
+                "ds4: DSpark dev probe at %s prefix_tokens=%u anchor_token=%d; "
+                "dry-run only, no tokens emitted or accepted\n",
+                origin ? origin : "session",
+                n_tokens,
+                d->block_tokens[0]);
+        uint32_t prev_token = (uint32_t)d->block_tokens[0];
+        for (uint32_t t = 0; t < block_size; t++) {
+            dspark_draft_step_result step;
+            dspark_draft_step_cpu(&step,
+                                  &d->step,
+                                  e,
+                                  d->final_plain + (uint64_t)t * DS4_N_EMBD,
+                                  d->final_norm + (uint64_t)t * DS4_N_EMBD,
+                                  prev_token);
+            d->confidence[t] = step.confidence_logit;
+            fprintf(stderr,
+                    "ds4: DSpark dev probe %s row %u prev=%u top1=%d %.6g "
+                    "top2=%d %.6g confidence_logit=%.6g confidence=%.6g\n",
+                    origin ? origin : "session",
+                    t,
+                    step.prev_token,
+                    step.top0,
+                    step.logit0,
+                    step.top1,
+                    step.logit1,
+                    step.confidence_logit,
+                    step.confidence);
+            prev_token = step.top0 >= 0 ? (uint32_t)step.top0 : prev_token;
+        }
+        d->draft_rows = block_size;
+        d->prev_token = prev_token;
+    } else {
+        fprintf(stderr,
+                "ds4: DSpark dev probe skipped at %s: %s\n",
+                origin ? origin : "session",
+                err[0] ? err : "unknown error");
+    }
+
+    free(context);
+    for (uint32_t i = 0; i < DS4_DSPARK_MTP_LAYERS; i++) free(target_hc[i]);
+    ds4_session_free(capture);
+}
+#else
+static void dspark_session_log_draft_rows(ds4_session *s, const char *origin) {
+    (void)s;
+    (void)origin;
+}
 #endif
 
 int ds4_engine_dspark_probe(ds4_engine *e, const ds4_tokens *prompt, int ctx_size) {
@@ -28087,6 +28275,7 @@ int ds4_session_sync(ds4_session *s, const ds4_tokens *prompt, char *err, size_t
         s->checkpoint_valid = true;
         s->mtp_draft_valid = false;
         if (s->progress) s->progress(s->progress_ud, "prefill_chunk", prompt->len, prompt->len);
+        dspark_session_log_draft_rows(s, "sync");
         return 0;
     }
 #ifdef DS4_NO_GPU
@@ -28142,6 +28331,7 @@ int ds4_session_sync(ds4_session *s, const ds4_tokens *prompt, char *err, size_t
             }
             ds4_tokens_copy(&s->checkpoint, prompt);
             s->checkpoint_valid = true;
+            dspark_session_log_draft_rows(s, "sync");
             return 0;
         }
 
@@ -28163,6 +28353,7 @@ int ds4_session_sync(ds4_session *s, const ds4_tokens *prompt, char *err, size_t
             }
             token_vec_push(&s->checkpoint, prompt->v[i]);
         }
+        dspark_session_log_draft_rows(s, "sync");
         return 0;
     }
 
@@ -28219,6 +28410,7 @@ int ds4_session_sync(ds4_session *s, const ds4_tokens *prompt, char *err, size_t
     s->checkpoint_valid = true;
     s->mtp_draft_valid = false;
     s->graph.mtp_n_raw = 0;
+    dspark_session_log_draft_rows(s, "sync");
     return 0;
 #endif
 }
@@ -28424,6 +28616,7 @@ static int ds4_session_eval_internal(ds4_session *s, int token, bool probe_mtp,
         s->checkpoint_valid = true;
         s->mtp_draft_valid = false;
         (void)probe_mtp;
+        dspark_session_log_draft_rows(s, "eval");
         return 0;
     }
 #ifdef DS4_NO_GPU
@@ -28478,6 +28671,7 @@ static int ds4_session_eval_internal(ds4_session *s, int token, bool probe_mtp,
             fprintf(stderr, "ds4: mtp probe draft failed\n");
         }
     }
+    dspark_session_log_draft_rows(s, "eval");
     return 0;
 #endif
 }
