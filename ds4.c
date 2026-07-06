@@ -26180,6 +26180,16 @@ typedef struct {
     float    confidence;
 } dspark_draft_step_result;
 
+typedef struct {
+    uint32_t prev_token;
+    int      token;
+    int      alt_token;
+    float    logit;
+    float    alt_logit;
+    float    confidence_logit;
+    float    confidence;
+} dspark_draft_candidate;
+
 static void dspark_draft_step_scratch_init(
         dspark_draft_step_scratch *s,
         uint32_t                   markov_rank) {
@@ -26257,7 +26267,9 @@ struct dspark_session_state {
     uint32_t stage_raw_rows[DS4_DSPARK_MTP_LAYERS];
     uint32_t draft_rows;
     uint32_t prev_token;
+    bool draft_valid;
     dspark_draft_step_scratch step;
+    dspark_draft_candidate draft[16];
     float *main_x;
     float *main_proj_scratch;
     float *stage_kv[DS4_DSPARK_MTP_LAYERS];
@@ -26281,18 +26293,25 @@ static uint32_t dspark_session_raw_cap(uint32_t ctx_size) {
     return cap;
 }
 
+static void dspark_session_draft_reset(dspark_session_state *d) {
+    if (!d) return;
+    d->draft_rows = 0;
+    d->prev_token = UINT32_MAX;
+    d->draft_valid = false;
+}
+
 static void dspark_session_state_reset(dspark_session_state *d) {
     if (!d) return;
     d->main_x_rows = 0;
-    d->draft_rows = 0;
-    d->prev_token = UINT32_MAX;
     memset(d->stage_raw_rows, 0, sizeof(d->stage_raw_rows));
+    dspark_session_draft_reset(d);
 }
 
 static void dspark_session_target_context_reset(dspark_session_state *d) {
     if (!d) return;
     d->target_context_rows = 0;
     d->target_context_valid = false;
+    dspark_session_draft_reset(d);
 }
 
 static dspark_session_state *dspark_session_state_create(
@@ -26774,6 +26793,74 @@ static bool dspark_session_prepare_from_target_context(
     return true;
 }
 
+typedef void (*dspark_draft_candidate_fn)(
+        void                             * ud,
+        const dspark_session_state       * state,
+        uint32_t                           row,
+        const dspark_draft_candidate     * draft,
+        const dspark_draft_step_scratch  * scratch);
+
+static bool dspark_session_build_draft_candidates(
+        ds4_session               * s,
+        dspark_draft_candidate_fn   row_fn,
+        void                     * cb_ud,
+        char                     * err,
+        size_t                     errlen) {
+    if (!s || !s->engine || !s->engine->dspark_ready || !s->dspark) {
+        if (errlen) snprintf(err, errlen, "DSpark draft candidates require prepared session state");
+        return false;
+    }
+
+    ds4_engine *e = s->engine;
+    dspark_session_state *d = s->dspark;
+    if (d->main_x_rows == 0 || d->block_size == 0 || d->block_size > 16 ||
+        !d->final_plain || !d->final_norm) {
+        if (errlen) snprintf(err, errlen, "DSpark sidecar block is not prepared");
+        dspark_session_draft_reset(d);
+        return false;
+    }
+    if (d->block_tokens[0] < 0 || d->block_tokens[0] >= (int)DS4_N_VOCAB) {
+        if (errlen) snprintf(err, errlen, "DSpark sidecar anchor token is invalid");
+        dspark_session_draft_reset(d);
+        return false;
+    }
+
+    dspark_session_draft_reset(d);
+    uint32_t prev_token = (uint32_t)d->block_tokens[0];
+    for (uint32_t t = 0; t < d->block_size; t++) {
+        dspark_draft_step_result step;
+        dspark_draft_step_cpu(&step,
+                              &d->step,
+                              e,
+                              d->final_plain + (uint64_t)t * DS4_N_EMBD,
+                              d->final_norm + (uint64_t)t * DS4_N_EMBD,
+                              prev_token);
+        if (step.top0 < 0) {
+            if (errlen) snprintf(err, errlen, "DSpark draft row %u has no top token", t);
+            dspark_session_draft_reset(d);
+            return false;
+        }
+
+        dspark_draft_candidate *draft = &d->draft[t];
+        draft->prev_token = step.prev_token;
+        draft->token = step.top0;
+        draft->alt_token = step.top1;
+        draft->logit = step.logit0;
+        draft->alt_logit = step.logit1;
+        draft->confidence_logit = step.confidence_logit;
+        draft->confidence = step.confidence;
+        d->confidence[t] = step.confidence_logit;
+        d->draft_rows = t + 1u;
+
+        if (row_fn) row_fn(cb_ud, d, t, draft, &d->step);
+        prev_token = (uint32_t)step.top0;
+    }
+
+    d->prev_token = prev_token;
+    d->draft_valid = true;
+    return true;
+}
+
 static void dspark_probe_prepare_ready(
         void                       * ud,
         const dspark_session_state * state,
@@ -26802,6 +26889,38 @@ static void dspark_probe_stage_ready(
     char label[96];
     snprintf(label, sizeof(label), "dspark probe stage %u hc block", stage);
     print_vec_stats(label, hc, n);
+}
+
+static void dspark_probe_draft_ready(
+        void                             * ud,
+        const dspark_session_state       * state,
+        uint32_t                           row,
+        const dspark_draft_candidate     * draft,
+        const dspark_draft_step_scratch  * scratch) {
+    (void)ud;
+    if (row == 0) {
+        print_vec_stats("dspark probe row0 base_logits",
+                        scratch->base_logits,
+                        DS4_N_VOCAB);
+        print_vec_stats("dspark probe row0 markov_bias",
+                        scratch->markov_bias,
+                        DS4_N_VOCAB);
+        print_vec_stats("dspark probe row0 markov_logits",
+                        scratch->logits,
+                        DS4_N_VOCAB);
+    }
+    fprintf(stderr,
+            "ds4: DSpark probe dry row %u prev=%u top1=%d %.6g "
+            "top2=%d %.6g confidence_logit=%.6g confidence=%.6g\n",
+            row,
+            draft->prev_token,
+            draft->token,
+            draft->logit,
+            draft->alt_token,
+            draft->alt_logit,
+            draft->confidence_logit,
+            draft->confidence);
+    (void)state;
 }
 
 static bool dspark_capture_target_hc(
@@ -26881,7 +27000,6 @@ static void dspark_session_log_draft_rows(
         const char  *origin) {
     if (!dspark_session_can_probe(s)) return;
 
-    ds4_engine *e = s->engine;
     const uint32_t n_tokens = (uint32_t)s->checkpoint.len;
     if (n_tokens > (uint32_t)DS4_N_SWA) {
         fprintf(stderr,
@@ -26912,42 +27030,37 @@ static void dspark_session_log_draft_rows(
                                                          NULL,
                                                          err,
                                                          sizeof(err));
+    if (ok) {
+        ok = dspark_session_build_draft_candidates(s,
+                                                   NULL,
+                                                   NULL,
+                                                   err,
+                                                   sizeof(err));
+    }
 
     if (ok) {
         d = s->dspark;
-        const uint32_t block_size = d->block_size;
         fprintf(stderr,
                 "ds4: DSpark dev probe at %s prefix_tokens=%u anchor_token=%d; "
                 "dry-run only, no tokens emitted or accepted\n",
                 origin ? origin : "session",
                 n_tokens,
                 d->block_tokens[0]);
-        uint32_t prev_token = (uint32_t)d->block_tokens[0];
-        for (uint32_t t = 0; t < block_size; t++) {
-            dspark_draft_step_result step;
-            dspark_draft_step_cpu(&step,
-                                  &d->step,
-                                  e,
-                                  d->final_plain + (uint64_t)t * DS4_N_EMBD,
-                                  d->final_norm + (uint64_t)t * DS4_N_EMBD,
-                                  prev_token);
-            d->confidence[t] = step.confidence_logit;
+        for (uint32_t t = 0; t < d->draft_rows; t++) {
+            const dspark_draft_candidate *draft = &d->draft[t];
             fprintf(stderr,
                     "ds4: DSpark dev probe %s row %u prev=%u top1=%d %.6g "
                     "top2=%d %.6g confidence_logit=%.6g confidence=%.6g\n",
                     origin ? origin : "session",
                     t,
-                    step.prev_token,
-                    step.top0,
-                    step.logit0,
-                    step.top1,
-                    step.logit1,
-                    step.confidence_logit,
-                    step.confidence);
-            prev_token = step.top0 >= 0 ? (uint32_t)step.top0 : prev_token;
+                    draft->prev_token,
+                    draft->token,
+                    draft->logit,
+                    draft->alt_token,
+                    draft->alt_logit,
+                    draft->confidence_logit,
+                    draft->confidence);
         }
-        d->draft_rows = block_size;
-        d->prev_token = prev_token;
     } else {
         fprintf(stderr,
                 "ds4: DSpark dev probe skipped at %s: %s\n",
@@ -27111,7 +27224,6 @@ int ds4_engine_dspark_probe(ds4_engine *e, const ds4_tokens *prompt, int ctx_siz
 
         if (rc == 0) {
             dspark_session_state *dspark = session->dspark;
-            int *block_tokens = dspark->block_tokens;
             float *final_plain = dspark->final_plain;
             float *final_norm = dspark->final_norm;
             float *confidence = dspark->confidence;
@@ -27125,47 +27237,22 @@ int ds4_engine_dspark_probe(ds4_engine *e, const ds4_tokens *prompt, int ctx_siz
             fprintf(stderr,
                     "ds4: DSpark probe Markov/confidence dry-run argmax chain; "
                     "tokens are not emitted, accepted, or appended\n");
-            uint32_t prev_token = (uint32_t)block_tokens[0];
-            for (uint32_t t = 0; t < block_size; t++) {
-                dspark_draft_step_result step;
-                dspark_draft_step_cpu(
-                    &step,
-                    &dspark->step,
-                    e,
-                    final_plain + (uint64_t)t * DS4_N_EMBD,
-                    final_norm + (uint64_t)t * DS4_N_EMBD,
-                    prev_token);
-                confidence[t] = step.confidence_logit;
-                if (t == 0) {
-                    print_vec_stats("dspark probe row0 base_logits",
-                                    dspark->step.base_logits,
-                                    DS4_N_VOCAB);
-                    print_vec_stats("dspark probe row0 markov_bias",
-                                    dspark->step.markov_bias,
-                                    DS4_N_VOCAB);
-                    print_vec_stats("dspark probe row0 markov_logits",
-                                    dspark->step.logits,
-                                    DS4_N_VOCAB);
-                }
+            if (!dspark_session_build_draft_candidates(session,
+                                                       dspark_probe_draft_ready,
+                                                       NULL,
+                                                       err,
+                                                       sizeof(err))) {
                 fprintf(stderr,
-                        "ds4: DSpark probe dry row %u prev=%u top1=%d %.6g "
-                        "top2=%d %.6g confidence_logit=%.6g confidence=%.6g\n",
-                        t,
-                        step.prev_token,
-                        step.top0,
-                        step.logit0,
-                        step.top1,
-                        step.logit1,
-                        step.confidence_logit,
-                        step.confidence);
-                prev_token = step.top0 >= 0 ? (uint32_t)step.top0 : prev_token;
+                        "ds4: DSpark probe failed to build draft candidates: %s\n",
+                        err[0] ? err : "unknown error");
+                rc = 1;
             }
-            dspark->draft_rows = block_size;
-            dspark->prev_token = prev_token;
-            print_vec_stats("dspark probe confidence logits", confidence, block_size);
-            fprintf(stderr,
-                    "ds4: DSpark probe sidecar Markov/confidence dry-run completed; "
-                    "no tokens were emitted, accepted, appended, or speculated\n");
+            if (rc == 0) {
+                print_vec_stats("dspark probe confidence logits", confidence, block_size);
+                fprintf(stderr,
+                        "ds4: DSpark probe sidecar Markov/confidence dry-run completed; "
+                        "no tokens were emitted, accepted, appended, or speculated\n");
+            }
         }
 
         free(legacy_context);
