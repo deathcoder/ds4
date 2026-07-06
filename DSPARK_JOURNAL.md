@@ -8,7 +8,7 @@ particular DSpark change exists.
 
 Branch: `codex/dspark-observability-0`
 
-Phase 0.13 is still intentionally narrow: `--dspark FILE` validates an official
+Phase 0.14 is still intentionally narrow: `--dspark FILE` validates an official
 DSpark drafter GGUF, binds every tensor needed by a future runtime path, checks
 the expected DeepSeek V4 Flash DSpark shapes, and exposes a diagnostic
 `--dspark-probe` bridge for target-layer hidden-state capture plus
@@ -21,9 +21,9 @@ KV rows, draft block buffers, confidence buffer, and draft-step scratch. The
 target-context-to-sidecar-block preparation now lives behind
 `dspark_session_prepare_from_target_context`, with probe logging supplied by
 callbacks. A development-only `DS4_DSPARK_PROBE=1` ordinary-session hook now
-captures target hidden states through a separate capture session and logs dry
-draft rows at sync/eval time without emitting or accepting them. It does not
-enable DSpark speculative decoding.
+captures target hidden states from the normal graph path into session-owned GPU
+scratch and logs dry draft rows at sync/eval time without emitting or accepting
+them. It does not enable DSpark speculative decoding.
 
 The design choice was to keep this separate from legacy `--mtp`. We do not
 guess dynamically whether `--mtp` points at legacy MTP or DSpark. The first
@@ -43,11 +43,11 @@ hook is explicit and conservative:
   dry-run argmax chain, prints vector/logit stats, and exits without emitting,
   accepting, appending, generating, or speculating tokens.
 - `DS4_DSPARK_PROBE=1` is a development-only ordinary-session hook. During
-  normal sync/eval it creates a separate capture session, recomputes the
-  target-layer hidden-state prefix, prepares the live session-owned DSpark
-  state, logs dry draft rows, and then returns to normal generation. It is
-  deliberately expensive, non-fatal, and not a benchmark or production runtime
-  path.
+  normal sync/eval it copies target-layer hidden states from the live graph
+  path into session-owned GPU scratch, reads/means those HC streams into the
+  DSpark target context, prepares the live session-owned DSpark state, logs dry
+  draft rows, and then returns to normal generation. It is deliberately
+  diagnostic, non-fatal, and not a benchmark or production runtime path.
 - No benchmarks should be run automatically by Codex. The user wants tok/s
   benchmarks to be run manually on an otherwise idle machine.
 
@@ -171,10 +171,14 @@ Phase 0.5 shape/binding facts from the local
     final plain/norm buffers. The probe supplies callbacks for main/state and
     stage logging; the helper itself does not print or emit tokens.
   - Added `DS4_DSPARK_PROBE=1`, a development-only ordinary-session hook that
-    logs DSpark dry draft rows at sync/eval time. It uses a separate capture
-    session to avoid mutating the live target KV state, calls
+    logs DSpark dry draft rows at sync/eval time. It now captures target-layer
+    HC from live graph execution into session-owned GPU scratch, calls
     `dspark_session_prepare_from_target_context` on the live session, and does
     not emit, accept, append, or speculate tokens.
+  - Added an optional `ds4_target_hc_capture` carrier through normal Metal
+    prefill/decode wrappers. The carrier copies post-layer HC at target layers
+    `40,41,42` into diagnostic scratch only when the env hook has explicitly
+    enabled it; default callers still pass `NULL`.
   - The sidecar probe still does not emit, accept, append, generate, or
     speculate tokens.
   - Added `dspark_model`, `dspark_config`, and `dspark_ready` to `ds4_engine`.
@@ -484,6 +488,53 @@ row 3 prev=588 top1=442 confidence=0.707425
 row 4 prev=442 top1=85 confidence=0.777417
 ```
 
+Phase 0.14 live-target-context capture checks run on 2026-07-06:
+
+```sh
+make ds4 ds4_test
+./ds4_test --dspark-validation --dspark-shape-binding
+git diff --check
+./ds4 \
+  --model gguf/DeepSeek-V4-Flash-IQ2XXS-w2Q2K-AProjQ8-SExpQ8-OutQ8-chat-v2-imatrix.gguf \
+  --dspark gguf/ds4flash-dspark.gguf \
+  --dspark-probe --nothink -p "Hello"
+DS4_DSPARK_PROBE=1 ./ds4 \
+  --model gguf/DeepSeek-V4-Flash-IQ2XXS-w2Q2K-AProjQ8-SExpQ8-OutQ8-chat-v2-imatrix.gguf \
+  --dspark gguf/ds4flash-dspark.gguf \
+  --nothink -n 1 -p "Hello"
+make ds4-server ds4-eval ds4-agent
+make ds4_cpu.o
+```
+
+The standalone probe kept the same dry-run rows as Phase 0.13. The
+ordinary-session dev hook no longer creates a separate capture session. Its
+`sync` rows for `"Hello"` still match the standalone probe exactly:
+
+```text
+row 0 prev=128822 top1=19923 confidence=0.917943
+row 1 prev=19923 top1=3 confidence=0.715982
+row 2 prev=3 top1=52780 confidence=0.559488
+row 3 prev=52780 top1=236 confidence=0.604713
+row 4 prev=236 top1=22651 confidence=0.481865
+```
+
+The first `eval` rows changed versus Phase 0.13 because they now use the live
+one-token decode path's captured target-layer HC rather than a replayed
+layer-slice prefix. That is the intended runtime-shaped context:
+
+```text
+row 0 prev=23166 top1=3 confidence=0.452657
+row 1 prev=3 top1=1730 confidence=0.879072
+row 2 prev=1730 top1=588 confidence=0.596213
+row 3 prev=588 top1=1762 confidence=0.699362
+row 4 prev=1762 top1=440 confidence=0.538978
+```
+
+`make ds4_cpu.o` still reports the same pre-existing CPU-only warning set
+(`output_hc`, streaming auto-cache helpers, expert profile helpers,
+`sleep_sec`, first-bound-layer helper, and cancel callback). No new DSpark
+warnings remained after this phase.
+
 Downloaded sidecar byte size:
 
 ```text
@@ -542,9 +593,10 @@ If continuing from a compacted context, start here:
 - How should DSpark cache state be represented for real runtime: separate
   sidecar KV buffers mirroring the official two-step cache fill/draft flow, or
   a fresh graph path that directly consumes the target hidden-state window?
-- The current `DS4_DSPARK_PROBE=1` hook uses a separate capture session for
-  correctness isolation. A future runtime path should avoid this by preserving
-  or exposing the target-layer context from normal prefill/decode.
+- The current `DS4_DSPARK_PROBE=1` hook preserves target-layer context from
+  normal prefill/decode, but still performs CPU readback and CPU sidecar draft
+  computation for diagnostics. A future runtime path needs a real draft
+  candidate state/API rather than logging-only rows.
 - Where should DSpark runtime stats live so they are useful for development but
   cannot perturb benchmark measurements unless explicitly enabled?
 - Should future CLI UX stay as `--dspark`, or eventually become a broader

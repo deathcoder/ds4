@@ -10851,6 +10851,52 @@ typedef struct {
     float *cpu_router_norm;
 } ds4_gpu_graph;
 
+typedef struct {
+    ds4_gpu_tensor *hc;
+    const uint32_t *target_layers;
+    uint32_t        n_target_layers;
+    uint32_t        cap_tokens;
+    bool            failed;
+} ds4_target_hc_capture;
+
+static int ds4_target_hc_capture_slot(
+        const ds4_target_hc_capture *capture,
+        uint32_t                     il) {
+    if (!capture || capture->failed || !capture->hc ||
+        !capture->target_layers || capture->n_target_layers == 0) {
+        return -1;
+    }
+    for (uint32_t i = 0; i < capture->n_target_layers; i++) {
+        if (capture->target_layers[i] == il) return (int)i;
+    }
+    return -1;
+}
+
+static void ds4_target_hc_capture_note_tensor(
+        ds4_target_hc_capture *capture,
+        uint32_t               il,
+        uint32_t               pos0,
+        uint32_t               n_tokens,
+        ds4_gpu_tensor        *src_hc) {
+    const int slot = ds4_target_hc_capture_slot(capture, il);
+    if (slot < 0) return;
+    if (!src_hc || n_tokens == 0 ||
+        pos0 > capture->cap_tokens ||
+        n_tokens > capture->cap_tokens - pos0) {
+        capture->failed = true;
+        return;
+    }
+
+    const uint64_t hc_dim = (uint64_t)DS4_N_HC * DS4_N_EMBD;
+    const uint64_t bytes = (uint64_t)n_tokens * hc_dim * sizeof(float);
+    const uint64_t dst_off =
+        ((uint64_t)(uint32_t)slot * capture->cap_tokens + pos0) *
+        hc_dim * sizeof(float);
+    if (ds4_gpu_tensor_copy(capture->hc, dst_off, src_hc, 0, bytes) == 0) {
+        capture->failed = true;
+    }
+}
+
 static bool graph_power_throttle_enabled(const ds4_gpu_graph *g) {
     return g && g->power_percent > 0 && g->power_percent < 100;
 }
@@ -17300,14 +17346,15 @@ static uint32_t metal_graph_token_split_after_layers(void) {
 
 /* Encode a full single-token decode step on Metal.  This is the generation
  * hot path: update caches, run all layers, then produce logits. */
-static bool metal_graph_encode_token_raw_swa(
+static bool metal_graph_encode_token_raw_swa_capture(
         ds4_gpu_graph *g,
         const ds4_model       *model,
         const ds4_weights     *weights,
         int                    token,
         uint32_t               pos,
         bool                   need_logits,
-        bool                   allow_split_flush) {
+        bool                   allow_split_flush,
+        ds4_target_hc_capture *target_capture) {
     if (g->raw_cap == 0) {
         fprintf(stderr, "ds4: Metal graph raw KV cache is not allocated\n");
         return false;
@@ -17347,6 +17394,7 @@ static bool metal_graph_encode_token_raw_swa(
         ds4_gpu_tensor *tmp = g->cur_hc;
         g->cur_hc = g->after_ffn_hc;
         g->after_ffn_hc = tmp;
+        if (ok) ds4_target_hc_capture_note_tensor(target_capture, il, pos, 1, g->cur_hc);
         if (ok && allow_split_flush && split_after_layers != 0 && il + 1u == split_after_layers) {
             ok = ds4_gpu_flush_commands() != 0;
         }
@@ -17356,6 +17404,24 @@ static bool metal_graph_encode_token_raw_swa(
         ok = metal_graph_encode_output_head(g, model, weights, weights->output->dim[1]);
     }
     return ok;
+}
+
+static bool metal_graph_encode_token_raw_swa(
+        ds4_gpu_graph *g,
+        const ds4_model       *model,
+        const ds4_weights     *weights,
+        int                    token,
+        uint32_t               pos,
+        bool                   need_logits,
+        bool                   allow_split_flush) {
+    return metal_graph_encode_token_raw_swa_capture(g,
+                                                    model,
+                                                    weights,
+                                                    token,
+                                                    pos,
+                                                    need_logits,
+                                                    allow_split_flush,
+                                                    NULL);
 }
 
 static ds4_gpu_tensor *metal_graph_tensor_row_view(
@@ -19640,13 +19706,14 @@ static bool metal_graph_encode_layer_batch(
     return ok;
 }
 
-static bool metal_graph_eval_token_raw_swa_streaming(
+static bool metal_graph_eval_token_raw_swa_streaming_capture(
         ds4_gpu_graph *g,
         const ds4_model       *model,
         const ds4_weights     *weights,
         int                    token,
         uint32_t               pos,
-        float                 *logits) {
+        float                 *logits,
+        ds4_target_hc_capture *target_capture) {
     if (g->raw_cap == 0) {
         fprintf(stderr, "ds4: Metal graph raw KV cache is not allocated\n");
         return false;
@@ -19703,6 +19770,7 @@ static bool metal_graph_eval_token_raw_swa_streaming(
                 ds4_gpu_tensor *tmp = g->cur_hc;
                 g->cur_hc = g->after_ffn_hc;
                 g->after_ffn_hc = tmp;
+                ds4_target_hc_capture_note_tensor(target_capture, il, pos, 1, g->cur_hc);
             }
         }
         if (ok && logits) {
@@ -19769,6 +19837,7 @@ static bool metal_graph_eval_token_raw_swa_streaming(
             ds4_gpu_tensor *tmp = g->cur_hc;
             g->cur_hc = g->after_ffn_hc;
             g->after_ffn_hc = tmp;
+            if (ok) ds4_target_hc_capture_note_tensor(target_capture, il, pos, 1, g->cur_hc);
         }
         const double tl_encoded = profile ? now_sec() : 0.0;
         if (ok) ok = ds4_gpu_end_commands() != 0;
@@ -19815,15 +19884,22 @@ static bool metal_graph_eval_token_raw_swa_streaming(
 }
 
 /* Execute one Metal decode token and read back logits. */
-static bool metal_graph_eval_token_raw_swa(
+static bool metal_graph_eval_token_raw_swa_capture(
         ds4_gpu_graph *g,
         const ds4_model       *model,
         const ds4_weights     *weights,
         int                    token,
         uint32_t               pos,
-        float                 *logits) {
+        float                 *logits,
+        ds4_target_hc_capture *target_capture) {
     if (g && g->ssd_streaming) {
-        return metal_graph_eval_token_raw_swa_streaming(g, model, weights, token, pos, logits);
+        return metal_graph_eval_token_raw_swa_streaming_capture(g,
+                                                                model,
+                                                                weights,
+                                                                token,
+                                                                pos,
+                                                                logits,
+                                                                target_capture);
     }
 
     const bool profile = getenv("DS4_METAL_GRAPH_TOKEN_PROFILE") != NULL;
@@ -19831,7 +19907,14 @@ static bool metal_graph_eval_token_raw_swa(
     const double t0 = (profile || throttle) ? now_sec() : 0.0;
 
     bool ok = ds4_gpu_begin_commands() != 0;
-    if (ok) ok = metal_graph_encode_token_raw_swa(g, model, weights, token, pos, logits != NULL, true);
+    if (ok) ok = metal_graph_encode_token_raw_swa_capture(g,
+                                                          model,
+                                                          weights,
+                                                          token,
+                                                          pos,
+                                                          logits != NULL,
+                                                          true,
+                                                          target_capture);
     const double t_encoded = (profile || throttle) ? now_sec() : 0.0;
     if (ok) ok = ds4_gpu_end_commands() != 0;
     const double t_done = (profile || throttle) ? now_sec() : 0.0;
@@ -19857,6 +19940,22 @@ static bool metal_graph_eval_token_raw_swa(
         }
     }
     return ok;
+}
+
+static bool metal_graph_eval_token_raw_swa(
+        ds4_gpu_graph *g,
+        const ds4_model       *model,
+        const ds4_weights     *weights,
+        int                    token,
+        uint32_t               pos,
+        float                 *logits) {
+    return metal_graph_eval_token_raw_swa_capture(g,
+                                                  model,
+                                                  weights,
+                                                  token,
+                                                  pos,
+                                                  logits,
+                                                  NULL);
 }
 
 static bool metal_graph_streaming_decode_prefill_wide_default(
@@ -19924,7 +20023,7 @@ static bool metal_graph_use_streaming_decode_prefill_range(
     return metal_graph_use_streaming_decode_prefill(g, weights, n_tokens);
 }
 
-static bool metal_graph_prefill_decode_streaming_range(
+static bool metal_graph_prefill_decode_streaming_range_capture(
         ds4_gpu_graph *g,
         const ds4_model       *model,
         const ds4_weights     *weights,
@@ -19939,7 +20038,8 @@ static bool metal_graph_prefill_decode_streaming_range(
         void                  *display_progress_ud,
         ds4_session_cancel_fn  cancel,
         void                  *cancel_ud,
-        bool                  *cancelled) {
+        bool                  *cancelled,
+        ds4_target_hc_capture *target_capture) {
     if (!metal_graph_use_streaming_decode_prefill(g, weights, n_tokens)) return false;
     if (!prompt || start > (uint32_t)prompt->len ||
         n_tokens > (uint32_t)prompt->len - start) return false;
@@ -19969,12 +20069,13 @@ static bool metal_graph_prefill_decode_streaming_range(
         const uint32_t pos = start + i;
         const bool last = i + 1u == n_tokens;
         float *token_logits = (last && logits) ? logits : NULL;
-        if (!metal_graph_eval_token_raw_swa(g,
-                                            model,
-                                            weights,
-                                            prompt->v[pos],
-                                            pos,
-                                            token_logits)) {
+        if (!metal_graph_eval_token_raw_swa_capture(g,
+                                                    model,
+                                                    weights,
+                                                    prompt->v[pos],
+                                                    pos,
+                                                    token_logits,
+                                                    target_capture)) {
             if (ds4_gpu_synchronize() == 0) {
                 fprintf(stderr, "ds4: Metal synchronize after decode-style streaming prefill failure also failed\n");
             }
@@ -20664,7 +20765,7 @@ static void gpu_graph_report_prefill_display_progress(
                      (int)(start + (uint32_t)done), total);
 }
 
-static bool metal_graph_prefill_layer_major(
+static bool metal_graph_prefill_layer_major_capture(
         ds4_gpu_graph *g,
         const ds4_model       *model,
         const ds4_weights     *weights,
@@ -20675,7 +20776,8 @@ static bool metal_graph_prefill_layer_major(
         bool                   show_progress,
         ds4_imatrix_collector *imatrix,
         ds4_session_progress_fn display_progress,
-        void                  *display_progress_ud) {
+        void                  *display_progress_ud,
+        ds4_target_hc_capture *target_capture) {
     if (n_tokens == 0 || n_tokens > g->prefill_cap) return false;
     if (start > (uint32_t)prompt->len) return false;
     if (n_tokens > (uint32_t)prompt->len - start) return false;
@@ -20732,6 +20834,13 @@ static bool metal_graph_prefill_layer_major(
                                                 n_tokens);
             if (!ok) {
                 fprintf(stderr, "ds4: gpu whole-prefill layer %u encode failed\n", il);
+            }
+            if (ok) {
+                ds4_target_hc_capture_note_tensor(target_capture,
+                                                  il,
+                                                  start,
+                                                  n_tokens,
+                                                  g->batch_cur_hc);
             }
             if (show_progress) {
                 fprintf(stderr, "ds4: gpu prefill layer %u/%u\r", il + 1, (uint32_t)DS4_N_LAYER);
@@ -21019,6 +21128,11 @@ static bool metal_graph_prefill_layer_major(
                 ds4_gpu_tensor *tmp = g->batch_cur_hc;
                 g->batch_cur_hc = g->batch_next_hc;
                 g->batch_next_hc = tmp;
+                ds4_target_hc_capture_note_tensor(target_capture,
+                                                  il,
+                                                  start,
+                                                  n_tokens,
+                                                  g->batch_cur_hc);
             }
             if (ok) ok = metal_graph_capture_prefill_seed_router_selected(g,
                                                                           il,
@@ -21065,6 +21179,13 @@ static bool metal_graph_prefill_layer_major(
                                                         n_tokens);
             if (!ok) {
                 fprintf(stderr, "ds4: gpu layer-major prefill layer %u encode failed\n", il);
+            }
+            if (ok) {
+                ds4_target_hc_capture_note_tensor(target_capture,
+                                                  il,
+                                                  start,
+                                                  n_tokens,
+                                                  g->batch_cur_hc);
             }
             if (ok) ok = metal_graph_capture_prefill_seed_router_selected(g,
                                                                           il,
@@ -21246,6 +21367,89 @@ static bool metal_graph_prefill_layer_major(
     return ok;
 }
 
+static bool metal_graph_prefill_layer_major(
+        ds4_gpu_graph *g,
+        const ds4_model       *model,
+        const ds4_weights     *weights,
+        const token_vec       *prompt,
+        uint32_t               start,
+        uint32_t               n_tokens,
+        float                 *logits,
+        bool                   show_progress,
+        ds4_imatrix_collector *imatrix,
+        ds4_session_progress_fn display_progress,
+        void                  *display_progress_ud) {
+    return metal_graph_prefill_layer_major_capture(g,
+                                                   model,
+                                                   weights,
+                                                   prompt,
+                                                   start,
+                                                   n_tokens,
+                                                   logits,
+                                                   show_progress,
+                                                   imatrix,
+                                                   display_progress,
+                                                   display_progress_ud,
+                                                   NULL);
+}
+
+static bool metal_graph_prefill_raw_swa_capture(
+        ds4_gpu_graph *g,
+        const ds4_model       *model,
+        const ds4_weights     *weights,
+        const token_vec       *prompt,
+        int                    n_tokens,
+        float                 *logits,
+        bool                   show_progress,
+        ds4_session_progress_fn display_progress,
+        void                  *display_progress_ud,
+        ds4_session_cancel_fn  cancel,
+        void                  *cancel_ud,
+        bool                  *cancelled,
+        ds4_target_hc_capture *target_capture) {
+    if (n_tokens <= 0 || n_tokens > prompt->len) return false;
+    if ((uint32_t)n_tokens > g->prefill_cap) return false;
+    if (metal_graph_use_streaming_decode_prefill_range(g, weights, 0,
+                                                       (uint32_t)n_tokens)) {
+        return metal_graph_prefill_decode_streaming_range_capture(g,
+                                                                  model,
+                                                                  weights,
+                                                                  prompt,
+                                                                  0,
+                                                                  (uint32_t)n_tokens,
+                                                                  logits,
+                                                                  show_progress,
+                                                                  NULL,
+                                                                  NULL,
+                                                                  display_progress,
+                                                                  display_progress_ud,
+                                                                  cancel,
+                                                                  cancel_ud,
+                                                                  cancelled,
+                                                                  target_capture);
+    }
+    /* The layer-major fallback below may submit the whole short prefill as one
+     * Metal command buffer.  Once that command is in flight there is no useful
+     * safe prefix to expose: by the time cancellation can be observed again,
+     * the prompt has already been fully read and the KV is valid.  Let the
+     * caller observe the pending interrupt at generation time instead. */
+    (void)cancel;
+    (void)cancel_ud;
+    (void)cancelled;
+    return metal_graph_prefill_layer_major_capture(g,
+                                                   model,
+                                                   weights,
+                                                   prompt,
+                                                   0,
+                                                   (uint32_t)n_tokens,
+                                                   logits,
+                                                   show_progress,
+                                                   NULL,
+                                                   display_progress,
+                                                   display_progress_ud,
+                                                   target_capture);
+}
+
 static bool metal_graph_prefill_raw_swa(
         ds4_gpu_graph *g,
         const ds4_model       *model,
@@ -21259,45 +21463,19 @@ static bool metal_graph_prefill_raw_swa(
         ds4_session_cancel_fn  cancel,
         void                  *cancel_ud,
         bool                  *cancelled) {
-    if (n_tokens <= 0 || n_tokens > prompt->len) return false;
-    if ((uint32_t)n_tokens > g->prefill_cap) return false;
-    if (metal_graph_use_streaming_decode_prefill_range(g, weights, 0,
-                                                       (uint32_t)n_tokens)) {
-        return metal_graph_prefill_decode_streaming_range(g,
-                                                          model,
-                                                          weights,
-                                                          prompt,
-                                                          0,
-                                                          (uint32_t)n_tokens,
-                                                          logits,
-                                                          show_progress,
-                                                          NULL,
-                                                          NULL,
-                                                          display_progress,
-                                                          display_progress_ud,
-                                                          cancel,
-                                                          cancel_ud,
-                                                          cancelled);
-    }
-    /* The layer-major fallback below may submit the whole short prefill as one
-     * Metal command buffer.  Once that command is in flight there is no useful
-     * safe prefix to expose: by the time cancellation can be observed again,
-     * the prompt has already been fully read and the KV is valid.  Let the
-     * caller observe the pending interrupt at generation time instead. */
-    (void)cancel;
-    (void)cancel_ud;
-    (void)cancelled;
-    return metal_graph_prefill_layer_major(g,
-                                           model,
-                                           weights,
-                                           prompt,
-                                           0,
-                                           (uint32_t)n_tokens,
-                                           logits,
-                                           show_progress,
-                                           NULL,
-                                           display_progress,
-                                           display_progress_ud);
+    return metal_graph_prefill_raw_swa_capture(g,
+                                               model,
+                                               weights,
+                                               prompt,
+                                               n_tokens,
+                                               logits,
+                                               show_progress,
+                                               display_progress,
+                                               display_progress_ud,
+                                               cancel,
+                                               cancel_ud,
+                                               cancelled,
+                                               NULL);
 }
 
 /* Prefill a contiguous token range in fixed-size chunks.
@@ -21308,7 +21486,7 @@ static bool metal_graph_prefill_raw_swa(
  * compression windows and row finalization follow the same schedule after the
  * cached prefix.
  */
-static bool metal_graph_prefill_chunked_range(
+static bool metal_graph_prefill_chunked_range_capture(
         ds4_gpu_graph *g,
         const ds4_model       *model,
         const ds4_weights     *weights,
@@ -21324,7 +21502,8 @@ static bool metal_graph_prefill_chunked_range(
         ds4_imatrix_collector *imatrix,
         ds4_session_cancel_fn  cancel,
         void                  *cancel_ud,
-        bool                  *cancelled) {
+        bool                  *cancelled,
+        ds4_target_hc_capture *target_capture) {
     if (n_tokens == 0 || g->prefill_cap == 0) return false;
     if (start > (uint32_t)prompt->len) return false;
     if (n_tokens > (uint32_t)prompt->len - start) return false;
@@ -21334,21 +21513,22 @@ static bool metal_graph_prefill_chunked_range(
     if (!imatrix &&
         metal_graph_use_streaming_decode_prefill_range(g, weights,
                                                        start, n_tokens)) {
-        return metal_graph_prefill_decode_streaming_range(g,
-                                                          model,
-                                                          weights,
-                                                          prompt,
-                                                          start,
-                                                          n_tokens,
-                                                          logits,
-                                                          show_progress,
-                                                          progress,
-                                                          progress_ud,
-                                                          display_progress,
-                                                          display_progress_ud,
-                                                          cancel,
-                                                          cancel_ud,
-                                                          cancelled);
+        return metal_graph_prefill_decode_streaming_range_capture(g,
+                                                                  model,
+                                                                  weights,
+                                                                  prompt,
+                                                                  start,
+                                                                  n_tokens,
+                                                                  logits,
+                                                                  show_progress,
+                                                                  progress,
+                                                                  progress_ud,
+                                                                  display_progress,
+                                                                  display_progress_ud,
+                                                                  cancel,
+                                                                  cancel_ud,
+                                                                  cancelled,
+                                                                  target_capture);
     }
 
     uint32_t chunk_cap = g->prefill_cap;
@@ -21383,17 +21563,18 @@ static bool metal_graph_prefill_chunked_range(
         const uint32_t chunk = remaining < local_cap ? remaining : local_cap;
         const uint32_t chunk_end = pos0 + chunk;
         float *chunk_logits = (progress || chunk_end == end) ? logits : NULL;
-        bool ok = metal_graph_prefill_layer_major(g,
-                                                  model,
-                                                  weights,
-                                                  prompt,
-                                                  pos0,
-                                                  chunk,
-                                                  chunk_logits,
-                                                  show_progress,
-                                                  imatrix,
-                                                  display_progress,
-                                                  display_progress_ud);
+        bool ok = metal_graph_prefill_layer_major_capture(g,
+                                                          model,
+                                                          weights,
+                                                          prompt,
+                                                          pos0,
+                                                          chunk,
+                                                          chunk_logits,
+                                                          show_progress,
+                                                          imatrix,
+                                                          display_progress,
+                                                          display_progress_ud,
+                                                          target_capture);
         if (!ok) {
             if (ds4_gpu_synchronize() == 0) {
                 fprintf(stderr, "ds4: Metal synchronize after chunked prefill failure also failed\n");
@@ -21425,8 +21606,80 @@ static bool metal_graph_prefill_chunked_range(
     return true;
 }
 
+static bool metal_graph_prefill_chunked_range(
+        ds4_gpu_graph *g,
+        const ds4_model       *model,
+        const ds4_weights     *weights,
+        const token_vec       *prompt,
+        uint32_t               start,
+        uint32_t               n_tokens,
+        float                 *logits,
+        bool                   show_progress,
+        ds4_session_progress_fn progress,
+        void                  *progress_ud,
+        ds4_session_progress_fn display_progress,
+        void                  *display_progress_ud,
+        ds4_imatrix_collector *imatrix,
+        ds4_session_cancel_fn  cancel,
+        void                  *cancel_ud,
+        bool                  *cancelled) {
+    return metal_graph_prefill_chunked_range_capture(g,
+                                                     model,
+                                                     weights,
+                                                     prompt,
+                                                     start,
+                                                     n_tokens,
+                                                     logits,
+                                                     show_progress,
+                                                     progress,
+                                                     progress_ud,
+                                                     display_progress,
+                                                     display_progress_ud,
+                                                     imatrix,
+                                                     cancel,
+                                                     cancel_ud,
+                                                     cancelled,
+                                                     NULL);
+}
+
 /* Long prompts are prefetched in fixed-size chunks.  Chunks bound transient
  * attention buffers while preserving the same final KV/cache state. */
+static bool metal_graph_prefill_chunked_capture(
+        ds4_gpu_graph *g,
+        const ds4_model       *model,
+        const ds4_weights     *weights,
+        const token_vec       *prompt,
+        int                    n_tokens,
+        float                 *logits,
+        bool                   show_progress,
+        ds4_session_progress_fn progress,
+        void                  *progress_ud,
+        ds4_session_progress_fn display_progress,
+        void                  *display_progress_ud,
+        ds4_session_cancel_fn  cancel,
+        void                  *cancel_ud,
+        bool                  *cancelled,
+        ds4_target_hc_capture *target_capture) {
+    if (n_tokens <= 0) return false;
+    return metal_graph_prefill_chunked_range_capture(g,
+                                                     model,
+                                                     weights,
+                                                     prompt,
+                                                     0,
+                                                     (uint32_t)n_tokens,
+                                                     logits,
+                                                     show_progress,
+                                                     progress,
+                                                     progress_ud,
+                                                     display_progress,
+                                                     display_progress_ud,
+                                                     NULL,
+                                                     cancel,
+                                                     cancel_ud,
+                                                     cancelled,
+                                                     target_capture);
+}
+
 static bool metal_graph_prefill_chunked(
         ds4_gpu_graph *g,
         const ds4_model       *model,
@@ -21442,23 +21695,21 @@ static bool metal_graph_prefill_chunked(
         ds4_session_cancel_fn  cancel,
         void                  *cancel_ud,
         bool                  *cancelled) {
-    if (n_tokens <= 0) return false;
-    return metal_graph_prefill_chunked_range(g,
-                                             model,
-                                             weights,
-                                             prompt,
-                                             0,
-                                             (uint32_t)n_tokens,
-                                             logits,
-                                             show_progress,
-                                             progress,
-                                             progress_ud,
-                                             display_progress,
-                                             display_progress_ud,
-                                             NULL,
-                                             cancel,
-                                             cancel_ud,
-                                             cancelled);
+    return metal_graph_prefill_chunked_capture(g,
+                                               model,
+                                               weights,
+                                               prompt,
+                                               n_tokens,
+                                               logits,
+                                               show_progress,
+                                               progress,
+                                               progress_ud,
+                                               display_progress,
+                                               display_progress_ud,
+                                               cancel,
+                                               cancel_ud,
+                                               cancelled,
+                                               NULL);
 }
 
 /* Layer-major speculative target verifier for tiny MTP suffixes.
@@ -26016,6 +26267,11 @@ struct dspark_session_state {
     float *final_plain;
     float *final_norm;
     float *confidence;
+    ds4_gpu_tensor *target_hc_gpu;
+    float *target_hc;
+    float *target_context;
+    uint32_t target_context_rows;
+    bool target_context_valid;
     int block_tokens[16];
 };
 
@@ -26031,6 +26287,12 @@ static void dspark_session_state_reset(dspark_session_state *d) {
     d->draft_rows = 0;
     d->prev_token = UINT32_MAX;
     memset(d->stage_raw_rows, 0, sizeof(d->stage_raw_rows));
+}
+
+static void dspark_session_target_context_reset(dspark_session_state *d) {
+    if (!d) return;
+    d->target_context_rows = 0;
+    d->target_context_valid = false;
 }
 
 static dspark_session_state *dspark_session_state_create(
@@ -26074,6 +26336,9 @@ static dspark_session_state *dspark_session_state_create(
 
 static void dspark_session_state_free(dspark_session_state *d) {
     if (!d) return;
+    free(d->target_context);
+    free(d->target_hc);
+    ds4_gpu_tensor_free(d->target_hc_gpu);
     free(d->confidence);
     free(d->final_norm);
     free(d->final_plain);
@@ -26100,6 +26365,135 @@ static bool dspark_session_state_ensure(ds4_session *s, char *err, size_t errlen
                                             err,
                                             errlen);
     return s->dspark != NULL;
+}
+
+static bool dspark_session_probe_env_enabled(void);
+
+static bool dspark_session_target_context_ensure(ds4_session *s, char *err, size_t errlen) {
+    if (!dspark_session_state_ensure(s, err, errlen)) return false;
+
+    dspark_session_state *d = s->dspark;
+    if (d->target_hc_gpu && d->target_hc && d->target_context) return true;
+
+    const uint64_t hc_dim = (uint64_t)DS4_N_HC * DS4_N_EMBD;
+    const uint64_t hc_values =
+        (uint64_t)DS4_DSPARK_MTP_LAYERS * d->main_x_cap * hc_dim;
+    const uint64_t context_values =
+        (uint64_t)d->main_x_cap * DS4_DSPARK_MTP_LAYERS * DS4_N_EMBD;
+
+    if (!d->target_hc_gpu) {
+        d->target_hc_gpu = ds4_gpu_tensor_alloc(hc_values * sizeof(float));
+        if (!d->target_hc_gpu) {
+            if (errlen) snprintf(err, errlen, "failed to allocate DSpark target HC capture tensor");
+            return false;
+        }
+    }
+    if (!d->target_hc) {
+        d->target_hc = xmalloc((size_t)hc_values * sizeof(d->target_hc[0]));
+    }
+    if (!d->target_context) {
+        d->target_context = xmalloc((size_t)context_values * sizeof(d->target_context[0]));
+    }
+    return true;
+}
+
+static bool dspark_session_should_capture_target(const ds4_session *s) {
+    return s &&
+           s->engine &&
+           s->engine->dspark_ready &&
+           dspark_session_probe_env_enabled() &&
+           !s->distributed &&
+           !ds4_session_is_cpu(s) &&
+           ds4_backend_uses_graph(s->engine->backend);
+}
+
+static bool dspark_session_target_capture_begin(
+        ds4_session            *s,
+        uint32_t                start,
+        uint32_t                n_tokens,
+        ds4_target_hc_capture  *capture,
+        const char             *origin) {
+    if (capture) memset(capture, 0, sizeof(*capture));
+    if (!capture || !dspark_session_should_capture_target(s) || n_tokens == 0) return false;
+
+    char err[256];
+    err[0] = '\0';
+    if (!dspark_session_target_context_ensure(s, err, sizeof(err))) {
+        fprintf(stderr,
+                "ds4: DSpark dev probe capture disabled at %s: %s\n",
+                origin ? origin : "session",
+                err[0] ? err : "unknown error");
+        return false;
+    }
+
+    dspark_session_state *d = s->dspark;
+    if (start > d->main_x_cap || n_tokens > d->main_x_cap - start) {
+        dspark_session_target_context_reset(d);
+        return false;
+    }
+    if (start == 0) {
+        dspark_session_target_context_reset(d);
+    } else if (!d->target_context_valid || d->target_context_rows != start) {
+        dspark_session_target_context_reset(d);
+        return false;
+    }
+
+    capture->hc = d->target_hc_gpu;
+    capture->target_layers = s->engine->dspark_config.target_layer_ids;
+    capture->n_target_layers = DS4_DSPARK_MTP_LAYERS;
+    capture->cap_tokens = d->main_x_cap;
+    capture->failed = false;
+    return true;
+}
+
+static bool dspark_session_target_capture_finish(
+        ds4_session                  *s,
+        const ds4_target_hc_capture  *capture,
+        uint32_t                      context_len,
+        char                         *err,
+        size_t                        errlen) {
+    if (!capture || !capture->hc || !s || !s->dspark) return false;
+
+    dspark_session_state *d = s->dspark;
+    if (capture->failed) {
+        dspark_session_target_context_reset(d);
+        if (errlen) snprintf(err, errlen, "target-layer HC capture failed");
+        return false;
+    }
+    if (context_len == 0 || context_len > d->main_x_cap) {
+        dspark_session_target_context_reset(d);
+        if (errlen) snprintf(err, errlen, "captured DSpark context length is invalid");
+        return false;
+    }
+
+    const uint64_t hc_dim = (uint64_t)DS4_N_HC * DS4_N_EMBD;
+    const uint64_t layer_stride = (uint64_t)d->main_x_cap * hc_dim;
+    const uint64_t layer_bytes = (uint64_t)context_len * hc_dim * sizeof(float);
+    for (uint32_t i = 0; i < DS4_DSPARK_MTP_LAYERS; i++) {
+        const uint64_t off = (uint64_t)i * layer_stride * sizeof(float);
+        if (ds4_gpu_tensor_read(d->target_hc_gpu,
+                                off,
+                                d->target_hc + (uint64_t)i * layer_stride,
+                                layer_bytes) == 0) {
+            dspark_session_target_context_reset(d);
+            if (errlen) snprintf(err, errlen, "failed to read captured DSpark target HC");
+            return false;
+        }
+    }
+
+    for (uint32_t i = 0; i < DS4_DSPARK_MTP_LAYERS; i++) {
+        const float *layer_hc = d->target_hc + (uint64_t)i * layer_stride;
+        for (uint32_t t = 0; t < context_len; t++) {
+            dspark_probe_mean_target_hc(
+                d->target_context +
+                    ((uint64_t)t * DS4_DSPARK_MTP_LAYERS + i) * DS4_N_EMBD,
+                layer_hc + (uint64_t)t * hc_dim);
+        }
+    }
+
+    d->target_context_rows = context_len;
+    d->target_context_valid = true;
+    return true;
 }
 
 static bool dspark_session_state_prepare_block(
@@ -26498,56 +26892,29 @@ static void dspark_session_log_draft_rows(
         return;
     }
 
-    ds4_session *capture = NULL;
-    if (ds4_session_create(&capture, e, s->ctx_size) != 0) {
-        fprintf(stderr, "ds4: DSpark dev probe skipped at %s: failed to create capture session\n",
-                origin ? origin : "session");
-        return;
-    }
-    const int prefill_cap = ds4_session_prefill_cap(capture);
-    if ((int)n_tokens > prefill_cap) {
+    dspark_session_state *d = s->dspark;
+    if (!d || !d->target_context_valid || d->target_context_rows != n_tokens) {
         fprintf(stderr,
-                "ds4: DSpark dev probe skipped at %s: prefix tokens %u exceed prefill cap %d\n",
+                "ds4: DSpark dev probe skipped at %s: captured target context is unavailable for %u tokens\n",
                 origin ? origin : "session",
-                n_tokens,
-                prefill_cap);
-        ds4_session_free(capture);
+                n_tokens);
         return;
     }
-
-    const uint64_t hc_dim = (uint64_t)DS4_N_HC * DS4_N_EMBD;
-    const uint64_t hc_values = (uint64_t)n_tokens * hc_dim;
-    float *target_hc[DS4_DSPARK_MTP_LAYERS] = {0};
-    for (uint32_t i = 0; i < DS4_DSPARK_MTP_LAYERS; i++) {
-        target_hc[i] = xmalloc((size_t)hc_values * sizeof(target_hc[i][0]));
-    }
-    float *context = xmalloc((size_t)n_tokens * DS4_DSPARK_MTP_LAYERS *
-                             DS4_N_EMBD * sizeof(context[0]));
 
     char err[256];
     err[0] = '\0';
-    bool ok = dspark_capture_target_hc(capture,
-                                       &e->dspark_config,
-                                       s->checkpoint.v,
-                                       n_tokens,
-                                       target_hc,
-                                       err,
-                                       sizeof(err));
-    if (ok) {
-        dspark_mean_target_context(context, target_hc, n_tokens);
-        ok = dspark_session_prepare_from_target_context(s,
-                                                        context,
-                                                        n_tokens,
-                                                        s->checkpoint.v[s->checkpoint.len - 1],
-                                                        NULL,
-                                                        NULL,
-                                                        NULL,
-                                                        err,
-                                                        sizeof(err));
-    }
+    bool ok = dspark_session_prepare_from_target_context(s,
+                                                         d->target_context,
+                                                         n_tokens,
+                                                         s->checkpoint.v[s->checkpoint.len - 1],
+                                                         NULL,
+                                                         NULL,
+                                                         NULL,
+                                                         err,
+                                                         sizeof(err));
 
     if (ok) {
-        dspark_session_state *d = s->dspark;
+        d = s->dspark;
         const uint32_t block_size = d->block_size;
         fprintf(stderr,
                 "ds4: DSpark dev probe at %s prefix_tokens=%u anchor_token=%d; "
@@ -26587,10 +26954,6 @@ static void dspark_session_log_draft_rows(
                 origin ? origin : "session",
                 err[0] ? err : "unknown error");
     }
-
-    free(context);
-    for (uint32_t i = 0; i < DS4_DSPARK_MTP_LAYERS; i++) free(target_hc[i]);
-    ds4_session_free(capture);
 }
 #else
 static void dspark_session_log_draft_rows(ds4_session *s, const char *origin) {
@@ -26656,47 +27019,17 @@ int ds4_engine_dspark_probe(ds4_engine *e, const ds4_tokens *prompt, int ctx_siz
     char err[256];
     err[0] = '\0';
     int rc = 0;
-    uint32_t layer_start = 0;
-    for (uint32_t i = 0; i < DS4_DSPARK_MTP_LAYERS; i++) {
-        const uint32_t layer_end = e->dspark_config.target_layer_ids[i];
-        if (layer_end < layer_start || layer_end >= DS4_N_LAYER) {
-            fprintf(stderr,
-                    "ds4: invalid DSpark probe target layer range %u:%u\n",
-                    layer_start,
-                    layer_end);
-            rc = 1;
-            break;
-        }
-        if (ds4_session_layer_slice_reset(session, err, sizeof(err)) != 0) {
-            fprintf(stderr,
-                    "ds4: DSpark probe reset failed before layer %u: %s\n",
-                    layer_end,
-                    err[0] ? err : "unknown error");
-            rc = 1;
-            break;
-        }
-        const float *input_hc = i == 0 ? NULL : target_hc[i - 1u];
-        if (ds4_session_eval_layer_slice(session,
-                                         prompt->v,
-                                         (uint32_t)prompt->len,
-                                         0,
-                                         layer_start,
-                                         layer_end,
-                                         input_hc,
-                                         target_hc[i],
-                                         false,
-                                         NULL,
-                                         err,
-                                         sizeof(err)) != 0) {
-            fprintf(stderr,
-                    "ds4: DSpark probe layer slice %u:%u failed: %s\n",
-                    layer_start,
-                    layer_end,
-                    err[0] ? err : "unknown error");
-            rc = 1;
-            break;
-        }
-        layer_start = layer_end + 1u;
+    if (!dspark_capture_target_hc(session,
+                                  &e->dspark_config,
+                                  prompt->v,
+                                  (uint32_t)prompt->len,
+                                  target_hc,
+                                  err,
+                                  sizeof(err))) {
+        fprintf(stderr,
+                "ds4: DSpark probe target capture failed: %s\n",
+                err[0] ? err : "unknown error");
+        rc = 1;
     }
 
     if (rc == 0) {
@@ -26719,6 +27052,7 @@ int ds4_engine_dspark_probe(ds4_engine *e, const ds4_tokens *prompt, int ctx_siz
                                  DS4_N_EMBD * sizeof(context[0]));
         float *legacy_context = xmalloc((size_t)DS4_DSPARK_MTP_LAYERS * DS4_N_EMBD *
                                         sizeof(legacy_context[0]));
+        dspark_mean_target_context(context, target_hc, context_len);
 
         fprintf(stderr,
                 "ds4: DSpark probe captured prompt_tokens=%d target_layers=%u,%u,%u\n",
@@ -26738,11 +27072,6 @@ int ds4_engine_dspark_probe(ds4_engine *e, const ds4_tokens *prompt, int ctx_siz
             snprintf(label, sizeof(label), "dspark probe layer %u hc", layer);
             print_vec_stats(label, last_hc, hc_dim);
 
-            for (uint32_t t = 0; t < context_len; t++) {
-                dspark_probe_mean_target_hc(
-                    context + ((uint64_t)t * DS4_DSPARK_MTP_LAYERS + i) * DS4_N_EMBD,
-                    target_hc[i] + (uint64_t)t * hc_dim);
-            }
             const char *method = NULL;
             dspark_probe_legacy_collapse_target_hc(legacy,
                                                    &e->model,
@@ -27825,6 +28154,7 @@ static DS4_MAYBE_UNUSED void ds4_session_slice_commit_timeline(ds4_session *s, c
     s->mtp_draft_valid = false;
 #ifndef DS4_NO_GPU
     dspark_session_state_reset(s->dspark);
+    dspark_session_target_context_reset(s->dspark);
 #endif
 }
 
@@ -28296,38 +28626,61 @@ int ds4_session_sync(ds4_session *s, const ds4_tokens *prompt, char *err, size_t
         const uint32_t resume_min = metal_graph_resume_prefill_min_tokens();
         if (suffix > 0 && (uint32_t)suffix >= resume_min) {
             bool cancelled = false;
+            ds4_target_hc_capture dspark_capture;
+            const bool dspark_capture_active =
+                dspark_session_target_capture_begin(s,
+                                                    (uint32_t)s->checkpoint.len,
+                                                    (uint32_t)suffix,
+                                                    &dspark_capture,
+                                                    "sync");
             ds4_sync_progress progress = {
                 .session = s,
                 .prompt = prompt,
                 .user = s->progress,
                 .user_ud = s->progress_ud,
             };
-            bool ok = metal_graph_prefill_chunked_range(&s->graph,
-                                                        &e->model,
-                                                        &e->weights,
-                                                        prompt,
-                                                        (uint32_t)s->checkpoint.len,
-                                                        (uint32_t)suffix,
-                                                        s->logits,
-                                                        false,
-                                                        ds4_session_note_prefill_progress,
-                                                        &progress,
-                                                        s->display_progress,
-                                                        s->display_progress_ud,
-                                                        NULL,
-                                                        ds4_session_cancelled_cb,
-                                                        s,
-                                                        &cancelled);
+            bool ok = metal_graph_prefill_chunked_range_capture(&s->graph,
+                                                                &e->model,
+                                                                &e->weights,
+                                                                prompt,
+                                                                (uint32_t)s->checkpoint.len,
+                                                                (uint32_t)suffix,
+                                                                s->logits,
+                                                                false,
+                                                                ds4_session_note_prefill_progress,
+                                                                &progress,
+                                                                s->display_progress,
+                                                                s->display_progress_ud,
+                                                                NULL,
+                                                                ds4_session_cancelled_cb,
+                                                                s,
+                                                                &cancelled,
+                                                                dspark_capture_active ? &dspark_capture : NULL);
             if (cancelled) {
                 snprintf(err, errlen, "interrupted");
                 s->checkpoint_valid = true;
                 s->mtp_draft_valid = false;
+                dspark_session_target_context_reset(s->dspark);
                 return DS4_SESSION_SYNC_INTERRUPTED;
             }
             if (!ok) {
                 snprintf(err, errlen, "%s resumed prefill failed while extending checkpoint", backend_name);
                 s->checkpoint_valid = false;
+                dspark_session_target_context_reset(s->dspark);
                 return 1;
+            }
+            if (dspark_capture_active) {
+                char cap_err[256];
+                cap_err[0] = '\0';
+                if (!dspark_session_target_capture_finish(s,
+                                                          &dspark_capture,
+                                                          (uint32_t)prompt->len,
+                                                          cap_err,
+                                                          sizeof(cap_err))) {
+                    fprintf(stderr,
+                            "ds4: DSpark dev probe capture skipped at sync: %s\n",
+                            cap_err[0] ? cap_err : "unknown error");
+                }
             }
             ds4_tokens_copy(&s->checkpoint, prompt);
             s->checkpoint_valid = true;
@@ -28335,23 +28688,47 @@ int ds4_session_sync(ds4_session *s, const ds4_tokens *prompt, char *err, size_t
             return 0;
         }
 
+        ds4_target_hc_capture dspark_capture;
+        const bool dspark_capture_active =
+            suffix > 0 &&
+            dspark_session_target_capture_begin(s,
+                                                (uint32_t)s->checkpoint.len,
+                                                (uint32_t)suffix,
+                                                &dspark_capture,
+                                                "sync");
         for (int i = s->checkpoint.len; i < prompt->len; i++) {
             if (ds4_session_cancelled(s)) {
                 snprintf(err, errlen, "interrupted");
                 s->checkpoint_valid = true;
                 s->mtp_draft_valid = false;
+                dspark_session_target_context_reset(s->dspark);
                 return DS4_SESSION_SYNC_INTERRUPTED;
             }
-            if (!metal_graph_eval_token_raw_swa(&s->graph, &e->model, &e->weights,
-                                                (uint32_t)prompt->v[i],
-                                                (uint32_t)s->checkpoint.len,
-                                                s->logits))
+            if (!metal_graph_eval_token_raw_swa_capture(&s->graph, &e->model, &e->weights,
+                                                        (uint32_t)prompt->v[i],
+                                                        (uint32_t)s->checkpoint.len,
+                                                        s->logits,
+                                                        dspark_capture_active ? &dspark_capture : NULL))
             {
                 snprintf(err, errlen, "%s decode failed while extending checkpoint", backend_name);
                 s->checkpoint_valid = false;
+                dspark_session_target_context_reset(s->dspark);
                 return 1;
             }
             token_vec_push(&s->checkpoint, prompt->v[i]);
+        }
+        if (dspark_capture_active) {
+            char cap_err[256];
+            cap_err[0] = '\0';
+            if (!dspark_session_target_capture_finish(s,
+                                                      &dspark_capture,
+                                                      (uint32_t)prompt->len,
+                                                      cap_err,
+                                                      sizeof(cap_err))) {
+                fprintf(stderr,
+                        "ds4: DSpark dev probe capture skipped at sync: %s\n",
+                        cap_err[0] ? cap_err : "unknown error");
+            }
         }
         dspark_session_log_draft_rows(s, "sync");
         return 0;
@@ -28365,6 +28742,13 @@ int ds4_session_sync(ds4_session *s, const ds4_tokens *prompt, char *err, size_t
         snprintf(err, errlen, "%s prefill state reset failed", backend_name);
         return 1;
     }
+    ds4_target_hc_capture dspark_capture;
+    const bool dspark_capture_active =
+        dspark_session_target_capture_begin(s,
+                                            0,
+                                            (uint32_t)prompt->len,
+                                            &dspark_capture,
+                                            "sync");
     if (s->prefill_cap < (uint32_t)prompt->len) {
         bool cancelled = false;
         ds4_sync_progress progress = {
@@ -28373,38 +28757,56 @@ int ds4_session_sync(ds4_session *s, const ds4_tokens *prompt, char *err, size_t
             .user = s->progress,
             .user_ud = s->progress_ud,
         };
-        ok = metal_graph_prefill_chunked(&s->graph, &e->model, &e->weights,
-                                         prompt, prompt->len, s->logits, false,
-                                         ds4_session_note_prefill_progress, &progress,
-                                         s->display_progress,
-                                         s->display_progress_ud,
-                                         ds4_session_cancelled_cb,
-                                         s,
-                                         &cancelled);
+        ok = metal_graph_prefill_chunked_capture(&s->graph, &e->model, &e->weights,
+                                                 prompt, prompt->len, s->logits, false,
+                                                 ds4_session_note_prefill_progress, &progress,
+                                                 s->display_progress,
+                                                 s->display_progress_ud,
+                                                 ds4_session_cancelled_cb,
+                                                 s,
+                                                 &cancelled,
+                                                 dspark_capture_active ? &dspark_capture : NULL);
         if (cancelled) {
             snprintf(err, errlen, "interrupted");
             s->checkpoint_valid = s->checkpoint.len > 0;
             s->mtp_draft_valid = false;
+            dspark_session_target_context_reset(s->dspark);
             return DS4_SESSION_SYNC_INTERRUPTED;
         }
     } else {
         bool cancelled = false;
-        ok = metal_graph_prefill_raw_swa(&s->graph, &e->model, &e->weights,
-                                         prompt, prompt->len, s->logits, false,
-                                         s->display_progress,
-                                         s->display_progress_ud,
-                                         ds4_session_cancelled_cb,
-                                         s,
-                                         &cancelled);
+        ok = metal_graph_prefill_raw_swa_capture(&s->graph, &e->model, &e->weights,
+                                                 prompt, prompt->len, s->logits, false,
+                                                 s->display_progress,
+                                                 s->display_progress_ud,
+                                                 ds4_session_cancelled_cb,
+                                                 s,
+                                                 &cancelled,
+                                                 dspark_capture_active ? &dspark_capture : NULL);
         if (cancelled) {
             snprintf(err, errlen, "interrupted");
+            dspark_session_target_context_reset(s->dspark);
             return DS4_SESSION_SYNC_INTERRUPTED;
         }
     }
     if (!ok) {
         snprintf(err, errlen, "%s prefill failed", backend_name);
         s->checkpoint_valid = false;
+        dspark_session_target_context_reset(s->dspark);
         return 1;
+    }
+    if (dspark_capture_active) {
+        char cap_err[256];
+        cap_err[0] = '\0';
+        if (!dspark_session_target_capture_finish(s,
+                                                  &dspark_capture,
+                                                  (uint32_t)prompt->len,
+                                                  cap_err,
+                                                  sizeof(cap_err))) {
+            fprintf(stderr,
+                    "ds4: DSpark dev probe capture skipped at sync: %s\n",
+                    cap_err[0] ? cap_err : "unknown error");
+        }
     }
     ds4_tokens_copy(&s->checkpoint, prompt);
     s->checkpoint_valid = true;
@@ -28644,14 +29046,37 @@ static int ds4_session_eval_internal(ds4_session *s, int token, bool probe_mtp,
         }
         s->mtp_draft_valid = false;
     }
-    if (!metal_graph_eval_token_raw_swa(&s->graph, &e->model, &e->weights,
-                                        (uint32_t)token,
-                                        (uint32_t)s->checkpoint.len,
-                                        s->logits))
+    ds4_target_hc_capture dspark_capture;
+    const uint32_t dspark_capture_pos = (uint32_t)s->checkpoint.len;
+    const bool dspark_capture_active =
+        dspark_session_target_capture_begin(s,
+                                            dspark_capture_pos,
+                                            1,
+                                            &dspark_capture,
+                                            "eval");
+    if (!metal_graph_eval_token_raw_swa_capture(&s->graph, &e->model, &e->weights,
+                                                (uint32_t)token,
+                                                dspark_capture_pos,
+                                                s->logits,
+                                                dspark_capture_active ? &dspark_capture : NULL))
     {
         snprintf(err, errlen, "%s decode failed", ds4_backend_name(e->backend));
         s->checkpoint_valid = false;
+        dspark_session_target_context_reset(s->dspark);
         return 1;
+    }
+    if (dspark_capture_active) {
+        char cap_err[256];
+        cap_err[0] = '\0';
+        if (!dspark_session_target_capture_finish(s,
+                                                  &dspark_capture,
+                                                  dspark_capture_pos + 1u,
+                                                  cap_err,
+                                                  sizeof(cap_err))) {
+            fprintf(stderr,
+                    "ds4: DSpark dev probe capture skipped at eval: %s\n",
+                    cap_err[0] ? cap_err : "unknown error");
+        }
     }
     token_vec_push(&s->checkpoint, token);
     if (mtp_should_draft) {
@@ -29294,6 +29719,7 @@ void ds4_session_invalidate(ds4_session *s) {
     s->mtp_draft_valid = false;
 #ifndef DS4_NO_GPU
     dspark_session_state_reset(s->dspark);
+    dspark_session_target_context_reset(s->dspark);
 #endif
 }
 
@@ -29304,6 +29730,7 @@ void ds4_session_rewind(ds4_session *s, int pos) {
     s->mtp_draft_valid = false;
 #ifndef DS4_NO_GPU
     dspark_session_state_reset(s->dspark);
+    dspark_session_target_context_reset(s->dspark);
 #endif
 }
 
