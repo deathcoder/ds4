@@ -22193,6 +22193,10 @@ struct ds4_engine {
     bool dspark_ready;
 };
 
+#ifndef DS4_NO_GPU
+typedef struct dspark_session_state dspark_session_state;
+#endif
+
 static bool cpu_directional_steering_enabled(
         const float *dirs,
         float        scale) {
@@ -23622,6 +23626,7 @@ struct ds4_session {
     ds4_dist_session *distributed;
 #ifndef DS4_NO_GPU
     ds4_gpu_graph graph;
+    dspark_session_state *dspark;
 #endif
     ds4_kv_cache cpu_cache;
     ds4_cpu_decode_scratch cpu_scratch;
@@ -25991,25 +25996,152 @@ static void dspark_draft_step_cpu(
                 &out->logit1);
 }
 
+struct dspark_session_state {
+    uint32_t ctx_size;
+    uint32_t main_x_cap;
+    uint32_t sidecar_kv_cap;
+    uint32_t block_size;
+    uint32_t markov_rank;
+    uint32_t main_x_rows;
+    uint32_t stage_raw_rows[DS4_DSPARK_MTP_LAYERS];
+    uint32_t draft_rows;
+    uint32_t prev_token;
+    dspark_draft_step_scratch step;
+    float *main_x;
+    float *stage_kv[DS4_DSPARK_MTP_LAYERS];
+    float *plain;
+    float *cur_hc;
+    float *next_hc;
+    float *final_plain;
+    float *final_norm;
+    float *confidence;
+    int block_tokens[16];
+};
+
+static uint32_t dspark_session_raw_cap(uint32_t ctx_size) {
+    uint32_t cap = ctx_size;
+    if (cap > (uint32_t)DS4_N_SWA) cap = (uint32_t)DS4_N_SWA;
+    return cap;
+}
+
+static void dspark_session_state_reset(dspark_session_state *d) {
+    if (!d) return;
+    d->main_x_rows = 0;
+    d->draft_rows = 0;
+    d->prev_token = UINT32_MAX;
+    memset(d->stage_raw_rows, 0, sizeof(d->stage_raw_rows));
+}
+
+static dspark_session_state *dspark_session_state_create(
+        const ds4_dspark_config *cfg,
+        uint32_t                 ctx_size,
+        char                    *err,
+        size_t                   errlen) {
+    if (!cfg || cfg->block_size == 0 || cfg->block_size > 16 || cfg->markov_rank == 0) {
+        if (errlen) snprintf(err, errlen, "invalid DSpark session shape");
+        return NULL;
+    }
+
+    dspark_session_state *d = xcalloc(1, sizeof(*d));
+    d->ctx_size = ctx_size;
+    d->main_x_cap = dspark_session_raw_cap(ctx_size);
+    d->sidecar_kv_cap = d->main_x_cap + cfg->block_size;
+    d->block_size = cfg->block_size;
+    d->markov_rank = cfg->markov_rank;
+
+    dspark_draft_step_scratch_init(&d->step, cfg->markov_rank);
+    d->main_x = xmalloc((size_t)d->main_x_cap * DS4_N_EMBD * sizeof(d->main_x[0]));
+    for (uint32_t stage = 0; stage < DS4_DSPARK_MTP_LAYERS; stage++) {
+        d->stage_kv[stage] = xmalloc((size_t)d->sidecar_kv_cap *
+                                     DS4_N_HEAD_DIM * sizeof(d->stage_kv[stage][0]));
+    }
+    const uint64_t block_hc_values =
+        (uint64_t)cfg->block_size * DS4_N_HC * DS4_N_EMBD;
+    d->plain = xmalloc((size_t)DS4_N_EMBD * sizeof(d->plain[0]));
+    d->cur_hc = xmalloc((size_t)block_hc_values * sizeof(d->cur_hc[0]));
+    d->next_hc = xmalloc((size_t)block_hc_values * sizeof(d->next_hc[0]));
+    d->final_plain = xmalloc((size_t)cfg->block_size * DS4_N_EMBD *
+                             sizeof(d->final_plain[0]));
+    d->final_norm = xmalloc((size_t)cfg->block_size * DS4_N_EMBD *
+                            sizeof(d->final_norm[0]));
+    d->confidence = xmalloc((size_t)cfg->block_size * sizeof(d->confidence[0]));
+    dspark_session_state_reset(d);
+    return d;
+}
+
+static void dspark_session_state_free(dspark_session_state *d) {
+    if (!d) return;
+    free(d->confidence);
+    free(d->final_norm);
+    free(d->final_plain);
+    free(d->next_hc);
+    free(d->cur_hc);
+    free(d->plain);
+    for (uint32_t stage = 0; stage < DS4_DSPARK_MTP_LAYERS; stage++) {
+        free(d->stage_kv[stage]);
+    }
+    free(d->main_x);
+    dspark_draft_step_scratch_free(&d->step);
+    free(d);
+}
+
+static bool dspark_session_state_ensure(ds4_session *s, char *err, size_t errlen) {
+    if (!s || !s->engine || !s->engine->dspark_ready) {
+        if (errlen) snprintf(err, errlen, "DSpark session state requires --dspark FILE");
+        return false;
+    }
+    if (s->dspark) return true;
+    s->dspark = dspark_session_state_create(&s->engine->dspark_config,
+                                            (uint32_t)s->ctx_size,
+                                            err,
+                                            errlen);
+    return s->dspark != NULL;
+}
+
+static bool dspark_session_state_prepare_block(
+        dspark_session_state *d,
+        uint32_t              context_len,
+        char                 *err,
+        size_t                errlen) {
+    if (!d) {
+        if (errlen) snprintf(err, errlen, "missing DSpark session state");
+        return false;
+    }
+    if (context_len > d->main_x_cap) {
+        if (errlen) snprintf(err, errlen,
+                             "DSpark sidecar context requires prompt_tokens <= %u",
+                             d->main_x_cap);
+        return false;
+    }
+    if (context_len + d->block_size > d->sidecar_kv_cap) {
+        if (errlen) snprintf(err, errlen, "DSpark sidecar KV window is too small");
+        return false;
+    }
+    dspark_session_state_reset(d);
+    return true;
+}
+
 static void dspark_probe_attention_block(
         float                  * after_attn_hc,
         const ds4_model        * model,
         const ds4_layer_weights * layer,
         const float            * inp_hc,
         const float            * main_x,
+        float                  * kv_rows,
+        uint32_t                 kv_cap,
         uint32_t                 context_len,
         uint32_t                 block_size) {
     const uint32_t n_hc = DS4_N_HC;
     const uint64_t hc_dim = (uint64_t)n_hc * DS4_N_EMBD;
     const uint64_t q_dim = (uint64_t)DS4_N_HEAD * DS4_N_HEAD_DIM;
     const uint32_t n_kv = context_len + block_size;
+    if (!kv_rows || n_kv > kv_cap) ds4_die("DSpark sidecar KV scratch is too small");
 
     float *attn_cur = xmalloc((size_t)block_size * DS4_N_EMBD * sizeof(attn_cur[0]));
     float *attn_norm = xmalloc((size_t)block_size * DS4_N_EMBD * sizeof(attn_norm[0]));
     float *post = xmalloc((size_t)block_size * n_hc * sizeof(post[0]));
     float *comb = xmalloc((size_t)block_size * n_hc * n_hc * sizeof(comb[0]));
     float *q = xmalloc((size_t)block_size * q_dim * sizeof(q[0]));
-    float *kv_rows = xmalloc((size_t)n_kv * DS4_N_HEAD_DIM * sizeof(kv_rows[0]));
     float *heads = xmalloc((size_t)block_size * q_dim * sizeof(heads[0]));
     float *attn_out = xmalloc((size_t)block_size * DS4_N_EMBD * sizeof(attn_out[0]));
     const float *attn_norm_w = tensor_data(model, layer->attn_norm);
@@ -26101,7 +26233,6 @@ static void dspark_probe_attention_block(
 
     free(attn_out);
     free(heads);
-    free(kv_rows);
     free(q);
     free(comb);
     free(post);
@@ -26115,6 +26246,8 @@ static void dspark_probe_stage_block(
         const ds4_layer_weights * layer,
         const float            * inp_hc,
         const float            * main_x,
+        float                  * kv_rows,
+        uint32_t                 kv_cap,
         const int              * block_tokens,
         uint32_t                 context_len,
         uint32_t                 block_size,
@@ -26127,6 +26260,8 @@ static void dspark_probe_stage_block(
                                  layer,
                                  inp_hc,
                                  main_x,
+                                 kv_rows,
+                                 kv_cap,
                                  context_len,
                                  block_size);
     layer_ffn_batch(out_hc,
@@ -26259,13 +26394,26 @@ int ds4_engine_dspark_probe(ds4_engine *e, const ds4_tokens *prompt, int ctx_siz
                     block_size);
             rc = 1;
         }
+        if (rc == 0 && !dspark_session_state_ensure(session, err, sizeof(err))) {
+            fprintf(stderr,
+                    "ds4: DSpark probe failed to create sidecar session state: %s\n",
+                    err[0] ? err : "unknown error");
+            rc = 1;
+        }
+        dspark_session_state *dspark = rc == 0 ? session->dspark : NULL;
+        if (rc == 0 &&
+            !dspark_session_state_prepare_block(dspark, context_len, err, sizeof(err))) {
+            fprintf(stderr,
+                    "ds4: DSpark probe sidecar state is not ready: %s\n",
+                    err[0] ? err : "unknown error");
+            rc = 1;
+        }
         float *context = xmalloc((size_t)context_len * DS4_DSPARK_MTP_LAYERS *
                                  DS4_N_EMBD * sizeof(context[0]));
         float *legacy_context = xmalloc((size_t)DS4_DSPARK_MTP_LAYERS * DS4_N_EMBD *
                                         sizeof(legacy_context[0]));
-        float *main_x = xmalloc((size_t)context_len * DS4_N_EMBD * sizeof(main_x[0]));
+        float *main_x = dspark ? dspark->main_x : NULL;
         float *projected = xmalloc((size_t)DS4_N_EMBD * sizeof(projected[0]));
-        float *normed = xmalloc((size_t)DS4_N_EMBD * sizeof(normed[0]));
 
         fprintf(stderr,
                 "ds4: DSpark probe captured prompt_tokens=%d target_layers=%u,%u,%u\n",
@@ -26322,25 +26470,23 @@ int ds4_engine_dspark_probe(ds4_engine *e, const ds4_tokens *prompt, int ctx_siz
                                 DS4_N_EMBD,
                                 DS4_RMS_EPS);
             }
+            dspark->main_x_rows = context_len;
             matvec_q8_0(projected,
                         &e->dspark_model,
                         e->dspark_weights.main_proj,
                         context + (uint64_t)last * DS4_DSPARK_MTP_LAYERS * DS4_N_EMBD);
-            memcpy(normed, main_x + (uint64_t)last * DS4_N_EMBD,
-                   (size_t)DS4_N_EMBD * sizeof(normed[0]));
+            const float *normed = main_x + (uint64_t)last * DS4_N_EMBD;
             print_vec_stats("dspark probe main_proj", projected, DS4_N_EMBD);
             print_vec_stats("dspark probe main_norm", normed, DS4_N_EMBD);
 
             const uint64_t block_hc_values = (uint64_t)block_size * hc_dim;
-            int block_tokens[16];
-            float *plain = xmalloc((size_t)DS4_N_EMBD * sizeof(plain[0]));
-            float *cur_hc = xmalloc((size_t)block_hc_values * sizeof(cur_hc[0]));
-            float *next_hc = xmalloc((size_t)block_hc_values * sizeof(next_hc[0]));
-            float *final_plain = xmalloc((size_t)block_size * DS4_N_EMBD * sizeof(final_plain[0]));
-            float *final_norm = xmalloc((size_t)block_size * DS4_N_EMBD * sizeof(final_norm[0]));
-            dspark_draft_step_scratch step_scratch;
-            dspark_draft_step_scratch_init(&step_scratch, e->dspark_config.markov_rank);
-            float *confidence = xmalloc((size_t)block_size * sizeof(confidence[0]));
+            int *block_tokens = dspark->block_tokens;
+            float *plain = dspark->plain;
+            float *cur_hc = dspark->cur_hc;
+            float *next_hc = dspark->next_hc;
+            float *final_plain = dspark->final_plain;
+            float *final_norm = dspark->final_norm;
+            float *confidence = dspark->confidence;
 
             block_tokens[0] = prompt->v[last];
             for (uint32_t t = 1; t < block_size; t++) {
@@ -26367,10 +26513,13 @@ int ds4_engine_dspark_probe(ds4_engine *e, const ds4_tokens *prompt, int ctx_siz
                                          &e->dspark_weights.stage[stage],
                                          cur_hc,
                                          main_x,
+                                         dspark->stage_kv[stage],
+                                         dspark->sidecar_kv_cap,
                                          block_tokens,
                                          context_len,
                                          block_size,
                                          stage);
+                dspark->stage_raw_rows[stage] = context_len + block_size;
                 char label[96];
                 snprintf(label, sizeof(label), "dspark probe stage %u hc block", stage);
                 print_vec_stats(label, next_hc, block_hc_values);
@@ -26405,7 +26554,7 @@ int ds4_engine_dspark_probe(ds4_engine *e, const ds4_tokens *prompt, int ctx_siz
                 dspark_draft_step_result step;
                 dspark_draft_step_cpu(
                     &step,
-                    &step_scratch,
+                    &dspark->step,
                     e,
                     final_plain + (uint64_t)t * DS4_N_EMBD,
                     final_norm + (uint64_t)t * DS4_N_EMBD,
@@ -26413,13 +26562,13 @@ int ds4_engine_dspark_probe(ds4_engine *e, const ds4_tokens *prompt, int ctx_siz
                 confidence[t] = step.confidence_logit;
                 if (t == 0) {
                     print_vec_stats("dspark probe row0 base_logits",
-                                    step_scratch.base_logits,
+                                    dspark->step.base_logits,
                                     DS4_N_VOCAB);
                     print_vec_stats("dspark probe row0 markov_bias",
-                                    step_scratch.markov_bias,
+                                    dspark->step.markov_bias,
                                     DS4_N_VOCAB);
                     print_vec_stats("dspark probe row0 markov_logits",
-                                    step_scratch.logits,
+                                    dspark->step.logits,
                                     DS4_N_VOCAB);
                 }
                 fprintf(stderr,
@@ -26435,23 +26584,15 @@ int ds4_engine_dspark_probe(ds4_engine *e, const ds4_tokens *prompt, int ctx_siz
                         step.confidence);
                 prev_token = step.top0 >= 0 ? (uint32_t)step.top0 : prev_token;
             }
+            dspark->draft_rows = block_size;
+            dspark->prev_token = prev_token;
             print_vec_stats("dspark probe confidence logits", confidence, block_size);
             fprintf(stderr,
                     "ds4: DSpark probe sidecar Markov/confidence dry-run completed; "
                     "no tokens were emitted, accepted, appended, or speculated\n");
-
-            free(confidence);
-            dspark_draft_step_scratch_free(&step_scratch);
-            free(final_norm);
-            free(final_plain);
-            free(next_hc);
-            free(cur_hc);
-            free(plain);
         }
 
-        free(normed);
         free(projected);
-        free(main_x);
         free(legacy_context);
         free(context);
     }
@@ -27254,6 +27395,7 @@ void ds4_session_free(ds4_session *s) {
     }
 #ifndef DS4_NO_GPU
     else {
+        dspark_session_state_free(s->dspark);
         metal_graph_free(&s->graph);
     }
 #endif
@@ -27435,6 +27577,9 @@ static DS4_MAYBE_UNUSED void ds4_session_slice_commit_timeline(ds4_session *s, c
     for (uint32_t i = 0; i < n_tokens; i++) token_vec_push(&s->checkpoint, tokens[i]);
     s->checkpoint_valid = true;
     s->mtp_draft_valid = false;
+#ifndef DS4_NO_GPU
+    dspark_session_state_reset(s->dspark);
+#endif
 }
 
 int ds4_session_eval_layer_slice(ds4_session *s,
@@ -28895,6 +29040,9 @@ void ds4_session_invalidate(ds4_session *s) {
     s->checkpoint_valid = false;
     s->checkpoint.len = 0;
     s->mtp_draft_valid = false;
+#ifndef DS4_NO_GPU
+    dspark_session_state_reset(s->dspark);
+#endif
 }
 
 void ds4_session_rewind(ds4_session *s, int pos) {
@@ -28902,6 +29050,9 @@ void ds4_session_rewind(ds4_session *s, int pos) {
     if (pos > s->checkpoint.len) pos = s->checkpoint.len;
     s->checkpoint.len = pos;
     s->mtp_draft_valid = false;
+#ifndef DS4_NO_GPU
+    dspark_session_state_reset(s->dspark);
+#endif
 }
 
 int ds4_session_pos(ds4_session *s) {
