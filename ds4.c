@@ -17411,24 +17411,6 @@ static bool metal_graph_encode_token_raw_swa_capture(
     return ok;
 }
 
-static bool metal_graph_encode_token_raw_swa(
-        ds4_gpu_graph *g,
-        const ds4_model       *model,
-        const ds4_weights     *weights,
-        int                    token,
-        uint32_t               pos,
-        bool                   need_logits,
-        bool                   allow_split_flush) {
-    return metal_graph_encode_token_raw_swa_capture(g,
-                                                    model,
-                                                    weights,
-                                                    token,
-                                                    pos,
-                                                    need_logits,
-                                                    allow_split_flush,
-                                                    NULL);
-}
-
 static ds4_gpu_tensor *metal_graph_tensor_row_view(
         ds4_gpu_tensor *base,
         uint32_t          row,
@@ -20353,19 +20335,30 @@ static bool metal_graph_seed_streaming_expert_cache_from_hotlist(
  * once, for the final committed state that normal sampling will continue from.
  * Keeping intermediate rows device-resident avoids turning verification into a
  * sequence of large CPU readbacks. */
-static bool metal_graph_eval_token_raw_swa_top(
+static bool metal_graph_eval_token_raw_swa_top_capture(
         ds4_gpu_graph *g,
         const ds4_model       *model,
         const ds4_weights     *weights,
         int                    token,
         uint32_t               pos,
         int                   *top_id,
-        float                 *logits) {
+        float                 *logits,
+        ds4_target_hc_capture *target_capture) {
     if (!top_id) return false;
 
+    /* SSD streaming needs its own map/readahead executor. Callers that need
+     * DSpark captures use the full-logit streaming helper instead. */
+    if (g && g->ssd_streaming) return false;
+
     bool ok = ds4_gpu_begin_commands() != 0;
-    if (ok) ok = metal_graph_encode_token_raw_swa(g, model, weights,
-                                                  token, pos, true, true);
+    if (ok) ok = metal_graph_encode_token_raw_swa_capture(g,
+                                                          model,
+                                                          weights,
+                                                          token,
+                                                          pos,
+                                                          true,
+                                                          true,
+                                                          target_capture);
     if (ok) {
         ok = ds4_gpu_argmax_tensor(g->comp_selected,
                                    g->logits,
@@ -20382,6 +20375,24 @@ static bool metal_graph_eval_token_raw_swa_top(
         }
     }
     return ok;
+}
+
+static bool metal_graph_eval_token_raw_swa_top(
+        ds4_gpu_graph *g,
+        const ds4_model       *model,
+        const ds4_weights     *weights,
+        int                    token,
+        uint32_t               pos,
+        int                   *top_id,
+        float                 *logits) {
+    return metal_graph_eval_token_raw_swa_top_capture(g,
+                                                       model,
+                                                       weights,
+                                                       token,
+                                                       pos,
+                                                       top_id,
+                                                       logits,
+                                                       NULL);
 }
 
 static bool metal_graph_eval_mtp_draft_from_hc(
@@ -27431,15 +27442,20 @@ static void dspark_session_observe_draft_rows(
             }
         } else if (verify && d->draft_valid && d->draft_rows > 0) {
             const dspark_draft_candidate *draft = &d->draft[0];
+            const char *status = dspark_session_multi_commit_env_enabled() ?
+                "draft state ready for greedy commit" :
+                "observation only, no tokens emitted or accepted";
             fprintf(stderr,
-                    "ds4: DSpark verifier prepared at %s prefix_tokens=%u "
+                    "ds4: DSpark %s prepared at %s prefix_tokens=%u "
                     "anchor_token=%d next_draft=%d confidence=%.6g; "
-                    "observation only, no tokens emitted or accepted\n",
+                    "%s\n",
+                    mode,
                     origin ? origin : "session",
                     n_tokens,
                     d->block_tokens[0],
                     draft->token,
-                    draft->confidence);
+                    draft->confidence,
+                    status);
         }
     } else {
         fprintf(stderr,
@@ -27502,6 +27518,83 @@ static bool ds4_session_eval_graph_target_token(
     return true;
 }
 
+/* Advance one target token while retaining only its argmax on ordinary Metal
+ * graphs. The capture path is the same one used by a normal target decode, so
+ * a successful DSpark prefix can remain live without replay. */
+static bool ds4_session_eval_graph_target_token_top(
+        ds4_session *s,
+        int          token,
+        const char  *origin,
+        int         *top_id,
+        bool        *host_logits_ready,
+        char        *err,
+        size_t       errlen) {
+    if (top_id) *top_id = -1;
+    if (host_logits_ready) *host_logits_ready = false;
+    if (!s || !s->engine || !top_id) {
+        if (errlen) snprintf(err, errlen, "missing graph session or target top output");
+        return false;
+    }
+
+    ds4_engine *e = s->engine;
+    ds4_target_hc_capture dspark_capture;
+    const uint32_t capture_pos = (uint32_t)s->checkpoint.len;
+    const bool capture_active =
+        dspark_session_target_capture_begin(s,
+                                            capture_pos,
+                                            1,
+                                            &dspark_capture,
+                                            origin);
+    bool ok;
+    if (s->graph.ssd_streaming) {
+        ok = metal_graph_eval_token_raw_swa_capture(&s->graph,
+                                                     &e->model,
+                                                     &e->weights,
+                                                     token,
+                                                     capture_pos,
+                                                     s->logits,
+                                                     capture_active ? &dspark_capture : NULL);
+        if (ok) {
+            *top_id = sample_argmax(s->logits, DS4_N_VOCAB);
+            if (host_logits_ready) *host_logits_ready = true;
+        }
+    } else {
+        ok = metal_graph_eval_token_raw_swa_top_capture(
+            &s->graph,
+            &e->model,
+            &e->weights,
+            token,
+            capture_pos,
+            top_id,
+            NULL,
+            capture_active ? &dspark_capture : NULL);
+    }
+    if (!ok) {
+        if (errlen) snprintf(err, errlen, "%s top-only decode failed", ds4_backend_name(e->backend));
+        s->checkpoint_valid = false;
+        dspark_session_target_context_reset(s->dspark);
+        return false;
+    }
+    if (capture_active) {
+        char cap_err[256];
+        cap_err[0] = '\0';
+        if (!dspark_session_target_capture_finish(s,
+                                                  &dspark_capture,
+                                                  capture_pos + 1u,
+                                                  cap_err,
+                                                  sizeof(cap_err))) {
+            fprintf(stderr,
+                    "ds4: DSpark %s capture skipped at %s: %s\n",
+                    dspark_session_observe_mode_name(),
+                    origin ? origin : "session",
+                    cap_err[0] ? cap_err : "unknown error");
+        }
+    }
+    token_vec_push(&s->checkpoint, token);
+    s->checkpoint_valid = true;
+    return true;
+}
+
 static bool dspark_session_commit_probe_first_token(
         ds4_session *s,
         int          token,
@@ -27526,20 +27619,67 @@ static bool dspark_session_commit_probe_first_token(
     return true;
 }
 
-static bool dspark_session_commit_greedy_tokens(
+static bool ds4_session_read_graph_logits(
+        ds4_session *s,
+        char        *err,
+        size_t       errlen) {
+    if (!s || !s->logits ||
+        ds4_gpu_tensor_read(s->graph.logits,
+                            0,
+                            s->logits,
+                            (uint64_t)DS4_N_VOCAB * sizeof(s->logits[0])) == 0) {
+        if (errlen) snprintf(err, errlen, "failed to read target logits after DSpark verification");
+        if (s) {
+            s->checkpoint_valid = false;
+            dspark_session_target_context_reset(s->dspark);
+        }
+        return false;
+    }
+    return true;
+}
+
+static int dspark_session_finish_multi_commit(
         ds4_session *s,
         const int   *tokens,
         uint32_t     n_tokens,
-        char        *err,
-        size_t       errlen) {
-    for (uint32_t i = 0; i < n_tokens; i++) {
-        if (!ds4_session_eval_graph_target_token(s, tokens[i], "multi", err, errlen)) {
-            return false;
-        }
+        uint32_t     verified,
+        const char  *stop_reason,
+        int         *accepted,
+        int          accepted_cap) {
+    if (!s || !tokens || !accepted || n_tokens == 0 ||
+        n_tokens > (uint32_t)accepted_cap) {
+        return -1;
     }
+
+    dspark_session_state *d = s->dspark;
+    dspark_session_draft_reset(d);
     s->mtp_draft_valid = false;
     dspark_session_observe_draft_rows(s, "multi");
-    return true;
+    d = s->dspark;
+    if (d) {
+        if (n_tokens < 2u) {
+            d->multi_commit_fallbacks++;
+        } else {
+            d->multi_commit_cycles++;
+            d->multi_commit_tokens += n_tokens;
+        }
+    }
+    for (uint32_t i = 0; i < n_tokens; i++) accepted[i] = tokens[i];
+
+    if (n_tokens < 2u) {
+        fprintf(stderr,
+                "ds4: DSpark multi commit fallback at eval: %s; "
+                "committed one target token directly\n",
+                stop_reason ? stop_reason : "verified depth below two");
+    } else {
+        fprintf(stderr,
+                "ds4: DSpark multi commit direct at eval verified=%u committed=%u stop=%s; "
+                "tokens returned for ordered emission\n",
+                verified,
+                n_tokens,
+                stop_reason ? stop_reason : "accepted limit");
+    }
+    return (int)n_tokens;
 }
 
 static int dspark_session_eval_multi_commit(
@@ -27558,7 +27698,12 @@ static int dspark_session_eval_multi_commit(
     dspark_session_state *d = s->dspark;
     if (!d || !d->draft_valid || d->draft_rows == 0) return 0;
 
-    const dspark_draft_candidate *first = &d->draft[0];
+    dspark_draft_candidate drafts[16];
+    uint32_t n_limit = d->draft_rows;
+    if (n_limit > (uint32_t)(sizeof(drafts) / sizeof(drafts[0]))) return 0;
+    for (uint32_t i = 0; i < n_limit; i++) drafts[i] = d->draft[i];
+
+    const dspark_draft_candidate *first = &drafts[0];
     const uint32_t checkpoint_prev = (uint32_t)s->checkpoint.v[s->checkpoint.len - 1];
     if (first->prev_token != checkpoint_prev) {
         dspark_session_draft_reset(d);
@@ -27570,61 +27715,91 @@ static int dspark_session_eval_multi_commit(
     const bool token_hit = first_token == first->token;
     const dspark_verify_gate_result first_gate =
         dspark_session_verify_gate(first, target_hit, token_hit);
-    const dspark_accept_sim_result accept_sim =
-        dspark_session_accept_simulate(s, target_hit, &first_gate);
     d->multi_commit_total++;
-    if (accept_sim.restore_failed) {
-        s->checkpoint_valid = false;
-        dspark_session_target_context_reset(d);
-        if (errlen) snprintf(err, errlen, "DSpark multi commit could not restore target state");
-        return -1;
-    }
-
-    uint32_t n_commit = accept_sim.verifier_failed || !first_gate.stream_eligible ? 0u :
-        accept_sim.greedy_accept_depth;
-    if (n_commit > d->draft_rows) n_commit = d->draft_rows;
-    if (n_commit > (uint32_t)max_tokens) n_commit = (uint32_t)max_tokens;
-    if (n_commit > (uint32_t)accepted_cap) n_commit = (uint32_t)accepted_cap;
     const int room = s->ctx_size - s->checkpoint.len;
-    if (room <= 0) n_commit = 0;
-    else if (n_commit > (uint32_t)room) n_commit = (uint32_t)room;
-
-    int tokens[16];
-    for (uint32_t i = 0; i < n_commit; i++) {
-        tokens[i] = d->draft[i].token;
-        if (tokens[i] == eos_token) {
-            n_commit = i + 1u;
+    if (n_limit > (uint32_t)max_tokens) n_limit = (uint32_t)max_tokens;
+    if (n_limit > (uint32_t)accepted_cap) n_limit = (uint32_t)accepted_cap;
+    if (room <= 0) n_limit = 0;
+    else if (n_limit > (uint32_t)room) n_limit = (uint32_t)room;
+    for (uint32_t i = 0; i < n_limit; i++) {
+        if (drafts[i].token == eos_token) {
+            n_limit = i + 1u;
             break;
         }
     }
 
-    if (n_commit < 2u) {
+    if (!first_gate.stream_eligible || n_limit < 2u) {
         const char *reason = !first_gate.stream_eligible ? "first row is not stream eligible" :
-            (accept_sim.verifier_failed ? "target suffix verifier failed" : "verified depth below two");
-        d->multi_commit_fallbacks++;
+            "commit capacity below two";
         dspark_session_draft_reset(d);
-        if (!dspark_session_commit_greedy_tokens(s, &first_token, 1u, err, errlen)) return -1;
-        accepted[0] = first_token;
-        fprintf(stderr,
-                "ds4: DSpark multi commit fallback at eval: %s; returned one token\n",
-                reason);
-        return 1;
+        if (!ds4_session_eval_graph_target_token(s, first_token, "multi", err, errlen)) return -1;
+        const int token = first_token;
+        return dspark_session_finish_multi_commit(s,
+                                                  &token,
+                                                  1u,
+                                                  first_gate.stream_eligible ? 1u : 0u,
+                                                  reason,
+                                                  accepted,
+                                                  accepted_cap);
     }
 
-    dspark_session_draft_reset(d);
-    if (!dspark_session_commit_greedy_tokens(s, tokens, n_commit, err, errlen)) return -1;
-    d = s->dspark;
-    if (d) {
-        d->multi_commit_cycles++;
-        d->multi_commit_tokens += n_commit;
+    int tokens[16];
+    for (uint32_t i = 0; i < n_limit; i++) tokens[i] = drafts[i].token;
+
+    uint32_t n_commit = 1;
+    for (uint32_t row = 1; row < n_limit; row++) {
+        int target_top = -1;
+        bool host_logits_ready = false;
+        if (!ds4_session_eval_graph_target_token_top(s,
+                                                     tokens[row - 1u],
+                                                     "multi",
+                                                     &target_top,
+                                                     &host_logits_ready,
+                                                     err,
+                                                     errlen)) {
+            return -1;
+        }
+        n_commit = row;
+        const bool suffix_target_hit = target_top == drafts[row].token;
+        const dspark_verify_gate_result suffix_gate =
+            dspark_session_verify_gate(&drafts[row], suffix_target_hit, false);
+        if (!suffix_gate.greedy_eligible) {
+            if (!host_logits_ready && !ds4_session_read_graph_logits(s, err, errlen)) return -1;
+            return dspark_session_finish_multi_commit(s,
+                                                      tokens,
+                                                      n_commit,
+                                                      n_commit,
+                                                      dspark_session_accept_sim_reject_reason(
+                                                          suffix_target_hit,
+                                                          &suffix_gate),
+                                                      accepted,
+                                                      accepted_cap);
+        }
+
+        n_commit = row + 1u;
+        if (row + 1u == n_limit) {
+            dspark_session_draft_reset(s->dspark);
+            if (!ds4_session_eval_graph_target_token(s,
+                                                     tokens[row],
+                                                     "multi",
+                                                     err,
+                                                     errlen)) {
+                return -1;
+            }
+            return dspark_session_finish_multi_commit(s,
+                                                      tokens,
+                                                      n_commit,
+                                                      n_commit,
+                                                      "accepted limit",
+                                                      accepted,
+                                                      accepted_cap);
+        }
     }
-    for (uint32_t i = 0; i < n_commit; i++) accepted[i] = tokens[i];
-    fprintf(stderr,
-            "ds4: DSpark multi commit at eval verified=%u committed=%u; "
-            "tokens returned for ordered emission\n",
-            accept_sim.greedy_accept_depth,
-            n_commit);
-    return (int)n_commit;
+
+    if (errlen) snprintf(err, errlen, "DSpark multi commit reached an invalid verifier state");
+    s->checkpoint_valid = false;
+    dspark_session_target_context_reset(s->dspark);
+    return -1;
 }
 #else
 static DS4_MAYBE_UNUSED bool dspark_session_verify_next_token(

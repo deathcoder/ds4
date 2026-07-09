@@ -8,7 +8,7 @@ particular DSpark change exists.
 
 Branch: `codex/dspark-observability-0`
 
-Phase 0.21 remains deliberately diagnostic: `--dspark FILE` validates an official
+Phase 0.22 remains deliberately diagnostic: `--dspark FILE` validates an official
 DSpark drafter GGUF, binds every tensor needed by a future runtime path, checks
 the expected DeepSeek V4 Flash DSpark shapes, and exposes a diagnostic
 `--dspark-probe` bridge for target-layer hidden-state capture plus
@@ -52,6 +52,22 @@ intentionally not wired yet because their forced-token, stop, tool, and
 structural control paths need an explicit queue-aware policy. This path is
 correctness instrumentation, not a performance path: its restore/replay means
 accepted tokens are evaluated twice, and no benchmark claim follows from it.
+
+Phase 0.22 removes that restore/replay from the multi-commit path while keeping
+the same greedy output contract. A capture-aware target top-only decode now
+retains DSpark hidden-state capture as it verifies each next suffix row. Once
+row 0 is stream-eligible, every target decode that tests a later candidate is
+also an actual committed prefix token: it advances the target graph, target
+context, and session checkpoint directly. If a suffix is rejected, ds4 reads
+the already-produced next logits once and returns that live accepted prefix. If
+the selected limit is fully accepted, only the final accepted token takes the
+ordinary full-logit decode needed for the next sampling step. The previous
+rollback simulator remains in observation-only verifier/commit-probe paths;
+the greedy multi path neither snapshots nor restores target frontiers. SSD
+streaming uses the existing full-logit capture helper for this experiment. This
+reduces duplicate target evaluation, but CPU sidecar drafting, target-context
+readback, and explicit diagnostic logging still mean it is not a benchmarkable
+production runtime.
 
 The design choice was to keep this separate from legacy `--mtp`. We do not
 guess dynamically whether `--mtp` points at legacy MTP or DSpark. The first
@@ -281,12 +297,13 @@ Phase 0.5 shape/binding facts from the local
     `ds4_session_eval_graph_target_token`, shared by normal graph eval and the
     commit probe so their state transitions stay identical.
   - Added `DS4_DSPARK_MULTI_COMMIT=1`, an explicit greedy-only multi-token
-    experiment. It exact-verifies a draft suffix, restores its virtual target
-    state, replays the accepted prefix through the ordinary target graph, and
-    returns the resulting ordered token batch for immediate caller emission.
-    It falls back to one target token below a verified depth of two. This is
-    deliberately diagnostic rather than fast because replay evaluates accepted
-    tokens a second time.
+    experiment. Phase 0.21 exact-verified a draft suffix, restored virtual
+    target state, and replayed the accepted prefix for correctness.
+  - Phase 0.22 replaces replay with a capture-aware top-only target decode for
+    the greedy multi path. Each verified predecessor is retained as an actual
+    committed prefix token; a suffix rejection reads the current target logits
+    once, while a fully accepted limit evaluates only its final token normally.
+    The generic rollback simulator remains available only to observation paths.
   - Added the public greedy-only session entry point
     `ds4_session_eval_dspark_greedy`; it returns zero when ordinary evaluation
     should proceed and never owns an emission queue.
@@ -294,7 +311,7 @@ Phase 0.5 shape/binding facts from the local
     speculate tokens.
   - Added `dspark_model`, `dspark_config`, and `dspark_ready` to `ds4_engine`.
   - `ds4_engine_open` now rejects `--mtp` plus `--dspark`, opens the DSpark
-    sidecar, validates/binds it, and logs that runtime is not enabled yet.
+    sidecar, validates/binds it, and logs that runtime is disabled by default.
   - `ds4_engine_close` closes the DSpark model if it was opened.
   - The DSpark path does not set `mtp_ready`, bind legacy MTP draft weights, or
     affect generation.
@@ -931,6 +948,42 @@ With `DS4_DSPARK_VERIFY_MIN_CONFIDENCE=0.99`, both rows were rejected as not
 stream eligible and each fell back to one target token, still producing
 `Hello!`. These are correctness smokes, not tok/s benchmarks.
 
+Phase 0.22 direct-state multi-commit checks run on 2026-07-09:
+
+```sh
+make ds4 ds4_test ds4-server ds4-eval ds4-agent ds4_cpu.o
+./ds4_test --dspark-validation --dspark-shape-binding
+./ds4 \
+  --model gguf/DeepSeek-V4-Flash-IQ2XXS-w2Q2K-AProjQ8-SExpQ8-OutQ8-chat-v2-imatrix.gguf \
+  --nothink -n 4 --temp 0 -p "Hello"
+DS4_DSPARK_MULTI_COMMIT=1 ./ds4 \
+  --model gguf/DeepSeek-V4-Flash-IQ2XXS-w2Q2K-AProjQ8-SExpQ8-OutQ8-chat-v2-imatrix.gguf \
+  --dspark gguf/ds4flash-dspark.gguf \
+  --nothink -n 4 --temp 0 -p "Hello"
+DS4_DSPARK_MULTI_COMMIT=1 ./ds4 \
+  --model gguf/DeepSeek-V4-Flash-IQ2XXS-w2Q2K-AProjQ8-SExpQ8-OutQ8-chat-v2-imatrix.gguf \
+  --dspark gguf/ds4flash-dspark.gguf \
+  --nothink -n 1 --temp 0 -p "Hello"
+DS4_DSPARK_MULTI_COMMIT=1 DS4_DSPARK_VERIFY_MIN_CONFIDENCE=0.99 ./ds4 \
+  --model gguf/DeepSeek-V4-Flash-IQ2XXS-w2Q2K-AProjQ8-SExpQ8-OutQ8-chat-v2-imatrix.gguf \
+  --dspark gguf/ds4flash-dspark.gguf \
+  --nothink -n 2 --temp 0 -p "Hello"
+printf 'Hello\\n/exit\\n' | DS4_DSPARK_MULTI_COMMIT=1 ./ds4 \
+  --model gguf/DeepSeek-V4-Flash-IQ2XXS-w2Q2K-AProjQ8-SExpQ8-OutQ8-chat-v2-imatrix.gguf \
+  --dspark gguf/ds4flash-dspark.gguf \
+  --nothink -n 2 --temp 0
+git diff --check
+```
+
+The direct four-token run emitted `Hello! How can`, exactly matching its fresh
+greedy baseline; a shell stdout equality assertion compared the two strings.
+Its first multi cycle retained two target-decoded tokens and
+stopped at a target miss; its second retained two at the generation limit.
+Neither cycle restored or replayed the target prefix. The one-token-capacity
+and strict-confidence runs correctly committed ordinary single tokens. The
+piped chat run returned a verified two-token batch and emitted `Hello!`.
+These are correctness smokes, not tok/s benchmarks.
+
 An untargeted `./ds4_test` run entered its long-context GPU prefill case and was
 stopped after about one minute to avoid occupying the accelerator indefinitely.
 Do not treat the full test suite as passed for this phase; the focused DSpark
@@ -997,10 +1050,10 @@ If continuing from a compacted context, start here:
 - The current `DS4_DSPARK_PROBE=1` / `DS4_DSPARK_VERIFY=1` hooks preserve
   target-layer context from normal prefill/decode and build internal
   `d->draft[]` candidates, but still perform CPU readback and CPU sidecar draft
-  computation for diagnostics. The greedy CLI path can now return an emitted
-  batch directly, but it restores and replays that prefix for correctness.
-  The next runtime improvement should reuse exact verification work or commit
-  the accepted target states directly, without changing observable output.
+  computation for diagnostics. The greedy CLI path now commits verified target
+  states directly, but each retained row still finishes a full target-context
+  readback. A future runtime path needs incremental capture/storage and GPU
+  sidecar execution before its work can plausibly improve throughput.
 - What queue-aware policy should server, agent, and eval use before accepting a
   multi-token batch? Their stop, tool, and forced structural tokens can alter
   the stream after the first output, so they cannot simply reuse the CLI loop.
