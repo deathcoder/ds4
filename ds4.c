@@ -10853,6 +10853,8 @@ typedef struct {
     ds4_gpu_tensor *hc;
     const uint32_t *target_layers;
     uint32_t        n_target_layers;
+    uint32_t        pos0;
+    uint32_t        n_tokens;
     uint32_t        cap_tokens;
     bool            failed;
 } ds4_target_hc_capture;
@@ -10878,9 +10880,10 @@ static void ds4_target_hc_capture_note_tensor(
         ds4_gpu_tensor        *src_hc) {
     const int slot = ds4_target_hc_capture_slot(capture, il);
     if (slot < 0) return;
-    if (!src_hc || n_tokens == 0 ||
-        pos0 > capture->cap_tokens ||
-        n_tokens > capture->cap_tokens - pos0) {
+    if (!src_hc || n_tokens == 0 || capture->n_tokens == 0 ||
+        capture->n_tokens > capture->cap_tokens || pos0 < capture->pos0 ||
+        n_tokens > capture->n_tokens ||
+        pos0 - capture->pos0 > capture->n_tokens - n_tokens) {
         capture->failed = true;
         return;
     }
@@ -10888,7 +10891,8 @@ static void ds4_target_hc_capture_note_tensor(
     const uint64_t hc_dim = (uint64_t)DS4_N_HC * DS4_N_EMBD;
     const uint64_t bytes = (uint64_t)n_tokens * hc_dim * sizeof(float);
     const uint64_t dst_off =
-        ((uint64_t)(uint32_t)slot * capture->cap_tokens + pos0) *
+        ((uint64_t)(uint32_t)slot * capture->cap_tokens +
+         (pos0 - capture->pos0)) *
         hc_dim * sizeof(float);
     if (ds4_gpu_tensor_copy(capture->hc, dst_off, src_hc, 0, bytes) == 0) {
         capture->failed = true;
@@ -26319,6 +26323,7 @@ struct dspark_session_state {
     float *confidence;
     ds4_gpu_tensor *target_hc_gpu;
     float *target_hc;
+    uint32_t target_capture_cap;
     float *target_context;
     uint32_t target_context_rows;
     bool target_context_valid;
@@ -26431,30 +26436,41 @@ static bool dspark_session_verify_env_enabled(void);
 static bool dspark_session_observe_env_enabled(void);
 static const char *dspark_session_observe_mode_name(void);
 
-static bool dspark_session_target_context_ensure(ds4_session *s, char *err, size_t errlen) {
+static bool dspark_session_target_context_ensure(
+        ds4_session *s,
+        uint32_t     capture_tokens,
+        char        *err,
+        size_t       errlen) {
     if (!dspark_session_state_ensure(s, err, errlen)) return false;
 
     dspark_session_state *d = s->dspark;
-    if (d->target_hc_gpu && d->target_hc && d->target_context) return true;
+    if (capture_tokens == 0 || capture_tokens > d->main_x_cap) {
+        if (errlen) snprintf(err, errlen, "invalid DSpark target capture span");
+        return false;
+    }
 
     const uint64_t hc_dim = (uint64_t)DS4_N_HC * DS4_N_EMBD;
-    const uint64_t hc_values =
-        (uint64_t)DS4_DSPARK_MTP_LAYERS * d->main_x_cap * hc_dim;
     const uint64_t context_values =
         (uint64_t)d->main_x_cap * DS4_DSPARK_MTP_LAYERS * DS4_N_EMBD;
 
-    if (!d->target_hc_gpu) {
-        d->target_hc_gpu = ds4_gpu_tensor_alloc(hc_values * sizeof(float));
-        if (!d->target_hc_gpu) {
+    if (!d->target_context) {
+        d->target_context = xmalloc((size_t)context_values * sizeof(d->target_context[0]));
+    }
+    if (!d->target_hc_gpu || !d->target_hc || d->target_capture_cap < capture_tokens) {
+        const uint64_t hc_values =
+            (uint64_t)DS4_DSPARK_MTP_LAYERS * capture_tokens * hc_dim;
+        ds4_gpu_tensor *new_target_hc_gpu =
+            ds4_gpu_tensor_alloc(hc_values * sizeof(float));
+        if (!new_target_hc_gpu) {
             if (errlen) snprintf(err, errlen, "failed to allocate DSpark target HC capture tensor");
             return false;
         }
-    }
-    if (!d->target_hc) {
-        d->target_hc = xmalloc((size_t)hc_values * sizeof(d->target_hc[0]));
-    }
-    if (!d->target_context) {
-        d->target_context = xmalloc((size_t)context_values * sizeof(d->target_context[0]));
+        float *new_target_hc = xmalloc((size_t)hc_values * sizeof(new_target_hc[0]));
+        ds4_gpu_tensor_free(d->target_hc_gpu);
+        free(d->target_hc);
+        d->target_hc_gpu = new_target_hc_gpu;
+        d->target_hc = new_target_hc;
+        d->target_capture_cap = capture_tokens;
     }
     return true;
 }
@@ -26480,7 +26496,7 @@ static bool dspark_session_target_capture_begin(
 
     char err[256];
     err[0] = '\0';
-    if (!dspark_session_target_context_ensure(s, err, sizeof(err))) {
+    if (!dspark_session_target_context_ensure(s, n_tokens, err, sizeof(err))) {
         fprintf(stderr,
                 "ds4: DSpark %s capture disabled at %s: %s\n",
                 dspark_session_observe_mode_name(),
@@ -26504,7 +26520,9 @@ static bool dspark_session_target_capture_begin(
     capture->hc = d->target_hc_gpu;
     capture->target_layers = s->engine->dspark_config.target_layer_ids;
     capture->n_target_layers = DS4_DSPARK_MTP_LAYERS;
-    capture->cap_tokens = d->main_x_cap;
+    capture->pos0 = start;
+    capture->n_tokens = n_tokens;
+    capture->cap_tokens = d->target_capture_cap;
     capture->failed = false;
     return true;
 }
@@ -26523,15 +26541,21 @@ static bool dspark_session_target_capture_finish(
         if (errlen) snprintf(err, errlen, "target-layer HC capture failed");
         return false;
     }
-    if (context_len == 0 || context_len > d->main_x_cap) {
+    if (!d->target_hc_gpu || !d->target_hc || capture->n_tokens == 0 ||
+        capture->cap_tokens != d->target_capture_cap ||
+        capture->n_tokens > capture->cap_tokens ||
+        capture->pos0 > context_len ||
+        capture->n_tokens != context_len - capture->pos0 ||
+        context_len > d->main_x_cap) {
         dspark_session_target_context_reset(d);
-        if (errlen) snprintf(err, errlen, "captured DSpark context length is invalid");
+        if (errlen) snprintf(err, errlen, "captured DSpark target span is invalid");
         return false;
     }
 
     const uint64_t hc_dim = (uint64_t)DS4_N_HC * DS4_N_EMBD;
-    const uint64_t layer_stride = (uint64_t)d->main_x_cap * hc_dim;
-    const uint64_t layer_bytes = (uint64_t)context_len * hc_dim * sizeof(float);
+    const uint64_t layer_stride = (uint64_t)capture->cap_tokens * hc_dim;
+    const uint64_t layer_bytes =
+        (uint64_t)capture->n_tokens * hc_dim * sizeof(float);
     for (uint32_t i = 0; i < DS4_DSPARK_MTP_LAYERS; i++) {
         const uint64_t off = (uint64_t)i * layer_stride * sizeof(float);
         if (ds4_gpu_tensor_read(d->target_hc_gpu,
@@ -26546,10 +26570,11 @@ static bool dspark_session_target_capture_finish(
 
     for (uint32_t i = 0; i < DS4_DSPARK_MTP_LAYERS; i++) {
         const float *layer_hc = d->target_hc + (uint64_t)i * layer_stride;
-        for (uint32_t t = 0; t < context_len; t++) {
+        for (uint32_t t = 0; t < capture->n_tokens; t++) {
             dspark_probe_mean_target_hc(
                 d->target_context +
-                    ((uint64_t)t * DS4_DSPARK_MTP_LAYERS + i) * DS4_N_EMBD,
+                    ((uint64_t)(capture->pos0 + t) * DS4_DSPARK_MTP_LAYERS + i) *
+                        DS4_N_EMBD,
                 layer_hc + (uint64_t)t * hc_dim);
         }
     }

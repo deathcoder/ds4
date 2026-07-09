@@ -8,7 +8,7 @@ particular DSpark change exists.
 
 Branch: `codex/dspark-observability-0`
 
-Phase 0.22 remains deliberately diagnostic: `--dspark FILE` validates an official
+Phase 0.23 remains deliberately diagnostic: `--dspark FILE` validates an official
 DSpark drafter GGUF, binds every tensor needed by a future runtime path, checks
 the expected DeepSeek V4 Flash DSpark shapes, and exposes a diagnostic
 `--dspark-probe` bridge for target-layer hidden-state capture plus
@@ -68,6 +68,17 @@ streaming uses the existing full-logit capture helper for this experiment. This
 reduces duplicate target evaluation, but CPU sidecar drafting, target-context
 readback, and explicit diagnostic logging still mean it is not a benchmarkable
 production runtime.
+
+Phase 0.23 makes target-layer capture incremental. The capture carrier now
+stores a local `pos0` plus span length, so its raw GPU and CPU HC buffers are
+sized only to the largest active prompt/suffix span, not the full sidecar
+window. Completion reads and averages only those new rows into the persistent
+target context; normal decode therefore transfers one new target HC row per
+captured layer rather than rereading the whole prefix each time. The averaged
+target context and the sidecar's CPU working state are still separate full
+session allocations, and all `main_proj`, stage-block, head, Markov, and
+confidence computation remains CPU-only. This is a storage/capture foundation
+for the GPU sidecar port, not a performance claim or a benchmarkable runtime.
 
 The design choice was to keep this separate from legacy `--mtp`. We do not
 guess dynamically whether `--mtp` points at legacy MTP or DSpark. The first
@@ -258,6 +269,12 @@ Phase 0.5 shape/binding facts from the local
     prefill/decode wrappers. The carrier copies post-layer HC at target layers
     `40,41,42` into diagnostic scratch only when the env hook has explicitly
     enabled it; default callers still pass `NULL`.
+  - Phase 0.23 makes that carrier span-local. It records the absolute capture
+    start plus new-row count, writes GPU scratch at a local offset, and only
+    reads/means the new rows into persistent target context on completion.
+    Raw GPU/CPU HC scratch grows only to the largest active capture span rather
+    than allocating for the whole sidecar window; the averaged context remains
+    available for later DSpark preparation.
   - Added `dspark_draft_candidate` rows and `draft_valid` to
     `dspark_session_state`, plus `dspark_session_build_draft_candidates`.
     The builder converts the prepared DSpark block into session-owned draft
@@ -984,6 +1001,37 @@ and strict-confidence runs correctly committed ordinary single tokens. The
 piped chat run returned a verified two-token batch and emitted `Hello!`.
 These are correctness smokes, not tok/s benchmarks.
 
+Phase 0.23 incremental-capture checks run on 2026-07-09:
+
+```sh
+make ds4 ds4_test ds4-server ds4-eval ds4-agent ds4_cpu.o
+./ds4_test --dspark-validation --dspark-shape-binding
+baseline=$(./ds4 \
+  --model gguf/DeepSeek-V4-Flash-IQ2XXS-w2Q2K-AProjQ8-SExpQ8-OutQ8-chat-v2-imatrix.gguf \
+  --nothink -n 4 --temp 0 -p "Hello" 2>/dev/null)
+direct=$(DS4_DSPARK_MULTI_COMMIT=1 ./ds4 \
+  --model gguf/DeepSeek-V4-Flash-IQ2XXS-w2Q2K-AProjQ8-SExpQ8-OutQ8-chat-v2-imatrix.gguf \
+  --dspark gguf/ds4flash-dspark.gguf \
+  --nothink -n 4 --temp 0 -p "Hello" 2>/dev/null)
+test "$baseline" = "$direct"
+printf 'Hello\nTell me one word\n/exit\n' | \
+  DS4_DSPARK_MULTI_COMMIT=1 ./ds4 \
+  --model gguf/DeepSeek-V4-Flash-IQ2XXS-w2Q2K-AProjQ8-SExpQ8-OutQ8-chat-v2-imatrix.gguf \
+  --dspark gguf/ds4flash-dspark.gguf \
+  --nothink -n 2 --temp 0
+DS4_DSPARK_MULTI_COMMIT=1 DS4_DSPARK_VERIFY_MIN_CONFIDENCE=0.99 ./ds4 \
+  --model gguf/DeepSeek-V4-Flash-IQ2XXS-w2Q2K-AProjQ8-SExpQ8-OutQ8-chat-v2-imatrix.gguf \
+  --dspark gguf/ds4flash-dspark.gguf \
+  --nothink -n 2 --temp 0 -p "Hello"
+git diff --check
+```
+
+The exact stdout comparison still produced `Hello! How can` for baseline and
+DSpark. The two-turn piped chat completed initial capture, a resumed eight-token
+sync span, direct multi-commit, and single-token fallbacks without a capture
+failure. The strict-confidence smoke still emitted `Hello!` through ordinary
+single-token fallback. These are correctness smokes, not tok/s benchmarks.
+
 An untargeted `./ds4_test` run entered its long-context GPU prefill case and was
 stopped after about one minute to avoid occupying the accelerator indefinitely.
 Do not treat the full test suite as passed for this phase; the focused DSpark
@@ -1050,10 +1098,10 @@ If continuing from a compacted context, start here:
 - The current `DS4_DSPARK_PROBE=1` / `DS4_DSPARK_VERIFY=1` hooks preserve
   target-layer context from normal prefill/decode and build internal
   `d->draft[]` candidates, but still perform CPU readback and CPU sidecar draft
-  computation for diagnostics. The greedy CLI path now commits verified target
-  states directly, but each retained row still finishes a full target-context
-  readback. A future runtime path needs incremental capture/storage and GPU
-  sidecar execution before its work can plausibly improve throughput.
+  computation for diagnostics. Raw target-HC transfer is now incremental, but
+  sidecar `main_proj`, the three stage blocks, heads, Markov, and confidence
+  all remain CPU work. The next GPU phase needs a sidecar graph/cache boundary
+  that can reuse the bound Q8/F16 weights and preserve the present draft output.
 - What queue-aware policy should server, agent, and eval use before accepting a
   multi-token batch? Their stop, tool, and forced structural tokens can alter
   the stream after the first output, so they cannot simply reuse the CLI loop.
