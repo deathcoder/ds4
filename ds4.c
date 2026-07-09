@@ -26290,6 +26290,10 @@ struct dspark_session_state {
     uint64_t commit_probe_ready;
     uint64_t commit_probe_committed;
     uint64_t commit_probe_skipped;
+    uint64_t multi_commit_total;
+    uint64_t multi_commit_cycles;
+    uint64_t multi_commit_tokens;
+    uint64_t multi_commit_fallbacks;
     bool draft_valid;
     dspark_draft_step_scratch step;
     dspark_draft_candidate draft[16];
@@ -26411,6 +26415,7 @@ static bool dspark_session_state_ensure(ds4_session *s, char *err, size_t errlen
 
 static bool dspark_session_probe_env_enabled(void);
 static bool dspark_session_commit_probe_env_enabled(void);
+static bool dspark_session_multi_commit_env_enabled(void);
 static bool dspark_session_verify_env_enabled(void);
 static bool dspark_session_observe_env_enabled(void);
 static const char *dspark_session_observe_mode_name(void);
@@ -27016,10 +27021,16 @@ static bool dspark_session_commit_probe_env_enabled(void) {
     return v && v[0] && strcmp(v, "0") != 0;
 }
 
+static bool dspark_session_multi_commit_env_enabled(void) {
+    const char *v = getenv("DS4_DSPARK_MULTI_COMMIT");
+    return v && v[0] && strcmp(v, "0") != 0;
+}
+
 static bool dspark_session_verify_env_enabled(void) {
     const char *v = getenv("DS4_DSPARK_VERIFY");
     return (v && v[0] && strcmp(v, "0") != 0) ||
-           dspark_session_commit_probe_env_enabled();
+           dspark_session_commit_probe_env_enabled() ||
+           dspark_session_multi_commit_env_enabled();
 }
 
 static bool dspark_session_observe_env_enabled(void) {
@@ -27029,6 +27040,7 @@ static bool dspark_session_observe_env_enabled(void) {
 
 static const char *dspark_session_observe_mode_name(void) {
     if (dspark_session_probe_env_enabled()) return "dev probe";
+    if (dspark_session_multi_commit_env_enabled()) return "multi commit";
     return dspark_session_commit_probe_env_enabled() ? "commit probe" : "verifier";
 }
 
@@ -27512,6 +27524,107 @@ static bool dspark_session_commit_probe_first_token(
             pos);
     dspark_session_observe_draft_rows(s, "commit");
     return true;
+}
+
+static bool dspark_session_commit_greedy_tokens(
+        ds4_session *s,
+        const int   *tokens,
+        uint32_t     n_tokens,
+        char        *err,
+        size_t       errlen) {
+    for (uint32_t i = 0; i < n_tokens; i++) {
+        if (!ds4_session_eval_graph_target_token(s, tokens[i], "multi", err, errlen)) {
+            return false;
+        }
+    }
+    s->mtp_draft_valid = false;
+    dspark_session_observe_draft_rows(s, "multi");
+    return true;
+}
+
+static int dspark_session_eval_multi_commit(
+        ds4_session *s,
+        int          first_token,
+        int          max_tokens,
+        int          eos_token,
+        int         *accepted,
+        int          accepted_cap,
+        char        *err,
+        size_t       errlen) {
+    if (!s || !s->engine || !accepted || max_tokens <= 0 || accepted_cap <= 0 ||
+        !s->checkpoint_valid || s->checkpoint.len <= 0) {
+        return 0;
+    }
+    dspark_session_state *d = s->dspark;
+    if (!d || !d->draft_valid || d->draft_rows == 0) return 0;
+
+    const dspark_draft_candidate *first = &d->draft[0];
+    const uint32_t checkpoint_prev = (uint32_t)s->checkpoint.v[s->checkpoint.len - 1];
+    if (first->prev_token != checkpoint_prev) {
+        dspark_session_draft_reset(d);
+        return 0;
+    }
+
+    const int target_top = sample_argmax(s->logits, DS4_N_VOCAB);
+    const bool target_hit = target_top == first->token;
+    const bool token_hit = first_token == first->token;
+    const dspark_verify_gate_result first_gate =
+        dspark_session_verify_gate(first, target_hit, token_hit);
+    const dspark_accept_sim_result accept_sim =
+        dspark_session_accept_simulate(s, target_hit, &first_gate);
+    d->multi_commit_total++;
+    if (accept_sim.restore_failed) {
+        s->checkpoint_valid = false;
+        dspark_session_target_context_reset(d);
+        if (errlen) snprintf(err, errlen, "DSpark multi commit could not restore target state");
+        return -1;
+    }
+
+    uint32_t n_commit = accept_sim.verifier_failed || !first_gate.stream_eligible ? 0u :
+        accept_sim.greedy_accept_depth;
+    if (n_commit > d->draft_rows) n_commit = d->draft_rows;
+    if (n_commit > (uint32_t)max_tokens) n_commit = (uint32_t)max_tokens;
+    if (n_commit > (uint32_t)accepted_cap) n_commit = (uint32_t)accepted_cap;
+    const int room = s->ctx_size - s->checkpoint.len;
+    if (room <= 0) n_commit = 0;
+    else if (n_commit > (uint32_t)room) n_commit = (uint32_t)room;
+
+    int tokens[16];
+    for (uint32_t i = 0; i < n_commit; i++) {
+        tokens[i] = d->draft[i].token;
+        if (tokens[i] == eos_token) {
+            n_commit = i + 1u;
+            break;
+        }
+    }
+
+    if (n_commit < 2u) {
+        const char *reason = !first_gate.stream_eligible ? "first row is not stream eligible" :
+            (accept_sim.verifier_failed ? "target suffix verifier failed" : "verified depth below two");
+        d->multi_commit_fallbacks++;
+        dspark_session_draft_reset(d);
+        if (!dspark_session_commit_greedy_tokens(s, &first_token, 1u, err, errlen)) return -1;
+        accepted[0] = first_token;
+        fprintf(stderr,
+                "ds4: DSpark multi commit fallback at eval: %s; returned one token\n",
+                reason);
+        return 1;
+    }
+
+    dspark_session_draft_reset(d);
+    if (!dspark_session_commit_greedy_tokens(s, tokens, n_commit, err, errlen)) return -1;
+    d = s->dspark;
+    if (d) {
+        d->multi_commit_cycles++;
+        d->multi_commit_tokens += n_commit;
+    }
+    for (uint32_t i = 0; i < n_commit; i++) accepted[i] = tokens[i];
+    fprintf(stderr,
+            "ds4: DSpark multi commit at eval verified=%u committed=%u; "
+            "tokens returned for ordered emission\n",
+            accept_sim.greedy_accept_depth,
+            n_commit);
+    return (int)n_commit;
 }
 #else
 static DS4_MAYBE_UNUSED bool dspark_session_verify_next_token(
@@ -28049,7 +28162,7 @@ int ds4_engine_open(ds4_engine **out, const ds4_engine_options *opt) {
                 "ds4: DSpark drafter validated: %s "
                 "(block=%u target_layers=%u,%u,%u "
                 "main_proj=[%" PRIu64 ",%" PRIu64 "] stages=%u; "
-                "runtime not enabled yet)\n",
+                "runtime disabled by default)\n",
                 opt->dspark_path,
                 e->dspark_config.block_size,
                 e->dspark_config.target_layer_ids[0],
@@ -29638,6 +29751,41 @@ static int ds4_session_eval_internal(ds4_session *s, int token, bool probe_mtp,
 
 int ds4_session_eval(ds4_session *s, int token, char *err, size_t errlen) {
     return ds4_session_eval_internal(s, token, true, err, errlen);
+}
+
+int ds4_session_eval_dspark_greedy(
+        ds4_session *s,
+        int          first_token,
+        int          max_tokens,
+        int          eos_token,
+        int         *accepted,
+        int          accepted_cap,
+        char        *err,
+        size_t       errlen) {
+#ifdef DS4_NO_GPU
+    (void)s;
+    (void)first_token;
+    (void)max_tokens;
+    (void)eos_token;
+    (void)accepted;
+    (void)accepted_cap;
+    (void)err;
+    (void)errlen;
+    return 0;
+#else
+    if (!dspark_session_multi_commit_env_enabled() || !s || !s->engine ||
+        !s->engine->dspark_ready || s->distributed || ds4_session_is_cpu(s)) {
+        return 0;
+    }
+    return dspark_session_eval_multi_commit(s,
+                                             first_token,
+                                             max_tokens,
+                                             eos_token,
+                                             accepted,
+                                             accepted_cap,
+                                             err,
+                                             errlen);
+#endif
 }
 
 /* Speculative decode state machine:

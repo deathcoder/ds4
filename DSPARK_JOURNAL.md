@@ -8,7 +8,7 @@ particular DSpark change exists.
 
 Branch: `codex/dspark-observability-0`
 
-Phase 0.20 is still intentionally narrow: `--dspark FILE` validates an official
+Phase 0.21 remains deliberately diagnostic: `--dspark FILE` validates an official
 DSpark drafter GGUF, binds every tensor needed by a future runtime path, checks
 the expected DeepSeek V4 Flash DSpark shapes, and exposes a diagnostic
 `--dspark-probe` bridge for target-layer hidden-state capture plus
@@ -37,6 +37,21 @@ commit the already-selected first token only when it is `stream_eligible`. The
 probe uses the ordinary target decode/capture path and then skips its duplicate
 normal eval, so output remains the sampled token. It never commits un-emitted
 DSpark suffix rows.
+
+Phase 0.21 adds the first actual multi-token *greedy CLI* delivery experiment,
+behind the separate explicit `DS4_DSPARK_MULTI_COMMIT=1` environment variable.
+It uses the exact suffix simulator to establish an accepted greedy prefix,
+restores the virtual target state, then replays the accepted tokens through the
+ordinary target graph so the live checkpoint, logits, and DSpark capture state
+remain identical to sequential greedy decoding. The session returns that
+committed ordered token batch to the caller for immediate emission; it keeps no
+hidden output queue. When fewer than two tokens can be committed, it safely
+falls back to one ordinary target token. The CLI enables this only for
+`--temp 0` one-shot and chat generation. Server, agent, and eval frontends are
+intentionally not wired yet because their forced-token, stop, tool, and
+structural control paths need an explicit queue-aware policy. This path is
+correctness instrumentation, not a performance path: its restore/replay means
+accepted tokens are evaluated twice, and no benchmark claim follows from it.
 
 The design choice was to keep this separate from legacy `--mtp`. We do not
 guess dynamically whether `--mtp` points at legacy MTP or DSpark. The first
@@ -265,6 +280,16 @@ Phase 0.5 shape/binding facts from the local
   - Factored the graph target-token evaluation/capture sequence into private
     `ds4_session_eval_graph_target_token`, shared by normal graph eval and the
     commit probe so their state transitions stay identical.
+  - Added `DS4_DSPARK_MULTI_COMMIT=1`, an explicit greedy-only multi-token
+    experiment. It exact-verifies a draft suffix, restores its virtual target
+    state, replays the accepted prefix through the ordinary target graph, and
+    returns the resulting ordered token batch for immediate caller emission.
+    It falls back to one target token below a verified depth of two. This is
+    deliberately diagnostic rather than fast because replay evaluates accepted
+    tokens a second time.
+  - Added the public greedy-only session entry point
+    `ds4_session_eval_dspark_greedy`; it returns zero when ordinary evaluation
+    should proceed and never owns an emission queue.
   - The sidecar probe still does not emit, accept, append, generate, or
     speculate tokens.
   - Added `dspark_model`, `dspark_config`, and `dspark_ready` to `ds4_engine`.
@@ -282,6 +307,10 @@ Phase 0.5 shape/binding facts from the local
   - `ds4-agent` was easy to miss because shared help mentioned the flag once
     `ds4_help.c` was updated. When adding runtime flags, always check all
     frontends.
+  - Phase 0.21 routes only the CLI one-shot and chat greedy loops through the
+    returned DSpark token batch when `DS4_DSPARK_MULTI_COMMIT=1`. Server,
+    agent, and eval deliberately remain sequential until their forced-token
+    and structural-output handling has a safe batch policy.
 
 - `ds4_help.c`
   - Runtime full help now documents `--dspark FILE`.
@@ -867,6 +896,41 @@ The fixed high-temperature smoke selected token `6208` while the target and
 DSpark draft were both `19923`. It correctly reported `stream_eligible=no` and
 `commit_probe=skipped`, then ordinary evaluation produced the sampled token.
 
+Phase 0.21 greedy multi-commit checks run on 2026-07-09:
+
+```sh
+make ds4 ds4_test
+./ds4_test --dspark-validation --dspark-shape-binding
+make ds4-server ds4-eval ds4-agent
+make ds4_cpu.o
+git diff --check
+DS4_DSPARK_MULTI_COMMIT=1 ./ds4 \
+  --model gguf/DeepSeek-V4-Flash-IQ2XXS-w2Q2K-AProjQ8-SExpQ8-OutQ8-chat-v2-imatrix.gguf \
+  --dspark gguf/ds4flash-dspark.gguf \
+  --nothink -n 2 --temp 0 -p "Hello"
+DS4_DSPARK_MULTI_COMMIT=1 ./ds4 \
+  --model gguf/DeepSeek-V4-Flash-IQ2XXS-w2Q2K-AProjQ8-SExpQ8-OutQ8-chat-v2-imatrix.gguf \
+  --dspark gguf/ds4flash-dspark.gguf \
+  --nothink -n 1 --temp 0 -p "Hello"
+DS4_DSPARK_MULTI_COMMIT=1 ./ds4 \
+  --model gguf/DeepSeek-V4-Flash-IQ2XXS-w2Q2K-AProjQ8-SExpQ8-OutQ8-chat-v2-imatrix.gguf \
+  --dspark gguf/ds4flash-dspark.gguf \
+  --nothink -n 4 --temp 0 -p "Hello"
+DS4_DSPARK_MULTI_COMMIT=1 DS4_DSPARK_VERIFY_MIN_CONFIDENCE=0.99 ./ds4 \
+  --model gguf/DeepSeek-V4-Flash-IQ2XXS-w2Q2K-AProjQ8-SExpQ8-OutQ8-chat-v2-imatrix.gguf \
+  --dspark gguf/ds4flash-dspark.gguf \
+  --nothink -n 2 --temp 0 -p "Hello"
+```
+
+The two-token run verified and returned two committed tokens, producing
+`Hello!`, exactly matching the normal greedy baseline. The one-token boundary
+correctly logged `verified depth below two` and returned the normal single
+target token. The four-token run made two multi-token cycles (two returned
+tokens each) and produced `Hello! How can`, again exactly matching baseline.
+With `DS4_DSPARK_VERIFY_MIN_CONFIDENCE=0.99`, both rows were rejected as not
+stream eligible and each fell back to one target token, still producing
+`Hello!`. These are correctness smokes, not tok/s benchmarks.
+
 An untargeted `./ds4_test` run entered its long-context GPU prefill case and was
 stopped after about one minute to avoid occupying the accelerator indefinitely.
 Do not treat the full test suite as passed for this phase; the focused DSpark
@@ -933,10 +997,13 @@ If continuing from a compacted context, start here:
 - The current `DS4_DSPARK_PROBE=1` / `DS4_DSPARK_VERIFY=1` hooks preserve
   target-layer context from normal prefill/decode and build internal
   `d->draft[]` candidates, but still perform CPU readback and CPU sidecar draft
-  computation for diagnostics. The verifier can now prove a greedy acceptance
-  prefix, restore target state, and commit the selected row-0 token in the
-  explicit commit probe. A future runtime path still needs a way to consume a
-  multi-token verified prefix while coordinating its emitted-token queue.
+  computation for diagnostics. The greedy CLI path can now return an emitted
+  batch directly, but it restores and replays that prefix for correctness.
+  The next runtime improvement should reuse exact verification work or commit
+  the accepted target states directly, without changing observable output.
+- What queue-aware policy should server, agent, and eval use before accepting a
+  multi-token batch? Their stop, tool, and forced structural tokens can alter
+  the stream after the first output, so they cannot simply reuse the CLI loop.
 - How should a future acceptance path preserve non-greedy sampling semantics?
   The diagnostic separates `greedy_eligible` from `stream_eligible`; committing
   multi-token prefixes is only straightforward for a greedy target stream.

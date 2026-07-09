@@ -92,6 +92,11 @@ static bool cli_distributed_coordinator(const cli_config *cfg) {
     return cfg && cfg->engine.distributed.role == DS4_DISTRIBUTED_COORDINATOR;
 }
 
+static bool cli_dspark_multi_commit_enabled(const cli_config *cfg) {
+    const char *v = getenv("DS4_DSPARK_MULTI_COMMIT");
+    return cfg && cfg->engine.dspark_path && v && v[0] && strcmp(v, "0") != 0;
+}
+
 static void cli_dist_busy_set(const cli_config *cfg, bool busy) {
     if (!cli_distributed_coordinator(cfg)) return;
     cli_dist_busy = busy ? 1 : 0;
@@ -473,6 +478,8 @@ static int run_sampled_generation(ds4_engine *engine, const cli_config *cfg, con
     uint64_t rng = cfg->gen.seed ? cfg->gen.seed :
         ((uint64_t)time(NULL) ^ ((uint64_t)getpid() << 32) ^ (uint64_t)clock());
     int generated = 0;
+    const bool dspark_multi =
+        cfg->gen.temperature <= 0.0f && cli_dspark_multi_commit_enabled(cfg);
     const double t_decode0 = cli_now_sec();
     while (generated < max_tokens && !cli_interrupt_requested()) {
         int token = ds4_session_sample(session, cfg->gen.temperature, 0,
@@ -481,7 +488,24 @@ static int run_sampled_generation(ds4_engine *engine, const cli_config *cfg, con
 
         int toks[17];
         int ntok = 0;
-        if (cfg->gen.temperature <= 0.0f && ds4_engine_mtp_draft_tokens(engine) > 1 &&
+        if (dspark_multi) {
+            cli_dist_busy_set(cfg, true);
+            ntok = ds4_session_eval_dspark_greedy(session,
+                                                   token,
+                                                   max_tokens - generated,
+                                                   ds4_token_eos(engine),
+                                                   toks,
+                                                   (int)(sizeof(toks) / sizeof(toks[0])),
+                                                   err,
+                                                   sizeof(err));
+            cli_dist_busy_set(cfg, false);
+            if (ntok < 0) {
+                fprintf(stderr, "ds4: DSpark greedy decode failed: %s\n", err);
+                ds4_session_free(session);
+                return 1;
+            }
+        }
+        if (ntok == 0 && cfg->gen.temperature <= 0.0f && ds4_engine_mtp_draft_tokens(engine) > 1 &&
             getenv("DS4_MTP_SPEC_DISABLE") == NULL) {
             cli_dist_busy_set(cfg, true);
             ntok = ds4_session_eval_speculative_argmax(session,
@@ -498,7 +522,7 @@ static int run_sampled_generation(ds4_engine *engine, const cli_config *cfg, con
                 ds4_session_free(session);
                 return 1;
             }
-        } else {
+        } else if (ntok == 0) {
             cli_dist_busy_set(cfg, true);
             int eval_rc = ds4_session_eval(session, token, err, sizeof(err));
             cli_dist_busy_set(cfg, false);
@@ -927,6 +951,7 @@ static int run_generation(ds4_engine *engine, const cli_config *cfg) {
         }
     } else if (cfg->engine.distributed.role == DS4_DISTRIBUTED_COORDINATOR ||
                cfg->gen.temperature > 0.0f ||
+               cli_dspark_multi_commit_enabled(cfg) ||
                ds4_engine_mtp_draft_tokens(engine) > 1) {
         rc = run_sampled_generation(engine, cfg, &prompt);
     } else {
@@ -1145,6 +1170,8 @@ static int run_chat_turn(ds4_engine *engine, cli_config *cfg, repl_chat *chat, c
     uint64_t rng = cfg->gen.seed ? cfg->gen.seed :
         ((uint64_t)time(NULL) ^ ((uint64_t)getpid() << 32) ^ (uint64_t)clock());
     int generated = 0;
+    const bool dspark_multi =
+        cfg->gen.temperature <= 0.0f && cli_dspark_multi_commit_enabled(cfg);
     const double t_decode0 = cli_now_sec();
     while (generated < max_tokens && !cli_interrupt_requested()) {
         int token = ds4_session_sample(chat->session,
@@ -1157,7 +1184,23 @@ static int run_chat_turn(ds4_engine *engine, cli_config *cfg, repl_chat *chat, c
 
         int toks[17];
         int ntok = 0;
-        if (cfg->gen.temperature <= 0.0f && ds4_engine_mtp_draft_tokens(engine) > 1 &&
+        if (dspark_multi) {
+            cli_dist_busy_set(cfg, true);
+            ntok = ds4_session_eval_dspark_greedy(chat->session,
+                                                   token,
+                                                   max_tokens - generated,
+                                                   ds4_token_eos(engine),
+                                                   toks,
+                                                   (int)(sizeof(toks) / sizeof(toks[0])),
+                                                   err,
+                                                   sizeof(err));
+            cli_dist_busy_set(cfg, false);
+            if (ntok < 0) {
+                fprintf(stderr, "ds4: DSpark greedy decode failed: %s\n", err);
+                return 1;
+            }
+        }
+        if (ntok == 0 && cfg->gen.temperature <= 0.0f && ds4_engine_mtp_draft_tokens(engine) > 1 &&
             getenv("DS4_MTP_SPEC_DISABLE") == NULL) {
             cli_dist_busy_set(cfg, true);
             ntok = ds4_session_eval_speculative_argmax(chat->session,
@@ -1173,7 +1216,7 @@ static int run_chat_turn(ds4_engine *engine, cli_config *cfg, repl_chat *chat, c
                 fprintf(stderr, "ds4: decode failed: %s\n", err);
                 return 1;
             }
-        } else {
+        } else if (ntok == 0) {
             cli_dist_busy_set(cfg, true);
             int eval_rc = ds4_session_eval(chat->session, token, err, sizeof(err));
             cli_dist_busy_set(cfg, false);
