@@ -8,7 +8,7 @@ particular DSpark change exists.
 
 Branch: `codex/dspark-observability-0`
 
-Phase 0.18 is still intentionally narrow: `--dspark FILE` validates an official
+Phase 0.19 is still intentionally narrow: `--dspark FILE` validates an official
 DSpark drafter GGUF, binds every tensor needed by a future runtime path, checks
 the expected DeepSeek V4 Flash DSpark shapes, and exposes a diagnostic
 `--dspark-probe` bridge for target-layer hidden-state capture plus
@@ -28,8 +28,11 @@ emitting or accepting them. A second development-only hook,
 prepared rows, then verifies the previous first draft candidate against the
 target argmax from the current logits and the actual token passed to eval. It
 now also runs a private acceptance-eligibility gate over the verifier result,
-using optional confidence and logit-margin thresholds. It does not enable
-DSpark speculative decoding.
+using optional confidence and logit-margin thresholds. Its no-commit simulator
+now checks each later candidate against exact target suffix logits through the
+normal one-token decode kernel, then restores the target compressor frontiers
+before normal evaluation continues. It does not enable DSpark speculative
+decoding.
 
 The design choice was to keep this separate from legacy `--mtp`. We do not
 guess dynamically whether `--mtp` points at legacy MTP or DSpark. The first
@@ -65,14 +68,21 @@ hook is explicit and conservative:
   `DS4_DSPARK_VERIFY_MIN_CONFIDENCE` in `[0,1]` and
   `DS4_DSPARK_VERIFY_MIN_MARGIN` in `[0,+inf)`. A draft is
   `greedy_eligible` when it is fresh, matches the target argmax, and passes
-  both thresholds. It is `stream_eligible` only when it is also the actual token
-selected by the current normal generation stream. Both are logged and counted
-only; neither causes a commit.
-- `DS4_DSPARK_VERIFY=1` also runs a no-commit acceptance simulator. It reports
-  the verified greedy acceptance prefix for the first draft row and labels all
-  later rows as unverified, because target suffix logits have not been
-  evaluated. It does not claim later rows would pass, and it never changes
-  checkpoint state, logits, sampling, output, or token acceptance.
+  both thresholds. It is `stream_eligible` only when it is also the actual
+  token selected by the current normal generation stream. Both are logged and
+  counted only; neither causes a commit.
+- `DS4_DSPARK_VERIFY=1` also runs a no-commit exact acceptance simulator. It
+  checks the first candidate from the current target logits, then evaluates
+  each required hypothetical predecessor with the exact one-token target decode
+  kernel to check later rows. It reports the resulting greedy acceptance depth,
+  stops at a target miss, gate failure, context limit, or diagnostic failure,
+  and restores target compressor frontiers before normal evaluation continues.
+  It never changes the session checkpoint, host logits, sampling, output, or
+  token acceptance. A failed rollback invalidates the session and returns an
+  error rather than continuing with possibly changed target state.
+- The ordinary-session hooks are not called by the CLI `--temp 0` argmax fast
+  path. Use a seeded nonzero-temperature smoke when verifying this diagnostic
+  path against a normal-generation baseline.
 - No benchmarks should be run automatically by Codex. The user wants tok/s
   benchmarks to be run manually on an otherwise idle machine.
 
@@ -223,9 +233,16 @@ Phase 0.5 shape/binding facts from the local
     `DS4_DSPARK_VERIFY_MIN_MARGIN`; it only reports whether a candidate would
     be eligible for a future acceptance path and still never commits DSpark
     tokens.
-  - Added a private no-commit acceptance simulator to the verifier. It counts
-    the known first-row greedy acceptance depth and separately records later
-    draft rows as unverified until a future target-suffix verifier exists.
+  - Reworked the private no-commit acceptance simulator into an exact target
+    suffix verifier. After its free row-0 check, it uses the ordinary one-token
+    target decode kernel to check each later candidate and restores the saved
+    compressor frontiers before the normal eval path resumes. It records
+    checked rows, greedy acceptance depth, rejection/context/diagnostic states,
+    and treats a failed restore as a session error.
+  - Split generic speculative rollback frontiers from legacy MTP-only scratch
+    in the graph allocator. A session created with `DS4_DSPARK_VERIFY=1` gets
+    only the generic frontier buffers needed for rollback; it does not receive
+    MTP hidden-state scratch, MTP raw cache, or MTP speculative logits.
   - The sidecar probe still does not emit, accept, append, generate, or
     speculate tokens.
   - Added `dspark_model`, `dspark_config`, and `dspark_ready` to `ds4_engine`.
@@ -736,6 +753,52 @@ The generated stream remained normal target-model generation. The command did
 print normal CLI rates, but no tok/s benchmark was run. `make ds4_cpu.o` still
 has the same eight pre-existing CPU-only warnings.
 
+Phase 0.19 exact-suffix verifier checks run on 2026-07-09:
+
+```sh
+make ds4 ds4_test
+./ds4_test --dspark-validation --dspark-shape-binding
+make ds4-server ds4-eval ds4-agent
+make ds4_cpu.o
+git diff --check
+DS4_DSPARK_VERIFY=1 \
+DS4_DSPARK_VERIFY_MIN_CONFIDENCE=0.9 \
+DS4_DSPARK_VERIFY_MIN_MARGIN=2.0 \
+./ds4 \
+  --model gguf/DeepSeek-V4-Flash-IQ2XXS-w2Q2K-AProjQ8-SExpQ8-OutQ8-chat-v2-imatrix.gguf \
+  --dspark gguf/ds4flash-dspark.gguf \
+  --nothink -n 1 -p "Hello"
+DS4_DSPARK_VERIFY=1 ./ds4 \
+  --model gguf/DeepSeek-V4-Flash-IQ2XXS-w2Q2K-AProjQ8-SExpQ8-OutQ8-chat-v2-imatrix.gguf \
+  --dspark gguf/ds4flash-dspark.gguf \
+  --nothink -n 2 --temp 0.7 --seed 42 -p "Hello"
+./ds4 \
+  --model gguf/DeepSeek-V4-Flash-IQ2XXS-w2Q2K-AProjQ8-SExpQ8-OutQ8-chat-v2-imatrix.gguf \
+  --nothink -n 2 --temp 0.7 --seed 42 -p "Hello"
+```
+
+With the confidence/margin thresholds above, the real sidecar verifier checked
+two rows and found a one-token greedy prefix:
+
+```text
+checked_rows=2/5 greedy_accept_depth=1
+stop=confidence rejected_row=1 rollback=restored
+```
+
+With default thresholds it checked three rows, accepted the first two under
+greedy policy, and stopped at a target miss on row 2:
+
+```text
+checked_rows=3/5 greedy_accept_depth=2
+stop=target miss rejected_row=2 rollback=restored
+```
+
+The seeded two-token ordinary-session smoke produced `Hello!` both with the
+DSpark verifier enabled and in the no-DSpark baseline. During that verifier
+run, the first cycle reported a greedy depth of two and the second a greedy
+depth of one; each reported `rollback=restored`. These are correctness smokes,
+not tok/s benchmarks.
+
 Downloaded sidecar byte size:
 
 ```text
@@ -797,9 +860,13 @@ If continuing from a compacted context, start here:
 - The current `DS4_DSPARK_PROBE=1` / `DS4_DSPARK_VERIFY=1` hooks preserve
   target-layer context from normal prefill/decode and build internal
   `d->draft[]` candidates, but still perform CPU readback and CPU sidecar draft
-  computation for diagnostics. A future runtime path needs an opt-in acceptance
-  path that consumes verified candidates without perturbing normal generation
-  by default.
+  computation for diagnostics. The verifier can now prove a greedy acceptance
+  prefix and restore target state, but a future runtime path still needs an
+  opt-in commit path that consumes those verified candidates without perturbing
+  normal generation by default.
+- How should a future acceptance path preserve non-greedy sampling semantics?
+  The diagnostic separates `greedy_eligible` from `stream_eligible`; committing
+  multi-token prefixes is only straightforward for a greedy target stream.
 - Where should DSpark runtime stats live so they are useful for development but
   cannot perturb benchmark measurements unless explicitly enabled?
 - Should future CLI UX stay as `--dspark`, or eventually become a broader

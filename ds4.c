@@ -10698,10 +10698,8 @@ typedef struct {
     ds4_gpu_tensor *layer_index_state_kv[DS4_MAX_LAYER];
     ds4_gpu_tensor *layer_index_state_score[DS4_MAX_LAYER];
 
-    /* Speculative decoding scratch.  MTP is allowed to mutate graph state only
-     * if the target verifier can either commit it or restore the saved
-     * frontiers.  The prefix1 buffers are the cheap partial-accept state for the
-     * common N=2 case. */
+    /* Generic speculative rollback scratch. A drafter may mutate target state
+     * only when the verifier can commit it or restore these saved frontiers. */
     ds4_gpu_tensor *spec_attn_state_kv[DS4_MAX_LAYER];
     ds4_gpu_tensor *spec_attn_state_score[DS4_MAX_LAYER];
     ds4_gpu_tensor *spec_index_state_kv[DS4_MAX_LAYER];
@@ -11364,7 +11362,8 @@ static bool metal_graph_alloc_raw_cap(
         uint32_t                raw_cap,
         uint32_t                ctx_size,
         uint32_t                prefill_cap,
-        bool                    enable_mtp) {
+        bool                    enable_mtp,
+        bool                    enable_speculation) {
     memset(g, 0, sizeof(*g));
     g->mtp_enabled = enable_mtp;
     if (raw_cap == 0) raw_cap = 1;
@@ -11472,11 +11471,13 @@ static bool metal_graph_alloc_raw_cap(
                     (DS4_GPU_ATTN_COMP_CACHE_F16 ? sizeof(uint16_t) : sizeof(float)));
             g->layer_attn_state_kv[il] = ds4_gpu_tensor_alloc(attn_width * attn_rows * sizeof(float));
             g->layer_attn_state_score[il] = ds4_gpu_tensor_alloc(attn_width * attn_rows * sizeof(float));
-            if (enable_mtp) {
+            if (enable_speculation) {
                 g->spec_attn_state_kv[il] = ds4_gpu_tensor_alloc(attn_width * attn_rows * sizeof(float));
                 g->spec_attn_state_score[il] = ds4_gpu_tensor_alloc(attn_width * attn_rows * sizeof(float));
-                g->spec_prefix1_attn_state_kv[il] = ds4_gpu_tensor_alloc(attn_width * attn_rows * sizeof(float));
-                g->spec_prefix1_attn_state_score[il] = ds4_gpu_tensor_alloc(attn_width * attn_rows * sizeof(float));
+                if (enable_mtp) {
+                    g->spec_prefix1_attn_state_kv[il] = ds4_gpu_tensor_alloc(attn_width * attn_rows * sizeof(float));
+                    g->spec_prefix1_attn_state_score[il] = ds4_gpu_tensor_alloc(attn_width * attn_rows * sizeof(float));
+                }
             }
             if (g->layer_attn_state_kv[il]) {
                 state_init_ok = state_init_ok &&
@@ -11495,11 +11496,13 @@ static bool metal_graph_alloc_raw_cap(
                         (uint64_t)g->layer_comp_cap[il] * DS4_N_INDEXER_HEAD_DIM * sizeof(float));
                 g->layer_index_state_kv[il] = ds4_gpu_tensor_alloc(index_width * index_rows * sizeof(float));
                 g->layer_index_state_score[il] = ds4_gpu_tensor_alloc(index_width * index_rows * sizeof(float));
-                if (enable_mtp) {
+                if (enable_speculation) {
                     g->spec_index_state_kv[il] = ds4_gpu_tensor_alloc(index_width * index_rows * sizeof(float));
                     g->spec_index_state_score[il] = ds4_gpu_tensor_alloc(index_width * index_rows * sizeof(float));
-                    g->spec_prefix1_index_state_kv[il] = ds4_gpu_tensor_alloc(index_width * index_rows * sizeof(float));
-                    g->spec_prefix1_index_state_score[il] = ds4_gpu_tensor_alloc(index_width * index_rows * sizeof(float));
+                    if (enable_mtp) {
+                        g->spec_prefix1_index_state_kv[il] = ds4_gpu_tensor_alloc(index_width * index_rows * sizeof(float));
+                        g->spec_prefix1_index_state_score[il] = ds4_gpu_tensor_alloc(index_width * index_rows * sizeof(float));
+                    }
                 }
                 if (g->layer_index_state_kv[il]) {
                     state_init_ok = state_init_ok &&
@@ -11626,21 +11629,23 @@ static bool metal_graph_alloc_raw_cap(
             layer_cache_ok = g->layer_attn_comp_cache[il] != NULL &&
                              g->layer_attn_state_kv[il] != NULL &&
                              g->layer_attn_state_score[il] != NULL &&
-                             (!enable_mtp ||
+                             (!enable_speculation ||
                               (g->spec_attn_state_kv[il] != NULL &&
                                g->spec_attn_state_score[il] != NULL &&
-                               g->spec_prefix1_attn_state_kv[il] != NULL &&
-                               g->spec_prefix1_attn_state_score[il] != NULL));
+                               (!enable_mtp ||
+                                (g->spec_prefix1_attn_state_kv[il] != NULL &&
+                                 g->spec_prefix1_attn_state_score[il] != NULL))));
         }
         if (layer_cache_ok && ratio == 4) {
             layer_cache_ok = g->layer_index_comp_cache[il] != NULL &&
                              g->layer_index_state_kv[il] != NULL &&
                              g->layer_index_state_score[il] != NULL &&
-                             (!enable_mtp ||
+                             (!enable_speculation ||
                               (g->spec_index_state_kv[il] != NULL &&
                                g->spec_index_state_score[il] != NULL &&
-                               g->spec_prefix1_index_state_kv[il] != NULL &&
-                               g->spec_prefix1_index_state_score[il] != NULL));
+                               (!enable_mtp ||
+                                (g->spec_prefix1_index_state_kv[il] != NULL &&
+                                 g->spec_prefix1_index_state_score[il] != NULL))));
         }
     }
 
@@ -11695,7 +11700,7 @@ static bool metal_graph_alloc(
         ds4_gpu_graph *g,
         const ds4_weights     *weights,
         const ds4_layer_weights *layer) {
-    return metal_graph_alloc_raw_cap(g, weights, layer, DS4_N_SWA, DS4_N_SWA, 1, false);
+    return metal_graph_alloc_raw_cap(g, weights, layer, DS4_N_SWA, DS4_N_SWA, 1, false, false);
 }
 
 static bool metal_graph_install_model_spans(
@@ -22118,7 +22123,7 @@ static int metal_graph_prompt_logits_test(
 
     ds4_gpu_graph g;
     bool ok = metal_graph_alloc_raw_cap(&g, weights, &weights->layer[0],
-                                        raw_cap, (uint32_t)ctx_size, (uint32_t)n_test, false);
+                                        raw_cap, (uint32_t)ctx_size, (uint32_t)n_test, false, false);
     if (!ok) {
         metal_graph_free(&g);
         fprintf(stderr, "ds4: failed to initialize Metal graph prompt test runtime\n");
@@ -23572,7 +23577,7 @@ static int generate_metal_graph_raw_swa(
     }
     ds4_gpu_graph g;
     bool ok = metal_graph_alloc_raw_cap(&g, weights, &weights->layer[0],
-                                        raw_cap, (uint32_t)ctx_size, prefill_cap, false);
+                                        raw_cap, (uint32_t)ctx_size, prefill_cap, false, false);
     if (!ok) {
         fprintf(stderr, "ds4: failed to allocate GPU graph runtime\n");
         return 1;
@@ -25640,7 +25645,7 @@ int ds4_engine_collect_imatrix(ds4_engine *e,
 
     ds4_gpu_graph g;
     bool ok = metal_graph_alloc_raw_cap(&g, weights, &weights->layer[0],
-                                        raw_cap, (uint32_t)ctx_size, prefill_cap, false);
+                                        raw_cap, (uint32_t)ctx_size, prefill_cap, false, false);
     if (!ok) {
         fprintf(stderr, "ds4: failed to allocate imatrix Metal graph runtime\n");
         free(dataset);
@@ -26274,8 +26279,13 @@ struct dspark_session_state {
     uint64_t verify_stream_eligible;
     uint64_t accept_sim_total;
     uint64_t accept_sim_first_eligible;
-    uint64_t accept_sim_known_depth;
-    uint64_t accept_sim_unverified_suffix;
+    uint64_t accept_sim_checked_rows;
+    uint64_t accept_sim_greedy_accepted;
+    uint64_t accept_sim_full_accepts;
+    uint64_t accept_sim_suffix_rejects;
+    uint64_t accept_sim_context_limited;
+    uint64_t accept_sim_verifier_failures;
+    uint64_t accept_sim_restore_failures;
     bool draft_valid;
     dspark_draft_step_scratch step;
     dspark_draft_candidate draft[16];
@@ -27035,13 +27045,19 @@ typedef struct {
     bool stream_eligible;
 } dspark_verify_gate_result;
 
-/* This only describes the target positions already verified in this session. */
 typedef struct {
     uint32_t draft_rows;
     uint32_t checked_rows;
-    uint32_t known_accept_depth;
-    uint32_t unverified_suffix;
+    uint32_t greedy_accept_depth;
+    uint32_t skipped_suffix;
+    int32_t rejected_row;
+    const char *stop_reason;
     bool first_gate_passed;
+    bool full_accept;
+    bool context_limited;
+    bool verifier_failed;
+    bool rollback_attempted;
+    bool restore_failed;
 } dspark_accept_sim_result;
 
 static dspark_verify_gate_result dspark_session_verify_gate(
@@ -27067,20 +27083,121 @@ static dspark_verify_gate_result dspark_session_verify_gate(
     return gate;
 }
 
-static dspark_accept_sim_result dspark_session_accept_simulate(
-        uint32_t                        draft_rows,
+static const char *dspark_session_accept_sim_reject_reason(
+        bool                            target_hit,
         const dspark_verify_gate_result *gate) {
+    if (!target_hit) return "target miss";
+    if (!gate->confidence_ok) return "confidence";
+    if (!gate->margin_ok) return "margin";
+    return "gate";
+}
+
+static bool dspark_session_has_rollback_scratch(const ds4_session *s) {
+    if (!s) return false;
+    const ds4_gpu_graph *g = &s->graph;
+    for (uint32_t il = 0; il < DS4_N_LAYER; il++) {
+        const uint32_t ratio = ds4_layer_compress_ratio(il);
+        if (ratio == 0) continue;
+        if (!g->spec_attn_state_kv[il] || !g->spec_attn_state_score[il]) return false;
+        if (ratio == 4 &&
+            (!g->spec_index_state_kv[il] || !g->spec_index_state_score[il])) {
+            return false;
+        }
+    }
+    return true;
+}
+
+static dspark_accept_sim_result dspark_session_accept_simulate(
+        ds4_session                    *s,
+        bool                            first_target_hit,
+        const dspark_verify_gate_result *first_gate) {
     dspark_accept_sim_result result = {0};
-    result.draft_rows = draft_rows;
-    if (draft_rows == 0 || !gate) return result;
+    result.rejected_row = -1;
+    result.stop_reason = "no draft";
+    if (!s || !s->dspark || !first_gate) return result;
 
-    /* Later draft rows need target suffix logits, which this diagnostic has not run. */
+    dspark_session_state *d = s->dspark;
+    result.draft_rows = d->draft_rows;
+    if (result.draft_rows == 0) return result;
+
     result.checked_rows = 1;
-    result.first_gate_passed = gate->greedy_eligible;
-    if (!result.first_gate_passed) return result;
+    result.first_gate_passed = first_gate->greedy_eligible;
+    if (!result.first_gate_passed) {
+        result.rejected_row = 0;
+        result.stop_reason = dspark_session_accept_sim_reject_reason(
+            first_target_hit,
+            first_gate);
+        result.skipped_suffix = result.draft_rows - 1u;
+        return result;
+    }
 
-    result.known_accept_depth = 1;
-    result.unverified_suffix = draft_rows - 1u;
+    result.greedy_accept_depth = 1;
+    uint32_t max_checked = result.draft_rows;
+    const int remaining = s->ctx_size - s->checkpoint.len;
+    const uint32_t context_limit = remaining > 0 ? (uint32_t)remaining + 1u : 1u;
+    if (max_checked > context_limit) {
+        max_checked = context_limit;
+        result.context_limited = true;
+    }
+    if (max_checked == 1) {
+        result.stop_reason = result.context_limited ? "context limit" : "full accept";
+        result.full_accept = !result.context_limited;
+        result.skipped_suffix = result.draft_rows - result.checked_rows;
+        return result;
+    }
+    if (!dspark_session_has_rollback_scratch(s)) {
+        result.verifier_failed = true;
+        result.stop_reason = "rollback scratch unavailable";
+        result.skipped_suffix = result.draft_rows - result.checked_rows;
+        return result;
+    }
+
+    ds4_spec_frontier frontier;
+    memset(&frontier, 0, sizeof(frontier));
+    if (!spec_frontier_snapshot(&frontier, s)) {
+        result.verifier_failed = true;
+        result.stop_reason = "frontier snapshot failed";
+        result.skipped_suffix = result.draft_rows - result.checked_rows;
+        return result;
+    }
+    result.rollback_attempted = true;
+
+    for (uint32_t row = 1; row < max_checked; row++) {
+        int target_top = -1;
+        if (!metal_graph_eval_token_raw_swa_top(&s->graph,
+                                                 &s->engine->model,
+                                                 &s->engine->weights,
+                                                 d->draft[row - 1u].token,
+                                                 (uint32_t)s->checkpoint.len + row - 1u,
+                                                 &target_top,
+                                                 NULL)) {
+            result.verifier_failed = true;
+            result.stop_reason = "target suffix decode failed";
+            break;
+        }
+
+        result.checked_rows = row + 1u;
+        const bool target_hit = target_top == d->draft[row].token;
+        const dspark_verify_gate_result gate =
+            dspark_session_verify_gate(&d->draft[row], target_hit, false);
+        if (!gate.greedy_eligible) {
+            result.rejected_row = (int32_t)row;
+            result.stop_reason = dspark_session_accept_sim_reject_reason(target_hit, &gate);
+            break;
+        }
+        result.greedy_accept_depth++;
+    }
+
+    result.restore_failed = !spec_frontier_restore(&frontier, s);
+    spec_frontier_free(&frontier);
+    if (result.restore_failed) {
+        result.stop_reason = "frontier restore failed";
+    } else if (!result.verifier_failed && result.rejected_row < 0) {
+        result.full_accept = !result.context_limited &&
+                             result.checked_rows == result.draft_rows;
+        result.stop_reason = result.full_accept ? "full accept" : "context limit";
+    }
+    result.skipped_suffix = result.draft_rows - result.checked_rows;
     return result;
 }
 
@@ -27096,17 +27213,19 @@ static bool dspark_session_can_observe(const ds4_session *s) {
            s->checkpoint.len > 0;
 }
 
-static void dspark_session_verify_next_token(
+static bool dspark_session_verify_next_token(
         ds4_session *s,
         int          token,
-        const char  *origin) {
-    if (!dspark_session_verify_env_enabled()) return;
+        const char  *origin,
+        char        *err,
+        size_t       errlen) {
+    if (!dspark_session_verify_env_enabled()) return true;
     if (!s || !s->engine || !s->engine->dspark_ready || !s->checkpoint_valid ||
         s->checkpoint.len <= 0 || !s->logits) {
-        return;
+        return true;
     }
     dspark_session_state *d = s->dspark;
-    if (!d || !d->draft_valid || d->draft_rows == 0) return;
+    if (!d || !d->draft_valid || d->draft_rows == 0) return true;
 
     const dspark_draft_candidate *draft = &d->draft[0];
     const uint32_t checkpoint_prev = (uint32_t)s->checkpoint.v[s->checkpoint.len - 1];
@@ -27117,7 +27236,7 @@ static void dspark_session_verify_next_token(
                 draft->prev_token,
                 checkpoint_prev);
         dspark_session_draft_reset(d);
-        return;
+        return true;
     }
 
     const int target_top = sample_argmax(s->logits, DS4_N_VOCAB);
@@ -27126,7 +27245,7 @@ static void dspark_session_verify_next_token(
     const dspark_verify_gate_result gate =
         dspark_session_verify_gate(draft, target_hit, token_hit);
     const dspark_accept_sim_result accept_sim =
-        dspark_session_accept_simulate(d->draft_rows, &gate);
+        dspark_session_accept_simulate(s, target_hit, &gate);
     d->verify_total++;
     if (target_hit) d->verify_target_hit++;
     if (token_hit) d->verify_token_hit++;
@@ -27134,8 +27253,13 @@ static void dspark_session_verify_next_token(
     if (gate.stream_eligible) d->verify_stream_eligible++;
     d->accept_sim_total++;
     if (accept_sim.first_gate_passed) d->accept_sim_first_eligible++;
-    d->accept_sim_known_depth += accept_sim.known_accept_depth;
-    d->accept_sim_unverified_suffix += accept_sim.unverified_suffix;
+    d->accept_sim_checked_rows += accept_sim.checked_rows;
+    d->accept_sim_greedy_accepted += accept_sim.greedy_accept_depth;
+    if (accept_sim.full_accept) d->accept_sim_full_accepts++;
+    if (accept_sim.rejected_row > 0) d->accept_sim_suffix_rejects++;
+    if (accept_sim.context_limited) d->accept_sim_context_limited++;
+    if (accept_sim.verifier_failed) d->accept_sim_verifier_failures++;
+    if (accept_sim.restore_failed) d->accept_sim_restore_failures++;
 
     fprintf(stderr,
             "ds4: DSpark verifier %s next draft=%d target_top=%d token=%d "
@@ -27166,20 +27290,31 @@ static void dspark_session_verify_next_token(
             draft->logit);
     fprintf(stderr,
             "ds4: DSpark accept simulator %s checked_rows=%u/%u "
-            "known_accept_depth=%u first_gate=%s unverified_suffix=%u "
-            "first_gate_hits=%llu/%llu known_depth_total=%llu "
-            "unverified_suffix_total=%llu; observation only, no tokens accepted\n",
+            "greedy_accept_depth=%u first_gate=%s stop=%s rejected_row=%d "
+            "skipped_suffix=%u rollback=%s trials=%llu rows_checked=%llu "
+            "greedy_depth=%llu full_accepts=%llu; observation only, no tokens accepted\n",
             origin ? origin : "session",
             accept_sim.checked_rows,
             accept_sim.draft_rows,
-            accept_sim.known_accept_depth,
+            accept_sim.greedy_accept_depth,
             accept_sim.first_gate_passed ? "yes" : "no",
-            accept_sim.unverified_suffix,
-            (unsigned long long)d->accept_sim_first_eligible,
+            accept_sim.stop_reason,
+            accept_sim.rejected_row,
+            accept_sim.skipped_suffix,
+            accept_sim.restore_failed ? "failed" :
+                (accept_sim.rollback_attempted ? "restored" : "not-needed"),
             (unsigned long long)d->accept_sim_total,
-            (unsigned long long)d->accept_sim_known_depth,
-            (unsigned long long)d->accept_sim_unverified_suffix);
+            (unsigned long long)d->accept_sim_checked_rows,
+            (unsigned long long)d->accept_sim_greedy_accepted,
+            (unsigned long long)d->accept_sim_full_accepts);
     dspark_session_draft_reset(d);
+    if (accept_sim.restore_failed) {
+        s->checkpoint_valid = false;
+        dspark_session_target_context_reset(s->dspark);
+        if (errlen) snprintf(err, errlen, "DSpark verifier could not restore target state");
+        return false;
+    }
+    return true;
 }
 
 static void dspark_session_observe_draft_rows(
@@ -27275,10 +27410,18 @@ static void dspark_session_observe_draft_rows(
     }
 }
 #else
-static DS4_MAYBE_UNUSED void dspark_session_verify_next_token(ds4_session *s, int token, const char *origin) {
+static DS4_MAYBE_UNUSED bool dspark_session_verify_next_token(
+        ds4_session *s,
+        int          token,
+        const char  *origin,
+        char        *err,
+        size_t       errlen) {
     (void)s;
     (void)token;
     (void)origin;
+    (void)err;
+    (void)errlen;
+    return true;
 }
 
 static void dspark_session_observe_draft_rows(ds4_session *s, const char *origin) {
@@ -28212,8 +28355,12 @@ int ds4_session_create(ds4_session **out, ds4_engine *e, int ctx_size) {
         free(s);
         return 1;
     }
+    const bool enable_dspark_verifier =
+        e->dspark_ready && dspark_session_verify_env_enabled();
     if (!metal_graph_alloc_raw_cap(&s->graph, &e->weights, shape_layer,
-                                   raw_cap, (uint32_t)ctx_size, s->prefill_cap, e->mtp_ready))
+                                   raw_cap, (uint32_t)ctx_size, s->prefill_cap,
+                                   e->mtp_ready,
+                                   e->mtp_ready || enable_dspark_verifier))
     {
         free(s);
         return 1;
@@ -29335,7 +29482,7 @@ static int ds4_session_eval_internal(ds4_session *s, int token, bool probe_mtp,
     const bool mtp_should_draft =
         probe_mtp && e->mtp_ready && s->mtp_logits &&
         (e->mtp_draft_tokens > 1 || mtp_probe_log);
-    dspark_session_verify_next_token(s, token, "eval");
+    if (!dspark_session_verify_next_token(s, token, "eval", err, errlen)) return 1;
     if (probe_mtp && s->mtp_draft_valid) {
         if (mtp_probe_log) {
             s->mtp_probe_total++;
