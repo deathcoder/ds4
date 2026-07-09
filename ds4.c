@@ -26286,6 +26286,10 @@ struct dspark_session_state {
     uint64_t accept_sim_context_limited;
     uint64_t accept_sim_verifier_failures;
     uint64_t accept_sim_restore_failures;
+    uint64_t commit_probe_total;
+    uint64_t commit_probe_ready;
+    uint64_t commit_probe_committed;
+    uint64_t commit_probe_skipped;
     bool draft_valid;
     dspark_draft_step_scratch step;
     dspark_draft_candidate draft[16];
@@ -26406,6 +26410,7 @@ static bool dspark_session_state_ensure(ds4_session *s, char *err, size_t errlen
 }
 
 static bool dspark_session_probe_env_enabled(void);
+static bool dspark_session_commit_probe_env_enabled(void);
 static bool dspark_session_verify_env_enabled(void);
 static bool dspark_session_observe_env_enabled(void);
 static const char *dspark_session_observe_mode_name(void);
@@ -27006,9 +27011,15 @@ static bool dspark_session_probe_env_enabled(void) {
     return v && v[0] && strcmp(v, "0") != 0;
 }
 
+static bool dspark_session_commit_probe_env_enabled(void) {
+    const char *v = getenv("DS4_DSPARK_COMMIT_PROBE");
+    return v && v[0] && strcmp(v, "0") != 0;
+}
+
 static bool dspark_session_verify_env_enabled(void) {
     const char *v = getenv("DS4_DSPARK_VERIFY");
-    return v && v[0] && strcmp(v, "0") != 0;
+    return (v && v[0] && strcmp(v, "0") != 0) ||
+           dspark_session_commit_probe_env_enabled();
 }
 
 static bool dspark_session_observe_env_enabled(void) {
@@ -27017,7 +27028,8 @@ static bool dspark_session_observe_env_enabled(void) {
 }
 
 static const char *dspark_session_observe_mode_name(void) {
-    return dspark_session_probe_env_enabled() ? "dev probe" : "verifier";
+    if (dspark_session_probe_env_enabled()) return "dev probe";
+    return dspark_session_commit_probe_env_enabled() ? "commit probe" : "verifier";
 }
 
 static float dspark_session_env_threshold(
@@ -27217,8 +27229,10 @@ static bool dspark_session_verify_next_token(
         ds4_session *s,
         int          token,
         const char  *origin,
+        bool        *commit_ready,
         char        *err,
         size_t       errlen) {
+    if (commit_ready) *commit_ready = false;
     if (!dspark_session_verify_env_enabled()) return true;
     if (!s || !s->engine || !s->engine->dspark_ready || !s->checkpoint_valid ||
         s->checkpoint.len <= 0 || !s->logits) {
@@ -27260,6 +27274,19 @@ static bool dspark_session_verify_next_token(
     if (accept_sim.context_limited) d->accept_sim_context_limited++;
     if (accept_sim.verifier_failed) d->accept_sim_verifier_failures++;
     if (accept_sim.restore_failed) d->accept_sim_restore_failures++;
+    const bool commit_requested =
+        dspark_session_commit_probe_env_enabled() &&
+        !dspark_session_probe_env_enabled();
+    const bool commit_allowed =
+        commit_requested &&
+        gate.stream_eligible &&
+        accept_sim.greedy_accept_depth > 0 &&
+        !accept_sim.restore_failed;
+    if (commit_requested) {
+        d->commit_probe_total++;
+        if (commit_allowed) d->commit_probe_ready++;
+        else d->commit_probe_skipped++;
+    }
 
     fprintf(stderr,
             "ds4: DSpark verifier %s next draft=%d target_top=%d token=%d "
@@ -27267,8 +27294,7 @@ static bool dspark_session_verify_next_token(
             "greedy_eligible=%s greedy_hit=%llu/%llu "
             "stream_eligible=%s stream_hit=%llu/%llu "
             "confidence=%.6g min_confidence=%.6g margin=%.6g min_margin=%.6g "
-            "logit=%.6g; "
-            "observation only, no tokens accepted\n",
+            "logit=%.6g commit_probe=%s; no DSpark suffix tokens accepted\n",
             origin ? origin : "session",
             draft->token,
             target_top,
@@ -27287,7 +27313,8 @@ static bool dspark_session_verify_next_token(
             gate.min_confidence,
             gate.margin,
             gate.min_margin,
-            draft->logit);
+            draft->logit,
+            !commit_requested ? "off" : (commit_allowed ? "ready" : "skipped"));
     fprintf(stderr,
             "ds4: DSpark accept simulator %s checked_rows=%u/%u "
             "greedy_accept_depth=%u first_gate=%s stop=%s rejected_row=%d "
@@ -27314,6 +27341,7 @@ static bool dspark_session_verify_next_token(
         if (errlen) snprintf(err, errlen, "DSpark verifier could not restore target state");
         return false;
     }
+    if (commit_ready && commit_allowed) *commit_ready = true;
     return true;
 }
 
@@ -27409,16 +27437,94 @@ static void dspark_session_observe_draft_rows(
                 err[0] ? err : "unknown error");
     }
 }
-#else
-static DS4_MAYBE_UNUSED bool dspark_session_verify_next_token(
+
+static bool ds4_session_eval_graph_target_token(
         ds4_session *s,
         int          token,
         const char  *origin,
         char        *err,
         size_t       errlen) {
+    if (!s || !s->engine) {
+        if (errlen) snprintf(err, errlen, "missing graph session");
+        return false;
+    }
+
+    ds4_engine *e = s->engine;
+    ds4_target_hc_capture dspark_capture;
+    const uint32_t capture_pos = (uint32_t)s->checkpoint.len;
+    const bool capture_active =
+        dspark_session_target_capture_begin(s,
+                                            capture_pos,
+                                            1,
+                                            &dspark_capture,
+                                            origin);
+    if (!metal_graph_eval_token_raw_swa_capture(&s->graph,
+                                                 &e->model,
+                                                 &e->weights,
+                                                 (uint32_t)token,
+                                                 capture_pos,
+                                                 s->logits,
+                                                 capture_active ? &dspark_capture : NULL)) {
+        if (errlen) snprintf(err, errlen, "%s decode failed", ds4_backend_name(e->backend));
+        s->checkpoint_valid = false;
+        dspark_session_target_context_reset(s->dspark);
+        return false;
+    }
+    if (capture_active) {
+        char cap_err[256];
+        cap_err[0] = '\0';
+        if (!dspark_session_target_capture_finish(s,
+                                                  &dspark_capture,
+                                                  capture_pos + 1u,
+                                                  cap_err,
+                                                  sizeof(cap_err))) {
+            fprintf(stderr,
+                    "ds4: DSpark %s capture skipped at %s: %s\n",
+                    dspark_session_observe_mode_name(),
+                    origin ? origin : "session",
+                    cap_err[0] ? cap_err : "unknown error");
+        }
+    }
+    token_vec_push(&s->checkpoint, token);
+    s->checkpoint_valid = true;
+    return true;
+}
+
+static bool dspark_session_commit_probe_first_token(
+        ds4_session *s,
+        int          token,
+        char        *err,
+        size_t       errlen) {
+    if (!s || !s->dspark || token < 0 || token >= (int)DS4_N_VOCAB) {
+        if (errlen) snprintf(err, errlen, "invalid DSpark commit probe token");
+        return false;
+    }
+
+    const uint32_t pos = (uint32_t)s->checkpoint.len;
+    if (!ds4_session_eval_graph_target_token(s, token, "commit", err, errlen)) return false;
+
+    s->mtp_draft_valid = false;
+    s->dspark->commit_probe_committed++;
+    fprintf(stderr,
+            "ds4: DSpark commit probe committed actual token=%d at pos=%u; "
+            "no extra DSpark tokens emitted or accepted\n",
+            token,
+            pos);
+    dspark_session_observe_draft_rows(s, "commit");
+    return true;
+}
+#else
+static DS4_MAYBE_UNUSED bool dspark_session_verify_next_token(
+        ds4_session *s,
+        int          token,
+        const char  *origin,
+        bool        *commit_ready,
+        char        *err,
+        size_t       errlen) {
     (void)s;
     (void)token;
     (void)origin;
+    if (commit_ready) *commit_ready = false;
     (void)err;
     (void)errlen;
     return true;
@@ -29482,7 +29588,18 @@ static int ds4_session_eval_internal(ds4_session *s, int token, bool probe_mtp,
     const bool mtp_should_draft =
         probe_mtp && e->mtp_ready && s->mtp_logits &&
         (e->mtp_draft_tokens > 1 || mtp_probe_log);
-    if (!dspark_session_verify_next_token(s, token, "eval", err, errlen)) return 1;
+    bool dspark_commit_ready = false;
+    if (!dspark_session_verify_next_token(s,
+                                          token,
+                                          "eval",
+                                          &dspark_commit_ready,
+                                          err,
+                                          errlen)) {
+        return 1;
+    }
+    if (dspark_commit_ready) {
+        return dspark_session_commit_probe_first_token(s, token, err, errlen) ? 0 : 1;
+    }
     if (probe_mtp && s->mtp_draft_valid) {
         if (mtp_probe_log) {
             s->mtp_probe_total++;
@@ -29496,40 +29613,7 @@ static int ds4_session_eval_internal(ds4_session *s, int token, bool probe_mtp,
         }
         s->mtp_draft_valid = false;
     }
-    ds4_target_hc_capture dspark_capture;
-    const uint32_t dspark_capture_pos = (uint32_t)s->checkpoint.len;
-    const bool dspark_capture_active =
-        dspark_session_target_capture_begin(s,
-                                            dspark_capture_pos,
-                                            1,
-                                            &dspark_capture,
-                                            "eval");
-    if (!metal_graph_eval_token_raw_swa_capture(&s->graph, &e->model, &e->weights,
-                                                (uint32_t)token,
-                                                dspark_capture_pos,
-                                                s->logits,
-                                                dspark_capture_active ? &dspark_capture : NULL))
-    {
-        snprintf(err, errlen, "%s decode failed", ds4_backend_name(e->backend));
-        s->checkpoint_valid = false;
-        dspark_session_target_context_reset(s->dspark);
-        return 1;
-    }
-    if (dspark_capture_active) {
-        char cap_err[256];
-        cap_err[0] = '\0';
-        if (!dspark_session_target_capture_finish(s,
-                                                  &dspark_capture,
-                                                  dspark_capture_pos + 1u,
-                                                  cap_err,
-                                                  sizeof(cap_err))) {
-            fprintf(stderr,
-                    "ds4: DSpark %s capture skipped at eval: %s\n",
-                    dspark_session_observe_mode_name(),
-                    cap_err[0] ? cap_err : "unknown error");
-        }
-    }
-    token_vec_push(&s->checkpoint, token);
+    if (!ds4_session_eval_graph_target_token(s, token, "eval", err, errlen)) return 1;
     if (mtp_should_draft) {
         int mtp_top = -1;
         if (metal_graph_eval_mtp_draft(&s->graph,

@@ -8,7 +8,7 @@ particular DSpark change exists.
 
 Branch: `codex/dspark-observability-0`
 
-Phase 0.19 is still intentionally narrow: `--dspark FILE` validates an official
+Phase 0.20 is still intentionally narrow: `--dspark FILE` validates an official
 DSpark drafter GGUF, binds every tensor needed by a future runtime path, checks
 the expected DeepSeek V4 Flash DSpark shapes, and exposes a diagnostic
 `--dspark-probe` bridge for target-layer hidden-state capture plus
@@ -32,7 +32,11 @@ using optional confidence and logit-margin thresholds. Its no-commit simulator
 now checks each later candidate against exact target suffix logits through the
 normal one-token decode kernel, then restores the target compressor frontiers
 before normal evaluation continues. It does not enable DSpark speculative
-decoding.
+decoding. A third development-only mode, `DS4_DSPARK_COMMIT_PROBE=1`, can
+commit the already-selected first token only when it is `stream_eligible`. The
+probe uses the ordinary target decode/capture path and then skips its duplicate
+normal eval, so output remains the sampled token. It never commits un-emitted
+DSpark suffix rows.
 
 The design choice was to keep this separate from legacy `--mtp`. We do not
 guess dynamically whether `--mtp` points at legacy MTP or DSpark. The first
@@ -63,7 +67,7 @@ hook is explicit and conservative:
   prefix, and on the next eval compares `d->draft[0]` to both the target argmax
   from the current logits and the actual token selected by the sampler/caller.
   It logs cumulative `target_hit` and `token_hit` counters, resets the draft
-  after verification, and never accepts, emits, appends, or speculates tokens.
+  after verification, and does not accept, emit, append, or speculate tokens.
 - The verifier gate has two optional thresholds:
   `DS4_DSPARK_VERIFY_MIN_CONFIDENCE` in `[0,1]` and
   `DS4_DSPARK_VERIFY_MIN_MARGIN` in `[0,+inf)`. A draft is
@@ -80,6 +84,14 @@ hook is explicit and conservative:
   It never changes the session checkpoint, host logits, sampling, output, or
   token acceptance. A failed rollback invalidates the session and returns an
   error rather than continuing with possibly changed target state.
+- `DS4_DSPARK_COMMIT_PROBE=1` implicitly enables the verifier and adds one
+  explicit state-transition experiment. If row 0 passes the gate and equals the
+  actual selected token (`stream_eligible`), ds4 first restores the hypothetical
+  suffix, then evaluates and commits that same selected token through the
+  ordinary graph decode/capture path. It emits no token itself and skips the
+  duplicate ordinary eval. If the gate or stream check fails, it logs `skipped`
+  and falls through unchanged. It never commits rows 1+ because they have not
+  been emitted and would alter the normal sampled stream.
 - The ordinary-session hooks are not called by the CLI `--temp 0` argmax fast
   path. Use a seeded nonzero-temperature smoke when verifying this diagnostic
   path against a normal-generation baseline.
@@ -240,9 +252,19 @@ Phase 0.5 shape/binding facts from the local
     checked rows, greedy acceptance depth, rejection/context/diagnostic states,
     and treats a failed restore as a session error.
   - Split generic speculative rollback frontiers from legacy MTP-only scratch
-    in the graph allocator. A session created with `DS4_DSPARK_VERIFY=1` gets
-    only the generic frontier buffers needed for rollback; it does not receive
-    MTP hidden-state scratch, MTP raw cache, or MTP speculative logits.
+    in the graph allocator. A session created with `DS4_DSPARK_VERIFY=1` or
+    `DS4_DSPARK_COMMIT_PROBE=1` gets only the generic frontier buffers needed
+    for rollback; it does not receive MTP hidden-state scratch, MTP raw cache,
+    or MTP speculative logits.
+  - Added `DS4_DSPARK_COMMIT_PROBE=1`, an explicit first-token commit probe.
+    It only acts for a `stream_eligible` row-0 candidate, restores the virtual
+    suffix first, advances that actual selected token through the normal target
+    graph/capture path, rebuilds the next DSpark candidate block, and prevents
+    the caller from evaluating the same token twice. It never commits suffix
+    candidates or emits output itself.
+  - Factored the graph target-token evaluation/capture sequence into private
+    `ds4_session_eval_graph_target_token`, shared by normal graph eval and the
+    commit probe so their state transitions stay identical.
   - The sidecar probe still does not emit, accept, append, generate, or
     speculate tokens.
   - Added `dspark_model`, `dspark_config`, and `dspark_ready` to `ds4_engine`.
@@ -799,6 +821,57 @@ run, the first cycle reported a greedy depth of two and the second a greedy
 depth of one; each reported `rollback=restored`. These are correctness smokes,
 not tok/s benchmarks.
 
+Phase 0.20 first-token commit-probe checks run on 2026-07-09:
+
+```sh
+make ds4 ds4_test
+./ds4_test --dspark-validation --dspark-shape-binding
+make ds4-server ds4-eval ds4-agent
+make ds4_cpu.o
+git diff --check
+DS4_DSPARK_COMMIT_PROBE=1 ./ds4 \
+  --model gguf/DeepSeek-V4-Flash-IQ2XXS-w2Q2K-AProjQ8-SExpQ8-OutQ8-chat-v2-imatrix.gguf \
+  --dspark gguf/ds4flash-dspark.gguf \
+  --nothink -n 2 --temp 0.7 --seed 42 -p "Hello"
+./ds4 \
+  --model gguf/DeepSeek-V4-Flash-IQ2XXS-w2Q2K-AProjQ8-SExpQ8-OutQ8-chat-v2-imatrix.gguf \
+  --nothink -n 2 --temp 0.7 --seed 42 -p "Hello"
+DS4_DSPARK_COMMIT_PROBE=1 \
+DS4_DSPARK_VERIFY_MIN_CONFIDENCE=0.99 \
+./ds4 \
+  --model gguf/DeepSeek-V4-Flash-IQ2XXS-w2Q2K-AProjQ8-SExpQ8-OutQ8-chat-v2-imatrix.gguf \
+  --dspark gguf/ds4flash-dspark.gguf \
+  --nothink -n 2 --temp 0.7 --seed 42 -p "Hello"
+DS4_DSPARK_COMMIT_PROBE=1 ./ds4 \
+  --model gguf/DeepSeek-V4-Flash-IQ2XXS-w2Q2K-AProjQ8-SExpQ8-OutQ8-chat-v2-imatrix.gguf \
+  --dspark gguf/ds4flash-dspark.gguf \
+  --nothink -n 1 --temp 5 --seed 42 -p "Hello"
+```
+
+With default thresholds, both selected stream tokens were eligible and the
+probe committed them once through the ordinary target path:
+
+```text
+commit_probe=ready
+committed actual token=19923 at pos=10
+committed actual token=3 at pos=11
+```
+
+The probe rebuilt its next candidate block after each commit and emitted no
+extra DSpark tokens. Its output, `Hello!`, exactly matched the seeded no-DSpark
+baseline. With `DS4_DSPARK_VERIFY_MIN_CONFIDENCE=0.99`, both rows reported
+`commit_probe=skipped` and still produced the same normal output. These are
+correctness smokes, not tok/s benchmarks.
+
+The fixed high-temperature smoke selected token `6208` while the target and
+DSpark draft were both `19923`. It correctly reported `stream_eligible=no` and
+`commit_probe=skipped`, then ordinary evaluation produced the sampled token.
+
+An untargeted `./ds4_test` run entered its long-context GPU prefill case and was
+stopped after about one minute to avoid occupying the accelerator indefinitely.
+Do not treat the full test suite as passed for this phase; the focused DSpark
+tests and real-sidecar correctness smokes above did pass.
+
 Downloaded sidecar byte size:
 
 ```text
@@ -861,9 +934,9 @@ If continuing from a compacted context, start here:
   target-layer context from normal prefill/decode and build internal
   `d->draft[]` candidates, but still perform CPU readback and CPU sidecar draft
   computation for diagnostics. The verifier can now prove a greedy acceptance
-  prefix and restore target state, but a future runtime path still needs an
-  opt-in commit path that consumes those verified candidates without perturbing
-  normal generation by default.
+  prefix, restore target state, and commit the selected row-0 token in the
+  explicit commit probe. A future runtime path still needs a way to consume a
+  multi-token verified prefix while coordinating its emitted-token queue.
 - How should a future acceptance path preserve non-greedy sampling semantics?
   The diagnostic separates `greedy_eligible` from `stream_eligible`; committing
   multi-token prefixes is only straightforward for a greedy target stream.
