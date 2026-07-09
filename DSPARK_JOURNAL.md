@@ -8,7 +8,7 @@ particular DSpark change exists.
 
 Branch: `codex/dspark-observability-0`
 
-Phase 0.17 is still intentionally narrow: `--dspark FILE` validates an official
+Phase 0.18 is still intentionally narrow: `--dspark FILE` validates an official
 DSpark drafter GGUF, binds every tensor needed by a future runtime path, checks
 the expected DeepSeek V4 Flash DSpark shapes, and exposes a diagnostic
 `--dspark-probe` bridge for target-layer hidden-state capture plus
@@ -66,8 +66,13 @@ hook is explicit and conservative:
   `DS4_DSPARK_VERIFY_MIN_MARGIN` in `[0,+inf)`. A draft is
   `greedy_eligible` when it is fresh, matches the target argmax, and passes
   both thresholds. It is `stream_eligible` only when it is also the actual token
-  selected by the current normal generation stream. Both are logged and counted
-  only; neither causes a commit.
+selected by the current normal generation stream. Both are logged and counted
+only; neither causes a commit.
+- `DS4_DSPARK_VERIFY=1` also runs a no-commit acceptance simulator. It reports
+  the verified greedy acceptance prefix for the first draft row and labels all
+  later rows as unverified, because target suffix logits have not been
+  evaluated. It does not claim later rows would pass, and it never changes
+  checkpoint state, logits, sampling, output, or token acceptance.
 - No benchmarks should be run automatically by Codex. The user wants tok/s
   benchmarks to be run manually on an otherwise idle machine.
 
@@ -218,6 +223,9 @@ Phase 0.5 shape/binding facts from the local
     `DS4_DSPARK_VERIFY_MIN_MARGIN`; it only reports whether a candidate would
     be eligible for a future acceptance path and still never commits DSpark
     tokens.
+  - Added a private no-commit acceptance simulator to the verifier. It counts
+    the known first-row greedy acceptance depth and separately records later
+    draft rows as unverified until a future target-suffix verifier exists.
   - The sidecar probe still does not emit, accept, append, generate, or
     speculate tokens.
   - Added `dspark_model`, `dspark_config`, and `dspark_ready` to `ds4_engine`.
@@ -532,6 +540,8 @@ Phase 0.14 live-target-context capture checks run on 2026-07-06:
 ```sh
 make ds4 ds4_test
 ./ds4_test --dspark-validation --dspark-shape-binding
+make ds4-server ds4-eval ds4-agent
+make ds4_cpu.o
 git diff --check
 ./ds4 \
   --model gguf/DeepSeek-V4-Flash-IQ2XXS-w2Q2K-AProjQ8-SExpQ8-OutQ8-chat-v2-imatrix.gguf \
@@ -690,6 +700,41 @@ that would preserve the current sampled stream. DSpark still emitted, accepted,
 appended, and speculated no tokens. The command prints normal CLI
 prefill/generation rates, but this was a correctness smoke test, not a tok/s
 benchmark.
+
+Phase 0.18 no-commit acceptance-simulator checks run on 2026-07-09:
+
+```sh
+make ds4 ds4_test
+./ds4_test --dspark-validation --dspark-shape-binding
+git diff --check
+DS4_DSPARK_VERIFY=1 \
+DS4_DSPARK_VERIFY_MIN_CONFIDENCE=0.9 \
+DS4_DSPARK_VERIFY_MIN_MARGIN=2.0 \
+./ds4 \
+  --model gguf/DeepSeek-V4-Flash-IQ2XXS-w2Q2K-AProjQ8-SExpQ8-OutQ8-chat-v2-imatrix.gguf \
+  --dspark gguf/ds4flash-dspark.gguf \
+  --nothink -n 1 -p "Hello"
+```
+
+Expected first verification semantics: when the first candidate passes the
+greedy gate, the simulator reports `checked_rows=1/5`,
+`known_accept_depth=1`, and `unverified_suffix=4`. Those four later rows are
+not counted as accepted: verifying them requires target logits for hypothetical
+suffix positions, which remains future work. The smoke is a correctness check,
+not a tok/s benchmark.
+
+The thresholded real-sidecar smoke produced exactly that first verification:
+
+```text
+draft=19923 target_top=19923 token=19923
+greedy_eligible=yes stream_eligible=yes
+checked_rows=1/5 known_accept_depth=1
+first_gate=yes unverified_suffix=4
+```
+
+The generated stream remained normal target-model generation. The command did
+print normal CLI rates, but no tok/s benchmark was run. `make ds4_cpu.o` still
+has the same eight pre-existing CPU-only warnings.
 
 Downloaded sidecar byte size:
 

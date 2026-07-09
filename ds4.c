@@ -26272,6 +26272,10 @@ struct dspark_session_state {
     uint64_t verify_token_hit;
     uint64_t verify_greedy_eligible;
     uint64_t verify_stream_eligible;
+    uint64_t accept_sim_total;
+    uint64_t accept_sim_first_eligible;
+    uint64_t accept_sim_known_depth;
+    uint64_t accept_sim_unverified_suffix;
     bool draft_valid;
     dspark_draft_step_scratch step;
     dspark_draft_candidate draft[16];
@@ -27031,6 +27035,15 @@ typedef struct {
     bool stream_eligible;
 } dspark_verify_gate_result;
 
+/* This only describes the target positions already verified in this session. */
+typedef struct {
+    uint32_t draft_rows;
+    uint32_t checked_rows;
+    uint32_t known_accept_depth;
+    uint32_t unverified_suffix;
+    bool first_gate_passed;
+} dspark_accept_sim_result;
+
 static dspark_verify_gate_result dspark_session_verify_gate(
         const dspark_draft_candidate *draft,
         bool                          target_hit,
@@ -27052,6 +27065,23 @@ static dspark_verify_gate_result dspark_session_verify_gate(
     gate.greedy_eligible = target_hit && gate.confidence_ok && gate.margin_ok;
     gate.stream_eligible = gate.greedy_eligible && token_hit;
     return gate;
+}
+
+static dspark_accept_sim_result dspark_session_accept_simulate(
+        uint32_t                        draft_rows,
+        const dspark_verify_gate_result *gate) {
+    dspark_accept_sim_result result = {0};
+    result.draft_rows = draft_rows;
+    if (draft_rows == 0 || !gate) return result;
+
+    /* Later draft rows need target suffix logits, which this diagnostic has not run. */
+    result.checked_rows = 1;
+    result.first_gate_passed = gate->greedy_eligible;
+    if (!result.first_gate_passed) return result;
+
+    result.known_accept_depth = 1;
+    result.unverified_suffix = draft_rows - 1u;
+    return result;
 }
 
 static bool dspark_session_can_observe(const ds4_session *s) {
@@ -27095,11 +27125,17 @@ static void dspark_session_verify_next_token(
     const bool token_hit = token == draft->token;
     const dspark_verify_gate_result gate =
         dspark_session_verify_gate(draft, target_hit, token_hit);
+    const dspark_accept_sim_result accept_sim =
+        dspark_session_accept_simulate(d->draft_rows, &gate);
     d->verify_total++;
     if (target_hit) d->verify_target_hit++;
     if (token_hit) d->verify_token_hit++;
     if (gate.greedy_eligible) d->verify_greedy_eligible++;
     if (gate.stream_eligible) d->verify_stream_eligible++;
+    d->accept_sim_total++;
+    if (accept_sim.first_gate_passed) d->accept_sim_first_eligible++;
+    d->accept_sim_known_depth += accept_sim.known_accept_depth;
+    d->accept_sim_unverified_suffix += accept_sim.unverified_suffix;
 
     fprintf(stderr,
             "ds4: DSpark verifier %s next draft=%d target_top=%d token=%d "
@@ -27128,6 +27164,21 @@ static void dspark_session_verify_next_token(
             gate.margin,
             gate.min_margin,
             draft->logit);
+    fprintf(stderr,
+            "ds4: DSpark accept simulator %s checked_rows=%u/%u "
+            "known_accept_depth=%u first_gate=%s unverified_suffix=%u "
+            "first_gate_hits=%llu/%llu known_depth_total=%llu "
+            "unverified_suffix_total=%llu; observation only, no tokens accepted\n",
+            origin ? origin : "session",
+            accept_sim.checked_rows,
+            accept_sim.draft_rows,
+            accept_sim.known_accept_depth,
+            accept_sim.first_gate_passed ? "yes" : "no",
+            accept_sim.unverified_suffix,
+            (unsigned long long)d->accept_sim_first_eligible,
+            (unsigned long long)d->accept_sim_total,
+            (unsigned long long)d->accept_sim_known_depth,
+            (unsigned long long)d->accept_sim_unverified_suffix);
     dspark_session_draft_reset(d);
 }
 
