@@ -26270,6 +26270,8 @@ struct dspark_session_state {
     uint64_t verify_total;
     uint64_t verify_target_hit;
     uint64_t verify_token_hit;
+    uint64_t verify_greedy_eligible;
+    uint64_t verify_stream_eligible;
     bool draft_valid;
     dspark_draft_step_scratch step;
     dspark_draft_candidate draft[16];
@@ -27004,6 +27006,54 @@ static const char *dspark_session_observe_mode_name(void) {
     return dspark_session_probe_env_enabled() ? "dev probe" : "verifier";
 }
 
+static float dspark_session_env_threshold(
+        const char *name,
+        float       def,
+        float       min_value,
+        float       max_value) {
+    const char *v = getenv(name);
+    if (!v || !v[0]) return def;
+    char *end = NULL;
+    float parsed = strtof(v, &end);
+    if (end == v || !isfinite(parsed)) return def;
+    if (parsed < min_value) parsed = min_value;
+    if (parsed > max_value) parsed = max_value;
+    return parsed;
+}
+
+typedef struct {
+    float min_confidence;
+    float min_margin;
+    float margin;
+    bool confidence_ok;
+    bool margin_ok;
+    bool greedy_eligible;
+    bool stream_eligible;
+} dspark_verify_gate_result;
+
+static dspark_verify_gate_result dspark_session_verify_gate(
+        const dspark_draft_candidate *draft,
+        bool                          target_hit,
+        bool                          token_hit) {
+    dspark_verify_gate_result gate;
+    gate.min_confidence = dspark_session_env_threshold(
+        "DS4_DSPARK_VERIFY_MIN_CONFIDENCE",
+        0.0f,
+        0.0f,
+        1.0f);
+    gate.min_margin = dspark_session_env_threshold(
+        "DS4_DSPARK_VERIFY_MIN_MARGIN",
+        0.0f,
+        0.0f,
+        DS4_POS_INF);
+    gate.margin = draft->logit - draft->alt_logit;
+    gate.confidence_ok = draft->confidence >= gate.min_confidence;
+    gate.margin_ok = gate.margin >= gate.min_margin;
+    gate.greedy_eligible = target_hit && gate.confidence_ok && gate.margin_ok;
+    gate.stream_eligible = gate.greedy_eligible && token_hit;
+    return gate;
+}
+
 static bool dspark_session_can_observe(const ds4_session *s) {
     return s &&
            s->engine &&
@@ -27043,13 +27093,21 @@ static void dspark_session_verify_next_token(
     const int target_top = sample_argmax(s->logits, DS4_N_VOCAB);
     const bool target_hit = target_top == draft->token;
     const bool token_hit = token == draft->token;
+    const dspark_verify_gate_result gate =
+        dspark_session_verify_gate(draft, target_hit, token_hit);
     d->verify_total++;
     if (target_hit) d->verify_target_hit++;
     if (token_hit) d->verify_token_hit++;
+    if (gate.greedy_eligible) d->verify_greedy_eligible++;
+    if (gate.stream_eligible) d->verify_stream_eligible++;
 
     fprintf(stderr,
             "ds4: DSpark verifier %s next draft=%d target_top=%d token=%d "
-            "target_hit=%llu/%llu token_hit=%llu/%llu confidence=%.6g logit=%.6g; "
+            "target_hit=%llu/%llu token_hit=%llu/%llu "
+            "greedy_eligible=%s greedy_hit=%llu/%llu "
+            "stream_eligible=%s stream_hit=%llu/%llu "
+            "confidence=%.6g min_confidence=%.6g margin=%.6g min_margin=%.6g "
+            "logit=%.6g; "
             "observation only, no tokens accepted\n",
             origin ? origin : "session",
             draft->token,
@@ -27059,7 +27117,16 @@ static void dspark_session_verify_next_token(
             (unsigned long long)d->verify_total,
             (unsigned long long)d->verify_token_hit,
             (unsigned long long)d->verify_total,
+            gate.greedy_eligible ? "yes" : "no",
+            (unsigned long long)d->verify_greedy_eligible,
+            (unsigned long long)d->verify_total,
+            gate.stream_eligible ? "yes" : "no",
+            (unsigned long long)d->verify_stream_eligible,
+            (unsigned long long)d->verify_total,
             draft->confidence,
+            gate.min_confidence,
+            gate.margin,
+            gate.min_margin,
             draft->logit);
     dspark_session_draft_reset(d);
 }

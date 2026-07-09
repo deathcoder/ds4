@@ -8,7 +8,7 @@ particular DSpark change exists.
 
 Branch: `codex/dspark-observability-0`
 
-Phase 0.16 is still intentionally narrow: `--dspark FILE` validates an official
+Phase 0.17 is still intentionally narrow: `--dspark FILE` validates an official
 DSpark drafter GGUF, binds every tensor needed by a future runtime path, checks
 the expected DeepSeek V4 Flash DSpark shapes, and exposes a diagnostic
 `--dspark-probe` bridge for target-layer hidden-state capture plus
@@ -27,7 +27,9 @@ emitting or accepting them. A second development-only hook,
 `DS4_DSPARK_VERIFY=1`, uses the same live capture/build path but logs concise
 prepared rows, then verifies the previous first draft candidate against the
 target argmax from the current logits and the actual token passed to eval. It
-does not enable DSpark speculative decoding.
+now also runs a private acceptance-eligibility gate over the verifier result,
+using optional confidence and logit-margin thresholds. It does not enable
+DSpark speculative decoding.
 
 The design choice was to keep this separate from legacy `--mtp`. We do not
 guess dynamically whether `--mtp` points at legacy MTP or DSpark. The first
@@ -59,6 +61,13 @@ hook is explicit and conservative:
   from the current logits and the actual token selected by the sampler/caller.
   It logs cumulative `target_hit` and `token_hit` counters, resets the draft
   after verification, and never accepts, emits, appends, or speculates tokens.
+- The verifier gate has two optional thresholds:
+  `DS4_DSPARK_VERIFY_MIN_CONFIDENCE` in `[0,1]` and
+  `DS4_DSPARK_VERIFY_MIN_MARGIN` in `[0,+inf)`. A draft is
+  `greedy_eligible` when it is fresh, matches the target argmax, and passes
+  both thresholds. It is `stream_eligible` only when it is also the actual token
+  selected by the current normal generation stream. Both are logged and counted
+  only; neither causes a commit.
 - No benchmarks should be run automatically by Codex. The user wants tok/s
   benchmarks to be run manually on an otherwise idle machine.
 
@@ -203,6 +212,12 @@ Phase 0.5 shape/binding facts from the local
     compares the previous first DSpark candidate before normal eval consumes
     the next token. It is observation-only and resets the draft after each
     verification attempt.
+  - Added a private DSpark verifier gate with cumulative `greedy_eligible` and
+    `stream_eligible` counters. The gate is controlled by
+    `DS4_DSPARK_VERIFY_MIN_CONFIDENCE` and
+    `DS4_DSPARK_VERIFY_MIN_MARGIN`; it only reports whether a candidate would
+    be eligible for a future acceptance path and still never commits DSpark
+    tokens.
   - The sidecar probe still does not emit, accept, append, generate, or
     speculate tokens.
   - Added `dspark_model`, `dspark_config`, and `dspark_ready` to `ds4_engine`.
@@ -643,6 +658,38 @@ correctness smoke test, not a tok/s benchmark.
 The probe-only smoke still printed the verbose `sync`/`eval` dry rows from
 `d->draft[]`. `make ds4_cpu.o` still reports the same eight pre-existing
 CPU-only warnings.
+
+Phase 0.17 verifier-gate checks run on 2026-07-09:
+
+```sh
+make ds4 ds4_test
+./ds4_test --dspark-validation --dspark-shape-binding
+git diff --check
+DS4_DSPARK_VERIFY=1 \
+DS4_DSPARK_VERIFY_MIN_CONFIDENCE=0.9 \
+DS4_DSPARK_VERIFY_MIN_MARGIN=2.0 \
+./ds4 \
+  --model gguf/DeepSeek-V4-Flash-IQ2XXS-w2Q2K-AProjQ8-SExpQ8-OutQ8-chat-v2-imatrix.gguf \
+  --dspark gguf/ds4flash-dspark.gguf \
+  --nothink -n 1 -p "Hello"
+```
+
+The thresholded verifier smoke reported:
+
+```text
+draft=19923 target_top=19923 token=23166
+target_hit=1/1 token_hit=0/1
+greedy_eligible=yes greedy_hit=1/1
+stream_eligible=no stream_hit=0/1
+confidence=0.917943 min_confidence=0.9
+margin=3.01909 min_margin=2
+```
+
+This confirms the gate distinguishes a greedy acceptance candidate from a token
+that would preserve the current sampled stream. DSpark still emitted, accepted,
+appended, and speculated no tokens. The command prints normal CLI
+prefill/generation rates, but this was a correctness smoke test, not a tok/s
+benchmark.
 
 Downloaded sidecar byte size:
 
