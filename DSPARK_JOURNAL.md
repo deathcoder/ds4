@@ -8,7 +8,7 @@ particular DSpark change exists.
 
 Branch: `codex/dspark-observability-0`
 
-Phase 0.23 remains deliberately diagnostic: `--dspark FILE` validates an official
+Phase 0.24 remains deliberately diagnostic: `--dspark FILE` validates an official
 DSpark drafter GGUF, binds every tensor needed by a future runtime path, checks
 the expected DeepSeek V4 Flash DSpark shapes, and exposes a diagnostic
 `--dspark-probe` bridge for target-layer hidden-state capture plus
@@ -79,6 +79,20 @@ target context and the sidecar's CPU working state are still separate full
 session allocations, and all `main_proj`, stage-block, head, Markov, and
 confidence computation remains CPU-only. This is a storage/capture foundation
 for the GPU sidecar port, not a performance claim or a benchmarkable runtime.
+
+Phase 0.24 adds the first GPU sidecar computation boundary behind
+`DS4_DSPARK_GPU_BRIDGE=1`. For every captured span, the bridge uses the existing
+GPU HC weighted-sum primitive to average four streams for target layers
+`40,41,42`, packs those rows on device, runs the sidecar Q8_0 `main_proj`, and
+applies F32-weighted `main_norm` into a persistent session-owned GPU `main_x`.
+Only those two sidecar weight ranges are mapped. The bridge reads back packed
+context and normalized `main_x` for parity against the CPU implementation; the
+default `main_x` max-absolute tolerance is `0.005`, configurable through
+`DS4_DSPARK_GPU_BRIDGE_TOLERANCE`. A mismatch is counted and logged but cannot
+change CPU-authoritative drafting or output. Greedy bridge-only CLI runs are
+routed through the ordinary session loop so capture actually occurs. SSD
+streaming is deliberately unsupported in this diagnostic bridge. Stage blocks,
+heads, Markov, and confidence remain CPU-only, and no performance claim follows.
 
 The design choice was to keep this separate from legacy `--mtp`. We do not
 guess dynamically whether `--mtp` points at legacy MTP or DSpark. The first
@@ -275,6 +289,12 @@ Phase 0.5 shape/binding facts from the local
     Raw GPU/CPU HC scratch grows only to the largest active capture span rather
     than allocating for the whole sidecar window; the averaged context remains
     available for later DSpark preparation.
+  - Phase 0.24 adds session-owned GPU bridge tensors for mean weights,
+    layer-major target means, packed target context, projection scratch, and
+    persistent `main_x`. `DS4_DSPARK_GPU_BRIDGE=1` maps only `main_proj` and
+    `main_norm`, executes their GPU bridge for each capture span, and reports
+    packed-context plus normalized-`main_x` CPU parity. CPU `main_x` remains the
+    input to every current sidecar stage.
   - Added `dspark_draft_candidate` rows and `draft_valid` to
     `dspark_session_state`, plus `dspark_session_build_draft_candidates`.
     The builder converts the prepared DSpark block into session-owned draft
@@ -345,6 +365,9 @@ Phase 0.5 shape/binding facts from the local
     returned DSpark token batch when `DS4_DSPARK_MULTI_COMMIT=1`. Server,
     agent, and eval deliberately remain sequential until their forced-token
     and structural-output handling has a safe batch policy.
+  - Phase 0.24 routes bridge-only greedy CLI generation through the ordinary
+    session loop when `DS4_DSPARK_GPU_BRIDGE=1`; this does not implicitly enable
+    multi-commit.
 
 - `ds4_help.c`
   - Runtime full help now documents `--dspark FILE`.
@@ -1032,6 +1055,42 @@ sync span, direct multi-commit, and single-token fallbacks without a capture
 failure. The strict-confidence smoke still emitted `Hello!` through ordinary
 single-token fallback. These are correctness smokes, not tok/s benchmarks.
 
+Phase 0.24 GPU-bridge checks run on 2026-07-10:
+
+```sh
+make ds4 ds4_test ds4-server ds4-eval ds4-agent ds4_cpu.o
+./ds4_test --dspark-validation --dspark-shape-binding
+DS4_DSPARK_GPU_BRIDGE=1 ./ds4 \
+  --model gguf/DeepSeek-V4-Flash-IQ2XXS-w2Q2K-AProjQ8-SExpQ8-OutQ8-chat-v2-imatrix.gguf \
+  --dspark gguf/ds4flash-dspark.gguf \
+  --nothink -n 2 --temp 0 -p "Hello"
+DS4_DSPARK_GPU_BRIDGE=1 DS4_DSPARK_MULTI_COMMIT=1 ./ds4 \
+  --model gguf/DeepSeek-V4-Flash-IQ2XXS-w2Q2K-AProjQ8-SExpQ8-OutQ8-chat-v2-imatrix.gguf \
+  --dspark gguf/ds4flash-dspark.gguf \
+  --nothink -n 4 --temp 0 -p "Hello"
+printf 'Hello\nTell me one word\n/exit\n' | \
+  DS4_DSPARK_GPU_BRIDGE=1 DS4_DSPARK_MULTI_COMMIT=1 ./ds4 \
+  --model gguf/DeepSeek-V4-Flash-IQ2XXS-w2Q2K-AProjQ8-SExpQ8-OutQ8-chat-v2-imatrix.gguf \
+  --dspark gguf/ds4flash-dspark.gguf \
+  --nothink -n 2 --temp 0
+DS4_DSPARK_GPU_BRIDGE=1 DS4_DSPARK_GPU_BRIDGE_TOLERANCE=0.0001 \
+DS4_DSPARK_MULTI_COMMIT=1 ./ds4 \
+  --model gguf/DeepSeek-V4-Flash-IQ2XXS-w2Q2K-AProjQ8-SExpQ8-OutQ8-chat-v2-imatrix.gguf \
+  --dspark gguf/ds4flash-dspark.gguf \
+  --nothink -n 1 --temp 0 -p "Hello"
+git diff --check
+```
+
+Fresh prefill, one-token decode spans, and the resumed eight-token chat suffix
+all reported exact packed-context parity (`context_max=0`). With the default
+`0.005` threshold, every observed normalized `main_x` span passed; the largest
+max-absolute difference was `0.00338316` and the largest observed RMS
+difference was `0.000551707`. The four-token bridge run emitted exactly
+`Hello! How can`, matching a separately captured no-DSpark baseline string.
+The forced `0.0001` tolerance reported `result=fail` and incremented mismatch
+counters while CPU-authoritative generation still emitted `Hello`. These are
+correctness/parity smokes, not tok/s benchmarks.
+
 An untargeted `./ds4_test` run entered its long-context GPU prefill case and was
 stopped after about one minute to avoid occupying the accelerator indefinitely.
 Do not treat the full test suite as passed for this phase; the focused DSpark
@@ -1098,10 +1157,11 @@ If continuing from a compacted context, start here:
 - The current `DS4_DSPARK_PROBE=1` / `DS4_DSPARK_VERIFY=1` hooks preserve
   target-layer context from normal prefill/decode and build internal
   `d->draft[]` candidates, but still perform CPU readback and CPU sidecar draft
-  computation for diagnostics. Raw target-HC transfer is now incremental, but
-  sidecar `main_proj`, the three stage blocks, heads, Markov, and confidence
-  all remain CPU work. The next GPU phase needs a sidecar graph/cache boundary
-  that can reuse the bound Q8/F16 weights and preserve the present draft output.
+  computation for diagnostics. Raw target-HC transfer is incremental and the
+  GPU bridge now proves `main_proj/main_norm` parity, but CPU `main_x` remains
+  authoritative. The next GPU phase should make stage 0 consume persistent GPU
+  `main_x` through a dedicated sidecar KV/cache boundary, compare its HC output
+  with the CPU stage, and still leave later stages and token output unchanged.
 - What queue-aware policy should server, agent, and eval use before accepting a
   multi-token batch? Their stop, tool, and forced structural tokens can alter
   the stream after the first output, so they cannot simply reuse the CLI loop.
