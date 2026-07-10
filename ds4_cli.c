@@ -100,9 +100,11 @@ static bool cli_dspark_multi_commit_enabled(const cli_config *cfg) {
 static bool cli_dspark_gpu_observe_enabled(const cli_config *cfg) {
     const char *bridge = getenv("DS4_DSPARK_GPU_BRIDGE");
     const char *stage0 = getenv("DS4_DSPARK_GPU_STAGE0");
+    const char *stage1 = getenv("DS4_DSPARK_GPU_STAGE1");
     const bool enabled =
         (bridge && bridge[0] && strcmp(bridge, "0") != 0) ||
-        (stage0 && stage0[0] && strcmp(stage0, "0") != 0);
+        (stage0 && stage0[0] && strcmp(stage0, "0") != 0) ||
+        (stage1 && stage1[0] && strcmp(stage1, "0") != 0);
     return cfg && cfg->engine.dspark_path && enabled;
 }
 
