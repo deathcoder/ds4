@@ -22482,6 +22482,7 @@ struct ds4_engine {
     bool dspark_ready;
     bool dspark_gpu_bridge_mapped;
     bool dspark_gpu_stage_mapped[DS4_DSPARK_MTP_LAYERS];
+    bool dspark_gpu_head_mapped;
 };
 
 #ifndef DS4_NO_GPU
@@ -26361,6 +26362,13 @@ struct dspark_session_state {
     float *gpu_stage_ref[DS4_DSPARK_MTP_LAYERS];
     float *gpu_stage_read[DS4_DSPARK_MTP_LAYERS];
     bool gpu_stage_output_valid[DS4_DSPARK_MTP_LAYERS];
+    ds4_gpu_tensor *gpu_head_plain;
+    ds4_gpu_tensor *gpu_head_norm;
+    float *gpu_head_plain_ref;
+    float *gpu_head_plain_read;
+    float *gpu_head_norm_ref;
+    float *gpu_head_norm_read;
+    bool gpu_head_output_valid;
     uint32_t gpu_bridge_cap;
     uint32_t gpu_main_x_rows;
     uint64_t gpu_bridge_checks;
@@ -26369,6 +26377,9 @@ struct dspark_session_state {
     uint64_t gpu_stage_checks[DS4_DSPARK_MTP_LAYERS];
     uint64_t gpu_stage_failures[DS4_DSPARK_MTP_LAYERS];
     uint64_t gpu_stage_mismatches[DS4_DSPARK_MTP_LAYERS];
+    uint64_t gpu_head_checks;
+    uint64_t gpu_head_failures;
+    uint64_t gpu_head_mismatches;
     float *target_context;
     uint32_t target_context_rows;
     bool target_context_valid;
@@ -26393,6 +26404,7 @@ static void dspark_session_state_reset(dspark_session_state *d) {
     d->main_x_rows = 0;
     memset(d->stage_raw_rows, 0, sizeof(d->stage_raw_rows));
     memset(d->gpu_stage_output_valid, 0, sizeof(d->gpu_stage_output_valid));
+    d->gpu_head_output_valid = false;
     dspark_session_draft_reset(d);
 }
 
@@ -26445,6 +26457,12 @@ static dspark_session_state *dspark_session_state_create(
 
 static void dspark_session_state_free(dspark_session_state *d) {
     if (!d) return;
+    free(d->gpu_head_norm_read);
+    free(d->gpu_head_norm_ref);
+    free(d->gpu_head_plain_read);
+    free(d->gpu_head_plain_ref);
+    ds4_gpu_tensor_free(d->gpu_head_norm);
+    ds4_gpu_tensor_free(d->gpu_head_plain);
     for (uint32_t stage = 0; stage < DS4_DSPARK_MTP_LAYERS; stage++) {
         free(d->gpu_stage_read[stage]);
         free(d->gpu_stage_ref[stage]);
@@ -26500,10 +26518,12 @@ static bool dspark_session_multi_commit_env_enabled(void);
 static bool dspark_session_gpu_stage0_env_enabled(void);
 static bool dspark_session_gpu_stage1_env_enabled(void);
 static bool dspark_session_gpu_stage2_env_enabled(void);
+static bool dspark_session_gpu_head_env_enabled(void);
 static bool dspark_session_gpu_stage_env_enabled(uint32_t stage);
 static bool dspark_session_gpu_bridge_env_enabled(void);
 static float dspark_session_gpu_bridge_tolerance(void);
 static float dspark_session_gpu_stage_tolerance(uint32_t stage);
+static float dspark_session_gpu_head_tolerance(void);
 static bool dspark_session_verify_env_enabled(void);
 static bool dspark_session_observe_env_enabled(void);
 static const char *dspark_session_observe_mode_name(void);
@@ -27513,6 +27533,288 @@ static bool dspark_session_gpu_stage_run(
     return true;
 }
 
+static bool dspark_engine_gpu_head_map(
+        ds4_engine *e,
+        char       *err,
+        size_t      errlen) {
+    if (!e || !e->dspark_ready) {
+        if (errlen) snprintf(err, errlen, "DSpark GPU head requires a validated sidecar");
+        return false;
+    }
+    if (!dspark_engine_gpu_bridge_map(e, err, errlen)) return false;
+    if (e->dspark_gpu_head_mapped) return true;
+
+    ds4_model_map_span_vec spans = {0};
+    model_map_span_vec_include_one(&spans, e->dspark_weights.hc_head_base);
+    model_map_span_vec_include_one(&spans, e->dspark_weights.hc_head_fn);
+    model_map_span_vec_include_one(&spans, e->dspark_weights.hc_head_scale);
+    model_map_span_vec_include_one(&spans, e->dspark_weights.final_norm);
+    if (!model_map_span_vec_finish(&spans)) {
+        free(spans.v);
+        if (errlen) snprintf(err, errlen, "failed to collect DSpark GPU head weights");
+        return false;
+    }
+
+    bool ok = true;
+    uint64_t mapped_bytes = 0;
+    (void)ds4_gpu_set_model_fd_for_map(e->dspark_model.fd, e->dspark_model.map);
+    for (uint32_t i = 0; ok && i < spans.len; i++) {
+        const uint64_t bytes = spans.v[i].end - spans.v[i].off;
+        ok = ds4_gpu_set_model_map_range(e->dspark_model.map,
+                                         e->dspark_model.size,
+                                         spans.v[i].off,
+                                         bytes,
+                                         bytes) != 0;
+        mapped_bytes += bytes;
+    }
+    const uint32_t span_count = spans.len;
+    free(spans.v);
+    if (!ok) {
+        if (errlen) snprintf(err, errlen, "failed to map DSpark GPU head weights");
+        return false;
+    }
+
+    e->dspark_gpu_head_mapped = true;
+    fprintf(stderr,
+            "ds4: DSpark GPU head mapped %u sidecar spans (%.2f MiB)\n",
+            span_count,
+            (double)mapped_bytes / 1048576.0);
+    return true;
+}
+
+static bool dspark_session_gpu_head_ensure(
+        ds4_session *s,
+        char        *err,
+        size_t       errlen) {
+    if (!s || !s->dspark) {
+        if (errlen) snprintf(err, errlen, "invalid DSpark GPU head state");
+        return false;
+    }
+    dspark_session_state *d = s->dspark;
+    if (!d->gpu_stage_output_valid[DS4_DSPARK_MTP_LAYERS - 1u]) {
+        if (errlen) snprintf(err, errlen, "DSpark GPU stage 2 output is unavailable");
+        return false;
+    }
+    if (!dspark_engine_gpu_head_map(s->engine, err, errlen)) return false;
+
+    const uint64_t values = (uint64_t)d->block_size * DS4_N_EMBD;
+    if (!d->gpu_head_plain) {
+        d->gpu_head_plain = ds4_gpu_tensor_alloc(values * sizeof(float));
+    }
+    if (!d->gpu_head_norm) {
+        d->gpu_head_norm = ds4_gpu_tensor_alloc(values * sizeof(float));
+    }
+    if (!d->gpu_head_plain_ref) {
+        d->gpu_head_plain_ref = xmalloc((size_t)values * sizeof(float));
+    }
+    if (!d->gpu_head_plain_read) {
+        d->gpu_head_plain_read = xmalloc((size_t)values * sizeof(float));
+    }
+    if (!d->gpu_head_norm_ref) {
+        d->gpu_head_norm_ref = xmalloc((size_t)values * sizeof(float));
+    }
+    if (!d->gpu_head_norm_read) {
+        d->gpu_head_norm_read = xmalloc((size_t)values * sizeof(float));
+    }
+    if (!d->gpu_head_plain || !d->gpu_head_norm ||
+        !d->gpu_head_plain_ref || !d->gpu_head_plain_read ||
+        !d->gpu_head_norm_ref || !d->gpu_head_norm_read) {
+        if (errlen) snprintf(err, errlen, "failed to allocate DSpark GPU head state");
+        return false;
+    }
+    return true;
+}
+
+static bool dspark_session_gpu_head_run(
+        ds4_session *s,
+        char        *err,
+        size_t       errlen) {
+    if (!dspark_session_gpu_head_ensure(s, err, errlen)) return false;
+
+    ds4_engine *e = s->engine;
+    ds4_gpu_graph *g = &s->graph;
+    dspark_session_state *d = s->dspark;
+    const uint32_t block = d->block_size;
+    const uint64_t hc_dim = (uint64_t)DS4_N_HC * DS4_N_EMBD;
+    const uint64_t values = (uint64_t)block * DS4_N_EMBD;
+    const float *norm_w = tensor_data(&e->dspark_model, e->dspark_weights.final_norm);
+    for (uint32_t t = 0; t < block; t++) {
+        dspark_hc_head_one(d->gpu_head_plain_ref + (uint64_t)t * DS4_N_EMBD,
+                           &e->dspark_model,
+                           &e->dspark_weights,
+                           d->gpu_stage_read[DS4_DSPARK_MTP_LAYERS - 1u] +
+                               (uint64_t)t * hc_dim);
+        rms_norm_weight(d->gpu_head_norm_ref + (uint64_t)t * DS4_N_EMBD,
+                        d->gpu_head_plain_ref + (uint64_t)t * DS4_N_EMBD,
+                        norm_w,
+                        DS4_N_EMBD,
+                        DS4_RMS_EPS);
+    }
+
+    ds4_gpu_tensor *pre = ds4_gpu_tensor_view(
+        g->batch_hc_mix, 0, (uint64_t)block * DS4_N_HC * sizeof(float));
+    ds4_gpu_tensor *weights = ds4_gpu_tensor_view(
+        g->batch_hc_split, 0, (uint64_t)block * DS4_N_HC * sizeof(float));
+    bool ok = pre && weights;
+    const char *failed_step = ok ? "command begin" : "scratch views";
+    bool commands_started = false;
+    if (ok) {
+        commands_started = ds4_gpu_begin_commands() != 0;
+        ok = commands_started;
+    }
+    if (ok) {
+        failed_step = "HC norm";
+        ok = ds4_gpu_rms_norm_plain_rows_tensor(
+                 g->batch_flat_hc,
+                 d->gpu_stage_output[DS4_DSPARK_MTP_LAYERS - 1u],
+                 (uint32_t)hc_dim,
+                 block,
+                 DS4_RMS_EPS) != 0;
+    }
+    if (ok) {
+        failed_step = "HC projection";
+        ok = metal_graph_matmul_plain_tensor(pre,
+                                              &e->dspark_model,
+                                              e->dspark_weights.hc_head_fn,
+                                              hc_dim,
+                                              DS4_N_HC,
+                                              g->batch_flat_hc,
+                                              block);
+    }
+    if (ok) {
+        failed_step = "HC weights";
+        ok = ds4_gpu_output_hc_weights_tensor(
+                 weights,
+                 pre,
+                 e->dspark_model.map,
+                 e->dspark_model.size,
+                 e->dspark_weights.hc_head_scale->abs_offset,
+                 e->dspark_weights.hc_head_base->abs_offset,
+                 DS4_N_HC,
+                 DS4_HC_EPS) != 0;
+    }
+    if (ok) {
+        failed_step = "HC collapse";
+        ok = ds4_gpu_hc_weighted_sum_tensor(
+                 d->gpu_head_plain,
+                 d->gpu_stage_output[DS4_DSPARK_MTP_LAYERS - 1u],
+                 weights,
+                 DS4_N_EMBD,
+                 DS4_N_HC) != 0;
+    }
+    if (ok) {
+        failed_step = "final norm";
+        ok = ds4_gpu_rms_norm_weight_rows_tensor(
+                 d->gpu_head_norm,
+                 d->gpu_head_plain,
+                 e->dspark_model.map,
+                 e->dspark_model.size,
+                 e->dspark_weights.final_norm->abs_offset,
+                 DS4_N_EMBD,
+                 block,
+                 DS4_RMS_EPS) != 0;
+    }
+    if (ok) {
+        metal_graph_debug_dump_tensor("dspark_head_plain",
+                                      d->gpu_head_plain,
+                                      values,
+                                      DS4_DSPARK_MTP_LAYERS,
+                                      d->main_x_rows);
+        metal_graph_debug_dump_tensor("dspark_head_norm",
+                                      d->gpu_head_norm,
+                                      values,
+                                      DS4_DSPARK_MTP_LAYERS,
+                                      d->main_x_rows);
+    }
+    if (ok) failed_step = "command end";
+    if (commands_started && ds4_gpu_end_commands() == 0) ok = false;
+    ds4_gpu_tensor_free(weights);
+    ds4_gpu_tensor_free(pre);
+    if (!ok) {
+        if (errlen) snprintf(err, errlen,
+                             "DSpark GPU head execution failed at %s", failed_step);
+        return false;
+    }
+    if (!ds4_gpu_tensor_read(d->gpu_head_plain,
+                             0,
+                             d->gpu_head_plain_read,
+                             values * sizeof(float)) ||
+        !ds4_gpu_tensor_read(d->gpu_head_norm,
+                             0,
+                             d->gpu_head_norm_read,
+                             values * sizeof(float))) {
+        if (errlen) snprintf(err, errlen, "failed to read DSpark GPU head output");
+        return false;
+    }
+    d->gpu_head_output_valid = true;
+
+    const uint64_t plain_ref_nonfinite =
+        count_nonfinite_f32(d->gpu_head_plain_ref, values);
+    const uint64_t plain_gpu_nonfinite =
+        count_nonfinite_f32(d->gpu_head_plain_read, values);
+    const uint64_t norm_ref_nonfinite =
+        count_nonfinite_f32(d->gpu_head_norm_ref, values);
+    const uint64_t norm_gpu_nonfinite =
+        count_nonfinite_f32(d->gpu_head_norm_read, values);
+    const float plain_max = plain_ref_nonfinite || plain_gpu_nonfinite ? DS4_POS_INF :
+        max_abs_diff(d->gpu_head_plain_ref, d->gpu_head_plain_read, values);
+    const float plain_rms = plain_ref_nonfinite || plain_gpu_nonfinite ? DS4_POS_INF :
+        rms_abs_diff(d->gpu_head_plain_ref, d->gpu_head_plain_read, values);
+    const float plain_ref_rms = plain_ref_nonfinite ? 0.0f :
+        rms_f32_values(d->gpu_head_plain_ref, values);
+    const float plain_rel_rms = plain_ref_rms > 0.0f ?
+        plain_rms / plain_ref_rms : (plain_rms == 0.0f ? 0.0f : DS4_POS_INF);
+    const float norm_max = norm_ref_nonfinite || norm_gpu_nonfinite ? DS4_POS_INF :
+        max_abs_diff(d->gpu_head_norm_ref, d->gpu_head_norm_read, values);
+    const float norm_rms = norm_ref_nonfinite || norm_gpu_nonfinite ? DS4_POS_INF :
+        rms_abs_diff(d->gpu_head_norm_ref, d->gpu_head_norm_read, values);
+    const float norm_ref_rms = norm_ref_nonfinite ? 0.0f :
+        rms_f32_values(d->gpu_head_norm_ref, values);
+    const float norm_rel_rms = norm_ref_rms > 0.0f ?
+        norm_rms / norm_ref_rms : (norm_rms == 0.0f ? 0.0f : DS4_POS_INF);
+    const uint64_t authoritative_nonfinite =
+        count_nonfinite_f32(d->final_norm, values);
+    const float input_max = authoritative_nonfinite || norm_ref_nonfinite ? DS4_POS_INF :
+        max_abs_diff(d->final_norm, d->gpu_head_norm_ref, values);
+    const float input_rms = authoritative_nonfinite || norm_ref_nonfinite ? DS4_POS_INF :
+        rms_abs_diff(d->final_norm, d->gpu_head_norm_ref, values);
+    const float tolerance = dspark_session_gpu_head_tolerance();
+    const bool parity_ok = plain_ref_nonfinite == 0 && plain_gpu_nonfinite == 0 &&
+                           norm_ref_nonfinite == 0 && norm_gpu_nonfinite == 0 &&
+                           plain_rel_rms <= tolerance && norm_rel_rms <= tolerance;
+    d->gpu_head_checks++;
+    if (!parity_ok) d->gpu_head_mismatches++;
+    fprintf(stderr,
+            "ds4: DSpark GPU head parity context=%u block=%u "
+            "input_norm_max=%g input_norm_rms=%g "
+            "plain_max=%g plain_rms=%g plain_ref_rms=%g plain_rel_rms=%g "
+            "norm_max=%g norm_rms=%g norm_ref_rms=%g norm_rel_rms=%g "
+            "plain_ref_nonfinite=%llu plain_gpu_nonfinite=%llu "
+            "norm_ref_nonfinite=%llu norm_gpu_nonfinite=%llu "
+            "rel_tolerance=%g result=%s checks=%llu mismatches=%llu\n",
+            d->main_x_rows,
+            block,
+            input_max,
+            input_rms,
+            plain_max,
+            plain_rms,
+            plain_ref_rms,
+            plain_rel_rms,
+            norm_max,
+            norm_rms,
+            norm_ref_rms,
+            norm_rel_rms,
+            (unsigned long long)plain_ref_nonfinite,
+            (unsigned long long)plain_gpu_nonfinite,
+            (unsigned long long)norm_ref_nonfinite,
+            (unsigned long long)norm_gpu_nonfinite,
+            tolerance,
+            parity_ok ? "pass" : "fail",
+            (unsigned long long)d->gpu_head_checks,
+            (unsigned long long)d->gpu_head_mismatches);
+    return true;
+}
+
 static bool dspark_session_should_capture_target(const ds4_session *s) {
     return s &&
            s->engine &&
@@ -27941,6 +28243,21 @@ static bool dspark_session_prepare_from_target_context(
                         DS4_N_EMBD,
                         DS4_RMS_EPS);
     }
+    if (dspark_session_gpu_head_env_enabled()) {
+        char head_err[256];
+        head_err[0] = '\0';
+        d->gpu_head_output_valid = false;
+        if (!dspark_session_gpu_head_run(s,
+                                         head_err,
+                                         sizeof(head_err))) {
+            d->gpu_head_failures++;
+            fprintf(stderr,
+                    "ds4: DSpark GPU head parity skipped: %s "
+                    "(failures=%llu); CPU sidecar remains authoritative\n",
+                    head_err[0] ? head_err : "unknown error",
+                    (unsigned long long)d->gpu_head_failures);
+        }
+    }
     return true;
 }
 
@@ -28158,6 +28475,12 @@ static bool dspark_session_gpu_stage1_env_enabled(void) {
 
 static bool dspark_session_gpu_stage2_env_enabled(void) {
     const char *v = getenv("DS4_DSPARK_GPU_STAGE2");
+    return (v && v[0] && strcmp(v, "0") != 0) ||
+           dspark_session_gpu_head_env_enabled();
+}
+
+static bool dspark_session_gpu_head_env_enabled(void) {
+    const char *v = getenv("DS4_DSPARK_GPU_HEAD");
     return v && v[0] && strcmp(v, "0") != 0;
 }
 
@@ -28196,6 +28519,16 @@ static float dspark_session_gpu_stage_tolerance(uint32_t stage) {
     return stage == 0 ? 3.0e-2f : 4.0e-2f;
 }
 
+static float dspark_session_gpu_head_tolerance(void) {
+    const char *v = getenv("DS4_DSPARK_GPU_HEAD_TOLERANCE");
+    if (v && v[0]) {
+        char *end = NULL;
+        const float parsed = strtof(v, &end);
+        if (end != v && isfinite(parsed) && parsed > 0.0f) return parsed;
+    }
+    return 1.0e-5f;
+}
+
 static bool dspark_session_verify_env_enabled(void) {
     const char *v = getenv("DS4_DSPARK_VERIFY");
     return (v && v[0] && strcmp(v, "0") != 0) ||
@@ -28212,6 +28545,7 @@ static bool dspark_session_observe_env_enabled(void) {
 static const char *dspark_session_observe_mode_name(void) {
     if (dspark_session_probe_env_enabled()) return "dev probe";
     if (dspark_session_multi_commit_env_enabled()) return "multi commit";
+    if (dspark_session_gpu_head_env_enabled()) return "GPU head";
     if (dspark_session_gpu_stage2_env_enabled()) return "GPU stage 2";
     if (dspark_session_gpu_stage1_env_enabled()) return "GPU stage 1";
     if (dspark_session_gpu_stage0_env_enabled()) return "GPU stage 0";

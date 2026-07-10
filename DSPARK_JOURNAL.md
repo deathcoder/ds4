@@ -8,7 +8,7 @@ particular DSpark change exists.
 
 Branch: `codex/dspark-observability-0`
 
-Phase 0.27 remains deliberately diagnostic: `--dspark FILE` validates an official
+Phase 0.28 remains deliberately diagnostic: `--dspark FILE` validates an official
 DSpark drafter GGUF, binds every tensor needed by a future runtime path, checks
 the expected DeepSeek V4 Flash DSpark shapes, and exposes a diagnostic
 `--dspark-probe` bridge for target-layer hidden-state capture plus
@@ -163,6 +163,20 @@ candidates, and generated tokens. Stage 2 does not map or execute those global
 output tensors yet. This mode still performs CPU reference stages, readbacks,
 logging, and synchronization, so it remains unsuitable for performance claims.
 
+Phase 0.28 extends that diagnostic GPU chain through the stage-2 HC collapse
+and final weighted RMS norm behind `DS4_DSPARK_GPU_HEAD=1`. This option implies
+GPU stages 2/1/0 and the bridge. It maps only `hc_head_base`, `hc_head_fn`,
+`hc_head_scale`, and `final_norm`, then runs the existing batched GPU primitives
+over persistent GPU stage-2 HC into session-owned `gpu_head_plain` and
+`gpu_head_norm` tensors. The parity reference reruns the CPU head from the exact
+GPU stage-2 readback, so the comparison isolates head implementation drift from
+the larger CPU/GPU transformer-stage drift. The ordinary CPU HC chain still
+feeds base logits, Markov logits, confidence, draft candidates, and generated
+tokens. Head mismatches are counted and logged but remain nonfatal. The default
+same-input relative-RMS tolerance is `1e-5`, configurable through
+`DS4_DSPARK_GPU_HEAD_TOLERANCE`. Readbacks and duplicate CPU execution keep this
+strictly in correctness-observer territory, not a benchmarkable runtime.
+
 The design choice was to keep this separate from legacy `--mtp`. We do not
 guess dynamically whether `--mtp` points at legacy MTP or DSpark. The first
 hook is explicit and conservative:
@@ -227,9 +241,13 @@ hook is explicit and conservative:
 - `DS4_DSPARK_GPU_STAGE2=1` implies GPU stages 0/1, device-copies stage-1 GPU HC
   into the generic runner, and maps/runs stage 2 with its own KV/output and
   parity state. It does not feed GPU stage 2 into the final HC or draft heads.
+- `DS4_DSPARK_GPU_HEAD=1` implies the complete GPU stage chain, maps/runs the HC
+  collapse and final norm from persistent GPU stage-2 HC, and compares both
+  outputs with a same-input CPU reference. CPU logits and drafting remain
+  authoritative.
 - Probe/verify/commit-probe hooks alone are not called by the CLI `--temp 0`
-  argmax fast path. GPU bridge, GPU stages 0/1/2, and greedy multi-commit modes
-  do explicitly route through the ordinary session loop. Use a seeded
+  argmax fast path. GPU bridge, GPU stages 0/1/2, GPU head, and greedy
+  multi-commit modes do explicitly route through the ordinary session loop. Use a seeded
   nonzero-temperature smoke for the other ordinary-session diagnostics.
 - No benchmarks should be run automatically by Codex. The user wants tok/s
   benchmarks to be run manually on an otherwise idle machine.
@@ -1266,6 +1284,38 @@ and emitted exactly `Hello! How can`, matching the established greedy baseline.
 The ordinary stage-2 run emitted the same string. These are correctness/parity
 smokes, not tok/s benchmarks.
 
+Phase 0.28 GPU-head checks run on 2026-07-10:
+
+```sh
+make ds4 ds4_test ds4-server ds4-eval ds4-agent ds4_cpu.o
+./ds4_test --dspark-validation --dspark-shape-binding
+DS4_DSPARK_GPU_HEAD=1 ./ds4 \
+  --model gguf/DeepSeek-V4-Flash-IQ2XXS-w2Q2K-AProjQ8-SExpQ8-OutQ8-chat-v2-imatrix.gguf \
+  --dspark gguf/ds4flash-dspark.gguf \
+  --nothink -n 4 --temp 0 -p "Hello"
+DS4_DSPARK_GPU_HEAD=1 DS4_DSPARK_GPU_HEAD_TOLERANCE=1e-7 ./ds4 \
+  --model gguf/DeepSeek-V4-Flash-IQ2XXS-w2Q2K-AProjQ8-SExpQ8-OutQ8-chat-v2-imatrix.gguf \
+  --dspark gguf/ds4flash-dspark.gguf \
+  --nothink -n 1 --temp 0 -p "Hello"
+DS4_DSPARK_GPU_HEAD=1 DS4_DSPARK_MULTI_COMMIT=1 ./ds4 \
+  --model gguf/DeepSeek-V4-Flash-IQ2XXS-w2Q2K-AProjQ8-SExpQ8-OutQ8-chat-v2-imatrix.gguf \
+  --dspark gguf/ds4flash-dspark.gguf \
+  --nothink -n 4 --temp 0 -p "Hello"
+git diff --check
+```
+
+The head mapped three coalesced sidecar spans totaling `0.14 MiB`. Across
+ordinary greedy prefix lengths 10 through 14, same-input HC-collapse relative
+RMS ranged from `2.02519e-7` to `4.72896e-7`; final-norm relative RMS ranged
+from `1.60932e-7` to `2.5731e-7`. Every reference and GPU value was finite and
+all contexts passed the calibrated `1e-5` default. The separate
+`input_norm_max/input_norm_rms` fields preserve visibility into accumulated
+transformer-stage drift without charging it to the same-input head comparison.
+The strict `1e-7` override reported failures and incremented mismatch counters
+while CPU-authoritative generation still emitted `Hello`. GPU head plus direct
+multi-commit passed at prefixes 10, 12, and 14 and emitted exactly
+`Hello! How can`. These are correctness/parity smokes, not tok/s benchmarks.
+
 An untargeted `./ds4_test` run entered its long-context GPU prefill case and was
 stopped after about one minute to avoid occupying the accelerator indefinitely.
 Do not treat the full test suite as passed for this phase; the focused DSpark
@@ -1326,12 +1376,12 @@ If continuing from a compacted context, start here:
 
 ## Open Questions
 
-- Phase 0.27 establishes a valid GPU HC chain through all three transformer
-  stages. The next GPU phase should map and execute the stage-2 HC head
-  (`hc_head_base/fn/scale`) plus final norm from persistent GPU stage-2 output,
-  comparing GPU `final_plain/final_norm` against a same-input CPU reference.
-  Keep the base/Markov logits, confidence, drafts, and generated tokens
-  CPU-authoritative for that phase.
+- Phase 0.28 establishes same-input GPU parity through the HC collapse and final
+  norm. The next GPU phase should map and execute the base LM logits plus
+  stage-2 Markov logits from persistent GPU `final_norm`, then reproduce the
+  CPU BF16 accumulation/combination boundary closely enough to compare draft
+  token selection. Keep confidence, draft acceptance, commits, and generated
+  tokens CPU-authoritative until that parity boundary is understood.
 - The GPU stage path currently borrows target graph transient batch workspace
   and therefore requires `prefill_cap >= block_size` (five). Decide whether to
   allocate sidecar-specific batch scratch before production enablement or keep
