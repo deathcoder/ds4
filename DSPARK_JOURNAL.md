@@ -8,7 +8,7 @@ particular DSpark change exists.
 
 Branch: `codex/dspark-observability-0`
 
-Phase 0.26 remains deliberately diagnostic: `--dspark FILE` validates an official
+Phase 0.27 remains deliberately diagnostic: `--dspark FILE` validates an official
 DSpark drafter GGUF, binds every tensor needed by a future runtime path, checks
 the expected DeepSeek V4 Flash DSpark shapes, and exposes a diagnostic
 `--dspark-probe` bridge for target-layer hidden-state capture plus
@@ -146,6 +146,23 @@ tokens remain authoritative. Stage 2 and the final HC/Markov/confidence heads
 are still CPU-only, and all GPU-stage modes remain synchronization-heavy parity
 diagnostics rather than performance paths.
 
+Phase 0.27 enables the final transformer stage behind
+`DS4_DSPARK_GPU_STAGE2=1`. Stage 2 implies stages 1 and 0 plus the bridge, and
+uses the already-generalized stage arrays without introducing another execution
+path: it maps its own three sidecar spans, allocates its own GPU KV/output and
+host parity scratch, and consumes persistent GPU stage-1 HC through the same
+command-batched device copy. Its same-input CPU reference receives the exact
+GPU stage-1 HC readback and persistent GPU `main_x`, with independent host KV.
+Stage 2 shares the later-stage `0.04` relative-RMS default and has the separate
+`DS4_DSPARK_GPU_STAGE2_TOLERANCE` override.
+
+All three DSpark transformer stages can now execute as one GPU HC chain for
+parity, but none of their GPU outputs are authoritative. The CPU three-stage
+chain still feeds the final HC head, final norm, Markov/confidence heads, draft
+candidates, and generated tokens. Stage 2 does not map or execute those global
+output tensors yet. This mode still performs CPU reference stages, readbacks,
+logging, and synchronization, so it remains unsuitable for performance claims.
+
 The design choice was to keep this separate from legacy `--mtp`. We do not
 guess dynamically whether `--mtp` points at legacy MTP or DSpark. The first
 hook is explicit and conservative:
@@ -207,8 +224,11 @@ hook is explicit and conservative:
 - `DS4_DSPARK_GPU_STAGE1=1` implies GPU stage 0, device-copies stage-0 GPU HC
   into the generic runner, and maps/runs stage 1 with independent KV/output and
   parity state. It does not feed GPU stage 1 into CPU stage 2 or drafting.
+- `DS4_DSPARK_GPU_STAGE2=1` implies GPU stages 0/1, device-copies stage-1 GPU HC
+  into the generic runner, and maps/runs stage 2 with its own KV/output and
+  parity state. It does not feed GPU stage 2 into the final HC or draft heads.
 - Probe/verify/commit-probe hooks alone are not called by the CLI `--temp 0`
-  argmax fast path. GPU bridge, GPU stages 0/1, and greedy multi-commit modes
+  argmax fast path. GPU bridge, GPU stages 0/1/2, and greedy multi-commit modes
   do explicitly route through the ordinary session loop. Use a seeded
   nonzero-temperature smoke for the other ordinary-session diagnostics.
 - No benchmarks should be run automatically by Codex. The user wants tok/s
@@ -1214,6 +1234,38 @@ and emitted exactly `Hello! How can`, matching the established greedy baseline.
 The ordinary stage-1 run emitted the same string. These are correctness/parity
 smokes, not tok/s benchmarks.
 
+Phase 0.27 GPU-stage-2 checks run on 2026-07-10:
+
+```sh
+make ds4 ds4_test ds4-server ds4-eval ds4-agent ds4_cpu.o
+./ds4_test --dspark-validation --dspark-shape-binding
+DS4_DSPARK_GPU_STAGE2=1 ./ds4 \
+  --model gguf/DeepSeek-V4-Flash-IQ2XXS-w2Q2K-AProjQ8-SExpQ8-OutQ8-chat-v2-imatrix.gguf \
+  --dspark gguf/ds4flash-dspark.gguf \
+  --nothink -n 4 --temp 0 -p "Hello"
+DS4_DSPARK_GPU_STAGE2=1 DS4_DSPARK_GPU_STAGE2_TOLERANCE=0.001 ./ds4 \
+  --model gguf/DeepSeek-V4-Flash-IQ2XXS-w2Q2K-AProjQ8-SExpQ8-OutQ8-chat-v2-imatrix.gguf \
+  --dspark gguf/ds4flash-dspark.gguf \
+  --nothink -n 1 --temp 0 -p "Hello"
+DS4_DSPARK_GPU_STAGE2=1 DS4_DSPARK_MULTI_COMMIT=1 ./ds4 \
+  --model gguf/DeepSeek-V4-Flash-IQ2XXS-w2Q2K-AProjQ8-SExpQ8-OutQ8-chat-v2-imatrix.gguf \
+  --dspark gguf/ds4flash-dspark.gguf \
+  --nothink -n 4 --temp 0 -p "Hello"
+git diff --check
+```
+
+Stage 2 mapped three additional sidecar spans totaling `3.51 GiB` and consumed
+stage-1 GPU HC through the generic command-batched device copy. Across ordinary
+greedy prefix lengths 10 through 14, same-input attention relative RMS ranged
+from `0.00865846` to `0.00981461`; complete stage relative RMS ranged from
+`0.0096529` to `0.0188689`. All CPU and GPU attention/full-stage HC values were
+finite and all five contexts passed the stage-2 `0.04` relative-RMS band. The
+strict `0.001` override reported failures while CPU-authoritative output stayed
+unchanged. Stage-2 plus direct multi-commit passed at prefixes 10, 12, and 14
+and emitted exactly `Hello! How can`, matching the established greedy baseline.
+The ordinary stage-2 run emitted the same string. These are correctness/parity
+smokes, not tok/s benchmarks.
+
 An untargeted `./ds4_test` run entered its long-context GPU prefill case and was
 stopped after about one minute to avoid occupying the accelerator indefinitely.
 Do not treat the full test suite as passed for this phase; the focused DSpark
@@ -1274,11 +1326,12 @@ If continuing from a compacted context, start here:
 
 ## Open Questions
 
-- Phase 0.26 establishes the stage-indexed mapping/runner and a valid GPU HC
-  chain through stage 1. The next GPU phase should enable stage 2, map its layer
-  spans, allocate its dedicated KV/output state, feed it GPU stage-1 HC, and
-  compare against a same-input CPU reference. Keep the final HC head, Markov,
-  confidence, drafts, and generated tokens CPU-authoritative for that phase.
+- Phase 0.27 establishes a valid GPU HC chain through all three transformer
+  stages. The next GPU phase should map and execute the stage-2 HC head
+  (`hc_head_base/fn/scale`) plus final norm from persistent GPU stage-2 output,
+  comparing GPU `final_plain/final_norm` against a same-input CPU reference.
+  Keep the base/Markov logits, confidence, drafts, and generated tokens
+  CPU-authoritative for that phase.
 - The GPU stage path currently borrows target graph transient batch workspace
   and therefore requires `prefill_cap >= block_size` (five). Decide whether to
   allocate sidecar-specific batch scratch before production enablement or keep

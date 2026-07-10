@@ -26499,6 +26499,7 @@ static bool dspark_session_commit_probe_env_enabled(void);
 static bool dspark_session_multi_commit_env_enabled(void);
 static bool dspark_session_gpu_stage0_env_enabled(void);
 static bool dspark_session_gpu_stage1_env_enabled(void);
+static bool dspark_session_gpu_stage2_env_enabled(void);
 static bool dspark_session_gpu_stage_env_enabled(uint32_t stage);
 static bool dspark_session_gpu_bridge_env_enabled(void);
 static float dspark_session_gpu_bridge_tolerance(void);
@@ -28151,12 +28152,19 @@ static bool dspark_session_gpu_stage0_env_enabled(void) {
 
 static bool dspark_session_gpu_stage1_env_enabled(void) {
     const char *v = getenv("DS4_DSPARK_GPU_STAGE1");
+    return (v && v[0] && strcmp(v, "0") != 0) ||
+           dspark_session_gpu_stage2_env_enabled();
+}
+
+static bool dspark_session_gpu_stage2_env_enabled(void) {
+    const char *v = getenv("DS4_DSPARK_GPU_STAGE2");
     return v && v[0] && strcmp(v, "0") != 0;
 }
 
 static bool dspark_session_gpu_stage_env_enabled(uint32_t stage) {
     if (stage == 0) return dspark_session_gpu_stage0_env_enabled();
     if (stage == 1) return dspark_session_gpu_stage1_env_enabled();
+    if (stage == 2) return dspark_session_gpu_stage2_env_enabled();
     return false;
 }
 
@@ -28204,6 +28212,7 @@ static bool dspark_session_observe_env_enabled(void) {
 static const char *dspark_session_observe_mode_name(void) {
     if (dspark_session_probe_env_enabled()) return "dev probe";
     if (dspark_session_multi_commit_env_enabled()) return "multi commit";
+    if (dspark_session_gpu_stage2_env_enabled()) return "GPU stage 2";
     if (dspark_session_gpu_stage1_env_enabled()) return "GPU stage 1";
     if (dspark_session_gpu_stage0_env_enabled()) return "GPU stage 0";
     if (dspark_session_gpu_bridge_env_enabled()) return "GPU bridge";
