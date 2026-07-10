@@ -8,7 +8,7 @@ particular DSpark change exists.
 
 Branch: `codex/dspark-observability-0`
 
-Phase 0.24 remains deliberately diagnostic: `--dspark FILE` validates an official
+Phase 0.25 remains deliberately diagnostic: `--dspark FILE` validates an official
 DSpark drafter GGUF, binds every tensor needed by a future runtime path, checks
 the expected DeepSeek V4 Flash DSpark shapes, and exposes a diagnostic
 `--dspark-probe` bridge for target-layer hidden-state capture plus
@@ -94,6 +94,36 @@ routed through the ordinary session loop so capture actually occurs. SSD
 streaming is deliberately unsupported in this diagnostic bridge. Stage blocks,
 heads, Markov, and confidence remain CPU-only, and no performance claim follows.
 
+Phase 0.25 adds a complete GPU stage-0 parity path behind the separate explicit
+`DS4_DSPARK_GPU_STAGE0=1` environment variable. This mode implies the Phase
+0.24 bridge/capture mode, maps only the validated `mtp.0` layer spans, consumes
+the persistent GPU `main_x`, and owns a dedicated session-side GPU raw-KV
+buffer plus stage-output buffer. It deliberately does not reuse or mutate any
+target-model KV cache. DSpark's five block queries are all allowed to see the
+full context-plus-block KV set, matching the CPU/reference contract; the GPU
+path therefore issues five unmasked single-query attention calls instead of
+reusing normal causal batch prefill attention. The attention path uses
+DSpark RoPE, FP8 non-RoPE KV rounding, F16 raw-KV storage, grouped output
+projection, and HC post. The FFN then borrows the target graph's transient
+batch workspace with directional steering disabled, but uses stage-0 sidecar
+weights and leaves target persistent state untouched.
+
+CPU stage execution, later DSpark stages, draft candidates, and generated
+tokens remain authoritative. For a fair diagnostic, the opt-in path reads the
+exact persistent GPU `main_x` back and reruns CPU stage 0 with that same input;
+the comparator has its own host KV scratch, and GPU attention/full-stage HC are
+compared against this same-input reference.
+This intentionally duplicates CPU stage work and synchronizes/readbacks, so it
+is not benchmarkable. Parity requires finite CPU/GPU HC and defaults to a
+`0.03` relative-RMS full-stage tolerance, configurable with
+`DS4_DSPARK_GPU_STAGE0_TOLERANCE`. Absolute max/RMS, reference RMS, relative
+RMS, bridge-input drift, and attention-boundary drift remain logged for
+regression visibility. A mismatch is counted but cannot alter CPU drafting or
+output. The current implementation requires target graph prefill capacity at
+least the five-token DSpark block and continues to reject SSD streaming through
+the bridge guard. Existing `DS4_METAL_GRAPH_DUMP_*` controls can select the
+`dspark_stage0_*` diagnostic checkpoints.
+
 The design choice was to keep this separate from legacy `--mtp`. We do not
 guess dynamically whether `--mtp` points at legacy MTP or DSpark. The first
 hook is explicit and conservative:
@@ -148,9 +178,14 @@ hook is explicit and conservative:
   duplicate ordinary eval. If the gate or stream check fails, it logs `skipped`
   and falls through unchanged. It never commits rows 1+ because they have not
   been emitted and would alter the normal sampled stream.
-- The ordinary-session hooks are not called by the CLI `--temp 0` argmax fast
-  path. Use a seeded nonzero-temperature smoke when verifying this diagnostic
-  path against a normal-generation baseline.
+- `DS4_DSPARK_GPU_STAGE0=1` implies `DS4_DSPARK_GPU_BRIDGE=1` behavior and
+  routes greedy CLI runs through the ordinary session loop. It maps/runs only
+  stage 0 on GPU, compares it against CPU, and never feeds the GPU output into
+  stage 1 or token generation.
+- Probe/verify/commit-probe hooks alone are not called by the CLI `--temp 0`
+  argmax fast path. GPU bridge, GPU stage 0, and greedy multi-commit modes do
+  explicitly route through the ordinary session loop. Use a seeded nonzero-
+  temperature smoke for the other ordinary-session diagnostics.
 - No benchmarks should be run automatically by Codex. The user wants tok/s
   benchmarks to be run manually on an otherwise idle machine.
 
@@ -1091,6 +1126,37 @@ The forced `0.0001` tolerance reported `result=fail` and incremented mismatch
 counters while CPU-authoritative generation still emitted `Hello`. These are
 correctness/parity smokes, not tok/s benchmarks.
 
+Phase 0.25 GPU-stage-0 checks run on 2026-07-10:
+
+```sh
+make ds4 ds4_test ds4-server ds4-eval ds4-agent ds4_cpu.o
+./ds4_test --dspark-validation --dspark-shape-binding
+DS4_DSPARK_GPU_STAGE0=1 ./ds4 \
+  --model gguf/DeepSeek-V4-Flash-IQ2XXS-w2Q2K-AProjQ8-SExpQ8-OutQ8-chat-v2-imatrix.gguf \
+  --dspark gguf/ds4flash-dspark.gguf \
+  --nothink -n 4 --temp 0 -p "Hello"
+DS4_DSPARK_GPU_STAGE0=1 DS4_DSPARK_GPU_STAGE0_TOLERANCE=0.001 ./ds4 \
+  --model gguf/DeepSeek-V4-Flash-IQ2XXS-w2Q2K-AProjQ8-SExpQ8-OutQ8-chat-v2-imatrix.gguf \
+  --dspark gguf/ds4flash-dspark.gguf \
+  --nothink -n 1 --temp 0 -p "Hello"
+DS4_DSPARK_GPU_STAGE0=1 DS4_DSPARK_MULTI_COMMIT=1 ./ds4 \
+  --model gguf/DeepSeek-V4-Flash-IQ2XXS-w2Q2K-AProjQ8-SExpQ8-OutQ8-chat-v2-imatrix.gguf \
+  --dspark gguf/ds4flash-dspark.gguf \
+  --nothink -n 4 --temp 0 -p "Hello"
+git diff --check
+```
+
+Stage 0 mapped three sidecar spans totaling `3.51 GiB`. Across ordinary greedy
+prefix lengths 10 through 14, same-input attention relative RMS ranged from
+`0.0127689` to `0.0141918`; complete stage relative RMS ranged from
+`0.0129634` to `0.0246368`. All CPU and GPU HC values were finite and all five
+contexts passed the default `0.03` relative-RMS band. The strict `0.001` run
+reported failures and incremented mismatch counters while CPU-authoritative
+generation remained unchanged. The stage-0 plus direct multi-commit run passed
+all three prepared-prefix checks and emitted exactly `Hello! How can`, matching
+the established greedy baseline. The ordinary stage-0-only run emitted the
+same string. These are correctness/parity smokes, not tok/s benchmarks.
+
 An untargeted `./ds4_test` run entered its long-context GPU prefill case and was
 stopped after about one minute to avoid occupying the accelerator indefinitely.
 Do not treat the full test suite as passed for this phase; the focused DSpark
@@ -1118,7 +1184,7 @@ If continuing from a compacted context, start here:
    option:
 
    ```sh
-   rg -n -- "ds4_engine_options|ds4_engine_open\\(|--mtp|ds4_help_print"
+   rg -n -- "ds4_engine_options|ds4_engine_open\\(|--mtp|ds4_help_print|DSPARK_GPU"
    ```
 
 3. If testing a real DSpark sidecar, start with inspect/validation only:
@@ -1151,17 +1217,15 @@ If continuing from a compacted context, start here:
 
 ## Open Questions
 
-- How should DSpark cache state be represented for real runtime: separate
-  sidecar KV buffers mirroring the official two-step cache fill/draft flow, or
-  a fresh graph path that directly consumes the target hidden-state window?
-- The current `DS4_DSPARK_PROBE=1` / `DS4_DSPARK_VERIFY=1` hooks preserve
-  target-layer context from normal prefill/decode and build internal
-  `d->draft[]` candidates, but still perform CPU readback and CPU sidecar draft
-  computation for diagnostics. Raw target-HC transfer is incremental and the
-  GPU bridge now proves `main_proj/main_norm` parity, but CPU `main_x` remains
-  authoritative. The next GPU phase should make stage 0 consume persistent GPU
-  `main_x` through a dedicated sidecar KV/cache boundary, compare its HC output
-  with the CPU stage, and still leave later stages and token output unchanged.
+- Phase 0.25 establishes separate sidecar KV as the working cache boundary for
+  GPU DSpark stages. The next GPU phase should generalize the stage-indexed
+  mapping/runner, add a dedicated stage-1 KV buffer, feed it the GPU stage-0 HC
+  output, and compare stage 1 against a same-input CPU reference. CPU stages,
+  drafts, and generated tokens should remain authoritative for that phase.
+- The GPU stage path currently borrows target graph transient batch workspace
+  and therefore requires `prefill_cap >= block_size` (five). Decide whether to
+  allocate sidecar-specific batch scratch before production enablement or keep
+  the target scratch reuse with a guaranteed minimum graph capacity.
 - What queue-aware policy should server, agent, and eval use before accepting a
   multi-token batch? Their stop, tool, and forced structural tokens can alter
   the stream after the first output, so they cannot simply reuse the CLI loop.

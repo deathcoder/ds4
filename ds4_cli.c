@@ -97,9 +97,13 @@ static bool cli_dspark_multi_commit_enabled(const cli_config *cfg) {
     return cfg && cfg->engine.dspark_path && v && v[0] && strcmp(v, "0") != 0;
 }
 
-static bool cli_dspark_gpu_bridge_enabled(const cli_config *cfg) {
-    const char *v = getenv("DS4_DSPARK_GPU_BRIDGE");
-    return cfg && cfg->engine.dspark_path && v && v[0] && strcmp(v, "0") != 0;
+static bool cli_dspark_gpu_observe_enabled(const cli_config *cfg) {
+    const char *bridge = getenv("DS4_DSPARK_GPU_BRIDGE");
+    const char *stage0 = getenv("DS4_DSPARK_GPU_STAGE0");
+    const bool enabled =
+        (bridge && bridge[0] && strcmp(bridge, "0") != 0) ||
+        (stage0 && stage0[0] && strcmp(stage0, "0") != 0);
+    return cfg && cfg->engine.dspark_path && enabled;
 }
 
 static void cli_dist_busy_set(const cli_config *cfg, bool busy) {
@@ -956,7 +960,7 @@ static int run_generation(ds4_engine *engine, const cli_config *cfg) {
         }
     } else if (cfg->engine.distributed.role == DS4_DISTRIBUTED_COORDINATOR ||
                cfg->gen.temperature > 0.0f ||
-               cli_dspark_gpu_bridge_enabled(cfg) ||
+               cli_dspark_gpu_observe_enabled(cfg) ||
                cli_dspark_multi_commit_enabled(cfg) ||
                ds4_engine_mtp_draft_tokens(engine) > 1) {
         rc = run_sampled_generation(engine, cfg, &prompt);
