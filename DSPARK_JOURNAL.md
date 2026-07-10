@@ -8,7 +8,7 @@ particular DSpark change exists.
 
 Branch: `codex/dspark-observability-0`
 
-Phase 0.28 remains deliberately diagnostic: `--dspark FILE` validates an official
+Phase 0.29 remains deliberately diagnostic: `--dspark FILE` validates an official
 DSpark drafter GGUF, binds every tensor needed by a future runtime path, checks
 the expected DeepSeek V4 Flash DSpark shapes, and exposes a diagnostic
 `--dspark-probe` bridge for target-layer hidden-state capture plus
@@ -177,6 +177,28 @@ same-input relative-RMS tolerance is `1e-5`, configurable through
 `DS4_DSPARK_GPU_HEAD_TOLERANCE`. Readbacks and duplicate CPU execution keep this
 strictly in correctness-observer territory, not a benchmarkable runtime.
 
+Phase 0.29 extends the observer through base and Markov logits behind
+`DS4_DSPARK_GPU_LOGITS=1`, which implies the complete GPU head/stage/bridge
+chain. It adds reusable Metal BF16-to-F32 row gathering and batched BF16
+matrix-vector projection primitives for the sidecar's Markov tensors. After the
+authoritative CPU draft loop has selected its five predecessor tokens, the GPU
+path gathers those exact `markov_w1` rows, projects persistent GPU
+`final_norm` through the base Q8 LM head, projects the Markov embeddings through
+BF16 `markov_w2`, adds both vocabulary vectors, and computes top-1 ids on
+device. Using CPU-selected predecessor tokens is intentional: it compares all
+five rows without allowing a GPU top-token difference to change later observer
+inputs.
+
+The same-input CPU reference consumes the exact GPU final-norm readback and the
+same predecessor-token list. Base, Markov, and combined logit relative RMS plus
+same-input and CPU-authoritative top-token agreement are logged. The default
+relative-RMS band is `0.01`, configurable with
+`DS4_DSPARK_GPU_LOGITS_TOLERANCE`; it is governed by the existing Q8 GPU/CPU
+output-projection arithmetic, while the new BF16 Markov path is substantially
+tighter. Confidence, candidate storage, acceptance, commits, and generated
+tokens remain CPU-authoritative. Full vocabulary readbacks and duplicate CPU
+projections make this a correctness observer only.
+
 The design choice was to keep this separate from legacy `--mtp`. We do not
 guess dynamically whether `--mtp` points at legacy MTP or DSpark. The first
 hook is explicit and conservative:
@@ -245,8 +267,12 @@ hook is explicit and conservative:
   collapse and final norm from persistent GPU stage-2 HC, and compares both
   outputs with a same-input CPU reference. CPU logits and drafting remain
   authoritative.
+- `DS4_DSPARK_GPU_LOGITS=1` implies the GPU head chain, maps the two BF16 Markov
+  tensors, and compares GPU base/Markov/combined logits plus top-1 ids against a
+  same-input CPU reference. The observer's later-row predecessor tokens come
+  from the completed CPU draft block; GPU token selection never feeds back.
 - Probe/verify/commit-probe hooks alone are not called by the CLI `--temp 0`
-  argmax fast path. GPU bridge, GPU stages 0/1/2, GPU head, and greedy
+  argmax fast path. GPU bridge, GPU stages 0/1/2, GPU head/logits, and greedy
   multi-commit modes do explicitly route through the ordinary session loop. Use a seeded
   nonzero-temperature smoke for the other ordinary-session diagnostics.
 - No benchmarks should be run automatically by Codex. The user wants tok/s
@@ -1316,6 +1342,38 @@ while CPU-authoritative generation still emitted `Hello`. GPU head plus direct
 multi-commit passed at prefixes 10, 12, and 14 and emitted exactly
 `Hello! How can`. These are correctness/parity smokes, not tok/s benchmarks.
 
+Phase 0.29 GPU-logit checks run on 2026-07-10:
+
+```sh
+make ds4 ds4_test ds4-server ds4-eval ds4-agent ds4_cpu.o
+./ds4_test --dspark-validation --dspark-shape-binding
+DS4_DSPARK_GPU_LOGITS=1 ./ds4 \
+  --model gguf/DeepSeek-V4-Flash-IQ2XXS-w2Q2K-AProjQ8-SExpQ8-OutQ8-chat-v2-imatrix.gguf \
+  --dspark gguf/ds4flash-dspark.gguf \
+  --nothink -n 4 --temp 0 -p "Hello"
+DS4_DSPARK_GPU_LOGITS=1 DS4_DSPARK_GPU_LOGITS_TOLERANCE=0.001 ./ds4 \
+  --model gguf/DeepSeek-V4-Flash-IQ2XXS-w2Q2K-AProjQ8-SExpQ8-OutQ8-chat-v2-imatrix.gguf \
+  --dspark gguf/ds4flash-dspark.gguf \
+  --nothink -n 1 --temp 0 -p "Hello"
+DS4_DSPARK_GPU_LOGITS=1 DS4_DSPARK_MULTI_COMMIT=1 ./ds4 \
+  --model gguf/DeepSeek-V4-Flash-IQ2XXS-w2Q2K-AProjQ8-SExpQ8-OutQ8-chat-v2-imatrix.gguf \
+  --dspark gguf/ds4flash-dspark.gguf \
+  --nothink -n 4 --temp 0 -p "Hello"
+git diff --check
+```
+
+The two adjacent BF16 Markov tensors coalesced into one mapped span totaling
+`126.25 MiB`. Across ordinary greedy prefix lengths 10 through 14, same-input
+base-logit relative RMS ranged from `0.00444636` to `0.00495267`, Markov-logit
+relative RMS from `4.83308e-8` to `5.14558e-8`, and combined-logit relative RMS
+from `0.00133959` to `0.00216699`. Every value was finite. All 25 GPU top ids
+matched the same-input CPU references, and all 25 also matched the existing
+CPU-authoritative draft tokens. Every context passed the calibrated `0.01`
+default. The explicit `0.001` override reported failures while generation still
+emitted `Hello`. GPU logits plus direct multi-commit passed at prefixes 10, 12,
+and 14 and emitted exactly `Hello! How can`. These are correctness/parity
+smokes, not tok/s benchmarks.
+
 An untargeted `./ds4_test` run entered its long-context GPU prefill case and was
 stopped after about one minute to avoid occupying the accelerator indefinitely.
 Do not treat the full test suite as passed for this phase; the focused DSpark
@@ -1376,12 +1434,13 @@ If continuing from a compacted context, start here:
 
 ## Open Questions
 
-- Phase 0.28 establishes same-input GPU parity through the HC collapse and final
-  norm. The next GPU phase should map and execute the base LM logits plus
-  stage-2 Markov logits from persistent GPU `final_norm`, then reproduce the
-  CPU BF16 accumulation/combination boundary closely enough to compare draft
-  token selection. Keep confidence, draft acceptance, commits, and generated
-  tokens CPU-authoritative until that parity boundary is understood.
+- Phase 0.29 establishes same-input GPU parity through combined draft logits and
+  top-token selection. The next GPU phase should execute the BF16 confidence
+  projection from persistent GPU `final_plain` plus the already-gathered GPU
+  Markov embedding, compare confidence logits/probabilities against an exact
+  same-input CPU reference, and assemble a complete diagnostic GPU candidate
+  block. Keep candidate authority, acceptance, commits, and generated tokens on
+  CPU until that final output boundary is understood.
 - The GPU stage path currently borrows target graph transient batch workspace
   and therefore requires `prefill_cap >= block_size` (five). Decide whether to
   allocate sidecar-specific batch scratch before production enablement or keep

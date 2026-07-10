@@ -52,3 +52,23 @@ typedef decltype(kernel_get_rows_f<float, float>) get_rows_f_t;
 template [[host_name("kernel_get_rows_f32")]] kernel get_rows_f_t kernel_get_rows_f<float, float>;
 template [[host_name("kernel_get_rows_f16")]] kernel get_rows_f_t kernel_get_rows_f<half, float>;
 template [[host_name("kernel_get_rows_i32")]] kernel get_rows_f_t kernel_get_rows_f<int32_t, int32_t>;
+
+struct ds4_bf16_get_rows_args {
+    uint width;
+    uint n_rows;
+};
+
+static inline float ds4_bf16_bits_to_f32(ushort value) {
+    return as_type<float>((uint)value << 16);
+}
+
+kernel void kernel_get_rows_bf16_f32(
+        constant ds4_bf16_get_rows_args &args [[buffer(0)]],
+        device const ushort             *src  [[buffer(1)]],
+        constant uint                   *rows [[buffer(2)]],
+        device float                    *dst  [[buffer(3)]],
+        uint2 gid [[thread_position_in_grid]]) {
+    if (gid.x >= args.width || gid.y >= args.n_rows) return;
+    dst[(ulong)gid.y * args.width + gid.x] =
+        ds4_bf16_bits_to_f32(src[(ulong)rows[gid.y] * args.width + gid.x]);
+}

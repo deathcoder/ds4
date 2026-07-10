@@ -53,6 +53,8 @@ static id<MTLComputePipelineState> g_set_rows_f32_i32_pipeline;
 static id<MTLComputePipelineState> g_get_rows_f32_pipeline;
 static id<MTLComputePipelineState> g_get_rows_f16_pipeline;
 static id<MTLComputePipelineState> g_get_rows_i32_pipeline;
+static id<MTLComputePipelineState> g_get_rows_bf16_f32_pipeline;
+static id<MTLComputePipelineState> g_mul_mv_bf16_f32_batch_pipeline;
 static id<MTLComputePipelineState> g_repeat_f32_pipeline;
 static id<MTLComputePipelineState> g_concat_pipeline;
 static id<MTLComputePipelineState> g_cpy_f32_f32_pipeline;
@@ -4715,6 +4717,41 @@ int ds4_gpu_init(void) {
             return 0;
         }
 
+        fn = [library newFunctionWithName:@"kernel_get_rows_bf16_f32"];
+        if (!fn) {
+            fprintf(stderr, "ds4: Metal kernel_get_rows_bf16_f32 function not found\n");
+            g_queue = nil;
+            g_device = nil;
+            return 0;
+        }
+
+        g_get_rows_bf16_f32_pipeline = [g_device newComputePipelineStateWithFunction:fn error:&error];
+        if (!g_get_rows_bf16_f32_pipeline) {
+            fprintf(stderr, "ds4: Metal kernel_get_rows_bf16_f32 pipeline failed: %s\n",
+                    [[error localizedDescription] UTF8String]);
+            g_queue = nil;
+            g_device = nil;
+            return 0;
+        }
+
+        fn = [library newFunctionWithName:@"kernel_mul_mv_bf16_f32_batch"];
+        if (!fn) {
+            fprintf(stderr, "ds4: Metal kernel_mul_mv_bf16_f32_batch function not found\n");
+            g_queue = nil;
+            g_device = nil;
+            return 0;
+        }
+
+        g_mul_mv_bf16_f32_batch_pipeline =
+            [g_device newComputePipelineStateWithFunction:fn error:&error];
+        if (!g_mul_mv_bf16_f32_batch_pipeline) {
+            fprintf(stderr, "ds4: Metal kernel_mul_mv_bf16_f32_batch pipeline failed: %s\n",
+                    [[error localizedDescription] UTF8String]);
+            g_queue = nil;
+            g_device = nil;
+            return 0;
+        }
+
         fn = [library newFunctionWithName:@"kernel_repeat_f32"];
         if (!fn) {
             fprintf(stderr, "ds4: Metal kernel_repeat_f32 function not found\n");
@@ -6705,6 +6742,8 @@ void ds4_gpu_cleanup(void) {
         g_get_rows_f32_pipeline = nil;
         g_get_rows_f16_pipeline = nil;
         g_get_rows_i32_pipeline = nil;
+        g_get_rows_bf16_f32_pipeline = nil;
+        g_mul_mv_bf16_f32_batch_pipeline = nil;
         g_repeat_f32_pipeline = nil;
         g_concat_pipeline = nil;
         g_cpy_f32_f32_pipeline = nil;
@@ -13419,6 +13458,132 @@ int ds4_gpu_matmul_f32_tensor(
         if (!ds4_gpu_finish_command_buffer(cb, owned, "F32 tensor matvec")) return 0;
     }
 
+    return 1;
+}
+
+int ds4_gpu_get_rows_bf16_tensor(
+        ds4_gpu_tensor *out,
+        const void       *model_map,
+        uint64_t          model_size,
+        uint64_t          weight_offset,
+        uint32_t          width,
+        uint32_t          table_rows,
+        const uint32_t   *rows,
+        uint32_t          n_rows) {
+    if (!g_initialized && !ds4_gpu_init()) return 0;
+    if (!out || !rows || width == 0 || table_rows == 0 || n_rows == 0) return 0;
+
+    @autoreleasepool {
+        id<MTLBuffer> outbuf = ds4_gpu_tensor_buffer(out);
+        const uint64_t out_bytes = (uint64_t)width * n_rows * sizeof(float);
+        const uint64_t weight_bytes = (uint64_t)width * table_rows * sizeof(uint16_t);
+        if (!outbuf || ds4_gpu_tensor_bytes(out) < out_bytes) {
+            fprintf(stderr, "ds4: Metal BF16 get-rows received an undersized output buffer\n");
+            return 0;
+        }
+        if (weight_offset > model_size || weight_bytes > model_size - weight_offset) {
+            fprintf(stderr, "ds4: Metal BF16 get-rows range is outside the mapped model\n");
+            return 0;
+        }
+        for (uint32_t i = 0; i < n_rows; i++) {
+            if (rows[i] >= table_rows) {
+                fprintf(stderr, "ds4: Metal BF16 get-rows index is outside the table\n");
+                return 0;
+            }
+        }
+
+        uint64_t inner_offset = 0;
+        id<MTLBuffer> wbuf = ds4_gpu_wrap_model_range(model_map,
+                                                       model_size,
+                                                       weight_offset,
+                                                       weight_bytes,
+                                                       &inner_offset);
+        if (!wbuf) return 0;
+
+        int owned = 0;
+        id<MTLCommandBuffer> cb = ds4_gpu_command_buffer(&owned);
+        if (!cb) return 0;
+        const struct {
+            uint32_t width;
+            uint32_t n_rows;
+        } args = {width, n_rows};
+
+        id<MTLComputeCommandEncoder> enc = ds4_gpu_compute_encoder(cb);
+        [enc setComputePipelineState:g_get_rows_bf16_f32_pipeline];
+        [enc setBytes:&args length:sizeof(args) atIndex:0];
+        [enc setBuffer:wbuf offset:(NSUInteger)inner_offset atIndex:1];
+        [enc setBytes:rows length:(NSUInteger)n_rows * sizeof(rows[0]) atIndex:2];
+        [enc setBuffer:outbuf offset:ds4_gpu_tensor_offset(out) atIndex:3];
+        const NSUInteger tx = width < 256u ? width : 256u;
+        [enc dispatchThreads:MTLSizeMake(width, n_rows, 1)
+             threadsPerThreadgroup:MTLSizeMake(tx, 1, 1)];
+        ds4_gpu_end_compute_encoder(cb, enc);
+
+        if (!ds4_gpu_finish_command_buffer(cb, owned, "BF16 get-rows")) return 0;
+    }
+    return 1;
+}
+
+int ds4_gpu_matmul_bf16_tensor(
+        ds4_gpu_tensor       *out,
+        const void             *model_map,
+        uint64_t                model_size,
+        uint64_t                weight_offset,
+        uint32_t                in_dim,
+        uint32_t                out_dim,
+        const ds4_gpu_tensor *x,
+        uint32_t                n_rows) {
+    if (!g_initialized && !ds4_gpu_init()) return 0;
+    if (!out || !x || in_dim == 0 || out_dim == 0 || n_rows == 0) return 0;
+
+    @autoreleasepool {
+        id<MTLBuffer> xbuf = ds4_gpu_tensor_buffer(x);
+        id<MTLBuffer> outbuf = ds4_gpu_tensor_buffer(out);
+        const uint64_t x_bytes = (uint64_t)in_dim * n_rows * sizeof(float);
+        const uint64_t out_bytes = (uint64_t)out_dim * n_rows * sizeof(float);
+        const uint64_t weight_bytes = (uint64_t)in_dim * out_dim * sizeof(uint16_t);
+        if (!xbuf || !outbuf ||
+            ds4_gpu_tensor_bytes(x) < x_bytes ||
+            ds4_gpu_tensor_bytes(out) < out_bytes) {
+            fprintf(stderr, "ds4: Metal BF16 matvec received undersized activation buffers\n");
+            return 0;
+        }
+        if (weight_offset > model_size || weight_bytes > model_size - weight_offset) {
+            fprintf(stderr, "ds4: Metal BF16 matvec range is outside the mapped model\n");
+            return 0;
+        }
+
+        uint64_t inner_offset = 0;
+        id<MTLBuffer> wbuf = ds4_gpu_wrap_model_range(model_map,
+                                                       model_size,
+                                                       weight_offset,
+                                                       weight_bytes,
+                                                       &inner_offset);
+        if (!wbuf) return 0;
+
+        int owned = 0;
+        id<MTLCommandBuffer> cb = ds4_gpu_command_buffer(&owned);
+        if (!cb) return 0;
+        const struct {
+            uint32_t in_dim;
+            uint32_t out_dim;
+            uint32_t n_rows;
+        } args = {in_dim, out_dim, n_rows};
+
+        id<MTLComputeCommandEncoder> enc = ds4_gpu_compute_encoder(cb);
+        [enc setComputePipelineState:g_mul_mv_bf16_f32_batch_pipeline];
+        [enc setBytes:&args length:sizeof(args) atIndex:0];
+        [enc setBuffer:wbuf offset:(NSUInteger)inner_offset atIndex:1];
+        [enc setBuffer:xbuf offset:ds4_gpu_tensor_offset(x) atIndex:2];
+        [enc setBuffer:outbuf offset:ds4_gpu_tensor_offset(out) atIndex:3];
+        [enc dispatchThreadgroups:MTLSizeMake(((NSUInteger)out_dim + 3u) / 4u,
+                                              n_rows,
+                                              1)
+             threadsPerThreadgroup:MTLSizeMake(128, 1, 1)];
+        ds4_gpu_end_compute_encoder(cb, enc);
+
+        if (!ds4_gpu_finish_command_buffer(cb, owned, "BF16 batched matvec")) return 0;
+    }
     return 1;
 }
 

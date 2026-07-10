@@ -1598,3 +1598,35 @@ typedef decltype(kernel_mul_mm<half, half4x4, simdgroup_half8x8, half, half2x4, 
 // Host-visible prefill matmul variants for F16 and Q8_0 weights.
 template [[host_name("kernel_mul_mm_f16_f32")]]  kernel mul_mm_t kernel_mul_mm<half, half4x4, simdgroup_half8x8, half, half2x4, simdgroup_half8x8, half4x4, 1, dequantize_f16,  half,  half4x4,  float, float2x4>;
 template [[host_name("kernel_mul_mm_q8_0_f32")]] kernel mul_mm_t kernel_mul_mm<half, half4x4, simdgroup_half8x8, half, half2x4, simdgroup_half8x8, block_q8_0, 2, dequantize_q8_0, float, float4x4, float, float2x4>;
+
+struct ds4_bf16_matvec_args {
+    uint in_dim;
+    uint out_dim;
+    uint n_rows;
+};
+
+static inline float ds4_dense_bf16_bits_to_f32(ushort value) {
+    return as_type<float>((uint)value << 16);
+}
+
+kernel void kernel_mul_mv_bf16_f32_batch(
+        constant ds4_bf16_matvec_args &args [[buffer(0)]],
+        device const ushort           *w    [[buffer(1)]],
+        device const float            *x    [[buffer(2)]],
+        device float                  *out  [[buffer(3)]],
+        uint2 tgpig [[threadgroup_position_in_grid]],
+        ushort lane [[thread_index_in_simdgroup]],
+        ushort simdgroup [[simdgroup_index_in_threadgroup]]) {
+    const uint out_row = tgpig.x * 4u + simdgroup;
+    const uint input_row = tgpig.y;
+    if (out_row >= args.out_dim || input_row >= args.n_rows) return;
+
+    device const ushort *wr = w + (ulong)out_row * args.in_dim;
+    device const float *xr = x + (ulong)input_row * args.in_dim;
+    float sum = 0.0f;
+    for (uint i = lane; i < args.in_dim; i += 32u) {
+        sum += ds4_dense_bf16_bits_to_f32(wr[i]) * xr[i];
+    }
+    sum = simd_sum(sum);
+    if (lane == 0) out[(ulong)input_row * args.out_dim + out_row] = sum;
+}
