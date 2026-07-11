@@ -1630,3 +1630,42 @@ kernel void kernel_mul_mv_bf16_f32_batch(
     sum = simd_sum(sum);
     if (lane == 0) out[(ulong)input_row * args.out_dim + out_row] = sum;
 }
+
+struct ds4_bf16_split_dot_args {
+    uint left_dim;
+    uint right_dim;
+    uint n_rows;
+};
+
+kernel void kernel_dot_bf16_split_f32_batch(
+        constant ds4_bf16_split_dot_args &args [[buffer(0)]],
+        device const ushort              *w    [[buffer(1)]],
+        device const float               *left [[buffer(2)]],
+        device const float              *right [[buffer(3)]],
+        device float                    *logit [[buffer(4)]],
+        device float                     *prob [[buffer(5)]],
+        uint row [[threadgroup_position_in_grid]],
+        ushort lane [[thread_index_in_simdgroup]]) {
+    if (row >= args.n_rows) return;
+
+    float sum = 0.0f;
+    for (uint i = lane; i < args.left_dim; i += 32u) {
+        sum += ds4_dense_bf16_bits_to_f32(w[i]) *
+               left[(ulong)row * args.left_dim + i];
+    }
+    for (uint i = lane; i < args.right_dim; i += 32u) {
+        sum += ds4_dense_bf16_bits_to_f32(w[args.left_dim + i]) *
+               right[(ulong)row * args.right_dim + i];
+    }
+    sum = simd_sum(sum);
+    if (lane == 0) {
+        logit[row] = sum;
+        if (sum >= 0.0f) {
+            const float e = exp(-sum);
+            prob[row] = 1.0f / (1.0f + e);
+        } else {
+            const float e = exp(sum);
+            prob[row] = e / (1.0f + e);
+        }
+    }
+}

@@ -55,6 +55,7 @@ static id<MTLComputePipelineState> g_get_rows_f16_pipeline;
 static id<MTLComputePipelineState> g_get_rows_i32_pipeline;
 static id<MTLComputePipelineState> g_get_rows_bf16_f32_pipeline;
 static id<MTLComputePipelineState> g_mul_mv_bf16_f32_batch_pipeline;
+static id<MTLComputePipelineState> g_dot_bf16_split_f32_batch_pipeline;
 static id<MTLComputePipelineState> g_repeat_f32_pipeline;
 static id<MTLComputePipelineState> g_concat_pipeline;
 static id<MTLComputePipelineState> g_cpy_f32_f32_pipeline;
@@ -4752,6 +4753,24 @@ int ds4_gpu_init(void) {
             return 0;
         }
 
+        fn = [library newFunctionWithName:@"kernel_dot_bf16_split_f32_batch"];
+        if (!fn) {
+            fprintf(stderr, "ds4: Metal kernel_dot_bf16_split_f32_batch function not found\n");
+            g_queue = nil;
+            g_device = nil;
+            return 0;
+        }
+
+        g_dot_bf16_split_f32_batch_pipeline =
+            [g_device newComputePipelineStateWithFunction:fn error:&error];
+        if (!g_dot_bf16_split_f32_batch_pipeline) {
+            fprintf(stderr, "ds4: Metal kernel_dot_bf16_split_f32_batch pipeline failed: %s\n",
+                    [[error localizedDescription] UTF8String]);
+            g_queue = nil;
+            g_device = nil;
+            return 0;
+        }
+
         fn = [library newFunctionWithName:@"kernel_repeat_f32"];
         if (!fn) {
             fprintf(stderr, "ds4: Metal kernel_repeat_f32 function not found\n");
@@ -6744,6 +6763,7 @@ void ds4_gpu_cleanup(void) {
         g_get_rows_i32_pipeline = nil;
         g_get_rows_bf16_f32_pipeline = nil;
         g_mul_mv_bf16_f32_batch_pipeline = nil;
+        g_dot_bf16_split_f32_batch_pipeline = nil;
         g_repeat_f32_pipeline = nil;
         g_concat_pipeline = nil;
         g_cpy_f32_f32_pipeline = nil;
@@ -13583,6 +13603,80 @@ int ds4_gpu_matmul_bf16_tensor(
         ds4_gpu_end_compute_encoder(cb, enc);
 
         if (!ds4_gpu_finish_command_buffer(cb, owned, "BF16 batched matvec")) return 0;
+    }
+    return 1;
+}
+
+int ds4_gpu_dot_bf16_split_tensor(
+        ds4_gpu_tensor       *logits,
+        ds4_gpu_tensor       *probabilities,
+        const void             *model_map,
+        uint64_t                model_size,
+        uint64_t                weight_offset,
+        uint32_t                left_dim,
+        uint32_t                right_dim,
+        const ds4_gpu_tensor *left,
+        const ds4_gpu_tensor *right,
+        uint32_t                n_rows) {
+    if (!g_initialized && !ds4_gpu_init()) return 0;
+    if (!logits || !probabilities || !left || !right ||
+        left_dim == 0 || right_dim == 0 || n_rows == 0) {
+        return 0;
+    }
+
+    @autoreleasepool {
+        id<MTLBuffer> leftbuf = ds4_gpu_tensor_buffer(left);
+        id<MTLBuffer> rightbuf = ds4_gpu_tensor_buffer(right);
+        id<MTLBuffer> logitbuf = ds4_gpu_tensor_buffer(logits);
+        id<MTLBuffer> probbuf = ds4_gpu_tensor_buffer(probabilities);
+        const uint64_t left_bytes = (uint64_t)left_dim * n_rows * sizeof(float);
+        const uint64_t right_bytes = (uint64_t)right_dim * n_rows * sizeof(float);
+        const uint64_t out_bytes = (uint64_t)n_rows * sizeof(float);
+        const uint64_t weight_values = (uint64_t)left_dim + right_dim;
+        const uint64_t weight_bytes = weight_values * sizeof(uint16_t);
+        if (!leftbuf || !rightbuf || !logitbuf || !probbuf ||
+            ds4_gpu_tensor_bytes(left) < left_bytes ||
+            ds4_gpu_tensor_bytes(right) < right_bytes ||
+            ds4_gpu_tensor_bytes(logits) < out_bytes ||
+            ds4_gpu_tensor_bytes(probabilities) < out_bytes) {
+            fprintf(stderr, "ds4: Metal BF16 split dot received undersized buffers\n");
+            return 0;
+        }
+        if (weight_offset > model_size || weight_bytes > model_size - weight_offset) {
+            fprintf(stderr, "ds4: Metal BF16 split dot range is outside the mapped model\n");
+            return 0;
+        }
+
+        uint64_t inner_offset = 0;
+        id<MTLBuffer> wbuf = ds4_gpu_wrap_model_range(model_map,
+                                                       model_size,
+                                                       weight_offset,
+                                                       weight_bytes,
+                                                       &inner_offset);
+        if (!wbuf) return 0;
+
+        int owned = 0;
+        id<MTLCommandBuffer> cb = ds4_gpu_command_buffer(&owned);
+        if (!cb) return 0;
+        const struct {
+            uint32_t left_dim;
+            uint32_t right_dim;
+            uint32_t n_rows;
+        } args = {left_dim, right_dim, n_rows};
+
+        id<MTLComputeCommandEncoder> enc = ds4_gpu_compute_encoder(cb);
+        [enc setComputePipelineState:g_dot_bf16_split_f32_batch_pipeline];
+        [enc setBytes:&args length:sizeof(args) atIndex:0];
+        [enc setBuffer:wbuf offset:(NSUInteger)inner_offset atIndex:1];
+        [enc setBuffer:leftbuf offset:ds4_gpu_tensor_offset(left) atIndex:2];
+        [enc setBuffer:rightbuf offset:ds4_gpu_tensor_offset(right) atIndex:3];
+        [enc setBuffer:logitbuf offset:ds4_gpu_tensor_offset(logits) atIndex:4];
+        [enc setBuffer:probbuf offset:ds4_gpu_tensor_offset(probabilities) atIndex:5];
+        [enc dispatchThreadgroups:MTLSizeMake(n_rows, 1, 1)
+             threadsPerThreadgroup:MTLSizeMake(32, 1, 1)];
+        ds4_gpu_end_compute_encoder(cb, enc);
+
+        if (!ds4_gpu_finish_command_buffer(cb, owned, "BF16 split dot")) return 0;
     }
     return 1;
 }

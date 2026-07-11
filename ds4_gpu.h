@@ -327,6 +327,18 @@ int ds4_gpu_matmul_bf16_tensor(
         const ds4_gpu_tensor *x,
         uint32_t                n_rows);
 
+int ds4_gpu_dot_bf16_split_tensor(
+        ds4_gpu_tensor       *logits,
+        ds4_gpu_tensor       *probabilities,
+        const void             *model_map,
+        uint64_t                model_size,
+        uint64_t                weight_offset,
+        uint32_t                left_dim,
+        uint32_t                right_dim,
+        const ds4_gpu_tensor *left,
+        const ds4_gpu_tensor *right,
+        uint32_t                n_rows);
+
 int ds4_gpu_repeat_hc_tensor(
         ds4_gpu_tensor       *out,
         const ds4_gpu_tensor *row,
