@@ -26388,6 +26388,10 @@ struct dspark_session_state {
     dspark_draft_candidate gpu_candidate[16];
     uint32_t gpu_candidate_rows;
     bool gpu_candidate_valid;
+    dspark_draft_candidate gpu_chain_candidate[16];
+    uint32_t gpu_chain_candidate_rows;
+    bool gpu_chain_candidate_valid;
+    bool gpu_chain_parity_ok;
     uint32_t gpu_bridge_cap;
     uint32_t gpu_main_x_rows;
     uint64_t gpu_bridge_checks;
@@ -26405,6 +26409,9 @@ struct dspark_session_state {
     uint64_t gpu_confidence_checks;
     uint64_t gpu_confidence_failures;
     uint64_t gpu_confidence_mismatches;
+    uint64_t gpu_chain_checks;
+    uint64_t gpu_chain_failures;
+    uint64_t gpu_chain_mismatches;
     float *target_context;
     uint32_t target_context_rows;
     bool target_context_valid;
@@ -26425,6 +26432,9 @@ static void dspark_session_draft_reset(dspark_session_state *d) {
     d->gpu_logits_output_valid = false;
     d->gpu_candidate_rows = 0;
     d->gpu_candidate_valid = false;
+    d->gpu_chain_candidate_rows = 0;
+    d->gpu_chain_candidate_valid = false;
+    d->gpu_chain_parity_ok = false;
 }
 
 static void dspark_session_state_reset(dspark_session_state *d) {
@@ -26562,6 +26572,7 @@ static bool dspark_session_gpu_stage2_env_enabled(void);
 static bool dspark_session_gpu_head_env_enabled(void);
 static bool dspark_session_gpu_logits_env_enabled(void);
 static bool dspark_session_gpu_confidence_env_enabled(void);
+static bool dspark_session_gpu_chain_env_enabled(void);
 static bool dspark_session_gpu_stage_env_enabled(uint32_t stage);
 static bool dspark_session_gpu_bridge_env_enabled(void);
 static float dspark_session_gpu_bridge_tolerance(void);
@@ -28466,6 +28477,294 @@ static bool dspark_session_gpu_confidence_run(
     return true;
 }
 
+static bool dspark_session_gpu_chain_run(
+        ds4_session *s,
+        char        *err,
+        size_t       errlen) {
+    if (!s || !s->engine || !s->dspark) {
+        if (errlen) snprintf(err, errlen, "invalid DSpark GPU chain state");
+        return false;
+    }
+    ds4_engine *e = s->engine;
+    dspark_session_state *d = s->dspark;
+    if (!d->gpu_candidate_valid || !d->gpu_logits_output_valid ||
+        !d->gpu_head_output_valid) {
+        if (errlen) snprintf(err, errlen,
+                             "DSpark GPU chain requires a complete diagnostic candidate block");
+        return false;
+    }
+    d->gpu_logits_output_valid = false;
+
+    const uint32_t block = d->block_size;
+    const uint64_t embed_row_bytes = (uint64_t)d->markov_rank * sizeof(float);
+    const uint64_t logit_row_bytes = (uint64_t)DS4_N_VOCAB * sizeof(float);
+    uint32_t prev_token = (uint32_t)d->block_tokens[0];
+    for (uint32_t t = 0; t < block; t++) {
+        ds4_gpu_tensor *embed_row = ds4_gpu_tensor_view(
+            d->gpu_markov_embed, (uint64_t)t * embed_row_bytes, embed_row_bytes);
+        ds4_gpu_tensor *base_row = ds4_gpu_tensor_view(
+            d->gpu_base_logits, (uint64_t)t * logit_row_bytes, logit_row_bytes);
+        ds4_gpu_tensor *markov_row = ds4_gpu_tensor_view(
+            d->gpu_markov_bias, (uint64_t)t * logit_row_bytes, logit_row_bytes);
+        ds4_gpu_tensor *logits_row = ds4_gpu_tensor_view(
+            d->gpu_logits, (uint64_t)t * logit_row_bytes, logit_row_bytes);
+        ds4_gpu_tensor *top_row = ds4_gpu_tensor_view(
+            d->gpu_logits_top, (uint64_t)t * sizeof(uint32_t), sizeof(uint32_t));
+        bool ok = embed_row && base_row && markov_row && logits_row && top_row;
+        const char *failed_step = ok ? "command begin" : "row views";
+        const bool commands_started = ok && ds4_gpu_begin_commands() != 0;
+        ok = commands_started;
+        if (ok) {
+            failed_step = "Markov embedding";
+            ok = ds4_gpu_get_rows_bf16_tensor(
+                     embed_row,
+                     e->dspark_model.map,
+                     e->dspark_model.size,
+                     e->dspark_weights.markov_w1->abs_offset,
+                     d->markov_rank,
+                     DS4_N_VOCAB,
+                     &prev_token,
+                     1) != 0;
+        }
+        if (ok) {
+            failed_step = "Markov logits";
+            ok = ds4_gpu_matmul_bf16_tensor(
+                     markov_row,
+                     e->dspark_model.map,
+                     e->dspark_model.size,
+                     e->dspark_weights.markov_w2->abs_offset,
+                     d->markov_rank,
+                     DS4_N_VOCAB,
+                     embed_row,
+                     1) != 0;
+        }
+        if (ok) {
+            failed_step = "logit combination";
+            ok = ds4_gpu_add_tensor(logits_row,
+                                    base_row,
+                                    markov_row,
+                                    DS4_N_VOCAB) != 0;
+        }
+        if (ok) {
+            failed_step = "top-1";
+            ok = ds4_gpu_indexer_topk_tensor(top_row,
+                                             logits_row,
+                                             DS4_N_VOCAB,
+                                             1,
+                                             1) != 0;
+        }
+        if (ok) failed_step = "command end";
+        if (commands_started && ds4_gpu_end_commands() == 0) ok = false;
+        if (ok) {
+            ok = ds4_gpu_tensor_read(top_row,
+                                     0,
+                                     &d->gpu_logits_top_read[t],
+                                     sizeof(uint32_t)) != 0;
+            if (!ok) failed_step = "top-1 readback";
+        }
+        ds4_gpu_tensor_free(top_row);
+        ds4_gpu_tensor_free(logits_row);
+        ds4_gpu_tensor_free(markov_row);
+        ds4_gpu_tensor_free(base_row);
+        ds4_gpu_tensor_free(embed_row);
+        if (!ok || d->gpu_logits_top_read[t] >= DS4_N_VOCAB) {
+            if (errlen) snprintf(err,
+                                 errlen,
+                                 "DSpark GPU chain row %u failed at %s",
+                                 t,
+                                 ok ? "top-1 validation" : failed_step);
+            return false;
+        }
+        d->gpu_chain_candidate[t].prev_token = prev_token;
+        prev_token = d->gpu_logits_top_read[t];
+    }
+
+    bool ok = ds4_gpu_begin_commands() != 0;
+    const bool commands_started = ok;
+    const char *failed_step = ok ? "confidence projection" : "command begin";
+    if (ok) {
+        ok = ds4_gpu_dot_bf16_split_tensor(
+                 d->gpu_confidence_logit,
+                 d->gpu_confidence_prob,
+                 e->dspark_model.map,
+                 e->dspark_model.size,
+                 e->dspark_weights.confidence_proj->abs_offset,
+                 DS4_N_EMBD,
+                 d->markov_rank,
+                 d->gpu_head_plain,
+                 d->gpu_markov_embed,
+                 block) != 0;
+    }
+    if (ok) failed_step = "command end";
+    if (commands_started && ds4_gpu_end_commands() == 0) ok = false;
+    if (!ok) {
+        if (errlen) snprintf(err, errlen,
+                             "DSpark GPU chain failed at %s", failed_step);
+        return false;
+    }
+
+    const uint64_t logit_values = (uint64_t)block * DS4_N_VOCAB;
+    const uint64_t confidence_bytes = (uint64_t)block * sizeof(float);
+    if (!ds4_gpu_tensor_read(d->gpu_markov_bias,
+                             0,
+                             d->gpu_markov_bias_read,
+                             logit_values * sizeof(float)) ||
+        !ds4_gpu_tensor_read(d->gpu_logits,
+                             0,
+                             d->gpu_logits_read,
+                             logit_values * sizeof(float)) ||
+        !ds4_gpu_tensor_read(d->gpu_confidence_logit,
+                             0,
+                             d->gpu_confidence_logit_read,
+                             confidence_bytes) ||
+        !ds4_gpu_tensor_read(d->gpu_confidence_prob,
+                             0,
+                             d->gpu_confidence_prob_read,
+                             confidence_bytes)) {
+        if (errlen) snprintf(err, errlen, "failed to read DSpark GPU chain output");
+        return false;
+    }
+
+    dspark_gpu_logit_stats markov_stats = {0};
+    dspark_gpu_logit_stats combined_stats = {0};
+    dspark_gpu_logit_stats confidence_stats = {0};
+    float ref_confidence_prob[16];
+    uint32_t same_input_top_matches = 0;
+    uint32_t reduction_top_matches = 0;
+    uint32_t cpu_fed_top_matches = 0;
+    uint32_t authoritative_top_matches = 0;
+    for (uint32_t t = 0; t < block; t++) {
+        const uint64_t off = (uint64_t)t * DS4_N_VOCAB;
+        const uint32_t row_prev = d->gpu_chain_candidate[t].prev_token;
+        matvec_q8_0(d->step.base_logits,
+                    &e->model,
+                    e->weights.output,
+                    d->gpu_head_norm_read + (uint64_t)t * DS4_N_EMBD);
+        dspark_markov_embed(d->step.markov_embed,
+                            &e->dspark_model,
+                            &e->dspark_weights,
+                            row_prev,
+                            d->markov_rank);
+        dspark_bf16_matvec(d->step.markov_bias,
+                           &e->dspark_model,
+                           e->dspark_weights.markov_w2,
+                           d->step.markov_embed);
+        for (uint32_t v = 0; v < DS4_N_VOCAB; v++) {
+            d->step.logits[v] = d->step.base_logits[v] + d->step.markov_bias[v];
+        }
+        dspark_gpu_logit_stats_add(&markov_stats,
+                                   d->step.markov_bias,
+                                   d->gpu_markov_bias_read + off,
+                                   DS4_N_VOCAB);
+        dspark_gpu_logit_stats_add(&combined_stats,
+                                   d->step.logits,
+                                   d->gpu_logits_read + off,
+                                   DS4_N_VOCAB);
+        int ref_top0 = -1;
+        int ref_top1 = -1;
+        float ref_logit0 = 0.0f;
+        float ref_logit1 = 0.0f;
+        logits_top2(d->step.logits,
+                    DS4_N_VOCAB,
+                    &ref_top0,
+                    &ref_logit0,
+                    &ref_top1,
+                    &ref_logit1);
+        (void)ref_top1;
+        (void)ref_logit0;
+        (void)ref_logit1;
+
+        const float *gpu_row = d->gpu_logits_read + off;
+        dspark_draft_candidate *candidate = &d->gpu_chain_candidate[t];
+        logits_top2(gpu_row,
+                    DS4_N_VOCAB,
+                    &candidate->token,
+                    &candidate->logit,
+                    &candidate->alt_token,
+                    &candidate->alt_logit);
+        candidate->confidence_logit = d->gpu_confidence_logit_read[t];
+        candidate->confidence = d->gpu_confidence_prob_read[t];
+        if (ref_top0 >= 0 && candidate->token == ref_top0) same_input_top_matches++;
+        if (candidate->token >= 0 &&
+            d->gpu_logits_top_read[t] == (uint32_t)candidate->token) {
+            reduction_top_matches++;
+        }
+        if (candidate->token == d->gpu_candidate[t].token) cpu_fed_top_matches++;
+        if (candidate->token == d->draft[t].token) authoritative_top_matches++;
+
+        const float ref_confidence_logit = dspark_confidence_logit(
+            &e->dspark_model,
+            &e->dspark_weights,
+            d->gpu_head_plain_read + (uint64_t)t * DS4_N_EMBD,
+            d->step.markov_embed,
+            d->markov_rank);
+        ref_confidence_prob[t] = sigmoid_stable(ref_confidence_logit);
+        dspark_gpu_logit_stats_add(&confidence_stats,
+                                   &ref_confidence_logit,
+                                   d->gpu_confidence_logit_read + t,
+                                   1);
+    }
+
+    const uint64_t ref_prob_nonfinite =
+        count_nonfinite_f32(ref_confidence_prob, block);
+    const uint64_t gpu_prob_nonfinite =
+        count_nonfinite_f32(d->gpu_confidence_prob_read, block);
+    const float probability_max = ref_prob_nonfinite || gpu_prob_nonfinite ?
+        DS4_POS_INF : max_abs_diff(ref_confidence_prob,
+                                   d->gpu_confidence_prob_read,
+                                   block);
+    const float markov_rel_rms = dspark_gpu_logit_stats_rel_rms(&markov_stats);
+    const float combined_rel_rms = dspark_gpu_logit_stats_rel_rms(&combined_stats);
+    const float confidence_rel_rms =
+        dspark_gpu_logit_stats_rel_rms(&confidence_stats);
+    const float logits_tolerance = dspark_session_gpu_logits_tolerance();
+    const float confidence_tolerance = dspark_session_gpu_confidence_tolerance();
+    const bool parity_ok = markov_rel_rms <= logits_tolerance &&
+                           combined_rel_rms <= logits_tolerance &&
+                           confidence_rel_rms <= confidence_tolerance &&
+                           probability_max <= confidence_tolerance &&
+                           same_input_top_matches == block &&
+                           reduction_top_matches == block;
+    d->gpu_chain_candidate_rows = block;
+    d->gpu_chain_candidate_valid = true;
+    d->gpu_chain_parity_ok = parity_ok;
+    d->gpu_logits_output_valid = true;
+    d->gpu_chain_checks++;
+    if (!parity_ok) d->gpu_chain_mismatches++;
+    fprintf(stderr,
+            "ds4: DSpark GPU chain parity context=%u block=%u "
+            "markov_max=%g markov_rel_rms=%g "
+            "combined_max=%g combined_rel_rms=%g "
+            "confidence_max=%g confidence_rel_rms=%g probability_max=%g "
+            "same_input_top=%u/%u reduction_top=%u/%u "
+            "cpu_fed_top=%u/%u authoritative_top=%u/%u "
+            "logits_tolerance=%g confidence_tolerance=%g result=%s "
+            "checks=%llu mismatches=%llu\n",
+            d->main_x_rows,
+            block,
+            markov_stats.max_diff,
+            markov_rel_rms,
+            combined_stats.max_diff,
+            combined_rel_rms,
+            confidence_stats.max_diff,
+            confidence_rel_rms,
+            probability_max,
+            same_input_top_matches,
+            block,
+            reduction_top_matches,
+            block,
+            cpu_fed_top_matches,
+            block,
+            authoritative_top_matches,
+            block,
+            logits_tolerance,
+            confidence_tolerance,
+            parity_ok ? "pass" : "fail",
+            (unsigned long long)d->gpu_chain_checks,
+            (unsigned long long)d->gpu_chain_mismatches);
+    return true;
+}
+
 static bool dspark_session_should_capture_target(const ds4_session *s) {
     return s &&
            s->engine &&
@@ -29008,6 +29307,23 @@ static bool dspark_session_build_draft_candidates(
                     (unsigned long long)d->gpu_confidence_failures);
         }
     }
+    if (dspark_session_gpu_chain_env_enabled()) {
+        char chain_err[256];
+        chain_err[0] = '\0';
+        d->gpu_chain_candidate_valid = false;
+        d->gpu_chain_candidate_rows = 0;
+        d->gpu_chain_parity_ok = false;
+        if (!dspark_session_gpu_chain_run(s,
+                                          chain_err,
+                                          sizeof(chain_err))) {
+            d->gpu_chain_failures++;
+            fprintf(stderr,
+                    "ds4: DSpark GPU chain parity skipped: %s "
+                    "(failures=%llu); CPU sidecar remains authoritative\n",
+                    chain_err[0] ? chain_err : "unknown error",
+                    (unsigned long long)d->gpu_chain_failures);
+        }
+    }
     return true;
 }
 
@@ -29175,6 +29491,12 @@ static bool dspark_session_gpu_logits_env_enabled(void) {
 
 static bool dspark_session_gpu_confidence_env_enabled(void) {
     const char *v = getenv("DS4_DSPARK_GPU_CONFIDENCE");
+    return (v && v[0] && strcmp(v, "0") != 0) ||
+           dspark_session_gpu_chain_env_enabled();
+}
+
+static bool dspark_session_gpu_chain_env_enabled(void) {
+    const char *v = getenv("DS4_DSPARK_GPU_CHAIN");
     return v && v[0] && strcmp(v, "0") != 0;
 }
 
@@ -29259,6 +29581,7 @@ static bool dspark_session_observe_env_enabled(void) {
 static const char *dspark_session_observe_mode_name(void) {
     if (dspark_session_probe_env_enabled()) return "dev probe";
     if (dspark_session_multi_commit_env_enabled()) return "multi commit";
+    if (dspark_session_gpu_chain_env_enabled()) return "GPU chain";
     if (dspark_session_gpu_confidence_env_enabled()) return "GPU confidence";
     if (dspark_session_gpu_logits_env_enabled()) return "GPU logits";
     if (dspark_session_gpu_head_env_enabled()) return "GPU head";
