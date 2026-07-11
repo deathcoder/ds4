@@ -8,7 +8,7 @@ particular DSpark change exists.
 
 Branch: `codex/dspark-observability-0`
 
-Phase 0.31 remains deliberately diagnostic: `--dspark FILE` validates an official
+Phase 0.32 remains deliberately diagnostic: `--dspark FILE` validates an official
 DSpark drafter GGUF, binds every tensor needed by a future runtime path, checks
 the expected DeepSeek V4 Flash DSpark shapes, and exposes a diagnostic
 `--dspark-probe` bridge for target-layer hidden-state capture plus
@@ -245,6 +245,26 @@ introduced. The five per-row command synchronizations/readbacks are deliberate
 diagnostic scaffolding, not a production schedule. No verifier, acceptance,
 commit, or output path reads the self-fed candidate block yet.
 
+Phase 0.32 adds the first guarded GPU proposal-source experiment behind
+`DS4_DSPARK_GPU_CANDIDATES=1`, which implies the complete self-fed GPU chain.
+The CPU candidate block is still built first and remains untouched until GPU
+preparation finishes. A GPU block may replace `d->draft[]` only when it is
+complete, `gpu_chain_parity_ok`, row-count compatible, vocabulary-valid,
+predecessor-continuous from the anchor, finite, and has confidence probabilities
+inside `[0,1]`. Selection copies the self-fed candidates into `d->draft[]`,
+updates confidence scratch and the final predecessor, and records the active
+source. Any failed invariant or parity result increments fallback counters and
+leaves the original CPU proposals active.
+
+This is the first phase where GPU candidate values can affect which speculative
+tokens are proposed, including GPU confidence values used by the existing gate.
+They still cannot directly authorize output. The ordinary target logits verify
+row 0, each suffix row is checked through the normal target decode path, and a
+miss falls back through the established exact stream behavior. CPU sidecar
+execution, full parity observers, vocabulary readbacks, and the five per-row GPU
+synchronizations are still mandatory in this mode, so it is explicitly not a
+performance runtime or benchmark target.
+
 The design choice was to keep this separate from legacy `--mtp`. We do not
 guess dynamically whether `--mtp` points at legacy MTP or DSpark. The first
 hook is explicit and conservative:
@@ -325,6 +345,10 @@ hook is explicit and conservative:
   block whose rows feed their own GPU top tokens into subsequent Markov
   embeddings. It compares against same-input CPU, CPU-fed GPU, and authoritative
   CPU candidates but remains entirely observational.
+- `DS4_DSPARK_GPU_CANDIDATES=1` implies the self-fed chain and may replace CPU
+  proposals only after complete structural and parity validation. Failed gates
+  retain CPU proposals; successful GPU proposals still require exact target
+  verification before any commit.
 - Probe/verify/commit-probe hooks alone are not called by the CLI `--temp 0`
   argmax fast path. GPU bridge, GPU stages 0/1/2, GPU head/logits, and greedy
   multi-commit modes do explicitly route through the ordinary session loop. Use a seeded
@@ -1496,6 +1520,38 @@ CPU-authoritative generation still emitted `Hello`. Self-fed GPU chain plus
 direct multi-commit passed at prefixes 10, 12, and 14 and emitted exactly
 `Hello! How can`. These are correctness/parity smokes, not tok/s benchmarks.
 
+Phase 0.32 guarded GPU-candidate checks run on 2026-07-11:
+
+```sh
+make ds4 ds4_test ds4-server ds4-eval ds4-agent ds4_cpu.o
+./ds4_test --dspark-validation --dspark-shape-binding
+DS4_DSPARK_GPU_CANDIDATES=1 ./ds4 \
+  --model gguf/DeepSeek-V4-Flash-IQ2XXS-w2Q2K-AProjQ8-SExpQ8-OutQ8-chat-v2-imatrix.gguf \
+  --dspark gguf/ds4flash-dspark.gguf \
+  --nothink -n 1 --temp 0 -p "Hello"
+DS4_DSPARK_GPU_CANDIDATES=1 DS4_DSPARK_GPU_CONFIDENCE_TOLERANCE=1e-7 ./ds4 \
+  --model gguf/DeepSeek-V4-Flash-IQ2XXS-w2Q2K-AProjQ8-SExpQ8-OutQ8-chat-v2-imatrix.gguf \
+  --dspark gguf/ds4flash-dspark.gguf \
+  --nothink -n 1 --temp 0 -p "Hello"
+DS4_DSPARK_GPU_CANDIDATES=1 DS4_DSPARK_MULTI_COMMIT=1 ./ds4 \
+  --model gguf/DeepSeek-V4-Flash-IQ2XXS-w2Q2K-AProjQ8-SExpQ8-OutQ8-chat-v2-imatrix.gguf \
+  --dspark gguf/ds4flash-dspark.gguf \
+  --nothink -n 4 --temp 0 -p "Hello"
+git diff --check
+```
+
+The normal one-token run selected complete five-row GPU proposal blocks at both
+prepared prefixes and still emitted `Hello`. With the explicit `1e-7`
+confidence tolerance, both self-fed blocks completed but failed parity; the
+source gate logged `selected=0`, retained CPU proposals twice, and still emitted
+`Hello`. In the direct multi-commit run, GPU proposals were selected at prefixes
+10, 12, and 14. GPU confidence values were visible in the prepared records
+(for example `0.915544` versus the earlier CPU-authoritative `0.917943` at
+prefix 10), proving the proposal copy was active. Exact target verification
+committed two tokens, stopped at the expected target miss, later committed two
+through the accepted limit, and emitted exactly `Hello! How can`. These are
+correctness smokes, not tok/s benchmarks.
+
 An untargeted `./ds4_test` run entered its long-context GPU prefill case and was
 stopped after about one minute to avoid occupying the accelerator indefinitely.
 Do not treat the full test suite as passed for this phase; the focused DSpark
@@ -1556,13 +1612,13 @@ If continuing from a compacted context, start here:
 
 ## Open Questions
 
-- Phase 0.31 establishes self-fed GPU chain stability on the initial real-model
-  sample. The next runtime phase should add a separately explicit, guarded GPU
-  candidate-source experiment: only a complete parity-passing self-fed block may
-  replace CPU proposals, ordinary target verification must remain authoritative,
-  and any GPU preparation/parity failure must fall back to CPU candidates. Do
-  not treat this as a performance path until duplicate CPU sidecar execution,
-  vocabulary readbacks, and per-row synchronization are removed.
+- Phase 0.32 proves guarded GPU proposals can flow through exact target
+  verification without changing the greedy stream. Before removing CPU parity
+  or calling this a runtime path, broaden correctness coverage across varied
+  prompts, longer prefixes, and resumed chat turns, including cases where GPU
+  and CPU proposal chains or confidence gates differ. The following engineering
+  phase should then remove the five host round trips with a device-resident
+  self-fed Markov/top-token loop while keeping target verification authoritative.
 - The GPU stage path currently borrows target graph transient batch workspace
   and therefore requires `prefill_cap >= block_size` (five). Decide whether to
   allocate sidecar-specific batch scratch before production enablement or keep

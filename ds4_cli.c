@@ -106,6 +106,7 @@ static bool cli_dspark_gpu_observe_enabled(const cli_config *cfg) {
     const char *logits = getenv("DS4_DSPARK_GPU_LOGITS");
     const char *confidence = getenv("DS4_DSPARK_GPU_CONFIDENCE");
     const char *chain = getenv("DS4_DSPARK_GPU_CHAIN");
+    const char *candidates = getenv("DS4_DSPARK_GPU_CANDIDATES");
     const bool enabled =
         (bridge && bridge[0] && strcmp(bridge, "0") != 0) ||
         (stage0 && stage0[0] && strcmp(stage0, "0") != 0) ||
@@ -114,7 +115,8 @@ static bool cli_dspark_gpu_observe_enabled(const cli_config *cfg) {
         (head && head[0] && strcmp(head, "0") != 0) ||
         (logits && logits[0] && strcmp(logits, "0") != 0) ||
         (confidence && confidence[0] && strcmp(confidence, "0") != 0) ||
-        (chain && chain[0] && strcmp(chain, "0") != 0);
+        (chain && chain[0] && strcmp(chain, "0") != 0) ||
+        (candidates && candidates[0] && strcmp(candidates, "0") != 0);
     return cfg && cfg->engine.dspark_path && enabled;
 }
 

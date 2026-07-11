@@ -26412,6 +26412,10 @@ struct dspark_session_state {
     uint64_t gpu_chain_checks;
     uint64_t gpu_chain_failures;
     uint64_t gpu_chain_mismatches;
+    uint64_t gpu_candidate_source_attempts;
+    uint64_t gpu_candidate_source_selected;
+    uint64_t gpu_candidate_source_fallbacks;
+    bool gpu_candidate_source_active;
     float *target_context;
     uint32_t target_context_rows;
     bool target_context_valid;
@@ -26435,6 +26439,7 @@ static void dspark_session_draft_reset(dspark_session_state *d) {
     d->gpu_chain_candidate_rows = 0;
     d->gpu_chain_candidate_valid = false;
     d->gpu_chain_parity_ok = false;
+    d->gpu_candidate_source_active = false;
 }
 
 static void dspark_session_state_reset(dspark_session_state *d) {
@@ -26573,6 +26578,7 @@ static bool dspark_session_gpu_head_env_enabled(void);
 static bool dspark_session_gpu_logits_env_enabled(void);
 static bool dspark_session_gpu_confidence_env_enabled(void);
 static bool dspark_session_gpu_chain_env_enabled(void);
+static bool dspark_session_gpu_candidates_env_enabled(void);
 static bool dspark_session_gpu_stage_env_enabled(uint32_t stage);
 static bool dspark_session_gpu_bridge_env_enabled(void);
 static float dspark_session_gpu_bridge_tolerance(void);
@@ -28765,6 +28771,89 @@ static bool dspark_session_gpu_chain_run(
     return true;
 }
 
+static bool dspark_session_gpu_candidate_block_usable(
+        const dspark_session_state *d,
+        const char                **reason) {
+    if (reason) *reason = "unknown validation failure";
+    if (!d->gpu_chain_candidate_valid) {
+        if (reason) *reason = "self-fed GPU block is incomplete";
+        return false;
+    }
+    if (!d->gpu_chain_parity_ok) {
+        if (reason) *reason = "self-fed GPU block failed parity";
+        return false;
+    }
+    if (!d->draft_valid || d->draft_rows == 0 ||
+        d->gpu_chain_candidate_rows != d->draft_rows ||
+        d->gpu_chain_candidate_rows != d->block_size) {
+        if (reason) *reason = "GPU and CPU candidate row counts differ";
+        return false;
+    }
+
+    uint32_t expected_prev = (uint32_t)d->block_tokens[0];
+    for (uint32_t t = 0; t < d->gpu_chain_candidate_rows; t++) {
+        const dspark_draft_candidate *candidate = &d->gpu_chain_candidate[t];
+        if (candidate->prev_token != expected_prev) {
+            if (reason) *reason = "GPU predecessor chain is discontinuous";
+            return false;
+        }
+        if (candidate->token < 0 || candidate->token >= (int)DS4_N_VOCAB ||
+            candidate->alt_token < 0 || candidate->alt_token >= (int)DS4_N_VOCAB) {
+            if (reason) *reason = "GPU candidate token is outside the vocabulary";
+            return false;
+        }
+        if (!isfinite(candidate->logit) || !isfinite(candidate->alt_logit) ||
+            !isfinite(candidate->confidence_logit) ||
+            !isfinite(candidate->confidence) ||
+            candidate->confidence < 0.0f || candidate->confidence > 1.0f) {
+            if (reason) *reason = "GPU candidate contains invalid numeric output";
+            return false;
+        }
+        expected_prev = (uint32_t)candidate->token;
+    }
+    return true;
+}
+
+static void dspark_session_select_gpu_candidates(dspark_session_state *d) {
+    if (!d) return;
+    d->gpu_candidate_source_attempts++;
+    d->gpu_candidate_source_active = false;
+
+    const char *reason = NULL;
+    if (!dspark_session_gpu_candidate_block_usable(d, &reason)) {
+        d->gpu_candidate_source_fallbacks++;
+        fprintf(stderr,
+                "ds4: DSpark GPU candidate source fallback: %s "
+                "(attempts=%llu selected=%llu fallbacks=%llu); "
+                "CPU proposals remain active\n",
+                reason ? reason : "unknown validation failure",
+                (unsigned long long)d->gpu_candidate_source_attempts,
+                (unsigned long long)d->gpu_candidate_source_selected,
+                (unsigned long long)d->gpu_candidate_source_fallbacks);
+        return;
+    }
+
+    for (uint32_t t = 0; t < d->gpu_chain_candidate_rows; t++) {
+        d->draft[t] = d->gpu_chain_candidate[t];
+        d->confidence[t] = d->draft[t].confidence_logit;
+    }
+    d->draft_rows = d->gpu_chain_candidate_rows;
+    d->prev_token = (uint32_t)d->draft[d->draft_rows - 1u].token;
+    d->draft_valid = true;
+    d->gpu_candidate_source_active = true;
+    d->gpu_candidate_source_selected++;
+    fprintf(stderr,
+            "ds4: DSpark GPU candidate source selected rows=%u "
+            "first=%d last=%d (attempts=%llu selected=%llu fallbacks=%llu); "
+            "target verification remains authoritative\n",
+            d->draft_rows,
+            d->draft[0].token,
+            d->draft[d->draft_rows - 1u].token,
+            (unsigned long long)d->gpu_candidate_source_attempts,
+            (unsigned long long)d->gpu_candidate_source_selected,
+            (unsigned long long)d->gpu_candidate_source_fallbacks);
+}
+
 static bool dspark_session_should_capture_target(const ds4_session *s) {
     return s &&
            s->engine &&
@@ -29324,6 +29413,9 @@ static bool dspark_session_build_draft_candidates(
                     (unsigned long long)d->gpu_chain_failures);
         }
     }
+    if (dspark_session_gpu_candidates_env_enabled()) {
+        dspark_session_select_gpu_candidates(d);
+    }
     return true;
 }
 
@@ -29497,6 +29589,12 @@ static bool dspark_session_gpu_confidence_env_enabled(void) {
 
 static bool dspark_session_gpu_chain_env_enabled(void) {
     const char *v = getenv("DS4_DSPARK_GPU_CHAIN");
+    return (v && v[0] && strcmp(v, "0") != 0) ||
+           dspark_session_gpu_candidates_env_enabled();
+}
+
+static bool dspark_session_gpu_candidates_env_enabled(void) {
+    const char *v = getenv("DS4_DSPARK_GPU_CANDIDATES");
     return v && v[0] && strcmp(v, "0") != 0;
 }
 
@@ -29581,6 +29679,7 @@ static bool dspark_session_observe_env_enabled(void) {
 static const char *dspark_session_observe_mode_name(void) {
     if (dspark_session_probe_env_enabled()) return "dev probe";
     if (dspark_session_multi_commit_env_enabled()) return "multi commit";
+    if (dspark_session_gpu_candidates_env_enabled()) return "GPU candidates";
     if (dspark_session_gpu_chain_env_enabled()) return "GPU chain";
     if (dspark_session_gpu_confidence_env_enabled()) return "GPU confidence";
     if (dspark_session_gpu_logits_env_enabled()) return "GPU logits";
