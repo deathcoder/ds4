@@ -317,6 +317,17 @@ int ds4_gpu_get_rows_bf16_tensor(
         const uint32_t   *rows,
         uint32_t          n_rows);
 
+int ds4_gpu_get_row_bf16_chain_tensor(
+        ds4_gpu_tensor       *out,
+        const void             *model_map,
+        uint64_t                model_size,
+        uint64_t                weight_offset,
+        uint32_t                width,
+        uint32_t                table_rows,
+        const ds4_gpu_tensor *top_ids,
+        uint32_t                row,
+        uint32_t                anchor_token);
+
 int ds4_gpu_matmul_bf16_tensor(
         ds4_gpu_tensor       *out,
         const void             *model_map,

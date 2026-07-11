@@ -8,7 +8,7 @@ particular DSpark change exists.
 
 Branch: `codex/dspark-observability-0`
 
-Phase 0.33 remains deliberately diagnostic: `--dspark FILE` validates an official
+Phase 0.34 remains deliberately diagnostic: `--dspark FILE` validates an official
 DSpark drafter GGUF, binds every tensor needed by a future runtime path, checks
 the expected DeepSeek V4 Flash DSpark shapes, and exposes a diagnostic
 `--dspark-probe` bridge for target-layer hidden-state capture plus
@@ -282,6 +282,15 @@ context 119 while remaining under the current 128-token DSpark sidecar window.
 An earlier 203-token draft fixture correctly produced identical target output
 but skipped DSpark; it was shortened so the regression actually exercises GPU
 proposal selection near the eligibility boundary.
+
+Phase 0.34 replaces the five synchronized self-fed GPU rows with ordered
+dispatches in one Metal command buffer. A small BF16 gather kernel reads row
+zero from the host-supplied anchor and later rows from the previous device
+top-id; existing parallel matvec, add, top-k, and confidence kernels do the
+remaining work. `DS4_DSPARK_GPU_CHAIN_HOST=1` restores the old host-stepped
+schedule as a diagnostic oracle. The default device schedule still performs
+the duplicate CPU proposal block and full parity readbacks, so it is not yet a
+lean runtime or benchmark target.
 
 The design choice was to keep this separate from legacy `--mtp`. We do not
 guess dynamically whether `--mtp` points at legacy MTP or DSpark. The first
@@ -1609,6 +1618,51 @@ stopped after about one minute to avoid occupying the accelerator indefinitely.
 Do not treat the full test suite as passed for this phase; the focused DSpark
 tests and real-sidecar correctness smokes above did pass.
 
+Phase 0.34 device-resident self-fed chain checks run on 2026-07-11:
+
+```sh
+make ds4
+DS4_DSPARK_GPU_CANDIDATES=1 ./ds4 \
+  --model gguf/DeepSeek-V4-Flash-IQ2XXS-w2Q2K-AProjQ8-SExpQ8-OutQ8-chat-v2-imatrix.gguf \
+  --dspark gguf/ds4flash-dspark.gguf \
+  --ctx 4096 --nothink --temp 0 -n 1 -p Hello
+DS4_DSPARK_GPU_CANDIDATES=1 DS4_DSPARK_GPU_CHAIN_HOST=1 ./ds4 \
+  --model gguf/DeepSeek-V4-Flash-IQ2XXS-w2Q2K-AProjQ8-SExpQ8-OutQ8-chat-v2-imatrix.gguf \
+  --dspark gguf/ds4flash-dspark.gguf \
+  --ctx 4096 --nothink --temp 0 -n 1 -p Hello
+./tests/dspark_gpu_candidates_correctness.sh
+make ds4 ds4_test ds4-server ds4-eval ds4-agent ds4_cpu.o
+./ds4_test --dspark-validation --dspark-shape-binding
+git diff --check
+```
+
+The default GPU candidate path now encodes all five dependent Markov rows in
+one Metal command buffer. Each row gathers its BF16 Markov embedding from the
+previous row's device top-id, then uses the existing parallel BF16 matvec, add,
+and top-k kernels. The confidence projection follows in the same batch. This
+removes the five top-id host readbacks and command-buffer waits from the
+self-fed dependency loop while preserving parallel vocabulary work.
+
+`DS4_DSPARK_GPU_CHAIN_HOST=1` retains the previous host-stepped schedule as a
+diagnostic oracle. A direct device/oracle smoke produced byte-identical stdout,
+the same proposal ids, and matching parity values across two five-row chain
+attempts. Both schedules passed all ten rows and selected GPU proposals. The
+full phase 0.33 correctness matrix also passed unchanged on the device schedule,
+including resumed chat and forced strict-parity fallback. The focused builds
+and DSpark validation tests passed; the CPU build emitted the same eight known
+unused-code warnings.
+
+An initial monolithic 512-thread kernel was tested and discarded before this
+phase was committed. Although numerically correct, one threadgroup serialized
+the five full-vocabulary rows and was clearly unsuitable. Do not restore that
+design. The committed ordered-dispatch design preserves the existing parallel
+matvec and top-k implementations.
+
+This is still a diagnostic correctness mode, not a benchmarkable production
+path: it computes the CPU sidecar proposal block first and performs full GPU
+logit/confidence readbacks for parity. Exact target verification remains
+authoritative. No tok/s benchmark was run and no performance claim is made.
+
 Downloaded sidecar byte size:
 
 ```text
@@ -1664,13 +1718,11 @@ If continuing from a compacted context, start here:
 
 ## Open Questions
 
-- Phase 0.33 broadens guarded-source coverage across varied prompts, context 119,
-  resumed chat, and forced fallback. The next engineering phase should remove
-  the five per-row host round trips with a device-resident self-fed
-  Markov/top-token loop while keeping the guarded candidate source and exact
-  target verification authoritative. CPU parity/readback mode should remain
-  available independently for regression diagnosis even after a leaner runtime
-  schedule exists.
+- Phase 0.34 removes the five dependent top-id host round trips while retaining
+  a host-stepped oracle. The next engineering phase should separate the lean
+  runtime path from the parity observer: avoid the duplicate CPU sidecar block
+  and full-vocabulary GPU readbacks in guarded runtime mode, while preserving
+  exact target verification and an explicitly enabled parity diagnostic mode.
 - The GPU stage path currently borrows target graph transient batch workspace
   and therefore requires `prefill_cap >= block_size` (five). Decide whether to
   allocate sidecar-specific batch scratch before production enablement or keep

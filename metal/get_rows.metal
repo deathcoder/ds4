@@ -72,3 +72,20 @@ kernel void kernel_get_rows_bf16_f32(
     dst[(ulong)gid.y * args.width + gid.x] =
         ds4_bf16_bits_to_f32(src[(ulong)rows[gid.y] * args.width + gid.x]);
 }
+
+struct ds4_bf16_chain_get_row_args {
+    uint width;
+    uint row;
+    uint anchor_token;
+};
+
+kernel void kernel_get_row_bf16_chain_f32(
+        constant ds4_bf16_chain_get_row_args &args    [[buffer(0)]],
+        device const ushort                  *src     [[buffer(1)]],
+        device const uint                    *top_ids [[buffer(2)]],
+        device float                         *dst     [[buffer(3)]],
+        uint gid [[thread_position_in_grid]]) {
+    if (gid >= args.width) return;
+    const uint token = args.row == 0 ? args.anchor_token : top_ids[args.row - 1];
+    dst[gid] = ds4_bf16_bits_to_f32(src[(ulong)token * args.width + gid]);
+}
