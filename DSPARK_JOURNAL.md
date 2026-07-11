@@ -8,7 +8,7 @@ particular DSpark change exists.
 
 Branch: `codex/dspark-observability-0`
 
-Phase 0.35 remains deliberately diagnostic: `--dspark FILE` validates an official
+Phase 0.36 remains deliberately diagnostic: `--dspark FILE` validates an official
 DSpark drafter GGUF, binds every tensor needed by a future runtime path, checks
 the expected DeepSeek V4 Flash DSpark shapes, and exposes a diagnostic
 `--dspark-probe` bridge for target-layer hidden-state capture plus
@@ -307,6 +307,21 @@ strict fallback. Phase 0.35 does not yet remove the earlier bridge, transformer
 stage, or HC-head CPU references/readbacks from runtime mode; those remain the
 next lean-sidecar boundary. Neither mode is a benchmark target yet.
 
+Phase 0.36 extends the runtime boundary through the complete sidecar. Captured
+target HC now feeds GPU averaging and `main_proj/main_norm` before any host
+capture conversion; runtime returns from capture without reading HC, packed
+context, or `main_x`. Preparation creates only the five initial token HC
+embeddings on CPU, then executes stages 0/1/2 and the HC head with device-owned
+intermediate state. It skips CPU main projection, CPU transformer stages, CPU
+head references, and every bridge/stage/head output readback.
+
+Runtime GPU failure is fatal to that DSpark preparation cycle because no CPU
+sidecar fallback was computed. The normal target stream remains authoritative
+and unchanged. `DS4_DSPARK_GPU_CANDIDATES=1` still runs the complete CPU/GPU
+observer with parity references, tolerances, readbacks, and fallback. Runtime
+still allocates common CPU session scratch, borrows target graph batch workspace,
+and emits development logs, so this phase is not yet a benchmark target.
+
 The design choice was to keep this separate from legacy `--mtp`. We do not
 guess dynamically whether `--mtp` points at legacy MTP or DSpark. The first
 hook is explicit and conservative:
@@ -392,9 +407,10 @@ hook is explicit and conservative:
   retain CPU proposals; successful GPU proposals still require exact target
   verification before any commit.
 - `DS4_DSPARK_GPU_RUNTIME=1` implies GPU candidates but skips CPU vocabulary
-  drafting and proposal-level parity observers. It reads back compact top-2 and
-  confidence records, validates them structurally, and still requires exact
-  target verification. It does not yet disable earlier stage/head parity work.
+  drafting and all sidecar parity observers. Captured HC, `main_x`, transformer
+  stages, HC head, vocabulary logits, and Markov dependencies stay on device;
+  only compact top-2 and confidence records are read back. Structural checks
+  and exact target verification remain mandatory.
 - `tests/dspark_gpu_candidates_correctness.sh` is the reproducible real-model
   correctness matrix for the guarded source. It is optional, accelerator-heavy,
   and separate from model-free `ds4_test`; `DS4_TEST_DSPARK_MODE=runtime`
@@ -1716,6 +1732,42 @@ remains available for tolerance-driven regression diagnosis. Earlier
 bridge/stage/head parity execution is still present in runtime mode, so no tok/s
 benchmark was run and no performance claim is made.
 
+Phase 0.36 device-resident sidecar checks run on 2026-07-11:
+
+```sh
+make ds4
+DS4_DSPARK_GPU_RUNTIME=1 ./ds4 \
+  --model gguf/DeepSeek-V4-Flash-IQ2XXS-w2Q2K-AProjQ8-SExpQ8-OutQ8-chat-v2-imatrix.gguf \
+  --dspark gguf/ds4flash-dspark.gguf \
+  --ctx 4096 --nothink --temp 0 -n 1 -p Hello
+bash -n tests/dspark_gpu_candidates_correctness.sh
+./tests/dspark_gpu_candidates_correctness.sh
+DS4_TEST_DSPARK_MODE=runtime ./tests/dspark_gpu_candidates_correctness.sh
+make ds4 ds4_test ds4-server ds4-eval ds4-agent ds4_cpu.o
+./ds4_test --dspark-validation --dspark-shape-binding
+git diff --check
+```
+
+The direct smoke had byte-identical baseline/runtime stdout across two
+preparation cycles. The first capture kept rows `0..9` on device and the second
+incrementally appended row `10`. Each cycle reported runtime success for the
+bridge, stages 0/1/2, HC head, and compact proposal chain, then selected the
+five-row GPU block. No DSpark GPU parity record appeared.
+
+The observer matrix again passed reasoning, Italian, context 119, resumed chat,
+and strict parity fallback. The runtime matrix passed the four output/session
+cases and now requires runtime records from bridge through proposal chain while
+rejecting any DSpark GPU parity record. Every baseline/DSpark stdout pair was
+byte-identical. All requested binaries and focused DSpark tests passed; the CPU
+object emitted the same eight known warnings.
+
+Runtime capture no longer calls `ds4_gpu_tensor_read` for target HC. Runtime
+preparation no longer executes CPU `main_proj/main_norm`, transformer stages,
+or HC head, and does not allocate their parity buffers on a fresh runtime
+session. Common CPU scratch is still allocated by session construction, runtime
+logs are still emitted, and the GPU stages still borrow target graph transient
+batch tensors. No tok/s benchmark was run and no performance claim is made.
+
 Downloaded sidecar byte size:
 
 ```text
@@ -1771,11 +1823,10 @@ If continuing from a compacted context, start here:
 
 ## Open Questions
 
-- Phase 0.35 separates compact GPU proposal runtime from the full proposal
-  parity observer. The next engineering phase should extend that separation
-  backward through bridge, transformer stages, and HC head: runtime should stop
-  computing their CPU references and stop reading their full outputs back,
-  while `DS4_DSPARK_GPU_CANDIDATES=1` retains the diagnostic oracle.
+- Phase 0.36 keeps the complete sidecar device-resident in runtime mode while
+  preserving the full observer. Before any manual tok/s benchmark, the next
+  engineering phase should move runtime progress/stat logs behind an explicit
+  diagnostics switch and audit remaining unavoidable host synchronization.
 - The GPU stage path currently borrows target graph transient batch workspace
   and therefore requires `prefill_cap >= block_size` (five). Decide whether to
   allocate sidecar-specific batch scratch before production enablement or keep

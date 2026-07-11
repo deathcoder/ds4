@@ -42,8 +42,13 @@ assert_gpu_selected() {
     if [[ $mode == observer ]]; then
         grep -q 'DSpark GPU chain parity .* result=pass' "$log"
     else
+        grep -q 'DSpark GPU bridge runtime .* result=pass' "$log"
+        grep -q 'DSpark GPU stage 0 runtime .* result=pass' "$log"
+        grep -q 'DSpark GPU stage 1 runtime .* result=pass' "$log"
+        grep -q 'DSpark GPU stage 2 runtime .* result=pass' "$log"
+        grep -q 'DSpark GPU head runtime .* result=pass' "$log"
         grep -q 'DSpark GPU chain runtime .* result=pass' "$log"
-        if grep -q 'DSpark GPU \(logits\|confidence\|chain\) parity' "$log"; then
+        if grep -q 'DSpark GPU .* parity' "$log"; then
             printf 'runtime mode unexpectedly ran a GPU parity observer\n' >&2
             exit 1
         fi
