@@ -8,7 +8,7 @@ particular DSpark change exists.
 
 Branch: `codex/dspark-observability-0`
 
-Phase 0.32 remains deliberately diagnostic: `--dspark FILE` validates an official
+Phase 0.33 remains deliberately diagnostic: `--dspark FILE` validates an official
 DSpark drafter GGUF, binds every tensor needed by a future runtime path, checks
 the expected DeepSeek V4 Flash DSpark shapes, and exposes a diagnostic
 `--dspark-probe` bridge for target-layer hidden-state capture plus
@@ -265,6 +265,24 @@ execution, full parity observers, vocabulary readbacks, and the five per-row GPU
 synchronizations are still mandatory in this mode, so it is explicitly not a
 performance runtime or benchmark target.
 
+Phase 0.33 broadens guarded-proposal correctness coverage without changing the
+runtime path. The executable integration harness
+`tests/dspark_gpu_candidates_correctness.sh` compares exact greedy stdout from
+no-DSpark baseline runs and `DS4_DSPARK_GPU_CANDIDATES=1` plus direct
+multi-commit runs. It covers numeric reasoning, an Italian factual response, a
+medium factual-recall prompt near the sidecar window, and a resumed two-turn
+chat. A separate strict-confidence case requires chain parity failure, CPU
+proposal fallback, no GPU-source selection, and unchanged stdout. The harness
+uses local model defaults with `DS4_TEST_MODEL` and `DS4_TEST_DSPARK_MODEL`
+overrides, retains logs automatically on failure, and never interprets printed
+token rates.
+
+The medium fixture is intentionally sized so its rendered prompt reaches
+context 119 while remaining under the current 128-token DSpark sidecar window.
+An earlier 203-token draft fixture correctly produced identical target output
+but skipped DSpark; it was shortened so the regression actually exercises GPU
+proposal selection near the eligibility boundary.
+
 The design choice was to keep this separate from legacy `--mtp`. We do not
 guess dynamically whether `--mtp` points at legacy MTP or DSpark. The first
 hook is explicit and conservative:
@@ -349,6 +367,10 @@ hook is explicit and conservative:
   proposals only after complete structural and parity validation. Failed gates
   retain CPU proposals; successful GPU proposals still require exact target
   verification before any commit.
+- `tests/dspark_gpu_candidates_correctness.sh` is the reproducible real-model
+  correctness matrix for the guarded source. It is optional, accelerator-heavy,
+  and separate from model-free `ds4_test`; it checks exact output and source
+  behavior, not performance.
 - Probe/verify/commit-probe hooks alone are not called by the CLI `--temp 0`
   argmax fast path. GPU bridge, GPU stages 0/1/2, GPU head/logits, and greedy
   multi-commit modes do explicitly route through the ordinary session loop. Use a seeded
@@ -1552,6 +1574,36 @@ committed two tokens, stopped at the expected target miss, later committed two
 through the accepted limit, and emitted exactly `Hello! How can`. These are
 correctness smokes, not tok/s benchmarks.
 
+Phase 0.33 broader GPU-candidate correctness checks run on 2026-07-11:
+
+```sh
+bash -n tests/dspark_gpu_candidates_correctness.sh
+./tests/dspark_gpu_candidates_correctness.sh
+make ds4 ds4_test ds4-server ds4-eval ds4-agent ds4_cpu.o
+./ds4_test --dspark-validation --dspark-shape-binding
+git diff --check
+```
+
+The harness reported:
+
+```text
+PASS prompt: reasoning
+PASS prompt: italian
+PASS prompt: medium_context
+PASS chat: resumed two-turn session
+PASS fallback: strict parity rejection
+DSpark GPU candidate correctness matrix: PASS
+```
+
+Every baseline/GPU pair had byte-identical stdout. The medium fixture generated
+`brass lens`, entered DSpark at context 119, and continued selecting
+parity-passing GPU proposal blocks through contexts 120 and 123. The resumed
+chat selected GPU proposals on more than one preparation cycle and remained
+byte-identical to baseline. The strict `1e-7` confidence case observed chain
+`result=fail`, selected no GPU blocks, logged the expected CPU fallback, and
+matched baseline output. This matrix is a correctness integration test, not a
+tok/s benchmark.
+
 An untargeted `./ds4_test` run entered its long-context GPU prefill case and was
 stopped after about one minute to avoid occupying the accelerator indefinitely.
 Do not treat the full test suite as passed for this phase; the focused DSpark
@@ -1612,13 +1664,13 @@ If continuing from a compacted context, start here:
 
 ## Open Questions
 
-- Phase 0.32 proves guarded GPU proposals can flow through exact target
-  verification without changing the greedy stream. Before removing CPU parity
-  or calling this a runtime path, broaden correctness coverage across varied
-  prompts, longer prefixes, and resumed chat turns, including cases where GPU
-  and CPU proposal chains or confidence gates differ. The following engineering
-  phase should then remove the five host round trips with a device-resident
-  self-fed Markov/top-token loop while keeping target verification authoritative.
+- Phase 0.33 broadens guarded-source coverage across varied prompts, context 119,
+  resumed chat, and forced fallback. The next engineering phase should remove
+  the five per-row host round trips with a device-resident self-fed
+  Markov/top-token loop while keeping the guarded candidate source and exact
+  target verification authoritative. CPU parity/readback mode should remain
+  available independently for regression diagnosis even after a leaner runtime
+  schedule exists.
 - The GPU stage path currently borrows target graph transient batch workspace
   and therefore requires `prefill_cap >= block_size` (five). Decide whether to
   allocate sidecar-specific batch scratch before production enablement or keep
