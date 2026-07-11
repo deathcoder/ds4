@@ -55,6 +55,7 @@ static id<MTLComputePipelineState> g_get_rows_f16_pipeline;
 static id<MTLComputePipelineState> g_get_rows_i32_pipeline;
 static id<MTLComputePipelineState> g_get_rows_bf16_f32_pipeline;
 static id<MTLComputePipelineState> g_get_row_bf16_chain_f32_pipeline;
+static id<MTLComputePipelineState> g_gather_topk_f32_pipeline;
 static id<MTLComputePipelineState> g_mul_mv_bf16_f32_batch_pipeline;
 static id<MTLComputePipelineState> g_dot_bf16_split_f32_batch_pipeline;
 static id<MTLComputePipelineState> g_repeat_f32_pipeline;
@@ -4754,6 +4755,24 @@ int ds4_gpu_init(void) {
             return 0;
         }
 
+        fn = [library newFunctionWithName:@"kernel_gather_topk_f32"];
+        if (!fn) {
+            fprintf(stderr, "ds4: Metal kernel_gather_topk_f32 function not found\n");
+            g_queue = nil;
+            g_device = nil;
+            return 0;
+        }
+
+        g_gather_topk_f32_pipeline =
+            [g_device newComputePipelineStateWithFunction:fn error:&error];
+        if (!g_gather_topk_f32_pipeline) {
+            fprintf(stderr, "ds4: Metal kernel_gather_topk_f32 pipeline failed: %s\n",
+                    [[error localizedDescription] UTF8String]);
+            g_queue = nil;
+            g_device = nil;
+            return 0;
+        }
+
         fn = [library newFunctionWithName:@"kernel_mul_mv_bf16_f32_batch"];
         if (!fn) {
             fprintf(stderr, "ds4: Metal kernel_mul_mv_bf16_f32_batch function not found\n");
@@ -6782,6 +6801,7 @@ void ds4_gpu_cleanup(void) {
         g_get_rows_i32_pipeline = nil;
         g_get_rows_bf16_f32_pipeline = nil;
         g_get_row_bf16_chain_f32_pipeline = nil;
+        g_gather_topk_f32_pipeline = nil;
         g_mul_mv_bf16_f32_batch_pipeline = nil;
         g_dot_bf16_split_f32_batch_pipeline = nil;
         g_repeat_f32_pipeline = nil;
@@ -13627,6 +13647,61 @@ int ds4_gpu_get_row_bf16_chain_tensor(
         ds4_gpu_end_compute_encoder(cb, enc);
 
         if (!ds4_gpu_finish_command_buffer(cb, owned, "BF16 chain get-row")) return 0;
+    }
+    return 1;
+}
+
+int ds4_gpu_gather_topk_f32_tensor(
+        ds4_gpu_tensor       *out,
+        const ds4_gpu_tensor *scores,
+        const ds4_gpu_tensor *selected,
+        uint32_t                width,
+        uint32_t                n_rows,
+        uint32_t                top_k) {
+    if (!g_initialized && !ds4_gpu_init()) return 0;
+    if (!out || !scores || !selected || width == 0 || n_rows == 0 ||
+        top_k == 0 || top_k > width) {
+        return 0;
+    }
+
+    @autoreleasepool {
+        id<MTLBuffer> outbuf = ds4_gpu_tensor_buffer(out);
+        id<MTLBuffer> scorebuf = ds4_gpu_tensor_buffer(scores);
+        id<MTLBuffer> selectedbuf = ds4_gpu_tensor_buffer(selected);
+        const uint64_t score_bytes =
+            (uint64_t)width * n_rows * sizeof(float);
+        const uint64_t selected_bytes =
+            (uint64_t)top_k * n_rows * sizeof(uint32_t);
+        const uint64_t out_bytes =
+            (uint64_t)top_k * n_rows * sizeof(float);
+        if (!outbuf || !scorebuf || !selectedbuf ||
+            ds4_gpu_tensor_bytes(out) < out_bytes ||
+            ds4_gpu_tensor_bytes(scores) < score_bytes ||
+            ds4_gpu_tensor_bytes(selected) < selected_bytes) {
+            fprintf(stderr, "ds4: Metal top-k gather received undersized buffers\n");
+            return 0;
+        }
+
+        int owned = 0;
+        id<MTLCommandBuffer> cb = ds4_gpu_command_buffer(&owned);
+        if (!cb) return 0;
+        const struct {
+            uint32_t width;
+            uint32_t n_rows;
+            uint32_t top_k;
+        } args = {width, n_rows, top_k};
+
+        id<MTLComputeCommandEncoder> enc = ds4_gpu_compute_encoder(cb);
+        [enc setComputePipelineState:g_gather_topk_f32_pipeline];
+        [enc setBytes:&args length:sizeof(args) atIndex:0];
+        [enc setBuffer:scorebuf offset:ds4_gpu_tensor_offset(scores) atIndex:1];
+        [enc setBuffer:selectedbuf offset:ds4_gpu_tensor_offset(selected) atIndex:2];
+        [enc setBuffer:outbuf offset:ds4_gpu_tensor_offset(out) atIndex:3];
+        [enc dispatchThreads:MTLSizeMake(top_k, n_rows, 1)
+             threadsPerThreadgroup:MTLSizeMake(top_k, 1, 1)];
+        ds4_gpu_end_compute_encoder(cb, enc);
+
+        if (!ds4_gpu_finish_command_buffer(cb, owned, "top-k logit gather")) return 0;
     }
     return 1;
 }

@@ -8,7 +8,7 @@ particular DSpark change exists.
 
 Branch: `codex/dspark-observability-0`
 
-Phase 0.34 remains deliberately diagnostic: `--dspark FILE` validates an official
+Phase 0.35 remains deliberately diagnostic: `--dspark FILE` validates an official
 DSpark drafter GGUF, binds every tensor needed by a future runtime path, checks
 the expected DeepSeek V4 Flash DSpark shapes, and exposes a diagnostic
 `--dspark-probe` bridge for target-layer hidden-state capture plus
@@ -292,6 +292,21 @@ schedule as a diagnostic oracle. The default device schedule still performs
 the duplicate CPU proposal block and full parity readbacks, so it is not yet a
 lean runtime or benchmark target.
 
+Phase 0.35 adds a separate proposal-runtime boundary behind
+`DS4_DSPARK_GPU_RUNTIME=1`. It implies the GPU candidate chain but bypasses the
+CPU vocabulary draft loop and the CPU-fed GPU logits/confidence observers. The
+self-fed chain now computes its own batched base logits, performs a device
+top-2 reduction, gathers only the ten selected logit values, and reads back
+those ids/values plus five confidence records. Structural and numeric checks
+gate the resulting proposal block, and exact target verification remains the
+only authority for commits and output.
+
+`DS4_DSPARK_GPU_CANDIDATES=1` retains the full parity-observer behavior,
+including CPU proposals, full-vocabulary comparisons, tolerance checks, and
+strict fallback. Phase 0.35 does not yet remove the earlier bridge, transformer
+stage, or HC-head CPU references/readbacks from runtime mode; those remain the
+next lean-sidecar boundary. Neither mode is a benchmark target yet.
+
 The design choice was to keep this separate from legacy `--mtp`. We do not
 guess dynamically whether `--mtp` points at legacy MTP or DSpark. The first
 hook is explicit and conservative:
@@ -376,10 +391,15 @@ hook is explicit and conservative:
   proposals only after complete structural and parity validation. Failed gates
   retain CPU proposals; successful GPU proposals still require exact target
   verification before any commit.
+- `DS4_DSPARK_GPU_RUNTIME=1` implies GPU candidates but skips CPU vocabulary
+  drafting and proposal-level parity observers. It reads back compact top-2 and
+  confidence records, validates them structurally, and still requires exact
+  target verification. It does not yet disable earlier stage/head parity work.
 - `tests/dspark_gpu_candidates_correctness.sh` is the reproducible real-model
   correctness matrix for the guarded source. It is optional, accelerator-heavy,
-  and separate from model-free `ds4_test`; it checks exact output and source
-  behavior, not performance.
+  and separate from model-free `ds4_test`; `DS4_TEST_DSPARK_MODE=runtime`
+  selects the compact runtime matrix while the default remains `observer`. It
+  checks exact output and source behavior, not performance.
 - Probe/verify/commit-probe hooks alone are not called by the CLI `--temp 0`
   argmax fast path. GPU bridge, GPU stages 0/1/2, GPU head/logits, and greedy
   multi-commit modes do explicitly route through the ordinary session loop. Use a seeded
@@ -1663,6 +1683,39 @@ path: it computes the CPU sidecar proposal block first and performs full GPU
 logit/confidence readbacks for parity. Exact target verification remains
 authoritative. No tok/s benchmark was run and no performance claim is made.
 
+Phase 0.35 compact proposal-runtime checks run on 2026-07-11:
+
+```sh
+make ds4
+DS4_DSPARK_GPU_RUNTIME=1 ./ds4 \
+  --model gguf/DeepSeek-V4-Flash-IQ2XXS-w2Q2K-AProjQ8-SExpQ8-OutQ8-chat-v2-imatrix.gguf \
+  --dspark gguf/ds4flash-dspark.gguf \
+  --ctx 4096 --nothink --temp 0 -n 1 -p Hello
+bash -n tests/dspark_gpu_candidates_correctness.sh
+./tests/dspark_gpu_candidates_correctness.sh
+DS4_TEST_DSPARK_MODE=runtime ./tests/dspark_gpu_candidates_correctness.sh
+make ds4 ds4_test ds4-server ds4-eval ds4-agent ds4_cpu.o
+./ds4_test --dspark-validation --dspark-shape-binding
+git diff --check
+```
+
+The direct runtime smoke had byte-identical baseline/runtime stdout. It
+prepared two five-row blocks, reported `compact_top2=10` and
+`compact_confidence=5`, selected GPU proposals, and emitted no proposal-level
+logits, confidence, or chain parity records. The default observer matrix passed
+reasoning, Italian, context-119, resumed chat, and strict parity fallback. The
+runtime matrix passed the same four output/session cases and asserted that no
+proposal-level parity observer ran. Every compared stdout pair was byte
+identical. All requested binaries and focused DSpark tests passed; the CPU
+object emitted the same eight known warnings.
+
+Runtime mode deliberately has no tolerance fallback because it does not run a
+CPU parity reference. Its safety boundary is compact structural/numeric
+validation followed by the unchanged exact target verifier. The observer mode
+remains available for tolerance-driven regression diagnosis. Earlier
+bridge/stage/head parity execution is still present in runtime mode, so no tok/s
+benchmark was run and no performance claim is made.
+
 Downloaded sidecar byte size:
 
 ```text
@@ -1718,11 +1771,11 @@ If continuing from a compacted context, start here:
 
 ## Open Questions
 
-- Phase 0.34 removes the five dependent top-id host round trips while retaining
-  a host-stepped oracle. The next engineering phase should separate the lean
-  runtime path from the parity observer: avoid the duplicate CPU sidecar block
-  and full-vocabulary GPU readbacks in guarded runtime mode, while preserving
-  exact target verification and an explicitly enabled parity diagnostic mode.
+- Phase 0.35 separates compact GPU proposal runtime from the full proposal
+  parity observer. The next engineering phase should extend that separation
+  backward through bridge, transformer stages, and HC head: runtime should stop
+  computing their CPU references and stop reading their full outputs back,
+  while `DS4_DSPARK_GPU_CANDIDATES=1` retains the diagnostic oracle.
 - The GPU stage path currently borrows target graph transient batch workspace
   and therefore requires `prefill_cap >= block_size` (five). Decide whether to
   allocate sidecar-specific batch scratch before production enablement or keep

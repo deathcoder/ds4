@@ -5,6 +5,16 @@ root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 ds4_bin=${DS4_BIN:-"$root/ds4"}
 base_model=${DS4_TEST_MODEL:-"$root/gguf/DeepSeek-V4-Flash-IQ2XXS-w2Q2K-AProjQ8-SExpQ8-OutQ8-chat-v2-imatrix.gguf"}
 dspark_model=${DS4_TEST_DSPARK_MODEL:-"$root/gguf/ds4flash-dspark.gguf"}
+mode=${DS4_TEST_DSPARK_MODE:-observer}
+
+case "$mode" in
+    observer) gpu_env=(DS4_DSPARK_GPU_CANDIDATES=1) ;;
+    runtime) gpu_env=(DS4_DSPARK_GPU_RUNTIME=1) ;;
+    *)
+        printf 'invalid DS4_TEST_DSPARK_MODE: %s (expected observer or runtime)\n' "$mode" >&2
+        exit 2
+        ;;
+esac
 
 for path in "$ds4_bin" "$base_model" "$dspark_model"; do
     if [[ ! -f "$path" ]]; then
@@ -29,7 +39,15 @@ common=(--model "$base_model" --ctx 4096 --nothink --temp 0)
 
 assert_gpu_selected() {
     local log=$1
-    grep -q 'DSpark GPU chain parity .* result=pass' "$log"
+    if [[ $mode == observer ]]; then
+        grep -q 'DSpark GPU chain parity .* result=pass' "$log"
+    else
+        grep -q 'DSpark GPU chain runtime .* result=pass' "$log"
+        if grep -q 'DSpark GPU \(logits\|confidence\|chain\) parity' "$log"; then
+            printf 'runtime mode unexpectedly ran a GPU parity observer\n' >&2
+            exit 1
+        fi
+    fi
     grep -q 'DSpark GPU candidate source selected' "$log"
 }
 
@@ -44,7 +62,7 @@ compare_prompt_file() {
 
     "$ds4_bin" "${common[@]}" -n "$tokens" --prompt-file "$prompt_file" \
         >"$baseline_out" 2>"$baseline_log"
-    DS4_DSPARK_GPU_CANDIDATES=1 DS4_DSPARK_MULTI_COMMIT=1 \
+    env "${gpu_env[@]}" DS4_DSPARK_MULTI_COMMIT=1 \
         "$ds4_bin" "${common[@]}" --dspark "$dspark_model" \
         -n "$tokens" --prompt-file "$prompt_file" >"$gpu_out" 2>"$gpu_log"
 
@@ -67,7 +85,7 @@ compare_resumed_chat() {
     printf '%s' "$input" | "$ds4_bin" "${common[@]}" -n 2 \
         >"$baseline_out" 2>"$baseline_log"
     printf '%s' "$input" | \
-        DS4_DSPARK_GPU_CANDIDATES=1 DS4_DSPARK_MULTI_COMMIT=1 \
+        env "${gpu_env[@]}" DS4_DSPARK_MULTI_COMMIT=1 \
         "$ds4_bin" "${common[@]}" --dspark "$dspark_model" -n 2 \
         >"$gpu_out" 2>"$gpu_log"
 
@@ -111,6 +129,8 @@ compare_prompt_file reasoning 4 "$root/tests/test-vectors/prompts/short_reasonin
 compare_prompt_file italian 6 "$root/tests/test-vectors/prompts/short_italian_fact.txt"
 compare_prompt_file medium_context 6 "$root/tests/dspark_gpu_candidates_medium_prompt.txt"
 compare_resumed_chat
-assert_strict_fallback "$root/tests/test-vectors/prompts/short_reasoning_plain.txt"
+if [[ $mode == observer ]]; then
+    assert_strict_fallback "$root/tests/test-vectors/prompts/short_reasoning_plain.txt"
+fi
 
-printf 'DSpark GPU candidate correctness matrix: PASS\n'
+printf 'DSpark GPU candidate correctness matrix (%s): PASS\n' "$mode"

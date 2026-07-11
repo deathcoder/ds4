@@ -328,6 +328,14 @@ int ds4_gpu_get_row_bf16_chain_tensor(
         uint32_t                row,
         uint32_t                anchor_token);
 
+int ds4_gpu_gather_topk_f32_tensor(
+        ds4_gpu_tensor       *out,
+        const ds4_gpu_tensor *scores,
+        const ds4_gpu_tensor *selected,
+        uint32_t                width,
+        uint32_t                n_rows,
+        uint32_t                top_k);
+
 int ds4_gpu_matmul_bf16_tensor(
         ds4_gpu_tensor       *out,
         const void             *model_map,

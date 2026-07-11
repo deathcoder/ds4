@@ -89,3 +89,20 @@ kernel void kernel_get_row_bf16_chain_f32(
     const uint token = args.row == 0 ? args.anchor_token : top_ids[args.row - 1];
     dst[gid] = ds4_bf16_bits_to_f32(src[(ulong)token * args.width + gid]);
 }
+
+struct ds4_gather_topk_f32_args {
+    uint width;
+    uint n_rows;
+    uint top_k;
+};
+
+kernel void kernel_gather_topk_f32(
+        constant ds4_gather_topk_f32_args &args     [[buffer(0)]],
+        device const float                *scores   [[buffer(1)]],
+        device const uint                 *selected [[buffer(2)]],
+        device float                      *out      [[buffer(3)]],
+        uint2 gid [[thread_position_in_grid]]) {
+    if (gid.x >= args.top_k || gid.y >= args.n_rows) return;
+    const ulong slot = (ulong)gid.y * args.top_k + gid.x;
+    out[slot] = scores[(ulong)gid.y * args.width + selected[slot]];
+}
