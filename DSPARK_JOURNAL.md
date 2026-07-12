@@ -2350,6 +2350,72 @@ python3 speed-bench/run_dspark_issue468_comparison.py \
 git diff --check
 ```
 
+Phase 0.49 long-context fast-verifier localization added on 2026-07-12:
+
+- Added proposal-scoped Metal dump labels for the fast shadow pass and exact
+  authoritative pass. `DS4_DSPARK_FAST_VERIFY_LAYER_TRACE=1` suppresses
+  unrelated prefill dumps and writes `fast-p<start>` / `exact-p<start>` files
+  through the existing `DS4_METAL_GRAPH_DUMP_*` filters. This instrumentation
+  is observer-only and inactive by default.
+- Observer records now include the absolute proposal start and minimum fast
+  target top-2 margin. Failed parity prints the exact row, fast top, exact top,
+  and fast margin. Top-2 values are gathered on GPU using existing DSpark
+  scratch; no full intermediate vocab rows are copied to the host.
+- Layer traces on `code_8k` localized the first large divergence to target layer
+  2, the first ratio-4 compressed-attention layer. Layers 0-1 agreed near
+  `1e-6` relative RMS; layer 2 jumped to roughly 2-3 percent, already at the
+  attention output before its FFN.
+- The batch path switched ratio-4 attention to sparse top-512 as soon as it had
+  more than 512 compressed rows, while exact decode intentionally remained
+  dense until 1,024. Both paths now share
+  `metal_graph_ratio4_decode_sparse_ready`, including the index-row condition.
+- A five-row proposal can straddle the 1,024-row transition. The vectorized
+  branch previously applied the final row's sparse policy to every earlier
+  row. Such proposals now use the existing per-row attention loop, preserving
+  each row's dense/sparse visibility.
+- Those semantic fixes reduced layer-2 attention drift at the 4,096-token
+  boundary from about 10-14 percent relative RMS to roughly `1e-5`. Above the
+  boundary, fast and exact selected the same 512 compressed rows in the same
+  order for every traced row.
+- Full `code_8k` shadow observation still found two near-tie row-top flips at
+  starts 4096 and 4109. Their fast target margins were 0.129288 and 0.0221252.
+  Exact authority remained byte-identical to baseline.
+- A temporary `0.2` fast-target-margin fallback made `code_8k` byte-identical,
+  using ten exact fallbacks across 38 batch attempts. It was removed after
+  `synthesis_8k` still diverged. On synthesis, all 33 shadow proposals passed
+  row-top and final-top parity when each started from exact state, proving that
+  repeated fast commits accumulate approximate target/cache state even when
+  every isolated proposal appears safe.
+- Disabling batch-only F16 shortcuts did not change the mismatches or drift and
+  was also removed. The remaining problem is architectural: a target verifier
+  must preserve exact autoregressive state. Margin heuristics, more soak cases,
+  or occasional re-anchoring cannot establish that contract.
+- Fast authority remains explicit experimental research and is invalid for
+  issue-468 throughput reporting. The next implementation phase should build
+  exact compute-batched decode kernels, preserving one-token cache update order
+  and arithmetic while amortizing weight access. Exact replay after every fast
+  proposal would restore correctness but likely erase the measured speed gain.
+- All model executions in this phase were correctness diagnostics. Their timing
+  lines were ignored; Codex did not run or report a tok/s benchmark.
+
+Phase 0.49 checks:
+
+```sh
+make ds4 ds4_test ds4-server ds4-eval ds4-agent ds4_cpu.o \
+  ds4-warm-prefill-bench
+./ds4_test --dspark-validation --dspark-shape-binding
+DS4_TEST_DSPARK_MODE=runtime \
+  DS4_TEST_DSPARK_FAST_VERIFY_OBSERVER=1 \
+  ./tests/dspark_gpu_candidates_correctness.sh
+DS4_TEST_DSPARK_MODE=runtime ./tests/dspark_gpu_candidates_correctness.sh
+./tests/dspark_fast_verifier_soak.sh
+# Correctness-only issue-468 model replays covered full code and synthesis
+# streams; exact authority matched baseline. Timings were ignored.
+python3 -m py_compile speed-bench/run_dspark_issue468_comparison.py
+python3 speed-bench/run_dspark_issue468_comparison.py --dry-run --allow-dirty
+git diff --check
+```
+
 ## Resume Checklist
 
 If continuing from a compacted context, start here:
@@ -2398,8 +2464,10 @@ If continuing from a compacted context, start here:
 
 ## Open Questions
 
-- The exact-corpus issue-468 runner is ready. The next performance result must
-  be produced by the user with `--confirm-ready`; Codex must not execute it.
+- Do not run the issue-468 performance suite yet. Exact DSpark is already known
+  to be slower, while fast authority does not preserve long-running target
+  state. The next implementation work is an exact compute-batched decode
+  verifier; benchmark only after its long-corpus output is byte-identical.
 - The GPU stage path currently borrows target graph transient batch workspace
   and therefore requires `prefill_cap >= block_size` (five). Decide whether to
   allocate sidecar-specific batch scratch before production enablement or keep

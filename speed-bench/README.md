@@ -194,9 +194,12 @@ drafters; the cross-study columns are contextual relative improvements, not a
 controlled head-to-head measurement.
 
 `--fast-verifier` is retained for correctness research, but is not a valid
-throughput setting for this corpus. The first 8k code warmup found
-byte-different output, and a shadow observer isolated an intermediate target-top
-mismatch on the second proposal cycle. Exact DSpark output matched baseline.
-The fast verifier must become numerically authoritative, or acquire a
-correctness-preserving fallback criterion, before its long-prompt speed can be
-reported.
+throughput setting for this corpus. Long-prompt tracing found and corrected two
+compressed-attention policy mismatches, but the prefill-style batch verifier
+still commits numerically approximate target/cache state. On `synthesis_8k`,
+every shadow proposal matched exact row tops when started from an exact
+frontier, yet fast authority accumulated enough state drift to change output.
+Exact DSpark output matched baseline. The fast verifier must use numerically
+exact batched decode semantics before its long-prompt speed can be reported;
+confidence thresholds and larger correctness samples cannot prove approximate
+state safe.
