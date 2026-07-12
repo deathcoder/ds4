@@ -26591,6 +26591,7 @@ static bool dspark_session_gpu_chain_env_enabled(void);
 static bool dspark_session_gpu_chain_host_env_enabled(void);
 static bool dspark_session_gpu_candidates_env_enabled(void);
 static bool dspark_session_gpu_runtime_env_enabled(void);
+static bool dspark_session_diagnostics_enabled(void);
 static bool dspark_session_gpu_stage_env_enabled(uint32_t stage);
 static bool dspark_session_gpu_bridge_env_enabled(void);
 static float dspark_session_gpu_bridge_tolerance(void);
@@ -26900,11 +26901,14 @@ static bool dspark_session_gpu_bridge_run(
     d->gpu_main_x_rows = capture->pos0 + rows;
     d->gpu_bridge_checks++;
     if (runtime) {
-        fprintf(stderr,
-                "ds4: DSpark GPU bridge runtime start=%u rows=%u result=pass checks=%llu\n",
-                capture->pos0,
-                rows,
-                (unsigned long long)d->gpu_bridge_checks);
+        if (dspark_session_diagnostics_enabled()) {
+            fprintf(stderr,
+                    "ds4: DSpark GPU bridge runtime start=%u rows=%u "
+                    "result=pass checks=%llu\n",
+                    capture->pos0,
+                    rows,
+                    (unsigned long long)d->gpu_bridge_checks);
+        }
         return true;
     }
 
@@ -27008,11 +27012,13 @@ static bool dspark_engine_gpu_stage_map(
     }
 
     e->dspark_gpu_stage_mapped[stage] = true;
-    fprintf(stderr,
-            "ds4: DSpark GPU stage %u mapped %u sidecar spans (%.2f GiB)\n",
-            stage,
-            span_count,
-            (double)mapped_bytes / 1073741824.0);
+    if (dspark_session_diagnostics_enabled()) {
+        fprintf(stderr,
+                "ds4: DSpark GPU stage %u mapped %u sidecar spans (%.2f GiB)\n",
+                stage,
+                span_count,
+                (double)mapped_bytes / 1073741824.0);
+    }
     return true;
 }
 
@@ -27556,13 +27562,15 @@ static bool dspark_session_gpu_stage_run(
     d->gpu_stage_output_valid[stage] = true;
     d->gpu_stage_checks[stage]++;
     if (runtime) {
-        fprintf(stderr,
-                "ds4: DSpark GPU stage %u runtime context=%u block=%u "
-                "result=pass checks=%llu\n",
-                stage,
-                context_len,
-                block,
-                (unsigned long long)d->gpu_stage_checks[stage]);
+        if (dspark_session_diagnostics_enabled()) {
+            fprintf(stderr,
+                    "ds4: DSpark GPU stage %u runtime context=%u block=%u "
+                    "result=pass checks=%llu\n",
+                    stage,
+                    context_len,
+                    block,
+                    (unsigned long long)d->gpu_stage_checks[stage]);
+        }
         return true;
     }
     if (!ds4_gpu_tensor_read(d->gpu_stage_output[stage],
@@ -27687,10 +27695,12 @@ static bool dspark_engine_gpu_head_map(
     }
 
     e->dspark_gpu_head_mapped = true;
-    fprintf(stderr,
-            "ds4: DSpark GPU head mapped %u sidecar spans (%.2f MiB)\n",
-            span_count,
-            (double)mapped_bytes / 1048576.0);
+    if (dspark_session_diagnostics_enabled()) {
+        fprintf(stderr,
+                "ds4: DSpark GPU head mapped %u sidecar spans (%.2f MiB)\n",
+                span_count,
+                (double)mapped_bytes / 1048576.0);
+    }
     return true;
 }
 
@@ -27855,12 +27865,14 @@ static bool dspark_session_gpu_head_run(
     d->gpu_head_output_valid = true;
     d->gpu_head_checks++;
     if (runtime) {
-        fprintf(stderr,
-                "ds4: DSpark GPU head runtime context=%u block=%u "
-                "result=pass checks=%llu\n",
-                d->main_x_rows,
-                block,
-                (unsigned long long)d->gpu_head_checks);
+        if (dspark_session_diagnostics_enabled()) {
+            fprintf(stderr,
+                    "ds4: DSpark GPU head runtime context=%u block=%u "
+                    "result=pass checks=%llu\n",
+                    d->main_x_rows,
+                    block,
+                    (unsigned long long)d->gpu_head_checks);
+        }
         return true;
     }
     if (!ds4_gpu_tensor_read(d->gpu_head_plain,
@@ -28016,10 +28028,12 @@ static bool dspark_engine_gpu_logits_map(
     }
 
     e->dspark_gpu_logits_mapped = true;
-    fprintf(stderr,
-            "ds4: DSpark GPU logits mapped %u Markov spans (%.2f MiB)\n",
-            span_count,
-            (double)mapped_bytes / 1048576.0);
+    if (dspark_session_diagnostics_enabled()) {
+        fprintf(stderr,
+                "ds4: DSpark GPU logits mapped %u Markov spans (%.2f MiB)\n",
+                span_count,
+                (double)mapped_bytes / 1048576.0);
+    }
     return true;
 }
 
@@ -28352,10 +28366,12 @@ static bool dspark_engine_gpu_confidence_map(
     }
 
     e->dspark_gpu_confidence_mapped = true;
-    fprintf(stderr,
-            "ds4: DSpark GPU confidence mapped %u sidecar spans (%.2f KiB)\n",
-            span_count,
-            (double)mapped_bytes / 1024.0);
+    if (dspark_session_diagnostics_enabled()) {
+        fprintf(stderr,
+                "ds4: DSpark GPU confidence mapped %u sidecar spans (%.2f KiB)\n",
+                span_count,
+                (double)mapped_bytes / 1024.0);
+    }
     return true;
 }
 
@@ -28904,15 +28920,17 @@ static bool dspark_session_gpu_chain_run(
         d->gpu_chain_observed = false;
         d->gpu_logits_output_valid = true;
         d->gpu_chain_checks++;
-        fprintf(stderr,
-                "ds4: DSpark GPU chain runtime schedule=device context=%u block=%u "
-                "compact_top2=%u compact_confidence=%u result=pass checks=%llu; "
-                "target verification remains authoritative\n",
-                d->main_x_rows,
-                block,
-                block * 2u,
-                block,
-                (unsigned long long)d->gpu_chain_checks);
+        if (dspark_session_diagnostics_enabled()) {
+            fprintf(stderr,
+                    "ds4: DSpark GPU chain runtime schedule=device context=%u block=%u "
+                    "compact_top2=%u compact_confidence=%u result=pass checks=%llu; "
+                    "target verification remains authoritative\n",
+                    d->main_x_rows,
+                    block,
+                    block * 2u,
+                    block,
+                    (unsigned long long)d->gpu_chain_checks);
+        }
         return true;
     }
 
@@ -29135,15 +29153,18 @@ static void dspark_session_select_gpu_candidates(dspark_session_state *d) {
     const char *reason = NULL;
     if (!dspark_session_gpu_candidate_block_usable(d, &reason)) {
         d->gpu_candidate_source_fallbacks++;
-        fprintf(stderr,
-                "ds4: DSpark GPU candidate source fallback: %s "
-                "(attempts=%llu selected=%llu fallbacks=%llu); "
-                "%s\n",
-                reason ? reason : "unknown validation failure",
-                (unsigned long long)d->gpu_candidate_source_attempts,
-                (unsigned long long)d->gpu_candidate_source_selected,
-                (unsigned long long)d->gpu_candidate_source_fallbacks,
-                d->draft_valid ? "CPU proposals remain active" : "no proposals are active");
+        if (dspark_session_diagnostics_enabled()) {
+            fprintf(stderr,
+                    "ds4: DSpark GPU candidate source fallback: %s "
+                    "(attempts=%llu selected=%llu fallbacks=%llu); "
+                    "%s\n",
+                    reason ? reason : "unknown validation failure",
+                    (unsigned long long)d->gpu_candidate_source_attempts,
+                    (unsigned long long)d->gpu_candidate_source_selected,
+                    (unsigned long long)d->gpu_candidate_source_fallbacks,
+                    d->draft_valid ?
+                        "CPU proposals remain active" : "no proposals are active");
+        }
         return;
     }
 
@@ -29156,16 +29177,18 @@ static void dspark_session_select_gpu_candidates(dspark_session_state *d) {
     d->draft_valid = true;
     d->gpu_candidate_source_active = true;
     d->gpu_candidate_source_selected++;
-    fprintf(stderr,
-            "ds4: DSpark GPU candidate source selected rows=%u "
-            "first=%d last=%d (attempts=%llu selected=%llu fallbacks=%llu); "
-            "target verification remains authoritative\n",
-            d->draft_rows,
-            d->draft[0].token,
-            d->draft[d->draft_rows - 1u].token,
-            (unsigned long long)d->gpu_candidate_source_attempts,
-            (unsigned long long)d->gpu_candidate_source_selected,
-            (unsigned long long)d->gpu_candidate_source_fallbacks);
+    if (dspark_session_diagnostics_enabled()) {
+        fprintf(stderr,
+                "ds4: DSpark GPU candidate source selected rows=%u "
+                "first=%d last=%d (attempts=%llu selected=%llu fallbacks=%llu); "
+                "target verification remains authoritative\n",
+                d->draft_rows,
+                d->draft[0].token,
+                d->draft[d->draft_rows - 1u].token,
+                (unsigned long long)d->gpu_candidate_source_attempts,
+                (unsigned long long)d->gpu_candidate_source_selected,
+                (unsigned long long)d->gpu_candidate_source_fallbacks);
+    }
 }
 
 static bool dspark_session_should_capture_target(const ds4_session *s) {
@@ -30006,6 +30029,18 @@ static bool dspark_session_gpu_runtime_env_enabled(void) {
     return v && v[0] && strcmp(v, "0") != 0;
 }
 
+static bool dspark_session_diagnostics_enabled(void) {
+    static int initialized;
+    static bool enabled;
+    if (!initialized) {
+        const char *v = getenv("DS4_DSPARK_GPU_RUNTIME_DIAGNOSTICS");
+        enabled = !dspark_session_gpu_runtime_env_enabled() ||
+                  (v && v[0] && strcmp(v, "0") != 0);
+        initialized = 1;
+    }
+    return enabled;
+}
+
 static bool dspark_session_gpu_stage_env_enabled(uint32_t stage) {
     if (stage == 0) return dspark_session_gpu_stage0_env_enabled();
     if (stage == 1) return dspark_session_gpu_stage1_env_enabled();
@@ -30356,52 +30391,56 @@ static bool dspark_session_verify_next_token(
         else d->commit_probe_skipped++;
     }
 
-    fprintf(stderr,
-            "ds4: DSpark verifier %s next draft=%d target_top=%d token=%d "
-            "target_hit=%llu/%llu token_hit=%llu/%llu "
-            "greedy_eligible=%s greedy_hit=%llu/%llu "
-            "stream_eligible=%s stream_hit=%llu/%llu "
-            "confidence=%.6g min_confidence=%.6g margin=%.6g min_margin=%.6g "
-            "logit=%.6g commit_probe=%s; no DSpark suffix tokens accepted\n",
-            origin ? origin : "session",
-            draft->token,
-            target_top,
-            token,
-            (unsigned long long)d->verify_target_hit,
-            (unsigned long long)d->verify_total,
-            (unsigned long long)d->verify_token_hit,
-            (unsigned long long)d->verify_total,
-            gate.greedy_eligible ? "yes" : "no",
-            (unsigned long long)d->verify_greedy_eligible,
-            (unsigned long long)d->verify_total,
-            gate.stream_eligible ? "yes" : "no",
-            (unsigned long long)d->verify_stream_eligible,
-            (unsigned long long)d->verify_total,
-            draft->confidence,
-            gate.min_confidence,
-            gate.margin,
-            gate.min_margin,
-            draft->logit,
-            !commit_requested ? "off" : (commit_allowed ? "ready" : "skipped"));
-    fprintf(stderr,
-            "ds4: DSpark accept simulator %s checked_rows=%u/%u "
-            "greedy_accept_depth=%u first_gate=%s stop=%s rejected_row=%d "
-            "skipped_suffix=%u rollback=%s trials=%llu rows_checked=%llu "
-            "greedy_depth=%llu full_accepts=%llu; observation only, no tokens accepted\n",
-            origin ? origin : "session",
-            accept_sim.checked_rows,
-            accept_sim.draft_rows,
-            accept_sim.greedy_accept_depth,
-            accept_sim.first_gate_passed ? "yes" : "no",
-            accept_sim.stop_reason,
-            accept_sim.rejected_row,
-            accept_sim.skipped_suffix,
-            accept_sim.restore_failed ? "failed" :
-                (accept_sim.rollback_attempted ? "restored" : "not-needed"),
-            (unsigned long long)d->accept_sim_total,
-            (unsigned long long)d->accept_sim_checked_rows,
-            (unsigned long long)d->accept_sim_greedy_accepted,
-            (unsigned long long)d->accept_sim_full_accepts);
+    if (dspark_session_diagnostics_enabled()) {
+        fprintf(stderr,
+                "ds4: DSpark verifier %s next draft=%d target_top=%d token=%d "
+                "target_hit=%llu/%llu token_hit=%llu/%llu "
+                "greedy_eligible=%s greedy_hit=%llu/%llu "
+                "stream_eligible=%s stream_hit=%llu/%llu "
+                "confidence=%.6g min_confidence=%.6g margin=%.6g min_margin=%.6g "
+                "logit=%.6g commit_probe=%s; no DSpark suffix tokens accepted\n",
+                origin ? origin : "session",
+                draft->token,
+                target_top,
+                token,
+                (unsigned long long)d->verify_target_hit,
+                (unsigned long long)d->verify_total,
+                (unsigned long long)d->verify_token_hit,
+                (unsigned long long)d->verify_total,
+                gate.greedy_eligible ? "yes" : "no",
+                (unsigned long long)d->verify_greedy_eligible,
+                (unsigned long long)d->verify_total,
+                gate.stream_eligible ? "yes" : "no",
+                (unsigned long long)d->verify_stream_eligible,
+                (unsigned long long)d->verify_total,
+                draft->confidence,
+                gate.min_confidence,
+                gate.margin,
+                gate.min_margin,
+                draft->logit,
+                !commit_requested ? "off" :
+                    (commit_allowed ? "ready" : "skipped"));
+        fprintf(stderr,
+                "ds4: DSpark accept simulator %s checked_rows=%u/%u "
+                "greedy_accept_depth=%u first_gate=%s stop=%s rejected_row=%d "
+                "skipped_suffix=%u rollback=%s trials=%llu rows_checked=%llu "
+                "greedy_depth=%llu full_accepts=%llu; "
+                "observation only, no tokens accepted\n",
+                origin ? origin : "session",
+                accept_sim.checked_rows,
+                accept_sim.draft_rows,
+                accept_sim.greedy_accept_depth,
+                accept_sim.first_gate_passed ? "yes" : "no",
+                accept_sim.stop_reason,
+                accept_sim.rejected_row,
+                accept_sim.skipped_suffix,
+                accept_sim.restore_failed ? "failed" :
+                    (accept_sim.rollback_attempted ? "restored" : "not-needed"),
+                (unsigned long long)d->accept_sim_total,
+                (unsigned long long)d->accept_sim_checked_rows,
+                (unsigned long long)d->accept_sim_greedy_accepted,
+                (unsigned long long)d->accept_sim_full_accepts);
+    }
     dspark_session_draft_reset(d);
     if (accept_sim.restore_failed) {
         s->checkpoint_valid = false;
@@ -30485,7 +30524,8 @@ static void dspark_session_observe_draft_rows(
                         draft->confidence_logit,
                         draft->confidence);
             }
-        } else if (verify && d->draft_valid && d->draft_rows > 0) {
+        } else if (verify && d->draft_valid && d->draft_rows > 0 &&
+                   dspark_session_diagnostics_enabled()) {
             const dspark_draft_candidate *draft = &d->draft[0];
             const char *status = dspark_session_multi_commit_env_enabled() ?
                 "draft state ready for greedy commit" :
@@ -30711,18 +30751,20 @@ static int dspark_session_finish_multi_commit(
     }
     for (uint32_t i = 0; i < n_tokens; i++) accepted[i] = tokens[i];
 
-    if (n_tokens < 2u) {
-        fprintf(stderr,
-                "ds4: DSpark multi commit fallback at eval: %s; "
-                "committed one target token directly\n",
-                stop_reason ? stop_reason : "verified depth below two");
-    } else {
-        fprintf(stderr,
-                "ds4: DSpark multi commit direct at eval verified=%u committed=%u stop=%s; "
-                "tokens returned for ordered emission\n",
-                verified,
-                n_tokens,
-                stop_reason ? stop_reason : "accepted limit");
+    if (dspark_session_diagnostics_enabled()) {
+        if (n_tokens < 2u) {
+            fprintf(stderr,
+                    "ds4: DSpark multi commit fallback at eval: %s; "
+                    "committed one target token directly\n",
+                    stop_reason ? stop_reason : "verified depth below two");
+        } else {
+            fprintf(stderr,
+                    "ds4: DSpark multi commit direct at eval verified=%u "
+                    "committed=%u stop=%s; tokens returned for ordered emission\n",
+                    verified,
+                    n_tokens,
+                    stop_reason ? stop_reason : "accepted limit");
+        }
     }
     return (int)n_tokens;
 }

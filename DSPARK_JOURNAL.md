@@ -8,7 +8,7 @@ particular DSpark change exists.
 
 Branch: `codex/dspark-observability-0`
 
-Phase 0.36 remains deliberately diagnostic: `--dspark FILE` validates an official
+Phase 0.37 remains deliberately diagnostic: `--dspark FILE` validates an official
 DSpark drafter GGUF, binds every tensor needed by a future runtime path, checks
 the expected DeepSeek V4 Flash DSpark shapes, and exposes a diagnostic
 `--dspark-probe` bridge for target-layer hidden-state capture plus
@@ -322,6 +322,19 @@ observer with parity references, tolerances, readbacks, and fallback. Runtime
 still allocates common CPU session scratch, borrows target graph batch workspace,
 and emits development logs, so this phase is not yet a benchmark target.
 
+Phase 0.37 makes successful runtime execution quiet by default. The explicit
+`DS4_DSPARK_GPU_RUNTIME_DIAGNOSTICS=1` switch restores successful mapping,
+bridge, stage, head, compact-chain, candidate-source, verifier, acceptance, and
+multi-commit telemetry. Observer modes remain verbose without this switch, and
+runtime failures still report errors even when diagnostics are off.
+
+The compact proposal boundary has one required GPU command-buffer completion.
+After that wait, host code copies 120 bytes per five-row block from managed
+buffers: five top-1 ids, ten top-2 ids, ten selected logit values, five
+confidence logits, and five confidence probabilities. These five tiny copies
+do not add GPU waits. Top-2 margins and confidence are needed by the existing
+gate, and candidate ids are needed by exact target verification.
+
 The design choice was to keep this separate from legacy `--mtp`. We do not
 guess dynamically whether `--mtp` points at legacy MTP or DSpark. The first
 hook is explicit and conservative:
@@ -411,6 +424,8 @@ hook is explicit and conservative:
   stages, HC head, vocabulary logits, and Markov dependencies stay on device;
   only compact top-2 and confidence records are read back. Structural checks
   and exact target verification remain mandatory.
+- `DS4_DSPARK_GPU_RUNTIME_DIAGNOSTICS=1` restores successful runtime progress
+  and statistics logs. Leave it unset for manual performance measurements.
 - `tests/dspark_gpu_candidates_correctness.sh` is the reproducible real-model
   correctness matrix for the guarded source. It is optional, accelerator-heavy,
   and separate from model-free `ds4_test`; `DS4_TEST_DSPARK_MODE=runtime`
@@ -1768,6 +1783,43 @@ session. Common CPU scratch is still allocated by session construction, runtime
 logs are still emitted, and the GPU stages still borrow target graph transient
 batch tensors. No tok/s benchmark was run and no performance claim is made.
 
+Phase 0.37 quiet-runtime checks run on 2026-07-12:
+
+```sh
+make ds4
+DS4_DSPARK_GPU_RUNTIME=1 DS4_DSPARK_MULTI_COMMIT=1 ./ds4 \
+  --model gguf/DeepSeek-V4-Flash-IQ2XXS-w2Q2K-AProjQ8-SExpQ8-OutQ8-chat-v2-imatrix.gguf \
+  --dspark gguf/ds4flash-dspark.gguf \
+  --ctx 4096 --nothink --temp 0 -n 1 -p Hello
+bash -n tests/dspark_gpu_candidates_correctness.sh
+./tests/dspark_gpu_candidates_correctness.sh
+DS4_TEST_DSPARK_MODE=runtime ./tests/dspark_gpu_candidates_correctness.sh
+make ds4 ds4_test ds4-server ds4-eval ds4-agent ds4_cpu.o
+./ds4_test --dspark-validation --dspark-shape-binding
+git diff --check
+```
+
+The quiet smoke exercised runtime plus direct multi-commit. Its stderr contained
+the one-time sidecar validation line but no per-cycle bridge/stage/head/chain,
+candidate-source, prepared-draft, verifier, acceptance-simulator, or
+multi-commit telemetry. Failures remain ungated. The runtime correctness
+harness now sets `DS4_DSPARK_GPU_RUNTIME_DIAGNOSTICS=1` explicitly so it can
+continue requiring every runtime-stage record.
+
+The observer matrix passed reasoning, Italian, context 119, resumed chat, and
+strict parity fallback. The diagnostic runtime matrix passed all four
+output/session cases. All baseline/DSpark stdout pairs were byte-identical. All
+requested binaries and focused DSpark tests passed; the CPU object emitted the
+same eight known warnings.
+
+Synchronization audit: one `ds4_gpu_end_commands()` commits and waits for the
+complete five-row compact proposal batch. The subsequent managed-buffer reads
+copy 120 bytes total and perform no command submission or wait. This host
+boundary is currently required because confidence/margin gating and exact
+target verification are CPU-controlled. No tok/s benchmark was run. The next
+measurement must be initiated manually by the user on an otherwise idle
+machine, with runtime diagnostics unset.
+
 Downloaded sidecar byte size:
 
 ```text
@@ -1823,10 +1875,10 @@ If continuing from a compacted context, start here:
 
 ## Open Questions
 
-- Phase 0.36 keeps the complete sidecar device-resident in runtime mode while
-  preserving the full observer. Before any manual tok/s benchmark, the next
-  engineering phase should move runtime progress/stat logs behind an explicit
-  diagnostics switch and audit remaining unavoidable host synchronization.
+- Phase 0.37 is quiet by default and has one audited compact host boundary. The
+  next phase should prepare a reproducible user-run baseline/runtime benchmark
+  protocol with fixed prompts, warmup policy, exact commands, and result
+  capture. Codex must not execute the tok/s measurements.
 - The GPU stage path currently borrows target graph transient batch workspace
   and therefore requires `prefill_cap >= block_size` (five). Decide whether to
   allocate sidecar-specific batch scratch before production enablement or keep

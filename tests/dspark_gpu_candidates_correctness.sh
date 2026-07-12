@@ -9,7 +9,12 @@ mode=${DS4_TEST_DSPARK_MODE:-observer}
 
 case "$mode" in
     observer) gpu_env=(DS4_DSPARK_GPU_CANDIDATES=1) ;;
-    runtime) gpu_env=(DS4_DSPARK_GPU_RUNTIME=1) ;;
+    runtime)
+        gpu_env=(
+            DS4_DSPARK_GPU_RUNTIME=1
+            DS4_DSPARK_GPU_RUNTIME_DIAGNOSTICS=1
+        )
+        ;;
     *)
         printf 'invalid DS4_TEST_DSPARK_MODE: %s (expected observer or runtime)\n' "$mode" >&2
         exit 2
