@@ -2132,6 +2132,44 @@ git diff --check
 The final soak and established fast runtime matrix passed. All requested builds
 and focused tests passed; the CPU object emitted the same eight known warnings.
 
+Phase 0.44 warm-prefill benchmark harness added on 2026-07-12:
+
+- The previous generation harness launches a new process for every sample, so
+  its prefill number conflates actual fresh-session prefill with first-process
+  Metal pipeline creation, page residency, and DSpark graph initialization.
+- `ds4-warm-prefill-bench` opens one engine and renders the same default
+  no-thinking chat prompt as the CLI. It records the first fresh session as
+  `cold`, optional extra conditioning sessions, and measured `warm` fresh
+  sessions. Every session has a new KV cache; only engine/process/GPU state is
+  retained. Session creation and destruction are outside the sync timer.
+- Every sample records prompt tokens, seconds, t/s, target argmax, and an FNV-1a
+  hash over the complete target logits vector. This makes prefill equivalence a
+  prerequisite for reporting performance.
+- `speed-bench/run_dspark_warm_prefill.py` alternates baseline/runtime child
+  order over three process pairs by default. Each child records one cold and
+  three warm samples while holding its engine open. Paired ratios use each
+  child's median warm throughput; summaries separately report cold and warm
+  medians.
+- Runtime children set only `DS4_DSPARK_GPU_RUNTIME=1` and
+  `DS4_DSPARK_MULTI_COMMIT=1`. The runner clears inherited DSpark and timing
+  instrumentation variables; runtime stats and diagnostics remain disabled.
+- A real run requires explicit `--confirm-ready`. It captures git, hardware,
+  thermal, process, environment, command, and model metadata plus all raw
+  stdout/stderr under `speed-bench/local-runs/warm-prefill-<timestamp>/`.
+- Codex did not execute a real-model or tok/s benchmark. The user owns the timed
+  run after the phase is committed.
+
+Phase 0.44 implementation-only checks:
+
+```sh
+make ds4-warm-prefill-bench
+./ds4-warm-prefill-bench --help
+python3 -m py_compile speed-bench/run_dspark_warm_prefill.py
+python3 speed-bench/run_dspark_warm_prefill.py --dry-run --allow-dirty
+# Inline synthetic CSV assertions also cover parsing and paired summary math.
+git diff --check
+```
+
 ## Resume Checklist
 
 If continuing from a compacted context, start here:

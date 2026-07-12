@@ -576,6 +576,16 @@ Chunked Metal prefill reuses the same range-capable layer-major graph for each
 chunk, preserving absolute compressor/indexer boundaries while avoiding the old
 per-layer chunk dispatch path.
 
+To distinguish first-process initialization from warmed fresh-session prefill,
+build `ds4-warm-prefill-bench` and run the user-initiated paired harness:
+
+```sh
+make ds4-warm-prefill-bench
+python3 speed-bench/run_dspark_warm_prefill.py --confirm-ready
+```
+
+See `speed-bench/README.md` for the protocol and interpretation.
+
 ## Capability Evaluation
 
 `ds4-eval` is a small real-model integration benchmark. It is not a leaderboard

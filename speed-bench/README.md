@@ -113,3 +113,37 @@ Useful explicit overrides include `--pairs`, `--warmups`, `--cooldown`,
 `--tokens`, and `--output-dir`. Do not compare runs with different settings.
 The CLI timing line excludes model loading, while the recorded wall time does
 not; generation t/s from the timing line is the comparison metric.
+
+### Cold versus warm prefill
+
+The normal CLI comparison starts a new process for every sample. That is useful
+for generation throughput, but its first prefill also includes process-local
+Metal initialization, page residency, and DSpark graph setup. Use the dedicated
+warm-prefill helper to separate that cold cost from steady fresh-session
+prefill:
+
+```sh
+make ds4-warm-prefill-bench
+python3 speed-bench/run_dspark_warm_prefill.py --dry-run
+python3 speed-bench/run_dspark_warm_prefill.py --confirm-ready
+```
+
+Each child process opens one engine, records its first fresh session as `cold`,
+then measures three additional fresh sessions as `warm` while the engine remains
+open. Session creation and destruction are outside the timer. The warm sessions
+do not reuse KV cache; only process-local model mappings, compiled pipelines,
+and GPU residency survive. The outer runner alternates baseline/runtime process
+order over three pairs and waits ten seconds between children by default.
+
+The runtime mode sets only `DS4_DSPARK_GPU_RUNTIME=1` and
+`DS4_DSPARK_MULTI_COMMIT=1`. Runtime stats and diagnostics are deliberately
+disabled so their logging cannot affect the result. Inherited DSpark and timing
+instrumentation variables are cleared in both modes. Every sample copies and
+hashes the complete target logits vector; the run aborts if prompt length,
+argmax, or the hash differs from the first baseline sample.
+
+`--confirm-ready` means only that the user has made the machine as quiet and
+thermally stable as practical. Process and thermal snapshots are retained with
+raw child CSV/stderr, flattened samples, metadata, and cold/warm summaries under
+`speed-bench/local-runs/warm-prefill-<timestamp>/`. Useful overrides are
+`--pairs`, `--warmups`, `--runs`, `--cooldown`, and `--output-dir`.
