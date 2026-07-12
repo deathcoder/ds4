@@ -2598,6 +2598,32 @@ Phase 0.52 harness correction on 2026-07-13:
   identified as the only missing requested profile. No timed recovery run was
   performed by Codex.
 
+Phase 0.52 user-run result and robust aggregation on 2026-07-13:
+
+- The resumed profile reused layers 0/30 and collected layer 42. All three had
+  46 profiled rows and output remained identical to the retained exact
+  reference.
+- The first report averaged stage totals. Four `attn_hc_pre` samples at layers
+  30/42 took `27.976..45.579 ms` while the stage median remained only
+  `0.303..0.313 ms`. Those synchronization/residency stalls inflated the mean
+  report to apparent attention shares of `74.2%` and `78.3%`; they are not
+  representative HC-pre compute.
+- Changed aggregation to sum each stage's median and report any stage maximum
+  above five times its median separately. The retained CSV needs no rerun.
+  Typical synchronized splits are layer 0: `3.592 ms/row`, attention `1.906`
+  (`53.1%`), FFN `1.685` (`46.9%`); layer 30: `4.115 ms/row`, attention
+  `2.423` (`58.9%`), FFN `1.692` (`41.1%`); and layer 42: `4.104 ms/row`,
+  attention `2.414` (`58.8%`), FFN `1.690` (`41.2%`).
+- No single synchronized stage dominates. Median leaders are attention
+  (`0.521..0.532 ms`) on compressed layers, routed MoE (`0.479..0.483 ms`), Q
+  path (`0.462..0.470 ms`), and attention output (`0.419..0.424 ms`).
+- The FFN remains the best first shadow boundary even though attention is the
+  larger half: it represents about 41% of late-layer work, is row-independent
+  once authoritative `after_attn_hc` states exist, and already has a batched
+  implementation. The next phase should compare that batched FFN's final HC
+  against serial exact FFN at selected layers while leaving serial output
+  authoritative.
+
 Phase 0.52 checks:
 
 ```sh

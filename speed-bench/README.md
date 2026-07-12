@@ -258,6 +258,9 @@ Use the attention/FFN shares and largest-stage ordering only to select an
 implementation target; they are not additive production timings, throughput
 results, or a speedup claim. Raw streams, per-stage rows, metadata, and the
 summary are written under ignored `speed-bench/local-runs/layer-profile-*`.
+The summary adds each stage's median rather than averaging total rows; isolated
+command-buffer synchronization or residency stalls are reported separately and
+cannot make one stage appear structurally dominant.
 An interrupted run can reuse matching reference and layer files with
 `--resume-dir`; the harness validates the retained command, prompt, context,
 and token count before skipping completed layers.

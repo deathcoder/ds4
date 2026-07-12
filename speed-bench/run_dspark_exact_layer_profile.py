@@ -271,29 +271,41 @@ def summarize(records):
         by_stage = {}
         for stage in sorted({row["stage"] for row in selected}):
             values = [row["ms"] for row in selected if row["stage"] == stage]
+            ordered = sorted(values)
             by_stage[stage] = {
                 "records": len(values), "total_ms": sum(values),
+                "mean_ms": statistics.mean(values),
                 "median_ms": statistics.median(values),
+                "p90_ms": ordered[int(0.9 * (len(ordered) - 1))],
+                "max_ms": max(values),
             }
         row_count = by_stage.get("attn_hc_pre", {}).get("records", 0)
         if row_count == 0:
             raise RuntimeError(f"layer {layer} has no attn_hc_pre records")
-        total_ms = sum(item["total_ms"] for item in by_stage.values())
-        attention_ms = sum(
-            item["total_ms"] for stage, item in by_stage.items()
+        typical_total_ms = sum(item["median_ms"] for item in by_stage.values())
+        typical_attention_ms = sum(
+            item["median_ms"] for stage, item in by_stage.items()
             if stage in ATTENTION_STAGES
         )
-        ffn_ms = sum(
-            item["total_ms"] for stage, item in by_stage.items()
+        typical_ffn_ms = sum(
+            item["median_ms"] for stage, item in by_stage.items()
             if stage in FFN_STAGES
         )
+        outliers = [
+            {"stage": stage, "median_ms": item["median_ms"], "max_ms": item["max_ms"]}
+            for stage, item in by_stage.items()
+            if item["median_ms"] > 0 and item["max_ms"] > 5.0 * item["median_ms"]
+        ]
         summary["layers"][str(layer)] = {
             "profiled_rows": row_count,
-            "total_ms_per_row": total_ms / row_count,
-            "attention_ms_per_row": attention_ms / row_count,
-            "ffn_ms_per_row": ffn_ms / row_count,
-            "attention_share": attention_ms / total_ms,
-            "ffn_share": ffn_ms / total_ms,
+            "typical_total_ms_per_row": typical_total_ms,
+            "typical_attention_ms_per_row": typical_attention_ms,
+            "typical_ffn_ms_per_row": typical_ffn_ms,
+            "typical_attention_share": typical_attention_ms / typical_total_ms,
+            "typical_ffn_share": typical_ffn_ms / typical_total_ms,
+            "mean_total_ms_per_row":
+                sum(item["total_ms"] for item in by_stage.values()) / row_count,
+            "outliers": outliers,
             "stages": by_stage,
         }
     return summary
@@ -303,25 +315,39 @@ def report(summary):
     lines = [
         "# DSpark Exact Layer Stage Profile", "",
         "Synchronized diagnostic only. Stage boundaries change scheduling; do not use these values as throughput measurements.",
-        "", "| layer | rows | total ms/row | attention | FFN | attention share | FFN share |",
+        "Typical values sum each stage's median, limiting synchronization/residency outliers.",
+        "", "| layer | rows | typical ms/row | attention | FFN | attention share | FFN share |",
         "|---:|---:|---:|---:|---:|---:|---:|",
     ]
     for layer, item in summary["layers"].items():
         lines.append(
-            f"| {layer} | {item['profiled_rows']} | {item['total_ms_per_row']:.3f} | "
-            f"{item['attention_ms_per_row']:.3f} | {item['ffn_ms_per_row']:.3f} | "
-            f"{item['attention_share'] * 100.0:.1f}% | {item['ffn_share'] * 100.0:.1f}% |"
+            f"| {layer} | {item['profiled_rows']} | {item['typical_total_ms_per_row']:.3f} | "
+            f"{item['typical_attention_ms_per_row']:.3f} | {item['typical_ffn_ms_per_row']:.3f} | "
+            f"{item['typical_attention_share'] * 100.0:.1f}% | "
+            f"{item['typical_ffn_share'] * 100.0:.1f}% |"
         )
-    lines.extend(["", "Largest stages by total synchronized time:"])
+    lines.extend(["", "Largest stages by median synchronized time:"])
     for layer, item in summary["layers"].items():
         stages = sorted(
-            item["stages"].items(), key=lambda pair: pair[1]["total_ms"], reverse=True
+            item["stages"].items(), key=lambda pair: pair[1]["median_ms"], reverse=True
         )[:5]
         text = ", ".join(
-            f"{stage} {values['total_ms'] / item['profiled_rows']:.3f} ms/row"
+            f"{stage} {values['median_ms']:.3f} ms/row"
             for stage, values in stages
         )
         lines.append(f"- Layer {layer}: {text}")
+    outliers = [
+        (layer, outlier)
+        for layer, item in summary["layers"].items()
+        for outlier in item["outliers"]
+    ]
+    if outliers:
+        lines.extend(["", "Synchronization/residency outliers (>5x stage median):"])
+        for layer, outlier in outliers:
+            lines.append(
+                f"- Layer {layer} {outlier['stage']}: median "
+                f"{outlier['median_ms']:.3f} ms, max {outlier['max_ms']:.3f} ms"
+            )
     return "\n".join(lines) + "\n"
 
 
