@@ -1,0 +1,3 @@
+Resuelve este problema y explica brevemente cada paso. Una biblioteca tiene
+cuatro estantes con 18 libros cada uno. Presta 17 libros y luego recibe una
+donacion de 9 libros. Cuantos libros tiene al final?

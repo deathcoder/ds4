@@ -26569,6 +26569,7 @@ struct dspark_session_state {
     uint64_t runtime_fast_verify_failures;
     uint64_t runtime_fast_verify_exact_fallbacks;
     bool runtime_generation_active;
+    bool fast_verify_suspended;
     double runtime_bridge_seconds;
     double runtime_stage_seconds[DS4_DSPARK_MTP_LAYERS];
     double runtime_head_seconds;
@@ -31324,7 +31325,8 @@ static int dspark_session_eval_batch_commit(
                                                                &capture,
                                                                "multi-batch");
     bool ok = capture_active;
-    const bool fast_runtime = dspark_session_fast_verify_runtime_enabled();
+    const bool fast_runtime = dspark_session_fast_verify_runtime_enabled() &&
+                              !d->fast_verify_suspended;
     bool committed_fast = fast_runtime;
     const bool time_exact = stats || fast_observation.enabled;
     const double verify_start = time_exact ? now_sec() : 0.0;
@@ -31577,8 +31579,12 @@ static int dspark_session_eval_multi_commit(
     }
 
     if (!first_gate.stream_eligible || n_limit < 2u) {
-        const char *reason = !first_gate.stream_eligible ? "first row is not stream eligible" :
-            "commit capacity below two";
+        const char *reason = n_limit < 2u ? "commit capacity below two" :
+            (!target_hit ? "first row target miss" :
+             (!first_gate.confidence_ok ? "first row confidence" :
+              (!first_gate.margin_ok ? "first row margin" :
+               (!token_hit ? "first row token mismatch" :
+                "first row is not stream eligible"))));
         dspark_session_draft_reset(d);
         if (!ds4_session_eval_graph_target_token(s, first_token, "multi", err, errlen)) return -1;
         const int token = first_token;
@@ -33249,6 +33255,18 @@ int ds4_session_sync(ds4_session *s, const ds4_tokens *prompt, char *err, size_t
         snprintf(err, errlen, "interrupted");
         return DS4_SESSION_SYNC_INTERRUPTED;
     }
+#ifndef DS4_NO_GPU
+    if (s->checkpoint_valid && s->dspark &&
+        dspark_session_fast_verify_runtime_enabled() &&
+        !s->dspark->fast_verify_suspended) {
+        s->dspark->fast_verify_suspended = true;
+        if (dspark_session_diagnostics_enabled()) {
+            fprintf(stderr,
+                    "ds4: DSpark fast batch verifier suspended after resumed sync; "
+                    "exact batch verification is authoritative\n");
+        }
+    }
+#endif
     if (s->distributed) {
         const ds4_tokens *checkpoint = s->checkpoint_valid ? &s->checkpoint : NULL;
         return ds4_dist_session_sync(s->distributed,
@@ -34436,6 +34454,7 @@ void ds4_session_invalidate(ds4_session *s) {
     s->checkpoint.len = 0;
     s->mtp_draft_valid = false;
 #ifndef DS4_NO_GPU
+    if (s->dspark) s->dspark->fast_verify_suspended = false;
     dspark_session_state_reset(s->dspark);
     dspark_session_target_context_reset(s->dspark);
 #endif

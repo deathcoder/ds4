@@ -2077,6 +2077,61 @@ runtime cases passed. The CPU object emitted the same eight known warnings. A
 parser/summary assertion consumed the real ten-token fast stats record and
 confirmed seven fast calls, zero failures, and zero exact fallbacks.
 
+The user benchmark at commit `66460a4` produced the first real DSpark speed win:
+23.87 t/s baseline versus 29.70 t/s fast runtime, or 1.2442x by ratio of
+medians. Paired speedups were tightly grouped from 1.2396x to 1.2463x despite
+background activity. All stdout hashes were identical. Thirteen proposal cycles
+averaged depth 4.923, with twelve full accepts and one depth-4 partial accept;
+14 fast calls had zero failures or exact fallbacks. Target verification cost
+29.876 ms per emitted token, generation-side DSpark cost 3.608 ms/token, and
+the measured runtime was 33.67 ms/token versus baseline's 41.89 ms/token. This
+is approximately 24.4% higher throughput and 19.6% lower steady generation
+latency. Prefill/startup remained poor at roughly 3 t/s versus 46 t/s baseline.
+
+Phase 0.43 broadened fast-runtime correctness on 2026-07-12:
+
+- Added `tests/dspark_fast_verifier_soak.sh` plus Spanish and structured-JSON
+  prompts. The soak covers the fixed 64-token multi-cycle generation prompt,
+  code completion,
+  32-token Italian, 24-token Spanish, structured JSON, the existing near-window
+  memory prompt, strict margin gating, and a longer resumed two-turn chat.
+- Every case compares baseline and fast stdout byte-for-byte. Eligible cases
+  require a successful fast-batch commit. All cases reject fast verifier
+  failures, target-capture loss, and sidecar-window overflow.
+- The code-completion vector emits EOS after one token and therefore validates
+  first-row fallback rather than a fast commit.
+- `DS4_DSPARK_VERIFY_MIN_MARGIN=100` deliberately rejects the first proposal;
+  diagnostics now identify the specific `first row margin` reason, and the soak
+  requires that fallback record.
+- The first long resumed-chat attempt found a genuine second-turn divergence:
+  baseline ended with `Rayleigh scattering makes sky blue.` while approximate
+  fast authority produced `Rayleigh scattering scatters blue light.` The first
+  turn and every one-shot case remained identical.
+- Fast authority is now suspended permanently after a session with a valid
+  checkpoint is synchronized again. The first turn may use fast batching; the
+  resumed sync emits a suspension record and exact batching becomes
+  authoritative. Session invalidation clears the suspension for a new cold
+  session.
+- The final soak passed all cases and verified the resumed fast-to-exact
+  transition with a byte-identical complete transcript. No tok/s benchmark was
+  run by Codex.
+
+Phase 0.43 checks:
+
+```sh
+./tests/dspark_fast_verifier_soak.sh
+DS4_TEST_DSPARK_MODE=runtime \
+  DS4_TEST_DSPARK_FAST_VERIFY_RUNTIME=1 \
+  ./tests/dspark_gpu_candidates_correctness.sh
+make ds4 ds4_test ds4-server ds4-eval ds4-agent ds4_cpu.o
+./ds4_test --dspark-validation --dspark-shape-binding
+bash -n tests/dspark_fast_verifier_soak.sh
+git diff --check
+```
+
+The final soak and established fast runtime matrix passed. All requested builds
+and focused tests passed; the CPU object emitted the same eight known warnings.
+
 ## Resume Checklist
 
 If continuing from a compacted context, start here:
@@ -2125,9 +2180,11 @@ If continuing from a compacted context, start here:
 
 ## Open Questions
 
-- Phase 0.42 is ready for a user-run `--fast-verifier` comparison. Interpret
-  throughput together with `fast_calls`, `fast_failures`, exact fallbacks,
-  target time per emitted token, and the harness's byte-identity guard.
+- Phase 0.43 preserves the measured one-shot fast path while making resumed
+  sessions exact after a discovered divergence. The next performance work
+  should address sidecar prefill/startup cost or remove partial-prefix replay;
+  startup is the larger wall-time problem, while replay is the smaller steady
+  generation cost.
 - The GPU stage path currently borrows target graph transient batch workspace
   and therefore requires `prefill_cap >= block_size` (five). Decide whether to
   allocate sidecar-specific batch scratch before production enablement or keep

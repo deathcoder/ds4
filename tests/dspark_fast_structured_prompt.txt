@@ -1,0 +1,4 @@
+Return only a compact JSON object with keys "winner", "score", and "reason".
+Team Cedar scored 14 points in round one and 9 in round two. Team Harbor scored
+11 points in round one and 15 in round two. The winner is the team with the
+larger total. The reason must contain at most six words.

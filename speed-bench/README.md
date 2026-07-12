@@ -66,6 +66,10 @@ while exact verification remains the fallback after recoverable fast-path
 failure. Partial accepts restore the target frontier and rerun only the accepted
 prefix with the same verifier. The harness still requires byte-identical output
 against baseline and aborts immediately if numerical drift changes the stream.
+Fast authority is currently limited to the first synchronized prompt of a
+session. A resumed sync permanently suspends it for that session and uses exact
+batch verification, because broader soak testing found a second-turn numerical
+divergence while one-shot output remained identical.
 
 All inherited `DS4_DSPARK_*` variables and instrumentation variables containing
 `PROFILE`, `TRACE`, `DUMP`, or `TIMING` (plus `*_LOG`) are removed first. Runtime
@@ -92,6 +96,18 @@ a snapshotted target frontier, reads its row tops and final logits, restores
 state, and then lets the exact verifier remain authoritative. Each proposal
 records top-token parity, final-logit drift, and fast/exact verifier time. The
 comparison harness clears this option like every other inherited DSpark option.
+
+The non-performance correctness soak is user-independent and may be run with:
+
+```sh
+./tests/dspark_fast_verifier_soak.sh
+```
+
+It compares baseline and fast output across 64-token multi-cycle generation,
+code fallback, Italian, Spanish, structured JSON, near-window context, strict
+margin gating, and a resumed two-turn session. It requires fast commits where eligible,
+rejects verifier/capture failures, and verifies the resumed fast-to-exact
+transition.
 
 Useful explicit overrides include `--pairs`, `--warmups`, `--cooldown`,
 `--tokens`, and `--output-dir`. Do not compare runs with different settings.
