@@ -2682,6 +2682,55 @@ done
 git diff --check
 ```
 
+Phase 0.54 FFN drift localized to the HC projection on 2026-07-13:
+
+- Expanded the selected-layer FFN observer to capture both shadow-batch and
+  serial-exact intermediates without changing stage scheduling. Shadow tensors
+  are read first; during serial FFN, each row's one-token scratch is copied into
+  the now-disposable batch buffers before the next row overwrites it.
+- Compared the normalized HC input (`flat_hc`), HC mixing projection (`hc_mix`),
+  recombined FFN input (`ffn_cur`), normalized FFN activation, router IDs and
+  weights, and final HC. Reports now name the first divergent boundary.
+- Across correctness matrices at layers 0, 30, and 42, all 18 observations
+  reported `first=hc_projection`. The normalized HC input was bit-exact in
+  every row. Maximum `hc_mix` drift was `9.15527e-5`, `9.05991e-6`, and
+  `3.43323e-5` respectively. All 342 selected expert IDs matched. Final HC
+  maxima remained `1.19209e-6`, `2.86102e-6`, and `4.57764e-5`.
+- A correctness-only layer-42 `code_8k` replay covered nine observations and 41
+  proposal rows. Output remained byte-identical to the retained ordinary exact
+  reference and timings were ignored. Input normalization remained bit-exact;
+  `hc_mix` max was `3.05176e-5`, all 246 expert IDs matched, and final HC max
+  was `9.15527e-5`.
+- Source inspection explains the boundary. One-token decode dispatches
+  `kernel_mul_mv_f16_f32_4`; batches of 2-5 enter the `n_tok <= 8` extended
+  multi-vector kernel, whose reduction order differs. The kernel arguments and
+  decode matvec already support a row index (`tgpig.y`, `nb11`, `ne1`). The next
+  implementation should expose an exact F16 multi-row matvec that dispatches
+  the original decode kernel over `grid.y = n_tokens`, preserving each row's
+  reduction order while sharing one dispatch.
+- This phase only enriches the opt-in shadow observer. Serial FFN remains
+  authoritative and no throughput benchmark or runtime speed claim was made.
+  The correctness script now requires a recognized `first=` boundary in every
+  observer record and still rejects shadow fallback.
+
+Phase 0.54 checks:
+
+```sh
+make ds4 ds4_test ds4-server ds4-eval ds4-agent ds4_cpu.o \
+  ds4-warm-prefill-bench
+# CPU-only compilation retained the same eight known unused warnings.
+for layer in 0 30 42; do
+  DS4_DSPARK_EXACT_FFN_BATCH_OBSERVER_LAYER=$layer \
+  DS4_TEST_DSPARK_MODE=runtime \
+    ./tests/dspark_gpu_candidates_correctness.sh
+done
+# A separate code_8k layer-42 observer replay used -n 32 and cmp; output was
+# identical and timings were ignored.
+./ds4_test --dspark-validation --dspark-shape-binding
+bash -n tests/dspark_gpu_candidates_correctness.sh
+git diff --check
+```
+
 Phase 0.52 checks:
 
 ```sh
@@ -2750,12 +2799,13 @@ If continuing from a compacted context, start here:
 
 ## Open Questions
 
-- Localize the FFN shadow drift at intermediate HC/router/MoE/shared-expert
-  boundaries before enabling any target-layer batch authority. Do not repeat
-  the full issue-468 baseline suite unless another exact verifier stage earns a
-  controlled comparison. Fast authority still does not preserve long-running
-  target state; broader throughput reporting must wait for a numerically exact
-  compute-batched verifier with byte-identical long-corpus output.
+- Add an observer-only exact F16 multi-row matvec using the decode kernel's
+  original reduction order, then determine the next FFN divergence after HC
+  projection parity. Do not repeat the full issue-468 baseline suite unless
+  another exact verifier stage earns a controlled comparison. Fast authority
+  still does not preserve long-running target state; broader throughput
+  reporting must wait for a numerically exact compute-batched verifier with
+  byte-identical long-corpus output.
 - The GPU stage path currently borrows target graph transient batch workspace
   and therefore requires `prefill_cap >= block_size` (five). Decide whether to
   allocate sidecar-specific batch scratch before production enablement or keep

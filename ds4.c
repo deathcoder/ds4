@@ -22337,32 +22337,151 @@ static int dspark_exact_ffn_batch_observer_layer(void) {
     return (int)layer;
 }
 
+typedef struct {
+    float *batch_hc;
+    float *exact_hc;
+    float *batch_flat;
+    float *exact_flat;
+    float *batch_mix;
+    float *exact_mix;
+    float *batch_cur;
+    float *exact_cur;
+    float *batch_norm;
+    float *exact_norm;
+    int   *batch_selected;
+    int   *exact_selected;
+    float *batch_weights;
+    float *exact_weights;
+} dspark_exact_ffn_batch_observation;
+
+static void dspark_exact_ffn_batch_observation_init(
+        dspark_exact_ffn_batch_observation *observation,
+        uint32_t                            n_tokens,
+        uint64_t                            hc_dim) {
+    memset(observation, 0, sizeof(*observation));
+    const size_t hc_values = (size_t)n_tokens * (size_t)hc_dim;
+    const size_t mix_hc = 2u * DS4_N_HC + (size_t)DS4_N_HC * DS4_N_HC;
+    const size_t mix_values = (size_t)n_tokens * mix_hc;
+    const size_t embd_values = (size_t)n_tokens * DS4_N_EMBD;
+    const size_t route_values = (size_t)n_tokens * DS4_N_EXPERT_USED;
+    observation->batch_hc = xmalloc(hc_values * sizeof(float));
+    observation->exact_hc = xmalloc(hc_values * sizeof(float));
+    observation->batch_flat = xmalloc(hc_values * sizeof(float));
+    observation->exact_flat = xmalloc(hc_values * sizeof(float));
+    observation->batch_mix = xmalloc(mix_values * sizeof(float));
+    observation->exact_mix = xmalloc(mix_values * sizeof(float));
+    observation->batch_cur = xmalloc(embd_values * sizeof(float));
+    observation->exact_cur = xmalloc(embd_values * sizeof(float));
+    observation->batch_norm = xmalloc(embd_values * sizeof(float));
+    observation->exact_norm = xmalloc(embd_values * sizeof(float));
+    observation->batch_selected = xmalloc(route_values * sizeof(int));
+    observation->exact_selected = xmalloc(route_values * sizeof(int));
+    observation->batch_weights = xmalloc(route_values * sizeof(float));
+    observation->exact_weights = xmalloc(route_values * sizeof(float));
+}
+
+static void dspark_exact_ffn_batch_observation_free(
+        dspark_exact_ffn_batch_observation *observation) {
+    if (!observation) return;
+    free(observation->exact_weights);
+    free(observation->batch_weights);
+    free(observation->exact_selected);
+    free(observation->batch_selected);
+    free(observation->exact_norm);
+    free(observation->batch_norm);
+    free(observation->exact_cur);
+    free(observation->batch_cur);
+    free(observation->exact_mix);
+    free(observation->batch_mix);
+    free(observation->exact_flat);
+    free(observation->batch_flat);
+    free(observation->exact_hc);
+    free(observation->batch_hc);
+    memset(observation, 0, sizeof(*observation));
+}
+
 static void dspark_exact_ffn_batch_observer_report(
-        const float *batch_hc,
-        const float *exact_hc,
-        uint32_t     n_tokens,
-        uint32_t     il,
-        uint64_t     hc_dim) {
-    const uint64_t values = (uint64_t)n_tokens * hc_dim;
+        const dspark_exact_ffn_batch_observation *observation,
+        uint32_t                                  n_tokens,
+        uint32_t                                  il,
+        uint64_t                                  hc_dim) {
+    const uint64_t hc_values = (uint64_t)n_tokens * hc_dim;
+    const uint64_t mix_hc = 2u * DS4_N_HC + (uint64_t)DS4_N_HC * DS4_N_HC;
+    const uint64_t mix_values = (uint64_t)n_tokens * mix_hc;
+    const uint64_t embd_values = (uint64_t)n_tokens * DS4_N_EMBD;
+    const uint64_t route_values = (uint64_t)n_tokens * DS4_N_EXPERT_USED;
     uint32_t exact_rows = 0;
     for (uint32_t row = 0; row < n_tokens; row++) {
-        const float *batch_row = batch_hc + (uint64_t)row * hc_dim;
-        const float *exact_row = exact_hc + (uint64_t)row * hc_dim;
+        const float *batch_row = observation->batch_hc + (uint64_t)row * hc_dim;
+        const float *exact_row = observation->exact_hc + (uint64_t)row * hc_dim;
         if (memcmp(batch_row, exact_row, hc_dim * sizeof(float)) == 0) {
             exact_rows++;
         }
     }
-    const float max_diff = max_abs_diff(batch_hc, exact_hc, values);
-    const float rms_diff = rms_abs_diff(batch_hc, exact_hc, values);
+    uint64_t selected_matches = 0;
+    for (uint64_t i = 0; i < route_values; i++) {
+        if (observation->batch_selected[i] == observation->exact_selected[i]) {
+            selected_matches++;
+        }
+    }
+    const float cur_max = max_abs_diff(
+        observation->batch_cur, observation->exact_cur, embd_values);
+    const float cur_rms = rms_abs_diff(
+        observation->batch_cur, observation->exact_cur, embd_values);
+    const float norm_max = max_abs_diff(
+        observation->batch_norm, observation->exact_norm, embd_values);
+    const float norm_rms = rms_abs_diff(
+        observation->batch_norm, observation->exact_norm, embd_values);
+    const float input_norm_max = max_abs_diff(
+        observation->batch_flat, observation->exact_flat, hc_values);
+    const float input_norm_rms = rms_abs_diff(
+        observation->batch_flat, observation->exact_flat, hc_values);
+    const float mix_max = max_abs_diff(
+        observation->batch_mix, observation->exact_mix, mix_values);
+    const float mix_rms = rms_abs_diff(
+        observation->batch_mix, observation->exact_mix, mix_values);
+    const float weight_max = max_abs_diff(
+        observation->batch_weights, observation->exact_weights, route_values);
+    const float weight_rms = rms_abs_diff(
+        observation->batch_weights, observation->exact_weights, route_values);
+    const float hc_max = max_abs_diff(
+        observation->batch_hc, observation->exact_hc, hc_values);
+    const float hc_rms = rms_abs_diff(
+        observation->batch_hc, observation->exact_hc, hc_values);
+    const char *first = "none";
+    if (input_norm_max != 0.0f) first = "input_norm";
+    else if (mix_max != 0.0f) first = "hc_projection";
+    else if (cur_max != 0.0f) first = "hc_recombine";
+    else if (norm_max != 0.0f) first = "norm";
+    else if (selected_matches != route_values) first = "router_ids";
+    else if (weight_max != 0.0f) first = "router_weights";
+    else if (hc_max != 0.0f) first = "experts_or_hc_post";
     fprintf(stderr,
             "ds4: DSpark exact FFN batch observer layer=%u proposed=%u "
+            "first=%s input_norm_max=%g input_norm_rms=%g "
+            "hc_mix_max=%g hc_mix_rms=%g hc_pre_max=%g hc_pre_rms=%g "
+            "norm_max=%g norm_rms=%g "
+            "router_ids=%llu/%llu router_weight_max=%g router_weight_rms=%g "
             "exact_rows=%u/%u hc_max=%g hc_rms=%g result=%s\n",
             il,
             n_tokens,
+            first,
+            input_norm_max,
+            input_norm_rms,
+            mix_max,
+            mix_rms,
+            cur_max,
+            cur_rms,
+            norm_max,
+            norm_rms,
+            (unsigned long long)selected_matches,
+            (unsigned long long)route_values,
+            weight_max,
+            weight_rms,
             exact_rows,
             n_tokens,
-            max_diff,
-            rms_diff,
+            hc_max,
+            hc_rms,
             exact_rows == n_tokens ? "exact" : "drift");
 }
 
@@ -22392,14 +22511,15 @@ static bool metal_graph_verify_decode_exact(
     }
 
     const uint64_t hc_dim = (uint64_t)DS4_N_HC * DS4_N_EMBD;
+    const uint64_t mix_hc = 2u * DS4_N_HC + (uint64_t)DS4_N_HC * DS4_N_HC;
     ds4_gpu_tensor *cur[16] = {0};
     ds4_gpu_tensor *next[16] = {0};
     ds4_gpu_tensor *after_attn[16] = {0};
     const int ffn_observer_layer = dspark_exact_ffn_batch_observer_layer();
     const bool ffn_observer_enabled =
         ffn_observer_layer >= 0 && n_tokens > 1u;
-    float *ffn_batch_hc = NULL;
-    float *ffn_exact_hc = NULL;
+    dspark_exact_ffn_batch_observation ffn_observation;
+    memset(&ffn_observation, 0, sizeof(ffn_observation));
     bool ok = true;
     for (uint32_t row = 0; row < n_tokens; row++) {
         cur[row] = metal_graph_tensor_row_view(g->batch_cur_hc, row, hc_dim);
@@ -22430,10 +22550,9 @@ static bool metal_graph_verify_decode_exact(
                                   0,
                                   token_ids,
                                   (uint64_t)n_tokens * sizeof(token_ids[0])) != 0;
-        ffn_batch_hc = xmalloc(
-            (size_t)n_tokens * (size_t)hc_dim * sizeof(ffn_batch_hc[0]));
-        ffn_exact_hc = xmalloc(
-            (size_t)n_tokens * (size_t)hc_dim * sizeof(ffn_exact_hc[0]));
+        dspark_exact_ffn_batch_observation_init(&ffn_observation,
+                                                n_tokens,
+                                                hc_dim);
     }
 
     ds4_gpu_tensor *saved_cur = g->cur_hc;
@@ -22521,8 +22640,38 @@ static bool metal_graph_verify_decode_exact(
                 shadow_ok = ds4_gpu_tensor_read(
                     observer_next,
                     0,
-                    ffn_batch_hc,
-                    (uint64_t)n_tokens * hc_dim * sizeof(ffn_batch_hc[0])) != 0;
+                    ffn_observation.batch_hc,
+                    (uint64_t)n_tokens * hc_dim * sizeof(float)) != 0 &&
+                    ds4_gpu_tensor_read(
+                        g->batch_flat_hc,
+                        0,
+                        ffn_observation.batch_flat,
+                        (uint64_t)n_tokens * hc_dim * sizeof(float)) != 0 &&
+                    ds4_gpu_tensor_read(
+                        g->batch_hc_mix,
+                        0,
+                        ffn_observation.batch_mix,
+                        (uint64_t)n_tokens * mix_hc * sizeof(float)) != 0 &&
+                    ds4_gpu_tensor_read(
+                        g->batch_ffn_cur,
+                        0,
+                        ffn_observation.batch_cur,
+                        (uint64_t)n_tokens * DS4_N_EMBD * sizeof(float)) != 0 &&
+                    ds4_gpu_tensor_read(
+                        g->batch_ffn_norm,
+                        0,
+                        ffn_observation.batch_norm,
+                        (uint64_t)n_tokens * DS4_N_EMBD * sizeof(float)) != 0 &&
+                    ds4_gpu_tensor_read(
+                        g->batch_router_selected,
+                        0,
+                        ffn_observation.batch_selected,
+                        (uint64_t)n_tokens * DS4_N_EXPERT_USED * sizeof(int)) != 0 &&
+                    ds4_gpu_tensor_read(
+                        g->batch_router_weights,
+                        0,
+                        ffn_observation.batch_weights,
+                        (uint64_t)n_tokens * DS4_N_EXPERT_USED * sizeof(float)) != 0;
             }
             g->batch_cur_hc = saved_batch_cur;
             g->batch_next_hc = saved_batch_next;
@@ -22539,6 +22688,46 @@ static bool metal_graph_verify_decode_exact(
                                                       il,
                                                       pos,
                                                       tokens[row]);
+            const uint64_t embd_offset =
+                (uint64_t)row * DS4_N_EMBD * sizeof(float);
+            const uint64_t flat_offset =
+                (uint64_t)row * hc_dim * sizeof(float);
+            const uint64_t mix_offset =
+                (uint64_t)row * mix_hc * sizeof(float);
+            const uint64_t route_offset =
+                (uint64_t)row * DS4_N_EXPERT_USED;
+            if (ok) {
+                ok = ds4_gpu_tensor_copy(g->batch_flat_hc,
+                                         flat_offset,
+                                         g->flat_hc,
+                                         0,
+                                         hc_dim * sizeof(float)) != 0 &&
+                     ds4_gpu_tensor_copy(g->batch_hc_mix,
+                                         mix_offset,
+                                         g->hc_mix,
+                                         0,
+                                         mix_hc * sizeof(float)) != 0 &&
+                     ds4_gpu_tensor_copy(g->batch_ffn_cur,
+                                         embd_offset,
+                                         g->ffn_cur,
+                                         0,
+                                         (uint64_t)DS4_N_EMBD * sizeof(float)) != 0 &&
+                     ds4_gpu_tensor_copy(g->batch_ffn_norm,
+                                         embd_offset,
+                                         g->ffn_norm,
+                                         0,
+                                         (uint64_t)DS4_N_EMBD * sizeof(float)) != 0 &&
+                     ds4_gpu_tensor_copy(g->batch_router_selected,
+                                         route_offset * sizeof(int),
+                                         g->router_selected,
+                                         0,
+                                         (uint64_t)DS4_N_EXPERT_USED * sizeof(int)) != 0 &&
+                     ds4_gpu_tensor_copy(g->batch_router_weights,
+                                         route_offset * sizeof(float),
+                                         g->router_weights,
+                                         0,
+                                         (uint64_t)DS4_N_EXPERT_USED * sizeof(float)) != 0;
+            }
             if (ok) {
                 ds4_target_hc_capture_note_tensor(target_capture,
                                                   il,
@@ -22556,12 +22745,41 @@ static bool metal_graph_verify_decode_exact(
             ok = ds4_gpu_tensor_read(
                 observer_next,
                 0,
-                ffn_exact_hc,
-                (uint64_t)n_tokens * hc_dim * sizeof(ffn_exact_hc[0])) != 0;
+                ffn_observation.exact_hc,
+                (uint64_t)n_tokens * hc_dim * sizeof(float)) != 0 &&
+                 ds4_gpu_tensor_read(
+                     g->batch_flat_hc,
+                     0,
+                     ffn_observation.exact_flat,
+                     (uint64_t)n_tokens * hc_dim * sizeof(float)) != 0 &&
+                 ds4_gpu_tensor_read(
+                     g->batch_hc_mix,
+                     0,
+                     ffn_observation.exact_mix,
+                     (uint64_t)n_tokens * mix_hc * sizeof(float)) != 0 &&
+                 ds4_gpu_tensor_read(
+                     g->batch_ffn_cur,
+                     0,
+                     ffn_observation.exact_cur,
+                     (uint64_t)n_tokens * DS4_N_EMBD * sizeof(float)) != 0 &&
+                 ds4_gpu_tensor_read(
+                     g->batch_ffn_norm,
+                     0,
+                     ffn_observation.exact_norm,
+                     (uint64_t)n_tokens * DS4_N_EMBD * sizeof(float)) != 0 &&
+                 ds4_gpu_tensor_read(
+                     g->batch_router_selected,
+                     0,
+                     ffn_observation.exact_selected,
+                     (uint64_t)n_tokens * DS4_N_EXPERT_USED * sizeof(int)) != 0 &&
+                 ds4_gpu_tensor_read(
+                     g->batch_router_weights,
+                     0,
+                     ffn_observation.exact_weights,
+                     (uint64_t)n_tokens * DS4_N_EXPERT_USED * sizeof(float)) != 0;
         }
         if (ok && shadow_ok) {
-            dspark_exact_ffn_batch_observer_report(ffn_batch_hc,
-                                                   ffn_exact_hc,
+            dspark_exact_ffn_batch_observer_report(&ffn_observation,
                                                    n_tokens,
                                                    il,
                                                    hc_dim);
@@ -22673,8 +22891,7 @@ static bool metal_graph_verify_decode_exact(
         ds4_gpu_tensor_free(next[row]);
         ds4_gpu_tensor_free(cur[row]);
     }
-    free(ffn_exact_hc);
-    free(ffn_batch_hc);
+    dspark_exact_ffn_batch_observation_free(&ffn_observation);
     return ok;
 }
 
