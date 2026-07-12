@@ -2025,6 +2025,58 @@ eight known warnings. The MTP depth test reported success but skipped its model
 run because `DS4_TEST_MTP` was not configured. The shared speculation allocation
 therefore has compile coverage here but no local legacy-MTP GGUF runtime check.
 
+Phase 0.42 opt-in fast authoritative verification added on 2026-07-12:
+
+- `DS4_DSPARK_FAST_BATCH_VERIFY=1` selects the compute-batched target verifier
+  only when GPU DSpark runtime is active. Exact batched verification remains the
+  default.
+- `metal_graph_verify_suffix_tops` now accepts the normal DSpark target-HC
+  capture object and records all accepted-span target layers from its batched
+  hidden-state tensor. The existing MTP callers pass no capture and retain their
+  previous behavior.
+- Full fast accepts commit the already-advanced target state and captured HC.
+  Partial accepts restore the original compressed-attention frontier and rerun
+  only the accepted prefix through the fast verifier. A recoverable fast failure
+  restores state and retries the exact batch verifier; if exact batching also
+  fails recoverably, the existing serial verifier remains the final fallback.
+- Runtime stats add fast verifier calls, failures, and successful exact
+  fallbacks. Diagnostics identify whether a committed batch used `fast` or
+  `exact` authority and report fast-to-exact fallback transitions.
+- `speed-bench/run_dspark_comparison.py --fast-verifier` explicitly sets the
+  fast runtime option after clearing inherited DSpark variables. The default
+  harness remains exact. Both modes continue to require byte-identical stdout.
+- The correctness harness accepts `DS4_TEST_DSPARK_FAST_VERIFY_RUNTIME=1`,
+  requires successful fast-batch records, and retains every existing output and
+  resumed-session assertion.
+
+A ten-token direct partial-accept smoke was byte-identical to baseline and used
+seven fast target calls with zero failures/fallbacks. It exercised full commits
+plus restore-and-fast-prefix replay. The fast runtime matrix passed reasoning,
+Italian, medium-context, and resumed-session cases with byte-identical outputs.
+These are correctness checks, not throughput measurements. No tok/s benchmark
+was run by Codex.
+
+Phase 0.42 checks:
+
+```sh
+make ds4 ds4_test ds4-server ds4-eval ds4-agent ds4_cpu.o
+./ds4_test --dspark-validation --dspark-shape-binding
+DS4_TEST_DSPARK_MODE=runtime ./tests/dspark_gpu_candidates_correctness.sh
+DS4_TEST_DSPARK_MODE=runtime \
+  DS4_TEST_DSPARK_FAST_VERIFY_RUNTIME=1 \
+  ./tests/dspark_gpu_candidates_correctness.sh
+python3 -m py_compile speed-bench/run_dspark_comparison.py
+python3 speed-bench/run_dspark_comparison.py \
+  --dry-run --allow-dirty --fast-verifier
+bash -n tests/dspark_gpu_candidates_correctness.sh
+git diff --check
+```
+
+All requested builds, focused DSpark tests, exact runtime cases, and opt-in fast
+runtime cases passed. The CPU object emitted the same eight known warnings. A
+parser/summary assertion consumed the real ten-token fast stats record and
+confirmed seven fast calls, zero failures, and zero exact fallbacks.
+
 ## Resume Checklist
 
 If continuing from a compacted context, start here:
@@ -2073,10 +2125,9 @@ If continuing from a compacted context, start here:
 
 ## Open Questions
 
-- Phase 0.41 established top-token parity for the shadow fast verifier over the
-  current correctness matrix. The next phase should add an explicit opt-in fast
-  runtime, preserve exact/serial fallbacks, make the benchmark harness select it
-  deliberately, and let the user measure output identity and throughput.
+- Phase 0.42 is ready for a user-run `--fast-verifier` comparison. Interpret
+  throughput together with `fast_calls`, `fast_failures`, exact fallbacks,
+  target time per emitted token, and the harness's byte-identity guard.
 - The GPU stage path currently borrows target graph transient batch workspace
   and therefore requires `prefill_cap >= block_size` (five). Decide whether to
   allocate sidecar-specific batch scratch before production enablement or keep

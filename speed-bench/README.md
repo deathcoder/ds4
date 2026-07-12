@@ -38,6 +38,8 @@ thermal state, and then run the dedicated harness yourself:
 make ds4
 python3 speed-bench/run_dspark_comparison.py --dry-run
 python3 speed-bench/run_dspark_comparison.py --confirm-idle
+python3 speed-bench/run_dspark_comparison.py --dry-run --fast-verifier
+python3 speed-bench/run_dspark_comparison.py --confirm-idle --fast-verifier
 ```
 
 The runner deliberately refuses real execution without `--confirm-idle`. Treat
@@ -49,13 +51,21 @@ cooldown between processes. Each process uses greedy generation, a fixed seed,
 64 generated tokens, and `speed-bench/dspark_prompt.txt`; the rendered prompt
 plus generation stays inside the current 128-token DSpark sidecar window.
 
-Runtime runs set only:
+Default runtime runs set only:
 
 ```text
 DS4_DSPARK_GPU_RUNTIME=1
 DS4_DSPARK_MULTI_COMMIT=1
 DS4_DSPARK_GPU_RUNTIME_STATS=1
 ```
+
+`--fast-verifier` additionally sets
+`DS4_DSPARK_FAST_BATCH_VERIFY=1`. This is deliberately opt-in: it makes the
+compute-batched verifier authoritative for suffix tops and continuation logits,
+while exact verification remains the fallback after recoverable fast-path
+failure. Partial accepts restore the target frontier and rerun only the accepted
+prefix with the same verifier. The harness still requires byte-identical output
+against baseline and aborts immediately if numerical drift changes the stream.
 
 All inherited `DS4_DSPARK_*` variables and instrumentation variables containing
 `PROFILE`, `TRACE`, `DUMP`, or `TIMING` (plus `*_LOG`) are removed first. Runtime

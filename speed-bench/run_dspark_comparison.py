@@ -35,6 +35,9 @@ RUNTIME_STATS_INT_FIELDS = {
     "batch_full",
     "batch_partial",
     "batch_fallbacks",
+    "fast_calls",
+    "fast_failures",
+    "fast_exact_fallbacks",
     "depth1",
     "depth2",
     "depth3",
@@ -105,6 +108,11 @@ def parse_args():
     parser.add_argument("--output-dir", type=Path)
     parser.add_argument("--confirm-idle", action="store_true")
     parser.add_argument("--allow-dirty", action="store_true")
+    parser.add_argument(
+        "--fast-verifier",
+        action="store_true",
+        help="use the opt-in compute-batched DSpark target verifier",
+    )
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
 
@@ -153,7 +161,7 @@ def check_inputs(args, root):
         )
 
 
-def clean_dspark_env(mode):
+def clean_dspark_env(mode, fast_verifier=False):
     env = os.environ.copy()
     for key in cleared_env_keys(env):
         env.pop(key, None)
@@ -161,6 +169,8 @@ def clean_dspark_env(mode):
         env["DS4_DSPARK_GPU_RUNTIME"] = "1"
         env["DS4_DSPARK_MULTI_COMMIT"] = "1"
         env["DS4_DSPARK_GPU_RUNTIME_STATS"] = "1"
+        if fast_verifier:
+            env["DS4_DSPARK_FAST_BATCH_VERIFY"] = "1"
     return env
 
 
@@ -194,6 +204,7 @@ def command_text(args, mode):
     env = "" if mode == "baseline" else (
         "DS4_DSPARK_GPU_RUNTIME=1 DS4_DSPARK_MULTI_COMMIT=1 "
         "DS4_DSPARK_GPU_RUNTIME_STATS=1 "
+        + ("DS4_DSPARK_FAST_BATCH_VERIFY=1 " if args.fast_verifier else "")
     )
     return env + shlex.join(mode_command(args, mode))
 
@@ -260,7 +271,7 @@ def execute_run(args, root, run_dir, label, mode, reference_output):
         completed = subprocess.run(
             command,
             cwd=root,
-            env=clean_dspark_env(mode),
+            env=clean_dspark_env(mode, args.fast_verifier),
             stdout=stdout_fp,
             stderr=stderr_fp,
             check=False,
@@ -334,6 +345,7 @@ def collect_metadata(args, root):
             "warmups_per_mode": args.warmups,
             "cooldown_seconds": args.cooldown,
             "runtime_diagnostics": False,
+            "fast_verifier": args.fast_verifier,
             "temperature": 0,
             "seed": 1,
         },
@@ -403,6 +415,11 @@ def summarize(rows):
         "runtime_batch_full_median": runtime_median("stats_batch_full"),
         "runtime_batch_partial_median": runtime_median("stats_batch_partial"),
         "runtime_batch_fallbacks_median": runtime_median("stats_batch_fallbacks"),
+        "runtime_fast_calls_median": runtime_median("stats_fast_calls"),
+        "runtime_fast_failures_median": runtime_median("stats_fast_failures"),
+        "runtime_fast_exact_fallbacks_median": runtime_median(
+            "stats_fast_exact_fallbacks"
+        ),
     }
     for component in ("bridge", "stage0", "stage1", "stage2", "head", "chain"):
         summary[f"runtime_{component}_ms_per_emitted_median"] = runtime_ratio(
@@ -468,6 +485,10 @@ def write_results(run_dir, rows, summary, metadata):
         f"{summary['runtime_batch_full_median']:.1f} full, "
         f"{summary['runtime_batch_partial_median']:.1f} partial, "
         f"{summary['runtime_batch_fallbacks_median']:.1f} fallbacks\n"
+        f"- Runtime fast verifier: "
+        f"{summary['runtime_fast_calls_median']:.1f} calls, "
+        f"{summary['runtime_fast_failures_median']:.1f} failures, "
+        f"{summary['runtime_fast_exact_fallbacks_median']:.1f} exact fallbacks\n"
         f"- Generation sidecar breakdown / emitted token: "
         f"bridge {summary['runtime_bridge_ms_per_emitted_median']:.3f} ms, "
         f"stages {summary['runtime_stage0_ms_per_emitted_median']:.3f}/"

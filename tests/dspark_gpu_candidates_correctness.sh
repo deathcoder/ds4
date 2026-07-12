@@ -7,6 +7,12 @@ base_model=${DS4_TEST_MODEL:-"$root/gguf/DeepSeek-V4-Flash-IQ2XXS-w2Q2K-AProjQ8-
 dspark_model=${DS4_TEST_DSPARK_MODEL:-"$root/gguf/ds4flash-dspark.gguf"}
 mode=${DS4_TEST_DSPARK_MODE:-observer}
 fast_verify_observer=${DS4_TEST_DSPARK_FAST_VERIFY_OBSERVER:-0}
+fast_verify_runtime=${DS4_TEST_DSPARK_FAST_VERIFY_RUNTIME:-0}
+
+if [[ $fast_verify_observer == 1 && $fast_verify_runtime == 1 ]]; then
+    printf 'fast verifier observer and runtime modes are mutually exclusive\n' >&2
+    exit 2
+fi
 
 case "$mode" in
     observer) gpu_env=(DS4_DSPARK_GPU_CANDIDATES=1) ;;
@@ -17,6 +23,9 @@ case "$mode" in
         )
         if [[ $fast_verify_observer == 1 ]]; then
             gpu_env+=(DS4_DSPARK_FAST_VERIFY_OBSERVER=1)
+        fi
+        if [[ $fast_verify_runtime == 1 ]]; then
+            gpu_env+=(DS4_DSPARK_FAST_BATCH_VERIFY=1)
         fi
         ;;
     *)
@@ -57,7 +66,11 @@ assert_gpu_selected() {
         grep -q 'DSpark GPU stage 2 runtime .* result=pass' "$log"
         grep -q 'DSpark GPU head runtime .* result=pass' "$log"
         grep -q 'DSpark GPU chain runtime .* result=pass' "$log"
-        grep -q 'DSpark exact batch verifier .* result=pass' "$log"
+        if [[ $fast_verify_runtime == 1 ]]; then
+            grep -q 'DSpark fast batch verifier .* result=pass' "$log"
+        else
+            grep -q 'DSpark exact batch verifier .* result=pass' "$log"
+        fi
         if [[ $fast_verify_observer == 1 ]]; then
             grep -q 'DSpark fast verifier observer ' "$log"
             if grep -q 'DSpark fast verifier observer .* result=fail' "$log"; then

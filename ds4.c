@@ -21773,7 +21773,8 @@ static bool metal_graph_verify_suffix_tops(
         uint32_t               n_tokens,
         bool                   capture_prefix1,
         int                   *row_tops,
-        float                 *row_logits) {
+        float                 *row_logits,
+        ds4_target_hc_capture *target_capture) {
     if (n_tokens == 0 || n_tokens > g->prefill_cap || !g->spec_logits) return false;
     if (start > (uint32_t)prompt->len || n_tokens > (uint32_t)prompt->len - start) return false;
     const uint32_t top_rows = n_tokens > 1 ? n_tokens - 1 : 0;
@@ -21800,6 +21801,13 @@ static bool metal_graph_verify_suffix_tops(
                                             il,
                                             start,
                                             n_tokens);
+        if (ok) {
+            ds4_target_hc_capture_note_tensor(target_capture,
+                                              il,
+                                              start,
+                                              n_tokens,
+                                              g->batch_cur_hc);
+        }
     }
     if (ok) ok = ds4_gpu_end_commands() != 0;
     else (void)ds4_gpu_synchronize();
@@ -26557,6 +26565,9 @@ struct dspark_session_state {
     uint64_t runtime_batch_verify_full_accepts;
     uint64_t runtime_batch_verify_partial_accepts;
     uint64_t runtime_batch_verify_fallbacks;
+    uint64_t runtime_fast_verify_calls;
+    uint64_t runtime_fast_verify_failures;
+    uint64_t runtime_fast_verify_exact_fallbacks;
     bool runtime_generation_active;
     double runtime_bridge_seconds;
     double runtime_stage_seconds[DS4_DSPARK_MTP_LAYERS];
@@ -26684,7 +26695,8 @@ static void dspark_session_state_free(dspark_session_state *d) {
                 "target_evals_avoided=%llu avg_depth=%.6f "
                 "depth1=%llu depth2=%llu depth3=%llu depth4=%llu depth5=%llu "
                 "batch_attempts=%llu batch_full=%llu batch_partial=%llu "
-                "batch_fallbacks=%llu "
+                "batch_fallbacks=%llu fast_calls=%llu fast_failures=%llu "
+                "fast_exact_fallbacks=%llu "
                 "sidecar_ms=%.3f bridge_ms=%.3f stage0_ms=%.3f stage1_ms=%.3f "
                 "stage2_ms=%.3f head_ms=%.3f chain_ms=%.3f "
                 "prefill_sidecar_ms=%.3f generation_sidecar_ms=%.3f "
@@ -26710,6 +26722,9 @@ static void dspark_session_state_free(dspark_session_state *d) {
                 (unsigned long long)d->runtime_batch_verify_full_accepts,
                 (unsigned long long)d->runtime_batch_verify_partial_accepts,
                 (unsigned long long)d->runtime_batch_verify_fallbacks,
+                (unsigned long long)d->runtime_fast_verify_calls,
+                (unsigned long long)d->runtime_fast_verify_failures,
+                (unsigned long long)d->runtime_fast_verify_exact_fallbacks,
                 sidecar_seconds * 1000.0,
                 d->runtime_bridge_seconds * 1000.0,
                 d->runtime_stage_seconds[0] * 1000.0,
@@ -26814,6 +26829,7 @@ static bool dspark_session_gpu_candidates_env_enabled(void);
 static bool dspark_session_gpu_runtime_env_enabled(void);
 static bool dspark_session_diagnostics_enabled(void);
 static bool dspark_session_fast_verify_observer_enabled(void);
+static bool dspark_session_fast_verify_runtime_enabled(void);
 static bool dspark_session_gpu_stage_env_enabled(uint32_t stage);
 static bool dspark_session_gpu_bridge_env_enabled(void);
 static float dspark_session_gpu_bridge_tolerance(void);
@@ -30310,6 +30326,13 @@ static bool dspark_session_runtime_stats_enabled(void) {
 static bool dspark_session_fast_verify_observer_enabled(void) {
     const char *v = getenv("DS4_DSPARK_FAST_VERIFY_OBSERVER");
     return dspark_session_gpu_runtime_env_enabled() &&
+           !dspark_session_fast_verify_runtime_enabled() &&
+           v && v[0] && strcmp(v, "0") != 0;
+}
+
+static bool dspark_session_fast_verify_runtime_enabled(void) {
+    const char *v = getenv("DS4_DSPARK_FAST_BATCH_VERIFY");
+    return dspark_session_gpu_runtime_env_enabled() &&
            v && v[0] && strcmp(v, "0") != 0;
 }
 
@@ -31088,6 +31111,36 @@ typedef struct {
     double seconds;
 } dspark_fast_verify_observation;
 
+static bool dspark_session_fast_verify_run(
+        ds4_session            *s,
+        const int              *tokens,
+        uint32_t                n_tokens,
+        uint32_t                start,
+        int                    *row_tops,
+        float                  *last_logits,
+        ds4_target_hc_capture  *target_capture) {
+    for (uint32_t row = 0; row < n_tokens; row++) {
+        token_vec_push(&s->checkpoint, tokens[row]);
+    }
+    bool ok = metal_graph_verify_suffix_tops(&s->graph,
+                                             &s->engine->model,
+                                             &s->engine->weights,
+                                             &s->checkpoint,
+                                             start,
+                                             n_tokens,
+                                             false,
+                                             row_tops,
+                                             NULL,
+                                             target_capture);
+    if (ok) {
+        ok = metal_graph_read_spec_logits_row(&s->graph,
+                                              n_tokens - 1u,
+                                              last_logits);
+    }
+    s->checkpoint.len = (int)start;
+    return ok;
+}
+
 static void dspark_fast_verify_observation_free(
         dspark_fast_verify_observation *observation) {
     if (!observation) return;
@@ -31110,28 +31163,16 @@ static bool dspark_session_fast_verify_observe(
 
     observation->last_logits = xmalloc(
         (size_t)DS4_N_VOCAB * sizeof(observation->last_logits[0]));
-    for (uint32_t row = 0; row < n_tokens; row++) {
-        token_vec_push(&s->checkpoint, tokens[row]);
-    }
     const double started = now_sec();
-    observation->executed = metal_graph_verify_suffix_tops(
-        &s->graph,
-        &s->engine->model,
-        &s->engine->weights,
-        &s->checkpoint,
-        start,
+    observation->executed = dspark_session_fast_verify_run(
+        s,
+        tokens,
         n_tokens,
-        false,
+        start,
         observation->row_tops,
+        observation->last_logits,
         NULL);
-    if (observation->executed) {
-        observation->executed = metal_graph_read_spec_logits_row(
-            &s->graph,
-            n_tokens - 1u,
-            observation->last_logits);
-    }
     observation->seconds = now_sec() - started;
-    s->checkpoint.len = (int)start;
     return spec_frontier_restore(frontier, s);
 }
 
@@ -31190,6 +31231,45 @@ static void dspark_session_fast_verify_report(
             parity_ok ? "pass" : "fail");
 }
 
+static bool dspark_session_verify_batch_once(
+        ds4_session            *s,
+        bool                    fast,
+        const int              *tokens,
+        uint32_t                n_tokens,
+        uint32_t                start,
+        int                    *row_tops,
+        float                  *last_logits,
+        ds4_target_hc_capture  *target_capture) {
+    if (fast) {
+        return dspark_session_fast_verify_run(s,
+                                              tokens,
+                                              n_tokens,
+                                              start,
+                                              row_tops,
+                                              last_logits,
+                                              target_capture);
+    }
+    return metal_graph_verify_decode_exact(&s->graph,
+                                           &s->engine->model,
+                                           &s->engine->weights,
+                                           tokens,
+                                           n_tokens,
+                                           start,
+                                           row_tops,
+                                           last_logits,
+                                           target_capture);
+}
+
+static void dspark_session_runtime_target_eval_note(
+        dspark_session_state *d,
+        uint32_t              n_tokens,
+        double                seconds) {
+    if (!d || !dspark_session_runtime_stats_enabled()) return;
+    d->runtime_target_evals++;
+    d->runtime_target_eval_tokens += n_tokens;
+    d->runtime_target_eval_seconds += seconds;
+}
+
 /* Return zero to use the serial verifier, -1 on unrecoverable target-state
  * failure, or the committed token count when exact batch verification wins. */
 static int dspark_session_eval_batch_commit(
@@ -31244,26 +31324,67 @@ static int dspark_session_eval_batch_commit(
                                                                &capture,
                                                                "multi-batch");
     bool ok = capture_active;
+    const bool fast_runtime = dspark_session_fast_verify_runtime_enabled();
+    bool committed_fast = fast_runtime;
     const bool time_exact = stats || fast_observation.enabled;
     const double verify_start = time_exact ? now_sec() : 0.0;
     if (ok) {
-        ok = metal_graph_verify_decode_exact(&s->graph,
-                                             &s->engine->model,
-                                             &s->engine->weights,
-                                             tokens,
-                                             n_limit,
-                                             start,
-                                             row_tops,
-                                             last_logits,
-                                             &capture);
+        if (stats && fast_runtime) d->runtime_fast_verify_calls++;
+        ok = dspark_session_verify_batch_once(s,
+                                              fast_runtime,
+                                              tokens,
+                                              n_limit,
+                                              start,
+                                              row_tops,
+                                              last_logits,
+                                              &capture);
     }
-    const double exact_seconds = time_exact ? now_sec() - verify_start : 0.0;
-    if (stats && capture_active) {
-        d->runtime_target_evals++;
-        d->runtime_target_eval_tokens += n_limit;
-        d->runtime_target_eval_seconds += exact_seconds;
+    double exact_seconds = time_exact ? now_sec() - verify_start : 0.0;
+    if (capture_active) {
+        dspark_session_runtime_target_eval_note(d, n_limit, exact_seconds);
     }
-    if (ok) {
+    if (fast_runtime && !ok) {
+        if (stats) d->runtime_fast_verify_failures++;
+        if (dspark_session_diagnostics_enabled()) {
+            fprintf(stderr,
+                    "ds4: DSpark fast batch verifier failed; restoring target "
+                    "state for exact fallback\n");
+        }
+        if (!spec_frontier_restore(&frontier, s)) {
+            dspark_fast_verify_observation_free(&fast_observation);
+            spec_frontier_free(&frontier);
+            free(last_logits);
+            if (errlen) snprintf(err, errlen,
+                                 "DSpark fast batch verifier could not restore target state");
+            s->checkpoint_valid = false;
+            dspark_session_target_context_reset(s->dspark);
+            return -1;
+        }
+        capture_active = dspark_session_target_capture_begin(s,
+                                                              start,
+                                                              n_limit,
+                                                              &capture,
+                                                              "multi-batch-exact-fallback");
+        ok = capture_active;
+        const double fallback_start = stats ? now_sec() : 0.0;
+        if (ok) {
+            ok = dspark_session_verify_batch_once(s,
+                                                  false,
+                                                  tokens,
+                                                  n_limit,
+                                                  start,
+                                                  row_tops,
+                                                  last_logits,
+                                                  &capture);
+        }
+        const double fallback_seconds = stats ? now_sec() - fallback_start : 0.0;
+        if (capture_active) {
+            dspark_session_runtime_target_eval_note(d, n_limit, fallback_seconds);
+        }
+        if (ok && stats) d->runtime_fast_verify_exact_fallbacks++;
+        committed_fast = false;
+    }
+    if (ok && !fast_runtime) {
         dspark_session_fast_verify_report(&fast_observation,
                                           row_tops,
                                           last_logits,
@@ -31307,20 +31428,52 @@ static int dspark_session_eval_batch_commit(
         ok = ok && capture_active;
         const double replay_start = stats ? now_sec() : 0.0;
         if (ok) {
-            ok = metal_graph_verify_decode_exact(&s->graph,
-                                                 &s->engine->model,
-                                                 &s->engine->weights,
-                                                 tokens,
-                                                 n_commit,
-                                                 start,
-                                                 row_tops,
-                                                 last_logits,
-                                                 &capture);
+            if (stats && committed_fast) d->runtime_fast_verify_calls++;
+            ok = dspark_session_verify_batch_once(s,
+                                                  committed_fast,
+                                                  tokens,
+                                                  n_commit,
+                                                  start,
+                                                  row_tops,
+                                                  last_logits,
+                                                  &capture);
         }
-        if (stats && capture_active) {
-            d->runtime_target_evals++;
-            d->runtime_target_eval_tokens += n_commit;
-            d->runtime_target_eval_seconds += now_sec() - replay_start;
+        const double replay_seconds = stats ? now_sec() - replay_start : 0.0;
+        if (capture_active) {
+            dspark_session_runtime_target_eval_note(d, n_commit, replay_seconds);
+        }
+        if (committed_fast && !ok) {
+            if (stats) d->runtime_fast_verify_failures++;
+            if (dspark_session_diagnostics_enabled()) {
+                fprintf(stderr,
+                        "ds4: DSpark fast prefix verifier failed; restoring target "
+                        "state for exact fallback\n");
+            }
+            ok = spec_frontier_restore(&frontier, s);
+            capture_active = ok && dspark_session_target_capture_begin(
+                s,
+                start,
+                n_commit,
+                &capture,
+                "multi-batch-prefix-exact-fallback");
+            ok = ok && capture_active;
+            const double fallback_start = stats ? now_sec() : 0.0;
+            if (ok) {
+                ok = dspark_session_verify_batch_once(s,
+                                                      false,
+                                                      tokens,
+                                                      n_commit,
+                                                      start,
+                                                      row_tops,
+                                                      last_logits,
+                                                      &capture);
+            }
+            const double fallback_seconds = stats ? now_sec() - fallback_start : 0.0;
+            if (capture_active) {
+                dspark_session_runtime_target_eval_note(d, n_commit, fallback_seconds);
+            }
+            if (ok && stats) d->runtime_fast_verify_exact_fallbacks++;
+            committed_fast = false;
         }
         if (!ok) {
             const bool restored = spec_frontier_restore(&frontier, s);
@@ -31360,8 +31513,9 @@ static int dspark_session_eval_batch_commit(
     }
     if (dspark_session_diagnostics_enabled()) {
         fprintf(stderr,
-                "ds4: DSpark exact batch verifier proposed=%u committed=%u "
+                "ds4: DSpark %s batch verifier proposed=%u committed=%u "
                 "result=pass; target state committed without serial verification\n",
+                committed_fast ? "fast" : "exact",
                 n_limit,
                 n_commit);
     }
@@ -33981,6 +34135,7 @@ int ds4_session_eval_speculative_argmax(ds4_session *s, int first_token,
                                                 (uint32_t)draft_n,
                                                 capture_prefix1,
                                                 row_tops,
+                                                NULL,
                                                 NULL);
         }
         const double micro_verify_done = mtp_timing ? now_sec() : 0.0;
@@ -34137,6 +34292,7 @@ int ds4_session_eval_speculative_argmax(ds4_session *s, int first_token,
                                                     (uint32_t)commit_drafts,
                                                     false,
                                                     row_tops,
+                                                    NULL,
                                                     NULL);
                 if (ok) ok = metal_graph_read_spec_logits_row(&s->graph,
                                                               (uint32_t)(commit_drafts - 1),
