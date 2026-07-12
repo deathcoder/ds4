@@ -2731,6 +2731,57 @@ bash -n tests/dspark_gpu_candidates_correctness.sh
 git diff --check
 ```
 
+Phase 0.55 exact Metal F16 decode-row projection added on 2026-07-13:
+
+- Added Apple/Metal-only `ds4_gpu_matmul_f16_decode_rows_tensor`. It dispatches
+  the same `kernel_mul_mv_f16_f32[_4]` pipeline and reduction parameters used by
+  one-token decode, but sets the activation row count in the existing matvec
+  arguments and dispatches `grid.y = n_tokens`. Each row therefore retains the
+  decode reduction order while 2-5 proposal rows share one Metal dispatch.
+- Added an explicit `exact_hc_projection` argument to the internal batched FFN.
+  Every production, prefill, and DSpark-stage caller passes `false`; only the
+  selected-layer FFN shadow observer passes `true`. On non-Apple builds that
+  research selection returns shadow fallback without referencing the Metal
+  primitive.
+- CUDA and ROCm implementations were briefly considered solely because the GPU
+  API header is shared. The user clarified that this work targets Metal only;
+  those edits were removed, the declaration is guarded by `__APPLE__`, and no
+  CUDA/ROCm source change remains.
+- Correctness matrices at layers 0, 30, and 42 each produced six observations
+  over 19 proposal rows. Input normalization, `hc_mix`, HC recombination, and
+  FFN norm became bit-exact in all observations. The first remaining divergence
+  moved to `router_weights`; all 342 expert IDs still matched. Maximum router
+  weight drift was `1.19209e-7`, `1.49012e-7`, and `2.08616e-7`; final HC maxima
+  were `5.96046e-7`, `1.90735e-6`, and `3.05176e-5`.
+- A correctness-only layer-42 `code_8k` replay covered nine observations and 41
+  proposal rows. Output matched the retained exact reference byte-for-byte and
+  timings were ignored. HC projection through FFN norm remained bit-exact, all
+  246 expert IDs matched, router-weight max was `1.19209e-7`, and final HC max
+  was `6.10352e-5`.
+- This proves the exact-row Metal primitive fixes the first FFN divergence, but
+  it remains observer-only and is not yet a runtime speed claim. The next phase
+  should capture router logits/probabilities or route the F16 router projection
+  through the same exact-row primitive to distinguish projection drift from
+  batch softmax/top-k arithmetic.
+
+Phase 0.55 checks:
+
+```sh
+make ds4 ds4_test ds4-server ds4-eval ds4-agent ds4_cpu.o \
+  ds4-warm-prefill-bench
+# CPU-only compilation retained the same eight known unused warnings.
+for layer in 0 30 42; do
+  DS4_DSPARK_EXACT_FFN_BATCH_OBSERVER_LAYER=$layer \
+  DS4_TEST_DSPARK_MODE=runtime \
+    ./tests/dspark_gpu_candidates_correctness.sh
+done
+# A separate code_8k layer-42 observer replay used -n 32 and cmp; output was
+# identical and timings were ignored.
+./tests/dspark_fast_verifier_soak.sh
+./ds4_test --dspark-validation --dspark-shape-binding
+git diff --check
+```
+
 Phase 0.52 checks:
 
 ```sh
@@ -2799,13 +2850,13 @@ If continuing from a compacted context, start here:
 
 ## Open Questions
 
-- Add an observer-only exact F16 multi-row matvec using the decode kernel's
-  original reduction order, then determine the next FFN divergence after HC
-  projection parity. Do not repeat the full issue-468 baseline suite unless
-  another exact verifier stage earns a controlled comparison. Fast authority
-  still does not preserve long-running target state; broader throughput
-  reporting must wait for a numerically exact compute-batched verifier with
-  byte-identical long-corpus output.
+- Localize router-weight drift by comparing router logits/probabilities or by
+  applying the proven exact-row F16 matvec to the router projection in the
+  shadow path. Do not repeat the full issue-468 baseline suite unless another
+  exact verifier stage earns a controlled comparison. Fast authority still
+  does not preserve long-running target state; broader throughput reporting
+  must wait for a numerically exact compute-batched verifier with byte-identical
+  long-corpus output.
 - The GPU stage path currently borrows target graph transient batch workspace
   and therefore requires `prefill_cap >= block_size` (five). Decide whether to
   allocate sidecar-specific batch scratch before production enablement or keep

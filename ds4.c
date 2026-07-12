@@ -19375,7 +19375,8 @@ static bool metal_graph_encode_layer_ffn_batch(
         const ds4_layer_weights *layer,
         uint32_t                il,
         uint32_t                pos0,
-        uint32_t                n_tokens) {
+        uint32_t                n_tokens,
+        bool                    exact_hc_projection) {
     if (n_tokens == 0 || n_tokens > g->prefill_cap) return false;
 
     const uint64_t hc_dim = (uint64_t)DS4_N_HC * DS4_N_EMBD;
@@ -19414,14 +19415,31 @@ static bool metal_graph_encode_layer_ffn_batch(
                                                       (uint32_t)hc_dim,
                                                       n_tokens,
                                                       DS4_RMS_EPS) != 0;
-    if (ok) ok = ds4_gpu_matmul_f16_tensor(hc_mix_view,
-                                             model->map,
-                                             model->size,
-                                             layer->hc_ffn_fn->abs_offset,
-                                             hc_dim,
-                                             mix_hc,
-                                             g->batch_flat_hc,
-                                             n_tokens) != 0;
+    if (ok && exact_hc_projection) {
+#ifdef __APPLE__
+        ok = layer->hc_ffn_fn->type == DS4_TENSOR_F16 &&
+             ds4_gpu_matmul_f16_decode_rows_tensor(
+                 hc_mix_view,
+                 model->map,
+                 model->size,
+                 layer->hc_ffn_fn->abs_offset,
+                 hc_dim,
+                 mix_hc,
+                 g->batch_flat_hc,
+                 n_tokens) != 0;
+#else
+        ok = false;
+#endif
+    } else if (ok) {
+        ok = ds4_gpu_matmul_f16_tensor(hc_mix_view,
+                                       model->map,
+                                       model->size,
+                                       layer->hc_ffn_fn->abs_offset,
+                                       hc_dim,
+                                       mix_hc,
+                                       g->batch_flat_hc,
+                                       n_tokens) != 0;
+    }
     if (metal_graph_use_reference_hc_decode()) {
         if (ok) ok = ds4_gpu_hc_split_sinkhorn_tensor(hc_split_view,
                                                         hc_mix_view,
@@ -19862,7 +19880,8 @@ static bool metal_graph_encode_layer_batch(
         fprintf(stderr, "ds4: gpu layer %u attention batch encode failed\n", il);
     }
     if (ok) {
-        ok = metal_graph_encode_layer_ffn_batch(g, model, layer, il, pos0, n_tokens);
+        ok = metal_graph_encode_layer_ffn_batch(
+            g, model, layer, il, pos0, n_tokens, false);
         if (!ok) {
             fprintf(stderr, "ds4: gpu layer %u ffn batch encode failed\n", il);
         }
@@ -21318,7 +21337,8 @@ static bool metal_graph_prefill_layer_major_capture(
                                                             &weights->layer[il],
                                                             il,
                                                             start,
-                                                            n_tokens);
+                                                            n_tokens,
+                                                            false);
             if (!ok) {
                 fprintf(stderr, "ds4: gpu layer-major prefill layer %u ffn encode failed\n", il);
             }
@@ -22632,7 +22652,8 @@ static bool metal_graph_verify_decode_exact(
                                                                 &weights->layer[il],
                                                                 il,
                                                                 start,
-                                                                n_tokens);
+                                                                n_tokens,
+                                                                true);
             }
             if (shadow_ok) shadow_ok = ds4_gpu_end_commands() != 0;
             else (void)ds4_gpu_synchronize();
@@ -28634,7 +28655,8 @@ static bool dspark_session_gpu_stage_run(
                                                  layer,
                                                  stage,
                                                  context_pos0 + context_len,
-                                                 block);
+                                                 block,
+                                                 false);
     }
     if (ok) {
         dspark_gpu_stage_debug_dump(stage,

@@ -12836,8 +12836,15 @@ static int ds4_gpu_matmul_q8_0_legacy_tensor(
     @autoreleasepool {
         id<MTLBuffer> xbuf = ds4_gpu_tensor_buffer(x);
         id<MTLBuffer> outbuf = ds4_gpu_tensor_buffer(out);
-        const uint64_t x_bytes = n_tok * in_dim * sizeof(float);
-        const uint64_t out_bytes = n_tok * out_dim * sizeof(float);
+        if (n_tok > UINT64_MAX / in_dim || n_tok > UINT64_MAX / out_dim) return 0;
+        const uint64_t x_values = n_tok * in_dim;
+        const uint64_t out_values = n_tok * out_dim;
+        if (x_values > UINT64_MAX / sizeof(float) ||
+            out_values > UINT64_MAX / sizeof(float)) {
+            return 0;
+        }
+        const uint64_t x_bytes = x_values * sizeof(float);
+        const uint64_t out_bytes = out_values * sizeof(float);
         if (!xbuf || !outbuf ||
             ds4_gpu_tensor_bytes(x) < x_bytes ||
             ds4_gpu_tensor_bytes(out) < out_bytes) {
@@ -13367,6 +13374,87 @@ int ds4_gpu_matmul_f16_tensor(
     }
 
     return 1;
+}
+
+int ds4_gpu_matmul_f16_decode_rows_tensor(
+        ds4_gpu_tensor       *out,
+        const void             *model_map,
+        uint64_t                model_size,
+        uint64_t                weight_offset,
+        uint64_t                in_dim,
+        uint64_t                out_dim,
+        const ds4_gpu_tensor *x,
+        uint64_t                n_tok) {
+    if (!g_initialized && !ds4_gpu_init()) return 0;
+    if (in_dim == 0 || out_dim == 0 || n_tok == 0 ||
+        in_dim > UINT32_MAX || out_dim > UINT32_MAX || n_tok > UINT32_MAX) {
+        return 0;
+    }
+
+    @autoreleasepool {
+        id<MTLBuffer> xbuf = ds4_gpu_tensor_buffer(x);
+        id<MTLBuffer> outbuf = ds4_gpu_tensor_buffer(out);
+        const uint64_t x_bytes = n_tok * in_dim * sizeof(float);
+        const uint64_t out_bytes = n_tok * out_dim * sizeof(float);
+        if (!xbuf || !outbuf ||
+            ds4_gpu_tensor_bytes(x) < x_bytes ||
+            ds4_gpu_tensor_bytes(out) < out_bytes) {
+            fprintf(stderr,
+                    "ds4: Metal F16 decode-rows matvec received undersized activation buffers\n");
+            return 0;
+        }
+
+        const uint64_t row_bytes = in_dim * sizeof(uint16_t);
+        if (out_dim > UINT64_MAX / row_bytes) return 0;
+        const uint64_t weight_bytes = row_bytes * out_dim;
+        if (weight_offset > model_size || weight_bytes > model_size - weight_offset) {
+            fprintf(stderr,
+                    "ds4: Metal F16 decode-rows matvec range is outside the mapped model\n");
+            return 0;
+        }
+
+        uint64_t inner_offset = 0;
+        id<MTLBuffer> wbuf = ds4_gpu_wrap_model_range(
+            model_map, model_size, weight_offset, weight_bytes, &inner_offset);
+        if (!wbuf) return 0;
+
+        ds4_gpu_f16_matvec_args args = ds4_gpu_make_f16_mv_args(in_dim, out_dim);
+        args.ne11 = (int32_t)n_tok;
+        args.nb12 = x_bytes;
+        args.nb13 = args.nb12;
+        args.ne1 = (int32_t)n_tok;
+        ds4_gpu_mv_dispatch dispatch = ds4_gpu_make_plain_mv_dispatch(in_dim, 0);
+        if (!g_quality_mode && (out_dim == 512u || out_dim == 1024u) && in_dim >= 4096u) {
+            dispatch.nr0 = 4;
+            dispatch.smem = 32u * 4u * sizeof(float);
+        }
+        args.nr0 = dispatch.nr0;
+        id<MTLComputePipelineState> pipeline =
+            ds4_gpu_get_mul_mv_pipeline(dispatch.function_name, dispatch.nsg);
+        if (!pipeline) return 0;
+
+        int owned = 0;
+        id<MTLCommandBuffer> cb = ds4_gpu_command_buffer(&owned);
+        if (!cb) return 0;
+        id<MTLComputeCommandEncoder> enc = ds4_gpu_compute_encoder(cb);
+        [enc setComputePipelineState:pipeline];
+        [enc setBytes:&args length:sizeof(args) atIndex:0];
+        [enc setBuffer:wbuf offset:(NSUInteger)inner_offset atIndex:1];
+        [enc setBuffer:xbuf offset:ds4_gpu_tensor_offset(x) atIndex:2];
+        [enc setBuffer:outbuf offset:ds4_gpu_tensor_offset(out) atIndex:3];
+        if (dispatch.smem) {
+            [enc setThreadgroupMemoryLength:dispatch.smem atIndex:0];
+        }
+        [enc dispatchThreadgroups:
+                MTLSizeMake(((NSUInteger)out_dim + (NSUInteger)dispatch.nr0 - 1u) /
+                                (NSUInteger)dispatch.nr0,
+                            (NSUInteger)n_tok,
+                            1)
+             threadsPerThreadgroup:MTLSizeMake(32, (NSUInteger)dispatch.nsg, 1)];
+        ds4_gpu_end_compute_encoder(cb, enc);
+
+        return ds4_gpu_finish_command_buffer(cb, owned, "F16 decode-rows matvec");
+    }
 }
 
 int ds4_gpu_matmul_f16_pair_tensor(
