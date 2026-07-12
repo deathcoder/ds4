@@ -2522,6 +2522,32 @@ python3 speed-bench/run_dspark_exact_head_ablation.py \
 git diff --check
 ```
 
+Phase 0.51 user-run result on 2026-07-13:
+
+- The direct `code_8k` ablation completed one 64-token pair with identical
+  output hashes, identical acceptance statistics (`avg_depth=2.666667`, 35
+  target evaluations, 119 target positions), and 26/26 successful exact-head
+  batches.
+- Ordinary exact target verification cost `87.829 ms/emitted`: `80.187` in
+  target layers, `2.773` in serial output heads, and `4.870` residual.
+  Exact-head cost `87.089 ms/emitted`: `80.530` in target layers, `0.882` in
+  batched intermediate heads, `0.763` in the required serial continuation
+  heads, and `4.915` residual.
+- The head component therefore fell from `2.773` to `1.645 ms/emitted`, a
+  `40.7%` local reduction. Whole-target time fell by `0.740 ms/emitted` or
+  `0.84%` (`0.9916x`). The component result shows that head batching works, but
+  target-layer work is about `91%` of exact verification and dominates the
+  remaining cost.
+- Because this was one ordered pair without a warmup, the sub-1% whole-target
+  delta should not be treated as a precise performance claim. The unchanged
+  workload counters and successful component timing are enough to conclude
+  that repeating the full issue-468 suite would not change the engineering
+  decision: retain the correct head microbatch, then move to numerically exact
+  batching inside the target layers.
+- Raw results:
+  `speed-bench/local-runs/head-ablation-20260713-002713/results.csv` (ignored by
+  git and local to the user's machine).
+
 ## Resume Checklist
 
 If continuing from a compacted context, start here:
