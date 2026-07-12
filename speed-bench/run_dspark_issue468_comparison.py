@@ -106,8 +106,8 @@ def parse_args():
     parser.add_argument("--cooldown", type=float, default=10.0)
     parser.add_argument("--stats-pass", action="store_true")
     parser.add_argument(
-        "--exact-verifier", action="store_true",
-        help="disable the fast authoritative verifier in runtime mode",
+        "--fast-verifier", action="store_true",
+        help="use the experimental compute-batched verifier (not correctness-safe on this corpus)",
     )
     parser.add_argument("--output-dir", type=Path)
     parser.add_argument("--confirm-ready", action="store_true")
@@ -168,7 +168,7 @@ def mode_command(args, prompt, mode):
 
 
 def command_text(args, prompt, mode, stats=False):
-    env = benchmark_env(mode, not args.exact_verifier, stats)
+    env = benchmark_env(mode, args.fast_verifier, stats)
     keys = (
         "DS4_DSPARK_GPU_RUNTIME", "DS4_DSPARK_MULTI_COMMIT",
         "DS4_DSPARK_FAST_BATCH_VERIFY", "DS4_DSPARK_GPU_RUNTIME_STATS",
@@ -223,7 +223,7 @@ def execute(args, root, run_dir, label, prompt_label, prompt, mode, reference, s
     with stdout_path.open("wb") as stdout_fp, stderr_path.open("wb") as stderr_fp:
         completed = subprocess.run(
             command, cwd=root,
-            env=benchmark_env(mode, not args.exact_verifier, stats),
+            env=benchmark_env(mode, args.fast_verifier, stats),
             stdout=stdout_fp, stderr=stderr_fp, check=False,
         )
     wall_seconds = time.monotonic() - started
@@ -286,7 +286,7 @@ def collect_metadata(args, root, prompts, provenance):
             "ctx": args.ctx, "tokens": args.tokens, "pairs": args.pairs,
             "warmups_per_mode_per_prompt": args.warmups,
             "cooldown_seconds": args.cooldown, "temperature": 0, "seed": 1,
-            "fast_verifier": not args.exact_verifier,
+            "fast_verifier": args.fast_verifier,
             "throughput_instrumentation": False, "stats_pass": args.stats_pass,
             "nothink": False,
         },
@@ -423,6 +423,11 @@ def main():
         print(f"{label} baseline: {command_text(args, prompt, 'baseline')}")
         print(f"{label} runtime:  {command_text(args, prompt, 'runtime')}")
     print("Throughput pass: all DSpark stats and diagnostic instrumentation are disabled.")
+    if args.fast_verifier:
+        print(
+            "WARNING: fast verification is known to diverge on code_8k; "
+            "this mode is for correctness investigation, not performance reporting."
+        )
     if args.stats_pass:
         print("A separate one-run-per-prompt runtime stats pass will follow throughput.")
     if args.dry_run:

@@ -11,5 +11,9 @@ is portable across machines. The MTP results were single instrumented runs;
 the DSpark harness uses paired uninstrumented throughput samples and can run a
 separate diagnostic pass.
 
+The harness defaults to the exact DSpark target verifier. Its experimental
+`--fast-verifier` mode is known to diverge on the code fixture and is retained
+only for correctness investigation.
+
 Do not edit the prompt files. Replace them only from a newly pinned upstream
 commit and update all provenance fields and hashes together.

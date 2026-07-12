@@ -169,12 +169,11 @@ The authoritative throughput pass matches the source workload at `ctx=16384`,
 128 generated tokens, temperature zero, and seed one. It deliberately omits
 `--nothink`, as did the source harness. It performs one warmup per mode and
 prompt, then three alternating measured pairs with a ten-second cooldown. The
-runtime uses the fast authoritative DSpark verifier by default; pass
-`--exact-verifier` only for a separate exact-verifier study.
+runtime uses the exact DSpark verifier by default.
 
 All inherited DSpark and timing/logging variables are cleared. Throughput runs
-enable only the GPU runtime, multi-commit, and fast verifier, so no runtime
-statistics enter their medians. Add `--stats-pass` to run one separate
+enable only the GPU runtime and multi-commit, so no runtime statistics enter
+their medians. Add `--stats-pass` to run one separate
 instrumented runtime sample per prompt after all throughput measurements:
 
 ```sh
@@ -193,3 +192,11 @@ percentage changes from each implementation's own baseline. Absolute t/s is
 not comparable across the two machines, and legacy MTP and DSpark are different
 drafters; the cross-study columns are contextual relative improvements, not a
 controlled head-to-head measurement.
+
+`--fast-verifier` is retained for correctness research, but is not a valid
+throughput setting for this corpus. The first 8k code warmup found
+byte-different output, and a shadow observer isolated an intermediate target-top
+mismatch on the second proposal cycle. Exact DSpark output matched baseline.
+The fast verifier must become numerically authoritative, or acquire a
+correctness-preserving fallback criterion, before its long-prompt speed can be
+reported.

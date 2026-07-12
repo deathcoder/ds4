@@ -2306,6 +2306,50 @@ shasum -a 256 speed-bench/issue468/*_8k.txt
 git diff --check
 ```
 
+Phase 0.48 long-corpus fast-verifier correction on 2026-07-12:
+
+- The user's first issue-468 run stopped during the `code_8k` warmup because
+  fast DSpark output differed from baseline. This was a real generated-text
+  difference, not stdout formatting: the streams shared their opening and then
+  chose different continuations.
+- A correctness-only replay with exact DSpark verification produced the exact
+  same 618-byte stdout and SHA-256
+  `895ccde85426c18f46a75c62c8c933e9e02ce81feb29436843d9563635785ee0`
+  as baseline. This clears the rolling sidecar window and exact verifier for
+  this case and isolates the failure to fast target verification.
+- The fast shadow observer, with exact verification still authoritative,
+  passed its first five-token proposal (`4/4` intermediate row tops and final
+  top matched). Its second three-token proposal failed with only `1/2`
+  intermediate row tops matching, while the final top still matched. Fast
+  authority therefore accepted a suffix token that exact greedy verification
+  rejected.
+- This is consistent with the fast verifier's implementation: it reuses the
+  generic prefill batch kernels, whose source contract explicitly does not
+  promise numerical equivalence to autoregressive decode. Prior short-context
+  parity was useful evidence but not a correctness proof.
+- The issue-468 harness now defaults to exact verification. Experimental fast
+  authority requires explicit `--fast-verifier` and is documented as invalid
+  for performance reporting on this corpus. We must not report the aborted
+  fast warmup's timing as a DSpark result.
+- Next engineering work should make the compute-batched target verifier
+  numerically authoritative or introduce a genuinely correctness-preserving
+  fallback criterion. Merely extending the prompt soak cannot make an
+  approximate verifier safe.
+
+Phase 0.48 checks:
+
+```sh
+# Correctness-only model replay; timings were ignored.
+# Exact DSpark stdout matched the retained code_8k baseline byte-for-byte.
+# Fast observer reported pass on proposal one and row-top failure on proposal two.
+python3 -m py_compile speed-bench/run_dspark_issue468_comparison.py
+python3 speed-bench/run_dspark_issue468_comparison.py --dry-run --allow-dirty
+python3 speed-bench/run_dspark_issue468_comparison.py \
+  --dry-run --allow-dirty --fast-verifier
+# Inline assertions verify exact-default and explicit-fast environments.
+git diff --check
+```
+
 ## Resume Checklist
 
 If continuing from a compacted context, start here:
