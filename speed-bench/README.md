@@ -40,7 +40,9 @@ python3 speed-bench/run_dspark_comparison.py --dry-run
 python3 speed-bench/run_dspark_comparison.py --confirm-idle
 ```
 
-The runner deliberately refuses real execution without `--confirm-idle`. Its
+The runner deliberately refuses real execution without `--confirm-idle`. Treat
+that flag as confirmation that you have made the machine as quiet as practical;
+the captured process and thermal metadata records unavoidable interference. Its
 defaults perform one warmup per mode followed by three measured pairs. Pair
 order alternates baseline/runtime then runtime/baseline, with a 10-second
 cooldown between processes. Each process uses greedy generation, a fixed seed,
@@ -52,15 +54,19 @@ Runtime runs set only:
 ```text
 DS4_DSPARK_GPU_RUNTIME=1
 DS4_DSPARK_MULTI_COMMIT=1
+DS4_DSPARK_GPU_RUNTIME_STATS=1
 ```
 
 All inherited `DS4_DSPARK_*` variables and instrumentation variables containing
-`PROFILE`, `TRACE`, `DUMP`, or `TIMING` (plus `*_LOG`) are removed first, so
-diagnostics cannot perturb the measurement. Other `DS4_*` tuning variables are
-preserved and recorded. Every run must produce byte-identical stdout; the
-harness aborts on drift. Raw stdout/stderr, environment metadata, process and
-thermal snapshots, per-run CSV data, and median/paired-speedup summaries go
-under the ignored `speed-bench/local-runs/` directory.
+`PROFILE`, `TRACE`, `DUMP`, or `TIMING` (plus `*_LOG`) are removed first. Runtime
+diagnostic logs remain disabled. The stats option adds only clock reads and one
+machine-readable record when the session closes; it reports acceptance depth,
+target evaluations, and aggregate bridge/stage/head/chain timing. Other `DS4_*`
+tuning variables are preserved and recorded. Every run must produce
+byte-identical stdout; the harness aborts on drift. Raw stdout/stderr,
+environment metadata, process and thermal snapshots, per-run CSV data, and
+median/paired-speedup plus runtime-efficiency summaries go under the ignored
+`speed-bench/local-runs/` directory.
 
 Useful explicit overrides include `--pairs`, `--warmups`, `--cooldown`,
 `--tokens`, and `--output-dir`. Do not compare runs with different settings.

@@ -26421,11 +26421,21 @@ struct dspark_session_state {
     uint64_t gpu_candidate_source_selected;
     uint64_t gpu_candidate_source_fallbacks;
     bool gpu_candidate_source_active;
+    uint64_t runtime_accept_depth[17];
+    uint64_t runtime_emitted_tokens;
+    uint64_t runtime_target_evals;
+    double runtime_bridge_seconds;
+    double runtime_stage_seconds[DS4_DSPARK_MTP_LAYERS];
+    double runtime_head_seconds;
+    double runtime_chain_seconds;
+    double runtime_target_eval_seconds;
     float *target_context;
     uint32_t target_context_rows;
     bool target_context_valid;
     int block_tokens[16];
 };
+
+static bool dspark_session_runtime_stats_enabled(void);
 
 static uint32_t dspark_session_raw_cap(uint32_t ctx_size) {
     uint32_t cap = ctx_size;
@@ -26506,6 +26516,46 @@ static dspark_session_state *dspark_session_state_create(
 
 static void dspark_session_state_free(dspark_session_state *d) {
     if (!d) return;
+    if (dspark_session_runtime_stats_enabled()) {
+        const uint64_t avoided = d->runtime_emitted_tokens > d->runtime_target_evals ?
+            d->runtime_emitted_tokens - d->runtime_target_evals : 0;
+        const double average_depth = d->multi_commit_total ?
+            (double)d->runtime_emitted_tokens / (double)d->multi_commit_total : 0.0;
+        double sidecar_seconds = d->runtime_bridge_seconds +
+                                 d->runtime_head_seconds +
+                                 d->runtime_chain_seconds;
+        for (uint32_t stage = 0; stage < DS4_DSPARK_MTP_LAYERS; stage++) {
+            sidecar_seconds += d->runtime_stage_seconds[stage];
+        }
+        fprintf(stderr,
+                "ds4: DSpark runtime stats proposals=%llu selected=%llu "
+                "source_fallbacks=%llu multi_attempts=%llu emitted=%llu "
+                "target_evals=%llu target_evals_avoided=%llu avg_depth=%.6f "
+                "depth1=%llu depth2=%llu depth3=%llu depth4=%llu depth5=%llu "
+                "sidecar_ms=%.3f bridge_ms=%.3f stage0_ms=%.3f stage1_ms=%.3f "
+                "stage2_ms=%.3f head_ms=%.3f chain_ms=%.3f target_eval_ms=%.3f\n",
+                (unsigned long long)d->gpu_candidate_source_attempts,
+                (unsigned long long)d->gpu_candidate_source_selected,
+                (unsigned long long)d->gpu_candidate_source_fallbacks,
+                (unsigned long long)d->multi_commit_total,
+                (unsigned long long)d->runtime_emitted_tokens,
+                (unsigned long long)d->runtime_target_evals,
+                (unsigned long long)avoided,
+                average_depth,
+                (unsigned long long)d->runtime_accept_depth[1],
+                (unsigned long long)d->runtime_accept_depth[2],
+                (unsigned long long)d->runtime_accept_depth[3],
+                (unsigned long long)d->runtime_accept_depth[4],
+                (unsigned long long)d->runtime_accept_depth[5],
+                sidecar_seconds * 1000.0,
+                d->runtime_bridge_seconds * 1000.0,
+                d->runtime_stage_seconds[0] * 1000.0,
+                d->runtime_stage_seconds[1] * 1000.0,
+                d->runtime_stage_seconds[2] * 1000.0,
+                d->runtime_head_seconds * 1000.0,
+                d->runtime_chain_seconds * 1000.0,
+                d->runtime_target_eval_seconds * 1000.0);
+    }
     free(d->gpu_confidence_prob_read);
     free(d->gpu_confidence_logit_read);
     ds4_gpu_tensor_free(d->gpu_confidence_prob);
@@ -26786,6 +26836,8 @@ static bool dspark_session_gpu_bridge_run(
     ds4_engine *e = s->engine;
     dspark_session_state *d = s->dspark;
     const bool runtime = dspark_session_gpu_runtime_env_enabled();
+    const bool stats = runtime && dspark_session_runtime_stats_enabled();
+    const double stats_start = stats ? now_sec() : 0.0;
     if (capture->pos0 != d->gpu_main_x_rows) {
         if (errlen) snprintf(err, errlen,
                              "DSpark GPU bridge prefix mismatch: have %u need %u",
@@ -26901,6 +26953,7 @@ static bool dspark_session_gpu_bridge_run(
     d->gpu_main_x_rows = capture->pos0 + rows;
     d->gpu_bridge_checks++;
     if (runtime) {
+        if (stats) d->runtime_bridge_seconds += now_sec() - stats_start;
         if (dspark_session_diagnostics_enabled()) {
             fprintf(stderr,
                     "ds4: DSpark GPU bridge runtime start=%u rows=%u "
@@ -27205,6 +27258,8 @@ static bool dspark_session_gpu_stage_run(
     ds4_engine *e = s->engine;
     ds4_gpu_graph *g = &s->graph;
     dspark_session_state *d = s->dspark;
+    const bool stats = runtime && dspark_session_runtime_stats_enabled();
+    const double stats_start = stats ? now_sec() : 0.0;
     const ds4_layer_weights *layer = &e->dspark_weights.stage[stage];
     const uint32_t block = d->block_size;
     const uint32_t n_kv = context_len + block;
@@ -27562,6 +27617,7 @@ static bool dspark_session_gpu_stage_run(
     d->gpu_stage_output_valid[stage] = true;
     d->gpu_stage_checks[stage]++;
     if (runtime) {
+        if (stats) d->runtime_stage_seconds[stage] += now_sec() - stats_start;
         if (dspark_session_diagnostics_enabled()) {
             fprintf(stderr,
                     "ds4: DSpark GPU stage %u runtime context=%u block=%u "
@@ -27758,6 +27814,8 @@ static bool dspark_session_gpu_head_run(
     ds4_gpu_graph *g = &s->graph;
     dspark_session_state *d = s->dspark;
     const bool runtime = dspark_session_gpu_runtime_env_enabled();
+    const bool stats = runtime && dspark_session_runtime_stats_enabled();
+    const double stats_start = stats ? now_sec() : 0.0;
     const uint32_t block = d->block_size;
     const uint64_t hc_dim = (uint64_t)DS4_N_HC * DS4_N_EMBD;
     const uint64_t values = (uint64_t)block * DS4_N_EMBD;
@@ -27865,6 +27923,7 @@ static bool dspark_session_gpu_head_run(
     d->gpu_head_output_valid = true;
     d->gpu_head_checks++;
     if (runtime) {
+        if (stats) d->runtime_head_seconds += now_sec() - stats_start;
         if (dspark_session_diagnostics_enabled()) {
             fprintf(stderr,
                     "ds4: DSpark GPU head runtime context=%u block=%u "
@@ -28600,6 +28659,8 @@ static bool dspark_session_gpu_chain_run(
     ds4_engine *e = s->engine;
     dspark_session_state *d = s->dspark;
     const bool runtime = dspark_session_gpu_runtime_env_enabled();
+    const bool stats = runtime && dspark_session_runtime_stats_enabled();
+    const double stats_start = stats ? now_sec() : 0.0;
     if (!d->gpu_head_output_valid ||
         (!runtime && (!d->gpu_candidate_valid || !d->gpu_logits_output_valid))) {
         if (errlen) snprintf(err, errlen,
@@ -28920,6 +28981,7 @@ static bool dspark_session_gpu_chain_run(
         d->gpu_chain_observed = false;
         d->gpu_logits_output_valid = true;
         d->gpu_chain_checks++;
+        if (stats) d->runtime_chain_seconds += now_sec() - stats_start;
         if (dspark_session_diagnostics_enabled()) {
             fprintf(stderr,
                     "ds4: DSpark GPU chain runtime schedule=device context=%u block=%u "
@@ -30029,6 +30091,18 @@ static bool dspark_session_gpu_runtime_env_enabled(void) {
     return v && v[0] && strcmp(v, "0") != 0;
 }
 
+static bool dspark_session_runtime_stats_enabled(void) {
+    static int initialized;
+    static bool enabled;
+    if (!initialized) {
+        const char *v = getenv("DS4_DSPARK_GPU_RUNTIME_STATS");
+        enabled = dspark_session_gpu_runtime_env_enabled() &&
+                  v && v[0] && strcmp(v, "0") != 0;
+        initialized = 1;
+    }
+    return enabled;
+}
+
 static bool dspark_session_diagnostics_enabled(void) {
     static int initialized;
     static bool enabled;
@@ -30571,13 +30645,22 @@ static bool ds4_session_eval_graph_target_token(
                                             1,
                                             &dspark_capture,
                                             origin);
-    if (!metal_graph_eval_token_raw_swa_capture(&s->graph,
-                                                 &e->model,
-                                                 &e->weights,
-                                                 (uint32_t)token,
-                                                 capture_pos,
-                                                 s->logits,
-                                                 capture_active ? &dspark_capture : NULL)) {
+    const bool stats = dspark_session_runtime_stats_enabled() &&
+                       origin && strcmp(origin, "multi") == 0;
+    const double stats_start = stats ? now_sec() : 0.0;
+    const bool graph_ok = metal_graph_eval_token_raw_swa_capture(
+        &s->graph,
+        &e->model,
+        &e->weights,
+        (uint32_t)token,
+        capture_pos,
+        s->logits,
+        capture_active ? &dspark_capture : NULL);
+    if (stats && s->dspark) {
+        s->dspark->runtime_target_evals++;
+        s->dspark->runtime_target_eval_seconds += now_sec() - stats_start;
+    }
+    if (!graph_ok) {
         if (errlen) snprintf(err, errlen, "%s decode failed", ds4_backend_name(e->backend));
         s->checkpoint_valid = false;
         dspark_session_target_context_reset(s->dspark);
@@ -30630,6 +30713,9 @@ static bool ds4_session_eval_graph_target_token_top(
                                             1,
                                             &dspark_capture,
                                             origin);
+    const bool stats = dspark_session_runtime_stats_enabled() &&
+                       origin && strcmp(origin, "multi") == 0;
+    const double stats_start = stats ? now_sec() : 0.0;
     bool ok;
     if (s->graph.ssd_streaming) {
         ok = metal_graph_eval_token_raw_swa_capture(&s->graph,
@@ -30639,6 +30725,10 @@ static bool ds4_session_eval_graph_target_token_top(
                                                      capture_pos,
                                                      s->logits,
                                                      capture_active ? &dspark_capture : NULL);
+        if (stats && s->dspark) {
+            s->dspark->runtime_target_evals++;
+            s->dspark->runtime_target_eval_seconds += now_sec() - stats_start;
+        }
         if (ok) {
             *top_id = sample_argmax(s->logits, DS4_N_VOCAB);
             if (host_logits_ready) *host_logits_ready = true;
@@ -30653,6 +30743,10 @@ static bool ds4_session_eval_graph_target_token_top(
             top_id,
             NULL,
             capture_active ? &dspark_capture : NULL);
+        if (stats && s->dspark) {
+            s->dspark->runtime_target_evals++;
+            s->dspark->runtime_target_eval_seconds += now_sec() - stats_start;
+        }
     }
     if (!ok) {
         if (errlen) snprintf(err, errlen, "%s top-only decode failed", ds4_backend_name(e->backend));
@@ -30742,6 +30836,10 @@ static int dspark_session_finish_multi_commit(
     dspark_session_observe_draft_rows(s, "multi");
     d = s->dspark;
     if (d) {
+        if (dspark_session_runtime_stats_enabled()) {
+            d->runtime_emitted_tokens += n_tokens;
+            if (n_tokens < 17u) d->runtime_accept_depth[n_tokens]++;
+        }
         if (n_tokens < 2u) {
             d->multi_commit_fallbacks++;
         } else {

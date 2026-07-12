@@ -21,6 +21,36 @@ TIMING_RE = re.compile(
     rb"ds4: prefill: ([0-9]+(?:\.[0-9]+)?) t/s, "
     rb"generation: ([0-9]+(?:\.[0-9]+)?) t/s"
 )
+RUNTIME_STATS_PREFIX = b"ds4: DSpark runtime stats "
+RUNTIME_STATS_INT_FIELDS = {
+    "proposals",
+    "selected",
+    "source_fallbacks",
+    "multi_attempts",
+    "emitted",
+    "target_evals",
+    "target_evals_avoided",
+    "depth1",
+    "depth2",
+    "depth3",
+    "depth4",
+    "depth5",
+}
+RUNTIME_STATS_FLOAT_FIELDS = {
+    "avg_depth",
+    "sidecar_ms",
+    "bridge_ms",
+    "stage0_ms",
+    "stage1_ms",
+    "stage2_ms",
+    "head_ms",
+    "chain_ms",
+    "target_eval_ms",
+}
+RUNTIME_STATS_FIELDS = tuple(
+    f"stats_{name}"
+    for name in sorted(RUNTIME_STATS_INT_FIELDS | RUNTIME_STATS_FLOAT_FIELDS)
+)
 INSTRUMENTATION_MARKERS = ("PROFILE", "TRACE", "DUMP", "TIMING")
 
 
@@ -117,6 +147,7 @@ def clean_dspark_env(mode):
     if mode == "runtime":
         env["DS4_DSPARK_GPU_RUNTIME"] = "1"
         env["DS4_DSPARK_MULTI_COMMIT"] = "1"
+        env["DS4_DSPARK_GPU_RUNTIME_STATS"] = "1"
     return env
 
 
@@ -149,6 +180,7 @@ def mode_command(args, mode):
 def command_text(args, mode):
     env = "" if mode == "baseline" else (
         "DS4_DSPARK_GPU_RUNTIME=1 DS4_DSPARK_MULTI_COMMIT=1 "
+        "DS4_DSPARK_GPU_RUNTIME_STATS=1 "
     )
     return env + shlex.join(mode_command(args, mode))
 
@@ -167,6 +199,42 @@ def parse_timing(stderr_data, stderr_path):
     if prefill <= 0.0 or generation <= 0.0:
         raise RuntimeError(f"non-positive throughput in {stderr_path}")
     return prefill, generation
+
+
+def parse_runtime_stats(stderr_data, stderr_path, mode):
+    records = [
+        line[len(RUNTIME_STATS_PREFIX):]
+        for line in stderr_data.splitlines()
+        if line.startswith(RUNTIME_STATS_PREFIX)
+    ]
+    if mode == "baseline":
+        if records:
+            raise RuntimeError(f"unexpected DSpark runtime stats in {stderr_path}")
+        return {field: None for field in RUNTIME_STATS_FIELDS}
+    if len(records) != 1:
+        raise RuntimeError(
+            f"expected one DSpark runtime stats record in {stderr_path}, found {len(records)}"
+        )
+
+    values = {}
+    try:
+        for item in records[0].decode("ascii").split():
+            key, value = item.split("=", 1)
+            if key in RUNTIME_STATS_INT_FIELDS:
+                values[f"stats_{key}"] = int(value)
+            elif key in RUNTIME_STATS_FLOAT_FIELDS:
+                values[f"stats_{key}"] = float(value)
+    except (UnicodeDecodeError, ValueError) as exc:
+        raise RuntimeError(f"invalid DSpark runtime stats in {stderr_path}: {exc}") from exc
+
+    missing = [field for field in RUNTIME_STATS_FIELDS if field not in values]
+    if missing:
+        raise RuntimeError(
+            f"incomplete DSpark runtime stats in {stderr_path}: missing {', '.join(missing)}"
+        )
+    if values["stats_emitted"] <= 0 or values["stats_target_evals"] <= 0:
+        raise RuntimeError(f"empty DSpark runtime stats in {stderr_path}")
+    return values
 
 
 def execute_run(args, root, run_dir, label, mode, reference_output):
@@ -197,7 +265,7 @@ def execute_run(args, root, run_dir, label, mode, reference_output):
             f"{mode} output differs from the baseline reference; see {stdout_path}"
         )
     prefill_tps, generation_tps = parse_timing(stderr_data, stderr_path)
-    return {
+    result = {
         "mode": mode,
         "prefill_tps": prefill_tps,
         "generation_tps": generation_tps,
@@ -207,6 +275,8 @@ def execute_run(args, root, run_dir, label, mode, reference_output):
         "stderr_file": stderr_path.name,
         "stdout_data": stdout_data,
     }
+    result.update(parse_runtime_stats(stderr_data, stderr_path, mode))
+    return result
 
 
 def cooldown(seconds):
@@ -277,14 +347,42 @@ def summarize(rows):
             pair_rows["runtime"]["generation_tps"]
             / pair_rows["baseline"]["generation_tps"]
         )
-    return {
+    runtime_rows = [row for row in rows if row["mode"] == "runtime"]
+
+    def runtime_median(field):
+        return statistics.median(row[field] for row in runtime_rows)
+
+    def runtime_ratio(numerator, denominator):
+        return statistics.median(
+            row[numerator] / row[denominator] for row in runtime_rows
+        )
+
+    summary = {
         "baseline_generation_tps_median": statistics.median(baseline),
         "runtime_generation_tps_median": statistics.median(runtime),
         "median_ratio_of_medians": statistics.median(runtime)
         / statistics.median(baseline),
         "paired_speedup_median": statistics.median(paired),
         "paired_speedup_values": paired,
+        "runtime_avg_depth_median": runtime_median("stats_avg_depth"),
+        "runtime_target_evals_avoided_median": runtime_median(
+            "stats_target_evals_avoided"
+        ),
+        "runtime_target_evals_per_emitted_median": runtime_ratio(
+            "stats_target_evals", "stats_emitted"
+        ),
+        "runtime_sidecar_ms_per_emitted_median": runtime_ratio(
+            "stats_sidecar_ms", "stats_emitted"
+        ),
+        "runtime_target_eval_ms_per_eval_median": runtime_ratio(
+            "stats_target_eval_ms", "stats_target_evals"
+        ),
     }
+    for component in ("bridge", "stage0", "stage1", "stage2", "head", "chain"):
+        summary[f"runtime_{component}_ms_per_emitted_median"] = runtime_ratio(
+            f"stats_{component}_ms", "stats_emitted"
+        )
+    return summary
 
 
 def write_results(run_dir, rows, summary, metadata):
@@ -300,7 +398,7 @@ def write_results(run_dir, rows, summary, metadata):
         "stdout_sha256",
         "stdout_file",
         "stderr_file",
-    )
+    ) + RUNTIME_STATS_FIELDS
     with csv_path.open("w", encoding="utf-8", newline="") as fp:
         writer = csv.DictWriter(fp, fieldnames=fields)
         writer.writeheader()
@@ -325,6 +423,21 @@ def write_results(run_dir, rows, summary, metadata):
         f"- Ratio of medians: {summary['median_ratio_of_medians']:.4f}x\n"
         f"- Median paired speedup: {summary['paired_speedup_median']:.4f}x\n"
         f"- Measured pairs: {len(summary['paired_speedup_values'])}\n"
+        f"- Runtime average accepted depth: {summary['runtime_avg_depth_median']:.3f}\n"
+        f"- Runtime target evals avoided: {summary['runtime_target_evals_avoided_median']:.1f}\n"
+        f"- Runtime target evals / emitted token: "
+        f"{summary['runtime_target_evals_per_emitted_median']:.4f}\n"
+        f"- Runtime sidecar time / emitted token: "
+        f"{summary['runtime_sidecar_ms_per_emitted_median']:.3f} ms\n"
+        f"- Runtime target time / target eval: "
+        f"{summary['runtime_target_eval_ms_per_eval_median']:.3f} ms\n"
+        f"- Sidecar breakdown / emitted token: "
+        f"bridge {summary['runtime_bridge_ms_per_emitted_median']:.3f} ms, "
+        f"stages {summary['runtime_stage0_ms_per_emitted_median']:.3f}/"
+        f"{summary['runtime_stage1_ms_per_emitted_median']:.3f}/"
+        f"{summary['runtime_stage2_ms_per_emitted_median']:.3f} ms, "
+        f"head {summary['runtime_head_ms_per_emitted_median']:.3f} ms, "
+        f"chain {summary['runtime_chain_ms_per_emitted_median']:.3f} ms\n"
     )
     (run_dir / "summary.md").write_text(report, encoding="utf-8")
     return csv_path, report
@@ -342,7 +455,7 @@ def main():
     print("  " + command_text(args, "baseline"))
     print("Runtime command:")
     print("  " + command_text(args, "runtime"))
-    print("DSpark and inherited instrumentation diagnostics are forcibly unset.")
+    print("DSpark diagnostics are unset; one end-of-session runtime stats record is enabled.")
     if args.dry_run:
         print("Dry run only; no model execution performed.")
         return 0

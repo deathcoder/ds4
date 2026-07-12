@@ -1871,6 +1871,59 @@ Downloaded sidecar byte size:
 11489939840 bytes
 ```
 
+Phase 0.39 runtime-efficiency instrumentation added on 2026-07-12:
+
+- `DS4_DSPARK_GPU_RUNTIME_STATS=1` enables aggregate counters and timers only
+  when the GPU runtime is active. It emits one machine-readable stderr record
+  when the session closes; no per-cycle stats logging was added.
+- Acceptance depth counts the number of tokens returned by each direct
+  multi-commit attempt. `target_evals_avoided` is defined as emitted tokens
+  minus actual target transformer evaluations, clamped at zero.
+- Target timing covers the Metal target decode call and stops before target-HC
+  capture completion. Bridge, stages 0/1/2, HC head, and proposal-chain timing
+  are separate non-overlapping sidecar buckets and include their GPU waits.
+- The comparison harness enables this record for runtime runs, requires exactly
+  one record, stores every raw field in `results.csv`, and reports median
+  acceptance depth, target evaluations per emitted token, and component time
+  normalized per emitted token.
+
+The first user-run comparison before this instrumentation measured 23.94 t/s
+baseline versus 21.51 t/s runtime, a 0.8985x ratio of medians across three
+pairs. Outputs were byte-identical and paired ratios were consistently near
+0.90x despite unavoidable background activity. Inspection of the verifier
+showed serial one-token target evaluations for accepted draft suffixes, so the
+next user-run comparison should establish whether any target transformer calls
+are actually avoided and quantify sidecar cost. Codex must not run that tok/s
+comparison. The user accepts that the available machine cannot be made fully
+idle; `--confirm-idle` now means best-effort readiness, with process metadata
+retained for interpretation.
+
+Phase 0.39 checks:
+
+```sh
+make ds4
+DS4_DSPARK_GPU_RUNTIME=1 DS4_DSPARK_MULTI_COMMIT=1 \
+  DS4_DSPARK_GPU_RUNTIME_STATS=1 ./ds4 \
+  --model gguf/DeepSeek-V4-Flash-IQ2XXS-w2Q2K-AProjQ8-SExpQ8-OutQ8-chat-v2-imatrix.gguf \
+  --dspark gguf/ds4flash-dspark.gguf \
+  --ctx 256 --nothink --temp 0 -n 1 -p Hello
+python3 -m py_compile speed-bench/run_dspark_comparison.py
+python3 speed-bench/run_dspark_comparison.py --dry-run --allow-dirty
+./tests/dspark_gpu_candidates_correctness.sh
+DS4_TEST_DSPARK_MODE=runtime ./tests/dspark_gpu_candidates_correctness.sh
+make ds4 ds4_test ds4-server ds4-eval ds4-agent ds4_cpu.o
+./ds4_test --dspark-validation --dspark-shape-binding
+git diff --check
+```
+
+The one-token correctness smoke emitted exactly one parsable stats record and
+reported one emitted token, one target evaluation, and zero target evaluations
+avoided. Its first-call component timings include initialization and are not a
+performance result. Synthetic stats parser/summary assertions passed. Both GPU
+candidate matrices passed, all baseline/runtime outputs were byte-identical,
+all requested binaries and focused DSpark tests passed, and the CPU object
+emitted the same eight known warnings. No tok/s benchmark was run by Codex.
+
 ## Resume Checklist
 
 If continuing from a compacted context, start here:
@@ -1919,10 +1972,10 @@ If continuing from a compacted context, start here:
 
 ## Open Questions
 
-- Phase 0.38 has a committed benchmark protocol but no measurements. The next
-  action belongs to the user: run the harness on an otherwise idle machine and
-  bring back the generated summary and CSV. Do not infer performance before
-  those artifacts exist.
+- Phase 0.39 needs a user-run comparison with runtime-efficiency stats. Ask the
+  user to make the machine as quiet as practical, run the harness, and bring
+  back `summary.md` and `results.csv`; interpret results alongside captured
+  process metadata rather than assuming a fully idle host.
 - The GPU stage path currently borrows target graph transient batch workspace
   and therefore requires `prefill_cap >= block_size` (five). Decide whether to
   allocate sidecar-specific batch scratch before production enablement or keep
@@ -1933,7 +1986,5 @@ If continuing from a compacted context, start here:
 - How should a future acceptance path preserve non-greedy sampling semantics?
   The diagnostic separates `greedy_eligible` from `stream_eligible`; committing
   multi-token prefixes is only straightforward for a greedy target stream.
-- Where should DSpark runtime stats live so they are useful for development but
-  cannot perturb benchmark measurements unless explicitly enabled?
 - Should future CLI UX stay as `--dspark`, or eventually become a broader
   `--draft dspark` once runtime is real?
