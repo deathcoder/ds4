@@ -32443,6 +32443,30 @@ int ds4_engine_open(ds4_engine **out, const ds4_engine_options *opt) {
             *out = NULL;
             return 1;
         }
+        if (e->backend == DS4_BACKEND_METAL &&
+            e->dspark_ready &&
+            dspark_session_gpu_runtime_env_enabled()) {
+            /* The runtime consumes nearly the whole sidecar. Mapping it once
+             * prevents each lazy bridge/stage/head setup from rebuilding and
+             * requesting residency for the accumulated Metal view set. */
+            (void)ds4_gpu_set_model_fd_for_map(e->dspark_model.fd,
+                                               e->dspark_model.map);
+            if (!ds4_gpu_set_model_map_range(
+                    e->dspark_model.map,
+                    e->dspark_model.size,
+                    e->dspark_model.tensor_data_pos,
+                    e->dspark_model.size - e->dspark_model.tensor_data_pos,
+                    e->dspark_model.max_tensor_bytes)) {
+                fprintf(stderr,
+                        "ds4: Metal failed to map DSpark model views; aborting startup. "
+                        "This is commonly caused by insufficient memory or accelerator VM budget.\n");
+                free(load_offsets);
+                free(load_sizes);
+                ds4_engine_close(e);
+                *out = NULL;
+                return 1;
+            }
+        }
         if (e->mtp_ready &&
             !ds4_gpu_set_model_map_range(e->mtp_model.map,
                                            e->mtp_model.size,

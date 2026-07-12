@@ -147,3 +147,8 @@ thermally stable as practical. Process and thermal snapshots are retained with
 raw child CSV/stderr, flattened samples, metadata, and cold/warm summaries under
 `speed-bench/local-runs/warm-prefill-<timestamp>/`. Useful overrides are
 `--pairs`, `--warmups`, `--runs`, `--cooldown`, and `--output-dir`.
+
+The summary also reports complete child-process wall time and non-sync overhead
+(child wall time minus all recorded sync durations). Use those fields when an
+optimization moves setup work across the sync timer: improved first-sync t/s is
+not a startup win unless child wall time or non-sync-adjusted total also falls.

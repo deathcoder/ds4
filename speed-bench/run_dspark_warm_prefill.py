@@ -333,6 +333,23 @@ def summarize(rows):
             ]
             by_mode[mode] = statistics.median(values)
         paired.append(by_mode["runtime"] / by_mode["baseline"])
+    children = []
+    for sequence in sorted({row["sequence"] for row in rows}):
+        child_rows = [row for row in rows if row["sequence"] == sequence]
+        children.append(
+            {
+                "mode": child_rows[0]["mode"],
+                "wall_seconds": child_rows[0]["child_wall_seconds"],
+                "non_sync_seconds": child_rows[0]["child_wall_seconds"]
+                - sum(row["prefill_seconds"] for row in child_rows),
+            }
+        )
+
+    def child_median(mode, field):
+        return statistics.median(
+            child[field] for child in children if child["mode"] == mode
+        )
+
     return {
         "baseline_warm_prefill_tps_median": statistics.median(baseline),
         "runtime_warm_prefill_tps_median": statistics.median(runtime),
@@ -344,6 +361,20 @@ def summarize(rows):
         "runtime_cold_prefill_tps_median": statistics.median(cold_runtime),
         "cold_ratio_of_medians": statistics.median(cold_runtime)
         / statistics.median(cold_baseline),
+        "baseline_child_wall_seconds_median": child_median(
+            "baseline", "wall_seconds"
+        ),
+        "runtime_child_wall_seconds_median": child_median(
+            "runtime", "wall_seconds"
+        ),
+        "child_wall_ratio_of_medians": child_median("runtime", "wall_seconds")
+        / child_median("baseline", "wall_seconds"),
+        "baseline_child_non_sync_seconds_median": child_median(
+            "baseline", "non_sync_seconds"
+        ),
+        "runtime_child_non_sync_seconds_median": child_median(
+            "runtime", "non_sync_seconds"
+        ),
     }
 
 
@@ -386,6 +417,16 @@ def write_results(run_dir, rows, summary, metadata, root):
         f"- Baseline cold median: {summary['baseline_cold_prefill_tps_median']:.2f} t/s\n"
         f"- Runtime cold median: {summary['runtime_cold_prefill_tps_median']:.2f} t/s\n"
         f"- Cold ratio of medians: {summary['cold_ratio_of_medians']:.4f}x\n"
+        f"- Baseline child wall median: "
+        f"{summary['baseline_child_wall_seconds_median']:.3f} s\n"
+        f"- Runtime child wall median: "
+        f"{summary['runtime_child_wall_seconds_median']:.3f} s\n"
+        f"- Child wall ratio of medians: "
+        f"{summary['child_wall_ratio_of_medians']:.4f}x\n"
+        f"- Baseline non-sync child overhead median: "
+        f"{summary['baseline_child_non_sync_seconds_median']:.3f} s\n"
+        f"- Runtime non-sync child overhead median: "
+        f"{summary['runtime_child_non_sync_seconds_median']:.3f} s\n"
         f"- Measured process pairs: {len(summary['warm_paired_speedup_values'])}\n"
     )
     (run_dir / "summary.md").write_text(report, encoding="utf-8")

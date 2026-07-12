@@ -2170,6 +2170,47 @@ python3 speed-bench/run_dspark_warm_prefill.py --dry-run --allow-dirty
 git diff --check
 ```
 
+Phase 0.45 consolidated Metal sidecar residency added on 2026-07-12:
+
+- The first warm-prefill run showed stable warmed fresh-session throughput of
+  50.47 t/s baseline versus 49.28 t/s runtime (0.9764x), but first-sync runtime
+  throughput was 2.88 t/s versus 47.59 t/s. All target-logit hashes matched.
+- Retained stderr identified the cause: lazy DSpark bridge, stage, head, logits,
+  and confidence setup repeatedly appended a sidecar range, destroyed the
+  current global Metal residency set, and requested residency for every
+  accumulated view. A runtime process ended with 17 overlapping shared buffers
+  after many sequential 0.8-1.0 second requests.
+- Active Metal DSpark runtime now maps the complete 10.7 GiB sidecar tensor-data
+  range once during engine setup, mirroring the established MTP sidecar setup.
+  DSpark remains opt-in, and CPU/CUDA behavior is unchanged. Lazy component map
+  checks remain in place but return immediately because the full range is
+  already covered.
+- Retained correctness logs show exactly two mapping/residency events per
+  process: the base model ends with two shared views, then the complete sidecar
+  adds one view and ends with three. No mapping event occurs during bridge,
+  stage, head, or chain execution.
+- The warm-prefill summary now includes full child wall time and child wall
+  minus all sync durations. These fields distinguish a real reduction in total
+  startup from work merely moved outside the prefill timer.
+- Codex did not run a tok/s benchmark. A user rerun is required before making a
+  performance claim about the consolidation.
+
+Phase 0.45 checks:
+
+```sh
+make ds4 ds4_test ds4-server ds4-eval ds4-agent ds4_cpu.o \
+  ds4-warm-prefill-bench
+./ds4_test --dspark-validation --dspark-shape-binding
+DS4_TEST_KEEP_LOGS=1 DS4_TEST_DSPARK_MODE=runtime \
+  ./tests/dspark_gpu_candidates_correctness.sh
+DS4_TEST_DSPARK_MODE=runtime \
+  DS4_TEST_DSPARK_FAST_VERIFY_RUNTIME=1 \
+  ./tests/dspark_gpu_candidates_correctness.sh
+python3 -m py_compile speed-bench/run_dspark_warm_prefill.py
+python3 speed-bench/run_dspark_warm_prefill.py --dry-run --allow-dirty
+git diff --check
+```
+
 ## Resume Checklist
 
 If continuing from a compacted context, start here:
