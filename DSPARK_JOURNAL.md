@@ -8,7 +8,7 @@ particular DSpark change exists.
 
 Branch: `codex/dspark-observability-0`
 
-Phase 0.37 remains deliberately diagnostic: `--dspark FILE` validates an official
+Phase 0.38 remains deliberately diagnostic: `--dspark FILE` validates an official
 DSpark drafter GGUF, binds every tensor needed by a future runtime path, checks
 the expected DeepSeek V4 Flash DSpark shapes, and exposes a diagnostic
 `--dspark-probe` bridge for target-layer hidden-state capture plus
@@ -334,6 +334,22 @@ buffers: five top-1 ids, ten top-2 ids, ten selected logit values, five
 confidence logits, and five confidence probabilities. These five tiny copies
 do not add GPU waits. Top-2 margins and confidence are needed by the existing
 gate, and candidate ids are needed by exact target verification.
+
+Phase 0.38 adds a reproducible user-run baseline/runtime benchmark protocol,
+without executing it. `speed-bench/run_dspark_comparison.py` requires explicit
+`--confirm-idle`, strips inherited `DS4_DSPARK_*` variables, keeps runtime
+diagnostics off, clears inherited profiling/tracing/timing/dump instrumentation,
+and alternates baseline/runtime order across measured pairs. Non-instrumentation
+`DS4_*` tuning variables are preserved and recorded.
+It uses a fixed greedy 64-token workload that remains within the current
+128-token sidecar window and rejects any baseline/runtime stdout drift.
+
+The runner preserves raw stdout/stderr, CSV measurements, commands, git and
+machine metadata, process and thermal snapshots, model sizes/mtimes, prompt
+hash, and median plus paired-speedup summaries under ignored
+`speed-bench/local-runs/`. One warmup per mode, three measured pairs, and a
+10-second cooldown are defaults. Only the user may run the actual measurement
+after confirming the machine is idle.
 
 The design choice was to keep this separate from legacy `--mtp`. We do not
 guess dynamically whether `--mtp` points at legacy MTP or DSpark. The first
@@ -1820,6 +1836,34 @@ target verification are CPU-controlled. No tok/s benchmark was run. The next
 measurement must be initiated manually by the user on an otherwise idle
 machine, with runtime diagnostics unset.
 
+Phase 0.38 benchmark-protocol checks run on 2026-07-12:
+
+```sh
+python3 -m py_compile speed-bench/run_dspark_comparison.py
+python3 speed-bench/run_dspark_comparison.py --dry-run --allow-dirty
+git diff --check
+```
+
+Only syntax compilation and dry-run validation were executed. Dry-run resolved
+the local binary, base GGUF, DSpark GGUF, and fixed prompt, then printed the
+exact baseline and runtime commands. It explicitly reported that runtime
+and inherited instrumentation diagnostics are forcibly unset and that no model
+execution occurred. Synthetic parser/summary assertions also passed. No tok/s
+benchmark was run.
+
+The actual user command after committing this phase is:
+
+```sh
+python3 speed-bench/run_dspark_comparison.py --confirm-idle
+```
+
+Defaults are one baseline and one runtime warmup, then three alternating
+measured pairs with 10-second cooldowns. Runtime sets only
+`DS4_DSPARK_GPU_RUNTIME=1` and `DS4_DSPARK_MULTI_COMMIT=1`. Every output must
+match the first baseline byte-for-byte. Results are written beneath
+`speed-bench/local-runs/<timestamp>/`; inspect `summary.md`, `results.csv`, and
+`metadata.json`, while retaining raw files for diagnosis.
+
 Downloaded sidecar byte size:
 
 ```text
@@ -1875,10 +1919,10 @@ If continuing from a compacted context, start here:
 
 ## Open Questions
 
-- Phase 0.37 is quiet by default and has one audited compact host boundary. The
-  next phase should prepare a reproducible user-run baseline/runtime benchmark
-  protocol with fixed prompts, warmup policy, exact commands, and result
-  capture. Codex must not execute the tok/s measurements.
+- Phase 0.38 has a committed benchmark protocol but no measurements. The next
+  action belongs to the user: run the harness on an otherwise idle machine and
+  bring back the generated summary and CSV. Do not infer performance before
+  those artifacts exist.
 - The GPU stage path currently borrows target graph transient batch workspace
   and therefore requires `prefill_cap >= block_size` (five). Decide whether to
   allocate sidecar-specific batch scratch before production enablement or keep
