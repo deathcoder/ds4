@@ -2265,6 +2265,47 @@ DS4_TEST_DSPARK_MODE=runtime ./tests/dspark_gpu_candidates_correctness.sh
 git diff --check
 ```
 
+Phase 0.47 issue-468 comparison harness added on 2026-07-12:
+
+- Imported the exact `code_8k`, `synthesis_8k`, and `grounded_8k` fixtures from
+  lobanov/ds4 branch `dspark-research/issue468` at commit
+  `8a4675edeae52c65729cadecb378670b83057067`. Their byte sizes and SHA-256
+  hashes are pinned in `speed-bench/issue468/provenance.json`; the runner
+  refuses changed corpus files.
+- Froze the published longer-prompt MTP table in `mtp_reference.json`. This
+  prevents a future upstream branch update from silently changing our
+  comparison baseline.
+- Added `run_dspark_issue468_comparison.py`. It matches the source workload at
+  `ctx=16384`, `n=128`, temperature zero, seed one, and intentionally does not
+  pass `--nothink`, matching the retained upstream harness.
+- The authoritative throughput pass clears inherited DSpark and instrumentation
+  variables, enables GPU runtime, multi-commit, and the fast verifier, and does
+  not enable runtime stats. It uses one warmup per mode per prompt and three
+  alternating measured pairs with a ten-second cooldown by default.
+- Output identity is enforced separately for each prompt across warmup,
+  baseline, runtime, and optional stats runs. A mismatch or unexpected stats
+  record aborts the benchmark while retaining raw files.
+- `--stats-pass` adds one instrumented runtime run per prompt only after all
+  throughput samples. Its diagnostics are written to separate CSV/JSON fields
+  and never enter throughput medians.
+- Reports include per-prompt and aggregate paired ratios plus percentage-point
+  comparisons to published MTP K=2 and K=5 deltas. Absolute t/s across machines
+  is explicitly non-comparable, and MTP versus DSpark is not presented as a
+  controlled head-to-head benchmark.
+- Real execution requires user confirmation with `--confirm-ready`. Codex did
+  not run the model or any tok/s benchmark in this phase.
+
+Phase 0.47 implementation-only checks:
+
+```sh
+python3 -m py_compile speed-bench/run_dspark_issue468_comparison.py
+python3 speed-bench/run_dspark_issue468_comparison.py --dry-run --allow-dirty
+# Inline synthetic assertions cover paired summary math, reference deltas,
+# complete stats parsing, and no-stats versus stats-pass environments.
+shasum -a 256 speed-bench/issue468/*_8k.txt
+git diff --check
+```
+
 ## Resume Checklist
 
 If continuing from a compacted context, start here:
@@ -2313,9 +2354,8 @@ If continuing from a compacted context, start here:
 
 ## Open Questions
 
-- Phase 0.46 removes the long-context blocker. The next performance work is an
-  exact-corpus reproduction of the retained issue-468 8k-prompt benchmark with
-  paired no-log throughput runs and separate instrumentation runs.
+- The exact-corpus issue-468 runner is ready. The next performance result must
+  be produced by the user with `--confirm-ready`; Codex must not execute it.
 - The GPU stage path currently borrows target graph transient batch workspace
   and therefore requires `prefill_cap >= block_size` (five). Decide whether to
   allocate sidecar-specific batch scratch before production enablement or keep

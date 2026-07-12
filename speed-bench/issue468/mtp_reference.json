@@ -1,0 +1,38 @@
+{
+  "description": "Published single-run legacy MTP long-prompt results frozen for relative comparison.",
+  "source": "https://github.com/lobanov/ds4/blob/8a4675edeae52c65729cadecb378670b83057067/issue468/summaries/mtp_verifier_bench_results.md",
+  "settings": {
+    "ctx": 16384,
+    "generated_tokens": 128,
+    "temperature": 0,
+    "seed": 1,
+    "instrumentation_enabled": true,
+    "runs_per_cell": 1
+  },
+  "results": {
+    "code_8k": {
+      "baseline_tps": 36.5,
+      "k2": {"generation_tps": 34.46, "delta_percent": -5.6},
+      "k3": {"generation_tps": 24.76, "delta_percent": -32.0},
+      "k4": {"generation_tps": 22.24, "delta_percent": -39.0},
+      "k5": {"generation_tps": 19.87, "delta_percent": -46.0},
+      "k6": {"generation_tps": 19.21, "delta_percent": -47.0}
+    },
+    "synthesis_8k": {
+      "baseline_tps": 37.5,
+      "k2": {"generation_tps": 35.25, "delta_percent": -6.1},
+      "k3": {"generation_tps": 27.35, "delta_percent": -27.0},
+      "k4": {"generation_tps": 23.14, "delta_percent": -38.0},
+      "k5": {"generation_tps": 21.27, "delta_percent": -43.0},
+      "k6": {"generation_tps": 20.18, "delta_percent": -46.0}
+    },
+    "grounded_8k": {
+      "baseline_tps": 33.8,
+      "k2": {"generation_tps": 33.71, "delta_percent": -0.3},
+      "k3": {"generation_tps": 28.45, "delta_percent": -16.0},
+      "k4": {"generation_tps": 24.04, "delta_percent": -29.0},
+      "k5": {"generation_tps": 22.35, "delta_percent": -34.0},
+      "k6": {"generation_tps": 20.14, "delta_percent": -40.0}
+    }
+  }
+}

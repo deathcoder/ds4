@@ -153,3 +153,43 @@ The summary also reports complete child-process wall time and non-sync overhead
 (child wall time minus all recorded sync durations). Use those fields when an
 optimization moves setup work across the sync timer: improved first-sync t/s is
 not a startup win unless child wall time or non-sync-adjusted total also falls.
+
+### Issue 468 long-prompt comparison
+
+Use the dedicated corpus runner to compare DSpark against baseline on the exact
+three 8k prompt fixtures from the published issue-468 legacy MTP study:
+
+```sh
+make ds4
+python3 speed-bench/run_dspark_issue468_comparison.py --dry-run
+python3 speed-bench/run_dspark_issue468_comparison.py --confirm-ready
+```
+
+The authoritative throughput pass matches the source workload at `ctx=16384`,
+128 generated tokens, temperature zero, and seed one. It deliberately omits
+`--nothink`, as did the source harness. It performs one warmup per mode and
+prompt, then three alternating measured pairs with a ten-second cooldown. The
+runtime uses the fast authoritative DSpark verifier by default; pass
+`--exact-verifier` only for a separate exact-verifier study.
+
+All inherited DSpark and timing/logging variables are cleared. Throughput runs
+enable only the GPU runtime, multi-commit, and fast verifier, so no runtime
+statistics enter their medians. Add `--stats-pass` to run one separate
+instrumented runtime sample per prompt after all throughput measurements:
+
+```sh
+python3 speed-bench/run_dspark_issue468_comparison.py \
+  --confirm-ready --stats-pass
+```
+
+Every runtime and repeated baseline output must be byte-identical to that
+prompt's first baseline output. Raw streams, paired rows, machine snapshots,
+metadata, summaries, and optional stats go under the ignored
+`speed-bench/local-runs/issue468-<timestamp>/` directory.
+
+The fixtures and SHA-256 provenance live in `speed-bench/issue468/`, along with
+a frozen copy of the published MTP result table. The generated report compares
+percentage changes from each implementation's own baseline. Absolute t/s is
+not comparable across the two machines, and legacy MTP and DSpark are different
+drafters; the cross-study columns are contextual relative improvements, not a
+controlled head-to-head measurement.

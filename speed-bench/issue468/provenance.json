@@ -1,0 +1,27 @@
+{
+  "source_repository": "https://github.com/lobanov/ds4.git",
+  "source_commit": "8a4675edeae52c65729cadecb378670b83057067",
+  "source_branch": "dspark-research/issue468",
+  "source_directory": "issue468/prompts/baseline_corpus",
+  "published_report": "issue468/summaries/mtp_verifier_bench_results.md",
+  "prompts": {
+    "code_8k": {
+      "file": "code_8k.txt",
+      "sha256": "777e55558870ac69a971a7c12e2d5263c93f380fa9ef8a5861eac2f3cc574c9a",
+      "upstream_actual_tokens": 8248,
+      "bytes": 14286
+    },
+    "synthesis_8k": {
+      "file": "synthesis_8k.txt",
+      "sha256": "e9ea2159f12811c7c7988830d1b723a01d08d881bf87977021da7fbe20d0e3bd",
+      "upstream_actual_tokens": 8253,
+      "bytes": 12586
+    },
+    "grounded_8k": {
+      "file": "grounded_8k.txt",
+      "sha256": "9dc82e86499a60ff5ecb36f6f2065f086e77d3bd79bdddd0506b552714f70b3a",
+      "upstream_actual_tokens": 8182,
+      "bytes": 19048
+    }
+  }
+}
