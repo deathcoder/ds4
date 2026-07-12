@@ -21,6 +21,7 @@ PROFILE_RE = re.compile(
     rb"^ds4: metal layer stage part=decode layer=([0-9]+) "
     rb"pos=([0-9]+) tokens=([0-9]+) ([a-z0-9_]+)=([0-9.]+) ms$"
 )
+LAYER_COUNT_RE = re.compile(r"^layers:\s+([0-9]+)\s*$", re.MULTILINE)
 ATTENTION_STAGES = {
     "attn_hc_pre", "attn_norm", "q_path", "kv_path",
     "compressor_indexer", "attention", "attn_output", "attn_hc_post",
@@ -74,8 +75,8 @@ def parse_layers(value):
         layers = tuple(int(item.strip()) for item in value.split(","))
     except ValueError as exc:
         raise argparse.ArgumentTypeError("layers must be comma-separated integers") from exc
-    if not layers or any(layer < 0 or layer >= 61 for layer in layers):
-        raise argparse.ArgumentTypeError("layers must be in the range 0..60")
+    if not layers or any(layer < 0 for layer in layers):
+        raise argparse.ArgumentTypeError("layers must be non-negative")
     if len(set(layers)) != len(layers):
         raise argparse.ArgumentTypeError("layers must not contain duplicates")
     return layers
@@ -100,9 +101,10 @@ def parse_args():
     )
     parser.add_argument("--ctx", type=int, default=16384)
     parser.add_argument("--tokens", type=int, default=32)
-    parser.add_argument("--layers", type=parse_layers, default=parse_layers("0,30,60"))
+    parser.add_argument("--layers", type=parse_layers)
     parser.add_argument("--cooldown", type=float, default=5.0)
     parser.add_argument("--output-dir", type=Path)
+    parser.add_argument("--resume-dir", type=Path)
     parser.add_argument("--confirm-ready", action="store_true")
     parser.add_argument("--allow-dirty", action="store_true")
     parser.add_argument("--dry-run", action="store_true")
@@ -111,6 +113,8 @@ def parse_args():
         parser.error("ctx and tokens must be positive")
     if args.cooldown < 0:
         parser.error("cooldown cannot be negative")
+    if args.output_dir and args.resume_dir:
+        parser.error("--output-dir and --resume-dir are mutually exclusive")
     if not args.dry_run and not args.confirm_ready:
         parser.error("refusing to run without --confirm-ready")
     return args, root
@@ -152,6 +156,24 @@ def check_inputs(args, root):
         raise SystemExit(
             "tracked worktree changes detected; commit them or pass --allow-dirty:\n" + dirty
         )
+
+
+def inspect_layer_count(args, root):
+    completed = subprocess.run(
+        [str(args.binary), "--inspect", "--model", str(args.model)],
+        cwd=root, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False,
+        text=True,
+    )
+    if completed.returncode != 0:
+        detail = completed.stderr.strip() or completed.stdout.strip()
+        raise RuntimeError(f"model inspection failed: {detail}")
+    match = LAYER_COUNT_RE.search(completed.stdout)
+    if not match:
+        raise RuntimeError("model inspection did not report a layer count")
+    count = int(match.group(1))
+    if count <= 0:
+        raise RuntimeError(f"invalid inspected layer count: {count}")
+    return count
 
 
 def parse_profile(data, expected_layer, path):
@@ -202,6 +224,44 @@ def execute(args, root, run_dir, name, layer, reference):
         "wall_seconds": wall_seconds, "stdout_sha256": sha256(stdout_data),
         "stdout_file": stdout_path.name, "stderr_file": stderr_path.name,
     }
+
+
+def load_existing(run_dir, layer, reference):
+    name = f"layer-{layer:02d}"
+    stdout_path = run_dir / f"{name}.stdout"
+    stderr_path = run_dir / f"{name}.stderr"
+    if not stdout_path.is_file() or not stderr_path.is_file():
+        return None
+    stdout_data = stdout_path.read_bytes()
+    if stdout_data != reference:
+        raise RuntimeError(f"retained {name} output differs from exact reference")
+    records = parse_profile(stderr_path.read_bytes(), layer, stderr_path)
+    run = {
+        "name": name, "layer": layer, "wall_seconds": "",
+        "stdout_sha256": sha256(stdout_data), "stdout_file": stdout_path.name,
+        "stderr_file": stderr_path.name,
+    }
+    return records, run
+
+
+def validate_resume(run_dir, args):
+    metadata_path = run_dir / "metadata.start.json"
+    if not metadata_path.is_file():
+        raise RuntimeError(f"resume directory has no start metadata: {metadata_path}")
+    try:
+        metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise RuntimeError(f"cannot read resume metadata: {exc}") from exc
+    config = metadata.get("config", {})
+    if config.get("ctx") != args.ctx or config.get("tokens") != args.tokens:
+        raise RuntimeError("resume ctx/tokens do not match the retained run")
+    prompt = metadata.get("prompt", {})
+    if prompt.get("sha256") != sha256(args.prompt_file.read_bytes()):
+        raise RuntimeError("resume prompt does not match the retained run")
+    commands = metadata.get("commands", {})
+    if commands.get("reference") != command_text(args):
+        raise RuntimeError("resume reference command does not match the retained run")
+    return metadata
 
 
 def summarize(records):
@@ -277,7 +337,18 @@ def main():
     args.model = args.model.resolve()
     args.dspark_model = args.dspark_model.resolve()
     args.prompt_file = args.prompt_file.resolve()
+    if args.resume_dir:
+        args.resume_dir = args.resume_dir.resolve()
     check_inputs(args, root)
+    n_layers = inspect_layer_count(args, root)
+    if args.layers is None:
+        args.layers = tuple(dict.fromkeys((0, (n_layers - 1) // 2, n_layers - 1)))
+    invalid = [layer for layer in args.layers if layer >= n_layers]
+    if invalid:
+        raise RuntimeError(
+            f"profile layers outside model range 0..{n_layers - 1}: "
+            + ", ".join(str(layer) for layer in invalid)
+        )
     print(f"reference: {command_text(args)}")
     for layer in args.layers:
         print(f"layer {layer}: {command_text(args, layer)}")
@@ -287,14 +358,21 @@ def main():
         return 0
 
     stamp = dt.datetime.now().astimezone().strftime("%Y%m%d-%H%M%S")
-    run_dir = (args.output_dir or root / "speed-bench/local-runs" / f"layer-profile-{stamp}").resolve()
-    run_dir.mkdir(parents=True, exist_ok=False)
+    if args.resume_dir:
+        run_dir = args.resume_dir
+        if not run_dir.is_dir():
+            raise RuntimeError(f"resume directory does not exist: {run_dir}")
+        retained_metadata = validate_resume(run_dir, args)
+    else:
+        run_dir = (args.output_dir or root / "speed-bench/local-runs" / f"layer-profile-{stamp}").resolve()
+        run_dir.mkdir(parents=True, exist_ok=False)
     metadata = {
         "created_at": dt.datetime.now().astimezone().isoformat(),
         "git_commit": run_capture(["git", "rev-parse", "HEAD"], root),
         "platform": platform.platform(),
         "config": {"ctx": args.ctx, "tokens": args.tokens,
                    "layers": args.layers, "cooldown": args.cooldown,
+                   "model_layer_count": n_layers,
                    "temperature": 0, "seed": 1, "synchronized_profile": True},
         "commands": {"reference": command_text(args)} | {
             f"layer_{layer}": command_text(args, layer) for layer in args.layers
@@ -303,23 +381,43 @@ def main():
                    "sha256": sha256(args.prompt_file.read_bytes())},
         "cleared_environment_keys": cleared_env_keys(os.environ),
     }
-    (run_dir / "metadata.start.json").write_text(
-        json.dumps(metadata, indent=2) + "\n", encoding="utf-8"
-    )
-
-    reference, _, reference_run = execute(
-        args, root, run_dir, "reference", None, None
-    )
-    cooldown(args.cooldown)
     records = []
-    runs = [reference_run]
-    for layer in args.layers:
-        _, layer_records, run = execute(
-            args, root, run_dir, f"layer-{layer:02d}", layer, reference
+    runs = []
+    if args.resume_dir:
+        reference_path = run_dir / "reference.stdout"
+        if not reference_path.is_file():
+            raise RuntimeError(f"resume directory has no reference output: {reference_path}")
+        reference = reference_path.read_bytes()
+        if not reference:
+            raise RuntimeError(f"resume reference output is empty: {reference_path}")
+        metadata["resumed_at"] = dt.datetime.now().astimezone().isoformat()
+        metadata["original_created_at"] = retained_metadata.get("created_at")
+        runs.append({
+            "name": "reference", "layer": "", "wall_seconds": "",
+            "stdout_sha256": sha256(reference), "stdout_file": "reference.stdout",
+            "stderr_file": "reference.stderr",
+        })
+    else:
+        (run_dir / "metadata.start.json").write_text(
+            json.dumps(metadata, indent=2) + "\n", encoding="utf-8"
         )
+        reference, _, reference_run = execute(
+            args, root, run_dir, "reference", None, None
+        )
+        runs.append(reference_run)
+        cooldown(args.cooldown)
+    for layer in args.layers:
+        existing = load_existing(run_dir, layer, reference)
+        if existing is not None:
+            layer_records, run = existing
+            print(f"[layer-{layer:02d}] reusing retained matching profile", flush=True)
+        else:
+            _, layer_records, run = execute(
+                args, root, run_dir, f"layer-{layer:02d}", layer, reference
+            )
+            cooldown(args.cooldown)
         records.extend(layer_records)
         runs.append(run)
-        cooldown(args.cooldown)
 
     with (run_dir / "stages.csv").open("w", encoding="utf-8", newline="") as fp:
         writer = csv.DictWriter(fp, fieldnames=("layer", "pos", "tokens", "stage", "ms"))

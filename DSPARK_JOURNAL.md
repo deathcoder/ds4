@@ -2562,10 +2562,10 @@ Phase 0.52 exact target-layer profiling prepared on 2026-07-13:
   proving hidden-state parity, so first identify whether FFN is actually the
   dominant half and which projection deserves the refactor.
 - Added `speed-bench/run_dspark_exact_layer_profile.py`. It runs an unprofiled
-  exact reference, then profiles exact decode stages at layers 0, 30, and 60 by
-  default. It clears inherited DSpark/instrumentation flags, never enables the
-  fast verifier, and requires every profiled stdout stream to match the exact
-  reference byte-for-byte.
+  exact reference, then profiles the first, middle, and last exact decode layer
+  by default. It clears inherited DSpark/instrumentation flags, never enables
+  the fast verifier, and requires every profiled stdout stream to match the
+  exact reference byte-for-byte.
 - The harness parses the existing `DS4_METAL_DECODE_STAGE_PROFILE` records into
   attention/FFN shares and the five largest stages per representative layer.
   That profiler synchronizes at every stage boundary and disables some overlap,
@@ -2578,6 +2578,26 @@ Phase 0.52 exact target-layer profiling prepared on 2026-07-13:
   or synchronization work.
 - Real execution requires `--confirm-ready`; Codex did not run the profile.
 
+Phase 0.52 harness correction on 2026-07-13:
+
+- The first user run completed the reference and Flash layers 0 and 30, then
+  failed cleanly because the original default also requested layer 60. That was
+  a harness bug: DeepSeek V4 Flash has 43 layers (`0..42`), while layer 60 is
+  valid only for the 61-layer Pro shape. All three completed stdout files had
+  the same hash and their raw logs remain usable.
+- Replaced the hard-coded layer range with `ds4 --inspect` discovery before any
+  model process starts. Defaults are now first/middle/last (`0,21,42` for
+  Flash), and explicit out-of-range layers are rejected immediately.
+- Added `--resume-dir`. It validates the retained reference command, prompt
+  hash, context, and token count, reuses matching reference/profile files, and
+  runs only missing requested layers. The failed run can therefore be completed
+  with explicit layers `0,30,42` while preserving its useful layer 0/30 work.
+- Correction validation discovered `layers: 43`, derived defaults `0,21,42`,
+  rejected explicit layer 60 before model execution, and accepted the retained
+  reference plus 690 records each from layers 0 and 30. Layer 42 was correctly
+  identified as the only missing requested profile. No timed recovery run was
+  performed by Codex.
+
 Phase 0.52 checks:
 
 ```sh
@@ -2586,7 +2606,7 @@ make ds4 ds4_test ds4-server ds4-eval ds4-agent ds4_cpu.o \
 python3 -m py_compile speed-bench/run_dspark_exact_layer_profile.py
 python3 speed-bench/run_dspark_exact_layer_profile.py \
   --dry-run --allow-dirty
-# Synthetic records covered every known decode stage, layers 0/30/60, summary
+# Synthetic records covered every known decode stage, layers 0/21/42, summary
 # grouping, report generation, and rejection without --confirm-ready.
 DS4_METAL_DECODE_STAGE_PROFILE=1 \
 DS4_METAL_DECODE_STAGE_PROFILE_LAYER=0 \

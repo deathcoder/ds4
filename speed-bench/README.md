@@ -244,9 +244,12 @@ python3 speed-bench/run_dspark_exact_layer_profile.py --dry-run
 python3 speed-bench/run_dspark_exact_layer_profile.py --confirm-ready
 ```
 
-The default profile runs one uninstrumented exact reference followed by exact
-DSpark runs profiling layers 0, 30, and 60 over 32 generated tokens. Every
-profiled output must match the reference byte-for-byte. The existing decoder
+The default profile inspects the model layer count, then runs one uninstrumented
+exact reference followed by exact DSpark runs profiling the first, middle, and
+last layer over 32 generated tokens. For V4 Flash those layers are 0, 21, and
+42. Explicit `--layers` values are rejected before execution when they fall
+outside the inspected model range. Every profiled output must match the
+reference byte-for-byte. The existing decoder
 profiler ends and waits for a Metal command buffer at each stage boundary, so
 its stage values include synchronization overhead and change normal scheduling.
 The exact verifier inserts a profiler-only command-buffer fence before the
@@ -255,3 +258,6 @@ Use the attention/FFN shares and largest-stage ordering only to select an
 implementation target; they are not additive production timings, throughput
 results, or a speedup claim. Raw streams, per-stage rows, metadata, and the
 summary are written under ignored `speed-bench/local-runs/layer-profile-*`.
+An interrupted run can reuse matching reference and layer files with
+`--resume-dir`; the harness validates the retained command, prompt, context,
+and token count before skipping completed layers.
