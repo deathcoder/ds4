@@ -872,6 +872,14 @@ int ds4_gpu_router_select_batch_tensor(
         float                   expert_weight_scale,
         uint32_t                n_tokens);
 
+#ifdef __APPLE__
+int ds4_gpu_dsv4_router_weights_decode_rows_tensor(
+        ds4_gpu_tensor       *weights,
+        const ds4_gpu_tensor *probs,
+        const ds4_gpu_tensor *selected,
+        uint32_t                n_tokens);
+#endif
+
 int ds4_gpu_routed_moe_set_selected_override(const int32_t *selected, uint32_t n_selected);
 
 int ds4_gpu_routed_moe_one_tensor(

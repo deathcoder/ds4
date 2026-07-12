@@ -22859,6 +22859,48 @@ int ds4_gpu_router_select_batch_tensor(
     return 1;
 }
 
+int ds4_gpu_dsv4_router_weights_decode_rows_tensor(
+        ds4_gpu_tensor       *weights,
+        const ds4_gpu_tensor *probs,
+        const ds4_gpu_tensor *selected,
+        uint32_t                n_tokens) {
+    if (!g_initialized && !ds4_gpu_init()) return 0;
+    if (!weights || !probs || !selected || n_tokens == 0) return 0;
+
+    @autoreleasepool {
+        id<MTLBuffer> weightsbuf = ds4_gpu_tensor_buffer(weights);
+        id<MTLBuffer> probsbuf = ds4_gpu_tensor_buffer(probs);
+        id<MTLBuffer> selectedbuf = ds4_gpu_tensor_buffer(selected);
+        if (!weightsbuf || !probsbuf || !selectedbuf ||
+            ds4_gpu_tensor_bytes(weights) < (uint64_t)n_tokens * 6u * sizeof(float) ||
+            ds4_gpu_tensor_bytes(probs) < (uint64_t)n_tokens * 256u * sizeof(float) ||
+            ds4_gpu_tensor_bytes(selected) < (uint64_t)n_tokens * 6u * sizeof(int32_t)) {
+            fprintf(stderr, "ds4: Metal decode-row router weights received undersized buffers\n");
+            return 0;
+        }
+
+        const bool had_batch = g_batch_cb != nil;
+        if (!had_batch && ds4_gpu_begin_commands() == 0) return 0;
+        int owned = 0;
+        id<MTLCommandBuffer> cb = ds4_gpu_command_buffer(&owned);
+        id<MTLComputePipelineState> pipeline = ds4_gpu_get_pipeline(
+            "kernel_dsv4_router_weights_decode_rows");
+        if (!cb || !pipeline) return 0;
+
+        id<MTLComputeCommandEncoder> enc = ds4_gpu_compute_encoder(cb);
+        [enc setComputePipelineState:pipeline];
+        [enc setBuffer:probsbuf offset:ds4_gpu_tensor_offset(probs) atIndex:0];
+        [enc setBuffer:selectedbuf offset:ds4_gpu_tensor_offset(selected) atIndex:1];
+        [enc setBuffer:weightsbuf offset:ds4_gpu_tensor_offset(weights) atIndex:2];
+        [enc dispatchThreads:MTLSizeMake(6, n_tokens, 1)
+        threadsPerThreadgroup:MTLSizeMake(6, 1, 1)];
+        ds4_gpu_end_compute_encoder(cb, enc);
+
+        if (!had_batch && ds4_gpu_end_commands() == 0) return 0;
+    }
+    return 1;
+}
+
 int ds4_gpu_routed_moe_set_selected_override(const int32_t *selected, uint32_t n_selected) {
     if (n_selected > 6 || (!selected && n_selected != 0)) return 0;
     for (uint32_t i = 0; i < n_selected; i++) {

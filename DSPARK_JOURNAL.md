@@ -2782,6 +2782,57 @@ done
 git diff --check
 ```
 
+Phase 0.56 exact Metal router rows added on 2026-07-13:
+
+- Extended the FFN shadow observation through router logits and router
+  probabilities. Before changing execution, all six layer-42 observations
+  localized the first divergence to the F16 router projection: logits differed
+  by roughly `1.9e-6` to `2.38e-6`, while expert IDs still matched.
+- Reused the Apple/Metal-only exact F16 decode-row matvec for the router
+  projection. This made router logits and probabilities bit-exact and moved the
+  first difference to selected router-weight normalization.
+- Added a separate `kernel_dsv4_router_weights_decode_rows` across `grid.y`
+  rows. Each row gathers six probabilities, sums them left-to-right, clamps the
+  denominator, and applies the `1.5` scale exactly as one-token decode does.
+  The observer's exact mode overwrites the generic batch weights with this
+  row-wise result; normal prefill and runtime batch callers remain unchanged.
+  An initial attempt generalized `kernel_dsv4_router_weights_one` itself, but a
+  reproducible resumed-chat soak mismatch showed that even its signature/grid
+  change could disturb serial behavior. The original one-token kernel was
+  restored byte-for-byte, and the distinct row kernel passed both the resumed
+  fast-to-exact transition and the layer-42 correctness matrix.
+- Correctness matrices at layers 0, 30, and 42 made input normalization, HC
+  projection/recombination, FFN norm, router logits/probabilities, all selected
+  IDs, and all selected weights bit-exact. The first remaining divergence is
+  therefore `experts_or_hc_post`. Final HC max drift ranged from about
+  `2.98e-7` at layer 0 to `2.29e-5` at layer 42 in the short matrix.
+- A correctness-only layer-42 `code_8k` replay kept all observed router stages
+  bit-exact and moved the first difference to `experts_or_hc_post`; timings were
+  ignored. Its generated text differed from the older Phase 0.55 reference,
+  but a same-binary run with the observer disabled was byte-identical to the
+  observer run. The observer does not alter authoritative output; the retained
+  older file predates another accepted output change and is no longer a valid
+  cross-commit oracle.
+- This remains Metal-only observer work. No CUDA or ROCm implementation was
+  added, and no production batch caller enables either exact-row option.
+
+Phase 0.56 checks:
+
+```sh
+for layer in 0 30 42; do
+  DS4_DSPARK_EXACT_FFN_BATCH_OBSERVER_LAYER=$layer \
+  DS4_TEST_DSPARK_MODE=runtime \
+    ./tests/dspark_gpu_candidates_correctness.sh
+done
+# A separate code_8k layer-42 observer replay used -n 32. Its output was
+# byte-identical to a current same-binary no-observer control; timings ignored.
+make ds4 ds4_test ds4-server ds4-eval ds4-agent ds4_cpu.o \
+  ds4-warm-prefill-bench
+./tests/dspark_fast_verifier_soak.sh
+./ds4_test --dspark-validation --dspark-shape-binding
+git diff --check
+```
+
 Phase 0.52 checks:
 
 ```sh
@@ -2850,9 +2901,9 @@ If continuing from a compacted context, start here:
 
 ## Open Questions
 
-- Localize router-weight drift by comparing router logits/probabilities or by
-  applying the proven exact-row F16 matvec to the router projection in the
-  shadow path. Do not repeat the full issue-468 baseline suite unless another
+- Split the remaining `experts_or_hc_post` boundary by capturing shared-expert
+  output, routed-expert output, their combined FFN output, and HC post-processing
+  separately. Do not repeat the full issue-468 baseline suite unless another
   exact verifier stage earns a controlled comparison. Fast authority still
   does not preserve long-running target state; broader throughput reporting
   must wait for a numerically exact compute-batched verifier with byte-identical

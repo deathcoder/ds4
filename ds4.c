@@ -19376,7 +19376,8 @@ static bool metal_graph_encode_layer_ffn_batch(
         uint32_t                il,
         uint32_t                pos0,
         uint32_t                n_tokens,
-        bool                    exact_hc_projection) {
+        bool                    exact_hc_projection,
+        bool                    exact_router_projection) {
     if (n_tokens == 0 || n_tokens > g->prefill_cap) return false;
 
     const uint64_t hc_dim = (uint64_t)DS4_N_HC * DS4_N_EMBD;
@@ -19505,14 +19506,31 @@ static bool metal_graph_encode_layer_ffn_batch(
                                       (uint64_t)n_tokens * DS4_N_EMBD, il, pos0);
     }
     DS4_METAL_PROFILE_FFN_STAGE("norm");
-    if (ok) ok = ds4_gpu_matmul_f16_tensor(g->batch_router_logits,
-                                             model->map,
-                                             model->size,
-                                             layer->ffn_gate_inp->abs_offset,
-                                             DS4_N_EMBD,
-                                             DS4_N_EXPERT,
-                                             g->batch_ffn_norm,
-                                             n_tokens) != 0;
+    if (ok && exact_router_projection) {
+#ifdef __APPLE__
+        ok = layer->ffn_gate_inp->type == DS4_TENSOR_F16 &&
+             ds4_gpu_matmul_f16_decode_rows_tensor(
+                 g->batch_router_logits,
+                 model->map,
+                 model->size,
+                 layer->ffn_gate_inp->abs_offset,
+                 DS4_N_EMBD,
+                 DS4_N_EXPERT,
+                 g->batch_ffn_norm,
+                 n_tokens) != 0;
+#else
+        ok = false;
+#endif
+    } else if (ok) {
+        ok = ds4_gpu_matmul_f16_tensor(g->batch_router_logits,
+                                       model->map,
+                                       model->size,
+                                       layer->ffn_gate_inp->abs_offset,
+                                       DS4_N_EMBD,
+                                       DS4_N_EXPERT,
+                                       g->batch_ffn_norm,
+                                       n_tokens) != 0;
+    }
 
     if (ok) ok = ds4_gpu_router_select_batch_tensor(g->batch_router_selected,
                                                       g->batch_router_weights,
@@ -19532,6 +19550,17 @@ static bool metal_graph_encode_layer_ffn_batch(
                                                       DS4_N_EXPERT_USED,
                                                       DS4_EXPERT_WEIGHT_SCALE,
                                                       n_tokens) != 0;
+    if (ok && exact_router_projection) {
+#ifdef __APPLE__
+        ok = ds4_gpu_dsv4_router_weights_decode_rows_tensor(
+                 g->batch_router_weights,
+                 g->batch_router_probs,
+                 g->batch_router_selected,
+                 n_tokens) != 0;
+#else
+        ok = false;
+#endif
+    }
     if (ok) {
         metal_graph_debug_dump_tensor("ffn_moe_logits", g->batch_router_logits,
                                       (uint64_t)n_tokens * DS4_N_EXPERT, il, pos0);
@@ -19881,7 +19910,7 @@ static bool metal_graph_encode_layer_batch(
     }
     if (ok) {
         ok = metal_graph_encode_layer_ffn_batch(
-            g, model, layer, il, pos0, n_tokens, false);
+            g, model, layer, il, pos0, n_tokens, false, false);
         if (!ok) {
             fprintf(stderr, "ds4: gpu layer %u ffn batch encode failed\n", il);
         }
@@ -21338,6 +21367,7 @@ static bool metal_graph_prefill_layer_major_capture(
                                                             il,
                                                             start,
                                                             n_tokens,
+                                                            false,
                                                             false);
             if (!ok) {
                 fprintf(stderr, "ds4: gpu layer-major prefill layer %u ffn encode failed\n", il);
@@ -22368,6 +22398,10 @@ typedef struct {
     float *exact_cur;
     float *batch_norm;
     float *exact_norm;
+    float *batch_logits;
+    float *exact_logits;
+    float *batch_probs;
+    float *exact_probs;
     int   *batch_selected;
     int   *exact_selected;
     float *batch_weights;
@@ -22383,6 +22417,7 @@ static void dspark_exact_ffn_batch_observation_init(
     const size_t mix_hc = 2u * DS4_N_HC + (size_t)DS4_N_HC * DS4_N_HC;
     const size_t mix_values = (size_t)n_tokens * mix_hc;
     const size_t embd_values = (size_t)n_tokens * DS4_N_EMBD;
+    const size_t router_values = (size_t)n_tokens * DS4_N_EXPERT;
     const size_t route_values = (size_t)n_tokens * DS4_N_EXPERT_USED;
     observation->batch_hc = xmalloc(hc_values * sizeof(float));
     observation->exact_hc = xmalloc(hc_values * sizeof(float));
@@ -22394,6 +22429,10 @@ static void dspark_exact_ffn_batch_observation_init(
     observation->exact_cur = xmalloc(embd_values * sizeof(float));
     observation->batch_norm = xmalloc(embd_values * sizeof(float));
     observation->exact_norm = xmalloc(embd_values * sizeof(float));
+    observation->batch_logits = xmalloc(router_values * sizeof(float));
+    observation->exact_logits = xmalloc(router_values * sizeof(float));
+    observation->batch_probs = xmalloc(router_values * sizeof(float));
+    observation->exact_probs = xmalloc(router_values * sizeof(float));
     observation->batch_selected = xmalloc(route_values * sizeof(int));
     observation->exact_selected = xmalloc(route_values * sizeof(int));
     observation->batch_weights = xmalloc(route_values * sizeof(float));
@@ -22407,6 +22446,10 @@ static void dspark_exact_ffn_batch_observation_free(
     free(observation->batch_weights);
     free(observation->exact_selected);
     free(observation->batch_selected);
+    free(observation->exact_probs);
+    free(observation->batch_probs);
+    free(observation->exact_logits);
+    free(observation->batch_logits);
     free(observation->exact_norm);
     free(observation->batch_norm);
     free(observation->exact_cur);
@@ -22429,6 +22472,7 @@ static void dspark_exact_ffn_batch_observer_report(
     const uint64_t mix_hc = 2u * DS4_N_HC + (uint64_t)DS4_N_HC * DS4_N_HC;
     const uint64_t mix_values = (uint64_t)n_tokens * mix_hc;
     const uint64_t embd_values = (uint64_t)n_tokens * DS4_N_EMBD;
+    const uint64_t router_values = (uint64_t)n_tokens * DS4_N_EXPERT;
     const uint64_t route_values = (uint64_t)n_tokens * DS4_N_EXPERT_USED;
     uint32_t exact_rows = 0;
     for (uint32_t row = 0; row < n_tokens; row++) {
@@ -22452,6 +22496,14 @@ static void dspark_exact_ffn_batch_observer_report(
         observation->batch_norm, observation->exact_norm, embd_values);
     const float norm_rms = rms_abs_diff(
         observation->batch_norm, observation->exact_norm, embd_values);
+    const float logits_max = max_abs_diff(
+        observation->batch_logits, observation->exact_logits, router_values);
+    const float logits_rms = rms_abs_diff(
+        observation->batch_logits, observation->exact_logits, router_values);
+    const float probs_max = max_abs_diff(
+        observation->batch_probs, observation->exact_probs, router_values);
+    const float probs_rms = rms_abs_diff(
+        observation->batch_probs, observation->exact_probs, router_values);
     const float input_norm_max = max_abs_diff(
         observation->batch_flat, observation->exact_flat, hc_values);
     const float input_norm_rms = rms_abs_diff(
@@ -22473,6 +22525,8 @@ static void dspark_exact_ffn_batch_observer_report(
     else if (mix_max != 0.0f) first = "hc_projection";
     else if (cur_max != 0.0f) first = "hc_recombine";
     else if (norm_max != 0.0f) first = "norm";
+    else if (logits_max != 0.0f) first = "router_projection";
+    else if (probs_max != 0.0f) first = "router_probs";
     else if (selected_matches != route_values) first = "router_ids";
     else if (weight_max != 0.0f) first = "router_weights";
     else if (hc_max != 0.0f) first = "experts_or_hc_post";
@@ -22480,7 +22534,8 @@ static void dspark_exact_ffn_batch_observer_report(
             "ds4: DSpark exact FFN batch observer layer=%u proposed=%u "
             "first=%s input_norm_max=%g input_norm_rms=%g "
             "hc_mix_max=%g hc_mix_rms=%g hc_pre_max=%g hc_pre_rms=%g "
-            "norm_max=%g norm_rms=%g "
+            "norm_max=%g norm_rms=%g router_logits_max=%g router_logits_rms=%g "
+            "router_probs_max=%g router_probs_rms=%g "
             "router_ids=%llu/%llu router_weight_max=%g router_weight_rms=%g "
             "exact_rows=%u/%u hc_max=%g hc_rms=%g result=%s\n",
             il,
@@ -22494,6 +22549,10 @@ static void dspark_exact_ffn_batch_observer_report(
             cur_rms,
             norm_max,
             norm_rms,
+            logits_max,
+            logits_rms,
+            probs_max,
+            probs_rms,
             (unsigned long long)selected_matches,
             (unsigned long long)route_values,
             weight_max,
@@ -22653,6 +22712,7 @@ static bool metal_graph_verify_decode_exact(
                                                                 il,
                                                                 start,
                                                                 n_tokens,
+                                                                true,
                                                                 true);
             }
             if (shadow_ok) shadow_ok = ds4_gpu_end_commands() != 0;
@@ -22683,6 +22743,16 @@ static bool metal_graph_verify_decode_exact(
                         0,
                         ffn_observation.batch_norm,
                         (uint64_t)n_tokens * DS4_N_EMBD * sizeof(float)) != 0 &&
+                    ds4_gpu_tensor_read(
+                        g->batch_router_logits,
+                        0,
+                        ffn_observation.batch_logits,
+                        (uint64_t)n_tokens * DS4_N_EXPERT * sizeof(float)) != 0 &&
+                    ds4_gpu_tensor_read(
+                        g->batch_router_probs,
+                        0,
+                        ffn_observation.batch_probs,
+                        (uint64_t)n_tokens * DS4_N_EXPERT * sizeof(float)) != 0 &&
                     ds4_gpu_tensor_read(
                         g->batch_router_selected,
                         0,
@@ -22715,6 +22785,8 @@ static bool metal_graph_verify_decode_exact(
                 (uint64_t)row * hc_dim * sizeof(float);
             const uint64_t mix_offset =
                 (uint64_t)row * mix_hc * sizeof(float);
+            const uint64_t router_offset =
+                (uint64_t)row * DS4_N_EXPERT * sizeof(float);
             const uint64_t route_offset =
                 (uint64_t)row * DS4_N_EXPERT_USED;
             if (ok) {
@@ -22738,6 +22810,16 @@ static bool metal_graph_verify_decode_exact(
                                          g->ffn_norm,
                                          0,
                                          (uint64_t)DS4_N_EMBD * sizeof(float)) != 0 &&
+                     ds4_gpu_tensor_copy(g->batch_router_logits,
+                                         router_offset,
+                                         g->router_logits,
+                                         0,
+                                         (uint64_t)DS4_N_EXPERT * sizeof(float)) != 0 &&
+                     ds4_gpu_tensor_copy(g->batch_router_probs,
+                                         router_offset,
+                                         g->router_probs,
+                                         0,
+                                         (uint64_t)DS4_N_EXPERT * sizeof(float)) != 0 &&
                      ds4_gpu_tensor_copy(g->batch_router_selected,
                                          route_offset * sizeof(int),
                                          g->router_selected,
@@ -22788,6 +22870,16 @@ static bool metal_graph_verify_decode_exact(
                      0,
                      ffn_observation.exact_norm,
                      (uint64_t)n_tokens * DS4_N_EMBD * sizeof(float)) != 0 &&
+                 ds4_gpu_tensor_read(
+                     g->batch_router_logits,
+                     0,
+                     ffn_observation.exact_logits,
+                     (uint64_t)n_tokens * DS4_N_EXPERT * sizeof(float)) != 0 &&
+                 ds4_gpu_tensor_read(
+                     g->batch_router_probs,
+                     0,
+                     ffn_observation.exact_probs,
+                     (uint64_t)n_tokens * DS4_N_EXPERT * sizeof(float)) != 0 &&
                  ds4_gpu_tensor_read(
                      g->batch_router_selected,
                      0,
@@ -28656,6 +28748,7 @@ static bool dspark_session_gpu_stage_run(
                                                  stage,
                                                  context_pos0 + context_len,
                                                  block,
+                                                 false,
                                                  false);
     }
     if (ok) {
