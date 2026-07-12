@@ -6,6 +6,7 @@ ds4_bin=${DS4_BIN:-"$root/ds4"}
 base_model=${DS4_TEST_MODEL:-"$root/gguf/DeepSeek-V4-Flash-IQ2XXS-w2Q2K-AProjQ8-SExpQ8-OutQ8-chat-v2-imatrix.gguf"}
 dspark_model=${DS4_TEST_DSPARK_MODEL:-"$root/gguf/ds4flash-dspark.gguf"}
 mode=${DS4_TEST_DSPARK_MODE:-observer}
+fast_verify_observer=${DS4_TEST_DSPARK_FAST_VERIFY_OBSERVER:-0}
 
 case "$mode" in
     observer) gpu_env=(DS4_DSPARK_GPU_CANDIDATES=1) ;;
@@ -14,6 +15,9 @@ case "$mode" in
             DS4_DSPARK_GPU_RUNTIME=1
             DS4_DSPARK_GPU_RUNTIME_DIAGNOSTICS=1
         )
+        if [[ $fast_verify_observer == 1 ]]; then
+            gpu_env+=(DS4_DSPARK_FAST_VERIFY_OBSERVER=1)
+        fi
         ;;
     *)
         printf 'invalid DS4_TEST_DSPARK_MODE: %s (expected observer or runtime)\n' "$mode" >&2
@@ -54,6 +58,13 @@ assert_gpu_selected() {
         grep -q 'DSpark GPU head runtime .* result=pass' "$log"
         grep -q 'DSpark GPU chain runtime .* result=pass' "$log"
         grep -q 'DSpark exact batch verifier .* result=pass' "$log"
+        if [[ $fast_verify_observer == 1 ]]; then
+            grep -q 'DSpark fast verifier observer ' "$log"
+            if grep -q 'DSpark fast verifier observer .* result=fail' "$log"; then
+                printf 'fast verifier observer reported a parity failure\n' >&2
+                exit 1
+            fi
+        fi
         if grep -q 'DSpark GPU .* parity' "$log"; then
             printf 'runtime mode unexpectedly ran a GPU parity observer\n' >&2
             exit 1

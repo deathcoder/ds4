@@ -76,6 +76,13 @@ result directly; partial accepts restore the saved target frontier and rerun
 only the accepted prefix as a second exact batch. Unsupported graph shapes or
 recoverable batch failures automatically use the serial verifier.
 
+`DS4_DSPARK_FAST_VERIFY_OBSERVER=1` is a correctness-development option, not a
+benchmark setting. It runs the throughput-oriented legacy batch verifier from
+a snapshotted target frontier, reads its row tops and final logits, restores
+state, and then lets the exact verifier remain authoritative. Each proposal
+records top-token parity, final-logit drift, and fast/exact verifier time. The
+comparison harness clears this option like every other inherited DSpark option.
+
 Useful explicit overrides include `--pairs`, `--warmups`, `--cooldown`,
 `--tokens`, and `--output-dir`. Do not compare runs with different settings.
 The CLI timing line excludes model loading, while the recorded wall time does

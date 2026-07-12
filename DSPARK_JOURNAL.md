@@ -1967,6 +1967,64 @@ DSpark tests passed; the CPU object emitted the same eight known warnings. The
 benchmark parser/dry run and actual-record summary assertions passed. No tok/s
 benchmark was run by Codex.
 
+The user benchmark at commit `285931c` measured 23.90 t/s baseline versus
+19.54 t/s exact-batch runtime, or 0.8176x by ratio of medians. All three paired
+ratios were near 0.82x. Exact batching worked as designed: 14 target calls
+processed 69 target positions for 64 emitted tokens, with twelve full accepts,
+one depth-4 partial accept, and no fallback. The target verifier cost 47.234 ms
+per emitted token and generation-side DSpark cost 3.707 ms/token, closely
+accounting for the measured 51.18 ms/token runtime. The exact path reduced host
+synchronizations but continued to run one-token decode kernels for every target
+position; partial restore/replay added four repeated accepted positions. Real
+compute batching is required for a speed win.
+
+Phase 0.41 fast-verifier parity observer added on 2026-07-12:
+
+- `DS4_DSPARK_FAST_VERIFY_OBSERVER=1` is opt-in and requires GPU DSpark runtime.
+  It runs the existing `metal_graph_verify_suffix_tops` batch kernels as a
+  shadow operation from the exact verifier's saved target frontier, reads row
+  tops and final logits, restores the frontier, and then runs the unchanged
+  exact verifier as production authority.
+- DSpark speculative graph allocation now owns `spec_logits` whenever generic
+  speculation is enabled, rather than hiding that shared verifier scratch
+  inside the legacy-MTP-only allocation block.
+- Observer records include intermediate row-top agreement, final top ids,
+  final-logit maximum and relative RMS difference, non-finite counts, fast and
+  exact verifier milliseconds, and their local ratio. This option is cleared
+  by the user benchmark harness and cannot affect normal runtime measurements.
+- The correctness harness accepts
+  `DS4_TEST_DSPARK_FAST_VERIFY_OBSERVER=1`, requires an observer record for each
+  runtime case, and fails if any record reports parity failure.
+
+Observed evidence covered a ten-token direct partial-accept smoke plus
+reasoning, Italian, medium-context, and resumed-session matrix cases. All 21
+intermediate row tops and all eight final top tokens matched exact verification;
+all user-visible outputs remained byte-identical to baseline. Final full-logit
+relative RMS drift ranged from about 0.0059 to 0.0755, with no non-finite values.
+Warm five-row observations were approximately 1.49x and 1.61x faster than the
+exact verifier, while short/cold observations were noisy and sometimes slower.
+This supports an explicitly opt-in fast runtime experiment, not unconditional
+promotion. No tok/s benchmark was run by Codex.
+
+Phase 0.41 checks:
+
+```sh
+make ds4 ds4_test ds4-server ds4-eval ds4-agent ds4_cpu.o
+./ds4_test --dspark-validation --dspark-shape-binding
+DS4_TEST_DSPARK_MODE=runtime \
+  DS4_TEST_DSPARK_FAST_VERIFY_OBSERVER=1 \
+  ./tests/dspark_gpu_candidates_correctness.sh
+./tests/dspark_gpu_candidates_correctness.sh
+./ds4_test --mtp-verify-depth
+bash -n tests/dspark_gpu_candidates_correctness.sh
+git diff --check
+```
+
+All requested builds and DSpark checks passed; the CPU object emitted the same
+eight known warnings. The MTP depth test reported success but skipped its model
+run because `DS4_TEST_MTP` was not configured. The shared speculation allocation
+therefore has compile coverage here but no local legacy-MTP GGUF runtime check.
+
 ## Resume Checklist
 
 If continuing from a compacted context, start here:
@@ -2015,10 +2073,10 @@ If continuing from a compacted context, start here:
 
 ## Open Questions
 
-- Phase 0.40 needs a user-run comparison with exact batched verification. Ask the
-  user to make the machine as quiet as practical, run the harness, and bring
-  back `summary.md` and `results.csv`; interpret results alongside captured
-  process metadata rather than assuming a fully idle host.
+- Phase 0.41 established top-token parity for the shadow fast verifier over the
+  current correctness matrix. The next phase should add an explicit opt-in fast
+  runtime, preserve exact/serial fallbacks, make the benchmark harness select it
+  deliberately, and let the user measure output identity and throughput.
 - The GPU stage path currently borrows target graph transient batch workspace
   and therefore requires `prefill_cap >= block_size` (five). Decide whether to
   allocate sidecar-specific batch scratch before production enablement or keep
