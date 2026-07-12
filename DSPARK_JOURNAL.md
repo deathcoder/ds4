@@ -2479,6 +2479,49 @@ python3 speed-bench/run_dspark_issue468_comparison.py \
 git diff --check
 ```
 
+Phase 0.51 exact-head direct ablation prepared on 2026-07-13:
+
+- The user ran the issue-468 suite with `--exact-head-batch`; the unsafe fast
+  verifier was disabled. Median paired ratios were `0.4322x` for `code_8k`,
+  `0.5160x` for `synthesis_8k`, and `0.4762x` for `grounded_8k`, with an
+  aggregate `0.4762x`. All paired output hashes matched and the measurements
+  were stable. This reconfirmed that the authoritative exact verifier is much
+  slower than baseline on these workloads.
+- That run was broader than necessary for the question at hand: it compared
+  exact-head DSpark with no DSpark, but did not include ordinary exact DSpark as
+  a control. It therefore cannot tell us whether batching the intermediate
+  output heads helps. A direct short ablation should have come first.
+- Added stats-only exact verifier components: target-layer time, batched-head
+  time, serial-head time, and exact-head batch attempts/successes. Clock reads
+  and accumulation occur only under `DS4_DSPARK_GPU_RUNTIME_STATS=1`; normal
+  uninstrumented throughput behavior is unchanged.
+- Added `speed-bench/run_dspark_exact_head_ablation.py`. It directly compares
+  ordinary exact DSpark with exact-head DSpark, defaults to one 64-token
+  `code_8k` pair, alternates order across additional pairs, requires
+  byte-identical output, and reports target component milliseconds per emitted
+  token. Both modes are instrumented, so reported t/s is context only.
+- Real execution requires `--confirm-ready`. Codex did not run this ablation;
+  the user remains responsible for all timed benchmark runs.
+
+Phase 0.51 checks:
+
+```sh
+make ds4 ds4_test ds4-server ds4-eval ds4-agent ds4_cpu.o \
+  ds4-warm-prefill-bench
+./ds4_test --dspark-validation --dspark-shape-binding
+DS4_DSPARK_EXACT_HEAD_BATCH=1 \
+DS4_DSPARK_GPU_RUNTIME_STATS=1 \
+DS4_TEST_DSPARK_MODE=runtime \
+  ./tests/dspark_gpu_candidates_correctness.sh
+# All five correctness cases matched baseline. Timings were ignored; real
+# stats records reported successful exact-head batches.
+./tests/dspark_fast_verifier_soak.sh
+python3 -m py_compile speed-bench/run_dspark_exact_head_ablation.py
+python3 speed-bench/run_dspark_exact_head_ablation.py \
+  --dry-run --allow-dirty
+git diff --check
+```
+
 ## Resume Checklist
 
 If continuing from a compacted context, start here:
@@ -2527,10 +2570,12 @@ If continuing from a compacted context, start here:
 
 ## Open Questions
 
-- Do not run the issue-468 performance suite yet. Exact DSpark is already known
-  to be slower, while fast authority does not preserve long-running target
-  state. The next implementation work is an exact compute-batched decode
-  verifier; benchmark only after its long-corpus output is byte-identical.
+- Run only the short direct exact-versus-exact-head stats ablation next. Do not
+  repeat the full issue-468 baseline suite unless another exact verifier stage
+  earns a controlled comparison. Fast authority still does not preserve
+  long-running target state; broader throughput reporting must wait for a
+  numerically exact compute-batched verifier with byte-identical long-corpus
+  output.
 - The GPU stage path currently borrows target graph transient batch workspace
   and therefore requires `prefill_cap >= block_size` (five). Decide whether to
   allocate sidecar-specific batch scratch before production enablement or keep

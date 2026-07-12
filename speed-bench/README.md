@@ -217,6 +217,21 @@ python3 speed-bench/run_dspark_issue468_comparison.py \
 
 The component passed byte-identity checks across all three long fixtures and
 176 shadow comparisons of batched versus serial row tops. No performance claim
-has been made for it yet. A future user-run comparison can determine whether
-amortizing the large vocabulary projection materially improves the exact
-verifier before more target-layer kernels are microbatched.
+has been made for it yet. The first issue-468 run with this option compared it
+against non-DSpark baseline, which reconfirmed that the exact verifier is slower
+but did not isolate the output-head change.
+
+Use the dedicated direct ablation to compare ordinary exact DSpark against the
+same exact path with only intermediate output-head batching enabled:
+
+```sh
+python3 speed-bench/run_dspark_exact_head_ablation.py --dry-run
+python3 speed-bench/run_dspark_exact_head_ablation.py --confirm-ready
+```
+
+The default run is one 64-token pair over `code_8k`, normally about one to two
+minutes. Both modes enable stats, so their t/s values are diagnostic context,
+not throughput results. The report instead splits target-verifier time into
+exact layers, batched heads, serial heads, and residual overhead. It also
+requires byte-identical output and reports successful head batches. Codex does
+not run this command; the user starts it when the machine is ready.

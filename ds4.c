@@ -22087,6 +22087,14 @@ typedef struct {
     float *last_logits;
 } dspark_exact_head_batch_observation;
 
+typedef struct {
+    double layer_seconds;
+    double head_batch_seconds;
+    double head_serial_seconds;
+    uint64_t head_batch_attempts;
+    uint64_t head_batch_successes;
+} dspark_exact_verify_timing;
+
 static bool dspark_exact_head_batch_observer_enabled(void) {
     const char *v = getenv("DS4_DSPARK_EXACT_HEAD_BATCH_OBSERVER");
     return v && v[0] && strcmp(v, "0") != 0;
@@ -22252,7 +22260,9 @@ static bool metal_graph_verify_decode_exact(
         uint32_t              start,
         int                  *row_tops,
         float                *last_logits,
-        ds4_target_hc_capture *target_capture) {
+        ds4_target_hc_capture *target_capture,
+        dspark_exact_verify_timing *timing) {
+    if (timing) memset(timing, 0, sizeof(*timing));
     if (!g || !model || !weights || !tokens || !last_logits ||
         n_tokens == 0 || n_tokens > 16u || n_tokens > g->prefill_cap ||
         g->raw_cap == 0 || g->ssd_streaming ||
@@ -22284,6 +22294,7 @@ static bool metal_graph_verify_decode_exact(
     ds4_gpu_tensor *saved_after = g->after_ffn_hc;
     const bool saved_capture = g->spec_capture_prefix1;
     g->spec_capture_prefix1 = false;
+    const double layer_started = timing ? now_sec() : 0.0;
     if (ok) ok = ds4_gpu_begin_commands() != 0;
     for (uint32_t il = 0; ok && il < DS4_N_LAYER; il++) {
         for (uint32_t row = 0; ok && row < n_tokens; row++) {
@@ -22314,6 +22325,7 @@ static bool metal_graph_verify_decode_exact(
     }
     if (ok) ok = ds4_gpu_end_commands() != 0;
     else (void)ds4_gpu_synchronize();
+    if (timing) timing->layer_seconds = now_sec() - layer_started;
     g->cur_hc = saved_cur;
     g->after_ffn_hc = saved_after;
     g->spec_capture_prefix1 = saved_capture;
@@ -22333,12 +22345,18 @@ static bool metal_graph_verify_decode_exact(
 
     bool head_batch_tops = false;
     if (ok && n_tokens > 1u && dspark_exact_head_batch_runtime_enabled()) {
+        const double head_batch_started = timing ? now_sec() : 0.0;
+        if (timing) timing->head_batch_attempts++;
         head_batch_tops = metal_graph_exact_head_batch_tops(g,
                                                              model,
                                                              weights,
                                                              final_hc,
                                                              n_tokens - 1u,
                                                              row_tops);
+        if (timing) {
+            timing->head_batch_seconds += now_sec() - head_batch_started;
+            if (head_batch_tops) timing->head_batch_successes++;
+        }
         if (dspark_exact_head_batch_diagnostics_enabled()) {
             fprintf(stderr,
                     "ds4: DSpark exact head batch proposed=%u intermediate=%u "
@@ -22349,6 +22367,7 @@ static bool metal_graph_verify_decode_exact(
         }
     }
 
+    const double head_serial_started = timing ? now_sec() : 0.0;
     if (ok) ok = ds4_gpu_begin_commands() != 0;
     const uint32_t serial_row0 = head_batch_tops ? n_tokens - 1u : 0u;
     for (uint32_t row = serial_row0; ok && row < n_tokens; row++) {
@@ -22385,6 +22404,7 @@ static bool metal_graph_verify_decode_exact(
                                  last_logits,
                                  (uint64_t)DS4_N_VOCAB * sizeof(last_logits[0])) != 0;
     }
+    if (timing) timing->head_serial_seconds += now_sec() - head_serial_started;
     if (ok) {
         dspark_exact_head_batch_observation_report(&head_observation,
                                                    row_tops,
@@ -26845,6 +26865,8 @@ struct dspark_session_state {
     uint64_t runtime_fast_verify_calls;
     uint64_t runtime_fast_verify_failures;
     uint64_t runtime_fast_verify_exact_fallbacks;
+    uint64_t runtime_exact_head_batch_attempts;
+    uint64_t runtime_exact_head_batch_successes;
     bool runtime_generation_active;
     bool fast_verify_suspended;
     double runtime_bridge_seconds;
@@ -26860,6 +26882,9 @@ struct dspark_session_state {
     double runtime_generation_head_seconds;
     double runtime_generation_chain_seconds;
     double runtime_target_eval_seconds;
+    double runtime_exact_layer_seconds;
+    double runtime_exact_head_batch_seconds;
+    double runtime_exact_head_serial_seconds;
     float *target_context;
     uint32_t target_context_rows;
     uint32_t target_context_pos0;
@@ -26979,13 +27004,15 @@ static void dspark_session_state_free(dspark_session_state *d) {
                 "batch_attempts=%llu batch_full=%llu batch_partial=%llu "
                 "batch_fallbacks=%llu fast_calls=%llu fast_failures=%llu "
                 "fast_exact_fallbacks=%llu "
+                "exact_head_batch_attempts=%llu exact_head_batch_successes=%llu "
                 "sidecar_ms=%.3f bridge_ms=%.3f stage0_ms=%.3f stage1_ms=%.3f "
                 "stage2_ms=%.3f head_ms=%.3f chain_ms=%.3f "
                 "prefill_sidecar_ms=%.3f generation_sidecar_ms=%.3f "
                 "generation_bridge_ms=%.3f generation_stage0_ms=%.3f "
                 "generation_stage1_ms=%.3f generation_stage2_ms=%.3f "
                 "generation_head_ms=%.3f generation_chain_ms=%.3f "
-                "target_eval_ms=%.3f\n",
+                "target_eval_ms=%.3f exact_layer_ms=%.3f "
+                "exact_head_batch_ms=%.3f exact_head_serial_ms=%.3f\n",
                 (unsigned long long)d->gpu_candidate_source_attempts,
                 (unsigned long long)d->gpu_candidate_source_selected,
                 (unsigned long long)d->gpu_candidate_source_fallbacks,
@@ -27007,6 +27034,8 @@ static void dspark_session_state_free(dspark_session_state *d) {
                 (unsigned long long)d->runtime_fast_verify_calls,
                 (unsigned long long)d->runtime_fast_verify_failures,
                 (unsigned long long)d->runtime_fast_verify_exact_fallbacks,
+                (unsigned long long)d->runtime_exact_head_batch_attempts,
+                (unsigned long long)d->runtime_exact_head_batch_successes,
                 sidecar_seconds * 1000.0,
                 d->runtime_bridge_seconds * 1000.0,
                 d->runtime_stage_seconds[0] * 1000.0,
@@ -27022,7 +27051,10 @@ static void dspark_session_state_free(dspark_session_state *d) {
                 d->runtime_generation_stage_seconds[2] * 1000.0,
                 d->runtime_generation_head_seconds * 1000.0,
                 d->runtime_generation_chain_seconds * 1000.0,
-                d->runtime_target_eval_seconds * 1000.0);
+                d->runtime_target_eval_seconds * 1000.0,
+                d->runtime_exact_layer_seconds * 1000.0,
+                d->runtime_exact_head_batch_seconds * 1000.0,
+                d->runtime_exact_head_serial_seconds * 1000.0);
     }
     free(d->gpu_confidence_prob_read);
     free(d->gpu_confidence_logit_read);
@@ -31741,15 +31773,27 @@ static bool dspark_session_verify_batch_once(
                                               target_capture,
                                               NULL);
     }
-    return metal_graph_verify_decode_exact(&s->graph,
-                                           &s->engine->model,
-                                           &s->engine->weights,
-                                           tokens,
-                                           n_tokens,
-                                           start,
-                                           row_tops,
-                                           last_logits,
-                                           target_capture);
+    dspark_exact_verify_timing timing;
+    dspark_exact_verify_timing *timing_out =
+        dspark_session_runtime_stats_enabled() ? &timing : NULL;
+    const bool ok = metal_graph_verify_decode_exact(&s->graph,
+                                                     &s->engine->model,
+                                                     &s->engine->weights,
+                                                     tokens,
+                                                     n_tokens,
+                                                     start,
+                                                     row_tops,
+                                                     last_logits,
+                                                     target_capture,
+                                                     timing_out);
+    if (timing_out && s->dspark) {
+        s->dspark->runtime_exact_layer_seconds += timing.layer_seconds;
+        s->dspark->runtime_exact_head_batch_seconds += timing.head_batch_seconds;
+        s->dspark->runtime_exact_head_serial_seconds += timing.head_serial_seconds;
+        s->dspark->runtime_exact_head_batch_attempts += timing.head_batch_attempts;
+        s->dspark->runtime_exact_head_batch_successes += timing.head_batch_successes;
+    }
+    return ok;
 }
 
 static void dspark_session_runtime_target_eval_note(
