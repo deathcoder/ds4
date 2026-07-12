@@ -8,6 +8,7 @@ dspark_model=${DS4_TEST_DSPARK_MODEL:-"$root/gguf/ds4flash-dspark.gguf"}
 mode=${DS4_TEST_DSPARK_MODE:-observer}
 fast_verify_observer=${DS4_TEST_DSPARK_FAST_VERIFY_OBSERVER:-0}
 fast_verify_runtime=${DS4_TEST_DSPARK_FAST_VERIFY_RUNTIME:-0}
+ffn_batch_observer_layer=${DS4_DSPARK_EXACT_FFN_BATCH_OBSERVER_LAYER:-}
 
 if [[ $fast_verify_observer == 1 && $fast_verify_runtime == 1 ]]; then
     printf 'fast verifier observer and runtime modes are mutually exclusive\n' >&2
@@ -75,6 +76,13 @@ assert_gpu_selected() {
             grep -q 'DSpark fast verifier observer ' "$log"
             if grep -q 'DSpark fast verifier observer .* result=fail' "$log"; then
                 printf 'fast verifier observer reported a parity failure\n' >&2
+                exit 1
+            fi
+        fi
+        if [[ -n $ffn_batch_observer_layer ]]; then
+            grep -q "DSpark exact FFN batch observer layer=$ffn_batch_observer_layer .* result=\(exact\|drift\)" "$log"
+            if grep -q "DSpark exact FFN batch observer layer=$ffn_batch_observer_layer .* result=shadow-fallback" "$log"; then
+                printf 'exact FFN batch observer fell back at layer %s\n' "$ffn_batch_observer_layer" >&2
                 exit 1
             fi
         fi

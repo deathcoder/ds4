@@ -2624,6 +2624,64 @@ Phase 0.52 user-run result and robust aggregation on 2026-07-13:
   against serial exact FFN at selected layers while leaving serial output
   authoritative.
 
+Phase 0.53 exact FFN batch shadow observer added on 2026-07-13:
+
+- Split `metal_graph_encode_decode_layer` internally at the existing
+  attention/FFN boundary. The original full-layer function remains a wrapper
+  over the same code, while attention-only and FFN-only wrappers are available
+  for exact-verifier experiments. The ordinary runtime path and all existing
+  callers retain full serial decode semantics.
+- Added `DS4_DSPARK_EXACT_FFN_BATCH_OBSERVER_LAYER=<layer>`. For proposal
+  batches wider than one at that layer, exact one-token attention writes every
+  authoritative `after_attn_hc` row into batch storage. The existing prefill
+  FFN then runs as a shadow over those exact inputs and its final HC is read
+  before serial one-token FFN overwrites the same destination.
+- Serial FFN remains authoritative for target capture, subsequent layers,
+  caches, logits, and committed state. A shadow setup/encode/read failure logs
+  `result=shadow-fallback` and still proceeds through serial FFN. The observer
+  reports bit-exact rows plus aggregate HC maximum and RMS drift; it makes no
+  performance claim.
+- Correctness matrices at layers 0, 30, and 42 each covered five prompt/chat
+  cases and six observer records (19 proposal rows). Every generated stream
+  matched its baseline. No shadow row was bit-exact. Layer 0 maximum drift was
+  `1.19209e-6` with maximum RMS `6.5744e-8`; layer 30 maximum drift was
+  `2.86102e-6` with maximum RMS `2.86022e-7`; layer 42 maximum drift was
+  `4.57764e-5` with maximum RMS `7.60317e-7`.
+- A correctness-only `code_8k` replay at layer 42 compared ordinary exact
+  DSpark with the observer for 32 generated tokens. Outputs were byte-identical
+  and timings were ignored. Nine records covered 41 proposal rows, with no
+  bit-exact rows, maximum HC drift `9.15527e-5`, median RMS `1.13459e-6`, and
+  maximum RMS `1.56805e-6`.
+- The existing batched prefill FFN must not become authoritative wholesale.
+  Its small differences grow materially at late layers even from exact
+  attention inputs. The next phase should shadow intermediate FFN boundaries
+  (HC pre/norm, router, routed MoE, shared expert, HC post) to find the first
+  divergent component, then replace or constrain only that component with
+  serial-equivalent arithmetic.
+- Strengthened `tests/dspark_gpu_candidates_correctness.sh`: when the observer
+  layer env is present, every GPU case must contain an exact/drift comparison
+  and no shadow fallback.
+
+Phase 0.53 checks:
+
+```sh
+make ds4 ds4_test ds4-server ds4-eval ds4-agent ds4_cpu.o \
+  ds4-warm-prefill-bench
+# CPU-only compilation retained the same eight known unused warnings.
+DS4_TEST_DSPARK_MODE=runtime \
+  ./tests/dspark_gpu_candidates_correctness.sh
+for layer in 0 30 42; do
+  DS4_DSPARK_EXACT_FFN_BATCH_OBSERVER_LAYER=$layer \
+  DS4_TEST_DSPARK_MODE=runtime \
+    ./tests/dspark_gpu_candidates_correctness.sh
+done
+# A separate code_8k exact-versus-observer replay used -n 32 and cmp; output
+# was identical and timings were ignored.
+./tests/dspark_fast_verifier_soak.sh
+./ds4_test --dspark-validation --dspark-shape-binding
+git diff --check
+```
+
 Phase 0.52 checks:
 
 ```sh
@@ -2692,12 +2750,12 @@ If continuing from a compacted context, start here:
 
 ## Open Questions
 
-- Run the exact layer stage profile next, then use its ordering to choose the
-  first shadow microbatch observer. Do not repeat the full issue-468 baseline
-  suite unless another exact verifier stage earns a controlled comparison. Fast
-  authority still does not preserve long-running target state; broader
-  throughput reporting must wait for a numerically exact compute-batched
-  verifier with byte-identical long-corpus output.
+- Localize the FFN shadow drift at intermediate HC/router/MoE/shared-expert
+  boundaries before enabling any target-layer batch authority. Do not repeat
+  the full issue-468 baseline suite unless another exact verifier stage earns a
+  controlled comparison. Fast authority still does not preserve long-running
+  target state; broader throughput reporting must wait for a numerically exact
+  compute-batched verifier with byte-identical long-corpus output.
 - The GPU stage path currently borrows target graph transient batch workspace
   and therefore requires `prefill_cap >= block_size` (five). Decide whether to
   allocate sidecar-specific batch scratch before production enablement or keep

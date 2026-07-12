@@ -15313,7 +15313,13 @@ static bool metal_graph_profile_router_selection(
     return true;
 }
 
-static bool metal_graph_encode_decode_layer(
+typedef enum {
+    METAL_GRAPH_DECODE_LAYER_FULL,
+    METAL_GRAPH_DECODE_LAYER_ATTENTION,
+    METAL_GRAPH_DECODE_LAYER_FFN,
+} metal_graph_decode_layer_part;
+
+static bool metal_graph_encode_decode_layer_part(
         ds4_gpu_graph  *g,
         const ds4_model        *model,
         const ds4_layer_weights *layer,
@@ -15323,7 +15329,8 @@ static bool metal_graph_encode_decode_layer(
         uint32_t                raw_cap,
         uint32_t                raw_row,
         uint32_t                n_raw,
-        int                     token) {
+        int                     token,
+        metal_graph_decode_layer_part part) {
     const uint64_t hc_dim = (uint64_t)DS4_N_HC * DS4_N_EMBD;
     const uint64_t mix_hc = 2ull * DS4_N_HC + (uint64_t)DS4_N_HC * DS4_N_HC;
     const uint64_t q_rank = layer->attn_q_a->dim[1];
@@ -15355,6 +15362,7 @@ static bool metal_graph_encode_decode_layer(
             ok = metal_graph_layer_stage_profile_boundary("decode", (name), il, pos, 1, &decode_stage_t0); \
         } \
     } while (0)
+    if (part == METAL_GRAPH_DECODE_LAYER_FFN) goto encode_ffn;
     if (ok) ok = ds4_gpu_rms_norm_plain_tensor(g->flat_hc, g->cur_hc, (uint32_t)hc_dim, DS4_RMS_EPS) != 0;
     if (ok) ok = metal_graph_matmul_plain_tensor(g->hc_mix, model, layer->hc_attn_fn,
                                                  hc_dim, mix_hc, g->flat_hc, 1);
@@ -15983,6 +15991,9 @@ static bool metal_graph_encode_decode_layer(
     if (ok) {
         metal_graph_debug_dump_tensor("hc_attn_post", g->after_attn_hc, hc_dim, il, pos);
     }
+    if (part == METAL_GRAPH_DECODE_LAYER_ATTENTION) return ok;
+
+encode_ffn:
     if (ok) ok = ds4_gpu_rms_norm_plain_tensor(g->flat_hc, g->after_attn_hc, (uint32_t)hc_dim, DS4_RMS_EPS) != 0;
     if (ok) ok = metal_graph_matmul_plain_tensor(g->hc_mix, model, layer->hc_ffn_fn,
                                                  hc_dim, mix_hc, g->flat_hc, 1);
@@ -16553,6 +16564,74 @@ static bool metal_graph_encode_decode_layer(
         metal_graph_debug_dump_tensor("hc_ffn_post", g->after_ffn_hc, hc_dim, il, pos);
     }
     return ok;
+}
+
+static bool metal_graph_encode_decode_layer(
+        ds4_gpu_graph          *g,
+        const ds4_model        *model,
+        const ds4_layer_weights *layer,
+        uint32_t                il,
+        uint32_t                pos,
+        ds4_gpu_tensor         *raw_cache,
+        uint32_t                raw_cap,
+        uint32_t                raw_row,
+        uint32_t                n_raw,
+        int                     token) {
+    return metal_graph_encode_decode_layer_part(g,
+                                                 model,
+                                                 layer,
+                                                 il,
+                                                 pos,
+                                                 raw_cache,
+                                                 raw_cap,
+                                                 raw_row,
+                                                 n_raw,
+                                                 token,
+                                                 METAL_GRAPH_DECODE_LAYER_FULL);
+}
+
+static bool metal_graph_encode_decode_layer_attention(
+        ds4_gpu_graph          *g,
+        const ds4_model        *model,
+        const ds4_layer_weights *layer,
+        uint32_t                il,
+        uint32_t                pos,
+        ds4_gpu_tensor         *raw_cache,
+        uint32_t                raw_cap,
+        uint32_t                raw_row,
+        uint32_t                n_raw,
+        int                     token) {
+    return metal_graph_encode_decode_layer_part(g,
+                                                 model,
+                                                 layer,
+                                                 il,
+                                                 pos,
+                                                 raw_cache,
+                                                 raw_cap,
+                                                 raw_row,
+                                                 n_raw,
+                                                 token,
+                                                 METAL_GRAPH_DECODE_LAYER_ATTENTION);
+}
+
+static bool metal_graph_encode_decode_layer_ffn(
+        ds4_gpu_graph          *g,
+        const ds4_model        *model,
+        const ds4_layer_weights *layer,
+        uint32_t                il,
+        uint32_t                pos,
+        int                     token) {
+    return metal_graph_encode_decode_layer_part(g,
+                                                 model,
+                                                 layer,
+                                                 il,
+                                                 pos,
+                                                 NULL,
+                                                 0,
+                                                 0,
+                                                 0,
+                                                 token,
+                                                 METAL_GRAPH_DECODE_LAYER_FFN);
 }
 
 /* Encode the final HC collapse, output norm, and vocab projection on Metal. */
@@ -22245,6 +22324,48 @@ static void dspark_exact_head_batch_observation_report(
     memset(observation, 0, sizeof(*observation));
 }
 
+static int dspark_exact_ffn_batch_observer_layer(void) {
+    const char *v = getenv("DS4_DSPARK_EXACT_FFN_BATCH_OBSERVER_LAYER");
+    if (!v || !v[0]) return -1;
+    char *end = NULL;
+    errno = 0;
+    const long layer = strtol(v, &end, 10);
+    if (errno != 0 || end == v || *end != '\0' ||
+        layer < 0 || (uint64_t)layer >= DS4_N_LAYER) {
+        return -1;
+    }
+    return (int)layer;
+}
+
+static void dspark_exact_ffn_batch_observer_report(
+        const float *batch_hc,
+        const float *exact_hc,
+        uint32_t     n_tokens,
+        uint32_t     il,
+        uint64_t     hc_dim) {
+    const uint64_t values = (uint64_t)n_tokens * hc_dim;
+    uint32_t exact_rows = 0;
+    for (uint32_t row = 0; row < n_tokens; row++) {
+        const float *batch_row = batch_hc + (uint64_t)row * hc_dim;
+        const float *exact_row = exact_hc + (uint64_t)row * hc_dim;
+        if (memcmp(batch_row, exact_row, hc_dim * sizeof(float)) == 0) {
+            exact_rows++;
+        }
+    }
+    const float max_diff = max_abs_diff(batch_hc, exact_hc, values);
+    const float rms_diff = rms_abs_diff(batch_hc, exact_hc, values);
+    fprintf(stderr,
+            "ds4: DSpark exact FFN batch observer layer=%u proposed=%u "
+            "exact_rows=%u/%u hc_max=%g hc_rms=%g result=%s\n",
+            il,
+            n_tokens,
+            exact_rows,
+            n_tokens,
+            max_diff,
+            rms_diff,
+            exact_rows == n_tokens ? "exact" : "drift");
+}
+
 /* Exact multi-token target verifier for DSpark.
  *
  * Rows keep the normal one-token decode kernels and autoregressive cache
@@ -22273,11 +22394,22 @@ static bool metal_graph_verify_decode_exact(
     const uint64_t hc_dim = (uint64_t)DS4_N_HC * DS4_N_EMBD;
     ds4_gpu_tensor *cur[16] = {0};
     ds4_gpu_tensor *next[16] = {0};
+    ds4_gpu_tensor *after_attn[16] = {0};
+    const int ffn_observer_layer = dspark_exact_ffn_batch_observer_layer();
+    const bool ffn_observer_enabled =
+        ffn_observer_layer >= 0 && n_tokens > 1u;
+    float *ffn_batch_hc = NULL;
+    float *ffn_exact_hc = NULL;
     bool ok = true;
     for (uint32_t row = 0; row < n_tokens; row++) {
         cur[row] = metal_graph_tensor_row_view(g->batch_cur_hc, row, hc_dim);
         next[row] = metal_graph_tensor_row_view(g->batch_next_hc, row, hc_dim);
-        ok = ok && cur[row] && next[row];
+        if (ffn_observer_enabled) {
+            after_attn[row] = metal_graph_tensor_row_view(
+                g->batch_after_attn_hc, row, hc_dim);
+        }
+        ok = ok && cur[row] && next[row] &&
+             (!ffn_observer_enabled || after_attn[row]);
         if (ok) {
             ok = ds4_gpu_embed_token_hc_tensor(cur[row],
                                                 model->map,
@@ -22289,8 +22421,23 @@ static bool metal_graph_verify_decode_exact(
                                                 DS4_N_HC) != 0;
         }
     }
+    if (ok && ffn_observer_enabled) {
+        int32_t token_ids[16];
+        for (uint32_t row = 0; row < n_tokens; row++) {
+            token_ids[row] = (int32_t)tokens[row];
+        }
+        ok = ds4_gpu_tensor_write(g->prefill_tokens,
+                                  0,
+                                  token_ids,
+                                  (uint64_t)n_tokens * sizeof(token_ids[0])) != 0;
+        ffn_batch_hc = xmalloc(
+            (size_t)n_tokens * (size_t)hc_dim * sizeof(ffn_batch_hc[0]));
+        ffn_exact_hc = xmalloc(
+            (size_t)n_tokens * (size_t)hc_dim * sizeof(ffn_exact_hc[0]));
+    }
 
     ds4_gpu_tensor *saved_cur = g->cur_hc;
+    ds4_gpu_tensor *saved_after_attn = g->after_attn_hc;
     ds4_gpu_tensor *saved_after = g->after_ffn_hc;
     const bool saved_capture = g->spec_capture_prefix1;
     g->spec_capture_prefix1 = false;
@@ -22301,20 +22448,97 @@ static bool metal_graph_verify_decode_exact(
             ok = ds4_gpu_end_commands() != 0 &&
                  ds4_gpu_begin_commands() != 0;
         }
+        const bool observe_ffn =
+            ffn_observer_enabled && il == (uint32_t)ffn_observer_layer;
+        if (!observe_ffn) {
+            for (uint32_t row = 0; ok && row < n_tokens; row++) {
+                const uint32_t pos = start + row;
+                g->cur_hc = cur[row];
+                g->after_ffn_hc = next[row];
+                ok = metal_graph_encode_decode_layer(g,
+                                                      model,
+                                                      &weights->layer[il],
+                                                      il,
+                                                      pos,
+                                                      g->layer_raw_cache[il],
+                                                      g->raw_cap,
+                                                      pos % g->raw_cap,
+                                                      metal_graph_raw_span_for_batch(g, pos, 1),
+                                                      tokens[row]);
+                if (ok) {
+                    ds4_target_hc_capture_note_tensor(target_capture,
+                                                      il,
+                                                      pos,
+                                                      1,
+                                                      next[row]);
+                    ds4_gpu_tensor *tmp = cur[row];
+                    cur[row] = next[row];
+                    next[row] = tmp;
+                }
+            }
+            continue;
+        }
+
         for (uint32_t row = 0; ok && row < n_tokens; row++) {
             const uint32_t pos = start + row;
             g->cur_hc = cur[row];
+            g->after_attn_hc = after_attn[row];
+            ok = metal_graph_encode_decode_layer_attention(
+                g,
+                model,
+                &weights->layer[il],
+                il,
+                pos,
+                g->layer_raw_cache[il],
+                g->raw_cap,
+                pos % g->raw_cap,
+                metal_graph_raw_span_for_batch(g, pos, 1),
+                tokens[row]);
+        }
+        if (ok) ok = ds4_gpu_end_commands() != 0;
+        else (void)ds4_gpu_synchronize();
+
+        ds4_gpu_tensor *saved_batch_cur = g->batch_cur_hc;
+        ds4_gpu_tensor *saved_batch_next = g->batch_next_hc;
+        ds4_gpu_tensor *observer_cur = (il & 1u) ? saved_batch_next : saved_batch_cur;
+        ds4_gpu_tensor *observer_next = (il & 1u) ? saved_batch_cur : saved_batch_next;
+        bool shadow_ok = ok;
+        if (shadow_ok) {
+            g->batch_cur_hc = observer_cur;
+            g->batch_next_hc = observer_next;
+            shadow_ok = ds4_gpu_begin_commands() != 0;
+            if (shadow_ok) {
+                shadow_ok = metal_graph_encode_layer_ffn_batch(g,
+                                                                model,
+                                                                &weights->layer[il],
+                                                                il,
+                                                                start,
+                                                                n_tokens);
+            }
+            if (shadow_ok) shadow_ok = ds4_gpu_end_commands() != 0;
+            else (void)ds4_gpu_synchronize();
+            if (shadow_ok) {
+                shadow_ok = ds4_gpu_tensor_read(
+                    observer_next,
+                    0,
+                    ffn_batch_hc,
+                    (uint64_t)n_tokens * hc_dim * sizeof(ffn_batch_hc[0])) != 0;
+            }
+            g->batch_cur_hc = saved_batch_cur;
+            g->batch_next_hc = saved_batch_next;
+        }
+
+        if (ok) ok = ds4_gpu_begin_commands() != 0;
+        for (uint32_t row = 0; ok && row < n_tokens; row++) {
+            const uint32_t pos = start + row;
+            g->after_attn_hc = after_attn[row];
             g->after_ffn_hc = next[row];
-            ok = metal_graph_encode_decode_layer(g,
-                                                  model,
-                                                  &weights->layer[il],
-                                                  il,
-                                                  pos,
-                                                  g->layer_raw_cache[il],
-                                                  g->raw_cap,
-                                                  pos % g->raw_cap,
-                                                  metal_graph_raw_span_for_batch(g, pos, 1),
-                                                  tokens[row]);
+            ok = metal_graph_encode_decode_layer_ffn(g,
+                                                      model,
+                                                      &weights->layer[il],
+                                                      il,
+                                                      pos,
+                                                      tokens[row]);
             if (ok) {
                 ds4_target_hc_capture_note_tensor(target_capture,
                                                   il,
@@ -22326,11 +22550,36 @@ static bool metal_graph_verify_decode_exact(
                 next[row] = tmp;
             }
         }
+        if (ok) ok = ds4_gpu_end_commands() != 0;
+        else (void)ds4_gpu_synchronize();
+        if (ok) {
+            ok = ds4_gpu_tensor_read(
+                observer_next,
+                0,
+                ffn_exact_hc,
+                (uint64_t)n_tokens * hc_dim * sizeof(ffn_exact_hc[0])) != 0;
+        }
+        if (ok && shadow_ok) {
+            dspark_exact_ffn_batch_observer_report(ffn_batch_hc,
+                                                   ffn_exact_hc,
+                                                   n_tokens,
+                                                   il,
+                                                   hc_dim);
+        } else if (ok) {
+            fprintf(stderr,
+                    "ds4: DSpark exact FFN batch observer layer=%u "
+                    "proposed=%u result=shadow-fallback\n",
+                    il,
+                    n_tokens);
+        }
+        g->after_attn_hc = saved_after_attn;
+        if (ok) ok = ds4_gpu_begin_commands() != 0;
     }
     if (ok) ok = ds4_gpu_end_commands() != 0;
     else (void)ds4_gpu_synchronize();
     if (timing) timing->layer_seconds = now_sec() - layer_started;
     g->cur_hc = saved_cur;
+    g->after_attn_hc = saved_after_attn;
     g->after_ffn_hc = saved_after;
     g->spec_capture_prefix1 = saved_capture;
 
@@ -22393,6 +22642,7 @@ static bool metal_graph_verify_decode_exact(
     if (ok) ok = ds4_gpu_end_commands() != 0;
     else (void)ds4_gpu_synchronize();
     g->cur_hc = saved_cur;
+    g->after_attn_hc = saved_after_attn;
     g->after_ffn_hc = saved_after;
     g->spec_capture_prefix1 = saved_capture;
 
@@ -22419,9 +22669,12 @@ static bool metal_graph_verify_decode_exact(
     }
 
     for (uint32_t row = 0; row < n_tokens; row++) {
+        ds4_gpu_tensor_free(after_attn[row]);
         ds4_gpu_tensor_free(next[row]);
         ds4_gpu_tensor_free(cur[row]);
     }
+    free(ffn_exact_hc);
+    free(ffn_batch_hc);
     return ok;
 }
 
