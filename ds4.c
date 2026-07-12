@@ -10899,20 +10899,29 @@ static void ds4_target_hc_capture_note_tensor(
     const int slot = ds4_target_hc_capture_slot(capture, il);
     if (slot < 0) return;
     if (!src_hc || n_tokens == 0 || capture->n_tokens == 0 ||
-        capture->n_tokens > capture->cap_tokens || pos0 < capture->pos0 ||
-        n_tokens > capture->n_tokens ||
-        pos0 - capture->pos0 > capture->n_tokens - n_tokens) {
+        capture->n_tokens > capture->cap_tokens ||
+        pos0 > UINT32_MAX - n_tokens ||
+        capture->pos0 > UINT32_MAX - capture->n_tokens) {
         capture->failed = true;
         return;
     }
 
+    const uint32_t src_end = pos0 + n_tokens;
+    const uint32_t capture_end = capture->pos0 + capture->n_tokens;
+    const uint32_t copy_pos0 = pos0 > capture->pos0 ? pos0 : capture->pos0;
+    const uint32_t copy_end = src_end < capture_end ? src_end : capture_end;
+    if (copy_pos0 >= copy_end) return;
+
     const uint64_t hc_dim = (uint64_t)DS4_N_HC * DS4_N_EMBD;
-    const uint64_t bytes = (uint64_t)n_tokens * hc_dim * sizeof(float);
+    const uint32_t copy_rows = copy_end - copy_pos0;
+    const uint64_t bytes = (uint64_t)copy_rows * hc_dim * sizeof(float);
+    const uint64_t src_off =
+        (uint64_t)(copy_pos0 - pos0) * hc_dim * sizeof(float);
     const uint64_t dst_off =
         ((uint64_t)(uint32_t)slot * capture->cap_tokens +
-         (pos0 - capture->pos0)) *
+         (copy_pos0 - capture->pos0)) *
         hc_dim * sizeof(float);
-    if (ds4_gpu_tensor_copy(capture->hc, dst_off, src_hc, 0, bytes) == 0) {
+    if (ds4_gpu_tensor_copy(capture->hc, dst_off, src_hc, src_off, bytes) == 0) {
         capture->failed = true;
     }
 }
@@ -26440,6 +26449,7 @@ struct dspark_session_state {
     uint32_t ctx_size;
     uint32_t main_x_cap;
     uint32_t sidecar_kv_cap;
+    uint32_t window_pos0;
     uint32_t block_size;
     uint32_t markov_rank;
     uint32_t main_x_rows;
@@ -26535,6 +26545,7 @@ struct dspark_session_state {
     bool gpu_chain_observed;
     uint32_t gpu_bridge_cap;
     uint32_t gpu_main_x_rows;
+    uint32_t gpu_main_x_pos0;
     uint64_t gpu_bridge_checks;
     uint64_t gpu_bridge_failures;
     uint64_t gpu_bridge_mismatches;
@@ -26585,6 +26596,7 @@ struct dspark_session_state {
     double runtime_target_eval_seconds;
     float *target_context;
     uint32_t target_context_rows;
+    uint32_t target_context_pos0;
     bool target_context_valid;
     int block_tokens[16];
 };
@@ -26624,8 +26636,11 @@ static void dspark_session_state_reset(dspark_session_state *d) {
 static void dspark_session_target_context_reset(dspark_session_state *d) {
     if (!d) return;
     d->target_context_rows = 0;
+    d->target_context_pos0 = 0;
     d->target_context_valid = false;
     d->gpu_main_x_rows = 0;
+    d->gpu_main_x_pos0 = 0;
+    d->window_pos0 = 0;
     dspark_session_draft_reset(d);
 }
 
@@ -26851,6 +26866,7 @@ static void dspark_sidecar_stage_block(
         float                   *kv_rows,
         uint32_t                 kv_cap,
         const int               *block_tokens,
+        uint32_t                 context_pos0,
         uint32_t                 context_len,
         uint32_t                 block_size,
         uint32_t                 stage,
@@ -27016,6 +27032,7 @@ static bool dspark_session_gpu_bridge_ensure(
 static bool dspark_session_gpu_bridge_run(
         ds4_session                  *s,
         const ds4_target_hc_capture  *capture,
+        uint32_t                      context_len,
         char                         *err,
         size_t                        errlen) {
     if (!s || !s->engine || !s->dspark || !capture || capture->n_tokens == 0) {
@@ -27027,11 +27044,15 @@ static bool dspark_session_gpu_bridge_run(
     const bool runtime = dspark_session_gpu_runtime_env_enabled();
     const bool stats = runtime && dspark_session_runtime_stats_enabled();
     const double stats_start = stats ? now_sec() : 0.0;
-    if (capture->pos0 != d->gpu_main_x_rows) {
+    const uint32_t window_pos0 = context_len > d->main_x_cap ?
+        context_len - d->main_x_cap : 0;
+    const uint32_t window_rows = context_len - window_pos0;
+    if (capture->pos0 < window_pos0 ||
+        capture->n_tokens > window_rows ||
+        capture->pos0 - window_pos0 > window_rows - capture->n_tokens ||
+        capture->pos0 + capture->n_tokens != context_len) {
         if (errlen) snprintf(err, errlen,
-                             "DSpark GPU bridge prefix mismatch: have %u need %u",
-                             d->gpu_main_x_rows,
-                             capture->pos0);
+                             "DSpark GPU bridge capture does not cover the window suffix");
         return false;
     }
     if (!dspark_session_gpu_bridge_ensure(s,
@@ -27043,6 +27064,29 @@ static bool dspark_session_gpu_bridge_run(
     }
 
     const uint32_t rows = capture->n_tokens;
+    const uint32_t dst_row = capture->pos0 - window_pos0;
+    uint32_t retained_rows = 0;
+    uint32_t retained_src_row = 0;
+    if (dst_row > 0 && d->gpu_main_x_rows > 0) {
+        const uint32_t old_end = d->gpu_main_x_pos0 + d->gpu_main_x_rows;
+        if (window_pos0 < d->gpu_main_x_pos0 || capture->pos0 > old_end) {
+            if (errlen) snprintf(err, errlen,
+                                 "DSpark GPU bridge window is not contiguous");
+            return false;
+        }
+        const uint32_t retained_end = capture->pos0 < old_end ? capture->pos0 : old_end;
+        retained_rows = retained_end - window_pos0;
+        retained_src_row = window_pos0 - d->gpu_main_x_pos0;
+        if (retained_rows != dst_row) {
+            if (errlen) snprintf(err, errlen,
+                                 "DSpark GPU bridge retained prefix is incomplete");
+            return false;
+        }
+    } else if (dst_row > 0) {
+        if (errlen) snprintf(err, errlen,
+                             "DSpark GPU bridge has no retained prefix");
+        return false;
+    }
     const uint64_t hc_dim = (uint64_t)DS4_N_HC * DS4_N_EMBD;
     const uint64_t embd_bytes = (uint64_t)DS4_N_EMBD * sizeof(float);
     const uint64_t mean_layer_stride =
@@ -27074,7 +27118,7 @@ static bool dspark_session_gpu_bridge_run(
         (uint64_t)rows * DS4_N_EMBD * sizeof(float));
     main_view = ds4_gpu_tensor_view(
         d->gpu_main_x,
-        (uint64_t)capture->pos0 * DS4_N_EMBD * sizeof(float),
+        (uint64_t)dst_row * DS4_N_EMBD * sizeof(float),
         (uint64_t)rows * DS4_N_EMBD * sizeof(float));
     if (!context_view || !proj_view || !main_view) ok = false;
 
@@ -27082,6 +27126,26 @@ static bool dspark_session_gpu_bridge_run(
     if (ok) {
         commands_started = ds4_gpu_begin_commands() != 0;
         ok = commands_started;
+    }
+    if (ok && retained_rows > 0 && retained_src_row > 0) {
+        const uint64_t retained_bytes =
+            (uint64_t)retained_rows * DS4_N_EMBD * sizeof(float);
+        ds4_gpu_tensor *retained_scratch = ds4_gpu_tensor_view(
+            d->gpu_target_context, 0, retained_bytes);
+        if (!retained_scratch ||
+            !ds4_gpu_tensor_copy(retained_scratch,
+                                 0,
+                                 d->gpu_main_x,
+                                 (uint64_t)retained_src_row * DS4_N_EMBD * sizeof(float),
+                                 retained_bytes) ||
+            !ds4_gpu_tensor_copy(d->gpu_main_x,
+                                 0,
+                                 retained_scratch,
+                                 0,
+                                 retained_bytes)) {
+            ok = false;
+        }
+        ds4_gpu_tensor_free(retained_scratch);
     }
     for (uint32_t layer = 0; ok && layer < DS4_DSPARK_MTP_LAYERS; layer++) {
         ok = ds4_gpu_hc_weighted_sum_tensor(mean_view[layer],
@@ -27139,7 +27203,8 @@ static bool dspark_session_gpu_bridge_run(
         return false;
     }
 
-    d->gpu_main_x_rows = capture->pos0 + rows;
+    d->gpu_main_x_pos0 = window_pos0;
+    d->gpu_main_x_rows = window_rows;
     d->gpu_bridge_checks++;
     if (runtime) {
         if (stats) {
@@ -27153,11 +27218,13 @@ static bool dspark_session_gpu_bridge_run(
         }
         if (dspark_session_diagnostics_enabled()) {
             fprintf(stderr,
-                    "ds4: DSpark GPU bridge runtime start=%u rows=%u "
+                    "ds4: DSpark GPU bridge runtime start=%u rows=%u window=%u:%u "
                     "result=pass checks=%llu\n",
-                    capture->pos0,
-                    rows,
-                    (unsigned long long)d->gpu_bridge_checks);
+                capture->pos0,
+                rows,
+                window_pos0,
+                window_pos0 + window_rows,
+                (unsigned long long)d->gpu_bridge_checks);
         }
         return true;
     }
@@ -27170,7 +27237,7 @@ static bool dspark_session_gpu_bridge_run(
                              d->gpu_target_context_read,
                              context_values * sizeof(float)) ||
         !ds4_gpu_tensor_read(d->gpu_main_x,
-                             (uint64_t)capture->pos0 * DS4_N_EMBD * sizeof(float),
+                             (uint64_t)dst_row * DS4_N_EMBD * sizeof(float),
                              d->gpu_main_x_read,
                              main_values * sizeof(float))) {
         if (errlen) snprintf(err, errlen, "failed to read DSpark GPU bridge parity outputs");
@@ -27178,7 +27245,7 @@ static bool dspark_session_gpu_bridge_run(
     }
 
     const float *cpu_context = d->target_context +
-        (uint64_t)capture->pos0 * DS4_DSPARK_MTP_LAYERS * DS4_N_EMBD;
+        (uint64_t)dst_row * DS4_DSPARK_MTP_LAYERS * DS4_N_EMBD;
     for (uint32_t t = 0; t < rows; t++) {
         matvec_q8_0(d->main_proj_scratch,
                     &e->dspark_model,
@@ -27275,6 +27342,7 @@ static bool dspark_engine_gpu_stage_map(
 static bool dspark_session_gpu_stage_ensure(
         ds4_session *s,
         uint32_t     stage,
+        uint32_t     context_pos0,
         uint32_t     context_len,
         char        *err,
         size_t       errlen) {
@@ -27293,7 +27361,8 @@ static bool dspark_session_gpu_stage_ensure(
                              s->graph.prefill_cap);
         return false;
     }
-    if (context_len > d->gpu_main_x_rows ||
+    if (context_pos0 != d->gpu_main_x_pos0 ||
+        context_len > d->gpu_main_x_rows ||
         context_len + d->block_size > d->sidecar_kv_cap) {
         if (errlen) snprintf(err, errlen,
                              "DSpark GPU stage %u main_x/KV prefix is incomplete", stage);
@@ -27362,7 +27431,8 @@ static bool dspark_gpu_stage_project_kv_rows(
         ds4_session          *s,
         uint32_t              stage,
         const ds4_gpu_tensor *x,
-        uint32_t              pos0,
+        uint32_t              dst_pos0,
+        uint32_t              rope_pos0,
         uint32_t              n_rows) {
     ds4_engine *e = s->engine;
     ds4_gpu_graph *g = &s->graph;
@@ -27395,7 +27465,7 @@ static bool dspark_gpu_stage_project_kv_rows(
                                        DS4_N_HEAD_KV,
                                        DS4_N_HEAD_DIM,
                                        DS4_N_ROT,
-                                       pos0,
+                                       rope_pos0,
                                        0,
                                        false,
                                        DS4_ROPE_FREQ_BASE,
@@ -27415,7 +27485,7 @@ static bool dspark_gpu_stage_project_kv_rows(
         ok = ds4_gpu_store_raw_kv_batch_tensor(d->gpu_stage_kv[stage],
                                                 g->batch_kv,
                                                 d->sidecar_kv_cap,
-                                                pos0,
+                                                dst_pos0,
                                                 n_rows,
                                                 DS4_N_HEAD_DIM) != 0;
     }
@@ -27440,6 +27510,7 @@ static bool dspark_session_gpu_stage_run(
         uint32_t     stage,
         const float *cpu_input_hc,
         const float *cpu_output_hc,
+        uint32_t     context_pos0,
         uint32_t     context_len,
         char        *err,
         size_t       errlen) {
@@ -27450,7 +27521,12 @@ static bool dspark_session_gpu_stage_run(
         if (errlen) snprintf(err, errlen, "invalid DSpark GPU stage input");
         return false;
     }
-    if (!dspark_session_gpu_stage_ensure(s, stage, context_len, err, errlen)) return false;
+    if (!dspark_session_gpu_stage_ensure(s,
+                                         stage,
+                                         context_pos0,
+                                         context_len,
+                                         err,
+                                         errlen)) return false;
 
     ds4_engine *e = s->engine;
     ds4_gpu_graph *g = &s->graph;
@@ -27488,6 +27564,7 @@ static bool dspark_session_gpu_stage_run(
                                    d->gpu_stage_kv_ref[stage],
                                    d->sidecar_kv_cap,
                                    d->block_tokens,
+                                   context_pos0,
                                    context_len,
                                    block,
                                    stage,
@@ -27620,7 +27697,7 @@ static bool dspark_session_gpu_stage_run(
                                        DS4_N_HEAD,
                                        DS4_N_HEAD_DIM,
                                        DS4_N_ROT,
-                                       context_len,
+                                       context_pos0 + context_len,
                                        0,
                                        false,
                                        DS4_ROPE_FREQ_BASE,
@@ -27649,7 +27726,12 @@ static bool dspark_session_gpu_stage_run(
         if (!main_view) {
             ok = false;
         } else {
-            ok = dspark_gpu_stage_project_kv_rows(s, stage, main_view, pos, rows);
+            ok = dspark_gpu_stage_project_kv_rows(s,
+                                                  stage,
+                                                  main_view,
+                                                  pos,
+                                                  context_pos0 + pos,
+                                                  rows);
         }
         ds4_gpu_tensor_free(main_view);
         pos += rows;
@@ -27660,6 +27742,7 @@ static bool dspark_session_gpu_stage_run(
                                               stage,
                                               g->batch_attn_norm,
                                               context_len,
+                                              context_pos0 + context_len,
                                               block);
     }
     if (ok) {
@@ -27718,7 +27801,7 @@ static bool dspark_session_gpu_stage_run(
                                        DS4_N_HEAD,
                                        DS4_N_HEAD_DIM,
                                        DS4_N_ROT,
-                                       context_len,
+                                       context_pos0 + context_len,
                                        0,
                                        true,
                                        DS4_ROPE_FREQ_BASE,
@@ -27778,7 +27861,7 @@ static bool dspark_session_gpu_stage_run(
                                                  &e->dspark_model,
                                                  layer,
                                                  stage,
-                                                 context_len,
+                                                 context_pos0 + context_len,
                                                  block);
     }
     if (ok) {
@@ -29493,9 +29576,17 @@ static bool dspark_session_target_capture_begin(
     if (capture) memset(capture, 0, sizeof(*capture));
     if (!capture || !dspark_session_should_capture_target(s) || n_tokens == 0) return false;
 
+    if (start > UINT32_MAX - n_tokens) return false;
+    const uint32_t context_len = start + n_tokens;
+    const uint32_t window_pos0 = context_len > (uint32_t)DS4_N_SWA ?
+        context_len - (uint32_t)DS4_N_SWA : 0;
+    const uint32_t capture_pos0 = start > window_pos0 ? start : window_pos0;
+    const uint32_t capture_tokens = context_len - capture_pos0;
+    if (capture_tokens == 0) return false;
+
     char err[256];
     err[0] = '\0';
-    if (!dspark_session_target_context_ensure(s, n_tokens, err, sizeof(err))) {
+    if (!dspark_session_target_context_ensure(s, capture_tokens, err, sizeof(err))) {
         fprintf(stderr,
                 "ds4: DSpark %s capture disabled at %s: %s\n",
                 dspark_session_observe_mode_name(),
@@ -29505,13 +29596,10 @@ static bool dspark_session_target_capture_begin(
     }
 
     dspark_session_state *d = s->dspark;
-    if (start > d->main_x_cap || n_tokens > d->main_x_cap - start) {
-        dspark_session_target_context_reset(d);
-        return false;
-    }
     if (start == 0) {
         dspark_session_target_context_reset(d);
-    } else if (!d->target_context_valid || d->target_context_rows != start) {
+    } else if (!d->target_context_valid ||
+               d->target_context_pos0 + d->target_context_rows != start) {
         dspark_session_target_context_reset(d);
         return false;
     }
@@ -29519,8 +29607,8 @@ static bool dspark_session_target_capture_begin(
     capture->hc = d->target_hc_gpu;
     capture->target_layers = s->engine->dspark_config.target_layer_ids;
     capture->n_target_layers = DS4_DSPARK_MTP_LAYERS;
-    capture->pos0 = start;
-    capture->n_tokens = n_tokens;
+    capture->pos0 = capture_pos0;
+    capture->n_tokens = capture_tokens;
     capture->cap_tokens = d->target_capture_cap;
     capture->failed = false;
     return true;
@@ -29544,22 +29632,42 @@ static bool dspark_session_target_capture_finish(
         capture->cap_tokens != d->target_capture_cap ||
         capture->n_tokens > capture->cap_tokens ||
         capture->pos0 > context_len ||
-        capture->n_tokens != context_len - capture->pos0 ||
-        context_len > d->main_x_cap) {
+        capture->n_tokens != context_len - capture->pos0) {
         dspark_session_target_context_reset(d);
         if (errlen) snprintf(err, errlen, "captured DSpark target span is invalid");
         return false;
     }
 
     if (dspark_session_gpu_runtime_env_enabled()) {
-        if (!dspark_session_gpu_bridge_run(s, capture, err, errlen)) {
+        if (!dspark_session_gpu_bridge_run(s, capture, context_len, err, errlen)) {
             d->gpu_bridge_failures++;
             dspark_session_target_context_reset(d);
             return false;
         }
-        d->target_context_rows = context_len;
+        d->target_context_pos0 = context_len > d->main_x_cap ?
+            context_len - d->main_x_cap : 0;
+        d->target_context_rows = context_len - d->target_context_pos0;
         d->target_context_valid = true;
         return true;
+    }
+
+    const uint32_t window_pos0 = context_len > d->main_x_cap ?
+        context_len - d->main_x_cap : 0;
+    const uint32_t window_rows = context_len - window_pos0;
+    const uint32_t dst_row = capture->pos0 - window_pos0;
+    if (dst_row > 0) {
+        if (!d->target_context_valid ||
+            window_pos0 < d->target_context_pos0 ||
+            capture->pos0 > d->target_context_pos0 + d->target_context_rows) {
+            dspark_session_target_context_reset(d);
+            if (errlen) snprintf(err, errlen, "captured DSpark window is not contiguous");
+            return false;
+        }
+        const uint32_t src_row = window_pos0 - d->target_context_pos0;
+        memmove(d->target_context,
+                d->target_context +
+                    (uint64_t)src_row * DS4_DSPARK_MTP_LAYERS * DS4_N_EMBD,
+                (size_t)dst_row * DS4_DSPARK_MTP_LAYERS * DS4_N_EMBD * sizeof(float));
     }
 
     const uint64_t hc_dim = (uint64_t)DS4_N_HC * DS4_N_EMBD;
@@ -29583,19 +29691,21 @@ static bool dspark_session_target_capture_finish(
         for (uint32_t t = 0; t < capture->n_tokens; t++) {
             dspark_probe_mean_target_hc(
                 d->target_context +
-                    ((uint64_t)(capture->pos0 + t) * DS4_DSPARK_MTP_LAYERS + i) *
+                    ((uint64_t)(dst_row + t) * DS4_DSPARK_MTP_LAYERS + i) *
                         DS4_N_EMBD,
                 layer_hc + (uint64_t)t * hc_dim);
         }
     }
 
-    d->target_context_rows = context_len;
+    d->target_context_pos0 = window_pos0;
+    d->target_context_rows = window_rows;
     d->target_context_valid = true;
     if (dspark_session_gpu_bridge_env_enabled()) {
         char bridge_err[256];
         bridge_err[0] = '\0';
         if (!dspark_session_gpu_bridge_run(s,
                                            capture,
+                                           context_len,
                                            bridge_err,
                                            sizeof(bridge_err))) {
             d->gpu_bridge_failures++;
@@ -29642,6 +29752,7 @@ static void dspark_sidecar_attention_block(
         const float            * main_x,
         float                  * kv_rows,
         uint32_t                 kv_cap,
+        uint32_t                 context_pos0,
         uint32_t                 context_len,
         uint32_t                 block_size) {
     const uint32_t n_hc = DS4_N_HC;
@@ -29681,7 +29792,7 @@ static void dspark_sidecar_attention_block(
                                  DS4_N_HEAD,
                                  DS4_N_HEAD_DIM,
                                  DS4_N_ROT,
-                                 context_len + t,
+                                 context_pos0 + context_len + t,
                                  false);
     }
 
@@ -29695,7 +29806,7 @@ static void dspark_sidecar_attention_block(
                                  DS4_N_HEAD_KV,
                                  DS4_N_HEAD_DIM,
                                  DS4_N_ROT,
-                                 t,
+                                 context_pos0 + t,
                                  false);
         dsv4_fp8_kv_quantize_row_inplace_cpu(kv, DS4_N_HEAD_DIM, DS4_N_ROT);
         f16_round_inplace_cpu(kv, DS4_N_HEAD_DIM);
@@ -29711,7 +29822,7 @@ static void dspark_sidecar_attention_block(
                                  DS4_N_HEAD_KV,
                                  DS4_N_HEAD_DIM,
                                  DS4_N_ROT,
-                                 context_len + t,
+                                 context_pos0 + context_len + t,
                                  false);
         dsv4_fp8_kv_quantize_row_inplace_cpu(kv, DS4_N_HEAD_DIM, DS4_N_ROT);
         f16_round_inplace_cpu(kv, DS4_N_HEAD_DIM);
@@ -29729,7 +29840,7 @@ static void dspark_sidecar_attention_block(
                                  DS4_N_HEAD,
                                  DS4_N_HEAD_DIM,
                                  DS4_N_ROT,
-                                 context_len + t,
+                                 context_pos0 + context_len + t,
                                  true);
         layer_grouped_out_one(attn_out + (uint64_t)t * DS4_N_EMBD,
                               model,
@@ -29762,6 +29873,7 @@ static void dspark_sidecar_stage_block(
         float                  * kv_rows,
         uint32_t                 kv_cap,
         const int              * block_tokens,
+        uint32_t                 context_pos0,
         uint32_t                 context_len,
         uint32_t                 block_size,
         uint32_t                 stage,
@@ -29776,6 +29888,7 @@ static void dspark_sidecar_stage_block(
                                    main_x,
                                    kv_rows,
                                    kv_cap,
+                                   context_pos0,
                                    context_len,
                                    block_size);
     if (after_attn_capture) {
@@ -29810,6 +29923,7 @@ typedef void (*dspark_prepare_stage_fn)(
 static bool dspark_session_prepare_from_target_context(
         ds4_session             * s,
         const float             * target_context,
+        uint32_t                  context_pos0,
         uint32_t                  context_len,
         int                       anchor_token,
         dspark_prepare_ready_fn   ready_fn,
@@ -29831,9 +29945,11 @@ static bool dspark_session_prepare_from_target_context(
     dspark_session_state *d = s->dspark;
     const bool runtime = dspark_session_gpu_runtime_env_enabled();
     if (!dspark_session_state_prepare_block(d, context_len, err, errlen)) return false;
+    d->window_pos0 = context_pos0;
 
     if (runtime) {
-        if (d->gpu_main_x_rows != context_len) {
+        if (d->gpu_main_x_pos0 != context_pos0 ||
+            d->gpu_main_x_rows != context_len) {
             if (errlen) snprintf(err, errlen,
                                  "DSpark GPU runtime main_x prefix is incomplete");
             return false;
@@ -29881,6 +29997,7 @@ static bool dspark_session_prepare_from_target_context(
                                               stage,
                                               stage0_input,
                                               NULL,
+                                              context_pos0,
                                               context_len,
                                               stage_err,
                                               sizeof(stage_err))) {
@@ -29920,6 +30037,7 @@ static bool dspark_session_prepare_from_target_context(
                                    d->stage_kv[stage],
                                    d->sidecar_kv_cap,
                                    d->block_tokens,
+                                   context_pos0,
                                    context_len,
                                    d->block_size,
                                    stage,
@@ -29933,6 +30051,7 @@ static bool dspark_session_prepare_from_target_context(
                                               stage,
                                               cur_hc,
                                               next_hc,
+                                              context_pos0,
                                               context_len,
                                               stage_err,
                                               sizeof(stage_err))) {
@@ -30769,18 +30888,10 @@ static void dspark_session_observe_draft_rows(
     const bool log_rows = dspark_session_probe_env_enabled();
     const bool verify = dspark_session_verify_env_enabled();
     const char *mode = dspark_session_observe_mode_name();
-    if (n_tokens > (uint32_t)DS4_N_SWA) {
-        fprintf(stderr,
-                "ds4: DSpark %s skipped at %s: prefix tokens %u exceed sidecar window %u\n",
-                mode,
-                origin ? origin : "session",
-                n_tokens,
-                (uint32_t)DS4_N_SWA);
-        return;
-    }
 
     dspark_session_state *d = s->dspark;
-    if (!d || !d->target_context_valid || d->target_context_rows != n_tokens) {
+    if (!d || !d->target_context_valid ||
+        d->target_context_pos0 + d->target_context_rows != n_tokens) {
         fprintf(stderr,
                 "ds4: DSpark %s skipped at %s: captured target context is unavailable for %u tokens\n",
                 mode,
@@ -30793,7 +30904,8 @@ static void dspark_session_observe_draft_rows(
     err[0] = '\0';
     bool ok = dspark_session_prepare_from_target_context(s,
                                                          d->target_context,
-                                                         n_tokens,
+                                                         d->target_context_pos0,
+                                                         d->target_context_rows,
                                                          s->checkpoint.v[s->checkpoint.len - 1],
                                                          NULL,
                                                          NULL,
@@ -31821,6 +31933,7 @@ int ds4_engine_dspark_probe(ds4_engine *e, const ds4_tokens *prompt, int ctx_siz
         if (rc == 0) {
             if (!dspark_session_prepare_from_target_context(session,
                                                             context,
+                                                            0,
                                                             context_len,
                                                             prompt->v[last],
                                                             dspark_probe_prepare_ready,

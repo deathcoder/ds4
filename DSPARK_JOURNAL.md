@@ -2211,6 +2211,60 @@ python3 speed-bench/run_dspark_warm_prefill.py --dry-run --allow-dirty
 git diff --check
 ```
 
+The user reran the warm-prefill benchmark at commit `c8bc495`. Consolidated
+residency reduced runtime first-sync time from roughly 13.53 seconds to 0.85
+seconds and runtime child wall time from 16.83 seconds to 5.00 seconds. Baseline
+child wall was 4.03 seconds. Warm prefill remained stable at 50.55 t/s baseline
+versus 49.39 t/s runtime (0.9770x), while cold sync reached 47.31 versus 45.64
+t/s (0.9646x). Runtime non-sync overhead increased by only about 0.90 seconds,
+matching the single consolidated sidecar residency request; the old repeated
+first-sync residency cost was removed rather than merely moved across the
+timer. All logits hashes matched.
+
+Phase 0.46 rolling DSpark window added on 2026-07-12:
+
+- The DeepSeek DSpark paper explicitly specifies sliding-window attention of
+  128 for the V4 DSpark backbone. The official V4-Flash-DSpark config combines
+  `sliding_window=128` with a 1,048,576-token maximum target context. The prior
+  behavior that skipped DSpark after a 128-token total prefix was therefore a
+  local implementation limitation, not an architectural restriction.
+- Target-layer HC capture now intersects each evaluated target span with the
+  final 128-position window. A long chunked prefill copies only the relevant
+  source rows into bounded capture storage instead of allocating or retaining
+  the complete target prefix.
+- DSpark session state tracks absolute window origins separately from compact
+  row counts. Advancing a full window drops expired `main_x` rows, shifts the
+  retained GPU prefix through scratch storage, and appends newly projected
+  rows only after target verification commits.
+- CPU and Metal sidecar attention now use absolute RoPE positions while storing
+  context and block KV in compact window-relative slots. Speculative restore
+  paths do not mutate the durable window before a successful capture finish.
+- Added deterministic 187-token factual and 151-token sustained-generation
+  rendered prompt cases. Observer parity, exact runtime, and fast runtime all
+  remain byte-identical to baseline. The sustained case generates 64 tokens
+  and requires at least five successful fast commits while the window rotates.
+- A separate integration check used the retained issue-468 `code_4k` fixture.
+  Its local rendered prompt reached 1,917 tokens, initialized window
+  `1789:1917`, then advanced through full and partial fast commits with
+  byte-identical output and no capture skip or fallback.
+- No tok/s benchmark was run by Codex. The next phase can import the exact 8k
+  comparison corpus and build a paired user-run benchmark matching the retained
+  issue-468 workload.
+
+Phase 0.46 checks:
+
+```sh
+make ds4 ds4_test ds4-server ds4-eval ds4-agent ds4_cpu.o \
+  ds4-warm-prefill-bench
+./ds4_test --dspark-validation --dspark-shape-binding
+bash -n tests/dspark_gpu_candidates_correctness.sh \
+  tests/dspark_fast_verifier_soak.sh
+DS4_TEST_DSPARK_MODE=observer ./tests/dspark_gpu_candidates_correctness.sh
+DS4_TEST_DSPARK_MODE=runtime ./tests/dspark_gpu_candidates_correctness.sh
+./tests/dspark_fast_verifier_soak.sh
+git diff --check
+```
+
 ## Resume Checklist
 
 If continuing from a compacted context, start here:
@@ -2259,11 +2313,9 @@ If continuing from a compacted context, start here:
 
 ## Open Questions
 
-- Phase 0.43 preserves the measured one-shot fast path while making resumed
-  sessions exact after a discovered divergence. The next performance work
-  should address sidecar prefill/startup cost or remove partial-prefix replay;
-  startup is the larger wall-time problem, while replay is the smaller steady
-  generation cost.
+- Phase 0.46 removes the long-context blocker. The next performance work is an
+  exact-corpus reproduction of the retained issue-468 8k-prompt benchmark with
+  paired no-log throughput runs and separate instrumentation runs.
 - The GPU stage path currently borrows target graph transient batch workspace
   and therefore requires `prefill_cap >= block_size` (five). Decide whether to
   allocate sidecar-specific batch scratch before production enablement or keep

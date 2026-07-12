@@ -1,0 +1,15 @@
+Read the following project note and answer the final question with only the requested two words.
+
+The Meridian team maintains two telescopes. On Monday, technicians stored the
+eastern telescope's brass lens in cabinet seven. On Tuesday, they moved the
+western telescope's silver lens to cabinet three. Thursday's eastern test used
+a temporary glass lens, so the brass lens stayed in storage. On Friday, the
+silver lens was removed and installed in the western telescope.
+
+The maintenance ledger also records routine work unrelated to the lenses. The
+north platform was washed before sunrise, cabinet twelve received new labels,
+and the weather station battery passed its monthly inspection. A delivery of
+cleaning cloths was counted and placed beside the workshop door. None of these
+activities changed either telescope or any lens cabinet.
+
+Question: Which lens remained stored at the end? Answer with exactly two words.

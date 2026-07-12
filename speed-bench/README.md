@@ -48,8 +48,9 @@ the captured process and thermal metadata records unavoidable interference. Its
 defaults perform one warmup per mode followed by three measured pairs. Pair
 order alternates baseline/runtime then runtime/baseline, with a 10-second
 cooldown between processes. Each process uses greedy generation, a fixed seed,
-64 generated tokens, and `speed-bench/dspark_prompt.txt`; the rendered prompt
-plus generation stays inside the current 128-token DSpark sidecar window.
+64 generated tokens, and `speed-bench/dspark_prompt.txt`. DSpark retains a
+rolling 128-token sidecar attention window, so the target prefix may be longer;
+this small fixture remains the focused steady-generation microbenchmark.
 
 Default runtime runs set only:
 

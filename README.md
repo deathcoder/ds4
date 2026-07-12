@@ -704,15 +704,27 @@ path; it is useful only for greedy decoding, currently uses a confidence gate
 (`--mtp-margin`) to avoid slow partial accepts, and should be treated as an
 experimental slight-speedup path.
 
-`--dspark DSpark.gguf` is an early validation-only hook for official
-DeepSeek/DeepSpec DSpark drafter sidecars. It checks that the GGUF contains the
-expected DSpark `mtp.*` tensors and metadata defaults, then continues with the
-normal non-DSpark runtime; speculative DSpark execution is not wired yet.
-For development, `--dspark-probe` additionally runs a short diagnostic prompt
-through the target-layer mean-HC capture bridge and DSpark
-`main_proj/main_norm`, executes the sidecar block, runs Markov-biased logits
-and confidence scores with an internal dry-run argmax chain, then exits without
-emitting, accepting, or drafting tokens.
+`--dspark DSpark.gguf` validates an official DeepSeek/DeepSpec DSpark sidecar.
+The experimental Metal runtime is greedy-only and remains opt-in:
+
+```sh
+DS4_DSPARK_GPU_RUNTIME=1 \
+DS4_DSPARK_MULTI_COMMIT=1 \
+DS4_DSPARK_FAST_BATCH_VERIFY=1 \
+./ds4 --model model.gguf --dspark dspark.gguf --nothink -p "Your prompt"
+```
+
+The sidecar retains a rolling 128-token attention window while the target can
+use the full configured context. The fast verifier is authoritative only for
+the first synchronized prompt; resumed turns use the exact batched verifier
+after a retained correctness case found small approximate-kernel drift. Target
+verification remains authoritative for every emitted token. This path is not
+yet connected to server/agent streaming or non-greedy sampling.
+
+For development, `--dspark-probe` runs a diagnostic prompt through the
+target-layer mean-HC capture bridge and DSpark `main_proj/main_norm`, executes
+the sidecar block, runs Markov-biased logits and confidence scores with an
+internal dry-run argmax chain, then exits without emitting or accepting tokens.
 
 ## Server
 

@@ -1,0 +1,11 @@
+The following archive note establishes background context for a formatting task.
+The Meridian observatory opened its eastern dome before sunrise. Technicians
+checked the brass lens, counted twelve clean filters, inspected cabinet seven,
+and recorded stable temperatures in the lens room. The western crew repaired a
+loose railing, replaced two faded labels, tested the signal lamp, and returned
+three tool cases to storage. Later, the weather station reported dry air and a
+light northern wind. These details are reference material only and do not alter
+the formatting instruction below.
+
+Write the positive integers from 1 through 200 in order, separated only by
+single spaces. Do not stop early and do not add any explanation.

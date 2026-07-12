@@ -39,6 +39,18 @@ assert_fast_log() {
     local require_fast=$3
     case "$require_fast" in
         yes) grep -q 'DSpark fast batch verifier .* result=pass' "$log" ;;
+        rolling)
+            grep -q 'DSpark fast batch verifier .* result=pass' "$log"
+            grep -Eq 'DSpark GPU bridge runtime start=[0-9]+ rows=128 window=[1-9][0-9]*:[0-9]+' "$log"
+            if [[ $(grep -c 'DSpark fast batch verifier .* result=pass' "$log") -lt 5 ]]; then
+                printf 'rolling window case did not exercise enough fast commits\n' >&2
+                exit 1
+            fi
+            if grep -q 'DSpark GPU candidate source fallback' "$log"; then
+                printf 'rolling window case fell back from GPU proposals\n' >&2
+                exit 1
+            fi
+            ;;
         margin) grep -q 'DSpark multi commit fallback .* first row margin' "$log" ;;
         no) ;;
         *) printf 'invalid fast expectation for %s: %s\n' "$name" "$require_fast" >&2; exit 2 ;;
@@ -105,6 +117,7 @@ compare_resumed_chat() {
 }
 
 compare_prompt long_generation 64 "$root/speed-bench/dspark_prompt.txt" yes
+compare_prompt rolling_window 64 "$root/tests/dspark_rolling_long_generation_prompt.txt" rolling
 compare_prompt code_completion 32 "$root/tests/test-vectors/prompts/short_code_completion.txt" no
 compare_prompt italian 32 "$root/tests/test-vectors/prompts/short_italian_fact.txt" yes
 compare_prompt spanish 24 "$root/tests/dspark_fast_spanish_prompt.txt" yes

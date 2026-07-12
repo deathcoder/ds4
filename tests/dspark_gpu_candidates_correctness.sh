@@ -163,6 +163,7 @@ assert_strict_fallback() {
 compare_prompt_file reasoning 4 "$root/tests/test-vectors/prompts/short_reasoning_plain.txt"
 compare_prompt_file italian 6 "$root/tests/test-vectors/prompts/short_italian_fact.txt"
 compare_prompt_file medium_context 6 "$root/tests/dspark_gpu_candidates_medium_prompt.txt"
+compare_prompt_file rolling_window 12 "$root/tests/dspark_rolling_window_prompt.txt"
 compare_resumed_chat
 if [[ $mode == observer ]]; then
     assert_strict_fallback "$root/tests/test-vectors/prompts/short_reasoning_plain.txt"
