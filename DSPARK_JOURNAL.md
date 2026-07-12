@@ -2416,6 +2416,69 @@ python3 speed-bench/run_dspark_issue468_comparison.py --dry-run --allow-dirty
 git diff --check
 ```
 
+Phase 0.50 exact output-head microbatch added on 2026-07-12:
+
+- Chose the output head as the first exact-state microbatch slice. The exact
+  verifier already holds every proposal row's authoritative final hidden state
+  contiguously in one of its two batch HC buffers; the active buffer is selected
+  from target-layer parity. Output-head scratch and `spec_logits` do not overlap
+  target KV/cache state.
+- Refactored `metal_graph_encode_output_head_batch` to accept an explicit HC
+  input tensor. The unsafe full fast verifier retains its existing batch HC
+  input, while exact-head observation and runtime use the authoritative exact
+  hidden-state buffer.
+- Added `DS4_DSPARK_EXACT_HEAD_BATCH_OBSERVER=1`. It runs a shadow batched head
+  over exact hidden states, then leaves the existing serial heads authoritative.
+  Each proposal reports intermediate row-top parity, final-top parity, and
+  final-logit maximum/RMS drift.
+- Full `code_8k`, `synthesis_8k`, and `grounded_8k` correctness runs produced
+  66, 52, and 58 observer records respectively. All 176 records matched every
+  intermediate row top and final top. Complete stdout remained byte-identical
+  to baseline for all three prompt families.
+- On `code_8k`, final-logit maximum drift had median `1.14441e-5` and maximum
+  `2.09808e-5`; RMS drift stayed around `1e-6`. Replacing batched row norms with
+  serial one-row norm kernels did not change these values, proving the small
+  difference originates elsewhere in batched head arithmetic; that experiment
+  was removed.
+- Added opt-in `DS4_DSPARK_EXACT_HEAD_BATCH=1`. It batches only the `n-1`
+  intermediate heads used for draft acceptance. The final row always runs the
+  original serial output head, so continuation logits remain exact. All target
+  layers, compressed/raw caches, target HC capture, and final continuation state
+  retain the exact verifier path. A batch-head setup failure falls back to all
+  serial heads.
+- Added `--exact-head-batch` to the issue-468 runner and metadata. It is mutually
+  exclusive with the unsafe `--fast-verifier` experiment. Inherited values are
+  cleared with other `DS4_DSPARK_*` variables.
+- This is a component milestone, not a full exact compute-batched verifier and
+  not a speed claim. No tok/s benchmark was run by Codex. The user can later
+  compare exact baseline versus exact-head batching before we decide whether the
+  next microbatch target should be HC/QKV projection, FFN projection, or another
+  weight-heavy row-independent stage.
+
+Phase 0.50 checks:
+
+```sh
+# Correctness-only full code/synthesis/grounded runs used:
+DS4_DSPARK_GPU_RUNTIME=1 DS4_DSPARK_MULTI_COMMIT=1 \
+DS4_DSPARK_EXACT_HEAD_BATCH=1 \
+DS4_DSPARK_EXACT_HEAD_BATCH_OBSERVER=1 ./ds4 ...
+# All outputs matched their baseline byte-for-byte; timings were ignored.
+make ds4 ds4_test ds4-server ds4-eval ds4-agent ds4_cpu.o \
+  ds4-warm-prefill-bench
+./ds4_test --dspark-validation --dspark-shape-binding
+DS4_DSPARK_EXACT_HEAD_BATCH=1 \
+DS4_DSPARK_GPU_RUNTIME_DIAGNOSTICS=1 \
+DS4_TEST_DSPARK_MODE=runtime \
+  ./tests/dspark_gpu_candidates_correctness.sh
+# Retained logs contained successful exact-head batches for all five cases.
+./tests/dspark_fast_verifier_soak.sh
+python3 -m py_compile speed-bench/run_dspark_issue468_comparison.py
+python3 speed-bench/run_dspark_issue468_comparison.py \
+  --dry-run --allow-dirty --exact-head-batch
+# The harness rejects --exact-head-batch combined with --fast-verifier.
+git diff --check
+```
+
 ## Resume Checklist
 
 If continuing from a compacted context, start here:

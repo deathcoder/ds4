@@ -203,3 +203,20 @@ Exact DSpark output matched baseline. The fast verifier must use numerically
 exact batched decode semantics before its long-prompt speed can be reported;
 confidence thresholds and larger correctness samples cannot prove approximate
 state safe.
+
+`--exact-head-batch` is a separate, correctness-oriented microbatch experiment.
+It keeps every target layer and cache update on the exact verifier, batches only
+the `n-1` intermediate output heads used for draft acceptance, and always runs
+the final continuation head through the original serial exact path. It is
+mutually exclusive with `--fast-verifier`:
+
+```sh
+python3 speed-bench/run_dspark_issue468_comparison.py \
+  --dry-run --exact-head-batch
+```
+
+The component passed byte-identity checks across all three long fixtures and
+176 shadow comparisons of batched versus serial row tops. No performance claim
+has been made for it yet. A future user-run comparison can determine whether
+amortizing the large vocabulary projection materially improves the exact
+verifier before more target-layer kernels are microbatched.

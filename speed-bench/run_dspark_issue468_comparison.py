@@ -70,7 +70,7 @@ def cleared_env_keys(env):
     )
 
 
-def benchmark_env(mode, fast_verifier, stats=False):
+def benchmark_env(mode, fast_verifier, stats=False, exact_head_batch=False):
     env = os.environ.copy()
     for key in cleared_env_keys(env):
         env.pop(key, None)
@@ -79,6 +79,8 @@ def benchmark_env(mode, fast_verifier, stats=False):
         env["DS4_DSPARK_MULTI_COMMIT"] = "1"
         if fast_verifier:
             env["DS4_DSPARK_FAST_BATCH_VERIFY"] = "1"
+        if exact_head_batch:
+            env["DS4_DSPARK_EXACT_HEAD_BATCH"] = "1"
         if stats:
             env["DS4_DSPARK_GPU_RUNTIME_STATS"] = "1"
     return env
@@ -109,6 +111,10 @@ def parse_args():
         "--fast-verifier", action="store_true",
         help="use the experimental compute-batched verifier (not correctness-safe on this corpus)",
     )
+    parser.add_argument(
+        "--exact-head-batch", action="store_true",
+        help="batch intermediate output heads while retaining exact target state and final logits",
+    )
     parser.add_argument("--output-dir", type=Path)
     parser.add_argument("--confirm-ready", action="store_true")
     parser.add_argument("--allow-dirty", action="store_true")
@@ -120,6 +126,8 @@ def parse_args():
         parser.error("cooldown cannot be negative")
     if not args.dry_run and not args.confirm_ready:
         parser.error("refusing to benchmark without --confirm-ready")
+    if args.fast_verifier and args.exact_head_batch:
+        parser.error("--fast-verifier and --exact-head-batch are separate experiments")
     return args, root
 
 
@@ -168,10 +176,11 @@ def mode_command(args, prompt, mode):
 
 
 def command_text(args, prompt, mode, stats=False):
-    env = benchmark_env(mode, args.fast_verifier, stats)
+    env = benchmark_env(mode, args.fast_verifier, stats, args.exact_head_batch)
     keys = (
         "DS4_DSPARK_GPU_RUNTIME", "DS4_DSPARK_MULTI_COMMIT",
-        "DS4_DSPARK_FAST_BATCH_VERIFY", "DS4_DSPARK_GPU_RUNTIME_STATS",
+        "DS4_DSPARK_FAST_BATCH_VERIFY", "DS4_DSPARK_EXACT_HEAD_BATCH",
+        "DS4_DSPARK_GPU_RUNTIME_STATS",
     )
     prefix = " ".join(f"{key}={env[key]}" for key in keys if key in env)
     return (prefix + " " if prefix else "") + shlex.join(
@@ -223,7 +232,9 @@ def execute(args, root, run_dir, label, prompt_label, prompt, mode, reference, s
     with stdout_path.open("wb") as stdout_fp, stderr_path.open("wb") as stderr_fp:
         completed = subprocess.run(
             command, cwd=root,
-            env=benchmark_env(mode, args.fast_verifier, stats),
+            env=benchmark_env(
+                mode, args.fast_verifier, stats, args.exact_head_batch
+            ),
             stdout=stdout_fp, stderr=stderr_fp, check=False,
         )
     wall_seconds = time.monotonic() - started
@@ -287,6 +298,7 @@ def collect_metadata(args, root, prompts, provenance):
             "warmups_per_mode_per_prompt": args.warmups,
             "cooldown_seconds": args.cooldown, "temperature": 0, "seed": 1,
             "fast_verifier": args.fast_verifier,
+            "exact_head_batch": args.exact_head_batch,
             "throughput_instrumentation": False, "stats_pass": args.stats_pass,
             "nothink": False,
         },
@@ -427,6 +439,11 @@ def main():
         print(
             "WARNING: fast verification is known to diverge on code_8k; "
             "this mode is for correctness investigation, not performance reporting."
+        )
+    if args.exact_head_batch:
+        print(
+            "Exact-head batch mode: intermediate target heads are batched; "
+            "target state and final continuation logits remain serial-exact."
         )
     if args.stats_pass:
         print("A separate one-run-per-prompt runtime stats pass will follow throughput.")

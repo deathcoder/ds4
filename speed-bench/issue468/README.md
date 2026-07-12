@@ -16,5 +16,9 @@ The harness defaults to the exact DSpark target verifier. Its experimental
 for correctness investigation. Do not report its throughput until the target
 batch verifier preserves exact decode state across repeated commits.
 
+The separate `--exact-head-batch` option retains exact target state and final
+continuation logits while batching intermediate acceptance heads. It has passed
+all three fixtures but has not yet been performance-benchmarked.
+
 Do not edit the prompt files. Replace them only from a newly pinned upstream
 commit and update all provenance fields and hashes together.

@@ -16629,9 +16629,11 @@ static bool metal_graph_encode_output_head_batch(
         ds4_gpu_graph *g,
         const ds4_model       *model,
         const ds4_weights     *weights,
+        const ds4_gpu_tensor  *input_hc,
         uint32_t               n_tokens,
         uint64_t               vocab_dim) {
-    if (n_tokens == 0 || n_tokens > g->prefill_cap || !g->spec_logits) return false;
+    if (!input_hc || n_tokens == 0 || n_tokens > g->prefill_cap ||
+        !g->spec_logits) return false;
 
     const uint64_t hc_dim = (uint64_t)DS4_N_HC * DS4_N_EMBD;
     ds4_gpu_tensor *output_pre = NULL;
@@ -16659,7 +16661,7 @@ static bool metal_graph_encode_output_head_batch(
     ok = output_pre && output_weights && output_embd && output_norm && logits;
 
     if (ok) ok = ds4_gpu_rms_norm_plain_rows_tensor(g->batch_flat_hc,
-                                                      g->batch_cur_hc,
+                                                      input_hc,
                                                       (uint32_t)hc_dim,
                                                       n_tokens,
                                                       DS4_RMS_EPS) != 0;
@@ -16680,7 +16682,7 @@ static bool metal_graph_encode_output_head_batch(
                                                     DS4_N_HC,
                                                     DS4_HC_EPS) != 0;
     if (ok) ok = ds4_gpu_hc_weighted_sum_tensor(output_embd,
-                                                  g->batch_cur_hc,
+                                                  input_hc,
                                                   output_weights,
                                                   DS4_N_EMBD,
                                                   DS4_N_HC) != 0;
@@ -21893,6 +21895,7 @@ static bool metal_graph_verify_suffix_tops(
     if (ok) ok = metal_graph_encode_output_head_batch(g,
                                                       model,
                                                       weights,
+                                                      g->batch_cur_hc,
                                                       n_tokens,
                                                       weights->output->dim[1]);
     if (ok) {
@@ -22077,6 +22080,163 @@ static bool metal_graph_verify_decode2_exact(
     return ok;
 }
 
+typedef struct {
+    bool enabled;
+    bool executed;
+    int row_tops[16];
+    float *last_logits;
+} dspark_exact_head_batch_observation;
+
+static bool dspark_exact_head_batch_observer_enabled(void) {
+    const char *v = getenv("DS4_DSPARK_EXACT_HEAD_BATCH_OBSERVER");
+    return v && v[0] && strcmp(v, "0") != 0;
+}
+
+static bool dspark_exact_head_batch_runtime_enabled(void) {
+    const char *v = getenv("DS4_DSPARK_EXACT_HEAD_BATCH");
+    return v && v[0] && strcmp(v, "0") != 0;
+}
+
+static bool dspark_exact_head_batch_diagnostics_enabled(void) {
+    const char *v = getenv("DS4_DSPARK_GPU_RUNTIME_DIAGNOSTICS");
+    return v && v[0] && strcmp(v, "0") != 0;
+}
+
+static bool metal_graph_exact_head_batch_tops(
+        ds4_gpu_graph       *g,
+        const ds4_model     *model,
+        const ds4_weights   *weights,
+        const ds4_gpu_tensor *final_hc,
+        uint32_t             n_rows,
+        int                 *row_tops) {
+    if (!g || !model || !weights || !final_hc || !row_tops || n_rows == 0u) {
+        return false;
+    }
+
+    bool ok = ds4_gpu_begin_commands() != 0;
+    if (ok) {
+        ok = metal_graph_encode_output_head_batch(g,
+                                                   model,
+                                                   weights,
+                                                   final_hc,
+                                                   n_rows,
+                                                   weights->output->dim[1]);
+    }
+    if (ok && n_rows == 1u) {
+        ok = ds4_gpu_argmax_tensor(g->comp_selected,
+                                   g->spec_logits,
+                                   DS4_N_VOCAB) != 0;
+    } else if (ok) {
+        ok = ds4_gpu_indexer_topk_tensor(g->comp_selected,
+                                         g->spec_logits,
+                                         DS4_N_VOCAB,
+                                         n_rows,
+                                         1) != 0;
+    }
+    if (ok) ok = ds4_gpu_end_commands() != 0;
+    else (void)ds4_gpu_synchronize();
+    if (ok) {
+        ok = ds4_gpu_tensor_read(g->comp_selected,
+                                 0,
+                                 row_tops,
+                                 (uint64_t)n_rows * sizeof(row_tops[0])) != 0;
+    }
+    return ok;
+}
+
+static bool metal_graph_exact_head_batch_observe(
+        ds4_gpu_graph                    *g,
+        const ds4_model                  *model,
+        const ds4_weights                *weights,
+        const ds4_gpu_tensor             *final_hc,
+        uint32_t                          n_tokens,
+        dspark_exact_head_batch_observation *observation) {
+    memset(observation, 0, sizeof(*observation));
+    observation->enabled = dspark_exact_head_batch_observer_enabled();
+    if (!observation->enabled) return true;
+
+    observation->last_logits = xmalloc(
+        (size_t)DS4_N_VOCAB * sizeof(observation->last_logits[0]));
+    const uint32_t top_rows = n_tokens - 1u;
+    bool ok = ds4_gpu_begin_commands() != 0;
+    if (ok) {
+        ok = metal_graph_encode_output_head_batch(g,
+                                                   model,
+                                                   weights,
+                                                   final_hc,
+                                                   n_tokens,
+                                                   weights->output->dim[1]);
+    }
+    if (ok && top_rows == 1u) {
+        ok = ds4_gpu_argmax_tensor(g->comp_selected,
+                                   g->spec_logits,
+                                   DS4_N_VOCAB) != 0;
+    } else if (ok && top_rows > 1u) {
+        ok = ds4_gpu_indexer_topk_tensor(g->comp_selected,
+                                         g->spec_logits,
+                                         DS4_N_VOCAB,
+                                         top_rows,
+                                         1) != 0;
+    }
+    if (ok) ok = ds4_gpu_end_commands() != 0;
+    else (void)ds4_gpu_synchronize();
+    if (ok && top_rows != 0u) {
+        ok = ds4_gpu_tensor_read(g->comp_selected,
+                                 0,
+                                 observation->row_tops,
+                                 (uint64_t)top_rows * sizeof(observation->row_tops[0])) != 0;
+    }
+    if (ok) {
+        ok = metal_graph_read_spec_logits_row(g,
+                                              n_tokens - 1u,
+                                              observation->last_logits);
+    }
+    observation->executed = ok;
+    return true;
+}
+
+static void dspark_exact_head_batch_observation_report(
+        dspark_exact_head_batch_observation *observation,
+        const int                           *exact_row_tops,
+        const float                         *exact_last_logits,
+        uint32_t                             n_tokens) {
+    if (!observation || !observation->enabled) return;
+
+    const uint32_t top_rows = n_tokens - 1u;
+    uint32_t row_matches = 0;
+    if (observation->executed) {
+        for (uint32_t row = 0; row < top_rows; row++) {
+            if (observation->row_tops[row] == exact_row_tops[row]) row_matches++;
+        }
+    }
+    const int batch_final_top = observation->executed ?
+        sample_argmax(observation->last_logits, DS4_N_VOCAB) : -1;
+    const int exact_final_top = sample_argmax(exact_last_logits, DS4_N_VOCAB);
+    const float max_diff = observation->executed ?
+        max_abs_diff(observation->last_logits, exact_last_logits, DS4_N_VOCAB) :
+        DS4_POS_INF;
+    const float rms_diff = observation->executed ?
+        rms_abs_diff(observation->last_logits, exact_last_logits, DS4_N_VOCAB) :
+        DS4_POS_INF;
+    const bool parity_ok = observation->executed &&
+                           row_matches == top_rows &&
+                           batch_final_top == exact_final_top;
+    fprintf(stderr,
+            "ds4: DSpark exact head batch observer proposed=%u "
+            "row_top_matches=%u/%u final_top_batch=%d final_top_exact=%d "
+            "final_max=%g final_rms=%g result=%s\n",
+            n_tokens,
+            row_matches,
+            top_rows,
+            batch_final_top,
+            exact_final_top,
+            max_diff,
+            rms_diff,
+            parity_ok ? "pass" : "fail");
+    free(observation->last_logits);
+    memset(observation, 0, sizeof(*observation));
+}
+
 /* Exact multi-token target verifier for DSpark.
  *
  * Rows keep the normal one-token decode kernels and autoregressive cache
@@ -22158,8 +22318,40 @@ static bool metal_graph_verify_decode_exact(
     g->after_ffn_hc = saved_after;
     g->spec_capture_prefix1 = saved_capture;
 
+    dspark_exact_head_batch_observation head_observation;
+    memset(&head_observation, 0, sizeof(head_observation));
+    const ds4_gpu_tensor *final_hc = (DS4_N_LAYER & 1u) ?
+        g->batch_next_hc : g->batch_cur_hc;
+    if (ok) {
+        (void)metal_graph_exact_head_batch_observe(g,
+                                                   model,
+                                                   weights,
+                                                   final_hc,
+                                                   n_tokens,
+                                                   &head_observation);
+    }
+
+    bool head_batch_tops = false;
+    if (ok && n_tokens > 1u && dspark_exact_head_batch_runtime_enabled()) {
+        head_batch_tops = metal_graph_exact_head_batch_tops(g,
+                                                             model,
+                                                             weights,
+                                                             final_hc,
+                                                             n_tokens - 1u,
+                                                             row_tops);
+        if (dspark_exact_head_batch_diagnostics_enabled()) {
+            fprintf(stderr,
+                    "ds4: DSpark exact head batch proposed=%u intermediate=%u "
+                    "result=%s\n",
+                    n_tokens,
+                    n_tokens - 1u,
+                    head_batch_tops ? "pass" : "fallback");
+        }
+    }
+
     if (ok) ok = ds4_gpu_begin_commands() != 0;
-    for (uint32_t row = 0; ok && row < n_tokens; row++) {
+    const uint32_t serial_row0 = head_batch_tops ? n_tokens - 1u : 0u;
+    for (uint32_t row = serial_row0; ok && row < n_tokens; row++) {
         g->cur_hc = cur[row];
         ok = metal_graph_encode_output_head(g,
                                             model,
@@ -22181,7 +22373,7 @@ static bool metal_graph_verify_decode_exact(
     g->after_ffn_hc = saved_after;
     g->spec_capture_prefix1 = saved_capture;
 
-    if (ok && n_tokens > 1u) {
+    if (ok && n_tokens > 1u && !head_batch_tops) {
         ok = ds4_gpu_tensor_read(g->comp_selected,
                                  0,
                                  row_tops,
@@ -22192,6 +22384,14 @@ static bool metal_graph_verify_decode_exact(
                                  0,
                                  last_logits,
                                  (uint64_t)DS4_N_VOCAB * sizeof(last_logits[0])) != 0;
+    }
+    if (ok) {
+        dspark_exact_head_batch_observation_report(&head_observation,
+                                                   row_tops,
+                                                   last_logits,
+                                                   n_tokens);
+    } else {
+        free(head_observation.last_logits);
     }
 
     for (uint32_t row = 0; row < n_tokens; row++) {
