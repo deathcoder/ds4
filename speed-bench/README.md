@@ -61,12 +61,20 @@ All inherited `DS4_DSPARK_*` variables and instrumentation variables containing
 `PROFILE`, `TRACE`, `DUMP`, or `TIMING` (plus `*_LOG`) are removed first. Runtime
 diagnostic logs remain disabled. The stats option adds only clock reads and one
 machine-readable record when the session closes; it reports acceptance depth,
-target evaluations, and aggregate bridge/stage/head/chain timing. Other `DS4_*`
-tuning variables are preserved and recorded. Every run must produce
+target graph calls and token positions, exact-batch verifier outcomes, and
+bridge/stage/head/chain timing split between prefill and generation. Other
+`DS4_*` tuning variables are preserved and recorded. Every run must produce
 byte-identical stdout; the harness aborts on drift. Raw stdout/stderr,
 environment metadata, process and thermal snapshots, per-run CSV data, and
 median/paired-speedup plus runtime-efficiency summaries go under the ignored
 `speed-bench/local-runs/` directory.
+
+On a resident non-streaming Metal graph, DSpark runtime verification batches up
+to five proposed tokens into one exact target command stream. It retains the
+normal one-token decode kernels and cache-update order. Full accepts commit the
+result directly; partial accepts restore the saved target frontier and rerun
+only the accepted prefix as a second exact batch. Unsupported graph shapes or
+recoverable batch failures automatically use the serial verifier.
 
 Useful explicit overrides include `--pairs`, `--warmups`, `--cooldown`,
 `--tokens`, and `--output-dir`. Do not compare runs with different settings.

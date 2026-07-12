@@ -53,6 +53,7 @@ assert_gpu_selected() {
         grep -q 'DSpark GPU stage 2 runtime .* result=pass' "$log"
         grep -q 'DSpark GPU head runtime .* result=pass' "$log"
         grep -q 'DSpark GPU chain runtime .* result=pass' "$log"
+        grep -q 'DSpark exact batch verifier .* result=pass' "$log"
         if grep -q 'DSpark GPU .* parity' "$log"; then
             printf 'runtime mode unexpectedly ran a GPU parity observer\n' >&2
             exit 1

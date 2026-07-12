@@ -1924,6 +1924,49 @@ candidate matrices passed, all baseline/runtime outputs were byte-identical,
 all requested binaries and focused DSpark tests passed, and the CPU object
 emitted the same eight known warnings. No tok/s benchmark was run by Codex.
 
+Phase 0.40 exact batched target verification added on 2026-07-12:
+
+- The pre-change user benchmark at commit `d828f6f` reproduced the earlier
+  result: 23.85 t/s baseline versus 21.43 t/s runtime, or 0.8985x by ratio of
+  medians. All three paired ratios were near 0.90x.
+- Draft acceptance was already excellent: average depth 4.923, with twelve
+  depth-5 commits and one depth-4 commit across 64 emitted tokens. The serial
+  verifier nevertheless performed 64 target graph calls for those 64 tokens,
+  avoiding none.
+- `metal_graph_verify_decode_exact` now verifies up to sixteen rows with the
+  normal one-token target decode kernels and autoregressive cache-update order,
+  while scheduling all rows layer-by-layer in one GPU command stream. DSpark
+  currently uses at most five rows.
+- The verifier snapshots compressed-attention frontiers before mutation. A
+  full accept commits the already-advanced target state directly. A partial
+  accept restores the original frontier and reruns only the accepted prefix as
+  a second exact batch. Any recoverable snapshot, capture, or verifier failure
+  restores state and uses the existing serial path; an unrestoreable target
+  state remains a hard error.
+- Exact batching is currently selected only for GPU DSpark runtime on resident
+  non-streaming graphs. SSD-streaming graphs retain serial verification because
+  their layer mapping/readahead contract needs separate work.
+- Target-layer HC rows are captured inside the exact verifier command stream,
+  then passed through the existing GPU bridge once the accepted target prefix
+  is known. This preserves the device-resident DSpark continuation path.
+- Runtime stats now distinguish target graph calls from token positions
+  processed and report exact-batch attempts/full accepts/partial accepts/
+  fallbacks. Sidecar timing is split into prefill and generation component
+  buckets; the benchmark summary normalizes only generation-side work per
+  emitted token.
+
+Phase 0.40 correctness checks include a ten-token direct smoke whose output was
+byte-identical to baseline. It exercised one full and three partial exact-batch
+accepts with no batch fallback, using eight target calls for ten emitted tokens.
+This is correctness evidence only, not a speed result. The observer and runtime
+GPU candidate matrices both passed reasoning, Italian, medium-context, and
+resumed-session cases with byte-identical outputs. The runtime matrix now also
+requires a diagnostics-only exact-batch success record, so a silent serial
+fallback fails correctness validation. All requested binaries and focused
+DSpark tests passed; the CPU object emitted the same eight known warnings. The
+benchmark parser/dry run and actual-record summary assertions passed. No tok/s
+benchmark was run by Codex.
+
 ## Resume Checklist
 
 If continuing from a compacted context, start here:
@@ -1972,7 +2015,7 @@ If continuing from a compacted context, start here:
 
 ## Open Questions
 
-- Phase 0.39 needs a user-run comparison with runtime-efficiency stats. Ask the
+- Phase 0.40 needs a user-run comparison with exact batched verification. Ask the
   user to make the machine as quiet as practical, run the harness, and bring
   back `summary.md` and `results.csv`; interpret results alongside captured
   process metadata rather than assuming a fully idle host.

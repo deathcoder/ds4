@@ -29,7 +29,12 @@ RUNTIME_STATS_INT_FIELDS = {
     "multi_attempts",
     "emitted",
     "target_evals",
+    "target_eval_tokens",
     "target_evals_avoided",
+    "batch_attempts",
+    "batch_full",
+    "batch_partial",
+    "batch_fallbacks",
     "depth1",
     "depth2",
     "depth3",
@@ -46,6 +51,14 @@ RUNTIME_STATS_FLOAT_FIELDS = {
     "head_ms",
     "chain_ms",
     "target_eval_ms",
+    "prefill_sidecar_ms",
+    "generation_sidecar_ms",
+    "generation_bridge_ms",
+    "generation_stage0_ms",
+    "generation_stage1_ms",
+    "generation_stage2_ms",
+    "generation_head_ms",
+    "generation_chain_ms",
 }
 RUNTIME_STATS_FIELDS = tuple(
     f"stats_{name}"
@@ -371,16 +384,29 @@ def summarize(rows):
         "runtime_target_evals_per_emitted_median": runtime_ratio(
             "stats_target_evals", "stats_emitted"
         ),
-        "runtime_sidecar_ms_per_emitted_median": runtime_ratio(
-            "stats_sidecar_ms", "stats_emitted"
+        "runtime_target_eval_tokens_per_call_median": runtime_ratio(
+            "stats_target_eval_tokens", "stats_target_evals"
+        ),
+        "runtime_generation_sidecar_ms_per_emitted_median": runtime_ratio(
+            "stats_generation_sidecar_ms", "stats_emitted"
         ),
         "runtime_target_eval_ms_per_eval_median": runtime_ratio(
             "stats_target_eval_ms", "stats_target_evals"
         ),
+        "runtime_target_eval_ms_per_emitted_median": runtime_ratio(
+            "stats_target_eval_ms", "stats_emitted"
+        ),
+        "runtime_prefill_sidecar_ms_median": runtime_median(
+            "stats_prefill_sidecar_ms"
+        ),
+        "runtime_batch_attempts_median": runtime_median("stats_batch_attempts"),
+        "runtime_batch_full_median": runtime_median("stats_batch_full"),
+        "runtime_batch_partial_median": runtime_median("stats_batch_partial"),
+        "runtime_batch_fallbacks_median": runtime_median("stats_batch_fallbacks"),
     }
     for component in ("bridge", "stage0", "stage1", "stage2", "head", "chain"):
         summary[f"runtime_{component}_ms_per_emitted_median"] = runtime_ratio(
-            f"stats_{component}_ms", "stats_emitted"
+            f"stats_generation_{component}_ms", "stats_emitted"
         )
     return summary
 
@@ -427,11 +453,22 @@ def write_results(run_dir, rows, summary, metadata):
         f"- Runtime target evals avoided: {summary['runtime_target_evals_avoided_median']:.1f}\n"
         f"- Runtime target evals / emitted token: "
         f"{summary['runtime_target_evals_per_emitted_median']:.4f}\n"
-        f"- Runtime sidecar time / emitted token: "
-        f"{summary['runtime_sidecar_ms_per_emitted_median']:.3f} ms\n"
+        f"- Runtime token positions / target eval: "
+        f"{summary['runtime_target_eval_tokens_per_call_median']:.3f}\n"
+        f"- Runtime generation sidecar / emitted token: "
+        f"{summary['runtime_generation_sidecar_ms_per_emitted_median']:.3f} ms\n"
+        f"- Runtime prefill sidecar total: "
+        f"{summary['runtime_prefill_sidecar_ms_median']:.3f} ms\n"
         f"- Runtime target time / target eval: "
         f"{summary['runtime_target_eval_ms_per_eval_median']:.3f} ms\n"
-        f"- Sidecar breakdown / emitted token: "
+        f"- Runtime target time / emitted token: "
+        f"{summary['runtime_target_eval_ms_per_emitted_median']:.3f} ms\n"
+        f"- Runtime batch outcomes: "
+        f"{summary['runtime_batch_attempts_median']:.1f} attempts, "
+        f"{summary['runtime_batch_full_median']:.1f} full, "
+        f"{summary['runtime_batch_partial_median']:.1f} partial, "
+        f"{summary['runtime_batch_fallbacks_median']:.1f} fallbacks\n"
+        f"- Generation sidecar breakdown / emitted token: "
         f"bridge {summary['runtime_bridge_ms_per_emitted_median']:.3f} ms, "
         f"stages {summary['runtime_stage0_ms_per_emitted_median']:.3f}/"
         f"{summary['runtime_stage1_ms_per_emitted_median']:.3f}/"
