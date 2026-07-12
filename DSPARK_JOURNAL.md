@@ -2548,6 +2548,56 @@ Phase 0.51 user-run result on 2026-07-13:
   `speed-bench/local-runs/head-ablation-20260713-002713/results.csv` (ignored by
   git and local to the user's machine).
 
+Phase 0.52 exact target-layer profiling prepared on 2026-07-13:
+
+- Source inspection confirmed that exact verification is layer-major but calls
+  the complete one-token decode layer once per proposal row. The existing
+  prefill batch path already has separate attention and FFN halves, but those
+  kernels are not numerically authoritative: earlier fast-verifier work proved
+  that small batch-state differences accumulate across cycles.
+- The natural first implementation boundary is after attention HC expansion:
+  `after_attn_hc` is the complete per-row input to the FFN, and the graph owns
+  batch storage plus an existing batched FFN implementation. Promoting that path
+  immediately would still require splitting the monolithic decode function and
+  proving hidden-state parity, so first identify whether FFN is actually the
+  dominant half and which projection deserves the refactor.
+- Added `speed-bench/run_dspark_exact_layer_profile.py`. It runs an unprofiled
+  exact reference, then profiles exact decode stages at layers 0, 30, and 60 by
+  default. It clears inherited DSpark/instrumentation flags, never enables the
+  fast verifier, and requires every profiled stdout stream to match the exact
+  reference byte-for-byte.
+- The harness parses the existing `DS4_METAL_DECODE_STAGE_PROFILE` records into
+  attention/FFN shares and the five largest stages per representative layer.
+  That profiler synchronizes at every stage boundary and disables some overlap,
+  so the values are diagnostic ordering evidence only. They are not production
+  timings and must not be compared with t/s results.
+- Added a profiler-only command-buffer fence before the selected layer in the
+  exact verifier. Without it, that layer's first `attn_hc_pre` boundary also
+  waited for queued work from all preceding layers. The fence is guarded by the
+  existing decode-stage profile option and adds no normal-runtime GPU command
+  or synchronization work.
+- Real execution requires `--confirm-ready`; Codex did not run the profile.
+
+Phase 0.52 checks:
+
+```sh
+make ds4 ds4_test ds4-server ds4-eval ds4-agent ds4_cpu.o \
+  ds4-warm-prefill-bench
+python3 -m py_compile speed-bench/run_dspark_exact_layer_profile.py
+python3 speed-bench/run_dspark_exact_layer_profile.py \
+  --dry-run --allow-dirty
+# Synthetic records covered every known decode stage, layers 0/30/60, summary
+# grouping, report generation, and rejection without --confirm-ready.
+DS4_METAL_DECODE_STAGE_PROFILE=1 \
+DS4_METAL_DECODE_STAGE_PROFILE_LAYER=0 \
+DS4_TEST_DSPARK_MODE=runtime \
+  ./tests/dspark_gpu_candidates_correctness.sh
+# All five outputs matched baseline; timings were ignored. The harness parser
+# accepted 375 real stage records across the five retained logs.
+./ds4_test --dspark-validation --dspark-shape-binding
+git diff --check
+```
+
 ## Resume Checklist
 
 If continuing from a compacted context, start here:
@@ -2596,12 +2646,12 @@ If continuing from a compacted context, start here:
 
 ## Open Questions
 
-- Run only the short direct exact-versus-exact-head stats ablation next. Do not
-  repeat the full issue-468 baseline suite unless another exact verifier stage
-  earns a controlled comparison. Fast authority still does not preserve
-  long-running target state; broader throughput reporting must wait for a
-  numerically exact compute-batched verifier with byte-identical long-corpus
-  output.
+- Run the exact layer stage profile next, then use its ordering to choose the
+  first shadow microbatch observer. Do not repeat the full issue-468 baseline
+  suite unless another exact verifier stage earns a controlled comparison. Fast
+  authority still does not preserve long-running target state; broader
+  throughput reporting must wait for a numerically exact compute-batched
+  verifier with byte-identical long-corpus output.
 - The GPU stage path currently borrows target graph transient batch workspace
   and therefore requires `prefill_cap >= block_size` (five). Decide whether to
   allocate sidecar-specific batch scratch before production enablement or keep

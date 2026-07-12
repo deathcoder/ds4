@@ -235,3 +235,23 @@ not throughput results. The report instead splits target-verifier time into
 exact layers, batched heads, serial heads, and residual overhead. It also
 requires byte-identical output and reports successful head batches. Codex does
 not run this command; the user starts it when the machine is ready.
+
+Once target layers are known to dominate, use the synchronized stage profile
+to choose the first exact layer component to microbatch:
+
+```sh
+python3 speed-bench/run_dspark_exact_layer_profile.py --dry-run
+python3 speed-bench/run_dspark_exact_layer_profile.py --confirm-ready
+```
+
+The default profile runs one uninstrumented exact reference followed by exact
+DSpark runs profiling layers 0, 30, and 60 over 32 generated tokens. Every
+profiled output must match the reference byte-for-byte. The existing decoder
+profiler ends and waits for a Metal command buffer at each stage boundary, so
+its stage values include synchronization overhead and change normal scheduling.
+The exact verifier inserts a profiler-only command-buffer fence before the
+selected layer so its first stage does not absorb queued earlier-layer work.
+Use the attention/FFN shares and largest-stage ordering only to select an
+implementation target; they are not additive production timings, throughput
+results, or a speedup claim. Raw streams, per-stage rows, metadata, and the
+summary are written under ignored `speed-bench/local-runs/layer-profile-*`.

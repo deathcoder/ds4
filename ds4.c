@@ -22297,6 +22297,10 @@ static bool metal_graph_verify_decode_exact(
     const double layer_started = timing ? now_sec() : 0.0;
     if (ok) ok = ds4_gpu_begin_commands() != 0;
     for (uint32_t il = 0; ok && il < DS4_N_LAYER; il++) {
+        if (metal_graph_decode_stage_profile_enabled(il)) {
+            ok = ds4_gpu_end_commands() != 0 &&
+                 ds4_gpu_begin_commands() != 0;
+        }
         for (uint32_t row = 0; ok && row < n_tokens; row++) {
             const uint32_t pos = start + row;
             g->cur_hc = cur[row];
