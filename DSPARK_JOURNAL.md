@@ -2887,6 +2887,53 @@ make ds4 ds4_test ds4-server ds4-eval ds4-agent ds4_cpu.o \
 git diff --check
 ```
 
+Phase 0.58 expert-internal boundary capture added on 2026-07-14:
+
+- Extended the selected-layer FFN observer with shared gate, shared up, shared
+  SwiGLU mid, and routed weighted-SwiGLU mid tensors. Dimensions come from the
+  observed layer rather than fixed FFN-width assumptions. Routed batch mid is
+  read in its actual F16/F32 format and converted only for diagnostics.
+- Do not compare routed gate/up or per-expert down scratch between batch and
+  serial paths. Normal serial decode uses fused pair-SwiGLU and direct six-way
+  down-sum kernels that intentionally do not materialize those buffers. An
+  initial observer draft read them and produced large meaningless differences
+  despite exact routed mid/output; those comparisons were removed. The valid
+  routed boundaries are weighted mid and accumulated output.
+- Layers 0, 30, and 42 all show shared gate/up projection as the first
+  persistent expert divergence. Shared gate/up max differences reached roughly
+  `4.77e-7`, `1.91e-6`, and `2.86e-6`; SwiGLU mid amplified this to roughly
+  `9.54e-7`, `1.19e-6`, and `1.14e-5` in the short matrices. The existing F16
+  shared-down path then produced the previously observed output drift.
+- Routed weighted mid was bit-exact in every 2-5 row observation at all three
+  layers. Routed output remained exact for 2-4 rows. Only five-row batches
+  differed, proving that their routed error begins after weighted SwiGLU in the
+  non-direct down-projection/six-expert-sum path; short-matrix maxima remained
+  about `1.19e-7`, `2.38e-7`, and `1.19e-6`.
+- A correctness-only layer-42 `code_8k` replay reached shared gate/up maxima of
+  about `1.91e-6`, shared mid max `1.91e-5`, and shared output max `3.05e-5`.
+  Routed mid stayed exact; five-row routed down/sum reached `7.63e-6` max.
+  Observer and same-binary no-observer text were byte-identical; timings were
+  ignored.
+- This phase only adds observer allocations, copies, readbacks, and reporting.
+  Production execution and non-observer numerical paths are unchanged.
+
+Phase 0.58 checks:
+
+```sh
+for layer in 0 30 42; do
+  DS4_DSPARK_EXACT_FFN_BATCH_OBSERVER_LAYER=$layer \
+  DS4_TEST_DSPARK_MODE=runtime \
+    ./tests/dspark_gpu_candidates_correctness.sh
+done
+# A separate code_8k layer-42 observer/control replay used -n 32 and cmp;
+# output was byte-identical and timings were ignored.
+make ds4 ds4_test ds4-server ds4-eval ds4-agent ds4_cpu.o \
+  ds4-warm-prefill-bench
+./tests/dspark_fast_verifier_soak.sh
+./ds4_test --dspark-validation --dspark-shape-binding
+git diff --check
+```
+
 Phase 0.52 checks:
 
 ```sh
@@ -2955,14 +3002,15 @@ If continuing from a compacted context, start here:
 
 ## Open Questions
 
-- Split shared expert execution into gate/up, SwiGLU mid, and shared-down
-  boundaries, then test an observer-only F32/exact-row shared-down path. Also
-  split the five-row-only routed drift into gate/up, weighted SwiGLU, per-expert
-  down, and accumulated routed output. Do not repeat the full issue-468 baseline
-  suite unless another exact verifier stage earns a controlled comparison.
-  Fast authority still does not preserve long-running target state; broader
-  throughput reporting must wait for a numerically exact compute-batched
-  verifier with byte-identical long-corpus output.
+- Add an observer-only exact-row shared expert path by dispatching the original
+  fused one-token Q8 gate/up/SwiGLU kernel at row offsets, then do the same for
+  shared down while preserving F32 output. Separately, make the five-row routed
+  down/sum use the exact direct-sum arithmetic or otherwise align its reduction.
+  Do not repeat the full issue-468 baseline suite until another exact verifier
+  stage earns a controlled comparison. Fast authority still does not preserve
+  long-running target state; broader throughput reporting must wait for a
+  numerically exact compute-batched verifier with byte-identical long-corpus
+  output.
 - The GPU stage path currently borrows target graph transient batch workspace
   and therefore requires `prefill_cap >= block_size` (five). Decide whether to
   allocate sidecar-specific batch scratch before production enablement or keep

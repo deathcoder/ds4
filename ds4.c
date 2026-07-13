@@ -22391,6 +22391,8 @@ static int dspark_exact_ffn_batch_observer_layer(void) {
 }
 
 typedef struct {
+    uint64_t shared_dim;
+    uint64_t routed_mid_dim;
     float *batch_hc;
     float *exact_hc;
     float *batch_flat;
@@ -22412,8 +22414,17 @@ typedef struct {
     uint16_t *batch_shared_f16;
     float *batch_shared;
     float *exact_shared;
+    float *batch_shared_gate;
+    float *exact_shared_gate;
+    float *batch_shared_up;
+    float *exact_shared_up;
+    float *batch_shared_mid;
+    float *exact_shared_mid;
     float *batch_routed;
     float *exact_routed;
+    uint16_t *batch_routed_mid_f16;
+    float *batch_routed_mid;
+    float *exact_routed_mid;
     float *batch_ffn;
     float *exact_ffn;
 } dspark_exact_ffn_batch_observation;
@@ -22421,14 +22432,21 @@ typedef struct {
 static void dspark_exact_ffn_batch_observation_init(
         dspark_exact_ffn_batch_observation *observation,
         uint32_t                            n_tokens,
-        uint64_t                            hc_dim) {
+        uint64_t                            hc_dim,
+        uint64_t                            shared_dim,
+        uint64_t                            routed_mid_dim) {
     memset(observation, 0, sizeof(*observation));
+    observation->shared_dim = shared_dim;
+    observation->routed_mid_dim = routed_mid_dim;
     const size_t hc_values = (size_t)n_tokens * (size_t)hc_dim;
     const size_t mix_hc = 2u * DS4_N_HC + (size_t)DS4_N_HC * DS4_N_HC;
     const size_t mix_values = (size_t)n_tokens * mix_hc;
     const size_t embd_values = (size_t)n_tokens * DS4_N_EMBD;
     const size_t router_values = (size_t)n_tokens * DS4_N_EXPERT;
     const size_t route_values = (size_t)n_tokens * DS4_N_EXPERT_USED;
+    const size_t shared_values = (size_t)n_tokens * shared_dim;
+    const size_t routed_mid_values =
+        route_values * routed_mid_dim;
     observation->batch_hc = xmalloc(hc_values * sizeof(float));
     observation->exact_hc = xmalloc(hc_values * sizeof(float));
     observation->batch_flat = xmalloc(hc_values * sizeof(float));
@@ -22450,8 +22468,18 @@ static void dspark_exact_ffn_batch_observation_init(
     observation->batch_shared_f16 = xmalloc(embd_values * sizeof(uint16_t));
     observation->batch_shared = xmalloc(embd_values * sizeof(float));
     observation->exact_shared = xmalloc(embd_values * sizeof(float));
+    observation->batch_shared_gate = xmalloc(shared_values * sizeof(float));
+    observation->exact_shared_gate = xmalloc(shared_values * sizeof(float));
+    observation->batch_shared_up = xmalloc(shared_values * sizeof(float));
+    observation->exact_shared_up = xmalloc(shared_values * sizeof(float));
+    observation->batch_shared_mid = xmalloc(shared_values * sizeof(float));
+    observation->exact_shared_mid = xmalloc(shared_values * sizeof(float));
     observation->batch_routed = xmalloc(embd_values * sizeof(float));
     observation->exact_routed = xmalloc(embd_values * sizeof(float));
+    observation->batch_routed_mid_f16 =
+        xmalloc(routed_mid_values * sizeof(uint16_t));
+    observation->batch_routed_mid = xmalloc(routed_mid_values * sizeof(float));
+    observation->exact_routed_mid = xmalloc(routed_mid_values * sizeof(float));
     observation->batch_ffn = xmalloc(embd_values * sizeof(float));
     observation->exact_ffn = xmalloc(embd_values * sizeof(float));
 }
@@ -22459,6 +22487,15 @@ static void dspark_exact_ffn_batch_observation_init(
 static void dspark_exact_ffn_batch_observation_free(
         dspark_exact_ffn_batch_observation *observation) {
     if (!observation) return;
+    free(observation->exact_routed_mid);
+    free(observation->batch_routed_mid);
+    free(observation->batch_routed_mid_f16);
+    free(observation->exact_shared_mid);
+    free(observation->batch_shared_mid);
+    free(observation->exact_shared_up);
+    free(observation->batch_shared_up);
+    free(observation->exact_shared_gate);
+    free(observation->batch_shared_gate);
     free(observation->exact_ffn);
     free(observation->batch_ffn);
     free(observation->exact_routed);
@@ -22498,6 +22535,10 @@ static void dspark_exact_ffn_batch_observer_report(
     const uint64_t embd_values = (uint64_t)n_tokens * DS4_N_EMBD;
     const uint64_t router_values = (uint64_t)n_tokens * DS4_N_EXPERT;
     const uint64_t route_values = (uint64_t)n_tokens * DS4_N_EXPERT_USED;
+    const uint64_t shared_values =
+        (uint64_t)n_tokens * observation->shared_dim;
+    const uint64_t routed_mid_values =
+        route_values * observation->routed_mid_dim;
     uint32_t exact_rows = 0;
     for (uint32_t row = 0; row < n_tokens; row++) {
         const float *batch_row = observation->batch_hc + (uint64_t)row * hc_dim;
@@ -22540,6 +22581,38 @@ static void dspark_exact_ffn_batch_observer_report(
         observation->batch_weights, observation->exact_weights, route_values);
     const float weight_rms = rms_abs_diff(
         observation->batch_weights, observation->exact_weights, route_values);
+    const float routed_mid_max = max_abs_diff(
+        observation->batch_routed_mid,
+        observation->exact_routed_mid,
+        routed_mid_values);
+    const float routed_mid_rms = rms_abs_diff(
+        observation->batch_routed_mid,
+        observation->exact_routed_mid,
+        routed_mid_values);
+    const float shared_gate_max = max_abs_diff(
+        observation->batch_shared_gate,
+        observation->exact_shared_gate,
+        shared_values);
+    const float shared_gate_rms = rms_abs_diff(
+        observation->batch_shared_gate,
+        observation->exact_shared_gate,
+        shared_values);
+    const float shared_up_max = max_abs_diff(
+        observation->batch_shared_up,
+        observation->exact_shared_up,
+        shared_values);
+    const float shared_up_rms = rms_abs_diff(
+        observation->batch_shared_up,
+        observation->exact_shared_up,
+        shared_values);
+    const float shared_mid_max = max_abs_diff(
+        observation->batch_shared_mid,
+        observation->exact_shared_mid,
+        shared_values);
+    const float shared_mid_rms = rms_abs_diff(
+        observation->batch_shared_mid,
+        observation->exact_shared_mid,
+        shared_values);
     for (uint64_t i = 0; i < embd_values; i++) {
         observation->batch_ffn[i] =
             observation->batch_shared[i] + observation->batch_routed[i];
@@ -22571,7 +22644,11 @@ static void dspark_exact_ffn_batch_observer_report(
     else if (probs_max != 0.0f) first = "router_probs";
     else if (selected_matches != route_values) first = "router_ids";
     else if (weight_max != 0.0f) first = "router_weights";
-    else if (routed_max != 0.0f) first = "routed_expert";
+    else if (routed_mid_max != 0.0f) first = "routed_mid";
+    else if (routed_max != 0.0f) first = "routed_down_sum";
+    else if (shared_gate_max != 0.0f) first = "shared_gate";
+    else if (shared_up_max != 0.0f) first = "shared_up";
+    else if (shared_mid_max != 0.0f) first = "shared_mid";
     else if (shared_max != 0.0f) first = "shared_expert";
     else if (ffn_max != 0.0f) first = "ffn_combine";
     else if (hc_max != 0.0f) first = "hc_post";
@@ -22582,7 +22659,11 @@ static void dspark_exact_ffn_batch_observer_report(
             "norm_max=%g norm_rms=%g router_logits_max=%g router_logits_rms=%g "
             "router_probs_max=%g router_probs_rms=%g "
             "router_ids=%llu/%llu router_weight_max=%g router_weight_rms=%g "
+            "routed_mid_max=%g routed_mid_rms=%g "
             "routed_max=%g routed_rms=%g shared_max=%g shared_rms=%g "
+            "shared_gate_max=%g shared_gate_rms=%g "
+            "shared_up_max=%g shared_up_rms=%g "
+            "shared_mid_max=%g shared_mid_rms=%g "
             "ffn_max=%g ffn_rms=%g "
             "exact_rows=%u/%u hc_max=%g hc_rms=%g result=%s\n",
             il,
@@ -22604,10 +22685,18 @@ static void dspark_exact_ffn_batch_observer_report(
             (unsigned long long)route_values,
             weight_max,
             weight_rms,
+            routed_mid_max,
+            routed_mid_rms,
             routed_max,
             routed_rms,
             shared_max,
             shared_rms,
+            shared_gate_max,
+            shared_gate_rms,
+            shared_up_max,
+            shared_up_rms,
+            shared_mid_max,
+            shared_mid_rms,
             ffn_max,
             ffn_rms,
             exact_rows,
@@ -22684,7 +22773,9 @@ static bool metal_graph_verify_decode_exact(
                                   (uint64_t)n_tokens * sizeof(token_ids[0])) != 0;
         dspark_exact_ffn_batch_observation_init(&ffn_observation,
                                                 n_tokens,
-                                                hc_dim);
+                                                hc_dim,
+                                                weights->layer[ffn_observer_layer].ffn_gate_shexp->dim[1],
+                                                weights->layer[ffn_observer_layer].ffn_gate_exps->dim[1]);
     }
 
     ds4_gpu_tensor *saved_cur = g->cur_hc;
@@ -22820,7 +22911,45 @@ static bool metal_graph_verify_decode_exact(
                         g->batch_routed_out,
                         0,
                         ffn_observation.batch_routed,
-                        (uint64_t)n_tokens * DS4_N_EMBD * sizeof(float)) != 0;
+                        (uint64_t)n_tokens * DS4_N_EMBD * sizeof(float)) != 0 &&
+                    ds4_gpu_tensor_read(
+                        g->batch_shared_gate,
+                        0,
+                        ffn_observation.batch_shared_gate,
+                        (uint64_t)n_tokens * ffn_observation.shared_dim * sizeof(float)) != 0 &&
+                    ds4_gpu_tensor_read(
+                        g->batch_shared_up,
+                        0,
+                        ffn_observation.batch_shared_up,
+                        (uint64_t)n_tokens * ffn_observation.shared_dim * sizeof(float)) != 0 &&
+                    ds4_gpu_tensor_read(
+                        g->batch_shared_mid,
+                        0,
+                        ffn_observation.batch_shared_mid,
+                        (uint64_t)n_tokens * ffn_observation.shared_dim * sizeof(float)) != 0;
+            }
+            if (shadow_ok && g->batch_routed_mid_is_f16) {
+                const uint64_t routed_mid_values =
+                    (uint64_t)n_tokens * DS4_N_EXPERT_USED *
+                    ffn_observation.routed_mid_dim;
+                shadow_ok = ds4_gpu_tensor_read(
+                    g->batch_routed_mid,
+                    0,
+                    ffn_observation.batch_routed_mid_f16,
+                    routed_mid_values * sizeof(uint16_t)) != 0;
+                if (shadow_ok) {
+                    for (uint64_t i = 0; i < routed_mid_values; i++) {
+                        ffn_observation.batch_routed_mid[i] =
+                            f16_to_f32(ffn_observation.batch_routed_mid_f16[i]);
+                    }
+                }
+            } else if (shadow_ok) {
+                shadow_ok = ds4_gpu_tensor_read(
+                    g->batch_routed_mid,
+                    0,
+                    ffn_observation.batch_routed_mid,
+                    (uint64_t)n_tokens * DS4_N_EXPERT_USED *
+                        ffn_observation.routed_mid_dim * sizeof(float)) != 0;
             }
             if (shadow_ok && g->batch_shared_out_is_f16) {
                 shadow_ok = ds4_gpu_tensor_read(
@@ -22868,6 +22997,10 @@ static bool metal_graph_verify_decode_exact(
                 (uint64_t)row * DS4_N_EXPERT * sizeof(float);
             const uint64_t route_offset =
                 (uint64_t)row * DS4_N_EXPERT_USED;
+            const uint64_t shared_offset =
+                (uint64_t)row * ffn_observation.shared_dim * sizeof(float);
+            const uint64_t routed_mid_offset =
+                route_offset * ffn_observation.routed_mid_dim * sizeof(float);
             if (ok) {
                 ok = ds4_gpu_tensor_copy(g->batch_flat_hc,
                                          flat_offset,
@@ -22909,11 +23042,32 @@ static bool metal_graph_verify_decode_exact(
                                          g->router_weights,
                                          0,
                                          (uint64_t)DS4_N_EXPERT_USED * sizeof(float)) != 0 &&
+                     ds4_gpu_tensor_copy(g->batch_shared_gate,
+                                         shared_offset,
+                                         g->shared_gate,
+                                         0,
+                                         ffn_observation.shared_dim * sizeof(float)) != 0 &&
+                     ds4_gpu_tensor_copy(g->batch_shared_up,
+                                         shared_offset,
+                                         g->shared_up,
+                                         0,
+                                         ffn_observation.shared_dim * sizeof(float)) != 0 &&
+                     ds4_gpu_tensor_copy(g->batch_shared_mid,
+                                         shared_offset,
+                                         g->shared_mid,
+                                         0,
+                                         ffn_observation.shared_dim * sizeof(float)) != 0 &&
                      ds4_gpu_tensor_copy(g->batch_shared_out,
                                          embd_offset,
                                          g->shared_out,
                                          0,
                                          (uint64_t)DS4_N_EMBD * sizeof(float)) != 0 &&
+                     ds4_gpu_tensor_copy(g->batch_routed_mid,
+                                         routed_mid_offset,
+                                         g->routed_mid,
+                                         0,
+                                         (uint64_t)DS4_N_EXPERT_USED *
+                                             ffn_observation.routed_mid_dim * sizeof(float)) != 0 &&
                      ds4_gpu_tensor_copy(g->batch_routed_out,
                                          embd_offset,
                                          g->routed_out,
@@ -22988,7 +23142,28 @@ static bool metal_graph_verify_decode_exact(
                      g->batch_routed_out,
                      0,
                      ffn_observation.exact_routed,
-                     (uint64_t)n_tokens * DS4_N_EMBD * sizeof(float)) != 0;
+                     (uint64_t)n_tokens * DS4_N_EMBD * sizeof(float)) != 0 &&
+                 ds4_gpu_tensor_read(
+                     g->batch_shared_gate,
+                     0,
+                     ffn_observation.exact_shared_gate,
+                     (uint64_t)n_tokens * ffn_observation.shared_dim * sizeof(float)) != 0 &&
+                 ds4_gpu_tensor_read(
+                     g->batch_shared_up,
+                     0,
+                     ffn_observation.exact_shared_up,
+                     (uint64_t)n_tokens * ffn_observation.shared_dim * sizeof(float)) != 0 &&
+                 ds4_gpu_tensor_read(
+                     g->batch_shared_mid,
+                     0,
+                     ffn_observation.exact_shared_mid,
+                     (uint64_t)n_tokens * ffn_observation.shared_dim * sizeof(float)) != 0 &&
+                 ds4_gpu_tensor_read(
+                     g->batch_routed_mid,
+                     0,
+                     ffn_observation.exact_routed_mid,
+                     (uint64_t)n_tokens * DS4_N_EXPERT_USED *
+                         ffn_observation.routed_mid_dim * sizeof(float)) != 0;
         }
         if (ok && shadow_ok) {
             dspark_exact_ffn_batch_observer_report(&ffn_observation,

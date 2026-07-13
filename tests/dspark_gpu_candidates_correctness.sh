@@ -80,7 +80,7 @@ assert_gpu_selected() {
             fi
         fi
         if [[ -n $ffn_batch_observer_layer ]]; then
-            grep -q "DSpark exact FFN batch observer layer=$ffn_batch_observer_layer .* first=\(input_norm\|hc_projection\|hc_recombine\|norm\|router_projection\|router_probs\|router_ids\|router_weights\|routed_expert\|shared_expert\|ffn_combine\|hc_post\|none\) .* result=\(exact\|drift\)" "$log"
+            grep -q "DSpark exact FFN batch observer layer=$ffn_batch_observer_layer .* first=\(input_norm\|hc_projection\|hc_recombine\|norm\|router_projection\|router_probs\|router_ids\|router_weights\|routed_mid\|routed_down_sum\|shared_gate\|shared_up\|shared_mid\|shared_expert\|ffn_combine\|hc_post\|none\) .* result=\(exact\|drift\)" "$log"
             grep -q "DSpark exact FFN batch observer layer=$ffn_batch_observer_layer .* input_norm_max=0 .* hc_mix_max=0 .* hc_pre_max=0 .* norm_max=0 .* router_logits_max=0 .* router_probs_max=0 .* router_weight_max=0 " "$log"
             if grep -q "DSpark exact FFN batch observer layer=$ffn_batch_observer_layer .* result=shadow-fallback" "$log"; then
                 printf 'exact FFN batch observer fell back at layer %s\n' "$ffn_batch_observer_layer" >&2
