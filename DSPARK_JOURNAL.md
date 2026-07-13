@@ -3164,6 +3164,16 @@ python3 speed-bench/run_dspark_comparison.py \
 git diff --check
 ```
 
+The user ran the Phase 0.63 paired, uninstrumented ablation on 2026-07-14.
+Default exact measured 19.57/19.65/19.70 t/s and exact FFN batch measured
+20.66/20.81/20.77 t/s in the corresponding alternating-order pairs. The
+per-pair ratios were approximately 1.0557x, 1.0590x, and 1.0543x; the ratio of
+medians was 1.0570x and the median paired ratio was 1.0557x. All six measured
+outputs had the same SHA-256. This is a consistent +5.7% generation-throughput
+win for the opt-in exact FFN batch runtime under this workload, with no observed
+output change. Raw results are in the ignored local run
+`speed-bench/local-runs/20260714-011657/results.csv`.
+
 Phase 0.52 checks:
 
 ```sh
@@ -3232,13 +3242,12 @@ If continuing from a compacted context, start here:
 
 ## Open Questions
 
-- Have the user run the prepared paired, uninstrumented ablation with
-  `python3 speed-bench/run_dspark_comparison.py --confirm-idle
-  --exact-ffn-batch-ablation`, then interpret its paired ratios. If the
-  candidate wins, follow with a separate diagnostics/profile pass rather than
-  adding logs to the throughput samples. If it does not, use the result to
-  decide whether FFN dispatch is still worth profiling or whether attention is
-  the next larger exact-batching target.
+- The exact FFN batch candidate won its paired uninstrumented ablation by a
+  consistent +5.7% with byte-identical output. Follow with a separate
+  instrumented diagnostic comparison to attribute the saved target time and
+  check for candidate fallback; do not add timing or logging to the throughput
+  samples. Then decide whether to promote exact FFN batching and begin the
+  larger remaining exact-attention batching investigation.
 - The GPU stage path currently borrows target graph transient batch workspace
   and therefore requires `prefill_cap >= block_size` (five). Decide whether to
   allocate sidecar-specific batch scratch before production enablement or keep
