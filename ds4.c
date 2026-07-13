@@ -22945,6 +22945,7 @@ static bool metal_graph_verify_decode_exact(
         int                  *row_tops,
         float                *last_logits,
         ds4_target_hc_capture *target_capture,
+        bool                  exact_ffn_batch,
         dspark_exact_verify_timing *timing) {
     if (timing) memset(timing, 0, sizeof(*timing));
     if (!g || !model || !weights || !tokens || !last_logits ||
@@ -22962,18 +22963,21 @@ static bool metal_graph_verify_decode_exact(
     const int ffn_observer_layer = dspark_exact_ffn_batch_observer_layer();
     const bool ffn_observer_enabled =
         ffn_observer_layer >= 0 && n_tokens > 1u;
+    const bool ffn_runtime_enabled =
+        exact_ffn_batch && !ffn_observer_enabled && n_tokens > 1u;
+    const bool split_ffn_enabled = ffn_observer_enabled || ffn_runtime_enabled;
     dspark_exact_ffn_batch_observation ffn_observation;
     memset(&ffn_observation, 0, sizeof(ffn_observation));
     bool ok = true;
     for (uint32_t row = 0; row < n_tokens; row++) {
         cur[row] = metal_graph_tensor_row_view(g->batch_cur_hc, row, hc_dim);
         next[row] = metal_graph_tensor_row_view(g->batch_next_hc, row, hc_dim);
-        if (ffn_observer_enabled) {
+        if (split_ffn_enabled) {
             after_attn[row] = metal_graph_tensor_row_view(
                 g->batch_after_attn_hc, row, hc_dim);
         }
         ok = ok && cur[row] && next[row] &&
-             (!ffn_observer_enabled || after_attn[row]);
+             (!split_ffn_enabled || after_attn[row]);
         if (ok) {
             ok = ds4_gpu_embed_token_hc_tensor(cur[row],
                                                 model->map,
@@ -22985,7 +22989,7 @@ static bool metal_graph_verify_decode_exact(
                                                 DS4_N_HC) != 0;
         }
     }
-    if (ok && ffn_observer_enabled) {
+    if (ok && split_ffn_enabled) {
         int32_t token_ids[16];
         for (uint32_t row = 0; row < n_tokens; row++) {
             token_ids[row] = (int32_t)tokens[row];
@@ -22994,6 +22998,8 @@ static bool metal_graph_verify_decode_exact(
                                   0,
                                   token_ids,
                                   (uint64_t)n_tokens * sizeof(token_ids[0])) != 0;
+    }
+    if (ok && ffn_observer_enabled) {
         dspark_exact_ffn_batch_observation_init(&ffn_observation,
                                                 n_tokens,
                                                 hc_dim,
@@ -23015,7 +23021,7 @@ static bool metal_graph_verify_decode_exact(
         }
         const bool observe_ffn =
             ffn_observer_enabled && il == (uint32_t)ffn_observer_layer;
-        if (!observe_ffn) {
+        if (!observe_ffn && !ffn_runtime_enabled) {
             for (uint32_t row = 0; ok && row < n_tokens; row++) {
                 const uint32_t pos = start + row;
                 g->cur_hc = cur[row];
@@ -23059,6 +23065,40 @@ static bool metal_graph_verify_decode_exact(
                 pos % g->raw_cap,
                 metal_graph_raw_span_for_batch(g, pos, 1),
                 tokens[row]);
+        }
+        if (ffn_runtime_enabled) {
+            ds4_gpu_tensor *saved_batch_cur = g->batch_cur_hc;
+            ds4_gpu_tensor *saved_batch_next = g->batch_next_hc;
+            g->batch_cur_hc = (il & 1u) ? saved_batch_next : saved_batch_cur;
+            g->batch_next_hc = (il & 1u) ? saved_batch_cur : saved_batch_next;
+            if (ok) {
+                ok = metal_graph_encode_layer_ffn_batch(g,
+                                                        model,
+                                                        &weights->layer[il],
+                                                        il,
+                                                        start,
+                                                        n_tokens,
+                                                        true,
+                                                        true,
+                                                        true,
+                                                        true,
+                                                        true);
+            }
+            g->batch_cur_hc = saved_batch_cur;
+            g->batch_next_hc = saved_batch_next;
+            for (uint32_t row = 0; ok && row < n_tokens; row++) {
+                const uint32_t pos = start + row;
+                ds4_target_hc_capture_note_tensor(target_capture,
+                                                  il,
+                                                  pos,
+                                                  1,
+                                                  next[row]);
+                ds4_gpu_tensor *tmp = cur[row];
+                cur[row] = next[row];
+                next[row] = tmp;
+            }
+            g->after_attn_hc = saved_after_attn;
+            continue;
         }
         if (ok) ok = ds4_gpu_end_commands() != 0;
         else (void)ds4_gpu_synchronize();
@@ -31846,6 +31886,12 @@ static bool dspark_session_fast_verify_runtime_enabled(void) {
            v && v[0] && strcmp(v, "0") != 0;
 }
 
+static bool dspark_session_exact_ffn_batch_runtime_enabled(void) {
+    const char *v = getenv("DS4_DSPARK_EXACT_FFN_BATCH");
+    return dspark_session_gpu_runtime_env_enabled() &&
+           v && v[0] && strcmp(v, "0") != 0;
+}
+
 static bool dspark_session_diagnostics_enabled(void) {
     static int initialized;
     static bool enabled;
@@ -32868,6 +32914,9 @@ static bool dspark_session_verify_batch_once(
     dspark_exact_verify_timing timing;
     dspark_exact_verify_timing *timing_out =
         dspark_session_runtime_stats_enabled() ? &timing : NULL;
+    const bool exact_ffn_batch =
+        dspark_session_exact_ffn_batch_runtime_enabled() &&
+        dspark_exact_ffn_batch_observer_layer() < 0;
     const bool ok = metal_graph_verify_decode_exact(&s->graph,
                                                      &s->engine->model,
                                                      &s->engine->weights,
@@ -32877,7 +32926,17 @@ static bool dspark_session_verify_batch_once(
                                                      row_tops,
                                                      last_logits,
                                                      target_capture,
+                                                     exact_ffn_batch,
                                                      timing_out);
+    if (exact_ffn_batch && n_tokens > 1u &&
+        dspark_session_diagnostics_enabled()) {
+        fprintf(stderr,
+                "ds4: DSpark exact FFN batch runtime proposed=%u layers=%u "
+                "result=%s\n",
+                n_tokens,
+                DS4_N_LAYER,
+                ok ? "pass" : "fail");
+    }
     if (timing_out && s->dspark) {
         s->dspark->runtime_exact_layer_seconds += timing.layer_seconds;
         s->dspark->runtime_exact_head_batch_seconds += timing.head_batch_seconds;
@@ -34921,6 +34980,12 @@ int ds4_session_sync(ds4_session *s, const ds4_tokens *prompt, char *err, size_t
                     "ds4: DSpark fast batch verifier suspended after resumed sync; "
                     "exact batch verification is authoritative\n");
         }
+    }
+    if (s->checkpoint_valid && s->dspark &&
+        dspark_session_exact_ffn_batch_runtime_enabled() &&
+        dspark_session_diagnostics_enabled()) {
+        fprintf(stderr,
+                "ds4: DSpark exact FFN batch runtime retained after resumed sync\n");
     }
 #endif
     if (s->distributed) {

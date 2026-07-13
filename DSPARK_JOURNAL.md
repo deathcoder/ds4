@@ -3063,6 +3063,65 @@ bash -n tests/dspark_gpu_candidates_correctness.sh
 git diff --check
 ```
 
+Phase 0.62 opt-in all-layer exact FFN runtime added on 2026-07-14:
+
+- Added `DS4_DSPARK_EXACT_FFN_BATCH=1`, gated by GPU DSpark runtime. Default
+  exact verification is unchanged when the variable is absent or zero.
+- In the candidate path, every target layer preserves one-token attention and
+  autoregressive cache-update order for each proposal row, then authoritatively
+  runs the proven exact FFN composition across the contiguous rows in the same
+  Metal command stream. It records target HC capture rows before alternating
+  HC storage is reused by the next layer. The candidate does not add a
+  per-layer host synchronization.
+- A selected-layer exact FFN observer disables runtime authority for that call,
+  so observer readback/replay semantics and the candidate cannot overlap.
+  Recoverable candidate failure still follows the existing exact-verifier
+  frontier restore and serial fallback contract.
+- Existing runtime diagnostics now emit an explicit all-layer candidate
+  pass/fail record. Resumed sync emits a diagnostics-only retention marker;
+  correctness tests require a later successful candidate call, proving the
+  option remained active after state extension rather than merely matching the
+  first turn.
+- `dspark_gpu_candidates_correctness.sh` gained an explicit candidate test
+  switch and forces the new runtime variable to zero in its default mode. The
+  fast-verifier soak also forces it off so inherited shell state cannot alter
+  exact fallback coverage.
+- Added `dspark_exact_ffn_batch_runtime_soak.sh`. It compares baseline and
+  candidate output for 64-token generation, the rolling DSpark-window prompt,
+  and a resumed two-turn chat. It requires repeated candidate and exact-batch
+  success records, rejects target-capture/proposal fallback, and proves a
+  successful candidate verification after resumed sync.
+- Candidate output was byte-identical in the short runtime matrix, both
+  64-token cases, and resumed chat. Default exact runtime, fast runtime, and the
+  layer-42 strict FFN observer also remained byte-identical. This is correctness
+  evidence only; no tok/s benchmark was run by Codex and no performance claim
+  is made.
+- Existing benchmark runners already clear every inherited
+  `DS4_DSPARK_*` variable before selecting their explicit mode, so the new
+  candidate cannot contaminate their current baseline/runtime measurements.
+
+Phase 0.62 checks:
+
+```sh
+DS4_TEST_DSPARK_MODE=runtime \
+DS4_TEST_DSPARK_EXACT_FFN_BATCH_RUNTIME=1 \
+  ./tests/dspark_gpu_candidates_correctness.sh
+./tests/dspark_exact_ffn_batch_runtime_soak.sh
+DS4_TEST_DSPARK_MODE=runtime \
+  ./tests/dspark_gpu_candidates_correctness.sh
+./tests/dspark_fast_verifier_soak.sh
+DS4_DSPARK_EXACT_FFN_BATCH_OBSERVER_LAYER=42 \
+DS4_TEST_DSPARK_MODE=runtime \
+  ./tests/dspark_gpu_candidates_correctness.sh
+make ds4 ds4_test ds4-server ds4-eval ds4-agent ds4_cpu.o \
+  ds4-warm-prefill-bench
+./ds4_test --dspark-validation --dspark-shape-binding
+bash -n tests/dspark_gpu_candidates_correctness.sh \
+  tests/dspark_exact_ffn_batch_runtime_soak.sh \
+  tests/dspark_fast_verifier_soak.sh
+git diff --check
+```
+
 Phase 0.52 checks:
 
 ```sh
@@ -3131,12 +3190,11 @@ If continuing from a compacted context, start here:
 
 ## Open Questions
 
-- Promote the now-exact selected-layer FFN composition into an opt-in
-  compute-batched verifier candidate across all target layers. First prove
-  byte-identical output and preserved target KV/HC state on long and resumed
-  correctness corpora; only then should the user run a controlled throughput
-  comparison. The current observer proof does not by itself make fast
-  authority stateful or production-ready.
+- Add an explicit benchmark-runner mode for the exact FFN batch candidate, then
+  have the user run a paired, uninstrumented comparison against default exact
+  verification. Keep diagnostics as a separate pass. Correctness now supports
+  measurement, but whether reduced FFN dispatch overhead produces a useful
+  end-to-end gain remains unknown until that controlled run.
 - The GPU stage path currently borrows target graph transient batch workspace
   and therefore requires `prefill_cap >= block_size` (five). Decide whether to
   allocate sidecar-specific batch scratch before production enablement or keep

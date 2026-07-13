@@ -8,10 +8,20 @@ dspark_model=${DS4_TEST_DSPARK_MODEL:-"$root/gguf/ds4flash-dspark.gguf"}
 mode=${DS4_TEST_DSPARK_MODE:-observer}
 fast_verify_observer=${DS4_TEST_DSPARK_FAST_VERIFY_OBSERVER:-0}
 fast_verify_runtime=${DS4_TEST_DSPARK_FAST_VERIFY_RUNTIME:-0}
+exact_ffn_batch_runtime=${DS4_TEST_DSPARK_EXACT_FFN_BATCH_RUNTIME:-0}
 ffn_batch_observer_layer=${DS4_DSPARK_EXACT_FFN_BATCH_OBSERVER_LAYER:-}
 
 if [[ $fast_verify_observer == 1 && $fast_verify_runtime == 1 ]]; then
     printf 'fast verifier observer and runtime modes are mutually exclusive\n' >&2
+    exit 2
+fi
+if [[ $exact_ffn_batch_runtime == 1 &&
+      ($fast_verify_observer == 1 || $fast_verify_runtime == 1) ]]; then
+    printf 'exact FFN batch runtime and fast verifier modes are mutually exclusive\n' >&2
+    exit 2
+fi
+if [[ $exact_ffn_batch_runtime == 1 && -n $ffn_batch_observer_layer ]]; then
+    printf 'exact FFN batch runtime and selected-layer observer are mutually exclusive\n' >&2
     exit 2
 fi
 
@@ -27,6 +37,11 @@ case "$mode" in
         fi
         if [[ $fast_verify_runtime == 1 ]]; then
             gpu_env+=(DS4_DSPARK_FAST_BATCH_VERIFY=1)
+        fi
+        if [[ $exact_ffn_batch_runtime == 1 ]]; then
+            gpu_env+=(DS4_DSPARK_EXACT_FFN_BATCH=1)
+        else
+            gpu_env+=(DS4_DSPARK_EXACT_FFN_BATCH=0)
         fi
         ;;
     *)
@@ -76,6 +91,13 @@ assert_gpu_selected() {
             grep -q 'DSpark fast verifier observer ' "$log"
             if grep -q 'DSpark fast verifier observer .* result=fail' "$log"; then
                 printf 'fast verifier observer reported a parity failure\n' >&2
+                exit 1
+            fi
+        fi
+        if [[ $exact_ffn_batch_runtime == 1 ]]; then
+            grep -q 'DSpark exact FFN batch runtime .* result=pass' "$log"
+            if grep -q 'DSpark exact FFN batch runtime .* result=fail' "$log"; then
+                printf 'exact FFN batch runtime reported a failure\n' >&2
                 exit 1
             fi
         fi
