@@ -3122,6 +3122,48 @@ bash -n tests/dspark_gpu_candidates_correctness.sh \
 git diff --check
 ```
 
+Phase 0.63 exact FFN batch benchmark ablation prepared on 2026-07-14:
+
+- Added `run_dspark_comparison.py --exact-ffn-batch-ablation`. It changes the
+  paired modes from non-DSpark baseline/default runtime to default exact DSpark
+  and the same runtime with `DS4_DSPARK_EXACT_FFN_BATCH=1`.
+- Pair order alternates default/candidate then candidate/default. Both modes use
+  the same base model, sidecar, prompt, deterministic sampling, acceptance
+  policy, context, and generated-token count. Every warmup and measured stdout
+  must match the first default-exact warmup byte for byte.
+- The ablation is a throughput-only pass: runtime diagnostics and runtime stats
+  are absent from both process environments. Inherited `DS4_DSPARK_*` and timing
+  instrumentation variables are still cleared before each child. This isolates
+  the FFN authority switch without hot-path log or clock-read instrumentation.
+- The new option is mutually exclusive with `--fast-verifier`. The ordinary
+  baseline/runtime and fast-verifier modes retain their previous commands,
+  stats parsing, CSV fields, and report format.
+- Ablation summaries report default-exact and candidate medians, ratio of
+  medians, median paired ratio, candidate percentage delta, and measured pair
+  count. CSV/JSON/Markdown output and machine/process/thermal metadata remain in
+  the ignored local-runs directory.
+- README commands now show the dry run and user-confirmed execution. Static
+  validation covered Python compilation, all three dry-run modes, mutual-option
+  rejection, inherited-environment clearing, legacy and ablation paired-summary
+  math, and both report formats. No model process or tok/s benchmark was run by
+  Codex.
+
+Phase 0.63 checks:
+
+```sh
+python3 -m py_compile speed-bench/run_dspark_comparison.py
+python3 speed-bench/run_dspark_comparison.py \
+  --dry-run --allow-dirty
+python3 speed-bench/run_dspark_comparison.py \
+  --dry-run --allow-dirty --fast-verifier
+python3 speed-bench/run_dspark_comparison.py \
+  --dry-run --allow-dirty --exact-ffn-batch-ablation
+# A combined --fast-verifier/--exact-ffn-batch-ablation invocation was rejected.
+# Inline synthetic assertions covered both comparison summaries, reports,
+# blank ablation stats fields, CSV/JSON/Markdown writing, and environment reset.
+git diff --check
+```
+
 Phase 0.52 checks:
 
 ```sh
@@ -3190,11 +3232,13 @@ If continuing from a compacted context, start here:
 
 ## Open Questions
 
-- Add an explicit benchmark-runner mode for the exact FFN batch candidate, then
-  have the user run a paired, uninstrumented comparison against default exact
-  verification. Keep diagnostics as a separate pass. Correctness now supports
-  measurement, but whether reduced FFN dispatch overhead produces a useful
-  end-to-end gain remains unknown until that controlled run.
+- Have the user run the prepared paired, uninstrumented ablation with
+  `python3 speed-bench/run_dspark_comparison.py --confirm-idle
+  --exact-ffn-batch-ablation`, then interpret its paired ratios. If the
+  candidate wins, follow with a separate diagnostics/profile pass rather than
+  adding logs to the throughput samples. If it does not, use the result to
+  decide whether FFN dispatch is still worth profiling or whether attention is
+  the next larger exact-batching target.
 - The GPU stage path currently borrows target graph transient batch workspace
   and therefore requires `prefill_cap >= block_size` (five). Decide whether to
   allocate sidecar-specific batch scratch before production enablement or keep

@@ -40,6 +40,10 @@ python3 speed-bench/run_dspark_comparison.py --dry-run
 python3 speed-bench/run_dspark_comparison.py --confirm-idle
 python3 speed-bench/run_dspark_comparison.py --dry-run --fast-verifier
 python3 speed-bench/run_dspark_comparison.py --confirm-idle --fast-verifier
+python3 speed-bench/run_dspark_comparison.py \
+  --dry-run --exact-ffn-batch-ablation
+python3 speed-bench/run_dspark_comparison.py \
+  --confirm-idle --exact-ffn-batch-ablation
 ```
 
 The runner deliberately refuses real execution without `--confirm-idle`. Treat
@@ -72,16 +76,32 @@ session. A resumed sync permanently suspends it for that session and uses exact
 batch verification, because broader soak testing found a second-turn numerical
 divergence while one-shot output remained identical.
 
+`--exact-ffn-batch-ablation` changes the two paired modes: instead of comparing
+non-DSpark baseline against DSpark, it compares default exact DSpark against the
+same runtime with `DS4_DSPARK_EXACT_FFN_BATCH=1`. Pair order alternates default
+exact/candidate then candidate/default exact. Both sides use the same sidecar,
+prompt, acceptance policy, and target verifier except for the all-layer FFN
+implementation under test. This option is mutually exclusive with
+`--fast-verifier`.
+
+The exact-FFN ablation is an uninstrumented throughput pass. It disables runtime
+stats as well as diagnostics in both modes, requires every stdout stream to be
+byte-identical to the first default-exact warmup, and reports default/candidate
+medians, paired ratios, and the candidate percentage delta. Raw streams,
+metadata, pair order, and CSV/JSON/Markdown summaries use the same run directory
+as the ordinary comparison.
+
 All inherited `DS4_DSPARK_*` variables and instrumentation variables containing
 `PROFILE`, `TRACE`, `DUMP`, or `TIMING` (plus `*_LOG`) are removed first. Runtime
-diagnostic logs remain disabled. The stats option adds only clock reads and one
-machine-readable record when the session closes; it reports acceptance depth,
-target graph calls and token positions, exact-batch verifier outcomes, and
-bridge/stage/head/chain timing split between prefill and generation. Other
-`DS4_*` tuning variables are preserved and recorded. Every run must produce
-byte-identical stdout; the harness aborts on drift. Raw stdout/stderr,
+diagnostic logs remain disabled. In the ordinary baseline/runtime comparison,
+the stats option adds only clock reads and one machine-readable record when the
+session closes; it reports acceptance depth, target graph calls and token
+positions, exact-batch verifier outcomes, and bridge/stage/head/chain timing
+split between prefill and generation. The exact-FFN ablation leaves that option
+unset. Other `DS4_*` tuning variables are preserved and recorded. Every run must
+produce byte-identical stdout; the harness aborts on drift. Raw stdout/stderr,
 environment metadata, process and thermal snapshots, per-run CSV data, and
-median/paired-speedup plus runtime-efficiency summaries go under the ignored
+median/paired-speedup summaries go under the ignored
 `speed-bench/local-runs/` directory.
 
 On a resident non-streaming Metal graph, DSpark runtime verification batches up
@@ -102,6 +122,7 @@ The non-performance correctness soak is user-independent and may be run with:
 
 ```sh
 ./tests/dspark_fast_verifier_soak.sh
+./tests/dspark_exact_ffn_batch_runtime_soak.sh
 ```
 
 It compares baseline and fast output across 64-token multi-cycle generation,
@@ -109,6 +130,8 @@ code fallback, Italian, Spanish, structured JSON, near-window context, strict
 margin gating, and a resumed two-turn session. It requires fast commits where eligible,
 rejects verifier/capture failures, and verifies the resumed fast-to-exact
 transition.
+The exact-FFN soak separately covers 64-token generation, rolling-window state,
+and successful candidate verification after a resumed sync.
 
 Useful explicit overrides include `--pairs`, `--warmups`, `--cooldown`,
 `--tokens`, and `--output-dir`. Do not compare runs with different settings.

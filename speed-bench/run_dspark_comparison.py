@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run an alternating, user-initiated baseline/DSpark throughput comparison."""
+"""Run an alternating, user-initiated DSpark throughput comparison."""
 
 import argparse
 import csv
@@ -85,7 +85,7 @@ def cleared_env_keys(env):
 def parse_args():
     root = Path(__file__).resolve().parent.parent
     parser = argparse.ArgumentParser(
-        description="Compare deterministic ds4 baseline and DSpark GPU runtime throughput."
+        description="Compare deterministic ds4 and DSpark GPU runtime throughput."
     )
     parser.add_argument("--binary", type=Path, default=root / "ds4")
     parser.add_argument(
@@ -113,6 +113,11 @@ def parse_args():
         action="store_true",
         help="use the opt-in compute-batched DSpark target verifier",
     )
+    parser.add_argument(
+        "--exact-ffn-batch-ablation",
+        action="store_true",
+        help="compare default exact DSpark against exact FFN batch verification",
+    )
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
 
@@ -120,6 +125,8 @@ def parse_args():
         parser.error("tokens, ctx, and pairs must be positive; warmups cannot be negative")
     if args.cooldown < 0:
         parser.error("cooldown cannot be negative")
+    if args.fast_verifier and args.exact_ffn_batch_ablation:
+        parser.error("--fast-verifier and --exact-ffn-batch-ablation are mutually exclusive")
     if not args.confirm_idle and not args.dry_run:
         parser.error("refusing to benchmark without --confirm-idle")
     return args, root
@@ -161,16 +168,39 @@ def check_inputs(args, root):
         )
 
 
-def clean_dspark_env(mode, fast_verifier=False):
+def benchmark_modes(args):
+    if args.exact_ffn_batch_ablation:
+        return ("runtime", "exact_ffn")
+    return ("baseline", "runtime")
+
+
+def mode_label(mode, args):
+    if mode == "runtime" and args.fast_verifier:
+        return "Fast verifier DSpark"
+    return {
+        "baseline": "Baseline",
+        "runtime": "Default exact DSpark",
+        "exact_ffn": "Exact FFN batch DSpark",
+    }[mode]
+
+
+def throughput_runtime_stats_enabled(args):
+    return not args.exact_ffn_batch_ablation
+
+
+def clean_dspark_env(mode, fast_verifier=False, runtime_stats=True):
     env = os.environ.copy()
     for key in cleared_env_keys(env):
         env.pop(key, None)
-    if mode == "runtime":
+    if mode != "baseline":
         env["DS4_DSPARK_GPU_RUNTIME"] = "1"
         env["DS4_DSPARK_MULTI_COMMIT"] = "1"
-        env["DS4_DSPARK_GPU_RUNTIME_STATS"] = "1"
+        if runtime_stats:
+            env["DS4_DSPARK_GPU_RUNTIME_STATS"] = "1"
         if fast_verifier:
             env["DS4_DSPARK_FAST_BATCH_VERIFY"] = "1"
+        if mode == "exact_ffn":
+            env["DS4_DSPARK_EXACT_FFN_BATCH"] = "1"
     return env
 
 
@@ -195,17 +225,23 @@ def common_command(args):
 
 def mode_command(args, mode):
     command = common_command(args)
-    if mode == "runtime":
+    if mode != "baseline":
         command.extend(("--dspark", str(args.dspark_model.resolve())))
     return command
 
 
-def command_text(args, mode):
-    env = "" if mode == "baseline" else (
-        "DS4_DSPARK_GPU_RUNTIME=1 DS4_DSPARK_MULTI_COMMIT=1 "
-        "DS4_DSPARK_GPU_RUNTIME_STATS=1 "
-        + ("DS4_DSPARK_FAST_BATCH_VERIFY=1 " if args.fast_verifier else "")
-    )
+def command_text(args, mode, runtime_stats=None):
+    if runtime_stats is None:
+        runtime_stats = throughput_runtime_stats_enabled(args)
+    env = ""
+    if mode != "baseline":
+        env = "DS4_DSPARK_GPU_RUNTIME=1 DS4_DSPARK_MULTI_COMMIT=1 "
+        if runtime_stats:
+            env += "DS4_DSPARK_GPU_RUNTIME_STATS=1 "
+        if args.fast_verifier:
+            env += "DS4_DSPARK_FAST_BATCH_VERIFY=1 "
+        if mode == "exact_ffn":
+            env += "DS4_DSPARK_EXACT_FFN_BATCH=1 "
     return env + shlex.join(mode_command(args, mode))
 
 
@@ -225,13 +261,13 @@ def parse_timing(stderr_data, stderr_path):
     return prefill, generation
 
 
-def parse_runtime_stats(stderr_data, stderr_path, mode):
+def parse_runtime_stats(stderr_data, stderr_path, mode, expect_stats):
     records = [
         line[len(RUNTIME_STATS_PREFIX):]
         for line in stderr_data.splitlines()
         if line.startswith(RUNTIME_STATS_PREFIX)
     ]
-    if mode == "baseline":
+    if mode == "baseline" or not expect_stats:
         if records:
             raise RuntimeError(f"unexpected DSpark runtime stats in {stderr_path}")
         return {field: None for field in RUNTIME_STATS_FIELDS}
@@ -261,17 +297,21 @@ def parse_runtime_stats(stderr_data, stderr_path, mode):
     return values
 
 
-def execute_run(args, root, run_dir, label, mode, reference_output):
+def execute_run(
+        args, root, run_dir, label, mode, reference_output, runtime_stats):
     stdout_path = run_dir / f"{label}.{mode}.stdout"
     stderr_path = run_dir / f"{label}.{mode}.stderr"
     command = mode_command(args, mode)
-    print(f"[{label}] {mode}: {command_text(args, mode)}", flush=True)
+    print(
+        f"[{label}] {mode}: {command_text(args, mode, runtime_stats)}",
+        flush=True,
+    )
     started = time.monotonic()
     with stdout_path.open("wb") as stdout_fp, stderr_path.open("wb") as stderr_fp:
         completed = subprocess.run(
             command,
             cwd=root,
-            env=clean_dspark_env(mode, args.fast_verifier),
+            env=clean_dspark_env(mode, args.fast_verifier, runtime_stats),
             stdout=stdout_fp,
             stderr=stderr_fp,
             check=False,
@@ -286,7 +326,7 @@ def execute_run(args, root, run_dir, label, mode, reference_output):
     stderr_data = stderr_path.read_bytes()
     if reference_output is not None and stdout_data != reference_output:
         raise RuntimeError(
-            f"{mode} output differs from the baseline reference; see {stdout_path}"
+            f"{mode} output differs from the first-mode reference; see {stdout_path}"
         )
     prefill_tps, generation_tps = parse_timing(stderr_data, stderr_path)
     result = {
@@ -299,7 +339,7 @@ def execute_run(args, root, run_dir, label, mode, reference_output):
         "stderr_file": stderr_path.name,
         "stdout_data": stdout_data,
     }
-    result.update(parse_runtime_stats(stderr_data, stderr_path, mode))
+    result.update(parse_runtime_stats(stderr_data, stderr_path, mode, runtime_stats))
     return result
 
 
@@ -319,6 +359,8 @@ def file_metadata(path):
 
 
 def collect_metadata(args, root):
+    modes = benchmark_modes(args)
+    runtime_stats = throughput_runtime_stats_enabled(args)
     return {
         "created_at": dt.datetime.now().astimezone().isoformat(),
         "git_commit": git_output(root, "rev-parse", "HEAD"),
@@ -345,7 +387,9 @@ def collect_metadata(args, root):
             "warmups_per_mode": args.warmups,
             "cooldown_seconds": args.cooldown,
             "runtime_diagnostics": False,
+            "runtime_stats": runtime_stats,
             "fast_verifier": args.fast_verifier,
+            "exact_ffn_batch_ablation": args.exact_ffn_batch_ablation,
             "temperature": 0,
             "seed": 1,
         },
@@ -357,21 +401,52 @@ def collect_metadata(args, root):
             "sha256": sha256(args.prompt_file.read_bytes()),
         },
         "commands": {
-            mode: command_text(args, mode) for mode in ("baseline", "runtime")
+            mode: command_text(args, mode, runtime_stats) for mode in modes
         },
     }
 
 
-def summarize(rows):
-    baseline = [row["generation_tps"] for row in rows if row["mode"] == "baseline"]
-    runtime = [row["generation_tps"] for row in rows if row["mode"] == "runtime"]
+def summarize(rows, modes=("baseline", "runtime")):
+    reference_mode, candidate_mode = modes
+    reference = [
+        row["generation_tps"] for row in rows if row["mode"] == reference_mode
+    ]
+    candidate = [
+        row["generation_tps"] for row in rows if row["mode"] == candidate_mode
+    ]
     paired = []
     for pair in sorted({row["pair"] for row in rows}):
         pair_rows = {row["mode"]: row for row in rows if row["pair"] == pair}
         paired.append(
-            pair_rows["runtime"]["generation_tps"]
-            / pair_rows["baseline"]["generation_tps"]
+            pair_rows[candidate_mode]["generation_tps"]
+            / pair_rows[reference_mode]["generation_tps"]
         )
+    reference_median = statistics.median(reference)
+    candidate_median = statistics.median(candidate)
+    summary = {
+        "comparison": (
+            "exact_ffn_batch_ablation"
+            if modes == ("runtime", "exact_ffn")
+            else "baseline_runtime"
+        ),
+        "reference_mode": reference_mode,
+        "candidate_mode": candidate_mode,
+        "reference_generation_tps_median": reference_median,
+        "candidate_generation_tps_median": candidate_median,
+        "median_ratio_of_medians": candidate_median / reference_median,
+        "paired_speedup_median": statistics.median(paired),
+        "paired_speedup_values": paired,
+    }
+
+    if modes == ("runtime", "exact_ffn"):
+        summary.update({
+            "default_exact_generation_tps_median": reference_median,
+            "exact_ffn_generation_tps_median": candidate_median,
+            "exact_ffn_delta_percent":
+                (candidate_median / reference_median - 1.0) * 100.0,
+        })
+        return summary
+
     runtime_rows = [row for row in rows if row["mode"] == "runtime"]
 
     def runtime_median(field):
@@ -382,13 +457,9 @@ def summarize(rows):
             row[numerator] / row[denominator] for row in runtime_rows
         )
 
-    summary = {
-        "baseline_generation_tps_median": statistics.median(baseline),
-        "runtime_generation_tps_median": statistics.median(runtime),
-        "median_ratio_of_medians": statistics.median(runtime)
-        / statistics.median(baseline),
-        "paired_speedup_median": statistics.median(paired),
-        "paired_speedup_values": paired,
+    summary.update({
+        "baseline_generation_tps_median": reference_median,
+        "runtime_generation_tps_median": candidate_median,
         "runtime_avg_depth_median": runtime_median("stats_avg_depth"),
         "runtime_target_evals_avoided_median": runtime_median(
             "stats_target_evals_avoided"
@@ -420,7 +491,7 @@ def summarize(rows):
         "runtime_fast_exact_fallbacks_median": runtime_median(
             "stats_fast_exact_fallbacks"
         ),
-    }
+    })
     for component in ("bridge", "stage0", "stage1", "stage2", "head", "chain"):
         summary[f"runtime_{component}_ms_per_emitted_median"] = runtime_ratio(
             f"stats_generation_{component}_ms", "stats_emitted"
@@ -428,38 +499,21 @@ def summarize(rows):
     return summary
 
 
-def write_results(run_dir, rows, summary, metadata):
-    csv_path = run_dir / "results.csv"
-    fields = (
-        "sequence",
-        "pair",
-        "position",
-        "mode",
-        "prefill_tps",
-        "generation_tps",
-        "wall_seconds",
-        "stdout_sha256",
-        "stdout_file",
-        "stderr_file",
-    ) + RUNTIME_STATS_FIELDS
-    with csv_path.open("w", encoding="utf-8", newline="") as fp:
-        writer = csv.DictWriter(fp, fieldnames=fields)
-        writer.writeheader()
-        for row in rows:
-            writer.writerow({key: row[key] for key in fields})
+def format_report(summary):
+    if summary["comparison"] == "exact_ffn_batch_ablation":
+        return (
+            "# DSpark Exact FFN Batch Ablation\n\n"
+            f"- Default exact median: "
+            f"{summary['default_exact_generation_tps_median']:.2f} t/s\n"
+            f"- Exact FFN batch median: "
+            f"{summary['exact_ffn_generation_tps_median']:.2f} t/s\n"
+            f"- Ratio of medians: {summary['median_ratio_of_medians']:.4f}x\n"
+            f"- Median paired ratio: {summary['paired_speedup_median']:.4f}x\n"
+            f"- Exact FFN batch delta: {summary['exact_ffn_delta_percent']:+.1f}%\n"
+            f"- Measured pairs: {len(summary['paired_speedup_values'])}\n"
+        )
 
-    (run_dir / "summary.json").write_text(
-        json.dumps(summary, indent=2) + "\n", encoding="utf-8"
-    )
-    metadata["finished_at"] = dt.datetime.now().astimezone().isoformat()
-    metadata["thermal_state_after"] = run_capture(
-        ["pmset", "-g", "therm"], run_dir.parent.parent
-    )
-    (run_dir / "metadata.json").write_text(
-        json.dumps(metadata, indent=2) + "\n", encoding="utf-8"
-    )
-
-    report = (
+    return (
         "# DSpark Benchmark Summary\n\n"
         f"- Baseline median: {summary['baseline_generation_tps_median']:.2f} t/s\n"
         f"- Runtime median: {summary['runtime_generation_tps_median']:.2f} t/s\n"
@@ -497,6 +551,40 @@ def write_results(run_dir, rows, summary, metadata):
         f"head {summary['runtime_head_ms_per_emitted_median']:.3f} ms, "
         f"chain {summary['runtime_chain_ms_per_emitted_median']:.3f} ms\n"
     )
+
+
+def write_results(run_dir, rows, summary, metadata):
+    csv_path = run_dir / "results.csv"
+    fields = (
+        "sequence",
+        "pair",
+        "position",
+        "mode",
+        "prefill_tps",
+        "generation_tps",
+        "wall_seconds",
+        "stdout_sha256",
+        "stdout_file",
+        "stderr_file",
+    ) + RUNTIME_STATS_FIELDS
+    with csv_path.open("w", encoding="utf-8", newline="") as fp:
+        writer = csv.DictWriter(fp, fieldnames=fields)
+        writer.writeheader()
+        for row in rows:
+            writer.writerow({key: row[key] for key in fields})
+
+    (run_dir / "summary.json").write_text(
+        json.dumps(summary, indent=2) + "\n", encoding="utf-8"
+    )
+    metadata["finished_at"] = dt.datetime.now().astimezone().isoformat()
+    metadata["thermal_state_after"] = run_capture(
+        ["pmset", "-g", "therm"], run_dir.parent.parent
+    )
+    (run_dir / "metadata.json").write_text(
+        json.dumps(metadata, indent=2) + "\n", encoding="utf-8"
+    )
+
+    report = format_report(summary)
     (run_dir / "summary.md").write_text(report, encoding="utf-8")
     return csv_path, report
 
@@ -509,11 +597,15 @@ def main():
     args.prompt_file = args.prompt_file.resolve()
     check_inputs(args, root)
 
-    print("Baseline command:")
-    print("  " + command_text(args, "baseline"))
-    print("Runtime command:")
-    print("  " + command_text(args, "runtime"))
-    print("DSpark diagnostics are unset; one end-of-session runtime stats record is enabled.")
+    modes = benchmark_modes(args)
+    runtime_stats = throughput_runtime_stats_enabled(args)
+    for mode in modes:
+        print(f"{mode_label(mode, args)} command:")
+        print("  " + command_text(args, mode, runtime_stats))
+    if runtime_stats:
+        print("DSpark diagnostics are unset; one end-of-session runtime stats record is enabled.")
+    else:
+        print("DSpark diagnostics and runtime stats are unset in both ablation modes.")
     if args.dry_run:
         print("Dry run only; no model execution performed.")
         return 0
@@ -528,9 +620,15 @@ def main():
 
     reference_output = None
     for warmup in range(1, args.warmups + 1):
-        for mode in ("baseline", "runtime"):
+        for mode in modes:
             result = execute_run(
-                args, root, run_dir, f"warmup-{warmup:02d}", mode, reference_output
+                args,
+                root,
+                run_dir,
+                f"warmup-{warmup:02d}",
+                mode,
+                reference_output,
+                runtime_stats,
             )
             if reference_output is None:
                 reference_output = result["stdout_data"]
@@ -539,7 +637,7 @@ def main():
     rows = []
     sequence = 0
     for pair in range(1, args.pairs + 1):
-        order = ("baseline", "runtime") if pair % 2 else ("runtime", "baseline")
+        order = modes if pair % 2 else tuple(reversed(modes))
         for position, mode in enumerate(order, 1):
             sequence += 1
             result = execute_run(
@@ -549,6 +647,7 @@ def main():
                 f"measured-{sequence:02d}",
                 mode,
                 reference_output,
+                runtime_stats,
             )
             if reference_output is None:
                 reference_output = result["stdout_data"]
@@ -557,7 +656,7 @@ def main():
             rows.append(result)
             cooldown(args.cooldown)
 
-    summary = summarize(rows)
+    summary = summarize(rows, modes)
     csv_path, report = write_results(run_dir, rows, summary, metadata)
     print()
     print(report.rstrip())
