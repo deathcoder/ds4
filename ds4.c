@@ -19368,6 +19368,59 @@ static bool metal_graph_encode_layer_attention_batch(
     return ok;
 }
 
+static bool metal_graph_shared_gate_up_swiglu_decode_rows(
+        ds4_gpu_graph          *g,
+        const ds4_model        *model,
+        const ds4_layer_weights *layer,
+        uint32_t                n_tokens) {
+#ifdef __APPLE__
+    const uint64_t shared_dim = layer->ffn_gate_shexp->dim[1];
+    bool ok = true;
+    for (uint32_t row = 0; ok && row < n_tokens; row++) {
+        ds4_gpu_tensor *gate = ds4_gpu_tensor_view(
+            g->batch_shared_gate,
+            (uint64_t)row * shared_dim * sizeof(float),
+            shared_dim * sizeof(float));
+        ds4_gpu_tensor *up = ds4_gpu_tensor_view(
+            g->batch_shared_up,
+            (uint64_t)row * shared_dim * sizeof(float),
+            shared_dim * sizeof(float));
+        ds4_gpu_tensor *mid = ds4_gpu_tensor_view(
+            g->batch_shared_mid,
+            (uint64_t)row * shared_dim * sizeof(float),
+            shared_dim * sizeof(float));
+        ds4_gpu_tensor *x = ds4_gpu_tensor_view(
+            g->batch_ffn_norm,
+            (uint64_t)row * DS4_N_EMBD * sizeof(float),
+            (uint64_t)DS4_N_EMBD * sizeof(float));
+        ok = gate && up && mid && x &&
+             ds4_gpu_shared_gate_up_swiglu_q8_0_tensor(
+                 gate,
+                 up,
+                 mid,
+                 model->map,
+                 model->size,
+                 layer->ffn_gate_shexp->abs_offset,
+                 layer->ffn_up_shexp->abs_offset,
+                 DS4_N_EMBD,
+                 shared_dim,
+                 x,
+                 DS4_SWIGLU_CLAMP_EXP) != 0;
+        ds4_gpu_tensor_free(x);
+        ds4_gpu_tensor_free(mid);
+        ds4_gpu_tensor_free(up);
+        ds4_gpu_tensor_free(gate);
+    }
+    return ok;
+#else
+    (void)g;
+    (void)model;
+    (void)layer;
+    (void)n_tokens;
+    return false;
+#endif
+}
+
 /* Encode the batched prefill FFN half: HC pre/norm, shared expert, routed
  * experts, sum, and HC post. */
 static bool metal_graph_encode_layer_ffn_batch(
@@ -19378,7 +19431,8 @@ static bool metal_graph_encode_layer_ffn_batch(
         uint32_t                pos0,
         uint32_t                n_tokens,
         bool                    exact_hc_projection,
-        bool                    exact_router_projection) {
+        bool                    exact_router_projection,
+        bool                    exact_shared_gate_up) {
     if (n_tokens == 0 || n_tokens > g->prefill_cap) return false;
     g->batch_shared_out_is_f16 = false;
 
@@ -19661,7 +19715,13 @@ static bool metal_graph_encode_layer_ffn_batch(
     } while (0)
 
 #define DS4_METAL_ENCODE_PREFILL_SHARED_EXPERT() do { \
-        if (ok) ok = metal_graph_matmul_q8_0_named_tensor("shared_gate", \
+        if (ok && exact_shared_gate_up) { \
+            ok = metal_graph_shared_gate_up_swiglu_decode_rows(g, \
+                                                                model, \
+                                                                layer, \
+                                                                n_tokens); \
+        } else if (ok) { \
+            ok = metal_graph_matmul_q8_0_named_tensor("shared_gate", \
                                                           il, \
                                                           pos0, \
                                                           g->batch_shared_gate, \
@@ -19671,7 +19731,8 @@ static bool metal_graph_encode_layer_ffn_batch(
                                                           shared_dim, \
                                                           g->batch_ffn_norm, \
                                                           n_tokens); \
-        if (ok) ok = metal_graph_matmul_q8_0_named_tensor("shared_up", \
+        } \
+        if (ok && !exact_shared_gate_up) ok = metal_graph_matmul_q8_0_named_tensor("shared_up", \
                                                           il, \
                                                           pos0, \
                                                           g->batch_shared_up, \
@@ -19682,7 +19743,7 @@ static bool metal_graph_encode_layer_ffn_batch(
                                                           g->batch_ffn_norm, \
                                                           n_tokens); \
         DS4_METAL_PROFILE_FFN_STAGE("shared_gate_up"); \
-        if (ok) ok = ds4_gpu_swiglu_tensor(g->batch_shared_mid, \
+        if (ok && !exact_shared_gate_up) ok = ds4_gpu_swiglu_tensor(g->batch_shared_mid, \
                                              g->batch_shared_gate, \
                                              g->batch_shared_up, \
                                              (uint32_t)((uint64_t)n_tokens * shared_dim), \
@@ -19913,7 +19974,7 @@ static bool metal_graph_encode_layer_batch(
     }
     if (ok) {
         ok = metal_graph_encode_layer_ffn_batch(
-            g, model, layer, il, pos0, n_tokens, false, false);
+            g, model, layer, il, pos0, n_tokens, false, false, false);
         if (!ok) {
             fprintf(stderr, "ds4: gpu layer %u ffn batch encode failed\n", il);
         }
@@ -21370,6 +21431,7 @@ static bool metal_graph_prefill_layer_major_capture(
                                                             il,
                                                             start,
                                                             n_tokens,
+                                                            false,
                                                             false,
                                                             false);
             if (!ok) {
@@ -22856,6 +22918,7 @@ static bool metal_graph_verify_decode_exact(
                                                                 il,
                                                                 start,
                                                                 n_tokens,
+                                                                true,
                                                                 true,
                                                                 true);
             }
@@ -29022,6 +29085,7 @@ static bool dspark_session_gpu_stage_run(
                                                  stage,
                                                  context_pos0 + context_len,
                                                  block,
+                                                 false,
                                                  false,
                                                  false);
     }

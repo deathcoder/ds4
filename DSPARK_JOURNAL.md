@@ -2934,6 +2934,52 @@ make ds4 ds4_test ds4-server ds4-eval ds4-agent ds4_cpu.o \
 git diff --check
 ```
 
+Phase 0.59 exact shared gate/up rows added on 2026-07-14:
+
+- Added an internal observer-only `exact_shared_gate_up` selection to the
+  batched FFN. Normal prefill, layer-major prefill, DSpark sidecar stages, and
+  every production caller pass `false`; only the selected-layer exact FFN
+  shadow passes `true`.
+- The exact path creates row views over batch shared gate/up/mid and FFN-norm
+  tensors, then calls the existing one-token
+  `ds4_gpu_shared_gate_up_swiglu_q8_0_tensor` once per row while the same Metal
+  command batch remains open. The original Metal kernel and backend API are
+  unchanged, and no duplicated row kernel was introduced.
+- Shared gate, shared up, and shared SwiGLU mid became bit-exact in every 2-5
+  row observation at layers 0, 30, and 42. The correctness harness now asserts
+  those three zero-drift metrics in addition to all previously proven
+  boundaries through router weights.
+- At layers 0 and 30, shared-output max drift fell to roughly one F32 ulp
+  (`1.49e-7` to `2.38e-7`). Layer 42 still reached `3.05e-5`, so shared down and
+  its F16 batch output are now the first persistent shared-expert boundary.
+  Routed mid remains exact; the independent five-row down/sum drift is
+  unchanged.
+- A correctness-only layer-42 `code_8k` replay kept shared gate/up/mid exact in
+  every observation. Shared output reached `3.05e-5` max and five-row routed
+  down/sum reached `7.63e-6`. Observer and same-binary no-observer text were
+  byte-identical; timings were ignored.
+- This is still observer-only correctness work, not a throughput claim. The
+  row-view allocation and repeated kernel encoding are intentionally outside
+  production execution until the complete FFN is exact and can be evaluated as
+  one controlled runtime candidate.
+
+Phase 0.59 checks:
+
+```sh
+for layer in 0 30 42; do
+  DS4_DSPARK_EXACT_FFN_BATCH_OBSERVER_LAYER=$layer \
+  DS4_TEST_DSPARK_MODE=runtime \
+    ./tests/dspark_gpu_candidates_correctness.sh
+done
+# A separate code_8k layer-42 observer/control replay used -n 32 and cmp;
+# output was byte-identical and timings were ignored.
+make ds4 ds4_test ds4-server ds4-eval ds4-agent ds4_cpu.o \
+  ds4-warm-prefill-bench
+./tests/dspark_fast_verifier_soak.sh
+./ds4_test --dspark-validation --dspark-shape-binding
+git diff --check
+```
+
 Phase 0.52 checks:
 
 ```sh
@@ -3002,15 +3048,14 @@ If continuing from a compacted context, start here:
 
 ## Open Questions
 
-- Add an observer-only exact-row shared expert path by dispatching the original
-  fused one-token Q8 gate/up/SwiGLU kernel at row offsets, then do the same for
-  shared down while preserving F32 output. Separately, make the five-row routed
-  down/sum use the exact direct-sum arithmetic or otherwise align its reduction.
-  Do not repeat the full issue-468 baseline suite until another exact verifier
-  stage earns a controlled comparison. Fast authority still does not preserve
-  long-running target state; broader throughput reporting must wait for a
-  numerically exact compute-batched verifier with byte-identical long-corpus
-  output.
+- Add an observer-only exact-row shared-down path using the original one-token
+  Q8 matvec and preserving F32 output before HC expansion. Separately, make the
+  five-row routed down/sum use the exact direct-sum arithmetic or otherwise
+  align its reduction. Do not repeat the full issue-468 baseline suite until
+  another exact verifier stage earns a controlled comparison. Fast authority
+  still does not preserve long-running target state; broader throughput
+  reporting must wait for a numerically exact compute-batched verifier with
+  byte-identical long-corpus output.
 - The GPU stage path currently borrows target graph transient batch workspace
   and therefore requires `prefill_cap >= block_size` (five). Decide whether to
   allocate sidecar-specific batch scratch before production enablement or keep
