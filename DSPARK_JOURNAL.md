@@ -2980,6 +2980,44 @@ make ds4 ds4_test ds4-server ds4-eval ds4-agent ds4_cpu.o \
 git diff --check
 ```
 
+Phase 0.60 exact shared-down rows added on 2026-07-14:
+
+- Added an internal observer-only `exact_shared_down` selection to the batched
+  FFN. Production prefill, layer-major prefill, and DSpark sidecar callers pass
+  `false`; only the selected-layer exact FFN shadow passes `true`.
+- The exact path creates row views over the F32 batch shared-mid and
+  shared-output tensors, then calls the original one-token
+  `ds4_gpu_matmul_q8_0_tensor` Q8 shared-down matvec once per row. It bypasses
+  the batch F16-output optimization, so the existing F32 HC expansion consumes
+  the shared result without an F16 round trip. No backend API or Metal kernel
+  changed, and CUDA/ROCm paths were untouched.
+- Shared output became bit-exact in every observation at layers 0, 30, and 42;
+  the correctness harness now asserts `shared_max=0` in addition to exact
+  shared gate/up/mid and all earlier boundaries.
+- A retained layer-42 replay was completely exact through FFN combine and HC
+  post for two-, three-, and four-row proposals. The five-row observation had
+  `shared_max=0` and only the previously isolated routed down/sum divergence:
+  `routed_max=1.19209e-6`, `ffn_max=1.90735e-6`, and
+  `hc_max=1.90735e-6`. Generated output remained byte-identical in every
+  correctness-matrix case; timings were ignored.
+- This remains observer-only arithmetic localization. It does not claim or
+  measure a production throughput improvement.
+
+Phase 0.60 checks:
+
+```sh
+for layer in 0 30 42; do
+  DS4_DSPARK_EXACT_FFN_BATCH_OBSERVER_LAYER=$layer \
+  DS4_TEST_DSPARK_MODE=runtime \
+    ./tests/dspark_gpu_candidates_correctness.sh
+done
+make ds4 ds4_test ds4-server ds4-eval ds4-agent ds4_cpu.o \
+  ds4-warm-prefill-bench
+./ds4_test --dspark-validation --dspark-shape-binding
+./tests/dspark_fast_verifier_soak.sh
+git diff --check
+```
+
 Phase 0.52 checks:
 
 ```sh
@@ -3048,14 +3086,15 @@ If continuing from a compacted context, start here:
 
 ## Open Questions
 
-- Add an observer-only exact-row shared-down path using the original one-token
-  Q8 matvec and preserving F32 output before HC expansion. Separately, make the
-  five-row routed down/sum use the exact direct-sum arithmetic or otherwise
-  align its reduction. Do not repeat the full issue-468 baseline suite until
-  another exact verifier stage earns a controlled comparison. Fast authority
-  still does not preserve long-running target state; broader throughput
-  reporting must wait for a numerically exact compute-batched verifier with
-  byte-identical long-corpus output.
+- Make the five-row routed down/sum use the exact direct-sum arithmetic or
+  otherwise align its reduction. This is now the only observed FFN-shadow
+  divergence: two- through four-row layer-42 proposals are bit-exact through
+  HC post, while shared output is exact at every tested layer and row count.
+  Do not repeat the full issue-468 baseline suite until another exact verifier
+  stage earns a controlled comparison. Fast authority still does not preserve
+  long-running target state; broader throughput reporting must wait for a
+  numerically exact compute-batched verifier with byte-identical long-corpus
+  output.
 - The GPU stage path currently borrows target graph transient batch workspace
   and therefore requires `prefill_cap >= block_size` (five). Decide whether to
   allocate sidecar-specific batch scratch before production enablement or keep
