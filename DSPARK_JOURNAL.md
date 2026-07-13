@@ -3018,6 +3018,51 @@ make ds4 ds4_test ds4-server ds4-eval ds4-agent ds4_cpu.o \
 git diff --check
 ```
 
+Phase 0.61 exact routed MoE rows added on 2026-07-14:
+
+- Added an internal observer-only `exact_routed_moe` selection to the batched
+  FFN. Production prefill, layer-major prefill, and DSpark sidecar callers pass
+  `false`; only the selected-layer exact FFN shadow passes `true`.
+- The exact path creates row views over batch FFN norm, router IDs/weights,
+  routed gate/up/mid/down scratch, and routed output, then calls the existing
+  `ds4_gpu_routed_moe_one_tensor` once per row while the outer Metal command
+  batch remains open. This reuses the one-token fused pair-SwiGLU and direct
+  six-expert down/sum arithmetic without a host synchronization, new backend
+  API, or new Metal kernel. CUDA/ROCm code was not changed.
+- The prior batch path used direct down/sum only through four tokens; five rows
+  took separate expert down projections followed by a sum kernel and drifted
+  after an otherwise exact routed mid. Reusing the one-token path removes that
+  final arithmetic difference.
+- Tightened `dspark_gpu_candidates_correctness.sh`: every exact FFN observer
+  record in a log must now report `first=none` and `result=exact`. A passing
+  short proposal can no longer hide a drifting five-row proposal in the same
+  test case.
+- Every observed two- through five-row FFN at layers 0, 30, and 42 is now
+  bit-exact through HC post. The retained layer-42 five-row record reported
+  exact router IDs `30/30`, zero drift for routed mid/output and shared
+  gate/up/mid/output, `ffn_max=0`, five exact HC rows, and `hc_max=0`.
+  Generated output remained byte-identical throughout the correctness matrix;
+  timings were ignored.
+- This completes the selected-layer FFN arithmetic proof. It remains an
+  observer-only composition and is not yet enabled as target verification
+  authority or presented as a throughput improvement.
+
+Phase 0.61 checks:
+
+```sh
+for layer in 0 30 42; do
+  DS4_DSPARK_EXACT_FFN_BATCH_OBSERVER_LAYER=$layer \
+  DS4_TEST_DSPARK_MODE=runtime \
+    ./tests/dspark_gpu_candidates_correctness.sh
+done
+make ds4 ds4_test ds4-server ds4-eval ds4-agent ds4_cpu.o \
+  ds4-warm-prefill-bench
+./ds4_test --dspark-validation --dspark-shape-binding
+./tests/dspark_fast_verifier_soak.sh
+bash -n tests/dspark_gpu_candidates_correctness.sh
+git diff --check
+```
+
 Phase 0.52 checks:
 
 ```sh
@@ -3086,15 +3131,12 @@ If continuing from a compacted context, start here:
 
 ## Open Questions
 
-- Make the five-row routed down/sum use the exact direct-sum arithmetic or
-  otherwise align its reduction. This is now the only observed FFN-shadow
-  divergence: two- through four-row layer-42 proposals are bit-exact through
-  HC post, while shared output is exact at every tested layer and row count.
-  Do not repeat the full issue-468 baseline suite until another exact verifier
-  stage earns a controlled comparison. Fast authority still does not preserve
-  long-running target state; broader throughput reporting must wait for a
-  numerically exact compute-batched verifier with byte-identical long-corpus
-  output.
+- Promote the now-exact selected-layer FFN composition into an opt-in
+  compute-batched verifier candidate across all target layers. First prove
+  byte-identical output and preserved target KV/HC state on long and resumed
+  correctness corpora; only then should the user run a controlled throughput
+  comparison. The current observer proof does not by itself make fast
+  authority stateful or production-ready.
 - The GPU stage path currently borrows target graph transient batch workspace
   and therefore requires `prefill_cap >= block_size` (five). Decide whether to
   allocate sidecar-specific batch scratch before production enablement or keep

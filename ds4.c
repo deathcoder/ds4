@@ -19461,6 +19461,108 @@ static bool metal_graph_shared_down_decode_rows(
 #endif
 }
 
+static bool metal_graph_routed_moe_decode_rows(
+        ds4_gpu_graph           *g,
+        const ds4_model         *model,
+        const ds4_layer_weights *layer,
+        uint32_t                 il,
+        uint32_t                 n_tokens,
+        uint64_t                 gate_expert_bytes,
+        uint64_t                 gate_row_bytes,
+        uint64_t                 down_expert_bytes,
+        uint64_t                 down_row_bytes) {
+#ifdef __APPLE__
+    const uint64_t expert_in_dim = layer->ffn_gate_exps->dim[0];
+    const uint64_t expert_mid_dim = layer->ffn_gate_exps->dim[1];
+    const uint64_t down_in_dim = layer->ffn_down_exps->dim[0];
+    const uint64_t routed_out_dim = layer->ffn_down_exps->dim[1];
+    const uint64_t route_count = DS4_N_EXPERT_USED;
+    bool ok = true;
+    for (uint32_t row = 0; ok && row < n_tokens; row++) {
+        ds4_gpu_tensor *out = ds4_gpu_tensor_view(
+            g->batch_routed_out,
+            (uint64_t)row * routed_out_dim * sizeof(float),
+            routed_out_dim * sizeof(float));
+        ds4_gpu_tensor *gate = ds4_gpu_tensor_view(
+            g->batch_routed_gate,
+            (uint64_t)row * route_count * expert_mid_dim * sizeof(float),
+            route_count * expert_mid_dim * sizeof(float));
+        ds4_gpu_tensor *up = ds4_gpu_tensor_view(
+            g->batch_routed_up,
+            (uint64_t)row * route_count * expert_mid_dim * sizeof(float),
+            route_count * expert_mid_dim * sizeof(float));
+        ds4_gpu_tensor *mid = ds4_gpu_tensor_view(
+            g->batch_routed_mid,
+            (uint64_t)row * route_count * down_in_dim * sizeof(float),
+            route_count * down_in_dim * sizeof(float));
+        ds4_gpu_tensor *down = ds4_gpu_tensor_view(
+            g->batch_routed_down,
+            (uint64_t)row * route_count * routed_out_dim * sizeof(float),
+            route_count * routed_out_dim * sizeof(float));
+        ds4_gpu_tensor *selected = ds4_gpu_tensor_view(
+            g->batch_router_selected,
+            (uint64_t)row * route_count * sizeof(int),
+            route_count * sizeof(int));
+        ds4_gpu_tensor *weights = ds4_gpu_tensor_view(
+            g->batch_router_weights,
+            (uint64_t)row * route_count * sizeof(float),
+            route_count * sizeof(float));
+        ds4_gpu_tensor *x = ds4_gpu_tensor_view(
+            g->batch_ffn_norm,
+            (uint64_t)row * expert_in_dim * sizeof(float),
+            expert_in_dim * sizeof(float));
+        ok = out && gate && up && mid && down && selected && weights && x &&
+             ds4_gpu_routed_moe_one_tensor(
+                 out,
+                 gate,
+                 up,
+                 mid,
+                 down,
+                 model->map,
+                 model->size,
+                 layer->ffn_gate_exps->abs_offset,
+                 layer->ffn_up_exps->abs_offset,
+                 layer->ffn_down_exps->abs_offset,
+                 layer->ffn_gate_exps->type,
+                 layer->ffn_down_exps->type,
+                 gate_expert_bytes,
+                 gate_row_bytes,
+                 down_expert_bytes,
+                 down_row_bytes,
+                 (uint32_t)expert_in_dim,
+                 (uint32_t)down_in_dim,
+                 (uint32_t)routed_out_dim,
+                 selected,
+                 weights,
+                 DS4_N_EXPERT,
+                 DS4_N_EXPERT_USED,
+                 DS4_SWIGLU_CLAMP_EXP,
+                 x,
+                 il) != 0;
+        ds4_gpu_tensor_free(x);
+        ds4_gpu_tensor_free(weights);
+        ds4_gpu_tensor_free(selected);
+        ds4_gpu_tensor_free(down);
+        ds4_gpu_tensor_free(mid);
+        ds4_gpu_tensor_free(up);
+        ds4_gpu_tensor_free(gate);
+        ds4_gpu_tensor_free(out);
+    }
+    return ok;
+#else
+    (void)g;
+    (void)model;
+    (void)layer;
+    (void)il;
+    (void)n_tokens;
+    (void)gate_expert_bytes;
+    (void)gate_row_bytes;
+    (void)down_expert_bytes;
+    (void)down_row_bytes;
+    return false;
+#endif
+}
+
 /* Encode the batched prefill FFN half: HC pre/norm, shared expert, routed
  * experts, sum, and HC post. */
 static bool metal_graph_encode_layer_ffn_batch(
@@ -19473,7 +19575,8 @@ static bool metal_graph_encode_layer_ffn_batch(
         bool                    exact_hc_projection,
         bool                    exact_router_projection,
         bool                    exact_shared_gate_up,
-        bool                    exact_shared_down) {
+        bool                    exact_shared_down,
+        bool                    exact_routed_moe) {
     if (n_tokens == 0 || n_tokens > g->prefill_cap) return false;
     g->batch_shared_out_is_f16 = false;
 
@@ -19889,7 +19992,18 @@ static bool metal_graph_encode_layer_ffn_batch(
     }
 #endif
 
-    if (ok) {
+    if (ok && exact_routed_moe) {
+        g->batch_routed_mid_is_f16 = false;
+        ok = metal_graph_routed_moe_decode_rows(g,
+                                                model,
+                                                layer,
+                                                il,
+                                                n_tokens,
+                                                gate_expert_bytes,
+                                                gate_row_bytes,
+                                                down_expert_bytes,
+                                                down_row_bytes);
+    } else if (ok) {
         ok = ds4_gpu_routed_moe_batch_tensor(g->batch_routed_out,
                                                g->batch_routed_gate,
                                                g->batch_routed_up,
@@ -20018,7 +20132,8 @@ static bool metal_graph_encode_layer_batch(
     }
     if (ok) {
         ok = metal_graph_encode_layer_ffn_batch(
-            g, model, layer, il, pos0, n_tokens, false, false, false, false);
+            g, model, layer, il, pos0, n_tokens,
+            false, false, false, false, false);
         if (!ok) {
             fprintf(stderr, "ds4: gpu layer %u ffn batch encode failed\n", il);
         }
@@ -21475,6 +21590,7 @@ static bool metal_graph_prefill_layer_major_capture(
                                                             il,
                                                             start,
                                                             n_tokens,
+                                                            false,
                                                             false,
                                                             false,
                                                             false,
@@ -22963,6 +23079,7 @@ static bool metal_graph_verify_decode_exact(
                                                                 il,
                                                                 start,
                                                                 n_tokens,
+                                                                true,
                                                                 true,
                                                                 true,
                                                                 true,
@@ -29131,6 +29248,7 @@ static bool dspark_session_gpu_stage_run(
                                                  stage,
                                                  context_pos0 + context_len,
                                                  block,
+                                                 false,
                                                  false,
                                                  false,
                                                  false,
