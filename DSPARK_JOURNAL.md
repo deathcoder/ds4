@@ -3249,6 +3249,70 @@ The profile's instrumented 19.77/20.72 t/s values remain context only. Raw
 results are in the ignored local run
 `speed-bench/local-runs/ffn-profile-20260714-013402/results.csv`.
 
+Phase 0.65 exact FFN default promotion completed on 2026-07-14:
+
+- Promoted all-layer exact FFN batching to the normal multi-row exact DSpark
+  verifier. With `DS4_DSPARK_GPU_RUNTIME=1`, an absent, empty, or nonzero
+  `DS4_DSPARK_EXACT_FFN_BATCH` now selects the proven batched path.
+  `DS4_DSPARK_EXACT_FFN_BATCH=0` preserves the former serial FFN
+  implementation as an explicit diagnostic control.
+- The selected-layer exact FFN observer still disables batched runtime
+  authority for its observed call. No FFN kernel or target-state restoration
+  logic changed, so a recoverable whole-verifier failure continues through the
+  existing frontier restore and serial token-evaluation fallback.
+- Renamed comparison modes around the promoted behavior.
+  `run_dspark_comparison.py --serial-ffn-ablation` now compares serial exact
+  against default exact FFN, alternates serial/default order, and reports the
+  default's delta. The old `--exact-ffn-batch-ablation` spelling remains an
+  alias. Ordinary baseline/runtime comparisons now measure the promoted
+  default automatically.
+- Updated the attribution profile to compare `serial_exact` against
+  `default_exact`; serial sets `DS4_DSPARK_EXACT_FFN_BATCH=0`, while default
+  leaves the override absent. Reports and metadata use the promoted names.
+- Reworked `dspark_gpu_candidates_correctness.sh` so normal runtime requires
+  exact FFN batching and `DS4_TEST_DSPARK_SERIAL_FFN_RUNTIME=1` requires zero
+  FFN-batch attempts. Mixed fast/exact sessions allow zero attempts while fast
+  authority is active but require every attempt that occurs to complete.
+- The exact-FFN and fast-verifier soaks explicitly clear inherited FFN
+  overrides. The fast resumed-session check now proves that after fast authority
+  is suspended, a later exact verification uses the promoted FFN path.
+- Default exact, explicit serial, the layer-42 observer, and stats-enabled mixed
+  fast/exact matrices all produced byte-identical output. Both long soaks
+  passed. Codex ran no tok/s benchmark; incidental correctness timings were
+  ignored.
+
+Phase 0.65 checks:
+
+```sh
+make ds4 ds4_test ds4-server ds4-eval ds4-agent ds4_cpu.o \
+  ds4-warm-prefill-bench
+./ds4_test --dspark-validation --dspark-shape-binding
+DS4_TEST_DSPARK_MODE=runtime \
+DS4_TEST_DSPARK_RUNTIME_STATS=1 \
+  ./tests/dspark_gpu_candidates_correctness.sh
+DS4_TEST_DSPARK_MODE=runtime \
+DS4_TEST_DSPARK_SERIAL_FFN_RUNTIME=1 \
+DS4_TEST_DSPARK_RUNTIME_STATS=1 \
+  ./tests/dspark_gpu_candidates_correctness.sh
+DS4_DSPARK_EXACT_FFN_BATCH_OBSERVER_LAYER=42 \
+DS4_TEST_DSPARK_MODE=runtime \
+  ./tests/dspark_gpu_candidates_correctness.sh
+DS4_TEST_DSPARK_MODE=runtime \
+DS4_TEST_DSPARK_FAST_VERIFY_RUNTIME=1 \
+DS4_TEST_DSPARK_RUNTIME_STATS=1 \
+  ./tests/dspark_gpu_candidates_correctness.sh
+./tests/dspark_exact_ffn_batch_runtime_soak.sh
+./tests/dspark_fast_verifier_soak.sh
+python3 -m py_compile speed-bench/run_dspark_comparison.py \
+  speed-bench/run_dspark_exact_ffn_batch_profile.py
+bash -n tests/dspark_gpu_candidates_correctness.sh \
+  tests/dspark_exact_ffn_batch_runtime_soak.sh \
+  tests/dspark_fast_verifier_soak.sh
+# Dry runs covered ordinary, fast, serial-control, legacy-alias, and profile
+# commands. Synthetic checks covered both renamed summaries and reports.
+git diff --check
+```
+
 Phase 0.52 checks:
 
 ```sh
@@ -3317,13 +3381,12 @@ If continuing from a compacted context, start here:
 
 ## Open Questions
 
-- Promote exact FFN batching from opt-in candidate to the normal exact DSpark
-  verifier path. Preserve serial fallback on recoverable failure, keep the
-  selected-layer observer mutually exclusive, update tests and benchmark mode
-  naming so the old serial exact implementation remains available as a
-  diagnostic control, and do not combine this promotion with exact-attention
-  batching. After promotion correctness and regression checks, begin the larger
-  exact-attention batching investigation as a separate phase.
+- Begin the exact-attention batching investigation as a separate observer-only
+  phase. First isolate the row-independent attention HC preparation from the
+  autoregressive cache-dependent attention work at selected layers, starting
+  with the late-layer `attn_hc_pre` region identified by the synchronized stage
+  profile. Establish a bit-exact batch/serial boundary before adding any new
+  authoritative runtime path or throughput benchmark.
 - The GPU stage path currently borrows target graph transient batch workspace
   and therefore requires `prefill_cap >= block_size` (five). Decide whether to
   allocate sidecar-specific batch scratch before production enablement or keep

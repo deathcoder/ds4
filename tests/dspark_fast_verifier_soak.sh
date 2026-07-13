@@ -5,6 +5,7 @@ root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 ds4_bin=${DS4_BIN:-"$root/ds4"}
 base_model=${DS4_TEST_MODEL:-"$root/gguf/DeepSeek-V4-Flash-IQ2XXS-w2Q2K-AProjQ8-SExpQ8-OutQ8-chat-v2-imatrix.gguf"}
 dspark_model=${DS4_TEST_DSPARK_MODEL:-"$root/gguf/ds4flash-dspark.gguf"}
+unset DS4_DSPARK_EXACT_FFN_BATCH
 
 for path in "$ds4_bin" "$base_model" "$dspark_model"; do
     if [[ ! -f $path ]]; then
@@ -30,7 +31,6 @@ fast_env=(
     DS4_DSPARK_GPU_RUNTIME=1
     DS4_DSPARK_MULTI_COMMIT=1
     DS4_DSPARK_FAST_BATCH_VERIFY=1
-    DS4_DSPARK_EXACT_FFN_BATCH=0
     DS4_DSPARK_GPU_RUNTIME_DIAGNOSTICS=1
 )
 
@@ -110,7 +110,12 @@ compare_resumed_chat() {
     assert_fast_log resumed "$fast_log" yes
     if [[ $(grep -c 'DSpark fast batch verifier .* result=pass' "$fast_log") -lt 1 ]] ||
        ! grep -q 'DSpark fast batch verifier suspended after resumed sync' "$fast_log" ||
-       ! grep -q 'DSpark exact batch verifier .* result=pass' "$fast_log"; then
+       ! grep -q 'DSpark exact batch verifier .* result=pass' "$fast_log" ||
+       ! awk '
+           /DSpark exact FFN batch runtime retained after resumed sync/ { resumed = 1; next }
+           resumed && /DSpark exact FFN batch runtime .* result=pass/ { verified = 1 }
+           END { exit verified ? 0 : 1 }
+       ' "$fast_log"; then
         printf 'resumed chat did not transition from fast to exact verification\n' >&2
         exit 1
     fi

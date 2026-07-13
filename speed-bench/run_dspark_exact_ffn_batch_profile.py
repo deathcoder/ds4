@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""User-run stats profile for default-exact versus exact-FFN DSpark."""
+"""User-run stats profile for serial versus default exact-FFN DSpark."""
 
 import argparse
 import csv
@@ -43,7 +43,7 @@ FLOAT_FIELDS = {
     "generation_sidecar_ms",
 }
 INSTRUMENTATION_MARKERS = ("PROFILE", "TRACE", "DUMP", "TIMING")
-MODES = ("exact", "exact_ffn")
+MODES = ("serial_exact", "default_exact")
 
 
 def sha256(data):
@@ -85,15 +85,15 @@ def mode_env(mode):
     env["DS4_DSPARK_GPU_RUNTIME"] = "1"
     env["DS4_DSPARK_MULTI_COMMIT"] = "1"
     env["DS4_DSPARK_GPU_RUNTIME_STATS"] = "1"
-    if mode == "exact_ffn":
-        env["DS4_DSPARK_EXACT_FFN_BATCH"] = "1"
+    if mode == "serial_exact":
+        env["DS4_DSPARK_EXACT_FFN_BATCH"] = "0"
     return env
 
 
 def parse_args():
     root = Path(__file__).resolve().parent.parent
     parser = argparse.ArgumentParser(
-        description="Profile instrumented default-exact and exact-FFN DSpark."
+        description="Profile instrumented serial and default exact-FFN DSpark."
     )
     parser.add_argument("--binary", type=Path, default=root / "ds4")
     parser.add_argument(
@@ -224,12 +224,12 @@ def parse_stats(data, path):
 def validate_mode_stats(row, path):
     attempts = row["exact_ffn_batch_attempts"]
     successes = row["exact_ffn_batch_successes"]
-    if row["mode"] == "exact":
+    if row["mode"] == "serial_exact":
         if attempts != 0 or successes != 0:
-            raise RuntimeError(f"default exact unexpectedly used FFN batching in {path}")
+            raise RuntimeError(f"serial exact unexpectedly used FFN batching in {path}")
         return
     if attempts <= 0:
-        raise RuntimeError(f"exact FFN candidate was never attempted in {path}")
+        raise RuntimeError(f"default exact FFN was never attempted in {path}")
     if successes > attempts:
         raise RuntimeError(f"invalid exact FFN outcomes in {path}")
 
@@ -315,58 +315,58 @@ def summarize(rows):
             "ffn_batch_successes_median": median("exact_ffn_batch_successes"),
             "generation_tps_median_instrumented": median("generation_tps"),
         }
-    exact = result["modes"]["exact"]
-    candidate = result["modes"]["exact_ffn"]
-    result["target_time_ratio_candidate_over_exact"] = (
-        candidate["target_eval_ms_per_emitted"]
-        / exact["target_eval_ms_per_emitted"]
+    serial = result["modes"]["serial_exact"]
+    default = result["modes"]["default_exact"]
+    result["target_time_ratio_default_over_serial"] = (
+        default["target_eval_ms_per_emitted"]
+        / serial["target_eval_ms_per_emitted"]
     )
     result["target_time_saved_ms_per_emitted"] = (
-        exact["target_eval_ms_per_emitted"]
-        - candidate["target_eval_ms_per_emitted"]
+        serial["target_eval_ms_per_emitted"]
+        - default["target_eval_ms_per_emitted"]
     )
     result["layer_time_saved_ms_per_emitted"] = (
-        exact["exact_layer_ms_per_emitted"]
-        - candidate["exact_layer_ms_per_emitted"]
+        serial["exact_layer_ms_per_emitted"]
+        - default["exact_layer_ms_per_emitted"]
     )
     return result
 
 
 def report(summary):
-    exact = summary["modes"]["exact"]
-    candidate = summary["modes"]["exact_ffn"]
+    serial = summary["modes"]["serial_exact"]
+    default = summary["modes"]["default_exact"]
     return (
-        "# DSpark Exact FFN Batch Profile\n\n"
+        "# DSpark Default Exact FFN Profile\n\n"
         "Instrumented synchronized diagnostic only; do not compare these t/s values "
         "with uninstrumented runs.\n\n"
         "| mode | target ms/emitted | layers | head | residual | sidecar |\n"
         "|---|---:|---:|---:|---:|---:|\n"
-        f"| exact | {exact['target_eval_ms_per_emitted']:.3f} | "
-        f"{exact['exact_layer_ms_per_emitted']:.3f} | "
-        f"{exact['exact_head_ms_per_emitted']:.3f} | "
-        f"{exact['target_residual_ms_per_emitted']:.3f} | "
-        f"{exact['generation_sidecar_ms_per_emitted']:.3f} |\n"
-        f"| exact_ffn | {candidate['target_eval_ms_per_emitted']:.3f} | "
-        f"{candidate['exact_layer_ms_per_emitted']:.3f} | "
-        f"{candidate['exact_head_ms_per_emitted']:.3f} | "
-        f"{candidate['target_residual_ms_per_emitted']:.3f} | "
-        f"{candidate['generation_sidecar_ms_per_emitted']:.3f} |\n\n"
-        f"- Target-time ratio, exact FFN / exact: "
-        f"{summary['target_time_ratio_candidate_over_exact']:.4f}x\n"
+        f"| serial_exact | {serial['target_eval_ms_per_emitted']:.3f} | "
+        f"{serial['exact_layer_ms_per_emitted']:.3f} | "
+        f"{serial['exact_head_ms_per_emitted']:.3f} | "
+        f"{serial['target_residual_ms_per_emitted']:.3f} | "
+        f"{serial['generation_sidecar_ms_per_emitted']:.3f} |\n"
+        f"| default_exact | {default['target_eval_ms_per_emitted']:.3f} | "
+        f"{default['exact_layer_ms_per_emitted']:.3f} | "
+        f"{default['exact_head_ms_per_emitted']:.3f} | "
+        f"{default['target_residual_ms_per_emitted']:.3f} | "
+        f"{default['generation_sidecar_ms_per_emitted']:.3f} |\n\n"
+        f"- Target-time ratio, default / serial: "
+        f"{summary['target_time_ratio_default_over_serial']:.4f}x\n"
         f"- Target time saved: "
         f"{summary['target_time_saved_ms_per_emitted']:.3f} ms/emitted\n"
         f"- Layer time saved: "
         f"{summary['layer_time_saved_ms_per_emitted']:.3f} ms/emitted\n"
-        f"- Exact FFN outcomes: {candidate['ffn_batch_successes_median']:.0f}/"
-        f"{candidate['ffn_batch_attempts_median']:.0f} completed; "
-        f"{candidate['batch_fallbacks_median']:.0f} verifier fallbacks\n"
-        f"- Acceptance depth: exact {exact['average_depth_median']:.3f}, "
-        f"exact FFN {candidate['average_depth_median']:.3f}\n"
-        f"- Target positions / eval: exact {exact['target_tokens_per_eval']:.3f}, "
-        f"exact FFN {candidate['target_tokens_per_eval']:.3f}\n"
-        f"- Instrumented generation t/s (context only): exact "
-        f"{exact['generation_tps_median_instrumented']:.2f}, exact FFN "
-        f"{candidate['generation_tps_median_instrumented']:.2f}\n"
+        f"- Default exact FFN outcomes: {default['ffn_batch_successes_median']:.0f}/"
+        f"{default['ffn_batch_attempts_median']:.0f} completed; "
+        f"{default['batch_fallbacks_median']:.0f} verifier fallbacks\n"
+        f"- Acceptance depth: serial {serial['average_depth_median']:.3f}, "
+        f"default {default['average_depth_median']:.3f}\n"
+        f"- Target positions / eval: serial {serial['target_tokens_per_eval']:.3f}, "
+        f"default {default['target_tokens_per_eval']:.3f}\n"
+        f"- Instrumented generation t/s (context only): serial "
+        f"{serial['generation_tps_median_instrumented']:.2f}, default "
+        f"{default['generation_tps_median_instrumented']:.2f}\n"
     )
 
 

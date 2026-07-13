@@ -5,6 +5,7 @@ root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 ds4_bin=${DS4_BIN:-"$root/ds4"}
 base_model=${DS4_TEST_MODEL:-"$root/gguf/DeepSeek-V4-Flash-IQ2XXS-w2Q2K-AProjQ8-SExpQ8-OutQ8-chat-v2-imatrix.gguf"}
 dspark_model=${DS4_TEST_DSPARK_MODEL:-"$root/gguf/ds4flash-dspark.gguf"}
+unset DS4_DSPARK_EXACT_FFN_BATCH
 
 for path in "$ds4_bin" "$base_model" "$dspark_model"; do
     if [[ ! -f $path ]]; then
@@ -29,7 +30,6 @@ common=(--model "$base_model" --ctx 4096 --nothink --temp 0 --seed 1)
 runtime_env=(
     DS4_DSPARK_GPU_RUNTIME=1
     DS4_DSPARK_MULTI_COMMIT=1
-    DS4_DSPARK_EXACT_FFN_BATCH=1
     DS4_DSPARK_FAST_BATCH_VERIFY=0
     DS4_DSPARK_GPU_RUNTIME_DIAGNOSTICS=1
 )

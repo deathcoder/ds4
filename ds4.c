@@ -31895,10 +31895,10 @@ static bool dspark_session_fast_verify_runtime_enabled(void) {
            v && v[0] && strcmp(v, "0") != 0;
 }
 
-static bool dspark_session_exact_ffn_batch_runtime_enabled(void) {
+static bool dspark_session_exact_ffn_batch_enabled(void) {
     const char *v = getenv("DS4_DSPARK_EXACT_FFN_BATCH");
     return dspark_session_gpu_runtime_env_enabled() &&
-           v && v[0] && strcmp(v, "0") != 0;
+           (!v || !v[0] || strcmp(v, "0") != 0);
 }
 
 static bool dspark_session_diagnostics_enabled(void) {
@@ -32924,7 +32924,7 @@ static bool dspark_session_verify_batch_once(
     dspark_exact_verify_timing *timing_out =
         dspark_session_runtime_stats_enabled() ? &timing : NULL;
     const bool exact_ffn_batch =
-        dspark_session_exact_ffn_batch_runtime_enabled() &&
+        dspark_session_exact_ffn_batch_enabled() &&
         dspark_exact_ffn_batch_observer_layer() < 0;
     const bool ok = metal_graph_verify_decode_exact(&s->graph,
                                                      &s->engine->model,
@@ -34993,7 +34993,7 @@ int ds4_session_sync(ds4_session *s, const ds4_tokens *prompt, char *err, size_t
         }
     }
     if (s->checkpoint_valid && s->dspark &&
-        dspark_session_exact_ffn_batch_runtime_enabled() &&
+        dspark_session_exact_ffn_batch_enabled() &&
         dspark_session_diagnostics_enabled()) {
         fprintf(stderr,
                 "ds4: DSpark exact FFN batch runtime retained after resumed sync\n");

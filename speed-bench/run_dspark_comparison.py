@@ -116,9 +116,11 @@ def parse_args():
         help="use the opt-in compute-batched DSpark target verifier",
     )
     parser.add_argument(
+        "--serial-ffn-ablation",
         "--exact-ffn-batch-ablation",
+        dest="serial_ffn_ablation",
         action="store_true",
-        help="compare default exact DSpark against exact FFN batch verification",
+        help="compare serial exact DSpark against default exact FFN batching",
     )
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
@@ -127,8 +129,8 @@ def parse_args():
         parser.error("tokens, ctx, and pairs must be positive; warmups cannot be negative")
     if args.cooldown < 0:
         parser.error("cooldown cannot be negative")
-    if args.fast_verifier and args.exact_ffn_batch_ablation:
-        parser.error("--fast-verifier and --exact-ffn-batch-ablation are mutually exclusive")
+    if args.fast_verifier and args.serial_ffn_ablation:
+        parser.error("--fast-verifier and --serial-ffn-ablation are mutually exclusive")
     if not args.confirm_idle and not args.dry_run:
         parser.error("refusing to benchmark without --confirm-idle")
     return args, root
@@ -171,8 +173,8 @@ def check_inputs(args, root):
 
 
 def benchmark_modes(args):
-    if args.exact_ffn_batch_ablation:
-        return ("runtime", "exact_ffn")
+    if args.serial_ffn_ablation:
+        return ("serial_exact", "runtime")
     return ("baseline", "runtime")
 
 
@@ -181,13 +183,13 @@ def mode_label(mode, args):
         return "Fast verifier DSpark"
     return {
         "baseline": "Baseline",
-        "runtime": "Default exact DSpark",
-        "exact_ffn": "Exact FFN batch DSpark",
+        "runtime": "Default exact FFN DSpark",
+        "serial_exact": "Serial exact DSpark",
     }[mode]
 
 
 def throughput_runtime_stats_enabled(args):
-    return not args.exact_ffn_batch_ablation
+    return not args.serial_ffn_ablation
 
 
 def clean_dspark_env(mode, fast_verifier=False, runtime_stats=True):
@@ -201,8 +203,8 @@ def clean_dspark_env(mode, fast_verifier=False, runtime_stats=True):
             env["DS4_DSPARK_GPU_RUNTIME_STATS"] = "1"
         if fast_verifier:
             env["DS4_DSPARK_FAST_BATCH_VERIFY"] = "1"
-        if mode == "exact_ffn":
-            env["DS4_DSPARK_EXACT_FFN_BATCH"] = "1"
+        if mode == "serial_exact":
+            env["DS4_DSPARK_EXACT_FFN_BATCH"] = "0"
     return env
 
 
@@ -242,8 +244,8 @@ def command_text(args, mode, runtime_stats=None):
             env += "DS4_DSPARK_GPU_RUNTIME_STATS=1 "
         if args.fast_verifier:
             env += "DS4_DSPARK_FAST_BATCH_VERIFY=1 "
-        if mode == "exact_ffn":
-            env += "DS4_DSPARK_EXACT_FFN_BATCH=1 "
+        if mode == "serial_exact":
+            env += "DS4_DSPARK_EXACT_FFN_BATCH=0 "
     return env + shlex.join(mode_command(args, mode))
 
 
@@ -391,7 +393,7 @@ def collect_metadata(args, root):
             "runtime_diagnostics": False,
             "runtime_stats": runtime_stats,
             "fast_verifier": args.fast_verifier,
-            "exact_ffn_batch_ablation": args.exact_ffn_batch_ablation,
+            "serial_ffn_ablation": args.serial_ffn_ablation,
             "temperature": 0,
             "seed": 1,
         },
@@ -427,8 +429,8 @@ def summarize(rows, modes=("baseline", "runtime")):
     candidate_median = statistics.median(candidate)
     summary = {
         "comparison": (
-            "exact_ffn_batch_ablation"
-            if modes == ("runtime", "exact_ffn")
+            "serial_ffn_ablation"
+            if modes == ("serial_exact", "runtime")
             else "baseline_runtime"
         ),
         "reference_mode": reference_mode,
@@ -440,11 +442,11 @@ def summarize(rows, modes=("baseline", "runtime")):
         "paired_speedup_values": paired,
     }
 
-    if modes == ("runtime", "exact_ffn"):
+    if modes == ("serial_exact", "runtime"):
         summary.update({
-            "default_exact_generation_tps_median": reference_median,
-            "exact_ffn_generation_tps_median": candidate_median,
-            "exact_ffn_delta_percent":
+            "serial_exact_generation_tps_median": reference_median,
+            "default_exact_ffn_generation_tps_median": candidate_median,
+            "default_exact_ffn_delta_percent":
                 (candidate_median / reference_median - 1.0) * 100.0,
         })
         return summary
@@ -502,16 +504,17 @@ def summarize(rows, modes=("baseline", "runtime")):
 
 
 def format_report(summary):
-    if summary["comparison"] == "exact_ffn_batch_ablation":
+    if summary["comparison"] == "serial_ffn_ablation":
         return (
-            "# DSpark Exact FFN Batch Ablation\n\n"
-            f"- Default exact median: "
-            f"{summary['default_exact_generation_tps_median']:.2f} t/s\n"
-            f"- Exact FFN batch median: "
-            f"{summary['exact_ffn_generation_tps_median']:.2f} t/s\n"
+            "# DSpark Serial FFN Control Ablation\n\n"
+            f"- Serial exact median: "
+            f"{summary['serial_exact_generation_tps_median']:.2f} t/s\n"
+            f"- Default exact FFN median: "
+            f"{summary['default_exact_ffn_generation_tps_median']:.2f} t/s\n"
             f"- Ratio of medians: {summary['median_ratio_of_medians']:.4f}x\n"
             f"- Median paired ratio: {summary['paired_speedup_median']:.4f}x\n"
-            f"- Exact FFN batch delta: {summary['exact_ffn_delta_percent']:+.1f}%\n"
+            f"- Default exact FFN delta: "
+            f"{summary['default_exact_ffn_delta_percent']:+.1f}%\n"
             f"- Measured pairs: {len(summary['paired_speedup_values'])}\n"
         )
 

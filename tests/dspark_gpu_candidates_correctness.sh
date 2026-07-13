@@ -8,21 +8,17 @@ dspark_model=${DS4_TEST_DSPARK_MODEL:-"$root/gguf/ds4flash-dspark.gguf"}
 mode=${DS4_TEST_DSPARK_MODE:-observer}
 fast_verify_observer=${DS4_TEST_DSPARK_FAST_VERIFY_OBSERVER:-0}
 fast_verify_runtime=${DS4_TEST_DSPARK_FAST_VERIFY_RUNTIME:-0}
-exact_ffn_batch_runtime=${DS4_TEST_DSPARK_EXACT_FFN_BATCH_RUNTIME:-0}
+serial_ffn_runtime=${DS4_TEST_DSPARK_SERIAL_FFN_RUNTIME:-0}
 runtime_stats=${DS4_TEST_DSPARK_RUNTIME_STATS:-0}
 ffn_batch_observer_layer=${DS4_DSPARK_EXACT_FFN_BATCH_OBSERVER_LAYER:-}
+unset DS4_DSPARK_EXACT_FFN_BATCH
 
 if [[ $fast_verify_observer == 1 && $fast_verify_runtime == 1 ]]; then
     printf 'fast verifier observer and runtime modes are mutually exclusive\n' >&2
     exit 2
 fi
-if [[ $exact_ffn_batch_runtime == 1 &&
-      ($fast_verify_observer == 1 || $fast_verify_runtime == 1) ]]; then
-    printf 'exact FFN batch runtime and fast verifier modes are mutually exclusive\n' >&2
-    exit 2
-fi
-if [[ $exact_ffn_batch_runtime == 1 && -n $ffn_batch_observer_layer ]]; then
-    printf 'exact FFN batch runtime and selected-layer observer are mutually exclusive\n' >&2
+if [[ $serial_ffn_runtime == 1 && -n $ffn_batch_observer_layer ]]; then
+    printf 'serial FFN runtime and selected-layer observer are mutually exclusive\n' >&2
     exit 2
 fi
 if [[ $runtime_stats == 1 && $mode != runtime ]]; then
@@ -43,9 +39,7 @@ case "$mode" in
         if [[ $fast_verify_runtime == 1 ]]; then
             gpu_env+=(DS4_DSPARK_FAST_BATCH_VERIFY=1)
         fi
-        if [[ $exact_ffn_batch_runtime == 1 ]]; then
-            gpu_env+=(DS4_DSPARK_EXACT_FFN_BATCH=1)
-        else
+        if [[ $serial_ffn_runtime == 1 ]]; then
             gpu_env+=(DS4_DSPARK_EXACT_FFN_BATCH=0)
         fi
         if [[ $runtime_stats == 1 ]]; then
@@ -57,6 +51,16 @@ case "$mode" in
         exit 2
         ;;
 esac
+
+exact_ffn_expected=0
+exact_ffn_allowed=0
+if [[ $mode == runtime && $serial_ffn_runtime != 1 &&
+      -z $ffn_batch_observer_layer ]]; then
+    exact_ffn_allowed=1
+    if [[ $fast_verify_runtime != 1 ]]; then
+        exact_ffn_expected=1
+    fi
+fi
 
 for path in "$ds4_bin" "$base_model" "$dspark_model"; do
     if [[ ! -f "$path" ]]; then
@@ -102,12 +106,13 @@ assert_gpu_selected() {
                 exit 1
             fi
         fi
-        if [[ $exact_ffn_batch_runtime == 1 ]]; then
+        if [[ $exact_ffn_allowed == 1 ]] &&
+           grep -q 'DSpark exact FFN batch runtime .* result=fail' "$log"; then
+            printf 'exact FFN batch runtime reported a failure\n' >&2
+            exit 1
+        fi
+        if [[ $exact_ffn_expected == 1 ]]; then
             grep -q 'DSpark exact FFN batch runtime .* result=pass' "$log"
-            if grep -q 'DSpark exact FFN batch runtime .* result=fail' "$log"; then
-                printf 'exact FFN batch runtime reported a failure\n' >&2
-                exit 1
-            fi
         fi
         if [[ $runtime_stats == 1 ]]; then
             local stats_record outcomes attempts successes
@@ -123,14 +128,15 @@ assert_gpu_selected() {
                 exit 1
             fi
             read -r attempts successes <<<"$outcomes"
-            if [[ $exact_ffn_batch_runtime == 1 ]]; then
-                if [[ $attempts -eq 0 || $successes -ne $attempts ]]; then
+            if [[ $exact_ffn_allowed == 1 ]]; then
+                if [[ $successes -ne $attempts ||
+                      ($exact_ffn_expected == 1 && $attempts -eq 0) ]]; then
                     printf 'exact FFN runtime outcomes were %s/%s successful\n' \
                         "$successes" "$attempts" >&2
                     exit 1
                 fi
             elif [[ $attempts -ne 0 || $successes -ne 0 ]]; then
-                printf 'default exact unexpectedly recorded exact FFN outcomes\n' >&2
+                printf 'control mode unexpectedly recorded exact FFN outcomes\n' >&2
                 exit 1
             fi
         fi
