@@ -22446,6 +22446,8 @@ typedef struct {
     double layer_seconds;
     double head_batch_seconds;
     double head_serial_seconds;
+    uint64_t ffn_batch_attempts;
+    uint64_t ffn_batch_successes;
     uint64_t head_batch_attempts;
     uint64_t head_batch_successes;
 } dspark_exact_verify_timing;
@@ -22966,6 +22968,7 @@ static bool metal_graph_verify_decode_exact(
     const bool ffn_runtime_enabled =
         exact_ffn_batch && !ffn_observer_enabled && n_tokens > 1u;
     const bool split_ffn_enabled = ffn_observer_enabled || ffn_runtime_enabled;
+    if (timing && ffn_runtime_enabled) timing->ffn_batch_attempts++;
     dspark_exact_ffn_batch_observation ffn_observation;
     memset(&ffn_observation, 0, sizeof(ffn_observation));
     bool ok = true;
@@ -23449,6 +23452,7 @@ static bool metal_graph_verify_decode_exact(
     if (ok) ok = ds4_gpu_end_commands() != 0;
     else (void)ds4_gpu_synchronize();
     if (timing) timing->layer_seconds = now_sec() - layer_started;
+    if (timing && ffn_runtime_enabled && ok) timing->ffn_batch_successes++;
     g->cur_hc = saved_cur;
     g->after_attn_hc = saved_after_attn;
     g->after_ffn_hc = saved_after;
@@ -27992,6 +27996,8 @@ struct dspark_session_state {
     uint64_t runtime_fast_verify_calls;
     uint64_t runtime_fast_verify_failures;
     uint64_t runtime_fast_verify_exact_fallbacks;
+    uint64_t runtime_exact_ffn_batch_attempts;
+    uint64_t runtime_exact_ffn_batch_successes;
     uint64_t runtime_exact_head_batch_attempts;
     uint64_t runtime_exact_head_batch_successes;
     bool runtime_generation_active;
@@ -28131,6 +28137,7 @@ static void dspark_session_state_free(dspark_session_state *d) {
                 "batch_attempts=%llu batch_full=%llu batch_partial=%llu "
                 "batch_fallbacks=%llu fast_calls=%llu fast_failures=%llu "
                 "fast_exact_fallbacks=%llu "
+                "exact_ffn_batch_attempts=%llu exact_ffn_batch_successes=%llu "
                 "exact_head_batch_attempts=%llu exact_head_batch_successes=%llu "
                 "sidecar_ms=%.3f bridge_ms=%.3f stage0_ms=%.3f stage1_ms=%.3f "
                 "stage2_ms=%.3f head_ms=%.3f chain_ms=%.3f "
@@ -28161,6 +28168,8 @@ static void dspark_session_state_free(dspark_session_state *d) {
                 (unsigned long long)d->runtime_fast_verify_calls,
                 (unsigned long long)d->runtime_fast_verify_failures,
                 (unsigned long long)d->runtime_fast_verify_exact_fallbacks,
+                (unsigned long long)d->runtime_exact_ffn_batch_attempts,
+                (unsigned long long)d->runtime_exact_ffn_batch_successes,
                 (unsigned long long)d->runtime_exact_head_batch_attempts,
                 (unsigned long long)d->runtime_exact_head_batch_successes,
                 sidecar_seconds * 1000.0,
@@ -32941,6 +32950,8 @@ static bool dspark_session_verify_batch_once(
         s->dspark->runtime_exact_layer_seconds += timing.layer_seconds;
         s->dspark->runtime_exact_head_batch_seconds += timing.head_batch_seconds;
         s->dspark->runtime_exact_head_serial_seconds += timing.head_serial_seconds;
+        s->dspark->runtime_exact_ffn_batch_attempts += timing.ffn_batch_attempts;
+        s->dspark->runtime_exact_ffn_batch_successes += timing.ffn_batch_successes;
         s->dspark->runtime_exact_head_batch_attempts += timing.head_batch_attempts;
         s->dspark->runtime_exact_head_batch_successes += timing.head_batch_successes;
     }

@@ -3174,6 +3174,64 @@ win for the opt-in exact FFN batch runtime under this workload, with no observed
 output change. Raw results are in the ignored local run
 `speed-bench/local-runs/20260714-011657/results.csv`.
 
+Phase 0.64 exact FFN attribution profile prepared on 2026-07-14:
+
+- Added exact-FFN attempt and completion counters to the existing
+  end-of-session DSpark runtime stats record. A candidate attempt is counted
+  only for a multi-row exact verification that selects the all-layer FFN path;
+  completion requires the full 43-layer phase to finish successfully. There is
+  still no per-call logging when runtime diagnostics are disabled.
+- Added `speed-bench/run_dspark_exact_ffn_batch_profile.py`, a separate
+  instrumented diagnostic comparing default exact against the same runtime with
+  `DS4_DSPARK_EXACT_FFN_BATCH=1`. It explicitly selects Metal, clears inherited
+  DSpark and instrumentation variables, alternates pair order, and requires all
+  output to match byte for byte.
+- The profile attributes target milliseconds per emitted token into the exact
+  layer phase, output head, and residual, and reports generation-sidecar time.
+  It also reports exact-FFN completions/attempts, general verifier fallbacks,
+  acceptance depth, and target positions per evaluation. Instrumented t/s is
+  labeled as context only and must not be compared with the Phase 0.63
+  uninstrumented result.
+- The default profile is one pair with no warmup and requires
+  `--confirm-ready`. The user-run command is:
+
+  ```sh
+  python3 speed-bench/run_dspark_exact_ffn_batch_profile.py --confirm-ready
+  ```
+
+- Extended the existing correctness matrix with
+  `DS4_TEST_DSPARK_RUNTIME_STATS=1`. In default exact mode it requires zero FFN
+  candidate outcomes; in candidate mode it requires at least one attempt and
+  equal attempt/completion totals in every retained process.
+- Existing comparison parsing now retains the two new integer fields. Static
+  checks covered all old comparison dry-run modes, complete synthetic stats
+  parsing, profile summary/report math, inherited-environment clearing, and the
+  `--confirm-ready` refusal. Codex did not run the timed profile or any tok/s
+  benchmark; timings printed incidentally by correctness runs were ignored.
+
+Phase 0.64 checks:
+
+```sh
+make ds4 ds4_test ds4-server ds4-eval ds4-agent ds4_cpu.o \
+  ds4-warm-prefill-bench
+./ds4_test --dspark-validation --dspark-shape-binding
+DS4_TEST_DSPARK_MODE=runtime \
+DS4_TEST_DSPARK_EXACT_FFN_BATCH_RUNTIME=1 \
+DS4_TEST_DSPARK_RUNTIME_STATS=1 \
+  ./tests/dspark_gpu_candidates_correctness.sh
+DS4_TEST_DSPARK_MODE=runtime \
+DS4_TEST_DSPARK_RUNTIME_STATS=1 \
+  ./tests/dspark_gpu_candidates_correctness.sh
+./tests/dspark_exact_ffn_batch_runtime_soak.sh
+./tests/dspark_fast_verifier_soak.sh
+python3 -m py_compile speed-bench/run_dspark_comparison.py \
+  speed-bench/run_dspark_exact_ffn_batch_profile.py
+python3 speed-bench/run_dspark_exact_ffn_batch_profile.py \
+  --dry-run --allow-dirty
+bash -n tests/dspark_gpu_candidates_correctness.sh
+git diff --check
+```
+
 Phase 0.52 checks:
 
 ```sh
@@ -3242,12 +3300,13 @@ If continuing from a compacted context, start here:
 
 ## Open Questions
 
-- The exact FFN batch candidate won its paired uninstrumented ablation by a
-  consistent +5.7% with byte-identical output. Follow with a separate
-  instrumented diagnostic comparison to attribute the saved target time and
-  check for candidate fallback; do not add timing or logging to the throughput
-  samples. Then decide whether to promote exact FFN batching and begin the
-  larger remaining exact-attention batching investigation.
+- Have the user run the prepared exact FFN attribution profile with
+  `python3 speed-bench/run_dspark_exact_ffn_batch_profile.py --confirm-ready`.
+  If its candidate completions equal attempts, verifier fallbacks remain zero,
+  and the target-layer reduction accounts for the target-time saving, promote
+  exact FFN batching and begin the larger remaining exact-attention batching
+  investigation. Do not use the profile's instrumented t/s as a replacement
+  for the already established uninstrumented +5.7% result.
 - The GPU stage path currently borrows target graph transient batch workspace
   and therefore requires `prefill_cap >= block_size` (five). Decide whether to
   allocate sidecar-specific batch scratch before production enablement or keep

@@ -44,6 +44,8 @@ python3 speed-bench/run_dspark_comparison.py \
   --dry-run --exact-ffn-batch-ablation
 python3 speed-bench/run_dspark_comparison.py \
   --confirm-idle --exact-ffn-batch-ablation
+python3 speed-bench/run_dspark_exact_ffn_batch_profile.py --dry-run
+python3 speed-bench/run_dspark_exact_ffn_batch_profile.py --confirm-ready
 ```
 
 The runner deliberately refuses real execution without `--confirm-idle`. Treat
@@ -90,6 +92,21 @@ byte-identical to the first default-exact warmup, and reports default/candidate
 medians, paired ratios, and the candidate percentage delta. Raw streams,
 metadata, pair order, and CSV/JSON/Markdown summaries use the same run directory
 as the ordinary comparison.
+
+After an uninstrumented exact-FFN ablation, use
+`run_dspark_exact_ffn_batch_profile.py` as a separate attribution pass. It
+compares the same default-exact and exact-FFN modes with end-of-session runtime
+stats enabled in both. The profile reports target-layer, output-head, residual
+target, and generation-sidecar milliseconds per emitted token. It also checks
+that default exact never selects the candidate and reports exact-FFN completion
+counts plus verifier fallbacks. Output remains byte-identical across modes.
+
+This profile is intentionally instrumented and synchronized. Its printed t/s
+values are context only and must not be mixed with the uninstrumented throughput
+ablation. Runtime diagnostics remain disabled, so it adds clock reads and one
+summary record rather than per-call hot-path logging. The default is one
+alternating pair with no warmup; use `--pairs` only when diagnostic timing is too
+variable to interpret.
 
 All inherited `DS4_DSPARK_*` variables and instrumentation variables containing
 `PROFILE`, `TRACE`, `DUMP`, or `TIMING` (plus `*_LOG`) are removed first. Runtime

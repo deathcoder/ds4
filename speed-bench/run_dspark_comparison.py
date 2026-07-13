@@ -38,6 +38,8 @@ RUNTIME_STATS_INT_FIELDS = {
     "fast_calls",
     "fast_failures",
     "fast_exact_fallbacks",
+    "exact_ffn_batch_attempts",
+    "exact_ffn_batch_successes",
     "depth1",
     "depth2",
     "depth3",
