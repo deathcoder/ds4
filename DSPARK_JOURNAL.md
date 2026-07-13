@@ -3232,6 +3232,23 @@ bash -n tests/dspark_gpu_candidates_correctness.sh
 git diff --check
 ```
 
+The user ran the Phase 0.64 instrumented attribution profile on 2026-07-14.
+Default exact used 46.728 target ms/emitted, of which 44.746 ms was the layer
+phase. Exact FFN used 44.360 target ms/emitted, of which 42.400 ms was the layer
+phase. It therefore saved 2.368 target ms/emitted, with 2.346 ms (99.1%)
+accounted for by the layer phase. Head time was effectively unchanged
+(1.669/1.673 ms), as were residual target time (0.313/0.287 ms) and sidecar time
+(3.663/3.673 ms).
+
+Both modes emitted the same 64 tokens with the same stdout SHA-256, 14 target
+evaluations, 69 target positions, 4.923 average accepted depth, and 4.929 target
+positions per evaluation. Exact FFN completed 14/14 attempts with zero verifier
+fallbacks. Together with the Phase 0.63 uninstrumented +5.7% result, this
+supports promoting exact FFN batching to the normal exact DSpark verifier path.
+The profile's instrumented 19.77/20.72 t/s values remain context only. Raw
+results are in the ignored local run
+`speed-bench/local-runs/ffn-profile-20260714-013402/results.csv`.
+
 Phase 0.52 checks:
 
 ```sh
@@ -3300,13 +3317,13 @@ If continuing from a compacted context, start here:
 
 ## Open Questions
 
-- Have the user run the prepared exact FFN attribution profile with
-  `python3 speed-bench/run_dspark_exact_ffn_batch_profile.py --confirm-ready`.
-  If its candidate completions equal attempts, verifier fallbacks remain zero,
-  and the target-layer reduction accounts for the target-time saving, promote
-  exact FFN batching and begin the larger remaining exact-attention batching
-  investigation. Do not use the profile's instrumented t/s as a replacement
-  for the already established uninstrumented +5.7% result.
+- Promote exact FFN batching from opt-in candidate to the normal exact DSpark
+  verifier path. Preserve serial fallback on recoverable failure, keep the
+  selected-layer observer mutually exclusive, update tests and benchmark mode
+  naming so the old serial exact implementation remains available as a
+  diagnostic control, and do not combine this promotion with exact-attention
+  batching. After promotion correctness and regression checks, begin the larger
+  exact-attention batching investigation as a separate phase.
 - The GPU stage path currently borrows target graph transient batch workspace
   and therefore requires `prefill_cap >= block_size` (five). Decide whether to
   allocate sidecar-specific batch scratch before production enablement or keep
