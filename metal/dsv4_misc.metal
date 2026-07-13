@@ -218,28 +218,6 @@ kernel void kernel_dsv4_router_weights_one(
     w[tid] = p[s[tid]] / sum * 1.5f;
 }
 
-kernel void kernel_dsv4_router_weights_decode_rows(
-        device const char *probs,
-        device const char *selected,
-        device       char *weights,
-        uint2 gid [[thread_position_in_grid]]) {
-    const uint tid = gid.x;
-    const uint row = gid.y;
-    if (tid >= 6) return;
-
-    device const float *p = (device const float *)probs + row * 256;
-    device const int   *s = (device const int *)selected + row * 6;
-
-    float sum = 0.0f;
-    for (uint i = 0; i < 6; i++) {
-        sum += p[s[i]];
-    }
-    sum = max(sum, 6.103515625e-5f);
-
-    device float *w = (device float *)weights + row * 6;
-    w[tid] = p[s[tid]] / sum * 1.5f;
-}
-
 // Decode router selection for one token after the existing
 // sqrt(softplus(logit)) probability kernel has run. Bias affects only top-k
 // selection. Route-weight normalization deliberately stays in the old one-token

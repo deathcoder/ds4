@@ -22883,17 +22883,29 @@ int ds4_gpu_dsv4_router_weights_decode_rows_tensor(
         if (!had_batch && ds4_gpu_begin_commands() == 0) return 0;
         int owned = 0;
         id<MTLCommandBuffer> cb = ds4_gpu_command_buffer(&owned);
-        id<MTLComputePipelineState> pipeline = ds4_gpu_get_pipeline(
-            "kernel_dsv4_router_weights_decode_rows");
+        id<MTLComputePipelineState> pipeline =
+            ds4_gpu_hot_pipeline(g_dsv4_router_weights_one_pipeline,
+                                 "kernel_dsv4_router_weights_one");
         if (!cb || !pipeline) return 0;
 
         id<MTLComputeCommandEncoder> enc = ds4_gpu_compute_encoder(cb);
         [enc setComputePipelineState:pipeline];
-        [enc setBuffer:probsbuf offset:ds4_gpu_tensor_offset(probs) atIndex:0];
-        [enc setBuffer:selectedbuf offset:ds4_gpu_tensor_offset(selected) atIndex:1];
-        [enc setBuffer:weightsbuf offset:ds4_gpu_tensor_offset(weights) atIndex:2];
-        [enc dispatchThreads:MTLSizeMake(6, n_tokens, 1)
-        threadsPerThreadgroup:MTLSizeMake(6, 1, 1)];
+        for (uint32_t row = 0; row < n_tokens; row++) {
+            [enc setBuffer:probsbuf
+                    offset:ds4_gpu_tensor_offset(probs) +
+                           (NSUInteger)row * 256u * sizeof(float)
+                   atIndex:0];
+            [enc setBuffer:selectedbuf
+                    offset:ds4_gpu_tensor_offset(selected) +
+                           (NSUInteger)row * 6u * sizeof(int32_t)
+                   atIndex:1];
+            [enc setBuffer:weightsbuf
+                    offset:ds4_gpu_tensor_offset(weights) +
+                           (NSUInteger)row * 6u * sizeof(float)
+                   atIndex:2];
+            [enc dispatchThreads:MTLSizeMake(6, 1, 1)
+            threadsPerThreadgroup:MTLSizeMake(6, 1, 1)];
+        }
         ds4_gpu_end_compute_encoder(cb, enc);
 
         if (!had_batch && ds4_gpu_end_commands() == 0) return 0;

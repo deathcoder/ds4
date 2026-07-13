@@ -2801,6 +2801,11 @@ Phase 0.56 exact Metal router rows added on 2026-07-13:
   change could disturb serial behavior. The original one-token kernel was
   restored byte-for-byte, and the distinct row kernel passed both the resumed
   fast-to-exact transition and the layer-42 correctness matrix.
+  **Phase 0.57 correction:** that final matrix checked generated output but did
+  not retain/assert internal metrics. Later capture showed the separately
+  compiled row kernel still differed from the original by a few ulps. Phase
+  0.57 removed it and dispatches the unchanged one-token kernel at row offsets
+  instead. Do not restore the separate kernel based on this older conclusion.
 - Correctness matrices at layers 0, 30, and 42 made input normalization, HC
   projection/recombination, FFN norm, router logits/probabilities, all selected
   IDs, and all selected weights bit-exact. The first remaining divergence is
@@ -2826,6 +2831,55 @@ for layer in 0 30 42; do
 done
 # A separate code_8k layer-42 observer replay used -n 32. Its output was
 # byte-identical to a current same-binary no-observer control; timings ignored.
+make ds4 ds4_test ds4-server ds4-eval ds4-agent ds4_cpu.o \
+  ds4-warm-prefill-bench
+./tests/dspark_fast_verifier_soak.sh
+./ds4_test --dspark-validation --dspark-shape-binding
+git diff --check
+```
+
+Phase 0.57 expert-output boundary capture added on 2026-07-13:
+
+- Extended the exact FFN observer with the actual batch/serial shared-expert
+  output, routed-expert output, their CPU-derived combined FFN vector, and the
+  existing final HC output. The optimized batch shared-down path writes F16 to
+  `batch_q_half`, so the observer records that real buffer and converts it to
+  F32 for comparison instead of reading stale `batch_shared_out` data.
+- The new capture exposed the Phase 0.56 row-kernel issue above: router weights
+  were again off by `2.98e-8` to `5.96e-8`. The separate Metal kernel was
+  removed. `ds4_gpu_dsv4_router_weights_decode_rows_tensor` now dispatches the
+  original `kernel_dsv4_router_weights_one` once per row at row-specific buffer
+  offsets inside one command encoder. Router weights became bit-exact again
+  without changing serial decode.
+- Strengthened `dspark_gpu_candidates_correctness.sh` so an enabled exact FFN
+  observer must report zero drift through input normalization, HC projection
+  and recombination, FFN norm, router projection/probabilities, and router
+  weights. Generated-output parity alone can no longer hide a regression in an
+  already-proven internal boundary.
+- Layers 0, 30, and 42 consistently localized the remaining error. Shared
+  expert output drifted in every 2-5 row observation. Routed output was exact
+  for 2-4 rows and differed only for the five-row observation. Short-matrix
+  shared maxima were about `3.58e-7`, `3.58e-7`, and `3.05e-5`; routed five-row
+  maxima were about `1.19e-7`, `2.38e-7`, and `1.19e-6`. Shared output therefore
+  dominates the combined FFN and HC error, especially at layer 42.
+- A correctness-only layer-42 `code_8k` replay kept every boundary through
+  router weights exact. Shared max remained about `3.05e-5`; five-row routed
+  max reached about `7.63e-6`. Observer and same-binary no-observer output were
+  byte-identical, and timings were ignored.
+- All changes remain observer-only and Metal-focused. Normal prefill, DSpark
+  sidecar stages, and production target decode do not enable the exact FFN
+  shadow or its extra readbacks.
+
+Phase 0.57 checks:
+
+```sh
+for layer in 0 30 42; do
+  DS4_DSPARK_EXACT_FFN_BATCH_OBSERVER_LAYER=$layer \
+  DS4_TEST_DSPARK_MODE=runtime \
+    ./tests/dspark_gpu_candidates_correctness.sh
+done
+# A separate code_8k layer-42 observer/control replay used -n 32 and cmp;
+# output was byte-identical and timings were ignored.
 make ds4 ds4_test ds4-server ds4-eval ds4-agent ds4_cpu.o \
   ds4-warm-prefill-bench
 ./tests/dspark_fast_verifier_soak.sh
@@ -2901,13 +2955,14 @@ If continuing from a compacted context, start here:
 
 ## Open Questions
 
-- Split the remaining `experts_or_hc_post` boundary by capturing shared-expert
-  output, routed-expert output, their combined FFN output, and HC post-processing
-  separately. Do not repeat the full issue-468 baseline suite unless another
-  exact verifier stage earns a controlled comparison. Fast authority still
-  does not preserve long-running target state; broader throughput reporting
-  must wait for a numerically exact compute-batched verifier with byte-identical
-  long-corpus output.
+- Split shared expert execution into gate/up, SwiGLU mid, and shared-down
+  boundaries, then test an observer-only F32/exact-row shared-down path. Also
+  split the five-row-only routed drift into gate/up, weighted SwiGLU, per-expert
+  down, and accumulated routed output. Do not repeat the full issue-468 baseline
+  suite unless another exact verifier stage earns a controlled comparison.
+  Fast authority still does not preserve long-running target state; broader
+  throughput reporting must wait for a numerically exact compute-batched
+  verifier with byte-identical long-corpus output.
 - The GPU stage path currently borrows target graph transient batch workspace
   and therefore requires `prefill_cap >= block_size` (five). Decide whether to
   allocate sidecar-specific batch scratch before production enablement or keep
