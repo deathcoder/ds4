@@ -4700,6 +4700,39 @@ refreshes the current default across `code_8k`, `synthesis_8k`, and
 RB16-direct changes. Use the result to choose the next bottleneck; do not add
 another local optimization based on the stale Phase 0.47 throughput table.
 
+Phase 0.84 user-run current-default rebaseline on 2026-07-15:
+
+- Run: `speed-bench/local-runs/issue468-20260715-011255/throughput.csv`, on
+  clean harness commit `326f43c`. The metadata confirmed no inherited DS4
+  environment and the intended child policy: no DS4 keys for baseline, only
+  GPU runtime and multi-commit for exact DSpark. No throughput instrumentation
+  or stats were enabled.
+- `code_8k` measured `21.54/9.95 t/s` baseline/DSpark with paired median
+  `0.4619x` (`-53.8%`). Its three paired ratios were
+  `0.4617/0.4621/0.4619x`.
+- `synthesis_8k` measured `22.06/12.27 t/s` with paired median `0.5558x`
+  (`-44.4%`). Its pairs were `0.5547/0.5558/0.5576x`.
+- `grounded_8k` measured `20.25/10.32 t/s` with paired median `0.5096x`
+  (`-49.0%`). Its pairs were `0.5096/0.5079/0.5102x`.
+- Every prompt's reversed-order second pair agreed with the other two, and all
+  six measured outputs per prompt had one SHA-256. Unavoidable desktop activity
+  remained substantial, but the narrow within-prompt ranges make the relative
+  result stable.
+- The aggregate paired median improved from Phase 0.47's `0.4762x` to
+  `0.5096x`: about `+3.34` ratio points, a `7.0%` relative improvement in
+  DSpark/baseline throughput ratio. Per-prompt ratio improvements versus the
+  old run were about `6.9%` code, `7.7%` synthesis, and `7.0%` grounded.
+- The result is still not competitive: aggregate DSpark remains `49.0%` below
+  baseline, `43.4` percentage points behind published MTP K=2, and `6.0`
+  points behind published MTP K=5. The promoted optimizations are real but do
+  not resolve the long-context exact-verifier cost.
+- Decision: collect one separate instrumented exact-runtime sample per prompt
+  before choosing another optimization. Do not rerun the full throughput table
+  just to obtain stats. Add a stats-only runner mode that executes one fresh
+  baseline reference and one stats-enabled exact DSpark process per prompt,
+  requires byte-identical output, and reports the existing accepted-depth,
+  target-eval, sidecar, and fallback fields.
+
 Phase 0.52 checks:
 
 ```sh
@@ -4795,9 +4828,10 @@ If continuing from a compacted context, start here:
   matrix. The final legacy-versus-promoted confirmation passed at `+0.9%`
   across three consistently positive pairs. This optimization is complete;
   keep direct as default and legacy as fallback/control. Phase 0.84 hardened
-  the Issue 468 runner against all inherited `DS4_*` state; the next gate is a
-  fresh user-run three-prompt uninstrumented rebaseline of the accumulated
-  current default.
+  the Issue 468 runner against all inherited `DS4_*` state and rebaselined the
+  accumulated current default. The aggregate ratio improved `7.0%` relative to
+  Phase 0.47 but remains only `0.5096x`. Next add a stats-only three-prompt pass
+  rather than repeating the full throughput table with `--stats-pass`.
 - The GPU stage path currently borrows target graph transient batch workspace
   and therefore requires `prefill_cap >= block_size` (five). Decide whether to
   allocate sidecar-specific batch scratch before production enablement or keep
