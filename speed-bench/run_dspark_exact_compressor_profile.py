@@ -2,6 +2,7 @@
 """User-run synchronized profile of exact DSpark compression and indexing."""
 
 import argparse
+from collections import Counter
 import csv
 import datetime as dt
 import json
@@ -19,13 +20,16 @@ import run_dspark_exact_layer_profile as layer_profile
 
 CONTROL_STAGES = ("attention_pre_batch", "ffn_batch")
 MAIN_STAGES = ("main_projection", "main_update")
-INDEXER_STAGES = (
+INDEXER_COMPRESSOR_STAGES = (
     "indexer_projection",
     "indexer_update",
+)
+INDEXER_SPARSE_STAGES = (
     "indexer_prepare",
     "indexer_score",
     "indexer_topk",
 )
+INDEXER_STAGES = INDEXER_COMPRESSOR_STAGES + INDEXER_SPARSE_STAGES
 ALL_COMPRESSOR_STAGES = MAIN_STAGES + INDEXER_STAGES
 EXTRA_CLEARED_ENV_KEYS = ("DS4_METAL_DECODE_INDEXER_SPARSE_THRESHOLD",)
 
@@ -51,7 +55,7 @@ def parse_args():
         default=root / "speed-bench/issue468/code_8k.txt",
     )
     parser.add_argument("--ctx", type=int, default=16384)
-    parser.add_argument("--tokens", type=int, default=32)
+    parser.add_argument("--tokens", type=int, default=128)
     parser.add_argument("--layers", type=layer_profile.parse_layers, default=(21, 42))
     parser.add_argument("--cooldown", type=float, default=5.0)
     parser.add_argument("--output-dir", type=Path)
@@ -163,10 +167,18 @@ def parse_profile(data, expected_layer, path):
         if not any(row["stage"] == stage for row in compressor):
             raise RuntimeError(f"missing compressor stage {stage} in {path}")
     present_indexer = {row["stage"] for row in compressor} & set(INDEXER_STAGES)
-    if present_indexer and present_indexer != set(INDEXER_STAGES):
-        missing = sorted(set(INDEXER_STAGES) - present_indexer)
+    present_compressor = present_indexer & set(INDEXER_COMPRESSOR_STAGES)
+    if present_compressor and present_compressor != set(INDEXER_COMPRESSOR_STAGES):
+        missing = sorted(set(INDEXER_COMPRESSOR_STAGES) - present_compressor)
         raise RuntimeError(
-            f"incomplete ratio-4 indexer stages in {path}: {', '.join(missing)}"
+            f"incomplete ratio-4 indexer compressor stages in {path}: "
+            + ", ".join(missing)
+        )
+    present_sparse = present_indexer & set(INDEXER_SPARSE_STAGES)
+    if present_sparse and present_sparse != set(INDEXER_SPARSE_STAGES):
+        missing = sorted(set(INDEXER_SPARSE_STAGES) - present_sparse)
+        raise RuntimeError(
+            f"incomplete ratio-4 sparse stages in {path}: {', '.join(missing)}"
         )
     return rows
 
@@ -237,7 +249,9 @@ def summarize(records):
 
         present_indexer = {row["stage"] for row in compressor} & set(INDEXER_STAGES)
         ratio = 4 if present_indexer else 128
-        expected_stages = MAIN_STAGES + (INDEXER_STAGES if ratio == 4 else ())
+        expected_stages = MAIN_STAGES + (
+            INDEXER_COMPRESSOR_STAGES if ratio == 4 else ()
+        )
         stages = {}
         for stage in expected_stages:
             stage_rows = [row for row in compressor if row["stage"] == stage]
@@ -248,6 +262,26 @@ def summarize(records):
                     f"layer {layer} {stage} rows do not match proposal batches"
                 )
             stages[stage] = component_summary(stage_rows)
+
+        sparse_positions = []
+        if ratio == 4:
+            sparse_signatures = []
+            for stage in INDEXER_SPARSE_STAGES:
+                stage_rows = [row for row in compressor if row["stage"] == stage]
+                if any(row["tokens"] != 1 for row in stage_rows):
+                    raise RuntimeError(f"layer {layer} {stage} contains non-row records")
+                sparse_signatures.append(tuple(row["pos"] for row in stage_rows))
+                if stage_rows:
+                    stages[stage] = component_summary(stage_rows)
+            if len(set(sparse_signatures)) != 1:
+                raise RuntimeError(f"layer {layer} has mismatched sparse indexer rows")
+            sparse_positions = list(sparse_signatures[0])
+            expected_counts = Counter(expected_positions)
+            sparse_counts = Counter(sparse_positions)
+            if any(count > expected_counts[pos] for pos, count in sparse_counts.items()):
+                raise RuntimeError(
+                    f"layer {layer} sparse indexer rows are outside proposal batches"
+                )
 
         def split_update(stage):
             stage_rows = [row for row in compressor if row["stage"] == stage]
@@ -261,10 +295,20 @@ def summarize(records):
         updates = {"main_update": split_update("main_update")}
         if ratio == 4:
             updates["indexer_update"] = split_update("indexer_update")
+        sparse_rows = len(sparse_positions)
+        sparse_mode = "ratio128"
+        if ratio == 4:
+            sparse_mode = (
+                "dense" if sparse_rows == 0
+                else "sparse" if sparse_rows == len(expected_positions)
+                else "dense_to_sparse"
+            )
         summary["layers"][str(layer)] = {
             "profiled_batches": len(proposal_signature),
             "profiled_rows": len(expected_positions),
             "inferred_compression_ratio": ratio,
+            "attention_mode": sparse_mode,
+            "sparse_profiled_rows": sparse_rows,
             "proposal_signature": [
                 {"pos": pos, "tokens": width} for pos, width in proposal_signature
             ],
@@ -285,9 +329,10 @@ def report(summary):
         "",
         "Synchronized diagnostic only. Boundaries preserve row order but change scheduling; do not use these values as throughput measurements.",
         "All component records are one-row measurements; controls are normalized by proposal rows.",
+        "Sparse prepare/score/top-k medians include only rows where sparse indexed attention was active.",
         "",
-        "| layer | ratio | batches | rows | main projection | main update non-emit | main update emit | indexer projection | indexer update non-emit | indexer update emit | prepare | score | top-k |",
-        "|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
+        "| layer | ratio | mode | batches | rows | sparse rows | main projection | main update non-emit | main update emit | indexer projection | indexer update non-emit | indexer update emit | prepare | score | top-k |",
+        "|---:|---:|:---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
     ]
     for layer, item in summary["layers"].items():
         stages = item["stages"]
@@ -295,7 +340,8 @@ def report(summary):
         index_update = updates.get("indexer_update", {})
         lines.append(
             f"| {layer} | {item['inferred_compression_ratio']} | "
-            f"{item['profiled_batches']} | {item['profiled_rows']} | "
+            f"{item['attention_mode']} | {item['profiled_batches']} | "
+            f"{item['profiled_rows']} | {item['sparse_profiled_rows']} | "
             f"{value(stages.get('main_projection'))} | "
             f"{value(updates['main_update']['nonemit'])} | "
             f"{value(updates['main_update']['emit'])} | "

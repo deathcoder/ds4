@@ -4188,10 +4188,12 @@ Phase 0.78 compressed-tail attribution harness completed on 2026-07-14:
   run profiles layer 21 (ratio 128) and layer 42 (ratio 4), requires
   byte-identical output, expands exact proposal signatures to one-row position
   multisets, rejects unknown/missing/duplicated component streams, and reports
-  recurrent emit/non-emit groups. Layer 42 must expose query/weight prepare,
-  score, and full top-k for every row in the default long-context fixture.
-  The harness clears any inherited sparse-threshold override so this contract
-  is evaluated against the normal 1024-row Metal threshold.
+  recurrent emit/non-emit groups. Dense ratio-4 rows may omit sparse indexer
+  stages; once any query/weight prepare, score, or top-k record appears, all
+  three must cover the same valid proposal-row subset. The default generation
+  length is 128 so the code fixture crosses from dense to sparse near target
+  position 4099. The harness clears inherited sparse-threshold overrides so
+  this contract is evaluated against the normal 1024-row Metal threshold.
 - The Metal and no-GPU object builds, DSpark validation/shape-binding tests,
   and Python compile/dry run passed. The no-GPU build retained only its existing
   unused-function/parameter warnings. Synthetic records covered
@@ -4211,6 +4213,38 @@ Phase 0.78 user command:
 ```sh
 python3 speed-bench/run_dspark_exact_compressor_profile.py --dry-run
 python3 speed-bench/run_dspark_exact_compressor_profile.py --confirm-ready
+```
+
+Phase 0.78 preliminary user-run dense-compressor result on 2026-07-14:
+
+- Retained run:
+  `speed-bench/local-runs/compressor-profile-20260714-134837`. Every profiled
+  output matched the exact reference. Both layers contained nine proposal
+  batches and 41 matching component rows; controls remained stable at about
+  `0.27 ms/row` for attention preparation and `0.40 ms/row` for FFN.
+- Layer 21 (ratio 128): main projection median `0.281 ms/row`; non-emitting
+  recurrent update `0.245 ms/row`. This proposal sample contained no ratio-128
+  emit row.
+- Layer 42 (ratio 4, dense mode): main projection `0.296 ms/row`; main update
+  `0.236` non-emit and `0.417 ms/row` emit. Indexer compressor projection was
+  `0.281 ms/row`; indexer update was `0.247` non-emit and `0.372 ms/row` emit.
+- These synchronized components must not be added into a production timing,
+  but projection and recurrent update are comparable within each compressor
+  pair. Ratio-4 layers execute both the main and indexer pairs on every row;
+  periodic emit work adds a visible but smaller surcharge.
+- The original harness stopped after layer 42 because it incorrectly required
+  sparse stages on every row. The prompt begins near target position 3997 with
+  this tokenizer, and 32 generated tokens do not cross the strict
+  `n_comp > 1024` threshold. No engine stage was missing. The parser now accepts
+  valid dense output and validates sparse prepare/score/top-k as a shared row
+  subset. The default token count was raised to 128, which should cross near
+  position 4099.
+- The remaining user-run follow-up can reuse the layer-21 result and profile
+  only layer 42:
+
+```sh
+python3 speed-bench/run_dspark_exact_compressor_profile.py \
+  --layers 42 --confirm-ready
 ```
 
 Phase 0.52 checks:
@@ -4289,10 +4323,11 @@ If continuing from a compacted context, start here:
   tail in place without changing its interleaved row schedule.
 - The retained serial-tail selected-layer profiler is ready for the user:
   its result localizes depth growth to recurrent compression/indexer work and
-  attention. The compressed-layer follow-up is now ready for the user and will
-  split recurrent projection/update and ratio-4 indexer preparation, score,
-  and top-k. Select an in-place Metal kernel optimization only after that
-  result.
+  attention. The dense compressed-layer split shows comparable projection and
+  recurrent-update costs and two compressor pairs per ratio-4 row. The
+  corrected 128-token layer-42 follow-up still needs to measure sparse indexer
+  preparation, score, and full top-k before selecting an in-place Metal kernel
+  optimization.
 - The GPU stage path currently borrows target graph transient batch workspace
   and therefore requires `prefill_cap >= block_size` (five). Decide whether to
   allocate sidecar-specific batch scratch before production enablement or keep
