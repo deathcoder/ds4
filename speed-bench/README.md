@@ -408,9 +408,11 @@ The authoritative throughput pass matches the source workload at `ctx=16384`,
 prompt, then three alternating measured pairs with a ten-second cooldown. The
 runtime uses the exact DSpark verifier by default.
 
-All inherited DSpark and timing/logging variables are cleared. Throughput runs
-enable only the GPU runtime and multi-commit, so no runtime statistics enter
-their medians. Add `--stats-pass` to run one separate
+All inherited `DS4_*` variables are cleared from every child process. Throughput
+runs enable only the GPU runtime and multi-commit, so Metal route controls,
+diagnostics, and runtime statistics cannot enter their medians. The inherited
+keys actually removed and the explicit child-environment policy are recorded in
+metadata. Add `--stats-pass` to run one separate
 instrumented runtime sample per prompt after all throughput measurements:
 
 ```sh

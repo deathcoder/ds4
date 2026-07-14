@@ -37,7 +37,6 @@ FLOAT_STATS = {
     "generation_head_ms", "generation_chain_ms",
 }
 STATS_FIELDS = tuple(sorted(INT_STATS | FLOAT_STATS))
-INSTRUMENTATION_MARKERS = ("PROFILE", "TRACE", "DUMP", "TIMING")
 PROMPT_ORDER = ("code_8k", "synthesis_8k", "grounded_8k")
 
 
@@ -60,14 +59,7 @@ def git_output(root, *args):
 
 
 def cleared_env_keys(env):
-    return sorted(
-        key for key in env
-        if key.startswith("DS4_DSPARK_")
-        or (key.startswith("DS4_") and (
-            any(marker in key for marker in INSTRUMENTATION_MARKERS)
-            or key.endswith("_LOG")
-        ))
-    )
+    return sorted(key for key in env if key.startswith("DS4_"))
 
 
 def benchmark_env(mode, fast_verifier, stats=False, exact_head_batch=False):
@@ -293,6 +285,19 @@ def collect_metadata(args, root, prompts, provenance):
             key: value for key, value in sorted(os.environ.items()) if key.startswith("DS4_")
         },
         "cleared_environment_keys": cleared_env_keys(os.environ),
+        "child_ds4_environment_policy": {
+            "clear_all_inherited_ds4_keys": True,
+            "baseline_keys": [],
+            "runtime_keys": [
+                "DS4_DSPARK_GPU_RUNTIME",
+                "DS4_DSPARK_MULTI_COMMIT",
+            ],
+            "optional_runtime_keys": [
+                "DS4_DSPARK_FAST_BATCH_VERIFY",
+                "DS4_DSPARK_EXACT_HEAD_BATCH",
+                "DS4_DSPARK_GPU_RUNTIME_STATS",
+            ],
+        },
         "config": {
             "ctx": args.ctx, "tokens": args.tokens, "pairs": args.pairs,
             "warmups_per_mode_per_prompt": args.warmups,

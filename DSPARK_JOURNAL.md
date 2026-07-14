@@ -4661,6 +4661,45 @@ Phase 0.83 user-run final confirmation on 2026-07-15:
   control, and do not benchmark this optimization again unless its guard or
   kernel semantics change.
 
+Phase 0.84 current-default Issue 468 rebaseline prepared on 2026-07-15:
+
+- Before rerunning the three long prompts, audited
+  `run_dspark_issue468_comparison.py` and found its environment filter narrower
+  than its documentation: it removed `DS4_DSPARK_*` and diagnostic names but
+  could inherit Metal route controls such as legacy RB16, NR4 compressor
+  pairing, or a sparse-threshold override.
+- Strengthened this authoritative corpus runner to remove every inherited
+  `DS4_*` key from every child process. Baseline children receive no DS4
+  environment; ordinary exact-runtime children then receive only
+  `DS4_DSPARK_GPU_RUNTIME=1` and `DS4_DSPARK_MULTI_COMMIT=1`. Optional fast,
+  exact-head, and stats keys are added only when their explicit runner options
+  request them.
+- Metadata still captures the inherited DS4 environment and actual removed
+  keys, and now records a machine-readable child-environment policy with
+  baseline, ordinary runtime, and optional runtime key lists.
+- Python syntax, ordinary and stats dry runs, and `git diff --check` passed.
+  Synthetic environment tests injected legacy
+  RB16, NR4, sparse-threshold, diagnostic, unrelated Metal, and future unknown
+  DS4 keys. Baseline retained none; ordinary runtime retained exactly its two
+  required keys; an explicitly instrumented synthetic mode retained only the
+  five requested runtime/fast/head/stats keys.
+- A poisoned-environment dry run printed all three baseline/runtime command
+  pairs without exposing any injected key. Codex did not execute the long
+  throughput benchmark or a stats pass.
+
+Phase 0.84 user-run throughput gate:
+
+```sh
+python3 speed-bench/run_dspark_issue468_comparison.py --dry-run
+python3 speed-bench/run_dspark_issue468_comparison.py --confirm-ready
+```
+
+Run the paired uninstrumented comparison without `--stats-pass` first. This
+refreshes the current default across `code_8k`, `synthesis_8k`, and
+`grounded_8k` after the promoted exact FFN, attention preparation, and
+RB16-direct changes. Use the result to choose the next bottleneck; do not add
+another local optimization based on the stale Phase 0.47 throughput table.
+
 Phase 0.52 checks:
 
 ```sh
@@ -4755,7 +4794,10 @@ If continuing from a compacted context, start here:
   default, retained explicit legacy RB16, and passed the full correctness
   matrix. The final legacy-versus-promoted confirmation passed at `+0.9%`
   across three consistently positive pairs. This optimization is complete;
-  keep direct as default and legacy as fallback/control.
+  keep direct as default and legacy as fallback/control. Phase 0.84 hardened
+  the Issue 468 runner against all inherited `DS4_*` state; the next gate is a
+  fresh user-run three-prompt uninstrumented rebaseline of the accumulated
+  current default.
 - The GPU stage path currently borrows target graph transient batch workspace
   and therefore requires `prefill_cap >= block_size` (five). Decide whether to
   allocate sidecar-specific batch scratch before production enablement or keep
