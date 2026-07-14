@@ -14,12 +14,14 @@ serial_attn_pre_runtime=${DS4_TEST_DSPARK_SERIAL_ATTN_PRE_RUNTIME:-0}
 attn_pre_runtime=${DS4_TEST_DSPARK_ATTN_PRE_RUNTIME:-0}
 attn_suffix_runtime=${DS4_TEST_DSPARK_ATTN_SUFFIX_RUNTIME:-0}
 runtime_stats=${DS4_TEST_DSPARK_RUNTIME_STATS:-0}
+compressor_pair_nr4=${DS4_TEST_DSPARK_COMPRESSOR_PAIR_NR4:-0}
 ffn_batch_observer_layer=${DS4_DSPARK_EXACT_FFN_BATCH_OBSERVER_LAYER:-}
 attn_pre_observer_layer=${DS4_DSPARK_EXACT_ATTN_PRE_BATCH_OBSERVER_LAYER:-}
 attn_suffix_observer_layer=${DS4_DSPARK_EXACT_ATTN_SUFFIX_BATCH_OBSERVER_LAYER:-}
 unset DS4_DSPARK_EXACT_FFN_BATCH
 unset DS4_DSPARK_EXACT_ATTN_PRE_BATCH
 unset DS4_DSPARK_EXACT_ATTN_SUFFIX_BATCH
+unset DS4_METAL_COMPRESSOR_PAIR_NR4
 
 if [[ $fast_verify_observer == 1 && $fast_verify_runtime == 1 ]]; then
     printf 'fast verifier observer and runtime modes are mutually exclusive\n' >&2
@@ -68,6 +70,14 @@ if [[ $runtime_stats == 1 && $mode != runtime ]]; then
     printf 'runtime stats require DS4_TEST_DSPARK_MODE=runtime\n' >&2
     exit 2
 fi
+if [[ $compressor_pair_nr4 != 0 && $compressor_pair_nr4 != 1 ]]; then
+    printf 'DS4_TEST_DSPARK_COMPRESSOR_PAIR_NR4 must be 0 or 1\n' >&2
+    exit 2
+fi
+if [[ $compressor_pair_nr4 == 1 && $mode != runtime ]]; then
+    printf 'compressor pair NR4 requires DS4_TEST_DSPARK_MODE=runtime\n' >&2
+    exit 2
+fi
 if [[ -n $attn_suffix_observer_layer &&
       ($mode != runtime || $fast_verify_runtime == 1) ]]; then
     printf 'attention-suffix observer requires exact runtime verification\n' >&2
@@ -98,6 +108,9 @@ case "$mode" in
         fi
         if [[ $runtime_stats == 1 ]]; then
             gpu_env+=(DS4_DSPARK_GPU_RUNTIME_STATS=1)
+        fi
+        if [[ $compressor_pair_nr4 == 1 ]]; then
+            gpu_env+=(DS4_METAL_COMPRESSOR_PAIR_NR4=1)
         fi
         ;;
     *)

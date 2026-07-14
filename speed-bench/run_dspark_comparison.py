@@ -74,6 +74,7 @@ RUNTIME_STATS_FIELDS = tuple(
     for name in sorted(RUNTIME_STATS_INT_FIELDS | RUNTIME_STATS_FLOAT_FIELDS)
 )
 INSTRUMENTATION_MARKERS = ("PROFILE", "TRACE", "DUMP", "TIMING")
+EXPERIMENT_ENV_KEYS = ("DS4_METAL_COMPRESSOR_PAIR_NR4",)
 
 
 def cleared_env_keys(env):
@@ -136,6 +137,11 @@ def parse_args():
         action="store_true",
         help="compare default exact DSpark against exact attention-suffix batching",
     )
+    parser.add_argument(
+        "--compressor-pair-nr4-ablation",
+        action="store_true",
+        help="compare default exact DSpark against the NR4 compressor projection",
+    )
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
 
@@ -150,12 +156,14 @@ def parse_args():
             args.serial_ffn_ablation,
             args.attention_pre_ablation,
             args.attention_suffix_ablation,
+            args.compressor_pair_nr4_ablation,
         )
     )
     if selected_modes > 1:
         parser.error(
             "--fast-verifier, --serial-ffn-ablation, --attention-pre-ablation, "
-            "and --attention-suffix-ablation are mutually exclusive"
+            "--attention-suffix-ablation, and --compressor-pair-nr4-ablation "
+            "are mutually exclusive"
         )
     if not args.confirm_idle and not args.dry_run:
         parser.error("refusing to benchmark without --confirm-idle")
@@ -199,6 +207,8 @@ def check_inputs(args, root):
 
 
 def benchmark_modes(args):
+    if args.compressor_pair_nr4_ablation:
+        return ("default_exact", "compressor_pair_nr4")
     if args.attention_suffix_ablation:
         return ("default_exact", "batch_attention_suffix")
     if args.attention_pre_ablation:
@@ -218,6 +228,7 @@ def mode_label(mode, args):
         "serial_attention_pre": "Serial attention-pre DSpark",
         "default_exact": "Default exact DSpark",
         "batch_attention_suffix": "Exact attention-suffix batch DSpark",
+        "compressor_pair_nr4": "NR4 compressor pair DSpark",
     }[mode]
 
 
@@ -226,12 +237,15 @@ def throughput_runtime_stats_enabled(args):
         args.serial_ffn_ablation
         or args.attention_pre_ablation
         or args.attention_suffix_ablation
+        or args.compressor_pair_nr4_ablation
     )
 
 
 def clean_dspark_env(mode, fast_verifier=False, runtime_stats=True):
     env = os.environ.copy()
     for key in cleared_env_keys(env):
+        env.pop(key, None)
+    for key in EXPERIMENT_ENV_KEYS:
         env.pop(key, None)
     if mode != "baseline":
         env["DS4_DSPARK_GPU_RUNTIME"] = "1"
@@ -246,6 +260,8 @@ def clean_dspark_env(mode, fast_verifier=False, runtime_stats=True):
             env["DS4_DSPARK_EXACT_ATTN_PRE_BATCH"] = "0"
         if mode == "batch_attention_suffix":
             env["DS4_DSPARK_EXACT_ATTN_SUFFIX_BATCH"] = "1"
+        if mode == "compressor_pair_nr4":
+            env["DS4_METAL_COMPRESSOR_PAIR_NR4"] = "1"
     return env
 
 
@@ -270,7 +286,8 @@ def common_command(args):
 
 def mode_command(args, mode):
     command = common_command(args)
-    if args.attention_pre_ablation or args.attention_suffix_ablation:
+    if (args.attention_pre_ablation or args.attention_suffix_ablation or
+            args.compressor_pair_nr4_ablation):
         command[1:1] = ("--backend", "metal")
     if mode != "baseline":
         command.extend(("--dspark", str(args.dspark_model.resolve())))
@@ -293,6 +310,8 @@ def command_text(args, mode, runtime_stats=None):
             env += "DS4_DSPARK_EXACT_ATTN_PRE_BATCH=0 "
         if mode == "batch_attention_suffix":
             env += "DS4_DSPARK_EXACT_ATTN_SUFFIX_BATCH=1 "
+        if mode == "compressor_pair_nr4":
+            env += "DS4_METAL_COMPRESSOR_PAIR_NR4=1 "
     return env + shlex.join(mode_command(args, mode))
 
 
@@ -430,7 +449,10 @@ def collect_metadata(args, root):
             key: value for key, value in sorted(os.environ.items())
             if key.startswith("DS4_")
         },
-        "cleared_environment_keys": cleared_env_keys(os.environ),
+        "cleared_environment_keys": sorted(
+            set(cleared_env_keys(os.environ))
+            | (set(EXPERIMENT_ENV_KEYS) & set(os.environ))
+        ),
         "config": {
             "tokens": args.tokens,
             "ctx": args.ctx,
@@ -443,6 +465,7 @@ def collect_metadata(args, root):
             "serial_ffn_ablation": args.serial_ffn_ablation,
             "attention_pre_ablation": args.attention_pre_ablation,
             "attention_suffix_ablation": args.attention_suffix_ablation,
+            "compressor_pair_nr4_ablation": args.compressor_pair_nr4_ablation,
             "temperature": 0,
             "seed": 1,
         },
@@ -478,15 +501,19 @@ def summarize(rows, modes=("baseline", "runtime")):
     candidate_median = statistics.median(candidate)
     summary = {
         "comparison": (
-            "attention_suffix_ablation"
-            if modes == ("default_exact", "batch_attention_suffix")
+            "compressor_pair_nr4_ablation"
+            if modes == ("default_exact", "compressor_pair_nr4")
             else (
-                "attention_pre_ablation"
-                if modes == ("serial_attention_pre", "default_exact")
+                "attention_suffix_ablation"
+                if modes == ("default_exact", "batch_attention_suffix")
                 else (
-                    "serial_ffn_ablation"
-                    if modes == ("serial_exact", "runtime")
-                    else "baseline_runtime"
+                    "attention_pre_ablation"
+                    if modes == ("serial_attention_pre", "default_exact")
+                    else (
+                        "serial_ffn_ablation"
+                        if modes == ("serial_exact", "runtime")
+                        else "baseline_runtime"
+                    )
                 )
             )
         ),
@@ -523,6 +550,15 @@ def summarize(rows, modes=("baseline", "runtime")):
             "default_exact_generation_tps_median": reference_median,
             "batch_attention_suffix_generation_tps_median": candidate_median,
             "batch_attention_suffix_delta_percent":
+                (candidate_median / reference_median - 1.0) * 100.0,
+        })
+        return summary
+
+    if modes == ("default_exact", "compressor_pair_nr4"):
+        summary.update({
+            "default_exact_generation_tps_median": reference_median,
+            "compressor_pair_nr4_generation_tps_median": candidate_median,
+            "compressor_pair_nr4_delta_percent":
                 (candidate_median / reference_median - 1.0) * 100.0,
         })
         return summary
@@ -592,6 +628,20 @@ def summarize(rows, modes=("baseline", "runtime")):
 
 
 def format_report(summary):
+    if summary["comparison"] == "compressor_pair_nr4_ablation":
+        return (
+            "# DSpark Compressor Pair NR4 Ablation\n\n"
+            f"- Default exact median: "
+            f"{summary['default_exact_generation_tps_median']:.2f} t/s\n"
+            f"- Compressor pair NR4 median: "
+            f"{summary['compressor_pair_nr4_generation_tps_median']:.2f} t/s\n"
+            f"- Ratio of medians: {summary['median_ratio_of_medians']:.4f}x\n"
+            f"- Median paired ratio: {summary['paired_speedup_median']:.4f}x\n"
+            f"- Compressor pair NR4 delta: "
+            f"{summary['compressor_pair_nr4_delta_percent']:+.1f}%\n"
+            f"- Measured pairs: {len(summary['paired_speedup_values'])}\n"
+        )
+
     if summary["comparison"] == "attention_suffix_ablation":
         return (
             "# DSpark Exact Attention Suffix Batch Ablation\n\n"

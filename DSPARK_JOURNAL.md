@@ -4247,6 +4247,89 @@ python3 speed-bench/run_dspark_exact_compressor_profile.py \
   --layers 42 --confirm-ready
 ```
 
+Phase 0.78 user-run dense-to-sparse compressor result on 2026-07-14:
+
+- Run: `speed-bench/local-runs/compressor-profile-20260714-141408/stages.csv`.
+  Layer 42 contained 57 matched proposal batches and 238 component rows. Sparse
+  indexed attention began at target position 4099 and covered 37 row
+  occurrences across 24 unique positions through 4123. All sparse prepare,
+  score, and top-k signatures matched exactly, and profiled output matched the
+  exact reference byte-for-byte.
+- Controls remained stable: attention preparation `0.262 ms/row` and FFN
+  `0.395 ms/row`. Main and indexer recurrent components also remained close
+  across the transition: main projection was `0.303/0.318`, main update
+  `0.243/0.255`, indexer projection `0.276/0.295`, and indexer update
+  `0.248/0.261 ms/row` for dense/sparse rows respectively.
+- Overall component medians were main projection `0.304`, main update `0.238`
+  non-emit and `0.412` emit, indexer projection `0.278`, and indexer update
+  `0.241` non-emit and `0.376 ms/row` emit. These agree with the preliminary
+  32-token dense run and show no attribution discontinuity at sparse entry.
+- Sparse-only medians were query/weight preparation `0.405`, score `0.333`,
+  and full 512-row top-k `0.329 ms/row`. Their synchronized costs are close;
+  there is no evidence for weakening the 512-row selection contract or for
+  treating one sparse kernel as the sole bottleneck.
+- The best broad next candidate is the existing opt-in
+  `DS4_METAL_COMPRESSOR_PAIR_NR4`. It changes the paired F16 projection from
+  two to four output rows per threadgroup for 512/1024-wide outputs. Those are
+  exactly the ratio-128 and ratio-4 main compressor widths, so it applies to
+  every compressed layer in dense and sparse contexts. The ratio-4 indexer
+  compressor is 256-wide and remains unchanged, as do score, full top-k, and
+  attention semantics.
+- Next validate `DS4_METAL_COMPRESSOR_PAIR_NR4=1` against the exact correctness
+  matrix, then add a direct uninstrumented paired ablation against default
+  exact DSpark. Do not infer a throughput win from this synchronized profile;
+  the user must run the ablation.
+
+Phase 0.79 NR4 correctness and throughput gate prepared on 2026-07-14:
+
+- Extended `tests/dspark_gpu_candidates_correctness.sh` with
+  `DS4_TEST_DSPARK_COMPRESSOR_PAIR_NR4=1`. The script captures and unsets any
+  inherited NR4 variable before launching models, leaves every baseline on the
+  default paired projection, and enables NR4 only in the exact DSpark candidate
+  environment. The existing reasoning, Italian, medium-context,
+  rolling-window, and resumed-chat byte comparisons therefore form a direct
+  default-versus-NR4 correctness gate.
+- Added `--compressor-pair-nr4-ablation` to
+  `speed-bench/run_dspark_comparison.py`. It compares `default_exact` against
+  `compressor_pair_nr4`, forces Metal explicitly, scrubs inherited NR4 from
+  both modes, enables it only for the candidate, and disables all diagnostics
+  and runtime stats. Warmup/measured outputs must remain byte-identical, pair
+  order alternates, and the report gives both median ratios and candidate
+  delta.
+- Python syntax, shell syntax, dry-run command generation, environment
+  isolation, mode selection, synthetic paired aggregation/reporting, malformed
+  correctness-option rejection, and `git diff --check` passed. Existing
+  comparison modes remain available and mutually exclusive with NR4.
+- Codex could not execute the Metal correctness matrix in this managed session:
+  even the control process reported `Metal device not available`. No timed
+  benchmark was run. The user must run correctness first; run throughput only
+  if all five cases pass.
+
+Phase 0.79 user gates:
+
+```sh
+DS4_TEST_DSPARK_MODE=runtime \
+DS4_TEST_DSPARK_COMPRESSOR_PAIR_NR4=1 \
+  ./tests/dspark_gpu_candidates_correctness.sh
+
+python3 speed-bench/run_dspark_comparison.py \
+  --dry-run --compressor-pair-nr4-ablation
+python3 speed-bench/run_dspark_comparison.py \
+  --confirm-idle --compressor-pair-nr4-ablation
+```
+
+Phase 0.79 user-run NR4 correctness result on 2026-07-14:
+
+- The candidate-only matrix passed reasoning, Italian, medium-context,
+  rolling-window, and resumed two-turn chat. The final status was
+  `DSpark GPU candidate correctness matrix (runtime): PASS`.
+- Each baseline used the default paired projection while each exact DSpark
+  candidate used `DS4_METAL_COMPRESSOR_PAIR_NR4=1`, so this establishes output
+  identity across short, medium, rolling-window, and resumed-state execution.
+- NR4 remains experimental until the user-run uninstrumented paired ablation
+  demonstrates a repeatable throughput improvement. Correctness alone is not
+  grounds for promoting it to the default.
+
 Phase 0.52 checks:
 
 ```sh
@@ -4324,10 +4407,11 @@ If continuing from a compacted context, start here:
 - The retained serial-tail selected-layer profiler is ready for the user:
   its result localizes depth growth to recurrent compression/indexer work and
   attention. The dense compressed-layer split shows comparable projection and
-  recurrent-update costs and two compressor pairs per ratio-4 row. The
-  corrected 128-token layer-42 follow-up still needs to measure sparse indexer
-  preparation, score, and full top-k before selecting an in-place Metal kernel
-  optimization.
+  recurrent-update costs and two compressor pairs per ratio-4 row. Sparse
+  preparation, score, and full top-k are also comparable. The existing
+  main-compressor `DS4_METAL_COMPRESSOR_PAIR_NR4` candidate passed the full
+  correctness matrix; its direct uninstrumented throughput ablation is the
+  remaining promotion gate.
 - The GPU stage path currently borrows target graph transient batch workspace
   and therefore requires `prefill_cap >= block_size` (five). Decide whether to
   allocate sidecar-specific batch scratch before production enablement or keep

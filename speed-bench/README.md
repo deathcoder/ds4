@@ -52,6 +52,10 @@ python3 speed-bench/run_dspark_comparison.py \
   --dry-run --attention-suffix-ablation
 python3 speed-bench/run_dspark_comparison.py \
   --confirm-idle --attention-suffix-ablation
+python3 speed-bench/run_dspark_comparison.py \
+  --dry-run --compressor-pair-nr4-ablation
+python3 speed-bench/run_dspark_comparison.py \
+  --confirm-idle --compressor-pair-nr4-ablation
 python3 speed-bench/run_dspark_exact_attention_suffix_profile.py --dry-run
 python3 speed-bench/run_dspark_exact_attention_suffix_profile.py --confirm-ready
 python3 speed-bench/run_dspark_exact_attention_tail_profile.py --dry-run
@@ -161,6 +165,24 @@ It also reports attention-pre and FFN control medians, requires identical
 proposal schedules and byte-identical output, and rejects incomplete or unknown
 stage records. Its boundaries deliberately alter scheduling, so its timings are
 for attribution only and must not be reported as generation throughput.
+
+`--compressor-pair-nr4-ablation` is an uninstrumented paired pass comparing
+default exact DSpark against the existing opt-in
+`DS4_METAL_COMPRESSOR_PAIR_NR4=1` projection schedule. The runner explicitly
+removes any inherited NR4 setting from both environments, enables it only for
+the candidate, disables diagnostics and runtime stats, alternates pair order,
+and requires every output to remain byte-identical. Before benchmarking, run
+the candidate-only correctness matrix:
+
+```sh
+DS4_TEST_DSPARK_MODE=runtime \
+DS4_TEST_DSPARK_COMPRESSOR_PAIR_NR4=1 \
+  ./tests/dspark_gpu_candidates_correctness.sh
+```
+
+That script unsets NR4 for each baseline process and enables it only for the
+exact DSpark candidate, so its five output comparisons directly test the new
+projection schedule rather than comparing two NR4 executions.
 
 After retiring deferred suffix batching, use
 `run_dspark_exact_attention_tail_profile.py` to inspect the retained serial tail
