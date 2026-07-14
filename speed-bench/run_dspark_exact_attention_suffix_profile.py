@@ -27,7 +27,7 @@ DEFAULT_STAGES = (
 )
 CANDIDATE_STAGES = (
     "attention_pre_batch",
-    "attention_core_capture_serial",
+    "attention_core_direct_serial",
     "attention_projection_a_batch",
     "attention_projection_b_hc_batch",
     "ffn_batch",
@@ -249,7 +249,7 @@ def summarize(records):
         ]["median_ms_per_row"]
         candidate_stages = modes[CANDIDATE_MODE]["stages"]
         candidate_core = candidate_stages[
-            "attention_core_capture_serial"
+            "attention_core_direct_serial"
         ]["median_ms_per_row"]
         candidate_a = candidate_stages[
             "attention_projection_a_batch"
@@ -270,7 +270,7 @@ def summarize(records):
             "profiled_batches": batches,
             "profiled_rows": rows,
             "default_attention_tail_ms_per_row": default_tail,
-            "candidate_core_capture_ms_per_row": candidate_core,
+            "candidate_core_direct_ms_per_row": candidate_core,
             "candidate_projection_a_ms_per_row": candidate_a,
             "candidate_projection_b_hc_ms_per_row": candidate_b_hc,
             "candidate_attention_total_ms_per_row": candidate_total,
@@ -289,14 +289,14 @@ def report(summary):
         "Synchronized diagnostic only. Boundaries change scheduling; do not use these values as throughput measurements.",
         "Values are normalized by proposal rows before taking each component median.",
         "",
-        "| layer | batches | rows | default serial tail | candidate core + capture | projection A | projection B + HC | candidate total | ratio | delta |",
+        "| layer | batches | rows | default serial tail | candidate core direct-write | projection A | projection B + HC | candidate total | ratio | delta |",
         "|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
     ]
     for layer, item in summary["layers"].items():
         lines.append(
             f"| {layer} | {item['profiled_batches']} | {item['profiled_rows']} | "
             f"{item['default_attention_tail_ms_per_row']:.3f} | "
-            f"{item['candidate_core_capture_ms_per_row']:.3f} | "
+            f"{item['candidate_core_direct_ms_per_row']:.3f} | "
             f"{item['candidate_projection_a_ms_per_row']:.3f} | "
             f"{item['candidate_projection_b_hc_ms_per_row']:.3f} | "
             f"{item['candidate_attention_total_ms_per_row']:.3f} | "

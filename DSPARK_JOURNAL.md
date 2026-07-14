@@ -3993,6 +3993,55 @@ Phase 0.75 user-run attribution result on 2026-07-14:
   ablation. If core/direct-write plus the two batch projections still cannot
   match the default tail, retire this suffix batching schedule.
 
+Phase 0.76 zero-copy attention-head capture completed on 2026-07-14:
+
+- Changed only the opt-in exact attention-suffix candidate. During each
+  `core_only` prepared attention row, `g->heads` is now bound directly to that
+  row's view in `batch_heads`. Attention output and inverse RoPE therefore land
+  in their final batch storage without an intermediate tensor.
+- Removed the verifier's separate per-row `ds4_gpu_tensor_copy` from the serial
+  `g->heads` scratch into `batch_heads`. The batch projection and serial
+  fallback both continue consuming the same captured rows; normal default exact
+  execution is unchanged.
+- Renamed the synchronized candidate component from
+  `attention_core_capture_serial` to `attention_core_direct_serial` and updated
+  the attribution parser/report contract. Old Phase 0.75 raw logs remain valid
+  evidence for the pre-change copy path but intentionally do not satisfy the
+  new stage contract.
+- The normal candidate correctness matrix passed reasoning, Italian,
+  medium-context, rolling-window, and resumed-chat cases. The dedicated
+  64-token long-generation, rolling-window, resumed-chat, and forced serial-
+  fallback soak passed. A profile-enabled layer-42 matrix also passed and real
+  logs contained every renamed candidate component.
+- The normal Metal build, CPU object build, DSpark validation/shape binding,
+  Python compile, dry-run command generation, real-log parsing, and synthetic
+  aggregation/reporting passed. The CPU build retained only its existing
+  unused-function/parameter warnings.
+- Codex did not run the timed attribution profile or any tok/s benchmark.
+
+Phase 0.76 checks:
+
+```sh
+make -j4
+DS4_TEST_DSPARK_MODE=runtime \
+DS4_TEST_DSPARK_ATTN_SUFFIX_RUNTIME=1 \
+  ./tests/dspark_gpu_candidates_correctness.sh
+./tests/dspark_exact_attention_suffix_batch_runtime_soak.sh
+python3 -m py_compile \
+  speed-bench/run_dspark_exact_attention_suffix_profile.py
+python3 speed-bench/run_dspark_exact_attention_suffix_profile.py \
+  --dry-run --allow-dirty
+DS4_DSPARK_EXACT_LAYER_PROFILE=1 \
+DS4_DSPARK_EXACT_LAYER_PROFILE_LAYER=42 \
+DS4_TEST_DSPARK_MODE=runtime \
+DS4_TEST_DSPARK_ATTN_SUFFIX_RUNTIME=1 \
+  ./tests/dspark_gpu_candidates_correctness.sh
+# Timings ignored; output matched and all renamed candidate stages were parsed.
+make ds4_cpu.o ds4_test
+./ds4_test --dspark-validation --dspark-shape-binding
+git diff --check
+```
+
 Phase 0.52 checks:
 
 ```sh
@@ -4062,11 +4111,12 @@ If continuing from a compacted context, start here:
 ## Open Questions
 
 - The exact attention-suffix candidate is correct but measured `21.2%` slower
-  than default exact Metal generation. Keep it opt-in. Attribution localizes
-  the largest avoidable cost to the separate per-row head capture. Bind serial
-  attention output directly to `batch_heads`, remove that copy, and re-run the
-  synchronized attribution profile before deciding whether the schedule merits
-  another tok/s ablation or should be retired.
+  than default exact Metal generation. Keep it opt-in. The attributed per-row
+  head copy has now been removed with direct writes into `batch_heads`. Re-run
+  `python3 speed-bench/run_dspark_exact_attention_suffix_profile.py
+  --confirm-ready`. Only consider another tok/s ablation if the candidate
+  component sum is now competitive with the default serial tail; otherwise
+  retire this suffix batching schedule.
 - The GPU stage path currently borrows target graph transient batch workspace
   and therefore requires `prefill_cap >= block_size` (five). Decide whether to
   allocate sidecar-specific batch scratch before production enablement or keep

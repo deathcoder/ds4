@@ -23436,6 +23436,9 @@ static bool metal_graph_encode_exact_attention_prepared(
         g->batch_q, row, q_dim);
     ds4_gpu_tensor *kv = metal_graph_tensor_row_view(
         g->batch_kv, row, DS4_N_HEAD_DIM);
+    ds4_gpu_tensor *heads = core_only
+        ? metal_graph_tensor_row_view(g->batch_heads, row, q_dim)
+        : NULL;
     ds4_gpu_tensor *hc_split = metal_graph_tensor_row_view(
         g->batch_hc_split, row, mix_hc);
     ds4_gpu_tensor *hc_pre = hc_split
@@ -23454,11 +23457,12 @@ static bool metal_graph_encode_exact_attention_prepared(
                               (uint64_t)DS4_N_HC * DS4_N_HC * sizeof(float))
         : NULL;
     bool ok = attn_norm && qr_norm && q && kv && hc_split && hc_pre &&
-              hc_post && hc_comb;
+              hc_post && hc_comb && (!core_only || heads);
     ds4_gpu_tensor *saved_attn_norm = g->attn_norm;
     ds4_gpu_tensor *saved_qr_norm = g->qr_norm;
     ds4_gpu_tensor *saved_q = g->q;
     ds4_gpu_tensor *saved_kv = g->kv;
+    ds4_gpu_tensor *saved_heads = g->heads;
     ds4_gpu_tensor *saved_hc_split = g->hc_split;
     ds4_gpu_tensor *saved_hc_pre = g->hc_pre;
     ds4_gpu_tensor *saved_hc_post = g->hc_post;
@@ -23473,6 +23477,7 @@ static bool metal_graph_encode_exact_attention_prepared(
         g->hc_post = hc_post;
         g->hc_comb = hc_comb;
         if (core_only) {
+            g->heads = heads;
             ok = metal_graph_encode_decode_layer_attention_core(g,
                                                                  model,
                                                                  layer,
@@ -23500,6 +23505,7 @@ static bool metal_graph_encode_exact_attention_prepared(
     g->hc_post = saved_hc_post;
     g->hc_pre = saved_hc_pre;
     g->hc_split = saved_hc_split;
+    g->heads = saved_heads;
     g->kv = saved_kv;
     g->q = saved_q;
     g->qr_norm = saved_qr_norm;
@@ -23509,6 +23515,7 @@ static bool metal_graph_encode_exact_attention_prepared(
     ds4_gpu_tensor_free(hc_pre);
     ds4_gpu_tensor_free(hc_split);
     ds4_gpu_tensor_free(kv);
+    ds4_gpu_tensor_free(heads);
     ds4_gpu_tensor_free(q);
     ds4_gpu_tensor_free(qr_norm);
     ds4_gpu_tensor_free(attn_norm);
@@ -24498,15 +24505,6 @@ static bool metal_graph_verify_decode_exact(
                     metal_graph_raw_span_for_batch(g, pos, 1),
                     tokens[row]);
             }
-            if (ok && attn_suffix_runtime_layer) {
-                const uint64_t q_offset =
-                    (uint64_t)row * q_dim * sizeof(float);
-                ok = ds4_gpu_tensor_copy(g->batch_heads,
-                                          q_offset,
-                                          g->heads,
-                                          0,
-                                          q_dim * sizeof(float)) != 0;
-            }
             if (ok && observe_attn && attn_capture_ok) {
                 const uint64_t hc_offset =
                     (uint64_t)row * hc_dim * sizeof(float);
@@ -24585,7 +24583,7 @@ static bool metal_graph_verify_decode_exact(
         if (ok && exact_layer_profile && attn_suffix_runtime_layer) {
             ok = metal_graph_layer_stage_profile_boundary(
                 "exact",
-                "attention_core_capture_serial",
+                "attention_core_direct_serial",
                 il,
                 start,
                 n_tokens,

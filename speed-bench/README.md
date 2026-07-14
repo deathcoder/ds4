@@ -151,7 +151,7 @@ ablation and `--fast-verifier`.
 The measured suffix candidate is currently slower than default exact Metal
 generation. Use `run_dspark_exact_attention_suffix_profile.py` before changing
 that path again. The synchronized diagnostic compares default serial attention
-tail work against candidate serial core/head capture, batched projection A, and
+tail work against candidate serial core direct-write, batched projection A, and
 batched fused projection-B/HC at representative early, middle, and late layers.
 It also reports attention-pre and FFN control medians, requires identical
 proposal schedules and byte-identical output, and rejects incomplete or unknown
