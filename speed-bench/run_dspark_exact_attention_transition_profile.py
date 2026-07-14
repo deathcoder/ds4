@@ -21,9 +21,9 @@ import run_dspark_exact_layer_profile as layer_profile
 CONTROL_STAGES = ("attention_pre_batch", "ffn_batch")
 ATTENTION_MODES = ("raw", "dense_mixed", "sparse_indexed")
 EXTRA_CLEARED_ENV_KEYS = ("DS4_METAL_DECODE_INDEXER_SPARSE_THRESHOLD",)
-DEFAULT_VARIANT = "default_rb16"
-DIRECT_VARIANT = "rb16_direct"
-COMPARISON_VARIANTS = (DEFAULT_VARIANT, DIRECT_VARIANT)
+DEFAULT_VARIANT = "default_rb16_direct"
+LEGACY_VARIANT = "legacy_rb16"
+COMPARISON_VARIANTS = (LEGACY_VARIANT, DEFAULT_VARIANT)
 
 
 def parse_args():
@@ -57,9 +57,11 @@ def parse_args():
         help="allow a run that does not contain both dense and sparse attention",
     )
     parser.add_argument(
+        "--rb16-promotion-comparison",
         "--rb16-direct-comparison",
+        dest="rb16_promotion_comparison",
         action="store_true",
-        help="compare default RB16 against the opt-in RB16-direct kernel",
+        help="compare legacy RB16 against the promoted RB16-direct default",
     )
     parser.add_argument("--confirm-ready", action="store_true")
     parser.add_argument("--allow-dirty", action="store_true")
@@ -75,7 +77,7 @@ def parse_args():
 
 
 def selected_variants(args):
-    return COMPARISON_VARIANTS if args.rb16_direct_comparison else (DEFAULT_VARIANT,)
+    return COMPARISON_VARIANTS if args.rb16_promotion_comparison else (DEFAULT_VARIANT,)
 
 
 def profile_env(layer=None, variant=DEFAULT_VARIANT):
@@ -86,8 +88,8 @@ def profile_env(layer=None, variant=DEFAULT_VARIANT):
         env.pop(key, None)
     env["DS4_DSPARK_GPU_RUNTIME"] = "1"
     env["DS4_DSPARK_MULTI_COMMIT"] = "1"
-    if variant == DIRECT_VARIANT:
-        env["DS4_METAL_INDEXED_ATTN_RB16_DIRECT"] = "1"
+    if variant == LEGACY_VARIANT:
+        env["DS4_METAL_INDEXED_ATTN_RB16_LEGACY"] = "1"
     if layer is not None:
         env["DS4_DSPARK_EXACT_LAYER_PROFILE"] = "1"
         env["DS4_DSPARK_EXACT_LAYER_PROFILE_LAYER"] = str(layer)
@@ -116,7 +118,7 @@ def command_text(args, layer=None, variant=DEFAULT_VARIANT):
     keys = (
         "DS4_DSPARK_GPU_RUNTIME",
         "DS4_DSPARK_MULTI_COMMIT",
-        "DS4_METAL_INDEXED_ATTN_RB16_DIRECT",
+        "DS4_METAL_INDEXED_ATTN_RB16_LEGACY",
         "DS4_DSPARK_EXACT_LAYER_PROFILE",
         "DS4_DSPARK_EXACT_LAYER_PROFILE_LAYER",
         "DS4_METAL_DECODE_STAGE_PROFILE",
@@ -307,16 +309,16 @@ def compare_variants(records, variants):
     summaries = {variant: summarize(records, variant) for variant in variants}
     comparison = {"variants": summaries, "layers": {}}
     default_summary = summaries[DEFAULT_VARIANT]
-    direct_summary = summaries[DIRECT_VARIANT]
-    if set(default_summary["layers"]) != set(direct_summary["layers"]):
-        raise RuntimeError("default and RB16-direct profiled layer sets differ")
+    legacy_summary = summaries[LEGACY_VARIANT]
+    if set(default_summary["layers"]) != set(legacy_summary["layers"]):
+        raise RuntimeError("legacy and promoted RB16 profiled layer sets differ")
 
     for layer in default_summary["layers"]:
         default_item = default_summary["layers"][layer]
-        direct_item = direct_summary["layers"][layer]
-        if default_item["proposal_signature"] != direct_item["proposal_signature"]:
+        legacy_item = legacy_summary["layers"][layer]
+        if default_item["proposal_signature"] != legacy_item["proposal_signature"]:
             raise RuntimeError(
-                f"layer {layer} default and RB16-direct proposal schedules differ"
+                f"layer {layer} legacy and promoted RB16 proposal schedules differ"
             )
         signatures = {}
         for variant in variants:
@@ -327,41 +329,41 @@ def compare_variants(records, variants):
                 and str(row["layer"]) == layer
                 and row["part"] == "attention"
             )
-        if signatures[DEFAULT_VARIANT] != signatures[DIRECT_VARIANT]:
+        if signatures[DEFAULT_VARIANT] != signatures[LEGACY_VARIANT]:
             raise RuntimeError(
-                f"layer {layer} default and RB16-direct attention modes differ"
+                f"layer {layer} legacy and promoted RB16 attention modes differ"
             )
 
         modes = {}
         for mode in ATTENTION_MODES:
             default_mode = default_item["modes"][mode]
-            direct_mode = direct_item["modes"][mode]
-            default_ms = (
+            legacy_mode = legacy_item["modes"][mode]
+            promoted_ms = (
                 None if default_mode is None else default_mode["median_ms_per_row"]
             )
-            direct_ms = (
-                None if direct_mode is None else direct_mode["median_ms_per_row"]
+            legacy_ms = (
+                None if legacy_mode is None else legacy_mode["median_ms_per_row"]
             )
-            ratio = median_ratio(direct_ms, default_ms)
+            ratio = median_ratio(promoted_ms, legacy_ms)
             modes[mode] = {
-                "default_ms_per_row": default_ms,
-                "rb16_direct_ms_per_row": direct_ms,
-                "rb16_direct_to_default_ratio": ratio,
-                "rb16_direct_delta_percent": (
+                "legacy_ms_per_row": legacy_ms,
+                "promoted_ms_per_row": promoted_ms,
+                "promoted_to_legacy_ratio": ratio,
+                "promoted_delta_percent": (
                     None if ratio is None else (ratio - 1.0) * 100.0
                 ),
             }
 
         controls = {}
         for stage in CONTROL_STAGES:
-            default_ms = default_item["controls"][stage]["median_ms_per_row"]
-            direct_ms = direct_item["controls"][stage]["median_ms_per_row"]
-            ratio = median_ratio(direct_ms, default_ms)
+            promoted_ms = default_item["controls"][stage]["median_ms_per_row"]
+            legacy_ms = legacy_item["controls"][stage]["median_ms_per_row"]
+            ratio = median_ratio(promoted_ms, legacy_ms)
             controls[stage] = {
-                "default_ms_per_row": default_ms,
-                "rb16_direct_ms_per_row": direct_ms,
-                "rb16_direct_to_default_ratio": ratio,
-                "rb16_direct_delta_percent": (ratio - 1.0) * 100.0,
+                "legacy_ms_per_row": legacy_ms,
+                "promoted_ms_per_row": promoted_ms,
+                "promoted_to_legacy_ratio": ratio,
+                "promoted_delta_percent": (ratio - 1.0) * 100.0,
             }
         comparison["layers"][layer] = {
             "profiled_batches": default_item["profiled_batches"],
@@ -418,8 +420,8 @@ def comparison_value(item, key):
 
 
 def comparison_ratio(item):
-    ratio = item["rb16_direct_to_default_ratio"]
-    delta = item["rb16_direct_delta_percent"]
+    ratio = item["promoted_to_legacy_ratio"]
+    delta = item["promoted_delta_percent"]
     if ratio is None:
         return "n/a", "n/a"
     return f"{ratio:.3f}x", f"{delta:+.1f}%"
@@ -427,12 +429,12 @@ def comparison_ratio(item):
 
 def report_comparison(summary):
     lines = [
-        "# DSpark Indexed Attention RB16-Direct Attribution",
+        "# DSpark Indexed Attention RB16-Direct Promotion Attribution",
         "",
         "Synchronized diagnostic only. Boundaries preserve row order but change scheduling; do not use these values as throughput measurements.",
-        "Default RB16 and RB16-direct use identical immediate attention-call boundaries and proposal schedules.",
+        "Legacy RB16 and the promoted RB16-direct default use identical immediate attention-call boundaries and proposal schedules.",
         "",
-        "| layer | batches | rows | default dense | direct dense | dense ratio | default sparse | direct sparse | sparse ratio | sparse delta |",
+        "| layer | batches | rows | legacy dense | promoted dense | dense ratio | legacy sparse | promoted sparse | sparse ratio | sparse delta |",
         "|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
     ]
     for layer, item in summary["layers"].items():
@@ -442,14 +444,14 @@ def report_comparison(summary):
         sparse_ratio, sparse_delta = comparison_ratio(sparse)
         lines.append(
             f"| {layer} | {item['profiled_batches']} | {item['profiled_rows']} | "
-            f"{comparison_value(dense, 'default_ms_per_row')} | "
-            f"{comparison_value(dense, 'rb16_direct_ms_per_row')} | "
+            f"{comparison_value(dense, 'legacy_ms_per_row')} | "
+            f"{comparison_value(dense, 'promoted_ms_per_row')} | "
             f"{dense_ratio} | "
-            f"{comparison_value(sparse, 'default_ms_per_row')} | "
-            f"{comparison_value(sparse, 'rb16_direct_ms_per_row')} | "
+            f"{comparison_value(sparse, 'legacy_ms_per_row')} | "
+            f"{comparison_value(sparse, 'promoted_ms_per_row')} | "
             f"{sparse_ratio} | {sparse_delta} |"
         )
-    lines.extend(["", "Control-stage medians (default/direct):"])
+    lines.extend(["", "Control-stage medians (legacy/promoted):"])
     for layer, item in summary["layers"].items():
         prep = item["controls"]["attention_pre_batch"]
         ffn = item["controls"]["ffn_batch"]
@@ -457,9 +459,9 @@ def report_comparison(summary):
         ffn_ratio, ffn_delta = comparison_ratio(ffn)
         lines.append(
             f"- Layer {layer}: attention prep "
-            f"{prep['default_ms_per_row']:.3f}/{prep['rb16_direct_ms_per_row']:.3f} "
+            f"{prep['legacy_ms_per_row']:.3f}/{prep['promoted_ms_per_row']:.3f} "
             f"ms/row ({prep_ratio}, {prep_delta}); FFN "
-            f"{ffn['default_ms_per_row']:.3f}/{ffn['rb16_direct_ms_per_row']:.3f} "
+            f"{ffn['legacy_ms_per_row']:.3f}/{ffn['promoted_ms_per_row']:.3f} "
             f"ms/row ({ffn_ratio}, {ffn_delta})"
         )
     return "\n".join(lines) + "\n"
@@ -507,8 +509,8 @@ def main():
         args.output_dir
         or root / "speed-bench/local-runs" /
         (
-            f"attention-transition-rb16-direct-{stamp}"
-            if args.rb16_direct_comparison
+            f"attention-transition-rb16-promotion-{stamp}"
+            if args.rb16_promotion_comparison
             else f"attention-transition-{stamp}"
         )
     ).resolve()
@@ -532,7 +534,7 @@ def main():
             "attention_modes": ATTENTION_MODES,
             "control_components": CONTROL_STAGES,
             "variants": variants,
-            "rb16_direct_comparison": args.rb16_direct_comparison,
+            "rb16_promotion_comparison": args.rb16_promotion_comparison,
             "require_dense_to_sparse_transition": not args.allow_single_mode,
         },
         "commands": {"reference": command_text(args)} | {
@@ -592,7 +594,7 @@ def main():
         writer.writeheader()
         writer.writerows(runs)
 
-    if args.rb16_direct_comparison:
+    if args.rb16_promotion_comparison:
         summary = compare_variants(records, variants)
         variant_summaries = summary["variants"]
         summary_text = report_comparison(summary)

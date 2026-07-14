@@ -15,7 +15,8 @@ attn_pre_runtime=${DS4_TEST_DSPARK_ATTN_PRE_RUNTIME:-0}
 attn_suffix_runtime=${DS4_TEST_DSPARK_ATTN_SUFFIX_RUNTIME:-0}
 runtime_stats=${DS4_TEST_DSPARK_RUNTIME_STATS:-0}
 compressor_pair_nr4=${DS4_TEST_DSPARK_COMPRESSOR_PAIR_NR4:-0}
-indexed_attn_rb16_direct=${DS4_TEST_DSPARK_INDEXED_ATTN_RB16_DIRECT:-0}
+indexed_attn_rb16_promotion=${DS4_TEST_DSPARK_INDEXED_ATTN_RB16_PROMOTION:-\
+${DS4_TEST_DSPARK_INDEXED_ATTN_RB16_DIRECT:-0}}
 ffn_batch_observer_layer=${DS4_DSPARK_EXACT_FFN_BATCH_OBSERVER_LAYER:-}
 attn_pre_observer_layer=${DS4_DSPARK_EXACT_ATTN_PRE_BATCH_OBSERVER_LAYER:-}
 attn_suffix_observer_layer=${DS4_DSPARK_EXACT_ATTN_SUFFIX_BATCH_OBSERVER_LAYER:-}
@@ -24,6 +25,7 @@ unset DS4_DSPARK_EXACT_ATTN_PRE_BATCH
 unset DS4_DSPARK_EXACT_ATTN_SUFFIX_BATCH
 unset DS4_METAL_COMPRESSOR_PAIR_NR4
 unset DS4_METAL_INDEXED_ATTN_RB16_DIRECT
+unset DS4_METAL_INDEXED_ATTN_RB16_LEGACY
 unset DS4_METAL_INDEXED_ATTN_RB16_DIRECT_TRACE
 unset DS4_METAL_DECODE_INDEXER_SPARSE_THRESHOLD
 
@@ -82,13 +84,13 @@ if [[ $compressor_pair_nr4 == 1 && $mode != runtime ]]; then
     printf 'compressor pair NR4 requires DS4_TEST_DSPARK_MODE=runtime\n' >&2
     exit 2
 fi
-if [[ $indexed_attn_rb16_direct != 0 && $indexed_attn_rb16_direct != 1 ]]; then
-    printf 'DS4_TEST_DSPARK_INDEXED_ATTN_RB16_DIRECT must be 0 or 1\n' >&2
+if [[ $indexed_attn_rb16_promotion != 0 && $indexed_attn_rb16_promotion != 1 ]]; then
+    printf 'DS4_TEST_DSPARK_INDEXED_ATTN_RB16_PROMOTION must be 0 or 1\n' >&2
     exit 2
 fi
-if [[ $indexed_attn_rb16_direct == 1 &&
+if [[ $indexed_attn_rb16_promotion == 1 &&
       ($mode != runtime || $fast_verify_runtime == 1) ]]; then
-    printf 'indexed-attention RB16-direct requires exact runtime verification\n' >&2
+    printf 'indexed-attention RB16 promotion requires exact runtime verification\n' >&2
     exit 2
 fi
 if [[ -n $attn_suffix_observer_layer &&
@@ -125,9 +127,8 @@ case "$mode" in
         if [[ $compressor_pair_nr4 == 1 ]]; then
             gpu_env+=(DS4_METAL_COMPRESSOR_PAIR_NR4=1)
         fi
-        if [[ $indexed_attn_rb16_direct == 1 ]]; then
+        if [[ $indexed_attn_rb16_promotion == 1 ]]; then
             gpu_env+=(
-                DS4_METAL_INDEXED_ATTN_RB16_DIRECT=1
                 DS4_METAL_INDEXED_ATTN_RB16_DIRECT_TRACE=1
                 DS4_METAL_DECODE_INDEXER_SPARSE_THRESHOLD=64
             )
@@ -411,7 +412,7 @@ compare_resumed_chat() {
     printf 'PASS chat: resumed two-turn session\n'
 }
 
-compare_indexed_attn_rb16_direct() {
+compare_indexed_attn_rb16_promotion() {
     local prompt_file="$tmpdir/rb16-direct.prompt"
     local baseline_out="$tmpdir/rb16-direct.baseline.out"
     local control_out="$tmpdir/rb16-direct.control.out"
@@ -429,6 +430,7 @@ compare_indexed_attn_rb16_direct() {
         DS4_DSPARK_GPU_RUNTIME=1 \
         DS4_DSPARK_GPU_RUNTIME_DIAGNOSTICS=1 \
         DS4_DSPARK_MULTI_COMMIT=1 \
+        DS4_METAL_INDEXED_ATTN_RB16_LEGACY=1 \
         DS4_METAL_DECODE_INDEXER_SPARSE_THRESHOLD=64 \
         "$ds4_bin" "${common[@]}" --dspark "$dspark_model" \
         -n 6 --prompt-file "$prompt_file" >"$control_out" 2>"$control_log"
@@ -440,13 +442,13 @@ compare_indexed_attn_rb16_direct() {
     cmp -s "$baseline_out" "$candidate_out"
     cmp -s "$control_out" "$candidate_out"
     if grep -q 'Metal indexed attention route=rb16_direct' "$control_log"; then
-        printf 'default RB16 control unexpectedly selected RB16-direct\n' >&2
+        printf 'legacy RB16 control unexpectedly selected RB16-direct\n' >&2
         exit 1
     fi
     grep -q 'Metal indexed attention route=rb16_direct' "$candidate_log"
     assert_gpu_selected "$control_log"
     assert_gpu_selected "$candidate_log"
-    printf 'PASS indexed attention: forced-sparse RB16-direct\n'
+    printf 'PASS indexed attention: promoted RB16-direct versus legacy RB16\n'
 }
 
 assert_strict_fallback() {
@@ -477,8 +479,8 @@ compare_prompt_file italian 6 "$root/tests/test-vectors/prompts/short_italian_fa
 compare_prompt_file medium_context 6 "$root/tests/dspark_gpu_candidates_medium_prompt.txt"
 compare_prompt_file rolling_window 12 "$root/tests/dspark_rolling_window_prompt.txt"
 compare_resumed_chat
-if [[ $indexed_attn_rb16_direct == 1 ]]; then
-    compare_indexed_attn_rb16_direct
+if [[ $indexed_attn_rb16_promotion == 1 ]]; then
+    compare_indexed_attn_rb16_promotion
 fi
 if [[ $mode == observer ]]; then
     assert_strict_fallback "$root/tests/test-vectors/prompts/short_reasoning_plain.txt"

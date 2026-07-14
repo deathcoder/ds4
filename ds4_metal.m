@@ -1815,11 +1815,11 @@ static int ds4_gpu_use_compressor_pair_nr4(void) {
     return enabled;
 }
 
-static int ds4_gpu_use_indexed_attention_rb16_direct(void) {
+static int ds4_gpu_use_indexed_attention_rb16_legacy(void) {
     static int initialized;
     static int enabled;
     if (!initialized) {
-        enabled = getenv("DS4_METAL_INDEXED_ATTN_RB16_DIRECT") != NULL;
+        enabled = getenv("DS4_METAL_INDEXED_ATTN_RB16_LEGACY") != NULL;
         initialized = 1;
     }
     return enabled;
@@ -6284,10 +6284,8 @@ int ds4_gpu_init(void) {
             ds4_gpu_get_pipeline("kernel_dsv4_indexed_mixed_attention_heads8");
         g_dsv4_indexed_attention_heads8_rb16_pipeline =
             ds4_gpu_get_pipeline("kernel_dsv4_indexed_mixed_attention_heads8_rb16");
-        if (ds4_gpu_use_indexed_attention_rb16_direct()) {
-            g_dsv4_indexed_attention_heads8_rb16_direct_pipeline =
-                ds4_gpu_get_pipeline("kernel_dsv4_indexed_mixed_attention_heads8_rb16_direct");
-        }
+        g_dsv4_indexed_attention_heads8_rb16_direct_pipeline =
+            ds4_gpu_get_pipeline("kernel_dsv4_indexed_mixed_attention_heads8_rb16_direct");
         g_dsv4_softplus_sqrt_pipeline =
             ds4_gpu_get_pipeline("kernel_dsv4_softplus_sqrt_f32_4");
         g_dsv4_router_finalize_one_pipeline =
@@ -6301,8 +6299,7 @@ int ds4_gpu_init(void) {
             !g_dsv4_sort_i32_rows_asc_pipeline ||
             !g_dsv4_indexed_attention_heads8_pipeline ||
             !g_dsv4_indexed_attention_heads8_rb16_pipeline ||
-            (ds4_gpu_use_indexed_attention_rb16_direct() &&
-             !g_dsv4_indexed_attention_heads8_rb16_direct_pipeline) ||
+            !g_dsv4_indexed_attention_heads8_rb16_direct_pipeline ||
             !g_dsv4_softplus_sqrt_pipeline ||
             !g_dsv4_router_finalize_one_pipeline ||
             !g_dsv4_router_weights_one_pipeline ||
@@ -19818,7 +19815,7 @@ int ds4_gpu_attention_indexed_mixed_batch_heads_tensor(
             decode_one_token &&
             top_k == 512u &&
             visible_rows >= n_comp &&
-            ds4_gpu_use_indexed_attention_rb16_direct();
+            !ds4_gpu_use_indexed_attention_rb16_legacy();
         id<MTLComputePipelineState> attn_pipeline =
             decode_rb16_direct ?
             ds4_gpu_hot_pipeline(g_dsv4_indexed_attention_heads8_rb16_direct_pipeline,

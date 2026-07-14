@@ -186,36 +186,40 @@ That script unsets NR4 for each baseline process and enables it only for the
 exact DSpark candidate, so its five output comparisons directly test the new
 projection schedule rather than comparing two NR4 executions.
 
-`--indexed-attention-rb16-direct-ablation` is an uninstrumented paired pass
-comparing default exact DSpark against the opt-in
-`DS4_METAL_INDEXED_ATTN_RB16_DIRECT=1` one-token sparse-attention kernel. The
-candidate keeps the RB16 row block, all 512 selected rows, selected-row order,
-and online-softmax arithmetic; it removes the redundant per-thread scan and
-local `rows[16]` array only when the host proves every compressed cache row is
-visible. Otherwise it falls back to the existing RB16 kernel. The benchmark
-runner clears inherited candidate, trace, and sparse-threshold settings from
-both modes, enables only the candidate variable in its candidate processes,
-disables diagnostics and runtime stats, alternates pair order, and requires
-byte-identical output. The default short fixture never reaches sparse indexed
-attention, so use the recorded 8K transition fixture explicitly:
+RB16-direct is the default one-token sparse-attention route when top-k is 512
+and every compressed cache row is visible. It keeps the RB16 row block, all
+selected rows, selected-row order, and online-softmax arithmetic while removing
+the redundant per-thread scan and local `rows[16]` array. Every other indexed
+attention case continues to use the legacy RB16 or general kernel. Set
+`DS4_METAL_INDEXED_ATTN_RB16_LEGACY=1` only to force the legacy one-token route
+as a correctness or performance control.
+
+`--indexed-attention-rb16-promotion-ablation` is the uninstrumented final
+confirmation pass. It compares explicit legacy RB16 against the promoted
+environment-free default, clears inherited route, trace, and sparse-threshold
+settings, disables diagnostics and runtime stats, alternates pair order, and
+requires byte-identical output. The old
+`--indexed-attention-rb16-direct-ablation` spelling remains an alias. The
+default short fixture never reaches sparse indexed attention, so use the 8K
+transition fixture explicitly:
 
 ```sh
 python3 speed-bench/run_dspark_comparison.py \
-  --dry-run --indexed-attention-rb16-direct-ablation \
+  --dry-run --indexed-attention-rb16-promotion-ablation \
   --prompt-file speed-bench/issue468/code_8k.txt --ctx 16384 --tokens 128
 python3 speed-bench/run_dspark_comparison.py \
-  --confirm-idle --indexed-attention-rb16-direct-ablation \
+  --confirm-idle --indexed-attention-rb16-promotion-ablation \
   --prompt-file speed-bench/issue468/code_8k.txt --ctx 16384 --tokens 128
 ```
 
-The candidate-specific correctness matrix lowers only the implementation
+The promotion-specific correctness matrix lowers only the implementation
 threshold and generates a temporary prompt long enough to cross the immutable
-512-row selector frontier. It compares base output, default RB16 exact DSpark,
-and RB16-direct exact DSpark, and requires a candidate-only route trace:
+512-row selector frontier. It compares base output, explicit legacy RB16, and
+the promoted default, and requires a promoted-default route trace:
 
 ```sh
 DS4_TEST_DSPARK_MODE=runtime \
-DS4_TEST_DSPARK_INDEXED_ATTN_RB16_DIRECT=1 \
+DS4_TEST_DSPARK_INDEXED_ATTN_RB16_PROMOTION=1 \
   ./tests/dspark_gpu_candidates_correctness.sh
 ```
 
@@ -259,21 +263,23 @@ identical across modes, but synchronization changes scheduling, so compare the
 dense and sparse attribution within this run only and never report it as
 generation throughput.
 
-Pass `--rb16-direct-comparison` to repeat that synchronized attribution with
-the default RB16 and opt-in RB16-direct kernels in separate processes. The
+Pass `--rb16-promotion-comparison` to repeat that synchronized attribution with
+explicit legacy RB16 and the promoted RB16-direct default in separate
+processes. The
 runner requires both variants to produce byte-identical output, identical
 proposal schedules, and the same dense/sparse branch labels. Its report shows
-candidate/default ratios for dense and sparse attention separately, with
-attention-pre and FFN controls. A candidate win should appear in sparse
-indexed attention; dense attention and both controls do not use the candidate
-kernel and should remain stable. Run this diagnostic yourself because its
+promoted/legacy ratios for dense and sparse attention separately, with
+attention-pre and FFN controls. A promoted-route win should appear in sparse
+indexed attention; dense attention and both controls do not use either indexed
+kernel and should remain stable. The old `--rb16-direct-comparison` spelling
+remains an alias. Run this diagnostic yourself because its
 synchronization points make its timings sensitive to other machine activity:
 
 ```sh
 python3 speed-bench/run_dspark_exact_attention_transition_profile.py \
-  --dry-run --rb16-direct-comparison
+  --dry-run --rb16-promotion-comparison
 python3 speed-bench/run_dspark_exact_attention_transition_profile.py \
-  --confirm-ready --rb16-direct-comparison
+  --confirm-ready --rb16-promotion-comparison
 ```
 
 After an uninstrumented serial-FFN ablation, use

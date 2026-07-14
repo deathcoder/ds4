@@ -807,7 +807,7 @@ kernel void kernel_dsv4_indexed_mixed_attention_heads8_rb16(
     dst4[lane + 96] = o3 * inv_s;
 }
 
-// One-token RB16 candidate for the fully-visible sparse decode case. The host
+// One-token RB16 default for the fully-visible sparse decode case. The host
 // selects this only when top-k is known to contain 512 valid cache-row ids.
 // Loading the id at the cooperative copy site removes the per-thread rows[16]
 // scan while preserving selected-row order and online-softmax arithmetic.

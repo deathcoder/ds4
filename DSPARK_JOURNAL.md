@@ -4583,6 +4583,60 @@ Phase 0.82 user-run synchronized attribution result on 2026-07-15:
   Retain current RB16 behind an explicit control/fallback route so promotion
   can be validated and reversed without deleting the known-correct kernel.
 
+Phase 0.83 RB16-direct default promotion prepared on 2026-07-15:
+
+- Promoted `kernel_dsv4_indexed_mixed_attention_heads8_rb16_direct` to the
+  environment-free default only when all proven guards hold: one-token decode,
+  exactly 512 selected compressed rows, and `visible_rows >= n_comp`. The
+  direct pipeline is now created and required during normal Metal
+  initialization.
+- Legacy RB16 remains the automatic one-token fallback whenever any direct
+  guard fails. `DS4_METAL_INDEXED_ATTN_RB16_LEGACY=1` explicitly forces that
+  legacy route even when the direct guard passes, providing a reversible
+  correctness/performance control without deleting the known-correct kernel.
+  Multi-token indexed attention remains on the general kernel.
+- Updated the forced-sparse correctness case to compare base output, explicit
+  legacy RB16, and the environment-free promoted default. The candidate trace
+  is now a promoted-route trace; the same generated long prompt and lowered
+  implementation threshold still preserve the immutable 512-row selector
+  frontier. `DS4_TEST_DSPARK_INDEXED_ATTN_RB16_PROMOTION=1` is the new switch;
+  the old `...RB16_DIRECT` test spelling remains a compatibility alias.
+- Reoriented the uninstrumented comparison runner around promotion semantics.
+  `--indexed-attention-rb16-promotion-ablation` compares explicit legacy RB16
+  against promoted default, alternates order, disables diagnostics/stats, and
+  requires byte-identical output. The old direct-ablation spelling remains an
+  alias but no longer implies that direct is opt-in.
+- Reoriented the synchronized transition runner in the same way. Its normal
+  single-mode profile now records the promoted default; promotion comparison
+  runs explicit legacy first and default direct second, reporting
+  promoted/legacy ratios. The old direct-comparison spelling remains an alias.
+- `make -j4 ds4 ds4_test ds4_cpu.o`, Metal pipeline compilation, shell/Python
+  syntax, new and compatibility dry-run command generation, synthetic
+  promotion summary/report checks, mismatched transition rejection,
+  malformed promotion-option rejection, and
+  `./ds4_test --dspark-validation --dspark-shape-binding` passed.
+- The full exact-runtime correctness matrix with the promotion switch passed
+  reasoning, Italian, medium-context, rolling-window, and resumed-chat cases.
+  Its forced-sparse extension passed base/legacy/promoted byte identity and
+  observed the direct route only in the promoted process. Timings were ignored;
+  Codex did not run the final throughput confirmation.
+
+Phase 0.83 user-run final confirmation:
+
+```sh
+python3 speed-bench/run_dspark_comparison.py \
+  --dry-run --indexed-attention-rb16-promotion-ablation \
+  --prompt-file speed-bench/issue468/code_8k.txt --ctx 16384 --tokens 128
+python3 speed-bench/run_dspark_comparison.py \
+  --confirm-idle --indexed-attention-rb16-promotion-ablation \
+  --prompt-file speed-bench/issue468/code_8k.txt --ctx 16384 --tokens 128
+```
+
+This should reproduce the earlier direct-over-legacy `+1.2%` direction with
+the candidate now represented by the environment-free default. It is the last
+throughput gate for this promotion, not a request for more synchronized
+attribution.
+
 Phase 0.52 checks:
 
 ```sh
@@ -4673,9 +4727,10 @@ If continuing from a compacted context, start here:
   user-run 8K paired throughput gate. That gate passed consistently at `+1.2%`;
   Phase 0.82's matched synchronized gate passed: RB16-direct reduced sparse
   indexed attention by `14.2%`, with stable dense/control medians and clearly
-  separated sparse distributions. Next promote guarded RB16-direct to default,
-  retain legacy RB16 as an explicit control/fallback, and rerun correctness
-  before a final user-run throughput confirmation.
+  separated sparse distributions. Phase 0.83 promoted the guarded route to
+  default, retained explicit legacy RB16, and passed the full correctness
+  matrix. The final user-run legacy-versus-promoted throughput confirmation is
+  ready.
 - The GPU stage path currently borrows target graph transient batch workspace
   and therefore requires `prefill_cap >= block_size` (five). Decide whether to
   allocate sidecar-specific batch scratch before production enablement or keep

@@ -77,6 +77,7 @@ INSTRUMENTATION_MARKERS = ("PROFILE", "TRACE", "DUMP", "TIMING")
 EXPERIMENT_ENV_KEYS = (
     "DS4_METAL_COMPRESSOR_PAIR_NR4",
     "DS4_METAL_INDEXED_ATTN_RB16_DIRECT",
+    "DS4_METAL_INDEXED_ATTN_RB16_LEGACY",
     "DS4_METAL_DECODE_INDEXER_SPARSE_THRESHOLD",
 )
 
@@ -147,9 +148,11 @@ def parse_args():
         help="compare default exact DSpark against the NR4 compressor projection",
     )
     parser.add_argument(
+        "--indexed-attention-rb16-promotion-ablation",
         "--indexed-attention-rb16-direct-ablation",
+        dest="indexed_attention_rb16_promotion_ablation",
         action="store_true",
-        help="compare default exact DSpark against direct-index RB16 attention",
+        help="compare legacy RB16 attention against the promoted default",
     )
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
@@ -166,14 +169,14 @@ def parse_args():
             args.attention_pre_ablation,
             args.attention_suffix_ablation,
             args.compressor_pair_nr4_ablation,
-            args.indexed_attention_rb16_direct_ablation,
+            args.indexed_attention_rb16_promotion_ablation,
         )
     )
     if selected_modes > 1:
         parser.error(
             "--fast-verifier, --serial-ffn-ablation, --attention-pre-ablation, "
             "--attention-suffix-ablation, --compressor-pair-nr4-ablation, and "
-            "--indexed-attention-rb16-direct-ablation "
+            "--indexed-attention-rb16-promotion-ablation "
             "are mutually exclusive"
         )
     if not args.confirm_idle and not args.dry_run:
@@ -218,8 +221,8 @@ def check_inputs(args, root):
 
 
 def benchmark_modes(args):
-    if args.indexed_attention_rb16_direct_ablation:
-        return ("default_exact", "indexed_attention_rb16_direct")
+    if args.indexed_attention_rb16_promotion_ablation:
+        return ("indexed_attention_rb16_legacy", "default_exact")
     if args.compressor_pair_nr4_ablation:
         return ("default_exact", "compressor_pair_nr4")
     if args.attention_suffix_ablation:
@@ -242,7 +245,7 @@ def mode_label(mode, args):
         "default_exact": "Default exact DSpark",
         "batch_attention_suffix": "Exact attention-suffix batch DSpark",
         "compressor_pair_nr4": "NR4 compressor pair DSpark",
-        "indexed_attention_rb16_direct": "RB16-direct indexed attention DSpark",
+        "indexed_attention_rb16_legacy": "Legacy RB16 indexed attention DSpark",
     }[mode]
 
 
@@ -252,7 +255,7 @@ def throughput_runtime_stats_enabled(args):
         or args.attention_pre_ablation
         or args.attention_suffix_ablation
         or args.compressor_pair_nr4_ablation
-        or args.indexed_attention_rb16_direct_ablation
+        or args.indexed_attention_rb16_promotion_ablation
     )
 
 
@@ -277,8 +280,8 @@ def clean_dspark_env(mode, fast_verifier=False, runtime_stats=True):
             env["DS4_DSPARK_EXACT_ATTN_SUFFIX_BATCH"] = "1"
         if mode == "compressor_pair_nr4":
             env["DS4_METAL_COMPRESSOR_PAIR_NR4"] = "1"
-        if mode == "indexed_attention_rb16_direct":
-            env["DS4_METAL_INDEXED_ATTN_RB16_DIRECT"] = "1"
+        if mode == "indexed_attention_rb16_legacy":
+            env["DS4_METAL_INDEXED_ATTN_RB16_LEGACY"] = "1"
     return env
 
 
@@ -305,7 +308,7 @@ def mode_command(args, mode):
     command = common_command(args)
     if (args.attention_pre_ablation or args.attention_suffix_ablation or
             args.compressor_pair_nr4_ablation or
-            args.indexed_attention_rb16_direct_ablation):
+            args.indexed_attention_rb16_promotion_ablation):
         command[1:1] = ("--backend", "metal")
     if mode != "baseline":
         command.extend(("--dspark", str(args.dspark_model.resolve())))
@@ -330,8 +333,8 @@ def command_text(args, mode, runtime_stats=None):
             env += "DS4_DSPARK_EXACT_ATTN_SUFFIX_BATCH=1 "
         if mode == "compressor_pair_nr4":
             env += "DS4_METAL_COMPRESSOR_PAIR_NR4=1 "
-        if mode == "indexed_attention_rb16_direct":
-            env += "DS4_METAL_INDEXED_ATTN_RB16_DIRECT=1 "
+        if mode == "indexed_attention_rb16_legacy":
+            env += "DS4_METAL_INDEXED_ATTN_RB16_LEGACY=1 "
     return env + shlex.join(mode_command(args, mode))
 
 
@@ -486,8 +489,8 @@ def collect_metadata(args, root):
             "attention_pre_ablation": args.attention_pre_ablation,
             "attention_suffix_ablation": args.attention_suffix_ablation,
             "compressor_pair_nr4_ablation": args.compressor_pair_nr4_ablation,
-            "indexed_attention_rb16_direct_ablation":
-                args.indexed_attention_rb16_direct_ablation,
+            "indexed_attention_rb16_promotion_ablation":
+                args.indexed_attention_rb16_promotion_ablation,
             "temperature": 0,
             "seed": 1,
         },
@@ -523,8 +526,8 @@ def summarize(rows, modes=("baseline", "runtime")):
     candidate_median = statistics.median(candidate)
     summary = {
         "comparison": (
-            "indexed_attention_rb16_direct_ablation"
-            if modes == ("default_exact", "indexed_attention_rb16_direct")
+            "indexed_attention_rb16_promotion_ablation"
+            if modes == ("indexed_attention_rb16_legacy", "default_exact")
             else (
                 "compressor_pair_nr4_ablation"
                 if modes == ("default_exact", "compressor_pair_nr4")
@@ -589,11 +592,12 @@ def summarize(rows, modes=("baseline", "runtime")):
         })
         return summary
 
-    if modes == ("default_exact", "indexed_attention_rb16_direct"):
+    if modes == ("indexed_attention_rb16_legacy", "default_exact"):
         summary.update({
-            "default_exact_generation_tps_median": reference_median,
-            "indexed_attention_rb16_direct_generation_tps_median": candidate_median,
-            "indexed_attention_rb16_direct_delta_percent":
+            "indexed_attention_rb16_legacy_generation_tps_median": reference_median,
+            "default_exact_generation_tps_median": candidate_median,
+            "promoted_rb16_direct_generation_tps_median": candidate_median,
+            "promoted_rb16_direct_delta_percent":
                 (candidate_median / reference_median - 1.0) * 100.0,
         })
         return summary
@@ -663,17 +667,17 @@ def summarize(rows, modes=("baseline", "runtime")):
 
 
 def format_report(summary):
-    if summary["comparison"] == "indexed_attention_rb16_direct_ablation":
+    if summary["comparison"] == "indexed_attention_rb16_promotion_ablation":
         return (
-            "# DSpark Indexed Attention RB16-Direct Ablation\n\n"
-            f"- Default exact median: "
-            f"{summary['default_exact_generation_tps_median']:.2f} t/s\n"
-            f"- RB16-direct median: "
-            f"{summary['indexed_attention_rb16_direct_generation_tps_median']:.2f} t/s\n"
+            "# DSpark Indexed Attention RB16-Direct Promotion Confirmation\n\n"
+            f"- Legacy RB16 median: "
+            f"{summary['indexed_attention_rb16_legacy_generation_tps_median']:.2f} t/s\n"
+            f"- Promoted RB16-direct median: "
+            f"{summary['promoted_rb16_direct_generation_tps_median']:.2f} t/s\n"
             f"- Ratio of medians: {summary['median_ratio_of_medians']:.4f}x\n"
             f"- Median paired ratio: {summary['paired_speedup_median']:.4f}x\n"
-            f"- RB16-direct delta: "
-            f"{summary['indexed_attention_rb16_direct_delta_percent']:+.1f}%\n"
+            f"- Promoted RB16-direct delta: "
+            f"{summary['promoted_rb16_direct_delta_percent']:+.1f}%\n"
             f"- Measured pairs: {len(summary['paired_speedup_values'])}\n"
         )
 
