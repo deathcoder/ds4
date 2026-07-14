@@ -4637,6 +4637,30 @@ the candidate now represented by the environment-free default. It is the last
 throughput gate for this promotion, not a request for more synchronized
 attribution.
 
+Phase 0.83 user-run final confirmation on 2026-07-15:
+
+- Run: `speed-bench/local-runs/20260715-005708/results.csv`, on clean promotion
+  commit `e185e3f`. Explicit legacy RB16 had median `10.31 t/s`; the promoted
+  environment-free RB16-direct default had median `10.40 t/s`. The ratio of
+  medians was `1.0087x`, median paired ratio was `1.0097x`, and the reported
+  promotion delta was `+0.9%` across three pairs.
+- Every pair favored the promoted route: `1.0097x`, `1.0107x`, and `1.0087x`.
+  The second pair ran promoted first and legacy second, so alternating order
+  did not expose a hidden ordering effect. The narrow paired range was
+  `+0.87..+1.07%`.
+- All six measured stdout streams had the same SHA-256. Metadata recorded no
+  inherited DS4 environment, no thermal warning before or after, explicit
+  `DS4_METAL_INDEXED_ATTN_RB16_LEGACY=1` only on the control command, and no
+  route environment on promoted default.
+- The process snapshot still contained unavoidable desktop activity, so the
+  absolute t/s values are not treated as machine-isolated measurements. The
+  consistent paired direction nevertheless agrees with Phase 0.81's `+1.2%`
+  opt-in result and Phase 0.82's `-14.2%` synchronized sparse-kernel result.
+- Final decision: the promotion is accepted. Keep RB16-direct as the guarded
+  default, keep legacy RB16 only as automatic fallback and explicit research
+  control, and do not benchmark this optimization again unless its guard or
+  kernel semantics change.
+
 Phase 0.52 checks:
 
 ```sh
@@ -4729,8 +4753,9 @@ If continuing from a compacted context, start here:
   indexed attention by `14.2%`, with stable dense/control medians and clearly
   separated sparse distributions. Phase 0.83 promoted the guarded route to
   default, retained explicit legacy RB16, and passed the full correctness
-  matrix. The final user-run legacy-versus-promoted throughput confirmation is
-  ready.
+  matrix. The final legacy-versus-promoted confirmation passed at `+0.9%`
+  across three consistently positive pairs. This optimization is complete;
+  keep direct as default and legacy as fallback/control.
 - The GPU stage path currently borrows target graph transient batch workspace
   and therefore requires `prefill_cap >= block_size` (five). Decide whether to
   allocate sidecar-specific batch scratch before production enablement or keep
