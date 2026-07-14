@@ -4491,6 +4491,29 @@ python3 speed-bench/run_dspark_comparison.py \
 
 Do not benchmark the default short fixture: it cannot exercise this candidate.
 
+Phase 0.81 user-run RB16-direct throughput result on 2026-07-15:
+
+- Run: `speed-bench/local-runs/20260715-001221/results.csv`. Default exact
+  median was `10.31 t/s`; RB16-direct median was `10.43 t/s`. The ratio of
+  medians and median paired ratio were both `1.0116x`, for a reported `+1.2%`
+  candidate delta across three pairs.
+- Pair ratios were `1.0116x`, `1.0116x`, and `1.0136x`. Every pair favored the
+  candidate, including the reversed-order second pair. Default/candidate values
+  were `10.31/10.43`, `10.31/10.43`, and `10.27/10.41 t/s`; all measured
+  outputs had the same SHA-256.
+- The process snapshot showed substantial unrelated activity, including Codex
+  renderer processes and other desktop services. Absolute t/s remains noisy,
+  but the alternating order and narrow `1.16..1.36%` paired range make the
+  direction more credible than the retired NR4 result, whose pairs crossed
+  both sides of parity.
+- Gate decision: RB16-direct is a successful candidate, but keep it opt-in for
+  one more attribution check before promotion. The next phase should add an
+  explicit candidate mode to the existing synchronized attention-transition
+  profile and verify that the sparse indexed median falls from Phase 0.80's
+  `0.722 ms/row` while dense/control values remain stable. If that localization
+  passes, promote the guarded route to default and retain current RB16 as the
+  fallback/control.
+
 Phase 0.52 checks:
 
 ```sh
@@ -4578,7 +4601,9 @@ If continuing from a compacted context, start here:
   dense mixed attention at transition. Next optimize the retained RB16
   one-token indexed kernel without reviving rejected RB4 or reducing top-k.
   Phase 0.81's guarded RB16-direct candidate is correct and ready for the
-  user-run 8K paired throughput gate.
+  user-run 8K paired throughput gate. That gate passed consistently at `+1.2%`;
+  next localize the win with the synchronized transition profile, then decide
+  default promotion.
 - The GPU stage path currently borrows target graph transient batch workspace
   and therefore requires `prefill_cap >= block_size` (five). Decide whether to
   allocate sidecar-specific batch scratch before production enablement or keep
