@@ -4165,6 +4165,54 @@ Phase 0.77 user-run retained-tail attribution result on 2026-07-14:
   512-row indexer selection contract. Choose a kernel optimization only after
   that split; do not use synchronized component totals as throughput values.
 
+Phase 0.78 compressed-tail attribution harness completed on 2026-07-14:
+
+- Added `DS4_DSPARK_EXACT_COMPRESSOR_PROFILE` as a selected-layer diagnostic
+  specialization of the prepared serial attention tail. It is read only after
+  the existing decode-stage profiler selects a layer and is mutually exclusive
+  with the broader retained-tail records. Normal Metal inference is unchanged.
+- The diagnostic synchronizes immediately before main compressor projection
+  and preserves the existing row-interleaved execution order. It emits
+  `main_projection` and `main_update` for ratio-128 and ratio-4 layers. Ratio-4
+  layers also emit `indexer_projection` and `indexer_update`; once sparse
+  indexed attention is active, they additionally emit `indexer_prepare`,
+  `indexer_score`, and `indexer_topk`.
+- The `main_update` and `indexer_update` stages include periodic emit work on
+  rows where `(position + 1) % ratio == 0`, so the report splits their emit and
+  non-emit medians. The score/top-k path retains `DS4_N_INDEXER_TOP_K=512`.
+- The exact-layer profiler suppresses its aggregate serial-tail boundary while
+  this component mode is active. Because compressor profiling ends before the
+  remainder of each row's attention tail, the verifier explicitly flushes the
+  final unreported tail before starting its FFN control timer.
+- Added `speed-bench/run_dspark_exact_compressor_profile.py`. Its default 8K
+  run profiles layer 21 (ratio 128) and layer 42 (ratio 4), requires
+  byte-identical output, expands exact proposal signatures to one-row position
+  multisets, rejects unknown/missing/duplicated component streams, and reports
+  recurrent emit/non-emit groups. Layer 42 must expose query/weight prepare,
+  score, and full top-k for every row in the default long-context fixture.
+  The harness clears any inherited sparse-threshold override so this contract
+  is evaluated against the normal 1024-row Metal threshold.
+- The Metal and no-GPU object builds, DSpark validation/shape-binding tests,
+  and Python compile/dry run passed. The no-GPU build retained only its existing
+  unused-function/parameter warnings. Synthetic records covered
+  ratio inference, duplicate proposal positions, emit grouping, all component
+  stages, aggregation, and Markdown reporting. A real short layer-42 smoke
+  retained the expected main/indexer projection/update records for all three
+  proposal rows and matched baseline output byte-for-byte. Its 120-token
+  context correctly remained below the 1024-row sparse threshold, so it was
+  not used to validate or time prepare/score/top-k.
+- The profile-enabled correctness matrix passed reasoning, Italian,
+  medium-context, rolling-window, and resumed-chat output identity. Timings
+  were ignored. Codex did not run the selected 8K attribution profile or any
+  tok/s benchmark.
+
+Phase 0.78 user command:
+
+```sh
+python3 speed-bench/run_dspark_exact_compressor_profile.py --dry-run
+python3 speed-bench/run_dspark_exact_compressor_profile.py --confirm-ready
+```
+
 Phase 0.52 checks:
 
 ```sh
@@ -4241,9 +4289,10 @@ If continuing from a compacted context, start here:
   tail in place without changing its interleaved row schedule.
 - The retained serial-tail selected-layer profiler is ready for the user:
   its result localizes depth growth to recurrent compression/indexer work and
-  attention. The next diagnostic should split the compressed-layer recurrent
-  projection/update path from ratio-4 emit, indexer preparation, score, and
-  top-k before selecting an in-place Metal kernel optimization.
+  attention. The compressed-layer follow-up is now ready for the user and will
+  split recurrent projection/update and ratio-4 indexer preparation, score,
+  and top-k. Select an in-place Metal kernel optimization only after that
+  result.
 - The GPU stage path currently borrows target graph transient batch workspace
   and therefore requires `prefill_cap >= block_size` (five). Decide whether to
   allocate sidecar-specific batch scratch before production enablement or keep

@@ -56,6 +56,8 @@ python3 speed-bench/run_dspark_exact_attention_suffix_profile.py --dry-run
 python3 speed-bench/run_dspark_exact_attention_suffix_profile.py --confirm-ready
 python3 speed-bench/run_dspark_exact_attention_tail_profile.py --dry-run
 python3 speed-bench/run_dspark_exact_attention_tail_profile.py --confirm-ready
+python3 speed-bench/run_dspark_exact_compressor_profile.py --dry-run
+python3 speed-bench/run_dspark_exact_compressor_profile.py --confirm-ready
 python3 speed-bench/run_dspark_exact_ffn_batch_profile.py --dry-run
 python3 speed-bench/run_dspark_exact_ffn_batch_profile.py --confirm-ready
 ```
@@ -168,6 +170,18 @@ and fused projection-B/HC. The runner cross-checks those row positions against
 the exact verifier's proposal batches, keeps attention-pre and FFN medians as
 controls, and requires byte-identical output. These timings also change
 scheduling and are attribution data, not throughput measurements.
+
+Use `run_dspark_exact_compressor_profile.py` to split the compressed portion of
+that retained tail in place. Its defaults profile ratio-128 layer 21 and
+ratio-4 layer 42 over the 8K code fixture. It separates the main compressor
+projection from recurrent update/emit; layer 42 additionally separates indexer
+compressor projection/update, query and weight preparation, score, and the
+full 512-row top-k. The runner classifies emit rows from absolute positions,
+cross-checks every component row against exact proposal batches, and requires
+byte-identical output. A short context may legitimately remain below the
+ratio-4 sparse threshold and omit prepare/score/top-k, but the default 8K
+profile rejects that incomplete stream. This is a synchronized attribution
+profile, not a generation-throughput benchmark.
 
 After an uninstrumented serial-FFN ablation, use
 `run_dspark_exact_ffn_batch_profile.py` as a separate attribution pass. It

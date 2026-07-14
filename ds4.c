@@ -15365,14 +15365,22 @@ static bool metal_graph_encode_decode_layer_part(
     bool ok = true;
     const bool decode_stage_profile_requested =
         metal_graph_decode_stage_profile_enabled(il);
+    const bool exact_compressor_profile =
+        decode_stage_profile_requested &&
+        part == METAL_GRAPH_DECODE_LAYER_ATTENTION_TAIL &&
+        getenv("DS4_DSPARK_EXACT_COMPRESSOR_PROFILE") != NULL;
     const bool exact_tail_profile =
         decode_stage_profile_requested &&
         part == METAL_GRAPH_DECODE_LAYER_ATTENTION_TAIL &&
+        !exact_compressor_profile &&
         getenv("DS4_DSPARK_EXACT_TAIL_PROFILE") != NULL;
     const bool decode_stage_profile =
-        decode_stage_profile_requested && !exact_tail_profile;
+        decode_stage_profile_requested &&
+        !exact_tail_profile &&
+        !exact_compressor_profile;
     double decode_stage_t0 = decode_stage_profile ? now_sec() : 0.0;
     double exact_tail_stage_t0 = 0.0;
+    double exact_compressor_stage_t0 = 0.0;
 #define DS4_METAL_PROFILE_DECODE_STAGE(name) do { \
         if (ok && decode_stage_profile) { \
             ok = metal_graph_layer_stage_profile_boundary("decode", (name), il, pos, 1, &decode_stage_t0); \
@@ -15386,6 +15394,12 @@ static bool metal_graph_encode_decode_layer_part(
         if (ok && exact_tail_profile) { \
             ok = metal_graph_layer_stage_profile_boundary( \
                 "tail", (name), il, pos, 1, &exact_tail_stage_t0); \
+        } \
+    } while (0)
+#define DS4_METAL_PROFILE_EXACT_COMPRESSOR_STAGE(name) do { \
+        if (ok && exact_compressor_profile) { \
+            ok = metal_graph_layer_stage_profile_boundary( \
+                "compressor", (name), il, pos, 1, &exact_compressor_stage_t0); \
         } \
     } while (0)
     if (part == METAL_GRAPH_DECODE_LAYER_FFN) goto encode_ffn;
@@ -15615,6 +15629,10 @@ encode_attention_tail:
             fprintf(stderr, "ds4: Metal graph compressed KV cache capacity exceeded at layer %u\n", il);
             ok = false;
         }
+        if (ok && exact_compressor_profile) {
+            ok = ds4_gpu_end_commands() != 0 && ds4_gpu_begin_commands() != 0;
+            exact_compressor_stage_t0 = now_sec();
+        }
         if (ok && !metal_graph_use_reference_compressor_pair_proj()) {
             ok = ds4_gpu_matmul_f16_pair_tensor(g->comp_kv_cur,
                                                   g->comp_sc_cur,
@@ -15636,6 +15654,7 @@ encode_attention_tail:
                                                      DS4_N_EMBD, comp_width,
                                                      g->attn_norm, 1) != 0;
         }
+        DS4_METAL_PROFILE_EXACT_COMPRESSOR_STAGE("main_projection");
         const uint32_t comp_row = g->layer_n_comp[il];
         if (ok) ok = ds4_gpu_compressor_update_tensor(g->comp_kv_cur,
                                                         g->comp_sc_cur,
@@ -15675,6 +15694,7 @@ encode_attention_tail:
             if (ok) ok = metal_graph_commit_attn_comp_stage(g, il, comp_row, 1);
         }
         if (ok && emit) g->layer_n_comp[il]++;
+        DS4_METAL_PROFILE_EXACT_COMPRESSOR_STAGE("main_update");
 
         if (ok && ratio == 4) {
             const uint32_t index_width = coff * DS4_N_INDEXER_HEAD_DIM;
@@ -15714,6 +15734,7 @@ encode_attention_tail:
                                                          DS4_N_EMBD, index_width,
                                                          g->attn_norm, 1) != 0;
             }
+            DS4_METAL_PROFILE_EXACT_COMPRESSOR_STAGE("indexer_projection");
             const uint32_t index_row = g->layer_n_index_comp[il];
             if (ok) ok = ds4_gpu_compressor_update_tensor(g->comp_kv_cur,
                                                             g->comp_sc_cur,
@@ -15754,6 +15775,7 @@ encode_attention_tail:
                 }
             }
             if (ok && emit) g->layer_n_index_comp[il]++;
+            DS4_METAL_PROFILE_EXACT_COMPRESSOR_STAGE("indexer_update");
             if (ok &&
                 metal_graph_ratio4_decode_sparse_ready(
                     g,
@@ -15801,6 +15823,7 @@ encode_attention_tail:
                                                          layer->indexer_proj->abs_offset,
                                                          DS4_N_EMBD, DS4_N_INDEXER_HEAD,
                                                          g->attn_norm, 1) != 0;
+                DS4_METAL_PROFILE_EXACT_COMPRESSOR_STAGE("indexer_prepare");
                 const float index_scale = 1.0f / sqrtf((float)(DS4_N_INDEXER_HEAD_DIM * DS4_N_INDEXER_HEAD));
                 if (ok && decode_index_stage_profile) {
                     ok = metal_graph_indexer_stage_profile_boundary(NULL,
@@ -15818,6 +15841,7 @@ encode_attention_tail:
                                                                 DS4_N_INDEXER_HEAD,
                                                                 DS4_N_INDEXER_HEAD_DIM,
                                                                 index_scale) != 0;
+                DS4_METAL_PROFILE_EXACT_COMPRESSOR_STAGE("indexer_score");
                 if (ok) {
                     metal_graph_debug_dump_tensor("indexer_scores",
                                                   g->indexer_scores,
@@ -15838,6 +15862,7 @@ encode_attention_tail:
                                                            g->layer_n_index_comp[il],
                                                            1,
                                                            DS4_N_INDEXER_TOP_K) != 0;
+                DS4_METAL_PROFILE_EXACT_COMPRESSOR_STAGE("indexer_topk");
                 if (ok) {
                     metal_graph_debug_dump_i32_tensor("indexer_topk",
                                                       g->comp_selected,
@@ -16607,6 +16632,7 @@ encode_ffn:
         metal_graph_debug_dump_tensor("hc_ffn_post", g->after_ffn_hc, hc_dim, il, pos);
     }
 #undef DS4_METAL_PROFILE_EXACT_TAIL_STAGE
+#undef DS4_METAL_PROFILE_EXACT_COMPRESSOR_STAGE
     return ok;
 }
 
@@ -24271,6 +24297,11 @@ static bool metal_graph_verify_decode_exact(
         const bool exact_tail_component_profile =
             exact_layer_profile &&
             getenv("DS4_DSPARK_EXACT_TAIL_PROFILE") != NULL;
+        const bool exact_compressor_component_profile =
+            exact_layer_profile &&
+            getenv("DS4_DSPARK_EXACT_COMPRESSOR_PROFILE") != NULL;
+        const bool exact_attention_component_profile =
+            exact_tail_component_profile || exact_compressor_component_profile;
         double exact_layer_stage_t0 = 0.0;
         if (metal_graph_decode_stage_profile_enabled(il) || exact_layer_profile) {
             ok = ds4_gpu_end_commands() != 0 &&
@@ -24736,7 +24767,7 @@ static bool metal_graph_verify_decode_exact(
             if (ok) ok = ds4_gpu_begin_commands() != 0;
         }
         if (ok && exact_layer_profile && attn_runtime_layer &&
-            !attn_suffix_runtime_layer && !exact_tail_component_profile) {
+            !attn_suffix_runtime_layer && !exact_attention_component_profile) {
             ok = metal_graph_layer_stage_profile_boundary(
                 "exact",
                 "attention_tail_serial",
@@ -24793,7 +24824,11 @@ static bool metal_graph_verify_decode_exact(
             }
             if (ok) ok = ds4_gpu_begin_commands() != 0;
         }
-        if (ok && exact_tail_component_profile) {
+        if (ok && exact_compressor_component_profile) {
+            ok = ds4_gpu_end_commands() != 0 &&
+                 ds4_gpu_begin_commands() != 0;
+        }
+        if (ok && exact_attention_component_profile) {
             exact_layer_stage_t0 = now_sec();
         }
         if (!observe_ffn && !ffn_runtime_enabled) {
