@@ -3888,6 +3888,27 @@ DS4_TEST_DSPARK_MODE=runtime \
 git diff --check
 ```
 
+Phase 0.74 user-run throughput result on 2026-07-14:
+
+- Run: `speed-bench/local-runs/20260714-124010/results.csv`, clean commit
+  `be7798277d96b97d9e4798b201c7f456db3b452c`, Apple M1 Ultra, Metal,
+  uninstrumented, one warmup per mode and three alternating measured pairs.
+- Default exact median: `21.56 t/s`; exact attention-suffix batch median:
+  `16.98 t/s`; ratio of medians: `0.7876x`; median paired ratio: `0.7850x`.
+  The candidate regressed generation throughput by `21.2%`.
+- All three measured candidate/reference ratios were tightly grouped at about
+  `0.782x`, `0.788x`, and `0.785x`. Prefill remained effectively unchanged
+  (`45.90` to `46.50 t/s` across both modes), and every output SHA-256 matched.
+  This is a generation-path cost, not startup noise or semantic drift.
+- Do not promote `DS4_DSPARK_EXACT_ATTN_SUFFIX_BATCH`. The result rejects the
+  current small-proposal batching schedule as a Metal throughput optimization;
+  it does not invalidate the exact fused kernel's correctness.
+- Before changing this path again, add a synchronized diagnostic profile that
+  separates serial attention core/head capture, batched projection A, and
+  batched fused projection-B/HC. Compare those components against the default
+  serial suffix at selected early/middle/late layers. Do not run another
+  uninstrumented ablation until the regression has a measured owner.
+
 Phase 0.52 checks:
 
 ```sh
@@ -3956,10 +3977,11 @@ If continuing from a compacted context, start here:
 
 ## Open Questions
 
-- The exact attention-suffix candidate is ready for the user-run uninstrumented
-  paired ablation. Run `python3 speed-bench/run_dspark_comparison.py
-  --confirm-idle --attention-suffix-ablation`; do not promote the opt-in runtime
-  until its throughput result is understood.
+- The exact attention-suffix candidate is correct but measured `21.2%` slower
+  than default exact Metal generation. Keep it opt-in. The next useful step is
+  a synchronized selected-layer attribution profile separating serial core and
+  head capture from projection A and fused projection-B/HC; only then decide
+  whether to redesign or retire this batching schedule.
 - The GPU stage path currently borrows target graph transient batch workspace
   and therefore requires `prefill_cap >= block_size` (five). Decide whether to
   allocate sidecar-specific batch scratch before production enablement or keep
