@@ -3957,6 +3957,42 @@ DS4_TEST_DSPARK_ATTN_SUFFIX_RUNTIME=1 \
 git diff --check
 ```
 
+Phase 0.75 user-run attribution result on 2026-07-14:
+
+- Run: `speed-bench/local-runs/suffix-profile-20260714-130259/stages.csv`.
+  All selected layers contained nine matched default/candidate proposal batches
+  and 41 proposal rows. Attention-pre and FFN control medians agreed closely,
+  so the regression is localized to the suffix transformation rather than a
+  different proposal schedule or broad residency shift.
+- Layer 0: default serial tail `0.323 ms/row`; candidate core/capture `0.489`,
+  projection A `0.112`, projection-B/HC `0.108`, total `0.709 ms/row`
+  (`2.192x`, `+119.2%`).
+- Layer 21: default serial tail `0.441 ms/row`; candidate core/capture `0.586`,
+  projection A `0.118`, projection-B/HC `0.111`, total `0.815 ms/row`
+  (`1.848x`, `+84.8%`).
+- Layer 42: default serial tail `0.621 ms/row`; candidate core/capture `0.759`,
+  projection A `0.119`, projection-B/HC `0.111`, total `0.989 ms/row`
+  (`1.594x`, `+59.4%`).
+- The candidate core plus head capture is already `0.138` to `0.166 ms/row`
+  slower than the entire default tail, even though the default tail also
+  includes both serial output projections and HC expansion. The two candidate
+  batch projections add another nearly depth-independent `0.220` to
+  `0.230 ms/row`. Total candidate overhead is almost constant at `0.368` to
+  `0.386 ms/row`; its percentage shrinks only because deeper attention cores
+  cost more.
+- At the dominant proposal width five, projection A and fused projection-B/HC
+  together cost about `0.22 ms/row`. The profile's median overhead, scaled by
+  43 layers, `41/9` rows per target evaluation, and the previously measured
+  `0.2188` target evaluations per emitted token, predicts about `16 ms` extra
+  per emitted token. The uninstrumented ablation observed about `12.5 ms`; the
+  agreement is sufficient for a synchronized attribution profile.
+- The next narrow experiment is zero-copy head capture: while executing each
+  serial attention core, bind `g->heads` directly to that proposal's row in
+  `batch_heads`, then remove the separate `ds4_gpu_tensor_copy`. Re-run
+  correctness and this attribution profile before another uninstrumented tok/s
+  ablation. If core/direct-write plus the two batch projections still cannot
+  match the default tail, retire this suffix batching schedule.
+
 Phase 0.52 checks:
 
 ```sh
@@ -4026,11 +4062,11 @@ If continuing from a compacted context, start here:
 ## Open Questions
 
 - The exact attention-suffix candidate is correct but measured `21.2%` slower
-  than default exact Metal generation. Keep it opt-in. The selected-layer
-  attribution harness is ready for the user:
-  `python3 speed-bench/run_dspark_exact_attention_suffix_profile.py
-  --confirm-ready`. Use its component ownership before deciding whether to
-  redesign or retire this batching schedule.
+  than default exact Metal generation. Keep it opt-in. Attribution localizes
+  the largest avoidable cost to the separate per-row head capture. Bind serial
+  attention output directly to `batch_heads`, remove that copy, and re-run the
+  synchronized attribution profile before deciding whether the schedule merits
+  another tok/s ablation or should be retired.
 - The GPU stage path currently borrows target graph transient batch workspace
   and therefore requires `prefill_cap >= block_size` (five). Decide whether to
   allocate sidecar-specific batch scratch before production enablement or keep
