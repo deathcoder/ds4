@@ -17872,7 +17872,12 @@ static bool metal_graph_decode_stage_profile_enabled(uint32_t il) {
            metal_graph_profile_layer_env_match("DS4_METAL_DECODE_STAGE_PROFILE_LAYER", il);
 }
 
-/* Optional prefill stage profiler. It intentionally ends the current Metal
+static bool metal_graph_exact_layer_profile_layer_match(uint32_t il) {
+    return metal_graph_profile_layer_env_match(
+        "DS4_DSPARK_EXACT_LAYER_PROFILE_LAYER", il);
+}
+
+/* Optional synchronized stage profiler. It intentionally ends the current Metal
  * command buffer and waits, so the printed number includes encoding plus GPU
  * execution for the stage just emitted. This is disabled by default because it
  * adds synchronization points and changes scheduling. */
@@ -23876,9 +23881,16 @@ static bool metal_graph_verify_decode_exact(
     const bool saved_capture = g->spec_capture_prefix1;
     g->spec_capture_prefix1 = false;
     const double layer_started = timing ? now_sec() : 0.0;
+    const bool exact_layer_profile_requested =
+        n_tokens > 1u && attn_runtime_enabled && ffn_runtime_enabled &&
+        getenv("DS4_DSPARK_EXACT_LAYER_PROFILE") != NULL;
     if (ok) ok = ds4_gpu_begin_commands() != 0;
     for (uint32_t il = 0; ok && il < DS4_N_LAYER; il++) {
-        if (metal_graph_decode_stage_profile_enabled(il)) {
+        const bool exact_layer_profile =
+            exact_layer_profile_requested &&
+            metal_graph_exact_layer_profile_layer_match(il);
+        double exact_layer_stage_t0 = 0.0;
+        if (metal_graph_decode_stage_profile_enabled(il) || exact_layer_profile) {
             ok = ds4_gpu_end_commands() != 0 &&
                  ds4_gpu_begin_commands() != 0;
         }
@@ -23918,6 +23930,7 @@ static bool metal_graph_verify_decode_exact(
 
         bool attn_runtime_layer = false;
         if (attn_runtime_enabled) {
+            if (exact_layer_profile) exact_layer_stage_t0 = now_sec();
             if (outcomes) outcomes->attn_pre_batch_attempts++;
             ds4_gpu_tensor *input_hc =
                 (il & 1u) ? g->batch_next_hc : g->batch_cur_hc;
@@ -23935,6 +23948,15 @@ static bool metal_graph_verify_decode_exact(
             } else {
                 ok = ds4_gpu_end_commands() != 0 &&
                      ds4_gpu_begin_commands() != 0;
+            }
+            if (ok && exact_layer_profile && attn_runtime_layer) {
+                ok = metal_graph_layer_stage_profile_boundary(
+                    "exact",
+                    "attention_pre_batch",
+                    il,
+                    start,
+                    n_tokens,
+                    &exact_layer_stage_t0);
             }
         }
 
@@ -24160,6 +24182,15 @@ static bool metal_graph_verify_decode_exact(
                         (uint64_t)DS4_N_EMBD * sizeof(float)) != 0;
             }
         }
+        if (ok && exact_layer_profile && attn_runtime_layer) {
+            ok = metal_graph_layer_stage_profile_boundary(
+                "exact",
+                "attention_tail_serial",
+                il,
+                start,
+                n_tokens,
+                &exact_layer_stage_t0);
+        }
         if (observe_attn) {
             if (ok) ok = ds4_gpu_end_commands() != 0;
             else (void)ds4_gpu_synchronize();
@@ -24250,6 +24281,15 @@ static bool metal_graph_verify_decode_exact(
                                                         true,
                                                         true,
                                                         true);
+            }
+            if (ok && exact_layer_profile && attn_runtime_layer) {
+                ok = metal_graph_layer_stage_profile_boundary(
+                    "exact",
+                    "ffn_batch",
+                    il,
+                    start,
+                    n_tokens,
+                    &exact_layer_stage_t0);
             }
             g->batch_cur_hc = saved_batch_cur;
             g->batch_next_hc = saved_batch_next;

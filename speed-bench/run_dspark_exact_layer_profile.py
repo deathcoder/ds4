@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""User-run synchronized stage profile for the exact DSpark verifier."""
+"""User-run synchronized component profile for the exact DSpark verifier."""
 
 import argparse
 import csv
@@ -18,18 +18,15 @@ import time
 
 
 PROFILE_RE = re.compile(
-    rb"^ds4: metal layer stage part=decode layer=([0-9]+) "
+    rb"^ds4: metal layer stage part=([a-z]+) layer=([0-9]+) "
     rb"pos=([0-9]+) tokens=([0-9]+) ([a-z0-9_]+)=([0-9.]+) ms$"
 )
 LAYER_COUNT_RE = re.compile(r"^layers:\s+([0-9]+)\s*$", re.MULTILINE)
-ATTENTION_STAGES = {
-    "attn_hc_pre", "attn_norm", "q_path", "kv_path",
-    "compressor_indexer", "attention", "attn_output", "attn_hc_post",
-}
-FFN_STAGES = {
-    "ffn_hc_pre", "ffn_norm", "router", "shared_gate_up",
-    "routed_moe", "shared_down", "ffn_hc_post",
-}
+EXACT_STAGES = (
+    "attention_pre_batch",
+    "attention_tail_serial",
+    "ffn_batch",
+)
 INSTRUMENTATION_MARKERS = ("PROFILE", "TRACE", "DUMP", "TIMING")
 
 
@@ -65,8 +62,8 @@ def profile_env(layer=None):
     env["DS4_DSPARK_GPU_RUNTIME"] = "1"
     env["DS4_DSPARK_MULTI_COMMIT"] = "1"
     if layer is not None:
-        env["DS4_METAL_DECODE_STAGE_PROFILE"] = "1"
-        env["DS4_METAL_DECODE_STAGE_PROFILE_LAYER"] = str(layer)
+        env["DS4_DSPARK_EXACT_LAYER_PROFILE"] = "1"
+        env["DS4_DSPARK_EXACT_LAYER_PROFILE_LAYER"] = str(layer)
     return env
 
 
@@ -85,7 +82,7 @@ def parse_layers(value):
 def parse_args():
     root = Path(__file__).resolve().parent.parent
     parser = argparse.ArgumentParser(
-        description="Profile synchronized stages in representative exact verifier layers."
+        description="Profile promoted exact-runtime components in representative layers."
     )
     parser.add_argument("--binary", type=Path, default=root / "ds4")
     parser.add_argument(
@@ -133,8 +130,8 @@ def command_text(args, layer=None):
     env = profile_env(layer)
     keys = (
         "DS4_DSPARK_GPU_RUNTIME", "DS4_DSPARK_MULTI_COMMIT",
-        "DS4_METAL_DECODE_STAGE_PROFILE",
-        "DS4_METAL_DECODE_STAGE_PROFILE_LAYER",
+        "DS4_DSPARK_EXACT_LAYER_PROFILE",
+        "DS4_DSPARK_EXACT_LAYER_PROFILE_LAYER",
     )
     prefix = " ".join(f"{key}={env[key]}" for key in keys if key in env)
     return prefix + " " + shlex.join(command(args))
@@ -182,8 +179,9 @@ def parse_profile(data, expected_layer, path):
         match = PROFILE_RE.match(line)
         if not match:
             continue
-        layer, pos, tokens, stage, elapsed = match.groups()
+        part, layer, pos, tokens, stage, elapsed = match.groups()
         row = {
+            "part": part.decode("ascii"),
             "layer": int(layer), "pos": int(pos), "tokens": int(tokens),
             "stage": stage.decode("ascii"), "ms": float(elapsed),
         }
@@ -191,12 +189,13 @@ def parse_profile(data, expected_layer, path):
             raise RuntimeError(
                 f"unexpected profiled layer {row['layer']} in {path}; expected {expected_layer}"
             )
-        rows.append(row)
+        if row["part"] == "exact":
+            rows.append(row)
     if not rows:
-        raise RuntimeError(f"no decode-stage profile records found in {path}")
-    unknown = sorted({row["stage"] for row in rows} - ATTENTION_STAGES - FFN_STAGES)
+        raise RuntimeError(f"no exact-layer profile records found in {path}")
+    unknown = sorted({row["stage"] for row in rows} - set(EXACT_STAGES))
     if unknown:
-        raise RuntimeError(f"unknown decode stages in {path}: {', '.join(unknown)}")
+        raise RuntimeError(f"unknown exact-layer stages in {path}: {', '.join(unknown)}")
     return rows
 
 
@@ -255,6 +254,8 @@ def validate_resume(run_dir, args):
     config = metadata.get("config", {})
     if config.get("ctx") != args.ctx or config.get("tokens") != args.tokens:
         raise RuntimeError("resume ctx/tokens do not match the retained run")
+    if tuple(config.get("components", ())) != EXACT_STAGES:
+        raise RuntimeError("resume profile component contract is incompatible")
     prompt = metadata.get("prompt", {})
     if prompt.get("sha256") != sha256(args.prompt_file.read_bytes()):
         raise RuntimeError("resume prompt does not match the retained run")
@@ -269,42 +270,58 @@ def summarize(records):
     for layer in sorted({row["layer"] for row in records}):
         selected = [row for row in records if row["layer"] == layer]
         by_stage = {}
-        for stage in sorted({row["stage"] for row in selected}):
-            values = [row["ms"] for row in selected if row["stage"] == stage]
+        for stage in EXACT_STAGES:
+            stage_rows = [row for row in selected if row["stage"] == stage]
+            values = [row["ms"] / row["tokens"] for row in stage_rows]
+            if not values:
+                raise RuntimeError(f"layer {layer} has no {stage} records")
             ordered = sorted(values)
             by_stage[stage] = {
-                "records": len(values), "total_ms": sum(values),
-                "mean_ms": statistics.mean(values),
-                "median_ms": statistics.median(values),
-                "p90_ms": ordered[int(0.9 * (len(ordered) - 1))],
-                "max_ms": max(values),
+                "batches": len(values),
+                "proposal_rows": sum(row["tokens"] for row in stage_rows),
+                "total_ms": sum(row["ms"] for row in stage_rows),
+                "mean_ms_per_row": statistics.mean(values),
+                "median_ms_per_row": statistics.median(values),
+                "p90_ms_per_row": ordered[int(0.9 * (len(ordered) - 1))],
+                "max_ms_per_row": max(values),
             }
-        row_count = by_stage.get("attn_hc_pre", {}).get("records", 0)
-        if row_count == 0:
-            raise RuntimeError(f"layer {layer} has no attn_hc_pre records")
-        typical_total_ms = sum(item["median_ms"] for item in by_stage.values())
-        typical_attention_ms = sum(
-            item["median_ms"] for stage, item in by_stage.items()
-            if stage in ATTENTION_STAGES
-        )
-        typical_ffn_ms = sum(
-            item["median_ms"] for stage, item in by_stage.items()
-            if stage in FFN_STAGES
+        batch_counts = {item["batches"] for item in by_stage.values()}
+        row_counts = {item["proposal_rows"] for item in by_stage.values()}
+        batch_signatures = {
+            tuple(sorted(
+                (row["pos"], row["tokens"])
+                for row in selected if row["stage"] == stage
+            ))
+            for stage in EXACT_STAGES
+        }
+        if (len(batch_counts) != 1 or len(row_counts) != 1 or
+                len(batch_signatures) != 1):
+            raise RuntimeError(f"layer {layer} has incomplete exact-layer batches")
+        typical_total_ms = sum(
+            item["median_ms_per_row"] for item in by_stage.values()
         )
         outliers = [
-            {"stage": stage, "median_ms": item["median_ms"], "max_ms": item["max_ms"]}
+            {
+                "stage": stage,
+                "median_ms_per_row": item["median_ms_per_row"],
+                "max_ms_per_row": item["max_ms_per_row"],
+            }
             for stage, item in by_stage.items()
-            if item["median_ms"] > 0 and item["max_ms"] > 5.0 * item["median_ms"]
+            if item["median_ms_per_row"] > 0 and
+               item["max_ms_per_row"] > 5.0 * item["median_ms_per_row"]
         ]
+        batches = next(iter(batch_counts))
+        proposal_rows = next(iter(row_counts))
         summary["layers"][str(layer)] = {
-            "profiled_rows": row_count,
+            "profiled_batches": batches,
+            "profiled_rows": proposal_rows,
             "typical_total_ms_per_row": typical_total_ms,
-            "typical_attention_ms_per_row": typical_attention_ms,
-            "typical_ffn_ms_per_row": typical_ffn_ms,
-            "typical_attention_share": typical_attention_ms / typical_total_ms,
-            "typical_ffn_share": typical_ffn_ms / typical_total_ms,
-            "mean_total_ms_per_row":
-                sum(item["total_ms"] for item in by_stage.values()) / row_count,
+            "typical_attention_pre_ms_per_row":
+                by_stage["attention_pre_batch"]["median_ms_per_row"],
+            "typical_attention_tail_ms_per_row":
+                by_stage["attention_tail_serial"]["median_ms_per_row"],
+            "typical_ffn_ms_per_row":
+                by_stage["ffn_batch"]["median_ms_per_row"],
             "outliers": outliers,
             "stages": by_stage,
         }
@@ -313,26 +330,29 @@ def summarize(records):
 
 def report(summary):
     lines = [
-        "# DSpark Exact Layer Stage Profile", "",
+        "# DSpark Exact Runtime Layer Profile", "",
         "Synchronized diagnostic only. Stage boundaries change scheduling; do not use these values as throughput measurements.",
-        "Typical values sum each stage's median, limiting synchronization/residency outliers.",
-        "", "| layer | rows | typical ms/row | attention | FFN | attention share | FFN share |",
+        "Values are normalized by proposal rows before taking each component median.",
+        "", "| layer | batches | rows | total ms/row | attention prep | serial attention tail | exact FFN |",
         "|---:|---:|---:|---:|---:|---:|---:|",
     ]
     for layer, item in summary["layers"].items():
         lines.append(
-            f"| {layer} | {item['profiled_rows']} | {item['typical_total_ms_per_row']:.3f} | "
-            f"{item['typical_attention_ms_per_row']:.3f} | {item['typical_ffn_ms_per_row']:.3f} | "
-            f"{item['typical_attention_share'] * 100.0:.1f}% | "
-            f"{item['typical_ffn_share'] * 100.0:.1f}% |"
+            f"| {layer} | {item['profiled_batches']} | {item['profiled_rows']} | "
+            f"{item['typical_total_ms_per_row']:.3f} | "
+            f"{item['typical_attention_pre_ms_per_row']:.3f} | "
+            f"{item['typical_attention_tail_ms_per_row']:.3f} | "
+            f"{item['typical_ffn_ms_per_row']:.3f} |"
         )
-    lines.extend(["", "Largest stages by median synchronized time:"])
+    lines.extend(["", "Components by median synchronized time per proposal row:"])
     for layer, item in summary["layers"].items():
         stages = sorted(
-            item["stages"].items(), key=lambda pair: pair[1]["median_ms"], reverse=True
-        )[:5]
+            item["stages"].items(),
+            key=lambda pair: pair[1]["median_ms_per_row"],
+            reverse=True,
+        )
         text = ", ".join(
-            f"{stage} {values['median_ms']:.3f} ms/row"
+            f"{stage} {values['median_ms_per_row']:.3f} ms/row"
             for stage, values in stages
         )
         lines.append(f"- Layer {layer}: {text}")
@@ -346,7 +366,8 @@ def report(summary):
         for layer, outlier in outliers:
             lines.append(
                 f"- Layer {layer} {outlier['stage']}: median "
-                f"{outlier['median_ms']:.3f} ms, max {outlier['max_ms']:.3f} ms"
+                f"{outlier['median_ms_per_row']:.3f} ms/row, max "
+                f"{outlier['max_ms_per_row']:.3f} ms/row"
             )
     return "\n".join(lines) + "\n"
 
@@ -399,7 +420,8 @@ def main():
         "config": {"ctx": args.ctx, "tokens": args.tokens,
                    "layers": args.layers, "cooldown": args.cooldown,
                    "model_layer_count": n_layers,
-                   "temperature": 0, "seed": 1, "synchronized_profile": True},
+                   "temperature": 0, "seed": 1, "synchronized_profile": True,
+                   "components": EXACT_STAGES},
         "commands": {"reference": command_text(args)} | {
             f"layer_{layer}": command_text(args, layer) for layer in args.layers
         },
@@ -446,7 +468,9 @@ def main():
         runs.append(run)
 
     with (run_dir / "stages.csv").open("w", encoding="utf-8", newline="") as fp:
-        writer = csv.DictWriter(fp, fieldnames=("layer", "pos", "tokens", "stage", "ms"))
+        writer = csv.DictWriter(
+            fp, fieldnames=("part", "layer", "pos", "tokens", "stage", "ms")
+        )
         writer.writeheader()
         writer.writerows(records)
     with (run_dir / "runs.csv").open("w", encoding="utf-8", newline="") as fp:

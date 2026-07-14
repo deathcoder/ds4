@@ -186,8 +186,8 @@ transition.
 The exact-FFN soak separately covers 64-token generation, rolling-window state,
 and successful default exact-FFN verification after a resumed sync.
 The exact attention-pre soak covers the same long-generation, rolling-window,
-and resumed-session boundaries while requiring all 43 layers to use the gated
-prepared path without fallback.
+and resumed-session boundaries while requiring all 43 layers to use the
+default prepared path without fallback.
 
 Useful explicit overrides include `--pairs`, `--warmups`, `--cooldown`,
 `--tokens`, and `--output-dir`. Do not compare runs with different settings.
@@ -315,8 +315,8 @@ exact layers, batched heads, serial heads, and residual overhead. It also
 requires byte-identical output and reports successful head batches. Codex does
 not run this command; the user starts it when the machine is ready.
 
-Once target layers are known to dominate, use the synchronized stage profile
-to choose the first exact layer component to microbatch:
+Use the synchronized exact-runtime profile to attribute the remaining promoted
+target-layer work:
 
 ```sh
 python3 speed-bench/run_dspark_exact_layer_profile.py --dry-run
@@ -328,18 +328,19 @@ exact reference followed by exact DSpark runs profiling the first, middle, and
 last layer over 32 generated tokens. For V4 Flash those layers are 0, 21, and
 42. Explicit `--layers` values are rejected before execution when they fall
 outside the inspected model range. Every profiled output must match the
-reference byte-for-byte. The existing decoder
-profiler ends and waits for a Metal command buffer at each stage boundary, so
-its stage values include synchronization overhead and change normal scheduling.
-The exact verifier inserts a profiler-only command-buffer fence before the
-selected layer so its first stage does not absorb queued earlier-layer work.
-Use the attention/FFN shares and largest-stage ordering only to select an
-implementation target; they are not additive production timings, throughput
-results, or a speedup claim. Raw streams, per-stage rows, metadata, and the
+reference byte-for-byte.
+
+At the selected layer, the diagnostic measures the three authoritative
+post-promotion components: batched attention preparation, the unchanged serial
+cache/attention tail across proposal rows, and the exact batched FFN. It fences
+before the layer and after each component, so values include synchronization
+overhead and change normal scheduling. One-token verifier calls are ignored;
+every retained multi-row batch must have all three records with the same start
+and width. The report normalizes each batch by its proposal rows before taking
+component medians. Use the relative component ordering only to select an
+implementation target; these are not additive production timings, throughput
+results, or a speedup claim. Raw streams, component rows, metadata, and the
 summary are written under ignored `speed-bench/local-runs/layer-profile-*`.
-The summary adds each stage's median rather than averaging total rows; isolated
-command-buffer synchronization or residency stalls are reported separately and
-cannot make one stage appear structurally dominant.
 An interrupted run can reuse matching reference and layer files with
 `--resume-dir`; the harness validates the retained command, prompt, context,
-and token count before skipping completed layers.
+token count, and component contract before skipping completed layers.

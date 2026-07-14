@@ -3621,6 +3621,74 @@ bash -n tests/dspark_gpu_candidates_correctness.sh \
 git diff --check
 ```
 
+Phase 0.71 post-promotion exact-runtime profiling prepared on 2026-07-14:
+
+- The user ran the ordinary paired Metal baseline/runtime comparison after the
+  Phase 0.70 promotion. Baseline median was `23.54 t/s`; promoted exact DSpark
+  was `21.60 t/s`, for `0.9176x` ratio of medians and an `8.2%` deficit. The
+  three paired ratios were `0.9171623x`, `0.9171975x`, and `0.9196087x`.
+- Every measured output retained SHA-256
+  `86f4851c044b82fffe568644343670a83ea6815b70c160b5a28a0fb357c52998`.
+  macOS reported no thermal or performance warning; WindowServer and Stats
+  remained visible background activity, but the narrow paired spread makes the
+  remaining deficit unlikely to be interference.
+- Runtime completed all `602/602` exact attention preparations, accepted an
+  average depth of `4.923`, avoided 50 target calls, and had zero verifier
+  fallbacks. Generation sidecar cost was `3.600 ms/emitted`; exact target work
+  was `42.501 ms/emitted`; residual runtime overhead was approximately
+  `0.2 ms/emitted` relative to the observed `46.30 ms/token` runtime total.
+- The result composes with the earlier isolated improvements: the pre-FFN exact
+  ratio `0.8176x`, exact-FFN gain `1.057x`, and attention-pre gain `1.061x`
+  predict about `0.917x`, matching the observed `0.9176x`. Promotion therefore
+  retained both gains; it did not introduce a regression.
+- Raw benchmark artifacts are in
+  `speed-bench/local-runs/20260714-113028/results.csv` and remain ignored. Codex
+  did not run this tok/s benchmark.
+- Audited `run_dspark_exact_layer_profile.py` against the promoted verifier.
+  Its old decode-stage contract expected `attn_hc_pre` plus serial FFN records,
+  but authoritative execution now prepares the attention prefix in one batch,
+  executes only the cache-mutating attention tail serially, and runs exact FFN
+  in one batch. The old parser would therefore fail or misattribute preparation
+  work to the first serial-tail boundary.
+- Added diagnostic-only `DS4_DSPARK_EXACT_LAYER_PROFILE=1` with
+  `DS4_DSPARK_EXACT_LAYER_PROFILE_LAYER=<layer>`. For multi-row exact calls at
+  the selected layer, it fences before the layer and records three synchronized
+  authoritative components: `attention_pre_batch`, `attention_tail_serial`,
+  and `ffn_batch`. One-token verifier calls are deliberately ignored.
+- The new gate requires both promoted runtime components and adds no command
+  fence, timer, or log unless explicitly enabled. Its disabled path performs
+  one environment lookup per exact verifier call, outside the 43-layer loop.
+- Reworked the existing profile harness around those three records. Every batch
+  must contain an identical `(start, width)` triplet across components; missing
+  or fallback work is rejected. Component milliseconds are divided by proposal
+  rows before median aggregation, and the report ranks preparation, serial
+  attention tail, and exact FFN for layers `0,21,42` by default.
+- Resume validation now includes the three-component contract, so an older
+  Phase 0.52 decode-stage directory is rejected before its incompatible layer
+  logs are considered for reuse.
+- The diagnostic remains synchronized and changes scheduling. Its component
+  ordering is only evidence for choosing the next implementation target; its
+  printed generation rate and summed component values are not throughput
+  claims. Codex prepared and dry-ran the harness but did not execute the timed
+  profile.
+
+Phase 0.71 checks:
+
+```sh
+make ds4 ds4_test ds4-server ds4-eval ds4-agent ds4_cpu.o \
+  ds4-warm-prefill-bench
+./ds4_test --dspark-validation --dspark-shape-binding
+DS4_TEST_DSPARK_MODE=runtime \
+  ./tests/dspark_gpu_candidates_correctness.sh
+python3 -m py_compile speed-bench/run_dspark_exact_layer_profile.py
+python3 speed-bench/run_dspark_exact_layer_profile.py \
+  --dry-run --allow-dirty
+# Synthetic records cover normalized medians, report generation, exact batch
+# signatures, resume compatibility, and rejection of an incomplete component
+# triplet.
+git diff --check
+```
+
 Phase 0.52 checks:
 
 ```sh
@@ -3689,12 +3757,12 @@ If continuing from a compacted context, start here:
 
 ## Open Questions
 
-- After the Phase 0.70 promotion is committed, the user should run the ordinary
-  paired Metal baseline/runtime comparison with
-  `python3 speed-bench/run_dspark_comparison.py --confirm-idle`. Confirm that
-  exact attention-pre attempts equal successes in the summary and measure the
-  combined default exact-verifier improvement before choosing the next target
-  or preparing a shareable issue update.
+- The user should run the prepared synchronized component profile with
+  `python3 speed-bench/run_dspark_exact_layer_profile.py --confirm-ready`.
+  Compare the per-row ordering of attention preparation, serial attention tail,
+  and exact FFN across layers `0,21,42`; use that evidence to choose the next
+  optimization boundary. Do not compare the profile's generation rate with the
+  uninstrumented `0.9176x` throughput result.
 - The GPU stage path currently borrows target graph transient batch workspace
   and therefore requires `prefill_cap >= block_size` (five). Decide whether to
   allocate sidecar-specific batch scratch before production enablement or keep
