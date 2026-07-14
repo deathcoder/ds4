@@ -15317,6 +15317,7 @@ static bool metal_graph_profile_router_selection(
 typedef enum {
     METAL_GRAPH_DECODE_LAYER_FULL,
     METAL_GRAPH_DECODE_LAYER_ATTENTION,
+    METAL_GRAPH_DECODE_LAYER_ATTENTION_TAIL,
     METAL_GRAPH_DECODE_LAYER_FFN,
 } metal_graph_decode_layer_part;
 
@@ -15354,6 +15355,10 @@ static bool metal_graph_encode_decode_layer_part(
         attn_factor /= 1.0f + 0.1f * logf(1.0f / freq_scale);
     }
     const bool qkv_rms_fused = !metal_graph_use_reference_qkv_norm();
+    const bool fuse_hc_norm =
+        DS4_N_HC == 4 &&
+        !metal_graph_use_reference_hc_decode() &&
+        !metal_graph_use_reference_hc_norm_decode();
 
     bool ok = true;
     const bool decode_stage_profile = metal_graph_decode_stage_profile_enabled(il);
@@ -15364,13 +15369,12 @@ static bool metal_graph_encode_decode_layer_part(
         } \
     } while (0)
     if (part == METAL_GRAPH_DECODE_LAYER_FFN) goto encode_ffn;
+    if (part == METAL_GRAPH_DECODE_LAYER_ATTENTION_TAIL) {
+        goto encode_attention_tail;
+    }
     if (ok) ok = ds4_gpu_rms_norm_plain_tensor(g->flat_hc, g->cur_hc, (uint32_t)hc_dim, DS4_RMS_EPS) != 0;
     if (ok) ok = metal_graph_matmul_plain_tensor(g->hc_mix, model, layer->hc_attn_fn,
                                                  hc_dim, mix_hc, g->flat_hc, 1);
-    const bool fuse_hc_norm =
-        DS4_N_HC == 4 &&
-        !metal_graph_use_reference_hc_decode() &&
-        !metal_graph_use_reference_hc_norm_decode();
     if (ok && fuse_hc_norm) {
         ok = ds4_gpu_hc_split_weighted_sum_norm_tensor(g->attn_cur,
                                                          g->attn_norm,
@@ -15547,6 +15551,8 @@ static bool metal_graph_encode_decode_layer_part(
                                             compressed ? (uint32_t)DS4_ROPE_ORIG_CTX : 0,
                                             false, freq_base, freq_scale, ext_factor, attn_factor,
                                             DS4_ROPE_YARN_BETA_FAST, DS4_ROPE_YARN_BETA_SLOW) != 0;
+/* Prepared execution joins here; every persistent cache mutation is below. */
+encode_attention_tail:
     if (ok) {
         metal_graph_debug_dump_tensor("KVrope", g->kv, DS4_N_HEAD_DIM, il, pos);
     }
@@ -15992,7 +15998,10 @@ static bool metal_graph_encode_decode_layer_part(
     if (ok) {
         metal_graph_debug_dump_tensor("hc_attn_post", g->after_attn_hc, hc_dim, il, pos);
     }
-    if (part == METAL_GRAPH_DECODE_LAYER_ATTENTION) return ok;
+    if (part == METAL_GRAPH_DECODE_LAYER_ATTENTION ||
+        part == METAL_GRAPH_DECODE_LAYER_ATTENTION_TAIL) {
+        return ok;
+    }
 
 encode_ffn:
     if (ok) ok = ds4_gpu_rms_norm_plain_tensor(g->flat_hc, g->after_attn_hc, (uint32_t)hc_dim, DS4_RMS_EPS) != 0;
@@ -16613,6 +16622,31 @@ static bool metal_graph_encode_decode_layer_attention(
                                                  n_raw,
                                                  token,
                                                  METAL_GRAPH_DECODE_LAYER_ATTENTION);
+}
+
+static bool metal_graph_encode_decode_layer_attention_tail(
+        ds4_gpu_graph          *g,
+        const ds4_model        *model,
+        const ds4_layer_weights *layer,
+        uint32_t                il,
+        uint32_t                pos,
+        ds4_gpu_tensor         *raw_cache,
+        uint32_t                raw_cap,
+        uint32_t                raw_row,
+        uint32_t                n_raw,
+        int                     token) {
+    return metal_graph_encode_decode_layer_part(
+        g,
+        model,
+        layer,
+        il,
+        pos,
+        raw_cache,
+        raw_cap,
+        raw_row,
+        n_raw,
+        token,
+        METAL_GRAPH_DECODE_LAYER_ATTENTION_TAIL);
 }
 
 static bool metal_graph_encode_decode_layer_ffn(
@@ -22452,6 +22486,11 @@ typedef struct {
     uint64_t head_batch_successes;
 } dspark_exact_verify_timing;
 
+typedef struct {
+    uint64_t attn_pre_batch_attempts;
+    uint64_t attn_pre_batch_successes;
+} dspark_exact_verify_outcomes;
+
 static bool dspark_exact_head_batch_observer_enabled(void) {
     const char *v = getenv("DS4_DSPARK_EXACT_HEAD_BATCH_OBSERVER");
     return v && v[0] && strcmp(v, "0") != 0;
@@ -22837,7 +22876,8 @@ static void dspark_exact_attention_pre_batch_observer_report(
             exact ? "exact" : "drift");
 }
 
-static bool metal_graph_matmul_q8_0_decode_rows_shadow(
+/* Preserve one-token Metal Q8 reductions while sharing a command stream. */
+static bool metal_graph_matmul_q8_0_decode_rows(
         ds4_gpu_tensor       *out,
         const ds4_model      *model,
         const ds4_tensor     *weight,
@@ -22875,7 +22915,7 @@ static bool metal_graph_matmul_q8_0_decode_rows_shadow(
 #endif
 }
 
-static bool metal_graph_exact_attention_qkv_shadow(
+static bool metal_graph_exact_attention_qkv_prepare(
         const ds4_model         *model,
         const ds4_layer_weights *layer,
         uint32_t                 il,
@@ -22889,7 +22929,8 @@ static bool metal_graph_exact_attention_qkv_shadow(
         ds4_gpu_tensor          *q_raw,
         ds4_gpu_tensor          *q_norm,
         ds4_gpu_tensor          *q_rope,
-        ds4_gpu_tensor          *kv_rope) {
+        ds4_gpu_tensor          *kv_rope,
+        bool                     capture_boundaries) {
     const uint64_t q_rank = layer->attn_q_a->dim[1];
     const uint64_t q_dim = (uint64_t)DS4_N_HEAD * DS4_N_HEAD_DIM;
     const bool compressed = ds4_layer_compress_ratio(il) != 0;
@@ -22902,7 +22943,11 @@ static bool metal_graph_exact_attention_qkv_shadow(
         attn_factor /= 1.0f + 0.1f * logf(1.0f / freq_scale);
     }
     const bool qkv_rms_fused = !metal_graph_use_reference_qkv_norm();
-    bool ok = metal_graph_matmul_q8_0_decode_rows_shadow(qr,
+    ds4_gpu_tensor *kv_norm_out = capture_boundaries ? kv_norm : kv_rope;
+    ds4_gpu_tensor *q_projection_out = capture_boundaries ? q_raw : q_rope;
+    bool ok = kv_norm_out && q_projection_out &&
+              (!capture_boundaries || (q_norm && q_raw && kv_norm)) &&
+              metal_graph_matmul_q8_0_decode_rows(qr,
                                                           model,
                                                           layer->attn_q_a,
                                                           DS4_N_EMBD,
@@ -22911,7 +22956,7 @@ static bool metal_graph_exact_attention_qkv_shadow(
                                                           n_tokens);
     if (qkv_rms_fused) {
         if (ok) {
-            ok = metal_graph_matmul_q8_0_decode_rows_shadow(
+            ok = metal_graph_matmul_q8_0_decode_rows(
                 kv_raw,
                 model,
                 layer->attn_kv,
@@ -22928,7 +22973,7 @@ static bool metal_graph_exact_attention_qkv_shadow(
                      model->size,
                      layer->attn_q_a_norm->abs_offset,
                      (uint32_t)q_rank,
-                     kv_norm,
+                     kv_norm_out,
                      kv_raw,
                      layer->attn_kv_a_norm->abs_offset,
                      DS4_N_HEAD_DIM,
@@ -22948,7 +22993,7 @@ static bool metal_graph_exact_attention_qkv_shadow(
                      DS4_RMS_EPS) != 0;
         }
         if (ok) {
-            ok = metal_graph_matmul_q8_0_decode_rows_shadow(
+            ok = metal_graph_matmul_q8_0_decode_rows(
                 kv_raw,
                 model,
                 layer->attn_kv,
@@ -22959,7 +23004,7 @@ static bool metal_graph_exact_attention_qkv_shadow(
         }
         if (ok) {
             ok = ds4_gpu_rms_norm_weight_rows_tensor(
-                     kv_norm,
+                     kv_norm_out,
                      kv_raw,
                      model->map,
                      model->size,
@@ -22970,7 +23015,7 @@ static bool metal_graph_exact_attention_qkv_shadow(
         }
     }
     if (ok) {
-        ok = metal_graph_matmul_q8_0_decode_rows_shadow(q_raw,
+        ok = metal_graph_matmul_q8_0_decode_rows(q_projection_out,
                                                          model,
                                                          layer->attn_q_b,
                                                          q_rank,
@@ -22978,24 +23023,24 @@ static bool metal_graph_exact_attention_qkv_shadow(
                                                          qr_norm,
                                                          n_tokens);
     }
-    if (ok) {
+    if (ok && capture_boundaries) {
         ok = ds4_gpu_tensor_copy(q_norm,
                                   0,
-                                  q_raw,
+                                  q_projection_out,
                                   0,
                                   (uint64_t)n_tokens * q_dim * sizeof(float)) != 0 &&
              ds4_gpu_tensor_copy(q_rope,
                                   0,
-                                  q_raw,
+                                  q_projection_out,
                                   0,
                                   (uint64_t)n_tokens * q_dim * sizeof(float)) != 0 &&
              ds4_gpu_tensor_copy(kv_rope,
                                   0,
-                                  kv_norm,
+                                  kv_norm_out,
                                   0,
                                   (uint64_t)n_tokens * DS4_N_HEAD_DIM * sizeof(float)) != 0;
     }
-    if (ok) {
+    if (ok && capture_boundaries) {
         ok = ds4_gpu_head_rms_norm_tensor(q_norm,
                                            n_tokens,
                                            DS4_N_HEAD,
@@ -23066,14 +23111,15 @@ static bool metal_graph_exact_attention_qkv_shadow(
 }
 
 /* Shadow the row-independent attention preparation before any cache write. */
-static bool metal_graph_exact_attention_pre_batch_shadow(
+static bool metal_graph_exact_attention_pre_batch_prepare(
         ds4_gpu_graph          *g,
         const ds4_model        *model,
         const ds4_layer_weights *layer,
         const ds4_gpu_tensor   *input_hc,
         uint32_t                il,
         uint32_t                pos0,
-        uint32_t                n_tokens) {
+        uint32_t                n_tokens,
+        bool                    capture_boundaries) {
     const uint64_t hc_dim = (uint64_t)DS4_N_HC * DS4_N_EMBD;
     const uint64_t mix_hc = 2u * DS4_N_HC + (uint64_t)DS4_N_HC * DS4_N_HC;
     const uint64_t q_rank = layer->attn_q_a->dim[1];
@@ -23094,16 +23140,21 @@ static bool metal_graph_exact_attention_pre_batch_shadow(
         g->batch_kv_raw,
         0,
         (uint64_t)n_tokens * DS4_N_HEAD_DIM * sizeof(float));
-    ds4_gpu_tensor *kv_norm_view = ds4_gpu_tensor_view(
-        g->batch_comp_kv,
-        0,
-        (uint64_t)n_tokens * DS4_N_HEAD_DIM * sizeof(float));
-    ds4_gpu_tensor *q_raw_view = ds4_gpu_tensor_view(
-        g->batch_heads, 0, (uint64_t)n_tokens * q_dim * sizeof(float));
-    ds4_gpu_tensor *q_norm_view = ds4_gpu_tensor_view(
-        g->batch_after_attn_hc,
-        0,
-        (uint64_t)n_tokens * q_dim * sizeof(float));
+    ds4_gpu_tensor *kv_norm_view = capture_boundaries
+        ? ds4_gpu_tensor_view(g->batch_comp_kv,
+                              0,
+                              (uint64_t)n_tokens * DS4_N_HEAD_DIM * sizeof(float))
+        : NULL;
+    ds4_gpu_tensor *q_raw_view = capture_boundaries
+        ? ds4_gpu_tensor_view(g->batch_heads,
+                              0,
+                              (uint64_t)n_tokens * q_dim * sizeof(float))
+        : NULL;
+    ds4_gpu_tensor *q_norm_view = capture_boundaries
+        ? ds4_gpu_tensor_view(g->batch_after_attn_hc,
+                              0,
+                              (uint64_t)n_tokens * q_dim * sizeof(float))
+        : NULL;
     ds4_gpu_tensor *q_rope_view = ds4_gpu_tensor_view(
         g->batch_q, 0, (uint64_t)n_tokens * q_dim * sizeof(float));
     ds4_gpu_tensor *kv_rope_view = ds4_gpu_tensor_view(
@@ -23111,8 +23162,9 @@ static bool metal_graph_exact_attention_pre_batch_shadow(
         0,
         (uint64_t)n_tokens * DS4_N_HEAD_DIM * sizeof(float));
     bool ok = mix_view && split_view && cur_view && qr_view && qr_norm_view &&
-              kv_raw_view && kv_norm_view && q_raw_view && q_norm_view &&
-              q_rope_view && kv_rope_view;
+              kv_raw_view && q_rope_view && kv_rope_view &&
+              (!capture_boundaries ||
+               (kv_norm_view && q_raw_view && q_norm_view));
     if (ok) {
         ok = ds4_gpu_rms_norm_plain_rows_tensor(g->batch_flat_hc,
                                                  input_hc,
@@ -23206,20 +23258,21 @@ static bool metal_graph_exact_attention_pre_batch_shadow(
                  DS4_RMS_EPS) != 0;
     }
     if (ok) {
-        ok = metal_graph_exact_attention_qkv_shadow(model,
-                                                     layer,
-                                                     il,
-                                                     pos0,
-                                                     n_tokens,
-                                                     g->batch_attn_norm,
-                                                     qr_view,
-                                                     qr_norm_view,
-                                                     kv_raw_view,
-                                                     kv_norm_view,
-                                                     q_raw_view,
-                                                     q_norm_view,
-                                                     q_rope_view,
-                                                     kv_rope_view);
+        ok = metal_graph_exact_attention_qkv_prepare(model,
+                                                      layer,
+                                                      il,
+                                                      pos0,
+                                                      n_tokens,
+                                                      g->batch_attn_norm,
+                                                      qr_view,
+                                                      qr_norm_view,
+                                                      kv_raw_view,
+                                                      kv_norm_view,
+                                                      q_raw_view,
+                                                      q_norm_view,
+                                                      q_rope_view,
+                                                      kv_rope_view,
+                                                      capture_boundaries);
     }
     ds4_gpu_tensor_free(kv_rope_view);
     ds4_gpu_tensor_free(q_rope_view);
@@ -23267,20 +23320,21 @@ static bool metal_graph_exact_attention_qkv_rows_shadow(
         ok = attn_norm && qr && qr_norm && kv_raw && kv_norm && q_raw &&
              q_norm && q_rope && kv_rope;
         if (ok) {
-            ok = metal_graph_exact_attention_qkv_shadow(model,
-                                                         layer,
-                                                         il,
-                                                         pos0 + row,
-                                                         1,
-                                                         attn_norm,
-                                                         qr,
-                                                         qr_norm,
-                                                         kv_raw,
-                                                         kv_norm,
-                                                         q_raw,
-                                                         q_norm,
-                                                         q_rope,
-                                                         kv_rope);
+            ok = metal_graph_exact_attention_qkv_prepare(model,
+                                                          layer,
+                                                          il,
+                                                          pos0 + row,
+                                                          1,
+                                                          attn_norm,
+                                                          qr,
+                                                          qr_norm,
+                                                          kv_raw,
+                                                          kv_norm,
+                                                          q_raw,
+                                                          q_norm,
+                                                          q_rope,
+                                                          kv_rope,
+                                                          true);
         }
         ds4_gpu_tensor_free(kv_rope);
         ds4_gpu_tensor_free(q_rope);
@@ -23292,6 +23346,96 @@ static bool metal_graph_exact_attention_qkv_rows_shadow(
         ds4_gpu_tensor_free(qr);
         ds4_gpu_tensor_free(attn_norm);
     }
+    return ok;
+}
+
+static bool metal_graph_encode_exact_attention_prepared_tail(
+        ds4_gpu_graph          *g,
+        const ds4_model        *model,
+        const ds4_layer_weights *layer,
+        uint32_t                il,
+        uint32_t                pos,
+        uint32_t                row,
+        ds4_gpu_tensor         *raw_cache,
+        uint32_t                raw_cap,
+        uint32_t                raw_row,
+        uint32_t                n_raw,
+        int                     token) {
+    const uint64_t mix_hc =
+        2u * DS4_N_HC + (uint64_t)DS4_N_HC * DS4_N_HC;
+    const uint64_t q_rank = layer->attn_q_a->dim[1];
+    const uint64_t q_dim = (uint64_t)DS4_N_HEAD * DS4_N_HEAD_DIM;
+    ds4_gpu_tensor *attn_norm = metal_graph_tensor_row_view(
+        g->batch_attn_norm, row, DS4_N_EMBD);
+    ds4_gpu_tensor *qr_norm = metal_graph_tensor_row_view(
+        g->batch_qr_norm, row, q_rank);
+    ds4_gpu_tensor *q = metal_graph_tensor_row_view(
+        g->batch_q, row, q_dim);
+    ds4_gpu_tensor *kv = metal_graph_tensor_row_view(
+        g->batch_kv, row, DS4_N_HEAD_DIM);
+    ds4_gpu_tensor *hc_split = metal_graph_tensor_row_view(
+        g->batch_hc_split, row, mix_hc);
+    ds4_gpu_tensor *hc_pre = hc_split
+        ? ds4_gpu_tensor_view(hc_split,
+                              0,
+                              (uint64_t)DS4_N_HC * sizeof(float))
+        : NULL;
+    ds4_gpu_tensor *hc_post = hc_split
+        ? ds4_gpu_tensor_view(hc_split,
+                              (uint64_t)DS4_N_HC * sizeof(float),
+                              (uint64_t)DS4_N_HC * sizeof(float))
+        : NULL;
+    ds4_gpu_tensor *hc_comb = hc_split
+        ? ds4_gpu_tensor_view(hc_split,
+                              2u * (uint64_t)DS4_N_HC * sizeof(float),
+                              (uint64_t)DS4_N_HC * DS4_N_HC * sizeof(float))
+        : NULL;
+    bool ok = attn_norm && qr_norm && q && kv && hc_split && hc_pre &&
+              hc_post && hc_comb;
+    ds4_gpu_tensor *saved_attn_norm = g->attn_norm;
+    ds4_gpu_tensor *saved_qr_norm = g->qr_norm;
+    ds4_gpu_tensor *saved_q = g->q;
+    ds4_gpu_tensor *saved_kv = g->kv;
+    ds4_gpu_tensor *saved_hc_split = g->hc_split;
+    ds4_gpu_tensor *saved_hc_pre = g->hc_pre;
+    ds4_gpu_tensor *saved_hc_post = g->hc_post;
+    ds4_gpu_tensor *saved_hc_comb = g->hc_comb;
+    if (ok) {
+        g->attn_norm = attn_norm;
+        g->qr_norm = qr_norm;
+        g->q = q;
+        g->kv = kv;
+        g->hc_split = hc_split;
+        g->hc_pre = hc_pre;
+        g->hc_post = hc_post;
+        g->hc_comb = hc_comb;
+        ok = metal_graph_encode_decode_layer_attention_tail(g,
+                                                             model,
+                                                             layer,
+                                                             il,
+                                                             pos,
+                                                             raw_cache,
+                                                             raw_cap,
+                                                             raw_row,
+                                                             n_raw,
+                                                             token);
+    }
+    g->hc_comb = saved_hc_comb;
+    g->hc_post = saved_hc_post;
+    g->hc_pre = saved_hc_pre;
+    g->hc_split = saved_hc_split;
+    g->kv = saved_kv;
+    g->q = saved_q;
+    g->qr_norm = saved_qr_norm;
+    g->attn_norm = saved_attn_norm;
+    ds4_gpu_tensor_free(hc_comb);
+    ds4_gpu_tensor_free(hc_post);
+    ds4_gpu_tensor_free(hc_pre);
+    ds4_gpu_tensor_free(hc_split);
+    ds4_gpu_tensor_free(kv);
+    ds4_gpu_tensor_free(q);
+    ds4_gpu_tensor_free(qr_norm);
+    ds4_gpu_tensor_free(attn_norm);
     return ok;
 }
 
@@ -23640,9 +23784,12 @@ static bool metal_graph_verify_decode_exact(
         int                  *row_tops,
         float                *last_logits,
         ds4_target_hc_capture *target_capture,
+        bool                  exact_attn_pre_batch,
         bool                  exact_ffn_batch,
-        dspark_exact_verify_timing *timing) {
+        dspark_exact_verify_timing *timing,
+        dspark_exact_verify_outcomes *outcomes) {
     if (timing) memset(timing, 0, sizeof(*timing));
+    if (outcomes) memset(outcomes, 0, sizeof(*outcomes));
     if (!g || !model || !weights || !tokens || !last_logits ||
         n_tokens == 0 || n_tokens > 16u || n_tokens > g->prefill_cap ||
         g->raw_cap == 0 || g->ssd_streaming ||
@@ -23661,6 +23808,8 @@ static bool metal_graph_verify_decode_exact(
         dspark_exact_attention_pre_batch_observer_layer();
     const bool attn_observer_enabled =
         attn_observer_layer >= 0 && n_tokens > 1u;
+    const bool attn_runtime_enabled =
+        exact_attn_pre_batch && !attn_observer_enabled && n_tokens > 1u;
     const int ffn_observer_layer = dspark_exact_ffn_batch_observer_layer();
     const bool ffn_observer_enabled =
         ffn_observer_layer >= 0 && n_tokens > 1u;
@@ -23668,7 +23817,7 @@ static bool metal_graph_verify_decode_exact(
         exact_ffn_batch && !ffn_observer_enabled && n_tokens > 1u;
     const bool split_ffn_enabled = ffn_observer_enabled || ffn_runtime_enabled;
     const bool split_layer_enabled =
-        split_ffn_enabled || attn_observer_enabled;
+        split_ffn_enabled || attn_observer_enabled || attn_runtime_enabled;
     if (timing && ffn_runtime_enabled) timing->ffn_batch_attempts++;
     dspark_exact_attention_pre_batch_observation attn_observation;
     memset(&attn_observation, 0, sizeof(attn_observation));
@@ -23737,7 +23886,8 @@ static bool metal_graph_verify_decode_exact(
             attn_observer_enabled && il == (uint32_t)attn_observer_layer;
         const bool observe_ffn =
             ffn_observer_enabled && il == (uint32_t)ffn_observer_layer;
-        if (!observe_attn && !observe_ffn && !ffn_runtime_enabled) {
+        if (!observe_attn && !observe_ffn && !attn_runtime_enabled &&
+            !ffn_runtime_enabled) {
             for (uint32_t row = 0; ok && row < n_tokens; row++) {
                 const uint32_t pos = start + row;
                 g->cur_hc = cur[row];
@@ -23766,6 +23916,28 @@ static bool metal_graph_verify_decode_exact(
             continue;
         }
 
+        bool attn_runtime_layer = false;
+        if (attn_runtime_enabled) {
+            if (outcomes) outcomes->attn_pre_batch_attempts++;
+            ds4_gpu_tensor *input_hc =
+                (il & 1u) ? g->batch_next_hc : g->batch_cur_hc;
+            attn_runtime_layer = metal_graph_exact_attention_pre_batch_prepare(
+                g,
+                model,
+                &weights->layer[il],
+                input_hc,
+                il,
+                start,
+                n_tokens,
+                false);
+            if (attn_runtime_layer) {
+                if (outcomes) outcomes->attn_pre_batch_successes++;
+            } else {
+                ok = ds4_gpu_end_commands() != 0 &&
+                     ds4_gpu_begin_commands() != 0;
+            }
+        }
+
         bool attn_shadow_ok = false;
         if (observe_attn) {
             if (ok) ok = ds4_gpu_end_commands() != 0;
@@ -23774,14 +23946,15 @@ static bool metal_graph_verify_decode_exact(
                 (il & 1u) ? g->batch_next_hc : g->batch_cur_hc;
             attn_shadow_ok = ok && ds4_gpu_begin_commands() != 0;
             if (attn_shadow_ok) {
-                attn_shadow_ok = metal_graph_exact_attention_pre_batch_shadow(
+                attn_shadow_ok = metal_graph_exact_attention_pre_batch_prepare(
                     g,
                     model,
                     &weights->layer[il],
                     input_hc,
                     il,
                     start,
-                    n_tokens);
+                    n_tokens,
+                    true);
             }
             if (attn_shadow_ok) {
                 attn_shadow_ok = ds4_gpu_end_commands() != 0;
@@ -23922,17 +24095,32 @@ static bool metal_graph_verify_decode_exact(
             const uint32_t pos = start + row;
             g->cur_hc = cur[row];
             g->after_attn_hc = after_attn[row];
-            ok = metal_graph_encode_decode_layer_attention(
-                g,
-                model,
-                &weights->layer[il],
-                il,
-                pos,
-                g->layer_raw_cache[il],
-                g->raw_cap,
-                pos % g->raw_cap,
-                metal_graph_raw_span_for_batch(g, pos, 1),
-                tokens[row]);
+            if (attn_runtime_layer) {
+                ok = metal_graph_encode_exact_attention_prepared_tail(
+                    g,
+                    model,
+                    &weights->layer[il],
+                    il,
+                    pos,
+                    row,
+                    g->layer_raw_cache[il],
+                    g->raw_cap,
+                    pos % g->raw_cap,
+                    metal_graph_raw_span_for_batch(g, pos, 1),
+                    tokens[row]);
+            } else {
+                ok = metal_graph_encode_decode_layer_attention(
+                    g,
+                    model,
+                    &weights->layer[il],
+                    il,
+                    pos,
+                    g->layer_raw_cache[il],
+                    g->raw_cap,
+                    pos % g->raw_cap,
+                    metal_graph_raw_span_for_batch(g, pos, 1),
+                    tokens[row]);
+            }
             if (ok && observe_attn && attn_capture_ok) {
                 const uint64_t hc_offset =
                     (uint64_t)row * hc_dim * sizeof(float);
@@ -32878,6 +33066,12 @@ static bool dspark_session_exact_ffn_batch_enabled(void) {
            (!v || !v[0] || strcmp(v, "0") != 0);
 }
 
+static bool dspark_session_exact_attention_pre_batch_enabled(void) {
+    const char *v = getenv("DS4_DSPARK_EXACT_ATTN_PRE_BATCH");
+    return dspark_session_gpu_runtime_env_enabled() &&
+           v && v[0] && strcmp(v, "0") != 0;
+}
+
 static bool dspark_session_diagnostics_enabled(void) {
     static int initialized;
     static bool enabled;
@@ -33900,6 +34094,12 @@ static bool dspark_session_verify_batch_once(
     dspark_exact_verify_timing timing;
     dspark_exact_verify_timing *timing_out =
         dspark_session_runtime_stats_enabled() ? &timing : NULL;
+    dspark_exact_verify_outcomes outcomes;
+    const bool exact_attn_pre_batch =
+        dspark_session_exact_attention_pre_batch_enabled() &&
+        dspark_exact_attention_pre_batch_observer_layer() < 0;
+    dspark_exact_verify_outcomes *outcomes_out =
+        exact_attn_pre_batch ? &outcomes : NULL;
     const bool exact_ffn_batch =
         dspark_session_exact_ffn_batch_enabled() &&
         dspark_exact_ffn_batch_observer_layer() < 0;
@@ -33912,8 +34112,25 @@ static bool dspark_session_verify_batch_once(
                                                      row_tops,
                                                      last_logits,
                                                      target_capture,
+                                                     exact_attn_pre_batch,
                                                      exact_ffn_batch,
-                                                     timing_out);
+                                                     timing_out,
+                                                     outcomes_out);
+    if (exact_attn_pre_batch && n_tokens > 1u &&
+        dspark_session_diagnostics_enabled()) {
+        const bool complete =
+            outcomes.attn_pre_batch_attempts == DS4_N_LAYER &&
+            outcomes.attn_pre_batch_successes ==
+                outcomes.attn_pre_batch_attempts;
+        fprintf(stderr,
+                "ds4: DSpark exact attention pre batch runtime proposed=%u "
+                "layers=%u attempts=%llu successes=%llu result=%s\n",
+                n_tokens,
+                DS4_N_LAYER,
+                (unsigned long long)outcomes.attn_pre_batch_attempts,
+                (unsigned long long)outcomes.attn_pre_batch_successes,
+                !ok ? "fail" : (complete ? "pass" : "fallback"));
+    }
     if (exact_ffn_batch && n_tokens > 1u &&
         dspark_session_diagnostics_enabled()) {
         fprintf(stderr,
@@ -35974,6 +36191,13 @@ int ds4_session_sync(ds4_session *s, const ds4_tokens *prompt, char *err, size_t
         dspark_session_diagnostics_enabled()) {
         fprintf(stderr,
                 "ds4: DSpark exact FFN batch runtime retained after resumed sync\n");
+    }
+    if (s->checkpoint_valid && s->dspark &&
+        dspark_session_exact_attention_pre_batch_enabled() &&
+        dspark_session_diagnostics_enabled()) {
+        fprintf(stderr,
+                "ds4: DSpark exact attention pre batch runtime retained after "
+                "resumed sync\n");
     }
 #endif
     if (s->distributed) {

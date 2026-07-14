@@ -3434,6 +3434,72 @@ bash -n tests/dspark_gpu_candidates_correctness.sh
 git diff --check
 ```
 
+Phase 0.68 gated exact attention-pre runtime added on 2026-07-14:
+
+- Added opt-in `DS4_DSPARK_EXACT_ATTN_PRE_BATCH=1` for exact multi-row target
+  verification. The gate requires DSpark GPU runtime, applies only when more
+  than one proposal row is verified, and remains disabled by default.
+- Split single-token Metal attention decode at the boundary proven in phases
+  0.66/0.67. Full and attention-only decode still enter at the original start;
+  a new tail-only entry joins immediately before KV quantization/raw-cache
+  storage. Every persistent cache mutation remains below that join point.
+- The gated path prepares HC mixing, attention norm, normalized Q-LoRA state,
+  Q RoPE, and KV RoPE over all proposal rows in one command stream. It then
+  binds row views for those exact artifacts and invokes the unchanged serial
+  tail in original autoregressive row order. Compression, indexer state,
+  attention, output projection, HC expansion, and all raw/compressed cache
+  writes therefore retain their one-token implementation and ordering.
+- Runtime preparation omits observer-only Q-raw/Q-norm copies and all host
+  fences/readbacks. The observer uses the same preparation helper with boundary
+  capture enabled; production uses it with capture disabled.
+- If cache-free preparation cannot encode, the verifier fences the partial
+  scratch-only command stream and resumes the original full serial attention
+  path for that layer. Diagnostics report per-verification layer attempts and
+  successes; strict tests require `layers=43 attempts=43 successes=43
+  result=pass`, so a silent fallback cannot satisfy correctness coverage.
+- A serial-FFN control initially exposed that per-row `after_attn` views were
+  allocated only when FFN splitting was active. Attention batching now requests
+  those views independently. The corrected gated runtime passes with both
+  promoted exact FFN batching and explicit serial FFN.
+- Cache-state equivalence is structural rather than a bulk-cache readback: the
+  prepared Q/KV, attention norm, Q-LoRA norm, and HC weights were already proven
+  byte-identical, and the exact same tail consumes them and performs every
+  persistent mutation in the same row order. Long-generation, rolling-window,
+  and resumed-chat output soaks provide end-to-end coverage of that invariant.
+- Default runtime, the extended attention observer, the existing exact FFN
+  observer, the exact-FFN soak, and the fast-verifier soak all remained exact.
+  This phase makes no speed claim. Codex ran no tok/s benchmark; incidental
+  correctness timings were ignored.
+
+Phase 0.68 checks:
+
+```sh
+DS4_TEST_DSPARK_MODE=runtime \
+  ./tests/dspark_gpu_candidates_correctness.sh
+DS4_TEST_DSPARK_MODE=runtime \
+DS4_TEST_DSPARK_ATTN_PRE_RUNTIME=1 \
+  ./tests/dspark_gpu_candidates_correctness.sh
+DS4_TEST_DSPARK_MODE=runtime \
+DS4_TEST_DSPARK_ATTN_PRE_RUNTIME=1 \
+DS4_TEST_DSPARK_SERIAL_FFN_RUNTIME=1 \
+  ./tests/dspark_gpu_candidates_correctness.sh
+DS4_DSPARK_EXACT_ATTN_PRE_BATCH_OBSERVER_LAYER=42 \
+DS4_TEST_DSPARK_MODE=runtime \
+  ./tests/dspark_gpu_candidates_correctness.sh
+DS4_DSPARK_EXACT_FFN_BATCH_OBSERVER_LAYER=42 \
+DS4_TEST_DSPARK_MODE=runtime \
+  ./tests/dspark_gpu_candidates_correctness.sh
+make ds4 ds4_test ds4-server ds4-eval ds4-agent ds4_cpu.o \
+  ds4-warm-prefill-bench
+./ds4_test --dspark-validation --dspark-shape-binding
+./tests/dspark_exact_attention_pre_batch_runtime_soak.sh
+./tests/dspark_exact_ffn_batch_runtime_soak.sh
+./tests/dspark_fast_verifier_soak.sh
+bash -n tests/dspark_gpu_candidates_correctness.sh \
+  tests/dspark_exact_attention_pre_batch_runtime_soak.sh
+git diff --check
+```
+
 Phase 0.52 checks:
 
 ```sh
@@ -3502,13 +3568,13 @@ If continuing from a compacted context, start here:
 
 ## Open Questions
 
-- Split exact decode attention at the now-proven pre-cache boundary. Behind a
-  new gated runtime, prepare HC/Q/KV rows with the exact batched command stream,
-  then feed each prepared Q/KV row into the unchanged serial tail beginning at
-  KV quantization/raw-cache storage and continuing through compression,
-  indexing, attention, output projection, and HC post-processing. First prove
-  byte-identical outputs and cache state against the current full serial path;
-  only then expose it to a user-run throughput benchmark.
+- Prepare a user-run Metal throughput ablation for the gated exact attention
+  runtime. Compare the current exact verifier (`DS4_DSPARK_EXACT_ATTN_PRE_BATCH`
+  unset) against the same verifier with the gate enabled, with diagnostics and
+  stats disabled during paired throughput samples. Add separate instrumented
+  attribution only if needed, including preparation attempts/successes and
+  time split between batched preparation and the serial tail. Codex must not
+  execute the tok/s benchmark.
 - The GPU stage path currently borrows target graph transient batch workspace
   and therefore requires `prefill_cap >= block_size` (five). Decide whether to
   allocate sidecar-specific batch scratch before production enablement or keep
