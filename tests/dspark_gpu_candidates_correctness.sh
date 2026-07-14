@@ -15,6 +15,7 @@ attn_pre_runtime=${DS4_TEST_DSPARK_ATTN_PRE_RUNTIME:-0}
 runtime_stats=${DS4_TEST_DSPARK_RUNTIME_STATS:-0}
 ffn_batch_observer_layer=${DS4_DSPARK_EXACT_FFN_BATCH_OBSERVER_LAYER:-}
 attn_pre_observer_layer=${DS4_DSPARK_EXACT_ATTN_PRE_BATCH_OBSERVER_LAYER:-}
+attn_suffix_observer_layer=${DS4_DSPARK_EXACT_ATTN_SUFFIX_BATCH_OBSERVER_LAYER:-}
 unset DS4_DSPARK_EXACT_FFN_BATCH
 unset DS4_DSPARK_EXACT_ATTN_PRE_BATCH
 
@@ -26,8 +27,12 @@ if [[ $serial_ffn_runtime == 1 && -n $ffn_batch_observer_layer ]]; then
     printf 'serial FFN runtime and selected-layer observer are mutually exclusive\n' >&2
     exit 2
 fi
-if [[ -n $ffn_batch_observer_layer && -n $attn_pre_observer_layer ]]; then
-    printf 'FFN and attention-pre observers are mutually exclusive\n' >&2
+observer_count=0
+[[ -n $ffn_batch_observer_layer ]] && ((observer_count += 1))
+[[ -n $attn_pre_observer_layer ]] && ((observer_count += 1))
+[[ -n $attn_suffix_observer_layer ]] && ((observer_count += 1))
+if [[ $observer_count -gt 1 ]]; then
+    printf 'selected-layer observers are mutually exclusive\n' >&2
     exit 2
 fi
 if [[ $attn_pre_runtime == 1 && -n $attn_pre_observer_layer ]]; then
@@ -49,6 +54,11 @@ if [[ ($attn_pre_runtime == 1 || $serial_attn_pre_runtime == 1) &&
 fi
 if [[ $runtime_stats == 1 && $mode != runtime ]]; then
     printf 'runtime stats require DS4_TEST_DSPARK_MODE=runtime\n' >&2
+    exit 2
+fi
+if [[ -n $attn_suffix_observer_layer &&
+      ($mode != runtime || $fast_verify_runtime == 1) ]]; then
+    printf 'attention-suffix observer requires exact runtime verification\n' >&2
     exit 2
 fi
 
@@ -233,6 +243,25 @@ assert_gpu_selected() {
                 printf 'exact attention-pre batch observer drifted or fell back at layer %s\n' \
                     "$attn_pre_observer_layer" >&2
                 printf '%s\n' "$attn_records" >&2
+                exit 1
+            fi
+        fi
+        if [[ -n $attn_suffix_observer_layer ]]; then
+            local suffix_records
+            suffix_records=$(grep \
+                "DSpark exact attention suffix batch observer layer=$attn_suffix_observer_layer " \
+                "$log")
+            if printf '%s\n' "$suffix_records" | grep -q 'shadow-fallback'; then
+                printf 'exact attention-suffix batch observer fell back at layer %s\n' \
+                    "$attn_suffix_observer_layer" >&2
+                printf '%s\n' "$suffix_records" >&2
+                exit 1
+            fi
+            if printf '%s\n' "$suffix_records" |
+                grep -Evq ' first=(none|attention_output|hc_post) low_max=0 low_rms=0 attn_out_max=[^ ]+ attn_out_rms=[^ ]+ exact_rows=[0-9]+/[0-9]+ hc_max=[^ ]+ hc_rms=[^ ]+ result=(exact|drift)$'; then
+                printf 'malformed attention-suffix observer record at layer %s\n' \
+                    "$attn_suffix_observer_layer" >&2
+                printf '%s\n' "$suffix_records" >&2
                 exit 1
             fi
         fi

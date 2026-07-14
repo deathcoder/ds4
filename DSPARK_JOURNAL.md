@@ -8,7 +8,16 @@ particular DSpark change exists.
 
 Branch: `codex/dspark-observability-0`
 
-Phase 0.38 remains deliberately diagnostic: `--dspark FILE` validates an official
+Current work is Phase 0.72. The default exact Metal verifier batches the
+row-independent attention preparation and the exact FFN while retaining the
+cache-mutating attention core and output/HC suffix as serial one-token work.
+The Phase 0.71 profile identified that serial tail as the remaining largest
+layer component, especially in later layers. Phase 0.72 adds a selected-layer
+shadow observer for the row-independent suffix only; it does not make the
+generic batch suffix authoritative. The observer proves projection A is
+byte-exact across proposal rows and localizes small drift to projection B.
+
+Historical Phase 0.38 was deliberately diagnostic: `--dspark FILE` validates an official
 DSpark drafter GGUF, binds every tensor needed by a future runtime path, checks
 the expected DeepSeek V4 Flash DSpark shapes, and exposes a diagnostic
 `--dspark-probe` bridge for target-layer hidden-state capture plus
@@ -3689,6 +3698,72 @@ python3 speed-bench/run_dspark_exact_layer_profile.py \
 git diff --check
 ```
 
+Phase 0.72 exact attention-suffix observer completed on 2026-07-14:
+
+- The user-run Phase 0.71 synchronized profile measured the promoted exact
+  runtime at layers `0,21,42`. Attention preparation stayed nearly flat at
+  `0.255/0.263/0.267 ms/row`, exact FFN stayed nearly flat at
+  `0.389/0.398/0.396 ms/row`, while the serial attention tail grew from
+  `0.319` to `0.433` to `0.614 ms/row`. At layer 42 it represented about 48%
+  of the synchronized layer total. These values are diagnostic component
+  timings, not throughput measurements.
+- Added the selected-layer diagnostic
+  `DS4_DSPARK_EXACT_ATTN_SUFFIX_BATCH_OBSERVER_LAYER=<layer>`. It leaves cache
+  writes, compressor/indexer state, attention, and the normal serial suffix
+  authoritative. After each serial row it captures inverse-RoPE heads plus the
+  exact low-rank and output projections. It then shadows the existing generic
+  batched output projection and HC expansion over the same rows, reads the
+  candidate boundaries, restores exact HC bytes, and continues through the
+  default exact FFN batch.
+- The observer does not split or alter the production decoder and performs no
+  work when disabled. Its readbacks, synchronization, host buffers, and HC
+  restore are diagnostic only and must never be used for throughput claims.
+- Extended the DSpark correctness harness to make all three selected-layer
+  observers mutually exclusive, require exact-verifier runtime, reject shadow
+  fallback or malformed records, and require projection A to remain byte-exact
+  (`low_max=0 low_rms=0`). The final batch suffix may report `drift`; generated
+  stdout must still be byte-identical because exact HC is restored before FFN.
+- Correctness matrices passed at layers `0`, `21`, and `42`, including short,
+  medium-context, rolling-window, and resumed-chat cases. The ordinary exact
+  runtime matrix without an observer also passed.
+- At layer 21 the observed projection-B maximum was `1.2e-6` to `2.1e-6`, and
+  final-HC maximum was `4.8e-7` to `9.5e-7`. At layer 42 projection-B maximum
+  was `1.9e-6` to `7.6e-6`, and final-HC maximum was `7.6e-6` to `1.5e-5`.
+  Projection A was byte-exact in every checked record. This localizes the first
+  numerical difference to the batched Q8 projection-B implementation, not the
+  grouped low-rank projection or stateful attention core.
+- `make test` did not pass overall: `think-tool-recovery`,
+  `logprob-vectors`, and `metal-ssd-streaming-cache-pressure` failed in model
+  golden/tool parsing paths outside the changed DSpark exact-verifier path.
+  Long-context, tool-call quality, local golden vectors, short prefill, Metal
+  kernels, Metal tensor equivalence, DSpark validation/shape binding, and
+  server checks passed. The targeted standalone DSpark validation and shape
+  binding test also passed.
+- Codex did not execute a tok/s benchmark.
+
+Phase 0.72 checks:
+
+```sh
+make -j4
+bash -n tests/dspark_gpu_candidates_correctness.sh
+DS4_TEST_DSPARK_MODE=runtime \
+  ./tests/dspark_gpu_candidates_correctness.sh
+DS4_DSPARK_EXACT_ATTN_SUFFIX_BATCH_OBSERVER_LAYER=0 \
+DS4_TEST_DSPARK_MODE=runtime \
+  ./tests/dspark_gpu_candidates_correctness.sh
+DS4_DSPARK_EXACT_ATTN_SUFFIX_BATCH_OBSERVER_LAYER=21 \
+DS4_TEST_DSPARK_MODE=runtime \
+  ./tests/dspark_gpu_candidates_correctness.sh
+DS4_DSPARK_EXACT_ATTN_SUFFIX_BATCH_OBSERVER_LAYER=42 \
+DS4_TEST_DSPARK_MODE=runtime \
+  ./tests/dspark_gpu_candidates_correctness.sh
+./ds4_test --dspark-validation --dspark-shape-binding
+make test
+# Overall failure was limited to the three model-golden/tool checks recorded
+# above; the DSpark-specific and Metal equivalence coverage passed.
+git diff --check
+```
+
 Phase 0.52 checks:
 
 ```sh
@@ -3757,12 +3832,13 @@ If continuing from a compacted context, start here:
 
 ## Open Questions
 
-- The user should run the prepared synchronized component profile with
-  `python3 speed-bench/run_dspark_exact_layer_profile.py --confirm-ready`.
-  Compare the per-row ordering of attention preparation, serial attention tail,
-  and exact FFN across layers `0,21,42`; use that evidence to choose the next
-  optimization boundary. Do not compare the profile's generation rate with the
-  uninstrumented `0.9176x` throughput result.
+- The next suffix experiment should isolate projection B from HC expansion.
+  Projection A is already byte-exact in the generic batch path, while generic
+  projection B differs by only a few float ULPs. Determine whether a batched
+  projection-B kernel can preserve the serial fused kernel's arithmetic order,
+  or whether a narrowly justified tolerance can remain semantically exact
+  through full verifier-output and long-context soaks. Do not promote the
+  current generic suffix merely because its local drift is small.
 - The GPU stage path currently borrows target graph transient batch workspace
   and therefore requires `prefill_cap >= block_size` (five). Decide whether to
   allocate sidecar-specific batch scratch before production enablement or keep
