@@ -16557,7 +16557,7 @@ static int ds4_gpu_encode_fill_f32_rows(
     return 1;
 }
 
-int ds4_gpu_attention_output_q8_batch_tensor(
+static int ds4_gpu_attention_output_q8_batch_impl(
         ds4_gpu_tensor       *out,
         ds4_gpu_tensor       *low,
         ds4_gpu_tensor       *group_tmp,
@@ -16571,11 +16571,14 @@ int ds4_gpu_attention_output_q8_batch_tensor(
         uint32_t                n_groups,
         uint64_t                out_dim,
         const ds4_gpu_tensor *heads,
-        uint32_t                n_tokens) {
+        uint32_t                n_tokens,
+        bool                    output_projection) {
     if (!g_initialized && !ds4_gpu_init()) return 0;
-    if (!out || !low || !group_tmp || !low_tmp || !heads || !model_map ||
-        group_dim == 0 || rank == 0 || n_groups == 0 || out_dim == 0 || n_tokens == 0 ||
-        group_dim > UINT32_MAX || rank > UINT32_MAX || out_dim > UINT32_MAX) {
+    if (!low || !group_tmp || !low_tmp || !heads || !model_map ||
+        group_dim == 0 || rank == 0 || n_groups == 0 || n_tokens == 0 ||
+        group_dim > UINT32_MAX || rank > UINT32_MAX ||
+        (output_projection &&
+         (!out || out_dim == 0 || out_dim > UINT32_MAX))) {
         return 0;
     }
 
@@ -16586,21 +16589,26 @@ int ds4_gpu_attention_output_q8_batch_tensor(
             return 0;
         }
         const uint64_t row_a_bytes = (group_dim / 32u) * 34u;
-        const uint64_t row_b_bytes = (low_dim / 32u) * 34u;
+        const uint64_t row_b_bytes = output_projection ?
+            (low_dim / 32u) * 34u : 0u;
         const uint64_t out_a_bytes = (uint64_t)n_groups * rank * row_a_bytes;
-        const uint64_t out_b_bytes = out_dim * row_b_bytes;
+        const uint64_t out_b_bytes = output_projection ?
+            out_dim * row_b_bytes : 0u;
         if (out_a_offset > model_size || out_a_bytes > model_size - out_a_offset ||
-            out_b_offset > model_size || out_b_bytes > model_size - out_b_offset) {
+            (output_projection &&
+             (out_b_offset > model_size ||
+              out_b_bytes > model_size - out_b_offset))) {
             fprintf(stderr, "ds4: Metal attention output batch weights are outside the mapped model\n");
             return 0;
         }
 
         const uint64_t heads_bytes = (uint64_t)n_tokens * n_groups * group_dim * sizeof(float);
         const uint64_t low_bytes = (uint64_t)n_tokens * low_dim * sizeof(float);
-        const uint64_t out_bytes = (uint64_t)n_tokens * out_dim * sizeof(float);
+        const uint64_t out_bytes = output_projection ?
+            (uint64_t)n_tokens * out_dim * sizeof(float) : 0u;
         if (ds4_gpu_tensor_bytes(heads) < heads_bytes ||
             ds4_gpu_tensor_bytes(low) < low_bytes ||
-            ds4_gpu_tensor_bytes(out) < out_bytes) {
+            (output_projection && ds4_gpu_tensor_bytes(out) < out_bytes)) {
             fprintf(stderr, "ds4: Metal attention output batch received undersized buffers\n");
             return 0;
         }
@@ -16883,12 +16891,14 @@ int ds4_gpu_attention_output_q8_batch_tensor(
         }
         DS4_METAL_PROFILE_ATTN_OUT_STAGE("low_proj");
 
-        if (ok) {
+        if (ok && output_projection) {
             ok = ds4_gpu_matmul_q8_0_tensor(out, model_map, model_size,
                                               out_b_offset,
                                               low_dim, out_dim, low, n_tokens) != 0;
         }
-        DS4_METAL_PROFILE_ATTN_OUT_STAGE("out_proj");
+        if (output_projection) {
+            DS4_METAL_PROFILE_ATTN_OUT_STAGE("out_proj");
+        }
 
         if (!had_batch) {
             ok = ds4_gpu_end_commands() != 0 && ok;
@@ -16896,6 +16906,67 @@ int ds4_gpu_attention_output_q8_batch_tensor(
 #undef DS4_METAL_PROFILE_ATTN_OUT_STAGE
         return ok ? 1 : 0;
     }
+}
+
+int ds4_gpu_attention_output_q8_batch_tensor(
+        ds4_gpu_tensor       *out,
+        ds4_gpu_tensor       *low,
+        ds4_gpu_tensor       *group_tmp,
+        ds4_gpu_tensor       *low_tmp,
+        const void             *model_map,
+        uint64_t                model_size,
+        uint64_t                out_a_offset,
+        uint64_t                out_b_offset,
+        uint64_t                group_dim,
+        uint64_t                rank,
+        uint32_t                n_groups,
+        uint64_t                out_dim,
+        const ds4_gpu_tensor *heads,
+        uint32_t                n_tokens) {
+    return ds4_gpu_attention_output_q8_batch_impl(out,
+                                                   low,
+                                                   group_tmp,
+                                                   low_tmp,
+                                                   model_map,
+                                                   model_size,
+                                                   out_a_offset,
+                                                   out_b_offset,
+                                                   group_dim,
+                                                   rank,
+                                                   n_groups,
+                                                   out_dim,
+                                                   heads,
+                                                   n_tokens,
+                                                   true);
+}
+
+int ds4_gpu_attention_output_low_q8_batch_tensor(
+        ds4_gpu_tensor       *low,
+        ds4_gpu_tensor       *group_tmp,
+        ds4_gpu_tensor       *low_tmp,
+        const void             *model_map,
+        uint64_t                model_size,
+        uint64_t                out_a_offset,
+        uint64_t                group_dim,
+        uint64_t                rank,
+        uint32_t                n_groups,
+        const ds4_gpu_tensor *heads,
+        uint32_t                n_tokens) {
+    return ds4_gpu_attention_output_q8_batch_impl(NULL,
+                                                   low,
+                                                   group_tmp,
+                                                   low_tmp,
+                                                   model_map,
+                                                   model_size,
+                                                   out_a_offset,
+                                                   0,
+                                                   group_dim,
+                                                   rank,
+                                                   n_groups,
+                                                   0,
+                                                   heads,
+                                                   n_tokens,
+                                                   false);
 }
 
 int ds4_gpu_attention_output_q8_batch_f16_tensor(

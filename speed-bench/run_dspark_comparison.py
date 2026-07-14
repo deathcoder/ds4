@@ -42,6 +42,8 @@ RUNTIME_STATS_INT_FIELDS = {
     "exact_ffn_batch_successes",
     "exact_attn_pre_batch_attempts",
     "exact_attn_pre_batch_successes",
+    "exact_attn_suffix_batch_attempts",
+    "exact_attn_suffix_batch_successes",
     "depth1",
     "depth2",
     "depth3",
@@ -129,6 +131,11 @@ def parse_args():
         action="store_true",
         help="compare serial attention preparation against default exact DSpark",
     )
+    parser.add_argument(
+        "--attention-suffix-ablation",
+        action="store_true",
+        help="compare default exact DSpark against exact attention-suffix batching",
+    )
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
 
@@ -142,12 +149,13 @@ def parse_args():
             args.fast_verifier,
             args.serial_ffn_ablation,
             args.attention_pre_ablation,
+            args.attention_suffix_ablation,
         )
     )
     if selected_modes > 1:
         parser.error(
-            "--fast-verifier, --serial-ffn-ablation, and "
-            "--attention-pre-ablation are mutually exclusive"
+            "--fast-verifier, --serial-ffn-ablation, --attention-pre-ablation, "
+            "and --attention-suffix-ablation are mutually exclusive"
         )
     if not args.confirm_idle and not args.dry_run:
         parser.error("refusing to benchmark without --confirm-idle")
@@ -191,6 +199,8 @@ def check_inputs(args, root):
 
 
 def benchmark_modes(args):
+    if args.attention_suffix_ablation:
+        return ("default_exact", "batch_attention_suffix")
     if args.attention_pre_ablation:
         return ("serial_attention_pre", "default_exact")
     if args.serial_ffn_ablation:
@@ -207,11 +217,16 @@ def mode_label(mode, args):
         "serial_exact": "Serial exact DSpark",
         "serial_attention_pre": "Serial attention-pre DSpark",
         "default_exact": "Default exact DSpark",
+        "batch_attention_suffix": "Exact attention-suffix batch DSpark",
     }[mode]
 
 
 def throughput_runtime_stats_enabled(args):
-    return not (args.serial_ffn_ablation or args.attention_pre_ablation)
+    return not (
+        args.serial_ffn_ablation
+        or args.attention_pre_ablation
+        or args.attention_suffix_ablation
+    )
 
 
 def clean_dspark_env(mode, fast_verifier=False, runtime_stats=True):
@@ -229,6 +244,8 @@ def clean_dspark_env(mode, fast_verifier=False, runtime_stats=True):
             env["DS4_DSPARK_EXACT_FFN_BATCH"] = "0"
         if mode == "serial_attention_pre":
             env["DS4_DSPARK_EXACT_ATTN_PRE_BATCH"] = "0"
+        if mode == "batch_attention_suffix":
+            env["DS4_DSPARK_EXACT_ATTN_SUFFIX_BATCH"] = "1"
     return env
 
 
@@ -253,7 +270,7 @@ def common_command(args):
 
 def mode_command(args, mode):
     command = common_command(args)
-    if args.attention_pre_ablation:
+    if args.attention_pre_ablation or args.attention_suffix_ablation:
         command[1:1] = ("--backend", "metal")
     if mode != "baseline":
         command.extend(("--dspark", str(args.dspark_model.resolve())))
@@ -274,6 +291,8 @@ def command_text(args, mode, runtime_stats=None):
             env += "DS4_DSPARK_EXACT_FFN_BATCH=0 "
         if mode == "serial_attention_pre":
             env += "DS4_DSPARK_EXACT_ATTN_PRE_BATCH=0 "
+        if mode == "batch_attention_suffix":
+            env += "DS4_DSPARK_EXACT_ATTN_SUFFIX_BATCH=1 "
     return env + shlex.join(mode_command(args, mode))
 
 
@@ -423,6 +442,7 @@ def collect_metadata(args, root):
             "fast_verifier": args.fast_verifier,
             "serial_ffn_ablation": args.serial_ffn_ablation,
             "attention_pre_ablation": args.attention_pre_ablation,
+            "attention_suffix_ablation": args.attention_suffix_ablation,
             "temperature": 0,
             "seed": 1,
         },
@@ -458,12 +478,16 @@ def summarize(rows, modes=("baseline", "runtime")):
     candidate_median = statistics.median(candidate)
     summary = {
         "comparison": (
-            "attention_pre_ablation"
-            if modes == ("serial_attention_pre", "default_exact")
+            "attention_suffix_ablation"
+            if modes == ("default_exact", "batch_attention_suffix")
             else (
-                "serial_ffn_ablation"
-                if modes == ("serial_exact", "runtime")
-                else "baseline_runtime"
+                "attention_pre_ablation"
+                if modes == ("serial_attention_pre", "default_exact")
+                else (
+                    "serial_ffn_ablation"
+                    if modes == ("serial_exact", "runtime")
+                    else "baseline_runtime"
+                )
             )
         ),
         "reference_mode": reference_mode,
@@ -490,6 +514,15 @@ def summarize(rows, modes=("baseline", "runtime")):
             "default_exact_generation_tps_median": candidate_median,
             "default_exact_attention_pre_generation_tps_median": candidate_median,
             "default_exact_attention_pre_delta_percent":
+                (candidate_median / reference_median - 1.0) * 100.0,
+        })
+        return summary
+
+    if modes == ("default_exact", "batch_attention_suffix"):
+        summary.update({
+            "default_exact_generation_tps_median": reference_median,
+            "batch_attention_suffix_generation_tps_median": candidate_median,
+            "batch_attention_suffix_delta_percent":
                 (candidate_median / reference_median - 1.0) * 100.0,
         })
         return summary
@@ -544,6 +577,12 @@ def summarize(rows, modes=("baseline", "runtime")):
         "runtime_exact_attn_pre_batch_successes_median": runtime_median(
             "stats_exact_attn_pre_batch_successes"
         ),
+        "runtime_exact_attn_suffix_batch_attempts_median": runtime_median(
+            "stats_exact_attn_suffix_batch_attempts"
+        ),
+        "runtime_exact_attn_suffix_batch_successes_median": runtime_median(
+            "stats_exact_attn_suffix_batch_successes"
+        ),
     })
     for component in ("bridge", "stage0", "stage1", "stage2", "head", "chain"):
         summary[f"runtime_{component}_ms_per_emitted_median"] = runtime_ratio(
@@ -553,6 +592,20 @@ def summarize(rows, modes=("baseline", "runtime")):
 
 
 def format_report(summary):
+    if summary["comparison"] == "attention_suffix_ablation":
+        return (
+            "# DSpark Exact Attention Suffix Batch Ablation\n\n"
+            f"- Default exact median: "
+            f"{summary['default_exact_generation_tps_median']:.2f} t/s\n"
+            f"- Exact attention-suffix batch median: "
+            f"{summary['batch_attention_suffix_generation_tps_median']:.2f} t/s\n"
+            f"- Ratio of medians: {summary['median_ratio_of_medians']:.4f}x\n"
+            f"- Median paired ratio: {summary['paired_speedup_median']:.4f}x\n"
+            f"- Exact attention-suffix batch delta: "
+            f"{summary['batch_attention_suffix_delta_percent']:+.1f}%\n"
+            f"- Measured pairs: {len(summary['paired_speedup_values'])}\n"
+        )
+
     if summary["comparison"] == "serial_ffn_ablation":
         return (
             "# DSpark Serial FFN Control Ablation\n\n"
@@ -614,6 +667,9 @@ def format_report(summary):
         f"- Runtime exact attention-pre outcomes: "
         f"{summary['runtime_exact_attn_pre_batch_successes_median']:.1f}/"
         f"{summary['runtime_exact_attn_pre_batch_attempts_median']:.1f} successful\n"
+        f"- Runtime exact attention-suffix outcomes: "
+        f"{summary['runtime_exact_attn_suffix_batch_successes_median']:.1f}/"
+        f"{summary['runtime_exact_attn_suffix_batch_attempts_median']:.1f} successful\n"
         f"- Generation sidecar breakdown / emitted token: "
         f"bridge {summary['runtime_bridge_ms_per_emitted_median']:.3f} ms, "
         f"stages {summary['runtime_stage0_ms_per_emitted_median']:.3f}/"

@@ -12,12 +12,14 @@ serial_ffn_runtime=${DS4_TEST_DSPARK_SERIAL_FFN_RUNTIME:-0}
 serial_attn_pre_runtime=${DS4_TEST_DSPARK_SERIAL_ATTN_PRE_RUNTIME:-0}
 # Compatibility switch retained for Phase 0.68 commands; the path is now default.
 attn_pre_runtime=${DS4_TEST_DSPARK_ATTN_PRE_RUNTIME:-0}
+attn_suffix_runtime=${DS4_TEST_DSPARK_ATTN_SUFFIX_RUNTIME:-0}
 runtime_stats=${DS4_TEST_DSPARK_RUNTIME_STATS:-0}
 ffn_batch_observer_layer=${DS4_DSPARK_EXACT_FFN_BATCH_OBSERVER_LAYER:-}
 attn_pre_observer_layer=${DS4_DSPARK_EXACT_ATTN_PRE_BATCH_OBSERVER_LAYER:-}
 attn_suffix_observer_layer=${DS4_DSPARK_EXACT_ATTN_SUFFIX_BATCH_OBSERVER_LAYER:-}
 unset DS4_DSPARK_EXACT_FFN_BATCH
 unset DS4_DSPARK_EXACT_ATTN_PRE_BATCH
+unset DS4_DSPARK_EXACT_ATTN_SUFFIX_BATCH
 
 if [[ $fast_verify_observer == 1 && $fast_verify_runtime == 1 ]]; then
     printf 'fast verifier observer and runtime modes are mutually exclusive\n' >&2
@@ -35,6 +37,10 @@ if [[ $observer_count -gt 1 ]]; then
     printf 'selected-layer observers are mutually exclusive\n' >&2
     exit 2
 fi
+if [[ $attn_suffix_runtime == 1 && $observer_count -ne 0 ]]; then
+    printf 'attention-suffix runtime and selected-layer observers are mutually exclusive\n' >&2
+    exit 2
+fi
 if [[ $attn_pre_runtime == 1 && -n $attn_pre_observer_layer ]]; then
     printf 'attention-pre runtime and observer are mutually exclusive\n' >&2
     exit 2
@@ -50,6 +56,12 @@ fi
 if [[ ($attn_pre_runtime == 1 || $serial_attn_pre_runtime == 1) &&
       ($mode != runtime || $fast_verify_runtime == 1) ]]; then
     printf 'attention-pre controls require exact runtime verification\n' >&2
+    exit 2
+fi
+if [[ $attn_suffix_runtime == 1 &&
+      ($mode != runtime || $fast_verify_runtime == 1 ||
+       $serial_attn_pre_runtime == 1) ]]; then
+    printf 'attention-suffix runtime requires exact verification with attention-pre batching\n' >&2
     exit 2
 fi
 if [[ $runtime_stats == 1 && $mode != runtime ]]; then
@@ -81,6 +93,9 @@ case "$mode" in
         if [[ $serial_attn_pre_runtime == 1 ]]; then
             gpu_env+=(DS4_DSPARK_EXACT_ATTN_PRE_BATCH=0)
         fi
+        if [[ $attn_suffix_runtime == 1 ]]; then
+            gpu_env+=(DS4_DSPARK_EXACT_ATTN_SUFFIX_BATCH=1)
+        fi
         if [[ $runtime_stats == 1 ]]; then
             gpu_env+=(DS4_DSPARK_GPU_RUNTIME_STATS=1)
         fi
@@ -99,6 +114,12 @@ if [[ $mode == runtime && $serial_ffn_runtime != 1 &&
     if [[ $fast_verify_runtime != 1 ]]; then
         exact_ffn_expected=1
     fi
+fi
+
+exact_attn_suffix_expected=0
+if [[ $mode == runtime && $attn_suffix_runtime == 1 &&
+      $fast_verify_runtime != 1 ]]; then
+    exact_attn_suffix_expected=1
 fi
 
 exact_attn_pre_allowed=0
@@ -181,9 +202,24 @@ assert_gpu_selected() {
             printf 'control mode unexpectedly ran exact attention-pre batching\n' >&2
             exit 1
         fi
+        if [[ $exact_attn_suffix_expected == 1 ]]; then
+            local suffix_runtime_records
+            suffix_runtime_records=$(grep \
+                'DSpark exact attention suffix batch runtime proposed=' "$log")
+            if printf '%s\n' "$suffix_runtime_records" |
+                grep -Evq ' layers=43 attempts=43 successes=43 result=pass$'; then
+                printf 'exact attention-suffix runtime drifted or fell back\n' >&2
+                printf '%s\n' "$suffix_runtime_records" >&2
+                exit 1
+            fi
+        elif grep -q 'DSpark exact attention suffix batch runtime ' "$log"; then
+            printf 'control mode unexpectedly ran exact attention-suffix batching\n' >&2
+            exit 1
+        fi
         if [[ $runtime_stats == 1 ]]; then
             local stats_record outcomes attempts successes
             local attn_outcomes attn_attempts attn_successes
+            local suffix_outcomes suffix_attempts suffix_successes
             if [[ $(grep -c '^ds4: DSpark runtime stats ' "$log") -ne 1 ]]; then
                 printf 'expected exactly one DSpark runtime stats record\n' >&2
                 exit 1
@@ -223,6 +259,24 @@ assert_gpu_selected() {
                 fi
             elif [[ $attn_attempts -ne 0 || $attn_successes -ne 0 ]]; then
                 printf 'control mode unexpectedly recorded attention-pre outcomes\n' >&2
+                exit 1
+            fi
+            suffix_outcomes=$(printf '%s\n' "$stats_record" | sed -n \
+                's/.* exact_attn_suffix_batch_attempts=\([0-9][0-9]*\) exact_attn_suffix_batch_successes=\([0-9][0-9]*\) .*/\1 \2/p')
+            if [[ -z $suffix_outcomes ]]; then
+                printf 'DSpark runtime stats omitted exact attention-suffix outcomes\n' >&2
+                exit 1
+            fi
+            read -r suffix_attempts suffix_successes <<<"$suffix_outcomes"
+            if [[ $exact_attn_suffix_expected == 1 ]]; then
+                if [[ $suffix_successes -ne $suffix_attempts ||
+                      $suffix_attempts -eq 0 ]]; then
+                    printf 'exact attention-suffix outcomes were %s/%s successful\n' \
+                        "$suffix_successes" "$suffix_attempts" >&2
+                    exit 1
+                fi
+            elif [[ $suffix_attempts -ne 0 || $suffix_successes -ne 0 ]]; then
+                printf 'control mode unexpectedly recorded attention-suffix outcomes\n' >&2
                 exit 1
             fi
         fi

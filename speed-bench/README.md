@@ -48,6 +48,10 @@ python3 speed-bench/run_dspark_comparison.py \
   --dry-run --attention-pre-ablation
 python3 speed-bench/run_dspark_comparison.py \
   --confirm-idle --attention-pre-ablation
+python3 speed-bench/run_dspark_comparison.py \
+  --dry-run --attention-suffix-ablation
+python3 speed-bench/run_dspark_comparison.py \
+  --confirm-idle --attention-suffix-ablation
 python3 speed-bench/run_dspark_exact_ffn_batch_profile.py --dry-run
 python3 speed-bench/run_dspark_exact_ffn_batch_profile.py --confirm-ready
 ```
@@ -83,6 +87,13 @@ cache-mutating attention tail serially in autoregressive row order. Set
 attention path as a diagnostic control. The selected-layer attention-pre
 observer keeps the batched preparation non-authoritative for the observed
 call.
+
+The exact attention suffix candidate is opt-in through
+`DS4_DSPARK_EXACT_ATTN_SUFFIX_BATCH=1`. It preserves the serial, autoregressive
+cache and attention core through inverse RoPE, then batches projection A and
+the exact fused projection-B/HC expansion across proposal rows. A failed batch
+attempt replays only that stateless suffix with the ordinary one-row kernels.
+The default exact runtime remains unchanged while this candidate is evaluated.
 
 `--fast-verifier` additionally sets
 `DS4_DSPARK_FAST_BATCH_VERIFY=1`. This is deliberately opt-in: it makes the
@@ -126,6 +137,14 @@ delta.
 This mode is mutually exclusive with `--fast-verifier` and
 `--serial-ffn-ablation`. It measures only the exact verifier path; the fast
 verifier has its own preparation and is not part of this ablation.
+
+`--attention-suffix-ablation` is an uninstrumented paired pass comparing the
+promoted default exact runtime against the opt-in exact attention-suffix batch
+candidate. Both modes use the same sidecar, attention preparation, FFN path,
+prompt, and acceptance policy. Diagnostics and runtime stats are disabled,
+stdout must remain byte-identical, and pair order alternates default/candidate
+then candidate/default. This mode is mutually exclusive with every other
+ablation and `--fast-verifier`.
 
 After an uninstrumented serial-FFN ablation, use
 `run_dspark_exact_ffn_batch_profile.py` as a separate attribution pass. It
@@ -176,6 +195,7 @@ The non-performance correctness soak is user-independent and may be run with:
 ./tests/dspark_fast_verifier_soak.sh
 ./tests/dspark_exact_ffn_batch_runtime_soak.sh
 ./tests/dspark_exact_attention_pre_batch_runtime_soak.sh
+./tests/dspark_exact_attention_suffix_batch_runtime_soak.sh
 ```
 
 It compares baseline and fast output across 64-token multi-cycle generation,
@@ -188,6 +208,8 @@ and successful default exact-FFN verification after a resumed sync.
 The exact attention-pre soak covers the same long-generation, rolling-window,
 and resumed-session boundaries while requiring all 43 layers to use the
 default prepared path without fallback.
+The exact attention-suffix soak covers those boundaries with the opt-in suffix
+candidate and requires every layer attempt to complete without serial fallback.
 
 Useful explicit overrides include `--pairs`, `--warmups`, `--cooldown`,
 `--tokens`, and `--output-dir`. Do not compare runs with different settings.

@@ -3821,6 +3821,73 @@ DS4_TEST_DSPARK_MODE=runtime \
 git diff --check
 ```
 
+Phase 0.74 opt-in exact attention-suffix batch runtime completed on
+2026-07-14:
+
+- Refactored the Metal attention-output batch implementation through a shared
+  internal helper and exported
+  `ds4_gpu_attention_output_low_q8_batch_tensor`. The new entry point performs
+  projection A only; it does not redundantly execute generic projection B.
+  The existing full projection API retains its command-buffer composition and
+  behavior.
+- Split the exact serial attention decoder at the post-inverse-RoPE boundary.
+  The cache-mutating attention core remains serial and autoregressive. A new
+  output-only part can replay projection A, projection B, and HC expansion from
+  captured exact head rows without touching KV, compressor, or indexer state.
+- Added the opt-in `DS4_DSPARK_EXACT_ATTN_SUFFIX_BATCH=1` runtime. With default
+  exact attention preparation enabled, each layer runs its stateful core
+  serially, captures the exact head rows, runs row-batched projection A, and
+  completes exact fused projection-B/HC expansion with the Phase 0.73 kernel.
+  The promoted default exact runtime is unchanged.
+- If the batch suffix is unavailable or fails, the verifier closes the current
+  command batch and replays only the stateless suffix with the ordinary serial
+  kernels. A forced reference-HC test exercised all 43 fallbacks and remained
+  byte-identical to the exact control.
+- Added attempt/success diagnostics and end-of-session stats for the suffix
+  candidate. The correctness harness can require the opt-in runtime and checks
+  that every reported verifier call completes all 43 layers without fallback.
+- Added a dedicated long-generation, rolling-window, resumed-chat, and forced-
+  fallback soak. The selected-layer observer still reports byte-exact
+  projection A, projection B, and HC output at layers 0, 21, and 42 after the
+  projection-A refactor.
+- Added `--attention-suffix-ablation` to the user-run benchmark harness. It is
+  an uninstrumented paired comparison of default exact DSpark against the
+  opt-in suffix candidate, forces Metal, clears inherited DSpark diagnostics
+  and stats, and requires byte-identical output. Codex only exercised dry-run
+  command generation and synthetic summary formatting.
+- Codex did not execute a tok/s benchmark.
+
+Phase 0.74 checks:
+
+```sh
+make -j4
+make ds4_cpu.o ds4_test
+python3 -m py_compile speed-bench/run_dspark_comparison.py
+bash -n tests/dspark_gpu_candidates_correctness.sh \
+  tests/dspark_exact_attention_suffix_batch_runtime_soak.sh
+python3 speed-bench/run_dspark_comparison.py \
+  --dry-run --allow-dirty --attention-suffix-ablation
+DS4_TEST_DSPARK_MODE=runtime \
+DS4_TEST_DSPARK_ATTN_SUFFIX_RUNTIME=1 \
+  ./tests/dspark_gpu_candidates_correctness.sh
+DS4_TEST_DSPARK_MODE=runtime \
+DS4_TEST_DSPARK_ATTN_SUFFIX_RUNTIME=1 \
+DS4_TEST_DSPARK_RUNTIME_STATS=1 \
+  ./tests/dspark_gpu_candidates_correctness.sh
+DS4_DSPARK_EXACT_ATTN_SUFFIX_BATCH_OBSERVER_LAYER=0 \
+DS4_TEST_DSPARK_MODE=runtime \
+  ./tests/dspark_gpu_candidates_correctness.sh
+DS4_DSPARK_EXACT_ATTN_SUFFIX_BATCH_OBSERVER_LAYER=21 \
+DS4_TEST_DSPARK_MODE=runtime \
+  ./tests/dspark_gpu_candidates_correctness.sh
+DS4_DSPARK_EXACT_ATTN_SUFFIX_BATCH_OBSERVER_LAYER=42 \
+DS4_TEST_DSPARK_MODE=runtime \
+  ./tests/dspark_gpu_candidates_correctness.sh
+./tests/dspark_exact_attention_suffix_batch_runtime_soak.sh
+./ds4_test --dspark-validation --dspark-shape-binding
+git diff --check
+```
+
 Phase 0.52 checks:
 
 ```sh
@@ -3889,12 +3956,10 @@ If continuing from a compacted context, start here:
 
 ## Open Questions
 
-- Before a suffix runtime ablation, expose the existing exact direct projection
-  A batch work without also running generic projection B. Compose that
-  projection-A-only primitive with the exact fused row-batched projection-B/HC
-  kernel behind a separate runtime switch, add attempt/success diagnostics,
-  and prepare an uninstrumented paired benchmark for the user. Do not benchmark
-  the current observer, which intentionally computes projection B and HC twice.
+- The exact attention-suffix candidate is ready for the user-run uninstrumented
+  paired ablation. Run `python3 speed-bench/run_dspark_comparison.py
+  --confirm-idle --attention-suffix-ablation`; do not promote the opt-in runtime
+  until its throughput result is understood.
 - The GPU stage path currently borrows target graph transient batch workspace
   and therefore requires `prefill_cap >= block_size` (five). Decide whether to
   allocate sidecar-specific batch scratch before production enablement or keep

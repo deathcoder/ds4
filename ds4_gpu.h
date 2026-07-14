@@ -779,6 +779,19 @@ int ds4_gpu_attention_output_q8_batch_tensor(
         const ds4_gpu_tensor *heads,
         uint32_t                n_tokens);
 
+int ds4_gpu_attention_output_low_q8_batch_tensor(
+        ds4_gpu_tensor       *low,
+        ds4_gpu_tensor       *group_tmp,
+        ds4_gpu_tensor       *low_tmp,
+        const void             *model_map,
+        uint64_t                model_size,
+        uint64_t                out_a_offset,
+        uint64_t                group_dim,
+        uint64_t                rank,
+        uint32_t                n_groups,
+        const ds4_gpu_tensor *heads,
+        uint32_t                n_tokens);
+
 int ds4_gpu_attention_output_q8_batch_f16_tensor(
         ds4_gpu_tensor       *out_h,
         ds4_gpu_tensor       *low,
