@@ -157,7 +157,8 @@ assert_gpu_selected() {
         if [[ -n $attn_pre_observer_layer ]]; then
             local attn_records
             attn_records=$(grep "DSpark exact attention pre batch observer layer=$attn_pre_observer_layer " "$log")
-            if printf '%s\n' "$attn_records" | grep -Evq ' first=none .* result=exact$'; then
+            if printf '%s\n' "$attn_records" |
+                grep -Evq ' first=none.* q_rope_max=0.* kv_rope_max=0.* result=exact$'; then
                 printf 'exact attention-pre batch observer drifted or fell back at layer %s\n' \
                     "$attn_pre_observer_layer" >&2
                 printf '%s\n' "$attn_records" >&2

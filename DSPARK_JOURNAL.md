@@ -3375,6 +3375,65 @@ bash -n tests/dspark_gpu_candidates_correctness.sh
 git diff --check
 ```
 
+Phase 0.67 exact Q/KV-preparation observer added on 2026-07-14:
+
+- Extended `DS4_DSPARK_EXACT_ATTN_PRE_BATCH_OBSERVER_LAYER=<layer>` from the
+  proven attention-norm boundary through every cache-independent Q/KV stage:
+  Q-LoRA projection, Q-LoRA RMS norm, KV projection and RMS norm, final Q
+  projection, per-head Q norm, position-correct Q RoPE, and position-correct KV
+  RoPE. The shadow still stops before FP8 KV quantization, raw/compressed cache
+  writes, indexer work, or attention.
+- The first generic multi-row Q8 attempt produced real arithmetic drift at the
+  first new boundary on layer 42 with two proposal rows: `q_lora_max=6.33299e-08`.
+  It propagated through `kv_projection_max=7.45058e-08`,
+  `q_head_norm_max=1.43051e-06`, `q_rope_max=1.43051e-06`, and
+  `kv_rope_max=7.15256e-07`. This localized the mismatch to the generic
+  multi-row Q8 projection rather than normalization or RoPE.
+- Added an observer-local Metal exact Q8 decode-row wrapper. It creates row
+  views and submits the existing one-token Q8 decode kernel once per proposal
+  row in the same command stream. This preserves one-token reduction arithmetic
+  without a host fence per row. No CUDA or ROCm path was added.
+- With exact-row Q8 projection, the multi-row Q/KV RMS and RoPE kernels are
+  bit-identical to one-row decode. Reports now name all new boundaries and
+  require both final Q-RoPE and KV-RoPE rows to match byte for byte. The
+  correctness harness explicitly requires `q_rope_max=0`, `kv_rope_max=0`,
+  `first=none`, and `result=exact` on every observer record.
+- Strict matrices at layers 0, 30, and 42 passed all five prompt/session cases,
+  including medium context, rolling-window positions, and resumed chat. Layer
+  42 also passed with explicit serial FFN. Default runtime, the existing exact
+  FFN observer, the exact-FFN runtime soak, and the fast-verifier soak remained
+  byte-identical and passed.
+- This establishes an exact batched command-stream boundary immediately before
+  KV quantization/cache mutation. It remains observer-only and makes no runtime
+  or speed claim. Codex ran no tok/s benchmark; incidental correctness timings
+  were ignored.
+
+Phase 0.67 checks:
+
+```sh
+for layer in 0 30 42; do
+  DS4_DSPARK_EXACT_ATTN_PRE_BATCH_OBSERVER_LAYER=$layer \
+  DS4_TEST_DSPARK_MODE=runtime \
+    ./tests/dspark_gpu_candidates_correctness.sh
+done
+DS4_DSPARK_EXACT_ATTN_PRE_BATCH_OBSERVER_LAYER=42 \
+DS4_TEST_DSPARK_MODE=runtime \
+DS4_TEST_DSPARK_SERIAL_FFN_RUNTIME=1 \
+  ./tests/dspark_gpu_candidates_correctness.sh
+DS4_TEST_DSPARK_MODE=runtime \
+  ./tests/dspark_gpu_candidates_correctness.sh
+DS4_DSPARK_EXACT_FFN_BATCH_OBSERVER_LAYER=42 \
+DS4_TEST_DSPARK_MODE=runtime \
+  ./tests/dspark_gpu_candidates_correctness.sh
+make ds4 ds4_test ds4-server ds4-eval ds4-agent ds4_cpu.o \
+  ds4-warm-prefill-bench
+./ds4_test --dspark-validation --dspark-shape-binding
+./tests/dspark_exact_ffn_batch_runtime_soak.sh
+./tests/dspark_fast_verifier_soak.sh
+bash -n tests/dspark_gpu_candidates_correctness.sh
+git diff --check
+```
+
 Phase 0.52 checks:
 
 ```sh
@@ -3443,13 +3502,13 @@ If continuing from a compacted context, start here:
 
 ## Open Questions
 
-- Extend the observer from the now-proven attention-norm boundary through the
-  remaining cache-independent Q and KV preparation: Q/KV projections, their
-  RMS normalization, and position-correct RoPE for each proposal row. Capture
-  each boundary before any raw/compressed cache write, identify where generic
-  batching first changes decode arithmetic, and introduce exact-row primitives
-  only with observed evidence. Keep all cache mutation and attention authority
-  serial during this next phase.
+- Split exact decode attention at the now-proven pre-cache boundary. Behind a
+  new gated runtime, prepare HC/Q/KV rows with the exact batched command stream,
+  then feed each prepared Q/KV row into the unchanged serial tail beginning at
+  KV quantization/raw-cache storage and continuing through compression,
+  indexing, attention, output projection, and HC post-processing. First prove
+  byte-identical outputs and cache state against the current full serial path;
+  only then expose it to a user-run throughput benchmark.
 - The GPU stage path currently borrows target graph transient batch workspace
   and therefore requires `prefill_cap >= block_size` (five). Decide whether to
   allocate sidecar-specific batch scratch before production enablement or keep
