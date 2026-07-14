@@ -9,6 +9,8 @@ mode=${DS4_TEST_DSPARK_MODE:-observer}
 fast_verify_observer=${DS4_TEST_DSPARK_FAST_VERIFY_OBSERVER:-0}
 fast_verify_runtime=${DS4_TEST_DSPARK_FAST_VERIFY_RUNTIME:-0}
 serial_ffn_runtime=${DS4_TEST_DSPARK_SERIAL_FFN_RUNTIME:-0}
+serial_attn_pre_runtime=${DS4_TEST_DSPARK_SERIAL_ATTN_PRE_RUNTIME:-0}
+# Compatibility switch retained for Phase 0.68 commands; the path is now default.
 attn_pre_runtime=${DS4_TEST_DSPARK_ATTN_PRE_RUNTIME:-0}
 runtime_stats=${DS4_TEST_DSPARK_RUNTIME_STATS:-0}
 ffn_batch_observer_layer=${DS4_DSPARK_EXACT_FFN_BATCH_OBSERVER_LAYER:-}
@@ -32,9 +34,17 @@ if [[ $attn_pre_runtime == 1 && -n $attn_pre_observer_layer ]]; then
     printf 'attention-pre runtime and observer are mutually exclusive\n' >&2
     exit 2
 fi
-if [[ $attn_pre_runtime == 1 &&
+if [[ $serial_attn_pre_runtime == 1 && -n $attn_pre_observer_layer ]]; then
+    printf 'serial attention-pre runtime and observer are mutually exclusive\n' >&2
+    exit 2
+fi
+if [[ $serial_attn_pre_runtime == 1 && $attn_pre_runtime == 1 ]]; then
+    printf 'serial and required attention-pre runtime are mutually exclusive\n' >&2
+    exit 2
+fi
+if [[ ($attn_pre_runtime == 1 || $serial_attn_pre_runtime == 1) &&
       ($mode != runtime || $fast_verify_runtime == 1) ]]; then
-    printf 'attention-pre runtime requires exact runtime verification\n' >&2
+    printf 'attention-pre controls require exact runtime verification\n' >&2
     exit 2
 fi
 if [[ $runtime_stats == 1 && $mode != runtime ]]; then
@@ -58,8 +68,8 @@ case "$mode" in
         if [[ $serial_ffn_runtime == 1 ]]; then
             gpu_env+=(DS4_DSPARK_EXACT_FFN_BATCH=0)
         fi
-        if [[ $attn_pre_runtime == 1 ]]; then
-            gpu_env+=(DS4_DSPARK_EXACT_ATTN_PRE_BATCH=1)
+        if [[ $serial_attn_pre_runtime == 1 ]]; then
+            gpu_env+=(DS4_DSPARK_EXACT_ATTN_PRE_BATCH=0)
         fi
         if [[ $runtime_stats == 1 ]]; then
             gpu_env+=(DS4_DSPARK_GPU_RUNTIME_STATS=1)
@@ -78,6 +88,16 @@ if [[ $mode == runtime && $serial_ffn_runtime != 1 &&
     exact_ffn_allowed=1
     if [[ $fast_verify_runtime != 1 ]]; then
         exact_ffn_expected=1
+    fi
+fi
+
+exact_attn_pre_allowed=0
+exact_attn_pre_expected=0
+if [[ $mode == runtime && $serial_attn_pre_runtime != 1 &&
+      -z $attn_pre_observer_layer ]]; then
+    exact_attn_pre_allowed=1
+    if [[ $fast_verify_runtime != 1 ]]; then
+        exact_attn_pre_expected=1
     fi
 fi
 
@@ -133,7 +153,8 @@ assert_gpu_selected() {
         if [[ $exact_ffn_expected == 1 ]]; then
             grep -q 'DSpark exact FFN batch runtime .* result=pass' "$log"
         fi
-        if [[ $attn_pre_runtime == 1 ]]; then
+        if [[ $exact_attn_pre_allowed == 1 ]] &&
+           grep -q 'DSpark exact attention pre batch runtime proposed=' "$log"; then
             local attn_runtime_records
             attn_runtime_records=$(grep 'DSpark exact attention pre batch runtime proposed=' "$log")
             if printf '%s\n' "$attn_runtime_records" |
@@ -142,12 +163,17 @@ assert_gpu_selected() {
                 printf '%s\n' "$attn_runtime_records" >&2
                 exit 1
             fi
-        elif grep -q 'DSpark exact attention pre batch runtime ' "$log"; then
+        elif [[ $exact_attn_pre_expected == 1 ]]; then
+            printf 'default exact runtime omitted attention-pre batching\n' >&2
+            exit 1
+        elif [[ $exact_attn_pre_allowed != 1 ]] &&
+             grep -q 'DSpark exact attention pre batch runtime ' "$log"; then
             printf 'control mode unexpectedly ran exact attention-pre batching\n' >&2
             exit 1
         fi
         if [[ $runtime_stats == 1 ]]; then
             local stats_record outcomes attempts successes
+            local attn_outcomes attn_attempts attn_successes
             if [[ $(grep -c '^ds4: DSpark runtime stats ' "$log") -ne 1 ]]; then
                 printf 'expected exactly one DSpark runtime stats record\n' >&2
                 exit 1
@@ -169,6 +195,24 @@ assert_gpu_selected() {
                 fi
             elif [[ $attempts -ne 0 || $successes -ne 0 ]]; then
                 printf 'control mode unexpectedly recorded exact FFN outcomes\n' >&2
+                exit 1
+            fi
+            attn_outcomes=$(printf '%s\n' "$stats_record" | sed -n \
+                's/.* exact_attn_pre_batch_attempts=\([0-9][0-9]*\) exact_attn_pre_batch_successes=\([0-9][0-9]*\) .*/\1 \2/p')
+            if [[ -z $attn_outcomes ]]; then
+                printf 'DSpark runtime stats omitted exact attention-pre outcomes\n' >&2
+                exit 1
+            fi
+            read -r attn_attempts attn_successes <<<"$attn_outcomes"
+            if [[ $exact_attn_pre_allowed == 1 ]]; then
+                if [[ $attn_successes -ne $attn_attempts ||
+                      ($exact_attn_pre_expected == 1 && $attn_attempts -eq 0) ]]; then
+                    printf 'exact attention-pre outcomes were %s/%s successful\n' \
+                        "$attn_successes" "$attn_attempts" >&2
+                    exit 1
+                fi
+            elif [[ $attn_attempts -ne 0 || $attn_successes -ne 0 ]]; then
+                printf 'control mode unexpectedly recorded attention-pre outcomes\n' >&2
                 exit 1
             fi
         fi

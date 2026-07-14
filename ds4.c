@@ -29163,6 +29163,8 @@ struct dspark_session_state {
     uint64_t runtime_fast_verify_exact_fallbacks;
     uint64_t runtime_exact_ffn_batch_attempts;
     uint64_t runtime_exact_ffn_batch_successes;
+    uint64_t runtime_exact_attn_pre_batch_attempts;
+    uint64_t runtime_exact_attn_pre_batch_successes;
     uint64_t runtime_exact_head_batch_attempts;
     uint64_t runtime_exact_head_batch_successes;
     bool runtime_generation_active;
@@ -29303,6 +29305,8 @@ static void dspark_session_state_free(dspark_session_state *d) {
                 "batch_fallbacks=%llu fast_calls=%llu fast_failures=%llu "
                 "fast_exact_fallbacks=%llu "
                 "exact_ffn_batch_attempts=%llu exact_ffn_batch_successes=%llu "
+                "exact_attn_pre_batch_attempts=%llu "
+                "exact_attn_pre_batch_successes=%llu "
                 "exact_head_batch_attempts=%llu exact_head_batch_successes=%llu "
                 "sidecar_ms=%.3f bridge_ms=%.3f stage0_ms=%.3f stage1_ms=%.3f "
                 "stage2_ms=%.3f head_ms=%.3f chain_ms=%.3f "
@@ -29335,6 +29339,8 @@ static void dspark_session_state_free(dspark_session_state *d) {
                 (unsigned long long)d->runtime_fast_verify_exact_fallbacks,
                 (unsigned long long)d->runtime_exact_ffn_batch_attempts,
                 (unsigned long long)d->runtime_exact_ffn_batch_successes,
+                (unsigned long long)d->runtime_exact_attn_pre_batch_attempts,
+                (unsigned long long)d->runtime_exact_attn_pre_batch_successes,
                 (unsigned long long)d->runtime_exact_head_batch_attempts,
                 (unsigned long long)d->runtime_exact_head_batch_successes,
                 sidecar_seconds * 1000.0,
@@ -33069,7 +33075,7 @@ static bool dspark_session_exact_ffn_batch_enabled(void) {
 static bool dspark_session_exact_attention_pre_batch_enabled(void) {
     const char *v = getenv("DS4_DSPARK_EXACT_ATTN_PRE_BATCH");
     return dspark_session_gpu_runtime_env_enabled() &&
-           v && v[0] && strcmp(v, "0") != 0;
+           (!v || !v[0] || strcmp(v, "0") != 0);
 }
 
 static bool dspark_session_diagnostics_enabled(void) {
@@ -34148,6 +34154,12 @@ static bool dspark_session_verify_batch_once(
         s->dspark->runtime_exact_ffn_batch_successes += timing.ffn_batch_successes;
         s->dspark->runtime_exact_head_batch_attempts += timing.head_batch_attempts;
         s->dspark->runtime_exact_head_batch_successes += timing.head_batch_successes;
+    }
+    if (timing_out && outcomes_out && s->dspark) {
+        s->dspark->runtime_exact_attn_pre_batch_attempts +=
+            outcomes.attn_pre_batch_attempts;
+        s->dspark->runtime_exact_attn_pre_batch_successes +=
+            outcomes.attn_pre_batch_successes;
     }
     return ok;
 }
@@ -36188,12 +36200,14 @@ int ds4_session_sync(ds4_session *s, const ds4_tokens *prompt, char *err, size_t
     }
     if (s->checkpoint_valid && s->dspark &&
         dspark_session_exact_ffn_batch_enabled() &&
+        dspark_exact_ffn_batch_observer_layer() < 0 &&
         dspark_session_diagnostics_enabled()) {
         fprintf(stderr,
                 "ds4: DSpark exact FFN batch runtime retained after resumed sync\n");
     }
     if (s->checkpoint_valid && s->dspark &&
         dspark_session_exact_attention_pre_batch_enabled() &&
+        dspark_exact_attention_pre_batch_observer_layer() < 0 &&
         dspark_session_diagnostics_enabled()) {
         fprintf(stderr,
                 "ds4: DSpark exact attention pre batch runtime retained after "

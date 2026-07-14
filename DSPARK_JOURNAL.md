@@ -3545,6 +3545,82 @@ python3 speed-bench/run_dspark_comparison.py \
 git diff --check
 ```
 
+Phase 0.70 exact attention-pre default promotion completed on 2026-07-14:
+
+- The user ran the uninstrumented paired Metal ablation from Phase 0.69. The
+  serial-attention exact control median was `20.42 t/s`; the attention-pre
+  candidate median was `21.66 t/s`, for a `1.0607x` ratio of medians and
+  `+6.1%` delta.
+  The three paired ratios were `1.0597453x`, `1.0606951x`, and `1.0607248x`.
+- Every measured stdout stream had SHA-256
+  `86f4851c044b82fffe568644343670a83ea6815b70c160b5a28a0fb357c52998`.
+  Prefill was approximately neutral, pair order alternated, and macOS reported
+  no thermal or performance warning. The process snapshot still contained
+  background activity, including `syspolicyd` and Stats; that caveat remains,
+  but the relative result was exceptionally stable across all three pairs.
+- Raw benchmark artifacts are in
+  `speed-bench/local-runs/20260714-110640/results.csv`. These local artifacts
+  remain untracked; the measurements and decision are preserved here.
+- Promoted exact attention preparation to the default DSpark exact-verifier
+  path. `DS4_DSPARK_EXACT_ATTN_PRE_BATCH=0` now explicitly selects the retained
+  fully serial attention implementation for diagnostics and ablations.
+- Added aggregate attention-pre attempts/successes to the end-of-session DSpark
+  runtime stats. This proves the default path completed without enabling
+  per-verification diagnostics in throughput runs. Session counters are updated
+  only when end-of-session runtime stats are requested.
+- Inverted `--attention-pre-ablation` to compare the serial control (`=0`)
+  against the promoted default. Both sides remain uninstrumented and
+  byte-identical, and pair order now alternates serial/default then
+  default/serial.
+- Updated the correctness matrix to require complete 43-layer attention
+  preparation in ordinary exact runtime. Added
+  `DS4_TEST_DSPARK_SERIAL_ATTN_PRE_RUNTIME=1` for the explicit serial control;
+  the old `DS4_TEST_DSPARK_ATTN_PRE_RUNTIME=1` test switch remains as a
+  compatibility assertion for Phase 0.68 commands.
+- Updated the long-generation, rolling-window, and resumed-chat attention-pre
+  soak to test the promoted default with no enabling environment variable.
+- Resumed-sync diagnostics now suppress FFN and attention-pre "retained" status
+  lines while the corresponding selected-layer observer has made that runtime
+  path non-authoritative.
+- Codex did not execute a tok/s benchmark. All validation below is build,
+  correctness, soak, parser, dry-run, or synthetic summary coverage.
+
+Phase 0.70 checks:
+
+```sh
+make ds4 ds4_test ds4-server ds4-eval ds4-agent ds4_cpu.o \
+  ds4-warm-prefill-bench
+DS4_TEST_DSPARK_MODE=runtime \
+  ./tests/dspark_gpu_candidates_correctness.sh
+DS4_TEST_DSPARK_MODE=runtime \
+DS4_TEST_DSPARK_SERIAL_ATTN_PRE_RUNTIME=1 \
+  ./tests/dspark_gpu_candidates_correctness.sh
+DS4_TEST_DSPARK_MODE=runtime \
+DS4_TEST_DSPARK_SERIAL_ATTN_PRE_RUNTIME=1 \
+DS4_TEST_DSPARK_RUNTIME_STATS=1 \
+  ./tests/dspark_gpu_candidates_correctness.sh
+DS4_TEST_DSPARK_MODE=runtime \
+DS4_TEST_DSPARK_RUNTIME_STATS=1 \
+  ./tests/dspark_gpu_candidates_correctness.sh
+DS4_DSPARK_EXACT_ATTN_PRE_BATCH_OBSERVER_LAYER=42 \
+DS4_TEST_DSPARK_MODE=runtime \
+  ./tests/dspark_gpu_candidates_correctness.sh
+DS4_DSPARK_EXACT_FFN_BATCH_OBSERVER_LAYER=42 \
+DS4_TEST_DSPARK_MODE=runtime \
+  ./tests/dspark_gpu_candidates_correctness.sh
+./ds4_test --dspark-validation --dspark-shape-binding
+./tests/dspark_exact_attention_pre_batch_runtime_soak.sh
+./tests/dspark_exact_ffn_batch_runtime_soak.sh
+./tests/dspark_fast_verifier_soak.sh
+python3 -m py_compile speed-bench/run_dspark_comparison.py
+python3 speed-bench/run_dspark_comparison.py \
+  --dry-run --allow-dirty --attention-pre-ablation
+# Synthetic checks cover promoted-default statistics and the inverted ablation.
+bash -n tests/dspark_gpu_candidates_correctness.sh \
+  tests/dspark_exact_attention_pre_batch_runtime_soak.sh
+git diff --check
+```
+
 Phase 0.52 checks:
 
 ```sh
@@ -3613,14 +3689,12 @@ If continuing from a compacted context, start here:
 
 ## Open Questions
 
-- The user should run the prepared paired Metal ablation with
-  `python3 speed-bench/run_dspark_comparison.py --confirm-idle --attention-pre-ablation`.
-  Interpret the paired ratio before changing the
-  default. If the result is promising but noisy or unexpectedly negative, add
-  a separate instrumented attribution pass with attention-pre attempt/success
-  counts and preparation-versus-serial-tail timing. Keep instrumentation out of
-  throughput samples, and do not promote the gate until both correctness and a
-  repeatable user-run benefit are established.
+- After the Phase 0.70 promotion is committed, the user should run the ordinary
+  paired Metal baseline/runtime comparison with
+  `python3 speed-bench/run_dspark_comparison.py --confirm-idle`. Confirm that
+  exact attention-pre attempts equal successes in the summary and measure the
+  combined default exact-verifier improvement before choosing the next target
+  or preparing a shareable issue update.
 - The GPU stage path currently borrows target graph transient batch workspace
   and therefore requires `prefill_cap >= block_size` (five). Decide whether to
   allocate sidecar-specific batch scratch before production enablement or keep

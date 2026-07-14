@@ -75,6 +75,15 @@ Set `DS4_DSPARK_EXACT_FFN_BATCH=0` only when the old serial FFN implementation
 is needed as a diagnostic control. The selected-layer FFN observer also keeps
 the batched runtime path non-authoritative for the observed call.
 
+Exact multi-row verification also prepares the cache-independent attention
+prefix across proposal rows by default. It batches HC mixing, attention norm,
+Q-LoRA normalization, and Q/KV RoPE preparation, then runs the unchanged
+cache-mutating attention tail serially in autoregressive row order. Set
+`DS4_DSPARK_EXACT_ATTN_PRE_BATCH=0` only to select the old fully serial
+attention path as a diagnostic control. The selected-layer attention-pre
+observer keeps the batched preparation non-authoritative for the observed
+call.
+
 `--fast-verifier` additionally sets
 `DS4_DSPARK_FAST_BATCH_VERIFY=1`. This is deliberately opt-in: it makes the
 compute-batched verifier authoritative for suffix tops and continuation logits,
@@ -105,13 +114,14 @@ metadata, pair order, and CSV/JSON/Markdown summaries use the same run directory
 as the ordinary comparison.
 
 `--attention-pre-ablation` is also an uninstrumented paired throughput pass. It
-compares the promoted exact verifier with the attention-pre gate unset against
-the same verifier with `DS4_DSPARK_EXACT_ATTN_PRE_BATCH=1`. Both modes use the
-same DSpark sidecar, exact all-layer FFN path, prompt, acceptance policy, and
-serial cache/attention tail. Diagnostics and runtime stats are disabled, and
-the runner requires every stdout stream to remain byte-identical. Pair order
-alternates default/attention-pre then attention-pre/default. The report includes
-both medians, paired ratios, and the attention-pre percentage delta.
+compares the fully serial attention control
+(`DS4_DSPARK_EXACT_ATTN_PRE_BATCH=0`) against the promoted default exact
+attention-pre path. Both modes use the same DSpark sidecar, exact all-layer FFN
+path, prompt, acceptance policy, and serial cache/attention tail. Diagnostics
+and runtime stats are disabled, and the runner requires every stdout stream to
+remain byte-identical. Pair order alternates serial/default then default/serial.
+The report includes both medians, paired ratios, and the default percentage
+delta.
 
 This mode is mutually exclusive with `--fast-verifier` and
 `--serial-ffn-ablation`. It measures only the exact verifier path; the fast

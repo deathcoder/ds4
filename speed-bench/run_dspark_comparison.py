@@ -40,6 +40,8 @@ RUNTIME_STATS_INT_FIELDS = {
     "fast_exact_fallbacks",
     "exact_ffn_batch_attempts",
     "exact_ffn_batch_successes",
+    "exact_attn_pre_batch_attempts",
+    "exact_attn_pre_batch_successes",
     "depth1",
     "depth2",
     "depth3",
@@ -125,7 +127,7 @@ def parse_args():
     parser.add_argument(
         "--attention-pre-ablation",
         action="store_true",
-        help="compare default exact DSpark against exact attention preparation",
+        help="compare serial attention preparation against default exact DSpark",
     )
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
@@ -190,7 +192,7 @@ def check_inputs(args, root):
 
 def benchmark_modes(args):
     if args.attention_pre_ablation:
-        return ("default_exact", "attention_pre_exact")
+        return ("serial_attention_pre", "default_exact")
     if args.serial_ffn_ablation:
         return ("serial_exact", "runtime")
     return ("baseline", "runtime")
@@ -201,10 +203,10 @@ def mode_label(mode, args):
         return "Fast verifier DSpark"
     return {
         "baseline": "Baseline",
-        "runtime": "Default exact FFN DSpark",
+        "runtime": "Default exact DSpark",
         "serial_exact": "Serial exact DSpark",
+        "serial_attention_pre": "Serial attention-pre DSpark",
         "default_exact": "Default exact DSpark",
-        "attention_pre_exact": "Exact attention-pre DSpark",
     }[mode]
 
 
@@ -225,8 +227,8 @@ def clean_dspark_env(mode, fast_verifier=False, runtime_stats=True):
             env["DS4_DSPARK_FAST_BATCH_VERIFY"] = "1"
         if mode == "serial_exact":
             env["DS4_DSPARK_EXACT_FFN_BATCH"] = "0"
-        if mode == "attention_pre_exact":
-            env["DS4_DSPARK_EXACT_ATTN_PRE_BATCH"] = "1"
+        if mode == "serial_attention_pre":
+            env["DS4_DSPARK_EXACT_ATTN_PRE_BATCH"] = "0"
     return env
 
 
@@ -270,8 +272,8 @@ def command_text(args, mode, runtime_stats=None):
             env += "DS4_DSPARK_FAST_BATCH_VERIFY=1 "
         if mode == "serial_exact":
             env += "DS4_DSPARK_EXACT_FFN_BATCH=0 "
-        if mode == "attention_pre_exact":
-            env += "DS4_DSPARK_EXACT_ATTN_PRE_BATCH=1 "
+        if mode == "serial_attention_pre":
+            env += "DS4_DSPARK_EXACT_ATTN_PRE_BATCH=0 "
     return env + shlex.join(mode_command(args, mode))
 
 
@@ -457,7 +459,7 @@ def summarize(rows, modes=("baseline", "runtime")):
     summary = {
         "comparison": (
             "attention_pre_ablation"
-            if modes == ("default_exact", "attention_pre_exact")
+            if modes == ("serial_attention_pre", "default_exact")
             else (
                 "serial_ffn_ablation"
                 if modes == ("serial_exact", "runtime")
@@ -482,11 +484,12 @@ def summarize(rows, modes=("baseline", "runtime")):
         })
         return summary
 
-    if modes == ("default_exact", "attention_pre_exact"):
+    if modes == ("serial_attention_pre", "default_exact"):
         summary.update({
-            "default_exact_generation_tps_median": reference_median,
-            "attention_pre_exact_generation_tps_median": candidate_median,
-            "attention_pre_exact_delta_percent":
+            "serial_attention_pre_generation_tps_median": reference_median,
+            "default_exact_generation_tps_median": candidate_median,
+            "default_exact_attention_pre_generation_tps_median": candidate_median,
+            "default_exact_attention_pre_delta_percent":
                 (candidate_median / reference_median - 1.0) * 100.0,
         })
         return summary
@@ -535,6 +538,12 @@ def summarize(rows, modes=("baseline", "runtime")):
         "runtime_fast_exact_fallbacks_median": runtime_median(
             "stats_fast_exact_fallbacks"
         ),
+        "runtime_exact_attn_pre_batch_attempts_median": runtime_median(
+            "stats_exact_attn_pre_batch_attempts"
+        ),
+        "runtime_exact_attn_pre_batch_successes_median": runtime_median(
+            "stats_exact_attn_pre_batch_successes"
+        ),
     })
     for component in ("bridge", "stage0", "stage1", "stage2", "head", "chain"):
         summary[f"runtime_{component}_ms_per_emitted_median"] = runtime_ratio(
@@ -560,15 +569,15 @@ def format_report(summary):
 
     if summary["comparison"] == "attention_pre_ablation":
         return (
-            "# DSpark Exact Attention Preparation Ablation\n\n"
-            f"- Default exact median: "
-            f"{summary['default_exact_generation_tps_median']:.2f} t/s\n"
-            f"- Exact attention-pre median: "
-            f"{summary['attention_pre_exact_generation_tps_median']:.2f} t/s\n"
+            "# DSpark Serial Attention Preparation Control Ablation\n\n"
+            f"- Serial attention-pre median: "
+            f"{summary['serial_attention_pre_generation_tps_median']:.2f} t/s\n"
+            f"- Default exact attention-pre median: "
+            f"{summary['default_exact_attention_pre_generation_tps_median']:.2f} t/s\n"
             f"- Ratio of medians: {summary['median_ratio_of_medians']:.4f}x\n"
             f"- Median paired ratio: {summary['paired_speedup_median']:.4f}x\n"
-            f"- Exact attention-pre delta: "
-            f"{summary['attention_pre_exact_delta_percent']:+.1f}%\n"
+            f"- Default exact attention-pre delta: "
+            f"{summary['default_exact_attention_pre_delta_percent']:+.1f}%\n"
             f"- Measured pairs: {len(summary['paired_speedup_values'])}\n"
         )
 
@@ -602,6 +611,9 @@ def format_report(summary):
         f"{summary['runtime_fast_calls_median']:.1f} calls, "
         f"{summary['runtime_fast_failures_median']:.1f} failures, "
         f"{summary['runtime_fast_exact_fallbacks_median']:.1f} exact fallbacks\n"
+        f"- Runtime exact attention-pre outcomes: "
+        f"{summary['runtime_exact_attn_pre_batch_successes_median']:.1f}/"
+        f"{summary['runtime_exact_attn_pre_batch_attempts_median']:.1f} successful\n"
         f"- Generation sidecar breakdown / emitted token: "
         f"bridge {summary['runtime_bridge_ms_per_emitted_median']:.3f} ms, "
         f"stages {summary['runtime_stage0_ms_per_emitted_median']:.3f}/"
