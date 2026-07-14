@@ -23595,11 +23595,33 @@ static bool metal_graph_exact_attention_suffix_batch_shadow(
                  g->batch_heads,
                  n_tokens) != 0;
     }
-    if (ok && metal_graph_directional_steering_attn_enabled(g)) {
+    const bool fuse_attn_out_hc =
+        !metal_graph_directional_steering_attn_enabled(g) &&
+        !metal_graph_use_reference_attn_out_hc();
+    if (ok && fuse_attn_out_hc) {
+#ifdef __APPLE__
+        ok = ds4_gpu_matmul_q8_0_hc_expand_batch_tensor(
+                 after_attn_hc,
+                 g->batch_attn_out,
+                 model->map,
+                 model->size,
+                 layer->attn_output_b->abs_offset,
+                 (uint64_t)n_groups * rank,
+                 DS4_N_EMBD,
+                 g->batch_attn_low,
+                 input_hc,
+                 hc_split,
+                 DS4_N_EMBD,
+                 DS4_N_HC,
+                 n_tokens) != 0;
+#else
+        ok = false;
+#endif
+    } else if (ok && metal_graph_directional_steering_attn_enabled(g)) {
         ok = metal_graph_apply_directional_steering_attn(
                  g, g->batch_attn_out, il, n_tokens);
     }
-    if (ok) {
+    if (ok && !fuse_attn_out_hc) {
         ok = ds4_gpu_hc_expand_split_tensor(after_attn_hc,
                                              g->batch_attn_out,
                                              input_hc,

@@ -27266,7 +27266,7 @@ int ds4_gpu_shared_down_hc_expand_q8_0_tensor(
     return 1;
 }
 
-int ds4_gpu_matmul_q8_0_hc_expand_tensor(
+static int ds4_gpu_matmul_q8_0_hc_expand_rows_tensor(
         ds4_gpu_tensor       *out_hc,
         ds4_gpu_tensor       *block_out,
         const void             *model_map,
@@ -27278,10 +27278,13 @@ int ds4_gpu_matmul_q8_0_hc_expand_tensor(
         const ds4_gpu_tensor *residual_hc,
         const ds4_gpu_tensor *split,
         uint32_t                n_embd,
-        uint32_t                n_hc) {
+        uint32_t                n_hc,
+        uint32_t                n_tokens) {
     if (!g_initialized && !ds4_gpu_init()) return 0;
     if (!out_hc || !block_out || !model_map || !x || !residual_hc || !split ||
-        n_embd == 0 || n_hc == 0 || n_hc != 4 || out_dim != n_embd ||
+        in_dim == 0 || out_dim == 0 || n_embd == 0 || n_hc == 0 ||
+        n_hc != 4 || n_tokens == 0 ||
+        out_dim != n_embd ||
         (in_dim & 31u) != 0 || in_dim > UINT32_MAX || out_dim > UINT32_MAX) {
         return 0;
     }
@@ -27293,13 +27296,37 @@ int ds4_gpu_matmul_q8_0_hc_expand_tensor(
         id<MTLBuffer> splitbuf = ds4_gpu_tensor_buffer(split);
         id<MTLBuffer> outbuf = ds4_gpu_tensor_buffer(out_hc);
 
+        if ((uint64_t)n_tokens > UINT64_MAX / in_dim ||
+            (uint64_t)n_tokens > UINT64_MAX / out_dim ||
+            (uint64_t)n_hc > UINT64_MAX / n_embd ||
+            (uint64_t)n_tokens >
+                UINT64_MAX / ((uint64_t)n_hc * n_embd) ||
+            (uint64_t)n_tokens >
+                UINT64_MAX /
+                    (2ull * n_hc + (uint64_t)n_hc * n_hc)) {
+            return 0;
+        }
+        const uint64_t x_values = (uint64_t)n_tokens * in_dim;
+        const uint64_t embd_values = (uint64_t)n_tokens * out_dim;
+        const uint64_t hc_values =
+            (uint64_t)n_tokens * n_hc * n_embd;
+        const uint64_t mix_hc =
+            2ull * n_hc + (uint64_t)n_hc * n_hc;
+        const uint64_t split_values = (uint64_t)n_tokens * mix_hc;
+        if (x_values > UINT64_MAX / sizeof(float) ||
+            embd_values > UINT64_MAX / sizeof(float) ||
+            hc_values > UINT64_MAX / sizeof(float) ||
+            split_values > UINT64_MAX / sizeof(float)) {
+            return 0;
+        }
+
         const uint64_t row_bytes = (in_dim / 32u) * 34u;
+        if (row_bytes > UINT64_MAX / out_dim) return 0;
         const uint64_t weight_bytes = out_dim * row_bytes;
-        const uint64_t x_bytes = in_dim * sizeof(float);
-        const uint64_t embd_bytes = out_dim * sizeof(float);
-        const uint64_t hc_bytes = (uint64_t)n_hc * n_embd * sizeof(float);
-        const uint64_t mix_hc = 2ull * n_hc + (uint64_t)n_hc * n_hc;
-        const uint64_t split_bytes = mix_hc * sizeof(float);
+        const uint64_t x_bytes = x_values * sizeof(float);
+        const uint64_t embd_bytes = embd_values * sizeof(float);
+        const uint64_t hc_bytes = hc_values * sizeof(float);
+        const uint64_t split_bytes = split_values * sizeof(float);
 
         if (weight_offset > model_size || weight_bytes > model_size - weight_offset) {
             fprintf(stderr, "ds4: Metal Q8 HC fusion weight range is outside the mapped model\n");
@@ -27328,7 +27355,7 @@ int ds4_gpu_matmul_q8_0_hc_expand_tensor(
         ds4_gpu_hc_expand_args hc_args = {
             .n_embd = n_embd,
             .n_hc = n_hc,
-            .n_tokens = 1,
+            .n_tokens = n_tokens,
             .nb_block0 = sizeof(float),
             .nb_block1 = (uint64_t)n_embd * sizeof(float),
             .nb_add0 = sizeof(float),
@@ -27370,7 +27397,7 @@ int ds4_gpu_matmul_q8_0_hc_expand_tensor(
         [enc setThreadgroupMemoryLength:mv_dispatch.smem atIndex:0];
         [enc dispatchThreadgroups:MTLSizeMake(((NSUInteger)out_dim + (NSUInteger)mv_dispatch.nr0 - 1u) /
                                               (NSUInteger)mv_dispatch.nr0,
-                                              1,
+                                              n_tokens,
                                               1)
              threadsPerThreadgroup:MTLSizeMake(32, (NSUInteger)mv_dispatch.nsg, 1)];
         ds4_gpu_end_compute_encoder(cb, enc);
@@ -27379,4 +27406,61 @@ int ds4_gpu_matmul_q8_0_hc_expand_tensor(
     }
 
     return 1;
+}
+
+int ds4_gpu_matmul_q8_0_hc_expand_tensor(
+        ds4_gpu_tensor       *out_hc,
+        ds4_gpu_tensor       *block_out,
+        const void             *model_map,
+        uint64_t                model_size,
+        uint64_t                weight_offset,
+        uint64_t                in_dim,
+        uint64_t                out_dim,
+        const ds4_gpu_tensor *x,
+        const ds4_gpu_tensor *residual_hc,
+        const ds4_gpu_tensor *split,
+        uint32_t                n_embd,
+        uint32_t                n_hc) {
+    return ds4_gpu_matmul_q8_0_hc_expand_rows_tensor(out_hc,
+                                                      block_out,
+                                                      model_map,
+                                                      model_size,
+                                                      weight_offset,
+                                                      in_dim,
+                                                      out_dim,
+                                                      x,
+                                                      residual_hc,
+                                                      split,
+                                                      n_embd,
+                                                      n_hc,
+                                                      1);
+}
+
+int ds4_gpu_matmul_q8_0_hc_expand_batch_tensor(
+        ds4_gpu_tensor       *out_hc,
+        ds4_gpu_tensor       *block_out,
+        const void             *model_map,
+        uint64_t                model_size,
+        uint64_t                weight_offset,
+        uint64_t                in_dim,
+        uint64_t                out_dim,
+        const ds4_gpu_tensor *x,
+        const ds4_gpu_tensor *residual_hc,
+        const ds4_gpu_tensor *split,
+        uint32_t                n_embd,
+        uint32_t                n_hc,
+        uint32_t                n_tokens) {
+    return ds4_gpu_matmul_q8_0_hc_expand_rows_tensor(out_hc,
+                                                      block_out,
+                                                      model_map,
+                                                      model_size,
+                                                      weight_offset,
+                                                      in_dim,
+                                                      out_dim,
+                                                      x,
+                                                      residual_hc,
+                                                      split,
+                                                      n_embd,
+                                                      n_hc,
+                                                      n_tokens);
 }

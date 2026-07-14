@@ -8,14 +8,14 @@ particular DSpark change exists.
 
 Branch: `codex/dspark-observability-0`
 
-Current work is Phase 0.72. The default exact Metal verifier batches the
+Current work is Phase 0.73. The default exact Metal verifier batches the
 row-independent attention preparation and the exact FFN while retaining the
 cache-mutating attention core and output/HC suffix as serial one-token work.
 The Phase 0.71 profile identified that serial tail as the remaining largest
-layer component, especially in later layers. Phase 0.72 adds a selected-layer
-shadow observer for the row-independent suffix only; it does not make the
-generic batch suffix authoritative. The observer proves projection A is
-byte-exact across proposal rows and localizes small drift to projection B.
+layer component, especially in later layers. Phase 0.72 localized generic
+batch drift to projection B. Phase 0.73 adds a Metal row-batched form of the
+serial fused projection-B/HC kernel; the selected-layer observer proves the
+fused candidate is byte-exact through final HC. It is not authoritative yet.
 
 Historical Phase 0.38 was deliberately diagnostic: `--dspark FILE` validates an official
 DSpark drafter GGUF, binds every tensor needed by a future runtime path, checks
@@ -3764,6 +3764,63 @@ make test
 git diff --check
 ```
 
+Phase 0.73 exact fused attention-suffix batch candidate completed on
+2026-07-14:
+
+- Audited the serial fused Metal projection-B/HC kernel. Its Q8_0 reduction is
+  the ordinary one-token matvec reduction copied into the fusion, and its HC
+  arithmetic consumes explicit token strides. The only missing batch contract
+  was a proposal-row threadgroup dimension.
+- Generalized `kernel_dsv4_q8_hc_expand4_q8_0` over `tgpig.y`. Every row keeps
+  the serial kernel's SIMD reduction shape and HC accumulation order; only
+  activation addresses gain the row stride. The existing serial caller still
+  dispatches exactly one row.
+- Refactored the Metal host wrapper through a checked internal rows helper and
+  added the Apple-only
+  `ds4_gpu_matmul_q8_0_hc_expand_batch_tensor`. The batch wrapper validates all
+  row-scaled input, output, residual-HC, and split buffers before dispatching.
+  CUDA and ROCm implementations were deliberately untouched.
+- The selected-layer suffix observer still obtains projection A from the
+  existing generic batch function. It then overwrites that function's
+  approximate projection-B/HC outputs with the exact fused row-batched kernel
+  before comparison. This duplicate observer work is intentional and means
+  the current path is not a valid performance candidate yet.
+- Tightened the correctness harness: every observed record must now report
+  `first=none`, zero max/RMS differences for projection A, projection B, and
+  final HC, all rows exact, and `result=exact`.
+- Exact observer matrices passed at layers `0`, `21`, and `42`. Layer 42 logs
+  covered proposal widths `2`, `3`, `4`, and `5`; every recorded boundary and
+  HC row was byte-identical. The observer-disabled exact runtime matrix also
+  remained byte-identical to baseline, covering the serial one-row use of the
+  generalized shader.
+- The 64-token long-generation and rolling-window exact-runtime soaks passed,
+  as did resumed chat. DSpark validation and shape binding passed. The normal
+  Metal build and `DS4_NO_GPU` object build completed; the CPU build retained
+  only its existing unused-function/parameter warnings.
+- Codex did not execute a tok/s benchmark.
+
+Phase 0.73 checks:
+
+```sh
+make -j4
+make ds4_cpu.o ds4_test
+bash -n tests/dspark_gpu_candidates_correctness.sh
+DS4_TEST_DSPARK_MODE=runtime \
+  ./tests/dspark_gpu_candidates_correctness.sh
+DS4_DSPARK_EXACT_ATTN_SUFFIX_BATCH_OBSERVER_LAYER=0 \
+DS4_TEST_DSPARK_MODE=runtime \
+  ./tests/dspark_gpu_candidates_correctness.sh
+DS4_DSPARK_EXACT_ATTN_SUFFIX_BATCH_OBSERVER_LAYER=21 \
+DS4_TEST_DSPARK_MODE=runtime \
+  ./tests/dspark_gpu_candidates_correctness.sh
+DS4_DSPARK_EXACT_ATTN_SUFFIX_BATCH_OBSERVER_LAYER=42 \
+DS4_TEST_DSPARK_MODE=runtime \
+  ./tests/dspark_gpu_candidates_correctness.sh
+./tests/dspark_exact_attention_pre_batch_runtime_soak.sh
+./ds4_test --dspark-validation --dspark-shape-binding
+git diff --check
+```
+
 Phase 0.52 checks:
 
 ```sh
@@ -3832,13 +3889,12 @@ If continuing from a compacted context, start here:
 
 ## Open Questions
 
-- The next suffix experiment should isolate projection B from HC expansion.
-  Projection A is already byte-exact in the generic batch path, while generic
-  projection B differs by only a few float ULPs. Determine whether a batched
-  projection-B kernel can preserve the serial fused kernel's arithmetic order,
-  or whether a narrowly justified tolerance can remain semantically exact
-  through full verifier-output and long-context soaks. Do not promote the
-  current generic suffix merely because its local drift is small.
+- Before a suffix runtime ablation, expose the existing exact direct projection
+  A batch work without also running generic projection B. Compose that
+  projection-A-only primitive with the exact fused row-batched projection-B/HC
+  kernel behind a separate runtime switch, add attempt/success diagnostics,
+  and prepare an uninstrumented paired benchmark for the user. Do not benchmark
+  the current observer, which intentionally computes projection B and HC twice.
 - The GPU stage path currently borrows target graph transient batch workspace
   and therefore requires `prefill_cap >= block_size` (five). Decide whether to
   allocate sidecar-specific batch scratch before production enablement or keep

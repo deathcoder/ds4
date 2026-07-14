@@ -258,8 +258,8 @@ assert_gpu_selected() {
                 exit 1
             fi
             if printf '%s\n' "$suffix_records" |
-                grep -Evq ' first=(none|attention_output|hc_post) low_max=0 low_rms=0 attn_out_max=[^ ]+ attn_out_rms=[^ ]+ exact_rows=[0-9]+/[0-9]+ hc_max=[^ ]+ hc_rms=[^ ]+ result=(exact|drift)$'; then
-                printf 'malformed attention-suffix observer record at layer %s\n' \
+                grep -Evq ' first=none low_max=0 low_rms=0 attn_out_max=0 attn_out_rms=0 exact_rows=[0-9]+/[0-9]+ hc_max=0 hc_rms=0 result=exact$'; then
+                printf 'attention-suffix observer drifted at layer %s\n' \
                     "$attn_suffix_observer_layer" >&2
                 printf '%s\n' "$suffix_records" >&2
                 exit 1
