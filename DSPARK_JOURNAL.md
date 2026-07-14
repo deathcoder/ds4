@@ -4132,6 +4132,39 @@ make ds4_cpu.o ds4_test
 git diff --check
 ```
 
+Phase 0.77 user-run retained-tail attribution result on 2026-07-14:
+
+- Run: `speed-bench/local-runs/tail-profile-20260714-132931/stages.csv`.
+  Each selected layer contained nine exact proposal batches and 41 matching
+  one-row tail records per component. Attention-pre and FFN controls remained
+  stable at about `0.26` and `0.40 ms/row` respectively.
+- Layer 0 tail components: KV/cache `0.293`, compressor/indexer `0.030`,
+  attention `0.411`, inverse RoPE `0.274`, projection A `0.349`, and fused
+  projection-B/HC `0.363 ms/row`. With no attention compression in layers 0-1,
+  the near-empty compressor stage provides a useful synchronized floor.
+- Layer 21 (ratio-128 compression): KV/cache `0.301`, compressor/indexer
+  `0.313`, attention `0.453`, inverse RoPE `0.271`, projection A `0.360`, and
+  projection-B/HC `0.358 ms/row`.
+- Layer 42 (ratio-4 compression/indexer): KV/cache `0.294`,
+  compressor/indexer `0.366`, attention `0.533`, inverse RoPE `0.266`,
+  projection A `0.361`, and projection-B/HC `0.363 ms/row`.
+- The flat KV, inverse-RoPE, and output-projection medians are not responsible
+  for the tail's depth growth. Attention rises by `0.122 ms/row` from layer 0
+  to 42. Compression adds roughly `0.28-0.34 ms/row` in every compressed layer
+  and therefore deserves separate attribution despite attention being the
+  largest single synchronized component.
+- Raw position grouping sharpens the compressor result. Layer 21 had 41
+  non-emitting rows with compressor median `0.313 ms/row`. Layer 42 had 31
+  non-emitting rows at `0.349 ms/row` and 10 ratio-4 emit rows at
+  `0.575 ms/row`. Most cost is recurrent compressor projection/update work on
+  every token; periodic quantize/commit and indexer work add about
+  `0.226 ms/row` on emit rows.
+- Next profile compressed layers in place, separating main compressor pair
+  projection, recurrent update/emit, ratio-4 indexer compressor projection and
+  update, indexer query/weight preparation, score, and top-k. Preserve the full
+  512-row indexer selection contract. Choose a kernel optimization only after
+  that split; do not use synchronized component totals as throughput values.
+
 Phase 0.52 checks:
 
 ```sh
@@ -4207,10 +4240,10 @@ If continuing from a compacted context, start here:
   it again, and focus future attention work on optimizing the retained serial
   tail in place without changing its interleaved row schedule.
 - The retained serial-tail selected-layer profiler is ready for the user:
-  `python3 speed-bench/run_dspark_exact_attention_tail_profile.py
-  --confirm-ready`. Use its largest stable component and depth trend to choose
-  the next in-place Metal optimization; do not infer throughput from its
-  synchronized totals.
+  its result localizes depth growth to recurrent compression/indexer work and
+  attention. The next diagnostic should split the compressed-layer recurrent
+  projection/update path from ratio-4 emit, indexer preparation, score, and
+  top-k before selecting an in-place Metal kernel optimization.
 - The GPU stage path currently borrows target graph transient batch workspace
   and therefore requires `prefill_cap >= block_size` (five). Decide whether to
   allocate sidecar-specific batch scratch before production enablement or keep
