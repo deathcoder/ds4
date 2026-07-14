@@ -62,6 +62,8 @@ python3 speed-bench/run_dspark_exact_attention_tail_profile.py --dry-run
 python3 speed-bench/run_dspark_exact_attention_tail_profile.py --confirm-ready
 python3 speed-bench/run_dspark_exact_compressor_profile.py --dry-run
 python3 speed-bench/run_dspark_exact_compressor_profile.py --confirm-ready
+python3 speed-bench/run_dspark_exact_attention_transition_profile.py --dry-run
+python3 speed-bench/run_dspark_exact_attention_transition_profile.py --confirm-ready
 python3 speed-bench/run_dspark_exact_ffn_batch_profile.py --dry-run
 python3 speed-bench/run_dspark_exact_ffn_batch_profile.py --confirm-ready
 ```
@@ -208,6 +210,21 @@ mode begins during a run, all three sparse stages must cover the same valid
 proposal-row subset. The report labels ratio-4 runs as dense, sparse, or a
 dense-to-sparse transition. This is synchronized attribution, not a
 generation-throughput benchmark.
+
+Use `run_dspark_exact_attention_transition_profile.py` to measure only the
+retained attention call while ratio-4 layer 42 crosses from dense mixed
+attention into sparse indexed attention. The default 8K code fixture and
+128-token generation preserve the normal sparse threshold and full 512-row
+top-k contract. Every row is labeled from the branch actually selected by the
+runtime (`raw`, `dense_mixed`, or `sparse_indexed`), and all mode records
+together must match the exact verifier's proposal-row multiset. The default
+runner rejects a result unless at least one selected layer contains both dense
+and sparse records; `--allow-single-mode` is available only for deliberate
+short diagnostic runs. It also requires byte-identical output and matching
+attention-pre/FFN control schedules. Its immediate before/after boundaries are
+identical across modes, but synchronization changes scheduling, so compare the
+dense and sparse attribution within this run only and never report it as
+generation throughput.
 
 After an uninstrumented serial-FFN ablation, use
 `run_dspark_exact_ffn_batch_profile.py` as a separate attribution pass. It

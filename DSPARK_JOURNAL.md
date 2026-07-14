@@ -4348,6 +4348,60 @@ Phase 0.79 user-run NR4 throughput result on 2026-07-14:
   in Phase 0.77, and distinguish dense versus sparse indexed-attention cost
   before selecting another kernel change.
 
+Phase 0.80 retained-attention transition profile prepared on 2026-07-14:
+
+- Added a selected-layer Metal boundary around only the authoritative retained
+  attention call. Each one-row record is labeled from the branch actually used:
+  `raw`, `dense_mixed`, or `sparse_indexed`. The boundary starts after all
+  compressor/indexer work and ends before inverse RoPE and output projection,
+  so every mode has the same immediate before/after scope.
+- The new `DS4_DSPARK_EXACT_ATTENTION_PROFILE` diagnostic shares the existing
+  exact-layer and Metal-layer selectors. It is mutually exclusive with the
+  broader exact-tail and compressor component profiles; compressor has first
+  precedence, followed by attention mode, then full tail. Normal execution
+  does not read the new variable unless selected-layer stage profiling is
+  already active.
+- The exact verifier suppresses its aggregate serial-tail boundary while this
+  component profile is active and flushes the unreported inverse-RoPE/output
+  remainder before starting the FFN control. This prevents partial tail work
+  from leaking into `ffn_batch` without changing row-interleaved operation
+  order or model state.
+- Added `speed-bench/run_dspark_exact_attention_transition_profile.py`. Its
+  default profiles layer 42 for 128 generated tokens on the 8K code fixture,
+  clears any inherited sparse-threshold override, preserves the default full
+  512-row top-k contract, and requires byte-identical stdout against an
+  unprofiled exact DSpark reference.
+- The parser rejects unknown modes, non-row attention records, mismatched
+  attention-pre/FFN schedules, and any combined attention-mode multiset that
+  differs from the exact proposal rows. It deliberately uses multisets so
+  repeated positions from speculative retries remain valid. By default it also
+  fails unless at least one selected layer contains both dense and sparse rows;
+  `--allow-single-mode` exists for explicit short diagnostic runs.
+- `make -j4 ds4 ds4_test ds4_cpu.o`, Python syntax, dry-run command generation,
+  synthetic duplicate-position/mode parsing, unknown-mode rejection,
+  `./ds4_test --dspark-validation --dspark-shape-binding`, and
+  `git diff --check` passed. A correctness-only runtime matrix with the new
+  profile enabled passed reasoning, Italian, medium-context, rolling-window,
+  and resumed two-turn chat.
+- A separate six-token Metal check compared unprofiled exact DSpark against the
+  selected-layer profile byte-for-byte. The real parser matched ten layer-42
+  proposal rows, all `dense_mixed`, as expected for the short run. Those timing
+  values were ignored. Codex did not run the 128-token transition attribution
+  or make any performance claim.
+
+Phase 0.80 user-run gate:
+
+```sh
+python3 speed-bench/run_dspark_exact_attention_transition_profile.py \
+  --dry-run
+python3 speed-bench/run_dspark_exact_attention_transition_profile.py \
+  --confirm-ready
+```
+
+The result should contain both `dense_mixed` and `sparse_indexed` rows. Compare
+their synchronized medians only within this run; do not compare its t/s or
+absolute component values with uninstrumented generation.
+
 Phase 0.52 checks:
 
 ```sh
@@ -4430,7 +4484,8 @@ If continuing from a compacted context, start here:
   main-compressor `DS4_METAL_COMPRESSOR_PAIR_NR4` candidate was correct but
   measured `0.4%` slower and is retired. Next attribute the retained attention
   operation across dense and sparse rows rather than pursuing another
-  compressor projection schedule.
+  compressor projection schedule. The Phase 0.80 mode-aware runner is now
+  ready; the next decision depends on its user-run dense/sparse attribution.
 - The GPU stage path currently borrows target graph transient batch workspace
   and therefore requires `prefill_cap >= block_size` (five). Decide whether to
   allocate sidecar-specific batch scratch before production enablement or keep

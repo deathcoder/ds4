@@ -15369,18 +15369,26 @@ static bool metal_graph_encode_decode_layer_part(
         decode_stage_profile_requested &&
         part == METAL_GRAPH_DECODE_LAYER_ATTENTION_TAIL &&
         getenv("DS4_DSPARK_EXACT_COMPRESSOR_PROFILE") != NULL;
+    const bool exact_attention_profile =
+        decode_stage_profile_requested &&
+        part == METAL_GRAPH_DECODE_LAYER_ATTENTION_TAIL &&
+        !exact_compressor_profile &&
+        getenv("DS4_DSPARK_EXACT_ATTENTION_PROFILE") != NULL;
     const bool exact_tail_profile =
         decode_stage_profile_requested &&
         part == METAL_GRAPH_DECODE_LAYER_ATTENTION_TAIL &&
         !exact_compressor_profile &&
+        !exact_attention_profile &&
         getenv("DS4_DSPARK_EXACT_TAIL_PROFILE") != NULL;
     const bool decode_stage_profile =
         decode_stage_profile_requested &&
         !exact_tail_profile &&
-        !exact_compressor_profile;
+        !exact_compressor_profile &&
+        !exact_attention_profile;
     double decode_stage_t0 = decode_stage_profile ? now_sec() : 0.0;
     double exact_tail_stage_t0 = 0.0;
     double exact_compressor_stage_t0 = 0.0;
+    double exact_attention_stage_t0 = 0.0;
 #define DS4_METAL_PROFILE_DECODE_STAGE(name) do { \
         if (ok && decode_stage_profile) { \
             ok = metal_graph_layer_stage_profile_boundary("decode", (name), il, pos, 1, &decode_stage_t0); \
@@ -15400,6 +15408,12 @@ static bool metal_graph_encode_decode_layer_part(
         if (ok && exact_compressor_profile) { \
             ok = metal_graph_layer_stage_profile_boundary( \
                 "compressor", (name), il, pos, 1, &exact_compressor_stage_t0); \
+        } \
+    } while (0)
+#define DS4_METAL_PROFILE_EXACT_ATTENTION_STAGE(name) do { \
+        if (ok && exact_attention_profile) { \
+            ok = metal_graph_layer_stage_profile_boundary( \
+                "attention", (name), il, pos, 1, &exact_attention_stage_t0); \
         } \
     } while (0)
     if (part == METAL_GRAPH_DECODE_LAYER_FFN) goto encode_ffn;
@@ -15926,6 +15940,15 @@ encode_attention_tail:
     DS4_METAL_PROFILE_DECODE_STAGE("compressor_indexer");
     DS4_METAL_PROFILE_EXACT_TAIL_STAGE("compressor_indexer");
 
+    const char *exact_attention_stage =
+        n_comp == 0 ? "raw" :
+        (comp_selected != NULL && n_selected != 0 ?
+            "sparse_indexed" : "dense_mixed");
+    if (ok && exact_attention_profile) {
+        ok = ds4_gpu_end_commands() != 0 &&
+             ds4_gpu_begin_commands() != 0;
+        exact_attention_stage_t0 = now_sec();
+    }
     if (ok) {
         const uint32_t raw_start = metal_graph_raw_start_for_span(g, pos, n_raw);
         if (n_comp != 0 && comp_selected != NULL && n_selected != 0) {
@@ -15975,6 +15998,7 @@ encode_attention_tail:
     }
     DS4_METAL_PROFILE_DECODE_STAGE("attention");
     DS4_METAL_PROFILE_EXACT_TAIL_STAGE("attention");
+    DS4_METAL_PROFILE_EXACT_ATTENTION_STAGE(exact_attention_stage);
     if (ok) {
         metal_graph_debug_dump_tensor("kqv_out", g->heads, q_dim, il, pos);
     }
@@ -16633,6 +16657,7 @@ encode_ffn:
     }
 #undef DS4_METAL_PROFILE_EXACT_TAIL_STAGE
 #undef DS4_METAL_PROFILE_EXACT_COMPRESSOR_STAGE
+#undef DS4_METAL_PROFILE_EXACT_ATTENTION_STAGE
     return ok;
 }
 
@@ -24300,8 +24325,16 @@ static bool metal_graph_verify_decode_exact(
         const bool exact_compressor_component_profile =
             exact_layer_profile &&
             getenv("DS4_DSPARK_EXACT_COMPRESSOR_PROFILE") != NULL;
-        const bool exact_attention_component_profile =
-            exact_tail_component_profile || exact_compressor_component_profile;
+        const bool exact_attention_mode_component_profile =
+            exact_layer_profile &&
+            getenv("DS4_DSPARK_EXACT_ATTENTION_PROFILE") != NULL;
+        const bool exact_any_tail_component_profile =
+            exact_tail_component_profile ||
+            exact_compressor_component_profile ||
+            exact_attention_mode_component_profile;
+        const bool exact_partial_tail_component_profile =
+            exact_compressor_component_profile ||
+            exact_attention_mode_component_profile;
         double exact_layer_stage_t0 = 0.0;
         if (metal_graph_decode_stage_profile_enabled(il) || exact_layer_profile) {
             ok = ds4_gpu_end_commands() != 0 &&
@@ -24767,7 +24800,7 @@ static bool metal_graph_verify_decode_exact(
             if (ok) ok = ds4_gpu_begin_commands() != 0;
         }
         if (ok && exact_layer_profile && attn_runtime_layer &&
-            !attn_suffix_runtime_layer && !exact_attention_component_profile) {
+            !attn_suffix_runtime_layer && !exact_any_tail_component_profile) {
             ok = metal_graph_layer_stage_profile_boundary(
                 "exact",
                 "attention_tail_serial",
@@ -24824,11 +24857,11 @@ static bool metal_graph_verify_decode_exact(
             }
             if (ok) ok = ds4_gpu_begin_commands() != 0;
         }
-        if (ok && exact_compressor_component_profile) {
+        if (ok && exact_partial_tail_component_profile) {
             ok = ds4_gpu_end_commands() != 0 &&
                  ds4_gpu_begin_commands() != 0;
         }
-        if (ok && exact_attention_component_profile) {
+        if (ok && exact_any_tail_component_profile) {
             exact_layer_stage_t0 = now_sec();
         }
         if (!observe_ffn && !ffn_runtime_enabled) {
