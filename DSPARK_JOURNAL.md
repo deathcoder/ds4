@@ -4042,6 +4042,38 @@ make ds4_cpu.o ds4_test
 git diff --check
 ```
 
+Phase 0.76 user-run zero-copy attribution result on 2026-07-14:
+
+- Run: `speed-bench/local-runs/suffix-profile-20260714-131411/stages.csv`.
+  As before, every selected layer contained nine matched proposal batches and
+  41 rows. Attention-pre and FFN controls remained closely matched, and the
+  default serial-tail medians were stable against Phase 0.75.
+- Layer 0: default tail `0.324 ms/row`; candidate direct core `0.425`,
+  projection A `0.113`, projection-B/HC `0.108`, total `0.646 ms/row`
+  (`1.996x`, `+99.6%`). Direct-write saved `0.064 ms/row` from the core stage
+  and `0.063 ms/row` from the candidate total.
+- Layer 21: default tail `0.432 ms/row`; candidate direct core `0.537`,
+  projection A `0.128`, projection-B/HC `0.108`, total `0.773 ms/row`
+  (`1.792x`, `+79.2%`). Direct-write saved `0.049 ms/row` from the core stage
+  and `0.042 ms/row` from the candidate total.
+- Layer 42: default tail `0.619 ms/row`; candidate direct core `0.723`,
+  projection A `0.116`, projection-B/HC `0.111`, total `0.950 ms/row`
+  (`1.535x`, `+53.5%`). Direct-write saved `0.036 ms/row` from the core stage
+  and `0.039 ms/row` from the candidate total.
+- The zero-copy change worked, but the remaining candidate overhead is still
+  nearly depth-independent at `0.322` to `0.341 ms/row` (mean `0.331`). Scaled
+  by 43 layers, `41/9` rows per target evaluation, and the prior `0.2188`
+  target evaluations per emitted token, it predicts about `14.2 ms` extra per
+  emitted token. This remains consistent with the original uninstrumented
+  `12.5 ms/token` regression.
+- Retirement decision: do not run another tok/s ablation and do not pursue
+  further versions of this deferred small-width suffix schedule. The exact
+  batch primitives and observer evidence remain useful research artifacts, but
+  `DS4_DSPARK_EXACT_ATTN_SUFFIX_BATCH` must remain opt-in and non-production.
+  Future attention work should optimize the retained serial tail in place,
+  preserving its interleaved row schedule, rather than separating all proposal
+  cores from all output projections.
+
 Phase 0.52 checks:
 
 ```sh
@@ -4111,12 +4143,11 @@ If continuing from a compacted context, start here:
 ## Open Questions
 
 - The exact attention-suffix candidate is correct but measured `21.2%` slower
-  than default exact Metal generation. Keep it opt-in. The attributed per-row
-  head copy has now been removed with direct writes into `batch_heads`. Re-run
-  `python3 speed-bench/run_dspark_exact_attention_suffix_profile.py
-  --confirm-ready`. Only consider another tok/s ablation if the candidate
-  component sum is now competitive with the default serial tail; otherwise
-  retire this suffix batching schedule.
+  than default exact Metal generation. Zero-copy head writes reduced cost but
+  left a profile-predicted `14.2 ms/emitted token` regression. Retire this
+  deferred suffix schedule: keep it opt-in as research code, do not benchmark
+  it again, and focus future attention work on optimizing the retained serial
+  tail in place without changing its interleaved row schedule.
 - The GPU stage path currently borrows target graph transient batch workspace
   and therefore requires `prefill_cap >= block_size` (five). Decide whether to
   allocate sidecar-specific batch scratch before production enablement or keep
