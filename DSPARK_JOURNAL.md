@@ -4330,6 +4330,24 @@ Phase 0.79 user-run NR4 correctness result on 2026-07-14:
   demonstrates a repeatable throughput improvement. Correctness alone is not
   grounds for promoting it to the default.
 
+Phase 0.79 user-run NR4 throughput result on 2026-07-14:
+
+- Run: `speed-bench/local-runs/20260714-231153/results.csv`.
+  Default exact median was `21.62 t/s`; compressor-pair NR4 median was
+  `21.53 t/s`. The ratio of medians was `0.9958x`, median paired ratio was
+  `0.9944x`, and the reported candidate delta was `-0.4%` across three pairs.
+- Pair ratios were `0.9935x`, `0.9944x`, and `1.0051x`. Two pairs favored the
+  default by about `0.6%`, while one favored NR4 by about `0.5%`; alternating
+  order did not reveal a hidden candidate advantage.
+- Retirement decision: keep `DS4_METAL_COMPRESSOR_PAIR_NR4` opt-in as a correct
+  research control, but do not promote or benchmark it again. Widening the main
+  paired projection is not a throughput improvement on this Metal system.
+- The synchronized compressor split was useful for ruling out easy targets,
+  but its per-boundary projection costs did not predict production sensitivity.
+  Return to the retained serial attention operation, the largest tail component
+  in Phase 0.77, and distinguish dense versus sparse indexed-attention cost
+  before selecting another kernel change.
+
 Phase 0.52 checks:
 
 ```sh
@@ -4409,9 +4427,10 @@ If continuing from a compacted context, start here:
   attention. The dense compressed-layer split shows comparable projection and
   recurrent-update costs and two compressor pairs per ratio-4 row. Sparse
   preparation, score, and full top-k are also comparable. The existing
-  main-compressor `DS4_METAL_COMPRESSOR_PAIR_NR4` candidate passed the full
-  correctness matrix; its direct uninstrumented throughput ablation is the
-  remaining promotion gate.
+  main-compressor `DS4_METAL_COMPRESSOR_PAIR_NR4` candidate was correct but
+  measured `0.4%` slower and is retired. Next attribute the retained attention
+  operation across dense and sparse rows rather than pursuing another
+  compressor projection schedule.
 - The GPU stage path currently borrows target graph transient batch workspace
   and therefore requires `prefill_cap >= block_size` (five). Decide whether to
   allocate sidecar-specific batch scratch before production enablement or keep
