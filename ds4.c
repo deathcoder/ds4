@@ -22602,6 +22602,257 @@ static void dspark_exact_head_batch_observation_report(
     memset(observation, 0, sizeof(*observation));
 }
 
+static int dspark_exact_attention_pre_batch_observer_layer(void) {
+    const char *v = getenv("DS4_DSPARK_EXACT_ATTN_PRE_BATCH_OBSERVER_LAYER");
+    if (!v || !v[0]) return -1;
+    char *end = NULL;
+    errno = 0;
+    const long layer = strtol(v, &end, 10);
+    if (errno != 0 || end == v || *end != '\0' ||
+        layer < 0 || (uint64_t)layer >= DS4_N_LAYER) {
+        return -1;
+    }
+    return (int)layer;
+}
+
+typedef struct {
+    float *batch_flat;
+    float *exact_flat;
+    float *batch_mix;
+    float *exact_mix;
+    float *batch_split;
+    float *exact_split;
+    float *batch_cur;
+    float *exact_cur;
+    float *batch_norm;
+    float *exact_norm;
+} dspark_exact_attention_pre_batch_observation;
+
+static void dspark_exact_attention_pre_batch_observation_init(
+        dspark_exact_attention_pre_batch_observation *observation,
+        uint32_t                                      n_tokens,
+        uint64_t                                      hc_dim,
+        uint64_t                                      mix_hc) {
+    memset(observation, 0, sizeof(*observation));
+    const size_t hc_values = (size_t)n_tokens * (size_t)hc_dim;
+    const size_t mix_values = (size_t)n_tokens * (size_t)mix_hc;
+    const size_t embd_values = (size_t)n_tokens * DS4_N_EMBD;
+    observation->batch_flat = xmalloc(hc_values * sizeof(float));
+    observation->exact_flat = xmalloc(hc_values * sizeof(float));
+    observation->batch_mix = xmalloc(mix_values * sizeof(float));
+    observation->exact_mix = xmalloc(mix_values * sizeof(float));
+    observation->batch_split = xmalloc(mix_values * sizeof(float));
+    observation->exact_split = xmalloc(mix_values * sizeof(float));
+    observation->batch_cur = xmalloc(embd_values * sizeof(float));
+    observation->exact_cur = xmalloc(embd_values * sizeof(float));
+    observation->batch_norm = xmalloc(embd_values * sizeof(float));
+    observation->exact_norm = xmalloc(embd_values * sizeof(float));
+}
+
+static void dspark_exact_attention_pre_batch_observation_free(
+        dspark_exact_attention_pre_batch_observation *observation) {
+    if (!observation) return;
+    free(observation->exact_norm);
+    free(observation->batch_norm);
+    free(observation->exact_cur);
+    free(observation->batch_cur);
+    free(observation->exact_split);
+    free(observation->batch_split);
+    free(observation->exact_mix);
+    free(observation->batch_mix);
+    free(observation->exact_flat);
+    free(observation->batch_flat);
+    memset(observation, 0, sizeof(*observation));
+}
+
+static void dspark_exact_attention_pre_batch_observer_report(
+        const dspark_exact_attention_pre_batch_observation *observation,
+        uint32_t                                            n_tokens,
+        uint32_t                                            il,
+        uint64_t                                            hc_dim,
+        uint64_t                                            mix_hc) {
+    const uint64_t hc_values = (uint64_t)n_tokens * hc_dim;
+    const uint64_t mix_values = (uint64_t)n_tokens * mix_hc;
+    const uint64_t embd_values = (uint64_t)n_tokens * DS4_N_EMBD;
+    const float flat_max = max_abs_diff(
+        observation->batch_flat, observation->exact_flat, hc_values);
+    const float flat_rms = rms_abs_diff(
+        observation->batch_flat, observation->exact_flat, hc_values);
+    const float mix_max = max_abs_diff(
+        observation->batch_mix, observation->exact_mix, mix_values);
+    const float mix_rms = rms_abs_diff(
+        observation->batch_mix, observation->exact_mix, mix_values);
+    const float split_max = max_abs_diff(
+        observation->batch_split, observation->exact_split, mix_values);
+    const float split_rms = rms_abs_diff(
+        observation->batch_split, observation->exact_split, mix_values);
+    const float cur_max = max_abs_diff(
+        observation->batch_cur, observation->exact_cur, embd_values);
+    const float cur_rms = rms_abs_diff(
+        observation->batch_cur, observation->exact_cur, embd_values);
+    const float norm_max = max_abs_diff(
+        observation->batch_norm, observation->exact_norm, embd_values);
+    const float norm_rms = rms_abs_diff(
+        observation->batch_norm, observation->exact_norm, embd_values);
+    uint32_t exact_rows = 0;
+    for (uint32_t row = 0; row < n_tokens; row++) {
+        const float *batch_row =
+            observation->batch_norm + (uint64_t)row * DS4_N_EMBD;
+        const float *exact_row =
+            observation->exact_norm + (uint64_t)row * DS4_N_EMBD;
+        if (memcmp(batch_row,
+                   exact_row,
+                   (uint64_t)DS4_N_EMBD * sizeof(float)) == 0) {
+            exact_rows++;
+        }
+    }
+    const char *first = "none";
+    if (flat_max != 0.0f) first = "input_norm";
+    else if (mix_max != 0.0f) first = "hc_projection";
+    else if (split_max != 0.0f) first = "hc_weights";
+    else if (cur_max != 0.0f) first = "hc_recombine";
+    else if (norm_max != 0.0f) first = "attn_norm";
+    const bool exact = strcmp(first, "none") == 0 && exact_rows == n_tokens;
+    fprintf(stderr,
+            "ds4: DSpark exact attention pre batch observer layer=%u "
+            "proposed=%u first=%s input_norm_max=%g input_norm_rms=%g "
+            "hc_mix_max=%g hc_mix_rms=%g hc_weights_max=%g "
+            "hc_weights_rms=%g attn_cur_max=%g attn_cur_rms=%g "
+            "attn_norm_max=%g attn_norm_rms=%g exact_rows=%u/%u result=%s\n",
+            il,
+            n_tokens,
+            first,
+            flat_max,
+            flat_rms,
+            mix_max,
+            mix_rms,
+            split_max,
+            split_rms,
+            cur_max,
+            cur_rms,
+            norm_max,
+            norm_rms,
+            exact_rows,
+            n_tokens,
+            exact ? "exact" : "drift");
+}
+
+/* Shadow only the row-independent prefix before Q/KV projection or cache use. */
+static bool metal_graph_exact_attention_pre_batch_shadow(
+        ds4_gpu_graph          *g,
+        const ds4_model        *model,
+        const ds4_layer_weights *layer,
+        const ds4_gpu_tensor   *input_hc,
+        uint32_t                n_tokens) {
+    const uint64_t hc_dim = (uint64_t)DS4_N_HC * DS4_N_EMBD;
+    const uint64_t mix_hc = 2u * DS4_N_HC + (uint64_t)DS4_N_HC * DS4_N_HC;
+    ds4_gpu_tensor *mix_view = ds4_gpu_tensor_view(
+        g->batch_hc_mix, 0, (uint64_t)n_tokens * mix_hc * sizeof(float));
+    ds4_gpu_tensor *split_view = ds4_gpu_tensor_view(
+        g->batch_hc_split, 0, (uint64_t)n_tokens * mix_hc * sizeof(float));
+    ds4_gpu_tensor *cur_view = ds4_gpu_tensor_view(
+        g->batch_attn_cur,
+        0,
+        (uint64_t)n_tokens * DS4_N_EMBD * sizeof(float));
+    bool ok = mix_view && split_view && cur_view;
+    if (ok) {
+        ok = ds4_gpu_rms_norm_plain_rows_tensor(g->batch_flat_hc,
+                                                 input_hc,
+                                                 (uint32_t)hc_dim,
+                                                 n_tokens,
+                                                 DS4_RMS_EPS) != 0;
+    }
+    if (ok) {
+#ifdef __APPLE__
+        ok = layer->hc_attn_fn->type == DS4_TENSOR_F16 &&
+             ds4_gpu_matmul_f16_decode_rows_tensor(
+                 mix_view,
+                 model->map,
+                 model->size,
+                 layer->hc_attn_fn->abs_offset,
+                 hc_dim,
+                 mix_hc,
+                 g->batch_flat_hc,
+                 n_tokens) != 0;
+#else
+        ok = false;
+#endif
+    }
+    const bool fuse_hc_norm =
+        DS4_N_HC == 4 &&
+        !metal_graph_use_reference_hc_decode() &&
+        !metal_graph_use_reference_hc_norm_decode();
+    if (metal_graph_use_reference_hc_decode()) {
+        if (ok) {
+            ok = ds4_gpu_hc_split_sinkhorn_tensor(
+                     split_view,
+                     mix_view,
+                     model->map,
+                     model->size,
+                     layer->hc_attn_scale->abs_offset,
+                     layer->hc_attn_base->abs_offset,
+                     DS4_N_HC,
+                     DS4_N_HC_SINKHORN_ITER,
+                     DS4_HC_EPS) != 0;
+        }
+        if (ok) {
+            ok = ds4_gpu_hc_weighted_sum_split_tensor(cur_view,
+                                                        input_hc,
+                                                        split_view,
+                                                        DS4_N_EMBD,
+                                                        DS4_N_HC) != 0;
+        }
+    } else if (fuse_hc_norm) {
+        if (ok) {
+            ok = ds4_gpu_hc_split_weighted_sum_norm_tensor(
+                     cur_view,
+                     g->batch_attn_norm,
+                     split_view,
+                     mix_view,
+                     input_hc,
+                     model->map,
+                     model->size,
+                     layer->hc_attn_scale->abs_offset,
+                     layer->hc_attn_base->abs_offset,
+                     layer->attn_norm->abs_offset,
+                     DS4_N_EMBD,
+                     DS4_N_HC,
+                     DS4_N_HC_SINKHORN_ITER,
+                     DS4_HC_EPS,
+                     DS4_RMS_EPS) != 0;
+        }
+    } else if (ok) {
+        ok = ds4_gpu_hc_split_weighted_sum_tensor(
+                 cur_view,
+                 split_view,
+                 mix_view,
+                 input_hc,
+                 model->map,
+                 model->size,
+                 layer->hc_attn_scale->abs_offset,
+                 layer->hc_attn_base->abs_offset,
+                 DS4_N_EMBD,
+                 DS4_N_HC,
+                 DS4_N_HC_SINKHORN_ITER,
+                 DS4_HC_EPS) != 0;
+    }
+    if (ok && !fuse_hc_norm) {
+        ok = ds4_gpu_rms_norm_weight_rows_tensor(
+                 g->batch_attn_norm,
+                 g->batch_attn_cur,
+                 model->map,
+                 model->size,
+                 layer->attn_norm->abs_offset,
+                 DS4_N_EMBD,
+                 n_tokens,
+                 DS4_RMS_EPS) != 0;
+    }
+    ds4_gpu_tensor_free(cur_view);
+    ds4_gpu_tensor_free(split_view);
+    ds4_gpu_tensor_free(mix_view);
+    return ok;
+}
+
 static int dspark_exact_ffn_batch_observer_layer(void) {
     const char *v = getenv("DS4_DSPARK_EXACT_FFN_BATCH_OBSERVER_LAYER");
     if (!v || !v[0]) return -1;
@@ -22962,25 +23213,33 @@ static bool metal_graph_verify_decode_exact(
     ds4_gpu_tensor *cur[16] = {0};
     ds4_gpu_tensor *next[16] = {0};
     ds4_gpu_tensor *after_attn[16] = {0};
+    const int attn_observer_layer =
+        dspark_exact_attention_pre_batch_observer_layer();
+    const bool attn_observer_enabled =
+        attn_observer_layer >= 0 && n_tokens > 1u;
     const int ffn_observer_layer = dspark_exact_ffn_batch_observer_layer();
     const bool ffn_observer_enabled =
         ffn_observer_layer >= 0 && n_tokens > 1u;
     const bool ffn_runtime_enabled =
         exact_ffn_batch && !ffn_observer_enabled && n_tokens > 1u;
     const bool split_ffn_enabled = ffn_observer_enabled || ffn_runtime_enabled;
+    const bool split_layer_enabled =
+        split_ffn_enabled || attn_observer_enabled;
     if (timing && ffn_runtime_enabled) timing->ffn_batch_attempts++;
+    dspark_exact_attention_pre_batch_observation attn_observation;
+    memset(&attn_observation, 0, sizeof(attn_observation));
     dspark_exact_ffn_batch_observation ffn_observation;
     memset(&ffn_observation, 0, sizeof(ffn_observation));
     bool ok = true;
     for (uint32_t row = 0; row < n_tokens; row++) {
         cur[row] = metal_graph_tensor_row_view(g->batch_cur_hc, row, hc_dim);
         next[row] = metal_graph_tensor_row_view(g->batch_next_hc, row, hc_dim);
-        if (split_ffn_enabled) {
+        if (split_layer_enabled) {
             after_attn[row] = metal_graph_tensor_row_view(
                 g->batch_after_attn_hc, row, hc_dim);
         }
         ok = ok && cur[row] && next[row] &&
-             (!split_ffn_enabled || after_attn[row]);
+             (!split_layer_enabled || after_attn[row]);
         if (ok) {
             ok = ds4_gpu_embed_token_hc_tensor(cur[row],
                                                 model->map,
@@ -23009,6 +23268,12 @@ static bool metal_graph_verify_decode_exact(
                                                 weights->layer[ffn_observer_layer].ffn_gate_shexp->dim[1],
                                                 weights->layer[ffn_observer_layer].ffn_gate_exps->dim[1]);
     }
+    if (ok && attn_observer_enabled) {
+        dspark_exact_attention_pre_batch_observation_init(&attn_observation,
+                                                          n_tokens,
+                                                          hc_dim,
+                                                          mix_hc);
+    }
 
     ds4_gpu_tensor *saved_cur = g->cur_hc;
     ds4_gpu_tensor *saved_after_attn = g->after_attn_hc;
@@ -23022,9 +23287,11 @@ static bool metal_graph_verify_decode_exact(
             ok = ds4_gpu_end_commands() != 0 &&
                  ds4_gpu_begin_commands() != 0;
         }
+        const bool observe_attn =
+            attn_observer_enabled && il == (uint32_t)attn_observer_layer;
         const bool observe_ffn =
             ffn_observer_enabled && il == (uint32_t)ffn_observer_layer;
-        if (!observe_ffn && !ffn_runtime_enabled) {
+        if (!observe_attn && !observe_ffn && !ffn_runtime_enabled) {
             for (uint32_t row = 0; ok && row < n_tokens; row++) {
                 const uint32_t pos = start + row;
                 g->cur_hc = cur[row];
@@ -23053,6 +23320,57 @@ static bool metal_graph_verify_decode_exact(
             continue;
         }
 
+        bool attn_shadow_ok = false;
+        if (observe_attn) {
+            if (ok) ok = ds4_gpu_end_commands() != 0;
+            else (void)ds4_gpu_synchronize();
+            ds4_gpu_tensor *input_hc =
+                (il & 1u) ? g->batch_next_hc : g->batch_cur_hc;
+            attn_shadow_ok = ok && ds4_gpu_begin_commands() != 0;
+            if (attn_shadow_ok) {
+                attn_shadow_ok = metal_graph_exact_attention_pre_batch_shadow(
+                    g,
+                    model,
+                    &weights->layer[il],
+                    input_hc,
+                    n_tokens);
+            }
+            if (attn_shadow_ok) {
+                attn_shadow_ok = ds4_gpu_end_commands() != 0;
+            } else {
+                (void)ds4_gpu_synchronize();
+            }
+            if (attn_shadow_ok) {
+                attn_shadow_ok = ds4_gpu_tensor_read(
+                    g->batch_flat_hc,
+                    0,
+                    attn_observation.batch_flat,
+                    (uint64_t)n_tokens * hc_dim * sizeof(float)) != 0 &&
+                    ds4_gpu_tensor_read(
+                        g->batch_hc_mix,
+                        0,
+                        attn_observation.batch_mix,
+                        (uint64_t)n_tokens * mix_hc * sizeof(float)) != 0 &&
+                    ds4_gpu_tensor_read(
+                        g->batch_hc_split,
+                        0,
+                        attn_observation.batch_split,
+                        (uint64_t)n_tokens * mix_hc * sizeof(float)) != 0 &&
+                    ds4_gpu_tensor_read(
+                        g->batch_attn_cur,
+                        0,
+                        attn_observation.batch_cur,
+                        (uint64_t)n_tokens * DS4_N_EMBD * sizeof(float)) != 0 &&
+                    ds4_gpu_tensor_read(
+                        g->batch_attn_norm,
+                        0,
+                        attn_observation.batch_norm,
+                        (uint64_t)n_tokens * DS4_N_EMBD * sizeof(float)) != 0;
+            }
+            if (ok) ok = ds4_gpu_begin_commands() != 0;
+        }
+
+        bool attn_capture_ok = attn_shadow_ok;
         for (uint32_t row = 0; ok && row < n_tokens; row++) {
             const uint32_t pos = start + row;
             g->cur_hc = cur[row];
@@ -23068,6 +23386,115 @@ static bool metal_graph_verify_decode_exact(
                 pos % g->raw_cap,
                 metal_graph_raw_span_for_batch(g, pos, 1),
                 tokens[row]);
+            if (ok && observe_attn && attn_capture_ok) {
+                const uint64_t hc_offset =
+                    (uint64_t)row * hc_dim * sizeof(float);
+                const uint64_t mix_offset =
+                    (uint64_t)row * mix_hc * sizeof(float);
+                const uint64_t embd_offset =
+                    (uint64_t)row * DS4_N_EMBD * sizeof(float);
+                attn_capture_ok = ds4_gpu_tensor_copy(
+                    g->batch_flat_hc,
+                    hc_offset,
+                    g->flat_hc,
+                    0,
+                    hc_dim * sizeof(float)) != 0 &&
+                    ds4_gpu_tensor_copy(
+                        g->batch_hc_mix,
+                        mix_offset,
+                        g->hc_mix,
+                        0,
+                        mix_hc * sizeof(float)) != 0 &&
+                    ds4_gpu_tensor_copy(
+                        g->batch_hc_split,
+                        mix_offset,
+                        g->hc_split,
+                        0,
+                        mix_hc * sizeof(float)) != 0 &&
+                    ds4_gpu_tensor_copy(
+                        g->batch_attn_cur,
+                        embd_offset,
+                        g->attn_cur,
+                        0,
+                        (uint64_t)DS4_N_EMBD * sizeof(float)) != 0 &&
+                    ds4_gpu_tensor_copy(
+                        g->batch_attn_norm,
+                        embd_offset,
+                        g->attn_norm,
+                        0,
+                        (uint64_t)DS4_N_EMBD * sizeof(float)) != 0;
+            }
+        }
+        if (observe_attn) {
+            if (ok) ok = ds4_gpu_end_commands() != 0;
+            else (void)ds4_gpu_synchronize();
+            if (ok && attn_capture_ok) {
+                attn_capture_ok = ds4_gpu_tensor_read(
+                    g->batch_flat_hc,
+                    0,
+                    attn_observation.exact_flat,
+                    (uint64_t)n_tokens * hc_dim * sizeof(float)) != 0 &&
+                    ds4_gpu_tensor_read(
+                        g->batch_hc_mix,
+                        0,
+                        attn_observation.exact_mix,
+                        (uint64_t)n_tokens * mix_hc * sizeof(float)) != 0 &&
+                    ds4_gpu_tensor_read(
+                        g->batch_hc_split,
+                        0,
+                        attn_observation.exact_split,
+                        (uint64_t)n_tokens * mix_hc * sizeof(float)) != 0 &&
+                    ds4_gpu_tensor_read(
+                        g->batch_attn_cur,
+                        0,
+                        attn_observation.exact_cur,
+                        (uint64_t)n_tokens * DS4_N_EMBD * sizeof(float)) != 0 &&
+                    ds4_gpu_tensor_read(
+                        g->batch_attn_norm,
+                        0,
+                        attn_observation.exact_norm,
+                        (uint64_t)n_tokens * DS4_N_EMBD * sizeof(float)) != 0;
+            }
+            if (attn_shadow_ok && attn_capture_ok) {
+                dspark_exact_attention_pre_batch_observer_report(
+                    &attn_observation,
+                    n_tokens,
+                    il,
+                    hc_dim,
+                    mix_hc);
+            } else if (ok) {
+                fprintf(stderr,
+                        "ds4: DSpark exact attention pre batch observer "
+                        "layer=%u proposed=%u result=shadow-fallback\n",
+                        il,
+                        n_tokens);
+            }
+            if (ok) ok = ds4_gpu_begin_commands() != 0;
+        }
+        if (!observe_ffn && !ffn_runtime_enabled) {
+            for (uint32_t row = 0; ok && row < n_tokens; row++) {
+                const uint32_t pos = start + row;
+                g->after_attn_hc = after_attn[row];
+                g->after_ffn_hc = next[row];
+                ok = metal_graph_encode_decode_layer_ffn(g,
+                                                          model,
+                                                          &weights->layer[il],
+                                                          il,
+                                                          pos,
+                                                          tokens[row]);
+                if (ok) {
+                    ds4_target_hc_capture_note_tensor(target_capture,
+                                                      il,
+                                                      pos,
+                                                      1,
+                                                      next[row]);
+                    ds4_gpu_tensor *tmp = cur[row];
+                    cur[row] = next[row];
+                    next[row] = tmp;
+                }
+            }
+            g->after_attn_hc = saved_after_attn;
+            continue;
         }
         if (ffn_runtime_enabled) {
             ds4_gpu_tensor *saved_batch_cur = g->batch_cur_hc;
@@ -23548,6 +23975,7 @@ static bool metal_graph_verify_decode_exact(
         ds4_gpu_tensor_free(next[row]);
         ds4_gpu_tensor_free(cur[row]);
     }
+    dspark_exact_attention_pre_batch_observation_free(&attn_observation);
     dspark_exact_ffn_batch_observation_free(&ffn_observation);
     return ok;
 }

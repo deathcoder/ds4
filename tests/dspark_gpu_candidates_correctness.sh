@@ -11,6 +11,7 @@ fast_verify_runtime=${DS4_TEST_DSPARK_FAST_VERIFY_RUNTIME:-0}
 serial_ffn_runtime=${DS4_TEST_DSPARK_SERIAL_FFN_RUNTIME:-0}
 runtime_stats=${DS4_TEST_DSPARK_RUNTIME_STATS:-0}
 ffn_batch_observer_layer=${DS4_DSPARK_EXACT_FFN_BATCH_OBSERVER_LAYER:-}
+attn_pre_observer_layer=${DS4_DSPARK_EXACT_ATTN_PRE_BATCH_OBSERVER_LAYER:-}
 unset DS4_DSPARK_EXACT_FFN_BATCH
 
 if [[ $fast_verify_observer == 1 && $fast_verify_runtime == 1 ]]; then
@@ -19,6 +20,10 @@ if [[ $fast_verify_observer == 1 && $fast_verify_runtime == 1 ]]; then
 fi
 if [[ $serial_ffn_runtime == 1 && -n $ffn_batch_observer_layer ]]; then
     printf 'serial FFN runtime and selected-layer observer are mutually exclusive\n' >&2
+    exit 2
+fi
+if [[ -n $ffn_batch_observer_layer && -n $attn_pre_observer_layer ]]; then
+    printf 'FFN and attention-pre observers are mutually exclusive\n' >&2
     exit 2
 fi
 if [[ $runtime_stats == 1 && $mode != runtime ]]; then
@@ -146,6 +151,16 @@ assert_gpu_selected() {
             if printf '%s\n' "$observer_records" | grep -Evq ' first=none .* result=exact$'; then
                 printf 'exact FFN batch observer drifted or fell back at layer %s\n' "$ffn_batch_observer_layer" >&2
                 printf '%s\n' "$observer_records" >&2
+                exit 1
+            fi
+        fi
+        if [[ -n $attn_pre_observer_layer ]]; then
+            local attn_records
+            attn_records=$(grep "DSpark exact attention pre batch observer layer=$attn_pre_observer_layer " "$log")
+            if printf '%s\n' "$attn_records" | grep -Evq ' first=none .* result=exact$'; then
+                printf 'exact attention-pre batch observer drifted or fell back at layer %s\n' \
+                    "$attn_pre_observer_layer" >&2
+                printf '%s\n' "$attn_records" >&2
                 exit 1
             fi
         fi

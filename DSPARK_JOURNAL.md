@@ -3313,6 +3313,68 @@ bash -n tests/dspark_gpu_candidates_correctness.sh \
 git diff --check
 ```
 
+Phase 0.66 exact attention-pre batch observer added on 2026-07-14:
+
+- Added `DS4_DSPARK_EXACT_ATTN_PRE_BATCH_OBSERVER_LAYER=<layer>` for exact
+  multi-row DSpark verification. It is observer-only and inactive for one-row
+  calls, invalid layers, or an unset environment variable.
+- At the selected layer, the observer fences prior target work, shadows only
+  the cache-independent attention prefix over the authoritative contiguous HC
+  rows, reads its intermediates, and then runs the unchanged one-token serial
+  attention path in its original autoregressive cache-update order.
+- The shadow covers plain HC input normalization, the attention HC projection,
+  Sinkhorn/split weights, HC recombination, and the following weighted attention
+  norm. It stops before Q/KV projection, RoPE, raw/compressed cache writes,
+  indexer work, or attention itself.
+- The attention HC projection uses the Metal-only exact F16 decode-row primitive
+  already proven by exact FFN batching. HC split/recombination and normalization
+  select the same fused or reference sequence as one-token decode. No generic
+  prefill projection is made authoritative.
+- Observer reports compare normalized HC input, projected HC mix, split weights,
+  recombined attention input, and attention norm. They name the first divergent
+  boundary and require every final norm row to match byte for byte before
+  reporting `first=none ... result=exact`.
+- The observer's extra command fences, tensor copies, host allocations,
+  readbacks, and logs occur only when its layer variable is active. Default
+  exact verification remains uninstrumented. After observation, promoted exact
+  FFN batching continues normally; explicit serial FFN control also has a
+  tested split-layer continuation.
+- Strict correctness matrices at layers 0, 30, and 42 found every observed
+  boundary bit-exact across proposal widths and all five prompt/session cases,
+  including rolling-window and resumed sessions. The layer-42 serial-FFN
+  control matrix was also exact. Default runtime, the existing layer-42 exact
+  FFN observer, the exact-FFN soak, and the fast-verifier soak remained
+  byte-identical and passed.
+- This establishes a safe batch boundary through attention normalization, not
+  an authoritative attention runtime or speed claim. Codex ran no tok/s
+  benchmark; incidental correctness timings were ignored.
+
+Phase 0.66 checks:
+
+```sh
+for layer in 0 30 42; do
+  DS4_DSPARK_EXACT_ATTN_PRE_BATCH_OBSERVER_LAYER=$layer \
+  DS4_TEST_DSPARK_MODE=runtime \
+    ./tests/dspark_gpu_candidates_correctness.sh
+done
+DS4_DSPARK_EXACT_ATTN_PRE_BATCH_OBSERVER_LAYER=42 \
+DS4_TEST_DSPARK_MODE=runtime \
+DS4_TEST_DSPARK_SERIAL_FFN_RUNTIME=1 \
+  ./tests/dspark_gpu_candidates_correctness.sh
+DS4_TEST_DSPARK_MODE=runtime \
+  ./tests/dspark_gpu_candidates_correctness.sh
+DS4_DSPARK_EXACT_FFN_BATCH_OBSERVER_LAYER=42 \
+DS4_TEST_DSPARK_MODE=runtime \
+  ./tests/dspark_gpu_candidates_correctness.sh
+make ds4 ds4_test ds4-server ds4-eval ds4-agent ds4_cpu.o \
+  ds4-warm-prefill-bench
+./ds4_test --dspark-validation --dspark-shape-binding
+./tests/dspark_exact_ffn_batch_runtime_soak.sh
+./tests/dspark_fast_verifier_soak.sh
+bash -n tests/dspark_gpu_candidates_correctness.sh
+git diff --check
+```
+
 Phase 0.52 checks:
 
 ```sh
@@ -3381,12 +3443,13 @@ If continuing from a compacted context, start here:
 
 ## Open Questions
 
-- Begin the exact-attention batching investigation as a separate observer-only
-  phase. First isolate the row-independent attention HC preparation from the
-  autoregressive cache-dependent attention work at selected layers, starting
-  with the late-layer `attn_hc_pre` region identified by the synchronized stage
-  profile. Establish a bit-exact batch/serial boundary before adding any new
-  authoritative runtime path or throughput benchmark.
+- Extend the observer from the now-proven attention-norm boundary through the
+  remaining cache-independent Q and KV preparation: Q/KV projections, their
+  RMS normalization, and position-correct RoPE for each proposal row. Capture
+  each boundary before any raw/compressed cache write, identify where generic
+  batching first changes decode arithmetic, and introduce exact-row primitives
+  only with observed evidence. Keep all cache mutation and attention authority
+  serial during this next phase.
 - The GPU stage path currently borrows target graph transient batch workspace
   and therefore requires `prefill_cap >= block_size` (five). Decide whether to
   allocate sidecar-specific batch scratch before production enablement or keep
