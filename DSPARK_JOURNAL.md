@@ -4074,6 +4074,64 @@ Phase 0.76 user-run zero-copy attribution result on 2026-07-14:
   preserving its interleaved row schedule, rather than separating all proposal
   cores from all output projections.
 
+Phase 0.77 retained serial-tail attribution harness completed on 2026-07-14:
+
+- Added an exact-tail specialization to the existing selected decode-stage
+  profiler. It activates only when `DS4_METAL_DECODE_STAGE_PROFILE` and
+  `DS4_DSPARK_EXACT_TAIL_PROFILE` are both enabled for a prepared serial
+  attention tail. Ordinary default execution keeps the existing disabled
+  profiler check and does not read the new environment variable.
+- The diagnostic preserves each proposal row's operation order and emits six
+  synchronized `part=tail` records: `kv_cache_update`,
+  `compressor_indexer`, `attention`, `inverse_rope`, `projection_a`, and
+  `projection_b_hc`. It does not defer or regroup work across proposal rows.
+- When this component profile is active, the exact-layer profiler omits its
+  redundant combined `attention_tail_serial` boundary while retaining
+  `attention_pre_batch` and `ffn_batch` records as controls. Its FFN timer is
+  restarted after the per-row tail boundaries so it does not absorb tail time.
+- Added `speed-bench/run_dspark_exact_attention_tail_profile.py`. It runs one
+  unprofiled exact reference and selected layer `0/21/42` profiles, requires
+  byte-identical output, validates the exact/tail stage contracts, and expands
+  every `(start, proposal width)` control record into the expected multiset of
+  one-row positions. This handles partial-accept reruns with duplicate starts
+  and rejects missing, duplicated, or misplaced tail rows.
+- The report gives per-layer median tail totals, all six component medians and
+  shares, ranked components, and attention-pre/FFN control medians. Boundaries
+  preserve operation order but still synchronize and change scheduling, so the
+  numbers are attribution data rather than throughput.
+- A profile-enabled layer-42 correctness matrix passed reasoning, Italian,
+  medium-context, rolling-window, and resumed-chat cases. A real retained log
+  contained every expected stage; its rows matched the proposal expansion and
+  the parser/report completed. Synthetic records separately covered duplicate
+  proposal starts and layers `0/21/42`.
+- The normal Metal build, CPU object build, DSpark validation/shape binding,
+  Python compile, and dry-run command generation passed. The CPU build retained
+  only its existing unused-function/parameter warnings.
+- Codex did not run the selected 8K timed profile or any tok/s benchmark.
+
+Phase 0.77 checks:
+
+```sh
+make -j4
+python3 -m py_compile \
+  speed-bench/run_dspark_exact_attention_tail_profile.py
+python3 speed-bench/run_dspark_exact_attention_tail_profile.py \
+  --dry-run --allow-dirty
+# Synthetic stages covered duplicate proposal starts, all component/control
+# contracts, layers 0/21/42, aggregation, ranking, and Markdown reporting.
+DS4_DSPARK_EXACT_LAYER_PROFILE=1 \
+DS4_DSPARK_EXACT_LAYER_PROFILE_LAYER=42 \
+DS4_METAL_DECODE_STAGE_PROFILE=1 \
+DS4_METAL_DECODE_STAGE_PROFILE_LAYER=42 \
+DS4_DSPARK_EXACT_TAIL_PROFILE=1 \
+DS4_TEST_DSPARK_MODE=runtime \
+  ./tests/dspark_gpu_candidates_correctness.sh
+# Timings ignored; output matched and real exact/tail records passed the parser.
+make ds4_cpu.o ds4_test
+./ds4_test --dspark-validation --dspark-shape-binding
+git diff --check
+```
+
 Phase 0.52 checks:
 
 ```sh
@@ -4148,6 +4206,11 @@ If continuing from a compacted context, start here:
   deferred suffix schedule: keep it opt-in as research code, do not benchmark
   it again, and focus future attention work on optimizing the retained serial
   tail in place without changing its interleaved row schedule.
+- The retained serial-tail selected-layer profiler is ready for the user:
+  `python3 speed-bench/run_dspark_exact_attention_tail_profile.py
+  --confirm-ready`. Use its largest stable component and depth trend to choose
+  the next in-place Metal optimization; do not infer throughput from its
+  synchronized totals.
 - The GPU stage path currently borrows target graph transient batch workspace
   and therefore requires `prefill_cap >= block_size` (five). Decide whether to
   allocate sidecar-specific batch scratch before production enablement or keep

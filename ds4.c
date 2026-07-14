@@ -15363,11 +15363,29 @@ static bool metal_graph_encode_decode_layer_part(
         !metal_graph_use_reference_hc_norm_decode();
 
     bool ok = true;
-    const bool decode_stage_profile = metal_graph_decode_stage_profile_enabled(il);
+    const bool decode_stage_profile_requested =
+        metal_graph_decode_stage_profile_enabled(il);
+    const bool exact_tail_profile =
+        decode_stage_profile_requested &&
+        part == METAL_GRAPH_DECODE_LAYER_ATTENTION_TAIL &&
+        getenv("DS4_DSPARK_EXACT_TAIL_PROFILE") != NULL;
+    const bool decode_stage_profile =
+        decode_stage_profile_requested && !exact_tail_profile;
     double decode_stage_t0 = decode_stage_profile ? now_sec() : 0.0;
+    double exact_tail_stage_t0 = 0.0;
 #define DS4_METAL_PROFILE_DECODE_STAGE(name) do { \
         if (ok && decode_stage_profile) { \
             ok = metal_graph_layer_stage_profile_boundary("decode", (name), il, pos, 1, &decode_stage_t0); \
+        } \
+    } while (0)
+    if (exact_tail_profile) {
+        ok = ds4_gpu_end_commands() != 0 && ds4_gpu_begin_commands() != 0;
+        exact_tail_stage_t0 = now_sec();
+    }
+#define DS4_METAL_PROFILE_EXACT_TAIL_STAGE(name) do { \
+        if (ok && exact_tail_profile) { \
+            ok = metal_graph_layer_stage_profile_boundary( \
+                "tail", (name), il, pos, 1, &exact_tail_stage_t0); \
         } \
     } while (0)
     if (part == METAL_GRAPH_DECODE_LAYER_FFN) goto encode_ffn;
@@ -15566,6 +15584,7 @@ encode_attention_tail:
      * share one pass without changing the trigonometric path. */
     if (ok) ok = metal_graph_decode_kv_store(g->kv, raw_cache, raw_cap, raw_row);
     DS4_METAL_PROFILE_DECODE_STAGE("kv_path");
+    DS4_METAL_PROFILE_EXACT_TAIL_STAGE("kv_cache_update");
     if (ok) {
         metal_graph_debug_dump_tensor("KVcur", g->kv, DS4_N_HEAD_DIM, il, pos);
     }
@@ -15880,6 +15899,7 @@ encode_attention_tail:
         comp_cache = g->layer_attn_comp_cache[il];
     }
     DS4_METAL_PROFILE_DECODE_STAGE("compressor_indexer");
+    DS4_METAL_PROFILE_EXACT_TAIL_STAGE("compressor_indexer");
 
     if (ok) {
         const uint32_t raw_start = metal_graph_raw_start_for_span(g, pos, n_raw);
@@ -15929,6 +15949,7 @@ encode_attention_tail:
         }
     }
     DS4_METAL_PROFILE_DECODE_STAGE("attention");
+    DS4_METAL_PROFILE_EXACT_TAIL_STAGE("attention");
     if (ok) {
         metal_graph_debug_dump_tensor("kqv_out", g->heads, q_dim, il, pos);
     }
@@ -15946,6 +15967,7 @@ encode_attention_tail:
     if (ok) {
         metal_graph_debug_dump_tensor("kqv_back", g->heads, q_dim, il, pos);
     }
+    DS4_METAL_PROFILE_EXACT_TAIL_STAGE("inverse_rope");
     if (part == METAL_GRAPH_DECODE_LAYER_ATTENTION_CORE) return ok;
 
 encode_attention_output:;
@@ -15961,6 +15983,7 @@ encode_attention_output:;
                                                       rank,
                                                       n_groups,
                                                       g->heads) != 0;
+        DS4_METAL_PROFILE_EXACT_TAIL_STAGE("projection_a");
         if (ok) {
             ok = ds4_gpu_matmul_q8_0_hc_expand_tensor(g->after_attn_hc,
                                                         g->attn_out,
@@ -15975,6 +15998,7 @@ encode_attention_output:;
                                                         DS4_N_EMBD,
                                                         DS4_N_HC) != 0;
         }
+        DS4_METAL_PROFILE_EXACT_TAIL_STAGE("projection_b_hc");
     } else if (ok) {
         ok = ds4_gpu_attention_output_q8_batch_tensor(g->attn_out,
                                                         g->attn_low,
@@ -16582,6 +16606,7 @@ encode_ffn:
     if (ok) {
         metal_graph_debug_dump_tensor("hc_ffn_post", g->after_ffn_hc, hc_dim, il, pos);
     }
+#undef DS4_METAL_PROFILE_EXACT_TAIL_STAGE
     return ok;
 }
 
@@ -24243,6 +24268,9 @@ static bool metal_graph_verify_decode_exact(
         const bool exact_layer_profile =
             exact_layer_profile_requested &&
             metal_graph_exact_layer_profile_layer_match(il);
+        const bool exact_tail_component_profile =
+            exact_layer_profile &&
+            getenv("DS4_DSPARK_EXACT_TAIL_PROFILE") != NULL;
         double exact_layer_stage_t0 = 0.0;
         if (metal_graph_decode_stage_profile_enabled(il) || exact_layer_profile) {
             ok = ds4_gpu_end_commands() != 0 &&
@@ -24708,7 +24736,7 @@ static bool metal_graph_verify_decode_exact(
             if (ok) ok = ds4_gpu_begin_commands() != 0;
         }
         if (ok && exact_layer_profile && attn_runtime_layer &&
-            !attn_suffix_runtime_layer) {
+            !attn_suffix_runtime_layer && !exact_tail_component_profile) {
             ok = metal_graph_layer_stage_profile_boundary(
                 "exact",
                 "attention_tail_serial",
@@ -24764,6 +24792,9 @@ static bool metal_graph_verify_decode_exact(
                         n_tokens);
             }
             if (ok) ok = ds4_gpu_begin_commands() != 0;
+        }
+        if (ok && exact_tail_component_profile) {
+            exact_layer_stage_t0 = now_sec();
         }
         if (!observe_ffn && !ffn_runtime_enabled) {
             for (uint32_t row = 0; ok && row < n_tokens; row++) {

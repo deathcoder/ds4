@@ -54,6 +54,8 @@ python3 speed-bench/run_dspark_comparison.py \
   --confirm-idle --attention-suffix-ablation
 python3 speed-bench/run_dspark_exact_attention_suffix_profile.py --dry-run
 python3 speed-bench/run_dspark_exact_attention_suffix_profile.py --confirm-ready
+python3 speed-bench/run_dspark_exact_attention_tail_profile.py --dry-run
+python3 speed-bench/run_dspark_exact_attention_tail_profile.py --confirm-ready
 python3 speed-bench/run_dspark_exact_ffn_batch_profile.py --dry-run
 python3 speed-bench/run_dspark_exact_ffn_batch_profile.py --confirm-ready
 ```
@@ -157,6 +159,15 @@ It also reports attention-pre and FFN control medians, requires identical
 proposal schedules and byte-identical output, and rejects incomplete or unknown
 stage records. Its boundaries deliberately alter scheduling, so its timings are
 for attribution only and must not be reported as generation throughput.
+
+After retiring deferred suffix batching, use
+`run_dspark_exact_attention_tail_profile.py` to inspect the retained serial tail
+without reordering its operations. It emits one-row synchronized records for
+KV/cache update, compressor/indexer work, attention, inverse RoPE, projection A,
+and fused projection-B/HC. The runner cross-checks those row positions against
+the exact verifier's proposal batches, keeps attention-pre and FFN medians as
+controls, and requires byte-identical output. These timings also change
+scheduling and are attribution data, not throughput measurements.
 
 After an uninstrumented serial-FFN ablation, use
 `run_dspark_exact_ffn_batch_profile.py` as a separate attribution pass. It
