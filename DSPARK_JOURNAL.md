@@ -4440,6 +4440,57 @@ Phase 0.80 user-run retained-attention result on 2026-07-14:
   candidate should improve the retained RB16 decode specialization while
   preserving row order, online-softmax arithmetic, and all 512 selected rows.
 
+Phase 0.81 RB16-direct indexed-attention candidate prepared on 2026-07-14:
+
+- Added opt-in Metal kernel
+  `kernel_dsv4_indexed_mixed_attention_heads8_rb16_direct`, selected only by
+  `DS4_METAL_INDEXED_ATTN_RB16_DIRECT=1`. The existing RB16 kernel and default
+  host route are unchanged.
+- The candidate retains 16-row staging, raw-window traversal, all 512 selected
+  rows, selected-row order, F16 Q/K/V rounding, and the exact online-softmax
+  update sequence. It removes the per-thread `uint rows[16]` scan/array and
+  loads each selected row id at its cooperative K/V copy site.
+- The host uses the candidate only for one-token decode, exactly 512 selected
+  rows, and `visible_rows >= n_comp`. Together with `top_k <= n_comp` and the
+  argsort contract, that proves every selected id is a valid visible cache-row
+  id. If any guard fails, execution remains on current RB16.
+- Added opt-in trace `DS4_METAL_INDEXED_ATTN_RB16_DIRECT_TRACE=1` for
+  correctness only. It emits one route record per process and is never enabled
+  by the timed runner.
+- Extended `tests/dspark_gpu_candidates_correctness.sh` with
+  `DS4_TEST_DSPARK_INDEXED_ATTN_RB16_DIRECT=1`. Besides the normal five cases,
+  it generates a temporary long prompt, lowers the implementation threshold to
+  64 while preserving the immutable 512-row selector frontier, and compares
+  base, default-RB16 exact DSpark, and RB16-direct exact DSpark output. The
+  candidate route was observed at position 2679 with 670 compressed rows and
+  512 selected rows. All three outputs were byte-identical; the complete
+  reasoning, Italian, medium-context, rolling-window, resumed-chat, and forced
+  sparse matrix passed.
+- Added `--indexed-attention-rb16-direct-ablation` to
+  `speed-bench/run_dspark_comparison.py`. It runs paired uninstrumented default
+  exact versus candidate execution, clears inherited candidate/trace/threshold
+  settings, disables runtime stats and diagnostics, alternates order, and
+  requires every output to remain byte-identical. The benchmark must explicitly
+  use the 8K transition fixture because the runner's normal short fixture never
+  enters sparse attention.
+- Build, Metal runtime kernel compilation, shell/Python syntax, dry-run command
+  generation, forced-sparse route selection, candidate/default output identity,
+  malformed correctness-option rejection, and `git diff --check` passed. Codex
+  did not run a tok/s ablation or make a performance claim.
+
+Phase 0.81 user-run throughput gate:
+
+```sh
+python3 speed-bench/run_dspark_comparison.py \
+  --dry-run --indexed-attention-rb16-direct-ablation \
+  --prompt-file speed-bench/issue468/code_8k.txt --ctx 16384 --tokens 128
+python3 speed-bench/run_dspark_comparison.py \
+  --confirm-idle --indexed-attention-rb16-direct-ablation \
+  --prompt-file speed-bench/issue468/code_8k.txt --ctx 16384 --tokens 128
+```
+
+Do not benchmark the default short fixture: it cannot exercise this candidate.
+
 Phase 0.52 checks:
 
 ```sh
@@ -4526,6 +4577,8 @@ If continuing from a compacted context, start here:
   complete: sparse indexed attention was consistently `43.3%` slower than
   dense mixed attention at transition. Next optimize the retained RB16
   one-token indexed kernel without reviving rejected RB4 or reducing top-k.
+  Phase 0.81's guarded RB16-direct candidate is correct and ready for the
+  user-run 8K paired throughput gate.
 - The GPU stage path currently borrows target graph transient batch workspace
   and therefore requires `prefill_cap >= block_size` (five). Decide whether to
   allocate sidecar-specific batch scratch before production enablement or keep

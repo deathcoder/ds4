@@ -186,6 +186,39 @@ That script unsets NR4 for each baseline process and enables it only for the
 exact DSpark candidate, so its five output comparisons directly test the new
 projection schedule rather than comparing two NR4 executions.
 
+`--indexed-attention-rb16-direct-ablation` is an uninstrumented paired pass
+comparing default exact DSpark against the opt-in
+`DS4_METAL_INDEXED_ATTN_RB16_DIRECT=1` one-token sparse-attention kernel. The
+candidate keeps the RB16 row block, all 512 selected rows, selected-row order,
+and online-softmax arithmetic; it removes the redundant per-thread scan and
+local `rows[16]` array only when the host proves every compressed cache row is
+visible. Otherwise it falls back to the existing RB16 kernel. The benchmark
+runner clears inherited candidate, trace, and sparse-threshold settings from
+both modes, enables only the candidate variable in its candidate processes,
+disables diagnostics and runtime stats, alternates pair order, and requires
+byte-identical output. The default short fixture never reaches sparse indexed
+attention, so use the recorded 8K transition fixture explicitly:
+
+```sh
+python3 speed-bench/run_dspark_comparison.py \
+  --dry-run --indexed-attention-rb16-direct-ablation \
+  --prompt-file speed-bench/issue468/code_8k.txt --ctx 16384 --tokens 128
+python3 speed-bench/run_dspark_comparison.py \
+  --confirm-idle --indexed-attention-rb16-direct-ablation \
+  --prompt-file speed-bench/issue468/code_8k.txt --ctx 16384 --tokens 128
+```
+
+The candidate-specific correctness matrix lowers only the implementation
+threshold and generates a temporary prompt long enough to cross the immutable
+512-row selector frontier. It compares base output, default RB16 exact DSpark,
+and RB16-direct exact DSpark, and requires a candidate-only route trace:
+
+```sh
+DS4_TEST_DSPARK_MODE=runtime \
+DS4_TEST_DSPARK_INDEXED_ATTN_RB16_DIRECT=1 \
+  ./tests/dspark_gpu_candidates_correctness.sh
+```
+
 After retiring deferred suffix batching, use
 `run_dspark_exact_attention_tail_profile.py` to inspect the retained serial tail
 without reordering its operations. It emits one-row synchronized records for

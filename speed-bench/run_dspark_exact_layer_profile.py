@@ -28,6 +28,10 @@ EXACT_STAGES = (
     "ffn_batch",
 )
 INSTRUMENTATION_MARKERS = ("PROFILE", "TRACE", "DUMP", "TIMING")
+EXPERIMENT_ENV_KEYS = (
+    "DS4_METAL_COMPRESSOR_PAIR_NR4",
+    "DS4_METAL_INDEXED_ATTN_RB16_DIRECT",
+)
 
 
 def sha256(data):
@@ -48,6 +52,7 @@ def cleared_env_keys(env):
     return sorted(
         key for key in env
         if key.startswith("DS4_DSPARK_")
+        or key in EXPERIMENT_ENV_KEYS
         or (key.startswith("DS4_") and (
             any(marker in key for marker in INSTRUMENTATION_MARKERS)
             or key.endswith("_LOG")

@@ -138,6 +138,7 @@ static id<MTLComputePipelineState> g_dsv4_compressor_store_one_pipeline;
 static id<MTLComputePipelineState> g_dsv4_sort_i32_rows_asc_pipeline;
 static id<MTLComputePipelineState> g_dsv4_indexed_attention_heads8_pipeline;
 static id<MTLComputePipelineState> g_dsv4_indexed_attention_heads8_rb16_pipeline;
+static id<MTLComputePipelineState> g_dsv4_indexed_attention_heads8_rb16_direct_pipeline;
 static id<MTLComputePipelineState> g_dsv4_softplus_sqrt_pipeline;
 static id<MTLComputePipelineState> g_dsv4_router_finalize_one_pipeline;
 static id<MTLComputePipelineState> g_dsv4_router_weights_one_pipeline;
@@ -1809,6 +1810,26 @@ static int ds4_gpu_use_compressor_pair_nr4(void) {
     static int enabled;
     if (!initialized) {
         enabled = getenv("DS4_METAL_COMPRESSOR_PAIR_NR4") != NULL;
+        initialized = 1;
+    }
+    return enabled;
+}
+
+static int ds4_gpu_use_indexed_attention_rb16_direct(void) {
+    static int initialized;
+    static int enabled;
+    if (!initialized) {
+        enabled = getenv("DS4_METAL_INDEXED_ATTN_RB16_DIRECT") != NULL;
+        initialized = 1;
+    }
+    return enabled;
+}
+
+static int ds4_gpu_trace_indexed_attention_rb16_direct(void) {
+    static int initialized;
+    static int enabled;
+    if (!initialized) {
+        enabled = getenv("DS4_METAL_INDEXED_ATTN_RB16_DIRECT_TRACE") != NULL;
         initialized = 1;
     }
     return enabled;
@@ -6263,6 +6284,10 @@ int ds4_gpu_init(void) {
             ds4_gpu_get_pipeline("kernel_dsv4_indexed_mixed_attention_heads8");
         g_dsv4_indexed_attention_heads8_rb16_pipeline =
             ds4_gpu_get_pipeline("kernel_dsv4_indexed_mixed_attention_heads8_rb16");
+        if (ds4_gpu_use_indexed_attention_rb16_direct()) {
+            g_dsv4_indexed_attention_heads8_rb16_direct_pipeline =
+                ds4_gpu_get_pipeline("kernel_dsv4_indexed_mixed_attention_heads8_rb16_direct");
+        }
         g_dsv4_softplus_sqrt_pipeline =
             ds4_gpu_get_pipeline("kernel_dsv4_softplus_sqrt_f32_4");
         g_dsv4_router_finalize_one_pipeline =
@@ -6276,6 +6301,8 @@ int ds4_gpu_init(void) {
             !g_dsv4_sort_i32_rows_asc_pipeline ||
             !g_dsv4_indexed_attention_heads8_pipeline ||
             !g_dsv4_indexed_attention_heads8_rb16_pipeline ||
+            (ds4_gpu_use_indexed_attention_rb16_direct() &&
+             !g_dsv4_indexed_attention_heads8_rb16_direct_pipeline) ||
             !g_dsv4_softplus_sqrt_pipeline ||
             !g_dsv4_router_finalize_one_pipeline ||
             !g_dsv4_router_weights_one_pipeline ||
@@ -6884,6 +6911,7 @@ void ds4_gpu_cleanup(void) {
         g_dsv4_sort_i32_rows_asc_pipeline = nil;
         g_dsv4_indexed_attention_heads8_pipeline = nil;
         g_dsv4_indexed_attention_heads8_rb16_pipeline = nil;
+        g_dsv4_indexed_attention_heads8_rb16_direct_pipeline = nil;
         g_dsv4_softplus_sqrt_pipeline = nil;
         g_dsv4_router_finalize_one_pipeline = nil;
         g_dsv4_router_weights_one_pipeline = nil;
@@ -19785,13 +19813,32 @@ int ds4_gpu_attention_indexed_mixed_batch_heads_tensor(
             ds4_gpu_hot_pipeline(g_dsv4_sort_i32_rows_asc_pipeline,
                                     "kernel_dsv4_sort_i32_rows_asc");
         const bool decode_one_token = n_tokens == 1u;
+        const uint64_t visible_rows = ((uint64_t)pos0 + 1u) / ratio;
+        const bool decode_rb16_direct =
+            decode_one_token &&
+            top_k == 512u &&
+            visible_rows >= n_comp &&
+            ds4_gpu_use_indexed_attention_rb16_direct();
         id<MTLComputePipelineState> attn_pipeline =
+            decode_rb16_direct ?
+            ds4_gpu_hot_pipeline(g_dsv4_indexed_attention_heads8_rb16_direct_pipeline,
+                                   "kernel_dsv4_indexed_mixed_attention_heads8_rb16_direct") :
             decode_one_token ?
             ds4_gpu_hot_pipeline(g_dsv4_indexed_attention_heads8_rb16_pipeline,
                                    "kernel_dsv4_indexed_mixed_attention_heads8_rb16") :
             ds4_gpu_hot_pipeline(g_dsv4_indexed_attention_heads8_pipeline,
                                    "kernel_dsv4_indexed_mixed_attention_heads8");
         if (!sort_pipeline || !attn_pipeline) return 0;
+        if (decode_rb16_direct && ds4_gpu_trace_indexed_attention_rb16_direct()) {
+            static int reported;
+            if (!reported) {
+                fprintf(stderr,
+                        "ds4: Metal indexed attention route=rb16_direct "
+                        "pos=%u compressed=%u selected=%u\n",
+                        pos0, n_comp, top_k);
+                reported = 1;
+            }
+        }
         if ((NSUInteger)top_k > sort_pipeline.maxTotalThreadsPerThreadgroup) {
             fprintf(stderr, "ds4: Metal indexed attention top-k exceeds sort threadgroup limit\n");
             return 0;
