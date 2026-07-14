@@ -4402,6 +4402,44 @@ The result should contain both `dense_mixed` and `sparse_indexed` rows. Compare
 their synchronized medians only within this run; do not compare its t/s or
 absolute component values with uninstrumented generation.
 
+Phase 0.80 user-run retained-attention result on 2026-07-14:
+
+- Run: `speed-bench/local-runs/attention-transition-20260714-234148/stages.csv`.
+  Layer 42 contained 57 exact proposal batches and 238 proposal-row
+  occurrences: 201 dense mixed rows and 37 sparse indexed rows. Sparse entry
+  began at position 4099, matching the earlier compressor/indexer transition.
+- Dense mixed attention had median `0.504 ms/row`; sparse indexed attention had
+  median `0.722 ms/row`. The sparse/dense ratio was `1.433x`, a `43.3%`
+  synchronized increase, or about `0.218 ms` additional attention time per
+  sparse proposal row at this context length.
+- This was not an outlier-driven result. Dense p10/p90 was `0.482/0.531 ms`
+  with range `0.417..0.637`; sparse p10/p90 was `0.706/0.756 ms` with range
+  `0.681..0.840`. The slowest dense row was still faster than the fastest
+  sparse row. Repeated speculative positions were represented in both modes
+  and did not blur the separation.
+- Attention-pre and FFN controls were `0.262` and `0.391 ms/row`, nearly
+  identical to the Phase 0.78 transition controls (`0.262/0.395`). The current
+  dense attention median also agrees with the earlier layer-42 tail attribution
+  (`0.533 ms/row`) closely enough to support the profile's localization.
+- Combined only as a rough synchronized attribution, Phase 0.78's sparse-only
+  prepare/score/top-k medians sum to `1.067 ms/row`, and sparse attention adds
+  another `0.218 ms/row` over dense attention. Do not treat the `1.285 ms` sum
+  as production latency, but it shows sparse entry has both an indexer-pipeline
+  cost and a separate indexed-attention penalty.
+- The indexed path preserves all 512 selected rows but scans only those rows;
+  at this transition it is nevertheless slower than dense attention over about
+  1025 compressed rows. The penalty is therefore implementation overhead from
+  indexed gathering/staging/scheduling, not excess selected-row count.
+- This kernel is shared by every ratio-4 layer (the Flash layout uses ratio 4
+  on even layers 2 through 42), so a real decode-kernel improvement would be a
+  general long-context improvement rather than a layer-42 benchmark special.
+- Source/history audit: current one-token indexed decode already uses
+  `kernel_dsv4_indexed_mixed_attention_heads8_rb16`, which stages 16 rows per
+  block. The earlier RB4 candidate was removed in upstream commit `18c2d4b` as
+  part of rejected experimental-path cleanup. Do not re-run RB4. The next
+  candidate should improve the retained RB16 decode specialization while
+  preserving row order, online-softmax arithmetic, and all 512 selected rows.
+
 Phase 0.52 checks:
 
 ```sh
@@ -4485,7 +4523,9 @@ If continuing from a compacted context, start here:
   measured `0.4%` slower and is retired. Next attribute the retained attention
   operation across dense and sparse rows rather than pursuing another
   compressor projection schedule. The Phase 0.80 mode-aware runner is now
-  ready; the next decision depends on its user-run dense/sparse attribution.
+  complete: sparse indexed attention was consistently `43.3%` slower than
+  dense mixed attention at transition. Next optimize the retained RB16
+  one-token indexed kernel without reviving rejected RB4 or reducing top-k.
 - The GPU stage path currently borrows target graph transient batch workspace
   and therefore requires `prefill_cap >= block_size` (five). Decide whether to
   allocate sidecar-specific batch scratch before production enablement or keep
