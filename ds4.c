@@ -23693,7 +23693,11 @@ static bool metal_graph_exact_attention_suffix_batch(
         const ds4_model         *model,
         const ds4_layer_weights *layer,
         const ds4_gpu_tensor    *input_hc,
-        uint32_t                 n_tokens) {
+        uint32_t                 n_tokens,
+        bool                     stage_profile,
+        uint32_t                 il,
+        uint32_t                 pos0,
+        double                  *stage_t0) {
     const uint64_t hc_dim = (uint64_t)DS4_N_HC * DS4_N_EMBD;
     const uint64_t mix_hc =
         2u * DS4_N_HC + (uint64_t)DS4_N_HC * DS4_N_HC;
@@ -23727,6 +23731,15 @@ static bool metal_graph_exact_attention_suffix_batch(
                  g->batch_heads,
                  n_tokens) != 0;
     }
+    if (ok && stage_profile) {
+        ok = metal_graph_layer_stage_profile_boundary(
+            "exact",
+            "attention_projection_a_batch",
+            il,
+            pos0,
+            n_tokens,
+            stage_t0);
+    }
     if (ok) {
 #ifdef __APPLE__
         ok = ds4_gpu_matmul_q8_0_hc_expand_batch_tensor(
@@ -23746,6 +23759,15 @@ static bool metal_graph_exact_attention_suffix_batch(
 #else
         ok = false;
 #endif
+    }
+    if (ok && stage_profile) {
+        ok = metal_graph_layer_stage_profile_boundary(
+            "exact",
+            "attention_projection_b_hc_batch",
+            il,
+            pos0,
+            n_tokens,
+            stage_t0);
     }
     ds4_gpu_tensor_free(hc_split);
     ds4_gpu_tensor_free(after_attn_hc);
@@ -24560,6 +24582,15 @@ static bool metal_graph_verify_decode_exact(
                 }
             }
         }
+        if (ok && exact_layer_profile && attn_suffix_runtime_layer) {
+            ok = metal_graph_layer_stage_profile_boundary(
+                "exact",
+                "attention_core_capture_serial",
+                il,
+                start,
+                n_tokens,
+                &exact_layer_stage_t0);
+        }
         if (ok && attn_suffix_runtime_layer) {
             if (outcomes) outcomes->attn_suffix_batch_attempts++;
             const ds4_gpu_tensor *input_hc =
@@ -24569,7 +24600,11 @@ static bool metal_graph_verify_decode_exact(
                                                            model,
                                                            &weights->layer[il],
                                                            input_hc,
-                                                           n_tokens);
+                                                           n_tokens,
+                                                           exact_layer_profile,
+                                                           il,
+                                                           start,
+                                                           &exact_layer_stage_t0);
             if (suffix_batch_ok) {
                 if (outcomes) outcomes->attn_suffix_batch_successes++;
             } else {
@@ -24622,7 +24657,11 @@ static bool metal_graph_verify_decode_exact(
                     model,
                     &weights->layer[il],
                     input_hc,
-                    n_tokens);
+                    n_tokens,
+                    false,
+                    0,
+                    0,
+                    NULL);
             }
             if (suffix_shadow_ok) {
                 suffix_shadow_ok = ds4_gpu_end_commands() != 0;
@@ -24670,7 +24709,8 @@ static bool metal_graph_verify_decode_exact(
             }
             if (ok) ok = ds4_gpu_begin_commands() != 0;
         }
-        if (ok && exact_layer_profile && attn_runtime_layer) {
+        if (ok && exact_layer_profile && attn_runtime_layer &&
+            !attn_suffix_runtime_layer) {
             ok = metal_graph_layer_stage_profile_boundary(
                 "exact",
                 "attention_tail_serial",

@@ -52,6 +52,8 @@ python3 speed-bench/run_dspark_comparison.py \
   --dry-run --attention-suffix-ablation
 python3 speed-bench/run_dspark_comparison.py \
   --confirm-idle --attention-suffix-ablation
+python3 speed-bench/run_dspark_exact_attention_suffix_profile.py --dry-run
+python3 speed-bench/run_dspark_exact_attention_suffix_profile.py --confirm-ready
 python3 speed-bench/run_dspark_exact_ffn_batch_profile.py --dry-run
 python3 speed-bench/run_dspark_exact_ffn_batch_profile.py --confirm-ready
 ```
@@ -145,6 +147,16 @@ prompt, and acceptance policy. Diagnostics and runtime stats are disabled,
 stdout must remain byte-identical, and pair order alternates default/candidate
 then candidate/default. This mode is mutually exclusive with every other
 ablation and `--fast-verifier`.
+
+The measured suffix candidate is currently slower than default exact Metal
+generation. Use `run_dspark_exact_attention_suffix_profile.py` before changing
+that path again. The synchronized diagnostic compares default serial attention
+tail work against candidate serial core/head capture, batched projection A, and
+batched fused projection-B/HC at representative early, middle, and late layers.
+It also reports attention-pre and FFN control medians, requires identical
+proposal schedules and byte-identical output, and rejects incomplete or unknown
+stage records. Its boundaries deliberately alter scheduling, so its timings are
+for attribution only and must not be reported as generation throughput.
 
 After an uninstrumented serial-FFN ablation, use
 `run_dspark_exact_ffn_batch_profile.py` as a separate attribution pass. It

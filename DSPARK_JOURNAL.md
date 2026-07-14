@@ -3909,6 +3909,54 @@ Phase 0.74 user-run throughput result on 2026-07-14:
   serial suffix at selected early/middle/late layers. Do not run another
   uninstrumented ablation until the regression has a measured owner.
 
+Phase 0.75 attention-suffix attribution harness completed on 2026-07-14:
+
+- Extended the existing opt-in exact-layer synchronized profiler boundaries.
+  Default exact execution retains its combined `attention_tail_serial` record.
+  The suffix candidate now emits `attention_core_capture_serial`,
+  `attention_projection_a_batch`, and
+  `attention_projection_b_hc_batch` records at the selected layer. These
+  boundaries exist only when `DS4_DSPARK_EXACT_LAYER_PROFILE` is enabled;
+  normal candidate scheduling is unchanged.
+- Added `speed-bench/run_dspark_exact_attention_suffix_profile.py`. It runs one
+  unprofiled exact reference and paired default/candidate synchronized profiles
+  at layers `0`, `21`, and `42`, alternating pair order by layer. Every output
+  must be byte-identical to the reference.
+- The runner strictly validates each mode's stage contract, rejects unknown or
+  missing records, and requires identical `(position, proposal width)`
+  signatures between default and candidate. Its report compares default serial
+  attention-tail milliseconds per proposal row with candidate serial
+  core/capture, projection A, fused projection-B/HC, their sum, ratio, and
+  delta. Attention-pre and FFN medians are reported as scheduling controls.
+- A profile-enabled candidate correctness matrix passed reasoning, Italian,
+  medium-context, rolling-window, and resumed-chat cases. Real layer-42 logs
+  contained all five expected candidate records. The parser also accepted the
+  three established default records from the prior exact-layer profile.
+- The runner's dry-run command generation, synthetic aggregation/reporting,
+  normal Metal build, and CPU object build passed. The CPU build retained only
+  its existing unused-function/parameter warnings.
+- Codex did not run the timed attribution profile or any tok/s benchmark.
+
+Phase 0.75 checks:
+
+```sh
+make -j4
+make ds4_cpu.o
+python3 -m py_compile \
+  speed-bench/run_dspark_exact_attention_suffix_profile.py
+python3 speed-bench/run_dspark_exact_attention_suffix_profile.py \
+  --dry-run --allow-dirty
+# Synthetic records covered both stage contracts, layers 0/21/42, proposal
+# schedule checks, summary aggregation, and Markdown report generation.
+DS4_DSPARK_EXACT_LAYER_PROFILE=1 \
+DS4_DSPARK_EXACT_LAYER_PROFILE_LAYER=42 \
+DS4_TEST_DSPARK_MODE=runtime \
+DS4_TEST_DSPARK_ATTN_SUFFIX_RUNTIME=1 \
+  ./tests/dspark_gpu_candidates_correctness.sh
+# Timings ignored; all outputs matched and every candidate stage was present.
+git diff --check
+```
+
 Phase 0.52 checks:
 
 ```sh
@@ -3978,10 +4026,11 @@ If continuing from a compacted context, start here:
 ## Open Questions
 
 - The exact attention-suffix candidate is correct but measured `21.2%` slower
-  than default exact Metal generation. Keep it opt-in. The next useful step is
-  a synchronized selected-layer attribution profile separating serial core and
-  head capture from projection A and fused projection-B/HC; only then decide
-  whether to redesign or retire this batching schedule.
+  than default exact Metal generation. Keep it opt-in. The selected-layer
+  attribution harness is ready for the user:
+  `python3 speed-bench/run_dspark_exact_attention_suffix_profile.py
+  --confirm-ready`. Use its component ownership before deciding whether to
+  redesign or retire this batching schedule.
 - The GPU stage path currently borrows target graph transient batch workspace
   and therefore requires `prefill_cap >= block_size` (five). Decide whether to
   allocate sidecar-specific batch scratch before production enablement or keep
