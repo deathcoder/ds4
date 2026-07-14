@@ -4555,6 +4555,34 @@ with absolute synchronized values from Phase 0.80. If sparse attention alone
 improves coherently with the `+1.2%` uninstrumented result, promote the guarded
 RB16-direct route to default while retaining current RB16 as fallback/control.
 
+Phase 0.82 user-run synchronized attribution result on 2026-07-15:
+
+- Run: `speed-bench/local-runs/attention-transition-rb16-direct-20260715-003733`.
+  Layer 42 had identical default/direct schedules with 57 proposal batches,
+  238 proposal rows, 201 dense rows, and 37 sparse rows. The unprofiled
+  reference and both profiled variants had the same stdout SHA-256.
+- Default/direct dense medians were `0.502/0.504 ms/row` (`1.004x`, `+0.4%`),
+  while sparse indexed medians were `0.727/0.624 ms/row` (`0.858x`, `-14.2%`).
+  This localizes the candidate improvement to the branch that actually uses
+  RB16-direct.
+- The sparse distributions separated cleanly: default p10/p90 was
+  `0.710/0.733 ms/row`, while direct p10/p90 was `0.607/0.632 ms/row`. The
+  candidate p90 remained below the default p10. Full ranges overlapped only at
+  outliers (`0.701..0.871` default, `0.597..0.723` direct).
+- Attention-pre was `0.2632/0.2644 ms/row` and FFN was
+  `0.3906/0.3926 ms/row`, both about `+0.5%` in the candidate process. Their
+  matched movement, together with the stable dense path, is a scheduling/noise
+  control rather than evidence of a broader runtime change.
+- Metadata recorded clean commit `601bfcd`, no inherited cleared environment
+  variables, and the candidate switch only in the RB16-direct process. The
+  output hashes and runner checks confirm identical output, proposal schedule,
+  and per-position dense/sparse routing.
+- Gate decision: Phase 0.82 passes. Combined with the prior correct candidate
+  matrix and consistent `+1.2%` uninstrumented paired result, promote the
+  guarded RB16-direct route to the default one-token full-visibility path.
+  Retain current RB16 behind an explicit control/fallback route so promotion
+  can be validated and reversed without deleting the known-correct kernel.
+
 Phase 0.52 checks:
 
 ```sh
@@ -4643,9 +4671,11 @@ If continuing from a compacted context, start here:
   one-token indexed kernel without reviving rejected RB4 or reducing top-k.
   Phase 0.81's guarded RB16-direct candidate is correct and ready for the
   user-run 8K paired throughput gate. That gate passed consistently at `+1.2%`;
-  Phase 0.82's matched default/direct synchronized transition profile is ready
-  for the user-run attribution gate. Use its sparse ratio plus dense/control
-  stability to decide default promotion.
+  Phase 0.82's matched synchronized gate passed: RB16-direct reduced sparse
+  indexed attention by `14.2%`, with stable dense/control medians and clearly
+  separated sparse distributions. Next promote guarded RB16-direct to default,
+  retain legacy RB16 as an explicit control/fallback, and rerun correctness
+  before a final user-run throughput confirmation.
 - The GPU stage path currently borrows target graph transient batch workspace
   and therefore requires `prefill_cap >= block_size` (five). Decide whether to
   allocate sidecar-specific batch scratch before production enablement or keep
