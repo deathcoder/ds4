@@ -4514,6 +4514,47 @@ Phase 0.81 user-run RB16-direct throughput result on 2026-07-15:
   passes, promote the guarded route to default and retain current RB16 as the
   fallback/control.
 
+Phase 0.82 RB16-direct synchronized attribution prepared on 2026-07-15:
+
+- Extended `run_dspark_exact_attention_transition_profile.py` with an explicit
+  `--rb16-direct-comparison` mode. It runs an unprofiled exact reference, the
+  default RB16 transition profile, and the opt-in RB16-direct transition
+  profile. `DS4_METAL_INDEXED_ATTN_RB16_DIRECT=1` is set only for the candidate
+  process; inherited candidate and sparse-threshold overrides remain cleared.
+- Every profiled stdout must match the unprofiled reference byte-for-byte. The
+  comparison additionally requires default and candidate to have identical
+  proposal schedules and identical per-position dense/sparse branch labels.
+  This prevents a changed speculative schedule or transition point from being
+  mistaken for a kernel timing improvement.
+- The synchronized report compares default/direct medians for dense mixed and
+  sparse indexed attention separately. It also reports attention-pre and FFN
+  controls in both processes. Only sparse indexed attention uses RB16-direct;
+  dense and control values are noise/scheduling controls for the attribution.
+- The original single-variant profiler invocation and report remain available
+  unchanged. Comparison CSV records carry an explicit `variant` column, and
+  metadata records both fully expanded commands.
+- Python syntax, the original and comparison dry-run command paths, synthetic
+  matched-profile summary/report generation, deliberate branch-label mismatch
+  rejection, `make -j4 ds4 ds4_test ds4_cpu.o`,
+  `./ds4_test --dspark-validation --dspark-shape-binding`, and
+  `git diff --check` passed. Codex did not execute the synchronized profile or
+  use its timing output; that remains the user-run gate below.
+
+Phase 0.82 user-run gate:
+
+```sh
+python3 speed-bench/run_dspark_exact_attention_transition_profile.py \
+  --dry-run --rb16-direct-comparison
+python3 speed-bench/run_dspark_exact_attention_transition_profile.py \
+  --confirm-ready --rb16-direct-comparison
+```
+
+The useful result is the candidate/default sparse indexed ratio. Compare it
+with the dense ratio and attention-pre/FFN controls from this same run, not
+with absolute synchronized values from Phase 0.80. If sparse attention alone
+improves coherently with the `+1.2%` uninstrumented result, promote the guarded
+RB16-direct route to default while retaining current RB16 as fallback/control.
+
 Phase 0.52 checks:
 
 ```sh
@@ -4602,8 +4643,9 @@ If continuing from a compacted context, start here:
   one-token indexed kernel without reviving rejected RB4 or reducing top-k.
   Phase 0.81's guarded RB16-direct candidate is correct and ready for the
   user-run 8K paired throughput gate. That gate passed consistently at `+1.2%`;
-  next localize the win with the synchronized transition profile, then decide
-  default promotion.
+  Phase 0.82's matched default/direct synchronized transition profile is ready
+  for the user-run attribution gate. Use its sparse ratio plus dense/control
+  stability to decide default promotion.
 - The GPU stage path currently borrows target graph transient batch workspace
   and therefore requires `prefill_cap >= block_size` (five). Decide whether to
   allocate sidecar-specific batch scratch before production enablement or keep

@@ -259,6 +259,23 @@ identical across modes, but synchronization changes scheduling, so compare the
 dense and sparse attribution within this run only and never report it as
 generation throughput.
 
+Pass `--rb16-direct-comparison` to repeat that synchronized attribution with
+the default RB16 and opt-in RB16-direct kernels in separate processes. The
+runner requires both variants to produce byte-identical output, identical
+proposal schedules, and the same dense/sparse branch labels. Its report shows
+candidate/default ratios for dense and sparse attention separately, with
+attention-pre and FFN controls. A candidate win should appear in sparse
+indexed attention; dense attention and both controls do not use the candidate
+kernel and should remain stable. Run this diagnostic yourself because its
+synchronization points make its timings sensitive to other machine activity:
+
+```sh
+python3 speed-bench/run_dspark_exact_attention_transition_profile.py \
+  --dry-run --rb16-direct-comparison
+python3 speed-bench/run_dspark_exact_attention_transition_profile.py \
+  --confirm-ready --rb16-direct-comparison
+```
+
 After an uninstrumented serial-FFN ablation, use
 `run_dspark_exact_ffn_batch_profile.py` as a separate attribution pass. It
 compares the same serial-exact control and default exact-FFN modes with

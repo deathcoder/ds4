@@ -21,6 +21,9 @@ import run_dspark_exact_layer_profile as layer_profile
 CONTROL_STAGES = ("attention_pre_batch", "ffn_batch")
 ATTENTION_MODES = ("raw", "dense_mixed", "sparse_indexed")
 EXTRA_CLEARED_ENV_KEYS = ("DS4_METAL_DECODE_INDEXER_SPARSE_THRESHOLD",)
+DEFAULT_VARIANT = "default_rb16"
+DIRECT_VARIANT = "rb16_direct"
+COMPARISON_VARIANTS = (DEFAULT_VARIANT, DIRECT_VARIANT)
 
 
 def parse_args():
@@ -53,6 +56,11 @@ def parse_args():
         action="store_true",
         help="allow a run that does not contain both dense and sparse attention",
     )
+    parser.add_argument(
+        "--rb16-direct-comparison",
+        action="store_true",
+        help="compare default RB16 against the opt-in RB16-direct kernel",
+    )
     parser.add_argument("--confirm-ready", action="store_true")
     parser.add_argument("--allow-dirty", action="store_true")
     parser.add_argument("--dry-run", action="store_true")
@@ -66,7 +74,11 @@ def parse_args():
     return args, root
 
 
-def profile_env(layer=None):
+def selected_variants(args):
+    return COMPARISON_VARIANTS if args.rb16_direct_comparison else (DEFAULT_VARIANT,)
+
+
+def profile_env(layer=None, variant=DEFAULT_VARIANT):
     env = os.environ.copy()
     for key in layer_profile.cleared_env_keys(env):
         env.pop(key, None)
@@ -74,6 +86,8 @@ def profile_env(layer=None):
         env.pop(key, None)
     env["DS4_DSPARK_GPU_RUNTIME"] = "1"
     env["DS4_DSPARK_MULTI_COMMIT"] = "1"
+    if variant == DIRECT_VARIANT:
+        env["DS4_METAL_INDEXED_ATTN_RB16_DIRECT"] = "1"
     if layer is not None:
         env["DS4_DSPARK_EXACT_LAYER_PROFILE"] = "1"
         env["DS4_DSPARK_EXACT_LAYER_PROFILE_LAYER"] = str(layer)
@@ -97,11 +111,12 @@ def command(args):
     ]
 
 
-def command_text(args, layer=None):
-    env = profile_env(layer)
+def command_text(args, layer=None, variant=DEFAULT_VARIANT):
+    env = profile_env(layer, variant)
     keys = (
         "DS4_DSPARK_GPU_RUNTIME",
         "DS4_DSPARK_MULTI_COMMIT",
+        "DS4_METAL_INDEXED_ATTN_RB16_DIRECT",
         "DS4_DSPARK_EXACT_LAYER_PROFILE",
         "DS4_DSPARK_EXACT_LAYER_PROFILE_LAYER",
         "DS4_METAL_DECODE_STAGE_PROFILE",
@@ -112,7 +127,7 @@ def command_text(args, layer=None):
     return prefix + " " + shlex.join(command(args))
 
 
-def parse_profile(data, expected_layer, path):
+def parse_profile(data, expected_layer, path, variant=DEFAULT_VARIANT):
     rows = []
     for line in data.splitlines():
         match = layer_profile.PROFILE_RE.match(line)
@@ -123,6 +138,7 @@ def parse_profile(data, expected_layer, path):
         if part not in ("exact", "attention"):
             continue
         row = {
+            "variant": variant,
             "part": part,
             "layer": int(layer),
             "pos": int(pos),
@@ -162,16 +178,18 @@ def parse_profile(data, expected_layer, path):
     return rows
 
 
-def execute(args, root, run_dir, name, layer, reference):
+def execute(
+    args, root, run_dir, name, layer, reference, variant=DEFAULT_VARIANT
+):
     stdout_path = run_dir / f"{name}.stdout"
     stderr_path = run_dir / f"{name}.stderr"
-    print(f"[{name}] {command_text(args, layer)}", flush=True)
+    print(f"[{name}] {command_text(args, layer, variant)}", flush=True)
     started = time.monotonic()
     with stdout_path.open("wb") as stdout_fp, stderr_path.open("wb") as stderr_fp:
         completed = subprocess.run(
             command(args),
             cwd=root,
-            env=profile_env(layer),
+            env=profile_env(layer, variant),
             stdout=stdout_fp,
             stderr=stderr_fp,
             check=False,
@@ -187,10 +205,11 @@ def execute(args, root, run_dir, name, layer, reference):
             f"{name} output differs from exact reference; see {stdout_path}"
         )
     records = [] if layer is None else parse_profile(
-        stderr_path.read_bytes(), layer, stderr_path
+        stderr_path.read_bytes(), layer, stderr_path, variant
     )
     run = {
         "name": name,
+        "variant": variant,
         "layer": "" if layer is None else layer,
         "wall_seconds": wall_seconds,
         "stdout_sha256": layer_profile.sha256(stdout_data),
@@ -218,8 +237,9 @@ def component_summary(rows, normalize_rows=False):
     }
 
 
-def summarize(records):
-    summary = {"layers": {}}
+def summarize(records, variant=DEFAULT_VARIANT):
+    records = [row for row in records if row["variant"] == variant]
+    summary = {"variant": variant, "layers": {}}
     for layer in sorted({row["layer"] for row in records}):
         selected = [row for row in records if row["layer"] == layer]
         exact = [row for row in selected if row["part"] == "exact"]
@@ -277,6 +297,81 @@ def summarize(records):
     return summary
 
 
+def median_ratio(candidate, default):
+    if candidate is None or default is None or default == 0:
+        return None
+    return candidate / default
+
+
+def compare_variants(records, variants):
+    summaries = {variant: summarize(records, variant) for variant in variants}
+    comparison = {"variants": summaries, "layers": {}}
+    default_summary = summaries[DEFAULT_VARIANT]
+    direct_summary = summaries[DIRECT_VARIANT]
+    if set(default_summary["layers"]) != set(direct_summary["layers"]):
+        raise RuntimeError("default and RB16-direct profiled layer sets differ")
+
+    for layer in default_summary["layers"]:
+        default_item = default_summary["layers"][layer]
+        direct_item = direct_summary["layers"][layer]
+        if default_item["proposal_signature"] != direct_item["proposal_signature"]:
+            raise RuntimeError(
+                f"layer {layer} default and RB16-direct proposal schedules differ"
+            )
+        signatures = {}
+        for variant in variants:
+            signatures[variant] = Counter(
+                (row["pos"], row["stage"])
+                for row in records
+                if row["variant"] == variant
+                and str(row["layer"]) == layer
+                and row["part"] == "attention"
+            )
+        if signatures[DEFAULT_VARIANT] != signatures[DIRECT_VARIANT]:
+            raise RuntimeError(
+                f"layer {layer} default and RB16-direct attention modes differ"
+            )
+
+        modes = {}
+        for mode in ATTENTION_MODES:
+            default_mode = default_item["modes"][mode]
+            direct_mode = direct_item["modes"][mode]
+            default_ms = (
+                None if default_mode is None else default_mode["median_ms_per_row"]
+            )
+            direct_ms = (
+                None if direct_mode is None else direct_mode["median_ms_per_row"]
+            )
+            ratio = median_ratio(direct_ms, default_ms)
+            modes[mode] = {
+                "default_ms_per_row": default_ms,
+                "rb16_direct_ms_per_row": direct_ms,
+                "rb16_direct_to_default_ratio": ratio,
+                "rb16_direct_delta_percent": (
+                    None if ratio is None else (ratio - 1.0) * 100.0
+                ),
+            }
+
+        controls = {}
+        for stage in CONTROL_STAGES:
+            default_ms = default_item["controls"][stage]["median_ms_per_row"]
+            direct_ms = direct_item["controls"][stage]["median_ms_per_row"]
+            ratio = median_ratio(direct_ms, default_ms)
+            controls[stage] = {
+                "default_ms_per_row": default_ms,
+                "rb16_direct_ms_per_row": direct_ms,
+                "rb16_direct_to_default_ratio": ratio,
+                "rb16_direct_delta_percent": (ratio - 1.0) * 100.0,
+            }
+        comparison["layers"][layer] = {
+            "profiled_batches": default_item["profiled_batches"],
+            "profiled_rows": default_item["profiled_rows"],
+            "modes": modes,
+            "controls": controls,
+        }
+    return comparison
+
+
 def value(item):
     return "n/a" if item is None else f"{item['median_ms_per_row']:.3f}"
 
@@ -317,6 +412,59 @@ def report(summary):
     return "\n".join(lines) + "\n"
 
 
+def comparison_value(item, key):
+    value = item[key]
+    return "n/a" if value is None else f"{value:.3f}"
+
+
+def comparison_ratio(item):
+    ratio = item["rb16_direct_to_default_ratio"]
+    delta = item["rb16_direct_delta_percent"]
+    if ratio is None:
+        return "n/a", "n/a"
+    return f"{ratio:.3f}x", f"{delta:+.1f}%"
+
+
+def report_comparison(summary):
+    lines = [
+        "# DSpark Indexed Attention RB16-Direct Attribution",
+        "",
+        "Synchronized diagnostic only. Boundaries preserve row order but change scheduling; do not use these values as throughput measurements.",
+        "Default RB16 and RB16-direct use identical immediate attention-call boundaries and proposal schedules.",
+        "",
+        "| layer | batches | rows | default dense | direct dense | dense ratio | default sparse | direct sparse | sparse ratio | sparse delta |",
+        "|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
+    ]
+    for layer, item in summary["layers"].items():
+        dense = item["modes"]["dense_mixed"]
+        sparse = item["modes"]["sparse_indexed"]
+        dense_ratio, _ = comparison_ratio(dense)
+        sparse_ratio, sparse_delta = comparison_ratio(sparse)
+        lines.append(
+            f"| {layer} | {item['profiled_batches']} | {item['profiled_rows']} | "
+            f"{comparison_value(dense, 'default_ms_per_row')} | "
+            f"{comparison_value(dense, 'rb16_direct_ms_per_row')} | "
+            f"{dense_ratio} | "
+            f"{comparison_value(sparse, 'default_ms_per_row')} | "
+            f"{comparison_value(sparse, 'rb16_direct_ms_per_row')} | "
+            f"{sparse_ratio} | {sparse_delta} |"
+        )
+    lines.extend(["", "Control-stage medians (default/direct):"])
+    for layer, item in summary["layers"].items():
+        prep = item["controls"]["attention_pre_batch"]
+        ffn = item["controls"]["ffn_batch"]
+        prep_ratio, prep_delta = comparison_ratio(prep)
+        ffn_ratio, ffn_delta = comparison_ratio(ffn)
+        lines.append(
+            f"- Layer {layer}: attention prep "
+            f"{prep['default_ms_per_row']:.3f}/{prep['rb16_direct_ms_per_row']:.3f} "
+            f"ms/row ({prep_ratio}, {prep_delta}); FFN "
+            f"{ffn['default_ms_per_row']:.3f}/{ffn['rb16_direct_ms_per_row']:.3f} "
+            f"ms/row ({ffn_ratio}, {ffn_delta})"
+        )
+    return "\n".join(lines) + "\n"
+
+
 def cooldown(seconds):
     if seconds > 0:
         print(f"cooldown: {seconds:g}s", flush=True)
@@ -337,10 +485,18 @@ def main():
             f"profile layers outside model range 0..{n_layers - 1}: "
             + ", ".join(str(layer) for layer in invalid)
         )
+    variants = selected_variants(args)
 
     print(f"reference: {command_text(args)}")
-    for layer in args.layers:
-        print(f"layer {layer}: {command_text(args, layer)}")
+    for layer_index, layer in enumerate(args.layers):
+        layer_variants = (
+            variants if layer_index % 2 == 0 else tuple(reversed(variants))
+        )
+        for variant in layer_variants:
+            print(
+                f"{variant} layer {layer}: "
+                f"{command_text(args, layer, variant)}"
+            )
     print("Every profiled output must match the unprofiled exact reference byte-for-byte.")
     if args.dry_run:
         print("Dry run only; no model execution performed.")
@@ -349,7 +505,12 @@ def main():
     stamp = dt.datetime.now().astimezone().strftime("%Y%m%d-%H%M%S")
     run_dir = (
         args.output_dir
-        or root / "speed-bench/local-runs" / f"attention-transition-{stamp}"
+        or root / "speed-bench/local-runs" /
+        (
+            f"attention-transition-rb16-direct-{stamp}"
+            if args.rb16_direct_comparison
+            else f"attention-transition-{stamp}"
+        )
     ).resolve()
     run_dir.mkdir(parents=True, exist_ok=False)
     metadata = {
@@ -370,10 +531,14 @@ def main():
             "synchronized_profile": True,
             "attention_modes": ATTENTION_MODES,
             "control_components": CONTROL_STAGES,
+            "variants": variants,
+            "rb16_direct_comparison": args.rb16_direct_comparison,
             "require_dense_to_sparse_transition": not args.allow_single_mode,
         },
         "commands": {"reference": command_text(args)} | {
-            f"layer_{layer}": command_text(args, layer) for layer in args.layers
+            f"{variant}_layer_{layer}": command_text(args, layer, variant)
+            for layer in args.layers
+            for variant in variants
         },
         "prompt": {
             "path": str(args.prompt_file),
@@ -394,17 +559,25 @@ def main():
     records = []
     runs = [reference_run]
     cooldown(args.cooldown)
-    for layer in args.layers:
-        _, stage_rows, run = execute(
-            args, root, run_dir, f"layer-{layer:02d}", layer, reference
+    for layer_index, layer in enumerate(args.layers):
+        layer_variants = (
+            variants if layer_index % 2 == 0 else tuple(reversed(variants))
         )
-        records.extend(stage_rows)
-        runs.append(run)
-        cooldown(args.cooldown)
+        for variant in layer_variants:
+            name = f"{variant}.layer-{layer:02d}"
+            _, stage_rows, run = execute(
+                args, root, run_dir, name, layer, reference, variant
+            )
+            records.extend(stage_rows)
+            runs.append(run)
+            cooldown(args.cooldown)
 
     with (run_dir / "stages.csv").open("w", encoding="utf-8", newline="") as fp:
         writer = csv.DictWriter(
-            fp, fieldnames=("part", "layer", "pos", "tokens", "stage", "ms")
+            fp,
+            fieldnames=(
+                "variant", "part", "layer", "pos", "tokens", "stage", "ms",
+            ),
         )
         writer.writeheader()
         writer.writerows(records)
@@ -412,25 +585,33 @@ def main():
         writer = csv.DictWriter(
             fp,
             fieldnames=(
-                "name", "layer", "wall_seconds", "stdout_sha256",
+                "name", "variant", "layer", "wall_seconds", "stdout_sha256",
                 "stdout_file", "stderr_file",
             ),
         )
         writer.writeheader()
         writer.writerows(runs)
 
-    summary = summarize(records)
-    has_transition = any(
-        item["modes"]["dense_mixed"] is not None
-        and item["modes"]["sparse_indexed"] is not None
-        for item in summary["layers"].values()
-    )
-    if not args.allow_single_mode and not has_transition:
-        raise RuntimeError(
-            f"no selected layer crossed from dense to sparse attention; "
-            f"raw records were retained in {run_dir / 'stages.csv'}"
-        )
-    summary_text = report(summary)
+    if args.rb16_direct_comparison:
+        summary = compare_variants(records, variants)
+        variant_summaries = summary["variants"]
+        summary_text = report_comparison(summary)
+    else:
+        summary = summarize(records)
+        variant_summaries = {DEFAULT_VARIANT: summary}
+        summary_text = report(summary)
+    if not args.allow_single_mode:
+        for variant, variant_summary in variant_summaries.items():
+            has_transition = any(
+                item["modes"]["dense_mixed"] is not None
+                and item["modes"]["sparse_indexed"] is not None
+                for item in variant_summary["layers"].values()
+            )
+            if not has_transition:
+                raise RuntimeError(
+                    f"{variant} did not cross from dense to sparse attention; "
+                    f"raw records were retained in {run_dir / 'stages.csv'}"
+                )
     (run_dir / "summary.json").write_text(
         json.dumps(summary, indent=2) + "\n", encoding="utf-8"
     )
