@@ -3500,6 +3500,51 @@ bash -n tests/dspark_gpu_candidates_correctness.sh \
 git diff --check
 ```
 
+Phase 0.69 exact attention-pre throughput ablation prepared on 2026-07-14:
+
+- Added `--attention-pre-ablation` to
+  `speed-bench/run_dspark_comparison.py`. It compares two DSpark exact-verifier
+  modes: `default_exact` with the Phase 0.68 gate unset and
+  `attention_pre_exact` with `DS4_DSPARK_EXACT_ATTN_PRE_BATCH=1`.
+- Both modes use Metal, the same base model and DSpark sidecar, default exact
+  all-layer FFN batching, identical prompt/seed/temperature/token limits, and
+  the same acceptance policy. The candidate differs by exactly one environment
+  variable.
+- The ablation is an uninstrumented throughput pass. Runtime diagnostics and
+  end-of-session stats are disabled in both modes, inherited `DS4_DSPARK_*` and
+  profiling/logging variables are cleared, and every stdout stream must remain
+  byte-identical to the first warmup/reference stream.
+- Pair order alternates default/attention-pre then attention-pre/default. The
+  existing runner retains warmups, cooldowns, process/thermal metadata, raw
+  stdout/stderr, hashes, CSV/JSON output, and dirty-worktree protection. The
+  summary reports both medians, ratio of medians, median paired ratio, candidate
+  percentage delta, and measured pair count.
+- `--attention-pre-ablation` is mutually exclusive with `--fast-verifier` and
+  `--serial-ffn-ablation`; the fast verifier does not use this exact attention
+  preparation path.
+- Updated `speed-bench/README.md` with dry-run and real user-run commands, the
+  one-variable comparison contract, and the dedicated Phase 0.68 correctness
+  soak.
+- Codex did not execute the benchmark. Python compilation, all comparison-mode
+  dry runs, environment isolation checks, mutual-exclusion rejection, and a
+  synthetic two-pair summary/report check passed without model execution.
+
+Phase 0.69 checks:
+
+```sh
+python3 -m py_compile speed-bench/run_dspark_comparison.py
+python3 speed-bench/run_dspark_comparison.py \
+  --dry-run --allow-dirty --attention-pre-ablation
+python3 speed-bench/run_dspark_comparison.py --dry-run --allow-dirty
+python3 speed-bench/run_dspark_comparison.py \
+  --dry-run --allow-dirty --fast-verifier
+python3 speed-bench/run_dspark_comparison.py \
+  --dry-run --allow-dirty --serial-ffn-ablation
+# Synthetic checks covered mode environments, medians, paired ratios, report
+# generation, and mutual-exclusion rejection.
+git diff --check
+```
+
 Phase 0.52 checks:
 
 ```sh
@@ -3568,13 +3613,14 @@ If continuing from a compacted context, start here:
 
 ## Open Questions
 
-- Prepare a user-run Metal throughput ablation for the gated exact attention
-  runtime. Compare the current exact verifier (`DS4_DSPARK_EXACT_ATTN_PRE_BATCH`
-  unset) against the same verifier with the gate enabled, with diagnostics and
-  stats disabled during paired throughput samples. Add separate instrumented
-  attribution only if needed, including preparation attempts/successes and
-  time split between batched preparation and the serial tail. Codex must not
-  execute the tok/s benchmark.
+- The user should run the prepared paired Metal ablation with
+  `python3 speed-bench/run_dspark_comparison.py --confirm-idle --attention-pre-ablation`.
+  Interpret the paired ratio before changing the
+  default. If the result is promising but noisy or unexpectedly negative, add
+  a separate instrumented attribution pass with attention-pre attempt/success
+  counts and preparation-versus-serial-tail timing. Keep instrumentation out of
+  throughput samples, and do not promote the gate until both correctness and a
+  repeatable user-run benefit are established.
 - The GPU stage path currently borrows target graph transient batch workspace
   and therefore requires `prefill_cap >= block_size` (five). Decide whether to
   allocate sidecar-specific batch scratch before production enablement or keep

@@ -44,6 +44,10 @@ python3 speed-bench/run_dspark_comparison.py \
   --dry-run --serial-ffn-ablation
 python3 speed-bench/run_dspark_comparison.py \
   --confirm-idle --serial-ffn-ablation
+python3 speed-bench/run_dspark_comparison.py \
+  --dry-run --attention-pre-ablation
+python3 speed-bench/run_dspark_comparison.py \
+  --confirm-idle --attention-pre-ablation
 python3 speed-bench/run_dspark_exact_ffn_batch_profile.py --dry-run
 python3 speed-bench/run_dspark_exact_ffn_batch_profile.py --confirm-ready
 ```
@@ -100,6 +104,19 @@ medians, paired ratios, and the default percentage delta. Raw streams,
 metadata, pair order, and CSV/JSON/Markdown summaries use the same run directory
 as the ordinary comparison.
 
+`--attention-pre-ablation` is also an uninstrumented paired throughput pass. It
+compares the promoted exact verifier with the attention-pre gate unset against
+the same verifier with `DS4_DSPARK_EXACT_ATTN_PRE_BATCH=1`. Both modes use the
+same DSpark sidecar, exact all-layer FFN path, prompt, acceptance policy, and
+serial cache/attention tail. Diagnostics and runtime stats are disabled, and
+the runner requires every stdout stream to remain byte-identical. Pair order
+alternates default/attention-pre then attention-pre/default. The report includes
+both medians, paired ratios, and the attention-pre percentage delta.
+
+This mode is mutually exclusive with `--fast-verifier` and
+`--serial-ffn-ablation`. It measures only the exact verifier path; the fast
+verifier has its own preparation and is not part of this ablation.
+
 After an uninstrumented serial-FFN ablation, use
 `run_dspark_exact_ffn_batch_profile.py` as a separate attribution pass. It
 compares the same serial-exact control and default exact-FFN modes with
@@ -148,6 +165,7 @@ The non-performance correctness soak is user-independent and may be run with:
 ```sh
 ./tests/dspark_fast_verifier_soak.sh
 ./tests/dspark_exact_ffn_batch_runtime_soak.sh
+./tests/dspark_exact_attention_pre_batch_runtime_soak.sh
 ```
 
 It compares baseline and fast output across 64-token multi-cycle generation,
@@ -157,6 +175,9 @@ rejects verifier/capture failures, and verifies the resumed fast-to-exact
 transition.
 The exact-FFN soak separately covers 64-token generation, rolling-window state,
 and successful default exact-FFN verification after a resumed sync.
+The exact attention-pre soak covers the same long-generation, rolling-window,
+and resumed-session boundaries while requiring all 43 layers to use the gated
+prepared path without fallback.
 
 Useful explicit overrides include `--pairs`, `--warmups`, `--cooldown`,
 `--tokens`, and `--output-dir`. Do not compare runs with different settings.
