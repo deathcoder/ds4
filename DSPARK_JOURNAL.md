@@ -8,13 +8,14 @@ particular DSpark change exists.
 
 Branch: `codex/dspark-observability-0`
 
-Phase 1.00 is prepared but not benchmarked. It freezes a 12-task non-code
-generalization gate from the exact DeepSpec commit: six math tasks across
-GSM8K, MATH-500, and AIME-2025, and six chat tasks across Alpaca and MT-Bench.
-Each task compares ordinary baseline, fixed K=5 DSpark, and threshold `0.455`
-in a balanced three-mode rotation with byte-exact output and no instrumentation.
-The user must run its 39 processes. Promotion criteria are locked below; do not
-tune tasks or threshold after seeing the result.
+Phase 1.00 is complete and passed every predeclared promotion criterion. On the
+12-task non-code gate, threshold `0.455` improved over fixed K=5 on `5/6` math
+and `6/6` chat tasks. Scheduled/fixed medians were `1.0831x` math, `1.3928x`
+chat, and `1.2122x` overall; overall geometric mean was `1.2222x`, and the
+minimum task ratio was a neutral `0.9950x`. Every three-mode output matched
+byte-for-byte. This permits promoting `0.455` to the DSpark runtime default,
+while preserving `DS4_DSPARK_CONFIDENCE_THRESHOLD=0` as explicit fixed K=5.
+All benchmark/control paths labeled fixed K=5 must set `0` after promotion.
 
 Phase 0.99 is complete. The frozen 32-task HumanEval scheduled run at threshold
 `0.455` raised the median paired DSpark/baseline ratio from Phase 0.94's
@@ -5943,6 +5944,35 @@ python3 speed-bench/run_dspark_generalization_gate.py --confirm-idle
 
 Do not run this timed gate automatically. The user will return its printed
 summary or `summary.md`.
+
+Phase 1.00 user-run result on 2026-07-15:
+
+- Raw results are in
+  `speed-bench/local-runs/dspark-generalization-20260715-190530` at clean commit
+  `d114c31`. The run had no inherited `DS4_*` environment, no instrumentation,
+  three excluded warmups, and 36 measured children. Every baseline/fixed/
+  scheduled output-hash triple matched.
+- Math fixed/baseline median was `0.6154x`; scheduled/baseline was `0.6695x`;
+  scheduled/fixed was `1.0831x`, with `5/6` scheduled wins. Math
+  scheduled/fixed geometric mean was `1.1019x` and its minimum was `0.9950x`.
+- Chat fixed/baseline median was `0.4429x`; scheduled/baseline was `0.6291x`;
+  scheduled/fixed was `1.3928x`, with `6/6` scheduled wins. Chat
+  scheduled/fixed geometric mean was `1.3558x` and its minimum was `1.0675x`.
+- Overall fixed/baseline median was `0.5416x`; scheduled/baseline was `0.6500x`;
+  scheduled/fixed was `1.2122x`. Overall scheduled/fixed geometric mean was
+  `1.2222x`, with `11/12` wins and range `0.9950x-1.6225x`.
+- The gate passed every criterion frozen before measurement: both domain
+  medians exceeded `1.0x`; math/chat wins were at least `4/6`; overall geometric
+  mean exceeded `1.03x`; and no task fell below `0.90x`. Do not tune `0.455`.
+- Product-level performance remains negative: scheduled DSpark was slower than
+  ordinary target decoding on all 12 tasks. Promotion means making the proven
+  scheduler the better DSpark default, not claiming DSpark is yet an end-to-end
+  speedup.
+- Next promote `0.455` as the default in
+  `dspark_session_confidence_prefix_limit`. An explicit environment value must
+  continue to override it, with `DS4_DSPARK_CONFIDENCE_THRESHOLD=0` selecting
+  fixed K=5. Audit every fixed-K benchmark and correctness control because an
+  absent environment variable will no longer mean fixed K=5 after promotion.
 
 Phase 0.52 checks:
 
