@@ -4776,6 +4776,47 @@ emitted token across all three long prompts. Do not interpret its printed
 instrumented t/s as throughput and do not begin another optimization until the
 three attribution rows are available.
 
+Phase 0.86 Issue 468 stats-only attribution on 2026-07-15:
+
+- The user ran the Phase 0.85 gate. Raw results are in
+  `speed-bench/local-runs/issue468-stats-20260715-100900`. The checkout was the
+  clean Phase 0.85 commit, all child environments matched policy, and each
+  instrumented runtime output matched its fresh uninstrumented baseline.
+- Long-prompt accepted depth was much lower than the earlier short-context
+  result: `2.246` for `code_8k`, `2.909` for `synthesis_8k`, and `2.667` for
+  `grounded_8k`, versus `4.923` in the 64-token short prompt. Full/partial batch
+  outcomes were `10/28`, `14/19`, and `10/24`; there were no verifier, source,
+  or fast-path fallbacks. This is genuine proposal rejection, not fallback
+  overhead.
+- Exact target verification dominated accounted generation cost. Target and
+  sidecar milliseconds per emitted token were `92.662 + 7.827` for code,
+  `75.249 + 6.029` for synthesis, and `90.234 + 6.601` for grounded. Target
+  work was therefore `92.2%`, `92.6%`, and `93.2%` of accounted time. The
+  accounted totals imply `9.95/12.30/10.33 t/s`, effectively reconciling the
+  separate uninstrumented `9.95/12.27/10.32 t/s` results.
+- Exact verification processed `2.078/1.734/1.922` target positions per emitted
+  token (`266/222/246` positions for 128 outputs). Each target position cost
+  `44.589/43.387/46.951 ms`. The corresponding uninstrumented baseline costs
+  were `46.425/45.331/49.383 ms` per token, so batching multiple verifier
+  positions currently provides almost no per-position efficiency over normal
+  one-token target decode.
+- This establishes two independent requirements. Better acceptance is needed
+  to reduce positions per emitted token, but even the theoretical floor of
+  roughly one target position per emitted token would not break even at the
+  current target-position and sidecar costs. Break-even positions per emitted
+  token are only `0.866/0.906/0.911`. Conversely, at current acceptance the
+  target cost per position would need to fall by about `58%/48%/53%`. A useful
+  runtime will need both better long-context proposal acceptance and materially
+  more efficient exact target verification (or a new correctness-preserving
+  verifier architecture).
+- Decision: stop optimizing the sidecar for now; its entire `6.0-7.8 ms/token`
+  is too small to explain or recover the regression. The next phase is a
+  correctness-preserving acceptance-quality audit. It should determine whether
+  the long-context depth collapse is expected model behavior or a DSpark
+  integration error by attributing rejection depth and proposal/target token
+  disagreement without changing token authority. Use that evidence before
+  choosing between proposal-path fixes and another exact-verifier architecture.
+
 Phase 0.52 checks:
 
 ```sh
@@ -4874,8 +4915,13 @@ If continuing from a compacted context, start here:
   the Issue 468 runner against all inherited `DS4_*` state and rebaselined the
   accumulated current default. The aggregate ratio improved `7.0%` relative to
   Phase 0.47 but remains only `0.5096x`. Phase 0.85 added the stats-only
-  six-process diagnostic; the next gate is its user-run target/sidecar
-  attribution, without repeating the full throughput table.
+  six-process diagnostic. Its Phase 0.86 gate attributed `92-93%` of accounted
+  generation time to exact target verification and exposed accepted depth of
+  only `2.25-2.91` on the long prompts. The next phase is an acceptance-quality
+  audit: determine whether the depth collapse is expected DSpark behavior or an
+  integration defect before selecting another verifier optimization. Even
+  perfect acceptance cannot win at the current target-position cost, so target
+  batch efficiency remains a second required line of work.
 - The GPU stage path currently borrows target graph transient batch workspace
   and therefore requires `prefill_cap >= block_size` (five). Decide whether to
   allocate sidecar-specific batch scratch before production enablement or keep
