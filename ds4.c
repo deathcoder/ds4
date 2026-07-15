@@ -10614,6 +10614,37 @@ static float rms_abs_diff(const float *a, const float *b, uint64_t n) {
     return n ? (float)sqrt(ss / (double)n) : 0.0f;
 }
 
+static float relative_l2_diff(const float *a, const float *b, uint64_t n) {
+    double diff_ss = 0.0;
+    double ref_ss = 0.0;
+    for (uint64_t i = 0; i < n; i++) {
+        const double d = (double)a[i] - (double)b[i];
+        diff_ss += d * d;
+        ref_ss += (double)b[i] * (double)b[i];
+    }
+    if (diff_ss == 0.0) return 0.0f;
+    return ref_ss > 0.0 ? (float)sqrt(diff_ss / ref_ss) : 1.0f;
+}
+
+static uint32_t max_ulp_diff(const float *a, const float *b, uint64_t n) {
+    uint32_t max_diff = 0;
+    for (uint64_t i = 0; i < n; i++) {
+        uint32_t ai;
+        uint32_t bi;
+        memcpy(&ai, &a[i], sizeof(ai));
+        memcpy(&bi, &b[i], sizeof(bi));
+        if ((ai & 0x7f800000u) == 0x7f800000u ||
+            (bi & 0x7f800000u) == 0x7f800000u) {
+            return UINT32_MAX;
+        }
+        ai = (ai & 0x80000000u) ? ~ai : ai | 0x80000000u;
+        bi = (bi & 0x80000000u) ? ~bi : bi | 0x80000000u;
+        const uint32_t diff = ai > bi ? ai - bi : bi - ai;
+        if (diff > max_diff) max_diff = diff;
+    }
+    return max_diff;
+}
+
 static uint64_t count_nonfinite_f32(const float *x, uint64_t n) {
     uint64_t count = 0;
     for (uint64_t i = 0; i < n; i++) {
@@ -13772,6 +13803,34 @@ static bool metal_graph_use_reference_attn_out_hc(void) {
     return metal_graph_env_flag("DS4_METAL_DISABLE_ATTN_OUT_HC_FUSION", &cache);
 }
 
+static bool metal_graph_exact_attn_inv_rope_fused_enabled(void) {
+    static int cache = -1;
+    return metal_graph_env_flag(
+        "DS4_DSPARK_EXACT_ATTN_INV_ROPE_FUSED", &cache);
+}
+
+static void metal_graph_trace_exact_attn_inv_rope_fused(
+        const char *route,
+        uint32_t    il,
+        uint32_t    pos) {
+    static unsigned reported;
+    const char *trace = getenv("DS4_DSPARK_EXACT_ATTN_INV_ROPE_FUSED_TRACE");
+    if (!trace || !trace[0] || strcmp(trace, "0") == 0) return;
+
+    unsigned bit = 0;
+    if (strcmp(route, "raw") == 0) bit = 1u;
+    else if (strcmp(route, "dense_mixed") == 0) bit = 2u;
+    else if (strcmp(route, "sparse_indexed") == 0) bit = 4u;
+    if (bit == 0 || (reported & bit) != 0) return;
+    reported |= bit;
+    fprintf(stderr,
+            "ds4: DSpark exact attention inverse-RoPE fused route=%s "
+            "layer=%u pos=%u\n",
+            route,
+            il,
+            pos);
+}
+
 static bool metal_graph_decode_hc_pre(
         ds4_gpu_tensor       *out,
         ds4_gpu_tensor       *split,
@@ -15323,6 +15382,126 @@ typedef enum {
     METAL_GRAPH_DECODE_LAYER_FFN,
 } metal_graph_decode_layer_part;
 
+static int metal_graph_exact_attn_inv_rope_observer_layer(void) {
+    const char *v = getenv(
+        "DS4_DSPARK_EXACT_ATTN_INV_ROPE_FUSED_OBSERVER_LAYER");
+    if (!v || !v[0]) return -1;
+    char *end = NULL;
+    errno = 0;
+    const long layer = strtol(v, &end, 10);
+    if (errno != 0 || end == v || *end != '\0' ||
+        layer < 0 || (uint64_t)layer >= DS4_N_LAYER) {
+        return -1;
+    }
+    return (int)layer;
+}
+
+static bool metal_graph_encode_attention_heads_route(
+        ds4_gpu_graph                  *g,
+        const ds4_model                *model,
+        const ds4_layer_weights        *layer,
+        ds4_gpu_tensor                 *heads,
+        ds4_gpu_tensor                 *raw_cache,
+        ds4_gpu_tensor                 *comp_cache,
+        ds4_gpu_tensor                 *comp_selected,
+        uint32_t                        n_selected,
+        uint32_t                        n_comp,
+        uint32_t                        n_raw,
+        uint32_t                        raw_cap,
+        uint32_t                        raw_start,
+        uint32_t                        il,
+        uint32_t                        pos,
+        ds4_gpu_tensor                 *unrotated_heads,
+        const ds4_gpu_inverse_rope_args *inverse_rope) {
+    if (n_comp != 0 && comp_selected != NULL && n_selected != 0) {
+        if (inverse_rope) {
+            return ds4_gpu_attention_indexed_mixed_batch_heads_inverse_rope_tensor(
+                       heads,
+                       model->map,
+                       model->size,
+                       layer->attn_sinks->abs_offset,
+                       g->q,
+                       raw_cache,
+                       g->layer_attn_comp_cache[il],
+                       metal_graph_attn_comp_cache_is_f16(),
+                       comp_selected,
+                       1,
+                       pos,
+                       n_raw,
+                       raw_cap,
+                       raw_start,
+                       n_comp,
+                       n_selected,
+                       g->raw_window,
+                       ds4_layer_compress_ratio(il),
+                       DS4_N_HEAD,
+                       DS4_N_HEAD_DIM,
+                       unrotated_heads,
+                       inverse_rope) != 0;
+        }
+        return ds4_gpu_attention_indexed_mixed_batch_heads_tensor(
+                   heads,
+                   model->map,
+                   model->size,
+                   layer->attn_sinks->abs_offset,
+                   g->q,
+                   raw_cache,
+                   g->layer_attn_comp_cache[il],
+                   metal_graph_attn_comp_cache_is_f16(),
+                   comp_selected,
+                   1,
+                   pos,
+                   n_raw,
+                   raw_cap,
+                   raw_start,
+                   n_comp,
+                   n_selected,
+                   g->raw_window,
+                   ds4_layer_compress_ratio(il),
+                   DS4_N_HEAD,
+                   DS4_N_HEAD_DIM) != 0;
+    }
+
+    if (inverse_rope) {
+        return ds4_gpu_attention_decode_heads_inverse_rope_tensor(
+                   heads,
+                   model->map,
+                   model->size,
+                   layer->attn_sinks->abs_offset,
+                   g->q,
+                   raw_cache,
+                   n_raw,
+                   raw_cap,
+                   raw_start,
+                   n_comp ? comp_cache : NULL,
+                   metal_graph_attn_comp_cache_is_f16(),
+                   n_comp,
+                   NULL,
+                   0,
+                   DS4_N_HEAD,
+                   DS4_N_HEAD_DIM,
+                   unrotated_heads,
+                   inverse_rope) != 0;
+    }
+    return ds4_gpu_attention_decode_heads_tensor(
+               heads,
+               model->map,
+               model->size,
+               layer->attn_sinks->abs_offset,
+               g->q,
+               raw_cache,
+               n_raw,
+               raw_cap,
+               raw_start,
+               n_comp ? comp_cache : NULL,
+               metal_graph_attn_comp_cache_is_f16(),
+               n_comp,
+               NULL,
+               0,
+               DS4_N_HEAD,
+               DS4_N_HEAD_DIM) != 0;
+}
+
 static bool metal_graph_encode_decode_layer_part(
         ds4_gpu_graph  *g,
         const ds4_model        *model,
@@ -15385,6 +15564,9 @@ static bool metal_graph_encode_decode_layer_part(
         !exact_tail_profile &&
         !exact_compressor_profile &&
         !exact_attention_profile;
+    const bool exact_attn_inv_rope_fused =
+        part == METAL_GRAPH_DECODE_LAYER_ATTENTION_TAIL &&
+        metal_graph_exact_attn_inv_rope_fused_enabled();
     double decode_stage_t0 = decode_stage_profile ? now_sec() : 0.0;
     double exact_tail_stage_t0 = 0.0;
     double exact_compressor_stage_t0 = 0.0;
@@ -15944,6 +16126,20 @@ encode_attention_tail:
         n_comp == 0 ? "raw" :
         (comp_selected != NULL && n_selected != 0 ?
             "sparse_indexed" : "dense_mixed");
+    const ds4_gpu_inverse_rope_args inverse_rope = {
+        .enabled = exact_attn_inv_rope_fused ? 1u : 0u,
+        .n_head = DS4_N_HEAD,
+        .head_dim = DS4_N_HEAD_DIM,
+        .n_rot = DS4_N_ROT,
+        .pos0 = pos,
+        .n_ctx_orig = compressed ? (uint32_t)DS4_ROPE_ORIG_CTX : 0u,
+        .freq_base = freq_base,
+        .freq_scale = freq_scale,
+        .ext_factor = ext_factor,
+        .attn_factor = attn_factor,
+        .beta_fast = DS4_ROPE_YARN_BETA_FAST,
+        .beta_slow = DS4_ROPE_YARN_BETA_SLOW,
+    };
     if (ok && exact_attention_profile) {
         ok = ds4_gpu_end_commands() != 0 &&
              ds4_gpu_begin_commands() != 0;
@@ -15951,50 +16147,120 @@ encode_attention_tail:
     }
     if (ok) {
         const uint32_t raw_start = metal_graph_raw_start_for_span(g, pos, n_raw);
-        if (n_comp != 0 && comp_selected != NULL && n_selected != 0) {
-            ok = ds4_gpu_attention_indexed_mixed_batch_heads_tensor(
-                    g->heads,
-                    model->map,
-                    model->size,
-                    layer->attn_sinks->abs_offset,
-                    g->q,
-                    raw_cache,
-                    g->layer_attn_comp_cache[il],
-                    metal_graph_attn_comp_cache_is_f16(),
-                    comp_selected,
-                    1,
-                    pos,
-                    n_raw,
-                    raw_cap,
-                    raw_start,
-                    n_comp,
-                    n_selected,
-                    g->raw_window,
-                    ds4_layer_compress_ratio(il),
-                    DS4_N_HEAD,
-                    DS4_N_HEAD_DIM) != 0;
-            if (ok && decode_index_stage_profile) {
-                ok = metal_graph_indexer_stage_profile_boundary("decode_attention",
-                                                                il,
-                                                                pos,
-                                                                1,
-                                                                n_comp,
-                                                                &decode_index_stage_t0);
-            }
-        } else {
-            ok = ds4_gpu_attention_decode_heads_tensor(g->heads,
-                                                         model->map, model->size,
-                                                         layer->attn_sinks->abs_offset,
-                                                         g->q, raw_cache, n_raw,
-                                                         raw_cap,
-                                                         raw_start,
-                                                         n_comp ? comp_cache : NULL,
-                                                         metal_graph_attn_comp_cache_is_f16(),
-                                                         n_comp,
-                                                         NULL,
-                                                         0,
-                                                         DS4_N_HEAD, DS4_N_HEAD_DIM) != 0;
+        const bool observe_inv_rope = exact_attn_inv_rope_fused &&
+            metal_graph_exact_attn_inv_rope_observer_layer() == (int)il;
+        ds4_gpu_tensor *reference_heads = observe_inv_rope ?
+            ds4_gpu_tensor_view(g->batch_heads, 0, q_dim * sizeof(float)) :
+            NULL;
+        if (observe_inv_rope && !reference_heads) ok = false;
+        if (ok) {
+            ok = metal_graph_encode_attention_heads_route(
+                g,
+                model,
+                layer,
+                g->heads,
+                raw_cache,
+                comp_cache,
+                comp_selected,
+                n_selected,
+                n_comp,
+                n_raw,
+                raw_cap,
+                raw_start,
+                il,
+                pos,
+                reference_heads,
+                exact_attn_inv_rope_fused ? &inverse_rope : NULL);
         }
+        if (ok && n_comp != 0 && comp_selected != NULL &&
+            n_selected != 0 && decode_index_stage_profile) {
+            ok = metal_graph_indexer_stage_profile_boundary("decode_attention",
+                                                            il,
+                                                            pos,
+                                                            1,
+                                                            n_comp,
+                                                            &decode_index_stage_t0);
+        }
+        if (ok && exact_attn_inv_rope_fused) {
+            metal_graph_trace_exact_attn_inv_rope_fused(
+                exact_attention_stage, il, pos);
+        }
+        if (ok && observe_inv_rope) {
+            if (ok) {
+                ok = ds4_gpu_rope_tail_tensor(
+                         reference_heads,
+                         1, DS4_N_HEAD, DS4_N_HEAD_DIM,
+                         DS4_N_ROT, pos,
+                         compressed ? (uint32_t)DS4_ROPE_ORIG_CTX : 0,
+                         true,
+                         freq_base,
+                         freq_scale,
+                         ext_factor,
+                         attn_factor,
+                         DS4_ROPE_YARN_BETA_FAST,
+                         DS4_ROPE_YARN_BETA_SLOW) != 0;
+            }
+            const bool ended_commands = ok && ds4_gpu_end_commands() != 0;
+            ok = ok && ended_commands;
+            float *fused_values = xmalloc((size_t)q_dim * sizeof(float));
+            float *reference_values = xmalloc((size_t)q_dim * sizeof(float));
+            if (ok) {
+                ok = ds4_gpu_tensor_read(
+                         g->heads, 0, fused_values, q_dim * sizeof(float)) != 0 &&
+                     ds4_gpu_tensor_read(
+                         reference_heads, 0, reference_values,
+                         q_dim * sizeof(float)) != 0;
+            }
+            if (ok) {
+                const bool exact = memcmp(
+                    fused_values,
+                    reference_values,
+                    q_dim * sizeof(float)) == 0;
+                const double max_diff =
+                    max_abs_diff(fused_values, reference_values, q_dim);
+                const double rms_diff =
+                    rms_abs_diff(fused_values, reference_values, q_dim);
+                const double rel_l2 =
+                    relative_l2_diff(fused_values, reference_values, q_dim);
+                const uint32_t max_ulp =
+                    max_ulp_diff(fused_values, reference_values, q_dim);
+                const bool bounded = isfinite(max_diff) && isfinite(rms_diff) &&
+                    isfinite(rel_l2) && max_diff <= 1e-6 &&
+                    rms_diff <= 1e-8 && rel_l2 <= 1e-6;
+                uint64_t first = q_dim;
+                for (uint64_t i = 0; !exact && i < q_dim; i++) {
+                    if (memcmp(&fused_values[i],
+                               &reference_values[i],
+                               sizeof(float)) != 0) {
+                        first = i;
+                        break;
+                    }
+                }
+                fprintf(stderr,
+                        "ds4: DSpark exact attention inverse-RoPE fused observer "
+                        "route=%s layer=%u pos=%u max=%g rms=%g rel_l2=%g "
+                        "max_ulp=%u "
+                        "first=%llu fused=%a reference=%a result=%s\n",
+                        exact_attention_stage,
+                        il,
+                        pos,
+                        max_diff,
+                        rms_diff,
+                        rel_l2,
+                        max_ulp,
+                        (unsigned long long)first,
+                        first < q_dim ? fused_values[first] : 0.0,
+                        first < q_dim ? reference_values[first] : 0.0,
+                        exact ? "exact" : (bounded ? "bounded" : "drift"));
+            }
+            free(reference_values);
+            free(fused_values);
+            if (ended_commands) {
+                const bool resumed = ds4_gpu_begin_commands() != 0;
+                ok = ok && resumed;
+            }
+        }
+        ds4_gpu_tensor_free(reference_heads);
     }
     DS4_METAL_PROFILE_DECODE_STAGE("attention");
     DS4_METAL_PROFILE_EXACT_TAIL_STAGE("attention");
@@ -16002,17 +16268,19 @@ encode_attention_tail:
     if (ok) {
         metal_graph_debug_dump_tensor("kqv_out", g->heads, q_dim, il, pos);
     }
-    if (ok) ok = ds4_gpu_rope_tail_tensor(g->heads,
-                                            1, DS4_N_HEAD, DS4_N_HEAD_DIM,
-                                            DS4_N_ROT, pos,
-                                            compressed ? (uint32_t)DS4_ROPE_ORIG_CTX : 0,
-                                            true,
-                                            freq_base,
-                                            freq_scale,
-                                            ext_factor,
-                                            attn_factor,
-                                            DS4_ROPE_YARN_BETA_FAST,
-                                            DS4_ROPE_YARN_BETA_SLOW) != 0;
+    if (ok && !exact_attn_inv_rope_fused) {
+        ok = ds4_gpu_rope_tail_tensor(g->heads,
+                                       1, DS4_N_HEAD, DS4_N_HEAD_DIM,
+                                       DS4_N_ROT, pos,
+                                       compressed ? (uint32_t)DS4_ROPE_ORIG_CTX : 0,
+                                       true,
+                                       freq_base,
+                                       freq_scale,
+                                       ext_factor,
+                                       attn_factor,
+                                       DS4_ROPE_YARN_BETA_FAST,
+                                       DS4_ROPE_YARN_BETA_SLOW) != 0;
+    }
     if (ok) {
         metal_graph_debug_dump_tensor("kqv_back", g->heads, q_dim, il, pos);
     }

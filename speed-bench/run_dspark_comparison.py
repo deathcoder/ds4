@@ -159,6 +159,11 @@ def parse_args():
         action="store_true",
         help="compare legacy one-row Q8 projections against the promoted default",
     )
+    parser.add_argument(
+        "--attention-inverse-rope-fusion-ablation",
+        action="store_true",
+        help="compare default exact DSpark against fused attention inverse-RoPE",
+    )
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
 
@@ -176,6 +181,7 @@ def parse_args():
             args.compressor_pair_nr4_ablation,
             args.indexed_attention_rb16_promotion_ablation,
             args.exact_q8_rows_ablation,
+            args.attention_inverse_rope_fusion_ablation,
         )
     )
     if selected_modes > 1:
@@ -183,7 +189,8 @@ def parse_args():
             "--fast-verifier, --serial-ffn-ablation, --attention-pre-ablation, "
             "--attention-suffix-ablation, --compressor-pair-nr4-ablation, and "
             "--indexed-attention-rb16-promotion-ablation, and "
-            "--exact-q8-rows-ablation "
+            "--exact-q8-rows-ablation, and "
+            "--attention-inverse-rope-fusion-ablation "
             "are mutually exclusive"
         )
     if not args.confirm_idle and not args.dry_run:
@@ -228,6 +235,8 @@ def check_inputs(args, root):
 
 
 def benchmark_modes(args):
+    if args.attention_inverse_rope_fusion_ablation:
+        return ("default_exact", "attention_inverse_rope_fused")
     if args.exact_q8_rows_ablation:
         return ("serial_q8_rows", "default_exact")
     if args.indexed_attention_rb16_promotion_ablation:
@@ -256,6 +265,7 @@ def mode_label(mode, args):
         "compressor_pair_nr4": "NR4 compressor pair DSpark",
         "indexed_attention_rb16_legacy": "Legacy RB16 indexed attention DSpark",
         "serial_q8_rows": "Legacy one-row Q8 projection DSpark",
+        "attention_inverse_rope_fused": "Fused attention inverse-RoPE DSpark",
     }[mode]
 
 
@@ -267,6 +277,7 @@ def throughput_runtime_stats_enabled(args):
         or args.compressor_pair_nr4_ablation
         or args.indexed_attention_rb16_promotion_ablation
         or args.exact_q8_rows_ablation
+        or args.attention_inverse_rope_fusion_ablation
     )
 
 
@@ -295,6 +306,8 @@ def clean_dspark_env(mode, fast_verifier=False, runtime_stats=True):
             env["DS4_METAL_INDEXED_ATTN_RB16_LEGACY"] = "1"
         if mode == "serial_q8_rows":
             env["DS4_DSPARK_EXACT_Q8_ROWS"] = "0"
+        if mode == "attention_inverse_rope_fused":
+            env["DS4_DSPARK_EXACT_ATTN_INV_ROPE_FUSED"] = "1"
     return env
 
 
@@ -322,7 +335,8 @@ def mode_command(args, mode):
     if (args.attention_pre_ablation or args.attention_suffix_ablation or
             args.compressor_pair_nr4_ablation or
             args.indexed_attention_rb16_promotion_ablation or
-            args.exact_q8_rows_ablation):
+            args.exact_q8_rows_ablation or
+            args.attention_inverse_rope_fusion_ablation):
         command[1:1] = ("--backend", "metal")
     if mode != "baseline":
         command.extend(("--dspark", str(args.dspark_model.resolve())))
@@ -351,6 +365,8 @@ def command_text(args, mode, runtime_stats=None):
             env += "DS4_METAL_INDEXED_ATTN_RB16_LEGACY=1 "
         if mode == "serial_q8_rows":
             env += "DS4_DSPARK_EXACT_Q8_ROWS=0 "
+        if mode == "attention_inverse_rope_fused":
+            env += "DS4_DSPARK_EXACT_ATTN_INV_ROPE_FUSED=1 "
     return env + shlex.join(mode_command(args, mode))
 
 
@@ -508,6 +524,8 @@ def collect_metadata(args, root):
             "indexed_attention_rb16_promotion_ablation":
                 args.indexed_attention_rb16_promotion_ablation,
             "exact_q8_rows_ablation": args.exact_q8_rows_ablation,
+            "attention_inverse_rope_fusion_ablation":
+                args.attention_inverse_rope_fusion_ablation,
             "temperature": 0,
             "seed": 1,
         },
@@ -541,32 +559,22 @@ def summarize(rows, modes=("baseline", "runtime")):
         )
     reference_median = statistics.median(reference)
     candidate_median = statistics.median(candidate)
+    comparisons = {
+        ("serial_q8_rows", "default_exact"): "exact_q8_rows_ablation",
+        ("indexed_attention_rb16_legacy", "default_exact"):
+            "indexed_attention_rb16_promotion_ablation",
+        ("default_exact", "compressor_pair_nr4"):
+            "compressor_pair_nr4_ablation",
+        ("default_exact", "batch_attention_suffix"):
+            "attention_suffix_ablation",
+        ("serial_attention_pre", "default_exact"):
+            "attention_pre_ablation",
+        ("serial_exact", "runtime"): "serial_ffn_ablation",
+        ("default_exact", "attention_inverse_rope_fused"):
+            "attention_inverse_rope_fusion_ablation",
+    }
     summary = {
-        "comparison": (
-            "exact_q8_rows_ablation"
-            if modes == ("serial_q8_rows", "default_exact")
-            else (
-                "indexed_attention_rb16_promotion_ablation"
-                if modes == ("indexed_attention_rb16_legacy", "default_exact")
-                else (
-                    "compressor_pair_nr4_ablation"
-                    if modes == ("default_exact", "compressor_pair_nr4")
-                    else (
-                        "attention_suffix_ablation"
-                        if modes == ("default_exact", "batch_attention_suffix")
-                        else (
-                            "attention_pre_ablation"
-                            if modes == ("serial_attention_pre", "default_exact")
-                            else (
-                                "serial_ffn_ablation"
-                                if modes == ("serial_exact", "runtime")
-                                else "baseline_runtime"
-                            )
-                        )
-                    )
-                )
-            )
-        ),
+        "comparison": comparisons.get(modes, "baseline_runtime"),
         "reference_mode": reference_mode,
         "candidate_mode": candidate_mode,
         "reference_generation_tps_median": reference_median,
@@ -590,6 +598,16 @@ def summarize(rows, modes=("baseline", "runtime")):
             "legacy_q8_rows_generation_tps_median": reference_median,
             "promoted_exact_q8_rows_generation_tps_median": candidate_median,
             "promoted_exact_q8_rows_delta_percent":
+                (candidate_median / reference_median - 1.0) * 100.0,
+        })
+        return summary
+
+    if modes == ("default_exact", "attention_inverse_rope_fused"):
+        summary.update({
+            "default_exact_generation_tps_median": reference_median,
+            "attention_inverse_rope_fused_generation_tps_median":
+                candidate_median,
+            "attention_inverse_rope_fused_delta_percent":
                 (candidate_median / reference_median - 1.0) * 100.0,
         })
         return summary
@@ -697,6 +715,20 @@ def summarize(rows, modes=("baseline", "runtime")):
 
 
 def format_report(summary):
+    if summary["comparison"] == "attention_inverse_rope_fusion_ablation":
+        return (
+            "# DSpark Attention Inverse-RoPE Fusion Ablation\n\n"
+            f"- Default exact median: "
+            f"{summary['default_exact_generation_tps_median']:.2f} t/s\n"
+            f"- Fused inverse-RoPE median: "
+            f"{summary['attention_inverse_rope_fused_generation_tps_median']:.2f} t/s\n"
+            f"- Ratio of medians: {summary['median_ratio_of_medians']:.4f}x\n"
+            f"- Median paired ratio: {summary['paired_speedup_median']:.4f}x\n"
+            f"- Fused inverse-RoPE delta: "
+            f"{summary['attention_inverse_rope_fused_delta_percent']:+.1f}%\n"
+            f"- Measured pairs: {len(summary['paired_speedup_values'])}\n"
+        )
+
     if summary["comparison"] == "exact_q8_rows_ablation":
         return (
             "# DSpark Exact Q8 Proposal-Row Promotion Confirmation\n\n"

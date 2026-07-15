@@ -8,6 +8,14 @@ particular DSpark change exists.
 
 Branch: `codex/dspark-observability-0`
 
+Phase 0.96 is ready for its user-run throughput gate. The exact Metal verifier
+now has an opt-in in-place attention/inverse-RoPE fusion that preserves the
+interleaved autoregressive row schedule and removes the separate inverse-RoPE
+dispatch. Generated output is byte-identical across the correctness matrix,
+but the fused shader is not hidden-state bit-exact: its same-dispatch observer
+measures tightly bounded YaRN interpolation drift. Keep the candidate opt-in
+until its paired throughput result justifies further promotion work.
+
 Phase 0.95 is complete. The exact Metal verifier now defaults to exact FFN
 batching, row-independent attention preparation, and the promoted 2-5-row Q8
 projection microbatch while retaining cache-mutating attention work in serial
@@ -5541,6 +5549,56 @@ Phase 0.95 user-run result on 2026-07-15:
   preserves row order; do not revive that candidate, the NR4 compressor pair,
   or other previously rejected sparse-attention candidates.
 
+Phase 0.96 attention/inverse-RoPE fusion prepared on 2026-07-15:
+
+- Added opt-in `DS4_DSPARK_EXACT_ATTN_INV_ROPE_FUSED=1` for the retained exact
+  verifier's serial attention tail. Raw FlashAttention reduction,
+  dense-compressed FlashAttention reduction, and sparse indexed attention can
+  now apply inverse RoPE directly when writing each final attention head. The
+  separate full-head inverse-RoPE dispatch is skipped only for this candidate.
+  Cache mutation, compressor/indexer work, output projections, HC expansion,
+  and proposal-row order are unchanged.
+- The candidate has function-constant-specialized Metal pipelines. The default
+  control compiles inverse-RoPE arithmetic and its branch away; it does not run
+  a disabled hot-path branch merely because the candidate exists. Normal APIs
+  remain the control, while explicit fused APIs carry validated RoPE arguments.
+- Added route tracing and a same-dispatch observer. In observer mode the same
+  attention dispatch writes its unrotated reduction to diagnostic scratch; the
+  existing standalone inverse-RoPE kernel transforms that exact scratch, and
+  the observer compares it with the fused output. This avoids confounding the
+  comparison with a second attention reduction.
+- Raw attention was bit-exact in the selected-layer gate. Compressed YaRN paths
+  showed bounded arithmetic drift because the shared interpolation math is
+  optimized in a different shader context. At the forced sparse transition,
+  the largest observed record was max absolute `2.38419e-7`, RMS
+  `5.31978e-9`, and vector-relative L2 `1.53409e-8`; generated output remained
+  byte-identical. The observer rejects non-finite values or records above max
+  absolute `1e-6`, RMS `1e-8`, or relative L2 `1e-6`. Do not describe this
+  candidate as hidden-state bit-exact.
+- Extended `tests/dspark_gpu_candidates_correctness.sh` with raw,
+  dense-compressed, and forced sparse-indexed observer gates. Reasoning,
+  Italian, medium-context, rolling-window, resumed-chat, and all three route
+  checks passed with byte-identical output.
+- Added `--attention-inverse-rope-fusion-ablation` to the paired benchmark
+  runner. It compares default exact DSpark with only the fusion env enabled,
+  forces Metal, clears inherited diagnostics/observers/stats, validates output
+  equality, alternates order, and emits a dedicated report. Its dry run passed.
+- Normal Metal and CPU builds, shell/Python syntax checks, DSpark correctness,
+  and `git diff --check` passed. Codex did not run a tok/s benchmark.
+
+Phase 0.96 user-run command:
+
+```sh
+python3 speed-bench/run_dspark_comparison.py \
+  --attention-inverse-rope-fusion-ablation \
+  --confirm-idle
+```
+
+Promotion requires a repeatable paired throughput win plus the existing
+byte-identical output gate. Even if throughput wins, retain the standalone
+inverse-RoPE path as the bit-exact control and document the bounded fused
+arithmetic rather than silently calling it exact.
+
 Phase 0.52 checks:
 
 ```sh
@@ -5685,8 +5743,13 @@ If continuing from a compacted context, start here:
   rows and about `1.68x` more selected-layer cost per emitted token. Phase 0.95
   is complete. The retained serial attention tail is the largest late-layer
   component, but whole-suffix batching and deferred projection candidates were
-  already rejected. Select a narrow in-place tail optimization that preserves
-  the exact interleaved row schedule before preparing another user-run gate.
+  already rejected. Phase 0.96 prepared a narrow in-place fusion that applies
+  inverse RoPE in the final attention write and removes the standalone full-head
+  dispatch while preserving the interleaved row schedule. Its output is
+  byte-identical, but compressed YaRN arithmetic has documented bounded
+  hidden-state drift. The next gate is the user-run paired
+  `--attention-inverse-rope-fusion-ablation`; do not promote it before that
+  result.
 - The GPU stage path currently borrows target graph transient batch workspace
   and therefore requires `prefill_cap >= block_size` (five). Decide whether to
   allocate sidecar-specific batch scratch before production enablement or keep

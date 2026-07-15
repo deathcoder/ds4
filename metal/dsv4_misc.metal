@@ -64,7 +64,11 @@ struct ds4_metal_args_dsv4_indexed_attention {
     uint64_t dst_token_stride;
     uint64_t dst_head_stride;
     float    scale;
+    ds4_metal_args_inverse_rope inverse_rope;
 };
+
+constant bool FC_dsv4_indexed_attention_inverse_rope
+    [[function_constant(1500)]];
 
 struct ds4_metal_args_dsv4_indexer_scores_fused {
     uint32_t n_comp;
@@ -569,6 +573,41 @@ static inline void dsv4_attend_sink(
     M = new_m;
 }
 
+static inline void dsv4_store_attention_head(
+        device float4                              *dst4,
+        device float4                              *unrotated4,
+        float4                                      o0,
+        float4                                      o1,
+        float4                                      o2,
+        float4                                      o3,
+        float                                       inv_s,
+        uint32_t                                    qpos,
+        uint32_t                                    scalar_base,
+        constant ds4_metal_args_inverse_rope       &rope) {
+    if (!FC_dsv4_indexed_attention_inverse_rope) {
+        dst4[ 0] = o0 * inv_s;
+        dst4[32] = o1 * inv_s;
+        dst4[64] = o2 * inv_s;
+        dst4[96] = o3 * inv_s;
+        return;
+    }
+
+    const float4 rounded0 = o0 * inv_s;
+    const float4 rounded1 = o1 * inv_s;
+    const float4 rounded2 = o2 * inv_s;
+    const float4 rounded3 = o3 * inv_s;
+    if (rope.observer) {
+        unrotated4[ 0] = rounded0;
+        unrotated4[32] = rounded1;
+        unrotated4[64] = rounded2;
+        unrotated4[96] = rounded3;
+    }
+    dst4[ 0] = ds4_inverse_rope_float4(rounded0, scalar_base,        qpos, rope);
+    dst4[32] = ds4_inverse_rope_float4(rounded1, scalar_base + 128u, qpos, rope);
+    dst4[64] = ds4_inverse_rope_float4(rounded2, scalar_base + 256u, qpos, rope);
+    dst4[96] = ds4_inverse_rope_float4(rounded3, scalar_base + 384u, qpos, rope);
+}
+
 // DS4 ratio-4 indexed mixed attention. It replaces the dense top-k mask path:
 // the threadgroup covers one token and eight heads. Top-k rows and local raw
 // rows are the same for all heads of a token, so K/V is staged once in
@@ -582,6 +621,7 @@ kernel void kernel_dsv4_indexed_mixed_attention_heads8(
         device const char *topk,
         device const char *sinks,
         device       char *dst,
+        device       char *unrotated_dst,
         threadgroup half4 *kv_shared [[threadgroup(0)]],
         uint2  tgpig [[threadgroup_position_in_grid]],
         ushort tid   [[thread_index_in_threadgroup]],
@@ -670,10 +710,16 @@ kernel void kernel_dsv4_indexed_mixed_attention_heads8(
     device float4 *dst4 = (device float4 *)(dst +
         (uint64_t)token * args.dst_token_stride +
         (uint64_t)head  * args.dst_head_stride);
-    dst4[lane +  0] = o0 * inv_s;
-    dst4[lane + 32] = o1 * inv_s;
-    dst4[lane + 64] = o2 * inv_s;
-    dst4[lane + 96] = o3 * inv_s;
+    device float4 *unrotated4 = (device float4 *)(unrotated_dst +
+        (uint64_t)token * args.dst_token_stride +
+        (uint64_t)head  * args.dst_head_stride);
+    dsv4_store_attention_head(dst4 + lane,
+                               unrotated4 + lane,
+                               o0, o1, o2, o3,
+                               inv_s,
+                               qpos,
+                               (uint32_t)lane * 4u,
+                               args.inverse_rope);
 }
 
 // Decode specialization of kernel_dsv4_indexed_mixed_attention_heads8.
@@ -690,6 +736,7 @@ kernel void kernel_dsv4_indexed_mixed_attention_heads8_rb16(
         device const char *topk,
         device const char *sinks,
         device       char *dst,
+        device       char *unrotated_dst,
         threadgroup half4 *kv_shared [[threadgroup(0)]],
         uint2  tgpig [[threadgroup_position_in_grid]],
         ushort tid   [[thread_index_in_threadgroup]],
@@ -801,10 +848,16 @@ kernel void kernel_dsv4_indexed_mixed_attention_heads8_rb16(
     device float4 *dst4 = (device float4 *)(dst +
         (uint64_t)token * args.dst_token_stride +
         (uint64_t)head  * args.dst_head_stride);
-    dst4[lane +  0] = o0 * inv_s;
-    dst4[lane + 32] = o1 * inv_s;
-    dst4[lane + 64] = o2 * inv_s;
-    dst4[lane + 96] = o3 * inv_s;
+    device float4 *unrotated4 = (device float4 *)(unrotated_dst +
+        (uint64_t)token * args.dst_token_stride +
+        (uint64_t)head  * args.dst_head_stride);
+    dsv4_store_attention_head(dst4 + lane,
+                               unrotated4 + lane,
+                               o0, o1, o2, o3,
+                               inv_s,
+                               qpos,
+                               (uint32_t)lane * 4u,
+                               args.inverse_rope);
 }
 
 // One-token RB16 default for the fully-visible sparse decode case. The host
@@ -819,6 +872,7 @@ kernel void kernel_dsv4_indexed_mixed_attention_heads8_rb16_direct(
         device const char *topk,
         device const char *sinks,
         device       char *dst,
+        device       char *unrotated_dst,
         threadgroup half4 *kv_shared [[threadgroup(0)]],
         uint2  tgpig [[threadgroup_position_in_grid]],
         ushort tid   [[thread_index_in_threadgroup]],
@@ -913,10 +967,16 @@ kernel void kernel_dsv4_indexed_mixed_attention_heads8_rb16_direct(
     device float4 *dst4 = (device float4 *)(dst +
         (uint64_t)token * args.dst_token_stride +
         (uint64_t)head  * args.dst_head_stride);
-    dst4[lane +  0] = o0 * inv_s;
-    dst4[lane + 32] = o1 * inv_s;
-    dst4[lane + 64] = o2 * inv_s;
-    dst4[lane + 96] = o3 * inv_s;
+    device float4 *unrotated4 = (device float4 *)(unrotated_dst +
+        (uint64_t)token * args.dst_token_stride +
+        (uint64_t)head  * args.dst_head_stride);
+    dsv4_store_attention_head(dst4 + lane,
+                               unrotated4 + lane,
+                               o0, o1, o2, o3,
+                               inv_s,
+                               qpos,
+                               (uint32_t)lane * 4u,
+                               args.inverse_rope);
 }
 
 static inline float dsv4_indexer_dot128_shared_q(

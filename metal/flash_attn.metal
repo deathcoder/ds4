@@ -12,6 +12,99 @@
 #define PAD2(x, n) (((x) + (n) - 1) & ~((n) - 1))
 #endif
 
+struct ds4_metal_args_inverse_rope {
+    uint32_t enabled;
+    uint32_t observer;
+    uint32_t n_head;
+    uint32_t head_dim;
+    uint32_t n_rot;
+    uint32_t pos0;
+    uint32_t n_ctx_orig;
+    float    freq_base;
+    float    freq_scale;
+    float    ext_factor;
+    float    attn_factor;
+    float    beta_fast;
+    float    beta_slow;
+};
+
+static void rope_yarn(
+        float         theta_extrap,
+        float         freq_scale,
+        float         corr_dims[2],
+        int           i0,
+        float         ext_factor,
+        float         mscale,
+        thread float *cos_theta,
+        thread float *sin_theta);
+
+static void rope_yarn_corr_dims(
+        int   n_dims,
+        int   n_ctx_orig,
+        float freq_base,
+        float beta_fast,
+        float beta_slow,
+        float dims[2]);
+
+static inline void ds4_inverse_rope_pair(
+        float                                       x0,
+        float                                       x1,
+        int                                         r,
+        uint32_t                                    pos,
+        constant ds4_metal_args_inverse_rope       &args,
+        thread float                               *out0,
+        thread float                               *out1) {
+    const int n_dims = (int)args.n_rot;
+    const float theta_base = (float)pos;
+    const float inv_ndims = -1.f / n_dims;
+#ifdef DS4_METAL_ROPE_EXP2_LOG2
+    const float theta = theta_base *
+        exp2(inv_ndims * (float)r * log2(args.freq_base));
+#else
+    const float theta = theta_base * pow(args.freq_base, inv_ndims * r);
+#endif
+    float corr_dims[2];
+    rope_yarn_corr_dims(
+        n_dims,
+        (int)args.n_ctx_orig,
+        args.freq_base,
+        args.beta_fast,
+        args.beta_slow,
+        corr_dims);
+    float cos_theta;
+    float sin_theta;
+    rope_yarn(theta,
+              args.freq_scale,
+              corr_dims,
+              r,
+              args.ext_factor,
+              args.attn_factor,
+              &cos_theta,
+              &sin_theta);
+    sin_theta = -sin_theta;
+    *out0 = fma(x0, cos_theta, -x1 * sin_theta);
+    *out1 = fma(x0, sin_theta,  x1 * cos_theta);
+}
+
+static inline float4 ds4_inverse_rope_float4(
+        float4                                      x,
+        uint32_t                                    scalar_index,
+        uint32_t                                    pos,
+        constant ds4_metal_args_inverse_rope       &args) {
+    const uint32_t n_nope = args.head_dim - args.n_rot;
+    if (!args.enabled || scalar_index < n_nope) {
+        return x;
+    }
+    const int r = (int)(scalar_index - n_nope);
+    float y0;
+    float y1;
+    float y2;
+    float y3;
+    ds4_inverse_rope_pair(x.x, x.y, r, pos, args, &y0, &y1);
+    ds4_inverse_rope_pair(x.z, x.w, r + 2, pos, args, &y2, &y3);
+    return float4(y0, y1, y2, y3);
+}
+
 template <typename type4>
 void dequantize_f32_t4(device const float4 * src, short il, thread type4 & reg) {
     reg = (type4)(*src);
@@ -129,7 +222,11 @@ struct ds4_metal_args_flash_attn_ext_vec {
 
 struct ds4_metal_args_flash_attn_ext_vec_reduce {
     int32_t nrows;
+    ds4_metal_args_inverse_rope inverse_rope;
 };
+
+constant bool FC_flash_attn_ext_vec_reduce_inverse_rope
+    [[function_constant(FC_FLASH_ATTN_EXT_VEC_REDUCE + 2)]];
 
 constant bool FC_flash_attn_ext_pad_has_mask [[function_constant(FC_FLASH_ATTN_EXT_PAD + 0)]];
 constant int32_t FC_flash_attn_ext_pad_ncpsg [[function_constant(FC_FLASH_ATTN_EXT_PAD + 25)]];
@@ -1390,6 +1487,7 @@ kernel void kernel_flash_attn_ext_vec_reduce(
         constant ds4_metal_args_flash_attn_ext_vec_reduce & args,
         device  const char * htmp,
         device        char * dst,
+        device        char * unrotated_dst,
         uint   tgpig[[threadgroup_position_in_grid]],
         ushort tiisg[[thread_index_in_simdgroup]],
         ushort sgitg[[simdgroup_index_in_threadgroup]]) {
@@ -1420,7 +1518,24 @@ kernel void kernel_flash_attn_ext_vec_reduce(
         const float4 v = simd_sum(htmp4[i*NWG + iwg]*ms);
 
         if (iwg == 0) {
-            dst4[i] = v*S;
+            float4 value;
+            if (FC_flash_attn_ext_vec_reduce_inverse_rope) {
+                value = v*S;
+                if (args.inverse_rope.observer) {
+                    device float4 *unrotated4 =
+                        (device float4 *)unrotated_dst + rid*DV4;
+                    unrotated4[i] = value;
+                }
+                const uint32_t token = rid / args.inverse_rope.n_head;
+                value = ds4_inverse_rope_float4(
+                    value,
+                    (uint32_t)i * 4u,
+                    args.inverse_rope.pos0 + token,
+                    args.inverse_rope);
+            } else {
+                value = v*S;
+            }
+            dst4[i] = value;
         }
     }
 

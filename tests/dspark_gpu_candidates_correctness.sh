@@ -20,6 +20,7 @@ indexed_attn_rb16_promotion=${DS4_TEST_DSPARK_INDEXED_ATTN_RB16_PROMOTION:-\
 ${DS4_TEST_DSPARK_INDEXED_ATTN_RB16_DIRECT:-0}}
 exact_q8_rows=${DS4_TEST_DSPARK_EXACT_Q8_ROWS:-0}
 serial_q8_rows_runtime=${DS4_TEST_DSPARK_SERIAL_Q8_ROWS_RUNTIME:-0}
+attn_inv_rope_fused=${DS4_TEST_DSPARK_ATTN_INV_ROPE_FUSED:-0}
 ffn_batch_observer_layer=${DS4_DSPARK_EXACT_FFN_BATCH_OBSERVER_LAYER:-}
 attn_pre_observer_layer=${DS4_DSPARK_EXACT_ATTN_PRE_BATCH_OBSERVER_LAYER:-}
 attn_suffix_observer_layer=${DS4_DSPARK_EXACT_ATTN_SUFFIX_BATCH_OBSERVER_LAYER:-}
@@ -27,6 +28,9 @@ unset DS4_DSPARK_EXACT_FFN_BATCH
 unset DS4_DSPARK_EXACT_ATTN_PRE_BATCH
 unset DS4_DSPARK_EXACT_ATTN_SUFFIX_BATCH
 unset DS4_DSPARK_EXACT_Q8_ROWS
+unset DS4_DSPARK_EXACT_ATTN_INV_ROPE_FUSED
+unset DS4_DSPARK_EXACT_ATTN_INV_ROPE_FUSED_TRACE
+unset DS4_DSPARK_EXACT_ATTN_INV_ROPE_FUSED_OBSERVER_LAYER
 unset DS4_DSPARK_ACCEPTANCE_AUDIT
 unset DS4_METAL_COMPRESSOR_PAIR_NR4
 unset DS4_METAL_INDEXED_ATTN_RB16_DIRECT
@@ -126,6 +130,16 @@ if [[ $serial_q8_rows_runtime == 1 &&
     printf 'serial Q8 rows require exact runtime attention-pre batching\n' >&2
     exit 2
 fi
+if [[ $attn_inv_rope_fused != 0 && $attn_inv_rope_fused != 1 ]]; then
+    printf 'DS4_TEST_DSPARK_ATTN_INV_ROPE_FUSED must be 0 or 1\n' >&2
+    exit 2
+fi
+if [[ $attn_inv_rope_fused == 1 &&
+      ($mode != runtime || $fast_verify_runtime == 1 ||
+       $attn_suffix_runtime == 1) ]]; then
+    printf 'fused attention inverse-RoPE requires the retained exact runtime\n' >&2
+    exit 2
+fi
 if [[ -n $attn_suffix_observer_layer &&
       ($mode != runtime || $fast_verify_runtime == 1) ]]; then
     printf 'attention-suffix observer requires exact runtime verification\n' >&2
@@ -171,6 +185,12 @@ case "$mode" in
         fi
         if [[ $serial_q8_rows_runtime == 1 ]]; then
             gpu_env+=(DS4_DSPARK_EXACT_Q8_ROWS=0)
+        fi
+        if [[ $attn_inv_rope_fused == 1 ]]; then
+            gpu_env+=(
+                DS4_DSPARK_EXACT_ATTN_INV_ROPE_FUSED=1
+                DS4_DSPARK_EXACT_ATTN_INV_ROPE_FUSED_TRACE=1
+            )
         fi
         ;;
     *)
@@ -307,6 +327,13 @@ assert_gpu_selected() {
             fi
         elif grep -q 'DSpark exact Q8 rows runtime ' "$log"; then
             printf 'control mode unexpectedly ran exact Q8 rows\n' >&2
+            exit 1
+        fi
+        if [[ $attn_inv_rope_fused == 1 ]]; then
+            grep -q 'DSpark exact attention inverse-RoPE fused route=raw ' "$log"
+            grep -q 'DSpark exact attention inverse-RoPE fused route=dense_mixed ' "$log"
+        elif grep -q 'DSpark exact attention inverse-RoPE fused route=' "$log"; then
+            printf 'control mode unexpectedly ran fused attention inverse-RoPE\n' >&2
             exit 1
         fi
         if [[ $runtime_stats == 1 ]]; then
@@ -531,6 +558,69 @@ compare_indexed_attn_rb16_promotion() {
     printf 'PASS indexed attention: promoted RB16-direct versus legacy RB16\n'
 }
 
+compare_attn_inv_rope_fused_indexed() {
+    local prompt_file="$tmpdir/attn-inv-rope-indexed.prompt"
+    local baseline_out="$tmpdir/attn-inv-rope-indexed.baseline.out"
+    local candidate_out="$tmpdir/attn-inv-rope-indexed.candidate.out"
+    local candidate_log="$tmpdir/attn-inv-rope-indexed.candidate.log"
+
+    for _ in {1..15}; do
+        awk '1' "$root/tests/dspark_rolling_window_prompt.txt"
+    done >"$prompt_file"
+
+    "$ds4_bin" "${common[@]}" -n 6 --prompt-file "$prompt_file" \
+        >"$baseline_out" 2>/dev/null
+    env "${gpu_env[@]}" \
+        DS4_DSPARK_MULTI_COMMIT=1 \
+        DS4_DSPARK_EXACT_ATTN_INV_ROPE_FUSED_OBSERVER_LAYER=42 \
+        DS4_METAL_DECODE_INDEXER_SPARSE_THRESHOLD=64 \
+        "$ds4_bin" "${common[@]}" --dspark "$dspark_model" \
+        -n 6 --prompt-file "$prompt_file" \
+        >"$candidate_out" 2>"$candidate_log"
+
+    cmp -s "$baseline_out" "$candidate_out"
+    grep -q 'DSpark exact attention inverse-RoPE fused route=sparse_indexed ' \
+        "$candidate_log"
+    grep -q 'DSpark exact attention inverse-RoPE fused observer route=sparse_indexed ' \
+        "$candidate_log"
+    if grep -q 'DSpark exact attention inverse-RoPE fused observer .* result=drift' \
+        "$candidate_log"; then
+        printf 'fused inverse-RoPE indexed observer exceeded its numerical bound\n' >&2
+        exit 1
+    fi
+    assert_gpu_selected "$candidate_log"
+    printf 'PASS attention: fused inverse-RoPE indexed route\n'
+}
+
+observe_attn_inv_rope_fused_layer() {
+    local name=$1
+    local layer=$2
+    local route=$3
+    local baseline_out="$tmpdir/reasoning.baseline.out"
+    local candidate_out="$tmpdir/attn-inv-rope-$name.out"
+    local candidate_log="$tmpdir/attn-inv-rope-$name.log"
+
+    env "${gpu_env[@]}" \
+        DS4_DSPARK_MULTI_COMMIT=1 \
+        DS4_DSPARK_EXACT_ATTN_INV_ROPE_FUSED_OBSERVER_LAYER="$layer" \
+        "$ds4_bin" "${common[@]}" --dspark "$dspark_model" \
+        -n 4 \
+        --prompt-file "$root/tests/test-vectors/prompts/short_reasoning_plain.txt" \
+        >"$candidate_out" 2>"$candidate_log"
+
+    cmp -s "$baseline_out" "$candidate_out"
+    grep -q "DSpark exact attention inverse-RoPE fused observer route=$route layer=$layer " \
+        "$candidate_log"
+    if grep -q 'DSpark exact attention inverse-RoPE fused observer .* result=drift' \
+        "$candidate_log"; then
+        printf 'fused inverse-RoPE %s observer exceeded its numerical bound\n' \
+            "$route" >&2
+        exit 1
+    fi
+    assert_gpu_selected "$candidate_log"
+    printf 'PASS attention: fused inverse-RoPE %s observer\n' "$route"
+}
+
 assert_strict_fallback() {
     local prompt_file=$1
     local baseline_out="$tmpdir/strict.baseline.out"
@@ -561,6 +651,11 @@ compare_prompt_file rolling_window 12 "$root/tests/dspark_rolling_window_prompt.
 compare_resumed_chat
 if [[ $indexed_attn_rb16_promotion == 1 ]]; then
     compare_indexed_attn_rb16_promotion
+fi
+if [[ $attn_inv_rope_fused == 1 ]]; then
+    observe_attn_inv_rope_fused_layer raw 0 raw
+    observe_attn_inv_rope_fused_layer dense 42 dense_mixed
+    compare_attn_inv_rope_fused_indexed
 fi
 if [[ $mode == observer ]]; then
     assert_strict_fallback "$root/tests/test-vectors/prompts/short_reasoning_plain.txt"
