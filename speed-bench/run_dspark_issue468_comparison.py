@@ -154,6 +154,16 @@ def parse_args():
         help="collect paper-aligned acceptance and confidence metrics only",
     )
     parser.add_argument(
+        "--acceptance-reference",
+        type=Path,
+        help="compare an acceptance audit with a prior summary.json",
+    )
+    parser.add_argument(
+        "--nothink",
+        action="store_true",
+        help="render prompts in non-thinking mode instead of the CLI default",
+    )
+    parser.add_argument(
         "--fast-verifier", action="store_true",
         help="use the experimental compute-batched verifier (not correctness-safe on this corpus)",
     )
@@ -181,6 +191,10 @@ def parse_args():
         parser.error("--stats-pass is mutually exclusive with diagnostic-only modes")
     if diagnostic_modes > 1:
         parser.error("--stats-only and --acceptance-audit are mutually exclusive")
+    if args.acceptance_reference and not args.acceptance_audit:
+        parser.error("--acceptance-reference requires --acceptance-audit")
+    if args.nothink and not args.acceptance_audit:
+        parser.error("--nothink requires --acceptance-audit")
     return args, root
 
 
@@ -217,12 +231,72 @@ def load_inputs(args, root):
     return prompts, provenance, reference
 
 
+def load_acceptance_reference(args, prompts, provenance):
+    if args.acceptance_reference is None:
+        return None
+    summary_path = args.acceptance_reference.resolve()
+    metadata_path = summary_path.parent / "metadata.json"
+    if not summary_path.is_file():
+        raise SystemExit(f"missing acceptance reference: {summary_path}")
+    if not metadata_path.is_file():
+        raise SystemExit(f"missing acceptance reference metadata: {metadata_path}")
+    try:
+        summary = json.loads(summary_path.read_text(encoding="utf-8"))
+        metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise SystemExit(f"invalid acceptance reference: {exc}") from exc
+
+    config = metadata.get("config", {})
+    if config.get("execution_mode") != "acceptance_audit":
+        raise SystemExit("acceptance reference was not produced by --acceptance-audit")
+    reference_nothink = bool(config.get("nothink"))
+    if reference_nothink == args.nothink:
+        raise SystemExit("acceptance reference must use the opposite thinking mode")
+    expected_config = {
+        "ctx": args.ctx,
+        "tokens": args.tokens,
+        "temperature": 0,
+        "seed": 1,
+    }
+    for key, expected in expected_config.items():
+        if config.get(key) != expected:
+            raise SystemExit(
+                f"acceptance reference {key} mismatch: "
+                f"{config.get(key)!r} != {expected!r}"
+            )
+    for key, expected_path in (
+        ("binary", args.binary),
+        ("base_model", args.model),
+        ("dspark_model", args.dspark_model),
+    ):
+        actual = metadata.get(key, {}).get("path")
+        if actual is None or Path(actual).resolve() != expected_path.resolve():
+            raise SystemExit(f"acceptance reference {key} path mismatch")
+    reference_prompts = metadata.get("provenance", {}).get("prompts", {})
+    for label, path in prompts.items():
+        item = reference_prompts.get(label, {})
+        expected = provenance["prompts"][label]
+        if item.get("sha256") != expected["sha256"] or not path.is_file():
+            raise SystemExit(f"acceptance reference prompt mismatch for {label}")
+        if label not in summary.get("prompts", {}):
+            raise SystemExit(f"acceptance reference summary omitted {label}")
+    return {
+        "summary_path": summary_path,
+        "metadata_path": metadata_path,
+        "summary": summary,
+        "metadata": metadata,
+        "nothink": reference_nothink,
+    }
+
+
 def mode_command(args, prompt, mode):
     command = [
         str(args.binary), "--backend", "metal", "--model", str(args.model),
         "--ctx", str(args.ctx), "-n", str(args.tokens), "--temp", "0",
         "--seed", "1", "--prompt-file", str(prompt),
     ]
+    if args.nothink:
+        command.append("--nothink")
     if mode == "runtime":
         command.extend(("--dspark", str(args.dspark_model)))
     return command
@@ -423,7 +497,7 @@ def machine_snapshot(root):
     }
 
 
-def collect_metadata(args, root, prompts, provenance):
+def collect_metadata(args, root, prompts, provenance, acceptance_reference=None):
     commands = {}
     for label, prompt in prompts.items():
         if args.stats_only or args.acceptance_audit:
@@ -493,12 +567,24 @@ def collect_metadata(args, root, prompts, provenance):
             "stats_pass": args.stats_pass,
             "stats_only": args.stats_only,
             "acceptance_audit": args.acceptance_audit,
-            "nothink": False,
+            "nothink": args.nothink,
         },
         "binary": file_metadata(args.binary), "base_model": file_metadata(args.model),
         "dspark_model": file_metadata(args.dspark_model), "provenance": provenance,
         "prompts": {label: file_metadata(path) for label, path in prompts.items()},
         "commands": commands,
+        "acceptance_reference": (
+            {
+                "summary": file_metadata(
+                    acceptance_reference["summary_path"]
+                ),
+                "metadata": file_metadata(
+                    acceptance_reference["metadata_path"]
+                ),
+                "nothink": acceptance_reference["nothink"],
+            }
+            if acceptance_reference else None
+        ),
     }
 
 
@@ -634,6 +720,12 @@ def _ratio_or_none(numerator, denominator):
     return numerator / denominator if denominator else None
 
 
+def _difference_or_none(current, reference):
+    if current is None or reference is None:
+        return None
+    return current - reference
+
+
 def paper_acceptance_reference():
     domains = {}
     for domain in ("math", "code", "chat"):
@@ -679,7 +771,88 @@ def paper_acceptance_reference():
     }
 
 
-def summarize_acceptance(rows):
+def build_acceptance_mode_comparison(current_prompts, reference):
+    reference_prompts = reference["summary"].get("prompts", {})
+    prompt_comparisons = {}
+    for label in PROMPT_ORDER:
+        current = current_prompts[label]
+        prior = reference_prompts[label]
+        if current["block_size"] != prior.get("block_size"):
+            raise SystemExit(
+                f"acceptance reference block-size mismatch for {label}"
+            )
+        if len(current["positions"]) != len(prior.get("positions", [])):
+            raise SystemExit(
+                f"acceptance reference position-count mismatch for {label}"
+            )
+        positions = []
+        for current_pos, prior_pos in zip(
+            current["positions"], prior["positions"]
+        ):
+            if current_pos["position"] != prior_pos.get("position"):
+                raise SystemExit(
+                    f"acceptance reference position mismatch for {label}"
+                )
+            positions.append({
+                "position": current_pos["position"],
+                "conditional_acceptance_rate_reference": (
+                    prior_pos["conditional_acceptance_rate"]
+                ),
+                "conditional_acceptance_rate_current": (
+                    current_pos["conditional_acceptance_rate"]
+                ),
+                "conditional_acceptance_rate_delta": (
+                    _difference_or_none(
+                        current_pos["conditional_acceptance_rate"],
+                        prior_pos["conditional_acceptance_rate"],
+                    )
+                ),
+                "prefix_survival_rate_reference": (
+                    prior_pos["prefix_survival_rate"]
+                ),
+                "prefix_survival_rate_current": (
+                    current_pos["prefix_survival_rate"]
+                ),
+                "prefix_survival_rate_delta": (
+                    _difference_or_none(
+                        current_pos["prefix_survival_rate"],
+                        prior_pos["prefix_survival_rate"],
+                    )
+                ),
+            })
+        prompt_comparisons[label] = {
+            "paper_acceptance_length_reference": (
+                prior["paper_acceptance_length"]
+            ),
+            "paper_acceptance_length_current": (
+                current["paper_acceptance_length"]
+            ),
+            "paper_acceptance_length_delta": (
+                current["paper_acceptance_length"] -
+                prior["paper_acceptance_length"]
+            ),
+            "paper_verify_rate_reference": prior["paper_verify_rate"],
+            "paper_verify_rate_current": current["paper_verify_rate"],
+            "paper_verify_rate_delta": (
+                current["paper_verify_rate"] - prior["paper_verify_rate"]
+            ),
+            "full_accept_rate_reference": prior["full_accept_rate"],
+            "full_accept_rate_current": current["full_accept_rate"],
+            "full_accept_rate_delta": (
+                current["full_accept_rate"] - prior["full_accept_rate"]
+            ),
+            "positions": positions,
+        }
+    return {
+        "reference_summary": str(reference["summary_path"]),
+        "reference_generation_mode": (
+            "non_thinking" if reference["nothink"] else "thinking_high"
+        ),
+        "prompts": prompt_comparisons,
+    }
+
+
+def summarize_acceptance(rows, nothink=False, acceptance_reference=None):
     prompts = {}
     for row in rows:
         audit = row["acceptance_audit"]
@@ -736,10 +909,13 @@ def summarize_acceptance(rows):
             "truncated_proposals": audit["truncated_proposals"],
             "positions": positions,
         }
-    return {
+    result = {
         "prompts": prompts,
         "paper_reference": paper_acceptance_reference(),
         "comparison_policy": {
+            "generation_mode": (
+                "non_thinking" if nothink else "thinking_high"
+            ),
             "code_8k_reference_domain": "code",
             "synthesis_8k_reference_domain": None,
             "grounded_8k_reference_domain": None,
@@ -750,19 +926,30 @@ def summarize_acceptance(rows):
             ),
         },
     }
+    if acceptance_reference:
+        result["mode_comparison"] = build_acceptance_mode_comparison(
+            prompts, acceptance_reference
+        )
+    return result
 
 
 def _fmt_rate(value):
     return "n/a" if value is None else f"{value:.3f}"
 
 
+def _fmt_rate_delta(value):
+    return "n/a" if value is None else f"{value:+.3f}"
+
+
 def render_acceptance_report(summary):
+    generation_mode = summary["comparison_policy"]["generation_mode"]
     lines = [
         "# DSpark Issue 468 Acceptance Audit",
         "",
         "Correctness diagnostic only. Throughput values are intentionally omitted.",
         "Each audited runtime output matched a fresh uninstrumented baseline reference.",
         "Accepted length uses the paper's definition: accepted draft tokens plus one target bonus token.",
+        f"Generation mode: {generation_mode.replace('_', '-')}.",
         "",
         "| prompt | proposals | drafts/proposal | accepted drafts/proposal | paper accept_len | verify rate | full accept |",
         "|---|---:|---:|---:|---:|---:|---:|",
@@ -795,6 +982,49 @@ def render_acceptance_report(summary):
                 f"{item['rejected']} |"
             )
 
+    mode_comparison = summary.get("mode_comparison")
+    if mode_comparison:
+        lines.extend([
+            "",
+            "## Thinking-Mode Control",
+            "",
+            f"Reference mode: {mode_comparison['reference_generation_mode'].replace('_', '-')}; "
+            f"current mode: {generation_mode.replace('_', '-')}.",
+            "",
+            "| prompt | reference accept_len | current accept_len | delta | reference verify | current verify | delta | reference full | current full | delta |",
+            "|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
+        ])
+        for label in PROMPT_ORDER:
+            item = mode_comparison["prompts"][label]
+            lines.append(
+                f"| {label} | "
+                f"{item['paper_acceptance_length_reference']:.3f} | "
+                f"{item['paper_acceptance_length_current']:.3f} | "
+                f"{item['paper_acceptance_length_delta']:+.3f} | "
+                f"{item['paper_verify_rate_reference']:.3f} | "
+                f"{item['paper_verify_rate_current']:.3f} | "
+                f"{item['paper_verify_rate_delta']:+.3f} | "
+                f"{item['full_accept_rate_reference']:.1%} | "
+                f"{item['full_accept_rate_current']:.1%} | "
+                f"{item['full_accept_rate_delta']:+.1%} |"
+            )
+        lines.extend([
+            "",
+            "| prompt | pos | reference conditional | current conditional | delta | reference prefix | current prefix | delta |",
+            "|---|---:|---:|---:|---:|---:|---:|---:|",
+        ])
+        for label in PROMPT_ORDER:
+            for item in mode_comparison["prompts"][label]["positions"]:
+                lines.append(
+                    f"| {label} | {item['position']} | "
+                    f"{_fmt_rate(item['conditional_acceptance_rate_reference'])} | "
+                    f"{_fmt_rate(item['conditional_acceptance_rate_current'])} | "
+                    f"{_fmt_rate_delta(item['conditional_acceptance_rate_delta'])} | "
+                    f"{_fmt_rate(item['prefix_survival_rate_reference'])} | "
+                    f"{_fmt_rate(item['prefix_survival_rate_current'])} | "
+                    f"{_fmt_rate_delta(item['prefix_survival_rate_delta'])} |"
+                )
+
     reference = summary["paper_reference"]
     lines.extend([
         "",
@@ -820,7 +1050,13 @@ def render_acceptance_report(summary):
         "",
         f"Directional code target: code_8k measured accept_len {code_item['paper_acceptance_length']:.3f} and verify rate {code_item['paper_verify_rate']:.3f}; the official Table 1 per-model code macro ranges are {code_reference['model_macro_minimum']:.2f}-{code_reference['model_macro_maximum']:.2f} and {code_reference['model_macro_verify_rate_minimum']:.3f}-{code_reference['model_macro_verify_rate_maximum']:.3f}, respectively.",
         "",
-        "Protocol warning: Table 1 used Qwen3/Gemma4 targets, seven draft tokens, temperature 1.0 rejection sampling, non-thinking mode, the named public benchmark suites, and no confidence scheduler. This V4-Flash audit uses a five-token block, greedy decoding, and custom 8K prompts. Treat the official figures as directional targets; only code_8k has a declared nearest domain (code), and this is not a matched reproduction.",
+        "Protocol warning: Table 1 used Qwen3/Gemma4 targets, seven draft tokens, temperature 1.0 rejection sampling, non-thinking mode, the named public benchmark suites, and no confidence scheduler. This V4-Flash audit uses a five-token block, greedy decoding, and custom 8K prompts. " +
+        (
+            "The generation mode matches Table 1, but the remaining protocol differences still make this a directional comparison."
+            if generation_mode == "non_thinking" else
+            "The generation mode also differs from Table 1."
+        ) +
+        " Only code_8k has a declared nearest domain (code), and this is not a matched reproduction.",
     ])
     nonfinite = sum(
         position["confidence_nonfinite"]
@@ -935,7 +1171,9 @@ def run_stats_only(args, root, run_dir, prompts, metadata):
     return 0
 
 
-def run_acceptance_audit(args, root, run_dir, prompts, metadata):
+def run_acceptance_audit(
+    args, root, run_dir, prompts, metadata, acceptance_reference=None
+):
     runs = []
     audit_rows = []
     for prompt_label, prompt in prompts.items():
@@ -958,7 +1196,11 @@ def run_acceptance_audit(args, root, run_dir, prompts, metadata):
         "stdout_sha256", "stdout_file", "stderr_file",
     )
     write_csv(run_dir / "runs.csv", runs, run_fields)
-    summary = summarize_acceptance(audit_rows)
+    summary = summarize_acceptance(
+        audit_rows,
+        nothink=args.nothink,
+        acceptance_reference=acceptance_reference,
+    )
     scalar_rows = []
     position_rows = []
     for label in PROMPT_ORDER:
@@ -1007,6 +1249,9 @@ def main():
     args.dspark_model = args.dspark_model.resolve()
     args.corpus_dir = args.corpus_dir.resolve()
     prompts, provenance, reference = load_inputs(args, root)
+    acceptance_reference = load_acceptance_reference(
+        args, prompts, provenance
+    )
 
     for label, prompt in prompts.items():
         if args.stats_only:
@@ -1040,6 +1285,11 @@ def main():
             "Acceptance audit: one fresh baseline reference and one exact "
             "paper-aligned acceptance runtime per prompt; no throughput pairs."
         )
+        if acceptance_reference:
+            print(
+                "Thinking-mode control reference: "
+                f"{acceptance_reference['summary_path']}"
+            )
     else:
         print("Throughput pass: all DSpark stats and diagnostic instrumentation are disabled.")
     if args.fast_verifier:
@@ -1061,6 +1311,9 @@ def main():
     stamp = dt.datetime.now().astimezone().strftime("%Y%m%d-%H%M%S")
     default_dir = (
         f"issue468-stats-{stamp}" if args.stats_only else
+        f"issue468-acceptance-nothink-{stamp}" if (
+            args.acceptance_audit and args.nothink
+        ) else
         f"issue468-acceptance-{stamp}" if args.acceptance_audit else
         f"issue468-{stamp}"
     )
@@ -1068,12 +1321,16 @@ def main():
         args.output_dir or root / "speed-bench/local-runs" / default_dir
     ).resolve()
     run_dir.mkdir(parents=True, exist_ok=False)
-    metadata = collect_metadata(args, root, prompts, provenance)
+    metadata = collect_metadata(
+        args, root, prompts, provenance, acceptance_reference
+    )
     (run_dir / "metadata.start.json").write_text(json.dumps(metadata, indent=2) + "\n", encoding="utf-8")
     if args.stats_only:
         return run_stats_only(args, root, run_dir, prompts, metadata)
     if args.acceptance_audit:
-        return run_acceptance_audit(args, root, run_dir, prompts, metadata)
+        return run_acceptance_audit(
+            args, root, run_dir, prompts, metadata, acceptance_reference
+        )
 
     references = {}
     for prompt_label, prompt in prompts.items():

@@ -4932,6 +4932,45 @@ Phase 0.87 user-run acceptance result on 2026-07-15:
   the gap, move next to a small officially sourced code-prompt corpus before
   investigating quantization or proposal-path arithmetic.
 
+Phase 0.88 thinking-mode acceptance control prepared on 2026-07-15:
+
+- Added acceptance-audit-only `--nothink`, applying the CLI option to both the
+  fresh baseline reference and exact DSpark runtime. Ordinary Issue 468
+  throughput and stats protocols remain unchanged.
+- Added `--acceptance-reference SUMMARY_JSON`. The runner requires an
+  acceptance-audit artifact made with the opposite thinking mode and validates
+  its sibling metadata against the current binary, base and sidecar paths,
+  context, token count, temperature, seed, and all three prompt hashes. This
+  prevents unlike runs from being presented as a controlled mode comparison.
+- The acceptance report now names the generation mode and, when a reference is
+  supplied, reports per-prompt deltas for paper accepted length, verify rate,
+  and full acceptance. It also reports every draft position's conditional
+  acceptance and prefix-survival delta. Metadata records both reference files
+  and their thinking mode. Non-thinking outputs have the distinct
+  `issue468-acceptance-nothink-<timestamp>` prefix.
+- Python syntax, default acceptance and throughput dry runs, the real prior
+  artifact's provenance validation, same-mode and out-of-scope option
+  rejection, and synthetic aggregate/position report generation passed. No
+  model execution, throughput benchmark, or timed profile was run by Codex.
+
+Phase 0.88 user-run non-thinking acceptance gate:
+
+```sh
+python3 speed-bench/run_dspark_issue468_comparison.py \
+  --confirm-ready \
+  --acceptance-audit \
+  --nothink \
+  --acceptance-reference \
+  speed-bench/local-runs/issue468-acceptance-20260715-105449/summary.json
+```
+
+This is six correctness-diagnostic processes, not a tok/s benchmark. The
+generated `Thinking-Mode Control` section is the decision surface. A broad
+accepted-length improvement, especially at position 1 for `code_8k`, would
+identify thinking mode as a material source of the earlier gap. Little or no
+improvement would move the next phase to a small officially sourced code-prompt
+corpus before investigating target quantization or proposal arithmetic.
+
 Phase 0.52 checks:
 
 ```sh
@@ -5039,11 +5078,12 @@ If continuing from a compacted context, start here:
   user-run `--acceptance-audit` command. Phase 0.87's result measured paper
   accepted length `3.00/3.69/3.57`; code was weak from position 1 while later
   conditional acceptance and the other prompts argued against a universal
-  Markov/rolling-window defect. The next phase is a same-prompt acceptance-mode
-  control with `--nothink`, matching Table 1's generation mode while retaining
-  exact verification and fresh output references. Even perfect acceptance
-  cannot win at the current target-position cost, so target batch efficiency
-  remains a second required line of work.
+  Markov/rolling-window defect. Phase 0.88 prepared a validated same-prompt
+  `--nothink` acceptance control against that exact thinking-high artifact.
+  The next gate is the user-run command recorded in Phase 0.88; interpret its
+  generated mode-delta section before choosing a corpus or arithmetic branch.
+  Even perfect acceptance cannot win at the current target-position cost, so
+  target batch efficiency remains a second required line of work.
 - The GPU stage path currently borrows target graph transient batch workspace
   and therefore requires `prefill_cap >= block_size` (five). Decide whether to
   allocate sidecar-specific batch scratch before production enablement or keep

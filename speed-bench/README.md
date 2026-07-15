@@ -425,6 +425,34 @@ python3 speed-bench/run_dspark_issue468_comparison.py \
   --confirm-ready --stats-only
 ```
 
+Use `--acceptance-audit` when the question is proposal quality rather than
+speed. It runs one fresh baseline and one exact audited runtime per prompt,
+requires byte-identical output, and reports the paper-aligned accepted length
+plus position-wise acceptance and confidence without making throughput claims:
+
+```sh
+python3 speed-bench/run_dspark_issue468_comparison.py \
+  --confirm-ready --acceptance-audit
+```
+
+To control for the paper's non-thinking generation mode on the same prompts,
+run a second audit against the first audit's `summary.json`:
+
+```sh
+python3 speed-bench/run_dspark_issue468_comparison.py \
+  --confirm-ready \
+  --acceptance-audit \
+  --nothink \
+  --acceptance-reference \
+  speed-bench/local-runs/issue468-acceptance-<timestamp>/summary.json
+```
+
+The reference is accepted only when it used the opposite thinking mode and
+matches the current binary/model paths, context, token count, seed, and prompt
+hashes. The report adds accepted-length, verify-rate, conditional-acceptance,
+and prefix-survival deltas. Non-thinking audit outputs use the
+`issue468-acceptance-nothink-<timestamp>/` directory prefix.
+
 The older `--stats-pass` mode remains available when a single invocation should
 run the full throughput comparison and then append one instrumented runtime
 sample per prompt:
