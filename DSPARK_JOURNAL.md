@@ -5434,6 +5434,33 @@ python3 speed-bench/run_dspark_humaneval_throughput.py \
 
 The previous run took about 13.5 minutes; expect roughly the same duration.
 
+Phase 0.94 user-run result on 2026-07-15:
+
+- Raw results are in
+  `speed-bench/local-runs/humaneval-throughput-32-20260715-140901`. Metadata
+  records clean commit `a78878b`, no inherited `DS4_*` environment, the same
+  acceptance reference and selection, and the intended uninstrumented
+  alternating schedule. Every baseline/runtime pair produced byte-identical
+  output.
+- Baseline median was `22.93 t/s`; promoted-default DSpark median was
+  `15.68 t/s`; ratio of medians and median paired ratio were both `0.6840x`;
+  geometric mean was `0.6794x`. All 32 tasks remained slower with DSpark, with
+  a median delta of `-31.6%` and paired range `0.4541x-0.8134x`.
+- Relative to Phase 0.91, the median paired ratio rose from `0.6456x` to
+  `0.6840x`: `+3.84` percentage points and a `1.0594x` relative improvement.
+  The geometric mean rose from `0.6431x` to `0.6794x` (`1.0564x`), closely
+  matching the exact Q8 component ablation and promotion confirmation.
+- Absolute DSpark generation throughput improved on all 32 tasks, with a
+  `1.0530x` median task-level increase. Paired ratios improved on 31/32 tasks.
+  The sole ratio exception, `humaneval_058`, still improved from `16.94` to
+  `18.07 t/s`; its old baseline was unusually low (`21.01` versus `22.89 t/s`
+  now), which inflated the old paired ratio. The cross-task baseline median
+  stayed stable (`23.00` to `22.93 t/s`).
+- Acceptance/speed Pearson correlation remained high (`0.839` to `0.846`).
+  The Q8 optimization therefore generalizes broadly and removes real exact
+  verifier cost, but acceptance-dependent target verification remains the
+  dominant end-to-end problem. Phase 0.94 is complete.
+
 Phase 0.52 checks:
 
 ```sh
@@ -5569,7 +5596,12 @@ If continuing from a compacted context, start here:
   identical output hashes. Phase 0.93 is complete. Phase 0.94 now reruns the
   identical 32-task HumanEval throughput workload on the promoted default; use
   its new within-run ratio to measure end-to-end movement before choosing the
-  next exact-verifier slice.
+  next exact-verifier slice. That rerun improved the median paired ratio from
+  `0.6456x` to `0.6840x`, with absolute DSpark throughput higher on all 32
+  tasks, but every task remains slower than baseline. Phase 0.94 is complete;
+  the next phase should attribute promoted exact-runtime cost on representative
+  low- and high-acceptance HumanEval tasks before choosing another compute
+  batching boundary.
 - The GPU stage path currently borrows target graph transient batch workspace
   and therefore requires `prefill_cap >= block_size` (five). Decide whether to
   allocate sidecar-specific batch scratch before production enablement or keep
