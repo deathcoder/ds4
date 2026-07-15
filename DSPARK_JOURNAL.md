@@ -8,6 +8,15 @@ particular DSpark change exists.
 
 Branch: `codex/dspark-observability-0`
 
+Phase 0.98 is prepared and awaiting its user-run throughput gate. The exact
+runtime now supports opt-in `DS4_DSPARK_CONFIDENCE_THRESHOLD` with DeepSpec's
+strict first-confidence-below-threshold prefix rule. The full five-row sidecar
+block is still computed; only target verifier width changes. Mixed-prefix
+threshold `0.455`, forced K=0 threshold `1`, and unchanged fixed K=5 all passed
+the full Metal correctness matrix byte-for-byte. A frozen two-task, three-mode
+runner compares fixed K=5, `0.38`, and `0.455` in a Latin rotation with no
+instrumentation. Codex has not run that throughput benchmark.
+
 Phase 0.97 is complete. Its 32-task HumanEval trace reproduced the prior output
 and acceptance audit exactly. Raw confidence supports a stable DeepSpec-style
 prefix policy: leave-one-task-out thresholds differed by at most `0.005` from
@@ -5723,6 +5732,62 @@ Phase 0.97 user-run result on 2026-07-15:
   Proceed with an opt-in exact runtime ablation using predeclared thresholds
   `0.38` and `0.455`; do not promote or tune against throughput yet.
 
+Phase 0.98 confidence-prefix runtime ablation prepared on 2026-07-15:
+
+- Added opt-in `DS4_DSPARK_CONFIDENCE_THRESHOLD`. Its value must parse exactly
+  as a finite number in `[0,1]`; malformed, non-finite, negative, and above-one
+  values fail generation with an explicit error rather than silently reverting
+  to fixed K=5. An unset variable leaves the prior hot path unchanged.
+- After all five GPU sidecar candidates and raw sigmoid confidences are ready,
+  the runtime selects the prefix before the first confidence strictly below the
+  threshold, matching pinned DeepSpec semantics. Threshold `0` keeps all five
+  drafts. The scheduler runs before output-capacity and EOS limits and changes
+  only the verifier's `n_limit`; sidecar generation and candidate values are
+  unchanged.
+- K=0 uses the existing ordinary one-token target evaluation and emits the
+  target-authoritative token. K=1 also follows the existing one-token fallback.
+  K>=2 enters the retained exact batch verifier at the selected width. Cache,
+  checkpoint, capture, replay, and accepted-prefix logic are unchanged.
+- Scheduler route records are emitted only under existing runtime diagnostics.
+  Uninstrumented throughput runs do not log or time the scheduler. The
+  correctness harness now rejects unexpected scheduling in fixed controls,
+  validates route records when enabled, allows intentionally absent verifier
+  component records for K<2, and can require an observed K=0 fallback.
+- Threshold `0.455` passed reasoning, Italian, medium-context, rolling-window,
+  and resumed-chat output equality while exercising mixed prefix lengths.
+  Threshold `1` passed the same matrix and exercised K=0. Fixed K=5 passed
+  again with no scheduler records. A direct invalid-value check exited with
+  `DS4_DSPARK_CONFIDENCE_THRESHOLD must be a finite number in [0,1]`.
+- Added `speed-bench/run_dspark_humaneval_scheduler_ablation.py`. Tasks are
+  fixed to low-acceptance `humaneval_152` and high-acceptance `humaneval_079`;
+  modes are fixed to K=5, threshold `0.38`, and threshold `0.455`; pair count is
+  fixed to three. Each task uses a three-period Latin rotation. One excluded
+  three-mode warmup plus 18 measured runs produces 21 exact DSpark processes.
+- The runner requires Phase 0.94's 32-task throughput artifact, validates model,
+  corpus, protocol, prompts, and prior byte-equal outputs, clears all inherited
+  `DS4_*` state, enables only GPU runtime/multi-commit plus the selected
+  threshold, and rejects stats, audit, trace, diagnostics, or profiler output.
+  Every measured output must match the prior exact DSpark output byte-for-byte.
+- Added model-free tests for the Latin rotation and fixed environment policy,
+  and documented the gate in `speed-bench/README.md`. Metal/CPU builds, DSpark
+  validation/shape binding, all three correctness matrices, Python/shell syntax
+  checks, dry run, and `git diff --check` passed. CPU warnings were the existing
+  unused-code warnings. Codex did not run a tok/s benchmark.
+
+Phase 0.98 user-run command:
+
+```sh
+python3 speed-bench/run_dspark_humaneval_scheduler_ablation.py \
+  --confirm-idle \
+  --throughput-reference \
+  speed-bench/local-runs/humaneval-throughput-32-20260715-140901/summary.json
+```
+
+Review per-task and aggregate candidate/fixed paired ratios before any full
+32-task rerun. A candidate should be directionally positive on both the low-
+and high-acceptance tasks and across most of its six measured pairs. Do not tune
+the thresholds or tasks after observing this gate.
+
 Phase 0.52 checks:
 
 ```sh
@@ -5876,9 +5941,10 @@ If continuing from a compacted context, start here:
   is not promoted. Phase 0.97 now tests whether official-style raw-confidence
   prefix scheduling can reduce low-acceptance proposal-row work without losing
   too much local progress. Its trace result generalized and supports a guarded
-  runtime ablation at predeclared thresholds `0.38` and `0.455`, but no
-  scheduler is in the runtime yet. Do not repeat the sub-percent inverse-RoPE
-  ablation unchanged.
+  runtime ablation at predeclared thresholds `0.38` and `0.455`. Phase 0.98 has
+  now implemented that policy behind an opt-in environment variable and frozen
+  the two-task throughput gate; await its user-run result before promotion or a
+  32-task rerun. Do not repeat the sub-percent inverse-RoPE ablation unchanged.
 - The GPU stage path currently borrows target graph transient batch workspace
   and therefore requires `prefill_cap >= block_size` (five). Decide whether to
   allocate sidecar-specific batch scratch before production enablement or keep

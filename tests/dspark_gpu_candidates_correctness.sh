@@ -16,6 +16,8 @@ attn_suffix_runtime=${DS4_TEST_DSPARK_ATTN_SUFFIX_RUNTIME:-0}
 runtime_stats=${DS4_TEST_DSPARK_RUNTIME_STATS:-0}
 acceptance_audit=${DS4_TEST_DSPARK_ACCEPTANCE_AUDIT:-0}
 acceptance_trace=${DS4_TEST_DSPARK_ACCEPTANCE_TRACE:-0}
+confidence_threshold=${DS4_TEST_DSPARK_CONFIDENCE_THRESHOLD:-}
+confidence_expect_zero=${DS4_TEST_DSPARK_CONFIDENCE_EXPECT_ZERO:-0}
 compressor_pair_nr4=${DS4_TEST_DSPARK_COMPRESSOR_PAIR_NR4:-0}
 indexed_attn_rb16_promotion=${DS4_TEST_DSPARK_INDEXED_ATTN_RB16_PROMOTION:-\
 ${DS4_TEST_DSPARK_INDEXED_ATTN_RB16_DIRECT:-0}}
@@ -34,6 +36,7 @@ unset DS4_DSPARK_EXACT_ATTN_INV_ROPE_FUSED_TRACE
 unset DS4_DSPARK_EXACT_ATTN_INV_ROPE_FUSED_OBSERVER_LAYER
 unset DS4_DSPARK_ACCEPTANCE_AUDIT
 unset DS4_DSPARK_ACCEPTANCE_TRACE
+unset DS4_DSPARK_CONFIDENCE_THRESHOLD
 unset DS4_METAL_COMPRESSOR_PAIR_NR4
 unset DS4_METAL_INDEXED_ATTN_RB16_DIRECT
 unset DS4_METAL_INDEXED_ATTN_RB16_LEGACY
@@ -93,6 +96,14 @@ if [[ $acceptance_audit == 1 && $mode != runtime ]]; then
 fi
 if [[ $acceptance_trace == 1 && $acceptance_audit != 1 ]]; then
     printf 'acceptance trace requires DS4_TEST_DSPARK_ACCEPTANCE_AUDIT=1\n' >&2
+    exit 2
+fi
+if [[ -n $confidence_threshold && $mode != runtime ]]; then
+    printf 'confidence scheduler requires DS4_TEST_DSPARK_MODE=runtime\n' >&2
+    exit 2
+fi
+if [[ $confidence_expect_zero == 1 && -z $confidence_threshold ]]; then
+    printf 'zero-prefix expectation requires a confidence threshold\n' >&2
     exit 2
 fi
 if [[ $compressor_pair_nr4 != 0 && $compressor_pair_nr4 != 1 ]]; then
@@ -183,6 +194,9 @@ case "$mode" in
         if [[ $acceptance_trace == 1 ]]; then
             gpu_env+=(DS4_DSPARK_ACCEPTANCE_TRACE=1)
         fi
+        if [[ -n $confidence_threshold ]]; then
+            gpu_env+=(DS4_DSPARK_CONFIDENCE_THRESHOLD="$confidence_threshold")
+        fi
         if [[ $compressor_pair_nr4 == 1 ]]; then
             gpu_env+=(DS4_METAL_COMPRESSOR_PAIR_NR4=1)
         fi
@@ -264,6 +278,11 @@ common=(--model "$base_model" --ctx 4096 --nothink --temp 0)
 
 assert_gpu_selected() {
     local log=$1
+    local verifier_batches_expected=1
+    if [[ -n $confidence_threshold ]] &&
+       ! grep -Eq 'DSpark confidence scheduler .* selected=([2-9]|[1-9][0-9]+)$' "$log"; then
+        verifier_batches_expected=0
+    fi
     if [[ $mode == observer ]]; then
         grep -q 'DSpark GPU chain parity .* result=pass' "$log"
     else
@@ -275,8 +294,20 @@ assert_gpu_selected() {
         grep -q 'DSpark GPU chain runtime .* result=pass' "$log"
         if [[ $fast_verify_runtime == 1 ]]; then
             grep -q 'DSpark fast batch verifier .* result=pass' "$log"
-        else
+        elif [[ -z $confidence_threshold ]] ||
+             grep -Eq 'DSpark confidence scheduler .* selected=([2-9]|[1-9][0-9]+)$' "$log"; then
             grep -q 'DSpark exact batch verifier .* result=pass' "$log"
+        fi
+        if [[ -n $confidence_threshold ]]; then
+            grep -q "DSpark confidence scheduler threshold=$confidence_threshold" "$log"
+            if grep 'DSpark confidence scheduler ' "$log" |
+               grep -Evq ' proposed=[1-9][0-9]* selected=[0-9][0-9]*$'; then
+                printf 'confidence scheduler emitted a malformed route record\n' >&2
+                exit 1
+            fi
+        elif grep -q 'DSpark confidence scheduler ' "$log"; then
+            printf 'control mode unexpectedly ran confidence scheduling\n' >&2
+            exit 1
         fi
         if [[ $fast_verify_observer == 1 ]]; then
             grep -q 'DSpark fast verifier observer ' "$log"
@@ -290,7 +321,7 @@ assert_gpu_selected() {
             printf 'exact FFN batch runtime reported a failure\n' >&2
             exit 1
         fi
-        if [[ $exact_ffn_expected == 1 ]]; then
+        if [[ $exact_ffn_expected == 1 && $verifier_batches_expected == 1 ]]; then
             grep -q 'DSpark exact FFN batch runtime .* result=pass' "$log"
         fi
         if [[ $exact_attn_pre_allowed == 1 ]] &&
@@ -303,7 +334,7 @@ assert_gpu_selected() {
                 printf '%s\n' "$attn_runtime_records" >&2
                 exit 1
             fi
-        elif [[ $exact_attn_pre_expected == 1 ]]; then
+        elif [[ $exact_attn_pre_expected == 1 && $verifier_batches_expected == 1 ]]; then
             printf 'default exact runtime omitted attention-pre batching\n' >&2
             exit 1
         elif [[ $exact_attn_pre_allowed != 1 ]] &&
@@ -325,7 +356,7 @@ assert_gpu_selected() {
             printf 'control mode unexpectedly ran exact attention-suffix batching\n' >&2
             exit 1
         fi
-        if [[ $exact_q8_rows_expected == 1 ]]; then
+        if [[ $exact_q8_rows_expected == 1 && $verifier_batches_expected == 1 ]]; then
             local q8_records
             q8_records=$(grep 'DSpark exact Q8 rows runtime proposed=' "$log")
             if printf '%s\n' "$q8_records" |
@@ -683,6 +714,11 @@ compare_prompt_file italian 6 "$root/tests/test-vectors/prompts/short_italian_fa
 compare_prompt_file medium_context 6 "$root/tests/dspark_gpu_candidates_medium_prompt.txt"
 compare_prompt_file rolling_window 12 "$root/tests/dspark_rolling_window_prompt.txt"
 compare_resumed_chat
+if [[ $confidence_expect_zero == 1 ]] &&
+   ! grep -q 'DSpark confidence scheduler .* selected=0$' "$tmpdir"/*.log; then
+    printf 'confidence scheduler did not exercise the zero-draft fallback\n' >&2
+    exit 1
+fi
 if [[ $indexed_attn_rb16_promotion == 1 ]]; then
     compare_indexed_attn_rb16_promotion
 fi

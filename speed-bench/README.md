@@ -553,6 +553,37 @@ token, making acceptance-driven invocation amplification visible without
 mislabeling profiler timings as throughput. Raw artifacts go under
 `speed-bench/local-runs/humaneval-exact-profile-<timestamp>/`.
 
+To test the official-style confidence-prefix rule without immediately repeating
+the full 32-task throughput study, use the predeclared scheduler ablation:
+
+```sh
+python3 speed-bench/run_dspark_humaneval_scheduler_ablation.py \
+  --dry-run --allow-dirty \
+  --throughput-reference \
+  speed-bench/local-runs/humaneval-throughput-32-<timestamp>/summary.json
+python3 speed-bench/run_dspark_humaneval_scheduler_ablation.py \
+  --confirm-idle \
+  --throughput-reference \
+  speed-bench/local-runs/humaneval-throughput-32-<timestamp>/summary.json
+```
+
+The three modes are fixed K=5, threshold `0.38`, and threshold `0.455`. The two
+tasks are fixed before measurement: low-acceptance `humaneval_152` and high-
+acceptance `humaneval_079`. With the default three pairs and one warmup period,
+the runner starts 21 exact DSpark processes: three excluded warmups and 18
+measured runs. Each task uses a three-period Latin rotation so every mode
+occupies every order position. All outputs must match the prior exact runtime
+artifact byte-for-byte.
+
+`DS4_DSPARK_CONFIDENCE_THRESHOLD` uses DeepSpec's strict prefix rule: select
+the drafts before the first raw confidence below the threshold. The complete
+five-row sidecar block is still computed. Threshold `0` is equivalent to fixed
+K=5, K=0 uses ordinary one-token target evaluation, and invalid or non-finite
+values outside `[0,1]` fail explicitly. The benchmark enables no stats, audit,
+trace, diagnostics, or profiler. Its candidate/fixed paired ratios measure
+actual Metal cost; offline target-position proxies are not throughput results.
+Do not change the tasks or thresholds after observing this gate.
+
 The older `--stats-pass` mode remains available when a single invocation should
 run the full throughput comparison and then append one instrumented runtime
 sample per prompt:

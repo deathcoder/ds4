@@ -34043,6 +34043,78 @@ static bool dspark_session_multi_commit_env_enabled(void) {
     return v && v[0] && strcmp(v, "0") != 0;
 }
 
+static bool dspark_session_confidence_prefix_limit(
+        const dspark_draft_candidate *drafts,
+        uint32_t                      draft_rows,
+        uint32_t                     *selected_rows,
+        float                        *threshold,
+        bool                         *enabled,
+        char                         *err,
+        size_t                        errlen) {
+    static int initialized;
+    static bool config_valid;
+    static bool config_enabled;
+    static float config_threshold;
+    static char config_error[160];
+    if (!initialized) {
+        const char *v = getenv("DS4_DSPARK_CONFIDENCE_THRESHOLD");
+        config_valid = true;
+        config_enabled = v && v[0];
+        config_threshold = 0.0f;
+        config_error[0] = '\0';
+        if (config_enabled) {
+            char *end = NULL;
+            errno = 0;
+            const float parsed = strtof(v, &end);
+            if (errno == ERANGE || end == v || *end != '\0' ||
+                !isfinite(parsed) || parsed < 0.0f || parsed > 1.0f) {
+                config_valid = false;
+                snprintf(config_error,
+                         sizeof(config_error),
+                         "DS4_DSPARK_CONFIDENCE_THRESHOLD must be a finite "
+                         "number in [0,1], got '%s'",
+                         v);
+            } else {
+                config_threshold = parsed;
+            }
+        }
+        initialized = 1;
+    }
+
+    if (!drafts || !selected_rows || !threshold || !enabled) {
+        if (errlen) snprintf(err, errlen, "invalid DSpark confidence scheduler state");
+        return false;
+    }
+    if (!config_valid) {
+        if (errlen) snprintf(err, errlen, "%s", config_error);
+        return false;
+    }
+
+    *selected_rows = draft_rows;
+    *threshold = config_threshold;
+    *enabled = config_enabled;
+    if (!config_enabled || config_threshold <= 0.0f) return true;
+    for (uint32_t row = 0; row < draft_rows; row++) {
+        const float confidence = drafts[row].confidence;
+        if (!isfinite(confidence) || confidence < 0.0f || confidence > 1.0f) {
+            if (errlen) {
+                snprintf(err,
+                         errlen,
+                         "DSpark confidence scheduler received invalid "
+                         "confidence %.9g at row %u",
+                         confidence,
+                         row);
+            }
+            return false;
+        }
+        if (confidence < config_threshold) {
+            *selected_rows = row;
+            break;
+        }
+    }
+    return true;
+}
+
 static bool dspark_session_gpu_stage0_env_enabled(void) {
     const char *v = getenv("DS4_DSPARK_GPU_STAGE0");
     return (v && v[0] && strcmp(v, "0") != 0) ||
@@ -35669,6 +35741,29 @@ static int dspark_session_eval_multi_commit(
     if (n_limit > (uint32_t)(sizeof(drafts) / sizeof(drafts[0]))) return 0;
     for (uint32_t i = 0; i < n_limit; i++) drafts[i] = d->draft[i];
 
+    const uint32_t proposed_rows = n_limit;
+    uint32_t scheduled_rows = n_limit;
+    float scheduler_threshold = 0.0f;
+    bool scheduler_enabled = false;
+    if (!dspark_session_confidence_prefix_limit(drafts,
+                                                proposed_rows,
+                                                &scheduled_rows,
+                                                &scheduler_threshold,
+                                                &scheduler_enabled,
+                                                err,
+                                                errlen)) {
+        return -1;
+    }
+    n_limit = scheduled_rows;
+    if (scheduler_enabled && dspark_session_diagnostics_enabled()) {
+        fprintf(stderr,
+                "ds4: DSpark confidence scheduler threshold=%.9g "
+                "proposed=%u selected=%u\n",
+                scheduler_threshold,
+                proposed_rows,
+                scheduled_rows);
+    }
+
     const dspark_draft_candidate *first = &drafts[0];
     const uint32_t checkpoint_prev = (uint32_t)s->checkpoint.v[s->checkpoint.len - 1];
     if (first->prev_token != checkpoint_prev) {
@@ -35676,11 +35771,6 @@ static int dspark_session_eval_multi_commit(
         return 0;
     }
 
-    const int target_top = sample_argmax(s->logits, DS4_N_VOCAB);
-    const bool target_hit = target_top == first->token;
-    const bool token_hit = first_token == first->token;
-    const dspark_verify_gate_result first_gate =
-        dspark_session_verify_gate(first, target_hit, token_hit);
     d->multi_commit_total++;
     const int room = s->ctx_size - s->checkpoint.len;
     if (n_limit > (uint32_t)max_tokens) n_limit = (uint32_t)max_tokens;
@@ -35694,13 +35784,24 @@ static int dspark_session_eval_multi_commit(
         }
     }
 
+    const int target_top = sample_argmax(s->logits, DS4_N_VOCAB);
+    const bool target_hit = n_limit > 0 && target_top == first->token;
+    const bool token_hit = n_limit > 0 && first_token == first->token;
+    dspark_verify_gate_result first_gate;
+    memset(&first_gate, 0, sizeof(first_gate));
+    if (n_limit > 0) {
+        first_gate = dspark_session_verify_gate(first, target_hit, token_hit);
+    }
+
     if (!first_gate.stream_eligible || n_limit < 2u) {
-        const char *reason = n_limit < 2u ? "commit capacity below two" :
+        const char *reason = scheduler_enabled && scheduled_rows == 0 ?
+            "confidence scheduler selected zero drafts" :
+            (n_limit < 2u ? "commit capacity below two" :
             (!target_hit ? "first row target miss" :
              (!first_gate.confidence_ok ? "first row confidence" :
               (!first_gate.margin_ok ? "first row margin" :
                (!token_hit ? "first row token mismatch" :
-                "first row is not stream eligible"))));
+                "first row is not stream eligible")))));
         if (n_limit > 0) {
             dspark_session_acceptance_audit_record(
                 d, drafts, n_limit, first_gate.stream_eligible ? 1u : 0u);
