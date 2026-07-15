@@ -8,14 +8,15 @@ particular DSpark change exists.
 
 Branch: `codex/dspark-observability-0`
 
-Phase 0.99 is prepared but not benchmarked. The frozen 32-task HumanEval
-throughput runner now has a provenance-checked `--confidence-scheduler` mode
-that permits only threshold `0.455`. It requires both the Phase 0.90 acceptance
-artifact and Phase 0.97 scheduler study, verifies that the latter derives from
-the former and selected `0.455` at the held-out `97.5%` retention floor, then
-pairs a fresh ordinary target baseline with exact scheduled DSpark on every
-task. The user must run the 68-child gate on the quietest practical machine.
-Do not tune or promote before that result.
+Phase 0.99 is complete. The frozen 32-task HumanEval scheduled run at threshold
+`0.455` raised the median paired DSpark/baseline ratio from Phase 0.94's
+historical fixed-K `0.6840x` to `0.7498x`; geometric mean rose from `0.6794x`
+to `0.7430x`. The historical per-task ratio improved on 30 of 32 tasks, while
+all 32 scheduled tasks remained slower than ordinary target decoding. This
+validates confidence scheduling as a material DSpark optimization on code, but
+does not yet justify a universal raw-confidence default from a code-only study.
+Keep `0.455` opt-in until a predeclared non-code generalization gate passes; do
+not tune the threshold further.
 
 Phase 0.98 is complete. Its clean, uninstrumented runtime gate found a stable
 confidence-scheduler win on both predeclared HumanEval tasks. Threshold `0.38`
@@ -5864,8 +5865,38 @@ python3 speed-bench/run_dspark_humaneval_throughput.py \
   speed-bench/local-runs/humaneval-acceptance-32-20260715-121045/summary.json
 ```
 
-Do not run this benchmark automatically. The user will run it with the machine
-as idle as practical and return `summary.md` or its printed summary.
+This benchmark was deliberately user-run with the machine as idle as practical;
+retain the command for exact reproduction.
+
+Phase 0.99 user-run result on 2026-07-15:
+
+- Raw results are in
+  `speed-bench/local-runs/humaneval-scheduler-throughput-32-20260715-182840`
+  at clean commit `fb415b5`. The run had no inherited `DS4_*` environment, no
+  instrumentation, four excluded warmup children, and 64 measured children.
+  All 32 baseline/scheduled output-hash pairs matched.
+- Baseline median was `22.97 t/s`; scheduled DSpark median was `17.14 t/s`.
+  Ratio of medians was `0.7462x`, median paired ratio was `0.7498x`, and
+  geometric mean was `0.7430x`. The paired interquartile range was
+  `0.7013x-0.7947x`, with range `0.5396x-0.9047x`.
+- No task crossed baseline: scheduled DSpark was slower on all 32 tasks. This
+  remains the primary end-user result and prevents any claim that DSpark is
+  already a net speedup on this model and machine.
+- Compared descriptively with Phase 0.94's separately collected fixed-K run,
+  median paired ratio improved from `0.6840x` to `0.7498x` (`1.0962x`
+  relative), and geometric mean improved from `0.6794x` to `0.7430x`
+  (`1.0935x` relative). Per-task scheduled/fixed ratios improved on 30 of 32
+  tasks, with median `1.0789x`; this cross-run comparison is supporting
+  evidence, not a substitute for the new within-run baseline comparison.
+- Together with Phase 0.98's controlled six-of-six fixed-K wins, this is strong
+  evidence that threshold `0.455` reduces exact verification cost broadly on
+  HumanEval. Do not spend another benchmark on nearby thresholds.
+- Do not promote `0.455` as a universal runtime default yet. HumanEval is code
+  only, the released V4 sidecar has raw rather than STS-calibrated confidence,
+  and proposal boundaries change under scheduling. The next gate should test
+  the already selected threshold on a small, frozen non-code workload with an
+  in-run fixed-K/scheduled comparison and byte-exact target output. Its purpose
+  is generalization and regression detection, not threshold selection.
 
 Phase 0.52 checks:
 
