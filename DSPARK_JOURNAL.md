@@ -5068,6 +5068,51 @@ model path. A result near `0.533` or below would indicate that corpus/domain is
 not the main gap and make an unquantized or less aggressively quantized target
 control the next diagnostic.
 
+Phase 0.89 user-run HumanEval result on 2026-07-15:
+
+- Raw results are in
+  `speed-bench/local-runs/humaneval-acceptance-20260715-113734`. Metadata
+  records clean commit `42e355a`, the pinned DeepSpec commit and eight-row
+  selection, non-thinking mode, exact verification, no inherited `DS4_*`
+  environment, and byte-identical baseline/runtime output for all samples.
+- Across 254 valid proposal rounds, pooled accepted length was `4.028` for the
+  V4 sidecar's five-draft block and pooled verify rate was `0.6713`; 110 rounds
+  fully accepted all five drafts (`43.3%`). This is a large corpus effect versus
+  non-thinking `code_8k`: accepted length rose from `3.196` to `4.028`, verify
+  rate from `0.533` to `0.671` (`+13.8` percentage points), and full acceptance
+  from `21.6%` to `43.3%` (`+21.7` points).
+- The pooled verify rate is only `0.0012` below Table 1's unmatched HumanEval
+  lower bound of `0.6725`; the eight-task unweighted mean was `0.6971`, inside
+  the official `0.6725-0.7050` range. Accepted length itself is not directly
+  comparable because V4 has five drafts plus one bonus while Table 1 has seven
+  plus one. At the measured V4 verify rate, an eight-position normalization
+  would be `5.370`, essentially Table 1's `5.38` lower endpoint, but this is an
+  explanatory normalization rather than a claimed block-seven result.
+- Per-sample verify rates ranged widely from `0.534` to `0.944`, as expected for
+  only eight code tasks. The result is not driven by one high-acceptance sample:
+  leave-one-sample-out pooled rates span `0.658-0.692`. The proposal-weighted
+  aggregate is lower than the unweighted task mean because shorter/easier
+  generations contribute fewer proposal rounds.
+- Aggregate conditional acceptance was `0.791/0.876/0.881/0.819/0.866` across
+  positions 1-5. Relative to non-thinking `code_8k`, every position improved by
+  `8.5/7.0/15.7/10.5/13.3` percentage points. There is no suffix collapse;
+  once position 1 survives, all later conditional rates remain above `0.819`.
+  This is strong evidence against a general bridge, Markov-chain, rolling-window,
+  or proposal-record wiring defect.
+- Raw confidence is coherent on the official-source prompts. Conditional
+  confidence differs from observed acceptance by `+3.6/-3.1/-5.5/-3.3/-8.0`
+  points across positions, and prefix confidence differs from survival by
+  `+3.6/+0.9/-2.7/-3.8/-6.0` points. No value was non-finite. STS calibration
+  remains unnecessary for validating raw proposal quality.
+- Decision: the custom long `code_8k` fixture, not a universal DSpark arithmetic
+  failure, explains most of the earlier acceptance gap. Deprioritize target
+  quantization and proposal-path arithmetic controls. This eight-sample pilot is
+  strong directional validation, not yet a publishable Table 1 reproduction.
+  The next acceptance step should pin the complete 164-row DeepSpec HumanEval
+  corpus and support a deterministic 32-sample expansion first; if that remains
+  near the paper's normalized range, use the same corpus for a user-run paired
+  throughput study before considering a full 164-sample acceptance run.
+
 Phase 0.52 checks:
 
 ```sh
@@ -5181,9 +5226,12 @@ If continuing from a compacted context, start here:
   grounded; generation mode is not the general explanation. The next phase is
   Phase 0.89 prepared an eight-sample, byte-exact DeepSpec HumanEval pilot in
   non-thinking mode while keeping the current five-draft greedy protocol fixed.
-  The next gate is its user-run command; compare pooled verify rate first with
-  `code_8k`'s `0.533`, then choose corpus expansion or a target-quantization
-  control from that result.
+  Its user-run result reached `0.671` pooled verify rate across 254 rounds,
+  essentially the unmatched paper range's `0.6725` lower bound and `13.8`
+  points above `code_8k`. The next phase is to pin all 164 official rows and add
+  a deterministic 32-sample expansion before a same-corpus user-run throughput
+  study. Quantization and proposal arithmetic are no longer the leading
+  acceptance hypotheses.
   Even perfect acceptance cannot win at the current target-position cost, so
   target batch efficiency remains a second required line of work.
 - The GPU stage path currently borrows target graph transient batch workspace
