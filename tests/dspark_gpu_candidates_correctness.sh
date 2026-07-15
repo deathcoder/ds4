@@ -14,6 +14,7 @@ serial_attn_pre_runtime=${DS4_TEST_DSPARK_SERIAL_ATTN_PRE_RUNTIME:-0}
 attn_pre_runtime=${DS4_TEST_DSPARK_ATTN_PRE_RUNTIME:-0}
 attn_suffix_runtime=${DS4_TEST_DSPARK_ATTN_SUFFIX_RUNTIME:-0}
 runtime_stats=${DS4_TEST_DSPARK_RUNTIME_STATS:-0}
+acceptance_audit=${DS4_TEST_DSPARK_ACCEPTANCE_AUDIT:-0}
 compressor_pair_nr4=${DS4_TEST_DSPARK_COMPRESSOR_PAIR_NR4:-0}
 indexed_attn_rb16_promotion=${DS4_TEST_DSPARK_INDEXED_ATTN_RB16_PROMOTION:-\
 ${DS4_TEST_DSPARK_INDEXED_ATTN_RB16_DIRECT:-0}}
@@ -23,6 +24,7 @@ attn_suffix_observer_layer=${DS4_DSPARK_EXACT_ATTN_SUFFIX_BATCH_OBSERVER_LAYER:-
 unset DS4_DSPARK_EXACT_FFN_BATCH
 unset DS4_DSPARK_EXACT_ATTN_PRE_BATCH
 unset DS4_DSPARK_EXACT_ATTN_SUFFIX_BATCH
+unset DS4_DSPARK_ACCEPTANCE_AUDIT
 unset DS4_METAL_COMPRESSOR_PAIR_NR4
 unset DS4_METAL_INDEXED_ATTN_RB16_DIRECT
 unset DS4_METAL_INDEXED_ATTN_RB16_LEGACY
@@ -76,6 +78,10 @@ if [[ $runtime_stats == 1 && $mode != runtime ]]; then
     printf 'runtime stats require DS4_TEST_DSPARK_MODE=runtime\n' >&2
     exit 2
 fi
+if [[ $acceptance_audit == 1 && $mode != runtime ]]; then
+    printf 'acceptance audit requires DS4_TEST_DSPARK_MODE=runtime\n' >&2
+    exit 2
+fi
 if [[ $compressor_pair_nr4 != 0 && $compressor_pair_nr4 != 1 ]]; then
     printf 'DS4_TEST_DSPARK_COMPRESSOR_PAIR_NR4 must be 0 or 1\n' >&2
     exit 2
@@ -123,6 +129,9 @@ case "$mode" in
         fi
         if [[ $runtime_stats == 1 ]]; then
             gpu_env+=(DS4_DSPARK_GPU_RUNTIME_STATS=1)
+        fi
+        if [[ $acceptance_audit == 1 ]]; then
+            gpu_env+=(DS4_DSPARK_ACCEPTANCE_AUDIT=1)
         fi
         if [[ $compressor_pair_nr4 == 1 ]]; then
             gpu_env+=(DS4_METAL_COMPRESSOR_PAIR_NR4=1)
@@ -313,6 +322,27 @@ assert_gpu_selected() {
                 printf 'control mode unexpectedly recorded attention-suffix outcomes\n' >&2
                 exit 1
             fi
+        fi
+        if [[ $acceptance_audit == 1 ]]; then
+            local acceptance_record
+            if [[ $(grep -c '^ds4: DSpark acceptance audit ' "$log") -ne 1 ]]; then
+                printf 'expected exactly one DSpark acceptance audit record\n' >&2
+                exit 1
+            fi
+            acceptance_record=$(grep '^ds4: DSpark acceptance audit ' "$log")
+            local field
+            for field in block_size proposals paper_acceptance_sum \
+                         truncated_proposals proposed_at reached_at accepted_at \
+                         rejected_at confidence_sum prefix_confidence_sum; do
+                if ! grep -Eq "(^| )${field}=[0-9.,]+( |$)" \
+                    <<<"$acceptance_record"; then
+                    printf 'DSpark acceptance audit record omitted %s\n' "$field" >&2
+                    exit 1
+                fi
+            done
+        elif grep -q '^ds4: DSpark acceptance audit ' "$log"; then
+            printf 'control mode unexpectedly emitted acceptance audit data\n' >&2
+            exit 1
         fi
         if [[ -n $ffn_batch_observer_layer ]]; then
             local observer_records

@@ -22,6 +22,7 @@ TIMING_RE = re.compile(
     rb"generation: ([0-9]+(?:\.[0-9]+)?) t/s"
 )
 STATS_PREFIX = b"ds4: DSpark runtime stats "
+ACCEPTANCE_PREFIX = b"ds4: DSpark acceptance audit "
 INT_STATS = {
     "proposals", "selected", "source_fallbacks", "multi_attempts", "emitted",
     "target_evals", "target_eval_tokens", "target_evals_avoided",
@@ -37,7 +38,45 @@ FLOAT_STATS = {
     "generation_head_ms", "generation_chain_ms",
 }
 STATS_FIELDS = tuple(sorted(INT_STATS | FLOAT_STATS))
+ACCEPTANCE_INT_FIELDS = (
+    "block_size", "proposals", "proposed_drafts", "accepted_drafts",
+    "paper_acceptance_sum", "full_accepts", "truncated_proposals",
+)
+ACCEPTANCE_INT_ARRAY_FIELDS = (
+    "proposed_at", "reached_at", "accepted_at", "rejected_at",
+    "confidence_valid", "prefix_confidence_valid", "confidence_nonfinite",
+)
+ACCEPTANCE_FLOAT_ARRAY_FIELDS = (
+    "confidence_sum", "confidence_brier", "prefix_confidence_sum",
+    "prefix_brier",
+)
 PROMPT_ORDER = ("code_8k", "synthesis_8k", "grounded_8k")
+
+# DSpark rows from Table 1 of arXiv:2607.05147v1. The paper used non-thinking
+# generation, temperature 1.0, seven draft tokens, and the named benchmark
+# suites. These are reference figures, not matched V4-Flash thresholds.
+PAPER_DSPARK_TABLE1 = {
+    "Qwen3-4B": {
+        "math": (6.11, 5.70, 4.89),
+        "code": (5.13, 5.38, 4.86),
+        "chat": (3.64, 3.54, 3.29),
+    },
+    "Qwen3-8B": {
+        "math": (6.17, 5.78, 5.01),
+        "code": (5.16, 5.52, 5.17),
+        "chat": (3.72, 3.58, 3.21),
+    },
+    "Qwen3-14B": {
+        "math": (6.21, 5.74, 4.94),
+        "code": (5.26, 5.43, 5.02),
+        "chat": (3.70, 3.58, 3.13),
+    },
+    "Gemma4-12B": {
+        "math": (6.05, 5.78, 5.12),
+        "code": (5.11, 5.64, 4.51),
+        "chat": (3.49, 3.35, 2.92),
+    },
+}
 
 
 def sha256(data):
@@ -62,7 +101,10 @@ def cleared_env_keys(env):
     return sorted(key for key in env if key.startswith("DS4_"))
 
 
-def benchmark_env(mode, fast_verifier, stats=False, exact_head_batch=False):
+def benchmark_env(
+    mode, fast_verifier, stats=False, exact_head_batch=False,
+    acceptance_audit=False,
+):
     env = os.environ.copy()
     for key in cleared_env_keys(env):
         env.pop(key, None)
@@ -75,6 +117,8 @@ def benchmark_env(mode, fast_verifier, stats=False, exact_head_batch=False):
             env["DS4_DSPARK_EXACT_HEAD_BATCH"] = "1"
         if stats:
             env["DS4_DSPARK_GPU_RUNTIME_STATS"] = "1"
+        if acceptance_audit:
+            env["DS4_DSPARK_ACCEPTANCE_AUDIT"] = "1"
     return env
 
 
@@ -105,6 +149,11 @@ def parse_args():
         help="run one baseline reference and one instrumented runtime per prompt",
     )
     parser.add_argument(
+        "--acceptance-audit",
+        action="store_true",
+        help="collect paper-aligned acceptance and confidence metrics only",
+    )
+    parser.add_argument(
         "--fast-verifier", action="store_true",
         help="use the experimental compute-batched verifier (not correctness-safe on this corpus)",
     )
@@ -125,8 +174,13 @@ def parse_args():
         parser.error("refusing to benchmark without --confirm-ready")
     if args.fast_verifier and args.exact_head_batch:
         parser.error("--fast-verifier and --exact-head-batch are separate experiments")
-    if args.stats_only and args.stats_pass:
-        parser.error("--stats-only and --stats-pass are mutually exclusive")
+    if args.acceptance_audit and args.fast_verifier:
+        parser.error("--acceptance-audit requires the exact verifier")
+    diagnostic_modes = args.stats_only + args.acceptance_audit
+    if args.stats_pass and diagnostic_modes:
+        parser.error("--stats-pass is mutually exclusive with diagnostic-only modes")
+    if diagnostic_modes > 1:
+        parser.error("--stats-only and --acceptance-audit are mutually exclusive")
     return args, root
 
 
@@ -174,12 +228,16 @@ def mode_command(args, prompt, mode):
     return command
 
 
-def command_text(args, prompt, mode, stats=False):
-    env = benchmark_env(mode, args.fast_verifier, stats, args.exact_head_batch)
+def command_text(args, prompt, mode, stats=False, acceptance_audit=False):
+    env = benchmark_env(
+        mode, args.fast_verifier, stats, args.exact_head_batch,
+        acceptance_audit,
+    )
     keys = (
         "DS4_DSPARK_GPU_RUNTIME", "DS4_DSPARK_MULTI_COMMIT",
         "DS4_DSPARK_FAST_BATCH_VERIFY", "DS4_DSPARK_EXACT_HEAD_BATCH",
         "DS4_DSPARK_GPU_RUNTIME_STATS",
+        "DS4_DSPARK_ACCEPTANCE_AUDIT",
     )
     prefix = " ".join(f"{key}={env[key]}" for key in keys if key in env)
     return (prefix + " " if prefix else "") + shlex.join(
@@ -222,17 +280,97 @@ def parse_stats(stderr_data, path):
     return values
 
 
-def execute(args, root, run_dir, label, prompt_label, prompt, mode, reference, stats=False):
+def _parse_audit_array(value, cast, field, path):
+    try:
+        return [cast(item) for item in value.split(",")]
+    except ValueError as exc:
+        raise RuntimeError(
+            f"invalid DSpark acceptance array {field} in {path}: {exc}"
+        ) from exc
+
+
+def parse_acceptance_audit(stderr_data, path):
+    records = [
+        line[len(ACCEPTANCE_PREFIX):] for line in stderr_data.splitlines()
+        if line.startswith(ACCEPTANCE_PREFIX)
+    ]
+    if len(records) != 1:
+        raise RuntimeError(
+            f"expected one DSpark acceptance record in {path}, found {len(records)}"
+        )
+    values = {}
+    try:
+        for item in records[0].decode("ascii").split():
+            key, value = item.split("=", 1)
+            if key in ACCEPTANCE_INT_FIELDS:
+                values[key] = int(value)
+            elif key in ACCEPTANCE_INT_ARRAY_FIELDS:
+                values[key] = _parse_audit_array(value, int, key, path)
+            elif key in ACCEPTANCE_FLOAT_ARRAY_FIELDS:
+                values[key] = _parse_audit_array(value, float, key, path)
+    except (UnicodeDecodeError, ValueError) as exc:
+        raise RuntimeError(f"invalid DSpark acceptance record in {path}: {exc}") from exc
+
+    required = (
+        ACCEPTANCE_INT_FIELDS + ACCEPTANCE_INT_ARRAY_FIELDS +
+        ACCEPTANCE_FLOAT_ARRAY_FIELDS
+    )
+    missing = [key for key in required if key not in values]
+    if missing:
+        raise RuntimeError(
+            f"incomplete DSpark acceptance record in {path}: {', '.join(missing)}"
+        )
+    block_size = values["block_size"]
+    if block_size <= 0 or values["proposals"] <= 0:
+        raise RuntimeError(f"empty DSpark acceptance record in {path}")
+    for field in ACCEPTANCE_INT_ARRAY_FIELDS + ACCEPTANCE_FLOAT_ARRAY_FIELDS:
+        if len(values[field]) != block_size:
+            raise RuntimeError(
+                f"DSpark acceptance field {field} has {len(values[field])} "
+                f"positions, expected {block_size}, in {path}"
+            )
+    if values["paper_acceptance_sum"] != (
+        values["accepted_drafts"] + values["proposals"]
+    ):
+        raise RuntimeError(f"invalid paper acceptance sum in {path}")
+    if sum(values["proposed_at"]) != values["proposed_drafts"]:
+        raise RuntimeError(f"invalid proposed-position total in {path}")
+    if sum(values["accepted_at"]) != values["accepted_drafts"]:
+        raise RuntimeError(f"invalid accepted-position total in {path}")
+    if sum(values["rejected_at"]) + values["full_accepts"] != values["proposals"]:
+        raise RuntimeError(f"invalid rejection-position total in {path}")
+    for pos in range(block_size):
+        if not (
+            values["accepted_at"][pos] <= values["reached_at"][pos]
+            <= values["proposed_at"][pos]
+        ):
+            raise RuntimeError(f"invalid position {pos + 1} acceptance counts in {path}")
+        if values["confidence_valid"][pos] > values["reached_at"][pos]:
+            raise RuntimeError(f"invalid position {pos + 1} confidence count in {path}")
+        if values["prefix_confidence_valid"][pos] > values["proposed_at"][pos]:
+            raise RuntimeError(f"invalid position {pos + 1} prefix count in {path}")
+    return values
+
+
+def execute(
+    args, root, run_dir, label, prompt_label, prompt, mode, reference,
+    stats=False, acceptance_audit=False,
+):
     stdout_path = run_dir / f"{label}.{prompt_label}.{mode}.stdout"
     stderr_path = run_dir / f"{label}.{prompt_label}.{mode}.stderr"
     command = mode_command(args, prompt, mode)
-    print(f"[{label}/{prompt_label}] {mode}: {command_text(args, prompt, mode, stats)}", flush=True)
+    print(
+        f"[{label}/{prompt_label}] {mode}: "
+        f"{command_text(args, prompt, mode, stats, acceptance_audit)}",
+        flush=True,
+    )
     started = time.monotonic()
     with stdout_path.open("wb") as stdout_fp, stderr_path.open("wb") as stderr_fp:
         completed = subprocess.run(
             command, cwd=root,
             env=benchmark_env(
-                mode, args.fast_verifier, stats, args.exact_head_batch
+                mode, args.fast_verifier, stats, args.exact_head_batch,
+                acceptance_audit,
             ),
             stdout=stdout_fp, stderr=stderr_fp, check=False,
         )
@@ -246,6 +384,10 @@ def execute(args, root, run_dir, label, prompt_label, prompt, mode, reference, s
     prefill_tps, generation_tps = parse_timing(stderr_data, stderr_path)
     if not stats and STATS_PREFIX in stderr_data:
         raise RuntimeError(f"throughput run unexpectedly emitted DSpark stats: {stderr_path}")
+    if not acceptance_audit and ACCEPTANCE_PREFIX in stderr_data:
+        raise RuntimeError(
+            f"non-audit run unexpectedly emitted DSpark acceptance data: {stderr_path}"
+        )
     row = {
         "prompt": prompt_label, "mode": mode, "prefill_tps": prefill_tps,
         "generation_tps": generation_tps, "wall_seconds": wall_seconds,
@@ -254,6 +396,8 @@ def execute(args, root, run_dir, label, prompt_label, prompt, mode, reference, s
     }
     if stats:
         row.update(parse_stats(stderr_data, stderr_path))
+    if acceptance_audit:
+        row["acceptance_audit"] = parse_acceptance_audit(stderr_data, stderr_path)
     return row, stdout_data
 
 
@@ -282,13 +426,18 @@ def machine_snapshot(root):
 def collect_metadata(args, root, prompts, provenance):
     commands = {}
     for label, prompt in prompts.items():
-        if args.stats_only:
+        if args.stats_only or args.acceptance_audit:
             commands[label] = {
                 "baseline_reference": command_text(args, prompt, "baseline"),
-                "stats_runtime": command_text(
-                    args, prompt, "runtime", stats=True
-                ),
             }
+            if args.stats_only:
+                commands[label]["stats_runtime"] = command_text(
+                    args, prompt, "runtime", stats=True
+                )
+            else:
+                commands[label]["acceptance_runtime"] = command_text(
+                    args, prompt, "runtime", acceptance_audit=True
+                )
         else:
             commands[label] = {
                 mode: command_text(args, prompt, mode)
@@ -321,20 +470,29 @@ def collect_metadata(args, root, prompts, provenance):
                 "DS4_DSPARK_FAST_BATCH_VERIFY",
                 "DS4_DSPARK_EXACT_HEAD_BATCH",
                 "DS4_DSPARK_GPU_RUNTIME_STATS",
+                "DS4_DSPARK_ACCEPTANCE_AUDIT",
             ],
         },
         "config": {
             "ctx": args.ctx, "tokens": args.tokens,
-            "pairs": 0 if args.stats_only else args.pairs,
-            "warmups_per_mode_per_prompt": 0 if args.stats_only else args.warmups,
+            "pairs": 0 if (args.stats_only or args.acceptance_audit) else args.pairs,
+            "warmups_per_mode_per_prompt": 0 if (
+                args.stats_only or args.acceptance_audit
+            ) else args.warmups,
             "cooldown_seconds": args.cooldown, "temperature": 0, "seed": 1,
             "fast_verifier": args.fast_verifier,
             "exact_head_batch": args.exact_head_batch,
-            "execution_mode": "stats_only" if args.stats_only else "throughput",
+            "execution_mode": (
+                "stats_only" if args.stats_only else
+                "acceptance_audit" if args.acceptance_audit else "throughput"
+            ),
             "throughput_instrumentation": False,
-            "runtime_instrumentation": args.stats_only or args.stats_pass,
+            "runtime_instrumentation": (
+                args.stats_only or args.stats_pass or args.acceptance_audit
+            ),
             "stats_pass": args.stats_pass,
             "stats_only": args.stats_only,
+            "acceptance_audit": args.acceptance_audit,
             "nothink": False,
         },
         "binary": file_metadata(args.binary), "base_model": file_metadata(args.model),
@@ -472,6 +630,218 @@ def render_stats_report(summary):
     return "\n".join(lines) + "\n"
 
 
+def _ratio_or_none(numerator, denominator):
+    return numerator / denominator if denominator else None
+
+
+def paper_acceptance_reference():
+    domains = {}
+    for domain in ("math", "code", "chat"):
+        model_means = [
+            statistics.mean(model[domain])
+            for model in PAPER_DSPARK_TABLE1.values()
+        ]
+        values = [
+            value
+            for model in PAPER_DSPARK_TABLE1.values()
+            for value in model[domain]
+        ]
+        domains[domain] = {
+            "minimum": min(values),
+            "maximum": max(values),
+            "mean": statistics.mean(values),
+            "verify_rate_minimum": min(values) / 8.0,
+            "verify_rate_maximum": max(values) / 8.0,
+            "verify_rate_mean": statistics.mean(values) / 8.0,
+            "model_macro_minimum": min(model_means),
+            "model_macro_maximum": max(model_means),
+            "model_macro_mean": statistics.mean(model_means),
+            "model_macro_verify_rate_minimum": min(model_means) / 8.0,
+            "model_macro_verify_rate_maximum": max(model_means) / 8.0,
+        }
+    return {
+        "source": "DSpark paper arXiv:2607.05147v1, Table 1",
+        "metric": "accepted draft tokens plus one target bonus token per round",
+        "protocol": {
+            "target_models": list(PAPER_DSPARK_TABLE1),
+            "draft_tokens": 7,
+            "temperature": 1.0,
+            "thinking": False,
+            "confidence_scheduler": False,
+            "domains": {
+                "math": ["GSM8K", "MATH500", "AIME25"],
+                "code": ["MBPP", "HumanEval", "LiveCodeBench"],
+                "chat": ["MT-Bench", "Alpaca", "Arena-Hard"],
+            },
+        },
+        "table1": PAPER_DSPARK_TABLE1,
+        "domain_ranges": domains,
+    }
+
+
+def summarize_acceptance(rows):
+    prompts = {}
+    for row in rows:
+        audit = row["acceptance_audit"]
+        proposals = audit["proposals"]
+        proposed_drafts = audit["proposed_drafts"]
+        positions = []
+        for pos in range(audit["block_size"]):
+            reached = audit["reached_at"][pos]
+            proposed = audit["proposed_at"][pos]
+            confidence_valid = audit["confidence_valid"][pos]
+            prefix_valid = audit["prefix_confidence_valid"][pos]
+            positions.append({
+                "position": pos + 1,
+                "proposed": proposed,
+                "reached": reached,
+                "accepted": audit["accepted_at"][pos],
+                "rejected": audit["rejected_at"][pos],
+                "prefix_survival_rate": _ratio_or_none(
+                    audit["accepted_at"][pos], proposed
+                ),
+                "conditional_acceptance_rate": _ratio_or_none(
+                    audit["accepted_at"][pos], reached
+                ),
+                "mean_conditional_confidence": _ratio_or_none(
+                    audit["confidence_sum"][pos], confidence_valid
+                ),
+                "conditional_confidence_brier": _ratio_or_none(
+                    audit["confidence_brier"][pos], confidence_valid
+                ),
+                "mean_prefix_confidence": _ratio_or_none(
+                    audit["prefix_confidence_sum"][pos], prefix_valid
+                ),
+                "prefix_confidence_brier": _ratio_or_none(
+                    audit["prefix_brier"][pos], prefix_valid
+                ),
+                "confidence_nonfinite": audit["confidence_nonfinite"][pos],
+            })
+        prompts[row["prompt"]] = {
+            "block_size": audit["block_size"],
+            "proposals": proposals,
+            "draft_tokens_per_proposal": proposed_drafts / proposals,
+            "accepted_draft_tokens_per_proposal": (
+                audit["accepted_drafts"] / proposals
+            ),
+            "paper_acceptance_length": (
+                audit["paper_acceptance_sum"] / proposals
+            ),
+            "paper_verify_rate": (
+                audit["paper_acceptance_sum"] /
+                (proposed_drafts + proposals)
+            ),
+            "full_accept_rate": audit["full_accepts"] / proposals,
+            "full_accepts": audit["full_accepts"],
+            "truncated_proposals": audit["truncated_proposals"],
+            "positions": positions,
+        }
+    return {
+        "prompts": prompts,
+        "paper_reference": paper_acceptance_reference(),
+        "comparison_policy": {
+            "code_8k_reference_domain": "code",
+            "synthesis_8k_reference_domain": None,
+            "grounded_8k_reference_domain": None,
+            "matched_reproduction": False,
+            "reason": (
+                "V4-Flash, greedy custom 8K prompts, and a five-token block do "
+                "not match Table 1's target models, datasets, sampling, or block size"
+            ),
+        },
+    }
+
+
+def _fmt_rate(value):
+    return "n/a" if value is None else f"{value:.3f}"
+
+
+def render_acceptance_report(summary):
+    lines = [
+        "# DSpark Issue 468 Acceptance Audit",
+        "",
+        "Correctness diagnostic only. Throughput values are intentionally omitted.",
+        "Each audited runtime output matched a fresh uninstrumented baseline reference.",
+        "Accepted length uses the paper's definition: accepted draft tokens plus one target bonus token.",
+        "",
+        "| prompt | proposals | drafts/proposal | accepted drafts/proposal | paper accept_len | verify rate | full accept |",
+        "|---|---:|---:|---:|---:|---:|---:|",
+    ]
+    for label in PROMPT_ORDER:
+        item = summary["prompts"][label]
+        lines.append(
+            f"| {label} | {item['proposals']} | "
+            f"{item['draft_tokens_per_proposal']:.3f} | "
+            f"{item['accepted_draft_tokens_per_proposal']:.3f} | "
+            f"{item['paper_acceptance_length']:.3f} | "
+            f"{item['paper_verify_rate']:.3f} | "
+            f"{item['full_accept_rate']:.1%} |"
+        )
+    for label in PROMPT_ORDER:
+        lines.extend([
+            "",
+            f"## {label}",
+            "",
+            "| pos | reached | accepted | conditional | prefix survival | confidence | prefix confidence | rejected here |",
+            "|---:|---:|---:|---:|---:|---:|---:|---:|",
+        ])
+        for item in summary["prompts"][label]["positions"]:
+            lines.append(
+                f"| {item['position']} | {item['reached']} | {item['accepted']} | "
+                f"{_fmt_rate(item['conditional_acceptance_rate'])} | "
+                f"{_fmt_rate(item['prefix_survival_rate'])} | "
+                f"{_fmt_rate(item['mean_conditional_confidence'])} | "
+                f"{_fmt_rate(item['mean_prefix_confidence'])} | "
+                f"{item['rejected']} |"
+            )
+
+    reference = summary["paper_reference"]
+    lines.extend([
+        "",
+        "## Official Reference",
+        "",
+        "DSpark paper Table 1 reports these accepted lengths across its released Qwen3 and Gemma4 checkpoints:",
+        "",
+        "| domain | benchmark-cell range | per-model macro range | macro mean | macro verify-rate range |",
+        "|---|---:|---:|---:|---:|",
+    ])
+    for domain in ("math", "code", "chat"):
+        item = reference["domain_ranges"][domain]
+        lines.append(
+            f"| {domain} | {item['minimum']:.2f}-{item['maximum']:.2f} | "
+            f"{item['model_macro_minimum']:.2f}-{item['model_macro_maximum']:.2f} | "
+            f"{item['model_macro_mean']:.2f} | "
+            f"{item['model_macro_verify_rate_minimum']:.3f}-"
+            f"{item['model_macro_verify_rate_maximum']:.3f} |"
+        )
+    code_item = summary["prompts"]["code_8k"]
+    code_reference = reference["domain_ranges"]["code"]
+    lines.extend([
+        "",
+        f"Directional code target: code_8k measured accept_len {code_item['paper_acceptance_length']:.3f} and verify rate {code_item['paper_verify_rate']:.3f}; the official Table 1 per-model code macro ranges are {code_reference['model_macro_minimum']:.2f}-{code_reference['model_macro_maximum']:.2f} and {code_reference['model_macro_verify_rate_minimum']:.3f}-{code_reference['model_macro_verify_rate_maximum']:.3f}, respectively.",
+        "",
+        "Protocol warning: Table 1 used Qwen3/Gemma4 targets, seven draft tokens, temperature 1.0 rejection sampling, non-thinking mode, the named public benchmark suites, and no confidence scheduler. This V4-Flash audit uses a five-token block, greedy decoding, and custom 8K prompts. Treat the official figures as directional targets; only code_8k has a declared nearest domain (code), and this is not a matched reproduction.",
+    ])
+    nonfinite = sum(
+        position["confidence_nonfinite"]
+        for prompt in summary["prompts"].values()
+        for position in prompt["positions"]
+    )
+    lines.extend([
+        "",
+        f"- Non-finite confidence values: {nonfinite}",
+        "- Capacity/EOS-truncated proposals are excluded from paper-aligned metrics: " +
+        ", ".join(
+            f"{label}={summary['prompts'][label]['truncated_proposals']}"
+            for label in PROMPT_ORDER
+        ),
+        "- Conditional acceptance is P(position accepted | all earlier positions accepted).",
+        "- Prefix survival is P(all positions through this one accepted), matching DeepSpec evaluator accept_rate@position.",
+        "- Confidence columns use the checkpoint's raw sigmoid confidence-head outputs. No paper STS calibration parameters are present in the released V4 inference config or applied by ds4.",
+    ])
+    return "\n".join(lines) + "\n"
+
+
 def write_csv(path, rows, fields):
     with path.open("w", encoding="utf-8", newline="") as fp:
         writer = csv.DictWriter(fp, fieldnames=fields)
@@ -565,6 +935,71 @@ def run_stats_only(args, root, run_dir, prompts, metadata):
     return 0
 
 
+def run_acceptance_audit(args, root, run_dir, prompts, metadata):
+    runs = []
+    audit_rows = []
+    for prompt_label, prompt in prompts.items():
+        baseline_row, reference = execute(
+            args, root, run_dir, "reference", prompt_label, prompt,
+            "baseline", None,
+        )
+        runs.append(baseline_row)
+        cooldown(args.cooldown)
+        audit_row, _ = execute(
+            args, root, run_dir, "acceptance", prompt_label, prompt,
+            "runtime", reference, acceptance_audit=True,
+        )
+        runs.append(audit_row)
+        audit_rows.append(audit_row)
+        cooldown(args.cooldown)
+
+    run_fields = (
+        "prompt", "mode", "prefill_tps", "generation_tps", "wall_seconds",
+        "stdout_sha256", "stdout_file", "stderr_file",
+    )
+    write_csv(run_dir / "runs.csv", runs, run_fields)
+    summary = summarize_acceptance(audit_rows)
+    scalar_rows = []
+    position_rows = []
+    for label in PROMPT_ORDER:
+        item = summary["prompts"][label]
+        scalar_rows.append({
+            "prompt": label,
+            "block_size": item["block_size"],
+            "proposals": item["proposals"],
+            "draft_tokens_per_proposal": item["draft_tokens_per_proposal"],
+            "accepted_draft_tokens_per_proposal": (
+                item["accepted_draft_tokens_per_proposal"]
+            ),
+            "paper_acceptance_length": item["paper_acceptance_length"],
+            "paper_verify_rate": item["paper_verify_rate"],
+            "full_accept_rate": item["full_accept_rate"],
+            "truncated_proposals": item["truncated_proposals"],
+        })
+        for position in item["positions"]:
+            position_rows.append({"prompt": label, **position})
+    write_csv(
+        run_dir / "acceptance.csv",
+        scalar_rows,
+        tuple(scalar_rows[0]),
+    )
+    write_csv(
+        run_dir / "positions.csv",
+        position_rows,
+        tuple(position_rows[0]),
+    )
+    (run_dir / "summary.json").write_text(
+        json.dumps(summary, indent=2) + "\n", encoding="utf-8"
+    )
+    report = render_acceptance_report(summary)
+    (run_dir / "summary.md").write_text(report, encoding="utf-8")
+    finish_metadata(metadata, root, run_dir)
+    print("\n" + report.rstrip())
+    print(f"Raw acceptance: {run_dir / 'acceptance.csv'}")
+    print(f"Position details: {run_dir / 'positions.csv'}")
+    return 0
+
+
 def main():
     args, root = parse_args()
     args.binary = args.binary.resolve()
@@ -583,6 +1018,15 @@ def main():
                 f"{label} stats runtime:     "
                 f"{command_text(args, prompt, 'runtime', stats=True)}"
             )
+        elif args.acceptance_audit:
+            print(
+                f"{label} baseline reference: "
+                f"{command_text(args, prompt, 'baseline')}"
+            )
+            print(
+                f"{label} acceptance runtime: "
+                f"{command_text(args, prompt, 'runtime', acceptance_audit=True)}"
+            )
         else:
             print(f"{label} baseline: {command_text(args, prompt, 'baseline')}")
             print(f"{label} runtime:  {command_text(args, prompt, 'runtime')}")
@@ -590,6 +1034,11 @@ def main():
         print(
             "Stats-only pass: one fresh baseline reference and one instrumented "
             "exact runtime per prompt; no throughput pairs."
+        )
+    elif args.acceptance_audit:
+        print(
+            "Acceptance audit: one fresh baseline reference and one exact "
+            "paper-aligned acceptance runtime per prompt; no throughput pairs."
         )
     else:
         print("Throughput pass: all DSpark stats and diagnostic instrumentation are disabled.")
@@ -611,7 +1060,9 @@ def main():
 
     stamp = dt.datetime.now().astimezone().strftime("%Y%m%d-%H%M%S")
     default_dir = (
-        f"issue468-stats-{stamp}" if args.stats_only else f"issue468-{stamp}"
+        f"issue468-stats-{stamp}" if args.stats_only else
+        f"issue468-acceptance-{stamp}" if args.acceptance_audit else
+        f"issue468-{stamp}"
     )
     run_dir = (
         args.output_dir or root / "speed-bench/local-runs" / default_dir
@@ -621,6 +1072,8 @@ def main():
     (run_dir / "metadata.start.json").write_text(json.dumps(metadata, indent=2) + "\n", encoding="utf-8")
     if args.stats_only:
         return run_stats_only(args, root, run_dir, prompts, metadata)
+    if args.acceptance_audit:
+        return run_acceptance_audit(args, root, run_dir, prompts, metadata)
 
     references = {}
     for prompt_label, prompt in prompts.items():

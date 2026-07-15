@@ -29836,6 +29836,22 @@ struct dspark_session_state {
     uint64_t runtime_exact_attn_suffix_batch_successes;
     uint64_t runtime_exact_head_batch_attempts;
     uint64_t runtime_exact_head_batch_successes;
+    uint64_t acceptance_audit_proposals;
+    uint64_t acceptance_audit_proposed_drafts;
+    uint64_t acceptance_audit_accepted_drafts;
+    uint64_t acceptance_audit_full_accepts;
+    uint64_t acceptance_audit_truncated_proposals;
+    uint64_t acceptance_audit_proposed_at[16];
+    uint64_t acceptance_audit_reached_at[16];
+    uint64_t acceptance_audit_accepted_at[16];
+    uint64_t acceptance_audit_rejected_at[16];
+    uint64_t acceptance_audit_confidence_valid[16];
+    uint64_t acceptance_audit_prefix_confidence_valid[16];
+    uint64_t acceptance_audit_confidence_nonfinite[16];
+    double acceptance_audit_confidence_sum[16];
+    double acceptance_audit_confidence_brier[16];
+    double acceptance_audit_prefix_confidence_sum[16];
+    double acceptance_audit_prefix_brier[16];
     bool runtime_generation_active;
     bool fast_verify_suspended;
     double runtime_bridge_seconds;
@@ -29862,6 +29878,28 @@ struct dspark_session_state {
 };
 
 static bool dspark_session_runtime_stats_enabled(void);
+static bool dspark_session_acceptance_audit_enabled(void);
+
+static void dspark_acceptance_audit_print_u64_array(
+        const char     *name,
+        const uint64_t *values,
+        uint32_t        count) {
+    fprintf(stderr, " %s=", name);
+    for (uint32_t i = 0; i < count; i++) {
+        fprintf(stderr, "%s%llu", i ? "," : "",
+                (unsigned long long)values[i]);
+    }
+}
+
+static void dspark_acceptance_audit_print_f64_array(
+        const char   *name,
+        const double *values,
+        uint32_t      count) {
+    fprintf(stderr, " %s=", name);
+    for (uint32_t i = 0; i < count; i++) {
+        fprintf(stderr, "%s%.9g", i ? "," : "", values[i]);
+    }
+}
 
 static uint32_t dspark_session_raw_cap(uint32_t ctx_size) {
     uint32_t cap = ctx_size;
@@ -30035,6 +30073,52 @@ static void dspark_session_state_free(dspark_session_state *d) {
                 d->runtime_exact_layer_seconds * 1000.0,
                 d->runtime_exact_head_batch_seconds * 1000.0,
                 d->runtime_exact_head_serial_seconds * 1000.0);
+    }
+    if (dspark_session_acceptance_audit_enabled()) {
+        const uint64_t paper_acceptance_sum =
+            d->acceptance_audit_accepted_drafts +
+            d->acceptance_audit_proposals;
+        fprintf(stderr,
+                "ds4: DSpark acceptance audit block_size=%u proposals=%llu "
+                "proposed_drafts=%llu accepted_drafts=%llu "
+                "paper_acceptance_sum=%llu full_accepts=%llu "
+                "truncated_proposals=%llu",
+                d->block_size,
+                (unsigned long long)d->acceptance_audit_proposals,
+                (unsigned long long)d->acceptance_audit_proposed_drafts,
+                (unsigned long long)d->acceptance_audit_accepted_drafts,
+                (unsigned long long)paper_acceptance_sum,
+                (unsigned long long)d->acceptance_audit_full_accepts,
+                (unsigned long long)d->acceptance_audit_truncated_proposals);
+        dspark_acceptance_audit_print_u64_array(
+            "proposed_at", d->acceptance_audit_proposed_at, d->block_size);
+        dspark_acceptance_audit_print_u64_array(
+            "reached_at", d->acceptance_audit_reached_at, d->block_size);
+        dspark_acceptance_audit_print_u64_array(
+            "accepted_at", d->acceptance_audit_accepted_at, d->block_size);
+        dspark_acceptance_audit_print_u64_array(
+            "rejected_at", d->acceptance_audit_rejected_at, d->block_size);
+        dspark_acceptance_audit_print_u64_array(
+            "confidence_valid", d->acceptance_audit_confidence_valid, d->block_size);
+        dspark_acceptance_audit_print_u64_array(
+            "prefix_confidence_valid",
+            d->acceptance_audit_prefix_confidence_valid,
+            d->block_size);
+        dspark_acceptance_audit_print_u64_array(
+            "confidence_nonfinite",
+            d->acceptance_audit_confidence_nonfinite,
+            d->block_size);
+        dspark_acceptance_audit_print_f64_array(
+            "confidence_sum", d->acceptance_audit_confidence_sum, d->block_size);
+        dspark_acceptance_audit_print_f64_array(
+            "confidence_brier", d->acceptance_audit_confidence_brier, d->block_size);
+        dspark_acceptance_audit_print_f64_array(
+            "prefix_confidence_sum",
+            d->acceptance_audit_prefix_confidence_sum,
+            d->block_size);
+        dspark_acceptance_audit_print_f64_array(
+            "prefix_brier", d->acceptance_audit_prefix_brier, d->block_size);
+        fputc('\n', stderr);
     }
     free(d->gpu_confidence_prob_read);
     free(d->gpu_confidence_logit_read);
@@ -33726,6 +33810,18 @@ static bool dspark_session_runtime_stats_enabled(void) {
     return enabled;
 }
 
+static bool dspark_session_acceptance_audit_enabled(void) {
+    static int initialized;
+    static bool enabled;
+    if (!initialized) {
+        const char *v = getenv("DS4_DSPARK_ACCEPTANCE_AUDIT");
+        enabled = dspark_session_gpu_runtime_env_enabled() &&
+                  v && v[0] && strcmp(v, "0") != 0;
+        initialized = 1;
+    }
+    return enabled;
+}
+
 static bool dspark_session_fast_verify_observer_enabled(void) {
     const char *v = getenv("DS4_DSPARK_FAST_VERIFY_OBSERVER");
     return dspark_session_gpu_runtime_env_enabled() &&
@@ -33933,6 +34029,64 @@ static const char *dspark_session_accept_sim_reject_reason(
     if (!gate->confidence_ok) return "confidence";
     if (!gate->margin_ok) return "margin";
     return "gate";
+}
+
+/* Match DeepSpec's offline evaluator: accepted length is the accepted draft
+ * prefix plus one target-generated bonus token.  The runtime emits that bonus
+ * on the following loop iteration, so this metric must be tracked separately
+ * from runtime_emitted_tokens / multi_commit_total. */
+static void dspark_session_acceptance_audit_record(
+        dspark_session_state          *d,
+        const dspark_draft_candidate *drafts,
+        uint32_t                      proposed,
+        uint32_t                      accepted) {
+    if (!d || !drafts || !dspark_session_acceptance_audit_enabled()) return;
+    if (proposed > d->block_size) proposed = d->block_size;
+    if (accepted > proposed) accepted = proposed;
+    if (proposed < d->block_size) {
+        d->acceptance_audit_truncated_proposals++;
+        return;
+    }
+
+    d->acceptance_audit_proposals++;
+    d->acceptance_audit_proposed_drafts += proposed;
+    d->acceptance_audit_accepted_drafts += accepted;
+    if (accepted == proposed) d->acceptance_audit_full_accepts++;
+    else d->acceptance_audit_rejected_at[accepted]++;
+
+    double prefix_confidence = 1.0;
+    bool prefix_confidence_valid = true;
+    for (uint32_t pos = 0; pos < proposed; pos++) {
+        const bool position_reached = accepted >= pos;
+        const bool position_accepted = accepted > pos;
+        d->acceptance_audit_proposed_at[pos]++;
+        if (position_reached) d->acceptance_audit_reached_at[pos]++;
+        if (position_accepted) d->acceptance_audit_accepted_at[pos]++;
+
+        double confidence = drafts[pos].confidence;
+        if (!isfinite(confidence)) {
+            d->acceptance_audit_confidence_nonfinite[pos]++;
+            prefix_confidence_valid = false;
+            continue;
+        }
+        if (confidence < 0.0) confidence = 0.0;
+        if (confidence > 1.0) confidence = 1.0;
+        prefix_confidence *= confidence;
+
+        if (position_reached) {
+            const double error = confidence - (position_accepted ? 1.0 : 0.0);
+            d->acceptance_audit_confidence_valid[pos]++;
+            d->acceptance_audit_confidence_sum[pos] += confidence;
+            d->acceptance_audit_confidence_brier[pos] += error * error;
+        }
+        if (prefix_confidence_valid) {
+            const double error =
+                prefix_confidence - (position_accepted ? 1.0 : 0.0);
+            d->acceptance_audit_prefix_confidence_valid[pos]++;
+            d->acceptance_audit_prefix_confidence_sum[pos] += prefix_confidence;
+            d->acceptance_audit_prefix_brier[pos] += error * error;
+        }
+    }
 }
 
 static bool dspark_session_has_rollback_scratch(const ds4_session *s) {
@@ -35132,6 +35286,10 @@ static int dspark_session_eval_batch_commit(
                 n_commit);
     }
     spec_frontier_free(&frontier);
+    dspark_session_acceptance_audit_record(d,
+                                            drafts,
+                                            n_limit,
+                                            n_commit);
     return dspark_session_finish_multi_commit(s,
                                               tokens,
                                               n_commit,
@@ -35195,6 +35353,10 @@ static int dspark_session_eval_multi_commit(
               (!first_gate.margin_ok ? "first row margin" :
                (!token_hit ? "first row token mismatch" :
                 "first row is not stream eligible"))));
+        if (n_limit > 0) {
+            dspark_session_acceptance_audit_record(
+                d, drafts, n_limit, first_gate.stream_eligible ? 1u : 0u);
+        }
         dspark_session_draft_reset(d);
         if (!ds4_session_eval_graph_target_token(s, first_token, "multi", err, errlen)) return -1;
         const int token = first_token;
@@ -35239,6 +35401,10 @@ static int dspark_session_eval_multi_commit(
             dspark_session_verify_gate(&drafts[row], suffix_target_hit, false);
         if (!suffix_gate.greedy_eligible) {
             if (!host_logits_ready && !ds4_session_read_graph_logits(s, err, errlen)) return -1;
+            dspark_session_acceptance_audit_record(s->dspark,
+                                                    drafts,
+                                                    n_limit,
+                                                    n_commit);
             return dspark_session_finish_multi_commit(s,
                                                       tokens,
                                                       n_commit,
@@ -35260,6 +35426,10 @@ static int dspark_session_eval_multi_commit(
                                                      errlen)) {
                 return -1;
             }
+            dspark_session_acceptance_audit_record(s->dspark,
+                                                    drafts,
+                                                    n_limit,
+                                                    n_commit);
             return dspark_session_finish_multi_commit(s,
                                                       tokens,
                                                       n_commit,

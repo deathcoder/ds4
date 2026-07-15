@@ -4817,6 +4817,75 @@ Phase 0.86 Issue 468 stats-only attribution on 2026-07-15:
   disagreement without changing token authority. Use that evidence before
   choosing between proposal-path fixes and another exact-verifier architecture.
 
+Phase 0.87 paper-aligned acceptance audit prepared on 2026-07-15:
+
+- Re-read the official DSpark paper (`arXiv:2607.05147v1`), current DeepSpec
+  evaluator, and released DeepSeek-V4-Flash-DSpark inference/config artifacts.
+  The paper defines accepted length as accepted draft tokens plus one
+  target-generated bonus token per verification round. DeepSpec computes the
+  same quantity as `acceptance_length_sum / proposal_count`. The existing ds4
+  `avg_depth` is emitted tokens per internal runtime cycle and is not the same
+  metric because ds4 emits the target bonus on the following loop iteration.
+- Added opt-in `DS4_DSPARK_ACCEPTANCE_AUDIT=1` aggregation to the exact runtime.
+  It adds no model evaluations and emits one session-end record containing
+  paper-aligned proposal, proposed-draft, accepted-draft, accepted-length, and
+  full-accept totals. It also records each position's proposed, reached,
+  accepted, and first-rejected counts; conditional and cumulative confidence
+  sums/Brier terms; and non-finite confidence counts.
+- Position-wise conditional acceptance is
+  `P(position accepted | all earlier positions accepted)`. Prefix survival is
+  `P(all positions through this one accepted)` and matches the current DeepSpec
+  evaluator's `accept_rate@position` calculation. Both are reported because
+  the paper's Figure 2 prose discusses the former while the released evaluator
+  directly emits the latter.
+- Capacity- or EOS-truncated final proposals are counted separately and
+  excluded from paper-aligned aggregates. This prevents the 128-token output
+  boundary from making a five-position proposal look like a quality failure.
+  The audit refuses the known-unsafe fast verifier and the runner clears all
+  inherited `DS4_*` state.
+- Added `--acceptance-audit` to the Issue 468 runner. It executes one fresh
+  uninstrumented baseline and one exact audited runtime per prompt, requires
+  byte-identical output, runs no warmups or throughput pairs, and deliberately
+  omits throughput results. Outputs are `runs.csv`, `acceptance.csv`,
+  `positions.csv`, `summary.json`, `summary.md`, metadata, and raw child logs.
+- Embedded DSpark Table 1 as the official directional reference. Across the
+  released Qwen3/Gemma4 checkpoints, individual benchmark-cell ranges are
+  `4.89-6.21` math, `4.51-5.64` code, and `2.92-3.72` chat. The per-target code
+  domain macros form a tighter `5.09-5.28` accepted-length target; with seven
+  draft tokens plus one bonus, its normalized verify-rate range is
+  `0.636-0.660`. `code_8k` is mapped directionally to code; synthesis and
+  grounded remain deliberately unmapped.
+- This is not a matched Table 1 reproduction. The paper used Qwen3/Gemma4,
+  seven draft tokens, temperature `1.0` rejection sampling, non-thinking mode,
+  nine named public datasets, and a disabled confidence scheduler. This audit
+  uses V4-Flash, five draft tokens, temperature `0`, and custom 8K prompts.
+  Report the official values as targets with this caveat, not as a strict
+  implementation pass/fail threshold.
+- Confidence columns are raw sigmoid outputs from the checkpoint. The paper
+  applies post-hoc Sequential Temperature Scaling for scheduling, but no STS
+  calibration parameters are present in the released V4 inference config or
+  applied by ds4. Use confidence here to diagnose ranking/calibration shape,
+  not to validate the paper's calibrated production scheduler.
+- C build, Python syntax, shell syntax, poisoned-environment isolation,
+  argument incompatibility rejection, synthetic parser/invariant/report and
+  end-to-end artifact tests passed. The exact Metal correctness matrix passed
+  all five prompt/session cases with the audit enabled. No throughput benchmark
+  or timed profile was run by Codex.
+
+Phase 0.87 user-run acceptance gate:
+
+```sh
+python3 speed-bench/run_dspark_issue468_comparison.py \
+  --confirm-ready --acceptance-audit
+```
+
+Use `paper accept_len`, per-position conditional acceptance, prefix survival,
+and first-rejection counts to choose the next branch. A weak first position
+suggests target-context/bridge or checkpoint alignment; a strong first position
+with suffix decay suggests Markov-chain behavior. Compare `code_8k` only
+directionally with Table 1's code range. Do not optimize or enable the
+confidence scheduler until the raw acceptance result is understood.
+
 Phase 0.52 checks:
 
 ```sh
@@ -4917,11 +4986,15 @@ If continuing from a compacted context, start here:
   Phase 0.47 but remains only `0.5096x`. Phase 0.85 added the stats-only
   six-process diagnostic. Its Phase 0.86 gate attributed `92-93%` of accounted
   generation time to exact target verification and exposed accepted depth of
-  only `2.25-2.91` on the long prompts. The next phase is an acceptance-quality
-  audit: determine whether the depth collapse is expected DSpark behavior or an
-  integration defect before selecting another verifier optimization. Even
-  perfect acceptance cannot win at the current target-position cost, so target
-  batch efficiency remains a second required line of work.
+  only `2.25-2.91` on the long prompts. Phase 0.87 corrected that internal depth
+  statistic to the paper's accepted-drafts-plus-bonus definition and added an
+  exact acceptance-quality audit with position-wise survival, conditional
+  acceptance, rejection, and raw-confidence attribution. The next gate is the
+  user-run `--acceptance-audit` command. Use its result to decide whether the
+  long-prompt gap begins at the target-context/first-position boundary or in the
+  Markov suffix. Even perfect acceptance cannot win at the current
+  target-position cost, so target batch efficiency remains a second required
+  line of work.
 - The GPU stage path currently borrows target graph transient batch workspace
   and therefore requires `prefill_cap >= block_size` (five). Decide whether to
   allocate sidecar-specific batch scratch before production enablement or keep
