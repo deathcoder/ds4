@@ -8,13 +8,14 @@ particular DSpark change exists.
 
 Branch: `codex/dspark-observability-0`
 
-Phase 0.96 is ready for its user-run throughput gate. The exact Metal verifier
-now has an opt-in in-place attention/inverse-RoPE fusion that preserves the
-interleaved autoregressive row schedule and removes the separate inverse-RoPE
-dispatch. Generated output is byte-identical across the correctness matrix,
-but the fused shader is not hidden-state bit-exact: its same-dispatch observer
-measures tightly bounded YaRN interpolation drift. Keep the candidate opt-in
-until its paired throughput result justifies further promotion work.
+Phase 0.96 is complete but not promoted. The exact Metal verifier has an opt-in
+in-place attention/inverse-RoPE fusion that preserves the interleaved
+autoregressive row schedule and removes the separate inverse-RoPE dispatch.
+Generated output is byte-identical across the correctness matrix, but the fused
+shader is not hidden-state bit-exact. Its user-run throughput gate measured only
+a `1.0034x` median paired ratio with one of three pairs slightly negative. Keep
+the candidate opt-in as research evidence; its marginal, interference-sized
+gain does not justify making bounded arithmetic drift the default.
 
 Phase 0.95 is complete. The exact Metal verifier now defaults to exact FFN
 batching, row-independent attention preparation, and the promoted 2-5-row Q8
@@ -5599,6 +5600,26 @@ byte-identical output gate. Even if throughput wins, retain the standalone
 inverse-RoPE path as the bit-exact control and document the bounded fused
 arithmetic rather than silently calling it exact.
 
+Phase 0.96 user-run result on 2026-07-15:
+
+- Raw results are in `speed-bench/local-runs/20260715-162112/results.csv` at
+  clean commit `9811ff0`, with no inherited `DS4_*` environment. The run used
+  one warmup per mode and three alternating, uninstrumented measured pairs.
+  Every control/candidate output hash matched.
+- Default exact median was `23.35 t/s`; fused inverse-RoPE median was
+  `23.48 t/s`; ratio of medians was `1.0056x`. The paired ratios were
+  `1.0034x`, `1.0177x`, and `0.9991x`, for a `1.0034x` median paired ratio and
+  reported `+0.6%` delta.
+- This is directionally positive but not a repeatable win: one pair was
+  slightly negative, and the median paired effect is only `+0.34%`, well within
+  the interference accepted on this machine. The candidate also carries
+  bounded YaRN hidden-state drift that the standalone control does not.
+- Do not promote `DS4_DSPARK_EXACT_ATTN_INV_ROPE_FUSED`. Keep it opt-in as a
+  measured narrow-tail experiment. Do not spend another standard-prompt
+  throughput run trying to resolve a sub-percent effect unless a later change
+  can remove the arithmetic drift or combine this fusion with a materially
+  larger same-write optimization.
+
 Phase 0.52 checks:
 
 ```sh
@@ -5745,11 +5766,13 @@ If continuing from a compacted context, start here:
   component, but whole-suffix batching and deferred projection candidates were
   already rejected. Phase 0.96 prepared a narrow in-place fusion that applies
   inverse RoPE in the final attention write and removes the standalone full-head
-  dispatch while preserving the interleaved row schedule. Its output is
+  dispatch while preserving the interleaved row schedule. Its output was
   byte-identical, but compressed YaRN arithmetic has documented bounded
-  hidden-state drift. The next gate is the user-run paired
-  `--attention-inverse-rope-fusion-ablation`; do not promote it before that
-  result.
+  hidden-state drift. The user-run gate measured only a `1.0034x` median paired
+  ratio, with one slightly negative pair, so the candidate remains opt-in and
+  is not promoted. The next phase should target a materially larger source of
+  exact-verifier work or reduce low-acceptance proposal-row amplification; do
+  not repeat this sub-percent ablation unchanged.
 - The GPU stage path currently borrows target graph transient batch workspace
   and therefore requires `prefill_cap >= block_size` (five). Decide whether to
   allocate sidecar-specific batch scratch before production enablement or keep
