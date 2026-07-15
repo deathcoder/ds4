@@ -23018,7 +23018,7 @@ static void dspark_exact_attention_pre_batch_observer_report(
 
 static bool metal_graph_exact_q8_rows_enabled(void) {
     const char *v = getenv("DS4_DSPARK_EXACT_Q8_ROWS");
-    return v && v[0] && strcmp(v, "0") != 0;
+    return !v || !v[0] || strcmp(v, "0") != 0;
 }
 
 /* Preserve one-token Metal Q8 reductions while sharing a command stream. */

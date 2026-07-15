@@ -157,7 +157,7 @@ def parse_args():
     parser.add_argument(
         "--exact-q8-rows-ablation",
         action="store_true",
-        help="compare default exact DSpark against exact Q8 proposal-row batching",
+        help="compare legacy one-row Q8 projections against the promoted default",
     )
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
@@ -229,7 +229,7 @@ def check_inputs(args, root):
 
 def benchmark_modes(args):
     if args.exact_q8_rows_ablation:
-        return ("default_exact", "exact_q8_rows")
+        return ("serial_q8_rows", "default_exact")
     if args.indexed_attention_rb16_promotion_ablation:
         return ("indexed_attention_rb16_legacy", "default_exact")
     if args.compressor_pair_nr4_ablation:
@@ -255,7 +255,7 @@ def mode_label(mode, args):
         "batch_attention_suffix": "Exact attention-suffix batch DSpark",
         "compressor_pair_nr4": "NR4 compressor pair DSpark",
         "indexed_attention_rb16_legacy": "Legacy RB16 indexed attention DSpark",
-        "exact_q8_rows": "Exact Q8 proposal-row DSpark",
+        "serial_q8_rows": "Legacy one-row Q8 projection DSpark",
     }[mode]
 
 
@@ -293,8 +293,8 @@ def clean_dspark_env(mode, fast_verifier=False, runtime_stats=True):
             env["DS4_METAL_COMPRESSOR_PAIR_NR4"] = "1"
         if mode == "indexed_attention_rb16_legacy":
             env["DS4_METAL_INDEXED_ATTN_RB16_LEGACY"] = "1"
-        if mode == "exact_q8_rows":
-            env["DS4_DSPARK_EXACT_Q8_ROWS"] = "1"
+        if mode == "serial_q8_rows":
+            env["DS4_DSPARK_EXACT_Q8_ROWS"] = "0"
     return env
 
 
@@ -349,8 +349,8 @@ def command_text(args, mode, runtime_stats=None):
             env += "DS4_METAL_COMPRESSOR_PAIR_NR4=1 "
         if mode == "indexed_attention_rb16_legacy":
             env += "DS4_METAL_INDEXED_ATTN_RB16_LEGACY=1 "
-        if mode == "exact_q8_rows":
-            env += "DS4_DSPARK_EXACT_Q8_ROWS=1 "
+        if mode == "serial_q8_rows":
+            env += "DS4_DSPARK_EXACT_Q8_ROWS=0 "
     return env + shlex.join(mode_command(args, mode))
 
 
@@ -544,7 +544,7 @@ def summarize(rows, modes=("baseline", "runtime")):
     summary = {
         "comparison": (
             "exact_q8_rows_ablation"
-            if modes == ("default_exact", "exact_q8_rows")
+            if modes == ("serial_q8_rows", "default_exact")
             else (
                 "indexed_attention_rb16_promotion_ablation"
                 if modes == ("indexed_attention_rb16_legacy", "default_exact")
@@ -585,11 +585,11 @@ def summarize(rows, modes=("baseline", "runtime")):
         })
         return summary
 
-    if modes == ("default_exact", "exact_q8_rows"):
+    if modes == ("serial_q8_rows", "default_exact"):
         summary.update({
-            "default_exact_generation_tps_median": reference_median,
-            "exact_q8_rows_generation_tps_median": candidate_median,
-            "exact_q8_rows_delta_percent":
+            "legacy_q8_rows_generation_tps_median": reference_median,
+            "promoted_exact_q8_rows_generation_tps_median": candidate_median,
+            "promoted_exact_q8_rows_delta_percent":
                 (candidate_median / reference_median - 1.0) * 100.0,
         })
         return summary
@@ -699,15 +699,15 @@ def summarize(rows, modes=("baseline", "runtime")):
 def format_report(summary):
     if summary["comparison"] == "exact_q8_rows_ablation":
         return (
-            "# DSpark Exact Q8 Proposal-Row Ablation\n\n"
-            f"- Default exact median: "
-            f"{summary['default_exact_generation_tps_median']:.2f} t/s\n"
-            f"- Exact Q8 rows median: "
-            f"{summary['exact_q8_rows_generation_tps_median']:.2f} t/s\n"
+            "# DSpark Exact Q8 Proposal-Row Promotion Confirmation\n\n"
+            f"- Legacy one-row Q8 median: "
+            f"{summary['legacy_q8_rows_generation_tps_median']:.2f} t/s\n"
+            f"- Promoted exact Q8 rows median: "
+            f"{summary['promoted_exact_q8_rows_generation_tps_median']:.2f} t/s\n"
             f"- Ratio of medians: {summary['median_ratio_of_medians']:.4f}x\n"
             f"- Median paired ratio: {summary['paired_speedup_median']:.4f}x\n"
-            f"- Exact Q8 rows delta: "
-            f"{summary['exact_q8_rows_delta_percent']:+.1f}%\n"
+            f"- Promoted exact Q8 rows delta: "
+            f"{summary['promoted_exact_q8_rows_delta_percent']:+.1f}%\n"
             f"- Measured pairs: {len(summary['paired_speedup_values'])}\n"
         )
 

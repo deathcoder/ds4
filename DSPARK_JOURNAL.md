@@ -5342,6 +5342,51 @@ ablation, not a baseline-versus-DSpark result. Promote the kernel only if all
 three pairs are positive by a useful margin; otherwise retain it as an exact
 research route and use the result to choose the next verifier slice.
 
+Phase 0.92 user-run result on 2026-07-15:
+
+- Default exact median: `22.00 t/s`; exact Q8 proposal-row median:
+  `23.30 t/s`; ratio of medians: `1.0591x`; median paired ratio:
+  `1.0625x` (`+5.9%` by medians).
+- All three paired ratios were positive: `1.0655x`, `1.0516x`, and
+  `1.0625x`. Every measured stdout SHA-256 was identical. This clears the
+  explicit promotion gate with a useful margin despite the machine's accepted
+  background interference.
+- Raw result:
+  `speed-bench/local-runs/20260715-135037/results.csv`.
+
+Phase 0.93 exact Q8 proposal-row promotion prepared on 2026-07-15:
+
+- Promoted the 2-5-row Metal Q8 kernel to the environment-free exact runtime
+  default. `DS4_DSPARK_EXACT_Q8_ROWS=0` now selects the legacy sequence of
+  one-token Q8 projections as a diagnostic and performance control. Explicit
+  nonzero values remain enabled for compatibility.
+- Converted `--exact-q8-rows-ablation` into a promotion confirmation comparing
+  explicit legacy control against promoted default. Both sides remain
+  uninstrumented, alternate order, clear inherited DSpark settings, and require
+  byte-identical output.
+- The environment-free promoted correctness matrix and explicit legacy-control
+  matrix both passed reasoning, Italian, medium-context, rolling-window, and
+  resumed-chat cases. The promoted and legacy attention-pre soaks both passed
+  64-token generation, rolling-window generation, and resumed chat. Timings
+  from all correctness runs were ignored.
+- Full `ds4`/test/server/eval/agent/CPU/warm-prefill builds, focused DSpark
+  validation/shape tests, shell syntax, Python compilation, synthetic
+  promotion-summary/report arithmetic, inherited environment clearing, command
+  generation, and `git diff --check` passed. The CPU-only object emitted the
+  same eight known unused-symbol warnings. No timed promotion confirmation was
+  run by Codex.
+
+Phase 0.93 user-run confirmation:
+
+```sh
+python3 speed-bench/run_dspark_comparison.py \
+  --confirm-idle --exact-q8-rows-ablation
+```
+
+This repeats the same underlying component comparison after promotion, but now
+proves that the faster route is selected without an environment variable and
+that `DS4_DSPARK_EXACT_Q8_ROWS=0` faithfully retains the old control.
+
 Phase 0.52 checks:
 
 ```sh
@@ -5468,9 +5513,12 @@ If continuing from a compacted context, start here:
   are no longer leading paths. The next phase must make target verification
   materially cheaper with exact autoregressive semantics; the approximate
   generic-prefill fast verifier remains invalid as token authority. Phase 0.92
-  begins that work with a decode-arithmetic-identical Q8 proposal-row kernel
-  for the three cache-independent attention projections. It is correctness
-  complete and awaits its direct user-run component ablation.
+  added a decode-arithmetic-identical Q8 proposal-row kernel for the three
+  cache-independent attention projections; its user-run ablation won all three
+  pairs with a `1.0625x` median paired ratio. Phase 0.93 promotes it to the
+  Metal exact-runtime default while retaining
+  `DS4_DSPARK_EXACT_Q8_ROWS=0` as the legacy control. The promotion is
+  correctness complete and awaits only the optional user-run confirmation.
 - The GPU stage path currently borrows target graph transient batch workspace
   and therefore requires `prefill_cap >= block_size` (five). Decide whether to
   allocate sidecar-specific batch scratch before production enablement or keep

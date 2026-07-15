@@ -19,6 +19,7 @@ compressor_pair_nr4=${DS4_TEST_DSPARK_COMPRESSOR_PAIR_NR4:-0}
 indexed_attn_rb16_promotion=${DS4_TEST_DSPARK_INDEXED_ATTN_RB16_PROMOTION:-\
 ${DS4_TEST_DSPARK_INDEXED_ATTN_RB16_DIRECT:-0}}
 exact_q8_rows=${DS4_TEST_DSPARK_EXACT_Q8_ROWS:-0}
+serial_q8_rows_runtime=${DS4_TEST_DSPARK_SERIAL_Q8_ROWS_RUNTIME:-0}
 ffn_batch_observer_layer=${DS4_DSPARK_EXACT_FFN_BATCH_OBSERVER_LAYER:-}
 attn_pre_observer_layer=${DS4_DSPARK_EXACT_ATTN_PRE_BATCH_OBSERVER_LAYER:-}
 attn_suffix_observer_layer=${DS4_DSPARK_EXACT_ATTN_SUFFIX_BATCH_OBSERVER_LAYER:-}
@@ -105,10 +106,24 @@ if [[ $exact_q8_rows != 0 && $exact_q8_rows != 1 ]]; then
     printf 'DS4_TEST_DSPARK_EXACT_Q8_ROWS must be 0 or 1\n' >&2
     exit 2
 fi
+if [[ $serial_q8_rows_runtime != 0 && $serial_q8_rows_runtime != 1 ]]; then
+    printf 'DS4_TEST_DSPARK_SERIAL_Q8_ROWS_RUNTIME must be 0 or 1\n' >&2
+    exit 2
+fi
+if [[ $exact_q8_rows == 1 && $serial_q8_rows_runtime == 1 ]]; then
+    printf 'exact and serial Q8-row modes are mutually exclusive\n' >&2
+    exit 2
+fi
 if [[ $exact_q8_rows == 1 &&
       ($mode != runtime || $fast_verify_runtime == 1 ||
        $serial_attn_pre_runtime == 1) ]]; then
     printf 'exact Q8 rows require exact runtime attention-pre batching\n' >&2
+    exit 2
+fi
+if [[ $serial_q8_rows_runtime == 1 &&
+      ($mode != runtime || $fast_verify_runtime == 1 ||
+       $serial_attn_pre_runtime == 1 || -n $attn_pre_observer_layer) ]]; then
+    printf 'serial Q8 rows require exact runtime attention-pre batching\n' >&2
     exit 2
 fi
 if [[ -n $attn_suffix_observer_layer &&
@@ -154,8 +169,8 @@ case "$mode" in
                 DS4_METAL_DECODE_INDEXER_SPARSE_THRESHOLD=64
             )
         fi
-        if [[ $exact_q8_rows == 1 ]]; then
-            gpu_env+=(DS4_DSPARK_EXACT_Q8_ROWS=1)
+        if [[ $serial_q8_rows_runtime == 1 ]]; then
+            gpu_env+=(DS4_DSPARK_EXACT_Q8_ROWS=0)
         fi
         ;;
     *)
@@ -191,7 +206,9 @@ if [[ $mode == runtime && $serial_attn_pre_runtime != 1 &&
 fi
 
 exact_q8_rows_expected=0
-if [[ $exact_q8_rows == 1 && -z $attn_pre_observer_layer ]]; then
+if [[ $mode == runtime && $fast_verify_runtime != 1 &&
+      $serial_attn_pre_runtime != 1 && $serial_q8_rows_runtime != 1 &&
+      -z $attn_pre_observer_layer ]]; then
     exact_q8_rows_expected=1
 fi
 

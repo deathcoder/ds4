@@ -104,16 +104,16 @@ attention path as a diagnostic control. The selected-layer attention-pre
 observer keeps the batched preparation non-authoritative for the observed
 call.
 
-`DS4_DSPARK_EXACT_Q8_ROWS=1` is an opt-in Metal candidate inside that exact
-attention preparation. It replaces the separate one-token Q8 launches for the
-Q-LoRA, KV, and final Q projections with one 2-5-row microbatch kernel. Each
-proposal row retains the ordinary decode kernel's lane assignment, block
-traversal, accumulation sequence, SIMD reduction, and output layout; each
-quantized weight block is loaded once and applied to all rows. Cache writes and
-the autoregressive attention tail are unchanged. Use
-`--exact-q8-rows-ablation` for the direct uninstrumented default-exact versus
-candidate comparison. Both modes clear diagnostics and runtime stats, alternate
-order over three pairs, and require byte-identical output.
+Exact attention preparation uses the Metal 2-5-row Q8 microbatch by default for
+the Q-LoRA, KV, and final Q projections. Each proposal row retains the ordinary
+decode kernel's lane assignment, block traversal, accumulation sequence, SIMD
+reduction, and output layout; each quantized weight block is loaded once and
+applied to all rows. Cache writes and the autoregressive attention tail are
+unchanged. Set `DS4_DSPARK_EXACT_Q8_ROWS=0` only to force the legacy separate
+one-token Q8 launches as a diagnostic control. Use `--exact-q8-rows-ablation`
+for the uninstrumented legacy-control versus promoted-default confirmation.
+Both modes clear diagnostics and runtime stats, alternate order over three
+pairs, and require byte-identical output.
 
 The exact attention suffix candidate is opt-in through
 `DS4_DSPARK_EXACT_ATTN_SUFFIX_BATCH=1`. It preserves the serial, autoregressive
@@ -346,7 +346,7 @@ The non-performance correctness soak is user-independent and may be run with:
 ./tests/dspark_fast_verifier_soak.sh
 ./tests/dspark_exact_ffn_batch_runtime_soak.sh
 ./tests/dspark_exact_attention_pre_batch_runtime_soak.sh
-DS4_TEST_DSPARK_EXACT_Q8_ROWS=1 \
+DS4_TEST_DSPARK_SERIAL_Q8_ROWS_RUNTIME=1 \
   ./tests/dspark_exact_attention_pre_batch_runtime_soak.sh
 ./tests/dspark_exact_attention_suffix_batch_runtime_soak.sh
 ```
