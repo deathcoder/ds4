@@ -78,7 +78,9 @@ class ConfidenceSchedulerAblationTests(unittest.TestCase):
         fixed = ablation.mode_env("fixed_k5")
         conservative = ablation.mode_env("threshold_038")
         balanced = ablation.mode_env("threshold_0455")
-        self.assertNotIn("DS4_DSPARK_CONFIDENCE_THRESHOLD", fixed)
+        self.assertEqual(
+            fixed["DS4_DSPARK_CONFIDENCE_THRESHOLD"], "0"
+        )
         self.assertEqual(
             conservative["DS4_DSPARK_CONFIDENCE_THRESHOLD"], "0.38"
         )
@@ -157,6 +159,10 @@ class ConfidenceSchedulerThroughputTests(unittest.TestCase):
         self.assertNotIn("DS4_DSPARK_GPU_RUNTIME_STATS", env)
         baseline = common.benchmark_env("baseline", False)
         self.assertNotIn("DS4_DSPARK_CONFIDENCE_THRESHOLD", baseline)
+
+    def test_promoted_and_fixed_threshold_constants_are_distinct(self):
+        self.assertEqual(common.DSPARK_DEFAULT_CONFIDENCE_THRESHOLD, "0.455")
+        self.assertEqual(common.DSPARK_FIXED_CONFIDENCE_THRESHOLD, "0")
 
     def test_shared_env_rejects_invalid_thresholds(self):
         for threshold in ("bad", "nan", "inf", "-0.1", "1.1"):

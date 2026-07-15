@@ -16,8 +16,8 @@ import run_dspark_issue468_comparison as common
 MODES = ("baseline", "fixed_k5", "threshold_0455")
 THRESHOLDS = {
     "baseline": None,
-    "fixed_k5": None,
-    "threshold_0455": "0.455",
+    "fixed_k5": common.DSPARK_FIXED_CONFIDENCE_THRESHOLD,
+    "threshold_0455": common.DSPARK_DEFAULT_CONFIDENCE_THRESHOLD,
 }
 MODE_LABELS = {
     "baseline": "Ordinary baseline",

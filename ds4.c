@@ -2093,6 +2093,7 @@ static ds4_tensor *model_find_tensor(const ds4_model *m, const char *name) {
 }
 
 enum { DS4_DSPARK_MTP_LAYERS = 3 };
+#define DS4_DSPARK_DEFAULT_CONFIDENCE_THRESHOLD 0.455f
 
 void ds4_dspark_config_init_defaults(ds4_dspark_config *cfg) {
     if (!cfg) return;
@@ -34053,16 +34054,14 @@ static bool dspark_session_confidence_prefix_limit(
         size_t                        errlen) {
     static int initialized;
     static bool config_valid;
-    static bool config_enabled;
     static float config_threshold;
     static char config_error[160];
     if (!initialized) {
         const char *v = getenv("DS4_DSPARK_CONFIDENCE_THRESHOLD");
         config_valid = true;
-        config_enabled = v && v[0];
-        config_threshold = 0.0f;
+        config_threshold = DS4_DSPARK_DEFAULT_CONFIDENCE_THRESHOLD;
         config_error[0] = '\0';
-        if (config_enabled) {
+        if (v && v[0]) {
             char *end = NULL;
             errno = 0;
             const float parsed = strtof(v, &end);
@@ -34092,8 +34091,8 @@ static bool dspark_session_confidence_prefix_limit(
 
     *selected_rows = draft_rows;
     *threshold = config_threshold;
-    *enabled = config_enabled;
-    if (!config_enabled || config_threshold <= 0.0f) return true;
+    *enabled = true;
+    if (config_threshold <= 0.0f) return true;
     for (uint32_t row = 0; row < draft_rows; row++) {
         const float confidence = drafts[row].confidence;
         if (!isfinite(confidence) || confidence < 0.0f || confidence > 1.0f) {

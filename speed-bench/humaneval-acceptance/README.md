@@ -18,7 +18,8 @@ the original pilot indices `0/23/47/70/93/116/140/163`, while
 recorded in metadata and the summary.
 
 The study isolates corpus/domain before attempting a matched paper reproduction.
-It uses non-thinking mode and no confidence scheduler, but keeps the current
+It uses non-thinking mode and explicitly sets confidence threshold `0` for its
+fixed-K=5 control, while keeping the current
 V4-Flash protocol: the released five-token sidecar, greedy decoding, and 128
 output tokens. DeepSpec Table 1 used seven draft tokens, temperature-1.0
 rejection sampling, up to 2048 output tokens, and Qwen3/Gemma4 checkpoints.

@@ -11,7 +11,7 @@ import run_dspark_humaneval_acceptance as corpus
 import run_dspark_issue468_comparison as common
 
 
-SCHEDULER_THRESHOLD = "0.455"
+SCHEDULER_THRESHOLD = common.DSPARK_DEFAULT_CONFIDENCE_THRESHOLD
 SCHEDULER_RETENTION_FLOOR = "0.975"
 
 
@@ -87,7 +87,8 @@ def parse_args():
     args.stats_pass = False
     args.acceptance_audit = False
     args.confidence_threshold = (
-        SCHEDULER_THRESHOLD if args.confidence_scheduler else None
+        SCHEDULER_THRESHOLD if args.confidence_scheduler else
+        common.DSPARK_FIXED_CONFIDENCE_THRESHOLD
     )
     args.pairs = 1
     args.warmups = 0

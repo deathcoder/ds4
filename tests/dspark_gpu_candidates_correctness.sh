@@ -17,6 +17,7 @@ runtime_stats=${DS4_TEST_DSPARK_RUNTIME_STATS:-0}
 acceptance_audit=${DS4_TEST_DSPARK_ACCEPTANCE_AUDIT:-0}
 acceptance_trace=${DS4_TEST_DSPARK_ACCEPTANCE_TRACE:-0}
 confidence_threshold=${DS4_TEST_DSPARK_CONFIDENCE_THRESHOLD:-}
+default_confidence_threshold=0.455
 confidence_expect_zero=${DS4_TEST_DSPARK_CONFIDENCE_EXPECT_ZERO:-0}
 compressor_pair_nr4=${DS4_TEST_DSPARK_COMPRESSOR_PAIR_NR4:-0}
 indexed_attn_rb16_promotion=${DS4_TEST_DSPARK_INDEXED_ATTN_RB16_PROMOTION:-\
@@ -279,7 +280,8 @@ common=(--model "$base_model" --ctx 4096 --nothink --temp 0)
 assert_gpu_selected() {
     local log=$1
     local verifier_batches_expected=1
-    if [[ -n $confidence_threshold ]] &&
+    local effective_confidence_threshold=${confidence_threshold:-$default_confidence_threshold}
+    if [[ $mode == runtime ]] &&
        ! grep -Eq 'DSpark confidence scheduler .* selected=([2-9]|[1-9][0-9]+)$' "$log"; then
         verifier_batches_expected=0
     fi
@@ -294,19 +296,15 @@ assert_gpu_selected() {
         grep -q 'DSpark GPU chain runtime .* result=pass' "$log"
         if [[ $fast_verify_runtime == 1 ]]; then
             grep -q 'DSpark fast batch verifier .* result=pass' "$log"
-        elif [[ -z $confidence_threshold ]] ||
-             grep -Eq 'DSpark confidence scheduler .* selected=([2-9]|[1-9][0-9]+)$' "$log"; then
+        elif [[ $verifier_batches_expected == 1 ]]; then
             grep -q 'DSpark exact batch verifier .* result=pass' "$log"
         fi
-        if [[ -n $confidence_threshold ]]; then
-            grep -q "DSpark confidence scheduler threshold=$confidence_threshold" "$log"
-            if grep 'DSpark confidence scheduler ' "$log" |
-               grep -Evq ' proposed=[1-9][0-9]* selected=[0-9][0-9]*$'; then
-                printf 'confidence scheduler emitted a malformed route record\n' >&2
-                exit 1
-            fi
-        elif grep -q 'DSpark confidence scheduler ' "$log"; then
-            printf 'control mode unexpectedly ran confidence scheduling\n' >&2
+        grep -q \
+            "DSpark confidence scheduler threshold=$effective_confidence_threshold" \
+            "$log"
+        if grep 'DSpark confidence scheduler ' "$log" |
+           grep -Evq ' proposed=[1-9][0-9]* selected=[0-9][0-9]*$'; then
+            printf 'confidence scheduler emitted a malformed route record\n' >&2
             exit 1
         fi
         if [[ $fast_verify_observer == 1 ]]; then

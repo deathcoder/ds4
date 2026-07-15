@@ -53,6 +53,8 @@ ACCEPTANCE_FLOAT_ARRAY_FIELDS = (
     "prefix_brier",
 )
 PROMPT_ORDER = ("code_8k", "synthesis_8k", "grounded_8k")
+DSPARK_DEFAULT_CONFIDENCE_THRESHOLD = "0.455"
+DSPARK_FIXED_CONFIDENCE_THRESHOLD = "0"
 
 # DSpark rows from Table 1 of arXiv:2607.05147v1. The paper used non-thinking
 # generation, temperature 1.0, seven draft tokens, and the named benchmark
@@ -323,6 +325,8 @@ def command_text(
     args, prompt, mode, stats=False, acceptance_audit=False,
     acceptance_trace=False, confidence_threshold=None,
 ):
+    if mode == "runtime" and confidence_threshold is None:
+        confidence_threshold = getattr(args, "confidence_threshold", None)
     env = benchmark_env(
         mode, args.fast_verifier, stats, args.exact_head_batch,
         acceptance_audit, acceptance_trace, confidence_threshold,
@@ -456,6 +460,8 @@ def execute(
         raise ValueError("acceptance trace requires a runtime acceptance audit")
     stdout_path = run_dir / f"{label}.{prompt_label}.{mode}.stdout"
     stderr_path = run_dir / f"{label}.{prompt_label}.{mode}.stderr"
+    if mode == "runtime" and confidence_threshold is None:
+        confidence_threshold = getattr(args, "confidence_threshold", None)
     command = mode_command(args, prompt, mode)
     rendered_command = command_text(
         args, prompt, mode, stats, acceptance_audit, acceptance_trace,
@@ -617,6 +623,10 @@ def collect_metadata(args, root, prompts, provenance, acceptance_reference=None)
             "acceptance_audit": args.acceptance_audit,
             "acceptance_trace": bool(getattr(args, "acceptance_trace", False)),
             "confidence_threshold": confidence_threshold,
+            "effective_confidence_threshold": (
+                confidence_threshold if confidence_threshold is not None else
+                DSPARK_DEFAULT_CONFIDENCE_THRESHOLD
+            ),
             "nothink": args.nothink,
         },
         "binary": file_metadata(args.binary), "base_model": file_metadata(args.model),
@@ -1294,6 +1304,9 @@ def run_acceptance_audit(
 
 def main():
     args, root = parse_args()
+    args.confidence_threshold = (
+        DSPARK_FIXED_CONFIDENCE_THRESHOLD if args.acceptance_audit else None
+    )
     args.binary = args.binary.resolve()
     args.model = args.model.resolve()
     args.dspark_model = args.dspark_model.resolve()

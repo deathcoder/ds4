@@ -576,13 +576,14 @@ occupies every order position. All outputs must match the prior exact runtime
 artifact byte-for-byte.
 
 `DS4_DSPARK_CONFIDENCE_THRESHOLD` uses DeepSpec's strict prefix rule: select
-the drafts before the first raw confidence below the threshold. The complete
-five-row sidecar block is still computed. Threshold `0` is equivalent to fixed
-K=5, K=0 uses ordinary one-token target evaluation, and invalid or non-finite
-values outside `[0,1]` fail explicitly. The benchmark enables no stats, audit,
-trace, diagnostics, or profiler. Its candidate/fixed paired ratios measure
-actual Metal cost; offline target-position proxies are not throughput results.
-Do not change the tasks or thresholds after observing this gate.
+the drafts before the first raw confidence below the threshold. DSpark runtime
+defaults to threshold `0.455`; an explicit value overrides it. Threshold `0`
+is the fixed-K=5 control. The complete five-row sidecar block is still computed,
+and selecting K=0 uses ordinary one-token target evaluation. Invalid or
+non-finite values outside `[0,1]` fail explicitly. The benchmark enables no
+stats, audit, trace, diagnostics, or profiler. Its candidate/fixed paired ratios
+measure actual Metal cost; offline target-position proxies are not throughput
+results. Do not change the tasks or thresholds after observing this gate.
 
 After threshold `0.455` passes that representative gate, run the frozen
 32-task baseline-versus-scheduled confirmation without changing the policy:
@@ -617,10 +618,14 @@ must match its fresh ordinary-target baseline byte-for-byte. Results go under
 The new within-run scheduled/baseline ratios are authoritative. Phase 0.94's
 fixed-K median paired ratio of `0.6840x` is useful historical context, but it
 must not be divided into the new result as if both modes were measured in the
-same process sequence. Do not promote the threshold before this full gate.
+same process sequence. At that stage, promotion remained blocked on the
+non-code gate below.
 
-Before promoting the HumanEval-selected threshold as a general DSpark default,
-run the frozen math/chat generalization gate:
+This historical runner explicitly pins threshold `0` when
+`--confidence-scheduler` is absent, preserving its fixed-K=5 control after the
+runtime default changed.
+
+The final promotion decision used the frozen math/chat generalization gate:
 
 ```sh
 python3 speed-bench/run_dspark_generalization_gate.py \
@@ -644,12 +649,15 @@ position exactly four times. Three excluded warmups plus 36 measured children
 make 39 processes total. Every mode must produce byte-identical output, and no
 instrumentation is enabled. MT-Bench contributes only its self-contained first
 turn; this is a scheduler regression gate, not a matched benchmark-score run.
+The fixed-K=5 child explicitly sets threshold `0`, so the historical control
+remains reproducible after default promotion.
 
 The promotion rule is frozen before measurement: scheduled/fixed median must
 exceed `1.0x` in both math and chat, at least four of six tasks must improve in
 each domain, overall scheduled/fixed geometric mean must be at least `1.03x`,
 and no task may fall below `0.90x`. The scheduled/baseline ratio remains the
-separate end-user result. Do not tune `0.455` from this gate.
+separate end-user result. This gate passed and `0.455` is now the DSpark runtime
+default; do not tune it from this gate.
 
 The older `--stats-pass` mode remains available when a single invocation should
 run the full throughput comparison and then append one instrumented runtime

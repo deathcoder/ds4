@@ -23,9 +23,9 @@ MODES = ("fixed_k5", "threshold_038", "threshold_0455")
 PAIRS = 3
 WARMUP_PERIODS = 1
 THRESHOLDS = {
-    "fixed_k5": None,
+    "fixed_k5": common.DSPARK_FIXED_CONFIDENCE_THRESHOLD,
     "threshold_038": "0.38",
-    "threshold_0455": "0.455",
+    "threshold_0455": common.DSPARK_DEFAULT_CONFIDENCE_THRESHOLD,
 }
 MODE_LABELS = {
     "fixed_k5": "Fixed K=5",

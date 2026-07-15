@@ -61,6 +61,7 @@ def parse_args():
     args.stats_pass = False
     args.acceptance_audit = True
     args.acceptance_reference = None
+    args.confidence_threshold = common.DSPARK_FIXED_CONFIDENCE_THRESHOLD
     args.pairs = 1
     args.warmups = 0
     return args, root

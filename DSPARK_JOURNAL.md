@@ -8,6 +8,16 @@ particular DSpark change exists.
 
 Branch: `codex/dspark-observability-0`
 
+Phase 1.01 is complete. DSpark confidence-prefix scheduling now defaults to
+`0.455` when `DS4_DSPARK_CONFIDENCE_THRESHOLD` is absent. An explicit value
+still overrides the default, and explicit `0` preserves fixed K=5. The frozen
+acceptance, trace, scheduler-ablation, generalization, and historical fixed-K
+HumanEval paths now set `0` rather than relying on an absent environment value.
+Normal runtime paths inherit the promoted default. Both the promoted-default
+and explicit-zero runtime correctness matrices passed byte-for-byte across all
+five scenarios; model-free tests, the normal build, DSpark validation, and
+shape binding also passed. No throughput benchmark was run automatically.
+
 Phase 1.00 is complete and passed every predeclared promotion criterion. On the
 12-task non-code gate, threshold `0.455` improved over fixed K=5 on `5/6` math
 and `6/6` chat tasks. Scheduled/fixed medians were `1.0831x` math, `1.3928x`
@@ -5973,6 +5983,51 @@ Phase 1.00 user-run result on 2026-07-15:
   continue to override it, with `DS4_DSPARK_CONFIDENCE_THRESHOLD=0` selecting
   fixed K=5. Audit every fixed-K benchmark and correctness control because an
   absent environment variable will no longer mean fixed K=5 after promotion.
+
+Phase 1.01 confidence-scheduler default promotion on 2026-07-15:
+
+- `dspark_session_confidence_prefix_limit` now starts from the named runtime
+  default `DS4_DSPARK_DEFAULT_CONFIDENCE_THRESHOLD=0.455f`. A non-empty
+  `DS4_DSPARK_CONFIDENCE_THRESHOLD` parses as the explicit override. Threshold
+  `0` leaves all proposed rows selected and is the fixed-K=5 control.
+- Shared benchmark code names both policies:
+  `DSPARK_DEFAULT_CONFIDENCE_THRESHOLD="0.455"` and
+  `DSPARK_FIXED_CONFIDENCE_THRESHOLD="0"`. Metadata records both the explicit
+  override and effective runtime threshold.
+- Fixed historical protocols now set `0` explicitly: Issue 468 acceptance,
+  HumanEval acceptance, the HumanEval confidence trace, the two-task scheduler
+  ablation fixed arm, the math/chat generalization fixed arm, and the no-flag
+  historical HumanEval throughput runner. `--confidence-scheduler` remains the
+  frozen `0.455` reproduction mode for that runner. Ordinary Issue 468 runtime
+  and stats paths omit the override and therefore exercise the product default.
+- Dry-run command audits confirmed every fixed path renders
+  `DS4_DSPARK_CONFIDENCE_THRESHOLD=0`. The default and explicit-zero
+  model-backed correctness matrices each passed reasoning, Italian, medium
+  context, rolling-window, and resumed-chat byte equality.
+- Validation completed without any timed throughput run:
+
+  ```sh
+  python3 -m unittest \
+    tests/test_dspark_confidence_scheduler.py \
+    tests/test_dspark_generalization_gate.py
+  bash -n tests/dspark_gpu_candidates_correctness.sh
+  make -j4
+  make ds4_test
+  ./ds4_test --dspark-validation --dspark-shape-binding
+  DS4_TEST_DSPARK_MODE=runtime \
+    ./tests/dspark_gpu_candidates_correctness.sh
+  DS4_TEST_DSPARK_MODE=runtime \
+  DS4_TEST_DSPARK_CONFIDENCE_THRESHOLD=0 \
+    ./tests/dspark_gpu_candidates_correctness.sh
+  git diff --check
+  ```
+
+- Do not repeat Phase 0.99 or 1.00 merely to compare an absent override with
+  explicit `0.455`: both reach the same `float` threshold in the runtime. The
+  next performance phase should first attribute the promoted scheduled runtime
+  on a small frozen cross-domain set, then choose the next exact-verifier or
+  proposal-cost optimization from measured per-emitted-token cost. The user
+  must run that timed diagnostic.
 
 Phase 0.52 checks:
 

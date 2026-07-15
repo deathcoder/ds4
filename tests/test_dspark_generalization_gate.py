@@ -57,7 +57,7 @@ class DSparkGeneralizationGateTests(unittest.TestCase):
 
     def test_threshold_is_predeclared_only_for_scheduled_mode(self):
         self.assertIsNone(gate.THRESHOLDS["baseline"])
-        self.assertIsNone(gate.THRESHOLDS["fixed_k5"])
+        self.assertEqual(gate.THRESHOLDS["fixed_k5"], "0")
         self.assertEqual(gate.THRESHOLDS["threshold_0455"], "0.455")
         self.assertEqual(gate.target_mode("baseline"), "baseline")
         self.assertEqual(gate.target_mode("fixed_k5"), "runtime")
