@@ -4886,6 +4886,52 @@ with suffix decay suggests Markov-chain behavior. Compare `code_8k` only
 directionally with Table 1's code range. Do not optimize or enable the
 confidence scheduler until the raw acceptance result is understood.
 
+Phase 0.87 user-run acceptance result on 2026-07-15:
+
+- Raw results are in
+  `speed-bench/local-runs/issue468-acceptance-20260715-105449`. Metadata records
+  clean commit `a6e94a1`, the intended isolated acceptance-audit environment,
+  exact verification, and byte-identical baseline/runtime output for all three
+  prompts.
+- Paper-aligned accepted length / verify rate / full-accept rate were:
+  `3.000 / 0.500 / 18.5%` for code, `3.690 / 0.615 / 31.0%` for synthesis,
+  and `3.568 / 0.595 / 22.7%` for grounded. Excluded truncated-final-proposal
+  counts were `3/2/4` respectively.
+- `code_8k` is directionally far below Table 1's per-target code macro target of
+  `5.09-5.28` accepted length and `0.636-0.660` verify rate. This is not yet
+  evidence of an implementation defect because the target model, quantization,
+  sampling, generation mode, context length, and corpus do not match Table 1.
+  Synthesis and grounded are deliberately unmapped, but their `3.69/3.57`
+  values are at or above Table 1's `3.25-3.50` chat macro band; the weakness is
+  therefore not universal across this integration.
+- First-position conditional acceptance was only `68.5%/73.8%/75.0%` for
+  code/synthesis/grounded. Once a prefix survived, later conditional acceptance
+  was generally healthy rather than monotonically collapsing: code positions
+  2-5 were `78.4/65.5/68.4/76.9%`, synthesis `87.1/88.9/75.0/72.2%`, and
+  grounded `84.8/89.3/68.0/58.8%`. Code is weak at the initial target-context
+  boundary and remains uneven, but this does not look like a simple broken
+  Markov suffix or rolling-window collapse.
+- Raw confidence behavior is coherent enough to argue against gross chain
+  wiring corruption. Position-1 confidence overestimated observed acceptance
+  by about `9.3/6.1/9.4` percentage points. At later reached positions it was
+  usually near observed conditional acceptance, with small-sample deviations.
+  Prefix confidence and actual survival also tracked the same general shape.
+- The CLI does render each raw `--prompt-file` as an official V4 chat message,
+  so missing chat encoding is not the issue. However, the Issue 468 runner uses
+  the CLI default thinking-high mode (`nothink=false` in metadata), whereas the
+  paper's Table 1 protocol explicitly uses non-thinking mode. The base target
+  is also an aggressive `IQ2XXS` quantization while the sidecar was trained
+  against the official target checkpoint, and the custom 8K tasks differ
+  substantially from MBPP/HumanEval/LiveCodeBench.
+- Decision: do not label this a DSpark integration bug yet. The next smallest
+  diagnostic is a paired acceptance-mode control on the same three prompts:
+  add a runner option that applies `--nothink` to both fresh baseline and exact
+  audited runtime, then compare accepted length and every position's
+  conditional acceptance with this thinking-high result. This is an acceptance
+  diagnostic, not a tok/s benchmark. If non-thinking does not materially close
+  the gap, move next to a small officially sourced code-prompt corpus before
+  investigating quantization or proposal-path arithmetic.
+
 Phase 0.52 checks:
 
 ```sh
@@ -4990,11 +5036,14 @@ If continuing from a compacted context, start here:
   statistic to the paper's accepted-drafts-plus-bonus definition and added an
   exact acceptance-quality audit with position-wise survival, conditional
   acceptance, rejection, and raw-confidence attribution. The next gate is the
-  user-run `--acceptance-audit` command. Use its result to decide whether the
-  long-prompt gap begins at the target-context/first-position boundary or in the
-  Markov suffix. Even perfect acceptance cannot win at the current
-  target-position cost, so target batch efficiency remains a second required
-  line of work.
+  user-run `--acceptance-audit` command. Phase 0.87's result measured paper
+  accepted length `3.00/3.69/3.57`; code was weak from position 1 while later
+  conditional acceptance and the other prompts argued against a universal
+  Markov/rolling-window defect. The next phase is a same-prompt acceptance-mode
+  control with `--nothink`, matching Table 1's generation mode while retaining
+  exact verification and fresh output references. Even perfect acceptance
+  cannot win at the current target-position cost, so target batch efficiency
+  remains a second required line of work.
 - The GPU stage path currently borrows target graph transient batch workspace
   and therefore requires `prefill_cap >= block_size` (five). Decide whether to
   allocate sidecar-specific batch scratch before production enablement or keep
