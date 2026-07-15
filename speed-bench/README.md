@@ -584,6 +584,41 @@ trace, diagnostics, or profiler. Its candidate/fixed paired ratios measure
 actual Metal cost; offline target-position proxies are not throughput results.
 Do not change the tasks or thresholds after observing this gate.
 
+After threshold `0.455` passes that representative gate, run the frozen
+32-task baseline-versus-scheduled confirmation without changing the policy:
+
+```sh
+python3 speed-bench/run_dspark_humaneval_throughput.py \
+  --dry-run --allow-dirty \
+  --confidence-scheduler \
+  --scheduler-reference \
+  speed-bench/local-runs/humaneval-scheduler-trace-32-20260715-165938/scheduler_summary.json \
+  --acceptance-reference \
+  speed-bench/local-runs/humaneval-acceptance-32-20260715-121045/summary.json
+python3 speed-bench/run_dspark_humaneval_throughput.py \
+  --confirm-ready \
+  --confidence-scheduler \
+  --scheduler-reference \
+  speed-bench/local-runs/humaneval-scheduler-trace-32-20260715-165938/scheduler_summary.json \
+  --acceptance-reference \
+  speed-bench/local-runs/humaneval-acceptance-32-20260715-121045/summary.json
+```
+
+This mode accepts no free-form threshold. It validates that the supplied
+scheduler artifact is the prior 32-task K=5 trace, that its `97.5%` retention
+policy selected held-out median threshold `0.455`, and that the trace derives
+from the supplied acceptance artifact. It then runs the original frozen
+HumanEval selection and alternating pair order with scheduled DSpark in place
+of fixed K=5. The two global warmup pairs are excluded, so the default schedule
+starts 68 children: four warmups and 64 measured runs. Every scheduled output
+must match its fresh ordinary-target baseline byte-for-byte. Results go under
+`speed-bench/local-runs/humaneval-scheduler-throughput-32-<timestamp>/`.
+
+The new within-run scheduled/baseline ratios are authoritative. Phase 0.94's
+fixed-K median paired ratio of `0.6840x` is useful historical context, but it
+must not be divided into the new result as if both modes were measured in the
+same process sequence. Do not promote the threshold before this full gate.
+
 The older `--stats-pass` mode remains available when a single invocation should
 run the full throughput comparison and then append one instrumented runtime
 sample per prompt:

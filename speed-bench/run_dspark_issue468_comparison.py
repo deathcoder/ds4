@@ -6,6 +6,7 @@ import csv
 import datetime as dt
 import hashlib
 import json
+import math
 import os
 from pathlib import Path
 import platform
@@ -104,10 +105,19 @@ def cleared_env_keys(env):
 
 def benchmark_env(
     mode, fast_verifier, stats=False, exact_head_batch=False,
-    acceptance_audit=False, acceptance_trace=False,
+    acceptance_audit=False, acceptance_trace=False, confidence_threshold=None,
 ):
     if acceptance_trace and not acceptance_audit:
         raise ValueError("acceptance trace requires acceptance audit")
+    if confidence_threshold is not None:
+        if mode != "runtime":
+            raise ValueError("confidence threshold requires DSpark runtime mode")
+        try:
+            threshold = float(confidence_threshold)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("confidence threshold must be a finite number") from exc
+        if not math.isfinite(threshold) or not 0.0 <= threshold <= 1.0:
+            raise ValueError("confidence threshold must be in [0,1]")
     env = os.environ.copy()
     for key in cleared_env_keys(env):
         env.pop(key, None)
@@ -124,6 +134,8 @@ def benchmark_env(
             env["DS4_DSPARK_ACCEPTANCE_AUDIT"] = "1"
         if acceptance_trace:
             env["DS4_DSPARK_ACCEPTANCE_TRACE"] = "1"
+        if confidence_threshold is not None:
+            env["DS4_DSPARK_CONFIDENCE_THRESHOLD"] = str(confidence_threshold)
     return env
 
 
@@ -309,17 +321,18 @@ def mode_command(args, prompt, mode):
 
 def command_text(
     args, prompt, mode, stats=False, acceptance_audit=False,
-    acceptance_trace=False,
+    acceptance_trace=False, confidence_threshold=None,
 ):
     env = benchmark_env(
         mode, args.fast_verifier, stats, args.exact_head_batch,
-        acceptance_audit, acceptance_trace,
+        acceptance_audit, acceptance_trace, confidence_threshold,
     )
     keys = (
         "DS4_DSPARK_GPU_RUNTIME", "DS4_DSPARK_MULTI_COMMIT",
         "DS4_DSPARK_FAST_BATCH_VERIFY", "DS4_DSPARK_EXACT_HEAD_BATCH",
         "DS4_DSPARK_GPU_RUNTIME_STATS",
         "DS4_DSPARK_ACCEPTANCE_AUDIT", "DS4_DSPARK_ACCEPTANCE_TRACE",
+        "DS4_DSPARK_CONFIDENCE_THRESHOLD",
     )
     prefix = " ".join(f"{key}={env[key]}" for key in keys if key in env)
     return (prefix + " " if prefix else "") + shlex.join(
@@ -437,15 +450,19 @@ def parse_acceptance_audit(stderr_data, path):
 def execute(
     args, root, run_dir, label, prompt_label, prompt, mode, reference,
     stats=False, acceptance_audit=False, acceptance_trace=False,
+    confidence_threshold=None,
 ):
     if acceptance_trace and (mode != "runtime" or not acceptance_audit):
         raise ValueError("acceptance trace requires a runtime acceptance audit")
     stdout_path = run_dir / f"{label}.{prompt_label}.{mode}.stdout"
     stderr_path = run_dir / f"{label}.{prompt_label}.{mode}.stderr"
     command = mode_command(args, prompt, mode)
+    rendered_command = command_text(
+        args, prompt, mode, stats, acceptance_audit, acceptance_trace,
+        confidence_threshold,
+    )
     print(
-        f"[{label}/{prompt_label}] {mode}: "
-        f"{command_text(args, prompt, mode, stats, acceptance_audit, acceptance_trace)}",
+        f"[{label}/{prompt_label}] {mode}: {rendered_command}",
         flush=True,
     )
     started = time.monotonic()
@@ -454,7 +471,7 @@ def execute(
             command, cwd=root,
             env=benchmark_env(
                 mode, args.fast_verifier, stats, args.exact_head_batch,
-                acceptance_audit, acceptance_trace,
+                acceptance_audit, acceptance_trace, confidence_threshold,
             ),
             stdout=stdout_fp, stderr=stderr_fp, check=False,
         )
@@ -517,6 +534,7 @@ def machine_snapshot(root):
 
 
 def collect_metadata(args, root, prompts, provenance, acceptance_reference=None):
+    confidence_threshold = getattr(args, "confidence_threshold", None)
     commands = {}
     for label, prompt in prompts.items():
         if args.stats_only or args.acceptance_audit:
@@ -525,7 +543,8 @@ def collect_metadata(args, root, prompts, provenance, acceptance_reference=None)
             }
             if args.stats_only:
                 commands[label]["stats_runtime"] = command_text(
-                    args, prompt, "runtime", stats=True
+                    args, prompt, "runtime", stats=True,
+                    confidence_threshold=confidence_threshold,
                 )
             else:
                 commands[label]["acceptance_runtime"] = command_text(
@@ -533,15 +552,20 @@ def collect_metadata(args, root, prompts, provenance, acceptance_reference=None)
                     acceptance_trace=bool(
                         getattr(args, "acceptance_trace", False)
                     ),
+                    confidence_threshold=confidence_threshold,
                 )
         else:
             commands[label] = {
-                mode: command_text(args, prompt, mode)
-                for mode in ("baseline", "runtime")
+                "baseline": command_text(args, prompt, "baseline"),
+                "runtime": command_text(
+                    args, prompt, "runtime",
+                    confidence_threshold=confidence_threshold,
+                ),
             }
             if args.stats_pass:
                 commands[label]["stats_runtime"] = command_text(
-                    args, prompt, "runtime", stats=True
+                    args, prompt, "runtime", stats=True,
+                    confidence_threshold=confidence_threshold,
                 )
     return {
         "created_at": dt.datetime.now().astimezone().isoformat(),
@@ -568,6 +592,7 @@ def collect_metadata(args, root, prompts, provenance, acceptance_reference=None)
                 "DS4_DSPARK_GPU_RUNTIME_STATS",
                 "DS4_DSPARK_ACCEPTANCE_AUDIT",
                 "DS4_DSPARK_ACCEPTANCE_TRACE",
+                "DS4_DSPARK_CONFIDENCE_THRESHOLD",
             ],
         },
         "config": {
@@ -591,6 +616,7 @@ def collect_metadata(args, root, prompts, provenance, acceptance_reference=None)
             "stats_only": args.stats_only,
             "acceptance_audit": args.acceptance_audit,
             "acceptance_trace": bool(getattr(args, "acceptance_trace", False)),
+            "confidence_threshold": confidence_threshold,
             "nothink": args.nothink,
         },
         "binary": file_metadata(args.binary), "base_model": file_metadata(args.model),

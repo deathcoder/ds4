@@ -11,6 +11,10 @@ import run_dspark_humaneval_acceptance as corpus
 import run_dspark_issue468_comparison as common
 
 
+SCHEDULER_THRESHOLD = "0.455"
+SCHEDULER_RETENTION_FLOOR = "0.975"
+
+
 def parse_args():
     root = Path(__file__).resolve().parent.parent
     parser = argparse.ArgumentParser(
@@ -36,6 +40,12 @@ def parse_args():
         default=root / "speed-bench/humaneval-acceptance",
     )
     parser.add_argument("--acceptance-reference", type=Path)
+    parser.add_argument(
+        "--confidence-scheduler",
+        action="store_true",
+        help="run the frozen confidence-prefix gate at threshold 0.455",
+    )
+    parser.add_argument("--scheduler-reference", type=Path)
     parser.add_argument("--ctx", type=int, default=16384)
     parser.add_argument("--tokens", type=int, default=128)
     parser.add_argument("--sample-count", type=int, default=32)
@@ -55,6 +65,19 @@ def parse_args():
         parser.error("refusing to benchmark without --confirm-ready")
     if not args.dry_run and args.acceptance_reference is None:
         parser.error("--acceptance-reference is required for a measured run")
+    if args.confidence_scheduler:
+        if args.sample_count != 32:
+            parser.error("the confidence-scheduler gate requires sample-count 32")
+        if args.acceptance_reference is None:
+            parser.error(
+                "--acceptance-reference is required with --confidence-scheduler"
+            )
+        if args.scheduler_reference is None:
+            parser.error(
+                "--scheduler-reference is required with --confidence-scheduler"
+            )
+    elif args.scheduler_reference is not None:
+        parser.error("--scheduler-reference requires --confidence-scheduler")
 
     # Attributes consumed by the shared command, execution, and metadata paths.
     args.nothink = True
@@ -63,6 +86,9 @@ def parse_args():
     args.stats_only = False
     args.stats_pass = False
     args.acceptance_audit = False
+    args.confidence_threshold = (
+        SCHEDULER_THRESHOLD if args.confidence_scheduler else None
+    )
     args.pairs = 1
     args.warmups = 0
     return args, root
@@ -150,6 +176,93 @@ def load_acceptance_reference(args, selection, provenance):
     }
 
 
+def validate_scheduler_summary(summary):
+    if summary.get("analysis") != "deepspec_confidence_prefix_local_counterfactual":
+        raise ValueError("scheduler reference has the wrong analysis kind")
+    if summary.get("samples") != 32 or summary.get("block_size") != 5:
+        raise ValueError(
+            "scheduler reference does not describe the frozen 32-task K=5 study"
+        )
+    in_sample = summary.get("in_sample_policies", {}).get(
+        SCHEDULER_RETENTION_FLOOR, {}
+    )
+    leave_one_out = summary.get("leave_one_task_out", {}).get(
+        SCHEDULER_RETENTION_FLOOR, {}
+    )
+    expected = {
+        "in-sample threshold": (in_sample.get("threshold"), 0.455891937),
+        "held-out threshold median": (
+            leave_one_out.get("threshold_median"), 0.455
+        ),
+        "held-out threshold minimum": (
+            leave_one_out.get("threshold_minimum"), 0.455
+        ),
+        "held-out threshold maximum": (
+            leave_one_out.get("threshold_maximum"), 0.460
+        ),
+    }
+    for label, (actual, wanted) in expected.items():
+        if not isinstance(actual, (int, float)) or abs(actual - wanted) > 1e-9:
+            raise ValueError(f"scheduler reference {label} mismatch")
+    if leave_one_out.get("retention_floor") != 0.975:
+        raise ValueError("scheduler reference retention floor mismatch")
+    return {
+        "threshold": SCHEDULER_THRESHOLD,
+        "retention_floor": 0.975,
+        "in_sample": in_sample,
+        "leave_one_task_out": leave_one_out,
+    }
+
+
+def load_scheduler_reference(args, acceptance_reference, selection):
+    if not args.confidence_scheduler:
+        return None
+    summary_path = args.scheduler_reference.resolve()
+    if not summary_path.is_file():
+        raise SystemExit(f"missing scheduler reference: {summary_path}")
+    try:
+        summary = json.loads(summary_path.read_text(encoding="utf-8"))
+        policy = validate_scheduler_summary(summary)
+        source_run = Path(summary["source_run"]).resolve()
+        trace_summary_path = source_run / "summary.json"
+        trace_metadata_path = source_run / "metadata.json"
+        trace_summary = json.loads(
+            trace_summary_path.read_text(encoding="utf-8")
+        )
+        trace_metadata = json.loads(
+            trace_metadata_path.read_text(encoding="utf-8")
+        )
+    except (KeyError, OSError, json.JSONDecodeError, ValueError) as exc:
+        raise SystemExit(f"invalid scheduler reference: {exc}") from exc
+
+    expected_acceptance = acceptance_reference["summary_path"].resolve()
+    trace_reference = trace_summary.get("trace_reference")
+    if (
+        trace_reference is None or
+        Path(trace_reference).resolve() != expected_acceptance
+    ):
+        raise SystemExit("scheduler trace does not derive from the acceptance reference")
+    protocol = trace_summary.get("protocol", {})
+    if protocol.get("selection") != selection:
+        raise SystemExit("scheduler trace selection mismatch")
+    if protocol.get("confidence_scheduler") is not False:
+        raise SystemExit("scheduler trace must come from fixed K=5 proposals")
+    if trace_metadata.get("experiment") != (
+        "deepspec_humaneval_confidence_scheduler_trace"
+    ):
+        raise SystemExit("scheduler trace metadata experiment mismatch")
+    config = trace_metadata.get("config", {})
+    if not config.get("acceptance_trace") or not config.get("acceptance_audit"):
+        raise SystemExit("scheduler trace metadata lacks acceptance tracing")
+    return {
+        "summary_path": summary_path,
+        "summary": summary,
+        "trace_summary_path": trace_summary_path,
+        "trace_metadata_path": trace_metadata_path,
+        "policy": policy,
+    }
+
+
 def warmup_schedule(records):
     if len(records) == 1:
         return ((records[0], ("baseline", "runtime")),)
@@ -181,7 +294,7 @@ def pearson_correlation(xs, ys):
     ) / denominator
 
 
-def summarize(rows, records, acceptance_reference):
+def summarize(rows, records, acceptance_reference, scheduler_reference=None):
     samples = {}
     ratios = []
     acceptance_rates = []
@@ -210,7 +323,7 @@ def summarize(rows, records, acceptance_reference):
         }
     quartiles = statistics.quantiles(ratios, n=4, method="inclusive")
     median_ratio = statistics.median(ratios)
-    return {
+    result = {
         "sample_count": len(records),
         "samples": samples,
         "baseline_generation_tps_median": statistics.median(baseline_values),
@@ -235,17 +348,43 @@ def summarize(rows, records, acceptance_reference):
         ),
         "paired_ratio_values": ratios,
     }
+    result["confidence_scheduler"] = scheduler_reference is not None
+    result["confidence_threshold"] = (
+        SCHEDULER_THRESHOLD if scheduler_reference else None
+    )
+    if scheduler_reference:
+        result["scheduler_reference"] = {
+            "summary_path": str(scheduler_reference["summary_path"]),
+            "retention_floor": scheduler_reference["policy"]["retention_floor"],
+            "in_sample_progress_retention": (
+                scheduler_reference["policy"]["in_sample"]
+                ["progress_retention"]
+            ),
+            "held_out_progress_retention": (
+                scheduler_reference["policy"]["leave_one_task_out"]
+                ["progress_retention"]
+            ),
+        }
+    return result
 
 
-def render_report(summary, acceptance_reference):
+def render_report(summary, acceptance_reference, scheduler_reference=None):
+    runtime_label = (
+        f"DSpark threshold {SCHEDULER_THRESHOLD}"
+        if scheduler_reference else "DSpark"
+    )
     lines = [
-        "# DSpark HumanEval Paired Throughput",
+        (
+            "# DSpark HumanEval Scheduled Throughput"
+            if scheduler_reference else "# DSpark HumanEval Paired Throughput"
+        ),
         "",
         "All samples are uninstrumented and paired within the same HumanEval task.",
         "Every exact DSpark output matched its baseline byte-for-byte.",
         "Generation t/s excludes process startup; paired ratios are the primary metric.",
         "",
-        "| samples | baseline median | DSpark median | ratio of medians | median paired ratio | geometric mean | median delta |",
+        f"| samples | baseline median | {runtime_label} median | "
+        "ratio of medians | median paired ratio | geometric mean | median delta |",
         "|---:|---:|---:|---:|---:|---:|---:|",
         f"| {summary['sample_count']} | "
         f"{summary['baseline_generation_tps_median']:.2f} t/s | "
@@ -260,7 +399,7 @@ def render_report(summary, acceptance_reference):
         f"{summary['paired_ratio_q3']:.4f}x",
         f"- Paired-ratio range: {summary['paired_ratio_minimum']:.4f}x-"
         f"{summary['paired_ratio_maximum']:.4f}x",
-        f"- Tasks faster/equal/slower with DSpark: "
+        f"- Tasks faster/equal/slower with {runtime_label}: "
         f"{summary['runtime_faster_tasks']}/"
         f"{summary['runtime_equal_tasks']}/"
         f"{summary['runtime_slower_tasks']}",
@@ -273,7 +412,8 @@ def render_report(summary, acceptance_reference):
         "",
         "## Tasks",
         "",
-        "| sample | source index | order | acceptance | baseline | DSpark | ratio | delta |",
+        f"| sample | source index | order | acceptance | baseline | "
+        f"{runtime_label} | ratio | delta |",
         "|---|---:|:---|---:|---:|---:|---:|---:|",
     ]
     for label, item in summary["samples"].items():
@@ -287,17 +427,45 @@ def render_report(summary, acceptance_reference):
         )
     if acceptance_reference:
         aggregate = acceptance_reference["summary"]["aggregate"]
+        lines.extend(["", "## Separate Acceptance Gate", ""])
+        if scheduler_reference:
+            lines.extend([
+                f"The prior fixed-K {acceptance_reference['summary']['sample_count']}"
+                f"-sample audit freezes task selection and supplies acceptance "
+                f"context: {aggregate['proposals']} proposal rounds, accepted "
+                f"length {aggregate['paper_acceptance_length']:.3f}, verify rate "
+                f"{aggregate['paper_verify_rate']:.3f}, and full acceptance "
+                f"{aggregate['full_accept_rate']:.1%}.",
+                "Scheduling changes later proposal boundaries, so those fixed-K "
+                "counts are not claimed as scheduled-runtime acceptance results.",
+            ])
+        else:
+            lines.append(
+                f"The validated uninstrumented workload matches the prior "
+                f"{acceptance_reference['summary']['sample_count']}-sample audit: "
+                f"{aggregate['proposals']} proposal rounds, accepted length "
+                f"{aggregate['paper_acceptance_length']:.3f}, verify rate "
+                f"{aggregate['paper_verify_rate']:.3f}, and full acceptance "
+                f"{aggregate['full_accept_rate']:.1%}."
+            )
+        lines.append(
+            "Acceptance instrumentation was not enabled during this throughput run."
+        )
+    if scheduler_reference:
+        policy = scheduler_reference["policy"]
         lines.extend([
             "",
-            "## Separate Acceptance Gate",
+            "## Frozen Scheduler Gate",
             "",
-            f"The validated uninstrumented workload matches the prior "
-            f"{acceptance_reference['summary']['sample_count']}-sample audit: "
-            f"{aggregate['proposals']} proposal rounds, accepted length "
-            f"{aggregate['paper_acceptance_length']:.3f}, verify rate "
-            f"{aggregate['paper_verify_rate']:.3f}, and full acceptance "
-            f"{aggregate['full_accept_rate']:.1%}.",
-            "Acceptance instrumentation was not enabled during this throughput run.",
+            f"The runtime uses the predeclared threshold `{SCHEDULER_THRESHOLD}` "
+            f"from the separate {policy['retention_floor']:.1%}-retention study. "
+            f"Its offline in-sample progress retention was "
+            f"{policy['in_sample']['progress_retention']:.3f}; this throughput "
+            "run does not reuse that proxy as a speed result.",
+            "The offline study was a local counterfactual, not an exact replay; "
+            "this run measures the policy's actual changed proposal sequence.",
+            "The complete five-row sidecar block is still computed; only the "
+            "exact target-verification prefix is scheduled.",
         ])
     lines.extend([
         "",
@@ -317,6 +485,9 @@ def run_pair(args, root, run_dir, label, record, prompt, order):
         row, output = common.execute(
             args, root, run_dir, label, record["label"], prompt,
             mode, reference,
+            confidence_threshold=(
+                args.confidence_threshold if mode == "runtime" else None
+            ),
         )
         reference = output
         row.update(
@@ -340,10 +511,17 @@ def main():
     acceptance_reference = load_acceptance_reference(
         args, selection, provenance
     )
+    scheduler_reference = load_scheduler_reference(
+        args, acceptance_reference, selection
+    )
 
     stamp = dt.datetime.now().astimezone().strftime("%Y%m%d-%H%M%S")
+    run_prefix = (
+        "humaneval-scheduler-throughput"
+        if scheduler_reference else "humaneval-throughput"
+    )
     default_dir = root / (
-        f"speed-bench/local-runs/humaneval-throughput-"
+        f"speed-bench/local-runs/{run_prefix}-"
         f"{args.sample_count}-{stamp}"
     )
     run_dir = (args.output_dir or default_dir).resolve()
@@ -351,10 +529,15 @@ def main():
     for position, record in enumerate(records, start=1):
         order = measured_order(position)
         prompt = prompts[record["label"]]
+        baseline_command = common.command_text(args, prompt, "baseline")
+        runtime_command = common.command_text(
+            args, prompt, "runtime",
+            confidence_threshold=args.confidence_threshold,
+        )
         print(
             f"{record['label']} measured order: {' -> '.join(order)}\n"
-            f"  baseline: {common.command_text(args, prompt, 'baseline')}\n"
-            f"  runtime:  {common.command_text(args, prompt, 'runtime')}"
+            f"  baseline: {baseline_command}\n"
+            f"  runtime:  {runtime_command}"
         )
     print(
         f"HumanEval throughput: {args.sample_count} uninstrumented paired tasks, "
@@ -365,6 +548,11 @@ def main():
             "Acceptance reference: "
             f"{acceptance_reference['summary_path']}"
         )
+    if scheduler_reference:
+        print(
+            f"Scheduler reference: {scheduler_reference['summary_path']}\n"
+            f"Frozen confidence threshold: {SCHEDULER_THRESHOLD}"
+        )
     if args.dry_run:
         print("Dry run only; no prompts materialized and no model execution performed.")
         return 0
@@ -374,7 +562,10 @@ def main():
     metadata = common.collect_metadata(
         args, root, prompts, provenance, acceptance_reference=None
     )
-    metadata["experiment"] = "deepspec_humaneval_paired_throughput"
+    metadata["experiment"] = (
+        "deepspec_humaneval_confidence_scheduler_throughput"
+        if scheduler_reference else "deepspec_humaneval_paired_throughput"
+    )
     metadata["experiment_selection"] = selection
     metadata["throughput_schedule"] = {
         "global_warmup_samples": [
@@ -391,6 +582,18 @@ def main():
         "summary": common.file_metadata(acceptance_reference["summary_path"]),
         "metadata": common.file_metadata(acceptance_reference["metadata_path"]),
     }
+    if scheduler_reference:
+        metadata["scheduler_reference"] = {
+            "summary": common.file_metadata(scheduler_reference["summary_path"]),
+            "trace_summary": common.file_metadata(
+                scheduler_reference["trace_summary_path"]
+            ),
+            "trace_metadata": common.file_metadata(
+                scheduler_reference["trace_metadata_path"]
+            ),
+            "threshold": SCHEDULER_THRESHOLD,
+            "retention_floor": scheduler_reference["policy"]["retention_floor"],
+        }
     (run_dir / "metadata.start.json").write_text(
         json.dumps(metadata, indent=2) + "\n", encoding="utf-8"
     )
@@ -423,7 +626,9 @@ def main():
     common.write_csv(
         run_dir / "warmups.csv", warmup_rows, fields[1:]
     )
-    summary = summarize(measured_rows, records, acceptance_reference)
+    summary = summarize(
+        measured_rows, records, acceptance_reference, scheduler_reference
+    )
     summary["selection"] = selection
     summary["acceptance_reference"] = {
         "summary_path": str(acceptance_reference["summary_path"]),
@@ -432,7 +637,7 @@ def main():
     (run_dir / "summary.json").write_text(
         json.dumps(summary, indent=2) + "\n", encoding="utf-8"
     )
-    report = render_report(summary, acceptance_reference)
+    report = render_report(summary, acceptance_reference, scheduler_reference)
     (run_dir / "summary.md").write_text(report, encoding="utf-8")
     common.finish_metadata(metadata, root, run_dir)
     print("\n" + report.rstrip())

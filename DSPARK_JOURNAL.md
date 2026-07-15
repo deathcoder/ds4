@@ -8,6 +8,15 @@ particular DSpark change exists.
 
 Branch: `codex/dspark-observability-0`
 
+Phase 0.99 is prepared but not benchmarked. The frozen 32-task HumanEval
+throughput runner now has a provenance-checked `--confidence-scheduler` mode
+that permits only threshold `0.455`. It requires both the Phase 0.90 acceptance
+artifact and Phase 0.97 scheduler study, verifies that the latter derives from
+the former and selected `0.455` at the held-out `97.5%` retention floor, then
+pairs a fresh ordinary target baseline with exact scheduled DSpark on every
+task. The user must run the 68-child gate on the quietest practical machine.
+Do not tune or promote before that result.
+
 Phase 0.98 is complete. Its clean, uninstrumented runtime gate found a stable
 confidence-scheduler win on both predeclared HumanEval tasks. Threshold `0.38`
 won all six pairs with aggregate median `1.0695x`; threshold `0.455` won all six
@@ -5820,6 +5829,43 @@ Phase 0.98 user-run result on 2026-07-15:
   instrumentation. Compare that end-to-end result with Phase 0.94's fixed-K
   `0.6840x` median paired ratio, but use the new within-run baseline/scheduled
   ratios as the authoritative measurement.
+
+Phase 0.99 full scheduled HumanEval gate prepared on 2026-07-15:
+
+- `speed-bench/run_dspark_issue468_comparison.py` now accepts an optional
+  runtime-only confidence threshold in its shared environment, command, execute,
+  and metadata paths. Baselines reject the threshold, invalid/non-finite values
+  reject before execution, and the variable remains absent when the option is
+  unused.
+- `speed-bench/run_dspark_humaneval_throughput.py --confidence-scheduler`
+  reuses the exact Phase 0.94 corpus selection, pair order, warmups, cooldown,
+  byte-equality gate, and reporting. It hardcodes threshold `0.455`; there is no
+  throughput-facing threshold argument to tune.
+- `--scheduler-reference` must be the 32-task Phase 0.97 study. The runner
+  validates analysis kind, K=5, in-sample threshold `0.455891937`, held-out
+  threshold median/range `0.455`/`0.455-0.460`, retention floor `0.975`, trace
+  metadata, selection, and derivation from the supplied acceptance reference.
+- The default schedule has four excluded warmup children and 64 measured
+  children: one ordinary-baseline/scheduled-runtime pair on each of 32 tasks,
+  with alternating order and no instrumentation.
+- The new within-run scheduled/baseline ratio is authoritative. Compare it
+  descriptively with Phase 0.94's fixed-K `0.6840x`, but do not form a synthetic
+  fixed-to-scheduled ratio from runs collected at different times.
+
+Phase 0.99 user-run command:
+
+```sh
+python3 speed-bench/run_dspark_humaneval_throughput.py \
+  --confirm-ready \
+  --confidence-scheduler \
+  --scheduler-reference \
+  speed-bench/local-runs/humaneval-scheduler-trace-32-20260715-165938/scheduler_summary.json \
+  --acceptance-reference \
+  speed-bench/local-runs/humaneval-acceptance-32-20260715-121045/summary.json
+```
+
+Do not run this benchmark automatically. The user will run it with the machine
+as idle as practical and return `summary.md` or its printed summary.
 
 Phase 0.52 checks:
 

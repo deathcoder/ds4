@@ -10,6 +10,8 @@ import unittest
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "speed-bench"))
 import analyze_dspark_confidence_scheduler as scheduler  # noqa: E402
 import run_dspark_humaneval_scheduler_ablation as ablation  # noqa: E402
+import run_dspark_humaneval_throughput as throughput  # noqa: E402
+import run_dspark_issue468_comparison as common  # noqa: E402
 
 
 class ConfidenceSchedulerTests(unittest.TestCase):
@@ -121,6 +123,65 @@ class ConfidenceSchedulerAblationTests(unittest.TestCase):
             summary["aggregate"]["threshold_0455"]["paired_ratio_median"],
             0.9,
         )
+
+
+class ConfidenceSchedulerThroughputTests(unittest.TestCase):
+    @staticmethod
+    def scheduler_summary():
+        return {
+            "analysis": "deepspec_confidence_prefix_local_counterfactual",
+            "samples": 32,
+            "block_size": 5,
+            "in_sample_policies": {
+                "0.975": {
+                    "threshold": 0.455891937,
+                    "progress_retention": 0.976,
+                }
+            },
+            "leave_one_task_out": {
+                "0.975": {
+                    "retention_floor": 0.975,
+                    "threshold_median": 0.455,
+                    "threshold_minimum": 0.455,
+                    "threshold_maximum": 0.460,
+                    "progress_retention": 0.975,
+                }
+            },
+        }
+
+    def test_shared_runtime_env_sets_only_requested_threshold(self):
+        env = common.benchmark_env(
+            "runtime", False, confidence_threshold="0.455"
+        )
+        self.assertEqual(env["DS4_DSPARK_CONFIDENCE_THRESHOLD"], "0.455")
+        self.assertNotIn("DS4_DSPARK_GPU_RUNTIME_STATS", env)
+        baseline = common.benchmark_env("baseline", False)
+        self.assertNotIn("DS4_DSPARK_CONFIDENCE_THRESHOLD", baseline)
+
+    def test_shared_env_rejects_invalid_thresholds(self):
+        for threshold in ("bad", "nan", "inf", "-0.1", "1.1"):
+            with self.subTest(threshold=threshold):
+                with self.assertRaises(ValueError):
+                    common.benchmark_env(
+                        "runtime", False, confidence_threshold=threshold
+                    )
+        with self.assertRaisesRegex(ValueError, "runtime mode"):
+            common.benchmark_env(
+                "baseline", False, confidence_threshold="0.455"
+            )
+
+    def test_frozen_scheduler_reference_is_accepted(self):
+        policy = throughput.validate_scheduler_summary(
+            self.scheduler_summary()
+        )
+        self.assertEqual(policy["threshold"], "0.455")
+        self.assertEqual(policy["retention_floor"], 0.975)
+
+    def test_scheduler_reference_rejects_threshold_drift(self):
+        summary = self.scheduler_summary()
+        summary["leave_one_task_out"]["0.975"]["threshold_median"] = 0.46
+        with self.assertRaisesRegex(ValueError, "threshold median"):
+            throughput.validate_scheduler_summary(summary)
 
 
 if __name__ == "__main__":
