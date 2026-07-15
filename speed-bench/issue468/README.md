@@ -9,7 +9,9 @@ upstream token counts, byte sizes, and SHA-256 hashes.
 DSpark comparison report. It is reference data, not a claim that absolute t/s
 is portable across machines. The MTP results were single instrumented runs;
 the DSpark harness uses paired uninstrumented throughput samples and can run a
-separate diagnostic pass.
+separate diagnostic pass. `--stats-only` collects that pass without repeating
+the full paired benchmark: one fresh baseline reference and one instrumented
+exact runtime are run for each prompt, with byte-identical output required.
 
 The harness defaults to the exact DSpark target verifier. Its experimental
 `--fast-verifier` mode is known to diverge on this corpus and is retained only

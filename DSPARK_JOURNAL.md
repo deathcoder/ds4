@@ -4733,6 +4733,49 @@ Phase 0.84 user-run current-default rebaseline on 2026-07-15:
   requires byte-identical output, and reports the existing accepted-depth,
   target-eval, sidecar, and fallback fields.
 
+Phase 0.85 Issue 468 stats-only attribution prepared on 2026-07-15:
+
+- Added `--stats-only` to `run_dspark_issue468_comparison.py`, mutually
+  exclusive with the existing combined `--stats-pass`. It executes exactly six
+  child processes: one fresh uninstrumented baseline reference followed by one
+  stats-enabled exact DSpark runtime for each of the three pinned prompts. It
+  uses no warmups or throughput pairs.
+- Every instrumented runtime stdout must match its fresh prompt-specific
+  baseline byte-for-byte through the existing executor contract. Stats-only
+  child environments retain the Phase 0.84 isolation policy: baseline receives
+  no DS4 keys; runtime receives GPU runtime, multi-commit, and runtime stats.
+- Stats-only output goes to `issue468-stats-<timestamp>` and contains
+  `runs.csv`, `stats.csv`, `summary.json`, `summary.md`, start/final metadata,
+  and raw stdout/stderr. It deliberately does not create `throughput.csv` or
+  report instrumented t/s as performance evidence.
+- Expanded the stats summary for bottleneck selection. Per prompt it reports
+  accepted depth, target evals per emitted token, positions per eval, target
+  milliseconds per eval and emitted token, generation sidecar milliseconds per
+  emitted token, their accounted sum, sidecar bridge/stage/head/chain breakdown,
+  prefill sidecar time, avoided target evals, batch outcomes, source fallbacks,
+  fast-verifier outcomes, and accepted-depth counts.
+- Metadata records `execution_mode=stats_only`, zero warmups/pairs, and the
+  actual baseline-reference/stats-runtime commands. The old `--stats-pass`
+  path remains available and unchanged for combined runs.
+- Python syntax, stats-only dry-run command generation, poisoned-environment
+  isolation, stats-only/stats-pass mutual-exclusion rejection,
+  `git diff --check`, synthetic summary/report arithmetic, exact
+  baseline/runtime call
+  order, output-reference propagation, CSV/JSON/Markdown creation, and absence
+  of `throughput.csv` passed. Codex did not run the real stats attribution.
+
+Phase 0.85 user-run stats gate:
+
+```sh
+python3 speed-bench/run_dspark_issue468_comparison.py \
+  --confirm-ready --stats-only
+```
+
+Use this diagnostic to compare target-verifier and sidecar milliseconds per
+emitted token across all three long prompts. Do not interpret its printed
+instrumented t/s as throughput and do not begin another optimization until the
+three attribution rows are available.
+
 Phase 0.52 checks:
 
 ```sh
@@ -4830,8 +4873,9 @@ If continuing from a compacted context, start here:
   keep direct as default and legacy as fallback/control. Phase 0.84 hardened
   the Issue 468 runner against all inherited `DS4_*` state and rebaselined the
   accumulated current default. The aggregate ratio improved `7.0%` relative to
-  Phase 0.47 but remains only `0.5096x`. Next add a stats-only three-prompt pass
-  rather than repeating the full throughput table with `--stats-pass`.
+  Phase 0.47 but remains only `0.5096x`. Phase 0.85 added the stats-only
+  six-process diagnostic; the next gate is its user-run target/sidecar
+  attribution, without repeating the full throughput table.
 - The GPU stage path currently borrows target graph transient batch workspace
   and therefore requires `prefill_cap >= block_size` (five). Decide whether to
   allocate sidecar-specific batch scratch before production enablement or keep

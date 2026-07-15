@@ -412,8 +412,22 @@ All inherited `DS4_*` variables are cleared from every child process. Throughput
 runs enable only the GPU runtime and multi-commit, so Metal route controls,
 diagnostics, and runtime statistics cannot enter their medians. The inherited
 keys actually removed and the explicit child-environment policy are recorded in
-metadata. Add `--stats-pass` to run one separate
-instrumented runtime sample per prompt after all throughput measurements:
+metadata.
+
+After a completed throughput comparison, use `--stats-only` for attribution
+without repeating the paired benchmark. It runs one fresh uninstrumented
+baseline reference and one stats-enabled exact runtime per prompt, requires
+byte-identical output, omits throughput conclusions, and reports acceptance,
+target-verifier, sidecar, and fallback measurements:
+
+```sh
+python3 speed-bench/run_dspark_issue468_comparison.py \
+  --confirm-ready --stats-only
+```
+
+The older `--stats-pass` mode remains available when a single invocation should
+run the full throughput comparison and then append one instrumented runtime
+sample per prompt:
 
 ```sh
 python3 speed-bench/run_dspark_issue468_comparison.py \
@@ -423,7 +437,9 @@ python3 speed-bench/run_dspark_issue468_comparison.py \
 Every runtime and repeated baseline output must be byte-identical to that
 prompt's first baseline output. Raw streams, paired rows, machine snapshots,
 metadata, summaries, and optional stats go under the ignored
-`speed-bench/local-runs/issue468-<timestamp>/` directory.
+`speed-bench/local-runs/issue468-<timestamp>/` directory. Stats-only runs use
+`speed-bench/local-runs/issue468-stats-<timestamp>/` and write `runs.csv`,
+`stats.csv`, `summary.json`, and `summary.md`, but no `throughput.csv`.
 
 The fixtures and SHA-256 provenance live in `speed-bench/issue468/`, along with
 a frozen copy of the published MTP result table. The generated report compares

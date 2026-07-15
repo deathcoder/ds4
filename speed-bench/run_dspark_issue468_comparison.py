@@ -100,6 +100,11 @@ def parse_args():
     parser.add_argument("--cooldown", type=float, default=10.0)
     parser.add_argument("--stats-pass", action="store_true")
     parser.add_argument(
+        "--stats-only",
+        action="store_true",
+        help="run one baseline reference and one instrumented runtime per prompt",
+    )
+    parser.add_argument(
         "--fast-verifier", action="store_true",
         help="use the experimental compute-batched verifier (not correctness-safe on this corpus)",
     )
@@ -120,6 +125,8 @@ def parse_args():
         parser.error("refusing to benchmark without --confirm-ready")
     if args.fast_verifier and args.exact_head_batch:
         parser.error("--fast-verifier and --exact-head-batch are separate experiments")
+    if args.stats_only and args.stats_pass:
+        parser.error("--stats-only and --stats-pass are mutually exclusive")
     return args, root
 
 
@@ -273,6 +280,24 @@ def machine_snapshot(root):
 
 
 def collect_metadata(args, root, prompts, provenance):
+    commands = {}
+    for label, prompt in prompts.items():
+        if args.stats_only:
+            commands[label] = {
+                "baseline_reference": command_text(args, prompt, "baseline"),
+                "stats_runtime": command_text(
+                    args, prompt, "runtime", stats=True
+                ),
+            }
+        else:
+            commands[label] = {
+                mode: command_text(args, prompt, mode)
+                for mode in ("baseline", "runtime")
+            }
+            if args.stats_pass:
+                commands[label]["stats_runtime"] = command_text(
+                    args, prompt, "runtime", stats=True
+                )
     return {
         "created_at": dt.datetime.now().astimezone().isoformat(),
         "git_commit": git_output(root, "rev-parse", "HEAD"),
@@ -299,23 +324,23 @@ def collect_metadata(args, root, prompts, provenance):
             ],
         },
         "config": {
-            "ctx": args.ctx, "tokens": args.tokens, "pairs": args.pairs,
-            "warmups_per_mode_per_prompt": args.warmups,
+            "ctx": args.ctx, "tokens": args.tokens,
+            "pairs": 0 if args.stats_only else args.pairs,
+            "warmups_per_mode_per_prompt": 0 if args.stats_only else args.warmups,
             "cooldown_seconds": args.cooldown, "temperature": 0, "seed": 1,
             "fast_verifier": args.fast_verifier,
             "exact_head_batch": args.exact_head_batch,
-            "throughput_instrumentation": False, "stats_pass": args.stats_pass,
+            "execution_mode": "stats_only" if args.stats_only else "throughput",
+            "throughput_instrumentation": False,
+            "runtime_instrumentation": args.stats_only or args.stats_pass,
+            "stats_pass": args.stats_pass,
+            "stats_only": args.stats_only,
             "nothink": False,
         },
         "binary": file_metadata(args.binary), "base_model": file_metadata(args.model),
         "dspark_model": file_metadata(args.dspark_model), "provenance": provenance,
         "prompts": {label: file_metadata(path) for label, path in prompts.items()},
-        "commands": {
-            label: {
-                mode: command_text(args, prompt, mode)
-                for mode in ("baseline", "runtime")
-            } for label, prompt in prompts.items()
-        },
+        "commands": commands,
     }
 
 
@@ -365,18 +390,86 @@ def summarize_stats(rows):
     for row in rows:
         emitted = row["emitted"]
         target_evals = row["target_evals"]
+        target_ms_per_emitted = row["target_eval_ms"] / emitted
+        sidecar_ms_per_emitted = row["generation_sidecar_ms"] / emitted
         summary[row["prompt"]] = {
+            "emitted": emitted,
             "average_accepted_depth": row["avg_depth"],
             "target_evals_avoided": row["target_evals_avoided"],
             "target_evals_per_emitted": target_evals / emitted,
             "target_positions_per_eval": row["target_eval_tokens"] / target_evals,
-            "generation_sidecar_ms_per_emitted": row["generation_sidecar_ms"] / emitted,
-            "target_eval_ms_per_emitted": row["target_eval_ms"] / emitted,
+            "target_eval_ms_per_eval": row["target_eval_ms"] / target_evals,
+            "target_eval_ms_per_emitted": target_ms_per_emitted,
+            "generation_sidecar_ms_per_emitted": sidecar_ms_per_emitted,
+            "accounted_generation_ms_per_emitted": (
+                target_ms_per_emitted + sidecar_ms_per_emitted
+            ),
+            "generation_bridge_ms_per_emitted": row["generation_bridge_ms"] / emitted,
+            "generation_stage0_ms_per_emitted": row["generation_stage0_ms"] / emitted,
+            "generation_stage1_ms_per_emitted": row["generation_stage1_ms"] / emitted,
+            "generation_stage2_ms_per_emitted": row["generation_stage2_ms"] / emitted,
+            "generation_head_ms_per_emitted": row["generation_head_ms"] / emitted,
+            "generation_chain_ms_per_emitted": row["generation_chain_ms"] / emitted,
+            "prefill_sidecar_ms": row["prefill_sidecar_ms"],
+            "batch_attempts": row["batch_attempts"],
+            "batch_full": row["batch_full"],
+            "batch_partial": row["batch_partial"],
             "fast_calls": row["fast_calls"], "fast_failures": row["fast_failures"],
             "fast_exact_fallbacks": row["fast_exact_fallbacks"],
             "batch_fallbacks": row["batch_fallbacks"],
+            "source_fallbacks": row["source_fallbacks"],
+            "depth_counts": {
+                str(depth): row[f"depth{depth}"] for depth in range(1, 6)
+            },
         }
     return summary
+
+
+def render_stats_report(summary):
+    lines = [
+        "# DSpark Issue 468 Stats-Only Summary",
+        "",
+        "Instrumented diagnostic only. Throughput values are intentionally omitted.",
+        "Each runtime output matched a fresh uninstrumented baseline reference.",
+        "",
+        "| prompt | depth | evals/emitted | positions/eval | target ms/emitted | sidecar ms/emitted | accounted ms/emitted | fallbacks |",
+        "|---|---:|---:|---:|---:|---:|---:|---:|",
+    ]
+    for label in PROMPT_ORDER:
+        item = summary[label]
+        lines.append(
+            f"| {label} | {item['average_accepted_depth']:.3f} | "
+            f"{item['target_evals_per_emitted']:.4f} | "
+            f"{item['target_positions_per_eval']:.3f} | "
+            f"{item['target_eval_ms_per_emitted']:.3f} | "
+            f"{item['generation_sidecar_ms_per_emitted']:.3f} | "
+            f"{item['accounted_generation_ms_per_emitted']:.3f} | "
+            f"{item['batch_fallbacks']} |"
+        )
+    lines.extend(["", "Sidecar breakdown per emitted token:"])
+    for label in PROMPT_ORDER:
+        item = summary[label]
+        lines.append(
+            f"- {label}: bridge {item['generation_bridge_ms_per_emitted']:.3f} ms, "
+            f"stages {item['generation_stage0_ms_per_emitted']:.3f}/"
+            f"{item['generation_stage1_ms_per_emitted']:.3f}/"
+            f"{item['generation_stage2_ms_per_emitted']:.3f} ms, "
+            f"head {item['generation_head_ms_per_emitted']:.3f} ms, "
+            f"chain {item['generation_chain_ms_per_emitted']:.3f} ms"
+        )
+    lines.extend(["", "Verifier outcomes:"])
+    for label in PROMPT_ORDER:
+        item = summary[label]
+        lines.append(
+            f"- {label}: {item['target_evals_avoided']} target evals avoided; "
+            f"target {item['target_eval_ms_per_eval']:.3f} ms/eval; "
+            f"batches {item['batch_attempts']} attempts, {item['batch_full']} full, "
+            f"{item['batch_partial']} partial, {item['batch_fallbacks']} fallbacks; "
+            f"source fallbacks {item['source_fallbacks']}; "
+            f"fast {item['fast_calls']} calls/{item['fast_failures']} failures/"
+            f"{item['fast_exact_fallbacks']} exact fallbacks"
+        )
+    return "\n".join(lines) + "\n"
 
 
 def write_csv(path, rows, fields):
@@ -428,6 +521,50 @@ def render_report(summary, stats_summary=None):
     return "\n".join(lines) + "\n"
 
 
+def finish_metadata(metadata, root, run_dir):
+    metadata["finished_at"] = dt.datetime.now().astimezone().isoformat()
+    metadata["final_snapshot"] = machine_snapshot(root)
+    (run_dir / "metadata.json").write_text(
+        json.dumps(metadata, indent=2) + "\n", encoding="utf-8"
+    )
+
+
+def run_stats_only(args, root, run_dir, prompts, metadata):
+    runs = []
+    stats_rows = []
+    for prompt_label, prompt in prompts.items():
+        baseline_row, reference = execute(
+            args, root, run_dir, "reference", prompt_label, prompt,
+            "baseline", None,
+        )
+        runs.append(baseline_row)
+        cooldown(args.cooldown)
+        stats_row, _ = execute(
+            args, root, run_dir, "stats", prompt_label, prompt,
+            "runtime", reference, stats=True,
+        )
+        runs.append(stats_row)
+        stats_rows.append(stats_row)
+        cooldown(args.cooldown)
+
+    fields = (
+        "prompt", "mode", "prefill_tps", "generation_tps", "wall_seconds",
+        "stdout_sha256", "stdout_file", "stderr_file",
+    )
+    write_csv(run_dir / "runs.csv", runs, fields + STATS_FIELDS)
+    write_csv(run_dir / "stats.csv", stats_rows, fields + STATS_FIELDS)
+    summary = summarize_stats(stats_rows)
+    (run_dir / "summary.json").write_text(
+        json.dumps(summary, indent=2) + "\n", encoding="utf-8"
+    )
+    report = render_stats_report(summary)
+    (run_dir / "summary.md").write_text(report, encoding="utf-8")
+    finish_metadata(metadata, root, run_dir)
+    print("\n" + report.rstrip())
+    print(f"Raw stats: {run_dir / 'stats.csv'}")
+    return 0
+
+
 def main():
     args, root = parse_args()
     args.binary = args.binary.resolve()
@@ -437,9 +574,25 @@ def main():
     prompts, provenance, reference = load_inputs(args, root)
 
     for label, prompt in prompts.items():
-        print(f"{label} baseline: {command_text(args, prompt, 'baseline')}")
-        print(f"{label} runtime:  {command_text(args, prompt, 'runtime')}")
-    print("Throughput pass: all DSpark stats and diagnostic instrumentation are disabled.")
+        if args.stats_only:
+            print(
+                f"{label} baseline reference: "
+                f"{command_text(args, prompt, 'baseline')}"
+            )
+            print(
+                f"{label} stats runtime:     "
+                f"{command_text(args, prompt, 'runtime', stats=True)}"
+            )
+        else:
+            print(f"{label} baseline: {command_text(args, prompt, 'baseline')}")
+            print(f"{label} runtime:  {command_text(args, prompt, 'runtime')}")
+    if args.stats_only:
+        print(
+            "Stats-only pass: one fresh baseline reference and one instrumented "
+            "exact runtime per prompt; no throughput pairs."
+        )
+    else:
+        print("Throughput pass: all DSpark stats and diagnostic instrumentation are disabled.")
     if args.fast_verifier:
         print(
             "WARNING: fast verification is known to diverge on code_8k; "
@@ -457,10 +610,17 @@ def main():
         return 0
 
     stamp = dt.datetime.now().astimezone().strftime("%Y%m%d-%H%M%S")
-    run_dir = (args.output_dir or root / "speed-bench/local-runs" / f"issue468-{stamp}").resolve()
+    default_dir = (
+        f"issue468-stats-{stamp}" if args.stats_only else f"issue468-{stamp}"
+    )
+    run_dir = (
+        args.output_dir or root / "speed-bench/local-runs" / default_dir
+    ).resolve()
     run_dir.mkdir(parents=True, exist_ok=False)
     metadata = collect_metadata(args, root, prompts, provenance)
     (run_dir / "metadata.start.json").write_text(json.dumps(metadata, indent=2) + "\n", encoding="utf-8")
+    if args.stats_only:
+        return run_stats_only(args, root, run_dir, prompts, metadata)
 
     references = {}
     for prompt_label, prompt in prompts.items():
@@ -519,9 +679,7 @@ def main():
     (run_dir / "summary.json").write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
     report = render_report(summary, stats_summary)
     (run_dir / "summary.md").write_text(report, encoding="utf-8")
-    metadata["finished_at"] = dt.datetime.now().astimezone().isoformat()
-    metadata["final_snapshot"] = machine_snapshot(root)
-    (run_dir / "metadata.json").write_text(json.dumps(metadata, indent=2) + "\n", encoding="utf-8")
+    finish_metadata(metadata, root, run_dir)
     print("\n" + report.rstrip())
     print(f"Raw results: {run_dir / 'throughput.csv'}")
     return 0
