@@ -8,14 +8,15 @@ particular DSpark change exists.
 
 Branch: `codex/dspark-observability-0`
 
-Current work is Phase 0.73. The default exact Metal verifier batches the
-row-independent attention preparation and the exact FFN while retaining the
-cache-mutating attention core and output/HC suffix as serial one-token work.
-The Phase 0.71 profile identified that serial tail as the remaining largest
-layer component, especially in later layers. Phase 0.72 localized generic
-batch drift to projection B. Phase 0.73 adds a Metal row-batched form of the
-serial fused projection-B/HC kernel; the selected-layer observer proves the
-fused candidate is byte-exact through final HC. It is not authoritative yet.
+Current work is Phase 0.95. The exact Metal verifier now defaults to exact FFN
+batching, row-independent attention preparation, and the promoted 2-5-row Q8
+projection microbatch while retaining cache-mutating attention work in serial
+autoregressive row order. Phase 0.94 showed that the Q8 promotion improved
+absolute DSpark throughput on all 32 HumanEval tasks and raised the median
+paired ratio from `0.6456x` to `0.6840x`, but all tasks remain slower than
+baseline. Phase 0.95 prepares workload-aware synchronized attribution on one
+low-acceptance and one high-acceptance HumanEval task before choosing the next
+exact-verifier compute boundary.
 
 Historical Phase 0.38 was deliberately diagnostic: `--dspark FILE` validates an official
 DSpark drafter GGUF, binds every tensor needed by a future runtime path, checks
@@ -5461,6 +5462,51 @@ Phase 0.94 user-run result on 2026-07-15:
   verifier cost, but acceptance-dependent target verification remains the
   dominant end-to-end problem. Phase 0.94 is complete.
 
+Phase 0.95 HumanEval exact-runtime attribution prepared on 2026-07-15:
+
+- Added `run_dspark_humaneval_exact_profile.py` around the retained
+  synchronized exact-layer profiler. Its default tasks are
+  `humaneval_152`, the selected workload's low-acceptance/worst-ratio case
+  (`0.528`, `0.4541x`), and `humaneval_079`, a high-acceptance/best-ratio case
+  (`0.839`, `0.8134x`). Default layers remain first/middle/last: `0/21/42`.
+- The runner requires Phase 0.94's uninstrumented `summary.json`, validates its
+  protocol, model/binary paths, task pairs and equal hashes, then revalidates
+  prompt bytes against the frozen DeepSpec corpus. Every fresh reference and
+  synchronized profile must match the prior uninstrumented runtime stdout
+  byte-for-byte.
+- Extended `run_dspark_exact_layer_profile.py` with backward-compatible
+  `--nothink` command support and a private stats-only reference option. The
+  HumanEval reference enables runtime stats only to recover emitted tokens,
+  target evaluations, evaluated positions, avoided evaluations, multi-attempts
+  and accepted depth. The selected-layer processes disable stats and preserve
+  the existing synchronized attention-pre/serial-tail/exact-FFN boundaries.
+- Reports retain median synchronized cost per proposal row and add actual
+  synchronized component totals per emitted token. They also expose target
+  evals/emitted, positions/eval, profiled rows/emitted, profile coverage, and
+  low/high ratios for row cost, invocation amplification and emitted-token
+  cost. This separates arithmetic cost from low-acceptance repetition without
+  presenting profiler timings as throughput.
+- Python compilation, retained real runtime-stats parsing, synthetic
+  multi-layer/task summaries and reports, inherited-environment isolation, old
+  profiler dry-run compatibility, new artifact/protocol validation, command
+  generation, and `git diff --check` passed. In particular, an inherited
+  `DS4_DSPARK_EXACT_Q8_ROWS=0` is cleared from both tasks; the profile exercises
+  the promoted default. No model profile or performance run was executed by
+  Codex.
+
+Phase 0.95 user-run command:
+
+```sh
+python3 speed-bench/run_dspark_humaneval_exact_profile.py \
+  --confirm-ready \
+  --throughput-reference \
+  speed-bench/local-runs/humaneval-throughput-32-20260715-140901/summary.json
+```
+
+Eight child processes run: one stats-only exact reference and three
+synchronized layer profiles per task, with five-second cooldowns. Treat every
+reported time as attribution context only.
+
 Phase 0.52 checks:
 
 ```sh
@@ -5599,9 +5645,9 @@ If continuing from a compacted context, start here:
   next exact-verifier slice. That rerun improved the median paired ratio from
   `0.6456x` to `0.6840x`, with absolute DSpark throughput higher on all 32
   tasks, but every task remains slower than baseline. Phase 0.94 is complete;
-  the next phase should attribute promoted exact-runtime cost on representative
-  low- and high-acceptance HumanEval tasks before choosing another compute
-  batching boundary.
+  Phase 0.95 prepares promoted exact-runtime attribution on representative
+  low- and high-acceptance HumanEval tasks. Run its user gate before choosing
+  another compute batching boundary.
 - The GPU stage path currently borrows target graph transient batch workspace
   and therefore requires `prefill_cap >= block_size` (five). Decide whether to
   allocate sidecar-specific batch scratch before production enablement or keep

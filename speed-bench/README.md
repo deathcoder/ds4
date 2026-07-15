@@ -526,6 +526,33 @@ Absolute t/s is retained for context but should be collected only by the user
 with the machine as quiet and thermally stable as practical. Raw artifacts go
 under `speed-bench/local-runs/humaneval-throughput-32-<timestamp>/`.
 
+After a promoted-runtime throughput rerun, attribute exact-verifier cost on
+representative low- and high-acceptance HumanEval tasks with:
+
+```sh
+python3 speed-bench/run_dspark_humaneval_exact_profile.py \
+  --dry-run \
+  --throughput-reference \
+  speed-bench/local-runs/humaneval-throughput-32-<timestamp>/summary.json
+python3 speed-bench/run_dspark_humaneval_exact_profile.py \
+  --confirm-ready \
+  --throughput-reference \
+  speed-bench/local-runs/humaneval-throughput-32-<timestamp>/summary.json
+```
+
+The default tasks are `humaneval_152` (acceptance `0.528`, prior speed ratio
+`0.4541x`) and `humaneval_079` (acceptance `0.839`, prior speed ratio
+`0.8134x`). The runner validates both against the frozen corpus and supplied
+uninstrumented throughput artifact, then profiles layers 0, 21, and 42. A
+stats-only exact reference supplies emitted-token and target-evaluation counts;
+each synchronized layer run keeps stats disabled and measures attention
+preparation, the serial attention tail, and exact FFN. Every output must match
+the prior uninstrumented runtime output byte-for-byte. The report presents
+component medians per proposal row alongside synchronized totals per emitted
+token, making acceptance-driven invocation amplification visible without
+mislabeling profiler timings as throughput. Raw artifacts go under
+`speed-bench/local-runs/humaneval-exact-profile-<timestamp>/`.
+
 The older `--stats-pass` mode remains available when a single invocation should
 run the full throughput comparison and then append one instrumented runtime
 sample per prompt:

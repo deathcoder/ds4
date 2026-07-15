@@ -61,12 +61,14 @@ def cleared_env_keys(env):
     )
 
 
-def profile_env(layer=None):
+def profile_env(layer=None, runtime_stats=False):
     env = os.environ.copy()
     for key in cleared_env_keys(env):
         env.pop(key, None)
     env["DS4_DSPARK_GPU_RUNTIME"] = "1"
     env["DS4_DSPARK_MULTI_COMMIT"] = "1"
+    if runtime_stats:
+        env["DS4_DSPARK_GPU_RUNTIME_STATS"] = "1"
     if layer is not None:
         env["DS4_DSPARK_EXACT_LAYER_PROFILE"] = "1"
         env["DS4_DSPARK_EXACT_LAYER_PROFILE_LAYER"] = str(layer)
@@ -104,6 +106,7 @@ def parse_args():
     )
     parser.add_argument("--ctx", type=int, default=16384)
     parser.add_argument("--tokens", type=int, default=32)
+    parser.add_argument("--nothink", action="store_true")
     parser.add_argument("--layers", type=parse_layers)
     parser.add_argument("--cooldown", type=float, default=5.0)
     parser.add_argument("--output-dir", type=Path)
@@ -124,18 +127,22 @@ def parse_args():
 
 
 def command(args):
-    return [
+    result = [
         str(args.binary), "--backend", "metal", "--model", str(args.model),
         "--ctx", str(args.ctx), "-n", str(args.tokens), "--temp", "0",
         "--seed", "1", "--prompt-file", str(args.prompt_file),
-        "--dspark", str(args.dspark_model),
     ]
+    if args.nothink:
+        result.append("--nothink")
+    result.extend(("--dspark", str(args.dspark_model)))
+    return result
 
 
-def command_text(args, layer=None):
-    env = profile_env(layer)
+def command_text(args, layer=None, runtime_stats=False):
+    env = profile_env(layer, runtime_stats)
     keys = (
         "DS4_DSPARK_GPU_RUNTIME", "DS4_DSPARK_MULTI_COMMIT",
+        "DS4_DSPARK_GPU_RUNTIME_STATS",
         "DS4_DSPARK_EXACT_LAYER_PROFILE",
         "DS4_DSPARK_EXACT_LAYER_PROFILE_LAYER",
     )
@@ -205,14 +212,14 @@ def parse_profile(data, expected_layer, path):
     return rows
 
 
-def execute(args, root, run_dir, name, layer, reference):
+def execute(args, root, run_dir, name, layer, reference, runtime_stats=False):
     stdout_path = run_dir / f"{name}.stdout"
     stderr_path = run_dir / f"{name}.stderr"
-    print(f"[{name}] {command_text(args, layer)}", flush=True)
+    print(f"[{name}] {command_text(args, layer, runtime_stats)}", flush=True)
     started = time.monotonic()
     with stdout_path.open("wb") as stdout_fp, stderr_path.open("wb") as stderr_fp:
         completed = subprocess.run(
-            command(args), cwd=root, env=profile_env(layer),
+            command(args), cwd=root, env=profile_env(layer, runtime_stats),
             stdout=stdout_fp, stderr=stderr_fp, check=False,
         )
     wall_seconds = time.monotonic() - started
@@ -258,8 +265,9 @@ def validate_resume(run_dir, args):
     except (OSError, json.JSONDecodeError) as exc:
         raise RuntimeError(f"cannot read resume metadata: {exc}") from exc
     config = metadata.get("config", {})
-    if config.get("ctx") != args.ctx or config.get("tokens") != args.tokens:
-        raise RuntimeError("resume ctx/tokens do not match the retained run")
+    if (config.get("ctx") != args.ctx or config.get("tokens") != args.tokens or
+            config.get("nothink", False) != args.nothink):
+        raise RuntimeError("resume ctx/tokens/mode do not match the retained run")
     if tuple(config.get("components", ())) != EXACT_STAGES:
         raise RuntimeError("resume profile component contract is incompatible")
     prompt = metadata.get("prompt", {})
@@ -426,7 +434,8 @@ def main():
         "config": {"ctx": args.ctx, "tokens": args.tokens,
                    "layers": args.layers, "cooldown": args.cooldown,
                    "model_layer_count": n_layers,
-                   "temperature": 0, "seed": 1, "synchronized_profile": True,
+                   "temperature": 0, "seed": 1, "nothink": args.nothink,
+                   "synchronized_profile": True,
                    "components": EXACT_STAGES},
         "commands": {"reference": command_text(args)} | {
             f"layer_{layer}": command_text(args, layer) for layer in args.layers
