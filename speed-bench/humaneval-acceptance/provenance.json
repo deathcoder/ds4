@@ -1,0 +1,92 @@
+{
+  "dataset": "HumanEval",
+  "source_dataset": "openai/openai_humaneval",
+  "source_repository": "https://github.com/deepseek-ai/DeepSpec.git",
+  "source_commit": "005e03b81cec38b7da6399833d609ee89a2587f2",
+  "source_file": "eval_datasets/humaneval.jsonl",
+  "source_dataset_rows": 164,
+  "selection": {
+    "kind": "evenly_spaced_inclusive",
+    "sample_count": 8,
+    "indices_zero_based": [
+      0,
+      23,
+      47,
+      70,
+      93,
+      116,
+      140,
+      163
+    ],
+    "formula": "round(i * (N - 1) / (K - 1)) for i in range(K)"
+  },
+  "samples_file": "samples.jsonl",
+  "samples_file_bytes": 3995,
+  "samples_file_sha256": "e89ae925b92cbc67da20c732dbb9548feb7b38c977c52d3bcdcd20b5247888ac",
+  "samples": [
+    {
+      "label": "humaneval_000",
+      "source_index": 0,
+      "source_line": 1,
+      "source_line_sha256": "bcf2640f5c94be86f7614d165fc107564a003cb558cb9c69a0cc589bfa9ea695",
+      "prompt_bytes": 444,
+      "prompt_sha256": "d11f94bd83dff07d707b93e33c014c790a9316a72fc3f2cb4c4f854b373501d5"
+    },
+    {
+      "label": "humaneval_023",
+      "source_index": 23,
+      "source_line": 24,
+      "source_line_sha256": "a693725d7cad186877a259912d87b5ab056772e3f882f85ae8955eb6df86e9a6",
+      "prompt_bytes": 229,
+      "prompt_sha256": "8ceb93328a662330d70b9418dda1f4ce57a554195da87ffe160d3e435e61de38"
+    },
+    {
+      "label": "humaneval_047",
+      "source_index": 47,
+      "source_line": 48,
+      "source_line_sha256": "5fea8f1fb02c29a14422c16782aa423b78e1b28c8142e8a1be9e44b2b5c5ddff",
+      "prompt_bytes": 264,
+      "prompt_sha256": "261b44ac51a8eb70fae544429d2ffdbabb835703943a9b5412f0ba56ace41581"
+    },
+    {
+      "label": "humaneval_070",
+      "source_index": 70,
+      "source_line": 71,
+      "source_line_sha256": "73ab94e2db7999405d9d7b3fe402391293eda5dbcec32cf7cb7d91e3899b903f",
+      "prompt_bytes": 481,
+      "prompt_sha256": "0a6afd6a1a43535b95a565e4d938f004bc1a8cb7d496fb281f2f933ca49c44c1"
+    },
+    {
+      "label": "humaneval_093",
+      "source_index": 93,
+      "source_line": 94,
+      "source_line_sha256": "750c60ac4988732eb005412106bec9e937ae52e8f39b23ad24bcf68c282faf36",
+      "prompt_bytes": 511,
+      "prompt_sha256": "31e3c898320edef9419eb3a4d4763fcdbb3f6af63cf4079f5351e5bb90b3082f"
+    },
+    {
+      "label": "humaneval_116",
+      "source_index": 116,
+      "source_line": 117,
+      "source_line_sha256": "fd3ae4544f091067930b8392ac1e8b97b46d6928a2d26c66e333219db9d547c1",
+      "prompt_bytes": 558,
+      "prompt_sha256": "2e7340629c34d324f3197fee56cfe80100aa4f8d5337526ab760037274c76ae3"
+    },
+    {
+      "label": "humaneval_140",
+      "source_index": 140,
+      "source_line": 141,
+      "source_line_sha256": "03731c5c909d9329a3eccb64187bc649714e2828df1e59df2ddc1ff86431e413",
+      "prompt_bytes": 488,
+      "prompt_sha256": "f9e451bd03cf65f75f48cdc51d09f5b76312564348a1e3cbffce4f9ed1c6db99"
+    },
+    {
+      "label": "humaneval_163",
+      "source_index": 163,
+      "source_line": 164,
+      "source_line_sha256": "cc8b6bb8fbf7bb0a736ee75058a0e6ea44b1905418d26fd9012bb9c7ca2cc94b",
+      "prompt_bytes": 389,
+      "prompt_sha256": "21e9e4f3aca141dcb11a79b0eef46a484115515b938ebcb21196e509d28016c3"
+    }
+  ]
+}

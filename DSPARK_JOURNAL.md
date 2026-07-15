@@ -5012,6 +5012,62 @@ Phase 0.88 user-run non-thinking result on 2026-07-15:
   is the only new variable. Only after that result should we choose between a
   target-quantization control and proposal-path arithmetic validation.
 
+Phase 0.89 official-source HumanEval pilot prepared on 2026-07-15:
+
+- Inspected DeepSpec commit
+  `005e03b81cec38b7da6399833d609ee89a2587f2` and the DSpark paper source.
+  DeepSpec's HumanEval adapter wraps the original `openai/openai_humaneval`
+  prompt as `Write a solution ...` plus the Python code fence, stores that exact
+  string in `eval_datasets/humaneval.jsonl`, and passes `turns[0]` as one user
+  message with thinking disabled. Its Table 1 evaluator uses all 164 rows in
+  file order, up to 2048 output tokens, seed `980406`, temperature `1.0`, and
+  standard rejection sampling. The Qwen3/Gemma4 checkpoints use seven draft
+  tokens and no confidence scheduler.
+- Table 1's four DSpark HumanEval cells are `5.38/5.52/5.43/5.64` accepted
+  tokens including the target bonus. Their directional accepted-length range is
+  `5.38-5.64`; normalized by seven drafts plus one bonus, verify rate is
+  `0.672-0.705`. These are not V4-Flash pass/fail thresholds. The paper's V4
+  deployment section independently confirms that the released V4 design uses
+  a five-token maximum block, matching this sidecar.
+- Added `speed-bench/humaneval-acceptance/` with eight evenly spaced source rows
+  `0/23/47/70/93/116/140/163`. The frozen JSONL preserves the exact DeepSpec
+  `turns[0]` strings. Provenance pins repository, commit, source file, selection
+  formula, source-line hashes, and exact prompt byte hashes. The runner validates
+  all of it and materializes prompts without adding trailing newlines.
+- Added `run_dspark_humaneval_acceptance.py`. It reuses the Issue 468 runner's
+  exact execution, inherited-environment clearing, acceptance parser, and
+  baseline byte-equality checks. It runs eight baseline/runtime pairs in
+  non-thinking mode with the exact verifier and no default cooldown. It keeps
+  the current V4 isolation protocol fixed at five drafts, temperature zero, and
+  128 output tokens; no timing values enter its report or result CSV.
+- The report contains pooled proposal metrics, every sample's accepted length,
+  aggregate conditional/prefix acceptance and confidence by position, and the
+  directional official HumanEval range. It explicitly records the remaining
+  mismatches: 8 versus 164 samples, V4-Flash IQ2XXS versus Qwen3/Gemma4, five
+  versus seven drafts, 128 versus 2048 output tokens, and greedy versus
+  temperature-1.0 rejection sampling. It does not execute functional HumanEval
+  tests because this gate measures draft acceptance only.
+- Python syntax, corpus provenance, byte-exact materialization, dry-run command
+  construction, pooled aggregation using real saved audit records, official
+  HumanEval reference extraction, report rendering, and a synthetic end-to-end
+  16-process artifact flow passed. No model execution, throughput benchmark, or
+  timed profile was run by Codex.
+
+Phase 0.89 user-run gate:
+
+```sh
+python3 speed-bench/run_dspark_humaneval_acceptance.py --confirm-ready
+```
+
+This executes 16 child processes and should take several minutes; it has no
+throughput conclusion and does not require an idle machine. Compare the pooled
+verify rate first with the custom `code_8k` non-thinking result of `0.533`, then
+only directionally with Table 1's unmatched `0.672-0.705` HumanEval range. A
+clear increase would justify expanding the official corpus before changing the
+model path. A result near `0.533` or below would indicate that corpus/domain is
+not the main gap and make an unquantized or less aggressively quantized target
+control the next diagnostic.
+
 Phase 0.52 checks:
 
 ```sh
@@ -5123,9 +5179,11 @@ If continuing from a compacted context, start here:
   `--nothink` acceptance control against that exact thinking-high artifact.
   That control modestly improved code but substantially hurt synthesis and
   grounded; generation mode is not the general explanation. The next phase is
-  a small officially sourced code corpus in non-thinking mode, keeping the
-  current five-draft greedy protocol fixed before changing quantization or
-  proposal arithmetic.
+  Phase 0.89 prepared an eight-sample, byte-exact DeepSpec HumanEval pilot in
+  non-thinking mode while keeping the current five-draft greedy protocol fixed.
+  The next gate is its user-run command; compare pooled verify rate first with
+  `code_8k`'s `0.533`, then choose corpus expansion or a target-quantization
+  control from that result.
   Even perfect acceptance cannot win at the current target-position cost, so
   target batch efficiency remains a second required line of work.
 - The GPU stage path currently borrows target graph transient batch workspace
