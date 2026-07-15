@@ -5154,6 +5154,45 @@ expanding acceptance immediately and prepare a same-32-sample paired throughput
 study. Run all 164 acceptance samples only if the 32-sample result materially
 changes the eight-sample conclusion or shows unstable task-level behavior.
 
+Phase 0.90 user-run 32-sample result on 2026-07-15:
+
+- Raw results are in
+  `speed-bench/local-runs/humaneval-acceptance-32-20260715-121045`. Metadata
+  records clean commit `8334c06`, the expected 32-row inclusive selection from
+  the pinned 164-row corpus, exact non-thinking verification, no inherited
+  `DS4_*` environment, and byte-identical baseline/runtime output for every
+  task.
+- Across 1,023 valid proposal rounds, accepted length was `4.202` for the V4
+  five-draft block, pooled verify rate was `0.7004`, and 479 rounds fully
+  accepted all five drafts (`46.8%`). Verify rate is inside Table 1's unmatched
+  HumanEval directional range of `0.6725-0.7050`, near its upper endpoint. The
+  explanatory eight-position normalization is `5.603`, also inside Table 1's
+  `5.38-5.64` accepted-length range, but remains a normalization rather than a
+  block-seven measurement.
+- Task-level verify rates ranged from `0.510` to `0.861`; the unweighted mean
+  was `0.708`, median `0.728`, and 21 of 32 tasks individually met or exceeded
+  the paper range's lower endpoint. No task dominates the pooled result:
+  leave-one-task-out rates stay within `0.696-0.711`.
+- Four tasks overlap the earlier eight-sample pilot (`000/047/116/163`). Every
+  recorded scalar acceptance metric, including proposal/truncation counts,
+  reproduced exactly across the independent runs. This supports deterministic
+  corpus materialization, chat rendering, proposal generation, and audit
+  aggregation.
+- Aggregate conditional acceptance was `0.813/0.893/0.879/0.871/0.842` across
+  positions 1-5. Later positions remain uniformly strong; there is no suffix
+  decay or hidden failure that the eight-sample pilot missed. Raw conditional
+  confidence differs from observed acceptance by `+4.9/-1.4/-2.2/-4.3/-4.3`
+  points, while prefix confidence differs from survival by
+  `+4.9/+3.5/+1.5/-1.5/-2.6` points. Calibration is coherent without STS.
+- Decision: acceptance validation is complete at the current protocol. Do not
+  spend machine time on all 164 rows and do not reopen bridge, Markov,
+  rolling-window, quantization, or confidence-scheduler investigations without
+  new contradictory evidence. The next phase is a user-run, uninstrumented,
+  paired baseline-versus-exact-DSpark throughput study on this exact 32-task
+  selection. It must retain non-thinking, temperature zero, seed one, 128 output
+  tokens, byte-equality checks, and isolated child environments so acceptance
+  quality and performance refer to the same workload.
+
 Phase 0.52 checks:
 
 ```sh
@@ -5270,11 +5309,12 @@ If continuing from a compacted context, start here:
   Its user-run result reached `0.671` pooled verify rate across 254 rounds,
   essentially the unmatched paper range's `0.6725` lower bound and `13.8`
   points above `code_8k`. Phase 0.90 pinned all 164 official rows and made a
-  deterministic 32-sample expansion the default. The next gate is its user-run
-  command; if acceptance remains near the official directional range, move to a
-  same-32-sample throughput study rather than automatically running all 164.
-  Quantization and proposal arithmetic are no longer the leading acceptance
-  hypotheses.
+  deterministic 32-sample expansion the default. Its user-run result reached
+  `0.700` pooled verify rate across 1,023 rounds, with leave-one-task-out rates
+  of `0.696-0.711` and exact repeatability on four overlapping pilot tasks.
+  Acceptance validation is complete; do not run all 164. The next phase is an
+  uninstrumented paired throughput study on the same 32-task selection.
+  Quantization and proposal arithmetic are no longer leading hypotheses.
   Even perfect acceptance cannot win at the current target-position cost, so
   target batch efficiency remains a second required line of work.
 - The GPU stage path currently borrows target graph transient batch workspace
