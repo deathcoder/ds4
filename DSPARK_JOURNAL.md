@@ -5113,6 +5113,47 @@ Phase 0.89 user-run HumanEval result on 2026-07-15:
   near the paper's normalized range, use the same corpus for a user-run paired
   throughput study before considering a full 164-sample acceptance run.
 
+Phase 0.90 HumanEval scale ladder prepared on 2026-07-15:
+
+- Replaced the eight-row frozen subset with all 164 byte-exact turns from the
+  same pinned DeepSpec commit. Provenance now records and validates the complete
+  upstream file size/hash, every source index and line hash, every prompt's byte
+  size/hash, and the local 164-row JSONL size/hash. A direct checkout comparison
+  passed for every row.
+- Added `--sample-count`, defaulting to `32`. Selection uses the recorded
+  inclusive spacing formula over the complete source order. Count `8` exactly
+  reproduces indices `0/23/47/70/93/116/140/163`; count `32` selects
+  `0/5/11/16/21/26/32/37/42/47/53/58/63/68/74/79` and
+  `84/89/95/100/105/110/116/121/126/131/137/142/147/152/158/163`;
+  count `164` preserves every source row in order. Counts above the corpus size
+  are rejected.
+- Selection is stored separately in `experiment_selection` metadata and the
+  summary protocol, so every run identifies both the immutable full corpus and
+  the chosen scale. Run directories now include the count as
+  `humaneval-acceptance-<count>-<timestamp>`.
+- Updated report wording and corpus/benchmark documentation for dynamic sample
+  counts. The default 32-sample run executes 64 child processes. Based on the
+  user's 137-second eight-sample run, it should take roughly 9-12 minutes on the
+  same machine; there is no cooldown and no throughput conclusion.
+- Full-corpus provenance, 8/32/164 deterministic selection, 8- and 32-sample
+  dry runs, over-capacity rejection, Python syntax, and a synthetic 32-sample
+  end-to-end artifact flow passed. The synthetic flow covered 64 process rows,
+  exact prompt materialization, pooled sample/aggregate CSVs, all position rows,
+  metadata/summary selection identity, and report rendering. No model
+  execution, throughput benchmark, or timed profile was run by Codex.
+
+Phase 0.90 user-run gate:
+
+```sh
+python3 speed-bench/run_dspark_humaneval_acceptance.py --confirm-ready
+```
+
+Interpret pooled verify rate and the per-sample distribution first. If the
+32-sample result remains near the official directional normalized range, stop
+expanding acceptance immediately and prepare a same-32-sample paired throughput
+study. Run all 164 acceptance samples only if the 32-sample result materially
+changes the eight-sample conclusion or shows unstable task-level behavior.
+
 Phase 0.52 checks:
 
 ```sh
@@ -5228,10 +5269,12 @@ If continuing from a compacted context, start here:
   non-thinking mode while keeping the current five-draft greedy protocol fixed.
   Its user-run result reached `0.671` pooled verify rate across 254 rounds,
   essentially the unmatched paper range's `0.6725` lower bound and `13.8`
-  points above `code_8k`. The next phase is to pin all 164 official rows and add
-  a deterministic 32-sample expansion before a same-corpus user-run throughput
-  study. Quantization and proposal arithmetic are no longer the leading
-  acceptance hypotheses.
+  points above `code_8k`. Phase 0.90 pinned all 164 official rows and made a
+  deterministic 32-sample expansion the default. The next gate is its user-run
+  command; if acceptance remains near the official directional range, move to a
+  same-32-sample throughput study rather than automatically running all 164.
+  Quantization and proposal arithmetic are no longer the leading acceptance
+  hypotheses.
   Even perfect acceptance cannot win at the current target-position cost, so
   target batch efficiency remains a second required line of work.
 - The GPU stage path currently borrows target graph transient batch workspace

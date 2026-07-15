@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Audit exact DSpark acceptance on a frozen DeepSpec HumanEval pilot."""
+"""Audit exact DSpark acceptance on a frozen DeepSpec HumanEval corpus."""
 
 import argparse
 import datetime as dt
@@ -16,7 +16,7 @@ HUMANEVAL_CODE_POSITION = 1
 def parse_args():
     root = Path(__file__).resolve().parent.parent
     parser = argparse.ArgumentParser(
-        description="Run the frozen DeepSpec HumanEval DSpark acceptance pilot."
+        description="Run the frozen DeepSpec HumanEval DSpark acceptance study."
     )
     parser.add_argument("--binary", type=Path, default=root / "ds4")
     parser.add_argument(
@@ -39,14 +39,15 @@ def parse_args():
     )
     parser.add_argument("--ctx", type=int, default=16384)
     parser.add_argument("--tokens", type=int, default=128)
+    parser.add_argument("--sample-count", type=int, default=32)
     parser.add_argument("--cooldown", type=float, default=0.0)
     parser.add_argument("--output-dir", type=Path)
     parser.add_argument("--confirm-ready", action="store_true")
     parser.add_argument("--allow-dirty", action="store_true")
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
-    if args.ctx <= 0 or args.tokens <= 0:
-        parser.error("ctx and tokens must be positive")
+    if args.ctx <= 0 or args.tokens <= 0 or args.sample_count <= 0:
+        parser.error("ctx, tokens, and sample-count must be positive")
     if args.cooldown < 0:
         parser.error("cooldown cannot be negative")
     if not args.dry_run and not args.confirm_ready:
@@ -112,13 +113,14 @@ def load_corpus(args, root):
         ) from exc
 
     expected = provenance.get("samples", [])
-    if len(records) != provenance.get("selection", {}).get("sample_count"):
-        raise SystemExit("HumanEval sample count does not match selection metadata")
+    if len(records) != provenance.get("stored_rows"):
+        raise SystemExit("HumanEval sample count does not match stored-row metadata")
     if len(records) != len(expected):
         raise SystemExit("HumanEval sample count does not match provenance entries")
-    selected_indices = provenance.get("selection", {}).get("indices_zero_based")
-    if [record.get("source_index") for record in records] != selected_indices:
-        raise SystemExit("HumanEval samples do not match the recorded selection")
+    if len(records) != provenance.get("source_dataset_rows"):
+        raise SystemExit("HumanEval corpus is not the complete source dataset")
+    if [record.get("source_index") for record in records] != list(range(len(records))):
+        raise SystemExit("HumanEval source indices are not complete and ordered")
 
     labels = set()
     for record, item in zip(records, expected):
@@ -146,6 +148,32 @@ def load_corpus(args, root):
         ):
             raise SystemExit(f"HumanEval prompt provenance mismatch for {label}")
     return records, provenance
+
+
+def select_records(records, sample_count, selection_policy):
+    total = len(records)
+    if sample_count > total:
+        raise SystemExit(
+            f"sample-count {sample_count} exceeds HumanEval corpus size {total}"
+        )
+    if sample_count == total:
+        indices = list(range(total))
+    elif sample_count == 1:
+        indices = [0]
+    else:
+        indices = [
+            round(pos * (total - 1) / (sample_count - 1))
+            for pos in range(sample_count)
+        ]
+    if len(indices) != len(set(indices)):
+        raise RuntimeError("HumanEval selection produced duplicate indices")
+    selection = {
+        **selection_policy,
+        "source_rows": total,
+        "sample_count": sample_count,
+        "indices_zero_based": indices,
+    }
+    return [records[index] for index in indices], selection
 
 
 def prompt_paths(run_dir, records):
@@ -208,7 +236,7 @@ def humaneval_reference():
     }
 
 
-def summarize(rows, records, provenance, tokens):
+def summarize(rows, records, provenance, selection, tokens):
     by_label = {row["prompt"]: row["acceptance_audit"] for row in rows}
     samples = {}
     for record in records:
@@ -228,7 +256,7 @@ def summarize(rows, records, provenance, tokens):
             "source_repository": provenance["source_repository"],
             "source_commit": provenance["source_commit"],
             "source_file": provenance["source_file"],
-            "selection": provenance["selection"],
+            "selection": selection,
             "exact_deepspec_turn_content": True,
             "non_thinking": True,
             "confidence_scheduler": False,
@@ -245,8 +273,14 @@ def render_report(summary):
     aggregate = summary["aggregate"]
     reference = summary["official_reference"]
     tokens = summary["protocol"]["max_new_tokens"]
+    sample_count = summary["sample_count"]
+    selection_description = (
+        "all 164 samples"
+        if sample_count == 164 else
+        f"{sample_count} deterministically selected samples instead of all 164"
+    )
     lines = [
-        "# DSpark HumanEval Acceptance Pilot",
+        "# DSpark HumanEval Acceptance Study",
         "",
         "Correctness diagnostic only. Throughput values are intentionally omitted.",
         "Every exact DSpark output matched its fresh non-thinking baseline byte-for-byte.",
@@ -301,10 +335,10 @@ def render_report(summary):
         f"normalized verify-rate range of {reference['verify_rate_minimum']:.3f}-"
         f"{reference['verify_rate_maximum']:.3f}.",
         "",
-        "This pilot uses the byte-exact DeepSpec HumanEval user turns and "
+        "This run uses the byte-exact DeepSpec HumanEval user turns and "
         "non-thinking mode, with confidence scheduling disabled. It is not a "
-        "matched Table 1 reproduction: it uses eight evenly spaced samples "
-        "instead of all 164, the V4-Flash IQ2XXS target and its released "
+        f"matched Table 1 reproduction: it uses {selection_description}, the "
+        "V4-Flash IQ2XXS target and its released "
         "five-token DSpark sidecar instead of Qwen3/Gemma4 block-seven "
         f"checkpoints, {tokens} output tokens instead of 2048, and greedy "
         "decoding instead of temperature-1.0 rejection sampling. Treat the "
@@ -379,11 +413,15 @@ def main():
     args, root = parse_args()
     for name in ("binary", "model", "dspark_model", "corpus_dir"):
         setattr(args, name, getattr(args, name).resolve())
-    records, provenance = load_corpus(args, root)
+    all_records, provenance = load_corpus(args, root)
+    records, selection = select_records(
+        all_records, args.sample_count, provenance["selection_policy"]
+    )
 
     stamp = dt.datetime.now().astimezone().strftime("%Y%m%d-%H%M%S")
     default_dir = root / (
-        f"speed-bench/local-runs/humaneval-acceptance-{stamp}"
+        f"speed-bench/local-runs/humaneval-acceptance-"
+        f"{args.sample_count}-{stamp}"
     )
     run_dir = (args.output_dir or default_dir).resolve()
     prompts = prompt_paths(run_dir, records)
@@ -399,8 +437,9 @@ def main():
             f"{common.command_text(args, prompt, 'runtime', acceptance_audit=True)}"
         )
     print(
-        "HumanEval acceptance pilot: eight fresh baseline/exact-runtime pairs; "
-        "non-thinking, greedy, five drafts, no throughput conclusions."
+        f"HumanEval acceptance run: {args.sample_count} fresh "
+        "baseline/exact-runtime pairs; non-thinking, greedy, five drafts, "
+        "no throughput conclusions."
     )
     if args.dry_run:
         print("Dry run only; no prompts materialized and no model execution performed.")
@@ -411,7 +450,8 @@ def main():
     metadata = common.collect_metadata(
         args, root, prompts, provenance, acceptance_reference=None
     )
-    metadata["experiment"] = "deepspec_humaneval_acceptance_pilot"
+    metadata["experiment"] = "deepspec_humaneval_acceptance"
+    metadata["experiment_selection"] = selection
     metadata["official_protocol"] = {
         "samples": 164,
         "max_new_tokens": 2048,
@@ -444,7 +484,9 @@ def main():
         audit_rows.append(audit_row)
         common.cooldown(args.cooldown)
 
-    summary = summarize(audit_rows, records, provenance, args.tokens)
+    summary = summarize(
+        audit_rows, records, provenance, selection, args.tokens
+    )
     report = render_report(summary)
     write_outputs(run_dir, runs, records, summary, report)
     common.finish_metadata(metadata, root, run_dir)

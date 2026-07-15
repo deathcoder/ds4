@@ -454,27 +454,28 @@ and prefix-survival deltas. Non-thinking audit outputs use the
 `issue468-acceptance-nothink-<timestamp>/` directory prefix.
 
 For a corpus/domain isolation check against one of the paper's named code
-benchmarks, run the frozen HumanEval acceptance pilot:
+benchmarks, run the frozen HumanEval acceptance study:
 
 ```sh
 python3 speed-bench/run_dspark_humaneval_acceptance.py --dry-run
 python3 speed-bench/run_dspark_humaneval_acceptance.py --confirm-ready
 ```
 
-This is an acceptance diagnostic, not a throughput benchmark. It runs eight
-fresh baseline/exact-runtime pairs with no cooldown by default, requires every
-runtime output to match its baseline byte-for-byte, and omits timing values from
-its result CSV and report. The aggregate pools proposal rounds across eight
-evenly spaced rows from DeepSpec's checked-in HumanEval corpus.
+The default gate runs 32 evenly spaced rows from the complete pinned 164-row
+DeepSpec corpus. Use `--sample-count 8` to reproduce the original pilot or
+`--sample-count 164` for the complete dataset. This is an acceptance diagnostic,
+not a throughput benchmark: it runs one fresh baseline/exact-runtime pair per
+sample with no cooldown by default, requires byte-identical output, and omits
+timing values from its result CSV and report. Aggregates pool proposal rounds.
 
-The pilot uses byte-exact DeepSpec `turns[0]` content, non-thinking mode, and no
+The study uses byte-exact DeepSpec `turns[0]` content, non-thinking mode, and no
 confidence scheduler. It deliberately retains the V4-Flash five-draft, greedy,
 128-output-token protocol so corpus is the isolated variable. The report shows
 the paper's HumanEval range (`5.38-5.64` accepted length, or `0.672-0.705`
 normalized verify rate) only as a directional target; Table 1 used all 164
 samples, Qwen3/Gemma4 block-seven checkpoints, temperature-1.0 rejection
 sampling, and up to 2048 output tokens. Raw outputs go under
-`speed-bench/local-runs/humaneval-acceptance-<timestamp>/`.
+`speed-bench/local-runs/humaneval-acceptance-<count>-<timestamp>/`.
 
 The older `--stats-pass` mode remains available when a single invocation should
 run the full throughput comparison and then append one instrumented runtime
