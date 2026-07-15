@@ -5193,6 +5193,53 @@ Phase 0.90 user-run 32-sample result on 2026-07-15:
   tokens, byte-equality checks, and isolated child environments so acceptance
   quality and performance refer to the same workload.
 
+Phase 0.91 same-32 HumanEval throughput gate prepared on 2026-07-15:
+
+- Added `speed-bench/run_dspark_humaneval_throughput.py`. It reuses the pinned
+  complete HumanEval corpus and the exact deterministic 32-row selection from
+  Phase 0.90. The measured workload remains non-thinking, temperature zero,
+  seed one, 128 output tokens, context 16,384, and the exact verifier.
+- A measured run requires the Phase 0.90 `summary.json`. The runner validates
+  its source commit, complete selection object and sample labels, protocol,
+  binary/base/sidecar paths, context, token count, seed, exact verifier, and
+  non-thinking mode before starting. Per-task acceptance verify rates are
+  joined from that separate artifact; acceptance instrumentation is never
+  enabled in throughput children.
+- Two global prompt pairs warm the relevant process-local paths with reversed
+  baseline/runtime order and are excluded from results. The 32 measured tasks
+  contribute one pair each, alternating baseline-first and runtime-first, with
+  a three-second cooldown after every child. Every second output in a pair must
+  match the first byte-for-byte. Baseline children have no `DS4_*` variables;
+  runtime children set only `DS4_DSPARK_GPU_RUNTIME=1` and
+  `DS4_DSPARK_MULTI_COMMIT=1`.
+- The median of the 32 within-task speed ratios is the primary metric. The
+  report also records ratio of medians, geometric/arithmetic means, inclusive
+  interquartile and full ranges, faster/equal/slower task counts, every task's
+  prior acceptance and paired ratio, and a descriptive Pearson correlation
+  between acceptance and speed. This avoids averaging absolute t/s across
+  generations with unlike output lengths.
+- Python compilation, the real Phase 0.90 acceptance-reference validator, the
+  default dry schedule, the minimum-sample guard, and a synthetic end-to-end
+  68-execution run all passed. The synthetic run covered both warmup orders,
+  every measured order, output-reference equality, CSV row counts, metadata,
+  summary/report rendering, and acceptance/speed correlation. No model process
+  or performance benchmark was run by Codex.
+
+Phase 0.91 user-run command:
+
+```sh
+python3 speed-bench/run_dspark_humaneval_throughput.py \
+  --confirm-ready \
+  --acceptance-reference \
+  speed-bench/local-runs/humaneval-acceptance-32-20260715-121045/summary.json
+```
+
+Allow roughly 13-15 minutes based on the preceding 32-sample audit plus four
+warmup children and 204 seconds of cooldown. Run it with the machine as quiet
+and thermally stable as practical. Do not compare its absolute t/s with the
+instrumented acceptance audit; interpret the median paired ratio first, then
+the task distribution and acceptance/speed relationship.
+
 Phase 0.52 checks:
 
 ```sh

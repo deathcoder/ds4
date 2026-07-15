@@ -25,5 +25,10 @@ rejection sampling, up to 2048 output tokens, and Qwen3/Gemma4 checkpoints.
 Results are therefore directional acceptance evidence, not a reproduction or a
 functional HumanEval score.
 
+After acceptance is established, `run_dspark_humaneval_throughput.py` reuses
+the same deterministic selection and requires the acceptance artifact as a
+validated protocol reference. It measures uninstrumented paired throughput;
+it does not rerun or mix acceptance logging into the timed processes.
+
 Do not edit `samples.jsonl`. Replace it only from a newly pinned upstream commit
 and update every provenance field and hash together.

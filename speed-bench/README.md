@@ -477,6 +477,38 @@ samples, Qwen3/Gemma4 block-seven checkpoints, temperature-1.0 rejection
 sampling, and up to 2048 output tokens. Raw outputs go under
 `speed-bench/local-runs/humaneval-acceptance-<count>-<timestamp>/`.
 
+Once the 32-sample acceptance gate is complete, measure the identical workload
+with the paired, uninstrumented throughput runner:
+
+```sh
+python3 speed-bench/run_dspark_humaneval_throughput.py \
+  --dry-run \
+  --acceptance-reference \
+  speed-bench/local-runs/humaneval-acceptance-32-<timestamp>/summary.json
+python3 speed-bench/run_dspark_humaneval_throughput.py \
+  --confirm-ready \
+  --acceptance-reference \
+  speed-bench/local-runs/humaneval-acceptance-32-<timestamp>/summary.json
+```
+
+The reference is accepted only when its exact 32-row selection, pinned source,
+binary and model paths, context, token count, non-thinking mode, seed, greedy
+protocol, and exact verifier match the throughput workload. Two prompt pairs
+warm the process-local paths with opposite mode order and are excluded. Each of
+the 32 tasks then contributes one byte-equal baseline/runtime pair; pair order
+alternates by task and a three-second cooldown follows every child by default.
+Only the GPU runtime and multi-commit variables are enabled for DSpark. Stats,
+acceptance auditing, route controls, and profilers remain disabled.
+
+The primary result is the median of the 32 within-task DSpark/baseline ratios.
+The report also gives the geometric mean, interquartile range, faster/equal/
+slower task counts, and a descriptive correlation between the prior task-level
+acceptance rates and measured speed ratios. Acceptance is loaded from the
+separate validated audit; it is never instrumented during the throughput run.
+Absolute t/s is retained for context but should be collected only by the user
+with the machine as quiet and thermally stable as practical. Raw artifacts go
+under `speed-bench/local-runs/humaneval-throughput-32-<timestamp>/`.
+
 The older `--stats-pass` mode remains available when a single invocation should
 run the full throughput comparison and then append one instrumented runtime
 sample per prompt:
