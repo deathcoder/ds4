@@ -8,14 +8,13 @@ particular DSpark change exists.
 
 Branch: `codex/dspark-observability-0`
 
-Phase 0.98 is prepared and awaiting its user-run throughput gate. The exact
-runtime now supports opt-in `DS4_DSPARK_CONFIDENCE_THRESHOLD` with DeepSpec's
-strict first-confidence-below-threshold prefix rule. The full five-row sidecar
-block is still computed; only target verifier width changes. Mixed-prefix
-threshold `0.455`, forced K=0 threshold `1`, and unchanged fixed K=5 all passed
-the full Metal correctness matrix byte-for-byte. A frozen two-task, three-mode
-runner compares fixed K=5, `0.38`, and `0.455` in a Latin rotation with no
-instrumentation. Codex has not run that throughput benchmark.
+Phase 0.98 is complete. Its clean, uninstrumented runtime gate found a stable
+confidence-scheduler win on both predeclared HumanEval tasks. Threshold `0.38`
+won all six pairs with aggregate median `1.0695x`; threshold `0.455` won all six
+with aggregate median `1.1582x`, including `1.1988x` on low-acceptance
+`humaneval_152` and `1.1150x` on high-acceptance `humaneval_079`. Select `0.455`
+for the next gate without further tuning, but keep it opt-in until a frozen
+32-task baseline-versus-scheduled throughput run confirms end-to-end behavior.
 
 Phase 0.97 is complete. Its 32-task HumanEval trace reproduced the prior output
 and acceptance audit exactly. Raw confidence supports a stable DeepSpec-style
@@ -5788,6 +5787,40 @@ Review per-task and aggregate candidate/fixed paired ratios before any full
 and high-acceptance tasks and across most of its six measured pairs. Do not tune
 the thresholds or tasks after observing this gate.
 
+Phase 0.98 user-run result on 2026-07-15:
+
+- Raw results are in
+  `speed-bench/local-runs/humaneval-scheduler-ablation-20260715-173043` at clean
+  commit `546927a`. The run used the frozen two tasks, three fixed modes, one
+  excluded three-mode warmup, three Latin-rotated measured periods per task,
+  and a five-second cooldown. All 18 measured outputs matched their prior exact
+  DSpark artifact byte-for-byte; no instrumentation was enabled.
+- Threshold `0.38` won all six candidate/fixed pairs. The low-acceptance task's
+  paired ratios were `1.0674x`, `1.0715x`, and `1.0740x`; the high-acceptance
+  task's were `1.0674x`, `1.0716x`, and `1.0631x`. Aggregate median was
+  `1.0695x` and geometric mean was `1.0692x`.
+- Threshold `0.455` also won all six pairs. On `humaneval_152` it raised median
+  throughput from `10.23` to `12.27 t/s`, with paired ratios `1.1994x`,
+  `1.1988x`, and `1.1947x` and median `1.1988x`. On `humaneval_079` it raised
+  median throughput from `18.69` to `20.84 t/s`, with paired ratios `1.1150x`,
+  `1.1216x`, and `1.1097x` and median `1.1150x`. Aggregate median was `1.1582x`
+  and geometric mean was `1.1558x`.
+- This rejects the main Phase 0.97 uncertainty: on these representatives,
+  shorter exact Metal verifier batches save substantially more work than the
+  extra target-evaluation rounds cost. The offline target-position proxy was
+  conservative rather than falsely optimistic.
+- Select threshold `0.455` for the next experiment. It has materially larger
+  gains than `0.38`, stayed positive on the high-acceptance control, and was
+  selected before throughput was observed. Do not test intermediate thresholds
+  or tune per task.
+- Do not promote to default yet. Two tasks establish mechanism and direction,
+  not workload-wide end-to-end performance. The next phase should run the same
+  frozen 32 HumanEval tasks as Phase 0.94, pairing ordinary target baseline
+  against exact DSpark with fixed threshold `0.455`, one pair per task and no
+  instrumentation. Compare that end-to-end result with Phase 0.94's fixed-K
+  `0.6840x` median paired ratio, but use the new within-run baseline/scheduled
+  ratios as the authoritative measurement.
+
 Phase 0.52 checks:
 
 ```sh
@@ -5942,9 +5975,12 @@ If continuing from a compacted context, start here:
   prefix scheduling can reduce low-acceptance proposal-row work without losing
   too much local progress. Its trace result generalized and supports a guarded
   runtime ablation at predeclared thresholds `0.38` and `0.455`. Phase 0.98 has
-  now implemented that policy behind an opt-in environment variable and frozen
-  the two-task throughput gate; await its user-run result before promotion or a
-  32-task rerun. Do not repeat the sub-percent inverse-RoPE ablation unchanged.
+  now implemented that policy behind an opt-in environment variable. Its
+  two-task gate won all six pairs at threshold `0.455`, with aggregate median
+  `1.1582x` versus fixed K=5. The next gate is the frozen 32-task end-to-end
+  baseline-versus-scheduled run at exactly `0.455`; do not tune further or
+  promote before that result. Do not repeat the sub-percent inverse-RoPE
+  ablation unchanged.
 - The GPU stage path currently borrows target graph transient batch workspace
   and therefore requires `prefill_cap >= block_size` (five). Decide whether to
   allocate sidecar-specific batch scratch before production enablement or keep
