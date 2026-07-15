@@ -5402,6 +5402,38 @@ Phase 0.93 user-run confirmation result on 2026-07-15:
   regression control; subsequent exact-runtime work should build on the
   promoted Q8 proposal-row path.
 
+Phase 0.94 promoted-default HumanEval throughput rerun prepared on 2026-07-15:
+
+- Reused `run_dspark_humaneval_throughput.py` unchanged so the workload remains
+  directly comparable with Phase 0.91: the same pinned 32 HumanEval tasks,
+  acceptance reference, non-thinking template, temperature zero, seed one,
+  128 output tokens, 16,384 context, two reversed global warmup pairs,
+  alternating measured order, three-second cooldown, and byte-equality gate.
+- The runner's child-environment isolation clears inherited `DS4_DSPARK_*`
+  settings. The runtime command contains only `DS4_DSPARK_GPU_RUNTIME=1` and
+  `DS4_DSPARK_MULTI_COMMIT=1`, so the promoted exact Q8 proposal-row path is
+  selected by default. No stats, acceptance audit, route diagnostics, profiler,
+  or legacy-control variable is enabled.
+- Dry-run validation passed against
+  `humaneval-acceptance-32-20260715-121045/summary.json`; no prompts were
+  materialized and no model process or performance benchmark was run by Codex.
+- Interpret the new within-run median paired ratio first. Then compare it with
+  Phase 0.91's `0.6456x` median paired ratio and task-level distribution. This
+  before/after comparison is useful because each run normalizes DSpark against
+  a fresh paired baseline, but cross-run differences remain more exposed to
+  machine interference than each run's own ratios.
+
+Phase 0.94 user-run command:
+
+```sh
+python3 speed-bench/run_dspark_humaneval_throughput.py \
+  --confirm-ready \
+  --acceptance-reference \
+  speed-bench/local-runs/humaneval-acceptance-32-20260715-121045/summary.json
+```
+
+The previous run took about 13.5 minutes; expect roughly the same duration.
+
 Phase 0.52 checks:
 
 ```sh
@@ -5534,7 +5566,10 @@ If continuing from a compacted context, start here:
   Metal exact-runtime default while retaining
   `DS4_DSPARK_EXACT_Q8_ROWS=0` as the legacy control. Its post-promotion
   confirmation won all three pairs with a `1.0609x` median paired ratio and
-  identical output hashes. Phase 0.93 is complete.
+  identical output hashes. Phase 0.93 is complete. Phase 0.94 now reruns the
+  identical 32-task HumanEval throughput workload on the promoted default; use
+  its new within-run ratio to measure end-to-end movement before choosing the
+  next exact-verifier slice.
 - The GPU stage path currently borrows target graph transient batch workspace
   and therefore requires `prefill_cap >= block_size` (five). Decide whether to
   allocate sidecar-specific batch scratch before production enablement or keep
