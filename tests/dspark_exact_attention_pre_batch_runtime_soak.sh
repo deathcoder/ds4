@@ -5,7 +5,14 @@ root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 ds4_bin=${DS4_BIN:-"$root/ds4"}
 base_model=${DS4_TEST_MODEL:-"$root/gguf/DeepSeek-V4-Flash-IQ2XXS-w2Q2K-AProjQ8-SExpQ8-OutQ8-chat-v2-imatrix.gguf"}
 dspark_model=${DS4_TEST_DSPARK_MODEL:-"$root/gguf/ds4flash-dspark.gguf"}
+exact_q8_rows=${DS4_TEST_DSPARK_EXACT_Q8_ROWS:-0}
 unset DS4_DSPARK_EXACT_ATTN_PRE_BATCH
+unset DS4_DSPARK_EXACT_Q8_ROWS
+
+if [[ $exact_q8_rows != 0 && $exact_q8_rows != 1 ]]; then
+    printf 'DS4_TEST_DSPARK_EXACT_Q8_ROWS must be 0 or 1\n' >&2
+    exit 2
+fi
 
 for path in "$ds4_bin" "$base_model" "$dspark_model"; do
     if [[ ! -f $path ]]; then
@@ -33,6 +40,9 @@ runtime_env=(
     DS4_DSPARK_FAST_BATCH_VERIFY=0
     DS4_DSPARK_GPU_RUNTIME_DIAGNOSTICS=1
 )
+if [[ $exact_q8_rows == 1 ]]; then
+    runtime_env+=(DS4_DSPARK_EXACT_Q8_ROWS=1)
+fi
 
 assert_candidate_log() {
     local name=$1
@@ -44,6 +54,19 @@ assert_candidate_log() {
         grep -Evq ' layers=43 attempts=43 successes=43 result=pass$'; then
         printf 'exact attention-pre runtime drifted or fell back for %s\n' "$name" >&2
         printf '%s\n' "$records" >&2
+        exit 1
+    fi
+    if [[ $exact_q8_rows == 1 ]]; then
+        local q8_records
+        q8_records=$(grep 'DSpark exact Q8 rows runtime proposed=' "$log")
+        if printf '%s\n' "$q8_records" |
+            grep -Evq ' projections=129 attempts=129 successes=129 result=pass$'; then
+            printf 'exact Q8 rows drifted or fell back for %s\n' "$name" >&2
+            printf '%s\n' "$q8_records" >&2
+            exit 1
+        fi
+    elif grep -q 'DSpark exact Q8 rows runtime ' "$log"; then
+        printf 'control mode unexpectedly ran exact Q8 rows for %s\n' "$name" >&2
         exit 1
     fi
     if [[ $(printf '%s\n' "$records" | wc -l | tr -d ' ') -lt $min_calls ]]; then

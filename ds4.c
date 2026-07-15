@@ -22627,6 +22627,8 @@ typedef struct {
     uint64_t attn_pre_batch_successes;
     uint64_t attn_suffix_batch_attempts;
     uint64_t attn_suffix_batch_successes;
+    uint64_t q8_rows_attempts;
+    uint64_t q8_rows_successes;
 } dspark_exact_verify_outcomes;
 
 static bool dspark_exact_head_batch_observer_enabled(void) {
@@ -23014,6 +23016,11 @@ static void dspark_exact_attention_pre_batch_observer_report(
             exact ? "exact" : "drift");
 }
 
+static bool metal_graph_exact_q8_rows_enabled(void) {
+    const char *v = getenv("DS4_DSPARK_EXACT_Q8_ROWS");
+    return v && v[0] && strcmp(v, "0") != 0;
+}
+
 /* Preserve one-token Metal Q8 reductions while sharing a command stream. */
 static bool metal_graph_matmul_q8_0_decode_rows(
         ds4_gpu_tensor       *out,
@@ -23022,9 +23029,24 @@ static bool metal_graph_matmul_q8_0_decode_rows(
         uint64_t              in_dim,
         uint64_t              out_dim,
         ds4_gpu_tensor       *input,
-        uint32_t              n_tokens) {
+        uint32_t              n_tokens,
+        dspark_exact_verify_outcomes *outcomes) {
 #ifdef __APPLE__
     bool ok = weight && weight->type == DS4_TENSOR_Q8_0;
+    if (ok && n_tokens >= 2u && n_tokens <= 5u &&
+        metal_graph_exact_q8_rows_enabled()) {
+        if (outcomes) outcomes->q8_rows_attempts++;
+        ok = ds4_gpu_matmul_q8_0_exact_rows_tensor(out,
+                                                    model->map,
+                                                    model->size,
+                                                    weight->abs_offset,
+                                                    in_dim,
+                                                    out_dim,
+                                                    input,
+                                                    n_tokens) != 0;
+        if (ok && outcomes) outcomes->q8_rows_successes++;
+        return ok;
+    }
     for (uint32_t row = 0; ok && row < n_tokens; row++) {
         ds4_gpu_tensor *out_row = metal_graph_tensor_row_view(out, row, out_dim);
         ds4_gpu_tensor *input_row = metal_graph_tensor_row_view(input, row, in_dim);
@@ -23049,6 +23071,7 @@ static bool metal_graph_matmul_q8_0_decode_rows(
     (void)out_dim;
     (void)input;
     (void)n_tokens;
+    (void)outcomes;
     return false;
 #endif
 }
@@ -23068,7 +23091,8 @@ static bool metal_graph_exact_attention_qkv_prepare(
         ds4_gpu_tensor          *q_norm,
         ds4_gpu_tensor          *q_rope,
         ds4_gpu_tensor          *kv_rope,
-        bool                     capture_boundaries) {
+        bool                     capture_boundaries,
+        dspark_exact_verify_outcomes *outcomes) {
     const uint64_t q_rank = layer->attn_q_a->dim[1];
     const uint64_t q_dim = (uint64_t)DS4_N_HEAD * DS4_N_HEAD_DIM;
     const bool compressed = ds4_layer_compress_ratio(il) != 0;
@@ -23091,7 +23115,8 @@ static bool metal_graph_exact_attention_qkv_prepare(
                                                           DS4_N_EMBD,
                                                           q_rank,
                                                           attn_norm,
-                                                          n_tokens);
+                                                          n_tokens,
+                                                          outcomes);
     if (qkv_rms_fused) {
         if (ok) {
             ok = metal_graph_matmul_q8_0_decode_rows(
@@ -23101,7 +23126,8 @@ static bool metal_graph_exact_attention_qkv_prepare(
                 DS4_N_EMBD,
                 DS4_N_HEAD_DIM,
                 attn_norm,
-                n_tokens);
+                n_tokens,
+                outcomes);
         }
         if (ok) {
             ok = ds4_gpu_dsv4_qkv_rms_norm_rows_tensor(
@@ -23138,7 +23164,8 @@ static bool metal_graph_exact_attention_qkv_prepare(
                 DS4_N_EMBD,
                 DS4_N_HEAD_DIM,
                 attn_norm,
-                n_tokens);
+                n_tokens,
+                outcomes);
         }
         if (ok) {
             ok = ds4_gpu_rms_norm_weight_rows_tensor(
@@ -23159,7 +23186,8 @@ static bool metal_graph_exact_attention_qkv_prepare(
                                                          q_rank,
                                                          q_dim,
                                                          qr_norm,
-                                                         n_tokens);
+                                                         n_tokens,
+                                                         outcomes);
     }
     if (ok && capture_boundaries) {
         ok = ds4_gpu_tensor_copy(q_norm,
@@ -23257,7 +23285,8 @@ static bool metal_graph_exact_attention_pre_batch_prepare(
         uint32_t                il,
         uint32_t                pos0,
         uint32_t                n_tokens,
-        bool                    capture_boundaries) {
+        bool                    capture_boundaries,
+        dspark_exact_verify_outcomes *outcomes) {
     const uint64_t hc_dim = (uint64_t)DS4_N_HC * DS4_N_EMBD;
     const uint64_t mix_hc = 2u * DS4_N_HC + (uint64_t)DS4_N_HC * DS4_N_HC;
     const uint64_t q_rank = layer->attn_q_a->dim[1];
@@ -23410,7 +23439,8 @@ static bool metal_graph_exact_attention_pre_batch_prepare(
                                                       q_norm_view,
                                                       q_rope_view,
                                                       kv_rope_view,
-                                                      capture_boundaries);
+                                                      capture_boundaries,
+                                                      outcomes);
     }
     ds4_gpu_tensor_free(kv_rope_view);
     ds4_gpu_tensor_free(q_rope_view);
@@ -23472,7 +23502,8 @@ static bool metal_graph_exact_attention_qkv_rows_shadow(
                                                           q_norm,
                                                           q_rope,
                                                           kv_rope,
-                                                          true);
+                                                          true,
+                                                          NULL);
         }
         ds4_gpu_tensor_free(kv_rope);
         ds4_gpu_tensor_free(q_rope);
@@ -24392,7 +24423,8 @@ static bool metal_graph_verify_decode_exact(
                 il,
                 start,
                 n_tokens,
-                false);
+                false,
+                outcomes);
             if (attn_runtime_layer) {
                 if (outcomes) outcomes->attn_pre_batch_successes++;
             } else {
@@ -24426,7 +24458,8 @@ static bool metal_graph_verify_decode_exact(
                     il,
                     start,
                     n_tokens,
-                    true);
+                    true,
+                    outcomes);
             }
             if (attn_shadow_ok) {
                 attn_shadow_ok = ds4_gpu_end_commands() != 0;
@@ -34937,6 +34970,8 @@ static bool dspark_session_verify_batch_once(
     const bool exact_attn_pre_batch =
         dspark_session_exact_attention_pre_batch_enabled() &&
         dspark_exact_attention_pre_batch_observer_layer() < 0;
+    const bool exact_q8_rows =
+        exact_attn_pre_batch && metal_graph_exact_q8_rows_enabled();
     const bool exact_attn_suffix_batch =
         exact_attn_pre_batch &&
         dspark_session_exact_attention_suffix_batch_enabled() &&
@@ -34973,6 +35008,21 @@ static bool dspark_session_verify_batch_once(
                 DS4_N_LAYER,
                 (unsigned long long)outcomes.attn_pre_batch_attempts,
                 (unsigned long long)outcomes.attn_pre_batch_successes,
+                !ok ? "fail" : (complete ? "pass" : "fallback"));
+    }
+    if (exact_q8_rows && n_tokens > 1u &&
+        dspark_session_diagnostics_enabled()) {
+        const uint64_t expected = 3u * DS4_N_LAYER;
+        const bool complete =
+            outcomes.q8_rows_attempts == expected &&
+            outcomes.q8_rows_successes == outcomes.q8_rows_attempts;
+        fprintf(stderr,
+                "ds4: DSpark exact Q8 rows runtime proposed=%u "
+                "projections=%llu attempts=%llu successes=%llu result=%s\n",
+                n_tokens,
+                (unsigned long long)expected,
+                (unsigned long long)outcomes.q8_rows_attempts,
+                (unsigned long long)outcomes.q8_rows_successes,
                 !ok ? "fail" : (complete ? "pass" : "fallback"));
     }
     if (exact_ffn_batch && n_tokens > 1u &&

@@ -190,6 +190,109 @@ kernel void kernel_mul_mv_q8_0_f32(
     kernel_mul_mv_q8_0_f32_impl<N_R0_Q8_0, constant ds4_metal_args_mul_mv &>(args, src0, src1, dst, shmem, tgpig, tiisg, sgitg);
 }
 
+/* Proposal-row Q8_0 matvec with decode-identical arithmetic. Each row keeps
+ * the ordinary matvec lane assignment, block traversal, accumulation, and
+ * SIMD/threadgroup reduction. The only shared work is loading each quantized
+ * weight block once before applying it to all proposal activations. */
+template<short NROWS>
+kernel void kernel_mul_mv_q8_0_f32_exact_rows_impl(
+        constant ds4_metal_args_mul_mv & args,
+        device const char * src0,
+        device const char * src1,
+        device       char * dst,
+        threadgroup  char * shmem [[threadgroup(0)]],
+        uint3  tgpig [[threadgroup_position_in_grid]],
+        ushort tiisg [[thread_index_in_simdgroup]],
+        ushort sgitg [[simdgroup_index_in_threadgroup]]) {
+    const short NSG = FC_mul_mv_nsg;
+    constexpr short NW = N_SIMDWIDTH;
+    constexpr short NQ = 8;
+    constexpr short NR0 = N_R0_Q8_0;
+
+    const int nb = args.ne00 / QK8_0;
+    const int r0 = tgpig.x * NR0;
+    const int im = tgpig.z;
+    const uint i12 = im % args.ne12;
+    const uint i13 = im / args.ne12;
+
+    device const block_q8_0 * ax[NR0];
+    FOR_UNROLL (short row = 0; row < NR0; ++row) {
+        const uint64_t offset0 =
+            (r0 + row) * args.nb01 +
+            (i12 / args.r2) * args.nb02 +
+            (i13 / args.r3) * args.nb03;
+        ax[row] = (device const block_q8_0 *)
+            ((device const char *)src0 + offset0);
+    }
+
+    const short ix = tiisg / (NW / NQ);
+    const short il = tiisg % (NW / NQ);
+    const int ib0 = sgitg * NQ + ix;
+
+    device const float * yb[NROWS];
+    float sumf[NROWS][NR0];
+    for (short token = 0; token < NROWS; ++token) {
+        const uint64_t offset1 =
+            token * args.nb11 + i12 * args.nb12 + i13 * args.nb13;
+        device const float * y =
+            (device const float *)(src1 + offset1);
+        yb[token] = y + ib0 * QK8_0 + il * NQ;
+        FOR_UNROLL (short row = 0; row < NR0; ++row) {
+            sumf[token][row] = 0.0f;
+        }
+    }
+
+    for (int ib = ib0; ib < nb; ib += NSG * NQ) {
+        float yl[NROWS][NQ];
+        for (short token = 0; token < NROWS; ++token) {
+            FOR_UNROLL (short i = 0; i < NQ; ++i) {
+                yl[token][i] = yb[token][i];
+            }
+        }
+
+        FOR_UNROLL (short row = 0; row < NR0; ++row) {
+            device const int8_t * qs = ax[row][ib].qs + il * NQ;
+            int8_t ql[NQ];
+            FOR_UNROLL (short i = 0; i < NQ; ++i) {
+                ql[i] = qs[i];
+            }
+            const float d = ax[row][ib].d;
+            for (short token = 0; token < NROWS; ++token) {
+                float sumq = 0.0f;
+                FOR_UNROLL (short i = 0; i < NQ; ++i) {
+                    sumq += ql[i] * yl[token][i];
+                }
+                sumf[token][row] += sumq * d;
+            }
+        }
+
+        for (short token = 0; token < NROWS; ++token) {
+            yb[token] += NSG * NQ * QK8_0;
+        }
+    }
+
+    for (short token = 0; token < NROWS; ++token) {
+        device float * dst_f32 =
+            (device float *)dst +
+            (uint64_t)im * args.ne0 * args.ne1 +
+            (uint64_t)token * args.ne0;
+        helper_mv_reduce_and_write<NR0>(
+            dst_f32, sumf[token], r0, args.ne01, tiisg, sgitg, shmem);
+    }
+}
+
+typedef decltype(kernel_mul_mv_q8_0_f32_exact_rows_impl<2>)
+    mul_mv_q8_0_f32_exact_rows_t;
+
+template [[host_name("kernel_mul_mv_q8_0_f32_exact_rows_2")]]
+kernel mul_mv_q8_0_f32_exact_rows_t kernel_mul_mv_q8_0_f32_exact_rows_impl<2>;
+template [[host_name("kernel_mul_mv_q8_0_f32_exact_rows_3")]]
+kernel mul_mv_q8_0_f32_exact_rows_t kernel_mul_mv_q8_0_f32_exact_rows_impl<3>;
+template [[host_name("kernel_mul_mv_q8_0_f32_exact_rows_4")]]
+kernel mul_mv_q8_0_f32_exact_rows_t kernel_mul_mv_q8_0_f32_exact_rows_impl<4>;
+template [[host_name("kernel_mul_mv_q8_0_f32_exact_rows_5")]]
+kernel mul_mv_q8_0_f32_exact_rows_t kernel_mul_mv_q8_0_f32_exact_rows_impl<5>;
+
 // Decode shared-expert gate/up projections followed by SwiGLU:
 //
 //     mid = silu(min(gate, limit)) * clamp(up, -limit, limit)

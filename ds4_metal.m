@@ -13103,6 +13103,110 @@ int ds4_gpu_matmul_q8_0_tensor(
     return ok;
 }
 
+int ds4_gpu_matmul_q8_0_exact_rows_tensor(
+        ds4_gpu_tensor       *out,
+        const void             *model_map,
+        uint64_t                model_size,
+        uint64_t                weight_offset,
+        uint64_t                in_dim,
+        uint64_t                out_dim,
+        const ds4_gpu_tensor *x,
+        uint32_t                n_rows) {
+    if (!g_initialized && !ds4_gpu_init()) return 0;
+    if ((in_dim & 31u) != 0 || n_rows < 2u || n_rows > 5u ||
+        in_dim > UINT32_MAX || out_dim > UINT32_MAX) {
+        return 0;
+    }
+
+    @autoreleasepool {
+        if (n_rows > UINT64_MAX / in_dim || n_rows > UINT64_MAX / out_dim) {
+            return 0;
+        }
+        const uint64_t x_bytes =
+            (uint64_t)n_rows * in_dim * sizeof(float);
+        const uint64_t out_bytes =
+            (uint64_t)n_rows * out_dim * sizeof(float);
+        id<MTLBuffer> xbuf = ds4_gpu_tensor_buffer(x);
+        id<MTLBuffer> outbuf = ds4_gpu_tensor_buffer(out);
+        if (!xbuf || !outbuf ||
+            ds4_gpu_tensor_bytes(x) < x_bytes ||
+            ds4_gpu_tensor_bytes(out) < out_bytes) {
+            fprintf(stderr,
+                    "ds4: Metal exact-row Q8_0 matmul received undersized "
+                    "activation buffers\n");
+            return 0;
+        }
+
+        const uint64_t blocks = in_dim / 32u;
+        const uint64_t row_bytes = blocks * 34u;
+        const uint64_t weight_bytes = out_dim * row_bytes;
+        if (weight_offset > model_size ||
+            weight_bytes > model_size - weight_offset) {
+            fprintf(stderr,
+                    "ds4: Metal exact-row Q8_0 matmul range is outside the "
+                    "mapped model\n");
+            return 0;
+        }
+
+        uint64_t inner_offset = 0;
+        id<MTLBuffer> wbuf = ds4_gpu_wrap_model_range(
+            model_map,
+            model_size,
+            weight_offset,
+            weight_bytes,
+            &inner_offset);
+        if (!wbuf) return 0;
+
+        const char *function_name = NULL;
+        switch (n_rows) {
+            case 2u: function_name =
+                "kernel_mul_mv_q8_0_f32_exact_rows_2"; break;
+            case 3u: function_name =
+                "kernel_mul_mv_q8_0_f32_exact_rows_3"; break;
+            case 4u: function_name =
+                "kernel_mul_mv_q8_0_f32_exact_rows_4"; break;
+            case 5u: function_name =
+                "kernel_mul_mv_q8_0_f32_exact_rows_5"; break;
+            default: return 0;
+        }
+
+        ds4_gpu_q8_0_matvec_args args =
+            ds4_gpu_make_q8_0_mv_args(in_dim, out_dim);
+        args.ne11 = (int32_t)n_rows;
+        args.nb12 = in_dim * n_rows * sizeof(float);
+        args.nb13 = args.nb12;
+        args.ne1 = (int32_t)n_rows;
+        ds4_gpu_mv_dispatch dispatch = ds4_gpu_make_q8_0_mv_dispatch();
+        if (out_dim > 65536u) dispatch.nsg = 8;
+        args.nr0 = dispatch.nr0;
+        id<MTLComputePipelineState> pipeline =
+            ds4_gpu_get_mul_mv_pipeline(function_name, dispatch.nsg);
+        if (!pipeline) return 0;
+
+        int owned = 0;
+        id<MTLCommandBuffer> cb = ds4_gpu_command_buffer(&owned);
+        if (!cb) return 0;
+        id<MTLComputeCommandEncoder> enc = ds4_gpu_compute_encoder(cb);
+        [enc setComputePipelineState:pipeline];
+        [enc setBytes:&args length:sizeof(args) atIndex:0];
+        [enc setBuffer:wbuf offset:(NSUInteger)inner_offset atIndex:1];
+        [enc setBuffer:xbuf offset:ds4_gpu_tensor_offset(x) atIndex:2];
+        [enc setBuffer:outbuf offset:ds4_gpu_tensor_offset(out) atIndex:3];
+        [enc setThreadgroupMemoryLength:dispatch.smem atIndex:0];
+        [enc dispatchThreadgroups:MTLSizeMake(
+                 ((NSUInteger)out_dim + (NSUInteger)dispatch.nr0 - 1u) /
+                     (NSUInteger)dispatch.nr0,
+                 1,
+                 1)
+             threadsPerThreadgroup:MTLSizeMake(
+                 32, (NSUInteger)dispatch.nsg, 1)];
+        ds4_gpu_end_compute_encoder(cb, enc);
+
+        return ds4_gpu_finish_command_buffer(
+            cb, owned, "Q8_0 exact proposal-row matvec");
+    }
+}
+
 int ds4_gpu_matmul_q8_0_pair_tensor(
         ds4_gpu_tensor       *out0,
         ds4_gpu_tensor       *out1,

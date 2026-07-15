@@ -18,12 +18,14 @@ acceptance_audit=${DS4_TEST_DSPARK_ACCEPTANCE_AUDIT:-0}
 compressor_pair_nr4=${DS4_TEST_DSPARK_COMPRESSOR_PAIR_NR4:-0}
 indexed_attn_rb16_promotion=${DS4_TEST_DSPARK_INDEXED_ATTN_RB16_PROMOTION:-\
 ${DS4_TEST_DSPARK_INDEXED_ATTN_RB16_DIRECT:-0}}
+exact_q8_rows=${DS4_TEST_DSPARK_EXACT_Q8_ROWS:-0}
 ffn_batch_observer_layer=${DS4_DSPARK_EXACT_FFN_BATCH_OBSERVER_LAYER:-}
 attn_pre_observer_layer=${DS4_DSPARK_EXACT_ATTN_PRE_BATCH_OBSERVER_LAYER:-}
 attn_suffix_observer_layer=${DS4_DSPARK_EXACT_ATTN_SUFFIX_BATCH_OBSERVER_LAYER:-}
 unset DS4_DSPARK_EXACT_FFN_BATCH
 unset DS4_DSPARK_EXACT_ATTN_PRE_BATCH
 unset DS4_DSPARK_EXACT_ATTN_SUFFIX_BATCH
+unset DS4_DSPARK_EXACT_Q8_ROWS
 unset DS4_DSPARK_ACCEPTANCE_AUDIT
 unset DS4_METAL_COMPRESSOR_PAIR_NR4
 unset DS4_METAL_INDEXED_ATTN_RB16_DIRECT
@@ -99,6 +101,16 @@ if [[ $indexed_attn_rb16_promotion == 1 &&
     printf 'indexed-attention RB16 promotion requires exact runtime verification\n' >&2
     exit 2
 fi
+if [[ $exact_q8_rows != 0 && $exact_q8_rows != 1 ]]; then
+    printf 'DS4_TEST_DSPARK_EXACT_Q8_ROWS must be 0 or 1\n' >&2
+    exit 2
+fi
+if [[ $exact_q8_rows == 1 &&
+      ($mode != runtime || $fast_verify_runtime == 1 ||
+       $serial_attn_pre_runtime == 1) ]]; then
+    printf 'exact Q8 rows require exact runtime attention-pre batching\n' >&2
+    exit 2
+fi
 if [[ -n $attn_suffix_observer_layer &&
       ($mode != runtime || $fast_verify_runtime == 1) ]]; then
     printf 'attention-suffix observer requires exact runtime verification\n' >&2
@@ -142,6 +154,9 @@ case "$mode" in
                 DS4_METAL_DECODE_INDEXER_SPARSE_THRESHOLD=64
             )
         fi
+        if [[ $exact_q8_rows == 1 ]]; then
+            gpu_env+=(DS4_DSPARK_EXACT_Q8_ROWS=1)
+        fi
         ;;
     *)
         printf 'invalid DS4_TEST_DSPARK_MODE: %s (expected observer or runtime)\n' "$mode" >&2
@@ -173,6 +188,11 @@ if [[ $mode == runtime && $serial_attn_pre_runtime != 1 &&
     if [[ $fast_verify_runtime != 1 ]]; then
         exact_attn_pre_expected=1
     fi
+fi
+
+exact_q8_rows_expected=0
+if [[ $exact_q8_rows == 1 && -z $attn_pre_observer_layer ]]; then
+    exact_q8_rows_expected=1
 fi
 
 for path in "$ds4_bin" "$base_model" "$dspark_model"; do
@@ -257,6 +277,19 @@ assert_gpu_selected() {
             fi
         elif grep -q 'DSpark exact attention suffix batch runtime ' "$log"; then
             printf 'control mode unexpectedly ran exact attention-suffix batching\n' >&2
+            exit 1
+        fi
+        if [[ $exact_q8_rows_expected == 1 ]]; then
+            local q8_records
+            q8_records=$(grep 'DSpark exact Q8 rows runtime proposed=' "$log")
+            if printf '%s\n' "$q8_records" |
+                grep -Evq ' projections=129 attempts=129 successes=129 result=pass$'; then
+                printf 'exact Q8 rows drifted or fell back\n' >&2
+                printf '%s\n' "$q8_records" >&2
+                exit 1
+            fi
+        elif grep -q 'DSpark exact Q8 rows runtime ' "$log"; then
+            printf 'control mode unexpectedly ran exact Q8 rows\n' >&2
             exit 1
         fi
         if [[ $runtime_stats == 1 ]]; then

@@ -231,6 +231,19 @@ int ds4_gpu_matmul_q8_0_tensor(
         const ds4_gpu_tensor *x,
         uint64_t                n_tok);
 
+/* Decode-equivalent Q8_0 projections for 2..5 rows. Each row retains the
+ * one-token matvec accumulation and reduction order while weight blocks are
+ * shared across the proposal microbatch. Metal-only acceleration hook. */
+int ds4_gpu_matmul_q8_0_exact_rows_tensor(
+        ds4_gpu_tensor       *out,
+        const void             *model_map,
+        uint64_t                model_size,
+        uint64_t                weight_offset,
+        uint64_t                in_dim,
+        uint64_t                out_dim,
+        const ds4_gpu_tensor *x,
+        uint32_t                n_rows);
+
 /* Optional fused GPU operations.
  *
  * These are acceleration hooks, not required backend primitives.  A backend

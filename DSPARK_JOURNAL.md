@@ -5285,6 +5285,63 @@ Phase 0.91 user-run throughput result on 2026-07-15:
   The unsafe generic-prefill fast verifier remains only a useful parity and
   speed reference, never production authority.
 
+Phase 0.92 exact Q8 proposal-row microbatch prepared on 2026-07-15:
+
+- Revisited the precise arithmetic boundary established in Phase 0.67. The
+  retained exact attention-pre runtime batches HC/norm/RoPE work but deliberately
+  launches the one-token Q8 decode matvec separately for every proposal row.
+  The generic 2-5-row prefill matvec was previously rejected because its
+  different lane/reduction shape introduced immediate Q-LoRA drift.
+- Added a Metal-only 2-5-row Q8 kernel and
+  `ds4_gpu_matmul_q8_0_exact_rows_tensor`. For every output weight row, it loads
+  each Q8 block once and applies it to all proposal activations. Each activation
+  row retains the one-token kernel's block stride, multiply/add sequence,
+  per-lane accumulator, SIMD reduction, cross-SIMD threadgroup reduction, and
+  row-major destination. This amortizes weight reads and dispatches without
+  substituting prefill arithmetic.
+- Added opt-in `DS4_DSPARK_EXACT_Q8_ROWS=1`. It affects only the three
+  cache-independent Q/KV projections inside exact attention preparation and
+  only for proposal widths 2-5. It does not touch KV quantization, raw or
+  compressed caches, compressor/indexer state, attention, output projection,
+  FFN, or target-HC capture. A kernel/setup failure fails the exact batch and
+  enters the existing restored serial fallback rather than changing token
+  authority.
+- Runtime diagnostics require 129/129 successful candidate projections for
+  every multi-row verifier call. The correctness matrix gained
+  `DS4_TEST_DSPARK_EXACT_Q8_ROWS=1`, clears inherited candidate state, and
+  rejects missing, partial, failed, or unexpected candidate records. The
+  long-generation attention-pre soak gained the same explicit mode.
+- The authoritative candidate matrix passed reasoning, Italian, medium
+  context, rolling-window generation, and resumed chat with byte-identical
+  output. Selected-layer observer matrices at layers `0/21/30/42` compared all
+  attention-pre boundaries against the original one-row projections and
+  reported zero drift for every proposal. The 64-token generation,
+  rolling-window, and resumed-chat soak also passed with every candidate route
+  complete. Timings from these correctness runs were ignored.
+- Full `ds4`/test/server/eval/agent/CPU/warm-prefill builds, focused DSpark
+  validation and shape tests, the unchanged default exact runtime matrix, and
+  the legacy fast-verifier soak passed. Shell syntax, Python compilation, dry
+  command generation, synthetic ablation summary/report arithmetic, and
+  inherited candidate-environment clearing also passed.
+- Added `--exact-q8-rows-ablation` to `run_dspark_comparison.py`. It directly
+  compares uninstrumented default exact DSpark with the opt-in candidate on the
+  existing high-acceptance 64-token microbenchmark. It clears all inherited
+  DSpark/instrumentation variables, alternates order over three pairs after one
+  warmup per mode, waits ten seconds between processes, and requires
+  byte-identical output. No performance benchmark was run by Codex.
+
+Phase 0.92 user-run gate:
+
+```sh
+python3 speed-bench/run_dspark_comparison.py \
+  --confirm-idle --exact-q8-rows-ablation
+```
+
+Interpret the median paired candidate/default ratio first. This is a component
+ablation, not a baseline-versus-DSpark result. Promote the kernel only if all
+three pairs are positive by a useful margin; otherwise retain it as an exact
+research route and use the result to choose the next verifier slice.
+
 Phase 0.52 checks:
 
 ```sh
@@ -5410,7 +5467,10 @@ If continuing from a compacted context, start here:
   Quantization, proposal arithmetic, confidence scheduling, and sidecar work
   are no longer leading paths. The next phase must make target verification
   materially cheaper with exact autoregressive semantics; the approximate
-  generic-prefill fast verifier remains invalid as token authority.
+  generic-prefill fast verifier remains invalid as token authority. Phase 0.92
+  begins that work with a decode-arithmetic-identical Q8 proposal-row kernel
+  for the three cache-independent attention projections. It is correctness
+  complete and awaits its direct user-run component ablation.
 - The GPU stage path currently borrows target graph transient batch workspace
   and therefore requires `prefill_cap >= block_size` (five). Decide whether to
   allocate sidecar-specific batch scratch before production enablement or keep
