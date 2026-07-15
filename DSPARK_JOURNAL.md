@@ -5387,6 +5387,21 @@ This repeats the same underlying component comparison after promotion, but now
 proves that the faster route is selected without an environment variable and
 that `DS4_DSPARK_EXACT_Q8_ROWS=0` faithfully retains the old control.
 
+Phase 0.93 user-run confirmation result on 2026-07-15:
+
+- Legacy one-row Q8 median: `22.01 t/s`; promoted exact Q8-row median:
+  `23.34 t/s`; ratio of medians: `1.0604x`; median paired ratio:
+  `1.0609x` (`+6.0%` by medians).
+- All three promotion-confirmation ratios were positive: `1.0613x`,
+  `1.0609x`, and `1.0568x`. Every measured stdout SHA-256 was identical.
+  This independently confirms both environment-free default selection and the
+  legacy opt-out after promotion.
+- Raw result:
+  `speed-bench/local-runs/20260715-140157/results.csv`.
+- Phase 0.93 is complete. Retain `DS4_DSPARK_EXACT_Q8_ROWS=0` only as a
+  regression control; subsequent exact-runtime work should build on the
+  promoted Q8 proposal-row path.
+
 Phase 0.52 checks:
 
 ```sh
@@ -5517,8 +5532,9 @@ If continuing from a compacted context, start here:
   cache-independent attention projections; its user-run ablation won all three
   pairs with a `1.0625x` median paired ratio. Phase 0.93 promotes it to the
   Metal exact-runtime default while retaining
-  `DS4_DSPARK_EXACT_Q8_ROWS=0` as the legacy control. The promotion is
-  correctness complete and awaits only the optional user-run confirmation.
+  `DS4_DSPARK_EXACT_Q8_ROWS=0` as the legacy control. Its post-promotion
+  confirmation won all three pairs with a `1.0609x` median paired ratio and
+  identical output hashes. Phase 0.93 is complete.
 - The GPU stage path currently borrows target graph transient batch workspace
   and therefore requires `prefill_cap >= block_size` (five). Decide whether to
   allocate sidecar-specific batch scratch before production enablement or keep
