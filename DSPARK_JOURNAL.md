@@ -4971,6 +4971,47 @@ identify thinking mode as a material source of the earlier gap. Little or no
 improvement would move the next phase to a small officially sourced code-prompt
 corpus before investigating target quantization or proposal arithmetic.
 
+Phase 0.88 user-run non-thinking result on 2026-07-15:
+
+- Raw results are in
+  `speed-bench/local-runs/issue468-acceptance-nothink-20260715-111403`.
+  Metadata records clean commit `b1261f4`, the validated Phase 0.87 reference,
+  non-thinking mode on both processes, exact verification, no inherited
+  `DS4_*` environment, and byte-identical baseline/runtime output for every
+  prompt.
+- Non-thinking accepted length / verify rate / full-accept rate were
+  `3.196 / 0.533 / 21.6%` for code, `2.629 / 0.438 / 9.7%` for synthesis, and
+  `3.078 / 0.513 / 19.6%` for grounded. Relative to thinking-high, accepted
+  length changed by `+0.196/-1.061/-0.490`; the three-prompt macro mean changed
+  from `3.419` to `2.968` (`-0.452`).
+- Non-thinking modestly helped code across positions 1-4: conditional
+  acceptance changed by `+2.1/+2.2/+6.9/+3.0` percentage points, then fell
+  `3.6` points at position 5. This raised code verify rate only `3.3` points,
+  from `0.500` to `0.533`, still `10.3-12.7` points below Table 1's unmatched
+  code macro range of `0.636-0.660`. With only 51 versus 54 proposal rounds and
+  different generated trajectories, the small code gain should not be treated
+  as a precise or statistically established effect.
+- Synthesis degraded from the first position onward: position-1 conditional
+  acceptance fell `15.7` points, prefix survival was down `20-26.5` points at
+  positions 2-5, and full acceptance fell `21.3` points. Grounded also lost
+  `10.3` points at position 1 and `3.1-13.7` points of prefix survival. These
+  large, directionally coherent declines show that non-thinking is not a
+  generally better alignment mode for these custom prompts.
+- Confidence remains coherent rather than indicating gross candidate-record
+  corruption. Code position-1 confidence exceeded observed acceptance by
+  `7.6` points; synthesis became more overconfident at position 1 (`14.1`
+  points), while grounded was close (`3.0` points). No confidence values were
+  non-finite.
+- Decision: generation mode is prompt-dependent and does not explain the main
+  acceptance gap. Retain thinking-high for the Issue 468 throughput
+  reproduction because that matches its source harness; use non-thinking only
+  when matching the paper protocol. Do not investigate mode plumbing or enable
+  confidence scheduling next. The next diagnostic should use a small,
+  officially sourced code corpus and the paper's non-thinking mode, while
+  preserving the current five-draft greedy protocol initially so corpus/domain
+  is the only new variable. Only after that result should we choose between a
+  target-quantization control and proposal-path arithmetic validation.
+
 Phase 0.52 checks:
 
 ```sh
@@ -5080,8 +5121,11 @@ If continuing from a compacted context, start here:
   conditional acceptance and the other prompts argued against a universal
   Markov/rolling-window defect. Phase 0.88 prepared a validated same-prompt
   `--nothink` acceptance control against that exact thinking-high artifact.
-  The next gate is the user-run command recorded in Phase 0.88; interpret its
-  generated mode-delta section before choosing a corpus or arithmetic branch.
+  That control modestly improved code but substantially hurt synthesis and
+  grounded; generation mode is not the general explanation. The next phase is
+  a small officially sourced code corpus in non-thinking mode, keeping the
+  current five-draft greedy protocol fixed before changing quantization or
+  proposal arithmetic.
   Even perfect acceptance cannot win at the current target-position cost, so
   target batch efficiency remains a second required line of work.
 - The GPU stage path currently borrows target graph transient batch workspace
