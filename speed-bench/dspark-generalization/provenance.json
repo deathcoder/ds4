@@ -1,0 +1,86 @@
+{
+  "study": "DSpark non-code confidence-scheduler generalization gate",
+  "source_repository": "https://github.com/deepseek-ai/DeepSpec.git",
+  "source_commit": "005e03b81cec38b7da6399833d609ee89a2587f2",
+  "source_turn_index": 0,
+  "domains": {
+    "math": ["gsm8k", "math500", "aime25"],
+    "chat": ["alpaca", "mt-bench"]
+  },
+  "selection_policy": {
+    "locked_before_model_execution": true,
+    "evaluator_subset": "selection is restricted to each source's row cap in DeepSpec eval.py",
+    "math": "two interior rows per evaluator-visible subset: round((i + 1) * (N - 1) / 3) for i in [0, 1]",
+    "alpaca": "one SHA-256-seeded long-form non-code row from each tercile of the evaluator-visible first 500 rows",
+    "alpaca_eligibility": "100-1000 UTF-8 bytes; starts Explain/Describe/Discuss/Write/Suggest/Evaluate/Generate a story/Summarize/Compare; excludes URLs, explicit programming keywords, and explicit one-sentence/short/maximum-length constraints",
+    "alpaca_sampling": "Python random.Random(seed).choice over source-ordered eligible rows in each tercile",
+    "alpaca_seed": "first 64 bits of SHA-256('005e03b81cec38b7da6399833d609ee89a2587f2:alpaca-first500-longform-unconstrained:{tercile}')",
+    "mt_bench": "fixed first-turn indices 5, 25, and 75 spanning long-form writing, reasoning, and humanities",
+    "model_outputs_or_acceptance_used": false
+  },
+  "datasets": [
+    {
+      "dataset": "gsm8k",
+      "source_file": "eval_datasets/gsm8k.jsonl",
+      "source_rows": 1319,
+      "source_file_bytes": 433964,
+      "source_file_sha256": "63330a20a17f416fdfca978ebcd5124f8da5546affb3a079b65a6e8daf42b41f",
+      "evaluator_rows": 500,
+      "selected_indices_zero_based": [166, 333]
+    },
+    {
+      "dataset": "math500",
+      "source_file": "eval_datasets/math500.jsonl",
+      "source_rows": 500,
+      "source_file_bytes": 145398,
+      "source_file_sha256": "4f530d9d3126dca41c12a96e78ec0dd460b7202052ba86101c4da159cea33aac",
+      "evaluator_rows": 500,
+      "selected_indices_zero_based": [166, 333]
+    },
+    {
+      "dataset": "aime25",
+      "source_file": "eval_datasets/aime25.jsonl",
+      "source_rows": 30,
+      "source_file_bytes": 18982,
+      "source_file_sha256": "b8835996839caa1d982c5bb9ecaeca636424f0b8ed9f33a40b084feb1c1766d0",
+      "evaluator_rows": 30,
+      "selected_indices_zero_based": [10, 19]
+    },
+    {
+      "dataset": "alpaca",
+      "source_file": "eval_datasets/alpaca.jsonl",
+      "source_rows": 52002,
+      "source_file_bytes": 5401495,
+      "source_file_sha256": "c1f1623ac08e4c4f024604bb2689a024963eb7eb9dbbc29e57dda5a11d87e07b",
+      "evaluator_rows": 500,
+      "selected_indices_zero_based": [115, 324, 357]
+    },
+    {
+      "dataset": "mt-bench",
+      "source_file": "eval_datasets/mt-bench.jsonl",
+      "source_rows": 80,
+      "source_file_bytes": 34145,
+      "source_file_sha256": "df05defbcea350dff39f7d2996a7cba8a029e6e06069dfcdab11ceb998d743b0",
+      "evaluator_rows": 80,
+      "selected_indices_zero_based": [5, 25, 75]
+    }
+  ],
+  "stored_rows": 12,
+  "samples_file": "samples.jsonl",
+  "samples_file_bytes": 7584,
+  "samples_file_sha256": "2a1b7b5117f77b8cab02906df864d63ff1593f42c2a4b1cb1a7a3b9bf5abae8c",
+  "samples": [
+    {"label":"gsm8k_00166","domain":"math","dataset":"gsm8k","source_index":166,"source_line":167,"source_turn_index":0,"source_line_sha256":"08c3ae0bc93ad5ef76b45e25c7fb13da68d8061b94a2a89bf9dfeba5aa4a7b7f","prompt_bytes":321,"prompt_sha256":"ede9067d92ae21325e9036929507df0ee0e760ab1f6245c285cebb5a3103ca7d"},
+    {"label":"gsm8k_00333","domain":"math","dataset":"gsm8k","source_index":333,"source_line":334,"source_turn_index":0,"source_line_sha256":"e2a206aaf44aae88eac4e27e267fa98d9fe57b4974ace24f569fa57a5d0b968c","prompt_bytes":387,"prompt_sha256":"22fa95afbe59780d551542b784839acf51742b6f18e3d3834304f14a63e97504"},
+    {"label":"math500_00166","domain":"math","dataset":"math500","source_index":166,"source_line":167,"source_turn_index":0,"source_line_sha256":"2e4745956cf759b27ce717f2fe61751abfe3792ab72d00a93e8da430bc4c9cb2","prompt_bytes":554,"prompt_sha256":"67f60f108201cf68469fcc55f876ef4445a94f1e3e65870865b3856af566322e"},
+    {"label":"math500_00333","domain":"math","dataset":"math500","source_index":333,"source_line":334,"source_turn_index":0,"source_line_sha256":"36b3cad18d9d25fbf99abee5fc3bb09cf4afac5420201dd39424c81beaee7d8c","prompt_bytes":208,"prompt_sha256":"6b86367bd9880dbacd00bf23eb4b07ffc1b5bf47c2cd43d9a953215d3dadcfb2"},
+    {"label":"aime25_00010","domain":"math","dataset":"aime25","source_index":10,"source_line":11,"source_turn_index":0,"source_line_sha256":"3ea46d20e812e27dfc8fdd23f6925d324950bcb6cd9ff701858096f8b941dbe4","prompt_bytes":1377,"prompt_sha256":"e66efef254d7f2adbc55e3aa108dcf18b2240f4ecef9270cc3aaa2064bc5f265"},
+    {"label":"aime25_00019","domain":"math","dataset":"aime25","source_index":19,"source_line":20,"source_turn_index":0,"source_line_sha256":"911b772b9636b559451279e30d4746dfa69cfa44a7081ac203311d7f803639c4","prompt_bytes":1632,"prompt_sha256":"397160f0b88288eb28a9216193dd2548ac9b4d4887360734e048a764af638ff7"},
+    {"label":"alpaca_00115","domain":"chat","dataset":"alpaca","source_index":115,"source_line":116,"source_turn_index":0,"source_line_sha256":"c06b0ce519b3892195f6156c149ac9f4291fd6d1967e671a19c73505f4a5d66c","prompt_bytes":267,"prompt_sha256":"8e77e6db14636c79a914fba1c0211096a3a4d38dfce1db87f2d180cd99b84dc2"},
+    {"label":"alpaca_00324","domain":"chat","dataset":"alpaca","source_index":324,"source_line":325,"source_turn_index":0,"source_line_sha256":"237090ea31934c644fabf42f84f0e7d41a6e474022c4a2d955f10a224c3bdb39","prompt_bytes":504,"prompt_sha256":"056268f00860e21b51cf9c9afacb82fbfa4694d2015175b90c9e672da1daddae"},
+    {"label":"alpaca_00357","domain":"chat","dataset":"alpaca","source_index":357,"source_line":358,"source_turn_index":0,"source_line_sha256":"5e09df67141dbe8cfab344c115193be409b52e59b603d74a0f0aca212162aab7","prompt_bytes":141,"prompt_sha256":"3fae04bcc645a5bf56475a788e3f7d5266e671e36d328c766bb5e378c9e1d593"},
+    {"label":"mt_bench_00005","domain":"chat","dataset":"mt-bench","source_index":5,"source_line":6,"source_turn_index":0,"source_line_sha256":"2d57739e2799d1ea881e40c78f4bba2a098f301199496c5111467f271aff010a","prompt_bytes":183,"prompt_sha256":"dbb8fbd4c10e8892a8848c79417e1f732009a11f154eb9be0234a96bc67a7cf9"},
+    {"label":"mt_bench_00025","domain":"chat","dataset":"mt-bench","source_index":25,"source_line":26,"source_turn_index":0,"source_line_sha256":"f3faf387bc0343c94d57661ac613d6988a4600a2acf22978207bf6dc48102f39","prompt_bytes":334,"prompt_sha256":"1153dd86d8406d85cfa0bb84184ffec26dff227ccc775c0b96113faae46d005c"},
+    {"label":"mt_bench_00075","domain":"chat","dataset":"mt-bench","source_index":75,"source_line":76,"source_turn_index":0,"source_line_sha256":"8b8df6d5de08b7209c16dd1419229ef9da85bf07e871496a40597ec0d52276d8","prompt_bytes":105,"prompt_sha256":"91c72372944681e51d9a06d0e5a162d7bdb94ff69ddf9268c7360937ef875583"}
+  ]
+}

@@ -8,6 +8,14 @@ particular DSpark change exists.
 
 Branch: `codex/dspark-observability-0`
 
+Phase 1.00 is prepared but not benchmarked. It freezes a 12-task non-code
+generalization gate from the exact DeepSpec commit: six math tasks across
+GSM8K, MATH-500, and AIME-2025, and six chat tasks across Alpaca and MT-Bench.
+Each task compares ordinary baseline, fixed K=5 DSpark, and threshold `0.455`
+in a balanced three-mode rotation with byte-exact output and no instrumentation.
+The user must run its 39 processes. Promotion criteria are locked below; do not
+tune tasks or threshold after seeing the result.
+
 Phase 0.99 is complete. The frozen 32-task HumanEval scheduled run at threshold
 `0.455` raised the median paired DSpark/baseline ratio from Phase 0.94's
 historical fixed-K `0.6840x` to `0.7498x`; geometric mean rose from `0.6794x`
@@ -5897,6 +5905,44 @@ Phase 0.99 user-run result on 2026-07-15:
   the already selected threshold on a small, frozen non-code workload with an
   in-run fixed-K/scheduled comparison and byte-exact target output. Its purpose
   is generalization and regression detection, not threshold selection.
+
+Phase 1.00 math/chat generalization gate prepared on 2026-07-15:
+
+- The pinned corpus is in `speed-bench/dspark-generalization/`. It stores exact
+  `turns[0]` content, source indices, source-line and prompt hashes, complete
+  original-dataset hashes, selection policy, and DeepSpec commit
+  `005e03b81cec38b7da6399833d609ee89a2587f2`.
+- Selection is restricted to the row caps in DeepSpec `eval.py`: first 500 for
+  GSM8K and Alpaca, all 500 MATH-500 rows, all 30 AIME-2025 rows, and all 80
+  MT-Bench rows. Math uses two deterministic interior rows from each math
+  subset. Chat uses three SHA-seeded, evaluator-subset-tercile-stratified
+  long-form non-code Alpaca rows plus MT-Bench first turns selected before
+  execution to span writing, reasoning, and humanities. Model output and
+  acceptance were not used in selection. MT-Bench second turns are excluded
+  because they depend on a generated first response.
+- `speed-bench/run_dspark_generalization_gate.py` runs three modes per task:
+  ordinary baseline, exact fixed K=5 DSpark, and exact threshold-`0.455`
+  DSpark. The 12 measured triples rotate mode order exactly evenly. Three global
+  warmups are excluded, for 39 child processes total with five-second cooldowns.
+- Every fixed and scheduled output must match the task's ordinary target output
+  byte-for-byte. The runner clears inherited `DS4_*` state and rejects stats,
+  acceptance, trace, scheduler diagnostics, or profiler leakage.
+- Promotion criteria are frozen now: scheduled/fixed median above `1.0x` in
+  both math and chat; at least `4/6` scheduled wins in each domain; overall
+  scheduled/fixed geometric mean at least `1.03x`; and no individual
+  scheduled/fixed ratio below `0.90x`. Scheduled/baseline is reported separately
+  as the end-user comparison. A pass permits making `0.455` the DSpark runtime
+  default while retaining fixed K=5 as an explicit control. A failure keeps the
+  scheduler opt-in and must not trigger threshold retuning on these tasks.
+
+Phase 1.00 user-run command:
+
+```sh
+python3 speed-bench/run_dspark_generalization_gate.py --confirm-idle
+```
+
+Do not run this timed gate automatically. The user will return its printed
+summary or `summary.md`.
 
 Phase 0.52 checks:
 

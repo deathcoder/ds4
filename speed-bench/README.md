@@ -619,6 +619,38 @@ fixed-K median paired ratio of `0.6840x` is useful historical context, but it
 must not be divided into the new result as if both modes were measured in the
 same process sequence. Do not promote the threshold before this full gate.
 
+Before promoting the HumanEval-selected threshold as a general DSpark default,
+run the frozen math/chat generalization gate:
+
+```sh
+python3 speed-bench/run_dspark_generalization_gate.py \
+  --dry-run --allow-dirty
+python3 speed-bench/run_dspark_generalization_gate.py \
+  --confirm-idle
+```
+
+The corpus pins 12 exact first-turn prompts from DeepSpec commit
+`005e03b81cec38b7da6399833d609ee89a2587f2`: two each from GSM8K,
+MATH-500, and AIME-2025, three long-form non-code Alpaca rows, and three
+MT-Bench first turns spanning writing, reasoning, and humanities. Prompt bytes,
+source-line hashes, original dataset hashes, source indices, and selection rules
+live in `speed-bench/dspark-generalization/`. Selection is restricted to the
+same per-dataset row caps declared by DeepSpec `eval.py`; no model output or
+acceptance measurement was used to select rows.
+
+Each task runs ordinary baseline, fixed K=5 DSpark, and threshold-`0.455`
+DSpark once. Mode order rotates across tasks so all three modes occupy each
+position exactly four times. Three excluded warmups plus 36 measured children
+make 39 processes total. Every mode must produce byte-identical output, and no
+instrumentation is enabled. MT-Bench contributes only its self-contained first
+turn; this is a scheduler regression gate, not a matched benchmark-score run.
+
+The promotion rule is frozen before measurement: scheduled/fixed median must
+exceed `1.0x` in both math and chat, at least four of six tasks must improve in
+each domain, overall scheduled/fixed geometric mean must be at least `1.03x`,
+and no task may fall below `0.90x`. The scheduled/baseline ratio remains the
+separate end-user result. Do not tune `0.455` from this gate.
+
 The older `--stats-pass` mode remains available when a single invocation should
 run the full throughput comparison and then append one instrumented runtime
 sample per prompt:
