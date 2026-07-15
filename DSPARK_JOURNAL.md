@@ -5240,6 +5240,51 @@ and thermally stable as practical. Do not compare its absolute t/s with the
 instrumented acceptance audit; interpret the median paired ratio first, then
 the task distribution and acceptance/speed relationship.
 
+Phase 0.91 user-run throughput result on 2026-07-15:
+
+- Raw results are in
+  `speed-bench/local-runs/humaneval-throughput-32-20260715-124729`. Metadata
+  records clean commit `f35f4cc`, no inherited `DS4_*` environment, exact
+  non-thinking verification, the validated Phase 0.90 acceptance reference,
+  both reversed warmup pairs, and the intended alternating measured order.
+  The run lasted 13 minutes 29 seconds. Every baseline/runtime pair produced
+  byte-identical output.
+- Baseline and DSpark medians were `23.00` and `14.94 t/s`. The median paired
+  ratio was `0.6456x`, geometric mean was `0.6431x`, and ratio of medians was
+  `0.6496x`: a `35.4%` median throughput loss. The interquartile range was
+  `0.6020x-0.7044x`, the full range was `0.4269x-0.8063x`, and all 32 tasks
+  were slower with DSpark. A deterministic task bootstrap placed the median's
+  descriptive 95% resampling interval at `0.6214x-0.6831x`.
+- Task acceptance strongly predicted speed: Pearson `r=0.839` (`R^2=0.704`
+  for a one-variable linear fit). Acceptance quartiles averaged verify rates
+  `0.580/0.686/0.744/0.823`, with median paired ratios
+  `0.581/0.617/0.692/0.710`. This is coherent runtime behavior, not evidence
+  of a broken proposal stream: better acceptance avoids substantial verifier
+  work, but does not make the current exact verifier competitive.
+- The descriptive fit was `ratio = 0.106 + 0.767 * verify_rate`. Extrapolating
+  beyond the observed range predicts only `0.873x` at perfect acceptance and a
+  physically impossible `1.166` verify rate for break-even. Do not treat that
+  linear extrapolation as a model law, but it reinforces Phase 0.86's direct
+  cost accounting: acceptance improvements alone cannot recover the fixed
+  exact-verifier and sidecar cost.
+- Background interference existed. The initial/final snapshots showed a
+  Logitech updater at `88-97%` CPU, and an acceptance/order-controlled fit
+  estimated about a `5.7` percentage-point ratio decline over the run. There
+  were no macOS thermal/performance warnings. Baseline first-half/second-half
+  medians remained `23.02/22.98 t/s`, baseline coefficient of variation was
+  `1.77%`, the controlled mode-order effect was only about `-1.0` point, and
+  every task lost by at least `19.4%`. Interference limits fine task-level
+  comparisons but cannot change the aggregate decision.
+- Decision: the current exact DSpark runtime is not throughput-competitive on
+  this Metal system even on the official-domain workload where proposal
+  quality matches the paper directionally. Acceptance validation is complete;
+  do not run all 164 tasks, add a confidence scheduler, or optimize the
+  sidecar. The next phase must return to target verification and pursue a
+  numerically authoritative compute-batched verifier that preserves exact
+  autoregressive cache/state updates while amortizing target weight access.
+  The unsafe generic-prefill fast verifier remains only a useful parity and
+  speed reference, never production authority.
+
 Phase 0.52 checks:
 
 ```sh
@@ -5359,11 +5404,13 @@ If continuing from a compacted context, start here:
   deterministic 32-sample expansion the default. Its user-run result reached
   `0.700` pooled verify rate across 1,023 rounds, with leave-one-task-out rates
   of `0.696-0.711` and exact repeatability on four overlapping pilot tasks.
-  Acceptance validation is complete; do not run all 164. The next phase is an
-  uninstrumented paired throughput study on the same 32-task selection.
-  Quantization and proposal arithmetic are no longer leading hypotheses.
-  Even perfect acceptance cannot win at the current target-position cost, so
-  target batch efficiency remains a second required line of work.
+  Acceptance validation is complete; do not run all 164. Phase 0.91's same-32
+  uninstrumented throughput study then measured a `0.6456x` median paired
+  ratio, with all 32 tasks slower and acceptance/speed Pearson `r=0.839`.
+  Quantization, proposal arithmetic, confidence scheduling, and sidecar work
+  are no longer leading paths. The next phase must make target verification
+  materially cheaper with exact autoregressive semantics; the approximate
+  generic-prefill fast verifier remains invalid as token authority.
 - The GPU stage path currently borrows target graph transient batch workspace
   and therefore requires `prefill_cap >= block_size` (five). Decide whether to
   allocate sidecar-specific batch scratch before production enablement or keep
