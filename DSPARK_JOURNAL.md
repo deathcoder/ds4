@@ -8,15 +8,17 @@ particular DSpark change exists.
 
 Branch: `codex/dspark-observability-0`
 
-Current work is Phase 0.95. The exact Metal verifier now defaults to exact FFN
+Phase 0.95 is complete. The exact Metal verifier now defaults to exact FFN
 batching, row-independent attention preparation, and the promoted 2-5-row Q8
 projection microbatch while retaining cache-mutating attention work in serial
 autoregressive row order. Phase 0.94 showed that the Q8 promotion improved
 absolute DSpark throughput on all 32 HumanEval tasks and raised the median
 paired ratio from `0.6456x` to `0.6840x`, but all tasks remain slower than
-baseline. Phase 0.95 prepares workload-aware synchronized attribution on one
-low-acceptance and one high-acceptance HumanEval task before choosing the next
-exact-verifier compute boundary.
+baseline. Phase 0.95 showed that verifier cost per proposal row is effectively
+task-invariant, while low acceptance amplifies the number of proposal rows paid
+per emitted token. The next phase should optimize a narrow part of the retained
+serial attention tail in place, preserving exact interleaved row order and not
+reviving the rejected whole-suffix batching design.
 
 Historical Phase 0.38 was deliberately diagnostic: `--dspark FILE` validates an official
 DSpark drafter GGUF, binds every tensor needed by a future runtime path, checks
@@ -5507,6 +5509,38 @@ Eight child processes run: one stats-only exact reference and three
 synchronized layer profiles per task, with five-second cooldowns. Treat every
 reported time as attribution context only.
 
+Phase 0.95 user-run result on 2026-07-15:
+
+- Raw results are in
+  `speed-bench/local-runs/humaneval-exact-profile-20260715-144116`. Every
+  reference and synchronized profile output matched the prior uninstrumented
+  HumanEval runtime artifact byte-for-byte.
+- The low-acceptance task, `humaneval_152`, had acceptance `0.528`, prior speed
+  ratio `0.4541x`, `0.6667` target evals/emitted, `3.333` positions/eval and
+  `2.044` profiled proposal rows/emitted. The high-acceptance task,
+  `humaneval_079`, had acceptance `0.839`, prior speed ratio `0.8134x`, `0.2969`
+  target evals/emitted, `4.289` positions/eval and `1.250` profiled rows/emitted.
+- Per-row exact-verifier cost was nearly identical across tasks. The low/high
+  ratios were `1.003x`, `1.005x` and `1.015x` at layers `0`, `21` and `42`.
+  Low acceptance instead caused `1.636x` more profiled rows per emitted token,
+  producing `1.688x`, `1.677x` and `1.682x` more selected-layer synchronized
+  cost per emitted token. Its target-eval invocation rate was also about
+  `2.246x` higher.
+- Component shares were stable across both tasks. Attention preparation was
+  about `18-21%`. Exact FFN was the largest layer-0 component at about `43%`.
+  The retained serial attention tail grew from about `36%` at layer 0 to about
+  `47%` at layer 42 and was the largest component from layer 21 onward.
+- The performance spread is therefore primarily acceptance-driven invocation
+  amplification, not task-specific arithmetic cost. High-acceptance tasks are
+  still below baseline, so reducing exact verifier cost remains necessary in
+  addition to any future scheduling policy.
+- Whole attention-suffix batching remains retired: Phases 0.73-0.76 showed it
+  regressed throughput by `21.2%`, because deferring the serial core and adding
+  batched projections cost more than the retained interleaved tail. The next
+  implementation boundary must be a narrow in-place tail improvement that
+  preserves row order; do not revive that candidate, the NR4 compressor pair,
+  or other previously rejected sparse-attention candidates.
+
 Phase 0.52 checks:
 
 ```sh
@@ -5645,9 +5679,14 @@ If continuing from a compacted context, start here:
   next exact-verifier slice. That rerun improved the median paired ratio from
   `0.6456x` to `0.6840x`, with absolute DSpark throughput higher on all 32
   tasks, but every task remains slower than baseline. Phase 0.94 is complete;
-  Phase 0.95 prepares promoted exact-runtime attribution on representative
-  low- and high-acceptance HumanEval tasks. Run its user gate before choosing
-  another compute batching boundary.
+  Phase 0.95 then attributed the promoted exact runtime on representative low-
+  and high-acceptance HumanEval tasks. Per-row layer cost differed by only
+  `1.003x-1.015x`, while the low-acceptance task paid for `1.636x` more proposal
+  rows and about `1.68x` more selected-layer cost per emitted token. Phase 0.95
+  is complete. The retained serial attention tail is the largest late-layer
+  component, but whole-suffix batching and deferred projection candidates were
+  already rejected. Select a narrow in-place tail optimization that preserves
+  the exact interleaved row schedule before preparing another user-run gate.
 - The GPU stage path currently borrows target graph transient batch workspace
   and therefore requires `prefill_cap >= block_size` (five). Decide whether to
   allocate sidecar-specific batch scratch before production enablement or keep
