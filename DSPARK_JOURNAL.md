@@ -8,16 +8,17 @@ particular DSpark change exists.
 
 Branch: `codex/dspark-observability-0`
 
-Phase 0.97 is prepared and awaiting its user-run diagnostic. The existing
-32-task HumanEval acceptance artifact contains only aggregate confidence sums,
-so it cannot replay DeepSpec's confidence-prefix scheduler. An opt-in
-`DS4_DSPARK_ACCEPTANCE_TRACE=1` now records each proposal's accepted draft count
-and raw confidence vector, but only when acceptance audit is also enabled. A
-runtime-only collector reuses the already validated baseline output artifacts,
-and an offline analyzer evaluates exact in-sample threshold breakpoints plus a
-leave-one-task-out check. This is a local counterfactual workload estimate, not
-an exact replay or speed benchmark. No confidence scheduler changes runtime
-behavior yet.
+Phase 0.97 is complete. Its 32-task HumanEval trace reproduced the prior output
+and acceptance audit exactly. Raw confidence supports a stable DeepSpec-style
+prefix policy: leave-one-task-out thresholds differed by at most `0.005` from
+the in-sample choices. At the conservative `~0.38` policy, local progress was
+`0.990x`, the target-position proxy was `0.936x`, and target-eval/sidecar-round
+amplification was `1.010x`; the balanced `~0.455` policy measured `0.976x`,
+`0.899x`, and `1.025x`. This is promising enough for a guarded runtime
+ablation, not promotion. No confidence scheduler changes runtime behavior yet.
+The next phase should implement the official prefix rule behind an opt-in
+threshold and compare fixed K=5, `0.38`, and `0.455` on predeclared low- and
+high-acceptance HumanEval tasks before another full 32-task run.
 
 Phase 0.96 is complete but not promoted. The exact Metal verifier has an opt-in
 in-place attention/inverse-RoPE fusion that preserves the interleaved
@@ -5686,6 +5687,42 @@ acceptance reproduced exactly, then compare in-sample and leave-one-task-out
 retention/proxy rows. Do not add a runtime scheduler before reviewing that
 result together.
 
+Phase 0.97 user-run result on 2026-07-15:
+
+- Raw results are in
+  `speed-bench/local-runs/humaneval-scheduler-trace-32-20260715-165938` at clean
+  commit `787921e`. All 32 traced exact-runtime outputs matched their previously
+  validated baseline byte-for-byte. The aggregate audit reproduced 1,023 full
+  proposals, accepted length `4.202`, and verify rate `0.700` exactly.
+- The conservative `99%` in-sample policy selected threshold `0.381954`, mean
+  K `4.629`, retained `0.9902x` local progress, reduced the normalized target-
+  position proxy to `0.9360x`, and amplified target evaluations/full sidecar
+  rounds per local progress to `1.0099x`. It removed 374 raw target positions
+  and 338 wasted positions, lost 42 accepted-draft opportunities, cut
+  prematurely in `2.8%` of proposals, and selected K=0 in `0.6%`.
+- The balanced `97.5%` policy selected threshold `0.455892`, mean K `4.361`,
+  retained `0.9763x` progress, reduced the proxy to `0.8981x`, and amplified
+  rounds to `1.0243x`. It removed 630 raw target positions and 552 wasted
+  positions, lost 102 accepted drafts, cut prematurely in `5.7%`, and selected
+  K=0 in `2.3%`.
+- The aggressive `95%` policy selected threshold `0.535048`, mean K `4.053`,
+  retained `0.9507x` progress, reduced the proxy to `0.8623x`, and amplified
+  rounds to `1.0519x`. Its `11.2%` premature-cut rate and 212 lost drafts make
+  it a poor first runtime candidate.
+- Leave-one-task-out validation was unusually stable. The `99%` policy chose
+  only `0.380-0.385`; the `97.5%` policy chose `0.455-0.460`; and held-out
+  progress/proxy results matched the in-sample rows to rounding. The confidence
+  signal generalizes across this selected corpus rather than depending on one
+  fitted floating-point breakpoint.
+- The oracle bound is mean K `3.202` and target-position proxy `0.678x` at full
+  progress. It confirms substantial theoretical waste but cannot be
+  implemented because it uses future target acceptance.
+- These results do not establish a speedup. DeepSpec still computes all five
+  sidecar drafts, shorter Metal verifier batches may have poorer per-position
+  efficiency, and extra target evaluations can erase the position reduction.
+  Proceed with an opt-in exact runtime ablation using predeclared thresholds
+  `0.38` and `0.455`; do not promote or tune against throughput yet.
+
 Phase 0.52 checks:
 
 ```sh
@@ -5838,9 +5875,10 @@ If continuing from a compacted context, start here:
   ratio, with one slightly negative pair, so the candidate remains opt-in and
   is not promoted. Phase 0.97 now tests whether official-style raw-confidence
   prefix scheduling can reduce low-acceptance proposal-row work without losing
-  too much local progress. It is trace-and-analysis only; no scheduler is in
-  the runtime. Await the user-run result before deciding whether scheduling is
-  promising. Do not repeat the sub-percent inverse-RoPE ablation unchanged.
+  too much local progress. Its trace result generalized and supports a guarded
+  runtime ablation at predeclared thresholds `0.38` and `0.455`, but no
+  scheduler is in the runtime yet. Do not repeat the sub-percent inverse-RoPE
+  ablation unchanged.
 - The GPU stage path currently borrows target graph transient batch workspace
   and therefore requires `prefill_cap >= block_size` (five). Decide whether to
   allocate sidecar-specific batch scratch before production enablement or keep
