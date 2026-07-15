@@ -8,6 +8,17 @@ particular DSpark change exists.
 
 Branch: `codex/dspark-observability-0`
 
+Phase 0.97 is prepared and awaiting its user-run diagnostic. The existing
+32-task HumanEval acceptance artifact contains only aggregate confidence sums,
+so it cannot replay DeepSpec's confidence-prefix scheduler. An opt-in
+`DS4_DSPARK_ACCEPTANCE_TRACE=1` now records each proposal's accepted draft count
+and raw confidence vector, but only when acceptance audit is also enabled. A
+runtime-only collector reuses the already validated baseline output artifacts,
+and an offline analyzer evaluates exact in-sample threshold breakpoints plus a
+leave-one-task-out check. This is a local counterfactual workload estimate, not
+an exact replay or speed benchmark. No confidence scheduler changes runtime
+behavior yet.
+
 Phase 0.96 is complete but not promoted. The exact Metal verifier has an opt-in
 in-place attention/inverse-RoPE fusion that preserves the interleaved
 autoregressive row schedule and removes the separate inverse-RoPE dispatch.
@@ -5620,6 +5631,61 @@ Phase 0.96 user-run result on 2026-07-15:
   can remove the arithmetic drift or combine this fusion with a materially
   larger same-write optimization.
 
+Phase 0.97 confidence-scheduler diagnostic prepared on 2026-07-15:
+
+- The Phase 0.90 HumanEval acceptance artifact has aggregate confidence sums,
+  Brier terms, and position counts but no per-proposal confidence vectors. It
+  cannot honestly simulate a threshold scheduler after the fact.
+- Inspected official DeepSpec commit
+  `005e03b81cec38b7da6399833d609ee89a2587f2`, file
+  `deepspec/eval/dspark/draft_ops.py`. Its released inference path computes the
+  complete DSpark block, applies sigmoid to confidence logits, and selects the
+  prefix before the first confidence strictly below the configured threshold.
+  A non-positive threshold selects the full block; a low first confidence can
+  select zero drafts. The V4-Flash release provides no STS calibration values,
+  so this study uses raw sigmoid confidence and says so explicitly.
+- Added opt-in `DS4_DSPARK_ACCEPTANCE_TRACE=1`. It requires acceptance audit and
+  emits one compact record per proposal with the sequential round number,
+  proposed and accepted drafts, truncation flag, and confidence vector. It adds
+  no model evaluations and is never enabled for throughput runs.
+- Added `speed-bench/run_dspark_humaneval_scheduler_trace.py`. It validates and
+  reuses the prior 32 baseline stdout artifacts, runs only 32 traced exact
+  runtimes, requires byte-identical output, and requires every per-sample and
+  aggregate acceptance metric to reproduce the prior audit exactly.
+- Added `speed-bench/analyze_dspark_confidence_scheduler.py`. Full proposals are
+  analyzed using local progress `min(accepted, K) + 1`; K=0 still costs an
+  ordinary one-token target evaluation. It reports progress retention, target
+  positions per local progress, target evaluations/sidecar rounds per local
+  progress, premature cuts, lost accepted drafts, wasted verified positions,
+  exact in-sample threshold frontiers at `99%`, `97.5%`, and `95%` retention,
+  and a fixed-grid leave-one-task-out check. Oracle K=accepted is reported only
+  as a non-implementable bound.
+- Interpretation is deliberately limited: truncating a proposal changes later
+  proposal boundaries, target cost is not linear in positions, and the released
+  DeepSpec implementation still computes the full sidecar block before cutting
+  the prefix. These proxy results are not speed predictions and cannot justify
+  a runtime scheduler by themselves.
+- Added model-free tests for strict threshold equality, trace validation, K=0,
+  fixed K=5, and the oracle. Metal/CPU builds, DSpark validation/shape binding,
+  the full traced exact-runtime correctness matrix, Python/shell syntax checks,
+  the synthetic end-to-end analyzer, and `git diff --check` passed. Codex did
+  not run a tok/s benchmark or the 32-task user diagnostic.
+
+Phase 0.97 user-run command:
+
+```sh
+python3 speed-bench/run_dspark_humaneval_scheduler_trace.py \
+  --confirm-ready \
+  --acceptance-reference \
+  speed-bench/local-runs/humaneval-acceptance-32-20260715-121045/summary.json
+```
+
+The command runs 32 exact-runtime processes and no fresh baseline processes.
+The next decision comes from `scheduler_summary.md`: first check that traced
+acceptance reproduced exactly, then compare in-sample and leave-one-task-out
+retention/proxy rows. Do not add a runtime scheduler before reviewing that
+result together.
+
 Phase 0.52 checks:
 
 ```sh
@@ -5770,9 +5836,11 @@ If continuing from a compacted context, start here:
   byte-identical, but compressed YaRN arithmetic has documented bounded
   hidden-state drift. The user-run gate measured only a `1.0034x` median paired
   ratio, with one slightly negative pair, so the candidate remains opt-in and
-  is not promoted. The next phase should target a materially larger source of
-  exact-verifier work or reduce low-acceptance proposal-row amplification; do
-  not repeat this sub-percent ablation unchanged.
+  is not promoted. Phase 0.97 now tests whether official-style raw-confidence
+  prefix scheduling can reduce low-acceptance proposal-row work without losing
+  too much local progress. It is trace-and-analysis only; no scheduler is in
+  the runtime. Await the user-run result before deciding whether scheduling is
+  promising. Do not repeat the sub-percent inverse-RoPE ablation unchanged.
 - The GPU stage path currently borrows target graph transient batch workspace
   and therefore requires `prefill_cap >= block_size` (five). Decide whether to
   allocate sidecar-specific batch scratch before production enablement or keep

@@ -23,6 +23,7 @@ TIMING_RE = re.compile(
 )
 STATS_PREFIX = b"ds4: DSpark runtime stats "
 ACCEPTANCE_PREFIX = b"ds4: DSpark acceptance audit "
+ACCEPTANCE_TRACE_PREFIX = b"ds4: DSpark acceptance trace "
 INT_STATS = {
     "proposals", "selected", "source_fallbacks", "multi_attempts", "emitted",
     "target_evals", "target_eval_tokens", "target_evals_avoided",
@@ -103,8 +104,10 @@ def cleared_env_keys(env):
 
 def benchmark_env(
     mode, fast_verifier, stats=False, exact_head_batch=False,
-    acceptance_audit=False,
+    acceptance_audit=False, acceptance_trace=False,
 ):
+    if acceptance_trace and not acceptance_audit:
+        raise ValueError("acceptance trace requires acceptance audit")
     env = os.environ.copy()
     for key in cleared_env_keys(env):
         env.pop(key, None)
@@ -119,6 +122,8 @@ def benchmark_env(
             env["DS4_DSPARK_GPU_RUNTIME_STATS"] = "1"
         if acceptance_audit:
             env["DS4_DSPARK_ACCEPTANCE_AUDIT"] = "1"
+        if acceptance_trace:
+            env["DS4_DSPARK_ACCEPTANCE_TRACE"] = "1"
     return env
 
 
@@ -302,16 +307,19 @@ def mode_command(args, prompt, mode):
     return command
 
 
-def command_text(args, prompt, mode, stats=False, acceptance_audit=False):
+def command_text(
+    args, prompt, mode, stats=False, acceptance_audit=False,
+    acceptance_trace=False,
+):
     env = benchmark_env(
         mode, args.fast_verifier, stats, args.exact_head_batch,
-        acceptance_audit,
+        acceptance_audit, acceptance_trace,
     )
     keys = (
         "DS4_DSPARK_GPU_RUNTIME", "DS4_DSPARK_MULTI_COMMIT",
         "DS4_DSPARK_FAST_BATCH_VERIFY", "DS4_DSPARK_EXACT_HEAD_BATCH",
         "DS4_DSPARK_GPU_RUNTIME_STATS",
-        "DS4_DSPARK_ACCEPTANCE_AUDIT",
+        "DS4_DSPARK_ACCEPTANCE_AUDIT", "DS4_DSPARK_ACCEPTANCE_TRACE",
     )
     prefix = " ".join(f"{key}={env[key]}" for key in keys if key in env)
     return (prefix + " " if prefix else "") + shlex.join(
@@ -428,14 +436,16 @@ def parse_acceptance_audit(stderr_data, path):
 
 def execute(
     args, root, run_dir, label, prompt_label, prompt, mode, reference,
-    stats=False, acceptance_audit=False,
+    stats=False, acceptance_audit=False, acceptance_trace=False,
 ):
+    if acceptance_trace and (mode != "runtime" or not acceptance_audit):
+        raise ValueError("acceptance trace requires a runtime acceptance audit")
     stdout_path = run_dir / f"{label}.{prompt_label}.{mode}.stdout"
     stderr_path = run_dir / f"{label}.{prompt_label}.{mode}.stderr"
     command = mode_command(args, prompt, mode)
     print(
         f"[{label}/{prompt_label}] {mode}: "
-        f"{command_text(args, prompt, mode, stats, acceptance_audit)}",
+        f"{command_text(args, prompt, mode, stats, acceptance_audit, acceptance_trace)}",
         flush=True,
     )
     started = time.monotonic()
@@ -444,7 +454,7 @@ def execute(
             command, cwd=root,
             env=benchmark_env(
                 mode, args.fast_verifier, stats, args.exact_head_batch,
-                acceptance_audit,
+                acceptance_audit, acceptance_trace,
             ),
             stdout=stdout_fp, stderr=stderr_fp, check=False,
         )
@@ -461,6 +471,15 @@ def execute(
     if not acceptance_audit and ACCEPTANCE_PREFIX in stderr_data:
         raise RuntimeError(
             f"non-audit run unexpectedly emitted DSpark acceptance data: {stderr_path}"
+        )
+    has_acceptance_trace = ACCEPTANCE_TRACE_PREFIX in stderr_data
+    if acceptance_trace and not has_acceptance_trace:
+        raise RuntimeError(
+            f"acceptance trace run emitted no proposal records: {stderr_path}"
+        )
+    if not acceptance_trace and has_acceptance_trace:
+        raise RuntimeError(
+            f"non-trace run unexpectedly emitted acceptance trace data: {stderr_path}"
         )
     row = {
         "prompt": prompt_label, "mode": mode, "prefill_tps": prefill_tps,
@@ -510,7 +529,10 @@ def collect_metadata(args, root, prompts, provenance, acceptance_reference=None)
                 )
             else:
                 commands[label]["acceptance_runtime"] = command_text(
-                    args, prompt, "runtime", acceptance_audit=True
+                    args, prompt, "runtime", acceptance_audit=True,
+                    acceptance_trace=bool(
+                        getattr(args, "acceptance_trace", False)
+                    ),
                 )
         else:
             commands[label] = {
@@ -545,6 +567,7 @@ def collect_metadata(args, root, prompts, provenance, acceptance_reference=None)
                 "DS4_DSPARK_EXACT_HEAD_BATCH",
                 "DS4_DSPARK_GPU_RUNTIME_STATS",
                 "DS4_DSPARK_ACCEPTANCE_AUDIT",
+                "DS4_DSPARK_ACCEPTANCE_TRACE",
             ],
         },
         "config": {
@@ -567,6 +590,7 @@ def collect_metadata(args, root, prompts, provenance, acceptance_reference=None)
             "stats_pass": args.stats_pass,
             "stats_only": args.stats_only,
             "acceptance_audit": args.acceptance_audit,
+            "acceptance_trace": bool(getattr(args, "acceptance_trace", False)),
             "nothink": args.nothink,
         },
         "binary": file_metadata(args.binary), "base_model": file_metadata(args.model),

@@ -30142,6 +30142,7 @@ struct dspark_session_state {
     uint64_t acceptance_audit_accepted_drafts;
     uint64_t acceptance_audit_full_accepts;
     uint64_t acceptance_audit_truncated_proposals;
+    uint64_t acceptance_trace_records;
     uint64_t acceptance_audit_proposed_at[16];
     uint64_t acceptance_audit_reached_at[16];
     uint64_t acceptance_audit_accepted_at[16];
@@ -30180,6 +30181,7 @@ struct dspark_session_state {
 
 static bool dspark_session_runtime_stats_enabled(void);
 static bool dspark_session_acceptance_audit_enabled(void);
+static bool dspark_session_acceptance_trace_enabled(void);
 
 static void dspark_acceptance_audit_print_u64_array(
         const char     *name,
@@ -34123,6 +34125,18 @@ static bool dspark_session_acceptance_audit_enabled(void) {
     return enabled;
 }
 
+static bool dspark_session_acceptance_trace_enabled(void) {
+    static int initialized;
+    static bool enabled;
+    if (!initialized) {
+        const char *v = getenv("DS4_DSPARK_ACCEPTANCE_TRACE");
+        enabled = dspark_session_acceptance_audit_enabled() &&
+                  v && v[0] && strcmp(v, "0") != 0;
+        initialized = 1;
+    }
+    return enabled;
+}
+
 static bool dspark_session_fast_verify_observer_enabled(void) {
     const char *v = getenv("DS4_DSPARK_FAST_VERIFY_OBSERVER");
     return dspark_session_gpu_runtime_env_enabled() &&
@@ -34344,7 +34358,23 @@ static void dspark_session_acceptance_audit_record(
     if (!d || !drafts || !dspark_session_acceptance_audit_enabled()) return;
     if (proposed > d->block_size) proposed = d->block_size;
     if (accepted > proposed) accepted = proposed;
-    if (proposed < d->block_size) {
+    const bool truncated = proposed < d->block_size;
+    if (dspark_session_acceptance_trace_enabled()) {
+        d->acceptance_trace_records++;
+        fprintf(stderr,
+                "ds4: DSpark acceptance trace round=%llu proposed=%u "
+                "accepted=%u truncated=%u confidences=",
+                (unsigned long long)d->acceptance_trace_records,
+                proposed,
+                accepted,
+                truncated ? 1u : 0u);
+        for (uint32_t pos = 0; pos < proposed; pos++) {
+            fprintf(stderr, "%s%.9g", pos ? "," : "", drafts[pos].confidence);
+        }
+        if (proposed == 0) fputs("none", stderr);
+        fputc('\n', stderr);
+    }
+    if (truncated) {
         d->acceptance_audit_truncated_proposals++;
         return;
     }

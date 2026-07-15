@@ -15,6 +15,7 @@ attn_pre_runtime=${DS4_TEST_DSPARK_ATTN_PRE_RUNTIME:-0}
 attn_suffix_runtime=${DS4_TEST_DSPARK_ATTN_SUFFIX_RUNTIME:-0}
 runtime_stats=${DS4_TEST_DSPARK_RUNTIME_STATS:-0}
 acceptance_audit=${DS4_TEST_DSPARK_ACCEPTANCE_AUDIT:-0}
+acceptance_trace=${DS4_TEST_DSPARK_ACCEPTANCE_TRACE:-0}
 compressor_pair_nr4=${DS4_TEST_DSPARK_COMPRESSOR_PAIR_NR4:-0}
 indexed_attn_rb16_promotion=${DS4_TEST_DSPARK_INDEXED_ATTN_RB16_PROMOTION:-\
 ${DS4_TEST_DSPARK_INDEXED_ATTN_RB16_DIRECT:-0}}
@@ -32,6 +33,7 @@ unset DS4_DSPARK_EXACT_ATTN_INV_ROPE_FUSED
 unset DS4_DSPARK_EXACT_ATTN_INV_ROPE_FUSED_TRACE
 unset DS4_DSPARK_EXACT_ATTN_INV_ROPE_FUSED_OBSERVER_LAYER
 unset DS4_DSPARK_ACCEPTANCE_AUDIT
+unset DS4_DSPARK_ACCEPTANCE_TRACE
 unset DS4_METAL_COMPRESSOR_PAIR_NR4
 unset DS4_METAL_INDEXED_ATTN_RB16_DIRECT
 unset DS4_METAL_INDEXED_ATTN_RB16_LEGACY
@@ -87,6 +89,10 @@ if [[ $runtime_stats == 1 && $mode != runtime ]]; then
 fi
 if [[ $acceptance_audit == 1 && $mode != runtime ]]; then
     printf 'acceptance audit requires DS4_TEST_DSPARK_MODE=runtime\n' >&2
+    exit 2
+fi
+if [[ $acceptance_trace == 1 && $acceptance_audit != 1 ]]; then
+    printf 'acceptance trace requires DS4_TEST_DSPARK_ACCEPTANCE_AUDIT=1\n' >&2
     exit 2
 fi
 if [[ $compressor_pair_nr4 != 0 && $compressor_pair_nr4 != 1 ]]; then
@@ -173,6 +179,9 @@ case "$mode" in
         fi
         if [[ $acceptance_audit == 1 ]]; then
             gpu_env+=(DS4_DSPARK_ACCEPTANCE_AUDIT=1)
+        fi
+        if [[ $acceptance_trace == 1 ]]; then
+            gpu_env+=(DS4_DSPARK_ACCEPTANCE_TRACE=1)
         fi
         if [[ $compressor_pair_nr4 == 1 ]]; then
             gpu_env+=(DS4_METAL_COMPRESSOR_PAIR_NR4=1)
@@ -417,8 +426,33 @@ assert_gpu_selected() {
                     exit 1
                 fi
             done
+            if [[ $acceptance_trace == 1 ]]; then
+                local trace_records expected_trace_records proposals truncated
+                trace_records=$(grep -c '^ds4: DSpark acceptance trace ' "$log")
+                proposals=$(sed -n 's/.* proposals=\([0-9][0-9]*\) .*/\1/p' \
+                    <<<"$acceptance_record")
+                truncated=$(sed -n 's/.* truncated_proposals=\([0-9][0-9]*\) .*/\1/p' \
+                    <<<"$acceptance_record")
+                expected_trace_records=$((proposals + truncated))
+                if [[ $trace_records -ne $expected_trace_records ]]; then
+                    printf 'acceptance trace records were %s, expected %s\n' \
+                        "$trace_records" "$expected_trace_records" >&2
+                    exit 1
+                fi
+                if grep '^ds4: DSpark acceptance trace ' "$log" | \
+                   grep -Eiq 'confidences=.*(nan|inf)'; then
+                    printf 'acceptance trace contains non-finite confidence values\n' >&2
+                    exit 1
+                fi
+            elif grep -q '^ds4: DSpark acceptance trace ' "$log"; then
+                printf 'non-trace audit unexpectedly emitted proposal records\n' >&2
+                exit 1
+            fi
         elif grep -q '^ds4: DSpark acceptance audit ' "$log"; then
             printf 'control mode unexpectedly emitted acceptance audit data\n' >&2
+            exit 1
+        elif grep -q '^ds4: DSpark acceptance trace ' "$log"; then
+            printf 'control mode unexpectedly emitted acceptance trace data\n' >&2
             exit 1
         fi
         if [[ -n $ffn_batch_observer_layer ]]; then
