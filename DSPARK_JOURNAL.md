@@ -8,6 +8,17 @@ particular DSpark change exists.
 
 Branch: `codex/dspark-observability-0`
 
+Phase 1.02 is prepared and is the intended community-review checkpoint. It adds
+one standalone cross-domain attribution runner and no engine changes. The
+runner validates the completed Phase 1.00 artifact, freezes the low/high
+scheduled-versus-baseline task in each math/chat domain, and runs only four
+stats-enabled promoted-default processes. Each output must match the prior
+scheduled output byte-for-byte. Commands carry no confidence-threshold
+override, so they exercise the Phase 1.01 default. Codex has not run this timed
+diagnostic. After committing this preparation, the branch is safe to pause and
+survey upstream issue 468, related branches, and community implementations
+before starting another optimization.
+
 Phase 1.01 is complete. DSpark confidence-prefix scheduling now defaults to
 `0.455` when `DS4_DSPARK_CONFIDENCE_THRESHOLD` is absent. An explicit value
 still overrides the default, and explicit `0` preserves fixed K=5. The frozen
@@ -6028,6 +6039,58 @@ Phase 1.01 confidence-scheduler default promotion on 2026-07-15:
   on a small frozen cross-domain set, then choose the next exact-verifier or
   proposal-cost optimization from measured per-emitted-token cost. The user
   must run that timed diagnostic.
+
+Phase 1.02 promoted cross-domain attribution prepared on 2026-07-16:
+
+- Added `speed-bench/run_dspark_generalization_attribution.py`. It requires the
+  completed Phase 1.00 `summary.json`, its metadata and throughput CSV, validates
+  the frozen corpus and output hashes, and proves that the selected labels are
+  still the scheduled/baseline extrema in their domains.
+- The four frozen tasks are:
+  `math500_00166` (`math_low`), `gsm8k_00333` (`math_high`),
+  `mt_bench_00075` (`chat_low`), and `alpaca_00115` (`chat_high`).
+  Selection uses the prior end-user scheduled/baseline ratio, not new model
+  output or attribution measurements.
+- The runner starts exactly four instrumented promoted-default runtime
+  processes. It reuses each prior scheduled output as the byte-exact reference;
+  there are no fresh baseline, fixed-K, warmup, acceptance, trace, or layer
+  profile children. The command intentionally omits
+  `DS4_DSPARK_CONFIDENCE_THRESHOLD`.
+- The report omits diagnostic t/s. It records prior uninstrumented ratio and
+  latency context, progress and proposal rounds per emitted token, target
+  evaluations and positions, synchronized target and sidecar cost, target
+  accounted share, sidecar components, and low/high amplification ratios for
+  math and chat.
+- Model-free validation passed:
+
+  ```sh
+  python3 -m py_compile \
+    speed-bench/run_dspark_generalization_attribution.py \
+    speed-bench/run_dspark_generalization_gate.py \
+    speed-bench/run_dspark_issue468_comparison.py \
+    tests/test_dspark_generalization_gate.py
+  python3 -m unittest \
+    tests/test_dspark_generalization_gate.py \
+    tests/test_dspark_confidence_scheduler.py
+  python3 speed-bench/run_dspark_generalization_attribution.py \
+    --dry-run --allow-dirty \
+    --throughput-reference \
+    speed-bench/local-runs/dspark-generalization-20260715-190530/summary.json
+  git diff --check
+  ```
+
+Phase 1.02 user-run command:
+
+```sh
+python3 speed-bench/run_dspark_generalization_attribution.py \
+  --confirm-ready \
+  --throughput-reference \
+  speed-bench/local-runs/dspark-generalization-20260715-190530/summary.json
+```
+
+Do not run this timed attribution automatically. This prepared commit is a
+clean stopping point for a community progress survey before interpreting the
+result or opening another implementation phase.
 
 Phase 0.52 checks:
 

@@ -659,6 +659,36 @@ and no task may fall below `0.90x`. The scheduled/baseline ratio remains the
 separate end-user result. This gate passed and `0.455` is now the DSpark runtime
 default; do not tune it from this gate.
 
+To attribute the promoted runtime without repeating that throughput gate, use
+the frozen cross-domain diagnostic:
+
+```sh
+python3 speed-bench/run_dspark_generalization_attribution.py \
+  --dry-run --allow-dirty \
+  --throughput-reference \
+  speed-bench/local-runs/dspark-generalization-20260715-190530/summary.json
+python3 speed-bench/run_dspark_generalization_attribution.py \
+  --confirm-ready \
+  --throughput-reference \
+  speed-bench/local-runs/dspark-generalization-20260715-190530/summary.json
+```
+
+The supplied reference is validated before execution. The four tasks are
+frozen as the lowest and highest scheduled/baseline result in each domain:
+`math500_00166`, `gsm8k_00333`, `mt_bench_00075`, and `alpaca_00115`.
+Each task runs one stats-enabled promoted-default DSpark process with no
+threshold override, and its output must match the previously validated
+scheduled output byte-for-byte. No fresh baseline, fixed-K process, acceptance
+audit, trace, or layer profile is run.
+
+The report omits diagnostic t/s and separates progress per proposal, proposal
+rounds and target evaluations per emitted token, verified positions per target
+evaluation, synchronized target cost, and sidecar cost. It also reports the
+low/high amplification ratio within math and chat. Use those component shares
+to choose the next optimization; do not combine synchronized component time
+with the historical uninstrumented latency as though they came from one timing
+boundary.
+
 The older `--stats-pass` mode remains available when a single invocation should
 run the full throughput comparison and then append one instrumented runtime
 sample per prompt:
