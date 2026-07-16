@@ -9025,3 +9025,91 @@ Decision:
   low-acceptance regression. Dense-mixed opportunity depends on each task's
   dense/sparse transition mix, so task distribution matters more here than on
   the short fixture.
+
+## Phase 1.24: HumanEval direct dense-mixed confirmation prepared
+
+Purpose:
+
+- Confirm that the short-fixture `+5.1%` direct dense-mixed result generalizes
+  across the frozen 32-task HumanEval workload.
+- Keep the already promoted threshold-`0.75` confidence scheduler fixed.
+- Isolate only the dense-mixed attention implementation:
+  - reference: gathered one-query FlashAttention;
+  - candidate: `DS4_METAL_DENSE_MIXED_DIRECT=1`.
+- This is the final distribution gate before deciding whether the direct
+  dense-mixed route should become the default.
+
+Harness:
+
+- Added `speed-bench/run_dspark_humaneval_dense_mixed_direct.py`.
+- Added model-free contract tests in
+  `tests/test_dspark_humaneval_dense_mixed_direct.py`.
+- Documented the user-run command in `speed-bench/README.md`.
+- The runner requires the frozen threshold-`0.75` throughput artifact:
+  `speed-bench/local-runs/humaneval-threshold075-throughput-32-20260716-155112/summary.json`.
+- The artifact supplies:
+  - the exact 32-task deterministic selection;
+  - each task's frozen byte-exact output;
+  - the prior acceptance verify rate used for the low-acceptance subgroup.
+- Every gathered and direct output must match that frozen output
+  byte-for-byte.
+
+Protocol:
+
+- Metal backend only.
+- Non-thinking, greedy generation, seed `1`.
+- Context `16384`; output limit `128`.
+- Exact target verification.
+- Threshold `0.75` in both modes.
+- Two excluded warmup pairs.
+- One measured pair for each of 32 tasks.
+- Measured order alternates gathered/direct and direct/gathered.
+- Total: `68` uninstrumented model processes.
+- Runtime stats, acceptance tracing, diagnostics, profilers, route traces, and
+  the fast verifier are disabled.
+- Codex does not run the timed benchmark.
+
+Frozen promotion gate:
+
+- Paired-ratio geometric mean at least `1.02x`.
+- Direct faster on at least `24/32` tasks.
+- No individual task below `0.95x`.
+- For tasks with prior verify rate at most `0.65`, subgroup geometric mean at
+  least `1.00x`.
+
+Validation:
+
+```sh
+python3 -m py_compile \
+  speed-bench/run_dspark_humaneval_dense_mixed_direct.py \
+  tests/test_dspark_humaneval_dense_mixed_direct.py
+python3 -m unittest discover -s tests -p 'test_dspark_*.py'
+python3 speed-bench/run_dspark_humaneval_dense_mixed_direct.py \
+  --throughput-reference \
+  speed-bench/local-runs/humaneval-threshold075-throughput-32-20260716-155112/summary.json \
+  --dry-run \
+  --allow-dirty
+git diff --check
+```
+
+Validation result:
+
+- All `106` DSpark model-free tests passed.
+- The frozen reference metadata, task selection, CSV, output files, and output
+  hashes were accepted.
+- The dry run emitted exactly `68` uninstrumented processes:
+  - `4` excluded warmup processes;
+  - `64` measured processes.
+- The dry run showed threshold `0.75` in both modes and
+  `DS4_METAL_DENSE_MIXED_DIRECT=1` only in the candidate.
+- No prompts were materialized and no model process was executed.
+- `git diff --check` passed.
+
+User-run command:
+
+```sh
+python3 speed-bench/run_dspark_humaneval_dense_mixed_direct.py \
+  --throughput-reference \
+  speed-bench/local-runs/humaneval-threshold075-throughput-32-20260716-155112/summary.json \
+  --confirm-idle
+```

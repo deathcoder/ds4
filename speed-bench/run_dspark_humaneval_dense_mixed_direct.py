@@ -1,0 +1,591 @@
+#!/usr/bin/env python3
+"""Confirm direct dense-mixed attention on frozen scheduled HumanEval."""
+
+import argparse
+import csv
+import datetime as dt
+import json
+import os
+from pathlib import Path
+import platform
+import shlex
+import statistics
+import subprocess
+import time
+
+import run_dspark_humaneval_acceptance as corpus
+import run_dspark_humaneval_throughput as throughput
+import run_dspark_issue468_comparison as common
+
+
+THRESHOLD = "0.75"
+SAMPLE_COUNT = 32
+MODES = ("gathered", "direct")
+MIN_GEOMEAN = 1.02
+MIN_WINS = 24
+MIN_TASK_RATIO = 0.95
+LOW_ACCEPTANCE_MAX = 0.65
+MIN_LOW_ACCEPTANCE_GEOMEAN = 1.00
+
+
+def parse_args():
+    root = Path(__file__).resolve().parent.parent
+    parser = argparse.ArgumentParser(
+        description=(
+            "Compare gathered and direct dense-mixed attention on the frozen "
+            "32-task threshold-0.75 HumanEval workload."
+        )
+    )
+    parser.add_argument("--binary", type=Path, default=root / "ds4")
+    parser.add_argument(
+        "--model",
+        type=Path,
+        default=root / (
+            "gguf/DeepSeek-V4-Flash-IQ2XXS-w2Q2K-AProjQ8-"
+            "SExpQ8-OutQ8-chat-v2-imatrix.gguf"
+        ),
+    )
+    parser.add_argument(
+        "--dspark-model",
+        type=Path,
+        default=root / "gguf/ds4flash-dspark.gguf",
+    )
+    parser.add_argument(
+        "--corpus-dir",
+        type=Path,
+        default=root / "speed-bench/humaneval-acceptance",
+    )
+    parser.add_argument("--throughput-reference", type=Path, required=True)
+    parser.add_argument("--ctx", type=int, default=16384)
+    parser.add_argument("--tokens", type=int, default=128)
+    parser.add_argument("--cooldown", type=float, default=3.0)
+    parser.add_argument("--output-dir", type=Path)
+    parser.add_argument("--confirm-idle", action="store_true")
+    parser.add_argument("--allow-dirty", action="store_true")
+    parser.add_argument("--dry-run", action="store_true")
+    args = parser.parse_args()
+    if args.ctx <= 0 or args.tokens <= 0:
+        parser.error("ctx and tokens must be positive")
+    if args.cooldown < 0:
+        parser.error("cooldown cannot be negative")
+    if not args.dry_run and not args.confirm_idle:
+        parser.error("refusing to benchmark without --confirm-idle")
+
+    args.nothink = True
+    args.fast_verifier = False
+    args.exact_head_batch = False
+    return args, root
+
+
+def load_json(path, label):
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise SystemExit(f"invalid {label} {path}: {exc}") from exc
+
+
+def validate_metadata_path(metadata, key, expected):
+    actual = metadata.get(key, {}).get("path")
+    if actual is None or Path(actual).resolve() != expected.resolve():
+        raise SystemExit(f"throughput reference {key} path mismatch")
+
+
+def load_reference(args, records, selection):
+    summary_path = args.throughput_reference.resolve()
+    run_dir = summary_path.parent
+    metadata_path = run_dir / "metadata.json"
+    csv_path = run_dir / "throughput.csv"
+    for label, path in (
+        ("summary", summary_path),
+        ("metadata", metadata_path),
+        ("throughput CSV", csv_path),
+    ):
+        if not path.is_file():
+            raise SystemExit(f"missing throughput reference {label}: {path}")
+
+    summary = load_json(summary_path, "throughput summary")
+    metadata = load_json(metadata_path, "throughput metadata")
+    if metadata.get("experiment") != "dspark_humaneval_threshold075_throughput":
+        raise SystemExit("throughput reference has the wrong experiment kind")
+    if summary.get("sample_count") != SAMPLE_COUNT:
+        raise SystemExit("throughput reference is not the frozen 32-task study")
+    if summary.get("selection") != selection:
+        raise SystemExit("throughput reference selection mismatch")
+    if summary.get("threshold") != THRESHOLD:
+        raise SystemExit("throughput reference threshold mismatch")
+
+    config = metadata.get("config", {})
+    expected_config = {
+        "ctx": args.ctx,
+        "tokens": args.tokens,
+        "temperature": 0,
+        "seed": 1,
+        "nothink": True,
+        "threshold": THRESHOLD,
+        "instrumented": False,
+    }
+    for key, expected in expected_config.items():
+        if config.get(key) != expected:
+            raise SystemExit(
+                f"throughput reference config {key} mismatch: "
+                f"{config.get(key)!r} != {expected!r}"
+            )
+    for key, expected in (
+        ("binary", args.binary),
+        ("base_model", args.model),
+        ("dspark_model", args.dspark_model),
+    ):
+        validate_metadata_path(metadata, key, expected)
+
+    try:
+        csv_rows = list(csv.DictReader(csv_path.open(encoding="utf-8", newline="")))
+    except OSError as exc:
+        raise SystemExit(f"cannot read throughput reference CSV: {exc}") from exc
+    rows_by_task = {}
+    for row in csv_rows:
+        rows_by_task.setdefault(row["prompt"], {})[row["mode"]] = row
+
+    tasks = {}
+    for record in records:
+        task = record["label"]
+        prior = summary.get("samples", {}).get(task)
+        by_mode = rows_by_task.get(task, {})
+        if prior is None or set(by_mode) != {"baseline", "runtime"}:
+            raise SystemExit(f"throughput reference has incomplete task {task}")
+        if by_mode["baseline"]["stdout_sha256"] != by_mode["runtime"]["stdout_sha256"]:
+            raise SystemExit(f"throughput reference output mismatch for {task}")
+        output_path = run_dir / by_mode["runtime"]["stdout_file"]
+        if not output_path.is_file():
+            raise SystemExit(f"missing throughput output for {task}")
+        output_data = output_path.read_bytes()
+        if common.sha256(output_data) != by_mode["runtime"]["stdout_sha256"]:
+            raise SystemExit(f"throughput output hash mismatch for {task}")
+        tasks[task] = {
+            "output_data": output_data,
+            "acceptance_verify_rate": prior["acceptance_verify_rate"],
+        }
+    return {
+        "summary_path": summary_path,
+        "metadata_path": metadata_path,
+        "csv_path": csv_path,
+        "tasks": tasks,
+    }
+
+
+def mode_order(position):
+    return MODES if position % 2 == 1 else tuple(reversed(MODES))
+
+
+def warmup_schedule(records):
+    return (
+        (records[0], MODES),
+        (records[-1], tuple(reversed(MODES))),
+    )
+
+
+def command(args, prompt):
+    return [
+        str(args.binary),
+        "--backend", "metal",
+        "--model", str(args.model),
+        "--prompt-file", str(prompt),
+        "--ctx", str(args.ctx),
+        "--nothink",
+        "--temp", "0",
+        "--seed", "1",
+        "-n", str(args.tokens),
+        "--dspark", str(args.dspark_model),
+    ]
+
+
+def mode_env(mode):
+    if mode not in MODES:
+        raise ValueError(f"unknown dense-mixed mode: {mode}")
+    env = common.benchmark_env(
+        "runtime", False, confidence_threshold=THRESHOLD
+    )
+    env.pop("DS4_METAL_DENSE_MIXED_DIRECT", None)
+    env.pop("DS4_METAL_DENSE_MIXED_DIRECT_TRACE", None)
+    if mode == "direct":
+        env["DS4_METAL_DENSE_MIXED_DIRECT"] = "1"
+    return env
+
+
+def command_text(args, prompt, mode):
+    env = mode_env(mode)
+    keys = (
+        "DS4_DSPARK_GPU_RUNTIME",
+        "DS4_DSPARK_MULTI_COMMIT",
+        "DS4_DSPARK_CONFIDENCE_THRESHOLD",
+        "DS4_METAL_DENSE_MIXED_DIRECT",
+    )
+    prefix = " ".join(f"{key}={env[key]}" for key in keys if key in env)
+    return prefix + " " + shlex.join(command(args, prompt))
+
+
+def execute(args, root, run_dir, label, record, prompt, mode, expected):
+    stdout_path = run_dir / f"{label}.{record['label']}.{mode}.stdout"
+    stderr_path = run_dir / f"{label}.{record['label']}.{mode}.stderr"
+    print(
+        f"[{label}/{record['label']}] {mode}: "
+        f"{command_text(args, prompt, mode)}",
+        flush=True,
+    )
+    started = time.monotonic()
+    with stdout_path.open("wb") as out, stderr_path.open("wb") as err:
+        completed = subprocess.run(
+            command(args, prompt),
+            cwd=root,
+            env=mode_env(mode),
+            stdout=out,
+            stderr=err,
+            check=False,
+        )
+    if completed.returncode != 0:
+        raise RuntimeError(
+            f"{mode} run failed with exit {completed.returncode}; see {stderr_path}"
+        )
+    output = stdout_path.read_bytes()
+    if output != expected:
+        raise RuntimeError(
+            f"{mode} output differs from frozen exact output; see {stdout_path}"
+        )
+    stderr_data = stderr_path.read_bytes()
+    prefill_tps, generation_tps = common.parse_timing(stderr_data, stderr_path)
+    forbidden = (
+        common.STATS_PREFIX,
+        common.ACCEPTANCE_PREFIX,
+        common.ACCEPTANCE_TRACE_PREFIX,
+    )
+    if any(marker in stderr_data for marker in forbidden):
+        raise RuntimeError(f"instrumentation unexpectedly active in {stderr_path}")
+    return {
+        "prompt": record["label"],
+        "source_index": record["source_index"],
+        "mode": mode,
+        "prefill_tps": prefill_tps,
+        "generation_tps": generation_tps,
+        "wall_seconds": time.monotonic() - started,
+        "stdout_sha256": common.sha256(output),
+        "stdout_file": stdout_path.name,
+        "stderr_file": stderr_path.name,
+    }
+
+
+def run_pair(args, root, run_dir, label, record, prompt, order, expected):
+    rows = []
+    order_text = "-".join(order)
+    for position, mode in enumerate(order, start=1):
+        row = execute(
+            args, root, run_dir, label, record, prompt, mode, expected
+        )
+        row["pair_order"] = order_text
+        row["pair_position"] = position
+        rows.append(row)
+        common.cooldown(args.cooldown)
+    return rows
+
+
+def summarize(rows, records, reference):
+    samples = {}
+    ratios = []
+    low_acceptance_ratios = []
+    gathered_values = []
+    direct_values = []
+    wins = 0
+    equals = 0
+    for record in records:
+        task = record["label"]
+        selected = {row["mode"]: row for row in rows if row["prompt"] == task}
+        if set(selected) != set(MODES):
+            raise RuntimeError(f"incomplete direct-attention pair for {task}")
+        gathered = selected["gathered"]["generation_tps"]
+        direct = selected["direct"]["generation_tps"]
+        ratio = direct / gathered
+        acceptance = reference["tasks"][task]["acceptance_verify_rate"]
+        ratios.append(ratio)
+        gathered_values.append(gathered)
+        direct_values.append(direct)
+        if acceptance <= LOW_ACCEPTANCE_MAX:
+            low_acceptance_ratios.append(ratio)
+        wins += ratio > 1.0
+        equals += ratio == 1.0
+        samples[task] = {
+            "source_index": record["source_index"],
+            "order": selected["gathered"]["pair_order"],
+            "acceptance_verify_rate": acceptance,
+            "gathered_generation_tps": gathered,
+            "direct_generation_tps": direct,
+            "paired_ratio": ratio,
+            "delta_percent": (ratio - 1.0) * 100.0,
+        }
+    quartiles = statistics.quantiles(ratios, n=4, method="inclusive")
+    geomean = statistics.geometric_mean(ratios)
+    low_geomean = statistics.geometric_mean(low_acceptance_ratios)
+    gate = (
+        geomean >= MIN_GEOMEAN and
+        wins >= MIN_WINS and
+        min(ratios) >= MIN_TASK_RATIO and
+        low_geomean >= MIN_LOW_ACCEPTANCE_GEOMEAN
+    )
+    return {
+        "sample_count": len(records),
+        "threshold": THRESHOLD,
+        "samples": samples,
+        "gathered_generation_tps_median": statistics.median(gathered_values),
+        "direct_generation_tps_median": statistics.median(direct_values),
+        "ratio_of_medians": (
+            statistics.median(direct_values) /
+            statistics.median(gathered_values)
+        ),
+        "paired_ratio_median": statistics.median(ratios),
+        "paired_ratio_geometric_mean": geomean,
+        "paired_ratio_q1": quartiles[0],
+        "paired_ratio_q3": quartiles[2],
+        "paired_ratio_minimum": min(ratios),
+        "paired_ratio_maximum": max(ratios),
+        "direct_faster_tasks": wins,
+        "direct_equal_tasks": equals,
+        "direct_slower_tasks": len(records) - wins - equals,
+        "acceptance_speed_pearson": throughput.pearson_correlation(
+            [
+                reference["tasks"][record["label"]]["acceptance_verify_rate"]
+                for record in records
+            ],
+            ratios,
+        ),
+        "low_acceptance_task_count": len(low_acceptance_ratios),
+        "low_acceptance_geometric_mean": low_geomean,
+        "promotion_gate": {
+            "minimum_geometric_mean": MIN_GEOMEAN,
+            "minimum_wins": MIN_WINS,
+            "minimum_task_ratio": MIN_TASK_RATIO,
+            "low_acceptance_maximum": LOW_ACCEPTANCE_MAX,
+            "minimum_low_acceptance_geometric_mean":
+                MIN_LOW_ACCEPTANCE_GEOMEAN,
+            "pass": gate,
+        },
+    }
+
+
+def render_report(summary):
+    correlation = summary["acceptance_speed_pearson"]
+    correlation_text = "n/a" if correlation is None else f"{correlation:.3f}"
+    lines = [
+        "# DSpark HumanEval Dense-Mixed Direct Confirmation",
+        "",
+        "All samples are uninstrumented and paired within the same frozen "
+        "threshold-0.75 HumanEval task.",
+        "Every gathered and direct output matched the frozen exact artifact "
+        "byte-for-byte.",
+        "Generation t/s excludes process startup; paired ratios are authoritative.",
+        "",
+        "| samples | gathered median | direct median | ratio of medians | "
+        "median paired | geometric mean | direct faster |",
+        "|---:|---:|---:|---:|---:|---:|---:|",
+        f"| {summary['sample_count']} | "
+        f"{summary['gathered_generation_tps_median']:.2f} t/s | "
+        f"{summary['direct_generation_tps_median']:.2f} t/s | "
+        f"{summary['ratio_of_medians']:.4f}x | "
+        f"{summary['paired_ratio_median']:.4f}x | "
+        f"{summary['paired_ratio_geometric_mean']:.4f}x | "
+        f"{summary['direct_faster_tasks']}/{summary['sample_count']} |",
+        "",
+        f"- Paired-ratio interquartile range: "
+        f"{summary['paired_ratio_q1']:.4f}x-"
+        f"{summary['paired_ratio_q3']:.4f}x.",
+        f"- Paired-ratio range: {summary['paired_ratio_minimum']:.4f}x-"
+        f"{summary['paired_ratio_maximum']:.4f}x.",
+        f"- Tasks faster/equal/slower with direct attention: "
+        f"{summary['direct_faster_tasks']}/"
+        f"{summary['direct_equal_tasks']}/"
+        f"{summary['direct_slower_tasks']}.",
+        f"- Low-acceptance tasks (verify rate <= {LOW_ACCEPTANCE_MAX:.2f}): "
+        f"{summary['low_acceptance_task_count']}; geometric direct/gathered "
+        f"ratio {summary['low_acceptance_geometric_mean']:.4f}x.",
+        f"- Descriptive Pearson correlation, acceptance versus paired ratio: "
+        f"{correlation_text}.",
+        "",
+        "## Tasks",
+        "",
+        "| task | acceptance | order | gathered | direct | ratio | delta |",
+        "|:---|---:|:---|---:|---:|---:|---:|",
+    ]
+    for task, item in summary["samples"].items():
+        lines.append(
+            f"| {task} | {item['acceptance_verify_rate']:.3f} | "
+            f"{item['order']} | "
+            f"{item['gathered_generation_tps']:.2f} t/s | "
+            f"{item['direct_generation_tps']:.2f} t/s | "
+            f"{item['paired_ratio']:.4f}x | "
+            f"{item['delta_percent']:+.1f}% |"
+        )
+    gate = summary["promotion_gate"]
+    lines.extend([
+        "",
+        "## Promotion Gate",
+        "",
+        f"**{'PASS' if gate['pass'] else 'FAIL'}**",
+        "",
+        f"- Require geometric mean at least "
+        f"`{gate['minimum_geometric_mean']:.2f}x`.",
+        f"- Require at least `{gate['minimum_wins']}/32` faster tasks.",
+        f"- Require no task below `{gate['minimum_task_ratio']:.2f}x`.",
+        f"- Require low-acceptance geometric mean at least "
+        f"`{gate['minimum_low_acceptance_geometric_mean']:.2f}x`.",
+        "",
+        "- Two global warmup pairs are excluded from every reported value.",
+        "- Measured order alternates gathered-first and direct-first.",
+        "- No DSpark stats, trace, diagnostics, profiler, or fast verifier is enabled.",
+    ])
+    return "\n".join(lines) + "\n"
+
+
+def main():
+    args, root = parse_args()
+    for name in (
+        "binary", "model", "dspark_model", "corpus_dir",
+        "throughput_reference",
+    ):
+        setattr(args, name, getattr(args, name).resolve())
+    for label, path in (
+        ("binary", args.binary),
+        ("base model", args.model),
+        ("DSpark model", args.dspark_model),
+        ("corpus", args.corpus_dir),
+    ):
+        if not path.exists():
+            raise SystemExit(f"missing {label}: {path}")
+    dirty = common.git_output(
+        root, "status", "--porcelain", "--untracked-files=no"
+    )
+    if dirty and not args.allow_dirty:
+        raise SystemExit(
+            "tracked worktree changes detected; commit them or pass --allow-dirty:\n"
+            + dirty
+        )
+
+    all_records, provenance = corpus.load_corpus(args, root)
+    records, selection = corpus.select_records(
+        all_records, SAMPLE_COUNT, provenance["selection_policy"]
+    )
+    reference = load_reference(args, records, selection)
+    stamp = dt.datetime.now().astimezone().strftime("%Y%m%d-%H%M%S")
+    default_dir = root / (
+        f"speed-bench/local-runs/humaneval-dense-mixed-direct-"
+        f"{SAMPLE_COUNT}-{stamp}"
+    )
+    run_dir = (args.output_dir or default_dir).resolve()
+    prompts = corpus.prompt_paths(run_dir, records)
+    for position, record in enumerate(records, start=1):
+        order = mode_order(position)
+        prompt = prompts[record["label"]]
+        print(
+            f"{record['label']} measured order: {' -> '.join(order)}\n"
+            f"  gathered: {command_text(args, prompt, 'gathered')}\n"
+            f"  direct: {command_text(args, prompt, 'direct')}"
+        )
+    warmups = warmup_schedule(records)
+    total = len(warmups) * 2 + len(records) * 2
+    print(
+        f"Dense-mixed direct confirmation: {total} uninstrumented processes; "
+        f"{len(warmups) * 2} excluded warmups and {len(records) * 2} measured."
+    )
+    if args.dry_run:
+        print("Dry run only; no prompts materialized and no model execution performed.")
+        return 0
+
+    run_dir.mkdir(parents=True, exist_ok=False)
+    corpus.materialize_prompts(prompts, records)
+    metadata = {
+        "created_at": dt.datetime.now().astimezone().isoformat(),
+        "git_commit": common.git_output(root, "rev-parse", "HEAD"),
+        "git_status_tracked": dirty,
+        "experiment": "dspark_humaneval_dense_mixed_direct",
+        "platform": platform.platform(),
+        "initial_snapshot": common.machine_snapshot(root),
+        "selection": selection,
+        "config": {
+            "ctx": args.ctx,
+            "tokens": args.tokens,
+            "cooldown": args.cooldown,
+            "temperature": 0,
+            "seed": 1,
+            "nothink": True,
+            "threshold": THRESHOLD,
+            "instrumented": False,
+            "measured_pairs_per_task": 1,
+            "alternating_order": True,
+            "global_warmup_pairs": len(warmups),
+            "reference_mode": "gathered",
+            "candidate_mode": "direct",
+        },
+        "binary": common.file_metadata(args.binary),
+        "base_model": common.file_metadata(args.model),
+        "dspark_model": common.file_metadata(args.dspark_model),
+        "provenance_source_commit": provenance.get("source_commit"),
+        "cleared_environment_keys": common.cleared_env_keys(os.environ),
+        "throughput_reference": {
+            "summary": common.file_metadata(reference["summary_path"]),
+            "metadata": common.file_metadata(reference["metadata_path"]),
+            "csv": common.file_metadata(reference["csv_path"]),
+        },
+        "commands": {
+            record["label"]: {
+                mode: command_text(args, prompts[record["label"]], mode)
+                for mode in MODES
+            }
+            for record in records
+        },
+    }
+    (run_dir / "metadata.start.json").write_text(
+        json.dumps(metadata, indent=2) + "\n", encoding="utf-8"
+    )
+
+    warmup_rows = []
+    for number, (record, order) in enumerate(warmups, start=1):
+        warmup_rows.extend(run_pair(
+            args, root, run_dir, f"warmup-{number:02d}", record,
+            prompts[record["label"]], order,
+            reference["tasks"][record["label"]]["output_data"],
+        ))
+
+    measured_rows = []
+    sequence = 0
+    for position, record in enumerate(records, start=1):
+        pair_rows = run_pair(
+            args, root, run_dir, f"measured-{position:02d}", record,
+            prompts[record["label"]], mode_order(position),
+            reference["tasks"][record["label"]]["output_data"],
+        )
+        for row in pair_rows:
+            sequence += 1
+            row["sequence"] = sequence
+            measured_rows.append(row)
+
+    fields = (
+        "sequence", "prompt", "source_index", "pair_order", "pair_position",
+        "mode", "prefill_tps", "generation_tps", "wall_seconds",
+        "stdout_sha256", "stdout_file", "stderr_file",
+    )
+    common.write_csv(run_dir / "throughput.csv", measured_rows, fields)
+    common.write_csv(
+        run_dir / "warmups.csv", warmup_rows,
+        tuple(field for field in fields if field != "sequence"),
+    )
+    summary = summarize(measured_rows, records, reference)
+    summary["selection"] = selection
+    summary["throughput_reference"] = str(reference["summary_path"])
+    report = render_report(summary)
+    (run_dir / "summary.json").write_text(
+        json.dumps(summary, indent=2) + "\n", encoding="utf-8"
+    )
+    (run_dir / "summary.md").write_text(report, encoding="utf-8")
+    common.finish_metadata(metadata, root, run_dir)
+    print("\n" + report.rstrip())
+    print(f"Raw throughput: {run_dir / 'throughput.csv'}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

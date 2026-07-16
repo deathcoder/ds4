@@ -1132,3 +1132,22 @@ The reference retains gathered one-query FlashAttention. Only the candidate
 enables `DS4_METAL_DENSE_MIXED_DIRECT=1`. Both modes use exact Metal
 verification with runtime stats, traces, and diagnostic boundaries disabled,
 and every output must match byte-for-byte.
+
+To confirm the candidate on the frozen threshold-0.75 HumanEval workload:
+
+```sh
+python3 speed-bench/run_dspark_humaneval_dense_mixed_direct.py \
+  --throughput-reference \
+  speed-bench/local-runs/humaneval-threshold075-throughput-32-20260716-155112/summary.json \
+  --dry-run \
+  --allow-dirty
+python3 speed-bench/run_dspark_humaneval_dense_mixed_direct.py \
+  --throughput-reference \
+  speed-bench/local-runs/humaneval-threshold075-throughput-32-20260716-155112/summary.json \
+  --confirm-idle
+```
+
+This runs 32 gathered/direct pairs with alternating order plus two excluded
+warmup pairs. Both modes use threshold `0.75`; only direct mode enables the
+candidate. All 68 processes are uninstrumented and must match the frozen exact
+HumanEval outputs byte-for-byte.
