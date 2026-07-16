@@ -18,12 +18,14 @@ than baseline. Phase 1.06 should add stats-only checkpoint attempt, success,
 fallback, and avoided-replay-row counters, then attribute a small frozen set;
 do not repeat the full 32-task throughput run yet.
 
-Phase 1.06 is prepared. Runtime stats now distinguish exact prefix-checkpoint
-attempts, successes, fallback replays, and exact target rows whose replay was
-avoided. A four-task frozen HumanEval runner validates the completed Phase 1.05
-artifact and executes only stats-enabled exact-runtime processes. Codex has not
-run the timed attribution; the user command is recorded at the end of the
-journal.
+Phase 1.06 is complete. On four frozen HumanEval tasks, exact prefix
+checkpoints succeeded on every eligible partial batch (`29/29`) with zero
+fallbacks and avoided `72` target replay rows. Structural target-position
+reductions ranged from `5.6%` to `18.2%`. Checkpoint coverage and reliability
+are complete; do not optimize this mechanism further. Phase 1.07 should
+instrument scheduler/verifier width economics under the stats gate: selected
+width, committed progress, target time by width, and sidecar rounds. This is
+needed before attempting a cost-aware scheduler for low-acceptance workloads.
 
 Phase 1.01 is complete. DSpark confidence-prefix scheduling now defaults to
 `0.455` when `DS4_DSPARK_CONFIDENCE_THRESHOLD` is absent. An explicit value
@@ -6648,3 +6650,51 @@ Results:
 - The real dry-run validated all four frozen references and printed commands
   with stats and threshold `0.455`, but no checkpoint override.
 - No timed attribution was run by Codex.
+
+Phase 1.06 user-run result:
+
+- Raw artifact:
+  `speed-bench/local-runs/humaneval-checkpoint-attribution-20260716-110524`.
+- The run came from clean commit `a7083b7`, inherited no `DS4_*` variables,
+  used threshold `0.455`, and enabled only the runtime-stats gate.
+- Every output matched its completed uninstrumented HumanEval runtime artifact
+  byte-for-byte.
+- Checkpoint outcomes were `29/29` successful with zero fallback replays:
+  `8/8` on `humaneval_152`, `3/3` on `047`, `8/8` on `131`, and `10/10` on
+  `137`.
+- The checkpoints avoided `72` exact target replay rows:
+  `14`, `8`, `24`, and `26`, respectively.
+- Avoided replay rows per emitted token were `0.311`, `0.062`, `0.255`, and
+  `0.203`.
+- Structural target-position reductions versus the legacy replay proxy were
+  `17.3%`, `5.6%`, `18.2%`, and `14.9%`.
+
+Interpretation:
+
+- Prefix checkpoints are fully covering eligible exact partial batches. There
+  is no fallback or missing-state problem to solve.
+- On best-current task `humaneval_047`, target verification alone measured
+  `41.99 ms/emitted`, slightly below its historical ordinary baseline cost of
+  `42.63 ms/token`. The `4.46 ms/emitted` sidecar is what keeps total DSpark
+  cost below parity.
+- On low-acceptance `humaneval_152`, target verification measured
+  `64.85 ms/emitted` against a `43.78 ms/token` baseline, before adding
+  `9.31 ms/emitted` of sidecar cost. Rejected target positions remain the main
+  problem there.
+- `humaneval_131` and `137` sit between those cases: target cost is near but
+  still above baseline, and sidecar adds another `5.12-6.53 ms/emitted`.
+- Therefore a single next optimization is unlikely to fix both extremes.
+  High-acceptance tasks need lower sidecar or target-batch cost; low-acceptance
+  tasks need to avoid unprofitable proposal widths and rejected positions.
+
+Next phase:
+
+- Add stats-only histograms for scheduler-selected verifier width, committed
+  progress at each width, target evaluation count/time by width, and sidecar
+  rounds.
+- Reuse the four frozen tasks. Do not run another 32-task throughput study.
+- Use the result to decide whether a cost-aware scheduler can skip
+  unprofitable short/low-survival proposals while retaining wide,
+  high-acceptance batches.
+- Do not tune a new threshold or policy before the width economics are
+  measured.
