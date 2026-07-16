@@ -25,7 +25,7 @@ ${DS4_TEST_DSPARK_INDEXED_ATTN_RB16_DIRECT:-0}}
 exact_q8_rows=${DS4_TEST_DSPARK_EXACT_Q8_ROWS:-0}
 serial_q8_rows_runtime=${DS4_TEST_DSPARK_SERIAL_Q8_ROWS_RUNTIME:-0}
 attn_inv_rope_fused=${DS4_TEST_DSPARK_ATTN_INV_ROPE_FUSED:-0}
-exact_prefix_checkpoint=${DS4_TEST_DSPARK_EXACT_PREFIX_CHECKPOINT:-0}
+exact_prefix_checkpoint=${DS4_TEST_DSPARK_EXACT_PREFIX_CHECKPOINT:-default}
 ffn_batch_observer_layer=${DS4_DSPARK_EXACT_FFN_BATCH_OBSERVER_LAYER:-}
 attn_pre_observer_layer=${DS4_DSPARK_EXACT_ATTN_PRE_BATCH_OBSERVER_LAYER:-}
 attn_suffix_observer_layer=${DS4_DSPARK_EXACT_ATTN_SUFFIX_BATCH_OBSERVER_LAYER:-}
@@ -160,8 +160,10 @@ if [[ $attn_inv_rope_fused == 1 &&
     printf 'fused attention inverse-RoPE requires the retained exact runtime\n' >&2
     exit 2
 fi
-if [[ $exact_prefix_checkpoint != 0 && $exact_prefix_checkpoint != 1 ]]; then
-    printf 'DS4_TEST_DSPARK_EXACT_PREFIX_CHECKPOINT must be 0 or 1\n' >&2
+if [[ $exact_prefix_checkpoint != default &&
+      $exact_prefix_checkpoint != 0 &&
+      $exact_prefix_checkpoint != 1 ]]; then
+    printf 'DS4_TEST_DSPARK_EXACT_PREFIX_CHECKPOINT must be default, 0, or 1\n' >&2
     exit 2
 fi
 if [[ $exact_prefix_checkpoint == 1 &&
@@ -227,9 +229,10 @@ case "$mode" in
                 DS4_DSPARK_EXACT_ATTN_INV_ROPE_FUSED_TRACE=1
             )
         fi
-        if [[ $exact_prefix_checkpoint == 1 ]]; then
-            gpu_env+=(DS4_DSPARK_EXACT_PREFIX_CHECKPOINT=1)
-        fi
+        case "$exact_prefix_checkpoint" in
+            0) gpu_env+=(DS4_DSPARK_EXACT_PREFIX_CHECKPOINT=0) ;;
+            1) gpu_env+=(DS4_DSPARK_EXACT_PREFIX_CHECKPOINT=1) ;;
+        esac
         ;;
     *)
         printf 'invalid DS4_TEST_DSPARK_MODE: %s (expected observer or runtime)\n' "$mode" >&2
@@ -739,7 +742,7 @@ if [[ $attn_inv_rope_fused == 1 ]]; then
     observe_attn_inv_rope_fused_layer dense 42 dense_mixed
     compare_attn_inv_rope_fused_indexed
 fi
-if [[ $exact_prefix_checkpoint == 1 ]] &&
+if [[ $mode == runtime && $exact_prefix_checkpoint != 0 ]] &&
    ! grep -q 'DSpark exact prefix checkpoint .* result=pass' "$tmpdir"/*.log; then
     printf 'exact prefix checkpoint did not engage on the correctness matrix\n' >&2
     exit 1

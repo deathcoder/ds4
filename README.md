@@ -721,6 +721,12 @@ after a retained correctness case found small approximate-kernel drift. Target
 verification remains authoritative for every emitted token. This path is not
 yet connected to server/agent streaming or non-greedy sampling.
 
+The exact verifier checkpoints every proposal-prefix attention frontier, so a
+partial acceptance restores the accepted prefix directly instead of replaying
+already-verified target rows. This is the default exact path after a paired,
+byte-identical Metal gate measured a `1.1774x` median speed ratio over replay.
+Set `DS4_DSPARK_EXACT_PREFIX_CHECKPOINT=0` only to use the legacy replay path.
+
 For development, `--dspark-probe` runs a diagnostic prompt through the
 target-layer mean-HC capture bridge and DSpark `main_proj/main_norm`, executes
 the sidecar block, runs Markov-biased logits and confidence scores with an

@@ -6372,3 +6372,76 @@ If continuing from a compacted context, start here:
   multi-token prefixes is only straightforward for a greedy target stream.
 - Should future CLI UX stay as `--dspark`, or eventually become a broader
   `--draft dspark` once runtime is real?
+
+## Phase 1.04: Promote Exact Prefix Checkpoints
+
+Date: 2026-07-16.
+
+The user-run gate from clean commit `c10bbc8` decisively passed:
+
+```text
+Replay partial-accept median: 12.46 t/s
+Exact prefix-checkpoint median: 14.67 t/s
+Ratio of medians: 1.1774x
+Median paired ratio: 1.1774x
+Measured pairs: 3
+```
+
+Raw artifact:
+`speed-bench/local-runs/20260716-101654/results.csv`.
+
+Artifact audit:
+
+- All three paired ratios were positive: `1.1774x`, `1.2098x`, and `1.1733x`.
+- Every warmup and measured stdout had the same SHA-256:
+  `0657766e6b609a2098b777c1ad49b40b43539cd1731e5fe617498ec7d2dd9b1a`.
+- The recorded commit was exactly `c10bbc85ca...` with no tracked changes.
+- The run was paired and uninstrumented. The machine was not perfectly idle,
+  but the magnitude, consistency, and byte-identical outputs make the
+  promotion decision robust.
+
+Promotion:
+
+- Exact prefix checkpoints are now enabled by default.
+- `DS4_DSPARK_EXACT_PREFIX_CHECKPOINT=0` or `off` selects legacy partial-accept
+  replay.
+- The benchmark gate is inverted for future confirmation: legacy replay is
+  the explicit reference and the ordinary exact runtime is the candidate.
+- The correctness harness accepts `default`, `1`, or `0`, so it can validate
+  promoted behavior, forced behavior, and the legacy fallback separately.
+
+Phase 1.04 checks:
+
+```sh
+make -j4 ds4 ds4_test
+make ds4_cpu.o
+./ds4_test --dspark-validation --dspark-shape-binding
+python3 -m py_compile \
+  speed-bench/run_dspark_comparison.py \
+  tests/test_dspark_exact_prefix_checkpoint.py
+python3 -m unittest \
+  tests/test_dspark_exact_prefix_checkpoint.py \
+  tests/test_dspark_confidence_scheduler.py \
+  tests/test_dspark_generalization_gate.py
+bash -n tests/dspark_gpu_candidates_correctness.sh
+python3 speed-bench/run_dspark_comparison.py \
+  --exact-prefix-checkpoint-ablation \
+  --dry-run --allow-dirty \
+  --prompt-file speed-bench/issue468/code_8k.txt \
+  --ctx 16384 --tokens 64
+DS4_TEST_DSPARK_MODE=runtime \
+DS4_TEST_DSPARK_EXACT_PREFIX_CHECKPOINT=default \
+DS4_TEST_DSPARK_CONFIDENCE_THRESHOLD=0 \
+  ./tests/dspark_gpu_candidates_correctness.sh
+git diff --check
+```
+
+Results:
+
+- 24 focused Python tests passed.
+- DSpark validation and shape binding passed.
+- The default exact checkpoint path engaged and all five retained correctness
+  cases passed byte-for-byte.
+- The Metal build and CPU-only core object compiled successfully. The CPU
+  object emitted only the repository's existing unused-code warnings.
+- No timed benchmark was run by Codex.

@@ -243,7 +243,7 @@ def check_inputs(args, root):
 
 def benchmark_modes(args):
     if args.exact_prefix_checkpoint_ablation:
-        return ("default_exact", "exact_prefix_checkpoint")
+        return ("replay_partial_accept", "default_exact")
     if args.attention_inverse_rope_fusion_ablation:
         return ("default_exact", "attention_inverse_rope_fused")
     if args.exact_q8_rows_ablation:
@@ -275,7 +275,7 @@ def mode_label(mode, args):
         "indexed_attention_rb16_legacy": "Legacy RB16 indexed attention DSpark",
         "serial_q8_rows": "Legacy one-row Q8 projection DSpark",
         "attention_inverse_rope_fused": "Fused attention inverse-RoPE DSpark",
-        "exact_prefix_checkpoint": "Exact prefix-checkpoint DSpark",
+        "replay_partial_accept": "Legacy partial-accept replay DSpark",
     }[mode]
 
 
@@ -319,8 +319,8 @@ def clean_dspark_env(mode, fast_verifier=False, runtime_stats=True):
             env["DS4_DSPARK_EXACT_Q8_ROWS"] = "0"
         if mode == "attention_inverse_rope_fused":
             env["DS4_DSPARK_EXACT_ATTN_INV_ROPE_FUSED"] = "1"
-        if mode == "exact_prefix_checkpoint":
-            env["DS4_DSPARK_EXACT_PREFIX_CHECKPOINT"] = "1"
+        if mode == "replay_partial_accept":
+            env["DS4_DSPARK_EXACT_PREFIX_CHECKPOINT"] = "0"
     return env
 
 
@@ -381,8 +381,8 @@ def command_text(args, mode, runtime_stats=None):
             env += "DS4_DSPARK_EXACT_Q8_ROWS=0 "
         if mode == "attention_inverse_rope_fused":
             env += "DS4_DSPARK_EXACT_ATTN_INV_ROPE_FUSED=1 "
-        if mode == "exact_prefix_checkpoint":
-            env += "DS4_DSPARK_EXACT_PREFIX_CHECKPOINT=1 "
+        if mode == "replay_partial_accept":
+            env += "DS4_DSPARK_EXACT_PREFIX_CHECKPOINT=0 "
     return env + shlex.join(mode_command(args, mode))
 
 
@@ -590,7 +590,7 @@ def summarize(rows, modes=("baseline", "runtime")):
         ("serial_exact", "runtime"): "serial_ffn_ablation",
         ("default_exact", "attention_inverse_rope_fused"):
             "attention_inverse_rope_fusion_ablation",
-        ("default_exact", "exact_prefix_checkpoint"):
+        ("replay_partial_accept", "default_exact"):
             "exact_prefix_checkpoint_ablation",
     }
     summary = {
@@ -632,11 +632,12 @@ def summarize(rows, modes=("baseline", "runtime")):
         })
         return summary
 
-    if modes == ("default_exact", "exact_prefix_checkpoint"):
+    if modes == ("replay_partial_accept", "default_exact"):
         summary.update({
-            "default_exact_generation_tps_median": reference_median,
-            "exact_prefix_checkpoint_generation_tps_median": candidate_median,
-            "exact_prefix_checkpoint_delta_percent":
+            "legacy_replay_generation_tps_median": reference_median,
+            "promoted_exact_prefix_checkpoint_generation_tps_median":
+                candidate_median,
+            "promoted_exact_prefix_checkpoint_delta_percent":
                 (candidate_median / reference_median - 1.0) * 100.0,
         })
         return summary
@@ -746,15 +747,15 @@ def summarize(rows, modes=("baseline", "runtime")):
 def format_report(summary):
     if summary["comparison"] == "exact_prefix_checkpoint_ablation":
         return (
-            "# DSpark Exact Prefix-Checkpoint Ablation\n\n"
-            f"- Replay partial-accept median: "
-            f"{summary['default_exact_generation_tps_median']:.2f} t/s\n"
-            f"- Exact prefix-checkpoint median: "
-            f"{summary['exact_prefix_checkpoint_generation_tps_median']:.2f} t/s\n"
+            "# DSpark Exact Prefix-Checkpoint Promotion Confirmation\n\n"
+            f"- Legacy replay median: "
+            f"{summary['legacy_replay_generation_tps_median']:.2f} t/s\n"
+            f"- Promoted exact prefix-checkpoint median: "
+            f"{summary['promoted_exact_prefix_checkpoint_generation_tps_median']:.2f} t/s\n"
             f"- Ratio of medians: {summary['median_ratio_of_medians']:.4f}x\n"
             f"- Median paired ratio: {summary['paired_speedup_median']:.4f}x\n"
-            f"- Exact prefix-checkpoint delta: "
-            f"{summary['exact_prefix_checkpoint_delta_percent']:+.1f}%\n"
+            f"- Promoted exact prefix-checkpoint delta: "
+            f"{summary['promoted_exact_prefix_checkpoint_delta_percent']:+.1f}%\n"
             f"- Measured pairs: {len(summary['paired_speedup_values'])}\n"
         )
 

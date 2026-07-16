@@ -22991,7 +22991,8 @@ static bool dspark_exact_head_batch_diagnostics_enabled(void) {
 
 static bool dspark_exact_prefix_checkpoint_enabled(void) {
     const char *v = getenv("DS4_DSPARK_EXACT_PREFIX_CHECKPOINT");
-    return v && v[0] && strcmp(v, "0") != 0;
+    return !v || !v[0] ||
+        (strcmp(v, "0") != 0 && strcasecmp(v, "off") != 0);
 }
 
 static bool metal_graph_exact_head_batch_tops(
