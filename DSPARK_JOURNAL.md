@@ -9207,3 +9207,47 @@ python3 speed-bench/run_dspark_comparison.py \
 - If the fused-gather result is clearly positive and every output remains
   byte-identical, commit the result and then return to the frozen 32-task
   HumanEval confirmation.
+
+User-run fused-gather throughput result:
+
+- Artifact:
+  `speed-bench/local-runs/20260716-215613`.
+- Clean source commit:
+  `660447f4dd197d69ea5b09ef8dbd6cd063e98b6b`.
+- Gathered FlashAttention median: `24.01 t/s`.
+- Fused-gather median: `25.04 t/s`.
+- Ratio of medians: `1.0429x`.
+- Median paired ratio: `1.0429x`, or `+4.3%`.
+- Individual paired ratios:
+  - `1.0472x`;
+  - `1.0377x`;
+  - `1.0429x`.
+- Every warmup and measured output had the same SHA-256:
+  `86f4851c044b82fffe568644343670a83ea6815b70c160b5a28a0fb357c52998`.
+- Runtime stats and diagnostic instrumentation were disabled.
+- No thermal or performance warning was recorded before or after the gate.
+- The machine still had ordinary desktop interference, but alternating order
+  produced three positive pairs with less than one percentage point between
+  the minimum and maximum gain.
+
+Decision:
+
+- The exact fused-gather candidate passes the short throughput gate.
+- The replacement retains roughly four-fifths of the rejected direct
+  candidate's local gain while restoring byte-exact HumanEval behavior.
+- Resume the frozen 32-task HumanEval confirmation:
+
+```sh
+python3 speed-bench/run_dspark_humaneval_dense_mixed_direct.py \
+  --throughput-reference \
+  speed-bench/local-runs/humaneval-threshold075-throughput-32-20260716-155112/summary.json \
+  --confirm-idle
+```
+
+- The broad gate compares gathered versus fused-gather preparation with the
+  threshold-`0.75` scheduler fixed in both modes.
+- It must still satisfy the frozen distribution gate:
+  - geometric mean at least `1.02x`;
+  - wins on at least `24/32` tasks;
+  - no task below `0.95x`;
+  - low-acceptance subgroup geometric mean at least `1.00x`.
