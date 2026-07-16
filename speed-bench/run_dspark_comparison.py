@@ -84,6 +84,7 @@ EXPERIMENT_ENV_KEYS = (
     "DS4_METAL_COMPRESSOR_PAIR_NR4",
     "DS4_METAL_INDEXED_ATTN_RB16_DIRECT",
     "DS4_METAL_INDEXED_ATTN_RB16_LEGACY",
+    "DS4_METAL_DENSE_MIXED_DIRECT",
     "DS4_METAL_DECODE_INDEXER_SPARSE_THRESHOLD",
 )
 
@@ -197,6 +198,11 @@ def parse_args():
         help="compare promoted NR4 attention output against opt-in NR8",
     )
     parser.add_argument(
+        "--dense-mixed-direct-ablation",
+        action="store_true",
+        help="compare gathered dense-mixed attention against direct cache reads",
+    )
+    parser.add_argument(
         "--stats-only",
         action="store_true",
         help="run an instrumented Metal-drafter attribution and omit throughput",
@@ -224,6 +230,7 @@ def parse_args():
             args.exact_attention_row_views_ablation,
             args.exact_attention_output_nr4_ablation,
             args.exact_attention_output_nr8_ablation,
+            args.dense_mixed_direct_ablation,
         )
     )
     if selected_modes > 1:
@@ -236,8 +243,9 @@ def parse_args():
             "--exact-prefix-checkpoint-ablation, and "
             "--metal-drafter-ablation, and "
             "--exact-attention-row-views-ablation, and "
-            "--exact-attention-output-nr4-ablation "
-            "and --exact-attention-output-nr8-ablation "
+            "--exact-attention-output-nr4-ablation, "
+            "--exact-attention-output-nr8-ablation, and "
+            "--dense-mixed-direct-ablation "
             "are mutually exclusive"
         )
     if args.stats_only and not args.metal_drafter_ablation:
@@ -288,6 +296,8 @@ def check_inputs(args, root):
 
 
 def benchmark_modes(args):
+    if getattr(args, "dense_mixed_direct_ablation", False):
+        return ("default_exact", "dense_mixed_direct")
     if getattr(args, "exact_attention_output_nr8_ablation", False):
         return ("default_exact", "attention_output_nr8")
     if getattr(args, "exact_attention_output_nr4_ablation", False):
@@ -334,6 +344,7 @@ def mode_label(mode, args):
         "exact_attention_row_views": "Cached attention row-view DSpark",
         "legacy_attention_output_nr2": "Legacy NR2 attention-output DSpark",
         "attention_output_nr8": "NR8 attention-output DSpark",
+        "dense_mixed_direct": "Direct dense-mixed attention DSpark",
     }[mode]
 
 
@@ -353,6 +364,7 @@ def throughput_runtime_stats_enabled(args):
         or getattr(args, "exact_attention_row_views_ablation", False)
         or getattr(args, "exact_attention_output_nr4_ablation", False)
         or getattr(args, "exact_attention_output_nr8_ablation", False)
+        or getattr(args, "dense_mixed_direct_ablation", False)
     )
 
 
@@ -393,6 +405,8 @@ def clean_dspark_env(mode, fast_verifier=False, runtime_stats=True):
             env["DS4_DSPARK_EXACT_ATTN_OUT_NR4"] = "0"
         if mode == "attention_output_nr8":
             env["DS4_DSPARK_EXACT_ATTN_OUT_NR8"] = "1"
+        if mode == "dense_mixed_direct":
+            env["DS4_METAL_DENSE_MIXED_DIRECT"] = "1"
     return env
 
 
@@ -426,7 +440,8 @@ def mode_command(args, mode):
             getattr(args, "metal_drafter_ablation", False) or
             getattr(args, "exact_attention_row_views_ablation", False) or
             getattr(args, "exact_attention_output_nr4_ablation", False) or
-            getattr(args, "exact_attention_output_nr8_ablation", False)):
+            getattr(args, "exact_attention_output_nr8_ablation", False) or
+            getattr(args, "dense_mixed_direct_ablation", False)):
         command[1:1] = ("--backend", "metal")
     if mode != "baseline":
         command.extend(("--dspark", str(args.dspark_model.resolve())))
@@ -467,6 +482,8 @@ def command_text(args, mode, runtime_stats=None):
             env += "DS4_DSPARK_EXACT_ATTN_OUT_NR4=0 "
         if mode == "attention_output_nr8":
             env += "DS4_DSPARK_EXACT_ATTN_OUT_NR8=1 "
+        if mode == "dense_mixed_direct":
+            env += "DS4_METAL_DENSE_MIXED_DIRECT=1 "
     return env + shlex.join(mode_command(args, mode))
 
 
@@ -636,6 +653,8 @@ def collect_metadata(args, root):
                 getattr(args, "exact_attention_output_nr4_ablation", False),
             "exact_attention_output_nr8_ablation":
                 getattr(args, "exact_attention_output_nr8_ablation", False),
+            "dense_mixed_direct_ablation":
+                getattr(args, "dense_mixed_direct_ablation", False),
             "stats_only": getattr(args, "stats_only", False),
             "temperature": 0,
             "seed": 1,
@@ -693,6 +712,8 @@ def summarize(rows, modes=("baseline", "runtime")):
             "exact_attention_output_nr4_ablation",
         ("default_exact", "attention_output_nr8"):
             "exact_attention_output_nr8_ablation",
+        ("default_exact", "dense_mixed_direct"):
+            "dense_mixed_direct_ablation",
     }
     summary = {
         "comparison": comparisons.get(modes, "baseline_runtime"),
@@ -780,6 +801,15 @@ def summarize(rows, modes=("baseline", "runtime")):
             "attention_output_nr8_generation_tps_median":
                 candidate_median,
             "attention_output_nr8_delta_percent":
+                (candidate_median / reference_median - 1.0) * 100.0,
+        })
+        return summary
+
+    if modes == ("default_exact", "dense_mixed_direct"):
+        summary.update({
+            "default_exact_generation_tps_median": reference_median,
+            "dense_mixed_direct_generation_tps_median": candidate_median,
+            "dense_mixed_direct_delta_percent":
                 (candidate_median / reference_median - 1.0) * 100.0,
         })
         return summary
@@ -1056,6 +1086,20 @@ def format_report(summary):
             f"- Median paired ratio: {summary['paired_speedup_median']:.4f}x\n"
             f"- NR8 delta: "
             f"{summary['attention_output_nr8_delta_percent']:+.1f}%\n"
+            f"- Measured pairs: {len(summary['paired_speedup_values'])}\n"
+        )
+
+    if summary["comparison"] == "dense_mixed_direct_ablation":
+        return (
+            "# DSpark Dense-Mixed Direct Attention Ablation\n\n"
+            f"- Gathered FlashAttention median: "
+            f"{summary['default_exact_generation_tps_median']:.2f} t/s\n"
+            f"- Direct dense-mixed median: "
+            f"{summary['dense_mixed_direct_generation_tps_median']:.2f} t/s\n"
+            f"- Ratio of medians: {summary['median_ratio_of_medians']:.4f}x\n"
+            f"- Median paired ratio: {summary['paired_speedup_median']:.4f}x\n"
+            f"- Direct attention delta: "
+            f"{summary['dense_mixed_direct_delta_percent']:+.1f}%\n"
             f"- Measured pairs: {len(summary['paired_speedup_values'])}\n"
         )
 

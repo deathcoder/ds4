@@ -8863,3 +8863,128 @@ Diagnostic correction:
   - the existing layer filter to match.
 - The second rejected artifact is
   `speed-bench/local-runs/dense-mixed-flash-20260716-210300`.
+
+Successful attribution:
+
+- Artifact:
+  `speed-bench/local-runs/dense-mixed-flash-20260716-210501`.
+- Exact output matched the uninstrumented reference byte-for-byte.
+- Dense-mixed exact rows: `115`.
+- Gathered FlashAttention calls: `115`.
+- Key range: `1127-1152`.
+- Compressed-row range: `999-1024`.
+- Mean synchronized call total: `2.938 ms`.
+
+Mean synchronized ownership per call:
+
+| stage | contribution | share |
+|---|---:|---:|
+| raw-ring linearization | 0.431 ms | 14.7% |
+| raw F32 to F16 copy | 0.465 ms | 15.8% |
+| compressed-cache copy | 0.355 ms | 12.1% |
+| mask fill | 0.341 ms | 11.6% |
+| padding | 0.392 ms | 13.4% |
+| attention vector kernel | 0.511 ms | 17.4% |
+| separate reduction | 0.443 ms | 15.1% |
+
+Interpretation:
+
+- Only `17.4%` of the synchronized gathered call belongs to the attention
+  vector kernel itself.
+- Cache staging, mask/pad work, and separate reduction own `82.6%`.
+- Absolute synchronized times are not throughput measurements, but ownership
+  is decisive enough to justify one direct dense-mixed candidate.
+
+## Phase 1.23: direct dense-mixed Metal candidate prepared
+
+Implementation:
+
+- Added default-off `DS4_METAL_DENSE_MIXED_DIRECT=1`.
+- Added
+  `kernel_dsv4_dense_mixed_attention_heads8_rb16_direct`.
+- The candidate is deliberately narrow:
+  - one token;
+  - no dense compressed mask;
+  - no fused inverse-RoPE;
+  - `head_dim=512`;
+  - direct raw-ring reads;
+  - direct compressed-cache reads;
+  - sixteen-row threadgroup staging shared across eight heads;
+  - one kernel with no gathered-cache copy, mask fill, padding dispatch, or
+    separate reduction dispatch.
+- Raw rows preserve logical ring order with
+  `(raw_start + row) % raw_cap`.
+- Compressed rows are consumed in ascending cache order.
+- The kernel uses the same half Q/K/V conversion, online-softmax update, and
+  sink handling as the validated indexed RB16-direct route.
+- Unsupported or masked shapes retain gathered FlashAttention.
+- Added default-off route trace
+  `DS4_METAL_DENSE_MIXED_DIRECT_TRACE=1`.
+
+Correctness and harness:
+
+- Extended `tests/dspark_gpu_candidates_correctness.sh` with
+  `DS4_TEST_DSPARK_DENSE_MIXED_DIRECT=1`.
+- The gate requires the direct-route trace to appear.
+- Added model-free source and benchmark-contract tests in
+  `tests/test_dspark_dense_mixed_direct.py`.
+- Added `--dense-mixed-direct-ablation` to the paired benchmark harness:
+  - reference: ordinary exact DSpark with gathered FlashAttention;
+  - candidate: only `DS4_METAL_DENSE_MIXED_DIRECT=1`;
+  - Metal is explicit;
+  - runtime stats, traces, and diagnostics are disabled;
+  - outputs must match byte-for-byte;
+  - Codex does not run the timed benchmark.
+
+Validation:
+
+```sh
+make -j4
+python3 -m py_compile \
+  speed-bench/run_dspark_comparison.py \
+  tests/test_dspark_dense_mixed_direct.py
+python3 -m unittest discover -s tests -p 'test_dspark_*.py'
+bash -n tests/dspark_gpu_candidates_correctness.sh
+DS4_TEST_DSPARK_MODE=runtime \
+DS4_TEST_DSPARK_DENSE_MIXED_DIRECT=1 \
+  ./tests/dspark_gpu_candidates_correctness.sh
+python3 speed-bench/run_dspark_comparison.py \
+  --dense-mixed-direct-ablation \
+  --dry-run \
+  --allow-dirty
+git diff --check
+```
+
+Validation result:
+
+- Metal host build passed.
+- The new Metal shader compiled at runtime.
+- All `100` DSpark model-free tests passed.
+- Reasoning, Italian, medium-context, rolling-window, and resumed two-turn
+  chat outputs matched their ordinary baselines byte-for-byte.
+- The correctness matrix confirmed the direct dense-mixed route engaged.
+- A combined check with opt-in inverse-RoPE fusion preserved final output but
+  exceeded that experiment's internal dense-attention observer bound.
+  The candidate is therefore explicitly disabled when fused inverse-RoPE is
+  active; that combination retains gathered FlashAttention.
+- Re-running the combined matrix after this restriction passed all five prompt
+  cases plus the raw, dense-mixed, and indexed inverse-RoPE observers.
+- The benchmark dry run emitted the intended uninstrumented pair.
+- Codex ran no timed throughput benchmark.
+
+User-run gate:
+
+```sh
+python3 speed-bench/run_dspark_comparison.py \
+  --dense-mixed-direct-ablation \
+  --confirm-idle
+```
+
+Decision rule:
+
+- Require byte-identical output in every warmup and measured pair.
+- Promote only on a clear positive paired direction. This candidate replaces
+  several dispatches and large cache copies, so a merely neutral result is not
+  enough to justify the extra specialized kernel.
+- If positive locally, confirm on the 32-sample HumanEval scheduled workload
+  before promotion because dense/sparse mode mix varies by prompt.

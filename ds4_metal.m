@@ -139,6 +139,7 @@ static id<MTLComputePipelineState> g_dsv4_sort_i32_rows_asc_pipeline;
 static id<MTLComputePipelineState> g_dsv4_indexed_attention_heads8_pipeline;
 static id<MTLComputePipelineState> g_dsv4_indexed_attention_heads8_rb16_pipeline;
 static id<MTLComputePipelineState> g_dsv4_indexed_attention_heads8_rb16_direct_pipeline;
+static id<MTLComputePipelineState> g_dsv4_dense_mixed_attention_heads8_rb16_direct_pipeline;
 static id<MTLComputePipelineState> g_dsv4_softplus_sqrt_pipeline;
 static id<MTLComputePipelineState> g_dsv4_router_finalize_one_pipeline;
 static id<MTLComputePipelineState> g_dsv4_router_weights_one_pipeline;
@@ -1910,6 +1911,26 @@ static int ds4_gpu_trace_indexed_attention_rb16_direct(void) {
     static int enabled;
     if (!initialized) {
         enabled = getenv("DS4_METAL_INDEXED_ATTN_RB16_DIRECT_TRACE") != NULL;
+        initialized = 1;
+    }
+    return enabled;
+}
+
+static int ds4_gpu_use_dense_mixed_attention_direct(void) {
+    static int initialized;
+    static int enabled;
+    if (!initialized) {
+        enabled = getenv("DS4_METAL_DENSE_MIXED_DIRECT") != NULL;
+        initialized = 1;
+    }
+    return enabled;
+}
+
+static int ds4_gpu_trace_dense_mixed_attention_direct(void) {
+    static int initialized;
+    static int enabled;
+    if (!initialized) {
+        enabled = getenv("DS4_METAL_DENSE_MIXED_DIRECT_TRACE") != NULL;
         initialized = 1;
     }
     return enabled;
@@ -6374,6 +6395,9 @@ int ds4_gpu_init(void) {
         g_dsv4_indexed_attention_heads8_rb16_direct_pipeline =
             ds4_gpu_get_indexed_attention_pipeline(
                 "kernel_dsv4_indexed_mixed_attention_heads8_rb16_direct", false);
+        g_dsv4_dense_mixed_attention_heads8_rb16_direct_pipeline =
+            ds4_gpu_get_indexed_attention_pipeline(
+                "kernel_dsv4_dense_mixed_attention_heads8_rb16_direct", false);
         g_dsv4_softplus_sqrt_pipeline =
             ds4_gpu_get_pipeline("kernel_dsv4_softplus_sqrt_f32_4");
         g_dsv4_router_finalize_one_pipeline =
@@ -6388,6 +6412,7 @@ int ds4_gpu_init(void) {
             !g_dsv4_indexed_attention_heads8_pipeline ||
             !g_dsv4_indexed_attention_heads8_rb16_pipeline ||
             !g_dsv4_indexed_attention_heads8_rb16_direct_pipeline ||
+            !g_dsv4_dense_mixed_attention_heads8_rb16_direct_pipeline ||
             !g_dsv4_softplus_sqrt_pipeline ||
             !g_dsv4_router_finalize_one_pipeline ||
             !g_dsv4_router_weights_one_pipeline ||
@@ -6997,6 +7022,7 @@ void ds4_gpu_cleanup(void) {
         g_dsv4_indexed_attention_heads8_pipeline = nil;
         g_dsv4_indexed_attention_heads8_rb16_pipeline = nil;
         g_dsv4_indexed_attention_heads8_rb16_direct_pipeline = nil;
+        g_dsv4_dense_mixed_attention_heads8_rb16_direct_pipeline = nil;
         g_dsv4_softplus_sqrt_pipeline = nil;
         g_dsv4_router_finalize_one_pipeline = nil;
         g_dsv4_router_weights_one_pipeline = nil;
@@ -20528,6 +20554,94 @@ int ds4_gpu_attention_prefill_masked_mixed_heads_tensor(
     return 1;
 }
 
+static int ds4_gpu_encode_dense_mixed_attention_direct_heads(
+        id<MTLCommandBuffer>   cb,
+        ds4_gpu_tensor      *heads,
+        id<MTLBuffer>          sinks_buf,
+        NSUInteger             sinks_offset,
+        const ds4_gpu_tensor *q,
+        const ds4_gpu_tensor *raw_kv,
+        uint32_t               n_raw,
+        uint32_t               raw_cap,
+        uint32_t               raw_start,
+        const ds4_gpu_tensor *comp_kv,
+        uint32_t               comp_kv_f16,
+        uint32_t               n_comp,
+        uint32_t               n_head,
+        uint32_t               head_dim) {
+    const char *kernel_name =
+        "kernel_dsv4_dense_mixed_attention_heads8_rb16_direct";
+    id<MTLComputePipelineState> pipeline =
+        ds4_gpu_disable_hot_pipeline_statics() ?
+        ds4_gpu_get_indexed_attention_pipeline(kernel_name, false) :
+        ds4_gpu_hot_pipeline(
+            g_dsv4_dense_mixed_attention_heads8_rb16_direct_pipeline,
+            kernel_name);
+    if (!pipeline) return 0;
+
+    const uint64_t row_bytes = (uint64_t)head_dim * sizeof(float);
+    const uint64_t row_bytes_f16 =
+        (uint64_t)head_dim * sizeof(uint16_t);
+    ds4_gpu_dsv4_indexed_attention_args args = {
+        .n_tokens = 1,
+        .n_head = n_head,
+        .n_raw = n_raw,
+        .raw_cap = raw_cap,
+        .raw_start = raw_start,
+        .n_comp = n_comp,
+        .top_k = 0,
+        .pos0 = 0,
+        .window = 0,
+        .ratio = 0,
+        .comp_kv_f16 = comp_kv_f16 ? 1u : 0u,
+        .pad0 = 0,
+        .q_token_stride = (uint64_t)n_head * row_bytes,
+        .q_head_stride = row_bytes,
+        .raw_row_stride = row_bytes,
+        .comp_row_stride = comp_kv_f16 ? row_bytes_f16 : row_bytes,
+        .topk_token_stride = 0,
+        .dst_token_stride = (uint64_t)n_head * row_bytes,
+        .dst_head_stride = row_bytes,
+        .scale = 1.0f / sqrtf((float)head_dim),
+    };
+
+    id<MTLBuffer> qbuf = ds4_gpu_tensor_buffer(q);
+    id<MTLBuffer> rawbuf = ds4_gpu_tensor_buffer(raw_kv);
+    id<MTLBuffer> compbuf = ds4_gpu_tensor_buffer(comp_kv);
+    id<MTLBuffer> headsbuf = ds4_gpu_tensor_buffer(heads);
+    if (!qbuf || !rawbuf || !compbuf || !headsbuf) {
+        return 0;
+    }
+
+    id<MTLComputeCommandEncoder> enc = ds4_gpu_compute_encoder(cb);
+    [enc setComputePipelineState:pipeline];
+    [enc setBytes:&args length:sizeof(args) atIndex:0];
+    [enc setBuffer:qbuf offset:ds4_gpu_tensor_offset(q) atIndex:1];
+    [enc setBuffer:rawbuf offset:ds4_gpu_tensor_offset(raw_kv) atIndex:2];
+    [enc setBuffer:compbuf offset:ds4_gpu_tensor_offset(comp_kv) atIndex:3];
+    [enc setBuffer:sinks_buf offset:sinks_offset atIndex:4];
+    [enc setBuffer:headsbuf offset:ds4_gpu_tensor_offset(heads) atIndex:5];
+    [enc setBuffer:headsbuf offset:ds4_gpu_tensor_offset(heads) atIndex:6];
+    [enc setThreadgroupMemoryLength:16u * 128u * 4u * sizeof(uint16_t)
+                            atIndex:0];
+    [enc dispatchThreadgroups:
+             MTLSizeMake(1, ((NSUInteger)n_head + 7u) / 8u, 1)
+         threadsPerThreadgroup:MTLSizeMake(32, 8, 1)];
+    ds4_gpu_end_compute_encoder(cb, enc);
+
+    if (ds4_gpu_trace_dense_mixed_attention_direct()) {
+        static int reported;
+        if (!reported) {
+            fprintf(stderr,
+                    "ds4: Metal dense mixed attention route=rb16_direct "
+                    "raw=%u compressed=%u heads=%u\n",
+                    n_raw, n_comp, n_head);
+            reported = 1;
+        }
+    }
+    return 1;
+}
+
 static int ds4_gpu_attention_decode_heads_impl(
         ds4_gpu_tensor       *heads,
         const void             *model_map,
@@ -20625,6 +20739,34 @@ static int ds4_gpu_attention_decode_heads_impl(
         int owned = 0;
         id<MTLCommandBuffer> cb = ds4_gpu_command_buffer(&owned);
         if (!cb) return 0;
+
+        if (use_mask == 0 &&
+            head_dim == 512 &&
+            inverse_rope == NULL &&
+            ds4_gpu_use_dense_mixed_attention_direct()) {
+            if (!ds4_gpu_encode_dense_mixed_attention_direct_heads(
+                    cb,
+                    heads,
+                    sinks_buf,
+                    (NSUInteger)sinks_inner,
+                    q,
+                    raw_kv,
+                    n_raw,
+                    raw_cap,
+                    raw_start,
+                    comp_kv,
+                    comp_kv_f16,
+                    n_comp,
+                    n_head,
+                    head_dim)) {
+                return 0;
+            }
+            if (!ds4_gpu_finish_command_buffer(
+                    cb, owned, "graph direct dense mixed attention heads")) {
+                return 0;
+            }
+            return 1;
+        }
 
         if (!ds4_gpu_encode_flash_attention_gathered_heads(&cb,
                                                              heads,

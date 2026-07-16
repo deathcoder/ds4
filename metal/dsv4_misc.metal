@@ -979,6 +979,106 @@ kernel void kernel_dsv4_indexed_mixed_attention_heads8_rb16_direct(
                                args.inverse_rope);
 }
 
+// One-token dense mixed decode without gathered-cache staging. Raw-ring rows
+// and all compressed rows are loaded directly in 16-row tiles and shared by
+// eight heads. Row order and online-softmax arithmetic match the indexed
+// RB16-direct kernel, but the dense route has no top-k indirection.
+kernel void kernel_dsv4_dense_mixed_attention_heads8_rb16_direct(
+        constant ds4_metal_args_dsv4_indexed_attention & args,
+        device const char *q,
+        device const char *raw_kv,
+        device const char *comp_kv,
+        device const char *sinks,
+        device       char *dst,
+        device       char *unrotated_dst,
+        threadgroup half4 *kv_shared [[threadgroup(0)]],
+        uint2  tgpig [[threadgroup_position_in_grid]],
+        ushort tid   [[thread_index_in_threadgroup]],
+        ushort lane  [[thread_index_in_simdgroup]],
+        ushort sg    [[simdgroup_index_in_threadgroup]]) {
+    const uint head = tgpig.y * 8u + (uint)sg;
+    if (tgpig.x != 0u || head >= args.n_head) {
+        return;
+    }
+
+    device const float4 *q4 = (device const float4 *)(q +
+        (uint64_t)head * args.q_head_stride);
+    const half4 q0 = (half4)q4[lane +  0];
+    const half4 q1 = (half4)q4[lane + 32];
+    const half4 q2 = (half4)q4[lane + 64];
+    const half4 q3 = (half4)q4[lane + 96];
+
+    float M = -FLT_MAX/2.0f;
+    float S = 0.0f;
+    float4 o0 = 0.0f;
+    float4 o1 = 0.0f;
+    float4 o2 = 0.0f;
+    float4 o3 = 0.0f;
+
+    for (uint i = 0; i < args.n_raw; i += 16u) {
+        const uint n_rows = min(16u, args.n_raw - i);
+        for (uint off = (uint)tid; off < n_rows * 128u; off += 256u) {
+            const uint r = off >> 7;
+            const uint c = off & 127u;
+            const uint row = (args.raw_start + i + r) % args.raw_cap;
+            device const float4 *src = (device const float4 *)(raw_kv +
+                (uint64_t)row * args.raw_row_stride);
+            kv_shared[off] = (half4)src[c];
+        }
+        threadgroup_barrier(mem_flags::mem_threadgroup);
+        for (uint r = 0; r < n_rows; r++) {
+            dsv4_attend_shared_h4_row_at(kv_shared,
+                                         r,
+                                         q0, q1, q2, q3,
+                                         args.scale,
+                                         lane,
+                                         M, S,
+                                         o0, o1, o2, o3);
+        }
+        threadgroup_barrier(mem_flags::mem_threadgroup);
+    }
+
+    for (uint i = 0; i < args.n_comp; i += 16u) {
+        const uint n_rows = min(16u, args.n_comp - i);
+        for (uint off = (uint)tid; off < n_rows * 128u; off += 256u) {
+            const uint r = off >> 7;
+            const uint c = off & 127u;
+            kv_shared[off] = dsv4_load_cache_h4(comp_kv,
+                                                args.comp_row_stride,
+                                                i + r,
+                                                c,
+                                                args.comp_kv_f16 != 0u);
+        }
+        threadgroup_barrier(mem_flags::mem_threadgroup);
+        for (uint r = 0; r < n_rows; r++) {
+            dsv4_attend_shared_h4_row_at(kv_shared,
+                                         r,
+                                         q0, q1, q2, q3,
+                                         args.scale,
+                                         lane,
+                                         M, S,
+                                         o0, o1, o2, o3);
+        }
+        threadgroup_barrier(mem_flags::mem_threadgroup);
+    }
+
+    dsv4_attend_sink(((device const float *)sinks)[head],
+                     M, S, o0, o1, o2, o3);
+
+    const float inv_s = S == 0.0f ? 0.0f : 1.0f/S;
+    device float4 *dst4 = (device float4 *)(dst +
+        (uint64_t)head * args.dst_head_stride);
+    device float4 *unrotated4 = (device float4 *)(unrotated_dst +
+        (uint64_t)head * args.dst_head_stride);
+    dsv4_store_attention_head(dst4 + lane,
+                               unrotated4 + lane,
+                               o0, o1, o2, o3,
+                               inv_s,
+                               args.pos0,
+                               (uint32_t)lane * 4u,
+                               args.inverse_rope);
+}
+
 static inline float dsv4_indexer_dot128_shared_q(
         float4 c0,
         float4 c1,

@@ -1114,3 +1114,21 @@ layer-42 exact-attention plus gathered-FlashAttention boundaries. Every output
 must match byte-for-byte. The report separates raw-ring linearization, raw and
 compressed cache copies, mask work, padding, split-K attention, and the final
 reduction for each dense-mixed row.
+
+After the direct dense-mixed candidate passes the byte-exact correctness
+matrix, run its paired throughput gate:
+
+```sh
+python3 speed-bench/run_dspark_comparison.py \
+  --dense-mixed-direct-ablation \
+  --dry-run \
+  --allow-dirty
+python3 speed-bench/run_dspark_comparison.py \
+  --dense-mixed-direct-ablation \
+  --confirm-idle
+```
+
+The reference retains gathered one-query FlashAttention. Only the candidate
+enables `DS4_METAL_DENSE_MIXED_DIRECT=1`. Both modes use exact Metal
+verification with runtime stats, traces, and diagnostic boundaries disabled,
+and every output must match byte-for-byte.
