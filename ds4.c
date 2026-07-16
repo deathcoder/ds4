@@ -10714,7 +10714,10 @@ static void print_vec_stats(const char *name, const float *x, uint64_t n) {
  * tensor names follow the model stages rather than generic graph nodes.
  */
 
-enum { DS4_STREAMING_PREFILL_CACHE_SEED_MAX_TOKENS = 64 };
+enum {
+    DS4_STREAMING_PREFILL_CACHE_SEED_MAX_TOKENS = 64,
+    DS4_SPEC_PREFIX_SLOTS = 15,
+};
 
 typedef struct {
     /* One-token decode tensors.  These stay allocated for the life of a
@@ -10758,12 +10761,19 @@ typedef struct {
     ds4_gpu_tensor *spec_prefix1_attn_state_score[DS4_MAX_LAYER];
     ds4_gpu_tensor *spec_prefix1_index_state_kv[DS4_MAX_LAYER];
     ds4_gpu_tensor *spec_prefix1_index_state_score[DS4_MAX_LAYER];
+    ds4_gpu_tensor *spec_prefix_attn_state_kv[DS4_MAX_LAYER];
+    ds4_gpu_tensor *spec_prefix_attn_state_score[DS4_MAX_LAYER];
+    ds4_gpu_tensor *spec_prefix_index_state_kv[DS4_MAX_LAYER];
+    ds4_gpu_tensor *spec_prefix_index_state_score[DS4_MAX_LAYER];
     ds4_gpu_tensor *spec_logits;
     uint32_t layer_n_comp[DS4_MAX_LAYER];
     uint32_t layer_n_index_comp[DS4_MAX_LAYER];
     uint32_t spec_prefix1_n_comp[DS4_MAX_LAYER];
     uint32_t spec_prefix1_n_index_comp[DS4_MAX_LAYER];
+    uint32_t spec_prefix_n_comp[DS4_SPEC_PREFIX_SLOTS][DS4_MAX_LAYER];
+    uint32_t spec_prefix_n_index_comp[DS4_SPEC_PREFIX_SLOTS][DS4_MAX_LAYER];
     bool spec_capture_prefix1;
+    bool spec_capture_prefix;
     uint32_t raw_cap;
     /* Maximum compressed-row capacity across layers.  Shared work buffers use
      * this worst-case size because ratio-4 indexer layers can still reach it. */
@@ -11115,6 +11125,10 @@ static void metal_graph_free(ds4_gpu_graph *g) {
         ds4_gpu_tensor_free(g->spec_prefix1_attn_state_score[il]);
         ds4_gpu_tensor_free(g->spec_prefix1_index_state_kv[il]);
         ds4_gpu_tensor_free(g->spec_prefix1_index_state_score[il]);
+        ds4_gpu_tensor_free(g->spec_prefix_attn_state_kv[il]);
+        ds4_gpu_tensor_free(g->spec_prefix_attn_state_score[il]);
+        ds4_gpu_tensor_free(g->spec_prefix_index_state_kv[il]);
+        ds4_gpu_tensor_free(g->spec_prefix_index_state_score[il]);
     }
     ds4_gpu_tensor_free(g->kv);
     ds4_gpu_tensor_free(g->kv_raw);
@@ -11561,6 +11575,10 @@ static bool metal_graph_alloc_raw_cap(
             if (enable_speculation) {
                 g->spec_attn_state_kv[il] = ds4_gpu_tensor_alloc(attn_width * attn_rows * sizeof(float));
                 g->spec_attn_state_score[il] = ds4_gpu_tensor_alloc(attn_width * attn_rows * sizeof(float));
+                g->spec_prefix_attn_state_kv[il] = ds4_gpu_tensor_alloc(
+                        DS4_SPEC_PREFIX_SLOTS * attn_width * attn_rows * sizeof(float));
+                g->spec_prefix_attn_state_score[il] = ds4_gpu_tensor_alloc(
+                        DS4_SPEC_PREFIX_SLOTS * attn_width * attn_rows * sizeof(float));
                 if (enable_mtp) {
                     g->spec_prefix1_attn_state_kv[il] = ds4_gpu_tensor_alloc(attn_width * attn_rows * sizeof(float));
                     g->spec_prefix1_attn_state_score[il] = ds4_gpu_tensor_alloc(attn_width * attn_rows * sizeof(float));
@@ -11586,6 +11604,10 @@ static bool metal_graph_alloc_raw_cap(
                 if (enable_speculation) {
                     g->spec_index_state_kv[il] = ds4_gpu_tensor_alloc(index_width * index_rows * sizeof(float));
                     g->spec_index_state_score[il] = ds4_gpu_tensor_alloc(index_width * index_rows * sizeof(float));
+                    g->spec_prefix_index_state_kv[il] = ds4_gpu_tensor_alloc(
+                            DS4_SPEC_PREFIX_SLOTS * index_width * index_rows * sizeof(float));
+                    g->spec_prefix_index_state_score[il] = ds4_gpu_tensor_alloc(
+                            DS4_SPEC_PREFIX_SLOTS * index_width * index_rows * sizeof(float));
                     if (enable_mtp) {
                         g->spec_prefix1_index_state_kv[il] = ds4_gpu_tensor_alloc(index_width * index_rows * sizeof(float));
                         g->spec_prefix1_index_state_score[il] = ds4_gpu_tensor_alloc(index_width * index_rows * sizeof(float));
@@ -11722,6 +11744,8 @@ static bool metal_graph_alloc_raw_cap(
                              (!enable_speculation ||
                               (g->spec_attn_state_kv[il] != NULL &&
                                g->spec_attn_state_score[il] != NULL &&
+                               g->spec_prefix_attn_state_kv[il] != NULL &&
+                               g->spec_prefix_attn_state_score[il] != NULL &&
                                (!enable_mtp ||
                                 (g->spec_prefix1_attn_state_kv[il] != NULL &&
                                  g->spec_prefix1_attn_state_score[il] != NULL))));
@@ -11733,6 +11757,8 @@ static bool metal_graph_alloc_raw_cap(
                              (!enable_speculation ||
                               (g->spec_index_state_kv[il] != NULL &&
                                g->spec_index_state_score[il] != NULL &&
+                               g->spec_prefix_index_state_kv[il] != NULL &&
+                               g->spec_prefix_index_state_score[il] != NULL &&
                                (!enable_mtp ||
                                 (g->spec_prefix1_index_state_kv[il] != NULL &&
                                  g->spec_prefix1_index_state_score[il] != NULL))));
@@ -13694,6 +13720,54 @@ static bool metal_graph_capture_prefix1_index_state(ds4_gpu_graph *g, uint32_t i
                                  g->layer_index_state_kv[il], 0, bytes) != 0 &&
            ds4_gpu_tensor_copy(g->spec_prefix1_index_state_score[il], 0,
                                  g->layer_index_state_score[il], 0, bytes) != 0;
+}
+
+static bool metal_graph_capture_prefix_state(
+        ds4_gpu_graph *g,
+        uint32_t       il,
+        uint32_t       prefix_len) {
+    if (!g || !g->spec_capture_prefix || prefix_len == 0 ||
+        prefix_len > DS4_SPEC_PREFIX_SLOTS) {
+        return true;
+    }
+    const uint32_t slot = prefix_len - 1u;
+    const uint32_t ratio = ds4_layer_compress_ratio(il);
+    if (ratio == 0) return true;
+
+    const uint64_t attn_bytes =
+        ds4_gpu_tensor_bytes(g->layer_attn_state_kv[il]);
+    const uint64_t attn_offset = (uint64_t)slot * attn_bytes;
+    g->spec_prefix_n_comp[slot][il] = g->layer_n_comp[il];
+    bool ok =
+        ds4_gpu_tensor_copy(g->spec_prefix_attn_state_kv[il],
+                            attn_offset,
+                            g->layer_attn_state_kv[il],
+                            0,
+                            attn_bytes) != 0 &&
+        ds4_gpu_tensor_copy(g->spec_prefix_attn_state_score[il],
+                            attn_offset,
+                            g->layer_attn_state_score[il],
+                            0,
+                            attn_bytes) != 0;
+    if (ok && ratio == 4) {
+        const uint64_t index_bytes =
+            ds4_gpu_tensor_bytes(g->layer_index_state_kv[il]);
+        const uint64_t index_offset = (uint64_t)slot * index_bytes;
+        g->spec_prefix_n_index_comp[slot][il] =
+            g->layer_n_index_comp[il];
+        ok =
+            ds4_gpu_tensor_copy(g->spec_prefix_index_state_kv[il],
+                                index_offset,
+                                g->layer_index_state_kv[il],
+                                0,
+                                index_bytes) != 0 &&
+            ds4_gpu_tensor_copy(g->spec_prefix_index_state_score[il],
+                                index_offset,
+                                g->layer_index_state_score[il],
+                                0,
+                                index_bytes) != 0;
+    }
+    return ok;
 }
 
 static uint32_t metal_graph_decode_indexer_sparse_threshold(const ds4_gpu_graph *g) {
@@ -22915,6 +22989,11 @@ static bool dspark_exact_head_batch_diagnostics_enabled(void) {
     return v && v[0] && strcmp(v, "0") != 0;
 }
 
+static bool dspark_exact_prefix_checkpoint_enabled(void) {
+    const char *v = getenv("DS4_DSPARK_EXACT_PREFIX_CHECKPOINT");
+    return v && v[0] && strcmp(v, "0") != 0;
+}
+
 static bool metal_graph_exact_head_batch_tops(
         ds4_gpu_graph       *g,
         const ds4_model     *model,
@@ -24609,7 +24688,10 @@ static bool metal_graph_verify_decode_exact(
     ds4_gpu_tensor *saved_after_attn = g->after_attn_hc;
     ds4_gpu_tensor *saved_after = g->after_ffn_hc;
     const bool saved_capture = g->spec_capture_prefix1;
+    const bool saved_prefix_capture = g->spec_capture_prefix;
     g->spec_capture_prefix1 = false;
+    g->spec_capture_prefix =
+        dspark_exact_prefix_checkpoint_enabled() && n_tokens > 1u;
     const double layer_started = timing ? now_sec() : 0.0;
     const bool exact_layer_profile_requested =
         n_tokens > 1u && attn_runtime_enabled && ffn_runtime_enabled &&
@@ -24664,6 +24746,12 @@ static bool metal_graph_verify_decode_exact(
                                                       pos % g->raw_cap,
                                                       metal_graph_raw_span_for_batch(g, pos, 1),
                                                       tokens[row]);
+                if (ok) {
+                    if (row + 1u < n_tokens) {
+                        ok = metal_graph_capture_prefix_state(
+                            g, il, row + 1u);
+                    }
+                }
                 if (ok) {
                     ds4_target_hc_capture_note_tensor(target_capture,
                                                       il,
@@ -24972,6 +25060,9 @@ static bool metal_graph_verify_decode_exact(
                         0,
                         mix_hc * sizeof(float)) != 0;
                 }
+            }
+            if (ok && row + 1u < n_tokens) {
+                ok = metal_graph_capture_prefix_state(g, il, row + 1u);
             }
         }
         if (ok && exact_layer_profile && attn_suffix_runtime_layer) {
@@ -25635,6 +25726,14 @@ static bool metal_graph_verify_decode_exact(
                                             model,
                                             weights,
                                             weights->output->dim[1]);
+        if (ok && g->spec_capture_prefix && row + 1u < n_tokens) {
+            ok = ds4_gpu_tensor_copy(
+                     g->spec_logits,
+                     (uint64_t)row * DS4_N_VOCAB * sizeof(float),
+                     g->logits,
+                     0,
+                     (uint64_t)DS4_N_VOCAB * sizeof(float)) != 0;
+        }
         if (ok && row + 1u < n_tokens) {
             ds4_gpu_tensor *top_view = ds4_gpu_tensor_view(
                 g->comp_selected,
@@ -25651,6 +25750,7 @@ static bool metal_graph_verify_decode_exact(
     g->after_attn_hc = saved_after_attn;
     g->after_ffn_hc = saved_after;
     g->spec_capture_prefix1 = saved_capture;
+    g->spec_capture_prefix = saved_prefix_capture;
 
     if (ok && n_tokens > 1u && !head_batch_tops) {
         ok = ds4_gpu_tensor_read(g->comp_selected,
@@ -28510,6 +28610,60 @@ static bool spec_frontier_commit_prefix1(ds4_session *s) {
                                        g->spec_prefix1_index_state_kv[il], 0, ib) != 0 &&
                  ds4_gpu_tensor_copy(g->layer_index_state_score[il], 0,
                                        g->spec_prefix1_index_state_score[il], 0, ib) != 0;
+        }
+    }
+    if (ok) ok = ds4_gpu_end_commands() != 0;
+    else (void)ds4_gpu_synchronize();
+    return ok;
+}
+
+static bool spec_frontier_commit_prefix(
+        ds4_session *s,
+        uint32_t     accepted,
+        uint32_t     proposed) {
+    if (!s || accepted == 0 || accepted >= proposed ||
+        accepted > DS4_SPEC_PREFIX_SLOTS) {
+        return false;
+    }
+    ds4_gpu_graph *g = &s->graph;
+    const uint32_t slot = accepted - 1u;
+    bool ok = ds4_gpu_begin_commands() != 0;
+    for (uint32_t il = 0; ok && il < DS4_N_LAYER; il++) {
+        const uint32_t ratio = ds4_layer_compress_ratio(il);
+        if (ratio == 0) continue;
+
+        g->layer_n_comp[il] = g->spec_prefix_n_comp[slot][il];
+        const uint64_t attn_bytes =
+            ds4_gpu_tensor_bytes(g->layer_attn_state_kv[il]);
+        const uint64_t attn_offset = (uint64_t)slot * attn_bytes;
+        ok =
+            ds4_gpu_tensor_copy(g->layer_attn_state_kv[il],
+                                0,
+                                g->spec_prefix_attn_state_kv[il],
+                                attn_offset,
+                                attn_bytes) != 0 &&
+            ds4_gpu_tensor_copy(g->layer_attn_state_score[il],
+                                0,
+                                g->spec_prefix_attn_state_score[il],
+                                attn_offset,
+                                attn_bytes) != 0;
+        if (ok && ratio == 4) {
+            g->layer_n_index_comp[il] =
+                g->spec_prefix_n_index_comp[slot][il];
+            const uint64_t index_bytes =
+                ds4_gpu_tensor_bytes(g->layer_index_state_kv[il]);
+            const uint64_t index_offset = (uint64_t)slot * index_bytes;
+            ok =
+                ds4_gpu_tensor_copy(g->layer_index_state_kv[il],
+                                    0,
+                                    g->spec_prefix_index_state_kv[il],
+                                    index_offset,
+                                    index_bytes) != 0 &&
+                ds4_gpu_tensor_copy(g->layer_index_state_score[il],
+                                    0,
+                                    g->spec_prefix_index_state_score[il],
+                                    index_offset,
+                                    index_bytes) != 0;
         }
     }
     if (ok) ok = ds4_gpu_end_commands() != 0;
@@ -35604,30 +35758,56 @@ static int dspark_session_eval_batch_commit(
     }
 
     if (n_commit < n_limit) {
-        ok = spec_frontier_restore(&frontier, s);
-        capture_active = ok && dspark_session_target_capture_begin(s,
-                                                                   start,
-                                                                   n_commit,
-                                                                   &capture,
-                                                                   "multi-batch-prefix");
-        ok = ok && capture_active;
-        const double replay_start = stats ? now_sec() : 0.0;
-        if (ok) {
-            if (stats && committed_fast) d->runtime_fast_verify_calls++;
-            ok = dspark_session_verify_batch_once(s,
-                                                  committed_fast,
-                                                  tokens,
-                                                  n_commit,
-                                                  start,
-                                                  row_tops,
-                                                  last_logits,
-                                                  &capture);
+        bool prefix_committed = false;
+        if (!committed_fast &&
+            dspark_exact_prefix_checkpoint_enabled() &&
+            spec_frontier_commit_prefix(s, n_commit, n_limit) &&
+            metal_graph_read_spec_logits_row(
+                &s->graph, n_commit - 1u, last_logits)) {
+            const uint32_t prefix_context_len = start + n_commit;
+            if (capture_active && capture.pos0 <= prefix_context_len) {
+                capture.n_tokens = prefix_context_len - capture.pos0;
+                prefix_committed =
+                    capture.n_tokens > 0 && !capture.failed;
+            }
+            if (prefix_committed &&
+                dspark_session_diagnostics_enabled()) {
+                fprintf(stderr,
+                        "ds4: DSpark exact prefix checkpoint proposed=%u "
+                        "committed=%u result=pass\n",
+                        n_limit,
+                        n_commit);
+            }
         }
-        const double replay_seconds = stats ? now_sec() - replay_start : 0.0;
-        if (capture_active) {
-            dspark_session_runtime_target_eval_note(d, n_commit, replay_seconds);
+        if (!prefix_committed) {
+            ok = spec_frontier_restore(&frontier, s);
+            capture_active = ok && dspark_session_target_capture_begin(
+                s,
+                start,
+                n_commit,
+                &capture,
+                "multi-batch-prefix");
+            ok = ok && capture_active;
+            const double replay_start = stats ? now_sec() : 0.0;
+            if (ok) {
+                if (stats && committed_fast) d->runtime_fast_verify_calls++;
+                ok = dspark_session_verify_batch_once(s,
+                                                      committed_fast,
+                                                      tokens,
+                                                      n_commit,
+                                                      start,
+                                                      row_tops,
+                                                      last_logits,
+                                                      &capture);
+            }
+            const double replay_seconds =
+                stats ? now_sec() - replay_start : 0.0;
+            if (capture_active) {
+                dspark_session_runtime_target_eval_note(
+                    d, n_commit, replay_seconds);
+            }
         }
-        if (committed_fast && !ok) {
+        if (!prefix_committed && committed_fast && !ok) {
             if (stats) d->runtime_fast_verify_failures++;
             if (dspark_session_diagnostics_enabled()) {
                 fprintf(stderr,
@@ -35660,7 +35840,7 @@ static int dspark_session_eval_batch_commit(
             if (ok && stats) d->runtime_fast_verify_exact_fallbacks++;
             committed_fast = false;
         }
-        if (!ok) {
+        if (!prefix_committed && !ok) {
             const bool restored = spec_frontier_restore(&frontier, s);
             spec_frontier_free(&frontier);
             free(last_logits);

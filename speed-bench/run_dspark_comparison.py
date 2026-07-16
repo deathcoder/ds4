@@ -164,6 +164,11 @@ def parse_args():
         action="store_true",
         help="compare default exact DSpark against fused attention inverse-RoPE",
     )
+    parser.add_argument(
+        "--exact-prefix-checkpoint-ablation",
+        action="store_true",
+        help="compare replaying partial accepts against exact prefix checkpoints",
+    )
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
 
@@ -182,6 +187,7 @@ def parse_args():
             args.indexed_attention_rb16_promotion_ablation,
             args.exact_q8_rows_ablation,
             args.attention_inverse_rope_fusion_ablation,
+            args.exact_prefix_checkpoint_ablation,
         )
     )
     if selected_modes > 1:
@@ -190,7 +196,8 @@ def parse_args():
             "--attention-suffix-ablation, --compressor-pair-nr4-ablation, and "
             "--indexed-attention-rb16-promotion-ablation, and "
             "--exact-q8-rows-ablation, and "
-            "--attention-inverse-rope-fusion-ablation "
+            "--attention-inverse-rope-fusion-ablation, and "
+            "--exact-prefix-checkpoint-ablation "
             "are mutually exclusive"
         )
     if not args.confirm_idle and not args.dry_run:
@@ -235,6 +242,8 @@ def check_inputs(args, root):
 
 
 def benchmark_modes(args):
+    if args.exact_prefix_checkpoint_ablation:
+        return ("default_exact", "exact_prefix_checkpoint")
     if args.attention_inverse_rope_fusion_ablation:
         return ("default_exact", "attention_inverse_rope_fused")
     if args.exact_q8_rows_ablation:
@@ -266,6 +275,7 @@ def mode_label(mode, args):
         "indexed_attention_rb16_legacy": "Legacy RB16 indexed attention DSpark",
         "serial_q8_rows": "Legacy one-row Q8 projection DSpark",
         "attention_inverse_rope_fused": "Fused attention inverse-RoPE DSpark",
+        "exact_prefix_checkpoint": "Exact prefix-checkpoint DSpark",
     }[mode]
 
 
@@ -278,6 +288,7 @@ def throughput_runtime_stats_enabled(args):
         or args.indexed_attention_rb16_promotion_ablation
         or args.exact_q8_rows_ablation
         or args.attention_inverse_rope_fusion_ablation
+        or args.exact_prefix_checkpoint_ablation
     )
 
 
@@ -308,6 +319,8 @@ def clean_dspark_env(mode, fast_verifier=False, runtime_stats=True):
             env["DS4_DSPARK_EXACT_Q8_ROWS"] = "0"
         if mode == "attention_inverse_rope_fused":
             env["DS4_DSPARK_EXACT_ATTN_INV_ROPE_FUSED"] = "1"
+        if mode == "exact_prefix_checkpoint":
+            env["DS4_DSPARK_EXACT_PREFIX_CHECKPOINT"] = "1"
     return env
 
 
@@ -336,7 +349,8 @@ def mode_command(args, mode):
             args.compressor_pair_nr4_ablation or
             args.indexed_attention_rb16_promotion_ablation or
             args.exact_q8_rows_ablation or
-            args.attention_inverse_rope_fusion_ablation):
+            args.attention_inverse_rope_fusion_ablation or
+            args.exact_prefix_checkpoint_ablation):
         command[1:1] = ("--backend", "metal")
     if mode != "baseline":
         command.extend(("--dspark", str(args.dspark_model.resolve())))
@@ -367,6 +381,8 @@ def command_text(args, mode, runtime_stats=None):
             env += "DS4_DSPARK_EXACT_Q8_ROWS=0 "
         if mode == "attention_inverse_rope_fused":
             env += "DS4_DSPARK_EXACT_ATTN_INV_ROPE_FUSED=1 "
+        if mode == "exact_prefix_checkpoint":
+            env += "DS4_DSPARK_EXACT_PREFIX_CHECKPOINT=1 "
     return env + shlex.join(mode_command(args, mode))
 
 
@@ -526,6 +542,8 @@ def collect_metadata(args, root):
             "exact_q8_rows_ablation": args.exact_q8_rows_ablation,
             "attention_inverse_rope_fusion_ablation":
                 args.attention_inverse_rope_fusion_ablation,
+            "exact_prefix_checkpoint_ablation":
+                args.exact_prefix_checkpoint_ablation,
             "temperature": 0,
             "seed": 1,
         },
@@ -572,6 +590,8 @@ def summarize(rows, modes=("baseline", "runtime")):
         ("serial_exact", "runtime"): "serial_ffn_ablation",
         ("default_exact", "attention_inverse_rope_fused"):
             "attention_inverse_rope_fusion_ablation",
+        ("default_exact", "exact_prefix_checkpoint"):
+            "exact_prefix_checkpoint_ablation",
     }
     summary = {
         "comparison": comparisons.get(modes, "baseline_runtime"),
@@ -608,6 +628,15 @@ def summarize(rows, modes=("baseline", "runtime")):
             "attention_inverse_rope_fused_generation_tps_median":
                 candidate_median,
             "attention_inverse_rope_fused_delta_percent":
+                (candidate_median / reference_median - 1.0) * 100.0,
+        })
+        return summary
+
+    if modes == ("default_exact", "exact_prefix_checkpoint"):
+        summary.update({
+            "default_exact_generation_tps_median": reference_median,
+            "exact_prefix_checkpoint_generation_tps_median": candidate_median,
+            "exact_prefix_checkpoint_delta_percent":
                 (candidate_median / reference_median - 1.0) * 100.0,
         })
         return summary
@@ -715,6 +744,20 @@ def summarize(rows, modes=("baseline", "runtime")):
 
 
 def format_report(summary):
+    if summary["comparison"] == "exact_prefix_checkpoint_ablation":
+        return (
+            "# DSpark Exact Prefix-Checkpoint Ablation\n\n"
+            f"- Replay partial-accept median: "
+            f"{summary['default_exact_generation_tps_median']:.2f} t/s\n"
+            f"- Exact prefix-checkpoint median: "
+            f"{summary['exact_prefix_checkpoint_generation_tps_median']:.2f} t/s\n"
+            f"- Ratio of medians: {summary['median_ratio_of_medians']:.4f}x\n"
+            f"- Median paired ratio: {summary['paired_speedup_median']:.4f}x\n"
+            f"- Exact prefix-checkpoint delta: "
+            f"{summary['exact_prefix_checkpoint_delta_percent']:+.1f}%\n"
+            f"- Measured pairs: {len(summary['paired_speedup_values'])}\n"
+        )
+
     if summary["comparison"] == "attention_inverse_rope_fusion_ablation":
         return (
             "# DSpark Attention Inverse-RoPE Fusion Ablation\n\n"

@@ -755,6 +755,39 @@ exact layers, batched heads, serial heads, and residual overhead. It also
 requires byte-identical output and reports successful head batches. Codex does
 not run this command; the user starts it when the machine is ready.
 
+The exact prefix-checkpoint candidate avoids replaying an accepted partial
+proposal after the exact verifier has already computed it. It snapshots the
+small compressor/indexer frontier after each proposal row, retains the
+corresponding exact logits and target hidden-state capture, and restores only
+the accepted prefix. The raw SWA cache can leave later speculative rows as
+invisible append-only data. Any unavailable checkpoint state restores the
+original frontier and uses the existing exact replay path.
+
+Run the byte-exact fixed-K correctness matrix first:
+
+```sh
+DS4_TEST_DSPARK_MODE=runtime \
+DS4_TEST_DSPARK_EXACT_PREFIX_CHECKPOINT=1 \
+DS4_TEST_DSPARK_CONFIDENCE_THRESHOLD=0 \
+  ./tests/dspark_gpu_candidates_correctness.sh
+```
+
+Then, when the machine is ready for a paired uninstrumented measurement:
+
+```sh
+python3 speed-bench/run_dspark_comparison.py \
+  --exact-prefix-checkpoint-ablation \
+  --prompt-file speed-bench/issue468/code_8k.txt \
+  --ctx 16384 \
+  --tokens 64 \
+  --confirm-idle
+```
+
+The reference mode uses the current exact partial-prefix replay. The candidate
+sets only `DS4_DSPARK_EXACT_PREFIX_CHECKPOINT=1`. Both modes use the promoted
+confidence scheduler, omit runtime stats and diagnostics, alternate order, and
+must produce byte-identical output. Codex does not run this timed command.
+
 Use the synchronized exact-runtime profile to attribute the remaining promoted
 target-layer work:
 

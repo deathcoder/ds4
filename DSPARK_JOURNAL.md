@@ -6112,6 +6112,114 @@ DS4_TEST_DSPARK_MODE=runtime \
 git diff --check
 ```
 
+## Phase 1.03: Community Survey and Exact Prefix Checkpoints
+
+Date: 2026-07-16.
+
+This phase began from clean commit `46b66cb`. The community survey reviewed
+issue 468, PR 502, and Igor Lobanov's `dspark-research/issue468` branch.
+
+Community findings that must survive compaction:
+
+- The reported full-stack `+4.9%` result is not directly portable into our
+  production path. It depends on a committing batched verifier that is not
+  output exact: the research report records substantial greedy token
+  divergence and small nonzero sampled-distribution divergence. Their exact
+  sequential verifier remains slower than baseline.
+- Their Metal drafter win is already represented here. Our DSpark proposal
+  generation is GPU-resident and the sidecar is no longer the main cost.
+- Their confidence scheduler uses STS-calibrated cumulative survival and a
+  confident-prefix-plus-one policy. Our promoted raw-confidence threshold
+  already produced large local wins versus fixed K, so changing scheduler
+  semantics is a separate future experiment, not part of this port.
+- Their prefix-checkpoint mechanism is independently useful: a partial accept
+  can restore the already-computed compressor/indexer frontier instead of
+  restoring the pre-proposal frontier and replaying accepted target rows.
+- Their anchor reuse is valuable mainly when combined with their sublinear,
+  approximate verifier. Our exact path already verifies and commits the
+  target-generated continuation state inside the proposal batch; no anchor
+  change was imported in this phase.
+
+Relevant community references:
+
+- `https://github.com/antirez/ds4/issues/468`
+- `https://github.com/antirez/ds4/issues/468#issuecomment-4983904315`
+- `https://github.com/antirez/ds4/pull/502`
+- `https://github.com/lobanov/ds4/tree/dspark-research/issue468`
+- `https://github.com/lobanov/ds4/commit/f631fcc184662c7c0416572f59706090e92de861`
+
+Implemented candidate:
+
+- `DS4_DSPARK_EXACT_PREFIX_CHECKPOINT=1` is default-off.
+- The graph allocates fixed prefix slots for proposal lengths 1 through 15.
+- During exact verification it captures compressed-attention and ratio-4
+  indexer frontiers after each non-final proposal row.
+- It retains exact per-row logits and the target hidden-state capture already
+  produced by the authoritative verifier.
+- On partial acceptance it restores the accepted prefix, reads that prefix's
+  logits, trims the target capture to the committed context, and skips replay.
+- If any checkpoint, logits, or target-capture requirement is unavailable, it
+  restores the original frontier and executes the old exact replay path.
+- The approximate fast verifier does not use this path.
+
+Prepared user-run throughput gate:
+
+```sh
+python3 speed-bench/run_dspark_comparison.py \
+  --exact-prefix-checkpoint-ablation \
+  --prompt-file speed-bench/issue468/code_8k.txt \
+  --ctx 16384 \
+  --tokens 64 \
+  --confirm-idle
+```
+
+The ablation is paired and uninstrumented. Both modes use the promoted
+confidence scheduler and must match byte-for-byte. Codex must not run it.
+
+Phase 1.03 checks:
+
+```sh
+make -j4 ds4 ds4_test
+python3 -m py_compile \
+  speed-bench/run_dspark_comparison.py \
+  tests/test_dspark_exact_prefix_checkpoint.py
+python3 -m unittest \
+  tests/test_dspark_exact_prefix_checkpoint.py \
+  tests/test_dspark_confidence_scheduler.py \
+  tests/test_dspark_generalization_gate.py
+bash -n tests/dspark_gpu_candidates_correctness.sh
+python3 speed-bench/run_dspark_comparison.py \
+  --exact-prefix-checkpoint-ablation \
+  --dry-run --allow-dirty \
+  --prompt-file speed-bench/issue468/code_8k.txt \
+  --ctx 16384 --tokens 64
+DS4_TEST_DSPARK_MODE=runtime \
+DS4_TEST_DSPARK_EXACT_PREFIX_CHECKPOINT=1 \
+DS4_TEST_DSPARK_CONFIDENCE_THRESHOLD=0 \
+  ./tests/dspark_gpu_candidates_correctness.sh
+# PASS: reasoning, Italian, medium context, rolling window, and resumed chat.
+# The fixed-K control forced partial accepts and the checkpoint engagement
+# assertion passed. Timings were ignored.
+git diff --check
+```
+
+The broad `make test` target was also run. Its extractor, agent, long-context,
+local-golden, short-prefill, Metal kernel/equivalence, DSpark validation/shape,
+and server sections passed. It exited with three ordinary-model vector failures
+outside the DSpark path: `think-tool-recovery`, `logprob-vectors`, and the
+SSD-streaming cache-pressure copy of the same short-code token mismatch. Those
+runs did not open a DSpark sidecar or enable speculative graph state, so this
+phase cannot affect their route. The focused
+`./ds4_test --dspark-validation --dspark-shape-binding` command passed.
+
+Next decision after the user-run ablation:
+
+- Promote exact prefix checkpoints only if all output hashes match and the
+  paired direction is consistently positive.
+- If the candidate is neutral or negative, retain it as research and return to
+  exact verifier kernel work. Do not import the community's approximate
+  committing verifier merely to reproduce its headline speedup.
+
 ## Resume Checklist
 
 If continuing from a compacted context, start here:
