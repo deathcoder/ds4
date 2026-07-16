@@ -595,14 +595,18 @@ python3 speed-bench/run_dspark_humaneval_throughput.py \
   --scheduler-reference \
   speed-bench/local-runs/humaneval-scheduler-trace-32-20260715-165938/scheduler_summary.json \
   --acceptance-reference \
-  speed-bench/local-runs/humaneval-acceptance-32-20260715-121045/summary.json
+  speed-bench/local-runs/humaneval-acceptance-32-20260715-121045/summary.json \
+  --historical-throughput-reference \
+  speed-bench/local-runs/humaneval-scheduler-throughput-32-20260715-182840/summary.json
 python3 speed-bench/run_dspark_humaneval_throughput.py \
   --confirm-ready \
   --confidence-scheduler \
   --scheduler-reference \
   speed-bench/local-runs/humaneval-scheduler-trace-32-20260715-165938/scheduler_summary.json \
   --acceptance-reference \
-  speed-bench/local-runs/humaneval-acceptance-32-20260715-121045/summary.json
+  speed-bench/local-runs/humaneval-acceptance-32-20260715-121045/summary.json \
+  --historical-throughput-reference \
+  speed-bench/local-runs/humaneval-scheduler-throughput-32-20260715-182840/summary.json
 ```
 
 This mode accepts no free-form threshold. It validates that the supplied
@@ -614,6 +618,12 @@ of fixed K=5. The two global warmup pairs are excluded, so the default schedule
 starts 68 children: four warmups and 64 measured runs. Every scheduled output
 must match its fresh ordinary-target baseline byte-for-byte. Results go under
 `speed-bench/local-runs/humaneval-scheduler-throughput-32-<timestamp>/`.
+
+When `--historical-throughput-reference` is supplied, the runner validates the
+prior frozen task selection, scheduler threshold, protocol, model paths, and
+acceptance/scheduler references. It then reports descriptive task-level
+movement in DSpark t/s and DSpark/baseline ratios. These cross-run values are
+context only; the new within-run paired ratio remains authoritative.
 
 The new within-run scheduled/baseline ratios are authoritative. Phase 0.94's
 fixed-K median paired ratio of `0.6840x` is useful historical context, but it

@@ -189,6 +189,93 @@ class ConfidenceSchedulerThroughputTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "threshold median"):
             throughput.validate_scheduler_summary(summary)
 
+    def test_historical_throughput_reference_is_frozen(self):
+        indices = [round(i * 163 / 31) for i in range(32)]
+        selection = {
+            "sample_count": 32,
+            "indices_zero_based": indices,
+        }
+        summary = {
+            "sample_count": 32,
+            "selection": selection,
+            "confidence_scheduler": True,
+            "confidence_threshold": "0.455",
+            "samples": {
+                f"humaneval_{index:03d}": {
+                    "source_index": index,
+                    "runtime_generation_tps": 10.0,
+                    "paired_ratio": 0.5,
+                }
+                for index in indices
+            },
+        }
+        throughput.validate_historical_throughput_summary(summary, selection)
+        summary["confidence_threshold"] = "0.46"
+        with self.assertRaisesRegex(ValueError, "threshold mismatch"):
+            throughput.validate_historical_throughput_summary(
+                summary, selection
+            )
+
+    def test_summary_labels_historical_movement_as_cross_run(self):
+        records = [
+            {"label": "humaneval_000", "source_index": 0},
+            {"label": "humaneval_163", "source_index": 163},
+        ]
+        rows = [
+            {
+                "prompt": "humaneval_000", "mode": "baseline",
+                "generation_tps": 20.0, "pair_order": "baseline-runtime",
+            },
+            {
+                "prompt": "humaneval_000", "mode": "runtime",
+                "generation_tps": 12.0, "pair_order": "baseline-runtime",
+            },
+            {
+                "prompt": "humaneval_163", "mode": "runtime",
+                "generation_tps": 15.0, "pair_order": "runtime-baseline",
+            },
+            {
+                "prompt": "humaneval_163", "mode": "baseline",
+                "generation_tps": 20.0, "pair_order": "runtime-baseline",
+            },
+        ]
+        acceptance = {
+            "summary": {
+                "samples": {
+                    "humaneval_000": {"paper_verify_rate": 0.5},
+                    "humaneval_163": {"paper_verify_rate": 0.8},
+                },
+                "aggregate": {},
+                "sample_count": 2,
+            }
+        }
+        historical = {
+            "summary_path": Path("/tmp/prior.json"),
+            "summary": {
+                "paired_ratio_median": 0.5,
+                "runtime_generation_tps_median": 10.0,
+                "samples": {
+                    "humaneval_000": {
+                        "runtime_generation_tps": 10.0,
+                        "paired_ratio": 0.5,
+                    },
+                    "humaneval_163": {
+                        "runtime_generation_tps": 10.0,
+                        "paired_ratio": 0.5,
+                    },
+                },
+            },
+        }
+        summary = throughput.summarize(
+            rows, records, acceptance, historical_reference=historical
+        )
+        movement = summary["historical_throughput_reference"]
+        self.assertAlmostEqual(movement["paired_ratio_movement_median"], 1.35)
+        report = throughput.render_report(
+            summary, None, historical_reference=historical
+        )
+        self.assertIn("descriptive context only", report)
+
 
 if __name__ == "__main__":
     unittest.main()

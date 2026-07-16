@@ -46,6 +46,14 @@ def parse_args():
         help="run the frozen confidence-prefix gate at threshold 0.455",
     )
     parser.add_argument("--scheduler-reference", type=Path)
+    parser.add_argument(
+        "--historical-throughput-reference",
+        type=Path,
+        help=(
+            "prior frozen scheduled-throughput summary for descriptive "
+            "task-level movement"
+        ),
+    )
     parser.add_argument("--ctx", type=int, default=16384)
     parser.add_argument("--tokens", type=int, default=128)
     parser.add_argument("--sample-count", type=int, default=32)
@@ -78,6 +86,13 @@ def parse_args():
             )
     elif args.scheduler_reference is not None:
         parser.error("--scheduler-reference requires --confidence-scheduler")
+    if (
+        args.historical_throughput_reference is not None and
+        not args.confidence_scheduler
+    ):
+        parser.error(
+            "--historical-throughput-reference requires --confidence-scheduler"
+        )
 
     # Attributes consumed by the shared command, execution, and metadata paths.
     args.nothink = True
@@ -264,6 +279,112 @@ def load_scheduler_reference(args, acceptance_reference, selection):
     }
 
 
+def validate_historical_throughput_summary(summary, selection):
+    if summary.get("sample_count") != 32:
+        raise ValueError("historical throughput reference is not a 32-task study")
+    if summary.get("selection") != selection:
+        raise ValueError("historical throughput selection mismatch")
+    if summary.get("confidence_scheduler") is not True:
+        raise ValueError("historical throughput did not use confidence scheduling")
+    if summary.get("confidence_threshold") != SCHEDULER_THRESHOLD:
+        raise ValueError("historical throughput confidence threshold mismatch")
+
+    samples = summary.get("samples", {})
+    expected = {
+        f"humaneval_{index:03d}": index
+        for index in selection["indices_zero_based"]
+    }
+    if set(samples) != set(expected):
+        raise ValueError("historical throughput sample labels mismatch")
+    for label, source_index in expected.items():
+        item = samples[label]
+        if item.get("source_index") != source_index:
+            raise ValueError(
+                f"historical throughput source index mismatch for {label}"
+            )
+        for key in ("runtime_generation_tps", "paired_ratio"):
+            value = item.get(key)
+            if not isinstance(value, (int, float)) or value <= 0:
+                raise ValueError(
+                    f"historical throughput {key} is invalid for {label}"
+                )
+
+
+def load_historical_throughput_reference(
+    args, selection, acceptance_reference, scheduler_reference
+):
+    if args.historical_throughput_reference is None:
+        return None
+    summary_path = args.historical_throughput_reference.resolve()
+    metadata_path = summary_path.parent / "metadata.json"
+    if not summary_path.is_file():
+        raise SystemExit(
+            f"missing historical throughput reference: {summary_path}"
+        )
+    if not metadata_path.is_file():
+        raise SystemExit(
+            f"missing historical throughput metadata: {metadata_path}"
+        )
+    try:
+        summary = json.loads(summary_path.read_text(encoding="utf-8"))
+        metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+        validate_historical_throughput_summary(summary, selection)
+    except (OSError, json.JSONDecodeError, ValueError) as exc:
+        raise SystemExit(f"invalid historical throughput reference: {exc}") from exc
+
+    if metadata.get("experiment") != (
+        "deepspec_humaneval_confidence_scheduler_throughput"
+    ):
+        raise SystemExit("historical throughput metadata experiment mismatch")
+    config = metadata.get("config", {})
+    expected_config = {
+        "ctx": args.ctx,
+        "tokens": args.tokens,
+        "temperature": 0,
+        "seed": 1,
+        "execution_mode": "throughput",
+        "throughput_instrumentation": False,
+        "runtime_instrumentation": False,
+        "fast_verifier": False,
+        "confidence_threshold": SCHEDULER_THRESHOLD,
+        "nothink": True,
+    }
+    for key, expected in expected_config.items():
+        if config.get(key) != expected:
+            raise SystemExit(
+                f"historical throughput config {key} mismatch: "
+                f"{config.get(key)!r} != {expected!r}"
+            )
+    _validate_path(metadata, "binary", args.binary)
+    _validate_path(metadata, "base_model", args.model)
+    _validate_path(metadata, "dspark_model", args.dspark_model)
+
+    historical_acceptance = summary.get("acceptance_reference", {}).get(
+        "summary_path"
+    )
+    if (
+        historical_acceptance is None or
+        Path(historical_acceptance).resolve() !=
+        acceptance_reference["summary_path"].resolve()
+    ):
+        raise SystemExit("historical throughput acceptance reference mismatch")
+    historical_scheduler = summary.get("scheduler_reference", {}).get(
+        "summary_path"
+    )
+    if (
+        historical_scheduler is None or
+        Path(historical_scheduler).resolve() !=
+        scheduler_reference["summary_path"].resolve()
+    ):
+        raise SystemExit("historical throughput scheduler reference mismatch")
+    return {
+        "summary_path": summary_path,
+        "metadata_path": metadata_path,
+        "summary": summary,
+        "metadata": metadata,
+    }
+
+
 def warmup_schedule(records):
     if len(records) == 1:
         return ((records[0], ("baseline", "runtime")),)
@@ -295,7 +416,10 @@ def pearson_correlation(xs, ys):
     ) / denominator
 
 
-def summarize(rows, records, acceptance_reference, scheduler_reference=None):
+def summarize(
+    rows, records, acceptance_reference, scheduler_reference=None,
+    historical_reference=None,
+):
     samples = {}
     ratios = []
     acceptance_rates = []
@@ -366,10 +490,56 @@ def summarize(rows, records, acceptance_reference, scheduler_reference=None):
                 ["progress_retention"]
             ),
         }
+    if historical_reference:
+        historical = historical_reference["summary"]
+        runtime_movement = []
+        paired_ratio_movement = []
+        improved = 0
+        equal = 0
+        for label, item in samples.items():
+            prior = historical["samples"][label]
+            runtime_ratio = (
+                item["runtime_generation_tps"] /
+                prior["runtime_generation_tps"]
+            )
+            paired_movement = item["paired_ratio"] / prior["paired_ratio"]
+            runtime_movement.append(runtime_ratio)
+            paired_ratio_movement.append(paired_movement)
+            improved += paired_movement > 1.0
+            equal += paired_movement == 1.0
+            item["historical_runtime_generation_tps"] = (
+                prior["runtime_generation_tps"]
+            )
+            item["historical_paired_ratio"] = prior["paired_ratio"]
+            item["runtime_tps_vs_historical"] = runtime_ratio
+            item["paired_ratio_vs_historical"] = paired_movement
+        result["historical_throughput_reference"] = {
+            "summary_path": str(historical_reference["summary_path"]),
+            "historical_paired_ratio_median": historical["paired_ratio_median"],
+            "historical_runtime_generation_tps_median": (
+                historical["runtime_generation_tps_median"]
+            ),
+            "runtime_tps_movement_median": statistics.median(runtime_movement),
+            "runtime_tps_movement_geometric_mean": statistics.geometric_mean(
+                runtime_movement
+            ),
+            "paired_ratio_movement_median": statistics.median(
+                paired_ratio_movement
+            ),
+            "paired_ratio_movement_geometric_mean": statistics.geometric_mean(
+                paired_ratio_movement
+            ),
+            "paired_ratio_improved_tasks": improved,
+            "paired_ratio_equal_tasks": equal,
+            "paired_ratio_regressed_tasks": len(samples) - improved - equal,
+        }
     return result
 
 
-def render_report(summary, acceptance_reference, scheduler_reference=None):
+def render_report(
+    summary, acceptance_reference, scheduler_reference=None,
+    historical_reference=None,
+):
     runtime_label = (
         f"DSpark threshold {SCHEDULER_THRESHOLD}"
         if scheduler_reference else "DSpark"
@@ -468,6 +638,28 @@ def render_report(summary, acceptance_reference, scheduler_reference=None):
             "The complete five-row sidecar block is still computed; only the "
             "exact target-verification prefix is scheduled.",
         ])
+    if historical_reference:
+        historical = summary["historical_throughput_reference"]
+        lines.extend([
+            "",
+            "## Historical Movement",
+            "",
+            "The prior scheduled run is descriptive context only; it was "
+            "collected in a different process sequence and is not a paired "
+            "ablation.",
+            f"- Prior median paired DSpark/baseline ratio: "
+            f"{historical['historical_paired_ratio_median']:.4f}x",
+            f"- Current/prior median task-level paired-ratio movement: "
+            f"{historical['paired_ratio_movement_median']:.4f}x",
+            f"- Current/prior geometric task-level paired-ratio movement: "
+            f"{historical['paired_ratio_movement_geometric_mean']:.4f}x",
+            f"- Tasks with improved/equal/regressed paired ratio: "
+            f"{historical['paired_ratio_improved_tasks']}/"
+            f"{historical['paired_ratio_equal_tasks']}/"
+            f"{historical['paired_ratio_regressed_tasks']}",
+            f"- Current/prior median task-level DSpark t/s movement: "
+            f"{historical['runtime_tps_movement_median']:.4f}x",
+        ])
     lines.extend([
         "",
         "- The two global warmup tasks are excluded from every reported value.",
@@ -515,6 +707,9 @@ def main():
     scheduler_reference = load_scheduler_reference(
         args, acceptance_reference, selection
     )
+    historical_reference = load_historical_throughput_reference(
+        args, selection, acceptance_reference, scheduler_reference
+    )
 
     stamp = dt.datetime.now().astimezone().strftime("%Y%m%d-%H%M%S")
     run_prefix = (
@@ -553,6 +748,11 @@ def main():
         print(
             f"Scheduler reference: {scheduler_reference['summary_path']}\n"
             f"Frozen confidence threshold: {SCHEDULER_THRESHOLD}"
+        )
+    if historical_reference:
+        print(
+            "Historical throughput reference: "
+            f"{historical_reference['summary_path']}"
         )
     if args.dry_run:
         print("Dry run only; no prompts materialized and no model execution performed.")
@@ -595,6 +795,14 @@ def main():
             "threshold": SCHEDULER_THRESHOLD,
             "retention_floor": scheduler_reference["policy"]["retention_floor"],
         }
+    if historical_reference:
+        metadata["historical_throughput_reference"] = {
+            "summary": common.file_metadata(historical_reference["summary_path"]),
+            "metadata": common.file_metadata(
+                historical_reference["metadata_path"]
+            ),
+            "comparison_semantics": "descriptive_cross_run_only",
+        }
     (run_dir / "metadata.start.json").write_text(
         json.dumps(metadata, indent=2) + "\n", encoding="utf-8"
     )
@@ -628,7 +836,8 @@ def main():
         run_dir / "warmups.csv", warmup_rows, fields[1:]
     )
     summary = summarize(
-        measured_rows, records, acceptance_reference, scheduler_reference
+        measured_rows, records, acceptance_reference, scheduler_reference,
+        historical_reference,
     )
     summary["selection"] = selection
     summary["acceptance_reference"] = {
@@ -638,7 +847,10 @@ def main():
     (run_dir / "summary.json").write_text(
         json.dumps(summary, indent=2) + "\n", encoding="utf-8"
     )
-    report = render_report(summary, acceptance_reference, scheduler_reference)
+    report = render_report(
+        summary, acceptance_reference, scheduler_reference,
+        historical_reference,
+    )
     (run_dir / "summary.md").write_text(report, encoding="utf-8")
     common.finish_metadata(metadata, root, run_dir)
     print("\n" + report.rstrip())

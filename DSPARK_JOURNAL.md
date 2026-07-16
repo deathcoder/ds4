@@ -8,16 +8,13 @@ particular DSpark change exists.
 
 Branch: `codex/dspark-observability-0`
 
-Phase 1.02 is prepared and is the intended community-review checkpoint. It adds
-one standalone cross-domain attribution runner and no engine changes. The
-runner validates the completed Phase 1.00 artifact, freezes the low/high
-scheduled-versus-baseline task in each math/chat domain, and runs only four
-stats-enabled promoted-default processes. Each output must match the prior
-scheduled output byte-for-byte. Commands carry no confidence-threshold
-override, so they exercise the Phase 1.01 default. Codex has not run this timed
-diagnostic. After committing this preparation, the branch is safe to pause and
-survey upstream issue 468, related branches, and community implementations
-before starting another optimization.
+Phase 1.05 is prepared. It reruns the frozen 32-task HumanEval
+baseline-versus-scheduled throughput gate on the promoted exact
+prefix-checkpoint default. The runner now accepts the prior scheduled
+throughput artifact as a validated historical reference and reports
+task-level movement, explicitly labeled as descriptive cross-run context. The
+new within-run DSpark/baseline ratio remains authoritative. Codex has not run
+the timed workload; the user must run the committed command below.
 
 Phase 1.01 is complete. DSpark confidence-prefix scheduling now defaults to
 `0.455` when `DS4_DSPARK_CONFIDENCE_THRESHOLD` is absent. An explicit value
@@ -6445,3 +6442,72 @@ Results:
 - The Metal build and CPU-only core object compiled successfully. The CPU
   object emitted only the repository's existing unused-code warnings.
 - No timed benchmark was run by Codex.
+
+## Phase 1.05: Frozen HumanEval Checkpoint Rerun
+
+Date: 2026-07-16.
+
+Purpose:
+
+- Measure the promoted scheduler plus exact prefix-checkpoint runtime against
+  ordinary target decoding on the same frozen 32 HumanEval tasks.
+- Preserve the original task selection, alternating order, 128-token
+  generation, 16K context, non-thinking mode, greedy decoding, and threshold
+  `0.455`.
+- Compare the new task-level results descriptively with Phase 0.99's scheduled
+  artifact without treating separate-day runs as a paired ablation.
+
+Preparation:
+
+- `run_dspark_humaneval_throughput.py` accepts
+  `--historical-throughput-reference`.
+- It validates the prior sample selection, threshold, protocol, model paths,
+  acceptance reference, and scheduler reference.
+- The report records current/prior task-level movement in DSpark t/s and
+  DSpark/baseline ratio, clearly labeled as cross-run context.
+- The runtime command does not set
+  `DS4_DSPARK_EXACT_PREFIX_CHECKPOINT`, so it exercises the promoted default.
+- The benchmark remains uninstrumented and starts 68 child processes: four
+  excluded warmups and 64 measured runs.
+
+User-run command:
+
+```sh
+python3 speed-bench/run_dspark_humaneval_throughput.py \
+  --confirm-ready \
+  --confidence-scheduler \
+  --scheduler-reference \
+  speed-bench/local-runs/humaneval-scheduler-trace-32-20260715-165938/scheduler_summary.json \
+  --acceptance-reference \
+  speed-bench/local-runs/humaneval-acceptance-32-20260715-121045/summary.json \
+  --historical-throughput-reference \
+  speed-bench/local-runs/humaneval-scheduler-throughput-32-20260715-182840/summary.json
+```
+
+Codex must not run this timed command.
+
+Preparation checks:
+
+```sh
+python3 -m py_compile \
+  speed-bench/run_dspark_humaneval_throughput.py \
+  tests/test_dspark_confidence_scheduler.py
+python3 -m unittest \
+  tests/test_dspark_confidence_scheduler.py \
+  tests/test_dspark_exact_prefix_checkpoint.py \
+  tests/test_dspark_generalization_gate.py
+python3 speed-bench/run_dspark_humaneval_throughput.py \
+  --dry-run --allow-dirty \
+  --confidence-scheduler \
+  --scheduler-reference \
+  speed-bench/local-runs/humaneval-scheduler-trace-32-20260715-165938/scheduler_summary.json \
+  --acceptance-reference \
+  speed-bench/local-runs/humaneval-acceptance-32-20260715-121045/summary.json \
+  --historical-throughput-reference \
+  speed-bench/local-runs/humaneval-scheduler-throughput-32-20260715-182840/summary.json
+git diff --check
+```
+
+All 26 focused model-free tests passed. The real dry-run validated every
+reference and printed the frozen schedule without materializing prompts or
+executing the model.
