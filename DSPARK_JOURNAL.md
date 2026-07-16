@@ -8832,3 +8832,34 @@ Decision rule:
 - If the attention core itself overwhelmingly owns the synchronized call,
   avoid a large custom-kernel phase and return to a narrower verifier
   scheduling or target-layer candidate.
+
+Diagnostic correction:
+
+- The first synchronized attempt at commit `95bd902` preserved exact output
+  but the report rejected the artifact:
+  - gathered FlashAttention calls: `5970`;
+  - layer-42 dense-mixed rows: `115`.
+- Cause: the new Metal boundary was enabled for every target layer, while the
+  exact-attention mode observer was correctly filtered to layer 42.
+- This was an observer-scoping error, not a runtime mismatch.
+- Added an explicit `profile_gathered` argument to the one-row decode-attention
+  API:
+  - ordinary target and sidecar callers pass `0`;
+  - the exact verifier route passes `1` only when
+    `DS4_METAL_DECODE_STAGE_PROFILE_LAYER` matches the current layer;
+  - the Metal boundary additionally requires this per-call flag.
+- This avoids synchronizing unrelated layers and makes the gathered-call count
+  directly comparable with the layer-42 dense-mixed mode count.
+- The rejected artifact is
+  `speed-bench/local-runs/dense-mixed-flash-20260716-205854`.
+- A second attempt correctly scoped the observer to layer 42 but still found
+  `130` gathered calls versus `115` dense verifier rows.
+- The remaining `15` calls were ordinary one-token target decode/fallback work
+  at layer 42, which shares the same attention route but has no exact-attention
+  mode record.
+- The route now also receives an explicit exact-verifier call-site gate.
+  Gathered boundaries require both:
+  - the exact attention-tail observer to be active for the call;
+  - the existing layer filter to match.
+- The second rejected artifact is
+  `speed-bench/local-runs/dense-mixed-flash-20260716-210300`.

@@ -15486,6 +15486,7 @@ static bool metal_graph_encode_attention_heads_route(
         uint32_t                        raw_start,
         uint32_t                        il,
         uint32_t                        pos,
+        bool                            profile_gathered,
         ds4_gpu_tensor                 *unrotated_heads,
         const ds4_gpu_inverse_rope_args *inverse_rope) {
     if (n_comp != 0 && comp_selected != NULL && n_selected != 0) {
@@ -15537,6 +15538,10 @@ static bool metal_graph_encode_attention_heads_route(
                    DS4_N_HEAD_DIM) != 0;
     }
 
+    const uint32_t gathered_profile =
+        profile_gathered &&
+        getenv("DS4_METAL_FLASH_ATTN_GATHERED_PROFILE") != NULL &&
+        metal_graph_decode_stage_profile_enabled(il);
     if (inverse_rope) {
         return ds4_gpu_attention_decode_heads_inverse_rope_tensor(
                    heads,
@@ -15555,6 +15560,7 @@ static bool metal_graph_encode_attention_heads_route(
                    0,
                    DS4_N_HEAD,
                    DS4_N_HEAD_DIM,
+                   gathered_profile,
                    unrotated_heads,
                    inverse_rope) != 0;
     }
@@ -15574,7 +15580,8 @@ static bool metal_graph_encode_attention_heads_route(
                NULL,
                0,
                DS4_N_HEAD,
-               DS4_N_HEAD_DIM) != 0;
+               DS4_N_HEAD_DIM,
+               gathered_profile) != 0;
 }
 
 static bool metal_graph_encode_decode_layer_part(
@@ -16244,6 +16251,7 @@ encode_attention_tail:
                 raw_start,
                 il,
                 pos,
+                exact_attention_profile,
                 reference_heads,
                 exact_attn_inv_rope_fused ? &inverse_rope : NULL);
         }
@@ -19765,7 +19773,8 @@ static bool metal_graph_encode_layer_attention_batch(
                                                                  comp_mask,
                                                                  n_selected,
                                                                  DS4_N_HEAD,
-                                                                 DS4_N_HEAD_DIM) != 0;
+                                                                 DS4_N_HEAD_DIM,
+                                                                 0) != 0;
                 }
                 ds4_gpu_tensor_free(heads_view);
                 ds4_gpu_tensor_free(kv_cache_view);
@@ -32084,7 +32093,8 @@ static bool dspark_session_gpu_stage_run(
                          NULL,
                          0,
                          DS4_N_HEAD,
-                         DS4_N_HEAD_DIM) != 0;
+                         DS4_N_HEAD_DIM,
+                         0) != 0;
             }
             ds4_gpu_tensor_free(heads_view);
             ds4_gpu_tensor_free(q_view);
