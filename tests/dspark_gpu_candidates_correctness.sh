@@ -349,11 +349,16 @@ common=(--model "$base_model" --ctx 4096 --nothink --temp 0)
 
 assert_gpu_selected() {
     local log=$1
-    local verifier_batches_expected=1
+    local verifier_batches_expected=0
     local effective_confidence_threshold=${confidence_threshold:-$default_confidence_threshold}
-    if [[ $mode == runtime ]] &&
-       ! grep -Eq 'DSpark confidence scheduler .* selected=([2-9]|[1-9][0-9]+)$' "$log"; then
-        verifier_batches_expected=0
+    if [[ $mode == runtime ]]; then
+        if [[ $fast_verify_runtime == 1 ]] &&
+           grep -q 'DSpark fast batch verifier .* result=pass' "$log"; then
+            verifier_batches_expected=1
+        elif [[ $fast_verify_runtime != 1 ]] &&
+             grep -q 'DSpark exact batch verifier .* result=pass' "$log"; then
+            verifier_batches_expected=1
+        fi
     fi
     if [[ $mode == observer ]]; then
         grep -q 'DSpark GPU chain parity .* result=pass' "$log"

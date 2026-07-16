@@ -7891,3 +7891,78 @@ Decision boundary:
 - If that gate does not approach parity, stop scheduler tuning and return to an
   architectural Metal exact-verifier optimization with a target of at least
   `22%` lower target time under the scheduled HumanEval workload.
+
+## Phase 1.15: Aggressive scheduler throughput gate
+
+Protocol:
+
+- Added
+  `speed-bench/run_dspark_humaneval_aggressive_scheduler_gate.py`.
+- The gate compares four frozen modes:
+  - ordinary target baseline;
+  - current confidence threshold `0.455`;
+  - aggressive threshold `0.75`;
+  - aggressive threshold `0.85`.
+- The eight tasks were fixed before throughput:
+  - `humaneval_152` and `humaneval_032`: lowest-acceptance controls;
+  - `humaneval_000` and `humaneval_121`: middle-acceptance controls;
+  - `humaneval_131` and `humaneval_137`: high profitable-token-share cases;
+  - `humaneval_011`: high-throughput/high-acceptance case;
+  - `humaneval_079`: high-acceptance adversarial case with no locally
+    profitable oracle rounds.
+- Each mode runs once per task. Four cyclic orders are repeated twice, so every
+  mode occupies every order position exactly two times.
+- Four global warmups, one per mode, are excluded.
+- Total process count is `36`: four warmups and `32` measured runs.
+- Every output must match the frozen scheduled HumanEval output byte-for-byte.
+- The runner enables no runtime stats, acceptance audit, trace, diagnostics,
+  profiler, or fast verifier.
+
+Predeclared promotion gate:
+
+- Candidate geometric mean versus current threshold `0.455` must be at least
+  `1.03x`.
+- Candidate must win at least `6/8` tasks versus current.
+- No task may fall below `0.90x` versus current.
+- If both candidates pass, choose threshold `0.85` only if its geometric mean
+  is at least `1.01x` the threshold-`0.75` result. Otherwise prefer `0.75`.
+- Fresh ordinary baseline is included so the result also shows whether either
+  threshold approaches or crosses end-to-end parity.
+
+Correctness-harness repair:
+
+- The existing runtime correctness harness inferred that every scheduler
+  selection of K>=2 must execute an exact batch verifier.
+- That is false when output capacity subsequently reduces the usable width
+  below two. Aggressive thresholds exposed this in resumed chat: K=2 was
+  selected with one output slot remaining, and runtime correctly used the
+  one-token capacity fallback.
+- The harness now requires detailed FFN/attention/Q8 verifier records only when
+  an exact or fast batch verifier call is actually observed in that log.
+- Other prompts in the same matrix still exercise and validate the exact batch
+  component records.
+
+Validation:
+
+- All 62 DSpark model-free tests passed.
+- Python compilation, shell syntax, `git diff --check`, and the 36-process dry
+  run passed.
+- The dry run validated the frozen 32-task reference, selected task identities,
+  command environments, and exact four-mode order balance.
+- Threshold `0.75` passed reasoning, Italian, medium context, rolling window,
+  and resumed two-turn chat byte-for-byte.
+- Threshold `0.85` passed the same five-case matrix byte-for-byte.
+- Codex ran no timed throughput benchmark.
+
+User-run command:
+
+```sh
+python3 speed-bench/run_dspark_humaneval_aggressive_scheduler_gate.py \
+  --throughput-reference \
+  speed-bench/local-runs/humaneval-scheduler-throughput-32-20260716-103542/summary.json \
+  --confirm-idle
+```
+
+Use the printed promotion gate as the primary decision. Even if a candidate
+passes versus `0.455`, do not promote it globally unless its fresh
+candidate/baseline ratios show a meaningful path toward parity.

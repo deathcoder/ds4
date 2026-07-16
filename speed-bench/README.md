@@ -585,6 +585,34 @@ stats, audit, trace, diagnostics, or profiler. Its candidate/fixed paired ratios
 measure actual Metal cost; offline target-position proxies are not throughput
 results. Do not change the tasks or thresholds after observing this gate.
 
+To test whether substantially more aggressive scheduling can reduce the
+remaining exact-verifier cost, use the frozen eight-task gate:
+
+```sh
+python3 speed-bench/run_dspark_humaneval_aggressive_scheduler_gate.py \
+  --dry-run --allow-dirty \
+  --throughput-reference \
+  speed-bench/local-runs/humaneval-scheduler-throughput-32-<timestamp>/summary.json
+python3 speed-bench/run_dspark_humaneval_aggressive_scheduler_gate.py \
+  --confirm-idle \
+  --throughput-reference \
+  speed-bench/local-runs/humaneval-scheduler-throughput-32-<timestamp>/summary.json
+```
+
+The four frozen modes are ordinary target baseline, current threshold `0.455`,
+threshold `0.75`, and threshold `0.85`. The eight tasks cover low acceptance,
+middle acceptance, high current throughput, high profitable-round share, and a
+high-acceptance adversarial control. One measured run per mode and task yields
+32 measured processes; four global warmups are excluded. The four mode
+positions are balanced exactly twice across the tasks.
+
+Every mode must match the frozen exact output byte-for-byte. No runtime stats,
+audit, trace, diagnostics, or profiler is enabled. A candidate passes only if
+its geometric mean versus threshold `0.455` is at least `1.03x`, it wins at
+least six of eight tasks, and no task is below `0.90x`. If both candidates pass,
+threshold `0.85` is selected only when its geometric mean is at least `1.01x`
+the threshold-`0.75` result; otherwise the lower threshold wins.
+
 After threshold `0.455` passes that representative gate, run the frozen
 32-task baseline-versus-scheduled confirmation without changing the policy:
 
