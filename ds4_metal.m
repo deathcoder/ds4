@@ -19010,7 +19010,7 @@ static int ds4_gpu_encode_flash_attention_prefill_raw_heads(
 }
 
 static int ds4_gpu_encode_flash_attention_gathered_heads(
-        id<MTLCommandBuffer>   cb,
+        id<MTLCommandBuffer> __strong *cbp,
         ds4_gpu_tensor      *heads,
         id<MTLBuffer>          sinks_buf,
         NSUInteger             sinks_offset,
@@ -19028,6 +19028,8 @@ static int ds4_gpu_encode_flash_attention_gathered_heads(
         uint32_t               head_dim,
         ds4_gpu_tensor        *unrotated_heads,
         const ds4_gpu_inverse_rope_args *inverse_rope) {
+    if (!cbp || !*cbp) return 0;
+    id<MTLCommandBuffer> cb = *cbp;
     const uint32_t n_keys = n_raw + n_comp;
     if (head_dim != 512 || n_head == 0 || n_raw == 0 || n_keys == 0 ||
         raw_cap < n_raw || n_keys < n_raw) {
@@ -19108,6 +19110,31 @@ static int ds4_gpu_encode_flash_attention_gathered_heads(
             (int32_t)head_dim, (int32_t)nwg, inverse_rope != NULL);
     if (!vec_pipeline || !reduce_pipeline) return 0;
 
+    const bool gathered_stage_profile =
+        getenv("DS4_METAL_FLASH_ATTN_GATHERED_PROFILE") != NULL &&
+        g_batch_cb != nil;
+    double gathered_stage_t0 = 0.0;
+    if (gathered_stage_profile) {
+        if (ds4_gpu_end_commands() == 0 || ds4_gpu_begin_commands() == 0) {
+            return 0;
+        }
+        int profile_owned = 0;
+        cb = ds4_gpu_command_buffer(&profile_owned);
+        if (!cb || profile_owned) return 0;
+        *cbp = cb;
+        gathered_stage_t0 = ds4_gpu_now_ms();
+    }
+#define DS4_METAL_PROFILE_GATHERED_STAGE(name) do { \
+        if (gathered_stage_profile) { \
+            if (!ds4_gpu_flash_attn_stage_profile_boundary(cbp, \
+                    "gathered_decode", (name), 1, n_comp, n_keys, \
+                    n_head, head_dim, 0, 0, &gathered_stage_t0)) { \
+                return 0; \
+            } \
+            cb = *cbp; \
+        } \
+    } while (0)
+
     id<MTLBuffer> raw_linear_buf = rawbuf;
     NSUInteger raw_linear_offset = ds4_gpu_tensor_offset(raw_kv);
     if (raw_start != 0) {
@@ -19140,6 +19167,7 @@ static int ds4_gpu_encode_flash_attention_gathered_heads(
 
         raw_linear_buf = g_flash_attn_ring_buffer;
         raw_linear_offset = 0;
+        DS4_METAL_PROFILE_GATHERED_STAGE("linearize_raw");
     }
 
     if (!ds4_gpu_encode_cpy_f32_f16_1d(cb,
@@ -19150,6 +19178,7 @@ static int ds4_gpu_encode_flash_attention_gathered_heads(
                                          n_raw * head_dim)) {
         return 0;
     }
+    DS4_METAL_PROFILE_GATHERED_STAGE("copy_raw");
     if (n_comp) {
         if (!ds4_gpu_encode_copy_to_f16_1d(cb,
                                            compbuf,
@@ -19160,11 +19189,13 @@ static int ds4_gpu_encode_flash_attention_gathered_heads(
                                            n_comp * head_dim)) {
             return 0;
         }
+        DS4_METAL_PROFILE_GATHERED_STAGE("copy_comp");
     }
 
     if (!ds4_gpu_encode_fill_f16_1d(cb, g_flash_attn_mask_buffer, 0, n_keys, 0.0f)) {
         return 0;
     }
+    DS4_METAL_PROFILE_GATHERED_STAGE("mask_fill");
     if (use_mask && n_comp &&
         !ds4_gpu_encode_cpy_f32_f16_1d(cb,
                                          maskbuf,
@@ -19173,6 +19204,9 @@ static int ds4_gpu_encode_flash_attention_gathered_heads(
                                          (NSUInteger)n_raw * sizeof(uint16_t),
                                          n_comp)) {
         return 0;
+    }
+    if (use_mask && n_comp) {
+        DS4_METAL_PROFILE_GATHERED_STAGE("mask_comp_copy");
     }
 
     if ((n_keys % ncpsg) != 0) {
@@ -19204,6 +19238,7 @@ static int ds4_gpu_encode_flash_attention_gathered_heads(
         [enc dispatchThreadgroups:MTLSizeMake(ncpsg, 1, 1)
              threadsPerThreadgroup:MTLSizeMake(32, 1, 1)];
         ds4_gpu_end_compute_encoder(cb, enc);
+        DS4_METAL_PROFILE_GATHERED_STAGE("pad");
     }
 
     ds4_gpu_flash_attn_vec_args vec_args = {
@@ -19260,6 +19295,7 @@ static int ds4_gpu_encode_flash_attention_gathered_heads(
     [enc dispatchThreadgroups:MTLSizeMake(1, n_head, nwg)
          threadsPerThreadgroup:MTLSizeMake(32, nsg, 1)];
     ds4_gpu_end_compute_encoder(cb, enc);
+    DS4_METAL_PROFILE_GATHERED_STAGE("attention_vec");
 
     ds4_gpu_flash_attn_reduce_args reduce_args = {
         .nrows = (int32_t)nrows,
@@ -19280,7 +19316,9 @@ static int ds4_gpu_encode_flash_attention_gathered_heads(
     [enc dispatchThreadgroups:MTLSizeMake(nrows, 1, 1)
          threadsPerThreadgroup:MTLSizeMake(32u * nwg, 1, 1)];
     ds4_gpu_end_compute_encoder(cb, enc);
+    DS4_METAL_PROFILE_GATHERED_STAGE("attention_reduce");
 
+#undef DS4_METAL_PROFILE_GATHERED_STAGE
     return 1;
 }
 
@@ -20585,7 +20623,7 @@ static int ds4_gpu_attention_decode_heads_impl(
         id<MTLCommandBuffer> cb = ds4_gpu_command_buffer(&owned);
         if (!cb) return 0;
 
-        if (!ds4_gpu_encode_flash_attention_gathered_heads(cb,
+        if (!ds4_gpu_encode_flash_attention_gathered_heads(&cb,
                                                              heads,
                                                              sinks_buf,
                                                              (NSUInteger)sinks_inner,

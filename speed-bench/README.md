@@ -1096,3 +1096,21 @@ python3 speed-bench/run_dspark_comparison.py \
 The reference is ordinary promoted NR4. Only the candidate enables NR8.
 Runtime stats and traces are disabled in both timed modes, order alternates by
 pair, and every output must match byte-for-byte.
+
+To attribute the retained one-row dense-mixed attention route before changing
+its implementation, run:
+
+```sh
+python3 speed-bench/run_dspark_dense_mixed_flash_profile.py \
+  --dry-run \
+  --allow-dirty
+python3 speed-bench/run_dspark_dense_mixed_flash_profile.py \
+  --confirm-ready
+```
+
+This is a synchronized diagnostic, not a throughput benchmark. It runs the
+8K transition fixture once as an uninstrumented reference and once with
+layer-42 exact-attention plus gathered-FlashAttention boundaries. Every output
+must match byte-for-byte. The report separates raw-ring linearization, raw and
+compressed cache copies, mask work, padding, split-K attention, and the final
+reduction for each dense-mixed row.

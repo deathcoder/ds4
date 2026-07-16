@@ -8745,3 +8745,90 @@ Next bounded phase:
   synchronized component diagnostic if ownership is ambiguous. Do not create
   a timed benchmark until the candidate has a measured operation-level reason
   to help.
+
+## Phase 1.22: dense-mixed FlashAttention attribution prepared
+
+Source audit:
+
+- The exact verifier already batches attention preparation and FFN work.
+- The retained stateful attention tail remains serial because each proposal
+  row mutates and observes the target KV/compressor state in order.
+- At layer 42 on the established 8K transition fixture, dense-mixed attention
+  is the dominant mode: `201` rows versus `37` sparse-indexed rows.
+- Dense-mixed rows currently use the generic one-query gathered
+  FlashAttention route. Each call may:
+  - linearize a wrapped raw ring;
+  - copy the raw F32 cache to contiguous F16 scratch;
+  - copy compressed cache rows into the same scratch;
+  - build and optionally copy a mask;
+  - pad the key range;
+  - run split-K FlashAttention;
+  - run a separate reduction.
+- The promoted sparse-indexed route instead reads raw and compressed cache
+  state directly in a specialized one-token kernel. A direct dense-mixed
+  kernel is therefore plausible, but its expected ownership must be measured
+  before implementation.
+
+Prepared diagnostic:
+
+- Added default-off
+  `DS4_METAL_FLASH_ATTN_GATHERED_PROFILE`.
+- Added synchronized boundaries around:
+  - `linearize_raw`;
+  - `copy_raw`;
+  - `copy_comp`;
+  - `mask_fill`;
+  - `mask_comp_copy`;
+  - `pad`;
+  - `attention_vec`;
+  - `attention_reduce`.
+- The profiler updates the active batched command-buffer pointer after every
+  boundary so instrumentation does not leave the caller using a completed
+  buffer.
+- Added
+  `speed-bench/run_dspark_dense_mixed_flash_profile.py`.
+- The runner uses one uninstrumented exact reference and one synchronized
+  layer-42 profile, requires byte-identical output, checks that gathered-call
+  count equals dense-mixed row count, and emits per-stage ownership.
+- Added model-free parser and report tests in
+  `tests/test_dspark_dense_mixed_flash_profile.py`.
+- No timed throughput candidate exists in this phase.
+
+Validation:
+
+```sh
+make -j4
+python3 -m py_compile \
+  speed-bench/run_dspark_dense_mixed_flash_profile.py \
+  tests/test_dspark_dense_mixed_flash_profile.py
+python3 -m unittest discover -s tests -p 'test_dspark_*.py'
+python3 speed-bench/run_dspark_dense_mixed_flash_profile.py \
+  --dry-run \
+  --allow-dirty
+git diff --check
+```
+
+Validation result:
+
+- Metal build passed.
+- All `95` DSpark model-free tests passed.
+- The dry run emitted an uninstrumented exact reference and a profile process
+  with only the intended gathered FlashAttention diagnostic added.
+- The runner records path, size, and modification time for the 81 GB target
+  and 11 GB sidecar rather than hashing either model before execution.
+
+Next command after committing the diagnostic:
+
+```sh
+python3 speed-bench/run_dspark_dense_mixed_flash_profile.py \
+  --confirm-ready
+```
+
+Decision rule:
+
+- If cache staging, masks, padding, and reduction own a material share, build
+  one default-off direct dense-mixed one-token Metal kernel that reads target
+  cache state in place.
+- If the attention core itself overwhelmingly owns the synchronized call,
+  avoid a large custom-kernel phase and return to a narrower verifier
+  scheduling or target-layer candidate.
