@@ -8988,3 +8988,40 @@ Decision rule:
   enough to justify the extra specialized kernel.
 - If positive locally, confirm on the 32-sample HumanEval scheduled workload
   before promotion because dense/sparse mode mix varies by prompt.
+
+User-run throughput result:
+
+- Artifact:
+  `speed-bench/local-runs/20260716-211825`.
+- Clean source commit:
+  `552d66ee35c5a926891f69b9241effd503d6174f`.
+- Gathered FlashAttention median: `23.93 t/s`.
+- Direct dense-mixed median: `25.15 t/s`.
+- Ratio of medians: `1.0510x`.
+- Median paired ratio: `1.0523x`, or `+5.1%`.
+- Individual paired ratios:
+  - `1.0535x`;
+  - `1.0523x`;
+  - `1.0501x`.
+- Every measured output had the same SHA-256:
+  `86f4851c044b82fffe568644343670a83ea6815b70c160b5a28a0fb357c52998`.
+- Runtime stats and all diagnostic instrumentation were disabled.
+- No thermal warning was recorded before or after the gate.
+- The machine snapshot still contained substantial Logitech and other desktop
+  activity, but alternating order produced three positive pairs with only
+  `0.34` percentage points between the minimum and maximum gain.
+
+Decision:
+
+- The candidate passes the local throughput gate.
+- Do not promote from the short local fixture alone.
+- Next run a paired confirmation on the frozen 32-sample HumanEval scheduled
+  workload, comparing:
+  - current scheduled exact DSpark with gathered dense-mixed attention;
+  - the same scheduler and workload with only
+    `DS4_METAL_DENSE_MIXED_DIRECT=1`.
+- Require byte-identical output for every task.
+- Promotion should require a positive aggregate direction and no meaningful
+  low-acceptance regression. Dense-mixed opportunity depends on each task's
+  dense/sparse transition mix, so task distribution matters more here than on
+  the short fixture.
