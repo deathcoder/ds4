@@ -190,7 +190,7 @@ if [[ $dense_mixed_direct != 0 && $dense_mixed_direct != 1 ]]; then
 fi
 if [[ $dense_mixed_direct == 1 &&
       ($mode != runtime || $fast_verify_runtime == 1) ]]; then
-    printf 'dense-mixed direct attention requires exact runtime verification\n' >&2
+    printf 'dense-mixed fused gather requires exact runtime verification\n' >&2
     exit 2
 fi
 if [[ $exact_q8_rows != 0 && $exact_q8_rows != 1 ]]; then
@@ -921,8 +921,8 @@ if [[ $indexed_attn_rb16_promotion == 1 ]]; then
     compare_indexed_attn_rb16_promotion
 fi
 if [[ $dense_mixed_direct == 1 && $attn_inv_rope_fused != 1 ]] &&
-   ! grep -q 'Metal dense mixed attention route=rb16_direct' "$tmpdir"/*.log; then
-    printf 'dense-mixed direct attention did not engage\n' >&2
+   ! grep -q 'Metal dense mixed attention route=fused_gather' "$tmpdir"/*.log; then
+    printf 'dense-mixed fused gather did not engage\n' >&2
     exit 1
 fi
 if [[ $attn_inv_rope_fused == 1 ]]; then

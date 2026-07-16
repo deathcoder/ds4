@@ -1115,23 +1115,27 @@ must match byte-for-byte. The report separates raw-ring linearization, raw and
 compressed cache copies, mask work, padding, split-K attention, and the final
 reduction for each dense-mixed row.
 
-After the direct dense-mixed candidate passes the byte-exact correctness
+After the dense-mixed fused-gather candidate passes the byte-exact correctness
 matrix, run its paired throughput gate:
 
 ```sh
 python3 speed-bench/run_dspark_comparison.py \
-  --dense-mixed-direct-ablation \
+  --dense-mixed-fused-gather-ablation \
   --dry-run \
   --allow-dirty
 python3 speed-bench/run_dspark_comparison.py \
-  --dense-mixed-direct-ablation \
+  --dense-mixed-fused-gather-ablation \
   --confirm-idle
 ```
 
-The reference retains gathered one-query FlashAttention. Only the candidate
-enables `DS4_METAL_DENSE_MIXED_DIRECT=1`. Both modes use exact Metal
-verification with runtime stats, traces, and diagnostic boundaries disabled,
-and every output must match byte-for-byte.
+The reference uses separate raw-ring linearization, raw/compressed conversion,
+mask fill, tail padding, FlashAttention, and reduction dispatches. The
+candidate fuses the preparation work into one kernel, then uses the unchanged
+FlashAttention and reduction kernels. The compatibility environment switch is
+`DS4_METAL_DENSE_MIXED_DIRECT=1`. Both modes use exact Metal verification with
+runtime stats, traces, and diagnostic boundaries disabled, and every output
+must match byte-for-byte. The older `--dense-mixed-direct-ablation` spelling
+remains an alias.
 
 To confirm the candidate on the frozen threshold-0.75 HumanEval workload:
 
@@ -1147,7 +1151,8 @@ python3 speed-bench/run_dspark_humaneval_dense_mixed_direct.py \
   --confirm-idle
 ```
 
-This runs 32 gathered/direct pairs with alternating order plus two excluded
-warmup pairs. Both modes use threshold `0.75`; only direct mode enables the
-candidate. All 68 processes are uninstrumented and must match the frozen exact
-HumanEval outputs byte-for-byte.
+This runs 32 gathered/fused-gather pairs with alternating order plus two
+excluded warmup pairs. Both modes use threshold `0.75`; only the fused-gather
+mode enables the candidate. All 68 processes are uninstrumented and must match
+the frozen exact HumanEval outputs byte-for-byte. Run this broad gate only
+after the short fused-gather ablation remains positive.

@@ -199,8 +199,10 @@ def parse_args():
     )
     parser.add_argument(
         "--dense-mixed-direct-ablation",
+        "--dense-mixed-fused-gather-ablation",
+        dest="dense_mixed_direct_ablation",
         action="store_true",
-        help="compare gathered dense-mixed attention against direct cache reads",
+        help="compare gathered dense-mixed attention against fused preparation",
     )
     parser.add_argument(
         "--stats-only",
@@ -344,7 +346,7 @@ def mode_label(mode, args):
         "exact_attention_row_views": "Cached attention row-view DSpark",
         "legacy_attention_output_nr2": "Legacy NR2 attention-output DSpark",
         "attention_output_nr8": "NR8 attention-output DSpark",
-        "dense_mixed_direct": "Direct dense-mixed attention DSpark",
+        "dense_mixed_direct": "Fused-gather dense-mixed attention DSpark",
     }[mode]
 
 
@@ -1091,14 +1093,14 @@ def format_report(summary):
 
     if summary["comparison"] == "dense_mixed_direct_ablation":
         return (
-            "# DSpark Dense-Mixed Direct Attention Ablation\n\n"
+            "# DSpark Dense-Mixed Fused-Gather Ablation\n\n"
             f"- Gathered FlashAttention median: "
             f"{summary['default_exact_generation_tps_median']:.2f} t/s\n"
-            f"- Direct dense-mixed median: "
+            f"- Fused-gather median: "
             f"{summary['dense_mixed_direct_generation_tps_median']:.2f} t/s\n"
             f"- Ratio of medians: {summary['median_ratio_of_medians']:.4f}x\n"
             f"- Median paired ratio: {summary['paired_speedup_median']:.4f}x\n"
-            f"- Direct attention delta: "
+            f"- Fused-gather delta: "
             f"{summary['dense_mixed_direct_delta_percent']:+.1f}%\n"
             f"- Measured pairs: {len(summary['paired_speedup_values'])}\n"
         )

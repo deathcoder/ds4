@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Confirm direct dense-mixed attention on frozen scheduled HumanEval."""
+"""Confirm fused-gather dense-mixed attention on scheduled HumanEval."""
 
 import argparse
 import csv
@@ -20,7 +20,7 @@ import run_dspark_issue468_comparison as common
 
 THRESHOLD = "0.75"
 SAMPLE_COUNT = 32
-MODES = ("gathered", "direct")
+MODES = ("gathered", "fused_gather")
 MIN_GEOMEAN = 1.02
 MIN_WINS = 24
 MIN_TASK_RATIO = 0.95
@@ -32,7 +32,7 @@ def parse_args():
     root = Path(__file__).resolve().parent.parent
     parser = argparse.ArgumentParser(
         description=(
-            "Compare gathered and direct dense-mixed attention on the frozen "
+            "Compare gathered and fused-gather dense-mixed attention on the frozen "
             "32-task threshold-0.75 HumanEval workload."
         )
     )
@@ -206,7 +206,7 @@ def mode_env(mode):
     )
     env.pop("DS4_METAL_DENSE_MIXED_DIRECT", None)
     env.pop("DS4_METAL_DENSE_MIXED_DIRECT_TRACE", None)
-    if mode == "direct":
+    if mode == "fused_gather":
         env["DS4_METAL_DENSE_MIXED_DIRECT"] = "1"
     return env
 
@@ -298,9 +298,9 @@ def summarize(rows, records, reference):
         task = record["label"]
         selected = {row["mode"]: row for row in rows if row["prompt"] == task}
         if set(selected) != set(MODES):
-            raise RuntimeError(f"incomplete direct-attention pair for {task}")
+            raise RuntimeError(f"incomplete fused-gather pair for {task}")
         gathered = selected["gathered"]["generation_tps"]
-        direct = selected["direct"]["generation_tps"]
+        direct = selected["fused_gather"]["generation_tps"]
         ratio = direct / gathered
         acceptance = reference["tasks"][task]["acceptance_verify_rate"]
         ratios.append(ratio)
@@ -372,16 +372,16 @@ def render_report(summary):
     correlation = summary["acceptance_speed_pearson"]
     correlation_text = "n/a" if correlation is None else f"{correlation:.3f}"
     lines = [
-        "# DSpark HumanEval Dense-Mixed Direct Confirmation",
+        "# DSpark HumanEval Dense-Mixed Fused-Gather Confirmation",
         "",
         "All samples are uninstrumented and paired within the same frozen "
         "threshold-0.75 HumanEval task.",
-        "Every gathered and direct output matched the frozen exact artifact "
+        "Every gathered and fused-gather output matched the frozen exact artifact "
         "byte-for-byte.",
         "Generation t/s excludes process startup; paired ratios are authoritative.",
         "",
-        "| samples | gathered median | direct median | ratio of medians | "
-        "median paired | geometric mean | direct faster |",
+        "| samples | gathered median | fused-gather median | ratio of medians | "
+        "median paired | geometric mean | fused-gather faster |",
         "|---:|---:|---:|---:|---:|---:|---:|",
         f"| {summary['sample_count']} | "
         f"{summary['gathered_generation_tps_median']:.2f} t/s | "
@@ -396,19 +396,19 @@ def render_report(summary):
         f"{summary['paired_ratio_q3']:.4f}x.",
         f"- Paired-ratio range: {summary['paired_ratio_minimum']:.4f}x-"
         f"{summary['paired_ratio_maximum']:.4f}x.",
-        f"- Tasks faster/equal/slower with direct attention: "
+        f"- Tasks faster/equal/slower with fused gather: "
         f"{summary['direct_faster_tasks']}/"
         f"{summary['direct_equal_tasks']}/"
         f"{summary['direct_slower_tasks']}.",
         f"- Low-acceptance tasks (verify rate <= {LOW_ACCEPTANCE_MAX:.2f}): "
-        f"{summary['low_acceptance_task_count']}; geometric direct/gathered "
+        f"{summary['low_acceptance_task_count']}; geometric fused/gathered "
         f"ratio {summary['low_acceptance_geometric_mean']:.4f}x.",
         f"- Descriptive Pearson correlation, acceptance versus paired ratio: "
         f"{correlation_text}.",
         "",
         "## Tasks",
         "",
-        "| task | acceptance | order | gathered | direct | ratio | delta |",
+        "| task | acceptance | order | gathered | fused gather | ratio | delta |",
         "|:---|---:|:---|---:|---:|---:|---:|",
     ]
     for task, item in summary["samples"].items():
@@ -435,7 +435,7 @@ def render_report(summary):
         f"`{gate['minimum_low_acceptance_geometric_mean']:.2f}x`.",
         "",
         "- Two global warmup pairs are excluded from every reported value.",
-        "- Measured order alternates gathered-first and direct-first.",
+        "- Measured order alternates gathered-first and fused-gather-first.",
         "- No DSpark stats, trace, diagnostics, profiler, or fast verifier is enabled.",
     ])
     return "\n".join(lines) + "\n"
@@ -483,12 +483,12 @@ def main():
         print(
             f"{record['label']} measured order: {' -> '.join(order)}\n"
             f"  gathered: {command_text(args, prompt, 'gathered')}\n"
-            f"  direct: {command_text(args, prompt, 'direct')}"
+            f"  fused gather: {command_text(args, prompt, 'fused_gather')}"
         )
     warmups = warmup_schedule(records)
     total = len(warmups) * 2 + len(records) * 2
     print(
-        f"Dense-mixed direct confirmation: {total} uninstrumented processes; "
+        f"Dense-mixed fused-gather confirmation: {total} uninstrumented processes; "
         f"{len(warmups) * 2} excluded warmups and {len(records) * 2} measured."
     )
     if args.dry_run:
@@ -518,7 +518,7 @@ def main():
             "alternating_order": True,
             "global_warmup_pairs": len(warmups),
             "reference_mode": "gathered",
-            "candidate_mode": "direct",
+            "candidate_mode": "fused_gather",
         },
         "binary": common.file_metadata(args.binary),
         "base_model": common.file_metadata(args.model),

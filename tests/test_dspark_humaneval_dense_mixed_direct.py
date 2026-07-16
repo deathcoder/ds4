@@ -15,7 +15,7 @@ class HumanEvalDenseMixedDirectTests(unittest.TestCase):
     def test_protocol_and_gate_are_frozen(self):
         self.assertEqual(confirmation.THRESHOLD, "0.75")
         self.assertEqual(confirmation.SAMPLE_COUNT, 32)
-        self.assertEqual(confirmation.MODES, ("gathered", "direct"))
+        self.assertEqual(confirmation.MODES, ("gathered", "fused_gather"))
         self.assertEqual(confirmation.MIN_GEOMEAN, 1.02)
         self.assertEqual(confirmation.MIN_WINS, 24)
         self.assertEqual(confirmation.MIN_TASK_RATIO, 0.95)
@@ -24,15 +24,15 @@ class HumanEvalDenseMixedDirectTests(unittest.TestCase):
 
     def test_order_alternates(self):
         self.assertEqual(
-            confirmation.mode_order(1), ("gathered", "direct")
+            confirmation.mode_order(1), ("gathered", "fused_gather")
         )
         self.assertEqual(
-            confirmation.mode_order(2), ("direct", "gathered")
+            confirmation.mode_order(2), ("fused_gather", "gathered")
         )
 
-    def test_only_direct_mode_enables_candidate(self):
+    def test_only_fused_gather_mode_enables_candidate(self):
         gathered = confirmation.mode_env("gathered")
-        direct = confirmation.mode_env("direct")
+        direct = confirmation.mode_env("fused_gather")
         self.assertEqual(
             gathered["DS4_DSPARK_CONFIDENCE_THRESHOLD"], "0.75"
         )
@@ -73,7 +73,7 @@ class HumanEvalDenseMixedDirectTests(unittest.TestCase):
                 },
                 {
                     "prompt": record["label"],
-                    "mode": "direct",
+                    "mode": "fused_gather",
                     "generation_tps": 20.0 * ratio,
                     "pair_order": order,
                 },
@@ -97,7 +97,7 @@ class HumanEvalDenseMixedDirectTests(unittest.TestCase):
         records = self.records()
         rows = self.rows(records, 1.03)
         for row in rows:
-            if row["mode"] == "direct" and row["prompt"].endswith("000"):
+            if row["mode"] == "fused_gather" and row["prompt"].endswith("000"):
                 row["generation_tps"] = 18.0
         reference = self.reference(records, acceptance=0.70)
         reference["tasks"]["humaneval_000"]["acceptance_verify_rate"] = 0.60

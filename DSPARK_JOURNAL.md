@@ -9113,3 +9113,97 @@ python3 speed-bench/run_dspark_humaneval_dense_mixed_direct.py \
   speed-bench/local-runs/humaneval-threshold075-throughput-32-20260716-155112/summary.json \
   --confirm-idle
 ```
+
+## Phase 1.25: Dense-mixed correctness failure and exact fused-gather repair
+
+HumanEval gate failure:
+
+- The first 32-task confirmation attempt stopped during the first warmup.
+- Artifact:
+  `speed-bench/local-runs/humaneval-dense-mixed-direct-32-20260716-212748`.
+- The gathered `humaneval_000` output exactly matched the frozen threshold
+  `0.75` artifact:
+  `cd533e5ddc1e8d344efc797dee4f6011109a4e7e15e610512624abeb103b9064`.
+- The direct candidate produced a different output:
+  `956ead742c855b93d35f336414e9c565cbb8431bf9492ac4cc85a580a895a1d3`.
+- The divergence was semantic at the generated-token level, not whitespace:
+  the candidate changed the implementation of `has_close_elements`.
+
+Root cause:
+
+- The original direct kernel computed equivalent attention with a sequential
+  online-softmax scan.
+- Gathered FlashAttention partitions keys across 32 workgroups, processes
+  32-row chunks inside SIMD groups, emits partial `(output, sum, max)` state,
+  and performs a separate reduction.
+- The different floating-point reduction order was sufficient to cross a
+  target argmax boundary on HumanEval even though the shorter correctness
+  fixtures happened to retain the same generated tokens.
+- Therefore the prior short-fixture `+5.1%` result belongs to a
+  correctness-rejected implementation and cannot be used as evidence for the
+  replacement.
+
+Repair exploration:
+
+- A first repair loaded caches directly while reproducing the split-K
+  FlashAttention partial layout and reusing the exact reduction kernel.
+- It restored the frozen `humaneval_000` output byte-for-byte.
+- Its one-off correctness run was directionally much slower than gathered
+  attention, so it was removed before asking for another timed benchmark.
+
+Exact fused-gather replacement:
+
+- Added `kernel_dsv4_dense_mixed_prepare_f16`.
+- One preparation dispatch now:
+  - reads the raw ring in logical order;
+  - converts raw F32 rows to F16;
+  - copies or converts compressed rows to F16;
+  - fills the zero attention mask;
+  - writes zero K/V and `-MAXHALF` mask values for the padded tail.
+- The candidate then calls the unchanged
+  `kernel_flash_attn_ext_vec_f16_dk512_dv512`.
+- It also calls the unchanged `kernel_flash_attn_ext_vec_reduce`.
+- Attention chunking, score arithmetic, sink placement, partial reduction,
+  and final output arithmetic are therefore the same as the gathered
+  reference.
+- The compatibility switch remains
+  `DS4_METAL_DENSE_MIXED_DIRECT=1`.
+- The preferred benchmark spelling is now
+  `--dense-mixed-fused-gather-ablation`; the old direct spelling remains an
+  alias.
+
+Correctness validation:
+
+```sh
+make -j4
+python3 -m unittest discover -s tests -p 'test_dspark_*.py'
+DS4_TEST_DSPARK_MODE=runtime \
+DS4_TEST_DSPARK_DENSE_MIXED_DIRECT=1 \
+  ./tests/dspark_gpu_candidates_correctness.sh
+```
+
+- Build passed.
+- All `106` DSpark model-free tests passed.
+- Reasoning, Italian, medium-context, rolling-window, and resumed two-turn
+  chat outputs matched their ordinary baselines byte-for-byte.
+- The correctness matrix confirmed
+  `Metal dense mixed attention route=fused_gather`.
+- A fresh `humaneval_000` candidate replay matched the frozen output exactly:
+  `cd533e5ddc1e8d344efc797dee4f6011109a4e7e15e610512624abeb103b9064`.
+- Codex ran only correctness reproductions and made no throughput claim.
+
+Next gate:
+
+- Do not resume the 68-process HumanEval confirmation yet.
+- First rerun the short three-pair ablation because the implementation changed
+  completely:
+
+```sh
+python3 speed-bench/run_dspark_comparison.py \
+  --dense-mixed-fused-gather-ablation \
+  --confirm-idle
+```
+
+- If the fused-gather result is clearly positive and every output remains
+  byte-identical, commit the result and then return to the frozen 32-task
+  HumanEval confirmation.

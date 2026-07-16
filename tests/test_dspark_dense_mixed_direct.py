@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Model-free tests for the direct dense-mixed attention candidate."""
+"""Model-free tests for the dense-mixed fused-gather candidate."""
 
 from pathlib import Path
 from types import SimpleNamespace
@@ -84,27 +84,29 @@ class DenseMixedDirectTests(unittest.TestCase):
         self.assertEqual(summary["comparison"], "dense_mixed_direct_ablation")
         self.assertAlmostEqual(summary["paired_speedup_median"], 1.15)
         report = comparison.format_report(summary)
-        self.assertIn("Dense-Mixed Direct Attention Ablation", report)
-        self.assertIn("Direct attention delta", report)
+        self.assertIn("Dense-Mixed Fused-Gather Ablation", report)
+        self.assertIn("Fused-gather delta", report)
 
     def test_kernel_reads_ring_and_compressed_cache_directly(self):
         host = (ROOT / "ds4_metal.m").read_text(encoding="utf-8")
         shader = (ROOT / "metal/dsv4_misc.metal").read_text(encoding="utf-8")
+        flash = (ROOT / "metal/flash_attn.metal").read_text(encoding="utf-8")
 
         self.assertIn('getenv("DS4_METAL_DENSE_MIXED_DIRECT")', host)
         self.assertIn(
-            "kernel_dsv4_dense_mixed_attention_heads8_rb16_direct",
+            "kernel_dsv4_dense_mixed_prepare_f16",
             host,
         )
         self.assertIn(
-            "kernel void kernel_dsv4_dense_mixed_attention_heads8_rb16_direct",
+            "kernel void kernel_dsv4_dense_mixed_prepare_f16",
             shader,
         )
         self.assertIn(
-            "(args.raw_start + i + r) % args.raw_cap",
+            "(args.raw_start + row) % args.raw_cap",
             shader,
         )
-        self.assertIn("for (uint i = 0; i < args.n_comp; i += 16u)", shader)
+        self.assertIn("FC_flash_attn_ext_vec_nwg", flash)
+        self.assertIn("kernel_flash_attn_ext_vec_reduce", host)
         self.assertIn("inverse_rope == NULL", host)
 
 
