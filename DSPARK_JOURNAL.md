@@ -7966,3 +7966,71 @@ python3 speed-bench/run_dspark_humaneval_aggressive_scheduler_gate.py \
 Use the printed promotion gate as the primary decision. Even if a candidate
 passes versus `0.455`, do not promote it globally unless its fresh
 candidate/baseline ratios show a meaningful path toward parity.
+
+Completed aggressive scheduler gate:
+
+- Raw artifact:
+  `speed-bench/local-runs/humaneval-aggressive-scheduler-20260716-151432`.
+- The run was collected at clean commit `4dfc29b`.
+- All `32` measured outputs matched byte-for-byte within each task.
+- The artifact contains exactly eight rows per mode and every mode occupied
+  every order position exactly twice.
+- No thermal or performance warning was recorded. The process snapshot still
+  showed substantial Logitech, Stats, WindowServer, and system activity, so
+  aggregate direction is more trustworthy than small single-task differences.
+
+Current threshold `0.455` on the selected subset:
+
+- Median ratio versus fresh baseline: `0.7775x`.
+- Geometric mean versus fresh baseline: `0.7591x`.
+- No task was faster than baseline.
+
+Threshold `0.75`:
+
+- Median ratio versus fresh baseline: `0.8529x`.
+- Geometric mean versus fresh baseline: `0.8552x`.
+- Median ratio versus current threshold: `1.1290x`.
+- Geometric mean versus current threshold: `1.1266x`.
+- Won all `8/8` tasks versus current.
+- Worst task ratio versus current: `1.0123x`.
+- Passed every predeclared promotion rule.
+- Relative to threshold `0.455`, it closed about `39.9%` of the geometric
+  deficit to baseline and `33.9%` of the median deficit.
+
+Threshold `0.85`:
+
+- Median ratio versus fresh baseline: `0.8616x`.
+- Geometric mean versus fresh baseline: `0.8296x`.
+- Median ratio versus current threshold: `1.0436x`.
+- Geometric mean versus current threshold: `1.0929x`.
+- Won `6/8` tasks versus current.
+- Worst task ratio versus current: `0.9114x`.
+- Passed the minimum gate but lost the predeclared selection rule to `0.75`.
+- Its larger low-acceptance gains were offset by unstable middle/high
+  acceptance behavior, including `0.9114x` on `humaneval_137`.
+
+Decision:
+
+- Select threshold `0.75` for the next experiment.
+- Reject threshold `0.85` as the general candidate. It is more aggressive but
+  less consistent and has a lower geometric ratio versus baseline.
+- Do not promote `0.75` as the runtime default yet:
+  - all eight candidate tasks remain slower than ordinary baseline;
+  - one run per task establishes broad direction, not a final workload result;
+  - the selected subset intentionally overrepresents difficult and
+    decision-sensitive tasks.
+- The scheduler result is large enough that returning immediately to verifier
+  architecture would be premature. Run one frozen 32-task baseline-versus-0.75
+  confirmation first.
+- The full confirmation should:
+  - use the same 32 HumanEval tasks and frozen exact outputs;
+  - pair ordinary baseline with threshold `0.75`;
+  - alternate baseline-first and runtime-first order;
+  - use one measured pair per task and excluded global warmups;
+  - enable no instrumentation;
+  - report within-run candidate/baseline ratios as authoritative;
+  - compare descriptively with the completed threshold-`0.455` study.
+- If the full study remains clearly below parity, freeze scheduler tuning at
+  `0.75` and return to the Metal exact-verifier architecture. If it approaches
+  or crosses parity on a meaningful fraction of tasks, audit threshold-`0.75`
+  acceptance and component costs before deciding whether to promote it.
