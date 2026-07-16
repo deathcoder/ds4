@@ -7197,3 +7197,28 @@ python3 speed-bench/run_dspark_comparison.py \
 This phase is committed before the user-run timing gate, keeping the branch at
 a compact, recoverable checkpoint. Record the throughput result in a follow-up
 commit before beginning the planned community-progress survey.
+
+Phase 1.09 user-run throughput result:
+
+- Raw artifact:
+  `speed-bench/local-runs/20260716-125850`.
+- Default exact median: `23.86 t/s`.
+- Consolidated persistent-KV Metal drafter median: `24.09 t/s`.
+- Median paired ratio: `1.0100x`, or `+1.0%`.
+- All three pairs favored the consolidated route:
+  `1.0100x`, `1.0038x`, and `1.0122x`.
+- Every output hash matched. Diagnostics and runtime stats were disabled.
+
+Conclusion:
+
+- The persistent-KV Metal drafter remains a valid but modest optimization.
+- Consolidating four command submissions into one improved synchronized
+  sidecar attribution, but did not improve end-to-end throughput beyond the
+  pre-consolidation `+1.1%` result.
+- The difference between the two small ablations is within the interference
+  expected on this machine. Do not claim that consolidation regressed or
+  improved throughput.
+- Keep `DS4_DSPARK_METAL_DRAFTER` default-off while surveying current
+  community work. The next useful optimization should target a larger measured
+  cost or import a demonstrated upstream win rather than further tuning this
+  command boundary.
