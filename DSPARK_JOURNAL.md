@@ -8184,3 +8184,67 @@ Remaining performance target:
 - After that audit, optimize the exact Metal verifier architecture against the
   measured target rather than continuing scheduler or isolated micro-kernel
   tuning.
+
+### Phase 1.17: Threshold-0.75 exact-verifier cost audit
+
+Prepared a dedicated stats-only audit:
+
+- Runner:
+  `speed-bench/run_dspark_humaneval_threshold075_cost_audit.py`.
+- Model-free tests:
+  `tests/test_dspark_threshold075_cost_audit.py`.
+- Frozen policy:
+  - confidence threshold `0.75`;
+  - exact target verification;
+  - no fast verifier;
+  - no fresh baseline or throughput pair;
+  - no acceptance audit, oracle trace, or layer profiler.
+- The completed threshold-`0.75` confirmation is the sole throughput
+  reference. The loader requires:
+  - the expected experiment kind and frozen 32-task selection;
+  - threshold `0.75`;
+  - a passed scheduler-confirmation gate;
+  - the verifier-optimization next-path decision;
+  - exact model paths and generation configuration;
+  - one baseline and one runtime row per task;
+  - matching baseline/runtime output hashes;
+  - prompt and output bytes that still match the artifact.
+- Each fresh stats runtime must reproduce the frozen output byte-for-byte.
+- The report will aggregate:
+  - frozen baseline and threshold-`0.75` generation-time budgets;
+  - target, generation-sidecar, and residual milliseconds per emitted token;
+  - target evals per emitted token and target positions per eval;
+  - full, partial, and fallback verifier outcomes;
+  - verifier-width target economics;
+  - scheduler-width sidecar economics;
+  - the target-time scale required for parity.
+- Two parity scales are deliberately separated:
+  - end-to-end calibrated: assigns the frozen measured deficit to target
+    verification while holding sidecar and residual costs fixed;
+  - component accounted: uses only fresh target and sidecar timings.
+- Residual is a cross-run quantity, not a direct host timer. It includes host
+  work plus mismatch between frozen uninstrumented generation time and fresh
+  instrumented component timing.
+- This is a diagnostic run and does not require an idle machine.
+
+Harness validation:
+
+- `python3 -m unittest discover -s tests -p 'test_dspark_*.py'`
+  passes all `74` DSpark model-free tests.
+- The real-artifact dry run validated:
+  - all `32` frozen tasks and prompt bytes;
+  - one baseline and one runtime reference row per task;
+  - exact output hashes;
+  - threshold `0.75`;
+  - the expected model paths and generation configuration;
+  - stats enabled without oracle trace or fast verification;
+  - the intended `32`-process diagnostic schedule.
+
+Stats-only run command:
+
+```sh
+python3 speed-bench/run_dspark_humaneval_threshold075_cost_audit.py \
+  --throughput-reference \
+  speed-bench/local-runs/humaneval-threshold075-throughput-32-20260716-155112/summary.json \
+  --confirm-ready
+```

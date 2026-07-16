@@ -646,6 +646,34 @@ baseline geometric mean reaches `0.95x` or at least eight tasks become faster
 than baseline. Otherwise freeze scheduler tuning at `0.75` and return to exact
 Metal verifier optimization.
 
+After freezing the scheduler, collect exact-verifier costs under the confirmed
+threshold-`0.75` schedule:
+
+```sh
+python3 speed-bench/run_dspark_humaneval_threshold075_cost_audit.py \
+  --dry-run --allow-dirty \
+  --throughput-reference \
+  speed-bench/local-runs/humaneval-threshold075-throughput-32-<timestamp>/summary.json
+python3 speed-bench/run_dspark_humaneval_threshold075_cost_audit.py \
+  --confirm-ready \
+  --throughput-reference \
+  speed-bench/local-runs/humaneval-threshold075-throughput-32-<timestamp>/summary.json
+```
+
+The audit runs one stats-only exact DSpark process for each frozen task and
+requires every output to match the completed uninstrumented threshold-`0.75`
+artifact byte-for-byte. It reports target and sidecar cost per emitted token,
+verifier and scheduler width economics, batch outcomes, and two target-time
+parity scales:
+
+- an end-to-end-calibrated scale that assigns the frozen measured deficit to
+  target verification while keeping other costs fixed;
+- a component-accounted scale based only on fresh target and sidecar timings.
+
+The two scales must be read with the report's cross-run residual warning. No
+fresh baseline, timed throughput pass, acceptance audit, oracle trace, layer
+profiler, or fast verifier is enabled.
+
 After threshold `0.455` passes that representative gate, run the frozen
 32-task baseline-versus-scheduled confirmation without changing the policy:
 
