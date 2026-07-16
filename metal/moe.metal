@@ -983,6 +983,19 @@ kernel void kernel_dsv4_attn_out_low_q8_0_f32_nr4(
         args, src0s, src1, dst, shmem, tgpig, tiisg, sgitg);
 }
 
+kernel void kernel_dsv4_attn_out_low_q8_0_f32_nr8(
+        constant ds4_metal_args_mul_mv_id & args,
+        device const char * src0s,
+        device const char * src1,
+        device       char * dst,
+        threadgroup  char * shmem [[threadgroup(0)]],
+        uint3  tgpig[[threadgroup_position_in_grid]],
+        ushort tiisg[[thread_index_in_simdgroup]],
+        ushort sgitg[[simdgroup_index_in_threadgroup]]) {
+    kernel_dsv4_attn_out_low_q8_0_f32_impl<8>(
+        args, src0s, src1, dst, shmem, tgpig, tiisg, sgitg);
+}
+
 kernel void kernel_mul_mv_id_iq2_xxs_pair_f32(
         constant ds4_metal_args_mul_mv_id & args,
         device const char * src0_gate,

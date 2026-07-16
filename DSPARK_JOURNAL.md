@@ -8578,3 +8578,118 @@ Next bounded phase:
 - Treat this as a bounded kernel experiment, not a parity strategy by itself:
   the cost audit still requires a much larger verifier reduction than any
   single projection micro-optimization is likely to provide.
+
+## Phase 1.20: Exact Attention-Output NR8 Candidate
+
+Date: 2026-07-16.
+
+Goal:
+
+- Test whether the retained serial exact-attention output tail benefits from
+  reusing each activation load across eight adjacent output rows instead of
+  the promoted four-row schedule.
+- Keep the interleaved per-proposal-row verifier schedule unchanged.
+
+Implementation:
+
+- Added default-off `DS4_DSPARK_EXACT_ATTN_OUT_NR8=1`.
+- Added NR8 Metal entry points for:
+  - `kernel_dsv4_attn_out_low_q8_0_f32`;
+  - `kernel_dsv4_q8_hc_expand4_q8_0`.
+- The existing templated Q8 implementations now instantiate `NR0=8`.
+- When NR8 is requested and the output dimension is divisible by eight, it
+  takes precedence over promoted NR4. Otherwise the existing NR4/NR2 selection
+  remains unchanged.
+- Projection A uses `32 * 8 * sizeof(float)` threadgroup scratch and dispatches
+  one threadgroup per eight output rows.
+- Projection B plus HC uses the same eight-row Q8 reduction shape and retains
+  its existing per-output HC arithmetic.
+- For every output row, NR8 preserves:
+  - Q8 block and lane assignment;
+  - block traversal order;
+  - scalar accumulation order;
+  - SIMD reduction order;
+  - threadgroup reduction order;
+  - attention-output and HC expansion arithmetic.
+- Added correctness-only
+  `DS4_DSPARK_EXACT_ATTN_OUT_NR8_TRACE=1`. It reports separately when
+  projection A and projection B plus HC select NR8.
+- Promoted NR4 remains the default. NR8 is not enabled unless explicitly
+  requested.
+
+Correctness and benchmark plumbing:
+
+- Added `DS4_TEST_DSPARK_EXACT_ATTN_OUT_NR8=1` to the runtime correctness
+  matrix. It:
+  - requires exact attention-pre runtime;
+  - rejects simultaneous explicit NR4 control;
+  - enables NR8 and its trace;
+  - requires both projection traces before passing.
+- Added
+  `tests/test_dspark_exact_attention_output_nr8.py`.
+- Added
+  `--exact-attention-output-nr8-ablation` to the paired benchmark harness:
+  - reference: ordinary exact DSpark with promoted NR4;
+  - candidate: only `DS4_DSPARK_EXACT_ATTN_OUT_NR8=1`;
+  - Metal is explicit;
+  - runtime stats, traces, and diagnostics are disabled;
+  - outputs must match byte-for-byte;
+  - Codex does not run the timed benchmark.
+
+Validation:
+
+```sh
+make -j4
+python3 -m py_compile \
+  speed-bench/run_dspark_comparison.py \
+  tests/test_dspark_exact_attention_output_nr8.py
+python3 -m unittest discover -s tests -p 'test_dspark_*.py'
+bash -n tests/dspark_gpu_candidates_correctness.sh
+DS4_TEST_DSPARK_MODE=runtime \
+DS4_TEST_DSPARK_EXACT_ATTN_OUT_NR8=1 \
+  ./tests/dspark_gpu_candidates_correctness.sh
+DS4_TEST_DSPARK_MODE=runtime \
+DS4_TEST_DSPARK_EXACT_ATTN_OUT_NR4=1 \
+  ./tests/dspark_gpu_candidates_correctness.sh
+make ds4_cpu.o ds4_test
+./ds4_test --dspark-validation --dspark-shape-binding
+python3 speed-bench/run_dspark_comparison.py \
+  --exact-attention-output-nr8-ablation \
+  --dry-run \
+  --allow-dirty
+git diff --check
+```
+
+Validation result:
+
+- Metal build passed and both NR8 shader entry points compiled during the
+  runtime correctness matrix.
+- All `90` DSpark model-free tests passed.
+- DSpark validation and shape binding passed.
+- Explicit NR8 passed reasoning, Italian, medium-context, rolling-window, and
+  resumed two-turn chat byte-for-byte.
+- NR8 traces confirmed that both projection A and projection B plus HC used
+  their eight-row kernels.
+- Explicit promoted NR4 passed the same five-case matrix byte-for-byte and both
+  NR4 traces remained present.
+- The benchmark dry run emitted the intended uninstrumented pair:
+  - promoted NR4 reference with no NR override;
+  - NR8 candidate with only
+    `DS4_DSPARK_EXACT_ATTN_OUT_NR8=1`.
+- Codex ran no timed throughput benchmark.
+
+User-run gate:
+
+```sh
+python3 speed-bench/run_dspark_comparison.py \
+  --exact-attention-output-nr8-ablation \
+  --confirm-idle
+```
+
+Decision rule:
+
+- Require byte-identical outputs in every pair.
+- Promote NR8 only if the paired direction is consistently positive and large
+  enough to justify doubling per-threadgroup output-row state.
+- A neutral or negative result retires NR8 while leaving promoted NR4
+  unchanged.

@@ -192,6 +192,11 @@ def parse_args():
         help="compare legacy NR2 attention output against the promoted NR4 default",
     )
     parser.add_argument(
+        "--exact-attention-output-nr8-ablation",
+        action="store_true",
+        help="compare promoted NR4 attention output against opt-in NR8",
+    )
+    parser.add_argument(
         "--stats-only",
         action="store_true",
         help="run an instrumented Metal-drafter attribution and omit throughput",
@@ -218,6 +223,7 @@ def parse_args():
             args.metal_drafter_ablation,
             args.exact_attention_row_views_ablation,
             args.exact_attention_output_nr4_ablation,
+            args.exact_attention_output_nr8_ablation,
         )
     )
     if selected_modes > 1:
@@ -231,6 +237,7 @@ def parse_args():
             "--metal-drafter-ablation, and "
             "--exact-attention-row-views-ablation, and "
             "--exact-attention-output-nr4-ablation "
+            "and --exact-attention-output-nr8-ablation "
             "are mutually exclusive"
         )
     if args.stats_only and not args.metal_drafter_ablation:
@@ -281,6 +288,8 @@ def check_inputs(args, root):
 
 
 def benchmark_modes(args):
+    if getattr(args, "exact_attention_output_nr8_ablation", False):
+        return ("default_exact", "attention_output_nr8")
     if getattr(args, "exact_attention_output_nr4_ablation", False):
         return ("legacy_attention_output_nr2", "default_exact")
     if getattr(args, "exact_attention_row_views_ablation", False):
@@ -324,6 +333,7 @@ def mode_label(mode, args):
         "metal_drafter": "Persistent-KV Metal drafter DSpark",
         "exact_attention_row_views": "Cached attention row-view DSpark",
         "legacy_attention_output_nr2": "Legacy NR2 attention-output DSpark",
+        "attention_output_nr8": "NR8 attention-output DSpark",
     }[mode]
 
 
@@ -342,6 +352,7 @@ def throughput_runtime_stats_enabled(args):
         or getattr(args, "metal_drafter_ablation", False)
         or getattr(args, "exact_attention_row_views_ablation", False)
         or getattr(args, "exact_attention_output_nr4_ablation", False)
+        or getattr(args, "exact_attention_output_nr8_ablation", False)
     )
 
 
@@ -380,6 +391,8 @@ def clean_dspark_env(mode, fast_verifier=False, runtime_stats=True):
             env["DS4_DSPARK_EXACT_ATTN_ROW_VIEWS"] = "1"
         if mode == "legacy_attention_output_nr2":
             env["DS4_DSPARK_EXACT_ATTN_OUT_NR4"] = "0"
+        if mode == "attention_output_nr8":
+            env["DS4_DSPARK_EXACT_ATTN_OUT_NR8"] = "1"
     return env
 
 
@@ -412,7 +425,8 @@ def mode_command(args, mode):
             args.exact_prefix_checkpoint_ablation or
             getattr(args, "metal_drafter_ablation", False) or
             getattr(args, "exact_attention_row_views_ablation", False) or
-            getattr(args, "exact_attention_output_nr4_ablation", False)):
+            getattr(args, "exact_attention_output_nr4_ablation", False) or
+            getattr(args, "exact_attention_output_nr8_ablation", False)):
         command[1:1] = ("--backend", "metal")
     if mode != "baseline":
         command.extend(("--dspark", str(args.dspark_model.resolve())))
@@ -451,6 +465,8 @@ def command_text(args, mode, runtime_stats=None):
             env += "DS4_DSPARK_EXACT_ATTN_ROW_VIEWS=1 "
         if mode == "legacy_attention_output_nr2":
             env += "DS4_DSPARK_EXACT_ATTN_OUT_NR4=0 "
+        if mode == "attention_output_nr8":
+            env += "DS4_DSPARK_EXACT_ATTN_OUT_NR8=1 "
     return env + shlex.join(mode_command(args, mode))
 
 
@@ -618,6 +634,8 @@ def collect_metadata(args, root):
                 getattr(args, "exact_attention_row_views_ablation", False),
             "exact_attention_output_nr4_ablation":
                 getattr(args, "exact_attention_output_nr4_ablation", False),
+            "exact_attention_output_nr8_ablation":
+                getattr(args, "exact_attention_output_nr8_ablation", False),
             "stats_only": getattr(args, "stats_only", False),
             "temperature": 0,
             "seed": 1,
@@ -673,6 +691,8 @@ def summarize(rows, modes=("baseline", "runtime")):
             "exact_attention_row_views_ablation",
         ("legacy_attention_output_nr2", "default_exact"):
             "exact_attention_output_nr4_ablation",
+        ("default_exact", "attention_output_nr8"):
+            "exact_attention_output_nr8_ablation",
     }
     summary = {
         "comparison": comparisons.get(modes, "baseline_runtime"),
@@ -749,6 +769,17 @@ def summarize(rows, modes=("baseline", "runtime")):
             "promoted_attention_output_nr4_generation_tps_median":
                 candidate_median,
             "promoted_attention_output_nr4_delta_percent":
+                (candidate_median / reference_median - 1.0) * 100.0,
+        })
+        return summary
+
+    if modes == ("default_exact", "attention_output_nr8"):
+        summary.update({
+            "promoted_attention_output_nr4_generation_tps_median":
+                reference_median,
+            "attention_output_nr8_generation_tps_median":
+                candidate_median,
+            "attention_output_nr8_delta_percent":
                 (candidate_median / reference_median - 1.0) * 100.0,
         })
         return summary
@@ -1011,6 +1042,20 @@ def format_report(summary):
             f"- Median paired ratio: {summary['paired_speedup_median']:.4f}x\n"
             f"- Promoted NR4 delta: "
             f"{summary['promoted_attention_output_nr4_delta_percent']:+.1f}%\n"
+            f"- Measured pairs: {len(summary['paired_speedup_values'])}\n"
+        )
+
+    if summary["comparison"] == "exact_attention_output_nr8_ablation":
+        return (
+            "# DSpark Exact Attention-Output NR8 Ablation\n\n"
+            f"- Promoted NR4 median: "
+            f"{summary['promoted_attention_output_nr4_generation_tps_median']:.2f} t/s\n"
+            f"- Opt-in NR8 median: "
+            f"{summary['attention_output_nr8_generation_tps_median']:.2f} t/s\n"
+            f"- Ratio of medians: {summary['median_ratio_of_medians']:.4f}x\n"
+            f"- Median paired ratio: {summary['paired_speedup_median']:.4f}x\n"
+            f"- NR8 delta: "
+            f"{summary['attention_output_nr8_delta_percent']:+.1f}%\n"
             f"- Measured pairs: {len(summary['paired_speedup_values'])}\n"
         )
 

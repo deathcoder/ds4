@@ -17,6 +17,7 @@ runtime_stats=${DS4_TEST_DSPARK_RUNTIME_STATS:-0}
 metal_drafter=${DS4_TEST_DSPARK_METAL_DRAFTER:-0}
 exact_attn_row_views=${DS4_TEST_DSPARK_EXACT_ATTN_ROW_VIEWS:-0}
 exact_attn_out_nr4=${DS4_TEST_DSPARK_EXACT_ATTN_OUT_NR4:-default}
+exact_attn_out_nr8=${DS4_TEST_DSPARK_EXACT_ATTN_OUT_NR8:-0}
 acceptance_audit=${DS4_TEST_DSPARK_ACCEPTANCE_AUDIT:-0}
 acceptance_trace=${DS4_TEST_DSPARK_ACCEPTANCE_TRACE:-0}
 confidence_threshold=${DS4_TEST_DSPARK_CONFIDENCE_THRESHOLD:-}
@@ -47,6 +48,8 @@ unset DS4_DSPARK_METAL_DRAFTER
 unset DS4_DSPARK_EXACT_ATTN_ROW_VIEWS
 unset DS4_DSPARK_EXACT_ATTN_OUT_NR4
 unset DS4_DSPARK_EXACT_ATTN_OUT_NR4_TRACE
+unset DS4_DSPARK_EXACT_ATTN_OUT_NR8
+unset DS4_DSPARK_EXACT_ATTN_OUT_NR8_TRACE
 unset DS4_METAL_COMPRESSOR_PAIR_NR4
 unset DS4_METAL_INDEXED_ATTN_RB16_DIRECT
 unset DS4_METAL_INDEXED_ATTN_RB16_LEGACY
@@ -129,6 +132,20 @@ if [[ $exact_attn_out_nr4 != default &&
       ($mode != runtime || $fast_verify_runtime == 1 ||
        $serial_attn_pre_runtime == 1) ]]; then
     printf 'exact attention-output NR control requires exact attention-pre runtime\n' >&2
+    exit 2
+fi
+if [[ $exact_attn_out_nr8 != 0 && $exact_attn_out_nr8 != 1 ]]; then
+    printf 'DS4_TEST_DSPARK_EXACT_ATTN_OUT_NR8 must be 0 or 1\n' >&2
+    exit 2
+fi
+if [[ $exact_attn_out_nr8 == 1 && $exact_attn_out_nr4 != default ]]; then
+    printf 'exact attention-output NR8 and explicit NR4 controls are mutually exclusive\n' >&2
+    exit 2
+fi
+if [[ $exact_attn_out_nr8 == 1 &&
+      ($mode != runtime || $fast_verify_runtime == 1 ||
+       $serial_attn_pre_runtime == 1) ]]; then
+    printf 'exact attention-output NR8 requires exact attention-pre runtime\n' >&2
     exit 2
 fi
 if [[ $acceptance_audit == 1 && $mode != runtime ]]; then
@@ -255,6 +272,12 @@ case "$mode" in
                 )
                 ;;
         esac
+        if [[ $exact_attn_out_nr8 == 1 ]]; then
+            gpu_env+=(
+                DS4_DSPARK_EXACT_ATTN_OUT_NR8=1
+                DS4_DSPARK_EXACT_ATTN_OUT_NR8_TRACE=1
+            )
+        fi
         if [[ $acceptance_audit == 1 ]]; then
             gpu_env+=(DS4_DSPARK_ACCEPTANCE_AUDIT=1)
         fi
@@ -861,6 +884,13 @@ if [[ $exact_attn_out_nr4 == 1 ]]; then
     if ! grep -q 'Metal exact attention output NR4 projection=A' "$tmpdir"/*.log ||
        ! grep -q 'Metal exact attention output NR4 projection=B+HC' "$tmpdir"/*.log; then
         printf 'exact attention-output NR4 did not engage both projections\n' >&2
+        exit 1
+    fi
+fi
+if [[ $exact_attn_out_nr8 == 1 ]]; then
+    if ! grep -q 'Metal exact attention output NR8 projection=A' "$tmpdir"/*.log ||
+       ! grep -q 'Metal exact attention output NR8 projection=B+HC' "$tmpdir"/*.log; then
+        printf 'exact attention-output NR8 did not engage both projections\n' >&2
         exit 1
     fi
 fi

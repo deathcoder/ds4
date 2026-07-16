@@ -1069,3 +1069,30 @@ The reference sets `DS4_DSPARK_EXACT_ATTN_OUT_NR4=0`; the candidate is ordinary
 exact DSpark with the promoted NR4 default and no NR environment override.
 Both modes are Metal-only, paired, uninstrumented, and must produce
 byte-identical output. Codex does not run this timed command.
+
+The next bounded attention-output experiment extends the same activation reuse
+from four to eight adjacent output rows. NR8 is default-off and leaves promoted
+NR4 unchanged unless `DS4_DSPARK_EXACT_ATTN_OUT_NR8=1` is set. Run the explicit
+NR8 and ordinary NR4 correctness controls first:
+
+```sh
+DS4_TEST_DSPARK_MODE=runtime \
+DS4_TEST_DSPARK_EXACT_ATTN_OUT_NR8=1 \
+  ./tests/dspark_gpu_candidates_correctness.sh
+
+DS4_TEST_DSPARK_MODE=runtime \
+  ./tests/dspark_gpu_candidates_correctness.sh
+```
+
+The NR8 control requires traces from both projection A and projection B plus
+HC. Then, when the machine is ready, run the paired uninstrumented gate:
+
+```sh
+python3 speed-bench/run_dspark_comparison.py \
+  --exact-attention-output-nr8-ablation \
+  --confirm-idle
+```
+
+The reference is ordinary promoted NR4. Only the candidate enables NR8.
+Runtime stats and traces are disabled in both timed modes, order alternates by
+pair, and every output must match byte-for-byte.

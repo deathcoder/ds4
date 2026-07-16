@@ -922,6 +922,25 @@ kernel void kernel_dsv4_q8_hc_expand4_q8_0_nr4(
         shmem, tgpig, tiisg, sgitg);
 }
 
+kernel void kernel_dsv4_q8_hc_expand4_q8_0_nr8(
+        constant ds4_metal_args_mul_mv          & mv,
+        constant ds4_metal_args_dsv4_hc_expand & hc,
+        device  const char * weight,
+        device  const char * input,
+        device        char * block_out,
+        device  const char * residual,
+        device  const char * post,
+        device  const char * comb,
+        device        char * dst,
+        threadgroup   char * shmem [[threadgroup(0)]],
+        uint3  tgpig[[threadgroup_position_in_grid]],
+        ushort tiisg[[thread_index_in_simdgroup]],
+        ushort sgitg[[simdgroup_index_in_threadgroup]]) {
+    kernel_dsv4_q8_hc_expand4_q8_0_impl<8>(
+        mv, hc, weight, input, block_out, residual, post, comb, dst,
+        shmem, tgpig, tiisg, sgitg);
+}
+
 // Reduces HC channels to a normal embedding row with the learned pre weights.
 // This is the input adapter before the attention block and before the FFN block.
 kernel void kernel_dsv4_hc_weighted_sum(
