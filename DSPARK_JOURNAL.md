@@ -8516,3 +8516,65 @@ Harness validation:
     `humaneval-threshold075-cost-20260716-161553`;
   - width-layer:
     `threshold075-width-layer-20260716-193143`.
+
+Diagnostic result:
+
+- Artifact:
+  `speed-bench/local-runs/threshold075-width-tail-20260716-200622`.
+- Clean source commit:
+  `f4f42c96f2379a8161debb67010f92ddd170c03b`.
+- The profiled output matched the frozen threshold-`0.75` HumanEval output
+  byte-for-byte.
+- The exact verifier schedule matched the frozen cost audit:
+  - width 2: `1` evaluation;
+  - width 3: `1`;
+  - width 4: `4`;
+  - width 5: `20`.
+- Stable width-5 component medians at layer 42:
+  - KV/cache update: `0.277 ms/row`, `13.2%`;
+  - compressor/indexer: `0.388 ms/row`, `18.5%`;
+  - attention: `0.455 ms/row`, `21.7%`;
+  - inverse RoPE: `0.271 ms/row`, `12.9%`;
+  - projection A: `0.351 ms/row`, `16.7%`;
+  - projection B plus HC: `0.359 ms/row`, `17.1%`.
+- Projection A and projection B plus HC together account for `33.8%` of the
+  width-5 synchronized tail, larger than any individual component.
+- Width-5 per-row cost is effectively unchanged from the single width-2
+  observation for KV/cache, compressor/indexer, attention, and inverse RoPE.
+  Projection A and projection B plus HC are each about `1.10x` the width-2
+  observation. The retained tail therefore has no proposal-width amortization:
+  it still executes one complete serial row at a time.
+- The sole width-3 batch was a broad timing outlier (`4.415 ms/row`) and is not
+  used for an optimization decision. Widths 2 and 3 remain directional only.
+- The machine snapshot contained substantial unrelated OBS, camera, Logitech,
+  and system activity. This is acceptable for a synchronized attribution
+  diagnostic but reinforces that absolute component milliseconds are not
+  throughput measurements.
+
+Interpretation:
+
+- Do not revive the retired whole-suffix batch schedule. Earlier direct-write
+  attribution showed that separating all attention cores from all output
+  projections made the candidate core alone slower than the complete retained
+  serial tail.
+- Keep the interleaved per-row schedule and optimize inside its existing Metal
+  kernels.
+- Attention is the largest individual component, but the two exact output
+  projections are the largest combined tractable block and already have a
+  byte-exact output-row reuse specialization.
+
+Next bounded phase:
+
+- Add a default-off Metal-only NR8 candidate for both exact attention-output
+  kernels:
+  - projection A;
+  - projection B plus HC.
+- Compare it against the promoted NR4 path. Preserve every output row's Q8
+  block traversal, accumulation, reduction, and HC arithmetic; only reuse each
+  activation load across eight adjacent output rows instead of four.
+- Require explicit NR8 and NR4 correctness matrices, trace confirmation that
+  both kernels selected NR8, normal Metal and CPU builds, DSpark
+  validation/shape binding, and a user-run paired ablation.
+- Treat this as a bounded kernel experiment, not a parity strategy by itself:
+  the cost audit still requires a much larger verifier reduction than any
+  single projection micro-optimization is likely to provide.
