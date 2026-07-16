@@ -674,6 +674,33 @@ The two scales must be read with the report's cross-run residual warning. No
 fresh baseline, timed throughput pass, acceptance audit, oracle trace, layer
 profiler, or fast verifier is enabled.
 
+After the cost audit identifies multi-row exact verification as the dominant
+surface, profile its scaling by actual verifier width:
+
+```sh
+python3 speed-bench/run_dspark_threshold075_width_layer_profile.py \
+  --dry-run --allow-dirty \
+  --throughput-reference \
+  speed-bench/local-runs/humaneval-threshold075-throughput-32-<timestamp>/summary.json \
+  --cost-reference \
+  speed-bench/local-runs/humaneval-threshold075-cost-<timestamp>/summary.json
+python3 speed-bench/run_dspark_threshold075_width_layer_profile.py \
+  --confirm-ready \
+  --throughput-reference \
+  speed-bench/local-runs/humaneval-threshold075-throughput-32-<timestamp>/summary.json \
+  --cost-reference \
+  speed-bench/local-runs/humaneval-threshold075-cost-<timestamp>/summary.json
+```
+
+The diagnostic is frozen to `humaneval_079`, target layers `0`, `21`, and
+`42`, and exact verifier widths `2-5`. It runs three synchronized profile
+processes, validates each process's output and width histogram against the
+completed threshold-`0.75` artifacts, then groups attention preparation,
+serial attention tail, and exact FFN records by their actual width. Widths two
+and three have one observation each on this task, so they are directional
+anchors; width five has twenty observations and is the stable optimization
+target.
+
 After threshold `0.455` passes that representative gate, run the frozen
 32-task baseline-versus-scheduled confirmation without changing the policy:
 

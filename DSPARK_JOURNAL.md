@@ -8346,3 +8346,43 @@ Next bounded phase:
 - Require the profiled output to match the frozen threshold-`0.75` artifact.
 - This diagnostic should identify which promoted layer component fails to
   amortize with width before another runtime candidate is implemented.
+
+### Phase 1.18: Width-stratified exact-layer profile
+
+Prepared a dedicated synchronized diagnostic:
+
+- Runner:
+  `speed-bench/run_dspark_threshold075_width_layer_profile.py`.
+- Model-free tests:
+  `tests/test_dspark_threshold075_width_layer_profile.py`.
+- Frozen task: `humaneval_079`.
+- Frozen threshold: `0.75`.
+- Profiled layers: `0`, `21`, and `42`.
+- Reported verifier widths: `2`, `3`, `4`, and `5`.
+- The task was selected from the completed cost audit because it has:
+  - one width-2 target eval;
+  - one width-3 target eval;
+  - four width-4 target evals;
+  - twenty width-5 target evals.
+- Each layer process enables:
+  - exact DSpark runtime;
+  - multi-commit;
+  - runtime stats;
+  - threshold `0.75`;
+  - exact-layer synchronized profiling for one layer.
+- The runner rejects:
+  - any output that differs from the frozen threshold-`0.75` artifact;
+  - any change in emitted tokens, target evals, target positions, batch
+    outcomes, scheduler-width counts, or verifier-width counts;
+  - incomplete attention-pre, serial-tail, or exact-FFN stage schedules.
+- No runtime implementation candidate is enabled.
+
+Harness validation:
+
+- All `79` DSpark model-free tests pass.
+- The real-reference dry run validated:
+  - the threshold-`0.75` throughput artifact;
+  - the completed cost-audit artifact;
+  - task `humaneval_079`;
+  - the required nonzero width-2-through-width-5 counts;
+  - the three Metal profile commands and synchronized stage contract.
