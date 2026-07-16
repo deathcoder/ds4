@@ -8248,3 +8248,101 @@ python3 speed-bench/run_dspark_humaneval_threshold075_cost_audit.py \
   speed-bench/local-runs/humaneval-threshold075-throughput-32-20260716-155112/summary.json \
   --confirm-ready
 ```
+
+Completed threshold-0.75 exact-verifier cost audit:
+
+- Raw artifact:
+  `speed-bench/local-runs/humaneval-threshold075-cost-20260716-161553`.
+- The run was collected from clean commit `a4b50d8`.
+- All `32` instrumented runtime outputs matched the frozen uninstrumented
+  threshold-`0.75` artifact byte-for-byte.
+- The artifact contains one stats row for every frozen task.
+- Stats reconciliation passed:
+  - `1360` total target evals equal the verifier-width histogram;
+  - `760` width-2-through-width-5 evals equal the batch-attempt count;
+  - `684` batches completed fully;
+  - `76` batches completed partially;
+  - no batch fallback occurred;
+  - no fast-verifier call occurred;
+  - verifier-width target-time shares sum to exactly one.
+
+Aggregate frozen budget and fresh component timing:
+
+- Frozen ordinary baseline: `43.543 ms/emitted`.
+- Frozen threshold-`0.75` runtime: `50.432 ms/emitted`.
+- End-to-end deficit: `6.889 ms/emitted`.
+- Fresh exact target verification: `46.450 ms/emitted`.
+- Fresh generation sidecar: `8.314 ms/emitted`.
+- Cross-run residual: `-4.332 ms/emitted`.
+- Frozen paired geometric mean: `0.8634x`.
+- Pooled frozen generation-time ratio: `0.8634x`.
+- Target evals per emitted token: `0.3854`.
+- Target positions per eval: `2.706`.
+
+Parity target:
+
+- Assigning only the frozen end-to-end deficit to the verifier requires target
+  time scale `0.8517x`, or a `14.8%` reduction.
+- This lowers exact target cost from `46.450` to about
+  `39.56 ms/emitted`.
+- Fresh target plus sidecar component accounting requires target scale
+  `0.7584x`, or a `24.2%` reduction.
+- This conservative target is about `35.23 ms/emitted`.
+- The negative residual proves that fresh synchronized component totals are
+  not additive with frozen uninstrumented wall time. Treat `14.8%` as the
+  optimistic minimum and `24.2%` as the conservative engineering target, not
+  as two competing exact predictions.
+
+Verifier-width economics:
+
+- Width 1:
+  - `600` evals;
+  - `47.904 ms/eval`;
+  - `17.5%` of target time.
+- Width 2:
+  - `134` evals;
+  - `48.398 ms/position`;
+  - `7.9%` of target time.
+- Width 3:
+  - `113` evals;
+  - `44.294 ms/position`;
+  - `9.2%` of target time.
+- Width 4:
+  - `92` evals;
+  - `45.629 ms/position`;
+  - `10.2%` of target time.
+- Width 5:
+  - `421` evals;
+  - `42.947 ms/position`;
+  - `55.1%` of target time.
+- Widths 2 through 5 account for `82.5%` of target time.
+- Width 5 lowers cost per target position by only about `10.3%` relative to
+  width 1. The exact multi-row verifier therefore scales weakly with proposal
+  width even though it avoids target-eval calls.
+
+Decision:
+
+- The remaining gap is not caused by fallback handling:
+  every multi-position verifier attempt completed through the exact batch
+  path, and no fast or serial recovery path was used.
+- Scheduler control flow is no longer the primary target.
+- Width-5 exact verification is the largest single optimization surface, but
+  widths 2 through 4 are collectively material. Optimize shared multi-row
+  layer execution rather than a width-5-only special case.
+- Do not return to host allocation, command-boundary, isolated sidecar, or
+  confidence-threshold micro-tuning.
+
+Next bounded phase:
+
+- Add a width-stratified exact-layer diagnostic under threshold `0.75`.
+- Use frozen task `humaneval_079`, which produced:
+  - `20` width-5 verifier evals;
+  - at least one eval at every width from 2 through 4;
+  - `128` emitted tokens.
+- Profile representative target layers `0`, `21`, and `42`.
+- Group the existing exact-layer records by their `tokens` field so attention
+  preparation, serial attention tail, and exact FFN cost can be compared at
+  widths 2 through 5.
+- Require the profiled output to match the frozen threshold-`0.75` artifact.
+- This diagnostic should identify which promoted layer component fails to
+  amortize with width before another runtime candidate is implemented.
