@@ -16,7 +16,7 @@ attn_suffix_runtime=${DS4_TEST_DSPARK_ATTN_SUFFIX_RUNTIME:-0}
 runtime_stats=${DS4_TEST_DSPARK_RUNTIME_STATS:-0}
 metal_drafter=${DS4_TEST_DSPARK_METAL_DRAFTER:-0}
 exact_attn_row_views=${DS4_TEST_DSPARK_EXACT_ATTN_ROW_VIEWS:-0}
-exact_attn_out_nr4=${DS4_TEST_DSPARK_EXACT_ATTN_OUT_NR4:-0}
+exact_attn_out_nr4=${DS4_TEST_DSPARK_EXACT_ATTN_OUT_NR4:-default}
 acceptance_audit=${DS4_TEST_DSPARK_ACCEPTANCE_AUDIT:-0}
 acceptance_trace=${DS4_TEST_DSPARK_ACCEPTANCE_TRACE:-0}
 confidence_threshold=${DS4_TEST_DSPARK_CONFIDENCE_THRESHOLD:-}
@@ -118,14 +118,17 @@ if [[ $exact_attn_row_views == 1 &&
     printf 'exact attention row views require exact attention-pre runtime\n' >&2
     exit 2
 fi
-if [[ $exact_attn_out_nr4 != 0 && $exact_attn_out_nr4 != 1 ]]; then
-    printf 'DS4_TEST_DSPARK_EXACT_ATTN_OUT_NR4 must be 0 or 1\n' >&2
-    exit 2
-fi
-if [[ $exact_attn_out_nr4 == 1 &&
+case "$exact_attn_out_nr4" in
+    default|0|1) ;;
+    *)
+        printf 'DS4_TEST_DSPARK_EXACT_ATTN_OUT_NR4 must be default, 0, or 1\n' >&2
+        exit 2
+        ;;
+esac
+if [[ $exact_attn_out_nr4 != default &&
       ($mode != runtime || $fast_verify_runtime == 1 ||
        $serial_attn_pre_runtime == 1) ]]; then
-    printf 'exact attention-output NR4 requires exact attention-pre runtime\n' >&2
+    printf 'exact attention-output NR control requires exact attention-pre runtime\n' >&2
     exit 2
 fi
 if [[ $acceptance_audit == 1 && $mode != runtime ]]; then
@@ -243,12 +246,15 @@ case "$mode" in
         if [[ $exact_attn_row_views == 1 ]]; then
             gpu_env+=(DS4_DSPARK_EXACT_ATTN_ROW_VIEWS=1)
         fi
-        if [[ $exact_attn_out_nr4 == 1 ]]; then
-            gpu_env+=(
-                DS4_DSPARK_EXACT_ATTN_OUT_NR4=1
-                DS4_DSPARK_EXACT_ATTN_OUT_NR4_TRACE=1
-            )
-        fi
+        case "$exact_attn_out_nr4" in
+            0) gpu_env+=(DS4_DSPARK_EXACT_ATTN_OUT_NR4=0) ;;
+            1)
+                gpu_env+=(
+                    DS4_DSPARK_EXACT_ATTN_OUT_NR4=1
+                    DS4_DSPARK_EXACT_ATTN_OUT_NR4_TRACE=1
+                )
+                ;;
+        esac
         if [[ $acceptance_audit == 1 ]]; then
             gpu_env+=(DS4_DSPARK_ACCEPTANCE_AUDIT=1)
         fi

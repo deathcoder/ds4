@@ -886,11 +886,10 @@ The reference is ordinary exact DSpark; only the candidate sets
 order alternates by pair, and every output must match byte-for-byte. Codex does
 not run this timed command.
 
-The default-off exact attention-output NR4 candidate targets the two retained
-serial Q8 projections after attention. Both ordinary kernels compute two
-adjacent output rows per threadgroup. With
-`DS4_DSPARK_EXACT_ATTN_OUT_NR4=1`, projection A and the fused projection B plus
-HC expansion compute four adjacent rows per threadgroup instead.
+The promoted exact attention-output NR4 path targets the two retained serial
+Q8 projections after attention. The legacy kernels compute two adjacent output
+rows per threadgroup. The default projection A and fused projection B plus HC
+expansion kernels compute four adjacent rows per threadgroup instead.
 
 This changes activation reuse and threadgroup count only. Every output row
 keeps the ordinary Q8 block traversal, scalar accumulation order, SIMD
@@ -898,17 +897,22 @@ reduction, threadgroup reduction, and HC expansion arithmetic. The candidate
 is restricted to dimensions divisible by four and otherwise uses the existing
 two-row kernels.
 
-Run the byte-exact correctness matrix before timing:
+`DS4_DSPARK_EXACT_ATTN_OUT_NR4=0` restores the legacy NR2 kernels. Run both
+byte-exact correctness controls before timing:
 
 ```sh
 DS4_TEST_DSPARK_MODE=runtime \
 DS4_TEST_DSPARK_EXACT_ATTN_OUT_NR4=1 \
   ./tests/dspark_gpu_candidates_correctness.sh
+
+DS4_TEST_DSPARK_MODE=runtime \
+DS4_TEST_DSPARK_EXACT_ATTN_OUT_NR4=0 \
+  ./tests/dspark_gpu_candidates_correctness.sh
 ```
 
-The correctness-only trace must confirm that both projection A and projection
-B plus HC used their NR4 kernels. The trace flag is not enabled by the
-throughput harness. When the machine is ready, run:
+The explicit NR4 correctness control enables a trace that must confirm both
+projection A and projection B plus HC used their NR4 kernels. The trace flag
+is not enabled by the throughput harness. When the machine is ready, run:
 
 ```sh
 python3 speed-bench/run_dspark_comparison.py \
@@ -916,7 +920,7 @@ python3 speed-bench/run_dspark_comparison.py \
   --confirm-idle
 ```
 
-The reference is ordinary exact DSpark; only the candidate sets
-`DS4_DSPARK_EXACT_ATTN_OUT_NR4=1`. Both modes are Metal-only, paired,
-uninstrumented, and must produce byte-identical output. Codex does not run this
-timed command.
+The reference sets `DS4_DSPARK_EXACT_ATTN_OUT_NR4=0`; the candidate is ordinary
+exact DSpark with the promoted NR4 default and no NR environment override.
+Both modes are Metal-only, paired, uninstrumented, and must produce
+byte-identical output. Codex does not run this timed command.

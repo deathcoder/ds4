@@ -189,7 +189,7 @@ def parse_args():
     parser.add_argument(
         "--exact-attention-output-nr4-ablation",
         action="store_true",
-        help="compare default exact DSpark against NR4 attention-output projections",
+        help="compare legacy NR2 attention output against the promoted NR4 default",
     )
     parser.add_argument(
         "--stats-only",
@@ -282,7 +282,7 @@ def check_inputs(args, root):
 
 def benchmark_modes(args):
     if getattr(args, "exact_attention_output_nr4_ablation", False):
-        return ("default_exact", "exact_attention_output_nr4")
+        return ("legacy_attention_output_nr2", "default_exact")
     if getattr(args, "exact_attention_row_views_ablation", False):
         return ("default_exact", "exact_attention_row_views")
     if getattr(args, "metal_drafter_ablation", False):
@@ -323,7 +323,7 @@ def mode_label(mode, args):
         "replay_partial_accept": "Legacy partial-accept replay DSpark",
         "metal_drafter": "Persistent-KV Metal drafter DSpark",
         "exact_attention_row_views": "Cached attention row-view DSpark",
-        "exact_attention_output_nr4": "NR4 attention-output DSpark",
+        "legacy_attention_output_nr2": "Legacy NR2 attention-output DSpark",
     }[mode]
 
 
@@ -378,8 +378,8 @@ def clean_dspark_env(mode, fast_verifier=False, runtime_stats=True):
             env["DS4_DSPARK_METAL_DRAFTER"] = "1"
         if mode == "exact_attention_row_views":
             env["DS4_DSPARK_EXACT_ATTN_ROW_VIEWS"] = "1"
-        if mode == "exact_attention_output_nr4":
-            env["DS4_DSPARK_EXACT_ATTN_OUT_NR4"] = "1"
+        if mode == "legacy_attention_output_nr2":
+            env["DS4_DSPARK_EXACT_ATTN_OUT_NR4"] = "0"
     return env
 
 
@@ -449,8 +449,8 @@ def command_text(args, mode, runtime_stats=None):
             env += "DS4_DSPARK_METAL_DRAFTER=1 "
         if mode == "exact_attention_row_views":
             env += "DS4_DSPARK_EXACT_ATTN_ROW_VIEWS=1 "
-        if mode == "exact_attention_output_nr4":
-            env += "DS4_DSPARK_EXACT_ATTN_OUT_NR4=1 "
+        if mode == "legacy_attention_output_nr2":
+            env += "DS4_DSPARK_EXACT_ATTN_OUT_NR4=0 "
     return env + shlex.join(mode_command(args, mode))
 
 
@@ -671,7 +671,7 @@ def summarize(rows, modes=("baseline", "runtime")):
             "metal_drafter_ablation",
         ("default_exact", "exact_attention_row_views"):
             "exact_attention_row_views_ablation",
-        ("default_exact", "exact_attention_output_nr4"):
+        ("legacy_attention_output_nr2", "default_exact"):
             "exact_attention_output_nr4_ablation",
     }
     summary = {
@@ -742,12 +742,13 @@ def summarize(rows, modes=("baseline", "runtime")):
         })
         return summary
 
-    if modes == ("default_exact", "exact_attention_output_nr4"):
+    if modes == ("legacy_attention_output_nr2", "default_exact"):
         summary.update({
-            "default_exact_generation_tps_median": reference_median,
-            "exact_attention_output_nr4_generation_tps_median":
+            "legacy_attention_output_nr2_generation_tps_median":
+                reference_median,
+            "promoted_attention_output_nr4_generation_tps_median":
                 candidate_median,
-            "exact_attention_output_nr4_delta_percent":
+            "promoted_attention_output_nr4_delta_percent":
                 (candidate_median / reference_median - 1.0) * 100.0,
         })
         return summary
@@ -1001,15 +1002,15 @@ def format_report(summary):
 
     if summary["comparison"] == "exact_attention_output_nr4_ablation":
         return (
-            "# DSpark Exact Attention-Output NR4 Ablation\n\n"
-            f"- Default exact median: "
-            f"{summary['default_exact_generation_tps_median']:.2f} t/s\n"
-            f"- NR4 attention-output median: "
-            f"{summary['exact_attention_output_nr4_generation_tps_median']:.2f} t/s\n"
+            "# DSpark Exact Attention-Output NR4 Promotion Confirmation\n\n"
+            f"- Legacy NR2 median: "
+            f"{summary['legacy_attention_output_nr2_generation_tps_median']:.2f} t/s\n"
+            f"- Promoted NR4 median: "
+            f"{summary['promoted_attention_output_nr4_generation_tps_median']:.2f} t/s\n"
             f"- Ratio of medians: {summary['median_ratio_of_medians']:.4f}x\n"
             f"- Median paired ratio: {summary['paired_speedup_median']:.4f}x\n"
-            f"- NR4 attention-output delta: "
-            f"{summary['exact_attention_output_nr4_delta_percent']:+.1f}%\n"
+            f"- Promoted NR4 delta: "
+            f"{summary['promoted_attention_output_nr4_delta_percent']:+.1f}%\n"
             f"- Measured pairs: {len(summary['paired_speedup_values'])}\n"
         )
 

@@ -1850,11 +1850,15 @@ static int ds4_gpu_use_compressor_pair_nr4(void) {
     return enabled;
 }
 
+static int ds4_gpu_env_bool(const char *name);
+
 static int ds4_gpu_use_exact_attention_output_nr4(void) {
     static int initialized;
     static int enabled;
     if (!initialized) {
-        enabled = getenv("DS4_DSPARK_EXACT_ATTN_OUT_NR4") != NULL;
+        const int configured =
+            ds4_gpu_env_bool("DS4_DSPARK_EXACT_ATTN_OUT_NR4");
+        enabled = configured < 0 ? 1 : configured;
         initialized = 1;
     }
     return enabled;

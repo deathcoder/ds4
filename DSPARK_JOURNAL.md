@@ -7594,3 +7594,67 @@ Use the paired ratio as the first decision. If the combined candidate is
 clearly positive, confirm it before promotion. If it is neutral or negative,
 split projection A and projection B plus HC into separate ablations before
 rejecting the underlying NR4 specialization.
+
+First user-run throughput result:
+
+- Raw artifact:
+  `speed-bench/local-runs/20260716-140827`.
+- Default exact median: `23.69 t/s`.
+- NR4 attention-output median: `23.96 t/s`.
+- Ratio of medians: `1.0114x`.
+- Median paired ratio: `1.0118x`, or `+1.1%`.
+- Individual paired ratios were:
+  - `1.0118x`;
+  - `1.0122x`;
+  - `1.0114x`.
+- All output hashes matched.
+- The spread between the three paired ratios was under `0.1` percentage point.
+  This unusually close agreement survived alternating order even though the
+  process snapshot contained substantial Logitech and system activity.
+
+Promotion decision:
+
+- The combined result is positive and highly reproducible within the local
+  gate. Do not split projection A from projection B plus HC before promotion.
+- Promote NR4 as the exact attention-output default on Metal.
+- Retain `DS4_DSPARK_EXACT_ATTN_OUT_NR4=0` as a legacy NR2 opt-out.
+- Convert the paired harness into a promotion confirmation:
+  - reference: explicit legacy NR2;
+  - candidate: ordinary exact DSpark with promoted NR4;
+  - no runtime stats, trace, or diagnostics in either mode.
+- Require both explicit NR4 and explicit legacy NR2 correctness matrices before
+  the confirmation benchmark.
+
+Promotion implementation and validation:
+
+- Absence of `DS4_DSPARK_EXACT_ATTN_OUT_NR4` now selects NR4.
+- `DS4_DSPARK_EXACT_ATTN_OUT_NR4=0` selects legacy NR2.
+- `DS4_DSPARK_EXACT_ATTN_OUT_NR4=1` remains an explicit NR4 control.
+- The paired harness now emits:
+  - reference: `DS4_DSPARK_EXACT_ATTN_OUT_NR4=0`;
+  - candidate: no NR override, using the promoted default.
+- The harness labels the result as an NR4 promotion confirmation and keeps
+  diagnostics, trace, and runtime stats disabled in both modes.
+- CPU and Metal builds passed.
+- All 49 DSpark model-free tests passed.
+- DSpark validation and shape binding passed.
+- Three five-case runtime correctness matrices passed byte-for-byte:
+  - explicit NR4, with traces confirming both projections;
+  - explicit legacy NR2;
+  - ordinary exact runtime with no NR override.
+- The promotion-confirmation dry-run printed the intended Metal-only,
+  uninstrumented command pair.
+- Codex ran no timed confirmation benchmark.
+
+User-run promotion confirmation:
+
+```sh
+python3 speed-bench/run_dspark_comparison.py \
+  --exact-attention-output-nr4-ablation \
+  --confirm-idle
+```
+
+If the paired direction remains positive and output hashes match, keep NR4
+promoted. A result near parity is acceptable only if the individual pairs do
+not show a consistent regression; a clear negative result should restore NR2
+and trigger separate projection-A and projection-B-plus-HC experiments.
