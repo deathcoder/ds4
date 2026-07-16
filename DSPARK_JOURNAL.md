@@ -7794,3 +7794,100 @@ python3 speed-bench/run_dspark_humaneval_oracle_audit.py \
 This is a stats-only diagnostic, not a tok/s benchmark. Machine idleness is not
 required, although large concurrent GPU workloads should still be avoided
 because they can distort component timing.
+
+Completed 32-task oracle audit:
+
+- Raw artifact:
+  `speed-bench/local-runs/humaneval-oracle-audit-20260716-144959`.
+- Every traced runtime output matched its frozen uninstrumented HumanEval
+  artifact byte-for-byte.
+- Accounted current DSpark ratio: `0.8076x`.
+- Frozen measured scheduled HumanEval ratio: `0.8081x`.
+- The `0.0005x` absolute difference validates the aggregate cost model closely
+  enough for architectural decisions.
+
+Aggregate ceilings:
+
+- Perfect future-knowing round router at current cost: `1.0058x`.
+- Perfect router with free sidecar: `1.0517x`.
+- Perfect router with free target verification: `7.4594x`.
+- Profitable current-cost rounds: `185/1084`, or `17.1%`.
+- Those rounds emitted `899/3532`, or `25.5%`, of output tokens.
+- All-DSpark parity under the same schedule requires target time at `0.784x`
+  current cost, a `21.6%` reduction.
+- An accounted `1.10x` result requires target time at `0.702x`, a `29.8%`
+  reduction.
+
+Interpretation:
+
+- The router ceiling is technically above parity but only by `0.58%`. Any
+  classification error, routing overhead, or changed proposal sequence would
+  consume it. Do not pursue a pre-sidecar selective router as the primary
+  speedup strategy.
+- Confidence cannot realize even that ceiling because confidence is available
+  only after sidecar computation. A future-knowing router that pays every
+  sidecar before choosing target verification reaches only `0.9217x`.
+- Removing all sidecar while continuing to run DSpark on every round reaches
+  only about `0.9056x`; sidecar optimization alone cannot produce broad parity.
+- Target verification remains the decisive cost center.
+
+Round-shape attribution:
+
+- Profitable rounds averaged:
+  - `4.86` committed tokens;
+  - `4.85` accepted drafts;
+  - `4.88` verified positions;
+  - `189.68 ms` target time;
+  - `17.23 ms` sidecar time;
+  - `211.68 ms` equivalent baseline time.
+- Unprofitable rounds averaged:
+  - `2.93` committed tokens;
+  - `2.70` accepted drafts;
+  - `3.57` target positions;
+  - `149.14 ms` target time;
+  - `19.30 ms` sidecar time;
+  - `126.86 ms` equivalent baseline time.
+- `171/185` profitable rounds were full five-token accepts.
+- Full K=5 accepts as a class are already close to parity at `0.9765x`.
+- Partial K=5 rounds are the main failure mode at `0.5401x`.
+- Rounds verifying fewer than five positions aggregate to `0.7020x`.
+
+Rejected staged-verifier direction:
+
+- Aggregate measured target cost by exact verifier width:
+  - K=1: `45.84 ms/eval`;
+  - K=2: `89.34 ms/eval`;
+  - K=3: `125.85 ms/eval`;
+  - K=4: `174.26 ms/eval`;
+  - K=5: `202.51 ms/eval`.
+- A local staged-verification model using those measured costs was negative:
+  - serial `1+1+1+1+1`: target time `1.024x` current;
+  - `2+3`: target time `1.052x` current;
+  - `3+2`: target time `1.069x` current.
+- The extra target invocation cost outweighs rejected-suffix savings because
+  full acceptance is common and width cost is already close to linear.
+- Do not implement staged exact verification without a materially cheaper
+  continuation mechanism than an ordinary second target eval.
+
+Remaining scheduler hypothesis:
+
+- A rough local cost sweep on the traced rounds suggests that thresholds around
+  `0.75-0.85` may outperform the current `0.455` cost policy.
+- This model is not an exact replay: higher thresholds alter later proposal
+  boundaries, and its absolute current-policy estimate did not reproduce the
+  measured ratio.
+- Treat the sweep only as justification for a bounded runtime ablation, not as
+  a speed prediction.
+- Even the optimistic local curve remains below parity. A scheduler win would
+  reduce the remaining verifier gap, not eliminate the need for a cheaper exact
+  target path.
+
+Decision boundary:
+
+- The project still has credible speedup potential, but not through additional
+  isolated 1% micro-optimizations or confidence routing.
+- First run one bounded cost-aware scheduler gate comparing the current
+  threshold with substantially more aggressive fixed thresholds.
+- If that gate does not approach parity, stop scheduler tuning and return to an
+  architectural Metal exact-verifier optimization with a target of at least
+  `22%` lower target time under the scheduled HumanEval workload.
