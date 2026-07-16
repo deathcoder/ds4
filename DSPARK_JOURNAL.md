@@ -36,6 +36,17 @@ left after the final emitted token is reported separately. The Metal
 correctness matrix passed and all five retained records reconciled. Do not tune
 a cost-aware scheduler until the four-task width report is collected.
 
+Phase 1.07 is complete. The four-task width report shows that sidecar cost is
+effectively fixed at about `18 ms` per proposal across selected widths, while
+exact target verification remains close to linear: `44.4 ms/position` at width
+one and `39.9 ms/position` at width five. Short selected prefixes are therefore
+correctly expensive, but changing the threshold cannot remove the sidecar work
+because the full draft block is already computed. Do not start a cost-aware
+scheduler implementation from this result. The next candidate is an
+env-gated port/comparison of the community PR #502 specialized Metal drafter,
+which another branch measured at about `7.6 ms/cycle`. Preserve our exact
+verifier and byte-identical output contract during that experiment.
+
 Phase 1.01 is complete. DSpark confidence-prefix scheduling now defaults to
 `0.455` when `DS4_DSPARK_CONFIDENCE_THRESHOLD` is absent. An explicit value
 still overrides the default, and explicit `0` preserves fixed K=5. The frozen
@@ -6807,3 +6818,112 @@ python3 speed-bench/run_dspark_humaneval_checkpoint_attribution.py \
 Expected duration is roughly two to four minutes on the current machine. The
 result decides whether the next phase should implement a cost-aware scheduler
 or first reduce a particular verifier-width or sidecar cost.
+
+Phase 1.07 user-run result:
+
+- Raw artifact:
+  `speed-bench/local-runs/humaneval-checkpoint-attribution-20260716-120149`.
+- All four instrumented outputs matched their prior uninstrumented artifacts
+  byte-for-byte.
+- Prefix checkpoints remained `29/29` successful with zero fallback and
+  avoided the same `72` replay rows as Phase 1.06.
+- Scheduler-selected width totals:
+  - `K=0`: 4 rounds, `1.000` progress/round, `17.392 ms` sidecar/round.
+  - `K=1`: 5 rounds, `1.000` progress/round, `17.172 ms` sidecar/round.
+  - `K=2`: 10 rounds, `1.600` progress/round, `18.330 ms` sidecar/round.
+  - `K=3`: 13 rounds, `2.154` progress/round, `21.920 ms` sidecar/round.
+  - `K=4`: 8 rounds, `2.875` progress/round, `17.779 ms` sidecar/round.
+  - `K=5`: 87 rounds, `3.667` progress/round, `17.932 ms` sidecar/round.
+- Only `2.9%` of measured sidecar time was outside multi-commit. This is
+  primarily one residual proposal block per task, not the main overhead.
+- Actual verifier-width cost:
+  - width 1: `44.399 ms/eval`, `44.399 ms/position`.
+  - width 2: `88.154 ms/eval`, `44.077 ms/position`.
+  - width 3: `122.574 ms/eval`, `40.858 ms/position`.
+  - width 4: `167.681 ms/eval`, `41.920 ms/position`.
+  - width 5: `199.392 ms/eval`, `39.878 ms/position`.
+
+Interpretation:
+
+- Exact verifier batching provides only about a `10%` per-position reduction
+  from width one to width five. It remains much closer to linear decode than to
+  the sublinear legacy fast verifier.
+- The sidecar is a nearly fixed per-round tax because all five draft positions
+  are computed before raw-confidence prefix selection. Selecting fewer rows
+  reduces target work but not draft work.
+- `K=0` and `K=1` rounds are necessarily poor, but forcing them wider would add
+  roughly linear target positions with weak expected progress. A new
+  cost-aware threshold is unlikely to be a structural win.
+- High-acceptance `humaneval_047` is already near the exact-target floor:
+  `41.922 ms target + 4.445 ms sidecar` per emitted token. Reducing the sidecar
+  to the community Metal drafter's reported range would bring it close to
+  parity, while low-acceptance tasks would still require cheaper verification.
+
+## Community Sync: 2026-07-16
+
+Sources reviewed:
+
+- `antirez/ds4` issue `#468`.
+- `antirez/ds4` PR `#502`, branch
+  `stephenlthorn/dspark-integration`.
+- `lobanov/ds4` branch `dspark-research`, fetched locally as
+  `lobanov/dspark-research` at `d0aae3d`.
+- Canonical community report:
+  `issue468/summaries/dspark_runtime_milestone_3_progress.md`.
+
+Community result:
+
+- Lobanov reports `+4.9%` over plain ds4 on a 176-entry corpus and `+4.8%` on
+  long-context prompts.
+- The stack combines:
+  - a committing batched verifier,
+  - target-anchor/bonus-token reuse,
+  - generalized prefix checkpoints,
+  - the PR #502 specialized Metal drafter,
+  - STS confidence scheduling.
+- Their specialized Metal drafter reduced draft time from about `45 ms` to
+  `7.6 ms/cycle`.
+- Their batched verifier is explicitly not byte-identical:
+  about `56.6%` committed-token divergence in one greedy benchmark, mean
+  temp>0 total variation about `0.0104`, and argmax flips about `0.64%`.
+  They retain sequential verification as the exact fallback and judge the
+  batched path score-neutral on their 92-question gate.
+
+Comparison with this branch:
+
+- Already present here:
+  - bonus/anchor reuse in the multi-commit architecture. The next target token
+    is folded into the existing proposal cycle rather than paid as a separate
+    standalone decode.
+  - generalized exact prefix checkpoints, with `29/29` eligible partial
+    commits and byte-identical output.
+  - a promoted confidence scheduler, empirically validated across code, math,
+    and chat.
+- Not directly portable under the current contract:
+  - the community committing batched verifier. Its throughput win accepts
+    numerical and transcript drift, while this branch currently requires every
+    tested exact DSpark output to match baseline byte-for-byte.
+- Potentially portable:
+  - the PR #502 specialized Metal drafter and persistent DSpark KV lifecycle.
+    It attacks the fixed sidecar tax identified in Phase 1.07 and can be tested
+    behind an environment gate while retaining our exact verifier.
+  - STS temperatures/cumulative survival as an offline scheduler comparison,
+    but community threshold recalibration was only about a `+1%` term after the
+    larger runtime changes. It is not the first priority.
+
+Recommended next phase:
+
+1. Isolate the PR #502 Metal drafter implementation and lifecycle requirements:
+   direct target-layer hidden capture, persistent three-stage draft KV,
+   verified-row refresh, compact output-head/Markov/confidence handling.
+2. Map it against this branch's existing GPU bridge/stage/head/chain path.
+3. Add it as a default-off candidate path rather than replacing the exact
+   runtime.
+4. Require draft/candidate diagnostics, the existing five-case byte-identical
+   correctness matrix, and exact-verifier output identity before any benchmark.
+5. If correctness passes, prepare a user-run sidecar ablation. The decisive
+   question is whether proposal cost moves materially from about `18 ms/cycle`
+   toward the community's `7.6 ms/cycle`.
+
+Do not port the divergent committing batched verifier without an explicit
+decision to relax the byte-identical output contract.
