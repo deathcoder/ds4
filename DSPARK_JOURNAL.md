@@ -8467,3 +8467,52 @@ Next bounded phase:
 - Use the width-5 distribution and scaling result to choose one architectural
   runtime candidate. Do not retry the previously rejected whole-suffix batch
   implementation without a materially different operation schedule.
+
+### Phase 1.19: Width-stratified layer-42 serial-tail profile
+
+Prepared the dedicated tail diagnostic:
+
+- Runner:
+  `speed-bench/run_dspark_threshold075_width_tail_profile.py`.
+- Model-free tests:
+  `tests/test_dspark_threshold075_width_tail_profile.py`.
+- Frozen task: `humaneval_079`.
+- Frozen layer: `42`.
+- Frozen threshold: `0.75`.
+- Required references:
+  - full threshold-`0.75` throughput confirmation;
+  - threshold-`0.75` cost audit;
+  - completed width-stratified exact-layer profile.
+- One synchronized profile process enables the existing exact-tail component
+  boundaries plus runtime stats.
+- Batch mapping uses event sequence:
+  - attention-pre and FFN control records define ordered `(start, width)`
+    batches;
+  - each tail component's one-row events are consumed in that same order;
+  - every consumed row must match `start..start+width-1`.
+- Sequence mapping is required because consecutive target evaluations may
+  overlap positions after partial acceptance, making a position-only lookup
+  ambiguous.
+- The report will separate:
+  - KV/cache update;
+  - compressor/indexer;
+  - attention;
+  - inverse RoPE;
+  - projection A;
+  - projection B plus HC.
+- Any output drift, width-count drift, batch-outcome drift, or incomplete tail
+  stage fails the diagnostic.
+
+Harness validation:
+
+- `python3 -m unittest discover -s tests -p 'test_dspark_*.py'`:
+  `85` tests passed.
+- `python3 -m py_compile` passed for the runner and its model-free test.
+- `git diff --check` passed.
+- A real-reference `--dry-run --allow-dirty` completed successfully against:
+  - throughput:
+    `humaneval-threshold075-throughput-32-20260716-155112`;
+  - cost:
+    `humaneval-threshold075-cost-20260716-161553`;
+  - width-layer:
+    `threshold075-width-layer-20260716-193143`.
