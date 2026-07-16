@@ -855,3 +855,33 @@ summary are written under ignored `speed-bench/local-runs/layer-profile-*`.
 An interrupted run can reuse matching reference and layer files with
 `--resume-dir`; the harness validates the retained command, prompt, context,
 token count, and component contract before skipping completed layers.
+
+The default-off exact attention row-view cache removes host-side object churn
+without changing target arithmetic or Metal command order. The ordinary exact
+tail creates temporary views over the same batch tensors for every proposal
+row of every target layer. With
+`DS4_DSPARK_EXACT_ATTN_ROW_VIEWS=1`, those fixed views are created once per
+exact verifier call and reused through all 43 layers.
+
+Run the byte-exact correctness matrix before timing:
+
+```sh
+DS4_TEST_DSPARK_MODE=runtime \
+DS4_TEST_DSPARK_EXACT_ATTN_ROW_VIEWS=1 \
+  ./tests/dspark_gpu_candidates_correctness.sh
+```
+
+Diagnostics require every multi-row verifier call to report a complete cache
+with all expected layer-row uses and no fallback. Then, when the machine is
+ready, run the paired uninstrumented ablation:
+
+```sh
+python3 speed-bench/run_dspark_comparison.py \
+  --exact-attention-row-views-ablation \
+  --confirm-idle
+```
+
+The reference is ordinary exact DSpark; only the candidate sets
+`DS4_DSPARK_EXACT_ATTN_ROW_VIEWS=1`. Runtime stats and diagnostics are disabled,
+order alternates by pair, and every output must match byte-for-byte. Codex does
+not run this timed command.

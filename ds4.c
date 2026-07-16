@@ -23867,6 +23867,91 @@ static bool metal_graph_exact_attention_qkv_rows_shadow(
     return ok;
 }
 
+typedef struct dspark_exact_attention_row_view_cache {
+    uint32_t        n_tokens;
+    ds4_gpu_tensor *attn_norm[16];
+    ds4_gpu_tensor *qr_norm[16];
+    ds4_gpu_tensor *q[16];
+    ds4_gpu_tensor *kv[16];
+    ds4_gpu_tensor *heads[16];
+    ds4_gpu_tensor *hc_split[16];
+    ds4_gpu_tensor *hc_pre[16];
+    ds4_gpu_tensor *hc_post[16];
+    ds4_gpu_tensor *hc_comb[16];
+} dspark_exact_attention_row_view_cache;
+
+static void dspark_exact_attention_row_view_cache_free(
+        dspark_exact_attention_row_view_cache *cache) {
+    if (!cache) return;
+    for (uint32_t row = 0; row < cache->n_tokens; row++) {
+        ds4_gpu_tensor_free(cache->hc_comb[row]);
+        ds4_gpu_tensor_free(cache->hc_post[row]);
+        ds4_gpu_tensor_free(cache->hc_pre[row]);
+        ds4_gpu_tensor_free(cache->hc_split[row]);
+        ds4_gpu_tensor_free(cache->heads[row]);
+        ds4_gpu_tensor_free(cache->kv[row]);
+        ds4_gpu_tensor_free(cache->q[row]);
+        ds4_gpu_tensor_free(cache->qr_norm[row]);
+        ds4_gpu_tensor_free(cache->attn_norm[row]);
+    }
+    memset(cache, 0, sizeof(*cache));
+}
+
+static bool dspark_exact_attention_row_view_cache_init(
+        dspark_exact_attention_row_view_cache *cache,
+        ds4_gpu_graph                         *g,
+        uint32_t                               n_tokens,
+        uint64_t                               q_rank,
+        uint64_t                               q_dim,
+        uint64_t                               mix_hc) {
+    if (!cache || !g || n_tokens == 0 || n_tokens > 16u) return false;
+    memset(cache, 0, sizeof(*cache));
+    cache->n_tokens = n_tokens;
+    for (uint32_t row = 0; row < n_tokens; row++) {
+        cache->attn_norm[row] = metal_graph_tensor_row_view(
+            g->batch_attn_norm, row, DS4_N_EMBD);
+        cache->qr_norm[row] = metal_graph_tensor_row_view(
+            g->batch_qr_norm, row, q_rank);
+        cache->q[row] = metal_graph_tensor_row_view(
+            g->batch_q, row, q_dim);
+        cache->kv[row] = metal_graph_tensor_row_view(
+            g->batch_kv, row, DS4_N_HEAD_DIM);
+        cache->heads[row] = metal_graph_tensor_row_view(
+            g->batch_heads, row, q_dim);
+        cache->hc_split[row] = metal_graph_tensor_row_view(
+            g->batch_hc_split, row, mix_hc);
+        cache->hc_pre[row] = cache->hc_split[row]
+            ? ds4_gpu_tensor_view(cache->hc_split[row],
+                                  0,
+                                  (uint64_t)DS4_N_HC * sizeof(float))
+            : NULL;
+        cache->hc_post[row] = cache->hc_split[row]
+            ? ds4_gpu_tensor_view(cache->hc_split[row],
+                                  (uint64_t)DS4_N_HC * sizeof(float),
+                                  (uint64_t)DS4_N_HC * sizeof(float))
+            : NULL;
+        cache->hc_comb[row] = cache->hc_split[row]
+            ? ds4_gpu_tensor_view(
+                  cache->hc_split[row],
+                  2u * (uint64_t)DS4_N_HC * sizeof(float),
+                  (uint64_t)DS4_N_HC * DS4_N_HC * sizeof(float))
+            : NULL;
+        if (!cache->attn_norm[row] || !cache->qr_norm[row] ||
+            !cache->q[row] || !cache->kv[row] || !cache->heads[row] ||
+            !cache->hc_split[row] || !cache->hc_pre[row] ||
+            !cache->hc_post[row] || !cache->hc_comb[row]) {
+            dspark_exact_attention_row_view_cache_free(cache);
+            return false;
+        }
+    }
+    return true;
+}
+
+static bool dspark_exact_attention_row_views_enabled(void) {
+    const char *v = getenv("DS4_DSPARK_EXACT_ATTN_ROW_VIEWS");
+    return v && v[0] && strcmp(v, "0") != 0;
+}
+
 static bool metal_graph_encode_exact_attention_prepared(
         ds4_gpu_graph          *g,
         const ds4_model        *model,
@@ -23879,39 +23964,55 @@ static bool metal_graph_encode_exact_attention_prepared(
         uint32_t                raw_row,
         uint32_t                n_raw,
         int                     token,
-        bool                    core_only) {
+        bool                    core_only,
+        const dspark_exact_attention_row_view_cache *row_views) {
     const uint64_t mix_hc =
         2u * DS4_N_HC + (uint64_t)DS4_N_HC * DS4_N_HC;
     const uint64_t q_rank = layer->attn_q_a->dim[1];
     const uint64_t q_dim = (uint64_t)DS4_N_HEAD * DS4_N_HEAD_DIM;
-    ds4_gpu_tensor *attn_norm = metal_graph_tensor_row_view(
-        g->batch_attn_norm, row, DS4_N_EMBD);
-    ds4_gpu_tensor *qr_norm = metal_graph_tensor_row_view(
-        g->batch_qr_norm, row, q_rank);
-    ds4_gpu_tensor *q = metal_graph_tensor_row_view(
-        g->batch_q, row, q_dim);
-    ds4_gpu_tensor *kv = metal_graph_tensor_row_view(
-        g->batch_kv, row, DS4_N_HEAD_DIM);
+    const bool cached = row_views && row < row_views->n_tokens;
+    ds4_gpu_tensor *attn_norm = cached
+        ? row_views->attn_norm[row]
+        : metal_graph_tensor_row_view(g->batch_attn_norm, row, DS4_N_EMBD);
+    ds4_gpu_tensor *qr_norm = cached
+        ? row_views->qr_norm[row]
+        : metal_graph_tensor_row_view(g->batch_qr_norm, row, q_rank);
+    ds4_gpu_tensor *q = cached
+        ? row_views->q[row]
+        : metal_graph_tensor_row_view(g->batch_q, row, q_dim);
+    ds4_gpu_tensor *kv = cached
+        ? row_views->kv[row]
+        : metal_graph_tensor_row_view(g->batch_kv, row, DS4_N_HEAD_DIM);
     ds4_gpu_tensor *heads = core_only
-        ? metal_graph_tensor_row_view(g->batch_heads, row, q_dim)
+        ? (cached
+            ? row_views->heads[row]
+            : metal_graph_tensor_row_view(g->batch_heads, row, q_dim))
         : NULL;
-    ds4_gpu_tensor *hc_split = metal_graph_tensor_row_view(
-        g->batch_hc_split, row, mix_hc);
-    ds4_gpu_tensor *hc_pre = hc_split
-        ? ds4_gpu_tensor_view(hc_split,
-                              0,
-                              (uint64_t)DS4_N_HC * sizeof(float))
-        : NULL;
-    ds4_gpu_tensor *hc_post = hc_split
-        ? ds4_gpu_tensor_view(hc_split,
-                              (uint64_t)DS4_N_HC * sizeof(float),
-                              (uint64_t)DS4_N_HC * sizeof(float))
-        : NULL;
-    ds4_gpu_tensor *hc_comb = hc_split
-        ? ds4_gpu_tensor_view(hc_split,
-                              2u * (uint64_t)DS4_N_HC * sizeof(float),
-                              (uint64_t)DS4_N_HC * DS4_N_HC * sizeof(float))
-        : NULL;
+    ds4_gpu_tensor *hc_split = cached
+        ? row_views->hc_split[row]
+        : metal_graph_tensor_row_view(g->batch_hc_split, row, mix_hc);
+    ds4_gpu_tensor *hc_pre = cached
+        ? row_views->hc_pre[row]
+        : (hc_split
+            ? ds4_gpu_tensor_view(hc_split,
+                                  0,
+                                  (uint64_t)DS4_N_HC * sizeof(float))
+            : NULL);
+    ds4_gpu_tensor *hc_post = cached
+        ? row_views->hc_post[row]
+        : (hc_split
+            ? ds4_gpu_tensor_view(hc_split,
+                                  (uint64_t)DS4_N_HC * sizeof(float),
+                                  (uint64_t)DS4_N_HC * sizeof(float))
+            : NULL);
+    ds4_gpu_tensor *hc_comb = cached
+        ? row_views->hc_comb[row]
+        : (hc_split
+            ? ds4_gpu_tensor_view(
+                  hc_split,
+                  2u * (uint64_t)DS4_N_HC * sizeof(float),
+                  (uint64_t)DS4_N_HC * DS4_N_HC * sizeof(float))
+            : NULL);
     bool ok = attn_norm && qr_norm && q && kv && hc_split && hc_pre &&
               hc_post && hc_comb && (!core_only || heads);
     ds4_gpu_tensor *saved_attn_norm = g->attn_norm;
@@ -23966,15 +24067,17 @@ static bool metal_graph_encode_exact_attention_prepared(
     g->q = saved_q;
     g->qr_norm = saved_qr_norm;
     g->attn_norm = saved_attn_norm;
-    ds4_gpu_tensor_free(hc_comb);
-    ds4_gpu_tensor_free(hc_post);
-    ds4_gpu_tensor_free(hc_pre);
-    ds4_gpu_tensor_free(hc_split);
-    ds4_gpu_tensor_free(kv);
-    ds4_gpu_tensor_free(heads);
-    ds4_gpu_tensor_free(q);
-    ds4_gpu_tensor_free(qr_norm);
-    ds4_gpu_tensor_free(attn_norm);
+    if (!cached) {
+        ds4_gpu_tensor_free(hc_comb);
+        ds4_gpu_tensor_free(hc_post);
+        ds4_gpu_tensor_free(hc_pre);
+        ds4_gpu_tensor_free(hc_split);
+        ds4_gpu_tensor_free(kv);
+        ds4_gpu_tensor_free(heads);
+        ds4_gpu_tensor_free(q);
+        ds4_gpu_tensor_free(qr_norm);
+        ds4_gpu_tensor_free(attn_norm);
+    }
     return ok;
 }
 
@@ -23985,29 +24088,40 @@ static bool metal_graph_encode_exact_attention_output_row(
         uint32_t                il,
         uint32_t                pos,
         uint32_t                row,
-        int                     token) {
+        int                     token,
+        const dspark_exact_attention_row_view_cache *row_views) {
     const uint64_t mix_hc =
         2u * DS4_N_HC + (uint64_t)DS4_N_HC * DS4_N_HC;
     const uint64_t q_dim = (uint64_t)DS4_N_HEAD * DS4_N_HEAD_DIM;
-    ds4_gpu_tensor *heads = metal_graph_tensor_row_view(
-        g->batch_heads, row, q_dim);
-    ds4_gpu_tensor *hc_split = metal_graph_tensor_row_view(
-        g->batch_hc_split, row, mix_hc);
-    ds4_gpu_tensor *hc_pre = hc_split
-        ? ds4_gpu_tensor_view(hc_split,
-                              0,
-                              (uint64_t)DS4_N_HC * sizeof(float))
-        : NULL;
-    ds4_gpu_tensor *hc_post = hc_split
-        ? ds4_gpu_tensor_view(hc_split,
-                              (uint64_t)DS4_N_HC * sizeof(float),
-                              (uint64_t)DS4_N_HC * sizeof(float))
-        : NULL;
-    ds4_gpu_tensor *hc_comb = hc_split
-        ? ds4_gpu_tensor_view(hc_split,
-                              2u * (uint64_t)DS4_N_HC * sizeof(float),
-                              (uint64_t)DS4_N_HC * DS4_N_HC * sizeof(float))
-        : NULL;
+    const bool cached = row_views && row < row_views->n_tokens;
+    ds4_gpu_tensor *heads = cached
+        ? row_views->heads[row]
+        : metal_graph_tensor_row_view(g->batch_heads, row, q_dim);
+    ds4_gpu_tensor *hc_split = cached
+        ? row_views->hc_split[row]
+        : metal_graph_tensor_row_view(g->batch_hc_split, row, mix_hc);
+    ds4_gpu_tensor *hc_pre = cached
+        ? row_views->hc_pre[row]
+        : (hc_split
+            ? ds4_gpu_tensor_view(hc_split,
+                                  0,
+                                  (uint64_t)DS4_N_HC * sizeof(float))
+            : NULL);
+    ds4_gpu_tensor *hc_post = cached
+        ? row_views->hc_post[row]
+        : (hc_split
+            ? ds4_gpu_tensor_view(hc_split,
+                                  (uint64_t)DS4_N_HC * sizeof(float),
+                                  (uint64_t)DS4_N_HC * sizeof(float))
+            : NULL);
+    ds4_gpu_tensor *hc_comb = cached
+        ? row_views->hc_comb[row]
+        : (hc_split
+            ? ds4_gpu_tensor_view(
+                  hc_split,
+                  2u * (uint64_t)DS4_N_HC * sizeof(float),
+                  (uint64_t)DS4_N_HC * DS4_N_HC * sizeof(float))
+            : NULL);
     bool ok = heads && hc_split && hc_pre && hc_post && hc_comb;
     ds4_gpu_tensor *saved_heads = g->heads;
     ds4_gpu_tensor *saved_hc_split = g->hc_split;
@@ -24032,11 +24146,13 @@ static bool metal_graph_encode_exact_attention_output_row(
     g->hc_pre = saved_hc_pre;
     g->hc_split = saved_hc_split;
     g->heads = saved_heads;
-    ds4_gpu_tensor_free(hc_comb);
-    ds4_gpu_tensor_free(hc_post);
-    ds4_gpu_tensor_free(hc_pre);
-    ds4_gpu_tensor_free(hc_split);
-    ds4_gpu_tensor_free(heads);
+    if (!cached) {
+        ds4_gpu_tensor_free(hc_comb);
+        ds4_gpu_tensor_free(hc_post);
+        ds4_gpu_tensor_free(hc_pre);
+        ds4_gpu_tensor_free(hc_split);
+        ds4_gpu_tensor_free(heads);
+    }
     return ok;
 }
 
@@ -24634,6 +24750,29 @@ static bool metal_graph_verify_decode_exact(
     memset(&attn_suffix_observation, 0, sizeof(attn_suffix_observation));
     dspark_exact_ffn_batch_observation ffn_observation;
     memset(&ffn_observation, 0, sizeof(ffn_observation));
+    dspark_exact_attention_row_view_cache row_view_cache;
+    memset(&row_view_cache, 0, sizeof(row_view_cache));
+    const bool row_view_cache_requested =
+        attn_runtime_enabled && dspark_exact_attention_row_views_enabled();
+    bool row_view_cache_active = false;
+    uint64_t row_view_cache_uses = 0;
+    if (row_view_cache_requested) {
+        bool uniform_q_rank = true;
+        for (uint32_t il = 1; il < DS4_N_LAYER; il++) {
+            if (weights->layer[il].attn_q_a->dim[1] != q_rank) {
+                uniform_q_rank = false;
+                break;
+            }
+        }
+        row_view_cache_active =
+            uniform_q_rank &&
+            dspark_exact_attention_row_view_cache_init(&row_view_cache,
+                                                        g,
+                                                        n_tokens,
+                                                        q_rank,
+                                                        q_dim,
+                                                        mix_hc);
+    }
     bool ok = true;
     for (uint32_t row = 0; row < n_tokens; row++) {
         cur[row] = metal_graph_tensor_row_view(g->batch_cur_hc, row, hc_dim);
@@ -24962,6 +25101,7 @@ static bool metal_graph_verify_decode_exact(
             g->cur_hc = cur[row];
             g->after_attn_hc = after_attn[row];
             if (attn_runtime_layer) {
+                if (row_view_cache_active) row_view_cache_uses++;
                 ok = metal_graph_encode_exact_attention_prepared(
                     g,
                     model,
@@ -24974,7 +25114,8 @@ static bool metal_graph_verify_decode_exact(
                     pos % g->raw_cap,
                     metal_graph_raw_span_for_batch(g, pos, 1),
                     tokens[row],
-                    attn_suffix_runtime_layer);
+                    attn_suffix_runtime_layer,
+                    row_view_cache_active ? &row_view_cache : NULL);
             } else {
                 ok = metal_graph_encode_decode_layer_attention(
                     g,
@@ -25104,7 +25245,8 @@ static bool metal_graph_verify_decode_exact(
                         il,
                         start + row,
                         row,
-                        tokens[row]);
+                        tokens[row],
+                        row_view_cache_active ? &row_view_cache : NULL);
                 }
             }
         }
@@ -25775,6 +25917,21 @@ static bool metal_graph_verify_decode_exact(
         free(head_observation.last_logits);
     }
 
+    if (row_view_cache_requested &&
+        dspark_exact_head_batch_diagnostics_enabled()) {
+        const uint64_t expected_uses = (uint64_t)DS4_N_LAYER * n_tokens;
+        const bool complete =
+            row_view_cache_active && row_view_cache_uses == expected_uses;
+        fprintf(stderr,
+                "ds4: DSpark exact attention row views proposed=%u views=%u "
+                "uses=%llu/%llu result=%s\n",
+                n_tokens,
+                row_view_cache_active ? 9u * n_tokens : 0u,
+                (unsigned long long)row_view_cache_uses,
+                (unsigned long long)expected_uses,
+                ok && complete ? "pass" : (ok ? "fallback" : "fail"));
+    }
+    dspark_exact_attention_row_view_cache_free(&row_view_cache);
     for (uint32_t row = 0; row < n_tokens; row++) {
         ds4_gpu_tensor_free(after_attn[row]);
         ds4_gpu_tensor_free(next[row]);

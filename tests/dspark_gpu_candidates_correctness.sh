@@ -15,6 +15,7 @@ attn_pre_runtime=${DS4_TEST_DSPARK_ATTN_PRE_RUNTIME:-0}
 attn_suffix_runtime=${DS4_TEST_DSPARK_ATTN_SUFFIX_RUNTIME:-0}
 runtime_stats=${DS4_TEST_DSPARK_RUNTIME_STATS:-0}
 metal_drafter=${DS4_TEST_DSPARK_METAL_DRAFTER:-0}
+exact_attn_row_views=${DS4_TEST_DSPARK_EXACT_ATTN_ROW_VIEWS:-0}
 acceptance_audit=${DS4_TEST_DSPARK_ACCEPTANCE_AUDIT:-0}
 acceptance_trace=${DS4_TEST_DSPARK_ACCEPTANCE_TRACE:-0}
 confidence_threshold=${DS4_TEST_DSPARK_CONFIDENCE_THRESHOLD:-}
@@ -42,6 +43,7 @@ unset DS4_DSPARK_ACCEPTANCE_AUDIT
 unset DS4_DSPARK_ACCEPTANCE_TRACE
 unset DS4_DSPARK_CONFIDENCE_THRESHOLD
 unset DS4_DSPARK_METAL_DRAFTER
+unset DS4_DSPARK_EXACT_ATTN_ROW_VIEWS
 unset DS4_METAL_COMPRESSOR_PAIR_NR4
 unset DS4_METAL_INDEXED_ATTN_RB16_DIRECT
 unset DS4_METAL_INDEXED_ATTN_RB16_LEGACY
@@ -101,6 +103,16 @@ if [[ $metal_drafter != 0 && $metal_drafter != 1 ]]; then
 fi
 if [[ $metal_drafter == 1 && $mode != runtime ]]; then
     printf 'Metal drafter requires DS4_TEST_DSPARK_MODE=runtime\n' >&2
+    exit 2
+fi
+if [[ $exact_attn_row_views != 0 && $exact_attn_row_views != 1 ]]; then
+    printf 'DS4_TEST_DSPARK_EXACT_ATTN_ROW_VIEWS must be 0 or 1\n' >&2
+    exit 2
+fi
+if [[ $exact_attn_row_views == 1 &&
+      ($mode != runtime || $fast_verify_runtime == 1 ||
+       $serial_attn_pre_runtime == 1) ]]; then
+    printf 'exact attention row views require exact attention-pre runtime\n' >&2
     exit 2
 fi
 if [[ $acceptance_audit == 1 && $mode != runtime ]]; then
@@ -214,6 +226,9 @@ case "$mode" in
         fi
         if [[ $metal_drafter == 1 ]]; then
             gpu_env+=(DS4_DSPARK_METAL_DRAFTER=1)
+        fi
+        if [[ $exact_attn_row_views == 1 ]]; then
+            gpu_env+=(DS4_DSPARK_EXACT_ATTN_ROW_VIEWS=1)
         fi
         if [[ $acceptance_audit == 1 ]]; then
             gpu_env+=(DS4_DSPARK_ACCEPTANCE_AUDIT=1)
@@ -379,6 +394,23 @@ assert_gpu_selected() {
         elif [[ $exact_attn_pre_allowed != 1 ]] &&
              grep -q 'DSpark exact attention pre batch runtime ' "$log"; then
             printf 'control mode unexpectedly ran exact attention-pre batching\n' >&2
+            exit 1
+        fi
+        if [[ $exact_attn_row_views == 1 &&
+              $verifier_batches_expected == 1 ]]; then
+            local row_view_records
+            row_view_records=$(grep \
+                'DSpark exact attention row views proposed=' "$log")
+            if [[ -z $row_view_records ]] ||
+               printf '%s\n' "$row_view_records" |
+                   grep -Evq \
+                       ' proposed=[2-9][0-9]* views=[1-9][0-9]* uses=[1-9][0-9]*/[1-9][0-9]* result=pass$'; then
+                printf 'exact attention row-view cache drifted or fell back\n' >&2
+                printf '%s\n' "$row_view_records" >&2
+                exit 1
+            fi
+        elif grep -q 'DSpark exact attention row views proposed=' "$log"; then
+            printf 'control mode unexpectedly cached exact attention row views\n' >&2
             exit 1
         fi
         if [[ $exact_attn_suffix_expected == 1 ]]; then

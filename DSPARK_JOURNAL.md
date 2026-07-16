@@ -7369,3 +7369,104 @@ Next measured target:
 - Gate that experiment first with model-free lifetime tests and the five-case
   byte-identity matrix. Prepare a user-run paired throughput benchmark only if
   stats or host timing show that view reuse removes material production work.
+
+## Phase 1.12: Exact Attention Row-View Cache
+
+Date: 2026-07-16.
+
+Goal:
+
+- Remove repeated host-side tensor-view allocation from the successful serial
+  exact-attention tail without changing target arithmetic, cache mutation,
+  command order, or synchronization.
+- Keep the candidate default-off until a user-run paired throughput gate.
+
+Implementation:
+
+- Added `DS4_DSPARK_EXACT_ATTN_ROW_VIEWS=1`.
+- For each multi-row exact verifier call, the candidate creates fixed row views
+  over:
+  - batched attention norm;
+  - Q LoRA norm;
+  - Q and KV;
+  - attention heads;
+  - HC split, pre, post, and combine.
+- The views are retained through all target layers and freed through one
+  cleanup path after the verifier finishes.
+- `metal_graph_encode_exact_attention_prepared()` and the existing
+  attention-output fallback borrow cached views when available. The legacy
+  per-layer allocation path remains unchanged when the candidate is disabled
+  or cache construction fails.
+- Cache construction verifies that Q LoRA rank is uniform across target
+  layers before reusing a fixed row stride.
+- Diagnostics report cached view count and completed layer-row uses. A normal
+  successful V4 Flash verifier call must record exactly
+  `43 * proposal_width` uses and `result=pass`.
+
+Work removed:
+
+- The promoted exact tail normally creates eight temporary view objects per
+  proposal row per target layer.
+- The candidate creates nine retained views per proposal row once per verifier
+  call. The additional heads view keeps the cache compatible with the existing
+  default-off attention-suffix path.
+- At proposal width five this changes `8 * 5 * 43 = 1720` temporary view
+  allocations into `9 * 5 = 45`, removing 1675 Objective-C allocations,
+  retain/releases, and tensor-tracker mutex updates per target evaluation.
+
+Correctness and validation:
+
+```sh
+make -j4
+make ds4_cpu.o
+make ds4_test
+./ds4_test --dspark-validation --dspark-shape-binding
+python3 -m unittest discover -s tests -p 'test_dspark*.py'
+python3 -m py_compile \
+  speed-bench/run_dspark_comparison.py \
+  tests/test_dspark_exact_attention_row_views.py
+bash -n tests/dspark_gpu_candidates_correctness.sh
+DS4_TEST_DSPARK_MODE=runtime \
+DS4_TEST_DSPARK_EXACT_ATTN_ROW_VIEWS=1 \
+DS4_TEST_KEEP_LOGS=1 \
+  tests/dspark_gpu_candidates_correctness.sh
+python3 speed-bench/run_dspark_comparison.py \
+  --exact-attention-row-views-ablation \
+  --dry-run \
+  --allow-dirty
+git diff --check
+```
+
+Results:
+
+- Metal and CPU builds passed. The CPU object retained only the existing
+  unused-code warnings.
+- All 44 DSpark model-free tests passed.
+- DSpark validation and shape binding passed.
+- The runtime correctness matrix passed reasoning, Italian, medium context,
+  rolling window, and resumed two-turn chat byte-for-byte.
+- The same five-case matrix also passed with the cache disabled, confirming
+  that the legacy exact-runtime control remains unchanged and emits no cache
+  diagnostics.
+- Retained candidate diagnostics included:
+  - width 2: `18` views and `86/86` uses;
+  - width 3: `27` views and `129/129` uses;
+  - width 4: `36` views and `172/172` uses.
+- Every cache record reported `result=pass`; no cache fallback occurred.
+- The paired runner dry-run emits ordinary exact DSpark as the reference and
+  only adds `DS4_DSPARK_EXACT_ATTN_ROW_VIEWS=1` to the candidate. Runtime
+  diagnostics and stats are disabled in both measured modes.
+- Codex ran no timed throughput benchmark.
+
+User-run throughput gate:
+
+```sh
+python3 speed-bench/run_dspark_comparison.py \
+  --exact-attention-row-views-ablation \
+  --confirm-idle
+```
+
+Use the paired ratio as the promotion decision. This is a host-overhead
+optimization, so a small or neutral result is plausible even though it removes
+real production allocation work. Do not broaden to HumanEval unless the local
+three-pair gate is consistently positive.
