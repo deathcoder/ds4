@@ -16,6 +16,7 @@ attn_suffix_runtime=${DS4_TEST_DSPARK_ATTN_SUFFIX_RUNTIME:-0}
 runtime_stats=${DS4_TEST_DSPARK_RUNTIME_STATS:-0}
 metal_drafter=${DS4_TEST_DSPARK_METAL_DRAFTER:-0}
 exact_attn_row_views=${DS4_TEST_DSPARK_EXACT_ATTN_ROW_VIEWS:-0}
+exact_attn_out_nr4=${DS4_TEST_DSPARK_EXACT_ATTN_OUT_NR4:-0}
 acceptance_audit=${DS4_TEST_DSPARK_ACCEPTANCE_AUDIT:-0}
 acceptance_trace=${DS4_TEST_DSPARK_ACCEPTANCE_TRACE:-0}
 confidence_threshold=${DS4_TEST_DSPARK_CONFIDENCE_THRESHOLD:-}
@@ -44,6 +45,8 @@ unset DS4_DSPARK_ACCEPTANCE_TRACE
 unset DS4_DSPARK_CONFIDENCE_THRESHOLD
 unset DS4_DSPARK_METAL_DRAFTER
 unset DS4_DSPARK_EXACT_ATTN_ROW_VIEWS
+unset DS4_DSPARK_EXACT_ATTN_OUT_NR4
+unset DS4_DSPARK_EXACT_ATTN_OUT_NR4_TRACE
 unset DS4_METAL_COMPRESSOR_PAIR_NR4
 unset DS4_METAL_INDEXED_ATTN_RB16_DIRECT
 unset DS4_METAL_INDEXED_ATTN_RB16_LEGACY
@@ -113,6 +116,16 @@ if [[ $exact_attn_row_views == 1 &&
       ($mode != runtime || $fast_verify_runtime == 1 ||
        $serial_attn_pre_runtime == 1) ]]; then
     printf 'exact attention row views require exact attention-pre runtime\n' >&2
+    exit 2
+fi
+if [[ $exact_attn_out_nr4 != 0 && $exact_attn_out_nr4 != 1 ]]; then
+    printf 'DS4_TEST_DSPARK_EXACT_ATTN_OUT_NR4 must be 0 or 1\n' >&2
+    exit 2
+fi
+if [[ $exact_attn_out_nr4 == 1 &&
+      ($mode != runtime || $fast_verify_runtime == 1 ||
+       $serial_attn_pre_runtime == 1) ]]; then
+    printf 'exact attention-output NR4 requires exact attention-pre runtime\n' >&2
     exit 2
 fi
 if [[ $acceptance_audit == 1 && $mode != runtime ]]; then
@@ -229,6 +242,12 @@ case "$mode" in
         fi
         if [[ $exact_attn_row_views == 1 ]]; then
             gpu_env+=(DS4_DSPARK_EXACT_ATTN_ROW_VIEWS=1)
+        fi
+        if [[ $exact_attn_out_nr4 == 1 ]]; then
+            gpu_env+=(
+                DS4_DSPARK_EXACT_ATTN_OUT_NR4=1
+                DS4_DSPARK_EXACT_ATTN_OUT_NR4_TRACE=1
+            )
         fi
         if [[ $acceptance_audit == 1 ]]; then
             gpu_env+=(DS4_DSPARK_ACCEPTANCE_AUDIT=1)
@@ -827,6 +846,13 @@ compare_prompt_file italian 6 "$root/tests/test-vectors/prompts/short_italian_fa
 compare_prompt_file medium_context 6 "$root/tests/dspark_gpu_candidates_medium_prompt.txt"
 compare_prompt_file rolling_window 12 "$root/tests/dspark_rolling_window_prompt.txt"
 compare_resumed_chat
+if [[ $exact_attn_out_nr4 == 1 ]]; then
+    if ! grep -q 'Metal exact attention output NR4 projection=A' "$tmpdir"/*.log ||
+       ! grep -q 'Metal exact attention output NR4 projection=B+HC' "$tmpdir"/*.log; then
+        printf 'exact attention-output NR4 did not engage both projections\n' >&2
+        exit 1
+    fi
+fi
 if [[ $confidence_expect_zero == 1 ]] &&
    ! grep -q 'DSpark confidence scheduler .* selected=0$' "$tmpdir"/*.log; then
     printf 'confidence scheduler did not exercise the zero-draft fallback\n' >&2

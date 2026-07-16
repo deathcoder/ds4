@@ -7498,3 +7498,99 @@ Conclusion:
 - This result rules out host-side tensor-view churn as a meaningful remaining
   bottleneck. The next optimization should target measured GPU verifier work,
   not another allocation or command-boundary micro-optimization.
+
+## Phase 1.13: Exact Attention-Output NR4 Candidate
+
+Date: 2026-07-16.
+
+Goal:
+
+- Reduce measured GPU work in the retained serial exact-attention output tail.
+- Preserve byte-exact target verification by changing activation reuse only,
+  without changing any per-output Q8 arithmetic.
+
+Source audit:
+
+- DeepSeek V4 Flash uses:
+  - embedding width `4096`;
+  - eight attention output groups;
+  - output LoRA rank `1024`;
+  - projection A group width `4096`;
+  - projection B input width `8192`.
+- The serial tail performs:
+  - eight independent `4096 x 1024` Q8 projection-A matvecs;
+  - one `8192 x 4096` Q8 projection-B matvec fused with four-stream HC
+    expansion.
+- Both existing Metal kernels use `NR0=2`: one threadgroup computes two
+  adjacent output rows and reuses each activation load across those rows.
+- The synchronized tail profile attributed roughly `0.35-0.36 ms/row` to each
+  projection under diagnostic fences, so this is measured GPU work rather
+  than inferred host overhead.
+
+Implementation:
+
+- Added default-off `DS4_DSPARK_EXACT_ATTN_OUT_NR4=1`.
+- Added NR4 variants for:
+  - `kernel_dsv4_attn_out_low_q8_0_f32`;
+  - `kernel_dsv4_q8_hc_expand4_q8_0`.
+- Each NR4 kernel computes four adjacent output rows per threadgroup.
+- The candidate preserves, independently for every output row:
+  - Q8 block and lane assignment;
+  - block traversal order;
+  - scalar accumulation order;
+  - SIMD and threadgroup reduction order;
+  - output and HC expansion arithmetic.
+- Projection dimensions must be divisible by four. Unsupported shapes keep
+  the ordinary NR2 path.
+- `DS4_DSPARK_EXACT_ATTN_OUT_NR4_TRACE=1` is correctness-only and reports once
+  when projection A and projection B plus HC actually select NR4. The paired
+  timing harness never enables this trace.
+
+Validation:
+
+```sh
+make -j4
+python3 -m py_compile \
+  speed-bench/run_dspark_comparison.py \
+  tests/test_dspark_exact_attention_output_nr4.py
+python3 -m unittest tests.test_dspark_exact_attention_output_nr4
+bash -n tests/dspark_gpu_candidates_correctness.sh
+DS4_TEST_DSPARK_MODE=runtime \
+DS4_TEST_DSPARK_EXACT_ATTN_OUT_NR4=1 \
+  tests/dspark_gpu_candidates_correctness.sh
+python3 speed-bench/run_dspark_comparison.py \
+  --exact-attention-output-nr4-ablation \
+  --dry-run \
+  --allow-dirty
+git diff --check
+```
+
+Results so far:
+
+- CPU and Metal builds passed. The CPU object retained only the existing
+  unused-code warnings.
+- All 49 DSpark model-free tests passed.
+- DSpark validation and shape binding passed.
+- The user-run harness dry-run emits ordinary exact DSpark as reference and
+  adds only `DS4_DSPARK_EXACT_ATTN_OUT_NR4=1` to the candidate.
+- Runtime stats, diagnostics, and the NR4 trace are disabled in both timed
+  modes.
+- The five-case runtime correctness matrix passed reasoning, Italian, medium
+  context, rolling window, and resumed two-turn chat byte-for-byte.
+- Correctness traces confirmed that both NR4 projections executed.
+- The same five-case matrix passed with NR4 disabled, confirming that ordinary
+  exact runtime remains unchanged.
+- Codex ran no timed throughput benchmark.
+
+User-run throughput gate:
+
+```sh
+python3 speed-bench/run_dspark_comparison.py \
+  --exact-attention-output-nr4-ablation \
+  --confirm-idle
+```
+
+Use the paired ratio as the first decision. If the combined candidate is
+clearly positive, confirm it before promotion. If it is neutral or negative,
+split projection A and projection B plus HC into separate ablations before
+rejecting the underlying NR4 specialization.

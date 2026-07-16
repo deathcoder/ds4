@@ -1850,6 +1850,26 @@ static int ds4_gpu_use_compressor_pair_nr4(void) {
     return enabled;
 }
 
+static int ds4_gpu_use_exact_attention_output_nr4(void) {
+    static int initialized;
+    static int enabled;
+    if (!initialized) {
+        enabled = getenv("DS4_DSPARK_EXACT_ATTN_OUT_NR4") != NULL;
+        initialized = 1;
+    }
+    return enabled;
+}
+
+static int ds4_gpu_trace_exact_attention_output_nr4(void) {
+    static int initialized;
+    static int enabled;
+    if (!initialized) {
+        enabled = getenv("DS4_DSPARK_EXACT_ATTN_OUT_NR4_TRACE") != NULL;
+        initialized = 1;
+    }
+    return enabled;
+}
+
 static int ds4_gpu_use_indexed_attention_rb16_legacy(void) {
     static int initialized;
     static int enabled;
@@ -17215,6 +17235,9 @@ int ds4_gpu_attention_output_low_q8_tensor(
         }
 
         if (ok) {
+            const int nr0 =
+                ds4_gpu_use_exact_attention_output_nr4() &&
+                (rank % 4u) == 0 ? 4 : 2;
             ds4_gpu_mul_mv_id_args args = {
                 .nei0 = (int32_t)n_groups,
                 .nei1 = 1,
@@ -17235,10 +17258,14 @@ int ds4_gpu_attention_output_low_q8_tensor(
                 .ne0 = (int32_t)rank,
                 .ne1 = (int32_t)n_groups,
                 .nb1 = (uint64_t)rank * sizeof(float),
-                .nr0 = 2,
+                .nr0 = (int16_t)nr0,
             };
             id<MTLComputePipelineState> pipeline =
-                ds4_gpu_get_mul_mv_pipeline("kernel_dsv4_attn_out_low_q8_0_f32", 4);
+                ds4_gpu_get_mul_mv_pipeline(
+                    nr0 == 4
+                        ? "kernel_dsv4_attn_out_low_q8_0_f32_nr4"
+                        : "kernel_dsv4_attn_out_low_q8_0_f32",
+                    4);
             ok = ds4_gpu_encode_attn_out_low_q8_direct(cb,
                                                          pipeline,
                                                          &args,
@@ -17248,8 +17275,18 @@ int ds4_gpu_attention_output_low_q8_tensor(
                                                          ds4_gpu_tensor_offset(heads),
                                                          ds4_gpu_tensor_buffer(low),
                                                          ds4_gpu_tensor_offset(low),
-                                                         32u * 2u * sizeof(float),
+                                                         32u * (NSUInteger)nr0 *
+                                                             sizeof(float),
                                                          4) != 0;
+            if (ok && nr0 == 4 &&
+                ds4_gpu_trace_exact_attention_output_nr4()) {
+                static int traced;
+                if (!traced) {
+                    fprintf(stderr,
+                            "ds4: Metal exact attention output NR4 projection=A\n");
+                    traced = 1;
+                }
+            }
         }
 
         if (!had_batch) {
@@ -27884,8 +27921,14 @@ static int ds4_gpu_matmul_q8_0_hc_expand_rows_tensor(
                                                         &inner_offset);
         if (!wbuf) return 0;
 
-        ds4_gpu_q8_0_matvec_args mv_args = ds4_gpu_make_q8_0_mv_args(in_dim, out_dim);
+        ds4_gpu_q8_0_matvec_args mv_args =
+            ds4_gpu_make_q8_0_mv_args(in_dim, out_dim);
         ds4_gpu_mv_dispatch mv_dispatch = ds4_gpu_make_q8_0_mv_dispatch();
+        if (ds4_gpu_use_exact_attention_output_nr4() &&
+            (out_dim % 4u) == 0) {
+            mv_dispatch.nr0 = 4;
+            mv_dispatch.smem = 32u * 4u * sizeof(float);
+        }
         mv_args.nr0 = mv_dispatch.nr0;
 
         ds4_gpu_hc_expand_args hc_args = {
@@ -27911,8 +27954,11 @@ static int ds4_gpu_matmul_q8_0_hc_expand_rows_tensor(
         };
 
         id<MTLComputePipelineState> pipeline =
-            ds4_gpu_get_mul_mv_pipeline("kernel_dsv4_q8_hc_expand4_q8_0",
-                                          mv_dispatch.nsg);
+            ds4_gpu_get_mul_mv_pipeline(
+                mv_dispatch.nr0 == 4
+                    ? "kernel_dsv4_q8_hc_expand4_q8_0_nr4"
+                    : "kernel_dsv4_q8_hc_expand4_q8_0",
+                mv_dispatch.nsg);
         if (!pipeline) return 0;
 
         int owned = 0;
@@ -27939,6 +27985,15 @@ static int ds4_gpu_matmul_q8_0_hc_expand_rows_tensor(
         ds4_gpu_end_compute_encoder(cb, enc);
 
         if (!ds4_gpu_finish_command_buffer(cb, owned, "Q8 HC expand fused")) return 0;
+        if (mv_dispatch.nr0 == 4 &&
+            ds4_gpu_trace_exact_attention_output_nr4()) {
+            static int traced;
+            if (!traced) {
+                fprintf(stderr,
+                        "ds4: Metal exact attention output NR4 projection=B+HC\n");
+                traced = 1;
+            }
+        }
     }
 
     return 1;
