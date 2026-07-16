@@ -71,6 +71,9 @@ RUNTIME_STATS_FLOAT_FIELDS = {
     "generation_stage2_ms",
     "generation_head_ms",
     "generation_chain_ms",
+    "metal_drafter_ms",
+    "prefill_metal_drafter_ms",
+    "generation_metal_drafter_ms",
 }
 RUNTIME_STATS_FIELDS = tuple(
     f"stats_{name}"
@@ -821,6 +824,14 @@ def summarize_metal_drafter_stats(rows):
         item["stages_ms_per_emitted"] = sum(
             item[f"stage{stage}_ms_per_emitted"] for stage in range(3)
         )
+        item["metal_drafter_ms_per_emitted"] = (
+            median("stats_generation_metal_drafter_ms") / emitted
+        )
+        item["proposal_core_ms_per_emitted"] = (
+            item["metal_drafter_ms_per_emitted"]
+            if item["metal_drafter_ms_per_emitted"] > 0
+            else item["stages_ms_per_emitted"] + item["head_ms_per_emitted"]
+        )
         item["sidecar_ms_per_emitted"] = (
             median("stats_generation_sidecar_ms") / emitted
         )
@@ -853,9 +864,9 @@ def summarize_metal_drafter_stats(rows):
             candidate["bridge_ms_per_emitted"] -
             default["bridge_ms_per_emitted"]
         ),
-        "stages_saved_ms_per_emitted": (
-            default["stages_ms_per_emitted"] -
-            candidate["stages_ms_per_emitted"]
+        "proposal_core_saved_ms_per_emitted": (
+            default["proposal_core_ms_per_emitted"] -
+            candidate["proposal_core_ms_per_emitted"]
         ),
     }
 
@@ -869,25 +880,23 @@ def format_report(summary):
             "Instrumented stats-only diagnostic; throughput values are "
             "intentionally omitted.\n"
             "Every output matched the paired exact reference byte-for-byte.\n\n"
-            "| mode | bridge | stages | head | chain | sidecar |\n"
-            "|:---|---:|---:|---:|---:|---:|\n"
+            "| mode | bridge | proposal core | chain | sidecar |\n"
+            "|:---|---:|---:|---:|---:|\n"
             f"| default exact | {default['bridge_ms_per_emitted']:.3f} | "
-            f"{default['stages_ms_per_emitted']:.3f} | "
-            f"{default['head_ms_per_emitted']:.3f} | "
+            f"{default['proposal_core_ms_per_emitted']:.3f} | "
             f"{default['chain_ms_per_emitted']:.3f} | "
             f"{default['sidecar_ms_per_emitted']:.3f} |\n"
             f"| persistent-KV Metal drafter | "
             f"{candidate['bridge_ms_per_emitted']:.3f} | "
-            f"{candidate['stages_ms_per_emitted']:.3f} | "
-            f"{candidate['head_ms_per_emitted']:.3f} | "
+            f"{candidate['proposal_core_ms_per_emitted']:.3f} | "
             f"{candidate['chain_ms_per_emitted']:.3f} | "
             f"{candidate['sidecar_ms_per_emitted']:.3f} |\n\n"
             f"- Sidecar ratio, Metal drafter / default: "
             f"{summary['sidecar_ratio']:.4f}x\n"
             f"- Sidecar saved: "
             f"{summary['sidecar_saved_ms_per_emitted']:.3f} ms/emitted\n"
-            f"- Stage time saved: "
-            f"{summary['stages_saved_ms_per_emitted']:.3f} ms/emitted\n"
+            f"- Proposal-core time saved: "
+            f"{summary['proposal_core_saved_ms_per_emitted']:.3f} ms/emitted\n"
             f"- Bridge/refresh delta: "
             f"{summary['bridge_delta_ms_per_emitted']:+.3f} ms/emitted\n"
             f"- Proposal rounds, default/Metal: "

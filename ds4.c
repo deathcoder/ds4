@@ -30257,6 +30257,7 @@ struct dspark_session_state {
     uint32_t gpu_metal_context_pos0;
     bool gpu_metal_context_valid;
     bool gpu_metal_drafter_active;
+    bool gpu_metal_command_batch_active;
     uint64_t gpu_metal_drafter_attempts;
     uint64_t gpu_metal_drafter_successes;
     uint64_t gpu_metal_drafter_fallbacks;
@@ -30341,6 +30342,9 @@ struct dspark_session_state {
     double runtime_generation_stage_seconds[DS4_DSPARK_MTP_LAYERS];
     double runtime_generation_head_seconds;
     double runtime_generation_chain_seconds;
+    double runtime_metal_drafter_seconds;
+    double runtime_prefill_metal_drafter_seconds;
+    double runtime_generation_metal_drafter_seconds;
     double runtime_scheduler_width_sidecar_seconds[17];
     double runtime_verify_width_target_seconds[17];
     double runtime_sidecar_round_seconds;
@@ -30435,6 +30439,7 @@ static void dspark_session_state_reset(dspark_session_state *d) {
     memset(d->gpu_stage_output_valid, 0, sizeof(d->gpu_stage_output_valid));
     d->gpu_head_output_valid = false;
     d->gpu_metal_drafter_active = false;
+    d->gpu_metal_command_batch_active = false;
     dspark_session_draft_reset(d);
 }
 
@@ -30449,6 +30454,7 @@ static void dspark_session_target_context_reset(dspark_session_state *d) {
     d->gpu_metal_context_pos0 = 0;
     d->gpu_metal_context_valid = false;
     d->gpu_metal_drafter_active = false;
+    d->gpu_metal_command_batch_active = false;
     d->window_pos0 = 0;
     dspark_session_draft_reset(d);
 }
@@ -30501,13 +30507,16 @@ static void dspark_session_state_free(dspark_session_state *d) {
             (double)d->runtime_emitted_tokens / (double)d->multi_commit_total : 0.0;
         double sidecar_seconds = d->runtime_bridge_seconds +
                                  d->runtime_head_seconds +
-                                 d->runtime_chain_seconds;
+                                 d->runtime_chain_seconds +
+                                 d->runtime_metal_drafter_seconds;
         double prefill_sidecar_seconds = d->runtime_prefill_bridge_seconds +
                                          d->runtime_prefill_head_seconds +
-                                         d->runtime_prefill_chain_seconds;
+                                         d->runtime_prefill_chain_seconds +
+                                         d->runtime_prefill_metal_drafter_seconds;
         double generation_sidecar_seconds = d->runtime_generation_bridge_seconds +
                                             d->runtime_generation_head_seconds +
-                                            d->runtime_generation_chain_seconds;
+                                            d->runtime_generation_chain_seconds +
+                                            d->runtime_generation_metal_drafter_seconds;
         for (uint32_t stage = 0; stage < DS4_DSPARK_MTP_LAYERS; stage++) {
             sidecar_seconds += d->runtime_stage_seconds[stage];
             prefill_sidecar_seconds += d->runtime_prefill_stage_seconds[stage];
@@ -30547,6 +30556,8 @@ static void dspark_session_state_free(dspark_session_state *d) {
                 "generation_bridge_ms=%.3f generation_stage0_ms=%.3f "
                 "generation_stage1_ms=%.3f generation_stage2_ms=%.3f "
                 "generation_head_ms=%.3f generation_chain_ms=%.3f "
+                "metal_drafter_ms=%.3f prefill_metal_drafter_ms=%.3f "
+                "generation_metal_drafter_ms=%.3f "
                 "target_eval_ms=%.3f exact_layer_ms=%.3f "
                 "exact_head_batch_ms=%.3f exact_head_serial_ms=%.3f",
                 (unsigned long long)d->gpu_candidate_source_attempts,
@@ -30601,6 +30612,9 @@ static void dspark_session_state_free(dspark_session_state *d) {
                 d->runtime_generation_stage_seconds[2] * 1000.0,
                 d->runtime_generation_head_seconds * 1000.0,
                 d->runtime_generation_chain_seconds * 1000.0,
+                d->runtime_metal_drafter_seconds * 1000.0,
+                d->runtime_prefill_metal_drafter_seconds * 1000.0,
+                d->runtime_generation_metal_drafter_seconds * 1000.0,
                 d->runtime_target_eval_seconds * 1000.0,
                 d->runtime_exact_layer_seconds * 1000.0,
                 d->runtime_exact_head_batch_seconds * 1000.0,
@@ -31616,6 +31630,8 @@ static bool dspark_session_gpu_stage_run(
     ds4_gpu_graph *g = &s->graph;
     dspark_session_state *d = s->dspark;
     const bool metal_drafter = runtime && d->gpu_metal_drafter_active;
+    const bool external_commands =
+        metal_drafter && d->gpu_metal_command_batch_active;
     const bool stats = runtime && dspark_session_runtime_stats_enabled();
     const double stats_start = stats ? now_sec() : 0.0;
     const ds4_layer_weights *layer = &e->dspark_weights.stage[stage];
@@ -31682,9 +31698,13 @@ static bool dspark_session_gpu_stage_run(
                                (!tokens_ok ? "token upload" : "setup"));
     bool commands_started = false;
     if (ok) {
-        failed_step = "command begin";
-        commands_started = ds4_gpu_begin_commands() != 0;
-        ok = commands_started;
+        if (external_commands) {
+            commands_started = true;
+        } else {
+            failed_step = "command begin";
+            commands_started = ds4_gpu_begin_commands() != 0;
+            ok = commands_started;
+        }
     }
     if (ok && stage > 0) {
         failed_step = "input copy";
@@ -31996,7 +32016,8 @@ static bool dspark_session_gpu_stage_run(
                                   hc_values * sizeof(float)) != 0;
     }
     if (ok) failed_step = "command end";
-    if (commands_started && ds4_gpu_end_commands() == 0) ok = false;
+    if (commands_started && !external_commands &&
+        ds4_gpu_end_commands() == 0) ok = false;
     ds4_gpu_tensor_free(after_attn_view);
     ds4_gpu_tensor_free(attn_cur_view);
     ds4_gpu_tensor_free(hc_split_view);
@@ -32011,7 +32032,7 @@ static bool dspark_session_gpu_stage_run(
     d->gpu_stage_output_valid[stage] = true;
     d->gpu_stage_checks[stage]++;
     if (runtime) {
-        if (stats) {
+        if (stats && !external_commands) {
             const double elapsed = now_sec() - stats_start;
             d->runtime_stage_seconds[stage] += elapsed;
             d->runtime_sidecar_round_seconds += elapsed;
@@ -32217,6 +32238,9 @@ static bool dspark_session_gpu_head_run(
     ds4_gpu_graph *g = &s->graph;
     dspark_session_state *d = s->dspark;
     const bool runtime = dspark_session_gpu_runtime_env_enabled();
+    const bool external_commands =
+        runtime && d->gpu_metal_drafter_active &&
+        d->gpu_metal_command_batch_active;
     const bool stats = runtime && dspark_session_runtime_stats_enabled();
     const double stats_start = stats ? now_sec() : 0.0;
     const uint32_t block = d->block_size;
@@ -32247,8 +32271,12 @@ static bool dspark_session_gpu_head_run(
     const char *failed_step = ok ? "command begin" : "scratch views";
     bool commands_started = false;
     if (ok) {
-        commands_started = ds4_gpu_begin_commands() != 0;
-        ok = commands_started;
+        if (external_commands) {
+            commands_started = true;
+        } else {
+            commands_started = ds4_gpu_begin_commands() != 0;
+            ok = commands_started;
+        }
     }
     if (ok) {
         failed_step = "HC norm";
@@ -32315,7 +32343,8 @@ static bool dspark_session_gpu_head_run(
                                       d->main_x_rows);
     }
     if (ok) failed_step = "command end";
-    if (commands_started && ds4_gpu_end_commands() == 0) ok = false;
+    if (commands_started && !external_commands &&
+        ds4_gpu_end_commands() == 0) ok = false;
     ds4_gpu_tensor_free(weights);
     ds4_gpu_tensor_free(pre);
     if (!ok) {
@@ -32326,7 +32355,7 @@ static bool dspark_session_gpu_head_run(
     d->gpu_head_output_valid = true;
     d->gpu_head_checks++;
     if (runtime) {
-        if (stats) {
+        if (stats && !external_commands) {
             const double elapsed = now_sec() - stats_start;
             d->runtime_head_seconds += elapsed;
             d->runtime_sidecar_round_seconds += elapsed;
@@ -34133,6 +34162,9 @@ static bool dspark_session_prepare_from_target_context(
         const uint32_t attempts = metal_ready ? 2u : 1u;
         for (uint32_t attempt = 0; attempt < attempts; attempt++) {
             const bool use_metal = metal_ready && attempt == 0;
+            const bool stats =
+                use_metal && dspark_session_runtime_stats_enabled();
+            const double metal_start = stats ? now_sec() : 0.0;
             d->gpu_metal_drafter_active = use_metal;
             memset(d->gpu_stage_output_valid,
                    0,
@@ -34143,8 +34175,19 @@ static bool dspark_session_prepare_from_target_context(
             uint32_t failed_stage = 0;
             char runtime_err[256];
             runtime_err[0] = '\0';
+            bool metal_commands_started = false;
+            if (use_metal) {
+                metal_commands_started = ds4_gpu_begin_commands() != 0;
+                d->gpu_metal_command_batch_active = metal_commands_started;
+                if (!metal_commands_started) {
+                    snprintf(runtime_err,
+                             sizeof(runtime_err),
+                             "failed to begin consolidated Metal command batch");
+                    stages_ok = false;
+                }
+            }
             for (uint32_t stage = 0;
-                 stage < DS4_DSPARK_MTP_LAYERS;
+                 stages_ok && stage < DS4_DSPARK_MTP_LAYERS;
                  stage++) {
                 const float *stage0_input = stage == 0 ? d->cur_hc : NULL;
                 if (!dspark_session_gpu_stage_run(s,
@@ -34170,13 +34213,33 @@ static bool dspark_session_prepare_from_target_context(
                 failed_stage = DS4_DSPARK_MTP_LAYERS;
                 stages_ok = false;
             }
+            if (metal_commands_started) {
+                d->gpu_metal_command_batch_active = false;
+                if (ds4_gpu_end_commands() == 0) {
+                    snprintf(runtime_err,
+                             sizeof(runtime_err),
+                             "consolidated Metal command batch failed");
+                    failed_stage = DS4_DSPARK_MTP_LAYERS;
+                    stages_ok = false;
+                }
+                if (stats) {
+                    const double elapsed = now_sec() - metal_start;
+                    d->runtime_metal_drafter_seconds += elapsed;
+                    d->runtime_sidecar_round_seconds += elapsed;
+                    if (d->runtime_generation_active) {
+                        d->runtime_generation_metal_drafter_seconds += elapsed;
+                    } else {
+                        d->runtime_prefill_metal_drafter_seconds += elapsed;
+                    }
+                }
+            }
             if (stages_ok) {
                 if (use_metal) {
                     d->gpu_metal_drafter_successes++;
                     if (dspark_session_diagnostics_enabled()) {
                         fprintf(stderr,
                                 "ds4: DSpark Metal drafter proposal context=%u "
-                                "block=%u result=pass\n",
+                                "block=%u command_batches=1 result=pass\n",
                                 context_len,
                                 d->block_size);
                     }
@@ -34188,6 +34251,7 @@ static bool dspark_session_prepare_from_target_context(
             if (use_metal) {
                 d->gpu_metal_drafter_fallbacks++;
                 d->gpu_metal_drafter_active = false;
+                d->gpu_metal_command_batch_active = false;
                 if (dspark_session_diagnostics_enabled()) {
                     fprintf(stderr,
                             "ds4: DSpark Metal drafter failed at %s %u: %s; "
@@ -34219,6 +34283,7 @@ static bool dspark_session_prepare_from_target_context(
             return false;
         }
         d->gpu_metal_drafter_active = false;
+        d->gpu_metal_command_batch_active = false;
         if (errlen) snprintf(err, errlen, "DSpark GPU runtime proposal failed");
         return false;
     }

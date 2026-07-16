@@ -104,12 +104,13 @@ class MetalDrafterTests(unittest.TestCase):
                 "stats_metal_drafter_successes": 14 if metal else 0,
                 "stats_metal_drafter_fallbacks": 0,
                 "stats_generation_bridge_ms": 16 if metal else 12,
-                "stats_generation_stage0_ms": 40 if metal else 80,
-                "stats_generation_stage1_ms": 40 if metal else 80,
-                "stats_generation_stage2_ms": 40 if metal else 80,
-                "stats_generation_head_ms": 8,
+                "stats_generation_stage0_ms": 0 if metal else 80,
+                "stats_generation_stage1_ms": 0 if metal else 80,
+                "stats_generation_stage2_ms": 0 if metal else 80,
+                "stats_generation_head_ms": 0 if metal else 8,
                 "stats_generation_chain_ms": 64,
                 "stats_generation_sidecar_ms": 208 if metal else 324,
+                "stats_generation_metal_drafter_ms": 128 if metal else 0,
             }
             rows.append(row)
         summary = comparison.summarize_metal_drafter_stats(rows)
@@ -117,7 +118,14 @@ class MetalDrafterTests(unittest.TestCase):
         self.assertEqual(summary["comparison"], "metal_drafter_stats")
         self.assertIn("throughput values are intentionally omitted", report)
         self.assertNotIn("t/s", report)
-        self.assertGreater(summary["stages_saved_ms_per_emitted"], 0)
+        self.assertEqual(
+            summary["modes"]["default_exact"]["proposal_core_ms_per_emitted"],
+            248 / 64,
+        )
+        self.assertEqual(
+            summary["modes"]["metal_drafter"]["proposal_core_ms_per_emitted"],
+            128 / 64,
+        )
 
 
 if __name__ == "__main__":

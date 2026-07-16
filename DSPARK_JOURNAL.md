@@ -7096,3 +7096,104 @@ Recommended next phase:
 
 Do not run broader workload throughput yet; the local gain is not large enough
 to justify that cost.
+
+## Phase 1.09: Consolidated Metal Drafter Command Batch
+
+Goal:
+
+- Replace the four synchronized command submissions that remained inside the
+  default-off persistent-KV Metal drafter with one submission.
+- Keep the legacy GPU proposal path, exact target verification, scheduler,
+  candidate chain, and retry fallback unchanged.
+
+Implementation:
+
+- The specialized proposal route now begins one Metal command batch before
+  stage 0, encodes stage 0, stage 1, stage 2, and the output head into that
+  batch, then synchronizes once.
+- Stage and head helpers recognize the externally owned command batch and
+  skip their local begin/end pairs.
+- The command-batch-active flag is cleared on success, failure, target-context
+  reset, and full session reset.
+- A failed consolidated command batch still records a specialized fallback
+  and retries the ordinary GPU proposal route.
+- Runtime stats now expose aggregate synchronized proposal timing as
+  `metal_drafter_ms`, `prefill_metal_drafter_ms`, and
+  `generation_metal_drafter_ms`.
+- Specialized stage/head timings are intentionally zero while the aggregate
+  timer owns that work, avoiding double accounting.
+- The stats-only report calls this aggregate `proposal core`; the default
+  comparison remains the sum of its three stage timers plus the head timer.
+
+Validation:
+
+```sh
+make -j4
+make ds4_cpu.o
+python3 tests/test_dspark_metal_drafter.py
+python3 tests/test_dspark_exact_prefix_checkpoint.py
+bash -n tests/dspark_gpu_candidates_correctness.sh
+DS4_TEST_DSPARK_MODE=runtime \
+DS4_TEST_DSPARK_METAL_DRAFTER=1 \
+DS4_TEST_DSPARK_RUNTIME_STATS=1 \
+DS4_TEST_KEEP_LOGS=1 \
+  tests/dspark_gpu_candidates_correctness.sh
+python3 speed-bench/run_dspark_comparison.py \
+  --metal-drafter-ablation \
+  --stats-only \
+  --pairs 1 \
+  --warmups 0 \
+  --cooldown 5 \
+  --confirm-ready \
+  --allow-dirty
+git diff --check
+```
+
+Results:
+
+- Metal and CPU builds passed; the CPU object retained only the existing
+  unused-code warnings.
+- Focused model-free tests passed.
+- The five-case runtime matrix passed reasoning, Italian, medium context,
+  rolling window, and resumed chat byte-for-byte.
+- Retained logs recorded the one-command-batch proposal path on every
+  specialized round and no specialized fallback.
+- Stats-only raw artifact:
+  `speed-bench/local-runs/20260716-125544`.
+- Exact schedules matched:
+  - `14` proposal rounds;
+  - `13` target evaluations;
+  - `64` target positions and emitted tokens;
+  - `14/14` specialized successes and zero fallback.
+
+Per-emitted-token attribution:
+
+| mode | bridge | proposal core | chain | sidecar |
+|:---|---:|---:|---:|---:|
+| default exact | 0.422 ms | 3.033 ms | 1.046 ms | 4.501 ms |
+| consolidated Metal drafter | 0.615 ms | 2.203 ms | 1.126 ms | 3.943 ms |
+
+Interpretation:
+
+- Consolidation saves `0.830 ms/emitted` in the proposal core.
+- Total sidecar savings are `0.558 ms/emitted`, a `0.8760x` sidecar ratio.
+- The bridge still costs `0.192 ms/emitted` more because it refreshes the
+  persistent rolling KV cache.
+- Compared with the pre-consolidation attribution, candidate sidecar cost fell
+  from `4.212` to `3.943 ms/emitted`; candidate proposal core fell from
+  `2.523` to `2.203 ms/emitted`.
+- This is large enough to justify a fresh user-run paired throughput ablation,
+  but not yet a broad HumanEval/generalization rerun.
+- Codex ran no timed throughput benchmark in this phase.
+
+User-run throughput gate:
+
+```sh
+python3 speed-bench/run_dspark_comparison.py \
+  --metal-drafter-ablation \
+  --confirm-idle
+```
+
+This phase is committed before the user-run timing gate, keeping the branch at
+a compact, recoverable checkpoint. Record the throughput result in a follow-up
+commit before beginning the planned community-progress survey.
