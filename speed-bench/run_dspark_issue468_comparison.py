@@ -25,6 +25,7 @@ TIMING_RE = re.compile(
 STATS_PREFIX = b"ds4: DSpark runtime stats "
 ACCEPTANCE_PREFIX = b"ds4: DSpark acceptance audit "
 ACCEPTANCE_TRACE_PREFIX = b"ds4: DSpark acceptance trace "
+ORACLE_TRACE_PREFIX = b"ds4: DSpark oracle trace "
 INT_STATS = {
     "proposals", "selected", "source_fallbacks", "multi_attempts", "emitted",
     "target_evals", "target_eval_tokens", "target_evals_avoided",
@@ -120,9 +121,12 @@ def cleared_env_keys(env):
 def benchmark_env(
     mode, fast_verifier, stats=False, exact_head_batch=False,
     acceptance_audit=False, acceptance_trace=False, confidence_threshold=None,
+    oracle_trace=False,
 ):
     if acceptance_trace and not acceptance_audit:
         raise ValueError("acceptance trace requires acceptance audit")
+    if oracle_trace and (mode != "runtime" or not stats):
+        raise ValueError("oracle trace requires runtime stats")
     if confidence_threshold is not None:
         if mode != "runtime":
             raise ValueError("confidence threshold requires DSpark runtime mode")
@@ -148,6 +152,8 @@ def benchmark_env(
             env["DS4_DSPARK_ACCEPTANCE_AUDIT"] = "1"
         if acceptance_trace:
             env["DS4_DSPARK_ACCEPTANCE_TRACE"] = "1"
+        if oracle_trace:
+            env["DS4_DSPARK_ORACLE_TRACE"] = "1"
         if confidence_threshold is not None:
             env["DS4_DSPARK_CONFIDENCE_THRESHOLD"] = str(confidence_threshold)
     return env
@@ -336,18 +342,20 @@ def mode_command(args, prompt, mode):
 def command_text(
     args, prompt, mode, stats=False, acceptance_audit=False,
     acceptance_trace=False, confidence_threshold=None,
+    oracle_trace=False,
 ):
     if mode == "runtime" and confidence_threshold is None:
         confidence_threshold = getattr(args, "confidence_threshold", None)
     env = benchmark_env(
         mode, args.fast_verifier, stats, args.exact_head_batch,
-        acceptance_audit, acceptance_trace, confidence_threshold,
+        acceptance_audit, acceptance_trace, confidence_threshold, oracle_trace,
     )
     keys = (
         "DS4_DSPARK_GPU_RUNTIME", "DS4_DSPARK_MULTI_COMMIT",
         "DS4_DSPARK_FAST_BATCH_VERIFY", "DS4_DSPARK_EXACT_HEAD_BATCH",
         "DS4_DSPARK_GPU_RUNTIME_STATS",
         "DS4_DSPARK_ACCEPTANCE_AUDIT", "DS4_DSPARK_ACCEPTANCE_TRACE",
+        "DS4_DSPARK_ORACLE_TRACE",
         "DS4_DSPARK_CONFIDENCE_THRESHOLD",
     )
     prefix = " ".join(f"{key}={env[key]}" for key in keys if key in env)
@@ -491,13 +499,78 @@ def parse_acceptance_audit(stderr_data, path):
     return values
 
 
+def parse_oracle_trace(stderr_data, path):
+    records = [
+        line[len(ORACLE_TRACE_PREFIX):] for line in stderr_data.splitlines()
+        if line.startswith(ORACLE_TRACE_PREFIX)
+    ]
+    if not records:
+        raise RuntimeError(f"no DSpark oracle trace records in {path}")
+    rows = []
+    integer_fields = {
+        "round", "proposed", "selected", "verified", "accepted",
+        "committed", "target_evals", "target_positions",
+    }
+    float_fields = {"sidecar_ms", "target_ms"}
+    for expected_round, record in enumerate(records, start=1):
+        values = {}
+        try:
+            for item in record.decode("ascii").split():
+                key, value = item.split("=", 1)
+                if key in integer_fields:
+                    values[key] = int(value)
+                elif key in float_fields:
+                    values[key] = float(value)
+                elif key == "confidences":
+                    values[key] = (
+                        [] if value == "none" else
+                        [float(item) for item in value.split(",")]
+                    )
+        except (UnicodeDecodeError, ValueError) as exc:
+            raise RuntimeError(
+                f"invalid DSpark oracle trace in {path}: {exc}"
+            ) from exc
+        missing = [
+            key for key in integer_fields | float_fields | {"confidences"}
+            if key not in values
+        ]
+        if missing:
+            raise RuntimeError(
+                f"incomplete DSpark oracle trace in {path}: "
+                f"{', '.join(sorted(missing))}"
+            )
+        if values["round"] != expected_round:
+            raise RuntimeError(f"non-contiguous DSpark oracle rounds in {path}")
+        if not (
+            0 <= values["accepted"] <= values["verified"]
+            <= values["selected"] <= values["proposed"] <= 16
+        ):
+            raise RuntimeError(f"invalid DSpark oracle widths in {path}")
+        if values["committed"] <= 0:
+            raise RuntimeError(f"empty DSpark oracle progress in {path}")
+        if len(values["confidences"]) != values["proposed"]:
+            raise RuntimeError(f"DSpark oracle confidence shape mismatch in {path}")
+        if values["sidecar_ms"] < 0 or values["target_ms"] < 0:
+            raise RuntimeError(f"negative DSpark oracle timing in {path}")
+        if (
+            values["target_evals"] < 1 or
+            values["target_positions"] < values["target_evals"]
+        ):
+            raise RuntimeError(f"invalid DSpark oracle target accounting in {path}")
+        rows.append(values)
+    return rows
+
+
 def execute(
     args, root, run_dir, label, prompt_label, prompt, mode, reference,
     stats=False, acceptance_audit=False, acceptance_trace=False,
     confidence_threshold=None,
+    oracle_trace=False,
 ):
     if acceptance_trace and (mode != "runtime" or not acceptance_audit):
         raise ValueError("acceptance trace requires a runtime acceptance audit")
+    if oracle_trace and (mode != "runtime" or not stats):
+        raise ValueError("oracle trace requires a runtime stats run")
     stdout_path = run_dir / f"{label}.{prompt_label}.{mode}.stdout"
     stderr_path = run_dir / f"{label}.{prompt_label}.{mode}.stderr"
     if mode == "runtime" and confidence_threshold is None:
@@ -505,7 +578,7 @@ def execute(
     command = mode_command(args, prompt, mode)
     rendered_command = command_text(
         args, prompt, mode, stats, acceptance_audit, acceptance_trace,
-        confidence_threshold,
+        confidence_threshold, oracle_trace,
     )
     print(
         f"[{label}/{prompt_label}] {mode}: {rendered_command}",
@@ -518,6 +591,7 @@ def execute(
             env=benchmark_env(
                 mode, args.fast_verifier, stats, args.exact_head_batch,
                 acceptance_audit, acceptance_trace, confidence_threshold,
+                oracle_trace,
             ),
             stdout=stdout_fp, stderr=stderr_fp, check=False,
         )
@@ -544,6 +618,15 @@ def execute(
         raise RuntimeError(
             f"non-trace run unexpectedly emitted acceptance trace data: {stderr_path}"
         )
+    has_oracle_trace = ORACLE_TRACE_PREFIX in stderr_data
+    if oracle_trace and not has_oracle_trace:
+        raise RuntimeError(
+            f"oracle trace run emitted no proposal records: {stderr_path}"
+        )
+    if not oracle_trace and has_oracle_trace:
+        raise RuntimeError(
+            f"non-oracle run unexpectedly emitted oracle trace data: {stderr_path}"
+        )
     row = {
         "prompt": prompt_label, "mode": mode, "prefill_tps": prefill_tps,
         "generation_tps": generation_tps, "wall_seconds": wall_seconds,
@@ -554,6 +637,8 @@ def execute(
         row.update(parse_stats(stderr_data, stderr_path))
     if acceptance_audit:
         row["acceptance_audit"] = parse_acceptance_audit(stderr_data, stderr_path)
+    if oracle_trace:
+        row["oracle_trace"] = parse_oracle_trace(stderr_data, stderr_path)
     return row, stdout_data
 
 

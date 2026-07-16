@@ -7690,3 +7690,107 @@ Final decision:
 - This closes Phase 1.13 at a clean checkpoint. The next phase should pause
   local micro-optimization and review current DS4 issue 468/community progress
   for independently discovered wins that can be ported or compared.
+
+## Phase 1.14: HumanEval break-even oracle
+
+Motivation:
+
+- The frozen scheduled HumanEval study reached a median paired ratio of
+  `0.8081x`; all 32 tasks remained slower than baseline, with the best task at
+  `0.9250x`.
+- HumanEval acceptance is already strong (`0.700` verify rate), so the central
+  question is no longer whether the drafter works. It is whether any current
+  proposal rounds are locally profitable and how much target-verifier cost
+  must fall before broad DSpark can reach parity.
+- Aggregate width histograms and the confidence trace could not answer this:
+  they did not join acceptance, committed progress, sidecar cost, and exact
+  target cost for the same proposal round.
+
+Runtime trace:
+
+- Added a default-off `DS4_DSPARK_ORACLE_TRACE=1` diagnostic.
+- It requires `DS4_DSPARK_GPU_RUNTIME_STATS=1`; ordinary and timed runtime paths
+  remain unchanged.
+- One record is emitted for every completed multi-commit round:
+  - full proposed width;
+  - confidence-scheduler selected width;
+  - actual verified width after capacity/EOS limits;
+  - accepted draft prefix;
+  - committed output tokens;
+  - sidecar milliseconds;
+  - target milliseconds, eval count, and evaluated positions;
+  - raw confidence-head values.
+- Per-round target counters accumulate through the existing target timing
+  hook, including replay/fallback target calls when present.
+- The record is emitted immediately before multi-commit cleanup, so all exact
+  and serial completion paths use the same trace contract.
+
+Generation-cost accounting:
+
+- The first traced sidecar block is prepared during prefill. It must not be
+  charged against the frozen baseline's generation t/s.
+- The final unused sidecar block is not attached to a scheduler round but is a
+  generation cost. The analyzer derives it as:
+  `generation_sidecar_ms - traced_sidecar_ms_after_round_1`.
+- This identity was confirmed exactly on the smoke task:
+  - first/prefetched sidecar: `28.815 ms`;
+  - terminal sidecar: `20.781 ms`;
+  - traced scheduled sidecar: `691.350 ms`;
+  - runtime scheduled histogram: `691.350 ms`.
+
+Offline oracle:
+
+- Added `speed-bench/run_dspark_humaneval_oracle_audit.py`.
+- It reuses the frozen 32-task scheduled HumanEval throughput artifact for:
+  - each task's uninstrumented baseline generation t/s;
+  - prompt identity;
+  - byte-exact expected output.
+- It runs only one stats-enabled exact DSpark process per task. There is no
+  fresh baseline process and no timed throughput comparison.
+- It reports:
+  - accounted current DSpark/baseline ratio;
+  - a future-knowing per-round router ceiling;
+  - the same router with free sidecar;
+  - the same router with free target verification;
+  - current profitable-round and profitable-token shares;
+  - the target-time scale required for all-DSpark parity and `1.10x`.
+- The router is an optimistic local counterfactual. Routing a round to baseline
+  would change later proposal boundaries, and measured target plus sidecar time
+  does not include every host/runtime overhead.
+
+Validation:
+
+- Metal build passed.
+- CPU build passed with only the project's existing unused-code warnings.
+- All 55 DSpark model-free tests passed.
+- The 32-task user command dry-run validated the frozen reference, prompt
+  selection, environment, and stats-only command surface.
+- One full `humaneval_000` traced runtime matched the frozen output
+  byte-for-byte.
+- Its trace reconciled exactly:
+  - `32` traced rounds;
+  - `98` traced/stat emitted tokens;
+  - `32` traced/stat target evaluations;
+  - `129` traced/stat target positions;
+  - `5587.478 ms` traced/stat target time;
+  - `691.350 ms` traced/stat scheduled sidecar time.
+- The one-task result is only a sanity check, not the study:
+  - accounted ratio `0.6774x`;
+  - current-cost route oracle `1.0000x` because no round was locally
+    profitable;
+  - free-sidecar route oracle `1.0100x`;
+  - target time would need to fall to about `0.638x` of current cost for
+    all-DSpark parity on this task.
+
+User-run audit:
+
+```sh
+python3 speed-bench/run_dspark_humaneval_oracle_audit.py \
+  --throughput-reference \
+  speed-bench/local-runs/humaneval-scheduler-throughput-32-20260716-103542/summary.json \
+  --confirm-ready
+```
+
+This is a stats-only diagnostic, not a tok/s benchmark. Machine idleness is not
+required, although large concurrent GPU workloads should still be avoided
+because they can distort component timing.

@@ -30457,6 +30457,16 @@ struct dspark_session_state {
     uint64_t runtime_verify_width_evals[17];
     uint64_t runtime_verify_width_positions[17];
     uint32_t runtime_current_scheduler_width;
+    uint64_t oracle_trace_records;
+    uint32_t oracle_round_proposed;
+    uint32_t oracle_round_selected;
+    uint32_t oracle_round_verified;
+    uint32_t oracle_round_target_evals;
+    uint32_t oracle_round_target_positions;
+    double oracle_round_sidecar_seconds;
+    double oracle_round_target_seconds;
+    float oracle_round_confidences[16];
+    bool oracle_round_active;
     uint64_t runtime_fast_verify_calls;
     uint64_t runtime_fast_verify_failures;
     uint64_t runtime_fast_verify_exact_fallbacks;
@@ -30521,10 +30531,15 @@ struct dspark_session_state {
 static bool dspark_session_runtime_stats_enabled(void);
 static bool dspark_session_acceptance_audit_enabled(void);
 static bool dspark_session_acceptance_trace_enabled(void);
+static bool dspark_session_oracle_trace_enabled(void);
 static void dspark_session_runtime_target_eval_note(
         dspark_session_state *d,
         uint32_t              n_tokens,
         double                seconds);
+static void dspark_session_oracle_round_finish(
+        dspark_session_state *d,
+        uint32_t              accepted,
+        uint32_t              committed);
 
 static void dspark_runtime_stats_print_u64_array(
         const char     *name,
@@ -30597,6 +30612,7 @@ static void dspark_session_state_reset(dspark_session_state *d) {
     d->gpu_head_output_valid = false;
     d->gpu_metal_drafter_active = false;
     d->gpu_metal_command_batch_active = false;
+    d->oracle_round_active = false;
     dspark_session_draft_reset(d);
 }
 
@@ -30613,6 +30629,7 @@ static void dspark_session_target_context_reset(dspark_session_state *d) {
     d->gpu_metal_drafter_active = false;
     d->gpu_metal_command_batch_active = false;
     d->window_pos0 = 0;
+    d->oracle_round_active = false;
     dspark_session_draft_reset(d);
 }
 
@@ -34966,6 +34983,18 @@ static bool dspark_session_acceptance_trace_enabled(void) {
     return enabled;
 }
 
+static bool dspark_session_oracle_trace_enabled(void) {
+    static int initialized;
+    static bool enabled;
+    if (!initialized) {
+        const char *v = getenv("DS4_DSPARK_ORACLE_TRACE");
+        enabled = dspark_session_runtime_stats_enabled() &&
+                  v && v[0] && strcmp(v, "0") != 0;
+        initialized = 1;
+    }
+    return enabled;
+}
+
 static bool dspark_session_fast_verify_observer_enabled(void) {
     const char *v = getenv("DS4_DSPARK_FAST_VERIFY_OBSERVER");
     return dspark_session_gpu_runtime_env_enabled() &&
@@ -35247,6 +35276,70 @@ static void dspark_session_acceptance_audit_record(
             d->acceptance_audit_prefix_brier[pos] += error * error;
         }
     }
+}
+
+static void dspark_session_oracle_round_begin(
+        dspark_session_state          *d,
+        const dspark_draft_candidate *drafts,
+        uint32_t                      proposed,
+        uint32_t                      selected,
+        double                        sidecar_seconds) {
+    if (!d || !drafts || !dspark_session_oracle_trace_enabled()) return;
+    if (proposed > d->block_size) proposed = d->block_size;
+    if (selected > proposed) selected = proposed;
+    d->oracle_round_proposed = proposed;
+    d->oracle_round_selected = selected;
+    d->oracle_round_verified = 0;
+    d->oracle_round_target_evals = 0;
+    d->oracle_round_target_positions = 0;
+    d->oracle_round_sidecar_seconds = sidecar_seconds;
+    d->oracle_round_target_seconds = 0.0;
+    for (uint32_t i = 0; i < proposed; i++) {
+        d->oracle_round_confidences[i] = drafts[i].confidence;
+    }
+    d->oracle_round_active = true;
+}
+
+static void dspark_session_oracle_round_set_verified(
+        dspark_session_state *d,
+        uint32_t              verified) {
+    if (!d || !d->oracle_round_active) return;
+    if (verified > d->oracle_round_selected) {
+        verified = d->oracle_round_selected;
+    }
+    d->oracle_round_verified = verified;
+}
+
+static void dspark_session_oracle_round_finish(
+        dspark_session_state *d,
+        uint32_t              accepted,
+        uint32_t              committed) {
+    if (!d || !d->oracle_round_active) return;
+    if (accepted > d->oracle_round_verified) {
+        accepted = d->oracle_round_verified;
+    }
+    d->oracle_trace_records++;
+    fprintf(stderr,
+            "ds4: DSpark oracle trace round=%llu proposed=%u selected=%u "
+            "verified=%u accepted=%u committed=%u sidecar_ms=%.6f "
+            "target_ms=%.6f target_evals=%u target_positions=%u confidences=",
+            (unsigned long long)d->oracle_trace_records,
+            d->oracle_round_proposed,
+            d->oracle_round_selected,
+            d->oracle_round_verified,
+            accepted,
+            committed,
+            d->oracle_round_sidecar_seconds * 1000.0,
+            d->oracle_round_target_seconds * 1000.0,
+            d->oracle_round_target_evals,
+            d->oracle_round_target_positions);
+    for (uint32_t i = 0; i < d->oracle_round_proposed; i++) {
+        fprintf(stderr, "%s%.9g", i ? "," : "",
+                d->oracle_round_confidences[i]);
+    }
+    if (d->oracle_round_proposed == 0) fputs("none", stderr);
+    fputc('\n', stderr);
+    d->oracle_round_active = false;
 }
 
 static bool dspark_session_has_rollback_scratch(const ds4_session *s) {
@@ -35792,6 +35885,7 @@ static int dspark_session_finish_multi_commit(
     }
 
     dspark_session_state *d = s->dspark;
+    dspark_session_oracle_round_finish(d, verified, n_tokens);
     dspark_session_draft_reset(d);
     s->mtp_draft_valid = false;
     dspark_session_observe_draft_rows(s, "multi");
@@ -36207,6 +36301,11 @@ static void dspark_session_runtime_target_eval_note(
     d->runtime_target_evals++;
     d->runtime_target_eval_tokens += n_tokens;
     d->runtime_target_eval_seconds += seconds;
+    if (d->oracle_round_active) {
+        d->oracle_round_target_evals++;
+        d->oracle_round_target_positions += n_tokens;
+        d->oracle_round_target_seconds += seconds;
+    }
     if (n_tokens < 17u) {
         d->runtime_verify_width_evals[n_tokens]++;
         d->runtime_verify_width_positions[n_tokens] += n_tokens;
@@ -36574,6 +36673,8 @@ static int dspark_session_eval_multi_commit(
     if (dspark_session_runtime_stats_enabled()) {
         const uint32_t width = scheduled_rows < 17u ? scheduled_rows : 16u;
         const double sidecar_seconds = d->runtime_draft_sidecar_seconds;
+        dspark_session_oracle_round_begin(
+            d, drafts, proposed_rows, scheduled_rows, sidecar_seconds);
         d->runtime_current_scheduler_width = width;
         d->runtime_scheduler_width_rounds[width]++;
         d->runtime_scheduler_width_sidecar_seconds[width] += sidecar_seconds;
@@ -36593,6 +36694,7 @@ static int dspark_session_eval_multi_commit(
             break;
         }
     }
+    dspark_session_oracle_round_set_verified(d, n_limit);
 
     const int target_top = sample_argmax(s->logits, DS4_N_VOCAB);
     const bool target_hit = n_limit > 0 && target_top == first->token;
