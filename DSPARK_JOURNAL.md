@@ -7658,3 +7658,35 @@ If the paired direction remains positive and output hashes match, keep NR4
 promoted. A result near parity is acceptable only if the individual pairs do
 not show a consistent regression; a clear negative result should restore NR2
 and trigger separate projection-A and projection-B-plus-HC experiments.
+
+Promotion confirmation result:
+
+- Raw artifact:
+  `speed-bench/local-runs/20260716-142043`.
+- Legacy NR2 median: `23.76 t/s`.
+- Promoted NR4 median: `23.94 t/s`.
+- Ratio of medians: `1.0076x`.
+- Median paired ratio: `1.0076x`, or `+0.8%`.
+- Individual paired ratios were:
+  - `1.0097x`;
+  - `1.0072x`;
+  - `1.0076x`.
+- Every output hash matched.
+- The process snapshot was noisy:
+  - `duetexpertd` used about one CPU core;
+  - Logitech updater and agent processes used substantial additional CPU.
+- Despite that interference, all three alternating pairs remained positive
+  with a spread of about `0.25` percentage point.
+
+Final decision:
+
+- Keep exact attention-output NR4 promoted on Metal.
+- Retain `DS4_DSPARK_EXACT_ATTN_OUT_NR4=0` as the legacy rollback.
+- Do not spend a HumanEval or cross-domain throughput run on this isolated
+  sub-1% kernel improvement. The local gate and promotion confirmation are
+  directionally unanimous, byte-exact, and sufficient for the bounded change.
+- Do not split projection A from projection B plus HC unless a future workload
+  shows a regression.
+- This closes Phase 1.13 at a clean checkpoint. The next phase should pause
+  local micro-optimization and review current DS4 issue 468/community progress
+  for independently discovered wins that can be ported or compared.
