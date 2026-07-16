@@ -8386,3 +8386,84 @@ Harness validation:
   - task `humaneval_079`;
   - the required nonzero width-2-through-width-5 counts;
   - the three Metal profile commands and synchronized stage contract.
+
+Completed width-stratified exact-layer profile:
+
+- Raw artifact:
+  `speed-bench/local-runs/threshold075-width-layer-20260716-193143`.
+- The run was collected from clean commit `cce5f5c`.
+- All three profiled outputs matched the frozen threshold-`0.75` artifact
+  byte-for-byte.
+- Every layer process reproduced:
+  - `128` emitted tokens;
+  - `34` target evals;
+  - width histogram `8/1/1/4/20` for widths `1/2/3/4/5`;
+  - zero verifier fallback;
+  - zero fast-verifier call.
+
+Sampled layer cost by verifier width:
+
+- Width 2: `4.669 ms/row` across layers `0`, `21`, and `42`.
+- Width 3: `3.578 ms/row`, or `0.766x` width 2.
+- Width 4: `3.295 ms/row`, or `0.706x` width 2.
+- Width 5: `3.098 ms/row`, or `0.663x` width 2.
+- Multi-row exact execution therefore amortizes real work, but the reduction
+  from width 4 to width 5 is only about `6.0%` per row.
+
+Width-5 sampled component totals:
+
+- Attention preparation: `0.584 ms/row`, `18.8%`.
+- Serial attention tail: `1.341 ms/row`, `43.3%`.
+- Exact FFN: `1.174 ms/row`, `37.9%`.
+
+Width-2-to-width-5 per-row scaling:
+
+- Attention preparation: `0.560x`.
+- Serial attention tail: `0.700x`.
+- Exact FFN: `0.685x`.
+- The serial attention tail is both:
+  - the largest width-5 sampled component;
+  - the weakest-amortizing promoted component.
+
+Layer detail at width 5:
+
+- Layer 0:
+  - total `0.893 ms/row`;
+  - tail `0.319 ms/row`, or `35.7%`.
+- Layer 21:
+  - total `1.064 ms/row`;
+  - tail `0.473 ms/row`, or `44.4%`.
+- Layer 42:
+  - total `1.141 ms/row`;
+  - tail `0.549 ms/row`, or `48.1%`.
+- Tail cost grows with layer depth while attention preparation and FFN remain
+  comparatively stable.
+
+Interpretation:
+
+- Widths 2 and 3 have only one observation each and are directional.
+- Width 5 has twenty observations and is the stable optimization target.
+- Attention preparation has already captured most of the available
+  cross-row amortization and should not be reopened.
+- FFN remains material but is not the weakest-scaling component.
+- The next exact-verifier candidate should be chosen from the late-layer
+  serial attention tail.
+
+Next bounded phase:
+
+- Add a threshold-`0.75`, width-stratified serial-tail component profile for
+  `humaneval_079`, starting with layer `42`.
+- Reuse the existing tail boundaries:
+  - KV/cache update;
+  - compressor/indexer;
+  - attention;
+  - inverse RoPE;
+  - projection A;
+  - projection B plus HC.
+- Map each one-row tail record back to its enclosing proposal batch, then
+  report component medians separately for widths `2`, `3`, `4`, and `5`.
+- Require the output and all proposal-width counts to match the completed
+  threshold-`0.75` artifacts.
+- Use the width-5 distribution and scaling result to choose one architectural
+  runtime candidate. Do not retry the previously rejected whole-suffix batch
+  implementation without a materially different operation schedule.
