@@ -8693,3 +8693,55 @@ Decision rule:
   enough to justify doubling per-threadgroup output-row state.
 - A neutral or negative result retires NR8 while leaving promoted NR4
   unchanged.
+
+User-run throughput result:
+
+- Artifact:
+  `speed-bench/local-runs/20260716-204606`.
+- Clean source commit:
+  `cd3ece3cde944674779df8964b5f4fe31e1e7e52`.
+- Promoted NR4 median: `23.55 t/s`.
+- Opt-in NR8 median: `22.82 t/s`.
+- Ratio of medians: `0.9690x`.
+- Median paired ratio: `0.9667x`, or `-3.1%`.
+- Individual paired ratios:
+  - `0.9633x`;
+  - `0.9667x`;
+  - `0.9724x`.
+- Every warmup and measured output had the same SHA-256:
+  `86f4851c044b82fffe568644343670a83ea6815b70c160b5a28a0fb357c52998`.
+- Prefill was also directionally lower for NR8, but this gate is decided by
+  generation throughput.
+- The machine snapshot contained substantial Logitech, OBS, camera, and
+  WindowServer activity. Alternating order still produced three negative
+  pairs with a narrow enough spread that the result is not plausibly an order
+  artifact.
+
+Decision:
+
+- Reject NR8 for promotion.
+- Keep promoted NR4 as the exact attention-output default.
+- Retain NR8 only as default-off research code and a reproducible upper-row
+  reuse experiment.
+- Do not test NR8 on HumanEval or cross-domain workloads. A local `-3.1%`
+  result is sufficiently negative to close the candidate.
+- The likely cause is occupancy pressure from doubling per-threadgroup output
+  accumulators and scratch from four to eight rows. The extra activation reuse
+  does not compensate on M1 Ultra.
+- Treat NR4 as the practical output-row reuse optimum for the current kernels.
+  Do not spend another phase on NR6/NR8-style projection-row tuning.
+
+Next bounded phase:
+
+- Move away from attention-output projection tuning.
+- Audit the retained Metal dense-mixed attention path, which is the dominant
+  layer-42 attention mode on the existing exact-attention transition profile:
+  `201` dense-mixed rows versus `37` sparse-indexed rows.
+- Compare its shader and dispatch contract with the already promoted
+  sparse-indexed RB16-direct path and the raw decode path.
+- Select one in-place, per-row dense-mixed attention candidate that preserves
+  cache mutation order and exact verifier scheduling.
+- Start with source/dispatch analysis and a correctness observer or
+  synchronized component diagnostic if ownership is ambiguous. Do not create
+  a timed benchmark until the candidate has a measured operation-level reason
+  to help.
