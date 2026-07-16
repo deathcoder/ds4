@@ -8111,3 +8111,76 @@ python3 speed-bench/run_dspark_humaneval_threshold075_throughput.py \
   speed-bench/local-runs/humaneval-aggressive-scheduler-20260716-151432/summary.json \
   --confirm-idle
 ```
+
+Completed full threshold-0.75 confirmation:
+
+- Raw artifact:
+  `speed-bench/local-runs/humaneval-threshold075-throughput-32-20260716-155112`.
+- The run was collected at clean commit `7b954be`.
+- The artifact contains exactly:
+  - `32` baseline rows;
+  - `32` threshold-`0.75` rows;
+  - `16` baseline-first pairs;
+  - `16` runtime-first pairs.
+- Every task has one output hash across both modes; all `32` threshold-`0.75`
+  outputs matched ordinary baseline byte-for-byte.
+- No thermal or performance warning was recorded. The process snapshot still
+  included Logitech, WindowServer, Ghostty, Stats, and system activity, but the
+  alternating pair design and broad task direction are decisive.
+
+Authoritative threshold-0.75 result:
+
+- Baseline median: `22.95 t/s`.
+- Threshold-`0.75` median: `19.80 t/s`.
+- Ratio of medians: `0.8632x`.
+- Median paired ratio: `0.8627x`.
+- Geometric mean paired ratio: `0.8634x`.
+- Interquartile range: `0.8332x-0.8859x`.
+- Full range: `0.7970x-0.9702x`.
+- Faster/equal/slower tasks: `0/0/32`.
+- Six tasks reached at least `0.90x`; two reached at least `0.95x`.
+- The best task was `humaneval_053` at `0.9702x`.
+- The worst task was `humaneval_000` at `0.7970x`.
+
+Confirmed movement from threshold `0.455`:
+
+- Prior median paired ratio: `0.8081x`.
+- Median task-level movement: `1.0712x`.
+- Geometric task-level movement: `1.0915x`.
+- Improved/equal/regressed tasks: `28/0/4`.
+- Worst task movement: `0.9524x`.
+- The broad scheduler confirmation gate passed.
+- Relative to the prior `0.8081x` median, threshold `0.75` closes roughly
+  `28.5%` of the remaining median gap to baseline.
+
+Final scheduler decision:
+
+- Freeze confidence-scheduler tuning at threshold `0.75`.
+- Threshold `0.75` is the selected research policy for subsequent DSpark
+  optimization and diagnostics.
+- Do not promote it as the user-facing runtime default yet:
+  - no task is faster than baseline;
+  - the workload geometric mean remains `0.8634x`;
+  - the near-parity gate failed.
+- Do not test more fixed thresholds or per-task policies. The full study
+  confirms diminishing scheduler returns and removes scheduler selection as
+  the primary uncertainty.
+
+Remaining performance target:
+
+- At the end-to-end workload level, parity requires about `1.158x` the current
+  threshold-`0.75` throughput, equivalent to removing `13.7%` of current total
+  generation time.
+- Because sidecar and host costs remain, the exact target-verifier reduction
+  required will be larger than `13.7%`.
+- The next verifier phase should begin with a threshold-`0.75` stats-only cost
+  audit to measure:
+  - target milliseconds per emitted token;
+  - sidecar milliseconds per emitted token;
+  - verifier widths and positions;
+  - partial/full batch outcomes;
+  - the exact target-time scale required for parity under the frozen `0.75`
+    schedule.
+- After that audit, optimize the exact Metal verifier architecture against the
+  measured target rather than continuing scheduler or isolated micro-kernel
+  tuning.
