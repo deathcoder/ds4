@@ -7309,3 +7309,63 @@ Conclusion:
   update, compressor/indexer, attention, inverse RoPE, and output projections.
 - Keep the existing fast verifier as an observer only unless the user
   explicitly chooses a separate non-byte-identical performance mode.
+
+## Phase 1.11: Exact Attention-Tail Command-Boundary Audit
+
+Date: 2026-07-16.
+
+Goal:
+
+- Validate the Phase 1.10 proposal before adding a default-off implementation
+  or asking the user to run another timed benchmark.
+- Determine whether successful exact verification really submits separate
+  Metal command buffers or compute encoders for KV update,
+  compressor/indexer, attention, inverse RoPE, and output projections.
+
+Findings:
+
+- The proposed optimization already exists in the production exact verifier.
+- `metal_graph_verify_decode_exact()` begins one Metal command batch before
+  the 43-layer loop. On the successful promoted path it keeps that batch open
+  while encoding attention preparation, every serial attention-tail row,
+  prefix-state captures, and exact FFN batches.
+- `ds4_gpu_command_buffer()` returns the active `g_batch_cb` to every helper
+  with `owned=0`.
+- `ds4_gpu_compute_encoder()` also reuses one persistent `g_batch_enc` for
+  that command buffer. Helper calls to `ds4_gpu_end_compute_encoder()` leave
+  the active encoder open, and `ds4_gpu_finish_command_buffer()` is a no-op
+  for borrowed command buffers.
+- Compressor and indexer tensor helpers preserve an already active batch.
+  Their local begin/end logic runs only when called without an outer batch.
+- The apparent per-component submissions in the tail, compressor, and
+  attention-mode profiles are deliberate synchronized diagnostic boundaries.
+  They are not present in uninstrumented production execution.
+- Remaining begin/end boundaries in the exact verifier are limited to
+  profiler/observer capture, candidate failure recovery, and unrelated
+  selected-expert readback or streaming paths. They do not provide a
+  command-consolidation opportunity inside the successful serial
+  exact-attention tail.
+
+Decision:
+
+- Do not implement a tail command-batch flag or prepare a throughput ablation.
+  It would duplicate the current command-buffer and encoder ownership model and
+  should be a no-op.
+- No runtime code changed in this phase. The source audit is the validation;
+  no timed benchmark is needed.
+
+Next measured target:
+
+- The serial exact-attention path still performs substantial host-side object
+  churn. `metal_graph_encode_exact_attention_prepared()` constructs and frees
+  row views for the same batch tensors on every proposal row of every target
+  layer.
+- Each `ds4_gpu_tensor_view()` allocates a retained `DS4MetalTensor` object and
+  updates the global tensor-view tracker under `g_tensor_mu`.
+- A bounded strict-compatible experiment can prebuild the fixed row views once
+  per exact verifier call and reuse them across all layers. It must preserve
+  tensor offsets, command order, cache mutation, prefix captures, arithmetic,
+  and the legacy fallback.
+- Gate that experiment first with model-free lifetime tests and the five-case
+  byte-identity matrix. Prepare a user-run paired throughput benchmark only if
+  stats or host timing show that view reuse removes material production work.
