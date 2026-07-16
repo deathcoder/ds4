@@ -6927,3 +6927,105 @@ Recommended next phase:
 
 Do not port the divergent committing batched verifier without an explicit
 decision to relax the byte-identical output contract.
+
+## Phase 1.08: Default-Off Persistent-KV Metal Drafter
+
+Purpose:
+
+- Port the safe portion of community PR #502 that attacks the fixed DSpark
+  sidecar tax.
+- Preserve this branch's existing GPU bridge, stage FFN, output head,
+  Markov/confidence chain, confidence scheduler, exact prefix checkpoints, and
+  byte-identical exact verifier.
+- Keep the new proposal route default-off until a user-run paired throughput
+  ablation establishes that it is worthwhile.
+
+Implementation:
+
+- Added `DS4_DSPARK_METAL_DRAFTER=1`, effective only with the DSpark GPU
+  runtime on Apple Metal.
+- Added a noncausal raw-batch FlashAttention entry point. Existing callers
+  retain the causal mask; the new entry point uses an all-visible mask for the
+  parallel DSpark proposal block.
+- Reused the existing device-resident `main_x` bridge instead of importing the
+  community branch's separate hidden-flow lifecycle.
+- Added persistent projected context KV for all three DSpark stages:
+  - the initial target window is projected once;
+  - later captures retain the absolute-position overlap;
+  - a rolling 128-token window shifts the retained prefix through one shared
+    device scratch tensor;
+  - only missing prefix/suffix rows are projected.
+- The specialized stage route skips full context-KV reprojection and replaces
+  five serial attention calls with one noncausal batch call. Existing attention
+  preparation, exact FFN batching, output head, compact candidate chain, and
+  target verifier remain unchanged.
+- Cache alignment is checked before every proposal. A refresh or proposal
+  failure disables the specialized round and retries through the legacy GPU
+  proposal path instead of aborting generation.
+- Runtime stats now report `metal_drafter_attempts`,
+  `metal_drafter_successes`, and `metal_drafter_fallbacks`.
+- The correctness matrix accepts
+  `DS4_TEST_DSPARK_METAL_DRAFTER=1`, requires successful cache/proposal route
+  records, and rejects specialized fallback.
+- Tightened the matrix's prefix-checkpoint engagement assertion: a partial
+  checkpoint is now mandatory only when explicitly requested with
+  `DS4_TEST_DSPARK_EXACT_PREFIX_CHECKPOINT=1`. Dedicated model-free tests still
+  own the checkpoint feature gate.
+
+Correctness and build validation:
+
+```sh
+make -j4
+make ds4_cpu.o
+python3 tests/test_dspark_metal_drafter.py
+python3 tests/test_dspark_exact_prefix_checkpoint.py
+python3 tests/test_dspark_checkpoint_attribution.py
+python3 tests/test_dspark_confidence_scheduler.py
+python3 tests/test_dspark_generalization_gate.py
+bash -n tests/dspark_gpu_candidates_correctness.sh
+DS4_TEST_DSPARK_MODE=runtime \
+DS4_TEST_DSPARK_METAL_DRAFTER=1 \
+DS4_TEST_DSPARK_RUNTIME_STATS=1 \
+  tests/dspark_gpu_candidates_correctness.sh
+DS4_TEST_DSPARK_MODE=runtime \
+DS4_TEST_DSPARK_RUNTIME_STATS=1 \
+  tests/dspark_gpu_candidates_correctness.sh
+python3 speed-bench/run_dspark_comparison.py \
+  --metal-drafter-ablation \
+  --dry-run \
+  --allow-dirty
+git diff --check
+```
+
+Results:
+
+- Metal release binaries built cleanly.
+- The CPU object built with only the existing unused-code warnings.
+- All 38 focused model-free Python tests passed.
+- The specialized five-case runtime matrix passed reasoning, Italian, medium
+  context, rolling-window, and resumed-chat cases byte-for-byte against
+  ordinary baseline output.
+- The retained specialized logs recorded `17/17` successful proposal rounds
+  with zero fallback. Rolling-window refresh retained 125-127 context rows.
+- The default-off control matrix also passed all five cases and recorded zero
+  Metal-drafter attempts.
+- No timed throughput benchmark was run by Codex.
+
+User-run ablation:
+
+```sh
+python3 speed-bench/run_dspark_comparison.py \
+  --metal-drafter-ablation \
+  --confirm-idle
+```
+
+The runner alternates default exact DSpark and the persistent-KV Metal
+drafter, disables diagnostics and runtime stats in both modes, requires every
+output to match byte-for-byte, and reports paired generation throughput. The
+next decision is based on this result:
+
+- A material positive gain justifies a stats-only attribution and broader
+  HumanEval/generalization confirmation.
+- A flat or negative result means the retained KV lifecycle works, but command
+  boundaries or the batch-attention implementation still consume the saved
+  projection work.

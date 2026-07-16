@@ -30204,6 +30204,7 @@ struct dspark_session_state {
     ds4_gpu_tensor *gpu_target_context;
     ds4_gpu_tensor *gpu_main_proj;
     ds4_gpu_tensor *gpu_main_x;
+    ds4_gpu_tensor *gpu_metal_kv_shift;
     ds4_gpu_tensor *gpu_stage_kv[DS4_DSPARK_MTP_LAYERS];
     ds4_gpu_tensor *gpu_stage_output[DS4_DSPARK_MTP_LAYERS];
     float *gpu_target_context_read;
@@ -30252,6 +30253,13 @@ struct dspark_session_state {
     uint32_t gpu_bridge_cap;
     uint32_t gpu_main_x_rows;
     uint32_t gpu_main_x_pos0;
+    uint32_t gpu_metal_context_rows;
+    uint32_t gpu_metal_context_pos0;
+    bool gpu_metal_context_valid;
+    bool gpu_metal_drafter_active;
+    uint64_t gpu_metal_drafter_attempts;
+    uint64_t gpu_metal_drafter_successes;
+    uint64_t gpu_metal_drafter_fallbacks;
     uint64_t gpu_bridge_checks;
     uint64_t gpu_bridge_failures;
     uint64_t gpu_bridge_mismatches;
@@ -30426,6 +30434,7 @@ static void dspark_session_state_reset(dspark_session_state *d) {
     memset(d->stage_raw_rows, 0, sizeof(d->stage_raw_rows));
     memset(d->gpu_stage_output_valid, 0, sizeof(d->gpu_stage_output_valid));
     d->gpu_head_output_valid = false;
+    d->gpu_metal_drafter_active = false;
     dspark_session_draft_reset(d);
 }
 
@@ -30436,6 +30445,10 @@ static void dspark_session_target_context_reset(dspark_session_state *d) {
     d->target_context_valid = false;
     d->gpu_main_x_rows = 0;
     d->gpu_main_x_pos0 = 0;
+    d->gpu_metal_context_rows = 0;
+    d->gpu_metal_context_pos0 = 0;
+    d->gpu_metal_context_valid = false;
+    d->gpu_metal_drafter_active = false;
     d->window_pos0 = 0;
     dspark_session_draft_reset(d);
 }
@@ -30526,6 +30539,8 @@ static void dspark_session_state_free(dspark_session_state *d) {
                 "exact_attn_suffix_batch_attempts=%llu "
                 "exact_attn_suffix_batch_successes=%llu "
                 "exact_head_batch_attempts=%llu exact_head_batch_successes=%llu "
+                "metal_drafter_attempts=%llu metal_drafter_successes=%llu "
+                "metal_drafter_fallbacks=%llu "
                 "sidecar_ms=%.3f bridge_ms=%.3f stage0_ms=%.3f stage1_ms=%.3f "
                 "stage2_ms=%.3f head_ms=%.3f chain_ms=%.3f "
                 "prefill_sidecar_ms=%.3f generation_sidecar_ms=%.3f "
@@ -30568,6 +30583,9 @@ static void dspark_session_state_free(dspark_session_state *d) {
                 (unsigned long long)d->runtime_exact_attn_suffix_batch_successes,
                 (unsigned long long)d->runtime_exact_head_batch_attempts,
                 (unsigned long long)d->runtime_exact_head_batch_successes,
+                (unsigned long long)d->gpu_metal_drafter_attempts,
+                (unsigned long long)d->gpu_metal_drafter_successes,
+                (unsigned long long)d->gpu_metal_drafter_fallbacks,
                 sidecar_seconds * 1000.0,
                 d->runtime_bridge_seconds * 1000.0,
                 d->runtime_stage_seconds[0] * 1000.0,
@@ -30696,6 +30714,7 @@ static void dspark_session_state_free(dspark_session_state *d) {
     free(d->gpu_main_x_ref);
     free(d->gpu_main_x_read);
     free(d->gpu_target_context_read);
+    ds4_gpu_tensor_free(d->gpu_metal_kv_shift);
     ds4_gpu_tensor_free(d->gpu_main_x);
     ds4_gpu_tensor_free(d->gpu_main_proj);
     ds4_gpu_tensor_free(d->gpu_target_context);
@@ -30745,6 +30764,7 @@ static bool dspark_session_gpu_chain_env_enabled(void);
 static bool dspark_session_gpu_chain_host_env_enabled(void);
 static bool dspark_session_gpu_candidates_env_enabled(void);
 static bool dspark_session_gpu_runtime_env_enabled(void);
+static bool dspark_session_metal_drafter_env_enabled(void);
 static bool dspark_session_diagnostics_enabled(void);
 static bool dspark_session_fast_verify_observer_enabled(void);
 static bool dspark_session_fast_verify_runtime_enabled(void);
@@ -30758,6 +30778,10 @@ static float dspark_session_gpu_confidence_tolerance(void);
 static bool dspark_session_verify_env_enabled(void);
 static bool dspark_session_observe_env_enabled(void);
 static const char *dspark_session_observe_mode_name(void);
+static bool dspark_session_metal_drafter_refresh(
+        ds4_session *s,
+        char        *err,
+        size_t       errlen);
 
 static void dspark_sidecar_stage_block(
         float                   *out_hc,
@@ -31108,6 +31132,21 @@ static bool dspark_session_gpu_bridge_run(
 
     d->gpu_main_x_pos0 = window_pos0;
     d->gpu_main_x_rows = window_rows;
+    if (runtime && dspark_session_metal_drafter_env_enabled() &&
+        e->backend == DS4_BACKEND_METAL) {
+        char refresh_err[256];
+        refresh_err[0] = '\0';
+        if (!dspark_session_metal_drafter_refresh(
+                s, refresh_err, sizeof(refresh_err))) {
+            d->gpu_metal_context_valid = false;
+            if (dspark_session_diagnostics_enabled()) {
+                fprintf(stderr,
+                        "ds4: DSpark Metal drafter cache refresh skipped: %s; "
+                        "legacy GPU proposal path remains available\n",
+                        refresh_err[0] ? refresh_err : "unknown error");
+            }
+        }
+    }
     d->gpu_bridge_checks++;
     if (runtime) {
         if (stats) {
@@ -31396,6 +31435,147 @@ static bool dspark_gpu_stage_project_kv_rows(
     return ok;
 }
 
+static bool dspark_session_metal_drafter_project_range(
+        ds4_session *s,
+        uint32_t     stage,
+        uint32_t     row0,
+        uint32_t     n_rows) {
+    ds4_gpu_graph *g = &s->graph;
+    dspark_session_state *d = s->dspark;
+    while (n_rows > 0) {
+        uint32_t rows = n_rows;
+        if (rows > g->prefill_cap) rows = g->prefill_cap;
+        ds4_gpu_tensor *main_view = ds4_gpu_tensor_view(
+            d->gpu_main_x,
+            (uint64_t)row0 * DS4_N_EMBD * sizeof(float),
+            (uint64_t)rows * DS4_N_EMBD * sizeof(float));
+        const bool ok = main_view &&
+            dspark_gpu_stage_project_kv_rows(
+                s,
+                stage,
+                main_view,
+                row0,
+                d->gpu_main_x_pos0 + row0,
+                rows);
+        ds4_gpu_tensor_free(main_view);
+        if (!ok) return false;
+        row0 += rows;
+        n_rows -= rows;
+    }
+    return true;
+}
+
+static bool dspark_session_metal_drafter_refresh(
+        ds4_session *s,
+        char        *err,
+        size_t       errlen) {
+    if (!s || !s->engine || !s->dspark ||
+        s->engine->backend != DS4_BACKEND_METAL ||
+        !dspark_session_metal_drafter_env_enabled()) {
+        if (errlen) snprintf(err, errlen, "Metal drafter refresh is unavailable");
+        return false;
+    }
+
+    dspark_session_state *d = s->dspark;
+    ds4_gpu_graph *g = &s->graph;
+    const uint32_t new_pos0 = d->gpu_main_x_pos0;
+    const uint32_t new_rows = d->gpu_main_x_rows;
+    if (!d->gpu_main_x || new_rows == 0 ||
+        new_rows > d->main_x_cap || g->prefill_cap == 0) {
+        if (errlen) snprintf(err, errlen, "invalid Metal drafter context");
+        return false;
+    }
+
+    if (!d->gpu_metal_kv_shift) {
+        d->gpu_metal_kv_shift = ds4_gpu_tensor_alloc(
+            (uint64_t)d->main_x_cap * DS4_N_HEAD_DIM * sizeof(float));
+    }
+    if (!d->gpu_metal_kv_shift) {
+        if (errlen) snprintf(err, errlen, "failed to allocate Metal drafter KV shift");
+        return false;
+    }
+    for (uint32_t stage = 0; stage < DS4_DSPARK_MTP_LAYERS; stage++) {
+        if (!dspark_engine_gpu_stage_map(s->engine, stage, err, errlen)) {
+            return false;
+        }
+        if (!d->gpu_stage_kv[stage]) {
+            d->gpu_stage_kv[stage] = ds4_gpu_tensor_alloc(
+                (uint64_t)d->sidecar_kv_cap * DS4_N_HEAD_DIM * sizeof(float));
+        }
+        if (!d->gpu_stage_kv[stage]) {
+            if (errlen) snprintf(err, errlen,
+                                 "failed to allocate Metal drafter stage %u KV", stage);
+            return false;
+        }
+    }
+
+    uint32_t overlap_src = 0;
+    uint32_t overlap_dst = 0;
+    uint32_t overlap_rows = 0;
+    if (d->gpu_metal_context_valid && d->gpu_metal_context_rows > 0) {
+        const uint32_t old_pos0 = d->gpu_metal_context_pos0;
+        const uint32_t old_end = old_pos0 + d->gpu_metal_context_rows;
+        const uint32_t new_end = new_pos0 + new_rows;
+        const uint32_t overlap_pos0 = old_pos0 > new_pos0 ? old_pos0 : new_pos0;
+        const uint32_t overlap_end = old_end < new_end ? old_end : new_end;
+        if (overlap_end > overlap_pos0) {
+            overlap_src = overlap_pos0 - old_pos0;
+            overlap_dst = overlap_pos0 - new_pos0;
+            overlap_rows = overlap_end - overlap_pos0;
+        }
+    }
+
+    bool ok = ds4_gpu_begin_commands() != 0;
+    const uint64_t row_bytes = (uint64_t)DS4_N_HEAD_DIM * sizeof(float);
+    for (uint32_t stage = 0; ok && stage < DS4_DSPARK_MTP_LAYERS; stage++) {
+        if (overlap_rows > 0 && overlap_src != overlap_dst) {
+            const uint64_t bytes = (uint64_t)overlap_rows * row_bytes;
+            ok = ds4_gpu_tensor_copy(
+                     d->gpu_metal_kv_shift,
+                     0,
+                     d->gpu_stage_kv[stage],
+                     (uint64_t)overlap_src * row_bytes,
+                     bytes) != 0;
+            if (ok) {
+                ok = ds4_gpu_tensor_copy(
+                         d->gpu_stage_kv[stage],
+                         (uint64_t)overlap_dst * row_bytes,
+                         d->gpu_metal_kv_shift,
+                         0,
+                         bytes) != 0;
+            }
+        }
+        if (ok && overlap_dst > 0) {
+            ok = dspark_session_metal_drafter_project_range(
+                s, stage, 0, overlap_dst);
+        }
+        const uint32_t suffix_row = overlap_dst + overlap_rows;
+        if (ok && suffix_row < new_rows) {
+            ok = dspark_session_metal_drafter_project_range(
+                s, stage, suffix_row, new_rows - suffix_row);
+        }
+    }
+    if (ds4_gpu_end_commands() == 0) ok = false;
+    if (!ok) {
+        d->gpu_metal_context_valid = false;
+        if (errlen) snprintf(err, errlen, "Metal drafter KV refresh failed");
+        return false;
+    }
+
+    d->gpu_metal_context_pos0 = new_pos0;
+    d->gpu_metal_context_rows = new_rows;
+    d->gpu_metal_context_valid = true;
+    if (dspark_session_diagnostics_enabled()) {
+        fprintf(stderr,
+                "ds4: DSpark Metal drafter cache context=%u:%u overlap=%u "
+                "result=pass\n",
+                new_pos0,
+                new_pos0 + new_rows,
+                overlap_rows);
+    }
+    return true;
+}
+
 static void dspark_gpu_stage_debug_dump(
         uint32_t        stage,
         const char     *name,
@@ -31435,6 +31615,7 @@ static bool dspark_session_gpu_stage_run(
     ds4_engine *e = s->engine;
     ds4_gpu_graph *g = &s->graph;
     dspark_session_state *d = s->dspark;
+    const bool metal_drafter = runtime && d->gpu_metal_drafter_active;
     const bool stats = runtime && dspark_session_runtime_stats_enabled();
     const double stats_start = stats ? now_sec() : 0.0;
     const ds4_layer_weights *layer = &e->dspark_weights.stage[stage];
@@ -31620,25 +31801,27 @@ static bool dspark_session_gpu_stage_run(
     }
 
     if (ok) failed_step = "context KV";
-    for (uint32_t pos = 0; ok && pos < context_len;) {
-        uint32_t rows = context_len - pos;
-        if (rows > g->prefill_cap) rows = g->prefill_cap;
-        ds4_gpu_tensor *main_view = ds4_gpu_tensor_view(
-            d->gpu_main_x,
-            (uint64_t)pos * DS4_N_EMBD * sizeof(float),
-            (uint64_t)rows * DS4_N_EMBD * sizeof(float));
-        if (!main_view) {
-            ok = false;
-        } else {
-            ok = dspark_gpu_stage_project_kv_rows(s,
-                                                  stage,
-                                                  main_view,
-                                                  pos,
-                                                  context_pos0 + pos,
-                                                  rows);
+    if (!metal_drafter) {
+        for (uint32_t pos = 0; ok && pos < context_len;) {
+            uint32_t rows = context_len - pos;
+            if (rows > g->prefill_cap) rows = g->prefill_cap;
+            ds4_gpu_tensor *main_view = ds4_gpu_tensor_view(
+                d->gpu_main_x,
+                (uint64_t)pos * DS4_N_EMBD * sizeof(float),
+                (uint64_t)rows * DS4_N_EMBD * sizeof(float));
+            if (!main_view) {
+                ok = false;
+            } else {
+                ok = dspark_gpu_stage_project_kv_rows(s,
+                                                      stage,
+                                                      main_view,
+                                                      pos,
+                                                      context_pos0 + pos,
+                                                      rows);
+            }
+            ds4_gpu_tensor_free(main_view);
+            pos += rows;
         }
-        ds4_gpu_tensor_free(main_view);
-        pos += rows;
     }
     if (ok) failed_step = "block KV";
     if (ok) {
@@ -31658,38 +31841,60 @@ static bool dspark_session_gpu_stage_run(
     }
 
     if (ok) failed_step = "attention";
-    for (uint32_t t = 0; ok && t < block; t++) {
-        ds4_gpu_tensor *q_view = ds4_gpu_tensor_view(
-            g->batch_q,
-            (uint64_t)t * q_dim * sizeof(float),
-            q_dim * sizeof(float));
-        ds4_gpu_tensor *heads_view = ds4_gpu_tensor_view(
-            g->batch_heads,
-            (uint64_t)t * q_dim * sizeof(float),
-            q_dim * sizeof(float));
-        if (!q_view || !heads_view) {
-            ok = false;
-        } else {
-            ok = ds4_gpu_attention_decode_heads_tensor(
-                     heads_view,
+    if (metal_drafter) {
+        if (ok) {
+#if defined(__APPLE__)
+            ok = ds4_gpu_attention_decode_raw_batch_heads_noncausal_tensor(
+                     g->batch_heads,
                      e->dspark_model.map,
                      e->dspark_model.size,
                      layer->attn_sinks->abs_offset,
-                     q_view,
+                     g->batch_q,
                      d->gpu_stage_kv[stage],
+                     block,
                      n_kv,
                      d->sidecar_kv_cap,
                      0,
-                     NULL,
-                     0,
-                     0,
-                     NULL,
-                     0,
                      DS4_N_HEAD,
                      DS4_N_HEAD_DIM) != 0;
+#else
+            ok = false;
+#endif
         }
-        ds4_gpu_tensor_free(heads_view);
-        ds4_gpu_tensor_free(q_view);
+    } else {
+        for (uint32_t t = 0; ok && t < block; t++) {
+            ds4_gpu_tensor *q_view = ds4_gpu_tensor_view(
+                g->batch_q,
+                (uint64_t)t * q_dim * sizeof(float),
+                q_dim * sizeof(float));
+            ds4_gpu_tensor *heads_view = ds4_gpu_tensor_view(
+                g->batch_heads,
+                (uint64_t)t * q_dim * sizeof(float),
+                q_dim * sizeof(float));
+            if (!q_view || !heads_view) {
+                ok = false;
+            } else {
+                ok = ds4_gpu_attention_decode_heads_tensor(
+                         heads_view,
+                         e->dspark_model.map,
+                         e->dspark_model.size,
+                         layer->attn_sinks->abs_offset,
+                         q_view,
+                         d->gpu_stage_kv[stage],
+                         n_kv,
+                         d->sidecar_kv_cap,
+                         0,
+                         NULL,
+                         0,
+                         0,
+                         NULL,
+                         0,
+                         DS4_N_HEAD,
+                         DS4_N_HEAD_DIM) != 0;
+            }
+            ds4_gpu_tensor_free(heads_view);
+            ds4_gpu_tensor_free(q_view);
+        }
     }
     if (ok) {
         dspark_gpu_stage_debug_dump(stage,
@@ -33903,42 +34108,119 @@ static bool dspark_session_prepare_from_target_context(
     if (ready_fn && !runtime) ready_fn(cb_ud, d, context_len);
 
     if (runtime) {
-        for (uint32_t stage = 0; stage < DS4_DSPARK_MTP_LAYERS; stage++) {
-            char stage_err[256];
-            stage_err[0] = '\0';
-            d->gpu_stage_output_valid[stage] = false;
-            const float *stage0_input = stage == 0 ? d->cur_hc : NULL;
-            if (!dspark_session_gpu_stage_run(s,
-                                              stage,
-                                              stage0_input,
-                                              NULL,
-                                              context_pos0,
-                                              context_len,
-                                              stage_err,
-                                              sizeof(stage_err))) {
-                d->gpu_stage_failures[stage]++;
-                if (errlen) snprintf(err,
-                                     errlen,
-                                     "DSpark GPU runtime stage %u failed: %s",
-                                     stage,
-                                     stage_err[0] ? stage_err : "unknown error");
-                return false;
+        const bool metal_requested =
+            dspark_session_metal_drafter_env_enabled() &&
+            e->backend == DS4_BACKEND_METAL;
+        bool metal_ready =
+            metal_requested &&
+            d->gpu_metal_context_valid &&
+            d->gpu_metal_context_pos0 == context_pos0 &&
+            d->gpu_metal_context_rows == context_len;
+        if (metal_requested) {
+            d->gpu_metal_drafter_attempts++;
+            if (!metal_ready) {
+                d->gpu_metal_drafter_fallbacks++;
+                if (dspark_session_diagnostics_enabled()) {
+                    fprintf(stderr,
+                            "ds4: DSpark Metal drafter cache is unavailable for "
+                            "context=%u:%u; using legacy GPU proposal\n",
+                            context_pos0,
+                            context_pos0 + context_len);
+                }
             }
-            d->stage_raw_rows[stage] = context_len + d->block_size;
         }
 
-        char head_err[256];
-        head_err[0] = '\0';
-        d->gpu_head_output_valid = false;
-        if (!dspark_session_gpu_head_run(s, head_err, sizeof(head_err))) {
-            d->gpu_head_failures++;
-            if (errlen) snprintf(err,
-                                 errlen,
-                                 "DSpark GPU runtime head failed: %s",
-                                 head_err[0] ? head_err : "unknown error");
+        const uint32_t attempts = metal_ready ? 2u : 1u;
+        for (uint32_t attempt = 0; attempt < attempts; attempt++) {
+            const bool use_metal = metal_ready && attempt == 0;
+            d->gpu_metal_drafter_active = use_metal;
+            memset(d->gpu_stage_output_valid,
+                   0,
+                   sizeof(d->gpu_stage_output_valid));
+            d->gpu_head_output_valid = false;
+
+            bool stages_ok = true;
+            uint32_t failed_stage = 0;
+            char runtime_err[256];
+            runtime_err[0] = '\0';
+            for (uint32_t stage = 0;
+                 stage < DS4_DSPARK_MTP_LAYERS;
+                 stage++) {
+                const float *stage0_input = stage == 0 ? d->cur_hc : NULL;
+                if (!dspark_session_gpu_stage_run(s,
+                                                  stage,
+                                                  stage0_input,
+                                                  NULL,
+                                                  context_pos0,
+                                                  context_len,
+                                                  runtime_err,
+                                                  sizeof(runtime_err))) {
+                    d->gpu_stage_failures[stage]++;
+                    failed_stage = stage;
+                    stages_ok = false;
+                    break;
+                }
+                d->stage_raw_rows[stage] = context_len + d->block_size;
+            }
+
+            if (stages_ok &&
+                !dspark_session_gpu_head_run(
+                    s, runtime_err, sizeof(runtime_err))) {
+                d->gpu_head_failures++;
+                failed_stage = DS4_DSPARK_MTP_LAYERS;
+                stages_ok = false;
+            }
+            if (stages_ok) {
+                if (use_metal) {
+                    d->gpu_metal_drafter_successes++;
+                    if (dspark_session_diagnostics_enabled()) {
+                        fprintf(stderr,
+                                "ds4: DSpark Metal drafter proposal context=%u "
+                                "block=%u result=pass\n",
+                                context_len,
+                                d->block_size);
+                    }
+                }
+                d->gpu_metal_drafter_active = false;
+                return true;
+            }
+
+            if (use_metal) {
+                d->gpu_metal_drafter_fallbacks++;
+                d->gpu_metal_drafter_active = false;
+                if (dspark_session_diagnostics_enabled()) {
+                    fprintf(stderr,
+                            "ds4: DSpark Metal drafter failed at %s %u: %s; "
+                            "retrying with legacy GPU proposal\n",
+                            failed_stage < DS4_DSPARK_MTP_LAYERS ?
+                                "stage" : "head",
+                            failed_stage < DS4_DSPARK_MTP_LAYERS ?
+                                failed_stage : 0u,
+                            runtime_err[0] ? runtime_err : "unknown error");
+                }
+                continue;
+            }
+
+            d->gpu_metal_drafter_active = false;
+            if (errlen) {
+                if (failed_stage < DS4_DSPARK_MTP_LAYERS) {
+                    snprintf(err,
+                             errlen,
+                             "DSpark GPU runtime stage %u failed: %s",
+                             failed_stage,
+                             runtime_err[0] ? runtime_err : "unknown error");
+                } else {
+                    snprintf(err,
+                             errlen,
+                             "DSpark GPU runtime head failed: %s",
+                             runtime_err[0] ? runtime_err : "unknown error");
+                }
+            }
             return false;
         }
-        return true;
+        d->gpu_metal_drafter_active = false;
+        if (errlen) snprintf(err, errlen, "DSpark GPU runtime proposal failed");
+        return false;
     }
 
     float *cur_hc = d->cur_hc;
@@ -34414,6 +34696,16 @@ static bool dspark_session_gpu_candidates_env_enabled(void) {
 static bool dspark_session_gpu_runtime_env_enabled(void) {
     const char *v = getenv("DS4_DSPARK_GPU_RUNTIME");
     return v && v[0] && strcmp(v, "0") != 0;
+}
+
+static bool dspark_session_metal_drafter_env_enabled(void) {
+#if defined(__APPLE__)
+    const char *v = getenv("DS4_DSPARK_METAL_DRAFTER");
+    return dspark_session_gpu_runtime_env_enabled() &&
+           v && v[0] && strcmp(v, "0") != 0;
+#else
+    return false;
+#endif
 }
 
 static bool dspark_session_runtime_stats_enabled(void) {

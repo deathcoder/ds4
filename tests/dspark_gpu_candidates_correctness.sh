@@ -14,6 +14,7 @@ serial_attn_pre_runtime=${DS4_TEST_DSPARK_SERIAL_ATTN_PRE_RUNTIME:-0}
 attn_pre_runtime=${DS4_TEST_DSPARK_ATTN_PRE_RUNTIME:-0}
 attn_suffix_runtime=${DS4_TEST_DSPARK_ATTN_SUFFIX_RUNTIME:-0}
 runtime_stats=${DS4_TEST_DSPARK_RUNTIME_STATS:-0}
+metal_drafter=${DS4_TEST_DSPARK_METAL_DRAFTER:-0}
 acceptance_audit=${DS4_TEST_DSPARK_ACCEPTANCE_AUDIT:-0}
 acceptance_trace=${DS4_TEST_DSPARK_ACCEPTANCE_TRACE:-0}
 confidence_threshold=${DS4_TEST_DSPARK_CONFIDENCE_THRESHOLD:-}
@@ -40,6 +41,7 @@ unset DS4_DSPARK_EXACT_PREFIX_CHECKPOINT
 unset DS4_DSPARK_ACCEPTANCE_AUDIT
 unset DS4_DSPARK_ACCEPTANCE_TRACE
 unset DS4_DSPARK_CONFIDENCE_THRESHOLD
+unset DS4_DSPARK_METAL_DRAFTER
 unset DS4_METAL_COMPRESSOR_PAIR_NR4
 unset DS4_METAL_INDEXED_ATTN_RB16_DIRECT
 unset DS4_METAL_INDEXED_ATTN_RB16_LEGACY
@@ -91,6 +93,14 @@ if [[ $attn_suffix_runtime == 1 &&
 fi
 if [[ $runtime_stats == 1 && $mode != runtime ]]; then
     printf 'runtime stats require DS4_TEST_DSPARK_MODE=runtime\n' >&2
+    exit 2
+fi
+if [[ $metal_drafter != 0 && $metal_drafter != 1 ]]; then
+    printf 'DS4_TEST_DSPARK_METAL_DRAFTER must be 0 or 1\n' >&2
+    exit 2
+fi
+if [[ $metal_drafter == 1 && $mode != runtime ]]; then
+    printf 'Metal drafter requires DS4_TEST_DSPARK_MODE=runtime\n' >&2
     exit 2
 fi
 if [[ $acceptance_audit == 1 && $mode != runtime ]]; then
@@ -202,6 +212,9 @@ case "$mode" in
         if [[ $runtime_stats == 1 ]]; then
             gpu_env+=(DS4_DSPARK_GPU_RUNTIME_STATS=1)
         fi
+        if [[ $metal_drafter == 1 ]]; then
+            gpu_env+=(DS4_DSPARK_METAL_DRAFTER=1)
+        fi
         if [[ $acceptance_audit == 1 ]]; then
             gpu_env+=(DS4_DSPARK_ACCEPTANCE_AUDIT=1)
         fi
@@ -311,6 +324,17 @@ assert_gpu_selected() {
         grep -q 'DSpark GPU stage 2 runtime .* result=pass' "$log"
         grep -q 'DSpark GPU head runtime .* result=pass' "$log"
         grep -q 'DSpark GPU chain runtime .* result=pass' "$log"
+        if [[ $metal_drafter == 1 ]]; then
+            grep -q 'DSpark Metal drafter cache .* result=pass' "$log"
+            grep -q 'DSpark Metal drafter proposal .* result=pass' "$log"
+            if grep -q 'DSpark Metal drafter failed at ' "$log"; then
+                printf 'Metal drafter unexpectedly fell back\n' >&2
+                exit 1
+            fi
+        elif grep -q 'DSpark Metal drafter proposal ' "$log"; then
+            printf 'control mode unexpectedly ran the Metal drafter\n' >&2
+            exit 1
+        fi
         if [[ $fast_verify_runtime == 1 ]]; then
             grep -q 'DSpark fast batch verifier .* result=pass' "$log"
         elif [[ $verifier_batches_expected == 1 ]]; then
@@ -397,6 +421,7 @@ assert_gpu_selected() {
             local suffix_outcomes suffix_attempts suffix_successes
             local checkpoint_outcomes checkpoint_attempts checkpoint_successes
             local checkpoint_fallbacks checkpoint_rows_avoided
+            local metal_outcomes metal_attempts metal_successes metal_fallbacks
             if [[ $(grep -c '^ds4: DSpark runtime stats ' "$log") -ne 1 ]]; then
                 printf 'expected exactly one DSpark runtime stats record\n' >&2
                 exit 1
@@ -472,6 +497,27 @@ assert_gpu_selected() {
                 fi
             elif [[ $suffix_attempts -ne 0 || $suffix_successes -ne 0 ]]; then
                 printf 'control mode unexpectedly recorded attention-suffix outcomes\n' >&2
+                exit 1
+            fi
+            metal_outcomes=$(printf '%s\n' "$stats_record" | sed -n \
+                's/.* metal_drafter_attempts=\([0-9][0-9]*\) metal_drafter_successes=\([0-9][0-9]*\) metal_drafter_fallbacks=\([0-9][0-9]*\) .*/\1 \2 \3/p')
+            if [[ -z $metal_outcomes ]]; then
+                printf 'DSpark runtime stats omitted Metal drafter outcomes\n' >&2
+                exit 1
+            fi
+            read -r metal_attempts metal_successes metal_fallbacks \
+                <<<"$metal_outcomes"
+            if [[ $metal_drafter == 1 ]]; then
+                if [[ $metal_attempts -eq 0 ||
+                      $metal_successes -ne $metal_attempts ||
+                      $metal_fallbacks -ne 0 ]]; then
+                    printf 'Metal drafter runtime outcomes were %s\n' \
+                        "$metal_outcomes" >&2
+                    exit 1
+                fi
+            elif [[ $metal_attempts -ne 0 || $metal_successes -ne 0 ||
+                    $metal_fallbacks -ne 0 ]]; then
+                printf 'control mode unexpectedly recorded Metal drafter outcomes\n' >&2
                 exit 1
             fi
         fi
@@ -762,7 +808,7 @@ if [[ $attn_inv_rope_fused == 1 ]]; then
     observe_attn_inv_rope_fused_layer dense 42 dense_mixed
     compare_attn_inv_rope_fused_indexed
 fi
-if [[ $mode == runtime && $exact_prefix_checkpoint != 0 ]] &&
+if [[ $mode == runtime && $exact_prefix_checkpoint == 1 ]] &&
    ! grep -q 'DSpark exact prefix checkpoint .* result=pass' "$tmpdir"/*.log; then
     printf 'exact prefix checkpoint did not engage on the correctness matrix\n' >&2
     exit 1

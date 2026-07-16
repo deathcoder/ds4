@@ -169,6 +169,11 @@ def parse_args():
         action="store_true",
         help="compare replaying partial accepts against exact prefix checkpoints",
     )
+    parser.add_argument(
+        "--metal-drafter-ablation",
+        action="store_true",
+        help="compare default exact DSpark against the persistent-KV Metal drafter",
+    )
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
 
@@ -188,6 +193,7 @@ def parse_args():
             args.exact_q8_rows_ablation,
             args.attention_inverse_rope_fusion_ablation,
             args.exact_prefix_checkpoint_ablation,
+            args.metal_drafter_ablation,
         )
     )
     if selected_modes > 1:
@@ -197,7 +203,8 @@ def parse_args():
             "--indexed-attention-rb16-promotion-ablation, and "
             "--exact-q8-rows-ablation, and "
             "--attention-inverse-rope-fusion-ablation, and "
-            "--exact-prefix-checkpoint-ablation "
+            "--exact-prefix-checkpoint-ablation, and "
+            "--metal-drafter-ablation "
             "are mutually exclusive"
         )
     if not args.confirm_idle and not args.dry_run:
@@ -242,6 +249,8 @@ def check_inputs(args, root):
 
 
 def benchmark_modes(args):
+    if getattr(args, "metal_drafter_ablation", False):
+        return ("default_exact", "metal_drafter")
     if args.exact_prefix_checkpoint_ablation:
         return ("replay_partial_accept", "default_exact")
     if args.attention_inverse_rope_fusion_ablation:
@@ -276,6 +285,7 @@ def mode_label(mode, args):
         "serial_q8_rows": "Legacy one-row Q8 projection DSpark",
         "attention_inverse_rope_fused": "Fused attention inverse-RoPE DSpark",
         "replay_partial_accept": "Legacy partial-accept replay DSpark",
+        "metal_drafter": "Persistent-KV Metal drafter DSpark",
     }[mode]
 
 
@@ -289,6 +299,7 @@ def throughput_runtime_stats_enabled(args):
         or args.exact_q8_rows_ablation
         or args.attention_inverse_rope_fusion_ablation
         or args.exact_prefix_checkpoint_ablation
+        or getattr(args, "metal_drafter_ablation", False)
     )
 
 
@@ -321,6 +332,8 @@ def clean_dspark_env(mode, fast_verifier=False, runtime_stats=True):
             env["DS4_DSPARK_EXACT_ATTN_INV_ROPE_FUSED"] = "1"
         if mode == "replay_partial_accept":
             env["DS4_DSPARK_EXACT_PREFIX_CHECKPOINT"] = "0"
+        if mode == "metal_drafter":
+            env["DS4_DSPARK_METAL_DRAFTER"] = "1"
     return env
 
 
@@ -350,7 +363,8 @@ def mode_command(args, mode):
             args.indexed_attention_rb16_promotion_ablation or
             args.exact_q8_rows_ablation or
             args.attention_inverse_rope_fusion_ablation or
-            args.exact_prefix_checkpoint_ablation):
+            args.exact_prefix_checkpoint_ablation or
+            getattr(args, "metal_drafter_ablation", False)):
         command[1:1] = ("--backend", "metal")
     if mode != "baseline":
         command.extend(("--dspark", str(args.dspark_model.resolve())))
@@ -383,6 +397,8 @@ def command_text(args, mode, runtime_stats=None):
             env += "DS4_DSPARK_EXACT_ATTN_INV_ROPE_FUSED=1 "
         if mode == "replay_partial_accept":
             env += "DS4_DSPARK_EXACT_PREFIX_CHECKPOINT=0 "
+        if mode == "metal_drafter":
+            env += "DS4_DSPARK_METAL_DRAFTER=1 "
     return env + shlex.join(mode_command(args, mode))
 
 
@@ -544,6 +560,8 @@ def collect_metadata(args, root):
                 args.attention_inverse_rope_fusion_ablation,
             "exact_prefix_checkpoint_ablation":
                 args.exact_prefix_checkpoint_ablation,
+            "metal_drafter_ablation":
+                getattr(args, "metal_drafter_ablation", False),
             "temperature": 0,
             "seed": 1,
         },
@@ -592,6 +610,8 @@ def summarize(rows, modes=("baseline", "runtime")):
             "attention_inverse_rope_fusion_ablation",
         ("replay_partial_accept", "default_exact"):
             "exact_prefix_checkpoint_ablation",
+        ("default_exact", "metal_drafter"):
+            "metal_drafter_ablation",
     }
     summary = {
         "comparison": comparisons.get(modes, "baseline_runtime"),
@@ -638,6 +658,15 @@ def summarize(rows, modes=("baseline", "runtime")):
             "promoted_exact_prefix_checkpoint_generation_tps_median":
                 candidate_median,
             "promoted_exact_prefix_checkpoint_delta_percent":
+                (candidate_median / reference_median - 1.0) * 100.0,
+        })
+        return summary
+
+    if modes == ("default_exact", "metal_drafter"):
+        summary.update({
+            "default_exact_generation_tps_median": reference_median,
+            "metal_drafter_generation_tps_median": candidate_median,
+            "metal_drafter_delta_percent":
                 (candidate_median / reference_median - 1.0) * 100.0,
         })
         return summary
@@ -745,6 +774,20 @@ def summarize(rows, modes=("baseline", "runtime")):
 
 
 def format_report(summary):
+    if summary["comparison"] == "metal_drafter_ablation":
+        return (
+            "# DSpark Persistent-KV Metal Drafter Ablation\n\n"
+            f"- Default exact median: "
+            f"{summary['default_exact_generation_tps_median']:.2f} t/s\n"
+            f"- Persistent-KV Metal drafter median: "
+            f"{summary['metal_drafter_generation_tps_median']:.2f} t/s\n"
+            f"- Ratio of medians: {summary['median_ratio_of_medians']:.4f}x\n"
+            f"- Median paired ratio: {summary['paired_speedup_median']:.4f}x\n"
+            f"- Metal drafter delta: "
+            f"{summary['metal_drafter_delta_percent']:+.1f}%\n"
+            f"- Measured pairs: {len(summary['paired_speedup_values'])}\n"
+        )
+
     if summary["comparison"] == "exact_prefix_checkpoint_ablation":
         return (
             "# DSpark Exact Prefix-Checkpoint Promotion Confirmation\n\n"
