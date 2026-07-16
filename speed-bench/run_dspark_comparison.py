@@ -44,6 +44,9 @@ RUNTIME_STATS_INT_FIELDS = {
     "exact_attn_pre_batch_successes",
     "exact_attn_suffix_batch_attempts",
     "exact_attn_suffix_batch_successes",
+    "metal_drafter_attempts",
+    "metal_drafter_successes",
+    "metal_drafter_fallbacks",
     "depth1",
     "depth2",
     "depth3",
@@ -119,6 +122,7 @@ def parse_args():
     parser.add_argument("--cooldown", type=float, default=10.0)
     parser.add_argument("--output-dir", type=Path)
     parser.add_argument("--confirm-idle", action="store_true")
+    parser.add_argument("--confirm-ready", action="store_true")
     parser.add_argument("--allow-dirty", action="store_true")
     parser.add_argument(
         "--fast-verifier",
@@ -174,6 +178,11 @@ def parse_args():
         action="store_true",
         help="compare default exact DSpark against the persistent-KV Metal drafter",
     )
+    parser.add_argument(
+        "--stats-only",
+        action="store_true",
+        help="run an instrumented Metal-drafter attribution and omit throughput",
+    )
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
 
@@ -207,7 +216,13 @@ def parse_args():
             "--metal-drafter-ablation "
             "are mutually exclusive"
         )
-    if not args.confirm_idle and not args.dry_run:
+    if args.stats_only and not args.metal_drafter_ablation:
+        parser.error("--stats-only currently requires --metal-drafter-ablation")
+    if args.stats_only and args.confirm_idle:
+        parser.error("--stats-only uses --confirm-ready, not --confirm-idle")
+    if not args.dry_run and args.stats_only and not args.confirm_ready:
+        parser.error("refusing to run stats-only attribution without --confirm-ready")
+    if not args.dry_run and not args.stats_only and not args.confirm_idle:
         parser.error("refusing to benchmark without --confirm-idle")
     return args, root
 
@@ -290,6 +305,8 @@ def mode_label(mode, args):
 
 
 def throughput_runtime_stats_enabled(args):
+    if getattr(args, "stats_only", False):
+        return True
     return not (
         args.serial_ffn_ablation
         or args.attention_pre_ablation
@@ -562,6 +579,7 @@ def collect_metadata(args, root):
                 args.exact_prefix_checkpoint_ablation,
             "metal_drafter_ablation":
                 getattr(args, "metal_drafter_ablation", False),
+            "stats_only": getattr(args, "stats_only", False),
             "temperature": 0,
             "seed": 1,
         },
@@ -773,7 +791,117 @@ def summarize(rows, modes=("baseline", "runtime")):
     return summary
 
 
+def summarize_metal_drafter_stats(rows):
+    modes = {}
+    for mode in ("default_exact", "metal_drafter"):
+        selected = [row for row in rows if row["mode"] == mode]
+        if not selected:
+            raise RuntimeError(f"stats-only attribution has no {mode} rows")
+
+        def median(field):
+            return statistics.median(row[field] for row in selected)
+
+        emitted = median("stats_emitted")
+        if emitted <= 0:
+            raise RuntimeError(f"stats-only attribution has no emitted tokens for {mode}")
+        item = {
+            "emitted": emitted,
+            "proposals": median("stats_proposals"),
+            "multi_attempts": median("stats_multi_attempts"),
+            "target_evals": median("stats_target_evals"),
+            "target_eval_tokens": median("stats_target_eval_tokens"),
+            "metal_attempts": median("stats_metal_drafter_attempts"),
+            "metal_successes": median("stats_metal_drafter_successes"),
+            "metal_fallbacks": median("stats_metal_drafter_fallbacks"),
+        }
+        for component in ("bridge", "stage0", "stage1", "stage2", "head", "chain"):
+            item[f"{component}_ms_per_emitted"] = (
+                median(f"stats_generation_{component}_ms") / emitted
+            )
+        item["stages_ms_per_emitted"] = sum(
+            item[f"stage{stage}_ms_per_emitted"] for stage in range(3)
+        )
+        item["sidecar_ms_per_emitted"] = (
+            median("stats_generation_sidecar_ms") / emitted
+        )
+        modes[mode] = item
+
+    default = modes["default_exact"]
+    candidate = modes["metal_drafter"]
+    if default["metal_attempts"] or default["metal_successes"] or \
+            default["metal_fallbacks"]:
+        raise RuntimeError("default exact unexpectedly recorded Metal-drafter activity")
+    if candidate["metal_attempts"] <= 0 or \
+            candidate["metal_successes"] != candidate["metal_attempts"] or \
+            candidate["metal_fallbacks"] != 0:
+        raise RuntimeError(
+            "Metal drafter did not complete every stats-only proposal successfully"
+        )
+
+    return {
+        "comparison": "metal_drafter_stats",
+        "modes": modes,
+        "sidecar_ratio": (
+            candidate["sidecar_ms_per_emitted"] /
+            default["sidecar_ms_per_emitted"]
+        ),
+        "sidecar_saved_ms_per_emitted": (
+            default["sidecar_ms_per_emitted"] -
+            candidate["sidecar_ms_per_emitted"]
+        ),
+        "bridge_delta_ms_per_emitted": (
+            candidate["bridge_ms_per_emitted"] -
+            default["bridge_ms_per_emitted"]
+        ),
+        "stages_saved_ms_per_emitted": (
+            default["stages_ms_per_emitted"] -
+            candidate["stages_ms_per_emitted"]
+        ),
+    }
+
+
 def format_report(summary):
+    if summary["comparison"] == "metal_drafter_stats":
+        default = summary["modes"]["default_exact"]
+        candidate = summary["modes"]["metal_drafter"]
+        return (
+            "# DSpark Persistent-KV Metal Drafter Attribution\n\n"
+            "Instrumented stats-only diagnostic; throughput values are "
+            "intentionally omitted.\n"
+            "Every output matched the paired exact reference byte-for-byte.\n\n"
+            "| mode | bridge | stages | head | chain | sidecar |\n"
+            "|:---|---:|---:|---:|---:|---:|\n"
+            f"| default exact | {default['bridge_ms_per_emitted']:.3f} | "
+            f"{default['stages_ms_per_emitted']:.3f} | "
+            f"{default['head_ms_per_emitted']:.3f} | "
+            f"{default['chain_ms_per_emitted']:.3f} | "
+            f"{default['sidecar_ms_per_emitted']:.3f} |\n"
+            f"| persistent-KV Metal drafter | "
+            f"{candidate['bridge_ms_per_emitted']:.3f} | "
+            f"{candidate['stages_ms_per_emitted']:.3f} | "
+            f"{candidate['head_ms_per_emitted']:.3f} | "
+            f"{candidate['chain_ms_per_emitted']:.3f} | "
+            f"{candidate['sidecar_ms_per_emitted']:.3f} |\n\n"
+            f"- Sidecar ratio, Metal drafter / default: "
+            f"{summary['sidecar_ratio']:.4f}x\n"
+            f"- Sidecar saved: "
+            f"{summary['sidecar_saved_ms_per_emitted']:.3f} ms/emitted\n"
+            f"- Stage time saved: "
+            f"{summary['stages_saved_ms_per_emitted']:.3f} ms/emitted\n"
+            f"- Bridge/refresh delta: "
+            f"{summary['bridge_delta_ms_per_emitted']:+.3f} ms/emitted\n"
+            f"- Proposal rounds, default/Metal: "
+            f"{default['proposals']:.1f}/{candidate['proposals']:.1f}; "
+            f"target evals: {default['target_evals']:.1f}/"
+            f"{candidate['target_evals']:.1f}; target positions: "
+            f"{default['target_eval_tokens']:.1f}/"
+            f"{candidate['target_eval_tokens']:.1f}\n"
+            f"- Metal drafter outcomes: "
+            f"{candidate['metal_successes']:.0f}/"
+            f"{candidate['metal_attempts']:.0f} successful; "
+            f"{candidate['metal_fallbacks']:.0f} fallbacks\n"
+        )
+
     if summary["comparison"] == "metal_drafter_ablation":
         return (
             "# DSpark Persistent-KV Metal Drafter Ablation\n\n"
@@ -1049,7 +1177,11 @@ def main():
             rows.append(result)
             cooldown(args.cooldown)
 
-    summary = summarize(rows, modes)
+    summary = (
+        summarize_metal_drafter_stats(rows)
+        if args.stats_only
+        else summarize(rows, modes)
+    )
     csv_path, report = write_results(run_dir, rows, summary, metadata)
     print()
     print(report.rstrip())

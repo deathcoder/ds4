@@ -7029,3 +7029,70 @@ next decision is based on this result:
 - A flat or negative result means the retained KV lifecycle works, but command
   boundaries or the batch-attention implementation still consume the saved
   projection work.
+
+Phase 1.08 user-run throughput result:
+
+- Raw artifact:
+  `speed-bench/local-runs/20260716-123750`.
+- Default exact median: `23.72 t/s`.
+- Persistent-KV Metal drafter median: `23.99 t/s`.
+- Median paired ratio: `1.0114x`, or `+1.1%`.
+- All three pairs favored the Metal drafter:
+  `1.0164x`, `1.0114x`, and `1.0017x`.
+- Every output hash matched. Diagnostics and runtime stats were disabled.
+- The direction is consistent, but the effect is too small to promote the
+  route or justify a broad HumanEval/generalization rerun.
+
+Stats-only attribution:
+
+- Extended `speed-bench/run_dspark_comparison.py` with
+  `--stats-only --confirm-ready` for the Metal-drafter ablation.
+- Stats-only reports intentionally omit throughput and require paired
+  byte-identical output.
+- Runtime parsing now includes Metal-drafter attempt, success, and fallback
+  counters.
+- Raw artifact:
+  `speed-bench/local-runs/20260716-124558`.
+- Exact schedules were identical:
+  - `14` prepared proposal blocks;
+  - `13` multi-commit/target evaluations;
+  - `64` target positions and emitted tokens;
+  - accepted depth `4.923`;
+  - no verifier or source fallback.
+- Metal drafter outcomes were `14/14` successful with zero fallback.
+
+Per-emitted-token sidecar attribution:
+
+| mode | bridge | stages | head | chain | sidecar |
+|:---|---:|---:|---:|---:|---:|
+| default exact | 0.371 ms | 2.888 ms | 0.218 ms | 1.086 ms | 4.562 ms |
+| persistent-KV Metal | 0.591 ms | 2.374 ms | 0.149 ms | 1.097 ms | 4.212 ms |
+
+Interpretation:
+
+- Persistent KV plus noncausal batch attention saves `0.514 ms/emitted` in
+  the three stages.
+- Rolling cache refresh adds `0.220 ms/emitted` to the bridge.
+- Net sidecar savings are `0.351 ms/emitted`, a `0.9231x` sidecar ratio.
+- At proposal granularity, total sidecar falls from about `20.86 ms` to
+  `19.25 ms`; stage work saves about `2.35 ms/proposal`, while bridge refresh
+  adds about `1.01 ms/proposal`.
+- The observed `+1.1%` throughput gain is therefore consistent with the
+  measured sidecar savings. It is not acceptance or verifier noise.
+- The candidate is still far from the community report near `7.6 ms/cycle`.
+  This branch still pays separate synchronized command submissions for each of
+  the three stages and the output head; the compact candidate chain alone is
+  about `5 ms/proposal`.
+
+Recommended next phase:
+
+1. Keep `DS4_DSPARK_METAL_DRAFTER` default-off.
+2. Refactor only the specialized proposal route so stage 0, stage 1, stage 2,
+   and the output head encode into one Metal command batch.
+3. Preserve the existing legacy path and retry fallback.
+4. Require the same five-case byte-identity matrix and zero fallback.
+5. Prepare a user-run paired ablation only after a stats-only profile shows a
+   material reduction from the current `19.25 ms/proposal`.
+
+Do not run broader workload throughput yet; the local gain is not large enough
+to justify that cost.

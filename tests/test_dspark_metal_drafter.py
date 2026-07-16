@@ -30,6 +30,7 @@ def args():
         attention_inverse_rope_fusion_ablation=False,
         exact_prefix_checkpoint_ablation=False,
         metal_drafter_ablation=True,
+        stats_only=False,
     )
 
 
@@ -88,6 +89,35 @@ class MetalDrafterTests(unittest.TestCase):
             "ds4_gpu_attention_decode_raw_batch_heads_noncausal_tensor",
             source,
         )
+
+    def test_stats_only_summary_omits_throughput(self):
+        rows = []
+        for mode, metal in (("default_exact", False), ("metal_drafter", True)):
+            row = {
+                "mode": mode,
+                "stats_emitted": 64,
+                "stats_proposals": 14,
+                "stats_multi_attempts": 13,
+                "stats_target_evals": 14,
+                "stats_target_eval_tokens": 64,
+                "stats_metal_drafter_attempts": 14 if metal else 0,
+                "stats_metal_drafter_successes": 14 if metal else 0,
+                "stats_metal_drafter_fallbacks": 0,
+                "stats_generation_bridge_ms": 16 if metal else 12,
+                "stats_generation_stage0_ms": 40 if metal else 80,
+                "stats_generation_stage1_ms": 40 if metal else 80,
+                "stats_generation_stage2_ms": 40 if metal else 80,
+                "stats_generation_head_ms": 8,
+                "stats_generation_chain_ms": 64,
+                "stats_generation_sidecar_ms": 208 if metal else 324,
+            }
+            rows.append(row)
+        summary = comparison.summarize_metal_drafter_stats(rows)
+        report = comparison.format_report(summary)
+        self.assertEqual(summary["comparison"], "metal_drafter_stats")
+        self.assertIn("throughput values are intentionally omitted", report)
+        self.assertNotIn("t/s", report)
+        self.assertGreater(summary["stages_saved_ms_per_emitted"], 0)
 
 
 if __name__ == "__main__":
