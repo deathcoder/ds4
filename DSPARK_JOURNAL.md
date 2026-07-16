@@ -8,13 +8,15 @@ particular DSpark change exists.
 
 Branch: `codex/dspark-observability-0`
 
-Phase 1.05 is prepared. It reruns the frozen 32-task HumanEval
-baseline-versus-scheduled throughput gate on the promoted exact
-prefix-checkpoint default. The runner now accepts the prior scheduled
-throughput artifact as a validated historical reference and reports
-task-level movement, explicitly labeled as descriptive cross-run context. The
-new within-run DSpark/baseline ratio remains authoritative. Codex has not run
-the timed workload; the user must run the committed command below.
+Phase 1.05 is complete. The frozen 32-task HumanEval gate measured a `0.8081x`
+median paired DSpark/baseline ratio and `0.7910x` geometric mean on the
+promoted scheduler plus exact prefix-checkpoint runtime. This improves over the
+prior scheduled artifact's `0.7498x` median: task-level paired-ratio movement
+was `1.0651x` median and `1.0647x` geometric, with 26 of 32 tasks improving.
+All outputs remained byte-identical, but all 32 DSpark tasks were still slower
+than baseline. Phase 1.06 should add stats-only checkpoint attempt, success,
+fallback, and avoided-replay-row counters, then attribute a small frozen set;
+do not repeat the full 32-task throughput run yet.
 
 Phase 1.01 is complete. DSpark confidence-prefix scheduling now defaults to
 `0.455` when `DS4_DSPARK_CONFIDENCE_THRESHOLD` is absent. An explicit value
@@ -6511,3 +6513,43 @@ git diff --check
 All 26 focused model-free tests passed. The real dry-run validated every
 reference and printed the frozen schedule without materializing prompts or
 executing the model.
+
+Phase 1.05 user-run result:
+
+- Raw artifact:
+  `speed-bench/local-runs/humaneval-scheduler-throughput-32-20260716-103542`.
+- The run came from clean commit `a853e9f`, inherited no `DS4_*` variables,
+  used threshold `0.455`, and enabled no stats or diagnostics.
+- All 32 baseline/runtime output hashes matched.
+- Baseline median was `23.08 t/s`; DSpark median was `18.67 t/s`.
+- Ratio of medians was `0.8089x`, median paired ratio was `0.8081x`, and
+  geometric mean was `0.7910x`.
+- The paired interquartile range was `0.7490x-0.8493x`, with a full range of
+  `0.5775x-0.9250x`.
+- DSpark was faster/equal/slower on `0/0/32` tasks.
+- Relative to Phase 0.99's separate scheduled run, the median task-level
+  paired-ratio movement was `1.0651x`, the geometric movement was `1.0647x`,
+  and 26/32 tasks improved. Median task-level DSpark t/s movement was
+  `1.0711x`.
+- The six cross-run regressions were `humaneval_042`, `063`, `079`, `095`,
+  `105`, and `163`. Four were within about one percent; the largest were only
+  `-3.5%` and `-3.3%`. The launch snapshot also showed substantial unrelated
+  OBS, media, WindowServer, and system activity, so these are not evidence of
+  a checkpoint-specific behavioral regression.
+- The median gap to baseline fell from `25.0%` to `19.2%`, recovering about
+  `23%` of the prior remaining gap. This is a material broad win, but not a net
+  speedup.
+
+Next measurement:
+
+- Existing runtime stats count partial batches but do not distinguish exact
+  prefix-checkpoint attempts, successful restores, fallback replays, or the
+  accepted target rows whose replay was avoided.
+- Phase 1.06 should add those counters only under the existing stats gate, so
+  uninstrumented throughput remains unaffected.
+- Then run a small frozen stats-only attribution on representative HumanEval
+  tasks, including low-acceptance `humaneval_152`, high-throughput
+  `humaneval_047`, and tasks with large checkpoint movement such as
+  `humaneval_131` or `humaneval_137`.
+- Do not rerun all 32 tasks before that attribution identifies the remaining
+  exact-verifier cost.
