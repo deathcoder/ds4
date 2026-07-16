@@ -7470,3 +7470,31 @@ Use the paired ratio as the promotion decision. This is a host-overhead
 optimization, so a small or neutral result is plausible even though it removes
 real production allocation work. Do not broaden to HumanEval unless the local
 three-pair gate is consistently positive.
+
+Phase 1.12 user-run throughput result:
+
+- Raw artifact:
+  `speed-bench/local-runs/20260716-135143`.
+- Default exact median: `23.79 t/s`.
+- Cached attention row-view median: `23.71 t/s`.
+- Ratio of medians: `0.9966x`.
+- Median paired ratio: `0.9992x`, or effectively neutral.
+- Individual paired ratios were `0.9206x`, `1.0008x`, and `0.9992x`.
+- Every measured output hash matched.
+- The process snapshot showed substantial unrelated activity, including
+  `duetexpertd` near one full CPU core and Logitech services using additional
+  CPU. The first pair is therefore treated as an interference outlier rather
+  than evidence of an 8% regression.
+
+Conclusion:
+
+- The two undisturbed pairs are within roughly one tenth of one percent of
+  parity. Removing tensor-view allocation and tracker locking does not produce
+  a measurable end-to-end gain on this workload.
+- Reject the row-view cache for promotion and do not run HumanEval or
+  generalization throughput for it.
+- Keep the candidate default-off only as a reproducible bounded experiment.
+  Ordinary exact runtime remains unchanged.
+- This result rules out host-side tensor-view churn as a meaningful remaining
+  bottleneck. The next optimization should target measured GPU verifier work,
+  not another allocation or command-boundary micro-optimization.
