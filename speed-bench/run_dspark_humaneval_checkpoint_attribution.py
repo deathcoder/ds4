@@ -206,6 +206,49 @@ def task_metrics(row, context):
     ):
         raise RuntimeError("prefix-checkpoint rows avoided without a success")
     emitted = row["emitted"]
+    width_arrays = {
+        field: row[field] for field in (
+            "scheduler_width_rounds",
+            "scheduler_width_committed",
+            "scheduler_width_sidecar_ms",
+            "verify_width_evals",
+            "verify_width_positions",
+            "verify_width_target_ms",
+        )
+    }
+    width_count = len(width_arrays["scheduler_width_rounds"])
+    if (
+        width_count != 6 or
+        any(len(values) != width_count for values in width_arrays.values())
+    ):
+        raise RuntimeError("unexpected DSpark width histogram shape")
+    scheduler_widths = {}
+    verifier_widths = {}
+    proposal_rounds = row["multi_attempts"]
+    for width in range(width_count):
+        rounds = width_arrays["scheduler_width_rounds"][width]
+        committed = width_arrays["scheduler_width_committed"][width]
+        sidecar_ms = width_arrays["scheduler_width_sidecar_ms"][width]
+        scheduler_widths[str(width)] = {
+            "rounds": rounds,
+            "round_share": rounds / proposal_rounds if proposal_rounds else None,
+            "committed_tokens": committed,
+            "progress_per_round": committed / rounds if rounds else None,
+            "sidecar_ms": sidecar_ms,
+            "sidecar_ms_per_round": sidecar_ms / rounds if rounds else None,
+        }
+        evals = width_arrays["verify_width_evals"][width]
+        positions = width_arrays["verify_width_positions"][width]
+        target_ms = width_arrays["verify_width_target_ms"][width]
+        verifier_widths[str(width)] = {
+            "evals": evals,
+            "positions": positions,
+            "positions_per_eval": positions / evals if evals else None,
+            "target_ms": target_ms,
+            "target_ms_per_eval": target_ms / evals if evals else None,
+            "target_ms_per_position":
+                target_ms / positions if positions else None,
+        }
     return {
         "role": context["role"],
         "source_index": context["record"]["source_index"],
@@ -215,7 +258,7 @@ def task_metrics(row, context):
             "paired_ratio_vs_historical"
         ),
         "emitted": emitted,
-        "proposal_rounds": row["multi_attempts"],
+        "proposal_rounds": proposal_rounds,
         "average_progress": row["avg_depth"],
         "batch_full": row["batch_full"],
         "batch_partial": partial,
@@ -241,19 +284,69 @@ def task_metrics(row, context):
         ) / emitted,
         "target_ms_per_emitted": row["target_eval_ms"] / emitted,
         "sidecar_ms_per_emitted": row["generation_sidecar_ms"] / emitted,
+        "sidecar_outside_scheduler_ms":
+            row["sidecar_outside_scheduler_ms"],
+        "sidecar_outside_scheduler_ms_per_emitted":
+            row["sidecar_outside_scheduler_ms"] / emitted,
+        "scheduler_widths": scheduler_widths,
+        "verifier_widths": verifier_widths,
     }
 
 
 def summarize(rows, reference):
+    tasks = {
+        row["prompt"]: task_metrics(
+            row, reference["tasks"][row["prompt"]]
+        )
+        for row in rows
+    }
+    aggregate_scheduler = {}
+    aggregate_verifier = {}
+    for width in range(6):
+        key = str(width)
+        rounds = sum(item["scheduler_widths"][key]["rounds"]
+                     for item in tasks.values())
+        committed = sum(item["scheduler_widths"][key]["committed_tokens"]
+                        for item in tasks.values())
+        sidecar_ms = sum(item["scheduler_widths"][key]["sidecar_ms"]
+                         for item in tasks.values())
+        aggregate_scheduler[key] = {
+            "rounds": rounds,
+            "committed_tokens": committed,
+            "progress_per_round": committed / rounds if rounds else None,
+            "sidecar_ms": sidecar_ms,
+            "sidecar_ms_per_round": sidecar_ms / rounds if rounds else None,
+        }
+        evals = sum(item["verifier_widths"][key]["evals"]
+                    for item in tasks.values())
+        positions = sum(item["verifier_widths"][key]["positions"]
+                        for item in tasks.values())
+        target_ms = sum(item["verifier_widths"][key]["target_ms"]
+                        for item in tasks.values())
+        aggregate_verifier[key] = {
+            "evals": evals,
+            "positions": positions,
+            "positions_per_eval": positions / evals if evals else None,
+            "target_ms": target_ms,
+            "target_ms_per_eval": target_ms / evals if evals else None,
+            "target_ms_per_position":
+                target_ms / positions if positions else None,
+        }
     return {
         "analysis": "dspark_exact_prefix_checkpoint_attribution",
         "threshold": common.DSPARK_DEFAULT_CONFIDENCE_THRESHOLD,
-        "tasks": {
-            row["prompt"]: task_metrics(
-                row, reference["tasks"][row["prompt"]]
-            )
-            for row in rows
-        },
+        "tasks": tasks,
+        "sidecar_total_ms": sum(
+            sum(item["scheduler_widths"][str(width)]["sidecar_ms"]
+                for width in range(6)) +
+            item["sidecar_outside_scheduler_ms"]
+            for item in tasks.values()
+        ),
+        "sidecar_outside_scheduler_ms": sum(
+            item["sidecar_outside_scheduler_ms"] for item in tasks.values()
+        ),
+        "aggregate_scheduler_widths": aggregate_scheduler,
+        "aggregate_verifier_widths": aggregate_verifier,
     }
 
 
@@ -310,9 +403,77 @@ def render_report(summary):
         )
     lines.extend([
         "",
+        "## Scheduler Width Economics",
+        "",
+        "Selected width is the confidence-scheduler result before capacity and EOS limits.",
+        "",
+        "| width | rounds | committed progress | progress/round | sidecar ms/round |",
+        "|---:|---:|---:|---:|---:|",
+    ])
+    for width in range(6):
+        item = summary["aggregate_scheduler_widths"][str(width)]
+        if item["rounds"] == 0:
+            continue
+        lines.append(
+            f"| {width} | {item['rounds']} | "
+            f"{item['committed_tokens']} | "
+            f"{item['progress_per_round']:.3f} | "
+            f"{item['sidecar_ms_per_round']:.3f} |"
+        )
+    outside_ms = summary["sidecar_outside_scheduler_ms"]
+    outside_share = (
+        outside_ms / summary["sidecar_total_ms"]
+        if summary["sidecar_total_ms"] else None
+    )
+    lines.extend([
+        "",
+        f"Sidecar outside the multi-commit scheduler: {outside_ms:.3f} ms "
+        f"({format_percent(outside_share)} of measured sidecar time).",
+        "",
+        "Per-task selected-width rounds and progress:",
+    ])
+    for task in TASKS:
+        parts = []
+        for width in range(6):
+            item = summary["tasks"][task]["scheduler_widths"][str(width)]
+            if item["rounds"] == 0:
+                continue
+            parts.append(
+                f"K={width}: {item['rounds']} rounds, "
+                f"{item['progress_per_round']:.2f} progress/round, "
+                f"{item['sidecar_ms_per_round']:.2f} ms sidecar/round"
+            )
+        outside = summary["tasks"][task]["sidecar_outside_scheduler_ms"]
+        lines.append(
+            f"- {task}: " + "; ".join(parts) +
+            f"; outside scheduler: {outside:.2f} ms"
+        )
+    lines.extend([
+        "",
+        "## Verifier Width Economics",
+        "",
+        "Verifier width is the actual number of target positions evaluated in one call.",
+        "",
+        "| width | evals | positions/eval | target ms/eval | target ms/position |",
+        "|---:|---:|---:|---:|---:|",
+    ])
+    for width in range(1, 6):
+        item = summary["aggregate_verifier_widths"][str(width)]
+        if item["evals"] == 0:
+            continue
+        lines.append(
+            f"| {width} | {item['evals']} | "
+            f"{item['positions_per_eval']:.3f} | "
+            f"{item['target_ms_per_eval']:.3f} | "
+            f"{item['target_ms_per_position']:.3f} |"
+        )
+    lines.extend([
+        "",
         "- Replay rows avoided counts exact target positions the legacy partial-accept path would have reevaluated.",
         "- The legacy position value is a structural proxy, not a timing prediction; Metal cost is not linear in positions.",
         "- Checkpoint counters are collected only under the existing runtime-stats gate.",
+        "- Sidecar outside scheduler includes proposal work consumed by another path or left after the final emitted token.",
+        "- Width timings are synchronized diagnostic values and are not throughput measurements.",
         "- No fresh baseline, throughput pass, acceptance audit, trace, or layer profiler is run.",
     ])
     return "\n".join(lines) + "\n"

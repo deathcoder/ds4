@@ -30286,6 +30286,11 @@ struct dspark_session_state {
     uint64_t runtime_prefix_checkpoint_successes;
     uint64_t runtime_prefix_checkpoint_fallbacks;
     uint64_t runtime_prefix_checkpoint_rows_avoided;
+    uint64_t runtime_scheduler_width_rounds[17];
+    uint64_t runtime_scheduler_width_committed[17];
+    uint64_t runtime_verify_width_evals[17];
+    uint64_t runtime_verify_width_positions[17];
+    uint32_t runtime_current_scheduler_width;
     uint64_t runtime_fast_verify_calls;
     uint64_t runtime_fast_verify_failures;
     uint64_t runtime_fast_verify_exact_fallbacks;
@@ -30328,6 +30333,11 @@ struct dspark_session_state {
     double runtime_generation_stage_seconds[DS4_DSPARK_MTP_LAYERS];
     double runtime_generation_head_seconds;
     double runtime_generation_chain_seconds;
+    double runtime_scheduler_width_sidecar_seconds[17];
+    double runtime_verify_width_target_seconds[17];
+    double runtime_sidecar_round_seconds;
+    double runtime_draft_sidecar_seconds;
+    double runtime_width_sidecar_accounted_seconds;
     double runtime_target_eval_seconds;
     double runtime_exact_layer_seconds;
     double runtime_exact_head_batch_seconds;
@@ -30342,6 +30352,31 @@ struct dspark_session_state {
 static bool dspark_session_runtime_stats_enabled(void);
 static bool dspark_session_acceptance_audit_enabled(void);
 static bool dspark_session_acceptance_trace_enabled(void);
+static void dspark_session_runtime_target_eval_note(
+        dspark_session_state *d,
+        uint32_t              n_tokens,
+        double                seconds);
+
+static void dspark_runtime_stats_print_u64_array(
+        const char     *name,
+        const uint64_t *values,
+        uint32_t        count) {
+    fprintf(stderr, " %s=", name);
+    for (uint32_t i = 0; i < count; i++) {
+        fprintf(stderr, "%s%llu", i ? "," : "",
+                (unsigned long long)values[i]);
+    }
+}
+
+static void dspark_runtime_stats_print_ms_array(
+        const char   *name,
+        const double *values,
+        uint32_t      count) {
+    fprintf(stderr, " %s=", name);
+    for (uint32_t i = 0; i < count; i++) {
+        fprintf(stderr, "%s%.3f", i ? "," : "", values[i] * 1000.0);
+    }
+}
 
 static void dspark_acceptance_audit_print_u64_array(
         const char     *name,
@@ -30465,6 +30500,11 @@ static void dspark_session_state_free(dspark_session_state *d) {
             prefill_sidecar_seconds += d->runtime_prefill_stage_seconds[stage];
             generation_sidecar_seconds += d->runtime_generation_stage_seconds[stage];
         }
+        double sidecar_outside_scheduler_seconds =
+            sidecar_seconds - d->runtime_width_sidecar_accounted_seconds;
+        if (sidecar_outside_scheduler_seconds < 0.0) {
+            sidecar_outside_scheduler_seconds = 0.0;
+        }
         fprintf(stderr,
                 "ds4: DSpark runtime stats proposals=%llu selected=%llu "
                 "source_fallbacks=%llu multi_attempts=%llu emitted=%llu "
@@ -30477,6 +30517,7 @@ static void dspark_session_state_free(dspark_session_state *d) {
                 "prefix_checkpoint_successes=%llu "
                 "prefix_checkpoint_fallbacks=%llu "
                 "prefix_checkpoint_rows_avoided=%llu "
+                "sidecar_outside_scheduler_ms=%.3f "
                 "fast_calls=%llu fast_failures=%llu "
                 "fast_exact_fallbacks=%llu "
                 "exact_ffn_batch_attempts=%llu exact_ffn_batch_successes=%llu "
@@ -30492,7 +30533,7 @@ static void dspark_session_state_free(dspark_session_state *d) {
                 "generation_stage1_ms=%.3f generation_stage2_ms=%.3f "
                 "generation_head_ms=%.3f generation_chain_ms=%.3f "
                 "target_eval_ms=%.3f exact_layer_ms=%.3f "
-                "exact_head_batch_ms=%.3f exact_head_serial_ms=%.3f\n",
+                "exact_head_batch_ms=%.3f exact_head_serial_ms=%.3f",
                 (unsigned long long)d->gpu_candidate_source_attempts,
                 (unsigned long long)d->gpu_candidate_source_selected,
                 (unsigned long long)d->gpu_candidate_source_fallbacks,
@@ -30515,6 +30556,7 @@ static void dspark_session_state_free(dspark_session_state *d) {
                 (unsigned long long)d->runtime_prefix_checkpoint_successes,
                 (unsigned long long)d->runtime_prefix_checkpoint_fallbacks,
                 (unsigned long long)d->runtime_prefix_checkpoint_rows_avoided,
+                sidecar_outside_scheduler_seconds * 1000.0,
                 (unsigned long long)d->runtime_fast_verify_calls,
                 (unsigned long long)d->runtime_fast_verify_failures,
                 (unsigned long long)d->runtime_fast_verify_exact_fallbacks,
@@ -30545,6 +30587,32 @@ static void dspark_session_state_free(dspark_session_state *d) {
                 d->runtime_exact_layer_seconds * 1000.0,
                 d->runtime_exact_head_batch_seconds * 1000.0,
                 d->runtime_exact_head_serial_seconds * 1000.0);
+        const uint32_t width_count = d->block_size + 1u;
+        dspark_runtime_stats_print_u64_array(
+            "scheduler_width_rounds",
+            d->runtime_scheduler_width_rounds,
+            width_count);
+        dspark_runtime_stats_print_u64_array(
+            "scheduler_width_committed",
+            d->runtime_scheduler_width_committed,
+            width_count);
+        dspark_runtime_stats_print_ms_array(
+            "scheduler_width_sidecar_ms",
+            d->runtime_scheduler_width_sidecar_seconds,
+            width_count);
+        dspark_runtime_stats_print_u64_array(
+            "verify_width_evals",
+            d->runtime_verify_width_evals,
+            width_count);
+        dspark_runtime_stats_print_u64_array(
+            "verify_width_positions",
+            d->runtime_verify_width_positions,
+            width_count);
+        dspark_runtime_stats_print_ms_array(
+            "verify_width_target_ms",
+            d->runtime_verify_width_target_seconds,
+            width_count);
+        fputc('\n', stderr);
     }
     if (dspark_session_acceptance_audit_enabled()) {
         const uint64_t paper_acceptance_sum =
@@ -30878,6 +30946,7 @@ static bool dspark_session_gpu_bridge_run(
     const bool runtime = dspark_session_gpu_runtime_env_enabled();
     const bool stats = runtime && dspark_session_runtime_stats_enabled();
     const double stats_start = stats ? now_sec() : 0.0;
+    if (stats) d->runtime_sidecar_round_seconds = 0.0;
     const uint32_t window_pos0 = context_len > d->main_x_cap ?
         context_len - d->main_x_cap : 0;
     const uint32_t window_rows = context_len - window_pos0;
@@ -31044,6 +31113,7 @@ static bool dspark_session_gpu_bridge_run(
         if (stats) {
             const double elapsed = now_sec() - stats_start;
             d->runtime_bridge_seconds += elapsed;
+            d->runtime_sidecar_round_seconds += elapsed;
             if (d->runtime_generation_active) {
                 d->runtime_generation_bridge_seconds += elapsed;
             } else {
@@ -31739,6 +31809,7 @@ static bool dspark_session_gpu_stage_run(
         if (stats) {
             const double elapsed = now_sec() - stats_start;
             d->runtime_stage_seconds[stage] += elapsed;
+            d->runtime_sidecar_round_seconds += elapsed;
             if (d->runtime_generation_active) {
                 d->runtime_generation_stage_seconds[stage] += elapsed;
             } else {
@@ -32053,6 +32124,7 @@ static bool dspark_session_gpu_head_run(
         if (stats) {
             const double elapsed = now_sec() - stats_start;
             d->runtime_head_seconds += elapsed;
+            d->runtime_sidecar_round_seconds += elapsed;
             if (d->runtime_generation_active) {
                 d->runtime_generation_head_seconds += elapsed;
             } else {
@@ -33119,6 +33191,7 @@ static bool dspark_session_gpu_chain_run(
         if (stats) {
             const double elapsed = now_sec() - stats_start;
             d->runtime_chain_seconds += elapsed;
+            d->runtime_sidecar_round_seconds += elapsed;
             if (d->runtime_generation_active) {
                 d->runtime_generation_chain_seconds += elapsed;
             } else {
@@ -33381,6 +33454,9 @@ static void dspark_session_select_gpu_candidates(dspark_session_state *d) {
     d->prev_token = (uint32_t)d->draft[d->draft_rows - 1u].token;
     d->draft_valid = true;
     d->gpu_candidate_source_active = true;
+    if (dspark_session_runtime_stats_enabled()) {
+        d->runtime_draft_sidecar_seconds = d->runtime_sidecar_round_seconds;
+    }
     d->gpu_candidate_source_selected++;
     if (dspark_session_diagnostics_enabled()) {
         fprintf(stderr,
@@ -35028,9 +35104,8 @@ static bool ds4_session_eval_graph_target_token(
         s->logits,
         capture_active ? &dspark_capture : NULL);
     if (stats && s->dspark) {
-        s->dspark->runtime_target_evals++;
-        s->dspark->runtime_target_eval_tokens++;
-        s->dspark->runtime_target_eval_seconds += now_sec() - stats_start;
+        dspark_session_runtime_target_eval_note(
+            s->dspark, 1u, now_sec() - stats_start);
     }
     if (!graph_ok) {
         if (errlen) snprintf(err, errlen, "%s decode failed", ds4_backend_name(e->backend));
@@ -35098,9 +35173,8 @@ static bool ds4_session_eval_graph_target_token_top(
                                                      s->logits,
                                                      capture_active ? &dspark_capture : NULL);
         if (stats && s->dspark) {
-            s->dspark->runtime_target_evals++;
-            s->dspark->runtime_target_eval_tokens++;
-            s->dspark->runtime_target_eval_seconds += now_sec() - stats_start;
+            dspark_session_runtime_target_eval_note(
+                s->dspark, 1u, now_sec() - stats_start);
         }
         if (ok) {
             *top_id = sample_argmax(s->logits, DS4_N_VOCAB);
@@ -35117,9 +35191,8 @@ static bool ds4_session_eval_graph_target_token_top(
             NULL,
             capture_active ? &dspark_capture : NULL);
         if (stats && s->dspark) {
-            s->dspark->runtime_target_evals++;
-            s->dspark->runtime_target_eval_tokens++;
-            s->dspark->runtime_target_eval_seconds += now_sec() - stats_start;
+            dspark_session_runtime_target_eval_note(
+                s->dspark, 1u, now_sec() - stats_start);
         }
     }
     if (!ok) {
@@ -35213,6 +35286,10 @@ static int dspark_session_finish_multi_commit(
         if (dspark_session_runtime_stats_enabled()) {
             d->runtime_emitted_tokens += n_tokens;
             if (n_tokens < 17u) d->runtime_accept_depth[n_tokens]++;
+            if (d->runtime_current_scheduler_width < 17u) {
+                d->runtime_scheduler_width_committed[
+                    d->runtime_current_scheduler_width] += n_tokens;
+            }
         }
         if (n_tokens < 2u) {
             d->multi_commit_fallbacks++;
@@ -35616,6 +35693,11 @@ static void dspark_session_runtime_target_eval_note(
     d->runtime_target_evals++;
     d->runtime_target_eval_tokens += n_tokens;
     d->runtime_target_eval_seconds += seconds;
+    if (n_tokens < 17u) {
+        d->runtime_verify_width_evals[n_tokens]++;
+        d->runtime_verify_width_positions[n_tokens] += n_tokens;
+        d->runtime_verify_width_target_seconds[n_tokens] += seconds;
+    }
 }
 
 /* Return zero to use the serial verifier, -1 on unrecoverable target-state
@@ -35973,6 +36055,16 @@ static int dspark_session_eval_multi_commit(
     if (first->prev_token != checkpoint_prev) {
         dspark_session_draft_reset(d);
         return 0;
+    }
+
+    if (dspark_session_runtime_stats_enabled()) {
+        const uint32_t width = scheduled_rows < 17u ? scheduled_rows : 16u;
+        const double sidecar_seconds = d->runtime_draft_sidecar_seconds;
+        d->runtime_current_scheduler_width = width;
+        d->runtime_scheduler_width_rounds[width]++;
+        d->runtime_scheduler_width_sidecar_seconds[width] += sidecar_seconds;
+        d->runtime_width_sidecar_accounted_seconds += sidecar_seconds;
+        d->runtime_draft_sidecar_seconds = 0.0;
     }
 
     d->multi_commit_total++;

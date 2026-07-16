@@ -817,8 +817,13 @@ two of the largest checkpoint-era gains. The runner starts four stats-enabled
 exact-runtime processes and reuses each prior runtime output as its byte-exact
 reference. It reports checkpoint attempts, successful restores, replay
 fallbacks, exact target rows whose replay was avoided, and a structural legacy
-target-position proxy. Diagnostic t/s is omitted, and the proxy is not a speed
-prediction. No fresh baseline, throughput pass, acceptance audit, trace, or
+target-position proxy. It also reports confidence-selected scheduler width,
+committed progress and sidecar time at each selected width, plus target
+evaluation count and synchronized time at each actual verifier width. Sidecar
+work consumed outside multi-commit or left after the final emitted token is
+reported separately rather than charged to a scheduler width. Diagnostic t/s
+is omitted, and the proxy and synchronized component timings are not speed
+predictions. No fresh baseline, throughput pass, acceptance audit, trace, or
 layer profiler is run.
 
 Use the synchronized exact-runtime profile to attribute the remaining promoted

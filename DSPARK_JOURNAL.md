@@ -27,6 +27,15 @@ instrument scheduler/verifier width economics under the stats gate: selected
 width, committed progress, target time by width, and sidecar rounds. This is
 needed before attempting a cost-aware scheduler for low-acceptance workloads.
 
+Phase 1.07 instrumentation is prepared and awaiting the frozen four-task
+user-run. Runtime stats now record scheduler-selected width, committed progress
+and sidecar time by selected width, plus target evaluation count, positions,
+and synchronized time by actual verifier width. Sidecar timing is attached to
+the draft block that reaches multi-commit; work consumed by another path or
+left after the final emitted token is reported separately. The Metal
+correctness matrix passed and all five retained records reconciled. Do not tune
+a cost-aware scheduler until the four-task width report is collected.
+
 Phase 1.01 is complete. DSpark confidence-prefix scheduling now defaults to
 `0.455` when `DS4_DSPARK_CONFIDENCE_THRESHOLD` is absent. An explicit value
 still overrides the default, and explicit `0` preserves fixed K=5. The frozen
@@ -6698,3 +6707,103 @@ Next phase:
   high-acceptance batches.
 - Do not tune a new threshold or policy before the width economics are
   measured.
+
+## Phase 1.07: Scheduler And Verifier Width Economics
+
+Purpose:
+
+- Measure the economics of confidence-selected proposal widths before changing
+  scheduler policy again.
+- Separate proposal selection from actual target verifier width. Capacity,
+  EOS, partial acceptance, and ordinary one-token evaluation mean these are not
+  interchangeable.
+- Attribute sidecar timing to the draft block that actually reaches
+  multi-commit. Sidecar work consumed elsewhere or left after generation is
+  reported as `sidecar_outside_scheduler_ms`.
+
+Runtime stats:
+
+- Added six-bin arrays for V4 Flash block size five:
+  `scheduler_width_rounds`, `scheduler_width_committed`,
+  `scheduler_width_sidecar_ms`, `verify_width_evals`,
+  `verify_width_positions`, and `verify_width_target_ms`.
+- Scheduler width is the confidence-prefix result before capacity and EOS
+  limits.
+- Verifier width is the actual number of target positions submitted in one
+  target evaluation.
+- Scheduler sidecar timing is captured per generated draft block and assigned
+  only when that exact block reaches multi-commit.
+- `sidecar_outside_scheduler_ms` preserves all remaining measured sidecar time,
+  including proposal work consumed by another path or left after the last
+  emitted token.
+- The shared stats parser verifies that rounds, committed tokens, verifier
+  evals, verifier positions, target time, and total sidecar time reconcile.
+
+Frozen report:
+
+- Extended `speed-bench/run_dspark_humaneval_checkpoint_attribution.py`; no new
+  runner or 32-task pass is needed.
+- Reuses the four frozen Phase 1.06 tasks and the completed Phase 1.05
+  throughput artifact.
+- Adds aggregate and per-task scheduler-width economics, verifier-width
+  economics, and sidecar-outside-scheduler totals while retaining checkpoint
+  attribution.
+- Every stats-enabled output must still match its prior uninstrumented runtime
+  artifact byte-for-byte.
+
+Preparation validation:
+
+```sh
+make -j4 ds4 ds4_test
+make ds4_cpu.o
+./ds4_test --dspark-validation --dspark-shape-binding
+python3 -m py_compile \
+  speed-bench/run_dspark_humaneval_checkpoint_attribution.py \
+  speed-bench/run_dspark_issue468_comparison.py \
+  tests/test_dspark_checkpoint_attribution.py
+python3 -m unittest \
+  tests/test_dspark_checkpoint_attribution.py \
+  tests/test_dspark_confidence_scheduler.py \
+  tests/test_dspark_exact_prefix_checkpoint.py
+bash -n tests/dspark_gpu_candidates_correctness.sh
+DS4_TEST_KEEP_LOGS=1 \
+DS4_TEST_DSPARK_MODE=runtime \
+DS4_TEST_DSPARK_RUNTIME_STATS=1 \
+DS4_TEST_DSPARK_CONFIDENCE_THRESHOLD=0 \
+  ./tests/dspark_gpu_candidates_correctness.sh
+python3 speed-bench/run_dspark_humaneval_checkpoint_attribution.py \
+  --dry-run --allow-dirty \
+  --throughput-reference \
+  speed-bench/local-runs/humaneval-scheduler-throughput-32-20260716-103542/summary.json
+git diff --check
+```
+
+Results:
+
+- Metal and CPU builds passed; CPU emitted only the existing unused-code
+  warnings.
+- DSpark validation and shape binding passed.
+- The 26 focused Python tests passed.
+- The stats-enabled fixed-K correctness matrix passed all five retained cases
+  byte-for-byte.
+- All five real Metal stats records parsed and reconciled scheduler rounds,
+  committed progress, verifier evaluations and positions, target timing, and
+  sidecar timing.
+- The retained short cases confirmed that sidecar outside multi-commit is
+  material enough to report separately: approximately `19-39 ms` per case.
+- The frozen dry-run validated all four references and printed the expected
+  stats-only threshold-`0.455` commands.
+- No timed attribution or throughput benchmark was run by Codex.
+
+User-run command:
+
+```sh
+python3 speed-bench/run_dspark_humaneval_checkpoint_attribution.py \
+  --confirm-ready \
+  --throughput-reference \
+  speed-bench/local-runs/humaneval-scheduler-throughput-32-20260716-103542/summary.json
+```
+
+Expected duration is roughly two to four minutes on the current machine. The
+result decides whether the next phase should implement a cost-aware scheduler
+or first reduce a particular verifier-width or sidecar cost.

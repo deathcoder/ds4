@@ -13,6 +13,15 @@ import run_dspark_issue468_comparison as common  # noqa: E402
 
 
 class DSparkCheckpointAttributionTests(unittest.TestCase):
+    @staticmethod
+    def blank_stats():
+        values = {field: 0 for field in common.INT_STATS | common.FLOAT_STATS}
+        for field in common.INT_ARRAY_STATS:
+            values[field] = [0] * 6
+        for field in common.FLOAT_ARRAY_STATS:
+            values[field] = [0.0] * 6
+        return values
+
     def test_task_roles_are_frozen(self):
         self.assertEqual(
             attribution.TASK_ROLES,
@@ -39,17 +48,35 @@ class DSparkCheckpointAttributionTests(unittest.TestCase):
             values[field] = 1
         for field in common.FLOAT_STATS:
             values[field] = 1.0
+        for field in common.INT_ARRAY_STATS:
+            values[field] = [0] * 6
+        for field in common.FLOAT_ARRAY_STATS:
+            values[field] = [0.0] * 6
         values.update({
             "emitted": 10,
             "target_evals": 2,
+            "target_eval_tokens": 4,
+            "multi_attempts": 3,
+            "sidecar_ms": 1.25,
+            "sidecar_outside_scheduler_ms": 0.25,
             "prefix_checkpoint_attempts": 3,
             "prefix_checkpoint_successes": 2,
             "prefix_checkpoint_fallbacks": 1,
             "prefix_checkpoint_rows_avoided": 5,
+            "scheduler_width_rounds": [0, 0, 1, 1, 1, 0],
+            "scheduler_width_committed": [0, 0, 2, 3, 5, 0],
+            "scheduler_width_sidecar_ms": [0, 0, 0.2, 0.3, 0.5, 0],
+            "verify_width_evals": [0, 1, 1, 0, 0, 0],
+            "verify_width_positions": [0, 1, 3, 0, 0, 0],
+            "verify_width_target_ms": [0, 0.4, 0.6, 0, 0, 0],
         })
-        record = " ".join(
-            f"{field}={values[field]}" for field in common.STATS_FIELDS
-        )
+        fields = []
+        for field in common.STATS_FIELDS:
+            value = values[field]
+            if isinstance(value, list):
+                value = ",".join(str(item) for item in value)
+            fields.append(f"{field}={value}")
+        record = " ".join(fields)
         parsed = common.parse_stats(
             common.STATS_PREFIX + record.encode("ascii") + b"\n",
             Path("synthetic.stderr"),
@@ -58,7 +85,7 @@ class DSparkCheckpointAttributionTests(unittest.TestCase):
         self.assertEqual(parsed["prefix_checkpoint_rows_avoided"], 5)
 
     def test_task_metrics_expose_avoided_replay_positions(self):
-        row = {field: 0 for field in common.STATS_FIELDS}
+        row = self.blank_stats()
         row.update({
             "emitted": 100,
             "multi_attempts": 30,
@@ -73,6 +100,13 @@ class DSparkCheckpointAttributionTests(unittest.TestCase):
             "target_eval_tokens": 120,
             "target_eval_ms": 5000.0,
             "generation_sidecar_ms": 600.0,
+            "sidecar_outside_scheduler_ms": 50.0,
+            "scheduler_width_rounds": [0, 0, 0, 10, 10, 10],
+            "scheduler_width_committed": [0, 0, 0, 20, 30, 50],
+            "scheduler_width_sidecar_ms": [0, 0, 0, 150, 200, 250],
+            "verify_width_evals": [0, 0, 0, 10, 10, 10],
+            "verify_width_positions": [0, 0, 0, 30, 40, 50],
+            "verify_width_target_ms": [0, 0, 0, 1000, 1500, 2500],
         })
         context = {
             "role": "synthetic",
@@ -90,9 +124,18 @@ class DSparkCheckpointAttributionTests(unittest.TestCase):
         self.assertAlmostEqual(
             item["legacy_target_positions_per_emitted_proxy"], 1.77
         )
+        self.assertAlmostEqual(
+            item["scheduler_widths"]["5"]["progress_per_round"], 5.0
+        )
+        self.assertAlmostEqual(
+            item["verifier_widths"]["5"]["target_ms_per_position"], 50.0
+        )
+        self.assertAlmostEqual(
+            item["sidecar_outside_scheduler_ms_per_emitted"], 0.5
+        )
 
     def test_task_metrics_reject_inconsistent_accounting(self):
-        row = {field: 0 for field in common.STATS_FIELDS}
+        row = self.blank_stats()
         row.update({
             "emitted": 1,
             "prefix_checkpoint_attempts": 2,
@@ -114,7 +157,7 @@ class DSparkCheckpointAttributionTests(unittest.TestCase):
         rows = []
         tasks = {}
         for index, (role, task) in enumerate(attribution.TASK_ROLES):
-            row = {field: 0 for field in common.STATS_FIELDS}
+            row = self.blank_stats()
             row.update({
                 "prompt": task,
                 "emitted": 100,
@@ -129,6 +172,13 @@ class DSparkCheckpointAttributionTests(unittest.TestCase):
                 "target_eval_tokens": 120,
                 "target_eval_ms": 5000.0,
                 "generation_sidecar_ms": 600.0,
+                "sidecar_outside_scheduler_ms": 50.0,
+                "scheduler_width_rounds": [0, 0, 0, 10, 10, 10],
+                "scheduler_width_committed": [0, 0, 0, 20, 30, 50],
+                "scheduler_width_sidecar_ms": [0, 0, 0, 150, 200, 250],
+                "verify_width_evals": [0, 0, 0, 10, 10, 10],
+                "verify_width_positions": [0, 0, 0, 30, 40, 50],
+                "verify_width_target_ms": [0, 0, 0, 1000, 1500, 2500],
             })
             rows.append(row)
             tasks[task] = {
@@ -143,6 +193,9 @@ class DSparkCheckpointAttributionTests(unittest.TestCase):
         report = attribution.render_report(summary)
         self.assertIn("20/20 (100.0%)", report)
         self.assertIn("legacy positions/emitted proxy", report)
+        self.assertIn("## Scheduler Width Economics", report)
+        self.assertIn("## Verifier Width Economics", report)
+        self.assertIn("Sidecar outside the multi-commit scheduler", report)
         self.assertIn("Throughput values are intentionally omitted", report)
 
     def test_command_enables_stats_but_not_checkpoint_override(self):

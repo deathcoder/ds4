@@ -40,8 +40,18 @@ FLOAT_STATS = {
     "prefill_sidecar_ms", "generation_sidecar_ms", "generation_bridge_ms",
     "generation_stage0_ms", "generation_stage1_ms", "generation_stage2_ms",
     "generation_head_ms", "generation_chain_ms",
+    "sidecar_outside_scheduler_ms",
 }
-STATS_FIELDS = tuple(sorted(INT_STATS | FLOAT_STATS))
+INT_ARRAY_STATS = {
+    "scheduler_width_rounds", "scheduler_width_committed",
+    "verify_width_evals", "verify_width_positions",
+}
+FLOAT_ARRAY_STATS = {
+    "scheduler_width_sidecar_ms", "verify_width_target_ms",
+}
+STATS_FIELDS = tuple(sorted(
+    INT_STATS | FLOAT_STATS | INT_ARRAY_STATS | FLOAT_ARRAY_STATS
+))
 ACCEPTANCE_INT_FIELDS = (
     "block_size", "proposals", "proposed_drafts", "accepted_drafts",
     "paper_acceptance_sum", "full_accepts", "truncated_proposals",
@@ -371,6 +381,10 @@ def parse_stats(stderr_data, path):
                 values[key] = int(value)
             elif key in FLOAT_STATS:
                 values[key] = float(value)
+            elif key in INT_ARRAY_STATS:
+                values[key] = [int(item) for item in value.split(",")]
+            elif key in FLOAT_ARRAY_STATS:
+                values[key] = [float(item) for item in value.split(",")]
     except (UnicodeDecodeError, ValueError) as exc:
         raise RuntimeError(f"invalid DSpark stats in {path}: {exc}") from exc
     missing = [key for key in STATS_FIELDS if key not in values]
@@ -378,6 +392,30 @@ def parse_stats(stderr_data, path):
         raise RuntimeError(f"incomplete DSpark stats in {path}: {', '.join(missing)}")
     if values["emitted"] <= 0 or values["target_evals"] <= 0:
         raise RuntimeError(f"empty DSpark stats in {path}")
+    width_lengths = {
+        len(values[field]) for field in INT_ARRAY_STATS | FLOAT_ARRAY_STATS
+    }
+    if len(width_lengths) != 1 or not 2 <= next(iter(width_lengths)) <= 17:
+        raise RuntimeError(f"invalid DSpark width histogram shape in {path}")
+    if sum(values["scheduler_width_rounds"]) != values["multi_attempts"]:
+        raise RuntimeError(f"DSpark scheduler-width rounds do not reconcile in {path}")
+    if sum(values["scheduler_width_committed"]) != values["emitted"]:
+        raise RuntimeError(
+            f"DSpark scheduler-width committed tokens do not reconcile in {path}"
+        )
+    if sum(values["verify_width_evals"]) != values["target_evals"]:
+        raise RuntimeError(f"DSpark verifier-width evals do not reconcile in {path}")
+    if sum(values["verify_width_positions"]) != values["target_eval_tokens"]:
+        raise RuntimeError(
+            f"DSpark verifier-width positions do not reconcile in {path}"
+        )
+    if abs(sum(values["verify_width_target_ms"]) -
+           values["target_eval_ms"]) > 0.01:
+        raise RuntimeError(f"DSpark verifier-width time does not reconcile in {path}")
+    if abs(sum(values["scheduler_width_sidecar_ms"]) +
+           values["sidecar_outside_scheduler_ms"] -
+           values["sidecar_ms"]) > 0.01:
+        raise RuntimeError(f"DSpark scheduler-width sidecar time does not reconcile in {path}")
     return values
 
 
