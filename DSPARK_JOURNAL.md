@@ -7222,3 +7222,90 @@ Conclusion:
   community work. The next useful optimization should target a larger measured
   cost or import a demonstrated upstream win rather than further tuning this
   command boundary.
+
+## Phase 1.10: Community Progress Survey
+
+Date: 2026-07-16.
+
+Surveyed:
+
+- `antirez/ds4` issue 468:
+  `https://github.com/antirez/ds4/issues/468`
+- open integration PR 502 at commit `7ad4ea2`:
+  `https://github.com/antirez/ds4/pull/502`
+- `lobanov/ds4` branch `dspark-research` through commit `d0aae3d`.
+- current `origin/main` at `80ebbc3`.
+
+Current community state:
+
+- No DSpark implementation has merged into `origin/main`.
+- PR 502 remains open and under requested changes. It reconciles the earlier
+  Metal runtime, B2 rejection sampling, adaptive block sizing, and exact
+  prefix-checkpoint work.
+- PR 502's hardware report is strongly workload-dependent: repetitive JSON
+  reached a large gain, tables a modest gain, code was near neutral, and prose
+  remained substantially slower than ordinary decoding.
+- The staged adaptive policy did not solve the prose regression. Its author
+  concluded that the drafter's acceptance on prose remains below break-even
+  even at small block sizes.
+- A ROCm port demonstrated correct noncausal attention but remained slower than
+  ordinary decoding on bandwidth-bound Strix Halo hardware. This is useful
+  confirmation of the verifier-economics limit, but is outside this branch's
+  Metal-only scope.
+
+Lobanov milestone-3 result:
+
+- The reported full stack is:
+  committing batched verify, anchor reuse, exact prefix checkpoints, Metal
+  drafter, and STS confidence scheduling.
+- On the corrected 176-entry corpus it measured `40.04` versus `38.16 t/s`,
+  or `1.049x`.
+- Its final 92-question score comparison was `61/92` versus plain `60/92`.
+- This is not a strict-output result. The branch reports about `40%` token
+  divergence on its exactness corpus and `56.6%` on the engaged benchmark when
+  using the committing batched verifier. The result is framed as
+  score-neutral target-argmax correctness, not byte-identical target replay.
+- Draft depth six was measured negative and reverted.
+- The Metal-specific STS threshold changed from `0.08` to `0.15`, but those are
+  calibrated STS values and are not directly comparable with this branch's raw
+  sigmoid threshold `0.455`.
+
+Overlap with this branch:
+
+- Confidence scheduling is already implemented, cross-domain validated, and
+  promoted at raw-confidence threshold `0.455`.
+- Exact prefix checkpoints are already implemented and promoted.
+- Persistent rolling DSpark KV and noncausal Metal attention are implemented
+  in the default-off Metal drafter.
+- The exact multi-commit path already performs the useful form of anchor
+  reuse: it validates `first_token` against the existing target logits and
+  includes draft row zero in the same exact target batch. It does not perform a
+  standalone target decode before a successful batch commit.
+- Runtime stats confirm this structure: the canonical 64-token run emits 64
+  tokens using 13 target evaluations over 64 target positions.
+
+Port decisions:
+
+- Do not port PR 502 or Lobanov's full stack wholesale. Their main throughput
+  win depends on the numerically different committing batched verifier, which
+  violates this branch's byte-identity contract and reproduces the class of
+  output mismatch already observed in our earlier fast-verifier experiment.
+- Do not port staged adaptive depth or draft depth six; their own measurements
+  rejected both as general solutions.
+- Do not transplant the `0.15` STS threshold into the raw-confidence scheduler.
+- Do not spend time on CUDA or ROCm parity in this Metal-focused effort.
+
+Conclusion:
+
+- The community result is real under a looser correctness contract, but it does
+  not close the strict exact-runtime gap.
+- This branch's broad exact HumanEval result remains `0.8081x` median paired
+  ratio after scheduling and prefix checkpoints. The remaining cost is target
+  verification, not the drafter.
+- The next strict-compatible engineering phase should return to the exact
+  verifier. The most promising bounded experiment is command-batch
+  consolidation inside each serial exact-attention tail: preserve row order and
+  arithmetic, but remove repeated Metal begin/end synchronizations across KV
+  update, compressor/indexer, attention, inverse RoPE, and output projections.
+- Keep the existing fast verifier as an observer only unless the user
+  explicitly chooses a separate non-byte-identical performance mode.
