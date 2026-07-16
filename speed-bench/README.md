@@ -613,6 +613,39 @@ least six of eight tasks, and no task is below `0.90x`. If both candidates pass,
 threshold `0.85` is selected only when its geometric mean is at least `1.01x`
 the threshold-`0.75` result; otherwise the lower threshold wins.
 
+After the aggressive gate selects threshold `0.75`, confirm it on all 32 frozen
+HumanEval tasks:
+
+```sh
+python3 speed-bench/run_dspark_humaneval_threshold075_throughput.py \
+  --dry-run --allow-dirty \
+  --throughput-reference \
+  speed-bench/local-runs/humaneval-scheduler-throughput-32-<timestamp>/summary.json \
+  --gate-reference \
+  speed-bench/local-runs/humaneval-aggressive-scheduler-<timestamp>/summary.json
+python3 speed-bench/run_dspark_humaneval_threshold075_throughput.py \
+  --confirm-idle \
+  --throughput-reference \
+  speed-bench/local-runs/humaneval-scheduler-throughput-32-<timestamp>/summary.json \
+  --gate-reference \
+  speed-bench/local-runs/humaneval-aggressive-scheduler-<timestamp>/summary.json
+```
+
+The runner validates that the aggressive gate selected `0.75`, then pairs
+ordinary target baseline against exact DSpark threshold `0.75` on the same
+frozen 32 tasks. Two global warmup pairs are excluded. The 64 measured
+processes alternate baseline-first and runtime-first order. Every process must
+match the frozen output, and no instrumentation or fast verifier is enabled.
+
+Within-run threshold-`0.75`/baseline ratios are authoritative. The prior
+threshold-`0.455` ratios are descriptive cross-run context. Broad scheduler
+confirmation requires at least `1.05x` geometric task-level movement over the
+prior study, at least 24 improved tasks, and no task below `0.80x` movement.
+The next path remains scheduler acceptance/cost auditing only if the fresh
+baseline geometric mean reaches `0.95x` or at least eight tasks become faster
+than baseline. Otherwise freeze scheduler tuning at `0.75` and return to exact
+Metal verifier optimization.
+
 After threshold `0.455` passes that representative gate, run the frozen
 32-task baseline-versus-scheduled confirmation without changing the policy:
 

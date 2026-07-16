@@ -8034,3 +8034,80 @@ Decision:
   `0.75` and return to the Metal exact-verifier architecture. If it approaches
   or crosses parity on a meaningful fraction of tasks, audit threshold-`0.75`
   acceptance and component costs before deciding whether to promote it.
+
+## Phase 1.16: Full threshold-0.75 HumanEval confirmation
+
+Implementation:
+
+- Added
+  `speed-bench/run_dspark_humaneval_threshold075_throughput.py`.
+- The runner binds to:
+  - the frozen 32-task threshold-`0.455` throughput artifact;
+  - the completed aggressive scheduler gate that selected threshold `0.75`.
+- It rejects drift in:
+  - model and sidecar paths;
+  - context, output length, seed, non-thinking mode, and instrumentation state;
+  - frozen HumanEval selection and prompts;
+  - aggressive-gate tasks, thresholds, selected candidate, and source
+    throughput reference.
+- Every baseline and threshold-`0.75` output must match the frozen exact
+  artifact byte-for-byte.
+
+Execution protocol:
+
+- `32` frozen HumanEval tasks.
+- One measured baseline/runtime pair per task.
+- Baseline-first and runtime-first order alternate by task.
+- Two excluded global warmup pairs use opposite orders.
+- Total process count: `68`:
+  - four excluded warmup processes;
+  - `64` measured processes.
+- Runtime mode enables only:
+  - `DS4_DSPARK_GPU_RUNTIME=1`;
+  - `DS4_DSPARK_MULTI_COMMIT=1`;
+  - `DS4_DSPARK_CONFIDENCE_THRESHOLD=0.75`.
+- No runtime stats, acceptance audit, trace, diagnostics, profiler, or fast
+  verifier is enabled.
+
+Predeclared decision gates:
+
+- Within-run threshold-`0.75`/baseline ratios are authoritative.
+- Threshold-`0.455` values from the frozen prior study are descriptive
+  cross-run context only.
+- Broad scheduler confirmation requires:
+  - geometric task-level movement versus `0.455` at least `1.05x`;
+  - at least `24/32` improved tasks;
+  - no task below `0.80x` movement.
+- The result is treated as near parity if either:
+  - fresh threshold-`0.75`/baseline geometric mean is at least `0.95x`; or
+  - at least eight tasks are faster than baseline.
+- If near parity passes, the next phase is a threshold-`0.75` acceptance and
+  component-cost audit.
+- If near parity fails, freeze scheduler tuning at `0.75` and return to the
+  exact Metal verifier architecture.
+
+Validation:
+
+- The dedicated tests cover:
+  - frozen policy and decision constants;
+  - alternating measured order;
+  - uninstrumented threshold-`0.75` environment;
+  - scheduler-confirmation pass/fail accounting;
+  - near-parity next-path selection;
+  - authoritative versus historical report language.
+- The dry run validated both source artifacts, all 32 frozen tasks, command
+  environments, alternating order, and the intended 68-process schedule.
+- Threshold `0.75` already passed the full five-case runtime correctness matrix
+  in Phase 1.15.
+- Codex will not run the timed confirmation.
+
+User-run command:
+
+```sh
+python3 speed-bench/run_dspark_humaneval_threshold075_throughput.py \
+  --throughput-reference \
+  speed-bench/local-runs/humaneval-scheduler-throughput-32-20260716-103542/summary.json \
+  --gate-reference \
+  speed-bench/local-runs/humaneval-aggressive-scheduler-20260716-151432/summary.json \
+  --confirm-idle
+```
