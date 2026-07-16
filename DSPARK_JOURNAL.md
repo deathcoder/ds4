@@ -18,6 +18,13 @@ than baseline. Phase 1.06 should add stats-only checkpoint attempt, success,
 fallback, and avoided-replay-row counters, then attribute a small frozen set;
 do not repeat the full 32-task throughput run yet.
 
+Phase 1.06 is prepared. Runtime stats now distinguish exact prefix-checkpoint
+attempts, successes, fallback replays, and exact target rows whose replay was
+avoided. A four-task frozen HumanEval runner validates the completed Phase 1.05
+artifact and executes only stats-enabled exact-runtime processes. Codex has not
+run the timed attribution; the user command is recorded at the end of the
+journal.
+
 Phase 1.01 is complete. DSpark confidence-prefix scheduling now defaults to
 `0.455` when `DS4_DSPARK_CONFIDENCE_THRESHOLD` is absent. An explicit value
 still overrides the default, and explicit `0` preserves fixed K=5. The frozen
@@ -6553,3 +6560,91 @@ Next measurement:
   `humaneval_131` or `humaneval_137`.
 - Do not rerun all 32 tasks before that attribution identifies the remaining
   exact-verifier cost.
+
+## Phase 1.06: Prefix-Checkpoint Stats Attribution
+
+Date: 2026-07-16.
+
+Engine instrumentation:
+
+- Added runtime-stats counters:
+  `prefix_checkpoint_attempts`, `prefix_checkpoint_successes`,
+  `prefix_checkpoint_fallbacks`, and
+  `prefix_checkpoint_rows_avoided`.
+- An attempt is counted only for an exact partial batch with prefix
+  checkpoints enabled.
+- Success requires frontier commit, exact logits retrieval, and target-capture
+  trimming to the committed prefix.
+- A fallback is an attempted checkpoint that could not commit and therefore
+  used the legacy replay path.
+- Rows avoided is the sum of committed target rows that legacy replay would
+  have reevaluated.
+- All increments occur only when the existing runtime-stats gate is enabled;
+  uninstrumented throughput has no added counter work.
+
+Frozen attribution:
+
+- Added `speed-bench/run_dspark_humaneval_checkpoint_attribution.py`.
+- It requires the completed Phase 1.05 artifact:
+  `speed-bench/local-runs/humaneval-scheduler-throughput-32-20260716-103542/summary.json`.
+- Frozen tasks:
+  `humaneval_152` low acceptance,
+  `humaneval_047` best current paired ratio,
+  `humaneval_131` large checkpoint-era gain, and
+  `humaneval_137` large gain with lower acceptance.
+- It validates the scheduler threshold, model paths, 32-task protocol, prompt
+  bytes, pair completeness, and prior output hashes.
+- It starts four stats-enabled exact-runtime processes. Each output must match
+  its prior uninstrumented runtime artifact byte-for-byte.
+- The report omits diagnostic throughput and presents checkpoint coverage,
+  fallback count, replay rows avoided per emitted token, current target
+  positions, and a structural legacy-position proxy.
+
+User-run command:
+
+```sh
+python3 speed-bench/run_dspark_humaneval_checkpoint_attribution.py \
+  --confirm-ready \
+  --throughput-reference \
+  speed-bench/local-runs/humaneval-scheduler-throughput-32-20260716-103542/summary.json
+```
+
+Codex must not run this timed attribution.
+
+Preparation checks:
+
+```sh
+make -j4 ds4 ds4_test
+make ds4_cpu.o
+./ds4_test --dspark-validation --dspark-shape-binding
+python3 -m py_compile \
+  speed-bench/run_dspark_humaneval_checkpoint_attribution.py \
+  speed-bench/run_dspark_issue468_comparison.py \
+  tests/test_dspark_checkpoint_attribution.py
+python3 -m unittest \
+  tests/test_dspark_checkpoint_attribution.py \
+  tests/test_dspark_confidence_scheduler.py \
+  tests/test_dspark_exact_prefix_checkpoint.py
+bash -n tests/dspark_gpu_candidates_correctness.sh
+DS4_TEST_DSPARK_MODE=runtime \
+DS4_TEST_DSPARK_RUNTIME_STATS=1 \
+DS4_TEST_DSPARK_CONFIDENCE_THRESHOLD=0 \
+  ./tests/dspark_gpu_candidates_correctness.sh
+python3 speed-bench/run_dspark_humaneval_checkpoint_attribution.py \
+  --dry-run --allow-dirty \
+  --throughput-reference \
+  speed-bench/local-runs/humaneval-scheduler-throughput-32-20260716-103542/summary.json
+git diff --check
+```
+
+Results:
+
+- Metal and CPU core builds passed; CPU emitted only existing unused-code
+  warnings.
+- 33 focused Python tests passed.
+- DSpark validation and shape binding passed.
+- The stats-enabled fixed-K correctness matrix passed all five retained cases
+  and validated the new checkpoint accounting fields.
+- The real dry-run validated all four frozen references and printed commands
+  with stats and threshold `0.455`, but no checkpoint override.
+- No timed attribution was run by Codex.

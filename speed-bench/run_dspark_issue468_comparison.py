@@ -29,6 +29,8 @@ INT_STATS = {
     "proposals", "selected", "source_fallbacks", "multi_attempts", "emitted",
     "target_evals", "target_eval_tokens", "target_evals_avoided",
     "batch_attempts", "batch_full", "batch_partial", "batch_fallbacks",
+    "prefix_checkpoint_attempts", "prefix_checkpoint_successes",
+    "prefix_checkpoint_fallbacks", "prefix_checkpoint_rows_avoided",
     "fast_calls", "fast_failures", "fast_exact_fallbacks",
     "depth1", "depth2", "depth3", "depth4", "depth5",
 }
@@ -718,6 +720,14 @@ def summarize_stats(rows):
             "batch_attempts": row["batch_attempts"],
             "batch_full": row["batch_full"],
             "batch_partial": row["batch_partial"],
+            "prefix_checkpoint_attempts":
+                row["prefix_checkpoint_attempts"],
+            "prefix_checkpoint_successes":
+                row["prefix_checkpoint_successes"],
+            "prefix_checkpoint_fallbacks":
+                row["prefix_checkpoint_fallbacks"],
+            "prefix_checkpoint_rows_avoided":
+                row["prefix_checkpoint_rows_avoided"],
             "fast_calls": row["fast_calls"], "fast_failures": row["fast_failures"],
             "fast_exact_fallbacks": row["fast_exact_fallbacks"],
             "batch_fallbacks": row["batch_fallbacks"],

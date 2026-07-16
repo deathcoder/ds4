@@ -765,7 +765,7 @@ exact layers, batched heads, serial heads, and residual overhead. It also
 requires byte-identical output and reports successful head batches. Codex does
 not run this command; the user starts it when the machine is ready.
 
-The exact prefix-checkpoint candidate avoids replaying an accepted partial
+The promoted exact prefix-checkpoint path avoids replaying an accepted partial
 proposal after the exact verifier has already computed it. It snapshots the
 small compressor/indexer frontier after each proposal row, retains the
 corresponding exact logits and target hidden-state capture, and restores only
@@ -777,7 +777,7 @@ Run the byte-exact fixed-K correctness matrix first:
 
 ```sh
 DS4_TEST_DSPARK_MODE=runtime \
-DS4_TEST_DSPARK_EXACT_PREFIX_CHECKPOINT=1 \
+DS4_TEST_DSPARK_EXACT_PREFIX_CHECKPOINT=default \
 DS4_TEST_DSPARK_CONFIDENCE_THRESHOLD=0 \
   ./tests/dspark_gpu_candidates_correctness.sh
 ```
@@ -793,10 +793,33 @@ python3 speed-bench/run_dspark_comparison.py \
   --confirm-idle
 ```
 
-The reference mode uses the current exact partial-prefix replay. The candidate
-sets only `DS4_DSPARK_EXACT_PREFIX_CHECKPOINT=1`. Both modes use the promoted
-confidence scheduler, omit runtime stats and diagnostics, alternate order, and
-must produce byte-identical output. Codex does not run this timed command.
+The reference mode explicitly sets
+`DS4_DSPARK_EXACT_PREFIX_CHECKPOINT=0`; the candidate is the ordinary promoted
+exact runtime with no override. Both modes use the promoted confidence
+scheduler, omit runtime stats and diagnostics, alternate order, and must
+produce byte-identical output. Codex does not run this timed command.
+
+To attribute checkpoint behavior without another throughput pass:
+
+```sh
+python3 speed-bench/run_dspark_humaneval_checkpoint_attribution.py \
+  --dry-run --allow-dirty \
+  --throughput-reference \
+  speed-bench/local-runs/humaneval-scheduler-throughput-32-20260716-103542/summary.json
+python3 speed-bench/run_dspark_humaneval_checkpoint_attribution.py \
+  --confirm-ready \
+  --throughput-reference \
+  speed-bench/local-runs/humaneval-scheduler-throughput-32-20260716-103542/summary.json
+```
+
+The four frozen tasks cover low acceptance, the best current speed ratio, and
+two of the largest checkpoint-era gains. The runner starts four stats-enabled
+exact-runtime processes and reuses each prior runtime output as its byte-exact
+reference. It reports checkpoint attempts, successful restores, replay
+fallbacks, exact target rows whose replay was avoided, and a structural legacy
+target-position proxy. Diagnostic t/s is omitted, and the proxy is not a speed
+prediction. No fresh baseline, throughput pass, acceptance audit, trace, or
+layer profiler is run.
 
 Use the synchronized exact-runtime profile to attribute the remaining promoted
 target-layer work:

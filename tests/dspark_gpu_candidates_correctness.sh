@@ -395,6 +395,8 @@ assert_gpu_selected() {
             local stats_record outcomes attempts successes
             local attn_outcomes attn_attempts attn_successes
             local suffix_outcomes suffix_attempts suffix_successes
+            local checkpoint_outcomes checkpoint_attempts checkpoint_successes
+            local checkpoint_fallbacks checkpoint_rows_avoided
             if [[ $(grep -c '^ds4: DSpark runtime stats ' "$log") -ne 1 ]]; then
                 printf 'expected exactly one DSpark runtime stats record\n' >&2
                 exit 1
@@ -416,6 +418,24 @@ assert_gpu_selected() {
                 fi
             elif [[ $attempts -ne 0 || $successes -ne 0 ]]; then
                 printf 'control mode unexpectedly recorded exact FFN outcomes\n' >&2
+                exit 1
+            fi
+            checkpoint_outcomes=$(printf '%s\n' "$stats_record" | sed -n \
+                's/.* prefix_checkpoint_attempts=\([0-9][0-9]*\) prefix_checkpoint_successes=\([0-9][0-9]*\) prefix_checkpoint_fallbacks=\([0-9][0-9]*\) prefix_checkpoint_rows_avoided=\([0-9][0-9]*\) .*/\1 \2 \3 \4/p')
+            if [[ -z $checkpoint_outcomes ]]; then
+                printf 'DSpark runtime stats omitted prefix-checkpoint outcomes\n' >&2
+                exit 1
+            fi
+            read -r checkpoint_attempts checkpoint_successes \
+                checkpoint_fallbacks checkpoint_rows_avoided \
+                <<<"$checkpoint_outcomes"
+            if [[ $checkpoint_successes -gt $checkpoint_attempts ||
+                  $checkpoint_fallbacks -ne \
+                      $((checkpoint_attempts - checkpoint_successes)) ||
+                  ($checkpoint_successes -eq 0 &&
+                   $checkpoint_rows_avoided -ne 0) ]]; then
+                printf 'invalid prefix-checkpoint runtime outcomes: %s\n' \
+                    "$checkpoint_outcomes" >&2
                 exit 1
             fi
             attn_outcomes=$(printf '%s\n' "$stats_record" | sed -n \

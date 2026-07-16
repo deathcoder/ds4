@@ -30282,6 +30282,10 @@ struct dspark_session_state {
     uint64_t runtime_batch_verify_full_accepts;
     uint64_t runtime_batch_verify_partial_accepts;
     uint64_t runtime_batch_verify_fallbacks;
+    uint64_t runtime_prefix_checkpoint_attempts;
+    uint64_t runtime_prefix_checkpoint_successes;
+    uint64_t runtime_prefix_checkpoint_fallbacks;
+    uint64_t runtime_prefix_checkpoint_rows_avoided;
     uint64_t runtime_fast_verify_calls;
     uint64_t runtime_fast_verify_failures;
     uint64_t runtime_fast_verify_exact_fallbacks;
@@ -30468,7 +30472,12 @@ static void dspark_session_state_free(dspark_session_state *d) {
                 "target_evals_avoided=%llu avg_depth=%.6f "
                 "depth1=%llu depth2=%llu depth3=%llu depth4=%llu depth5=%llu "
                 "batch_attempts=%llu batch_full=%llu batch_partial=%llu "
-                "batch_fallbacks=%llu fast_calls=%llu fast_failures=%llu "
+                "batch_fallbacks=%llu "
+                "prefix_checkpoint_attempts=%llu "
+                "prefix_checkpoint_successes=%llu "
+                "prefix_checkpoint_fallbacks=%llu "
+                "prefix_checkpoint_rows_avoided=%llu "
+                "fast_calls=%llu fast_failures=%llu "
                 "fast_exact_fallbacks=%llu "
                 "exact_ffn_batch_attempts=%llu exact_ffn_batch_successes=%llu "
                 "exact_attn_pre_batch_attempts=%llu "
@@ -30502,6 +30511,10 @@ static void dspark_session_state_free(dspark_session_state *d) {
                 (unsigned long long)d->runtime_batch_verify_full_accepts,
                 (unsigned long long)d->runtime_batch_verify_partial_accepts,
                 (unsigned long long)d->runtime_batch_verify_fallbacks,
+                (unsigned long long)d->runtime_prefix_checkpoint_attempts,
+                (unsigned long long)d->runtime_prefix_checkpoint_successes,
+                (unsigned long long)d->runtime_prefix_checkpoint_fallbacks,
+                (unsigned long long)d->runtime_prefix_checkpoint_rows_avoided,
                 (unsigned long long)d->runtime_fast_verify_calls,
                 (unsigned long long)d->runtime_fast_verify_failures,
                 (unsigned long long)d->runtime_fast_verify_exact_fallbacks,
@@ -35760,8 +35773,12 @@ static int dspark_session_eval_batch_commit(
 
     if (n_commit < n_limit) {
         bool prefix_committed = false;
-        if (!committed_fast &&
-            dspark_exact_prefix_checkpoint_enabled() &&
+        const bool prefix_checkpoint_attempt =
+            !committed_fast && dspark_exact_prefix_checkpoint_enabled();
+        if (stats && prefix_checkpoint_attempt) {
+            d->runtime_prefix_checkpoint_attempts++;
+        }
+        if (prefix_checkpoint_attempt &&
             spec_frontier_commit_prefix(s, n_commit, n_limit) &&
             metal_graph_read_spec_logits_row(
                 &s->graph, n_commit - 1u, last_logits)) {
@@ -35771,6 +35788,10 @@ static int dspark_session_eval_batch_commit(
                 prefix_committed =
                     capture.n_tokens > 0 && !capture.failed;
             }
+            if (stats && prefix_committed) {
+                d->runtime_prefix_checkpoint_successes++;
+                d->runtime_prefix_checkpoint_rows_avoided += n_commit;
+            }
             if (prefix_committed &&
                 dspark_session_diagnostics_enabled()) {
                 fprintf(stderr,
@@ -35779,6 +35800,9 @@ static int dspark_session_eval_batch_commit(
                         n_limit,
                         n_commit);
             }
+        }
+        if (stats && prefix_checkpoint_attempt && !prefix_committed) {
+            d->runtime_prefix_checkpoint_fallbacks++;
         }
         if (!prefix_committed) {
             ok = spec_frontier_restore(&frontier, s);
