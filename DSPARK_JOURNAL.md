@@ -49,6 +49,14 @@ share the outer Metal command batch, so merely reusing a command buffer is not
 a new optimization. Next attribute the existing one-token routed-MoE stages
 inside exact verifier batches before choosing a kernel or encoding candidate.
 
+Phase 1.31 is prepared and awaiting the user-run exact routed-MoE stage
+profile. The diagnostic reuses the existing synchronized one-token MoE
+boundaries and maps only records between each exact batch's `shared_down` and
+`routed_moe` controls. It requires one complete gate/up, activation-weight,
+down, and sum sequence per proposal row, profiles layers `0`, `21`, and `42`,
+and reconciles inner medians against the enclosing routed-MoE control. No
+runtime candidate or timed throughput measurement is enabled.
+
 Phase 1.05 is complete. The frozen 32-task HumanEval gate measured a `0.8081x`
 median paired DSpark/baseline ratio and `0.7910x` geometric mean on the
 promoted scheduler plus exact prefix-checkpoint runtime. This improves over the
@@ -9982,3 +9990,75 @@ Decision:
 - Report exact routed-MoE stage share for width-5 batches at layers `0`, `21`,
   and `42`. This should distinguish a gate/up kernel candidate from a
   down/sum candidate and avoid another arithmetic-risking broad batch rewrite.
+
+## Phase 1.31: Exact routed-MoE stage profile prepared
+
+Purpose:
+
+- Attribute the dominant exact `routed_moe` FFN component without changing its
+  arithmetic or enabling a runtime candidate.
+- Separate one-token gate/up, activation-weight, down, and sum costs inside the
+  same frozen post-promotion verifier schedule.
+- Choose the next Metal candidate from measured inner structure rather than
+  reopening the known-inexact generic width-5 routed-MoE batch path.
+
+New harness:
+
+- Added
+  `speed-bench/run_dspark_post_promotion_width_routed_moe_profile.py`.
+- Added model-free tests in
+  `tests/test_dspark_post_promotion_width_routed_moe_profile.py`.
+- The harness requires and cross-validates the Phase 1.27 cumulative
+  throughput, Phase 1.28 cumulative cost, Phase 1.29 width-layer, and Phase
+  1.30 width-FFN artifacts.
+- The width-FFN reference must be the clean
+  `862da2c3195df81db0a359a41718e039d1799700` artifact and must identify
+  `routed_moe` as both its largest width-5 stage and weakest-amortizing stage.
+- Each layer process enables the current exact runtime, stats, exact-layer and
+  FFN stage controls, plus the existing
+  `DS4_METAL_MOE_ONE_STAGE_PROFILE` boundary for the selected layer.
+- Mapping first identifies the enclosing exact `attention_tail_serial` to
+  `ffn_batch` interval, then accepts one-row MoE records only between its
+  matching `shared_down` and `routed_moe` controls. This excludes ordinary
+  serial decode work with the same position and width.
+- Every exact batch must contain exactly `width` copies of this ordered stage
+  sequence:
+  - `gate_up`;
+  - `activation_weight`;
+  - `down`;
+  - `sum`.
+- Every row must retain the same Metal path and gate/down types and report six
+  selected expert pairs. Missing, duplicated, reordered, or unexpected stages
+  fail the diagnostic.
+- The report gives width-grouped inner and outer routed-MoE costs, width-5
+  component shares, and layer detail for layers `0`, `21`, and `42`.
+- Inner boundaries synchronize after each component and alter scheduling.
+  Their values are attribution only, never throughput measurements.
+
+Validation:
+
+- Python compilation passed.
+- Seven targeted routed-MoE tests cover environment isolation, raw record
+  parsing, exact-row assignment, serial-record exclusion, missing-stage
+  rejection, aggregation, and report identity.
+- All `136` DSpark model-free tests passed.
+- A dry run validated the complete real artifact chain and emitted exactly
+  three commands for layers `0`, `21`, and `42`.
+- The dry run materialized no prompt and ran no inference; only existing model
+  metadata inspection was performed.
+- `git diff --check` passed.
+
+User-run command:
+
+```sh
+python3 speed-bench/run_dspark_post_promotion_width_routed_moe_profile.py \
+  --throughput-reference \
+  speed-bench/local-runs/humaneval-cumulative-throughput-32-20260717-092241/summary.json \
+  --cost-reference \
+  speed-bench/local-runs/humaneval-cumulative-cost-20260717-094819/summary.json \
+  --width-layer-reference \
+  speed-bench/local-runs/post-promotion-width-layer-20260717-100542/summary.json \
+  --width-ffn-reference \
+  speed-bench/local-runs/post-promotion-width-ffn-20260717-104106/summary.json \
+  --confirm-ready
+```
