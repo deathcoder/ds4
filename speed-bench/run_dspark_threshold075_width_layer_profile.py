@@ -16,6 +16,7 @@ import time
 
 import run_dspark_exact_layer_profile as layer_profile
 import run_dspark_humaneval_acceptance as corpus
+import run_dspark_humaneval_cumulative_cost_audit as cumulative_cost_audit
 import run_dspark_humaneval_threshold075_cost_audit as cost_audit
 import run_dspark_issue468_comparison as common
 
@@ -24,6 +25,15 @@ THRESHOLD = cost_audit.THRESHOLD
 TASK = "humaneval_079"
 LAYERS = (0, 21, 42)
 WIDTHS = (2, 3, 4, 5)
+CUMULATIVE_COST_SOURCE_COMMIT = "5396ce554296cb8821c218a2694ea3bdf036d55a"
+LEGACY_COST_CONTRACT = (
+    "dspark_humaneval_threshold075_exact_verifier_cost",
+    "dspark_humaneval_threshold075_exact_verifier_cost",
+)
+CUMULATIVE_COST_CONTRACT = (
+    "dspark_humaneval_cumulative_exact_verifier_cost",
+    "dspark_humaneval_cumulative_exact_verifier_cost",
+)
 COUNT_FIELDS = (
     "emitted",
     "target_evals",
@@ -120,6 +130,15 @@ def parse_csv_stats_row(row):
     return values
 
 
+def cost_reference_kind(summary, metadata):
+    contract = (metadata.get("experiment"), summary.get("analysis"))
+    if contract == LEGACY_COST_CONTRACT:
+        return "legacy_threshold075"
+    if contract == CUMULATIVE_COST_CONTRACT:
+        return "post_promotion_cumulative"
+    raise SystemExit("cost reference has the wrong experiment or analysis kind")
+
+
 def load_cost_reference(args):
     summary_path = args.cost_reference.resolve()
     run_dir = summary_path.parent
@@ -132,16 +151,14 @@ def load_cost_reference(args):
     ):
         if not path.is_file():
             raise SystemExit(f"missing threshold-0.75 cost {label}: {path}")
-    summary = load_json(summary_path, "threshold-0.75 cost summary")
-    metadata = load_json(metadata_path, "threshold-0.75 cost metadata")
-    if metadata.get("experiment") != (
-        "dspark_humaneval_threshold075_exact_verifier_cost"
-    ):
-        raise SystemExit("cost reference has the wrong experiment kind")
-    if summary.get("analysis") != (
-        "dspark_humaneval_threshold075_exact_verifier_cost"
-    ):
-        raise SystemExit("cost reference has the wrong analysis kind")
+    summary = load_json(summary_path, "exact-verifier cost summary")
+    metadata = load_json(metadata_path, "exact-verifier cost metadata")
+    reference_kind = cost_reference_kind(summary, metadata)
+    if reference_kind == "post_promotion_cumulative":
+        if metadata.get("git_commit") != CUMULATIVE_COST_SOURCE_COMMIT:
+            raise SystemExit("cumulative cost reference source commit mismatch")
+        if metadata.get("git_status_tracked"):
+            raise SystemExit("cumulative cost reference used a dirty tree")
     if summary.get("threshold") != THRESHOLD:
         raise SystemExit("cost reference threshold mismatch")
     if summary.get("task_count") != cost_audit.TASK_COUNT:
@@ -155,7 +172,7 @@ def load_cost_reference(args):
     ):
         raise SystemExit("cost reference throughput reference mismatch")
     config = metadata.get("config", {})
-    for key, expected in (
+    expected_config = [
         ("ctx", args.ctx),
         ("tokens", args.tokens),
         ("temperature", 0),
@@ -165,7 +182,10 @@ def load_cost_reference(args):
         ("runtime_stats", True),
         ("oracle_trace", False),
         ("fast_verifier", False),
-    ):
+    ]
+    if reference_kind == "post_promotion_cumulative":
+        expected_config.append(("promoted_defaults", True))
+    for key, expected in expected_config:
         if config.get(key) != expected:
             raise SystemExit(
                 f"cost reference config {key} mismatch: "
@@ -191,6 +211,7 @@ def load_cost_reference(args):
         "summary": summary,
         "metadata": metadata,
         "stats": stats,
+        "reference_kind": reference_kind,
     }
 
 
@@ -243,7 +264,7 @@ def execute(args, root, run_dir, prompt, layer, reference):
     stdout_data = stdout_path.read_bytes()
     if stdout_data != reference:
         raise RuntimeError(
-            f"{name} output differs from frozen threshold-0.75 output; "
+            f"{name} output differs from frozen HumanEval output; "
             f"see {stdout_path}"
         )
     stderr_data = stderr_path.read_bytes()
@@ -396,11 +417,24 @@ def summarize(records, expected_stats):
 
 
 def render_report(summary):
+    post_promotion = (
+        summary.get("reference_kind") == "post_promotion_cumulative"
+    )
+    title = (
+        "# DSpark Post-Promotion Width-Stratified Exact Layer Profile"
+        if post_promotion else
+        "# DSpark Threshold 0.75 Width-Stratified Exact Layer Profile"
+    )
+    artifact_label = (
+        "frozen cumulative HumanEval artifact"
+        if post_promotion else
+        "frozen threshold-0.75 HumanEval artifact"
+    )
     lines = [
-        "# DSpark Threshold 0.75 Width-Stratified Exact Layer Profile",
+        title,
         "",
         "Synchronized diagnostic only. Stage boundaries change scheduling; do not use these values as throughput measurements.",
-        "Every profiled output matched the frozen threshold-0.75 HumanEval artifact byte-for-byte.",
+        f"Every profiled output matched the {artifact_label} byte-for-byte.",
         "Rows are grouped by the actual exact-verifier width recorded in each layer-stage event.",
         "",
         "## Sampled Layer Totals",
@@ -487,10 +521,15 @@ def main():
         cost_audit.TASK_COUNT,
         provenance["selection_policy"],
     )
-    throughput_reference = cost_audit.load_throughput_reference(
-        args, records, selection
-    )
     cost_reference = load_cost_reference(args)
+    if cost_reference["reference_kind"] == "post_promotion_cumulative":
+        throughput_reference = cumulative_cost_audit.load_throughput_reference(
+            args, records, selection
+        )
+    else:
+        throughput_reference = cost_audit.load_throughput_reference(
+            args, records, selection
+        )
     context = throughput_reference["tasks"][TASK]
     layer_count = layer_profile.inspect_layer_count(args, root)
     if any(layer >= layer_count for layer in LAYERS):
@@ -499,15 +538,18 @@ def main():
         )
 
     stamp = dt.datetime.now().astimezone().strftime("%Y%m%d-%H%M%S")
-    default_dir = root / (
-        f"speed-bench/local-runs/threshold075-width-layer-{stamp}"
+    run_prefix = (
+        "post-promotion-width-layer"
+        if cost_reference["reference_kind"] == "post_promotion_cumulative"
+        else "threshold075-width-layer"
     )
+    default_dir = root / f"speed-bench/local-runs/{run_prefix}-{stamp}"
     run_dir = (args.output_dir or default_dir).resolve()
     prompt = run_dir / "prompt.txt"
     for layer in LAYERS:
         print(f"layer {layer}: {command_text(args, prompt, layer)}")
     print(
-        "Three synchronized threshold-0.75 profile processes; every output "
+        "Three synchronized exact-layer profile processes; every output "
         "must match the frozen HumanEval artifact."
     )
     if args.dry_run:
@@ -522,7 +564,11 @@ def main():
         "git_status_tracked": common.git_output(
             root, "status", "--porcelain", "--untracked-files=no"
         ),
-        "experiment": "dspark_threshold075_width_stratified_exact_layer",
+        "experiment": (
+            "dspark_post_promotion_width_stratified_exact_layer"
+            if cost_reference["reference_kind"] == "post_promotion_cumulative"
+            else "dspark_threshold075_width_stratified_exact_layer"
+        ),
         "platform": platform.platform(),
         "initial_snapshot": common.machine_snapshot(root),
         "selection": selection,
@@ -590,6 +636,11 @@ def main():
         common.cooldown(args.cooldown)
 
     summary = summarize(records_out, cost_reference["stats"])
+    summary["reference_kind"] = cost_reference["reference_kind"]
+    if cost_reference["reference_kind"] == "post_promotion_cumulative":
+        summary["analysis"] = (
+            "dspark_post_promotion_width_stratified_exact_layer"
+        )
     report = render_report(summary)
     write_csv(
         run_dir / "stages.csv",

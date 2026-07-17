@@ -19,6 +19,26 @@ class DSparkThreshold075WidthLayerProfileTests(unittest.TestCase):
         self.assertEqual(profile.LAYERS, (0, 21, 42))
         self.assertEqual(profile.WIDTHS, (2, 3, 4, 5))
 
+    def test_cost_reference_contracts_distinguish_post_promotion(self):
+        legacy = {
+            "experiment": profile.LEGACY_COST_CONTRACT[0],
+        }
+        cumulative = {
+            "experiment": profile.CUMULATIVE_COST_CONTRACT[0],
+        }
+        self.assertEqual(
+            profile.cost_reference_kind(
+                {"analysis": profile.LEGACY_COST_CONTRACT[1]}, legacy
+            ),
+            "legacy_threshold075",
+        )
+        self.assertEqual(
+            profile.cost_reference_kind(
+                {"analysis": profile.CUMULATIVE_COST_CONTRACT[1]}, cumulative
+            ),
+            "post_promotion_cumulative",
+        )
+
     def test_profile_environment_is_exact_and_instrumented(self):
         env = profile.profile_env(21)
         self.assertEqual(env["DS4_DSPARK_GPU_RUNTIME"], "1")
@@ -28,6 +48,8 @@ class DSparkThreshold075WidthLayerProfileTests(unittest.TestCase):
         self.assertEqual(env["DS4_DSPARK_EXACT_LAYER_PROFILE"], "1")
         self.assertEqual(env["DS4_DSPARK_EXACT_LAYER_PROFILE_LAYER"], "21")
         self.assertNotIn("DS4_DSPARK_FAST_BATCH_VERIFY", env)
+        self.assertNotIn("DS4_METAL_DENSE_MIXED_DIRECT", env)
+        self.assertNotIn("DS4_METAL_DENSE_MIXED_GATHERED_LEGACY", env)
 
     @staticmethod
     def records():
@@ -80,9 +102,11 @@ class DSparkThreshold075WidthLayerProfileTests(unittest.TestCase):
             profile.summarize(rows, self.stats())
 
     def test_report_warns_about_sparse_widths(self):
-        report = profile.render_report(
-            profile.summarize(self.records(), self.stats())
-        )
+        summary = profile.summarize(self.records(), self.stats())
+        summary["reference_kind"] = "post_promotion_cumulative"
+        report = profile.render_report(summary)
+        self.assertIn("Post-Promotion Width-Stratified", report)
+        self.assertIn("frozen cumulative HumanEval artifact", report)
         self.assertIn("Synchronized diagnostic only", report)
         self.assertIn("Widths 2 and 3 have one observation each", report)
         self.assertIn("No fresh throughput benchmark", report)

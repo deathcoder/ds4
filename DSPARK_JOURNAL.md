@@ -31,6 +31,14 @@ multi-row execution remains the primary optimization surface. Next refresh the
 width-stratified layer attribution after fused-gather promotion before choosing
 another verifier candidate.
 
+Phase 1.29 is prepared and awaiting the user-run post-promotion width-layer
+profile. The existing Phase 1.18 profiler now accepts both legacy and cumulative
+reference contracts. Against the current artifacts it runs three synchronized
+processes for layers `0`, `21`, and `42` on `humaneval_079`, reproduces the
+unchanged width `2/3/4/5` schedule, and reports attention preparation, serial
+tail, and exact FFN cost by width. No runtime candidate or timed throughput
+measurement is enabled.
+
 Phase 1.05 is complete. The frozen 32-task HumanEval gate measured a `0.8081x`
 median paired DSpark/baseline ratio and `0.7910x` geometric mean on the
 promoted scheduler plus exact prefix-checkpoint runtime. This improves over the
@@ -9636,3 +9644,69 @@ Decision:
 - Use the fresh attention-preparation, serial-tail, and exact-FFN split to choose
   the next shared multi-row verifier optimization. The prior split predates
   fused gather and should not decide the next implementation by itself.
+
+## Phase 1.29: Post-promotion width-layer profile prepared
+
+Purpose:
+
+- Refresh the Phase 1.18 exact-layer attribution after fused-gather promotion.
+- Keep the threshold-`0.75` schedule, selected task, sampled layers, stage
+  boundaries, and width grouping unchanged so the structural comparison remains
+  meaningful.
+- Determine which shared exact-layer component now dominates width-5 target
+  verification before implementing another verifier candidate.
+
+Harness update:
+
+- Extended `speed-bench/run_dspark_threshold075_width_layer_profile.py` rather
+  than cloning its established parser and summarizer.
+- The profiler now recognizes two explicit reference contracts:
+  - the legacy Phase 1.17 threshold-`0.75` cost audit;
+  - the Phase 1.28 post-promotion cumulative cost audit.
+- The cumulative path requires:
+  - cost experiment and analysis
+    `dspark_humaneval_cumulative_exact_verifier_cost`;
+  - clean cost-audit source commit
+    `5396ce554296cb8821c218a2694ea3bdf036d55a`;
+  - promoted defaults and the exact Phase 1.27 throughput reference;
+  - the current 32-task selection and frozen output bytes.
+- The cumulative throughput loader independently pins the clean Phase 1.27
+  source commit, protocol, prompt bytes, output hashes, per-task ratios, and
+  aggregate ratio.
+- The selected cost row for `humaneval_079` still contains:
+  - `128` emitted tokens;
+  - `34` target evaluations and `129` target positions;
+  - `26` multi-position attempts, `25` full, `1` partial, zero fallbacks;
+  - width histogram `8/1/1/4/20` for widths `1/2/3/4/5`.
+- Each layer process enables only current exact DSpark, runtime stats,
+  threshold `0.75`, and the synchronized exact-layer profile for its selected
+  layer. No fast verifier, trace, dense-mixed experiment switch, or runtime
+  implementation candidate is enabled.
+- The output report is labeled as post-promotion and records that it matched the
+  frozen cumulative artifact byte-for-byte.
+- Legacy throughput and cost artifacts remain accepted and retain the original
+  report identity, preserving historical reproducibility.
+
+Validation:
+
+- Python compilation passed.
+- Ten targeted width-layer and cumulative-cost tests passed.
+- All `123` DSpark model-free tests passed.
+- The current cumulative throughput and cost artifacts passed their complete
+  reference checks.
+- The post-promotion dry run emitted exactly three profile commands for layers
+  `0`, `21`, and `42`, with no prompt materialization or inference run; only
+  the existing model-metadata inspection was executed.
+- A second dry run against the original Phase 1.17 references also passed,
+  confirming backward compatibility.
+
+User-run command:
+
+```sh
+python3 speed-bench/run_dspark_threshold075_width_layer_profile.py \
+  --throughput-reference \
+  speed-bench/local-runs/humaneval-cumulative-throughput-32-20260717-092241/summary.json \
+  --cost-reference \
+  speed-bench/local-runs/humaneval-cumulative-cost-20260717-094819/summary.json \
+  --confirm-ready
+```
