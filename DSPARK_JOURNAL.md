@@ -40,13 +40,14 @@ identical pre-promotion profile, synchronized width-5 tail time moved by
 directional, but the new ranking is clear. Next profile the existing exact FFN
 sub-stages by verifier width before choosing a shared multi-row FFN candidate.
 
-Phase 1.30 is prepared and awaiting the user-run width-stratified exact-FFN
-profile. A dedicated harness uses the outer exact `ffn_batch` record as the
-authoritative proposal schedule, then maps the existing synchronized FFN
-sub-stages back to each batch. It profiles layers `0`, `21`, and `42` on the
-same frozen `humaneval_079` schedule and reports HC, normalization, router,
-shared-expert, routed-MoE, and HC-post cost by verifier width. No runtime
-candidate or timed throughput measurement is enabled.
+Phase 1.30 is complete. The width-stratified exact-FFN profile identifies
+routed MoE as both the largest width-5 sub-stage (`40.9%`) and the weakest to
+amortize (`0.747x` width 5 versus width 2). Every other FFN sub-stage scales to
+`0.431x` or better. The exact implementation intentionally invokes the
+one-token routed-MoE arithmetic once per proposal row; those calls already
+share the outer Metal command batch, so merely reusing a command buffer is not
+a new optimization. Next attribute the existing one-token routed-MoE stages
+inside exact verifier batches before choosing a kernel or encoding candidate.
 
 Phase 1.05 is complete. The frozen 32-task HumanEval gate measured a `0.8081x`
 median paired DSpark/baseline ratio and `0.7910x` geometric mean on the
@@ -9907,3 +9908,77 @@ python3 speed-bench/run_dspark_post_promotion_width_ffn_profile.py \
   speed-bench/local-runs/post-promotion-width-layer-20260717-100542/summary.json \
   --confirm-ready
 ```
+
+Result:
+
+- Artifact:
+  `speed-bench/local-runs/post-promotion-width-ffn-20260717-104106`.
+- Clean source commit: `862da2c3195df81db0a359a41718e039d1799700`.
+- Every profiled output matched the frozen cumulative HumanEval artifact
+  byte-for-byte. The FFN sub-stage sum reconciled to `0.984x..0.988x` of the
+  enclosing exact FFN control.
+- The exact width distribution was reproduced at all three sampled layers:
+  width 2: `1` evaluation; width 3: `1`; width 4: `4`; width 5: `20`.
+
+Sampled exact-FFN scaling:
+
+- Width 2: `4.303 ms/row` across layers `0`, `21`, and `42`.
+- Width 3: `2.933 ms/row`, or `0.682x` width 2.
+- Width 4: `2.439 ms/row`, or `0.567x` width 2.
+- Width 5: `2.114 ms/row`, or `0.491x` width 2.
+- Widths 2 and 3 each contain one evaluation and remain directional anchors;
+  the width-5 medians are the stable optimization guide.
+
+Width-5 component split:
+
+- `routed_moe`: `0.865 ms/row`, `40.9%`.
+- `shared_gate_up`: `0.274 ms/row`, `13.0%`.
+- `shared_down`: `0.245 ms/row`, `11.6%`.
+- `router`: `0.221 ms/row`, `10.5%`.
+- `hc_pre`: `0.194 ms/row`, `9.2%`.
+- `hc_post`: `0.165 ms/row`, `7.8%`.
+- `norm`: `0.150 ms/row`, `7.1%`.
+- Routed MoE cost is stable across depth: `0.289`, `0.289`, and
+  `0.287 ms/row` at layers `0`, `21`, and `42` respectively.
+
+Width-2-to-width-5 scaling:
+
+- `routed_moe`: `0.747x`.
+- `shared_gate_up`: `0.431x`.
+- `shared_down`: `0.422x`.
+- `router`: `0.410x`.
+- `hc_pre`: `0.396x`.
+- `hc_post`: `0.375x`.
+- `norm`: `0.325x`.
+- Routed MoE is both the largest width-5 FFN component and the only component
+  that fails to approach inverse-width amortization.
+
+Implementation interpretation:
+
+- The exact FFN path enters `metal_graph_routed_moe_decode_rows`, creates row
+  views, and calls `ds4_gpu_routed_moe_one_tensor` once per proposal row.
+- This composition is intentional. The generic batched routed-MoE path changed
+  width-5 down/sum arithmetic and failed exactness; the one-token path preserves
+  fused pair-SwiGLU and direct six-expert down/sum arithmetic.
+- The row calls are made while the outer Metal command batch is open.
+  `ds4_gpu_routed_moe_one_tensor` acquires that existing command buffer with
+  `owned=0`, and its finish helper therefore does not submit one command buffer
+  per row. A command-buffer sharing wrapper alone would not remove the measured
+  bottleneck.
+- The one-token path already exposes synchronized `gate_up`,
+  `activation_weight`, `down`, and `sum` stage records through
+  `DS4_METAL_MOE_ONE_STAGE_PROFILE`; selected model paths may also expose a
+  gather stage.
+
+Decision:
+
+- Keep the exact row-wise arithmetic, threshold `0.75`, fused gather, prefix
+  checkpoints, and the frozen HumanEval schedule unchanged.
+- Do not switch the exact verifier back to the generic routed-MoE batch path.
+- Next build a diagnostic-only mapper for the existing one-token routed-MoE
+  stage records. As with Phase 1.30, accept only records inside the exact
+  `attention_tail_serial` to `ffn_batch` interval so normal serial decode rows
+  cannot contaminate the attribution.
+- Report exact routed-MoE stage share for width-5 batches at layers `0`, `21`,
+  and `42`. This should distinguish a gate/up kernel candidate from a
+  down/sum candidate and avoid another arithmetic-risking broad batch rewrite.
