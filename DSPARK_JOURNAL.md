@@ -40,6 +40,14 @@ identical pre-promotion profile, synchronized width-5 tail time moved by
 directional, but the new ranking is clear. Next profile the existing exact FFN
 sub-stages by verifier width before choosing a shared multi-row FFN candidate.
 
+Phase 1.30 is prepared and awaiting the user-run width-stratified exact-FFN
+profile. A dedicated harness uses the outer exact `ffn_batch` record as the
+authoritative proposal schedule, then maps the existing synchronized FFN
+sub-stages back to each batch. It profiles layers `0`, `21`, and `42` on the
+same frozen `humaneval_079` schedule and reports HC, normalization, router,
+shared-expert, routed-MoE, and HC-post cost by verifier width. No runtime
+candidate or timed throughput measurement is enabled.
+
 Phase 1.05 is complete. The frozen 32-task HumanEval gate measured a `0.8081x`
 median paired DSpark/baseline ratio and `0.7910x` geometric mean on the
 promoted scheduler plus exact prefix-checkpoint runtime. This improves over the
@@ -9794,3 +9802,83 @@ Decision:
   gap through FFN alone would directionally require roughly one third of FFN
   cost. Expect a broader verifier program rather than assuming one FFN
   micro-optimization will reach parity by itself.
+
+## Phase 1.30: Width-stratified exact-FFN profile prepared
+
+Purpose:
+
+- Split the new dominant `ffn_batch` stage into its existing synchronized
+  implementation components.
+- Preserve the exact Phase 1.29 task, layer sample, width distribution, and
+  proposal schedule.
+- Identify a shared Metal FFN component with enough width-5 cost or weak enough
+  width scaling to justify the next runtime candidate.
+
+New harness:
+
+- Added `speed-bench/run_dspark_post_promotion_width_ffn_profile.py`.
+- Added model-free tests in
+  `tests/test_dspark_post_promotion_width_ffn_profile.py`.
+- The harness requires and cross-validates:
+  - Phase 1.27 cumulative throughput;
+  - Phase 1.28 cumulative cost accounting;
+  - Phase 1.29 post-promotion width-layer attribution.
+- The width-layer reference must be experiment and analysis
+  `dspark_post_promotion_width_stratified_exact_layer`, come from clean commit
+  `fd506ee20c2b1db56830122492db3e56237512a4`, reference the exact supplied
+  throughput and cost artifacts, and reproduce the frozen task, layers, widths,
+  and width counts.
+- The profile environment enables:
+  - current exact DSpark with multi-commit;
+  - runtime stats and confidence threshold `0.75`;
+  - the outer exact-layer profiler for proposal-batch control records;
+  - the existing Metal layer-stage profiler for FFN sub-stages.
+- No new runtime instrumentation or target implementation code was added. The
+  existing `metal_graph_encode_layer_ffn_batch` boundaries are:
+  - `hc_pre`;
+  - `norm`;
+  - `router`;
+  - `shared_gate_up`;
+  - `shared_down`;
+  - `routed_moe`;
+  - `hc_post`.
+- Batch mapping walks the profile event sequence. For every outer exact
+  `ffn_batch` control at widths `2` through `5`, it requires exactly one of each
+  internal stage with the same layer, position, and width before accepting the
+  batch. Missing or duplicate stages fail the diagnostic.
+- The report provides:
+  - summed sub-stage and outer FFN medians by width;
+  - a reconciliation ratio between the separately synchronized sub-stage sum
+    and outer FFN control;
+  - width-5 component shares and per-layer values;
+  - width-2-to-width-5 amortization by component;
+  - largest width-5 and weakest-amortizing sub-stages.
+- Each profiled output and all runtime counters must match the frozen cumulative
+  references exactly.
+
+Validation:
+
+- Python compilation passed.
+- Eleven targeted FFN and width-layer tests passed.
+- Synthetic tests cover exact-batch assignment, missing-stage rejection,
+  component aggregation, control reconciliation, and report identity.
+- All `128` DSpark model-free tests passed.
+- The real cumulative throughput, cumulative cost, and post-promotion
+  width-layer artifacts passed their full reference checks together.
+- The dry run emitted exactly three synchronized commands for layers `0`, `21`,
+  and `42`, with the two required profile controls and no runtime candidate.
+- No prompt was materialized and no inference was run; only model metadata was
+  inspected.
+
+User-run command:
+
+```sh
+python3 speed-bench/run_dspark_post_promotion_width_ffn_profile.py \
+  --throughput-reference \
+  speed-bench/local-runs/humaneval-cumulative-throughput-32-20260717-092241/summary.json \
+  --cost-reference \
+  speed-bench/local-runs/humaneval-cumulative-cost-20260717-094819/summary.json \
+  --width-layer-reference \
+  speed-bench/local-runs/post-promotion-width-layer-20260717-100542/summary.json \
+  --confirm-ready
+```
