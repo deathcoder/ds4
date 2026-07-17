@@ -1156,3 +1156,27 @@ excluded warmup pairs. Both modes use threshold `0.75`; only the fused-gather
 mode enables the candidate. All 68 processes are uninstrumented and must match
 the frozen exact HumanEval outputs byte-for-byte. Run this broad gate only
 after the short fused-gather ablation remains positive.
+
+If that gate passes every aggregate criterion but fails only because
+`humaneval_121` is the sole task below the frozen `0.95x` floor, adjudicate the
+single pair with the predeclared replicated gate:
+
+```sh
+python3 speed-bench/run_dspark_humaneval_dense_mixed_outlier.py \
+  --confirmation-reference \
+  speed-bench/local-runs/humaneval-dense-mixed-direct-32-20260717-080040/summary.json \
+  --dry-run \
+  --allow-dirty
+python3 speed-bench/run_dspark_humaneval_dense_mixed_outlier.py \
+  --confirmation-reference \
+  speed-bench/local-runs/humaneval-dense-mixed-direct-32-20260717-080040/summary.json \
+  --confirm-idle
+```
+
+The adjudicator refuses any broad artifact that failed another criterion or
+has a different set of sub-floor tasks. It runs six measured pairs with
+exactly balanced order plus two excluded warmup pairs. Promotion requires a
+median and geometric paired ratio of at least `1.02x`, at least four wins, and
+at least five of six pairs at or above the original `0.95x` task floor. The
+original 32-task result remains a formal failure; this run determines whether
+its sole negative pair represents a reproducible task regression.

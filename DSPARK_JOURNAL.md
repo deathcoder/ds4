@@ -8,6 +8,15 @@ particular DSpark change exists.
 
 Branch: `codex/dspark-observability-0`
 
+Phase 1.26 is awaiting the user-run `humaneval_121` fused-gather outlier
+adjudication. The broad 32-task gate was strongly positive (`1.0949x`
+geometric mean, `31/32` wins, byte-exact outputs) but remains a formal failure
+because its sole losing pair measured `0.9064x`, below the frozen `0.95x`
+floor. The committed adjudicator runs six balanced measured pairs plus two
+warmup pairs and refuses any artifact with another failed criterion or another
+sub-floor task. Do not promote fused gather or rerun the full 32-task gate
+before this adjudication result.
+
 Phase 1.05 is complete. The frozen 32-task HumanEval gate measured a `0.8081x`
 median paired DSpark/baseline ratio and `0.7910x` geometric mean on the
 promoted scheduler plus exact prefix-checkpoint runtime. This improves over the
@@ -9251,3 +9260,66 @@ python3 speed-bench/run_dspark_humaneval_dense_mixed_direct.py \
   - wins on at least `24/32` tasks;
   - no task below `0.95x`;
   - low-acceptance subgroup geometric mean at least `1.00x`.
+
+## Phase 1.26: Fused-gather HumanEval gate and outlier adjudication
+
+Broad gate result:
+
+- Artifact:
+  `speed-bench/local-runs/humaneval-dense-mixed-direct-32-20260717-080040`.
+- Clean source commit: `952b3f6dfbf70783bf6e0e604caaa57afbd02319`.
+- Gathered median: `19.72 t/s`; fused-gather median: `21.67 t/s`.
+- Ratio of medians: `1.0991x`; median paired ratio: `1.1012x`;
+  geometric mean: `1.0949x`.
+- Fused gather won `31/32` tasks.
+- Low-acceptance subgroup geometric mean: `1.0794x` across ten tasks.
+- Every output matched the frozen threshold-`0.75` exact artifact
+  byte-for-byte.
+- The broad promotion gate is formally **FAIL**, solely because
+  `humaneval_121` measured `0.9064x`, below the frozen `0.95x` per-task floor.
+- The other three criteria passed by wide margins. The initial machine
+  snapshot recorded substantial ordinary desktop activity, and no thermal or
+  performance warning was recorded.
+
+Adjudication protocol:
+
+- Do not alter or relabel the original broad result.
+- Freeze `humaneval_121` as the sole failed task before collecting more data.
+- Added `speed-bench/run_dspark_humaneval_dense_mixed_outlier.py`.
+- The harness refuses a confirmation artifact unless:
+  - it is the failed 32-task fused-gather gate;
+  - every aggregate and subgroup criterion passed;
+  - `humaneval_121` is the only task below `0.95x`;
+  - the gathered and fused outputs have the same hash.
+- Run two excluded warmup pairs and six measured pairs with exactly balanced
+  gathered-first/fused-first order.
+- Every output must still match the original frozen exact HumanEval artifact.
+- Predeclared adjudication gate:
+  - median paired ratio at least `1.02x`;
+  - geometric paired ratio at least `1.02x`;
+  - fused gather wins at least `4/6` pairs;
+  - at least `5/6` pairs are at or above the original `0.95x` floor.
+- Codex does not run the timed gate.
+
+Harness validation:
+
+- Python compilation passed.
+- All `112` DSpark model-free tests passed.
+- The frozen failed confirmation artifact, source throughput artifact, task
+  selection, output hashes, and exact output files were accepted.
+- The dry run selected only `humaneval_121` and emitted exactly `16` planned
+  uninstrumented processes:
+  - four excluded warmup processes;
+  - twelve measured processes;
+  - three measured pairs in each order.
+- No prompt was materialized and no model process was executed.
+- `git diff --check` passed.
+
+User-run command:
+
+```sh
+python3 speed-bench/run_dspark_humaneval_dense_mixed_outlier.py \
+  --confirmation-reference \
+  speed-bench/local-runs/humaneval-dense-mixed-direct-32-20260717-080040/summary.json \
+  --confirm-idle
+```
