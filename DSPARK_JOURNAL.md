@@ -20,12 +20,16 @@ end-to-end result. Next prepare a fresh post-promotion stats-only cost audit to
 recalibrate target-verifier, sidecar, and residual costs against this artifact
 before choosing another verifier optimization.
 
-Phase 1.28 is prepared and awaiting the user-run post-promotion cost audit.
-The stats-only harness freezes the clean Phase 1.27 cumulative artifact as its
-end-to-end budget, then runs one instrumented exact DSpark process for each of
-the same 32 HumanEval tasks. It reuses the established cost accounting to
-refresh target-verifier, sidecar, residual, verifier-width, and scheduler-width
-economics. No baseline or timed throughput process is included.
+Phase 1.28 is complete. The post-promotion audit accounts for the frozen
+`0.8826x` runtime as `39.010 ms/emitted` target verification,
+`6.831 ms/emitted` sidecar, and `0.210 ms/emitted` residual. Target verification
+is still `84.7%` of runtime, and parity requires a calibrated `13.9%` target-time
+reduction. The proposal schedule exactly matches the older audit, with no
+fallbacks or output drift. Width 5 consumes `55.5%` of target time but costs
+only `11.3%` less per position than width 1, confirming that shared exact
+multi-row execution remains the primary optimization surface. Next refresh the
+width-stratified layer attribution after fused-gather promotion before choosing
+another verifier candidate.
 
 Phase 1.05 is complete. The frozen 32-task HumanEval gate measured a `0.8081x`
 median paired DSpark/baseline ratio and `0.7910x` geometric mean on the
@@ -9563,3 +9567,72 @@ python3 speed-bench/run_dspark_humaneval_cumulative_cost_audit.py \
   speed-bench/local-runs/humaneval-cumulative-throughput-32-20260717-092241/summary.json \
   --confirm-ready
 ```
+
+Result:
+
+- Artifact:
+  `speed-bench/local-runs/humaneval-cumulative-cost-20260717-094819`.
+- Clean source commit: `5396ce554296cb8821c218a2694ea3bdf036d55a`.
+- Every instrumented output matched the frozen cumulative artifact
+  byte-for-byte. The run reported no thermal or performance warning.
+- The frozen pooled end-to-end budget is:
+  - ordinary baseline: `40.625 ms/emitted`;
+  - current exact DSpark: `46.051 ms/emitted`;
+  - deficit: `5.426 ms/emitted`;
+  - pooled ratio: `0.8822x`, consistent with the `0.8826x` task geometric mean.
+- Fresh component accounting is:
+  - target verification: `39.010 ms/emitted`, `84.7%` of runtime;
+  - generation sidecar: `6.831 ms/emitted`, `14.8%` of runtime;
+  - residual: `0.210 ms/emitted`, about `0.5%` of runtime.
+- End-to-end-calibrated parity requires target scale `0.8609x`, or a `13.9%`
+  reduction. Component-only accounting independently gives `0.8663x`, or a
+  `13.4%` reduction. Their close agreement makes `13%`-`14%` the current
+  engineering target rather than the older audit's broad `14.8%`-`24.2%`
+  interval.
+- Eliminating all measured sidecar generation while leaving target and residual
+  unchanged would produce only an optimistic `1.0358x` pooled ceiling. Sidecar
+  remains material, but target verification offers the larger tractable budget.
+
+Workload and verifier economics:
+
+- The current and pre-promotion audits have identical behavior:
+  - `3529` emitted tokens;
+  - `1360` target evaluations;
+  - `3680` target positions;
+  - `760` multi-position attempts;
+  - `684` full, `76` partial, and zero fallback outcomes.
+- Target evaluations per emitted token remain `0.3854`; positions per target
+  evaluation remain `2.706`. Fused gather did not change scheduler or verifier
+  semantics.
+- Width 1: `600` evals, `40.880 ms/position`, `17.8%` of target time.
+- Width 2: `134` evals, `39.398 ms/position`, `7.7%` of target time.
+- Width 3: `113` evals, `37.545 ms/position`, `9.2%` of target time.
+- Width 4: `92` evals, `36.672 ms/position`, `9.8%` of target time.
+- Width 5: `421` evals, `36.274 ms/position`, `55.5%` of target time.
+- Widths 2 through 5 therefore consume `82.2%` of target time. Width 5 is only
+  `11.3%` cheaper per position than width 1, so exact multi-row execution still
+  amortizes weakly despite avoiding target-evaluation calls.
+
+Cross-audit interpretation:
+
+- Absolute fresh target timing fell from `46.450` to `39.010 ms/emitted`, and
+  sidecar timing fell from `8.314` to `6.831 ms/emitted`. These are instrumented
+  cross-session comparisons and include machine/session movement; they must not
+  be attributed wholly to fused gather.
+- The workload identity and near-zero new residual make the new audit the best
+  current cost model. The old negative `-4.332 ms/emitted` residual is retired
+  for forward planning.
+- Scheduler policy, fallback recovery, and output correctness are not the
+  remaining problem. The exact target verifier is.
+
+Decision:
+
+- Keep the threshold `0.75` schedule and all promoted defaults frozen.
+- Do not repeat a full throughput or acceptance study yet.
+- Refresh the Phase 1.18 width-stratified layer profile on the current runtime,
+  using the cumulative throughput and cost artifacts as references. Profile
+  layers `0`, `21`, and `42` on `humaneval_079`, whose verifier schedule is
+  unchanged and contains widths `2` through `5`.
+- Use the fresh attention-preparation, serial-tail, and exact-FFN split to choose
+  the next shared multi-row verifier optimization. The prior split predates
+  fused gather and should not decide the next implementation by itself.
