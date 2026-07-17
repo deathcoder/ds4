@@ -1188,3 +1188,36 @@ with the broad gate's `1.0949x` geometric mean, `31/32` initial wins, and
 byte-exact outputs, this promotes fused gather to the ordinary Metal
 dense-mixed default. Use `DS4_METAL_DENSE_MIXED_GATHERED_LEGACY=1` only for
 rollback or controlled comparisons.
+
+To reassess end-to-end throughput after the fused-gather promotion, run the
+same frozen threshold-`0.75` HumanEval workload against the ordinary target
+baseline:
+
+```sh
+python3 speed-bench/run_dspark_humaneval_cumulative_throughput.py \
+  --historical-reference \
+  speed-bench/local-runs/humaneval-threshold075-throughput-32-20260716-155112/summary.json \
+  --dry-run \
+  --allow-dirty
+python3 speed-bench/run_dspark_humaneval_cumulative_throughput.py \
+  --historical-reference \
+  speed-bench/local-runs/humaneval-threshold075-throughput-32-20260716-155112/summary.json \
+  --confirm-idle
+```
+
+The runner validates the old clean threshold-`0.75` artifact at commit
+`7b954be`, including all 32 task pairs, hashes, exact outputs, model paths,
+selection, and protocol. It then runs fresh baseline/current-runtime pairs
+with alternating order and two excluded warmup pairs. Runtime explicitly pins
+threshold `0.75` but otherwise uses promoted defaults: neither the fused-gather
+force switch nor the legacy-gathered rollback switch is present. All current
+outputs must match both ordinary baseline and the frozen historical output
+byte-for-byte.
+
+Current within-run paired ratios decide end-to-end performance. Cross-run
+movement from the historical `0.8634x` geometric result is descriptive. The
+predeclared movement gate requires at least `1.05x` geometric movement, at
+least 24 improved tasks, and no task below `0.90x` movement. The independent
+outcome bands are below near parity under `0.95x`, near parity from `0.95x` to
+below `1.00x`, and parity or speedup at `1.00x` or above. No instrumentation is
+enabled during this gate.

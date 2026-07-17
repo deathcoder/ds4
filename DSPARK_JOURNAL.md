@@ -18,6 +18,14 @@ comparisons. Both default and rollback correctness matrices pass. The next
 phase should reassess end-to-end DSpark/baseline throughput with the accumulated
 promotions before selecting another verifier optimization.
 
+Phase 1.27 is prepared and awaiting the user-run cumulative HumanEval
+throughput reassessment. It pairs ordinary baseline with current exact DSpark
+at the selected research threshold `0.75` across the same frozen 32 tasks.
+The old clean `0.8634x` geometric artifact is validated as historical context;
+fresh within-run ratios are authoritative. The runtime arm uses promoted
+defaults with no dense-mixed experiment control. Codex does not run this timed
+gate.
+
 Phase 1.05 is complete. The frozen 32-task HumanEval gate measured a `0.8081x`
 median paired DSpark/baseline ratio and `0.7910x` geometric mean on the
 promoted scheduler plus exact prefix-checkpoint runtime. This improves over the
@@ -9366,3 +9374,91 @@ Promotion validation:
   byte-for-byte; route tracing confirmed fused gather engaged.
 - The explicit legacy-gathered rollback passed the same five-scenario matrix.
 - No timed benchmark was run by Codex.
+
+## Phase 1.27: Cumulative end-to-end throughput reassessment prepared
+
+Purpose:
+
+- Measure ordinary target baseline versus the accumulated exact DSpark runtime
+  after promoting fused-gather dense-mixed preparation.
+- Reuse the exact 32-task threshold-`0.75` HumanEval workload so the result has
+  a direct historical anchor.
+- Keep fresh paired DSpark/baseline ratios separate from descriptive cross-run
+  movement.
+- Determine whether the accumulated runtime is below near parity, near parity,
+  or at/above end-to-end parity before selecting another optimization.
+
+Frozen historical reference:
+
+- Artifact:
+  `speed-bench/local-runs/humaneval-threshold075-throughput-32-20260716-155112`.
+- Clean source commit: `7b954be938db1cd7daf7a37237bc13eb553d27d6`.
+- Historical geometric paired ratio: `0.8634x`.
+- Historical median paired ratio: `0.8627x`.
+- The new runner validates:
+  - experiment kind and clean source commit;
+  - all 32 deterministic task selections;
+  - model, sidecar, and binary paths;
+  - context, token limit, non-thinking mode, seed, temperature, and threshold;
+  - 64 measured rows and complete baseline/runtime pairs;
+  - byte-identical pair hashes and every frozen output file;
+  - each raw CSV ratio against its summary value.
+
+New harness:
+
+- Added `speed-bench/run_dspark_humaneval_cumulative_throughput.py`.
+- Added model-free contract tests in
+  `tests/test_dspark_humaneval_cumulative_throughput.py`.
+- Protocol:
+  - Metal backend only;
+  - context `16384`;
+  - output limit `128`;
+  - non-thinking greedy generation, temperature `0`, seed `1`;
+  - exact target verification;
+  - explicit confidence threshold `0.75`;
+  - current promoted runtime defaults;
+  - no `DS4_METAL_DENSE_MIXED_DIRECT` force switch;
+  - no `DS4_METAL_DENSE_MIXED_GATHERED_LEGACY` rollback switch;
+  - two excluded warmup pairs;
+  - one alternating measured pair per task;
+  - `68` total uninstrumented model processes.
+- Every current baseline and runtime output must match the frozen historical
+  output byte-for-byte.
+- Runtime stats, acceptance audit, traces, diagnostics, profilers, and the
+  fast verifier are disabled.
+
+Predeclared interpretation:
+
+- Accumulated movement gate:
+  - geometric current/historical task movement at least `1.05x`;
+  - at least `24/32` tasks improve;
+  - no task below `0.90x` movement.
+- End-to-end outcome uses only fresh paired ratios:
+  - below near parity: geometric mean below `0.95x`;
+  - near parity: geometric mean at least `0.95x` but below `1.00x`;
+  - parity or speedup: geometric mean at least `1.00x`.
+- A historical movement pass is not an end-to-end speedup claim.
+
+Validation before commit:
+
+- Python compilation passed.
+- Six new synthetic contract tests passed.
+- All `118` DSpark model-free tests passed.
+- The real historical artifact passed every provenance, protocol, hash, and
+  ratio check.
+- The dry run emitted exactly `68` uninstrumented processes:
+  - four excluded warmup processes;
+  - 64 measured processes;
+  - 16 baseline-first and 16 runtime-first measured pairs.
+- The dry-run runtime environment contains only the required DSpark runtime,
+  multi-commit, and explicit threshold controls.
+- No prompt was materialized and no model process was executed.
+
+User-run command:
+
+```sh
+python3 speed-bench/run_dspark_humaneval_cumulative_throughput.py \
+  --historical-reference \
+  speed-bench/local-runs/humaneval-threshold075-throughput-32-20260716-155112/summary.json \
+  --confirm-idle
+```
