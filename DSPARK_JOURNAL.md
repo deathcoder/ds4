@@ -51,7 +51,7 @@ inside exact verifier batches before choosing a kernel or encoding candidate.
 
 Phase 1.31 is prepared and awaiting the user-run exact routed-MoE stage
 profile. The diagnostic reuses the existing synchronized one-token MoE
-boundaries and maps only records between each exact batch's `shared_down` and
+boundaries and maps only records between each exact batch's `router` and
 `routed_moe` controls. It requires one complete gate/up, activation-weight,
 down, and sum sequence per proposal row, profiles layers `0`, `21`, and `42`,
 and reconciles inner medians against the enclosing routed-MoE control. No
@@ -10019,7 +10019,7 @@ New harness:
   `DS4_METAL_MOE_ONE_STAGE_PROFILE` boundary for the selected layer.
 - Mapping first identifies the enclosing exact `attention_tail_serial` to
   `ffn_batch` interval, then accepts one-row MoE records only between its
-  matching `shared_down` and `routed_moe` controls. This excludes ordinary
+  matching `router` and `routed_moe` controls. This excludes ordinary
   serial decode work with the same position and width.
 - Every exact batch must contain exactly `width` copies of this ordered stage
   sequence:
@@ -10047,6 +10047,28 @@ Validation:
 - The dry run materialized no prompt and ran no inference; only existing model
   metadata inspection was performed.
 - `git diff --check` passed.
+
+First-run mapper correction:
+
+- The first user run stopped after collecting layer `0` with
+  `layer 0 batch 1 routed-MoE stage sequence mismatch: []`.
+- Artifact:
+  `speed-bench/local-runs/post-promotion-width-moe-20260717-105340`.
+- The records were present and complete. The exact FFN event order is
+  `router`, routed-MoE inner rows, `routed_moe`, then the shared-expert stages.
+  The initial mapper had incorrectly looked between `shared_down` and
+  `routed_moe`, an empty reversed interval.
+- The mapper now accepts records between the matching exact `router` and
+  `routed_moe` controls, still bounded by `attention_tail_serial` and
+  `ffn_batch`.
+- Applying the corrected mapper offline to the real failed layer-0 stderr
+  recovers all `26` exact batches and `510` output rows:
+  - width 2: `1` control and `8` inner stage records;
+  - width 3: `1` control and `12` inner stage records;
+  - width 4: `4` controls and `64` inner stage records;
+  - width 5: `20` controls and `400` inner stage records.
+- Every recovered row uses the same `pair_swiglu` Metal path. The synthetic
+  mapper fixture now reproduces the real routed-before-shared stage order.
 
 User-run command:
 

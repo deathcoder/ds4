@@ -72,7 +72,7 @@ class DSparkPostPromotionWidthRoutedMoEProfileTests(unittest.TestCase):
                     "layer": layer,
                     "pos": pos,
                     "tokens": width,
-                    "stage": "shared_down",
+                    "stage": "router",
                     "ms": 1.0,
                 })
                 sequence += 1
@@ -101,6 +101,17 @@ class DSparkPostPromotionWidthRoutedMoEProfileTests(unittest.TestCase):
                     "ms": 10.0 * width,
                 })
                 sequence += 1
+                for stage in ("shared_gate_up", "shared_down", "hc_post"):
+                    records.append({
+                        "sequence": sequence,
+                        "part": "ffn",
+                        "layer": layer,
+                        "pos": pos,
+                        "tokens": width,
+                        "stage": stage,
+                        "ms": 1.0,
+                    })
+                    sequence += 1
                 records.append({
                     "sequence": sequence,
                     "part": "exact",

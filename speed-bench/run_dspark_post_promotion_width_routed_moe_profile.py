@@ -263,9 +263,9 @@ def assign_exact_moe_batches(records, expected_stats, layer):
         exact_interval = [
             row for row in interval if row["sequence"] > tails[0]["sequence"]
         ]
-        shared = [
+        routers = [
             row for row in exact_interval
-            if row["part"] == "ffn" and row["stage"] == "shared_down"
+            if row["part"] == "ffn" and row["stage"] == "router"
             and row["pos"] == control["pos"]
             and row["tokens"] == control["tokens"]
         ]
@@ -275,14 +275,14 @@ def assign_exact_moe_batches(records, expected_stats, layer):
             and row["pos"] == control["pos"]
             and row["tokens"] == control["tokens"]
         ]
-        if len(shared) != 1 or len(routed) != 1:
+        if len(routers) != 1 or len(routed) != 1:
             raise RuntimeError(
-                f"layer {layer} batch {batch} has shared/routed controls "
-                f"{len(shared)}/{len(routed)}"
+                f"layer {layer} batch {batch} has router/routed controls "
+                f"{len(routers)}/{len(routed)}"
             )
         inner = [
             row for row in exact_interval
-            if shared[0]["sequence"] < row["sequence"] < routed[0]["sequence"]
+            if routers[0]["sequence"] < row["sequence"] < routed[0]["sequence"]
             and row["part"] == "moe_one"
         ]
         expected_sequence = list(MOE_STAGES) * control["tokens"]
