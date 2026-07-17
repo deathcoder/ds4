@@ -259,9 +259,23 @@ def assign_exact_ffn_batches(records, expected_stats, layer):
     assigned = []
     previous_control_sequence = -1
     for batch, control in enumerate(controls, start=1):
-        candidates = [
+        tail_controls = [
             row for row in records
             if previous_control_sequence < row["sequence"] < control["sequence"]
+            and row["part"] == "exact"
+            and row["stage"] == "attention_tail_serial"
+            and row["pos"] == control["pos"]
+            and row["tokens"] == control["tokens"]
+        ]
+        if len(tail_controls) != 1:
+            raise RuntimeError(
+                f"layer {layer} batch {batch} has {len(tail_controls)} "
+                "matching exact attention-tail controls"
+            )
+        tail_sequence = tail_controls[0]["sequence"]
+        candidates = [
+            row for row in records
+            if tail_sequence < row["sequence"] < control["sequence"]
             and row["part"] == "ffn"
             and row["pos"] == control["pos"]
             and row["tokens"] == control["tokens"]

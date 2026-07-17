@@ -9870,6 +9870,31 @@ Validation:
 - No prompt was materialized and no inference was run; only model metadata was
   inspected.
 
+First-run mapper correction:
+
+- The first user run stopped after collecting layer `0` with
+  `layer 0 batch 2 duplicates hc_pre`.
+- Artifact:
+  `speed-bench/local-runs/post-promotion-width-ffn-20260717-103810`.
+- The raw event stream revealed two same-position, same-width FFN stage sets:
+  - the normal serial FFN work emitted before the exact attention batch;
+  - the exact batched FFN work emitted after `attention_tail_serial` and before
+    the outer exact `ffn_batch` control.
+- Position, width, and the previous selected FFN control were therefore
+  insufficient to identify the exact internal stages.
+- The mapper now requires one matching exact `attention_tail_serial` control
+  and accepts internal FFN stages only from the event interval between that
+  control and the enclosing exact `ffn_batch` control.
+- A regression test injects a complete same-key FFN stage set before the exact
+  tail and verifies that it is ignored.
+- The corrected mapper was applied offline to the failed run's real layer-0
+  stderr and recovered exactly `26` batches:
+  - width 2: `1`;
+  - width 3: `1`;
+  - width 4: `4`;
+  - width 5: `20`.
+- All `129` DSpark model-free tests pass after the correction.
+
 User-run command:
 
 ```sh

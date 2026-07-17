@@ -89,6 +89,36 @@ class DSparkPostPromotionWidthFFNProfileTests(unittest.TestCase):
         routed = next(row for row in width5 if row["stage"] == "routed_moe")
         self.assertEqual(routed["ms_per_row"], 6.0)
 
+    def test_mapping_ignores_same_key_stages_before_exact_tail(self):
+        records = self.records()
+        tail_index = next(
+            index for index, row in enumerate(records)
+            if row["part"] == "exact" and row["stage"] == "attention_tail_serial"
+            and row["tokens"] == 5
+        )
+        sequence = records[tail_index]["sequence"]
+        duplicates = []
+        for offset, stage in enumerate(profile.FFN_STAGES):
+            duplicates.append({
+                "sequence": sequence - 0.9 + offset * 0.1,
+                "part": "ffn",
+                "layer": 21,
+                "pos": records[tail_index]["pos"],
+                "tokens": 5,
+                "stage": stage,
+                "ms": 999.0,
+            })
+        records.extend(duplicates)
+        records.sort(key=lambda row: row["sequence"])
+        assigned = profile.assign_exact_ffn_batches(records, self.stats(), 21)
+        first_width5 = [
+            row for row in assigned
+            if row["width"] == 5 and row["batch"] == 5
+            and row["stage"] != "ffn_batch_control"
+        ]
+        self.assertTrue(first_width5)
+        self.assertTrue(all(row["ms"] != 999.0 for row in first_width5))
+
     def test_mapping_rejects_missing_internal_stage(self):
         records = [
             row for row in self.records()
