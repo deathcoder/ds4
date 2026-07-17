@@ -20,6 +20,13 @@ end-to-end result. Next prepare a fresh post-promotion stats-only cost audit to
 recalibrate target-verifier, sidecar, and residual costs against this artifact
 before choosing another verifier optimization.
 
+Phase 1.28 is prepared and awaiting the user-run post-promotion cost audit.
+The stats-only harness freezes the clean Phase 1.27 cumulative artifact as its
+end-to-end budget, then runs one instrumented exact DSpark process for each of
+the same 32 HumanEval tasks. It reuses the established cost accounting to
+refresh target-verifier, sidecar, residual, verifier-width, and scheduler-width
+economics. No baseline or timed throughput process is included.
+
 Phase 1.05 is complete. The frozen 32-task HumanEval gate measured a `0.8081x`
 median paired DSpark/baseline ratio and `0.7910x` geometric mean on the
 promoted scheduler plus exact prefix-checkpoint runtime. This improves over the
@@ -9497,3 +9504,62 @@ Decision:
   on this exact post-promotion artifact. The older audit identified target
   verification as dominant, but its component timings predate fused gather and
   no longer quantify the remaining `11.7%` gap precisely.
+
+## Phase 1.28: Post-promotion exact-verifier cost audit prepared
+
+Purpose:
+
+- Recalibrate the remaining `11.7%` end-to-end gap against the exact clean
+  Phase 1.27 cumulative artifact.
+- Preserve the frozen uninstrumented baseline and runtime generation times as
+  the end-to-end budget while collecting fresh component timings from the
+  current promoted runtime.
+- Decide whether target verification remains the dominant optimization path
+  after fused-gather promotion, and quantify the target-time reduction required
+  for parity before changing verifier code again.
+
+New harness:
+
+- Added `speed-bench/run_dspark_humaneval_cumulative_cost_audit.py`.
+- Added model-free contract tests in
+  `tests/test_dspark_humaneval_cumulative_cost_audit.py`.
+- The reference loader pins:
+  - experiment `dspark_humaneval_cumulative_throughput`;
+  - clean source commit `f0edb16884aafd7e8ce95054da4d9a07117f5719`;
+  - the deterministic 32-task selection and threshold `0.75`;
+  - promoted runtime defaults and the full uninstrumented protocol;
+  - binary, target model, and DSpark sidecar paths;
+  - 64 complete measured rows with alternating order;
+  - prompt bytes, both output files, paired hashes, per-task t/s and ratios,
+    and the aggregate geometric ratio.
+- The audit executes exactly 32 stats-only exact-runtime processes. It runs no
+  baseline, warmup, paired throughput, acceptance audit, oracle trace, layer
+  profiler, fast verifier, or dense-mixed route experiment.
+- Each instrumented output must match its frozen cumulative output byte-for-byte.
+- The report reuses the established Phase 1.17 accounting for:
+  - pooled frozen baseline/runtime time and deficit per emitted token;
+  - fresh target, sidecar, and cross-run residual cost;
+  - end-to-end-calibrated and component-accounted target scales for parity;
+  - target evaluations and positions;
+  - exact verifier-width timing and target-time share;
+  - confidence-scheduler width progress and sidecar cost.
+
+Validation:
+
+- Python compilation passed.
+- Nine targeted current and legacy cost-audit tests passed.
+- All `122` DSpark model-free tests passed.
+- The real Phase 1.27 artifact passed every provenance, protocol, prompt,
+  output, row, per-task ratio, and aggregate-ratio check.
+- The dry run emitted exactly 32 commands containing only the normal GPU
+  runtime, multi-commit, stats, and threshold-`0.75` controls.
+- No prompt was materialized and no model process was executed by Codex.
+
+User-run command:
+
+```sh
+python3 speed-bench/run_dspark_humaneval_cumulative_cost_audit.py \
+  --throughput-reference \
+  speed-bench/local-runs/humaneval-cumulative-throughput-32-20260717-092241/summary.json \
+  --confirm-ready
+```
