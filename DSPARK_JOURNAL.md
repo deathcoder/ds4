@@ -8,23 +8,17 @@ particular DSpark change exists.
 
 Branch: `codex/dspark-observability-0`
 
-Phase 1.26 is complete. The broad 32-task fused-gather gate measured `1.0949x`
-geometric movement and `31/32` wins with byte-exact outputs. Its sole sub-floor
-task, `humaneval_121`, then won all six balanced adjudication pairs at a
-`1.0959x` median paired ratio. Fused gather is now the ordinary Metal
-dense-mixed default; `DS4_METAL_DENSE_MIXED_GATHERED_LEGACY=1` explicitly
-restores the prior gathered preparation path for rollback and controlled
-comparisons. Both default and rollback correctness matrices pass. The next
-phase should reassess end-to-end DSpark/baseline throughput with the accumulated
-promotions before selecting another verifier optimization.
-
-Phase 1.27 is prepared and awaiting the user-run cumulative HumanEval
-throughput reassessment. It pairs ordinary baseline with current exact DSpark
-at the selected research threshold `0.75` across the same frozen 32 tasks.
-The old clean `0.8634x` geometric artifact is validated as historical context;
-fresh within-run ratios are authoritative. The runtime arm uses promoted
-defaults with no dense-mixed experiment control. Codex does not run this timed
-gate.
+Phase 1.27 is complete. The cumulative 32-task HumanEval reassessment measured
+current exact DSpark at a `0.8826x` geometric paired ratio versus ordinary
+baseline, with all outputs byte-exact. This improves the historical clean
+`0.8634x` artifact by `1.0222x` geometrically across tasks, with `30/32` tasks
+improving, but fails the predeclared `1.05x` movement gate and remains below
+near parity. The fresh controlled end-to-end gap is `11.7%`; all 32 tasks are
+still slower than baseline. Cross-session absolute t/s moved for both arms, so
+the prior fused-gather ablation ratio must not be multiplied into the old
+end-to-end result. Next prepare a fresh post-promotion stats-only cost audit to
+recalibrate target-verifier, sidecar, and residual costs against this artifact
+before choosing another verifier optimization.
 
 Phase 1.05 is complete. The frozen 32-task HumanEval gate measured a `0.8081x`
 median paired DSpark/baseline ratio and `0.7910x` geometric mean on the
@@ -9375,7 +9369,7 @@ Promotion validation:
 - The explicit legacy-gathered rollback passed the same five-scenario matrix.
 - No timed benchmark was run by Codex.
 
-## Phase 1.27: Cumulative end-to-end throughput reassessment prepared
+## Phase 1.27: Cumulative end-to-end throughput reassessment
 
 Purpose:
 
@@ -9462,3 +9456,44 @@ python3 speed-bench/run_dspark_humaneval_cumulative_throughput.py \
   speed-bench/local-runs/humaneval-threshold075-throughput-32-20260716-155112/summary.json \
   --confirm-idle
 ```
+
+Result:
+
+- Artifact:
+  `speed-bench/local-runs/humaneval-cumulative-throughput-32-20260717-092241`.
+- Clean source commit: `f0edb16884aafd7e8ce95054da4d9a07117f5719`.
+- Fresh baseline median: `24.65 t/s`; current exact DSpark median:
+  `21.50 t/s`.
+- Ratio of medians: `0.8722x`; median paired ratio: `0.8758x`;
+  geometric paired ratio: `0.8826x`.
+- Paired-ratio interquartile range: `0.8570x`-`0.9141x`; full range:
+  `0.8015x`-`0.9756x`.
+- Current DSpark was faster/equal/slower than ordinary baseline on `0/0/32`
+  tasks. The geometric break-even gap is `11.7%`, so the result remains below
+  the predeclared `0.95x` near-parity boundary.
+- Historical-to-current task movement was `1.0073x` by median and `1.0222x`
+  geometrically. `30/32` tasks improved and the worst task movement was
+  `0.9916x`.
+- The accumulated movement gate failed only its `1.05x` geometric threshold;
+  the task-count and minimum-task criteria passed.
+- Across the two benchmark sessions, absolute baseline throughput increased
+  by about `7.4%` while DSpark throughput increased by about `8.6%`. The fresh
+  paired ratio, rather than multiplying earlier isolated ablation ratios, is
+  therefore authoritative. Relative to the old controlled gap, the run closes
+  about `14%` of the distance to parity.
+- The artifact contains 64 measured rows with balanced order, no output-hash
+  mismatches, no enabled instrumentation markers, and no thermal or performance
+  warning.
+
+Decision:
+
+- Fused gather remains promoted: the isolated optimization and its broad
+  confirmation are valid, but machine/session movement reduced its observed
+  contribution to the fresh end-to-end ratio.
+- Do not claim near parity or speedup. The current best controlled statement is
+  that exact DSpark improved from `0.8634x` to `0.8826x` geometrically on the
+  frozen threshold-`0.75` HumanEval workload while preserving byte-exact output.
+- Before another implementation experiment, refresh the stats-only cost audit
+  on this exact post-promotion artifact. The older audit identified target
+  verification as dominant, but its component timings predate fused gather and
+  no longer quantify the remaining `11.7%` gap precisely.
