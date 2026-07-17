@@ -36,8 +36,13 @@ class HumanEvalDenseMixedDirectTests(unittest.TestCase):
         self.assertEqual(
             gathered["DS4_DSPARK_CONFIDENCE_THRESHOLD"], "0.75"
         )
-        self.assertNotIn("DS4_METAL_DENSE_MIXED_DIRECT", gathered)
+        self.assertEqual(
+            gathered["DS4_METAL_DENSE_MIXED_GATHERED_LEGACY"], "1"
+        )
         self.assertEqual(direct["DS4_METAL_DENSE_MIXED_DIRECT"], "1")
+        self.assertNotIn(
+            "DS4_METAL_DENSE_MIXED_GATHERED_LEGACY", direct
+        )
         self.assertNotIn("DS4_METAL_DENSE_MIXED_DIRECT_TRACE", direct)
         self.assertNotIn("DS4_DSPARK_GPU_RUNTIME_STATS", direct)
         with self.assertRaises(ValueError):

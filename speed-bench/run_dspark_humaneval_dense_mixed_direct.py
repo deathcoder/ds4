@@ -205,8 +205,11 @@ def mode_env(mode):
         "runtime", False, confidence_threshold=THRESHOLD
     )
     env.pop("DS4_METAL_DENSE_MIXED_DIRECT", None)
+    env.pop("DS4_METAL_DENSE_MIXED_GATHERED_LEGACY", None)
     env.pop("DS4_METAL_DENSE_MIXED_DIRECT_TRACE", None)
-    if mode == "fused_gather":
+    if mode == "gathered":
+        env["DS4_METAL_DENSE_MIXED_GATHERED_LEGACY"] = "1"
+    else:
         env["DS4_METAL_DENSE_MIXED_DIRECT"] = "1"
     return env
 
@@ -218,6 +221,7 @@ def command_text(args, prompt, mode):
         "DS4_DSPARK_MULTI_COMMIT",
         "DS4_DSPARK_CONFIDENCE_THRESHOLD",
         "DS4_METAL_DENSE_MIXED_DIRECT",
+        "DS4_METAL_DENSE_MIXED_GATHERED_LEGACY",
     )
     prefix = " ".join(f"{key}={env[key]}" for key in keys if key in env)
     return prefix + " " + shlex.join(command(args, prompt))

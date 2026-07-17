@@ -1128,14 +1128,15 @@ python3 speed-bench/run_dspark_comparison.py \
   --confirm-idle
 ```
 
-The reference uses separate raw-ring linearization, raw/compressed conversion,
-mask fill, tail padding, FlashAttention, and reduction dispatches. The
-candidate fuses the preparation work into one kernel, then uses the unchanged
-FlashAttention and reduction kernels. The compatibility environment switch is
-`DS4_METAL_DENSE_MIXED_DIRECT=1`. Both modes use exact Metal verification with
-runtime stats, traces, and diagnostic boundaries disabled, and every output
-must match byte-for-byte. The older `--dense-mixed-direct-ablation` spelling
-remains an alias.
+The legacy reference uses separate raw-ring linearization, raw/compressed
+conversion, mask fill, tail padding, FlashAttention, and reduction dispatches.
+The promoted default fuses the preparation work into one kernel, then uses the
+unchanged FlashAttention and reduction kernels. The explicit rollback switch
+is `DS4_METAL_DENSE_MIXED_GATHERED_LEGACY=1`; the historical
+`DS4_METAL_DENSE_MIXED_DIRECT=1` switch still forces fused gather. Both modes
+use exact Metal verification with runtime stats, traces, and diagnostic
+boundaries disabled, and every output must match byte-for-byte. The older
+`--dense-mixed-direct-ablation` spelling remains an alias.
 
 To confirm the candidate on the frozen threshold-0.75 HumanEval workload:
 
@@ -1180,3 +1181,10 @@ median and geometric paired ratio of at least `1.02x`, at least four wins, and
 at least five of six pairs at or above the original `0.95x` task floor. The
 original 32-task result remains a formal failure; this run determines whether
 its sole negative pair represents a reproducible task regression.
+
+The six-pair adjudication passed on `humaneval_121`: fused gather won `6/6`,
+with a `1.0959x` median paired ratio and `1.1078x` geometric mean. Together
+with the broad gate's `1.0949x` geometric mean, `31/32` initial wins, and
+byte-exact outputs, this promotes fused gather to the ordinary Metal
+dense-mixed default. Use `DS4_METAL_DENSE_MIXED_GATHERED_LEGACY=1` only for
+rollback or controlled comparisons.

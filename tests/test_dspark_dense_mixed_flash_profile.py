@@ -15,6 +15,12 @@ class DenseMixedFlashProfileTests(unittest.TestCase):
     def test_profile_environment_is_gathered_only(self):
         reference = profile.profile_env()
         env = profile.profile_env(profile.LAYER)
+        self.assertNotIn(
+            "DS4_METAL_DENSE_MIXED_GATHERED_LEGACY", reference
+        )
+        self.assertEqual(
+            env["DS4_METAL_DENSE_MIXED_GATHERED_LEGACY"], "1"
+        )
         self.assertNotIn("DS4_METAL_FLASH_ATTN_GATHERED_PROFILE", reference)
         self.assertEqual(env["DS4_METAL_FLASH_ATTN_GATHERED_PROFILE"], "1")
         self.assertNotIn("DS4_METAL_FLASH_ATTN_STAGE_PROFILE", env)

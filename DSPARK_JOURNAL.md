@@ -8,14 +8,15 @@ particular DSpark change exists.
 
 Branch: `codex/dspark-observability-0`
 
-Phase 1.26 is awaiting the user-run `humaneval_121` fused-gather outlier
-adjudication. The broad 32-task gate was strongly positive (`1.0949x`
-geometric mean, `31/32` wins, byte-exact outputs) but remains a formal failure
-because its sole losing pair measured `0.9064x`, below the frozen `0.95x`
-floor. The committed adjudicator runs six balanced measured pairs plus two
-warmup pairs and refuses any artifact with another failed criterion or another
-sub-floor task. Do not promote fused gather or rerun the full 32-task gate
-before this adjudication result.
+Phase 1.26 is complete. The broad 32-task fused-gather gate measured `1.0949x`
+geometric movement and `31/32` wins with byte-exact outputs. Its sole sub-floor
+task, `humaneval_121`, then won all six balanced adjudication pairs at a
+`1.0959x` median paired ratio. Fused gather is now the ordinary Metal
+dense-mixed default; `DS4_METAL_DENSE_MIXED_GATHERED_LEGACY=1` explicitly
+restores the prior gathered preparation path for rollback and controlled
+comparisons. Both default and rollback correctness matrices pass. The next
+phase should reassess end-to-end DSpark/baseline throughput with the accumulated
+promotions before selecting another verifier optimization.
 
 Phase 1.05 is complete. The frozen 32-task HumanEval gate measured a `0.8081x`
 median paired DSpark/baseline ratio and `0.7910x` geometric mean on the
@@ -9323,3 +9324,45 @@ python3 speed-bench/run_dspark_humaneval_dense_mixed_outlier.py \
   speed-bench/local-runs/humaneval-dense-mixed-direct-32-20260717-080040/summary.json \
   --confirm-idle
 ```
+
+Adjudication result:
+
+- Artifact:
+  `speed-bench/local-runs/humaneval-dense-mixed-outlier-20260717-084845`.
+- Clean source commit: `13fa5534d9e02b00efea3bc4a95fd446a8bf204d`.
+- Gathered median: `19.38 t/s`; fused-gather median: `21.26 t/s`.
+- Ratio of medians: `1.0967x`; median paired ratio: `1.0959x`;
+  geometric mean: `1.1078x`.
+- Fused gather won `6/6`; all six pairs exceeded the original `0.95x` floor.
+- Five pairs formed a tight `1.0931x`-`1.0981x` cluster. The first pair's
+  gathered arm was slower and raised that pair to `1.1729x`; it does not drive
+  the median decision.
+- Every measured output had SHA-256
+  `40f76b822d120cad7af7616373522a79864ac07ee99af9cc7320d27ed6c0e0ba`.
+- The artifact was produced from a clean tree with balanced order, no runtime
+  instrumentation, and no thermal or performance warning.
+- The predeclared adjudication gate passed every criterion.
+
+Promotion:
+
+- The original broad gate remains recorded as a formal failure, followed by
+  this successful predeclared adjudication of its sole failed task.
+- Fused gather is promoted to the normal Metal dense-mixed path.
+- `DS4_METAL_DENSE_MIXED_GATHERED_LEGACY=1` restores the former gathered path.
+- Historical `DS4_METAL_DENSE_MIXED_DIRECT=1` commands remain compatible and
+  force fused gather if both controls are present.
+- Dense-mixed benchmark/reference paths now set the legacy switch explicitly;
+  their default/candidate arms do not silently collapse after promotion.
+- The gathered-stage profiler explicitly selects the legacy route.
+
+Promotion validation:
+
+- Normal build passed.
+- All `112` DSpark model-free tests passed.
+- The comparison dry run uses legacy gathered as the reference and promoted
+  default exact DSpark as the candidate, with diagnostics disabled.
+- The default fused-gather correctness matrix passed reasoning, Italian,
+  medium-context, rolling-window, and resumed two-turn chat outputs
+  byte-for-byte; route tracing confirmed fused gather engaged.
+- The explicit legacy-gathered rollback passed the same five-scenario matrix.
+- No timed benchmark was run by Codex.

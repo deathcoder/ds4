@@ -27,6 +27,7 @@ compressor_pair_nr4=${DS4_TEST_DSPARK_COMPRESSOR_PAIR_NR4:-0}
 indexed_attn_rb16_promotion=${DS4_TEST_DSPARK_INDEXED_ATTN_RB16_PROMOTION:-\
 ${DS4_TEST_DSPARK_INDEXED_ATTN_RB16_DIRECT:-0}}
 dense_mixed_direct=${DS4_TEST_DSPARK_DENSE_MIXED_DIRECT:-0}
+dense_mixed_gathered_legacy=${DS4_TEST_DSPARK_DENSE_MIXED_GATHERED_LEGACY:-0}
 exact_q8_rows=${DS4_TEST_DSPARK_EXACT_Q8_ROWS:-0}
 serial_q8_rows_runtime=${DS4_TEST_DSPARK_SERIAL_Q8_ROWS_RUNTIME:-0}
 attn_inv_rope_fused=${DS4_TEST_DSPARK_ATTN_INV_ROPE_FUSED:-0}
@@ -56,6 +57,7 @@ unset DS4_METAL_INDEXED_ATTN_RB16_DIRECT
 unset DS4_METAL_INDEXED_ATTN_RB16_LEGACY
 unset DS4_METAL_INDEXED_ATTN_RB16_DIRECT_TRACE
 unset DS4_METAL_DENSE_MIXED_DIRECT
+unset DS4_METAL_DENSE_MIXED_GATHERED_LEGACY
 unset DS4_METAL_DENSE_MIXED_DIRECT_TRACE
 unset DS4_METAL_DECODE_INDEXER_SPARSE_THRESHOLD
 
@@ -188,9 +190,23 @@ if [[ $dense_mixed_direct != 0 && $dense_mixed_direct != 1 ]]; then
     printf 'DS4_TEST_DSPARK_DENSE_MIXED_DIRECT must be 0 or 1\n' >&2
     exit 2
 fi
+if [[ $dense_mixed_gathered_legacy != 0 &&
+      $dense_mixed_gathered_legacy != 1 ]]; then
+    printf 'DS4_TEST_DSPARK_DENSE_MIXED_GATHERED_LEGACY must be 0 or 1\n' >&2
+    exit 2
+fi
+if [[ $dense_mixed_direct == 1 && $dense_mixed_gathered_legacy == 1 ]]; then
+    printf 'dense-mixed fused and legacy gathered controls are mutually exclusive\n' >&2
+    exit 2
+fi
 if [[ $dense_mixed_direct == 1 &&
       ($mode != runtime || $fast_verify_runtime == 1) ]]; then
     printf 'dense-mixed fused gather requires exact runtime verification\n' >&2
+    exit 2
+fi
+if [[ $dense_mixed_gathered_legacy == 1 &&
+      ($mode != runtime || $fast_verify_runtime == 1) ]]; then
+    printf 'legacy dense-mixed gather requires exact runtime verification\n' >&2
     exit 2
 fi
 if [[ $exact_q8_rows != 0 && $exact_q8_rows != 1 ]]; then
@@ -313,6 +329,9 @@ case "$mode" in
                 DS4_METAL_DENSE_MIXED_DIRECT=1
                 DS4_METAL_DENSE_MIXED_DIRECT_TRACE=1
             )
+        fi
+        if [[ $dense_mixed_gathered_legacy == 1 ]]; then
+            gpu_env+=(DS4_METAL_DENSE_MIXED_GATHERED_LEGACY=1)
         fi
         if [[ $serial_q8_rows_runtime == 1 ]]; then
             gpu_env+=(DS4_DSPARK_EXACT_Q8_ROWS=0)

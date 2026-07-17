@@ -86,6 +86,7 @@ def profile_env(layer=None):
     env = transition.profile_env(layer)
     env.pop("DS4_METAL_FLASH_ATTN_STAGE_PROFILE", None)
     if layer is not None:
+        env["DS4_METAL_DENSE_MIXED_GATHERED_LEGACY"] = "1"
         env["DS4_METAL_FLASH_ATTN_GATHERED_PROFILE"] = "1"
     return env
 
@@ -115,6 +116,7 @@ def command_text(args, layer=None):
         "DS4_METAL_DECODE_STAGE_PROFILE_LAYER",
         "DS4_DSPARK_EXACT_ATTENTION_PROFILE",
         "DS4_METAL_FLASH_ATTN_GATHERED_PROFILE",
+        "DS4_METAL_DENSE_MIXED_GATHERED_LEGACY",
     )
     prefix = " ".join(f"{key}={env[key]}" for key in keys if key in env)
     return prefix + " " + shlex.join(command(args))

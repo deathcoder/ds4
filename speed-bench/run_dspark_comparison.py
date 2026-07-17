@@ -85,6 +85,7 @@ EXPERIMENT_ENV_KEYS = (
     "DS4_METAL_INDEXED_ATTN_RB16_DIRECT",
     "DS4_METAL_INDEXED_ATTN_RB16_LEGACY",
     "DS4_METAL_DENSE_MIXED_DIRECT",
+    "DS4_METAL_DENSE_MIXED_GATHERED_LEGACY",
     "DS4_METAL_DECODE_INDEXER_SPARSE_THRESHOLD",
 )
 
@@ -299,7 +300,7 @@ def check_inputs(args, root):
 
 def benchmark_modes(args):
     if getattr(args, "dense_mixed_direct_ablation", False):
-        return ("default_exact", "dense_mixed_direct")
+        return ("dense_mixed_gathered_legacy", "default_exact")
     if getattr(args, "exact_attention_output_nr8_ablation", False):
         return ("default_exact", "attention_output_nr8")
     if getattr(args, "exact_attention_output_nr4_ablation", False):
@@ -346,7 +347,8 @@ def mode_label(mode, args):
         "exact_attention_row_views": "Cached attention row-view DSpark",
         "legacy_attention_output_nr2": "Legacy NR2 attention-output DSpark",
         "attention_output_nr8": "NR8 attention-output DSpark",
-        "dense_mixed_direct": "Fused-gather dense-mixed attention DSpark",
+        "dense_mixed_gathered_legacy":
+            "Legacy gathered dense-mixed attention DSpark",
     }[mode]
 
 
@@ -407,8 +409,8 @@ def clean_dspark_env(mode, fast_verifier=False, runtime_stats=True):
             env["DS4_DSPARK_EXACT_ATTN_OUT_NR4"] = "0"
         if mode == "attention_output_nr8":
             env["DS4_DSPARK_EXACT_ATTN_OUT_NR8"] = "1"
-        if mode == "dense_mixed_direct":
-            env["DS4_METAL_DENSE_MIXED_DIRECT"] = "1"
+        if mode == "dense_mixed_gathered_legacy":
+            env["DS4_METAL_DENSE_MIXED_GATHERED_LEGACY"] = "1"
     return env
 
 
@@ -484,8 +486,8 @@ def command_text(args, mode, runtime_stats=None):
             env += "DS4_DSPARK_EXACT_ATTN_OUT_NR4=0 "
         if mode == "attention_output_nr8":
             env += "DS4_DSPARK_EXACT_ATTN_OUT_NR8=1 "
-        if mode == "dense_mixed_direct":
-            env += "DS4_METAL_DENSE_MIXED_DIRECT=1 "
+        if mode == "dense_mixed_gathered_legacy":
+            env += "DS4_METAL_DENSE_MIXED_GATHERED_LEGACY=1 "
     return env + shlex.join(mode_command(args, mode))
 
 
@@ -714,8 +716,8 @@ def summarize(rows, modes=("baseline", "runtime")):
             "exact_attention_output_nr4_ablation",
         ("default_exact", "attention_output_nr8"):
             "exact_attention_output_nr8_ablation",
-        ("default_exact", "dense_mixed_direct"):
-            "dense_mixed_direct_ablation",
+        ("dense_mixed_gathered_legacy", "default_exact"):
+            "dense_mixed_fused_gather_promotion_ablation",
     }
     summary = {
         "comparison": comparisons.get(modes, "baseline_runtime"),
@@ -807,11 +809,13 @@ def summarize(rows, modes=("baseline", "runtime")):
         })
         return summary
 
-    if modes == ("default_exact", "dense_mixed_direct"):
+    if modes == ("dense_mixed_gathered_legacy", "default_exact"):
         summary.update({
-            "default_exact_generation_tps_median": reference_median,
-            "dense_mixed_direct_generation_tps_median": candidate_median,
-            "dense_mixed_direct_delta_percent":
+            "legacy_dense_mixed_gathered_generation_tps_median":
+                reference_median,
+            "promoted_dense_mixed_fused_gather_generation_tps_median":
+                candidate_median,
+            "promoted_dense_mixed_fused_gather_delta_percent":
                 (candidate_median / reference_median - 1.0) * 100.0,
         })
         return summary
@@ -1091,17 +1095,17 @@ def format_report(summary):
             f"- Measured pairs: {len(summary['paired_speedup_values'])}\n"
         )
 
-    if summary["comparison"] == "dense_mixed_direct_ablation":
+    if summary["comparison"] == "dense_mixed_fused_gather_promotion_ablation":
         return (
-            "# DSpark Dense-Mixed Fused-Gather Ablation\n\n"
-            f"- Gathered FlashAttention median: "
-            f"{summary['default_exact_generation_tps_median']:.2f} t/s\n"
-            f"- Fused-gather median: "
-            f"{summary['dense_mixed_direct_generation_tps_median']:.2f} t/s\n"
+            "# DSpark Dense-Mixed Fused-Gather Promotion Confirmation\n\n"
+            f"- Legacy gathered median: "
+            f"{summary['legacy_dense_mixed_gathered_generation_tps_median']:.2f} t/s\n"
+            f"- Promoted fused-gather median: "
+            f"{summary['promoted_dense_mixed_fused_gather_generation_tps_median']:.2f} t/s\n"
             f"- Ratio of medians: {summary['median_ratio_of_medians']:.4f}x\n"
             f"- Median paired ratio: {summary['paired_speedup_median']:.4f}x\n"
-            f"- Fused-gather delta: "
-            f"{summary['dense_mixed_direct_delta_percent']:+.1f}%\n"
+            f"- Promoted fused-gather delta: "
+            f"{summary['promoted_dense_mixed_fused_gather_delta_percent']:+.1f}%\n"
             f"- Measured pairs: {len(summary['paired_speedup_values'])}\n"
         )
 

@@ -1916,17 +1916,19 @@ static int ds4_gpu_trace_indexed_attention_rb16_direct(void) {
     return enabled;
 }
 
-static int ds4_gpu_use_dense_mixed_attention_direct(void) {
+static int ds4_gpu_use_dense_mixed_attention_fused_gather(void) {
     static int initialized;
     static int enabled;
     if (!initialized) {
-        enabled = getenv("DS4_METAL_DENSE_MIXED_DIRECT") != NULL;
+        /* Fused gather is default; the historical DIRECT switch overrides rollback. */
+        enabled = getenv("DS4_METAL_DENSE_MIXED_GATHERED_LEGACY") == NULL ||
+                  getenv("DS4_METAL_DENSE_MIXED_DIRECT") != NULL;
         initialized = 1;
     }
     return enabled;
 }
 
-static int ds4_gpu_trace_dense_mixed_attention_direct(void) {
+static int ds4_gpu_trace_dense_mixed_attention_fused_gather(void) {
     static int initialized;
     static int enabled;
     if (!initialized) {
@@ -20566,7 +20568,7 @@ int ds4_gpu_attention_prefill_masked_mixed_heads_tensor(
     return 1;
 }
 
-static int ds4_gpu_encode_dense_mixed_attention_direct_heads(
+static int ds4_gpu_encode_dense_mixed_attention_fused_gather_heads(
         id<MTLCommandBuffer>   cb,
         ds4_gpu_tensor      *heads,
         id<MTLBuffer>          sinks_buf,
@@ -20741,7 +20743,7 @@ static int ds4_gpu_encode_dense_mixed_attention_direct_heads(
          threadsPerThreadgroup:MTLSizeMake(32u * nwg, 1, 1)];
     ds4_gpu_end_compute_encoder(cb, enc);
 
-    if (ds4_gpu_trace_dense_mixed_attention_direct()) {
+    if (ds4_gpu_trace_dense_mixed_attention_fused_gather()) {
         static int reported;
         if (!reported) {
             fprintf(stderr,
@@ -20855,8 +20857,8 @@ static int ds4_gpu_attention_decode_heads_impl(
         if (use_mask == 0 &&
             head_dim == 512 &&
             inverse_rope == NULL &&
-            ds4_gpu_use_dense_mixed_attention_direct()) {
-            if (!ds4_gpu_encode_dense_mixed_attention_direct_heads(
+            ds4_gpu_use_dense_mixed_attention_fused_gather()) {
+            if (!ds4_gpu_encode_dense_mixed_attention_fused_gather_heads(
                     cb,
                     heads,
                     sinks_buf,
@@ -20874,7 +20876,7 @@ static int ds4_gpu_attention_decode_heads_impl(
                 return 0;
             }
             if (!ds4_gpu_finish_command_buffer(
-                    cb, owned, "graph direct dense mixed attention heads")) {
+                    cb, owned, "graph fused-gather dense mixed attention heads")) {
                 return 0;
             }
             return 1;
