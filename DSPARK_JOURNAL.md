@@ -31,13 +31,14 @@ multi-row execution remains the primary optimization surface. Next refresh the
 width-stratified layer attribution after fused-gather promotion before choosing
 another verifier candidate.
 
-Phase 1.29 is prepared and awaiting the user-run post-promotion width-layer
-profile. The existing Phase 1.18 profiler now accepts both legacy and cumulative
-reference contracts. Against the current artifacts it runs three synchronized
-processes for layers `0`, `21`, and `42` on `humaneval_079`, reproduces the
-unchanged width `2/3/4/5` schedule, and reports attention preparation, serial
-tail, and exact FFN cost by width. No runtime candidate or timed throughput
-measurement is enabled.
+Phase 1.29 is complete. The post-promotion width-layer profile identifies exact
+FFN as both the largest sampled width-5 stage (`40.8%`) and the
+weakest-amortizing stage (`0.707x` width 5 versus width 2). Serial attention is
+now `39.2%`, and attention preparation is `19.9%`. Relative to the structurally
+identical pre-promotion profile, synchronized width-5 tail time moved by
+`0.835x` while FFN stayed at `0.992x`; treat those cross-session ratios as
+directional, but the new ranking is clear. Next profile the existing exact FFN
+sub-stages by verifier width before choosing a shared multi-row FFN candidate.
 
 Phase 1.05 is complete. The frozen 32-task HumanEval gate measured a `0.8081x`
 median paired DSpark/baseline ratio and `0.7910x` geometric mean on the
@@ -9710,3 +9711,86 @@ python3 speed-bench/run_dspark_threshold075_width_layer_profile.py \
   speed-bench/local-runs/humaneval-cumulative-cost-20260717-094819/summary.json \
   --confirm-ready
 ```
+
+Result:
+
+- Artifact:
+  `speed-bench/local-runs/post-promotion-width-layer-20260717-100542`.
+- Clean source commit: `fd506ee20c2b1db56830122492db3e56237512a4`.
+- All three profiled outputs matched the frozen cumulative artifact
+  byte-for-byte. The run reported no thermal or performance warning.
+- Every layer reproduced the frozen `humaneval_079` verifier schedule:
+  - width 2: `1` evaluation;
+  - width 3: `1`;
+  - width 4: `4`;
+  - width 5: `20`.
+
+Sampled exact-layer scaling:
+
+- Width 2: `4.329 ms/row` across layers `0`, `21`, and `42`.
+- Width 3: `3.302 ms/row`, or `0.763x` width 2.
+- Width 4: `3.021 ms/row`, or `0.698x` width 2.
+- Width 5: `2.853 ms/row`, or `0.659x` width 2.
+- Width 5 remains the stable observation set; widths 2 and 3 each contain only
+  one evaluation and are directional anchors.
+
+Width-5 component split:
+
+- Attention preparation: `0.569 ms/row`, `19.9%` of the sampled total.
+- Serial attention tail: `1.120 ms/row`, `39.2%`.
+- Exact FFN: `1.165 ms/row`, `40.8%`.
+- Exact FFN is now the largest sampled stage, narrowly ahead of the serial
+  attention tail.
+- Width-2-to-width-5 per-row scaling is:
+  - attention preparation: `0.563x`;
+  - serial attention tail: `0.670x`;
+  - exact FFN: `0.707x`.
+- Exact FFN is therefore also the weakest-amortizing current stage.
+
+Layer detail at width 5:
+
+- Layer 0: total `0.893 ms/row`; preparation `0.192`, tail `0.317`, FFN
+  `0.384`.
+- Layer 21: total `0.932 ms/row`; preparation `0.185`, tail `0.356`, FFN
+  `0.391`.
+- Layer 42: total `1.028 ms/row`; preparation `0.192`, tail `0.446`, FFN
+  `0.390`.
+- FFN cost is notably stable across depth, while tail cost still grows in later
+  layers. A shared exact-FFN improvement should therefore generalize across the
+  target stack rather than optimize one late layer only.
+
+Comparison with Phase 1.18:
+
+- Sampled width-5 total: `3.098` to `2.853 ms/row`, `0.921x`.
+- Attention preparation: `0.584` to `0.569`, `0.975x`.
+- Serial attention tail: `1.341` to `1.120`, `0.835x`.
+- Exact FFN: `1.174` to `1.165`, `0.992x`.
+- These are synchronized diagnostics from different sessions, not isolated
+  throughput deltas. Do not attribute the complete tail movement to fused
+  gather or use the ratios as speedup claims.
+- The structural conclusion is nonetheless strong: tail work became cheaper
+  relative to FFN, while exact FFN is essentially unchanged and is now the
+  largest weakly amortized component.
+
+Decision:
+
+- Keep fused gather, threshold `0.75`, and the exact verifier schedule frozen.
+- Do not reopen attention preparation or repeat the broad throughput gate yet.
+- Add a width-stratified exact-FFN sub-stage profile on `humaneval_079`, using
+  the existing synchronized boundaries inside
+  `metal_graph_encode_layer_ffn_batch`:
+  - `hc_pre`;
+  - `norm`;
+  - `router`;
+  - `shared_gate_up`;
+  - `shared_down`;
+  - `routed_moe`;
+  - `hc_post`.
+- Profile representative layers `0`, `21`, and `42`, map records to exact
+  proposal batches, and report width-5 share plus width scaling. This should
+  identify whether the next general candidate belongs in HC handling, routing,
+  shared expert, or routed MoE execution.
+- The sampled FFN share is about `40.8%`; closing the entire `13.9%` target-time
+  gap through FFN alone would directionally require roughly one third of FFN
+  cost. Expect a broader verifier program rather than assuming one FFN
+  micro-optimization will reach parity by itself.
