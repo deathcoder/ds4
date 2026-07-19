@@ -20514,7 +20514,10 @@ static bool metal_graph_encode_layer_ffn_batch(
     }
 #endif
 
-    if (ok && exact_routed_moe) {
+    const bool exact_routed_hybrid =
+        exact_routed_moe &&
+        getenv("DS4_DSPARK_EXACT_ROUTED_MOE_HYBRID") != NULL;
+    if (ok && exact_routed_moe && !exact_routed_hybrid) {
         g->batch_routed_mid_is_f16 = false;
         ok = metal_graph_routed_moe_decode_rows(g,
                                                 model,
@@ -20553,7 +20556,8 @@ static bool metal_graph_encode_layer_ffn_batch(
                                                g->batch_ffn_norm,
                                                il,
                                                n_tokens,
-                                               &g->batch_routed_mid_is_f16) != 0;
+                                               &g->batch_routed_mid_is_f16,
+                                               exact_routed_hybrid) != 0;
     }
     if (ok) {
         metal_graph_debug_dump_tensor("ffn_moe_gate_clamped", g->batch_routed_gate,

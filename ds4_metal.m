@@ -26121,7 +26121,8 @@ int ds4_gpu_routed_moe_batch_tensor(
         const ds4_gpu_tensor *x,
         uint32_t                layer_index,
         uint32_t                n_tokens,
-        bool                   *mid_is_f16) {
+        bool                   *mid_is_f16,
+        bool                    exact_down_rows) {
     if (!g_initialized && !ds4_gpu_init()) return 0;
     if (!out || !gate || !up || !mid || !x || !model_map || !selected || !weights ||
         n_tokens == 0 || n_total_expert == 0 || n_expert == 0 || n_expert > 6) {
@@ -26407,7 +26408,8 @@ int ds4_gpu_routed_moe_batch_tensor(
         const bool request_mid_f16 =
             !g_quality_mode &&
             !use_q4_batch_expert_table &&
-            !use_iq2_batch_selected_addr;
+            !use_iq2_batch_selected_addr &&
+            !exact_down_rows;
         const bool use_mm_id_pair_swiglu =
             use_mm_id &&
             request_mid_f16 &&
@@ -26623,6 +26625,9 @@ int ds4_gpu_routed_moe_batch_tensor(
             (moe_stage_layer == UINT32_MAX || moe_stage_layer == layer_index);
         const char *moe_stage_filter = getenv("DS4_METAL_MOE_STAGE_PROFILE_FILTER");
         const char *moe_path =
+            exact_down_rows ? (use_tiny_pair_mv ?
+                "hybrid_exact_down_tiny_pair_mv" :
+                "hybrid_exact_down_mv") :
             use_q4_batch_expert_table ? "q4_table_pair_swiglu" :
             use_iq2_batch_selected_addr ? "iq2_batch_stream_addr" :
             use_mm_id_pair_swiglu ? "mm_id_pair_swiglu" :
@@ -26684,6 +26689,21 @@ int ds4_gpu_routed_moe_batch_tensor(
             n_expert == 6 &&
             n_tokens <= 4u &&
             down_sum6_pipeline != nil;
+        const bool exact_down_rows_active =
+            exact_down_rows &&
+            !use_iq2_batch_selected_addr &&
+            !use_q4_batch_expert_table &&
+            !use_mm_id &&
+            n_expert == 6 &&
+            down_sum6_pipeline != nil;
+        if (exact_down_rows && !exact_down_rows_active) {
+            fprintf(stderr,
+                    "ds4: Metal routed batch MoE cannot encode exact down rows "
+                    "layer=%u tokens=%u\n",
+                    layer_index,
+                    n_tokens);
+            return 0;
+        }
         int ok = 0;
         if (use_iq2_batch_selected_addr) {
             ds4_gpu_dsv4_moe_swiglu_weight_args act_args = {
@@ -27022,6 +27042,41 @@ int ds4_gpu_routed_moe_batch_tensor(
                                                          down_smem,
                                                          2,
                                                          q4_batch_table_queue_residency);
+            } else if (exact_down_rows_active) {
+                ds4_gpu_mul_mv_id_args row_down_args =
+                    ds4_gpu_make_mul_mv_id_args(expert_mid_dim,
+                                                  out_dim,
+                                                  n_total_expert,
+                                                  down_row_bytes,
+                                                  down_expert_bytes,
+                                                  n_expert,
+                                                  n_expert,
+                                                  1,
+                                                  down_nr0);
+                const uint64_t mid_row_bytes =
+                    (uint64_t)n_expert * expert_mid_dim * sizeof(float);
+                const uint64_t out_row_bytes = (uint64_t)out_dim * sizeof(float);
+                const uint64_t selected_row_bytes =
+                    (uint64_t)n_expert * sizeof(int32_t);
+                for (uint32_t row = 0; ok && row < n_tokens; row++) {
+                    ok = ds4_gpu_encode_mul_mv_id_sum6(
+                            cb,
+                            down_sum6_pipeline,
+                            &row_down_args,
+                            down_buf,
+                            (NSUInteger)down_inner,
+                            midbuf,
+                            ds4_gpu_tensor_offset(mid) +
+                                (NSUInteger)((uint64_t)row * mid_row_bytes),
+                            outbuf,
+                            ds4_gpu_tensor_offset(out) +
+                                (NSUInteger)((uint64_t)row * out_row_bytes),
+                            selectedbuf,
+                            ds4_gpu_tensor_offset(selected) +
+                                (NSUInteger)((uint64_t)row * selected_row_bytes),
+                            down_smem,
+                            2);
+                }
             } else if (direct_down_sum) {
                 ok = ds4_gpu_encode_mul_mv_id_sum6(cb,
                                                      down_sum6_pipeline,
@@ -27067,6 +27122,7 @@ int ds4_gpu_routed_moe_batch_tensor(
         if (ok &&
             n_expert > 1 &&
             !direct_down_sum &&
+            !exact_down_rows_active &&
             !use_q4_batch_expert_table &&
             !use_iq2_batch_selected_addr) {
             ok = ds4_gpu_encode_moe_sum_experts(cb,

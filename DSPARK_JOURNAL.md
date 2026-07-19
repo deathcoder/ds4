@@ -58,6 +58,14 @@ mid exact through width 5 and localized width-5 drift to down/sum. Next build
 an opt-in hybrid correctness candidate that batches gate/up and activation but
 preserves the exact one-row direct six-expert down/sum arithmetic.
 
+Phase 1.32 is prepared and awaiting the user-run exact routed-MoE hybrid
+ablation. The default-off Metal candidate reuses the existing batched gate/up
+and F32 weighted activation, then encodes the proven one-token direct Q2_K
+six-expert down/sum once per proposal row. Generated output and selected-layer
+FFN internals are exact across the correctness matrix at layers `0`, `30`, and
+`42`. The paired ablation is uninstrumented and compares current default exact
+execution against only this hybrid switch.
+
 Phase 1.05 is complete. The frozen 32-task HumanEval gate measured a `0.8081x`
 median paired DSpark/baseline ratio and `0.7910x` geometric mean on the
 promoted scheduler plus exact prefix-checkpoint runtime. This improves over the
@@ -10130,3 +10138,72 @@ Decision:
 - Prove internal and generated-output exactness before any timed ablation. This
   candidate attacks the measured `49.5%` gate/up share while retaining the
   arithmetic boundary already known to be necessary at width 5.
+
+## Phase 1.32: Exact routed-MoE hybrid ablation prepared
+
+Implementation:
+
+- Extended the internal Metal `ds4_gpu_routed_moe_batch_tensor` API with a
+  default-false `exact_down_rows` request.
+- Added the exact-runtime-only environment gate
+  `DS4_DSPARK_EXACT_ROUTED_MOE_HYBRID`.
+- When the gate is absent, exact DSpark retains the established fully row-wise
+  routed-MoE path. Ordinary prefill, layer-major prefill, DSpark sidecar FFN,
+  and every non-exact caller pass `false` and are unchanged.
+- When enabled for exact DSpark verification, the hybrid:
+  - enters the existing batch routed-MoE encoder;
+  - uses the current tiny-pair gate/up path for widths 2 through 4 and current
+    batch MV gate/up path for width 5;
+  - forces the weighted SwiGLU mid to remain F32;
+  - creates one-token down arguments and encodes the existing
+    `ds4_gpu_encode_mul_mv_id_sum6` Q2_K direct-down primitive once per proposal
+    row using row-specific mid, selected-ID, and output offsets;
+  - skips the generic separate expert-output sum after those direct writes.
+- Unsupported table, streaming-address, MM, expert-count, or down-kernel
+  combinations fail explicitly instead of silently dropping to a different
+  arithmetic path.
+- No Metal shader was added or changed. The candidate composes existing
+  kernels and remains Metal-only.
+
+Correctness:
+
+- `make -j4 ds4 ds4_test` passed with no new warnings.
+- The runtime GPU candidate correctness matrix passed with the hybrid enabled:
+  reasoning, Italian, medium context, rolling window, and resumed two-turn chat
+  all matched ordinary baseline byte-for-byte.
+- The same matrix passed with the selected-layer exact FFN observer at layers
+  `0`, `30`, and `42`. This covers the known width-5 boundary and requires every
+  observed exact FFN batch to remain exact through routed mid/output, FFN
+  combine, and HC post.
+- All `141` DSpark model-free tests passed, including five new tests for mode
+  isolation, command construction, paired summary, and direct-down structure.
+- Normal builds passed for `ds4`, `ds4_test`, `ds4-server`, `ds4-eval`,
+  `ds4-agent`, `ds4_cpu.o`, and `ds4-warm-prefill-bench`.
+- `./ds4_test --dspark-validation --dspark-shape-binding` passed.
+- The unrelated approximate fast-verifier soak passed long generation, rolling
+  window, code completion, and Italian, then produced a Spanish output mismatch
+  with `DS4_DSPARK_EXACT_ROUTED_MOE_HYBRID` unset. Logs were retained at
+  `/var/folders/vq/rkb95_8n02d4c91kltpxr1r80000gp/T/ds4-dspark-fast-soak.xlTLnH`.
+  The candidate does not run in that fast-verifier path and its exact-runtime
+  matrices passed; do not present the broader soak as fully green.
+- `git diff --check` passed.
+
+Ablation harness:
+
+- Added `--exact-routed-moe-hybrid-ablation` to
+  `speed-bench/run_dspark_comparison.py`.
+- The reference arm is current default exact DSpark; the candidate arm adds
+  only `DS4_DSPARK_EXACT_ROUTED_MOE_HYBRID=1`.
+- Both arms force Metal, threshold/runtime defaults remain identical, and all
+  runtime stats, traces, diagnostics, and profilers are disabled.
+- Warmups and measured pairs retain alternating order. Every candidate output
+  must match the first frozen exact output byte-for-byte.
+- The dry run passed and executed no model process.
+
+User-run command:
+
+```sh
+python3 speed-bench/run_dspark_comparison.py \
+  --exact-routed-moe-hybrid-ablation \
+  --confirm-idle
+```

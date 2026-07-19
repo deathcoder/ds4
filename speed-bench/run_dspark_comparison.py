@@ -206,6 +206,11 @@ def parse_args():
         help="compare gathered dense-mixed attention against fused preparation",
     )
     parser.add_argument(
+        "--exact-routed-moe-hybrid-ablation",
+        action="store_true",
+        help="compare default exact routed MoE against batched gate/up with exact down rows",
+    )
+    parser.add_argument(
         "--stats-only",
         action="store_true",
         help="run an instrumented Metal-drafter attribution and omit throughput",
@@ -234,6 +239,7 @@ def parse_args():
             args.exact_attention_output_nr4_ablation,
             args.exact_attention_output_nr8_ablation,
             args.dense_mixed_direct_ablation,
+            args.exact_routed_moe_hybrid_ablation,
         )
     )
     if selected_modes > 1:
@@ -248,7 +254,8 @@ def parse_args():
             "--exact-attention-row-views-ablation, and "
             "--exact-attention-output-nr4-ablation, "
             "--exact-attention-output-nr8-ablation, and "
-            "--dense-mixed-direct-ablation "
+            "--dense-mixed-direct-ablation, and "
+            "--exact-routed-moe-hybrid-ablation "
             "are mutually exclusive"
         )
     if args.stats_only and not args.metal_drafter_ablation:
@@ -299,6 +306,8 @@ def check_inputs(args, root):
 
 
 def benchmark_modes(args):
+    if getattr(args, "exact_routed_moe_hybrid_ablation", False):
+        return ("default_exact", "exact_routed_moe_hybrid")
     if getattr(args, "dense_mixed_direct_ablation", False):
         return ("dense_mixed_gathered_legacy", "default_exact")
     if getattr(args, "exact_attention_output_nr8_ablation", False):
@@ -349,6 +358,7 @@ def mode_label(mode, args):
         "attention_output_nr8": "NR8 attention-output DSpark",
         "dense_mixed_gathered_legacy":
             "Legacy gathered dense-mixed attention DSpark",
+        "exact_routed_moe_hybrid": "Exact routed-MoE hybrid DSpark",
     }[mode]
 
 
@@ -369,6 +379,7 @@ def throughput_runtime_stats_enabled(args):
         or getattr(args, "exact_attention_output_nr4_ablation", False)
         or getattr(args, "exact_attention_output_nr8_ablation", False)
         or getattr(args, "dense_mixed_direct_ablation", False)
+        or getattr(args, "exact_routed_moe_hybrid_ablation", False)
     )
 
 
@@ -411,6 +422,8 @@ def clean_dspark_env(mode, fast_verifier=False, runtime_stats=True):
             env["DS4_DSPARK_EXACT_ATTN_OUT_NR8"] = "1"
         if mode == "dense_mixed_gathered_legacy":
             env["DS4_METAL_DENSE_MIXED_GATHERED_LEGACY"] = "1"
+        if mode == "exact_routed_moe_hybrid":
+            env["DS4_DSPARK_EXACT_ROUTED_MOE_HYBRID"] = "1"
     return env
 
 
@@ -445,7 +458,8 @@ def mode_command(args, mode):
             getattr(args, "exact_attention_row_views_ablation", False) or
             getattr(args, "exact_attention_output_nr4_ablation", False) or
             getattr(args, "exact_attention_output_nr8_ablation", False) or
-            getattr(args, "dense_mixed_direct_ablation", False)):
+            getattr(args, "dense_mixed_direct_ablation", False) or
+            getattr(args, "exact_routed_moe_hybrid_ablation", False)):
         command[1:1] = ("--backend", "metal")
     if mode != "baseline":
         command.extend(("--dspark", str(args.dspark_model.resolve())))
@@ -488,6 +502,8 @@ def command_text(args, mode, runtime_stats=None):
             env += "DS4_DSPARK_EXACT_ATTN_OUT_NR8=1 "
         if mode == "dense_mixed_gathered_legacy":
             env += "DS4_METAL_DENSE_MIXED_GATHERED_LEGACY=1 "
+        if mode == "exact_routed_moe_hybrid":
+            env += "DS4_DSPARK_EXACT_ROUTED_MOE_HYBRID=1 "
     return env + shlex.join(mode_command(args, mode))
 
 
@@ -659,6 +675,8 @@ def collect_metadata(args, root):
                 getattr(args, "exact_attention_output_nr8_ablation", False),
             "dense_mixed_direct_ablation":
                 getattr(args, "dense_mixed_direct_ablation", False),
+            "exact_routed_moe_hybrid_ablation":
+                getattr(args, "exact_routed_moe_hybrid_ablation", False),
             "stats_only": getattr(args, "stats_only", False),
             "temperature": 0,
             "seed": 1,
@@ -718,6 +736,8 @@ def summarize(rows, modes=("baseline", "runtime")):
             "exact_attention_output_nr8_ablation",
         ("dense_mixed_gathered_legacy", "default_exact"):
             "dense_mixed_fused_gather_promotion_ablation",
+        ("default_exact", "exact_routed_moe_hybrid"):
+            "exact_routed_moe_hybrid_ablation",
     }
     summary = {
         "comparison": comparisons.get(modes, "baseline_runtime"),
@@ -816,6 +836,15 @@ def summarize(rows, modes=("baseline", "runtime")):
             "promoted_dense_mixed_fused_gather_generation_tps_median":
                 candidate_median,
             "promoted_dense_mixed_fused_gather_delta_percent":
+                (candidate_median / reference_median - 1.0) * 100.0,
+        })
+        return summary
+
+    if modes == ("default_exact", "exact_routed_moe_hybrid"):
+        summary.update({
+            "default_exact_generation_tps_median": reference_median,
+            "exact_routed_moe_hybrid_generation_tps_median": candidate_median,
+            "exact_routed_moe_hybrid_delta_percent":
                 (candidate_median / reference_median - 1.0) * 100.0,
         })
         return summary
@@ -1106,6 +1135,20 @@ def format_report(summary):
             f"- Median paired ratio: {summary['paired_speedup_median']:.4f}x\n"
             f"- Promoted fused-gather delta: "
             f"{summary['promoted_dense_mixed_fused_gather_delta_percent']:+.1f}%\n"
+            f"- Measured pairs: {len(summary['paired_speedup_values'])}\n"
+        )
+
+    if summary["comparison"] == "exact_routed_moe_hybrid_ablation":
+        return (
+            "# DSpark Exact Routed-MoE Hybrid Ablation\n\n"
+            f"- Default exact median: "
+            f"{summary['default_exact_generation_tps_median']:.2f} t/s\n"
+            f"- Routed-MoE hybrid median: "
+            f"{summary['exact_routed_moe_hybrid_generation_tps_median']:.2f} t/s\n"
+            f"- Ratio of medians: {summary['median_ratio_of_medians']:.4f}x\n"
+            f"- Median paired ratio: {summary['paired_speedup_median']:.4f}x\n"
+            f"- Routed-MoE hybrid delta: "
+            f"{summary['exact_routed_moe_hybrid_delta_percent']:+.1f}%\n"
             f"- Measured pairs: {len(summary['paired_speedup_values'])}\n"
         )
 
