@@ -10798,3 +10798,43 @@ Decision boundary:
 - Require a clearly positive focused paired result before spending time on the
   frozen 32-task HumanEval confirmation. Promotion still requires that broader
   threshold-0.75 gate and byte-exact output on every task.
+
+Focused result:
+
+- User-run artifact: `speed-bench/local-runs/20260719-201407` at clean commit
+  `63b5834`.
+- Default exact median: `24.82 t/s`; exact shared-Q8 median: `25.37 t/s`;
+  ratio of medians: `1.0222x`, or `+2.2%`.
+- All three paired ratios were wins: `1.0193x`, `1.0226x`, and `1.0234x`;
+  paired median `1.0226x`. Every output SHA-256 matched.
+- The initial process snapshot was busy, including an Arc renderer at 95.9%
+  CPU and WindowServer at 45.6%, but there was no thermal/performance warning.
+  The unusually tight all-positive pair range makes the direction persuasive
+  despite desktop interference.
+
+Broad confirmation prepared:
+
+- Added `speed-bench/run_dspark_humaneval_shared_q8_rows.py` and model-free
+  tests in `tests/test_dspark_humaneval_shared_q8_rows.py`.
+- It compares default exact against the opt-in shared-Q8 route on the frozen
+  32-task HumanEval selection, pins confidence threshold `0.75`, alternates
+  order exactly, and excludes two balanced global warmup pairs.
+- Every measured output must match the frozen exact artifact from
+  `humaneval-threshold075-throughput-32-20260716-155112` byte-for-byte.
+- Both arms are uninstrumented exact Metal verification. The only candidate
+  difference is `DS4_DSPARK_EXACT_SHARED_Q8_ROWS=1`; stats, trace,
+  diagnostics, profiler, and fast verification are forbidden.
+- The predeclared promotion gate requires geometric candidate/default at least
+  `1.005x`, at least `20/32` task wins, no task below `0.95x`, and geometric
+  ratio at least `1.00x` across tasks with acceptance at or below `0.65`.
+- Model-free harness tests passed. A real dry run accepted the frozen
+  provenance and printed 68 processes: four excluded warmups and 64 measured.
+
+User-run broad command:
+
+```sh
+python3 speed-bench/run_dspark_humaneval_shared_q8_rows.py \
+  --throughput-reference \
+  speed-bench/local-runs/humaneval-threshold075-throughput-32-20260716-155112/summary.json \
+  --confirm-idle
+```
