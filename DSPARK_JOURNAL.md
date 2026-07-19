@@ -10724,3 +10724,77 @@ Decision:
   than only encoder calls. Shared-weight narrow-row projections are a better
   match for MTPLX/oMLX-style verify QMM than routed expert rows, whose selected
   matrices can differ by proposal position.
+
+## Phase 1.37: exact shared-expert Q8 proposal rows
+
+Target mapping:
+
+- The post-promotion exact FFN still executed all three shared-expert Q8_0
+  projections one proposal row at a time: fused gate/up/SwiGLU and shared
+  down. Unlike routed experts, every proposal row uses the same shared gate,
+  up, and down matrices, so this is a direct match for MTPLX/oMLX-style
+  narrow-row weight reuse.
+- The prior width-5 FFN profile attributed `0.274 ms/row` to shared gate/up
+  and `0.245 ms/row` to shared down across sampled layers. Together they were
+  about one quarter of the sampled exact FFN sub-stage time, making this a
+  bounded but material surface.
+- ds4's promoted exact Q8 proposal-row kernel already proved that one weight
+  traversal can preserve decode-identical block traversal, accumulation, and
+  SIMD/threadgroup reduction for widths 2-5. The new route extends that proven
+  arithmetic to the shared expert instead of changing quantization math.
+
+Implementation:
+
+- Added width-specialized Metal entry points
+  `kernel_dsv4_shared_gate_up_swiglu_q8_0_exact_rows_{2,3,4,5}`. Each loads a
+  gate and up Q8 block once, applies it to every proposal activation, preserves
+  the ordinary one-row reduction order independently for each row, and applies
+  the same clamp/SwiGLU operations as the existing fused one-row kernel.
+- Shared down reuses the already-promoted
+  `ds4_gpu_matmul_q8_0_exact_rows_tensor`; no second shader was needed.
+- Added the default-off `DS4_DSPARK_EXACT_SHARED_Q8_ROWS=1` route. It is
+  limited to exact FFN verification, Q8_0 shared weights, and widths 2-5. The
+  established one-row fused gate/up and one-row down loops remain unchanged as
+  the default and unsupported-shape fallback.
+- Added `DS4_DSPARK_EXACT_SHARED_Q8_ROWS_TRACE=1`. Correctness records identify
+  layer, actual width, `gate_up` or `down`, and pass/fail; timed modes do not
+  enable it.
+- Extended `tests/dspark_gpu_candidates_correctness.sh` to require matching,
+  successful gate/up and down records and reject accidental control-mode use.
+- Added `--exact-shared-q8-rows-ablation` to the paired uninstrumented Metal
+  runner and model-free coverage in
+  `tests/test_dspark_exact_shared_q8_rows.py`.
+
+Validation before timing:
+
+- `make` completed successfully. The runtime Metal compiler accepted every new
+  width specialization.
+- All 161 `test_dspark_*.py` model-free tests passed; Python compilation, shell
+  syntax, and `git diff --check` passed.
+- A forced-full-block correctness matrix and a threshold-0.75 matrix each
+  passed reasoning, Italian, medium-context, rolling-window, and resumed-chat
+  cases byte-for-byte against ordinary baseline output.
+- Trace coverage observed widths 2, 3, and 5 in the forced-block matrix and
+  widths 3 and 4 under threshold 0.75. Both shared stages passed at every
+  observed width, giving complete width-2-through-5 coverage with no verifier
+  fallback.
+- A real benchmark dry run showed only
+  `DS4_DSPARK_EXACT_SHARED_Q8_ROWS=1` in the candidate. Runtime stats,
+  diagnostics, trace, and fast verification are absent from both timed arms.
+
+User-run focused command:
+
+```sh
+python3 speed-bench/run_dspark_comparison.py \
+  --exact-shared-q8-rows-ablation \
+  --confirm-idle
+```
+
+Decision boundary:
+
+- This candidate genuinely reduces shared Q8 weight traffic and dispatches;
+  it is not another host-only consolidation. Even so, keep it default-off
+  until measured.
+- Require a clearly positive focused paired result before spending time on the
+  frozen 32-task HumanEval confirmation. Promotion still requires that broader
+  threshold-0.75 gate and byte-exact output on every task.

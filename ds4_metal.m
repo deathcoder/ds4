@@ -13480,6 +13480,129 @@ int ds4_gpu_shared_gate_up_swiglu_q8_0_tensor(
     return 1;
 }
 
+int ds4_gpu_shared_gate_up_swiglu_q8_0_exact_rows_tensor(
+        ds4_gpu_tensor       *gate,
+        ds4_gpu_tensor       *up,
+        ds4_gpu_tensor       *mid,
+        const void             *model_map,
+        uint64_t                model_size,
+        uint64_t                gate_offset,
+        uint64_t                up_offset,
+        uint64_t                in_dim,
+        uint64_t                out_dim,
+        const ds4_gpu_tensor *x,
+        uint32_t                n_rows,
+        float                   clamp) {
+    if (!g_initialized && !ds4_gpu_init()) return 0;
+    if (!gate || !up || !mid || !x || !model_map ||
+        (in_dim & 31u) != 0 || n_rows < 2u || n_rows > 5u ||
+        in_dim > UINT32_MAX || out_dim > UINT32_MAX ||
+        !isfinite(clamp) || clamp < 0.0f) {
+        return 0;
+    }
+
+    @autoreleasepool {
+        if (n_rows > UINT64_MAX / in_dim ||
+            n_rows > UINT64_MAX / out_dim) {
+            return 0;
+        }
+        id<MTLBuffer> xbuf = ds4_gpu_tensor_buffer(x);
+        id<MTLBuffer> gatebuf = ds4_gpu_tensor_buffer(gate);
+        id<MTLBuffer> upbuf = ds4_gpu_tensor_buffer(up);
+        id<MTLBuffer> midbuf = ds4_gpu_tensor_buffer(mid);
+        const uint64_t x_bytes =
+            (uint64_t)n_rows * in_dim * sizeof(float);
+        const uint64_t out_bytes =
+            (uint64_t)n_rows * out_dim * sizeof(float);
+        if (!xbuf || !gatebuf || !upbuf || !midbuf ||
+            ds4_gpu_tensor_bytes(x) < x_bytes ||
+            ds4_gpu_tensor_bytes(gate) < out_bytes ||
+            ds4_gpu_tensor_bytes(up) < out_bytes ||
+            ds4_gpu_tensor_bytes(mid) < out_bytes) {
+            fprintf(stderr,
+                    "ds4: Metal exact-row shared expert gate/up received "
+                    "undersized activation buffers\n");
+            return 0;
+        }
+
+        const uint64_t blocks = in_dim / 32u;
+        const uint64_t row_bytes = blocks * 34u;
+        const uint64_t weight_bytes = out_dim * row_bytes;
+        if (gate_offset > model_size ||
+            weight_bytes > model_size - gate_offset ||
+            up_offset > model_size ||
+            weight_bytes > model_size - up_offset) {
+            fprintf(stderr,
+                    "ds4: Metal exact-row shared expert gate/up range is "
+                    "outside the mapped model\n");
+            return 0;
+        }
+
+        uint64_t gate_inner = 0;
+        uint64_t up_inner = 0;
+        id<MTLBuffer> gate_wbuf = ds4_gpu_wrap_model_range(
+            model_map, model_size, gate_offset, weight_bytes, &gate_inner);
+        id<MTLBuffer> up_wbuf = ds4_gpu_wrap_model_range(
+            model_map, model_size, up_offset, weight_bytes, &up_inner);
+        if (!gate_wbuf || !up_wbuf) return 0;
+
+        const char *function_name = NULL;
+        switch (n_rows) {
+            case 2u: function_name =
+                "kernel_dsv4_shared_gate_up_swiglu_q8_0_exact_rows_2";
+                break;
+            case 3u: function_name =
+                "kernel_dsv4_shared_gate_up_swiglu_q8_0_exact_rows_3";
+                break;
+            case 4u: function_name =
+                "kernel_dsv4_shared_gate_up_swiglu_q8_0_exact_rows_4";
+                break;
+            case 5u: function_name =
+                "kernel_dsv4_shared_gate_up_swiglu_q8_0_exact_rows_5";
+                break;
+            default: return 0;
+        }
+
+        ds4_gpu_q8_0_matvec_args args =
+            ds4_gpu_make_q8_0_mv_args(in_dim, out_dim);
+        args.ne11 = (int32_t)n_rows;
+        args.nb12 = in_dim * n_rows * sizeof(float);
+        args.nb13 = args.nb12;
+        args.ne1 = (int32_t)n_rows;
+        ds4_gpu_mv_dispatch dispatch = ds4_gpu_make_q8_0_mv_dispatch();
+        args.nr0 = dispatch.nr0;
+        id<MTLComputePipelineState> pipeline =
+            ds4_gpu_get_mul_mv_pipeline(function_name, dispatch.nsg);
+        if (!pipeline) return 0;
+
+        int owned = 0;
+        id<MTLCommandBuffer> cb = ds4_gpu_command_buffer(&owned);
+        if (!cb) return 0;
+        id<MTLComputeCommandEncoder> enc = ds4_gpu_compute_encoder(cb);
+        [enc setComputePipelineState:pipeline];
+        [enc setBytes:&args length:sizeof(args) atIndex:0];
+        [enc setBuffer:gate_wbuf offset:(NSUInteger)gate_inner atIndex:1];
+        [enc setBuffer:up_wbuf offset:(NSUInteger)up_inner atIndex:2];
+        [enc setBuffer:xbuf offset:ds4_gpu_tensor_offset(x) atIndex:3];
+        [enc setBuffer:gatebuf offset:ds4_gpu_tensor_offset(gate) atIndex:4];
+        [enc setBuffer:upbuf offset:ds4_gpu_tensor_offset(up) atIndex:5];
+        [enc setBuffer:midbuf offset:ds4_gpu_tensor_offset(mid) atIndex:6];
+        [enc setBytes:&clamp length:sizeof(clamp) atIndex:7];
+        [enc setThreadgroupMemoryLength:2u * dispatch.smem atIndex:0];
+        [enc dispatchThreadgroups:MTLSizeMake(
+                 ((NSUInteger)out_dim + (NSUInteger)dispatch.nr0 - 1u) /
+                     (NSUInteger)dispatch.nr0,
+                 1,
+                 1)
+             threadsPerThreadgroup:MTLSizeMake(
+                 32, (NSUInteger)dispatch.nsg, 1)];
+        ds4_gpu_end_compute_encoder(cb, enc);
+
+        return ds4_gpu_finish_command_buffer(
+            cb, owned, "Q8_0 exact-row shared expert gate/up");
+    }
+}
+
 int ds4_gpu_matmul_f16_tensor(
         ds4_gpu_tensor       *out,
         const void             *model_map,

@@ -33,6 +33,7 @@ serial_q8_rows_runtime=${DS4_TEST_DSPARK_SERIAL_Q8_ROWS_RUNTIME:-0}
 attn_inv_rope_fused=${DS4_TEST_DSPARK_ATTN_INV_ROPE_FUSED:-0}
 exact_prefix_checkpoint=${DS4_TEST_DSPARK_EXACT_PREFIX_CHECKPOINT:-default}
 exact_q2_down_batch=${DS4_TEST_DSPARK_EXACT_Q2_DOWN_BATCH:-0}
+exact_shared_q8_rows=${DS4_TEST_DSPARK_EXACT_SHARED_Q8_ROWS:-0}
 ffn_batch_observer_layer=${DS4_DSPARK_EXACT_FFN_BATCH_OBSERVER_LAYER:-}
 attn_pre_observer_layer=${DS4_DSPARK_EXACT_ATTN_PRE_BATCH_OBSERVER_LAYER:-}
 attn_suffix_observer_layer=${DS4_DSPARK_EXACT_ATTN_SUFFIX_BATCH_OBSERVER_LAYER:-}
@@ -46,6 +47,8 @@ unset DS4_DSPARK_EXACT_ATTN_INV_ROPE_FUSED_OBSERVER_LAYER
 unset DS4_DSPARK_EXACT_PREFIX_CHECKPOINT
 unset DS4_DSPARK_EXACT_Q2_DOWN_BATCH
 unset DS4_DSPARK_EXACT_Q2_DOWN_BATCH_TRACE
+unset DS4_DSPARK_EXACT_SHARED_Q8_ROWS
+unset DS4_DSPARK_EXACT_SHARED_Q8_ROWS_TRACE
 unset DS4_DSPARK_ACCEPTANCE_AUDIT
 unset DS4_DSPARK_ACCEPTANCE_TRACE
 unset DS4_DSPARK_CONFIDENCE_THRESHOLD
@@ -266,6 +269,16 @@ if [[ $exact_q2_down_batch == 1 &&
     printf 'exact Q2 down batching requires exact runtime verification\n' >&2
     exit 2
 fi
+if [[ $exact_shared_q8_rows != 0 && $exact_shared_q8_rows != 1 ]]; then
+    printf 'DS4_TEST_DSPARK_EXACT_SHARED_Q8_ROWS must be 0 or 1\n' >&2
+    exit 2
+fi
+if [[ $exact_shared_q8_rows == 1 &&
+      ($mode != runtime || $fast_verify_runtime == 1 ||
+       $serial_ffn_runtime == 1) ]]; then
+    printf 'exact shared Q8 rows require batched exact FFN verification\n' >&2
+    exit 2
+fi
 if [[ -n $attn_suffix_observer_layer &&
       ($mode != runtime || $fast_verify_runtime == 1) ]]; then
     printf 'attention-suffix observer requires exact runtime verification\n' >&2
@@ -362,6 +375,12 @@ case "$mode" in
             gpu_env+=(
                 DS4_DSPARK_EXACT_Q2_DOWN_BATCH=1
                 DS4_DSPARK_EXACT_Q2_DOWN_BATCH_TRACE=1
+            )
+        fi
+        if [[ $exact_shared_q8_rows == 1 ]]; then
+            gpu_env+=(
+                DS4_DSPARK_EXACT_SHARED_Q8_ROWS=1
+                DS4_DSPARK_EXACT_SHARED_Q8_ROWS_TRACE=1
             )
         fi
         ;;
@@ -561,6 +580,33 @@ assert_gpu_selected() {
             fi
         elif grep -q 'DSpark exact Q2 down batch layer=' "$log"; then
             printf 'control mode unexpectedly ran exact Q2 down batching\n' >&2
+            exit 1
+        fi
+        if [[ $exact_shared_q8_rows == 1 &&
+              $verifier_batches_expected == 1 ]]; then
+            local shared_q8_records shared_q8_gate shared_q8_down
+            shared_q8_records=$(grep \
+                'DSpark exact shared Q8 rows layer=' "$log")
+            if [[ -z $shared_q8_records ]] ||
+               printf '%s\n' "$shared_q8_records" |
+                   grep -Evq \
+                       ' layer=[0-9][0-9]* width=[2-5] stage=(gate_up|down) result=pass$'; then
+                printf 'exact shared Q8 rows drifted or failed\n' >&2
+                printf '%s\n' "$shared_q8_records" >&2
+                exit 1
+            fi
+            shared_q8_gate=$(printf '%s\n' "$shared_q8_records" |
+                grep -c ' stage=gate_up result=pass$')
+            shared_q8_down=$(printf '%s\n' "$shared_q8_records" |
+                grep -c ' stage=down result=pass$')
+            if [[ $shared_q8_gate -eq 0 ||
+                  $shared_q8_gate -ne $shared_q8_down ]]; then
+                printf 'exact shared Q8 row stages were incomplete: %s/%s\n' \
+                    "$shared_q8_gate" "$shared_q8_down" >&2
+                exit 1
+            fi
+        elif grep -q 'DSpark exact shared Q8 rows layer=' "$log"; then
+            printf 'control mode unexpectedly ran exact shared Q8 rows\n' >&2
             exit 1
         fi
         if [[ $attn_inv_rope_fused == 1 ]]; then

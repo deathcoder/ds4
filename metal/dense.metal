@@ -293,6 +293,171 @@ kernel mul_mv_q8_0_f32_exact_rows_t kernel_mul_mv_q8_0_f32_exact_rows_impl<4>;
 template [[host_name("kernel_mul_mv_q8_0_f32_exact_rows_5")]]
 kernel mul_mv_q8_0_f32_exact_rows_t kernel_mul_mv_q8_0_f32_exact_rows_impl<5>;
 
+template<short NROWS>
+kernel void kernel_dsv4_shared_gate_up_swiglu_q8_0_exact_rows_impl(
+        constant ds4_metal_args_mul_mv & args,
+        device const char * src0_gate,
+        device const char * src0_up,
+        device const char * src1,
+        device       char * dst_gate,
+        device       char * dst_up,
+        device       char * dst_mid,
+        constant     float &clamp_value,
+        threadgroup  char * shmem [[threadgroup(0)]],
+        uint3  tgpig [[threadgroup_position_in_grid]],
+        ushort tiisg [[thread_index_in_simdgroup]],
+        ushort sgitg [[simdgroup_index_in_threadgroup]]) {
+    const short NSG = FC_mul_mv_nsg;
+    constexpr short NW = N_SIMDWIDTH;
+    constexpr short NQ = 8;
+    constexpr short NR0 = N_R0_Q8_0;
+
+    const int nb = args.ne00 / QK8_0;
+    const int r0 = tgpig.x * NR0;
+    const int im = tgpig.z;
+    const uint i12 = im % args.ne12;
+    const uint i13 = im / args.ne12;
+
+    device const block_q8_0 * ag[NR0];
+    device const block_q8_0 * au[NR0];
+    FOR_UNROLL (short row = 0; row < NR0; ++row) {
+        const uint64_t offset0 =
+            (r0 + row) * args.nb01 +
+            (i12 / args.r2) * args.nb02 +
+            (i13 / args.r3) * args.nb03;
+        ag[row] = (device const block_q8_0 *)
+            ((device const char *)src0_gate + offset0);
+        au[row] = (device const block_q8_0 *)
+            ((device const char *)src0_up + offset0);
+    }
+
+    const short ix = tiisg / (NW / NQ);
+    const short il = tiisg % (NW / NQ);
+    const int ib0 = sgitg * NQ + ix;
+    device const float * yb[NROWS];
+    float sumg[NROWS][NR0];
+    float sumu[NROWS][NR0];
+    for (short token = 0; token < NROWS; ++token) {
+        const uint64_t offset1 =
+            token * args.nb11 + i12 * args.nb12 + i13 * args.nb13;
+        device const float * y =
+            (device const float *)(src1 + offset1);
+        yb[token] = y + ib0 * QK8_0 + il * NQ;
+        FOR_UNROLL (short row = 0; row < NR0; ++row) {
+            sumg[token][row] = 0.0f;
+            sumu[token][row] = 0.0f;
+        }
+    }
+
+    for (int ib = ib0; ib < nb; ib += NSG * NQ) {
+        float yl[NROWS][NQ];
+        for (short token = 0; token < NROWS; ++token) {
+            FOR_UNROLL (short i = 0; i < NQ; ++i) {
+                yl[token][i] = yb[token][i];
+            }
+        }
+
+        FOR_UNROLL (short row = 0; row < NR0; ++row) {
+            device const int8_t * qg = ag[row][ib].qs + il * NQ;
+            device const int8_t * qu = au[row][ib].qs + il * NQ;
+            int8_t qgl[NQ];
+            int8_t qul[NQ];
+            FOR_UNROLL (short i = 0; i < NQ; ++i) {
+                qgl[i] = qg[i];
+                qul[i] = qu[i];
+            }
+            const float dg = ag[row][ib].d;
+            const float du = au[row][ib].d;
+            for (short token = 0; token < NROWS; ++token) {
+                float sg = 0.0f;
+                float su = 0.0f;
+                FOR_UNROLL (short i = 0; i < NQ; ++i) {
+                    sg += qgl[i] * yl[token][i];
+                    su += qul[i] * yl[token][i];
+                }
+                sumg[token][row] += sg * dg;
+                sumu[token][row] += su * du;
+            }
+        }
+
+        for (short token = 0; token < NROWS; ++token) {
+            yb[token] += NSG * NQ * QK8_0;
+        }
+    }
+
+    threadgroup float * shmem_f32 = (threadgroup float *)shmem;
+    threadgroup float * sh_gate[NR0];
+    threadgroup float * sh_up[NR0];
+    FOR_UNROLL (short row = 0; row < NR0; ++row) {
+        sh_gate[row] = shmem_f32 + NW * row;
+        sh_up[row] = shmem_f32 + NW * (NR0 + row);
+    }
+
+    for (short token = 0; token < NROWS; ++token) {
+        FOR_UNROLL (short row = 0; row < NR0; ++row) {
+            if (sgitg == 0) {
+                sh_gate[row][tiisg] = 0.0f;
+                sh_up[row][tiisg] = 0.0f;
+            }
+            sumg[token][row] = simd_sum(sumg[token][row]);
+            sumu[token][row] = simd_sum(sumu[token][row]);
+        }
+        threadgroup_barrier(mem_flags::mem_threadgroup);
+
+        FOR_UNROLL (short row = 0; row < NR0; ++row) {
+            if (tiisg == 0) {
+                sh_gate[row][sgitg] = sumg[token][row];
+                sh_up[row][sgitg] = sumu[token][row];
+            }
+        }
+        threadgroup_barrier(mem_flags::mem_threadgroup);
+
+        device float * gate_f32 = (device float *)dst_gate +
+            (uint64_t)im * args.ne0 * args.ne1 +
+            (uint64_t)token * args.ne0;
+        device float * up_f32 = (device float *)dst_up +
+            (uint64_t)im * args.ne0 * args.ne1 +
+            (uint64_t)token * args.ne0;
+        device float * mid_f32 = (device float *)dst_mid +
+            (uint64_t)im * args.ne0 * args.ne1 +
+            (uint64_t)token * args.ne0;
+        FOR_UNROLL (short row = 0; row < NR0 && r0 + row < args.ne01; ++row) {
+            const float gate = simd_sum(sh_gate[row][tiisg]);
+            const float up = simd_sum(sh_up[row][tiisg]);
+            if (tiisg == 0 && sgitg == 0) {
+                const uint out_row = r0 + row;
+                gate_f32[out_row] = gate;
+                up_f32[out_row] = up;
+                float g = gate;
+                float u = up;
+                if (clamp_value > 1.0e-6f) {
+                    g = min(g, clamp_value);
+                    u = clamp(u, -clamp_value, clamp_value);
+                }
+                const float silu = g / (1.0f + exp(-g));
+                mid_f32[out_row] = silu * u;
+            }
+        }
+        threadgroup_barrier(mem_flags::mem_threadgroup);
+    }
+}
+
+typedef decltype(kernel_dsv4_shared_gate_up_swiglu_q8_0_exact_rows_impl<2>)
+    dsv4_shared_gate_up_swiglu_q8_0_exact_rows_t;
+
+template [[host_name("kernel_dsv4_shared_gate_up_swiglu_q8_0_exact_rows_2")]]
+kernel dsv4_shared_gate_up_swiglu_q8_0_exact_rows_t
+    kernel_dsv4_shared_gate_up_swiglu_q8_0_exact_rows_impl<2>;
+template [[host_name("kernel_dsv4_shared_gate_up_swiglu_q8_0_exact_rows_3")]]
+kernel dsv4_shared_gate_up_swiglu_q8_0_exact_rows_t
+    kernel_dsv4_shared_gate_up_swiglu_q8_0_exact_rows_impl<3>;
+template [[host_name("kernel_dsv4_shared_gate_up_swiglu_q8_0_exact_rows_4")]]
+kernel dsv4_shared_gate_up_swiglu_q8_0_exact_rows_t
+    kernel_dsv4_shared_gate_up_swiglu_q8_0_exact_rows_impl<4>;
+template [[host_name("kernel_dsv4_shared_gate_up_swiglu_q8_0_exact_rows_5")]]
+kernel dsv4_shared_gate_up_swiglu_q8_0_exact_rows_t
+    kernel_dsv4_shared_gate_up_swiglu_q8_0_exact_rows_impl<5>;
+
 // Decode shared-expert gate/up projections followed by SwiGLU:
 //
 //     mid = silu(min(gate, limit)) * clamp(up, -limit, limit)

@@ -19890,13 +19890,69 @@ static bool metal_graph_encode_layer_attention_batch(
     return ok;
 }
 
+static bool metal_graph_exact_shared_q8_rows_enabled(void) {
+    static bool initialized;
+    static bool enabled;
+    if (!initialized) {
+        const char *value =
+            getenv("DS4_DSPARK_EXACT_SHARED_Q8_ROWS");
+        enabled = value && value[0] &&
+            strcmp(value, "0") != 0 &&
+            strcasecmp(value, "off") != 0;
+        initialized = true;
+    }
+    return enabled;
+}
+
+static bool metal_graph_exact_shared_q8_rows_trace_enabled(void) {
+    static bool initialized;
+    static bool enabled;
+    if (!initialized) {
+        enabled =
+            getenv("DS4_DSPARK_EXACT_SHARED_Q8_ROWS_TRACE") != NULL;
+        initialized = true;
+    }
+    return enabled;
+}
+
 static bool metal_graph_shared_gate_up_swiglu_decode_rows(
         ds4_gpu_graph          *g,
         const ds4_model        *model,
         const ds4_layer_weights *layer,
-        uint32_t                n_tokens) {
+        uint32_t                n_tokens,
+        uint32_t                il) {
 #ifdef __APPLE__
     const uint64_t shared_dim = layer->ffn_gate_shexp->dim[1];
+    const bool exact_batch =
+        metal_graph_exact_shared_q8_rows_enabled() &&
+        layer->ffn_gate_shexp->type == DS4_TENSOR_Q8_0 &&
+        layer->ffn_up_shexp->type == DS4_TENSOR_Q8_0 &&
+        n_tokens >= 2u && n_tokens <= 5u;
+    if (exact_batch) {
+        const bool ok =
+            ds4_gpu_shared_gate_up_swiglu_q8_0_exact_rows_tensor(
+                g->batch_shared_gate,
+                g->batch_shared_up,
+                g->batch_shared_mid,
+                model->map,
+                model->size,
+                layer->ffn_gate_shexp->abs_offset,
+                layer->ffn_up_shexp->abs_offset,
+                DS4_N_EMBD,
+                shared_dim,
+                g->batch_ffn_norm,
+                n_tokens,
+                DS4_SWIGLU_CLAMP_EXP) != 0;
+        if (metal_graph_exact_shared_q8_rows_trace_enabled()) {
+            fprintf(stderr,
+                    "ds4: DSpark exact shared Q8 rows layer=%u width=%u "
+                    "stage=gate_up result=%s\n",
+                    il,
+                    n_tokens,
+                    ok ? "pass" : "fail");
+        }
+        return ok;
+    }
     bool ok = true;
     for (uint32_t row = 0; ok && row < n_tokens; row++) {
         ds4_gpu_tensor *gate = ds4_gpu_tensor_view(
@@ -19939,6 +19995,7 @@ static bool metal_graph_shared_gate_up_swiglu_decode_rows(
     (void)model;
     (void)layer;
     (void)n_tokens;
+    (void)il;
     return false;
 #endif
 }
@@ -19947,9 +20004,34 @@ static bool metal_graph_shared_down_decode_rows(
         ds4_gpu_graph           *g,
         const ds4_model         *model,
         const ds4_layer_weights *layer,
-        uint32_t                 n_tokens) {
+        uint32_t                 n_tokens,
+        uint32_t                 il) {
 #ifdef __APPLE__
     const uint64_t shared_dim = layer->ffn_down_shexp->dim[0];
+    const bool exact_batch =
+        metal_graph_exact_shared_q8_rows_enabled() &&
+        layer->ffn_down_shexp->type == DS4_TENSOR_Q8_0 &&
+        n_tokens >= 2u && n_tokens <= 5u;
+    if (exact_batch) {
+        const bool ok = ds4_gpu_matmul_q8_0_exact_rows_tensor(
+            g->batch_shared_out,
+            model->map,
+            model->size,
+            layer->ffn_down_shexp->abs_offset,
+            shared_dim,
+            DS4_N_EMBD,
+            g->batch_shared_mid,
+            n_tokens) != 0;
+        if (metal_graph_exact_shared_q8_rows_trace_enabled()) {
+            fprintf(stderr,
+                    "ds4: DSpark exact shared Q8 rows layer=%u width=%u "
+                    "stage=down result=%s\n",
+                    il,
+                    n_tokens,
+                    ok ? "pass" : "fail");
+        }
+        return ok;
+    }
     bool ok = true;
     for (uint32_t row = 0; ok && row < n_tokens; row++) {
         ds4_gpu_tensor *out = ds4_gpu_tensor_view(
@@ -19979,6 +20061,7 @@ static bool metal_graph_shared_down_decode_rows(
     (void)model;
     (void)layer;
     (void)n_tokens;
+    (void)il;
     return false;
 #endif
 }
@@ -20392,7 +20475,8 @@ static bool metal_graph_encode_layer_ffn_batch(
             ok = metal_graph_shared_gate_up_swiglu_decode_rows(g, \
                                                                 model, \
                                                                 layer, \
-                                                                n_tokens); \
+                                                                n_tokens, \
+                                                                il); \
         } else if (ok) { \
             ok = metal_graph_matmul_q8_0_named_tensor("shared_gate", \
                                                           il, \
@@ -20424,7 +20508,7 @@ static bool metal_graph_encode_layer_ffn_batch(
                                              1.0f) != 0; \
         DS4_METAL_TRY_SHARED_DOWN_F16(); \
         if (ok && exact_shared_down) { \
-            ok = metal_graph_shared_down_decode_rows(g, model, layer, n_tokens); \
+            ok = metal_graph_shared_down_decode_rows(g, model, layer, n_tokens, il); \
         } else if (ok && !shared_down_f16) ok = metal_graph_matmul_q8_0_named_tensor("shared_down", \
                                                                               il, \
                                                                               pos0, \
