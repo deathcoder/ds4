@@ -20,7 +20,7 @@ class DSparkThreshold075WidthLayerProfileTests(unittest.TestCase):
         self.assertEqual(profile.WIDTHS, (2, 3, 4, 5))
         self.assertEqual(
             profile.CUMULATIVE_COST_SOURCE_COMMIT,
-            "80ce67c00fb43e69a38893db03e589c67193ec50",
+            "2863d7e26efcfd3e419691b2ae3d0547952eb886",
         )
 
     def test_cost_reference_contracts_distinguish_post_promotion(self):

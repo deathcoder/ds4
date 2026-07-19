@@ -25,7 +25,7 @@ THRESHOLD = cost_audit.THRESHOLD
 TASK = "humaneval_079"
 LAYERS = (0, 21, 42)
 WIDTHS = (2, 3, 4, 5)
-CUMULATIVE_COST_SOURCE_COMMIT = "80ce67c00fb43e69a38893db03e589c67193ec50"
+CUMULATIVE_COST_SOURCE_COMMIT = "2863d7e26efcfd3e419691b2ae3d0547952eb886"
 LEGACY_COST_CONTRACT = (
     "dspark_humaneval_threshold075_exact_verifier_cost",
     "dspark_humaneval_threshold075_exact_verifier_cost",

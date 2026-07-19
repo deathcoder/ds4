@@ -72,11 +72,19 @@ improving and a `0.9513x` minimum movement. Treat the isolated prebatch gate as
 the causal evidence and this cross-session cumulative change as supportive.
 The runtime is closer, but still below the `0.95x` near-parity boundary.
 
-Phase 1.46 is prepared. The stats-only cumulative cost audit is repinned to the
-clean Phase 1.45 artifact at commit `8ee89c2`. It will collect one instrumented
-exact-runtime process per HumanEval task, require every output to match the
-frozen cumulative artifact byte-for-byte, and recalculate target-verifier,
-sidecar, residual, and verifier-width costs before another candidate is chosen.
+Phase 1.46 is complete. The refreshed audit accounts for the `0.8993x` runtime
+as `36.356 ms/emitted` target verification, `7.596 ms/emitted` sidecar, and
+`0.742 ms/emitted` residual. Target verification remains dominant at `81.3%`;
+parity requires a calibrated `12.4%` target-time reduction. Width 5 consumes
+`54.7%` of target time at `33.359 ms/position`, while width 1 costs
+`40.245 ms/position` and consumes `18.8%` of target time.
+
+Phase 1.47 is prepared. The width-stratified exact-layer profiler is repinned
+to the clean Phase 1.46 cost artifact at commit `2863d7e`. It will sample
+attention preparation, serial attention tail, and exact FFN at layers 0, 21,
+and 42, grouped by verifier widths 2 through 5. The next runtime candidate must
+follow this post-compressor-prebatch profile rather than the stale Phase 1.40
+stage split.
 
 Phase 1.27 is complete. The cumulative 32-task HumanEval reassessment measured
 current exact DSpark at a `0.8826x` geometric paired ratio versus ordinary
@@ -11261,3 +11269,81 @@ Decision boundary:
 - Use the refreshed target, sidecar, residual, and width accounting to choose
   the next candidate. Do not reuse the Phase 1.39 cost split after compressor
   projection scheduling changed.
+
+Cost result:
+
+- User-run artifact:
+  `speed-bench/local-runs/humaneval-cumulative-cost-20260719-225512` at clean
+  commit `2863d7e`.
+- Every stats runtime output matched the frozen Phase 1.45 cumulative artifact
+  byte-for-byte.
+- Frozen baseline budget: `40.175 ms/emitted`; current DSpark budget:
+  `44.694 ms/emitted`; deficit: `4.520 ms/emitted`.
+- Fresh components account for `36.356 ms/emitted` target verification,
+  `7.596 ms/emitted` generation sidecar, and `0.742 ms/emitted` residual.
+- Target verification is `81.3%` of runtime; sidecar is `17.0%`. The
+  end-to-end-calibrated target scale for parity is `0.876x`, or a `12.4%`
+  reduction. Component-only accounting implies a `10.4%` reduction.
+- Target workload is `0.3854` evaluations per emitted token and `2.706`
+  positions per evaluation. The schedule remains 760 attempts, 684 full and
+  76 partial, with zero fallbacks.
+- Width 5 represents 421 evaluations and `54.7%` of target time at
+  `33.359 ms/position`. Width 1 represents 600 evaluations and `18.8%` of
+  target time at `40.245 ms/position`.
+- Scheduler widths 0 and 1 total 502 rounds while still costing roughly
+  `19.7 ms` of sidecar per round. This remains a secondary opportunity, but
+  target verification is the larger and currently better-attributed surface.
+- Sidecar outside the scheduler is `617.597 ms` across all processes. Prefill
+  sidecar totals `1175.571 ms`; neither value is used as throughput evidence.
+
+Comparison with Phase 1.39:
+
+- Target cost fell from `38.298` to `36.356 ms/emitted` (`0.949x`).
+- Sidecar fell from `7.881` to `7.596 ms/emitted` (`0.964x`).
+- Width-5 target cost fell from `35.561` to `33.359 ms/position` (`0.938x`).
+- Width-1 target cost fell only from `40.942` to `40.245 ms/position`
+  (`0.983x`), consistent with compressor projection prebatch primarily
+  benefiting wider verifier batches.
+- The calibrated target reduction needed for parity improved from `14.6%` to
+  `12.4%`, but target verification still occupies essentially the same share
+  of runtime.
+
+Decision:
+
+- Continue optimizing exact multi-row target verification. The promotion
+  worked, but did not change the dominant bottleneck class.
+- Refresh the width-layer profile before selecting the next candidate because
+  compressor prebatch directly changed the serial attention-tail schedule.
+
+## Phase 1.47: post-prebatch width-layer profile repinned
+
+Preparation:
+
+- Updated `CUMULATIVE_COST_SOURCE_COMMIT` in
+  `speed-bench/run_dspark_threshold075_width_layer_profile.py` to the clean
+  Phase 1.46 cost-audit commit
+  `2863d7e26efcfd3e419691b2ae3d0547952eb886`.
+- The existing profiler still requires the Phase 1.45 throughput artifact and
+  now cross-validates the Phase 1.46 cost artifact, including exact task-079
+  width counts and every structural runtime counter.
+- It profiles layers 0, 21, and 42 in three separate synchronized processes,
+  groups attention-pre, serial-tail, and FFN events by actual verifier width,
+  and requires byte-exact output against the frozen cumulative artifact.
+- A real dry run accepted both new references and printed only the three
+  intended profile commands. No prompt was materialized and no model ran.
+
+User-run command:
+
+```sh
+python3 speed-bench/run_dspark_threshold075_width_layer_profile.py \
+  --throughput-reference \
+  speed-bench/local-runs/humaneval-cumulative-throughput-32-20260719-223901/summary.json \
+  --cost-reference \
+  speed-bench/local-runs/humaneval-cumulative-cost-20260719-225512/summary.json \
+  --confirm-ready
+```
+
+Decision boundary:
+
+- Use stable width-5 medians to choose the next verifier candidate. Widths 2
+  and 3 have sparse observations and remain directional only.
