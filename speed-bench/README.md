@@ -1238,7 +1238,8 @@ non-thinking Metal decode: no sidecar, DSpark runtime, stats, traces,
 diagnostics, or profiler. Every `DS4_*` environment variable is cleared, both
 binaries must reproduce the frozen output byte-for-byte, measured order
 alternates by task, and two balanced warmup pairs are excluded. The complete
-run is 68 model processes.
+run is 68 model processes. Each binary runs from its own source worktree
+because ds4 compiles relative `metal/*.metal` sources at startup.
 
 When the machine is ready, run:
 

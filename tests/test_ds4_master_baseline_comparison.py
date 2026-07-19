@@ -16,6 +16,7 @@ def args():
     return SimpleNamespace(
         current_binary=Path("/tmp/current-ds4"),
         upstream_binary=Path("/tmp/upstream-ds4"),
+        upstream_source=Path("/tmp/upstream-source"),
         model=Path("/tmp/model.gguf"),
         ctx=16384,
         tokens=128,
@@ -57,6 +58,21 @@ class Ds4MasterBaselineComparisonTests(unittest.TestCase):
         self.assertIn("--backend metal", upstream)
         self.assertNotIn("--dspark", upstream)
         self.assertNotIn("--dspark", current)
+
+    def test_each_binary_uses_its_own_source_working_directory(self):
+        root = Path("/tmp/current-source")
+        self.assertEqual(
+            comparison.working_directory_for_mode(
+                args(), root, "upstream_main"
+            ),
+            Path("/tmp/upstream-source"),
+        )
+        self.assertEqual(
+            comparison.working_directory_for_mode(
+                args(), root, "current_branch"
+            ),
+            root,
+        )
 
     def test_environment_clears_ds4_instrumentation(self):
         env = comparison.mode_env()

@@ -10482,11 +10482,30 @@ Ordinary-decode comparison prepared:
 - A real dry run accepted the frozen reference, printed 32 schedules and 68
   processes, and confirmed the two commands use distinct binaries with no
   DSpark flag. It materialized no prompt and ran no model.
-- Python compilation and the six targeted harness tests passed. All 148
-  existing DSpark model-free tests also passed, for 154 model-free tests across
+- Python compilation and the seven targeted harness tests passed. All 148
+  existing DSpark model-free tests also passed, for 155 model-free tests across
   the two suites.
 - `make -j4 ds4` confirmed the current binary is up to date, and
   `git diff --check` passed.
+
+First-run correction:
+
+- Artifact `ds4-master-baseline-32-20260719-183948` stopped during the first
+  upstream warmup, before any measured row. The upstream process exited with
+  signal 6 while creating
+  `kernel_dsv4_indexed_mixed_attention_heads8`.
+- This was a harness isolation bug, not an upstream model failure. ds4 loads
+  and compiles relative `metal/*.metal` files at runtime. The harness launched
+  both binaries with the current branch as their working directory, combining
+  the upstream host binary with newer current-branch Metal source. The newer
+  kernel requires function-constant specialization that the old host did not
+  request.
+- Each mode now runs from its own source worktree: upstream from
+  `/Users/deathcodevision/dev/ds4-master-baseline`, current from
+  `/Users/deathcodevision/dev/ds4`. Commands and metadata record the working
+  directory, and a model-free regression test freezes this requirement.
+- The failed artifact contains no usable timing result and must not be
+  summarized or compared.
 
 User-run command:
 

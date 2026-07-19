@@ -181,6 +181,14 @@ def binary_for_mode(args, mode):
     raise ValueError(f"unknown baseline comparison mode: {mode}")
 
 
+def working_directory_for_mode(args, root, mode):
+    if mode == "upstream_main":
+        return args.upstream_source
+    if mode == "current_branch":
+        return root
+    raise ValueError(f"unknown baseline comparison mode: {mode}")
+
+
 def command(args, prompt, mode):
     return [
         str(binary_for_mode(args, mode)),
@@ -208,6 +216,7 @@ def execute(args, root, run_dir, label, record, prompt, mode, expected):
     stderr_path = run_dir / f"{label}.{record['label']}.{mode}.stderr"
     print(
         f"[{label}/{record['label']}] {mode}: "
+        f"(cwd {working_directory_for_mode(args, root, mode)}) "
         f"{command_text(args, prompt, mode)}",
         flush=True,
     )
@@ -215,7 +224,7 @@ def execute(args, root, run_dir, label, record, prompt, mode, expected):
     with stdout_path.open("wb") as out, stderr_path.open("wb") as err:
         completed = subprocess.run(
             command(args, prompt, mode),
-            cwd=root,
+            cwd=working_directory_for_mode(args, root, mode),
             env=mode_env(),
             stdout=out,
             stderr=err,
@@ -456,8 +465,10 @@ def main():
         prompt = prompts[record["label"]]
         print(
             f"{record['label']} measured order: {' -> '.join(order)}\n"
-            f"  upstream: {command_text(args, prompt, 'upstream_main')}\n"
-            f"  current: {command_text(args, prompt, 'current_branch')}"
+            f"  upstream (cwd {args.upstream_source}): "
+            f"{command_text(args, prompt, 'upstream_main')}\n"
+            f"  current (cwd {root}): "
+            f"{command_text(args, prompt, 'current_branch')}"
         )
     warmups = warmup_schedule(records)
     total = len(warmups) * 2 + len(records) * 2
@@ -509,7 +520,10 @@ def main():
         },
         "commands": {
             record["label"]: {
-                mode: command_text(args, prompts[record["label"]], mode)
+                mode: {
+                    "cwd": str(working_directory_for_mode(args, root, mode)),
+                    "command": command_text(args, prompts[record["label"]], mode),
+                }
                 for mode in MODES
             }
             for record in records
