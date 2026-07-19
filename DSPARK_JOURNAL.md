@@ -65,6 +65,13 @@ This is directionally consistent with attacking only the routed gate/up share,
 but is too small to promote from one short prompt. Next run a frozen 32-task
 threshold-0.75 HumanEval default-versus-hybrid gate before changing defaults.
 
+Phase 1.33 is prepared and awaiting the user-run 32-task HumanEval routed-MoE
+hybrid confirmation. The harness pairs current default exact against the
+default-off hybrid within each frozen threshold-`0.75` task, alternates order,
+excludes four balanced warmup processes, and validates every output against the
+frozen exact artifact. Promotion requires at least `1.005x` geometric mean,
+`20/32` wins, no task below `0.95x`, and nonnegative low-acceptance movement.
+
 Phase 1.05 is complete. The frozen 32-task HumanEval gate measured a `0.8081x`
 median paired DSpark/baseline ratio and `0.7910x` geometric mean on the
 promoted scheduler plus exact prefix-checkpoint runtime. This improves over the
@@ -10241,3 +10248,58 @@ Decision:
   baseline-versus-DSpark HumanEval assessment. If it fails, keep the code
   available for attribution but do not stack its microbenchmark result into
   the current `0.8826x` end-to-end figure.
+
+## Phase 1.33: HumanEval routed-MoE hybrid gate prepared
+
+New harness:
+
+- Added `speed-bench/run_dspark_humaneval_routed_moe_hybrid.py`.
+- Added model-free tests in
+  `tests/test_dspark_humaneval_routed_moe_hybrid.py`.
+- The harness reuses the frozen deterministic 32-task selection, prompts,
+  acceptance labels, and exact outputs from the threshold-`0.75` HumanEval
+  study.
+- Each task receives one uninstrumented current-default/hybrid pair. Odd tasks
+  run default first; even tasks run hybrid first.
+- Two global warmup pairs use opposite mode orders and are excluded from every
+  reported statistic. The complete invocation count is `68`: four warmup and
+  `64` measured processes.
+- Both arms use Metal, exact DSpark, multi-commit, confidence threshold `0.75`,
+  non-thinking mode, greedy decoding, context `16384`, and `128` output tokens.
+- The hybrid arm adds only
+  `DS4_DSPARK_EXACT_ROUTED_MOE_HYBRID=1`.
+- Every default and hybrid output must match the frozen exact task output
+  byte-for-byte. Stats, acceptance audit, traces, diagnostics, profilers, and
+  fast verification are forbidden.
+
+Predeclared promotion gate:
+
+- Geometric hybrid/default paired ratio at least `1.005x`.
+- At least `20/32` tasks faster with the hybrid.
+- No task paired ratio below `0.95x`.
+- For tasks whose prior verify rate is at most `0.65`, geometric
+  hybrid/default ratio at least `1.00x`.
+- These thresholds were frozen after the focused `+1.6%` result but before any
+  HumanEval hybrid process was executed.
+
+Validation:
+
+- Python compilation passed.
+- Six targeted tests cover constants, balanced order, environment isolation,
+  Metal command construction, passing aggregation, and subthreshold failure.
+- All `147` DSpark model-free tests passed.
+- The real dry run accepted the frozen reference and corpus, printed exactly
+  `32` measured task schedules, and reported `68` total processes.
+- Inspection of the dry-run commands confirms the candidate switch appears
+  only in the hybrid arm and no instrumentation is enabled.
+- No prompt was materialized and no model process was run.
+- `git diff --check` passed.
+
+User-run command:
+
+```sh
+python3 speed-bench/run_dspark_humaneval_routed_moe_hybrid.py \
+  --throughput-reference \
+  speed-bench/local-runs/humaneval-threshold075-throughput-32-20260716-155112/summary.json \
+  --confirm-idle
+```
