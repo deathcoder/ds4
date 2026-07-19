@@ -58,13 +58,12 @@ mid exact through width 5 and localized width-5 drift to down/sum. Next build
 an opt-in hybrid correctness candidate that batches gate/up and activation but
 preserves the exact one-row direct six-expert down/sum arithmetic.
 
-Phase 1.32 is prepared and awaiting the user-run exact routed-MoE hybrid
-ablation. The default-off Metal candidate reuses the existing batched gate/up
-and F32 weighted activation, then encodes the proven one-token direct Q2_K
-six-expert down/sum once per proposal row. Generated output and selected-layer
-FFN internals are exact across the correctness matrix at layers `0`, `30`, and
-`42`. The paired ablation is uninstrumented and compares current default exact
-execution against only this hybrid switch.
+Phase 1.32 is complete. The default-off exact routed-MoE hybrid improved the
+focused uninstrumented microbenchmark by `1.0158x` ratio of medians and
+`1.0149x` median paired, with all three pairs faster and byte-identical output.
+This is directionally consistent with attacking only the routed gate/up share,
+but is too small to promote from one short prompt. Next run a frozen 32-task
+threshold-0.75 HumanEval default-versus-hybrid gate before changing defaults.
 
 Phase 1.05 is complete. The frozen 32-task HumanEval gate measured a `0.8081x`
 median paired DSpark/baseline ratio and `0.7910x` geometric mean on the
@@ -10207,3 +10206,38 @@ python3 speed-bench/run_dspark_comparison.py \
   --exact-routed-moe-hybrid-ablation \
   --confirm-idle
 ```
+
+Result:
+
+- Artifact: `speed-bench/local-runs/20260719-162309`.
+- Clean source commit: `7491c0761bbad8b13f1913ff59badf7b55a83445`.
+- Default exact median: `24.74 t/s`.
+- Routed-MoE hybrid median: `25.13 t/s`.
+- Ratio of medians: `1.0158x`; median paired ratio: `1.0149x`, or
+  `+1.6%`.
+- Every measured output used the same SHA-256. No runtime stats, diagnostics,
+  trace, or profiler was enabled.
+- All three paired ratios favored the hybrid:
+  - pair 1: `1.0113x`;
+  - pair 2: `1.0227x`;
+  - pair 3: `1.0149x`.
+- The final thermal snapshot reported no thermal or performance warning.
+
+Decision:
+
+- Retain the hybrid as default-off. The focused result is consistent and worth
+  carrying forward, but a `1.6%` gain is too small for promotion from one
+  prompt and six measured processes.
+- Confirm on the frozen 32-task threshold-`0.75` HumanEval workload, pairing
+  current default exact against the hybrid within every task and validating
+  both against the frozen exact output.
+- Predeclare a modest but nonzero promotion gate appropriate to the focused
+  effect size:
+  - geometric hybrid/default ratio at least `1.005x`;
+  - at least `20/32` tasks faster;
+  - no task below `0.95x`;
+  - low-acceptance subgroup geometric mean at least `1.00x`.
+- If the gate passes, promote the hybrid and then rerun the cumulative
+  baseline-versus-DSpark HumanEval assessment. If it fails, keep the code
+  available for attribution but do not stack its microbenchmark result into
+  the current `0.8826x` end-to-end figure.
