@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Model-free tests for the exact routed-MoE hybrid candidate."""
+"""Model-free tests for the promoted exact routed-MoE hybrid."""
 
 from pathlib import Path
 from types import SimpleNamespace
@@ -40,65 +40,73 @@ def args():
 
 
 class ExactRoutedMoEHybridTests(unittest.TestCase):
-    def test_ablation_compares_default_with_hybrid(self):
+    def test_ablation_compares_legacy_with_promoted_default(self):
         self.assertEqual(
             comparison.benchmark_modes(args()),
-            ("default_exact", "exact_routed_moe_hybrid"),
+            ("legacy_routed_moe_rows", "default_exact"),
         )
         self.assertFalse(comparison.throughput_runtime_stats_enabled(args()))
 
-    def test_only_candidate_enables_hybrid(self):
+    def test_only_reference_disables_promoted_hybrid(self):
         reference = comparison.clean_dspark_env(
-            "default_exact", runtime_stats=False
+            "legacy_routed_moe_rows", runtime_stats=False
         )
         candidate = comparison.clean_dspark_env(
-            "exact_routed_moe_hybrid", runtime_stats=False
+            "default_exact", runtime_stats=False
         )
-        self.assertNotIn("DS4_DSPARK_EXACT_ROUTED_MOE_HYBRID", reference)
         self.assertEqual(
-            candidate["DS4_DSPARK_EXACT_ROUTED_MOE_HYBRID"], "1"
+            reference["DS4_DSPARK_EXACT_ROUTED_MOE_HYBRID"], "0"
         )
+        self.assertNotIn("DS4_DSPARK_EXACT_ROUTED_MOE_HYBRID", candidate)
         self.assertNotIn("DS4_DSPARK_GPU_RUNTIME_STATS", candidate)
 
     def test_commands_are_metal_and_uninstrumented(self):
         reference = comparison.command_text(
-            args(), "default_exact", runtime_stats=False
+            args(), "legacy_routed_moe_rows", runtime_stats=False
         )
         candidate = comparison.command_text(
-            args(), "exact_routed_moe_hybrid", runtime_stats=False
+            args(), "default_exact", runtime_stats=False
         )
-        self.assertNotIn("DS4_DSPARK_EXACT_ROUTED_MOE_HYBRID", reference)
         self.assertIn(
-            "DS4_DSPARK_EXACT_ROUTED_MOE_HYBRID=1", candidate
+            "DS4_DSPARK_EXACT_ROUTED_MOE_HYBRID=0", reference
         )
+        self.assertNotIn("DS4_DSPARK_EXACT_ROUTED_MOE_HYBRID", candidate)
         self.assertIn("--backend metal", candidate)
         self.assertNotIn("DS4_DSPARK_GPU_RUNTIME_STATS", candidate)
 
     def test_summary_reports_paired_gain(self):
         rows = [
-            {"pair": 1, "mode": "default_exact", "generation_tps": 10.0},
             {
                 "pair": 1,
-                "mode": "exact_routed_moe_hybrid",
+                "mode": "legacy_routed_moe_rows",
+                "generation_tps": 10.0,
+            },
+            {
+                "pair": 1,
+                "mode": "default_exact",
                 "generation_tps": 11.0,
             },
             {
                 "pair": 2,
-                "mode": "exact_routed_moe_hybrid",
+                "mode": "default_exact",
                 "generation_tps": 12.0,
             },
-            {"pair": 2, "mode": "default_exact", "generation_tps": 10.0},
+            {
+                "pair": 2,
+                "mode": "legacy_routed_moe_rows",
+                "generation_tps": 10.0,
+            },
         ]
         summary = comparison.summarize(
-            rows, ("default_exact", "exact_routed_moe_hybrid")
+            rows, ("legacy_routed_moe_rows", "default_exact")
         )
         self.assertEqual(
             summary["comparison"], "exact_routed_moe_hybrid_ablation"
         )
         self.assertAlmostEqual(summary["paired_speedup_median"], 1.15)
         report = comparison.format_report(summary)
-        self.assertIn("Routed-MoE Hybrid Ablation", report)
-        self.assertIn("hybrid delta", report)
+        self.assertIn("Hybrid Promotion Confirmation", report)
+        self.assertIn("Promoted hybrid delta", report)
 
     def test_hybrid_keeps_one_row_direct_down_arithmetic(self):
         source = (ROOT / "ds4_metal.m").read_text(encoding="utf-8")
@@ -106,6 +114,14 @@ class ExactRoutedMoEHybridTests(unittest.TestCase):
         self.assertIn("for (uint32_t row = 0; ok && row < n_tokens; row++)", source)
         self.assertIn("ds4_gpu_encode_mul_mv_id_sum6(", source)
         self.assertIn("!exact_down_rows_active", source)
+
+    def test_hybrid_is_default_with_explicit_legacy_opt_out(self):
+        source = (ROOT / "ds4.c").read_text(encoding="utf-8")
+        self.assertIn(
+            "metal_graph_exact_routed_moe_hybrid_enabled()", source
+        )
+        self.assertIn('strcmp(v, "0") != 0', source)
+        self.assertIn('strcasecmp(v, "off") != 0', source)
 
 
 if __name__ == "__main__":

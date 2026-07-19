@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Confirm the exact routed-MoE hybrid on frozen HumanEval."""
+"""Confirm the promoted exact routed-MoE hybrid on frozen HumanEval."""
 
 import argparse
 import datetime as dt
@@ -20,7 +20,7 @@ import run_dspark_issue468_comparison as common
 
 THRESHOLD = "0.75"
 SAMPLE_COUNT = 32
-MODES = ("default_exact", "hybrid")
+MODES = ("legacy_routed_moe_rows", "default_exact")
 MIN_GEOMEAN = 1.005
 MIN_WINS = 20
 MIN_TASK_RATIO = 0.95
@@ -32,8 +32,9 @@ def parse_args():
     root = Path(__file__).resolve().parent.parent
     parser = argparse.ArgumentParser(
         description=(
-            "Compare current exact routed MoE with the gate/up batch plus "
-            "exact-down hybrid on frozen threshold-0.75 HumanEval."
+            "Compare the legacy row-wise exact routed MoE with the promoted "
+            "gate/up batch plus exact-down hybrid on frozen threshold-0.75 "
+            "HumanEval."
         )
     )
     parser.add_argument("--binary", type=Path, default=root / "ds4")
@@ -107,8 +108,8 @@ def mode_env(mode):
         "runtime", False, confidence_threshold=THRESHOLD
     )
     env.pop("DS4_DSPARK_EXACT_ROUTED_MOE_HYBRID", None)
-    if mode == "hybrid":
-        env["DS4_DSPARK_EXACT_ROUTED_MOE_HYBRID"] = "1"
+    if mode == "legacy_routed_moe_rows":
+        env["DS4_DSPARK_EXACT_ROUTED_MOE_HYBRID"] = "0"
     return env
 
 
@@ -191,8 +192,8 @@ def summarize(rows, records, reference):
     samples = {}
     ratios = []
     low_acceptance_ratios = []
-    default_values = []
-    hybrid_values = []
+    legacy_values = []
+    promoted_values = []
     wins = 0
     equals = 0
     for record in records:
@@ -200,13 +201,13 @@ def summarize(rows, records, reference):
         selected = {row["mode"]: row for row in rows if row["prompt"] == task}
         if set(selected) != set(MODES):
             raise RuntimeError(f"incomplete routed-MoE pair for {task}")
-        default = selected["default_exact"]["generation_tps"]
-        hybrid = selected["hybrid"]["generation_tps"]
-        ratio = hybrid / default
+        legacy = selected["legacy_routed_moe_rows"]["generation_tps"]
+        promoted = selected["default_exact"]["generation_tps"]
+        ratio = promoted / legacy
         acceptance = reference["tasks"][task]["acceptance_verify_rate"]
         ratios.append(ratio)
-        default_values.append(default)
-        hybrid_values.append(hybrid)
+        legacy_values.append(legacy)
+        promoted_values.append(promoted)
         if acceptance <= LOW_ACCEPTANCE_MAX:
             low_acceptance_ratios.append(ratio)
         wins += ratio > 1.0
@@ -215,8 +216,8 @@ def summarize(rows, records, reference):
             "source_index": record["source_index"],
             "order": selected["default_exact"]["pair_order"],
             "acceptance_verify_rate": acceptance,
-            "default_generation_tps": default,
-            "hybrid_generation_tps": hybrid,
+            "legacy_generation_tps": legacy,
+            "promoted_generation_tps": promoted,
             "paired_ratio": ratio,
             "delta_percent": (ratio - 1.0) * 100.0,
         }
@@ -234,11 +235,11 @@ def summarize(rows, records, reference):
         "sample_count": len(records),
         "threshold": THRESHOLD,
         "samples": samples,
-        "default_generation_tps_median": statistics.median(default_values),
-        "hybrid_generation_tps_median": statistics.median(hybrid_values),
+        "legacy_generation_tps_median": statistics.median(legacy_values),
+        "promoted_generation_tps_median": statistics.median(promoted_values),
         "ratio_of_medians": (
-            statistics.median(hybrid_values) /
-            statistics.median(default_values)
+            statistics.median(promoted_values) /
+            statistics.median(legacy_values)
         ),
         "paired_ratio_median": statistics.median(ratios),
         "paired_ratio_geometric_mean": geomean,
@@ -246,9 +247,9 @@ def summarize(rows, records, reference):
         "paired_ratio_q3": quartiles[2],
         "paired_ratio_minimum": min(ratios),
         "paired_ratio_maximum": max(ratios),
-        "hybrid_faster_tasks": wins,
-        "hybrid_equal_tasks": equals,
-        "hybrid_slower_tasks": len(records) - wins - equals,
+        "promoted_faster_tasks": wins,
+        "promoted_equal_tasks": equals,
+        "promoted_slower_tasks": len(records) - wins - equals,
         "acceptance_speed_pearson": throughput.pearson_correlation(
             [
                 reference["tasks"][record["label"]]["acceptance_verify_rate"]
@@ -274,51 +275,51 @@ def render_report(summary):
     correlation = summary["acceptance_speed_pearson"]
     correlation_text = "n/a" if correlation is None else f"{correlation:.3f}"
     lines = [
-        "# DSpark HumanEval Exact Routed-MoE Hybrid Confirmation",
+        "# DSpark HumanEval Exact Routed-MoE Hybrid Promotion Confirmation",
         "",
         "All samples are uninstrumented and paired within the same frozen "
         "threshold-0.75 HumanEval task.",
-        "Every default and hybrid output matched the frozen exact artifact "
+        "Every legacy and promoted-default output matched the frozen exact artifact "
         "byte-for-byte.",
         "Generation t/s excludes process startup; paired ratios are authoritative.",
         "",
-        "| samples | default median | hybrid median | ratio of medians | "
-        "median paired | geometric mean | hybrid faster |",
+        "| samples | legacy median | promoted median | ratio of medians | "
+        "median paired | geometric mean | promoted faster |",
         "|---:|---:|---:|---:|---:|---:|---:|",
         f"| {summary['sample_count']} | "
-        f"{summary['default_generation_tps_median']:.2f} t/s | "
-        f"{summary['hybrid_generation_tps_median']:.2f} t/s | "
+        f"{summary['legacy_generation_tps_median']:.2f} t/s | "
+        f"{summary['promoted_generation_tps_median']:.2f} t/s | "
         f"{summary['ratio_of_medians']:.4f}x | "
         f"{summary['paired_ratio_median']:.4f}x | "
         f"{summary['paired_ratio_geometric_mean']:.4f}x | "
-        f"{summary['hybrid_faster_tasks']}/{summary['sample_count']} |",
+        f"{summary['promoted_faster_tasks']}/{summary['sample_count']} |",
         "",
         f"- Paired-ratio interquartile range: "
         f"{summary['paired_ratio_q1']:.4f}x-"
         f"{summary['paired_ratio_q3']:.4f}x.",
         f"- Paired-ratio range: {summary['paired_ratio_minimum']:.4f}x-"
         f"{summary['paired_ratio_maximum']:.4f}x.",
-        f"- Tasks faster/equal/slower with hybrid: "
-        f"{summary['hybrid_faster_tasks']}/"
-        f"{summary['hybrid_equal_tasks']}/"
-        f"{summary['hybrid_slower_tasks']}.",
+        f"- Tasks faster/equal/slower with promoted hybrid: "
+        f"{summary['promoted_faster_tasks']}/"
+        f"{summary['promoted_equal_tasks']}/"
+        f"{summary['promoted_slower_tasks']}.",
         f"- Low-acceptance tasks (verify rate <= {LOW_ACCEPTANCE_MAX:.2f}): "
-        f"{summary['low_acceptance_task_count']}; geometric hybrid/default "
+        f"{summary['low_acceptance_task_count']}; geometric promoted/legacy "
         f"ratio {summary['low_acceptance_geometric_mean']:.4f}x.",
         f"- Descriptive Pearson correlation, acceptance versus paired ratio: "
         f"{correlation_text}.",
         "",
         "## Tasks",
         "",
-        "| task | acceptance | order | default | hybrid | ratio | delta |",
+        "| task | acceptance | order | legacy | promoted | ratio | delta |",
         "|:---|---:|:---|---:|---:|---:|---:|",
     ]
     for task, item in summary["samples"].items():
         lines.append(
             f"| {task} | {item['acceptance_verify_rate']:.3f} | "
             f"{item['order']} | "
-            f"{item['default_generation_tps']:.2f} t/s | "
-            f"{item['hybrid_generation_tps']:.2f} t/s | "
+            f"{item['legacy_generation_tps']:.2f} t/s | "
+            f"{item['promoted_generation_tps']:.2f} t/s | "
             f"{item['paired_ratio']:.4f}x | "
             f"{item['delta_percent']:+.1f}% |"
         )
@@ -337,7 +338,7 @@ def render_report(summary):
         f"`{gate['minimum_low_acceptance_geometric_mean']:.2f}x`.",
         "",
         "- Two global warmup pairs are excluded from every reported value.",
-        "- Measured order alternates default-first and hybrid-first.",
+        "- Measured order alternates legacy-first and promoted-first.",
         "- No DSpark stats, trace, diagnostics, profiler, or fast verifier is enabled.",
     ])
     return "\n".join(lines) + "\n"
@@ -384,8 +385,8 @@ def main():
         prompt = prompts[record["label"]]
         print(
             f"{record['label']} measured order: {' -> '.join(order)}\n"
-            f"  default: {command_text(args, prompt, 'default_exact')}\n"
-            f"  hybrid: {command_text(args, prompt, 'hybrid')}"
+            f"  legacy: {command_text(args, prompt, 'legacy_routed_moe_rows')}\n"
+            f"  promoted: {command_text(args, prompt, 'default_exact')}"
         )
     warmups = warmup_schedule(records)
     total = len(warmups) * 2 + len(records) * 2
@@ -419,8 +420,8 @@ def main():
             "measured_pairs_per_task": 1,
             "alternating_order": True,
             "global_warmup_pairs": len(warmups),
-            "reference_mode": "default_exact",
-            "candidate_mode": "hybrid",
+            "reference_mode": "legacy_routed_moe_rows",
+            "candidate_mode": "default_exact",
         },
         "binary": common.file_metadata(args.binary),
         "base_model": common.file_metadata(args.model),

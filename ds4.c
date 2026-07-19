@@ -20085,6 +20085,12 @@ static bool metal_graph_routed_moe_decode_rows(
 #endif
 }
 
+static bool metal_graph_exact_routed_moe_hybrid_enabled(void) {
+    const char *v = getenv("DS4_DSPARK_EXACT_ROUTED_MOE_HYBRID");
+    return !v || !v[0] ||
+        (strcmp(v, "0") != 0 && strcasecmp(v, "off") != 0);
+}
+
 /* Encode the batched prefill FFN half: HC pre/norm, shared expert, routed
  * experts, sum, and HC post. */
 static bool metal_graph_encode_layer_ffn_batch(
@@ -20516,7 +20522,7 @@ static bool metal_graph_encode_layer_ffn_batch(
 
     const bool exact_routed_hybrid =
         exact_routed_moe &&
-        getenv("DS4_DSPARK_EXACT_ROUTED_MOE_HYBRID") != NULL;
+        metal_graph_exact_routed_moe_hybrid_enabled();
     if (ok && exact_routed_moe && !exact_routed_hybrid) {
         g->batch_routed_mid_is_f16 = false;
         ok = metal_graph_routed_moe_decode_rows(g,

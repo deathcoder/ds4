@@ -208,7 +208,10 @@ def parse_args():
     parser.add_argument(
         "--exact-routed-moe-hybrid-ablation",
         action="store_true",
-        help="compare default exact routed MoE against batched gate/up with exact down rows",
+        help=(
+            "compare legacy row-wise exact routed MoE against the promoted "
+            "batched gate/up with exact down rows"
+        ),
     )
     parser.add_argument(
         "--stats-only",
@@ -307,7 +310,7 @@ def check_inputs(args, root):
 
 def benchmark_modes(args):
     if getattr(args, "exact_routed_moe_hybrid_ablation", False):
-        return ("default_exact", "exact_routed_moe_hybrid")
+        return ("legacy_routed_moe_rows", "default_exact")
     if getattr(args, "dense_mixed_direct_ablation", False):
         return ("dense_mixed_gathered_legacy", "default_exact")
     if getattr(args, "exact_attention_output_nr8_ablation", False):
@@ -358,7 +361,7 @@ def mode_label(mode, args):
         "attention_output_nr8": "NR8 attention-output DSpark",
         "dense_mixed_gathered_legacy":
             "Legacy gathered dense-mixed attention DSpark",
-        "exact_routed_moe_hybrid": "Exact routed-MoE hybrid DSpark",
+        "legacy_routed_moe_rows": "Legacy row-wise routed-MoE DSpark",
     }[mode]
 
 
@@ -422,8 +425,8 @@ def clean_dspark_env(mode, fast_verifier=False, runtime_stats=True):
             env["DS4_DSPARK_EXACT_ATTN_OUT_NR8"] = "1"
         if mode == "dense_mixed_gathered_legacy":
             env["DS4_METAL_DENSE_MIXED_GATHERED_LEGACY"] = "1"
-        if mode == "exact_routed_moe_hybrid":
-            env["DS4_DSPARK_EXACT_ROUTED_MOE_HYBRID"] = "1"
+        if mode == "legacy_routed_moe_rows":
+            env["DS4_DSPARK_EXACT_ROUTED_MOE_HYBRID"] = "0"
     return env
 
 
@@ -502,8 +505,8 @@ def command_text(args, mode, runtime_stats=None):
             env += "DS4_DSPARK_EXACT_ATTN_OUT_NR8=1 "
         if mode == "dense_mixed_gathered_legacy":
             env += "DS4_METAL_DENSE_MIXED_GATHERED_LEGACY=1 "
-        if mode == "exact_routed_moe_hybrid":
-            env += "DS4_DSPARK_EXACT_ROUTED_MOE_HYBRID=1 "
+        if mode == "legacy_routed_moe_rows":
+            env += "DS4_DSPARK_EXACT_ROUTED_MOE_HYBRID=0 "
     return env + shlex.join(mode_command(args, mode))
 
 
@@ -736,7 +739,7 @@ def summarize(rows, modes=("baseline", "runtime")):
             "exact_attention_output_nr8_ablation",
         ("dense_mixed_gathered_legacy", "default_exact"):
             "dense_mixed_fused_gather_promotion_ablation",
-        ("default_exact", "exact_routed_moe_hybrid"):
+        ("legacy_routed_moe_rows", "default_exact"):
             "exact_routed_moe_hybrid_ablation",
     }
     summary = {
@@ -840,10 +843,10 @@ def summarize(rows, modes=("baseline", "runtime")):
         })
         return summary
 
-    if modes == ("default_exact", "exact_routed_moe_hybrid"):
+    if modes == ("legacy_routed_moe_rows", "default_exact"):
         summary.update({
-            "default_exact_generation_tps_median": reference_median,
-            "exact_routed_moe_hybrid_generation_tps_median": candidate_median,
+            "legacy_routed_moe_rows_generation_tps_median": reference_median,
+            "promoted_routed_moe_hybrid_generation_tps_median": candidate_median,
             "exact_routed_moe_hybrid_delta_percent":
                 (candidate_median / reference_median - 1.0) * 100.0,
         })
@@ -1140,14 +1143,14 @@ def format_report(summary):
 
     if summary["comparison"] == "exact_routed_moe_hybrid_ablation":
         return (
-            "# DSpark Exact Routed-MoE Hybrid Ablation\n\n"
-            f"- Default exact median: "
-            f"{summary['default_exact_generation_tps_median']:.2f} t/s\n"
-            f"- Routed-MoE hybrid median: "
-            f"{summary['exact_routed_moe_hybrid_generation_tps_median']:.2f} t/s\n"
+            "# DSpark Exact Routed-MoE Hybrid Promotion Confirmation\n\n"
+            f"- Legacy row-wise median: "
+            f"{summary['legacy_routed_moe_rows_generation_tps_median']:.2f} t/s\n"
+            f"- Promoted hybrid median: "
+            f"{summary['promoted_routed_moe_hybrid_generation_tps_median']:.2f} t/s\n"
             f"- Ratio of medians: {summary['median_ratio_of_medians']:.4f}x\n"
             f"- Median paired ratio: {summary['paired_speedup_median']:.4f}x\n"
-            f"- Routed-MoE hybrid delta: "
+            f"- Promoted hybrid delta: "
             f"{summary['exact_routed_moe_hybrid_delta_percent']:+.1f}%\n"
             f"- Measured pairs: {len(summary['paired_speedup_values'])}\n"
         )

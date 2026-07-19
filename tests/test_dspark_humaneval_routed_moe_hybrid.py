@@ -29,38 +29,46 @@ class HumanEvalRoutedMoEHybridTests(unittest.TestCase):
     def test_contract_is_frozen(self):
         self.assertEqual(gate.THRESHOLD, "0.75")
         self.assertEqual(gate.SAMPLE_COUNT, 32)
-        self.assertEqual(gate.MODES, ("default_exact", "hybrid"))
+        self.assertEqual(
+            gate.MODES, ("legacy_routed_moe_rows", "default_exact")
+        )
         self.assertEqual(gate.MIN_GEOMEAN, 1.005)
         self.assertEqual(gate.MIN_WINS, 20)
         self.assertEqual(gate.MIN_TASK_RATIO, 0.95)
 
     def test_order_and_warmups_are_balanced(self):
         self.assertEqual(
-            gate.mode_order(1), ("default_exact", "hybrid")
+            gate.mode_order(1), ("legacy_routed_moe_rows", "default_exact")
         )
         self.assertEqual(
-            gate.mode_order(2), ("hybrid", "default_exact")
+            gate.mode_order(2), ("default_exact", "legacy_routed_moe_rows")
         )
         records = [{"label": "first"}, {"label": "last"}]
         warmups = gate.warmup_schedule(records)
-        self.assertEqual(warmups[0][1], ("default_exact", "hybrid"))
-        self.assertEqual(warmups[1][1], ("hybrid", "default_exact"))
+        self.assertEqual(
+            warmups[0][1], ("legacy_routed_moe_rows", "default_exact")
+        )
+        self.assertEqual(
+            warmups[1][1], ("default_exact", "legacy_routed_moe_rows")
+        )
 
-    def test_only_hybrid_enables_candidate(self):
+    def test_only_legacy_mode_disables_promoted_hybrid(self):
         default = gate.mode_env("default_exact")
-        hybrid = gate.mode_env("hybrid")
+        legacy = gate.mode_env("legacy_routed_moe_rows")
         self.assertNotIn("DS4_DSPARK_EXACT_ROUTED_MOE_HYBRID", default)
-        self.assertEqual(hybrid["DS4_DSPARK_EXACT_ROUTED_MOE_HYBRID"], "1")
-        self.assertNotIn("DS4_DSPARK_GPU_RUNTIME_STATS", hybrid)
-        self.assertNotIn("DS4_DSPARK_FAST_BATCH_VERIFY", hybrid)
+        self.assertEqual(legacy["DS4_DSPARK_EXACT_ROUTED_MOE_HYBRID"], "0")
+        self.assertNotIn("DS4_DSPARK_GPU_RUNTIME_STATS", legacy)
+        self.assertNotIn("DS4_DSPARK_FAST_BATCH_VERIFY", legacy)
 
     def test_commands_are_metal_and_uninstrumented(self):
         default = gate.command_text(args(), Path("/tmp/prompt.txt"), "default_exact")
-        hybrid = gate.command_text(args(), Path("/tmp/prompt.txt"), "hybrid")
+        legacy = gate.command_text(
+            args(), Path("/tmp/prompt.txt"), "legacy_routed_moe_rows"
+        )
         self.assertIn("--backend metal", default)
         self.assertNotIn("DS4_DSPARK_EXACT_ROUTED_MOE_HYBRID", default)
-        self.assertIn("DS4_DSPARK_EXACT_ROUTED_MOE_HYBRID=1", hybrid)
-        self.assertNotIn("DS4_DSPARK_GPU_RUNTIME_STATS", hybrid)
+        self.assertIn("DS4_DSPARK_EXACT_ROUTED_MOE_HYBRID=0", legacy)
+        self.assertNotIn("DS4_DSPARK_GPU_RUNTIME_STATS", legacy)
 
     @staticmethod
     def records(count=32):
@@ -82,19 +90,19 @@ class HumanEvalRoutedMoEHybridTests(unittest.TestCase):
     def rows(records, ratio):
         rows = []
         for index, record in enumerate(records):
-            order = "default_exact-hybrid" if index % 2 == 0 else (
-                "hybrid-default_exact"
+            order = "legacy_routed_moe_rows-default_exact" if index % 2 == 0 else (
+                "default_exact-legacy_routed_moe_rows"
             )
             rows.extend((
                 {
                     "prompt": record["label"],
-                    "mode": "default_exact",
+                    "mode": "legacy_routed_moe_rows",
                     "generation_tps": 10.0,
                     "pair_order": order,
                 },
                 {
                     "prompt": record["label"],
-                    "mode": "hybrid",
+                    "mode": "default_exact",
                     "generation_tps": 10.0 * ratio,
                     "pair_order": order,
                 },
@@ -107,9 +115,9 @@ class HumanEvalRoutedMoEHybridTests(unittest.TestCase):
             self.rows(records, 1.01), records, self.reference(records)
         )
         self.assertTrue(summary["promotion_gate"]["pass"])
-        self.assertEqual(summary["hybrid_faster_tasks"], 32)
+        self.assertEqual(summary["promoted_faster_tasks"], 32)
         report = gate.render_report(summary)
-        self.assertIn("Routed-MoE Hybrid Confirmation", report)
+        self.assertIn("Routed-MoE Hybrid Promotion Confirmation", report)
         self.assertIn("**PASS**", report)
         self.assertIn("No DSpark stats", report)
 

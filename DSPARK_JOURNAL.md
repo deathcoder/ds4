@@ -72,6 +72,16 @@ the low-acceptance subgroup by `1.0119x`. Every output remained byte-exact.
 Next promote the hybrid as the exact Metal default with an explicit legacy
 opt-out, then rerun the cumulative baseline-versus-DSpark assessment.
 
+Phase 1.34 is prepared. The routed-MoE hybrid is now the exact Metal default;
+`DS4_DSPARK_EXACT_ROUTED_MOE_HYBRID=0` (or `off`) selects the prior fully
+row-wise implementation for regression and attribution. Both default and
+legacy-opt-out runtime correctness matrices pass all five scenarios, all
+`148` DSpark model-free tests pass, and the cumulative HumanEval harness dry
+run confirms that its runtime arm inherits the promoted default without a
+candidate flag. No timed benchmark was run automatically. Next run the fresh
+32-task cumulative ordinary-baseline/current-DSpark reassessment; do not infer
+its result by multiplying cross-session ablation ratios.
+
 Phase 1.05 is complete. The frozen 32-task HumanEval gate measured a `0.8081x`
 median paired DSpark/baseline ratio and `0.7910x` geometric mean on the
 promoted scheduler plus exact prefix-checkpoint runtime. This improves over the
@@ -10336,3 +10346,50 @@ Promotion decision:
 - Do not multiply `1.0164x` into the prior cross-session `0.8826x` cumulative
   result. Measure a fresh ordinary-baseline/current-DSpark paired workload
   after promotion.
+
+## Phase 1.34: exact routed-MoE hybrid promoted
+
+Implementation:
+
+- Exact Metal verification now selects the gate/up batched plus exact one-row
+  down/sum hybrid when `DS4_DSPARK_EXACT_ROUTED_MOE_HYBRID` is absent.
+- Explicit `DS4_DSPARK_EXACT_ROUTED_MOE_HYBRID=0` or `off` preserves the
+  previous fully row-wise routed-MoE implementation. Other nonempty values
+  continue to select the hybrid.
+- The focused comparison and frozen HumanEval confirmation harnesses now
+  compare `legacy_routed_moe_rows` (`=0`) against promoted `default_exact`
+  (no candidate flag). This prevents future reruns from silently comparing
+  two identical promoted-default arms.
+- The cumulative HumanEval runtime arm uses only promoted defaults and pins
+  threshold `0.75`; it does not set the routed-MoE environment variable.
+
+Validation:
+
+- `make -j4 ds4 ds4_test` passed without a new compiler warning.
+- The default runtime correctness matrix passed reasoning, Italian,
+  medium-context, rolling-window, and resumed two-turn chat byte-for-byte.
+- The same five-case matrix passed with the explicit legacy `=0` opt-out.
+- `./ds4_test --dspark-validation --dspark-shape-binding` passed.
+- All `148` DSpark model-free tests and Python compilation passed.
+- The focused promotion-confirmation dry run printed a legacy `=0` arm and a
+  flag-free default arm. The HumanEval promotion-confirmation and cumulative
+  harnesses each accepted their frozen references in dry-run mode, printed
+  `32` measured schedules and `68` total uninstrumented processes, and
+  materialized no prompts.
+- Dry-run command inspection confirms that only the legacy comparison arm
+  contains `DS4_DSPARK_EXACT_ROUTED_MOE_HYBRID=0`; the promoted and cumulative
+  runtime arms contain no routed-MoE override.
+- `git diff --check` passed. No timed throughput benchmark was run by Codex.
+
+Next user-run command:
+
+```sh
+python3 speed-bench/run_dspark_humaneval_cumulative_throughput.py \
+  --historical-reference \
+  speed-bench/local-runs/humaneval-threshold075-throughput-32-20260716-155112/summary.json \
+  --confirm-idle
+```
+
+Interpret the fresh paired DSpark/baseline geometric mean directly. Compare
+task-level movement with the prior cumulative artifact, but do not multiply
+the `1.0164x` routed-MoE confirmation into the old `0.8826x` result.

@@ -28,6 +28,7 @@ class HumanEvalCumulativeThroughputTests(unittest.TestCase):
         self.assertEqual(env["DS4_DSPARK_MULTI_COMMIT"], "1")
         self.assertNotIn("DS4_METAL_DENSE_MIXED_DIRECT", env)
         self.assertNotIn("DS4_METAL_DENSE_MIXED_GATHERED_LEGACY", env)
+        self.assertNotIn("DS4_DSPARK_EXACT_ROUTED_MOE_HYBRID", env)
         self.assertNotIn("DS4_DSPARK_GPU_RUNTIME_STATS", env)
 
     @staticmethod
