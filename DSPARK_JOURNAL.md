@@ -72,15 +72,21 @@ the low-acceptance subgroup by `1.0119x`. Every output remained byte-exact.
 Next promote the hybrid as the exact Metal default with an explicit legacy
 opt-out, then rerun the cumulative baseline-versus-DSpark assessment.
 
-Phase 1.34 is prepared. The routed-MoE hybrid is now the exact Metal default;
+Phase 1.34 is complete. The routed-MoE hybrid is now the exact Metal default;
 `DS4_DSPARK_EXACT_ROUTED_MOE_HYBRID=0` (or `off`) selects the prior fully
 row-wise implementation for regression and attribution. Both default and
 legacy-opt-out runtime correctness matrices pass all five scenarios, all
 `148` DSpark model-free tests pass, and the cumulative HumanEval harness dry
-run confirms that its runtime arm inherits the promoted default without a
-candidate flag. No timed benchmark was run automatically. Next run the fresh
-32-task cumulative ordinary-baseline/current-DSpark reassessment; do not infer
-its result by multiplying cross-session ablation ratios.
+run confirmed that its runtime arm inherits the promoted default without a
+candidate flag. The fresh cumulative run measured current exact DSpark at
+`0.8782x` baseline geometrically, a `12.2%` gap, with no task faster than
+baseline. Relative to the immediately prior `0.8826x` cumulative artifact the
+result is effectively flat within cross-session noise (`0.9950x` geometric,
+`1.0033x` median task movement), dominated by two roughly `0.90x` outliers.
+Keep the strongly confirmed same-session promotion, but claim no cumulative
+speedup from this run. This clean commit and recorded benchmark are a safe
+checkpoint for reviewing community progress before choosing another verifier
+optimization.
 
 Phase 1.05 is complete. The frozen 32-task HumanEval gate measured a `0.8081x`
 median paired DSpark/baseline ratio and `0.7910x` geometric mean on the
@@ -10393,3 +10399,53 @@ python3 speed-bench/run_dspark_humaneval_cumulative_throughput.py \
 Interpret the fresh paired DSpark/baseline geometric mean directly. Compare
 task-level movement with the prior cumulative artifact, but do not multiply
 the `1.0164x` routed-MoE confirmation into the old `0.8826x` result.
+
+Result:
+
+- Artifact:
+  `speed-bench/local-runs/humaneval-cumulative-throughput-32-20260719-171040`.
+- Clean source commit: `bc6557eb66e283bbd3be702910e24f509e1a40b9`.
+- Every current DSpark output matched ordinary baseline and the frozen
+  historical output byte-for-byte.
+- Baseline median: `24.88 t/s`; current DSpark median: `21.75 t/s`.
+- Ratio of medians: `0.8744x`; median paired ratio: `0.8748x`; geometric
+  paired ratio: `0.8782x`.
+- The paired-ratio interquartile range was `0.8433x..0.9178x`; the full range
+  was `0.7810x..0.9902x`. No task reached baseline throughput (`0/32`).
+- The geometric gap to parity is `12.2%`, so the end-to-end outcome remains
+  below the predeclared `0.95x` near-parity threshold.
+- Against the older threshold-`0.75` historical artifact (`0.8634x`), task
+  movement was `1.0171x` geometrically with `23/32` improvements, which failed
+  the intentionally demanding accumulated-movement gate.
+
+Immediate-prior comparison:
+
+- The directly preceding cumulative artifact is
+  `speed-bench/local-runs/humaneval-cumulative-throughput-32-20260717-092241`,
+  with `0.8826x` geometric paired throughput.
+- Current/prior task movement is `0.9950x` geometrically and `1.0033x` by
+  median, with `22/32` tasks improving.
+- Two tasks dominate the geometric regression: `humaneval_000` moved
+  `0.8989x` and `humaneval_110` moved `0.8982x`. Excluding only those two gives
+  `1.0018x` geometric movement across the other 30 tasks. This is descriptive
+  sensitivity analysis, not a revised benchmark result.
+- The final snapshot had no thermal or performance warning, but WindowServer
+  was using `44.5%` CPU versus `3.1%` in the prior cumulative artifact. The
+  user cannot guarantee an idle machine, so paired within-task values remain
+  authoritative while cross-session movement must be treated cautiously.
+
+Decision:
+
+- Keep the routed-MoE hybrid promoted. Its frozen same-session A/B gate won
+  `32/32` tasks with `1.0164x` geometric movement and is the correct evidence
+  for that local default decision; this cumulative run has no legacy arm and
+  cannot isolate the promotion.
+- Do not claim that the promotion improved cumulative end-to-end throughput.
+  The fresh measured DSpark/baseline state is `0.8782x`, still `12.2%` from
+  parity.
+- This is a safe development checkpoint: implementation and fallback are
+  committed, correctness is green, the end-to-end state is freshly measured,
+  and no candidate is left half-implemented. Review new community work before
+  selecting the next exact-verifier optimization. If no transferable win has
+  appeared, return to the measured target-verifier bottleneck rather than
+  further tuning the already-small sidecar or routed-MoE surface.
