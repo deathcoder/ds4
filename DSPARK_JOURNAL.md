@@ -10697,3 +10697,30 @@ Interpretation boundary:
 - Do not promote it from one short run. A positive focused ablation should be
   followed by the frozen 32-task HumanEval threshold-0.75 confirmation before
   changing the default.
+
+Focused result:
+
+- User-run artifact:
+  `speed-bench/local-runs/20260719-194951` at clean commit `26e9130`.
+- Default exact median: `24.90 t/s`; single-dispatch candidate median:
+  `24.81 t/s`; ratio of medians: `0.9964x`, or `-0.4%`.
+- Paired ratios were `1.0020x`, `0.9815x`, and `1.0309x`; their median was
+  `1.0020x`. All outputs had the same SHA-256.
+- The initial process snapshot was busy, including an Arc renderer at 96.5%
+  CPU, `duetexpertd` at 81.5%, and WindowServer at 47.8%. There was no thermal
+  or performance warning. The interference explains the wide pair spread but
+  does not turn the near-zero central result into evidence of a useful gain.
+
+Decision:
+
+- Do not promote and do not spend a 32-task HumanEval confirmation on this
+  candidate. The ratio-of-medians and paired median straddle parity, and the
+  best central estimate is far below a meaningful optimization threshold.
+- Keep the route default-off as a documented exact experiment. Its result is
+  useful: consolidating the existing Q2_K down dispatch removes host encoding
+  calls but does not reduce expert-weight traffic, and host dispatch was not a
+  material part of the remaining verifier gap.
+- The next verifier candidate must reduce GPU work or weight traffic rather
+  than only encoder calls. Shared-weight narrow-row projections are a better
+  match for MTPLX/oMLX-style verify QMM than routed expert rows, whose selected
+  matrices can differ by proposal position.
