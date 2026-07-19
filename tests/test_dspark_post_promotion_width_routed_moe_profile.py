@@ -21,28 +21,36 @@ class DSparkPostPromotionWidthRoutedMoEProfileTests(unittest.TestCase):
             profile.MOE_STAGES,
             ("gate_up", "activation_weight", "down", "sum"),
         )
+        self.assertEqual(
+            profile.WIDTH_FFN_SOURCE_COMMIT,
+            "fafcddaa86af5d6fc32e86db3414c8db110c6c60",
+        )
 
     def test_environment_enables_only_required_profiles(self):
         env = profile.profile_env(21)
         self.assertEqual(env["DS4_DSPARK_CONFIDENCE_THRESHOLD"], "0.75")
         self.assertEqual(env["DS4_DSPARK_EXACT_LAYER_PROFILE_LAYER"], "21")
         self.assertEqual(env["DS4_METAL_LAYER_STAGE_PROFILE_LAYER"], "21")
-        self.assertEqual(env["DS4_METAL_MOE_ONE_STAGE_PROFILE"], "1")
-        self.assertEqual(env["DS4_METAL_MOE_ONE_STAGE_PROFILE_LAYER"], "21")
+        self.assertEqual(env["DS4_METAL_MOE_STAGE_PROFILE"], "1")
+        self.assertEqual(env["DS4_METAL_MOE_STAGE_PROFILE_LAYER"], "21")
+        self.assertNotIn("DS4_METAL_MOE_ONE_STAGE_PROFILE", env)
         self.assertNotIn("DS4_DSPARK_FAST_BATCH_VERIFY", env)
 
     def test_parser_reads_exact_and_moe_records_in_sequence(self):
         data = b"\n".join((
             b"ds4: metal layer stage part=exact layer=21 pos=9 tokens=5 "
             b"attention_tail_serial=1.000 ms",
-            b"ds4: Metal routed MoE one stage layer=21 pairs=6 experts=6 "
-            b"gate=iq2_xxs down=q2_k path=iq2_slots6_pair_swiglu "
-            b"gate_up=0.250 ms",
+            b"ds4: Metal routed MoE stage layer=21 tokens=5 pairs=30 "
+            b"experts=6 gate=iq2_xxs down=q2_k "
+            b"path=hybrid_exact_down_mv mid=f32 gate_up=1.250 ms",
         ))
         records = profile.parse_profile(data, 21, Path("synthetic.stderr"))
-        self.assertEqual([row["part"] for row in records], ["exact", "moe_one"])
+        self.assertEqual(
+            [row["part"] for row in records], ["exact", "moe_batch"]
+        )
         self.assertEqual(records[1]["stage"], "gate_up")
-        self.assertEqual(records[1]["path"], "iq2_slots6_pair_swiglu")
+        self.assertEqual(records[1]["path"], "hybrid_exact_down_mv")
+        self.assertEqual(records[1]["tokens"], 5)
 
     @staticmethod
     def stats():
@@ -76,21 +84,22 @@ class DSparkPostPromotionWidthRoutedMoEProfileTests(unittest.TestCase):
                     "ms": 1.0,
                 })
                 sequence += 1
-                for row in range(width):
-                    for index, stage in enumerate(profile.MOE_STAGES, start=1):
-                        records.append({
-                            "sequence": sequence,
-                            "part": "moe_one",
-                            "layer": layer,
-                            "pairs": 6,
-                            "experts": 6,
-                            "gate": "iq2_xxs",
-                            "down": "q2_k",
-                            "path": "iq2_slots6_pair_swiglu",
-                            "stage": stage,
-                            "ms": float(index + row),
-                        })
-                        sequence += 1
+                for index, stage in enumerate(profile.MOE_STAGES, start=1):
+                    records.append({
+                        "sequence": sequence,
+                        "part": "moe_batch",
+                        "layer": layer,
+                        "tokens": width,
+                        "pairs": width * 6,
+                        "experts": 6,
+                        "gate": "iq2_xxs",
+                        "down": "q2_k",
+                        "path": "hybrid_exact_down_mv",
+                        "mid": "f32",
+                        "stage": stage,
+                        "ms": float(index * width),
+                    })
+                    sequence += 1
                 records.append({
                     "sequence": sequence,
                     "part": "ffn",
@@ -124,16 +133,21 @@ class DSparkPostPromotionWidthRoutedMoEProfileTests(unittest.TestCase):
                 sequence += 1
         return records
 
-    def test_mapping_assigns_one_sequence_per_exact_row(self):
+    def test_mapping_assigns_one_sequence_per_exact_batch(self):
         assigned = profile.assign_exact_moe_batches(
             self.records(), self.stats(), 21
         )
         width5 = [row for row in assigned if row["width"] == 5]
-        self.assertEqual(len(width5), 3 * (5 * 4 + 1))
+        self.assertEqual(len(width5), 3 * (4 + 1))
         first_batch = [row for row in width5 if row["batch"] == 5]
         self.assertEqual(
-            sum(row["stage"] == "gate_up" for row in first_batch), 5
+            sum(row["stage"] == "gate_up" for row in first_batch), 1
         )
+        gate_up = next(
+            row for row in first_batch if row["stage"] == "gate_up"
+        )
+        self.assertEqual(gate_up["batch_ms"], 5.0)
+        self.assertEqual(gate_up["ms"], 1.0)
         control = next(
             row for row in first_batch if row["stage"] == "routed_moe_control"
         )
@@ -149,13 +163,15 @@ class DSparkPostPromotionWidthRoutedMoEProfileTests(unittest.TestCase):
         for offset, stage in enumerate(profile.MOE_STAGES):
             records.append({
                 "sequence": tail["sequence"] - 0.8 + offset * 0.1,
-                "part": "moe_one",
+                "part": "moe_batch",
                 "layer": 21,
-                "pairs": 6,
+                "tokens": 5,
+                "pairs": 30,
                 "experts": 6,
                 "gate": "iq2_xxs",
                 "down": "q2_k",
-                "path": "iq2_slots6_pair_swiglu",
+                "path": "hybrid_exact_down_mv",
+                "mid": "f32",
                 "stage": stage,
                 "ms": 999.0,
             })
@@ -169,7 +185,7 @@ class DSparkPostPromotionWidthRoutedMoEProfileTests(unittest.TestCase):
         filtered = []
         for row in records:
             if (
-                not removed and row["part"] == "moe_one"
+                not removed and row["part"] == "moe_batch"
                 and row["stage"] == "down"
             ):
                 removed = True
@@ -197,7 +213,7 @@ class DSparkPostPromotionWidthRoutedMoEProfileTests(unittest.TestCase):
             1.0,
         )
         report = profile.render_report(summary)
-        self.assertIn("Exact Routed-MoE Stage Profile", report)
+        self.assertIn("Exact Routed-MoE Hybrid Stage Profile", report)
         self.assertIn("No throughput benchmark", report)
 
 

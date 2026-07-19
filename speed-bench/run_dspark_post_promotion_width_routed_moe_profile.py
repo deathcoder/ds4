@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Profile exact routed-MoE one-row stages by verifier width."""
+"""Profile promoted exact routed-MoE hybrid stages by verifier width."""
 
 import argparse
 import csv
@@ -27,11 +27,11 @@ TASK = width_layer.TASK
 LAYERS = width_layer.LAYERS
 WIDTHS = width_layer.WIDTHS
 MOE_STAGES = ("gate_up", "activation_weight", "down", "sum")
-WIDTH_FFN_SOURCE_COMMIT = "862da2c3195df81db0a359a41718e039d1799700"
-MOE_ONE_RE = re.compile(
-    rb"^ds4: Metal routed MoE one stage layer=(\d+) pairs=(\d+) "
-    rb"experts=(\d+) gate=(\S+) down=(\S+) path=(\S+) "
-    rb"(\S+)=([0-9.]+) ms$"
+WIDTH_FFN_SOURCE_COMMIT = "fafcddaa86af5d6fc32e86db3414c8db110c6c60"
+MOE_BATCH_RE = re.compile(
+    rb"^ds4: Metal routed MoE stage layer=(\d+) tokens=(\d+) "
+    rb"pairs=(\d+) experts=(\d+) gate=(\S+) down=(\S+) "
+    rb"path=(\S+) mid=(\S+) (\S+)=([0-9.]+) ms$"
 )
 
 
@@ -39,8 +39,9 @@ def parse_args():
     root = Path(__file__).resolve().parent.parent
     parser = argparse.ArgumentParser(
         description=(
-            "Profile exact routed-MoE gate/up, activation, down, and sum "
-            "stages by verifier width on frozen HumanEval task 079."
+            "Profile promoted exact routed-MoE hybrid gate/up, activation, "
+            "down, and sum stages by verifier width on frozen HumanEval "
+            "task 079."
         )
     )
     parser.add_argument("--binary", type=Path, default=root / "ds4")
@@ -152,8 +153,8 @@ def load_width_ffn_reference(args, cost_reference):
 
 def profile_env(layer):
     env = width_ffn.profile_env(layer)
-    env["DS4_METAL_MOE_ONE_STAGE_PROFILE"] = "1"
-    env["DS4_METAL_MOE_ONE_STAGE_PROFILE_LAYER"] = str(layer)
+    env["DS4_METAL_MOE_STAGE_PROFILE"] = "1"
+    env["DS4_METAL_MOE_STAGE_PROFILE_LAYER"] = str(layer)
     return env
 
 
@@ -168,8 +169,8 @@ def command_text(args, prompt, layer):
         "DS4_DSPARK_EXACT_LAYER_PROFILE_LAYER",
         "DS4_METAL_LAYER_STAGE_PROFILE",
         "DS4_METAL_LAYER_STAGE_PROFILE_LAYER",
-        "DS4_METAL_MOE_ONE_STAGE_PROFILE",
-        "DS4_METAL_MOE_ONE_STAGE_PROFILE_LAYER",
+        "DS4_METAL_MOE_STAGE_PROFILE",
+        "DS4_METAL_MOE_STAGE_PROFILE_LAYER",
     )
     prefix = " ".join(f"{key}={env[key]}" for key in keys)
     return prefix + " " + shlex.join(common.mode_command(args, prompt, "runtime"))
@@ -198,10 +199,13 @@ def parse_profile(data, expected_layer, path):
             if row["part"] in {"exact", "ffn"}:
                 records.append(row)
             continue
-        match = MOE_ONE_RE.match(line)
+        match = MOE_BATCH_RE.match(line)
         if not match:
             continue
-        layer, pairs, experts, gate, down, moe_path, stage, elapsed = (
+        (
+            layer, tokens, pairs, experts, gate, down, moe_path, mid,
+            stage, elapsed,
+        ) = (
             match.groups()
         )
         layer = int(layer)
@@ -212,18 +216,20 @@ def parse_profile(data, expected_layer, path):
             )
         records.append({
             "sequence": sequence,
-            "part": "moe_one",
+            "part": "moe_batch",
             "layer": layer,
+            "tokens": int(tokens),
             "pairs": int(pairs),
             "experts": int(experts),
             "gate": gate.decode("ascii"),
             "down": down.decode("ascii"),
             "path": moe_path.decode("ascii"),
+            "mid": mid.decode("ascii"),
             "stage": stage.decode("ascii"),
             "ms": float(elapsed),
         })
-    if not any(row["part"] == "moe_one" for row in records):
-        raise RuntimeError(f"no routed-MoE one-stage records found in {path}")
+    if not any(row["part"] == "moe_batch" for row in records):
+        raise RuntimeError(f"no routed-MoE batch-stage records found in {path}")
     return records
 
 
@@ -283,9 +289,9 @@ def assign_exact_moe_batches(records, expected_stats, layer):
         inner = [
             row for row in exact_interval
             if routers[0]["sequence"] < row["sequence"] < routed[0]["sequence"]
-            and row["part"] == "moe_one"
+            and row["part"] == "moe_batch"
         ]
-        expected_sequence = list(MOE_STAGES) * control["tokens"]
+        expected_sequence = list(MOE_STAGES)
         actual_sequence = [row["stage"] for row in inner]
         if actual_sequence != expected_sequence:
             raise RuntimeError(
@@ -293,35 +299,47 @@ def assign_exact_moe_batches(records, expected_stats, layer):
                 f"mismatch: {actual_sequence}"
             )
         paths = {row["path"] for row in inner}
-        shapes = {(row["pairs"], row["experts"]) for row in inner}
+        shapes = {
+            (row["tokens"], row["pairs"], row["experts"])
+            for row in inner
+        }
         types = {(row["gate"], row["down"]) for row in inner}
-        if len(paths) != 1 or shapes != {(6, 6)} or len(types) != 1:
+        mids = {row["mid"] for row in inner}
+        if (
+            len(paths) != 1
+            or not next(iter(paths)).startswith("hybrid_exact_down_")
+            or shapes != {(control["tokens"], control["tokens"] * 6, 6)}
+            or len(types) != 1
+            or mids != {"f32"}
+        ):
             raise RuntimeError(
                 f"layer {layer} batch {batch} routed-MoE identity mismatch"
             )
-        for index, row in enumerate(inner):
+        for row in inner:
             assigned.append({
                 "layer": layer,
                 "batch": batch,
                 "pos": control["pos"],
                 "width": control["tokens"],
-                "row": index // len(MOE_STAGES),
                 "stage": row["stage"],
                 "path": row["path"],
                 "gate": row["gate"],
                 "down": row["down"],
-                "ms": row["ms"],
+                "mid": row["mid"],
+                "batch_ms": row["ms"],
+                "ms": row["ms"] / control["tokens"],
             })
         assigned.append({
             "layer": layer,
             "batch": batch,
             "pos": control["pos"],
             "width": control["tokens"],
-            "row": -1,
             "stage": "routed_moe_control",
             "path": next(iter(paths)),
             "gate": next(iter(types))[0],
             "down": next(iter(types))[1],
+            "mid": next(iter(mids)),
+            "batch_ms": routed[0]["ms"],
             "ms": routed[0]["ms"] / control["tokens"],
         })
         previous_control_sequence = control["sequence"]
@@ -387,7 +405,7 @@ def summarize(rows, expected_stats):
             stages = {}
             for stage in MOE_STAGES:
                 values = [row["ms"] for row in selected if row["stage"] == stage]
-                expected = evals * width
+                expected = evals
                 if len(values) != expected:
                     raise RuntimeError(
                         f"layer {layer} width {width} has {len(values)} "
@@ -463,7 +481,9 @@ def summarize(rows, expected_stats):
         for stage in MOE_STAGES
     }
     return {
-        "analysis": "dspark_post_promotion_width_stratified_exact_routed_moe",
+        "analysis": (
+            "dspark_post_promotion_width_stratified_exact_routed_moe_hybrid"
+        ),
         "threshold": THRESHOLD,
         "task": TASK,
         "layers": list(LAYERS),
@@ -482,11 +502,11 @@ def summarize(rows, expected_stats):
 
 def render_report(summary):
     lines = [
-        "# DSpark Post-Promotion Exact Routed-MoE Stage Profile",
+        "# DSpark Post-Promotion Exact Routed-MoE Hybrid Stage Profile",
         "",
         "Synchronized diagnostic only. Inner MoE boundaries change scheduling; do not use these values as throughput measurements.",
         "Every profiled output matched the frozen cumulative HumanEval artifact byte-for-byte.",
-        "One-row MoE records are accepted only inside their enclosing exact-verifier routed-MoE interval.",
+        "Batch-stage records are normalized by proposal rows and accepted only inside their enclosing exact-verifier routed-MoE interval.",
         "",
         "## Sampled Routed-MoE Totals",
         "",
@@ -524,7 +544,7 @@ def render_report(summary):
         "## Interpretation Limits",
         "",
         "- Widths 2 and 3 have one verifier evaluation each; width 5 supplies the stable stage-share sample.",
-        "- Every inner record measures one routed-MoE row; width grouping describes scheduling context, not a batched inner kernel.",
+        "- Every inner record measures one promoted routed-MoE hybrid batch and is normalized by its verifier width.",
         "- The sum of separately synchronized inner medians is reconciled against, but need not equal, the outer routed-MoE median.",
         "- Only layers 0, 21, and 42 are sampled; this identifies shared structure rather than a full-model time sum.",
         "- No throughput benchmark, acceptance audit, trace, fast verifier, or runtime candidate is enabled.",
@@ -567,7 +587,9 @@ def main():
         raise SystemExit(f"profile layers outside model range 0..{layer_count - 1}")
 
     stamp = dt.datetime.now().astimezone().strftime("%Y%m%d-%H%M%S")
-    default_dir = root / f"speed-bench/local-runs/post-promotion-width-moe-{stamp}"
+    default_dir = root / (
+        f"speed-bench/local-runs/post-promotion-width-moe-hybrid-{stamp}"
+    )
     run_dir = (args.output_dir or default_dir).resolve()
     prompt = run_dir / "prompt.txt"
     for layer in LAYERS:
@@ -589,7 +611,7 @@ def main():
             root, "status", "--porcelain", "--untracked-files=no"
         ),
         "experiment": (
-            "dspark_post_promotion_width_stratified_exact_routed_moe"
+            "dspark_post_promotion_width_stratified_exact_routed_moe_hybrid"
         ),
         "platform": platform.platform(),
         "initial_snapshot": common.machine_snapshot(root),
@@ -606,6 +628,7 @@ def main():
             "layers": LAYERS,
             "widths": WIDTHS,
             "moe_stages": MOE_STAGES,
+            "promoted_hybrid_required": True,
             "runtime_stats": True,
             "synchronized_profile": True,
             "timed_throughput": False,
@@ -654,8 +677,8 @@ def main():
     write_csv(
         run_dir / "stages.csv",
         (
-            "layer", "batch", "pos", "width", "row", "stage", "path",
-            "gate", "down", "ms",
+            "layer", "batch", "pos", "width", "stage", "path",
+            "gate", "down", "mid", "batch_ms", "ms",
         ),
         assigned,
     )

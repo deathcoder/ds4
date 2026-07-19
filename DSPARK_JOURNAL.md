@@ -86,11 +86,19 @@ the slightly weaker width-2-to-width-5 amortization (`0.647x` versus `0.628x`).
 The synchronized total is nearly unchanged from Phase 1.40, so use stage rank,
 not cross-session absolute profile deltas, to choose the next diagnostic.
 
-Phase 1.48 is prepared. The width-stratified exact-FFN substage profiler is
-repinned to the clean Phase 1.47 layer artifact at commit `83f3e80`. It will
-separate HC pre/post, normalization, routing, shared gate/up and down, and
-routed MoE costs by verifier width at layers 0, 21, and 42. No runtime
-candidate should be selected until this refreshed FFN attribution is available.
+Phase 1.48 is complete. At stable width 5, exact FFN accounts for
+`2.001 ms/row` across synchronized substages versus a `2.067 ms/row` outer
+control. Routed MoE is still dominant at `0.806 ms/row` (`40.3%`) and has the
+weakest width-2-to-width-5 amortization at `0.518x`. Shared gate/up and down
+are now `0.233` and `0.212 ms/row`; all other components are individually
+below `0.230 ms/row`.
+
+Phase 1.49 is prepared. The routed-MoE profiler is repinned to the clean Phase
+1.48 FFN artifact at commit `fafcdda` and converted from obsolete pre-hybrid
+one-row records to the promoted batch encoder's `gate_up`,
+`activation_weight`, `down`, and `sum` stage records. It requires the
+`hybrid_exact_down_*` path, F32 mids, exact verifier shapes, frozen width
+counts, and byte-identical output before reporting per-row normalized costs.
 
 Phase 1.27 is complete. The cumulative 32-task HumanEval reassessment measured
 current exact DSpark at a `0.8826x` geometric paired ratio versus ordinary
@@ -11422,3 +11430,81 @@ Decision boundary:
 - Use the stable width-5 FFN component shares and amortization to select one
   narrowly scoped Metal verifier candidate. Do not infer throughput from the
   synchronized profile itself.
+
+Profile result:
+
+- User-run artifact:
+  `speed-bench/local-runs/post-promotion-width-ffn-20260720-000722` at clean
+  commit `fafcddaa86af5d6fc32e86db3414c8db110c6c60`.
+- Every profiled output matched the frozen cumulative HumanEval artifact
+  byte-for-byte and reproduced the expected width counts `1/1/4/20`.
+- At stable width 5, synchronized FFN substages total `2.001 ms/row` against
+  an outer `2.067 ms/row` control, a `0.968x` reconciliation.
+- Width-5 components are routed MoE `0.806 ms/row` (`40.3%`), shared gate/up
+  `0.233` (`11.6%`), router `0.229` (`11.5%`), shared down `0.212` (`10.6%`),
+  HC pre `0.197` (`9.9%`), HC post `0.171` (`8.6%`), and normalization `0.152`
+  (`7.6%`).
+- Routed MoE is stable across sampled depth at `0.267`, `0.271`, and
+  `0.268 ms/row` for layers 0, 21, and 42.
+- Width-5/width-2 amortization is weakest for routed MoE at `0.518x`; the next
+  weakest component is shared down at `0.421x`. Width 2 has only one
+  observation, so this ratio is directional; the width-5 share is stable.
+
+Comparison with the pre-hybrid Phase 1.30 profile:
+
+- The old FFN profile measured routed MoE at `0.865 ms/row` (`40.9%`) with
+  `0.747x` width-5/width-2 amortization. The refreshed value is `0.806` and
+  `0.518x`, consistent with the promoted hybrid improving but not eliminating
+  the bottleneck.
+- The old inner routed-MoE split measured a fully row-wise implementation and
+  attributed `49.5%` to gate/up and `43.7%` to down. That split is stale:
+  today's default batches gate/up while retaining exact down/sum arithmetic.
+  Do not select a new kernel from the old proportions.
+
+Decision:
+
+- Refresh the inner routed-MoE split on the promoted hybrid before selecting
+  another runtime candidate. The current batch encoder already exposes the
+  required synchronized stages, so no inference code change is needed.
+
+## Phase 1.49: promoted routed-MoE hybrid profile repinned
+
+Preparation:
+
+- Updated `WIDTH_FFN_SOURCE_COMMIT` in
+  `speed-bench/run_dspark_post_promotion_width_routed_moe_profile.py` to the
+  clean Phase 1.48 commit
+  `fafcddaa86af5d6fc32e86db3414c8db110c6c60`.
+- Converted the profiler from `DS4_METAL_MOE_ONE_STAGE_PROFILE`, which observes
+  the retired exact row-wise path, to `DS4_METAL_MOE_STAGE_PROFILE`, which
+  observes the current promoted batch routed-MoE encoder.
+- The mapper now requires exactly one `gate_up`, `activation_weight`, `down`,
+  and `sum` sequence inside each enclosing exact routed-MoE interval. It also
+  requires the verifier width, `6 * width` expert-pair rows, six experts,
+  `hybrid_exact_down_*` path, and F32 intermediate to match.
+- Batch-stage timings are divided by verifier width before aggregation. The
+  enclosing routed-MoE control is normalized the same way.
+- A real dry run accepted the Phase 1.45 throughput, Phase 1.46 cost, Phase
+  1.47 layer, and Phase 1.48 FFN references and printed exactly three profile
+  commands for layers 0, 21, and 42. No model inference was performed.
+
+User-run command:
+
+```sh
+python3 speed-bench/run_dspark_post_promotion_width_routed_moe_profile.py \
+  --throughput-reference \
+  speed-bench/local-runs/humaneval-cumulative-throughput-32-20260719-223901/summary.json \
+  --cost-reference \
+  speed-bench/local-runs/humaneval-cumulative-cost-20260719-225512/summary.json \
+  --width-layer-reference \
+  speed-bench/local-runs/post-promotion-width-layer-20260719-232840/summary.json \
+  --width-ffn-reference \
+  speed-bench/local-runs/post-promotion-width-ffn-20260720-000722/summary.json \
+  --confirm-ready
+```
+
+Decision boundary:
+
+- Use the stable width-5 promoted-hybrid stage shares to choose one bounded
+  Metal candidate. Do not reuse the pre-hybrid Phase 1.31 inner proportions,
+  and do not treat synchronized absolute times as throughput measurements.
