@@ -65,12 +65,12 @@ This is directionally consistent with attacking only the routed gate/up share,
 but is too small to promote from one short prompt. Next run a frozen 32-task
 threshold-0.75 HumanEval default-versus-hybrid gate before changing defaults.
 
-Phase 1.33 is prepared and awaiting the user-run 32-task HumanEval routed-MoE
-hybrid confirmation. The harness pairs current default exact against the
-default-off hybrid within each frozen threshold-`0.75` task, alternates order,
-excludes four balanced warmup processes, and validates every output against the
-frozen exact artifact. Promotion requires at least `1.005x` geometric mean,
-`20/32` wins, no task below `0.95x`, and nonnegative low-acceptance movement.
+Phase 1.33 is complete and the routed-MoE hybrid passed promotion. On the
+frozen 32-task HumanEval workload it achieved `1.0164x` geometric paired
+movement, won `32/32` tasks, had a `1.0073x` minimum task ratio, and improved
+the low-acceptance subgroup by `1.0119x`. Every output remained byte-exact.
+Next promote the hybrid as the exact Metal default with an explicit legacy
+opt-out, then rerun the cumulative baseline-versus-DSpark assessment.
 
 Phase 1.05 is complete. The frozen 32-task HumanEval gate measured a `0.8081x`
 median paired DSpark/baseline ratio and `0.7910x` geometric mean on the
@@ -10303,3 +10303,36 @@ python3 speed-bench/run_dspark_humaneval_routed_moe_hybrid.py \
   speed-bench/local-runs/humaneval-threshold075-throughput-32-20260716-155112/summary.json \
   --confirm-idle
 ```
+
+Result:
+
+- Artifact:
+  `speed-bench/local-runs/humaneval-routed-moe-hybrid-32-20260719-163559`.
+- Clean source commit: `929593e4e49b37bb38c4daa657b84e3025e84942`.
+- Every default and hybrid output matched the frozen exact artifact
+  byte-for-byte.
+- Default median: `20.60 t/s`; hybrid median: `20.96 t/s`; ratio of medians
+  `1.0172x`.
+- Median paired ratio: `1.0158x`; geometric paired ratio: `1.0164x`.
+- The hybrid won all `32/32` tasks. The interquartile range was
+  `1.0132x..1.0200x`; the complete range was `1.0073x..1.0305x`.
+- The ten low-acceptance tasks had a `1.0119x` geometric hybrid/default ratio.
+- Acceptance and movement had a descriptive Pearson correlation of `0.679`:
+  high-acceptance tasks benefit somewhat more, but every measured acceptance
+  regime improved.
+- The final machine snapshot reported no thermal or performance warning,
+  though WindowServer and Stats were active. Paired within-task direction is
+  therefore more authoritative than cross-session absolute medians.
+
+Promotion decision:
+
+- PASS: geometric ratio `1.0164x >= 1.005x`.
+- PASS: `32/32 >= 20/32` faster tasks.
+- PASS: minimum task ratio `1.0073x >= 0.95x`.
+- PASS: low-acceptance geometric ratio `1.0119x >= 1.00x`.
+- Promote the hybrid for exact Metal verification. Preserve the old fully
+  row-wise routed-MoE path behind an explicit `=0` environment opt-out for
+  regression and attribution.
+- Do not multiply `1.0164x` into the prior cross-session `0.8826x` cumulative
+  result. Measure a fresh ordinary-baseline/current-DSpark paired workload
+  after promotion.
