@@ -13871,14 +13871,17 @@ int ds4_gpu_matmul_f16_pair_tensor(
         const ds4_gpu_tensor *x,
         uint64_t                n_tok) {
     if (!g_initialized && !ds4_gpu_init()) return 0;
-    if (in_dim > UINT32_MAX || out_dim > UINT32_MAX || n_tok != 1 || (in_dim & 3u) != 0) return 0;
+    if (in_dim > UINT32_MAX || out_dim > UINT32_MAX ||
+        n_tok == 0 || n_tok > 5 || (in_dim & 3u) != 0) return 0;
 
     @autoreleasepool {
         id<MTLBuffer> xbuf = ds4_gpu_tensor_buffer(x);
         id<MTLBuffer> outabuf = ds4_gpu_tensor_buffer(out_a);
         id<MTLBuffer> outbbuf = ds4_gpu_tensor_buffer(out_b);
-        const uint64_t x_bytes = in_dim * sizeof(float);
-        const uint64_t out_bytes = out_dim * sizeof(float);
+        const uint64_t x_row_bytes = in_dim * sizeof(float);
+        const uint64_t out_row_bytes = out_dim * sizeof(float);
+        const uint64_t x_bytes = n_tok * x_row_bytes;
+        const uint64_t out_bytes = n_tok * out_row_bytes;
         if (!xbuf || !outabuf || !outbbuf ||
             ds4_gpu_tensor_bytes(x) < x_bytes ||
             ds4_gpu_tensor_bytes(out_a) < out_bytes ||
@@ -13910,6 +13913,10 @@ int ds4_gpu_matmul_f16_pair_tensor(
         if (!cb) return 0;
 
         ds4_gpu_f16_matvec_args mv_args = ds4_gpu_make_f16_mv_args(in_dim, out_dim);
+        mv_args.ne11 = (int32_t)n_tok;
+        mv_args.nb12 = x_row_bytes;
+        mv_args.nb13 = x_row_bytes;
+        mv_args.ne1 = (int32_t)n_tok;
         ds4_gpu_mv_dispatch mv_dispatch = ds4_gpu_make_plain_mv_dispatch(in_dim, 0);
         if (ds4_gpu_use_compressor_pair_nr4() &&
             (out_dim == 512u || out_dim == 1024u) && in_dim >= 4096u) {
@@ -13933,7 +13940,7 @@ int ds4_gpu_matmul_f16_pair_tensor(
             [enc setThreadgroupMemoryLength:mv_dispatch.smem atIndex:0];
         }
         [enc dispatchThreadgroups:MTLSizeMake(((NSUInteger)out_dim + (NSUInteger)mv_dispatch.nr0 - 1u) / (NSUInteger)mv_dispatch.nr0,
-                                              1,
+                                              (NSUInteger)n_tok,
                                               1)
              threadsPerThreadgroup:MTLSizeMake(32, (NSUInteger)mv_dispatch.nsg, 1)];
         ds4_gpu_end_compute_encoder(cb, enc);

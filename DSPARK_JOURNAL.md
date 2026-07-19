@@ -36,13 +36,23 @@ roughly flat and is now the largest stage. FFN still has the weakest
 width-2-to-width-5 amortization, but widths 2 and 3 each have only one noisy
 observation; the twenty width-5 evaluations are the stable optimization guide.
 
-Phase 1.41 is prepared. The width-stratified serial-tail profiler now accepts
-the clean Phase 1.40 layer artifact at commit `98b2130` under a distinct
-post-promotion provenance contract. It runs one synchronized layer-42 process
-and decomposes width-5 tail time into KV/cache update, compressor/indexer,
-attention, inverse RoPE, projection A, and projection B plus HC. The next
-runtime candidate must follow that current component attribution rather than
-reusing the earlier pre-fused-gather tail ranking.
+Phase 1.41 is complete. The refreshed serial-tail profile measured a stable
+width-5 median of `2.434 ms/row`. Compressor/indexer is now the largest
+component at `0.403 ms/row` (`20.1%`), followed by attention at `0.362`,
+projection B plus HC at `0.343`, projection A at `0.331`, KV/cache update at
+`0.295`, and inverse RoPE at `0.270 ms/row`. The tail is broadly distributed:
+whole-suffix batching remains retired, attention already uses fused gather,
+and the projection suffix already uses promoted NR4 after NR8 regressed.
+
+Phase 1.42 is prepared. A default-off exact compressor projection-prebatch
+candidate computes the row-independent paired F16 main-compressor projections,
+and the ratio-4 indexer projections, across verifier widths 2 through 5 before
+serial cache mutation begins. Recurrent compressor updates, cache writes,
+indexer selection, and attention remain in exact row order. The runtime
+correctness matrix passed both compression ratios and all verifier widths
+byte-for-byte with no fallback. The focused uninstrumented benchmark is ready
+for the user; do not promote or prepare a broad HumanEval gate until that
+focused direction is clearly positive.
 
 Phase 1.27 is complete. The cumulative 32-task HumanEval reassessment measured
 current exact DSpark at a `0.8826x` geometric paired ratio versus ordinary
@@ -10915,3 +10925,88 @@ Decision:
 - The branch is again at a safe checkpoint. Future optimization work should
   use the promoted default and retain `=0` only for attribution or regression
   diagnosis.
+
+## Phase 1.41: refreshed width-stratified serial tail
+
+User-run artifact:
+
+- `speed-bench/local-runs/post-promotion-width-tail-20260719-212250`
+- Every profiled output matched the frozen cumulative HumanEval artifact
+  byte-for-byte.
+- At width 5, the median serial tail was `2.434 ms/row` across twenty verifier
+  evaluations.
+- Component medians were compressor/indexer `0.403 ms/row` (`20.1%`),
+  attention `0.362` (`18.1%`), projection B plus HC `0.343` (`17.1%`),
+  projection A `0.331` (`16.5%`), KV/cache update `0.295` (`14.7%`), and
+  inverse RoPE `0.270` (`13.5%`).
+- Widths 2 and 3 each have only one observation. Use width 5 as the stable
+  optimization guide and do not infer useful width scaling from those sparse
+  anchors.
+
+Interpretation:
+
+- No single tail component dominates. A broad suffix rewrite is not justified
+  by this profile and previously regressed because deferred scheduling made the
+  attention core more expensive.
+- Attention already benefits from promoted dense-mixed fused gather.
+  Projection A/B plus HC already use promoted NR4; NR8 was measured at `-3.1%`
+  and remains rejected.
+- Compressor/indexer is the largest component whose current execution shape
+  had not been refreshed, making a narrowly scoped projection candidate the
+  next useful experiment.
+
+## Phase 1.42: exact compressor projection prebatch
+
+Implementation:
+
+- `DS4_DSPARK_EXACT_COMPRESSOR_PRE_BATCH=1` enables the default-off candidate.
+- The paired F16 Metal projection primitive now supports exact verifier widths
+  1 through 5 with independent activation and output rows in the dispatch Y
+  dimension.
+- Exact attention preparation computes paired main compressor KV/score
+  projections across all proposal rows before any row mutates compressor state.
+- Ratio-4 layers also precompute their paired indexer-compressor projections
+  into dedicated transient batch buffers.
+- Serial attention consumes one non-owning row view at a time. Compressor state
+  updates, cache writes, sparse-index construction, and attention calls retain
+  their original row order.
+- Unsupported shapes or routes fall back through the existing exact verifier.
+  The ordinary default remains unchanged when the environment variable is
+  absent.
+
+Why this differs from rejected compressor-pair NR4:
+
+- `DS4_METAL_COMPRESSOR_PAIR_NR4` changed output-row packing inside each
+  one-row projection and measured `-0.4%`.
+- This candidate removes repeated one-row projection dispatch and weight work
+  across the verifier block while preserving each recurrent operation. It is a
+  scheduling experiment, not another NR tuning experiment.
+
+Validation before timing:
+
+- `make` completed successfully after the runtime changes.
+- All 175 `test_dspark_*.py` model-free tests passed; Python compilation, shell
+  syntax, and `git diff --check` passed.
+- The exact runtime correctness matrix passed reasoning, Italian,
+  medium-context, rolling-window, and resumed-chat cases byte-for-byte.
+- Trace coverage observed ratio-128 and ratio-4 layers and verifier widths 2,
+  3, 4, and 5, all with `result=ok` and no fallback.
+- The focused runner dry run shows no runtime stats, trace, diagnostics, or fast
+  verifier in either timed arm. The only candidate difference is
+  `DS4_DSPARK_EXACT_COMPRESSOR_PRE_BATCH=1`.
+
+User-run focused command:
+
+```sh
+python3 speed-bench/run_dspark_comparison.py \
+  --exact-compressor-pre-batch-ablation \
+  --confirm-idle
+```
+
+Decision boundary:
+
+- Require a clearly positive focused paired result before building a 32-task
+  HumanEval confirmation runner. A flat or negative result retires the
+  candidate without changing the promoted default runtime.
+- If focused timing is positive, broad confirmation must remain
+  uninstrumented, threshold `0.75`, byte-exact, and acceptance-stratified.

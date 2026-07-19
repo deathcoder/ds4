@@ -10789,6 +10789,11 @@ typedef struct {
      * predictable: each pointer names an actual DS4 stage. */
     ds4_gpu_tensor *comp_kv_cur;
     ds4_gpu_tensor *comp_sc_cur;
+    /* Non-owning row views used only by exact compressor projection prebatch. */
+    ds4_gpu_tensor *exact_comp_kv_pre;
+    ds4_gpu_tensor *exact_comp_sc_pre;
+    ds4_gpu_tensor *exact_index_comp_kv_pre;
+    ds4_gpu_tensor *exact_index_comp_sc_pre;
     ds4_gpu_tensor *attn_comp_stage;
     ds4_gpu_tensor *indexer_q;
     ds4_gpu_tensor *indexer_weights;
@@ -10859,6 +10864,8 @@ typedef struct {
     ds4_gpu_tensor *batch_kv;
     ds4_gpu_tensor *batch_comp_kv;
     ds4_gpu_tensor *batch_comp_sc;
+    ds4_gpu_tensor *batch_index_comp_kv;
+    ds4_gpu_tensor *batch_index_comp_sc;
     ds4_gpu_tensor *batch_indexer_q;
     ds4_gpu_tensor *batch_indexer_weights;
     ds4_gpu_tensor *batch_heads;
@@ -11036,6 +11043,8 @@ static void metal_graph_free(ds4_gpu_graph *g) {
     ds4_gpu_tensor_free(g->batch_indexer_q);
     ds4_gpu_tensor_free(g->batch_comp_sc);
     ds4_gpu_tensor_free(g->batch_comp_kv);
+    ds4_gpu_tensor_free(g->batch_index_comp_sc);
+    ds4_gpu_tensor_free(g->batch_index_comp_kv);
     ds4_gpu_tensor_free(g->batch_kv);
     ds4_gpu_tensor_free(g->batch_kv_raw);
     ds4_gpu_tensor_free(g->batch_q_half);
@@ -11704,6 +11713,10 @@ static bool metal_graph_alloc_raw_cap(
     g->batch_kv = ds4_gpu_tensor_alloc(pc * DS4_N_HEAD_DIM * sizeof(float));
     g->batch_comp_kv = ds4_gpu_tensor_alloc(pc * comp_width_max * sizeof(float));
     g->batch_comp_sc = ds4_gpu_tensor_alloc(pc * comp_width_max * sizeof(float));
+    g->batch_index_comp_kv = ds4_gpu_tensor_alloc(
+        pc * 2u * DS4_N_INDEXER_HEAD_DIM * sizeof(float));
+    g->batch_index_comp_sc = ds4_gpu_tensor_alloc(
+        pc * 2u * DS4_N_INDEXER_HEAD_DIM * sizeof(float));
     g->batch_indexer_q = ds4_gpu_tensor_alloc(pc * indexer_q_dim * sizeof(float));
     g->batch_indexer_weights = ds4_gpu_tensor_alloc(pc * DS4_N_INDEXER_HEAD * sizeof(float));
     g->batch_heads = ds4_gpu_tensor_alloc(pc * q_dim * sizeof(float));
@@ -11797,6 +11810,7 @@ static bool metal_graph_alloc_raw_cap(
                     g->batch_qr && g->batch_qr_norm && g->batch_q && g->batch_q_half &&
                     g->batch_kv_raw && g->batch_kv &&
                     g->batch_comp_kv && g->batch_comp_sc &&
+                    g->batch_index_comp_kv && g->batch_index_comp_sc &&
                     g->batch_indexer_q && g->batch_indexer_weights &&
                     g->batch_heads && g->batch_attn_low && g->batch_attn_out &&
                     g->batch_group_tmp && g->batch_low_tmp && g->batch_after_attn_hc &&
@@ -13884,6 +13898,18 @@ static bool metal_graph_exact_attn_inv_rope_fused_enabled(void) {
         "DS4_DSPARK_EXACT_ATTN_INV_ROPE_FUSED", &cache);
 }
 
+static bool metal_graph_exact_compressor_pre_batch_enabled(void) {
+    static int cache = -1;
+    return metal_graph_env_flag(
+        "DS4_DSPARK_EXACT_COMPRESSOR_PRE_BATCH", &cache);
+}
+
+static bool metal_graph_exact_compressor_pre_batch_trace_enabled(void) {
+    static int cache = -1;
+    return metal_graph_env_flag(
+        "DS4_DSPARK_EXACT_COMPRESSOR_PRE_BATCH_TRACE", &cache);
+}
+
 static void metal_graph_trace_exact_attn_inv_rope_fused(
         const char *route,
         uint32_t    il,
@@ -15911,9 +15937,16 @@ encode_attention_tail:
             ok = ds4_gpu_end_commands() != 0 && ds4_gpu_begin_commands() != 0;
             exact_compressor_stage_t0 = now_sec();
         }
-        if (ok && !metal_graph_use_reference_compressor_pair_proj()) {
-            ok = ds4_gpu_matmul_f16_pair_tensor(g->comp_kv_cur,
-                                                  g->comp_sc_cur,
+        ds4_gpu_tensor *main_comp_kv = g->exact_comp_kv_pre
+            ? g->exact_comp_kv_pre : g->comp_kv_cur;
+        ds4_gpu_tensor *main_comp_sc = g->exact_comp_sc_pre
+            ? g->exact_comp_sc_pre : g->comp_sc_cur;
+        const bool main_projection_precomputed =
+            g->exact_comp_kv_pre && g->exact_comp_sc_pre;
+        if (ok && !main_projection_precomputed &&
+            !metal_graph_use_reference_compressor_pair_proj()) {
+            ok = ds4_gpu_matmul_f16_pair_tensor(main_comp_kv,
+                                                  main_comp_sc,
                                                   model->map,
                                                   model->size,
                                                   layer->attn_compressor_kv->abs_offset,
@@ -15922,20 +15955,20 @@ encode_attention_tail:
                                                   comp_width,
                                                   g->attn_norm,
                                                   1) != 0;
-        } else {
-            if (ok) ok = ds4_gpu_matmul_f16_tensor(g->comp_kv_cur, model->map, model->size,
+        } else if (ok && !main_projection_precomputed) {
+            if (ok) ok = ds4_gpu_matmul_f16_tensor(main_comp_kv, model->map, model->size,
                                                      layer->attn_compressor_kv->abs_offset,
                                                      DS4_N_EMBD, comp_width,
                                                      g->attn_norm, 1) != 0;
-            if (ok) ok = ds4_gpu_matmul_f16_tensor(g->comp_sc_cur, model->map, model->size,
+            if (ok) ok = ds4_gpu_matmul_f16_tensor(main_comp_sc, model->map, model->size,
                                                      layer->attn_compressor_gate->abs_offset,
                                                      DS4_N_EMBD, comp_width,
                                                      g->attn_norm, 1) != 0;
         }
         DS4_METAL_PROFILE_EXACT_COMPRESSOR_STAGE("main_projection");
         const uint32_t comp_row = g->layer_n_comp[il];
-        if (ok) ok = ds4_gpu_compressor_update_tensor(g->comp_kv_cur,
-                                                        g->comp_sc_cur,
+        if (ok) ok = ds4_gpu_compressor_update_tensor(main_comp_kv,
+                                                        main_comp_sc,
                                                         g->layer_attn_state_kv[il],
                                                         g->layer_attn_state_score[il],
                                                         metal_graph_attn_comp_update_target(g, il),
@@ -15991,9 +16024,16 @@ encode_attention_tail:
                 fprintf(stderr, "ds4: Metal graph indexer compressed KV cache capacity exceeded at layer %u\n", il);
                 ok = false;
             }
-            if (ok && !metal_graph_use_reference_compressor_pair_proj()) {
-                ok = ds4_gpu_matmul_f16_pair_tensor(g->comp_kv_cur,
-                                                      g->comp_sc_cur,
+            ds4_gpu_tensor *index_comp_kv = g->exact_index_comp_kv_pre
+                ? g->exact_index_comp_kv_pre : g->comp_kv_cur;
+            ds4_gpu_tensor *index_comp_sc = g->exact_index_comp_sc_pre
+                ? g->exact_index_comp_sc_pre : g->comp_sc_cur;
+            const bool index_projection_precomputed =
+                g->exact_index_comp_kv_pre && g->exact_index_comp_sc_pre;
+            if (ok && !index_projection_precomputed &&
+                !metal_graph_use_reference_compressor_pair_proj()) {
+                ok = ds4_gpu_matmul_f16_pair_tensor(index_comp_kv,
+                                                      index_comp_sc,
                                                       model->map,
                                                       model->size,
                                                       layer->indexer_compressor_kv->abs_offset,
@@ -16002,20 +16042,20 @@ encode_attention_tail:
                                                       index_width,
                                                       g->attn_norm,
                                                       1) != 0;
-            } else {
-                if (ok) ok = ds4_gpu_matmul_f16_tensor(g->comp_kv_cur, model->map, model->size,
+            } else if (ok && !index_projection_precomputed) {
+                if (ok) ok = ds4_gpu_matmul_f16_tensor(index_comp_kv, model->map, model->size,
                                                          layer->indexer_compressor_kv->abs_offset,
                                                          DS4_N_EMBD, index_width,
                                                          g->attn_norm, 1) != 0;
-                if (ok) ok = ds4_gpu_matmul_f16_tensor(g->comp_sc_cur, model->map, model->size,
+                if (ok) ok = ds4_gpu_matmul_f16_tensor(index_comp_sc, model->map, model->size,
                                                          layer->indexer_compressor_gate->abs_offset,
                                                          DS4_N_EMBD, index_width,
                                                          g->attn_norm, 1) != 0;
             }
             DS4_METAL_PROFILE_EXACT_COMPRESSOR_STAGE("indexer_projection");
             const uint32_t index_row = g->layer_n_index_comp[il];
-            if (ok) ok = ds4_gpu_compressor_update_tensor(g->comp_kv_cur,
-                                                            g->comp_sc_cur,
+            if (ok) ok = ds4_gpu_compressor_update_tensor(index_comp_kv,
+                                                            index_comp_sc,
                                                             g->layer_index_state_kv[il],
                                                             g->layer_index_state_score[il],
                                                             g->layer_index_comp_cache[il],
@@ -23727,6 +23767,103 @@ static bool metal_graph_exact_attention_qkv_prepare(
     return ok;
 }
 
+static bool metal_graph_exact_compressor_pre_batch_prepare(
+        ds4_gpu_graph          *g,
+        const ds4_model        *model,
+        const ds4_layer_weights *layer,
+        uint32_t                il,
+        uint32_t                n_tokens) {
+    const uint32_t ratio = ds4_layer_compress_ratio(il);
+    if (ratio == 0) return true;
+    if (!g || !model || !layer || n_tokens < 2 || n_tokens > 5 ||
+        metal_graph_use_reference_compressor_pair_proj()) {
+        return false;
+    }
+
+    const uint32_t coff = ratio == 4 ? 2u : 1u;
+    const uint32_t comp_width = coff * DS4_N_HEAD_DIM;
+    ds4_gpu_tensor *main_kv = ds4_gpu_tensor_view(
+        g->batch_comp_kv,
+        0,
+        (uint64_t)n_tokens * comp_width * sizeof(float));
+    ds4_gpu_tensor *main_sc = ds4_gpu_tensor_view(
+        g->batch_comp_sc,
+        0,
+        (uint64_t)n_tokens * comp_width * sizeof(float));
+    bool ok = main_kv && main_sc &&
+        layer->attn_compressor_kv && layer->attn_compressor_gate &&
+        layer->attn_compressor_kv->type == DS4_TENSOR_F16 &&
+        layer->attn_compressor_gate->type == DS4_TENSOR_F16 &&
+        layer->attn_compressor_kv->dim[0] == DS4_N_EMBD &&
+        layer->attn_compressor_gate->dim[0] == DS4_N_EMBD &&
+        layer->attn_compressor_kv->dim[1] == comp_width &&
+        layer->attn_compressor_gate->dim[1] == comp_width;
+    if (ok) {
+        ok = ds4_gpu_matmul_f16_pair_tensor(
+                 main_kv,
+                 main_sc,
+                 model->map,
+                 model->size,
+                 layer->attn_compressor_kv->abs_offset,
+                 layer->attn_compressor_gate->abs_offset,
+                 DS4_N_EMBD,
+                 comp_width,
+                 g->batch_attn_norm,
+                 n_tokens) != 0;
+    }
+
+    ds4_gpu_tensor *index_kv = NULL;
+    ds4_gpu_tensor *index_sc = NULL;
+    if (ok && ratio == 4) {
+        const uint32_t index_width = coff * DS4_N_INDEXER_HEAD_DIM;
+        index_kv = ds4_gpu_tensor_view(
+            g->batch_index_comp_kv,
+            0,
+            (uint64_t)n_tokens * index_width * sizeof(float));
+        index_sc = ds4_gpu_tensor_view(
+            g->batch_index_comp_sc,
+            0,
+            (uint64_t)n_tokens * index_width * sizeof(float));
+        ok = index_kv && index_sc &&
+            layer->indexer_compressor_kv &&
+            layer->indexer_compressor_gate &&
+            layer->indexer_compressor_kv->type == DS4_TENSOR_F16 &&
+            layer->indexer_compressor_gate->type == DS4_TENSOR_F16 &&
+            layer->indexer_compressor_kv->dim[0] == DS4_N_EMBD &&
+            layer->indexer_compressor_gate->dim[0] == DS4_N_EMBD &&
+            layer->indexer_compressor_kv->dim[1] == index_width &&
+            layer->indexer_compressor_gate->dim[1] == index_width;
+        if (ok) {
+            ok = ds4_gpu_matmul_f16_pair_tensor(
+                     index_kv,
+                     index_sc,
+                     model->map,
+                     model->size,
+                     layer->indexer_compressor_kv->abs_offset,
+                     layer->indexer_compressor_gate->abs_offset,
+                     DS4_N_EMBD,
+                     index_width,
+                     g->batch_attn_norm,
+                     n_tokens) != 0;
+        }
+    }
+
+    if (metal_graph_exact_compressor_pre_batch_trace_enabled()) {
+        fprintf(stderr,
+                "ds4: DSpark exact compressor prebatch layer=%u "
+                "proposed=%u ratio=%u result=%s\n",
+                il,
+                n_tokens,
+                ratio,
+                ok ? "ok" : "fallback");
+    }
+    ds4_gpu_tensor_free(index_sc);
+    ds4_gpu_tensor_free(index_kv);
+    ds4_gpu_tensor_free(main_sc);
+    ds4_gpu_tensor_free(main_kv);
+    return ok;
+}
+
 /* Shadow the row-independent attention preparation before any cache write. */
 static bool metal_graph_exact_attention_pre_batch_prepare(
         ds4_gpu_graph          *g,
@@ -23892,6 +24029,11 @@ static bool metal_graph_exact_attention_pre_batch_prepare(
                                                       kv_rope_view,
                                                       capture_boundaries,
                                                       outcomes);
+    }
+    if (ok && !capture_boundaries &&
+        metal_graph_exact_compressor_pre_batch_enabled()) {
+        ok = metal_graph_exact_compressor_pre_batch_prepare(
+            g, model, layer, il, n_tokens);
     }
     ds4_gpu_tensor_free(kv_rope_view);
     ds4_gpu_tensor_free(q_rope_view);
@@ -24115,8 +24257,32 @@ static bool metal_graph_encode_exact_attention_prepared(
                   2u * (uint64_t)DS4_N_HC * sizeof(float),
                   (uint64_t)DS4_N_HC * DS4_N_HC * sizeof(float))
             : NULL);
+    const uint32_t comp_ratio = ds4_layer_compress_ratio(il);
+    const bool compressor_pre_batch =
+        comp_ratio != 0 &&
+        metal_graph_exact_compressor_pre_batch_enabled();
+    const uint32_t comp_coff = comp_ratio == 4 ? 2u : 1u;
+    const uint32_t comp_width = comp_coff * DS4_N_HEAD_DIM;
+    const uint32_t index_width = comp_coff * DS4_N_INDEXER_HEAD_DIM;
+    ds4_gpu_tensor *pre_comp_kv = compressor_pre_batch
+        ? metal_graph_tensor_row_view(g->batch_comp_kv, row, comp_width)
+        : NULL;
+    ds4_gpu_tensor *pre_comp_sc = compressor_pre_batch
+        ? metal_graph_tensor_row_view(g->batch_comp_sc, row, comp_width)
+        : NULL;
+    ds4_gpu_tensor *pre_index_kv = compressor_pre_batch && comp_ratio == 4
+        ? metal_graph_tensor_row_view(
+              g->batch_index_comp_kv, row, index_width)
+        : NULL;
+    ds4_gpu_tensor *pre_index_sc = compressor_pre_batch && comp_ratio == 4
+        ? metal_graph_tensor_row_view(
+              g->batch_index_comp_sc, row, index_width)
+        : NULL;
     bool ok = attn_norm && qr_norm && q && kv && hc_split && hc_pre &&
-              hc_post && hc_comb && (!core_only || heads);
+              hc_post && hc_comb && (!core_only || heads) &&
+              (!compressor_pre_batch ||
+               (pre_comp_kv && pre_comp_sc &&
+                (comp_ratio != 4 || (pre_index_kv && pre_index_sc))));
     ds4_gpu_tensor *saved_attn_norm = g->attn_norm;
     ds4_gpu_tensor *saved_qr_norm = g->qr_norm;
     ds4_gpu_tensor *saved_q = g->q;
@@ -24126,6 +24292,12 @@ static bool metal_graph_encode_exact_attention_prepared(
     ds4_gpu_tensor *saved_hc_pre = g->hc_pre;
     ds4_gpu_tensor *saved_hc_post = g->hc_post;
     ds4_gpu_tensor *saved_hc_comb = g->hc_comb;
+    ds4_gpu_tensor *saved_exact_comp_kv_pre = g->exact_comp_kv_pre;
+    ds4_gpu_tensor *saved_exact_comp_sc_pre = g->exact_comp_sc_pre;
+    ds4_gpu_tensor *saved_exact_index_comp_kv_pre =
+        g->exact_index_comp_kv_pre;
+    ds4_gpu_tensor *saved_exact_index_comp_sc_pre =
+        g->exact_index_comp_sc_pre;
     if (ok) {
         g->attn_norm = attn_norm;
         g->qr_norm = qr_norm;
@@ -24135,6 +24307,10 @@ static bool metal_graph_encode_exact_attention_prepared(
         g->hc_pre = hc_pre;
         g->hc_post = hc_post;
         g->hc_comb = hc_comb;
+        g->exact_comp_kv_pre = pre_comp_kv;
+        g->exact_comp_sc_pre = pre_comp_sc;
+        g->exact_index_comp_kv_pre = pre_index_kv;
+        g->exact_index_comp_sc_pre = pre_index_sc;
         if (core_only) {
             g->heads = heads;
             ok = metal_graph_encode_decode_layer_attention_core(g,
@@ -24169,6 +24345,10 @@ static bool metal_graph_encode_exact_attention_prepared(
     g->q = saved_q;
     g->qr_norm = saved_qr_norm;
     g->attn_norm = saved_attn_norm;
+    g->exact_comp_kv_pre = saved_exact_comp_kv_pre;
+    g->exact_comp_sc_pre = saved_exact_comp_sc_pre;
+    g->exact_index_comp_kv_pre = saved_exact_index_comp_kv_pre;
+    g->exact_index_comp_sc_pre = saved_exact_index_comp_sc_pre;
     if (!cached) {
         ds4_gpu_tensor_free(hc_comb);
         ds4_gpu_tensor_free(hc_post);
@@ -24180,6 +24360,10 @@ static bool metal_graph_encode_exact_attention_prepared(
         ds4_gpu_tensor_free(qr_norm);
         ds4_gpu_tensor_free(attn_norm);
     }
+    ds4_gpu_tensor_free(pre_index_sc);
+    ds4_gpu_tensor_free(pre_index_kv);
+    ds4_gpu_tensor_free(pre_comp_sc);
+    ds4_gpu_tensor_free(pre_comp_kv);
     return ok;
 }
 
