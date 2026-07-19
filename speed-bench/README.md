@@ -1221,3 +1221,36 @@ least 24 improved tasks, and no task below `0.90x` movement. The independent
 outcome bands are below near parity under `0.95x`, near parity from `0.95x` to
 below `1.00x`, and parity or speedup at `1.00x` or above. No instrumentation is
 enabled during this gate.
+
+## Ordinary decode: pinned upstream main versus the current branch
+
+Use this separate gate to determine whether the DSpark branch also changed
+ordinary Metal decoding. It compares the current binary with a detached,
+clean, pre-DSpark `origin/main` worktree pinned at
+`80ebbc396aee40eedc1d829222f3362d10fa4c6c`. The prepared worktree is
+`../ds4-master-baseline`, and its `ds4` binary must be built from that exact
+commit. The runner refuses a different upstream commit or tracked changes in
+either source tree.
+
+The workload is the same deterministic 32-task HumanEval selection and frozen
+outputs used by the latest cumulative study. Both modes are ordinary
+non-thinking Metal decode: no sidecar, DSpark runtime, stats, traces,
+diagnostics, or profiler. Every `DS4_*` environment variable is cleared, both
+binaries must reproduce the frozen output byte-for-byte, measured order
+alternates by task, and two balanced warmup pairs are excluded. The complete
+run is 68 model processes.
+
+When the machine is ready, run:
+
+```sh
+python3 speed-bench/run_ds4_master_baseline_comparison.py \
+  --output-reference \
+  speed-bench/local-runs/humaneval-cumulative-throughput-32-20260719-171040/summary.json \
+  --confirm-idle
+```
+
+The predeclared meaningful-progress gate requires a geometric current/upstream
+paired ratio of at least `1.01x`, at least `24/32` tasks faster, and no task
+below `0.95x`. The paired result answers whether this branch improved ordinary
+decode; it must not be multiplied into a DSpark/baseline ratio from another
+session.

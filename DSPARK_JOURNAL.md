@@ -10449,3 +10449,120 @@ Decision:
   selecting the next exact-verifier optimization. If no transferable win has
   appeared, return to the measured target-verifier bottleneck rather than
   further tuning the already-small sidecar or routed-MoE surface.
+
+## Phase 1.35: upstream baseline gate and external implementation survey
+
+Safe-state context:
+
+- The current branch is `codex/dspark-observability-0` at source commit
+  `82f224b` before this phase. It descends directly from the pinned pre-DSpark
+  `origin/main` commit
+  `80ebbc396aee40eedc1d829222f3362d10fa4c6c` and is 103 commits ahead.
+- Fetched `origin/main` and created a clean detached sibling worktree at
+  `/Users/deathcodevision/dev/ds4-master-baseline`, pinned to that exact SHA.
+- Built `/Users/deathcodevision/dev/ds4-master-baseline/ds4` with
+  `make -j4 ds4`. No benchmark process was run by Codex.
+
+Ordinary-decode comparison prepared:
+
+- Added `speed-bench/run_ds4_master_baseline_comparison.py` and model-free
+  tests in `tests/test_ds4_master_baseline_comparison.py`.
+- The runner compares the pinned upstream binary with the current branch on
+  the deterministic 32-task HumanEval workload from
+  `humaneval-cumulative-throughput-32-20260719-171040`.
+- Both arms are ordinary Metal decode with no `--dspark`; every `DS4_*`
+  variable is cleared. Both outputs must match the frozen clean artifact
+  byte-for-byte.
+- Measured order alternates upstream/current by task. Two balanced warmup
+  pairs are excluded, for 68 total processes and 64 measured processes.
+- The runner records both source SHAs and binary hashes, rejects dirty tracked
+  trees, and refuses an upstream worktree not at the pinned SHA.
+- The predeclared meaningful-progress gate is geometric current/upstream at
+  least `1.01x`, at least `24/32` current wins, and no task below `0.95x`.
+- A real dry run accepted the frozen reference, printed 32 schedules and 68
+  processes, and confirmed the two commands use distinct binaries with no
+  DSpark flag. It materialized no prompt and ran no model.
+- Python compilation and the six targeted harness tests passed. All 148
+  existing DSpark model-free tests also passed, for 154 model-free tests across
+  the two suites.
+- `make -j4 ds4` confirmed the current binary is up to date, and
+  `git diff --check` passed.
+
+User-run command:
+
+```sh
+python3 speed-bench/run_ds4_master_baseline_comparison.py \
+  --output-reference \
+  speed-bench/local-runs/humaneval-cumulative-throughput-32-20260719-171040/summary.json \
+  --confirm-idle
+```
+
+External survey snapshot, 2026-07-19:
+
+- MTPLX was inspected at `54a1d9a`. Its most relevant work is
+  verify-shape quantized matmul for narrow row counts: one kernel streams a
+  quantized weight tile while accumulating all verify rows, with split-K and
+  multi-simdgroup geometries chosen by shape. Its repository reports material
+  verify gains on Apple Silicon. Its Q4 arithmetic can differ from stock at
+  tail ULPs, so morphology is portable but its numerical implementation
+  cannot be copied into ds4's byte-exact path without a correctness gate.
+- oMLX was inspected at `ed8337e` (`v0.5.2.dev1`). It now explicitly ports
+  MTPLX's verify-QMM kernels and arms them only around MTP target verification.
+  It also uses a minimum output-width gate because dispatching hundreds of
+  small custom projections costs more on the host than it saves on the GPU.
+  This independently validates both shape specialization and selective
+  routing as design requirements.
+- mlx-dspark was inspected at `9e39ea2` (`v0.5.0`). Its published diagnosis is
+  the same: narrow multi-row quantized target verification is the limiting
+  Apple-Silicon cost. It also offers lossless prompt-copy drafting, which can
+  be useful for editing workloads but is a separate drafter/router feature,
+  not a general improvement to the current DSpark verifier.
+- MLX PR 3120 added split-K for small-M quantized matmul. The published M3 Max
+  examples improve M=12 and M=16 by roughly 25-30%. Our dominant widths are
+  2-5, so the occupancy principle is relevant but its exact geometry is not a
+  drop-in answer.
+- llama.cpp PR 25173 is an open DSpark implementation layered on DFlash. Its
+  reported wins are CUDA/Qwen results and its principal changes concern model
+  support, Markov bias, and graph reuse. It does not presently offer a Metal
+  verifier kernel to port. Its confidence data also says pruning helps mainly
+  at serving concurrency, consistent with keeping our single-session
+  threshold policy evidence separate.
+- vLLM's current MTP work is useful for scheduler and serving architecture,
+  but its main optimization mechanisms are CUDA graphs, batched serving, and
+  GPU-specific kernels. They are not direct single-session Metal ports.
+
+Ranked portable candidates:
+
+1. Add a width-specialized exact Q2_K routed-down kernel for verifier widths
+   2-5. The promoted hybrid still loops proposal rows and invokes
+   `ds4_gpu_encode_mul_mv_id_sum6` once per row. A kernel that reuses each
+   selected Q2_K weight stream across proposal rows attacks the current target
+   verifier directly while preserving the existing gate/up hybrid.
+2. Revisit attention batching only as a genuinely fused KV-streaming kernel.
+   MTPLX's packed verify attention reuses KV across queries. Our earlier suffix
+   batching regressed because capture, gather, and projection overhead exceeded
+   the gain; the promoted fused-gather path already removed much of that
+   overhead. A new candidate must stream the cache once and preserve exact
+   operation order, not merely wrap the old serial calls in a batch API.
+3. Consider prompt-copy/n-gram drafting after target parity. It can produce
+   large editing/code gains, but it is workload-dependent and does not reduce
+   the cost of a DSpark round.
+
+Deferred as low transfer value:
+
+- Python graph compilation/dispatch caching: ds4 already owns a direct C/Metal
+  command path, so MTPLX/oMLX host-level graph wins do not map cleanly.
+- CUDA graphs and continuous batching: valuable for server aggregate
+  throughput, outside the current one-session Metal objective.
+- NAX-only kernels: hardware-specific and not a general Apple-Silicon default.
+- Further sidecar tuning: post-promotion target verification remains the
+  dominant gap, while the sidecar is already comparatively small.
+
+Decision boundary:
+
+- Run the pinned upstream/current ordinary-decode comparison first. It tells
+  us whether baseline movement is real and prevents attributing shared Metal
+  improvements solely to DSpark.
+- After that safe checkpoint, the next bounded implementation should be an
+  opt-in, exact Q2_K verifier-width kernel with byte-exact correctness and
+  focused attribution before any timed promotion gate.
