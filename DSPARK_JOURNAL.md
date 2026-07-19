@@ -49,13 +49,14 @@ share the outer Metal command batch, so merely reusing a command buffer is not
 a new optimization. Next attribute the existing one-token routed-MoE stages
 inside exact verifier batches before choosing a kernel or encoding candidate.
 
-Phase 1.31 is prepared and awaiting the user-run exact routed-MoE stage
-profile. The diagnostic reuses the existing synchronized one-token MoE
-boundaries and maps only records between each exact batch's `router` and
-`routed_moe` controls. It requires one complete gate/up, activation-weight,
-down, and sum sequence per proposal row, profiles layers `0`, `21`, and `42`,
-and reconciles inner medians against the enclosing routed-MoE control. No
-runtime candidate or timed throughput measurement is enabled.
+Phase 1.31 is complete. The exact one-row routed-MoE profile assigns `49.5%`
+of stable width-5 time to gate/up and `43.7%` to down; activation-weight and
+sum are only `3.4%` each. Per-row cost is effectively flat from verifier width
+2 through 5, confirming that current exact execution does not amortize either
+matrix stage. Earlier observer work proved the generic batched routed weighted
+mid exact through width 5 and localized width-5 drift to down/sum. Next build
+an opt-in hybrid correctness candidate that batches gate/up and activation but
+preserves the exact one-row direct six-expert down/sum arithmetic.
 
 Phase 1.05 is complete. The frozen 32-task HumanEval gate measured a `0.8081x`
 median paired DSpark/baseline ratio and `0.7910x` geometric mean on the
@@ -10084,3 +10085,48 @@ python3 speed-bench/run_dspark_post_promotion_width_routed_moe_profile.py \
   speed-bench/local-runs/post-promotion-width-ffn-20260717-104106/summary.json \
   --confirm-ready
 ```
+
+Result:
+
+- Artifact:
+  `speed-bench/local-runs/post-promotion-width-moe-20260717-110416`.
+- Clean source commit: `b3288a6e31f683d2d426289ef9f0e9e57cbd00c9`.
+- Every profiled output matched the frozen cumulative HumanEval artifact
+  byte-for-byte and reproduced the expected width counts `1/1/4/20`.
+- The inner stage sum reconciled to `0.937x..0.956x` of the enclosing
+  routed-MoE control across widths 2 through 5.
+
+Width-5 stage split across layers `0`, `21`, and `42`:
+
+- Gate/up: `1.261 ms/row`, `49.5%`.
+- Down: `1.113 ms/row`, `43.7%`.
+- Activation-weight: `0.086 ms/row`, `3.4%`.
+- Sum boundary: `0.085 ms/row`, `3.4%`.
+- Gate/up is stable at `0.419`, `0.424`, and `0.419 ms/row` by sampled layer.
+- Down is stable at `0.370`, `0.372`, and `0.372 ms/row`.
+
+Width behavior:
+
+- Width 2: `2.586 ms/row` inner, `2.760 ms/row` outer.
+- Width 3: `2.499 ms/row` inner, `2.659 ms/row` outer.
+- Width 4: `2.552 ms/row` inner, `2.668 ms/row` outer.
+- Width 5: `2.546 ms/row` inner, `2.676 ms/row` outer.
+- Each inner record is still one proposal row, so the flat cost confirms the
+  current exact path does not amortize its matrix work as verifier width grows.
+
+Decision:
+
+- Do not optimize activation-weight or the nominal sum boundary; together they
+  account for only `6.8%` of this synchronized routed-MoE attribution.
+- Reuse the earlier Phase 0.58 proof: generic batched routed weighted-mid was
+  bit-exact for widths 2 through 5, while only width-5 down/sum diverged.
+- Build a default-off hybrid correctness candidate inside the existing Metal
+  batch MoE path:
+  - use current batched gate/up and weighted activation to produce exact F32
+    routed mid rows;
+  - encode the existing direct six-expert down/sum primitive once per output
+    row using those batch mids;
+  - keep ordinary prefill, sidecar execution, and non-Metal backends unchanged.
+- Prove internal and generated-output exactness before any timed ablation. This
+  candidate attacks the measured `49.5%` gate/up share while retaining the
+  arithmetic boundary already known to be necessary at width 5.
