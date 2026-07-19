@@ -64,6 +64,20 @@ Exact compressor projection prebatching is now promoted to the default exact
 verifier path; `DS4_DSPARK_EXACT_COMPRESSOR_PRE_BATCH=0` or `off` retains the
 legacy serial projection route. The branch is again at a safe checkpoint.
 
+Phase 1.45 is complete. The fresh cumulative 32-task reassessment measured
+exact DSpark at a `0.8993x` geometric paired ratio versus ordinary baseline,
+leaving a `10.1%` gap to parity. Against the immediately preceding `0.8814x`
+cumulative checkpoint, this is `1.0203x` geometric movement with `28/32` tasks
+improving and a `0.9513x` minimum movement. Treat the isolated prebatch gate as
+the causal evidence and this cross-session cumulative change as supportive.
+The runtime is closer, but still below the `0.95x` near-parity boundary.
+
+Phase 1.46 is prepared. The stats-only cumulative cost audit is repinned to the
+clean Phase 1.45 artifact at commit `8ee89c2`. It will collect one instrumented
+exact-runtime process per HumanEval task, require every output to match the
+frozen cumulative artifact byte-for-byte, and recalculate target-verifier,
+sidecar, residual, and verifier-width costs before another candidate is chosen.
+
 Phase 1.27 is complete. The cumulative 32-task HumanEval reassessment measured
 current exact DSpark at a `0.8826x` geometric paired ratio versus ordinary
 baseline, with all outputs byte-exact. This improves the historical clean
@@ -11174,3 +11188,76 @@ Decision:
 - This closes the candidate and returns the branch to a clean optimization
   checkpoint. Future cumulative or profiling work should use the promoted
   default and reserve `=0` for attribution and regression diagnosis.
+
+## Phase 1.45: cumulative throughput after compressor prebatch promotion
+
+User-run artifact:
+
+- `speed-bench/local-runs/humaneval-cumulative-throughput-32-20260719-223901`
+  at clean commit `8ee89c2`.
+- Every current DSpark output matched ordinary baseline and the frozen
+  historical artifact byte-for-byte.
+- Baseline median: `24.92 t/s`; current DSpark median: `22.25 t/s`; ratio of
+  medians `0.8929x`.
+- Median paired ratio: `0.8952x`; geometric paired ratio: `0.8993x`.
+- DSpark was faster on two tasks, equal on none, and slower on thirty. The
+  paired range was `0.8005x..1.0029x`; the geometric gap to parity is `10.1%`.
+- Against frozen commit `7b954be`, movement was `1.0416x` geometrically with
+  `30/32` tasks improved and a `0.9947x` minimum.
+
+Immediate-checkpoint comparison:
+
+- The directly preceding cumulative artifact is
+  `speed-bench/local-runs/humaneval-cumulative-throughput-32-20260719-204632`,
+  after shared-Q8 promotion and before compressor prebatch promotion.
+- Its geometric paired ratio was `0.8814x`; the current `0.8993x` result is
+  `1.0203x` geometric movement across matched tasks.
+- The median matched-task movement is `1.0209x`; `28/32` tasks improved, four
+  regressed, and the movement range was `0.9513x..1.0949x`.
+- Baseline and DSpark absolute throughput both moved between sessions
+  (`24.23 → 24.92 t/s` baseline median and `21.43 → 22.25 t/s` runtime
+  median). Do not attribute the entire cumulative movement to one promotion.
+  The same-session prebatch gates remain the authoritative causal evidence.
+- The initial machine snapshot included `duetexpertd` at `91.1%` CPU and
+  WindowServer at `38.6%`; desktop interference remains present despite the
+  balanced paired design.
+
+Decision:
+
+- Progress is real and the direction agrees with the isolated promotion gate,
+  but exact DSpark remains below near parity. Do not make an end-to-end speedup
+  claim.
+- Refresh the cumulative stats-only cost audit against this exact artifact
+  before selecting another Metal verifier candidate.
+
+## Phase 1.46: cumulative cost audit repinned
+
+Preparation:
+
+- Updated `CUMULATIVE_SOURCE_COMMIT` in
+  `speed-bench/run_dspark_humaneval_cumulative_cost_audit.py` to the clean
+  Phase 1.45 commit `8ee89c2ccb8e3d4269fa3f01f1109b1e1878c37d`.
+- The provenance test was updated to require that exact commit. Existing
+  selection, model identity, threshold, promoted-default, clean-tree, output,
+  prompt, and raw-ratio checks remain unchanged.
+- A real dry run accepted the Phase 1.45 summary and printed exactly 32
+  stats-only exact-runtime processes. Commands contain runtime stats and
+  threshold `0.75`, with no fast verifier, oracle trace, or experimental route.
+- This is an instrumented diagnostic, not a throughput benchmark. Desktop
+  idleness is less critical, but the output and structural counters remain
+  strict correctness gates.
+
+User-run command:
+
+```sh
+python3 speed-bench/run_dspark_humaneval_cumulative_cost_audit.py \
+  --throughput-reference \
+  speed-bench/local-runs/humaneval-cumulative-throughput-32-20260719-223901/summary.json \
+  --confirm-ready
+```
+
+Decision boundary:
+
+- Use the refreshed target, sidecar, residual, and width accounting to choose
+  the next candidate. Do not reuse the Phase 1.39 cost split after compressor
+  projection scheduling changed.
