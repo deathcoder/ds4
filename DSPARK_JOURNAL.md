@@ -8,6 +8,25 @@ particular DSpark change exists.
 
 Branch: `codex/dspark-observability-0`
 
+Phase 1.38 is complete. After promoting exact shared-expert Q8 proposal rows,
+the fresh 32-task cumulative HumanEval reassessment measured exact DSpark at a
+`0.8814x` geometric paired ratio versus ordinary baseline, with every output
+byte-exact. This is effectively flat against Phase 1.27's controlled
+`0.8826x` result despite the isolated shared-Q8 gate's `1.0196x` geometric
+gain: baseline and runtime absolute throughput moved between sessions, and the
+remaining end-to-end gap is still `11.9%`. Current/historical movement was
+`1.0208x` geometrically, with `22/32` tasks improved and a `0.9478x` minimum,
+so the predeclared movement gate failed. Keep the unanimous same-session
+shared-Q8 promotion, but make no cumulative speedup claim from this run.
+
+Phase 1.39 is prepared. The post-promotion stats-only cost audit is repinned to
+the clean Phase 1.38 artifact at commit `88e6fcd`. It will run only the 32
+instrumented exact-DSpark arms, require each output to match the frozen
+throughput artifact byte-for-byte, and recalibrate target-verifier, sidecar,
+and residual costs against the current `0.8814x` budget. Do not select another
+kernel from the older width-layer ranking until this audit establishes the
+current cost balance after routed-MoE hybrid and shared-Q8 promotion.
+
 Phase 1.27 is complete. The cumulative 32-task HumanEval reassessment measured
 current exact DSpark at a `0.8826x` geometric paired ratio versus ordinary
 baseline, with all outputs byte-exact. This improves the historical clean

@@ -18,7 +18,7 @@ import run_dspark_issue468_comparison as common
 
 THRESHOLD = cumulative.THRESHOLD
 TASK_COUNT = cumulative.SAMPLE_COUNT
-CUMULATIVE_SOURCE_COMMIT = "f0edb16884aafd7e8ce95054da4d9a07117f5719"
+CUMULATIVE_SOURCE_COMMIT = "88e6fcd6d5542be8a4be0ce36619112e9a443e99"
 
 
 def parse_args():

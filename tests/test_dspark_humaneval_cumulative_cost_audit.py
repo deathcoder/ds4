@@ -32,7 +32,7 @@ class DSparkCumulativeCostAuditTests(unittest.TestCase):
         self.assertEqual(audit.TASK_COUNT, 32)
         self.assertEqual(
             audit.CUMULATIVE_SOURCE_COMMIT,
-            "f0edb16884aafd7e8ce95054da4d9a07117f5719",
+            "88e6fcd6d5542be8a4be0ce36619112e9a443e99",
         )
 
     def test_command_enables_stats_without_experimental_routes(self):
