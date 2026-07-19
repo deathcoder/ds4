@@ -44,15 +44,19 @@ projection B plus HC at `0.343`, projection A at `0.331`, KV/cache update at
 whole-suffix batching remains retired, attention already uses fused gather,
 and the projection suffix already uses promoted NR4 after NR8 regressed.
 
-Phase 1.42 is prepared. A default-off exact compressor projection-prebatch
-candidate computes the row-independent paired F16 main-compressor projections,
-and the ratio-4 indexer projections, across verifier widths 2 through 5 before
-serial cache mutation begins. Recurrent compressor updates, cache writes,
-indexer selection, and attention remain in exact row order. The runtime
-correctness matrix passed both compression ratios and all verifier widths
-byte-for-byte with no fallback. The focused uninstrumented benchmark is ready
-for the user; do not promote or prepare a broad HumanEval gate until that
-focused direction is clearly positive.
+Phase 1.42 is complete. The default-off exact compressor projection-prebatch
+candidate measured a focused `1.0212x` median paired gain, with all three pairs
+positive (`1.0309x`, `1.0120x`, and `1.0212x`) and every output byte-exact.
+This clears the decision boundary for broader confirmation; it is not yet a
+promoted default.
+
+Phase 1.43 is prepared. The frozen threshold-0.75 HumanEval gate compares the
+current promoted exact default against compressor projection prebatching over
+32 tasks with balanced order and two excluded warmup pairs. Promotion requires
+a geometric gain of at least `1.005x`, at least `20/32` task wins, no task
+below `0.95x`, and no aggregate regression across low-acceptance tasks. Both
+arms are uninstrumented and every output must match the frozen exact artifact
+byte-for-byte. The user must run this benchmark manually.
 
 Phase 1.27 is complete. The cumulative 32-task HumanEval reassessment measured
 current exact DSpark at a `0.8826x` geometric paired ratio versus ordinary
@@ -11010,3 +11014,56 @@ Decision boundary:
   candidate without changing the promoted default runtime.
 - If focused timing is positive, broad confirmation must remain
   uninstrumented, threshold `0.75`, byte-exact, and acceptance-stratified.
+
+Focused result:
+
+- User-run artifact: `speed-bench/local-runs/20260719-214131` at clean commit
+  `be7f101`.
+- Default exact median: `25.56 t/s`; compressor projection prebatch median:
+  `26.10 t/s`; ratio of medians `1.0211x` (`+2.1%`).
+- Paired ratios were `1.0309x`, `1.0120x`, and `1.0212x`; all three pairs
+  improved and the median paired ratio was `1.0212x`.
+- Every measured arm produced the same stdout SHA-256. Runtime stats and
+  instrumentation columns were empty as required.
+- PROCEED to broad confirmation. Do not promote from this three-pair focused
+  result alone.
+
+## Phase 1.43: compressor-prebatch HumanEval gate prepared
+
+Harness:
+
+- Added `speed-bench/run_dspark_humaneval_compressor_pre_batch.py` and
+  model-free tests in
+  `tests/test_dspark_humaneval_compressor_pre_batch.py`.
+- It compares the current promoted exact default against
+  `DS4_DSPARK_EXACT_COMPRESSOR_PRE_BATCH=1` on the frozen 32-task HumanEval
+  selection at confidence threshold `0.75`.
+- Measured order alternates exactly across tasks. Two balanced global warmup
+  pairs are excluded, for 68 total model processes and 64 measured processes.
+- Each output must match the byte-exact frozen threshold-0.75 reference from
+  `humaneval-threshold075-throughput-32-20260716-155112`.
+- Both arms forbid runtime stats, acceptance tracing, candidate tracing,
+  profilers, diagnostics, and fast verification.
+
+Predeclared promotion gate:
+
+- Geometric candidate/default ratio at least `1.005x`.
+- Candidate faster on at least `20/32` tasks.
+- No task below `0.95x` candidate/default.
+- Geometric candidate/default ratio at least `1.00x` across tasks whose
+  acceptance verify rate is at most `0.65`.
+
+User-run command:
+
+```sh
+python3 speed-bench/run_dspark_humaneval_compressor_pre_batch.py \
+  --throughput-reference \
+  speed-bench/local-runs/humaneval-threshold075-throughput-32-20260716-155112/summary.json \
+  --confirm-idle
+```
+
+Decision:
+
+- Promote compressor projection prebatching only if this broad gate passes and
+  all outputs remain byte-exact. Otherwise retain the current default and
+  retire or revise the candidate.
