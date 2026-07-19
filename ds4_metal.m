@@ -1918,6 +1918,28 @@ static int ds4_gpu_trace_exact_q2_down_batch(void) {
     return enabled;
 }
 
+static int ds4_gpu_use_exact_routed_gate_up_pair_w5(void) {
+    static int initialized;
+    static int enabled;
+    if (!initialized) {
+        enabled =
+            ds4_gpu_env_bool("DS4_DSPARK_EXACT_ROUTED_GATE_UP_PAIR_W5") == 1;
+        initialized = 1;
+    }
+    return enabled;
+}
+
+static int ds4_gpu_trace_exact_routed_gate_up_pair_w5(void) {
+    static int initialized;
+    static int enabled;
+    if (!initialized) {
+        enabled = getenv(
+            "DS4_DSPARK_EXACT_ROUTED_GATE_UP_PAIR_W5_TRACE") != NULL;
+        initialized = 1;
+    }
+    return enabled;
+}
+
 static int ds4_gpu_use_indexed_attention_rb16_legacy(void) {
     static int initialized;
     static int enabled;
@@ -26540,9 +26562,13 @@ int ds4_gpu_routed_moe_batch_tensor(
          * tiny batches so ordinary prefill keeps using the higher-throughput
          * grouped matmul path.
          */
+        const bool exact_routed_gate_up_pair_w5 =
+            exact_down_rows &&
+            n_tokens == 5u &&
+            ds4_gpu_use_exact_routed_gate_up_pair_w5();
         const bool use_tiny_pair_mv =
             !g_quality_mode &&
-            n_tokens <= 4u &&
+            (n_tokens <= 4u || exact_routed_gate_up_pair_w5) &&
             !use_q4_batch_expert_table &&
             !use_mm_id &&
             ((gate_type == DS4_METAL_TENSOR_IQ2_XXS && g_moe_mul_mv_id_iq2_xxs_pair_pipeline) ||
@@ -27025,6 +27051,14 @@ int ds4_gpu_routed_moe_batch_tensor(
                                                  gate_smem,
                                                  2,
                                                  false);
+            if (exact_routed_gate_up_pair_w5 &&
+                ds4_gpu_trace_exact_routed_gate_up_pair_w5()) {
+                fprintf(stderr,
+                        "ds4: DSpark exact routed gate/up pair width=5 "
+                        "layer=%u result=%s\n",
+                        layer_index,
+                        ok ? "pass" : "fail");
+            }
         } else {
             ok = ds4_gpu_encode_mul_mv_id(cb,
                                                   gate_mv_pipeline,

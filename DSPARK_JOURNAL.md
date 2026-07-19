@@ -93,12 +93,18 @@ weakest width-2-to-width-5 amortization at `0.518x`. Shared gate/up and down
 are now `0.233` and `0.212 ms/row`; all other components are individually
 below `0.230 ms/row`.
 
-Phase 1.49 is prepared. The routed-MoE profiler is repinned to the clean Phase
-1.48 FFN artifact at commit `fafcdda` and converted from obsolete pre-hybrid
-one-row records to the promoted batch encoder's `gate_up`,
-`activation_weight`, `down`, and `sum` stage records. It requires the
-`hybrid_exact_down_*` path, F32 mids, exact verifier shapes, frozen width
-counts, and byte-identical output before reporting per-row normalized costs.
+Phase 1.49 is complete. On the promoted hybrid at stable width 5, routed
+gate/up is `0.544 ms/row` (`48.3%`), exact down is `0.401` (`35.7%`),
+activation/weight is `0.162` (`14.4%`), and sum is `0.018` (`1.6%`). The
+inner total reconciles to `0.960x` of its outer routed-MoE control. Width 5 is
+the stable sample with twenty evaluations; every output remained byte-exact.
+
+Phase 1.50 is prepared. A default-off exact-runtime candidate extends the
+existing paired IQ2_XXS routed gate/up kernel from widths 2-4 to width 5 only.
+The kernel and arithmetic are unchanged; exact down rows, activation, and all
+other routes remain untouched. The runtime correctness matrix passes,
+including a dedicated fixed-K=5 HumanEval 079 case with successful route
+traces. The next action is the user-run three-pair uninstrumented ablation.
 
 Phase 1.27 is complete. The cumulative 32-task HumanEval reassessment measured
 current exact DSpark at a `0.8826x` geometric paired ratio versus ordinary
@@ -11508,3 +11514,82 @@ Decision boundary:
 - Use the stable width-5 promoted-hybrid stage shares to choose one bounded
   Metal candidate. Do not reuse the pre-hybrid Phase 1.31 inner proportions,
   and do not treat synchronized absolute times as throughput measurements.
+
+Profile result:
+
+- User-run artifact:
+  `speed-bench/local-runs/post-promotion-width-moe-hybrid-20260720-002627`.
+- Every profiled output matched the frozen cumulative HumanEval artifact
+  byte-for-byte. The expected width distribution `1/1/4/20` was reproduced.
+- At stable width 5, synchronized inner routed-MoE cost is `1.125 ms/row`
+  against a `1.172 ms/row` outer control, a `0.960x` reconciliation.
+- Width-5 gate/up costs `0.544 ms/row` (`48.3%`), exact down `0.401`
+  (`35.7%`), activation/weight `0.162` (`14.4%`), and sum `0.018` (`1.6%`).
+- Gate/up is stable across layers 0, 21, and 42 at `0.181`, `0.182`, and
+  `0.181 ms/row`. Exact down is similarly stable at `0.136`, `0.133`, and
+  `0.133 ms/row`.
+- Widths 2 and 3 have one observation each. Width 4 has four and width 5 has
+  twenty; only width-5 component shares guide the next candidate.
+- The `1.172 ms/row` synchronized outer control is larger than the enclosing
+  FFN profile's `0.806 ms/row` routed-MoE value because these inner boundaries
+  alter Metal scheduling. Do not compare their absolute values as throughput.
+
+Implementation interpretation:
+
+- The promoted hybrid uses `ds4_gpu_encode_mul_mv_id_pair` for routed gate/up
+  at verifier widths 2 through 4, but width 5 falls back to two separate
+  `ds4_gpu_encode_mul_mv_id` projections solely because the host policy limits
+  `use_tiny_pair_mv` to `n_tokens <= 4`.
+- The paired Metal kernel and host encoder already carry token count through
+  `args.nei1`; their dispatch grid covers `n_expert * n_tokens`. Width 5 does
+  not require a new kernel or arithmetic change.
+- A width-5-only opt-in is therefore the narrowest candidate against the
+  measured dominant component. It preserves the current exact down-row path
+  and avoids changing ordinary prefill or sidecar execution.
+
+## Phase 1.50: exact routed gate/up pair width-5 ablation prepared
+
+Implementation:
+
+- Added default-off `DS4_DSPARK_EXACT_ROUTED_GATE_UP_PAIR_W5=1` handling in
+  `ds4_metal.m`. It can extend the tiny paired gate/up route to width 5 only
+  when `exact_down_rows` is already active. Widths 2-4 retain their current
+  paired route; width 1, ordinary prefill, legacy routed MoE, and unsupported
+  paths are unchanged.
+- Added `DS4_DSPARK_EXACT_ROUTED_GATE_UP_PAIR_W5_TRACE=1`. A successful active
+  route records width, layer, and result; timed runs do not enable it.
+- Added `--exact-routed-gate-up-pair-w5-ablation` to
+  `speed-bench/run_dspark_comparison.py`. It compares current default exact
+  against the candidate with Metal forced and all stats and diagnostics
+  disabled in both arms.
+- Extended `tests/dspark_gpu_candidates_correctness.sh` with candidate
+  isolation, route validation, and a deterministic fixed-K=5 HumanEval 079
+  exercise. The existing short prompt and resumed-chat matrix remains intact.
+- Added model-free source, environment, command, summary, and correctness
+  harness coverage in
+  `tests/test_dspark_exact_routed_gate_up_pair_w5.py`.
+
+Validation before timing:
+
+- `make` rebuilt the Metal binary and all command-line targets successfully.
+- The exact runtime GPU candidate matrix passed reasoning, Italian,
+  medium-context, rolling-window, resumed-chat, and dedicated HumanEval 079
+  checks. Every candidate output matched ordinary baseline byte-for-byte, and
+  the dedicated width-5 route emitted successful traces.
+- A real benchmark dry run printed one uninstrumented default command and one
+  candidate command. No model execution was performed by the benchmark.
+
+User-run command:
+
+```sh
+python3 speed-bench/run_dspark_comparison.py \
+  --exact-routed-gate-up-pair-w5-ablation \
+  --confirm-idle
+```
+
+Decision boundary:
+
+- Keep the candidate default-off unless the three-pair focused ablation is
+  byte-exact and shows a consistent positive paired result. A positive result
+  warrants a frozen 32-task HumanEval confirmation before promotion; a flat or
+  negative result retires the width-5 extension.
