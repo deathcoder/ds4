@@ -28,13 +28,21 @@ time, at `35.561 ms/position` versus `40.942 ms/position` for width 1. The
 proposal schedule has `760` attempts, `684` full and `76` partial outcomes,
 with zero fallbacks and byte-exact output throughout.
 
-Phase 1.40 is prepared. The width-stratified exact-layer profile is repinned to
-the clean Phase 1.39 cost artifact at commit `80ce67c`. It samples layers 0,
-21, and 42 on frozen task `humaneval_079`, whose current schedule includes
-widths 2-5 and twenty width-5 evaluations. The synchronized diagnostic will
-remeasure attention preparation, serial attention tail, and exact FFN under
-the routed-MoE hybrid plus shared-Q8 defaults. Use its current stage ranking,
-not the pre-shared-Q8 profile, to choose the next verifier optimization.
+Phase 1.40 is complete. At stable verifier width 5, the sampled layer totals
+are `0.578 ms/row` attention preparation, `1.167 ms/row` serial attention
+tail, and `1.061 ms/row` exact FFN. Shared-Q8 promotion moved sampled FFN from
+the earlier `1.165 ms/row` to `1.061 ms/row`, while the serial tail remained
+roughly flat and is now the largest stage. FFN still has the weakest
+width-2-to-width-5 amortization, but widths 2 and 3 each have only one noisy
+observation; the twenty width-5 evaluations are the stable optimization guide.
+
+Phase 1.41 is prepared. The width-stratified serial-tail profiler now accepts
+the clean Phase 1.40 layer artifact at commit `98b2130` under a distinct
+post-promotion provenance contract. It runs one synchronized layer-42 process
+and decomposes width-5 tail time into KV/cache update, compressor/indexer,
+attention, inverse RoPE, projection A, and projection B plus HC. The next
+runtime candidate must follow that current component attribution rather than
+reusing the earlier pre-fused-gather tail ranking.
 
 Phase 1.27 is complete. The cumulative 32-task HumanEval reassessment measured
 current exact DSpark at a `0.8826x` geometric paired ratio versus ordinary

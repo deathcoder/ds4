@@ -18,6 +18,10 @@ class DSparkThreshold075WidthTailProfileTests(unittest.TestCase):
         self.assertEqual(profile.TASK, "humaneval_079")
         self.assertEqual(profile.LAYER, 42)
         self.assertEqual(profile.WIDTHS, (2, 3, 4, 5))
+        self.assertEqual(
+            profile.POST_PROMOTION_LAYER_SOURCE_COMMIT,
+            "98b213025e71e46c155b8fffdbaf57b74b04520b",
+        )
 
     def test_profile_environment_enables_tail_boundaries(self):
         env = profile.profile_env()
@@ -110,6 +114,13 @@ class DSparkThreshold075WidthTailProfileTests(unittest.TestCase):
         self.assertIn("Synchronized diagnostic only", report)
         self.assertIn("Widths 2 and 3 have one batch each", report)
         self.assertIn("No fresh throughput benchmark", report)
+
+    def test_post_promotion_report_has_distinct_identity(self):
+        summary, _ = profile.summarize(self.records(), self.stats())
+        summary["reference_kind"] = "post_promotion_cumulative"
+        report = profile.render_report(summary)
+        self.assertIn("Post-Promotion Width-Stratified", report)
+        self.assertIn("frozen cumulative HumanEval artifact", report)
 
 
 if __name__ == "__main__":

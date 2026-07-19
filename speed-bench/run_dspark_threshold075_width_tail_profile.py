@@ -16,6 +16,7 @@ import time
 import run_dspark_exact_attention_tail_profile as tail_profile
 import run_dspark_exact_layer_profile as layer_profile
 import run_dspark_humaneval_acceptance as corpus
+import run_dspark_humaneval_cumulative_cost_audit as cumulative_cost_audit
 import run_dspark_humaneval_threshold075_cost_audit as cost_audit
 import run_dspark_issue468_comparison as common
 import run_dspark_threshold075_width_layer_profile as width_profile
@@ -25,6 +26,17 @@ THRESHOLD = width_profile.THRESHOLD
 TASK = width_profile.TASK
 LAYER = 42
 WIDTHS = width_profile.WIDTHS
+POST_PROMOTION_LAYER_SOURCE_COMMIT = (
+    "98b213025e71e46c155b8fffdbaf57b74b04520b"
+)
+LEGACY_LAYER_CONTRACT = (
+    "dspark_threshold075_width_stratified_exact_layer",
+    "dspark_threshold075_width_stratified_exact_layer",
+)
+POST_PROMOTION_LAYER_CONTRACT = (
+    "dspark_post_promotion_width_stratified_exact_layer",
+    "dspark_post_promotion_width_stratified_exact_layer",
+)
 
 
 def parse_args():
@@ -106,14 +118,19 @@ def load_layer_reference(args, cost_reference):
             raise SystemExit(f"missing width-layer reference {label}: {path}")
     summary = load_json(summary_path, "width-layer summary")
     metadata = load_json(metadata_path, "width-layer metadata")
-    if metadata.get("experiment") != (
-        "dspark_threshold075_width_stratified_exact_layer"
-    ):
-        raise SystemExit("width-layer reference has the wrong experiment kind")
-    if summary.get("analysis") != (
-        "dspark_threshold075_width_stratified_exact_layer"
-    ):
-        raise SystemExit("width-layer reference has the wrong analysis kind")
+    contract = (metadata.get("experiment"), summary.get("analysis"))
+    if contract == LEGACY_LAYER_CONTRACT:
+        reference_kind = "legacy_threshold075"
+    elif contract == POST_PROMOTION_LAYER_CONTRACT:
+        reference_kind = "post_promotion_cumulative"
+        if metadata.get("git_commit") != POST_PROMOTION_LAYER_SOURCE_COMMIT:
+            raise SystemExit("post-promotion width-layer source commit mismatch")
+        if metadata.get("git_status_tracked"):
+            raise SystemExit("post-promotion width-layer used a dirty tree")
+    else:
+        raise SystemExit("width-layer reference has the wrong contract")
+    if reference_kind != cost_reference["reference_kind"]:
+        raise SystemExit("width-layer and cost reference kinds differ")
     if summary.get("threshold") != THRESHOLD or summary.get("task") != TASK:
         raise SystemExit("width-layer reference policy mismatch")
     if tuple(summary.get("layers", ())) != width_profile.LAYERS:
@@ -140,6 +157,7 @@ def load_layer_reference(args, cost_reference):
         "stages_path": stages_path,
         "summary": summary,
         "metadata": metadata,
+        "reference_kind": reference_kind,
     }
 
 
@@ -366,11 +384,24 @@ def summarize(records, expected_stats):
 
 
 def render_report(summary):
+    post_promotion = (
+        summary.get("reference_kind") == "post_promotion_cumulative"
+    )
+    title = (
+        "# DSpark Post-Promotion Width-Stratified Serial Tail Profile"
+        if post_promotion
+        else "# DSpark Threshold 0.75 Width-Stratified Serial Tail Profile"
+    )
+    artifact = (
+        "frozen cumulative HumanEval artifact"
+        if post_promotion
+        else "frozen threshold-0.75 HumanEval artifact"
+    )
     lines = [
-        "# DSpark Threshold 0.75 Width-Stratified Serial Tail Profile",
+        title,
         "",
         "Synchronized diagnostic only. Boundaries change Metal scheduling; do not use these values as throughput measurements.",
-        "Every profiled output matched the frozen threshold-0.75 HumanEval artifact byte-for-byte.",
+        f"Every profiled output matched the {artifact} byte-for-byte.",
         "One-row tail events are assigned sequentially to their enclosing exact-verifier batch.",
         "",
         "## Tail Totals",
@@ -457,22 +488,30 @@ def main():
         cost_audit.TASK_COUNT,
         provenance["selection_policy"],
     )
-    throughput_reference = cost_audit.load_throughput_reference(
-        args, records, selection
-    )
     cost_reference = width_profile.load_cost_reference(args)
+    if cost_reference["reference_kind"] == "post_promotion_cumulative":
+        throughput_reference = cumulative_cost_audit.load_throughput_reference(
+            args, records, selection
+        )
+    else:
+        throughput_reference = cost_audit.load_throughput_reference(
+            args, records, selection
+        )
     layer_reference = load_layer_reference(args, cost_reference)
     context = throughput_reference["tasks"][TASK]
 
     stamp = dt.datetime.now().astimezone().strftime("%Y%m%d-%H%M%S")
-    default_dir = root / (
-        f"speed-bench/local-runs/threshold075-width-tail-{stamp}"
+    run_prefix = (
+        "post-promotion-width-tail"
+        if layer_reference["reference_kind"] == "post_promotion_cumulative"
+        else "threshold075-width-tail"
     )
+    default_dir = root / f"speed-bench/local-runs/{run_prefix}-{stamp}"
     run_dir = (args.output_dir or default_dir).resolve()
     prompt = run_dir / "prompt.txt"
     print(f"layer {LAYER}: {command_text(args, prompt)}")
     print(
-        "One synchronized threshold-0.75 tail profile process; output and "
+        "One synchronized serial-tail profile process; output and "
         "width counts must match the frozen artifacts."
     )
     if args.dry_run:
@@ -487,7 +526,11 @@ def main():
         "git_status_tracked": common.git_output(
             root, "status", "--porcelain", "--untracked-files=no"
         ),
-        "experiment": "dspark_threshold075_width_stratified_attention_tail",
+        "experiment": (
+            "dspark_post_promotion_width_stratified_attention_tail"
+            if layer_reference["reference_kind"] == "post_promotion_cumulative"
+            else "dspark_threshold075_width_stratified_attention_tail"
+        ),
         "platform": platform.platform(),
         "initial_snapshot": common.machine_snapshot(root),
         "selection": selection,
@@ -548,6 +591,11 @@ def main():
     )
     width_profile.validate_counts(stats, cost_reference["stats"], LAYER)
     summary, assigned = summarize(profile_records, cost_reference["stats"])
+    summary["reference_kind"] = layer_reference["reference_kind"]
+    if layer_reference["reference_kind"] == "post_promotion_cumulative":
+        summary["analysis"] = (
+            "dspark_post_promotion_width_stratified_attention_tail"
+        )
     report = render_report(summary)
     write_csv(
         run_dir / "stages.csv",
