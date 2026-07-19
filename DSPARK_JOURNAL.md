@@ -19,13 +19,22 @@ remaining end-to-end gap is still `11.9%`. Current/historical movement was
 so the predeclared movement gate failed. Keep the unanimous same-session
 shared-Q8 promotion, but make no cumulative speedup claim from this run.
 
-Phase 1.39 is prepared. The post-promotion stats-only cost audit is repinned to
-the clean Phase 1.38 artifact at commit `88e6fcd`. It will run only the 32
-instrumented exact-DSpark arms, require each output to match the frozen
-throughput artifact byte-for-byte, and recalibrate target-verifier, sidecar,
-and residual costs against the current `0.8814x` budget. Do not select another
-kernel from the older width-layer ranking until this audit establishes the
-current cost balance after routed-MoE hybrid and shared-Q8 promotion.
+Phase 1.39 is complete. The fresh stats-only audit accounts for the frozen
+`0.8814x` runtime as `38.298 ms/emitted` target verification,
+`7.881 ms/emitted` sidecar, and `0.633 ms/emitted` residual. Target verification
+remains dominant at `81.8%` of runtime, and the calibrated parity target is a
+`14.6%` reduction in target time. Width 5 still consumes `55.4%` of target
+time, at `35.561 ms/position` versus `40.942 ms/position` for width 1. The
+proposal schedule has `760` attempts, `684` full and `76` partial outcomes,
+with zero fallbacks and byte-exact output throughout.
+
+Phase 1.40 is prepared. The width-stratified exact-layer profile is repinned to
+the clean Phase 1.39 cost artifact at commit `80ce67c`. It samples layers 0,
+21, and 42 on frozen task `humaneval_079`, whose current schedule includes
+widths 2-5 and twenty width-5 evaluations. The synchronized diagnostic will
+remeasure attention preparation, serial attention tail, and exact FFN under
+the routed-MoE hybrid plus shared-Q8 defaults. Use its current stage ranking,
+not the pre-shared-Q8 profile, to choose the next verifier optimization.
 
 Phase 1.27 is complete. The cumulative 32-task HumanEval reassessment measured
 current exact DSpark at a `0.8826x` geometric paired ratio versus ordinary

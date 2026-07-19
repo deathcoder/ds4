@@ -18,6 +18,10 @@ class DSparkThreshold075WidthLayerProfileTests(unittest.TestCase):
         self.assertEqual(profile.TASK, "humaneval_079")
         self.assertEqual(profile.LAYERS, (0, 21, 42))
         self.assertEqual(profile.WIDTHS, (2, 3, 4, 5))
+        self.assertEqual(
+            profile.CUMULATIVE_COST_SOURCE_COMMIT,
+            "80ce67c00fb43e69a38893db03e589c67193ec50",
+        )
 
     def test_cost_reference_contracts_distinguish_post_promotion(self):
         legacy = {
