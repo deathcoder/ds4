@@ -50,13 +50,18 @@ positive (`1.0309x`, `1.0120x`, and `1.0212x`) and every output byte-exact.
 This clears the decision boundary for broader confirmation; it is not yet a
 promoted default.
 
-Phase 1.43 is prepared. The frozen threshold-0.75 HumanEval gate compares the
-current promoted exact default against compressor projection prebatching over
-32 tasks with balanced order and two excluded warmup pairs. Promotion requires
-a geometric gain of at least `1.005x`, at least `20/32` task wins, no task
-below `0.95x`, and no aggregate regression across low-acceptance tasks. Both
-arms are uninstrumented and every output must match the frozen exact artifact
-byte-for-byte. The user must run this benchmark manually.
+Phase 1.43 is complete but formally failed. Compressor projection prebatching
+measured a `1.0096x` geometric gain and won `31/32` tasks; low-acceptance tasks
+gained `1.0094x`. The sole failure was `humaneval_095` at `0.9138x`, below the
+predeclared `0.95x` floor. All outputs were byte-exact and every other task was
+positive, so do not promote yet and do not discard the broad direction from
+this single noisy-looking observation.
+
+Phase 1.44 is prepared. A frozen six-pair, balanced-order adjudication repeats
+only `humaneval_095`, with two excluded warmup pairs. It passes only if median
+and geometric paired ratios are both at least `1.005x`, at least `4/6` pairs
+win, and at least `5/6` pairs clear the original `0.95x` floor. This can rescue
+the otherwise-passing broad gate; a failure retires the candidate.
 
 Phase 1.27 is complete. The cumulative 32-task HumanEval reassessment measured
 current exact DSpark at a `0.8826x` geometric paired ratio versus ordinary
@@ -11067,3 +11072,62 @@ Decision:
 - Promote compressor projection prebatching only if this broad gate passes and
   all outputs remain byte-exact. Otherwise retain the current default and
   retire or revise the candidate.
+
+Broad result:
+
+- User-run artifact:
+  `speed-bench/local-runs/humaneval-compressor-prebatch-32-20260719-215706`
+  at clean commit `ce2c1e4`.
+- Default median: `22.18 t/s`; prebatch median: `22.39 t/s`; ratio of medians
+  `1.0095x`.
+- Median paired ratio: `1.0127x`; geometric paired ratio: `1.0096x`.
+- The candidate won `31/32` tasks. The interquartile range was
+  `1.0093x..1.0166x` and the full range was `0.9138x..1.0222x`.
+- The ten low-acceptance tasks gained `1.0094x` geometrically, and acceptance
+  had little descriptive correlation with gain (`0.171`).
+- Every output matched the frozen exact artifact byte-for-byte. No stats,
+  traces, diagnostics, profilers, or fast verification were active.
+- The formal gate failed only because `humaneval_095` measured `0.9138x`,
+  below the `0.95x` per-task floor. All remaining tasks were positive.
+
+Decision revision:
+
+- Do not promote from the failed gate. Because the single failure is an
+  isolated `-8.6%` observation against 31 consistent wins, adjudicate that
+  task with repeated balanced pairs before deciding whether it is noise.
+
+## Phase 1.44: compressor-prebatch outlier adjudication prepared
+
+Harness:
+
+- Added `speed-bench/run_dspark_humaneval_compressor_pre_batch_outlier.py` and
+  model-free coverage in
+  `tests/test_dspark_humaneval_compressor_pre_batch_outlier.py`.
+- The loader accepts only the clean failed Phase 1.43 artifact, verifies that
+  every other broad-gate condition passed, reconstructs every task ratio from
+  the raw CSV, and requires `humaneval_095` to be the sole sub-floor task.
+- It runs six measured pairs with exactly balanced order plus two excluded
+  balanced warmup pairs: 16 uninstrumented model processes total.
+- Both modes must match the same frozen threshold-0.75 exact output. The only
+  candidate difference is `DS4_DSPARK_EXACT_COMPRESSOR_PRE_BATCH=1`.
+
+Predeclared adjudication gate:
+
+- Median paired candidate/default ratio at least `1.005x`.
+- Geometric paired ratio at least `1.005x`.
+- Candidate wins at least `4/6` pairs.
+- At least `5/6` pairs are at or above the original `0.95x` task floor.
+
+User-run command:
+
+```sh
+python3 speed-bench/run_dspark_humaneval_compressor_pre_batch_outlier.py \
+  --confirmation-reference \
+  speed-bench/local-runs/humaneval-compressor-prebatch-32-20260719-215706/summary.json \
+  --confirm-idle
+```
+
+Decision:
+
+- PASS rescues the otherwise-passing broad result and permits promotion.
+- FAIL confirms unresolved task-level risk and retires the candidate.
