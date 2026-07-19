@@ -79,12 +79,18 @@ parity requires a calibrated `12.4%` target-time reduction. Width 5 consumes
 `54.7%` of target time at `33.359 ms/position`, while width 1 costs
 `40.245 ms/position` and consumes `18.8%` of target time.
 
-Phase 1.47 is prepared. The width-stratified exact-layer profiler is repinned
-to the clean Phase 1.46 cost artifact at commit `2863d7e`. It will sample
-attention preparation, serial attention tail, and exact FFN at layers 0, 21,
-and 42, grouped by verifier widths 2 through 5. The next runtime candidate must
-follow this post-compressor-prebatch profile rather than the stale Phase 1.40
-stage split.
+Phase 1.47 is complete. At stable width 5, the sampled layer totals are
+`0.656 ms/row` attention preparation, `1.083 ms/row` serial attention tail,
+and `1.070 ms/row` exact FFN. The tail and FFN are effectively tied; FFN has
+the slightly weaker width-2-to-width-5 amortization (`0.647x` versus `0.628x`).
+The synchronized total is nearly unchanged from Phase 1.40, so use stage rank,
+not cross-session absolute profile deltas, to choose the next diagnostic.
+
+Phase 1.48 is prepared. The width-stratified exact-FFN substage profiler is
+repinned to the clean Phase 1.47 layer artifact at commit `83f3e80`. It will
+separate HC pre/post, normalization, routing, shared gate/up and down, and
+routed MoE costs by verifier width at layers 0, 21, and 42. No runtime
+candidate should be selected until this refreshed FFN attribution is available.
 
 Phase 1.27 is complete. The cumulative 32-task HumanEval reassessment measured
 current exact DSpark at a `0.8826x` geometric paired ratio versus ordinary
@@ -11347,3 +11353,72 @@ Decision boundary:
 
 - Use stable width-5 medians to choose the next verifier candidate. Widths 2
   and 3 have sparse observations and remain directional only.
+
+Profile result:
+
+- User-run artifact:
+  `speed-bench/local-runs/post-promotion-width-layer-20260719-232840` at clean
+  commit `83f3e80`.
+- Every profiled output matched the frozen cumulative HumanEval artifact
+  byte-for-byte.
+- Stable width-5 sampled layer cost is `2.809 ms/row`: attention preparation
+  `0.656`, serial attention tail `1.083`, and exact FFN `1.070 ms/row`.
+- The serial tail is now the largest sampled width-5 stage, but it exceeds the
+  FFN by only `0.013 ms/row`; they are effectively tied at this resolution.
+- Width-5/width-2 amortization is `0.173x` for attention preparation, `0.628x`
+  for the serial tail, and `0.647x` for the FFN. FFN therefore remains the
+  slightly weaker-scaling stable stage.
+- Widths 2 and 3 have one evaluation each, width 4 has four, and width 5 has
+  twenty. Only width-5 values are used to choose the next candidate.
+
+Comparison with the Phase 1.40 profile:
+
+- The prior stable width-5 split was attention preparation `0.578`, serial
+  tail `1.167`, and FFN `1.061 ms/row`, totaling `2.806 ms/row`.
+- After compressor projection prebatch, the synchronized serial-tail sample
+  fell to `1.083 ms/row`, while FFN remained approximately flat at `1.070`.
+- The total remained `2.809 ms/row`. These absolute cross-session synchronized
+  shifts are attribution clues, not throughput evidence.
+
+Decision:
+
+- Refresh the exact FFN substage profile before selecting another runtime
+  candidate. The tail and FFN are tied, but FFN has slightly weaker width
+  amortization and an existing exact, byte-checked profiler.
+
+## Phase 1.48: post-prebatch exact FFN profile repinned
+
+Preparation:
+
+- Updated `WIDTH_LAYER_SOURCE_COMMIT` in
+  `speed-bench/run_dspark_post_promotion_width_ffn_profile.py` to the clean
+  Phase 1.47 profile commit
+  `83f3e803e7baa4097cc8c5ff490f72b29aced06c`.
+- The provenance test now requires that exact commit. Existing clean-tree,
+  model identity, task selection, threshold, promoted-default, output,
+  structural-counter, and width-distribution checks remain active.
+- The profiler consumes the Phase 1.45 cumulative throughput artifact, Phase
+  1.46 cost audit, and Phase 1.47 width-layer profile. It runs three
+  synchronized processes for layers 0, 21, and 42 and separates HC, norm,
+  router, shared-expert, routed-MoE, and post-HC work by verifier width.
+- A real dry run accepted all three frozen references and printed exactly the
+  intended three profile commands. No model inference was performed.
+
+User-run command:
+
+```sh
+python3 speed-bench/run_dspark_post_promotion_width_ffn_profile.py \
+  --throughput-reference \
+  speed-bench/local-runs/humaneval-cumulative-throughput-32-20260719-223901/summary.json \
+  --cost-reference \
+  speed-bench/local-runs/humaneval-cumulative-cost-20260719-225512/summary.json \
+  --width-layer-reference \
+  speed-bench/local-runs/post-promotion-width-layer-20260719-232840/summary.json \
+  --confirm-ready
+```
+
+Decision boundary:
+
+- Use the stable width-5 FFN component shares and amortization to select one
+  narrowly scoped Metal verifier candidate. Do not infer throughput from the
+  synchronized profile itself.

@@ -18,6 +18,10 @@ class DSparkPostPromotionWidthFFNProfileTests(unittest.TestCase):
         self.assertEqual(profile.LAYERS, (0, 21, 42))
         self.assertEqual(profile.WIDTHS, (2, 3, 4, 5))
         self.assertEqual(len(profile.FFN_STAGES), 7)
+        self.assertEqual(
+            profile.WIDTH_LAYER_SOURCE_COMMIT,
+            "83f3e803e7baa4097cc8c5ff490f72b29aced06c",
+        )
 
     def test_environment_enables_only_required_profiles(self):
         env = profile.profile_env(21)
