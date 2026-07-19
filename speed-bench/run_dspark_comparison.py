@@ -214,6 +214,14 @@ def parse_args():
         ),
     )
     parser.add_argument(
+        "--exact-q2-down-batch-ablation",
+        action="store_true",
+        help=(
+            "compare default exact DSpark against a single Q2_K routed-down "
+            "dispatch across verifier rows"
+        ),
+    )
+    parser.add_argument(
         "--stats-only",
         action="store_true",
         help="run an instrumented Metal-drafter attribution and omit throughput",
@@ -243,6 +251,7 @@ def parse_args():
             args.exact_attention_output_nr8_ablation,
             args.dense_mixed_direct_ablation,
             args.exact_routed_moe_hybrid_ablation,
+            args.exact_q2_down_batch_ablation,
         )
     )
     if selected_modes > 1:
@@ -259,6 +268,7 @@ def parse_args():
             "--exact-attention-output-nr8-ablation, and "
             "--dense-mixed-direct-ablation, and "
             "--exact-routed-moe-hybrid-ablation "
+            "and --exact-q2-down-batch-ablation "
             "are mutually exclusive"
         )
     if args.stats_only and not args.metal_drafter_ablation:
@@ -309,6 +319,8 @@ def check_inputs(args, root):
 
 
 def benchmark_modes(args):
+    if getattr(args, "exact_q2_down_batch_ablation", False):
+        return ("default_exact", "exact_q2_down_batch")
     if getattr(args, "exact_routed_moe_hybrid_ablation", False):
         return ("legacy_routed_moe_rows", "default_exact")
     if getattr(args, "dense_mixed_direct_ablation", False):
@@ -362,6 +374,7 @@ def mode_label(mode, args):
         "dense_mixed_gathered_legacy":
             "Legacy gathered dense-mixed attention DSpark",
         "legacy_routed_moe_rows": "Legacy row-wise routed-MoE DSpark",
+        "exact_q2_down_batch": "Single-dispatch exact Q2 down DSpark",
     }[mode]
 
 
@@ -383,6 +396,7 @@ def throughput_runtime_stats_enabled(args):
         or getattr(args, "exact_attention_output_nr8_ablation", False)
         or getattr(args, "dense_mixed_direct_ablation", False)
         or getattr(args, "exact_routed_moe_hybrid_ablation", False)
+        or getattr(args, "exact_q2_down_batch_ablation", False)
     )
 
 
@@ -427,6 +441,8 @@ def clean_dspark_env(mode, fast_verifier=False, runtime_stats=True):
             env["DS4_METAL_DENSE_MIXED_GATHERED_LEGACY"] = "1"
         if mode == "legacy_routed_moe_rows":
             env["DS4_DSPARK_EXACT_ROUTED_MOE_HYBRID"] = "0"
+        if mode == "exact_q2_down_batch":
+            env["DS4_DSPARK_EXACT_Q2_DOWN_BATCH"] = "1"
     return env
 
 
@@ -462,7 +478,8 @@ def mode_command(args, mode):
             getattr(args, "exact_attention_output_nr4_ablation", False) or
             getattr(args, "exact_attention_output_nr8_ablation", False) or
             getattr(args, "dense_mixed_direct_ablation", False) or
-            getattr(args, "exact_routed_moe_hybrid_ablation", False)):
+            getattr(args, "exact_routed_moe_hybrid_ablation", False) or
+            getattr(args, "exact_q2_down_batch_ablation", False)):
         command[1:1] = ("--backend", "metal")
     if mode != "baseline":
         command.extend(("--dspark", str(args.dspark_model.resolve())))
@@ -507,6 +524,8 @@ def command_text(args, mode, runtime_stats=None):
             env += "DS4_METAL_DENSE_MIXED_GATHERED_LEGACY=1 "
         if mode == "legacy_routed_moe_rows":
             env += "DS4_DSPARK_EXACT_ROUTED_MOE_HYBRID=0 "
+        if mode == "exact_q2_down_batch":
+            env += "DS4_DSPARK_EXACT_Q2_DOWN_BATCH=1 "
     return env + shlex.join(mode_command(args, mode))
 
 
@@ -680,6 +699,8 @@ def collect_metadata(args, root):
                 getattr(args, "dense_mixed_direct_ablation", False),
             "exact_routed_moe_hybrid_ablation":
                 getattr(args, "exact_routed_moe_hybrid_ablation", False),
+            "exact_q2_down_batch_ablation":
+                getattr(args, "exact_q2_down_batch_ablation", False),
             "stats_only": getattr(args, "stats_only", False),
             "temperature": 0,
             "seed": 1,
@@ -741,6 +762,8 @@ def summarize(rows, modes=("baseline", "runtime")):
             "dense_mixed_fused_gather_promotion_ablation",
         ("legacy_routed_moe_rows", "default_exact"):
             "exact_routed_moe_hybrid_ablation",
+        ("default_exact", "exact_q2_down_batch"):
+            "exact_q2_down_batch_ablation",
     }
     summary = {
         "comparison": comparisons.get(modes, "baseline_runtime"),
@@ -848,6 +871,15 @@ def summarize(rows, modes=("baseline", "runtime")):
             "legacy_routed_moe_rows_generation_tps_median": reference_median,
             "promoted_routed_moe_hybrid_generation_tps_median": candidate_median,
             "exact_routed_moe_hybrid_delta_percent":
+                (candidate_median / reference_median - 1.0) * 100.0,
+        })
+        return summary
+
+    if modes == ("default_exact", "exact_q2_down_batch"):
+        summary.update({
+            "default_exact_generation_tps_median": reference_median,
+            "exact_q2_down_batch_generation_tps_median": candidate_median,
+            "exact_q2_down_batch_delta_percent":
                 (candidate_median / reference_median - 1.0) * 100.0,
         })
         return summary
@@ -1152,6 +1184,20 @@ def format_report(summary):
             f"- Median paired ratio: {summary['paired_speedup_median']:.4f}x\n"
             f"- Promoted hybrid delta: "
             f"{summary['exact_routed_moe_hybrid_delta_percent']:+.1f}%\n"
+            f"- Measured pairs: {len(summary['paired_speedup_values'])}\n"
+        )
+
+    if summary["comparison"] == "exact_q2_down_batch_ablation":
+        return (
+            "# DSpark Exact Q2 Down Single-Dispatch Ablation\n\n"
+            f"- Default exact median: "
+            f"{summary['default_exact_generation_tps_median']:.2f} t/s\n"
+            f"- Single-dispatch Q2 down median: "
+            f"{summary['exact_q2_down_batch_generation_tps_median']:.2f} t/s\n"
+            f"- Ratio of medians: {summary['median_ratio_of_medians']:.4f}x\n"
+            f"- Median paired ratio: {summary['paired_speedup_median']:.4f}x\n"
+            f"- Single-dispatch Q2 down delta: "
+            f"{summary['exact_q2_down_batch_delta_percent']:+.1f}%\n"
             f"- Measured pairs: {len(summary['paired_speedup_values'])}\n"
         )
 

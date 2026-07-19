@@ -1896,6 +1896,28 @@ static int ds4_gpu_trace_exact_attention_output_nr8(void) {
     return enabled;
 }
 
+static int ds4_gpu_use_exact_q2_down_batch(void) {
+    static int initialized;
+    static int enabled;
+    if (!initialized) {
+        enabled =
+            ds4_gpu_env_bool("DS4_DSPARK_EXACT_Q2_DOWN_BATCH") == 1;
+        initialized = 1;
+    }
+    return enabled;
+}
+
+static int ds4_gpu_trace_exact_q2_down_batch(void) {
+    static int initialized;
+    static int enabled;
+    if (!initialized) {
+        enabled =
+            getenv("DS4_DSPARK_EXACT_Q2_DOWN_BATCH_TRACE") != NULL;
+        initialized = 1;
+    }
+    return enabled;
+}
+
 static int ds4_gpu_use_indexed_attention_rb16_legacy(void) {
     static int initialized;
     static int enabled;
@@ -26696,6 +26718,12 @@ int ds4_gpu_routed_moe_batch_tensor(
             !use_mm_id &&
             n_expert == 6 &&
             down_sum6_pipeline != nil;
+        const bool exact_q2_down_batch =
+            exact_down_rows_active &&
+            down_type == DS4_METAL_TENSOR_Q2_K &&
+            n_tokens >= 2u &&
+            n_tokens <= 5u &&
+            ds4_gpu_use_exact_q2_down_batch();
         if (exact_down_rows && !exact_down_rows_active) {
             fprintf(stderr,
                     "ds4: Metal routed batch MoE cannot encode exact down rows "
@@ -27042,6 +27070,29 @@ int ds4_gpu_routed_moe_batch_tensor(
                                                          down_smem,
                                                          2,
                                                          q4_batch_table_queue_residency);
+            } else if (exact_q2_down_batch) {
+                ok = ds4_gpu_encode_mul_mv_id_sum6(
+                        cb,
+                        down_sum6_pipeline,
+                        &down_args,
+                        down_buf,
+                        (NSUInteger)down_inner,
+                        midbuf,
+                        ds4_gpu_tensor_offset(mid),
+                        outbuf,
+                        ds4_gpu_tensor_offset(out),
+                        selectedbuf,
+                        ds4_gpu_tensor_offset(selected),
+                        down_smem,
+                        2);
+                if (ds4_gpu_trace_exact_q2_down_batch()) {
+                    fprintf(stderr,
+                            "ds4: DSpark exact Q2 down batch layer=%u "
+                            "width=%u result=%s\n",
+                            layer_index,
+                            n_tokens,
+                            ok ? "pass" : "fail");
+                }
             } else if (exact_down_rows_active) {
                 ds4_gpu_mul_mv_id_args row_down_args =
                     ds4_gpu_make_mul_mv_id_args(expert_mid_dim,

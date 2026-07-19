@@ -10628,3 +10628,72 @@ Decision boundary:
 - After that safe checkpoint, the next bounded implementation should be an
   opt-in, exact Q2_K verifier-width kernel with byte-exact correctness and
   focused attribution before any timed promotion gate.
+
+## Phase 1.36: exact Q2_K routed-down single dispatch
+
+Mapping correction:
+
+- The external-survey candidate was initially described as a new kernel that
+  would reuse one selected Q2_K expert-weight stream across proposal rows.
+  That does not match routed-MoE semantics: different proposal rows can select
+  different experts, so MTPLX's dense-weight reuse is not directly available.
+- The existing Metal shader `kernel_mul_mv_id_q2_K_sum6_f32` already has a
+  token dimension. Its host encoder dispatches `args->nei1` token rows in one
+  grid, preserving each row's selected expert ids and sum-six arithmetic.
+- The promoted exact routed-MoE hybrid nevertheless called that encoder once
+  per proposal row. The bounded candidate therefore removes repeated host
+  encoding/dispatch work by passing the existing multi-token `down_args` once;
+  it does not change shader arithmetic or claim cross-row weight reuse.
+
+Implementation:
+
+- Added the default-off `DS4_DSPARK_EXACT_Q2_DOWN_BATCH=1` route in
+  `ds4_metal.m`. It applies only to the promoted exact-down path, Q2_K weights,
+  six selected experts, and verifier widths 2-5. Width 1 and every unsupported
+  case retain the existing one-row loop unchanged.
+- Added `DS4_DSPARK_EXACT_Q2_DOWN_BATCH_TRACE=1` for correctness diagnostics.
+  The trace records layer, actual verifier width, and encode result; it is not
+  enabled in throughput runs.
+- Extended `tests/dspark_gpu_candidates_correctness.sh` with an exact-runtime
+  candidate gate that requires successful route records and rejects accidental
+  use in control modes.
+- Added `--exact-q2-down-batch-ablation` to
+  `speed-bench/run_dspark_comparison.py`. It pairs the current exact default
+  against the opt-in candidate on Metal, clears inherited experiment state,
+  and disables runtime stats and diagnostics in both timed modes.
+- Added model-free benchmark/source-contract coverage in
+  `tests/test_dspark_exact_q2_down_batch.py`.
+
+Validation before timing:
+
+- `make` rebuilt all binaries successfully.
+- All 154 `test_dspark_*.py` model-free tests passed; Python compilation,
+  shell syntax, and `git diff --check` also passed.
+- Three runtime correctness matrices passed every reasoning, Italian,
+  medium-context, rolling-window, and resumed-chat case byte-for-byte against
+  ordinary baseline output.
+- A forced `0` confidence threshold exercised width 5. The promoted `0.75`
+  threshold exercised widths 3 and 4. A `0.85` threshold exercised width 2.
+  The route therefore has observed byte-exact coverage for every supported
+  width 2-5, with no candidate failure or verifier fallback.
+- A real benchmark dry run printed only the expected environment difference:
+  `DS4_DSPARK_EXACT_Q2_DOWN_BATCH=1` in the candidate. Both timed arms omit
+  DSpark stats and diagnostics.
+
+User-run timing command:
+
+```sh
+python3 speed-bench/run_dspark_comparison.py \
+  --exact-q2-down-batch-ablation \
+  --confirm-idle
+```
+
+Interpretation boundary:
+
+- This is dispatch consolidation, not the originally hypothesized
+  weight-reuse kernel. A small gain is plausible because it removes up to four
+  encoder/dispatch calls per layer and verifier evaluation, but it does not
+  reduce Q2_K weight traffic.
+- Do not promote it from one short run. A positive focused ablation should be
+  followed by the frozen 32-task HumanEval threshold-0.75 confirmation before
+  changing the default.

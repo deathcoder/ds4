@@ -32,6 +32,7 @@ exact_q8_rows=${DS4_TEST_DSPARK_EXACT_Q8_ROWS:-0}
 serial_q8_rows_runtime=${DS4_TEST_DSPARK_SERIAL_Q8_ROWS_RUNTIME:-0}
 attn_inv_rope_fused=${DS4_TEST_DSPARK_ATTN_INV_ROPE_FUSED:-0}
 exact_prefix_checkpoint=${DS4_TEST_DSPARK_EXACT_PREFIX_CHECKPOINT:-default}
+exact_q2_down_batch=${DS4_TEST_DSPARK_EXACT_Q2_DOWN_BATCH:-0}
 ffn_batch_observer_layer=${DS4_DSPARK_EXACT_FFN_BATCH_OBSERVER_LAYER:-}
 attn_pre_observer_layer=${DS4_DSPARK_EXACT_ATTN_PRE_BATCH_OBSERVER_LAYER:-}
 attn_suffix_observer_layer=${DS4_DSPARK_EXACT_ATTN_SUFFIX_BATCH_OBSERVER_LAYER:-}
@@ -43,6 +44,8 @@ unset DS4_DSPARK_EXACT_ATTN_INV_ROPE_FUSED
 unset DS4_DSPARK_EXACT_ATTN_INV_ROPE_FUSED_TRACE
 unset DS4_DSPARK_EXACT_ATTN_INV_ROPE_FUSED_OBSERVER_LAYER
 unset DS4_DSPARK_EXACT_PREFIX_CHECKPOINT
+unset DS4_DSPARK_EXACT_Q2_DOWN_BATCH
+unset DS4_DSPARK_EXACT_Q2_DOWN_BATCH_TRACE
 unset DS4_DSPARK_ACCEPTANCE_AUDIT
 unset DS4_DSPARK_ACCEPTANCE_TRACE
 unset DS4_DSPARK_CONFIDENCE_THRESHOLD
@@ -254,6 +257,15 @@ if [[ $exact_prefix_checkpoint == 1 &&
     printf 'exact prefix checkpoints require exact runtime verification\n' >&2
     exit 2
 fi
+if [[ $exact_q2_down_batch != 0 && $exact_q2_down_batch != 1 ]]; then
+    printf 'DS4_TEST_DSPARK_EXACT_Q2_DOWN_BATCH must be 0 or 1\n' >&2
+    exit 2
+fi
+if [[ $exact_q2_down_batch == 1 &&
+      ($mode != runtime || $fast_verify_runtime == 1) ]]; then
+    printf 'exact Q2 down batching requires exact runtime verification\n' >&2
+    exit 2
+fi
 if [[ -n $attn_suffix_observer_layer &&
       ($mode != runtime || $fast_verify_runtime == 1) ]]; then
     printf 'attention-suffix observer requires exact runtime verification\n' >&2
@@ -346,6 +358,12 @@ case "$mode" in
             0) gpu_env+=(DS4_DSPARK_EXACT_PREFIX_CHECKPOINT=0) ;;
             1) gpu_env+=(DS4_DSPARK_EXACT_PREFIX_CHECKPOINT=1) ;;
         esac
+        if [[ $exact_q2_down_batch == 1 ]]; then
+            gpu_env+=(
+                DS4_DSPARK_EXACT_Q2_DOWN_BATCH=1
+                DS4_DSPARK_EXACT_Q2_DOWN_BATCH_TRACE=1
+            )
+        fi
         ;;
     *)
         printf 'invalid DS4_TEST_DSPARK_MODE: %s (expected observer or runtime)\n' "$mode" >&2
@@ -528,6 +546,21 @@ assert_gpu_selected() {
             fi
         elif grep -q 'DSpark exact Q8 rows runtime ' "$log"; then
             printf 'control mode unexpectedly ran exact Q8 rows\n' >&2
+            exit 1
+        fi
+        if [[ $exact_q2_down_batch == 1 &&
+              $verifier_batches_expected == 1 ]]; then
+            local q2_down_records
+            q2_down_records=$(grep 'DSpark exact Q2 down batch layer=' "$log")
+            if [[ -z $q2_down_records ]] ||
+               printf '%s\n' "$q2_down_records" |
+                   grep -Evq ' layer=[0-9][0-9]* width=[2-5] result=pass$'; then
+                printf 'exact Q2 down batch drifted or failed\n' >&2
+                printf '%s\n' "$q2_down_records" >&2
+                exit 1
+            fi
+        elif grep -q 'DSpark exact Q2 down batch layer=' "$log"; then
+            printf 'control mode unexpectedly ran exact Q2 down batching\n' >&2
             exit 1
         fi
         if [[ $attn_inv_rope_fused == 1 ]]; then
