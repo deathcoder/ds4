@@ -57,11 +57,12 @@ predeclared `0.95x` floor. All outputs were byte-exact and every other task was
 positive, so do not promote yet and do not discard the broad direction from
 this single noisy-looking observation.
 
-Phase 1.44 is prepared. A frozen six-pair, balanced-order adjudication repeats
-only `humaneval_095`, with two excluded warmup pairs. It passes only if median
-and geometric paired ratios are both at least `1.005x`, at least `4/6` pairs
-win, and at least `5/6` pairs clear the original `0.95x` floor. This can rescue
-the otherwise-passing broad gate; a failure retires the candidate.
+Phase 1.44 is complete and passed. `humaneval_095` won all `6/6` repeated
+pairs, with a `1.0170x` median paired ratio, `1.0322x` geometric ratio, and a
+`1.0066x` minimum. The isolated broad-gate regression was not reproduced.
+Exact compressor projection prebatching is now promoted to the default exact
+verifier path; `DS4_DSPARK_EXACT_COMPRESSOR_PRE_BATCH=0` or `off` retains the
+legacy serial projection route. The branch is again at a safe checkpoint.
 
 Phase 1.27 is complete. The cumulative 32-task HumanEval reassessment measured
 current exact DSpark at a `0.8826x` geometric paired ratio versus ordinary
@@ -11131,3 +11132,45 @@ Decision:
 
 - PASS rescues the otherwise-passing broad result and permits promotion.
 - FAIL confirms unresolved task-level risk and retires the candidate.
+
+Adjudication result:
+
+- User-run artifact:
+  `speed-bench/local-runs/humaneval-compressor-prebatch-outlier-20260719-222352`
+  at clean commit `f5ca0ce`.
+- Default median: `22.60 t/s`; prebatch median: `22.95 t/s`; ratio of medians
+  `1.0157x`.
+- Median paired ratio: `1.0170x`; geometric paired ratio: `1.0322x`.
+- The candidate won all `6/6` pairs. Every pair cleared the original `0.95x`
+  floor, and the complete range was `1.0066x..1.1238x`.
+- Pair 3 contained a slow default observation and inflated the geometric mean,
+  but the remaining five pairs were independently positive at
+  `1.0066x..1.0199x`; the median result does not depend on that outlier.
+- Every output remained byte-exact and the predeclared adjudication gate passed.
+
+Promotion:
+
+- Exact compressor projection prebatching is enabled by default when
+  `DS4_DSPARK_EXACT_COMPRESSOR_PRE_BATCH` is unset or empty.
+- `DS4_DSPARK_EXACT_COMPRESSOR_PRE_BATCH=0` or `off` selects the retained
+  legacy serial projection route. Explicit `=1` remains accepted for targeted
+  trace validation.
+- The focused and 32-task HumanEval runners now compare explicit legacy opt-out
+  against the promoted unset-variable default. Labels, summaries, metadata,
+  and tests were changed together so future runs cannot compare the promoted
+  path with itself.
+- The adjudication loader retains the pre-promotion historical mode names when
+  validating the already-recorded Phase 1.43 artifact, while future executions
+  use explicit legacy versus promoted modes.
+- After the default flip, both the ordinary exact-runtime correctness matrix
+  and an explicit legacy-opt-out matrix passed reasoning, Italian,
+  medium-context, rolling-window, and resumed-chat cases byte-for-byte.
+
+Decision:
+
+- PROMOTE. The broad result is positive across 31 tasks, the sole failure was
+  decisively non-reproducible, low-acceptance tasks improved, and all outputs
+  remained exact.
+- This closes the candidate and returns the branch to a clean optimization
+  checkpoint. Future cumulative or profiling work should use the promoted
+  default and reserve `=0` for attribution and regression diagnosis.

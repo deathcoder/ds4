@@ -340,7 +340,7 @@ def check_inputs(args, root):
 
 def benchmark_modes(args):
     if getattr(args, "exact_compressor_pre_batch_ablation", False):
-        return ("default_exact", "exact_compressor_pre_batch")
+        return ("legacy_compressor_pre_batch", "default_exact")
     if getattr(args, "exact_shared_q8_rows_ablation", False):
         return ("legacy_shared_q8_rows", "default_exact")
     if getattr(args, "exact_q2_down_batch_ablation", False):
@@ -400,8 +400,8 @@ def mode_label(mode, args):
         "legacy_routed_moe_rows": "Legacy row-wise routed-MoE DSpark",
         "exact_q2_down_batch": "Single-dispatch exact Q2 down DSpark",
         "legacy_shared_q8_rows": "Legacy shared Q8 rows DSpark",
-        "exact_compressor_pre_batch":
-            "Exact compressor projection prebatch DSpark",
+        "legacy_compressor_pre_batch":
+            "Legacy serial compressor projection DSpark",
     }[mode]
 
 
@@ -474,8 +474,8 @@ def clean_dspark_env(mode, fast_verifier=False, runtime_stats=True):
             env["DS4_DSPARK_EXACT_Q2_DOWN_BATCH"] = "1"
         if mode == "legacy_shared_q8_rows":
             env["DS4_DSPARK_EXACT_SHARED_Q8_ROWS"] = "0"
-        if mode == "exact_compressor_pre_batch":
-            env["DS4_DSPARK_EXACT_COMPRESSOR_PRE_BATCH"] = "1"
+        if mode == "legacy_compressor_pre_batch":
+            env["DS4_DSPARK_EXACT_COMPRESSOR_PRE_BATCH"] = "0"
     return env
 
 
@@ -563,8 +563,8 @@ def command_text(args, mode, runtime_stats=None):
             env += "DS4_DSPARK_EXACT_Q2_DOWN_BATCH=1 "
         if mode == "legacy_shared_q8_rows":
             env += "DS4_DSPARK_EXACT_SHARED_Q8_ROWS=0 "
-        if mode == "exact_compressor_pre_batch":
-            env += "DS4_DSPARK_EXACT_COMPRESSOR_PRE_BATCH=1 "
+        if mode == "legacy_compressor_pre_batch":
+            env += "DS4_DSPARK_EXACT_COMPRESSOR_PRE_BATCH=0 "
     return env + shlex.join(mode_command(args, mode))
 
 
@@ -809,7 +809,7 @@ def summarize(rows, modes=("baseline", "runtime")):
             "exact_q2_down_batch_ablation",
         ("legacy_shared_q8_rows", "default_exact"):
             "exact_shared_q8_rows_ablation",
-        ("default_exact", "exact_compressor_pre_batch"):
+        ("legacy_compressor_pre_batch", "default_exact"):
             "exact_compressor_pre_batch_ablation",
     }
     summary = {
@@ -940,12 +940,12 @@ def summarize(rows, modes=("baseline", "runtime")):
         })
         return summary
 
-    if modes == ("default_exact", "exact_compressor_pre_batch"):
+    if modes == ("legacy_compressor_pre_batch", "default_exact"):
         summary.update({
-            "default_exact_generation_tps_median": reference_median,
-            "exact_compressor_pre_batch_generation_tps_median":
+            "legacy_compressor_generation_tps_median": reference_median,
+            "promoted_compressor_pre_batch_generation_tps_median":
                 candidate_median,
-            "exact_compressor_pre_batch_delta_percent":
+            "promoted_compressor_pre_batch_delta_percent":
                 (candidate_median / reference_median - 1.0) * 100.0,
         })
         return summary
@@ -1283,15 +1283,15 @@ def format_report(summary):
 
     if summary["comparison"] == "exact_compressor_pre_batch_ablation":
         return (
-            "# DSpark Exact Compressor Projection Prebatch Ablation\n\n"
-            f"- Default exact median: "
-            f"{summary['default_exact_generation_tps_median']:.2f} t/s\n"
-            f"- Compressor projection prebatch median: "
-            f"{summary['exact_compressor_pre_batch_generation_tps_median']:.2f} t/s\n"
+            "# DSpark Exact Compressor Projection Prebatch Promotion Confirmation\n\n"
+            f"- Legacy serial projection median: "
+            f"{summary['legacy_compressor_generation_tps_median']:.2f} t/s\n"
+            f"- Promoted compressor prebatch median: "
+            f"{summary['promoted_compressor_pre_batch_generation_tps_median']:.2f} t/s\n"
             f"- Ratio of medians: {summary['median_ratio_of_medians']:.4f}x\n"
             f"- Median paired ratio: {summary['paired_speedup_median']:.4f}x\n"
-            f"- Compressor projection prebatch delta: "
-            f"{summary['exact_compressor_pre_batch_delta_percent']:+.1f}%\n"
+            f"- Promoted compressor prebatch delta: "
+            f"{summary['promoted_compressor_pre_batch_delta_percent']:+.1f}%\n"
             f"- Measured pairs: {len(summary['paired_speedup_values'])}\n"
         )
 

@@ -28,10 +28,10 @@ class HumanEvalCompressorPreBatchOutlierTests(unittest.TestCase):
             for pair in range(1, adjudication.MEASURED_PAIRS + 1)
         ]
         self.assertEqual(
-            orders.count(("default_exact", "exact_compressor_pre_batch")), 3
+            orders.count(("legacy_compressor_pre_batch", "default_exact")), 3
         )
         self.assertEqual(
-            orders.count(("exact_compressor_pre_batch", "default_exact")), 3
+            orders.count(("default_exact", "legacy_compressor_pre_batch")), 3
         )
 
     @staticmethod
@@ -42,13 +42,13 @@ class HumanEvalCompressorPreBatchOutlierTests(unittest.TestCase):
             rows.extend([
                 {
                     "pair_number": pair_number,
-                    "mode": "default_exact",
+                    "mode": "legacy_compressor_pre_batch",
                     "generation_tps": 20.0,
                     "pair_order": order,
                 },
                 {
                     "pair_number": pair_number,
-                    "mode": "exact_compressor_pre_batch",
+                    "mode": "default_exact",
                     "generation_tps": 20.0 * ratio,
                     "pair_order": order,
                 },

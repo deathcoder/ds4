@@ -20,7 +20,7 @@ import run_dspark_issue468_comparison as common
 
 THRESHOLD = "0.75"
 SAMPLE_COUNT = 32
-MODES = ("default_exact", "exact_compressor_pre_batch")
+MODES = ("legacy_compressor_pre_batch", "default_exact")
 MIN_GEOMEAN = 1.005
 MIN_WINS = 20
 MIN_TASK_RATIO = 0.95
@@ -108,8 +108,8 @@ def mode_env(mode):
     )
     env.pop("DS4_DSPARK_EXACT_COMPRESSOR_PRE_BATCH", None)
     env.pop("DS4_DSPARK_EXACT_COMPRESSOR_PRE_BATCH_TRACE", None)
-    if mode == "exact_compressor_pre_batch":
-        env["DS4_DSPARK_EXACT_COMPRESSOR_PRE_BATCH"] = "1"
+    if mode == "legacy_compressor_pre_batch":
+        env["DS4_DSPARK_EXACT_COMPRESSOR_PRE_BATCH"] = "0"
     return env
 
 
@@ -202,8 +202,8 @@ def summarize(rows, records, reference):
         selected = {row["mode"]: row for row in rows if row["prompt"] == task}
         if set(selected) != set(MODES):
             raise RuntimeError(f"incomplete compressor-prebatch pair for {task}")
-        default = selected["default_exact"]["generation_tps"]
-        candidate = selected["exact_compressor_pre_batch"]["generation_tps"]
+        default = selected["legacy_compressor_pre_batch"]["generation_tps"]
+        candidate = selected["default_exact"]["generation_tps"]
         ratio = candidate / default
         acceptance = reference["tasks"][task]["acceptance_verify_rate"]
         ratios.append(ratio)
@@ -215,7 +215,7 @@ def summarize(rows, records, reference):
         equals += ratio == 1.0
         samples[task] = {
             "source_index": record["source_index"],
-            "order": selected["exact_compressor_pre_batch"]["pair_order"],
+            "order": selected["default_exact"]["pair_order"],
             "acceptance_verify_rate": acceptance,
             "default_generation_tps": default,
             "candidate_generation_tps": candidate,
@@ -280,12 +280,12 @@ def render_report(summary):
         "",
         "All samples are uninstrumented and paired within the same frozen "
         "threshold-0.75 HumanEval task.",
-        "Every default and prebatch output matched the frozen exact artifact "
+        "Every legacy and promoted-default output matched the frozen exact artifact "
         "byte-for-byte.",
         "Generation t/s excludes process startup; paired ratios are authoritative.",
         "",
-        "| samples | default median | prebatch median | ratio of medians | "
-        "median paired | geometric mean | prebatch faster |",
+        "| samples | legacy median | promoted median | ratio of medians | "
+        "median paired | geometric mean | promoted faster |",
         "|---:|---:|---:|---:|---:|---:|---:|",
         f"| {summary['sample_count']} | "
         f"{summary['default_generation_tps_median']:.2f} t/s | "
@@ -300,7 +300,7 @@ def render_report(summary):
         f"{summary['paired_ratio_q3']:.4f}x.",
         f"- Paired-ratio range: {summary['paired_ratio_minimum']:.4f}x-"
         f"{summary['paired_ratio_maximum']:.4f}x.",
-        f"- Tasks faster/equal/slower with compressor projection prebatch: "
+        f"- Tasks faster/equal/slower with promoted compressor prebatch: "
         f"{summary['candidate_faster_tasks']}/"
         f"{summary['candidate_equal_tasks']}/"
         f"{summary['candidate_slower_tasks']}.",
@@ -312,7 +312,7 @@ def render_report(summary):
         "",
         "## Tasks",
         "",
-        "| task | acceptance | order | default | prebatch | ratio | delta |",
+        "| task | acceptance | order | legacy | promoted | ratio | delta |",
         "|:---|---:|:---|---:|---:|---:|---:|",
     ]
     for task, item in summary["samples"].items():
@@ -339,7 +339,7 @@ def render_report(summary):
         f"`{gate['minimum_low_acceptance_geometric_mean']:.2f}x`.",
         "",
         "- Two global warmup pairs are excluded from every reported value.",
-        "- Measured order alternates default-first and prebatch-first.",
+        "- Measured order alternates legacy-first and promoted-first.",
         "- No DSpark stats, trace, diagnostics, profiler, or fast verifier is enabled.",
     ])
     return "\n".join(lines) + "\n"
@@ -386,9 +386,9 @@ def main():
         prompt = prompts[record["label"]]
         print(
             f"{record['label']} measured order: {' -> '.join(order)}\n"
-            f"  default: {command_text(args, prompt, 'default_exact')}\n"
-            f"  prebatch: "
-            f"{command_text(args, prompt, 'exact_compressor_pre_batch')}"
+            f"  legacy: "
+            f"{command_text(args, prompt, 'legacy_compressor_pre_batch')}\n"
+            f"  promoted: {command_text(args, prompt, 'default_exact')}"
         )
     warmups = warmup_schedule(records)
     total = len(warmups) * 2 + len(records) * 2
@@ -422,8 +422,8 @@ def main():
             "measured_pairs_per_task": 1,
             "alternating_order": True,
             "global_warmup_pairs": len(warmups),
-            "reference_mode": "default_exact",
-            "candidate_mode": "exact_compressor_pre_batch",
+            "reference_mode": "legacy_compressor_pre_batch",
+            "candidate_mode": "default_exact",
         },
         "binary": common.file_metadata(args.binary),
         "base_model": common.file_metadata(args.model),

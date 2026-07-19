@@ -46,61 +46,69 @@ class ExactCompressorPreBatchTests(unittest.TestCase):
     def test_ablation_compares_default_with_prebatch_candidate(self):
         self.assertEqual(
             comparison.benchmark_modes(args()),
-            ("default_exact", "exact_compressor_pre_batch"),
+            ("legacy_compressor_pre_batch", "default_exact"),
         )
         self.assertFalse(comparison.throughput_runtime_stats_enabled(args()))
 
-    def test_only_candidate_enables_prebatch(self):
-        default = comparison.clean_dspark_env(
+    def test_only_legacy_reference_disables_prebatch(self):
+        legacy = comparison.clean_dspark_env(
+            "legacy_compressor_pre_batch", runtime_stats=False
+        )
+        promoted = comparison.clean_dspark_env(
             "default_exact", runtime_stats=False
         )
-        candidate = comparison.clean_dspark_env(
-            "exact_compressor_pre_batch", runtime_stats=False
-        )
-        self.assertNotIn("DS4_DSPARK_EXACT_COMPRESSOR_PRE_BATCH", default)
         self.assertEqual(
-            candidate["DS4_DSPARK_EXACT_COMPRESSOR_PRE_BATCH"], "1"
+            legacy["DS4_DSPARK_EXACT_COMPRESSOR_PRE_BATCH"], "0"
         )
-        self.assertNotIn("DS4_DSPARK_GPU_RUNTIME_STATS", candidate)
+        self.assertNotIn("DS4_DSPARK_EXACT_COMPRESSOR_PRE_BATCH", promoted)
+        self.assertNotIn("DS4_DSPARK_GPU_RUNTIME_STATS", promoted)
 
     def test_commands_are_metal_and_uninstrumented(self):
-        default = comparison.command_text(
+        legacy = comparison.command_text(
+            args(), "legacy_compressor_pre_batch", runtime_stats=False
+        )
+        promoted = comparison.command_text(
             args(), "default_exact", runtime_stats=False
         )
-        candidate = comparison.command_text(
-            args(), "exact_compressor_pre_batch", runtime_stats=False
-        )
-        self.assertNotIn("DS4_DSPARK_EXACT_COMPRESSOR_PRE_BATCH", default)
-        self.assertIn("DS4_DSPARK_EXACT_COMPRESSOR_PRE_BATCH=1", candidate)
-        self.assertIn("--backend metal", candidate)
-        self.assertNotIn("DS4_DSPARK_GPU_RUNTIME_STATS", candidate)
-        self.assertNotIn("TRACE", candidate)
+        self.assertIn("DS4_DSPARK_EXACT_COMPRESSOR_PRE_BATCH=0", legacy)
+        self.assertNotIn("DS4_DSPARK_EXACT_COMPRESSOR_PRE_BATCH", promoted)
+        self.assertIn("--backend metal", promoted)
+        self.assertNotIn("DS4_DSPARK_GPU_RUNTIME_STATS", promoted)
+        self.assertNotIn("TRACE", promoted)
 
     def test_summary_reports_paired_gain(self):
         rows = [
-            {"pair": 1, "mode": "default_exact", "generation_tps": 10.0},
             {
                 "pair": 1,
-                "mode": "exact_compressor_pre_batch",
+                "mode": "legacy_compressor_pre_batch",
+                "generation_tps": 10.0,
+            },
+            {
+                "pair": 1,
+                "mode": "default_exact",
                 "generation_tps": 11.0,
             },
             {
                 "pair": 2,
-                "mode": "exact_compressor_pre_batch",
+                "mode": "default_exact",
                 "generation_tps": 12.0,
             },
-            {"pair": 2, "mode": "default_exact", "generation_tps": 10.0},
+            {
+                "pair": 2,
+                "mode": "legacy_compressor_pre_batch",
+                "generation_tps": 10.0,
+            },
         ]
         summary = comparison.summarize(
-            rows, ("default_exact", "exact_compressor_pre_batch")
+            rows, ("legacy_compressor_pre_batch", "default_exact")
         )
         self.assertEqual(
             summary["comparison"], "exact_compressor_pre_batch_ablation"
         )
         self.assertAlmostEqual(summary["paired_speedup_median"], 1.15)
         report = comparison.format_report(summary)
-        self.assertIn("Compressor Projection Prebatch Ablation", report)
-        self.assertIn("Compressor projection prebatch delta", report)
+        self.assertIn("Prebatch Promotion Confirmation", report)
+        self.assertIn("Promoted compressor prebatch delta", report)
 
     def test_paired_f16_projection_supports_exact_widths(self):
         source = (ROOT / "ds4_metal.m").read_text(encoding="utf-8")
@@ -113,6 +121,7 @@ class ExactCompressorPreBatchTests(unittest.TestCase):
         self.assertIn(
             "metal_graph_exact_compressor_pre_batch_prepare", source
         )
+        self.assertIn("enabled = !value || !value[0]", source)
         self.assertIn("g->batch_index_comp_kv", source)
         self.assertIn("g->batch_index_comp_sc", source)
         self.assertIn("g->exact_comp_kv_pre", source)

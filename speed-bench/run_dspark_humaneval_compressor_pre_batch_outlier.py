@@ -16,6 +16,7 @@ import run_dspark_issue468_comparison as common
 
 
 TASK = "humaneval_095"
+HISTORICAL_MODES = ("default_exact", "exact_compressor_pre_batch")
 MEASURED_PAIRS = 6
 WARMUP_PAIRS = 2
 MIN_MEDIAN_RATIO = 1.005
@@ -139,7 +140,7 @@ def load_confirmation_reference(args):
     below_floor = []
     for task, sample in samples.items():
         by_mode = rows_by_task[task]
-        if set(by_mode) != set(confirmation.MODES):
+        if set(by_mode) != set(HISTORICAL_MODES):
             raise SystemExit(f"confirmation has an incomplete {task} pair")
         hashes = {row["stdout_sha256"] for row in by_mode.values()}
         if len(hashes) != 1:
@@ -190,8 +191,8 @@ def summarize(rows):
         }
         if set(selected) != set(confirmation.MODES):
             raise RuntimeError(f"incomplete adjudication pair {pair_number}")
-        default = selected["default_exact"]["generation_tps"]
-        candidate = selected["exact_compressor_pre_batch"]["generation_tps"]
+        default = selected["legacy_compressor_pre_batch"]["generation_tps"]
+        candidate = selected["default_exact"]["generation_tps"]
         ratio = candidate / default
         default_values.append(default)
         candidate_values.append(candidate)
@@ -248,11 +249,11 @@ def render_report(summary):
         "",
         f"The frozen 32-task gate remains a formal failure. This run repeats its "
         f"sole sub-{ORIGINAL_TASK_FLOOR:.2f} task with balanced order.",
-        "Every default and prebatch output matched the frozen exact artifact "
+        "Every legacy and promoted-default output matched the frozen exact artifact "
         "byte-for-byte.",
         "Generation t/s excludes process startup; paired ratios are authoritative.",
         "",
-        "| task | pairs | default median | prebatch median | ratio of medians "
+        "| task | pairs | legacy median | promoted median | ratio of medians "
         "| median paired | geometric mean | wins |",
         "|:---|---:|---:|---:|---:|---:|---:|---:|",
         f"| {summary['task']} | {summary['measured_pairs']} | "
@@ -265,7 +266,7 @@ def render_report(summary):
         "",
         "## Pairs",
         "",
-        "| pair | order | default | prebatch | ratio | delta |",
+        "| pair | order | legacy | promoted | ratio | delta |",
         "|---:|:---|---:|---:|---:|---:|",
     ]
     for item in summary["pairs"]:
@@ -354,12 +355,12 @@ def main():
         f"{WARMUP_PAIRS * 2} excluded warmups and {MEASURED_PAIRS * 2} measured."
     )
     print(
-        f"  default: "
-        f"{confirmation.command_text(args, prompt, 'default_exact')}"
+        f"  legacy: "
+        f"{confirmation.command_text(args, prompt, 'legacy_compressor_pre_batch')}"
     )
     print(
-        "  prebatch: "
-        f"{confirmation.command_text(args, prompt, 'exact_compressor_pre_batch')}"
+        "  promoted: "
+        f"{confirmation.command_text(args, prompt, 'default_exact')}"
     )
     if args.dry_run:
         print("Dry run only; no prompt materialized and no model execution performed.")

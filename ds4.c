@@ -13899,9 +13899,16 @@ static bool metal_graph_exact_attn_inv_rope_fused_enabled(void) {
 }
 
 static bool metal_graph_exact_compressor_pre_batch_enabled(void) {
-    static int cache = -1;
-    return metal_graph_env_flag(
-        "DS4_DSPARK_EXACT_COMPRESSOR_PRE_BATCH", &cache);
+    static bool initialized;
+    static bool enabled;
+    if (!initialized) {
+        const char *value =
+            getenv("DS4_DSPARK_EXACT_COMPRESSOR_PRE_BATCH");
+        enabled = !value || !value[0] ||
+            (strcmp(value, "0") != 0 && strcasecmp(value, "off") != 0);
+        initialized = true;
+    }
+    return enabled;
 }
 
 static bool metal_graph_exact_compressor_pre_batch_trace_enabled(void) {

@@ -29,7 +29,7 @@ class HumanEvalCompressorPreBatchTests(unittest.TestCase):
         self.assertEqual(gate.THRESHOLD, "0.75")
         self.assertEqual(gate.SAMPLE_COUNT, 32)
         self.assertEqual(
-            gate.MODES, ("default_exact", "exact_compressor_pre_batch")
+            gate.MODES, ("legacy_compressor_pre_batch", "default_exact")
         )
         self.assertEqual(gate.MIN_GEOMEAN, 1.005)
         self.assertEqual(gate.MIN_WINS, 20)
@@ -39,47 +39,47 @@ class HumanEvalCompressorPreBatchTests(unittest.TestCase):
     def test_order_and_warmups_are_balanced(self):
         self.assertEqual(
             gate.mode_order(1),
-            ("default_exact", "exact_compressor_pre_batch"),
+            ("legacy_compressor_pre_batch", "default_exact"),
         )
         self.assertEqual(
             gate.mode_order(2),
-            ("exact_compressor_pre_batch", "default_exact"),
+            ("default_exact", "legacy_compressor_pre_batch"),
         )
         records = [{"label": "first"}, {"label": "last"}]
         warmups = gate.warmup_schedule(records)
         self.assertEqual(warmups[0][1], gate.MODES)
         self.assertEqual(warmups[1][1], tuple(reversed(gate.MODES)))
 
-    def test_only_candidate_enables_compressor_prebatch(self):
-        default = gate.mode_env("default_exact")
-        candidate = gate.mode_env("exact_compressor_pre_batch")
-        self.assertNotIn("DS4_DSPARK_EXACT_COMPRESSOR_PRE_BATCH", default)
+    def test_only_legacy_reference_disables_compressor_prebatch(self):
+        legacy = gate.mode_env("legacy_compressor_pre_batch")
+        promoted = gate.mode_env("default_exact")
         self.assertEqual(
-            candidate["DS4_DSPARK_EXACT_COMPRESSOR_PRE_BATCH"], "1"
+            legacy["DS4_DSPARK_EXACT_COMPRESSOR_PRE_BATCH"], "0"
         )
+        self.assertNotIn("DS4_DSPARK_EXACT_COMPRESSOR_PRE_BATCH", promoted)
         self.assertEqual(
-            candidate["DS4_DSPARK_CONFIDENCE_THRESHOLD"], "0.75"
+            promoted["DS4_DSPARK_CONFIDENCE_THRESHOLD"], "0.75"
         )
-        self.assertNotIn("DS4_DSPARK_GPU_RUNTIME_STATS", candidate)
-        self.assertNotIn("DS4_DSPARK_FAST_BATCH_VERIFY", candidate)
+        self.assertNotIn("DS4_DSPARK_GPU_RUNTIME_STATS", promoted)
+        self.assertNotIn("DS4_DSPARK_FAST_BATCH_VERIFY", promoted)
         self.assertNotIn(
-            "DS4_DSPARK_EXACT_COMPRESSOR_PRE_BATCH_TRACE", candidate
+            "DS4_DSPARK_EXACT_COMPRESSOR_PRE_BATCH_TRACE", promoted
         )
 
     def test_commands_are_metal_and_uninstrumented(self):
-        default = gate.command_text(
+        legacy = gate.command_text(
+            args(), Path("/tmp/prompt.txt"), "legacy_compressor_pre_batch"
+        )
+        promoted = gate.command_text(
             args(), Path("/tmp/prompt.txt"), "default_exact"
         )
-        candidate = gate.command_text(
-            args(), Path("/tmp/prompt.txt"), "exact_compressor_pre_batch"
-        )
-        self.assertIn("--backend metal", candidate)
-        self.assertNotIn("DS4_DSPARK_EXACT_COMPRESSOR_PRE_BATCH", default)
+        self.assertIn("--backend metal", promoted)
         self.assertIn(
-            "DS4_DSPARK_EXACT_COMPRESSOR_PRE_BATCH=1", candidate
+            "DS4_DSPARK_EXACT_COMPRESSOR_PRE_BATCH=0", legacy
         )
-        self.assertNotIn("DS4_DSPARK_GPU_RUNTIME_STATS", candidate)
-        self.assertNotIn("TRACE", candidate)
+        self.assertNotIn("DS4_DSPARK_EXACT_COMPRESSOR_PRE_BATCH", promoted)
+        self.assertNotIn("DS4_DSPARK_GPU_RUNTIME_STATS", promoted)
+        self.assertNotIn("TRACE", promoted)
 
     @staticmethod
     def records(count=32):
@@ -102,20 +102,20 @@ class HumanEvalCompressorPreBatchTests(unittest.TestCase):
         rows = []
         for index, record in enumerate(records):
             order = (
-                "default_exact-exact_compressor_pre_batch"
+                "legacy_compressor_pre_batch-default_exact"
                 if index % 2 == 0
-                else "exact_compressor_pre_batch-default_exact"
+                else "default_exact-legacy_compressor_pre_batch"
             )
             rows.extend((
                 {
                     "prompt": record["label"],
-                    "mode": "default_exact",
+                    "mode": "legacy_compressor_pre_batch",
                     "generation_tps": 10.0,
                     "pair_order": order,
                 },
                 {
                     "prompt": record["label"],
-                    "mode": "exact_compressor_pre_batch",
+                    "mode": "default_exact",
                     "generation_tps": 10.0 * ratio,
                     "pair_order": order,
                 },
