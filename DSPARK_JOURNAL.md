@@ -10516,6 +10516,49 @@ python3 speed-bench/run_ds4_master_baseline_comparison.py \
   --confirm-idle
 ```
 
+Result:
+
+- Artifact:
+  `speed-bench/local-runs/ds4-master-baseline-32-20260719-190740`.
+- Clean current source commit:
+  `8eb7d3aec57183afe6bb4d2cd61c8c1271c676cd`; pinned upstream source commit:
+  `80ebbc396aee40eedc1d829222f3362d10fa4c6c`.
+- Both ordinary, non-DSpark binaries reproduced all 32 frozen outputs
+  byte-for-byte.
+- Upstream median: `22.80 t/s`; current median: `24.68 t/s`; ratio of
+  medians: `1.0822x`.
+- Median paired current/upstream ratio: `1.0848x`; geometric paired ratio:
+  `1.0822x`, or `+8.2%`.
+- The current branch won all `32/32` tasks. The interquartile range was
+  `1.0806x..1.0881x`; the complete range was `1.0282x..1.0979x`.
+- Order did not explain the gain. The 16 upstream-first tasks had a `1.0818x`
+  geometric ratio; the 16 current-first tasks had a `1.0827x` geometric
+  ratio.
+- The initial and final machine snapshots reported no thermal or performance
+  warning, but WindowServer, Stats, and a browser renderer were active. The
+  tight paired distribution and balanced order make the relative result
+  persuasive; absolute medians remain specific to this run.
+
+Interpretation:
+
+- PASS: the branch contains a real, broad ordinary Metal decode improvement,
+  not only DSpark-specific work. The predeclared `1.01x`, `24/32`, and `0.95x`
+  gates all passed comfortably.
+- Keep two performance questions separate. Current DSpark is still `0.8782x`
+  versus the current branch's own faster baseline on the frozen cumulative
+  study; that is the correct incremental cost of enabling DSpark. The complete
+  current branch is `1.0822x` faster than pinned upstream without DSpark; that
+  is shared engine progress and must not be called a DSpark speedup.
+- Multiplying the two independently paired ratios gives a descriptive
+  cross-session estimate of `0.9504x` for current DSpark versus old upstream
+  baseline. This suggests the complete branch may be roughly 5% below the
+  pinned upstream product on this workload, rather than 12.2%, but it is not a
+  direct measurement and must not be reported as one.
+- A direct upstream-baseline/current-DSpark pair would answer the product-level
+  comparison. It is not required before optimizing the algorithm, because
+  parity with the same current baseline remains the stricter and more honest
+  DSpark target.
+
 External survey snapshot, 2026-07-19:
 
 - MTPLX was inspected at `54a1d9a`. Its most relevant work is
