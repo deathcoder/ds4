@@ -330,7 +330,7 @@ def check_inputs(args, root):
 
 def benchmark_modes(args):
     if getattr(args, "exact_shared_q8_rows_ablation", False):
-        return ("default_exact", "exact_shared_q8_rows")
+        return ("legacy_shared_q8_rows", "default_exact")
     if getattr(args, "exact_q2_down_batch_ablation", False):
         return ("default_exact", "exact_q2_down_batch")
     if getattr(args, "exact_routed_moe_hybrid_ablation", False):
@@ -387,7 +387,7 @@ def mode_label(mode, args):
             "Legacy gathered dense-mixed attention DSpark",
         "legacy_routed_moe_rows": "Legacy row-wise routed-MoE DSpark",
         "exact_q2_down_batch": "Single-dispatch exact Q2 down DSpark",
-        "exact_shared_q8_rows": "Exact shared Q8 rows DSpark",
+        "legacy_shared_q8_rows": "Legacy shared Q8 rows DSpark",
     }[mode]
 
 
@@ -457,8 +457,8 @@ def clean_dspark_env(mode, fast_verifier=False, runtime_stats=True):
             env["DS4_DSPARK_EXACT_ROUTED_MOE_HYBRID"] = "0"
         if mode == "exact_q2_down_batch":
             env["DS4_DSPARK_EXACT_Q2_DOWN_BATCH"] = "1"
-        if mode == "exact_shared_q8_rows":
-            env["DS4_DSPARK_EXACT_SHARED_Q8_ROWS"] = "1"
+        if mode == "legacy_shared_q8_rows":
+            env["DS4_DSPARK_EXACT_SHARED_Q8_ROWS"] = "0"
     return env
 
 
@@ -543,8 +543,8 @@ def command_text(args, mode, runtime_stats=None):
             env += "DS4_DSPARK_EXACT_ROUTED_MOE_HYBRID=0 "
         if mode == "exact_q2_down_batch":
             env += "DS4_DSPARK_EXACT_Q2_DOWN_BATCH=1 "
-        if mode == "exact_shared_q8_rows":
-            env += "DS4_DSPARK_EXACT_SHARED_Q8_ROWS=1 "
+        if mode == "legacy_shared_q8_rows":
+            env += "DS4_DSPARK_EXACT_SHARED_Q8_ROWS=0 "
     return env + shlex.join(mode_command(args, mode))
 
 
@@ -785,7 +785,7 @@ def summarize(rows, modes=("baseline", "runtime")):
             "exact_routed_moe_hybrid_ablation",
         ("default_exact", "exact_q2_down_batch"):
             "exact_q2_down_batch_ablation",
-        ("default_exact", "exact_shared_q8_rows"):
+        ("legacy_shared_q8_rows", "default_exact"):
             "exact_shared_q8_rows_ablation",
     }
     summary = {
@@ -907,11 +907,11 @@ def summarize(rows, modes=("baseline", "runtime")):
         })
         return summary
 
-    if modes == ("default_exact", "exact_shared_q8_rows"):
+    if modes == ("legacy_shared_q8_rows", "default_exact"):
         summary.update({
-            "default_exact_generation_tps_median": reference_median,
-            "exact_shared_q8_rows_generation_tps_median": candidate_median,
-            "exact_shared_q8_rows_delta_percent":
+            "legacy_shared_q8_rows_generation_tps_median": reference_median,
+            "promoted_shared_q8_rows_generation_tps_median": candidate_median,
+            "promoted_shared_q8_rows_delta_percent":
                 (candidate_median / reference_median - 1.0) * 100.0,
         })
         return summary
@@ -1235,15 +1235,15 @@ def format_report(summary):
 
     if summary["comparison"] == "exact_shared_q8_rows_ablation":
         return (
-            "# DSpark Exact Shared-Expert Q8 Rows Ablation\n\n"
-            f"- Default exact median: "
-            f"{summary['default_exact_generation_tps_median']:.2f} t/s\n"
-            f"- Exact shared Q8 rows median: "
-            f"{summary['exact_shared_q8_rows_generation_tps_median']:.2f} t/s\n"
+            "# DSpark Exact Shared-Expert Q8 Rows Promotion Confirmation\n\n"
+            f"- Legacy row-wise median: "
+            f"{summary['legacy_shared_q8_rows_generation_tps_median']:.2f} t/s\n"
+            f"- Promoted exact shared Q8 rows median: "
+            f"{summary['promoted_shared_q8_rows_generation_tps_median']:.2f} t/s\n"
             f"- Ratio of medians: {summary['median_ratio_of_medians']:.4f}x\n"
             f"- Median paired ratio: {summary['paired_speedup_median']:.4f}x\n"
-            f"- Exact shared Q8 rows delta: "
-            f"{summary['exact_shared_q8_rows_delta_percent']:+.1f}%\n"
+            f"- Promoted shared Q8 rows delta: "
+            f"{summary['promoted_shared_q8_rows_delta_percent']:+.1f}%\n"
             f"- Measured pairs: {len(summary['paired_speedup_values'])}\n"
         )
 

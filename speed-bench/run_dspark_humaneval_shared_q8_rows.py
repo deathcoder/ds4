@@ -20,7 +20,7 @@ import run_dspark_issue468_comparison as common
 
 THRESHOLD = "0.75"
 SAMPLE_COUNT = 32
-MODES = ("default_exact", "exact_shared_q8_rows")
+MODES = ("legacy_shared_q8_rows", "default_exact")
 MIN_GEOMEAN = 1.005
 MIN_WINS = 20
 MIN_TASK_RATIO = 0.95
@@ -107,8 +107,8 @@ def mode_env(mode):
         "runtime", False, confidence_threshold=THRESHOLD
     )
     env.pop("DS4_DSPARK_EXACT_SHARED_Q8_ROWS", None)
-    if mode == "exact_shared_q8_rows":
-        env["DS4_DSPARK_EXACT_SHARED_Q8_ROWS"] = "1"
+    if mode == "legacy_shared_q8_rows":
+        env["DS4_DSPARK_EXACT_SHARED_Q8_ROWS"] = "0"
     return env
 
 
@@ -201,8 +201,8 @@ def summarize(rows, records, reference):
         selected = {row["mode"]: row for row in rows if row["prompt"] == task}
         if set(selected) != set(MODES):
             raise RuntimeError(f"incomplete shared-Q8 pair for {task}")
-        default = selected["default_exact"]["generation_tps"]
-        candidate = selected["exact_shared_q8_rows"]["generation_tps"]
+        default = selected["legacy_shared_q8_rows"]["generation_tps"]
+        candidate = selected["default_exact"]["generation_tps"]
         ratio = candidate / default
         acceptance = reference["tasks"][task]["acceptance_verify_rate"]
         ratios.append(ratio)
@@ -275,16 +275,16 @@ def render_report(summary):
     correlation = summary["acceptance_speed_pearson"]
     correlation_text = "n/a" if correlation is None else f"{correlation:.3f}"
     lines = [
-        "# DSpark HumanEval Exact Shared-Expert Q8 Rows Confirmation",
+        "# DSpark HumanEval Exact Shared-Expert Q8 Rows Promotion Confirmation",
         "",
         "All samples are uninstrumented and paired within the same frozen "
         "threshold-0.75 HumanEval task.",
-        "Every default and candidate output matched the frozen exact artifact "
+        "Every legacy and promoted-default output matched the frozen exact artifact "
         "byte-for-byte.",
         "Generation t/s excludes process startup; paired ratios are authoritative.",
         "",
-        "| samples | default median | candidate median | ratio of medians | "
-        "median paired | geometric mean | candidate faster |",
+        "| samples | legacy median | promoted median | ratio of medians | "
+        "median paired | geometric mean | promoted faster |",
         "|---:|---:|---:|---:|---:|---:|---:|",
         f"| {summary['sample_count']} | "
         f"{summary['default_generation_tps_median']:.2f} t/s | "
@@ -299,7 +299,7 @@ def render_report(summary):
         f"{summary['paired_ratio_q3']:.4f}x.",
         f"- Paired-ratio range: {summary['paired_ratio_minimum']:.4f}x-"
         f"{summary['paired_ratio_maximum']:.4f}x.",
-        f"- Tasks faster/equal/slower with shared Q8 rows: "
+        f"- Tasks faster/equal/slower with promoted shared Q8 rows: "
         f"{summary['candidate_faster_tasks']}/"
         f"{summary['candidate_equal_tasks']}/"
         f"{summary['candidate_slower_tasks']}.",
@@ -311,7 +311,7 @@ def render_report(summary):
         "",
         "## Tasks",
         "",
-        "| task | acceptance | order | default | candidate | ratio | delta |",
+        "| task | acceptance | order | legacy | promoted | ratio | delta |",
         "|:---|---:|:---|---:|---:|---:|---:|",
     ]
     for task, item in summary["samples"].items():
@@ -338,7 +338,7 @@ def render_report(summary):
         f"`{gate['minimum_low_acceptance_geometric_mean']:.2f}x`.",
         "",
         "- Two global warmup pairs are excluded from every reported value.",
-        "- Measured order alternates default-first and candidate-first.",
+        "- Measured order alternates legacy-first and promoted-first.",
         "- No DSpark stats, trace, diagnostics, profiler, or fast verifier is enabled.",
     ])
     return "\n".join(lines) + "\n"
@@ -385,8 +385,8 @@ def main():
         prompt = prompts[record["label"]]
         print(
             f"{record['label']} measured order: {' -> '.join(order)}\n"
-            f"  default: {command_text(args, prompt, 'default_exact')}\n"
-            f"  candidate: {command_text(args, prompt, 'exact_shared_q8_rows')}"
+            f"  legacy: {command_text(args, prompt, 'legacy_shared_q8_rows')}\n"
+            f"  promoted: {command_text(args, prompt, 'default_exact')}"
         )
     warmups = warmup_schedule(records)
     total = len(warmups) * 2 + len(records) * 2
@@ -420,8 +420,8 @@ def main():
             "measured_pairs_per_task": 1,
             "alternating_order": True,
             "global_warmup_pairs": len(warmups),
-            "reference_mode": "default_exact",
-            "candidate_mode": "exact_shared_q8_rows",
+            "reference_mode": "legacy_shared_q8_rows",
+            "candidate_mode": "default_exact",
         },
         "binary": common.file_metadata(args.binary),
         "base_model": common.file_metadata(args.model),

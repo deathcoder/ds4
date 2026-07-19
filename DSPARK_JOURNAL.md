@@ -10838,3 +10838,44 @@ python3 speed-bench/run_dspark_humaneval_shared_q8_rows.py \
   speed-bench/local-runs/humaneval-threshold075-throughput-32-20260716-155112/summary.json \
   --confirm-idle
 ```
+
+Broad result and promotion:
+
+- User-run artifact:
+  `speed-bench/local-runs/humaneval-shared-q8-rows-32-20260719-202319`.
+- Default median: `21.54 t/s`; candidate median: `21.89 t/s`; ratio of
+  medians: `1.0165x`.
+- Median paired ratio: `1.0177x`; geometric paired ratio: `1.0196x`, or about
+  `+2.0%` across tasks.
+- The candidate won all `32/32` tasks. The interquartile range was
+  `1.0134x..1.0218x`; the complete range was `1.0043x..1.0503x`. Even the
+  worst task remained positive.
+- The ten low-acceptance tasks had a `1.0161x` geometric ratio. The gain is
+  therefore broad rather than dependent on unusually long accepted blocks.
+- Every default and candidate output matched the frozen exact artifact
+  byte-for-byte. All predeclared gates passed comfortably.
+
+Promotion change:
+
+- Exact shared-expert Q8 rows are now enabled by default in the exact verifier.
+  `DS4_DSPARK_EXACT_SHARED_Q8_ROWS=0` or `off` selects the retained legacy
+  row-wise path. Width 1, non-Q8 weights, and unsupported shapes continue to
+  use the existing fallback automatically.
+- The focused and HumanEval runners now compare explicit legacy opt-out against
+  the promoted unset-variable default. Their labels, reports, metadata, and
+  model-free contracts were updated so a future run cannot compare the
+  promoted path with itself.
+- The correctness harness now distinguishes `default`, `0`, and `1` controls.
+  After promotion, both the ordinary default matrix and an explicit legacy
+  opt-out matrix passed reasoning, Italian, medium-context, rolling-window,
+  and resumed-chat cases byte-for-byte against baseline.
+- `make`, benchmark dry runs, Python/shell syntax checks, and the focused
+  model-free tests passed after the default flip.
+
+Decision:
+
+- PROMOTE. This is a measured shared engine improvement within exact DSpark,
+  with unanimous per-task direction and no acceptance-dependent regression.
+- The branch is again at a safe checkpoint. Future optimization work should
+  use the promoted default and retain `=0` only for attribution or regression
+  diagnosis.

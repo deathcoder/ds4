@@ -29,7 +29,7 @@ class HumanEvalSharedQ8RowsTests(unittest.TestCase):
         self.assertEqual(gate.THRESHOLD, "0.75")
         self.assertEqual(gate.SAMPLE_COUNT, 32)
         self.assertEqual(
-            gate.MODES, ("default_exact", "exact_shared_q8_rows")
+            gate.MODES, ("legacy_shared_q8_rows", "default_exact")
         )
         self.assertEqual(gate.MIN_GEOMEAN, 1.005)
         self.assertEqual(gate.MIN_WINS, 20)
@@ -37,38 +37,38 @@ class HumanEvalSharedQ8RowsTests(unittest.TestCase):
 
     def test_order_and_warmups_are_balanced(self):
         self.assertEqual(
-            gate.mode_order(1), ("default_exact", "exact_shared_q8_rows")
+            gate.mode_order(1), ("legacy_shared_q8_rows", "default_exact")
         )
         self.assertEqual(
-            gate.mode_order(2), ("exact_shared_q8_rows", "default_exact")
+            gate.mode_order(2), ("default_exact", "legacy_shared_q8_rows")
         )
         records = [{"label": "first"}, {"label": "last"}]
         warmups = gate.warmup_schedule(records)
         self.assertEqual(warmups[0][1], gate.MODES)
         self.assertEqual(warmups[1][1], tuple(reversed(gate.MODES)))
 
-    def test_only_candidate_enables_shared_q8_rows(self):
-        default = gate.mode_env("default_exact")
-        candidate = gate.mode_env("exact_shared_q8_rows")
-        self.assertNotIn("DS4_DSPARK_EXACT_SHARED_Q8_ROWS", default)
-        self.assertEqual(candidate["DS4_DSPARK_EXACT_SHARED_Q8_ROWS"], "1")
+    def test_only_legacy_mode_disables_shared_q8_rows(self):
+        legacy = gate.mode_env("legacy_shared_q8_rows")
+        promoted = gate.mode_env("default_exact")
+        self.assertEqual(legacy["DS4_DSPARK_EXACT_SHARED_Q8_ROWS"], "0")
+        self.assertNotIn("DS4_DSPARK_EXACT_SHARED_Q8_ROWS", promoted)
         self.assertEqual(
-            candidate["DS4_DSPARK_CONFIDENCE_THRESHOLD"], "0.75"
+            promoted["DS4_DSPARK_CONFIDENCE_THRESHOLD"], "0.75"
         )
-        self.assertNotIn("DS4_DSPARK_GPU_RUNTIME_STATS", candidate)
-        self.assertNotIn("DS4_DSPARK_FAST_BATCH_VERIFY", candidate)
+        self.assertNotIn("DS4_DSPARK_GPU_RUNTIME_STATS", promoted)
+        self.assertNotIn("DS4_DSPARK_FAST_BATCH_VERIFY", promoted)
 
     def test_commands_are_metal_and_uninstrumented(self):
-        default = gate.command_text(
+        legacy = gate.command_text(
+            args(), Path("/tmp/prompt.txt"), "legacy_shared_q8_rows"
+        )
+        promoted = gate.command_text(
             args(), Path("/tmp/prompt.txt"), "default_exact"
         )
-        candidate = gate.command_text(
-            args(), Path("/tmp/prompt.txt"), "exact_shared_q8_rows"
-        )
-        self.assertIn("--backend metal", default)
-        self.assertNotIn("DS4_DSPARK_EXACT_SHARED_Q8_ROWS", default)
-        self.assertIn("DS4_DSPARK_EXACT_SHARED_Q8_ROWS=1", candidate)
-        self.assertNotIn("DS4_DSPARK_GPU_RUNTIME_STATS", candidate)
+        self.assertIn("--backend metal", promoted)
+        self.assertIn("DS4_DSPARK_EXACT_SHARED_Q8_ROWS=0", legacy)
+        self.assertNotIn("DS4_DSPARK_EXACT_SHARED_Q8_ROWS", promoted)
+        self.assertNotIn("DS4_DSPARK_GPU_RUNTIME_STATS", promoted)
 
     @staticmethod
     def records(count=32):
@@ -91,19 +91,19 @@ class HumanEvalSharedQ8RowsTests(unittest.TestCase):
         rows = []
         for index, record in enumerate(records):
             order = (
-                "default_exact-exact_shared_q8_rows" if index % 2 == 0
-                else "exact_shared_q8_rows-default_exact"
+                "legacy_shared_q8_rows-default_exact" if index % 2 == 0
+                else "default_exact-legacy_shared_q8_rows"
             )
             rows.extend((
                 {
                     "prompt": record["label"],
-                    "mode": "default_exact",
+                    "mode": "legacy_shared_q8_rows",
                     "generation_tps": 10.0,
                     "pair_order": order,
                 },
                 {
                     "prompt": record["label"],
-                    "mode": "exact_shared_q8_rows",
+                    "mode": "default_exact",
                     "generation_tps": 10.0 * ratio,
                     "pair_order": order,
                 },
@@ -118,7 +118,7 @@ class HumanEvalSharedQ8RowsTests(unittest.TestCase):
         self.assertTrue(summary["promotion_gate"]["pass"])
         self.assertEqual(summary["candidate_faster_tasks"], 32)
         report = gate.render_report(summary)
-        self.assertIn("Shared-Expert Q8 Rows Confirmation", report)
+        self.assertIn("Shared-Expert Q8 Rows Promotion Confirmation", report)
         self.assertIn("**PASS**", report)
         self.assertIn("No DSpark stats", report)
 

@@ -19896,9 +19896,8 @@ static bool metal_graph_exact_shared_q8_rows_enabled(void) {
     if (!initialized) {
         const char *value =
             getenv("DS4_DSPARK_EXACT_SHARED_Q8_ROWS");
-        enabled = value && value[0] &&
-            strcmp(value, "0") != 0 &&
-            strcasecmp(value, "off") != 0;
+        enabled = !value || !value[0] ||
+            (strcmp(value, "0") != 0 && strcasecmp(value, "off") != 0);
         initialized = true;
     }
     return enabled;

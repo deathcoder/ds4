@@ -33,7 +33,7 @@ serial_q8_rows_runtime=${DS4_TEST_DSPARK_SERIAL_Q8_ROWS_RUNTIME:-0}
 attn_inv_rope_fused=${DS4_TEST_DSPARK_ATTN_INV_ROPE_FUSED:-0}
 exact_prefix_checkpoint=${DS4_TEST_DSPARK_EXACT_PREFIX_CHECKPOINT:-default}
 exact_q2_down_batch=${DS4_TEST_DSPARK_EXACT_Q2_DOWN_BATCH:-0}
-exact_shared_q8_rows=${DS4_TEST_DSPARK_EXACT_SHARED_Q8_ROWS:-0}
+exact_shared_q8_rows=${DS4_TEST_DSPARK_EXACT_SHARED_Q8_ROWS:-default}
 ffn_batch_observer_layer=${DS4_DSPARK_EXACT_FFN_BATCH_OBSERVER_LAYER:-}
 attn_pre_observer_layer=${DS4_DSPARK_EXACT_ATTN_PRE_BATCH_OBSERVER_LAYER:-}
 attn_suffix_observer_layer=${DS4_DSPARK_EXACT_ATTN_SUFFIX_BATCH_OBSERVER_LAYER:-}
@@ -269,10 +269,13 @@ if [[ $exact_q2_down_batch == 1 &&
     printf 'exact Q2 down batching requires exact runtime verification\n' >&2
     exit 2
 fi
-if [[ $exact_shared_q8_rows != 0 && $exact_shared_q8_rows != 1 ]]; then
-    printf 'DS4_TEST_DSPARK_EXACT_SHARED_Q8_ROWS must be 0 or 1\n' >&2
-    exit 2
-fi
+case "$exact_shared_q8_rows" in
+    default|0|1) ;;
+    *)
+        printf 'DS4_TEST_DSPARK_EXACT_SHARED_Q8_ROWS must be default, 0, or 1\n' >&2
+        exit 2
+        ;;
+esac
 if [[ $exact_shared_q8_rows == 1 &&
       ($mode != runtime || $fast_verify_runtime == 1 ||
        $serial_ffn_runtime == 1) ]]; then
@@ -377,12 +380,15 @@ case "$mode" in
                 DS4_DSPARK_EXACT_Q2_DOWN_BATCH_TRACE=1
             )
         fi
-        if [[ $exact_shared_q8_rows == 1 ]]; then
-            gpu_env+=(
-                DS4_DSPARK_EXACT_SHARED_Q8_ROWS=1
-                DS4_DSPARK_EXACT_SHARED_Q8_ROWS_TRACE=1
-            )
-        fi
+        case "$exact_shared_q8_rows" in
+            0) gpu_env+=(DS4_DSPARK_EXACT_SHARED_Q8_ROWS=0) ;;
+            1)
+                gpu_env+=(
+                    DS4_DSPARK_EXACT_SHARED_Q8_ROWS=1
+                    DS4_DSPARK_EXACT_SHARED_Q8_ROWS_TRACE=1
+                )
+                ;;
+        esac
         ;;
     *)
         printf 'invalid DS4_TEST_DSPARK_MODE: %s (expected observer or runtime)\n' "$mode" >&2
