@@ -153,7 +153,7 @@ class DenseMixedSplitSourceContractTests(unittest.TestCase):
             "g_dsv4_dense_mixed_split_source_compare_pipeline", host
         )
         self.assertIn(
-            "use_split_source ? rawbuf : g_flash_attn_kv_buffer",
+            "use_split_source ? rawbuf : prepared_kv",
             host,
         )
         self.assertIn(
@@ -212,6 +212,27 @@ class DenseMixedSplitSourceContractTests(unittest.TestCase):
             "SPLIT_SOURCE_PARITY:-$dense_mixed_split_source", harness
         )
         self.assertIn("DS4_METAL_DENSE_MIXED_SPLIT_SOURCE=1", harness)
+
+    def test_vector_prepare_reuses_parity_proven_materializer(self):
+        host = (ROOT / "ds4_metal.m").read_text(encoding="utf-8")
+        harness = (
+            ROOT / "tests/dspark_gpu_candidates_correctness.sh"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn(
+            'getenv("DS4_METAL_DENSE_MIXED_VECTOR_PREPARE")', host
+        )
+        self.assertIn(
+            "use_vector_prepare || split_source_parity", host
+        )
+        self.assertIn(
+            "use_vector_prepare && split_source_parity", host
+        )
+        self.assertIn("Metal dense mixed vector prepare ", host)
+        self.assertIn(
+            "DS4_TEST_DSPARK_DENSE_MIXED_VECTOR_PREPARE", harness
+        )
+        self.assertIn("DS4_METAL_DENSE_MIXED_VECTOR_PREPARE=1", harness)
 
     def test_written_contract_pins_arithmetic_boundary(self):
         contract = (

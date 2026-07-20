@@ -30,7 +30,12 @@ dense_mixed_direct=${DS4_TEST_DSPARK_DENSE_MIXED_DIRECT:-0}
 dense_mixed_gathered_legacy=${DS4_TEST_DSPARK_DENSE_MIXED_GATHERED_LEGACY:-0}
 dense_mixed_nwg8=${DS4_TEST_DSPARK_DENSE_MIXED_NWG8:-0}
 dense_mixed_split_source=${DS4_TEST_DSPARK_DENSE_MIXED_SPLIT_SOURCE:-0}
+dense_mixed_vector_prepare=${DS4_TEST_DSPARK_DENSE_MIXED_VECTOR_PREPARE:-0}
 dense_mixed_split_source_parity=${DS4_TEST_DSPARK_DENSE_MIXED_SPLIT_SOURCE_PARITY:-$dense_mixed_split_source}
+if [[ $dense_mixed_vector_prepare == 1 &&
+      ${DS4_TEST_DSPARK_DENSE_MIXED_SPLIT_SOURCE_PARITY+x} != x ]]; then
+    dense_mixed_split_source_parity=1
+fi
 exact_q8_rows=${DS4_TEST_DSPARK_EXACT_Q8_ROWS:-0}
 serial_q8_rows_runtime=${DS4_TEST_DSPARK_SERIAL_Q8_ROWS_RUNTIME:-0}
 attn_inv_rope_fused=${DS4_TEST_DSPARK_ATTN_INV_ROPE_FUSED:-0}
@@ -82,6 +87,8 @@ unset DS4_METAL_DENSE_MIXED_NWG8_TRACE
 unset DS4_METAL_DENSE_MIXED_SPLIT_SOURCE_PARITY
 unset DS4_METAL_DENSE_MIXED_SPLIT_SOURCE
 unset DS4_METAL_DENSE_MIXED_SPLIT_SOURCE_TRACE
+unset DS4_METAL_DENSE_MIXED_VECTOR_PREPARE
+unset DS4_METAL_DENSE_MIXED_VECTOR_PREPARE_TRACE
 unset DS4_METAL_DECODE_INDEXER_SPARSE_THRESHOLD
 
 if [[ $fast_verify_observer == 1 && $fast_verify_runtime == 1 ]]; then
@@ -258,6 +265,26 @@ fi
 if [[ $dense_mixed_split_source == 1 &&
       $dense_mixed_gathered_legacy == 1 ]]; then
     printf 'dense-mixed split source requires the fused-gather route\n' >&2
+    exit 2
+fi
+if [[ $dense_mixed_vector_prepare != 0 &&
+      $dense_mixed_vector_prepare != 1 ]]; then
+    printf 'DS4_TEST_DSPARK_DENSE_MIXED_VECTOR_PREPARE must be 0 or 1\n' >&2
+    exit 2
+fi
+if [[ $dense_mixed_vector_prepare == 1 &&
+      $dense_mixed_split_source == 1 ]]; then
+    printf 'dense-mixed vector prepare and split source are mutually exclusive\n' >&2
+    exit 2
+fi
+if [[ $dense_mixed_vector_prepare == 1 &&
+      $dense_mixed_gathered_legacy == 1 ]]; then
+    printf 'dense-mixed vector prepare requires the fused-gather route\n' >&2
+    exit 2
+fi
+if [[ $dense_mixed_vector_prepare == 1 &&
+      ($mode != runtime || $fast_verify_runtime == 1) ]]; then
+    printf 'dense-mixed vector prepare requires exact runtime verification\n' >&2
     exit 2
 fi
 if [[ $dense_mixed_split_source == 1 &&
@@ -472,6 +499,12 @@ case "$mode" in
             gpu_env+=(
                 DS4_METAL_DENSE_MIXED_SPLIT_SOURCE=1
                 DS4_METAL_DENSE_MIXED_SPLIT_SOURCE_TRACE=1
+            )
+        fi
+        if [[ $dense_mixed_vector_prepare == 1 ]]; then
+            gpu_env+=(
+                DS4_METAL_DENSE_MIXED_VECTOR_PREPARE=1
+                DS4_METAL_DENSE_MIXED_VECTOR_PREPARE_TRACE=1
             )
         fi
         if [[ $serial_q8_rows_runtime == 1 ]]; then
@@ -1279,6 +1312,12 @@ if [[ $dense_mixed_split_source == 1 ]] &&
    ! grep -q 'Metal dense mixed split-source vector .* result=ok$' \
         "$tmpdir"/*.log; then
     printf 'dense-mixed split-source vector did not engage\n' >&2
+    exit 1
+fi
+if [[ $dense_mixed_vector_prepare == 1 ]] &&
+   ! grep -q 'Metal dense mixed vector prepare .* result=ok$' \
+        "$tmpdir"/*.log; then
+    printf 'dense-mixed vector prepare did not engage\n' >&2
     exit 1
 fi
 if [[ $attn_inv_rope_fused == 1 ]]; then

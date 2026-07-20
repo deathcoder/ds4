@@ -12345,3 +12345,55 @@ Next direction:
   promoted vector attention and reduction unchanged. This removes redundant
   scalar indexing and issues wider source loads/stores without multiplying work
   across heads.
+
+## Phase 1.62: dense-mixed vector-prepare candidate
+
+Implementation:
+
+- Added opt-in `DS4_METAL_DENSE_MIXED_VECTOR_PREPARE=1`. It reuses the
+  parity-proven row-first `half4` materializer as the production prepare
+  dispatch, while retaining the consolidated F16 K/V and mask buffers.
+- Ordinary execution still uses the scalar prepare kernel. Candidate execution
+  writes the vector-prepared data directly to the production buffers and keeps
+  the promoted split-K vector attention and reduction unchanged.
+- Candidate dispatch uses one 128-thread group per 512-wide row, with each
+  thread loading and storing one `half4`. Parity-only diagnostics retain their
+  original 32-thread grouping so the candidate configuration is independently
+  exercised rather than assumed equivalent.
+- In correctness mode, scalar prepare writes the canonical buffers and vector
+  prepare writes the diagnostic buffers. The storage-bit comparator validates
+  them, and attention is deliberately bound to the vector-prepared buffers so
+  target output tests the candidate itself.
+- Candidate and prepare-free split-source modes are mutually exclusive in the
+  correctness harness. Selecting vector prepare automatically enables the
+  parity oracle unless explicitly overridden.
+
+Validation:
+
+- Normal Metal host build passed without warnings; the candidate pipeline
+  compiled and executed in real model runs.
+- All `248` DSpark model-free tests pass.
+- The exact-runtime correctness matrix passed reasoning, Italian,
+  medium-context, rolling-window, and resumed-chat outputs byte-for-byte.
+- Retained logs contained `500/500` successful scalar-versus-vector storage
+  comparisons, zero result mismatches or command errors, `164` wrapped-ring
+  records, and candidate engagement in all five workload processes.
+- Added `--dense-mixed-vector-prepare-ablation`. Its dry run confirms both
+  modes are exact Metal DSpark runs without stats, parity, tracing, or profiling;
+  only the candidate process receives the vector-prepare environment variable.
+- No timed benchmark was run during implementation.
+
+User-run command:
+
+```sh
+python3 speed-bench/run_dspark_comparison.py \
+  --dense-mixed-vector-prepare-ablation \
+  --confirm-idle
+```
+
+Decision boundary:
+
+- Require byte-identical output and a consistently positive three-pair focused
+  result before a broader HumanEval gate. Because prepare is only one component
+  of dense-mixed attention, a small but stable gain can be meaningful; a flat
+  or negative result retires the candidate.
