@@ -1500,8 +1500,13 @@ kernel void kernel_flash_attn_ext_vec_reduce(
 
     device const float  * ss    = (device const float  *) htmp + (uint64_t)args.nrows*DV*NWG;
 
-    float S = ss[rid*(2*NWG) + 2*iwg + 0];
-    float M = ss[rid*(2*NWG) + 2*iwg + 1];
+    const bool active = iwg < NWG;
+    float S = 0.0f;
+    float M = -FLT_MAX/2;
+    if (active) {
+        S = ss[rid*(2*NWG) + 2*iwg + 0];
+        M = ss[rid*(2*NWG) + 2*iwg + 1];
+    }
 
     const float m  = simd_max(M);
     const float ms = exp(M - m);
@@ -1515,7 +1520,11 @@ kernel void kernel_flash_attn_ext_vec_reduce(
     device       float4 * dst4  = (device       float4 *) dst  + rid*DV4;
 
     for (short i = sgitg; i < DV4; i += NWG) {
-        const float4 v = simd_sum(htmp4[i*NWG + iwg]*ms);
+        float4 partial = 0.0f;
+        if (active) {
+            partial = htmp4[i*NWG + iwg];
+        }
+        const float4 v = simd_sum(partial*ms);
 
         if (iwg == 0) {
             float4 value;

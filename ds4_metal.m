@@ -2004,6 +2004,26 @@ static int ds4_gpu_trace_dense_mixed_attention_fused_gather(void) {
     return enabled;
 }
 
+static int ds4_gpu_use_dense_mixed_attention_nwg8(void) {
+    static int initialized;
+    static int enabled;
+    if (!initialized) {
+        enabled = getenv("DS4_METAL_DENSE_MIXED_NWG8") != NULL;
+        initialized = 1;
+    }
+    return enabled;
+}
+
+static int ds4_gpu_trace_dense_mixed_attention_nwg8(void) {
+    static int initialized;
+    static int enabled;
+    if (!initialized) {
+        enabled = getenv("DS4_METAL_DENSE_MIXED_NWG8_TRACE") != NULL;
+        initialized = 1;
+    }
+    return enabled;
+}
+
 static int ds4_gpu_device_name_contains(const char *needle);
 
 static int ds4_gpu_env_value_eq(const char *v, size_t n, const char *literal) {
@@ -20786,7 +20806,9 @@ static int ds4_gpu_encode_dense_mixed_attention_fused_gather_heads(
     const uint32_t ncpsg = 32;
     const uint32_t n_rows =
         (n_keys + ncpsg - 1u) / ncpsg * ncpsg;
-    const uint32_t nwg = 32;
+    const bool use_nwg8 =
+        n_keys <= 256u && ds4_gpu_use_dense_mixed_attention_nwg8();
+    const uint32_t nwg = use_nwg8 ? 8u : 32u;
     const uint32_t nsg = ds4_gpu_flash_attn_vec_nsg(n_keys, nwg, ncpsg);
     id<MTLComputePipelineState> vec_pipeline =
         ds4_gpu_get_flash_attn_vec_pipeline(
@@ -20978,6 +21000,16 @@ static int ds4_gpu_encode_dense_mixed_attention_fused_gather_heads(
                     "ds4: Metal dense mixed attention route=fused_gather "
                     "raw=%u compressed=%u heads=%u\n",
                     n_raw, n_comp, n_head);
+            reported = 1;
+        }
+    }
+    if (use_nwg8 && ds4_gpu_trace_dense_mixed_attention_nwg8()) {
+        static int reported;
+        if (!reported) {
+            fprintf(stderr,
+                    "ds4: Metal dense mixed attention NWG8 keys=%u "
+                    "chunks=%u result=ok\n",
+                    n_keys, (n_keys + ncpsg - 1u) / ncpsg);
             reported = 1;
         }
     }

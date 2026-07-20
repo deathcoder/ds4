@@ -12061,3 +12061,64 @@ Decision boundary:
 - Preserve the current vector/reduction arithmetic and byte-identical output
   gate. Do not revive the sequential direct-attention reduction rejected on
   HumanEval 000.
+
+Profile result:
+
+- User-run artifact:
+  `speed-bench/local-runs/post-promotion-width-fused-gather-20260720-132849`
+  at clean commit `49f27c9`. Every profiled output matched the frozen
+  cumulative HumanEval artifact byte-for-byte.
+- The observed key range was `169-201`, with `41-73` compressed rows. All
+  `121` dense-mixed calls reproduced the expected verifier-width distribution.
+- At stable width 5, preparation measured `0.262 ms/call` (`32.2%`), vector
+  attention `0.312 ms/call` (`37.0%`), and reduction `0.275 ms/call` (`30.7%`).
+  The stages are nearly flat; vector attention is only a slight leader.
+
+Interpretation:
+
+- The fused-gather vector kernel always launches `32` split-K workgroups with
+  one 32-key chunk per active workgroup in this range. Only `6-7` workgroups
+  process real chunks; the remaining `25-26` write zero/negative-infinity
+  identity partials. The reduction then launches `1024` threads per head to
+  consume all 32 partitions.
+- For at most `256` keys, switching to `NWG=8` preserves the active chunk-to-
+  workgroup mapping exactly: no active workgroup receives a second chunk.
+  Synthesizing the omitted identity lanes in the reduction retains the same
+  32-lane `simd_max` and `simd_sum` order while reducing vector workgroups,
+  reduction threads, and temporary storage by four times.
+
+## Phase 1.57: dense-mixed NWG8 candidate prepared
+
+Implementation:
+
+- Added opt-in `DS4_METAL_DENSE_MIXED_NWG8=1`. It selects `NWG=8` only in the
+  promoted dense-mixed fused-gather path and only for `n_keys <= 256`; every
+  other call and the default route retain `NWG=32`.
+- Generalized the split-K reduction for `NWG < 32`. Inactive SIMD lanes use
+  the same `S=0`, `M=-FLT_MAX/2`, and zero output identities previously stored
+  by idle vector workgroups, while the reduction itself still spans 32 lanes.
+- Added a trace-gated correctness-matrix route and a paired, uninstrumented
+  `--dense-mixed-nwg8-ablation`. The benchmark clears the candidate variable
+  from both modes and enables it only for the candidate process.
+- The normal Metal build passed. All `226` DSpark model-free tests pass, the
+  benchmark dry run resolves clean uninstrumented reference/candidate commands,
+  and the real runtime correctness matrix passed reasoning, Italian,
+  medium-context, rolling-window, and resumed-chat cases byte-for-byte. The
+  candidate trace engaged, so the specialized `NWG=8` Metal pipelines compiled
+  and executed during the matrix. No timed benchmark was run during preparation.
+
+User-run command:
+
+```sh
+python3 speed-bench/run_dspark_comparison.py \
+  --dense-mixed-nwg8-ablation \
+  --confirm-idle
+```
+
+Decision boundary:
+
+- Require byte-identical output and a consistently positive three-pair focused
+  result. A positive result advances to the frozen threshold-0.75 32-task
+  HumanEval confirmation; a flat or negative result retires the candidate.
+- Do not infer the expected gain by adding synchronized stage times. The gate
+  is the uninstrumented paired throughput result.

@@ -28,6 +28,7 @@ indexed_attn_rb16_promotion=${DS4_TEST_DSPARK_INDEXED_ATTN_RB16_PROMOTION:-\
 ${DS4_TEST_DSPARK_INDEXED_ATTN_RB16_DIRECT:-0}}
 dense_mixed_direct=${DS4_TEST_DSPARK_DENSE_MIXED_DIRECT:-0}
 dense_mixed_gathered_legacy=${DS4_TEST_DSPARK_DENSE_MIXED_GATHERED_LEGACY:-0}
+dense_mixed_nwg8=${DS4_TEST_DSPARK_DENSE_MIXED_NWG8:-0}
 exact_q8_rows=${DS4_TEST_DSPARK_EXACT_Q8_ROWS:-0}
 serial_q8_rows_runtime=${DS4_TEST_DSPARK_SERIAL_Q8_ROWS_RUNTIME:-0}
 attn_inv_rope_fused=${DS4_TEST_DSPARK_ATTN_INV_ROPE_FUSED:-0}
@@ -74,6 +75,8 @@ unset DS4_METAL_INDEXED_ATTN_RB16_DIRECT_TRACE
 unset DS4_METAL_DENSE_MIXED_DIRECT
 unset DS4_METAL_DENSE_MIXED_GATHERED_LEGACY
 unset DS4_METAL_DENSE_MIXED_DIRECT_TRACE
+unset DS4_METAL_DENSE_MIXED_NWG8
+unset DS4_METAL_DENSE_MIXED_NWG8_TRACE
 unset DS4_METAL_DECODE_INDEXER_SPARSE_THRESHOLD
 
 if [[ $fast_verify_observer == 1 && $fast_verify_runtime == 1 ]]; then
@@ -222,6 +225,19 @@ fi
 if [[ $dense_mixed_gathered_legacy == 1 &&
       ($mode != runtime || $fast_verify_runtime == 1) ]]; then
     printf 'legacy dense-mixed gather requires exact runtime verification\n' >&2
+    exit 2
+fi
+if [[ $dense_mixed_nwg8 != 0 && $dense_mixed_nwg8 != 1 ]]; then
+    printf 'DS4_TEST_DSPARK_DENSE_MIXED_NWG8 must be 0 or 1\n' >&2
+    exit 2
+fi
+if [[ $dense_mixed_nwg8 == 1 && $dense_mixed_gathered_legacy == 1 ]]; then
+    printf 'dense-mixed NWG8 and legacy gathered controls are mutually exclusive\n' >&2
+    exit 2
+fi
+if [[ $dense_mixed_nwg8 == 1 &&
+      ($mode != runtime || $fast_verify_runtime == 1) ]]; then
+    printf 'dense-mixed NWG8 requires exact runtime verification\n' >&2
     exit 2
 fi
 if [[ $exact_q8_rows != 0 && $exact_q8_rows != 1 ]]; then
@@ -407,6 +423,12 @@ case "$mode" in
         fi
         if [[ $dense_mixed_gathered_legacy == 1 ]]; then
             gpu_env+=(DS4_METAL_DENSE_MIXED_GATHERED_LEGACY=1)
+        fi
+        if [[ $dense_mixed_nwg8 == 1 ]]; then
+            gpu_env+=(
+                DS4_METAL_DENSE_MIXED_NWG8=1
+                DS4_METAL_DENSE_MIXED_NWG8_TRACE=1
+            )
         fi
         if [[ $serial_q8_rows_runtime == 1 ]]; then
             gpu_env+=(DS4_DSPARK_EXACT_Q8_ROWS=0)
@@ -1181,6 +1203,12 @@ fi
 if [[ $dense_mixed_direct == 1 && $attn_inv_rope_fused != 1 ]] &&
    ! grep -q 'Metal dense mixed attention route=fused_gather' "$tmpdir"/*.log; then
     printf 'dense-mixed fused gather did not engage\n' >&2
+    exit 1
+fi
+if [[ $dense_mixed_nwg8 == 1 ]] &&
+   ! grep -q 'Metal dense mixed attention NWG8 keys=.* result=ok' \
+        "$tmpdir"/*.log; then
+    printf 'dense-mixed NWG8 did not engage\n' >&2
     exit 1
 fi
 if [[ $attn_inv_rope_fused == 1 ]]; then
