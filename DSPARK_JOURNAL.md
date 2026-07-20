@@ -12397,3 +12397,28 @@ Decision boundary:
   result before a broader HumanEval gate. Because prepare is only one component
   of dense-mixed attention, a small but stable gain can be meaningful; a flat
   or negative result retires the candidate.
+
+Focused result and decision:
+
+- User-run artifact: `speed-bench/local-runs/20260720-185609` at clean commit
+  `d670946`.
+- Scalar prepare measured `26.00 t/s`; vector prepare measured `25.87 t/s`.
+  The ratio of medians and median paired ratio were both `0.9950x`, for a
+  `-0.5%` candidate delta across three pairs.
+- All output hashes matched. One candidate run was noisy at `24.21 t/s`, but
+  the other two candidate runs also trailed their paired scalar controls, so
+  removing the outlier does not produce positive evidence.
+- **Retired.** Do not run a HumanEval gate or promote vector prepare. Keep the
+  opt-in route and benchmark as exact negative evidence.
+- Scalar prepare is already near the practical floor for this materialization
+  shape. Wider loads and one row-owned workgroup do not improve end-to-end
+  scheduling enough to offset their launch/layout costs.
+
+Dense-mixed subphase conclusion:
+
+- NWG8 launch reduction was flat/slightly negative, prepare-free source loads
+  regressed by `11.9%`, and vector prepare was flat/slightly negative. The
+  current three-dispatch prepared split-K route remains the promoted default.
+- Do not continue tuning dense-mixed dispatch width, prepare layout, or direct
+  source access without a new structural idea. Return to the broader exact
+  verifier cost model rather than stacking more sub-percent variants.
