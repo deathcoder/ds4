@@ -12422,3 +12422,67 @@ Dense-mixed subphase conclusion:
 - Do not continue tuning dense-mixed dispatch width, prepare layout, or direct
   source access without a new structural idea. Return to the broader exact
   verifier cost model rather than stacking more sub-percent variants.
+
+## Phase 1.63: upstream main integration boundary
+
+Context:
+
+- The pre-integration checkpoint was clean at `c9e900e` and pushed to
+  `fork/codex/dspark-observability-0` before touching upstream history.
+- Upstream advanced from the shared merge base `80ebbc3` to `efdadd4`: 14
+  commits covering an independent DSpark runtime, tensor parallelism, GLM 5.2,
+  native session batching, CUDA/ROCm work, and a broad Metal kernel rewrite.
+- A direct dry merge reported conflicts in the same core graph and Metal files
+  changed by this branch. The issue was architectural rather than merely
+  textual: upstream's later commits extend its own DSpark graph layout, while
+  this branch has a different exact verifier, scheduler, checkpoint path, and
+  measured Metal kernels.
+
+Integration decisions:
+
+- Created merge commit `3af005e` through upstream's DSpark commit `fc9efd1`.
+  The branch's measured DSpark implementation supersedes upstream's parallel
+  implementation. The preceding upstream PRO streaming and sampling
+  correctness patch `519c4d8` was applied cleanly to `README.md`, `ds4.c`,
+  `ds4_gpu.h`, `ds4_metal.m`, and `ds4_server.c`.
+- The final merge records ancestry through upstream tip `efdadd4` and accepts
+  non-overlapping upstream files and tooling. Conflicted runtime, CLI, public
+  API, CUDA, Metal host, and Metal kernel files retain this branch's known-good
+  versions rather than creating a syntactically valid but structurally mixed
+  runtime.
+- Auto-merged `ds4_agent.c`, `ds4_bench.c`, `ds4_distributed.c`, `ds4_eval.c`,
+  and `ds4_server.c` were also restored to this branch after compile checks
+  showed dependencies on upstream-only GLM and session-batching APIs.
+- Upstream TP/GLM/session-batching source modules and quality fixtures may be
+  present as ancestry/non-overlapping files, but those features are **not**
+  wired into this branch's retained Makefile/runtime. Do not describe them as
+  supported without a dedicated port and correctness gate.
+- Upstream Metal optimization commit `427e281` is not wholesale-promoted into
+  the conflicted DSpark kernels. It is now the primary source for a deliberate
+  follow-up comparison: port only independently useful Metal changes, one
+  measured candidate at a time.
+
+Validation:
+
+- Normal Metal build passes with `make -j4`.
+- Focused `ds4_test` checks pass for isolated Metal kernels, DSpark metadata
+  validation, DSpark shape binding, and server behavior.
+- Q4_K numeric tests, evaluator extractor self-tests, and agent tests pass.
+- The earlier full `make test` run compiled all tests and completed its
+  long-context model process; focused tests were rerun after the final
+  compatibility boundary was selected.
+- No throughput benchmark was run during integration. Any imported
+  non-conflicting Metal change must still pass byte-exact workload validation
+  and a user-run paired benchmark before receiving a performance claim.
+
+Next direction:
+
+- Treat this merge as a safe ancestry and compatibility checkpoint, not as a
+  blanket adoption of upstream's alternate DSpark implementation.
+- Compare `427e281` against the retained Metal path by functional area. Start
+  with changes that affect ordinary decode and the exact verifier without
+  requiring GLM, TP, or session-batching graph state.
+- Before new optimization work, run the existing exact-runtime correctness
+  matrix. Then prepare a paired ordinary-baseline and scheduled-DSpark
+  benchmark command for the user so any post-integration movement is measured
+  explicitly.
