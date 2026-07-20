@@ -104,12 +104,19 @@ measured a `0.9974x` median paired ratio and `0.9993x` ratio of medians. All
 three paired ratios were slightly negative (`0.9993x`, `0.9974x`, `0.9959x`),
 with byte-identical output. Do not run a broad gate or promote this route.
 
-Phase 1.51 is prepared. A distinct default-off width-5 candidate uses the
-existing paired IQ2_XXS-SwiGLU kernel to combine gate/up projection, clamping,
-activation, and route weighting in one dispatch while retaining exact down
-rows. This removes the separate activation dispatch and intermediate reread;
-it is not a repeat of the neutral pair-only test. The full exact-runtime
-correctness matrix passes, including a traced fixed-K=5 HumanEval 079 case.
+Phase 1.51 is complete. The distinct default-off width-5 paired-SwiGLU
+candidate measured a `1.0084x` median paired ratio and `1.0076x` ratio of
+medians in the focused three-pair gate. Two pairs were positive and one was a
+small `0.9920x` loss; every output remained byte-exact. This is sufficient to
+justify broader confirmation but too small and mixed to promote directly.
+
+Phase 1.52 is prepared. The frozen 32-task threshold-0.75 HumanEval gate
+compares the current promoted exact verifier with the paired-SwiGLU width-5
+candidate. It runs `68` uninstrumented processes: four excluded warmups and
+one balanced pair per task. Promotion requires at least a `1.005x` geometric
+gain, `20/32` wins, no task below `0.95x`, and no geometric regression on the
+low-acceptance subgroup. The candidate remains default-off while awaiting the
+user-run benchmark.
 
 Phase 1.27 is complete. The cumulative 32-task HumanEval reassessment measured
 current exact DSpark at a `0.8826x` geometric paired ratio versus ordinary
@@ -11668,3 +11675,54 @@ Decision boundary:
 - Require byte-identical output and a consistently positive three-pair result
   before spending time on a 32-task confirmation. Flat or negative timing
   retires this fusion; a positive result advances to the frozen HumanEval gate.
+
+Focused result:
+
+- User-run artifact: `speed-bench/local-runs/20260720-104702` at clean commit
+  `efbaabe0b8eb14903e3955fcf66a2b0a994955cd`.
+- Default exact median: `26.15 t/s`; fused paired-SwiGLU median: `26.35 t/s`.
+- Ratio of medians: `1.0076x`; median paired ratio: `1.0084x`.
+- Individual paired ratios are `0.9920x`, `1.0099x`, and `1.0084x`: two wins
+  and one small loss. Every measured output hash is identical.
+- The focused result clears the broad-gate boundary, but its magnitude and
+  mixed pair direction do not support promotion by themselves.
+
+## Phase 1.52: routed gate/up SwiGLU HumanEval confirmation prepared
+
+Protocol:
+
+- Added `speed-bench/run_dspark_humaneval_routed_gate_up_swiglu_w5.py`, which
+  compares current default exact execution against
+  `DS4_DSPARK_EXACT_ROUTED_GATE_UP_SWIGLU_W5=1` on the frozen 32-task
+  threshold-0.75 HumanEval workload.
+- The two modes alternate first position exactly across measured tasks. Two
+  balanced global warmup pairs are excluded, for `68` uninstrumented model
+  processes in total.
+- Both arms must match the frozen exact output byte-for-byte. Runtime stats,
+  traces, profilers, acceptance instrumentation, and fast verification remain
+  disabled.
+- The output reference remains the original frozen threshold-0.75 artifact
+  `speed-bench/local-runs/humaneval-threshold075-throughput-32-20260716-155112/summary.json`,
+  matching the recent routed-MoE and shared-Q8 promotion gates.
+- Model-free tests cover mode isolation, order balancing, command construction,
+  report generation, and the predeclared gate. The dry run resolved all 32
+  tasks and printed the expected `68` processes without model execution.
+
+User-run command:
+
+```sh
+python3 speed-bench/run_dspark_humaneval_routed_gate_up_swiglu_w5.py \
+  --throughput-reference \
+  speed-bench/local-runs/humaneval-threshold075-throughput-32-20260716-155112/summary.json \
+  --confirm-idle
+```
+
+Decision boundary:
+
+- Promote only if the candidate remains byte-exact, reaches at least a
+  `1.005x` geometric paired gain, wins at least `20/32` tasks, has no task
+  below `0.95x`, and does not regress geometrically on tasks with acceptance
+  verify rate at or below `0.65`.
+- A broad flat or negative result retires the candidate. A passing result
+  permits promotion with an explicit legacy opt-out before the next cumulative
+  baseline comparison.
