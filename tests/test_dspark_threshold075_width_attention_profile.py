@@ -22,6 +22,10 @@ class DSparkThreshold075WidthAttentionProfileTests(unittest.TestCase):
             profile.TAIL_SOURCE_COMMIT,
             "a31f69b91545d82d2d881fc05128904ce37424c4",
         )
+        self.assertEqual(
+            profile.ATTENTION_SOURCE_COMMIT,
+            "c981252dafeb1253f14cc2761d6d56a53c6d5375",
+        )
 
     def test_profile_environment_is_attention_only(self):
         env = profile.profile_env()
@@ -32,6 +36,12 @@ class DSparkThreshold075WidthAttentionProfileTests(unittest.TestCase):
         self.assertEqual(env["DS4_DSPARK_EXACT_ATTENTION_PROFILE"], "1")
         self.assertNotIn("DS4_DSPARK_EXACT_TAIL_PROFILE", env)
         self.assertNotIn("DS4_DSPARK_FAST_BATCH_VERIFY", env)
+
+    def test_fused_gather_environment_adds_only_profile_switch(self):
+        env = profile.profile_env(True)
+        self.assertEqual(env["DS4_METAL_FLASH_ATTN_GATHERED_PROFILE"], "1")
+        self.assertNotIn("DS4_METAL_DENSE_MIXED_GATHERED_LEGACY", env)
+        self.assertNotIn("DS4_METAL_DENSE_MIXED_DIRECT", env)
 
     @staticmethod
     def records():
@@ -103,6 +113,72 @@ class DSparkThreshold075WidthAttentionProfileTests(unittest.TestCase):
         self.assertIn("dense mixed", report)
         self.assertIn("Synchronized absolute timings", report)
         self.assertIn("No runtime candidate", report)
+
+    def test_fused_gather_parser_and_width_summary(self):
+        lines = []
+        calls = sum(width for _, width in ((100, 2), (102, 3), (105, 4), (109, 5)))
+        for call in range(calls):
+            for stage, elapsed in (
+                ("prepare", 1.0),
+                ("attention_vec", 2.0),
+                ("attention_reduce", 3.0),
+            ):
+                lines.append(
+                    "ds4: Metal FlashAttention prefill stage "
+                    "mode=fused_gather_decode tokens=1 comp=900 keys=1028 "
+                    "heads=32 dim=512 window=0 ratio=0 "
+                    f"{stage}={elapsed:.3f} ms"
+                )
+        flash = profile.parse_fused_gather_profile(
+            "\n".join(lines).encode("ascii"), Path("synthetic.stderr")
+        )
+        records = self.records()
+        for row in records:
+            if row["part"] == "attention":
+                row["stage"] = "dense_mixed"
+        summary, assigned = profile.summarize_fused_gather(
+            records, flash, self.stats()
+        )
+        self.assertEqual(len(assigned), calls * 3)
+        self.assertEqual(summary["width_results"]["5"]["rows"], 5)
+        self.assertEqual(summary["dominant_width5_stage"], "attention_reduce")
+        self.assertAlmostEqual(
+            summary["width_results"]["5"]["stages"]["attention_vec"][
+                "cost_share"
+            ],
+            1.0 / 3.0,
+        )
+
+    def test_fused_gather_parser_rejects_stage_order(self):
+        data = (
+            "ds4: Metal FlashAttention prefill stage "
+            "mode=fused_gather_decode tokens=1 comp=1 keys=2 heads=32 dim=512 "
+            "window=0 ratio=0 attention_vec=1.000 ms\n"
+            "ds4: Metal FlashAttention prefill stage "
+            "mode=fused_gather_decode tokens=1 comp=1 keys=2 heads=32 dim=512 "
+            "window=0 ratio=0 prepare=1.000 ms\n"
+            "ds4: Metal FlashAttention prefill stage "
+            "mode=fused_gather_decode tokens=1 comp=1 keys=2 heads=32 dim=512 "
+            "window=0 ratio=0 attention_reduce=1.000 ms\n"
+        ).encode("ascii")
+        with self.assertRaisesRegex(RuntimeError, "sequence mismatch"):
+            profile.parse_fused_gather_profile(data, Path("synthetic.stderr"))
+
+    def test_source_has_diagnostic_only_fused_gather_boundaries(self):
+        host = (ROOT / "ds4_metal.m").read_text(encoding="utf-8")
+        self.assertIn('"fused_gather_decode", (name)', host)
+        self.assertIn(
+            'getenv("DS4_METAL_FLASH_ATTN_GATHERED_PROFILE")', host
+        )
+        self.assertIn(
+            'DS4_METAL_PROFILE_FUSED_GATHER_STAGE("prepare")', host
+        )
+        self.assertIn(
+            'DS4_METAL_PROFILE_FUSED_GATHER_STAGE("attention_vec")', host
+        )
+        self.assertIn(
+            'DS4_METAL_PROFILE_FUSED_GATHER_STAGE("attention_reduce")', host
+        )
 
 
 if __name__ == "__main__":

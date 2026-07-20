@@ -11980,3 +11980,84 @@ Decision boundary:
   The next candidate must preserve the current attention arithmetic and
   byte-identical output gate; the correctness-rejected direct dense-mixed
   reduction remains retired.
+
+Profile result:
+
+- User-run artifact:
+  `speed-bench/local-runs/post-promotion-width-attention-20260720-124940` at
+  clean commit `c981252dafeb1253f14cc2761d6d56a53c6d5375`.
+- Every output matched the frozen cumulative HumanEval artifact byte-for-byte,
+  and the expected verifier-width distribution `1/1/4/20` was reproduced.
+- All `121` profiled attention rows selected `dense_mixed`. Raw and
+  sparse-indexed attention each contributed zero rows and zero measured cost
+  at every width.
+- At stable width 5, all `100` rows were dense mixed. Their median synchronized
+  attention-call time was `0.347 ms/row`; their summed synchronized cost was
+  `44.979 ms`, exactly `100%` of the measured attention bucket.
+- Width 2's `0.629 ms/row` comes from one two-row batch and remains
+  directional. Widths 3 through 5 are stable around `0.347-0.352 ms/row`.
+
+Decision:
+
+- Do not spend the next candidate on sparse-indexed or raw attention. They
+  cannot move this measured target-verifier workload.
+- The promoted fused-gather dense-mixed path contains three production
+  dispatches: consolidated cache/mask preparation, vector FlashAttention, and
+  reduction. Split those current stages before selecting another kernel.
+
+## Phase 1.56: promoted fused-gather stage profile prepared
+
+Implementation:
+
+- Added diagnostic-only stage boundaries around the promoted dense-mixed
+  fused-gather path in `ds4_metal.m`: `prepare`, `attention_vec`, and
+  `attention_reduce`. They use mode `fused_gather_decode` and are active only
+  when the exact call-site profile gate and
+  `DS4_METAL_FLASH_ATTN_GATHERED_PROFILE` are both enabled.
+- The helper now receives the command-buffer pointer so each synchronized
+  boundary can replace the completed buffer with the newly active batch
+  buffer. Without profiling, it follows the same three encoders and dispatches
+  with no synchronization or runtime route change.
+- Extended
+  `speed-bench/run_dspark_threshold075_width_attention_profile.py` with
+  `--fused-gather-stages` and a required Phase 1.55 attention reference. The
+  reference must come from clean commit
+  `c981252dafeb1253f14cc2761d6d56a53c6d5375`, retain the full artifact chain,
+  reproduce width counts, and contain only dense-mixed rows.
+- Each three-stage call is assigned sequentially to its exact-attention row
+  and enclosing verifier batch. The report shows per-width medians and stable
+  width-5 total cost shares.
+- The normal Metal build passed. Seventeen focused model-free tests cover
+  environment isolation, stage order, call shape, assignment, cost ownership,
+  source guards, and the prior route/tail contracts. Python compilation and a
+  real provenance dry run also passed; the complete `220`-test DSpark
+  model-free suite passed as well. No model process or timed benchmark was run
+  during preparation.
+
+User-run command:
+
+```sh
+python3 speed-bench/run_dspark_threshold075_width_attention_profile.py \
+  --fused-gather-stages \
+  --throughput-reference \
+  speed-bench/local-runs/humaneval-cumulative-throughput-32-20260719-223901/summary.json \
+  --cost-reference \
+  speed-bench/local-runs/humaneval-cumulative-cost-20260719-225512/summary.json \
+  --layer-reference \
+  speed-bench/local-runs/post-promotion-width-layer-20260719-232840/summary.json \
+  --tail-reference \
+  speed-bench/local-runs/post-promotion-width-tail-20260720-123704/summary.json \
+  --attention-reference \
+  speed-bench/local-runs/post-promotion-width-attention-20260720-124940/summary.json \
+  --confirm-ready
+```
+
+Decision boundary:
+
+- Use stable width-5 summed cost share to select one bounded dense-mixed
+  candidate. A preparation-dominant result points to memory-layout or copy
+  work; vector dominance points inside FlashAttention; reduction dominance
+  justifies a same-arithmetic final-write or launch-shape experiment.
+- Preserve the current vector/reduction arithmetic and byte-identical output
+  gate. Do not revive the sequential direct-attention reduction rejected on
+  HumanEval 000.

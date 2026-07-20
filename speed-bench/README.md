@@ -790,6 +790,32 @@ the slowest route per row can still be irrelevant if it is rarely selected.
 The runner is pinned through the clean Phase 1.54 tail artifact and enables no
 runtime candidate or throughput pass.
 
+When the route report confirms that the current frozen workload is entirely
+dense-mixed, split the promoted fused-gather call into its three production
+dispatches:
+
+```sh
+python3 speed-bench/run_dspark_threshold075_width_attention_profile.py \
+  --fused-gather-stages --confirm-ready \
+  --throughput-reference \
+  speed-bench/local-runs/humaneval-cumulative-throughput-32-20260719-223901/summary.json \
+  --cost-reference \
+  speed-bench/local-runs/humaneval-cumulative-cost-20260719-225512/summary.json \
+  --layer-reference \
+  speed-bench/local-runs/post-promotion-width-layer-20260719-232840/summary.json \
+  --tail-reference \
+  speed-bench/local-runs/post-promotion-width-tail-20260720-123704/summary.json \
+  --attention-reference \
+  speed-bench/local-runs/post-promotion-width-attention-20260720-124940/summary.json
+```
+
+The additional diagnostic reports fused preparation, unchanged vector
+FlashAttention, and unchanged reduction separately for widths `2-5`. It
+requires the pinned route artifact to contain only dense-mixed rows at every
+width and retains the same output and proposal-schedule gates. The stage
+boundaries exist only under `DS4_METAL_FLASH_ATTN_GATHERED_PROFILE`; ordinary
+execution retains the unsynchronized production command sequence.
+
 After threshold `0.455` passes that representative gate, run the frozen
 32-task baseline-versus-scheduled confirmation without changing the policy:
 

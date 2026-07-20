@@ -20765,7 +20765,7 @@ int ds4_gpu_attention_prefill_masked_mixed_heads_tensor(
 }
 
 static int ds4_gpu_encode_dense_mixed_attention_fused_gather_heads(
-        id<MTLCommandBuffer>   cb,
+        id<MTLCommandBuffer> __strong *cbp,
         ds4_gpu_tensor      *heads,
         id<MTLBuffer>          sinks_buf,
         NSUInteger             sinks_offset,
@@ -20778,7 +20778,10 @@ static int ds4_gpu_encode_dense_mixed_attention_fused_gather_heads(
         uint32_t               comp_kv_f16,
         uint32_t               n_comp,
         uint32_t               n_head,
-        uint32_t               head_dim) {
+        uint32_t               head_dim,
+        uint32_t               profile_gathered) {
+    if (!cbp || !*cbp) return 0;
+    id<MTLCommandBuffer> cb = *cbp;
     const uint32_t n_keys = n_raw + n_comp;
     const uint32_t ncpsg = 32;
     const uint32_t n_rows =
@@ -20886,6 +20889,32 @@ static int ds4_gpu_encode_dense_mixed_attention_fused_gather_heads(
         return 0;
     }
 
+    const bool fused_gather_stage_profile =
+        profile_gathered != 0 &&
+        getenv("DS4_METAL_FLASH_ATTN_GATHERED_PROFILE") != NULL &&
+        g_batch_cb != nil;
+    double fused_gather_stage_t0 = 0.0;
+    if (fused_gather_stage_profile) {
+        if (ds4_gpu_end_commands() == 0 || ds4_gpu_begin_commands() == 0) {
+            return 0;
+        }
+        int profile_owned = 0;
+        cb = ds4_gpu_command_buffer(&profile_owned);
+        if (!cb || profile_owned) return 0;
+        *cbp = cb;
+        fused_gather_stage_t0 = ds4_gpu_now_ms();
+    }
+#define DS4_METAL_PROFILE_FUSED_GATHER_STAGE(name) do { \
+        if (fused_gather_stage_profile) { \
+            if (!ds4_gpu_flash_attn_stage_profile_boundary(cbp, \
+                    "fused_gather_decode", (name), 1, n_comp, n_keys, \
+                    n_head, head_dim, 0, 0, &fused_gather_stage_t0)) { \
+                return 0; \
+            } \
+            cb = *cbp; \
+        } \
+    } while (0)
+
     id<MTLComputeCommandEncoder> enc = ds4_gpu_compute_encoder(cb);
     [enc setComputePipelineState:g_dsv4_dense_mixed_prepare_pipeline];
     [enc setBytes:&prepare_args length:sizeof(prepare_args) atIndex:0];
@@ -20903,6 +20932,7 @@ static int ds4_gpu_encode_dense_mixed_attention_fused_gather_heads(
                  1)
          threadsPerThreadgroup:MTLSizeMake(prepare_threads, 1, 1)];
     ds4_gpu_end_compute_encoder(cb, enc);
+    DS4_METAL_PROFILE_FUSED_GATHER_STAGE("prepare");
 
     enc = ds4_gpu_compute_encoder(cb);
     [enc setComputePipelineState:vec_pipeline];
@@ -20925,6 +20955,7 @@ static int ds4_gpu_encode_dense_mixed_attention_fused_gather_heads(
              MTLSizeMake(1, n_head, nwg)
          threadsPerThreadgroup:MTLSizeMake(32, nsg, 1)];
     ds4_gpu_end_compute_encoder(cb, enc);
+    DS4_METAL_PROFILE_FUSED_GATHER_STAGE("attention_vec");
 
     ds4_gpu_flash_attn_reduce_args reduce_args = {
         .nrows = (int32_t)nrows,
@@ -20938,6 +20969,7 @@ static int ds4_gpu_encode_dense_mixed_attention_fused_gather_heads(
     [enc dispatchThreadgroups:MTLSizeMake(nrows, 1, 1)
          threadsPerThreadgroup:MTLSizeMake(32u * nwg, 1, 1)];
     ds4_gpu_end_compute_encoder(cb, enc);
+    DS4_METAL_PROFILE_FUSED_GATHER_STAGE("attention_reduce");
 
     if (ds4_gpu_trace_dense_mixed_attention_fused_gather()) {
         static int reported;
@@ -20949,6 +20981,7 @@ static int ds4_gpu_encode_dense_mixed_attention_fused_gather_heads(
             reported = 1;
         }
     }
+#undef DS4_METAL_PROFILE_FUSED_GATHER_STAGE
     return 1;
 }
 
@@ -21055,7 +21088,7 @@ static int ds4_gpu_attention_decode_heads_impl(
             inverse_rope == NULL &&
             ds4_gpu_use_dense_mixed_attention_fused_gather()) {
             if (!ds4_gpu_encode_dense_mixed_attention_fused_gather_heads(
-                    cb,
+                    &cb,
                     heads,
                     sinks_buf,
                     (NSUInteger)sinks_inner,
@@ -21068,7 +21101,8 @@ static int ds4_gpu_attention_decode_heads_impl(
                     comp_kv_f16,
                     n_comp,
                     n_head,
-                    head_dim)) {
+                    head_dim,
+                    profile_gathered)) {
                 return 0;
             }
             if (!ds4_gpu_finish_command_buffer(
