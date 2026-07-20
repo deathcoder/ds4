@@ -727,15 +727,6 @@ already-verified target rows. This is the default exact path after a paired,
 byte-identical Metal gate measured a `1.1774x` median speed ratio over replay.
 Set `DS4_DSPARK_EXACT_PREFIX_CHECKPOINT=0` only to use the legacy replay path.
 
-The dense-mixed `NWG=8` Metal launch candidate is development-only and remains
-opt-in. Run its paired, uninstrumented gate explicitly:
-
-```sh
-python3 speed-bench/run_dspark_comparison.py \
-  --dense-mixed-nwg8-ablation \
-  --confirm-idle
-```
-
 For development, `--dspark-probe` runs a diagnostic prompt through the
 target-layer mean-HC capture bridge and DSpark `main_proj/main_norm`, executes
 the sidecar block, runs Markov-biased logits and confidence scores with an

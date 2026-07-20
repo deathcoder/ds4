@@ -12122,3 +12122,32 @@ Decision boundary:
   HumanEval confirmation; a flat or negative result retires the candidate.
 - Do not infer the expected gain by adding synchronized stage times. The gate
   is the uninstrumented paired throughput result.
+
+Focused result and decision:
+
+- User-run artifact:
+  `speed-bench/local-runs/20260720-150138` at clean commit `8993a07`.
+- Default exact measured `26.09 t/s`; dense-mixed NWG8 measured `25.99 t/s`.
+  The ratio of medians was `0.9962x`, the median paired ratio was `0.9985x`,
+  and all three pairs together report a `-0.4%` candidate delta.
+- **Retired.** The candidate is effectively flat and slightly negative, so it
+  does not advance to the frozen 32-task HumanEval gate. Keep the opt-in route
+  only as reproducible negative evidence; do not promote it or advertise it as
+  an active runtime candidate.
+- Reducing nominally idle split-K workgroups and reduction threads by four
+  times did not improve throughput. For this workload, those identities are
+  cheap enough that fixed dispatch and pipeline costs dominate the apparent
+  waste. Do not revisit split-K workgroup-count tuning without new evidence.
+
+Next direction:
+
+- Preserve the current byte-exact split-K vector and reduction arithmetic, but
+  investigate eliminating the separate consolidated prepare dispatch. A
+  split-source vector kernel could read raw and compressed rows directly in
+  their current logical order, reproduce the prepare kernel's F16 conversion
+  and padding exactly, and retain the promoted reduction unchanged.
+- This differs from the correctness-rejected sequential direct-attention path:
+  it removes the prepare copy without changing chunk assignment, partial
+  softmax arithmetic, or reduction order. Before implementation, map the
+  prepare kernel's exact row layout, mask values, source formats, and padding
+  rules into a small explicit contract.
