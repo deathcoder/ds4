@@ -110,13 +110,13 @@ medians in the focused three-pair gate. Two pairs were positive and one was a
 small `0.9920x` loss; every output remained byte-exact. This is sufficient to
 justify broader confirmation but too small and mixed to promote directly.
 
-Phase 1.52 is prepared. The frozen 32-task threshold-0.75 HumanEval gate
-compares the current promoted exact verifier with the paired-SwiGLU width-5
-candidate. It runs `68` uninstrumented processes: four excluded warmups and
-one balanced pair per task. Promotion requires at least a `1.005x` geometric
-gain, `20/32` wins, no task below `0.95x`, and no geometric regression on the
-low-acceptance subgroup. The candidate remains default-off while awaiting the
-user-run benchmark.
+Phase 1.52 is complete and retired. The paired-SwiGLU width-5 candidate was
+effectively neutral across frozen HumanEval: `1.0001x` geometric paired,
+`1.0009x` median paired, and `18/32` wins. It failed the gain, wins, and
+per-task-floor gates. Removing the lone `0.8992x` outlier still yields only
+`1.0035x` geometric movement and `18/31` wins, so an outlier adjudication
+cannot change the decision. Keep the candidate default-off as research
+evidence; do not promote or benchmark it further.
 
 Phase 1.27 is complete. The cumulative 32-task HumanEval reassessment measured
 current exact DSpark at a `0.8826x` geometric paired ratio versus ordinary
@@ -11726,3 +11726,32 @@ Decision boundary:
 - A broad flat or negative result retires the candidate. A passing result
   permits promotion with an explicit legacy opt-out before the next cumulative
   baseline comparison.
+
+Result:
+
+- User-run artifact:
+  `speed-bench/local-runs/humaneval-routed-gate-up-swiglu-w5-32-20260720-105927`
+  at clean commit `3142ace9d75ecaee73c6f174a4d64dbbb2d86311`.
+- Default exact median: `22.56 t/s`; fused candidate median: `22.48 t/s`.
+- Ratio of medians: `0.9962x`; median paired ratio: `1.0009x`; geometric
+  paired ratio: `1.0001x`.
+- The candidate won `18/32` tasks. Its interquartile range was
+  `0.9982x-1.0038x`, showing that the central distribution is tightly centered
+  on neutral rather than a broad improvement.
+- The low-acceptance subgroup was positive at `1.0109x`, but the descriptive
+  acceptance-to-speed correlation was only `-0.070`; this does not establish
+  a useful acceptance-dependent policy.
+- `humaneval_095` measured `0.8992x`, below the `0.95x` floor. Excluding it
+  post hoc leaves a `1.0035x` geometric ratio, `1.0009x` median, and only
+  `18/31` wins, still below both broad promotion thresholds.
+- Every candidate and default output matched the frozen exact artifact
+  byte-for-byte. No runtime stats, traces, diagnostics, profiler, or fast
+  verifier was active.
+
+Decision:
+
+- Retire the exact routed gate/up SwiGLU width-5 candidate without an outlier
+  adjudication. The focused `1.0084x` result did not generalize.
+- Leave `DS4_DSPARK_EXACT_ROUTED_GATE_UP_SWIGLU_W5` default-off and retain the
+  candidate and harness only as reproducible research evidence.
+- Do not alter the promoted exact verifier defaults from this phase.
