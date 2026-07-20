@@ -12635,6 +12635,11 @@ Validation after repair:
   top-5 `5/5`, top-20 `19/20`, top-64 `54/64`, maximum top-20 absolute
   difference `1.99349`.
 - Long-context recall and tool-call quality pass with the local model.
+- A complete post-fix `ds4_test` run now ends with the same three remaining
+  local-model fixture assertions as fresh upstream: think-tool recovery
+  parsing, `short_code_completion` step 1 in the official logprob vector, and
+  the SSD-streaming repetition of that vector. There is no branch-only failure
+  left in the complete same-model comparison.
 - Model-free Metal kernels, DSpark metadata validation, shape binding, and
   server tests pass.
 - All `261` Python tests pass.
