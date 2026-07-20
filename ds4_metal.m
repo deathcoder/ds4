@@ -13115,7 +13115,9 @@ int ds4_gpu_indexer_topk_tensor(
             .ne3 = 1,
             .top_k = block_top_k,
         };
-        const NSUInteger smem = (((NSUInteger)nth * sizeof(int32_t)) + 15u) & ~(NSUInteger)15u;
+        // The argsort kernel stages both indices and scores in threadgroup memory.
+        const NSUInteger smem = (((NSUInteger)nth *
+            (sizeof(int32_t) + sizeof(float))) + 15u) & ~(NSUInteger)15u;
 
         NSUInteger cur_off = 0;
         NSUInteger next_off = (NSUInteger)scratch_row_bytes * n_tokens;

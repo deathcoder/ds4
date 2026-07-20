@@ -12567,3 +12567,90 @@ Decision:
   justify production selection or a 32-task confirmation.
 - Keep the path opt-in for reproducibility. The default exact verifier and
   ordinary baseline remain unchanged.
+
+Superseded by the Phase 1.65 merge-integrity audit:
+
+- This benchmark ran with an undersized Metal argsort threadgroup allocation
+  introduced at the upstream integration boundary. Baseline and candidate
+  matched each other, but both generated the corrupted post-merge output.
+- Treat the `1.0018x` result as **INVALID**, not as a promotion or retirement
+  result. The candidate remains unpromoted. A rerun after the argsort repair is
+  required before making any further decision about it.
+
+## Phase 1.65: fresh-upstream merge-integrity audit and argsort repair
+
+Fresh-clone audit:
+
+- Cloned `https://github.com/antirez/ds4.git` into a new temporary directory.
+  Its `main` tip was `efdadd41e20134af4f3381e1ed90e96fe4faef6f`, exactly
+  the upstream commit recorded as the second parent of merge `01808f0`.
+- The fresh upstream tree and local `origin/main` tree were byte-identical at
+  `847d5643c48ab5f1cbd5d21732963d16fdd529cd`. Upstream had not advanced
+  since the integration, and `efdadd4` is an ancestor of the current branch.
+- Across the `1,012` paths upstream changed after shared base `80ebbc3`, the
+  current branch contains `982` byte-identical paths, `29` divergent paths,
+  and intentionally omits one incompatible upstream DSpark fixture. At the
+  merge boundary, `23` divergent files retained the measured branch version
+  and `6` were explicit blends. No unclassified upstream path was missing.
+- Fresh upstream and the current branch both compile successfully on Metal.
+  Fresh upstream's declared tests compile and its model-free evaluator, agent,
+  Q4_K, layer-pack, placement, GPU-argument, and Metal groups pass.
+
+Same-model comparison:
+
+- Ran both test binaries against the same local V4-Flash IQ2XXS GGUF.
+- Fresh upstream finished its complete `ds4_test` run with three unrelated
+  fixture assertions, while the merged branch produced `57` assertions.
+- Fresh upstream passed long-context recall, tool-call quality, and the local
+  long-prefill golden vector. The merged branch failed all three, despite
+  still passing internal Metal tensor equivalence.
+- Detached pre-merge checkpoint `c9e900e` passed those same three focused
+  gates, proving the quality regression entered at the merge boundary rather
+  than being inherited from earlier DSpark development.
+
+Root cause:
+
+- The merge imported upstream's updated `metal/argsort.metal` while retaining
+  this branch's older `ds4_gpu_indexer_topk_tensor` host encoder.
+- The imported shader stages `nth` indices followed by `nth` float scores in
+  threadgroup memory. The retained host allocated only the index array.
+  Upstream's matching host change, which doubles the scratch allocation, was
+  inside the conflicted `ds4_metal.m` and was lost when that file retained the
+  branch implementation.
+- Per-source Metal overrides showed that restoring only the pre-merge
+  `argsort.metal` repaired the golden vector. Restoring any other imported
+  shader set was unnecessary, isolating the mismatch to this contract.
+
+Repair:
+
+- Updated the retained host encoder to allocate
+  `nth * (sizeof(int32_t) + sizeof(float))`, matching the imported shader.
+- Added `tests/test_metal_argsort_contract.py` to preserve the shader/host
+  scratch-layout contract without requiring a model.
+
+Validation after repair:
+
+- Normal Metal build and relinked `ds4_test` pass.
+- Local golden vector returned to the exact pre-merge/upstream result:
+  top-5 `5/5`, top-20 `19/20`, top-64 `54/64`, maximum top-20 absolute
+  difference `1.99349`.
+- Long-context recall and tool-call quality pass with the local model.
+- Model-free Metal kernels, DSpark metadata validation, shape binding, and
+  server tests pass.
+- All `261` Python tests pass.
+- The exact DSpark runtime matrix passes reasoning, Italian, medium-context,
+  rolling-window, and resumed-chat outputs byte-for-byte against the repaired
+  ordinary baseline.
+- Fresh upstream and the repaired current branch also produce byte-identical
+  ordinary-decoding stdout on four deterministic 32-token prompts:
+  structured `4b0a2799e934a3fde905aac35f535de96b14527d4ddfc1789ada71ba8a2f8d24`,
+  Spanish `907fccadc3f943c725d7ab112cdcfd57882b540bd98d2c8ddc772534e68b9339`,
+  medium-context `8b18239f790bcb595eee841d97930f3dbd2d9113734482502def94ad9cadc149`,
+  and rolling-window `8b18239f790bcb595eee841d97930f3dbd2d9113734482502def94ad9cadc149`.
+
+Benchmark consequence:
+
+- Only the post-merge router-weight fusion ablation was run under the broken
+  argsort contract. Mark its `20260720-194404` result invalid. Earlier
+  cumulative and HumanEval measurements were collected before the upstream
+  integration and are unaffected.
