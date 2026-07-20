@@ -128,6 +128,53 @@ class DenseMixedSplitSourceContractTests(unittest.TestCase):
         self.assertIn("value = args.comp_kv_f16 != 0u", misc)
         self.assertIn("dst_mask[row] = row < n_keys ? 0.0h", misc)
 
+    def test_parity_view_is_independent_and_compares_storage_bits(self):
+        misc = (ROOT / "metal/dsv4_misc.metal").read_text(encoding="utf-8")
+
+        self.assertIn(
+            "kernel_dsv4_dense_mixed_split_source_view_f16", misc
+        )
+        self.assertIn("device      half4 *dst_kv", misc)
+        self.assertIn("uint2 gid [[thread_position_in_grid]]", misc)
+        self.assertIn("half4((half)source.x, (half)source.y", misc)
+        self.assertIn(
+            "kernel_dsv4_dense_mixed_split_source_compare", misc
+        )
+        self.assertIn("device const ushort *prepared_kv", misc)
+        self.assertIn("prepared_kv[i] != split_kv[i]", misc)
+
+    def test_parity_route_preserves_production_attention_inputs(self):
+        host = (ROOT / "ds4_metal.m").read_text(encoding="utf-8")
+
+        self.assertIn(
+            'getenv("DS4_METAL_DENSE_MIXED_SPLIT_SOURCE_PARITY")', host
+        )
+        self.assertIn(
+            "g_dsv4_dense_mixed_split_source_compare_pipeline", host
+        )
+        self.assertIn(
+            "[enc setBuffer:g_flash_attn_kv_buffer offset:0 atIndex:2]",
+            host,
+        )
+        self.assertIn(
+            "Metal dense mixed split-source parity ", host
+        )
+        self.assertIn('"ok" : "mismatch"', host)
+
+    def test_correctness_matrix_rejects_parity_mismatch(self):
+        harness = (
+            ROOT / "tests/dspark_gpu_candidates_correctness.sh"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn(
+            "DS4_TEST_DSPARK_DENSE_MIXED_SPLIT_SOURCE_PARITY", harness
+        )
+        self.assertIn(
+            "DS4_METAL_DENSE_MIXED_SPLIT_SOURCE_PARITY=1", harness
+        )
+        self.assertIn("result=(mismatch|command_error)", harness)
+        self.assertIn("raw_start=[1-9][0-9]*", harness)
+
     def test_written_contract_pins_arithmetic_boundary(self):
         contract = (
             ROOT / "DSPARK_DENSE_MIXED_CONTRACT.md"

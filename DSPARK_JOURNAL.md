@@ -12191,3 +12191,77 @@ Next step:
 - Only after parity is established should the current split-K vector kernel be
   specialized to load raw/compressed/padded rows directly. Do not copy the
   rejected sequential direct-attention arithmetic.
+
+## Phase 1.59: issue #468 audit at a clean boundary
+
+Community movement reviewed after commit `a9d1e36`:
+
+- robotnursenyc published a per-token checkpoint commit for partial accepts.
+  Its purpose matches our already promoted generalized exact prefix checkpoint:
+  preserve the accepted verifier prefix and avoid replaying accepted target
+  rows. Our path already has correctness coverage, success/fallback counters,
+  replay-row attribution, and measured HumanEval gains, so there is no missing
+  patch to port from that commit.
+- A report that BF16 DSpark heads silently disable speculation applies to
+  upstream `main`, not this branch. This implementation declares BF16 tensors,
+  requires the released Markov and confidence heads to be BF16, implements CPU
+  and Metal BF16 paths, validates the real sidecar, and has repeatedly measured
+  nonzero proposals, partial/full accepts, and target evaluations avoided.
+- lobanov clarified that an earlier F32 acceptance collapse was a converter
+  bug. Higher drafter precision did not materially improve acceptance against
+  the IQ2XXS target. The latest approximately five-percent community gain uses
+  a sublinear batch verifier that can drift numerically; the sequential verifier
+  remains the byte-exact reference. That optimization is outside our current
+  exact-output contract.
+- No new issue contribution supersedes the current split-source direction.
+  Revisit the issue when a Metal patch, an exact verifier result, or materially
+  new acceptance evidence appears.
+
+References:
+
+- <https://github.com/antirez/ds4/issues/468>
+- <https://github.com/robotnursenyc/ds4/commit/a6252fb79d>
+- <https://github.com/lobanov/ds4/blob/dspark-research/issue468/summaries/dspark_runtime_milestone_3_progress.md>
+- <https://github.com/lobanov/ds4/blob/dspark-research-batch-verifier/issue468/pending/lead_08_fused_verify_kernel.md>
+- <https://github.com/lobanov/ds4/blob/dspark-research/issue468/archive/leads/lead_10_drafter_redistillation.md>
+
+## Phase 1.60: split-source dense-mixed GPU parity established
+
+Implementation:
+
+- Added diagnostic-only
+  `DS4_METAL_DENSE_MIXED_SPLIT_SOURCE_PARITY=1`. Production still prepares and
+  consumes the canonical F16 K/V and mask buffers unchanged. The diagnostic
+  pipelines and scratch buffers are initialized only when this gate is set, so
+  the ordinary path does not pay their startup or allocation cost.
+- Added an independent row-first `half4` source-view kernel. It resolves raw
+  ring rows directly, reads compressed rows in their stored format, performs
+  explicit scalar F32-to-F16 conversion per lane, and materializes exact padded
+  rows and masks into separate diagnostic buffers.
+- Added a serial GPU storage-bit comparator over `ushort` K/V and mask values.
+  A unique shared result buffer is reported from the command-buffer completion
+  handler, avoiding a new synchronous boundary or scratch-buffer reuse race.
+- Extended the runtime correctness matrix to require at least one successful
+  parity record, reject mismatches and command errors, and require a nonzero
+  `raw_start` record so the rolling ring is genuinely exercised.
+
+Validation:
+
+- Normal Metal build passed without warnings.
+- All `235` DSpark model-free tests pass. Synthetic coverage includes FP32 and
+  F16 compressed rows, padding, an exact 32-row boundary, and raw-ring wrap.
+- The real exact-runtime correctness matrix passed reasoning, Italian,
+  medium-context, rolling-window, and resumed-chat outputs byte-for-byte.
+- Retained logs contained `500/500` successful GPU parity records, zero
+  mismatches, and `164` records with a wrapped raw ring. The released V4-Flash
+  runtime used F16 compressed rows in all observed calls; FP32 compressed rows
+  are covered synthetically and are not claimed as a real-runtime observation.
+- No timed benchmark was run.
+
+Next step:
+
+- Implement an opt-in source-specialized variant of the promoted split-K
+  FlashAttention vector kernel. It must use the now-proven logical source
+  mapping while preserving chunk assignment, softmax partial arithmetic,
+  temporary layout, and final reduction exactly. Keep the parity diagnostic
+  available as the correctness oracle during the candidate phase.

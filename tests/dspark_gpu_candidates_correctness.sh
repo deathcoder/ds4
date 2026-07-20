@@ -29,6 +29,7 @@ ${DS4_TEST_DSPARK_INDEXED_ATTN_RB16_DIRECT:-0}}
 dense_mixed_direct=${DS4_TEST_DSPARK_DENSE_MIXED_DIRECT:-0}
 dense_mixed_gathered_legacy=${DS4_TEST_DSPARK_DENSE_MIXED_GATHERED_LEGACY:-0}
 dense_mixed_nwg8=${DS4_TEST_DSPARK_DENSE_MIXED_NWG8:-0}
+dense_mixed_split_source_parity=${DS4_TEST_DSPARK_DENSE_MIXED_SPLIT_SOURCE_PARITY:-0}
 exact_q8_rows=${DS4_TEST_DSPARK_EXACT_Q8_ROWS:-0}
 serial_q8_rows_runtime=${DS4_TEST_DSPARK_SERIAL_Q8_ROWS_RUNTIME:-0}
 attn_inv_rope_fused=${DS4_TEST_DSPARK_ATTN_INV_ROPE_FUSED:-0}
@@ -77,6 +78,7 @@ unset DS4_METAL_DENSE_MIXED_GATHERED_LEGACY
 unset DS4_METAL_DENSE_MIXED_DIRECT_TRACE
 unset DS4_METAL_DENSE_MIXED_NWG8
 unset DS4_METAL_DENSE_MIXED_NWG8_TRACE
+unset DS4_METAL_DENSE_MIXED_SPLIT_SOURCE_PARITY
 unset DS4_METAL_DECODE_INDEXER_SPARSE_THRESHOLD
 
 if [[ $fast_verify_observer == 1 && $fast_verify_runtime == 1 ]]; then
@@ -238,6 +240,21 @@ fi
 if [[ $dense_mixed_nwg8 == 1 &&
       ($mode != runtime || $fast_verify_runtime == 1) ]]; then
     printf 'dense-mixed NWG8 requires exact runtime verification\n' >&2
+    exit 2
+fi
+if [[ $dense_mixed_split_source_parity != 0 &&
+      $dense_mixed_split_source_parity != 1 ]]; then
+    printf 'DS4_TEST_DSPARK_DENSE_MIXED_SPLIT_SOURCE_PARITY must be 0 or 1\n' >&2
+    exit 2
+fi
+if [[ $dense_mixed_split_source_parity == 1 &&
+      $dense_mixed_gathered_legacy == 1 ]]; then
+    printf 'dense-mixed split-source parity requires the fused-gather route\n' >&2
+    exit 2
+fi
+if [[ $dense_mixed_split_source_parity == 1 &&
+      ($mode != runtime || $fast_verify_runtime == 1) ]]; then
+    printf 'dense-mixed split-source parity requires exact runtime verification\n' >&2
     exit 2
 fi
 if [[ $exact_q8_rows != 0 && $exact_q8_rows != 1 ]]; then
@@ -429,6 +446,9 @@ case "$mode" in
                 DS4_METAL_DENSE_MIXED_NWG8=1
                 DS4_METAL_DENSE_MIXED_NWG8_TRACE=1
             )
+        fi
+        if [[ $dense_mixed_split_source_parity == 1 ]]; then
+            gpu_env+=(DS4_METAL_DENSE_MIXED_SPLIT_SOURCE_PARITY=1)
         fi
         if [[ $serial_q8_rows_runtime == 1 ]]; then
             gpu_env+=(DS4_DSPARK_EXACT_Q8_ROWS=0)
@@ -1210,6 +1230,26 @@ if [[ $dense_mixed_nwg8 == 1 ]] &&
         "$tmpdir"/*.log; then
     printf 'dense-mixed NWG8 did not engage\n' >&2
     exit 1
+fi
+if [[ $dense_mixed_split_source_parity == 1 ]]; then
+    if ! grep -q \
+        'Metal dense mixed split-source parity .* result=ok$' \
+        "$tmpdir"/*.log; then
+        printf 'dense-mixed split-source parity did not engage\n' >&2
+        exit 1
+    fi
+    if grep -Eq \
+        'Metal dense mixed split-source parity .* result=(mismatch|command_error)$' \
+        "$tmpdir"/*.log; then
+        printf 'dense-mixed split-source parity failed\n' >&2
+        exit 1
+    fi
+    if ! grep -Eq \
+        'Metal dense mixed split-source parity .* raw_start=[1-9][0-9]* .* result=ok$' \
+        "$tmpdir"/*.log; then
+        printf 'dense-mixed split-source parity did not exercise a wrapped raw ring\n' >&2
+        exit 1
+    fi
 fi
 if [[ $attn_inv_rope_fused == 1 ]]; then
     observe_attn_inv_rope_fused_layer raw 0 raw

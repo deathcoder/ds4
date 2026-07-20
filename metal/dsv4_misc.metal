@@ -80,6 +80,11 @@ struct ds4_metal_args_dsv4_dense_mixed_prepare {
     uint64_t comp_row_stride;
 };
 
+struct ds4_metal_args_dsv4_dense_mixed_parity_compare {
+    uint32_t kv_elements;
+    uint32_t mask_elements;
+};
+
 constant bool FC_dsv4_indexed_attention_inverse_rope
     [[function_constant(1500)]];
 
@@ -149,6 +154,85 @@ kernel void kernel_dsv4_dense_mixed_prepare_f16(
     if (col == 0u) {
         dst_mask[row] = row < n_keys ? 0.0h : (half)-MAXHALF;
     }
+}
+
+// Independently materializes the logical source view that a prepare-free
+// split-K vector kernel would load. The half4 row-first traversal deliberately
+// differs from the scalar linear traversal in the production prepare kernel.
+kernel void kernel_dsv4_dense_mixed_split_source_view_f16(
+        constant ds4_metal_args_dsv4_dense_mixed_prepare & args,
+        device const char *raw_kv,
+        device const char *comp_kv,
+        device      half4 *dst_kv,
+        device       half *dst_mask,
+        uint2 gid [[thread_position_in_grid]]) {
+    const uint col4 = gid.x;
+    const uint row = gid.y;
+    if (row >= args.n_rows || col4 >= args.row_width / 4u) {
+        return;
+    }
+
+    const uint n_keys = args.n_raw + args.n_comp;
+    half4 value = 0.0h;
+    if (row < args.n_raw) {
+        const uint raw_row = (args.raw_start + row) % args.raw_cap;
+        device const float4 *src = (device const float4 *)(raw_kv +
+            (uint64_t)raw_row * args.raw_row_stride);
+        const float4 source = src[col4];
+        value = half4((half)source.x, (half)source.y,
+                      (half)source.z, (half)source.w);
+    } else if (row < n_keys) {
+        device const char *base = comp_kv +
+            (uint64_t)(row - args.n_raw) * args.comp_row_stride;
+        if (args.comp_kv_f16 != 0u) {
+            value = ((device const half4 *)base)[col4];
+        } else {
+            const float4 source = ((device const float4 *)base)[col4];
+            value = half4((half)source.x, (half)source.y,
+                          (half)source.z, (half)source.w);
+        }
+    }
+    dst_kv[(uint64_t)row * (args.row_width / 4u) + col4] = value;
+    if (col4 == 0u) {
+        dst_mask[row] = row < n_keys ? 0.0h : (half)-MAXHALF;
+    }
+}
+
+// Diagnostic-only serial byte comparator. A single thread keeps the result
+// deterministic and avoids atomics; parity runs are correctness gates, not
+// throughput measurements.
+kernel void kernel_dsv4_dense_mixed_split_source_compare(
+        constant ds4_metal_args_dsv4_dense_mixed_parity_compare & args,
+        device const ushort *prepared_kv,
+        device const ushort *split_kv,
+        device const ushort *prepared_mask,
+        device const ushort *split_mask,
+        device       uint   *result,
+        uint gid [[thread_position_in_grid]]) {
+    if (gid != 0u) return;
+
+    uint kv_mismatches = 0u;
+    uint first_kv = UINT_MAX;
+    for (uint i = 0u; i < args.kv_elements; i++) {
+        if (prepared_kv[i] != split_kv[i]) {
+            if (first_kv == UINT_MAX) first_kv = i;
+            kv_mismatches++;
+        }
+    }
+
+    uint mask_mismatches = 0u;
+    uint first_mask = UINT_MAX;
+    for (uint i = 0u; i < args.mask_elements; i++) {
+        if (prepared_mask[i] != split_mask[i]) {
+            if (first_mask == UINT_MAX) first_mask = i;
+            mask_mismatches++;
+        }
+    }
+
+    result[0] = kv_mismatches;
+    result[1] = mask_mismatches;
+    result[2] = first_kv;
+    result[3] = first_mask;
 }
 
 // Optional directional steering projection.

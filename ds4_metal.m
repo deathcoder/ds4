@@ -140,6 +140,8 @@ static id<MTLComputePipelineState> g_dsv4_indexed_attention_heads8_pipeline;
 static id<MTLComputePipelineState> g_dsv4_indexed_attention_heads8_rb16_pipeline;
 static id<MTLComputePipelineState> g_dsv4_indexed_attention_heads8_rb16_direct_pipeline;
 static id<MTLComputePipelineState> g_dsv4_dense_mixed_prepare_pipeline;
+static id<MTLComputePipelineState> g_dsv4_dense_mixed_split_source_view_pipeline;
+static id<MTLComputePipelineState> g_dsv4_dense_mixed_split_source_compare_pipeline;
 static id<MTLComputePipelineState> g_dsv4_softplus_sqrt_pipeline;
 static id<MTLComputePipelineState> g_dsv4_router_finalize_one_pipeline;
 static id<MTLComputePipelineState> g_dsv4_router_weights_one_pipeline;
@@ -156,6 +158,8 @@ static id<MTLBuffer> g_flash_attn_tmp_buffer;
 static id<MTLBuffer> g_flash_attn_blk_buffer;
 static id<MTLBuffer> g_flash_attn_ring_buffer;
 static id<MTLBuffer> g_flash_attn_kv_buffer;
+static id<MTLBuffer> g_flash_attn_split_source_kv_buffer;
+static id<MTLBuffer> g_flash_attn_split_source_mask_buffer;
 static id<MTLBuffer> g_compressor_pool_kv_buffer;
 static id<MTLBuffer> g_compressor_pool_score_buffer;
 static id<MTLBuffer> g_compressor_pool_score_cont_buffer;
@@ -302,6 +306,8 @@ static NSUInteger g_flash_attn_tmp_bytes;
 static NSUInteger g_flash_attn_blk_bytes;
 static NSUInteger g_flash_attn_ring_bytes;
 static NSUInteger g_flash_attn_kv_bytes;
+static NSUInteger g_flash_attn_split_source_kv_bytes;
+static NSUInteger g_flash_attn_split_source_mask_bytes;
 static NSUInteger g_compressor_pool_kv_bytes;
 static NSUInteger g_compressor_pool_score_bytes;
 static NSUInteger g_compressor_pool_score_cont_bytes;
@@ -2019,6 +2025,16 @@ static int ds4_gpu_trace_dense_mixed_attention_nwg8(void) {
     static int enabled;
     if (!initialized) {
         enabled = getenv("DS4_METAL_DENSE_MIXED_NWG8_TRACE") != NULL;
+        initialized = 1;
+    }
+    return enabled;
+}
+
+static int ds4_gpu_dense_mixed_split_source_parity_enabled(void) {
+    static int initialized;
+    static int enabled;
+    if (!initialized) {
+        enabled = getenv("DS4_METAL_DENSE_MIXED_SPLIT_SOURCE_PARITY") != NULL;
         initialized = 1;
     }
     return enabled;
@@ -4420,6 +4436,18 @@ typedef struct {
 } ds4_gpu_dsv4_dense_mixed_prepare_args;
 
 typedef struct {
+    uint32_t kv_elements;
+    uint32_t mask_elements;
+} ds4_gpu_dsv4_dense_mixed_parity_compare_args;
+
+typedef struct {
+    uint32_t kv_mismatches;
+    uint32_t mask_mismatches;
+    uint32_t first_kv;
+    uint32_t first_mask;
+} ds4_gpu_dsv4_dense_mixed_parity_result;
+
+typedef struct {
     int32_t nrows;
     ds4_gpu_inverse_rope_args inverse_rope;
 } ds4_gpu_flash_attn_reduce_args;
@@ -6498,6 +6526,14 @@ int ds4_gpu_init(void) {
                 "kernel_dsv4_indexed_mixed_attention_heads8_rb16_direct", false);
         g_dsv4_dense_mixed_prepare_pipeline =
             ds4_gpu_get_pipeline("kernel_dsv4_dense_mixed_prepare_f16");
+        if (ds4_gpu_dense_mixed_split_source_parity_enabled()) {
+            g_dsv4_dense_mixed_split_source_view_pipeline =
+                ds4_gpu_get_pipeline(
+                    "kernel_dsv4_dense_mixed_split_source_view_f16");
+            g_dsv4_dense_mixed_split_source_compare_pipeline =
+                ds4_gpu_get_pipeline(
+                    "kernel_dsv4_dense_mixed_split_source_compare");
+        }
         g_dsv4_softplus_sqrt_pipeline =
             ds4_gpu_get_pipeline("kernel_dsv4_softplus_sqrt_f32_4");
         g_dsv4_router_finalize_one_pipeline =
@@ -6513,6 +6549,9 @@ int ds4_gpu_init(void) {
             !g_dsv4_indexed_attention_heads8_rb16_pipeline ||
             !g_dsv4_indexed_attention_heads8_rb16_direct_pipeline ||
             !g_dsv4_dense_mixed_prepare_pipeline ||
+            (ds4_gpu_dense_mixed_split_source_parity_enabled() &&
+             (!g_dsv4_dense_mixed_split_source_view_pipeline ||
+              !g_dsv4_dense_mixed_split_source_compare_pipeline)) ||
             !g_dsv4_softplus_sqrt_pipeline ||
             !g_dsv4_router_finalize_one_pipeline ||
             !g_dsv4_router_weights_one_pipeline ||
@@ -7123,6 +7162,8 @@ void ds4_gpu_cleanup(void) {
         g_dsv4_indexed_attention_heads8_rb16_pipeline = nil;
         g_dsv4_indexed_attention_heads8_rb16_direct_pipeline = nil;
         g_dsv4_dense_mixed_prepare_pipeline = nil;
+        g_dsv4_dense_mixed_split_source_view_pipeline = nil;
+        g_dsv4_dense_mixed_split_source_compare_pipeline = nil;
         g_dsv4_softplus_sqrt_pipeline = nil;
         g_dsv4_router_finalize_one_pipeline = nil;
         g_dsv4_router_weights_one_pipeline = nil;
@@ -7133,6 +7174,8 @@ void ds4_gpu_cleanup(void) {
         g_flash_attn_blk_buffer = nil;
         g_flash_attn_ring_buffer = nil;
         g_flash_attn_kv_buffer = nil;
+        g_flash_attn_split_source_kv_buffer = nil;
+        g_flash_attn_split_source_mask_buffer = nil;
         g_compressor_pool_kv_buffer = nil;
         g_compressor_pool_score_buffer = nil;
         g_compressor_pool_score_cont_buffer = nil;
@@ -7169,6 +7212,8 @@ void ds4_gpu_cleanup(void) {
         g_flash_attn_blk_bytes = 0;
         g_flash_attn_ring_bytes = 0;
         g_flash_attn_kv_bytes = 0;
+        g_flash_attn_split_source_kv_bytes = 0;
+        g_flash_attn_split_source_mask_bytes = 0;
         g_compressor_pool_kv_bytes = 0;
         g_compressor_pool_score_bytes = 0;
         g_compressor_pool_score_cont_bytes = 0;
@@ -20808,6 +20853,8 @@ static int ds4_gpu_encode_dense_mixed_attention_fused_gather_heads(
         (n_keys + ncpsg - 1u) / ncpsg * ncpsg;
     const bool use_nwg8 =
         n_keys <= 256u && ds4_gpu_use_dense_mixed_attention_nwg8();
+    const bool split_source_parity =
+        ds4_gpu_dense_mixed_split_source_parity_enabled();
     const uint32_t nwg = use_nwg8 ? 8u : 32u;
     const uint32_t nsg = ds4_gpu_flash_attn_vec_nsg(n_keys, nwg, ncpsg);
     id<MTLComputePipelineState> vec_pipeline =
@@ -20826,6 +20873,9 @@ static int ds4_gpu_encode_dense_mixed_attention_fused_gather_heads(
         ds4_gpu_get_flash_attn_reduce_pipeline(
             (int32_t)head_dim, (int32_t)nwg, false);
     if (!g_dsv4_dense_mixed_prepare_pipeline ||
+        (split_source_parity &&
+         (!g_dsv4_dense_mixed_split_source_view_pipeline ||
+          !g_dsv4_dense_mixed_split_source_compare_pipeline)) ||
         !vec_pipeline || !reduce_pipeline) {
         return 0;
     }
@@ -20853,6 +20903,19 @@ static int ds4_gpu_encode_dense_mixed_attention_fused_gather_heads(
                                          &g_flash_attn_tmp_bytes,
                                          tmp_bytes,
                                          "ds4_flash_attn_tmp")) {
+        return 0;
+    }
+    if (split_source_parity &&
+        (!ds4_gpu_ensure_scratch_buffer(
+             &g_flash_attn_split_source_kv_buffer,
+             &g_flash_attn_split_source_kv_bytes,
+             kv_bytes,
+             "ds4_flash_attn_split_source_kv") ||
+         !ds4_gpu_ensure_scratch_buffer(
+             &g_flash_attn_split_source_mask_buffer,
+             &g_flash_attn_split_source_mask_bytes,
+             mask_bytes,
+             "ds4_flash_attn_split_source_mask"))) {
         return 0;
     }
 
@@ -20955,6 +21018,87 @@ static int ds4_gpu_encode_dense_mixed_attention_fused_gather_heads(
          threadsPerThreadgroup:MTLSizeMake(prepare_threads, 1, 1)];
     ds4_gpu_end_compute_encoder(cb, enc);
     DS4_METAL_PROFILE_FUSED_GATHER_STAGE("prepare");
+
+    if (split_source_parity) {
+        id<MTLBuffer> parity_result_buffer =
+            [g_device newBufferWithLength:
+                sizeof(ds4_gpu_dsv4_dense_mixed_parity_result)
+                               options:MTLResourceStorageModeShared];
+        if (!parity_result_buffer) return 0;
+        parity_result_buffer.label =
+            @"ds4_flash_attn_split_source_parity_result";
+
+        enc = ds4_gpu_compute_encoder(cb);
+        [enc setComputePipelineState:
+            g_dsv4_dense_mixed_split_source_view_pipeline];
+        [enc setBytes:&prepare_args length:sizeof(prepare_args) atIndex:0];
+        [enc setBuffer:rawbuf offset:ds4_gpu_tensor_offset(raw_kv) atIndex:1];
+        [enc setBuffer:compbuf offset:ds4_gpu_tensor_offset(comp_kv) atIndex:2];
+        [enc setBuffer:g_flash_attn_split_source_kv_buffer
+                offset:0
+               atIndex:3];
+        [enc setBuffer:g_flash_attn_split_source_mask_buffer
+                offset:0
+               atIndex:4];
+        const NSUInteger view_cols = (NSUInteger)head_dim / 4u;
+        [enc dispatchThreadgroups:
+                 MTLSizeMake((view_cols + 31u) / 32u, n_rows, 1)
+             threadsPerThreadgroup:MTLSizeMake(32u, 1, 1)];
+        ds4_gpu_end_compute_encoder(cb, enc);
+
+        ds4_gpu_dsv4_dense_mixed_parity_compare_args compare_args = {
+            .kv_elements = n_rows * head_dim,
+            .mask_elements = n_rows,
+        };
+        enc = ds4_gpu_compute_encoder(cb);
+        [enc setComputePipelineState:
+            g_dsv4_dense_mixed_split_source_compare_pipeline];
+        [enc setBytes:&compare_args length:sizeof(compare_args) atIndex:0];
+        [enc setBuffer:g_flash_attn_kv_buffer offset:0 atIndex:1];
+        [enc setBuffer:g_flash_attn_split_source_kv_buffer
+                offset:0
+               atIndex:2];
+        [enc setBuffer:g_flash_attn_mask_buffer offset:0 atIndex:3];
+        [enc setBuffer:g_flash_attn_split_source_mask_buffer
+                offset:0
+               atIndex:4];
+        [enc setBuffer:parity_result_buffer offset:0 atIndex:5];
+        [enc dispatchThreadgroups:MTLSizeMake(1, 1, 1)
+             threadsPerThreadgroup:MTLSizeMake(1, 1, 1)];
+        ds4_gpu_end_compute_encoder(cb, enc);
+
+        const uint32_t trace_n_raw = n_raw;
+        const uint32_t trace_n_comp = n_comp;
+        const uint32_t trace_raw_start = raw_start;
+        const uint32_t trace_comp_f16 = comp_kv_f16 ? 1u : 0u;
+        const uint32_t trace_n_rows = n_rows;
+        [cb addCompletedHandler:^(id<MTLCommandBuffer> done) {
+            if (done.status != MTLCommandBufferStatusCompleted) {
+                fprintf(stderr,
+                        "ds4: Metal dense mixed split-source parity "
+                        "raw=%u compressed=%u raw_start=%u comp_f16=%u "
+                        "rows=%u result=command_error\n",
+                        trace_n_raw, trace_n_comp, trace_raw_start,
+                        trace_comp_f16, trace_n_rows);
+                return;
+            }
+            const ds4_gpu_dsv4_dense_mixed_parity_result *result =
+                (const ds4_gpu_dsv4_dense_mixed_parity_result *)
+                    parity_result_buffer.contents;
+            const char *status =
+                result->kv_mismatches == 0u &&
+                result->mask_mismatches == 0u ? "ok" : "mismatch";
+            fprintf(stderr,
+                    "ds4: Metal dense mixed split-source parity "
+                    "raw=%u compressed=%u raw_start=%u comp_f16=%u rows=%u "
+                    "kv_mismatches=%u mask_mismatches=%u "
+                    "first_kv=%u first_mask=%u result=%s\n",
+                    trace_n_raw, trace_n_comp, trace_raw_start,
+                    trace_comp_f16, trace_n_rows,
+                    result->kv_mismatches, result->mask_mismatches,
+                    result->first_kv, result->first_mask, status);
+        }];
+    }
 
     enc = ds4_gpu_compute_encoder(cb);
     [enc setComputePipelineState:vec_pipeline];
