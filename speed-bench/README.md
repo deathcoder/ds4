@@ -733,19 +733,19 @@ weakest-amortizing component, split the tail by verifier width:
 python3 speed-bench/run_dspark_threshold075_width_tail_profile.py \
   --dry-run --allow-dirty \
   --throughput-reference \
-  speed-bench/local-runs/humaneval-threshold075-throughput-32-<timestamp>/summary.json \
+  speed-bench/local-runs/humaneval-cumulative-throughput-32-20260719-223901/summary.json \
   --cost-reference \
-  speed-bench/local-runs/humaneval-threshold075-cost-<timestamp>/summary.json \
+  speed-bench/local-runs/humaneval-cumulative-cost-20260719-225512/summary.json \
   --layer-reference \
-  speed-bench/local-runs/threshold075-width-layer-<timestamp>/summary.json
+  speed-bench/local-runs/post-promotion-width-layer-20260719-232840/summary.json
 python3 speed-bench/run_dspark_threshold075_width_tail_profile.py \
   --confirm-ready \
   --throughput-reference \
-  speed-bench/local-runs/humaneval-threshold075-throughput-32-<timestamp>/summary.json \
+  speed-bench/local-runs/humaneval-cumulative-throughput-32-20260719-223901/summary.json \
   --cost-reference \
-  speed-bench/local-runs/humaneval-threshold075-cost-<timestamp>/summary.json \
+  speed-bench/local-runs/humaneval-cumulative-cost-20260719-225512/summary.json \
   --layer-reference \
-  speed-bench/local-runs/threshold075-width-layer-<timestamp>/summary.json
+  speed-bench/local-runs/post-promotion-width-layer-20260719-232840/summary.json
 ```
 
 This is one synchronized layer-`42` process. It maps each one-row tail event
@@ -753,7 +753,8 @@ back to its enclosing proposal batch by control-stage sequence, which remains
 unambiguous even if later target evaluations overlap earlier target
 positions. The report separates KV/cache update, compressor/indexer,
 attention, inverse RoPE, projection A, and projection B plus HC for widths
-`2-5`.
+`2-5`. The current provenance pins the Phase 1.45 cumulative throughput,
+Phase 1.46 cost audit, and Phase 1.47 post-prebatch width-layer profile.
 
 After threshold `0.455` passes that representative gate, run the frozen
 32-task baseline-versus-scheduled confirmation without changing the policy:

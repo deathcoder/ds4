@@ -11849,3 +11849,55 @@ Corrected decision:
   target bonus or whose chosen depth avoids draft work, but neither condition
   holds for this DSpark loop.
 - Return to exact Metal verifier optimization with threshold `0.75` frozen.
+
+## Phase 1.54: post-prebatch serial-tail profile repinned
+
+Rationale:
+
+- The corrected measured-cost scheduler gate failed, so threshold `0.75`
+  remains frozen and no runtime controller is added.
+- The current Phase 1.47 width-layer profile leaves the width-5 serial
+  attention tail and exact FFN effectively tied at `1.083` and
+  `1.070 ms/row`.
+- The latest FFN follow-ups, width-5 paired gate/up and paired-SwiGLU, were
+  retired after focused or broad gates. The serial-tail component split still
+  points to the older pre-compressor-prebatch schedule and is now the stale
+  side of the tie.
+
+Preparation:
+
+- Repinned `speed-bench/run_dspark_threshold075_width_tail_profile.py` from
+  post-promotion width-layer commit `98b2130` to the current post-prebatch
+  Phase 1.47 commit `83f3e803e7baa4097cc8c5ff490f72b29aced06c`.
+- The runner consumes the clean Phase 1.45 cumulative throughput artifact,
+  Phase 1.46 cumulative cost audit, and Phase 1.47 width-layer profile. It
+  cross-validates their paths, contracts, source commits, clean-tree status,
+  width counts, task, layer, threshold, and byte-exact output.
+- One synchronized layer-42 process separates KV/cache update,
+  compressor/indexer, attention, inverse RoPE, projection A, and projection B
+  plus HC by actual verifier width. It enables no runtime candidate, fast
+  verifier, throughput pass, acceptance audit, or oracle trace.
+- Updated the frozen source-commit test and README command to the current
+  artifact set.
+
+User-run command:
+
+```sh
+python3 speed-bench/run_dspark_threshold075_width_tail_profile.py \
+  --throughput-reference \
+  speed-bench/local-runs/humaneval-cumulative-throughput-32-20260719-223901/summary.json \
+  --cost-reference \
+  speed-bench/local-runs/humaneval-cumulative-cost-20260719-225512/summary.json \
+  --layer-reference \
+  speed-bench/local-runs/post-promotion-width-layer-20260719-232840/summary.json \
+  --confirm-ready
+```
+
+Decision boundary:
+
+- Use only the stable width-5 component shares to choose the next exact Metal
+  candidate. Widths 2 and 3 remain one-observation directional anchors.
+- Do not infer throughput from synchronized absolute timing. The next change
+  must target the largest current component with a distinct execution-shape
+  improvement; do not revisit retired suffix batching, NR8, pair-only gate/up,
+  or paired-SwiGLU candidates without new structural evidence.
