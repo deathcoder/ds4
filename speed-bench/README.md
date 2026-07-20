@@ -674,6 +674,29 @@ The two scales must be read with the report's cross-run residual warning. No
 fresh baseline, timed throughput pass, acceptance audit, oracle trace, layer
 profiler, or fast verifier is enabled.
 
+To screen a measured-cost verifier-width policy without model execution, pair
+the frozen five-position confidence trace with the latest cumulative cost
+audit:
+
+```sh
+python3 speed-bench/analyze_dspark_cost_aware_scheduler.py \
+  --trace \
+  speed-bench/local-runs/humaneval-scheduler-trace-32-20260715-165938/scheduler_trace.csv \
+  --cost-summary \
+  speed-bench/local-runs/humaneval-cumulative-cost-20260719-225512/summary.json \
+  --output-dir \
+  speed-bench/local-runs/humaneval-cost-aware-scheduler-<timestamp>
+```
+
+The analyzer compares static threshold `0.75`, a raw-confidence policy that
+maximizes expected committed progress over measured round cost, fixed `K=2`,
+and a realized per-round oracle. Candidate widths are `{0,2,3,4,5}` because
+ds4's `K=0` and `K=1` paths both emit one ordinary target token. Every round is
+charged the full sidecar cost, since DSpark computes all five drafts before
+choosing verifier width. The result is a local counterfactual with pooled
+instrumented costs and frozen proposal boundaries, not a throughput forecast;
+it is only a gate for implementing an opt-in runtime controller.
+
 After the cost audit identifies multi-row exact verification as the dominant
 surface, profile its scaling by actual verifier width:
 

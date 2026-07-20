@@ -11755,3 +11755,96 @@ Decision:
 - Leave `DS4_DSPARK_EXACT_ROUTED_GATE_UP_SWIGLU_W5` default-off and retain the
   candidate and harness only as reproducible research evidence.
 - Do not alter the promoted exact verifier defaults from this phase.
+
+## Phase 1.53: external implementation delta and measured-cost scheduler audit
+
+External code survey:
+
+- Rechecked MTPLX at `54a1d9a`. Its verify-shaped quantized matmuls, split-K
+  kernels, packed attention, graph bank, and cache rollback are unchanged from
+  Phase 1.35. The Q2 routed-down transfer was already tested in Phase 1.36 and
+  retired because proposal rows select different experts, preventing MTPLX's
+  dense cross-row weight reuse.
+- Rechecked current llama.cpp at `178a6c4`. Its MTP path provides generic
+  target/drafter orchestration, hidden-state carryover, backend sampling, and
+  memory sequence removal, but no DSpark-specific Metal verifier kernel that
+  improves on the exact paths already present here.
+- Rechecked current vLLM at `823eaf6`. Its dynamic speculative depth maps
+  configured concurrency ranges to fixed K values. Its DSpark implementation
+  is V2 GPU-runner/CUDA serving work, and its Qwen3/Gemma4 loaders currently
+  leave the confidence head unwired, so it offers no portable Metal scheduling
+  or kernel win for ds4.
+- oMLX advanced from the Phase 1.35 snapshot to `4da2beb`. Commit `6342b4d`
+  replaced a fixed marginal-cost depth prior with measured per-depth cycle
+  costs, conditional-acceptance EMAs, warmup measurement, switch hysteresis,
+  and bidirectional staleness probes. This is the only materially new portable
+  mechanism found in the refresh.
+
+DSpark adaptation:
+
+- oMLX can save drafting work by choosing a shallower depth. The released
+  DSpark path cannot: it computes the complete five-token sidecar chain before
+  confidence-prefix selection. The relevant score must therefore include a
+  fixed sidecar tax plus the measured target-verifier cost at each width.
+- ds4's `K=0` and `K=1` routes both execute ordinary one-token target
+  evaluation and emit one token. A scheduler must not credit K=1 with a draft
+  plus bonus token. The useful candidate set is `{0,2,3,4,5}`.
+- Added `speed-bench/analyze_dspark_cost_aware_scheduler.py`. It combines the
+  frozen five-position HumanEval confidence/acceptance trace with the current
+  post-promotion cumulative cost audit. For each proposal it scores expected
+  committed progress from raw conditional confidence divided by measured
+  cycle cost. It compares static threshold `0.75`, the measured-cost policy,
+  fixed K=2, and a future-knowledge round oracle.
+- The analyzer also raises raw confidences to powers `0.5..2.0` as a calibration
+  stress check. This does not calibrate the checkpoint; it tests whether the
+  policy direction depends on treating raw sigmoid output as an exact
+  probability.
+- Added model-free coverage in
+  `tests/test_dspark_cost_aware_scheduler.py` and documented the command in
+  `speed-bench/README.md`.
+
+Interpretation boundary:
+
+- This is deliberately model-free. Proposal boundaries come from the older
+  fixed-K trace, while costs are pooled synchronized measurements from the
+  current promoted runtime. Width changes alter later proposal boundaries,
+  and raw confidences have no released STS calibration.
+- A positive proxy is not a speed claim. It only warrants an opt-in runtime
+  candidate followed by the same byte-exact focused and broad uninstrumented
+  gates used for prior scheduler changes.
+
+Model-free result:
+
+- Artifact:
+  `speed-bench/local-runs/humaneval-cost-aware-scheduler-20260720-113640`.
+- Static threshold `0.75` produced a `26.149` local progress/s proxy with mean
+  selected width `2.845`.
+- The measured-cost confidence policy produced `27.202`, or `1.0403x` pooled
+  movement. Its task-level geometric ratio was `1.0490x`, with `31/32` local
+  task wins. The sole loss was `humaneval_063` at `0.9867x`.
+- The candidate selected K=0/2/3/4/5 on `7/705/116/195/0` proposals. The
+  current exact cost curve makes width 5 locally unprofitable despite high
+  confidence; most proposals favor width 2, while widths 3 and 4 retain useful
+  high-confidence progress.
+- Fixed K=2 was weaker but still positive at `1.0197x` pooled and `1.0322x`
+  task-geometric, with `27/32` wins. Current confidence contributes useful
+  round-level discrimination beyond simply clamping maximum width.
+- The future-knowledge round oracle was `1.1414x` pooled. This bounds the local
+  scheduling opportunity without implying an achievable session speedup.
+- Raising confidence to every predeclared power from `0.5` through `2.0` left
+  pooled movement between `1.0379x` and `1.0411x`. The direction does not rely
+  on exact raw-sigmoid calibration.
+
+Decision:
+
+- The screening gate passes. The next phase may implement a default-off
+  measured-cost scheduler candidate, but it must not hardcode this machine's
+  pooled width costs as production policy.
+- Adapt oMLX's measurement principle: warm each useful exact width, maintain
+  wall-time cost estimates, and use current DSpark confidence to maximize
+  expected progress over measured total cycle cost. Include the fixed full
+  sidecar tax and retain a shallow fallback route.
+- First validate controller logic model-free and byte-exact on the correctness
+  matrix. Then run a small frozen gate containing `humaneval_063`, a low-
+  acceptance case, and a high-acceptance case before considering a 32-task
+  confirmation. Codex must not run the timed gates.
