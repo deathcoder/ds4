@@ -11901,3 +11901,82 @@ Decision boundary:
   must target the largest current component with a distinct execution-shape
   improvement; do not revisit retired suffix batching, NR8, pair-only gate/up,
   or paired-SwiGLU candidates without new structural evidence.
+
+Profile result:
+
+- User-run artifact:
+  `speed-bench/local-runs/post-promotion-width-tail-20260720-123704` at clean
+  commit `a31f69b91545d82d2d881fc05128904ce37424c4`.
+- Every profiled output matched the frozen cumulative HumanEval artifact
+  byte-for-byte. The expected verifier-width distribution `1/1/4/20` was
+  reproduced across `121` proposal rows.
+- At stable width 5, the synchronized tail median is `2.547 ms/row`.
+  Attention is the largest individual component at `0.382 ms/row` (`18.9%`),
+  followed by projection B plus HC at `0.359` (`17.8%`), projection A at
+  `0.352` (`17.4%`), compressor/indexer at `0.328` (`16.3%`), KV/cache update
+  at `0.310` (`15.4%`), and inverse RoPE at `0.287` (`14.2%`).
+- The components are nearly flat rather than dominated by one dispatch. The
+  compressor-prebatch promotion changed the previous profile materially:
+  compressor/indexer is no longer the largest tail component.
+- Widths 2 and 3 still have one batch each. Their apparent amortization and
+  the width-3/4 inverse-RoPE outliers are not optimization evidence.
+
+Interpretation:
+
+- The `attention` bucket mixes raw, dense-mixed, and sparse-indexed calls with
+  different kernels. Selecting a kernel from the aggregate `0.382 ms/row`
+  would be underdetermined.
+- KV/cache update already fuses FP8 quantization with raw-cache storage.
+  Projection A and B have a real low-rank dependency, while the retired whole
+  suffix batch showed that crossing it by deferral is harmful.
+- Before another runtime candidate, split the stable attention bucket by its
+  actual route and verifier width. This is one additional attribution process,
+  not a throughput benchmark.
+
+## Phase 1.55: post-prebatch attention-route profile prepared
+
+Implementation:
+
+- Added `speed-bench/run_dspark_threshold075_width_attention_profile.py`.
+  It consumes the clean Phase 1.45 cumulative throughput artifact, Phase 1.46
+  cost audit, Phase 1.47 width-layer profile, and the Phase 1.54 serial-tail
+  artifact. Provenance, clean-tree state, task, threshold, layer, proposal
+  widths, output hash, and all reference paths are cross-validated.
+- One layer-42 process enables the existing exact-attention boundaries and
+  labels every one-row call `raw`, `dense_mixed`, or `sparse_indexed`.
+  Events are assigned sequentially to the exact verifier's control-stage
+  schedule, preserving overlapping-position correctness if later target
+  evaluations revisit positions.
+- The report groups route row counts and medians by verifier width. At stable
+  width 5 it additionally reports route row share, summed synchronized cost,
+  and cost share. This distinguishes the most expensive route per invocation
+  from the route that owns the largest portion of total attention work.
+- Added model-free environment, assignment, schedule-rejection, summary, and
+  report tests. Thirteen targeted width-tail and attention-route tests pass;
+  both files compile, and a real dry run resolves exactly one profile process.
+  No model inference was performed during preparation.
+
+User-run command:
+
+```sh
+python3 speed-bench/run_dspark_threshold075_width_attention_profile.py \
+  --throughput-reference \
+  speed-bench/local-runs/humaneval-cumulative-throughput-32-20260719-223901/summary.json \
+  --cost-reference \
+  speed-bench/local-runs/humaneval-cumulative-cost-20260719-225512/summary.json \
+  --layer-reference \
+  speed-bench/local-runs/post-promotion-width-layer-20260719-232840/summary.json \
+  --tail-reference \
+  speed-bench/local-runs/post-promotion-width-tail-20260720-123704/summary.json \
+  --confirm-ready
+```
+
+Decision boundary:
+
+- Use width-5 summed cost share to choose the route-specific Metal candidate.
+  A sparse route with the highest per-row median does not justify a sparse
+  kernel change if dense-mixed rows own most of the measured attention cost.
+- Do not compare synchronized absolute timings with generation throughput.
+  The next candidate must preserve the current attention arithmetic and
+  byte-identical output gate; the correctness-rejected direct dense-mixed
+  reduction remains retired.
