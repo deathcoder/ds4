@@ -727,6 +727,10 @@ already-verified target rows. This is the default exact path after a paired,
 byte-identical Metal gate measured a `1.1774x` median speed ratio over replay.
 Set `DS4_DSPARK_EXACT_PREFIX_CHECKPOINT=0` only to use the legacy replay path.
 
+Metal development work that reads dense mixed raw/compressed caches directly
+must follow [DSPARK_DENSE_MIXED_CONTRACT.md](DSPARK_DENSE_MIXED_CONTRACT.md).
+It freezes ring order, F16 conversion, padding masks, and split-K arithmetic.
+
 For development, `--dspark-probe` runs a diagnostic prompt through the
 target-layer mean-HC capture bridge and DSpark `main_proj/main_norm`, executes
 the sidecar block, runs Markov-biased logits and confidence scores with an

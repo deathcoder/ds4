@@ -12151,3 +12151,43 @@ Next direction:
   softmax arithmetic, or reduction order. Before implementation, map the
   prepare kernel's exact row layout, mask values, source formats, and padding
   rules into a small explicit contract.
+
+## Phase 1.58: split-source dense-mixed contract frozen
+
+Contract:
+
+- Added `DSPARK_DENSE_MIXED_CONTRACT.md` as the standalone reference for any
+  prepare-free candidate. The promoted route is eligible only with compressed
+  rows present, no compressed mask, width `512`, and no inverse RoPE.
+- Logical cache rows are `[all raw rows oldest-to-newest, all compressed rows
+  in stored order, zero padding to a multiple of 32]`. Raw logical row `r`
+  maps to physical ring row `(raw_start + r) % raw_cap`.
+- The materialized cache is row-major F16 and is bound as both K and V. Every
+  FP32 raw or compressed value crosses the exact `(half)` conversion boundary
+  before the dot product; an F16 compressed value remains F16.
+- Real rows receive a `0.0h` mask. Padded rows contain zero K/V and receive
+  `-MAXHALF`. FlashAttention traverses `n_rows`, not `n_keys`, with mask support
+  enabled and the generic tail-pad route disabled.
+- Query layout, 32-row chunk assignment, softmax partials, sink handling,
+  temporary layout, and the promoted final reduction are outside the allowed
+  change. A candidate may specialize only the K/V and mask source loads.
+
+Validation:
+
+- Added six synthetic model-free tests covering a wrapped raw ring, FP32 and
+  F16 compressed sources, padded tails, an exact 32-row boundary, production
+  source bindings, and the written arithmetic contract. All focused tests pass.
+- The tests use an IEEE binary16 storage round-trip to make the conversion
+  boundary observable rather than comparing only source-row identities.
+- No Metal runtime code, model inference, profiler, or throughput benchmark was
+  added or run in this contract phase.
+
+Next step:
+
+- Prepare a diagnostic parity route before a throughput candidate. It should
+  compare the current materialized F16 K/V plus mask with a split-source view
+  across the real correctness fixtures, report ring-wrap and both compressed
+  formats when exercised, and fall back without changing target output.
+- Only after parity is established should the current split-K vector kernel be
+  specialized to load raw/compressed/padded rows directly. Do not copy the
+  rejected sequential direct-attention arithmetic.
