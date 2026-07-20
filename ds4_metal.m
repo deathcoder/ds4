@@ -2040,6 +2040,26 @@ static int ds4_gpu_dense_mixed_split_source_parity_enabled(void) {
     return enabled;
 }
 
+static int ds4_gpu_use_dense_mixed_split_source(void) {
+    static int initialized;
+    static int enabled;
+    if (!initialized) {
+        enabled = getenv("DS4_METAL_DENSE_MIXED_SPLIT_SOURCE") != NULL;
+        initialized = 1;
+    }
+    return enabled;
+}
+
+static int ds4_gpu_trace_dense_mixed_split_source(void) {
+    static int initialized;
+    static int enabled;
+    if (!initialized) {
+        enabled = getenv("DS4_METAL_DENSE_MIXED_SPLIT_SOURCE_TRACE") != NULL;
+        initialized = 1;
+    }
+    return enabled;
+}
+
 static int ds4_gpu_device_name_contains(const char *needle);
 
 static int ds4_gpu_env_value_eq(const char *v, size_t n, const char *literal) {
@@ -2525,14 +2545,16 @@ static id<MTLComputePipelineState> ds4_gpu_get_flash_attn_vec_pipeline(
         int32_t     ns10,
         int32_t     ns20,
         int32_t     nsg,
-        int32_t     nwg) {
-    NSString *key = [NSString stringWithFormat:@"%s_mask=%d_sinks=%d_bias=%d_scap=%d_kvpad=%d_ns10=%d_ns20=%d_nsg=%d_nwg=%d",
+        int32_t     nwg,
+        bool        split_source) {
+    NSString *key = [NSString stringWithFormat:@"%s_mask=%d_sinks=%d_bias=%d_scap=%d_kvpad=%d_split=%d_ns10=%d_ns20=%d_nsg=%d_nwg=%d",
                      function_name,
                      has_mask ? 1 : 0,
                      has_sinks ? 1 : 0,
                      has_bias ? 1 : 0,
                      has_scap ? 1 : 0,
                      has_kvpad ? 1 : 0,
+                     split_source ? 1 : 0,
                      (int)ns10,
                      (int)ns20,
                      (int)nsg,
@@ -2546,6 +2568,7 @@ static id<MTLComputePipelineState> ds4_gpu_get_flash_attn_vec_pipeline(
     [constants setConstantValue:&has_bias  type:MTLDataTypeBool atIndex:402];
     [constants setConstantValue:&has_scap  type:MTLDataTypeBool atIndex:403];
     [constants setConstantValue:&has_kvpad type:MTLDataTypeBool atIndex:404];
+    [constants setConstantValue:&split_source type:MTLDataTypeBool atIndex:405];
     [constants setConstantValue:&ns10 type:MTLDataTypeInt atIndex:420];
     [constants setConstantValue:&ns20 type:MTLDataTypeInt atIndex:421];
     [constants setConstantValue:&nsg  type:MTLDataTypeInt atIndex:422];
@@ -4434,6 +4457,17 @@ typedef struct {
     uint64_t raw_row_stride;
     uint64_t comp_row_stride;
 } ds4_gpu_dsv4_dense_mixed_prepare_args;
+
+typedef struct {
+    uint32_t n_raw;
+    uint32_t raw_cap;
+    uint32_t raw_start;
+    uint32_t n_comp;
+    uint32_t comp_kv_f16;
+    uint32_t pad0;
+    uint64_t raw_row_stride;
+    uint64_t comp_row_stride;
+} ds4_gpu_flash_attn_vec_split_source_args;
 
 typedef struct {
     uint32_t kv_elements;
@@ -17997,7 +18031,8 @@ static int ds4_gpu_encode_flash_attention_raw_heads(
                                               (int32_t)head_dim,
                                               (int32_t)head_dim,
                                               (int32_t)nsg,
-                                              (int32_t)nwg);
+                                              (int32_t)nwg,
+                                              false);
     id<MTLComputePipelineState> reduce_pipeline =
         ds4_gpu_get_flash_attn_reduce_pipeline(
             (int32_t)head_dim, (int32_t)nwg, inverse_rope != NULL);
@@ -18683,7 +18718,8 @@ static int ds4_gpu_encode_flash_attention_prefill_static_mixed_heads_vec(
                                               (int32_t)head_dim,
                                               (int32_t)head_dim,
                                               (int32_t)nsg,
-                                              (int32_t)nwg);
+                                              (int32_t)nwg,
+                                              false);
     id<MTLComputePipelineState> reduce_pipeline =
         ds4_gpu_get_flash_attn_reduce_pipeline(
             (int32_t)head_dim, (int32_t)nwg, false);
@@ -19189,7 +19225,8 @@ static int ds4_gpu_encode_flash_attention_prefill_raw_heads(
                                               (int32_t)head_dim,
                                               (int32_t)head_dim,
                                               (int32_t)nsg,
-                                              (int32_t)nwg);
+                                              (int32_t)nwg,
+                                              false);
     id<MTLComputePipelineState> reduce_pipeline =
         ds4_gpu_get_flash_attn_reduce_pipeline(
             (int32_t)head_dim, (int32_t)nwg, false);
@@ -19406,7 +19443,8 @@ static int ds4_gpu_encode_flash_attention_gathered_heads(
                                               (int32_t)head_dim,
                                               (int32_t)head_dim,
                                               (int32_t)nsg,
-                                              (int32_t)nwg);
+                                              (int32_t)nwg,
+                                              false);
     id<MTLComputePipelineState> reduce_pipeline =
         ds4_gpu_get_flash_attn_reduce_pipeline(
             (int32_t)head_dim, (int32_t)nwg, inverse_rope != NULL);
@@ -20855,6 +20893,8 @@ static int ds4_gpu_encode_dense_mixed_attention_fused_gather_heads(
         n_keys <= 256u && ds4_gpu_use_dense_mixed_attention_nwg8();
     const bool split_source_parity =
         ds4_gpu_dense_mixed_split_source_parity_enabled();
+    const bool use_split_source =
+        ds4_gpu_use_dense_mixed_split_source();
     const uint32_t nwg = use_nwg8 ? 8u : 32u;
     const uint32_t nsg = ds4_gpu_flash_attn_vec_nsg(n_keys, nwg, ncpsg);
     id<MTLComputePipelineState> vec_pipeline =
@@ -20868,11 +20908,16 @@ static int ds4_gpu_encode_dense_mixed_attention_fused_gather_heads(
             (int32_t)head_dim,
             (int32_t)head_dim,
             (int32_t)nsg,
-            (int32_t)nwg);
+            (int32_t)nwg,
+            use_split_source);
     id<MTLComputePipelineState> reduce_pipeline =
         ds4_gpu_get_flash_attn_reduce_pipeline(
             (int32_t)head_dim, (int32_t)nwg, false);
-    if (!g_dsv4_dense_mixed_prepare_pipeline ||
+    if ((!use_split_source || split_source_parity) &&
+        !g_dsv4_dense_mixed_prepare_pipeline) {
+        return 0;
+    }
+    if (
         (split_source_parity &&
          (!g_dsv4_dense_mixed_split_source_view_pipeline ||
           !g_dsv4_dense_mixed_split_source_compare_pipeline)) ||
@@ -20891,15 +20936,18 @@ static int ds4_gpu_encode_dense_mixed_attention_fused_gather_heads(
     const NSUInteger tmp_bytes =
         nrows * (NSUInteger)head_dim * (NSUInteger)nwg * sizeof(float) +
         nrows * (2u * (NSUInteger)nwg) * sizeof(float);
-    if (!ds4_gpu_ensure_scratch_buffer(&g_flash_attn_kv_buffer,
-                                         &g_flash_attn_kv_bytes,
-                                         kv_bytes,
-                                         "ds4_flash_attn_kv") ||
-        !ds4_gpu_ensure_scratch_buffer(&g_flash_attn_mask_buffer,
-                                         &g_flash_attn_mask_bytes,
-                                         mask_bytes,
-                                         "ds4_flash_attn_mask") ||
-        !ds4_gpu_ensure_scratch_buffer(&g_flash_attn_tmp_buffer,
+    if ((!use_split_source || split_source_parity) &&
+        (!ds4_gpu_ensure_scratch_buffer(&g_flash_attn_kv_buffer,
+                                          &g_flash_attn_kv_bytes,
+                                          kv_bytes,
+                                          "ds4_flash_attn_kv") ||
+         !ds4_gpu_ensure_scratch_buffer(&g_flash_attn_mask_buffer,
+                                          &g_flash_attn_mask_bytes,
+                                          mask_bytes,
+                                          "ds4_flash_attn_mask"))) {
+        return 0;
+    }
+    if (!ds4_gpu_ensure_scratch_buffer(&g_flash_attn_tmp_buffer,
                                          &g_flash_attn_tmp_bytes,
                                          tmp_bytes,
                                          "ds4_flash_attn_tmp")) {
@@ -20926,6 +20974,16 @@ static int ds4_gpu_encode_dense_mixed_attention_fused_gather_heads(
         .n_comp = n_comp,
         .n_rows = n_rows,
         .row_width = head_dim,
+        .comp_kv_f16 = comp_kv_f16 ? 1u : 0u,
+        .pad0 = 0,
+        .raw_row_stride = row_bytes,
+        .comp_row_stride = comp_kv_f16 ? row_bytes_f16 : row_bytes,
+    };
+    ds4_gpu_flash_attn_vec_split_source_args split_source_args = {
+        .n_raw = n_raw,
+        .raw_cap = raw_cap,
+        .raw_start = raw_start,
+        .n_comp = n_comp,
         .comp_kv_f16 = comp_kv_f16 ? 1u : 0u,
         .pad0 = 0,
         .raw_row_stride = row_bytes,
@@ -21000,24 +21058,27 @@ static int ds4_gpu_encode_dense_mixed_attention_fused_gather_heads(
         } \
     } while (0)
 
-    id<MTLComputeCommandEncoder> enc = ds4_gpu_compute_encoder(cb);
-    [enc setComputePipelineState:g_dsv4_dense_mixed_prepare_pipeline];
-    [enc setBytes:&prepare_args length:sizeof(prepare_args) atIndex:0];
-    [enc setBuffer:rawbuf offset:ds4_gpu_tensor_offset(raw_kv) atIndex:1];
-    [enc setBuffer:compbuf offset:ds4_gpu_tensor_offset(comp_kv) atIndex:2];
-    [enc setBuffer:g_flash_attn_kv_buffer offset:0 atIndex:3];
-    [enc setBuffer:g_flash_attn_mask_buffer offset:0 atIndex:4];
-    const NSUInteger prepare_threads = 256u;
-    const NSUInteger prepare_count =
-        (NSUInteger)n_rows * (NSUInteger)head_dim;
-    [enc dispatchThreadgroups:
-             MTLSizeMake(
-                 (prepare_count + prepare_threads - 1u) / prepare_threads,
-                 1,
-                 1)
-         threadsPerThreadgroup:MTLSizeMake(prepare_threads, 1, 1)];
-    ds4_gpu_end_compute_encoder(cb, enc);
-    DS4_METAL_PROFILE_FUSED_GATHER_STAGE("prepare");
+    id<MTLComputeCommandEncoder> enc = nil;
+    if (!use_split_source || split_source_parity) {
+        enc = ds4_gpu_compute_encoder(cb);
+        [enc setComputePipelineState:g_dsv4_dense_mixed_prepare_pipeline];
+        [enc setBytes:&prepare_args length:sizeof(prepare_args) atIndex:0];
+        [enc setBuffer:rawbuf offset:ds4_gpu_tensor_offset(raw_kv) atIndex:1];
+        [enc setBuffer:compbuf offset:ds4_gpu_tensor_offset(comp_kv) atIndex:2];
+        [enc setBuffer:g_flash_attn_kv_buffer offset:0 atIndex:3];
+        [enc setBuffer:g_flash_attn_mask_buffer offset:0 atIndex:4];
+        const NSUInteger prepare_threads = 256u;
+        const NSUInteger prepare_count =
+            (NSUInteger)n_rows * (NSUInteger)head_dim;
+        [enc dispatchThreadgroups:
+                 MTLSizeMake(
+                     (prepare_count + prepare_threads - 1u) / prepare_threads,
+                     1,
+                     1)
+             threadsPerThreadgroup:MTLSizeMake(prepare_threads, 1, 1)];
+        ds4_gpu_end_compute_encoder(cb, enc);
+        DS4_METAL_PROFILE_FUSED_GATHER_STAGE("prepare");
+    }
 
     if (split_source_parity) {
         id<MTLBuffer> parity_result_buffer =
@@ -21104,12 +21165,31 @@ static int ds4_gpu_encode_dense_mixed_attention_fused_gather_heads(
     [enc setComputePipelineState:vec_pipeline];
     [enc setBytes:&vec_args length:sizeof(vec_args) atIndex:0];
     [enc setBuffer:qbuf offset:ds4_gpu_tensor_offset(q) atIndex:1];
-    [enc setBuffer:g_flash_attn_kv_buffer offset:0 atIndex:2];
-    [enc setBuffer:g_flash_attn_kv_buffer offset:0 atIndex:3];
-    [enc setBuffer:g_flash_attn_mask_buffer offset:0 atIndex:4];
+    [enc setBuffer:use_split_source ? rawbuf : g_flash_attn_kv_buffer
+            offset:use_split_source ? ds4_gpu_tensor_offset(raw_kv) : 0
+           atIndex:2];
+    [enc setBuffer:use_split_source ? rawbuf : g_flash_attn_kv_buffer
+            offset:use_split_source ? ds4_gpu_tensor_offset(raw_kv) : 0
+           atIndex:3];
+    [enc setBuffer:use_split_source ? rawbuf : g_flash_attn_mask_buffer
+            offset:use_split_source ? ds4_gpu_tensor_offset(raw_kv) : 0
+           atIndex:4];
     [enc setBuffer:sinks_buf offset:sinks_offset atIndex:5];
-    [enc setBuffer:g_flash_attn_kv_buffer offset:0 atIndex:6];
+    [enc setBuffer:use_split_source ? rawbuf : g_flash_attn_kv_buffer
+            offset:use_split_source ? ds4_gpu_tensor_offset(raw_kv) : 0
+           atIndex:6];
     [enc setBuffer:g_flash_attn_tmp_buffer offset:0 atIndex:7];
+    if (use_split_source) {
+        [enc setBytes:&split_source_args
+               length:sizeof(split_source_args)
+              atIndex:8];
+        [enc setBuffer:rawbuf
+                offset:ds4_gpu_tensor_offset(raw_kv)
+               atIndex:9];
+        [enc setBuffer:compbuf
+                offset:ds4_gpu_tensor_offset(comp_kv)
+               atIndex:10];
+    }
     const NSUInteger shared_elems =
         (ds4_gpu_align_up_ns(head_dim, 128u) +
          4u * ncpsg +
@@ -21154,6 +21234,18 @@ static int ds4_gpu_encode_dense_mixed_attention_fused_gather_heads(
                     "ds4: Metal dense mixed attention NWG8 keys=%u "
                     "chunks=%u result=ok\n",
                     n_keys, (n_keys + ncpsg - 1u) / ncpsg);
+            reported = 1;
+        }
+    }
+    if (use_split_source && ds4_gpu_trace_dense_mixed_split_source()) {
+        static int reported;
+        if (!reported) {
+            fprintf(stderr,
+                    "ds4: Metal dense mixed split-source vector "
+                    "raw=%u compressed=%u raw_start=%u comp_f16=%u "
+                    "rows=%u result=ok\n",
+                    n_raw, n_comp, raw_start, comp_kv_f16 ? 1u : 0u,
+                    n_rows);
             reported = 1;
         }
     }

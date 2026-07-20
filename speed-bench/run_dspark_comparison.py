@@ -87,6 +87,7 @@ EXPERIMENT_ENV_KEYS = (
     "DS4_METAL_DENSE_MIXED_DIRECT",
     "DS4_METAL_DENSE_MIXED_GATHERED_LEGACY",
     "DS4_METAL_DENSE_MIXED_NWG8",
+    "DS4_METAL_DENSE_MIXED_SPLIT_SOURCE",
     "DS4_METAL_DECODE_INDEXER_SPARSE_THRESHOLD",
 )
 
@@ -215,6 +216,14 @@ def parse_args():
         ),
     )
     parser.add_argument(
+        "--dense-mixed-split-source-ablation",
+        action="store_true",
+        help=(
+            "compare the prepared dense-mixed split-K vector against direct "
+            "raw/compressed source loads"
+        ),
+    )
+    parser.add_argument(
         "--exact-routed-moe-hybrid-ablation",
         action="store_true",
         help=(
@@ -292,6 +301,7 @@ def parse_args():
             args.exact_attention_output_nr8_ablation,
             args.dense_mixed_direct_ablation,
             args.dense_mixed_nwg8_ablation,
+            args.dense_mixed_split_source_ablation,
             args.exact_routed_moe_hybrid_ablation,
             args.exact_q2_down_batch_ablation,
             args.exact_routed_gate_up_pair_w5_ablation,
@@ -314,6 +324,7 @@ def parse_args():
             "--exact-attention-output-nr8-ablation, and "
             "--dense-mixed-direct-ablation, and "
             "--dense-mixed-nwg8-ablation, and "
+            "--dense-mixed-split-source-ablation, and "
             "--exact-routed-moe-hybrid-ablation "
             "and --exact-q2-down-batch-ablation "
             "and --exact-routed-gate-up-pair-w5-ablation "
@@ -370,6 +381,8 @@ def check_inputs(args, root):
 
 
 def benchmark_modes(args):
+    if getattr(args, "dense_mixed_split_source_ablation", False):
+        return ("default_exact", "dense_mixed_split_source")
     if getattr(args, "dense_mixed_nwg8_ablation", False):
         return ("default_exact", "dense_mixed_nwg8")
     if getattr(args, "exact_compressor_pre_batch_ablation", False):
@@ -435,6 +448,7 @@ def mode_label(mode, args):
         "dense_mixed_gathered_legacy":
             "Legacy gathered dense-mixed attention DSpark",
         "dense_mixed_nwg8": "Dense-mixed NWG8 DSpark",
+        "dense_mixed_split_source": "Dense-mixed split-source DSpark",
         "legacy_routed_moe_rows": "Legacy row-wise routed-MoE DSpark",
         "exact_q2_down_batch": "Single-dispatch exact Q2 down DSpark",
         "exact_routed_gate_up_pair_w5":
@@ -465,6 +479,7 @@ def throughput_runtime_stats_enabled(args):
         or getattr(args, "exact_attention_output_nr8_ablation", False)
         or getattr(args, "dense_mixed_direct_ablation", False)
         or getattr(args, "dense_mixed_nwg8_ablation", False)
+        or getattr(args, "dense_mixed_split_source_ablation", False)
         or getattr(args, "exact_routed_moe_hybrid_ablation", False)
         or getattr(args, "exact_q2_down_batch_ablation", False)
         or getattr(args, "exact_routed_gate_up_pair_w5_ablation", False)
@@ -515,6 +530,8 @@ def clean_dspark_env(mode, fast_verifier=False, runtime_stats=True):
             env["DS4_METAL_DENSE_MIXED_GATHERED_LEGACY"] = "1"
         if mode == "dense_mixed_nwg8":
             env["DS4_METAL_DENSE_MIXED_NWG8"] = "1"
+        if mode == "dense_mixed_split_source":
+            env["DS4_METAL_DENSE_MIXED_SPLIT_SOURCE"] = "1"
         if mode == "legacy_routed_moe_rows":
             env["DS4_DSPARK_EXACT_ROUTED_MOE_HYBRID"] = "0"
         if mode == "exact_q2_down_batch":
@@ -563,6 +580,7 @@ def mode_command(args, mode):
             getattr(args, "exact_attention_output_nr8_ablation", False) or
             getattr(args, "dense_mixed_direct_ablation", False) or
             getattr(args, "dense_mixed_nwg8_ablation", False) or
+            getattr(args, "dense_mixed_split_source_ablation", False) or
             getattr(args, "exact_routed_moe_hybrid_ablation", False) or
             getattr(args, "exact_q2_down_batch_ablation", False) or
             getattr(args, "exact_routed_gate_up_pair_w5_ablation", False) or
@@ -613,6 +631,8 @@ def command_text(args, mode, runtime_stats=None):
             env += "DS4_METAL_DENSE_MIXED_GATHERED_LEGACY=1 "
         if mode == "dense_mixed_nwg8":
             env += "DS4_METAL_DENSE_MIXED_NWG8=1 "
+        if mode == "dense_mixed_split_source":
+            env += "DS4_METAL_DENSE_MIXED_SPLIT_SOURCE=1 "
         if mode == "legacy_routed_moe_rows":
             env += "DS4_DSPARK_EXACT_ROUTED_MOE_HYBRID=0 "
         if mode == "exact_q2_down_batch":
@@ -798,6 +818,8 @@ def collect_metadata(args, root):
                 getattr(args, "dense_mixed_direct_ablation", False),
             "dense_mixed_nwg8_ablation":
                 getattr(args, "dense_mixed_nwg8_ablation", False),
+            "dense_mixed_split_source_ablation":
+                getattr(args, "dense_mixed_split_source_ablation", False),
             "exact_routed_moe_hybrid_ablation":
                 getattr(args, "exact_routed_moe_hybrid_ablation", False),
             "exact_q2_down_batch_ablation":
@@ -871,6 +893,8 @@ def summarize(rows, modes=("baseline", "runtime")):
             "dense_mixed_fused_gather_promotion_ablation",
         ("default_exact", "dense_mixed_nwg8"):
             "dense_mixed_nwg8_ablation",
+        ("default_exact", "dense_mixed_split_source"):
+            "dense_mixed_split_source_ablation",
         ("legacy_routed_moe_rows", "default_exact"):
             "exact_routed_moe_hybrid_ablation",
         ("default_exact", "exact_q2_down_batch"):
@@ -990,6 +1014,16 @@ def summarize(rows, modes=("baseline", "runtime")):
             "default_exact_generation_tps_median": reference_median,
             "dense_mixed_nwg8_generation_tps_median": candidate_median,
             "dense_mixed_nwg8_delta_percent":
+                (candidate_median / reference_median - 1.0) * 100.0,
+        })
+        return summary
+
+    if modes == ("default_exact", "dense_mixed_split_source"):
+        summary.update({
+            "default_exact_generation_tps_median": reference_median,
+            "dense_mixed_split_source_generation_tps_median":
+                candidate_median,
+            "dense_mixed_split_source_delta_percent":
                 (candidate_median / reference_median - 1.0) * 100.0,
         })
         return summary
@@ -1351,6 +1385,20 @@ def format_report(summary):
             f"- Median paired ratio: {summary['paired_speedup_median']:.4f}x\n"
             f"- Dense-mixed NWG8 delta: "
             f"{summary['dense_mixed_nwg8_delta_percent']:+.1f}%\n"
+            f"- Measured pairs: {len(summary['paired_speedup_values'])}\n"
+        )
+
+    if summary["comparison"] == "dense_mixed_split_source_ablation":
+        return (
+            "# DSpark Dense-Mixed Split-Source Ablation\n\n"
+            f"- Prepared split-K median: "
+            f"{summary['default_exact_generation_tps_median']:.2f} t/s\n"
+            f"- Split-source median: "
+            f"{summary['dense_mixed_split_source_generation_tps_median']:.2f} t/s\n"
+            f"- Ratio of medians: {summary['median_ratio_of_medians']:.4f}x\n"
+            f"- Median paired ratio: {summary['paired_speedup_median']:.4f}x\n"
+            f"- Split-source delta: "
+            f"{summary['dense_mixed_split_source_delta_percent']:+.1f}%\n"
             f"- Measured pairs: {len(summary['paired_speedup_values'])}\n"
         )
 

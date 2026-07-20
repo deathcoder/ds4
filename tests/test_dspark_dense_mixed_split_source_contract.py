@@ -153,7 +153,7 @@ class DenseMixedSplitSourceContractTests(unittest.TestCase):
             "g_dsv4_dense_mixed_split_source_compare_pipeline", host
         )
         self.assertIn(
-            "[enc setBuffer:g_flash_attn_kv_buffer offset:0 atIndex:2]",
+            "use_split_source ? rawbuf : g_flash_attn_kv_buffer",
             host,
         )
         self.assertIn(
@@ -174,6 +174,44 @@ class DenseMixedSplitSourceContractTests(unittest.TestCase):
         )
         self.assertIn("result=(mismatch|command_error)", harness)
         self.assertIn("raw_start=[1-9][0-9]*", harness)
+
+    def test_split_source_vector_changes_only_source_loads(self):
+        host = (ROOT / "ds4_metal.m").read_text(encoding="utf-8")
+        flash = (ROOT / "metal/flash_attn.metal").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertIn(
+            'getenv("DS4_METAL_DENSE_MIXED_SPLIT_SOURCE")', host
+        )
+        self.assertIn(
+            "FC_flash_attn_ext_vec_split_source", flash
+        )
+        self.assertIn(
+            "ds4_flash_attn_dense_mixed_split_load", flash
+        )
+        self.assertIn(
+            "split_source.n_raw + split_source.n_comp", flash
+        )
+        self.assertIn(
+            "if (!use_split_source || split_source_parity)", host
+        )
+        self.assertIn(
+            "Metal dense mixed split-source vector ", host
+        )
+
+    def test_split_source_correctness_route_keeps_parity_enabled(self):
+        harness = (
+            ROOT / "tests/dspark_gpu_candidates_correctness.sh"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn(
+            "DS4_TEST_DSPARK_DENSE_MIXED_SPLIT_SOURCE:-0", harness
+        )
+        self.assertIn(
+            "SPLIT_SOURCE_PARITY:-$dense_mixed_split_source", harness
+        )
+        self.assertIn("DS4_METAL_DENSE_MIXED_SPLIT_SOURCE=1", harness)
 
     def test_written_contract_pins_arithmetic_boundary(self):
         contract = (

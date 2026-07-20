@@ -12265,3 +12265,57 @@ Next step:
   mapping while preserving chunk assignment, softmax partial arithmetic,
   temporary layout, and final reduction exactly. Keep the parity diagnostic
   available as the correctness oracle during the candidate phase.
+
+## Phase 1.61: prepare-free dense-mixed split-source candidate
+
+Implementation:
+
+- Added opt-in `DS4_METAL_DENSE_MIXED_SPLIT_SOURCE=1`. It specializes the
+  existing F16 512-wide FlashAttention vector pipeline with a compile-time
+  source mode; all ordinary vector pipelines explicitly compile that mode out.
+- The candidate resolves raw ring rows and compressed rows only at the existing
+  K and V load sites. FP32 values receive explicit scalar F16 conversion per
+  vector lane, F16 compressed values are loaded unchanged, padded rows produce
+  zero K/V, and padded mask lanes produce `-MAXHALF`.
+- The existing 32-row chunk loop, query staging, dot-product accumulation,
+  softmax partial updates, sink handling, temporary layout, split workgroup
+  count, and final reduction kernel are unchanged.
+- The consolidated prepare dispatch and its K/V and mask scratch allocations
+  are skipped only for the candidate. When the parity gate is also enabled,
+  prepare remains active solely to provide the canonical comparison buffers.
+- Extended the correctness matrix so selecting the candidate automatically
+  enables the parity oracle. The matrix requires the candidate trace, canonical
+  storage parity, a wrapped raw ring, and byte-identical target output.
+
+Validation:
+
+- Normal Metal host build passed without warnings. The runtime Metal library
+  compiled both ordinary and split-source vector specializations successfully.
+- All `242` DSpark model-free tests pass.
+- The exact-runtime correctness matrix passed reasoning, Italian,
+  medium-context, rolling-window, and resumed-chat outputs byte-for-byte.
+- Retained candidate logs contained `500/500` successful canonical storage
+  parity records, zero mismatches, `164` wrapped-ring records, and a candidate
+  engagement trace in every workload process.
+- Added `--dense-mixed-split-source-ablation` to the paired comparison runner.
+  Its dry run confirms both modes are exact Metal DSpark runs with all stats,
+  parity, tracing, and profiling disabled; only the candidate receives the
+  split-source environment variable.
+- No timed benchmark was run during implementation.
+
+User-run command:
+
+```sh
+python3 speed-bench/run_dspark_comparison.py \
+  --dense-mixed-split-source-ablation \
+  --confirm-idle
+```
+
+Decision boundary:
+
+- Require byte-identical output and a consistently positive three-pair focused
+  result before any broader HumanEval gate. A flat or negative result retires
+  the direct source-load candidate without changing the promoted prepared path.
+- Do not promote based on dispatch count alone. Direct raw F32 conversion is
+  repeated in attention workgroups, so only paired uninstrumented throughput
+  can determine whether eliminating prepare is a net win.

@@ -220,6 +220,44 @@ struct ds4_metal_args_flash_attn_ext_vec {
     float    logit_softcap;
 };
 
+struct ds4_metal_args_flash_attn_ext_vec_split_source {
+    uint32_t n_raw;
+    uint32_t raw_cap;
+    uint32_t raw_start;
+    uint32_t n_comp;
+    uint32_t comp_kv_f16;
+    uint32_t pad0;
+    uint64_t raw_row_stride;
+    uint64_t comp_row_stride;
+};
+
+static inline half4 ds4_flash_attn_dense_mixed_split_load(
+        constant ds4_metal_args_flash_attn_ext_vec_split_source & args,
+        device const char *raw_kv,
+        device const char *comp_kv,
+        uint row,
+        uint col4) {
+    if (row < args.n_raw) {
+        const uint raw_row = (args.raw_start + row) % args.raw_cap;
+        device const float4 *src = (device const float4 *)(raw_kv +
+            (uint64_t)raw_row * args.raw_row_stride);
+        const float4 source = src[col4];
+        return half4((half)source.x, (half)source.y,
+                     (half)source.z, (half)source.w);
+    }
+    if (row < args.n_raw + args.n_comp) {
+        device const char *base = comp_kv +
+            (uint64_t)(row - args.n_raw) * args.comp_row_stride;
+        if (args.comp_kv_f16 != 0u) {
+            return ((device const half4 *)base)[col4];
+        }
+        const float4 source = ((device const float4 *)base)[col4];
+        return half4((half)source.x, (half)source.y,
+                     (half)source.z, (half)source.w);
+    }
+    return half4(0.0h);
+}
+
 struct ds4_metal_args_flash_attn_ext_vec_reduce {
     int32_t nrows;
     ds4_metal_args_inverse_rope inverse_rope;
@@ -1031,6 +1069,7 @@ constant bool FC_flash_attn_ext_vec_has_sinks [[function_constant(FC_FLASH_ATTN_
 constant bool FC_flash_attn_ext_vec_has_bias  [[function_constant(FC_FLASH_ATTN_EXT_VEC + 2)]];
 constant bool FC_flash_attn_ext_vec_has_scap  [[function_constant(FC_FLASH_ATTN_EXT_VEC + 3)]];
 constant bool FC_flash_attn_ext_vec_has_kvpad [[function_constant(FC_FLASH_ATTN_EXT_VEC + 4)]];
+constant bool FC_flash_attn_ext_vec_split_source [[function_constant(FC_FLASH_ATTN_EXT_VEC + 5)]];
 constant int32_t FC_flash_attn_ext_vec_ns10 [[function_constant(FC_FLASH_ATTN_EXT_VEC + 20)]];
 constant int32_t FC_flash_attn_ext_vec_ns20 [[function_constant(FC_FLASH_ATTN_EXT_VEC + 21)]];
 constant int32_t FC_flash_attn_ext_vec_nsg  [[function_constant(FC_FLASH_ATTN_EXT_VEC + 22)]];
@@ -1067,6 +1106,9 @@ kernel void kernel_flash_attn_ext_vec(
         device const char * sinks,
         device const char * pad,
         device       char * dst,
+        constant ds4_metal_args_flash_attn_ext_vec_split_source & split_source,
+        device const char * split_raw_kv,
+        device const char * split_comp_kv,
         threadgroup  half * shmem_f16 [[threadgroup(0)]],
         uint3   tgpig[[threadgroup_position_in_grid]],
         ushort  tiisg[[thread_index_in_simdgroup]],
@@ -1190,7 +1232,13 @@ kernel void kernel_flash_attn_ext_vec(
             }
 
             if (FC_flash_attn_ext_vec_has_mask) {
-                sm[tiisg] = pm[ic + tiisg];
+                if (FC_flash_attn_ext_vec_split_source) {
+                    sm[tiisg] = ic + tiisg <
+                        split_source.n_raw + split_source.n_comp ?
+                        0.0h : (half)-MAXHALF;
+                } else {
+                    sm[tiisg] = pm[ic + tiisg];
+                }
             }
 
             if (simd_max(sm[tiisg]) <= -MAXHALF) {
@@ -1207,7 +1255,18 @@ kernel void kernel_flash_attn_ext_vec(
                 qk_t mqk[C/NE] = { [ 0 ... C/NE - 1] = 0.0f };
 
                 FOR_UNROLL (short cc = 0; cc < C/NE; ++cc) {
-                    if (is_same<kd4_t, k4_t>::value) {
+                    if (FC_flash_attn_ext_vec_split_source) {
+                        FOR_UNROLL (short ii = 0; ii < DK4/NL; ++ii) {
+                            const short i = ii*NL + tx;
+                            const uint row = ic + NE*cc + ty;
+                            const half4 mk =
+                                ds4_flash_attn_dense_mixed_split_load(
+                                    split_source, split_raw_kv,
+                                    split_comp_kv, row, i);
+                            mqk[cc] += dot((float4)mk,
+                                           (float4)sq4[i]);
+                        }
+                    } else if (is_same<kd4_t, k4_t>::value) {
                         FOR_UNROLL (short ii = 0; ii < DK4/NL; ++ii) {
                             mqk[cc] += dot((float4) pk4[cc*NE*NS10/4 +  ii*NL], (float4) pq4[ii*NL]);
                         }
@@ -1299,7 +1358,20 @@ kernel void kernel_flash_attn_ext_vec(
                     lo[ii] = 0.0f;
                 }
 
-                if (is_same<vd4_t, v4_t>::value) {
+                if (FC_flash_attn_ext_vec_split_source) {
+                    FOR_UNROLL (short cc = 0; cc < C/NE; ++cc) {
+                        FOR_UNROLL (short ii = 0; ii < DV4/NL; ++ii) {
+                            const short i = ii*NL + tx;
+                            const uint row = ic + NE*cc + ty;
+                            const half4 mv =
+                                ds4_flash_attn_dense_mixed_split_load(
+                                    split_source, split_raw_kv,
+                                    split_comp_kv, row, i);
+                            lo[ii] += o4_t(float4(mv) *
+                                float4(ss[NE*cc + ty]));
+                        }
+                    }
+                } else if (is_same<vd4_t, v4_t>::value) {
                     device const v4_t * pv4 = (device const v4_t *) (v + ic*args.nb21);
 
                     pv4 += ty*NS20/4 + tx;
