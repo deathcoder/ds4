@@ -104,7 +104,7 @@ def runtime_progress(accepted, width):
     # ds4's K=0 and K=1 routes both perform ordinary one-token target eval.
     if width < 2:
         return 1
-    return min(accepted, width) + 1
+    return max(1, min(accepted, width))
 
 
 def expected_progress(confidences, width, calibration_power=1.0):
@@ -112,9 +112,10 @@ def expected_progress(confidences, width, calibration_power=1.0):
         return 1.0
     expected = 1.0
     survival = 1.0
-    for confidence in confidences[:width]:
+    for position, confidence in enumerate(confidences[:width], start=1):
         survival *= confidence ** calibration_power
-        expected += survival
+        if position >= 2:
+            expected += survival
     return expected
 
 
@@ -244,7 +245,7 @@ def analyze(records, costs, trace_path=None, cost_path=None):
             "Width costs are pooled synchronized stats from another run, not per-round timings.",
             "Raw confidence values are not STS-calibrated probabilities.",
             "The full five-token sidecar cost is charged to every round because DSpark selects width after drafting.",
-            "Proxy improvement is a screening result, not a throughput prediction.",
+            "Proxy movement is a screening result, not a throughput prediction.",
         ],
     }
 

@@ -31,12 +31,12 @@ class DSparkCostAwareSchedulerTests(unittest.TestCase):
     def test_runtime_progress_preserves_one_token_fallback_semantics(self):
         self.assertEqual(audit.runtime_progress(5, 0), 1)
         self.assertEqual(audit.runtime_progress(5, 1), 1)
-        self.assertEqual(audit.runtime_progress(5, 2), 3)
-        self.assertEqual(audit.runtime_progress(1, 5), 2)
+        self.assertEqual(audit.runtime_progress(5, 2), 2)
+        self.assertEqual(audit.runtime_progress(1, 5), 1)
 
     def test_expected_progress_uses_conditional_survival(self):
         value = audit.expected_progress((0.8, 0.5, 0.1, 0.1, 0.1), 2)
-        self.assertAlmostEqual(value, 1.0 + 0.8 + 0.8 * 0.5)
+        self.assertAlmostEqual(value, 1.0 + 0.8 * 0.5)
         self.assertEqual(
             audit.expected_progress((1.0, 1.0, 1.0, 1.0, 1.0), 0),
             1.0,

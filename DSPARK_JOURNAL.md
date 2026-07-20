@@ -11813,38 +11813,39 @@ Interpretation boundary:
   candidate followed by the same byte-exact focused and broad uninstrumented
   gates used for prior scheduler changes.
 
-Model-free result:
+Runtime-progress correction:
 
-- Artifact:
-  `speed-bench/local-runs/humaneval-cost-aware-scheduler-20260720-113640`.
-- Static threshold `0.75` produced a `26.149` local progress/s proxy with mean
-  selected width `2.845`.
-- The measured-cost confidence policy produced `27.202`, or `1.0403x` pooled
-  movement. Its task-level geometric ratio was `1.0490x`, with `31/32` local
-  task wins. The sole loss was `humaneval_063` at `0.9867x`.
-- The candidate selected K=0/2/3/4/5 on `7/705/116/195/0` proposals. The
-  current exact cost curve makes width 5 locally unprofitable despite high
-  confidence; most proposals favor width 2, while widths 3 and 4 retain useful
-  high-confidence progress.
-- Fixed K=2 was weaker but still positive at `1.0197x` pooled and `1.0322x`
-  task-geometric, with `27/32` wins. Current confidence contributes useful
-  round-level discrimination beyond simply clamping maximum width.
-- The future-knowledge round oracle was `1.1414x` pooled. This bounds the local
-  scheduling opportunity without implying an achievable session speedup.
-- Raising confidence to every predeclared power from `0.5` through `2.0` left
-  pooled movement between `1.0379x` and `1.0411x`. The direction does not rely
-  on exact raw-sigmoid calibration.
+- The first analyzer revision incorrectly reused the paper accepted-length
+  convention, `accepted drafts + one bonus`, as if it were tokens returned by
+  one ds4 scheduler round. That produced a false positive and must not be used.
+- ds4's runtime counters establish the actual objective. K=0 and K=1 return
+  one token. For K>=2, one round returns
+  `max(1, min(accepted drafts, K))`; a fully accepted K=5 round returns five
+  tokens, not six. The current cumulative audit confirms scheduler progress is
+  bounded by selected width at every K.
+- Corrected `runtime_progress` and the expected-progress equation. The first
+  confidence still gates the verifier, but expected progress above one begins
+  only at survival through position 2.
 
-Decision:
+Corrected model-free result:
 
-- The screening gate passes. The next phase may implement a default-off
-  measured-cost scheduler candidate, but it must not hardcode this machine's
-  pooled width costs as production policy.
-- Adapt oMLX's measurement principle: warm each useful exact width, maintain
-  wall-time cost estimates, and use current DSpark confidence to maximize
-  expected progress over measured total cycle cost. Include the fixed full
-  sidecar tax and retain a shallow fallback route.
-- First validate controller logic model-free and byte-exact on the correctness
-  matrix. Then run a small frozen gate containing `humaneval_063`, a low-
-  acceptance case, and a high-acceptance case before considering a 32-task
-  confirmation. Codex must not run the timed gates.
+- Authoritative corrected artifact:
+  `speed-bench/local-runs/humaneval-cost-aware-scheduler-runtime-progress-20260720-114640`.
+- Static threshold `0.75` produces a `21.504` runtime-progress/s proxy.
+- Raw-confidence measured-cost scheduling produces `21.301`, or `0.9906x`
+  pooled movement. Its task-level geometric ratio is `0.9923x`, with only
+  `12/32` local task wins.
+- Fixed K=2 is materially worse at `0.8429x` pooled. The prior apparent K=2
+  benefit came entirely from crediting a nonexistent same-round bonus token.
+- Calibration powers `0.5..2.0` range from `0.9558x` to `0.9951x`; none beats
+  static threshold `0.75` under the corrected objective.
+
+Corrected decision:
+
+- The measured-cost runtime-controller gate fails. Do not add the controller
+  or spend a timed benchmark on it.
+- Retain the external survey and corrected analyzer as evidence. oMLX's
+  measured-depth idea is sound for runtimes whose round progress includes the
+  target bonus or whose chosen depth avoids draft work, but neither condition
+  holds for this DSpark loop.
+- Return to exact Metal verifier optimization with threshold `0.75` frozen.

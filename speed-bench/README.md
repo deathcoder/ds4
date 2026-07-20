@@ -689,11 +689,13 @@ python3 speed-bench/analyze_dspark_cost_aware_scheduler.py \
 ```
 
 The analyzer compares static threshold `0.75`, a raw-confidence policy that
-maximizes expected committed progress over measured round cost, fixed `K=2`,
-and a realized per-round oracle. Candidate widths are `{0,2,3,4,5}` because
-ds4's `K=0` and `K=1` paths both emit one ordinary target token. Every round is
-charged the full sidecar cost, since DSpark computes all five drafts before
-choosing verifier width. The result is a local counterfactual with pooled
+maximizes expected runtime tokens returned over measured round cost, fixed
+`K=2`, and a realized per-round oracle. Candidate widths are `{0,2,3,4,5}`
+because ds4's `K=0` and `K=1` paths both emit one ordinary target token. For
+`K>=2`, runtime progress is `max(1, min(accepted drafts, K))`; the paper's
+following bonus token is not credited to the same scheduler round. Every
+round is charged the full sidecar cost, since DSpark computes all five drafts
+before choosing verifier width. The result is a local counterfactual with pooled
 instrumented costs and frozen proposal boundaries, not a throughput forecast;
 it is only a gate for implementing an opt-in runtime controller.
 
