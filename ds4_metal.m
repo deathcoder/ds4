@@ -145,6 +145,7 @@ static id<MTLComputePipelineState> g_dsv4_dense_mixed_split_source_compare_pipel
 static id<MTLComputePipelineState> g_dsv4_softplus_sqrt_pipeline;
 static id<MTLComputePipelineState> g_dsv4_router_finalize_one_pipeline;
 static id<MTLComputePipelineState> g_dsv4_router_weights_one_pipeline;
+static id<MTLComputePipelineState> g_dsv4_router_weights_batch_pipeline;
 static id<MTLComputePipelineState> g_dsv4_hc_expand4_pipeline;
 static NSMutableDictionary<NSString *, id<MTLComputePipelineState>> *g_pipeline_cache;
 static NSMutableDictionary<NSString *, id<MTLBuffer>> *g_model_buffer_cache;
@@ -6613,6 +6614,8 @@ int ds4_gpu_init(void) {
             ds4_gpu_get_pipeline("kernel_dsv4_router_finalize_one");
         g_dsv4_router_weights_one_pipeline =
             ds4_gpu_get_pipeline("kernel_dsv4_router_weights_one");
+        g_dsv4_router_weights_batch_pipeline =
+            ds4_gpu_get_pipeline("kernel_dsv4_router_weights_batch");
         g_dsv4_hc_expand4_pipeline =
             ds4_gpu_get_pipeline("kernel_dsv4_hc_expand4");
         if (!g_dsv4_indexer_score_one_direct_pipeline ||
@@ -6630,6 +6633,8 @@ int ds4_gpu_init(void) {
             !g_dsv4_softplus_sqrt_pipeline ||
             !g_dsv4_router_finalize_one_pipeline ||
             !g_dsv4_router_weights_one_pipeline ||
+            (getenv("DS4_METAL_ENABLE_ROUTER_WEIGHTS_BATCH_FUSION") != NULL &&
+             !g_dsv4_router_weights_batch_pipeline) ||
             !g_dsv4_hc_expand4_pipeline) {
             g_queue = nil;
             g_device = nil;
@@ -7242,6 +7247,7 @@ void ds4_gpu_cleanup(void) {
         g_dsv4_softplus_sqrt_pipeline = nil;
         g_dsv4_router_finalize_one_pipeline = nil;
         g_dsv4_router_weights_one_pipeline = nil;
+        g_dsv4_router_weights_batch_pipeline = nil;
         g_dsv4_hc_expand4_pipeline = nil;
         g_flash_attn_mask_buffer = nil;
         g_flash_attn_pad_buffer = nil;
@@ -24156,6 +24162,32 @@ static int ds4_gpu_encode_router_select(
         ok = ds4_gpu_indexer_topk_tensor(selected, score_tensor, n_expert, n_tokens, n_expert_used) != 0;
     }
     if (!ok) return 0;
+
+    const bool use_batch_weights_fusion =
+        flash_router_fast_path && !g_quality_mode && n_tokens > 1u &&
+        g_dsv4_router_weights_batch_pipeline != nil &&
+        getenv("DS4_METAL_ENABLE_ROUTER_WEIGHTS_BATCH_FUSION") != NULL &&
+        getenv("DS4_METAL_DISABLE_ROUTER_SELECT_FUSION") == NULL;
+    if (use_batch_weights_fusion) {
+        const float scale = expert_weight_scale;
+        id<MTLComputeCommandEncoder> enc = ds4_gpu_compute_encoder(cb);
+        [enc setComputePipelineState:g_dsv4_router_weights_batch_pipeline];
+        [enc setBytes:&scale length:sizeof(scale) atIndex:0];
+        [enc setBuffer:probsbuf offset:probs_off atIndex:1];
+        [enc setBuffer:selectedbuf offset:selected_off atIndex:2];
+        [enc setBuffer:weightsbuf offset:weights_off atIndex:3];
+        [enc setThreadgroupMemoryLength:40u * sizeof(float) atIndex:0];
+        [enc dispatchThreadgroups:MTLSizeMake(n_tokens, 1, 1)
+             threadsPerThreadgroup:MTLSizeMake(6, 1, 1)];
+        ds4_gpu_end_compute_encoder(cb, enc);
+
+        if (getenv("DS4_METAL_TRACE_ROUTER_WEIGHTS_BATCH_FUSION") != NULL) {
+            fprintf(stderr,
+                    "ds4: Metal router weights batch fusion width=%u\n",
+                    n_tokens);
+        }
+        return 1;
+    }
 
     if (flash_router_fast_path && !g_quality_mode && n_tokens == 1) {
         id<MTLComputePipelineState> router_weights_pipeline =

@@ -12486,3 +12486,66 @@ Next direction:
   matrix. Then prepare a paired ordinary-baseline and scheduled-DSpark
   benchmark command for the user so any post-integration movement is measured
   explicitly.
+
+## Phase 1.64: upstream router-weight batch-fusion candidate
+
+Source review:
+
+- Reviewed upstream Metal optimization commit `427e281` by functional area
+  rather than applying its graph and kernel rewrite wholesale.
+- Most new upstream fast paths are gated for M3/M5 or overlap work already
+  measured on this branch. The smallest verifier-relevant port is
+  `kernel_dsv4_router_weights_batch`, which upstream uses to replace four
+  post-top-k router-weight dispatches with one dispatch for batched rows.
+- The kernel source was already present after upstream integration, but the
+  retained host path did not register or select its pipeline.
+
+Implementation:
+
+- Added opt-in `DS4_METAL_ENABLE_ROUTER_WEIGHTS_BATCH_FUSION=1` to register and
+  select the upstream batch-finalization kernel for the Flash router shape
+  (`256` experts, top `6`, scale `1.5`) when `n_tokens > 1`.
+- Default execution is unchanged on every device. Unlike upstream, this branch
+  does not auto-enable the path on M3 because the immediate validation target
+  is the user's M1 Ultra.
+- Added `DS4_METAL_TRACE_ROUTER_WEIGHTS_BATCH_FUSION=1` for correctness-only
+  engagement evidence.
+- Exact FFN verification still calls
+  `ds4_gpu_dsv4_router_weights_decode_rows_tensor` after the generic batched
+  router. That proven one-row kernel remains authoritative for final weights,
+  so the candidate changes scheduling cost without changing selected experts
+  or exact verifier weights.
+- Added `--router-weights-batch-fusion-ablation` to
+  `speed-bench/run_dspark_comparison.py`. Both modes are uninstrumented exact
+  Metal DSpark runs; only the candidate receives the fusion flag.
+
+Validation:
+
+- Normal Metal build passed.
+- Isolated Metal-kernel, DSpark metadata-validation, and DSpark shape-binding
+  tests passed.
+- The exact-runtime correctness matrix passed reasoning, Italian,
+  medium-context, rolling-window, and resumed-chat outputs byte-for-byte, and
+  its engagement assertion observed the fused batch kernel.
+- All `252` DSpark model-free tests pass, including new tests for environment
+  isolation, report generation, and exact-override ordering.
+- Benchmark dry run confirmed that diagnostics, traces, and runtime stats are
+  disabled in both measured modes. No timed benchmark was run during
+  implementation.
+
+User-run command:
+
+```sh
+python3 speed-bench/run_dspark_comparison.py \
+  --router-weights-batch-fusion-ablation \
+  --confirm-idle
+```
+
+Decision boundary:
+
+- Require a median paired ratio of at least `1.005x`, at least `2/3` faster
+  candidate pairs, and no pair below `0.99x` before running a broader
+  HumanEval confirmation.
+- A flat or negative result retires the candidate. Do not auto-promote it from
+  upstream's M3 policy because this machine is an M1 Ultra and Metal launch
+  economics are device-specific.

@@ -31,6 +31,7 @@ dense_mixed_gathered_legacy=${DS4_TEST_DSPARK_DENSE_MIXED_GATHERED_LEGACY:-0}
 dense_mixed_nwg8=${DS4_TEST_DSPARK_DENSE_MIXED_NWG8:-0}
 dense_mixed_split_source=${DS4_TEST_DSPARK_DENSE_MIXED_SPLIT_SOURCE:-0}
 dense_mixed_vector_prepare=${DS4_TEST_DSPARK_DENSE_MIXED_VECTOR_PREPARE:-0}
+router_weights_batch_fusion=${DS4_TEST_DSPARK_ROUTER_WEIGHTS_BATCH_FUSION:-0}
 dense_mixed_split_source_parity=${DS4_TEST_DSPARK_DENSE_MIXED_SPLIT_SOURCE_PARITY:-$dense_mixed_split_source}
 if [[ $dense_mixed_vector_prepare == 1 &&
       ${DS4_TEST_DSPARK_DENSE_MIXED_SPLIT_SOURCE_PARITY+x} != x ]]; then
@@ -89,6 +90,8 @@ unset DS4_METAL_DENSE_MIXED_SPLIT_SOURCE
 unset DS4_METAL_DENSE_MIXED_SPLIT_SOURCE_TRACE
 unset DS4_METAL_DENSE_MIXED_VECTOR_PREPARE
 unset DS4_METAL_DENSE_MIXED_VECTOR_PREPARE_TRACE
+unset DS4_METAL_ENABLE_ROUTER_WEIGHTS_BATCH_FUSION
+unset DS4_METAL_TRACE_ROUTER_WEIGHTS_BATCH_FUSION
 unset DS4_METAL_DECODE_INDEXER_SPARSE_THRESHOLD
 
 if [[ $fast_verify_observer == 1 && $fast_verify_runtime == 1 ]]; then
@@ -407,6 +410,17 @@ if [[ $exact_compressor_pre_batch == 1 &&
     printf 'exact compressor prebatch requires exact attention-pre runtime\n' >&2
     exit 2
 fi
+if [[ $router_weights_batch_fusion != 0 &&
+      $router_weights_batch_fusion != 1 ]]; then
+    printf 'DS4_TEST_DSPARK_ROUTER_WEIGHTS_BATCH_FUSION must be 0 or 1\n' >&2
+    exit 2
+fi
+if [[ $router_weights_batch_fusion == 1 &&
+      ($mode != runtime || $fast_verify_runtime == 1 ||
+       $serial_ffn_runtime == 1) ]]; then
+    printf 'router weights batch fusion requires batched exact FFN verification\n' >&2
+    exit 2
+fi
 if [[ -n $attn_suffix_observer_layer &&
       ($mode != runtime || $fast_verify_runtime == 1) ]]; then
     printf 'attention-suffix observer requires exact runtime verification\n' >&2
@@ -505,6 +519,12 @@ case "$mode" in
             gpu_env+=(
                 DS4_METAL_DENSE_MIXED_VECTOR_PREPARE=1
                 DS4_METAL_DENSE_MIXED_VECTOR_PREPARE_TRACE=1
+            )
+        fi
+        if [[ $router_weights_batch_fusion == 1 ]]; then
+            gpu_env+=(
+                DS4_METAL_ENABLE_ROUTER_WEIGHTS_BATCH_FUSION=1
+                DS4_METAL_TRACE_ROUTER_WEIGHTS_BATCH_FUSION=1
             )
         fi
         if [[ $serial_q8_rows_runtime == 1 ]]; then
@@ -1318,6 +1338,12 @@ if [[ $dense_mixed_vector_prepare == 1 ]] &&
    ! grep -q 'Metal dense mixed vector prepare .* result=ok$' \
         "$tmpdir"/*.log; then
     printf 'dense-mixed vector prepare did not engage\n' >&2
+    exit 1
+fi
+if [[ $router_weights_batch_fusion == 1 ]] &&
+   ! grep -q 'Metal router weights batch fusion width=' \
+        "$tmpdir"/*.log; then
+    printf 'router weights batch fusion did not engage\n' >&2
     exit 1
 fi
 if [[ $attn_inv_rope_fused == 1 ]]; then

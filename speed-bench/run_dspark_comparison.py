@@ -89,6 +89,7 @@ EXPERIMENT_ENV_KEYS = (
     "DS4_METAL_DENSE_MIXED_NWG8",
     "DS4_METAL_DENSE_MIXED_SPLIT_SOURCE",
     "DS4_METAL_DENSE_MIXED_VECTOR_PREPARE",
+    "DS4_METAL_ENABLE_ROUTER_WEIGHTS_BATCH_FUSION",
     "DS4_METAL_DECODE_INDEXER_SPARSE_THRESHOLD",
 )
 
@@ -233,6 +234,14 @@ def parse_args():
         ),
     )
     parser.add_argument(
+        "--router-weights-batch-fusion-ablation",
+        action="store_true",
+        help=(
+            "compare the default exact router-weight path against the "
+            "upstream batched weight-finalization kernel"
+        ),
+    )
+    parser.add_argument(
         "--exact-routed-moe-hybrid-ablation",
         action="store_true",
         help=(
@@ -312,6 +321,7 @@ def parse_args():
             args.dense_mixed_nwg8_ablation,
             args.dense_mixed_split_source_ablation,
             args.dense_mixed_vector_prepare_ablation,
+            args.router_weights_batch_fusion_ablation,
             args.exact_routed_moe_hybrid_ablation,
             args.exact_q2_down_batch_ablation,
             args.exact_routed_gate_up_pair_w5_ablation,
@@ -336,6 +346,7 @@ def parse_args():
             "--dense-mixed-nwg8-ablation, and "
             "--dense-mixed-split-source-ablation, and "
             "--dense-mixed-vector-prepare-ablation, and "
+            "--router-weights-batch-fusion-ablation, and "
             "--exact-routed-moe-hybrid-ablation "
             "and --exact-q2-down-batch-ablation "
             "and --exact-routed-gate-up-pair-w5-ablation "
@@ -392,6 +403,8 @@ def check_inputs(args, root):
 
 
 def benchmark_modes(args):
+    if getattr(args, "router_weights_batch_fusion_ablation", False):
+        return ("default_exact", "router_weights_batch_fusion")
     if getattr(args, "dense_mixed_vector_prepare_ablation", False):
         return ("default_exact", "dense_mixed_vector_prepare")
     if getattr(args, "dense_mixed_split_source_ablation", False):
@@ -463,6 +476,8 @@ def mode_label(mode, args):
         "dense_mixed_nwg8": "Dense-mixed NWG8 DSpark",
         "dense_mixed_split_source": "Dense-mixed split-source DSpark",
         "dense_mixed_vector_prepare": "Dense-mixed vector-prepare DSpark",
+        "router_weights_batch_fusion":
+            "Batched router-weight finalization DSpark",
         "legacy_routed_moe_rows": "Legacy row-wise routed-MoE DSpark",
         "exact_q2_down_batch": "Single-dispatch exact Q2 down DSpark",
         "exact_routed_gate_up_pair_w5":
@@ -495,6 +510,7 @@ def throughput_runtime_stats_enabled(args):
         or getattr(args, "dense_mixed_nwg8_ablation", False)
         or getattr(args, "dense_mixed_split_source_ablation", False)
         or getattr(args, "dense_mixed_vector_prepare_ablation", False)
+        or getattr(args, "router_weights_batch_fusion_ablation", False)
         or getattr(args, "exact_routed_moe_hybrid_ablation", False)
         or getattr(args, "exact_q2_down_batch_ablation", False)
         or getattr(args, "exact_routed_gate_up_pair_w5_ablation", False)
@@ -549,6 +565,8 @@ def clean_dspark_env(mode, fast_verifier=False, runtime_stats=True):
             env["DS4_METAL_DENSE_MIXED_SPLIT_SOURCE"] = "1"
         if mode == "dense_mixed_vector_prepare":
             env["DS4_METAL_DENSE_MIXED_VECTOR_PREPARE"] = "1"
+        if mode == "router_weights_batch_fusion":
+            env["DS4_METAL_ENABLE_ROUTER_WEIGHTS_BATCH_FUSION"] = "1"
         if mode == "legacy_routed_moe_rows":
             env["DS4_DSPARK_EXACT_ROUTED_MOE_HYBRID"] = "0"
         if mode == "exact_q2_down_batch":
@@ -599,6 +617,7 @@ def mode_command(args, mode):
             getattr(args, "dense_mixed_nwg8_ablation", False) or
             getattr(args, "dense_mixed_split_source_ablation", False) or
             getattr(args, "dense_mixed_vector_prepare_ablation", False) or
+            getattr(args, "router_weights_batch_fusion_ablation", False) or
             getattr(args, "exact_routed_moe_hybrid_ablation", False) or
             getattr(args, "exact_q2_down_batch_ablation", False) or
             getattr(args, "exact_routed_gate_up_pair_w5_ablation", False) or
@@ -653,6 +672,8 @@ def command_text(args, mode, runtime_stats=None):
             env += "DS4_METAL_DENSE_MIXED_SPLIT_SOURCE=1 "
         if mode == "dense_mixed_vector_prepare":
             env += "DS4_METAL_DENSE_MIXED_VECTOR_PREPARE=1 "
+        if mode == "router_weights_batch_fusion":
+            env += "DS4_METAL_ENABLE_ROUTER_WEIGHTS_BATCH_FUSION=1 "
         if mode == "legacy_routed_moe_rows":
             env += "DS4_DSPARK_EXACT_ROUTED_MOE_HYBRID=0 "
         if mode == "exact_q2_down_batch":
@@ -842,6 +863,8 @@ def collect_metadata(args, root):
                 getattr(args, "dense_mixed_split_source_ablation", False),
             "dense_mixed_vector_prepare_ablation":
                 getattr(args, "dense_mixed_vector_prepare_ablation", False),
+            "router_weights_batch_fusion_ablation":
+                getattr(args, "router_weights_batch_fusion_ablation", False),
             "exact_routed_moe_hybrid_ablation":
                 getattr(args, "exact_routed_moe_hybrid_ablation", False),
             "exact_q2_down_batch_ablation":
@@ -919,6 +942,8 @@ def summarize(rows, modes=("baseline", "runtime")):
             "dense_mixed_split_source_ablation",
         ("default_exact", "dense_mixed_vector_prepare"):
             "dense_mixed_vector_prepare_ablation",
+        ("default_exact", "router_weights_batch_fusion"):
+            "router_weights_batch_fusion_ablation",
         ("legacy_routed_moe_rows", "default_exact"):
             "exact_routed_moe_hybrid_ablation",
         ("default_exact", "exact_q2_down_batch"):
@@ -1057,6 +1082,16 @@ def summarize(rows, modes=("baseline", "runtime")):
             "scalar_prepare_generation_tps_median": reference_median,
             "vector_prepare_generation_tps_median": candidate_median,
             "vector_prepare_delta_percent":
+                (candidate_median / reference_median - 1.0) * 100.0,
+        })
+        return summary
+
+    if modes == ("default_exact", "router_weights_batch_fusion"):
+        summary.update({
+            "default_exact_generation_tps_median": reference_median,
+            "router_weights_batch_fusion_generation_tps_median":
+                candidate_median,
+            "router_weights_batch_fusion_delta_percent":
                 (candidate_median / reference_median - 1.0) * 100.0,
         })
         return summary
@@ -1446,6 +1481,20 @@ def format_report(summary):
             f"- Median paired ratio: {summary['paired_speedup_median']:.4f}x\n"
             f"- Vector prepare delta: "
             f"{summary['vector_prepare_delta_percent']:+.1f}%\n"
+            f"- Measured pairs: {len(summary['paired_speedup_values'])}\n"
+        )
+
+    if summary["comparison"] == "router_weights_batch_fusion_ablation":
+        return (
+            "# DSpark Router-Weight Batch Fusion Ablation\n\n"
+            f"- Default exact median: "
+            f"{summary['default_exact_generation_tps_median']:.2f} t/s\n"
+            f"- Batch-fused router weights median: "
+            f"{summary['router_weights_batch_fusion_generation_tps_median']:.2f} t/s\n"
+            f"- Ratio of medians: {summary['median_ratio_of_medians']:.4f}x\n"
+            f"- Median paired ratio: {summary['paired_speedup_median']:.4f}x\n"
+            f"- Batch-fusion delta: "
+            f"{summary['router_weights_batch_fusion_delta_percent']:+.1f}%\n"
             f"- Measured pairs: {len(summary['paired_speedup_values'])}\n"
         )
 
