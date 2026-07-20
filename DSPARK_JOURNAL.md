@@ -12549,3 +12549,21 @@ Decision boundary:
 - A flat or negative result retires the candidate. Do not auto-promote it from
   upstream's M3 policy because this machine is an M1 Ultra and Metal launch
   economics are device-specific.
+
+Measured result:
+
+- User-run paired, uninstrumented benchmark:
+  `speed-bench/local-runs/20260720-194404/results.csv`.
+- Default exact median: `16.58 t/s`; batch-fused median: `16.61 t/s`.
+- Ratio of medians and median paired ratio: `1.0018x` (`+0.2%`).
+- All three candidate samples were nominally faster, with paired ratios from
+  approximately `1.0018x` to `1.0048x`, and every output hash matched.
+
+Decision:
+
+- **RETIRE / DO NOT PROMOTE.** The candidate missed the frozen `1.005x`
+  median-paired threshold. The consistent direction suggests the upstream
+  kernel is valid on M1 Ultra, but its gain is below the level needed to
+  justify production selection or a 32-task confirmation.
+- Keep the path opt-in for reproducibility. The default exact verifier and
+  ordinary baseline remain unchanged.
