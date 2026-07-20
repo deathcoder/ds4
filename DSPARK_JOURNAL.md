@@ -99,12 +99,17 @@ activation/weight is `0.162` (`14.4%`), and sum is `0.018` (`1.6%`). The
 inner total reconciles to `0.960x` of its outer routed-MoE control. Width 5 is
 the stable sample with twenty evaluations; every output remained byte-exact.
 
-Phase 1.50 is prepared. A default-off exact-runtime candidate extends the
-existing paired IQ2_XXS routed gate/up kernel from widths 2-4 to width 5 only.
-The kernel and arithmetic are unchanged; exact down rows, activation, and all
-other routes remain untouched. The runtime correctness matrix passes,
-including a dedicated fixed-K=5 HumanEval 079 case with successful route
-traces. The next action is the user-run three-pair uninstrumented ablation.
+Phase 1.50 is complete and retired. Extending paired routed gate/up to width 5
+measured a `0.9974x` median paired ratio and `0.9993x` ratio of medians. All
+three paired ratios were slightly negative (`0.9993x`, `0.9974x`, `0.9959x`),
+with byte-identical output. Do not run a broad gate or promote this route.
+
+Phase 1.51 is prepared. A distinct default-off width-5 candidate uses the
+existing paired IQ2_XXS-SwiGLU kernel to combine gate/up projection, clamping,
+activation, and route weighting in one dispatch while retaining exact down
+rows. This removes the separate activation dispatch and intermediate reread;
+it is not a repeat of the neutral pair-only test. The full exact-runtime
+correctness matrix passes, including a traced fixed-K=5 HumanEval 079 case.
 
 Phase 1.27 is complete. The cumulative 32-task HumanEval reassessment measured
 current exact DSpark at a `0.8826x` geometric paired ratio versus ordinary
@@ -11593,3 +11598,73 @@ Decision boundary:
   byte-exact and shows a consistent positive paired result. A positive result
   warrants a frozen 32-task HumanEval confirmation before promotion; a flat or
   negative result retires the width-5 extension.
+
+Focused result:
+
+- User-run artifact: `speed-bench/local-runs/20260720-101858` at clean commit
+  `31c06f8a8e3b50e5218bd0fda6b99912c0fb6268`.
+- Default exact median: `26.67 t/s`; paired gate/up median: `26.65 t/s`.
+- Ratio of medians: `0.9993x`; median paired ratio: `0.9974x`.
+- Individual paired ratios are `0.9993x`, `0.9974x`, and `0.9959x`. All three
+  favor the default by a small amount.
+- Every measured output hash is identical. Runtime stats and instrumentation
+  were absent from both arms.
+
+Decision:
+
+- Retire the pair-only width-5 extension. The result is close to neutral but
+  consistently non-positive, so a broad HumanEval gate is not justified.
+- Do not infer that fused activation is also unprofitable. Pair-only merely
+  changes how gate/up projections are encoded; it leaves the separately
+  measured `0.162 ms/row` activation/weight stage and its buffer traffic
+  intact.
+
+## Phase 1.51: exact routed gate/up SwiGLU width-5 ablation prepared
+
+Implementation:
+
+- Added default-off `DS4_DSPARK_EXACT_ROUTED_GATE_UP_SWIGLU_W5=1` handling in
+  the promoted exact routed-MoE hybrid. It applies only when exact down rows
+  are active, verifier width is exactly 5, gate weights are IQ2_XXS, the
+  paired-SwiGLU pipeline is available, quality mode is off, and diagnostic
+  clamped intermediates are not requested.
+- The candidate calls the existing
+  `ds4_gpu_encode_mul_mv_id_pair_swiglu` encoder. The underlying Metal kernel
+  uses the same paired IQ2_XXS dot products, then writes raw gate/up outputs
+  and the F32 weighted SwiGLU intermediate consumed by the unchanged exact
+  Q2_K down-row path.
+- The standalone `ds4_gpu_encode_moe_swiglu_weight` dispatch is skipped only
+  when the fused candidate successfully owns the intermediate. Default exact,
+  widths 1-4, ordinary prefill, sidecar execution, and legacy routes are
+  unchanged.
+- Added `DS4_DSPARK_EXACT_ROUTED_GATE_UP_SWIGLU_W5_TRACE=1` for correctness
+  diagnostics. Timed runs do not enable it.
+- Added `--exact-routed-gate-up-swiglu-w5-ablation` to
+  `speed-bench/run_dspark_comparison.py` and model-free coverage in
+  `tests/test_dspark_exact_routed_gate_up_swiglu_w5.py`.
+- Extended the existing deterministic width-5 correctness exercise to accept
+  exactly one of the pair-only or paired-SwiGLU candidates and require the
+  corresponding successful route trace.
+
+Validation before timing:
+
+- `make` rebuilt every Metal command-line target successfully.
+- The exact-runtime matrix passed reasoning, Italian, medium-context,
+  rolling-window, resumed-chat, and fixed-K=5 HumanEval 079 checks. Every
+  fused candidate output matched ordinary baseline byte-for-byte.
+- A real benchmark dry run printed only the uninstrumented default and fused
+  candidate commands. No model inference was performed by the benchmark.
+
+User-run command:
+
+```sh
+python3 speed-bench/run_dspark_comparison.py \
+  --exact-routed-gate-up-swiglu-w5-ablation \
+  --confirm-idle
+```
+
+Decision boundary:
+
+- Require byte-identical output and a consistently positive three-pair result
+  before spending time on a 32-task confirmation. Flat or negative timing
+  retires this fusion; a positive result advances to the frozen HumanEval gate.

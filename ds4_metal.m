@@ -1940,6 +1940,28 @@ static int ds4_gpu_trace_exact_routed_gate_up_pair_w5(void) {
     return enabled;
 }
 
+static int ds4_gpu_use_exact_routed_gate_up_swiglu_w5(void) {
+    static int initialized;
+    static int enabled;
+    if (!initialized) {
+        enabled = ds4_gpu_env_bool(
+            "DS4_DSPARK_EXACT_ROUTED_GATE_UP_SWIGLU_W5") == 1;
+        initialized = 1;
+    }
+    return enabled;
+}
+
+static int ds4_gpu_trace_exact_routed_gate_up_swiglu_w5(void) {
+    static int initialized;
+    static int enabled;
+    if (!initialized) {
+        enabled = getenv(
+            "DS4_DSPARK_EXACT_ROUTED_GATE_UP_SWIGLU_W5_TRACE") != NULL;
+        initialized = 1;
+    }
+    return enabled;
+}
+
 static int ds4_gpu_use_indexed_attention_rb16_legacy(void) {
     static int initialized;
     static int enabled;
@@ -26566,6 +26588,15 @@ int ds4_gpu_routed_moe_batch_tensor(
             exact_down_rows &&
             n_tokens == 5u &&
             ds4_gpu_use_exact_routed_gate_up_pair_w5();
+        const bool exact_routed_gate_up_swiglu_w5 =
+            exact_down_rows &&
+            n_tokens == 5u &&
+            !g_quality_mode &&
+            gate_type == DS4_METAL_TENSOR_IQ2_XXS &&
+            g_moe_mul_mv_id_iq2_xxs_pair_swiglu_pipeline != nil &&
+            getenv("DS4_METAL_MOE_WRITE_CLAMPED_ACT") == NULL &&
+            getenv("DS4_METAL_DISABLE_ROUTED_PAIR_SWIGLU_FUSION") == NULL &&
+            ds4_gpu_use_exact_routed_gate_up_swiglu_w5();
         const bool use_tiny_pair_mv =
             !g_quality_mode &&
             (n_tokens <= 4u || exact_routed_gate_up_pair_w5) &&
@@ -26803,6 +26834,8 @@ int ds4_gpu_routed_moe_batch_tensor(
             (moe_stage_layer == UINT32_MAX || moe_stage_layer == layer_index);
         const char *moe_stage_filter = getenv("DS4_METAL_MOE_STAGE_PROFILE_FILTER");
         const char *moe_path =
+            exact_routed_gate_up_swiglu_w5 ?
+                "hybrid_exact_down_pair_swiglu_w5" :
             exact_down_rows ? (use_tiny_pair_mv ?
                 "hybrid_exact_down_tiny_pair_mv" :
                 "hybrid_exact_down_mv") :
@@ -27028,6 +27061,48 @@ int ds4_gpu_routed_moe_batch_tensor(
                                                    ds4_gpu_tensor_offset(up));
                 DS4_METAL_PROFILE_MOE_STAGE("up");
             }
+        } else if (exact_routed_gate_up_swiglu_w5) {
+            ds4_gpu_dsv4_moe_swiglu_weight_args act_args = {
+                .width = expert_mid_dim,
+                .rows = pair_rows,
+                .gate_row_stride = (uint64_t)expert_mid_dim * sizeof(float),
+                .up_row_stride = (uint64_t)expert_mid_dim * sizeof(float),
+                .mid_row_stride = (uint64_t)expert_mid_dim * sizeof(float),
+                .weight_stride = sizeof(float),
+                .write_clamped = 0,
+                .clamp_value = clamp,
+            };
+            ok = ds4_gpu_encode_mul_mv_id_pair_swiglu(
+                    cb,
+                    g_moe_mul_mv_id_iq2_xxs_pair_swiglu_pipeline,
+                    &gate_args,
+                    &act_args,
+                    gate_buf,
+                    (NSUInteger)gate_inner,
+                    up_buf,
+                    (NSUInteger)up_inner,
+                    xbuf,
+                    ds4_gpu_tensor_offset(x),
+                    gatebuf,
+                    ds4_gpu_tensor_offset(gate),
+                    upbuf,
+                    ds4_gpu_tensor_offset(up),
+                    midbuf,
+                    ds4_gpu_tensor_offset(mid),
+                    selectedbuf,
+                    ds4_gpu_tensor_offset(selected),
+                    weightsbuf,
+                    ds4_gpu_tensor_offset(weights),
+                    gate_smem,
+                    2,
+                    false);
+            if (ds4_gpu_trace_exact_routed_gate_up_swiglu_w5()) {
+                fprintf(stderr,
+                        "ds4: DSpark exact routed gate/up SwiGLU width=5 "
+                        "layer=%u result=%s\n",
+                        layer_index,
+                        ok ? "pass" : "fail");
+            }
         } else if (use_tiny_pair_mv) {
             id<MTLComputePipelineState> pair_pipeline =
                 gate_type == DS4_METAL_TENSOR_IQ2_XXS ?
@@ -27096,7 +27171,9 @@ int ds4_gpu_routed_moe_batch_tensor(
             use_fused_activation &&
             request_mid_f16;
         if (mid_is_f16) *mid_is_f16 = use_mid_f16;
-        if (ok && use_iq2_batch_selected_addr) {
+        if (ok && exact_routed_gate_up_swiglu_w5) {
+            /* Paired gate/up already wrote weighted SwiGLU rows into mid. */
+        } else if (ok && use_iq2_batch_selected_addr) {
             /* The address-table pair kernel already wrote weighted SwiGLU rows into mid. */
         } else if (ok && use_q4_batch_expert_table) {
             /* The table pair kernel already wrote weighted SwiGLU rows into mid. */

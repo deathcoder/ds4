@@ -34,6 +34,7 @@ attn_inv_rope_fused=${DS4_TEST_DSPARK_ATTN_INV_ROPE_FUSED:-0}
 exact_prefix_checkpoint=${DS4_TEST_DSPARK_EXACT_PREFIX_CHECKPOINT:-default}
 exact_q2_down_batch=${DS4_TEST_DSPARK_EXACT_Q2_DOWN_BATCH:-0}
 exact_routed_gate_up_pair_w5=${DS4_TEST_DSPARK_EXACT_ROUTED_GATE_UP_PAIR_W5:-0}
+exact_routed_gate_up_swiglu_w5=${DS4_TEST_DSPARK_EXACT_ROUTED_GATE_UP_SWIGLU_W5:-0}
 exact_shared_q8_rows=${DS4_TEST_DSPARK_EXACT_SHARED_Q8_ROWS:-default}
 exact_compressor_pre_batch=${DS4_TEST_DSPARK_EXACT_COMPRESSOR_PRE_BATCH:-default}
 ffn_batch_observer_layer=${DS4_DSPARK_EXACT_FFN_BATCH_OBSERVER_LAYER:-}
@@ -51,6 +52,8 @@ unset DS4_DSPARK_EXACT_Q2_DOWN_BATCH
 unset DS4_DSPARK_EXACT_Q2_DOWN_BATCH_TRACE
 unset DS4_DSPARK_EXACT_ROUTED_GATE_UP_PAIR_W5
 unset DS4_DSPARK_EXACT_ROUTED_GATE_UP_PAIR_W5_TRACE
+unset DS4_DSPARK_EXACT_ROUTED_GATE_UP_SWIGLU_W5
+unset DS4_DSPARK_EXACT_ROUTED_GATE_UP_SWIGLU_W5_TRACE
 unset DS4_DSPARK_EXACT_SHARED_Q8_ROWS
 unset DS4_DSPARK_EXACT_SHARED_Q8_ROWS_TRACE
 unset DS4_DSPARK_EXACT_COMPRESSOR_PRE_BATCH
@@ -285,6 +288,21 @@ if [[ $exact_routed_gate_up_pair_w5 == 1 &&
     printf 'exact routed gate/up pair width 5 requires exact runtime verification\n' >&2
     exit 2
 fi
+if [[ $exact_routed_gate_up_swiglu_w5 != 0 &&
+      $exact_routed_gate_up_swiglu_w5 != 1 ]]; then
+    printf 'DS4_TEST_DSPARK_EXACT_ROUTED_GATE_UP_SWIGLU_W5 must be 0 or 1\n' >&2
+    exit 2
+fi
+if [[ $exact_routed_gate_up_swiglu_w5 == 1 &&
+      ($mode != runtime || $fast_verify_runtime == 1) ]]; then
+    printf 'exact routed gate/up SwiGLU width 5 requires exact runtime verification\n' >&2
+    exit 2
+fi
+if [[ $exact_routed_gate_up_pair_w5 == 1 &&
+      $exact_routed_gate_up_swiglu_w5 == 1 ]]; then
+    printf 'width-5 routed gate/up candidates are mutually exclusive\n' >&2
+    exit 2
+fi
 case "$exact_shared_q8_rows" in
     default|0|1) ;;
     *)
@@ -413,6 +431,12 @@ case "$mode" in
             gpu_env+=(
                 DS4_DSPARK_EXACT_ROUTED_GATE_UP_PAIR_W5=1
                 DS4_DSPARK_EXACT_ROUTED_GATE_UP_PAIR_W5_TRACE=1
+            )
+        fi
+        if [[ $exact_routed_gate_up_swiglu_w5 == 1 ]]; then
+            gpu_env+=(
+                DS4_DSPARK_EXACT_ROUTED_GATE_UP_SWIGLU_W5=1
+                DS4_DSPARK_EXACT_ROUTED_GATE_UP_SWIGLU_W5_TRACE=1
             )
         fi
         case "$exact_shared_q8_rows" in
@@ -646,6 +670,24 @@ assert_gpu_selected() {
             fi
         elif grep -q 'DSpark exact routed gate/up pair width=5 layer=' "$log"; then
             printf 'control mode unexpectedly ran exact routed gate/up pair width 5\n' >&2
+            exit 1
+        fi
+        if [[ $exact_routed_gate_up_swiglu_w5 == 1 &&
+              $verifier_batches_expected == 1 ]]; then
+            local gate_up_swiglu_records
+            gate_up_swiglu_records=$(grep \
+                'DSpark exact routed gate/up SwiGLU width=5 layer=' \
+                "$log" || true)
+            if [[ -n $gate_up_swiglu_records ]] &&
+               printf '%s\n' "$gate_up_swiglu_records" |
+                   grep -Evq ' width=5 layer=[0-9][0-9]* result=pass$'; then
+                printf 'exact routed gate/up SwiGLU width 5 drifted or failed\n' >&2
+                printf '%s\n' "$gate_up_swiglu_records" >&2
+                exit 1
+            fi
+        elif grep -q \
+            'DSpark exact routed gate/up SwiGLU width=5 layer=' "$log"; then
+            printf 'control mode unexpectedly ran exact routed gate/up SwiGLU width 5\n' >&2
             exit 1
         fi
         if [[ $exact_shared_q8_rows == 1 &&
@@ -949,11 +991,21 @@ compare_exact_routed_gate_up_pair_w5() {
         >"$candidate_out" 2>"$candidate_log"
 
     cmp -s "$baseline_out" "$candidate_out"
-    grep -q \
-        'DSpark exact routed gate/up pair width=5 layer=.* result=pass$' \
-        "$candidate_log"
+    if [[ $exact_routed_gate_up_swiglu_w5 == 1 ]]; then
+        grep -q \
+            'DSpark exact routed gate/up SwiGLU width=5 layer=.* result=pass$' \
+            "$candidate_log"
+    else
+        grep -q \
+            'DSpark exact routed gate/up pair width=5 layer=.* result=pass$' \
+            "$candidate_log"
+    fi
     assert_gpu_selected "$candidate_log"
-    printf 'PASS routed MoE: exact gate/up pair width 5\n'
+    if [[ $exact_routed_gate_up_swiglu_w5 == 1 ]]; then
+        printf 'PASS routed MoE: exact gate/up SwiGLU width 5\n'
+    else
+        printf 'PASS routed MoE: exact gate/up pair width 5\n'
+    fi
 }
 
 compare_indexed_attn_rb16_promotion() {
@@ -1086,7 +1138,8 @@ compare_prompt_file italian 6 "$root/tests/test-vectors/prompts/short_italian_fa
 compare_prompt_file medium_context 6 "$root/tests/dspark_gpu_candidates_medium_prompt.txt"
 compare_prompt_file rolling_window 12 "$root/tests/dspark_rolling_window_prompt.txt"
 compare_resumed_chat
-if [[ $exact_routed_gate_up_pair_w5 == 1 ]]; then
+if [[ $exact_routed_gate_up_pair_w5 == 1 ||
+      $exact_routed_gate_up_swiglu_w5 == 1 ]]; then
     compare_exact_routed_gate_up_pair_w5
 fi
 if [[ $exact_attn_out_nr4 == 1 ]]; then
