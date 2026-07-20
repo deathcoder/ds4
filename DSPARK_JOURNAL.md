@@ -12319,3 +12319,29 @@ Decision boundary:
 - Do not promote based on dispatch count alone. Direct raw F32 conversion is
   repeated in attention workgroups, so only paired uninstrumented throughput
   can determine whether eliminating prepare is a net win.
+
+Focused result and decision:
+
+- User-run artifact: `speed-bench/local-runs/20260720-173358` at clean commit
+  `d6ac011`.
+- Prepared split-K measured `26.12 t/s`; split-source measured `23.00 t/s`.
+  The ratio of medians was `0.8806x`, the median paired ratio was `0.8795x`,
+  and the candidate delta was `-11.9%` across three pairs.
+- Every measured output hash matched. The three pairwise ratios were all near
+  `0.88x`, with alternating order, so this is a decisive performance rejection
+  rather than correctness drift or a single noisy sample.
+- **Retired.** Keep the opt-in implementation and benchmark as negative
+  evidence, but do not promote it or run a broader HumanEval gate.
+- Eliminating one prepare dispatch does not compensate for resolving source
+  type/ring location and repeating raw FP32-to-F16 conversion in each attention
+  head and in both K and V passes. The consolidated F16 cache is beneficial.
+
+Next direction:
+
+- Preserve materialization and optimize the prepare kernel itself. The parity
+  diagnostic already proved a row-first `half4` traversal produces identical
+  F16 K/V and mask storage across 500 real calls, including wrapped rings.
+- Test that traversal as an opt-in vectorized prepare kernel while retaining the
+  promoted vector attention and reduction unchanged. This removes redundant
+  scalar indexing and issues wider source loads/stores without multiplying work
+  across heads.
