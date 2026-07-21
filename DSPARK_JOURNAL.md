@@ -12893,3 +12893,37 @@ User-run command:
 python3 speed-bench/run_dspark_humaneval_frontier_profile.py \
   --confirm-ready
 ```
+
+Measured result:
+
+- User-run artifact:
+  `speed-bench/local-runs/humaneval-frontier-profile-20260722-000734`.
+- Every profiled output matched the frozen cumulative HumanEval artifact
+  byte-for-byte, and all synchronized bookkeeping operations succeeded.
+- Pooled frontier bookkeeping was `28.400 ms` total across `172` emitted
+  tokens: `0.165 ms/emitted` and `0.835 ms/exact batch`.
+- `humaneval_152` measured `0.180 ms/emitted` across eight snapshots and no
+  partial commits. `humaneval_079` measured `0.160 ms/emitted` across 26
+  snapshots and one partial-prefix commit.
+- Target-capture finalization was `0.320 ms/emitted`, reported separately as
+  designed. It prepares sidecar context and is not removable by logical
+  rollback.
+
+Decision:
+
+- **STOP ROLLBACK-ONLY.** The synchronized `0.165 ms/emitted` frontier result
+  is only `3.7%` of the current `4.520 ms/emitted` parity deficit. Because the
+  profiler deliberately destroys production overlap, it is an upper bound on
+  removable wall time.
+- Even incorrectly adding the separate capture-finalization upper bound would
+  reach only `0.485 ms/emitted` (`10.7%` of the deficit), so bookkeeping cannot
+  be the missing vLLM-scale lever.
+- Do not build the proposed position-indexed state cache merely to replace
+  snapshot/restore copies.
+- The remaining transferable vLLM idea is the larger computational design:
+  materialize per-token compressor partial states so proposal rows can share a
+  packed compressor/reduction path. Before any runtime rewrite, derive that
+  representation against ds4's current ratio-4 recurrence and prove a
+  model-free scalar N=2..5 equivalence test. Stop if exact operation-order
+  equivalence is unavailable or if the design still leaves the serial
+  projection/attention tail unchanged.
