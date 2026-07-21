@@ -121,12 +121,14 @@ def cleared_env_keys(env):
 def benchmark_env(
     mode, fast_verifier, stats=False, exact_head_batch=False,
     acceptance_audit=False, acceptance_trace=False, confidence_threshold=None,
-    oracle_trace=False,
+    oracle_trace=False, frontier_profile=False,
 ):
     if acceptance_trace and not acceptance_audit:
         raise ValueError("acceptance trace requires acceptance audit")
     if oracle_trace and (mode != "runtime" or not stats):
         raise ValueError("oracle trace requires runtime stats")
+    if frontier_profile and (mode != "runtime" or not stats):
+        raise ValueError("frontier profile requires runtime stats")
     if confidence_threshold is not None:
         if mode != "runtime":
             raise ValueError("confidence threshold requires DSpark runtime mode")
@@ -154,6 +156,8 @@ def benchmark_env(
             env["DS4_DSPARK_ACCEPTANCE_TRACE"] = "1"
         if oracle_trace:
             env["DS4_DSPARK_ORACLE_TRACE"] = "1"
+        if frontier_profile:
+            env["DS4_DSPARK_FRONTIER_PROFILE"] = "1"
         if confidence_threshold is not None:
             env["DS4_DSPARK_CONFIDENCE_THRESHOLD"] = str(confidence_threshold)
     return env
@@ -342,13 +346,14 @@ def mode_command(args, prompt, mode):
 def command_text(
     args, prompt, mode, stats=False, acceptance_audit=False,
     acceptance_trace=False, confidence_threshold=None,
-    oracle_trace=False,
+    oracle_trace=False, frontier_profile=False,
 ):
     if mode == "runtime" and confidence_threshold is None:
         confidence_threshold = getattr(args, "confidence_threshold", None)
     env = benchmark_env(
         mode, args.fast_verifier, stats, args.exact_head_batch,
         acceptance_audit, acceptance_trace, confidence_threshold, oracle_trace,
+        frontier_profile,
     )
     keys = (
         "DS4_DSPARK_GPU_RUNTIME", "DS4_DSPARK_MULTI_COMMIT",
@@ -356,6 +361,7 @@ def command_text(
         "DS4_DSPARK_GPU_RUNTIME_STATS",
         "DS4_DSPARK_ACCEPTANCE_AUDIT", "DS4_DSPARK_ACCEPTANCE_TRACE",
         "DS4_DSPARK_ORACLE_TRACE",
+        "DS4_DSPARK_FRONTIER_PROFILE",
         "DS4_DSPARK_CONFIDENCE_THRESHOLD",
     )
     prefix = " ".join(f"{key}={env[key]}" for key in keys if key in env)
@@ -565,12 +571,14 @@ def execute(
     args, root, run_dir, label, prompt_label, prompt, mode, reference,
     stats=False, acceptance_audit=False, acceptance_trace=False,
     confidence_threshold=None,
-    oracle_trace=False,
+    oracle_trace=False, frontier_profile=False,
 ):
     if acceptance_trace and (mode != "runtime" or not acceptance_audit):
         raise ValueError("acceptance trace requires a runtime acceptance audit")
     if oracle_trace and (mode != "runtime" or not stats):
         raise ValueError("oracle trace requires a runtime stats run")
+    if frontier_profile and (mode != "runtime" or not stats):
+        raise ValueError("frontier profile requires a runtime stats run")
     stdout_path = run_dir / f"{label}.{prompt_label}.{mode}.stdout"
     stderr_path = run_dir / f"{label}.{prompt_label}.{mode}.stderr"
     if mode == "runtime" and confidence_threshold is None:
@@ -578,7 +586,7 @@ def execute(
     command = mode_command(args, prompt, mode)
     rendered_command = command_text(
         args, prompt, mode, stats, acceptance_audit, acceptance_trace,
-        confidence_threshold, oracle_trace,
+        confidence_threshold, oracle_trace, frontier_profile,
     )
     print(
         f"[{label}/{prompt_label}] {mode}: {rendered_command}",
@@ -591,7 +599,7 @@ def execute(
             env=benchmark_env(
                 mode, args.fast_verifier, stats, args.exact_head_batch,
                 acceptance_audit, acceptance_trace, confidence_threshold,
-                oracle_trace,
+                oracle_trace, frontier_profile,
             ),
             stdout=stdout_fp, stderr=stderr_fp, check=False,
         )

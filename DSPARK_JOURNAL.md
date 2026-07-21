@@ -12833,3 +12833,63 @@ Next bounded falsifier:
   byte-exact N=2..5 parity before changing production ownership. If it is
   negligible, do not pursue rollback-only work; the useful portion of the
   vLLM design would then require the larger packed compressor rewrite.
+
+## Phase 1.68: exact frontier-bookkeeping profiler preparation
+
+Instrumentation:
+
+- Added diagnostic-only `DS4_DSPARK_FRONTIER_PROFILE=1`. It requires the
+  existing GPU runtime-stats gate and is not selected by production or
+  throughput runners.
+- The exact DSpark batch path now reports separately:
+  - frontier snapshot calls, successes, and synchronized time;
+  - frontier restore calls, successes, and synchronized time;
+  - partial-prefix frontier commit calls, successes, and synchronized time;
+  - target-capture finalization calls, successes, and synchronized time;
+  - profiler synchronization failures.
+- Each measured operation synchronizes immediately before and after its
+  boundary. These values are attribution upper bounds and must not be read as
+  production throughput costs. Uninstrumented execution does not synchronize
+  at these boundaries.
+- Target-capture finalization is deliberately kept separate from frontier
+  bookkeeping. It prepares the next sidecar context and is not assumed to be
+  removable by vLLM-style logical rollback.
+
+Runner:
+
+- Added `speed-bench/run_dspark_humaneval_frontier_profile.py`.
+- It runs exactly two frozen threshold-`0.75` tasks:
+  `humaneval_152` (low acceptance) and `humaneval_079` (high acceptance).
+- Each process uses exact target verification, runtime stats, and the frontier
+  profiler. Fast verification, acceptance tracing, oracle tracing, and layer
+  profiling are disabled.
+- Every stdout must match the corresponding byte-exact artifact in
+  `humaneval-cumulative-throughput-32-20260719-223901`.
+- The report pools snapshot + restore + prefix commit as frontier bookkeeping,
+  reports target-capture finalization separately, and normalizes both per
+  emitted token and exact batch.
+
+Decision boundary:
+
+- `PROCEED` with a position-indexed ratio-4 shadow-state prototype only if the
+  synchronized frontier total is at least `1.000 ms/emitted`.
+- Below that threshold, stop rollback-only work. It cannot plausibly close the
+  current `4.520 ms/emitted` parity deficit, even before discounting the
+  profiler's synchronization inflation.
+- Capture-finalization cost does not count toward this gate.
+
+Validation:
+
+- Normal Metal build passes.
+- All `268` model-free Python tests pass, including seven new profiler tests.
+- The runner dry run validates the frozen reference and emits two commands
+  with only runtime, multi-commit, stats, threshold `0.75`, and frontier-profile
+  variables enabled.
+- No timed model profile was run during implementation.
+
+User-run command:
+
+```sh
+python3 speed-bench/run_dspark_humaneval_frontier_profile.py \
+  --confirm-ready
+```

@@ -30774,6 +30774,15 @@ struct dspark_session_state {
     uint64_t runtime_prefix_checkpoint_successes;
     uint64_t runtime_prefix_checkpoint_fallbacks;
     uint64_t runtime_prefix_checkpoint_rows_avoided;
+    uint64_t runtime_frontier_snapshot_calls;
+    uint64_t runtime_frontier_snapshot_successes;
+    uint64_t runtime_frontier_restore_calls;
+    uint64_t runtime_frontier_restore_successes;
+    uint64_t runtime_frontier_prefix_commit_calls;
+    uint64_t runtime_frontier_prefix_commit_successes;
+    uint64_t runtime_target_capture_finish_calls;
+    uint64_t runtime_target_capture_finish_successes;
+    uint64_t runtime_bookkeeping_sync_failures;
     uint64_t runtime_scheduler_width_rounds[17];
     uint64_t runtime_scheduler_width_committed[17];
     uint64_t runtime_verify_width_evals[17];
@@ -30843,6 +30852,10 @@ struct dspark_session_state {
     double runtime_exact_layer_seconds;
     double runtime_exact_head_batch_seconds;
     double runtime_exact_head_serial_seconds;
+    double runtime_frontier_snapshot_seconds;
+    double runtime_frontier_restore_seconds;
+    double runtime_frontier_prefix_commit_seconds;
+    double runtime_target_capture_finish_seconds;
     float *target_context;
     uint32_t target_context_rows;
     uint32_t target_context_pos0;
@@ -30851,6 +30864,7 @@ struct dspark_session_state {
 };
 
 static bool dspark_session_runtime_stats_enabled(void);
+static bool dspark_session_frontier_profile_enabled(void);
 static bool dspark_session_acceptance_audit_enabled(void);
 static bool dspark_session_acceptance_trace_enabled(void);
 static bool dspark_session_oracle_trace_enabled(void);
@@ -31035,6 +31049,15 @@ static void dspark_session_state_free(dspark_session_state *d) {
                 "prefix_checkpoint_successes=%llu "
                 "prefix_checkpoint_fallbacks=%llu "
                 "prefix_checkpoint_rows_avoided=%llu "
+                "frontier_snapshot_calls=%llu "
+                "frontier_snapshot_successes=%llu "
+                "frontier_restore_calls=%llu "
+                "frontier_restore_successes=%llu "
+                "frontier_prefix_commit_calls=%llu "
+                "frontier_prefix_commit_successes=%llu "
+                "target_capture_finish_calls=%llu "
+                "target_capture_finish_successes=%llu "
+                "bookkeeping_sync_failures=%llu "
                 "sidecar_outside_scheduler_ms=%.3f "
                 "fast_calls=%llu fast_failures=%llu "
                 "fast_exact_fallbacks=%llu "
@@ -31055,7 +31078,10 @@ static void dspark_session_state_free(dspark_session_state *d) {
                 "metal_drafter_ms=%.3f prefill_metal_drafter_ms=%.3f "
                 "generation_metal_drafter_ms=%.3f "
                 "target_eval_ms=%.3f exact_layer_ms=%.3f "
-                "exact_head_batch_ms=%.3f exact_head_serial_ms=%.3f",
+                "exact_head_batch_ms=%.3f exact_head_serial_ms=%.3f "
+                "frontier_snapshot_ms=%.3f frontier_restore_ms=%.3f "
+                "frontier_prefix_commit_ms=%.3f "
+                "target_capture_finish_ms=%.3f",
                 (unsigned long long)d->gpu_candidate_source_attempts,
                 (unsigned long long)d->gpu_candidate_source_selected,
                 (unsigned long long)d->gpu_candidate_source_fallbacks,
@@ -31078,6 +31104,15 @@ static void dspark_session_state_free(dspark_session_state *d) {
                 (unsigned long long)d->runtime_prefix_checkpoint_successes,
                 (unsigned long long)d->runtime_prefix_checkpoint_fallbacks,
                 (unsigned long long)d->runtime_prefix_checkpoint_rows_avoided,
+                (unsigned long long)d->runtime_frontier_snapshot_calls,
+                (unsigned long long)d->runtime_frontier_snapshot_successes,
+                (unsigned long long)d->runtime_frontier_restore_calls,
+                (unsigned long long)d->runtime_frontier_restore_successes,
+                (unsigned long long)d->runtime_frontier_prefix_commit_calls,
+                (unsigned long long)d->runtime_frontier_prefix_commit_successes,
+                (unsigned long long)d->runtime_target_capture_finish_calls,
+                (unsigned long long)d->runtime_target_capture_finish_successes,
+                (unsigned long long)d->runtime_bookkeeping_sync_failures,
                 sidecar_outside_scheduler_seconds * 1000.0,
                 (unsigned long long)d->runtime_fast_verify_calls,
                 (unsigned long long)d->runtime_fast_verify_failures,
@@ -31114,7 +31149,11 @@ static void dspark_session_state_free(dspark_session_state *d) {
                 d->runtime_target_eval_seconds * 1000.0,
                 d->runtime_exact_layer_seconds * 1000.0,
                 d->runtime_exact_head_batch_seconds * 1000.0,
-                d->runtime_exact_head_serial_seconds * 1000.0);
+                d->runtime_exact_head_serial_seconds * 1000.0,
+                d->runtime_frontier_snapshot_seconds * 1000.0,
+                d->runtime_frontier_restore_seconds * 1000.0,
+                d->runtime_frontier_prefix_commit_seconds * 1000.0,
+                d->runtime_target_capture_finish_seconds * 1000.0);
         const uint32_t width_count = d->block_size + 1u;
         dspark_runtime_stats_print_u64_array(
             "scheduler_width_rounds",
@@ -35282,6 +35321,107 @@ static bool dspark_session_runtime_stats_enabled(void) {
     return enabled;
 }
 
+static bool dspark_session_frontier_profile_enabled(void) {
+    static int initialized;
+    static bool enabled;
+    if (!initialized) {
+        const char *v = getenv("DS4_DSPARK_FRONTIER_PROFILE");
+        enabled = dspark_session_runtime_stats_enabled() &&
+                  v && v[0] && strcmp(v, "0") != 0;
+        initialized = 1;
+    }
+    return enabled;
+}
+
+static double dspark_session_bookkeeping_profile_begin(
+        dspark_session_state *d) {
+    if (!d || !dspark_session_frontier_profile_enabled()) return -1.0;
+    if (ds4_gpu_synchronize() == 0) {
+        d->runtime_bookkeeping_sync_failures++;
+        return -1.0;
+    }
+    return now_sec();
+}
+
+static void dspark_session_bookkeeping_profile_finish(
+        dspark_session_state *d,
+        double                started,
+        bool                  success,
+        uint64_t             *calls,
+        uint64_t             *successes,
+        double               *seconds) {
+    if (!d || !dspark_session_frontier_profile_enabled()) return;
+    (*calls)++;
+    if (success) (*successes)++;
+    if (started < 0.0) return;
+    if (ds4_gpu_synchronize() == 0) {
+        d->runtime_bookkeeping_sync_failures++;
+        return;
+    }
+    *seconds += now_sec() - started;
+}
+
+static bool dspark_session_profile_frontier_snapshot(
+        dspark_session_state *d,
+        ds4_spec_frontier    *frontier,
+        ds4_session          *s) {
+    const double started = dspark_session_bookkeeping_profile_begin(d);
+    const bool ok = spec_frontier_snapshot(frontier, s);
+    dspark_session_bookkeeping_profile_finish(
+        d, started, ok,
+        &d->runtime_frontier_snapshot_calls,
+        &d->runtime_frontier_snapshot_successes,
+        &d->runtime_frontier_snapshot_seconds);
+    return ok;
+}
+
+static bool dspark_session_profile_frontier_restore(
+        dspark_session_state *d,
+        ds4_spec_frontier    *frontier,
+        ds4_session          *s) {
+    const double started = dspark_session_bookkeeping_profile_begin(d);
+    const bool ok = spec_frontier_restore(frontier, s);
+    dspark_session_bookkeeping_profile_finish(
+        d, started, ok,
+        &d->runtime_frontier_restore_calls,
+        &d->runtime_frontier_restore_successes,
+        &d->runtime_frontier_restore_seconds);
+    return ok;
+}
+
+static bool dspark_session_profile_frontier_prefix_commit(
+        dspark_session_state *d,
+        ds4_session          *s,
+        uint32_t              accepted,
+        uint32_t              proposed) {
+    const double started = dspark_session_bookkeeping_profile_begin(d);
+    const bool ok = spec_frontier_commit_prefix(s, accepted, proposed);
+    dspark_session_bookkeeping_profile_finish(
+        d, started, ok,
+        &d->runtime_frontier_prefix_commit_calls,
+        &d->runtime_frontier_prefix_commit_successes,
+        &d->runtime_frontier_prefix_commit_seconds);
+    return ok;
+}
+
+static bool dspark_session_profile_target_capture_finish(
+        dspark_session_state         *d,
+        ds4_session                  *s,
+        const ds4_target_hc_capture  *capture,
+        uint32_t                      context_len,
+        char                         *err,
+        size_t                        errlen) {
+    const double started = dspark_session_bookkeeping_profile_begin(d);
+    const bool ok = dspark_session_target_capture_finish(
+        s, capture, context_len, err, errlen);
+    dspark_session_bookkeeping_profile_finish(
+        d, started, ok,
+        &d->runtime_target_capture_finish_calls,
+        &d->runtime_target_capture_finish_successes,
+        &d->runtime_target_capture_finish_seconds);
+    return ok;
+}
+
 static bool dspark_session_acceptance_audit_enabled(void) {
     static int initialized;
     static bool enabled;
@@ -36659,7 +36799,7 @@ static int dspark_session_eval_batch_commit(
 
     ds4_spec_frontier frontier;
     memset(&frontier, 0, sizeof(frontier));
-    if (!spec_frontier_snapshot(&frontier, s)) {
+    if (!dspark_session_profile_frontier_snapshot(d, &frontier, s)) {
         if (stats) d->runtime_batch_verify_fallbacks++;
         return 0;
     }
@@ -36721,7 +36861,7 @@ static int dspark_session_eval_batch_commit(
                     "ds4: DSpark fast batch verifier failed; restoring target "
                     "state for exact fallback\n");
         }
-        if (!spec_frontier_restore(&frontier, s)) {
+        if (!dspark_session_profile_frontier_restore(d, &frontier, s)) {
             dspark_fast_verify_observation_free(&fast_observation);
             spec_frontier_free(&frontier);
             free(last_logits);
@@ -36764,7 +36904,8 @@ static int dspark_session_eval_batch_commit(
     }
     dspark_fast_verify_observation_free(&fast_observation);
     if (!ok) {
-        const bool restored = spec_frontier_restore(&frontier, s);
+        const bool restored =
+            dspark_session_profile_frontier_restore(d, &frontier, s);
         spec_frontier_free(&frontier);
         free(last_logits);
         if (stats) d->runtime_batch_verify_fallbacks++;
@@ -36797,7 +36938,8 @@ static int dspark_session_eval_batch_commit(
             d->runtime_prefix_checkpoint_attempts++;
         }
         if (prefix_checkpoint_attempt &&
-            spec_frontier_commit_prefix(s, n_commit, n_limit) &&
+            dspark_session_profile_frontier_prefix_commit(
+                d, s, n_commit, n_limit) &&
             metal_graph_read_spec_logits_row(
                 &s->graph, n_commit - 1u, last_logits)) {
             const uint32_t prefix_context_len = start + n_commit;
@@ -36823,7 +36965,7 @@ static int dspark_session_eval_batch_commit(
             d->runtime_prefix_checkpoint_fallbacks++;
         }
         if (!prefix_committed) {
-            ok = spec_frontier_restore(&frontier, s);
+            ok = dspark_session_profile_frontier_restore(d, &frontier, s);
             capture_active = ok && dspark_session_target_capture_begin(
                 s,
                 start,
@@ -36857,7 +36999,7 @@ static int dspark_session_eval_batch_commit(
                         "ds4: DSpark fast prefix verifier failed; restoring target "
                         "state for exact fallback\n");
             }
-            ok = spec_frontier_restore(&frontier, s);
+            ok = dspark_session_profile_frontier_restore(d, &frontier, s);
             capture_active = ok && dspark_session_target_capture_begin(
                 s,
                 start,
@@ -36884,7 +37026,8 @@ static int dspark_session_eval_batch_commit(
             committed_fast = false;
         }
         if (!prefix_committed && !ok) {
-            const bool restored = spec_frontier_restore(&frontier, s);
+            const bool restored =
+                dspark_session_profile_frontier_restore(d, &frontier, s);
             spec_frontier_free(&frontier);
             free(last_logits);
             if (stats) d->runtime_batch_verify_fallbacks++;
@@ -36910,11 +37053,13 @@ static int dspark_session_eval_batch_commit(
 
     char capture_err[256];
     capture_err[0] = '\0';
-    if (!dspark_session_target_capture_finish(s,
-                                              &capture,
-                                              (uint32_t)s->checkpoint.len,
-                                              capture_err,
-                                              sizeof(capture_err))) {
+    if (!dspark_session_profile_target_capture_finish(
+            d,
+            s,
+            &capture,
+            (uint32_t)s->checkpoint.len,
+            capture_err,
+            sizeof(capture_err))) {
         fprintf(stderr,
                 "ds4: DSpark batch capture skipped at multi: %s\n",
                 capture_err[0] ? capture_err : "unknown error");
