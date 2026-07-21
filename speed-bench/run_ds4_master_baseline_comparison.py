@@ -19,7 +19,8 @@ import run_dspark_issue468_comparison as common
 
 SAMPLE_COUNT = 32
 MODES = ("upstream_main", "current_branch")
-EXPECTED_UPSTREAM_COMMIT = "80ebbc396aee40eedc1d829222f3362d10fa4c6c"
+EXPECTED_UPSTREAM_COMMIT = "efdadd41e20134af4f3381e1ed90e96fe4faef6f"
+EXPECTED_UPSTREAM_TREE = "847d5643c48ab5f1cbd5d21732963d16fdd529cd"
 MIN_GEOMEAN = 1.01
 MIN_WINS = 24
 MIN_TASK_RATIO = 0.95
@@ -38,7 +39,7 @@ def parse_args():
     parser.add_argument(
         "--upstream-source",
         type=Path,
-        default=root.parent / "ds4-master-baseline",
+        default=root.parent / "ds4-upstream-efdadd4",
     )
     parser.add_argument("--upstream-binary", type=Path)
     parser.add_argument(
@@ -448,6 +449,14 @@ def main():
             "upstream worktree commit mismatch: "
             f"{upstream_commit} != {EXPECTED_UPSTREAM_COMMIT}"
         )
+    upstream_tree = common.git_output(
+        args.upstream_source, "rev-parse", "HEAD^{tree}"
+    )
+    if upstream_tree != EXPECTED_UPSTREAM_TREE:
+        raise SystemExit(
+            "upstream worktree tree mismatch: "
+            f"{upstream_tree} != {EXPECTED_UPSTREAM_TREE}"
+        )
 
     all_records, provenance = corpus.load_corpus(args, root)
     records, selection = corpus.select_records(
@@ -509,6 +518,7 @@ def main():
         "upstream_binary": common.file_metadata(args.upstream_binary),
         "upstream_source": str(args.upstream_source),
         "upstream_commit": upstream_commit,
+        "upstream_tree": upstream_tree,
         "upstream_git_status_tracked": upstream_dirty,
         "base_model": common.file_metadata(args.model),
         "provenance_source_commit": provenance.get("source_commit"),

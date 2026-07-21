@@ -12659,3 +12659,55 @@ Benchmark consequence:
   argsort contract. Mark its `20260720-194404` result invalid. Earlier
   cumulative and HumanEval measurements were collected before the upstream
   integration and are unaffected.
+
+## Phase 1.66: repaired branch versus fresh upstream benchmark preparation
+
+Reference checkout:
+
+- Created a new network clone at
+  `/Users/deathcodevision/dev/ds4-upstream-efdadd4` from the official upstream
+  repository and built it independently.
+- Pinned commit `efdadd41e20134af4f3381e1ed90e96fe4faef6f` and tree
+  `847d5643c48ab5f1cbd5d21732963d16fdd529cd`, matching the Phase 1.65
+  fresh-clone audit.
+
+Runner update:
+
+- Updated `speed-bench/run_ds4_master_baseline_comparison.py` from old
+  upstream baseline `80ebbc3` to the repaired integration reference
+  `efdadd4`.
+- The default upstream source is now the stable fresh clone above. The runner
+  checks both commit and tree hashes, requires a clean upstream checkout, and
+  executes each binary from its own source root so runtime Metal sources cannot
+  be mixed.
+- The correctness oracle is the clean pre-merge cumulative HumanEval artifact
+  `speed-bench/local-runs/humaneval-cumulative-throughput-32-20260719-223901/summary.json`.
+  Every fresh-upstream and current-branch stdout must match that frozen output
+  byte-for-byte before its timing is accepted.
+- Both modes are ordinary non-DSpark Metal decoding. All `DS4_*`
+  instrumentation and experiment variables are cleared.
+
+Validation:
+
+- Seven focused model-free runner tests pass, including the new commit/tree
+  pins and distinct source working directories.
+- Dry run passed: `68` total uninstrumented processes, comprising two balanced
+  warmup pairs and one alternating measured pair for each of 32 HumanEval
+  tasks. No model process was started during preparation.
+
+User-run command:
+
+```sh
+python3 speed-bench/run_ds4_master_baseline_comparison.py \
+  --output-reference \
+    speed-bench/local-runs/humaneval-cumulative-throughput-32-20260719-223901/summary.json \
+  --confirm-idle
+```
+
+Interpretation:
+
+- Paired ratios are authoritative; absolute throughput is secondary.
+- The progress gate requires current/upstream geometric mean at least `1.01x`,
+  at least `24/32` current-branch wins, and no task below `0.95x`.
+- This run measures the repaired ordinary baseline only. It does not validate
+  DSpark throughput and does not revive the invalid router-fusion ablation.

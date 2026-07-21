@@ -31,7 +31,11 @@ class Ds4MasterBaselineComparisonTests(unittest.TestCase):
         )
         self.assertEqual(
             comparison.EXPECTED_UPSTREAM_COMMIT,
-            "80ebbc396aee40eedc1d829222f3362d10fa4c6c",
+            "efdadd41e20134af4f3381e1ed90e96fe4faef6f",
+        )
+        self.assertEqual(
+            comparison.EXPECTED_UPSTREAM_TREE,
+            "847d5643c48ab5f1cbd5d21732963d16fdd529cd",
         )
         self.assertEqual(comparison.MIN_GEOMEAN, 1.01)
         self.assertEqual(comparison.MIN_WINS, 24)
