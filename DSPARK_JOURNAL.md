@@ -12711,3 +12711,29 @@ Interpretation:
   at least `24/32` current-branch wins, and no task below `0.95x`.
 - This run measures the repaired ordinary baseline only. It does not validate
   DSpark throughput and does not revive the invalid router-fusion ablation.
+
+Measured result:
+
+- User-run artifact:
+  `speed-bench/local-runs/ds4-master-baseline-32-20260721-230650`.
+- Upstream median: `24.34 t/s`; current median: `24.98 t/s`; ratio of
+  medians: `1.0267x`.
+- Median paired ratio: `1.0271x`; geometric mean: `1.0255x`.
+- Current branch won `32/32` tasks. Paired ratios ranged from `1.0082x` to
+  `1.0324x`, with interquartile range `1.0225x-1.0284x`.
+- Every measured output matched the frozen cumulative artifact byte-for-byte.
+  Metadata records clean trees, upstream commit `efdadd4`, upstream tree
+  `847d5643c48ab5f1cbd5d21732963d16fdd529cd`, and current commit
+  `e203642`.
+
+Decision:
+
+- **PASS.** The repaired branch retains a broad, consistent ordinary-decoding
+  advantage over the freshly cloned current upstream while preserving exact
+  output parity.
+- Use `1.0255x` as the authoritative current/upstream baseline comparison.
+  The earlier `1.0822x` result compared against old upstream `80ebbc3` and is
+  not the current apples-to-apples figure.
+- The upstream integration and argsort repair are now a safe performance and
+  correctness boundary. New DSpark work may proceed without carrying an open
+  merge-integrity question.
