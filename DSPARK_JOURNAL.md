@@ -12737,3 +12737,99 @@ Decision:
 - The upstream integration and argsort repair are now a safe performance and
   correctness boundary. New DSpark work may proceed without carrying an open
   merge-integrity question.
+
+## Phase 1.67: vLLM and lobanov transfer audit without NVIDIA execution
+
+Scope and source pins:
+
+- This was a source-and-artifact audit only. No rented NVIDIA machine and no
+  timed local benchmark were needed.
+- Audited `local-inference-lab/vllm` at
+  `2226f261e9a6befef7a344997fb3b6769baa3bf7`, the revision used by the public
+  RTX Pro 6000 DSpark benchmark matrix.
+- Audited `lobanov/ds4` branch `dspark-research` at
+  `16dcefeb8995bb5e3b6a816da31489981c9b4f98`.
+- The public vLLM matrix is the useful performance evidence. Its sustained
+  single-concurrency TP2 result is `128.0 -> 216.1 -> 222.6 t/s` for plain,
+  MTP2, and DSpark; TP4 is `152.9 -> 280.0 -> 287.9 t/s`. Coding peaks reach
+  `307.1` and `370.2 t/s` with DSpark. These establish that DSpark can produce
+  a real speedup in that stack, but do not isolate the blog's headline because
+  its hardware, tensor parallelism, build, and serving configuration changed.
+
+What vLLM is doing:
+
+- It packs every request's accepted anchor plus fixed five-token proposal span
+  into the generic target speculative-decode batch and samples the accepted
+  prefix plus bonus token in one scheduler step.
+- Its DSpark drafter has a private rolling target-KV cache, a dedicated
+  TileLang sparse-attention path, and a captured fixed-shape CUDA graph.
+- The pinned implementation computes DSpark confidence but discards it. It
+  does not implement the raw-confidence prefix scheduler used by this branch.
+- DeepSeek V4 target compressor partial states are stored per token in a paged
+  `CompressorStateCache`. Rejected speculative rows remain stale and are made
+  invisible by decrementing the logical computed-token count on GPU.
+- The target compressor path fuses compressor reduction, normalization, RoPE,
+  cache quantization, and cache write. CUDA uses specialized CuTeDSL/Triton
+  kernels, while request packing and logical rollback are architecture-level
+  ideas rather than CUDA-only ideas.
+
+Comparison with this branch:
+
+- Already covered here: persistent Metal drafter, rolling DSpark window,
+  confidence scheduling, exact batched target verification, target bonus
+  logits, prefix checkpoints, fused dense-mixed gather, batched exact FFN,
+  routed-MoE hybrid, shared-expert Q8 rows, and compressor projection prebatch.
+- The apparent bonus-token difference is not extra steady-state work. ds4
+  samples the bonus from the verifier's final logits on the next API loop and
+  folds it into the next exact batch; it does not run a standalone target eval
+  merely to obtain that token.
+- The main structural delta is target state representation. ds4 keeps one
+  mutable compressor/indexer frontier, snapshots it before each exact batch,
+  and copies a captured prefix frontier back after partial acceptance. vLLM
+  materializes position-indexed partial states and rewinds logical length.
+- The current post-promotion budget is `40.175 ms/emitted` baseline versus
+  `44.694 ms/emitted` DSpark: target `36.356`, sidecar `7.596`, residual
+  `0.742`. Width-5 target verification costs `166.797 ms/eval`, or
+  `33.359 ms/position`, against roughly `40.2 ms` for a baseline token. The
+  verifier's batching discount is real but still too small: parity needs a
+  `12.4%` end-to-end-calibrated target-time reduction.
+
+What not to repeat from lobanov:
+
+- Drafter F16/F32, higher drafter precision, tap precision, target
+  distillation, and non-expert redistillation did not recover the native
+  target/drafter acceptance ceiling on the IQ2XXS target trajectory.
+- Pre-draft target-confidence bypass was negative/noisy.
+- Their Metal drafter, confidence scheduling, bonus/anchor reuse, prefix
+  checkpoint, and committing batch verifier are already matched or superseded
+  here. Their reported `+4.9%` path uses a non-byte-exact verifier; this branch
+  keeps byte-exact target output.
+- Their fused-verifier attempt is a useful failure record, not a patch to port.
+
+Transfer classification:
+
+- **Already implemented:** rolling sidecar KV, persistent GPU drafting,
+  sublinear target batches, adaptive width, bonus-logit reuse, and partial
+  prefix commit.
+- **Hardware/serving specific:** CUDA graphs, TileLang/CuTeDSL kernels, TP2/TP4,
+  multi-request packing, FP8 cache layout, and Blackwell kernel choices.
+- **Not locally testable as a fair engine comparison:** current vLLM-Metal
+  does not support DeepSeek V4, DSpark, MoE GGUF, or this model's K-quants.
+- **Plausibly transferable:** position-indexed compressor/indexer partial-state
+  caching with logical rollback, followed by a fused or packed Metal
+  compressor path. This is the only audited vLLM delta that directly targets
+  the remaining exact single-stream verifier rather than acceptance,
+  multi-user throughput, or NVIDIA launch mechanics.
+
+Next bounded falsifier:
+
+- Do not port the full vLLM cache design first. Add diagnostic-only timings for
+  exact-batch frontier snapshot, prefix commit/restore, and target-HC capture
+  finalization, with the existing target timer left separate. Run the frozen
+  low/high-acceptance tasks and report cost per emitted token and per partial
+  batch.
+- If frontier/capture bookkeeping is material (roughly `>=1 ms/emitted`), build
+  a small position-indexed shadow-state prototype for ratio-4 layers and prove
+  byte-exact N=2..5 parity before changing production ownership. If it is
+  negligible, do not pursue rollback-only work; the useful portion of the
+  vLLM design would then require the larger packed compressor rewrite.
