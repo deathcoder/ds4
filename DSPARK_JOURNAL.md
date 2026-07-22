@@ -14640,3 +14640,80 @@ Decision boundary:
   revisit retired suffix batching, row-view caching, inverse-RoPE fusion, or
   attention workgroup variants without evidence that the current component
   shape differs materially from their measured conditions.
+
+Completed result:
+
+- User-run artifact:
+  `speed-bench/local-runs/post-promotion-width-tail-20260722-203133`.
+- Every profiled output matched the frozen cumulative HumanEval artifact
+  byte-for-byte. The width-five tail median was `2.820 ms/row` across twenty
+  batches.
+- Width-five median shares remain diffuse: inverse RoPE `18.5%`, projection A
+  `18.1%`, projection B plus HC `17.2%`, attention `16.7%`, compressor/indexer
+  `15.8%`, and KV/cache update `13.8%`.
+- The apparent inverse-RoPE lead is not stable evidence of a new hotspot. Its
+  raw width-five timings are bimodal and the long synchronized stalls rotate
+  among components. Earlier promoted profiles measured inverse RoPE at
+  `0.270-0.287 ms/row`, while this run's fast cluster remains near `0.25 ms`.
+
+Decision:
+
+- Stop component-by-component serial-tail work. No component owns even one
+  fifth of the sampled stage, and the relevant exact candidates have already
+  been measured: suffix batching regressed, row-view caching was neutral,
+  inverse-RoPE fusion was marginal and not broadly promotable, NR4 output was
+  promoted, NR8 regressed, and the dense-mixed fused-gather route is promoted.
+- Close the microprofile chain with a model-free gap-closure ledger. Any next
+  runtime candidate must have enough addressable verifier cost to close a
+  material part of the measured parity deficit.
+
+## Phase 1.85: exact-verifier gap-closure ledger
+
+Preparation:
+
+- Added `speed-bench/analyze_dspark_gap_closure.py`, consuming the current
+  cumulative cost, width-layer, exact-FFN, and serial-tail summaries without
+  launching a model process.
+- The ledger separates the measured end-to-end target reduction needed for
+  parity from the smaller accounted-cost estimate, then composes verifier
+  width, stage, and inner-component shares into deliberately optimistic
+  elimination ceilings.
+- Added model-free tests for protocol validation, share composition, parity
+  math, impossible-elimination handling, and the final scope decision.
+
+Decision boundary:
+
+- Retire narrow inner-component microkernels when no component can credibly
+  close the gap even under an all-width extrapolation. An inner component is
+  called credible here only if its impossibly favorable elimination ceiling
+  reaches parity with no more than a `50%` component reduction.
+- Continue only with a complete cross-width stage redesign, a multi-stage
+  mechanism, or a verifier-architecture change. Synchronized task-079 shares
+  remain directional and must never be reported as full-model wall time.
+
+Completed result:
+
+- Model-free artifact:
+  `speed-bench/local-runs/gap-closure-20260722`.
+- The measured cumulative deficit is `4.920 ms/emitted`. Closing it entirely
+  through target verification requires a `13.4%` measured target-time
+  reduction; the accounted-cost estimate is `11.7%`.
+- Width five owns `54.9%` of target time and would require a `24.4%` reduction
+  of all width-five verification to close parity alone.
+- If the sampled width-five stage mix applied across all verifier widths,
+  attention preparation would require a `59.1%` reduction, the serial tail
+  `34.7%`, and FFN `34.4%`. Restricting a candidate to width five raises the
+  tail and FFN requirements to `63.3%` and `62.6%`; eliminating width-five
+  attention preparation entirely would still not close parity.
+- Routed MoE is the only inner component whose optimistic all-width
+  elimination ceiling exceeds the gap, but it would require an `87.6%`
+  reduction. Every serial-tail component has an all-width elimination ceiling
+  below the `13.4%` target requirement.
+
+Decision:
+
+- `REQUIRE_CROSS_WIDTH_STAGE_OR_VERIFIER_REDESIGN`.
+- Do not select another runtime candidate from a synchronized component rank.
+  The next phase must first compare verifier-level mechanisms against the
+  `4.920 ms/emitted` deficit and reject any design whose optimistic addressable
+  budget cannot materially approach it.
