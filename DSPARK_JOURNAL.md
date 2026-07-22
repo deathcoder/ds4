@@ -13267,3 +13267,74 @@ Final Phase 1.72 decision:
   support exact widths `N=2..5`, preserve row-specific causal visibility, and
   remain absent from throughput runners. Any head drift stops expansion to the
   ratio-4/indexed layer until its first differing source is localized.
+
+## Phase 1.73: ratio-128 causal attention-head shadow
+
+Implementation:
+
+- Added a diagnostic-only layer-41 attention-head shadow for exact proposal
+  widths `N=2..5`. The existing serial exact verifier remains authoritative;
+  the shadow cannot select tokens, change acceptance, publish cache state, or
+  feed later target layers.
+- Reused the existing Metal
+  `ds4_gpu_attention_decode_mixed_batch_heads_tensor` path rather than adding
+  new attention arithmetic. It consumes the final proposal raw/compressed
+  caches with a row-specific causal mask: raw positions after each query are
+  masked, the logical 128-token raw window is preserved, and compressed rows
+  are visible only when their ratio-128 boundary has been reached.
+- Added two lazily allocated, graph-owned diagnostic tensors. One captures the
+  serial attention output for every proposal row before inverse RoPE; the other
+  receives the causal multi-row attention output. They never alias persistent
+  KV state, prefix checkpoints, hidden states, logits, or production attention
+  outputs.
+- The serial capture also handles the optional fused inverse-RoPE path by using
+  its observer output before rotation. In the normal non-fused path, it copies
+  `g->heads` immediately after attention and before the existing inverse-RoPE
+  dispatch.
+- After all serial rows populate the proposal caches, the shadow runs in the
+  same command stream and is synchronized only for diagnostic readback. Every
+  row reports max absolute error, RMS error, relative L2 error, maximum ULP,
+  first differing value, and `exact`, `bounded`, or `drift` classification.
+- Allocation, capture, or dispatch failures are report-only fallbacks. A
+  numerically bounded result is deliberately not accepted by the runner: the
+  first real gate requires every head row to be bitwise exact before this path
+  can become a runtime candidate.
+
+Safety gate and runner:
+
+- The head shadow requires all four settings:
+  `DS4_DSPARK_GPU_RUNTIME=1`, `DS4_DSPARK_MULTI_COMMIT=1`,
+  `DS4_DSPARK_GPU_RUNTIME_DIAGNOSTICS=1`, and
+  `DS4_DSPARK_CAUSAL_ATTN_HEAD_OBSERVER_LAYER=41`.
+- `speed-bench/run_dspark_causal_attention_head_observer.py` additionally
+  enables the proven proposal-slab observer at layer 41. It runs a fresh
+  ordinary baseline, threshold-0.75 scheduling, and fixed `K=5`; requires all
+  generated outputs to match baseline byte-for-byte; requires complete exact
+  head rows and exact slab records; and requires fixed-K5 partial publication.
+- The user-run command is:
+
+  ```sh
+  python3 speed-bench/run_dspark_causal_attention_head_observer.py --confirm-ready
+  ```
+
+Validation completed before the user gate:
+
+- Normal Metal build passes with no C/Objective-C warnings.
+- All 300 discovered `test_dspark_*.py` model-free tests pass, including eight
+  new environment, parser, fallback/drift rejection, pre-RoPE capture, and
+  source-isolation tests.
+- Focused C tests `ds4_test --dspark-validation` and
+  `ds4_test --dspark-shape-binding` pass.
+- `ds4_test --metal-kernels` initializes the Apple M1 Ultra Metal backend and
+  passes, covering combined shader-library compilation and the current Metal
+  tensor API tests.
+- The guarded runner's `--dry-run` passes. No model process or timed benchmark
+  was run by Codex.
+
+Pending decision:
+
+- **REQUIRE REAL-GPU HEAD-EQUIVALENCE GATE.** Commit the implementation, then
+  let the user run the command above on an otherwise quiet machine. Exact rows
+  authorize a production-candidate experiment at ratio 128. Bounded or drift
+  results stop promotion and become an arithmetic-localization task; fallback
+  stops promotion and becomes a dispatch/state-visibility bug investigation.

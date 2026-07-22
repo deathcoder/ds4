@@ -10787,6 +10787,14 @@ typedef struct {
     uint32_t proposal_shadow_proposed;
     bool proposal_shadow_valid;
     bool proposal_shadow_verified;
+    /* Diagnostic-only serial and causal-batch attention head captures. */
+    ds4_gpu_tensor *causal_attn_serial_heads;
+    ds4_gpu_tensor *causal_attn_batch_heads;
+    uint32_t causal_attn_capture_layer;
+    uint32_t causal_attn_capture_start;
+    uint32_t causal_attn_capture_proposed;
+    bool causal_attn_capture_active;
+    bool causal_attn_capture_valid;
     uint32_t raw_cap;
     /* Maximum compressed-row capacity across layers.  Shared work buffers use
      * this worst-case size because ratio-4 indexer layers can still reach it. */
@@ -11156,6 +11164,8 @@ static void metal_graph_free(ds4_gpu_graph *g) {
     ds4_gpu_tensor_free(g->proposal_shadow_index_state_kv);
     ds4_gpu_tensor_free(g->proposal_shadow_attn_state_score);
     ds4_gpu_tensor_free(g->proposal_shadow_attn_state_kv);
+    ds4_gpu_tensor_free(g->causal_attn_batch_heads);
+    ds4_gpu_tensor_free(g->causal_attn_serial_heads);
     ds4_gpu_tensor_free(g->kv);
     ds4_gpu_tensor_free(g->kv_raw);
     ds4_gpu_tensor_free(g->q);
@@ -16305,6 +16315,24 @@ encode_attention_tail:
         const uint32_t raw_start = metal_graph_raw_start_for_span(g, pos, n_raw);
         const bool observe_inv_rope = exact_attn_inv_rope_fused &&
             metal_graph_exact_attn_inv_rope_observer_layer() == (int)il;
+        const bool observe_causal_attn =
+            g->causal_attn_capture_active &&
+            g->causal_attn_capture_valid &&
+            g->causal_attn_capture_layer == il &&
+            pos >= g->causal_attn_capture_start &&
+            pos - g->causal_attn_capture_start <
+                g->causal_attn_capture_proposed;
+        const uint32_t causal_row = observe_causal_attn
+            ? pos - g->causal_attn_capture_start : 0u;
+        ds4_gpu_tensor *causal_heads = observe_causal_attn
+            ? ds4_gpu_tensor_view(
+                  g->causal_attn_serial_heads,
+                  (uint64_t)causal_row * q_dim * sizeof(float),
+                  q_dim * sizeof(float))
+            : NULL;
+        if (observe_causal_attn && !causal_heads) {
+            g->causal_attn_capture_valid = false;
+        }
         ds4_gpu_tensor *reference_heads = observe_inv_rope ?
             ds4_gpu_tensor_view(g->batch_heads, 0, q_dim * sizeof(float)) :
             NULL;
@@ -16326,8 +16354,26 @@ encode_attention_tail:
                 il,
                 pos,
                 exact_attention_profile,
-                reference_heads,
+                causal_heads ? causal_heads : reference_heads,
                 exact_attn_inv_rope_fused ? &inverse_rope : NULL);
+        }
+        if (ok && causal_heads && !exact_attn_inv_rope_fused) {
+            if (ds4_gpu_tensor_copy(
+                    g->causal_attn_serial_heads,
+                    (uint64_t)causal_row * q_dim * sizeof(float),
+                    g->heads,
+                    0,
+                    q_dim * sizeof(float)) == 0) {
+                g->causal_attn_capture_valid = false;
+            }
+        }
+        if (ok && causal_heads && reference_heads &&
+            exact_attn_inv_rope_fused) {
+            ok = ds4_gpu_tensor_copy(reference_heads,
+                                     0,
+                                     causal_heads,
+                                     0,
+                                     q_dim * sizeof(float)) != 0;
         }
         if (ok && n_comp != 0 && comp_selected != NULL &&
             n_selected != 0 && decode_index_stage_profile) {
@@ -16417,6 +16463,7 @@ encode_attention_tail:
                 ok = ok && resumed;
             }
         }
+        ds4_gpu_tensor_free(causal_heads);
         ds4_gpu_tensor_free(reference_heads);
     }
     DS4_METAL_PROFILE_DECODE_STAGE("attention");
@@ -25050,6 +25097,163 @@ static int dspark_proposal_slab_observer_layer(void) {
     return cached_layer;
 }
 
+static int dspark_causal_attn_head_observer_layer(void) {
+    static bool initialized;
+    static int cached_layer = -1;
+    if (initialized) return cached_layer;
+    initialized = true;
+    if (!dspark_proposal_slab_env_enabled("DS4_DSPARK_GPU_RUNTIME") ||
+        !dspark_proposal_slab_env_enabled("DS4_DSPARK_MULTI_COMMIT") ||
+        !dspark_proposal_slab_env_enabled(
+            "DS4_DSPARK_GPU_RUNTIME_DIAGNOSTICS")) {
+        return -1;
+    }
+    const char *v = getenv(
+        "DS4_DSPARK_CAUSAL_ATTN_HEAD_OBSERVER_LAYER");
+    if (!v || !v[0]) return -1;
+    char *end = NULL;
+    errno = 0;
+    const long layer = strtol(v, &end, 10);
+    if (errno != 0 || end == v || *end != '\0' ||
+        layer < 0 || (uint64_t)layer >= DS4_N_LAYER) {
+        return -1;
+    }
+    cached_layer = (int)layer;
+    return cached_layer;
+}
+
+static bool dspark_causal_attn_head_shadow_alloc(
+        ds4_gpu_graph *g,
+        uint32_t       n_tokens) {
+    if (!g || n_tokens < 2u || n_tokens > 5u) return false;
+    const uint64_t q_dim = (uint64_t)DS4_N_HEAD * DS4_N_HEAD_DIM;
+    const uint64_t bytes = (uint64_t)n_tokens * q_dim * sizeof(float);
+    const bool compatible =
+        g->causal_attn_serial_heads && g->causal_attn_batch_heads &&
+        ds4_gpu_tensor_bytes(g->causal_attn_serial_heads) == bytes &&
+        ds4_gpu_tensor_bytes(g->causal_attn_batch_heads) == bytes;
+    if (compatible) return true;
+
+    ds4_gpu_tensor_free(g->causal_attn_batch_heads);
+    ds4_gpu_tensor_free(g->causal_attn_serial_heads);
+    g->causal_attn_batch_heads = ds4_gpu_tensor_alloc(bytes);
+    g->causal_attn_serial_heads = ds4_gpu_tensor_alloc(bytes);
+    if (!g->causal_attn_batch_heads || !g->causal_attn_serial_heads) {
+        ds4_gpu_tensor_free(g->causal_attn_batch_heads);
+        ds4_gpu_tensor_free(g->causal_attn_serial_heads);
+        g->causal_attn_batch_heads = NULL;
+        g->causal_attn_serial_heads = NULL;
+        return false;
+    }
+    return true;
+}
+
+static bool dspark_causal_attn_head_shadow_encode(
+        ds4_gpu_graph           *g,
+        const ds4_model         *model,
+        const ds4_layer_weights *layer,
+        uint32_t                 il,
+        uint32_t                 start,
+        uint32_t                 n_tokens) {
+    if (!g || !model || !layer || ds4_layer_compress_ratio(il) != 128u ||
+        !g->causal_attn_capture_valid ||
+        !g->causal_attn_serial_heads || !g->causal_attn_batch_heads) {
+        return false;
+    }
+    const uint32_t n_raw = metal_graph_raw_span_for_batch(
+        g, start, n_tokens);
+    const uint32_t last_pos = start + n_tokens - 1u;
+    const uint32_t raw_start = metal_graph_raw_start_for_span(
+        g, last_pos, n_raw);
+    return ds4_gpu_attention_decode_mixed_batch_heads_tensor(
+               g->causal_attn_batch_heads,
+               model->map,
+               model->size,
+               layer->attn_sinks->abs_offset,
+               g->batch_q,
+               g->layer_raw_cache[il],
+               g->layer_attn_comp_cache[il],
+               metal_graph_attn_comp_cache_is_f16(),
+               NULL,
+               0,
+               n_tokens,
+               start,
+               n_raw,
+               g->raw_cap,
+               raw_start,
+               g->layer_n_comp[il],
+               g->raw_window,
+               128u,
+               DS4_N_HEAD,
+               DS4_N_HEAD_DIM) != 0;
+}
+
+static bool dspark_causal_attn_head_row_bounded(
+        const float *batch,
+        const float *serial,
+        uint64_t     n) {
+    const double max_diff = max_abs_diff(batch, serial, n);
+    const double rms_diff = rms_abs_diff(batch, serial, n);
+    const double rel_l2 = relative_l2_diff(batch, serial, n);
+    return isfinite(max_diff) && isfinite(rms_diff) && isfinite(rel_l2) &&
+           max_diff <= 1e-6 && rms_diff <= 1e-8 && rel_l2 <= 1e-6;
+}
+
+static bool dspark_causal_attn_head_shadow_report(
+        ds4_gpu_graph *g,
+        uint32_t       il,
+        uint32_t       n_tokens) {
+    const uint64_t q_dim = (uint64_t)DS4_N_HEAD * DS4_N_HEAD_DIM;
+    const uint64_t values = (uint64_t)n_tokens * q_dim;
+    float *batch = xmalloc((size_t)values * sizeof(float));
+    float *serial = xmalloc((size_t)values * sizeof(float));
+    bool read_ok = ds4_gpu_tensor_read(
+                       g->causal_attn_batch_heads,
+                       0,
+                       batch,
+                       values * sizeof(float)) != 0 &&
+                   ds4_gpu_tensor_read(
+                       g->causal_attn_serial_heads,
+                       0,
+                       serial,
+                       values * sizeof(float)) != 0;
+    bool exact_all = read_ok;
+    for (uint32_t row = 0; read_ok && row < n_tokens; row++) {
+        const float *batch_row = batch + (uint64_t)row * q_dim;
+        const float *serial_row = serial + (uint64_t)row * q_dim;
+        const bool exact = memcmp(
+            batch_row, serial_row, q_dim * sizeof(float)) == 0;
+        const bool bounded = exact || dspark_causal_attn_head_row_bounded(
+            batch_row, serial_row, q_dim);
+        uint64_t first = q_dim;
+        for (uint64_t i = 0; !exact && i < q_dim; i++) {
+            if (memcmp(&batch_row[i], &serial_row[i], sizeof(float)) != 0) {
+                first = i;
+                break;
+            }
+        }
+        fprintf(stderr,
+                "ds4: DSpark causal attention head observer layer=%u "
+                "ratio=128 proposed=%u row=%u max=%g rms=%g rel_l2=%g "
+                "max_ulp=%u first=%llu batch=%a serial=%a result=%s\n",
+                il,
+                n_tokens,
+                row,
+                max_abs_diff(batch_row, serial_row, q_dim),
+                rms_abs_diff(batch_row, serial_row, q_dim),
+                relative_l2_diff(batch_row, serial_row, q_dim),
+                max_ulp_diff(batch_row, serial_row, q_dim),
+                (unsigned long long)first,
+                first < q_dim ? batch_row[first] : 0.0,
+                first < q_dim ? serial_row[first] : 0.0,
+                exact ? "exact" : (bounded ? "bounded" : "drift"));
+        exact_all = exact_all && exact;
+    }
+    free(serial);
+    free(batch);
+    return exact_all;
+}
+
 static void dspark_proposal_slab_shadow_free(ds4_gpu_graph *g) {
     if (!g) return;
     ds4_gpu_tensor_free(g->proposal_shadow_index_state_score);
@@ -25474,11 +25678,16 @@ static bool metal_graph_verify_decode_exact(
     const bool proposal_slab_observer_enabled =
         proposal_slab_observer_layer >= 0 && exact_attn_pre_batch &&
         n_tokens > 1u && n_tokens <= 5u;
+    const int causal_attn_head_observer_layer =
+        dspark_causal_attn_head_observer_layer();
+    const bool causal_attn_head_observer_enabled =
+        causal_attn_head_observer_layer >= 0 && exact_attn_pre_batch &&
+        n_tokens > 1u && n_tokens <= 5u;
     const bool split_ffn_enabled = ffn_observer_enabled || ffn_runtime_enabled;
     const bool split_layer_enabled =
         split_ffn_enabled || attn_observer_enabled || attn_runtime_enabled ||
         attn_suffix_observer_enabled || attn_suffix_runtime_enabled ||
-        proposal_slab_observer_enabled;
+        proposal_slab_observer_enabled || causal_attn_head_observer_enabled;
     if (timing && ffn_runtime_enabled) timing->ffn_batch_attempts++;
     dspark_exact_attention_pre_batch_observation attn_observation;
     memset(&attn_observation, 0, sizeof(attn_observation));
@@ -25568,7 +25777,8 @@ static bool metal_graph_verify_decode_exact(
     g->spec_capture_prefix1 = false;
     g->spec_capture_prefix =
         (dspark_exact_prefix_checkpoint_enabled() ||
-         proposal_slab_observer_enabled) && n_tokens > 1u;
+         proposal_slab_observer_enabled ||
+         causal_attn_head_observer_enabled) && n_tokens > 1u;
     const double layer_started = timing ? now_sec() : 0.0;
     const bool exact_layer_profile_requested =
         n_tokens > 1u && attn_runtime_enabled && ffn_runtime_enabled &&
@@ -25609,8 +25819,11 @@ static bool metal_graph_verify_decode_exact(
         const bool observe_proposal_slab =
             proposal_slab_observer_enabled &&
             il == (uint32_t)proposal_slab_observer_layer;
+        const bool observe_causal_attn =
+            causal_attn_head_observer_enabled &&
+            il == (uint32_t)causal_attn_head_observer_layer;
         if (!observe_attn && !observe_attn_suffix && !observe_ffn &&
-            !observe_proposal_slab &&
+            !observe_proposal_slab && !observe_causal_attn &&
             !attn_runtime_enabled &&
             !ffn_runtime_enabled) {
             for (uint32_t row = 0; ok && row < n_tokens; row++) {
@@ -25648,6 +25861,7 @@ static bool metal_graph_verify_decode_exact(
         }
 
         bool proposal_slab_prepared = false;
+        bool causal_attn_prepared = false;
         bool attn_runtime_layer = false;
         if (attn_runtime_enabled) {
             if (exact_layer_profile) exact_layer_stage_t0 = now_sec();
@@ -25675,6 +25889,17 @@ static bool metal_graph_verify_decode_exact(
                             il,
                             start,
                             n_tokens);
+                }
+                if (observe_causal_attn) {
+                    causal_attn_prepared =
+                        ds4_layer_compress_ratio(il) == 128u &&
+                        dspark_causal_attn_head_shadow_alloc(g, n_tokens);
+                    if (causal_attn_prepared) {
+                        g->causal_attn_capture_layer = il;
+                        g->causal_attn_capture_start = start;
+                        g->causal_attn_capture_proposed = n_tokens;
+                        g->causal_attn_capture_valid = true;
+                    }
                 }
             } else {
                 ok = ds4_gpu_end_commands() != 0 &&
@@ -25848,6 +26073,7 @@ static bool metal_graph_verify_decode_exact(
         bool attn_suffix_capture_ok = observe_attn_suffix;
         const bool attn_suffix_runtime_layer =
             attn_suffix_runtime_enabled && attn_runtime_layer;
+        g->causal_attn_capture_active = causal_attn_prepared;
         for (uint32_t row = 0; ok && row < n_tokens; row++) {
             const uint32_t pos = start + row;
             g->cur_hc = cur[row];
@@ -25959,19 +26185,36 @@ static bool metal_graph_verify_decode_exact(
                 ok = metal_graph_capture_prefix_state(g, il, row + 1u);
             }
         }
-        if (observe_proposal_slab) {
+        g->causal_attn_capture_active = false;
+        bool causal_attn_encoded = false;
+        if (ok && observe_causal_attn && causal_attn_prepared) {
+            causal_attn_encoded = dspark_causal_attn_head_shadow_encode(
+                g, model, &weights->layer[il], il, start, n_tokens);
+        }
+        if (observe_proposal_slab || observe_causal_attn) {
             if (ok) ok = ds4_gpu_end_commands() != 0;
             else (void)ds4_gpu_synchronize();
-            if (ok && proposal_slab_prepared) {
+            if (observe_proposal_slab && ok && proposal_slab_prepared) {
                 dspark_proposal_slab_observer_compare_rows(
                     g, il, start, n_tokens);
-            } else {
+            } else if (observe_proposal_slab) {
                 fprintf(stderr,
                         "ds4: DSpark proposal slab observer layer=%u "
                         "proposed=%u result=fallback\n",
                         il,
                         n_tokens);
                 g->proposal_shadow_valid = false;
+            }
+            if (observe_causal_attn && ok && causal_attn_encoded) {
+                (void)dspark_causal_attn_head_shadow_report(
+                    g, il, n_tokens);
+            } else if (observe_causal_attn) {
+                fprintf(stderr,
+                        "ds4: DSpark causal attention head observer layer=%u "
+                        "ratio=%u proposed=%u result=fallback\n",
+                        il,
+                        ds4_layer_compress_ratio(il),
+                        n_tokens);
             }
             if (ok) ok = ds4_gpu_begin_commands() != 0;
         }
