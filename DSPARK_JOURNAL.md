@@ -24,21 +24,19 @@ is about `0.192 ms/emitted`, less than `0.5%` of runtime and far below the
 return to exact target verification and require the next lead to affect many
 layers or a material part of the `36.356 ms/emitted` target cost.
 
-Phase 1.76 is prepared but not yet measured. oMLX supports DeepSeek V4 on
-Apple MLX and native chained MTP, but it does not implement DSpark or consume
-the released DSpark sidecar. A pinned eight-task HumanEval sweep will compare
-oMLX baseline, fixed depth one, and adaptive maximum depths two and three using
-`Jundot/DeepSeek-V4-Flash-oQ2e-mtp`. The required checkpoint is about 91.2 GiB
-and is now downloaded and validated locally: all 19 indexed shards total
-91.21 GiB and the index exposes 43 `mtp.0.*` tensors. The user must run all
-timed tests. Treat oMLX versus ds4 as an end-to-end engine-plus-quantization
-comparison; require byte-exact speculative output only against each engine's
-own baseline. The initial source audit ranks verify-shaped affine QMM as the
-most interesting broad mechanism, but no port is justified until the sweep
-shows which oMLX mode wins and whether oMLX actually closes the local gap.
-The pinned source environment's optional native kernel extensions were built
-locally and ABI-checked; all DeepSeek MXFP4 and affine expert symbols are
-available. Do not benchmark a plain source install that lacks those symbols.
+Phase 1.76's initial oMLX screen is complete. On eight HumanEval tasks, oMLX
+baseline measured `18.42 t/s`; native MTP measured `25.25` at depth one,
+`27.40` at adaptive maximum depth two, and `26.56` at adaptive maximum depth
+three. Against oMLX baseline, `mtp2` was the winner at `1.4792x` geometric
+paired throughput and won all `8/8` tasks; `mtp3` was `0.9725x` geometrically
+versus `mtp2`. This demonstrates a real native-MTP speedup for oMLX's different
+oQ2 checkpoint, not an engine-only or DSpark result. The strict byte-output
+screen failed: `mtp1`, `mtp2`, and `mtp3` matched baseline on `6/8`, `4/8`, and
+`5/8` tasks, respectively, with no completion-token-count drift. Do not make
+an exact-output performance claim from these results. The next diagnostic
+keeps `mtp2` unchanged while disabling only its MTPLX-derived custom affine
+verify-QMM eligibility, to separate that kernel's contribution from native
+MTP batching, expert kernels, bonus harvesting, and adaptive depth.
 
 Phase 1.38 is complete. After promoting exact shared-expert Q8 proposal rows,
 the fresh 32-task cumulative HumanEval reassessment measured exact DSpark at a
@@ -13952,9 +13950,13 @@ Initial transfer ranking:
 
 Current decision:
 
-- The comparison is feasible and now prepared correctly, including native
-  kernels and the validated local checkpoint. Do not run timed modes
-  automatically; the user owns those measurements.
-- Next gate: run the four eight-task modes while the machine is as idle as
-  practical.
-- Make no oMLX performance or porting claim until those local results exist.
+- The initial configuration screen selects adaptive-max `mtp2`: its geometric
+  paired gain over oMLX baseline is `1.4792x`, while `mtp3` is slower.
+- The screen's strict exact-output gate failed despite stable output lengths.
+  Treat the throughput direction as diagnostic and preserve the numerical
+  discrepancy as part of every transfer decision.
+- Next gate: run `mtp2_stock_qmm` while the machine is as idle as practical.
+  If it remains near `mtp2`, the main win is native batched MTP execution and
+  verify QMM is not the leading port. If it falls materially, inspect the
+  eligible projection shapes before implementing any ds4 analogue.
+- Do not run timed modes automatically; the user owns those measurements.

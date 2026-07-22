@@ -24,10 +24,31 @@ import time
 
 
 MODES = {
-    "baseline": {"mtp_enabled": False, "mtp_num_draft_tokens": None},
-    "mtp1": {"mtp_enabled": True, "mtp_num_draft_tokens": 1},
-    "mtp2": {"mtp_enabled": True, "mtp_num_draft_tokens": 2},
-    "mtp3": {"mtp_enabled": True, "mtp_num_draft_tokens": 3},
+    "baseline": {
+        "mtp_enabled": False,
+        "mtp_num_draft_tokens": None,
+        "custom_verify_qmm": True,
+    },
+    "mtp1": {
+        "mtp_enabled": True,
+        "mtp_num_draft_tokens": 1,
+        "custom_verify_qmm": True,
+    },
+    "mtp2": {
+        "mtp_enabled": True,
+        "mtp_num_draft_tokens": 2,
+        "custom_verify_qmm": True,
+    },
+    "mtp2_stock_qmm": {
+        "mtp_enabled": True,
+        "mtp_num_draft_tokens": 2,
+        "custom_verify_qmm": False,
+    },
+    "mtp3": {
+        "mtp_enabled": True,
+        "mtp_num_draft_tokens": 3,
+        "custom_verify_qmm": True,
+    },
 }
 OMLX_COMMIT = "a20d60de2e843395819969e61d8845d2497c49f0"
 MODEL_REPO = "Jundot/DeepSeek-V4-Flash-oQ2e-mtp"
@@ -68,6 +89,11 @@ def mode_settings(mode: str) -> dict[str, int | bool | None]:
         return dict(MODES[mode])
     except KeyError as exc:
         raise ValueError(f"unsupported oMLX mode: {mode}") from exc
+
+
+def install_stock_verify_qmm_route(module) -> None:
+    """Keep oMLX verification on MLX's stock quantized-matmul route."""
+    module.vk_eligible = lambda *_args, **_kwargs: False
 
 
 def generation_metrics(
@@ -353,6 +379,10 @@ def render_report(summary: dict) -> str:
         "",
         "Single-process, cache-disabled, uninstrumented oMLX generation.",
         "Generation t/s uses the same completion-tokens / producer-interval convention as oMLX's built-in benchmark.",
+        "Custom verify QMM: "
+        + (
+            "enabled." if summary["mode_settings"]["custom_verify_qmm"] else "disabled."
+        ),
         "",
         "| samples | median generation | median interval | median prefill |",
         "|---:|---:|---:|---:|",
@@ -394,6 +424,10 @@ async def run(args: argparse.Namespace, root: Path, records: list[dict], run_dir
     from omlx.scheduler import SchedulerConfig
 
     config = mode_settings(args.mode)
+    if not config["custom_verify_qmm"]:
+        from omlx.patches import qwen35_verify_qmm
+
+        install_stock_verify_qmm_route(qwen35_verify_qmm)
     settings = ModelSettings(
         mtp_enabled=bool(config["mtp_enabled"]),
         mtp_num_draft_tokens=config["mtp_num_draft_tokens"],
@@ -448,6 +482,7 @@ async def run(args: argparse.Namespace, root: Path, records: list[dict], run_dir
 
     summary = {
         "mode": args.mode,
+        "mode_settings": config,
         "sample_count": len(rows),
         "generation_tps_median": statistics.median(
             row["generation_tps"] for row in rows

@@ -11,6 +11,7 @@ import unittest
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "speed-bench"))
 import analyze_omlx_humaneval_sweep as analysis  # noqa: E402
+import analyze_omlx_verify_qmm_ablation as qmm_analysis  # noqa: E402
 import run_omlx_humaneval_mode as runner  # noqa: E402
 
 
@@ -18,15 +19,41 @@ class OMLXHumanEvalToolTests(unittest.TestCase):
     def test_mode_matrix_is_explicit(self):
         self.assertEqual(
             runner.mode_settings("baseline"),
-            {"mtp_enabled": False, "mtp_num_draft_tokens": None},
+            {
+                "mtp_enabled": False,
+                "mtp_num_draft_tokens": None,
+                "custom_verify_qmm": True,
+            },
         )
         self.assertEqual(
             runner.mode_settings("mtp1"),
-            {"mtp_enabled": True, "mtp_num_draft_tokens": 1},
+            {
+                "mtp_enabled": True,
+                "mtp_num_draft_tokens": 1,
+                "custom_verify_qmm": True,
+            },
         )
         self.assertEqual(runner.mode_settings("mtp3")["mtp_num_draft_tokens"], 3)
+        self.assertEqual(
+            runner.mode_settings("mtp2_stock_qmm"),
+            {
+                "mtp_enabled": True,
+                "mtp_num_draft_tokens": 2,
+                "custom_verify_qmm": False,
+            },
+        )
         with self.assertRaises(ValueError):
             runner.mode_settings("dspark")
+
+    def test_stock_verify_qmm_route_disables_custom_eligibility(self):
+        class Module:
+            @staticmethod
+            def vk_eligible(*_args, **_kwargs):
+                return True
+
+        module = Module()
+        runner.install_stock_verify_qmm_route(module)
+        self.assertFalse(module.vk_eligible(3, 64, 16384, 4, 64, "bf16"))
 
     def test_generation_metrics_report_both_tps_conventions(self):
         metrics = runner.generation_metrics(
@@ -148,6 +175,43 @@ class OMLXHumanEvalToolTests(unittest.TestCase):
             summary["token_count_mismatches"],
             [{"task": "task_0", "mode": "mtp2"}],
         )
+
+    def test_verify_qmm_ablation_compares_custom_with_stock(self):
+        runs = self.synthetic_runs()
+        stock = json.loads(json.dumps(runs["mtp2"]))
+        stock["metadata"]["mode"] = "mtp2_stock_qmm"
+        stock["tasks"]["task_0"]["generation_tps"] = 22.0
+        stock["tasks"]["task_1"]["generation_tps"] = 22.0
+        runs = {
+            "baseline": runs["baseline"],
+            "mtp2_stock_qmm": stock,
+            "mtp2": runs["mtp2"],
+        }
+        summary = qmm_analysis.summarize(runs, ["task_0", "task_1"])
+        self.assertEqual(summary["custom_vs_stock"]["faster_tasks"], 2)
+        self.assertTrue(summary["token_count_gate"])
+        self.assertIn("Custom Versus Stock", qmm_analysis.render_report(summary))
+
+    def test_verify_qmm_ablation_accepts_pre_ablation_artifacts(self):
+        runs = self.synthetic_runs()
+        stock = json.loads(json.dumps(runs["mtp2"]))
+        stock["metadata"]["mode"] = "mtp2_stock_qmm"
+        stock["metadata"]["mode_settings"] = {
+            "mtp_enabled": True,
+            "mtp_num_draft_tokens": 2,
+            "custom_verify_qmm": False,
+        }
+        for mode in ("baseline", "mtp2"):
+            runs[mode]["metadata"]["mode_settings"] = {
+                "mtp_enabled": mode != "baseline",
+                "mtp_num_draft_tokens": 2 if mode == "mtp2" else None,
+            }
+        selected = {
+            "baseline": runs["baseline"],
+            "mtp2_stock_qmm": stock,
+            "mtp2": runs["mtp2"],
+        }
+        self.assertEqual(qmm_analysis.validate_modes(selected), ["task_0", "task_1"])
 
 
 if __name__ == "__main__":

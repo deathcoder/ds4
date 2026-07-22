@@ -1423,3 +1423,27 @@ task. Across oMLX and ds4, compare paired throughput and token counts rather
 than output bytes because the engines use different target quantizations and
 model formats. Confirm the winning oMLX mode with balanced process ordering
 before making a performance claim or selecting a mechanism to port.
+
+The completed screen selected `mtp2`. To isolate oMLX's MTPLX-derived custom
+verify-QMM kernels from its native MTP runtime, run the same depth-two mode
+with only that route disabled:
+
+```sh
+$OMLX_PY speed-bench/run_omlx_humaneval_mode.py \
+  --mode mtp2_stock_qmm \
+  --confirm-idle
+```
+
+This retains adaptive maximum depth two, bonus-token harvesting, native V4
+expert kernels, and ordinary batched target verification. It changes only the
+eligibility gate for the custom affine Q4/Q8 verify kernels, forcing those
+projections through MLX's stock quantized-matmul path. Compare it with the
+existing `mtp2` artifact before deciding whether verify QMM is a porting lead.
+Generate the diagnostic comparison with:
+
+```sh
+python3 speed-bench/analyze_omlx_verify_qmm_ablation.py \
+  --baseline /path/to/baseline/summary.json \
+  --stock /path/to/mtp2-stock-qmm/summary.json \
+  --custom /path/to/mtp2/summary.json
+```
