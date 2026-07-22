@@ -1341,3 +1341,85 @@ paired ratio of at least `1.01x`, at least `24/32` tasks faster, and no task
 below `0.95x`. The paired result answers whether this branch improved ordinary
 decode; it must not be multiplied into a DSpark/baseline ratio from another
 session.
+
+## oMLX DeepSeek V4 comparison
+
+This comparison pins oMLX commit
+`a20d60de2e843395819969e61d8845d2497c49f0` and the
+`Jundot/DeepSeek-V4-Flash-oQ2e-mtp` checkpoint at revision
+`f42b63224cfed5cff40185004b77d7ff935a6c47`. The checkpoint is about
+91.2 GiB and contains oMLX's native full MTP transformer block. It is not a
+DSpark sidecar: this is an end-to-end engine and quantization comparison, not
+an engine-only comparison against ds4's IQ2XXS GGUF.
+
+The pinned source environment must include oMLX's optional native DeepSeek
+expert kernels. A plain editable install silently uses the slower generic
+fallback. The prepared checkout has already been built and ABI-checked. To
+rebuild it after recreating the environment:
+
+```sh
+cd /Users/deathcodevision/dev/local-inference-lab/omlx
+uv pip install --python .venv/bin/python \
+  "cmake>=3.27" "nanobind==2.13.0" "setuptools>=61" wheel
+PATH="$PWD/.venv/bin:$PATH" \
+CMAKE_ARGS="-DPython_EXECUTABLE=$PWD/.venv/bin/python" \
+OMLX_WITH_CUSTOM_KERNEL=1 \
+  .venv/bin/python setup.py build_ext --inplace --force
+.venv/bin/python -c \
+  'from omlx.custom_kernels import native_kernel_status; print(native_kernel_status())'
+```
+
+Download the model into the pinned oMLX environment when enough disk space is
+available:
+
+```sh
+mkdir -p /Users/deathcodevision/dev/local-inference-lab/omlx-models/Jundot
+/Users/deathcodevision/dev/local-inference-lab/omlx/.venv/bin/hf download \
+  Jundot/DeepSeek-V4-Flash-oQ2e-mtp \
+  --revision f42b63224cfed5cff40185004b77d7ff935a6c47 \
+  --local-dir /Users/deathcodevision/dev/local-inference-lab/omlx-models/Jundot/DeepSeek-V4-Flash-oQ2e-mtp
+```
+
+After the download exits successfully, validate the architecture, native MTP
+tensor directory, and presence of every indexed shard without loading the
+model:
+
+```sh
+/Users/deathcodevision/dev/local-inference-lab/omlx/.venv/bin/python \
+  speed-bench/run_omlx_humaneval_mode.py \
+  --mode baseline \
+  --validate-only
+```
+
+The initial sweep uses eight deterministic HumanEval tasks. Each process runs
+one excluded warmup, then the same eight measured tasks with caches disabled,
+one active request, non-thinking chat, greedy decoding, and 128 output tokens.
+Run each mode only while the machine is as idle as practical:
+
+```sh
+OMLX_PY=/Users/deathcodevision/dev/local-inference-lab/omlx/.venv/bin/python
+
+$OMLX_PY speed-bench/run_omlx_humaneval_mode.py --mode baseline --confirm-idle
+$OMLX_PY speed-bench/run_omlx_humaneval_mode.py --mode mtp1 --confirm-idle
+$OMLX_PY speed-bench/run_omlx_humaneval_mode.py --mode mtp2 --confirm-idle
+$OMLX_PY speed-bench/run_omlx_humaneval_mode.py --mode mtp3 --confirm-idle
+```
+
+`mtp1` is fixed depth one. `mtp2` and `mtp3` set adaptive maximum depths two
+and three; oMLX's online controller may choose a shallower depth per cycle.
+The first sweep is diagnostic because each mode occupies one process-order
+position. Analyze it by passing the four generated `summary.json` paths:
+
+```sh
+python3 speed-bench/analyze_omlx_humaneval_sweep.py \
+  --baseline /path/to/baseline/summary.json \
+  --mtp1 /path/to/mtp1/summary.json \
+  --mtp2 /path/to/mtp2/summary.json \
+  --mtp3 /path/to/mtp3/summary.json
+```
+
+Every speculative mode must match oMLX baseline byte-for-byte within each
+task. Across oMLX and ds4, compare paired throughput and token counts rather
+than output bytes because the engines use different target quantizations and
+model formats. Confirm the winning oMLX mode with balanced process ordering
+before making a performance claim or selecting a mechanism to port.

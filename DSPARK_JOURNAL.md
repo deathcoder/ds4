@@ -24,6 +24,21 @@ is about `0.192 ms/emitted`, less than `0.5%` of runtime and far below the
 return to exact target verification and require the next lead to affect many
 layers or a material part of the `36.356 ms/emitted` target cost.
 
+Phase 1.76 is prepared but not yet measured. oMLX supports DeepSeek V4 on
+Apple MLX and native chained MTP, but it does not implement DSpark or consume
+the released DSpark sidecar. A pinned eight-task HumanEval sweep will compare
+oMLX baseline, fixed depth one, and adaptive maximum depths two and three using
+`Jundot/DeepSeek-V4-Flash-oQ2e-mtp`. The required checkpoint is about 91.2 GiB
+and has not been downloaded. The user must run all model downloads and timed
+tests. Treat oMLX versus ds4 as an end-to-end engine-plus-quantization
+comparison; require byte-exact speculative output only against each engine's
+own baseline. The initial source audit ranks verify-shaped affine QMM as the
+most interesting broad mechanism, but no port is justified until the sweep
+shows which oMLX mode wins and whether oMLX actually closes the local gap.
+The pinned source environment's optional native kernel extensions were built
+locally and ABI-checked; all DeepSeek MXFP4 and affine expert symbols are
+available. Do not benchmark a plain source install that lacks those symbols.
+
 Phase 1.38 is complete. After promoting exact shared-expert Q8 proposal rows,
 the fresh 32-task cumulative HumanEval reassessment measured exact DSpark at a
 `0.8814x` geometric paired ratio versus ordinary baseline, with every output
@@ -13835,3 +13850,108 @@ Decision:
   lead to target multiple V4 layers or a material fraction of the
   `36.356 ms/emitted` target cost, and retain the one-layer uninstrumented gate
   before broad expansion.
+
+## Phase 1.76: oMLX comparison and transfer audit
+
+Goal:
+
+- Measure a strong current macOS-native DeepSeek V4 implementation on this
+  exact machine instead of inferring performance from CUDA results or another
+  user's hardware.
+- Separate oMLX baseline performance from its native MTP gain, select its best
+  draft-depth configuration, and then audit the winning path for portable
+  Metal mechanisms.
+
+Pinned source and runtime:
+
+- oMLX commit: `a20d60de2e843395819969e61d8845d2497c49f0`, source version
+  `0.5.3`, under `/Users/deathcodevision/dev/local-inference-lab/omlx`.
+- Python environment: the source checkout's `.venv`, with MLX `0.32.0` and
+  MLX-LM `0.31.3`.
+- A plain oMLX source install omits its optional native expert kernels and
+  silently falls back to generic `mx.gather_qmm`. The optional extensions were
+  built with full Xcode and the pinned venv Python. ABI validation passes for
+  `bonsai`, `glm_moe_dsa`, `minimax_m3`, and `qwen35_prefill`; all five
+  DeepSeek MXFP4/affine expert block and pair symbols are available.
+- The benchmark runner fingerprints the DeepSeek extension, dylib, and
+  metallib artifacts. Missing native symbols are a hard failure.
+
+Architecture verdict:
+
+- oMLX has its own DeepSeek V4 MLX model and a native chained-MTP runtime. It
+  does **not** implement DSpark: no DSpark metadata, main projection, Markov
+  head, confidence head, or DSpark sidecar loader exists in the pinned source.
+- Its checkpoint stores a conventional `mtp.0.block.*` transformer block plus
+  embedding projections, norms, and head. It verifies the next target token
+  and draft chain in one backbone call, harvests a target bonus token, and
+  rolls caches back exactly on rejection.
+- Maximum depths above one use an online controller. It estimates conditional
+  acceptance and measured cycle cost, then selects depth by expected committed
+  tokens divided by cycle time. Therefore `mtp2` and `mtp3` mean adaptive
+  maximum depths two and three, while `mtp1` is fixed depth one.
+
+Pinned model asset:
+
+- Repository: `Jundot/DeepSeek-V4-Flash-oQ2e-mtp`.
+- Revision: `f42b63224cfed5cff40185004b77d7ff935a6c47`.
+- Indexed tensor payload: about 91.2 GiB. The config declares DeepSeek V4,
+  43 target layers, one native MTP layer, and the target's rolling attention
+  window. The checkpoint has not yet been downloaded.
+- This target uses oMLX's mixed oQ 2-bit layout and a native MTP block. ds4
+  uses a different IQ2XXS GGUF target and the released Q8 DSpark sidecar, so
+  oMLX versus ds4 is an end-to-end engine-plus-quantization comparison. It is
+  not an engine-only or identical-weight comparison.
+
+Prepared protocol:
+
+- `speed-bench/run_omlx_humaneval_mode.py` runs exactly one mode per process:
+  baseline, fixed `mtp1`, adaptive-max `mtp2`, or adaptive-max `mtp3`.
+- The initial screen uses eight deterministic tasks from the frozen HumanEval
+  corpus, one excluded in-process warmup, one active request, disabled prefix
+  and paged-SSD caches, non-thinking chat, greedy seed 1, and 128 output
+  tokens. Model loading and process startup are excluded.
+- The runner reports oMLX's `completion_tokens / producer_interval`
+  convention and the stricter `(tokens - 1) / interval` cross-check. It also
+  captures native MTP acceptance and tokens per cycle from oMLX's summary.
+- Each speculative output must match that task's oMLX baseline byte-for-byte.
+  Across engines, compare throughput and token counts only; different target
+  quantizations can legitimately produce different text.
+- The four-process sweep is a configuration screen, not a final claim. A
+  winning mode requires a later balanced-order confirmation before comparison
+  with ds4 or promotion of any source mechanism.
+
+Initial transfer ranking:
+
+1. **Verify-shaped affine QMM is the strongest broad lead.** oMLX ports
+   MTPLX split-K and multi-simdgroup Metal kernels for skinny verifier batches
+   with 3-6 rows. The route is armed only around target verification and only
+   supports affine Q4/Q8 projections with at least 16K output channels. This
+   is structurally relevant to target-wide dense projections, but ds4 already
+   promoted Q8 proposal-row, shared-expert, routed-MoE, and fused gate/up
+   paths. Benchmark first; do not port solely from source similarity.
+2. **Native expert block plans are relevant but partly explored here.** oMLX
+   sorts at least 64 routes, builds one expert block plan, reuses it across
+   gate/up/down, and can concatenate gate/up output in one custom kernel. Our
+   exact verifier already found a standalone gate/up pair neutral and a fused
+   gate/up-SwiGLU path modestly positive. The oMLX route threshold also means
+   it may primarily help prefill or larger route batches rather than every
+   short verifier call.
+3. **Adaptive depth is worth measuring, not blindly porting.** oMLX optimizes
+   expected progress per measured cycle and probes stale depths. ds4's
+   confidence scheduler already delivered large gains, while the perfect
+   local router audit gave only a narrow ceiling at then-current costs. A
+   clear `mtp2`/`mtp3` win would justify comparing controller decisions; a
+   depth-one win would retire this lead.
+4. **Exact rollback and bonus harvesting are already present in ds4.** oMLX's
+   one-call backbone verification is useful independent evidence for the
+   batched-verifier objective, but its cache bookkeeping is not a missing
+   feature here. Our measured frontier bookkeeping was too small to optimize.
+
+Current decision:
+
+- The comparison is feasible and now prepared correctly, including native
+  kernels. Do not download or time the 91.2 GiB model automatically; the user
+  owns both operations.
+- Next gate: download the pinned checkpoint, run `--validate-only`, then run
+  the four eight-task modes while the machine is as idle as practical.
+- Make no oMLX performance or porting claim until those local results exist.
