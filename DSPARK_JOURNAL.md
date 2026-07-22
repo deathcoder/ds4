@@ -13687,3 +13687,34 @@ Benchmark tooling prepared:
     --ctx 16384 --tokens 128 --pairs 3 --warmups 1 --cooldown 10 \
     --confirm-idle
   ```
+
+Completed one-layer throughput gate
+(`20260722-160153`):
+
+- The user-run benchmark used clean commit `2801b6f`, disabled runtime stats
+  and diagnostics, and recorded no thermal or performance warning before or
+  after the run.
+- Default exact measured `16.77 t/s` median. The layer-41 causal-attention
+  candidate measured `16.65 t/s`, for a `0.9928x` ratio of medians and
+  `0.9940x` median paired ratio (`-0.7%`).
+- All three paired ratios were negative and tightly grouped: `0.9946x`,
+  `0.9928x`, and `0.9940x`. This is stable evidence of a small production
+  regression rather than a single interference-shaped outlier.
+
+Final Phase 1.74 decision:
+
+- **STOP CAUSAL-ATTENTION EXPANSION.** Do not apply this runtime substitution
+  to the other ratio-128 layers or extend it to ratio-4/indexed attention. The
+  candidate is byte-exact, but it failed the predeclared one-layer throughput
+  gate.
+- Keep the opt-in runtime, observers, and equivalence tests as research
+  evidence. They prove that proposal-slab ownership and causal multi-query
+  arithmetic are feasible, and they provide a bounded implementation for any
+  future design that can change the surrounding scheduling economics.
+- The synchronized shadow profile's large apparent attention saving did not
+  survive ordinary asynchronous Metal execution. Treat synchronized component
+  profiles as localization tools only; require an uninstrumented one-layer
+  gate before expanding any future target-verifier restructuring.
+- This closes the audited vLLM-style position-indexed/causal-attention transfer
+  path in its current form. Return to the broader exact-verifier cost problem
+  rather than tuning this candidate or weakening byte-exactness.
