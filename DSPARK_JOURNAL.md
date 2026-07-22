@@ -12975,3 +12975,81 @@ Decision:
 - Keep the equivalence probe as reusable infrastructure if a future candidate
   fuses a materially larger compressor/cache operation. Do not add paged or
   shadow compressor-state ownership merely to replace the current frontier.
+
+## Phase 1.70: truly batched exact-verifier feasibility
+
+Scope:
+
+- Added `speed-bench/analyze_dspark_batched_verifier_feasibility.py` as a
+  model-free dependency and cost audit. It runs no model process and makes no
+  throughput claim.
+- The audit pins the current cumulative cost artifact
+  `humaneval-cumulative-cost-20260719-225512`, width-layer artifact
+  `post-promotion-width-layer-20260719-232840`, serial-tail artifact
+  `post-promotion-width-tail-20260720-123704`, and the direct-write suffix
+  attribution `suffix-profile-20260714-131411`.
+- It reuses the Phase 1.69 ratio-4 equivalence digest as a hard gate and checks
+  causal proposal visibility for exact widths `2..5` across every ratio-4 and
+  ratio-128 starting phase. The schedule audit covers 528 scenarios and 1848
+  proposal rows without exposing a future proposal position to any row.
+
+Dependency result:
+
+- Every layer begins with all proposal-row HC inputs produced by the previous
+  layer's batched FFN. HC/Q/KV preparation and compressor projections are
+  already batched.
+- The current serial row loop is required by mutable cache ownership, not by
+  an attention-output dependency between proposal rows. After proposal raw KV
+  and compressor partials are staged by absolute position, each row's
+  attention depends only on its Q state and a row-specific prefix of the
+  staged/cache state. No row consumes another proposal row's attention output.
+- A true candidate can therefore stage raw/compressed proposal state, run one
+  causal attention row grid with per-row visibility, fuse or batch inverse
+  RoPE into a direct `batch_heads` write, then reuse the existing exact batched
+  output projections, FFN, and output head.
+- Accepted-prefix publication remains after the output-head acceptance
+  decision. A candidate must preserve every prefix checkpoint or replace
+  speculative cache mutation with equivalent logical publication.
+
+Why this is not the retired suffix candidate:
+
+- `DS4_DSPARK_EXACT_ATTN_SUFFIX_BATCH` kept cache updates and attention serial,
+  split the fused one-row core, and then batched only projection A and
+  projection B + HC.
+- Its serial core became `53%` to `100%` slower in the synchronized attribution
+  before projection costs were added. The new design must batch attention
+  itself and write directly to `batch_heads`; it must not capture or replay a
+  serial core.
+
+Cost gate:
+
+- Multi-row widths account for `81.2%` of target time. Width-1 target work is
+  explicitly excluded from the addressable budget.
+- The stable width-5 layer split attributes `38.6%` of sampled layer time to
+  the serial attention tail. Applying that share only to multi-row target time
+  gives an addressable tail budget of `11.380 ms/emitted`.
+- The gate requires a credible `1.500 ms/emitted`, equivalent to a `13.2%`
+  reduction of that budget.
+- Current synchronized width-5 projection components are `0.711 ms/row` after
+  normalization; the old exact batched projection components measured
+  `0.227 ms/row`. Their normalized directional delta corresponds to
+  `2.730 ms/emitted`, clearing the feasibility gate without attributing the
+  old candidate's slower serial core to this design.
+- This is directional evidence, not a prediction. Separately synchronized
+  medians are normalized into shares and are never added as wall-clock time.
+- Full parity would require a `39.7%` multi-row-tail reduction. Projection
+  evidence supplies `24.0` percentage points directionally, leaving `15.7`
+  tail percentage points, or a `24.3%` reduction of the non-projection group,
+  for staged state, causal attention, and inverse RoPE to deliver.
+
+Decision:
+
+- **PROCEED SHADOW PROTOTYPE.** The dependency graph is batchable and the
+  conservative engineering-interest gate clears. This does not authorize a
+  production default or throughput benchmark.
+- Before Metal work, prove ratio-128 materialized-state source-order
+  equivalence and a model-free proposal-slab visibility/commit contract for
+  every accepted prefix at widths `2..5`.
+- The first GPU implementation must be a single-layer observer that writes to
+  shadow buffers, compares against the existing exact row loop, and cannot be
+  selected by normal runtime or throughput runners.
