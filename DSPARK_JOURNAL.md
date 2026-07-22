@@ -13584,3 +13584,63 @@ Decision:
   threshold-0.75 and fixed-K5 schedules. Only after that passes may the same
   one-layer candidate receive an uninstrumented throughput ablation. Expanding
   across all ratio-128 layers is a separate decision gated on both results.
+
+## Phase 1.74: one-layer exact causal-attention runtime
+
+Implementation:
+
+- Added an attention-state execution boundary to the prepared exact verifier.
+  It performs the authoritative raw-KV write, compressor update, append
+  counters, and prefix checkpoint capture, then returns before attention,
+  inverse RoPE, and attention output. Prepared Q/KV rows are reused directly;
+  the state-only route does not recompute them serially.
+- Added `DS4_DSPARK_CAUSAL_ATTN_RUNTIME_LAYER=41`. The gate also requires the
+  ordinary DSpark GPU runtime and multi-commit runtime. It accepts only layer
+  41 in this phase; unset, malformed, or any other layer leaves the established
+  exact route unchanged.
+- For the selected ratio-128 layer, the verifier records each row's actual raw
+  span/start and compressed-row count after its authoritative state update.
+  Once all rows are staged, the exact query-indexed vec path writes directly
+  to `batch_heads`, ordinary batched inverse RoPE applies sequential positions,
+  and the proven batched output-projection/HC helper writes
+  `batch_after_attn_hc`. The normal exact batched FFN then resumes.
+- Existing exact-prefix checkpoints remain authoritative. If any candidate
+  operation fails, exact verification fails and the outer speculative frontier
+  snapshot restores target state before the caller returns to the established
+  serial path. The candidate cannot silently continue with partial state.
+- Added per-proposal attempt/success diagnostics. The opt-in path must report
+  exactly one successful layer-41 candidate for every multi-row target call.
+
+Correctness gate:
+
+- Added `speed-bench/run_dspark_causal_attention_runtime.py`. It runs a fresh
+  ordinary baseline plus threshold-0.75 and fixed-K5 candidates, requires
+  byte-identical output, and enables the proposal-slab observer at layer 41.
+- Every proposal must have one successful runtime record and one exact staged
+  state record in matching order. Every accepted-prefix publication must be
+  exact, and fixed K5 must exercise at least one partial publication. Fast
+  verification, stats, profilers, and throughput reporting remain disabled.
+- User-run command:
+
+  ```sh
+  python3 speed-bench/run_dspark_causal_attention_runtime.py \
+    --confirm-ready
+  ```
+
+Validation completed before the user gate:
+
+- Normal Metal build passes without warnings; the executable is linked to the
+  Metal and Foundation frameworks.
+- CPU compilation passes. Its eight warnings are existing unused symbols and
+  one existing unused parameter under `DS4_NO_GPU`.
+- All 314 discovered `test_dspark_*.py` model-free tests pass, including seven
+  new runtime gate, parser, fallback, state-order, and source-isolation tests.
+- Focused DSpark metadata validation and shape binding pass. The guarded runner
+  dry-run passes. Codex did not run a model or a timed benchmark.
+
+Pending decision:
+
+- **REQUIRE ONE-LAYER RUNTIME CORRECTNESS.** Both schedules must reproduce the
+  ordinary baseline and pass all runtime/state/publication records. Any output
+  difference, candidate fallback, state drift, or missing partial publication
+  stops timing work and must be localized first.
