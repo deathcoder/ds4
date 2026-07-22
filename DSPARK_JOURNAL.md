@@ -13187,6 +13187,26 @@ User-run validation:
   process and no timed benchmark were run. The next decision is gated on the
   user's observer output.
 
+First user result (`proposal-slab-20260722-102934`):
+
+- The run used clean commit `eb76f03e7a7767598f60ef5254850f1a2b84696e`.
+  Baseline, layer-41, and layer-42 outputs all had SHA-256
+  `565e695e10bbaccab15a0c81712cd2854dc47c7fe3e8f2d3aeba024b682a4886`.
+- Layer 41 produced six exact preparation records and six exact publication
+  records at ratio 128. Layer 42 did the same at ratio 4, including exact
+  indexer frontiers and counters.
+- The records covered scheduled widths 2, 3, and 4. All twelve publications
+  were full accepts: `accepted == proposed`.
+- **PASS STAGING AND FULL PUBLICATION; PARTIAL PUBLICATION NOT EXERCISED.** The
+  original runner incorrectly allowed its overall gate to pass without a
+  rejected staged suffix. This is a validation gap, not evidence of a runtime
+  mismatch.
+- Tightened the runner to execute both threshold-0.75 scheduling and fixed
+  `K=5` (`threshold=0`). Each ratio must now produce at least one exact record
+  with `accepted < proposed`; otherwise the run fails. This makes rejected
+  suffix invisibility and partial-prefix publication a mandatory real-GPU
+  gate rather than an inference from the model-free proof.
+
 Validation completed in this turn:
 
 - Normal Metal build passes with no C/Objective-C warnings.
@@ -13194,7 +13214,7 @@ Validation completed in this turn:
   The repository test target also initialized the Metal backend and compiled
   the combined shader library successfully before reaching its model-backed
   long-context test.
-- All 291 discovered `test_dspark_*.py` model-free tests pass, including six
+- All 292 discovered `test_dspark_*.py` model-free tests pass, including seven
   new observer environment, parser, drift-rejection, publication-order, and
   source-isolation tests. Python compilation and all discovered shell syntax
   checks pass.
@@ -13204,10 +13224,11 @@ Validation completed in this turn:
 
 Decision:
 
-- **PROCEED USER OBSERVER GATE.** If both layers report exact preparation and
-  exact accepted-prefix publication across byte-identical outputs, the first
-  real-GPU ownership prerequisite for a causal row-visible attention shadow is
-  satisfied. Any drift stops the batched-attention prototype until localized.
+- **REQUIRE PARTIAL-PUBLICATION RERUN.** The first artifact proves exact staging
+  and full publication on both compressor regimes, but does not authorize the
+  causal row-visible attention shadow yet. The revised gate must additionally
+  pass a real partial accept on both layers. Any drift or failure to produce a
+  partial publication stops the batched-attention prototype until localized.
 - No performance conclusion follows from this observer. Its synchronization
   and readbacks are intentionally diagnostic and must never be benchmarked as
   a runtime candidate.

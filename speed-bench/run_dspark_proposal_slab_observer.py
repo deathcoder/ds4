@@ -16,6 +16,11 @@ import time
 
 LAYERS = (41, 42)
 THRESHOLD = "0.75"
+PARTIAL_THRESHOLD = "0"
+SCHEDULES = (
+    ("scheduled", THRESHOLD),
+    ("fixed-k5", PARTIAL_THRESHOLD),
+)
 OBSERVER_RE = re.compile(
     rb"^ds4: DSpark proposal slab observer layer=(\d+) ratio=(\d+) "
     rb"proposed=(\d+) raw_rows=(\d+)/(\d+) attn_prefixes=(\d+)/(\d+) "
@@ -88,7 +93,7 @@ def sha256(data):
     return hashlib.sha256(data).hexdigest()
 
 
-def clean_env(layer=None):
+def clean_env(layer=None, threshold=THRESHOLD):
     env = {key: value for key, value in os.environ.items()
            if not key.startswith("DS4_")}
     if layer is not None:
@@ -96,7 +101,7 @@ def clean_env(layer=None):
             "DS4_DSPARK_GPU_RUNTIME": "1",
             "DS4_DSPARK_MULTI_COMMIT": "1",
             "DS4_DSPARK_GPU_RUNTIME_DIAGNOSTICS": "1",
-            "DS4_DSPARK_CONFIDENCE_THRESHOLD": THRESHOLD,
+            "DS4_DSPARK_CONFIDENCE_THRESHOLD": threshold,
             "DS4_DSPARK_PROPOSAL_SLAB_OBSERVER_LAYER": str(layer),
         })
     return env
@@ -119,8 +124,8 @@ def command(args, layer=None):
     return cmd
 
 
-def command_text(args, layer=None):
-    env = clean_env(layer)
+def command_text(args, layer=None, threshold=THRESHOLD):
+    env = clean_env(layer, threshold)
     keys = (
         "DS4_DSPARK_GPU_RUNTIME",
         "DS4_DSPARK_MULTI_COMMIT",
@@ -176,7 +181,9 @@ def parse_observer(stderr_data, layer):
     return {"observer": observer, "publication": publication}
 
 
-def execute(args, root, run_dir, label, layer, reference=None):
+def execute(
+        args, root, run_dir, label, layer, reference=None,
+        threshold=THRESHOLD):
     stdout_path = run_dir / f"{label}.stdout"
     stderr_path = run_dir / f"{label}.stderr"
     started = time.monotonic()
@@ -184,7 +191,7 @@ def execute(args, root, run_dir, label, layer, reference=None):
         proc = subprocess.run(
             command(args, layer),
             cwd=root,
-            env=clean_env(layer),
+            env=clean_env(layer, threshold),
             stdout=stdout_file,
             stderr=stderr_file,
             check=False,
@@ -204,6 +211,7 @@ def execute(args, root, run_dir, label, layer, reference=None):
     return stdout_data, {
         "label": label,
         "layer": layer,
+        "threshold": None if layer is None else threshold,
         "wall_seconds": wall,
         "stdout_sha256": sha256(stdout_data),
         "stdout_file": stdout_path.name,
@@ -220,8 +228,12 @@ def main():
     args, root = parse_args()
     for name in ("binary", "model", "dspark_model", "prompt_file"):
         setattr(args, name, getattr(args, name).resolve())
-    for layer in LAYERS:
-        print(f"layer {layer}: {command_text(args, layer)}")
+    for mode, threshold in SCHEDULES:
+        for layer in LAYERS:
+            print(
+                f"{mode} layer {layer}: "
+                f"{command_text(args, layer, threshold)}"
+            )
     print(f"fresh baseline: {command_text(args)}")
     print(
         "Diagnostic pass only: fast verification, stats, profilers, and "
@@ -256,19 +268,45 @@ def main():
         args, root, run_dir, "baseline", None
     )
     rows = [baseline_row]
+    for mode, threshold in SCHEDULES:
+        for layer in LAYERS:
+            if args.cooldown:
+                time.sleep(args.cooldown)
+            _, row = execute(
+                args,
+                root,
+                run_dir,
+                f"{mode}.layer-{layer}",
+                layer,
+                baseline,
+                threshold,
+            )
+            row["mode"] = mode
+            rows.append(row)
+
     for layer in LAYERS:
-        if args.cooldown:
-            time.sleep(args.cooldown)
-        _, row = execute(
-            args, root, run_dir, f"layer-{layer}", layer, baseline
+        fixed = next(
+            row for row in rows
+            if row.get("mode") == "fixed-k5" and row["layer"] == layer
         )
-        rows.append(row)
+        stderr_data = (run_dir / fixed["stderr_file"]).read_bytes()
+        publications = parse_observer(stderr_data, layer)["publication"]
+        if not any(
+            item["accepted"] < item["proposed"] for item in publications
+        ):
+            raise RuntimeError(
+                f"layer {layer}: fixed-K5 run did not exercise partial "
+                "accepted-prefix publication"
+            )
 
     summary = {
         "analysis": "dspark_proposal_slab_observer",
         "result": "PASS",
         "layers": list(LAYERS),
-        "threshold": THRESHOLD,
+        "schedules": [
+            {"mode": mode, "threshold": threshold}
+            for mode, threshold in SCHEDULES
+        ],
         "runs": rows,
     }
     metadata = {
@@ -281,7 +319,10 @@ def main():
             "tokens": args.tokens,
             "cooldown": args.cooldown,
             "layers": list(LAYERS),
-            "confidence_threshold": THRESHOLD,
+            "schedules": [
+                {"mode": mode, "threshold": threshold}
+                for mode, threshold in SCHEDULES
+            ],
             "fast_verifier": False,
             "instrumented": True,
         },
@@ -293,7 +334,11 @@ def main():
         },
         "commands": {
             "baseline": command_text(args),
-            **{f"layer-{layer}": command_text(args, layer) for layer in LAYERS},
+            **{
+                f"{mode}.layer-{layer}": command_text(args, layer, threshold)
+                for mode, threshold in SCHEDULES
+                for layer in LAYERS
+            },
         },
     }
     (run_dir / "summary.json").write_text(
@@ -306,7 +351,8 @@ def main():
     print("\n- Result: PASS")
     for row in rows[1:]:
         print(
-            f"- Layer {row['layer']}: {row['observer_records']} preparation "
+            f"- {row['mode']} layer {row['layer']}: "
+            f"{row['observer_records']} preparation "
             f"records, {row['publication_records']} publication records, "
             f"ratios {row['ratios']}."
         )

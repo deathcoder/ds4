@@ -16,6 +16,11 @@ class DSparkProposalSlabObserverTests(unittest.TestCase):
     def test_runner_freezes_exact_diagnostic_modes(self):
         self.assertEqual(observer.LAYERS, (41, 42))
         self.assertEqual(observer.THRESHOLD, "0.75")
+        self.assertEqual(observer.PARTIAL_THRESHOLD, "0")
+        self.assertEqual(
+            observer.SCHEDULES,
+            (("scheduled", "0.75"), ("fixed-k5", "0")),
+        )
         env = observer.clean_env(42)
         self.assertEqual(env["DS4_DSPARK_GPU_RUNTIME"], "1")
         self.assertEqual(env["DS4_DSPARK_MULTI_COMMIT"], "1")
@@ -35,6 +40,19 @@ class DSparkProposalSlabObserverTests(unittest.TestCase):
         parsed = observer.parse_observer(data, 42)
         self.assertEqual(parsed["observer"][0]["ratio"], 4)
         self.assertEqual(parsed["publication"][0]["accepted"], 3)
+
+    def test_parser_exposes_partial_publication(self):
+        data = (
+            b"ds4: DSpark proposal slab observer layer=41 ratio=128 proposed=5 "
+            b"raw_rows=5/5 attn_prefixes=5/5 index_prefixes=0/0 "
+            b"counters=5/5 result=exact\n"
+            b"ds4: DSpark proposal slab publication layer=41 ratio=128 "
+            b"proposed=5 accepted=2 prepared=exact result=exact\n"
+        )
+        publications = observer.parse_observer(data, 41)["publication"]
+        self.assertTrue(any(
+            item["accepted"] < item["proposed"] for item in publications
+        ))
 
     def test_parser_rejects_drift(self):
         data = (
