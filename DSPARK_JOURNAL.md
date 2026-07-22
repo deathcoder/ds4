@@ -8,6 +8,19 @@ particular DSpark change exists.
 
 Branch: `codex/dspark-observability-0`
 
+Phase 1.78 is prepared. Resume the core exact-verifier work with a fresh
+32-task cumulative HumanEval throughput reassessment on the current post-merge
+branch. The last authoritative cumulative result, `0.8993x` geometrically,
+predates the upstream integration and its ordinary-decode changes; all later
+causal-attention and external-runtime work is default-off or documentary.
+The existing cumulative harness still validates its frozen historical
+artifact, clears experimental DS4 variables, pins threshold `0.75`, alternates
+pair order, and requires every runtime output to match ordinary baseline and
+the historical output byte-for-byte. Its ten focused throughput/cost tests and
+a real provenance dry run pass. The user owns the 68-process uninstrumented
+run. Use its within-run paired ratio as the new end-to-end checkpoint, then
+repin the stats-only cumulative cost audit before selecting another kernel.
+
 Phase 1.77 is complete. MTPLX `v2.3.0` was audited at commit
 `c1300f17c66e5fef7810efa80f2a53489b8d001d`. Its public "exact at any
 temperature" claim means exact target **distribution** under
@@ -14180,3 +14193,57 @@ Decision:
   strict T=0 full-sequence gate on the claimed fast profile, or a mechanism
   that attacks a material fraction of ds4's measured target-verifier cost and
   has not already failed an exact local ablation.
+
+## Phase 1.78: post-merge cumulative exact rebaseline
+
+Rationale:
+
+- Phase 1.74 retired the one-layer exact causal-attention runtime after a
+  stable `0.9940x` uninstrumented result. Phases 1.75 through 1.77 were source
+  and external-runtime audits; they promoted no production runtime path.
+- The latest authoritative cumulative exact-DSpark result remains Phase 1.45:
+  `0.8993x` geometric paired throughput over 32 HumanEval tasks. Its source
+  predates the upstream-main integration and repaired argsort path.
+- The later fresh-upstream ordinary baseline gate showed the current branch at
+  `1.0255x` geometrically versus upstream and won `32/32` tasks. That does not
+  reveal how the same changes moved the current DSpark/baseline ratio.
+- Refresh end-to-end truth before profiling another component. Otherwise a
+  new candidate would be selected against stale parity and cost targets.
+
+Prepared gate:
+
+- Reuse `speed-bench/run_dspark_humaneval_cumulative_throughput.py` and the
+  frozen threshold-`0.75` historical artifact at
+  `humaneval-threshold075-throughput-32-20260716-155112`.
+- The run executes two excluded warmup pairs plus one alternating-order
+  baseline/runtime pair for each of 32 deterministic HumanEval tasks: 68
+  uninstrumented model processes total.
+- Runtime enables only the promoted DSpark GPU runtime, multi-commit, and
+  confidence threshold `0.75`. Stats, traces, profilers, fast verification,
+  and all opt-in research candidates remain disabled.
+- Every current runtime output must match its fresh ordinary baseline and the
+  frozen historical output byte-for-byte.
+- Ten focused cumulative-throughput and cumulative-cost model-free tests pass.
+  A real `--dry-run` validates all assets, reference metadata, source commit,
+  hashes, selection, protocol, and generated commands.
+
+User-run command:
+
+```sh
+python3 speed-bench/run_dspark_humaneval_cumulative_throughput.py \
+  --historical-reference \
+  speed-bench/local-runs/humaneval-threshold075-throughput-32-20260716-155112/summary.json \
+  --confirm-idle
+```
+
+Decision boundary:
+
+- The fresh within-run geometric paired ratio is authoritative. Cross-session
+  movement from the historical threshold-`0.75` artifact is descriptive.
+- Do not start another kernel candidate from the stale Phase 1.46 cost audit.
+  After this throughput gate completes, repin
+  `run_dspark_humaneval_cumulative_cost_audit.py` to the new clean artifact and
+  collect a stats-only cost decomposition. That decomposition chooses the
+  next exact-verifier target.
+- Codex does not execute the timed/model benchmark; the user owns the idle
+  machine gate.
