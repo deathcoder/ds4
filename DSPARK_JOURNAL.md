@@ -13232,3 +13232,38 @@ Decision:
 - No performance conclusion follows from this observer. Its synchronization
   and readbacks are intentionally diagnostic and must never be benchmarked as
   a runtime candidate.
+
+Completed user gate (`proposal-slab-20260722-103919`):
+
+- The revised run used clean commit
+  `2a359334b7a439e1d330c2d11ccc217354213186`. Baseline and all four observer
+  processes reproduced SHA-256
+  `565e695e10bbaccab15a0c81712cd2854dc47c7fe3e8f2d3aeba024b682a4886`.
+- Threshold-0.75 scheduling repeated the prior exact result: six preparation
+  and six publication records on both layer 41 (ratio 128) and layer 42
+  (ratio 4).
+- Fixed `K=5` produced nine exact preparation and nine exact publication
+  records per layer. Both layers exercised partial accepted lengths 1, 2, 3,
+  and 4 from proposed width 5, as well as full width 5 and the terminal width
+  2. Every raw row, main compressor prefix, counter, and ratio-4 indexer prefix
+  remained exact.
+- This closes the validation gap from the first artifact: rejected staged
+  suffixes remained invisible through real target prefix publication at every
+  nonzero accepted length below five on both compressor regimes.
+
+Final Phase 1.72 decision:
+
+- **PASS REAL-GPU PROPOSAL OWNERSHIP.** The model-free proposal-slab contract
+  and the Metal implementation now agree for preparation, full publication,
+  and partial publication. This authorizes the next diagnostic prototype, not
+  a production runtime or performance claim.
+- **PROCEED RATIO-128 CAUSAL ATTENTION-HEAD SHADOW.** Start with layer 41, where
+  no ratio-4 indexer route is involved. A diagnostic multi-row Metal path may
+  consume the staged raw/compressed proposal views and write isolated
+  `batch_heads`, while the current serial exact attention remains authoritative.
+  Compare every proposal row against serial heads before inverse RoPE and
+  output projections are changed.
+- The attention shadow must retain the same four-variable diagnostic gate,
+  support exact widths `N=2..5`, preserve row-specific causal visibility, and
+  remain absent from throughput runners. Any head drift stops expansion to the
+  ratio-4/indexed layer until its first differing source is localized.
