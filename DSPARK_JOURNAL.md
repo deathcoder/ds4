@@ -13547,3 +13547,40 @@ First shadow-profile attempt (`causal-attn-head-20260722-134553`):
   `0.44x` at width 2, `0.34x` at width 3, and `0.30x` at width 4. These are
   encouraging preliminary attribution values, not throughput results; the
   fixed-K5 width-5 gate still requires a completed rerun.
+
+Completed shadow-cost gate (`causal-attn-head-20260722-140423`):
+
+- The guarded run used clean commit `eee1ad5`. Baseline, threshold-0.75, and
+  fixed-K5 output matched byte-for-byte. Scheduled mode produced six proposal
+  records and 18 exact vec/serial rows; fixed K5 produced nine proposal
+  records and 42 exact vec/serial rows.
+- Width 5 is the stable steady-state sample: eight calls reduced synchronized
+  attention attribution from a `4.854 ms` serial median to a `1.893 ms` vec
+  shadow median, or `0.390x` by ratio of medians. The median paired ratio is
+  approximately `0.289x`; the difference reflects independent synchronized
+  outliers in preparation and reduction.
+- Width 4 measured `0.296x` across two calls. Width 2 measured `0.570x` across
+  three calls. Width 3 measured `1.070x` across only two calls, but the two
+  paired ratios were `0.653x` and `1.508x`; simultaneous vec/reduction
+  inflation marks the latter as a synchronization outlier rather than stable
+  evidence of a width-3 regression.
+- Component medians must not be summed: their outliers occur in different
+  calls. All values are synchronized attribution data, not production
+  throughput measurements.
+
+Decision:
+
+- **PASS EXACT CAUSAL ATTENTION COST GATE.** Bitwise exactness holds across all
+  60 rows and widths 2 through 5, while the stable width-5 candidate is
+  materially cheaper than serial fused gather. This authorizes an opt-in
+  runtime substitution; it does not authorize a default or a speed claim.
+- Start with one ratio-128 layer. Keep authoritative raw/compressor cache
+  mutation and prefix checkpoints serial, but split them from attention.
+  After all proposal states are staged, write exact causal vec heads directly
+  to `batch_heads`, apply batched inverse RoPE, and reuse the existing batched
+  attention-output/HC path. Every other layer remains on the current exact
+  route.
+- The first runtime gate is byte-exact output and cache publication under both
+  threshold-0.75 and fixed-K5 schedules. Only after that passes may the same
+  one-layer candidate receive an uninstrumented throughput ablation. Expanding
+  across all ratio-128 layers is a separate decision gated on both results.
