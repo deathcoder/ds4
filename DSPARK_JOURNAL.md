@@ -14498,3 +14498,43 @@ Decision:
 - Return to exact target-verifier optimization. The refreshed cost audit still
   requires an `11.4%` target-time reduction for all-DSpark parity, and width
   five remains the largest stable target-cost population.
+
+## Phase 1.82: current width-stratified exact-layer profile
+
+Rationale:
+
+- Phase 1.81 retires pre-sidecar routing even under an optimistic lagged-
+  observation ceiling. The next credible path is therefore reducing exact
+  target-verifier cost itself.
+- Phase 1.79 measures target verification at `36.809 ms/emitted`, `81.6%` of
+  current exact DSpark runtime. Width five owns `54.9%` of measured target
+  time, making it the largest stable verifier population.
+- Existing layer-stage profiles predate the latest upstream integration and
+  cumulative checkpoint. Refresh the coarse attention-preparation, serial-
+  tail, and FFN split before selecting another kernel candidate.
+
+Preparation:
+
+- Repinned `run_dspark_threshold075_width_layer_profile.py` to the clean
+  cumulative cost artifact at commit
+  `ccf4f791f518f3a96fb5147e62703e3924702517`.
+- The profiler consumes the frozen cumulative throughput artifact
+  `humaneval-cumulative-throughput-32-20260722-193101` and cost artifact
+  `humaneval-cumulative-cost-20260722-195022`.
+- Frozen task `humaneval_079` contains one width-two evaluation, one
+  width-three, four width-four, and twenty width-five evaluations. It runs
+  synchronized profiles for layers `0`, `21`, and `42` and separates
+  `attention_pre_batch`, `attention_tail_serial`, and `ffn_batch`.
+- Every profiled output must match the frozen uninstrumented cumulative task
+  artifact byte-for-byte, and profile counters must match the cost audit.
+  Stats remain enabled; fast verification, acceptance tracing, oracle tracing,
+  and all opt-in runtime candidates remain disabled.
+
+Decision boundary:
+
+- Treat width-five medians as the stable optimization guide. Widths two and
+  three each have one observation and are directional only.
+- This synchronized run is attribution data, not throughput. Select the next
+  candidate from a stage that owns a material width-five share and can affect
+  many target layers; require a separate uninstrumented exact-output ablation
+  before claiming any speed movement.
