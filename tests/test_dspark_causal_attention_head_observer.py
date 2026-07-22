@@ -28,6 +28,15 @@ def exact_vec_row(proposed, row):
     )
 
 
+def profile_row(mode, tokens, stage, elapsed):
+    return (
+        b"ds4: Metal FlashAttention prefill stage "
+        + f"mode={mode} tokens={tokens} comp=64 keys=192 ".encode()
+        + b"heads=16 dim=512 window=0 ratio=128 "
+        + f"{stage}={elapsed:.3f} ms\n".encode()
+    )
+
+
 class DSparkCausalAttentionHeadObserverTests(unittest.TestCase):
     def test_runner_freezes_diagnostic_modes(self):
         self.assertEqual(observer.LAYER, 41)
@@ -50,6 +59,10 @@ class DSparkCausalAttentionHeadObserverTests(unittest.TestCase):
         self.assertEqual(
             legacy["DS4_METAL_DENSE_MIXED_GATHERED_LEGACY"], "1"
         )
+        profile = observer.clean_env(41, vec_profile=True)
+        self.assertEqual(profile["DS4_DSPARK_CAUSAL_ATTN_VEC_PROFILE"], "1")
+        self.assertEqual(profile["DS4_METAL_FLASH_ATTN_GATHERED_PROFILE"], "1")
+        self.assertEqual(profile["DS4_METAL_DECODE_STAGE_PROFILE_LAYER"], "41")
 
     def test_parser_accepts_complete_exact_proposals(self):
         data = b"".join(exact_row(2, row) for row in range(2))
@@ -101,6 +114,32 @@ class DSparkCausalAttentionHeadObserverTests(unittest.TestCase):
                 data.replace(b"result=exact", b"result=drift", 1),
                 require_exact=True,
             )
+
+    def test_vec_profile_pairs_width_with_serial_calls(self):
+        data = b""
+        for _ in range(2):
+            for stage, elapsed in zip(observer.PROFILE_STAGES, (1.0, 2.0, 3.0)):
+                data += profile_row("fused_gather_decode", 1, stage, elapsed)
+        for stage, elapsed in zip(observer.PROFILE_STAGES, (1.5, 2.5, 3.5)):
+            data += profile_row("causal_vec_query", 2, stage, elapsed)
+        parsed = observer.parse_vec_profile(data)
+        self.assertEqual(len(parsed), 1)
+        self.assertEqual(parsed[0]["width"], 2)
+        self.assertEqual(parsed[0]["serial_total_ms"], 12.0)
+        self.assertEqual(parsed[0]["candidate_total_ms"], 7.5)
+        self.assertAlmostEqual(parsed[0]["candidate_serial_ratio"], 0.625)
+
+    def test_vec_profile_rejects_missing_serial_call(self):
+        data = b"".join(
+            profile_row("fused_gather_decode", 1, stage, 1.0)
+            for stage in observer.PROFILE_STAGES
+        )
+        data += b"".join(
+            profile_row("causal_vec_query", 2, stage, 1.0)
+            for stage in observer.PROFILE_STAGES
+        )
+        with self.assertRaisesRegex(RuntimeError, "follows 1 serial calls"):
+            observer.parse_vec_profile(data)
 
     def test_parser_rejects_fallback(self):
         data = (

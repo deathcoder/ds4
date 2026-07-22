@@ -13470,3 +13470,62 @@ Pending decision:
   candidate. Any bounded or drift result remains a preparation/layout
   localization problem; fallback is a dispatch-geometry or buffer-ownership
   failure. No throughput conclusion follows from this diagnostic.
+
+Completed vec/serial gate (`causal-attn-head-20260722-123237`):
+
+- The guarded run passed on clean commit `420b587`. Threshold-0.75 scheduling
+  produced six proposals and 18 compared head rows; fixed `K=5` produced nine
+  proposals and 42 compared head rows.
+- Every one of the 60 query-indexed vec/serial head comparisons was bitwise
+  exact. The scheduled run exercised widths 2, 3, and 4; fixed `K=5` exercised
+  width 5 repeatedly plus its terminal width 2. Proposal-slab state,
+  publication, and generated output remained exact.
+- The generic multi-row, rowwise-generic/serial, and generic-batch/rowwise
+  comparisons retained their prior small drift. This is expected localization
+  evidence: generic FlashAttention changes arithmetic, while the row-specific
+  serial vec/reduce specialization preserves it.
+- **PASS RATIO-128 CAUSAL MULTI-QUERY ARITHMETIC.** A causal attention grid can
+  batch proposal queries without changing exact heads, provided each query
+  receives its own serial-format KV slab and the existing split-K vec/reduce
+  operation order is retained. This closes Phase 1.73's correctness question;
+  it does not yet prove a generation-speed benefit.
+
+Shadow cost-profile implementation:
+
+- Added an observer-only `DS4_DSPARK_CAUSAL_ATTN_VEC_PROFILE` gate around the
+  exact vec shadow. It synchronously measures all per-query slab preparation,
+  the single multi-query vec dispatch, and the single reduction dispatch.
+- Extended the guarded observer runner with `--vec-profile`, which requires
+  `--vec-control`. It enables the existing serial fused-gather stage profiler
+  on layer 41 and pairs exactly `N` serial calls with each width-`N` vec-shadow
+  call. Any missing, duplicated, reordered, or shape-mismatched stage fails the
+  run.
+- The report compares median synchronized serial and shadow milliseconds by
+  proposal width and shows candidate preparation, vec, and reduction
+  components. It explicitly omits throughput because the synchronization
+  boundaries alter Metal scheduling. The user-run command is:
+
+  ```sh
+  python3 speed-bench/run_dspark_causal_attention_head_observer.py \
+    --confirm-ready --vec-control --vec-profile
+  ```
+
+Validation completed before the user gate:
+
+- Normal Metal build passes without C or Objective-C warnings.
+- All 306 discovered `test_dspark_*.py` model-free tests pass.
+- Focused C metadata-validation and shape-binding tests pass.
+- The Apple M1 Ultra Metal kernel test passes, including the query-indexed
+  vec specialization used by the synchronized shadow profile.
+- The guarded `--vec-control --vec-profile --dry-run` passes. Codex did not
+  run a model or a timed benchmark.
+
+Pending decision:
+
+- **REQUIRE DIRECTIONAL SHADOW-COST GATE.** The candidate should reduce total
+  synchronized attention time materially at width 5 and should not regress
+  the scheduled widths 2-4 catastrophically. A positive result authorizes the
+  deeper opt-in runtime split: publish/stage authoritative cache state, fill
+  `batch_heads` with the exact causal vec grid, then reuse downstream output
+  and FFN paths. A neutral or negative result stops that refactor and keeps the
+  exact shadow as feasibility evidence only.

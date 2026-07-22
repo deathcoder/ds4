@@ -20622,7 +20622,7 @@ int ds4_gpu_attention_decode_raw_batch_heads_noncausal_tensor(
 }
 
 static int ds4_gpu_encode_flash_attention_decode_mixed_vec_query_heads(
-        id<MTLCommandBuffer>   cb,
+        id<MTLCommandBuffer> __strong *cbp,
         ds4_gpu_tensor      *heads,
         id<MTLBuffer>          sinks_buf,
         NSUInteger             sinks_offset,
@@ -20637,12 +20637,13 @@ static int ds4_gpu_encode_flash_attention_decode_mixed_vec_query_heads(
         const uint32_t        *n_comp,
         uint32_t               n_head,
         uint32_t               head_dim) {
-    if (!cb || !heads || !sinks_buf || !q || !raw_kv || !n_raw ||
+    if (!cbp || !*cbp || !heads || !sinks_buf || !q || !raw_kv || !n_raw ||
         !raw_start || !n_comp || n_tokens < 2u || n_tokens > 5u ||
         raw_cap == 0u || n_head == 0u || head_dim != 512u ||
         !g_dsv4_dense_mixed_prepare_pipeline) {
         return 0;
     }
+    id<MTLCommandBuffer> cb = *cbp;
 
     const uint32_t ncpsg = 32u;
     const uint64_t row_bytes = (uint64_t)head_dim * sizeof(float);
@@ -20722,6 +20723,32 @@ static int ds4_gpu_encode_flash_attention_decode_mixed_vec_query_heads(
         return 0;
     }
 
+    const bool vec_profile =
+        getenv("DS4_DSPARK_CAUSAL_ATTN_VEC_PROFILE") != NULL &&
+        g_batch_cb != nil;
+    double vec_stage_t0 = 0.0;
+    if (vec_profile) {
+        if (ds4_gpu_end_commands() == 0 || ds4_gpu_begin_commands() == 0) {
+            return 0;
+        }
+        int profile_owned = 0;
+        cb = ds4_gpu_command_buffer(&profile_owned);
+        if (!cb || profile_owned) return 0;
+        *cbp = cb;
+        vec_stage_t0 = ds4_gpu_now_ms();
+    }
+#define DS4_METAL_PROFILE_CAUSAL_VEC_STAGE(name) do { \
+        if (vec_profile) { \
+            if (!ds4_gpu_flash_attn_stage_profile_boundary(cbp, \
+                    "causal_vec_query", (name), n_tokens, max_n_comp, \
+                    prepared_rows, n_head, head_dim, 0, 128, \
+                    &vec_stage_t0)) { \
+                return 0; \
+            } \
+            cb = *cbp; \
+        } \
+    } while (0)
+
     for (uint32_t row = 0; row < n_tokens; row++) {
         ds4_gpu_dsv4_dense_mixed_prepare_args prepare_args = {
             .n_raw = n_raw[row],
@@ -20757,6 +20784,7 @@ static int ds4_gpu_encode_flash_attention_decode_mixed_vec_query_heads(
              threadsPerThreadgroup:MTLSizeMake(threads, 1, 1)];
         ds4_gpu_end_compute_encoder(cb, enc);
     }
+    DS4_METAL_PROFILE_CAUSAL_VEC_STAGE("prepare");
 
     id<MTLComputePipelineState> vec_pipeline =
         ds4_gpu_get_flash_attn_vec_pipeline(
@@ -20823,6 +20851,7 @@ static int ds4_gpu_encode_flash_attention_decode_mixed_vec_query_heads(
     [enc dispatchThreadgroups:MTLSizeMake(n_tokens, n_head, prepared_nwg)
          threadsPerThreadgroup:MTLSizeMake(32, prepared_nsg, 1)];
     ds4_gpu_end_compute_encoder(cb, enc);
+    DS4_METAL_PROFILE_CAUSAL_VEC_STAGE("attention_vec");
 
     ds4_gpu_flash_attn_reduce_args reduce_args = {
         .nrows = (int32_t)output_rows,
@@ -20836,6 +20865,8 @@ static int ds4_gpu_encode_flash_attention_decode_mixed_vec_query_heads(
     [enc dispatchThreadgroups:MTLSizeMake(output_rows, 1, 1)
          threadsPerThreadgroup:MTLSizeMake(32u * prepared_nwg, 1, 1)];
     ds4_gpu_end_compute_encoder(cb, enc);
+    DS4_METAL_PROFILE_CAUSAL_VEC_STAGE("attention_reduce");
+#undef DS4_METAL_PROFILE_CAUSAL_VEC_STAGE
     return 1;
 }
 
@@ -20876,7 +20907,7 @@ int ds4_gpu_attention_decode_mixed_vec_query_heads_tensor(
         id<MTLCommandBuffer> cb = ds4_gpu_command_buffer(&owned);
         if (!cb) return 0;
         if (!ds4_gpu_encode_flash_attention_decode_mixed_vec_query_heads(
-                cb, heads, sinks_buf, (NSUInteger)sinks_inner, q, raw_kv,
+                &cb, heads, sinks_buf, (NSUInteger)sinks_inner, q, raw_kv,
                 comp_kv, comp_kv_f16, n_tokens, n_raw, raw_cap, raw_start,
                 n_comp, n_head, head_dim)) {
             return 0;

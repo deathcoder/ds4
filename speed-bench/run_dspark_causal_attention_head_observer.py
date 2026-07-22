@@ -10,6 +10,7 @@ from pathlib import Path
 import platform
 import re
 import shlex
+import statistics
 import subprocess
 import time
 
@@ -37,6 +38,13 @@ VEC_RE = re.compile(
     rb"max_ulp=(\d+) result=(\w+)$",
     re.MULTILINE,
 )
+PROFILE_RE = re.compile(
+    rb"^ds4: Metal FlashAttention prefill stage "
+    rb"mode=(fused_gather_decode|causal_vec_query) tokens=(\d+) comp=(\d+) "
+    rb"keys=(\d+) heads=(\d+) dim=(\d+) window=(\d+) ratio=(\d+) "
+    rb"(prepare|attention_vec|attention_reduce)=([0-9]+(?:\.[0-9]+)?) ms$"
+)
+PROFILE_STAGES = ("prepare", "attention_vec", "attention_reduce")
 
 
 def parse_args():
@@ -70,6 +78,11 @@ def parse_args():
         ),
     )
     parser.add_argument(
+        "--vec-profile",
+        action="store_true",
+        help="synchronously attribute serial and exact vec-shadow attention cost",
+    )
+    parser.add_argument(
         "--dspark-model",
         type=Path,
         default=root / "gguf/ds4flash-dspark.gguf",
@@ -101,6 +114,8 @@ def parse_args():
         parser.error("cooldown cannot be negative")
     if args.rowwise_control and args.vec_control:
         parser.error("--rowwise-control and --vec-control are mutually exclusive")
+    if args.vec_profile and not args.vec_control:
+        parser.error("--vec-profile requires --vec-control")
     if not args.dry_run and not args.confirm_ready:
         parser.error("refusing to run without --confirm-ready")
     return args, root
@@ -121,7 +136,8 @@ def sha256(data):
     return hashlib.sha256(data).hexdigest()
 
 
-def clean_env(layer=None, threshold="0.75", serial_legacy=False):
+def clean_env(
+        layer=None, threshold="0.75", serial_legacy=False, vec_profile=False):
     env = {key: value for key, value in os.environ.items()
            if not key.startswith("DS4_")}
     if layer is not None:
@@ -135,6 +151,16 @@ def clean_env(layer=None, threshold="0.75", serial_legacy=False):
         })
         if serial_legacy:
             env["DS4_METAL_DENSE_MIXED_GATHERED_LEGACY"] = "1"
+        if vec_profile:
+            env.update({
+                "DS4_DSPARK_EXACT_LAYER_PROFILE": "1",
+                "DS4_DSPARK_EXACT_LAYER_PROFILE_LAYER": str(layer),
+                "DS4_METAL_DECODE_STAGE_PROFILE": "1",
+                "DS4_METAL_DECODE_STAGE_PROFILE_LAYER": str(layer),
+                "DS4_DSPARK_EXACT_ATTENTION_PROFILE": "1",
+                "DS4_METAL_FLASH_ATTN_GATHERED_PROFILE": "1",
+                "DS4_DSPARK_CAUSAL_ATTN_VEC_PROFILE": "1",
+            })
     return env
 
 
@@ -155,8 +181,10 @@ def command(args, layer=None):
     return cmd
 
 
-def command_text(args, layer=None, threshold="0.75", serial_legacy=False):
-    env = clean_env(layer, threshold, serial_legacy)
+def command_text(
+        args, layer=None, threshold="0.75", serial_legacy=False,
+        vec_profile=False):
+    env = clean_env(layer, threshold, serial_legacy, vec_profile)
     keys = (
         "DS4_DSPARK_GPU_RUNTIME",
         "DS4_DSPARK_MULTI_COMMIT",
@@ -165,6 +193,13 @@ def command_text(args, layer=None, threshold="0.75", serial_legacy=False):
         "DS4_DSPARK_PROPOSAL_SLAB_OBSERVER_LAYER",
         "DS4_DSPARK_CAUSAL_ATTN_HEAD_OBSERVER_LAYER",
         "DS4_METAL_DENSE_MIXED_GATHERED_LEGACY",
+        "DS4_DSPARK_EXACT_LAYER_PROFILE",
+        "DS4_DSPARK_EXACT_LAYER_PROFILE_LAYER",
+        "DS4_METAL_DECODE_STAGE_PROFILE",
+        "DS4_METAL_DECODE_STAGE_PROFILE_LAYER",
+        "DS4_DSPARK_EXACT_ATTENTION_PROFILE",
+        "DS4_METAL_FLASH_ATTN_GATHERED_PROFILE",
+        "DS4_DSPARK_CAUSAL_ATTN_VEC_PROFILE",
     )
     prefix = " ".join(f"{key}={env[key]}" for key in keys if key in env)
     return (prefix + " " if prefix else "") + shlex.join(command(args, layer))
@@ -257,6 +292,83 @@ def parse_vec_control(stderr_data, layer=LAYER, require_exact=False):
     return controls
 
 
+def parse_vec_profile(stderr_data, layer=LAYER):
+    events = []
+    for line in stderr_data.splitlines():
+        match = PROFILE_RE.match(line)
+        if not match:
+            continue
+        mode, tokens, comp, keys, heads, dim, window, ratio, stage, elapsed = (
+            match.groups()
+        )
+        event = {
+            "mode": mode.decode("ascii"),
+            "tokens": int(tokens),
+            "comp": int(comp),
+            "keys": int(keys),
+            "heads": int(heads),
+            "dim": int(dim),
+            "window": int(window),
+            "ratio": int(ratio),
+            "stage": stage.decode("ascii"),
+            "ms": float(elapsed),
+        }
+        if event["heads"] != 16 or event["dim"] != 512:
+            raise RuntimeError(f"layer {layer}: unexpected profile head shape")
+        events.append(event)
+    if not events:
+        raise RuntimeError(f"layer {layer}: no causal vec profile records")
+
+    serial_calls = []
+    serial_current = []
+    candidate_current = []
+    comparisons = []
+    for event in events:
+        current = serial_current if event["mode"] == "fused_gather_decode" \
+            else candidate_current
+        expected = PROFILE_STAGES[len(current)] if len(current) < 3 else None
+        if event["stage"] != expected:
+            raise RuntimeError(
+                f"layer {layer}: {event['mode']} stage sequence mismatch"
+            )
+        current.append(event)
+        if event["stage"] != "attention_reduce":
+            continue
+        if event["mode"] == "fused_gather_decode":
+            serial_calls.append({row["stage"]: row["ms"] for row in current})
+            serial_current = []
+            continue
+
+        width = event["tokens"]
+        if len(serial_calls) != width:
+            raise RuntimeError(
+                f"layer {layer}: vec width {width} follows "
+                f"{len(serial_calls)} serial calls"
+            )
+        serial = {
+            stage: sum(call[stage] for call in serial_calls)
+            for stage in PROFILE_STAGES
+        }
+        candidate = {row["stage"]: row["ms"] for row in current}
+        serial_total = sum(serial.values())
+        candidate_total = sum(candidate.values())
+        comparisons.append({
+            "width": width,
+            "serial": serial,
+            "candidate": candidate,
+            "serial_total_ms": serial_total,
+            "candidate_total_ms": candidate_total,
+            "candidate_serial_ratio": candidate_total / serial_total,
+        })
+        serial_calls = []
+        candidate_current = []
+    if serial_current or candidate_current or serial_calls:
+        raise RuntimeError(f"layer {layer}: incomplete causal vec profile sequence")
+    if not comparisons:
+        raise RuntimeError(f"layer {layer}: no complete causal vec comparisons")
+    return comparisons
+
+
 def parse_diagnostics(
         stderr_data, layer=LAYER, rowwise_control=False, vec_control=False):
     heads = parse_head_observer(
@@ -284,7 +396,8 @@ def parse_diagnostics(
 
 def execute(
         args, root, run_dir, label, layer, reference=None, threshold="0.75",
-        serial_legacy=False, rowwise_control=False, vec_control=False):
+        serial_legacy=False, rowwise_control=False, vec_control=False,
+        vec_profile=False):
     stdout_path = run_dir / f"{label}.stdout"
     stderr_path = run_dir / f"{label}.stderr"
     started = time.monotonic()
@@ -292,7 +405,7 @@ def execute(
         proc = subprocess.run(
             command(args, layer),
             cwd=root,
-            env=clean_env(layer, threshold, serial_legacy),
+            env=clean_env(layer, threshold, serial_legacy, vec_profile),
             stdout=stdout_file,
             stderr=stderr_file,
             check=False,
@@ -311,6 +424,7 @@ def execute(
     parsed = None if layer is None else parse_diagnostics(
         stderr_data, layer, rowwise_control, vec_control
     )
+    profile = parse_vec_profile(stderr_data, layer) if vec_profile else []
     return stdout_data, {
         "label": label,
         "layer": layer,
@@ -337,6 +451,7 @@ def execute(
         "vec_serial_results": [] if parsed is None else sorted({
             item["result"] for item in parsed["vec_controls"]
         }),
+        "vec_profile": profile,
     }
 
 
@@ -347,7 +462,7 @@ def main():
     for mode, threshold in SCHEDULES:
         print(
             f"{mode}: "
-            f"{command_text(args, LAYER, threshold, args.serial_legacy)}"
+            f"{command_text(args, LAYER, threshold, args.serial_legacy, args.vec_profile)}"
         )
     print(f"fresh baseline: {command_text(args)}")
     print(
@@ -395,6 +510,7 @@ def main():
             args.serial_legacy,
             args.rowwise_control,
             args.vec_control,
+            args.vec_profile,
         )
         row["mode"] = mode
         rows.append(row)
@@ -434,6 +550,7 @@ def main():
             ),
             "rowwise_control": args.rowwise_control,
             "vec_control": args.vec_control,
+            "vec_profile": args.vec_profile,
         },
         "paths": {
             "binary": str(args.binary),
@@ -445,7 +562,8 @@ def main():
             "baseline": command_text(args),
             **{
                 mode: command_text(
-                    args, LAYER, threshold, args.serial_legacy
+                    args, LAYER, threshold, args.serial_legacy,
+                    args.vec_profile
                 )
                 for mode, threshold in SCHEDULES
             },
@@ -471,6 +589,36 @@ def main():
             f"rowwise/serial {row['rowwise_serial_results']}, "
             f"batch/rowwise {row['batch_rowwise_results']}, "
             f"vec/serial {row['vec_serial_results']}."
+        )
+    if args.vec_profile:
+        by_width = {}
+        for row in rows[1:]:
+            for comparison in row["vec_profile"]:
+                by_width.setdefault(comparison["width"], []).append(comparison)
+        print("\n| width | calls | serial ms | vec shadow ms | ratio | prepare | vec | reduce |")
+        print("|---:|---:|---:|---:|---:|---:|---:|---:|")
+        for width in sorted(by_width):
+            items = by_width[width]
+            serial_ms = statistics.median(
+                item["serial_total_ms"] for item in items
+            )
+            candidate_ms = statistics.median(
+                item["candidate_total_ms"] for item in items
+            )
+            stages = {
+                stage: statistics.median(
+                    item["candidate"][stage] for item in items
+                )
+                for stage in PROFILE_STAGES
+            }
+            print(
+                f"| {width} | {len(items)} | {serial_ms:.3f} | "
+                f"{candidate_ms:.3f} | {candidate_ms / serial_ms:.3f}x | "
+                f"{stages['prepare']:.3f} | {stages['attention_vec']:.3f} | "
+                f"{stages['attention_reduce']:.3f} |"
+            )
+        print(
+            "\nSynchronized diagnostic only; these values are not throughput measurements."
         )
     print(f"Raw results: {run_dir}")
     return 0
