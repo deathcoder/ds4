@@ -14586,3 +14586,57 @@ Decision boundary:
 - If the remaining FFN cost is diffuse or dominated by already promoted
   routes with no new exact batching opportunity, stop drilling FFN and return
   to the nearly tied serial attention tail.
+
+Completed result:
+
+- User-run artifact:
+  `speed-bench/local-runs/post-promotion-width-ffn-20260722-202732`.
+- Every profile output matched the frozen cumulative artifact byte-for-byte;
+  inner stages reconcile to `0.832x` the enclosing width-five FFN control.
+- Width-five FFN substages total `2.094 ms/row`. Routed MoE remains dominant
+  at `0.821 ms/row` (`39.2%`) and is stable across layers at `0.280`, `0.273`,
+  and `0.268 ms/row`.
+- The remaining components are individually small: HC pre `12.8%`, router
+  `11.2%`, shared gate/up `11.1%`, shared down `10.1%`, HC post `8.0%`, and
+  normalization `7.5%`.
+- This reproduces the earlier promoted profile closely: routed MoE was
+  `0.806 ms/row` and `40.3%`. Its current hybrid batching is still active.
+  The pair-only width-five gate/up candidate was consistently neutral, and
+  the fused gate/up-SwiGLU candidate later measured `1.0001x` geometrically
+  across 32 exact HumanEval tasks and failed its promotion gate.
+
+Decision:
+
+- Stop drilling FFN. The dominant route is already promoted and its remaining
+  exact width-five fusion candidates have broad negative/neutral evidence.
+  Reprofiling its inner split would repeat Phase 1.49 without new structural
+  evidence.
+- Move to the nearly tied serial attention tail, which measured
+  `1.101 ms/row` across the sampled width-five layers in Phase 1.82 and has a
+  different set of kernels and state operations.
+
+## Phase 1.84: current width-stratified serial-tail profile
+
+Preparation:
+
+- Repinned `run_dspark_threshold075_width_tail_profile.py` to the clean
+  Phase 1.82 width-layer artifact at commit
+  `0286603f84183dacebbacad72f86745a7baa3935`.
+- The diagnostic runs one synchronized layer-42 process on frozen
+  `humaneval_079`. Layer 42 has the largest sampled width-five serial tail at
+  `0.446 ms/row`, versus `0.314` at layer 0 and `0.341` at layer 21.
+- It separates one-row tail work into KV/cache update, compressor/indexer,
+  attention, inverse RoPE, projection A, and projection B plus HC. Proposal
+  rows are assigned back to actual verifier widths and reconciled with the
+  same cumulative cost counters.
+- Every output must remain byte-identical. No throughput pass, fast verifier,
+  acceptance or oracle trace, or runtime candidate is enabled.
+
+Decision boundary:
+
+- Use the twenty width-five observations to identify one material component.
+  Widths two and three remain directional single batches.
+- Advance only a candidate with a new exact cross-layer mechanism. Do not
+  revisit retired suffix batching, row-view caching, inverse-RoPE fusion, or
+  attention workgroup variants without evidence that the current component
+  shape differs materially from their measured conditions.

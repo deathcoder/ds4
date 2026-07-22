@@ -20,7 +20,7 @@ class DSparkThreshold075WidthTailProfileTests(unittest.TestCase):
         self.assertEqual(profile.WIDTHS, (2, 3, 4, 5))
         self.assertEqual(
             profile.POST_PROMOTION_LAYER_SOURCE_COMMIT,
-            "83f3e803e7baa4097cc8c5ff490f72b29aced06c",
+            "0286603f84183dacebbacad72f86745a7baa3935",
         )
 
     def test_profile_environment_enables_tail_boundaries(self):

@@ -27,7 +27,7 @@ TASK = width_profile.TASK
 LAYER = 42
 WIDTHS = width_profile.WIDTHS
 POST_PROMOTION_LAYER_SOURCE_COMMIT = (
-    "83f3e803e7baa4097cc8c5ff490f72b29aced06c"
+    "0286603f84183dacebbacad72f86745a7baa3935"
 )
 LEGACY_LAYER_CONTRACT = (
     "dspark_threshold075_width_stratified_exact_layer",
