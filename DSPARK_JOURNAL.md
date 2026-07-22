@@ -12927,3 +12927,51 @@ Decision:
   model-free scalar N=2..5 equivalence test. Stop if exact operation-order
   equivalence is unavailable or if the design still leaves the serial
   projection/attention tail unchanged.
+
+## Phase 1.69: ratio-4 materialized-state equivalence probe
+
+Source derivation:
+
+- Rechecked ds4's scalar recurrence, ratio-4 Metal pack/direct-pool kernels,
+  and the pinned `local-inference-lab/vllm` revision
+  `2226f261e9a6befef7a344997fb3b6769baa3bf7`.
+- A ratio-4 partial state has two `head_dim` lanes for both projected KV and
+  `score + APE`. At compression boundary position `p`, both implementations
+  select lane 0 from positions `p-7..p-4`, then lane 1 from `p-3..p`.
+- ds4 represents those rows as a mutable eight-row frontier. After emitting,
+  it copies the current four full partial rows into both frontier halves, then
+  overwrites the upper half as the next block arrives.
+- vLLM stores each full partial row by absolute token position and reconstructs
+  the same eight selected rows at a boundary. Its parallel softmax is not a
+  byte-exact arithmetic contract for ds4; a Metal transfer can retain ds4's
+  existing ordered eight-row scalar reduction over the materialized view.
+
+Model-free probe:
+
+- Added `speed-bench/analyze_dspark_ratio4_materialized_equivalence.py` with
+  independent streaming-frontier and position-indexed references.
+- The probe covers exact proposal widths `N=2..5` from all four starting
+  frontier phases. It checks the entire reconstructed frontier bitwise after
+  every proposal row, then checks selected boundary rows and independently
+  implemented F32 source-order reductions.
+- The deterministic run covers 16 scenarios, 56 bitwise frontier checks, and
+  14 boundary row/reduction checks. All pass. The representation and ds4
+  scalar operation-order gates are therefore proven for this bounded model.
+- Added six focused unit tests, including the initial no-previous-block case,
+  explicit lane mapping, reduction parity, and the local Metal pack contract.
+- This phase is model-free. No prompt was materialized, no model process ran,
+  and no throughput claim follows from it.
+
+Decision:
+
+- **PASS REPRESENTATION; STOP STANDALONE RUNTIME REWRITE.** Position-indexed
+  partial states can batch state writes and boundary gathers without changing
+  compressor semantics.
+- The representation alone does not remove exact verification's serial
+  attention, inverse-RoPE, projection A, or projection B + HC work. It therefore
+  fails the predeclared requirement that a runtime candidate alter the serial
+  projection/attention tail, and cannot plausibly close the parity deficit by
+  itself.
+- Keep the equivalence probe as reusable infrastructure if a future candidate
+  fuses a materially larger compressor/cache operation. Do not add paged or
+  shadow compressor-state ownership merely to replace the current frontier.
