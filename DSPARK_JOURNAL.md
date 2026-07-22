@@ -24,8 +24,9 @@ is about `0.192 ms/emitted`, less than `0.5%` of runtime and far below the
 return to exact target verification and require the next lead to affect many
 layers or a material part of the `36.356 ms/emitted` target cost.
 
-Phase 1.76's initial oMLX screen is complete. On eight HumanEval tasks, oMLX
-baseline measured `18.42 t/s`; native MTP measured `25.25` at depth one,
+Phase 1.76's oMLX screen and verify-QMM isolation are complete. On eight
+HumanEval tasks, oMLX baseline measured `18.42 t/s`; native MTP measured
+`25.25` at depth one,
 `27.40` at adaptive maximum depth two, and `26.56` at adaptive maximum depth
 three. Against oMLX baseline, `mtp2` was the winner at `1.4792x` geometric
 paired throughput and won all `8/8` tasks; `mtp3` was `0.9725x` geometrically
@@ -36,7 +37,12 @@ screen failed: `mtp1`, `mtp2`, and `mtp3` matched baseline on `6/8`, `4/8`, and
 an exact-output performance claim from these results. The next diagnostic
 keeps `mtp2` unchanged while disabling only its MTPLX-derived custom affine
 verify-QMM eligibility, to separate that kernel's contribution from native
-MTP batching, expert kernels, bonus harvesting, and adaptive depth.
+MTP batching, expert kernels, bonus harvesting, and adaptive depth. That
+isolation measured stock verify QMM at `27.10 t/s` and `1.4568x` geometrically
+versus oMLX baseline. Custom verify QMM was only `1.0154x` geometrically over
+stock, with `7/8` task wins and a `0.9607x` minimum. Stock/custom outputs agreed
+on `7/8` tasks; stock improved baseline-exact agreement from `4/8` to `5/8`.
+Retire custom verify QMM as the explanation for oMLX's large speculative gain.
 
 Phase 1.38 is complete. After promoting exact shared-expert Q8 proposal rows,
 the fresh 32-task cumulative HumanEval reassessment measured exact DSpark at a
@@ -13948,6 +13954,30 @@ Initial transfer ranking:
    batched-verifier objective, but its cache bookkeeping is not a missing
    feature here. Our measured frontier bookkeeping was too small to optimize.
 
+Measured source-audit verdict:
+
+- Stock adaptive-max `mtp2` forms `[confirmed, draft1, draft2]` and executes
+  one ordinary `(B=1, L=3)` target forward across all 43 layers. MLX therefore
+  carries the whole causal sequence through attention, cache updates, dense
+  projections, and MoE together; a single target call supplies both draft
+  checks and the bonus-token distribution.
+- ds4's exact verifier already performs one logical multi-row target eval, but
+  exact arithmetic constrains its physical schedule. Attention preparation and
+  FFN are batched, while the cache-mutating attention tail remains serial in
+  autoregressive row order. The prior exact one-layer causal-attention runtime
+  measured `0.9940x`, so duplicating oMLX's whole-sequence schedule one layer
+  at a time did not improve the byte-exact path.
+- oMLX's own evidence does not establish an exact broad verifier: baseline
+  agreement was only `4/8` for custom `mtp2` and `5/8` for stock. Numerical
+  route changes also altered adaptive acceptance and tokens per cycle. Its
+  result demonstrates that approximate whole-sequence target batching can win
+  on Metal, not that the schedule preserves ordinary greedy decode exactly.
+- On the four tasks shared with ds4's latest frozen cumulative artifact, stock
+  oMLX MTP was directionally `1.05x-1.12x` the ds4 ordinary baseline and
+  `1.12x-1.31x` the ds4 exact DSpark runtime. This is not a controlled engine
+  comparison: sessions, formats, target quantization, draft architecture, and
+  output text differ. Use it only to justify the verifier investigation.
+
 Current decision:
 
 - The initial configuration screen selects adaptive-max `mtp2`: its geometric
@@ -13955,8 +13985,13 @@ Current decision:
 - The screen's strict exact-output gate failed despite stable output lengths.
   Treat the throughput direction as diagnostic and preserve the numerical
   discrepancy as part of every transfer decision.
-- Next gate: run `mtp2_stock_qmm` while the machine is as idle as practical.
-  If it remains near `mtp2`, the main win is native batched MTP execution and
-  verify QMM is not the leading port. If it falls materially, inspect the
-  eligible projection shapes before implementing any ds4 analogue.
+- The stock-QMM gate retained `1.4568x` over oMLX baseline; custom verify QMM
+  contributed only `1.0154x` geometrically. Do not port it as the next ds4
+  candidate and do not spend a balanced confirmation on this small component.
+- The portable distinction is oMLX's whole-sequence target forward, but its
+  output drift means it maps to ds4's approximate/fast-verifier research path,
+  not the byte-exact default. Before implementing more kernels, decide whether
+  an explicitly non-exact opt-in mode is an acceptable product surface. If
+  byte-exactness remains mandatory, return to the measured serial attention
+  and FFN target costs rather than trying to reproduce oMLX wholesale.
 - Do not run timed modes automatically; the user owns those measurements.
