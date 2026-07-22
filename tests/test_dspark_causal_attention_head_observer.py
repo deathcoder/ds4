@@ -20,6 +20,14 @@ def exact_row(proposed, row):
     )
 
 
+def exact_vec_row(proposed, row):
+    return (
+        b"ds4: DSpark causal attention vec control layer=41 ratio=128 "
+        + f"proposed={proposed} row={row} ".encode()
+        + b"max=0 rms=0 rel_l2=0 max_ulp=0 result=exact\n"
+    )
+
+
 class DSparkCausalAttentionHeadObserverTests(unittest.TestCase):
     def test_runner_freezes_diagnostic_modes(self):
         self.assertEqual(observer.LAYER, 41)
@@ -84,6 +92,16 @@ class DSparkCausalAttentionHeadObserverTests(unittest.TestCase):
         self.assertEqual(parsed[0]["serial_result"], "drift")
         self.assertEqual(parsed[0]["batch_result"], "exact")
 
+    def test_vec_control_requires_exact_when_promoting(self):
+        data = exact_vec_row(2, 0) + exact_vec_row(2, 1)
+        parsed = observer.parse_vec_control(data, require_exact=True)
+        self.assertEqual([item["result"] for item in parsed], ["exact", "exact"])
+        with self.assertRaisesRegex(RuntimeError, "causal vec attention drift"):
+            observer.parse_vec_control(
+                data.replace(b"result=exact", b"result=drift", 1),
+                require_exact=True,
+            )
+
     def test_parser_rejects_fallback(self):
         data = (
             b"ds4: DSpark causal attention head observer layer=41 "
@@ -113,7 +131,20 @@ class DSparkCausalAttentionHeadObserverTests(unittest.TestCase):
         encode = source[encode_start:encode_end]
         self.assertIn("ds4_layer_compress_ratio(il) != 128u", encode)
         self.assertIn("ds4_gpu_attention_decode_mixed_batch_heads_tensor", encode)
+        self.assertIn(
+            "ds4_gpu_attention_decode_mixed_vec_query_heads_tensor", encode
+        )
         self.assertIn("g->causal_attn_rowwise_heads", encode)
+        self.assertIn("g->causal_attn_vec_heads", encode)
+
+    def test_vec_kernel_specialization_is_query_indexed_only(self):
+        metal = (ROOT / "metal/flash_attn.metal").read_text(encoding="utf-8")
+        self.assertIn("bool QUERY_KV = false", metal)
+        self.assertIn("QUERY_KV ? iq1*args.nb12 : 0", metal)
+        self.assertIn(
+            'host_name("kernel_flash_attn_ext_vec_query_kv_f16_dk512_dv512")',
+            metal,
+        )
 
     def test_serial_capture_precedes_inverse_rope(self):
         source = (ROOT / "ds4.c").read_text(encoding="utf-8")

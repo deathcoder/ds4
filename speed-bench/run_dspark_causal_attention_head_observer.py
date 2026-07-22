@@ -31,6 +31,12 @@ CONTROL_RE = re.compile(
     rb"batch_rel_l2=(\S+) serial_result=(\w+) batch_result=(\w+)$",
     re.MULTILINE,
 )
+VEC_RE = re.compile(
+    rb"^ds4: DSpark causal attention vec control layer=(\d+) ratio=(\d+) "
+    rb"proposed=(\d+) row=(\d+) max=(\S+) rms=(\S+) rel_l2=(\S+) "
+    rb"max_ulp=(\d+) result=(\w+)$",
+    re.MULTILINE,
+)
 
 
 def parse_args():
@@ -54,6 +60,14 @@ def parse_args():
         "--rowwise-control",
         action="store_true",
         help="report rowwise generic-attention localization without requiring exact heads",
+    )
+    parser.add_argument(
+        "--vec-control",
+        action="store_true",
+        help=(
+            "require the multi-query serial-arithmetic vec shadow to match "
+            "the authoritative serial heads exactly"
+        ),
     )
     parser.add_argument(
         "--dspark-model",
@@ -85,6 +99,8 @@ def parse_args():
         parser.error("ctx and tokens must be positive")
     if args.cooldown < 0:
         parser.error("cooldown cannot be negative")
+    if args.rowwise_control and args.vec_control:
+        parser.error("--rowwise-control and --vec-control are mutually exclusive")
     if not args.dry_run and not args.confirm_ready:
         parser.error("refusing to run without --confirm-ready")
     return args, root
@@ -216,9 +232,35 @@ def parse_rowwise_control(stderr_data, layer=LAYER):
     return controls
 
 
-def parse_diagnostics(stderr_data, layer=LAYER, rowwise_control=False):
+def parse_vec_control(stderr_data, layer=LAYER, require_exact=False):
+    controls = []
+    for match in VEC_RE.finditer(stderr_data):
+        record_layer, ratio, proposed, row = (
+            int(value) for value in match.groups()[:4]
+        )
+        result = match.group(9).decode("ascii")
+        if record_layer != layer or ratio != 128 or not 2 <= proposed <= 5:
+            raise RuntimeError(f"layer {layer}: unexpected vec control identity")
+        if row >= proposed:
+            raise RuntimeError(f"layer {layer}: invalid vec control row")
+        if require_exact and result != "exact":
+            raise RuntimeError(
+                f"layer {layer}: causal vec attention {result} at row {row}"
+            )
+        controls.append({
+            "proposed": proposed,
+            "row": row,
+            "result": result,
+        })
+    if not controls:
+        raise RuntimeError(f"layer {layer}: no vec control records")
+    return controls
+
+
+def parse_diagnostics(
+        stderr_data, layer=LAYER, rowwise_control=False, vec_control=False):
     heads = parse_head_observer(
-        stderr_data, layer, require_exact=not rowwise_control
+        stderr_data, layer, require_exact=not (rowwise_control or vec_control)
     )
     slab = slab_observer.parse_observer(stderr_data, layer)
     if len(heads) != len(slab["observer"]):
@@ -227,12 +269,22 @@ def parse_diagnostics(stderr_data, layer=LAYER, rowwise_control=False):
     expected_rows = sum(item["rows"] for item in heads)
     if len(controls) != expected_rows:
         raise RuntimeError(f"layer {layer}: incomplete rowwise control records")
-    return {"heads": heads, "slab": slab, "controls": controls}
+    vec_controls = parse_vec_control(
+        stderr_data, layer, require_exact=vec_control
+    )
+    if len(vec_controls) != expected_rows:
+        raise RuntimeError(f"layer {layer}: incomplete vec control records")
+    return {
+        "heads": heads,
+        "slab": slab,
+        "controls": controls,
+        "vec_controls": vec_controls,
+    }
 
 
 def execute(
         args, root, run_dir, label, layer, reference=None, threshold="0.75",
-        serial_legacy=False, rowwise_control=False):
+        serial_legacy=False, rowwise_control=False, vec_control=False):
     stdout_path = run_dir / f"{label}.stdout"
     stderr_path = run_dir / f"{label}.stderr"
     started = time.monotonic()
@@ -257,7 +309,7 @@ def execute(
             f"{label} output differs from fresh baseline; see {stdout_path}"
         )
     parsed = None if layer is None else parse_diagnostics(
-        stderr_data, layer, rowwise_control
+        stderr_data, layer, rowwise_control, vec_control
     )
     return stdout_data, {
         "label": label,
@@ -281,6 +333,9 @@ def execute(
         }),
         "batch_rowwise_results": [] if parsed is None else sorted({
             item["batch_result"] for item in parsed["controls"]
+        }),
+        "vec_serial_results": [] if parsed is None else sorted({
+            item["result"] for item in parsed["vec_controls"]
         }),
     }
 
@@ -339,6 +394,7 @@ def main():
             threshold,
             args.serial_legacy,
             args.rowwise_control,
+            args.vec_control,
         )
         row["mode"] = mode
         rows.append(row)
@@ -377,6 +433,7 @@ def main():
                 "legacy-gathered" if args.serial_legacy else "fused-gather"
             ),
             "rowwise_control": args.rowwise_control,
+            "vec_control": args.vec_control,
         },
         "paths": {
             "binary": str(args.binary),
@@ -412,7 +469,8 @@ def main():
             f"- {row['mode']}: {row['proposal_records']} proposal records, "
             f"{row['head_rows']} head rows; head {row['head_results']}, "
             f"rowwise/serial {row['rowwise_serial_results']}, "
-            f"batch/rowwise {row['batch_rowwise_results']}."
+            f"batch/rowwise {row['batch_rowwise_results']}, "
+            f"vec/serial {row['vec_serial_results']}."
         )
     print(f"Raw results: {run_dir}")
     return 0

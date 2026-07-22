@@ -810,6 +810,23 @@ int ds4_gpu_attention_decode_mixed_batch_heads_tensor(
         uint32_t                n_head,
         uint32_t                head_dim);
 
+int ds4_gpu_attention_decode_mixed_vec_query_heads_tensor(
+        ds4_gpu_tensor       *heads,
+        const void             *model_map,
+        uint64_t                model_size,
+        uint64_t                sinks_offset,
+        const ds4_gpu_tensor *q,
+        const ds4_gpu_tensor *raw_kv,
+        const ds4_gpu_tensor *comp_kv,
+        uint32_t                comp_kv_f16,
+        uint32_t                n_tokens,
+        const uint32_t         *n_raw,
+        uint32_t                raw_cap,
+        const uint32_t         *raw_start,
+        const uint32_t         *n_comp,
+        uint32_t                n_head,
+        uint32_t                head_dim);
+
 int ds4_gpu_attention_indexed_mixed_batch_heads_tensor(
         ds4_gpu_tensor       *heads,
         const void             *model_map,

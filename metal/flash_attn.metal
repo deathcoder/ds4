@@ -1096,7 +1096,8 @@ template<
     short DV,
     short NE = 4,
     short Q  = OP_FLASH_ATTN_EXT_VEC_NQPSG,
-    short C  = OP_FLASH_ATTN_EXT_VEC_NCPSG>
+    short C  = OP_FLASH_ATTN_EXT_VEC_NCPSG,
+    bool QUERY_KV = false>
 kernel void kernel_flash_attn_ext_vec(
         constant ds4_metal_args_flash_attn_ext_vec & args,
         device const char * q,
@@ -1154,8 +1155,10 @@ kernel void kernel_flash_attn_ext_vec(
         const short ikv2 = iq2/(args.ne02/args.ne_12_2);
         const short ikv3 = iq3/(args.ne03/args.ne_12_3);
 
-        k += ikv2*args.nb12 + ikv3*args.nb13;
-        v += ikv2*args.nb22 + ikv3*args.nb23;
+        k += (QUERY_KV ? iq1*args.nb12 : 0) +
+             ikv2*args.nb12 + ikv3*args.nb13;
+        v += (QUERY_KV ? iq1*args.nb22 : 0) +
+             ikv2*args.nb22 + ikv3*args.nb23;
     }
 
     device const float4 * q4 = (device const float4 *) ((device const char *) q);
@@ -1546,6 +1549,10 @@ typedef decltype(kernel_flash_attn_ext_vec<FA_TYPES, half4, 1, dequantize_f16_t4
 
 // Host-visible decode FlashAttention variant for DS4's 512-wide F16 K/V rows.
 template [[host_name("kernel_flash_attn_ext_vec_f16_dk512_dv512")]]  kernel flash_attn_ext_vec_t kernel_flash_attn_ext_vec<FA_TYPES,     half4,  1, dequantize_f16_t4, half4,  1, dequantize_f16_t4, 512, 512, 1>;
+template [[host_name("kernel_flash_attn_ext_vec_query_kv_f16_dk512_dv512")]]
+kernel flash_attn_ext_vec_t kernel_flash_attn_ext_vec<FA_TYPES, half4, 1,
+    dequantize_f16_t4, half4, 1, dequantize_f16_t4, 512, 512, 1,
+    OP_FLASH_ATTN_EXT_VEC_NQPSG, OP_FLASH_ATTN_EXT_VEC_NCPSG, true>;
 
 #undef FA_TYPES
 #undef FA_TYPES_F32

@@ -13397,3 +13397,76 @@ Legacy-route localization (`causal-attn-head-20260722-111745`):
   multi-row differs, the union raw span, causal mask, or multi-query dispatch
   geometry is the source. If both comparisons differ, add a fixed-union-span
   one-query mask anchor before changing production attention arithmetic.
+
+Rowwise-control localization (`causal-attn-head-20260722-112343`):
+
+- Both threshold-0.75 scheduling and fixed `K=5` completed. The scheduled run
+  produced six proposal records and 18 compared head rows; fixed `K=5`
+  produced nine proposal records and 42 compared head rows. Proposal-slab
+  preparation/publication and generated output remained exact, including the
+  required fixed-K5 partial publications.
+- All three comparisons reported drift: causal multi-row generic versus
+  serial, rowwise generic versus serial, and causal multi-row generic versus
+  rowwise generic. The rowwise-generic comparison carries most of the error:
+  RMS is about `1.3e-7` to `2.6e-7`, relative L2 about `3e-7` to `5.4e-7`, and
+  maximum absolute error about `2e-6` to `6e-6`. The additional multi-row
+  versus rowwise error is smaller: RMS about `3.5e-8` to `6.2e-8`, relative
+  L2 about `0.8e-7` to `1.4e-7`, and maximum absolute error about `0.6e-6` to
+  `1.7e-6`.
+- **GENERIC FLASHATTENTION IS NOT THE EXACT AUTHORITY.** Even with each query
+  restored to its natural raw/compressed span, the generic batch kernel does
+  not reproduce the serial vec-plus-reduce attention arithmetic. Union-span
+  multi-row scheduling adds a smaller second mismatch, but is not the primary
+  source.
+- **PROCEED SERIAL-ARITHMETIC MULTI-QUERY SHADOW.** The next diagnostic must
+  use the same vec and reduction kernel family as the authoritative serial
+  fused-gather route. It should prepare a row-specific raw/compressed key slab
+  and mask for every query, preserve each row's serial padded key count and
+  ordering, and issue the rows in one multi-query dispatch where Metal layout
+  permits. The generic batch observer remains localization evidence only and
+  must not become a runtime candidate.
+
+Serial-arithmetic multi-query shadow implementation:
+
+- Added a query-indexed specialization of the existing F16 `DK=DV=512`
+  split-K vec attention kernel. The default template specialization remains
+  unchanged for every production caller; only the new diagnostic API can
+  select a separate KV slab by query index.
+- The host observer prepares one raw-ring/compressed F16 slab and padded mask
+  per proposal row with the same scalar preparation kernel used by serial
+  fused gather. It requires every row to have the same padded key count,
+  `NSG`, and `NWG`, then submits one multi-query vec dispatch and one ordinary
+  reduction dispatch. Differing serial geometry fails closed instead of
+  comparing a changed reduction schedule.
+- Added an isolated `causal_attn_vec_heads` tensor and a `vec/serial` record for
+  every proposal row. It cannot feed inverse RoPE, output projections, FFN,
+  logits, acceptance, cache publication, or any production runtime path.
+- The guarded runner now accepts `--vec-control`. In this mode the known
+  generic head and rowwise drift remain localization data, while every new
+  vec/serial row must be bitwise exact. It retains fresh-baseline byte checks,
+  exact proposal-slab checks, both threshold-0.75 and fixed-K5 schedules, and
+  the fixed-K5 partial-publication requirement. The user-run command is:
+
+  ```sh
+  python3 speed-bench/run_dspark_causal_attention_head_observer.py \
+    --confirm-ready --vec-control
+  ```
+
+Validation completed before the user gate:
+
+- Normal Metal build passes without C or Objective-C warnings.
+- All 304 discovered `test_dspark_*.py` model-free tests pass.
+- Focused C validation and shape-binding tests pass.
+- The Apple M1 Ultra Metal kernel test passes, including compilation of the
+  new query-indexed vec specialization.
+- The guarded `--vec-control --dry-run` passes. Codex did not run a model or a
+  timed benchmark.
+
+Pending decision:
+
+- **REQUIRE BITWISE VEC/REDUCE GATE.** Exact vec/serial rows across scheduled
+  and fixed-K5 proposal widths prove causal multi-query attention can preserve
+  the serial arithmetic contract at ratio 128 and authorize timing a shadow
+  candidate. Any bounded or drift result remains a preparation/layout
+  localization problem; fallback is a dispatch-geometry or buffer-ownership
+  failure. No throughput conclusion follows from this diagnostic.

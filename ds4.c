@@ -10791,6 +10791,7 @@ typedef struct {
     ds4_gpu_tensor *causal_attn_serial_heads;
     ds4_gpu_tensor *causal_attn_batch_heads;
     ds4_gpu_tensor *causal_attn_rowwise_heads;
+    ds4_gpu_tensor *causal_attn_vec_heads;
     uint32_t causal_attn_capture_layer;
     uint32_t causal_attn_capture_start;
     uint32_t causal_attn_capture_proposed;
@@ -11167,6 +11168,7 @@ static void metal_graph_free(ds4_gpu_graph *g) {
     ds4_gpu_tensor_free(g->proposal_shadow_attn_state_kv);
     ds4_gpu_tensor_free(g->causal_attn_batch_heads);
     ds4_gpu_tensor_free(g->causal_attn_rowwise_heads);
+    ds4_gpu_tensor_free(g->causal_attn_vec_heads);
     ds4_gpu_tensor_free(g->causal_attn_serial_heads);
     ds4_gpu_tensor_free(g->kv);
     ds4_gpu_tensor_free(g->kv_raw);
@@ -25132,25 +25134,30 @@ static bool dspark_causal_attn_head_shadow_alloc(
     const uint64_t bytes = (uint64_t)n_tokens * q_dim * sizeof(float);
     const bool compatible =
         g->causal_attn_serial_heads && g->causal_attn_batch_heads &&
-        g->causal_attn_rowwise_heads &&
+        g->causal_attn_rowwise_heads && g->causal_attn_vec_heads &&
         ds4_gpu_tensor_bytes(g->causal_attn_serial_heads) == bytes &&
         ds4_gpu_tensor_bytes(g->causal_attn_batch_heads) == bytes &&
-        ds4_gpu_tensor_bytes(g->causal_attn_rowwise_heads) == bytes;
+        ds4_gpu_tensor_bytes(g->causal_attn_rowwise_heads) == bytes &&
+        ds4_gpu_tensor_bytes(g->causal_attn_vec_heads) == bytes;
     if (compatible) return true;
 
     ds4_gpu_tensor_free(g->causal_attn_batch_heads);
     ds4_gpu_tensor_free(g->causal_attn_rowwise_heads);
+    ds4_gpu_tensor_free(g->causal_attn_vec_heads);
     ds4_gpu_tensor_free(g->causal_attn_serial_heads);
     g->causal_attn_batch_heads = ds4_gpu_tensor_alloc(bytes);
     g->causal_attn_rowwise_heads = ds4_gpu_tensor_alloc(bytes);
+    g->causal_attn_vec_heads = ds4_gpu_tensor_alloc(bytes);
     g->causal_attn_serial_heads = ds4_gpu_tensor_alloc(bytes);
     if (!g->causal_attn_batch_heads || !g->causal_attn_rowwise_heads ||
-        !g->causal_attn_serial_heads) {
+        !g->causal_attn_vec_heads || !g->causal_attn_serial_heads) {
         ds4_gpu_tensor_free(g->causal_attn_batch_heads);
         ds4_gpu_tensor_free(g->causal_attn_rowwise_heads);
+        ds4_gpu_tensor_free(g->causal_attn_vec_heads);
         ds4_gpu_tensor_free(g->causal_attn_serial_heads);
         g->causal_attn_batch_heads = NULL;
         g->causal_attn_rowwise_heads = NULL;
+        g->causal_attn_vec_heads = NULL;
         g->causal_attn_serial_heads = NULL;
         return false;
     }
@@ -25167,24 +25174,27 @@ static bool dspark_causal_attn_head_shadow_encode(
     if (!g || !model || !layer || ds4_layer_compress_ratio(il) != 128u ||
         !g->causal_attn_capture_valid ||
         !g->causal_attn_serial_heads || !g->causal_attn_batch_heads ||
-        !g->causal_attn_rowwise_heads) {
+        !g->causal_attn_rowwise_heads || !g->causal_attn_vec_heads) {
         return false;
     }
     const uint64_t q_dim = (uint64_t)DS4_N_HEAD * DS4_N_HEAD_DIM;
+    uint32_t row_n_raw[5];
+    uint32_t row_raw_start[5];
+    uint32_t row_n_comp[5];
     for (uint32_t row = 0; row < n_tokens; row++) {
         const uint32_t pos = start + row;
-        const uint32_t row_n_raw = metal_graph_raw_span_for_batch(g, pos, 1u);
-        const uint32_t row_raw_start = metal_graph_raw_start_for_span(
-            g, pos, row_n_raw);
-        uint32_t row_n_comp = (pos + 1u) / 128u;
+        row_n_raw[row] = metal_graph_raw_span_for_batch(g, pos, 1u);
+        row_raw_start[row] = metal_graph_raw_start_for_span(
+            g, pos, row_n_raw[row]);
+        row_n_comp[row] = (pos + 1u) / 128u;
         if (g->proposal_shadow_valid &&
             g->proposal_shadow_layer == il &&
             g->proposal_shadow_start == start &&
             g->proposal_shadow_proposed == n_tokens) {
-            row_n_comp = g->proposal_shadow_n_comp[row];
+            row_n_comp[row] = g->proposal_shadow_n_comp[row];
         }
-        if (row_n_comp > g->layer_n_comp[il]) {
-            row_n_comp = g->layer_n_comp[il];
+        if (row_n_comp[row] > g->layer_n_comp[il]) {
+            row_n_comp[row] = g->layer_n_comp[il];
         }
         ds4_gpu_tensor *q_row = ds4_gpu_tensor_view(
             g->batch_q,
@@ -25208,10 +25218,10 @@ static bool dspark_causal_attn_head_shadow_encode(
                 0,
                 1u,
                 pos,
-                row_n_raw,
+                row_n_raw[row],
                 g->raw_cap,
-                row_raw_start,
-                row_n_comp,
+                row_raw_start[row],
+                row_n_comp[row],
                 g->raw_window,
                 128u,
                 DS4_N_HEAD,
@@ -25219,6 +25229,24 @@ static bool dspark_causal_attn_head_shadow_encode(
         ds4_gpu_tensor_free(heads_row);
         ds4_gpu_tensor_free(q_row);
         if (!row_ok) return false;
+    }
+    if (!ds4_gpu_attention_decode_mixed_vec_query_heads_tensor(
+            g->causal_attn_vec_heads,
+            model->map,
+            model->size,
+            layer->attn_sinks->abs_offset,
+            g->batch_q,
+            g->layer_raw_cache[il],
+            g->layer_attn_comp_cache[il],
+            metal_graph_attn_comp_cache_is_f16(),
+            n_tokens,
+            row_n_raw,
+            g->raw_cap,
+            row_raw_start,
+            row_n_comp,
+            DS4_N_HEAD,
+            DS4_N_HEAD_DIM)) {
+        return false;
     }
     const uint32_t n_raw = metal_graph_raw_span_for_batch(
         g, start, n_tokens);
@@ -25267,6 +25295,7 @@ static bool dspark_causal_attn_head_shadow_report(
     const uint64_t values = (uint64_t)n_tokens * q_dim;
     float *batch = xmalloc((size_t)values * sizeof(float));
     float *rowwise = xmalloc((size_t)values * sizeof(float));
+    float *vec = xmalloc((size_t)values * sizeof(float));
     float *serial = xmalloc((size_t)values * sizeof(float));
     bool read_ok = ds4_gpu_tensor_read(
                        g->causal_attn_batch_heads,
@@ -25279,6 +25308,11 @@ static bool dspark_causal_attn_head_shadow_report(
                        rowwise,
                        values * sizeof(float)) != 0 &&
                    ds4_gpu_tensor_read(
+                       g->causal_attn_vec_heads,
+                       0,
+                       vec,
+                       values * sizeof(float)) != 0 &&
+                   ds4_gpu_tensor_read(
                        g->causal_attn_serial_heads,
                        0,
                        serial,
@@ -25287,6 +25321,7 @@ static bool dspark_causal_attn_head_shadow_report(
     for (uint32_t row = 0; read_ok && row < n_tokens; row++) {
         const float *batch_row = batch + (uint64_t)row * q_dim;
         const float *rowwise_row = rowwise + (uint64_t)row * q_dim;
+        const float *vec_row = vec + (uint64_t)row * q_dim;
         const float *serial_row = serial + (uint64_t)row * q_dim;
         const bool exact = memcmp(
             batch_row, serial_row, q_dim * sizeof(float)) == 0;
@@ -25344,8 +25379,25 @@ static bool dspark_causal_attn_head_shadow_report(
                     (rowwise_serial_bounded ? "bounded" : "drift"),
                 batch_rowwise_exact ? "exact" :
                     (batch_rowwise_bounded ? "bounded" : "drift"));
+        const bool vec_exact = memcmp(
+            vec_row, serial_row, q_dim * sizeof(float)) == 0;
+        const bool vec_bounded = vec_exact ||
+            dspark_causal_attn_head_row_bounded(vec_row, serial_row, q_dim);
+        fprintf(stderr,
+                "ds4: DSpark causal attention vec control layer=%u "
+                "ratio=128 proposed=%u row=%u max=%g rms=%g rel_l2=%g "
+                "max_ulp=%u result=%s\n",
+                il,
+                n_tokens,
+                row,
+                max_abs_diff(vec_row, serial_row, q_dim),
+                rms_abs_diff(vec_row, serial_row, q_dim),
+                relative_l2_diff(vec_row, serial_row, q_dim),
+                max_ulp_diff(vec_row, serial_row, q_dim),
+                vec_exact ? "exact" : (vec_bounded ? "bounded" : "drift"));
     }
     free(serial);
+    free(vec);
     free(rowwise);
     free(batch);
     return exact_all;
