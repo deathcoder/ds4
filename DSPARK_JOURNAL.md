@@ -8,18 +8,18 @@ particular DSpark change exists.
 
 Branch: `codex/dspark-observability-0`
 
-Phase 1.78 is prepared. Resume the core exact-verifier work with a fresh
-32-task cumulative HumanEval throughput reassessment on the current post-merge
-branch. The last authoritative cumulative result, `0.8993x` geometrically,
-predates the upstream integration and its ordinary-decode changes; all later
-causal-attention and external-runtime work is default-off or documentary.
-The existing cumulative harness still validates its frozen historical
-artifact, clears experimental DS4 variables, pins threshold `0.75`, alternates
-pair order, and requires every runtime output to match ordinary baseline and
-the historical output byte-for-byte. Its ten focused throughput/cost tests and
-a real provenance dry run pass. The user owns the 68-process uninstrumented
-run. Use its within-run paired ratio as the new end-to-end checkpoint, then
-repin the stats-only cumulative cost audit before selecting another kernel.
+Phase 1.78 is complete. The current post-merge 32-task cumulative HumanEval
+run measured exact DSpark at `0.8923x` geometric paired throughput versus its
+ordinary baseline, with `2/32` tasks faster and a `10.8%` gap to parity. Every
+runtime output matched the fresh baseline and frozen historical artifact
+byte-for-byte. Relative to Phase 1.45's `0.8993x`, this is `0.9922x`
+cross-session movement: effectively flat to slightly lower, not evidence of a
+new regression or gain. The runner's older historical comparison improved
+`1.0335x` geometrically but failed its predeclared `1.05x` movement gate.
+Phase 1.79 repins the stats-only cumulative cost audit to clean source commit
+`dccddc41327d7bb055f6fb94335864d4be2c30a2` and artifact
+`humaneval-cumulative-throughput-32-20260722-193101`. Use the fresh target,
+sidecar, and residual decomposition to select the next exact-verifier change.
 
 Phase 1.77 is complete. MTPLX `v2.3.0` was audited at commit
 `c1300f17c66e5fef7810efa80f2a53489b8d001d`. Its public "exact at any
@@ -14247,3 +14247,69 @@ Decision boundary:
   next exact-verifier target.
 - Codex does not execute the timed/model benchmark; the user owns the idle
   machine gate.
+
+Completed result:
+
+- User-run artifact:
+  `speed-bench/local-runs/humaneval-cumulative-throughput-32-20260722-193101`
+  at clean commit `dccddc41327d7bb055f6fb94335864d4be2c30a2`.
+- All 32 current DSpark outputs matched their fresh ordinary baseline and the
+  frozen historical output byte-for-byte. No stats, trace, profiler, or fast
+  verifier was enabled.
+- Ordinary baseline measured `24.89 t/s` median; exact DSpark measured
+  `22.02 t/s`. Ratio of medians was `0.8843x`, median paired ratio was
+  `0.8858x`, and geometric paired ratio was `0.8923x`.
+- DSpark was faster on `2/32` tasks. Paired ratios ranged from `0.8037x` to
+  `1.0070x`, with an interquartile range of `0.8520x-0.9257x`.
+- The end-to-end geometric gap to parity is `10.8%`, below the `0.95x`
+  near-parity threshold.
+- Against the older frozen `0.8634x` threshold-`0.75` artifact, current task
+  movement was `1.0335x` geometrically with `28/32` improvements and a
+  `0.9569x` minimum. This failed the predeclared `1.05x` movement requirement.
+- Against the more recent Phase 1.45 `0.8993x` cumulative result, the current
+  ratio is `0.9922x` cross-session. Treat the core runtime as effectively flat
+  to slightly lower; paired current-session values remain authoritative.
+- The final process snapshot contained noticeable unrelated activity, but the
+  run had no thermal or performance warning and baseline throughput was tight.
+  Alternating paired order and the broad task count make the aggregate useful;
+  do not overinterpret individual task movement.
+
+Decision:
+
+- The upstream merge and side investigations did not move exact DSpark into
+  near parity. Preserve `0.8923x` as the new cumulative checkpoint.
+- Repin and run the stats-only cumulative verifier-cost audit against this
+  exact artifact before selecting another implementation candidate.
+
+## Phase 1.79: current cumulative exact-verifier cost audit
+
+Preparation:
+
+- Updated `run_dspark_humaneval_cumulative_cost_audit.py` to require clean
+  throughput source commit `dccddc41327d7bb055f6fb94335864d4be2c30a2`.
+- The audit consumes
+  `humaneval-cumulative-throughput-32-20260722-193101/summary.json`, validates
+  its 32 task pairs, output hashes, prompts, model paths, threshold, ordering,
+  clean-tree state, and promoted-default protocol, then runs one stats-only
+  exact DSpark process per task.
+- It performs no fresh baseline or throughput benchmark. Every instrumented
+  output must match the frozen uninstrumented task artifact byte-for-byte.
+- Runtime threshold remains `0.75`; fast verification, oracle trace, and all
+  opt-in research candidates remain disabled.
+
+User-run command:
+
+```sh
+python3 speed-bench/run_dspark_humaneval_cumulative_cost_audit.py \
+  --throughput-reference \
+  speed-bench/local-runs/humaneval-cumulative-throughput-32-20260722-193101/summary.json \
+  --confirm-ready
+```
+
+Decision boundary:
+
+- Use pooled target, sidecar, and residual milliseconds per emitted token plus
+  target width distribution to select the next optimization target.
+- Do not infer throughput from the instrumented run. The next candidate must
+  attack a material share of the current deficit, preserve byte-exact output,
+  and pass a focused uninstrumented gate before any broad confirmation.
