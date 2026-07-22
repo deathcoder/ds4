@@ -14428,3 +14428,73 @@ Decision boundary:
   Do not jump directly to a heuristic router.
 - If the gate fails, retire pre-sidecar routing at the current checkpoint and
   return to width-five target-verifier optimization.
+
+Completed result:
+
+- User-run artifact:
+  `speed-bench/local-runs/humaneval-oracle-audit-20260722-200322`.
+- Every traced runtime output matched its frozen uninstrumented HumanEval
+  artifact byte-for-byte. No fresh throughput benchmark, acceptance audit,
+  layer profiler, or fast verifier was enabled.
+- Current accounted all-DSpark cost is `0.9054x` baseline. The future-knowing
+  round router reaches `1.0352x`, narrowly clearing the predeclared `1.03x`
+  study gate. Free-sidecar and free-target ceilings are `1.1351x` and
+  `5.2452x`.
+- `470/1360` rounds (`34.6%`) are locally profitable and carry `2240/3529`
+  emitted tokens (`63.5%`). All-DSpark parity under the same schedule still
+  requires target time at `0.886x`, an `11.4%` reduction.
+
+## Phase 1.81: causal pre-sidecar predictor stop gate
+
+Rationale:
+
+- The perfect router's `3.52%` ceiling includes future acceptance and cost.
+  An implementable router must decide before paying for the next sidecar and
+  can therefore use only previous-round or rolling-history observations.
+- Before adding runtime state or changing token boundaries, screen a bounded
+  family of lagged accepted-width, selected-width, rolling-mean, and
+  confidence policies offline with leave-one-task-out selection.
+- The offline study is deliberately optimistic: it continues to expose
+  lagged proposal observations after rounds that the candidate would have
+  routed to baseline. A real router would need probes and have less
+  information. Failure under this assumption is a strong stop signal.
+
+Preparation and decision boundary:
+
+- Added `analyze_dspark_pre_sidecar_router.py`, which validates and reconciles
+  the frozen oracle summary and all `1360` round records before analysis.
+- The first round always routes to baseline because no causal lagged feature
+  exists. Current-round confidence, acceptance, profitability, and timing are
+  excluded from every candidate.
+- Candidate selection requires at least `2%` routed-round coverage. Promotion
+  requires leave-one-task-out pooled and task-geometric ratios of at least
+  `1.01x`, no task below `0.95x`, and at least `2%` held-out routing coverage.
+- This is model-free analysis, not a timed benchmark. Do not implement a
+  runtime router unless the complete gate passes.
+
+Completed result:
+
+- Model-free artifact:
+  `speed-bench/local-runs/pre-sidecar-router-20260722-201800`.
+- Profitability has meaningful but insufficient one-round persistence: the
+  next round is profitable after `237/461` profitable rounds (`51.4%`) and
+  after `224/867` unprofitable rounds (`25.8%`).
+- The best optimistic in-sample policy is
+  `last 4 mean committed >= 5`. It routes only `57/1360` rounds and reaches
+  `1.0009x` pooled baseline-equivalent cost, `1.0006x` task-geometric cost,
+  and a `0.9919x` minimum task ratio.
+- Leave-one-task-out selection reaches only `1.0002x` pooled and `1.0000x`
+  geometric, with a `0.9836x` minimum and `54/1360` routed rounds. Tasks are
+  faster/equal/slower on the local cost model in `6/19/7` cases.
+- The promotion gate fails both required `1.01x` ratios. Coverage and the
+  `0.95x` task floor pass, but they do not rescue the absent aggregate margin.
+- Retire pre-sidecar routing at this checkpoint. The failed study already
+  grants skipped-round observations that a real router could not obtain, so
+  runtime probing, state machinery, and a timed routing benchmark are not
+  justified.
+
+Decision:
+
+- Return to exact target-verifier optimization. The refreshed cost audit still
+  requires an `11.4%` target-time reduction for all-DSpark parity, and width
+  five remains the largest stable target-cost population.
