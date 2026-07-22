@@ -13529,3 +13529,21 @@ Pending decision:
   `batch_heads` with the exact causal vec grid, then reuse downstream output
   and FFN paths. A neutral or negative result stops that refactor and keeps the
   exact shadow as feasibility evidence only.
+
+First shadow-profile attempt (`causal-attn-head-20260722-134553`):
+
+- The scheduled model run completed with exact generated output, proposal
+  slabs, and vec/serial heads. The runner then rejected the valid profile
+  because its parser guessed a 16-head attention shape while V4-Flash
+  correctly reported 64 heads of dimension 512.
+- This was a reporting-only failure after model execution, not a kernel,
+  correctness, or runtime failure. The fixed-K5 pass did not run.
+- Removed the guessed head-count constant. The parser now accepts any positive
+  head count supported by the observer, requires dimension 512, verifies that
+  all three stages in each call share a shape, and requires every serial call
+  to match its paired candidate's head count and dimension.
+- Offline replay of the preserved scheduled stderr now parses all six
+  comparisons. The synchronized vec-shadow/serial ratio-of-medians is about
+  `0.44x` at width 2, `0.34x` at width 3, and `0.30x` at width 4. These are
+  encouraging preliminary attribution values, not throughput results; the
+  fixed-K5 width-5 gate still requires a completed rerun.

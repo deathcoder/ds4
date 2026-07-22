@@ -313,7 +313,7 @@ def parse_vec_profile(stderr_data, layer=LAYER):
             "stage": stage.decode("ascii"),
             "ms": float(elapsed),
         }
-        if event["heads"] != 16 or event["dim"] != 512:
+        if event["heads"] <= 0 or event["dim"] != 512:
             raise RuntimeError(f"layer {layer}: unexpected profile head shape")
         events.append(event)
     if not events:
@@ -331,11 +331,32 @@ def parse_vec_profile(stderr_data, layer=LAYER):
             raise RuntimeError(
                 f"layer {layer}: {event['mode']} stage sequence mismatch"
             )
+        if current:
+            signature = tuple(
+                event[key] for key in
+                ("tokens", "comp", "keys", "heads", "dim", "window", "ratio")
+            )
+            first_signature = tuple(
+                current[0][key] for key in
+                ("tokens", "comp", "keys", "heads", "dim", "window", "ratio")
+            )
+            if signature != first_signature:
+                raise RuntimeError(
+                    f"layer {layer}: {event['mode']} stage shape mismatch"
+                )
         current.append(event)
         if event["stage"] != "attention_reduce":
             continue
         if event["mode"] == "fused_gather_decode":
-            serial_calls.append({row["stage"]: row["ms"] for row in current})
+            if event["tokens"] != 1:
+                raise RuntimeError(
+                    f"layer {layer}: serial profile width is not one"
+                )
+            serial_calls.append({
+                "heads": event["heads"],
+                "dim": event["dim"],
+                "stages": {row["stage"]: row["ms"] for row in current},
+            })
             serial_current = []
             continue
 
@@ -345,8 +366,15 @@ def parse_vec_profile(stderr_data, layer=LAYER):
                 f"layer {layer}: vec width {width} follows "
                 f"{len(serial_calls)} serial calls"
             )
+        candidate_shape = (event["heads"], event["dim"])
+        if any(
+                (call["heads"], call["dim"]) != candidate_shape
+                for call in serial_calls):
+            raise RuntimeError(
+                f"layer {layer}: serial/candidate profile shape mismatch"
+            )
         serial = {
-            stage: sum(call[stage] for call in serial_calls)
+            stage: sum(call["stages"][stage] for call in serial_calls)
             for stage in PROFILE_STAGES
         }
         candidate = {row["stage"]: row["ms"] for row in current}

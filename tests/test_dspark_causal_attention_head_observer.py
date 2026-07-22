@@ -28,11 +28,11 @@ def exact_vec_row(proposed, row):
     )
 
 
-def profile_row(mode, tokens, stage, elapsed):
+def profile_row(mode, tokens, stage, elapsed, heads=64):
     return (
         b"ds4: Metal FlashAttention prefill stage "
         + f"mode={mode} tokens={tokens} comp=64 keys=192 ".encode()
-        + b"heads=16 dim=512 window=0 ratio=128 "
+        + f"heads={heads} dim=512 window=0 ratio=128 ".encode()
         + f"{stage}={elapsed:.3f} ms\n".encode()
     )
 
@@ -139,6 +139,15 @@ class DSparkCausalAttentionHeadObserverTests(unittest.TestCase):
             for stage in observer.PROFILE_STAGES
         )
         with self.assertRaisesRegex(RuntimeError, "follows 1 serial calls"):
+            observer.parse_vec_profile(data)
+
+    def test_vec_profile_rejects_serial_candidate_shape_mismatch(self):
+        data = b""
+        for stage in observer.PROFILE_STAGES:
+            data += profile_row("fused_gather_decode", 1, stage, 1.0)
+        for stage in observer.PROFILE_STAGES:
+            data += profile_row("causal_vec_query", 1, stage, 1.0, heads=32)
+        with self.assertRaisesRegex(RuntimeError, "serial/candidate.*shape"):
             observer.parse_vec_profile(data)
 
     def test_parser_rejects_fallback(self):
