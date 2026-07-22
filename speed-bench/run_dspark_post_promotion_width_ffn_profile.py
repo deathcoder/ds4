@@ -33,7 +33,7 @@ FFN_STAGES = (
     "routed_moe",
     "hc_post",
 )
-WIDTH_LAYER_SOURCE_COMMIT = "83f3e803e7baa4097cc8c5ff490f72b29aced06c"
+WIDTH_LAYER_SOURCE_COMMIT = "0286603f84183dacebbacad72f86745a7baa3935"
 
 
 def parse_args():

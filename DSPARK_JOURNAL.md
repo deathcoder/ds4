@@ -14538,3 +14538,51 @@ Decision boundary:
   candidate from a stage that owns a material width-five share and can affect
   many target layers; require a separate uninstrumented exact-output ablation
   before claiming any speed movement.
+
+Completed result:
+
+- User-run artifact:
+  `speed-bench/local-runs/post-promotion-width-layer-20260722-202450`.
+- Every profiled output matched the frozen cumulative HumanEval artifact
+  byte-for-byte, and all exact-runtime counters matched the cost reference.
+- At width five, the three sampled layers total `2.860 ms/row`:
+  `1.112 ms/row` FFN, `1.101 ms/row` serial attention tail, and
+  `0.646 ms/row` attention preparation.
+- FFN is narrowly the largest sampled width-five stage and has the weakest
+  width-two-to-width-five amortization at `0.728x`. Serial tail follows at
+  `0.627x`; attention preparation amortizes to `0.590x`.
+- Width five has twenty observations and is the stable guide. Width four has
+  four observations. Widths two and three have one each; the width-three
+  layer-42 tail spike is not an optimization signal.
+
+Decision:
+
+- Decompose the current promoted exact FFN before revisiting the nearly tied
+  serial tail. FFN represents about `38.9%` of the sampled width-five layer
+  total; if representative, it would need roughly a `29%` reduction to supply
+  the complete `11.4%` target-time parity requirement alone.
+
+## Phase 1.83: current width-stratified exact-FFN profile
+
+Preparation:
+
+- Repinned `run_dspark_post_promotion_width_ffn_profile.py` to the clean
+  Phase 1.82 width-layer artifact at commit
+  `0286603f84183dacebbacad72f86745a7baa3935`.
+- The profiler reuses the same frozen throughput, cumulative cost, task 079,
+  width population, and sampled layers. It splits FFN into `hc_pre`, `norm`,
+  `router`, `shared_gate_up`, `shared_down`, `routed_moe`, and `hc_post`, and
+  reconciles their synchronized sum against the enclosing `ffn_batch` event.
+- Every profile output and runtime counter must remain byte- and count-exact.
+  No throughput pass, fast verifier, acceptance or oracle trace, or runtime
+  candidate is enabled.
+
+Decision boundary:
+
+- Use width-five component shares to select at most one next implementation
+  candidate. A credible candidate must attack a repeated cross-layer stage,
+  preserve exact arithmetic/output, and have enough theoretical scope to move
+  end-to-end target cost rather than merely improve a synchronized microstage.
+- If the remaining FFN cost is diffuse or dominated by already promoted
+  routes with no new exact batching opportunity, stop drilling FFN and return
+  to the nearly tied serial attention tail.
