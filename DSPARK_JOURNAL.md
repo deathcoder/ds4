@@ -8,6 +8,28 @@ particular DSpark change exists.
 
 Branch: `codex/dspark-observability-0`
 
+Phase 1.77 is complete. MTPLX `v2.3.0` was audited at commit
+`c1300f17c66e5fef7810efa80f2a53489b8d001d`. Its public "exact at any
+temperature" claim means exact target **distribution** under
+Leviathan-Chen rejection sampling, not the same sampled token sequence for a
+fixed seed. Its own release gate requires full token equality at temperature
+zero but uses chi-square, KL, and permutation tests at temperature `0.6`.
+Moreover, the default Turbo profile behind the fastest quantized 27B path
+enables custom 4-bit verify matmuls that MTPLX explicitly documents as not
+bit-exact to stock MLX. The headline `1.6x`/`2.24x` results are native-MTP
+Qwen 3.5/3.6 measurements, not DSpark measurements. oMLX ported MTPLX's
+verify-QMM kernel family rather than the full runtime, but its occasional
+greedy drift is consistent with the numerical contract documented by both
+projects and is not evidence of a broken port. Prefix capture/commit, bonus
+harvesting, batched target rows, adaptive depth, and skinny verifier matmuls
+all map to mechanisms already implemented or explicitly tested here. MLX
+GraphBank compilation is runtime-specific; packed GQA attention is Qwen-
+specific; the remaining fast 4-bit kernels violate this project's byte-exact
+ordinary-greedy requirement. Do not download an MTPLX checkpoint or begin a
+port from this audit. Revisit only if MTPLX publishes a strict stock-arithmetic
+Metal path for DeepSeek V4/DSpark or a new mechanism that attacks a material
+part of our measured target-verifier cost.
+
 Phase 1.74 is complete and retired. The byte-exact one-layer causal-attention
 runtime measured a stable `0.9940x` median paired ratio at layer 41, so do not
 expand it to the remaining ratio-128 layers or the indexed ratio-4 path. Its
@@ -14059,3 +14081,102 @@ GGUF-to-MLX quantization-parity feasibility:
   treat the existing oQ2e and GGUF runs as end-to-end systems, with explicit
   quantization and quality caveats, or later compare quality-matched variants
   generated independently from the same original checkpoint.
+
+## Phase 1.77: MTPLX exactness and transfer audit
+
+Goal:
+
+- Determine whether MTPLX's advertised `2x` result reveals a strict-exact
+  verifier mechanism missing from oMLX or ds4.
+- Separate mathematical sampling exactness from numerical and fixed-seed
+  sequence equality before considering any port.
+
+Pinned source and claim scope:
+
+- Repository: `youssofal/MTPLX`, tag `v2.3.0`, commit
+  `c1300f17c66e5fef7810efa80f2a53489b8d001d`, checked out under
+  `/Users/deathcodevision/dev/local-inference-lab/MTPLX`.
+- The README reports `1.6x` on a 16 GiB M4 Mac mini and `2.24x` on an M5 Max.
+  The named models are Qwen 3.5/3.6 with built-in native MTP heads. This is a
+  different draft architecture, target quantization, and runtime from the V4
+  IQ2XXS plus released DSpark sidecar used by ds4.
+- The M4 example is explicit: Qwen 9B auto-tunes to depth one and moves from
+  `14.4` to `23.0 t/s`. The product auto-tuner retains autoregressive decoding
+  when no MTP depth wins, so the claim is model- and machine-conditional.
+
+Exactness finding:
+
+- MTPLX implements the correct Leviathan-Chen acceptance ratio and residual
+  distribution. When target verification computes the same target
+  distribution as ordinary decoding, this preserves the target distribution.
+- That theorem does not promise the same sample stream for a fixed seed.
+  Autoregressive and speculative generation initialize the same NumPy RNG,
+  but speculative generation additionally consumes draws for draft sampling,
+  acceptance tests, residual correction, and bonus sampling.
+- MTPLX's own `r1_chisquare_verifier_correctness.py` gate encodes this
+  distinction. At temperature zero it compares complete AR and MTPLX token
+  sequences and reports `FAIL_T0_ARGMAX` on any mismatch. At temperature
+  `0.6`, it compares token-frequency distributions with permutation,
+  chi-square, and KL gates rather than requiring sequence equality.
+- Therefore the website's "identical, verified bit for bit, at any
+  temperature" wording is stronger than the implemented QA contract. The
+  defensible claim is exact sampling distribution at nonzero temperature and
+  exact greedy tokens for the conservative temperature-zero route.
+
+Fast-profile caveat:
+
+- MTPLX's default Turbo profile for its quantized 27B flagships enables NAX
+  verify matmuls and compiled verification. Its documentation says the 4-bit
+  verify kernel is argmax- and sampler-distribution-validated but **not
+  bit-exact versus stock MLX** because it changes accumulation order.
+- The profile is marked `product_claim_eligible=False`, as is its QA-only
+  Exact profile. The packed-GQA verify-attention path is likewise validated by
+  acceptance/distribution parity rather than stock numerical identity.
+- The large measured Turbo gains are useful engineering evidence, but they do
+  not satisfy ds4's stricter byte-exact ordinary-greedy contract.
+
+oMLX relationship:
+
+- oMLX adapted MTPLX's small verifier-batch affine QMM kernels, not the whole
+  MTPLX generation/cache/runtime stack. Both projects document that this
+  custom QMM accumulation can differ from stock at the tail ULP.
+- The prior oMLX isolation found only a `1.0154x` geometric custom-QMM gain over
+  stock QMM and occasional output drift in both routes. That is consistent
+  with the documented arithmetic contract; it does not show that oMLX
+  incorrectly ported a bit-exact MTPLX kernel.
+- The majority of oMLX's native-MTP gain came from the speculative algorithm
+  and whole-sequence target batching, not the MTPLX-derived QMM component.
+
+Transfer matrix:
+
+- Batched target verification, bonus-token harvesting, cache rollback, and
+  prefix capture/commit are already implemented in ds4. Exact prefix
+  checkpoints alone measured a promoted `1.1774x` partial-accept gain.
+- Skinny verifier matmuls map to promoted Q8 proposal rows, shared-expert Q8
+  rows, routed-MoE hybrid batching, and fused gate/up-SwiGLU. MTPLX's fastest
+  Q4 kernel is not a strict-exact candidate and targets MLX affine weights,
+  not GGUF IQ2/Q2 layouts.
+- Adaptive depth maps to ds4's confidence scheduler. MTPLX's controller is
+  useful independent confirmation, not a missing foundational mechanism.
+- GraphBank compilation attacks MLX graph tracing/dispatch and does not map
+  cleanly to ds4's direct C/Metal execution.
+- Packed GQA attention is specialized for Qwen's grouped-query attention.
+  DeepSeek V4's compressed and indexed attention has different state and
+  projection structure. Our exact one-layer causal-attention experiment
+  already regressed to `0.9940x` in ordinary asynchronous throughput.
+- DeepSeek support in the pinned MTPLX tree is conventional native-MTP backend
+  work; there is no released-DSpark main projection, three-stage proposal,
+  Markov head, confidence head, or DSpark metadata contract.
+
+Decision:
+
+- **No MTPLX checkpoint download and no immediate port.** The source audit is
+  sufficient to reject the hypothesis that oMLX omitted a portable strict-
+  exact `2x` verifier path.
+- Preserve MTPLX as external evidence that native MTP plus relaxed
+  distribution/argmax numerical gates can produce large Metal gains on a
+  favorable Qwen checkpoint. Do not convert that into a DSpark speed claim.
+- Reopen this lead only for a new stock-arithmetic DeepSeek V4/DSpark path, a
+  strict T=0 full-sequence gate on the claimed fast profile, or a mechanism
+  that attacks a material fraction of ds4's measured target-verifier cost and
+  has not already failed an exact local ablation.
