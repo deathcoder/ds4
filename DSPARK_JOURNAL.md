@@ -8,6 +8,23 @@ particular DSpark change exists.
 
 Branch: `codex/dspark-observability-0`
 
+Phase 1.79 is complete. The current stats-only audit matched all 32 frozen
+outputs and accounts for the `0.8923x` checkpoint as `36.809 ms/emitted`
+target verification, `7.709 ms/emitted` sidecar, and `0.606 ms/emitted`
+residual. Target work remains `81.6%` of runtime and parity requires a
+calibrated `13.4%` target reduction. The schedule is unchanged at `1360`
+target evaluations and `3680` positions: width five owns `54.9%` of target
+time, while width one owns `18.6%`. Relative to Phase 1.46, target and sidecar
+costs are effectively flat (`1.012x` and `1.015x`), so do not attribute the
+new cumulative result to a changed verifier shape. Phase 1.80 repins the
+round-level break-even oracle to threshold `0.75` and clean throughput commit
+`dccddc41327d7bb055f6fb94335864d4be2c30a2`. This is justified because the
+current sidecar cost now exceeds the full `4.920 ms/emitted` deficit; the old
+router ceiling was measured near `0.81x` and is no longer authoritative.
+Require a future-knowing route ceiling of at least `1.03x` before building any
+implementable pre-sidecar policy. Otherwise return to width-five exact target
+work without another scheduler experiment.
+
 Phase 1.78 is complete. The current post-merge 32-task cumulative HumanEval
 run measured exact DSpark at `0.8923x` geometric paired throughput versus its
 ordinary baseline, with `2/32` tasks faster and a `10.8%` gap to parity. Every
@@ -14313,3 +14330,101 @@ Decision boundary:
 - Do not infer throughput from the instrumented run. The next candidate must
   attack a material share of the current deficit, preserve byte-exact output,
   and pass a focused uninstrumented gate before any broad confirmation.
+
+Completed result:
+
+- User-run artifact:
+  `speed-bench/local-runs/humaneval-cumulative-cost-20260722-195022`.
+- Every stats-enabled runtime output matched the frozen uninstrumented
+  cumulative artifact byte-for-byte. No throughput pass, fast verifier,
+  acceptance audit, oracle trace, or layer profiler was enabled.
+- Frozen baseline budget is `40.206 ms/emitted`; current exact DSpark is
+  `45.125 ms/emitted`, leaving a `4.920 ms/emitted` deficit.
+- Fresh accounting measures `36.809 ms/emitted` target verification,
+  `7.709 ms/emitted` generation sidecar, and `0.606 ms/emitted` residual.
+  Target and sidecar own `81.6%` and `17.1%` of runtime, respectively.
+- End-to-end calibration requires target verification at `0.866x` current
+  cost, a `13.4%` reduction. Component-only accounting excluding residual
+  requires `0.883x`, an `11.7%` reduction.
+- The verifier workload remains `0.3854` target evaluations per emitted token
+  and `2.706` positions per evaluation. It recorded `760` attempts, `684`
+  full outcomes, `76` partial outcomes, and zero fallbacks.
+- Width five owns `421` evaluations and `54.9%` of target time at
+  `33.855 ms/position`. Width one owns `600` evaluations and `18.6%` at
+  `40.373 ms/position`.
+- Scheduler widths zero and one still total `502/1360` rounds and each pay
+  about `20 ms` of sidecar work. Across the full run, generation sidecar is
+  `27.206 s`, including `0.633 s` outside the scheduler.
+
+Comparison with Phase 1.46:
+
+- Target cost moved from `36.356` to `36.809 ms/emitted` (`1.012x`).
+- Sidecar moved from `7.596` to `7.709 ms/emitted` (`1.015x`).
+- Residual moved from `0.742` to `0.606 ms/emitted`.
+- Target evaluation count, target positions, batch outcomes, and width counts
+  are unchanged. Width-five target time share moved only from `54.7%` to
+  `54.9%`; width one moved from `18.8%` to `18.6%`.
+- Treat these as stable cross-run costs. The calibrated target reduction for
+  parity moved from `12.4%` to `13.4%` because the frozen end-to-end deficit
+  widened by `0.400 ms/emitted`, not because verifier shape changed.
+
+Decision:
+
+- Target verification remains the primary optimization surface. A candidate
+  must affect many target layers or a material share of width-five cost.
+- One routing question is worth refreshing before another kernel: generation
+  sidecar now exceeds the complete end-to-end deficit by
+  `2.789 ms/emitted`. The Phase 1.14 future-known router audit used a much
+  slower `0.8081x` runtime and cannot bound the current checkpoint.
+
+## Phase 1.80: refreshed pre-sidecar routing ceiling
+
+Rationale:
+
+- Routing any proposal round to ordinary greedy target decoding preserves the
+  byte-exact output contract. A decision made before drafting can avoid both
+  the sidecar and an unprofitable speculative target batch.
+- An implementable router does not know the current round's acceptance or
+  confidence before paying the sidecar. First measure the future-knowing
+  ceiling on the current runtime; only a comfortably positive ceiling can
+  justify studying lagged confidence or state features.
+- This reopens no scheduler policy by itself. It is a bounded architectural
+  gate made relevant by the move from roughly `0.81x` to `0.8923x`.
+
+Preparation:
+
+- Repinned `run_dspark_humaneval_oracle_audit.py` from the old threshold
+  `0.455` scheduler artifact to the current cumulative threshold `0.75`
+  artifact and clean source commit
+  `dccddc41327d7bb055f6fb94335864d4be2c30a2`.
+- The harness validates all 32 baseline/runtime pairs, prompts, output hashes,
+  model paths, ordering, clean-tree state, threshold, and promoted-default
+  protocol. It then runs one stats-plus-oracle-trace exact DSpark process per
+  task and requires byte-identical output.
+- It reports current accounted cost, a future-knowing per-round baseline versus
+  DSpark router, free-sidecar and free-target upper bounds, profitable round
+  and token shares, and target scales for parity and `1.10x`.
+- There is no fresh baseline or throughput benchmark. Trace timings are
+  diagnostic and the routing result is a local counterfactual because choosing
+  baseline would alter later proposal boundaries.
+
+User-run command:
+
+```sh
+python3 speed-bench/run_dspark_humaneval_oracle_audit.py \
+  --throughput-reference \
+  speed-bench/local-runs/humaneval-cumulative-throughput-32-20260722-193101/summary.json \
+  --confirm-ready
+```
+
+Decision boundary:
+
+- Require the perfect current-cost route oracle to reach at least `1.03x`
+  baseline before designing an implementable predictor. A lower ceiling is too
+  narrow for classification error, changed proposal boundaries, routing
+  overhead, and instrumentation/accounting mismatch.
+- If the gate passes, analyze the emitted round trace offline for lagged
+  confidence and width/acceptance persistence before changing runtime code.
+  Do not jump directly to a heuristic router.
+- If the gate fails, retire pre-sidecar routing at the current checkpoint and
+  return to width-five target-verifier optimization.

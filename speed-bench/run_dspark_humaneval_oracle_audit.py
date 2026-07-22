@@ -15,6 +15,8 @@ import run_dspark_issue468_comparison as common
 
 
 TASK_COUNT = 32
+THRESHOLD = "0.75"
+THROUGHPUT_SOURCE_COMMIT = "dccddc41327d7bb055f6fb94335864d4be2c30a2"
 
 
 def parse_args():
@@ -67,7 +69,7 @@ def parse_args():
     args.stats_pass = False
     args.acceptance_audit = False
     args.acceptance_trace = False
-    args.confidence_threshold = common.DSPARK_DEFAULT_CONFIDENCE_THRESHOLD
+    args.confidence_threshold = THRESHOLD
     args.pairs = 0
     args.warmups = 0
     return args, root
@@ -101,17 +103,17 @@ def load_throughput_reference(args, records, selection):
 
     summary = load_json(summary_path, "throughput summary")
     metadata = load_json(metadata_path, "throughput metadata")
-    if metadata.get("experiment") != (
-        "deepspec_humaneval_confidence_scheduler_throughput"
-    ):
+    if metadata.get("experiment") != "dspark_humaneval_cumulative_throughput":
         raise SystemExit("throughput reference has the wrong experiment kind")
+    if metadata.get("git_commit") != THROUGHPUT_SOURCE_COMMIT:
+        raise SystemExit("throughput reference source commit mismatch")
+    if metadata.get("git_status_tracked"):
+        raise SystemExit("throughput reference was produced from a dirty tree")
     if summary.get("sample_count") != TASK_COUNT:
         raise SystemExit("throughput reference is not the frozen 32-task study")
     if summary.get("selection") != selection:
         raise SystemExit("throughput reference selection mismatch")
-    if summary.get("confidence_threshold") != (
-        common.DSPARK_DEFAULT_CONFIDENCE_THRESHOLD
-    ):
+    if summary.get("threshold") != THRESHOLD:
         raise SystemExit("throughput reference threshold mismatch")
 
     expected_config = {
@@ -119,13 +121,13 @@ def load_throughput_reference(args, records, selection):
         "tokens": args.tokens,
         "temperature": 0,
         "seed": 1,
-        "fast_verifier": False,
-        "execution_mode": "throughput",
-        "throughput_instrumentation": False,
-        "runtime_instrumentation": False,
-        "acceptance_audit": False,
-        "confidence_threshold": common.DSPARK_DEFAULT_CONFIDENCE_THRESHOLD,
         "nothink": True,
+        "threshold": THRESHOLD,
+        "instrumented": False,
+        "measured_pairs_per_task": 1,
+        "alternating_order": True,
+        "global_warmup_pairs": 2,
+        "promoted_defaults": True,
     }
     config = metadata.get("config", {})
     for key, expected in expected_config.items():
@@ -167,7 +169,7 @@ def load_throughput_reference(args, records, selection):
         if common.sha256(output_data) != by_mode["runtime"]["stdout_sha256"]:
             raise SystemExit(f"throughput output hash mismatch for {task}")
         prompt_data = record["turns"][0].encode("utf-8")
-        prompt_path = Path(metadata.get("prompts", {}).get(task, {}).get("path", ""))
+        prompt_path = run_dir / "prompts" / f"{task}.txt"
         if not prompt_path.is_file() or prompt_path.read_bytes() != prompt_data:
             raise SystemExit(f"throughput prompt drift for {task}")
         baseline_tps = float(by_mode["baseline"]["generation_tps"])
@@ -315,7 +317,7 @@ def summarize(rows, reference):
     emitted = sum(item["emitted"] for item in tasks.values())
     return {
         "analysis": "dspark_humaneval_round_break_even_oracle",
-        "threshold": common.DSPARK_DEFAULT_CONFIDENCE_THRESHOLD,
+        "threshold": THRESHOLD,
         "task_count": len(tasks),
         "tasks": tasks,
         "aggregate": {
@@ -501,8 +503,7 @@ def main():
             "temperature": 0,
             "seed": 1,
             "nothink": True,
-            "confidence_threshold":
-                common.DSPARK_DEFAULT_CONFIDENCE_THRESHOLD,
+            "confidence_threshold": THRESHOLD,
             "runtime_stats": True,
             "oracle_trace": True,
             "timed_throughput": False,
@@ -535,7 +536,7 @@ def main():
             args, root, run_dir, "oracle", task, prompts[task],
             "runtime", reference["tasks"][task]["output_data"],
             stats=True,
-            confidence_threshold=common.DSPARK_DEFAULT_CONFIDENCE_THRESHOLD,
+            confidence_threshold=THRESHOLD,
             oracle_trace=True,
         )
         rows.append(row)

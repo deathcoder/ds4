@@ -13,6 +13,13 @@ import run_dspark_issue468_comparison as common  # noqa: E402
 
 
 class DSparkOracleAuditTests(unittest.TestCase):
+    def test_current_threshold_and_source_are_frozen(self):
+        self.assertEqual(oracle.THRESHOLD, "0.75")
+        self.assertEqual(
+            oracle.THROUGHPUT_SOURCE_COMMIT,
+            "dccddc41327d7bb055f6fb94335864d4be2c30a2",
+        )
+
     def test_runtime_source_has_default_off_round_trace(self):
         source = (ROOT / "ds4.c").read_text(encoding="utf-8")
         self.assertIn('getenv("DS4_DSPARK_ORACLE_TRACE")', source)
@@ -36,7 +43,7 @@ class DSparkOracleAuditTests(unittest.TestCase):
             "nothink": True,
             "fast_verifier": False,
             "exact_head_batch": False,
-            "confidence_threshold": "0.455",
+            "confidence_threshold": oracle.THRESHOLD,
         })()
         command = common.command_text(
             args, Path("/tmp/prompt.txt"), "runtime",
@@ -44,6 +51,7 @@ class DSparkOracleAuditTests(unittest.TestCase):
         )
         self.assertIn("DS4_DSPARK_GPU_RUNTIME_STATS=1", command)
         self.assertIn("DS4_DSPARK_ORACLE_TRACE=1", command)
+        self.assertIn("DS4_DSPARK_CONFIDENCE_THRESHOLD=0.75", command)
         with self.assertRaisesRegex(ValueError, "requires runtime stats"):
             common.command_text(
                 args, Path("/tmp/prompt.txt"), "runtime",
