@@ -13995,3 +13995,36 @@ Current decision:
   byte-exactness remains mandatory, return to the measured serial attention
   and FFN target costs rather than trying to reproduce oMLX wholesale.
 - Do not run timed modes automatically; the user owns those measurements.
+
+Community benchmark clarification and exactness decision:
+
+- The oMLX community entry `i3tjae12` is labelled
+  `DeepSeek-V4-Flash-DSpark` and reports `29.9 t/s` generation on an M3 Ultra
+  with oMLX `0.4.4`. The public record contains model/checkpoint identity and
+  ordinary throughput fields, but no speculative method, acceptance, draft
+  depth, or DSpark configuration.
+- At the exact oMLX `0.4.4` source revision
+  `f06d5915b8ca38e5c7463120e48bbb41b4766580`, the community uploader detects
+  `mtp_enabled` as an experimental feature and unconditionally skips upload
+  whenever it is active. The uploaded entry therefore came from ordinary
+  target decoding through the normal benchmark path, despite the checkpoint's
+  DSpark name. A manual or modified uploader cannot be disproved from the
+  public record, but there is no positive evidence for such a bypass.
+- The same oMLX revision implements conventional DeepSeek-V4 MTP by reading
+  `num_nextn_predict_layers` and constructing that many standard `MTPBlock`
+  instances. The official DSpark config declares one next-token layer while
+  separately carrying the DSpark block-size, target-layer, Markov-rank, and
+  noise-token metadata. Its checkpoint also contains the additional DSpark
+  stage and Markov/confidence tensors. oMLX has no code that consumes those
+  DSpark-specific fields or heads. Enabling its MTP toggle would at most route
+  the conventional `mtp.0` interpretation; it would not execute the released
+  three-stage DSpark proposal algorithm.
+- **Byte-exact ordinary greedy output remains mandatory.** Do not pursue
+  oMLX-style numerically drifting whole-sequence verification as a production
+  or opt-in performance mode. Evaluating downstream intelligence impact would
+  require a separate quality study and is outside this implementation goal.
+- Therefore the community result does not overturn the prior transfer audit:
+  oMLX can load and benchmark a target checkpoint named DSpark, but it does not
+  presently provide a native full-DSpark Metal control. Continue optimizing
+  ds4's exact verifier rather than treating `29.9 t/s` as a directly comparable
+  DSpark result.
