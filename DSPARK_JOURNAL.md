@@ -14028,3 +14028,34 @@ Community benchmark clarification and exactness decision:
   presently provide a native full-DSpark Metal control. Continue optimizing
   ds4's exact verifier rather than treating `29.9 t/s` as a directly comparable
   DSpark result.
+
+GGUF-to-MLX quantization-parity feasibility:
+
+- Local target assets are already-quantized GGUFs: the 81 GiB IQ2XXS recipe
+  used by the main benchmark and a 91 GiB mixed expert variant. The 11 GiB
+  DSpark sidecar is also already quantized. No original DeepSeek V4 target
+  safetensor shards are present locally.
+- The repository does retain the DS4 quantizer implementation, tensor-family
+  policy, GGUF templates, and tracked imatrix calibration prompts. It does not
+  retain the generated activation-imatrix `.dat` used for the published target;
+  the GGUF records provenance metadata, not the complete reusable activation
+  vectors.
+- Stock MLX/oMLX does not implement GGML `IQ2_XXS`, `Q2_K`, `Q4_K`, or their
+  packed block layouts. Its relevant weight formats are affine group
+  quantization plus MXFP4/MXFP8. An MLX affine 2-bit tensor is not the same
+  quantizer as IQ2_XXS even when both are casually described as "2-bit."
+- Merely copying GGUF payload bytes into safetensors would not create a usable
+  MLX model. A true identical-weight control would require custom MLX module
+  types and Metal kernels for every DS4 GGUF quant used by the mixed recipe,
+  plus tensor-name/layout conversion. That is an engine port, not packaging.
+- Dequantizing the existing GGUF and requantizing it with oQ is possible in
+  principle but compounds quantization error and cannot isolate either engine
+  or quantizer. Recreating either quantization cleanly requires the original
+  source checkpoint; recreating the published DS4 result also requires
+  regenerating or obtaining its imatrix.
+- **Do not pursue an IQ2XXS-in-MLX control as the next phase.** Its engineering
+  cost is high, it would no longer measure stock oMLX, and it does not address
+  the exact DSpark verifier bottleneck. A lower-cost useful comparison is to
+  treat the existing oQ2e and GGUF runs as end-to-end systems, with explicit
+  quantization and quality caveats, or later compare quality-matched variants
+  generated independently from the same original checkpoint.
