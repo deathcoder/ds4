@@ -29,8 +29,9 @@ Apple MLX and native chained MTP, but it does not implement DSpark or consume
 the released DSpark sidecar. A pinned eight-task HumanEval sweep will compare
 oMLX baseline, fixed depth one, and adaptive maximum depths two and three using
 `Jundot/DeepSeek-V4-Flash-oQ2e-mtp`. The required checkpoint is about 91.2 GiB
-and has not been downloaded. The user must run all model downloads and timed
-tests. Treat oMLX versus ds4 as an end-to-end engine-plus-quantization
+and is now downloaded and validated locally: all 19 indexed shards total
+91.21 GiB and the index exposes 43 `mtp.0.*` tensors. The user must run all
+timed tests. Treat oMLX versus ds4 as an end-to-end engine-plus-quantization
 comparison; require byte-exact speculative output only against each engine's
 own baseline. The initial source audit ranks verify-shaped affine QMM as the
 most interesting broad mechanism, but no port is justified until the sweep
@@ -13896,7 +13897,9 @@ Pinned model asset:
 - Revision: `f42b63224cfed5cff40185004b77d7ff935a6c47`.
 - Indexed tensor payload: about 91.2 GiB. The config declares DeepSeek V4,
   43 target layers, one native MTP layer, and the target's rolling attention
-  window. The checkpoint has not yet been downloaded.
+  window. The pinned revision was downloaded successfully on 2026-07-22. The
+  no-load validator found all 19 indexed shards, 91.21 GiB of shard data, and
+  43 `mtp.0.*` tensors.
 - This target uses oMLX's mixed oQ 2-bit layout and a native MTP block. ds4
   uses a different IQ2XXS GGUF target and the released Q8 DSpark sidecar, so
   oMLX versus ds4 is an end-to-end engine-plus-quantization comparison. It is
@@ -13950,8 +13953,8 @@ Initial transfer ranking:
 Current decision:
 
 - The comparison is feasible and now prepared correctly, including native
-  kernels. Do not download or time the 91.2 GiB model automatically; the user
-  owns both operations.
-- Next gate: download the pinned checkpoint, run `--validate-only`, then run
-  the four eight-task modes while the machine is as idle as practical.
+  kernels and the validated local checkpoint. Do not run timed modes
+  automatically; the user owns those measurements.
+- Next gate: run the four eight-task modes while the machine is as idle as
+  practical.
 - Make no oMLX performance or porting claim until those local results exist.
