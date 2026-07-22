@@ -13127,3 +13127,87 @@ Decision:
   prefix state, and accepted-prefix publication against the production serial
   row loop. The observer must remain diagnostic-only and impossible to select
   from normal runtime or throughput runners.
+
+## Phase 1.72: single-layer proposal-slab Metal observer
+
+Implementation:
+
+- Added diagnostic Metal kernels for ratio-4 and ratio-128 compressor
+  frontiers. Each kernel begins from the selected layer's persistent frontier,
+  replays the already precomputed proposal projections in production source
+  order, and writes the complete state after every proposal row into isolated
+  shadow slots.
+- Ratio-4 uses one thread per full state column and preserves the exact
+  upper-half write plus boundary-shift recurrence. Ratio-128 uses one thread
+  per physical frontier element and absolute-position modulo ownership.
+- Added graph-owned shadow tensors only for the selected observer layer. They
+  never alias the persistent raw cache, compressor state, prefix checkpoints,
+  counters, hidden states, logits, or output head.
+- The exact verifier launches the observer only after production attention and
+  compressor prebatch preparation succeeds. The existing serial attention
+  path remains authoritative and still performs all persistent mutations.
+- After that serial path, the observer compares every staged raw proposal row,
+  every main compressor prefix, every ratio-4 indexer prefix, and both append
+  counters. Raw comparison accounts for the production FP16 cache round-trip.
+- After exact acceptance and prefix publication, a second report compares the
+  actually persistent selected-layer frontier and counters with the shadow
+  slot for the accepted length. Append-only compressed rows remain governed by
+  their counters, matching the Phase 1.71 visibility contract.
+- Drift and allocation/preparation failures are report-only. No observer value
+  can select a token, alter acceptance, change publication, or cause generation
+  to fail.
+
+Safety gate:
+
+- The observer is unavailable unless all four settings are present:
+  `DS4_DSPARK_GPU_RUNTIME=1`, `DS4_DSPARK_MULTI_COMMIT=1`,
+  `DS4_DSPARK_GPU_RUNTIME_DIAGNOSTICS=1`, and
+  `DS4_DSPARK_PROPOSAL_SLAB_OBSERVER_LAYER=<layer>`.
+- It supports exact proposal widths `N=2..5` and one compressed layer per
+  process. The normal runtime and every throughput runner omit the observer
+  setting, so production generation has no observer allocation, dispatch,
+  synchronization, or readback.
+- The diagnostic runner explicitly clears fast verification, stats, acceptance
+  tracing, and profilers. It reports no throughput values.
+
+User-run validation:
+
+- Added `speed-bench/run_dspark_proposal_slab_observer.py`. It runs one fresh
+  ordinary baseline followed by exact DSpark observers at layer 41
+  (ratio 128) and layer 42 (ratio 4), requires every generated output to match
+  the baseline byte-for-byte, and rejects any missing, fallback, drift, or
+  incomplete publication record.
+- The command is:
+
+  ```sh
+  python3 speed-bench/run_dspark_proposal_slab_observer.py --confirm-ready
+  ```
+
+- This implementation turn performed only the runner's `--dry-run`; no model
+  process and no timed benchmark were run. The next decision is gated on the
+  user's observer output.
+
+Validation completed in this turn:
+
+- Normal Metal build passes with no C/Objective-C warnings.
+- The complete `dsv4_kv.metal` source compiles with the project Metal preamble.
+  The repository test target also initialized the Metal backend and compiled
+  the combined shader library successfully before reaching its model-backed
+  long-context test.
+- All 291 discovered `test_dspark_*.py` model-free tests pass, including six
+  new observer environment, parser, drift-rejection, publication-order, and
+  source-isolation tests. Python compilation and all discovered shell syntax
+  checks pass.
+- Focused C tests `--dspark-validation` and `--dspark-shape-binding` pass.
+- The full `make test` target was deliberately stopped when it began the local
+  model-backed long-context run; model execution remains user-controlled.
+
+Decision:
+
+- **PROCEED USER OBSERVER GATE.** If both layers report exact preparation and
+  exact accepted-prefix publication across byte-identical outputs, the first
+  real-GPU ownership prerequisite for a causal row-visible attention shadow is
+  satisfied. Any drift stops the batched-attention prototype until localized.
+- No performance conclusion follows from this observer. Its synchronization
+  and readbacks are intentionally diagnostic and must never be benchmarked as
+  a runtime candidate.

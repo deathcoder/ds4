@@ -55,6 +55,14 @@ struct ds4_metal_args_dsv4_compressor_store_one {
     uint32_t ape_type;
 };
 
+struct ds4_metal_args_dsv4_proposal_prefix_state {
+    uint32_t width;
+    uint32_t ratio;
+    uint32_t pos0;
+    uint32_t n_tokens;
+    uint32_t ape_type;
+};
+
 static inline float dsv4_e4m3fn_value(int i) {
     const int exp  = (i >> 3) & 0x0f;
     const int mant = i & 0x07;
@@ -366,4 +374,108 @@ kernel void kernel_dsv4_compressor_store_one(
 
     state_kv[dst] = kv[gid];
     state_score[dst] = score[gid] + ape_v;
+}
+
+static inline float dsv4_proposal_ape(
+        device const char *ape,
+        uint               ape_type,
+        uint               index) {
+    return ape_type == 1u
+        ? (float)((device const half *)ape)[index]
+        : ((device const float *)ape)[index];
+}
+
+// Diagnostic-only materialization of every ratio-4 proposal prefix. One
+// thread owns a complete eight-row column, so boundary duplication follows the
+// scalar recurrence without cross-thread communication.
+kernel void kernel_dsv4_proposal_prefix_state_ratio4(
+        constant ds4_metal_args_dsv4_proposal_prefix_state &args,
+        device const float *proposal_kv,
+        device const float *proposal_score,
+        device const char  *ape,
+        device const float *base_kv,
+        device const float *base_score,
+        device       float *prefix_kv,
+        device       float *prefix_score,
+        uint col [[thread_position_in_grid]]) {
+    if (args.ratio != 4u || col >= args.width || args.n_tokens == 0u ||
+        args.n_tokens > 5u) {
+        return;
+    }
+
+    float kv_state[8];
+    float score_state[8];
+    for (uint row = 0; row < 8u; row++) {
+        const uint index = row * args.width + col;
+        kv_state[row] = base_kv[index];
+        score_state[row] = base_score[index];
+    }
+
+    for (uint token = 0; token < args.n_tokens; token++) {
+        const uint pos = args.pos0 + token;
+        const uint phase = pos & 3u;
+        const uint row = 4u + phase;
+        const uint source = token * args.width + col;
+        const uint ape_index = phase * args.width + col;
+        kv_state[row] = proposal_kv[source];
+        score_state[row] = proposal_score[source] +
+            dsv4_proposal_ape(ape, args.ape_type, ape_index);
+
+        if (((pos + 1u) & 3u) == 0u) {
+            for (uint r = 0; r < 4u; r++) {
+                kv_state[r] = kv_state[4u + r];
+                score_state[r] = score_state[4u + r];
+            }
+            for (uint r = 0; r < 4u; r++) {
+                kv_state[4u + r] = kv_state[r];
+                score_state[4u + r] = score_state[r];
+            }
+        }
+
+        const uint prefix_base = token * 8u * args.width;
+        for (uint r = 0; r < 8u; r++) {
+            const uint output = prefix_base + r * args.width + col;
+            prefix_kv[output] = kv_state[r];
+            prefix_score[output] = score_state[r];
+        }
+    }
+}
+
+// Diagnostic-only materialization of every ratio-128 proposal prefix. Each
+// thread owns one physical frontier element and publishes it after each staged
+// absolute position that targets its modulo row.
+kernel void kernel_dsv4_proposal_prefix_state_ratio128(
+        constant ds4_metal_args_dsv4_proposal_prefix_state &args,
+        device const float *proposal_kv,
+        device const float *proposal_score,
+        device const char  *ape,
+        device const float *base_kv,
+        device const float *base_score,
+        device       float *prefix_kv,
+        device       float *prefix_score,
+        uint gid [[thread_position_in_grid]]) {
+    const uint state_elements = args.ratio * args.width;
+    if (args.ratio != 128u || gid >= state_elements ||
+        args.n_tokens == 0u || args.n_tokens > 5u) {
+        return;
+    }
+
+    const uint row = gid / args.width;
+    const uint col = gid - row * args.width;
+    float kv_value = base_kv[gid];
+    float score_value = base_score[gid];
+    for (uint token = 0; token < args.n_tokens; token++) {
+        const uint pos = args.pos0 + token;
+        const uint phase = pos % args.ratio;
+        if (phase == row) {
+            const uint source = token * args.width + col;
+            const uint ape_index = phase * args.width + col;
+            kv_value = proposal_kv[source];
+            score_value = proposal_score[source] +
+                dsv4_proposal_ape(ape, args.ape_type, ape_index);
+        }
+        const uint output = token * state_elements + gid;
+        prefix_kv[output] = kv_value;
+        prefix_score[output] = score_value;
+    }
 }

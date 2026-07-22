@@ -607,6 +607,24 @@ int ds4_gpu_compressor_store_batch_tensor(
         uint32_t                pos0,
         uint32_t                n_tokens);
 
+/* Diagnostic-only materialization of the recurrent compressor state after
+ * every staged proposal row. Production decode never calls this primitive. */
+int ds4_gpu_compressor_proposal_prefix_states_tensor(
+        const ds4_gpu_tensor *kv,
+        const ds4_gpu_tensor *sc,
+        const ds4_gpu_tensor *base_state_kv,
+        const ds4_gpu_tensor *base_state_score,
+        ds4_gpu_tensor       *prefix_state_kv,
+        ds4_gpu_tensor       *prefix_state_score,
+        const void             *model_map,
+        uint64_t                model_size,
+        uint64_t                ape_offset,
+        uint32_t                ape_type,
+        uint32_t                head_dim,
+        uint32_t                ratio,
+        uint32_t                pos0,
+        uint32_t                n_tokens);
+
 int ds4_gpu_compressor_prefill_tensor(
         ds4_gpu_tensor       *comp_cache,
         ds4_gpu_tensor       *state_kv,

@@ -4689,6 +4689,14 @@ typedef struct {
 } ds4_gpu_dsv4_compressor_store_one_args;
 
 typedef struct {
+    uint32_t width;
+    uint32_t ratio;
+    uint32_t pos0;
+    uint32_t n_tokens;
+    uint32_t ape_type;
+} ds4_gpu_dsv4_proposal_prefix_state_args;
+
+typedef struct {
     int64_t  ne00;
     int64_t  ne01;
     int64_t  ne02;
@@ -15808,6 +15816,112 @@ int ds4_gpu_compressor_store_batch_tensor(
     }
 
     return 1;
+}
+
+int ds4_gpu_compressor_proposal_prefix_states_tensor(
+        const ds4_gpu_tensor *kv,
+        const ds4_gpu_tensor *sc,
+        const ds4_gpu_tensor *base_state_kv,
+        const ds4_gpu_tensor *base_state_score,
+        ds4_gpu_tensor       *prefix_state_kv,
+        ds4_gpu_tensor       *prefix_state_score,
+        const void             *model_map,
+        uint64_t                model_size,
+        uint64_t                ape_offset,
+        uint32_t                ape_type,
+        uint32_t                head_dim,
+        uint32_t                ratio,
+        uint32_t                pos0,
+        uint32_t                n_tokens) {
+    if (!g_initialized && !ds4_gpu_init()) return 0;
+    if (!kv || !sc || !base_state_kv || !base_state_score ||
+        !prefix_state_kv || !prefix_state_score || !model_map ||
+        head_dim == 0 || (ratio != 4u && ratio != 128u) ||
+        n_tokens < 2u || n_tokens > 5u ||
+        (ape_type != 0u && ape_type != 1u)) {
+        return 0;
+    }
+
+    @autoreleasepool {
+        const char *kernel = ratio == 4u
+            ? "kernel_dsv4_proposal_prefix_state_ratio4"
+            : "kernel_dsv4_proposal_prefix_state_ratio128";
+        id<MTLComputePipelineState> pipeline = ds4_gpu_get_pipeline(kernel);
+        if (!pipeline) return 0;
+
+        const uint32_t coff = ratio == 4u ? 2u : 1u;
+        const uint32_t width = coff * head_dim;
+        const uint32_t state_rows = coff * ratio;
+        const uint64_t elem_ape = ape_type == 1u ? 2u : 4u;
+        const uint64_t proposal_bytes =
+            (uint64_t)n_tokens * width * sizeof(float);
+        const uint64_t state_bytes =
+            (uint64_t)state_rows * width * sizeof(float);
+        const uint64_t prefix_bytes = (uint64_t)n_tokens * state_bytes;
+        const uint64_t ape_bytes = (uint64_t)ratio * width * elem_ape;
+        if (ape_offset > model_size || ape_bytes > model_size - ape_offset ||
+            ds4_gpu_tensor_bytes(kv) < proposal_bytes ||
+            ds4_gpu_tensor_bytes(sc) < proposal_bytes ||
+            ds4_gpu_tensor_bytes(base_state_kv) < state_bytes ||
+            ds4_gpu_tensor_bytes(base_state_score) < state_bytes ||
+            ds4_gpu_tensor_bytes(prefix_state_kv) < prefix_bytes ||
+            ds4_gpu_tensor_bytes(prefix_state_score) < prefix_bytes) {
+            fprintf(stderr,
+                    "ds4: Metal proposal-prefix observer received "
+                    "undersized buffers\n");
+            return 0;
+        }
+
+        uint64_t ape_inner = 0;
+        id<MTLBuffer> apebuf = ds4_gpu_wrap_model_range(
+            model_map, model_size, ape_offset, ape_bytes, &ape_inner);
+        id<MTLBuffer> kvbuf = ds4_gpu_tensor_buffer(kv);
+        id<MTLBuffer> scbuf = ds4_gpu_tensor_buffer(sc);
+        id<MTLBuffer> basekvbuf = ds4_gpu_tensor_buffer(base_state_kv);
+        id<MTLBuffer> basescbuf = ds4_gpu_tensor_buffer(base_state_score);
+        id<MTLBuffer> prefixkvbuf = ds4_gpu_tensor_buffer(prefix_state_kv);
+        id<MTLBuffer> prefixscbuf =
+            ds4_gpu_tensor_buffer(prefix_state_score);
+        if (!apebuf || !kvbuf || !scbuf || !basekvbuf || !basescbuf ||
+            !prefixkvbuf || !prefixscbuf) {
+            return 0;
+        }
+
+        ds4_gpu_dsv4_proposal_prefix_state_args args = {
+            .width = width,
+            .ratio = ratio,
+            .pos0 = pos0,
+            .n_tokens = n_tokens,
+            .ape_type = ape_type,
+        };
+        int owned = 0;
+        id<MTLCommandBuffer> cb = ds4_gpu_command_buffer(&owned);
+        if (!cb) return 0;
+
+        const NSUInteger elements = ratio == 4u
+            ? width : (NSUInteger)state_rows * width;
+        const NSUInteger nth = 256u;
+        id<MTLComputeCommandEncoder> enc = ds4_gpu_compute_encoder(cb);
+        [enc setComputePipelineState:pipeline];
+        [enc setBytes:&args length:sizeof(args) atIndex:0];
+        [enc setBuffer:kvbuf offset:ds4_gpu_tensor_offset(kv) atIndex:1];
+        [enc setBuffer:scbuf offset:ds4_gpu_tensor_offset(sc) atIndex:2];
+        [enc setBuffer:apebuf offset:(NSUInteger)ape_inner atIndex:3];
+        [enc setBuffer:basekvbuf
+                offset:ds4_gpu_tensor_offset(base_state_kv) atIndex:4];
+        [enc setBuffer:basescbuf
+                offset:ds4_gpu_tensor_offset(base_state_score) atIndex:5];
+        [enc setBuffer:prefixkvbuf
+                offset:ds4_gpu_tensor_offset(prefix_state_kv) atIndex:6];
+        [enc setBuffer:prefixscbuf
+                offset:ds4_gpu_tensor_offset(prefix_state_score) atIndex:7];
+        [enc dispatchThreadgroups:
+            MTLSizeMake((elements + nth - 1u) / nth, 1, 1)
+             threadsPerThreadgroup:MTLSizeMake(nth, 1, 1)];
+        ds4_gpu_end_compute_encoder(cb, enc);
+        return ds4_gpu_finish_command_buffer(
+            cb, owned, "DSpark proposal-prefix observer");
+    }
 }
 
 static ds4_gpu_bin_args ds4_gpu_make_bin_contiguous_3d_args(

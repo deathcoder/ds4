@@ -10774,6 +10774,19 @@ typedef struct {
     uint32_t spec_prefix_n_index_comp[DS4_SPEC_PREFIX_SLOTS][DS4_MAX_LAYER];
     bool spec_capture_prefix1;
     bool spec_capture_prefix;
+    /* Diagnostic-only materialized proposal prefixes for one observed layer.
+     * These buffers never alias or replace persistent verifier state. */
+    ds4_gpu_tensor *proposal_shadow_attn_state_kv;
+    ds4_gpu_tensor *proposal_shadow_attn_state_score;
+    ds4_gpu_tensor *proposal_shadow_index_state_kv;
+    ds4_gpu_tensor *proposal_shadow_index_state_score;
+    uint32_t proposal_shadow_n_comp[DS4_SPEC_PREFIX_SLOTS];
+    uint32_t proposal_shadow_n_index_comp[DS4_SPEC_PREFIX_SLOTS];
+    uint32_t proposal_shadow_layer;
+    uint32_t proposal_shadow_start;
+    uint32_t proposal_shadow_proposed;
+    bool proposal_shadow_valid;
+    bool proposal_shadow_verified;
     uint32_t raw_cap;
     /* Maximum compressed-row capacity across layers.  Shared work buffers use
      * this worst-case size because ratio-4 indexer layers can still reach it. */
@@ -11139,6 +11152,10 @@ static void metal_graph_free(ds4_gpu_graph *g) {
         ds4_gpu_tensor_free(g->spec_prefix_index_state_kv[il]);
         ds4_gpu_tensor_free(g->spec_prefix_index_state_score[il]);
     }
+    ds4_gpu_tensor_free(g->proposal_shadow_index_state_score);
+    ds4_gpu_tensor_free(g->proposal_shadow_index_state_kv);
+    ds4_gpu_tensor_free(g->proposal_shadow_attn_state_score);
+    ds4_gpu_tensor_free(g->proposal_shadow_attn_state_kv);
     ds4_gpu_tensor_free(g->kv);
     ds4_gpu_tensor_free(g->kv_raw);
     ds4_gpu_tensor_free(g->q);
@@ -25004,6 +25021,397 @@ static void dspark_exact_ffn_batch_observer_report(
             exact_rows == n_tokens ? "exact" : "drift");
 }
 
+static bool dspark_proposal_slab_env_enabled(const char *name) {
+    const char *v = getenv(name);
+    return v && v[0] && strcmp(v, "0") != 0 && strcasecmp(v, "off") != 0;
+}
+
+static int dspark_proposal_slab_observer_layer(void) {
+    static bool initialized;
+    static int cached_layer = -1;
+    if (initialized) return cached_layer;
+    initialized = true;
+    if (!dspark_proposal_slab_env_enabled("DS4_DSPARK_GPU_RUNTIME") ||
+        !dspark_proposal_slab_env_enabled("DS4_DSPARK_MULTI_COMMIT") ||
+        !dspark_proposal_slab_env_enabled(
+            "DS4_DSPARK_GPU_RUNTIME_DIAGNOSTICS")) {
+        return -1;
+    }
+    const char *v = getenv("DS4_DSPARK_PROPOSAL_SLAB_OBSERVER_LAYER");
+    if (!v || !v[0]) return -1;
+    char *end = NULL;
+    errno = 0;
+    const long layer = strtol(v, &end, 10);
+    if (errno != 0 || end == v || *end != '\0' ||
+        layer < 0 || (uint64_t)layer >= DS4_N_LAYER) {
+        return -1;
+    }
+    cached_layer = (int)layer;
+    return cached_layer;
+}
+
+static void dspark_proposal_slab_shadow_free(ds4_gpu_graph *g) {
+    if (!g) return;
+    ds4_gpu_tensor_free(g->proposal_shadow_index_state_score);
+    ds4_gpu_tensor_free(g->proposal_shadow_index_state_kv);
+    ds4_gpu_tensor_free(g->proposal_shadow_attn_state_score);
+    ds4_gpu_tensor_free(g->proposal_shadow_attn_state_kv);
+    g->proposal_shadow_index_state_score = NULL;
+    g->proposal_shadow_index_state_kv = NULL;
+    g->proposal_shadow_attn_state_score = NULL;
+    g->proposal_shadow_attn_state_kv = NULL;
+    g->proposal_shadow_valid = false;
+    g->proposal_shadow_verified = false;
+}
+
+static bool dspark_proposal_slab_shadow_alloc(
+        ds4_gpu_graph *g,
+        uint32_t       il,
+        uint32_t       n_tokens) {
+    if (!g || il >= DS4_N_LAYER || n_tokens < 2u || n_tokens > 5u ||
+        n_tokens > DS4_SPEC_PREFIX_SLOTS) {
+        return false;
+    }
+    const uint32_t ratio = ds4_layer_compress_ratio(il);
+    if (ratio != 4u && ratio != 128u) return false;
+    const uint32_t coff = ratio == 4u ? 2u : 1u;
+    const uint64_t attn_bytes =
+        (uint64_t)coff * DS4_N_HEAD_DIM * coff * ratio * sizeof(float);
+    const uint64_t attn_prefix_bytes =
+        (uint64_t)DS4_SPEC_PREFIX_SLOTS * attn_bytes;
+    const uint64_t index_bytes = ratio == 4u
+        ? (uint64_t)coff * DS4_N_INDEXER_HEAD_DIM * coff * ratio *
+              sizeof(float)
+        : 0u;
+    const uint64_t index_prefix_bytes =
+        (uint64_t)DS4_SPEC_PREFIX_SLOTS * index_bytes;
+
+    const bool compatible =
+        g->proposal_shadow_attn_state_kv &&
+        g->proposal_shadow_attn_state_score &&
+        ds4_gpu_tensor_bytes(g->proposal_shadow_attn_state_kv) ==
+            attn_prefix_bytes &&
+        ds4_gpu_tensor_bytes(g->proposal_shadow_attn_state_score) ==
+            attn_prefix_bytes &&
+        (ratio != 4u ||
+         (g->proposal_shadow_index_state_kv &&
+          g->proposal_shadow_index_state_score &&
+          ds4_gpu_tensor_bytes(g->proposal_shadow_index_state_kv) ==
+              index_prefix_bytes &&
+          ds4_gpu_tensor_bytes(g->proposal_shadow_index_state_score) ==
+              index_prefix_bytes));
+    if (compatible) return true;
+
+    dspark_proposal_slab_shadow_free(g);
+    g->proposal_shadow_attn_state_kv =
+        ds4_gpu_tensor_alloc(attn_prefix_bytes);
+    g->proposal_shadow_attn_state_score =
+        ds4_gpu_tensor_alloc(attn_prefix_bytes);
+    if (ratio == 4u) {
+        g->proposal_shadow_index_state_kv =
+            ds4_gpu_tensor_alloc(index_prefix_bytes);
+        g->proposal_shadow_index_state_score =
+            ds4_gpu_tensor_alloc(index_prefix_bytes);
+    }
+    const bool ok = g->proposal_shadow_attn_state_kv &&
+                    g->proposal_shadow_attn_state_score &&
+                    (ratio != 4u ||
+                     (g->proposal_shadow_index_state_kv &&
+                      g->proposal_shadow_index_state_score));
+    if (!ok) dspark_proposal_slab_shadow_free(g);
+    return ok;
+}
+
+static bool dspark_proposal_slab_observer_prepare(
+        ds4_gpu_graph           *g,
+        const ds4_model         *model,
+        const ds4_layer_weights *layer,
+        uint32_t                 il,
+        uint32_t                 start,
+        uint32_t                 n_tokens) {
+    const uint32_t ratio = ds4_layer_compress_ratio(il);
+    g->proposal_shadow_valid = false;
+    g->proposal_shadow_verified = false;
+    if (!model || !layer || !metal_graph_exact_compressor_pre_batch_enabled() ||
+        metal_graph_use_reference_compressor_pair_proj() ||
+        !dspark_proposal_slab_shadow_alloc(g, il, n_tokens) ||
+        !layer->attn_compressor_ape) {
+        return false;
+    }
+
+    bool ok = ds4_gpu_compressor_proposal_prefix_states_tensor(
+                  g->batch_comp_kv,
+                  g->batch_comp_sc,
+                  g->layer_attn_state_kv[il],
+                  g->layer_attn_state_score[il],
+                  g->proposal_shadow_attn_state_kv,
+                  g->proposal_shadow_attn_state_score,
+                  model->map,
+                  model->size,
+                  layer->attn_compressor_ape->abs_offset,
+                  layer->attn_compressor_ape->type,
+                  DS4_N_HEAD_DIM,
+                  ratio,
+                  start,
+                  n_tokens) != 0;
+    if (ok && ratio == 4u) {
+        ok = layer->indexer_compressor_ape &&
+             ds4_gpu_compressor_proposal_prefix_states_tensor(
+                 g->batch_index_comp_kv,
+                 g->batch_index_comp_sc,
+                 g->layer_index_state_kv[il],
+                 g->layer_index_state_score[il],
+                 g->proposal_shadow_index_state_kv,
+                 g->proposal_shadow_index_state_score,
+                 model->map,
+                 model->size,
+                 layer->indexer_compressor_ape->abs_offset,
+                 layer->indexer_compressor_ape->type,
+                 DS4_N_INDEXER_HEAD_DIM,
+                 ratio,
+                 start,
+                 n_tokens) != 0;
+    }
+    if (!ok) return false;
+
+    uint32_t n_comp = g->layer_n_comp[il];
+    uint32_t n_index_comp = g->layer_n_index_comp[il];
+    for (uint32_t row = 0; row < n_tokens; row++) {
+        if (((start + row + 1u) % ratio) == 0u) n_comp++;
+        if (ratio == 4u && ((start + row + 1u) % ratio) == 0u) {
+            n_index_comp++;
+        }
+        g->proposal_shadow_n_comp[row] = n_comp;
+        g->proposal_shadow_n_index_comp[row] = n_index_comp;
+    }
+    g->proposal_shadow_layer = il;
+    g->proposal_shadow_start = start;
+    g->proposal_shadow_proposed = n_tokens;
+    g->proposal_shadow_valid = true;
+    return true;
+}
+
+static bool dspark_proposal_slab_compare_tensor_span(
+        const ds4_gpu_tensor *a,
+        uint64_t              a_offset,
+        const ds4_gpu_tensor *b,
+        uint64_t              b_offset,
+        uint64_t              bytes) {
+    if (!a || !b || bytes == 0u) return false;
+    void *a_buf = xmalloc((size_t)bytes);
+    void *b_buf = xmalloc((size_t)bytes);
+    const bool ok =
+        ds4_gpu_tensor_read(a, a_offset, a_buf, bytes) != 0 &&
+        ds4_gpu_tensor_read(b, b_offset, b_buf, bytes) != 0 &&
+        memcmp(a_buf, b_buf, (size_t)bytes) == 0;
+    free(b_buf);
+    free(a_buf);
+    return ok;
+}
+
+static bool dspark_proposal_slab_compare_raw_row(
+        const ds4_gpu_tensor *proposal,
+        uint64_t              proposal_offset,
+        const ds4_gpu_tensor *raw_cache,
+        uint64_t              raw_offset) {
+    const uint64_t values = DS4_N_HEAD_DIM;
+    const uint64_t bytes = values * sizeof(float);
+    float *proposal_buf = xmalloc((size_t)bytes);
+    float *raw_buf = xmalloc((size_t)bytes);
+    bool ok = ds4_gpu_tensor_read(
+                  proposal, proposal_offset, proposal_buf, bytes) != 0 &&
+              ds4_gpu_tensor_read(
+                  raw_cache, raw_offset, raw_buf, bytes) != 0;
+    if (ok && memcmp(proposal_buf, raw_buf, (size_t)bytes) != 0) {
+        for (uint64_t i = 0; i < values; i++) {
+            if (f16_to_f32(f32_to_f16(proposal_buf[i])) != raw_buf[i]) {
+                ok = false;
+                break;
+            }
+        }
+    }
+    free(raw_buf);
+    free(proposal_buf);
+    return ok;
+}
+
+static void dspark_proposal_slab_observer_compare_rows(
+        ds4_gpu_graph *g,
+        uint32_t       il,
+        uint32_t       start,
+        uint32_t       n_tokens) {
+    if (!g || !g->proposal_shadow_valid ||
+        g->proposal_shadow_layer != il ||
+        g->proposal_shadow_start != start ||
+        g->proposal_shadow_proposed != n_tokens) {
+        return;
+    }
+    const uint32_t ratio = ds4_layer_compress_ratio(il);
+    const uint64_t attn_bytes =
+        ds4_gpu_tensor_bytes(g->layer_attn_state_kv[il]);
+    const uint64_t index_bytes = ratio == 4u
+        ? ds4_gpu_tensor_bytes(g->layer_index_state_kv[il])
+        : 0u;
+    uint32_t raw_matches = 0;
+    uint32_t attn_matches = 0;
+    uint32_t index_matches = 0;
+    uint32_t counter_matches = 0;
+    for (uint32_t row = 0; row < n_tokens; row++) {
+        const uint64_t raw_bytes =
+            (uint64_t)DS4_N_HEAD_DIM * sizeof(float);
+        if (dspark_proposal_slab_compare_raw_row(
+                g->batch_kv,
+                (uint64_t)row * raw_bytes,
+                g->layer_raw_cache[il],
+                (uint64_t)((start + row) % g->raw_cap) * raw_bytes)) {
+            raw_matches++;
+        }
+
+        const bool final = row + 1u == n_tokens;
+        const ds4_gpu_tensor *attn_kv_ref = final
+            ? g->layer_attn_state_kv[il]
+            : g->spec_prefix_attn_state_kv[il];
+        const ds4_gpu_tensor *attn_score_ref = final
+            ? g->layer_attn_state_score[il]
+            : g->spec_prefix_attn_state_score[il];
+        const uint64_t ref_offset = final ? 0u : (uint64_t)row * attn_bytes;
+        const uint64_t shadow_offset = (uint64_t)row * attn_bytes;
+        const bool attn_ok =
+            dspark_proposal_slab_compare_tensor_span(
+                g->proposal_shadow_attn_state_kv,
+                shadow_offset,
+                attn_kv_ref,
+                ref_offset,
+                attn_bytes) &&
+            dspark_proposal_slab_compare_tensor_span(
+                g->proposal_shadow_attn_state_score,
+                shadow_offset,
+                attn_score_ref,
+                ref_offset,
+                attn_bytes);
+        if (attn_ok) attn_matches++;
+
+        const uint32_t n_comp_ref = final
+            ? g->layer_n_comp[il]
+            : g->spec_prefix_n_comp[row][il];
+        bool counters_ok =
+            n_comp_ref == g->proposal_shadow_n_comp[row];
+        if (ratio == 4u) {
+            const ds4_gpu_tensor *index_kv_ref = final
+                ? g->layer_index_state_kv[il]
+                : g->spec_prefix_index_state_kv[il];
+            const ds4_gpu_tensor *index_score_ref = final
+                ? g->layer_index_state_score[il]
+                : g->spec_prefix_index_state_score[il];
+            const uint64_t index_ref_offset =
+                final ? 0u : (uint64_t)row * index_bytes;
+            const uint64_t index_shadow_offset =
+                (uint64_t)row * index_bytes;
+            const bool index_ok =
+                dspark_proposal_slab_compare_tensor_span(
+                    g->proposal_shadow_index_state_kv,
+                    index_shadow_offset,
+                    index_kv_ref,
+                    index_ref_offset,
+                    index_bytes) &&
+                dspark_proposal_slab_compare_tensor_span(
+                    g->proposal_shadow_index_state_score,
+                    index_shadow_offset,
+                    index_score_ref,
+                    index_ref_offset,
+                    index_bytes);
+            if (index_ok) index_matches++;
+            const uint32_t n_index_ref = final
+                ? g->layer_n_index_comp[il]
+                : g->spec_prefix_n_index_comp[row][il];
+            counters_ok = counters_ok &&
+                n_index_ref == g->proposal_shadow_n_index_comp[row];
+        }
+        if (counters_ok) counter_matches++;
+    }
+    const uint32_t index_expected = ratio == 4u ? n_tokens : 0u;
+    const bool exact = raw_matches == n_tokens &&
+                       attn_matches == n_tokens &&
+                       index_matches == index_expected &&
+                       counter_matches == n_tokens;
+    g->proposal_shadow_verified = exact;
+    fprintf(stderr,
+            "ds4: DSpark proposal slab observer layer=%u ratio=%u "
+            "proposed=%u raw_rows=%u/%u attn_prefixes=%u/%u "
+            "index_prefixes=%u/%u counters=%u/%u result=%s\n",
+            il,
+            ratio,
+            n_tokens,
+            raw_matches,
+            n_tokens,
+            attn_matches,
+            n_tokens,
+            index_matches,
+            index_expected,
+            counter_matches,
+            n_tokens,
+            exact ? "exact" : "drift");
+}
+
+static void dspark_proposal_slab_observer_report_publication(
+        ds4_gpu_graph *g,
+        uint32_t       accepted) {
+    if (!g || !g->proposal_shadow_valid || accepted == 0u ||
+        accepted > g->proposal_shadow_proposed) {
+        return;
+    }
+    const uint32_t il = g->proposal_shadow_layer;
+    const uint32_t ratio = ds4_layer_compress_ratio(il);
+    const uint32_t slot = accepted - 1u;
+    const uint64_t attn_bytes =
+        ds4_gpu_tensor_bytes(g->layer_attn_state_kv[il]);
+    const uint64_t attn_offset = (uint64_t)slot * attn_bytes;
+    bool exact =
+        g->layer_n_comp[il] == g->proposal_shadow_n_comp[slot] &&
+        dspark_proposal_slab_compare_tensor_span(
+            g->proposal_shadow_attn_state_kv,
+            attn_offset,
+            g->layer_attn_state_kv[il],
+            0,
+            attn_bytes) &&
+        dspark_proposal_slab_compare_tensor_span(
+            g->proposal_shadow_attn_state_score,
+            attn_offset,
+            g->layer_attn_state_score[il],
+            0,
+            attn_bytes);
+    if (exact && ratio == 4u) {
+        const uint64_t index_bytes =
+            ds4_gpu_tensor_bytes(g->layer_index_state_kv[il]);
+        const uint64_t index_offset = (uint64_t)slot * index_bytes;
+        exact =
+            g->layer_n_index_comp[il] ==
+                g->proposal_shadow_n_index_comp[slot] &&
+            dspark_proposal_slab_compare_tensor_span(
+                g->proposal_shadow_index_state_kv,
+                index_offset,
+                g->layer_index_state_kv[il],
+                0,
+                index_bytes) &&
+            dspark_proposal_slab_compare_tensor_span(
+                g->proposal_shadow_index_state_score,
+                index_offset,
+                g->layer_index_state_score[il],
+                0,
+                index_bytes);
+    }
+    fprintf(stderr,
+            "ds4: DSpark proposal slab publication layer=%u ratio=%u "
+            "proposed=%u accepted=%u prepared=%s result=%s\n",
+            il,
+            ratio,
+            g->proposal_shadow_proposed,
+            accepted,
+            g->proposal_shadow_verified ? "exact" : "unverified",
+            exact ? "exact" : "drift");
+    g->proposal_shadow_valid = false;
+}
+
 /* Exact multi-token target verifier for DSpark.
  *
  * Rows keep the normal one-token decode kernels and autoregressive cache
@@ -25061,10 +25469,16 @@ static bool metal_graph_verify_decode_exact(
         ffn_observer_layer >= 0 && n_tokens > 1u;
     const bool ffn_runtime_enabled =
         exact_ffn_batch && !ffn_observer_enabled && n_tokens > 1u;
+    const int proposal_slab_observer_layer =
+        dspark_proposal_slab_observer_layer();
+    const bool proposal_slab_observer_enabled =
+        proposal_slab_observer_layer >= 0 && exact_attn_pre_batch &&
+        n_tokens > 1u && n_tokens <= 5u;
     const bool split_ffn_enabled = ffn_observer_enabled || ffn_runtime_enabled;
     const bool split_layer_enabled =
         split_ffn_enabled || attn_observer_enabled || attn_runtime_enabled ||
-        attn_suffix_observer_enabled || attn_suffix_runtime_enabled;
+        attn_suffix_observer_enabled || attn_suffix_runtime_enabled ||
+        proposal_slab_observer_enabled;
     if (timing && ffn_runtime_enabled) timing->ffn_batch_attempts++;
     dspark_exact_attention_pre_batch_observation attn_observation;
     memset(&attn_observation, 0, sizeof(attn_observation));
@@ -25153,7 +25567,8 @@ static bool metal_graph_verify_decode_exact(
     const bool saved_prefix_capture = g->spec_capture_prefix;
     g->spec_capture_prefix1 = false;
     g->spec_capture_prefix =
-        dspark_exact_prefix_checkpoint_enabled() && n_tokens > 1u;
+        (dspark_exact_prefix_checkpoint_enabled() ||
+         proposal_slab_observer_enabled) && n_tokens > 1u;
     const double layer_started = timing ? now_sec() : 0.0;
     const bool exact_layer_profile_requested =
         n_tokens > 1u && attn_runtime_enabled && ffn_runtime_enabled &&
@@ -25191,7 +25606,11 @@ static bool metal_graph_verify_decode_exact(
             il == (uint32_t)attn_suffix_observer_layer;
         const bool observe_ffn =
             ffn_observer_enabled && il == (uint32_t)ffn_observer_layer;
+        const bool observe_proposal_slab =
+            proposal_slab_observer_enabled &&
+            il == (uint32_t)proposal_slab_observer_layer;
         if (!observe_attn && !observe_attn_suffix && !observe_ffn &&
+            !observe_proposal_slab &&
             !attn_runtime_enabled &&
             !ffn_runtime_enabled) {
             for (uint32_t row = 0; ok && row < n_tokens; row++) {
@@ -25228,6 +25647,7 @@ static bool metal_graph_verify_decode_exact(
             continue;
         }
 
+        bool proposal_slab_prepared = false;
         bool attn_runtime_layer = false;
         if (attn_runtime_enabled) {
             if (exact_layer_profile) exact_layer_stage_t0 = now_sec();
@@ -25246,6 +25666,16 @@ static bool metal_graph_verify_decode_exact(
                 outcomes);
             if (attn_runtime_layer) {
                 if (outcomes) outcomes->attn_pre_batch_successes++;
+                if (observe_proposal_slab) {
+                    proposal_slab_prepared =
+                        dspark_proposal_slab_observer_prepare(
+                            g,
+                            model,
+                            &weights->layer[il],
+                            il,
+                            start,
+                            n_tokens);
+                }
             } else {
                 ok = ds4_gpu_end_commands() != 0 &&
                      ds4_gpu_begin_commands() != 0;
@@ -25528,6 +25958,22 @@ static bool metal_graph_verify_decode_exact(
             if (ok && row + 1u < n_tokens) {
                 ok = metal_graph_capture_prefix_state(g, il, row + 1u);
             }
+        }
+        if (observe_proposal_slab) {
+            if (ok) ok = ds4_gpu_end_commands() != 0;
+            else (void)ds4_gpu_synchronize();
+            if (ok && proposal_slab_prepared) {
+                dspark_proposal_slab_observer_compare_rows(
+                    g, il, start, n_tokens);
+            } else {
+                fprintf(stderr,
+                        "ds4: DSpark proposal slab observer layer=%u "
+                        "proposed=%u result=fallback\n",
+                        il,
+                        n_tokens);
+                g->proposal_shadow_valid = false;
+            }
+            if (ok) ok = ds4_gpu_begin_commands() != 0;
         }
         if (ok && exact_layer_profile && attn_suffix_runtime_layer) {
             ok = metal_graph_layer_stage_profile_boundary(
@@ -37042,6 +37488,9 @@ static int dspark_session_eval_batch_commit(
     } else if (stats) {
         d->runtime_batch_verify_full_accepts++;
     }
+
+    dspark_proposal_slab_observer_report_publication(
+        &s->graph, n_commit);
 
     memcpy(s->logits, last_logits,
            (size_t)DS4_N_VOCAB * sizeof(s->logits[0]));
