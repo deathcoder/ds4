@@ -81,6 +81,7 @@ RUNTIME_STATS_FIELDS = tuple(
 )
 INSTRUMENTATION_MARKERS = ("PROFILE", "TRACE", "DUMP", "TIMING")
 EXPERIMENT_ENV_KEYS = (
+    "DS4_DSPARK_CAUSAL_ATTN_RUNTIME_LAYER",
     "DS4_METAL_COMPRESSOR_PAIR_NR4",
     "DS4_METAL_INDEXED_ATTN_RB16_DIRECT",
     "DS4_METAL_INDEXED_ATTN_RB16_LEGACY",
@@ -290,6 +291,14 @@ def parse_args():
         ),
     )
     parser.add_argument(
+        "--causal-attention-layer41-ablation",
+        action="store_true",
+        help=(
+            "compare default exact DSpark against the one-layer exact causal "
+            "attention runtime"
+        ),
+    )
+    parser.add_argument(
         "--stats-only",
         action="store_true",
         help="run an instrumented Metal-drafter attribution and omit throughput",
@@ -328,6 +337,7 @@ def parse_args():
             args.exact_routed_gate_up_swiglu_w5_ablation,
             args.exact_shared_q8_rows_ablation,
             args.exact_compressor_pre_batch_ablation,
+            args.causal_attention_layer41_ablation,
         )
     )
     if selected_modes > 1:
@@ -353,6 +363,7 @@ def parse_args():
             "and --exact-routed-gate-up-swiglu-w5-ablation "
             "and --exact-shared-q8-rows-ablation "
             "and --exact-compressor-pre-batch-ablation "
+            "and --causal-attention-layer41-ablation "
             "are mutually exclusive"
         )
     if args.stats_only and not args.metal_drafter_ablation:
@@ -403,6 +414,8 @@ def check_inputs(args, root):
 
 
 def benchmark_modes(args):
+    if getattr(args, "causal_attention_layer41_ablation", False):
+        return ("default_exact", "causal_attention_layer41")
     if getattr(args, "router_weights_batch_fusion_ablation", False):
         return ("default_exact", "router_weights_batch_fusion")
     if getattr(args, "dense_mixed_vector_prepare_ablation", False):
@@ -487,6 +500,8 @@ def mode_label(mode, args):
         "legacy_shared_q8_rows": "Legacy shared Q8 rows DSpark",
         "legacy_compressor_pre_batch":
             "Legacy serial compressor projection DSpark",
+        "causal_attention_layer41":
+            "Layer-41 causal attention DSpark",
     }[mode]
 
 
@@ -517,6 +532,7 @@ def throughput_runtime_stats_enabled(args):
         or getattr(args, "exact_routed_gate_up_swiglu_w5_ablation", False)
         or getattr(args, "exact_shared_q8_rows_ablation", False)
         or getattr(args, "exact_compressor_pre_batch_ablation", False)
+        or getattr(args, "causal_attention_layer41_ablation", False)
     )
 
 
@@ -579,6 +595,8 @@ def clean_dspark_env(mode, fast_verifier=False, runtime_stats=True):
             env["DS4_DSPARK_EXACT_SHARED_Q8_ROWS"] = "0"
         if mode == "legacy_compressor_pre_batch":
             env["DS4_DSPARK_EXACT_COMPRESSOR_PRE_BATCH"] = "0"
+        if mode == "causal_attention_layer41":
+            env["DS4_DSPARK_CAUSAL_ATTN_RUNTIME_LAYER"] = "41"
     return env
 
 
@@ -623,7 +641,8 @@ def mode_command(args, mode):
             getattr(args, "exact_routed_gate_up_pair_w5_ablation", False) or
             getattr(args, "exact_routed_gate_up_swiglu_w5_ablation", False) or
             getattr(args, "exact_shared_q8_rows_ablation", False) or
-            getattr(args, "exact_compressor_pre_batch_ablation", False)):
+            getattr(args, "exact_compressor_pre_batch_ablation", False) or
+            getattr(args, "causal_attention_layer41_ablation", False)):
         command[1:1] = ("--backend", "metal")
     if mode != "baseline":
         command.extend(("--dspark", str(args.dspark_model.resolve())))
@@ -686,6 +705,8 @@ def command_text(args, mode, runtime_stats=None):
             env += "DS4_DSPARK_EXACT_SHARED_Q8_ROWS=0 "
         if mode == "legacy_compressor_pre_batch":
             env += "DS4_DSPARK_EXACT_COMPRESSOR_PRE_BATCH=0 "
+        if mode == "causal_attention_layer41":
+            env += "DS4_DSPARK_CAUSAL_ATTN_RUNTIME_LAYER=41 "
     return env + shlex.join(mode_command(args, mode))
 
 
@@ -877,6 +898,8 @@ def collect_metadata(args, root):
                 getattr(args, "exact_shared_q8_rows_ablation", False),
             "exact_compressor_pre_batch_ablation":
                 getattr(args, "exact_compressor_pre_batch_ablation", False),
+            "causal_attention_layer41_ablation":
+                getattr(args, "causal_attention_layer41_ablation", False),
             "stats_only": getattr(args, "stats_only", False),
             "temperature": 0,
             "seed": 1,
@@ -956,6 +979,8 @@ def summarize(rows, modes=("baseline", "runtime")):
             "exact_shared_q8_rows_ablation",
         ("legacy_compressor_pre_batch", "default_exact"):
             "exact_compressor_pre_batch_ablation",
+        ("default_exact", "causal_attention_layer41"):
+            "causal_attention_layer41_ablation",
     }
     summary = {
         "comparison": comparisons.get(modes, "baseline_runtime"),
@@ -1153,6 +1178,15 @@ def summarize(rows, modes=("baseline", "runtime")):
         })
         return summary
 
+    if modes == ("default_exact", "causal_attention_layer41"):
+        summary.update({
+            "default_exact_generation_tps_median": reference_median,
+            "causal_attention_layer41_generation_tps_median": candidate_median,
+            "causal_attention_layer41_delta_percent":
+                (candidate_median / reference_median - 1.0) * 100.0,
+        })
+        return summary
+
     if modes == ("serial_attention_pre", "default_exact"):
         summary.update({
             "serial_attention_pre_generation_tps_median": reference_median,
@@ -1333,6 +1367,20 @@ def summarize_metal_drafter_stats(rows):
 
 
 def format_report(summary):
+    if summary["comparison"] == "causal_attention_layer41_ablation":
+        return (
+            "# DSpark One-Layer Causal Attention Ablation\n\n"
+            f"- Default exact median: "
+            f"{summary['default_exact_generation_tps_median']:.2f} t/s\n"
+            f"- Layer-41 causal attention median: "
+            f"{summary['causal_attention_layer41_generation_tps_median']:.2f} t/s\n"
+            f"- Ratio of medians: {summary['median_ratio_of_medians']:.4f}x\n"
+            f"- Median paired ratio: {summary['paired_speedup_median']:.4f}x\n"
+            f"- Layer-41 causal attention delta: "
+            f"{summary['causal_attention_layer41_delta_percent']:+.1f}%\n"
+            f"- Measured pairs: {len(summary['paired_speedup_values'])}\n"
+        )
+
     if summary["comparison"] == "metal_drafter_stats":
         default = summary["modes"]["default_exact"]
         candidate = summary["modes"]["metal_drafter"]

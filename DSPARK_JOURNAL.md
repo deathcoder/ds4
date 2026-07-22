@@ -13644,3 +13644,46 @@ Pending decision:
   ordinary baseline and pass all runtime/state/publication records. Any output
   difference, candidate fallback, state drift, or missing partial publication
   stops timing work and must be localized first.
+
+Completed one-layer runtime correctness gate
+(`causal-attn-runtime-20260722-143443`):
+
+- The user-run gate passed on clean commit `5e500b1`. Baseline, threshold-0.75,
+  and fixed-K5 output matched byte-for-byte.
+- Threshold-0.75 produced six layer-41 runtime attempts, six exact state
+  records, and six exact full-prefix publications. Fixed K5 produced nine of
+  each, including six exact partial-prefix publications.
+- No candidate fallback, state drift, publication drift, or missing partial
+  commit occurred. This closes the one-layer correctness gate; it does not
+  establish a throughput benefit.
+
+Next gate:
+
+- **REQUIRE ONE-LAYER UNINSTRUMENTED THROUGHPUT.** Compare default exact DSpark
+  with `DS4_DSPARK_CAUSAL_ATTN_RUNTIME_LAYER=41` using balanced paired order,
+  byte-identical output, and no stats, observer, trace, or profiler. Since only
+  one of the 42 ratio-128 layers changes, treat a flat result as a valid stop
+  signal for this implementation shape. Do not expand to more layers until the
+  candidate demonstrates a repeatable positive direction.
+
+Benchmark tooling prepared:
+
+- Extended `speed-bench/run_dspark_comparison.py` with
+  `--causal-attention-layer41-ablation`. The reference is current default exact
+  DSpark; the candidate adds only
+  `DS4_DSPARK_CAUSAL_ATTN_RUNTIME_LAYER=41`. Both modes force Metal, use the
+  sidecar, clear inherited DS4 experiment variables, disable runtime stats, and
+  require byte-identical output.
+- Added model-free coverage for mode selection, environment isolation,
+  explicit command construction, paired summary arithmetic, and report text.
+  All 318 discovered `test_dspark_*.py` tests pass. The full intended command
+  passes `--dry-run`; Codex did not execute a model or timed benchmark.
+- User-run gate command:
+
+  ```sh
+  python3 speed-bench/run_dspark_comparison.py \
+    --causal-attention-layer41-ablation \
+    --prompt-file speed-bench/issue468/code_8k.txt \
+    --ctx 16384 --tokens 128 --pairs 3 --warmups 1 --cooldown 10 \
+    --confirm-idle
+  ```
