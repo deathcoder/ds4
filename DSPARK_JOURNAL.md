@@ -8,6 +8,22 @@ particular DSpark change exists.
 
 Branch: `codex/dspark-observability-0`
 
+Phase 1.74 is complete and retired. The byte-exact one-layer causal-attention
+runtime measured a stable `0.9940x` median paired ratio at layer 41, so do not
+expand it to the remaining ratio-128 layers or the indexed ratio-4 path. Its
+synchronized shadow-profile saving did not survive ordinary asynchronous Metal
+execution.
+
+Phase 1.75 is complete. Current SGLang has an Apple MLX backend, but current
+MLX-LM does not support the `deepseek_v4` architecture and SGLang explicitly
+restricts DSpark to CUDA. A fair local SGLang Metal comparison is therefore not
+available. The only new portable mechanism found was stacking the three draft
+context-KV refresh projections; its entire measured bridge-refresh upper bound
+is about `0.192 ms/emitted`, less than `0.5%` of runtime and far below the
+`4.520 ms/emitted` parity deficit. Port no SGLang candidate from this audit;
+return to exact target verification and require the next lead to affect many
+layers or a material part of the `36.356 ms/emitted` target cost.
+
 Phase 1.38 is complete. After promoting exact shared-expert Q8 proposal rows,
 the fresh 32-task cumulative HumanEval reassessment measured exact DSpark at a
 `0.8814x` geometric paired ratio versus ordinary baseline, with every output
@@ -13718,3 +13734,104 @@ Final Phase 1.74 decision:
 - This closes the audited vLLM-style position-indexed/causal-attention transfer
   path in its current form. Return to the broader exact-verifier cost problem
   rather than tuning this candidate or weakening byte-exactness.
+
+## Phase 1.75: SGLang and MLX transfer audit
+
+Goal:
+
+- Determine whether current SGLang can run DeepSeek-V4-Flash plus DSpark on
+  Apple Metal for a fair local engine comparison.
+- Audit SGLang's current sparse V4 DSpark implementation for mechanisms that
+  are both portable to ds4 and large enough to matter to the measured parity
+  deficit.
+
+Pinned sources:
+
+- SGLang was inspected at `b855efd9e66a19cbe54b118fee675f9ac1e8546c`
+  from 2026-07-22.
+- MLX-LM was inspected at
+  `cf10f962b7a20e63a6df43dbf0faf06070153d40` from 2026-07-21.
+- Both checkouts live outside this repository under
+  `/Users/deathcodevision/dev/local-inference-lab`.
+
+Local execution verdict:
+
+- **NO FAIR SGLANG METAL COMPARISON IS CURRENTLY AVAILABLE.** SGLang now has
+  an Apple MLX backend, including request KV management, an asynchronous MLX
+  scheduler, and a small custom Metal-kernel surface. That backend loads models
+  through `mlx_lm.load`; it does not execute SGLang's Torch DeepSeek-V4 model.
+- Current MLX-LM has `deepseek_v2`, `deepseek_v3`, and `deepseek_v32` model
+  modules but no `deepseek_v4` module or registry remapping. The upstream V4
+  support request remains unresolved on main.
+- SGLang's `_handle_dspark` rejects every device not beginning with `cuda`.
+  The sparse V4 DSpark worker also depends on Torch CUDA streams, CUDA graphs,
+  Triton kernels, and CUDA-specific cache/attention dispatch.
+- SGLang's published V4 support and DSpark results use accelerator-native HF
+  checkpoints, not this branch's IQ2XXS GGUF target and Q8 GGUF sidecar. A
+  conversion to MLX weights would still not add the missing V4 architecture or
+  DSpark runtime.
+
+What SGLang's DSpark result actually demonstrates:
+
+- SGLang implements the same block-draft and sequential Markov-head shape,
+  calibrated confidence, bonus-token commit, and target-hidden injection used
+  by the paper.
+- Its distinctive wins are serving-oriented: per-request ragged verification,
+  compact CUDA-graph tiers keyed by total verified tokens, an additive
+  batch-size/token-count cost model, overlap scheduling, on-device page tables,
+  and fused Triton bookkeeping kernels.
+- SGLang explicitly reports that dynamic trimming is mainly a high-batch
+  effect. At batch size one, target verification slows little as token count
+  increases and compact/no-trim performance ties. Its headline V4 numbers use
+  TP8 B300 or H200 data-parallel serving and are not evidence for single-stream
+  Apple Metal throughput.
+
+Transfer classification:
+
+- Already implemented here: rolling sidecar state, one block-draft round,
+  Markov chaining, confidence scheduling, exact multi-position verification,
+  bonus-token harvesting, partial-prefix checkpoint commit, persistent Metal
+  draft KV, fused proposal dispatch, and direct/fused target attention and FFN
+  kernels.
+- Already measured or retired here: single-request confidence/cost scheduling,
+  shorter exact widths, causal multi-query target attention, command-boundary
+  consolidation, compressor prebatching, routed-MoE batching, and narrow fused
+  target kernels.
+- Not portable to this objective: DP/TP/EP serving, cross-request ragged
+  packing, CUDA graphs, Triton, CUDA stream overlap, and graph-tier scheduling.
+  These attack concurrency and launch economics that ds4's one-session Metal
+  runtime does not have.
+- Useful as methodology rather than a speed port: STS calibration and
+  `cap-accept` ceiling observability. STS changes confidence calibration, not
+  draft information, and our threshold sweeps already choose against measured
+  runtime cost. `cap-accept` corresponds to the fixed-K controls and acceptance
+  audits already retained in this branch.
+
+New portable mechanism and cost ceiling:
+
+- SGLang's sparse V4 drafter concatenates the three stage context-KV projection
+  weights, evaluates one wider projection, then performs fused norm/RoPE/cache
+  publication per stage. Our persistent Metal drafter already preserves the
+  rolling overlap and encodes all three stage refreshes in one command buffer,
+  but still issues one Q8 projection plus norm/RoPE/quantize/store sequence per
+  stage.
+- The closest measured upper bound is the persistent-KV bridge-refresh tax:
+  about `0.192 ms/emitted` after proposal-command consolidation. Even deleting
+  that refresh completely would recover only about `0.4%` of the fresh
+  `44.694 ms/emitted` DSpark budget, while parity is `4.520 ms/emitted` away.
+  Stacking can remove dispatch overhead but cannot remove projection work, so
+  its attainable benefit is lower than this already-small ceiling.
+- **STOP STACKED DRAFT-KV PORT.** Do not add a new concatenated GGUF weight
+  layout, wider Q8 kernel, or refresh profiler for this lead unless a future
+  cost audit shows bridge refresh above `0.5 ms/emitted`. It cannot materially
+  alter the present break-even result.
+
+Decision:
+
+- Keep SGLang as useful external evidence, not a runnable Metal control.
+- Port no SGLang mechanism in this phase. The audit found no untested portable
+  candidate with a credible path to the remaining parity deficit.
+- Continue from the measured exact target-verifier bottleneck. Require the next
+  lead to target multiple V4 layers or a material fraction of the
+  `36.356 ms/emitted` target cost, and retain the one-layer uninstrumented gate
+  before broad expansion.
