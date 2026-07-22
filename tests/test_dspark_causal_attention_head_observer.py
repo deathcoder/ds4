@@ -48,8 +48,9 @@ class DSparkCausalAttentionHeadObserverTests(unittest.TestCase):
         data += b"".join(exact_row(5, row) for row in range(5))
         parsed = observer.parse_head_observer(data)
         self.assertEqual(parsed, [
-            {"proposed": 2, "rows": 2},
-            {"proposed": 5, "rows": 5},
+            {"proposed": 2, "rows": 2, "results": ["exact", "exact"]},
+            {"proposed": 5, "rows": 5,
+             "results": ["exact", "exact", "exact", "exact", "exact"]},
         ])
 
     def test_parser_rejects_missing_row(self):
@@ -64,6 +65,24 @@ class DSparkCausalAttentionHeadObserverTests(unittest.TestCase):
             )
             with self.assertRaisesRegex(RuntimeError, result.decode()):
                 observer.parse_head_observer(data)
+
+    def test_localization_parser_retains_drift(self):
+        data = exact_row(2, 0) + exact_row(2, 1).replace(
+            b"result=exact", b"result=drift"
+        )
+        parsed = observer.parse_head_observer(data, require_exact=False)
+        self.assertEqual(parsed[0]["results"], ["exact", "drift"])
+
+    def test_rowwise_control_parser(self):
+        data = (
+            b"ds4: DSpark causal attention rowwise control layer=41 ratio=128 "
+            b"proposed=2 row=0 serial_max=1e-6 serial_rms=1e-7 "
+            b"serial_rel_l2=1e-7 batch_max=0 batch_rms=0 batch_rel_l2=0 "
+            b"serial_result=drift batch_result=exact\n"
+        )
+        parsed = observer.parse_rowwise_control(data)
+        self.assertEqual(parsed[0]["serial_result"], "drift")
+        self.assertEqual(parsed[0]["batch_result"], "exact")
 
     def test_parser_rejects_fallback(self):
         data = (
@@ -94,6 +113,7 @@ class DSparkCausalAttentionHeadObserverTests(unittest.TestCase):
         encode = source[encode_start:encode_end]
         self.assertIn("ds4_layer_compress_ratio(il) != 128u", encode)
         self.assertIn("ds4_gpu_attention_decode_mixed_batch_heads_tensor", encode)
+        self.assertIn("g->causal_attn_rowwise_heads", encode)
 
     def test_serial_capture_precedes_inverse_rope(self):
         source = (ROOT / "ds4.c").read_text(encoding="utf-8")

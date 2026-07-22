@@ -13368,3 +13368,32 @@ First user gate (`causal-attn-head-20260722-110315`):
   generic multi-row arithmetic agree, isolating the remaining implementation
   work to a multi-row fused-gather path. Continued drift will require a
   row-layout/mask control before any attention-kernel prototype proceeds.
+
+Legacy-route localization (`causal-attn-head-20260722-111745`):
+
+- The legacy-gathered serial reference reproduced the first run's serial head
+  values and every reported error metric exactly. Proposal-slab state and
+  generated output again remained exact.
+- This falsifies the narrow fused-gather-only explanation. The mismatch is
+  introduced by the generic multi-row path or its union raw-span/mask layout,
+  not by choosing the promoted versus historical one-row dense-mixed route.
+- Added an isolated rowwise control tensor. After serial proposal caches are
+  complete, the observer now invokes the same generic batch API separately for
+  each query using that row's natural 128-token raw span and validated
+  compressed-prefix count. It then reports both rowwise-generic versus serial
+  and causal-multi-row versus rowwise-generic errors.
+- `--rowwise-control` keeps drift as data instead of aborting at the first row,
+  while still requiring exact proposal-slab preparation/publication, complete
+  head/control row sequences, byte-exact generated output, and fixed-K5
+  partial publication. The user-run command is:
+
+  ```sh
+  python3 speed-bench/run_dspark_causal_attention_head_observer.py \
+    --confirm-ready --rowwise-control
+  ```
+
+- If rowwise-generic already differs from serial at the same scale, the kernel
+  family/reduction order is the source. If rowwise-generic matches serial but
+  multi-row differs, the union raw span, causal mask, or multi-query dispatch
+  geometry is the source. If both comparisons differ, add a fixed-union-span
+  one-query mask anchor before changing production attention arithmetic.

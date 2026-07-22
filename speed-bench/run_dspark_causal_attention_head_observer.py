@@ -24,6 +24,13 @@ HEAD_RE = re.compile(
     rb"max_ulp=(\d+) first=(\d+) batch=(\S+) serial=(\S+) result=(\w+)$",
     re.MULTILINE,
 )
+CONTROL_RE = re.compile(
+    rb"^ds4: DSpark causal attention rowwise control layer=(\d+) ratio=(\d+) "
+    rb"proposed=(\d+) row=(\d+) serial_max=(\S+) serial_rms=(\S+) "
+    rb"serial_rel_l2=(\S+) batch_max=(\S+) batch_rms=(\S+) "
+    rb"batch_rel_l2=(\S+) serial_result=(\w+) batch_result=(\w+)$",
+    re.MULTILINE,
+)
 
 
 def parse_args():
@@ -42,6 +49,11 @@ def parse_args():
             "gguf/DeepSeek-V4-Flash-IQ2XXS-w2Q2K-AProjQ8-"
             "SExpQ8-OutQ8-chat-v2-imatrix.gguf"
         ),
+    )
+    parser.add_argument(
+        "--rowwise-control",
+        action="store_true",
+        help="report rowwise generic-attention localization without requiring exact heads",
     )
     parser.add_argument(
         "--dspark-model",
@@ -142,7 +154,7 @@ def command_text(args, layer=None, threshold="0.75", serial_legacy=False):
     return (prefix + " " if prefix else "") + shlex.join(command(args, layer))
 
 
-def parse_head_observer(stderr_data, layer=LAYER):
+def parse_head_observer(stderr_data, layer=LAYER, require_exact=True):
     if b"DSpark causal attention head observer" not in stderr_data:
         raise RuntimeError(f"layer {layer}: no causal attention head records")
     if any(
@@ -170,27 +182,57 @@ def parse_head_observer(stderr_data, layer=LAYER):
             proposals.append(current)
         if current is None or current["proposed"] != proposed or row != current["rows"]:
             raise RuntimeError(f"layer {layer}: non-contiguous proposal rows")
-        if result != "exact":
+        if require_exact and result != "exact":
             raise RuntimeError(
                 f"layer {layer}: causal attention head {result} at row {row}"
             )
+        current.setdefault("results", []).append(result)
         current["rows"] += 1
     if not proposals or current["rows"] != current["proposed"]:
         raise RuntimeError(f"layer {layer}: incomplete proposal rows")
     return proposals
 
 
-def parse_diagnostics(stderr_data, layer=LAYER):
-    heads = parse_head_observer(stderr_data, layer)
+def parse_rowwise_control(stderr_data, layer=LAYER):
+    controls = []
+    for match in CONTROL_RE.finditer(stderr_data):
+        record_layer, ratio, proposed, row = (
+            int(value) for value in match.groups()[:4]
+        )
+        serial_result = match.group(11).decode("ascii")
+        batch_result = match.group(12).decode("ascii")
+        if record_layer != layer or ratio != 128 or not 2 <= proposed <= 5:
+            raise RuntimeError(f"layer {layer}: unexpected rowwise control identity")
+        if row >= proposed:
+            raise RuntimeError(f"layer {layer}: invalid rowwise control row")
+        controls.append({
+            "proposed": proposed,
+            "row": row,
+            "serial_result": serial_result,
+            "batch_result": batch_result,
+        })
+    if not controls:
+        raise RuntimeError(f"layer {layer}: no rowwise control records")
+    return controls
+
+
+def parse_diagnostics(stderr_data, layer=LAYER, rowwise_control=False):
+    heads = parse_head_observer(
+        stderr_data, layer, require_exact=not rowwise_control
+    )
     slab = slab_observer.parse_observer(stderr_data, layer)
     if len(heads) != len(slab["observer"]):
         raise RuntimeError(f"layer {layer}: head/slab record count mismatch")
-    return {"heads": heads, "slab": slab}
+    controls = parse_rowwise_control(stderr_data, layer)
+    expected_rows = sum(item["rows"] for item in heads)
+    if len(controls) != expected_rows:
+        raise RuntimeError(f"layer {layer}: incomplete rowwise control records")
+    return {"heads": heads, "slab": slab, "controls": controls}
 
 
 def execute(
         args, root, run_dir, label, layer, reference=None, threshold="0.75",
-        serial_legacy=False):
+        serial_legacy=False, rowwise_control=False):
     stdout_path = run_dir / f"{label}.stdout"
     stderr_path = run_dir / f"{label}.stderr"
     started = time.monotonic()
@@ -214,7 +256,9 @@ def execute(
         raise RuntimeError(
             f"{label} output differs from fresh baseline; see {stdout_path}"
         )
-    parsed = None if layer is None else parse_diagnostics(stderr_data, layer)
+    parsed = None if layer is None else parse_diagnostics(
+        stderr_data, layer, rowwise_control
+    )
     return stdout_data, {
         "label": label,
         "layer": layer,
@@ -227,6 +271,17 @@ def execute(
         "head_rows": 0 if parsed is None else sum(
             item["rows"] for item in parsed["heads"]
         ),
+        "head_results": [] if parsed is None else sorted({
+            result
+            for item in parsed["heads"]
+            for result in item["results"]
+        }),
+        "rowwise_serial_results": [] if parsed is None else sorted({
+            item["serial_result"] for item in parsed["controls"]
+        }),
+        "batch_rowwise_results": [] if parsed is None else sorted({
+            item["batch_result"] for item in parsed["controls"]
+        }),
     }
 
 
@@ -283,6 +338,7 @@ def main():
             baseline,
             threshold,
             args.serial_legacy,
+            args.rowwise_control,
         )
         row["mode"] = mode
         rows.append(row)
@@ -297,7 +353,7 @@ def main():
 
     summary = {
         "analysis": "dspark_causal_attention_head_observer",
-        "result": "PASS",
+        "result": "LOCALIZATION" if args.rowwise_control else "PASS",
         "layer": LAYER,
         "serial_route": (
             "legacy-gathered" if args.serial_legacy else "fused-gather"
@@ -320,6 +376,7 @@ def main():
             "serial_route": (
                 "legacy-gathered" if args.serial_legacy else "fused-gather"
             ),
+            "rowwise_control": args.rowwise_control,
         },
         "paths": {
             "binary": str(args.binary),
@@ -344,7 +401,7 @@ def main():
         json.dumps(metadata, indent=2) + "\n", encoding="utf-8"
     )
     print("\n# DSpark Causal Attention Head Observer")
-    print("\n- Result: PASS")
+    print("\n- Result: " + ("LOCALIZATION" if args.rowwise_control else "PASS"))
     print(
         "- Serial route: "
         + ("legacy gathered" if args.serial_legacy else "fused gather")
@@ -352,8 +409,10 @@ def main():
     )
     for row in rows[1:]:
         print(
-            f"- {row['mode']}: {row['proposal_records']} exact proposal "
-            f"records and {row['head_rows']} exact head rows at layer 41."
+            f"- {row['mode']}: {row['proposal_records']} proposal records, "
+            f"{row['head_rows']} head rows; head {row['head_results']}, "
+            f"rowwise/serial {row['rowwise_serial_results']}, "
+            f"batch/rowwise {row['batch_rowwise_results']}."
         )
     print(f"Raw results: {run_dir}")
     return 0
