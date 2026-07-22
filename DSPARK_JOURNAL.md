@@ -13053,3 +13053,77 @@ Decision:
 - The first GPU implementation must be a single-layer observer that writes to
   shadow buffers, compares against the existing exact row loop, and cannot be
   selected by normal runtime or throughput runners.
+
+## Phase 1.71: ratio-128 and proposal-slab equivalence
+
+Scope:
+
+- Added `speed-bench/analyze_dspark_proposal_slab_equivalence.py` as a
+  model-free F32 ownership and operation-order proof. It runs no model process
+  and makes no throughput claim.
+- The analyzer keeps independent streaming-frontier and absolute-position
+  materialized references. It reuses the already proven ratio-4 reference and
+  adds a ratio-128 reference matching ds4's modulo-128 physical frontier.
+- Ratio-128 boundary pooling preserves the generic Metal softmax-pool source
+  order: an ascending physical-row max pass over rows `0..127`, followed by an
+  ascending weighted-sum pass over the same rows.
+
+Ratio-128 result:
+
+- Covered exact proposal widths `N=2..5` from all 128 starting frontier
+  phases: 512 scenarios and 1,792 bitwise full-frontier checks.
+- The exhaustive phase/width schedule crosses 14 ratio-128 boundaries. For
+  every boundary, the streaming and materialized references select identical
+  source rows and produce bitwise-identical independently implemented F32
+  reductions.
+- **PASS SOURCE ORDER.** A ratio-128 proposal slab can address compressor
+  partial states by absolute position without changing ds4's current rolling
+  frontier or reduction semantics.
+
+Proposal-slab contract:
+
+- Added a logical proposal slab that stages raw KV and compressor partials for
+  all proposal rows while keeping persistent state unchanged. Each row view
+  publishes only its own causal raw/compressed prefix.
+- Covered both compression ratios, all 132 combined starting phases, and
+  widths `2..5`: 528 staged slabs and 1,848 causal row-view comparisons.
+- For every staged slab, committed every accepted prefix from zero through
+  `N`. The resulting raw-ring slots, visible raw positions, compressor
+  frontier, compressed outputs, and compressed-row count match clean serial
+  execution in all 2,376 commit cases.
+- The synthetic raw ring has capacity seven, deliberately forcing physical
+  wrap within the exhaustive phase schedule. Rejected proposal rows are never
+  included merely because their physical slots or partial states were staged.
+- There are 67 cases where the rejected suffix contains a compressor boundary.
+  None publishes the rejected compressed row or advances its counter.
+- After each accepted-prefix commit, two deliberately different replacement
+  rows are executed beginning at the first rejected absolute position. All
+  4,752 continuation comparisons remain bitwise identical to clean streaming
+  execution, proving rejected staged state cannot leak through later ring or
+  compressor reuse.
+
+Validation:
+
+- Added eight focused unit tests covering ratio-128 row order and reduction,
+  exhaustive slab gates, future-row visibility, rejected-boundary replacement,
+  report scope, and the local C/Metal source contract.
+- All 294 model-free Python tests pass.
+- The normal build passes (`make` reports the existing targets up to date).
+- Deterministic combined digest:
+  `2e2de2ea6353b50aee4cb49582afa49e83f25bc0b03dcad274755cd9979791a9`.
+- No production C or Metal source changed, no model process ran, and no timed
+  benchmark was requested or run.
+
+Decision:
+
+- **PASS MODEL-FREE CONTRACT.** Both remaining pre-Metal prerequisites from
+  Phase 1.70 are satisfied: ratio-128 materialized-state source-order
+  equivalence and accepted-prefix proposal-slab ownership for `N=2..5`.
+- This is a bounded logical proof, not a GPU implementation. It does not prove
+  dispatch geometry, real-buffer aliasing, cache synchronization, or kernel
+  performance.
+- **PROCEED SINGLE-LAYER SHADOW OBSERVER.** The next phase may stage one exact
+  verifier layer into shadow Metal buffers and compare every proposal row,
+  prefix state, and accepted-prefix publication against the production serial
+  row loop. The observer must remain diagnostic-only and impossible to select
+  from normal runtime or throughput runners.
