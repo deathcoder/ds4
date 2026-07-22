@@ -38,6 +38,11 @@ class DSparkCausalAttentionHeadObserverTests(unittest.TestCase):
         self.assertNotIn("DS4_DSPARK_FAST_BATCH_VERIFY", env)
         self.assertNotIn("DS4_DSPARK_GPU_RUNTIME_STATS", env)
 
+        legacy = observer.clean_env(41, serial_legacy=True)
+        self.assertEqual(
+            legacy["DS4_METAL_DENSE_MIXED_GATHERED_LEGACY"], "1"
+        )
+
     def test_parser_accepts_complete_exact_proposals(self):
         data = b"".join(exact_row(2, row) for row in range(2))
         data += b"".join(exact_row(5, row) for row in range(5))

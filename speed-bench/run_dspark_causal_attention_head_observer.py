@@ -59,6 +59,14 @@ def parse_args():
     parser.add_argument("--output-dir", type=Path)
     parser.add_argument("--confirm-ready", action="store_true")
     parser.add_argument("--allow-dirty", action="store_true")
+    parser.add_argument(
+        "--serial-legacy",
+        action="store_true",
+        help=(
+            "localize arithmetic drift by comparing against the historical "
+            "one-row gathered FlashAttention route"
+        ),
+    )
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
     if args.ctx <= 0 or args.tokens <= 0:
@@ -85,7 +93,7 @@ def sha256(data):
     return hashlib.sha256(data).hexdigest()
 
 
-def clean_env(layer=None, threshold="0.75"):
+def clean_env(layer=None, threshold="0.75", serial_legacy=False):
     env = {key: value for key, value in os.environ.items()
            if not key.startswith("DS4_")}
     if layer is not None:
@@ -97,6 +105,8 @@ def clean_env(layer=None, threshold="0.75"):
             "DS4_DSPARK_PROPOSAL_SLAB_OBSERVER_LAYER": str(layer),
             "DS4_DSPARK_CAUSAL_ATTN_HEAD_OBSERVER_LAYER": str(layer),
         })
+        if serial_legacy:
+            env["DS4_METAL_DENSE_MIXED_GATHERED_LEGACY"] = "1"
     return env
 
 
@@ -117,8 +127,8 @@ def command(args, layer=None):
     return cmd
 
 
-def command_text(args, layer=None, threshold="0.75"):
-    env = clean_env(layer, threshold)
+def command_text(args, layer=None, threshold="0.75", serial_legacy=False):
+    env = clean_env(layer, threshold, serial_legacy)
     keys = (
         "DS4_DSPARK_GPU_RUNTIME",
         "DS4_DSPARK_MULTI_COMMIT",
@@ -126,6 +136,7 @@ def command_text(args, layer=None, threshold="0.75"):
         "DS4_DSPARK_CONFIDENCE_THRESHOLD",
         "DS4_DSPARK_PROPOSAL_SLAB_OBSERVER_LAYER",
         "DS4_DSPARK_CAUSAL_ATTN_HEAD_OBSERVER_LAYER",
+        "DS4_METAL_DENSE_MIXED_GATHERED_LEGACY",
     )
     prefix = " ".join(f"{key}={env[key]}" for key in keys if key in env)
     return (prefix + " " if prefix else "") + shlex.join(command(args, layer))
@@ -177,7 +188,9 @@ def parse_diagnostics(stderr_data, layer=LAYER):
     return {"heads": heads, "slab": slab}
 
 
-def execute(args, root, run_dir, label, layer, reference=None, threshold="0.75"):
+def execute(
+        args, root, run_dir, label, layer, reference=None, threshold="0.75",
+        serial_legacy=False):
     stdout_path = run_dir / f"{label}.stdout"
     stderr_path = run_dir / f"{label}.stderr"
     started = time.monotonic()
@@ -185,7 +198,7 @@ def execute(args, root, run_dir, label, layer, reference=None, threshold="0.75")
         proc = subprocess.run(
             command(args, layer),
             cwd=root,
-            env=clean_env(layer, threshold),
+            env=clean_env(layer, threshold, serial_legacy),
             stdout=stdout_file,
             stderr=stderr_file,
             check=False,
@@ -222,7 +235,10 @@ def main():
     for name in ("binary", "model", "dspark_model", "prompt_file"):
         setattr(args, name, getattr(args, name).resolve())
     for mode, threshold in SCHEDULES:
-        print(f"{mode}: {command_text(args, LAYER, threshold)}")
+        print(
+            f"{mode}: "
+            f"{command_text(args, LAYER, threshold, args.serial_legacy)}"
+        )
     print(f"fresh baseline: {command_text(args)}")
     print(
         "Diagnostic pass only: the serial verifier remains authoritative; "
@@ -259,7 +275,14 @@ def main():
         if args.cooldown:
             time.sleep(args.cooldown)
         _, row = execute(
-            args, root, run_dir, mode, LAYER, baseline, threshold
+            args,
+            root,
+            run_dir,
+            mode,
+            LAYER,
+            baseline,
+            threshold,
+            args.serial_legacy,
         )
         row["mode"] = mode
         rows.append(row)
@@ -276,6 +299,9 @@ def main():
         "analysis": "dspark_causal_attention_head_observer",
         "result": "PASS",
         "layer": LAYER,
+        "serial_route": (
+            "legacy-gathered" if args.serial_legacy else "fused-gather"
+        ),
         "runs": rows,
     }
     metadata = {
@@ -291,6 +317,9 @@ def main():
             "schedules": list(SCHEDULES),
             "fast_verifier": False,
             "instrumented": True,
+            "serial_route": (
+                "legacy-gathered" if args.serial_legacy else "fused-gather"
+            ),
         },
         "paths": {
             "binary": str(args.binary),
@@ -301,7 +330,9 @@ def main():
         "commands": {
             "baseline": command_text(args),
             **{
-                mode: command_text(args, LAYER, threshold)
+                mode: command_text(
+                    args, LAYER, threshold, args.serial_legacy
+                )
                 for mode, threshold in SCHEDULES
             },
         },
@@ -314,6 +345,11 @@ def main():
     )
     print("\n# DSpark Causal Attention Head Observer")
     print("\n- Result: PASS")
+    print(
+        "- Serial route: "
+        + ("legacy gathered" if args.serial_legacy else "fused gather")
+        + "."
+    )
     for row in rows[1:]:
         print(
             f"- {row['mode']}: {row['proposal_records']} exact proposal "

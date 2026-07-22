@@ -13338,3 +13338,33 @@ Pending decision:
   authorize a production-candidate experiment at ratio 128. Bounded or drift
   results stop promotion and become an arithmetic-localization task; fallback
   stops promotion and becomes a dispatch/state-visibility bug investigation.
+
+First user gate (`causal-attn-head-20260722-110315`):
+
+- The scheduled observer reproduced the fresh baseline output byte-for-byte,
+  and every layer-41 proposal-slab preparation/publication record remained
+  exact. The runner then stopped as designed on the first non-exact attention
+  head row, before running fixed K5.
+- Drift was small and consistent across all observed widths and rows: maximum
+  absolute error ranged from about `2.3e-6` to `6.2e-6`, RMS error from
+  `1.4e-7` to `2.6e-7`, and relative L2 error from `3.2e-7` to `5.4e-7`.
+  Every row differed, but no row showed the large or position-dependent error
+  expected from future raw/compressed visibility leakage.
+- **STOP PRODUCTION PROMOTION; LOCALIZE ARITHMETIC ROUTE.** The evidence points
+  to reduction-order differences between the promoted one-row fused-gather
+  dense-mixed route and the generic causal multi-row FlashAttention route. It
+  does not satisfy the required bitwise head-equivalence gate, even though the
+  authoritative generated output remained exact.
+- Added `--serial-legacy` to the guarded runner. This changes only the serial
+  reference to the historical one-row gathered FlashAttention route while the
+  causal multi-row shadow remains unchanged. The localization command is:
+
+  ```sh
+  python3 speed-bench/run_dspark_causal_attention_head_observer.py \
+    --confirm-ready --serial-legacy
+  ```
+
+- An exact legacy-gathered result will prove the causal mask/cache view and
+  generic multi-row arithmetic agree, isolating the remaining implementation
+  work to a multi-row fused-gather path. Continued drift will require a
+  row-layout/mask control before any attention-kernel prototype proceeds.
