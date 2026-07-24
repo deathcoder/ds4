@@ -14717,3 +14717,65 @@ Decision:
   The next phase must first compare verifier-level mechanisms against the
   `4.920 ms/emitted` deficit and reject any design whose optimistic addressable
   budget cannot materially approach it.
+
+## Phase 1.86: upstream-main DSpark implementation audit
+
+Discovery:
+
+- Fetched `origin/main` on 2026-07-24. Current upstream is
+  `0a7ad776b9068348e6cb09df8cafa9cadd285298`; its only commit after our merged
+  `efdadd4` boundary is a batched-server session recovery race fix.
+- Upstream DSpark entered main in
+  `fc9efd1cc7550d47c497a2c6ba0eeb85baa4df0f` on 2026-07-18.
+  `git merge-base --is-ancestor` confirms that both `fc9efd1` and `efdadd4`
+  are already in this branch. The upstream implementation was therefore
+  merged at the Phase 1.77 integration boundary, not newly omitted.
+- Conflict resolution did not make the two runtime implementations identical.
+  Upstream retained its integrated `--mtp FILE --dspark` path; this branch
+  retained the separately developed `--dspark FILE` exact runtime and its
+  later promoted Metal optimizations.
+
+Architecture audit:
+
+- Upstream runs an integrated GPU DSpark drafter, defaults confidence to
+  `0.9`, and enables an adaptive skip scheduler by default.
+- Its target path checks the already available first target token, batches the
+  remaining suffix through `metal_graph_verify_suffix_tops`, and keeps the
+  speculative frontier on a full accept.
+- On a partial accept, upstream restores the old frontier and serially replays
+  the accepted draft prefix. This branch's promoted exact-prefix checkpoints
+  specifically avoid those replay rows.
+- Upstream's tighter drafter/capture integration and scheduler may still
+  outweigh that partial-accept cost. Static inspection cannot predict the
+  winner, especially because this branch's ordinary target baseline is already
+  faster than upstream.
+
+Comparison preparation:
+
+- Created and built a fresh detached worktree at
+  `/Users/deathcodevision/dev/ds4-upstream-0a7ad77`, pinned to upstream commit
+  `0a7ad776b9068348e6cb09df8cafa9cadd285298` and tree
+  `06259f4681d5d59305ef1c8bb5705cb98e05193e`.
+- Added `speed-bench/run_dspark_upstream_main_pilot.py`. The first gate uses
+  eight deterministic HumanEval tasks and four uninstrumented modes:
+  upstream plain, upstream DSpark, current plain, and current DSpark.
+- Four mode positions are balanced by Latin rotation. Every mode's output must
+  match every other mode byte-for-byte within the task.
+- The report normalizes each DSpark runtime to its own ordinary baseline and
+  separately reports current/upstream plain and DSpark ratios. This prevents
+  ordinary baseline improvements from being misreported as DSpark gains.
+- The first pilot compares intended policies: upstream's documented `0.9`
+  confidence plus adaptive scheduler versus this branch's promoted `0.75`
+  exact runtime. The same runner supports a later controlled pass with
+  `--upstream-confidence 0.75 --disable-upstream-scheduler`.
+
+Decision boundary:
+
+- Run only the eight-task intended-policy pilot first. If upstream DSpark is
+  materially competitive with or faster than this branch after each is
+  normalized to its own baseline, run the controlled policy pass before
+  attributing the difference to implementation.
+- Do not merge upstream runtime code based on static similarity or raw t/s.
+  Any portable mechanism must preserve greedy output byte-for-byte and improve
+  paired DSpark/baseline ratios rather than merely inherit a different plain
+  target speed.
