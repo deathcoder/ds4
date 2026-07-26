@@ -3,7 +3,9 @@
 
 from pathlib import Path
 from types import SimpleNamespace
+import json
 import sys
+import tempfile
 import unittest
 
 
@@ -96,9 +98,32 @@ class UpstreamPilotTests(unittest.TestCase):
         )
         parsed = pilot.parse_upstream_activation_stats(line)
         self.assertEqual(parsed["proposed"], 44)
+        self.assertNotIn("accept_rate", parsed)
         with self.assertRaisesRegex(ValueError, "no draft proposals"):
             pilot.parse_upstream_activation_stats(
                 line.replace(b"proposed=44", b"proposed=0")
+            )
+
+    def test_correctness_failure_records_first_difference(self):
+        record = {"label": "task", "source_index": 7}
+        outputs = {
+            "upstream_plain": b"abcdef",
+            "upstream_dspark": b"abcxef",
+        }
+        with tempfile.TemporaryDirectory() as directory:
+            path, mismatches = pilot.write_correctness_failure(
+                Path(directory),
+                record,
+                ("upstream_plain", "upstream_dspark"),
+                outputs,
+            )
+            self.assertEqual(mismatches, ["upstream_dspark"])
+            failure = json.loads(path.read_text())
+            self.assertEqual(
+                failure["outputs"]["upstream_dspark"][
+                    "first_difference_from_reference"
+                ],
+                3,
             )
 
     def test_summary_normalizes_each_runtime_to_its_own_plain_mode(self):

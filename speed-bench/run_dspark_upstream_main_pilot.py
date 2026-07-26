@@ -259,10 +259,30 @@ def parse_upstream_activation_stats(data):
         raise ValueError(
             f"expected one upstream DSpark stats record, found {len(records)}"
         )
-    values = {
-        key.decode("ascii"): int(value)
-        for key, value in re.findall(rb"([a-z_]+)=(\d+)", records[0])
-    }
+    counter_names = (
+        "cycles",
+        "first_tokens",
+        "proposed",
+        "accepted_draft",
+        "full",
+        "partial",
+        "miss_first",
+        "no_draft",
+        "no_room",
+        "invalid",
+        "scheduler_skips",
+        "tail_skips",
+        "verifier_unavailable",
+        "errors",
+    )
+    values = {}
+    for key in counter_names:
+        match = re.search(
+            rb"(?:^| )" + key.encode("ascii") + rb"=(\d+)(?: |$)",
+            records[0],
+        )
+        if match is not None:
+            values[key] = int(match.group(1))
     required = ("cycles", "proposed", "verifier_unavailable", "errors")
     missing = [key for key in required if key not in values]
     if missing:
@@ -282,6 +302,47 @@ def parse_upstream_activation_stats(data):
             f"errors={values['errors']}"
         )
     return values
+
+
+def write_correctness_failure(run_dir, record, order, outputs):
+    reference_mode = order[0]
+    reference = outputs[reference_mode]
+    mismatches = [
+        mode for mode in order if outputs[mode] != reference
+    ]
+    details = {}
+    for mode in order:
+        value = outputs[mode]
+        first_difference = None
+        if value != reference:
+            common_length = min(len(reference), len(value))
+            first_difference = next(
+                (
+                    index for index in range(common_length)
+                    if reference[index] != value[index]
+                ),
+                common_length,
+            )
+        details[mode] = {
+            "bytes": len(value),
+            "sha256": common.sha256(value),
+            "first_difference_from_reference": first_difference,
+        }
+    failure = {
+        "result": "FAIL",
+        "reason": "output_mismatch",
+        "prompt": record["label"],
+        "source_index": record["source_index"],
+        "reference_mode": reference_mode,
+        "mismatches": mismatches,
+        "outputs": details,
+    }
+    path = run_dir / f"correctness-failure.{record['label']}.json"
+    path.write_text(
+        json.dumps(failure, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    return path, mismatches
 
 
 def verify_upstream_activation(args, run_dir, record, prompt):
@@ -388,14 +449,13 @@ def run_group(args, root, run_dir, label, record, prompt, order):
         common.cooldown(args.cooldown)
     hashes = {common.sha256(value) for value in outputs.values()}
     if len(hashes) != 1:
-        reference_mode = order[0]
-        mismatches = [
-            mode for mode in order
-            if outputs[mode] != outputs[reference_mode]
-        ]
+        failure_path, mismatches = write_correctness_failure(
+            run_dir, record, order, outputs
+        )
         raise RuntimeError(
             f"output mismatch for {record['label']}: "
-            f"{reference_mode} differs from {', '.join(mismatches)}"
+            f"{order[0]} differs from {', '.join(mismatches)}; "
+            f"see {failure_path}"
         )
     return rows
 

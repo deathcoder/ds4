@@ -14810,3 +14810,38 @@ Decision boundary:
 - Because the implementations require differently packaged support artifacts,
   the corrected pilot is an end-to-end runtime comparison. It is not sufficient
   by itself to attribute a difference to verifier kernels.
+
+### Corrected upstream pilot: correctness failure
+
+- User-run artifact:
+  `speed-bench/local-runs/dspark-upstream-main-pilot-8-20260726-154354`.
+- The support preflight passed with `81` tensors and zero missing, invalid, or
+  metadata-error counts. The excluded activation run also proved that upstream
+  was genuinely speculating: `27` cycles, `135` proposals, `72` accepted draft
+  tokens, and zero unavailable-verifier events or errors.
+- All four modes matched byte-for-byte on HumanEval samples 000, 023, 047, and
+  070. On sample 093, upstream plain, current plain, and current exact DSpark
+  still matched each other, while upstream DSpark diverged. Its first differing
+  output changed `swapped = char.swapcase()` to
+  `new_char = char.swapcase()` and continued along a different completion.
+  This is a semantic generation fork, not formatting noise.
+- Upstream documents that the main model remains authoritative, but its runtime
+  commits draft tokens according to row argmaxes from
+  `metal_graph_verify_suffix_tops` without serial confirmation. This observed
+  fork therefore disqualifies the upstream runtime under this project's
+  byte-exact greedy contract.
+- The four completed exact tasks were also all slower than their own upstream
+  baselines, with ratios `0.9435x`, `0.9498x`, `0.9095x`, and `0.8935x`.
+  These are incomplete directional observations, not a benchmark summary.
+
+Decision:
+
+- Do not run the controlled upstream-confidence `0.75` pass. It cannot resolve
+  the verifier correctness failure and would evaluate a runtime mode this
+  project has already rejected.
+- Do not port upstream's speculative verifier as a performance win. Its
+  integrated support-model packaging and scheduler remain useful architectural
+  references, but neither produced an exact speedup in this gate.
+- Return to this branch's exact verifier redesign work. Preserve the upstream
+  failure artifact as evidence that batch-verifier speed alone is not an
+  acceptable target.
