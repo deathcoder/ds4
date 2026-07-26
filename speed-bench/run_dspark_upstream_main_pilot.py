@@ -7,6 +7,7 @@ import json
 import os
 from pathlib import Path
 import platform
+import re
 import shlex
 import statistics
 import subprocess
@@ -27,6 +28,10 @@ CURRENT_THRESHOLD = "0.75"
 EXPECTED_UPSTREAM_COMMIT = "0a7ad776b9068348e6cb09df8cafa9cadd285298"
 EXPECTED_UPSTREAM_TREE = "06259f4681d5d59305ef1c8bb5705cb98e05193e"
 UPSTREAM_STATS_PREFIX = b"ds4: DSpark stats "
+UPSTREAM_BINDING_RE = re.compile(
+    rb"support binding: tensors=(\d+) missing=(\d+) invalid=(\d+) "
+    rb"metadata_errors=(\d+)"
+)
 
 
 def parse_args():
@@ -48,9 +53,14 @@ def parse_args():
         ),
     )
     parser.add_argument(
-        "--dspark-model",
+        "--current-dspark-model",
         type=Path,
         default=root / "gguf/ds4flash-dspark.gguf",
+    )
+    parser.add_argument(
+        "--upstream-dspark-model",
+        type=Path,
+        default=root / "gguf/DeepSeek-V4-Flash-DSpark-support.gguf",
     )
     parser.add_argument(
         "--corpus-dir",
@@ -124,7 +134,7 @@ def working_directory_for_mode(args, root, mode):
     raise ValueError(f"unknown mode {mode}")
 
 
-def command(args, prompt, mode):
+def command(args, prompt, mode, upstream_confidence_override=None):
     cmd = [
         str(binary_for_mode(args, mode)),
         "--backend", "metal",
@@ -137,14 +147,19 @@ def command(args, prompt, mode):
         "-n", str(args.tokens),
     ]
     if mode == "upstream_dspark":
-        cmd.extend(("--mtp", str(args.dspark_model), "--dspark"))
-        if args.upstream_confidence is not None:
+        cmd.extend(("--mtp", str(args.upstream_dspark_model), "--dspark"))
+        confidence = (
+            args.upstream_confidence
+            if upstream_confidence_override is None
+            else upstream_confidence_override
+        )
+        if confidence is not None:
             cmd.extend((
                 "--dspark-confidence",
-                f"{args.upstream_confidence:g}",
+                f"{confidence:g}",
             ))
     elif mode == "current_dspark":
-        cmd.extend(("--dspark", str(args.dspark_model)))
+        cmd.extend(("--dspark", str(args.current_dspark_model)))
     return cmd
 
 
@@ -172,6 +187,139 @@ def command_text(args, prompt, mode):
     prefix = " ".join(f"{key}={env[key]}" for key in keys if key in env)
     rendered = shlex.join(command(args, prompt, mode))
     return f"{prefix} {rendered}" if prefix else rendered
+
+
+def upstream_inspect_command(args):
+    return [
+        str(args.upstream_binary),
+        "--backend", "metal",
+        "--model", str(args.model),
+        "--mtp", str(args.upstream_dspark_model),
+        "--inspect",
+    ]
+
+
+def parse_upstream_support_binding(data):
+    matches = UPSTREAM_BINDING_RE.findall(data)
+    if len(matches) != 1:
+        raise ValueError(
+            f"expected one upstream support binding, found {len(matches)}"
+        )
+    tensors, missing, invalid, metadata_errors = (
+        int(value) for value in matches[0]
+    )
+    result = {
+        "tensors": tensors,
+        "missing": missing,
+        "invalid": invalid,
+        "metadata_errors": metadata_errors,
+    }
+    if tensors == 0 or missing != 0 or invalid != 0 or metadata_errors != 0:
+        raise ValueError(
+            "upstream support binding is not runtime-compatible: "
+            f"tensors={tensors} missing={missing} invalid={invalid} "
+            f"metadata_errors={metadata_errors}"
+        )
+    return result
+
+
+def inspect_upstream_support(args, run_dir):
+    stdout_path = run_dir / "preflight.upstream-support.stdout"
+    stderr_path = run_dir / "preflight.upstream-support.stderr"
+    cmd = upstream_inspect_command(args)
+    print(f"[preflight/support] {shlex.join(cmd)}", flush=True)
+    with stdout_path.open("wb") as out, stderr_path.open("wb") as err:
+        completed = subprocess.run(
+            cmd,
+            cwd=args.upstream_source,
+            env=mode_env(args, "upstream_plain"),
+            stdout=out,
+            stderr=err,
+            check=False,
+        )
+    if completed.returncode != 0:
+        raise RuntimeError(
+            f"upstream support inspection failed with exit "
+            f"{completed.returncode}; see {stderr_path}"
+        )
+    binding = parse_upstream_support_binding(
+        stdout_path.read_bytes() + b"\n" + stderr_path.read_bytes()
+    )
+    binding["stdout_file"] = stdout_path.name
+    binding["stderr_file"] = stderr_path.name
+    return binding
+
+
+def parse_upstream_activation_stats(data):
+    records = [
+        line for line in data.splitlines()
+        if line.startswith(UPSTREAM_STATS_PREFIX)
+    ]
+    if len(records) != 1:
+        raise ValueError(
+            f"expected one upstream DSpark stats record, found {len(records)}"
+        )
+    values = {
+        key.decode("ascii"): int(value)
+        for key, value in re.findall(rb"([a-z_]+)=(\d+)", records[0])
+    }
+    required = ("cycles", "proposed", "verifier_unavailable", "errors")
+    missing = [key for key in required if key not in values]
+    if missing:
+        raise ValueError(
+            "incomplete upstream DSpark activation stats: "
+            + ", ".join(missing)
+        )
+    if values["cycles"] == 0 or values["proposed"] == 0:
+        raise ValueError(
+            "upstream DSpark activation produced no draft proposals: "
+            f"cycles={values['cycles']} proposed={values['proposed']}"
+        )
+    if values["verifier_unavailable"] != 0 or values["errors"] != 0:
+        raise ValueError(
+            "upstream DSpark activation reported runtime failures: "
+            f"verifier_unavailable={values['verifier_unavailable']} "
+            f"errors={values['errors']}"
+        )
+    return values
+
+
+def verify_upstream_activation(args, run_dir, record, prompt):
+    stdout_path = run_dir / f"preflight.{record['label']}.activation.stdout"
+    stderr_path = run_dir / f"preflight.{record['label']}.activation.stderr"
+    cmd = command(
+        args,
+        prompt,
+        "upstream_dspark",
+        upstream_confidence_override=0.0,
+    )
+    env = mode_env(args, "upstream_dspark")
+    env["DS4_DSPARK_SCHEDULER"] = "0"
+    env["DS4_DSPARK_STATS"] = "1"
+    print(
+        f"[preflight/activation] (cwd {args.upstream_source}) "
+        f"DS4_DSPARK_SCHEDULER=0 DS4_DSPARK_STATS=1 "
+        f"{shlex.join(cmd)}",
+        flush=True,
+    )
+    with stdout_path.open("wb") as out, stderr_path.open("wb") as err:
+        completed = subprocess.run(
+            cmd,
+            cwd=args.upstream_source,
+            env=env,
+            stdout=out,
+            stderr=err,
+            check=False,
+        )
+    if completed.returncode != 0:
+        raise RuntimeError(
+            f"upstream DSpark activation check failed with exit "
+            f"{completed.returncode}; see {stderr_path}"
+        )
+    stats = parse_upstream_activation_stats(stderr_path.read_bytes())
+    stats["stdout_file"] = stdout_path.name
+    stats["stderr_file"] = stderr_path.name
+    return stats
 
 
 def execute(args, root, run_dir, label, record, prompt, mode):
@@ -413,6 +561,10 @@ def render_report(summary, upstream_commit, current_commit,
         "",
         "- This pilot compares each implementation's intended policy, not isolated "
         "verifier mechanisms.",
+        "- Upstream and current use their own required DSpark support artifacts; "
+        "this is an end-to-end runtime comparison, not a same-weight kernel ablation.",
+        "- An excluded activation check requires upstream to emit draft proposals "
+        "before any timed group runs.",
         "- If upstream is competitive, rerun with confidence 0.75 and its "
         "scheduler disabled before attributing the difference to kernels.",
         "- One four-mode warmup group is excluded from every reported value.",
@@ -426,16 +578,18 @@ def main():
     args, root = parse_args()
     for name in (
         "current_binary", "upstream_source", "upstream_binary", "model",
-        "dspark_model", "corpus_dir",
+        "current_dspark_model", "upstream_dspark_model", "corpus_dir",
     ):
         setattr(args, name, getattr(args, name).resolve())
     args.binary = args.current_binary
+    args.dspark_model = args.current_dspark_model
     for label, path in (
         ("current binary", args.current_binary),
         ("upstream source", args.upstream_source),
         ("upstream binary", args.upstream_binary),
         ("base model", args.model),
-        ("DSpark model", args.dspark_model),
+        ("current DSpark model", args.current_dspark_model),
+        ("upstream DSpark model", args.upstream_dspark_model),
         ("corpus", args.corpus_dir),
     ):
         if not path.exists():
@@ -502,11 +656,12 @@ def main():
                 f"{command_text(args, prompt, mode)}"
             )
     warmups = warmup_schedule(records)
-    total = len(warmups) * len(MODES) + len(records) * len(MODES)
+    total = 1 + len(warmups) * len(MODES) + len(records) * len(MODES)
     print(
-        f"Upstream DSpark pilot: {total} uninstrumented processes; "
+        f"Upstream DSpark pilot: {total} generation processes; "
+        f"1 excluded instrumented activation check, "
         f"{len(warmups) * len(MODES)} excluded warmups and "
-        f"{len(records) * len(MODES)} measured."
+        f"{len(records) * len(MODES)} uninstrumented measured."
     )
     if args.dry_run:
         print(
@@ -517,6 +672,13 @@ def main():
 
     run_dir.mkdir(parents=True, exist_ok=False)
     corpus.materialize_prompts(prompts, records)
+    support_binding = inspect_upstream_support(args, run_dir)
+    activation = verify_upstream_activation(
+        args,
+        run_dir,
+        records[0],
+        prompts[records[0]["label"]],
+    )
     metadata = {
         "created_at": dt.datetime.now().astimezone().isoformat(),
         "experiment": "dspark_upstream_main_recommended_policy_pilot",
@@ -543,12 +705,20 @@ def main():
             "upstream_scheduler_disabled": args.disable_upstream_scheduler,
             "mode_order_balanced": True,
             "warmup_groups": len(warmups),
+            "upstream_activation_instrumented": True,
         },
         "current_binary": common.file_metadata(args.current_binary),
         "upstream_binary": common.file_metadata(args.upstream_binary),
         "upstream_source": str(args.upstream_source),
         "base_model": common.file_metadata(args.model),
-        "dspark_model": common.file_metadata(args.dspark_model),
+        "current_dspark_model": common.file_metadata(
+            args.current_dspark_model
+        ),
+        "upstream_dspark_model": common.file_metadata(
+            args.upstream_dspark_model
+        ),
+        "upstream_support_binding": support_binding,
+        "upstream_activation": activation,
         "provenance_source_commit": provenance.get("source_commit"),
         "cleared_environment_keys": common.cleared_env_keys(os.environ),
         "commands": {

@@ -18,7 +18,8 @@ def args():
         upstream_binary=Path("/upstream/ds4"),
         upstream_source=Path("/upstream"),
         model=Path("/models/target.gguf"),
-        dspark_model=Path("/models/dspark.gguf"),
+        current_dspark_model=Path("/models/current-dspark.gguf"),
+        upstream_dspark_model=Path("/models/upstream-support.gguf"),
         ctx=16384,
         tokens=128,
         upstream_confidence=None,
@@ -40,13 +41,16 @@ class UpstreamPilotTests(unittest.TestCase):
     def test_upstream_uses_integrated_cli(self):
         cmd = pilot.command(args(), Path("/prompt.txt"), "upstream_dspark")
         self.assertIn("--mtp", cmd)
+        self.assertIn("/models/upstream-support.gguf", cmd)
         self.assertIn("--dspark", cmd)
         self.assertNotIn("--dspark-confidence", cmd)
 
     def test_current_uses_research_sidecar_cli_and_promoted_env(self):
         config = args()
         cmd = pilot.command(config, Path("/prompt.txt"), "current_dspark")
-        self.assertEqual(cmd[-2:], ["--dspark", "/models/dspark.gguf"])
+        self.assertEqual(
+            cmd[-2:], ["--dspark", "/models/current-dspark.gguf"]
+        )
         env = pilot.mode_env(config, "current_dspark")
         self.assertEqual(env["DS4_DSPARK_GPU_RUNTIME"], "1")
         self.assertEqual(env["DS4_DSPARK_MULTI_COMMIT"], "1")
@@ -64,6 +68,38 @@ class UpstreamPilotTests(unittest.TestCase):
         self.assertEqual(cmd[-2:], ["--dspark-confidence", "0.75"])
         env = pilot.mode_env(config, "upstream_dspark")
         self.assertEqual(env["DS4_DSPARK_SCHEDULER"], "0")
+
+    def test_upstream_inspect_uses_official_support_artifact(self):
+        cmd = pilot.upstream_inspect_command(args())
+        self.assertEqual(cmd[-3:], [
+            "--mtp",
+            "/models/upstream-support.gguf",
+            "--inspect",
+        ])
+
+    def test_upstream_binding_requires_complete_compatible_layout(self):
+        parsed = pilot.parse_upstream_support_binding(
+            b"support binding: tensors=81 missing=0 invalid=0 "
+            b"metadata_errors=0\n"
+        )
+        self.assertEqual(parsed["tensors"], 81)
+        with self.assertRaisesRegex(ValueError, "not runtime-compatible"):
+            pilot.parse_upstream_support_binding(
+                b"support binding: tensors=81 missing=0 invalid=3 "
+                b"metadata_errors=0\n"
+            )
+
+    def test_activation_requires_real_draft_proposals(self):
+        line = (
+            b"ds4: DSpark stats cycles=12 first_tokens=12 proposed=44 "
+            b"accepted_draft=30 verifier_unavailable=0 errors=0\n"
+        )
+        parsed = pilot.parse_upstream_activation_stats(line)
+        self.assertEqual(parsed["proposed"], 44)
+        with self.assertRaisesRegex(ValueError, "no draft proposals"):
+            pilot.parse_upstream_activation_stats(
+                line.replace(b"proposed=44", b"proposed=0")
+            )
 
     def test_summary_normalizes_each_runtime_to_its_own_plain_mode(self):
         records = [

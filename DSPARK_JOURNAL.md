@@ -14779,3 +14779,34 @@ Decision boundary:
   Any portable mechanism must preserve greedy output byte-for-byte and improve
   paired DSpark/baseline ratios rather than merely inherit a different plain
   target speed.
+
+### Invalid first pilot and harness correction
+
+- The first user-run artifact,
+  `speed-bench/local-runs/dspark-upstream-main-pilot-8-20260724-092756`,
+  is invalid as an upstream DSpark performance result. All outputs were exact,
+  but upstream did not draft.
+- The pilot incorrectly passed this branch's original BF16 sidecar
+  `gguf/ds4flash-dspark.gguf` to both implementations. Upstream reported three
+  invalid tensors: its Markov heads reject BF16 and its confidence projection
+  expects the converted two-dimensional layout. Static tracing confirms that
+  these binding failures make both proposal probes unavailable, so the
+  measured upstream `0.8930x` was support/capture overhead followed by ordinary
+  decoding, not speculative performance.
+- Upstream documents and distributes a distinct converted artifact,
+  `DeepSeek-V4-Flash-DSpark-support.gguf`, from
+  `antirez/deepseek-v4-gguf`. It is about 5.6 GiB and is required for the
+  integrated runtime. This branch continues to use the original approximately
+  11 GiB BF16 sidecar.
+- The corrected runner has separate `--upstream-dspark-model` and
+  `--current-dspark-model` inputs. Before timing, it runs an upstream
+  `--inspect` compatibility gate requiring a nonzero tensor count and zero
+  missing, invalid, or metadata-error counts.
+- It also runs one excluded, instrumented upstream activation process with
+  confidence zero and the scheduler disabled. The benchmark aborts unless the
+  runtime reports nonzero cycles and proposals, with no verifier-unavailable
+  events or errors. A silent no-draft fallback can therefore no longer produce
+  a comparison report.
+- Because the implementations require differently packaged support artifacts,
+  the corrected pilot is an end-to-end runtime comparison. It is not sufficient
+  by itself to attribute a difference to verifier kernels.
