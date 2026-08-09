@@ -137,7 +137,42 @@ Return evidence:
 - The generated archive and SHA-256.
 - The last completed context if the run stops for capacity.
 
-## M-005 — Decide on secure remote Mac access
+## M-005 — Execute the first paired DwarfStar/Rust Star run
+
+Status: `BLOCKED` on M-003 and a runnable C0 Rust Star decoder
+
+Prerequisites:
+
+- A complete accepted oracle bundle and correctness-manifest SHA-256.
+- Pinned DwarfStar and Rust Star executables with SHA-256 values.
+- A private local plan following `rust-star/PAIRED_RUNNER.md`.
+
+Start with one observed pair rather than the full schedule:
+
+```sh
+python3 rust-star/run_paired_benchmark.py run paired-plan.json \
+  --output /absolute/path/to/paired-results \
+  --max-new-pairs 1
+```
+
+The plan can contain private model/source paths and must remain outside the
+repository. Do not share it without review. The result directory binds the plan
+by SHA-256 without copying it.
+
+Return evidence:
+
+- `state.json`, `paired-raw.json`, and `paired-summary.json` once complete.
+- The referenced engine measurement directories after reviewing their logs.
+- Any blocked attempt unchanged; do not manufacture a retry reason for a real
+  engine, correctness, or capacity failure.
+
+Success condition:
+
+- Every predeclared pair ends in exactly one valid attempt, retained invalid
+  attempts have explicit external-event reasons, and the generated raw file
+  passes the paired validator.
+
+## M-006 — Decide on secure remote Mac access
 
 Status: `DEFERRED`
 

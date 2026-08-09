@@ -40,7 +40,9 @@ history; add a correction and update the current-state summary.
   awaits the target Mac and a runnable candidate. The paired raw/summary JSON
   contract and offline validator/aggregator are implemented and synthetically
   tested. A fresh-process DwarfStar adapter now normalizes one frontier while
-  externally recording wall time and peak RSS.
+  externally recording wall time and peak RSS. The checkpointed paired runner
+  enforces warm-up, A/B and context ordering, explicit retries, and final
+  validated export through an engine-neutral contract.
 - Implementation: dependency-free Rust host scaffold added under
   `rust-star/runtime/`; it strictly parses GGUF v3 directories, validates the
   Flash resident-Q2 shape/recipe, and writes candidate full-logit artifacts.
@@ -71,6 +73,53 @@ history; add a correction and update the current-state summary.
    smallest Metal dispatch prototype before choosing more architecture.
 
 ## Entries
+
+### 2026-08-09 — Checkpointed paired runner and Rust-side contract added
+
+Objective:
+
+- Complete the engine-neutral A/B orchestration before a Rust Star decoder is
+  available, so target-Mac measurements cannot drift into an ad hoc procedure.
+
+Changes:
+
+- Added `rust-star/ENGINE_MEASUREMENT_FORMAT.md` as the shared fresh-process
+  contract. DwarfStar implements it now; the Rust Star benchmark must emit the
+  same metric semantics directly or through a thin adapter.
+- Added `rust-star/paired_runner_lib.py` and `run_paired_benchmark.py` with an
+  immutable SHA-bound plan, atomic `state.json` checkpointing after every engine
+  process, untimed per-engine warm-ups, alternating A/B and context ordering,
+  and optional one-pair-at-a-time execution.
+- Timed failures block without automatic retries. Retrying requires an explicit
+  reason, reruns the complete pair, retains the old attempt/evidence, and
+  preserves already-finalized outputs under `superseded/`.
+- Adapter invocations use argument arrays without a shell and fresh process
+  groups. Timeouts and interrupts terminate the process group before control
+  returns; a hard-interruption checkpoint remains blocked for deliberate review.
+- Finalization occurs only after every predeclared pair has one final valid
+  attempt. It re-hashes and revalidates every successful engine measurement,
+  emits the strict raw artifact, revalidates that artifact, and writes the
+  paired summary.
+- Added `rust-star/PAIRED_RUNNER.md` and manual task M-005 for the eventual first
+  target-Mac paired run. Local plans may contain private paths and are never
+  copied into the shared result directory.
+
+Validation:
+
+- All 25 Python contract tests passed. Synthetic end-to-end tests cover pause
+  and resume, engine/context ordering, blocked failures, explicit full-pair
+  retry, plan immutability, measurement-tamper rejection, validated final
+  export, and preservation of superseded results.
+- Python compilation, both new CLI help paths, workflow/shell static checks,
+  and `git diff --check` passed.
+- No real engine, model, Metal, correctness, or performance run was possible in
+  this environment.
+
+Next:
+
+- Implement the Rust Star measurement producer alongside the first runnable
+  decoder, then instantiate a private paired plan from the completed oracle
+  manifest rather than inventing identities in advance.
 
 ### 2026-08-09 — Isolated DwarfStar measurement boundary added
 

@@ -2,6 +2,9 @@
 
 Schema: `rust-star-engine-measurement-v1`.
 
+The engine-neutral form of this schema, including the future Rust Star side, is
+defined in `ENGINE_MEASUREMENT_FORMAT.md`.
+
 `measure_dwarfstar.py` is the first engine-side boundary for the future paired
 runner. Each invocation launches exactly one fresh `ds4-bench` process for one
 context frontier and writes a self-contained evidence directory.

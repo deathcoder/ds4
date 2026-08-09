@@ -28,6 +28,8 @@ Project controls and benchmark contracts:
   boundary for future benchmark runners.
 - `rust-star/MEASUREMENT_ADAPTER.md` defines the isolated DwarfStar measurement
   boundary used to populate those paired records.
+- `rust-star/ENGINE_MEASUREMENT_FORMAT.md` defines the equivalent Rust Star
+  boundary, and `rust-star/PAIRED_RUNNER.md` documents resumable A/B execution.
 
 ## Quick capture
 

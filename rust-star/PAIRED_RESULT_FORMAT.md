@@ -30,6 +30,10 @@ Each pair contains:
 - `valid` and, when false, a non-empty `invalid_reason`; and
 - DwarfStar-compatible `oracle` and `candidate` metric rows when valid.
 
+Runner-produced pairs also carry relative `evidence` references and SHA-256
+values for their engine measurement artifacts. Finalization re-hashes and
+revalidates every successful measurement instead of trusting cached state.
+
 Attempts for a context/repetition are numbered contiguously from one. Earlier
 attempts may be invalid, but the final attempt must be the single valid pair.
 This preserves external-event failures while still completing every

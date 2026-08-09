@@ -138,7 +138,7 @@ class PairedRun:
     pairs: tuple[Pair, ...]
 
 
-def _parse_identity(value: Any, name: str) -> EngineIdentity:
+def parse_engine_identity(value: Any, name: str = "engine") -> EngineIdentity:
     payload = _required_dict(value, name)
     return EngineIdentity(
         source_commit=_hex(payload.get("source_commit"), f"{name}.source_commit", COMMIT_LENGTH),
@@ -158,7 +158,7 @@ def _parse_identity(value: Any, name: str) -> EngineIdentity:
     )
 
 
-def _parse_metric_row(
+def validate_metric_values(
     value: Any,
     name: str,
     *,
@@ -244,8 +244,8 @@ def load_paired_run(path: Path) -> PairedRun:
     if primary_metric != "gen_steady_tps":
         raise PairedBenchmarkError("configuration.primary_metric must be 'gen_steady_tps'")
 
-    oracle = _parse_identity(payload.get("oracle"), "oracle")
-    candidate = _parse_identity(payload.get("candidate"), "candidate")
+    oracle = parse_engine_identity(payload.get("oracle"), "oracle")
+    candidate = parse_engine_identity(payload.get("candidate"), "candidate")
     if candidate.model_sha256 != oracle.model_sha256:
         raise PairedBenchmarkError("candidate and oracle model SHA-256 differ")
     if candidate.prompt_sha256 != oracle.prompt_sha256:
@@ -285,10 +285,10 @@ def load_paired_run(path: Path) -> PairedRun:
         if valid:
             if invalid_reason not in (None, ""):
                 raise PairedBenchmarkError(f"{name} is valid but has invalid_reason")
-            oracle_row = _parse_metric_row(
+            oracle_row = validate_metric_values(
                 pair.get("oracle"), f"{name}.oracle", context=context, gen_tokens=gen_tokens
             )
-            candidate_row = _parse_metric_row(
+            candidate_row = validate_metric_values(
                 pair.get("candidate"),
                 f"{name}.candidate",
                 context=context,
@@ -405,7 +405,7 @@ def summarize_paired_run(run: PairedRun) -> dict[str, Any]:
     return {
         "schema": SUMMARY_SCHEMA,
         "protocol": PROTOCOL,
-        "source_path": str(run.path),
+        "source_path": run.path.name,
         "correctness_class": run.correctness_class,
         "headline_eligible": run.correctness_class == "C0",
         "host_manifest_sha256": run.host_manifest_sha256,

@@ -299,8 +299,9 @@ they describe whenever practical.
   decode-step boundaries as those hooks are implemented.
 - Execute `rust-star/BENCHMARK_PROTOCOL.md` and capture the initial paired
   DwarfStar numbers; the v1 protocol itself is now defined.
-- Add the Rust Star side of `rust-star/MEASUREMENT_ADAPTER.md` and a
-  checkpointed paired orchestrator; the DwarfStar side is implemented.
+- Implement the Rust Star side of `rust-star/ENGINE_MEASUREMENT_FORMAT.md` once
+  the decoder can run; the checkpointed paired orchestrator and DwarfStar side
+  are implemented.
 - Decide the minimal Rust/Objective-C/Metal interop layer after a measured host
   dispatch prototype.
 - Reproduce the Q2 versus Q2/Q4 throughput observation under controlled runs.
