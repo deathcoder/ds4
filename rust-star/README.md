@@ -47,6 +47,16 @@ SHA-256: ...
 Send back the `.tar.gz` archive and its printed SHA-256. Capture outputs are
 git-ignored; do not force-add them to the repository.
 
+You can verify the completed archive before sending it:
+
+```sh
+python3 rust-star/verify_oracle_bundle.py \
+  rust-star/results/oracle-v1-TIMESTAMP.tar.gz
+```
+
+The verifier automatically uses the sibling `.sha256` file. See
+`rust-star/ARTIFACT_FORMAT.md` for bundle and exact-logit comparison semantics.
+
 ## Extended contexts
 
 After the quick capture succeeds, run the extended frontier set with five

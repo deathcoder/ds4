@@ -324,7 +324,10 @@ def safe_extract_tar(archive: Path, destination: Path) -> None:
                 raise CaptureError(f"unsafe archive path: {member.name}") from exc
             if common != destination_resolved:
                 raise CaptureError(f"unsafe archive path: {member.name}")
-        source.extractall(destination)
+        if sys.version_info >= (3, 12):
+            source.extractall(destination, filter="data")
+        else:
+            source.extractall(destination)
 
 
 def export_source(destination: Path, log_dir: Path) -> dict[str, Any]:

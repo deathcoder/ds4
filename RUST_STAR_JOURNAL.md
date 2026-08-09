@@ -31,6 +31,8 @@ history; add a correction and update the current-state summary.
   are captured.
 - Capture kit: `rust-star/capture_oracle_v1.py` prepares a privacy-filtered,
   checksummed result bundle from an isolated build of the pinned oracle source.
+- Differential tooling: the initial bundle/full-logit format is stable and has
+  cross-platform verification, exact C0 comparison, and drift diagnostics.
 - Implementation: no Rust runtime or inference code has been added yet.
 - Measurements: no Rust Star correctness or performance runs have been made.
 - Parallel research: DSpark remains separate on
@@ -46,11 +48,53 @@ history; add a correction and update the current-state summary.
 2. Inspect the quick capture, resolve any machine-specific failures, and accept
    its model/toolchain fields as the completed `oracle-v1` identity.
 3. Run the extended 2K--1M frontier set only after the quick capture succeeds.
-4. Specify the kernel/layer/decode-step differential artifact extensions.
-5. Create the smallest Rust host/Metal dispatch prototype needed to measure
-   interop and command-submission overhead before choosing more architecture.
+4. Create the smallest Rust host/runtime scaffold that can be validated without
+   Metal, beginning with strict target/model identity and artifact contracts.
+5. Add kernel/layer/decode-step artifact extensions alongside the relevant
+   runtime hooks.
+6. On the target Mac, measure interop and command-submission overhead with the
+   smallest Metal dispatch prototype before choosing more architecture.
 
 ## Entries
+
+### 2026-08-09 — Offline oracle validation and C0 comparator added
+
+Objective:
+
+- Progress the correctness infrastructure without access to the M1 Ultra or
+  model, and give the future Rust runtime an exact output contract.
+
+Changes:
+
+- Added `rust-star/ARTIFACT_FORMAT.md` as the stable initial bundle and
+  post-prefill full-logit contract.
+- Added `rust-star/artifact_lib.py` with safe bundle extraction, artifact hash
+  verification, strict finite-FP32 parsing, bit-pattern comparison, and drift
+  metrics.
+- Added `rust-star/verify_oracle_bundle.py` to validate a result directory or
+  `.tar.gz`, including its sibling/explicit archive SHA-256.
+- Added `rust-star/compare_logits.py`; it exits zero only for C0 by default and
+  reports mismatch/ULP/error, cosine, KL, argmax, and top-k diagnostics for
+  valid non-C0 artifacts.
+- Added `rust-star/tests/test_artifact_tools.py` with synthetic fixtures for
+  exact equality, signed zero, drift, metadata, tampering, partial manifests,
+  and archive traversal.
+- Updated the capture README and made tar extraction behavior explicit across
+  supported Python versions.
+
+Validation:
+
+- Python compilation succeeded for the capture, library, both CLIs, and tests.
+- Nine unit tests passed with deprecation warnings promoted to errors.
+- CLI integration checks confirmed C0 exit 0, drift exit 1, and bundle/archive
+  verification with the sibling checksum.
+- `git diff --check` passed.
+- No Metal, model, or performance run was attempted in this environment.
+
+Next:
+
+- Begin a strict, platform-independent Rust runtime scaffold while target-Mac
+  capture remains pending.
 
 ### 2026-08-09 — Target-Mac oracle capture kit prepared
 

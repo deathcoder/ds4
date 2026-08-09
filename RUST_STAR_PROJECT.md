@@ -138,6 +138,11 @@ Conformance and performance are separate run modes:
 A useful differential harness should locate the first mismatch, not merely say
 that the last token differs.
 
+`rust-star/ARTIFACT_FORMAT.md` is the canonical initial bundle and full-logit
+contract. `rust-star/verify_oracle_bundle.py` verifies returned captures, while
+`rust-star/compare_logits.py` performs bit-pattern C0 comparison and reports
+non-C0 drift diagnostics without weakening the exact classification.
+
 ## Performance Contract and Benchmarks
 
 The primary metric is committed decode tokens per second at batch one. The
@@ -289,7 +294,8 @@ they describe whenever practical.
 ## Open Items
 
 - Capture the complete `oracle-v1` manifest on the M1 Ultra.
-- Decide the on-disk schema for golden kernel/layer/logit artifacts.
+- Extend the stable full-logit artifact schema to kernel, layer, and every
+  decode-step boundaries as those hooks are implemented.
 - Establish the exact paired benchmark protocol and initial DwarfStar numbers.
 - Decide the minimal Rust/Objective-C/Metal interop layer after a measured host
   dispatch prototype.
