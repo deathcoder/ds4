@@ -24,9 +24,8 @@ history; add a correction and update the current-state summary.
 - Branch base: upstream `antirez/ds4` commit
   `b0309611041655f4e45671cfd9c9886aff161406`.
 - Local `main`: fast-forwarded to the same upstream commit.
-- Fork `origin/main`: still at
-  `80ebbc396aee40eedc1d829222f3362d10fa4c6c` until a successful push; it was
-  137 commits behind and 0 ahead of upstream at bootstrap.
+- Fork `origin/main`: synchronized to the same upstream commit through the
+  GitHub app.
 - Oracle: candidate source commit selected, but `oracle-v1` is incomplete until
   its model SHA, target-machine toolchain/configuration, and golden artifacts
   are captured.
@@ -34,25 +33,46 @@ history; add a correction and update the current-state summary.
 - Measurements: no Rust Star correctness or performance runs have been made.
 - Parallel research: DSpark remains separate on
   `origin/codex/dspark-observability-0` and is not on this phase's critical path.
-- Publication: prefer the connected GitHub app for remote writes. Its repository
-  metadata reports the authenticated user's `push: true`, but the app is
-  installed only on `dion-labs`, not the personal `deathcoder` account that owns
-  this fork. Ref-update and branch-create calls therefore return GitHub HTTP 403.
+- Publication: the connected GitHub app is installed on both `deathcoder` and
+  `dion-labs`. Remote branch `agent/rust-star-bootstrap` is published. Prefer
+  the app for future remote writes from this environment.
 
 ## Immediate Next Actions
 
-1. Install/authorize the GitHub app on the personal `deathcoder` account with
-   access to `deathcoder/ds4`, then use it to update fork `main` and publish
-   `agent/rust-star-bootstrap`. Fall back to authenticated local git only if the
-   correctly scoped app installation still cannot write refs.
-2. On the M1 Ultra, capture the complete oracle manifest and a clean DwarfStar
+1. On the M1 Ultra, capture the complete oracle manifest and a clean DwarfStar
    baseline at agreed context frontiers.
-3. Specify a versioned golden-artifact format for kernel, layer, and full-logit
+2. Specify a versioned golden-artifact format for kernel, layer, and full-logit
    comparisons.
-4. Create the smallest Rust host/Metal dispatch prototype needed to measure
+3. Create the smallest Rust host/Metal dispatch prototype needed to measure
    interop and command-submission overhead before choosing more architecture.
 
 ## Entries
+
+### 2026-08-09 — Fork synchronized and research branch published
+
+Objective:
+
+- Publish the bootstrap work after correcting the GitHub App installation
+  scope.
+
+Actions and evidence:
+
+- Confirmed a new personal-account installation for `deathcoder` was visible
+  alongside the existing `dion-labs` installation.
+- Fast-forwarded `deathcoder/ds4:main` to upstream commit
+  `b0309611041655f4e45671cfd9c9886aff161406` without force.
+- Created remote branch `agent/rust-star-bootstrap` from that commit.
+- Recreated the three-file local documentation tree atomically through GitHub's
+  blob, tree, commit, and ref APIs. The initial published commit was
+  `6daf28c3faee652463fe0957397e023e4ae7fa98`; its tree
+  `e9761869fc0a45fc3880ff42d133deb9c0da2371` exactly matched the local tree.
+- No pull request was opened because branch publication, not upstream review,
+  was requested.
+
+Next:
+
+- Capture the oracle manifest and baseline on the target M1 Ultra, then define
+  the differential golden-artifact format.
 
 ### 2026-08-09 — Publication 403 root cause identified
 
