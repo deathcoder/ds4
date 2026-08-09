@@ -19,7 +19,7 @@ history; add a correction and update the current-state summary.
 
 ## Current State
 
-- Phase: project bootstrap and experimental-contract definition.
+- Phase: `oracle-v1` capture tooling ready; target-Mac capture pending.
 - Working branch: `agent/rust-star-bootstrap`.
 - Branch base: upstream `antirez/ds4` commit
   `b0309611041655f4e45671cfd9c9886aff161406`.
@@ -29,6 +29,8 @@ history; add a correction and update the current-state summary.
 - Oracle: candidate source commit selected, but `oracle-v1` is incomplete until
   its model SHA, target-machine toolchain/configuration, and golden artifacts
   are captured.
+- Capture kit: `rust-star/capture_oracle_v1.py` prepares a privacy-filtered,
+  checksummed result bundle from an isolated build of the pinned oracle source.
 - Implementation: no Rust runtime or inference code has been added yet.
 - Measurements: no Rust Star correctness or performance runs have been made.
 - Parallel research: DSpark remains separate on
@@ -39,14 +41,64 @@ history; add a correction and update the current-state summary.
 
 ## Immediate Next Actions
 
-1. On the M1 Ultra, capture the complete oracle manifest and a clean DwarfStar
-   baseline at agreed context frontiers.
-2. Specify a versioned golden-artifact format for kernel, layer, and full-logit
-   comparisons.
-3. Create the smallest Rust host/Metal dispatch prototype needed to measure
+1. Clone this branch on the M1 Ultra and run the default 2K/32K capture; return
+   the generated `.tar.gz` bundle and its printed SHA-256.
+2. Inspect the quick capture, resolve any machine-specific failures, and accept
+   its model/toolchain fields as the completed `oracle-v1` identity.
+3. Run the extended 2K--1M frontier set only after the quick capture succeeds.
+4. Specify the kernel/layer/decode-step differential artifact extensions.
+5. Create the smallest Rust host/Metal dispatch prototype needed to measure
    interop and command-submission overhead before choosing more architecture.
 
 ## Entries
+
+### 2026-08-09 — Target-Mac oracle capture kit prepared
+
+Objective:
+
+- Prepare everything that can be cloned and executed on the M1 Ultra without
+  granting this environment remote access to the machine.
+
+Changes:
+
+- Added `rust-star/capture_oracle_v1.py`, a one-command Python standard-library
+  capture tool.
+- Added `rust-star/README.md` with quick, extended, custom-context, reporting,
+  and security instructions.
+- Git-ignored local `rust-star/results/` and `rust-star/.work/` outputs.
+- The tool hashes the entire GGUF; captures allowlisted hardware, macOS,
+  compiler, Metal, power, and load metadata; exports pinned upstream commit
+  `b0309611041655f4e45671cfd9c9886aff161406`; and builds it in a temporary
+  directory.
+- It runs `--metal-kernels` and `--logprob-vectors`, captures full post-prefill
+  FP32 frontier logits separately from timed runs, and aggregates repeated
+  batch-one decode/prefill measurements with median, MAD, minimum, and maximum.
+- The default quick set is 2K/32K with three repetitions. The opt-in full set is
+  2K, 32K, 128K, 256K, 512K, and 1M.
+- Result manifests are updated after each completed gate/run so partial evidence
+  survives interruption or a long-context capacity failure.
+- The shareable archive excludes the model, full environment, unrelated process
+  listings, credentials, absolute model path, and Mac serial/UUID identifiers.
+
+Validation in this Linux workspace:
+
+- `python3 -m py_compile rust-star/capture_oracle_v1.py`
+- CLI help and default/full dry-run plans.
+- Invalid duplicate-context rejection.
+- Median/MAD aggregation helper checks against synthetic rows.
+- Pinned source commit/tree validation, offline `git archive` extraction,
+  deterministic 1M prompt expansion, and command-path sanitization.
+- `git diff --check` and ignore-rule verification.
+
+Not validated here:
+
+- No Metal build, GGUF load, correctness gate, logit dump, or performance run
+  was possible because this workspace is not the target Mac and has no model.
+
+Next:
+
+- Run the documented default capture on the M1 Ultra and return its archive and
+  SHA-256 for inspection before attempting the extended context set.
 
 ### 2026-08-09 — Fork synchronized and research branch published
 

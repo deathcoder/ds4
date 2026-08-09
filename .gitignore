@@ -35,5 +35,7 @@
 __pycache__/
 *.pyc
 /misc/
+/rust-star/results/
+/rust-star/.work/
 .*.swp
 .DS_Store
