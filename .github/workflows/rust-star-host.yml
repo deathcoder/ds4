@@ -1,0 +1,48 @@
+name: Rust Star host contracts
+
+on:
+  push:
+    branches:
+      - agent/rust-star-bootstrap
+    paths:
+      - .github/workflows/rust-star-host.yml
+      - rust-star/runtime/**
+      - rust-star/check_runtime.sh
+      - rust-star/artifact_lib.py
+      - rust-star/compare_logits.py
+      - rust-star/tests/**
+  pull_request:
+    paths:
+      - .github/workflows/rust-star-host.yml
+      - rust-star/runtime/**
+      - rust-star/check_runtime.sh
+      - rust-star/artifact_lib.py
+      - rust-star/compare_logits.py
+      - rust-star/tests/**
+
+permissions:
+  contents: read
+
+jobs:
+  host-contracts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install pinned Rust toolchain
+        run: rustup toolchain install 1.74.0 --profile minimal --component rustfmt
+      - name: Check Rust formatting
+        run: cargo +1.74.0 fmt --manifest-path rust-star/runtime/Cargo.toml --check
+      - name: Test Rust host contracts
+        run: cargo +1.74.0 test --locked --manifest-path rust-star/runtime/Cargo.toml
+      - name: Build optimized host binary
+        run: cargo +1.74.0 build --locked --release --manifest-path rust-star/runtime/Cargo.toml
+      - name: Test Python artifact contracts
+        run: python3 -m unittest discover -s rust-star/tests -v
+      - name: Cross-check Rust writer with Python reader
+        run: |
+          cargo +1.74.0 run --locked --quiet \
+            --manifest-path rust-star/runtime/Cargo.toml \
+            --example write_logit_fixture -- /tmp/rust-star-logits.json
+          python3 rust-star/compare_logits.py \
+            /tmp/rust-star-logits.json /tmp/rust-star-logits.json

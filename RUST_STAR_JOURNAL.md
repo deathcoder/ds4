@@ -19,7 +19,8 @@ history; add a correction and update the current-state summary.
 
 ## Current State
 
-- Phase: `oracle-v1` capture tooling ready; target-Mac capture pending.
+- Phase: host-runtime scaffold ready for target-Mac compilation/model
+  inspection; `oracle-v1` capture remains pending.
 - Working branch: `agent/rust-star-bootstrap`.
 - Branch base: upstream `antirez/ds4` commit
   `b0309611041655f4e45671cfd9c9886aff161406`.
@@ -33,7 +34,10 @@ history; add a correction and update the current-state summary.
   checksummed result bundle from an isolated build of the pinned oracle source.
 - Differential tooling: the initial bundle/full-logit format is stable and has
   cross-platform verification, exact C0 comparison, and drift diagnostics.
-- Implementation: no Rust runtime or inference code has been added yet.
+- Implementation: dependency-free Rust host scaffold added under
+  `rust-star/runtime/`; it strictly parses GGUF v3 directories, validates the
+  Flash resident-Q2 shape/recipe, and writes candidate full-logit artifacts.
+  It has not yet been compiled because this workspace has no Rust toolchain.
 - Measurements: no Rust Star correctness or performance runs have been made.
 - Parallel research: DSpark remains separate on
   `origin/codex/dspark-observability-0` and is not on this phase's critical path.
@@ -43,19 +47,75 @@ history; add a correction and update the current-state summary.
 
 ## Immediate Next Actions
 
-1. Clone this branch on the M1 Ultra and run the default 2K/32K capture; return
-   the generated `.tar.gz` bundle and its printed SHA-256.
-2. Inspect the quick capture, resolve any machine-specific failures, and accept
-   its model/toolchain fields as the completed `oracle-v1` identity.
-3. Run the extended 2K--1M frontier set only after the quick capture succeeds.
-4. Create the smallest Rust host/runtime scaffold that can be validated without
-   Metal, beginning with strict target/model identity and artifact contracts.
+1. Clone this branch on the M1 Ultra and run `rust-star/check_runtime.sh` with
+   the absolute model path; report the complete output before changing the
+   validator policy.
+2. Run the default 2K/32K oracle capture and return the generated `.tar.gz`
+   bundle plus its printed SHA-256.
+3. Inspect the quick capture, resolve machine/model-specific failures, and bind
+   the validator to the completed `oracle-v1` model SHA-256.
+4. Run the extended 2K--1M frontier set only after the quick capture succeeds.
 5. Add kernel/layer/decode-step artifact extensions alongside the relevant
    runtime hooks.
 6. On the target Mac, measure interop and command-submission overhead with the
    smallest Metal dispatch prototype before choosing more architecture.
 
 ## Entries
+
+### 2026-08-09 — Strict Rust host-runtime scaffold added
+
+Objective:
+
+- Establish a narrow, executable Rust boundary that can be prepared without
+  Metal or model access and prevents unsupported models from entering the
+  future engine accidentally.
+
+Changes:
+
+- Added a dependency-free Rust 2021 crate at `rust-star/runtime/` with a
+  committed lockfile and a minimum Rust version of 1.74.
+- Added a bounded GGUF v3 parser that reads metadata/tensor directories without
+  reading tensor payloads. It rejects duplicate names, unknown types, malformed
+  booleans/UTF-8, excessive counts/strings, rank/size arithmetic overflow,
+  invalid alignment, payload overlap, and out-of-file ranges.
+- Derived and encoded the exact DwarfStar Flash shape: 43 layers, width 4096,
+  vocabulary 129280, 64 attention heads, 256 experts with 6 active, and the
+  model's compression schedule and semantic metadata.
+- Added the initial resident imatrix-Q2 recipe validator: IQ2_XXS routed gate/up,
+  Q2_K routed down, Q8_0 attention/shared/output, and F16 HC/compressor/indexer.
+- Kept checkpoint identity honest: GGUF name metadata is informational; the
+  completed oracle's whole-model SHA-256 remains necessary to prove `0731`.
+- Added a full-FP32-logit writer with finite-value checks, nine-significant-digit
+  output, signed-zero preservation, and lowest-token-ID argmax tie semantics.
+- Added `rust-star/check_runtime.sh` to run formatting, Rust unit tests, release
+  build, existing Python artifact tests, a Rust-writer/Python-reader C0 smoke
+  check, and optional strict model inspection on the target Mac.
+- Added a path-filtered GitHub Actions job pinned to Rust 1.74 so formatting,
+  compilation, unit tests, release build, and the cross-language artifact smoke
+  check can be validated before target-Mac access is available.
+
+Validation in this workspace:
+
+- All Rust files passed an independent Rust grammar parse.
+- Shell syntax and `git diff --check` passed.
+- All nine existing Python artifact/bundle tests passed.
+- The check script correctly exits with a clear Rust-toolchain prerequisite in
+  this container.
+
+Not validated here:
+
+- This environment has neither `rustc` nor Cargo, so type-checking, rustfmt, and
+  the new Rust unit tests are pending the target-Mac run.
+- No real GGUF was available. The first strict inspection may expose a justified
+  difference between the actual oracle recipe and the currently derived
+  DwarfStar template policy; any change must be evidence-driven and journaled.
+- No Metal code, inference, correctness run, or performance measurement exists
+  in the scaffold yet.
+
+Next:
+
+- Run `./rust-star/check_runtime.sh /absolute/path/to/model.gguf` on the M1
+  Ultra, then run the quick `oracle-v1` capture.
 
 ### 2026-08-09 — Offline oracle validation and C0 comparator added
 

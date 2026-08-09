@@ -7,6 +7,17 @@ The capture does not need network access, GitHub credentials, SSH keys, or any
 other secret. It records only an allowlist of hardware and toolchain fields; it
 does not dump the process environment or Mac serial identifiers.
 
+The platform-independent Rust host scaffold now lives in `rust-star/runtime/`.
+Before the oracle capture, compile its tests and inspect the model directory:
+
+```sh
+./rust-star/check_runtime.sh \
+  /absolute/path/to/DeepSeek-V4-Flash-0731-Q2-imatrix.gguf
+```
+
+See `rust-star/runtime/README.md` for its exact scope. It has no Metal or
+inference implementation yet.
+
 ## Quick capture
 
 Clone the published research branch on the Mac Studio, then run:
