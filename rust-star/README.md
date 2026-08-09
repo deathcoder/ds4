@@ -15,8 +15,8 @@ Before the oracle capture, compile its tests and inspect the model directory:
   /absolute/path/to/DeepSeek-V4-Flash-0731-Q2-imatrix.gguf
 ```
 
-See `rust-star/runtime/README.md` for its exact scope. It has no Metal or
-inference implementation yet.
+See `rust-star/runtime/README.md` for its exact scope. It now has a minimal
+Metal ownership/dispatch probe, but no model inference kernels yet.
 
 Project controls and benchmark contracts:
 
@@ -30,6 +30,8 @@ Project controls and benchmark contracts:
   boundary used to populate those paired records.
 - `rust-star/ENGINE_MEASUREMENT_FORMAT.md` defines the equivalent Rust Star
   boundary, and `rust-star/PAIRED_RUNNER.md` documents resumable A/B execution.
+- `rust-star/runtime/METAL.md` defines the initial Rust/Objective-C ownership
+  split and correctness-checked command-dispatch probe.
 
 ## Quick capture
 

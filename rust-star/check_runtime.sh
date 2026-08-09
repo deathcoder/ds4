@@ -21,6 +21,14 @@ cargo test --manifest-path "$manifest"
 echo "==> optimized host build"
 cargo build --release --manifest-path "$manifest"
 
+if [ "$(uname -s)" = "Darwin" ]; then
+    echo "==> Metal ownership and dispatch probe"
+    "$target_dir/release/rust-star" metal-probe \
+        --elements 4096 \
+        --iterations 100 \
+        --json "$target_dir/metal-dispatch-probe.json"
+fi
+
 echo "==> existing Python artifact tests"
 python3 -m unittest discover -s "$repo_dir/rust-star/tests" -v
 

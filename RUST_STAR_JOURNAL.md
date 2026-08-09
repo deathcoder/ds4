@@ -20,8 +20,9 @@ history; add a correction and update the current-state summary.
 
 ## Current State
 
-- Phase: host-runtime scaffold ready for target-Mac compilation/model
-  inspection; `oracle-v1` capture remains pending.
+- Phase: initial Rust/Metal ownership boundary ready for target-Mac compilation,
+  dispatch measurement, and model inspection; `oracle-v1` capture remains
+  pending.
 - Working branch: `agent/rust-star-bootstrap`.
 - Branch base: upstream `antirez/ds4` commit
   `b0309611041655f4e45671cfd9c9886aff161406`.
@@ -43,11 +44,14 @@ history; add a correction and update the current-state summary.
   externally recording wall time and peak RSS. The checkpointed paired runner
   enforces warm-up, A/B and context ordering, explicit retries, and final
   validated export through an engine-neutral contract.
-- Implementation: dependency-free Rust host scaffold added under
-  `rust-star/runtime/`; it strictly parses GGUF v3 directories, validates the
-  Flash resident-Q2 shape/recipe, and writes candidate full-logit artifacts.
-  It has not yet been compiled because this workspace has no Rust toolchain.
-- Measurements: no Rust Star correctness or performance runs have been made.
+- Implementation: dependency-free Rust host scaffold under `rust-star/runtime/`
+  strictly parses GGUF v3 directories, validates the Flash resident-Q2
+  shape/recipe, and writes candidate full-logit artifacts. A macOS-only
+  Rust/Objective-C/Metal boundary now owns a device, queue, pipeline, and
+  correctness-checked shared-buffer dispatch probe. The portable Rust side has
+  been compiled and tested with a temporary Rust 1.85 toolchain; the Objective-C
+  shim has not been compiled because this workspace has no Apple toolchain.
+- Measurements: no model/Metal correctness or performance runs have been made.
 - Manual handoff: `RUST_STAR_MANUAL_TASKS.md` records Actions approval, target
   compilation/model inspection, quick/extended oracle capture, and the deferred
   secure-access decision with exact evidence requirements.
@@ -67,12 +71,60 @@ history; add a correction and update the current-state summary.
 3. Inspect the quick capture, resolve machine/model-specific failures, and bind
    the validator to the completed `oracle-v1` model SHA-256.
 4. Run the extended 2K--1M frontier set only after the quick capture succeeds.
-5. Add kernel/layer/decode-step artifact extensions alongside the relevant
+5. Inspect the Metal probe artifact and use the observed roundtrip/batched
+   submission ratio to confirm or adjust the ownership boundary.
+6. Add a no-copy, read-only model span and one independently testable imported
+   DwarfStar kernel before attempting whole-model graph scheduling.
+7. Add kernel/layer/decode-step artifact extensions alongside the relevant
    runtime hooks.
-6. On the target Mac, measure interop and command-submission overhead with the
-   smallest Metal dispatch prototype before choosing more architecture.
 
 ## Entries
+
+### 2026-08-09 — Initial Rust/Metal ownership and dispatch boundary added
+
+Objective:
+
+- Turn the host-only scaffold into the smallest testable Metal runtime boundary
+  without claiming model inference or performance before the M1 Ultra run.
+
+Changes:
+
+- Added a macOS-only Objective-C ARC shim, compiled by Cargo through the Xcode
+  toolchain, that owns the Metal device, queue, runtime-compiled probe pipeline,
+  shared buffer, command encoders, synchronization, and GPU timestamps.
+- Added a safe Rust lifecycle/configuration/reporting layer and `metal-probe`
+  command. It compares synchronized per-dispatch command buffers with one
+  batched command buffer, validates every resulting element against a CPU
+  reference, and can atomically emit a privacy-limited stable JSON artifact.
+- Kept non-macOS host contracts buildable through an explicit unsupported stub,
+  added a macOS CI compilation job, and made the target-Mac check script run the
+  probe before model inspection.
+- Applied rustfmt to the complete pre-existing Rust crate when a temporary
+  formatter became available; the GGUF/target diffs are formatting-only.
+- Documented the ownership boundary in `rust-star/runtime/METAL.md` and extended
+  manual task M-002 to request the resulting probe artifact.
+
+Validation in this workspace:
+
+- `check_runtime.sh` passed without a model using a temporary Rust 1.85
+  toolchain: rustfmt, 15 Rust unit tests, optimized host build, all 25 Python
+  contract tests, and the Rust-writer/Python-reader C0 smoke check succeeded.
+- Python compilation, workflow YAML parsing, shell syntax, an independent Rust
+  grammar parse, and `git diff --check` passed. The non-macOS `metal-probe`
+  command failed explicitly as designed.
+- One initial optimized link in the generated in-repository target directory
+  reported unresolved thin-LTO symbols; an immediate rebuild and the complete
+  check script then passed. Preserve macOS CI and clean-target evidence rather
+  than treating this temporary-toolchain anomaly as target evidence.
+- This environment still has no Xcode/Metal device or model. The Objective-C
+  shim has not been compiled, and no Metal execution, model correctness run, or
+  performance measurement has been performed here.
+
+Next:
+
+- Compile and run the complete check script on the M1 Ultra. If the boundary
+  validates, add a no-copy read-only model span and one isolated DwarfStar
+  kernel while preserving C0 differential hooks.
 
 ### 2026-08-09 — Checkpointed paired runner and Rust-side contract added
 

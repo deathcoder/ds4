@@ -132,7 +132,12 @@ impl TensorType {
             39 => ("mxfp4", 32, 17),
             _ => return None,
         };
-        Some(Self { id, name, block_elements, block_bytes })
+        Some(Self {
+            id,
+            name,
+            block_elements,
+            block_bytes,
+        })
     }
 
     fn byte_len(&self, elements: u64) -> Result<u64> {
@@ -183,22 +188,30 @@ impl Gguf {
         }
         let version = input.u32("GGUF version")?;
         if version != 3 {
-            return Err(Error::invalid(format!("only GGUF v3 is supported, found v{version}")));
+            return Err(Error::invalid(format!(
+                "only GGUF v3 is supported, found v{version}"
+            )));
         }
         let tensor_count = input.u64("tensor count")?;
         let metadata_count = input.u64("metadata count")?;
         if tensor_count > MAX_TENSORS {
-            return Err(Error::invalid(format!("tensor count {tensor_count} exceeds safety limit")));
+            return Err(Error::invalid(format!(
+                "tensor count {tensor_count} exceeds safety limit"
+            )));
         }
         if metadata_count > MAX_METADATA {
-            return Err(Error::invalid(format!("metadata count {metadata_count} exceeds safety limit")));
+            return Err(Error::invalid(format!(
+                "metadata count {metadata_count} exceeds safety limit"
+            )));
         }
 
         let mut metadata = BTreeMap::new();
         for _ in 0..metadata_count {
             let key = input.string("metadata key")?;
             if metadata.contains_key(&key) {
-                return Err(Error::invalid(format!("duplicate GGUF metadata key {key:?}")));
+                return Err(Error::invalid(format!(
+                    "duplicate GGUF metadata key {key:?}"
+                )));
             }
             let value_type = ValueType::try_from(input.u32("metadata value type")?)?;
             let capture = should_capture_array(&key);
@@ -212,11 +225,7 @@ impl Gguf {
                 value_type: ValueType::Uint32,
                 value: ScalarValue::Unsigned(value),
             }) => *value,
-            Some(_) => {
-                return Err(Error::invalid(
-                    "general.alignment must be a GGUF uint32",
-                ))
-            }
+            Some(_) => return Err(Error::invalid("general.alignment must be a GGUF uint32")),
         };
         if alignment == 0 || !alignment.is_power_of_two() || alignment > MAX_ALIGNMENT {
             return Err(Error::invalid(format!(
@@ -238,7 +247,9 @@ impl Gguf {
         for _ in 0..tensor_count {
             let name = input.string("tensor name")?;
             if !names.insert(name.clone()) {
-                return Err(Error::invalid(format!("duplicate GGUF tensor name {name:?}")));
+                return Err(Error::invalid(format!(
+                    "duplicate GGUF tensor name {name:?}"
+                )));
             }
             let rank = input.u32("tensor rank")?;
             if rank == 0 || rank > MAX_DIMS {
@@ -251,7 +262,9 @@ impl Gguf {
             for _ in 0..rank {
                 let dimension = input.u64("tensor dimension")?;
                 if dimension == 0 {
-                    return Err(Error::invalid(format!("tensor {name:?} has a zero dimension")));
+                    return Err(Error::invalid(format!(
+                        "tensor {name:?} has a zero dimension"
+                    )));
                 }
                 elements = elements.checked_mul(dimension).ok_or_else(|| {
                     Error::invalid(format!("tensor {name:?} element count overflows u64"))
@@ -260,7 +273,9 @@ impl Gguf {
             }
             let type_id = input.u32("tensor type")?;
             let tensor_type = TensorType::from_id(type_id).ok_or_else(|| {
-                Error::invalid(format!("tensor {name:?} uses unsupported GGML type {type_id}"))
+                Error::invalid(format!(
+                    "tensor {name:?} uses unsupported GGML type {type_id}"
+                ))
             })?;
             let relative_offset = input.u64("tensor relative offset")?;
             if relative_offset % alignment != 0 {
@@ -282,7 +297,9 @@ impl Gguf {
         let directory_end = input.position()?;
         let tensor_data_offset = align_up(directory_end, alignment)?;
         if tensor_data_offset > file_bytes {
-            return Err(Error::invalid("aligned tensor-data offset is outside the file"));
+            return Err(Error::invalid(
+                "aligned tensor-data offset is outside the file",
+            ));
         }
 
         let mut tensors = BTreeMap::new();
@@ -342,7 +359,9 @@ impl Gguf {
                 "metadata {key:?} has type {:?}, expected string",
                 other.value_type()
             ))),
-            None => Err(Error::invalid(format!("required metadata {key:?} is missing"))),
+            None => Err(Error::invalid(format!(
+                "required metadata {key:?} is missing"
+            ))),
         }
     }
 
@@ -356,7 +375,9 @@ impl Gguf {
                 "metadata {key:?} has type {:?}, expected uint32/uint64",
                 other.value_type()
             ))),
-            None => Err(Error::invalid(format!("required metadata {key:?} is missing"))),
+            None => Err(Error::invalid(format!(
+                "required metadata {key:?} is missing"
+            ))),
         }
     }
 
@@ -370,7 +391,9 @@ impl Gguf {
                 "metadata {key:?} has type {:?}, expected float32/float64",
                 other.value_type()
             ))),
-            None => Err(Error::invalid(format!("required metadata {key:?} is missing"))),
+            None => Err(Error::invalid(format!(
+                "required metadata {key:?} is missing"
+            ))),
         }
     }
 
@@ -384,7 +407,9 @@ impl Gguf {
                 "metadata {key:?} has type {:?}, expected bool",
                 other.value_type()
             ))),
-            None => Err(Error::invalid(format!("required metadata {key:?} is missing"))),
+            None => Err(Error::invalid(format!(
+                "required metadata {key:?} is missing"
+            ))),
         }
     }
 
@@ -402,7 +427,9 @@ impl Gguf {
                 "metadata {key:?} has type {:?}, expected array",
                 other.value_type()
             ))),
-            None => Err(Error::invalid(format!("required metadata {key:?} is missing"))),
+            None => Err(Error::invalid(format!(
+                "required metadata {key:?} is missing"
+            ))),
         }
     }
 }
@@ -468,14 +495,15 @@ impl<R: Read + Seek> Input<'_, R> {
     fn string(&mut self, what: &str) -> Result<String> {
         let len = self.u64(&format!("{what} length"))?;
         if len > MAX_STRING_BYTES {
-            return Err(Error::invalid(format!("{what} length {len} exceeds safety limit")));
+            return Err(Error::invalid(format!(
+                "{what} length {len} exceeds safety limit"
+            )));
         }
         let size = usize::try_from(len)
             .map_err(|_| Error::invalid(format!("{what} does not fit host address space")))?;
         let mut bytes = vec![0_u8; size];
         self.read_exact(&mut bytes, what)?;
-        String::from_utf8(bytes)
-            .map_err(|_| Error::invalid(format!("{what} is not valid UTF-8")))
+        String::from_utf8(bytes).map_err(|_| Error::invalid(format!("{what} is not valid UTF-8")))
     }
 
     fn skip(&mut self, bytes: u64, what: &str) -> Result<()> {
@@ -505,7 +533,11 @@ impl<R: Read + Seek> Input<'_, R> {
                 self.skip_array(element_type, len)?;
                 None
             };
-            return Ok(MetadataValue::Array { element_type, len, values });
+            return Ok(MetadataValue::Array {
+                element_type,
+                len,
+                values,
+            });
         }
         Ok(MetadataValue::Scalar {
             value_type,
@@ -516,12 +548,20 @@ impl<R: Read + Seek> Input<'_, R> {
     fn scalar(&mut self, value_type: ValueType) -> Result<ScalarValue> {
         Ok(match value_type {
             ValueType::Uint8 => ScalarValue::Unsigned(self.u8("uint8 metadata")? as u64),
-            ValueType::Int8 => ScalarValue::Signed(i8::from_le_bytes(self.bytes("int8 metadata")?) as i64),
+            ValueType::Int8 => {
+                ScalarValue::Signed(i8::from_le_bytes(self.bytes("int8 metadata")?) as i64)
+            }
             ValueType::Uint16 => ScalarValue::Unsigned(self.u16("uint16 metadata")? as u64),
-            ValueType::Int16 => ScalarValue::Signed(i16::from_le_bytes(self.bytes("int16 metadata")?) as i64),
+            ValueType::Int16 => {
+                ScalarValue::Signed(i16::from_le_bytes(self.bytes("int16 metadata")?) as i64)
+            }
             ValueType::Uint32 => ScalarValue::Unsigned(self.u32("uint32 metadata")? as u64),
-            ValueType::Int32 => ScalarValue::Signed(i32::from_le_bytes(self.bytes("int32 metadata")?) as i64),
-            ValueType::Float32 => ScalarValue::Float(f32::from_le_bytes(self.bytes("float32 metadata")?) as f64),
+            ValueType::Int32 => {
+                ScalarValue::Signed(i32::from_le_bytes(self.bytes("int32 metadata")?) as i64)
+            }
+            ValueType::Float32 => {
+                ScalarValue::Float(f32::from_le_bytes(self.bytes("float32 metadata")?) as f64)
+            }
             ValueType::Bool => match self.u8("bool metadata")? {
                 0 => ScalarValue::Bool(false),
                 1 => ScalarValue::Bool(true),
@@ -529,9 +569,15 @@ impl<R: Read + Seek> Input<'_, R> {
             },
             ValueType::String => ScalarValue::String(self.string("metadata string")?),
             ValueType::Uint64 => ScalarValue::Unsigned(self.u64("uint64 metadata")?),
-            ValueType::Int64 => ScalarValue::Signed(i64::from_le_bytes(self.bytes("int64 metadata")?)),
-            ValueType::Float64 => ScalarValue::Float(f64::from_le_bytes(self.bytes("float64 metadata")?)),
-            ValueType::Array => return Err(Error::invalid("nested GGUF metadata arrays are forbidden")),
+            ValueType::Int64 => {
+                ScalarValue::Signed(i64::from_le_bytes(self.bytes("int64 metadata")?))
+            }
+            ValueType::Float64 => {
+                ScalarValue::Float(f64::from_le_bytes(self.bytes("float64 metadata")?))
+            }
+            ValueType::Array => {
+                return Err(Error::invalid("nested GGUF metadata arrays are forbidden"))
+            }
         })
     }
 

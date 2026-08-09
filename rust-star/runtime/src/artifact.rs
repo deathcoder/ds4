@@ -86,7 +86,7 @@ pub fn write_full_logits<W: Write>(
     Ok(())
 }
 
-fn write_json_string<W: Write>(output: &mut W, value: &str) -> Result<()> {
+pub(crate) fn write_json_string<W: Write>(output: &mut W, value: &str) -> Result<()> {
     output.write_all(b"\"")?;
     let mut plain_start = 0;
     for (offset, character) in value.char_indices() {

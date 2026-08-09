@@ -78,12 +78,15 @@ Return evidence:
 
 - `rust-star-runtime-check.txt` after checking that it contains no private path
   you do not want to share. Redacting only the absolute path is acceptable.
+- `rust-star/.work/runtime-target/metal-dispatch-probe.json`.
 - The output of `rustc --version` and `cargo --version` if the script fails
   before compilation.
 
 Success condition:
 
 - Host tests and cross-language artifact checks pass.
+- The Metal probe validates its shared buffer and reports both roundtrip and
+  batched dispatch timing.
 - Strict inspection ends with `result: target shape and Q2 recipe valid`.
 
 If strict inspection fails, do not weaken the validator yet. Return the exact

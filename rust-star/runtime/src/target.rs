@@ -50,7 +50,11 @@ pub fn validate_resident_q2(gguf: &Gguf) -> Result<TargetReport> {
     expect_u64(gguf, "deepseek4.rope.dimension_count", 64)?;
     expect_u64(gguf, "deepseek4.attention.q_lora_rank", LORA_Q)?;
     expect_u64(gguf, "deepseek4.attention.output_lora_rank", LORA_O)?;
-    expect_u64(gguf, "deepseek4.attention.output_group_count", OUTPUT_GROUPS)?;
+    expect_u64(
+        gguf,
+        "deepseek4.attention.output_group_count",
+        OUTPUT_GROUPS,
+    )?;
     expect_u64(gguf, "deepseek4.expert_count", EXPERTS)?;
     expect_u64(gguf, "deepseek4.expert_used_count", ACTIVE_EXPERTS)?;
     expect_u64(gguf, "deepseek4.expert_feed_forward_length", EXPERT_FF)?;
@@ -59,7 +63,11 @@ pub fn validate_resident_q2(gguf: &Gguf) -> Result<TargetReport> {
     expect_optional_u64(gguf, "deepseek4.expert_group_count", 0)?;
     expect_optional_u64(gguf, "deepseek4.expert_group_used_count", 0)?;
     expect_u64(gguf, "deepseek4.attention.sliding_window", 128)?;
-    expect_u64(gguf, "deepseek4.attention.indexer.head_count", INDEXER_HEADS)?;
+    expect_u64(
+        gguf,
+        "deepseek4.attention.indexer.head_count",
+        INDEXER_HEADS,
+    )?;
     expect_u64(
         gguf,
         "deepseek4.attention.indexer.key_length",
@@ -84,11 +92,7 @@ pub fn validate_resident_q2(gguf: &Gguf) -> Result<TargetReport> {
         160_000.0,
     )?;
     expect_f64(gguf, "deepseek4.expert_weights_scale", 1.5)?;
-    expect_f64(
-        gguf,
-        "deepseek4.attention.layer_norm_rms_epsilon",
-        1.0e-6,
-    )?;
+    expect_f64(gguf, "deepseek4.attention.layer_norm_rms_epsilon", 1.0e-6)?;
     expect_f64(gguf, "deepseek4.hyper_connection.epsilon", 1.0e-6)?;
     if !gguf.boolean("deepseek4.expert_weights_norm")? {
         return Err(Error::invalid("deepseek4.expert_weights_norm must be true"));
@@ -102,20 +106,27 @@ pub fn validate_resident_q2(gguf: &Gguf) -> Result<TargetReport> {
     }
     let imatrix_entries = gguf.u64("quantize.imatrix.entries_count")?;
     if imatrix_entries == 0 {
-        return Err(Error::invalid("quantize.imatrix.entries_count must be nonzero"));
+        return Err(Error::invalid(
+            "quantize.imatrix.entries_count must be nonzero",
+        ));
     }
 
     let expected = expected_tensors();
     for tensor in &expected {
         let actual = gguf.tensors.get(&tensor.name).ok_or_else(|| {
-            Error::invalid(format!("required target tensor {:?} is missing", tensor.name))
+            Error::invalid(format!(
+                "required target tensor {:?} is missing",
+                tensor.name
+            ))
         })?;
         validate_tensor(actual, tensor)?;
     }
 
     let mut tensor_type_counts = BTreeMap::new();
     for tensor in gguf.tensors.values() {
-        *tensor_type_counts.entry(tensor.tensor_type.name).or_insert(0) += 1;
+        *tensor_type_counts
+            .entry(tensor.tensor_type.name)
+            .or_insert(0) += 1;
     }
     let model_name = optional_string(gguf, "general.name")?.map(str::to_owned);
     let checkpoint_name_mentions_0731 = model_name
@@ -142,7 +153,11 @@ struct ExpectedTensor {
 }
 
 fn expected(name: impl Into<String>, type_id: u32, dimensions: &[u64]) -> ExpectedTensor {
-    ExpectedTensor { name: name.into(), type_id, dimensions: dimensions.to_vec() }
+    ExpectedTensor {
+        name: name.into(),
+        type_id,
+        dimensions: dimensions.to_vec(),
+    }
 }
 
 fn expected_tensors() -> Vec<ExpectedTensor> {
@@ -163,14 +178,22 @@ fn expected_tensors() -> Vec<ExpectedTensor> {
         let prefix = format!("blk.{layer}");
         let ratio = expected_compression_ratio(layer);
         tensors.extend([
-            expected(format!("{prefix}.hc_attn_fn.weight"), 1, &[hc_dim, hc_mix_dim]),
+            expected(
+                format!("{prefix}.hc_attn_fn.weight"),
+                1,
+                &[hc_dim, hc_mix_dim],
+            ),
             expected(format!("{prefix}.hc_attn_scale.weight"), 0, &[3]),
             expected(format!("{prefix}.hc_attn_base.weight"), 0, &[hc_mix_dim]),
             expected(format!("{prefix}.attn_norm.weight"), 0, &[EMBEDDING]),
             expected(format!("{prefix}.attn_q_a.weight"), 8, &[EMBEDDING, LORA_Q]),
             expected(format!("{prefix}.attn_q_a_norm.weight"), 0, &[LORA_Q]),
             expected(format!("{prefix}.attn_q_b.weight"), 8, &[LORA_Q, q_dim]),
-            expected(format!("{prefix}.attn_kv.weight"), 8, &[EMBEDDING, HEAD_DIM]),
+            expected(
+                format!("{prefix}.attn_kv.weight"),
+                8,
+                &[EMBEDDING, HEAD_DIM],
+            ),
             expected(format!("{prefix}.attn_kv_a_norm.weight"), 0, &[HEAD_DIM]),
             expected(format!("{prefix}.attn_sinks.weight"), 0, &[HEADS]),
             expected(
@@ -178,7 +201,11 @@ fn expected_tensors() -> Vec<ExpectedTensor> {
                 8,
                 &[HEAD_DIM * (HEADS / OUTPUT_GROUPS), out_low_dim],
             ),
-            expected(format!("{prefix}.attn_output_b.weight"), 8, &[out_low_dim, EMBEDDING]),
+            expected(
+                format!("{prefix}.attn_output_b.weight"),
+                8,
+                &[out_low_dim, EMBEDDING],
+            ),
         ]);
         if ratio != 0 {
             let compressor_width = if ratio == 4 { 2 * HEAD_DIM } else { HEAD_DIM };
@@ -209,8 +236,16 @@ fn expected_tensors() -> Vec<ExpectedTensor> {
             let index_q_dim = INDEXER_HEADS * INDEXER_HEAD_DIM;
             let index_width = 2 * INDEXER_HEAD_DIM;
             tensors.extend([
-                expected(format!("{prefix}.indexer.attn_q_b.weight"), 8, &[LORA_Q, index_q_dim]),
-                expected(format!("{prefix}.indexer.proj.weight"), 1, &[EMBEDDING, INDEXER_HEADS]),
+                expected(
+                    format!("{prefix}.indexer.attn_q_b.weight"),
+                    8,
+                    &[LORA_Q, index_q_dim],
+                ),
+                expected(
+                    format!("{prefix}.indexer.proj.weight"),
+                    1,
+                    &[EMBEDDING, INDEXER_HEADS],
+                ),
                 expected(
                     format!("{prefix}.indexer_compressor_ape.weight"),
                     1,
@@ -234,11 +269,19 @@ fn expected_tensors() -> Vec<ExpectedTensor> {
             ]);
         }
         tensors.extend([
-            expected(format!("{prefix}.hc_ffn_fn.weight"), 1, &[hc_dim, hc_mix_dim]),
+            expected(
+                format!("{prefix}.hc_ffn_fn.weight"),
+                1,
+                &[hc_dim, hc_mix_dim],
+            ),
             expected(format!("{prefix}.hc_ffn_scale.weight"), 0, &[3]),
             expected(format!("{prefix}.hc_ffn_base.weight"), 0, &[hc_mix_dim]),
             expected(format!("{prefix}.ffn_norm.weight"), 0, &[EMBEDDING]),
-            expected(format!("{prefix}.ffn_gate_inp.weight"), 1, &[EMBEDDING, EXPERTS]),
+            expected(
+                format!("{prefix}.ffn_gate_inp.weight"),
+                1,
+                &[EMBEDDING, EXPERTS],
+            ),
             expected(
                 format!("{prefix}.ffn_gate_exps.weight"),
                 16,
@@ -254,9 +297,21 @@ fn expected_tensors() -> Vec<ExpectedTensor> {
                 10,
                 &[EXPERT_FF, EMBEDDING, EXPERTS],
             ),
-            expected(format!("{prefix}.ffn_gate_shexp.weight"), 8, &[EMBEDDING, EXPERT_FF]),
-            expected(format!("{prefix}.ffn_up_shexp.weight"), 8, &[EMBEDDING, EXPERT_FF]),
-            expected(format!("{prefix}.ffn_down_shexp.weight"), 8, &[EXPERT_FF, EMBEDDING]),
+            expected(
+                format!("{prefix}.ffn_gate_shexp.weight"),
+                8,
+                &[EMBEDDING, EXPERT_FF],
+            ),
+            expected(
+                format!("{prefix}.ffn_up_shexp.weight"),
+                8,
+                &[EMBEDDING, EXPERT_FF],
+            ),
+            expected(
+                format!("{prefix}.ffn_down_shexp.weight"),
+                8,
+                &[EXPERT_FF, EMBEDDING],
+            ),
         ]);
         if layer < 3 {
             tensors.push(expected(
@@ -310,7 +365,9 @@ fn validate_compression_ratios(gguf: &Gguf) -> Result<()> {
     }
     for (layer, value) in values.iter().take(LAYERS as usize).enumerate() {
         let actual = scalar_nonnegative_u64(value).ok_or_else(|| {
-            Error::invalid(format!("compression ratio at layer {layer} is not nonnegative"))
+            Error::invalid(format!(
+                "compression ratio at layer {layer} is not nonnegative"
+            ))
         })?;
         let expected = expected_compression_ratio(layer as u32);
         if actual != expected {

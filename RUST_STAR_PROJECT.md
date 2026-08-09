@@ -302,7 +302,8 @@ they describe whenever practical.
 - Implement the Rust Star side of `rust-star/ENGINE_MEASUREMENT_FORMAT.md` once
   the decoder can run; the checkpointed paired orchestrator and DwarfStar side
   are implemented.
-- Decide the minimal Rust/Objective-C/Metal interop layer after a measured host
-  dispatch prototype.
+- Compile and measure the implemented Rust/Objective-C/Metal ownership and
+  dispatch boundary on the M1 Ultra, then use that evidence to fix the minimal
+  long-lived interop layer.
 - Reproduce the Q2 versus Q2/Q4 throughput observation under controlled runs.
 - Define the first coding-agent workload corpus before agent co-design claims.
