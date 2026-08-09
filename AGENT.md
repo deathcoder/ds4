@@ -1,5 +1,13 @@
 # Agent Notes
 
+## Rust Star Research Branches
+
+Before working on a `rust-star` branch, read `RUST_STAR_PROJECT.md` and
+`RUST_STAR_JOURNAL.md`. The project file is the authority for stable scope and
+decisions. The journal is the authority for current state, evidence, blockers,
+and next actions. Update the journal after every meaningful work session and
+before handing work off or allowing context compaction.
+
 `ds4.c` is a DeepSeek V4 Flash specific inference engine. It is not a generic
 GGUF runner. The goal is a small, readable, high-performance C codebase with
 Objective-C only where Metal requires it and Metal kernels under `metal/`.
