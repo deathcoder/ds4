@@ -2,6 +2,7 @@
 
 This is the operational source of truth for current state, evidence, blockers,
 and next actions. Stable scope and contracts live in `RUST_STAR_PROJECT.md`.
+User/hardware/account-dependent work lives in `RUST_STAR_MANUAL_TASKS.md`.
 
 ## Resume Protocol
 
@@ -34,11 +35,19 @@ history; add a correction and update the current-state summary.
   checksummed result bundle from an isolated build of the pinned oracle source.
 - Differential tooling: the initial bundle/full-logit format is stable and has
   cross-platform verification, exact C0 comparison, and drift diagnostics.
+- Benchmarking: `rust-star/BENCHMARK_PROTOCOL.md` fixes the v1 paired workload,
+  eligibility, run ordering, aggregation, and capacity semantics; execution
+  awaits the target Mac and a runnable candidate. The paired raw/summary JSON
+  contract and offline validator/aggregator are implemented and synthetically
+  tested.
 - Implementation: dependency-free Rust host scaffold added under
   `rust-star/runtime/`; it strictly parses GGUF v3 directories, validates the
   Flash resident-Q2 shape/recipe, and writes candidate full-logit artifacts.
   It has not yet been compiled because this workspace has no Rust toolchain.
 - Measurements: no Rust Star correctness or performance runs have been made.
+- Manual handoff: `RUST_STAR_MANUAL_TASKS.md` records Actions approval, target
+  compilation/model inspection, quick/extended oracle capture, and the deferred
+  secure-access decision with exact evidence requirements.
 - Parallel research: DSpark remains separate on
   `origin/codex/dspark-observability-0` and is not on this phase's critical path.
 - Publication: the connected GitHub app is installed on both `deathcoder` and
@@ -61,6 +70,50 @@ history; add a correction and update the current-state summary.
    smallest Metal dispatch prototype before choosing more architecture.
 
 ## Entries
+
+### 2026-08-09 — Manual ledger and paired benchmark v1 defined
+
+Objective:
+
+- Preserve every user/hardware/account-dependent handoff in one actionable
+  ledger and remove benchmark-method ambiguity before measurements begin.
+
+Changes:
+
+- Added `RUST_STAR_MANUAL_TASKS.md` with status rules, security boundaries,
+  exact commands, dependencies, evidence requirements, and success conditions
+  for GitHub Actions approval, target-Mac runtime/model inspection, quick and
+  extended oracle capture, and the deferred secure remote-access decision.
+- Added `workflow_dispatch` to the host-contract workflow so it can be run from
+  GitHub after fork Actions are enabled or approved.
+- Added `rust-star/BENCHMARK_PROTOCOL.md` as
+  `rust-star-paired-benchmark-v1`. It fixes C0 eligibility, batch-one closed-loop
+  decode semantics, 256K primary context, development/full context sets,
+  committed-token metrics, alternating paired order, repetition counts,
+  thermal controls, raw-data retention, pairwise speedup aggregation, and
+  capacity/failure treatment.
+- Added `rust-star/PAIRED_RESULT_FORMAT.md`, a strict standard-library parser,
+  `summarize_paired_benchmark.py`, and synthetic tests for machine-readable raw
+  pairs, host/correctness manifests, exact build/runtime identities,
+  predeclared coverage/order, invalid-pair retention, operational metrics, C0
+  headline eligibility, and within-pair speedup aggregation.
+- Updated the durable project open item to distinguish defining the protocol
+  from executing it and collecting the first DwarfStar numbers.
+
+Validation:
+
+- Python compilation passed for the paired parser, CLI, and tests.
+- All 16 Python contract tests passed, including cross-context schedule and
+  invalid-retry cases.
+- `git diff --check` and workflow/shell static checks passed.
+- No model, Metal, correctness, or performance run was possible in this
+  environment.
+
+Next:
+
+- Define the narrow benchmark-runner interface that will produce paired raw
+  rows from DwarfStar and the future Rust executable without coupling either
+  engine to the aggregator.
 
 ### 2026-08-09 — Strict Rust host-runtime scaffold added
 

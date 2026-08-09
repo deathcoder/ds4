@@ -272,7 +272,8 @@ approximation may silently become the default.
 
 At the start of every session:
 
-1. read this file and `RUST_STAR_JOURNAL.md`;
+1. read this file, `RUST_STAR_JOURNAL.md`, and
+   `RUST_STAR_MANUAL_TASKS.md`;
 2. inspect the current branch, commit, working tree, and remotes;
 3. confirm the active oracle and benchmark configuration; and
 4. resume from the journal's current state and next actions.
@@ -296,7 +297,8 @@ they describe whenever practical.
 - Capture the complete `oracle-v1` manifest on the M1 Ultra.
 - Extend the stable full-logit artifact schema to kernel, layer, and every
   decode-step boundaries as those hooks are implemented.
-- Establish the exact paired benchmark protocol and initial DwarfStar numbers.
+- Execute `rust-star/BENCHMARK_PROTOCOL.md` and capture the initial paired
+  DwarfStar numbers; the v1 protocol itself is now defined.
 - Decide the minimal Rust/Objective-C/Metal interop layer after a measured host
   dispatch prototype.
 - Reproduce the Q2 versus Q2/Q4 throughput observation under controlled runs.

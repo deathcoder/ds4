@@ -1,0 +1,159 @@
+# Rust Star Manual Task Ledger
+
+This file is the source of truth for work that cannot be completed by the
+current coding environment because it requires the M1 Ultra, the real model,
+account-level UI access, or a deliberate user security decision.
+
+Keep engineering history in `RUST_STAR_JOURNAL.md`. Keep stable scope and
+correctness rules in `RUST_STAR_PROJECT.md`. Add tasks here only when a person
+must perform or authorize something, and remove nothing merely because it is
+inconvenient: mark it complete with evidence instead.
+
+## Status Rules
+
+- `READY`: can be performed now when the named access is available.
+- `BLOCKED`: another task or missing resource must be resolved first.
+- `DEFERRED`: intentionally outside the current phase.
+- `DONE`: completed; retain the evidence summary and date.
+
+Do not paste credentials, access tokens, private keys, environment dumps, Mac
+serial/UUID values, or the model into this repository or chat. Model paths in
+shared output should be reduced to the filename where possible.
+
+## M-001 — Confirm GitHub Actions for the research branch
+
+Status: `READY`
+
+Why manual:
+
+- The workflow is published, but no run was visible after the first branch
+  push. Fork Actions may need to be enabled or approved in the GitHub UI.
+
+Procedure:
+
+1. Open the repository's **Actions** tab.
+2. If GitHub presents an enable/approve button for fork workflows, review and
+   enable Actions for `deathcoder/ds4`.
+3. Select **Rust Star host contracts**.
+4. Use **Run workflow**, choose branch `agent/rust-star-bootstrap`, and run it.
+5. Do not alter repository secrets; this workflow needs none.
+
+Return evidence:
+
+- The workflow run URL and final status.
+- If it fails, the failing step name and its plain-text log. Review the log for
+  local paths or other private data before sharing.
+
+Success condition:
+
+- Formatting, Rust tests, release build, Python tests, and the cross-language
+  artifact check all pass on pinned Rust 1.74.
+
+## M-002 — Compile and inspect the real GGUF on the M1 Ultra
+
+Status: `READY`
+
+Prerequisites:
+
+- Access to the M1 Ultra Mac Studio.
+- The DeepSeek-V4-Flash-0731 resident imatrix-Q2 GGUF.
+- Rust 1.74 or newer and Python 3 available on the Mac.
+
+Procedure from a clean checkout:
+
+```sh
+git switch agent/rust-star-bootstrap
+git pull --ff-only
+
+./rust-star/check_runtime.sh \
+  /absolute/path/to/DeepSeek-V4-Flash-0731-Q2-imatrix.gguf \
+  2>&1 | tee rust-star-runtime-check.txt
+```
+
+The model path must remain outside the repository. The inspector reads the
+GGUF metadata and tensor directory but does not read tensor payloads or compute
+the model hash.
+
+Return evidence:
+
+- `rust-star-runtime-check.txt` after checking that it contains no private path
+  you do not want to share. Redacting only the absolute path is acceptable.
+- The output of `rustc --version` and `cargo --version` if the script fails
+  before compilation.
+
+Success condition:
+
+- Host tests and cross-language artifact checks pass.
+- Strict inspection ends with `result: target shape and Q2 recipe valid`.
+
+If strict inspection fails, do not weaken the validator yet. Return the exact
+error so the expected recipe can be reconciled against the real oracle model.
+
+## M-003 — Capture the quick `oracle-v1` bundle
+
+Status: `BLOCKED` on M-002
+
+Procedure:
+
+```sh
+python3 rust-star/capture_oracle_v1.py \
+  --model /absolute/path/to/DeepSeek-V4-Flash-0731-Q2-imatrix.gguf
+```
+
+This runs the default 2K/32K capture with three repetitions. It hashes the full
+model, so it will take longer than M-002.
+
+Return evidence:
+
+- The generated `oracle-v1-*.tar.gz` archive.
+- Its printed SHA-256 or sibling `.sha256` file.
+- Any failure summary printed by the tool.
+
+Success condition:
+
+- `verify_oracle_bundle.py` accepts the returned archive.
+- The manifest is complete and binds the source, model SHA, toolchain, target
+  machine configuration, correctness gates, logits, and performance runs.
+
+## M-004 — Capture extended context frontiers
+
+Status: `BLOCKED` on acceptance of M-003
+
+Procedure:
+
+```sh
+python3 rust-star/capture_oracle_v1.py \
+  --model /absolute/path/to/DeepSeek-V4-Flash-0731-Q2-imatrix.gguf \
+  --full \
+  --repetitions 5
+```
+
+This covers 2K, 32K, 128K, 256K, 512K, and 1M. Close memory-heavy applications
+first. A 512K/1M capacity failure is evidence to preserve, not a reason to hide
+or retry it until it happens to pass.
+
+Return evidence:
+
+- The generated archive and SHA-256.
+- The last completed context if the run stops for capacity.
+
+## M-005 — Decide on secure remote Mac access
+
+Status: `DEFERRED`
+
+This is not required for bootstrap. Before enabling remote execution, make a
+deliberate choice that provides all of the following:
+
+- private network reachability rather than a public inbound service;
+- a dedicated, revocable, short-lived identity;
+- command and directory restrictions appropriate to this repository;
+- no credentials committed to Git or pasted into chat;
+- no access to unrelated personal files or keychains;
+- an audit trail and a simple kill switch.
+
+Document the chosen boundary here before configuring it. Do not improvise
+remote access merely to save a manual benchmark run.
+
+## Completed Tasks
+
+None yet.

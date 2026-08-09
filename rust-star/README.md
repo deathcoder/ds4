@@ -18,6 +18,15 @@ Before the oracle capture, compile its tests and inspect the model directory:
 See `rust-star/runtime/README.md` for its exact scope. It has no Metal or
 inference implementation yet.
 
+Project controls and benchmark contracts:
+
+- `RUST_STAR_MANUAL_TASKS.md` is the canonical ledger for work that needs the
+  target Mac, model, GitHub UI, or a deliberate access decision.
+- `rust-star/BENCHMARK_PROTOCOL.md` defines the paired DwarfStar/Rust Star
+  comparison.
+- `rust-star/PAIRED_RESULT_FORMAT.md` defines the validated raw and summary JSON
+  boundary for future benchmark runners.
+
 ## Quick capture
 
 Clone the published research branch on the Mac Studio, then run:
