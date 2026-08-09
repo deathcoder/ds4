@@ -12,6 +12,8 @@ on:
       - rust-star/artifact_lib.py
       - rust-star/compare_logits.py
       - rust-star/paired_benchmark_lib.py
+      - rust-star/dwarfstar_measurement_lib.py
+      - rust-star/measure_dwarfstar.py
       - rust-star/summarize_paired_benchmark.py
       - rust-star/tests/**
   pull_request:
@@ -22,6 +24,8 @@ on:
       - rust-star/artifact_lib.py
       - rust-star/compare_logits.py
       - rust-star/paired_benchmark_lib.py
+      - rust-star/dwarfstar_measurement_lib.py
+      - rust-star/measure_dwarfstar.py
       - rust-star/summarize_paired_benchmark.py
       - rust-star/tests/**
 

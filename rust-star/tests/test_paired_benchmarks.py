@@ -33,7 +33,7 @@ def metric_row(context: int, steady_tps: float) -> dict[str, int | float]:
         "gen_steady_tps": steady_tps,
         "gen_steady_ms": 127 / steady_tps * 1000,
         "process_wall_ms": 100000 / steady_tps,
-        "model_load_ms": 0.0,
+        "process_overhead_ms": 10.0,
     }
 
 

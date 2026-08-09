@@ -44,7 +44,8 @@ first generated token, including model execution and sampling. Also report:
 - `gen_first_ms` for time to first generated token;
 - `prefill_tps` and total prefill time;
 - committed and steady token counts;
-- KV-cache bytes, process peak memory, and allocation/capacity failures; and
+- KV-cache bytes when exposed with comparable semantics, process peak memory,
+  and allocation/capacity failures; and
 - wall time for the complete process invocation.
 
 The headline is not draft-token speed, accepted-proposal speed, raw GPU kernel
@@ -136,8 +137,10 @@ and practical effect rather than converting noise into a pass/fail target.
 - Thermal throttling is part of sustained behavior when both engines face the
   same paired schedule. A one-sided thermal event invalidates that pair, not the
   complete experiment.
-- Model-load time is excluded from steady decode throughput but remains recorded
-  as an operational metric.
+- Model-load time is excluded from steady decode throughput. Complete process
+  wall time and its residual outside reported prefill/generation intervals are
+  always recorded; model-load time is reported separately only when the engine
+  exposes a real timer for it.
 
 ## Agent-Loop Extension
 

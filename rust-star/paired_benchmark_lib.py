@@ -21,9 +21,9 @@ INTEGER_METRICS = (
     "prefill_tokens",
     "gen_tokens",
     "gen_steady_tokens",
-    "kvcache_bytes",
     "process_peak_bytes",
 )
+NULLABLE_INTEGER_METRICS = ("kvcache_bytes",)
 FLOAT_METRICS = (
     "prefill_tps",
     "prefill_ms",
@@ -34,7 +34,8 @@ FLOAT_METRICS = (
     "gen_steady_ms",
     "process_wall_ms",
 )
-NONNEGATIVE_FLOAT_METRICS = ("model_load_ms",)
+NONNEGATIVE_FLOAT_METRICS = ("process_overhead_ms",)
+OPTIONAL_NONNEGATIVE_FLOAT_METRICS = ("model_load_ms",)
 THROUGHPUT_METRICS = ("prefill_tps", "gen_tps", "gen_steady_tps")
 RATIO_METRICS = (*THROUGHPUT_METRICS, "gen_first_ms")
 
@@ -106,7 +107,7 @@ class EngineIdentity:
 
 @dataclass(frozen=True)
 class MetricRow:
-    values: dict[str, int | float]
+    values: dict[str, int | float | None]
 
 
 @dataclass(frozen=True)
@@ -165,13 +166,23 @@ def _parse_metric_row(
     gen_tokens: int,
 ) -> MetricRow:
     payload = _required_dict(value, name)
-    parsed: dict[str, int | float] = {}
+    parsed: dict[str, int | float | None] = {}
     for metric in INTEGER_METRICS:
         parsed[metric] = _nonnegative_int(payload.get(metric), f"{name}.{metric}")
+    for metric in NULLABLE_INTEGER_METRICS:
+        raw_value = payload.get(metric)
+        parsed[metric] = (
+            None if raw_value is None else _nonnegative_int(raw_value, f"{name}.{metric}")
+        )
     for metric in FLOAT_METRICS:
         parsed[metric] = _finite_number(payload.get(metric), f"{name}.{metric}", positive=True)
     for metric in NONNEGATIVE_FLOAT_METRICS:
         parsed[metric] = _finite_number(payload.get(metric), f"{name}.{metric}", positive=False)
+    for metric in OPTIONAL_NONNEGATIVE_FLOAT_METRICS:
+        if metric in payload:
+            parsed[metric] = _finite_number(
+                payload.get(metric), f"{name}.{metric}", positive=False
+            )
     if parsed["ctx_tokens"] != context:
         raise PairedBenchmarkError(
             f"{name}.ctx_tokens is {parsed['ctx_tokens']}, expected context {context}"

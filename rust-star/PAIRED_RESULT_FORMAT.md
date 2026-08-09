@@ -45,10 +45,21 @@ The model and prompt SHA-256 must match between engines. A valid metric row
 contains:
 
 - integer `ctx_tokens`, `prefill_tokens`, `gen_tokens`, `gen_steady_tokens`,
-  `kvcache_bytes`, and `process_peak_bytes`;
+  and `process_peak_bytes`;
+- nullable nonnegative integer `kvcache_bytes`; `null` means the engine did not
+  expose a comparable live or serialized KV measurement;
 - positive finite `prefill_tps`, `prefill_ms`, `gen_tps`, `gen_ms`,
   `gen_first_ms`, `gen_steady_tps`, `gen_steady_ms`, and `process_wall_ms`; and
-- nonnegative finite `model_load_ms`.
+- nonnegative finite `process_overhead_ms`, defined as complete process wall
+  time minus reported prefill and generation intervals.
+
+An engine may additionally report nonnegative `model_load_ms` when it exposes a
+real model-load timer. Do not present `process_overhead_ms` as pure model-load
+time: it also includes initialization, weight warming, and process teardown.
+
+DwarfStar's CSV `kvcache_bytes` is serialized snapshot payload size. At a
+terminal single frontier no snapshot is created, so the adapter records `null`
+rather than misreporting the emitted zero as live KV allocation.
 
 `summarize_paired_benchmark.py` rejects duplicate/missing pairs, identity drift,
 wrong ordering, inconsistent token counts, and non-finite metrics. Invalid

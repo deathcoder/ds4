@@ -39,7 +39,8 @@ history; add a correction and update the current-state summary.
   eligibility, run ordering, aggregation, and capacity semantics; execution
   awaits the target Mac and a runnable candidate. The paired raw/summary JSON
   contract and offline validator/aggregator are implemented and synthetically
-  tested.
+  tested. A fresh-process DwarfStar adapter now normalizes one frontier while
+  externally recording wall time and peak RSS.
 - Implementation: dependency-free Rust host scaffold added under
   `rust-star/runtime/`; it strictly parses GGUF v3 directories, validates the
   Flash resident-Q2 shape/recipe, and writes candidate full-logit artifacts.
@@ -70,6 +71,46 @@ history; add a correction and update the current-state summary.
    smallest Metal dispatch prototype before choosing more architecture.
 
 ## Entries
+
+### 2026-08-09 — Isolated DwarfStar measurement boundary added
+
+Objective:
+
+- Make the pinned oracle measurable through the future paired-runner boundary
+  without modifying DwarfStar or waiting for a Rust Star decoder.
+
+Changes:
+
+- Added `rust-star/measure_dwarfstar.py` and
+  `dwarfstar_measurement_lib.py`. Each invocation runs one fresh `ds4-bench`
+  process at one frontier, preserves its CSV and sanitized logs, and emits a
+  checksummed `rust-star-engine-measurement-v1` record.
+- Added external complete-process wall time and per-child peak RSS collection.
+  Prefill, full-generation, and steady-generation durations are reconstructed
+  from DwarfStar's reported counts/rates; the residual is explicitly named
+  process overhead rather than inaccurately calling it model-load time.
+- Documented a DwarfStar semantic trap: at a terminal single frontier,
+  `kvcache_bytes=0` means no serialized session snapshot was created. The
+  normalized contract now records `null`, not zero live KV usage.
+- Hardened the adapter against missing/partial CSV output, partial generation,
+  non-finite metrics, non-empty result directories, timeouts, and private path
+  leakage in captured logs.
+- Added `rust-star/MEASUREMENT_ADAPTER.md` and included the adapter in the host
+  workflow path filters.
+
+Validation:
+
+- Python compilation, CLI help, shell syntax, workflow YAML parsing, and
+  `git diff --check` passed.
+- All 20 Python contract tests passed. Synthetic child-process tests cover CSV
+  normalization, per-process measurements, path redaction, and persisted
+  adapter-validation failures.
+- No real DwarfStar/model/Metal measurement was run in this environment.
+
+Next:
+
+- Define the Rust Star adapter against the same single-process schema, then add
+  a checkpointed paired orchestrator that enforces A/B and context order.
 
 ### 2026-08-09 — Manual ledger and paired benchmark v1 defined
 

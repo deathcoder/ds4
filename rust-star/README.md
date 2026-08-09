@@ -26,6 +26,8 @@ Project controls and benchmark contracts:
   comparison.
 - `rust-star/PAIRED_RESULT_FORMAT.md` defines the validated raw and summary JSON
   boundary for future benchmark runners.
+- `rust-star/MEASUREMENT_ADAPTER.md` defines the isolated DwarfStar measurement
+  boundary used to populate those paired records.
 
 ## Quick capture
 
