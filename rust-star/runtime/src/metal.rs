@@ -12,11 +12,13 @@ pub const INGRESS_PROBE_SCHEMA: &str = "rust-star-layer0-attention-ingress-probe
 pub const ATTENTION_SETUP_PROBE_SCHEMA: &str = "rust-star-layer0-attention-setup-probe-v1";
 pub const ROPE_KV_STORE_PROBE_SCHEMA: &str = "rust-star-layer0-rope-kv-store-probe-v1";
 pub const ATTENTION_READ_PROBE_SCHEMA: &str = "rust-star-layer0-attention-read-probe-v1";
+pub const ATTENTION_OUTPUT_PROBE_SCHEMA: &str = "rust-star-layer0-attention-output-probe-v1";
 pub const PROJECTION_FIXTURE_ID: &str = "dwarfstar-oracle-v1-layer0-pos1-attn-q-a";
 pub const INGRESS_FIXTURE_ID: &str = "dwarfstar-oracle-v1-layer0-pos1-attention-ingress";
 pub const ATTENTION_SETUP_FIXTURE_ID: &str = "dwarfstar-oracle-v1-layer0-pos1-qkv-setup";
 pub const ROPE_KV_STORE_FIXTURE_ID: &str = "dwarfstar-oracle-v1-layer0-pos1-rope-kv-store";
 pub const ATTENTION_READ_FIXTURE_ID: &str = "dwarfstar-oracle-v1-layer0-pos1-attention-read";
+pub const ATTENTION_OUTPUT_FIXTURE_ID: &str = "dwarfstar-oracle-v1-layer0-pos1-attention-output";
 pub const DEFAULT_ELEMENTS: u64 = 4096;
 pub const DEFAULT_ITERATIONS: u64 = 100;
 const MAX_ELEMENTS: u64 = 16 * 1024 * 1024;
@@ -66,6 +68,14 @@ const ATTENTION_CACHE_ROW1_BYTES: &[u8] =
     include_bytes!("../../fixtures/layer0-attention-read-v1/cache-row1.f32le.bin");
 const ATTENTION_BACK_BYTES: &[u8] =
     include_bytes!("../../fixtures/layer0-attention-read-v1/kqv-back.f32le.bin");
+const OUTPUT_KQV_BACK_BYTES: &[u8] =
+    include_bytes!("../../fixtures/layer0-attention-output-v1/kqv-back.f32le.bin");
+const OUTPUT_LOW_BYTES: &[u8] =
+    include_bytes!("../../fixtures/layer0-attention-output-v1/attn-low.f32le.bin");
+const OUTPUT_ATTN_BYTES: &[u8] =
+    include_bytes!("../../fixtures/layer0-attention-output-v1/attn-out.f32le.bin");
+const OUTPUT_HC_POST_BYTES: &[u8] =
+    include_bytes!("../../fixtures/layer0-attention-output-v1/hc-attn-post.f32le.bin");
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct ProbeConfig {
@@ -233,6 +243,22 @@ pub struct AttentionReadProbeReport {
     pub attention_back_checksum: u64,
 }
 
+#[derive(Clone, Debug)]
+pub struct AttentionOutputProbeReport {
+    pub fixture_id: &'static str,
+    pub token: u32,
+    pub dispatches: u32,
+    pub output_groups: u32,
+    pub output_rank: u32,
+    pub wrapped_model_ranges: u32,
+    pub pointer_matches: u32,
+    pub wall_ms: f64,
+    pub gpu_ms: f64,
+    pub attention_low_checksum: u64,
+    pub attention_out_checksum: u64,
+    pub hc_post_checksum: u64,
+}
+
 pub fn write_ingress_probe_json<W: Write>(
     output: &mut W,
     report: &IngressProbeReport,
@@ -322,6 +348,29 @@ pub fn write_attention_read_probe_json<W: Write>(
         report.gpu_ms,
         report.attention_raw_checksum,
         report.attention_back_checksum,
+    )?;
+    Ok(())
+}
+
+pub fn write_attention_output_probe_json<W: Write>(
+    output: &mut W,
+    report: &AttentionOutputProbeReport,
+) -> Result<()> {
+    write!(
+        output,
+        "{{\n  \"schema\": \"{ATTENTION_OUTPUT_PROBE_SCHEMA}\",\n  \"fixture\": \"{}\",\n  \"token\": {},\n  \"dispatches\": {},\n  \"projection\": {{\n    \"groups\": {},\n    \"rank_per_group\": {}\n  }},\n  \"mapping\": {{\n    \"wrapped_model_ranges\": {},\n    \"pointer_matches\": {}\n  }},\n  \"timing\": {{\n    \"wall_ms\": {:.6},\n    \"gpu_ms\": {:.6}\n  }},\n  \"checksums\": {{\n    \"attn_low\": {},\n    \"attn_out\": {},\n    \"hc_attn_post\": {}\n  }},\n  \"c0_bitwise_match\": true\n}}\n",
+        report.fixture_id,
+        report.token,
+        report.dispatches,
+        report.output_groups,
+        report.output_rank,
+        report.wrapped_model_ranges,
+        report.pointer_matches,
+        report.wall_ms,
+        report.gpu_ms,
+        report.attention_low_checksum,
+        report.attention_out_checksum,
+        report.hc_post_checksum,
     )?;
     Ok(())
 }
@@ -645,6 +694,15 @@ fn attention_read_fixture() -> Result<(Vec<f32>, Vec<f32>, Vec<f32>)> {
     ))
 }
 
+fn attention_output_fixture() -> Result<(Vec<f32>, Vec<f32>, Vec<f32>, Vec<f32>)> {
+    Ok((
+        decode_f32_fixture(OUTPUT_KQV_BACK_BYTES, "output KQv back")?,
+        decode_f32_fixture(OUTPUT_LOW_BYTES, "attention output low")?,
+        decode_f32_fixture(OUTPUT_ATTN_BYTES, "attention output projection")?,
+        decode_f32_fixture(OUTPUT_HC_POST_BYTES, "attention HC post-state")?,
+    ))
+}
+
 fn exact_tensor<'a>(
     model: &'a MappedModel,
     name: &str,
@@ -883,6 +941,10 @@ mod imp {
             q_b_bytes: u64,
             attn_sinks_offset: u64,
             attn_sinks_bytes: u64,
+            attn_output_a_offset: u64,
+            attn_output_a_bytes: u64,
+            attn_output_b_offset: u64,
+            attn_output_b_bytes: u64,
             mixes: *mut f32,
             split: *mut f32,
             collapsed: *mut f32,
@@ -899,6 +961,9 @@ mod imp {
             cache_row0: *const f32,
             attention_raw: *mut f32,
             attention_back: *mut f32,
+            attention_low: *mut f32,
+            attention_out: *mut f32,
+            after_attention_hc: *mut f32,
             result: *mut RawIngressProbeResult,
             error: *mut c_char,
             error_bytes: usize,
@@ -1268,6 +1333,10 @@ mod imp {
                 0,
                 0,
                 0,
+                0,
+                0,
+                0,
+                0,
                 mixes.as_mut_ptr(),
                 split.as_mut_ptr(),
                 collapsed.as_mut_ptr(),
@@ -1282,6 +1351,9 @@ mod imp {
                 ptr::null_mut(),
                 ptr::null_mut(),
                 ptr::null(),
+                ptr::null_mut(),
+                ptr::null_mut(),
+                ptr::null_mut(),
                 ptr::null_mut(),
                 ptr::null_mut(),
                 &mut raw,
@@ -1424,6 +1496,10 @@ mod imp {
                 q_b.bytes,
                 0,
                 0,
+                0,
+                0,
+                0,
+                0,
                 mixes.as_mut_ptr(),
                 split.as_mut_ptr(),
                 collapsed.as_mut_ptr(),
@@ -1438,6 +1514,9 @@ mod imp {
                 ptr::null_mut(),
                 ptr::null_mut(),
                 ptr::null(),
+                ptr::null_mut(),
+                ptr::null_mut(),
+                ptr::null_mut(),
                 ptr::null_mut(),
                 ptr::null_mut(),
                 &mut raw,
@@ -1583,6 +1662,10 @@ mod imp {
                 q_b.bytes,
                 0,
                 0,
+                0,
+                0,
+                0,
+                0,
                 mixes.as_mut_ptr(),
                 split.as_mut_ptr(),
                 collapsed.as_mut_ptr(),
@@ -1597,6 +1680,9 @@ mod imp {
                 kv_cur.as_mut_ptr(),
                 cache_rows.as_mut_ptr(),
                 ptr::null(),
+                ptr::null_mut(),
+                ptr::null_mut(),
+                ptr::null_mut(),
                 ptr::null_mut(),
                 ptr::null_mut(),
                 &mut raw,
@@ -1773,6 +1859,10 @@ mod imp {
                 q_b.bytes,
                 sinks.absolute_offset,
                 sinks.bytes,
+                0,
+                0,
+                0,
+                0,
                 mixes.as_mut_ptr(),
                 split.as_mut_ptr(),
                 collapsed.as_mut_ptr(),
@@ -1789,6 +1879,9 @@ mod imp {
                 expected_cache_row0.as_ptr(),
                 attention_raw.as_mut_ptr(),
                 attention_back.as_mut_ptr(),
+                ptr::null_mut(),
+                ptr::null_mut(),
+                ptr::null_mut(),
                 &mut raw,
                 error.as_mut_ptr(),
                 error.len(),
@@ -1875,6 +1968,190 @@ mod imp {
             attention_back_checksum: checksum_f32(&attention_back),
         })
     }
+
+    pub fn run_attention_output_probe(model: &MappedModel) -> Result<AttentionOutputProbeReport> {
+        const TOKEN: u32 = 201;
+        let embedding = exact_tensor(model, "token_embd.weight", 1, &[4096, 129280])?;
+        let hc_fn = exact_tensor(model, "blk.0.hc_attn_fn.weight", 1, &[16384, 24])?;
+        let hc_scale = exact_tensor(model, "blk.0.hc_attn_scale.weight", 0, &[3])?;
+        let hc_base = exact_tensor(model, "blk.0.hc_attn_base.weight", 0, &[24])?;
+        let norm_weight = exact_tensor(model, "blk.0.attn_norm.weight", 0, &[4096])?;
+        let q_a = exact_tensor(model, "blk.0.attn_q_a.weight", 8, &[4096, 1024])?;
+        let q_a_norm = exact_tensor(model, "blk.0.attn_q_a_norm.weight", 0, &[1024])?;
+        let kv = exact_tensor(model, "blk.0.attn_kv.weight", 8, &[4096, 512])?;
+        let kv_norm_weight = exact_tensor(model, "blk.0.attn_kv_a_norm.weight", 0, &[512])?;
+        let q_b = exact_tensor(model, "blk.0.attn_q_b.weight", 8, &[1024, 32768])?;
+        let sinks = exact_tensor(model, "blk.0.attn_sinks.weight", 0, &[64])?;
+        let output_a = exact_tensor(model, "blk.0.attn_output_a.weight", 8, &[4096, 8192])?;
+        let output_b = exact_tensor(model, "blk.0.attn_output_b.weight", 8, &[8192, 4096])?;
+        let (expected_cache_row0, _, _) = attention_read_fixture()?;
+        let (expected_back, expected_low, expected_out, expected_hc_post) =
+            attention_output_fixture()?;
+
+        let mut mixes = vec![0.0_f32; 24];
+        let mut split = vec![0.0_f32; 24];
+        let mut collapsed = vec![0.0_f32; 4096];
+        let mut norm = vec![0.0_f32; 4096];
+        let mut q_lora = vec![0.0_f32; 1024];
+        let mut q_lora_norm = vec![0.0_f32; 1024];
+        let mut kv_raw = vec![0.0_f32; 512];
+        let mut kv_after_store = vec![0.0_f32; 512];
+        let mut q_raw = vec![0.0_f32; 32768];
+        let mut q_cur = vec![0.0_f32; 32768];
+        let mut kv_rope = vec![0.0_f32; 512];
+        let mut kv_cur = vec![0.0_f32; 512];
+        let mut cache_rows = vec![0.0_f32; 3 * 512];
+        let mut attention_raw = vec![0.0_f32; 32768];
+        let mut attention_back = vec![0.0_f32; 32768];
+        let mut attention_low = vec![0.0_f32; 8192];
+        let mut attention_out = vec![0.0_f32; 4096];
+        let mut after_attention_hc = vec![0.0_f32; 4 * 4096];
+
+        let mut error = [0 as c_char; ERROR_BYTES];
+        let mut pointer = ptr::null_mut();
+        let created =
+            unsafe { rust_star_metal_create(&mut pointer, error.as_mut_ptr(), error.len()) };
+        if created == 0 || pointer.is_null() {
+            return Err(Error::invalid(format!(
+                "Metal initialization failed: {}",
+                error_text(&error)
+            )));
+        }
+        let context = Context(pointer);
+        error.fill(0);
+        let mut raw = RawIngressProbeResult::default();
+        let succeeded = unsafe {
+            rust_star_metal_run_attention_ingress(
+                context.0,
+                model.mapping_pointer(),
+                model.bytes(),
+                TOKEN,
+                129280,
+                embedding.absolute_offset,
+                embedding.bytes,
+                hc_fn.absolute_offset,
+                hc_fn.bytes,
+                hc_scale.absolute_offset,
+                hc_scale.bytes,
+                hc_base.absolute_offset,
+                hc_base.bytes,
+                norm_weight.absolute_offset,
+                norm_weight.bytes,
+                q_a.absolute_offset,
+                q_a.bytes,
+                q_a_norm.absolute_offset,
+                q_a_norm.bytes,
+                kv.absolute_offset,
+                kv.bytes,
+                kv_norm_weight.absolute_offset,
+                kv_norm_weight.bytes,
+                q_b.absolute_offset,
+                q_b.bytes,
+                sinks.absolute_offset,
+                sinks.bytes,
+                output_a.absolute_offset,
+                output_a.bytes,
+                output_b.absolute_offset,
+                output_b.bytes,
+                mixes.as_mut_ptr(),
+                split.as_mut_ptr(),
+                collapsed.as_mut_ptr(),
+                norm.as_mut_ptr(),
+                q_lora.as_mut_ptr(),
+                q_lora_norm.as_mut_ptr(),
+                kv_raw.as_mut_ptr(),
+                kv_after_store.as_mut_ptr(),
+                q_raw.as_mut_ptr(),
+                q_cur.as_mut_ptr(),
+                kv_rope.as_mut_ptr(),
+                kv_cur.as_mut_ptr(),
+                cache_rows.as_mut_ptr(),
+                expected_cache_row0.as_ptr(),
+                attention_raw.as_mut_ptr(),
+                attention_back.as_mut_ptr(),
+                attention_low.as_mut_ptr(),
+                attention_out.as_mut_ptr(),
+                after_attention_hc.as_mut_ptr(),
+                &mut raw,
+                error.as_mut_ptr(),
+                error.len(),
+            )
+        };
+        if succeeded == 0 {
+            return Err(Error::invalid(format!(
+                "Metal layer-0 attention-output probe failed: {}",
+                error_text(&error)
+            )));
+        }
+        if raw.model_bytes != model.bytes()
+            || raw.wrapped_model_ranges != 13
+            || raw.pointer_matches != 13
+        {
+            return Err(Error::invalid(
+                "Metal attention-output path did not preserve all thirteen mmap-backed model ranges",
+            ));
+        }
+        for (label, actual, expected) in [
+            (
+                "kqv_back",
+                attention_back.as_slice(),
+                expected_back.as_slice(),
+            ),
+            (
+                "attn_low",
+                attention_low.as_slice(),
+                expected_low.as_slice(),
+            ),
+            (
+                "attn_out",
+                attention_out.as_slice(),
+                expected_out.as_slice(),
+            ),
+            (
+                "hc_attn_post",
+                after_attention_hc.as_slice(),
+                expected_hc_post.as_slice(),
+            ),
+        ] {
+            if actual.len() != expected.len() {
+                return Err(Error::invalid(format!("{label} fixture length mismatch")));
+            }
+            for (index, (actual, expected)) in actual.iter().zip(expected).enumerate() {
+                if actual.to_bits() != expected.to_bits() {
+                    return Err(Error::invalid(format!(
+                        "attention-output C0 mismatch in {label}[{index}]: actual={:#010x} expected={:#010x}",
+                        actual.to_bits(), expected.to_bits()
+                    )));
+                }
+            }
+        }
+        for (name, value) in [("wall_ms", raw.wall_ms), ("gpu_ms", raw.gpu_ms)] {
+            if !value.is_finite() || value < 0.0 {
+                return Err(Error::invalid(format!(
+                    "Metal attention-output returned invalid {name}"
+                )));
+            }
+        }
+        if raw.wall_ms == 0.0 {
+            return Err(Error::invalid(
+                "Metal attention-output returned a zero wall interval",
+            ));
+        }
+        Ok(AttentionOutputProbeReport {
+            fixture_id: ATTENTION_OUTPUT_FIXTURE_ID,
+            token: TOKEN,
+            dispatches: 19,
+            output_groups: 8,
+            output_rank: 1024,
+            wrapped_model_ranges: raw.wrapped_model_ranges,
+            pointer_matches: raw.pointer_matches,
+            wall_ms: raw.wall_ms,
+            gpu_ms: raw.gpu_ms,
+            attention_low_checksum: checksum_f32(&attention_low),
+            attention_out_checksum: checksum_f32(&attention_out),
+            hc_post_checksum: checksum_f32(&after_attention_hc),
+        })
+    }
 }
 
 #[cfg(not(target_os = "macos"))]
@@ -1942,11 +2219,21 @@ mod imp {
             "the Metal layer-0 attention-read probe is available only on macOS",
         ))
     }
+
+    pub fn run_attention_output_probe(model: &MappedModel) -> Result<AttentionOutputProbeReport> {
+        let _ = attention_output_fixture()?;
+        let _ = exact_tensor(model, "blk.0.attn_output_a.weight", 8, &[4096, 8192])?;
+        let _ = exact_tensor(model, "blk.0.attn_output_b.weight", 8, &[8192, 4096])?;
+        Err(Error::invalid(
+            "the Metal layer-0 attention-output probe is available only on macOS",
+        ))
+    }
 }
 
 pub use imp::{
-    run_attention_ingress_probe, run_attention_read_probe, run_attention_setup_probe,
-    run_f16_embedding_probe, run_probe, run_q8_projection_probe, run_rope_kv_store_probe,
+    run_attention_ingress_probe, run_attention_output_probe, run_attention_read_probe,
+    run_attention_setup_probe, run_f16_embedding_probe, run_probe, run_q8_projection_probe,
+    run_rope_kv_store_probe,
 };
 
 #[cfg(test)]
@@ -2086,6 +2373,23 @@ mod tests {
         }
     }
 
+    fn attention_output_report() -> AttentionOutputProbeReport {
+        AttentionOutputProbeReport {
+            fixture_id: ATTENTION_OUTPUT_FIXTURE_ID,
+            token: 201,
+            dispatches: 19,
+            output_groups: 8,
+            output_rank: 1024,
+            wrapped_model_ranges: 13,
+            pointer_matches: 13,
+            wall_ms: 2.0,
+            gpu_ms: 1.0,
+            attention_low_checksum: 7,
+            attention_out_checksum: 8,
+            hc_post_checksum: 9,
+        }
+    }
+
     #[test]
     fn validates_probe_work_bounds() {
         assert!(ProbeConfig::default().validate().is_ok());
@@ -2185,6 +2489,17 @@ mod tests {
     }
 
     #[test]
+    fn writes_stable_attention_output_probe_json() {
+        let mut output = Vec::new();
+        write_attention_output_probe_json(&mut output, &attention_output_report()).unwrap();
+        let text = String::from_utf8(output).unwrap();
+        assert!(text.contains(&format!("\"schema\": \"{ATTENTION_OUTPUT_PROBE_SCHEMA}\"")));
+        assert!(text.contains(&format!("\"fixture\": \"{ATTENTION_OUTPUT_FIXTURE_ID}\"")));
+        assert!(text.contains("\"groups\": 8"));
+        assert!(text.contains("\"hc_attn_post\": 9"));
+    }
+
+    #[test]
     fn rope_kv_store_fixture_has_target_shapes() {
         let (q_cur, kv_rope, kv_cur, cache_row) = rope_kv_store_fixture().unwrap();
         assert_eq!(q_cur.len(), 64 * 512);
@@ -2205,6 +2520,15 @@ mod tests {
         assert_eq!(cache_row0.len(), 512);
         assert_eq!(cache_row1.len(), 512);
         assert_eq!(attention_back.len(), 64 * 512);
+    }
+
+    #[test]
+    fn attention_output_fixture_has_target_shapes() {
+        let (back, low, out, hc_post) = attention_output_fixture().unwrap();
+        assert_eq!(back.len(), 64 * 512);
+        assert_eq!(low.len(), 8 * 1024);
+        assert_eq!(out.len(), 4096);
+        assert_eq!(hc_post.len(), 4 * 4096);
     }
 
     #[test]

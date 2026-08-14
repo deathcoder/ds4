@@ -186,3 +186,21 @@ The probe initializes row 0 from the oracle, writes row 1 through the already
 validated KV-store kernel, and leaves row 2 as a guard. It then requires row 0
 to remain unchanged, row 1 to match its oracle, row 2 to retain its sentinel,
 and all 32,768 post-inverse-RoPE attention values to match DwarfStar bit-for-bit.
+
+## Layer-0 grouped attention output and HC post-update
+
+Schema: `rust-star-layer0-attention-output-probe-v1`.
+
+`attention-output-probe` extends the connected path to nineteen dispatches and
+thirteen independently wrapped mmap-backed model ranges. It imports the two
+exact release kernels after inverse RoPE. The first treats the 64 attention
+heads as eight fixed groups and applies the block-diagonal Q8_0 output-A
+projection to an 8×1,024 low-rank tensor. The second applies output-B and folds
+the learned HC post weights plus the four residual streams into the same Q8_0
+dispatch, while retaining the 4,096-value block output for diagnostics.
+
+The `layer0-attention-output-v1` fixture contains two byte-identical
+fresh-process DwarfStar captures of `attn_low`, `attn_out`, and
+`hc_attn_post`. The runtime requires all 8,192 low-rank values, all 4,096
+attention output values, and all 16,384 updated HC-state values to match their
+FP32 bit patterns exactly.

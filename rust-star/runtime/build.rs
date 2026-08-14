@@ -16,6 +16,7 @@ fn main() {
     println!("cargo:rerun-if-changed=src/metal_shim.h");
     println!("cargo:rerun-if-changed=src/metal_shim.m");
     println!("cargo:rerun-if-changed=src/attention_ingress.metal");
+    println!("cargo:rerun-if-changed=src/attention_output.metal");
     println!("cargo:rerun-if-changed=../../metal/dsv4_rope.metal");
     println!("cargo:rerun-if-changed=../../metal/dsv4_kv.metal");
     println!("cargo:rerun-if-changed=../../metal/cpy.metal");
@@ -38,6 +39,12 @@ fn main() {
             manifest.join("../../metal/flash_attn.metal"),
         ],
         &output.join("attention_ingress_source.inc"),
+        "kAttentionIngressSource",
+    );
+    write_metal_source_include(
+        &[manifest.join("src/attention_output.metal")],
+        &output.join("attention_output_source.inc"),
+        "kAttentionOutputSource",
     );
     let architecture = match env::var("CARGO_CFG_TARGET_ARCH").as_deref() {
         Ok("aarch64") => "arm64",
@@ -77,8 +84,8 @@ fn main() {
     print_link_directives(&output);
 }
 
-fn write_metal_source_include(sources: &[PathBuf], output: &Path) {
-    let mut generated = String::from("static NSString *const kAttentionIngressSource =\n");
+fn write_metal_source_include(sources: &[PathBuf], output: &Path, symbol: &str) {
+    let mut generated = format!("static NSString *const {symbol} =\n");
     for source in sources {
         let input = fs::read_to_string(source)
             .unwrap_or_else(|error| panic!("failed to read {}: {error}", source.display()));

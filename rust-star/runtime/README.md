@@ -1,7 +1,7 @@
 # Rust Star host-runtime scaffold
 
 This crate is the smallest executable boundary for the new engine. It is
-model-specific by design and currently contains one connected seventeen-dispatch
+model-specific by design and currently contains one connected nineteen-dispatch
 layer segment, not a decoder.
 
 Implemented contracts:
@@ -33,6 +33,9 @@ Implemented contracts:
 - the first stateful read: exact raw-cache F16 staging, padded 512-wide
   FlashAttention/reduction over positions 0-1, and inverse RoPE, checked against
   DwarfStar's complete 64×512 `kqv_back` boundary.
+- DwarfStar's grouped Q8 attention output projection and fused four-stream HC
+  post-update, checked at the 8×1,024 low-rank, 4,096 output, and 4×4,096
+  updated-state boundaries.
 
 The validator proves model shape and quantization-recipe identity. It does not
 pretend that a mutable GGUF name proves the `0731` checkpoint. The completed
@@ -161,3 +164,16 @@ This seventeen-dispatch checkpoint stages cache rows 0-1 to F16, executes
 DwarfStar's padded 512-wide FlashAttention and reduction, then applies inverse
 RoPE. It preserves the first cache row and guard row and requires the complete
 64×512 `kqv_back` result to match the pinned DwarfStar oracle bit-for-bit.
+
+To validate the attention output and HC state update:
+
+```sh
+rust-star/.work/runtime-target/release/rust-star attention-output-probe \
+  /absolute/path/to/model.gguf \
+  --json rust-star/.work/runtime-target/attention-output-probe.json
+```
+
+This adds the two release Q8 kernels used by DwarfStar: the eight-group
+block-diagonal projection to 8×1,024 low-rank values, followed by the fused
+8,192-to-4,096 expansion and four-stream HC post-update. All three retained
+boundaries must match the oracle bit-for-bit.

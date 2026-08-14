@@ -69,6 +69,7 @@ static NSString *const kGetRowsF16Source =
     @"template [[host_name(\"kernel_get_rows_f16\")]] kernel get_rows_f_t kernel_get_rows_f<half, float>;\n";
 
 #include "attention_ingress_source.inc"
+#include "attention_output_source.inc"
 
 // Imported from DwarfStar metal/dense.metal. The fixed target uses DwarfStar's
 // default four simdgroups and two output rows per threadgroup.
@@ -176,6 +177,9 @@ static NSString *const kQ8ProjectionSource =
 @property(nonatomic, strong) id<MTLComputePipelineState> flashPadPipeline;
 @property(nonatomic, strong) id<MTLComputePipelineState> flashVecPipeline;
 @property(nonatomic, strong) id<MTLComputePipelineState> flashReducePipeline;
+@property(nonatomic, strong) id<MTLLibrary> attentionOutputLibrary;
+@property(nonatomic, strong) id<MTLComputePipelineState> attentionOutputLowPipeline;
+@property(nonatomic, strong) id<MTLComputePipelineState> attentionOutputHcPipeline;
 @property(nonatomic, assign) double setupMilliseconds;
 @property(nonatomic, assign) double compileMilliseconds;
 @end
@@ -417,6 +421,40 @@ static int ensure_attention_ingress_pipelines(
         return fail_with_message(error, error_bytes, compile_error.localizedDescription);
     }
     context.attentionIngressLibrary = library;
+    return 1;
+}
+
+static int ensure_attention_output_pipelines(
+    RustStarMetalContext *context,
+    char *error,
+    size_t error_bytes)
+{
+    if (context.attentionOutputLibrary) return 1;
+    NSError *compile_error = nil;
+    id<MTLLibrary> library =
+        [context.device newLibraryWithSource:kAttentionOutputSource
+                                      options:[MTLCompileOptions new]
+                                        error:&compile_error];
+    if (!library) return fail_with_message(error, error_bytes, compile_error.localizedDescription);
+    int16_t simdgroups = 4;
+    MTLFunctionConstantValues *constants = [MTLFunctionConstantValues new];
+    [constants setConstantValue:&simdgroups type:MTLDataTypeShort atIndex:600];
+    id<MTLFunction> low = [library newFunctionWithName:@"kernel_dsv4_attn_out_low_q8_0_f32"
+                                        constantValues:constants error:&compile_error];
+    id<MTLFunction> hc = [library newFunctionWithName:@"kernel_dsv4_q8_hc_expand4_q8_0"
+                                       constantValues:constants error:&compile_error];
+    if (!low || !hc) {
+        return fail_with_message(error, error_bytes,
+            compile_error ? compile_error.localizedDescription : @"attention-output kernel was not found");
+    }
+    context.attentionOutputLowPipeline =
+        [context.device newComputePipelineStateWithFunction:low error:&compile_error];
+    context.attentionOutputHcPipeline =
+        [context.device newComputePipelineStateWithFunction:hc error:&compile_error];
+    if (!context.attentionOutputLowPipeline || !context.attentionOutputHcPipeline) {
+        return fail_with_message(error, error_bytes, compile_error.localizedDescription);
+    }
+    context.attentionOutputLibrary = library;
     return 1;
 }
 
@@ -794,6 +832,30 @@ typedef struct rust_star_flash_reduce_args {
     int32_t nrows;
 } rust_star_flash_reduce_args;
 
+typedef struct rust_star_q8_mv_id_args {
+    int32_t nei0, nei1;
+    uint64_t nbi1;
+    int32_t ne00, ne01, ne02;
+    uint64_t nb00, nb01, nb02;
+    int32_t ne10, ne11, ne12, ne13;
+    uint64_t nb10, nb11, nb12;
+    int32_t ne0, ne1;
+    uint64_t nb1;
+    int32_t nr0;
+    int32_t tp_rank, tp_world, tp_addend, tp_expert_base;
+} rust_star_q8_mv_id_args;
+
+typedef struct rust_star_hc_expand_args {
+    int64_t n_embd, n_hc, n_tokens;
+    uint64_t nb_block0, nb_block1;
+    uint64_t nb_add0, nb_add1;
+    uint64_t nb_res0, nb_res1, nb_res2;
+    uint64_t nb_post0, nb_post1;
+    uint64_t nb_comb0, nb_comb1, nb_comb2;
+    uint64_t nb0, nb1, nb2;
+    int32_t has_add;
+} rust_star_hc_expand_args;
+
 static id<MTLBuffer> wrap_model_range(
     RustStarMetalContext *context,
     const void *model_mapping,
@@ -1003,6 +1065,10 @@ int rust_star_metal_run_attention_ingress(
     uint64_t q_b_bytes,
     uint64_t attn_sinks_offset,
     uint64_t attn_sinks_bytes,
+    uint64_t attn_output_a_offset,
+    uint64_t attn_output_a_bytes,
+    uint64_t attn_output_b_offset,
+    uint64_t attn_output_b_bytes,
     float *mixes,
     float *split,
     float *collapsed,
@@ -1019,6 +1085,9 @@ int rust_star_metal_run_attention_ingress(
     const float *cache_row0,
     float *attention_raw,
     float *attention_back,
+    float *attention_low,
+    float *attention_out,
+    float *after_attention_hc,
     rust_star_metal_ingress_probe_result *result,
     char *error,
     size_t error_bytes)
@@ -1036,6 +1105,8 @@ int rust_star_metal_run_attention_ingress(
     const BOOL partial_rope_and_store = q_cur || kv_rope || kv_cur || cache_rows;
     const BOOL attention_read = cache_row0 && attention_raw && attention_back;
     const BOOL partial_attention_read = cache_row0 || attention_raw || attention_back;
+    const BOOL attention_output = attention_low && attention_out && after_attention_hc;
+    const BOOL partial_attention_output = attention_low || attention_out || after_attention_hc;
     if (!opaque_context || !model_mapping || !mixes || !split || !collapsed ||
         !attn_norm || !q_lora || !result || n_vocab == 0 || token >= n_vocab) {
         return fail_with_message(error, error_bytes, @"attention ingress received invalid inputs");
@@ -1050,6 +1121,10 @@ int rust_star_metal_run_attention_ingress(
     if (partial_attention_read && (!attention_read || !rope_and_store)) {
         return fail_with_message(error, error_bytes,
             @"attention-read outputs require the complete RoPE/cache output set");
+    }
+    if (partial_attention_output && (!attention_output || !attention_read)) {
+        return fail_with_message(error, error_bytes,
+            @"attention-output results require the complete attention-read output set");
     }
     if (embedding_bytes != (uint64_t)n_embd*n_vocab*sizeof(uint16_t) ||
         hc_fn_bytes != (uint64_t)hc_dim*mix_hc*sizeof(uint16_t) ||
@@ -1068,19 +1143,26 @@ int rust_star_metal_run_attention_ingress(
     if (attention_read && attn_sinks_bytes != 64u*sizeof(float)) {
         return fail_with_message(error, error_bytes, @"attention sink tensor shape is invalid");
     }
+    if (attention_output &&
+        (attn_output_a_bytes != 8ull*1024ull*((4096ull/32ull)*34ull) ||
+         attn_output_b_bytes != 4096ull*((8192ull/32ull)*34ull))) {
+        return fail_with_message(error, error_bytes, @"attention-output tensor shapes are invalid");
+    }
 
     @autoreleasepool {
         RustStarMetalContext *context = (__bridge RustStarMetalContext *)opaque_context;
         if (!ensure_get_rows_f16_pipeline(context, error, error_bytes) ||
             !ensure_attention_ingress_pipelines(context, error, error_bytes) ||
-            !ensure_q8_projection_pipeline(context, error, error_bytes)) return 0;
+            !ensure_q8_projection_pipeline(context, error, error_bytes) ||
+            (attention_output && !ensure_attention_output_pipelines(context, error, error_bytes))) return 0;
         memset(result, 0, sizeof(*result));
 
         NSUInteger embedding_inner = 0, hc_fn_inner = 0, scale_inner = 0;
         NSUInteger base_inner = 0, norm_inner = 0, q_inner = 0;
         NSUInteger q_norm_inner = 0, kv_inner = 0, kv_norm_inner = 0, q_b_inner = 0;
         NSUInteger sinks_inner = 0;
-        BOOL matches[11] = {NO, NO, NO, NO, NO, NO, NO, NO, NO, NO, NO};
+        NSUInteger output_a_inner = 0, output_b_inner = 0;
+        BOOL matches[13] = {NO, NO, NO, NO, NO, NO, NO, NO, NO, NO, NO, NO, NO};
         id<MTLBuffer> embedding_weights = wrap_model_range(context, model_mapping, model_bytes,
             embedding_offset, embedding_bytes, &embedding_inner, &matches[0], error, error_bytes);
         id<MTLBuffer> hc_fn_weights = wrap_model_range(context, model_mapping, model_bytes,
@@ -1100,6 +1182,8 @@ int rust_star_metal_run_attention_ingress(
         id<MTLBuffer> kv_norm_weights = nil;
         id<MTLBuffer> q_b_weights = nil;
         id<MTLBuffer> sinks_weights = nil;
+        id<MTLBuffer> output_a_weights = nil;
+        id<MTLBuffer> output_b_weights = nil;
         if (extended) {
             q_norm_weights = wrap_model_range(context, model_mapping, model_bytes,
                 q_a_norm_offset, q_a_norm_bytes, &q_norm_inner, &matches[6], error, error_bytes);
@@ -1115,6 +1199,13 @@ int rust_star_metal_run_attention_ingress(
             sinks_weights = wrap_model_range(context, model_mapping, model_bytes,
                 attn_sinks_offset, attn_sinks_bytes, &sinks_inner, &matches[10], error, error_bytes);
             if (!sinks_weights) return 0;
+        }
+        if (attention_output) {
+            output_a_weights = wrap_model_range(context, model_mapping, model_bytes,
+                attn_output_a_offset, attn_output_a_bytes, &output_a_inner, &matches[11], error, error_bytes);
+            output_b_weights = wrap_model_range(context, model_mapping, model_bytes,
+                attn_output_b_offset, attn_output_b_bytes, &output_b_inner, &matches[12], error, error_bytes);
+            if (!output_a_weights || !output_b_weights) return 0;
         }
 
         id<MTLBuffer> embedding = [context.device newBufferWithLength:n_embd*sizeof(float) options:MTLResourceStorageModeShared];
@@ -1142,6 +1233,9 @@ int rust_star_metal_run_attention_ingress(
         id<MTLBuffer> flash_tmp_buffer = attention_read ? [context.device newBufferWithLength:flash_tmp_bytes options:MTLResourceStorageModeShared] : nil;
         id<MTLBuffer> attention_raw_buffer = attention_read ? [context.device newBufferWithLength:q_raw_elements*sizeof(float) options:MTLResourceStorageModeShared] : nil;
         id<MTLBuffer> attention_back_buffer = attention_read ? [context.device newBufferWithLength:q_raw_elements*sizeof(float) options:MTLResourceStorageModeShared] : nil;
+        id<MTLBuffer> attention_low_buffer = attention_output ? [context.device newBufferWithLength:8192u*sizeof(float) options:MTLResourceStorageModeShared] : nil;
+        id<MTLBuffer> attention_out_buffer = attention_output ? [context.device newBufferWithLength:n_embd*sizeof(float) options:MTLResourceStorageModeShared] : nil;
+        id<MTLBuffer> after_attention_hc_buffer = attention_output ? [context.device newBufferWithLength:hc_dim*sizeof(float) options:MTLResourceStorageModeShared] : nil;
         if (!embedding || !cur_hc || !flat_hc || !mix_buffer || !split_buffer ||
             !collapsed_buffer || !norm_buffer || !q_buffer) {
             return fail_with_message(error, error_bytes, @"failed to allocate attention ingress buffers");
@@ -1155,6 +1249,9 @@ int rust_star_metal_run_attention_ingress(
         if (attention_read && (!staged_kv_buffer || !mask_buffer || !flash_pad_buffer ||
             !flash_tmp_buffer || !attention_raw_buffer || !attention_back_buffer)) {
             return fail_with_message(error, error_bytes, @"failed to allocate attention-read buffers");
+        }
+        if (attention_output && (!attention_low_buffer || !attention_out_buffer || !after_attention_hc_buffer)) {
+            return fail_with_message(error, error_bytes, @"failed to allocate attention-output buffers");
         }
         if (rope_and_store) {
             float *cache = cache_buffer.contents;
@@ -1290,6 +1387,38 @@ int rust_star_metal_run_attention_ingress(
         attention_inverse_args.nb2 = 64u*attention_head_bytes;
         attention_inverse_args.nb3 = 64u*attention_head_bytes;
         attention_inverse_args.inverse = 1;
+        const uint64_t output_a_row_bytes = (4096ull/32ull)*34ull;
+        rust_star_q8_mv_id_args output_low_args = {
+            .nei0=8, .nei1=1, .nbi1=0,
+            .ne00=4096, .ne01=1024, .ne02=8,
+            .nb00=34, .nb01=output_a_row_bytes, .nb02=1024ull*output_a_row_bytes,
+            .ne10=4096, .ne11=8, .ne12=1, .ne13=1,
+            .nb10=sizeof(float), .nb11=4096ull*sizeof(float),
+            .nb12=8ull*4096ull*sizeof(float),
+            .ne0=1024, .ne1=8, .nb1=1024ull*sizeof(float), .nr0=2,
+        };
+        const uint64_t output_b_row_bytes = (8192ull/32ull)*34ull;
+        rust_star_q8_mv_args output_hc_mv_args = {
+            .ne00=8192, .ne01=4096, .ne02=1,
+            .nb00=34, .nb01=output_b_row_bytes,
+            .nb02=4096ull*output_b_row_bytes, .nb03=4096ull*output_b_row_bytes,
+            .ne10=8192, .ne11=1, .ne12=1,
+            .nb10=sizeof(float), .nb11=8192ull*sizeof(float),
+            .nb12=8192ull*sizeof(float), .nb13=8192ull*sizeof(float),
+            .ne0=4096, .ne1=1, .nr0=2, .r2=1, .r3=1,
+        };
+        rust_star_hc_expand_args output_hc_args = {
+            .n_embd=4096, .n_hc=4, .n_tokens=1,
+            .nb_block0=sizeof(float), .nb_block1=4096ull*sizeof(float),
+            .nb_add0=sizeof(float), .nb_add1=4096ull*sizeof(float),
+            .nb_res0=sizeof(float), .nb_res1=4096ull*sizeof(float),
+            .nb_res2=4ull*4096ull*sizeof(float),
+            .nb_post0=sizeof(float), .nb_post1=24ull*sizeof(float),
+            .nb_comb0=sizeof(float), .nb_comb1=4ull*sizeof(float),
+            .nb_comb2=24ull*sizeof(float),
+            .nb0=sizeof(float), .nb1=4096ull*sizeof(float),
+            .nb2=4ull*4096ull*sizeof(float), .has_add=0,
+        };
 
         id<MTLCommandBuffer> command = [context.queue commandBuffer];
         if (!command) return fail_with_message(error, error_bytes, @"failed to create attention ingress command buffer");
@@ -1482,6 +1611,31 @@ int rust_star_metal_run_attention_ingress(
                 [encoder setBuffer:attention_back_buffer offset:0 atIndex:4];
                 [encoder dispatchThreadgroups:MTLSizeMake(64,1,1)
                      threadsPerThreadgroup:MTLSizeMake(256,1,1)];
+
+                if (attention_output) {
+                    [encoder setComputePipelineState:context.attentionOutputLowPipeline];
+                    [encoder setBytes:&output_low_args length:sizeof(output_low_args) atIndex:0];
+                    [encoder setBuffer:output_a_weights offset:output_a_inner atIndex:1];
+                    [encoder setBuffer:attention_back_buffer offset:0 atIndex:2];
+                    [encoder setBuffer:attention_low_buffer offset:0 atIndex:3];
+                    [encoder setThreadgroupMemoryLength:32u*2u*sizeof(float) atIndex:0];
+                    [encoder dispatchThreadgroups:MTLSizeMake(512,1,8)
+                         threadsPerThreadgroup:MTLSizeMake(32,4,1)];
+
+                    [encoder setComputePipelineState:context.attentionOutputHcPipeline];
+                    [encoder setBytes:&output_hc_mv_args length:sizeof(output_hc_mv_args) atIndex:0];
+                    [encoder setBytes:&output_hc_args length:sizeof(output_hc_args) atIndex:1];
+                    [encoder setBuffer:output_b_weights offset:output_b_inner atIndex:2];
+                    [encoder setBuffer:attention_low_buffer offset:0 atIndex:3];
+                    [encoder setBuffer:attention_out_buffer offset:0 atIndex:4];
+                    [encoder setBuffer:cur_hc offset:0 atIndex:5];
+                    [encoder setBuffer:split_buffer offset:4u*sizeof(float) atIndex:6];
+                    [encoder setBuffer:split_buffer offset:8u*sizeof(float) atIndex:7];
+                    [encoder setBuffer:after_attention_hc_buffer offset:0 atIndex:8];
+                    [encoder setThreadgroupMemoryLength:32u*2u*sizeof(float) atIndex:0];
+                    [encoder dispatchThreadgroups:MTLSizeMake(2048,1,1)
+                         threadsPerThreadgroup:MTLSizeMake(32,4,1)];
+                }
                 [encoder endEncoding];
             }
         }
@@ -1511,9 +1665,14 @@ int rust_star_metal_run_attention_ingress(
             memcpy(attention_raw, attention_raw_buffer.contents, q_raw_elements*sizeof(float));
             memcpy(attention_back, attention_back_buffer.contents, q_raw_elements*sizeof(float));
         }
+        if (attention_output) {
+            memcpy(attention_low, attention_low_buffer.contents, 8192u*sizeof(float));
+            memcpy(attention_out, attention_out_buffer.contents, n_embd*sizeof(float));
+            memcpy(after_attention_hc, after_attention_hc_buffer.contents, hc_dim*sizeof(float));
+        }
         result->model_bytes = model_bytes;
         result->max_buffer_length = context.device.maxBufferLength;
-        result->wrapped_model_ranges = attention_read ? 11 : (extended ? 10 : 6);
+        result->wrapped_model_ranges = attention_output ? 13 : (attention_read ? 11 : (extended ? 10 : 6));
         for (uint32_t index = 0; index < result->wrapped_model_ranges; index++) if (matches[index]) result->pointer_matches++;
         result->wall_ms = wall_end-wall_start;
         result->gpu_ms = gpu_elapsed_ms(command);

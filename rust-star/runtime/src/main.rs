@@ -1,10 +1,11 @@
 use rust_star_runtime::gguf::Gguf;
 use rust_star_runtime::metal::{
-    run_attention_ingress_probe, run_attention_read_probe, run_attention_setup_probe,
-    run_f16_embedding_probe, run_probe, run_q8_projection_probe, run_rope_kv_store_probe,
-    write_attention_read_probe_json, write_attention_setup_probe_json, write_embedding_probe_json,
-    write_ingress_probe_json, write_probe_json, write_projection_probe_json,
-    write_rope_kv_store_probe_json, AttentionReadProbeReport, AttentionSetupProbeReport,
+    run_attention_ingress_probe, run_attention_output_probe, run_attention_read_probe,
+    run_attention_setup_probe, run_f16_embedding_probe, run_probe, run_q8_projection_probe,
+    run_rope_kv_store_probe, write_attention_output_probe_json, write_attention_read_probe_json,
+    write_attention_setup_probe_json, write_embedding_probe_json, write_ingress_probe_json,
+    write_probe_json, write_projection_probe_json, write_rope_kv_store_probe_json,
+    AttentionOutputProbeReport, AttentionReadProbeReport, AttentionSetupProbeReport,
     EmbeddingProbeReport, IngressProbeReport, ProbeConfig, ProjectionProbeReport,
     RopeKvStoreProbeReport,
 };
@@ -57,7 +58,64 @@ fn run() -> Result<()> {
     if command == "attention-read-probe" {
         return run_attention_read_command(arguments.collect());
     }
+    if command == "attention-output-probe" {
+        return run_attention_output_command(arguments.collect());
+    }
     run_model_command(&command, arguments.collect())
+}
+
+fn run_attention_output_command(arguments: Vec<OsString>) -> Result<()> {
+    if arguments.is_empty() {
+        return Err(Error::invalid(attention_output_probe_usage()));
+    }
+    if matches!(arguments[0].to_str(), Some("--help") | Some("-h")) {
+        println!("{}", attention_output_probe_usage());
+        return Ok(());
+    }
+    let model_path = PathBuf::from(&arguments[0]);
+    let mut json_path: Option<PathBuf> = None;
+    let mut arguments = arguments.into_iter().skip(1);
+    while let Some(argument) = arguments.next() {
+        match argument.to_str() {
+            Some("--json") => {
+                let value = arguments
+                    .next()
+                    .ok_or_else(|| Error::invalid("--json requires a path"))?;
+                if json_path.is_some() {
+                    return Err(Error::invalid("--json may be specified only once"));
+                }
+                json_path = Some(PathBuf::from(value));
+            }
+            Some("--help") | Some("-h") => {
+                println!("{}", attention_output_probe_usage());
+                return Ok(());
+            }
+            _ => return Err(Error::invalid(attention_output_probe_usage())),
+        }
+    }
+    let model = MappedModel::open(&model_path)?;
+    validate_resident_q2(model.gguf())?;
+    let report = run_attention_output_probe(&model)?;
+    println!("fixture: {}", report.fixture_id);
+    println!("token: {} (layer 0, decode position 1)", report.token);
+    println!(
+        "model views: {}/{} preserve the mmap pointer",
+        report.pointer_matches, report.wrapped_model_ranges
+    );
+    println!(
+        "projection: {} groups with rank {}",
+        report.output_groups, report.output_rank
+    );
+    println!(
+        "{}-dispatch chain: wall={:.3} ms gpu={:.3} ms",
+        report.dispatches, report.wall_ms, report.gpu_ms
+    );
+    println!("result: grouped attention output and fused HC post-state match the pinned DwarfStar boundaries bit-for-bit");
+    if let Some(path) = json_path {
+        write_attention_output_probe_file(&path, &report)?;
+        println!("json: {}", path.display());
+    }
+    Ok(())
 }
 
 fn run_attention_read_command(arguments: Vec<OsString>) -> Result<()> {
@@ -766,6 +824,36 @@ fn write_attention_read_probe_file(path: &Path, report: &AttentionReadProbeRepor
     Ok(())
 }
 
+fn write_attention_output_probe_file(
+    path: &Path,
+    report: &AttentionOutputProbeReport,
+) -> Result<()> {
+    let temporary = path.with_extension(format!(
+        "{}tmp",
+        path.extension()
+            .and_then(OsStr::to_str)
+            .map(|extension| format!("{extension}."))
+            .unwrap_or_default()
+    ));
+    let file = File::create(&temporary).map_err(|error| {
+        Error::invalid(format!(
+            "cannot create attention-output probe JSON {}: {error}",
+            temporary.display()
+        ))
+    })?;
+    let mut output = BufWriter::new(file);
+    write_attention_output_probe_json(&mut output, report)?;
+    output.flush()?;
+    drop(output);
+    std::fs::rename(&temporary, path).map_err(|error| {
+        Error::invalid(format!(
+            "cannot install attention-output probe JSON {}: {error}",
+            path.display()
+        ))
+    })?;
+    Ok(())
+}
+
 fn print_type_counts(gguf: &Gguf) {
     let mut counts = std::collections::BTreeMap::new();
     for tensor in gguf.tensors.values() {
@@ -778,7 +866,7 @@ fn print_type_counts(gguf: &Gguf) {
 }
 
 fn usage() -> &'static str {
-    "usage:\n  rust-star inspect MODEL.gguf  # strict Flash-0731 resident-Q2 validation\n  rust-star gguf MODEL.gguf     # structural GGUF v3 validation only\n  rust-star metal-probe [OPTIONS]\n  rust-star embedding-probe MODEL.gguf [OPTIONS]\n  rust-star projection-probe MODEL.gguf [OPTIONS]\n  rust-star attention-ingress-probe MODEL.gguf [OPTIONS]\n  rust-star attention-setup-probe MODEL.gguf [OPTIONS]\n  rust-star rope-kv-store-probe MODEL.gguf [OPTIONS]\n  rust-star attention-read-probe MODEL.gguf [OPTIONS]"
+    "usage:\n  rust-star inspect MODEL.gguf  # strict Flash-0731 resident-Q2 validation\n  rust-star gguf MODEL.gguf     # structural GGUF v3 validation only\n  rust-star metal-probe [OPTIONS]\n  rust-star embedding-probe MODEL.gguf [OPTIONS]\n  rust-star projection-probe MODEL.gguf [OPTIONS]\n  rust-star attention-ingress-probe MODEL.gguf [OPTIONS]\n  rust-star attention-setup-probe MODEL.gguf [OPTIONS]\n  rust-star rope-kv-store-probe MODEL.gguf [OPTIONS]\n  rust-star attention-read-probe MODEL.gguf [OPTIONS]\n  rust-star attention-output-probe MODEL.gguf [OPTIONS]"
 }
 
 fn metal_probe_usage() -> &'static str {
@@ -807,4 +895,8 @@ fn rope_kv_store_probe_usage() -> &'static str {
 
 fn attention_read_probe_usage() -> &'static str {
     "usage: rust-star attention-read-probe MODEL.gguf [--json PATH]\n\nExtends the connected layer-0 path through raw-cache F32-to-F16 staging, DwarfStar FlashAttention over rows 0-1, reduction, and inverse RoPE."
+}
+
+fn attention_output_probe_usage() -> &'static str {
+    "usage: rust-star attention-output-probe MODEL.gguf [--json PATH]\n\nExtends the connected layer-0 path through DwarfStar's grouped Q8 attention output projection and fused four-stream HC post-update."
 }

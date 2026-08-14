@@ -1,0 +1,106 @@
+{
+  "schema": "rust-star-differential-fixture-v1",
+  "fixture_id": "dwarfstar-oracle-v1-layer0-pos1-attention-output",
+  "captured_at_utc": "2026-08-14T22:44:07Z",
+  "oracle": {
+    "id": "oracle-v1",
+    "repository": "https://github.com/antirez/ds4.git",
+    "commit": "b0309611041655f4e45671cfd9c9886aff161406",
+    "tree": "20c11af22f90a0bdf25da860da5ef06de4064060",
+    "capture_executable_sha256": "b0b7c31d9832cc3f5cccf810cd2af6f4bc4f6e71de945493674315314f666fc8"
+  },
+  "model": {
+    "family": "DeepSeek-V4-Flash-0731",
+    "sha256": "ca22ae2f838e14077c22bc1c1417b71b45b5e5a3687bd96c2ac6e17fdb6261c0"
+  },
+  "capture": {
+    "backend": "metal",
+    "machine": "Apple M1 Ultra, 48 GPU cores, 128 GB unified memory",
+    "prompt": "speed-bench/promessi_sposi.txt",
+    "prompt_sha256": "f53e0d80cb2d4492d24ebd63c7000c397b16ae70f9bf09b3763e5d8323ec209f",
+    "prefill_tokens": 1,
+    "decode_step": 1,
+    "token_id": 201,
+    "fresh_process_captures": 2,
+    "fresh_process_bitwise_match": true,
+    "graph_hooks": ["attn_low", "attn_out", "hc_attn_post"]
+  },
+  "scope": {
+    "kind": "decode-step",
+    "phase": "decode",
+    "layer": 0,
+    "position": 1
+  },
+  "parameters": {
+    "heads": 64,
+    "head_dim": 512,
+    "output_groups": 8,
+    "heads_per_group": 8,
+    "group_input_dim": 4096,
+    "rank_per_group": 1024,
+    "total_low_dim": 8192,
+    "embedding_dim": 4096,
+    "hc_streams": 4,
+    "weight_dtype": "Q8_0",
+    "simdgroups": 4,
+    "rows_per_threadgroup": 2
+  },
+  "operations": [
+    {
+      "name": "grouped-attention-output-low",
+      "kernel": "kernel_dsv4_attn_out_low_q8_0_f32",
+      "weights": ["blk.0.attn_output_a.weight"]
+    },
+    {
+      "name": "attention-output-expand-and-hc-post",
+      "kernel": "kernel_dsv4_q8_hc_expand4_q8_0",
+      "weights": ["blk.0.attn_output_b.weight"]
+    }
+  ],
+  "tensors": [
+    {
+      "name": "kqv_back",
+      "hook": "kqv_back",
+      "role": "input",
+      "dtype": "f32",
+      "shape": [64, 512],
+      "encoding": "little-endian-ieee754-binary32",
+      "path": "kqv-back.f32le.bin",
+      "bytes": 131072,
+      "sha256": "2b90c3e7069f993dadccd5b9fbcc566c4a35f3db98d50698d9852bf3d2ab1c14"
+    },
+    {
+      "name": "attn_low",
+      "hook": "attn_low",
+      "role": "intermediate",
+      "dtype": "f32",
+      "shape": [8, 1024],
+      "encoding": "little-endian-ieee754-binary32",
+      "path": "attn-low.f32le.bin",
+      "bytes": 32768,
+      "sha256": "321655fc8eb72729cdcf2675f3c92c6ea2517b3b54d0471807855df60b6fe9b1"
+    },
+    {
+      "name": "attn_out",
+      "hook": "attn_out",
+      "role": "intermediate",
+      "dtype": "f32",
+      "shape": [4096],
+      "encoding": "little-endian-ieee754-binary32",
+      "path": "attn-out.f32le.bin",
+      "bytes": 16384,
+      "sha256": "ac40e7002bc8cd2eff717020bdb8d78b483652ee929ddae3b14e7d576cf99469"
+    },
+    {
+      "name": "hc_attn_post",
+      "hook": "hc_attn_post",
+      "role": "output",
+      "dtype": "f32",
+      "shape": [4, 4096],
+      "encoding": "little-endian-ieee754-binary32",
+      "path": "hc-attn-post.f32le.bin",
+      "bytes": 65536,
+      "sha256": "45c8b7d437a323202d48f585e42037dee30ffd669afc8de5f4d607ba8c66483d"
+    }
+  ]
+}
