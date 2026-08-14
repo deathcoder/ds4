@@ -86,6 +86,9 @@ elif [ "$#" -eq 1 ]; then
         echo "==> layer-0 routed/shared experts and FFN HC post-update"
         "$target_dir/release/rust-star" moe-output-probe "$1" \
             --json "$target_dir/moe-output-probe.json"
+        echo "==> continuous complete layer-0 command chain"
+        "$target_dir/release/rust-star" layer0-probe "$1" \
+            --json "$target_dir/layer0-probe.json"
     fi
 else
     echo "usage: $0 [/absolute/path/to/model.gguf]" >&2

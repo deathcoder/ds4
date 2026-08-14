@@ -66,6 +66,32 @@ typedef struct rust_star_metal_ingress_probe_result {
     double gpu_ms;
 } rust_star_metal_ingress_probe_result;
 
+typedef struct rust_star_metal_layer0_extension {
+    uint64_t hc_ffn_fn_offset, hc_ffn_fn_bytes;
+    uint64_t hc_ffn_scale_offset, hc_ffn_scale_bytes;
+    uint64_t hc_ffn_base_offset, hc_ffn_base_bytes;
+    uint64_t ffn_norm_offset, ffn_norm_bytes;
+    uint64_t router_gate_offset, router_gate_bytes;
+    uint64_t router_hash_offset, router_hash_bytes;
+    uint64_t routed_gate_offset, routed_gate_bytes;
+    uint64_t routed_up_offset, routed_up_bytes;
+    uint64_t routed_down_offset, routed_down_bytes;
+    uint64_t shared_gate_offset, shared_gate_bytes;
+    uint64_t shared_up_offset, shared_up_bytes;
+    uint64_t shared_down_offset, shared_down_bytes;
+    float *ffn_mixes;
+    float *ffn_split;
+    float *ffn_norm;
+    float *router_logits;
+    float *router_probs;
+    int32_t *selected;
+    float *router_weights;
+    float *routed_mid;
+    float *routed_out;
+    float *shared_out;
+    float *after_ffn_hc;
+} rust_star_metal_layer0_extension;
+
 int rust_star_metal_create(void **context_out, char *error, size_t error_bytes);
 
 int rust_star_metal_run_probe(
@@ -159,7 +185,8 @@ int rust_star_metal_run_attention_ingress(
     float *after_attention_hc,
     rust_star_metal_ingress_probe_result *result,
     char *error,
-    size_t error_bytes);
+    size_t error_bytes,
+    const rust_star_metal_layer0_extension *layer0);
 
 int rust_star_metal_run_ffn_router(
     void *context,

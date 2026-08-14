@@ -11,7 +11,8 @@ objects that cannot be expressed through a stable C interface:
 - command-buffer/encoder creation, dispatch, commit, and synchronization; and
 - Metal GPU start/end timestamps and error extraction.
 
-The shim exposes a narrow C ABI for context lifetime and the six probes. It is
+The shim exposes a narrow C ABI for context lifetime and the probe entry
+points. It is
 compiled by `build.rs` with the platform Xcode toolchain and has no third-party
 Rust dependency. Non-macOS builds compile an explicit unsupported stub, keeping
 the GGUF and artifact contracts portable.
@@ -238,3 +239,25 @@ The three routed and three shared weight tensors are separate bytes-no-copy
 Metal views over the Rust-owned model mmap. The probe checks all six pointer
 identities and compares the routed activation, routed output, shared output,
 and final HC state bit-for-bit against two fresh-process DwarfStar captures.
+
+## Complete connected layer 0
+
+Schema: `rust-star-layer0-complete-probe-v1`.
+
+`layer0-probe` joins the validated attention, FFN/router, and MoE segments into
+one thirty-dispatch Metal command buffer. It does not upload fixture data at
+either internal seam: the attention HC output remains a live GPU buffer for
+FFN ingress, while the router's selected expert IDs and normalized weights
+remain live GPU buffers for the routed-expert kernels.
+
+The command wraps all 25 learned tensor ranges independently from the
+Rust-owned read-only mmap and requires every Metal view to preserve its source
+pointer. It checks the attention HC state, FFN normalization, route weights,
+routed activation and output, shared output, and final four-stream HC state by
+FP32 bit pattern. The layer-0 token-ID route must remain
+`[25, 174, 215, 58, 48, 60]`.
+
+This establishes the first continuous model layer and its ownership boundary;
+it is not a reusable decoder loop yet. The standalone report's timestamps
+include fresh-process model/view and pipeline setup plus correctness readback,
+so they are deliberately excluded from performance claims.

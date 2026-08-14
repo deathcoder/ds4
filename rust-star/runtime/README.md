@@ -1,9 +1,8 @@
 # Rust Star host-runtime scaffold
 
 This crate is the smallest executable boundary for the new engine. It is
-model-specific by design and currently contains a connected nineteen-dispatch
-attention segment, the seven-dispatch FFN/router continuation, and the four
-fused dispatches that finish layer 0, not a decoder.
+model-specific by design and currently contains the complete thirty-dispatch
+layer-0 decode path in one Metal command buffer, not a decoder.
 
 Implemented contracts:
 
@@ -44,6 +43,11 @@ Implemented contracts:
   weighted SwiGLU, Q2_K six-expert down reduction, paired Q8_0 shared gate/up
   with SwiGLU, and Q8_0 shared down fused with the four-stream FFN HC update.
   Six model ranges remain mmap-backed and all retained boundaries match C0.
+- a connected layer-0 gate that passes the live attention HC state into the
+  FFN/router kernels and their live selected IDs and weights into the expert
+  kernels without fixture handoffs. All thirty dispatches share one command
+  buffer, all 25 model ranges remain mmap-backed, and every retained boundary
+  through the final four-stream HC state matches C0 bit-for-bit.
 
 The validator proves model shape and quantization-recipe identity. It does not
 pretend that a mutable GGUF name proves the `0731` checkpoint. The completed
@@ -214,3 +218,23 @@ the three full routed-expert tensors and three shared-expert tensors directly
 from the model mmap, executes DwarfStar's exact release fusions, and requires
 bitwise equality for all 6×2,048 routed activations, both 4,096-wide outputs,
 and the final 4×4,096 HC state.
+
+To validate the complete connected layer-0 path:
+
+```sh
+rust-star/.work/runtime-target/release/rust-star layer0-probe \
+  /absolute/path/to/model.gguf \
+  --json rust-star/.work/runtime-target/layer0-probe.json
+```
+
+This is the first probe with no fixture handoff between attention, routing,
+and expert execution. The GPU-produced `hc_attn_post` buffer feeds the FFN
+continuation directly, and the GPU-produced expert IDs and route weights feed
+the routed kernels directly. The report requires one command buffer, thirty
+dispatches, exact pointer identity for all 25 model views, the expected six
+experts, and bitwise equality at every retained checkpoint through
+`hc_ffn_post`.
+
+Its wall and GPU intervals include fresh-process mapping, Metal view creation,
+pipeline setup, and fixture readback. They are diagnostic only and must not be
+used as layer latency or decoder-throughput evidence.
