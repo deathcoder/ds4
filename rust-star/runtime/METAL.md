@@ -11,7 +11,7 @@ objects that cannot be expressed through a stable C interface:
 - command-buffer/encoder creation, dispatch, commit, and synchronization; and
 - Metal GPU start/end timestamps and error extraction.
 
-The shim exposes a narrow C ABI for context lifetime and the two probes. It is
+The shim exposes a narrow C ABI for context lifetime and the three probes. It is
 compiled by `build.rs` with the platform Xcode toolchain and has no third-party
 Rust dependency. Non-macOS builds compile an explicit unsupported stub, keeping
 the GGUF and artifact contracts portable.
@@ -82,6 +82,34 @@ FP32 results by bit pattern against Rust's exact F16 decoder. Its JSON records
 page/buffer offsets, pointer identity, output checksum, and dispatch timing but
 no mmap address or local model path.
 
-With this gate complete, the next increment is a decode projection/matvec that
-consumes both model weights and an activation. Whole-model scheduling remains
-out of scope until that second arithmetic boundary has a differential fixture.
+That first gate established mmap and Metal lifetime ownership. The projection
+boundary below adds runtime activation arithmetic against a differential
+fixture before any whole-model scheduler is introduced.
+
+## Q8_0 decode projection
+
+Schema: `rust-star-q8-0-projection-probe-v1`.
+
+The second imported model kernel is DwarfStar's
+`kernel_mul_mv_q8_0_f32`, including its two-stage simdgroup reduction and the
+target's default four-simdgroup/two-output-row dispatch. It reads
+`blk.0.attn_q_a.weight` directly from the Rust-owned read-only mmap and receives
+the activation through one small shared runtime buffer.
+
+The fixture in `../fixtures/q8-attn-q-a-v1/` was captured from the pinned
+DwarfStar source and model on the M1 Ultra. DwarfStar's existing graph dump
+hooks recorded layer 0 `attn_norm` immediately before this projection and
+`q_lora` immediately after it at decode position 1. Its manifest binds the
+source tree, model SHA-256, machine, prompt, tensor, layer/step, dispatch
+geometry, payload sizes, and artifact SHA-256 values.
+
+`projection-probe` checks the target recipe, fixture dimensions, no-copy
+pointer identity, dispatch geometry, every output FP32 bit pattern, and stable
+input/output checksums. The JSON deliberately excludes fixture contents, mmap
+addresses, and local paths. Its standalone timing includes cold pipeline and
+boundary costs and is not a decode-throughput measurement.
+
+With this gate complete, the runtime has crossed both immutable model mapping
+and runtime-activation arithmetic. The next increment can assemble the minimal
+layer-0 path and add boundary artifacts without first introducing a general
+graph or allocator framework.

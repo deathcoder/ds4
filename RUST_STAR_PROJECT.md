@@ -301,7 +301,8 @@ they describe whenever practical.
 - Implement the Rust Star side of `rust-star/ENGINE_MEASUREMENT_FORMAT.md` once
   the decoder can run; the checkpointed paired orchestrator and DwarfStar side
   are implemented.
-- Import and differentially validate a decode projection/matvec that consumes
-  both no-copy model weights and a runtime activation.
+- Assemble the minimal layer-0 decode chain from the validated no-copy embedding
+  and Q8_0 projection boundaries, extending differential artifacts at each new
+  operation.
 - Reproduce the Q2 versus Q2/Q4 throughput observation under controlled runs.
 - Define the first coding-agent workload corpus before agent co-design claims.

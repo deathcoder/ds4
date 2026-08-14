@@ -1,7 +1,8 @@
 use rust_star_runtime::gguf::Gguf;
 use rust_star_runtime::metal::{
-    run_f16_embedding_probe, run_probe, write_embedding_probe_json, write_probe_json,
-    EmbeddingProbeReport, ProbeConfig,
+    run_f16_embedding_probe, run_probe, run_q8_projection_probe, write_embedding_probe_json,
+    write_probe_json, write_projection_probe_json, EmbeddingProbeReport, ProbeConfig,
+    ProjectionProbeReport,
 };
 use rust_star_runtime::model::MappedModel;
 use rust_star_runtime::target::{validate_resident_q2, MODEL_LABEL};
@@ -37,7 +38,76 @@ fn run() -> Result<()> {
     if command == "embedding-probe" {
         return run_embedding_probe(arguments.collect());
     }
+    if command == "projection-probe" {
+        return run_projection_probe(arguments.collect());
+    }
     run_model_command(&command, arguments.collect())
+}
+
+fn run_projection_probe(arguments: Vec<OsString>) -> Result<()> {
+    if arguments.is_empty() {
+        return Err(Error::invalid(projection_probe_usage()));
+    }
+    if matches!(arguments[0].to_str(), Some("--help") | Some("-h")) {
+        println!("{}", projection_probe_usage());
+        return Ok(());
+    }
+    let model_path = PathBuf::from(&arguments[0]);
+    let mut json_path: Option<PathBuf> = None;
+    let mut arguments = arguments.into_iter().skip(1);
+    while let Some(argument) = arguments.next() {
+        match argument.to_str() {
+            Some("--help") | Some("-h") => {
+                println!("{}", projection_probe_usage());
+                return Ok(());
+            }
+            Some("--json") => {
+                let value = arguments
+                    .next()
+                    .ok_or_else(|| Error::invalid("--json requires a path"))?;
+                if json_path.is_some() {
+                    return Err(Error::invalid("--json may be specified only once"));
+                }
+                json_path = Some(PathBuf::from(value));
+            }
+            _ => return Err(Error::invalid(projection_probe_usage())),
+        }
+    }
+
+    let model = MappedModel::open(&model_path)?;
+    validate_resident_q2(model.gguf())?;
+    let tensor = model.tensor("blk.0.attn_q_a.weight")?;
+    let report = run_q8_projection_probe(&model, tensor)?;
+
+    println!("fixture: {}", report.fixture_id);
+    println!("kernel: kernel_mul_mv_q8_0_f32 (imported DwarfStar decode matvec)");
+    println!(
+        "tensor: {} offset={} bytes={}",
+        report.tensor_name, report.tensor_offset, report.tensor_bytes
+    );
+    println!(
+        "no-copy view: page_offset={} buffer_bytes={} inner_offset={} pointer_match={}",
+        report.page_offset, report.buffer_bytes, report.inner_offset, report.no_copy_pointer_match
+    );
+    println!(
+        "activation: {} FP32 values checksum={}",
+        report.input_elements, report.input_checksum
+    );
+    println!(
+        "output: {} FP32 values checksum={}",
+        report.output_elements, report.output_checksum
+    );
+    println!(
+        "dispatch: {} simdgroups, {} rows/group, wall={:.3} ms gpu={:.3} ms",
+        report.simdgroups, report.rows_per_threadgroup, report.wall_ms, report.gpu_ms
+    );
+    println!("result: no-copy Q8_0 decode projection matches the DwarfStar fixture bit-for-bit");
+
+    if let Some(path) = json_path {
+        write_projection_probe_file(&path, &report)?;
+        println!("json: {}", path.display());
+    }
+    Ok(())
 }
 
 fn run_embedding_probe(arguments: Vec<OsString>) -> Result<()> {
@@ -332,6 +402,33 @@ fn write_embedding_probe_file(path: &Path, report: &EmbeddingProbeReport) -> Res
     Ok(())
 }
 
+fn write_projection_probe_file(path: &Path, report: &ProjectionProbeReport) -> Result<()> {
+    let temporary = path.with_extension(format!(
+        "{}tmp",
+        path.extension()
+            .and_then(OsStr::to_str)
+            .map(|extension| format!("{extension}."))
+            .unwrap_or_default()
+    ));
+    let file = File::create(&temporary).map_err(|error| {
+        Error::invalid(format!(
+            "cannot create projection probe JSON {}: {error}",
+            temporary.display()
+        ))
+    })?;
+    let mut output = BufWriter::new(file);
+    write_projection_probe_json(&mut output, report)?;
+    output.flush()?;
+    drop(output);
+    std::fs::rename(&temporary, path).map_err(|error| {
+        Error::invalid(format!(
+            "cannot install projection probe JSON {}: {error}",
+            path.display()
+        ))
+    })?;
+    Ok(())
+}
+
 fn print_type_counts(gguf: &Gguf) {
     let mut counts = std::collections::BTreeMap::new();
     for tensor in gguf.tensors.values() {
@@ -344,7 +441,7 @@ fn print_type_counts(gguf: &Gguf) {
 }
 
 fn usage() -> &'static str {
-    "usage:\n  rust-star inspect MODEL.gguf  # strict Flash-0731 resident-Q2 validation\n  rust-star gguf MODEL.gguf     # structural GGUF v3 validation only\n  rust-star metal-probe [OPTIONS]\n  rust-star embedding-probe MODEL.gguf [OPTIONS]"
+    "usage:\n  rust-star inspect MODEL.gguf  # strict Flash-0731 resident-Q2 validation\n  rust-star gguf MODEL.gguf     # structural GGUF v3 validation only\n  rust-star metal-probe [OPTIONS]\n  rust-star embedding-probe MODEL.gguf [OPTIONS]\n  rust-star projection-probe MODEL.gguf [OPTIONS]"
 }
 
 fn metal_probe_usage() -> &'static str {
@@ -353,4 +450,8 @@ fn metal_probe_usage() -> &'static str {
 
 fn embedding_probe_usage() -> &'static str {
     "usage: rust-star embedding-probe MODEL.gguf [--tokens ID,ID,...] [--json PATH]\n\nWraps the F16 token embedding as a page-aligned bytes-no-copy Metal buffer and validates DwarfStar kernel_get_rows_f16 bit-for-bit."
+}
+
+fn projection_probe_usage() -> &'static str {
+    "usage: rust-star projection-probe MODEL.gguf [--json PATH]\n\nWraps blk.0.attn_q_a.weight without copying and requires DwarfStar kernel_mul_mv_q8_0_f32 to reproduce a pinned layer-0 decode fixture bit-for-bit."
 }

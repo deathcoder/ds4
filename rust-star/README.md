@@ -16,8 +16,9 @@ Before the oracle capture, compile its tests and inspect the model directory:
 ```
 
 See `rust-star/runtime/README.md` for its exact scope. It now has the minimal
-Metal ownership/dispatch probe plus a no-copy real-model F16 embedding gather;
-it is not yet a decoder.
+Metal ownership/dispatch probe, a no-copy real-model F16 embedding gather, and
+a no-copy Q8_0 decode projection checked against a pinned DwarfStar fixture; it
+is not yet a decoder.
 
 Project controls and benchmark contracts:
 

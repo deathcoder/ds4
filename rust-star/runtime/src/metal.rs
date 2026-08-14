@@ -7,12 +7,19 @@ use std::io::Write;
 
 pub const PROBE_SCHEMA: &str = "rust-star-metal-dispatch-probe-v1";
 pub const EMBEDDING_PROBE_SCHEMA: &str = "rust-star-f16-embedding-probe-v1";
+pub const PROJECTION_PROBE_SCHEMA: &str = "rust-star-q8-0-projection-probe-v1";
+pub const PROJECTION_FIXTURE_ID: &str = "dwarfstar-oracle-v1-layer0-pos1-attn-q-a";
 pub const DEFAULT_ELEMENTS: u64 = 4096;
 pub const DEFAULT_ITERATIONS: u64 = 100;
 const MAX_ELEMENTS: u64 = 16 * 1024 * 1024;
 const MAX_ITERATIONS: u64 = 100_000;
 const MAX_THREAD_INVOCATIONS: u64 = 1_000_000_000;
 const MAX_EMBEDDING_TOKENS: usize = 64;
+const PROJECTION_TENSOR: &str = "blk.0.attn_q_a.weight";
+const PROJECTION_INPUT_BYTES: &[u8] =
+    include_bytes!("../../fixtures/q8-attn-q-a-v1/activation.f32le.bin");
+const PROJECTION_OUTPUT_BYTES: &[u8] =
+    include_bytes!("../../fixtures/q8-attn-q-a-v1/output.f32le.bin");
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct ProbeConfig {
@@ -91,6 +98,28 @@ pub struct EmbeddingProbeReport {
     pub wall_ms: f64,
     pub gpu_ms: f64,
     pub checksum: u64,
+}
+
+#[derive(Clone, Debug)]
+pub struct ProjectionProbeReport {
+    pub fixture_id: &'static str,
+    pub tensor_name: String,
+    pub input_elements: u64,
+    pub output_elements: u64,
+    pub model_bytes: u64,
+    pub tensor_offset: u64,
+    pub tensor_bytes: u64,
+    pub page_offset: u64,
+    pub buffer_bytes: u64,
+    pub inner_offset: u64,
+    pub max_buffer_length: u64,
+    pub no_copy_pointer_match: bool,
+    pub simdgroups: u32,
+    pub rows_per_threadgroup: u32,
+    pub wall_ms: f64,
+    pub gpu_ms: f64,
+    pub input_checksum: u64,
+    pub output_checksum: u64,
 }
 
 impl ProbeReport {
@@ -189,6 +218,39 @@ pub fn write_embedding_probe_json<W: Write>(
         report.wall_ms,
         report.gpu_ms,
         report.checksum,
+    )?;
+    Ok(())
+}
+
+pub fn write_projection_probe_json<W: Write>(
+    output: &mut W,
+    report: &ProjectionProbeReport,
+) -> Result<()> {
+    output.write_all(b"{\n  \"schema\": \"")?;
+    output.write_all(PROJECTION_PROBE_SCHEMA.as_bytes())?;
+    output.write_all(b"\",\n  \"fixture\": ")?;
+    crate::artifact::write_json_string(output, report.fixture_id)?;
+    output.write_all(b",\n  \"kernel\": \"kernel_mul_mv_q8_0_f32\",\n  \"tensor\": ")?;
+    crate::artifact::write_json_string(output, &report.tensor_name)?;
+    write!(
+        output,
+        ",\n  \"input_elements\": {},\n  \"output_elements\": {},\n  \"dispatch\": {{\n    \"simdgroups\": {},\n    \"rows_per_threadgroup\": {}\n  }},\n  \"mapping\": {{\n    \"model_bytes\": {},\n    \"tensor_offset\": {},\n    \"tensor_bytes\": {},\n    \"page_offset\": {},\n    \"buffer_bytes\": {},\n    \"inner_offset\": {},\n    \"max_buffer_length\": {},\n    \"no_copy_pointer_match\": {}\n  }},\n  \"timing\": {{\n    \"wall_ms\": {:.6},\n    \"gpu_ms\": {:.6}\n  }},\n  \"input_checksum\": {},\n  \"output_checksum\": {},\n  \"c0_bitwise_match\": true\n}}\n",
+        report.input_elements,
+        report.output_elements,
+        report.simdgroups,
+        report.rows_per_threadgroup,
+        report.model_bytes,
+        report.tensor_offset,
+        report.tensor_bytes,
+        report.page_offset,
+        report.buffer_bytes,
+        report.inner_offset,
+        report.max_buffer_length,
+        report.no_copy_pointer_match,
+        report.wall_ms,
+        report.gpu_ms,
+        report.input_checksum,
+        report.output_checksum,
     )?;
     Ok(())
 }
@@ -307,6 +369,81 @@ fn checksum_f32(values: &[f32]) -> u64 {
     checksum
 }
 
+fn decode_f32_fixture(bytes: &[u8], label: &str) -> Result<Vec<f32>> {
+    if bytes.is_empty() || bytes.len() % 4 != 0 {
+        return Err(Error::invalid(format!(
+            "{label} fixture must contain nonempty little-endian FP32 data"
+        )));
+    }
+    let mut values = Vec::with_capacity(bytes.len() / 4);
+    for chunk in bytes.chunks_exact(4) {
+        let value = f32::from_bits(u32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]));
+        if !value.is_finite() {
+            return Err(Error::invalid(format!(
+                "{label} fixture contains a non-finite FP32 value"
+            )));
+        }
+        values.push(value);
+    }
+    Ok(values)
+}
+
+fn projection_fixture() -> Result<(Vec<f32>, Vec<f32>)> {
+    Ok((
+        decode_f32_fixture(PROJECTION_INPUT_BYTES, "projection input")?,
+        decode_f32_fixture(PROJECTION_OUTPUT_BYTES, "projection output")?,
+    ))
+}
+
+fn validate_projection_inputs(
+    model: &MappedModel,
+    tensor: &TensorInfo,
+    input: &[f32],
+    expected: &[f32],
+) -> Result<(u32, u32)> {
+    if tensor.name != PROJECTION_TENSOR {
+        return Err(Error::invalid(format!(
+            "projection tensor must be {PROJECTION_TENSOR}"
+        )));
+    }
+    if tensor.tensor_type.id != 8 {
+        return Err(Error::invalid(format!(
+            "projection tensor must be Q8_0, found {}",
+            tensor.tensor_type.name
+        )));
+    }
+    if tensor.dimensions.len() != 2 {
+        return Err(Error::invalid("projection tensor must have rank 2"));
+    }
+    let input_elements = u32::try_from(tensor.dimensions[0])
+        .map_err(|_| Error::invalid("projection input width exceeds u32"))?;
+    let output_elements = u32::try_from(tensor.dimensions[1])
+        .map_err(|_| Error::invalid("projection output width exceeds u32"))?;
+    if input_elements == 0 || input_elements % 32 != 0 || output_elements == 0 {
+        return Err(Error::invalid("projection tensor dimensions are invalid"));
+    }
+    if input.len() != input_elements as usize || expected.len() != output_elements as usize {
+        return Err(Error::invalid(format!(
+            "projection fixture dimensions differ from tensor {}x{}",
+            input_elements, output_elements
+        )));
+    }
+    let row_bytes = u64::from(input_elements / 32)
+        .checked_mul(34)
+        .ok_or_else(|| Error::invalid("projection row size overflows"))?;
+    let expected_bytes = row_bytes
+        .checked_mul(u64::from(output_elements))
+        .ok_or_else(|| Error::invalid("projection tensor size overflows"))?;
+    if tensor.bytes != expected_bytes {
+        return Err(Error::invalid(format!(
+            "projection tensor has {} bytes, expected {expected_bytes}",
+            tensor.bytes
+        )));
+    }
+    model.tensor_bytes(tensor)?;
+    Ok((input_elements, output_elements))
+}
+
 #[cfg(target_os = "macos")]
 mod imp {
     use super::*;
@@ -348,6 +485,26 @@ mod imp {
         output_elements: u64,
         max_buffer_length: u64,
         no_copy_pointer_match: u32,
+        reserved: u32,
+        wall_ms: f64,
+        gpu_ms: f64,
+    }
+
+    #[repr(C)]
+    #[derive(Default)]
+    struct RawProjectionProbeResult {
+        model_bytes: u64,
+        tensor_offset: u64,
+        tensor_bytes: u64,
+        page_offset: u64,
+        buffer_bytes: u64,
+        inner_offset: u64,
+        input_elements: u64,
+        output_elements: u64,
+        max_buffer_length: u64,
+        no_copy_pointer_match: u32,
+        simdgroups: u32,
+        rows_per_threadgroup: u32,
         reserved: u32,
         wall_ms: f64,
         gpu_ms: f64,
@@ -404,6 +561,20 @@ mod imp {
             output: *mut f32,
             output_elements: u64,
             result: *mut RawEmbeddingProbeResult,
+            error: *mut c_char,
+            error_bytes: usize,
+        ) -> i32;
+        fn rust_star_metal_run_q8_0_projection(
+            context: *mut c_void,
+            model_mapping: *const c_void,
+            model_bytes: u64,
+            tensor_offset: u64,
+            tensor_bytes: u64,
+            input_elements: u32,
+            output_elements: u32,
+            input: *const f32,
+            output: *mut f32,
+            result: *mut RawProjectionProbeResult,
             error: *mut c_char,
             error_bytes: usize,
         ) -> i32;
@@ -607,6 +778,112 @@ mod imp {
             checksum: checksum_f32(&actual),
         })
     }
+
+    pub fn run_q8_projection_probe(
+        model: &MappedModel,
+        tensor: &TensorInfo,
+    ) -> Result<ProjectionProbeReport> {
+        let (input, expected) = projection_fixture()?;
+        let (input_elements, output_elements) =
+            validate_projection_inputs(model, tensor, &input, &expected)?;
+        let mut actual = vec![0.0_f32; output_elements as usize];
+        let mut error = [0 as c_char; ERROR_BYTES];
+        let mut pointer = ptr::null_mut();
+        let created =
+            unsafe { rust_star_metal_create(&mut pointer, error.as_mut_ptr(), error.len()) };
+        if created == 0 || pointer.is_null() {
+            return Err(Error::invalid(format!(
+                "Metal initialization failed: {}",
+                error_text(&error)
+            )));
+        }
+        let context = Context(pointer);
+        error.fill(0);
+        let mut raw = RawProjectionProbeResult::default();
+        let succeeded = unsafe {
+            rust_star_metal_run_q8_0_projection(
+                context.0,
+                model.mapping_pointer(),
+                model.bytes(),
+                tensor.absolute_offset,
+                tensor.bytes,
+                input_elements,
+                output_elements,
+                input.as_ptr(),
+                actual.as_mut_ptr(),
+                &mut raw,
+                error.as_mut_ptr(),
+                error.len(),
+            )
+        };
+        if succeeded == 0 {
+            return Err(Error::invalid(format!(
+                "Metal Q8_0 projection probe failed: {}",
+                error_text(&error)
+            )));
+        }
+        if raw.model_bytes != model.bytes()
+            || raw.tensor_offset != tensor.absolute_offset
+            || raw.tensor_bytes != tensor.bytes
+            || raw.input_elements != u64::from(input_elements)
+            || raw.output_elements != u64::from(output_elements)
+        {
+            return Err(Error::invalid(
+                "Metal Q8_0 projection probe returned different dimensions",
+            ));
+        }
+        if raw.no_copy_pointer_match == 0 {
+            return Err(Error::invalid(
+                "Metal Q8_0 bytes-no-copy buffer did not retain the mmap pointer",
+            ));
+        }
+        if raw.simdgroups != 4 || raw.rows_per_threadgroup != 2 {
+            return Err(Error::invalid(
+                "Metal Q8_0 projection used unexpected dispatch geometry",
+            ));
+        }
+        for (index, (actual, expected)) in actual.iter().zip(&expected).enumerate() {
+            if actual.to_bits() != expected.to_bits() {
+                return Err(Error::invalid(format!(
+                    "kernel_mul_mv_q8_0_f32 C0 mismatch at output {index}: actual={:#010x} expected={:#010x}",
+                    actual.to_bits(),
+                    expected.to_bits()
+                )));
+            }
+        }
+        for (name, value) in [("wall_ms", raw.wall_ms), ("gpu_ms", raw.gpu_ms)] {
+            if !value.is_finite() || value < 0.0 {
+                return Err(Error::invalid(format!(
+                    "Metal Q8_0 projection probe returned invalid {name}"
+                )));
+            }
+        }
+        if raw.wall_ms == 0.0 {
+            return Err(Error::invalid(
+                "Metal Q8_0 projection probe returned a zero wall interval",
+            ));
+        }
+        Ok(ProjectionProbeReport {
+            fixture_id: PROJECTION_FIXTURE_ID,
+            tensor_name: tensor.name.clone(),
+            input_elements: raw.input_elements,
+            output_elements: raw.output_elements,
+            model_bytes: raw.model_bytes,
+            tensor_offset: raw.tensor_offset,
+            tensor_bytes: raw.tensor_bytes,
+            page_offset: raw.page_offset,
+            buffer_bytes: raw.buffer_bytes,
+            inner_offset: raw.inner_offset,
+            max_buffer_length: raw.max_buffer_length,
+            no_copy_pointer_match: true,
+            simdgroups: raw.simdgroups,
+            rows_per_threadgroup: raw.rows_per_threadgroup,
+            wall_ms: raw.wall_ms,
+            gpu_ms: raw.gpu_ms,
+            input_checksum: checksum_f32(&input),
+            output_checksum: checksum_f32(&actual),
+        })
+    }
 }
 
 #[cfg(not(target_os = "macos"))]
@@ -630,9 +907,20 @@ mod imp {
             "the Metal F16 embedding probe is available only on macOS",
         ))
     }
+
+    pub fn run_q8_projection_probe(
+        model: &MappedModel,
+        tensor: &TensorInfo,
+    ) -> Result<ProjectionProbeReport> {
+        let (input, expected) = projection_fixture()?;
+        validate_projection_inputs(model, tensor, &input, &expected)?;
+        Err(Error::invalid(
+            "the Metal Q8_0 projection probe is available only on macOS",
+        ))
+    }
 }
 
-pub use imp::{run_f16_embedding_probe, run_probe};
+pub use imp::{run_f16_embedding_probe, run_probe, run_q8_projection_probe};
 
 #[cfg(test)]
 mod tests {
@@ -679,6 +967,29 @@ mod tests {
         }
     }
 
+    fn projection_report() -> ProjectionProbeReport {
+        ProjectionProbeReport {
+            fixture_id: PROJECTION_FIXTURE_ID,
+            tensor_name: PROJECTION_TENSOR.to_owned(),
+            input_elements: 4096,
+            output_elements: 1024,
+            model_bytes: 100_000,
+            tensor_offset: 4097,
+            tensor_bytes: 4_456_448,
+            page_offset: 4096,
+            buffer_bytes: 4_460_544,
+            inner_offset: 1,
+            max_buffer_length: 1 << 30,
+            no_copy_pointer_match: true,
+            simdgroups: 4,
+            rows_per_threadgroup: 2,
+            wall_ms: 1.0,
+            gpu_ms: 0.5,
+            input_checksum: 11,
+            output_checksum: 12,
+        }
+    }
+
     #[test]
     fn validates_probe_work_bounds() {
         assert!(ProbeConfig::default().validate().is_ok());
@@ -717,6 +1028,29 @@ mod tests {
         assert!(text.contains("\"tokens\": [0, 7]"));
         assert!(text.contains("\"no_copy_pointer_match\": true"));
         assert!(text.contains("\"c0_bitwise_match\": true"));
+    }
+
+    #[test]
+    fn writes_stable_projection_probe_json() {
+        let mut output = Vec::new();
+        write_projection_probe_json(&mut output, &projection_report()).unwrap();
+        let text = String::from_utf8(output).unwrap();
+        assert!(text.contains(&format!("\"schema\": \"{PROJECTION_PROBE_SCHEMA}\"")));
+        assert!(text.contains(&format!("\"fixture\": \"{PROJECTION_FIXTURE_ID}\"")));
+        assert!(text.contains("\"kernel\": \"kernel_mul_mv_q8_0_f32\""));
+        assert!(text.contains("\"simdgroups\": 4"));
+        assert!(text.contains("\"c0_bitwise_match\": true"));
+    }
+
+    #[test]
+    fn projection_fixture_is_finite_and_has_target_shape() {
+        let (input, output) = projection_fixture().unwrap();
+        assert_eq!(input.len(), 4096);
+        assert_eq!(output.len(), 1024);
+        assert!(input.iter().all(|value| value.is_finite()));
+        assert!(output.iter().all(|value| value.is_finite()));
+        assert_eq!(checksum_f32(&input), 6_001_855_774_483_604_828);
+        assert_eq!(checksum_f32(&output), 13_770_952_831_385_691_371);
     }
 
     #[test]

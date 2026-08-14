@@ -20,8 +20,9 @@ history; add a correction and update the current-state summary.
 
 ## Current State
 
-- Phase: target-Mac bootstrap and quick `oracle-v1` capture complete; the next
-  runtime increment is no-copy model mapping plus one isolated DwarfStar kernel.
+- Phase: target-Mac bootstrap, quick `oracle-v1`, no-copy model mapping, and the
+  first runtime-activation projection are complete; the next increment is the
+  minimal layer-0 attention ingress chain.
 - Working branch: `agent/rust-star-bootstrap`.
 - Branch base: upstream `antirez/ds4` commit
   `b0309611041655f4e45671cfd9c9886aff161406`.
@@ -53,33 +54,96 @@ history; add a correction and update the current-state summary.
   expectation for the F16 indexer Q projection. Rust now owns a read-only
   shared GGUF mmap; Metal wraps the page-aligned embedding tensor without a
   copy and runs the imported DwarfStar F16 embedding gather behind a bitwise
-  CPU reference.
+  CPU reference. The imported decode-time Q8_0 matvec now consumes a real
+  layer-0 activation and the no-copy `blk.0.attn_q_a.weight` span, reproducing
+  all 1,024 FP32 DwarfStar fixture outputs by bit pattern.
 - Measurements: Metal batching was 42.861x faster than synchronized submission
   in the retained M-002 probe. DwarfStar medians are 164.86 prefill / 19.90
   generation tok/s at 2K and 161.05 prefill / 17.36 generation tok/s at 32K.
   The first real-model kernel matched all 20,480 checked FP32 values; its final
   validation dispatch reported 0.020 ms GPU time and is not an inference-speed
-  claim.
+  claim. The Q8_0 projection matched its 1,024-value decode fixture and reported
+  0.031 ms GPU time in the final gate, also not a throughput claim.
 - Manual handoff: `RUST_STAR_MANUAL_TASKS.md` records Actions approval, target
   compilation/model inspection, quick/extended oracle capture, and the deferred
   secure-access decision with exact evidence requirements.
 - Parallel research: DSpark remains separate on
   `origin/codex/dspark-observability-0` and is not on this phase's critical path.
 - Publication: the connected GitHub app is installed on both `deathcoder` and
-  `dion-labs`. Remote branch `agent/rust-star-bootstrap` is published. Prefer
-  the app for future remote writes from this environment.
+  `dion-labs`. Remote branch `agent/rust-star-bootstrap` is published and the
+  validated checkpoints are pushed. Prefer the app for future remote writes
+  from this environment.
 
 ## Immediate Next Actions
 
-1. Import a decode projection/matvec that consumes one no-copy quantized weight
-   tensor and a deterministic activation, with a DwarfStar differential fixture.
-2. Add kernel/layer/decode-step artifact extensions alongside the relevant
-   runtime hooks.
+1. Define the canonical kernel/layer/decode-step artifact extension and verifier
+   around the first committed projection fixture.
+2. Import the layer-0 attention ingress operations needed to derive `attn_norm`
+   from a token embedding, then chain that result through the validated Q8_0
+   projection without introducing a general graph framework.
 3. Run the extended 2K--1M frontier capture when the Mac can be dedicated to a
    long benchmark; preserve any 512K/1M capacity failure as evidence.
 4. Run or approve the fork's GitHub Actions workflow and retain its URL.
 
 ## Entries
+
+### 2026-08-14 — First quantized decode projection matched DwarfStar
+
+Objective:
+
+- Validate quantized model bytes, a real runtime activation, DwarfStar's
+  decode reduction order, and Rust/Metal ownership in one isolated operation.
+
+Oracle fixture:
+
+- Ran pinned DwarfStar source `b030961` on the M1 Ultra with one prefill token
+  and one greedy decode token, filtering its existing graph dump hooks to layer
+  0, position 1, `attn_norm` and `q_lora`.
+- Retained the 4,096-value input and 1,024-value output under
+  `rust-star/fixtures/q8-attn-q-a-v1/`. The manifest binds source tree, model
+  SHA-256, machine, prompt, layer/step, tensor, dispatch geometry, and artifact
+  SHA-256 values.
+- Repeated the complete one-token DwarfStar capture in a fresh process; both
+  activation and output files were byte-identical to the retained fixture.
+
+Implementation:
+
+- Imported DwarfStar's `kernel_mul_mv_q8_0_f32` arithmetic and its default four
+  simdgroup/two-row dispatch behind the narrow Objective-C ABI.
+- Reused the Rust-owned read-only `MAP_SHARED` model mapping and wrapped only
+  the page-aligned `blk.0.attn_q_a.weight` span with
+  `newBufferWithBytesNoCopy`; the runtime activation uses one small shared
+  buffer.
+- Added strict fixture/tensor/dispatch validation, bitwise output comparison,
+  stable privacy-limited JSON, CLI support, fixture hash tests, documentation,
+  and automatic target-model execution in `check_runtime.sh`.
+
+Target-Mac evidence:
+
+- The Q8_0 tensor begins at byte 79,060,632,640 and contains 4,456,448 bytes.
+  Metal wrapped a 4,472,832-byte page-aligned view with a 1,088-byte inner
+  offset and exact pointer identity.
+- All 1,024 output FP32 bit patterns matched DwarfStar. Input/output checksums
+  are `6001855774483604828` and `13770952831385691371`.
+- The final standalone dispatch reported 3.990 ms wall and 0.031 ms GPU time;
+  pipeline/boundary setup makes this correctness evidence, not decode
+  throughput.
+- The complete gate passed: 20 Rust tests, optimized macOS build, both no-copy
+  model kernels, Metal dispatch/shared-buffer validation, 26 Python tests,
+  cross-language C0 artifact smoke, and strict validation of all 1,288 required
+  GGUF tensors.
+
+Decision:
+
+- Accept the no-copy Q8_0 matvec as the first runtime-activation arithmetic
+  boundary. Build the next increment toward a minimal layer-0 chain and extend
+  the artifact format at each new boundary.
+
+Next:
+
+- Specify the kernel/layer artifact envelope around this fixture, then derive
+  layer-0 `attn_norm` from the token embedding and feed it into the validated
+  projection.
 
 ### 2026-08-14 — No-copy model span and first DwarfStar kernel validated
 

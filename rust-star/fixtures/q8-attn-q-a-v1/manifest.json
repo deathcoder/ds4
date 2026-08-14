@@ -1,0 +1,51 @@
+{
+  "schema": "rust-star-kernel-fixture-v1",
+  "fixture_id": "dwarfstar-oracle-v1-layer0-pos1-attn-q-a",
+  "captured_at_utc": "2026-08-14T21:09:52Z",
+  "oracle": {
+    "id": "oracle-v1",
+    "repository": "https://github.com/antirez/ds4.git",
+    "commit": "b0309611041655f4e45671cfd9c9886aff161406",
+    "tree": "20c11af22f90a0bdf25da860da5ef06de4064060",
+    "capture_executable_sha256": "b0b7c31d9832cc3f5cccf810cd2af6f4bc4f6e71de945493674315314f666fc8"
+  },
+  "model": {
+    "family": "DeepSeek-V4-Flash-0731",
+    "sha256": "ca22ae2f838e14077c22bc1c1417b71b45b5e5a3687bd96c2ac6e17fdb6261c0"
+  },
+  "capture": {
+    "backend": "metal",
+    "machine": "Apple M1 Ultra, 48 GPU cores, 128 GB unified memory",
+    "prompt": "speed-bench/promessi_sposi.txt",
+    "prompt_sha256": "f53e0d80cb2d4492d24ebd63c7000c397b16ae70f9bf09b3763e5d8323ec209f",
+    "prefill_tokens": 1,
+    "decode_step": 1,
+    "layer": 0,
+    "input_hook": "attn_norm",
+    "output_hook": "q_lora",
+    "environment": {
+      "DS4_METAL_GRAPH_DUMP_LAYER": "0",
+      "DS4_METAL_GRAPH_DUMP_POS": "1",
+      "DS4_METAL_GRAPH_DUMP_NAME": "attn_norm,q_lora"
+    }
+  },
+  "operation": {
+    "kernel": "kernel_mul_mv_q8_0_f32",
+    "tensor": "blk.0.attn_q_a.weight",
+    "tensor_type": "Q8_0",
+    "input_elements": 4096,
+    "output_elements": 1024,
+    "simdgroups": 4,
+    "rows_per_threadgroup": 2
+  },
+  "artifacts": {
+    "activation.f32le.bin": {
+      "bytes": 16384,
+      "sha256": "eb9ba7b65e61af29b38a8f84c18bd693aa6a5cf8753895ea9401074cf6ab7a68"
+    },
+    "output.f32le.bin": {
+      "bytes": 4096,
+      "sha256": "9030b8bba7f5d57b4a425894604c81436e74a0bf534684a6bbd7ae6ca0afac0c"
+    }
+  }
+}

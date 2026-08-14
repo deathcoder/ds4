@@ -67,11 +67,99 @@ static NSString *const kGetRowsF16Source =
     @"typedef decltype(kernel_get_rows_f<float, float>) get_rows_f_t;\n"
     @"template [[host_name(\"kernel_get_rows_f16\")]] kernel get_rows_f_t kernel_get_rows_f<half, float>;\n";
 
+// Imported from DwarfStar metal/dense.metal. The fixed target uses DwarfStar's
+// default four simdgroups and two output rows per threadgroup.
+static NSString *const kQ8ProjectionSource =
+    @"#include <metal_stdlib>\n"
+    @"using namespace metal;\n"
+    @"#define QK8_0 32\n"
+    @"#define N_SIMDWIDTH 32\n"
+    @"#define N_R0_Q8_0 2\n"
+    @"#define FC_MUL_MV 600\n"
+    @"#define FOR_UNROLL(x) _Pragma(\"clang loop unroll(full)\") for (x)\n"
+    @"constant short FC_mul_mv_nsg [[function_constant(FC_MUL_MV + 0)]];\n"
+    @"struct block_q8_0 { half d; int8_t qs[QK8_0]; };\n"
+    @"struct ds4_metal_args_mul_mv {\n"
+    @"    int ne00; int ne01; int ne02;\n"
+    @"    ulong nb00; ulong nb01; ulong nb02; ulong nb03;\n"
+    @"    int ne10; int ne11; int ne12;\n"
+    @"    ulong nb10; ulong nb11; ulong nb12; ulong nb13;\n"
+    @"    int ne0; int ne1; int nr0; short r2; short r3;\n"
+    @"};\n"
+    @"template<short NR0>\n"
+    @"static inline void helper_mv_reduce_and_write(\n"
+    @"        device float * dst_f32, float sumf[NR0], const int r0,\n"
+    @"        const int ne01, ushort tiisg, ushort sgitg,\n"
+    @"        threadgroup char * shmem) {\n"
+    @"    constexpr short NW = N_SIMDWIDTH;\n"
+    @"    threadgroup float * shmem_f32[NR0];\n"
+    @"    for (short row = 0; row < NR0; ++row) {\n"
+    @"        shmem_f32[row] = (threadgroup float *) shmem + NW*row;\n"
+    @"        if (sgitg == 0) shmem_f32[row][tiisg] = 0.0f;\n"
+    @"        sumf[row] = simd_sum(sumf[row]);\n"
+    @"    }\n"
+    @"    threadgroup_barrier(mem_flags::mem_threadgroup);\n"
+    @"    for (short row = 0; row < NR0; ++row) {\n"
+    @"        if (tiisg == 0) shmem_f32[row][sgitg] = sumf[row];\n"
+    @"    }\n"
+    @"    threadgroup_barrier(mem_flags::mem_threadgroup);\n"
+    @"    for (short row = 0; row < NR0 && r0 + row < ne01; ++row) {\n"
+    @"        float tot = simd_sum(shmem_f32[row][tiisg]);\n"
+    @"        if (tiisg == 0 && sgitg == 0) dst_f32[r0 + row] = tot;\n"
+    @"    }\n"
+    @"}\n"
+    @"template<short NR0>\n"
+    @"static inline void kernel_mul_mv_q8_0_f32_impl(\n"
+    @"        constant ds4_metal_args_mul_mv & args,\n"
+    @"        device const char * src0, device const char * src1,\n"
+    @"        device char * dst, threadgroup char * shmem, uint3 tgpig,\n"
+    @"        ushort tiisg, ushort sgitg) {\n"
+    @"    const short NSG = FC_mul_mv_nsg;\n"
+    @"    constexpr short NW = N_SIMDWIDTH; constexpr short NQ = 8;\n"
+    @"    const int nb = args.ne00/QK8_0;\n"
+    @"    const int r0 = tgpig.x*NR0; const int r1 = tgpig.y; const int im = tgpig.z;\n"
+    @"    const uint i12 = im%args.ne12; const uint i13 = im/args.ne12;\n"
+    @"    const uint64_t offset1 = r1*args.nb11 + i12*args.nb12 + i13*args.nb13;\n"
+    @"    device const float * y = (device const float *) (src1 + offset1);\n"
+    @"    device const block_q8_0 * ax[NR0];\n"
+    @"    FOR_UNROLL (short row = 0; row < NR0; ++row) {\n"
+    @"        const uint64_t offset0 = (r0 + row)*args.nb01 + (i12/args.r2)*args.nb02 + (i13/args.r3)*args.nb03;\n"
+    @"        ax[row] = (device const block_q8_0 *) (src0 + offset0);\n"
+    @"    }\n"
+    @"    float sumf[NR0] = { 0.f };\n"
+    @"    const short ix = tiisg/(NW/NQ); const short il = tiisg%(NW/NQ);\n"
+    @"    const int ib0 = sgitg*NQ + ix; float yl[NQ];\n"
+    @"    device const float * yb = y + ib0*QK8_0 + il*NQ;\n"
+    @"    for (int ib = ib0; ib < nb; ib += NSG*NQ) {\n"
+    @"        for (short i = 0; i < NQ; ++i) yl[i] = yb[i];\n"
+    @"        for (short row = 0; row < NR0; row++) {\n"
+    @"            device const int8_t * qs = ax[row][ib].qs + il*NQ;\n"
+    @"            float sumq = 0.f;\n"
+    @"            FOR_UNROLL (short i = 0; i < NQ; ++i) sumq += qs[i] * yl[i];\n"
+    @"            sumf[row] += sumq*ax[row][ib].d;\n"
+    @"        }\n"
+    @"        yb += NSG*NQ*QK8_0;\n"
+    @"    }\n"
+    @"    device float * dst_f32 = (device float *) dst + (uint64_t)im*args.ne0*args.ne1 + (uint64_t)r1*args.ne0;\n"
+    @"    helper_mv_reduce_and_write<NR0>(dst_f32, sumf, r0, args.ne01, tiisg, sgitg, shmem);\n"
+    @"}\n"
+    @"[[host_name(\"kernel_mul_mv_q8_0_f32\")]]\n"
+    @"kernel void kernel_mul_mv_q8_0_f32(\n"
+    @"        constant ds4_metal_args_mul_mv & args, device const char * src0,\n"
+    @"        device const char * src1, device char * dst,\n"
+    @"        threadgroup char * shmem [[threadgroup(0)]],\n"
+    @"        uint3 tgpig [[threadgroup_position_in_grid]],\n"
+    @"        ushort tiisg [[thread_index_in_simdgroup]],\n"
+    @"        ushort sgitg [[simdgroup_index_in_threadgroup]]) {\n"
+    @"    kernel_mul_mv_q8_0_f32_impl<N_R0_Q8_0>(args, src0, src1, dst, shmem, tgpig, tiisg, sgitg);\n"
+    @"}\n";
+
 @interface RustStarMetalContext : NSObject
 @property(nonatomic, strong) id<MTLDevice> device;
 @property(nonatomic, strong) id<MTLCommandQueue> queue;
 @property(nonatomic, strong) id<MTLComputePipelineState> probePipeline;
 @property(nonatomic, strong) id<MTLComputePipelineState> getRowsF16Pipeline;
+@property(nonatomic, strong) id<MTLComputePipelineState> q8ProjectionPipeline;
 @property(nonatomic, assign) double setupMilliseconds;
 @property(nonatomic, assign) double compileMilliseconds;
 @end
@@ -197,6 +285,36 @@ static int ensure_get_rows_f16_pipeline(
     context.getRowsF16Pipeline =
         [context.device newComputePipelineStateWithFunction:function error:&compile_error];
     if (!context.getRowsF16Pipeline) {
+        return fail_with_message(error, error_bytes, compile_error.localizedDescription);
+    }
+    return 1;
+}
+
+static int ensure_q8_projection_pipeline(
+    RustStarMetalContext *context,
+    char *error,
+    size_t error_bytes)
+{
+    if (context.q8ProjectionPipeline) return 1;
+    NSError *compile_error = nil;
+    id<MTLLibrary> library = [context.device newLibraryWithSource:kQ8ProjectionSource
+                                                          options:[MTLCompileOptions new]
+                                                            error:&compile_error];
+    if (!library) {
+        return fail_with_message(error, error_bytes, compile_error.localizedDescription);
+    }
+    int16_t simdgroups = 4;
+    MTLFunctionConstantValues *constants = [MTLFunctionConstantValues new];
+    [constants setConstantValue:&simdgroups type:MTLDataTypeShort atIndex:600];
+    id<MTLFunction> function = [library newFunctionWithName:@"kernel_mul_mv_q8_0_f32"
+                                             constantValues:constants
+                                                      error:&compile_error];
+    if (!function) {
+        return fail_with_message(error, error_bytes, compile_error.localizedDescription);
+    }
+    context.q8ProjectionPipeline =
+        [context.device newComputePipelineStateWithFunction:function error:&compile_error];
+    if (!context.q8ProjectionPipeline) {
         return fail_with_message(error, error_bytes, compile_error.localizedDescription);
     }
     return 1;
@@ -469,6 +587,162 @@ int rust_star_metal_run_f16_get_rows(
         result->output_elements = output_elements;
         result->max_buffer_length = context.device.maxBufferLength;
         result->no_copy_pointer_match = pointer_match ? 1u : 0u;
+        result->wall_ms = wall_end - wall_start;
+        result->gpu_ms = gpu_elapsed_ms(command);
+        return 1;
+    }
+}
+
+typedef struct rust_star_q8_mv_args {
+    int32_t ne00;
+    int32_t ne01;
+    int32_t ne02;
+    uint64_t nb00;
+    uint64_t nb01;
+    uint64_t nb02;
+    uint64_t nb03;
+    int32_t ne10;
+    int32_t ne11;
+    int32_t ne12;
+    uint64_t nb10;
+    uint64_t nb11;
+    uint64_t nb12;
+    uint64_t nb13;
+    int32_t ne0;
+    int32_t ne1;
+    int32_t nr0;
+    int16_t r2;
+    int16_t r3;
+} rust_star_q8_mv_args;
+
+int rust_star_metal_run_q8_0_projection(
+    void *opaque_context,
+    const void *model_mapping,
+    uint64_t model_bytes,
+    uint64_t tensor_offset,
+    uint64_t tensor_bytes,
+    uint32_t input_elements,
+    uint32_t output_elements,
+    const float *input,
+    float *output,
+    rust_star_metal_projection_probe_result *result,
+    char *error,
+    size_t error_bytes)
+{
+    if (!opaque_context || !model_mapping || !input || !output || !result) {
+        return fail_with_message(error, error_bytes, @"projection probe received a null input");
+    }
+    if (input_elements == 0 || (input_elements & 31u) != 0 ||
+        output_elements == 0 || (output_elements & 1u) != 0) {
+        return fail_with_message(error, error_bytes, @"projection probe dimensions are invalid");
+    }
+    const uint64_t row_bytes = (uint64_t)(input_elements / 32u) * 34u;
+    if ((uint64_t)output_elements > UINT64_MAX / row_bytes ||
+        tensor_bytes != (uint64_t)output_elements * row_bytes ||
+        tensor_offset > model_bytes || tensor_bytes > model_bytes - tensor_offset) {
+        return fail_with_message(error, error_bytes, @"projection tensor range is invalid");
+    }
+
+    @autoreleasepool {
+        RustStarMetalContext *context = (__bridge RustStarMetalContext *)opaque_context;
+        if (!ensure_q8_projection_pipeline(context, error, error_bytes)) return 0;
+        memset(result, 0, sizeof(*result));
+
+        const uint64_t page = (uint64_t)getpagesize();
+        const uint64_t page_offset = tensor_offset & ~(page - 1u);
+        const uint64_t leading = tensor_offset - page_offset;
+        if (tensor_bytes > UINT64_MAX - leading ||
+            leading + tensor_bytes > UINT64_MAX - (page - 1u)) {
+            return fail_with_message(error, error_bytes, @"projection tensor page alignment overflows");
+        }
+        const uint64_t required = leading + tensor_bytes;
+        uint64_t buffer_bytes = round_up_u64(required, page);
+        if (buffer_bytes > model_bytes - page_offset) buffer_bytes = model_bytes - page_offset;
+        if (required > buffer_bytes || buffer_bytes > (uint64_t)context.device.maxBufferLength) {
+            return fail_with_message(error, error_bytes, @"projection tensor exceeds the Metal buffer range");
+        }
+
+        const uintptr_t base = (uintptr_t)model_mapping;
+        void *page_pointer = (void *)(base + page_offset);
+        id<MTLBuffer> weights =
+            [context.device newBufferWithBytesNoCopy:page_pointer
+                                              length:(NSUInteger)buffer_bytes
+                                             options:MTLResourceStorageModeShared
+                                         deallocator:nil];
+        if (!weights) {
+            return fail_with_message(error, error_bytes, @"failed to wrap mmaped projection tensor without copying");
+        }
+        const BOOL pointer_match = weights.contents == page_pointer;
+        if (!pointer_match) {
+            return fail_with_message(error, error_bytes, @"projection buffer contents do not match the mmap pointer");
+        }
+
+        const NSUInteger input_bytes = (NSUInteger)input_elements * sizeof(float);
+        const NSUInteger output_bytes = (NSUInteger)output_elements * sizeof(float);
+        id<MTLBuffer> input_buffer = [context.device newBufferWithBytes:input
+                                                                 length:input_bytes
+                                                                options:MTLResourceStorageModeShared];
+        id<MTLBuffer> output_buffer = [context.device newBufferWithLength:output_bytes
+                                                                  options:MTLResourceStorageModeShared];
+        if (!input_buffer || !output_buffer) {
+            return fail_with_message(error, error_bytes, @"failed to allocate projection activation buffers");
+        }
+
+        rust_star_q8_mv_args args = {
+            .ne00 = (int32_t)input_elements,
+            .ne01 = (int32_t)output_elements,
+            .ne02 = 1,
+            .nb00 = 34,
+            .nb01 = row_bytes,
+            .nb02 = row_bytes * output_elements,
+            .nb03 = row_bytes * output_elements,
+            .ne10 = (int32_t)input_elements,
+            .ne11 = 1,
+            .ne12 = 1,
+            .nb10 = sizeof(float),
+            .nb11 = (uint64_t)input_elements * sizeof(float),
+            .nb12 = (uint64_t)input_elements * sizeof(float),
+            .nb13 = (uint64_t)input_elements * sizeof(float),
+            .ne0 = (int32_t)output_elements,
+            .ne1 = 1,
+            .nr0 = 2,
+            .r2 = 1,
+            .r3 = 1,
+        };
+
+        id<MTLCommandBuffer> command = [context.queue commandBuffer];
+        id<MTLComputeCommandEncoder> encoder = [command computeCommandEncoder];
+        if (!command || !encoder) {
+            return fail_with_message(error, error_bytes, @"failed to create projection command encoder");
+        }
+        [encoder setComputePipelineState:context.q8ProjectionPipeline];
+        [encoder setBytes:&args length:sizeof(args) atIndex:0];
+        [encoder setBuffer:weights offset:(NSUInteger)leading atIndex:1];
+        [encoder setBuffer:input_buffer offset:0 atIndex:2];
+        [encoder setBuffer:output_buffer offset:0 atIndex:3];
+        [encoder setThreadgroupMemoryLength:32u * 2u * sizeof(float) atIndex:0];
+        [encoder dispatchThreadgroups:MTLSizeMake(((NSUInteger)output_elements + 1u) / 2u, 1, 1)
+             threadsPerThreadgroup:MTLSizeMake(32, 4, 1)];
+        [encoder endEncoding];
+
+        const double wall_start = monotonic_ms();
+        [command commit];
+        if (!command_succeeded(command, error, error_bytes)) return 0;
+        const double wall_end = monotonic_ms();
+        memcpy(output, output_buffer.contents, output_bytes);
+
+        result->model_bytes = model_bytes;
+        result->tensor_offset = tensor_offset;
+        result->tensor_bytes = tensor_bytes;
+        result->page_offset = page_offset;
+        result->buffer_bytes = buffer_bytes;
+        result->inner_offset = leading;
+        result->input_elements = input_elements;
+        result->output_elements = output_elements;
+        result->max_buffer_length = context.device.maxBufferLength;
+        result->no_copy_pointer_match = pointer_match ? 1u : 0u;
+        result->simdgroups = 4;
+        result->rows_per_threadgroup = 2;
         result->wall_ms = wall_end - wall_start;
         result->gpu_ms = gpu_elapsed_ms(command);
         return 1;

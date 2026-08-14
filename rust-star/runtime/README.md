@@ -1,8 +1,8 @@
 # Rust Star host-runtime scaffold
 
 This crate is the smallest executable boundary for the new engine. It is
-model-specific by design and currently contains one isolated model kernel, not
-a decoder.
+model-specific by design and currently contains two isolated model kernels,
+not a decoder.
 
 Implemented contracts:
 
@@ -19,6 +19,9 @@ Implemented contracts:
   wrapped by Metal with `newBufferWithBytesNoCopy`;
 - DwarfStar's `kernel_get_rows_f16` token-embedding gather, validated bit-for-bit
   against a dependency-free CPU F16-to-F32 reference on selected real rows.
+- DwarfStar's decode-time `kernel_mul_mv_q8_0_f32`, consuming a real layer-0
+  decode activation and the no-copy `blk.0.attn_q_a.weight` span, validated
+  bit-for-bit against a pinned DwarfStar layer/step fixture.
 
 The validator proves model shape and quantization-recipe identity. It does not
 pretend that a mutable GGUF name proves the `0731` checkpoint. The completed
@@ -83,3 +86,16 @@ This command first applies the strict target validator. It maps the GGUF
 read-only with `MAP_SHARED`, wraps only the page-aligned embedding tensor range,
 checks that Metal retained the exact mmap pointer, gathers five rows spanning
 the vocabulary, and requires every FP32 output bit to match the CPU reference.
+
+To run the first decode projection boundary:
+
+```sh
+rust-star/.work/runtime-target/release/rust-star projection-probe \
+  /absolute/path/to/model.gguf \
+  --json rust-star/.work/runtime-target/q8-projection-probe.json
+```
+
+The fixture under `../fixtures/q8-attn-q-a-v1/` was captured from pinned
+DwarfStar at layer 0, decode position 1. The command imports DwarfStar's default
+four-simdgroup/two-row Q8_0 matvec, wraps only the real weight span without a
+copy, and requires all 1,024 output FP32 bit patterns to match the fixture.
