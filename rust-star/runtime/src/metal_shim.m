@@ -177,6 +177,9 @@ static NSString *const kQ8ProjectionSource =
 @property(nonatomic, strong) id<MTLComputePipelineState> flashPadPipeline;
 @property(nonatomic, strong) id<MTLComputePipelineState> flashVecPipeline;
 @property(nonatomic, strong) id<MTLComputePipelineState> flashReducePipeline;
+@property(nonatomic, strong) id<MTLComputePipelineState> routerProbabilityPipeline;
+@property(nonatomic, strong) id<MTLComputePipelineState> routerFinalizePipeline;
+@property(nonatomic, strong) id<MTLComputePipelineState> routerWeightsPipeline;
 @property(nonatomic, strong) id<MTLLibrary> attentionOutputLibrary;
 @property(nonatomic, strong) id<MTLComputePipelineState> attentionOutputLowPipeline;
 @property(nonatomic, strong) id<MTLComputePipelineState> attentionOutputHcPipeline;
@@ -388,6 +391,9 @@ static int ensure_attention_ingress_pipelines(
     [reduceConstants setConstantValue:&nwg type:MTLDataTypeInt atIndex:501];
     id<MTLFunction> flashReduce = [library newFunctionWithName:@"kernel_flash_attn_ext_vec_reduce"
                                                constantValues:reduceConstants error:&compile_error];
+    id<MTLFunction> routerProbability = [library newFunctionWithName:@"kernel_dsv4_softplus_sqrt_f32_4"];
+    id<MTLFunction> routerFinalize = [library newFunctionWithName:@"kernel_dsv4_router_finalize_one"];
+    id<MTLFunction> routerWeights = [library newFunctionWithName:@"kernel_dsv4_router_weights_one"];
     int16_t simdgroups = 8;
     MTLFunctionConstantValues *constants = [MTLFunctionConstantValues new];
     [constants setConstantValue:&simdgroups type:MTLDataTypeShort atIndex:600];
@@ -396,7 +402,7 @@ static int ensure_attention_ingress_pipelines(
                                                         error:&compile_error];
     if (!repeat || !norm || !hc || !qkvNorm || !headNormRope || !ropeTail ||
         !kvStore || !cpyF32F16 || !flashPad || !flashVec || !flashReduce ||
-        !projection) {
+        !projection || !routerProbability || !routerFinalize || !routerWeights) {
         return fail_with_message(error, error_bytes,
             compile_error ? compile_error.localizedDescription : @"attention ingress kernel was not found");
     }
@@ -412,12 +418,17 @@ static int ensure_attention_ingress_pipelines(
     context.flashPadPipeline = [context.device newComputePipelineStateWithFunction:flashPad error:&compile_error];
     context.flashVecPipeline = [context.device newComputePipelineStateWithFunction:flashVec error:&compile_error];
     context.flashReducePipeline = [context.device newComputePipelineStateWithFunction:flashReduce error:&compile_error];
+    context.routerProbabilityPipeline = [context.device newComputePipelineStateWithFunction:routerProbability error:&compile_error];
+    context.routerFinalizePipeline = [context.device newComputePipelineStateWithFunction:routerFinalize error:&compile_error];
+    context.routerWeightsPipeline = [context.device newComputePipelineStateWithFunction:routerWeights error:&compile_error];
     if (!context.repeatF32Pipeline || !context.rmsNormF32Pipeline ||
         !context.f16ProjectionPipeline || !context.hcIngressPipeline ||
         !context.qkvNormPipeline || !context.headNormRopePipeline ||
         !context.ropeTailPipeline || !context.kvStorePipeline ||
         !context.cpyF32F16Pipeline || !context.flashPadPipeline ||
-        !context.flashVecPipeline || !context.flashReducePipeline) {
+        !context.flashVecPipeline || !context.flashReducePipeline ||
+        !context.routerProbabilityPipeline || !context.routerFinalizePipeline ||
+        !context.routerWeightsPipeline) {
         return fail_with_message(error, error_bytes, compile_error.localizedDescription);
     }
     context.attentionIngressLibrary = library;
@@ -777,6 +788,18 @@ typedef struct rust_star_hc_ingress_args {
     uint64_t nb0, nb1, nb_norm1;
     float eps, norm_eps;
 } rust_star_hc_ingress_args;
+
+typedef struct rust_star_unary_args {
+    int32_t ne00, ne01, ne02, ne03;
+    uint64_t nb00, nb01, nb02, nb03;
+    int32_t ne0, ne1, ne2, ne3;
+    uint64_t nb0, nb1, nb2, nb3;
+    float slope, scale, bias, val, min, max;
+} rust_star_unary_args;
+
+typedef struct rust_star_router_select_one_args {
+    uint32_t has_bias, hash_mode, use_token_buffer, token, hash_rows;
+} rust_star_router_select_one_args;
 
 typedef struct rust_star_qkv_norm_args {
     int32_t q_n, q_n4, kv_n, kv_n4;
@@ -1674,6 +1697,234 @@ int rust_star_metal_run_attention_ingress(
         result->max_buffer_length = context.device.maxBufferLength;
         result->wrapped_model_ranges = attention_output ? 13 : (attention_read ? 11 : (extended ? 10 : 6));
         for (uint32_t index = 0; index < result->wrapped_model_ranges; index++) if (matches[index]) result->pointer_matches++;
+        result->wall_ms = wall_end-wall_start;
+        result->gpu_ms = gpu_elapsed_ms(command);
+        return 1;
+    }
+}
+
+int rust_star_metal_run_ffn_router(
+    void *opaque_context,
+    const void *model_mapping,
+    uint64_t model_bytes,
+    uint64_t hc_fn_offset,
+    uint64_t hc_fn_bytes,
+    uint64_t hc_scale_offset,
+    uint64_t hc_scale_bytes,
+    uint64_t hc_base_offset,
+    uint64_t hc_base_bytes,
+    uint64_t ffn_norm_offset,
+    uint64_t ffn_norm_bytes,
+    uint64_t gate_offset,
+    uint64_t gate_bytes,
+    uint64_t bias_offset,
+    uint64_t bias_bytes,
+    uint64_t hash_offset,
+    uint64_t hash_bytes,
+    const float *after_attention_hc,
+    float *mixes,
+    float *split,
+    float *ffn_cur,
+    float *ffn_norm,
+    float *logits,
+    float *probs,
+    int32_t *selected,
+    float *weights,
+    rust_star_metal_ingress_probe_result *result,
+    char *error,
+    size_t error_bytes)
+{
+    const uint32_t n_embd = 4096, n_hc = 4, hc_dim = 16384;
+    const uint32_t mix_hc = 24, n_expert = 256, n_used = 6;
+    if (!opaque_context || !model_mapping || !after_attention_hc || !mixes ||
+        !split || !ffn_cur || !ffn_norm || !logits || !probs || !selected ||
+        !weights || !result) {
+        return fail_with_message(error, error_bytes, @"FFN router probe received a null input");
+    }
+    if (hc_fn_bytes != (uint64_t)hc_dim*mix_hc*sizeof(uint16_t) ||
+        hc_scale_bytes != 3u*sizeof(float) || hc_base_bytes != mix_hc*sizeof(float) ||
+        ffn_norm_bytes != n_embd*sizeof(float) ||
+        gate_bytes != (uint64_t)n_embd*n_expert*sizeof(uint16_t) ||
+        (bias_bytes != 0 && bias_bytes != n_expert*sizeof(float)) ||
+        (hash_bytes != 0 && hash_bytes != 6ull*129280ull*sizeof(int32_t))) {
+        return fail_with_message(error, error_bytes, @"FFN router tensor shapes are invalid");
+    }
+
+    @autoreleasepool {
+        RustStarMetalContext *context = (__bridge RustStarMetalContext *)opaque_context;
+        if (!ensure_attention_ingress_pipelines(context, error, error_bytes)) return 0;
+        memset(result, 0, sizeof(*result));
+
+        NSUInteger inner[7] = {0};
+        BOOL matches[7] = {NO};
+        id<MTLBuffer> hc_fn = wrap_model_range(context, model_mapping, model_bytes,
+            hc_fn_offset, hc_fn_bytes, &inner[0], &matches[0], error, error_bytes);
+        id<MTLBuffer> hc_scale = wrap_model_range(context, model_mapping, model_bytes,
+            hc_scale_offset, hc_scale_bytes, &inner[1], &matches[1], error, error_bytes);
+        id<MTLBuffer> hc_base = wrap_model_range(context, model_mapping, model_bytes,
+            hc_base_offset, hc_base_bytes, &inner[2], &matches[2], error, error_bytes);
+        id<MTLBuffer> norm_weight = wrap_model_range(context, model_mapping, model_bytes,
+            ffn_norm_offset, ffn_norm_bytes, &inner[3], &matches[3], error, error_bytes);
+        id<MTLBuffer> gate = wrap_model_range(context, model_mapping, model_bytes,
+            gate_offset, gate_bytes, &inner[4], &matches[4], error, error_bytes);
+        id<MTLBuffer> bias = bias_bytes ? wrap_model_range(context, model_mapping, model_bytes,
+            bias_offset, bias_bytes, &inner[5], &matches[5], error, error_bytes) : nil;
+        id<MTLBuffer> hash = hash_bytes ? wrap_model_range(context, model_mapping, model_bytes,
+            hash_offset, hash_bytes, &inner[6], &matches[6], error, error_bytes) : nil;
+        if (!hc_fn || !hc_scale || !hc_base || !norm_weight || !gate ||
+            (bias_bytes && !bias) || (hash_bytes && !hash)) return 0;
+
+        id<MTLBuffer> after = [context.device newBufferWithBytes:after_attention_hc
+            length:(NSUInteger)hc_dim*sizeof(float) options:MTLResourceStorageModeShared];
+        id<MTLBuffer> flat = [context.device newBufferWithLength:(NSUInteger)hc_dim*sizeof(float) options:MTLResourceStorageModeShared];
+        id<MTLBuffer> mix = [context.device newBufferWithLength:mix_hc*sizeof(float) options:MTLResourceStorageModeShared];
+        id<MTLBuffer> split_buffer = [context.device newBufferWithLength:mix_hc*sizeof(float) options:MTLResourceStorageModeShared];
+        id<MTLBuffer> cur = [context.device newBufferWithLength:n_embd*sizeof(float) options:MTLResourceStorageModeShared];
+        id<MTLBuffer> norm = [context.device newBufferWithLength:n_embd*sizeof(float) options:MTLResourceStorageModeShared];
+        id<MTLBuffer> logits_buffer = [context.device newBufferWithLength:n_expert*sizeof(float) options:MTLResourceStorageModeShared];
+        id<MTLBuffer> probs_buffer = [context.device newBufferWithLength:n_expert*sizeof(float) options:MTLResourceStorageModeShared];
+        id<MTLBuffer> selected_buffer = [context.device newBufferWithLength:n_used*sizeof(int32_t) options:MTLResourceStorageModeShared];
+        id<MTLBuffer> weights_buffer = [context.device newBufferWithLength:n_used*sizeof(float) options:MTLResourceStorageModeShared];
+        if (!after || !flat || !mix || !split_buffer || !cur || !norm ||
+            !logits_buffer || !probs_buffer || !selected_buffer || !weights_buffer) {
+            return fail_with_message(error, error_bytes, @"failed to allocate FFN router buffers");
+        }
+
+        const uint64_t hc_row_bytes = (uint64_t)hc_dim*sizeof(float);
+        rust_star_norm_args norm_args = {
+            .ne00=(int32_t)hc_dim, .ne00_t=(int32_t)(hc_dim/4u),
+            .nb1=hc_row_bytes, .nb2=hc_row_bytes, .nb3=hc_row_bytes, .eps=1.0e-6f,
+            .nef1={1,1,1}, .nef2={1,1,1}, .nef3={1,1,1},
+            .nbf1={hc_row_bytes,hc_row_bytes,hc_row_bytes},
+            .nbf2={hc_row_bytes,hc_row_bytes,hc_row_bytes},
+            .nbf3={hc_row_bytes,hc_row_bytes,hc_row_bytes},
+        };
+        const uint64_t hc_weight_row_bytes = (uint64_t)hc_dim*sizeof(uint16_t);
+        rust_star_q8_mv_args hc_mv = {
+            .ne00=(int32_t)hc_dim, .ne01=(int32_t)mix_hc, .ne02=1,
+            .nb00=sizeof(uint16_t), .nb01=hc_weight_row_bytes,
+            .nb02=hc_fn_bytes, .nb03=hc_fn_bytes,
+            .ne10=(int32_t)hc_dim, .ne11=1, .ne12=1,
+            .nb10=sizeof(float), .nb11=hc_row_bytes, .nb12=hc_row_bytes, .nb13=hc_row_bytes,
+            .ne0=(int32_t)mix_hc, .ne1=1, .nr0=2, .r2=1, .r3=1,
+        };
+        rust_star_hc_ingress_args hc_args = {
+            .n_embd=n_embd, .n_hc=(int32_t)n_hc, .sinkhorn_iters=20,
+            .n_rows=1, .mix_hc=mix_hc,
+            .nb_mix1=mix_hc*sizeof(float), .nb_split1=mix_hc*sizeof(float),
+            .nb_x0=sizeof(float), .nb_x1=n_embd*sizeof(float), .nb_x2=hc_row_bytes,
+            .nb0=sizeof(float), .nb1=n_embd*sizeof(float), .nb_norm1=n_embd*sizeof(float),
+            .eps=1.0e-6f, .norm_eps=1.0e-6f,
+        };
+        const uint64_t gate_row_bytes = (uint64_t)n_embd*sizeof(uint16_t);
+        rust_star_q8_mv_args gate_mv = {
+            .ne00=(int32_t)n_embd, .ne01=(int32_t)n_expert, .ne02=1,
+            .nb00=sizeof(uint16_t), .nb01=gate_row_bytes,
+            .nb02=gate_bytes, .nb03=gate_bytes,
+            .ne10=(int32_t)n_embd, .ne11=1, .ne12=1,
+            .nb10=sizeof(float), .nb11=n_embd*sizeof(float),
+            .nb12=n_embd*sizeof(float), .nb13=n_embd*sizeof(float),
+            .ne0=(int32_t)n_expert, .ne1=1, .nr0=2, .r2=1, .r3=1,
+        };
+        const uint64_t expert_row_bytes = (uint64_t)n_expert*sizeof(float);
+        rust_star_unary_args unary_args = {
+            .ne00=64, .ne01=1, .ne02=1, .ne03=1,
+            .nb00=sizeof(float), .nb01=expert_row_bytes,
+            .nb02=expert_row_bytes, .nb03=expert_row_bytes,
+            .ne0=64, .ne1=1, .ne2=1, .ne3=1,
+            .nb0=sizeof(float), .nb1=expert_row_bytes,
+            .nb2=expert_row_bytes, .nb3=expert_row_bytes,
+        };
+        rust_star_router_select_one_args router_args = {
+            .has_bias=bias_bytes ? 1u : 0u, .hash_mode=hash_bytes ? 1u : 0u,
+            .use_token_buffer=0, .token=201, .hash_rows=hash_bytes ? 129280u : 0u,
+        };
+
+        id<MTLCommandBuffer> command = [context.queue commandBuffer];
+        id<MTLComputeCommandEncoder> encoder = [command computeCommandEncoder];
+        if (!command || !encoder) return fail_with_message(error, error_bytes, @"failed to create FFN router command encoder");
+
+        [encoder setComputePipelineState:context.rmsNormF32Pipeline];
+        [encoder setBytes:&norm_args length:sizeof(norm_args) atIndex:0];
+        [encoder setBuffer:after offset:0 atIndex:1];
+        [encoder setBuffer:after offset:0 atIndex:2];
+        [encoder setBuffer:after offset:0 atIndex:3];
+        [encoder setBuffer:flat offset:0 atIndex:4];
+        [encoder setThreadgroupMemoryLength:32u*sizeof(float) atIndex:0];
+        [encoder dispatchThreadgroups:MTLSizeMake(1,1,1) threadsPerThreadgroup:MTLSizeMake(1024,1,1)];
+
+        [encoder setComputePipelineState:context.f16ProjectionPipeline];
+        [encoder setBytes:&hc_mv length:sizeof(hc_mv) atIndex:0];
+        [encoder setBuffer:hc_fn offset:inner[0] atIndex:1];
+        [encoder setBuffer:flat offset:0 atIndex:2];
+        [encoder setBuffer:mix offset:0 atIndex:3];
+        [encoder setThreadgroupMemoryLength:32u*2u*sizeof(float) atIndex:0];
+        [encoder dispatchThreadgroups:MTLSizeMake(12,1,1) threadsPerThreadgroup:MTLSizeMake(32,8,1)];
+
+        [encoder setComputePipelineState:context.hcIngressPipeline];
+        [encoder setBytes:&hc_args length:sizeof(hc_args) atIndex:0];
+        [encoder setBuffer:mix offset:0 atIndex:1];
+        [encoder setBuffer:hc_scale offset:inner[1] atIndex:2];
+        [encoder setBuffer:hc_base offset:inner[2] atIndex:3];
+        [encoder setBuffer:after offset:0 atIndex:4];
+        [encoder setBuffer:split_buffer offset:0 atIndex:5];
+        [encoder setBuffer:cur offset:0 atIndex:6];
+        [encoder setBuffer:norm_weight offset:inner[3] atIndex:7];
+        [encoder setBuffer:norm offset:0 atIndex:8];
+        [encoder setThreadgroupMemoryLength:(n_embd+4u+32u)*sizeof(float) atIndex:0];
+        [encoder dispatchThreadgroups:MTLSizeMake(1,1,1) threadsPerThreadgroup:MTLSizeMake(1024,1,1)];
+
+        [encoder setComputePipelineState:context.f16ProjectionPipeline];
+        [encoder setBytes:&gate_mv length:sizeof(gate_mv) atIndex:0];
+        [encoder setBuffer:gate offset:inner[4] atIndex:1];
+        [encoder setBuffer:norm offset:0 atIndex:2];
+        [encoder setBuffer:logits_buffer offset:0 atIndex:3];
+        [encoder setThreadgroupMemoryLength:32u*2u*sizeof(float) atIndex:0];
+        [encoder dispatchThreadgroups:MTLSizeMake(128,1,1) threadsPerThreadgroup:MTLSizeMake(32,8,1)];
+
+        [encoder setComputePipelineState:context.routerProbabilityPipeline];
+        [encoder setBytes:&unary_args length:sizeof(unary_args) atIndex:0];
+        [encoder setBuffer:logits_buffer offset:0 atIndex:1];
+        [encoder setBuffer:probs_buffer offset:0 atIndex:2];
+        [encoder dispatchThreadgroups:MTLSizeMake(1,1,1) threadsPerThreadgroup:MTLSizeMake(64,1,1)];
+
+        [encoder setComputePipelineState:context.routerFinalizePipeline];
+        [encoder setBytes:&router_args length:sizeof(router_args) atIndex:0];
+        [encoder setBuffer:probs_buffer offset:0 atIndex:1];
+        int32_t zero = 0;
+        float zero_f32 = 0.0f;
+        if (bias) [encoder setBuffer:bias offset:inner[5] atIndex:2];
+        else [encoder setBytes:&zero_f32 length:sizeof(zero_f32) atIndex:2];
+        if (hash) [encoder setBuffer:hash offset:inner[6] atIndex:3];
+        else [encoder setBytes:&zero length:sizeof(zero) atIndex:3];
+        [encoder setBytes:&zero length:sizeof(zero) atIndex:4];
+        [encoder setBuffer:selected_buffer offset:0 atIndex:5];
+        [encoder setThreadgroupMemoryLength:256u*(sizeof(float)+sizeof(int32_t)) atIndex:0];
+        [encoder dispatchThreadgroups:MTLSizeMake(1,1,1) threadsPerThreadgroup:MTLSizeMake(256,1,1)];
+
+        [encoder setComputePipelineState:context.routerWeightsPipeline];
+        [encoder setBuffer:probs_buffer offset:0 atIndex:0];
+        [encoder setBuffer:selected_buffer offset:0 atIndex:1];
+        [encoder setBuffer:weights_buffer offset:0 atIndex:2];
+        [encoder dispatchThreads:MTLSizeMake(6,1,1) threadsPerThreadgroup:MTLSizeMake(6,1,1)];
+        [encoder endEncoding];
+
+        const double wall_start = monotonic_ms();
+        [command commit];
+        if (!command_succeeded(command, error, error_bytes)) return 0;
+        const double wall_end = monotonic_ms();
+        memcpy(mixes, mix.contents, mix_hc*sizeof(float));
+        memcpy(split, split_buffer.contents, mix_hc*sizeof(float));
+        memcpy(ffn_cur, cur.contents, n_embd*sizeof(float));
+        memcpy(ffn_norm, norm.contents, n_embd*sizeof(float));
+        memcpy(logits, logits_buffer.contents, n_expert*sizeof(float));
+        memcpy(probs, probs_buffer.contents, n_expert*sizeof(float));
+        memcpy(selected, selected_buffer.contents, n_used*sizeof(int32_t));
+        memcpy(weights, weights_buffer.contents, n_used*sizeof(float));
+        result->model_bytes = model_bytes;
+        result->max_buffer_length = context.device.maxBufferLength;
+        result->wrapped_model_ranges = 5u + (bias_bytes ? 1u : 0u) + (hash_bytes ? 1u : 0u);
+        for (uint32_t i = 0; i < 7; i++) if (matches[i]) result->pointer_matches++;
         result->wall_ms = wall_end-wall_start;
         result->gpu_ms = gpu_elapsed_ms(command);
         return 1;

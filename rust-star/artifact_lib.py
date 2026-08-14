@@ -397,8 +397,15 @@ def validate_differential_fixture(root: Path) -> dict[str, Any]:
         tensor_names.add(name)
         if descriptor.get("role") not in {"input", "intermediate", "output"}:
             raise ArtifactError(f"invalid {location}.role: {descriptor.get('role')!r}")
-        if descriptor.get("dtype") != "f32" or descriptor.get("encoding") != "little-endian-ieee754-binary32":
-            raise ArtifactError(f"{location} must use little-endian IEEE-754 binary32")
+        dtype = descriptor.get("dtype")
+        encoding = descriptor.get("encoding")
+        valid_encoding = (
+            dtype == "f32" and encoding == "little-endian-ieee754-binary32"
+        ) or (
+            dtype == "i32" and encoding == "little-endian-signed-integer32"
+        )
+        if not valid_encoding:
+            raise ArtifactError(f"{location} must use a supported little-endian 32-bit encoding")
         shape = descriptor.get("shape")
         if not isinstance(shape, list) or not shape:
             raise ArtifactError(f"{location}.shape must be a nonempty array")
@@ -431,7 +438,7 @@ def validate_differential_fixture(root: Path) -> dict[str, Any]:
             for element_index, packed in enumerate(iter(lambda: stream.read(4), b"")):
                 if len(packed) != 4:
                     raise ArtifactError(f"fixture tensor is truncated: {relative}")
-                if not math.isfinite(struct.unpack("<f", packed)[0]):
+                if dtype == "f32" and not math.isfinite(struct.unpack("<f", packed)[0]):
                     raise ArtifactError(
                         f"fixture tensor contains non-finite f32 at element {element_index}: {relative}"
                     )

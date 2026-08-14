@@ -1,8 +1,8 @@
 # Rust Star host-runtime scaffold
 
 This crate is the smallest executable boundary for the new engine. It is
-model-specific by design and currently contains one connected nineteen-dispatch
-layer segment, not a decoder.
+model-specific by design and currently contains a connected nineteen-dispatch
+attention segment plus the seven-dispatch FFN/router continuation, not a decoder.
 
 Implemented contracts:
 
@@ -36,6 +36,9 @@ Implemented contracts:
 - DwarfStar's grouped Q8 attention output projection and fused four-stream HC
   post-update, checked at the 8×1,024 low-rank, 4,096 output, and 4×4,096
   updated-state boundaries.
+- the layer-0 FFN HC collapse/learned norm and F16 router projection, followed
+  by the model's exact token-ID hash selection and probability-derived route
+  weights; six mmap-backed model views and every retained boundary match C0.
 
 The validator proves model shape and quantization-recipe identity. It does not
 pretend that a mutable GGUF name proves the `0731` checkpoint. The completed
@@ -177,3 +180,17 @@ This adds the two release Q8 kernels used by DwarfStar: the eight-group
 block-diagonal projection to 8×1,024 low-rank values, followed by the fused
 8,192-to-4,096 expansion and four-stream HC post-update. All three retained
 boundaries must match the oracle bit-for-bit.
+
+To validate the layer-0 FFN ingress and router boundary:
+
+```sh
+rust-star/.work/runtime-target/release/rust-star ffn-router-probe \
+  /absolute/path/to/model.gguf \
+  --json rust-star/.work/runtime-target/ffn-router-probe.json
+```
+
+This seven-dispatch continuation begins with the pinned `hc_attn_post` state,
+applies FFN HC mixing/collapse and learned RMSNorm, projects 256 router logits,
+then follows DwarfStar's early-layer token-ID hash route for token 201. It
+requires bitwise equality for the HC intermediates, logits, probabilities,
+six selected experts, and scaled weights, with all six model ranges zero-copy.

@@ -204,3 +204,20 @@ fresh-process DwarfStar captures of `attn_low`, `attn_out`, and
 `hc_attn_post`. The runtime requires all 8,192 low-rank values, all 4,096
 attention output values, and all 16,384 updated HC-state values to match their
 FP32 bit patterns exactly.
+
+## Layer-0 FFN HC ingress and hash router
+
+Schema: `rust-star-layer0-ffn-router-probe-v1`.
+
+`ffn-router-probe` continues from the pinned `hc_attn_post` boundary through
+seven exact DwarfStar dispatches: plain 16,384-wide RMSNorm, F16 HC mixing,
+fused split/collapse plus learned FFN norm, F16 projection to 256 logits,
+softplus-plus-square-root probabilities, hash-table expert selection, and
+selected-probability normalization with the 1.5 route-weight scale.
+
+Layer 0 is intentionally not probability top-k. The target model contains
+`blk.0.ffn_gate_tid2eid.weight`, so token 201 selects experts
+`[25, 174, 215, 58, 48, 60]`; probabilities still determine their normalized
+weights. The probe wraps the five learned FFN ranges and the I32 hash table
+directly from the Rust-owned mmap. All six pointer identities and every
+captured FP32/I32 value must match the two byte-identical oracle captures.

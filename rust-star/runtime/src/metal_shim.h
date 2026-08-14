@@ -161,6 +161,37 @@ int rust_star_metal_run_attention_ingress(
     char *error,
     size_t error_bytes);
 
+int rust_star_metal_run_ffn_router(
+    void *context,
+    const void *model_mapping,
+    uint64_t model_bytes,
+    uint64_t hc_fn_offset,
+    uint64_t hc_fn_bytes,
+    uint64_t hc_scale_offset,
+    uint64_t hc_scale_bytes,
+    uint64_t hc_base_offset,
+    uint64_t hc_base_bytes,
+    uint64_t ffn_norm_offset,
+    uint64_t ffn_norm_bytes,
+    uint64_t gate_offset,
+    uint64_t gate_bytes,
+    uint64_t bias_offset,
+    uint64_t bias_bytes,
+    uint64_t hash_offset,
+    uint64_t hash_bytes,
+    const float *after_attention_hc,
+    float *mixes,
+    float *split,
+    float *ffn_cur,
+    float *ffn_norm,
+    float *logits,
+    float *probs,
+    int32_t *selected,
+    float *weights,
+    rust_star_metal_ingress_probe_result *result,
+    char *error,
+    size_t error_bytes);
+
 void rust_star_metal_destroy(void *context);
 
 #endif

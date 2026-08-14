@@ -17,6 +17,7 @@ fn main() {
     println!("cargo:rerun-if-changed=src/metal_shim.m");
     println!("cargo:rerun-if-changed=src/attention_ingress.metal");
     println!("cargo:rerun-if-changed=src/attention_output.metal");
+    println!("cargo:rerun-if-changed=src/ffn_router.metal");
     println!("cargo:rerun-if-changed=../../metal/dsv4_rope.metal");
     println!("cargo:rerun-if-changed=../../metal/dsv4_kv.metal");
     println!("cargo:rerun-if-changed=../../metal/cpy.metal");
@@ -33,6 +34,7 @@ fn main() {
     write_metal_source_include(
         &[
             manifest.join("src/attention_ingress.metal"),
+            manifest.join("src/ffn_router.metal"),
             manifest.join("../../metal/dsv4_rope.metal"),
             manifest.join("../../metal/dsv4_kv.metal"),
             manifest.join("../../metal/cpy.metal"),

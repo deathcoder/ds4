@@ -16,9 +16,9 @@ Before the oracle capture, compile its tests and inspect the model directory:
 ```
 
 See `rust-star/runtime/README.md` for its exact scope. It now has the minimal
-Metal ownership/dispatch probe and a connected nineteen-dispatch layer-0 path
-through the first raw-cache FlashAttention read and attention HC post-update, checked against pinned
-DwarfStar fixtures; it is not yet a decoder.
+Metal ownership/dispatch probe, a connected nineteen-dispatch layer-0 attention
+path, and the seven-dispatch FFN HC/router continuation, all checked against
+pinned DwarfStar fixtures; it is not yet a decoder.
 
 Project controls and benchmark contracts:
 

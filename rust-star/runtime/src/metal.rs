@@ -13,12 +13,14 @@ pub const ATTENTION_SETUP_PROBE_SCHEMA: &str = "rust-star-layer0-attention-setup
 pub const ROPE_KV_STORE_PROBE_SCHEMA: &str = "rust-star-layer0-rope-kv-store-probe-v1";
 pub const ATTENTION_READ_PROBE_SCHEMA: &str = "rust-star-layer0-attention-read-probe-v1";
 pub const ATTENTION_OUTPUT_PROBE_SCHEMA: &str = "rust-star-layer0-attention-output-probe-v1";
+pub const FFN_ROUTER_PROBE_SCHEMA: &str = "rust-star-layer0-ffn-router-probe-v1";
 pub const PROJECTION_FIXTURE_ID: &str = "dwarfstar-oracle-v1-layer0-pos1-attn-q-a";
 pub const INGRESS_FIXTURE_ID: &str = "dwarfstar-oracle-v1-layer0-pos1-attention-ingress";
 pub const ATTENTION_SETUP_FIXTURE_ID: &str = "dwarfstar-oracle-v1-layer0-pos1-qkv-setup";
 pub const ROPE_KV_STORE_FIXTURE_ID: &str = "dwarfstar-oracle-v1-layer0-pos1-rope-kv-store";
 pub const ATTENTION_READ_FIXTURE_ID: &str = "dwarfstar-oracle-v1-layer0-pos1-attention-read";
 pub const ATTENTION_OUTPUT_FIXTURE_ID: &str = "dwarfstar-oracle-v1-layer0-pos1-attention-output";
+pub const FFN_ROUTER_FIXTURE_ID: &str = "dwarfstar-oracle-v1-layer0-pos1-ffn-router";
 pub const DEFAULT_ELEMENTS: u64 = 4096;
 pub const DEFAULT_ITERATIONS: u64 = 100;
 const MAX_ELEMENTS: u64 = 16 * 1024 * 1024;
@@ -76,6 +78,27 @@ const OUTPUT_ATTN_BYTES: &[u8] =
     include_bytes!("../../fixtures/layer0-attention-output-v1/attn-out.f32le.bin");
 const OUTPUT_HC_POST_BYTES: &[u8] =
     include_bytes!("../../fixtures/layer0-attention-output-v1/hc-attn-post.f32le.bin");
+const FFN_INPUT_HC_BYTES: &[u8] =
+    include_bytes!("../../fixtures/layer0-ffn-router-v1/hc-attn-post.f32le.bin");
+const FFN_MIXES_BYTES: &[u8] =
+    include_bytes!("../../fixtures/layer0-ffn-router-v1/hc-mixes.f32le.bin");
+const FFN_PRE_BYTES: &[u8] = include_bytes!("../../fixtures/layer0-ffn-router-v1/hc-pre.f32le.bin");
+const FFN_POST_BYTES: &[u8] =
+    include_bytes!("../../fixtures/layer0-ffn-router-v1/hc-post.f32le.bin");
+const FFN_COMB_BYTES: &[u8] =
+    include_bytes!("../../fixtures/layer0-ffn-router-v1/hc-combination.f32le.bin");
+const FFN_CUR_BYTES: &[u8] =
+    include_bytes!("../../fixtures/layer0-ffn-router-v1/ffn-cur.f32le.bin");
+const FFN_NORM_BYTES: &[u8] =
+    include_bytes!("../../fixtures/layer0-ffn-router-v1/ffn-norm.f32le.bin");
+const ROUTER_LOGITS_BYTES: &[u8] =
+    include_bytes!("../../fixtures/layer0-ffn-router-v1/router-logits.f32le.bin");
+const ROUTER_PROBS_BYTES: &[u8] =
+    include_bytes!("../../fixtures/layer0-ffn-router-v1/router-probs.f32le.bin");
+const ROUTER_SELECTED_BYTES: &[u8] =
+    include_bytes!("../../fixtures/layer0-ffn-router-v1/router-selected.i32le.bin");
+const ROUTER_WEIGHTS_BYTES: &[u8] =
+    include_bytes!("../../fixtures/layer0-ffn-router-v1/router-weights.f32le.bin");
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct ProbeConfig {
@@ -259,6 +282,26 @@ pub struct AttentionOutputProbeReport {
     pub hc_post_checksum: u64,
 }
 
+#[derive(Clone, Debug)]
+pub struct FfnRouterProbeReport {
+    pub fixture_id: &'static str,
+    pub token: u32,
+    pub dispatches: u32,
+    pub expert_count: u32,
+    pub selected_experts: Vec<i32>,
+    pub wrapped_model_ranges: u32,
+    pub pointer_matches: u32,
+    pub wall_ms: f64,
+    pub gpu_ms: f64,
+    pub hc_mixes_checksum: u64,
+    pub hc_split_checksum: u64,
+    pub ffn_cur_checksum: u64,
+    pub ffn_norm_checksum: u64,
+    pub router_logits_checksum: u64,
+    pub router_probs_checksum: u64,
+    pub router_weights_checksum: u64,
+}
+
 pub fn write_ingress_probe_json<W: Write>(
     output: &mut W,
     report: &IngressProbeReport,
@@ -371,6 +414,33 @@ pub fn write_attention_output_probe_json<W: Write>(
         report.attention_low_checksum,
         report.attention_out_checksum,
         report.hc_post_checksum,
+    )?;
+    Ok(())
+}
+
+pub fn write_ffn_router_probe_json<W: Write>(
+    output: &mut W,
+    report: &FfnRouterProbeReport,
+) -> Result<()> {
+    write!(
+        output,
+        "{{\n  \"schema\": \"{FFN_ROUTER_PROBE_SCHEMA}\",\n  \"fixture\": \"{}\",\n  \"token\": {},\n  \"dispatches\": {},\n  \"router\": {{\n    \"expert_count\": {},\n    \"selected_experts\": {:?}\n  }},\n  \"mapping\": {{\n    \"wrapped_model_ranges\": {},\n    \"pointer_matches\": {}\n  }},\n  \"timing\": {{\n    \"wall_ms\": {:.6},\n    \"gpu_ms\": {:.6}\n  }},\n  \"checksums\": {{\n    \"hc_mixes\": {},\n    \"hc_split\": {},\n    \"ffn_cur\": {},\n    \"ffn_norm\": {},\n    \"router_logits\": {},\n    \"router_probs\": {},\n    \"router_weights\": {}\n  }},\n  \"c0_bitwise_match\": true\n}}\n",
+        report.fixture_id,
+        report.token,
+        report.dispatches,
+        report.expert_count,
+        report.selected_experts,
+        report.wrapped_model_ranges,
+        report.pointer_matches,
+        report.wall_ms,
+        report.gpu_ms,
+        report.hc_mixes_checksum,
+        report.hc_split_checksum,
+        report.ffn_cur_checksum,
+        report.ffn_norm_checksum,
+        report.router_logits_checksum,
+        report.router_probs_checksum,
+        report.router_weights_checksum,
     )?;
     Ok(())
 }
@@ -703,6 +773,47 @@ fn attention_output_fixture() -> Result<(Vec<f32>, Vec<f32>, Vec<f32>, Vec<f32>)
     ))
 }
 
+type FfnRouterFixture = (
+    Vec<f32>,
+    Vec<f32>,
+    Vec<f32>,
+    Vec<f32>,
+    Vec<f32>,
+    Vec<f32>,
+    Vec<f32>,
+    Vec<i32>,
+    Vec<f32>,
+);
+
+fn ffn_router_fixture() -> Result<FfnRouterFixture> {
+    let mut split = decode_f32_fixture(FFN_PRE_BYTES, "FFN HC pre weights")?;
+    split.extend(decode_f32_fixture(FFN_POST_BYTES, "FFN HC post weights")?);
+    split.extend(decode_f32_fixture(FFN_COMB_BYTES, "FFN HC combination")?);
+    Ok((
+        decode_f32_fixture(FFN_INPUT_HC_BYTES, "FFN input HC state")?,
+        decode_f32_fixture(FFN_MIXES_BYTES, "FFN HC mixes")?,
+        split,
+        decode_f32_fixture(FFN_CUR_BYTES, "FFN collapsed state")?,
+        decode_f32_fixture(FFN_NORM_BYTES, "FFN normalized state")?,
+        decode_f32_fixture(ROUTER_LOGITS_BYTES, "router logits")?,
+        decode_f32_fixture(ROUTER_PROBS_BYTES, "router probabilities")?,
+        decode_i32_fixture(ROUTER_SELECTED_BYTES, "router selected experts")?,
+        decode_f32_fixture(ROUTER_WEIGHTS_BYTES, "router weights")?,
+    ))
+}
+
+fn decode_i32_fixture(bytes: &[u8], label: &str) -> Result<Vec<i32>> {
+    if bytes.is_empty() || bytes.len() % 4 != 0 {
+        return Err(Error::invalid(format!(
+            "{label} fixture must contain nonempty little-endian I32 data"
+        )));
+    }
+    Ok(bytes
+        .chunks_exact(4)
+        .map(|chunk| i32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]))
+        .collect())
+}
+
 fn exact_tensor<'a>(
     model: &'a MappedModel,
     name: &str,
@@ -964,6 +1075,37 @@ mod imp {
             attention_low: *mut f32,
             attention_out: *mut f32,
             after_attention_hc: *mut f32,
+            result: *mut RawIngressProbeResult,
+            error: *mut c_char,
+            error_bytes: usize,
+        ) -> i32;
+        fn rust_star_metal_run_ffn_router(
+            context: *mut c_void,
+            model_mapping: *const c_void,
+            model_bytes: u64,
+            hc_fn_offset: u64,
+            hc_fn_bytes: u64,
+            hc_scale_offset: u64,
+            hc_scale_bytes: u64,
+            hc_base_offset: u64,
+            hc_base_bytes: u64,
+            ffn_norm_offset: u64,
+            ffn_norm_bytes: u64,
+            gate_offset: u64,
+            gate_bytes: u64,
+            bias_offset: u64,
+            bias_bytes: u64,
+            hash_offset: u64,
+            hash_bytes: u64,
+            after_attention_hc: *const f32,
+            mixes: *mut f32,
+            split: *mut f32,
+            ffn_cur: *mut f32,
+            ffn_norm: *mut f32,
+            logits: *mut f32,
+            probs: *mut f32,
+            selected: *mut i32,
+            weights: *mut f32,
             result: *mut RawIngressProbeResult,
             error: *mut c_char,
             error_bytes: usize,
@@ -2152,6 +2294,165 @@ mod imp {
             hc_post_checksum: checksum_f32(&after_attention_hc),
         })
     }
+
+    pub fn run_ffn_router_probe(model: &MappedModel) -> Result<FfnRouterProbeReport> {
+        const TOKEN: u32 = 201;
+        let hc_fn = exact_tensor(model, "blk.0.hc_ffn_fn.weight", 1, &[16384, 24])?;
+        let hc_scale = exact_tensor(model, "blk.0.hc_ffn_scale.weight", 0, &[3])?;
+        let hc_base = exact_tensor(model, "blk.0.hc_ffn_base.weight", 0, &[24])?;
+        let norm_weight = exact_tensor(model, "blk.0.ffn_norm.weight", 0, &[4096])?;
+        let gate = exact_tensor(model, "blk.0.ffn_gate_inp.weight", 1, &[4096, 256])?;
+        let hash = exact_tensor(model, "blk.0.ffn_gate_tid2eid.weight", 26, &[6, 129280])?;
+        let (
+            input_hc,
+            expected_mixes,
+            expected_split,
+            expected_cur,
+            expected_norm,
+            expected_logits,
+            expected_probs,
+            expected_selected,
+            expected_weights,
+        ) = ffn_router_fixture()?;
+
+        let mut mixes = vec![0.0_f32; 24];
+        let mut split = vec![0.0_f32; 24];
+        let mut ffn_cur = vec![0.0_f32; 4096];
+        let mut ffn_norm = vec![0.0_f32; 4096];
+        let mut logits = vec![0.0_f32; 256];
+        let mut probs = vec![0.0_f32; 256];
+        let mut selected = vec![0_i32; 6];
+        let mut weights = vec![0.0_f32; 6];
+        let mut error = [0 as c_char; ERROR_BYTES];
+        let mut pointer = ptr::null_mut();
+        let created =
+            unsafe { rust_star_metal_create(&mut pointer, error.as_mut_ptr(), error.len()) };
+        if created == 0 || pointer.is_null() {
+            return Err(Error::invalid(format!(
+                "Metal initialization failed: {}",
+                error_text(&error)
+            )));
+        }
+        let context = Context(pointer);
+        error.fill(0);
+        let mut raw = RawIngressProbeResult::default();
+        let succeeded = unsafe {
+            rust_star_metal_run_ffn_router(
+                context.0,
+                model.mapping_pointer(),
+                model.bytes(),
+                hc_fn.absolute_offset,
+                hc_fn.bytes,
+                hc_scale.absolute_offset,
+                hc_scale.bytes,
+                hc_base.absolute_offset,
+                hc_base.bytes,
+                norm_weight.absolute_offset,
+                norm_weight.bytes,
+                gate.absolute_offset,
+                gate.bytes,
+                0,
+                0,
+                hash.absolute_offset,
+                hash.bytes,
+                input_hc.as_ptr(),
+                mixes.as_mut_ptr(),
+                split.as_mut_ptr(),
+                ffn_cur.as_mut_ptr(),
+                ffn_norm.as_mut_ptr(),
+                logits.as_mut_ptr(),
+                probs.as_mut_ptr(),
+                selected.as_mut_ptr(),
+                weights.as_mut_ptr(),
+                &mut raw,
+                error.as_mut_ptr(),
+                error.len(),
+            )
+        };
+        if succeeded == 0 {
+            return Err(Error::invalid(format!(
+                "Metal layer-0 FFN router probe failed: {}",
+                error_text(&error)
+            )));
+        }
+        if raw.model_bytes != model.bytes()
+            || raw.wrapped_model_ranges != 6
+            || raw.pointer_matches != 6
+        {
+            return Err(Error::invalid(
+                "Metal FFN router path did not preserve all six mmap-backed model ranges",
+            ));
+        }
+        if selected != expected_selected {
+            return Err(Error::invalid(format!(
+                "FFN router C0 mismatch in selected experts: actual={selected:?} expected={expected_selected:?}"
+            )));
+        }
+        for (label, actual, expected) in [
+            (
+                "hc_ffn_pre_mixes",
+                mixes.as_slice(),
+                expected_mixes.as_slice(),
+            ),
+            (
+                "hc_ffn_pre_split",
+                split.as_slice(),
+                expected_split.as_slice(),
+            ),
+            ("hc_ffn_pre", ffn_cur.as_slice(), expected_cur.as_slice()),
+            ("ffn_norm", ffn_norm.as_slice(), expected_norm.as_slice()),
+            (
+                "ffn_moe_logits",
+                logits.as_slice(),
+                expected_logits.as_slice(),
+            ),
+            ("ffn_moe_probs", probs.as_slice(), expected_probs.as_slice()),
+            (
+                "ffn_moe_weights_scaled",
+                weights.as_slice(),
+                expected_weights.as_slice(),
+            ),
+        ] {
+            for (index, (actual, expected)) in actual.iter().zip(expected).enumerate() {
+                if actual.to_bits() != expected.to_bits() {
+                    return Err(Error::invalid(format!(
+                        "FFN router C0 mismatch in {label}[{index}]: actual={:#010x} expected={:#010x}",
+                        actual.to_bits(), expected.to_bits()
+                    )));
+                }
+            }
+        }
+        for (name, value) in [("wall_ms", raw.wall_ms), ("gpu_ms", raw.gpu_ms)] {
+            if !value.is_finite() || value < 0.0 {
+                return Err(Error::invalid(format!(
+                    "Metal FFN router returned invalid {name}"
+                )));
+            }
+        }
+        if raw.wall_ms == 0.0 {
+            return Err(Error::invalid(
+                "Metal FFN router returned a zero wall interval",
+            ));
+        }
+        Ok(FfnRouterProbeReport {
+            fixture_id: FFN_ROUTER_FIXTURE_ID,
+            token: TOKEN,
+            dispatches: 7,
+            expert_count: 256,
+            selected_experts: selected,
+            wrapped_model_ranges: raw.wrapped_model_ranges,
+            pointer_matches: raw.pointer_matches,
+            wall_ms: raw.wall_ms,
+            gpu_ms: raw.gpu_ms,
+            hc_mixes_checksum: checksum_f32(&mixes),
+            hc_split_checksum: checksum_f32(&split),
+            ffn_cur_checksum: checksum_f32(&ffn_cur),
+            ffn_norm_checksum: checksum_f32(&ffn_norm),
+            router_logits_checksum: checksum_f32(&logits),
+            router_probs_checksum: checksum_f32(&probs),
+            router_weights_checksum: checksum_f32(&weights),
+        })
+    }
 }
 
 #[cfg(not(target_os = "macos"))]
@@ -2228,12 +2529,20 @@ mod imp {
             "the Metal layer-0 attention-output probe is available only on macOS",
         ))
     }
+
+    pub fn run_ffn_router_probe(model: &MappedModel) -> Result<FfnRouterProbeReport> {
+        let _ = ffn_router_fixture()?;
+        let _ = exact_tensor(model, "blk.0.ffn_gate_inp.weight", 1, &[4096, 256])?;
+        Err(Error::invalid(
+            "the Metal layer-0 FFN router probe is available only on macOS",
+        ))
+    }
 }
 
 pub use imp::{
     run_attention_ingress_probe, run_attention_output_probe, run_attention_read_probe,
-    run_attention_setup_probe, run_f16_embedding_probe, run_probe, run_q8_projection_probe,
-    run_rope_kv_store_probe,
+    run_attention_setup_probe, run_f16_embedding_probe, run_ffn_router_probe, run_probe,
+    run_q8_projection_probe, run_rope_kv_store_probe,
 };
 
 #[cfg(test)]
@@ -2390,6 +2699,27 @@ mod tests {
         }
     }
 
+    fn ffn_router_report() -> FfnRouterProbeReport {
+        FfnRouterProbeReport {
+            fixture_id: FFN_ROUTER_FIXTURE_ID,
+            token: 201,
+            dispatches: 7,
+            expert_count: 256,
+            selected_experts: vec![17, 42, 63, 99, 101, 201],
+            wrapped_model_ranges: 6,
+            pointer_matches: 6,
+            wall_ms: 2.0,
+            gpu_ms: 1.0,
+            hc_mixes_checksum: 1,
+            hc_split_checksum: 2,
+            ffn_cur_checksum: 3,
+            ffn_norm_checksum: 4,
+            router_logits_checksum: 5,
+            router_probs_checksum: 6,
+            router_weights_checksum: 7,
+        }
+    }
+
     #[test]
     fn validates_probe_work_bounds() {
         assert!(ProbeConfig::default().validate().is_ok());
@@ -2500,6 +2830,17 @@ mod tests {
     }
 
     #[test]
+    fn writes_stable_ffn_router_probe_json() {
+        let mut output = Vec::new();
+        write_ffn_router_probe_json(&mut output, &ffn_router_report()).unwrap();
+        let text = String::from_utf8(output).unwrap();
+        assert!(text.contains(&format!("\"schema\": \"{FFN_ROUTER_PROBE_SCHEMA}\"")));
+        assert!(text.contains("\"dispatches\": 7"));
+        assert!(text.contains("\"selected_experts\": [17, 42, 63, 99, 101, 201]"));
+        assert!(text.contains("\"c0_bitwise_match\": true"));
+    }
+
+    #[test]
     fn rope_kv_store_fixture_has_target_shapes() {
         let (q_cur, kv_rope, kv_cur, cache_row) = rope_kv_store_fixture().unwrap();
         assert_eq!(q_cur.len(), 64 * 512);
@@ -2529,6 +2870,21 @@ mod tests {
         assert_eq!(low.len(), 8 * 1024);
         assert_eq!(out.len(), 4096);
         assert_eq!(hc_post.len(), 4 * 4096);
+    }
+
+    #[test]
+    fn ffn_router_fixture_has_target_shapes() {
+        let (input, mixes, split, cur, norm, logits, probs, selected, weights) =
+            ffn_router_fixture().unwrap();
+        assert_eq!(input.len(), 4 * 4096);
+        assert_eq!(mixes.len(), 24);
+        assert_eq!(split.len(), 24);
+        assert_eq!(cur.len(), 4096);
+        assert_eq!(norm.len(), 4096);
+        assert_eq!(logits.len(), 256);
+        assert_eq!(probs.len(), 256);
+        assert_eq!(selected.len(), 6);
+        assert_eq!(weights.len(), 6);
     }
 
     #[test]
