@@ -32,6 +32,12 @@ fi
 echo "==> existing Python artifact tests"
 python3 -m unittest discover -s "$repo_dir/rust-star/tests" -v
 
+echo "==> pinned differential fixtures"
+for fixture_manifest in "$repo_dir"/rust-star/fixtures/*/manifest.json; do
+    python3 "$repo_dir/rust-star/verify_differential_fixture.py" \
+        "$(dirname "$fixture_manifest")"
+done
+
 echo "==> Rust-writer/Python-reader artifact contract"
 fixture="$target_dir/candidate-logit-fixture.json"
 comparison="$target_dir/candidate-logit-fixture-comparison.json"
@@ -59,6 +65,9 @@ elif [ "$#" -eq 1 ]; then
         echo "==> no-copy Q8_0 decode projection"
         "$target_dir/release/rust-star" projection-probe "$1" \
             --json "$target_dir/q8-projection-probe.json"
+        echo "==> no-copy layer-0 attention ingress"
+        "$target_dir/release/rust-star" attention-ingress-probe "$1" \
+            --json "$target_dir/attention-ingress-probe.json"
     fi
 else
     echo "usage: $0 [/absolute/path/to/model.gguf]" >&2

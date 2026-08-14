@@ -67,6 +67,8 @@ static NSString *const kGetRowsF16Source =
     @"typedef decltype(kernel_get_rows_f<float, float>) get_rows_f_t;\n"
     @"template [[host_name(\"kernel_get_rows_f16\")]] kernel get_rows_f_t kernel_get_rows_f<half, float>;\n";
 
+#include "attention_ingress_source.inc"
+
 // Imported from DwarfStar metal/dense.metal. The fixed target uses DwarfStar's
 // default four simdgroups and two output rows per threadgroup.
 static NSString *const kQ8ProjectionSource =
@@ -160,6 +162,11 @@ static NSString *const kQ8ProjectionSource =
 @property(nonatomic, strong) id<MTLComputePipelineState> probePipeline;
 @property(nonatomic, strong) id<MTLComputePipelineState> getRowsF16Pipeline;
 @property(nonatomic, strong) id<MTLComputePipelineState> q8ProjectionPipeline;
+@property(nonatomic, strong) id<MTLLibrary> attentionIngressLibrary;
+@property(nonatomic, strong) id<MTLComputePipelineState> repeatF32Pipeline;
+@property(nonatomic, strong) id<MTLComputePipelineState> rmsNormF32Pipeline;
+@property(nonatomic, strong) id<MTLComputePipelineState> f16ProjectionPipeline;
+@property(nonatomic, strong) id<MTLComputePipelineState> hcIngressPipeline;
 @property(nonatomic, assign) double setupMilliseconds;
 @property(nonatomic, assign) double compileMilliseconds;
 @end
@@ -317,6 +324,44 @@ static int ensure_q8_projection_pipeline(
     if (!context.q8ProjectionPipeline) {
         return fail_with_message(error, error_bytes, compile_error.localizedDescription);
     }
+    return 1;
+}
+
+static int ensure_attention_ingress_pipelines(
+    RustStarMetalContext *context,
+    char *error,
+    size_t error_bytes)
+{
+    if (context.attentionIngressLibrary) return 1;
+    NSError *compile_error = nil;
+    id<MTLLibrary> library =
+        [context.device newLibraryWithSource:kAttentionIngressSource
+                                      options:[MTLCompileOptions new]
+                                        error:&compile_error];
+    if (!library) return fail_with_message(error, error_bytes, compile_error.localizedDescription);
+
+    id<MTLFunction> repeat = [library newFunctionWithName:@"kernel_repeat_f32"];
+    id<MTLFunction> norm = [library newFunctionWithName:@"kernel_rms_norm_f32_4"];
+    id<MTLFunction> hc = [library newFunctionWithName:@"kernel_dsv4_hc_split_weighted_sum_norm4"];
+    int16_t simdgroups = 8;
+    MTLFunctionConstantValues *constants = [MTLFunctionConstantValues new];
+    [constants setConstantValue:&simdgroups type:MTLDataTypeShort atIndex:600];
+    id<MTLFunction> projection = [library newFunctionWithName:@"kernel_mul_mv_f16_f32_4"
+                                               constantValues:constants
+                                                        error:&compile_error];
+    if (!repeat || !norm || !hc || !projection) {
+        return fail_with_message(error, error_bytes,
+            compile_error ? compile_error.localizedDescription : @"attention ingress kernel was not found");
+    }
+    context.repeatF32Pipeline = [context.device newComputePipelineStateWithFunction:repeat error:&compile_error];
+    context.rmsNormF32Pipeline = [context.device newComputePipelineStateWithFunction:norm error:&compile_error];
+    context.f16ProjectionPipeline = [context.device newComputePipelineStateWithFunction:projection error:&compile_error];
+    context.hcIngressPipeline = [context.device newComputePipelineStateWithFunction:hc error:&compile_error];
+    if (!context.repeatF32Pipeline || !context.rmsNormF32Pipeline ||
+        !context.f16ProjectionPipeline || !context.hcIngressPipeline) {
+        return fail_with_message(error, error_bytes, compile_error.localizedDescription);
+    }
+    context.attentionIngressLibrary = library;
     return 1;
 }
 
@@ -615,6 +660,78 @@ typedef struct rust_star_q8_mv_args {
     int16_t r3;
 } rust_star_q8_mv_args;
 
+typedef struct rust_star_repeat_args {
+    int32_t ne00, ne01, ne02, ne03;
+    uint64_t nb00, nb01, nb02, nb03;
+    int32_t ne0, ne1, ne2, ne3;
+    uint64_t nb0, nb1, nb2, nb3;
+} rust_star_repeat_args;
+
+typedef struct rust_star_norm_args {
+    int32_t ne00, ne00_t;
+    uint64_t nb1, nb2, nb3;
+    float eps;
+    int32_t nef1[3], nef2[3], nef3[3];
+    uint64_t nbf1[3], nbf2[3], nbf3[3];
+} rust_star_norm_args;
+
+typedef struct rust_star_hc_ingress_args {
+    int64_t n_embd;
+    int32_t n_hc, sinkhorn_iters;
+    int64_t n_rows, mix_hc;
+    uint64_t nb_mix1, nb_split1;
+    uint64_t nb_x0, nb_x1, nb_x2;
+    uint64_t nb0, nb1, nb_norm1;
+    float eps, norm_eps;
+} rust_star_hc_ingress_args;
+
+static id<MTLBuffer> wrap_model_range(
+    RustStarMetalContext *context,
+    const void *model_mapping,
+    uint64_t model_bytes,
+    uint64_t offset,
+    uint64_t bytes,
+    NSUInteger *inner,
+    BOOL *pointer_match,
+    char *error,
+    size_t error_bytes)
+{
+    if (offset > model_bytes || bytes > model_bytes - offset) {
+        fail_with_message(error, error_bytes, @"attention ingress model range is invalid");
+        return nil;
+    }
+    const uint64_t page = (uint64_t)getpagesize();
+    const uint64_t page_offset = offset & ~(page - 1u);
+    const uint64_t leading = offset - page_offset;
+    if (bytes > UINT64_MAX - leading || leading + bytes > UINT64_MAX - (page - 1u)) {
+        fail_with_message(error, error_bytes, @"attention ingress model range alignment overflows");
+        return nil;
+    }
+    const uint64_t required = leading + bytes;
+    uint64_t buffer_bytes = round_up_u64(required, page);
+    if (buffer_bytes > model_bytes - page_offset) buffer_bytes = model_bytes - page_offset;
+    if (required > buffer_bytes || buffer_bytes > (uint64_t)context.device.maxBufferLength) {
+        fail_with_message(error, error_bytes, @"attention ingress model range exceeds Metal limits");
+        return nil;
+    }
+    void *page_pointer = (void *)((uintptr_t)model_mapping + page_offset);
+    id<MTLBuffer> buffer = [context.device newBufferWithBytesNoCopy:page_pointer
+                                                           length:(NSUInteger)buffer_bytes
+                                                          options:MTLResourceStorageModeShared
+                                                      deallocator:nil];
+    if (!buffer) {
+        fail_with_message(error, error_bytes, @"failed to wrap attention ingress model range");
+        return nil;
+    }
+    *inner = (NSUInteger)leading;
+    *pointer_match = buffer.contents == page_pointer;
+    if (!*pointer_match) {
+        fail_with_message(error, error_bytes, @"attention ingress Metal buffer does not preserve mmap identity");
+        return nil;
+    }
+    return buffer;
+}
+
 int rust_star_metal_run_q8_0_projection(
     void *opaque_context,
     const void *model_mapping,
@@ -744,6 +861,214 @@ int rust_star_metal_run_q8_0_projection(
         result->simdgroups = 4;
         result->rows_per_threadgroup = 2;
         result->wall_ms = wall_end - wall_start;
+        result->gpu_ms = gpu_elapsed_ms(command);
+        return 1;
+    }
+}
+
+int rust_star_metal_run_attention_ingress(
+    void *opaque_context,
+    const void *model_mapping,
+    uint64_t model_bytes,
+    uint32_t token,
+    uint32_t n_vocab,
+    uint64_t embedding_offset,
+    uint64_t embedding_bytes,
+    uint64_t hc_fn_offset,
+    uint64_t hc_fn_bytes,
+    uint64_t hc_scale_offset,
+    uint64_t hc_scale_bytes,
+    uint64_t hc_base_offset,
+    uint64_t hc_base_bytes,
+    uint64_t attn_norm_offset,
+    uint64_t attn_norm_bytes,
+    uint64_t q_a_offset,
+    uint64_t q_a_bytes,
+    float *mixes,
+    float *split,
+    float *collapsed,
+    float *attn_norm,
+    float *q_lora,
+    rust_star_metal_ingress_probe_result *result,
+    char *error,
+    size_t error_bytes)
+{
+    const uint32_t n_embd = 4096;
+    const uint32_t n_hc = 4;
+    const uint32_t hc_dim = n_embd * n_hc;
+    const uint32_t mix_hc = 24;
+    const uint32_t q_elements = 1024;
+    if (!opaque_context || !model_mapping || !mixes || !split || !collapsed ||
+        !attn_norm || !q_lora || !result || n_vocab == 0 || token >= n_vocab) {
+        return fail_with_message(error, error_bytes, @"attention ingress received invalid inputs");
+    }
+    if (embedding_bytes != (uint64_t)n_embd*n_vocab*sizeof(uint16_t) ||
+        hc_fn_bytes != (uint64_t)hc_dim*mix_hc*sizeof(uint16_t) ||
+        hc_scale_bytes != 3u*sizeof(float) || hc_base_bytes != mix_hc*sizeof(float) ||
+        attn_norm_bytes != n_embd*sizeof(float) ||
+        q_a_bytes != (uint64_t)(n_embd/32u)*34u*q_elements) {
+        return fail_with_message(error, error_bytes, @"attention ingress tensor shapes are invalid");
+    }
+
+    @autoreleasepool {
+        RustStarMetalContext *context = (__bridge RustStarMetalContext *)opaque_context;
+        if (!ensure_get_rows_f16_pipeline(context, error, error_bytes) ||
+            !ensure_attention_ingress_pipelines(context, error, error_bytes) ||
+            !ensure_q8_projection_pipeline(context, error, error_bytes)) return 0;
+        memset(result, 0, sizeof(*result));
+
+        NSUInteger embedding_inner = 0, hc_fn_inner = 0, scale_inner = 0;
+        NSUInteger base_inner = 0, norm_inner = 0, q_inner = 0;
+        BOOL matches[6] = {NO, NO, NO, NO, NO, NO};
+        id<MTLBuffer> embedding_weights = wrap_model_range(context, model_mapping, model_bytes,
+            embedding_offset, embedding_bytes, &embedding_inner, &matches[0], error, error_bytes);
+        id<MTLBuffer> hc_fn_weights = wrap_model_range(context, model_mapping, model_bytes,
+            hc_fn_offset, hc_fn_bytes, &hc_fn_inner, &matches[1], error, error_bytes);
+        id<MTLBuffer> scale_weights = wrap_model_range(context, model_mapping, model_bytes,
+            hc_scale_offset, hc_scale_bytes, &scale_inner, &matches[2], error, error_bytes);
+        id<MTLBuffer> base_weights = wrap_model_range(context, model_mapping, model_bytes,
+            hc_base_offset, hc_base_bytes, &base_inner, &matches[3], error, error_bytes);
+        id<MTLBuffer> norm_weights = wrap_model_range(context, model_mapping, model_bytes,
+            attn_norm_offset, attn_norm_bytes, &norm_inner, &matches[4], error, error_bytes);
+        id<MTLBuffer> q_weights = wrap_model_range(context, model_mapping, model_bytes,
+            q_a_offset, q_a_bytes, &q_inner, &matches[5], error, error_bytes);
+        if (!embedding_weights || !hc_fn_weights || !scale_weights || !base_weights ||
+            !norm_weights || !q_weights) return 0;
+
+        id<MTLBuffer> embedding = [context.device newBufferWithLength:n_embd*sizeof(float) options:MTLResourceStorageModeShared];
+        id<MTLBuffer> cur_hc = [context.device newBufferWithLength:hc_dim*sizeof(float) options:MTLResourceStorageModeShared];
+        id<MTLBuffer> flat_hc = [context.device newBufferWithLength:hc_dim*sizeof(float) options:MTLResourceStorageModeShared];
+        id<MTLBuffer> mix_buffer = [context.device newBufferWithLength:mix_hc*sizeof(float) options:MTLResourceStorageModeShared];
+        id<MTLBuffer> split_buffer = [context.device newBufferWithLength:mix_hc*sizeof(float) options:MTLResourceStorageModeShared];
+        id<MTLBuffer> collapsed_buffer = [context.device newBufferWithLength:n_embd*sizeof(float) options:MTLResourceStorageModeShared];
+        id<MTLBuffer> norm_buffer = [context.device newBufferWithLength:n_embd*sizeof(float) options:MTLResourceStorageModeShared];
+        id<MTLBuffer> q_buffer = [context.device newBufferWithLength:q_elements*sizeof(float) options:MTLResourceStorageModeShared];
+        if (!embedding || !cur_hc || !flat_hc || !mix_buffer || !split_buffer ||
+            !collapsed_buffer || !norm_buffer || !q_buffer) {
+            return fail_with_message(error, error_bytes, @"failed to allocate attention ingress buffers");
+        }
+
+        const uint64_t embedding_row_bytes = (uint64_t)n_embd*sizeof(uint16_t);
+        rust_star_get_rows_args get_rows = {
+            .ne00t = (int32_t)n_embd, .ne00 = (int32_t)n_embd,
+            .nb01 = embedding_row_bytes, .nb02 = embedding_bytes, .nb03 = embedding_bytes,
+            .ne10 = 1, .nb10 = sizeof(uint32_t), .nb11 = sizeof(uint32_t), .nb12 = sizeof(uint32_t),
+            .nb1 = n_embd*sizeof(float), .nb2 = n_embd*sizeof(float), .nb3 = n_embd*sizeof(float),
+        };
+        const uint64_t f32_row_bytes = (uint64_t)n_embd*sizeof(float);
+        rust_star_repeat_args repeat = {
+            .ne00=(int32_t)n_embd, .ne01=1, .ne02=1, .ne03=1,
+            .nb00=sizeof(float), .nb01=f32_row_bytes, .nb02=f32_row_bytes, .nb03=f32_row_bytes,
+            .ne0=(int32_t)n_embd, .ne1=(int32_t)n_hc, .ne2=1, .ne3=1,
+            .nb0=sizeof(float), .nb1=f32_row_bytes, .nb2=(uint64_t)n_hc*f32_row_bytes, .nb3=(uint64_t)n_hc*f32_row_bytes,
+        };
+        const uint64_t hc_row_bytes = (uint64_t)hc_dim*sizeof(float);
+        rust_star_norm_args norm = {
+            .ne00=(int32_t)hc_dim, .ne00_t=(int32_t)(hc_dim/4u),
+            .nb1=hc_row_bytes, .nb2=hc_row_bytes, .nb3=hc_row_bytes, .eps=1.0e-6f,
+            .nef1={(int32_t)1,1,1}, .nef2={1,1,1}, .nef3={1,1,1},
+            .nbf1={hc_row_bytes,hc_row_bytes,hc_row_bytes},
+            .nbf2={hc_row_bytes,hc_row_bytes,hc_row_bytes},
+            .nbf3={hc_row_bytes,hc_row_bytes,hc_row_bytes},
+        };
+        const uint64_t hc_fn_row_bytes = (uint64_t)hc_dim*sizeof(uint16_t);
+        rust_star_q8_mv_args f16_mv = {
+            .ne00=(int32_t)hc_dim, .ne01=(int32_t)mix_hc, .ne02=1,
+            .nb00=sizeof(uint16_t), .nb01=hc_fn_row_bytes,
+            .nb02=hc_fn_bytes, .nb03=hc_fn_bytes,
+            .ne10=(int32_t)hc_dim, .ne11=1, .ne12=1,
+            .nb10=sizeof(float), .nb11=hc_row_bytes, .nb12=hc_row_bytes, .nb13=hc_row_bytes,
+            .ne0=(int32_t)mix_hc, .ne1=1, .nr0=2, .r2=1, .r3=1,
+        };
+        rust_star_hc_ingress_args hc = {
+            .n_embd=n_embd, .n_hc=(int32_t)n_hc, .sinkhorn_iters=20,
+            .n_rows=1, .mix_hc=mix_hc,
+            .nb_mix1=mix_hc*sizeof(float), .nb_split1=mix_hc*sizeof(float),
+            .nb_x0=sizeof(float), .nb_x1=f32_row_bytes, .nb_x2=(uint64_t)n_hc*f32_row_bytes,
+            .nb0=sizeof(float), .nb1=f32_row_bytes, .nb_norm1=f32_row_bytes,
+            .eps=1.0e-6f, .norm_eps=1.0e-6f,
+        };
+        const uint64_t q_row_bytes = (uint64_t)(n_embd/32u)*34u;
+        rust_star_q8_mv_args q_mv = {
+            .ne00=(int32_t)n_embd, .ne01=(int32_t)q_elements, .ne02=1,
+            .nb00=34, .nb01=q_row_bytes, .nb02=q_a_bytes, .nb03=q_a_bytes,
+            .ne10=(int32_t)n_embd, .ne11=1, .ne12=1,
+            .nb10=sizeof(float), .nb11=f32_row_bytes, .nb12=f32_row_bytes, .nb13=f32_row_bytes,
+            .ne0=(int32_t)q_elements, .ne1=1, .nr0=2, .r2=1, .r3=1,
+        };
+
+        id<MTLCommandBuffer> command = [context.queue commandBuffer];
+        if (!command) return fail_with_message(error, error_bytes, @"failed to create attention ingress command buffer");
+        id<MTLComputeCommandEncoder> encoder = [command computeCommandEncoder];
+        if (!encoder) return fail_with_message(error, error_bytes, @"failed to create attention ingress encoder");
+
+        [encoder setComputePipelineState:context.getRowsF16Pipeline];
+        [encoder setBytes:&get_rows length:sizeof(get_rows) atIndex:0];
+        [encoder setBuffer:embedding_weights offset:embedding_inner atIndex:1];
+        int32_t signed_token = (int32_t)token;
+        [encoder setBytes:&signed_token length:sizeof(signed_token) atIndex:2];
+        [encoder setBuffer:embedding offset:0 atIndex:3];
+        [encoder dispatchThreadgroups:MTLSizeMake(4,1,1) threadsPerThreadgroup:MTLSizeMake(1024,1,1)];
+
+        [encoder setComputePipelineState:context.repeatF32Pipeline];
+        [encoder setBytes:&repeat length:sizeof(repeat) atIndex:0];
+        [encoder setBuffer:embedding offset:0 atIndex:1];
+        [encoder setBuffer:cur_hc offset:0 atIndex:2];
+        [encoder dispatchThreadgroups:MTLSizeMake(n_hc,1,1) threadsPerThreadgroup:MTLSizeMake(1024,1,1)];
+
+        [encoder setComputePipelineState:context.rmsNormF32Pipeline];
+        [encoder setBytes:&norm length:sizeof(norm) atIndex:0];
+        [encoder setBuffer:cur_hc offset:0 atIndex:1];
+        [encoder setBuffer:cur_hc offset:0 atIndex:2];
+        [encoder setBuffer:cur_hc offset:0 atIndex:3];
+        [encoder setBuffer:flat_hc offset:0 atIndex:4];
+        [encoder setThreadgroupMemoryLength:32u*sizeof(float) atIndex:0];
+        [encoder dispatchThreadgroups:MTLSizeMake(1,1,1) threadsPerThreadgroup:MTLSizeMake(1024,1,1)];
+
+        [encoder setComputePipelineState:context.f16ProjectionPipeline];
+        [encoder setBytes:&f16_mv length:sizeof(f16_mv) atIndex:0];
+        [encoder setBuffer:hc_fn_weights offset:hc_fn_inner atIndex:1];
+        [encoder setBuffer:flat_hc offset:0 atIndex:2];
+        [encoder setBuffer:mix_buffer offset:0 atIndex:3];
+        [encoder setThreadgroupMemoryLength:32u*2u*sizeof(float) atIndex:0];
+        [encoder dispatchThreadgroups:MTLSizeMake((mix_hc+1u)/2u,1,1) threadsPerThreadgroup:MTLSizeMake(32,8,1)];
+
+        [encoder setComputePipelineState:context.hcIngressPipeline];
+        [encoder setBytes:&hc length:sizeof(hc) atIndex:0];
+        [encoder setBuffer:mix_buffer offset:0 atIndex:1];
+        [encoder setBuffer:scale_weights offset:scale_inner atIndex:2];
+        [encoder setBuffer:base_weights offset:base_inner atIndex:3];
+        [encoder setBuffer:cur_hc offset:0 atIndex:4];
+        [encoder setBuffer:split_buffer offset:0 atIndex:5];
+        [encoder setBuffer:collapsed_buffer offset:0 atIndex:6];
+        [encoder setBuffer:norm_weights offset:norm_inner atIndex:7];
+        [encoder setBuffer:norm_buffer offset:0 atIndex:8];
+        [encoder setThreadgroupMemoryLength:(n_embd+4u+32u)*sizeof(float) atIndex:0];
+        [encoder dispatchThreadgroups:MTLSizeMake(1,1,1) threadsPerThreadgroup:MTLSizeMake(1024,1,1)];
+
+        [encoder setComputePipelineState:context.q8ProjectionPipeline];
+        [encoder setBytes:&q_mv length:sizeof(q_mv) atIndex:0];
+        [encoder setBuffer:q_weights offset:q_inner atIndex:1];
+        [encoder setBuffer:norm_buffer offset:0 atIndex:2];
+        [encoder setBuffer:q_buffer offset:0 atIndex:3];
+        [encoder setThreadgroupMemoryLength:32u*2u*sizeof(float) atIndex:0];
+        [encoder dispatchThreadgroups:MTLSizeMake(q_elements/2u,1,1) threadsPerThreadgroup:MTLSizeMake(32,4,1)];
+        [encoder endEncoding];
+
+        const double wall_start = monotonic_ms();
+        [command commit];
+        if (!command_succeeded(command, error, error_bytes)) return 0;
+        const double wall_end = monotonic_ms();
+        memcpy(mixes, mix_buffer.contents, mix_hc*sizeof(float));
+        memcpy(split, split_buffer.contents, mix_hc*sizeof(float));
+        memcpy(collapsed, collapsed_buffer.contents, n_embd*sizeof(float));
+        memcpy(attn_norm, norm_buffer.contents, n_embd*sizeof(float));
+        memcpy(q_lora, q_buffer.contents, q_elements*sizeof(float));
+        result->model_bytes = model_bytes;
+        result->max_buffer_length = context.device.maxBufferLength;
+        result->wrapped_model_ranges = 6;
+        for (uint32_t index = 0; index < 6; index++) if (matches[index]) result->pointer_matches++;
+        result->wall_ms = wall_end-wall_start;
         result->gpu_ms = gpu_elapsed_ms(command);
         return 1;
     }

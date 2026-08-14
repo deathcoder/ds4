@@ -1,0 +1,153 @@
+{
+  "schema": "rust-star-differential-fixture-v1",
+  "fixture_id": "dwarfstar-oracle-v1-layer0-pos1-attention-ingress",
+  "captured_at_utc": "2026-08-14T21:29:00Z",
+  "oracle": {
+    "id": "oracle-v1",
+    "repository": "https://github.com/antirez/ds4.git",
+    "commit": "b0309611041655f4e45671cfd9c9886aff161406",
+    "tree": "20c11af22f90a0bdf25da860da5ef06de4064060",
+    "capture_executable_sha256": "b0b7c31d9832cc3f5cccf810cd2af6f4bc4f6e71de945493674315314f666fc8"
+  },
+  "model": {
+    "family": "DeepSeek-V4-Flash-0731",
+    "sha256": "ca22ae2f838e14077c22bc1c1417b71b45b5e5a3687bd96c2ac6e17fdb6261c0"
+  },
+  "capture": {
+    "backend": "metal",
+    "machine": "Apple M1 Ultra, 48 GPU cores, 128 GB unified memory",
+    "prompt": "speed-bench/promessi_sposi.txt",
+    "prompt_sha256": "f53e0d80cb2d4492d24ebd63c7000c397b16ae70f9bf09b3763e5d8323ec209f",
+    "prefill_tokens": 1,
+    "decode_step": 1,
+    "token_id": 201,
+    "fresh_process_captures": 2,
+    "fresh_process_bitwise_match": true,
+    "environment": {
+      "DS4_METAL_GRAPH_DUMP_LAYER": "0",
+      "DS4_METAL_GRAPH_DUMP_POS": "1",
+      "DS4_METAL_GRAPH_DUMP_NAME": "hc_attn_pre_mixes,hc_attn_pre_weights,hc_attn_pre_post_weights,hc_attn_pre_comb,hc_attn_pre,attn_norm,q_lora"
+    }
+  },
+  "scope": {
+    "kind": "layer-segment",
+    "phase": "decode",
+    "layer": 0,
+    "position": 1
+  },
+  "operations": [
+    {
+      "name": "embedding-gather",
+      "kernel": "kernel_get_rows_f16",
+      "weights": ["token_embd.weight"]
+    },
+    {
+      "name": "embedding-hc-repeat",
+      "kernel": "kernel_repeat_f32",
+      "weights": []
+    },
+    {
+      "name": "hc-plain-rmsnorm",
+      "kernel": "kernel_rms_norm_f32_4",
+      "weights": []
+    },
+    {
+      "name": "attention-hc-mixer",
+      "kernel": "kernel_mul_mv_f16_f32_4",
+      "weights": ["blk.0.hc_attn_fn.weight"]
+    },
+    {
+      "name": "hc-split-collapse-attention-norm",
+      "kernel": "kernel_dsv4_hc_split_weighted_sum_norm4",
+      "weights": [
+        "blk.0.hc_attn_scale.weight",
+        "blk.0.hc_attn_base.weight",
+        "blk.0.attn_norm.weight"
+      ]
+    },
+    {
+      "name": "attn-q-a-projection",
+      "kernel": "kernel_mul_mv_q8_0_f32",
+      "weights": ["blk.0.attn_q_a.weight"]
+    }
+  ],
+  "tensors": [
+    {
+      "name": "hc_attn_pre_mixes",
+      "hook": "hc_attn_pre_mixes",
+      "role": "intermediate",
+      "dtype": "f32",
+      "shape": [24],
+      "encoding": "little-endian-ieee754-binary32",
+      "path": "hc-mixes.f32le.bin",
+      "bytes": 96,
+      "sha256": "e571beb9c63fbedf04a3530b7ca9ceb869daefc0451838d7b6e1c3df9d73d509"
+    },
+    {
+      "name": "hc_attn_pre_weights",
+      "hook": "hc_attn_pre_weights",
+      "role": "intermediate",
+      "dtype": "f32",
+      "shape": [4],
+      "encoding": "little-endian-ieee754-binary32",
+      "path": "hc-pre.f32le.bin",
+      "bytes": 16,
+      "sha256": "4f2f2d9dc4e73b1be49401335f62aba010b1bef1359fedd749dbf1824bf16541"
+    },
+    {
+      "name": "hc_attn_pre_post_weights",
+      "hook": "hc_attn_pre_post_weights",
+      "role": "intermediate",
+      "dtype": "f32",
+      "shape": [4],
+      "encoding": "little-endian-ieee754-binary32",
+      "path": "hc-post.f32le.bin",
+      "bytes": 16,
+      "sha256": "192c8fff5bc2f0ae127a3550ea4e8e7e8d9053e94ffd63e91c3aaf026c8632c0"
+    },
+    {
+      "name": "hc_attn_pre_comb",
+      "hook": "hc_attn_pre_comb",
+      "role": "intermediate",
+      "dtype": "f32",
+      "shape": [4, 4],
+      "encoding": "little-endian-ieee754-binary32",
+      "path": "hc-combination.f32le.bin",
+      "bytes": 64,
+      "sha256": "5437244271e86918a67caf2fee5248e10bad33621f43726134756aab531fb25a"
+    },
+    {
+      "name": "hc_attn_pre",
+      "hook": "hc_attn_pre",
+      "role": "intermediate",
+      "dtype": "f32",
+      "shape": [4096],
+      "encoding": "little-endian-ieee754-binary32",
+      "path": "hc-collapsed.f32le.bin",
+      "bytes": 16384,
+      "sha256": "d863d6108765d9ffc2e6c3eac26a99d9f36cb3e0d5c4931614f15f5762dc8c62"
+    },
+    {
+      "name": "attn_norm",
+      "hook": "attn_norm",
+      "role": "intermediate",
+      "dtype": "f32",
+      "shape": [4096],
+      "encoding": "little-endian-ieee754-binary32",
+      "path": "attn-norm.f32le.bin",
+      "bytes": 16384,
+      "sha256": "eb9ba7b65e61af29b38a8f84c18bd693aa6a5cf8753895ea9401074cf6ab7a68"
+    },
+    {
+      "name": "q_lora",
+      "hook": "q_lora",
+      "role": "output",
+      "dtype": "f32",
+      "shape": [1024],
+      "encoding": "little-endian-ieee754-binary32",
+      "path": "q-lora.f32le.bin",
+      "bytes": 4096,
+      "sha256": "9030b8bba7f5d57b4a425894604c81436e74a0bf534684a6bbd7ae6ca0afac0c"
+    }
+  ]
+}

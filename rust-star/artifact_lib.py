@@ -19,6 +19,7 @@ from typing import Any, Iterator, Sequence
 
 
 ORACLE_SCHEMA = "rust-star-oracle-manifest-v1"
+DIFFERENTIAL_FIXTURE_SCHEMA = "rust-star-differential-fixture-v1"
 ORACLE_ID = "oracle-v1"
 SOURCE_COMMIT = "b0309611041655f4e45671cfd9c9886aff161406"
 SOURCE_TREE = "20c11af22f90a0bdf25da860da5ef06de4064060"
@@ -317,6 +318,135 @@ def _artifact_descriptors(value: Any, location: str = "manifest") -> Iterator[tu
     elif isinstance(value, list):
         for index, child in enumerate(value):
             yield from _artifact_descriptors(child, f"{location}[{index}]")
+
+
+def _require_nonempty_string(value: Any, location: str) -> str:
+    if not isinstance(value, str) or not value:
+        raise ArtifactError(f"{location} must be a nonempty string")
+    return value
+
+
+def _require_nonnegative_integer(value: Any, location: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        raise ArtifactError(f"{location} must be a nonnegative integer")
+    return value
+
+
+def validate_differential_fixture(root: Path) -> dict[str, Any]:
+    """Validate a self-contained kernel, layer-segment, or decode-step fixture."""
+    manifest = load_json(root / "manifest.json")
+    if not isinstance(manifest, dict):
+        raise ArtifactError("fixture manifest.json must contain an object")
+    if manifest.get("schema") != DIFFERENTIAL_FIXTURE_SCHEMA:
+        raise ArtifactError(f"unexpected fixture schema: {manifest.get('schema')!r}")
+    fixture_id = _require_nonempty_string(manifest.get("fixture_id"), "fixture_id")
+
+    oracle = manifest.get("oracle")
+    if not isinstance(oracle, dict):
+        raise ArtifactError("fixture oracle is missing")
+    if oracle.get("commit") != SOURCE_COMMIT or oracle.get("tree") != SOURCE_TREE:
+        raise ArtifactError("fixture oracle commit/tree does not match oracle-v1")
+    executable_sha256 = oracle.get("capture_executable_sha256")
+    if not isinstance(executable_sha256, str) or not SHA256_RE.fullmatch(executable_sha256):
+        raise ArtifactError("fixture oracle capture executable SHA-256 is invalid")
+
+    model = manifest.get("model")
+    if not isinstance(model, dict) or not SHA256_RE.fullmatch(str(model.get("sha256", ""))):
+        raise ArtifactError("fixture model SHA-256 is invalid")
+
+    scope = manifest.get("scope")
+    if not isinstance(scope, dict):
+        raise ArtifactError("fixture scope is missing")
+    kind = scope.get("kind")
+    if kind not in {"kernel", "layer-segment", "decode-step"}:
+        raise ArtifactError(f"invalid fixture scope kind: {kind!r}")
+    if scope.get("phase") not in {"prefill", "decode"}:
+        raise ArtifactError(f"invalid fixture phase: {scope.get('phase')!r}")
+    _require_nonnegative_integer(scope.get("position"), "scope.position")
+    layer = scope.get("layer")
+    if layer is not None:
+        _require_nonnegative_integer(layer, "scope.layer")
+
+    operations = manifest.get("operations")
+    if not isinstance(operations, list) or not operations:
+        raise ArtifactError("fixture operations must be a nonempty array")
+    operation_names: set[str] = set()
+    for index, operation in enumerate(operations):
+        location = f"operations[{index}]"
+        if not isinstance(operation, dict):
+            raise ArtifactError(f"{location} must be an object")
+        name = _require_nonempty_string(operation.get("name"), f"{location}.name")
+        _require_nonempty_string(operation.get("kernel"), f"{location}.kernel")
+        if name in operation_names:
+            raise ArtifactError(f"duplicate operation name: {name}")
+        operation_names.add(name)
+
+    tensors = manifest.get("tensors")
+    if not isinstance(tensors, list) or not tensors:
+        raise ArtifactError("fixture tensors must be a nonempty array")
+    tensor_names: set[str] = set()
+    tensor_paths: set[str] = set()
+    verified_bytes = 0
+    for index, descriptor in enumerate(tensors):
+        location = f"tensors[{index}]"
+        if not isinstance(descriptor, dict):
+            raise ArtifactError(f"{location} must be an object")
+        name = _require_nonempty_string(descriptor.get("name"), f"{location}.name")
+        if name in tensor_names:
+            raise ArtifactError(f"duplicate tensor name: {name}")
+        tensor_names.add(name)
+        if descriptor.get("role") not in {"input", "intermediate", "output"}:
+            raise ArtifactError(f"invalid {location}.role: {descriptor.get('role')!r}")
+        if descriptor.get("dtype") != "f32" or descriptor.get("encoding") != "little-endian-ieee754-binary32":
+            raise ArtifactError(f"{location} must use little-endian IEEE-754 binary32")
+        shape = descriptor.get("shape")
+        if not isinstance(shape, list) or not shape:
+            raise ArtifactError(f"{location}.shape must be a nonempty array")
+        elements = 1
+        for dimension_index, dimension in enumerate(shape):
+            value = _require_nonnegative_integer(dimension, f"{location}.shape[{dimension_index}]")
+            if value == 0:
+                raise ArtifactError(f"{location}.shape dimensions must be positive")
+            elements *= value
+        relative = _require_nonempty_string(descriptor.get("path"), f"{location}.path")
+        if relative in tensor_paths:
+            raise ArtifactError(f"duplicate tensor path: {relative}")
+        tensor_paths.add(relative)
+        expected_bytes = elements * 4
+        if descriptor.get("bytes") != expected_bytes:
+            raise ArtifactError(
+                f"{location}.bytes does not match shape: expected={expected_bytes}, actual={descriptor.get('bytes')!r}"
+            )
+        expected_sha256 = descriptor.get("sha256")
+        if not isinstance(expected_sha256, str) or not SHA256_RE.fullmatch(expected_sha256):
+            raise ArtifactError(f"{location}.sha256 is invalid")
+        path = _safe_relative(root, relative)
+        if not path.is_file():
+            raise ArtifactError(f"fixture tensor is not a regular file: {relative}")
+        actual_bytes = path.stat().st_size
+        actual_sha256 = sha256_file(path)
+        if actual_bytes != expected_bytes or actual_sha256 != expected_sha256:
+            raise ArtifactError(f"fixture tensor integrity mismatch: {relative}")
+        with path.open("rb") as stream:
+            for element_index, packed in enumerate(iter(lambda: stream.read(4), b"")):
+                if len(packed) != 4:
+                    raise ArtifactError(f"fixture tensor is truncated: {relative}")
+                if not math.isfinite(struct.unpack("<f", packed)[0]):
+                    raise ArtifactError(
+                        f"fixture tensor contains non-finite f32 at element {element_index}: {relative}"
+                    )
+        verified_bytes += actual_bytes
+
+    return {
+        "valid": True,
+        "schema": DIFFERENTIAL_FIXTURE_SCHEMA,
+        "fixture_id": fixture_id,
+        "scope": kind,
+        "operations": len(operations),
+        "tensors": len(tensors),
+        "verified_bytes": verified_bytes,
+        "model_sha256": model["sha256"],
+    }
 
 
 def validate_oracle_bundle(root: Path, *, allow_partial: bool = False) -> dict[str, Any]:

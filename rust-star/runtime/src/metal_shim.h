@@ -57,6 +57,15 @@ typedef struct rust_star_metal_projection_probe_result {
     double gpu_ms;
 } rust_star_metal_projection_probe_result;
 
+typedef struct rust_star_metal_ingress_probe_result {
+    uint64_t model_bytes;
+    uint64_t max_buffer_length;
+    uint32_t wrapped_model_ranges;
+    uint32_t pointer_matches;
+    double wall_ms;
+    double gpu_ms;
+} rust_star_metal_ingress_probe_result;
+
 int rust_star_metal_create(void **context_out, char *error, size_t error_bytes);
 
 int rust_star_metal_run_probe(
@@ -94,6 +103,33 @@ int rust_star_metal_run_q8_0_projection(
     const float *input,
     float *output,
     rust_star_metal_projection_probe_result *result,
+    char *error,
+    size_t error_bytes);
+
+int rust_star_metal_run_attention_ingress(
+    void *context,
+    const void *model_mapping,
+    uint64_t model_bytes,
+    uint32_t token,
+    uint32_t n_vocab,
+    uint64_t embedding_offset,
+    uint64_t embedding_bytes,
+    uint64_t hc_fn_offset,
+    uint64_t hc_fn_bytes,
+    uint64_t hc_scale_offset,
+    uint64_t hc_scale_bytes,
+    uint64_t hc_base_offset,
+    uint64_t hc_base_bytes,
+    uint64_t attn_norm_offset,
+    uint64_t attn_norm_bytes,
+    uint64_t q_a_offset,
+    uint64_t q_a_bytes,
+    float *mixes,
+    float *split,
+    float *collapsed,
+    float *attn_norm,
+    float *q_lora,
+    rust_star_metal_ingress_probe_result *result,
     char *error,
     size_t error_bytes);
 

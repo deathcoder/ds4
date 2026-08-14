@@ -2,39 +2,58 @@
 
 from __future__ import annotations
 
-import hashlib
 import json
-import math
-import struct
+import shutil
+import sys
+import tempfile
 import unittest
 from pathlib import Path
 
 
-FIXTURE = Path(__file__).resolve().parents[1] / "fixtures" / "q8-attn-q-a-v1"
+RUST_STAR_DIR = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(RUST_STAR_DIR))
+
+from artifact_lib import ArtifactError, validate_differential_fixture  # noqa: E402
+
+
+FIXTURE = RUST_STAR_DIR / "fixtures" / "q8-attn-q-a-v1"
+INGRESS_FIXTURE = RUST_STAR_DIR / "fixtures" / "layer0-attention-ingress-v1"
 
 
 class KernelFixtureTests(unittest.TestCase):
     def test_q8_projection_fixture_manifest_and_payloads(self) -> None:
         manifest = json.loads((FIXTURE / "manifest.json").read_text(encoding="utf-8"))
-        self.assertEqual(manifest["schema"], "rust-star-kernel-fixture-v1")
+        self.assertEqual(manifest["schema"], "rust-star-differential-fixture-v1")
         self.assertEqual(
             manifest["fixture_id"],
             "dwarfstar-oracle-v1-layer0-pos1-attn-q-a",
         )
-        self.assertEqual(manifest["operation"]["tensor"], "blk.0.attn_q_a.weight")
-        self.assertEqual(manifest["operation"]["tensor_type"], "Q8_0")
+        self.assertEqual(manifest["scope"]["kind"], "kernel")
+        self.assertEqual(manifest["operations"][0]["weights"], ["blk.0.attn_q_a.weight"])
+        report = validate_differential_fixture(FIXTURE)
+        self.assertTrue(report["valid"])
+        self.assertEqual(report["operations"], 1)
+        self.assertEqual(report["tensors"], 2)
+        self.assertEqual(report["verified_bytes"], 20_480)
 
-        expected_elements = {
-            "activation.f32le.bin": manifest["operation"]["input_elements"],
-            "output.f32le.bin": manifest["operation"]["output_elements"],
-        }
-        for name, descriptor in manifest["artifacts"].items():
-            payload = (FIXTURE / name).read_bytes()
-            self.assertEqual(len(payload), descriptor["bytes"])
-            self.assertEqual(hashlib.sha256(payload).hexdigest(), descriptor["sha256"])
-            self.assertEqual(len(payload), expected_elements[name] * 4)
-            values = struct.iter_unpack("<f", payload)
-            self.assertTrue(all(math.isfinite(value[0]) for value in values))
+    def test_layer0_ingress_fixture_manifest_and_payloads(self) -> None:
+        report = validate_differential_fixture(INGRESS_FIXTURE)
+        self.assertEqual(report["fixture_id"], "dwarfstar-oracle-v1-layer0-pos1-attention-ingress")
+        self.assertEqual(report["scope"], "layer-segment")
+        self.assertEqual(report["operations"], 6)
+        self.assertEqual(report["tensors"], 7)
+        self.assertEqual(report["verified_bytes"], 37_056)
+
+    def test_fixture_shape_tampering_is_rejected(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            fixture = Path(temporary) / "fixture"
+            shutil.copytree(FIXTURE, fixture)
+            manifest_path = fixture / "manifest.json"
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            manifest["tensors"][0]["shape"] = [4095]
+            manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+            with self.assertRaisesRegex(ArtifactError, "bytes does not match shape"):
+                validate_differential_fixture(fixture)
 
 
 if __name__ == "__main__":

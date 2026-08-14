@@ -11,7 +11,7 @@ objects that cannot be expressed through a stable C interface:
 - command-buffer/encoder creation, dispatch, commit, and synchronization; and
 - Metal GPU start/end timestamps and error extraction.
 
-The shim exposes a narrow C ABI for context lifetime and the three probes. It is
+The shim exposes a narrow C ABI for context lifetime and the four probes. It is
 compiled by `build.rs` with the platform Xcode toolchain and has no third-party
 Rust dependency. Non-macOS builds compile an explicit unsupported stub, keeping
 the GGUF and artifact contracts portable.
@@ -109,7 +109,23 @@ input/output checksums. The JSON deliberately excludes fixture contents, mmap
 addresses, and local paths. Its standalone timing includes cold pipeline and
 boundary costs and is not a decode-throughput measurement.
 
-With this gate complete, the runtime has crossed both immutable model mapping
-and runtime-activation arithmetic. The next increment can assemble the minimal
-layer-0 path and add boundary artifacts without first introducing a general
-graph or allocator framework.
+## Layer-0 attention ingress
+
+Schema: `rust-star-layer0-attention-ingress-probe-v1`.
+
+`attention-ingress-probe` runs the first connected decode segment in one Metal
+command buffer: F16 embedding gather, HC repeat, plain RMSNorm, F16 HC mixer,
+fused HC split/collapse plus learned attention norm, and the Q8_0 Q-A
+projection. Six independently page-aligned model ranges are wrapped from the
+Rust-owned mmap; all six must preserve pointer identity.
+
+The `layer0-attention-ingress-v1` fixture was captured twice in fresh pinned
+DwarfStar processes on the M1 Ultra. It retains the 24 mixer values, all 24 HC
+split coefficients, the 4,096-value collapsed HC row, the 4,096-value learned
+attention norm, and the 1,024-value Q-Lora output. The probe requires every
+retained FP32 bit pattern to match. This validates a real token-to-projection
+chain without introducing a general graph or allocator framework.
+
+Its standalone timing includes lazy pipeline compilation, cold model pages,
+and fixture readback. It is correctness and ownership evidence, not a decoder
+throughput result.

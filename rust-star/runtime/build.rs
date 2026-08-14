@@ -1,4 +1,5 @@
 use std::env;
+use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
@@ -14,6 +15,7 @@ fn run(command: &mut Command, description: &str) {
 fn main() {
     println!("cargo:rerun-if-changed=src/metal_shim.h");
     println!("cargo:rerun-if-changed=src/metal_shim.m");
+    println!("cargo:rerun-if-changed=src/attention_ingress.metal");
     if env::var("CARGO_CFG_TARGET_OS").as_deref() != Ok("macos") {
         return;
     }
@@ -23,6 +25,10 @@ fn main() {
     let object = output.join("metal_shim.o");
     let archive = output.join("librust_star_metal.a");
     let source = manifest.join("src/metal_shim.m");
+    write_metal_source_include(
+        &manifest.join("src/attention_ingress.metal"),
+        &output.join("attention_ingress_source.inc"),
+    );
     let architecture = match env::var("CARGO_CFG_TARGET_ARCH").as_deref() {
         Ok("aarch64") => "arm64",
         Ok("x86_64") => "x86_64",
@@ -42,6 +48,8 @@ fn main() {
         .arg("-Wextra")
         .arg("-fobjc-arc")
         .arg("-fmodules")
+        .arg("-I")
+        .arg(&output)
         .arg("-c")
         .arg(&source)
         .arg("-o")
@@ -57,6 +65,26 @@ fn main() {
     run(&mut archive_command, "Metal shim archive creation");
 
     print_link_directives(&output);
+}
+
+fn write_metal_source_include(source: &Path, output: &Path) {
+    let input = fs::read_to_string(source)
+        .unwrap_or_else(|error| panic!("failed to read {}: {error}", source.display()));
+    let mut generated = String::from("static NSString *const kAttentionIngressSource =\n");
+    for line in input.lines() {
+        generated.push_str("    @\"");
+        for character in line.chars() {
+            match character {
+                '\\' => generated.push_str("\\\\"),
+                '"' => generated.push_str("\\\""),
+                _ => generated.push(character),
+            }
+        }
+        generated.push_str("\\n\"\n");
+    }
+    generated.push_str("    ;\n");
+    fs::write(output, generated)
+        .unwrap_or_else(|error| panic!("failed to write {}: {error}", output.display()));
 }
 
 fn print_link_directives(output: &Path) {

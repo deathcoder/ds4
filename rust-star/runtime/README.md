@@ -1,8 +1,8 @@
 # Rust Star host-runtime scaffold
 
 This crate is the smallest executable boundary for the new engine. It is
-model-specific by design and currently contains two isolated model kernels,
-not a decoder.
+model-specific by design and currently contains one connected six-operation
+layer segment, not a decoder.
 
 Implemented contracts:
 
@@ -22,6 +22,9 @@ Implemented contracts:
 - DwarfStar's decode-time `kernel_mul_mv_q8_0_f32`, consuming a real layer-0
   decode activation and the no-copy `blk.0.attn_q_a.weight` span, validated
   bit-for-bit against a pinned DwarfStar layer/step fixture.
+- the connected layer-0 attention ingress from token 201 through the Q-A
+  projection, with six no-copy model ranges and bitwise checks at mixer, HC
+  split, collapsed HC, learned norm, and Q-Lora boundaries.
 
 The validator proves model shape and quantization-recipe identity. It does not
 pretend that a mutable GGUF name proves the `0731` checkpoint. The completed
@@ -99,3 +102,16 @@ The fixture under `../fixtures/q8-attn-q-a-v1/` was captured from pinned
 DwarfStar at layer 0, decode position 1. The command imports DwarfStar's default
 four-simdgroup/two-row Q8_0 matvec, wraps only the real weight span without a
 copy, and requires all 1,024 output FP32 bit patterns to match the fixture.
+
+To run the connected layer-0 ingress gate:
+
+```sh
+rust-star/.work/runtime-target/release/rust-star attention-ingress-probe \
+  /absolute/path/to/model.gguf \
+  --json rust-star/.work/runtime-target/attention-ingress-probe.json
+```
+
+The command derives the projection input from the real token embedding in one
+six-dispatch command buffer. It requires all six mmap-backed weight views and
+every retained intermediate in `../fixtures/layer0-attention-ingress-v1/` to
+match the pinned DwarfStar capture bit-for-bit.

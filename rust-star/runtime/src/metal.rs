@@ -8,7 +8,9 @@ use std::io::Write;
 pub const PROBE_SCHEMA: &str = "rust-star-metal-dispatch-probe-v1";
 pub const EMBEDDING_PROBE_SCHEMA: &str = "rust-star-f16-embedding-probe-v1";
 pub const PROJECTION_PROBE_SCHEMA: &str = "rust-star-q8-0-projection-probe-v1";
+pub const INGRESS_PROBE_SCHEMA: &str = "rust-star-layer0-attention-ingress-probe-v1";
 pub const PROJECTION_FIXTURE_ID: &str = "dwarfstar-oracle-v1-layer0-pos1-attn-q-a";
+pub const INGRESS_FIXTURE_ID: &str = "dwarfstar-oracle-v1-layer0-pos1-attention-ingress";
 pub const DEFAULT_ELEMENTS: u64 = 4096;
 pub const DEFAULT_ITERATIONS: u64 = 100;
 const MAX_ELEMENTS: u64 = 16 * 1024 * 1024;
@@ -20,6 +22,20 @@ const PROJECTION_INPUT_BYTES: &[u8] =
     include_bytes!("../../fixtures/q8-attn-q-a-v1/activation.f32le.bin");
 const PROJECTION_OUTPUT_BYTES: &[u8] =
     include_bytes!("../../fixtures/q8-attn-q-a-v1/output.f32le.bin");
+const INGRESS_MIXES_BYTES: &[u8] =
+    include_bytes!("../../fixtures/layer0-attention-ingress-v1/hc-mixes.f32le.bin");
+const INGRESS_PRE_BYTES: &[u8] =
+    include_bytes!("../../fixtures/layer0-attention-ingress-v1/hc-pre.f32le.bin");
+const INGRESS_POST_BYTES: &[u8] =
+    include_bytes!("../../fixtures/layer0-attention-ingress-v1/hc-post.f32le.bin");
+const INGRESS_COMB_BYTES: &[u8] =
+    include_bytes!("../../fixtures/layer0-attention-ingress-v1/hc-combination.f32le.bin");
+const INGRESS_COLLAPSED_BYTES: &[u8] =
+    include_bytes!("../../fixtures/layer0-attention-ingress-v1/hc-collapsed.f32le.bin");
+const INGRESS_NORM_BYTES: &[u8] =
+    include_bytes!("../../fixtures/layer0-attention-ingress-v1/attn-norm.f32le.bin");
+const INGRESS_Q_BYTES: &[u8] =
+    include_bytes!("../../fixtures/layer0-attention-ingress-v1/q-lora.f32le.bin");
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct ProbeConfig {
@@ -120,6 +136,43 @@ pub struct ProjectionProbeReport {
     pub gpu_ms: f64,
     pub input_checksum: u64,
     pub output_checksum: u64,
+}
+
+#[derive(Clone, Debug)]
+pub struct IngressProbeReport {
+    pub fixture_id: &'static str,
+    pub token: u32,
+    pub wrapped_model_ranges: u32,
+    pub pointer_matches: u32,
+    pub wall_ms: f64,
+    pub gpu_ms: f64,
+    pub mixes_checksum: u64,
+    pub split_checksum: u64,
+    pub collapsed_checksum: u64,
+    pub attn_norm_checksum: u64,
+    pub q_lora_checksum: u64,
+}
+
+pub fn write_ingress_probe_json<W: Write>(
+    output: &mut W,
+    report: &IngressProbeReport,
+) -> Result<()> {
+    write!(
+        output,
+        "{{\n  \"schema\": \"{INGRESS_PROBE_SCHEMA}\",\n  \"fixture\": \"{}\",\n  \"token\": {},\n  \"operations\": [\"kernel_get_rows_f16\", \"kernel_repeat_f32\", \"kernel_rms_norm_f32_4\", \"kernel_mul_mv_f16_f32_4\", \"kernel_dsv4_hc_split_weighted_sum_norm4\", \"kernel_mul_mv_q8_0_f32\"],\n  \"mapping\": {{\n    \"wrapped_model_ranges\": {},\n    \"pointer_matches\": {}\n  }},\n  \"timing\": {{\n    \"wall_ms\": {:.6},\n    \"gpu_ms\": {:.6}\n  }},\n  \"checksums\": {{\n    \"hc_mixes\": {},\n    \"hc_split\": {},\n    \"hc_collapsed\": {},\n    \"attn_norm\": {},\n    \"q_lora\": {}\n  }},\n  \"c0_bitwise_match\": true\n}}\n",
+        report.fixture_id,
+        report.token,
+        report.wrapped_model_ranges,
+        report.pointer_matches,
+        report.wall_ms,
+        report.gpu_ms,
+        report.mixes_checksum,
+        report.split_checksum,
+        report.collapsed_checksum,
+        report.attn_norm_checksum,
+        report.q_lora_checksum,
+    )?;
+    Ok(())
 }
 
 impl ProbeReport {
@@ -395,6 +448,42 @@ fn projection_fixture() -> Result<(Vec<f32>, Vec<f32>)> {
     ))
 }
 
+fn ingress_fixture() -> Result<(Vec<f32>, Vec<f32>, Vec<f32>, Vec<f32>, Vec<f32>)> {
+    let mixes = decode_f32_fixture(INGRESS_MIXES_BYTES, "ingress HC mixes")?;
+    let mut split = decode_f32_fixture(INGRESS_PRE_BYTES, "ingress HC pre weights")?;
+    split.extend(decode_f32_fixture(
+        INGRESS_POST_BYTES,
+        "ingress HC post weights",
+    )?);
+    split.extend(decode_f32_fixture(
+        INGRESS_COMB_BYTES,
+        "ingress HC combination",
+    )?);
+    Ok((
+        mixes,
+        split,
+        decode_f32_fixture(INGRESS_COLLAPSED_BYTES, "ingress HC collapsed")?,
+        decode_f32_fixture(INGRESS_NORM_BYTES, "ingress attention norm")?,
+        decode_f32_fixture(INGRESS_Q_BYTES, "ingress Q lora")?,
+    ))
+}
+
+fn exact_tensor<'a>(
+    model: &'a MappedModel,
+    name: &str,
+    kind: u32,
+    dimensions: &[u64],
+) -> Result<&'a TensorInfo> {
+    let tensor = model.tensor(name)?;
+    if tensor.tensor_type.id != kind || tensor.dimensions != dimensions {
+        return Err(Error::invalid(format!(
+            "attention ingress tensor {name} has unexpected type or dimensions"
+        )));
+    }
+    model.tensor_bytes(tensor)?;
+    Ok(tensor)
+}
+
 fn validate_projection_inputs(
     model: &MappedModel,
     tensor: &TensorInfo,
@@ -510,6 +599,17 @@ mod imp {
         gpu_ms: f64,
     }
 
+    #[repr(C)]
+    #[derive(Default)]
+    struct RawIngressProbeResult {
+        model_bytes: u64,
+        max_buffer_length: u64,
+        wrapped_model_ranges: u32,
+        pointer_matches: u32,
+        wall_ms: f64,
+        gpu_ms: f64,
+    }
+
     impl Default for RawProbeResult {
         fn default() -> Self {
             Self {
@@ -575,6 +675,33 @@ mod imp {
             input: *const f32,
             output: *mut f32,
             result: *mut RawProjectionProbeResult,
+            error: *mut c_char,
+            error_bytes: usize,
+        ) -> i32;
+        fn rust_star_metal_run_attention_ingress(
+            context: *mut c_void,
+            model_mapping: *const c_void,
+            model_bytes: u64,
+            token: u32,
+            n_vocab: u32,
+            embedding_offset: u64,
+            embedding_bytes: u64,
+            hc_fn_offset: u64,
+            hc_fn_bytes: u64,
+            hc_scale_offset: u64,
+            hc_scale_bytes: u64,
+            hc_base_offset: u64,
+            hc_base_bytes: u64,
+            attn_norm_offset: u64,
+            attn_norm_bytes: u64,
+            q_a_offset: u64,
+            q_a_bytes: u64,
+            mixes: *mut f32,
+            split: *mut f32,
+            collapsed: *mut f32,
+            attn_norm: *mut f32,
+            q_lora: *mut f32,
+            result: *mut RawIngressProbeResult,
             error: *mut c_char,
             error_bytes: usize,
         ) -> i32;
@@ -884,6 +1011,132 @@ mod imp {
             output_checksum: checksum_f32(&actual),
         })
     }
+
+    pub fn run_attention_ingress_probe(model: &MappedModel) -> Result<IngressProbeReport> {
+        const TOKEN: u32 = 201;
+        let embedding = exact_tensor(model, "token_embd.weight", 1, &[4096, 129280])?;
+        let hc_fn = exact_tensor(model, "blk.0.hc_attn_fn.weight", 1, &[16384, 24])?;
+        let hc_scale = exact_tensor(model, "blk.0.hc_attn_scale.weight", 0, &[3])?;
+        let hc_base = exact_tensor(model, "blk.0.hc_attn_base.weight", 0, &[24])?;
+        let norm_weight = exact_tensor(model, "blk.0.attn_norm.weight", 0, &[4096])?;
+        let q_a = exact_tensor(model, "blk.0.attn_q_a.weight", 8, &[4096, 1024])?;
+        let (expected_mixes, expected_split, expected_collapsed, expected_norm, expected_q) =
+            ingress_fixture()?;
+        let mut mixes = vec![0.0_f32; 24];
+        let mut split = vec![0.0_f32; 24];
+        let mut collapsed = vec![0.0_f32; 4096];
+        let mut norm = vec![0.0_f32; 4096];
+        let mut q = vec![0.0_f32; 1024];
+
+        let mut error = [0 as c_char; ERROR_BYTES];
+        let mut pointer = ptr::null_mut();
+        let created =
+            unsafe { rust_star_metal_create(&mut pointer, error.as_mut_ptr(), error.len()) };
+        if created == 0 || pointer.is_null() {
+            return Err(Error::invalid(format!(
+                "Metal initialization failed: {}",
+                error_text(&error)
+            )));
+        }
+        let context = Context(pointer);
+        error.fill(0);
+        let mut raw = RawIngressProbeResult::default();
+        let succeeded = unsafe {
+            rust_star_metal_run_attention_ingress(
+                context.0,
+                model.mapping_pointer(),
+                model.bytes(),
+                TOKEN,
+                129280,
+                embedding.absolute_offset,
+                embedding.bytes,
+                hc_fn.absolute_offset,
+                hc_fn.bytes,
+                hc_scale.absolute_offset,
+                hc_scale.bytes,
+                hc_base.absolute_offset,
+                hc_base.bytes,
+                norm_weight.absolute_offset,
+                norm_weight.bytes,
+                q_a.absolute_offset,
+                q_a.bytes,
+                mixes.as_mut_ptr(),
+                split.as_mut_ptr(),
+                collapsed.as_mut_ptr(),
+                norm.as_mut_ptr(),
+                q.as_mut_ptr(),
+                &mut raw,
+                error.as_mut_ptr(),
+                error.len(),
+            )
+        };
+        if succeeded == 0 {
+            return Err(Error::invalid(format!(
+                "Metal layer-0 attention ingress probe failed: {}",
+                error_text(&error)
+            )));
+        }
+        if raw.model_bytes != model.bytes()
+            || raw.wrapped_model_ranges != 6
+            || raw.pointer_matches != 6
+        {
+            return Err(Error::invalid(
+                "Metal attention ingress did not preserve all six mmap-backed model ranges",
+            ));
+        }
+        for (label, actual, expected) in [
+            (
+                "hc_attn_pre_mixes",
+                mixes.as_slice(),
+                expected_mixes.as_slice(),
+            ),
+            ("hc_split", split.as_slice(), expected_split.as_slice()),
+            (
+                "hc_attn_pre",
+                collapsed.as_slice(),
+                expected_collapsed.as_slice(),
+            ),
+            ("attn_norm", norm.as_slice(), expected_norm.as_slice()),
+            ("q_lora", q.as_slice(), expected_q.as_slice()),
+        ] {
+            if actual.len() != expected.len() {
+                return Err(Error::invalid(format!("{label} fixture length mismatch")));
+            }
+            for (index, (actual, expected)) in actual.iter().zip(expected).enumerate() {
+                if actual.to_bits() != expected.to_bits() {
+                    return Err(Error::invalid(format!(
+                        "attention ingress C0 mismatch in {label}[{index}]: actual={:#010x} expected={:#010x}",
+                        actual.to_bits(), expected.to_bits()
+                    )));
+                }
+            }
+        }
+        for (name, value) in [("wall_ms", raw.wall_ms), ("gpu_ms", raw.gpu_ms)] {
+            if !value.is_finite() || value < 0.0 {
+                return Err(Error::invalid(format!(
+                    "Metal attention ingress returned invalid {name}"
+                )));
+            }
+        }
+        if raw.wall_ms == 0.0 {
+            return Err(Error::invalid(
+                "Metal attention ingress returned a zero wall interval",
+            ));
+        }
+        Ok(IngressProbeReport {
+            fixture_id: INGRESS_FIXTURE_ID,
+            token: TOKEN,
+            wrapped_model_ranges: raw.wrapped_model_ranges,
+            pointer_matches: raw.pointer_matches,
+            wall_ms: raw.wall_ms,
+            gpu_ms: raw.gpu_ms,
+            mixes_checksum: checksum_f32(&mixes),
+            split_checksum: checksum_f32(&split),
+            collapsed_checksum: checksum_f32(&collapsed),
+            attn_norm_checksum: checksum_f32(&norm),
+            q_lora_checksum: checksum_f32(&q),
+        })
+    }
 }
 
 #[cfg(not(target_os = "macos"))]
@@ -918,9 +1171,19 @@ mod imp {
             "the Metal Q8_0 projection probe is available only on macOS",
         ))
     }
+
+    pub fn run_attention_ingress_probe(model: &MappedModel) -> Result<IngressProbeReport> {
+        let _ = ingress_fixture()?;
+        let _ = exact_tensor(model, "token_embd.weight", 1, &[4096, 129280])?;
+        Err(Error::invalid(
+            "the Metal layer-0 attention ingress probe is available only on macOS",
+        ))
+    }
 }
 
-pub use imp::{run_f16_embedding_probe, run_probe, run_q8_projection_probe};
+pub use imp::{
+    run_attention_ingress_probe, run_f16_embedding_probe, run_probe, run_q8_projection_probe,
+};
 
 #[cfg(test)]
 mod tests {
@@ -990,6 +1253,22 @@ mod tests {
         }
     }
 
+    fn ingress_report() -> IngressProbeReport {
+        IngressProbeReport {
+            fixture_id: INGRESS_FIXTURE_ID,
+            token: 201,
+            wrapped_model_ranges: 6,
+            pointer_matches: 6,
+            wall_ms: 2.0,
+            gpu_ms: 1.0,
+            mixes_checksum: 1,
+            split_checksum: 2,
+            collapsed_checksum: 3,
+            attn_norm_checksum: 4,
+            q_lora_checksum: 5,
+        }
+    }
+
     #[test]
     fn validates_probe_work_bounds() {
         assert!(ProbeConfig::default().validate().is_ok());
@@ -1039,6 +1318,17 @@ mod tests {
         assert!(text.contains(&format!("\"fixture\": \"{PROJECTION_FIXTURE_ID}\"")));
         assert!(text.contains("\"kernel\": \"kernel_mul_mv_q8_0_f32\""));
         assert!(text.contains("\"simdgroups\": 4"));
+        assert!(text.contains("\"c0_bitwise_match\": true"));
+    }
+
+    #[test]
+    fn writes_stable_ingress_probe_json() {
+        let mut output = Vec::new();
+        write_ingress_probe_json(&mut output, &ingress_report()).unwrap();
+        let text = String::from_utf8(output).unwrap();
+        assert!(text.contains(&format!("\"schema\": \"{INGRESS_PROBE_SCHEMA}\"")));
+        assert!(text.contains(&format!("\"fixture\": \"{INGRESS_FIXTURE_ID}\"")));
+        assert!(text.contains("\"pointer_matches\": 6"));
         assert!(text.contains("\"c0_bitwise_match\": true"));
     }
 

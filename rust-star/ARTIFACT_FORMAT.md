@@ -1,12 +1,35 @@
 # Rust Star Artifact Contract
 
-Version: `rust-star-oracle-manifest-v1` and
-`rust-star-logit-comparison-v1`.
+Version: `rust-star-oracle-manifest-v1`,
+`rust-star-differential-fixture-v1`, and `rust-star-logit-comparison-v1`.
 
 This document defines the first stable boundary between the pinned DwarfStar
 oracle and candidate Rust Star implementations. It covers result bundles and
-post-prefill full-vocabulary logits. Kernel, layer, and decode-step artifacts
-will extend this contract without changing the C0 meaning below.
+post-prefill full-vocabulary logits, plus reusable differential fixtures at
+kernel, layer-segment, and decode-step boundaries.
+
+## Differential fixtures
+
+A differential fixture is a directory whose root contains `manifest.json`.
+Its `scope.kind` is one of `kernel`, `layer-segment`, or `decode-step`, and its
+`operations` array records the ordered oracle operations represented by the
+fixture. Every tensor descriptor records a unique name and relative path, its
+boundary role, FP32 shape and encoding, byte count, and SHA-256. The verifier
+requires all payload values to be finite and requires byte counts to agree with
+the declared shape.
+
+The manifest pins the DwarfStar oracle commit/tree and capture executable, the
+model SHA-256, execution phase, layer where applicable, and token position.
+This makes a fixture independently auditable rather than an unnamed pair of
+binary blobs. The tensor list can preserve any number of intermediate
+boundaries, so the same schema covers one kernel or a complete decode step.
+
+Verify a fixture before consuming it:
+
+```sh
+python3 rust-star/verify_differential_fixture.py \
+  rust-star/fixtures/q8-attn-q-a-v1
+```
 
 ## Oracle bundle
 

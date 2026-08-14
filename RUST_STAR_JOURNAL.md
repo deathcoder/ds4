@@ -20,9 +20,10 @@ history; add a correction and update the current-state summary.
 
 ## Current State
 
-- Phase: target-Mac bootstrap, quick `oracle-v1`, no-copy model mapping, and the
-  first runtime-activation projection are complete; the next increment is the
-  minimal layer-0 attention ingress chain.
+- Phase: target-Mac bootstrap, quick `oracle-v1`, no-copy model mapping, the
+  canonical differential-fixture envelope, and the connected layer-0
+  attention ingress are complete; the next increment is attention projection
+  setup beyond Q-Lora.
 - Working branch: `agent/rust-star-bootstrap`.
 - Branch base: upstream `antirez/ds4` commit
   `b0309611041655f4e45671cfd9c9886aff161406`.
@@ -35,7 +36,10 @@ history; add a correction and update the current-state summary.
 - Capture kit: `rust-star/capture_oracle_v1.py` prepares a privacy-filtered,
   checksummed result bundle from an isolated build of the pinned oracle source.
 - Differential tooling: the initial bundle/full-logit format is stable and has
-  cross-platform verification, exact C0 comparison, and drift diagnostics.
+  cross-platform verification, exact C0 comparison, and drift diagnostics. The
+  `rust-star-differential-fixture-v1` envelope now covers kernel,
+  layer-segment, and decode-step scopes with strict tensor shape, path,
+  finiteness, size, and hash verification.
 - Benchmarking: `rust-star/BENCHMARK_PROTOCOL.md` fixes the v1 paired workload,
   eligibility, run ordering, aggregation, and capacity semantics; execution
   awaits the target Mac and a runnable candidate. The paired raw/summary JSON
@@ -56,14 +60,20 @@ history; add a correction and update the current-state summary.
   copy and runs the imported DwarfStar F16 embedding gather behind a bitwise
   CPU reference. The imported decode-time Q8_0 matvec now consumes a real
   layer-0 activation and the no-copy `blk.0.attn_q_a.weight` span, reproducing
-  all 1,024 FP32 DwarfStar fixture outputs by bit pattern.
+  all 1,024 FP32 DwarfStar fixture outputs by bit pattern. The first connected
+  chain now runs six imported operations in one command buffer from token 201's
+  embedding through Q-Lora, with six mmap-backed model spans and bitwise checks
+  at mixer, HC split, collapsed HC, learned attention norm, and Q-Lora.
 - Measurements: Metal batching was 42.861x faster than synchronized submission
   in the retained M-002 probe. DwarfStar medians are 164.86 prefill / 19.90
   generation tok/s at 2K and 161.05 prefill / 17.36 generation tok/s at 32K.
   The first real-model kernel matched all 20,480 checked FP32 values; its final
   validation dispatch reported 0.020 ms GPU time and is not an inference-speed
   claim. The Q8_0 projection matched its 1,024-value decode fixture and reported
-  0.031 ms GPU time in the final gate, also not a throughput claim.
+  0.031 ms GPU time in its completion gate, also not a throughput claim. The
+  connected six-dispatch layer segment matched 9,264 retained FP32 values and
+  reported 0.102 ms GPU time in the final gate; this remains correctness
+  evidence rather than decoder throughput.
 - Manual handoff: `RUST_STAR_MANUAL_TASKS.md` records Actions approval, target
   compilation/model inspection, quick/extended oracle capture, and the deferred
   secure-access decision with exact evidence requirements.
@@ -76,16 +86,77 @@ history; add a correction and update the current-state summary.
 
 ## Immediate Next Actions
 
-1. Define the canonical kernel/layer/decode-step artifact extension and verifier
-   around the first committed projection fixture.
-2. Import the layer-0 attention ingress operations needed to derive `attn_norm`
-   from a token embedding, then chain that result through the validated Q8_0
-   projection without introducing a general graph framework.
+1. Extend the connected layer-0 path through Q-Lora RMSNorm/Q-B and the paired
+   KV projection/norm boundary, preserving exact intermediate fixtures and the
+   one-command-buffer execution shape.
+2. Define the smallest reusable Rust buffer/scheduling abstraction justified by
+   the now-connected path; do not introduce a general graph framework yet.
 3. Run the extended 2K--1M frontier capture when the Mac can be dedicated to a
    long benchmark; preserve any 512K/1M capacity failure as evidence.
 4. Run or approve the fork's GitHub Actions workflow and retain its URL.
 
 ## Entries
+
+### 2026-08-14 — Connected layer-0 attention ingress matched DwarfStar
+
+Objective:
+
+- Replace the isolated projection input with a real token embedding and make
+  kernel/layer/decode-step evidence independently verifiable.
+
+Artifact contract and oracle fixture:
+
+- Added `rust-star-differential-fixture-v1` with kernel, layer-segment, and
+  decode-step scopes, ordered operations, uniquely named tensor boundaries,
+  safe relative paths, exact FP32 shapes/encodings, finite-value checks, byte
+  counts, and SHA-256 verification.
+- Migrated the Q8 projection fixture to the new schema and added a standalone
+  verifier that the full runtime gate applies to every committed fixture.
+- Captured layer 0, decode position 1 from the pinned DwarfStar executable in
+  two fresh processes. All mixer, HC split, collapsed HC, attention norm, and
+  Q-Lora payloads were byte-identical across captures.
+- Retained seven tensor artifacts totaling 37,056 bytes under
+  `rust-star/fixtures/layer0-attention-ingress-v1/`. The fixture records token
+  201 and binds the pinned source/tree, executable, model, prompt, machine, and
+  graph-dump selection.
+
+Implementation:
+
+- Imported DwarfStar's F16 gather, HC repeat, plain RMSNorm, vectorized F16
+  matvec, fused HC split/collapse/weighted norm, and Q8_0 matvec.
+- Generated the Objective-C NSString representation of the auditable Metal
+  source at build time, keeping the source readable while retaining a
+  dependency-free runtime binary.
+- Encoded all six operations into one command buffer. Rust retains ownership
+  of the read-only whole-model mmap; the shim independently wraps the six
+  page-aligned weight ranges with `newBufferWithBytesNoCopy`.
+- Added a stable JSON report, CLI command, tests, documentation, and automatic
+  execution in the target-model runtime gate.
+
+Target-Mac evidence:
+
+- All six model views preserved exact mmap pointer identity.
+- All 24 HC mixer values, 24 split coefficients, 4,096 collapsed HC values,
+  4,096 learned-norm values, and 1,024 Q-Lora values matched DwarfStar by FP32
+  bit pattern.
+- The final gate reported 37.782 ms wall and 0.102 ms Metal GPU time. It
+  includes a standalone correctness boundary and is not a decode-throughput
+  claim.
+- The complete gate passed: 21 Rust tests, optimized macOS build, 28 Python
+  tests, both committed fixture verifiers, cross-language C0 artifact smoke,
+  strict validation of all 1,288 required GGUF tensors, and every existing and
+  new Metal probe.
+
+Decision:
+
+- Accept the connected attention-ingress segment as the first layer-level
+  execution checkpoint. Continue immediately after Q-Lora while preserving
+  narrow artifacts and avoiding a premature graph framework.
+
+Next:
+
+- Capture and import Q-Lora normalization/Q-B plus the paired KV setup needed
+  for the layer-0 attention core.
 
 ### 2026-08-14 — First quantized decode projection matched DwarfStar
 

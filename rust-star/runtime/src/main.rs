@@ -1,7 +1,8 @@
 use rust_star_runtime::gguf::Gguf;
 use rust_star_runtime::metal::{
-    run_f16_embedding_probe, run_probe, run_q8_projection_probe, write_embedding_probe_json,
-    write_probe_json, write_projection_probe_json, EmbeddingProbeReport, ProbeConfig,
+    run_attention_ingress_probe, run_f16_embedding_probe, run_probe, run_q8_projection_probe,
+    write_embedding_probe_json, write_ingress_probe_json, write_probe_json,
+    write_projection_probe_json, EmbeddingProbeReport, IngressProbeReport, ProbeConfig,
     ProjectionProbeReport,
 };
 use rust_star_runtime::model::MappedModel;
@@ -41,7 +42,60 @@ fn run() -> Result<()> {
     if command == "projection-probe" {
         return run_projection_probe(arguments.collect());
     }
+    if command == "attention-ingress-probe" {
+        return run_ingress_probe(arguments.collect());
+    }
     run_model_command(&command, arguments.collect())
+}
+
+fn run_ingress_probe(arguments: Vec<OsString>) -> Result<()> {
+    if arguments.is_empty() {
+        return Err(Error::invalid(ingress_probe_usage()));
+    }
+    if matches!(arguments[0].to_str(), Some("--help") | Some("-h")) {
+        println!("{}", ingress_probe_usage());
+        return Ok(());
+    }
+    let model_path = PathBuf::from(&arguments[0]);
+    let mut json_path: Option<PathBuf> = None;
+    let mut arguments = arguments.into_iter().skip(1);
+    while let Some(argument) = arguments.next() {
+        match argument.to_str() {
+            Some("--json") => {
+                let value = arguments
+                    .next()
+                    .ok_or_else(|| Error::invalid("--json requires a path"))?;
+                if json_path.is_some() {
+                    return Err(Error::invalid("--json may be specified only once"));
+                }
+                json_path = Some(PathBuf::from(value));
+            }
+            Some("--help") | Some("-h") => {
+                println!("{}", ingress_probe_usage());
+                return Ok(());
+            }
+            _ => return Err(Error::invalid(ingress_probe_usage())),
+        }
+    }
+    let model = MappedModel::open(&model_path)?;
+    validate_resident_q2(model.gguf())?;
+    let report = run_attention_ingress_probe(&model)?;
+    println!("fixture: {}", report.fixture_id);
+    println!("token: {} (layer 0, decode position 1)", report.token);
+    println!(
+        "model views: {}/{} preserve the mmap pointer",
+        report.pointer_matches, report.wrapped_model_ranges
+    );
+    println!(
+        "six-dispatch chain: wall={:.3} ms gpu={:.3} ms",
+        report.wall_ms, report.gpu_ms
+    );
+    println!("result: embedding through Q-A projection matches every pinned DwarfStar boundary bit-for-bit");
+    if let Some(path) = json_path {
+        write_ingress_probe_file(&path, &report)?;
+        println!("json: {}", path.display());
+    }
+    Ok(())
 }
 
 fn run_projection_probe(arguments: Vec<OsString>) -> Result<()> {
@@ -429,6 +483,33 @@ fn write_projection_probe_file(path: &Path, report: &ProjectionProbeReport) -> R
     Ok(())
 }
 
+fn write_ingress_probe_file(path: &Path, report: &IngressProbeReport) -> Result<()> {
+    let temporary = path.with_extension(format!(
+        "{}tmp",
+        path.extension()
+            .and_then(OsStr::to_str)
+            .map(|extension| format!("{extension}."))
+            .unwrap_or_default()
+    ));
+    let file = File::create(&temporary).map_err(|error| {
+        Error::invalid(format!(
+            "cannot create ingress probe JSON {}: {error}",
+            temporary.display()
+        ))
+    })?;
+    let mut output = BufWriter::new(file);
+    write_ingress_probe_json(&mut output, report)?;
+    output.flush()?;
+    drop(output);
+    std::fs::rename(&temporary, path).map_err(|error| {
+        Error::invalid(format!(
+            "cannot install ingress probe JSON {}: {error}",
+            path.display()
+        ))
+    })?;
+    Ok(())
+}
+
 fn print_type_counts(gguf: &Gguf) {
     let mut counts = std::collections::BTreeMap::new();
     for tensor in gguf.tensors.values() {
@@ -441,7 +522,7 @@ fn print_type_counts(gguf: &Gguf) {
 }
 
 fn usage() -> &'static str {
-    "usage:\n  rust-star inspect MODEL.gguf  # strict Flash-0731 resident-Q2 validation\n  rust-star gguf MODEL.gguf     # structural GGUF v3 validation only\n  rust-star metal-probe [OPTIONS]\n  rust-star embedding-probe MODEL.gguf [OPTIONS]\n  rust-star projection-probe MODEL.gguf [OPTIONS]"
+    "usage:\n  rust-star inspect MODEL.gguf  # strict Flash-0731 resident-Q2 validation\n  rust-star gguf MODEL.gguf     # structural GGUF v3 validation only\n  rust-star metal-probe [OPTIONS]\n  rust-star embedding-probe MODEL.gguf [OPTIONS]\n  rust-star projection-probe MODEL.gguf [OPTIONS]\n  rust-star attention-ingress-probe MODEL.gguf [OPTIONS]"
 }
 
 fn metal_probe_usage() -> &'static str {
@@ -454,4 +535,8 @@ fn embedding_probe_usage() -> &'static str {
 
 fn projection_probe_usage() -> &'static str {
     "usage: rust-star projection-probe MODEL.gguf [--json PATH]\n\nWraps blk.0.attn_q_a.weight without copying and requires DwarfStar kernel_mul_mv_q8_0_f32 to reproduce a pinned layer-0 decode fixture bit-for-bit."
+}
+
+fn ingress_probe_usage() -> &'static str {
+    "usage: rust-star attention-ingress-probe MODEL.gguf [--json PATH]\n\nRuns the six imported DwarfStar Metal operations from a real token embedding through the layer-0 Q-A projection and checks every pinned boundary bit-for-bit."
 }
