@@ -238,7 +238,7 @@ fn expected_tensors() -> Vec<ExpectedTensor> {
             tensors.extend([
                 expected(
                     format!("{prefix}.indexer.attn_q_b.weight"),
-                    8,
+                    1,
                     &[LORA_Q, index_q_dim],
                 ),
                 expected(
@@ -652,6 +652,26 @@ mod tests {
             assert_eq!(find("gate"), 16);
             assert_eq!(find("up"), 16);
             assert_eq!(find("down"), 10);
+        }
+    }
+
+    #[test]
+    fn indexer_projection_recipe_is_f16() {
+        let tensors = expected_tensors();
+        for layer in (2..LAYERS).step_by(2) {
+            for suffix in [
+                "indexer.attn_q_b.weight",
+                "indexer.proj.weight",
+                "indexer_compressor_ape.weight",
+                "indexer_compressor_kv.weight",
+                "indexer_compressor_gate.weight",
+            ] {
+                let tensor = tensors
+                    .iter()
+                    .find(|tensor| tensor.name == format!("blk.{layer}.{suffix}"))
+                    .unwrap();
+                assert_eq!(tensor.type_id, 1, "{}", tensor.name);
+            }
         }
     }
 

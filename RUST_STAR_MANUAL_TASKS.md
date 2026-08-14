@@ -51,7 +51,7 @@ Success condition:
 
 ## M-002 — Compile and inspect the real GGUF on the M1 Ultra
 
-Status: `READY`
+Status: `DONE` (2026-08-14)
 
 Prerequisites:
 
@@ -65,10 +65,14 @@ Procedure from a clean checkout:
 git switch agent/rust-star-bootstrap
 git pull --ff-only
 
+set -o pipefail
 ./rust-star/check_runtime.sh \
   /absolute/path/to/DeepSeek-V4-Flash-0731-Q2-imatrix.gguf \
   2>&1 | tee rust-star-runtime-check.txt
 ```
+
+`pipefail` is required so a failed check remains a failed command when its
+output is also written by `tee`.
 
 The model path must remain outside the repository. The inspector reads the
 GGUF metadata and tensor directory but does not read tensor payloads or compute
@@ -92,9 +96,21 @@ Success condition:
 If strict inspection fails, do not weaken the validator yet. Return the exact
 error so the expected recipe can be reconciled against the real oracle model.
 
+Evidence:
+
+- Apple M1 Ultra Metal shared-buffer validation passed and reported both
+  roundtrip and batched dispatch timing.
+- 15 Rust tests, 25 Python tests, the optimized macOS build, and the
+  cross-language C0 artifact check passed.
+- Strict inspection validated all 1,288 required tensors in the resident 0731
+  imatrix-Q2 model after correcting the indexer Q projection recipe to F16.
+- `rust-star/.work/runtime-target/metal-dispatch-probe.json` and the local
+  `rust-star-runtime-check.txt` retain the machine-readable and console
+  evidence; generated evidence remains uncommitted.
+
 ## M-003 — Capture the quick `oracle-v1` bundle
 
-Status: `BLOCKED` on M-002
+Status: `READY`
 
 Procedure:
 
