@@ -2,7 +2,8 @@
 
 This crate is the smallest executable boundary for the new engine. It is
 model-specific by design and currently contains a connected nineteen-dispatch
-attention segment plus the seven-dispatch FFN/router continuation, not a decoder.
+attention segment, the seven-dispatch FFN/router continuation, and the four
+fused dispatches that finish layer 0, not a decoder.
 
 Implemented contracts:
 
@@ -39,6 +40,10 @@ Implemented contracts:
 - the layer-0 FFN HC collapse/learned norm and F16 router projection, followed
   by the model's exact token-ID hash selection and probability-derived route
   weights; six mmap-backed model views and every retained boundary match C0.
+- the four-dispatch release MoE suffix: paired IQ2_XXS routed gate/up with
+  weighted SwiGLU, Q2_K six-expert down reduction, paired Q8_0 shared gate/up
+  with SwiGLU, and Q8_0 shared down fused with the four-stream FFN HC update.
+  Six model ranges remain mmap-backed and all retained boundaries match C0.
 
 The validator proves model shape and quantization-recipe identity. It does not
 pretend that a mutable GGUF name proves the `0731` checkpoint. The completed
@@ -194,3 +199,18 @@ applies FFN HC mixing/collapse and learned RMSNorm, projects 256 router logits,
 then follows DwarfStar's early-layer token-ID hash route for token 201. It
 requires bitwise equality for the HC intermediates, logits, probabilities,
 six selected experts, and scaled weights, with all six model ranges zero-copy.
+
+To validate the routed/shared experts and finish the layer-0 state update:
+
+```sh
+rust-star/.work/runtime-target/release/rust-star moe-output-probe \
+  /absolute/path/to/model.gguf \
+  --json rust-star/.work/runtime-target/moe-output-probe.json
+```
+
+This four-dispatch continuation starts from the pinned normalized FFN row,
+selected expert IDs, scaled route weights, HC residual, and HC split. It wraps
+the three full routed-expert tensors and three shared-expert tensors directly
+from the model mmap, executes DwarfStar's exact release fusions, and requires
+bitwise equality for all 6×2,048 routed activations, both 4,096-wide outputs,
+and the final 4×4,096 HC state.

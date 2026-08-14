@@ -18,10 +18,14 @@ fn main() {
     println!("cargo:rerun-if-changed=src/attention_ingress.metal");
     println!("cargo:rerun-if-changed=src/attention_output.metal");
     println!("cargo:rerun-if-changed=src/ffn_router.metal");
+    println!("cargo:rerun-if-changed=src/moe_output_prefix.metal");
     println!("cargo:rerun-if-changed=../../metal/dsv4_rope.metal");
     println!("cargo:rerun-if-changed=../../metal/dsv4_kv.metal");
     println!("cargo:rerun-if-changed=../../metal/cpy.metal");
     println!("cargo:rerun-if-changed=../../metal/flash_attn.metal");
+    println!("cargo:rerun-if-changed=../../metal/dense.metal");
+    println!("cargo:rerun-if-changed=../../metal/moe.metal");
+    println!("cargo:rerun-if-changed=../../metal/dsv4_hc.metal");
     if env::var("CARGO_CFG_TARGET_OS").as_deref() != Ok("macos") {
         return;
     }
@@ -47,6 +51,17 @@ fn main() {
         &[manifest.join("src/attention_output.metal")],
         &output.join("attention_output_source.inc"),
         "kAttentionOutputSource",
+    );
+    write_metal_source_include(
+        &[
+            manifest.join("src/moe_output_prefix.metal"),
+            manifest.join("../../metal/flash_attn.metal"),
+            manifest.join("../../metal/dense.metal"),
+            manifest.join("../../metal/moe.metal"),
+            manifest.join("../../metal/dsv4_hc.metal"),
+        ],
+        &output.join("moe_output_source.inc"),
+        "kMoeOutputSource",
     );
     let architecture = match env::var("CARGO_CFG_TARGET_ARCH").as_deref() {
         Ok("aarch64") => "arm64",

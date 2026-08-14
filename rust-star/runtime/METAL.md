@@ -221,3 +221,20 @@ Layer 0 is intentionally not probability top-k. The target model contains
 weights. The probe wraps the five learned FFN ranges and the I32 hash table
 directly from the Rust-owned mmap. All six pointer identities and every
 captured FP32/I32 value must match the two byte-identical oracle captures.
+
+## Layer-0 routed/shared experts and FFN HC post-update
+
+Schema: `rust-star-layer0-moe-output-probe-v1`.
+
+`moe-output-probe` consumes the validated router fixture and executes the four
+fusions used by the normal M1 release path:
+
+1. IQ2_XXS routed gate/up plus weighted SwiGLU;
+2. Q2_K down projection with direct six-expert reduction;
+3. Q8_0 shared gate/up plus SwiGLU; and
+4. Q8_0 shared down plus routed add and four-stream HC expansion.
+
+The three routed and three shared weight tensors are separate bytes-no-copy
+Metal views over the Rust-owned model mmap. The probe checks all six pointer
+identities and compares the routed activation, routed output, shared output,
+and final HC state bit-for-bit against two fresh-process DwarfStar captures.

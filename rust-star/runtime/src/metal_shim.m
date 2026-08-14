@@ -70,6 +70,7 @@ static NSString *const kGetRowsF16Source =
 
 #include "attention_ingress_source.inc"
 #include "attention_output_source.inc"
+#include "moe_output_source.inc"
 
 // Imported from DwarfStar metal/dense.metal. The fixed target uses DwarfStar's
 // default four simdgroups and two output rows per threadgroup.
@@ -183,6 +184,11 @@ static NSString *const kQ8ProjectionSource =
 @property(nonatomic, strong) id<MTLLibrary> attentionOutputLibrary;
 @property(nonatomic, strong) id<MTLComputePipelineState> attentionOutputLowPipeline;
 @property(nonatomic, strong) id<MTLComputePipelineState> attentionOutputHcPipeline;
+@property(nonatomic, strong) id<MTLLibrary> moeOutputLibrary;
+@property(nonatomic, strong) id<MTLComputePipelineState> routedPairSwigluPipeline;
+@property(nonatomic, strong) id<MTLComputePipelineState> routedDownSumPipeline;
+@property(nonatomic, strong) id<MTLComputePipelineState> sharedGateUpPipeline;
+@property(nonatomic, strong) id<MTLComputePipelineState> sharedDownHcPipeline;
 @property(nonatomic, assign) double setupMilliseconds;
 @property(nonatomic, assign) double compileMilliseconds;
 @end
@@ -466,6 +472,59 @@ static int ensure_attention_output_pipelines(
         return fail_with_message(error, error_bytes, compile_error.localizedDescription);
     }
     context.attentionOutputLibrary = library;
+    return 1;
+}
+
+static int ensure_moe_output_pipelines(
+    RustStarMetalContext *context,
+    char *error,
+    size_t error_bytes)
+{
+    if (context.moeOutputLibrary) return 1;
+    NSError *compile_error = nil;
+    id<MTLLibrary> library =
+        [context.device newLibraryWithSource:kMoeOutputSource
+                                      options:[MTLCompileOptions new]
+                                        error:&compile_error];
+    if (!library) return fail_with_message(error, error_bytes, compile_error.localizedDescription);
+
+    int16_t simdgroups = 2;
+    MTLFunctionConstantValues *routed_constants = [MTLFunctionConstantValues new];
+    [routed_constants setConstantValue:&simdgroups type:MTLDataTypeShort atIndex:600];
+    id<MTLFunction> routed_pair =
+        [library newFunctionWithName:@"kernel_mul_mv_id_iq2_xxs_pair_swiglu_f32"
+                      constantValues:routed_constants error:&compile_error];
+    id<MTLFunction> routed_down =
+        [library newFunctionWithName:@"kernel_mul_mv_id_q2_K_sum6_f32"
+                      constantValues:routed_constants error:&compile_error];
+
+    simdgroups = 4;
+    MTLFunctionConstantValues *shared_constants = [MTLFunctionConstantValues new];
+    [shared_constants setConstantValue:&simdgroups type:MTLDataTypeShort atIndex:600];
+    id<MTLFunction> shared_gate_up =
+        [library newFunctionWithName:@"kernel_dsv4_shared_gate_up_swiglu_q8_0"
+                      constantValues:shared_constants error:&compile_error];
+    id<MTLFunction> shared_down_hc =
+        [library newFunctionWithName:@"kernel_dsv4_shared_down_hc_expand4_q8_0"
+                      constantValues:shared_constants error:&compile_error];
+    if (!routed_pair || !routed_down || !shared_gate_up || !shared_down_hc) {
+        return fail_with_message(error, error_bytes,
+            compile_error ? compile_error.localizedDescription : @"MoE output kernel was not found");
+    }
+
+    context.routedPairSwigluPipeline =
+        [context.device newComputePipelineStateWithFunction:routed_pair error:&compile_error];
+    context.routedDownSumPipeline =
+        [context.device newComputePipelineStateWithFunction:routed_down error:&compile_error];
+    context.sharedGateUpPipeline =
+        [context.device newComputePipelineStateWithFunction:shared_gate_up error:&compile_error];
+    context.sharedDownHcPipeline =
+        [context.device newComputePipelineStateWithFunction:shared_down_hc error:&compile_error];
+    if (!context.routedPairSwigluPipeline || !context.routedDownSumPipeline ||
+        !context.sharedGateUpPipeline || !context.sharedDownHcPipeline) {
+        return fail_with_message(error, error_bytes, compile_error.localizedDescription);
+    }
+    context.moeOutputLibrary = library;
     return 1;
 }
 
@@ -878,6 +937,13 @@ typedef struct rust_star_hc_expand_args {
     uint64_t nb0, nb1, nb2;
     int32_t has_add;
 } rust_star_hc_expand_args;
+
+typedef struct rust_star_moe_swiglu_weight_args {
+    uint32_t width, rows;
+    uint64_t gate_row_stride, up_row_stride, mid_row_stride, weight_stride;
+    uint32_t write_clamped;
+    float clamp_value;
+} rust_star_moe_swiglu_weight_args;
 
 static id<MTLBuffer> wrap_model_range(
     RustStarMetalContext *context,
@@ -1925,6 +1991,243 @@ int rust_star_metal_run_ffn_router(
         result->max_buffer_length = context.device.maxBufferLength;
         result->wrapped_model_ranges = 5u + (bias_bytes ? 1u : 0u) + (hash_bytes ? 1u : 0u);
         for (uint32_t i = 0; i < 7; i++) if (matches[i]) result->pointer_matches++;
+        result->wall_ms = wall_end-wall_start;
+        result->gpu_ms = gpu_elapsed_ms(command);
+        return 1;
+    }
+}
+
+int rust_star_metal_run_moe_output(
+    void *opaque_context,
+    const void *model_mapping,
+    uint64_t model_bytes,
+    uint64_t routed_gate_offset,
+    uint64_t routed_gate_bytes,
+    uint64_t routed_up_offset,
+    uint64_t routed_up_bytes,
+    uint64_t routed_down_offset,
+    uint64_t routed_down_bytes,
+    uint64_t shared_gate_offset,
+    uint64_t shared_gate_bytes,
+    uint64_t shared_up_offset,
+    uint64_t shared_up_bytes,
+    uint64_t shared_down_offset,
+    uint64_t shared_down_bytes,
+    const float *ffn_norm,
+    const int32_t *selected,
+    const float *weights,
+    const float *after_attention_hc,
+    const float *split,
+    float *routed_mid,
+    float *routed_out,
+    float *shared_out,
+    float *after_ffn_hc,
+    rust_star_metal_ingress_probe_result *result,
+    char *error,
+    size_t error_bytes)
+{
+    const uint32_t n_embd = 4096, n_mid = 2048, n_expert = 256, n_used = 6, n_hc = 4;
+    const uint64_t routed_gate_row = 1056, routed_down_row = 672;
+    const uint64_t routed_gate_expert = n_mid*routed_gate_row;
+    const uint64_t routed_down_expert = n_embd*routed_down_row;
+    const uint64_t shared_gate_row = 4352, shared_down_row = 2176;
+    if (!opaque_context || !model_mapping || !ffn_norm || !selected || !weights ||
+        !after_attention_hc || !split || !routed_mid || !routed_out || !shared_out ||
+        !after_ffn_hc || !result) {
+        return fail_with_message(error, error_bytes, @"MoE output received invalid inputs");
+    }
+    if (routed_gate_bytes != n_expert*routed_gate_expert ||
+        routed_up_bytes != n_expert*routed_gate_expert ||
+        routed_down_bytes != n_expert*routed_down_expert ||
+        shared_gate_bytes != n_mid*shared_gate_row ||
+        shared_up_bytes != n_mid*shared_gate_row ||
+        shared_down_bytes != n_embd*shared_down_row) {
+        return fail_with_message(error, error_bytes, @"MoE output tensor shapes are invalid");
+    }
+    for (uint32_t i = 0; i < n_used; i++) {
+        if (selected[i] < 0 || selected[i] >= (int32_t)n_expert || !isfinite(weights[i])) {
+            return fail_with_message(error, error_bytes, @"MoE output router inputs are invalid");
+        }
+    }
+
+    @autoreleasepool {
+        RustStarMetalContext *context = (__bridge RustStarMetalContext *)opaque_context;
+        if (!ensure_moe_output_pipelines(context, error, error_bytes)) return 0;
+        memset(result, 0, sizeof(*result));
+
+        NSUInteger inner[6] = {0};
+        BOOL matches[6] = {NO};
+        id<MTLBuffer> routed_gate = wrap_model_range(context, model_mapping, model_bytes,
+            routed_gate_offset, routed_gate_bytes, &inner[0], &matches[0], error, error_bytes);
+        id<MTLBuffer> routed_up = wrap_model_range(context, model_mapping, model_bytes,
+            routed_up_offset, routed_up_bytes, &inner[1], &matches[1], error, error_bytes);
+        id<MTLBuffer> routed_down = wrap_model_range(context, model_mapping, model_bytes,
+            routed_down_offset, routed_down_bytes, &inner[2], &matches[2], error, error_bytes);
+        id<MTLBuffer> shared_gate = wrap_model_range(context, model_mapping, model_bytes,
+            shared_gate_offset, shared_gate_bytes, &inner[3], &matches[3], error, error_bytes);
+        id<MTLBuffer> shared_up = wrap_model_range(context, model_mapping, model_bytes,
+            shared_up_offset, shared_up_bytes, &inner[4], &matches[4], error, error_bytes);
+        id<MTLBuffer> shared_down = wrap_model_range(context, model_mapping, model_bytes,
+            shared_down_offset, shared_down_bytes, &inner[5], &matches[5], error, error_bytes);
+        if (!routed_gate || !routed_up || !routed_down ||
+            !shared_gate || !shared_up || !shared_down) return 0;
+
+        const NSUInteger embd_bytes = n_embd*sizeof(float);
+        const NSUInteger mid_bytes = n_mid*sizeof(float);
+        const NSUInteger routed_mid_bytes = n_used*mid_bytes;
+        const NSUInteger hc_bytes = n_hc*embd_bytes;
+        id<MTLBuffer> norm = [context.device newBufferWithLength:embd_bytes options:MTLResourceStorageModeShared];
+        id<MTLBuffer> ids = [context.device newBufferWithLength:n_used*sizeof(int32_t) options:MTLResourceStorageModeShared];
+        id<MTLBuffer> route_weights = [context.device newBufferWithLength:n_used*sizeof(float) options:MTLResourceStorageModeShared];
+        id<MTLBuffer> residual = [context.device newBufferWithLength:hc_bytes options:MTLResourceStorageModeShared];
+        id<MTLBuffer> split_buffer = [context.device newBufferWithLength:24u*sizeof(float) options:MTLResourceStorageModeShared];
+        id<MTLBuffer> routed_gate_out = [context.device newBufferWithLength:routed_mid_bytes options:MTLResourceStorageModeShared];
+        id<MTLBuffer> routed_up_out = [context.device newBufferWithLength:routed_mid_bytes options:MTLResourceStorageModeShared];
+        id<MTLBuffer> routed_mid_buffer = [context.device newBufferWithLength:routed_mid_bytes options:MTLResourceStorageModeShared];
+        id<MTLBuffer> routed_out_buffer = [context.device newBufferWithLength:embd_bytes options:MTLResourceStorageModeShared];
+        id<MTLBuffer> shared_gate_out = [context.device newBufferWithLength:mid_bytes options:MTLResourceStorageModeShared];
+        id<MTLBuffer> shared_up_out = [context.device newBufferWithLength:mid_bytes options:MTLResourceStorageModeShared];
+        id<MTLBuffer> shared_mid_buffer = [context.device newBufferWithLength:mid_bytes options:MTLResourceStorageModeShared];
+        id<MTLBuffer> shared_out_buffer = [context.device newBufferWithLength:embd_bytes options:MTLResourceStorageModeShared];
+        id<MTLBuffer> after_hc_buffer = [context.device newBufferWithLength:hc_bytes options:MTLResourceStorageModeShared];
+        if (!norm || !ids || !route_weights || !residual || !split_buffer ||
+            !routed_gate_out || !routed_up_out || !routed_mid_buffer || !routed_out_buffer ||
+            !shared_gate_out || !shared_up_out || !shared_mid_buffer ||
+            !shared_out_buffer || !after_hc_buffer) {
+            return fail_with_message(error, error_bytes, @"failed to allocate MoE output buffers");
+        }
+        memcpy(norm.contents, ffn_norm, embd_bytes);
+        memcpy(ids.contents, selected, n_used*sizeof(int32_t));
+        memcpy(route_weights.contents, weights, n_used*sizeof(float));
+        memcpy(residual.contents, after_attention_hc, hc_bytes);
+        memcpy(split_buffer.contents, split, 24u*sizeof(float));
+
+        rust_star_q8_mv_id_args gate_args = {
+            .nei0=6, .nei1=1, .nbi1=6u*sizeof(int32_t),
+            .ne00=4096, .ne01=2048, .ne02=256,
+            .nb00=66, .nb01=routed_gate_row, .nb02=routed_gate_expert,
+            .ne10=4096, .ne11=1, .ne12=1, .ne13=1,
+            .nb10=sizeof(float), .nb11=embd_bytes, .nb12=embd_bytes,
+            .ne0=2048, .ne1=6, .nb1=mid_bytes, .nr0=4,
+            .tp_rank=0, .tp_world=0, .tp_addend=0, .tp_expert_base=0,
+        };
+        rust_star_moe_swiglu_weight_args activation = {
+            .width=2048, .rows=6,
+            .gate_row_stride=mid_bytes, .up_row_stride=mid_bytes,
+            .mid_row_stride=mid_bytes, .weight_stride=sizeof(float),
+            .write_clamped=0, .clamp_value=10.0f,
+        };
+        rust_star_q8_mv_id_args down_args = {
+            .nei0=6, .nei1=1, .nbi1=6u*sizeof(int32_t),
+            .ne00=2048, .ne01=4096, .ne02=256,
+            .nb00=84, .nb01=routed_down_row, .nb02=routed_down_expert,
+            .ne10=2048, .ne11=6, .ne12=1, .ne13=1,
+            .nb10=sizeof(float), .nb11=mid_bytes, .nb12=routed_mid_bytes,
+            .ne0=4096, .ne1=6, .nb1=embd_bytes, .nr0=4,
+            .tp_rank=0, .tp_world=0, .tp_addend=0, .tp_expert_base=0,
+        };
+        rust_star_q8_mv_args shared_gate_args = {
+            .ne00=4096, .ne01=2048, .ne02=1,
+            .nb00=34, .nb01=shared_gate_row,
+            .nb02=shared_gate_bytes, .nb03=shared_gate_bytes,
+            .ne10=4096, .ne11=1, .ne12=1,
+            .nb10=sizeof(float), .nb11=embd_bytes, .nb12=embd_bytes, .nb13=embd_bytes,
+            .ne0=2048, .ne1=1, .nr0=2, .r2=1, .r3=1,
+        };
+        rust_star_q8_mv_args shared_down_args = {
+            .ne00=2048, .ne01=4096, .ne02=1,
+            .nb00=34, .nb01=shared_down_row,
+            .nb02=shared_down_bytes, .nb03=shared_down_bytes,
+            .ne10=2048, .ne11=1, .ne12=1,
+            .nb10=sizeof(float), .nb11=mid_bytes, .nb12=mid_bytes, .nb13=mid_bytes,
+            .ne0=4096, .ne1=1, .nr0=2, .r2=1, .r3=1,
+        };
+        rust_star_hc_expand_args hc = {
+            .n_embd=4096, .n_hc=4, .n_tokens=1,
+            .nb_block0=sizeof(float), .nb_block1=embd_bytes,
+            .nb_add0=sizeof(float), .nb_add1=embd_bytes,
+            .nb_res0=sizeof(float), .nb_res1=embd_bytes, .nb_res2=hc_bytes,
+            .nb_post0=sizeof(float), .nb_post1=24u*sizeof(float),
+            .nb_comb0=sizeof(float), .nb_comb1=4u*sizeof(float), .nb_comb2=24u*sizeof(float),
+            .nb0=sizeof(float), .nb1=embd_bytes, .nb2=hc_bytes, .has_add=1,
+        };
+
+        id<MTLCommandBuffer> command = [context.queue commandBuffer];
+        if (!command) return fail_with_message(error, error_bytes, @"failed to create MoE output command buffer");
+        id<MTLComputeCommandEncoder> encoder = [command computeCommandEncoder];
+        [encoder setComputePipelineState:context.routedPairSwigluPipeline];
+        [encoder setBytes:&gate_args length:sizeof(gate_args) atIndex:0];
+        [encoder setBytes:&activation length:sizeof(activation) atIndex:1];
+        [encoder setBuffer:routed_gate offset:inner[0] atIndex:2];
+        [encoder setBuffer:routed_up offset:inner[1] atIndex:3];
+        [encoder setBuffer:norm offset:0 atIndex:4];
+        [encoder setBuffer:routed_gate_out offset:0 atIndex:5];
+        [encoder setBuffer:routed_up_out offset:0 atIndex:6];
+        [encoder setBuffer:routed_mid_buffer offset:0 atIndex:7];
+        [encoder setBuffer:ids offset:0 atIndex:8];
+        [encoder setBuffer:route_weights offset:0 atIndex:9];
+        [encoder setThreadgroupMemoryLength:2176u atIndex:0];
+        [encoder dispatchThreadgroups:MTLSizeMake(256, 1, 6)
+             threadsPerThreadgroup:MTLSizeMake(32, 2, 1)];
+        [encoder endEncoding];
+
+        encoder = [command computeCommandEncoder];
+        [encoder setComputePipelineState:context.routedDownSumPipeline];
+        [encoder setBytes:&down_args length:sizeof(down_args) atIndex:0];
+        [encoder setBuffer:routed_down offset:inner[2] atIndex:1];
+        [encoder setBuffer:routed_mid_buffer offset:0 atIndex:2];
+        [encoder setBuffer:routed_out_buffer offset:0 atIndex:3];
+        [encoder setBuffer:ids offset:0 atIndex:4];
+        [encoder setBuffer:routed_out_buffer offset:0 atIndex:5];
+        [encoder dispatchThreadgroups:MTLSizeMake(512, 1, 1)
+             threadsPerThreadgroup:MTLSizeMake(32, 2, 1)];
+        [encoder endEncoding];
+
+        const float clamp = 10.0f;
+        encoder = [command computeCommandEncoder];
+        [encoder setComputePipelineState:context.sharedGateUpPipeline];
+        [encoder setBytes:&shared_gate_args length:sizeof(shared_gate_args) atIndex:0];
+        [encoder setBuffer:shared_gate offset:inner[3] atIndex:1];
+        [encoder setBuffer:shared_up offset:inner[4] atIndex:2];
+        [encoder setBuffer:norm offset:0 atIndex:3];
+        [encoder setBuffer:shared_gate_out offset:0 atIndex:4];
+        [encoder setBuffer:shared_up_out offset:0 atIndex:5];
+        [encoder setBuffer:shared_mid_buffer offset:0 atIndex:6];
+        [encoder setBytes:&clamp length:sizeof(clamp) atIndex:7];
+        [encoder setThreadgroupMemoryLength:512u atIndex:0];
+        [encoder dispatchThreadgroups:MTLSizeMake(1024, 1, 1)
+             threadsPerThreadgroup:MTLSizeMake(32, 4, 1)];
+        [encoder endEncoding];
+
+        encoder = [command computeCommandEncoder];
+        [encoder setComputePipelineState:context.sharedDownHcPipeline];
+        [encoder setBytes:&shared_down_args length:sizeof(shared_down_args) atIndex:0];
+        [encoder setBytes:&hc length:sizeof(hc) atIndex:1];
+        [encoder setBuffer:shared_down offset:inner[5] atIndex:2];
+        [encoder setBuffer:shared_mid_buffer offset:0 atIndex:3];
+        [encoder setBuffer:shared_out_buffer offset:0 atIndex:4];
+        [encoder setBuffer:routed_out_buffer offset:0 atIndex:5];
+        [encoder setBuffer:residual offset:0 atIndex:6];
+        [encoder setBuffer:split_buffer offset:4u*sizeof(float) atIndex:7];
+        [encoder setBuffer:split_buffer offset:8u*sizeof(float) atIndex:8];
+        [encoder setBuffer:after_hc_buffer offset:0 atIndex:9];
+        [encoder setThreadgroupMemoryLength:256u atIndex:0];
+        [encoder dispatchThreadgroups:MTLSizeMake(2048, 1, 1)
+             threadsPerThreadgroup:MTLSizeMake(32, 4, 1)];
+        [encoder endEncoding];
+
+        const double wall_start = monotonic_ms();
+        [command commit];
+        if (!command_succeeded(command, error, error_bytes)) return 0;
+        const double wall_end = monotonic_ms();
+        memcpy(routed_mid, routed_mid_buffer.contents, routed_mid_bytes);
+        memcpy(routed_out, routed_out_buffer.contents, embd_bytes);
+        memcpy(shared_out, shared_out_buffer.contents, embd_bytes);
+        memcpy(after_ffn_hc, after_hc_buffer.contents, hc_bytes);
+        result->model_bytes = model_bytes;
+        result->max_buffer_length = context.device.maxBufferLength;
+        result->wrapped_model_ranges = 6;
+        for (uint32_t i = 0; i < 6; i++) if (matches[i]) result->pointer_matches++;
         result->wall_ms = wall_end-wall_start;
         result->gpu_ms = gpu_elapsed_ms(command);
         return 1;

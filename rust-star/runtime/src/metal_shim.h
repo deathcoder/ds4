@@ -192,6 +192,35 @@ int rust_star_metal_run_ffn_router(
     char *error,
     size_t error_bytes);
 
+int rust_star_metal_run_moe_output(
+    void *context,
+    const void *model_mapping,
+    uint64_t model_bytes,
+    uint64_t routed_gate_offset,
+    uint64_t routed_gate_bytes,
+    uint64_t routed_up_offset,
+    uint64_t routed_up_bytes,
+    uint64_t routed_down_offset,
+    uint64_t routed_down_bytes,
+    uint64_t shared_gate_offset,
+    uint64_t shared_gate_bytes,
+    uint64_t shared_up_offset,
+    uint64_t shared_up_bytes,
+    uint64_t shared_down_offset,
+    uint64_t shared_down_bytes,
+    const float *ffn_norm,
+    const int32_t *selected,
+    const float *weights,
+    const float *after_attention_hc,
+    const float *split,
+    float *routed_mid,
+    float *routed_out,
+    float *shared_out,
+    float *after_ffn_hc,
+    rust_star_metal_ingress_probe_result *result,
+    char *error,
+    size_t error_bytes);
+
 void rust_star_metal_destroy(void *context);
 
 #endif

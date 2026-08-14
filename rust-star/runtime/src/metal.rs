@@ -14,6 +14,7 @@ pub const ROPE_KV_STORE_PROBE_SCHEMA: &str = "rust-star-layer0-rope-kv-store-pro
 pub const ATTENTION_READ_PROBE_SCHEMA: &str = "rust-star-layer0-attention-read-probe-v1";
 pub const ATTENTION_OUTPUT_PROBE_SCHEMA: &str = "rust-star-layer0-attention-output-probe-v1";
 pub const FFN_ROUTER_PROBE_SCHEMA: &str = "rust-star-layer0-ffn-router-probe-v1";
+pub const MOE_OUTPUT_PROBE_SCHEMA: &str = "rust-star-layer0-moe-output-probe-v1";
 pub const PROJECTION_FIXTURE_ID: &str = "dwarfstar-oracle-v1-layer0-pos1-attn-q-a";
 pub const INGRESS_FIXTURE_ID: &str = "dwarfstar-oracle-v1-layer0-pos1-attention-ingress";
 pub const ATTENTION_SETUP_FIXTURE_ID: &str = "dwarfstar-oracle-v1-layer0-pos1-qkv-setup";
@@ -21,6 +22,7 @@ pub const ROPE_KV_STORE_FIXTURE_ID: &str = "dwarfstar-oracle-v1-layer0-pos1-rope
 pub const ATTENTION_READ_FIXTURE_ID: &str = "dwarfstar-oracle-v1-layer0-pos1-attention-read";
 pub const ATTENTION_OUTPUT_FIXTURE_ID: &str = "dwarfstar-oracle-v1-layer0-pos1-attention-output";
 pub const FFN_ROUTER_FIXTURE_ID: &str = "dwarfstar-oracle-v1-layer0-pos1-ffn-router";
+pub const MOE_OUTPUT_FIXTURE_ID: &str = "dwarfstar-oracle-v1-layer0-pos1-moe-output";
 pub const DEFAULT_ELEMENTS: u64 = 4096;
 pub const DEFAULT_ITERATIONS: u64 = 100;
 const MAX_ELEMENTS: u64 = 16 * 1024 * 1024;
@@ -99,6 +101,27 @@ const ROUTER_SELECTED_BYTES: &[u8] =
     include_bytes!("../../fixtures/layer0-ffn-router-v1/router-selected.i32le.bin");
 const ROUTER_WEIGHTS_BYTES: &[u8] =
     include_bytes!("../../fixtures/layer0-ffn-router-v1/router-weights.f32le.bin");
+const MOE_FFN_NORM_BYTES: &[u8] =
+    include_bytes!("../../fixtures/layer0-moe-output-v1/ffn-norm.f32le.bin");
+const MOE_SELECTED_BYTES: &[u8] =
+    include_bytes!("../../fixtures/layer0-moe-output-v1/router-selected.i32le.bin");
+const MOE_WEIGHTS_BYTES: &[u8] =
+    include_bytes!("../../fixtures/layer0-moe-output-v1/router-weights.f32le.bin");
+const MOE_INPUT_HC_BYTES: &[u8] =
+    include_bytes!("../../fixtures/layer0-moe-output-v1/hc-attn-post.f32le.bin");
+const MOE_PRE_BYTES: &[u8] = include_bytes!("../../fixtures/layer0-moe-output-v1/hc-pre.f32le.bin");
+const MOE_POST_BYTES: &[u8] =
+    include_bytes!("../../fixtures/layer0-moe-output-v1/hc-post.f32le.bin");
+const MOE_COMB_BYTES: &[u8] =
+    include_bytes!("../../fixtures/layer0-moe-output-v1/hc-combination.f32le.bin");
+const MOE_ROUTED_MID_BYTES: &[u8] =
+    include_bytes!("../../fixtures/layer0-moe-output-v1/routed-mid.f32le.bin");
+const MOE_ROUTED_OUT_BYTES: &[u8] =
+    include_bytes!("../../fixtures/layer0-moe-output-v1/routed-out.f32le.bin");
+const MOE_SHARED_OUT_BYTES: &[u8] =
+    include_bytes!("../../fixtures/layer0-moe-output-v1/shared-out.f32le.bin");
+const MOE_HC_POST_BYTES: &[u8] =
+    include_bytes!("../../fixtures/layer0-moe-output-v1/hc-ffn-post.f32le.bin");
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct ProbeConfig {
@@ -302,6 +325,22 @@ pub struct FfnRouterProbeReport {
     pub router_weights_checksum: u64,
 }
 
+#[derive(Clone, Debug)]
+pub struct MoeOutputProbeReport {
+    pub fixture_id: &'static str,
+    pub token: u32,
+    pub dispatches: u32,
+    pub selected_experts: Vec<i32>,
+    pub wrapped_model_ranges: u32,
+    pub pointer_matches: u32,
+    pub wall_ms: f64,
+    pub gpu_ms: f64,
+    pub routed_mid_checksum: u64,
+    pub routed_out_checksum: u64,
+    pub shared_out_checksum: u64,
+    pub hc_post_checksum: u64,
+}
+
 pub fn write_ingress_probe_json<W: Write>(
     output: &mut W,
     report: &IngressProbeReport,
@@ -441,6 +480,29 @@ pub fn write_ffn_router_probe_json<W: Write>(
         report.router_logits_checksum,
         report.router_probs_checksum,
         report.router_weights_checksum,
+    )?;
+    Ok(())
+}
+
+pub fn write_moe_output_probe_json<W: Write>(
+    output: &mut W,
+    report: &MoeOutputProbeReport,
+) -> Result<()> {
+    write!(
+        output,
+        "{{\n  \"schema\": \"{MOE_OUTPUT_PROBE_SCHEMA}\",\n  \"fixture\": \"{}\",\n  \"token\": {},\n  \"dispatches\": {},\n  \"selected_experts\": {:?},\n  \"mapping\": {{\n    \"wrapped_model_ranges\": {},\n    \"pointer_matches\": {}\n  }},\n  \"timing\": {{\n    \"wall_ms\": {:.6},\n    \"gpu_ms\": {:.6}\n  }},\n  \"checksums\": {{\n    \"routed_mid\": {},\n    \"routed_out\": {},\n    \"shared_out\": {},\n    \"hc_ffn_post\": {}\n  }},\n  \"c0_bitwise_match\": true\n}}\n",
+        report.fixture_id,
+        report.token,
+        report.dispatches,
+        report.selected_experts,
+        report.wrapped_model_ranges,
+        report.pointer_matches,
+        report.wall_ms,
+        report.gpu_ms,
+        report.routed_mid_checksum,
+        report.routed_out_checksum,
+        report.shared_out_checksum,
+        report.hc_post_checksum,
     )?;
     Ok(())
 }
@@ -802,6 +864,35 @@ fn ffn_router_fixture() -> Result<FfnRouterFixture> {
     ))
 }
 
+type MoeOutputFixture = (
+    Vec<f32>,
+    Vec<i32>,
+    Vec<f32>,
+    Vec<f32>,
+    Vec<f32>,
+    Vec<f32>,
+    Vec<f32>,
+    Vec<f32>,
+    Vec<f32>,
+);
+
+fn moe_output_fixture() -> Result<MoeOutputFixture> {
+    let mut split = decode_f32_fixture(MOE_PRE_BYTES, "MoE HC pre weights")?;
+    split.extend(decode_f32_fixture(MOE_POST_BYTES, "MoE HC post weights")?);
+    split.extend(decode_f32_fixture(MOE_COMB_BYTES, "MoE HC combination")?);
+    Ok((
+        decode_f32_fixture(MOE_FFN_NORM_BYTES, "MoE normalized input")?,
+        decode_i32_fixture(MOE_SELECTED_BYTES, "MoE selected experts")?,
+        decode_f32_fixture(MOE_WEIGHTS_BYTES, "MoE router weights")?,
+        decode_f32_fixture(MOE_INPUT_HC_BYTES, "MoE residual HC state")?,
+        split,
+        decode_f32_fixture(MOE_ROUTED_MID_BYTES, "MoE routed activation")?,
+        decode_f32_fixture(MOE_ROUTED_OUT_BYTES, "MoE routed output")?,
+        decode_f32_fixture(MOE_SHARED_OUT_BYTES, "MoE shared output")?,
+        decode_f32_fixture(MOE_HC_POST_BYTES, "MoE HC post-state")?,
+    ))
+}
+
 fn decode_i32_fixture(bytes: &[u8], label: &str) -> Result<Vec<i32>> {
     if bytes.is_empty() || bytes.len() % 4 != 0 {
         return Err(Error::invalid(format!(
@@ -1106,6 +1197,35 @@ mod imp {
             probs: *mut f32,
             selected: *mut i32,
             weights: *mut f32,
+            result: *mut RawIngressProbeResult,
+            error: *mut c_char,
+            error_bytes: usize,
+        ) -> i32;
+        fn rust_star_metal_run_moe_output(
+            context: *mut c_void,
+            model_mapping: *const c_void,
+            model_bytes: u64,
+            routed_gate_offset: u64,
+            routed_gate_bytes: u64,
+            routed_up_offset: u64,
+            routed_up_bytes: u64,
+            routed_down_offset: u64,
+            routed_down_bytes: u64,
+            shared_gate_offset: u64,
+            shared_gate_bytes: u64,
+            shared_up_offset: u64,
+            shared_up_bytes: u64,
+            shared_down_offset: u64,
+            shared_down_bytes: u64,
+            ffn_norm: *const f32,
+            selected: *const i32,
+            weights: *const f32,
+            after_attention_hc: *const f32,
+            split: *const f32,
+            routed_mid: *mut f32,
+            routed_out: *mut f32,
+            shared_out: *mut f32,
+            after_ffn_hc: *mut f32,
             result: *mut RawIngressProbeResult,
             error: *mut c_char,
             error_bytes: usize,
@@ -2453,6 +2573,149 @@ mod imp {
             router_weights_checksum: checksum_f32(&weights),
         })
     }
+
+    pub fn run_moe_output_probe(model: &MappedModel) -> Result<MoeOutputProbeReport> {
+        const TOKEN: u32 = 201;
+        let routed_gate =
+            exact_tensor(model, "blk.0.ffn_gate_exps.weight", 16, &[4096, 2048, 256])?;
+        let routed_up = exact_tensor(model, "blk.0.ffn_up_exps.weight", 16, &[4096, 2048, 256])?;
+        let routed_down =
+            exact_tensor(model, "blk.0.ffn_down_exps.weight", 10, &[2048, 4096, 256])?;
+        let shared_gate = exact_tensor(model, "blk.0.ffn_gate_shexp.weight", 8, &[4096, 2048])?;
+        let shared_up = exact_tensor(model, "blk.0.ffn_up_shexp.weight", 8, &[4096, 2048])?;
+        let shared_down = exact_tensor(model, "blk.0.ffn_down_shexp.weight", 8, &[2048, 4096])?;
+        let (
+            ffn_norm,
+            selected,
+            weights,
+            input_hc,
+            split,
+            expected_routed_mid,
+            expected_routed_out,
+            expected_shared_out,
+            expected_hc_post,
+        ) = moe_output_fixture()?;
+        let mut routed_mid = vec![0.0_f32; 6 * 2048];
+        let mut routed_out = vec![0.0_f32; 4096];
+        let mut shared_out = vec![0.0_f32; 4096];
+        let mut hc_post = vec![0.0_f32; 4 * 4096];
+        let mut error = [0 as c_char; ERROR_BYTES];
+        let mut pointer = ptr::null_mut();
+        let created =
+            unsafe { rust_star_metal_create(&mut pointer, error.as_mut_ptr(), error.len()) };
+        if created == 0 || pointer.is_null() {
+            return Err(Error::invalid(format!(
+                "Metal initialization failed: {}",
+                error_text(&error)
+            )));
+        }
+        let context = Context(pointer);
+        error.fill(0);
+        let mut raw = RawIngressProbeResult::default();
+        let succeeded = unsafe {
+            rust_star_metal_run_moe_output(
+                context.0,
+                model.mapping_pointer(),
+                model.bytes(),
+                routed_gate.absolute_offset,
+                routed_gate.bytes,
+                routed_up.absolute_offset,
+                routed_up.bytes,
+                routed_down.absolute_offset,
+                routed_down.bytes,
+                shared_gate.absolute_offset,
+                shared_gate.bytes,
+                shared_up.absolute_offset,
+                shared_up.bytes,
+                shared_down.absolute_offset,
+                shared_down.bytes,
+                ffn_norm.as_ptr(),
+                selected.as_ptr(),
+                weights.as_ptr(),
+                input_hc.as_ptr(),
+                split.as_ptr(),
+                routed_mid.as_mut_ptr(),
+                routed_out.as_mut_ptr(),
+                shared_out.as_mut_ptr(),
+                hc_post.as_mut_ptr(),
+                &mut raw,
+                error.as_mut_ptr(),
+                error.len(),
+            )
+        };
+        if succeeded == 0 {
+            return Err(Error::invalid(format!(
+                "Metal layer-0 MoE output probe failed: {}",
+                error_text(&error)
+            )));
+        }
+        if raw.model_bytes != model.bytes()
+            || raw.wrapped_model_ranges != 6
+            || raw.pointer_matches != 6
+        {
+            return Err(Error::invalid(
+                "Metal MoE output path did not preserve all six mmap-backed model ranges",
+            ));
+        }
+        for (label, actual, expected) in [
+            (
+                "ffn_moe_weighted_swiglu",
+                routed_mid.as_slice(),
+                expected_routed_mid.as_slice(),
+            ),
+            (
+                "ffn_moe_out",
+                routed_out.as_slice(),
+                expected_routed_out.as_slice(),
+            ),
+            (
+                "ffn_shexp",
+                shared_out.as_slice(),
+                expected_shared_out.as_slice(),
+            ),
+            (
+                "hc_ffn_post",
+                hc_post.as_slice(),
+                expected_hc_post.as_slice(),
+            ),
+        ] {
+            for (index, (actual, expected)) in actual.iter().zip(expected).enumerate() {
+                if actual.to_bits() != expected.to_bits() {
+                    return Err(Error::invalid(format!(
+                        "MoE output C0 mismatch in {label}[{index}]: actual={:#010x} expected={:#010x}",
+                        actual.to_bits(),
+                        expected.to_bits()
+                    )));
+                }
+            }
+        }
+        for (name, value) in [("wall_ms", raw.wall_ms), ("gpu_ms", raw.gpu_ms)] {
+            if !value.is_finite() || value < 0.0 {
+                return Err(Error::invalid(format!(
+                    "Metal MoE output returned invalid {name}"
+                )));
+            }
+        }
+        if raw.wall_ms == 0.0 {
+            return Err(Error::invalid(
+                "Metal MoE output returned a zero wall interval",
+            ));
+        }
+        Ok(MoeOutputProbeReport {
+            fixture_id: MOE_OUTPUT_FIXTURE_ID,
+            token: TOKEN,
+            dispatches: 4,
+            selected_experts: selected,
+            wrapped_model_ranges: raw.wrapped_model_ranges,
+            pointer_matches: raw.pointer_matches,
+            wall_ms: raw.wall_ms,
+            gpu_ms: raw.gpu_ms,
+            routed_mid_checksum: checksum_f32(&routed_mid),
+            routed_out_checksum: checksum_f32(&routed_out),
+            shared_out_checksum: checksum_f32(&shared_out),
+            hc_post_checksum: checksum_f32(&hc_post),
+        })
+    }
 }
 
 #[cfg(not(target_os = "macos"))]
@@ -2537,12 +2800,20 @@ mod imp {
             "the Metal layer-0 FFN router probe is available only on macOS",
         ))
     }
+
+    pub fn run_moe_output_probe(model: &MappedModel) -> Result<MoeOutputProbeReport> {
+        let _ = moe_output_fixture()?;
+        let _ = exact_tensor(model, "blk.0.ffn_gate_exps.weight", 16, &[4096, 2048, 256])?;
+        Err(Error::invalid(
+            "the Metal layer-0 MoE output probe is available only on macOS",
+        ))
+    }
 }
 
 pub use imp::{
     run_attention_ingress_probe, run_attention_output_probe, run_attention_read_probe,
-    run_attention_setup_probe, run_f16_embedding_probe, run_ffn_router_probe, run_probe,
-    run_q8_projection_probe, run_rope_kv_store_probe,
+    run_attention_setup_probe, run_f16_embedding_probe, run_ffn_router_probe, run_moe_output_probe,
+    run_probe, run_q8_projection_probe, run_rope_kv_store_probe,
 };
 
 #[cfg(test)]
@@ -2720,6 +2991,23 @@ mod tests {
         }
     }
 
+    fn moe_output_report() -> MoeOutputProbeReport {
+        MoeOutputProbeReport {
+            fixture_id: MOE_OUTPUT_FIXTURE_ID,
+            token: 201,
+            dispatches: 4,
+            selected_experts: vec![25, 174, 215, 58, 48, 60],
+            wrapped_model_ranges: 6,
+            pointer_matches: 6,
+            wall_ms: 2.0,
+            gpu_ms: 1.0,
+            routed_mid_checksum: 1,
+            routed_out_checksum: 2,
+            shared_out_checksum: 3,
+            hc_post_checksum: 4,
+        }
+    }
+
     #[test]
     fn validates_probe_work_bounds() {
         assert!(ProbeConfig::default().validate().is_ok());
@@ -2841,6 +3129,17 @@ mod tests {
     }
 
     #[test]
+    fn writes_stable_moe_output_probe_json() {
+        let mut output = Vec::new();
+        write_moe_output_probe_json(&mut output, &moe_output_report()).unwrap();
+        let text = String::from_utf8(output).unwrap();
+        assert!(text.contains(&format!("\"schema\": \"{MOE_OUTPUT_PROBE_SCHEMA}\"")));
+        assert!(text.contains("\"dispatches\": 4"));
+        assert!(text.contains("\"selected_experts\": [25, 174, 215, 58, 48, 60]"));
+        assert!(text.contains("\"hc_ffn_post\": 4"));
+    }
+
+    #[test]
     fn rope_kv_store_fixture_has_target_shapes() {
         let (q_cur, kv_rope, kv_cur, cache_row) = rope_kv_store_fixture().unwrap();
         assert_eq!(q_cur.len(), 64 * 512);
@@ -2885,6 +3184,21 @@ mod tests {
         assert_eq!(probs.len(), 256);
         assert_eq!(selected.len(), 6);
         assert_eq!(weights.len(), 6);
+    }
+
+    #[test]
+    fn moe_output_fixture_has_target_shapes() {
+        let (norm, selected, weights, input_hc, split, routed_mid, routed_out, shared_out, hc_post) =
+            moe_output_fixture().unwrap();
+        assert_eq!(norm.len(), 4096);
+        assert_eq!(selected, [25, 174, 215, 58, 48, 60]);
+        assert_eq!(weights.len(), 6);
+        assert_eq!(input_hc.len(), 4 * 4096);
+        assert_eq!(split.len(), 24);
+        assert_eq!(routed_mid.len(), 6 * 2048);
+        assert_eq!(routed_out.len(), 4096);
+        assert_eq!(shared_out.len(), 4096);
+        assert_eq!(hc_post.len(), 4 * 4096);
     }
 
     #[test]

@@ -1,0 +1,66 @@
+{
+  "schema": "rust-star-differential-fixture-v1",
+  "fixture_id": "dwarfstar-oracle-v1-layer0-pos1-moe-output",
+  "captured_at_utc": "2026-08-15T01:15:45Z",
+  "oracle": {
+    "id": "oracle-v1",
+    "repository": "https://github.com/antirez/ds4.git",
+    "commit": "b0309611041655f4e45671cfd9c9886aff161406",
+    "tree": "20c11af22f90a0bdf25da860da5ef06de4064060",
+    "capture_executable_sha256": "b0b7c31d9832cc3f5cccf810cd2af6f4bc4f6e71de945493674315314f666fc8"
+  },
+  "model": {
+    "family": "DeepSeek-V4-Flash-0731",
+    "sha256": "ca22ae2f838e14077c22bc1c1417b71b45b5e5a3687bd96c2ac6e17fdb6261c0"
+  },
+  "capture": {
+    "backend": "metal",
+    "machine": "Apple M1 Ultra, 48 GPU cores, 128 GB unified memory",
+    "prompt": "speed-bench/promessi_sposi.txt",
+    "prompt_sha256": "f53e0d80cb2d4492d24ebd63c7000c397b16ae70f9bf09b3763e5d8323ec209f",
+    "prefill_tokens": 1,
+    "decode_step": 1,
+    "token_id": 201,
+    "fresh_process_captures": 2,
+    "fresh_process_bitwise_match": true,
+    "environment": {
+      "DS4_METAL_GRAPH_DUMP_LAYER": "0",
+      "DS4_METAL_GRAPH_DUMP_POS": "1",
+      "DS4_METAL_GRAPH_DUMP_NAME": "ffn_moe_weighted_swiglu,ffn_moe_out,ffn_shexp,hc_ffn_post"
+    }
+  },
+  "scope": {"kind":"decode-step","phase":"decode","layer":0,"position":1},
+  "parameters": {
+    "embedding_dim": 4096,
+    "expert_hidden_dim": 2048,
+    "expert_count": 256,
+    "experts_selected": 6,
+    "shared_hidden_dim": 2048,
+    "hc_streams": 4,
+    "swiglu_clamp": 10.0,
+    "routed_gate_up_dtype": "IQ2_XXS",
+    "routed_down_dtype": "Q2_K",
+    "shared_dtype": "Q8_0",
+    "routed_simdgroups": 2,
+    "shared_simdgroups": 4
+  },
+  "operations": [
+    {"name":"routed-gate-up-weighted-swiglu","kernel":"kernel_mul_mv_id_iq2_xxs_pair_swiglu_f32","weights":["blk.0.ffn_gate_exps.weight","blk.0.ffn_up_exps.weight"]},
+    {"name":"routed-down-sum6","kernel":"kernel_mul_mv_id_q2_K_sum6_f32","weights":["blk.0.ffn_down_exps.weight"]},
+    {"name":"shared-gate-up-swiglu","kernel":"kernel_dsv4_shared_gate_up_swiglu_q8_0","weights":["blk.0.ffn_gate_shexp.weight","blk.0.ffn_up_shexp.weight"]},
+    {"name":"shared-down-and-hc-post","kernel":"kernel_dsv4_shared_down_hc_expand4_q8_0","weights":["blk.0.ffn_down_shexp.weight"]}
+  ],
+  "tensors": [
+    {"name":"ffn_norm","role":"input","dtype":"f32","encoding":"little-endian-ieee754-binary32","shape":[4096],"path":"ffn-norm.f32le.bin","bytes":16384,"sha256":"3c32ab8e410a6fa4f473ddf244987cb31c19f0ed9011b4b927ba59570be8e3f2"},
+    {"name":"ffn_moe_topk","role":"input","dtype":"i32","encoding":"little-endian-signed-integer32","shape":[6],"path":"router-selected.i32le.bin","bytes":24,"sha256":"0eba17dd9e83ac928ad7437e7c0de163ea94af55a435bac15d3b335ef8fb850d"},
+    {"name":"ffn_moe_weights_scaled","role":"input","dtype":"f32","encoding":"little-endian-ieee754-binary32","shape":[6],"path":"router-weights.f32le.bin","bytes":24,"sha256":"ab109b5ae0a6739eb2434d1430304667c78fc8636992ea9a191d8db980e2908e"},
+    {"name":"hc_attn_post","role":"input","dtype":"f32","encoding":"little-endian-ieee754-binary32","shape":[4,4096],"path":"hc-attn-post.f32le.bin","bytes":65536,"sha256":"45c8b7d437a323202d48f585e42037dee30ffd669afc8de5f4d607ba8c66483d"},
+    {"name":"hc_ffn_pre_weights","role":"input","dtype":"f32","encoding":"little-endian-ieee754-binary32","shape":[4],"path":"hc-pre.f32le.bin","bytes":16,"sha256":"045431e62309b2fa70f7abc1d4bb8a683fbee30a49d2fcd641c06aa71d25704f"},
+    {"name":"hc_ffn_pre_post_weights","role":"input","dtype":"f32","encoding":"little-endian-ieee754-binary32","shape":[4],"path":"hc-post.f32le.bin","bytes":16,"sha256":"fbbadb75dd19c833b47fd5200048481e42239bc565cdebffe379c5ae2fddbb6b"},
+    {"name":"hc_ffn_pre_comb","role":"input","dtype":"f32","encoding":"little-endian-ieee754-binary32","shape":[4,4],"path":"hc-combination.f32le.bin","bytes":64,"sha256":"761f667a11f4ddea628ab73c3533ecf5b203d9602696b07b373218624d3c8afa"},
+    {"name":"ffn_moe_weighted_swiglu","role":"output","dtype":"f32","encoding":"little-endian-ieee754-binary32","shape":[6,2048],"path":"routed-mid.f32le.bin","bytes":49152,"sha256":"06c615672f90088c9191f227c120ea28cc6794fbebdfecab9f94cba6a160c305"},
+    {"name":"ffn_moe_out","role":"output","dtype":"f32","encoding":"little-endian-ieee754-binary32","shape":[4096],"path":"routed-out.f32le.bin","bytes":16384,"sha256":"def0da06d9ce1e0d2952cacc91bb18d520853eeaf912b65db0e70983ca0d30d4"},
+    {"name":"ffn_shexp","role":"output","dtype":"f32","encoding":"little-endian-ieee754-binary32","shape":[4096],"path":"shared-out.f32le.bin","bytes":16384,"sha256":"2d01d8f565e2fcafe7b478f879140e3ecb9d134ebdcb85ee2f26073f6e76f16f"},
+    {"name":"hc_ffn_post","role":"output","dtype":"f32","encoding":"little-endian-ieee754-binary32","shape":[4,4096],"path":"hc-ffn-post.f32le.bin","bytes":65536,"sha256":"eada6d68ad139a39ad024c63fb2a23d4acf3a6c3f4630a3c470785973e3fed98"}
+  ]
+}
