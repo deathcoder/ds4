@@ -117,6 +117,43 @@ kernel void kernel_rms_norm_fuse_impl(
 typedef decltype(kernel_rms_norm_fuse_impl<float4, 1>) kernel_rms_norm_fuse_t;
 template [[host_name("kernel_rms_norm_f32_4")]] kernel kernel_rms_norm_fuse_t kernel_rms_norm_fuse_impl<float4, 1>;
 
+struct ds4_metal_args_qkv_rms_norm {
+    int q_n; int q_n4; int kv_n; int kv_n4;
+    ulong q_row_stride; ulong kv_row_stride;
+    float eps;
+};
+
+kernel void kernel_dsv4_qkv_rms_norm_f32_4(
+        constant ds4_metal_args_qkv_rms_norm & args,
+        device const float4 * q_src, device const float4 * q_weight,
+        device float4 * q_dst, device const float4 * kv_src,
+        device const float4 * kv_weight, device float4 * kv_dst,
+        threadgroup float * shmem_f32 [[threadgroup(0)]],
+        uint3 tgpig [[threadgroup_position_in_grid]],
+        ushort3 tpitg [[thread_position_in_threadgroup]],
+        ushort sgitg [[simdgroup_index_in_threadgroup]],
+        ushort tiisg [[thread_index_in_simdgroup]],
+        ushort3 ntg [[threads_per_threadgroup]]) {
+    if (sgitg == 0) shmem_f32[tiisg] = 0.0f;
+    const uint row = tgpig.x;
+    const bool kv_task = tgpig.y != 0;
+    const int n = kv_task ? args.kv_n : args.q_n;
+    const int n4 = kv_task ? args.kv_n4 : args.q_n4;
+    const ulong row_stride4 = (kv_task ? args.kv_row_stride : args.q_row_stride)/sizeof(float4);
+    device const float4 *x = kv_task ? kv_src + row*row_stride4 : q_src + row*row_stride4;
+    device const float4 *w = kv_task ? kv_weight : q_weight;
+    device float4 *y = kv_task ? kv_dst + row*row_stride4 : q_dst + row*row_stride4;
+    float sumf = 0.0f;
+    for (int i = tpitg.x; i < n4; i += ntg.x) sumf += dot(x[i],x[i]);
+    sumf = simd_sum(sumf);
+    threadgroup_barrier(mem_flags::mem_threadgroup);
+    if (tiisg == 0) shmem_f32[sgitg] = sumf;
+    threadgroup_barrier(mem_flags::mem_threadgroup);
+    sumf = simd_sum(shmem_f32[tiisg]);
+    const float norm_scale = 1.0f/sqrt(sumf/float(n) + args.eps);
+    for (int i = tpitg.x; i < n4; i += ntg.x) y[i] = (x[i]*norm_scale)*w[i];
+}
+
 struct ds4_metal_args_mul_mv {
     int ne00; int ne01; int ne02;
     ulong nb00; ulong nb01; ulong nb02; ulong nb03;

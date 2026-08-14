@@ -11,7 +11,7 @@ objects that cannot be expressed through a stable C interface:
 - command-buffer/encoder creation, dispatch, commit, and synchronization; and
 - Metal GPU start/end timestamps and error extraction.
 
-The shim exposes a narrow C ABI for context lifetime and the four probes. It is
+The shim exposes a narrow C ABI for context lifetime and the five probes. It is
 compiled by `build.rs` with the platform Xcode toolchain and has no third-party
 Rust dependency. Non-macOS builds compile an explicit unsupported stub, keeping
 the GGUF and artifact contracts portable.
@@ -129,3 +129,21 @@ chain without introducing a general graph or allocator framework.
 Its standalone timing includes lazy pipeline compilation, cold model pages,
 and fixture readback. It is correctness and ownership evidence, not a decoder
 throughput result.
+
+## Layer-0 attention projection setup
+
+Schema: `rust-star-layer0-attention-setup-probe-v1`.
+
+`attention-setup-probe` extends the connected command buffer with the Q8_0 KV
+projection, DwarfStar's fused Q-Lora/KV learned RMSNorm, and the Q8_0 Q-B
+projection. The full path now contains nine dispatches and ten independently
+wrapped mmap-backed model ranges.
+
+The `layer0-qkv-setup-v1` fixture preserves Q-Lora and attention-norm inputs,
+the raw and learned-normalized 512-value KV row, the learned-normalized
+1,024-value Q-Lora row, and the complete 64×512 raw Q tensor. Two fresh pinned
+DwarfStar processes produced byte-identical artifacts. The probe requires all
+four new runtime boundaries to match bit-for-bit before reporting success.
+
+Head-wise Q normalization and RoPE deliberately remain outside this checkpoint;
+they are the next attention-core boundary.

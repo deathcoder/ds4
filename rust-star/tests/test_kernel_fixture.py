@@ -18,6 +18,7 @@ from artifact_lib import ArtifactError, validate_differential_fixture  # noqa: E
 
 FIXTURE = RUST_STAR_DIR / "fixtures" / "q8-attn-q-a-v1"
 INGRESS_FIXTURE = RUST_STAR_DIR / "fixtures" / "layer0-attention-ingress-v1"
+SETUP_FIXTURE = RUST_STAR_DIR / "fixtures" / "layer0-qkv-setup-v1"
 
 
 class KernelFixtureTests(unittest.TestCase):
@@ -43,6 +44,14 @@ class KernelFixtureTests(unittest.TestCase):
         self.assertEqual(report["operations"], 6)
         self.assertEqual(report["tensors"], 7)
         self.assertEqual(report["verified_bytes"], 37_056)
+
+    def test_layer0_qkv_setup_fixture_manifest_and_payloads(self) -> None:
+        report = validate_differential_fixture(SETUP_FIXTURE)
+        self.assertEqual(report["fixture_id"], "dwarfstar-oracle-v1-layer0-pos1-qkv-setup")
+        self.assertEqual(report["scope"], "layer-segment")
+        self.assertEqual(report["operations"], 3)
+        self.assertEqual(report["tensors"], 6)
+        self.assertEqual(report["verified_bytes"], 159_744)
 
     def test_fixture_shape_tampering_is_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:

@@ -25,6 +25,9 @@ Implemented contracts:
 - the connected layer-0 attention ingress from token 201 through the Q-A
   projection, with six no-copy model ranges and bitwise checks at mixer, HC
   split, collapsed HC, learned norm, and Q-Lora boundaries.
+- the continuation through KV projection, fused Q-Lora/KV learned RMSNorm, and
+  Q-B, producing the full 64×512 raw Q tensor and normalized KV row in the same
+  command buffer.
 
 The validator proves model shape and quantization-recipe identity. It does not
 pretend that a mutable GGUF name proves the `0731` checkpoint. The completed
@@ -115,3 +118,15 @@ The command derives the projection input from the real token embedding in one
 six-dispatch command buffer. It requires all six mmap-backed weight views and
 every retained intermediate in `../fixtures/layer0-attention-ingress-v1/` to
 match the pinned DwarfStar capture bit-for-bit.
+
+To extend that chain through the Q/K projection setup:
+
+```sh
+rust-star/.work/runtime-target/release/rust-star attention-setup-probe \
+  /absolute/path/to/model.gguf \
+  --json rust-star/.work/runtime-target/attention-setup-probe.json
+```
+
+This runs nine dispatches over ten no-copy model views and verifies Q-Lora
+norm, KV raw/norm, and all 32,768 raw Q values against
+`../fixtures/layer0-qkv-setup-v1/`.

@@ -68,6 +68,9 @@ elif [ "$#" -eq 1 ]; then
         echo "==> no-copy layer-0 attention ingress"
         "$target_dir/release/rust-star" attention-ingress-probe "$1" \
             --json "$target_dir/attention-ingress-probe.json"
+        echo "==> no-copy layer-0 attention projection setup"
+        "$target_dir/release/rust-star" attention-setup-probe "$1" \
+            --json "$target_dir/attention-setup-probe.json"
     fi
 else
     echo "usage: $0 [/absolute/path/to/model.gguf]" >&2

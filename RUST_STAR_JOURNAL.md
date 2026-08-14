@@ -22,8 +22,8 @@ history; add a correction and update the current-state summary.
 
 - Phase: target-Mac bootstrap, quick `oracle-v1`, no-copy model mapping, the
   canonical differential-fixture envelope, and the connected layer-0
-  attention ingress are complete; the next increment is attention projection
-  setup beyond Q-Lora.
+  attention ingress and Q/K projection setup are complete; the next increment
+  is head normalization/RoPE and the first KV-cache write boundary.
 - Working branch: `agent/rust-star-bootstrap`.
 - Branch base: upstream `antirez/ds4` commit
   `b0309611041655f4e45671cfd9c9886aff161406`.
@@ -64,6 +64,9 @@ history; add a correction and update the current-state summary.
   chain now runs six imported operations in one command buffer from token 201's
   embedding through Q-Lora, with six mmap-backed model spans and bitwise checks
   at mixer, HC split, collapsed HC, learned attention norm, and Q-Lora.
+  The continuation adds Q8 KV projection, fused Q-Lora/KV learned RMSNorm, and
+  Q-B in the same command buffer, yielding full raw Q and normalized KV with
+  ten mmap-backed model spans.
 - Measurements: Metal batching was 42.861x faster than synchronized submission
   in the retained M-002 probe. DwarfStar medians are 164.86 prefill / 19.90
   generation tok/s at 2K and 161.05 prefill / 17.36 generation tok/s at 32K.
@@ -73,7 +76,9 @@ history; add a correction and update the current-state summary.
   0.031 ms GPU time in its completion gate, also not a throughput claim. The
   connected six-dispatch layer segment matched 9,264 retained FP32 values and
   reported 0.102 ms GPU time in the final gate; this remains correctness
-  evidence rather than decoder throughput.
+  evidence rather than decoder throughput. The nine-dispatch Q/K projection
+  setup matched another 34,816 FP32 values and reported 0.473 ms GPU time in
+  its final gate, also not a throughput claim.
 - Manual handoff: `RUST_STAR_MANUAL_TASKS.md` records Actions approval, target
   compilation/model inspection, quick/extended oracle capture, and the deferred
   secure-access decision with exact evidence requirements.
@@ -86,9 +91,8 @@ history; add a correction and update the current-state summary.
 
 ## Immediate Next Actions
 
-1. Extend the connected layer-0 path through Q-Lora RMSNorm/Q-B and the paired
-   KV projection/norm boundary, preserving exact intermediate fixtures and the
-   one-command-buffer execution shape.
+1. Extend the connected layer-0 path through per-head Q RMSNorm/RoPE and KV
+   RoPE into the first exact cache-row write boundary.
 2. Define the smallest reusable Rust buffer/scheduling abstraction justified by
    the now-connected path; do not introduce a general graph framework yet.
 3. Run the extended 2K--1M frontier capture when the Mac can be dedicated to a
@@ -96,6 +100,55 @@ history; add a correction and update the current-state summary.
 4. Run or approve the fork's GitHub Actions workflow and retain its URL.
 
 ## Entries
+
+### 2026-08-14 — Layer-0 Q/K projection setup matched DwarfStar
+
+Objective:
+
+- Continue the real token path beyond Q-Lora through the complete raw Q and
+  learned-normalized KV projection setup.
+
+Oracle fixture:
+
+- Captured layer 0, decode position 1 `q_lora_norm`, `KVraw`, `KVnorm`, and
+  `Qraw` from the pinned DwarfStar executable in two fresh processes; every
+  payload was byte-identical across captures.
+- Added `rust-star/fixtures/layer0-qkv-setup-v1/`, retaining the independent
+  attention-norm/Q-Lora inputs and all four new boundaries. The fixture contains
+  six tensors totaling 159,744 bytes and binds the same source, executable,
+  model, prompt, machine, token, layer, and position identities.
+
+Implementation:
+
+- Imported DwarfStar's fused Q-Lora/KV learned RMSNorm, preserving the default
+  norm-unification formula and dispatch geometry.
+- Extended the connected command buffer with Q8_0 KV projection, fused Q/K
+  norm, and Q8_0 Q-B projection. The path now has nine dispatches and ten
+  independently page-aligned mmap-backed model views.
+- Added a separate stable probe schema/CLI/JSON report, fixture verification,
+  unit coverage, documentation, and automatic target-model gate execution.
+
+Target-Mac evidence:
+
+- All ten model views retained exact mmap pointer identity.
+- All 1,024 Q-Lora norm values, 512 KV raw values, 512 KV norm values, and
+  32,768 raw Q values matched DwarfStar by FP32 bit pattern.
+- The final gate reported 38.399 ms wall and 0.473 ms Metal GPU time. This is a
+  cold standalone correctness boundary, not decoder throughput.
+- The complete gate passed: 22 Rust tests, optimized macOS build, 29 Python
+  tests, all three fixture verifiers, cross-language C0 smoke, strict validation
+  of all 1,288 required tensors, and every Metal probe.
+
+Decision:
+
+- Accept raw Q plus normalized KV as the next connected layer checkpoint. Keep
+  head normalization/RoPE and cache mutation separate so the first stateful
+  boundary has its own exact evidence.
+
+Next:
+
+- Capture/import Q head RMSNorm and RoPE plus KV RoPE, then validate the first
+  layer-0 cache-row write without adding the attention scan yet.
 
 ### 2026-08-14 — Connected layer-0 attention ingress matched DwarfStar
 
