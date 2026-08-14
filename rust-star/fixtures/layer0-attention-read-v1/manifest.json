@@ -1,0 +1,135 @@
+{
+  "schema": "rust-star-differential-fixture-v1",
+  "fixture_id": "dwarfstar-oracle-v1-layer0-pos1-attention-read",
+  "captured_at_utc": "2026-08-14T22:20:51Z",
+  "oracle": {
+    "id": "oracle-v1",
+    "repository": "https://github.com/antirez/ds4.git",
+    "commit": "b0309611041655f4e45671cfd9c9886aff161406",
+    "tree": "20c11af22f90a0bdf25da860da5ef06de4064060",
+    "capture_executable_sha256": "b0b7c31d9832cc3f5cccf810cd2af6f4bc4f6e71de945493674315314f666fc8"
+  },
+  "model": {
+    "family": "DeepSeek-V4-Flash-0731",
+    "sha256": "ca22ae2f838e14077c22bc1c1417b71b45b5e5a3687bd96c2ac6e17fdb6261c0"
+  },
+  "capture": {
+    "backend": "metal",
+    "machine": "Apple M1 Ultra, 48 GPU cores, 128 GB unified memory",
+    "prompt": "speed-bench/promessi_sposi.txt",
+    "prompt_sha256": "f53e0d80cb2d4492d24ebd63c7000c397b16ae70f9bf09b3763e5d8323ec209f",
+    "prefill_tokens": 1,
+    "decode_step": 1,
+    "token_id": 201,
+    "fresh_process_captures": 4,
+    "fresh_process_bitwise_match": true,
+    "graph_hooks": ["KVcur@position0", "Qcur@position1", "KVcur@position1", "kqv_back@position1"]
+  },
+  "scope": {
+    "kind": "decode-step",
+    "phase": "decode",
+    "layer": 0,
+    "position": 1
+  },
+  "parameters": {
+    "heads": 64,
+    "head_dim": 512,
+    "rotary_dim": 64,
+    "raw_cache_rows": 2,
+    "raw_cache_capacity_in_dwarfstar": 256,
+    "raw_cache_start": 0,
+    "probe_cache_capacity_rows": 3,
+    "cache_guard_value": -12345.5,
+    "attention_scale": "1/sqrt(512)",
+    "attention_sinks": true,
+    "mask_dtype": "f16",
+    "mask_values": [0.0, 0.0],
+    "flash_ncpsg": 32,
+    "flash_nsg": 1,
+    "flash_nwg": 32,
+    "rope_frequency_base": 10000.0,
+    "rope_frequency_scale": 1.0
+  },
+  "operations": [
+    {
+      "name": "raw-cache-stage-f32-to-f16",
+      "kernel": "kernel_cpy_contig_f32_f16_4"
+    },
+    {
+      "name": "flash-attention-pad-partial-block",
+      "kernel": "kernel_flash_attn_ext_pad"
+    },
+    {
+      "name": "flash-attention-vector",
+      "kernel": "kernel_flash_attn_ext_vec_f16_dk512_dv512"
+    },
+    {
+      "name": "flash-attention-reduce",
+      "kernel": "kernel_flash_attn_ext_vec_reduce"
+    },
+    {
+      "name": "attention-inverse-rope",
+      "kernel": "kernel_dsv4_rope_tail_f32"
+    }
+  ],
+  "derivations": [
+    {
+      "tensor": "cache_row0",
+      "source": "KVcur@position0",
+      "rule": "IEEE-754 binary16 round-to-nearest-even followed by exact binary32 expansion",
+      "reason": "DwarfStar stores the raw attention cache as F16 while its graph hook exposes the F32 post-FP8 source"
+    },
+    {
+      "tensor": "cache_row1",
+      "source": "KVcur@position1",
+      "rule": "IEEE-754 binary16 round-to-nearest-even followed by exact binary32 expansion",
+      "reason": "DwarfStar stores the raw attention cache as F16 while its graph hook exposes the F32 post-FP8 source"
+    }
+  ],
+  "tensors": [
+    {
+      "name": "q_cur",
+      "hook": "Qcur",
+      "role": "input",
+      "dtype": "f32",
+      "shape": [64, 512],
+      "encoding": "little-endian-ieee754-binary32",
+      "path": "q-cur.f32le.bin",
+      "bytes": 131072,
+      "sha256": "0a4caf3639dbb6599121c9244f77e928e26c1cef618b28e380c2f43cbdcc9ac4"
+    },
+    {
+      "name": "cache_row0",
+      "hook": "derived-from-KVcur@position0",
+      "role": "input",
+      "dtype": "f32",
+      "shape": [512],
+      "encoding": "little-endian-ieee754-binary32",
+      "path": "cache-row0.f32le.bin",
+      "bytes": 2048,
+      "sha256": "b2e4dd46699dcd3c4c2d29a4a3150014ba03ef64cf6a47f58a481426f1d3d825"
+    },
+    {
+      "name": "cache_row1",
+      "hook": "derived-from-KVcur@position1",
+      "role": "input",
+      "dtype": "f32",
+      "shape": [512],
+      "encoding": "little-endian-ieee754-binary32",
+      "path": "cache-row1.f32le.bin",
+      "bytes": 2048,
+      "sha256": "f9fb571ad76d84277fdcbba8411de2063dc9c4d3c3c1e9c018bf4deecba3241e"
+    },
+    {
+      "name": "kqv_back",
+      "hook": "kqv_back",
+      "role": "output",
+      "dtype": "f32",
+      "shape": [64, 512],
+      "encoding": "little-endian-ieee754-binary32",
+      "path": "kqv-back.f32le.bin",
+      "bytes": 131072,
+      "sha256": "2b90c3e7069f993dadccd5b9fbcc566c4a35f3db98d50698d9852bf3d2ab1c14"
+    }
+  ]
+}

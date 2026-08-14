@@ -1,7 +1,7 @@
 # Rust Star host-runtime scaffold
 
 This crate is the smallest executable boundary for the new engine. It is
-model-specific by design and currently contains one connected twelve-dispatch
+model-specific by design and currently contains one connected seventeen-dispatch
 layer segment, not a decoder.
 
 Implemented contracts:
@@ -30,6 +30,9 @@ Implemented contracts:
   command buffer.
 - the first stateful boundary: fused Q head RMSNorm/RoPE, KV RoPE, E4M3FN KV
   finalization, and an FP16-rounded cache-row write with untouched guard rows.
+- the first stateful read: exact raw-cache F16 staging, padded 512-wide
+  FlashAttention/reduction over positions 0-1, and inverse RoPE, checked against
+  DwarfStar's complete 64×512 `kqv_back` boundary.
 
 The validator proves model shape and quantization-recipe identity. It does not
 pretend that a mutable GGUF name proves the `0731` checkpoint. The completed
@@ -145,3 +148,16 @@ This extends the same path to twelve dispatches with DwarfStar's fused Q head
 RMSNorm/RoPE, the layer-0 KV RoPE, and its fused E4M3FN KV finalizer/cache
 store. It matches `Qcur`, `KVrope`, and `KVcur` bit-for-bit, then verifies the
 FP16-rounded target cache row while two sentinel neighbor rows remain intact.
+
+To validate the first cache read and attention result:
+
+```sh
+rust-star/.work/runtime-target/release/rust-star attention-read-probe \
+  /absolute/path/to/model.gguf \
+  --json rust-star/.work/runtime-target/attention-read-probe.json
+```
+
+This seventeen-dispatch checkpoint stages cache rows 0-1 to F16, executes
+DwarfStar's padded 512-wide FlashAttention and reduction, then applies inverse
+RoPE. It preserves the first cache row and guard row and requires the complete
+64×512 `kqv_back` result to match the pinned DwarfStar oracle bit-for-bit.

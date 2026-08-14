@@ -11,10 +11,12 @@ pub const PROJECTION_PROBE_SCHEMA: &str = "rust-star-q8-0-projection-probe-v1";
 pub const INGRESS_PROBE_SCHEMA: &str = "rust-star-layer0-attention-ingress-probe-v1";
 pub const ATTENTION_SETUP_PROBE_SCHEMA: &str = "rust-star-layer0-attention-setup-probe-v1";
 pub const ROPE_KV_STORE_PROBE_SCHEMA: &str = "rust-star-layer0-rope-kv-store-probe-v1";
+pub const ATTENTION_READ_PROBE_SCHEMA: &str = "rust-star-layer0-attention-read-probe-v1";
 pub const PROJECTION_FIXTURE_ID: &str = "dwarfstar-oracle-v1-layer0-pos1-attn-q-a";
 pub const INGRESS_FIXTURE_ID: &str = "dwarfstar-oracle-v1-layer0-pos1-attention-ingress";
 pub const ATTENTION_SETUP_FIXTURE_ID: &str = "dwarfstar-oracle-v1-layer0-pos1-qkv-setup";
 pub const ROPE_KV_STORE_FIXTURE_ID: &str = "dwarfstar-oracle-v1-layer0-pos1-rope-kv-store";
+pub const ATTENTION_READ_FIXTURE_ID: &str = "dwarfstar-oracle-v1-layer0-pos1-attention-read";
 pub const DEFAULT_ELEMENTS: u64 = 4096;
 pub const DEFAULT_ITERATIONS: u64 = 100;
 const MAX_ELEMENTS: u64 = 16 * 1024 * 1024;
@@ -56,6 +58,14 @@ const ROPE_KV_CUR_BYTES: &[u8] =
     include_bytes!("../../fixtures/layer0-rope-kv-store-v1/kv-cur.f32le.bin");
 const ROPE_CACHE_ROW_BYTES: &[u8] =
     include_bytes!("../../fixtures/layer0-rope-kv-store-v1/cache-row.f32le.bin");
+const ATTENTION_CACHE_ROW0_BYTES: &[u8] =
+    include_bytes!("../../fixtures/layer0-attention-read-v1/cache-row0.f32le.bin");
+const ATTENTION_Q_CUR_BYTES: &[u8] =
+    include_bytes!("../../fixtures/layer0-attention-read-v1/q-cur.f32le.bin");
+const ATTENTION_CACHE_ROW1_BYTES: &[u8] =
+    include_bytes!("../../fixtures/layer0-attention-read-v1/cache-row1.f32le.bin");
+const ATTENTION_BACK_BYTES: &[u8] =
+    include_bytes!("../../fixtures/layer0-attention-read-v1/kqv-back.f32le.bin");
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct ProbeConfig {
@@ -206,6 +216,23 @@ pub struct RopeKvStoreProbeReport {
     pub cache_row_checksum: u64,
 }
 
+#[derive(Clone, Debug)]
+pub struct AttentionReadProbeReport {
+    pub fixture_id: &'static str,
+    pub token: u32,
+    pub dispatches: u32,
+    pub cache_capacity_rows: u32,
+    pub cache_rows_read: u32,
+    pub cache_row0_preserved: bool,
+    pub cache_guard_row_intact: bool,
+    pub wrapped_model_ranges: u32,
+    pub pointer_matches: u32,
+    pub wall_ms: f64,
+    pub gpu_ms: f64,
+    pub attention_raw_checksum: u64,
+    pub attention_back_checksum: u64,
+}
+
 pub fn write_ingress_probe_json<W: Write>(
     output: &mut W,
     report: &IngressProbeReport,
@@ -271,6 +298,30 @@ pub fn write_rope_kv_store_probe_json<W: Write>(
         report.kv_rope_checksum,
         report.kv_cur_checksum,
         report.cache_row_checksum,
+    )?;
+    Ok(())
+}
+
+pub fn write_attention_read_probe_json<W: Write>(
+    output: &mut W,
+    report: &AttentionReadProbeReport,
+) -> Result<()> {
+    write!(
+        output,
+        "{{\n  \"schema\": \"{ATTENTION_READ_PROBE_SCHEMA}\",\n  \"fixture\": \"{}\",\n  \"token\": {},\n  \"dispatches\": {},\n  \"mapping\": {{\n    \"wrapped_model_ranges\": {},\n    \"pointer_matches\": {}\n  }},\n  \"cache\": {{\n    \"capacity_rows\": {},\n    \"rows_read\": {},\n    \"row0_preserved\": {},\n    \"guard_row_intact\": {}\n  }},\n  \"timing\": {{\n    \"wall_ms\": {:.6},\n    \"gpu_ms\": {:.6}\n  }},\n  \"checksums\": {{\n    \"attention_raw\": {},\n    \"kqv_back\": {}\n  }},\n  \"c0_bitwise_match\": true\n}}\n",
+        report.fixture_id,
+        report.token,
+        report.dispatches,
+        report.wrapped_model_ranges,
+        report.pointer_matches,
+        report.cache_capacity_rows,
+        report.cache_rows_read,
+        report.cache_row0_preserved,
+        report.cache_guard_row_intact,
+        report.wall_ms,
+        report.gpu_ms,
+        report.attention_raw_checksum,
+        report.attention_back_checksum,
     )?;
     Ok(())
 }
@@ -586,6 +637,14 @@ fn rope_kv_store_fixture() -> Result<(Vec<f32>, Vec<f32>, Vec<f32>, Vec<f32>)> {
     ))
 }
 
+fn attention_read_fixture() -> Result<(Vec<f32>, Vec<f32>, Vec<f32>)> {
+    Ok((
+        decode_f32_fixture(ATTENTION_CACHE_ROW0_BYTES, "attention cache row 0")?,
+        decode_f32_fixture(ATTENTION_CACHE_ROW1_BYTES, "attention cache row 1")?,
+        decode_f32_fixture(ATTENTION_BACK_BYTES, "attention inverse-RoPE output")?,
+    ))
+}
+
 fn exact_tensor<'a>(
     model: &'a MappedModel,
     name: &str,
@@ -822,6 +881,8 @@ mod imp {
             kv_norm_bytes: u64,
             q_b_offset: u64,
             q_b_bytes: u64,
+            attn_sinks_offset: u64,
+            attn_sinks_bytes: u64,
             mixes: *mut f32,
             split: *mut f32,
             collapsed: *mut f32,
@@ -835,6 +896,9 @@ mod imp {
             kv_rope: *mut f32,
             kv_cur: *mut f32,
             cache_rows: *mut f32,
+            cache_row0: *const f32,
+            attention_raw: *mut f32,
+            attention_back: *mut f32,
             result: *mut RawIngressProbeResult,
             error: *mut c_char,
             error_bytes: usize,
@@ -1202,6 +1266,8 @@ mod imp {
                 0,
                 0,
                 0,
+                0,
+                0,
                 mixes.as_mut_ptr(),
                 split.as_mut_ptr(),
                 collapsed.as_mut_ptr(),
@@ -1213,6 +1279,9 @@ mod imp {
                 ptr::null_mut(),
                 ptr::null_mut(),
                 ptr::null_mut(),
+                ptr::null_mut(),
+                ptr::null_mut(),
+                ptr::null(),
                 ptr::null_mut(),
                 ptr::null_mut(),
                 &mut raw,
@@ -1353,6 +1422,8 @@ mod imp {
                 kv_norm_weight.bytes,
                 q_b.absolute_offset,
                 q_b.bytes,
+                0,
+                0,
                 mixes.as_mut_ptr(),
                 split.as_mut_ptr(),
                 collapsed.as_mut_ptr(),
@@ -1364,6 +1435,9 @@ mod imp {
                 q_raw.as_mut_ptr(),
                 ptr::null_mut(),
                 ptr::null_mut(),
+                ptr::null_mut(),
+                ptr::null_mut(),
+                ptr::null(),
                 ptr::null_mut(),
                 ptr::null_mut(),
                 &mut raw,
@@ -1507,6 +1581,8 @@ mod imp {
                 kv_norm_weight.bytes,
                 q_b.absolute_offset,
                 q_b.bytes,
+                0,
+                0,
                 mixes.as_mut_ptr(),
                 split.as_mut_ptr(),
                 collapsed.as_mut_ptr(),
@@ -1520,6 +1596,9 @@ mod imp {
                 kv_rope.as_mut_ptr(),
                 kv_cur.as_mut_ptr(),
                 cache_rows.as_mut_ptr(),
+                ptr::null(),
+                ptr::null_mut(),
+                ptr::null_mut(),
                 &mut raw,
                 error.as_mut_ptr(),
                 error.len(),
@@ -1616,6 +1695,186 @@ mod imp {
             cache_row_checksum: checksum_f32(&cache_rows[CACHE_ROW * 512..(CACHE_ROW + 1) * 512]),
         })
     }
+
+    pub fn run_attention_read_probe(model: &MappedModel) -> Result<AttentionReadProbeReport> {
+        const TOKEN: u32 = 201;
+        const CACHE_ROWS: usize = 3;
+        const CACHE_GUARD: f32 = -12345.5;
+        let embedding = exact_tensor(model, "token_embd.weight", 1, &[4096, 129280])?;
+        let hc_fn = exact_tensor(model, "blk.0.hc_attn_fn.weight", 1, &[16384, 24])?;
+        let hc_scale = exact_tensor(model, "blk.0.hc_attn_scale.weight", 0, &[3])?;
+        let hc_base = exact_tensor(model, "blk.0.hc_attn_base.weight", 0, &[24])?;
+        let norm_weight = exact_tensor(model, "blk.0.attn_norm.weight", 0, &[4096])?;
+        let q_a = exact_tensor(model, "blk.0.attn_q_a.weight", 8, &[4096, 1024])?;
+        let q_a_norm = exact_tensor(model, "blk.0.attn_q_a_norm.weight", 0, &[1024])?;
+        let kv = exact_tensor(model, "blk.0.attn_kv.weight", 8, &[4096, 512])?;
+        let kv_norm_weight = exact_tensor(model, "blk.0.attn_kv_a_norm.weight", 0, &[512])?;
+        let q_b = exact_tensor(model, "blk.0.attn_q_b.weight", 8, &[1024, 32768])?;
+        let sinks = exact_tensor(model, "blk.0.attn_sinks.weight", 0, &[64])?;
+        let (expected_cache_row0, expected_cache_row1, expected_attention_back) =
+            attention_read_fixture()?;
+        let expected_q_cur = decode_f32_fixture(ATTENTION_Q_CUR_BYTES, "attention Q current")?;
+
+        let mut mixes = vec![0.0_f32; 24];
+        let mut split = vec![0.0_f32; 24];
+        let mut collapsed = vec![0.0_f32; 4096];
+        let mut norm = vec![0.0_f32; 4096];
+        let mut q_lora = vec![0.0_f32; 1024];
+        let mut q_lora_norm = vec![0.0_f32; 1024];
+        let mut kv_raw = vec![0.0_f32; 512];
+        let mut kv_after_store = vec![0.0_f32; 512];
+        let mut q_raw = vec![0.0_f32; 32768];
+        let mut q_cur = vec![0.0_f32; 32768];
+        let mut kv_rope = vec![0.0_f32; 512];
+        let mut kv_cur = vec![0.0_f32; 512];
+        let mut cache_rows = vec![0.0_f32; CACHE_ROWS * 512];
+        let mut attention_raw = vec![0.0_f32; 32768];
+        let mut attention_back = vec![0.0_f32; 32768];
+
+        let mut error = [0 as c_char; ERROR_BYTES];
+        let mut pointer = ptr::null_mut();
+        let created =
+            unsafe { rust_star_metal_create(&mut pointer, error.as_mut_ptr(), error.len()) };
+        if created == 0 || pointer.is_null() {
+            return Err(Error::invalid(format!(
+                "Metal initialization failed: {}",
+                error_text(&error)
+            )));
+        }
+        let context = Context(pointer);
+        error.fill(0);
+        let mut raw = RawIngressProbeResult::default();
+        let succeeded = unsafe {
+            rust_star_metal_run_attention_ingress(
+                context.0,
+                model.mapping_pointer(),
+                model.bytes(),
+                TOKEN,
+                129280,
+                embedding.absolute_offset,
+                embedding.bytes,
+                hc_fn.absolute_offset,
+                hc_fn.bytes,
+                hc_scale.absolute_offset,
+                hc_scale.bytes,
+                hc_base.absolute_offset,
+                hc_base.bytes,
+                norm_weight.absolute_offset,
+                norm_weight.bytes,
+                q_a.absolute_offset,
+                q_a.bytes,
+                q_a_norm.absolute_offset,
+                q_a_norm.bytes,
+                kv.absolute_offset,
+                kv.bytes,
+                kv_norm_weight.absolute_offset,
+                kv_norm_weight.bytes,
+                q_b.absolute_offset,
+                q_b.bytes,
+                sinks.absolute_offset,
+                sinks.bytes,
+                mixes.as_mut_ptr(),
+                split.as_mut_ptr(),
+                collapsed.as_mut_ptr(),
+                norm.as_mut_ptr(),
+                q_lora.as_mut_ptr(),
+                q_lora_norm.as_mut_ptr(),
+                kv_raw.as_mut_ptr(),
+                kv_after_store.as_mut_ptr(),
+                q_raw.as_mut_ptr(),
+                q_cur.as_mut_ptr(),
+                kv_rope.as_mut_ptr(),
+                kv_cur.as_mut_ptr(),
+                cache_rows.as_mut_ptr(),
+                expected_cache_row0.as_ptr(),
+                attention_raw.as_mut_ptr(),
+                attention_back.as_mut_ptr(),
+                &mut raw,
+                error.as_mut_ptr(),
+                error.len(),
+            )
+        };
+        if succeeded == 0 {
+            return Err(Error::invalid(format!(
+                "Metal layer-0 attention-read probe failed: {}",
+                error_text(&error)
+            )));
+        }
+        if raw.model_bytes != model.bytes()
+            || raw.wrapped_model_ranges != 11
+            || raw.pointer_matches != 11
+        {
+            return Err(Error::invalid(
+                "Metal attention-read path did not preserve all eleven mmap-backed model ranges",
+            ));
+        }
+        for (label, actual, expected) in [
+            ("Qcur", q_cur.as_slice(), expected_q_cur.as_slice()),
+            (
+                "cache_row0",
+                &cache_rows[..512],
+                expected_cache_row0.as_slice(),
+            ),
+            (
+                "cache_row1",
+                &cache_rows[512..1024],
+                expected_cache_row1.as_slice(),
+            ),
+            (
+                "kqv_back",
+                attention_back.as_slice(),
+                expected_attention_back.as_slice(),
+            ),
+        ] {
+            if actual.len() != expected.len() {
+                return Err(Error::invalid(format!("{label} fixture length mismatch")));
+            }
+            for (index, (actual, expected)) in actual.iter().zip(expected).enumerate() {
+                if actual.to_bits() != expected.to_bits() {
+                    return Err(Error::invalid(format!(
+                        "attention-read C0 mismatch in {label}[{index}]: actual={:#010x} expected={:#010x}",
+                        actual.to_bits(), expected.to_bits()
+                    )));
+                }
+            }
+        }
+        let guard_bits = CACHE_GUARD.to_bits();
+        let guard_intact = cache_rows[1024..]
+            .iter()
+            .all(|value| value.to_bits() == guard_bits);
+        if !guard_intact {
+            return Err(Error::invalid(
+                "attention read modified the neighboring cache guard row",
+            ));
+        }
+        for (name, value) in [("wall_ms", raw.wall_ms), ("gpu_ms", raw.gpu_ms)] {
+            if !value.is_finite() || value < 0.0 {
+                return Err(Error::invalid(format!(
+                    "Metal attention-read returned invalid {name}"
+                )));
+            }
+        }
+        if raw.wall_ms == 0.0 {
+            return Err(Error::invalid(
+                "Metal attention-read returned a zero wall interval",
+            ));
+        }
+        Ok(AttentionReadProbeReport {
+            fixture_id: ATTENTION_READ_FIXTURE_ID,
+            token: TOKEN,
+            dispatches: 17,
+            cache_capacity_rows: CACHE_ROWS as u32,
+            cache_rows_read: 2,
+            cache_row0_preserved: true,
+            cache_guard_row_intact: guard_intact,
+            wrapped_model_ranges: raw.wrapped_model_ranges,
+            pointer_matches: raw.pointer_matches,
+            wall_ms: raw.wall_ms,
+            gpu_ms: raw.gpu_ms,
+            attention_raw_checksum: checksum_f32(&attention_raw),
+            attention_back_checksum: checksum_f32(&attention_back),
+        })
+    }
 }
 
 #[cfg(not(target_os = "macos"))]
@@ -1675,11 +1934,19 @@ mod imp {
             "the Metal layer-0 RoPE/KV-store probe is available only on macOS",
         ))
     }
+
+    pub fn run_attention_read_probe(model: &MappedModel) -> Result<AttentionReadProbeReport> {
+        let _ = attention_read_fixture()?;
+        let _ = exact_tensor(model, "blk.0.attn_sinks.weight", 0, &[64])?;
+        Err(Error::invalid(
+            "the Metal layer-0 attention-read probe is available only on macOS",
+        ))
+    }
 }
 
 pub use imp::{
-    run_attention_ingress_probe, run_attention_setup_probe, run_f16_embedding_probe, run_probe,
-    run_q8_projection_probe, run_rope_kv_store_probe,
+    run_attention_ingress_probe, run_attention_read_probe, run_attention_setup_probe,
+    run_f16_embedding_probe, run_probe, run_q8_projection_probe, run_rope_kv_store_probe,
 };
 
 #[cfg(test)]
@@ -1801,6 +2068,24 @@ mod tests {
         }
     }
 
+    fn attention_read_report() -> AttentionReadProbeReport {
+        AttentionReadProbeReport {
+            fixture_id: ATTENTION_READ_FIXTURE_ID,
+            token: 201,
+            dispatches: 17,
+            cache_capacity_rows: 3,
+            cache_rows_read: 2,
+            cache_row0_preserved: true,
+            cache_guard_row_intact: true,
+            wrapped_model_ranges: 11,
+            pointer_matches: 11,
+            wall_ms: 2.0,
+            gpu_ms: 1.0,
+            attention_raw_checksum: 5,
+            attention_back_checksum: 6,
+        }
+    }
+
     #[test]
     fn validates_probe_work_bounds() {
         assert!(ProbeConfig::default().validate().is_ok());
@@ -1889,6 +2174,17 @@ mod tests {
     }
 
     #[test]
+    fn writes_stable_attention_read_probe_json() {
+        let mut output = Vec::new();
+        write_attention_read_probe_json(&mut output, &attention_read_report()).unwrap();
+        let text = String::from_utf8(output).unwrap();
+        assert!(text.contains(&format!("\"schema\": \"{ATTENTION_READ_PROBE_SCHEMA}\"")));
+        assert!(text.contains(&format!("\"fixture\": \"{ATTENTION_READ_FIXTURE_ID}\"")));
+        assert!(text.contains("\"rows_read\": 2"));
+        assert!(text.contains("\"kqv_back\": 6"));
+    }
+
+    #[test]
     fn rope_kv_store_fixture_has_target_shapes() {
         let (q_cur, kv_rope, kv_cur, cache_row) = rope_kv_store_fixture().unwrap();
         assert_eq!(q_cur.len(), 64 * 512);
@@ -1901,6 +2197,14 @@ mod tests {
             .chain(&kv_cur)
             .chain(&cache_row)
             .all(|value| value.is_finite()));
+    }
+
+    #[test]
+    fn attention_read_fixture_has_target_shapes() {
+        let (cache_row0, cache_row1, attention_back) = attention_read_fixture().unwrap();
+        assert_eq!(cache_row0.len(), 512);
+        assert_eq!(cache_row1.len(), 512);
+        assert_eq!(attention_back.len(), 64 * 512);
     }
 
     #[test]

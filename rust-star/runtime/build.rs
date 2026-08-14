@@ -18,6 +18,8 @@ fn main() {
     println!("cargo:rerun-if-changed=src/attention_ingress.metal");
     println!("cargo:rerun-if-changed=../../metal/dsv4_rope.metal");
     println!("cargo:rerun-if-changed=../../metal/dsv4_kv.metal");
+    println!("cargo:rerun-if-changed=../../metal/cpy.metal");
+    println!("cargo:rerun-if-changed=../../metal/flash_attn.metal");
     if env::var("CARGO_CFG_TARGET_OS").as_deref() != Ok("macos") {
         return;
     }
@@ -32,6 +34,8 @@ fn main() {
             manifest.join("src/attention_ingress.metal"),
             manifest.join("../../metal/dsv4_rope.metal"),
             manifest.join("../../metal/dsv4_kv.metal"),
+            manifest.join("../../metal/cpy.metal"),
+            manifest.join("../../metal/flash_attn.metal"),
         ],
         &output.join("attention_ingress_source.inc"),
     );

@@ -74,6 +74,9 @@ elif [ "$#" -eq 1 ]; then
         echo "==> layer-0 Q/K RoPE and guarded KV-cache store"
         "$target_dir/release/rust-star" rope-kv-store-probe "$1" \
             --json "$target_dir/rope-kv-store-probe.json"
+        echo "==> layer-0 raw-cache FlashAttention read"
+        "$target_dir/release/rust-star" attention-read-probe "$1" \
+            --json "$target_dir/attention-read-probe.json"
     fi
 else
     echo "usage: $0 [/absolute/path/to/model.gguf]" >&2

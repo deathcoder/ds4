@@ -165,4 +165,24 @@ expansion of `KVcur`, matching DwarfStar's half-typed FlashAttention cache.
 The runtime writes physical row 1 of a three-row shared cache initialized with
 a finite sentinel. It requires the target row to match every expected FP32 bit
 and both neighboring rows to retain the sentinel. This proves the first
-stateful write boundary without yet adding an attention scan.
+stateful write boundary.
+
+## Layer-0 raw-cache attention read
+
+Schema: `rust-star-layer0-attention-read-probe-v1`.
+
+`attention-read-probe` extends the connected path to seventeen dispatches. It
+imports DwarfStar's contiguous F32-to-F16 cache staging, partial-block padding,
+512-wide vector FlashAttention, reduction, and inverse-RoPE kernels. The exact
+decode geometry is two raw cache rows, 64 heads, 512 values per head, one
+simdgroup per FlashAttention threadgroup, and 32 reduction workgroups.
+
+The `layer0-attention-read-v1` fixture combines fresh-process graph captures at
+positions 0 and 1. Cache rows are the documented F16 round/expand forms of the
+captured post-FP8 `KVcur` values; `Qcur` and the final `kqv_back` tensor are
+captured directly. Independent captures were byte-identical.
+
+The probe initializes row 0 from the oracle, writes row 1 through the already
+validated KV-store kernel, and leaves row 2 as a guard. It then requires row 0
+to remain unchanged, row 1 to match its oracle, row 2 to retain its sentinel,
+and all 32,768 post-inverse-RoPE attention values to match DwarfStar bit-for-bit.

@@ -4,8 +4,19 @@ using namespace metal;
 #define N_SIMDWIDTH 32
 #define FC_MUL_MV 600
 #define FOR_UNROLL(x) _Pragma("clang loop unroll(full)") for (x)
+#define MAX(x, y) ((x) > (y) ? (x) : (y))
+#define MIN(x, y) ((x) < (y) ? (x) : (y))
+#define SWAP(x, y) { auto tmp = (x); (x) = (y); (y) = tmp; }
 
 constant short FC_mul_mv_nsg [[function_constant(FC_MUL_MV + 0)]];
+
+// `flash_attn.metal` is compiled before `dense.metal` in DwarfStar and uses
+// this exact definition through a forward declaration. Rust Star imports only
+// the connected dense kernels, so retain the required F16 matrix decoder here.
+template <typename type4x4>
+void dequantize_f16(device const half4x4 * src, short il, thread type4x4 & reg) {
+    reg = (type4x4)(*src);
+}
 
 struct ds4_metal_args_get_rows {
     int ne00t; int ne00;
