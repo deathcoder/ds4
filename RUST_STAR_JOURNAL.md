@@ -20,18 +20,17 @@ history; add a correction and update the current-state summary.
 
 ## Current State
 
-- Phase: initial Rust/Metal ownership boundary ready for target-Mac compilation,
-  dispatch measurement, and model inspection; `oracle-v1` capture remains
-  pending.
+- Phase: target-Mac bootstrap and quick `oracle-v1` capture complete; the next
+  runtime increment is no-copy model mapping plus one isolated DwarfStar kernel.
 - Working branch: `agent/rust-star-bootstrap`.
 - Branch base: upstream `antirez/ds4` commit
   `b0309611041655f4e45671cfd9c9886aff161406`.
 - Local `main`: fast-forwarded to the same upstream commit.
 - Fork `origin/main`: synchronized to the same upstream commit through the
   GitHub app.
-- Oracle: candidate source commit selected, but `oracle-v1` is incomplete until
-  its model SHA, target-machine toolchain/configuration, and golden artifacts
-  are captured.
+- Oracle: `oracle-v1` is complete and independently verified. It binds source
+  `b030961`, model SHA-256 `ca22ae2f...6261c0`, the target toolchain, 2K/32K
+  full-vocabulary logits, correctness logs, and repeated performance evidence.
 - Capture kit: `rust-star/capture_oracle_v1.py` prepares a privacy-filtered,
   checksummed result bundle from an isolated build of the pinned oracle source.
 - Differential tooling: the initial bundle/full-logit format is stable and has
@@ -48,10 +47,13 @@ history; add a correction and update the current-state summary.
   strictly parses GGUF v3 directories, validates the Flash resident-Q2
   shape/recipe, and writes candidate full-logit artifacts. A macOS-only
   Rust/Objective-C/Metal boundary now owns a device, queue, pipeline, and
-  correctness-checked shared-buffer dispatch probe. The portable Rust side has
-  been compiled and tested with a temporary Rust 1.85 toolchain; the Objective-C
-  shim has not been compiled because this workspace has no Apple toolchain.
-- Measurements: no model/Metal correctness or performance runs have been made.
+  correctness-checked shared-buffer dispatch probe. The complete Objective-C
+  shim, optimized Rust build, shared-buffer probe, and real-model validator now
+  pass on the M1 Ultra. The real GGUF exposed and fixed an incorrect Q8_0
+  expectation for the F16 indexer Q projection.
+- Measurements: Metal batching was 42.861x faster than synchronized submission
+  in the retained M-002 probe. DwarfStar medians are 164.86 prefill / 19.90
+  generation tok/s at 2K and 161.05 prefill / 17.36 generation tok/s at 32K.
 - Manual handoff: `RUST_STAR_MANUAL_TASKS.md` records Actions approval, target
   compilation/model inspection, quick/extended oracle capture, and the deferred
   secure-access decision with exact evidence requirements.
@@ -63,22 +65,50 @@ history; add a correction and update the current-state summary.
 
 ## Immediate Next Actions
 
-1. Clone this branch on the M1 Ultra and run `rust-star/check_runtime.sh` with
-   the absolute model path; report the complete output before changing the
-   validator policy.
-2. Run the default 2K/32K oracle capture and return the generated `.tar.gz`
-   bundle plus its printed SHA-256.
-3. Inspect the quick capture, resolve machine/model-specific failures, and bind
-   the validator to the completed `oracle-v1` model SHA-256.
-4. Run the extended 2K--1M frontier set only after the quick capture succeeds.
-5. Inspect the Metal probe artifact and use the observed roundtrip/batched
-   submission ratio to confirm or adjust the ownership boundary.
-6. Add a no-copy, read-only model span and one independently testable imported
+1. Add a no-copy, read-only model span and one independently testable imported
    DwarfStar kernel before attempting whole-model graph scheduling.
-7. Add kernel/layer/decode-step artifact extensions alongside the relevant
+2. Add kernel/layer/decode-step artifact extensions alongside the relevant
    runtime hooks.
+3. Run the extended 2K--1M frontier capture when the Mac can be dedicated to a
+   long benchmark; preserve any 512K/1M capacity failure as evidence.
+4. Run or approve the fork's GitHub Actions workflow and retain its URL.
 
 ## Entries
+
+### 2026-08-14 — Target-Mac bootstrap and oracle-v1 completed
+
+Objective:
+
+- Validate the Rust/Metal boundary and pin the DwarfStar oracle on the target
+  M1 Ultra before implementing model execution.
+
+Actions and evidence:
+
+- Created a dedicated `agent/rust-star-bootstrap` worktree so the DSpark
+  observability branch can continue in a separate Codex task.
+- Installed the missing standard `rustfmt` component and ran the full M-002
+  gate on the M1 Ultra.
+- Fixed the target recipe for `indexer.attn_q_b.weight` from Q8_0 to F16 and
+  added a regression test covering every ratio-4 indexer layer.
+- Added `pipefail` to the documented evidence command after the first strict
+  inspection failure was masked by `tee`.
+- Passed 15 Rust tests, 25 Python tests, the optimized macOS build, the C0
+  cross-language artifact check, shared-buffer validation, and strict real-GGUF
+  inspection of all 1,288 required tensors.
+- Captured and independently verified the complete 2K/32K `oracle-v1` bundle.
+  Correctness, full-vocabulary frontier logits, and all six timed measurements
+  passed. The archive SHA-256 is `5115f445...a09ee3c`.
+
+Decision:
+
+- Accept the quick capture as `oracle-v1`. Keep the extended context capture
+  ready but move the critical implementation path to no-copy model mapping and
+  the first isolated kernel.
+
+Next:
+
+- Implement and test the no-copy, page-aligned read-only GGUF span boundary,
+  then import one decode-critical DwarfStar kernel behind C0 fixtures.
 
 ### 2026-08-09 — Initial Rust/Metal ownership and dispatch boundary added
 

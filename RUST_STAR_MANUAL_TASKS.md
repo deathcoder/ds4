@@ -110,7 +110,7 @@ Evidence:
 
 ## M-003 — Capture the quick `oracle-v1` bundle
 
-Status: `READY`
+Status: `DONE` (2026-08-14)
 
 Procedure:
 
@@ -134,9 +134,20 @@ Success condition:
 - The manifest is complete and binds the source, model SHA, toolchain, target
   machine configuration, correctness gates, logits, and performance runs.
 
+Evidence:
+
+- The verifier accepted a complete 2K/32K bundle containing 13 checksummed
+  artifacts and both full-vocabulary conformance tensors.
+- Oracle model SHA-256:
+  `ca22ae2f838e14077c22bc1c1417b71b45b5e5a3687bd96c2ac6e17fdb6261c0`.
+- Archive SHA-256:
+  `5115f445db651de8777af64c708df81e7a708e5e950fbc5502d56fea9a09ee3c`.
+- Median DwarfStar performance was 164.86 prefill / 19.90 generation tok/s at
+  2K and 161.05 prefill / 17.36 generation tok/s at 32K.
+
 ## M-004 — Capture extended context frontiers
 
-Status: `BLOCKED` on acceptance of M-003
+Status: `READY`
 
 Procedure:
 

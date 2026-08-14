@@ -33,9 +33,10 @@ and explain where time or bandwidth goes.
 - Initial product surface: a minimal decoder and benchmark executable, not an
   HTTP server or complete agent framework.
 
-The exact GGUF path and SHA-256, macOS build, Xcode/Metal toolchain, compiler
-flags, and runtime configuration belong in the first oracle manifest. Until
-that manifest is captured on the target Mac, the oracle is not fully pinned.
+The completed `oracle-v1` manifest pins the GGUF SHA-256
+`ca22ae2f838e14077c22bc1c1417b71b45b5e5a3687bd96c2ac6e17fdb6261c0`,
+macOS build, Xcode/Metal toolchain, compiler flags, runtime configuration, and
+2K/32K golden artifacts from the target Mac.
 
 ## Deliberate Initial Non-Goals
 
