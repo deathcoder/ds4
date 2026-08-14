@@ -50,10 +50,16 @@ history; add a correction and update the current-state summary.
   correctness-checked shared-buffer dispatch probe. The complete Objective-C
   shim, optimized Rust build, shared-buffer probe, and real-model validator now
   pass on the M1 Ultra. The real GGUF exposed and fixed an incorrect Q8_0
-  expectation for the F16 indexer Q projection.
+  expectation for the F16 indexer Q projection. Rust now owns a read-only
+  shared GGUF mmap; Metal wraps the page-aligned embedding tensor without a
+  copy and runs the imported DwarfStar F16 embedding gather behind a bitwise
+  CPU reference.
 - Measurements: Metal batching was 42.861x faster than synchronized submission
   in the retained M-002 probe. DwarfStar medians are 164.86 prefill / 19.90
   generation tok/s at 2K and 161.05 prefill / 17.36 generation tok/s at 32K.
+  The first real-model kernel matched all 20,480 checked FP32 values; its final
+  validation dispatch reported 0.020 ms GPU time and is not an inference-speed
+  claim.
 - Manual handoff: `RUST_STAR_MANUAL_TASKS.md` records Actions approval, target
   compilation/model inspection, quick/extended oracle capture, and the deferred
   secure-access decision with exact evidence requirements.
@@ -65,8 +71,8 @@ history; add a correction and update the current-state summary.
 
 ## Immediate Next Actions
 
-1. Add a no-copy, read-only model span and one independently testable imported
-   DwarfStar kernel before attempting whole-model graph scheduling.
+1. Import a decode projection/matvec that consumes one no-copy quantized weight
+   tensor and a deterministic activation, with a DwarfStar differential fixture.
 2. Add kernel/layer/decode-step artifact extensions alongside the relevant
    runtime hooks.
 3. Run the extended 2K--1M frontier capture when the Mac can be dedicated to a
@@ -74,6 +80,53 @@ history; add a correction and update the current-state summary.
 4. Run or approve the fork's GitHub Actions workflow and retain its URL.
 
 ## Entries
+
+### 2026-08-14 — No-copy model span and first DwarfStar kernel validated
+
+Objective:
+
+- Cross the first real-model execution boundary without adding a graph,
+  allocator framework, or whole-model scheduler.
+
+Changes:
+
+- Added a dependency-free Rust `MappedModel` that parses the GGUF and owns one
+  read-only `MAP_SHARED` mapping for its complete lifetime.
+- Added a page-aligned Objective-C wrapper using
+  `newBufferWithBytesNoCopy`; it requires the returned Metal contents pointer
+  to equal the mmap pointer and releases the buffer before Rust can unmap.
+- Imported DwarfStar's `kernel_get_rows_f16` argument layout, kernel body, and
+  threadgroup geometry. Its pipeline is compiled lazily so the original
+  dispatch probe's compile-time metric remains comparable.
+- Added exact Rust F16-to-F32 reference conversion, bitwise comparison, a stable
+  `rust-star-f16-embedding-probe-v1` JSON artifact, CLI support, documentation,
+  and automatic target-model execution in `check_runtime.sh`.
+
+Target-Mac evidence:
+
+- Strict validation selected `token_embd.weight` at byte 77,928,033,088 with
+  1,059,061,760 payload bytes. Metal wrapped a 1,059,078,144-byte page-aligned
+  view with an 11,072-byte inner offset and exact pointer identity.
+- Five rows spanning token IDs 0 through 129,279 produced 20,480 FP32 values;
+  every bit matched the CPU reference. The retained checksum is
+  `4028716204944876325`.
+- The final validation dispatch reported 17.632 ms wall and 0.020 ms GPU time.
+  This includes a cold standalone boundary and is correctness evidence, not a
+  throughput claim.
+- The complete runtime gate passed: 18 Rust tests, optimized macOS build, Metal
+  dispatch/shared-buffer validation, 25 Python tests, cross-language C0 smoke,
+  strict real-GGUF inspection, and the new no-copy gather.
+
+Decision:
+
+- Accept this mmap/Metal lifetime split as the first model ownership boundary.
+  Keep the next increment to one decode projection/matvec before designing the
+  graph scheduler.
+
+Next:
+
+- Capture or derive an exact DwarfStar fixture for one Q8_0 decode projection,
+  then run the same weight span and activation through Rust Star.
 
 ### 2026-08-14 — Target-Mac bootstrap and oracle-v1 completed
 

@@ -1,14 +1,18 @@
 //! Minimal Metal ownership and command-dispatch probe.
 
+use crate::gguf::TensorInfo;
+use crate::model::MappedModel;
 use crate::{Error, Result};
 use std::io::Write;
 
 pub const PROBE_SCHEMA: &str = "rust-star-metal-dispatch-probe-v1";
+pub const EMBEDDING_PROBE_SCHEMA: &str = "rust-star-f16-embedding-probe-v1";
 pub const DEFAULT_ELEMENTS: u64 = 4096;
 pub const DEFAULT_ITERATIONS: u64 = 100;
 const MAX_ELEMENTS: u64 = 16 * 1024 * 1024;
 const MAX_ITERATIONS: u64 = 100_000;
 const MAX_THREAD_INVOCATIONS: u64 = 1_000_000_000;
+const MAX_EMBEDDING_TOKENS: usize = 64;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct ProbeConfig {
@@ -68,6 +72,25 @@ pub struct ProbeReport {
     pub roundtrip_gpu_ms: f64,
     pub batched_wall_ms: f64,
     pub batched_gpu_ms: f64,
+}
+
+#[derive(Clone, Debug)]
+pub struct EmbeddingProbeReport {
+    pub tensor_name: String,
+    pub tokens: Vec<u32>,
+    pub embedding_elements: u64,
+    pub output_elements: u64,
+    pub model_bytes: u64,
+    pub tensor_offset: u64,
+    pub tensor_bytes: u64,
+    pub page_offset: u64,
+    pub buffer_bytes: u64,
+    pub inner_offset: u64,
+    pub max_buffer_length: u64,
+    pub no_copy_pointer_match: bool,
+    pub wall_ms: f64,
+    pub gpu_ms: f64,
+    pub checksum: u64,
 }
 
 impl ProbeReport {
@@ -135,6 +158,155 @@ pub fn write_probe_json<W: Write>(output: &mut W, report: &ProbeReport) -> Resul
     Ok(())
 }
 
+pub fn write_embedding_probe_json<W: Write>(
+    output: &mut W,
+    report: &EmbeddingProbeReport,
+) -> Result<()> {
+    output.write_all(b"{\n  \"schema\": \"")?;
+    output.write_all(EMBEDDING_PROBE_SCHEMA.as_bytes())?;
+    output.write_all(b"\",\n  \"kernel\": \"kernel_get_rows_f16\",\n  \"tensor\": ")?;
+    crate::artifact::write_json_string(output, &report.tensor_name)?;
+    output.write_all(b",\n  \"tokens\": [")?;
+    for (index, token) in report.tokens.iter().enumerate() {
+        if index != 0 {
+            output.write_all(b", ")?;
+        }
+        write!(output, "{token}")?;
+    }
+    write!(
+        output,
+        "],\n  \"embedding_elements\": {},\n  \"output_elements\": {},\n  \"mapping\": {{\n    \"model_bytes\": {},\n    \"tensor_offset\": {},\n    \"tensor_bytes\": {},\n    \"page_offset\": {},\n    \"buffer_bytes\": {},\n    \"inner_offset\": {},\n    \"max_buffer_length\": {},\n    \"no_copy_pointer_match\": {}\n  }},\n  \"timing\": {{\n    \"wall_ms\": {:.6},\n    \"gpu_ms\": {:.6}\n  }},\n  \"checksum\": {},\n  \"c0_bitwise_match\": true\n}}\n",
+        report.embedding_elements,
+        report.output_elements,
+        report.model_bytes,
+        report.tensor_offset,
+        report.tensor_bytes,
+        report.page_offset,
+        report.buffer_bytes,
+        report.inner_offset,
+        report.max_buffer_length,
+        report.no_copy_pointer_match,
+        report.wall_ms,
+        report.gpu_ms,
+        report.checksum,
+    )?;
+    Ok(())
+}
+
+fn validate_embedding_inputs(
+    model: &MappedModel,
+    tensor: &TensorInfo,
+    tokens: &[u32],
+) -> Result<(u32, u32, usize)> {
+    if tensor.tensor_type.id != 1 {
+        return Err(Error::invalid(format!(
+            "embedding tensor must be F16, found {}",
+            tensor.tensor_type.name
+        )));
+    }
+    if tensor.dimensions.len() != 2 {
+        return Err(Error::invalid("embedding tensor must have rank 2"));
+    }
+    let n_embd = u32::try_from(tensor.dimensions[0])
+        .map_err(|_| Error::invalid("embedding width exceeds u32"))?;
+    let n_vocab = u32::try_from(tensor.dimensions[1])
+        .map_err(|_| Error::invalid("embedding vocabulary exceeds u32"))?;
+    if n_embd == 0 || n_vocab == 0 {
+        return Err(Error::invalid("embedding dimensions must be nonzero"));
+    }
+    if tokens.is_empty() || tokens.len() > MAX_EMBEDDING_TOKENS {
+        return Err(Error::invalid(format!(
+            "embedding probe requires 1..={MAX_EMBEDDING_TOKENS} tokens"
+        )));
+    }
+    for token in tokens {
+        if *token >= n_vocab {
+            return Err(Error::invalid(format!(
+                "embedding token {token} is outside vocabulary {n_vocab}"
+            )));
+        }
+    }
+    let expected_bytes = u64::from(n_embd)
+        .checked_mul(u64::from(n_vocab))
+        .and_then(|elements| elements.checked_mul(2))
+        .ok_or_else(|| Error::invalid("embedding tensor size overflows"))?;
+    if tensor.bytes != expected_bytes {
+        return Err(Error::invalid(format!(
+            "embedding tensor has {} bytes, expected {expected_bytes}",
+            tensor.bytes
+        )));
+    }
+    let output_elements = usize::try_from(n_embd)
+        .ok()
+        .and_then(|width| width.checked_mul(tokens.len()))
+        .ok_or_else(|| Error::invalid("embedding probe output size overflows"))?;
+    model.tensor_bytes(tensor)?;
+    Ok((n_embd, n_vocab, output_elements))
+}
+
+fn expected_f16_rows(
+    model: &MappedModel,
+    tensor: &TensorInfo,
+    tokens: &[u32],
+    n_embd: u32,
+) -> Result<Vec<f32>> {
+    let source = model.tensor_bytes(tensor)?;
+    let width = n_embd as usize;
+    let row_bytes = width
+        .checked_mul(2)
+        .ok_or_else(|| Error::invalid("embedding row size overflows"))?;
+    let mut output = Vec::with_capacity(
+        width
+            .checked_mul(tokens.len())
+            .ok_or_else(|| Error::invalid("embedding reference size overflows"))?,
+    );
+    for token in tokens {
+        let start = (*token as usize)
+            .checked_mul(row_bytes)
+            .ok_or_else(|| Error::invalid("embedding row offset overflows"))?;
+        let row = source
+            .get(start..start + row_bytes)
+            .ok_or_else(|| Error::invalid("embedding row is outside the tensor"))?;
+        for bytes in row.chunks_exact(2) {
+            let value = f16_to_f32(u16::from_le_bytes([bytes[0], bytes[1]]));
+            if !value.is_finite() {
+                return Err(Error::invalid(
+                    "embedding tensor contains a non-finite F16 value",
+                ));
+            }
+            output.push(value);
+        }
+    }
+    Ok(output)
+}
+
+fn f16_to_f32(value: u16) -> f32 {
+    let sign = u32::from(value & 0x8000) << 16;
+    let exponent = (value >> 10) & 0x1f;
+    let fraction = u32::from(value & 0x03ff);
+    let bits = match exponent {
+        0 if fraction == 0 => sign,
+        0 => {
+            let shift = fraction.leading_zeros() - 21;
+            let normalized = (fraction << shift) & 0x03ff;
+            let f32_exponent = 113_u32 - shift;
+            sign | (f32_exponent << 23) | (normalized << 13)
+        }
+        0x1f => sign | 0x7f80_0000 | (fraction << 13),
+        _ => sign | ((u32::from(exponent) + 112) << 23) | (fraction << 13),
+    };
+    f32::from_bits(bits)
+}
+
+fn checksum_f32(values: &[f32]) -> u64 {
+    let mut checksum = 0xcbf2_9ce4_8422_2325_u64;
+    for value in values {
+        checksum ^= u64::from(value.to_bits());
+        checksum = checksum.wrapping_mul(0x0000_0100_0000_01b3);
+    }
+    checksum
+}
+
 #[cfg(target_os = "macos")]
 mod imp {
     use super::*;
@@ -162,6 +334,23 @@ mod imp {
         batched_wall_ms: f64,
         batched_gpu_ms: f64,
         device_name: [c_char; 256],
+    }
+
+    #[repr(C)]
+    #[derive(Default)]
+    struct RawEmbeddingProbeResult {
+        model_bytes: u64,
+        tensor_offset: u64,
+        tensor_bytes: u64,
+        page_offset: u64,
+        buffer_bytes: u64,
+        inner_offset: u64,
+        output_elements: u64,
+        max_buffer_length: u64,
+        no_copy_pointer_match: u32,
+        reserved: u32,
+        wall_ms: f64,
+        gpu_ms: f64,
     }
 
     impl Default for RawProbeResult {
@@ -199,6 +388,22 @@ mod imp {
             elements: u64,
             iterations: u64,
             result: *mut RawProbeResult,
+            error: *mut c_char,
+            error_bytes: usize,
+        ) -> i32;
+        fn rust_star_metal_run_f16_get_rows(
+            context: *mut c_void,
+            model_mapping: *const c_void,
+            model_bytes: u64,
+            tensor_offset: u64,
+            tensor_bytes: u64,
+            n_vocab: u32,
+            n_embd: u32,
+            tokens: *const u32,
+            token_count: u32,
+            output: *mut f32,
+            output_elements: u64,
+            result: *mut RawEmbeddingProbeResult,
             error: *mut c_char,
             error_bytes: usize,
         ) -> i32;
@@ -303,6 +508,105 @@ mod imp {
             batched_gpu_ms: raw.batched_gpu_ms,
         })
     }
+
+    pub fn run_f16_embedding_probe(
+        model: &MappedModel,
+        tensor: &TensorInfo,
+        tokens: &[u32],
+    ) -> Result<EmbeddingProbeReport> {
+        let (n_embd, n_vocab, output_elements) = validate_embedding_inputs(model, tensor, tokens)?;
+        let expected = expected_f16_rows(model, tensor, tokens, n_embd)?;
+        let mut actual = vec![0.0_f32; output_elements];
+        let mut error = [0 as c_char; ERROR_BYTES];
+        let mut pointer = ptr::null_mut();
+        let created =
+            unsafe { rust_star_metal_create(&mut pointer, error.as_mut_ptr(), error.len()) };
+        if created == 0 || pointer.is_null() {
+            return Err(Error::invalid(format!(
+                "Metal initialization failed: {}",
+                error_text(&error)
+            )));
+        }
+        let context = Context(pointer);
+        error.fill(0);
+        let mut raw = RawEmbeddingProbeResult::default();
+        let succeeded = unsafe {
+            rust_star_metal_run_f16_get_rows(
+                context.0,
+                model.mapping_pointer(),
+                model.bytes(),
+                tensor.absolute_offset,
+                tensor.bytes,
+                n_vocab,
+                n_embd,
+                tokens.as_ptr(),
+                tokens.len() as u32,
+                actual.as_mut_ptr(),
+                actual.len() as u64,
+                &mut raw,
+                error.as_mut_ptr(),
+                error.len(),
+            )
+        };
+        if succeeded == 0 {
+            return Err(Error::invalid(format!(
+                "Metal F16 embedding probe failed: {}",
+                error_text(&error)
+            )));
+        }
+        if raw.model_bytes != model.bytes()
+            || raw.tensor_offset != tensor.absolute_offset
+            || raw.tensor_bytes != tensor.bytes
+            || raw.output_elements != actual.len() as u64
+        {
+            return Err(Error::invalid(
+                "Metal F16 embedding probe returned different dimensions",
+            ));
+        }
+        if raw.no_copy_pointer_match == 0 {
+            return Err(Error::invalid(
+                "Metal bytes-no-copy buffer did not retain the mmap pointer",
+            ));
+        }
+        for (index, (actual, expected)) in actual.iter().zip(&expected).enumerate() {
+            if actual.to_bits() != expected.to_bits() {
+                return Err(Error::invalid(format!(
+                    "kernel_get_rows_f16 C0 mismatch at output {index}: actual={:#010x} expected={:#010x}",
+                    actual.to_bits(),
+                    expected.to_bits()
+                )));
+            }
+        }
+        for (name, value) in [("wall_ms", raw.wall_ms), ("gpu_ms", raw.gpu_ms)] {
+            if !value.is_finite() || value < 0.0 {
+                return Err(Error::invalid(format!(
+                    "Metal F16 embedding probe returned invalid {name}"
+                )));
+            }
+        }
+        if raw.wall_ms == 0.0 {
+            return Err(Error::invalid(
+                "Metal F16 embedding probe returned a zero wall interval",
+            ));
+        }
+        Ok(EmbeddingProbeReport {
+            tensor_name: tensor.name.clone(),
+            tokens: tokens.to_vec(),
+            embedding_elements: u64::from(n_embd),
+            output_elements: raw.output_elements,
+            model_bytes: raw.model_bytes,
+            tensor_offset: raw.tensor_offset,
+            tensor_bytes: raw.tensor_bytes,
+            page_offset: raw.page_offset,
+            buffer_bytes: raw.buffer_bytes,
+            inner_offset: raw.inner_offset,
+            max_buffer_length: raw.max_buffer_length,
+            no_copy_pointer_match: true,
+            wall_ms: raw.wall_ms,
+            gpu_ms: raw.gpu_ms,
+            checksum: checksum_f32(&actual),
+        })
+    }
 }
 
 #[cfg(not(target_os = "macos"))]
@@ -315,9 +619,20 @@ mod imp {
             "the Metal dispatch probe is available only on macOS",
         ))
     }
+
+    pub fn run_f16_embedding_probe(
+        model: &MappedModel,
+        tensor: &TensorInfo,
+        tokens: &[u32],
+    ) -> Result<EmbeddingProbeReport> {
+        validate_embedding_inputs(model, tensor, tokens)?;
+        Err(Error::invalid(
+            "the Metal F16 embedding probe is available only on macOS",
+        ))
+    }
 }
 
-pub use imp::run_probe;
+pub use imp::{run_f16_embedding_probe, run_probe};
 
 #[cfg(test)]
 mod tests {
@@ -341,6 +656,26 @@ mod tests {
             roundtrip_gpu_ms: 2.0,
             batched_wall_ms: 1.0,
             batched_gpu_ms: 0.5,
+        }
+    }
+
+    fn embedding_report() -> EmbeddingProbeReport {
+        EmbeddingProbeReport {
+            tensor_name: "token_embd.weight".to_owned(),
+            tokens: vec![0, 7],
+            embedding_elements: 4,
+            output_elements: 8,
+            model_bytes: 1000,
+            tensor_offset: 33,
+            tensor_bytes: 64,
+            page_offset: 0,
+            buffer_bytes: 4096,
+            inner_offset: 33,
+            max_buffer_length: 1 << 30,
+            no_copy_pointer_match: true,
+            wall_ms: 1.5,
+            gpu_ms: 0.5,
+            checksum: 99,
         }
     }
 
@@ -370,6 +705,39 @@ mod tests {
         assert!(text.contains("Apple GPU \\\"fixture\\\""));
         assert!(text.contains("\"dispatches_per_second\": 2000"));
         assert!(text.contains("\"checksum\": 42"));
+    }
+
+    #[test]
+    fn writes_stable_embedding_probe_json() {
+        let mut output = Vec::new();
+        write_embedding_probe_json(&mut output, &embedding_report()).unwrap();
+        let text = String::from_utf8(output).unwrap();
+        assert!(text.contains(&format!("\"schema\": \"{EMBEDDING_PROBE_SCHEMA}\"")));
+        assert!(text.contains("\"kernel\": \"kernel_get_rows_f16\""));
+        assert!(text.contains("\"tokens\": [0, 7]"));
+        assert!(text.contains("\"no_copy_pointer_match\": true"));
+        assert!(text.contains("\"c0_bitwise_match\": true"));
+    }
+
+    #[test]
+    fn converts_f16_reference_values_exactly() {
+        for (half, single) in [
+            (0x0000, 0x0000_0000),
+            (0x8000, 0x8000_0000),
+            (0x3c00, 0x3f80_0000),
+            (0xc000, 0xc000_0000),
+            (0x7bff, 0x477f_e000),
+            (0x0400, 0x3880_0000),
+            (0x0001, 0x3380_0000),
+        ] {
+            assert_eq!(f16_to_f32(half).to_bits(), single, "half={half:#06x}");
+        }
+    }
+
+    #[test]
+    fn embedding_checksum_preserves_float_bits() {
+        assert_ne!(checksum_f32(&[0.0]), checksum_f32(&[-0.0]));
+        assert_eq!(checksum_f32(&[1.0, 2.0]), checksum_f32(&[1.0, 2.0]));
     }
 
     #[cfg(not(target_os = "macos"))]

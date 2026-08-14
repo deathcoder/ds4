@@ -1,7 +1,8 @@
 # Rust Star host-runtime scaffold
 
 This crate is the smallest executable boundary for the new engine. It is
-model-specific by design and currently contains no model inference kernels.
+model-specific by design and currently contains one isolated model kernel, not
+a decoder.
 
 Implemented contracts:
 
@@ -14,6 +15,10 @@ Implemented contracts:
 - a full-FP32-logit JSON writer compatible with `../ARTIFACT_FORMAT.md`.
 - a macOS-only Rust/Objective-C/Metal ownership boundary and correctness-checked
   command-dispatch probe, documented in `METAL.md`.
+- a Rust-owned read-only shared mmap whose page-aligned F16 embedding span is
+  wrapped by Metal with `newBufferWithBytesNoCopy`;
+- DwarfStar's `kernel_get_rows_f16` token-embedding gather, validated bit-for-bit
+  against a dependency-free CPU F16-to-F32 reference on selected real rows.
 
 The validator proves model shape and quantization-recipe identity. It does not
 pretend that a mutable GGUF name proves the `0731` checkpoint. The completed
@@ -65,3 +70,16 @@ rust-star/.work/runtime-target/release/rust-star metal-probe \
   --iterations 100 \
   --json rust-star/.work/runtime-target/metal-dispatch-probe.json
 ```
+
+To run only the real-model no-copy/kernel boundary:
+
+```sh
+rust-star/.work/runtime-target/release/rust-star embedding-probe \
+  /absolute/path/to/model.gguf \
+  --json rust-star/.work/runtime-target/f16-embedding-probe.json
+```
+
+This command first applies the strict target validator. It maps the GGUF
+read-only with `MAP_SHARED`, wraps only the page-aligned embedding tensor range,
+checks that Metal retained the exact mmap pointer, gathers five rows spanning
+the vocabulary, and requires every FP32 output bit to match the CPU reference.

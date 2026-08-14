@@ -1,5 +1,9 @@
 use rust_star_runtime::gguf::Gguf;
-use rust_star_runtime::metal::{run_probe, write_probe_json, ProbeConfig};
+use rust_star_runtime::metal::{
+    run_f16_embedding_probe, run_probe, write_embedding_probe_json, write_probe_json,
+    EmbeddingProbeReport, ProbeConfig,
+};
+use rust_star_runtime::model::MappedModel;
 use rust_star_runtime::target::{validate_resident_q2, MODEL_LABEL};
 use rust_star_runtime::{Error, Result};
 use std::env;
@@ -30,7 +34,105 @@ fn run() -> Result<()> {
     if command == "metal-probe" {
         return run_metal_probe(arguments.collect());
     }
+    if command == "embedding-probe" {
+        return run_embedding_probe(arguments.collect());
+    }
     run_model_command(&command, arguments.collect())
+}
+
+fn run_embedding_probe(arguments: Vec<OsString>) -> Result<()> {
+    if arguments.is_empty() {
+        return Err(Error::invalid(embedding_probe_usage()));
+    }
+    if matches!(arguments[0].to_str(), Some("--help") | Some("-h")) {
+        println!("{}", embedding_probe_usage());
+        return Ok(());
+    }
+    let model_path = PathBuf::from(&arguments[0]);
+    let mut json_path: Option<PathBuf> = None;
+    let mut requested_tokens: Option<Vec<u32>> = None;
+    let mut arguments = arguments.into_iter().skip(1);
+    while let Some(argument) = arguments.next() {
+        match argument.to_str() {
+            Some("--help") | Some("-h") => {
+                println!("{}", embedding_probe_usage());
+                return Ok(());
+            }
+            Some("--json") => {
+                let value = arguments
+                    .next()
+                    .ok_or_else(|| Error::invalid("--json requires a path"))?;
+                if json_path.is_some() {
+                    return Err(Error::invalid("--json may be specified only once"));
+                }
+                json_path = Some(PathBuf::from(value));
+            }
+            Some("--tokens") => {
+                let value = arguments
+                    .next()
+                    .ok_or_else(|| Error::invalid("--tokens requires a comma-separated list"))?;
+                if requested_tokens.is_some() {
+                    return Err(Error::invalid("--tokens may be specified only once"));
+                }
+                requested_tokens = Some(parse_tokens(&value)?);
+            }
+            _ => return Err(Error::invalid(embedding_probe_usage())),
+        }
+    }
+
+    let model = MappedModel::open(&model_path)?;
+    validate_resident_q2(model.gguf())?;
+    let tensor = model.tensor("token_embd.weight")?;
+    let n_vocab = u32::try_from(tensor.dimensions[1])
+        .map_err(|_| Error::invalid("embedding vocabulary exceeds u32"))?;
+    let tokens =
+        requested_tokens.unwrap_or_else(|| vec![0, 1, 17, n_vocab / 2, n_vocab.saturating_sub(1)]);
+    let report = run_f16_embedding_probe(&model, tensor, &tokens)?;
+
+    println!("kernel: kernel_get_rows_f16 (imported DwarfStar embedding gather)");
+    println!(
+        "tensor: {} offset={} bytes={}",
+        report.tensor_name, report.tensor_offset, report.tensor_bytes
+    );
+    println!(
+        "no-copy view: page_offset={} buffer_bytes={} inner_offset={} pointer_match={}",
+        report.page_offset, report.buffer_bytes, report.inner_offset, report.no_copy_pointer_match
+    );
+    println!(
+        "tokens: {:?}, output={} FP32 values checksum={}",
+        report.tokens, report.output_elements, report.checksum
+    );
+    println!(
+        "dispatch: wall={:.3} ms gpu={:.3} ms",
+        report.wall_ms, report.gpu_ms
+    );
+    println!("result: no-copy F16 embedding gather is C0 bit-identical");
+
+    if let Some(path) = json_path {
+        write_embedding_probe_file(&path, &report)?;
+        println!("json: {}", path.display());
+    }
+    Ok(())
+}
+
+fn parse_tokens(value: &OsStr) -> Result<Vec<u32>> {
+    let text = value
+        .to_str()
+        .ok_or_else(|| Error::invalid("--tokens must be UTF-8"))?;
+    let mut tokens = Vec::new();
+    for item in text.split(',') {
+        if item.is_empty() {
+            return Err(Error::invalid("--tokens contains an empty item"));
+        }
+        let token = item
+            .parse::<u32>()
+            .map_err(|_| Error::invalid("--tokens values must be unsigned integers"))?;
+        tokens.push(token);
+    }
+    if tokens.is_empty() {
+        return Err(Error::invalid("--tokens must not be empty"));
+    }
+    Ok(tokens)
 }
 
 fn run_model_command(command: &OsStr, arguments: Vec<OsString>) -> Result<()> {
@@ -203,6 +305,33 @@ fn write_probe_file(path: &Path, report: &rust_star_runtime::metal::ProbeReport)
     Ok(())
 }
 
+fn write_embedding_probe_file(path: &Path, report: &EmbeddingProbeReport) -> Result<()> {
+    let temporary = path.with_extension(format!(
+        "{}tmp",
+        path.extension()
+            .and_then(OsStr::to_str)
+            .map(|extension| format!("{extension}."))
+            .unwrap_or_default()
+    ));
+    let file = File::create(&temporary).map_err(|error| {
+        Error::invalid(format!(
+            "cannot create embedding probe JSON {}: {error}",
+            temporary.display()
+        ))
+    })?;
+    let mut output = BufWriter::new(file);
+    write_embedding_probe_json(&mut output, report)?;
+    output.flush()?;
+    drop(output);
+    std::fs::rename(&temporary, path).map_err(|error| {
+        Error::invalid(format!(
+            "cannot install embedding probe JSON {}: {error}",
+            path.display()
+        ))
+    })?;
+    Ok(())
+}
+
 fn print_type_counts(gguf: &Gguf) {
     let mut counts = std::collections::BTreeMap::new();
     for tensor in gguf.tensors.values() {
@@ -215,9 +344,13 @@ fn print_type_counts(gguf: &Gguf) {
 }
 
 fn usage() -> &'static str {
-    "usage:\n  rust-star inspect MODEL.gguf  # strict Flash-0731 resident-Q2 validation\n  rust-star gguf MODEL.gguf     # structural GGUF v3 validation only\n  rust-star metal-probe [OPTIONS]"
+    "usage:\n  rust-star inspect MODEL.gguf  # strict Flash-0731 resident-Q2 validation\n  rust-star gguf MODEL.gguf     # structural GGUF v3 validation only\n  rust-star metal-probe [OPTIONS]\n  rust-star embedding-probe MODEL.gguf [OPTIONS]"
 }
 
 fn metal_probe_usage() -> &'static str {
     "usage: rust-star metal-probe [--elements N] [--iterations N] [--json PATH]\n\nCompares synchronized per-dispatch command buffers with one batched command buffer."
+}
+
+fn embedding_probe_usage() -> &'static str {
+    "usage: rust-star embedding-probe MODEL.gguf [--tokens ID,ID,...] [--json PATH]\n\nWraps the F16 token embedding as a page-aligned bytes-no-copy Metal buffer and validates DwarfStar kernel_get_rows_f16 bit-for-bit."
 }

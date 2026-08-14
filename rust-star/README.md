@@ -15,8 +15,9 @@ Before the oracle capture, compile its tests and inspect the model directory:
   /absolute/path/to/DeepSeek-V4-Flash-0731-Q2-imatrix.gguf
 ```
 
-See `rust-star/runtime/README.md` for its exact scope. It now has a minimal
-Metal ownership/dispatch probe, but no model inference kernels yet.
+See `rust-star/runtime/README.md` for its exact scope. It now has the minimal
+Metal ownership/dispatch probe plus a no-copy real-model F16 embedding gather;
+it is not yet a decoder.
 
 Project controls and benchmark contracts:
 

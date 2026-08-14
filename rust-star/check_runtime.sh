@@ -52,6 +52,11 @@ elif [ "$#" -eq 1 ]; then
     esac
     echo "==> strict target model inspection"
     "$target_dir/release/rust-star" inspect "$1"
+    if [ "$(uname -s)" = "Darwin" ]; then
+        echo "==> no-copy F16 embedding gather"
+        "$target_dir/release/rust-star" embedding-probe "$1" \
+            --json "$target_dir/f16-embedding-probe.json"
+    fi
 else
     echo "usage: $0 [/absolute/path/to/model.gguf]" >&2
     exit 2

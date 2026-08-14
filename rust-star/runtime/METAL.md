@@ -11,10 +11,23 @@ objects that cannot be expressed through a stable C interface:
 - command-buffer/encoder creation, dispatch, commit, and synchronization; and
 - Metal GPU start/end timestamps and error extraction.
 
-The shim exposes three C-ABI calls: create, run the probe, and destroy. It is
+The shim exposes a narrow C ABI for context lifetime and the two probes. It is
 compiled by `build.rs` with the platform Xcode toolchain and has no third-party
 Rust dependency. Non-macOS builds compile an explicit unsupported stub, keeping
 the GGUF and artifact contracts portable.
+
+The first model boundary extends that ABI without transferring ownership:
+
+- Rust opens and parses the GGUF, then owns one read-only `MAP_SHARED` mapping
+  for the complete file.
+- The Objective-C shim rounds the validated tensor range to host pages exactly
+  as DwarfStar does and creates a shared `MTLBuffer` with
+  `newBufferWithBytesNoCopy` and no deallocator.
+- The buffer must expose the same page pointer before dispatch. The shader sees
+  the tensor only as `device const` memory, and the OS mapping is not writable.
+- The Metal buffer is released before control returns to Rust, so the mmap
+  cannot be dropped while GPU work or an Objective-C object still references
+  it.
 
 ## Probe
 
@@ -52,7 +65,23 @@ whether a narrow Rust host can create and batch Metal work without hidden
 framework overhead, and provides the first target-Mac measurement before the
 runtime takes ownership of model buffers or DwarfStar kernels.
 
-The next Metal increment should wrap a read-only page-aligned model span as a
-no-copy buffer and execute one imported, independently testable kernel. Whole
-model loading and graph scheduling should not be attempted until that memory
-ownership boundary is measured and validated.
+The target-Mac dispatch result confirmed that the ownership split is viable;
+the no-copy model boundary below is the next completed gate.
+
+## F16 embedding gather
+
+Schema: `rust-star-f16-embedding-probe-v1`.
+
+The first imported kernel is DwarfStar's `kernel_get_rows_f16`, including its
+argument layout and threadgroup geometry. It is used for the model's initial
+token embedding and therefore lies on both prefill and decode paths.
+
+`embedding-probe` wraps the real `token_embd.weight` payload without copying,
+gathers rows at the start, middle, and end of the vocabulary, and compares all
+FP32 results by bit pattern against Rust's exact F16 decoder. Its JSON records
+page/buffer offsets, pointer identity, output checksum, and dispatch timing but
+no mmap address or local model path.
+
+With this gate complete, the next increment is a decode projection/matvec that
+consumes both model weights and an activation. Whole-model scheduling remains
+out of scope until that second arithmetic boundary has a differential fixture.

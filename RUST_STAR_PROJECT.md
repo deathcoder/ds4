@@ -124,10 +124,9 @@ requires:
 4. preserve historical measurements under the old oracle version; and
 5. record the decision in `RUST_STAR_JOURNAL.md`.
 
-The initial source candidate is upstream commit
-`b0309611041655f4e45671cfd9c9886aff161406`. It becomes `oracle-v1` only after
-the remaining manifest fields and golden outputs are captured on the target
-machine.
+`oracle-v1` uses upstream commit
+`b0309611041655f4e45671cfd9c9886aff161406`; its remaining manifest fields and
+golden outputs were captured on the target machine on 2026-08-14.
 
 Conformance and performance are separate run modes:
 
@@ -295,7 +294,6 @@ they describe whenever practical.
 
 ## Open Items
 
-- Capture the complete `oracle-v1` manifest on the M1 Ultra.
 - Extend the stable full-logit artifact schema to kernel, layer, and every
   decode-step boundaries as those hooks are implemented.
 - Execute `rust-star/BENCHMARK_PROTOCOL.md` and capture the initial paired
@@ -303,8 +301,7 @@ they describe whenever practical.
 - Implement the Rust Star side of `rust-star/ENGINE_MEASUREMENT_FORMAT.md` once
   the decoder can run; the checkpointed paired orchestrator and DwarfStar side
   are implemented.
-- Compile and measure the implemented Rust/Objective-C/Metal ownership and
-  dispatch boundary on the M1 Ultra, then use that evidence to fix the minimal
-  long-lived interop layer.
+- Import and differentially validate a decode projection/matvec that consumes
+  both no-copy model weights and a runtime activation.
 - Reproduce the Q2 versus Q2/Q4 throughput observation under controlled runs.
 - Define the first coding-agent workload corpus before agent co-design claims.

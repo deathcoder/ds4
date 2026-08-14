@@ -7,6 +7,7 @@
 pub mod artifact;
 pub mod gguf;
 pub mod metal;
+pub mod model;
 pub mod target;
 
 use std::fmt;
