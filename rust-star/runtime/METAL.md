@@ -11,7 +11,7 @@ objects that cannot be expressed through a stable C interface:
 - command-buffer/encoder creation, dispatch, commit, and synchronization; and
 - Metal GPU start/end timestamps and error extraction.
 
-The shim exposes a narrow C ABI for context lifetime and the five probes. It is
+The shim exposes a narrow C ABI for context lifetime and the six probes. It is
 compiled by `build.rs` with the platform Xcode toolchain and has no third-party
 Rust dependency. Non-macOS builds compile an explicit unsupported stub, keeping
 the GGUF and artifact contracts portable.
@@ -145,5 +145,24 @@ the raw and learned-normalized 512-value KV row, the learned-normalized
 DwarfStar processes produced byte-identical artifacts. The probe requires all
 four new runtime boundaries to match bit-for-bit before reporting success.
 
-Head-wise Q normalization and RoPE deliberately remain outside this checkpoint;
-they are the next attention-core boundary.
+## Layer-0 RoPE and guarded KV-cache store
+
+Schema: `rust-star-layer0-rope-kv-store-probe-v1`.
+
+`rope-kv-store-probe` adds the three DwarfStar release kernels immediately
+before attention: fused per-head Q RMSNorm/RoPE, the in-place KV RoPE, and the
+fused E4M3FN KV finalizer/raw-cache store. The build embeds the pinned
+`metal/dsv4_rope.metal` and `metal/dsv4_kv.metal` sources directly instead of
+maintaining approximate copies.
+
+The `layer0-rope-kv-store-v1` fixture contains two fresh-process captures of
+both DwarfStar paths. The diagnostic path exposes standalone `Qnorm`; the
+release path uses the fused kernel. Their final `Qcur` artifacts are
+byte-identical. `KVrope` and post-FP8 `KVcur` are also captured directly. The
+expected cache row is the documented IEEE-754 binary16 round-to-nearest-even
+expansion of `KVcur`, matching DwarfStar's half-typed FlashAttention cache.
+
+The runtime writes physical row 1 of a three-row shared cache initialized with
+a finite sentinel. It requires the target row to match every expected FP32 bit
+and both neighboring rows to retain the sentinel. This proves the first
+stateful write boundary without yet adding an attention scan.

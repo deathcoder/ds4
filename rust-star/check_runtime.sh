@@ -71,6 +71,9 @@ elif [ "$#" -eq 1 ]; then
         echo "==> no-copy layer-0 attention projection setup"
         "$target_dir/release/rust-star" attention-setup-probe "$1" \
             --json "$target_dir/attention-setup-probe.json"
+        echo "==> layer-0 Q/K RoPE and guarded KV-cache store"
+        "$target_dir/release/rust-star" rope-kv-store-probe "$1" \
+            --json "$target_dir/rope-kv-store-probe.json"
     fi
 else
     echo "usage: $0 [/absolute/path/to/model.gguf]" >&2

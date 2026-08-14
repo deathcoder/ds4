@@ -10,9 +10,11 @@ pub const EMBEDDING_PROBE_SCHEMA: &str = "rust-star-f16-embedding-probe-v1";
 pub const PROJECTION_PROBE_SCHEMA: &str = "rust-star-q8-0-projection-probe-v1";
 pub const INGRESS_PROBE_SCHEMA: &str = "rust-star-layer0-attention-ingress-probe-v1";
 pub const ATTENTION_SETUP_PROBE_SCHEMA: &str = "rust-star-layer0-attention-setup-probe-v1";
+pub const ROPE_KV_STORE_PROBE_SCHEMA: &str = "rust-star-layer0-rope-kv-store-probe-v1";
 pub const PROJECTION_FIXTURE_ID: &str = "dwarfstar-oracle-v1-layer0-pos1-attn-q-a";
 pub const INGRESS_FIXTURE_ID: &str = "dwarfstar-oracle-v1-layer0-pos1-attention-ingress";
 pub const ATTENTION_SETUP_FIXTURE_ID: &str = "dwarfstar-oracle-v1-layer0-pos1-qkv-setup";
+pub const ROPE_KV_STORE_FIXTURE_ID: &str = "dwarfstar-oracle-v1-layer0-pos1-rope-kv-store";
 pub const DEFAULT_ELEMENTS: u64 = 4096;
 pub const DEFAULT_ITERATIONS: u64 = 100;
 const MAX_ELEMENTS: u64 = 16 * 1024 * 1024;
@@ -46,6 +48,14 @@ const SETUP_KV_NORM_BYTES: &[u8] =
     include_bytes!("../../fixtures/layer0-qkv-setup-v1/kv-norm.f32le.bin");
 const SETUP_Q_RAW_BYTES: &[u8] =
     include_bytes!("../../fixtures/layer0-qkv-setup-v1/q-raw.f32le.bin");
+const ROPE_Q_CUR_BYTES: &[u8] =
+    include_bytes!("../../fixtures/layer0-rope-kv-store-v1/q-cur.f32le.bin");
+const ROPE_KV_ROPE_BYTES: &[u8] =
+    include_bytes!("../../fixtures/layer0-rope-kv-store-v1/kv-rope.f32le.bin");
+const ROPE_KV_CUR_BYTES: &[u8] =
+    include_bytes!("../../fixtures/layer0-rope-kv-store-v1/kv-cur.f32le.bin");
+const ROPE_CACHE_ROW_BYTES: &[u8] =
+    include_bytes!("../../fixtures/layer0-rope-kv-store-v1/cache-row.f32le.bin");
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct ProbeConfig {
@@ -178,6 +188,24 @@ pub struct AttentionSetupProbeReport {
     pub q_raw_checksum: u64,
 }
 
+#[derive(Clone, Debug)]
+pub struct RopeKvStoreProbeReport {
+    pub fixture_id: &'static str,
+    pub token: u32,
+    pub dispatches: u32,
+    pub cache_capacity_rows: u32,
+    pub cache_target_row: u32,
+    pub cache_guard_rows_intact: bool,
+    pub wrapped_model_ranges: u32,
+    pub pointer_matches: u32,
+    pub wall_ms: f64,
+    pub gpu_ms: f64,
+    pub q_cur_checksum: u64,
+    pub kv_rope_checksum: u64,
+    pub kv_cur_checksum: u64,
+    pub cache_row_checksum: u64,
+}
+
 pub fn write_ingress_probe_json<W: Write>(
     output: &mut W,
     report: &IngressProbeReport,
@@ -218,6 +246,31 @@ pub fn write_attention_setup_probe_json<W: Write>(
         report.kv_raw_checksum,
         report.kv_norm_checksum,
         report.q_raw_checksum,
+    )?;
+    Ok(())
+}
+
+pub fn write_rope_kv_store_probe_json<W: Write>(
+    output: &mut W,
+    report: &RopeKvStoreProbeReport,
+) -> Result<()> {
+    write!(
+        output,
+        "{{\n  \"schema\": \"{ROPE_KV_STORE_PROBE_SCHEMA}\",\n  \"fixture\": \"{}\",\n  \"token\": {},\n  \"dispatches\": {},\n  \"mapping\": {{\n    \"wrapped_model_ranges\": {},\n    \"pointer_matches\": {}\n  }},\n  \"cache\": {{\n    \"capacity_rows\": {},\n    \"target_row\": {},\n    \"guard_rows_intact\": {}\n  }},\n  \"timing\": {{\n    \"wall_ms\": {:.6},\n    \"gpu_ms\": {:.6}\n  }},\n  \"checksums\": {{\n    \"q_cur\": {},\n    \"kv_rope\": {},\n    \"kv_cur\": {},\n    \"cache_row\": {}\n  }},\n  \"c0_bitwise_match\": true\n}}\n",
+        report.fixture_id,
+        report.token,
+        report.dispatches,
+        report.wrapped_model_ranges,
+        report.pointer_matches,
+        report.cache_capacity_rows,
+        report.cache_target_row,
+        report.cache_guard_rows_intact,
+        report.wall_ms,
+        report.gpu_ms,
+        report.q_cur_checksum,
+        report.kv_rope_checksum,
+        report.kv_cur_checksum,
+        report.cache_row_checksum,
     )?;
     Ok(())
 }
@@ -524,6 +577,15 @@ fn attention_setup_fixture() -> Result<(Vec<f32>, Vec<f32>, Vec<f32>, Vec<f32>)>
     ))
 }
 
+fn rope_kv_store_fixture() -> Result<(Vec<f32>, Vec<f32>, Vec<f32>, Vec<f32>)> {
+    Ok((
+        decode_f32_fixture(ROPE_Q_CUR_BYTES, "RoPE Q current")?,
+        decode_f32_fixture(ROPE_KV_ROPE_BYTES, "RoPE KV pre-store")?,
+        decode_f32_fixture(ROPE_KV_CUR_BYTES, "RoPE KV post-FP8")?,
+        decode_f32_fixture(ROPE_CACHE_ROW_BYTES, "RoPE KV cache row")?,
+    ))
+}
+
 fn exact_tensor<'a>(
     model: &'a MappedModel,
     name: &str,
@@ -769,6 +831,10 @@ mod imp {
             kv_raw: *mut f32,
             kv_norm: *mut f32,
             q_raw: *mut f32,
+            q_cur: *mut f32,
+            kv_rope: *mut f32,
+            kv_cur: *mut f32,
+            cache_rows: *mut f32,
             result: *mut RawIngressProbeResult,
             error: *mut c_char,
             error_bytes: usize,
@@ -1145,6 +1211,10 @@ mod imp {
                 ptr::null_mut(),
                 ptr::null_mut(),
                 ptr::null_mut(),
+                ptr::null_mut(),
+                ptr::null_mut(),
+                ptr::null_mut(),
+                ptr::null_mut(),
                 &mut raw,
                 error.as_mut_ptr(),
                 error.len(),
@@ -1292,6 +1362,10 @@ mod imp {
                 kv_raw.as_mut_ptr(),
                 kv_norm.as_mut_ptr(),
                 q_raw.as_mut_ptr(),
+                ptr::null_mut(),
+                ptr::null_mut(),
+                ptr::null_mut(),
+                ptr::null_mut(),
                 &mut raw,
                 error.as_mut_ptr(),
                 error.len(),
@@ -1359,6 +1433,189 @@ mod imp {
             q_raw_checksum: checksum_f32(&q_raw),
         })
     }
+
+    pub fn run_rope_kv_store_probe(model: &MappedModel) -> Result<RopeKvStoreProbeReport> {
+        const TOKEN: u32 = 201;
+        const CACHE_ROWS: usize = 3;
+        const CACHE_ROW: usize = 1;
+        const CACHE_GUARD: f32 = -12345.5;
+        let embedding = exact_tensor(model, "token_embd.weight", 1, &[4096, 129280])?;
+        let hc_fn = exact_tensor(model, "blk.0.hc_attn_fn.weight", 1, &[16384, 24])?;
+        let hc_scale = exact_tensor(model, "blk.0.hc_attn_scale.weight", 0, &[3])?;
+        let hc_base = exact_tensor(model, "blk.0.hc_attn_base.weight", 0, &[24])?;
+        let norm_weight = exact_tensor(model, "blk.0.attn_norm.weight", 0, &[4096])?;
+        let q_a = exact_tensor(model, "blk.0.attn_q_a.weight", 8, &[4096, 1024])?;
+        let q_a_norm = exact_tensor(model, "blk.0.attn_q_a_norm.weight", 0, &[1024])?;
+        let kv = exact_tensor(model, "blk.0.attn_kv.weight", 8, &[4096, 512])?;
+        let kv_norm_weight = exact_tensor(model, "blk.0.attn_kv_a_norm.weight", 0, &[512])?;
+        let q_b = exact_tensor(model, "blk.0.attn_q_b.weight", 8, &[1024, 32768])?;
+        let (expected_q_norm, expected_kv_raw, _, expected_q_raw) = attention_setup_fixture()?;
+        let (expected_q_cur, expected_kv_rope, expected_kv_cur, expected_cache_row) =
+            rope_kv_store_fixture()?;
+
+        let mut mixes = vec![0.0_f32; 24];
+        let mut split = vec![0.0_f32; 24];
+        let mut collapsed = vec![0.0_f32; 4096];
+        let mut norm = vec![0.0_f32; 4096];
+        let mut q_lora = vec![0.0_f32; 1024];
+        let mut q_lora_norm = vec![0.0_f32; 1024];
+        let mut kv_raw = vec![0.0_f32; 512];
+        let mut kv_after_store = vec![0.0_f32; 512];
+        let mut q_raw = vec![0.0_f32; 32768];
+        let mut q_cur = vec![0.0_f32; 32768];
+        let mut kv_rope = vec![0.0_f32; 512];
+        let mut kv_cur = vec![0.0_f32; 512];
+        let mut cache_rows = vec![0.0_f32; CACHE_ROWS * 512];
+
+        let mut error = [0 as c_char; ERROR_BYTES];
+        let mut pointer = ptr::null_mut();
+        let created =
+            unsafe { rust_star_metal_create(&mut pointer, error.as_mut_ptr(), error.len()) };
+        if created == 0 || pointer.is_null() {
+            return Err(Error::invalid(format!(
+                "Metal initialization failed: {}",
+                error_text(&error)
+            )));
+        }
+        let context = Context(pointer);
+        error.fill(0);
+        let mut raw = RawIngressProbeResult::default();
+        let succeeded = unsafe {
+            rust_star_metal_run_attention_ingress(
+                context.0,
+                model.mapping_pointer(),
+                model.bytes(),
+                TOKEN,
+                129280,
+                embedding.absolute_offset,
+                embedding.bytes,
+                hc_fn.absolute_offset,
+                hc_fn.bytes,
+                hc_scale.absolute_offset,
+                hc_scale.bytes,
+                hc_base.absolute_offset,
+                hc_base.bytes,
+                norm_weight.absolute_offset,
+                norm_weight.bytes,
+                q_a.absolute_offset,
+                q_a.bytes,
+                q_a_norm.absolute_offset,
+                q_a_norm.bytes,
+                kv.absolute_offset,
+                kv.bytes,
+                kv_norm_weight.absolute_offset,
+                kv_norm_weight.bytes,
+                q_b.absolute_offset,
+                q_b.bytes,
+                mixes.as_mut_ptr(),
+                split.as_mut_ptr(),
+                collapsed.as_mut_ptr(),
+                norm.as_mut_ptr(),
+                q_lora.as_mut_ptr(),
+                q_lora_norm.as_mut_ptr(),
+                kv_raw.as_mut_ptr(),
+                kv_after_store.as_mut_ptr(),
+                q_raw.as_mut_ptr(),
+                q_cur.as_mut_ptr(),
+                kv_rope.as_mut_ptr(),
+                kv_cur.as_mut_ptr(),
+                cache_rows.as_mut_ptr(),
+                &mut raw,
+                error.as_mut_ptr(),
+                error.len(),
+            )
+        };
+        if succeeded == 0 {
+            return Err(Error::invalid(format!(
+                "Metal layer-0 RoPE/KV-store probe failed: {}",
+                error_text(&error)
+            )));
+        }
+        if raw.model_bytes != model.bytes()
+            || raw.wrapped_model_ranges != 10
+            || raw.pointer_matches != 10
+        {
+            return Err(Error::invalid(
+                "Metal RoPE/KV-store path did not preserve all ten mmap-backed model ranges",
+            ));
+        }
+        for (label, actual, expected) in [
+            (
+                "q_lora_norm",
+                q_lora_norm.as_slice(),
+                expected_q_norm.as_slice(),
+            ),
+            ("KVraw", kv_raw.as_slice(), expected_kv_raw.as_slice()),
+            ("Qraw", q_raw.as_slice(), expected_q_raw.as_slice()),
+            ("Qcur", q_cur.as_slice(), expected_q_cur.as_slice()),
+            ("KVrope", kv_rope.as_slice(), expected_kv_rope.as_slice()),
+            ("KVcur", kv_cur.as_slice(), expected_kv_cur.as_slice()),
+            (
+                "cache_row",
+                &cache_rows[CACHE_ROW * 512..(CACHE_ROW + 1) * 512],
+                expected_cache_row.as_slice(),
+            ),
+        ] {
+            if actual.len() != expected.len() {
+                return Err(Error::invalid(format!("{label} fixture length mismatch")));
+            }
+            for (index, (actual, expected)) in actual.iter().zip(expected).enumerate() {
+                if actual.to_bits() != expected.to_bits() {
+                    return Err(Error::invalid(format!(
+                        "RoPE/KV-store C0 mismatch in {label}[{index}]: actual={:#010x} expected={:#010x}",
+                        actual.to_bits(), expected.to_bits()
+                    )));
+                }
+            }
+        }
+        if kv_after_store
+            .iter()
+            .zip(&kv_cur)
+            .any(|(left, right)| left.to_bits() != right.to_bits())
+        {
+            return Err(Error::invalid(
+                "KV post-store output aliases do not match by bit pattern",
+            ));
+        }
+        let guard_bits = CACHE_GUARD.to_bits();
+        let guards_intact = cache_rows[..512]
+            .iter()
+            .chain(&cache_rows[2 * 512..])
+            .all(|value| value.to_bits() == guard_bits);
+        if !guards_intact {
+            return Err(Error::invalid(
+                "KV cache store modified a neighboring guard row",
+            ));
+        }
+        for (name, value) in [("wall_ms", raw.wall_ms), ("gpu_ms", raw.gpu_ms)] {
+            if !value.is_finite() || value < 0.0 {
+                return Err(Error::invalid(format!(
+                    "Metal RoPE/KV-store returned invalid {name}"
+                )));
+            }
+        }
+        if raw.wall_ms == 0.0 {
+            return Err(Error::invalid(
+                "Metal RoPE/KV-store returned a zero wall interval",
+            ));
+        }
+        Ok(RopeKvStoreProbeReport {
+            fixture_id: ROPE_KV_STORE_FIXTURE_ID,
+            token: TOKEN,
+            dispatches: 12,
+            cache_capacity_rows: CACHE_ROWS as u32,
+            cache_target_row: CACHE_ROW as u32,
+            cache_guard_rows_intact: guards_intact,
+            wrapped_model_ranges: raw.wrapped_model_ranges,
+            pointer_matches: raw.pointer_matches,
+            wall_ms: raw.wall_ms,
+            gpu_ms: raw.gpu_ms,
+            q_cur_checksum: checksum_f32(&q_cur),
+            kv_rope_checksum: checksum_f32(&kv_rope),
+            kv_cur_checksum: checksum_f32(&kv_cur),
+            cache_row_checksum: checksum_f32(&cache_rows[CACHE_ROW * 512..(CACHE_ROW + 1) * 512]),
+        })
+    }
 }
 
 #[cfg(not(target_os = "macos"))]
@@ -1409,11 +1666,20 @@ mod imp {
             "the Metal layer-0 attention setup probe is available only on macOS",
         ))
     }
+
+    pub fn run_rope_kv_store_probe(model: &MappedModel) -> Result<RopeKvStoreProbeReport> {
+        let _ = attention_setup_fixture()?;
+        let _ = rope_kv_store_fixture()?;
+        let _ = exact_tensor(model, "blk.0.attn_q_b.weight", 8, &[1024, 32768])?;
+        Err(Error::invalid(
+            "the Metal layer-0 RoPE/KV-store probe is available only on macOS",
+        ))
+    }
 }
 
 pub use imp::{
     run_attention_ingress_probe, run_attention_setup_probe, run_f16_embedding_probe, run_probe,
-    run_q8_projection_probe,
+    run_q8_projection_probe, run_rope_kv_store_probe,
 };
 
 #[cfg(test)]
@@ -1516,6 +1782,25 @@ mod tests {
         }
     }
 
+    fn rope_kv_store_report() -> RopeKvStoreProbeReport {
+        RopeKvStoreProbeReport {
+            fixture_id: ROPE_KV_STORE_FIXTURE_ID,
+            token: 201,
+            dispatches: 12,
+            cache_capacity_rows: 3,
+            cache_target_row: 1,
+            cache_guard_rows_intact: true,
+            wrapped_model_ranges: 10,
+            pointer_matches: 10,
+            wall_ms: 2.0,
+            gpu_ms: 1.0,
+            q_cur_checksum: 1,
+            kv_rope_checksum: 2,
+            kv_cur_checksum: 3,
+            cache_row_checksum: 4,
+        }
+    }
+
     #[test]
     fn validates_probe_work_bounds() {
         assert!(ProbeConfig::default().validate().is_ok());
@@ -1589,6 +1874,33 @@ mod tests {
         assert!(text.contains("\"dispatches\": 9"));
         assert!(text.contains("\"pointer_matches\": 10"));
         assert!(text.contains("\"c0_bitwise_match\": true"));
+    }
+
+    #[test]
+    fn writes_stable_rope_kv_store_probe_json() {
+        let mut output = Vec::new();
+        write_rope_kv_store_probe_json(&mut output, &rope_kv_store_report()).unwrap();
+        let text = String::from_utf8(output).unwrap();
+        assert!(text.contains(&format!("\"schema\": \"{ROPE_KV_STORE_PROBE_SCHEMA}\"")));
+        assert!(text.contains(&format!("\"fixture\": \"{ROPE_KV_STORE_FIXTURE_ID}\"")));
+        assert!(text.contains("\"dispatches\": 12"));
+        assert!(text.contains("\"guard_rows_intact\": true"));
+        assert!(text.contains("\"c0_bitwise_match\": true"));
+    }
+
+    #[test]
+    fn rope_kv_store_fixture_has_target_shapes() {
+        let (q_cur, kv_rope, kv_cur, cache_row) = rope_kv_store_fixture().unwrap();
+        assert_eq!(q_cur.len(), 64 * 512);
+        assert_eq!(kv_rope.len(), 512);
+        assert_eq!(kv_cur.len(), 512);
+        assert_eq!(cache_row.len(), 512);
+        assert!(q_cur
+            .iter()
+            .chain(&kv_rope)
+            .chain(&kv_cur)
+            .chain(&cache_row)
+            .all(|value| value.is_finite()));
     }
 
     #[test]

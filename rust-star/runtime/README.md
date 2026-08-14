@@ -1,7 +1,7 @@
 # Rust Star host-runtime scaffold
 
 This crate is the smallest executable boundary for the new engine. It is
-model-specific by design and currently contains one connected six-operation
+model-specific by design and currently contains one connected twelve-dispatch
 layer segment, not a decoder.
 
 Implemented contracts:
@@ -28,6 +28,8 @@ Implemented contracts:
 - the continuation through KV projection, fused Q-Lora/KV learned RMSNorm, and
   Q-B, producing the full 64×512 raw Q tensor and normalized KV row in the same
   command buffer.
+- the first stateful boundary: fused Q head RMSNorm/RoPE, KV RoPE, E4M3FN KV
+  finalization, and an FP16-rounded cache-row write with untouched guard rows.
 
 The validator proves model shape and quantization-recipe identity. It does not
 pretend that a mutable GGUF name proves the `0731` checkpoint. The completed
@@ -130,3 +132,16 @@ rust-star/.work/runtime-target/release/rust-star attention-setup-probe \
 This runs nine dispatches over ten no-copy model views and verifies Q-Lora
 norm, KV raw/norm, and all 32,768 raw Q values against
 `../fixtures/layer0-qkv-setup-v1/`.
+
+To cross the first stateful attention boundary:
+
+```sh
+rust-star/.work/runtime-target/release/rust-star rope-kv-store-probe \
+  /absolute/path/to/model.gguf \
+  --json rust-star/.work/runtime-target/rope-kv-store-probe.json
+```
+
+This extends the same path to twelve dispatches with DwarfStar's fused Q head
+RMSNorm/RoPE, the layer-0 KV RoPE, and its fused E4M3FN KV finalizer/cache
+store. It matches `Qcur`, `KVrope`, and `KVcur` bit-for-bit, then verifies the
+FP16-rounded target cache row while two sentinel neighbor rows remain intact.

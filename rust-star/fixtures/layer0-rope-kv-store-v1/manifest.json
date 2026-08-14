@@ -1,0 +1,162 @@
+{
+  "schema": "rust-star-differential-fixture-v1",
+  "fixture_id": "dwarfstar-oracle-v1-layer0-pos1-rope-kv-store",
+  "captured_at_utc": "2026-08-14T22:06:23Z",
+  "oracle": {
+    "id": "oracle-v1",
+    "repository": "https://github.com/antirez/ds4.git",
+    "commit": "b0309611041655f4e45671cfd9c9886aff161406",
+    "tree": "20c11af22f90a0bdf25da860da5ef06de4064060",
+    "capture_executable_sha256": "b0b7c31d9832cc3f5cccf810cd2af6f4bc4f6e71de945493674315314f666fc8"
+  },
+  "model": {
+    "family": "DeepSeek-V4-Flash-0731",
+    "sha256": "ca22ae2f838e14077c22bc1c1417b71b45b5e5a3687bd96c2ac6e17fdb6261c0"
+  },
+  "capture": {
+    "backend": "metal",
+    "machine": "Apple M1 Ultra, 48 GPU cores, 128 GB unified memory",
+    "prompt": "speed-bench/promessi_sposi.txt",
+    "prompt_sha256": "f53e0d80cb2d4492d24ebd63c7000c397b16ae70f9bf09b3763e5d8323ec209f",
+    "prefill_tokens": 1,
+    "decode_step": 1,
+    "token_id": 201,
+    "fresh_process_captures": 4,
+    "fresh_process_bitwise_match": true,
+    "fused_diagnostic_qcur_bitwise_match": true,
+    "environment_variants": [
+      {
+        "path": "diagnostic-unfused-q",
+        "DS4_METAL_GRAPH_DUMP_LAYER": "0",
+        "DS4_METAL_GRAPH_DUMP_POS": "1",
+        "DS4_METAL_GRAPH_DUMP_NAME": "Qnorm,Qcur,KVrope,KVcur"
+      },
+      {
+        "path": "release-fused-q",
+        "DS4_METAL_GRAPH_DUMP_LAYER": "0",
+        "DS4_METAL_GRAPH_DUMP_POS": "1",
+        "DS4_METAL_GRAPH_DUMP_NAME": "Qcur,KVrope,KVcur"
+      }
+    ]
+  },
+  "scope": {
+    "kind": "decode-step",
+    "phase": "decode",
+    "layer": 0,
+    "position": 1
+  },
+  "parameters": {
+    "heads": 64,
+    "head_dim": 512,
+    "rotary_dim": 64,
+    "rms_epsilon": 0.000001,
+    "rope_frequency_base": 10000.0,
+    "rope_frequency_scale": 1.0,
+    "cache_capacity_rows_in_probe": 3,
+    "cache_target_row": 1,
+    "cache_guard_value": -12345.5,
+    "kv_non_rotary_fp8_format": "E4M3FN",
+    "cache_storage_precision": "F16-rounded F32"
+  },
+  "operations": [
+    {
+      "name": "q-head-rmsnorm-rope",
+      "kernel": "kernel_dsv4_head_rms_norm_rope_tail_f32"
+    },
+    {
+      "name": "kv-rope",
+      "kernel": "kernel_dsv4_rope_tail_f32"
+    },
+    {
+      "name": "kv-fp8-cache-store",
+      "kernel": "kernel_dsv4_kv_fp8_store_f32"
+    }
+  ],
+  "derivations": [
+    {
+      "tensor": "cache_row",
+      "source": "kv_cur",
+      "rule": "IEEE-754 binary16 round-to-nearest-even followed by exact binary32 expansion",
+      "reason": "DwarfStar's FlashAttention raw cache is half-typed; the graph hook exposes the post-FP8 KV source rather than the stored cache row"
+    }
+  ],
+  "tensors": [
+    {
+      "name": "q_raw",
+      "hook": "Qraw",
+      "role": "input",
+      "dtype": "f32",
+      "shape": [64, 512],
+      "encoding": "little-endian-ieee754-binary32",
+      "path": "q-raw.f32le.bin",
+      "bytes": 131072,
+      "sha256": "9488c2af49788edf0fec1282f7225490719c5b60dc0d86753595ffe4f20e8a13"
+    },
+    {
+      "name": "kv_norm",
+      "hook": "KVnorm",
+      "role": "input",
+      "dtype": "f32",
+      "shape": [512],
+      "encoding": "little-endian-ieee754-binary32",
+      "path": "kv-norm.f32le.bin",
+      "bytes": 2048,
+      "sha256": "917692f919786505e21c29955229c01020ce170d3ca234236f325e1fc925ced4"
+    },
+    {
+      "name": "q_norm_diagnostic",
+      "hook": "Qnorm",
+      "role": "intermediate",
+      "dtype": "f32",
+      "shape": [64, 512],
+      "encoding": "little-endian-ieee754-binary32",
+      "path": "q-norm-diagnostic.f32le.bin",
+      "bytes": 131072,
+      "sha256": "0c3016d97011002365910c5b8599a3222b66e6e063720ac26b4b0461309d55ae"
+    },
+    {
+      "name": "q_cur",
+      "hook": "Qcur",
+      "role": "output",
+      "dtype": "f32",
+      "shape": [64, 512],
+      "encoding": "little-endian-ieee754-binary32",
+      "path": "q-cur.f32le.bin",
+      "bytes": 131072,
+      "sha256": "0a4caf3639dbb6599121c9244f77e928e26c1cef618b28e380c2f43cbdcc9ac4"
+    },
+    {
+      "name": "kv_rope",
+      "hook": "KVrope",
+      "role": "intermediate",
+      "dtype": "f32",
+      "shape": [512],
+      "encoding": "little-endian-ieee754-binary32",
+      "path": "kv-rope.f32le.bin",
+      "bytes": 2048,
+      "sha256": "d20d8fff837313cfbae8cc59abe975cef65988a5b58090e7c34514ee772f4f35"
+    },
+    {
+      "name": "kv_cur",
+      "hook": "KVcur",
+      "role": "output",
+      "dtype": "f32",
+      "shape": [512],
+      "encoding": "little-endian-ieee754-binary32",
+      "path": "kv-cur.f32le.bin",
+      "bytes": 2048,
+      "sha256": "0b746051ee128817a7ea5db8f9da4222d0a8b1b68bfc1e3480828be8fe8f0162"
+    },
+    {
+      "name": "cache_row",
+      "hook": "derived-from-KVcur",
+      "role": "output",
+      "dtype": "f32",
+      "shape": [512],
+      "encoding": "little-endian-ieee754-binary32",
+      "path": "cache-row.f32le.bin",
+      "bytes": 2048,
+      "sha256": "f9fb571ad76d84277fdcbba8411de2063dc9c4d3c3c1e9c018bf4deecba3241e"
+    }
+  ]
+}

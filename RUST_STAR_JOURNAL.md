@@ -22,8 +22,8 @@ history; add a correction and update the current-state summary.
 
 - Phase: target-Mac bootstrap, quick `oracle-v1`, no-copy model mapping, the
   canonical differential-fixture envelope, and the connected layer-0
-  attention ingress and Q/K projection setup are complete; the next increment
-  is head normalization/RoPE and the first KV-cache write boundary.
+  attention path through Q/K RoPE and its first exact KV-cache row write are
+  complete; the next increment is the first layer-0 attention scan/readback.
 - Working branch: `agent/rust-star-bootstrap`.
 - Branch base: upstream `antirez/ds4` commit
   `b0309611041655f4e45671cfd9c9886aff161406`.
@@ -66,7 +66,9 @@ history; add a correction and update the current-state summary.
   at mixer, HC split, collapsed HC, learned attention norm, and Q-Lora.
   The continuation adds Q8 KV projection, fused Q-Lora/KV learned RMSNorm, and
   Q-B in the same command buffer, yielding full raw Q and normalized KV with
-  ten mmap-backed model spans.
+  ten mmap-backed model spans. The twelve-dispatch continuation imports the
+  exact pinned RoPE and KV-finalizer sources, produces final Q/K, FP8-rounds KV,
+  and writes an FP16-rounded physical cache row while preserving guard rows.
 - Measurements: Metal batching was 42.861x faster than synchronized submission
   in the retained M-002 probe. DwarfStar medians are 164.86 prefill / 19.90
   generation tok/s at 2K and 161.05 prefill / 17.36 generation tok/s at 32K.
@@ -78,7 +80,10 @@ history; add a correction and update the current-state summary.
   reported 0.102 ms GPU time in the final gate; this remains correctness
   evidence rather than decoder throughput. The nine-dispatch Q/K projection
   setup matched another 34,816 FP32 values and reported 0.473 ms GPU time in
-  its final gate, also not a throughput claim.
+  its final gate, also not a throughput claim. The twelve-dispatch RoPE/cache
+  gate matched 34,816 direct outputs plus the 512-value stored row, preserved
+  two 512-value guard rows, and reported 0.949 ms GPU time; this is likewise
+  correctness evidence rather than decoder throughput.
 - Manual handoff: `RUST_STAR_MANUAL_TASKS.md` records Actions approval, target
   compilation/model inspection, quick/extended oracle capture, and the deferred
   secure-access decision with exact evidence requirements.
@@ -91,8 +96,9 @@ history; add a correction and update the current-state summary.
 
 ## Immediate Next Actions
 
-1. Extend the connected layer-0 path through per-head Q RMSNorm/RoPE and KV
-   RoPE into the first exact cache-row write boundary.
+1. Extend the connected layer-0 path through the uncompressed layer-0
+   FlashAttention scan over the now-validated raw cache and validate its
+   attention output before inverse RoPE.
 2. Define the smallest reusable Rust buffer/scheduling abstraction justified by
    the now-connected path; do not introduce a general graph framework yet.
 3. Run the extended 2K--1M frontier capture when the Mac can be dedicated to a
@@ -100,6 +106,59 @@ history; add a correction and update the current-state summary.
 4. Run or approve the fork's GitHub Actions workflow and retain its URL.
 
 ## Entries
+
+### 2026-08-14 — Layer-0 RoPE and first KV-cache write matched DwarfStar
+
+Objective:
+
+- Cross the first stateful decode boundary by finalizing Q/K position encoding
+  and proving an exact, isolated cache-row mutation.
+
+Oracle fixture:
+
+- Captured layer 0, decode position 1 in four fresh pinned DwarfStar processes:
+  two with standalone diagnostic Q normalization and two with the release
+  fused Q-normalization/RoPE path.
+- Every repeated artifact was byte-identical. The fused and diagnostic paths
+  also produced byte-identical final `Qcur` tensors.
+- Added `rust-star/fixtures/layer0-rope-kv-store-v1/` with raw Q/normalized KV
+  inputs, diagnostic `Qnorm`, release `Qcur`, pre-store `KVrope`, post-E4M3FN
+  `KVcur`, and the documented FP16-rounded cache-row derivation.
+
+Implementation:
+
+- Embedded the pinned DwarfStar `metal/dsv4_rope.metal` and
+  `metal/dsv4_kv.metal` sources directly in the runtime Metal library.
+- Extended the connected command buffer with fused per-head Q RMSNorm/RoPE,
+  layer-0 KV RoPE, and the fused E4M3FN KV finalizer/raw-cache store.
+- Added a three-row cache probe initialized with a finite sentinel. The kernel
+  targets physical row 1; Rust checks every target-row bit and both neighboring
+  guard rows.
+- Added a stable CLI/JSON schema, fixture and unit coverage, documentation, and
+  automatic execution in `check_runtime.sh`.
+
+Target-Mac evidence:
+
+- All ten model views retained exact mmap pointer identity.
+- All 32,768 `Qcur`, 512 `KVrope`, 512 post-FP8 `KVcur`, and 512 cache-row
+  values matched the pinned evidence by FP32 bit pattern. Both 512-value guard
+  rows remained unchanged.
+- The final gate reported 40.305 ms wall and 0.949 ms Metal GPU time. This is a
+  cold standalone correctness boundary, not decoder throughput.
+- The complete gate passed: 24 Rust tests, optimized macOS build, 30 Python
+  tests, all four fixture verifiers, cross-language C0 smoke, strict validation
+  of all 1,288 required tensors, and every Metal probe.
+
+Decision:
+
+- Accept the first exact layer-0 cache mutation as the stateful attention
+  checkpoint. Add the layer-0 attention scan next, without compression or
+  output projection yet.
+
+Next:
+
+- Capture/import the uncompressed layer-0 FlashAttention read over positions
+  0..1 and validate the pre-inverse-RoPE attention output.
 
 ### 2026-08-14 — Layer-0 Q/K projection setup matched DwarfStar
 

@@ -16,6 +16,8 @@ fn main() {
     println!("cargo:rerun-if-changed=src/metal_shim.h");
     println!("cargo:rerun-if-changed=src/metal_shim.m");
     println!("cargo:rerun-if-changed=src/attention_ingress.metal");
+    println!("cargo:rerun-if-changed=../../metal/dsv4_rope.metal");
+    println!("cargo:rerun-if-changed=../../metal/dsv4_kv.metal");
     if env::var("CARGO_CFG_TARGET_OS").as_deref() != Ok("macos") {
         return;
     }
@@ -26,7 +28,11 @@ fn main() {
     let archive = output.join("librust_star_metal.a");
     let source = manifest.join("src/metal_shim.m");
     write_metal_source_include(
-        &manifest.join("src/attention_ingress.metal"),
+        &[
+            manifest.join("src/attention_ingress.metal"),
+            manifest.join("../../metal/dsv4_rope.metal"),
+            manifest.join("../../metal/dsv4_kv.metal"),
+        ],
         &output.join("attention_ingress_source.inc"),
     );
     let architecture = match env::var("CARGO_CFG_TARGET_ARCH").as_deref() {
@@ -67,20 +73,22 @@ fn main() {
     print_link_directives(&output);
 }
 
-fn write_metal_source_include(source: &Path, output: &Path) {
-    let input = fs::read_to_string(source)
-        .unwrap_or_else(|error| panic!("failed to read {}: {error}", source.display()));
+fn write_metal_source_include(sources: &[PathBuf], output: &Path) {
     let mut generated = String::from("static NSString *const kAttentionIngressSource =\n");
-    for line in input.lines() {
-        generated.push_str("    @\"");
-        for character in line.chars() {
-            match character {
-                '\\' => generated.push_str("\\\\"),
-                '"' => generated.push_str("\\\""),
-                _ => generated.push(character),
+    for source in sources {
+        let input = fs::read_to_string(source)
+            .unwrap_or_else(|error| panic!("failed to read {}: {error}", source.display()));
+        for line in input.lines() {
+            generated.push_str("    @\"");
+            for character in line.chars() {
+                match character {
+                    '\\' => generated.push_str("\\\\"),
+                    '"' => generated.push_str("\\\""),
+                    _ => generated.push(character),
+                }
             }
+            generated.push_str("\\n\"\n");
         }
-        generated.push_str("\\n\"\n");
     }
     generated.push_str("    ;\n");
     fs::write(output, generated)

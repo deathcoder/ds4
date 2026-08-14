@@ -141,6 +141,10 @@ int rust_star_metal_run_attention_ingress(
     float *kv_raw,
     float *kv_norm,
     float *q_raw,
+    float *q_cur,
+    float *kv_rope,
+    float *kv_cur,
+    float *cache_rows,
     rust_star_metal_ingress_probe_result *result,
     char *error,
     size_t error_bytes);

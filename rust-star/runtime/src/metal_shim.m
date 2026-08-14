@@ -168,6 +168,9 @@ static NSString *const kQ8ProjectionSource =
 @property(nonatomic, strong) id<MTLComputePipelineState> f16ProjectionPipeline;
 @property(nonatomic, strong) id<MTLComputePipelineState> hcIngressPipeline;
 @property(nonatomic, strong) id<MTLComputePipelineState> qkvNormPipeline;
+@property(nonatomic, strong) id<MTLComputePipelineState> headNormRopePipeline;
+@property(nonatomic, strong) id<MTLComputePipelineState> ropeTailPipeline;
+@property(nonatomic, strong) id<MTLComputePipelineState> kvStorePipeline;
 @property(nonatomic, assign) double setupMilliseconds;
 @property(nonatomic, assign) double compileMilliseconds;
 @end
@@ -345,13 +348,17 @@ static int ensure_attention_ingress_pipelines(
     id<MTLFunction> norm = [library newFunctionWithName:@"kernel_rms_norm_f32_4"];
     id<MTLFunction> hc = [library newFunctionWithName:@"kernel_dsv4_hc_split_weighted_sum_norm4"];
     id<MTLFunction> qkvNorm = [library newFunctionWithName:@"kernel_dsv4_qkv_rms_norm_f32_4"];
+    id<MTLFunction> headNormRope = [library newFunctionWithName:@"kernel_dsv4_head_rms_norm_rope_tail_f32"];
+    id<MTLFunction> ropeTail = [library newFunctionWithName:@"kernel_dsv4_rope_tail_f32"];
+    id<MTLFunction> kvStore = [library newFunctionWithName:@"kernel_dsv4_kv_fp8_store_f32"];
     int16_t simdgroups = 8;
     MTLFunctionConstantValues *constants = [MTLFunctionConstantValues new];
     [constants setConstantValue:&simdgroups type:MTLDataTypeShort atIndex:600];
     id<MTLFunction> projection = [library newFunctionWithName:@"kernel_mul_mv_f16_f32_4"
                                                constantValues:constants
                                                         error:&compile_error];
-    if (!repeat || !norm || !hc || !qkvNorm || !projection) {
+    if (!repeat || !norm || !hc || !qkvNorm || !headNormRope || !ropeTail ||
+        !kvStore || !projection) {
         return fail_with_message(error, error_bytes,
             compile_error ? compile_error.localizedDescription : @"attention ingress kernel was not found");
     }
@@ -360,8 +367,13 @@ static int ensure_attention_ingress_pipelines(
     context.f16ProjectionPipeline = [context.device newComputePipelineStateWithFunction:projection error:&compile_error];
     context.hcIngressPipeline = [context.device newComputePipelineStateWithFunction:hc error:&compile_error];
     context.qkvNormPipeline = [context.device newComputePipelineStateWithFunction:qkvNorm error:&compile_error];
+    context.headNormRopePipeline = [context.device newComputePipelineStateWithFunction:headNormRope error:&compile_error];
+    context.ropeTailPipeline = [context.device newComputePipelineStateWithFunction:ropeTail error:&compile_error];
+    context.kvStorePipeline = [context.device newComputePipelineStateWithFunction:kvStore error:&compile_error];
     if (!context.repeatF32Pipeline || !context.rmsNormF32Pipeline ||
-        !context.f16ProjectionPipeline || !context.hcIngressPipeline || !context.qkvNormPipeline) {
+        !context.f16ProjectionPipeline || !context.hcIngressPipeline ||
+        !context.qkvNormPipeline || !context.headNormRopePipeline ||
+        !context.ropeTailPipeline || !context.kvStorePipeline) {
         return fail_with_message(error, error_bytes, compile_error.localizedDescription);
     }
     context.attentionIngressLibrary = library;
@@ -694,6 +706,27 @@ typedef struct rust_star_qkv_norm_args {
     float eps;
 } rust_star_qkv_norm_args;
 
+typedef struct rust_star_head_norm_rope_args {
+    int32_t n_head, head_dim, head_dim4, n_dims;
+    int32_t n_ctx_orig, pos0, inverse;
+    float eps, freq_base, freq_scale, ext_factor, attn_factor;
+    float beta_fast, beta_slow;
+} rust_star_head_norm_rope_args;
+
+typedef struct rust_star_rope_tail_args {
+    int64_t ne00, ne01, ne02, ne03;
+    uint64_t nb00, nb01, nb02, nb03;
+    uint64_t nb0, nb1, nb2, nb3;
+    int32_t n_dims, mode, n_ctx_orig, inverse;
+    float freq_base, freq_scale, ext_factor, attn_factor;
+    float beta_fast, beta_slow;
+    bool src2;
+} rust_star_rope_tail_args;
+
+typedef struct rust_star_kv_store_args {
+    int32_t head_dim, n_rot, raw_row;
+} rust_star_kv_store_args;
+
 static id<MTLBuffer> wrap_model_range(
     RustStarMetalContext *context,
     const void *model_mapping,
@@ -910,6 +943,10 @@ int rust_star_metal_run_attention_ingress(
     float *kv_raw,
     float *kv_norm,
     float *q_raw,
+    float *q_cur,
+    float *kv_rope,
+    float *kv_cur,
+    float *cache_rows,
     rust_star_metal_ingress_probe_result *result,
     char *error,
     size_t error_bytes)
@@ -923,12 +960,18 @@ int rust_star_metal_run_attention_ingress(
     const uint32_t q_raw_elements = 64u*512u;
     const BOOL extended = q_lora_norm && kv_raw && kv_norm && q_raw;
     const BOOL partial_extended = q_lora_norm || kv_raw || kv_norm || q_raw;
+    const BOOL rope_and_store = q_cur && kv_rope && kv_cur && cache_rows;
+    const BOOL partial_rope_and_store = q_cur || kv_rope || kv_cur || cache_rows;
     if (!opaque_context || !model_mapping || !mixes || !split || !collapsed ||
         !attn_norm || !q_lora || !result || n_vocab == 0 || token >= n_vocab) {
         return fail_with_message(error, error_bytes, @"attention ingress received invalid inputs");
     }
     if (partial_extended && !extended) {
         return fail_with_message(error, error_bytes, @"attention setup outputs must be all present or all absent");
+    }
+    if (partial_rope_and_store && (!rope_and_store || !extended)) {
+        return fail_with_message(error, error_bytes,
+            @"attention RoPE/cache outputs require the complete attention setup output set");
     }
     if (embedding_bytes != (uint64_t)n_embd*n_vocab*sizeof(uint16_t) ||
         hc_fn_bytes != (uint64_t)hc_dim*mix_hc*sizeof(uint16_t) ||
@@ -998,12 +1041,22 @@ int rust_star_metal_run_attention_ingress(
         id<MTLBuffer> kv_raw_buffer = extended ? [context.device newBufferWithLength:kv_elements*sizeof(float) options:MTLResourceStorageModeShared] : nil;
         id<MTLBuffer> kv_norm_buffer = extended ? [context.device newBufferWithLength:kv_elements*sizeof(float) options:MTLResourceStorageModeShared] : nil;
         id<MTLBuffer> q_raw_buffer = extended ? [context.device newBufferWithLength:q_raw_elements*sizeof(float) options:MTLResourceStorageModeShared] : nil;
+        id<MTLBuffer> q_cur_buffer = rope_and_store ? [context.device newBufferWithLength:q_raw_elements*sizeof(float) options:MTLResourceStorageModeShared] : nil;
+        id<MTLBuffer> kv_rope_buffer = rope_and_store ? [context.device newBufferWithLength:kv_elements*sizeof(float) options:MTLResourceStorageModeShared] : nil;
+        id<MTLBuffer> cache_buffer = rope_and_store ? [context.device newBufferWithLength:3u*kv_elements*sizeof(float) options:MTLResourceStorageModeShared] : nil;
         if (!embedding || !cur_hc || !flat_hc || !mix_buffer || !split_buffer ||
             !collapsed_buffer || !norm_buffer || !q_buffer) {
             return fail_with_message(error, error_bytes, @"failed to allocate attention ingress buffers");
         }
         if (extended && (!q_norm_buffer || !kv_raw_buffer || !kv_norm_buffer || !q_raw_buffer)) {
             return fail_with_message(error, error_bytes, @"failed to allocate attention setup buffers");
+        }
+        if (rope_and_store && (!q_cur_buffer || !kv_rope_buffer || !cache_buffer)) {
+            return fail_with_message(error, error_bytes, @"failed to allocate attention RoPE/cache buffers");
+        }
+        if (rope_and_store) {
+            float *cache = cache_buffer.contents;
+            for (uint32_t index = 0; index < 3u*kv_elements; index++) cache[index] = -12345.5f;
         }
 
         const uint64_t embedding_row_bytes = (uint64_t)n_embd*sizeof(uint16_t);
@@ -1077,6 +1130,28 @@ int rust_star_metal_run_attention_ingress(
             .nb10=sizeof(float), .nb11=q_elements*sizeof(float),
             .nb12=q_elements*sizeof(float), .nb13=q_elements*sizeof(float),
             .ne0=(int32_t)q_raw_elements, .ne1=1, .nr0=2, .r2=1, .r3=1,
+        };
+        rust_star_head_norm_rope_args q_rope_args = {
+            .n_head=64, .head_dim=512, .head_dim4=128, .n_dims=64,
+            .n_ctx_orig=0, .pos0=1, .inverse=0,
+            .eps=1.0e-6f, .freq_base=10000.0f, .freq_scale=1.0f,
+            .ext_factor=0.0f, .attn_factor=1.0f,
+            .beta_fast=32.0f, .beta_slow=1.0f,
+        };
+        const uint64_t kv_row_f32_bytes = (uint64_t)kv_elements*sizeof(float);
+        rust_star_rope_tail_args kv_rope_args = {
+            .ne00=512, .ne01=1, .ne02=1, .ne03=1,
+            .nb00=sizeof(float), .nb01=kv_row_f32_bytes,
+            .nb02=kv_row_f32_bytes, .nb03=kv_row_f32_bytes,
+            .nb0=sizeof(float), .nb1=kv_row_f32_bytes,
+            .nb2=kv_row_f32_bytes, .nb3=kv_row_f32_bytes,
+            .n_dims=64, .mode=0, .n_ctx_orig=0, .inverse=0,
+            .freq_base=10000.0f, .freq_scale=1.0f, .ext_factor=0.0f,
+            .attn_factor=1.0f, .beta_fast=32.0f, .beta_slow=1.0f,
+            .src2=false,
+        };
+        rust_star_kv_store_args kv_store_args = {
+            .head_dim=512, .n_rot=64, .raw_row=1,
         };
 
         id<MTLCommandBuffer> command = [context.queue commandBuffer];
@@ -1166,6 +1241,53 @@ int rust_star_metal_run_attention_ingress(
         }
         [encoder endEncoding];
 
+        if (rope_and_store) {
+            id<MTLBlitCommandEncoder> q_copy = [command blitCommandEncoder];
+            if (!q_copy) return fail_with_message(error, error_bytes, @"failed to create Q snapshot encoder");
+            [q_copy copyFromBuffer:q_raw_buffer sourceOffset:0
+                          toBuffer:q_cur_buffer destinationOffset:0
+                              size:q_raw_elements*sizeof(float)];
+            [q_copy endEncoding];
+
+            encoder = [command computeCommandEncoder];
+            if (!encoder) return fail_with_message(error, error_bytes, @"failed to create RoPE encoder");
+            [encoder setComputePipelineState:context.headNormRopePipeline];
+            [encoder setBytes:&q_rope_args length:sizeof(q_rope_args) atIndex:0];
+            [encoder setBuffer:q_cur_buffer offset:0 atIndex:1];
+            [encoder setThreadgroupMemoryLength:32u*sizeof(float) atIndex:0];
+            [encoder dispatchThreadgroups:MTLSizeMake(64,1,1)
+                 threadsPerThreadgroup:MTLSizeMake(256,1,1)];
+
+            [encoder setComputePipelineState:context.ropeTailPipeline];
+            [encoder setBytes:&kv_rope_args length:sizeof(kv_rope_args) atIndex:0];
+            [encoder setBuffer:kv_norm_buffer offset:0 atIndex:1];
+            int32_t rope_position = 1;
+            [encoder setBytes:&rope_position length:sizeof(rope_position) atIndex:2];
+            [encoder setBuffer:kv_norm_buffer offset:0 atIndex:3];
+            [encoder setBuffer:kv_norm_buffer offset:0 atIndex:4];
+            [encoder dispatchThreadgroups:MTLSizeMake(1,1,1)
+                 threadsPerThreadgroup:MTLSizeMake(256,1,1)];
+            [encoder endEncoding];
+
+            id<MTLBlitCommandEncoder> kv_copy = [command blitCommandEncoder];
+            if (!kv_copy) return fail_with_message(error, error_bytes, @"failed to create KV snapshot encoder");
+            [kv_copy copyFromBuffer:kv_norm_buffer sourceOffset:0
+                           toBuffer:kv_rope_buffer destinationOffset:0
+                               size:kv_elements*sizeof(float)];
+            [kv_copy endEncoding];
+
+            encoder = [command computeCommandEncoder];
+            if (!encoder) return fail_with_message(error, error_bytes, @"failed to create KV-store encoder");
+            [encoder setComputePipelineState:context.kvStorePipeline];
+            [encoder setBytes:&kv_store_args length:sizeof(kv_store_args) atIndex:0];
+            [encoder setBuffer:kv_norm_buffer offset:0 atIndex:1];
+            [encoder setBuffer:cache_buffer offset:0 atIndex:2];
+            [encoder setThreadgroupMemoryLength:64u*sizeof(float) atIndex:0];
+            [encoder dispatchThreadgroups:MTLSizeMake(1,1,1)
+                 threadsPerThreadgroup:MTLSizeMake(64,1,1)];
+            [encoder endEncoding];
+        }
+
         const double wall_start = monotonic_ms();
         [command commit];
         if (!command_succeeded(command, error, error_bytes)) return 0;
@@ -1180,6 +1302,12 @@ int rust_star_metal_run_attention_ingress(
             memcpy(kv_raw, kv_raw_buffer.contents, kv_elements*sizeof(float));
             memcpy(kv_norm, kv_norm_buffer.contents, kv_elements*sizeof(float));
             memcpy(q_raw, q_raw_buffer.contents, q_raw_elements*sizeof(float));
+        }
+        if (rope_and_store) {
+            memcpy(q_cur, q_cur_buffer.contents, q_raw_elements*sizeof(float));
+            memcpy(kv_rope, kv_rope_buffer.contents, kv_elements*sizeof(float));
+            memcpy(kv_cur, kv_norm_buffer.contents, kv_elements*sizeof(float));
+            memcpy(cache_rows, cache_buffer.contents, 3u*kv_elements*sizeof(float));
         }
         result->model_bytes = model_bytes;
         result->max_buffer_length = context.device.maxBufferLength;
