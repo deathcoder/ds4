@@ -191,6 +191,23 @@ no-copy views, and sentinel guards prove that cache rows 0--95 are unchanged.
 This is a continuous 43-dispatch complete layer-0 final-tile boundary, not a
 full 2K prefill or throughput result.
 
+## Direct M1 layer-0 to layer-1 prefill handoff
+
+Schema: `rust-star-prefill-layers01-boundary-probe-v1`.
+
+`prefill-layers01-boundary-probe` preserves the complete 43-dispatch layer-0
+control and optionally continues its command encoder without synchronization
+or host activation transfer. The live `hc_ffn_post` buffer becomes layer 1's
+four-stream input, followed by plain RMSNorm, the legacy F16 HC mixer, fused HC
+split/collapse/learned norm, and the legacy Q8_0 Q-A batch projection.
+
+Two fresh pinned DwarfStar processes produced byte-identical full 2K
+`hc_attn_pre`, `attn_norm`, and `q_lora` layer-1 captures. The compact fixture
+retains positions 2016--2047, requiring 294,912 additional FP32 values to match
+by bit pattern. The complete boundary uses 47 dispatches and 30 mmap-backed
+no-copy model views. It proves the live inter-layer HC handoff through layer-1
+Q-Lora, not a complete layer 1, full 2K prefill, or throughput result.
+
 ## Layer-0 attention ingress
 
 Schema: `rust-star-layer0-attention-ingress-probe-v1`.

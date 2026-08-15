@@ -182,6 +182,21 @@ copying and requires 6,979,776 produced FP32 values plus 192 selected expert
 IDs to match repeated DwarfStar captures bit-for-bit. It completes layer 0 for
 the isolated final tile, not the full 2K prefill or a throughput result.
 
+To validate the direct layer-0 to layer-1 HC handoff:
+
+```sh
+rust-star/.work/runtime-target/release/rust-star prefill-layers01-boundary-probe \
+  /absolute/path/to/model.gguf \
+  --json rust-star/.work/runtime-target/prefill-layers01-boundary-probe.json
+```
+
+This separate control preserves the complete 43-dispatch layer-0 command and
+continues in the same command buffer through layer 1's plain four-stream
+RMSNorm, F16 HC mixer, fused HC collapse/learned norm, and Q8_0 Q-A projection.
+It wraps five additional model ranges without copying and requires the final
+`32×4096` HC/norm tiles and `32×1024` Q-Lora tile to match two fresh DwarfStar
+captures bit-for-bit. It is not a complete layer-1 or full-prefill claim.
+
 To run the connected layer-0 ingress gate:
 
 ```sh

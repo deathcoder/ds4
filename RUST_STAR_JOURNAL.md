@@ -180,7 +180,11 @@ history; add a correction and update the current-state summary.
   the Q8_0 shared expert, and the additive FFN HC tail. The complete final-tile
   layer uses 43 dispatches and 25 no-copy model views; all 6,979,776 retained
   produced FP32 values and 192 selected expert IDs match repeated native
-  DwarfStar captures exactly.
+  DwarfStar captures exactly. A separate preserved boundary continues the same
+  live command buffer into layer 1's HC ingress, learned attention norm, and
+  Q-A projection. It uses 47 dispatches and 30 no-copy model views; the three
+  new final tiles add 294,912 exact FP32 values without a host activation
+  handoff.
   Full native batched prefill, sparse indexed attention beyond 512 ratio-4
   rows, and the eligible engine-measurement producer remain pending.
 - Measurements: Metal batching was 42.861x faster than synchronized submission
@@ -208,6 +212,10 @@ history; add a correction and update the current-state summary.
   gate repeated it at 138.441 ms wall / 81.329 ms GPU. Both intervals include
   setup, synchronization, exhaustive readback, and comparison and are not
   prefill-throughput claims.
+  The first exact layers-0/1 handoff run reported 125.125 ms wall / 69.515 ms
+  GPU with 30/30 no-copy views; the full gate repeated it at 129.903 ms wall /
+  78.876 ms GPU. These intervals have the same correctness-oriented scope and
+  are not throughput measurements.
   The connected six-dispatch layer segment matched 9,264 retained FP32 values and
   reported 0.102 ms GPU time in the final gate; this remains correctness
   evidence rather than decoder throughput. The nine-dispatch Q/K projection
@@ -301,8 +309,8 @@ history; add a correction and update the current-state summary.
 
 ## Immediate Next Actions
 
-1. Hand the exact final-tile layer-0 FFN HC state directly into layer 1, then
-   broaden retained row coverage toward complete native 2K prefill.
+1. Extend the exact final-tile layer-1 Q-Lora state through the rest of layer
+   1, then broaden retained row coverage toward complete native 2K prefill.
 2. Add the fixed 512-row ratio-4 indexer top-k and sparse indexed attention so
    128 generated tokens can continue beyond the 2K frontier.
 3. Emit the `rust-star-engine-measurement-v1` artifact from the exact
@@ -314,6 +322,61 @@ history; add a correction and update the current-state summary.
 6. Run or approve the fork's GitHub Actions workflow and retain its URL.
 
 ## Entries
+
+### 2026-08-15 — Native final tile hands layer-0 HC directly into layer-1 Q-A
+
+Objective:
+
+- Preserve the complete exact layer-0 final-tile command as an independent
+  control while proving its live four-stream FFN HC output can feed native
+  layer-1 batch arithmetic without synchronization or a host activation seam.
+
+Oracle evidence and schedule decision:
+
+- Selected the smallest decisive layer-1 boundary: plain four-stream RMSNorm,
+  legacy F16 HC mixer, fused HC split/collapse/learned attention norm, and the
+  legacy Q8_0 Q-A batch projection.
+- Captured full layer-1 `hc_attn_pre`, `attn_norm`, and `q_lora` tensors from
+  two fresh pinned DwarfStar 2K processes. All three pairs were byte-identical.
+  Their full SHA-256 values are
+  `a5ad89aaa9a5c3537c22a26730b918bdde4e07177e72c643059306bbb28439bc`,
+  `37b0f1a783c0968445dd77214b2f62b62a0f5dcac01778ca5e0627948c392571`,
+  and `ff0a9a83d0f3077c83ad1ba223310a496d3d8b51709da986d97887f4b0836901`.
+
+Implementation:
+
+- Added `prefill-layer1-ingress-2048-v1` and a reproducible strict importer
+  that binds both full capture sets before retaining positions 2016--2047.
+  The fixture contains three tensors and 1,179,648 verified bytes.
+- Added `prefill-layers01-boundary-probe` with schema
+  `rust-star-prefill-layers01-boundary-probe-v1`. The narrow Metal ABI accepts
+  an optional layer-1 continuation, so the existing v5 layer-0 command still
+  stops at exactly 43 dispatches and 25 model views.
+- When requested, the same encoder feeds `after_ffn_hc_buffer` directly into
+  four layer-1 dispatches and five additional no-copy model views. The new
+  boundary retains 7,274,688 produced FP32 values plus the layer-0 router's 192
+  selected expert IDs, reports the direct handoff in stable JSON, and keeps
+  complete-layer-1 and full-prefill claims false.
+
+Target-Mac evidence:
+
+- The focused optimized run first repeated the preserved v5 control C0 exact
+  at 124.696 ms wall / 65.868 ms GPU, then passed the 47-dispatch layers-0/1
+  boundary C0 exact with 30/30 no-copy views at 125.125 ms wall / 69.515 ms
+  GPU. Both include setup, synchronization, exhaustive readback, and comparison.
+- The complete gate passed formatting, all 78 Rust tests, 53 Python tests, all
+  237 differential fixtures, optimized Objective-C/Metal compilation, strict
+  validation of all 1,288 required model tensors, every established Metal and
+  decoder control, and both steady-state benchmarks. Its layers-0/1 boundary
+  remained exact at 129.903 ms wall / 78.876 ms GPU. The 2K sequential
+  diagnostic remained exact against its replay oracle and preserved the
+  required native-batch mismatch and paired-run ineligibility.
+
+Decision and next:
+
+- Accept the direct live HC handoff and layer-1 Q-A output as the next exact
+  native boundary. Extend it through the remaining uncompressed layer-1
+  attention and FFN schedule before broadening retained row coverage.
 
 ### 2026-08-15 — Native M1 final tile completes layer 0 through the FFN HC tail
 

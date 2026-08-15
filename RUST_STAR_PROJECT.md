@@ -294,13 +294,12 @@ they describe whenever practical.
 
 ## Open Items
 
-- Broaden native batched prefill beyond the complete layer-0 final tile. The M1
-  tile now runs continuously from token IDs through attention, FFN ingress,
-  the decomposed batch router, routed IQ2_XXS/Q2_K experts, the shared Q8_0
-  expert, and the additive four-stream HC tail with every retained boundary C0
-  exact. The next boundary should preserve more rows and hand the live final
-  HC state into layer 1. The sequential 2K initializer still deliberately
-  records its difference from the paired protocol's batched-prefill oracle.
+- Broaden native batched prefill beyond the layer-1 Q-A boundary. The M1 final
+  tile now hands the complete exact layer-0 FFN HC state directly into layer
+  1's HC ingress, learned attention norm, and Q-A projection with every
+  retained boundary C0 exact. The next boundary should finish layer 1 and then
+  preserve more rows. The sequential 2K initializer still deliberately records
+  its difference from the paired protocol's batched-prefill oracle.
 - Add ratio-4 sparse indexer selection after 512 compressed rows, then emit the
   Rust Star engine-measurement contract. The complete 128-token diagnostic no
   longer depends on captured initial cache/compressor state.

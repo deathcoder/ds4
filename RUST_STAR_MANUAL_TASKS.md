@@ -171,8 +171,8 @@ Return evidence:
 
 Status: `BLOCKED` on complete native batched prefill, ratio-4 sparse indexed
 attention, and the engine-measurement producer. The native M1 batch boundary
-is now exact through the complete layer-0 FFN/HC tail for the final 32 queries,
-but the 2K sequential initializer
+is now exact through the complete layer-0 FFN/HC tail and layer-1 Q-A for the
+final 32 queries, but the 2K sequential initializer
 still owns a 128-row raw ring plus context-sized compressed state and exactly
 matches two fresh DwarfStar one-token decode replays. It deliberately records
 a full-logit mismatch against DwarfStar's batched-prefill oracle, so it is not

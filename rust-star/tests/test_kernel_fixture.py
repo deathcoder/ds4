@@ -77,6 +77,9 @@ PREFILL_ATTENTION_OUTPUT_FIXTURE = (
 PREFILL_FFN_OUTPUT_FIXTURE = (
     RUST_STAR_DIR / "fixtures" / "prefill-ffn-output-2048-v1"
 )
+PREFILL_LAYER1_INGRESS_FIXTURE = (
+    RUST_STAR_DIR / "fixtures" / "prefill-layer1-ingress-2048-v1"
+)
 
 
 class KernelFixtureTests(unittest.TestCase):
@@ -487,6 +490,25 @@ class KernelFixtureTests(unittest.TestCase):
                 "kernel_dsv4_hc_expand4",
             ],
         )
+
+    def test_prefill_layer1_ingress_fixture_manifest_and_payloads(self) -> None:
+        manifest = json.loads(
+            (PREFILL_LAYER1_INGRESS_FIXTURE / "manifest.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        report = validate_differential_fixture(PREFILL_LAYER1_INGRESS_FIXTURE)
+        self.assertEqual(
+            report["fixture_id"],
+            "dwarfstar-oracle-v1-prefill-layer1-ingress-2048",
+        )
+        self.assertEqual(report["scope"], "layer-segment")
+        self.assertEqual(report["operations"], 2)
+        self.assertEqual(report["tensors"], 3)
+        self.assertEqual(report["verified_bytes"], 1_179_648)
+        self.assertEqual(manifest["scope"]["layer"], 1)
+        self.assertEqual(manifest["scope"]["captured_position_range"], [2016, 2047])
+        self.assertTrue(manifest["capture"]["fresh_process_bitwise_match"])
 
     def test_fixture_shape_tampering_is_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:

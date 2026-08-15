@@ -78,7 +78,10 @@ reconstructs the 2,048-row contiguous KV input from a captured 2,016-row prefix
 and the live final tile, matches all 6,979,776 retained produced FP32 values
 plus 192 selected expert IDs from repeated DwarfStar captures, and proves cache
 rows 0--95 remain untouched. This completes layer 0 for the isolated final
-tile, not the full 2K prefill path.
+tile, not the full 2K prefill path. A separate preserved control continues the
+same live command buffer through layer 1's four-stream HC collapse, learned
+attention norm, and Q-A projection. Its 47 dispatches and 30 no-copy model
+views reproduce another 294,912 FP32 values from repeated native captures.
 
 Project controls and benchmark contracts:
 

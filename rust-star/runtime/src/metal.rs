@@ -11,6 +11,8 @@ pub const PROJECTION_PROBE_SCHEMA: &str = "rust-star-q8-0-projection-probe-v1";
 pub const PREFILL_Q8_BOUNDARY_PROBE_SCHEMA: &str = "rust-star-prefill-q8-boundary-probe-v1";
 pub const PREFILL_QKV_BOUNDARY_PROBE_SCHEMA: &str = "rust-star-prefill-qkv-boundary-probe-v1";
 pub const PREFILL_LAYER0_BOUNDARY_PROBE_SCHEMA: &str = "rust-star-prefill-layer0-boundary-probe-v5";
+pub const PREFILL_LAYERS01_BOUNDARY_PROBE_SCHEMA: &str =
+    "rust-star-prefill-layers01-boundary-probe-v1";
 pub const INGRESS_PROBE_SCHEMA: &str = "rust-star-layer0-attention-ingress-probe-v1";
 pub const ATTENTION_SETUP_PROBE_SCHEMA: &str = "rust-star-layer0-attention-setup-probe-v1";
 pub const ROPE_KV_STORE_PROBE_SCHEMA: &str = "rust-star-layer0-rope-kv-store-probe-v1";
@@ -51,6 +53,8 @@ pub const PREFILL_ATTENTION_READ_FIXTURE_ID: &str =
 pub const PREFILL_ATTENTION_OUTPUT_FIXTURE_ID: &str =
     "dwarfstar-oracle-v1-prefill-attention-output-2048";
 pub const PREFILL_FFN_OUTPUT_FIXTURE_ID: &str = "dwarfstar-oracle-v1-prefill-ffn-output-2048";
+pub const PREFILL_LAYER1_INGRESS_FIXTURE_ID: &str =
+    "dwarfstar-oracle-v1-prefill-layer1-ingress-2048";
 pub const PREFILL_HC_INGRESS_FIXTURE_ID: &str = "dwarfstar-oracle-v1-prefill-hc-ingress-2048";
 pub const INGRESS_FIXTURE_ID: &str = "dwarfstar-oracle-v1-layer0-pos1-attention-ingress";
 pub const ATTENTION_SETUP_FIXTURE_ID: &str = "dwarfstar-oracle-v1-layer0-pos1-qkv-setup";
@@ -215,6 +219,15 @@ const PREFILL_FFN_SHARED_OUT_BYTES: &[u8] =
     include_bytes!("../../fixtures/prefill-ffn-output-2048-v1/ffn-shexp-final-tile.f32le.bin");
 const PREFILL_FFN_HC_POST_BYTES: &[u8] =
     include_bytes!("../../fixtures/prefill-ffn-output-2048-v1/hc-ffn-post-final-tile.f32le.bin");
+const PREFILL_LAYER1_HC_PRE_BYTES: &[u8] = include_bytes!(
+    "../../fixtures/prefill-layer1-ingress-2048-v1/layer1-hc-attn-pre-final-tile.f32le.bin"
+);
+const PREFILL_LAYER1_ATTN_NORM_BYTES: &[u8] = include_bytes!(
+    "../../fixtures/prefill-layer1-ingress-2048-v1/layer1-attn-norm-final-tile.f32le.bin"
+);
+const PREFILL_LAYER1_Q_LORA_BYTES: &[u8] = include_bytes!(
+    "../../fixtures/prefill-layer1-ingress-2048-v1/layer1-q-lora-final-tile.f32le.bin"
+);
 const PREFILL_HC_TOKEN_IDS_BYTES: &[u8] =
     include_bytes!("../../fixtures/prefill-hc-ingress-2048-v1/token-ids-final-tile.i32le.bin");
 const PREFILL_HC_COLLAPSED_BYTES: &[u8] =
@@ -723,6 +736,13 @@ pub struct PrefillLayer0BoundaryProbeReport {
     pub wall_ms: f64,
     pub gpu_ms: f64,
     pub checksums: [u64; 28],
+}
+
+#[derive(Clone, Debug)]
+pub struct PrefillLayers01BoundaryProbeReport {
+    pub layer0: PrefillLayer0BoundaryProbeReport,
+    pub layer1_fixture_id: &'static str,
+    pub checksums: [u64; 3],
 }
 
 #[derive(Clone, Debug)]
@@ -2320,6 +2340,51 @@ pub fn write_prefill_layer0_boundary_probe_json<W: Write>(
     Ok(())
 }
 
+pub fn write_prefill_layers01_boundary_probe_json<W: Write>(
+    output: &mut W,
+    report: &PrefillLayers01BoundaryProbeReport,
+) -> Result<()> {
+    let layer0 = &report.layer0;
+    write!(
+        output,
+        "{{\n  \"schema\": \"{PREFILL_LAYERS01_BOUNDARY_PROBE_SCHEMA}\",\n  \"fixtures\": ["
+    )?;
+    for (index, fixture) in [
+        layer0.ingress_fixture_id,
+        layer0.qkv_fixture_id,
+        layer0.kv_state_fixture_id,
+        layer0.attention_fixture_id,
+        layer0.attention_output_fixture_id,
+        layer0.ffn_output_fixture_id,
+        report.layer1_fixture_id,
+    ]
+    .iter()
+    .enumerate()
+    {
+        if index != 0 {
+            output.write_all(b", ")?;
+        }
+        crate::artifact::write_json_string(output, fixture)?;
+    }
+    write!(
+        output,
+        "],\n  \"shape\": {{\n    \"rows\": {},\n    \"position_start\": {},\n    \"position_end\": {}\n  }},\n  \"input_boundary\": \"token_ids\",\n  \"output_boundary\": \"layer1_q_lora\",\n  \"schedule\": {{\n    \"dispatches\": {},\n    \"layer0_dispatches\": 43,\n    \"layer1_ingress_dispatches\": 4,\n    \"layer1_hc_norm_kernel\": \"kernel_rms_norm_f32_4\",\n    \"layer1_hc_projection_kernel\": \"kernel_mul_mm_f16_f32\",\n    \"layer1_hc_collapse_kernel\": \"kernel_dsv4_hc_split_weighted_sum_norm4\",\n    \"layer1_q_a_kernel\": \"kernel_mul_mm_q8_0_f32\"\n  }},\n  \"mapping\": {{\n    \"wrapped_model_ranges\": {},\n    \"pointer_matches\": {}\n  }},\n  \"timing\": {{\n    \"wall_ms\": {:.6},\n    \"gpu_ms\": {:.6}\n  }},\n  \"checksums\": {{\n    \"layer0_hc_ffn_post\": {},\n    \"layer1_hc_attn_pre\": {},\n    \"layer1_attn_norm\": {},\n    \"layer1_q_lora\": {}\n  }},\n  \"c0_bitwise_match\": true,\n  \"continuous_command_buffer\": true,\n  \"direct_hc_handoff\": true,\n  \"native_batch_schedule\": true,\n  \"full_layer1_claim\": false,\n  \"full_prefill_claim\": false\n}}\n",
+        layer0.rows,
+        layer0.position_start,
+        layer0.position_start + layer0.rows as u32 - 1,
+        layer0.dispatches,
+        layer0.wrapped_model_ranges,
+        layer0.pointer_matches,
+        layer0.wall_ms,
+        layer0.gpu_ms,
+        layer0.checksums[27],
+        report.checksums[0],
+        report.checksums[1],
+        report.checksums[2],
+    )?;
+    Ok(())
+}
+
 fn validate_embedding_inputs(
     model: &MappedModel,
     tensor: &TensorInfo,
@@ -2882,6 +2947,28 @@ fn prefill_ffn_output_fixture() -> Result<([Vec<f32>; 9], Vec<i32>)> {
         ));
     }
     Ok((tensors, selected))
+}
+
+fn prefill_layer1_ingress_fixture() -> Result<[Vec<f32>; 3]> {
+    let tensors = [
+        decode_f32_fixture(PREFILL_LAYER1_HC_PRE_BYTES, "prefill layer-1 HC ingress")?,
+        decode_f32_fixture(
+            PREFILL_LAYER1_ATTN_NORM_BYTES,
+            "prefill layer-1 attention norm",
+        )?,
+        decode_f32_fixture(PREFILL_LAYER1_Q_LORA_BYTES, "prefill layer-1 Q-Lora")?,
+    ];
+    let expected = [32 * 4096, 32 * 4096, 32 * 1024];
+    if tensors
+        .iter()
+        .zip(expected)
+        .any(|(tensor, elements)| tensor.len() != elements)
+    {
+        return Err(Error::invalid(
+            "prefill layer-1 ingress fixture dimensions are invalid",
+        ));
+    }
+    Ok(tensors)
 }
 
 fn prefill_hc_ingress_fixture() -> Result<(Vec<u32>, Vec<f32>, Vec<f32>)> {
@@ -4065,6 +4152,20 @@ mod imp {
     }
 
     #[repr(C)]
+    struct RawPrefillAttentionIngressWeights {
+        hc_fn_offset: u64,
+        hc_fn_bytes: u64,
+        hc_scale_offset: u64,
+        hc_scale_bytes: u64,
+        hc_base_offset: u64,
+        hc_base_bytes: u64,
+        norm_offset: u64,
+        norm_bytes: u64,
+        q_a_offset: u64,
+        q_a_bytes: u64,
+    }
+
+    #[repr(C)]
     struct RawPrefillLayer0Weights {
         embedding_offset: u64,
         embedding_bytes: u64,
@@ -4299,6 +4400,7 @@ mod imp {
             model_mapping: *const c_void,
             model_bytes: u64,
             weights: *const RawPrefillLayer0Weights,
+            next_ingress: *const RawPrefillAttentionIngressWeights,
             n_vocab: u32,
             rows: u32,
             position_start: u32,
@@ -4331,6 +4433,9 @@ mod imp {
             routed_out: *mut f32,
             shared_out: *mut f32,
             after_ffn_hc: *mut f32,
+            next_hc_collapsed: *mut f32,
+            next_attn_norm: *mut f32,
+            next_q_lora: *mut f32,
             result: *mut RawPrefillLayer0ProbeResult,
             error: *mut c_char,
             error_bytes: usize,
@@ -5504,9 +5609,10 @@ mod imp {
         })
     }
 
-    pub fn run_prefill_layer0_boundary_probe(
+    fn run_prefill_boundary_probe(
         model: &MappedModel,
-    ) -> Result<PrefillLayer0BoundaryProbeReport> {
+        include_layer1: bool,
+    ) -> Result<(PrefillLayer0BoundaryProbeReport, Option<[u64; 3]>)> {
         let embedding = exact_tensor(model, "token_embd.weight", 1, &[4096, 129280])?;
         let hc_fn = exact_tensor(model, "blk.0.hc_attn_fn.weight", 1, &[16384, 24])?;
         let hc_scale = exact_tensor(model, "blk.0.hc_attn_scale.weight", 0, &[3])?;
@@ -5534,6 +5640,17 @@ mod imp {
         let shared_gate = exact_tensor(model, "blk.0.ffn_gate_shexp.weight", 8, &[4096, 2048])?;
         let shared_up = exact_tensor(model, "blk.0.ffn_up_shexp.weight", 8, &[4096, 2048])?;
         let shared_down = exact_tensor(model, "blk.0.ffn_down_shexp.weight", 8, &[2048, 4096])?;
+        let layer1_weights = if include_layer1 {
+            Some((
+                exact_tensor(model, "blk.1.hc_attn_fn.weight", 1, &[16384, 24])?,
+                exact_tensor(model, "blk.1.hc_attn_scale.weight", 0, &[3])?,
+                exact_tensor(model, "blk.1.hc_attn_base.weight", 0, &[24])?,
+                exact_tensor(model, "blk.1.attn_norm.weight", 0, &[4096])?,
+                exact_tensor(model, "blk.1.attn_q_a.weight", 8, &[4096, 1024])?,
+            ))
+        } else {
+            None
+        };
         let (tokens, expected_collapsed, expected_attn_norm) = prefill_hc_ingress_fixture()?;
         let [qkv_attn_norm, expected_q, expected_q_norm, expected_kv_raw, expected_kv_norm, expected_q_raw, expected_q_cur] =
             prefill_qkv_boundary_fixture()?;
@@ -5544,6 +5661,11 @@ mod imp {
         let [expected_attention_low, expected_attention_projected, expected_attention_hc_post] =
             prefill_attention_output_fixture()?;
         let (expected_ffn, expected_selected) = prefill_ffn_output_fixture()?;
+        let expected_layer1 = if include_layer1 {
+            Some(prefill_layer1_ingress_fixture()?)
+        } else {
+            None
+        };
         if expected_attn_norm
             .iter()
             .zip(&qkv_attn_norm)
@@ -5610,6 +5732,23 @@ mod imp {
                 shared_down_bytes: shared_down.bytes,
             },
         };
+        let raw_layer1_weights =
+            layer1_weights
+                .as_ref()
+                .map(
+                    |(hc_fn, hc_scale, hc_base, norm, q_a)| RawPrefillAttentionIngressWeights {
+                        hc_fn_offset: hc_fn.absolute_offset,
+                        hc_fn_bytes: hc_fn.bytes,
+                        hc_scale_offset: hc_scale.absolute_offset,
+                        hc_scale_bytes: hc_scale.bytes,
+                        hc_base_offset: hc_base.absolute_offset,
+                        hc_base_bytes: hc_base.bytes,
+                        norm_offset: norm.absolute_offset,
+                        norm_bytes: norm.bytes,
+                        q_a_offset: q_a.absolute_offset,
+                        q_a_bytes: q_a.bytes,
+                    },
+                );
         let mut actual_collapsed = vec![0.0_f32; expected_collapsed.len()];
         let mut actual_attn_norm = vec![0.0_f32; expected_attn_norm.len()];
         let mut actual_q = vec![0.0_f32; expected_q.len()];
@@ -5637,6 +5776,24 @@ mod imp {
         let mut actual_routed_out = vec![0.0_f32; expected_ffn[6].len()];
         let mut actual_shared_out = vec![0.0_f32; expected_ffn[7].len()];
         let mut actual_ffn_hc_post = vec![0.0_f32; expected_ffn[8].len()];
+        let mut actual_layer1_hc = vec![
+            0.0_f32;
+            expected_layer1
+                .as_ref()
+                .map_or(0, |tensors| tensors[0].len())
+        ];
+        let mut actual_layer1_norm = vec![
+            0.0_f32;
+            expected_layer1
+                .as_ref()
+                .map_or(0, |tensors| tensors[1].len())
+        ];
+        let mut actual_layer1_q = vec![
+            0.0_f32;
+            expected_layer1
+                .as_ref()
+                .map_or(0, |tensors| tensors[2].len())
+        ];
         let mut expected_full_kv = expected_kv_prefix.clone();
         expected_full_kv.extend_from_slice(&expected_kv_cur);
 
@@ -5659,6 +5816,9 @@ mod imp {
                 model.mapping_pointer(),
                 model.bytes(),
                 &weights,
+                raw_layer1_weights
+                    .as_ref()
+                    .map_or(ptr::null(), |weights| weights as *const _),
                 129280,
                 32,
                 2016,
@@ -5691,6 +5851,21 @@ mod imp {
                 actual_routed_out.as_mut_ptr(),
                 actual_shared_out.as_mut_ptr(),
                 actual_ffn_hc_post.as_mut_ptr(),
+                if include_layer1 {
+                    actual_layer1_hc.as_mut_ptr()
+                } else {
+                    ptr::null_mut()
+                },
+                if include_layer1 {
+                    actual_layer1_norm.as_mut_ptr()
+                } else {
+                    ptr::null_mut()
+                },
+                if include_layer1 {
+                    actual_layer1_q.as_mut_ptr()
+                } else {
+                    ptr::null_mut()
+                },
                 &mut raw,
                 error.as_mut_ptr(),
                 error.len(),
@@ -5702,21 +5877,23 @@ mod imp {
                 error_text(&error)
             )));
         }
+        let expected_dispatches = if include_layer1 { 47 } else { 43 };
+        let expected_model_ranges = if include_layer1 { 30 } else { 25 };
         if raw.rows != 32
             || raw.position_start != 2016
             || raw.input_elements_per_row != 4096
             || raw.q_lora_elements_per_row != 1024
             || raw.kv_elements_per_row != 512
             || raw.q_elements_per_row != 32768
-            || raw.dispatches != 43
-            || raw.wrapped_model_ranges != 25
-            || raw.pointer_matches != 25
+            || raw.dispatches != expected_dispatches
+            || raw.wrapped_model_ranges != expected_model_ranges
+            || raw.pointer_matches != expected_model_ranges
             || raw.raw_cache_rows != 128
             || raw.raw_cache_target_row != 96
             || raw.raw_cache_guard_rows != 96
         {
             return Err(Error::invalid(
-                "Metal prefill layer-0 boundary returned an unexpected schedule or mapping",
+                "Metal prefill boundary returned an unexpected schedule or mapping",
             ));
         }
         for (label, actual, expected) in [
@@ -5857,6 +6034,41 @@ mod imp {
                 )));
             }
         }
+        let layer1_checksums = if let Some(expected) = expected_layer1.as_ref() {
+            for (label, actual, expected) in [
+                (
+                    "layer1_hc_attn_pre",
+                    actual_layer1_hc.as_slice(),
+                    expected[0].as_slice(),
+                ),
+                (
+                    "layer1_attn_norm",
+                    actual_layer1_norm.as_slice(),
+                    expected[1].as_slice(),
+                ),
+                (
+                    "layer1_q_lora",
+                    actual_layer1_q.as_slice(),
+                    expected[2].as_slice(),
+                ),
+            ] {
+                for (index, (actual, expected)) in actual.iter().zip(expected).enumerate() {
+                    if actual.to_bits() != expected.to_bits() {
+                        return Err(Error::invalid(format!(
+                            "prefill layers-0/1 C0 mismatch in {label}[{index}]: actual={:#010x} expected={:#010x}",
+                            actual.to_bits(), expected.to_bits()
+                        )));
+                    }
+                }
+            }
+            Some([
+                checksum_f32(&actual_layer1_hc),
+                checksum_f32(&actual_layer1_norm),
+                checksum_f32(&actual_layer1_q),
+            ])
+        } else {
+            None
+        };
         for (index, value) in actual_raw_cache[..96 * 512].iter().enumerate() {
             if value.to_bits() != (-12345.5_f32).to_bits() {
                 return Err(Error::invalid(format!(
@@ -5877,7 +6089,7 @@ mod imp {
                 "Metal prefill layer-0 boundary returned a zero wall interval",
             ));
         }
-        Ok(PrefillLayer0BoundaryProbeReport {
+        let layer0 = PrefillLayer0BoundaryProbeReport {
             ingress_fixture_id: PREFILL_HC_INGRESS_FIXTURE_ID,
             qkv_fixture_id: PREFILL_QKV_BOUNDARY_FIXTURE_ID,
             kv_state_fixture_id: PREFILL_KV_STATE_FIXTURE_ID,
@@ -5926,6 +6138,28 @@ mod imp {
                 checksum_f32(&actual_shared_out),
                 checksum_f32(&actual_ffn_hc_post),
             ],
+        };
+        Ok((layer0, layer1_checksums))
+    }
+
+    pub fn run_prefill_layer0_boundary_probe(
+        model: &MappedModel,
+    ) -> Result<PrefillLayer0BoundaryProbeReport> {
+        let (report, layer1) = run_prefill_boundary_probe(model, false)?;
+        debug_assert!(layer1.is_none());
+        Ok(report)
+    }
+
+    pub fn run_prefill_layers01_boundary_probe(
+        model: &MappedModel,
+    ) -> Result<PrefillLayers01BoundaryProbeReport> {
+        let (layer0, layer1) = run_prefill_boundary_probe(model, true)?;
+        Ok(PrefillLayers01BoundaryProbeReport {
+            layer0,
+            layer1_fixture_id: PREFILL_LAYER1_INGRESS_FIXTURE_ID,
+            checksums: layer1.ok_or_else(|| {
+                Error::invalid("prefill layers-0/1 boundary omitted layer-1 checksums")
+            })?,
         })
     }
 
@@ -8781,6 +9015,17 @@ mod imp {
         ))
     }
 
+    pub fn run_prefill_layers01_boundary_probe(
+        model: &MappedModel,
+    ) -> Result<PrefillLayers01BoundaryProbeReport> {
+        let _ = prefill_layer1_ingress_fixture()?;
+        let _ = exact_tensor(model, "blk.1.hc_attn_fn.weight", 1, &[16384, 24])?;
+        let _ = exact_tensor(model, "blk.1.attn_q_a.weight", 8, &[4096, 1024])?;
+        Err(Error::invalid(
+            "the Metal prefill layers-0/1 boundary probe is available only on macOS",
+        ))
+    }
+
     pub fn run_prefill_layer0_boundary_probe(
         model: &MappedModel,
     ) -> Result<PrefillLayer0BoundaryProbeReport> {
@@ -9126,7 +9371,8 @@ pub use imp::{
     run_layers0123_bench, run_layers0123_chained_probe, run_layers0123_decode_probe,
     run_layers0123_probe, run_layers012_chained_probe, run_layers012_probe, run_layers01_probe,
     run_layers0_to_42_decode_probe, run_moe_output_probe, run_position127_decoder_probe,
-    run_prefill_frontier_probe, run_prefill_layer0_boundary_probe, run_prefill_q8_boundary_probe,
+    run_prefill_frontier_probe, run_prefill_layer0_boundary_probe,
+    run_prefill_layers01_boundary_probe, run_prefill_q8_boundary_probe,
     run_prefill_qkv_boundary_probe, run_probe, run_q8_projection_probe,
     run_ratio128_compressor_replay_probe, run_rope_kv_store_probe, LayerExecutor,
 };
@@ -9281,6 +9527,18 @@ mod tests {
                 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31,
                 32, 33, 34, 35, 36, 37, 38,
             ],
+        }
+    }
+
+    fn prefill_layers01_boundary_report() -> PrefillLayers01BoundaryProbeReport {
+        let mut layer0 = prefill_layer0_boundary_report();
+        layer0.dispatches = 47;
+        layer0.wrapped_model_ranges = 30;
+        layer0.pointer_matches = 30;
+        PrefillLayers01BoundaryProbeReport {
+            layer0,
+            layer1_fixture_id: PREFILL_LAYER1_INGRESS_FIXTURE_ID,
+            checksums: [39, 40, 41],
         }
     }
 
@@ -10458,6 +10716,26 @@ mod tests {
     }
 
     #[test]
+    fn writes_stable_prefill_layers01_boundary_probe_json() {
+        let mut output = Vec::new();
+        write_prefill_layers01_boundary_probe_json(
+            &mut output,
+            &prefill_layers01_boundary_report(),
+        )
+        .unwrap();
+        let text = String::from_utf8(output).unwrap();
+        assert!(text.contains(&format!(
+            "\"schema\": \"{PREFILL_LAYERS01_BOUNDARY_PROBE_SCHEMA}\""
+        )));
+        assert!(text.contains("\"output_boundary\": \"layer1_q_lora\""));
+        assert!(text.contains("\"dispatches\": 47"));
+        assert!(text.contains("\"wrapped_model_ranges\": 30"));
+        assert!(text.contains("\"direct_hc_handoff\": true"));
+        assert!(text.contains("\"full_layer1_claim\": false"));
+        assert!(text.contains("\"full_prefill_claim\": false"));
+    }
+
+    #[test]
     fn writes_stable_ratio128_compressor_replay_json() {
         let mut output = Vec::new();
         write_ratio128_compressor_replay_probe_json(&mut output, &ratio128_compressor_report())
@@ -10645,6 +10923,19 @@ mod tests {
         assert_eq!(tensors[7].len(), 32 * 4096);
         assert_eq!(tensors[8].len(), 32 * 16384);
         assert!(tensors.iter().flatten().all(|value| value.is_finite()));
+    }
+
+    #[test]
+    fn prefill_layer1_ingress_fixture_has_target_shapes() {
+        let [hc, norm, q_lora] = prefill_layer1_ingress_fixture().unwrap();
+        assert_eq!(hc.len(), 32 * 4096);
+        assert_eq!(norm.len(), 32 * 4096);
+        assert_eq!(q_lora.len(), 32 * 1024);
+        assert!(hc
+            .iter()
+            .chain(&norm)
+            .chain(&q_lora)
+            .all(|value| value.is_finite()));
     }
 
     #[test]

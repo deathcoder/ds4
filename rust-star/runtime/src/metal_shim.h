@@ -112,6 +112,14 @@ typedef struct rust_star_metal_prefill_ffn_weights {
     uint64_t shared_down_offset, shared_down_bytes;
 } rust_star_metal_prefill_ffn_weights;
 
+typedef struct rust_star_metal_prefill_attention_ingress_weights {
+    uint64_t hc_fn_offset, hc_fn_bytes;
+    uint64_t hc_scale_offset, hc_scale_bytes;
+    uint64_t hc_base_offset, hc_base_bytes;
+    uint64_t norm_offset, norm_bytes;
+    uint64_t q_a_offset, q_a_bytes;
+} rust_star_metal_prefill_attention_ingress_weights;
+
 typedef struct rust_star_metal_prefill_layer0_weights {
     uint64_t embedding_offset, embedding_bytes;
     uint64_t hc_fn_offset, hc_fn_bytes;
@@ -282,6 +290,7 @@ int rust_star_metal_run_prefill_layer0_boundary(
     const void *model_mapping,
     uint64_t model_bytes,
     const rust_star_metal_prefill_layer0_weights *weights,
+    const rust_star_metal_prefill_attention_ingress_weights *next_ingress,
     uint32_t n_vocab,
     uint32_t rows,
     uint32_t position_start,
@@ -314,6 +323,9 @@ int rust_star_metal_run_prefill_layer0_boundary(
     float *routed_out,
     float *shared_out,
     float *after_ffn_hc,
+    float *next_hc_collapsed,
+    float *next_attn_norm,
+    float *next_q_lora,
     rust_star_metal_prefill_layer0_probe_result *result,
     char *error,
     size_t error_bytes);
