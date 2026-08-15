@@ -84,7 +84,11 @@ history; add a correction and update the current-state summary.
   chain declares layer 2, while the four-layer chain declares layer 3, so both
   remain independently validated scheduler controls. Layer 3 binds the model's
   256-value `exp_probs_b.bias` and uses biased top-k selection instead of the
-  early layers' token-indexed hash tables.
+  early layers' token-indexed hash tables. The four-layer steady-state harness
+  now resolves all 100 model spans, decodes the four fixtures, and allocates
+  host outputs once. Warmup and measured chains reuse those bindings; measured
+  iterations collect only Metal timing metadata, followed by one exhaustive C0
+  readback after the final sample.
 - Measurements: Metal batching was 42.861x faster than synchronized submission
   in the retained M-002 probe. DwarfStar medians are 164.86 prefill / 19.90
   generation tok/s at 2K and 161.05 prefill / 17.36 generation tok/s at 32K.
@@ -115,7 +119,11 @@ history; add a correction and update the current-state summary.
   pairs measured 98.371 ms synchronized versus 97.216 ms chained median wall
   time, a 1.0119x ratio or 1.17% reduction. Median summed GPU intervals were
   68.128 and 67.986 ms; this is again a scheduler diagnostic, not a
-  decoder-throughput claim.
+  decoder-throughput claim. The prepared fixed-position four-layer replay
+  measured 4.318 ms wall median (0.180 ms MAD) and 3.767 ms summed-GPU median
+  (0.131 ms MAD) across 20 samples after five warmups, then passed one complete
+  four-layer C0 collection. It is a steady-state execution microbenchmark, not
+  token throughput.
 - Manual handoff: `RUST_STAR_MANUAL_TASKS.md` records Actions approval, target
   compilation/model inspection, quick/extended oracle capture, and the deferred
   secure-access decision with exact evidence requirements.
@@ -128,17 +136,75 @@ history; add a correction and update the current-state summary.
 
 ## Immediate Next Actions
 
-1. Separate correctness readback from the production execution interval and
-   add a repeated four-layer execution harness so scheduler timing excludes
-   fixture collection and one-time setup.
-2. Extend the ordered executor and C0 capture to the next materially distinct
+1. Extend the ordered executor and C0 capture to the next materially distinct
    layer/state boundary rather than introducing a graph framework; preserve
    synchronized and chained four-layer paths as scheduler controls.
+2. Define the minimum real decoder loop around the proven four-layer executor:
+   token/position advancement, persistent cache growth, and output handoff,
+   while keeping the fixed-position replay as a regression microbenchmark.
 3. Run the extended 2K--1M frontier capture when the Mac can be dedicated to a
    long benchmark; preserve any 512K/1M capacity failure as evidence.
 4. Run or approve the fork's GitHub Actions workflow and retain its URL.
 
 ## Entries
+
+### 2026-08-15 — Prepared four-layer replay isolated steady-state execution
+
+Objective:
+
+- Remove fixture decoding, model-directory lookup, host allocation, and tensor
+  readback from the repeated four-layer timing interval while retaining one
+  exhaustive post-measurement C0 gate.
+
+Implementation:
+
+- Added `rust-star-layers0123-steady-state-v1` and the
+  `layers0123-bench` CLI with bounded warmup/iteration controls and atomic
+  JSON output.
+- Introduced prepared layer executions that resolve and validate 25 mmap-backed
+  model spans per layer, decode each pinned fixture, and allocate every host
+  result vector once. Existing single and chained correctness probes now use
+  the same preparation object.
+- Added a timing-only Metal command mode. It requires a completed declared
+  chain, may be queried only through layer 0, and returns the first-submit to
+  tail-completion wall interval plus the sum of all four command-buffer GPU
+  intervals. It copies no activation, router, expert, cache, or HC data.
+- Warmup and measured chains reuse one context, cached model views, activation
+  allocations, and per-layer KV storage. After the last measured sample, the
+  standard collector reads all four layers once and performs the unchanged
+  bitwise comparisons.
+
+Target-Mac evidence:
+
+- A 2-warmup/5-sample smoke test reported 6.709 ms wall median and 5.524 ms
+  summed-GPU median, then matched every final layer boundary.
+- The canonical 5-warmup/20-sample run reported wall samples
+  `[5.375, 4.769, 5.769, 4.265, 4.380, 4.062, 4.601, 4.197, 4.240,
+  4.166, 5.656, 4.371, 4.525, 4.562, 4.231, 4.255, 4.008, 4.831,
+  4.181, 4.212]` ms: 4.318 ms median, 0.180 ms MAD, 4.008 ms min,
+  and 5.769 ms max.
+- Summed-GPU timing was 3.767 ms median, 0.131 ms MAD, 3.602 ms min,
+  and 4.851 ms max. One exhaustive collection after sample 20 matched all four
+  pinned DwarfStar fixtures and expected expert routes bit-for-bit.
+- The complete repository gate then passed 45 Rust tests, the optimized build,
+  37 Python tests, all 11 differential fixtures, the strict 1,288-tensor model
+  recipe, every incremental Metal probe, both four-layer scheduler controls,
+  the new 5-warmup/20-sample replay, and the 30-sample layer-0 benchmark. Its
+  integrated replay measured 4.241 ms wall median (0.139 ms MAD) and 3.781 ms
+  summed-GPU median (0.110 ms MAD), followed by an exact final four-layer C0
+  collection. The subsequent layer-0 control measured 1.900 ms wall median
+  and 1.526 ms GPU median.
+
+Decision:
+
+- Accept prepared four-layer replay as the current steady-state
+  execution/scheduler microbenchmark. Do not compare its fixed token-201,
+  position-1 replay directly with DwarfStar token throughput.
+
+Next:
+
+- Keep this replay in the target-Mac gate, then either cross the next distinct
+  layer boundary or introduce the minimum position-advancing decoder loop.
 
 ### 2026-08-15 — Layer 3 crossed the biased-top-k boundary and stayed exact
 

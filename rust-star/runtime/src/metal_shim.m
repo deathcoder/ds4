@@ -19,6 +19,7 @@ enum {
     RUST_STAR_COMMAND_CHAINED_ENQUEUE = 1,
     RUST_STAR_COMMAND_CHAINED_FINAL = 2,
     RUST_STAR_COMMAND_CHAINED_COLLECT = 3,
+    RUST_STAR_COMMAND_CHAINED_TIMING = 4,
 };
 
 static NSString *const kProbeSource =
@@ -1267,7 +1268,9 @@ int rust_star_metal_run_attention_ingress(
     const BOOL chained_submission = command_mode == RUST_STAR_COMMAND_CHAINED_ENQUEUE ||
         command_mode == RUST_STAR_COMMAND_CHAINED_FINAL;
     const BOOL chained_collect = command_mode == RUST_STAR_COMMAND_CHAINED_COLLECT;
-    const BOOL layer_scoped_buffers = chained_submission || chained_collect;
+    const BOOL chained_timing = command_mode == RUST_STAR_COMMAND_CHAINED_TIMING;
+    const BOOL chained_replay = chained_collect || chained_timing;
+    const BOOL layer_scoped_buffers = chained_submission || chained_replay;
     const uint32_t warmup_iterations = full_layer ? layer0->warmup_iterations : 0;
     const uint32_t measured_iterations = full_layer ? layer0->measured_iterations : 1;
     if (!opaque_context || !model_mapping || !mixes || !split || !collapsed ||
@@ -1303,7 +1306,7 @@ int rust_star_metal_run_attention_ingress(
         return fail_with_message(error, error_bytes,
             @"full layer execution must run layer 0 before continuing into later layers");
     }
-    if (command_mode > RUST_STAR_COMMAND_CHAINED_COLLECT || (!full_layer && command_mode != 0)) {
+    if (command_mode > RUST_STAR_COMMAND_CHAINED_TIMING || (!full_layer && command_mode != 0)) {
         return fail_with_message(error, error_bytes, @"invalid full-layer command mode");
     }
     if (full_layer && command_mode == RUST_STAR_COMMAND_SYNCHRONIZED &&
@@ -1311,7 +1314,7 @@ int rust_star_metal_run_attention_ingress(
         return fail_with_message(error, error_bytes,
             @"synchronized layer execution must not declare a command-chain tail");
     }
-    if ((chained_submission || chained_collect) &&
+    if ((chained_submission || chained_replay) &&
         (layer0->chain_final_layer < 2 || layer0->chain_final_layer > 3 ||
          layer0->layer_index > layer0->chain_final_layer)) {
         return fail_with_message(error, error_bytes,
@@ -1397,7 +1400,7 @@ int rust_star_metal_run_attention_ingress(
             return fail_with_message(error, error_bytes,
                 @"chained layer submission is missing its preceding command buffer");
         }
-        if ((chained_submission || chained_collect) &&
+        if ((chained_submission || chained_replay) &&
             context.chainedFinalLayer != layer0->chain_final_layer) {
             return fail_with_message(error, error_bytes,
                 @"chained layer execution changed its declared command-chain tail");
@@ -1412,9 +1415,13 @@ int rust_star_metal_run_attention_ingress(
             return fail_with_message(error, error_bytes,
                 @"the declared tail layer must finalize the command chain");
         }
-        if (chained_collect && (!context.chainedReady || !context.chainedCommands[chained_key])) {
+        if (chained_replay && (!context.chainedReady || !context.chainedCommands[chained_key])) {
             return fail_with_message(error, error_bytes,
                 @"chained layer collection requires a completed command chain");
+        }
+        if (chained_timing && layer0->layer_index != 0) {
+            return fail_with_message(error, error_bytes,
+                @"chained timing must be collected from layer 0");
         }
 
         NSUInteger embedding_inner = 0, hc_fn_inner = 0, scale_inner = 0;
@@ -1586,12 +1593,12 @@ int rust_star_metal_run_attention_ingress(
             !shared_mid_buffer || !shared_out_buffer || !after_ffn_hc_buffer)) {
             return fail_with_message(error, error_bytes, @"failed to allocate full layer buffers");
         }
-        if (rope_and_store && !chained_collect) {
+        if (rope_and_store && !chained_replay) {
             float *cache = cache_buffer.contents;
             for (uint32_t index = 0; index < 3u*kv_elements; index++) cache[index] = -12345.5f;
             if (attention_read) memcpy(cache, cache_row0, kv_elements*sizeof(float));
         }
-        if (attention_read && !chained_collect) memset(mask_buffer.contents, 0, mask_bytes);
+        if (attention_read && !chained_replay) memset(mask_buffer.contents, 0, mask_bytes);
 
         const uint64_t embedding_row_bytes = (uint64_t)n_embd*sizeof(uint16_t);
         rust_star_get_rows_args get_rows = {
@@ -1850,7 +1857,7 @@ int rust_star_metal_run_attention_ingress(
         rust_star_hc_expand_args ffn_hc_post_args = output_hc_args;
         ffn_hc_post_args.has_add = 1;
 
-        const uint32_t total_iterations = chained_collect
+        const uint32_t total_iterations = chained_replay
             ? 0 : warmup_iterations + measured_iterations;
         double measured_wall_ms = 0.0;
         double measured_gpu_ms = 0.0;
@@ -1858,7 +1865,7 @@ int rust_star_metal_run_attention_ingress(
             *layer0->repeat_bitwise_matches = 1;
         }
         id<MTLCommandBuffer> command = nil;
-        if (chained_collect) {
+        if (chained_replay) {
             command = context.chainedCommands[chained_key];
             NSNumber *wall_start = context.chainedWallStarts[chained_key];
             if (!wall_start || command.status != MTLCommandBufferStatusCompleted) {
@@ -1866,7 +1873,13 @@ int rust_star_metal_run_attention_ingress(
                     @"chained command buffer is not ready for collection");
             }
             measured_wall_ms = context.chainedWallEnd-wall_start.doubleValue;
-            measured_gpu_ms = gpu_elapsed_ms(command);
+            if (chained_timing) {
+                for (uint32_t layer = 0; layer <= layer0->chain_final_layer; layer++) {
+                    measured_gpu_ms += gpu_elapsed_ms(context.chainedCommands[@(layer)]);
+                }
+            } else {
+                measured_gpu_ms = gpu_elapsed_ms(command);
+            }
         }
         for (uint32_t execution = 0; execution < total_iterations; execution++) {
         if (execution > 0 && rope_and_store) {
@@ -2303,6 +2316,17 @@ int rust_star_metal_run_attention_ingress(
             for (uint32_t index = 0; index < 25; index++) {
                 if (matches[index]) result->pointer_matches++;
             }
+            return 1;
+        }
+        if (chained_timing) {
+            result->model_bytes = model_bytes;
+            result->max_buffer_length = context.device.maxBufferLength;
+            result->wrapped_model_ranges = 25;
+            for (uint32_t index = 0; index < 25; index++) {
+                if (matches[index]) result->pointer_matches++;
+            }
+            result->wall_ms = measured_wall_ms;
+            result->gpu_ms = measured_gpu_ms;
             return 1;
         }
         memcpy(mixes, mix_buffer.contents, mix_hc*sizeof(float));

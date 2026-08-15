@@ -317,3 +317,26 @@ the HC dependency remains a direct Metal-buffer edge and KV storage remains
 distinct by layer. Its `chain_wall_ms` spans the first submission through the
 single tail wait, while `summed_command_gpu_ms` sums the four Metal command
 intervals. These are narrow scheduler diagnostics, not decoder throughput.
+
+For repeated fixed-position execution with preparation and correctness
+collection outside the measured interval:
+
+```sh
+rust-star/.work/runtime-target/release/rust-star layers0123-bench \
+  /absolute/path/to/model.gguf \
+  --warmup 5 \
+  --iterations 20 \
+  --json rust-star/.work/runtime-target/layers0123-bench.json
+```
+
+`layers0123-bench` resolves all 100 layer-specific model spans, decodes the four
+pinned fixtures, and allocates host result storage once. Each timed iteration
+then commits four already-prepared layer calls, waits once at the tail, and
+reads only Metal command-buffer timing metadata. No activation, router, expert,
+cache, or HC boundary is copied to the host inside a measured interval. After
+the final sample, the normal collector performs one exhaustive comparison of
+all four layers against the pinned DwarfStar fixtures.
+
+This is a fixed token-201, position-1 steady-state replay. It isolates the
+current four-layer execution/scheduler cost but does not advance a decoder,
+sample tokens, or establish end-to-end token throughput.

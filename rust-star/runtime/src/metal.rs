@@ -22,6 +22,7 @@ pub const LAYERS012_PROBE_SCHEMA: &str = "rust-star-layers012-continuous-probe-v
 pub const LAYERS012_CHAINED_PROBE_SCHEMA: &str = "rust-star-layers012-chained-probe-v1";
 pub const LAYERS0123_PROBE_SCHEMA: &str = "rust-star-layers0123-continuous-probe-v1";
 pub const LAYERS0123_CHAINED_PROBE_SCHEMA: &str = "rust-star-layers0123-chained-probe-v1";
+pub const LAYERS0123_BENCH_SCHEMA: &str = "rust-star-layers0123-steady-state-v1";
 pub const PROJECTION_FIXTURE_ID: &str = "dwarfstar-oracle-v1-layer0-pos1-attn-q-a";
 pub const INGRESS_FIXTURE_ID: &str = "dwarfstar-oracle-v1-layer0-pos1-attention-ingress";
 pub const ATTENTION_SETUP_FIXTURE_ID: &str = "dwarfstar-oracle-v1-layer0-pos1-qkv-setup";
@@ -331,6 +332,41 @@ pub struct ProbeConfig {
 pub struct Layer0BenchConfig {
     pub warmup_iterations: u32,
     pub iterations: u32,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct Layers0123BenchConfig {
+    pub warmup_iterations: u32,
+    pub iterations: u32,
+}
+
+impl Default for Layers0123BenchConfig {
+    fn default() -> Self {
+        Self {
+            warmup_iterations: 5,
+            iterations: 20,
+        }
+    }
+}
+
+impl Layers0123BenchConfig {
+    pub fn validate(self) -> Result<Self> {
+        if self.iterations == 0 {
+            return Err(Error::invalid(
+                "layers-0/1/2/3 benchmark iterations must be positive",
+            ));
+        }
+        let total = self
+            .warmup_iterations
+            .checked_add(self.iterations)
+            .ok_or_else(|| Error::invalid("four-layer benchmark iteration count overflows"))?;
+        if total > MAX_LAYER0_EXECUTIONS {
+            return Err(Error::invalid(format!(
+                "four-layer benchmark warmup+iterations must not exceed {MAX_LAYER0_EXECUTIONS}"
+            )));
+        }
+        Ok(self)
+    }
 }
 
 impl Default for Layer0BenchConfig {
@@ -644,6 +680,21 @@ pub struct Layer0BenchReport {
     pub gpu: TimingSummary,
     pub repeat_bitwise_match: bool,
     pub final_hc_checksum: u64,
+}
+
+#[derive(Clone, Debug)]
+pub struct Layers0123BenchReport {
+    pub warmup_iterations: u32,
+    pub iterations: u32,
+    pub command_buffers_per_iteration: u32,
+    pub host_waits_per_iteration: u32,
+    pub retained_hc_handoff: bool,
+    pub kv_cache_layers: u32,
+    pub wall_ms_samples: Vec<f64>,
+    pub gpu_ms_samples: Vec<f64>,
+    pub wall: TimingSummary,
+    pub gpu: TimingSummary,
+    pub final_layers: Vec<Layer0ProbeReport>,
 }
 
 pub fn write_ingress_probe_json<W: Write>(
@@ -1000,6 +1051,58 @@ pub fn write_layer0_bench_json<W: Write>(output: &mut W, report: &Layer0BenchRep
     Ok(())
 }
 
+pub fn write_layers0123_bench_json<W: Write>(
+    output: &mut W,
+    report: &Layers0123BenchReport,
+) -> Result<()> {
+    if report.iterations == 0
+        || report.wall_ms_samples.len() != report.iterations as usize
+        || report.gpu_ms_samples.len() != report.iterations as usize
+        || report.command_buffers_per_iteration != 4
+        || report.host_waits_per_iteration != 1
+        || report.kv_cache_layers != 4
+        || report.final_layers.len() != 4
+    {
+        return Err(Error::invalid(
+            "four-layer benchmark report has inconsistent scheduling metadata",
+        ));
+    }
+    write!(
+        output,
+        "{{\n  \"schema\": \"{LAYERS0123_BENCH_SCHEMA}\",\n  \"warmup_iterations\": {},\n  \"measured_iterations\": {},\n  \"command_buffers_per_iteration\": {},\n  \"host_waits_per_iteration\": {},\n  \"retained_hc_handoff\": {},\n  \"kv_cache_layers\": {},\n  \"correctness_readback\": \"after-final-measured-iteration\",\n  \"wall_ms\": {{\n    \"samples\": [",
+        report.warmup_iterations,
+        report.iterations,
+        report.command_buffers_per_iteration,
+        report.host_waits_per_iteration,
+        report.retained_hc_handoff,
+        report.kv_cache_layers,
+    )?;
+    write_timing_samples(output, &report.wall_ms_samples)?;
+    write!(
+        output,
+        "],\n    \"median\": {:.6},\n    \"mad\": {:.6},\n    \"min\": {:.6},\n    \"max\": {:.6}\n  }},\n  \"gpu_ms\": {{\n    \"samples\": [",
+        report.wall.median_ms, report.wall.mad_ms, report.wall.min_ms, report.wall.max_ms,
+    )?;
+    write_timing_samples(output, &report.gpu_ms_samples)?;
+    write!(
+        output,
+        "],\n    \"median\": {:.6},\n    \"mad\": {:.6},\n    \"min\": {:.6},\n    \"max\": {:.6}\n  }},\n  \"final_layers\": [",
+        report.gpu.median_ms, report.gpu.mad_ms, report.gpu.min_ms, report.gpu.max_ms,
+    )?;
+    for (index, layer) in report.final_layers.iter().enumerate() {
+        if index != 0 {
+            write!(output, ",")?;
+        }
+        write!(
+            output,
+            "\n    {{\"layer\": {index}, \"fixture\": \"{}\", \"selected_experts\": {:?}, \"final_hc_checksum\": {}, \"c0_bitwise_match\": true}}",
+            layer.fixture_id, layer.selected_experts, layer.final_hc_checksum,
+        )?;
+    }
+    write!(output, "\n  ],\n  \"final_c0_bitwise_match\": true\n}}\n")?;
+    Ok(())
+}
+
 fn write_timing_samples<W: Write>(output: &mut W, samples: &[f64]) -> Result<()> {
     for (index, sample) in samples.iter().enumerate() {
         if index != 0 {
@@ -1016,9 +1119,7 @@ fn summarize_timing(samples: &[f64]) -> Result<TimingSummary> {
             .iter()
             .any(|sample| !sample.is_finite() || *sample < 0.0)
     {
-        return Err(Error::invalid(
-            "layer-0 benchmark returned invalid timing samples",
-        ));
+        return Err(Error::invalid("benchmark returned invalid timing samples"));
     }
     let mut ordered = samples.to_vec();
     ordered.sort_by(f64::total_cmp);
@@ -1811,6 +1912,7 @@ mod imp {
     const COMMAND_CHAINED_ENQUEUE: u32 = 1;
     const COMMAND_CHAINED_FINAL: u32 = 2;
     const COMMAND_CHAINED_COLLECT: u32 = 3;
+    const COMMAND_CHAINED_TIMING: u32 = 4;
 
     #[repr(C)]
     struct RawProbeResult {
@@ -2130,6 +2232,158 @@ mod imp {
         wall_ms_samples: Vec<f64>,
         gpu_ms_samples: Vec<f64>,
         repeat_bitwise_match: bool,
+    }
+
+    #[derive(Clone, Copy)]
+    struct ModelSpan {
+        absolute_offset: u64,
+        bytes: u64,
+    }
+
+    impl From<&TensorInfo> for ModelSpan {
+        fn from(tensor: &TensorInfo) -> Self {
+            Self {
+                absolute_offset: tensor.absolute_offset,
+                bytes: tensor.bytes,
+            }
+        }
+    }
+
+    struct PreparedLayerExecution {
+        layer_index: u32,
+        embedding: ModelSpan,
+        hc_fn: ModelSpan,
+        hc_scale: ModelSpan,
+        hc_base: ModelSpan,
+        norm_weight: ModelSpan,
+        q_a: ModelSpan,
+        q_a_norm: ModelSpan,
+        kv: ModelSpan,
+        kv_norm_weight: ModelSpan,
+        q_b: ModelSpan,
+        sinks: ModelSpan,
+        output_a: ModelSpan,
+        output_b: ModelSpan,
+        ffn_hc_fn: ModelSpan,
+        ffn_hc_scale: ModelSpan,
+        ffn_hc_base: ModelSpan,
+        ffn_norm_weight: ModelSpan,
+        router_gate: ModelSpan,
+        router_aux: ModelSpan,
+        routed_gate: ModelSpan,
+        routed_up: ModelSpan,
+        routed_down: ModelSpan,
+        shared_gate: ModelSpan,
+        shared_up: ModelSpan,
+        shared_down: ModelSpan,
+        expected: LayerExpected,
+        mixes: Vec<f32>,
+        split: Vec<f32>,
+        collapsed: Vec<f32>,
+        norm: Vec<f32>,
+        q_lora: Vec<f32>,
+        q_lora_norm: Vec<f32>,
+        kv_raw: Vec<f32>,
+        kv_after_store: Vec<f32>,
+        q_raw: Vec<f32>,
+        q_cur: Vec<f32>,
+        kv_rope: Vec<f32>,
+        kv_cur: Vec<f32>,
+        cache_rows: Vec<f32>,
+        attention_raw: Vec<f32>,
+        attention_back: Vec<f32>,
+        attention_low: Vec<f32>,
+        attention_out: Vec<f32>,
+        after_attention_hc: Vec<f32>,
+        ffn_mixes: Vec<f32>,
+        ffn_split: Vec<f32>,
+        ffn_norm: Vec<f32>,
+        router_logits: Vec<f32>,
+        router_probs: Vec<f32>,
+        selected: Vec<i32>,
+        router_weights: Vec<f32>,
+        routed_mid: Vec<f32>,
+        routed_out: Vec<f32>,
+        shared_out: Vec<f32>,
+        after_ffn_hc: Vec<f32>,
+        wall_ms_samples: Vec<f64>,
+        gpu_ms_samples: Vec<f64>,
+        repeat_bitwise_matches: u32,
+    }
+
+    impl PreparedLayerExecution {
+        fn new(model: &MappedModel, layer_index: u32, measured_iterations: u32) -> Result<Self> {
+            let tensor_name = |suffix: &str| format!("blk.{layer_index}.{suffix}");
+            let span = |name: &str, kind: u32, dimensions: &[u64]| -> Result<ModelSpan> {
+                Ok(exact_tensor(model, name, kind, dimensions)?.into())
+            };
+            let router_aux = if layer_index < 3 {
+                span(&tensor_name("ffn_gate_tid2eid.weight"), 26, &[6, 129280])?
+            } else {
+                span(&tensor_name("exp_probs_b.bias"), 0, &[256])?
+            };
+            Ok(Self {
+                layer_index,
+                embedding: span("token_embd.weight", 1, &[4096, 129280])?,
+                hc_fn: span(&tensor_name("hc_attn_fn.weight"), 1, &[16384, 24])?,
+                hc_scale: span(&tensor_name("hc_attn_scale.weight"), 0, &[3])?,
+                hc_base: span(&tensor_name("hc_attn_base.weight"), 0, &[24])?,
+                norm_weight: span(&tensor_name("attn_norm.weight"), 0, &[4096])?,
+                q_a: span(&tensor_name("attn_q_a.weight"), 8, &[4096, 1024])?,
+                q_a_norm: span(&tensor_name("attn_q_a_norm.weight"), 0, &[1024])?,
+                kv: span(&tensor_name("attn_kv.weight"), 8, &[4096, 512])?,
+                kv_norm_weight: span(&tensor_name("attn_kv_a_norm.weight"), 0, &[512])?,
+                q_b: span(&tensor_name("attn_q_b.weight"), 8, &[1024, 32768])?,
+                sinks: span(&tensor_name("attn_sinks.weight"), 0, &[64])?,
+                output_a: span(&tensor_name("attn_output_a.weight"), 8, &[4096, 8192])?,
+                output_b: span(&tensor_name("attn_output_b.weight"), 8, &[8192, 4096])?,
+                ffn_hc_fn: span(&tensor_name("hc_ffn_fn.weight"), 1, &[16384, 24])?,
+                ffn_hc_scale: span(&tensor_name("hc_ffn_scale.weight"), 0, &[3])?,
+                ffn_hc_base: span(&tensor_name("hc_ffn_base.weight"), 0, &[24])?,
+                ffn_norm_weight: span(&tensor_name("ffn_norm.weight"), 0, &[4096])?,
+                router_gate: span(&tensor_name("ffn_gate_inp.weight"), 1, &[4096, 256])?,
+                router_aux,
+                routed_gate: span(&tensor_name("ffn_gate_exps.weight"), 16, &[4096, 2048, 256])?,
+                routed_up: span(&tensor_name("ffn_up_exps.weight"), 16, &[4096, 2048, 256])?,
+                routed_down: span(&tensor_name("ffn_down_exps.weight"), 10, &[2048, 4096, 256])?,
+                shared_gate: span(&tensor_name("ffn_gate_shexp.weight"), 8, &[4096, 2048])?,
+                shared_up: span(&tensor_name("ffn_up_shexp.weight"), 8, &[4096, 2048])?,
+                shared_down: span(&tensor_name("ffn_down_shexp.weight"), 8, &[2048, 4096])?,
+                expected: layer_expected(layer_index)?,
+                mixes: vec![0.0; 24],
+                split: vec![0.0; 24],
+                collapsed: vec![0.0; 4096],
+                norm: vec![0.0; 4096],
+                q_lora: vec![0.0; 1024],
+                q_lora_norm: vec![0.0; 1024],
+                kv_raw: vec![0.0; 512],
+                kv_after_store: vec![0.0; 512],
+                q_raw: vec![0.0; 32768],
+                q_cur: vec![0.0; 32768],
+                kv_rope: vec![0.0; 512],
+                kv_cur: vec![0.0; 512],
+                cache_rows: vec![0.0; 3 * 512],
+                attention_raw: vec![0.0; 32768],
+                attention_back: vec![0.0; 32768],
+                attention_low: vec![0.0; 8192],
+                attention_out: vec![0.0; 4096],
+                after_attention_hc: vec![0.0; 4 * 4096],
+                ffn_mixes: vec![0.0; 24],
+                ffn_split: vec![0.0; 24],
+                ffn_norm: vec![0.0; 4096],
+                router_logits: vec![0.0; 256],
+                router_probs: vec![0.0; 256],
+                selected: vec![0; 6],
+                router_weights: vec![0.0; 6],
+                routed_mid: vec![0.0; 6 * 2048],
+                routed_out: vec![0.0; 4096],
+                shared_out: vec![0.0; 4096],
+                after_ffn_hc: vec![0.0; 4 * 4096],
+                wall_ms_samples: vec![0.0; measured_iterations as usize],
+                gpu_ms_samples: vec![0.0; measured_iterations as usize],
+                repeat_bitwise_matches: 1,
+            })
+        }
     }
 
     impl Drop for Context {
@@ -3484,6 +3738,89 @@ mod imp {
         })
     }
 
+    fn submit_prepared_layers0123(
+        model: &MappedModel,
+        context: &Context,
+        layers: &mut [PreparedLayerExecution],
+    ) -> Result<()> {
+        if layers.len() != 4 {
+            return Err(Error::invalid(
+                "four-layer submission requires exactly four prepared layers",
+            ));
+        }
+        for (layer_index, layer) in layers.iter_mut().enumerate() {
+            let command_mode = if layer_index == 3 {
+                COMMAND_CHAINED_FINAL
+            } else {
+                COMMAND_CHAINED_ENQUEUE
+            };
+            run_prepared_layer_iterations(model, context, layer, 0, 1, command_mode, 3)?;
+        }
+        Ok(())
+    }
+
+    pub fn run_layers0123_bench(
+        model: &MappedModel,
+        config: Layers0123BenchConfig,
+    ) -> Result<Layers0123BenchReport> {
+        let config = config.validate()?;
+        let context = Context::new()?;
+        let mut layers = (0..=3)
+            .map(|layer_index| PreparedLayerExecution::new(model, layer_index, 1))
+            .collect::<Result<Vec<_>>>()?;
+
+        for _ in 0..config.warmup_iterations {
+            submit_prepared_layers0123(model, &context, &mut layers)?;
+        }
+
+        let mut wall_ms_samples = Vec::with_capacity(config.iterations as usize);
+        let mut gpu_ms_samples = Vec::with_capacity(config.iterations as usize);
+        for _ in 0..config.iterations {
+            submit_prepared_layers0123(model, &context, &mut layers)?;
+            let timing = run_prepared_layer_iterations(
+                model,
+                &context,
+                &mut layers[0],
+                0,
+                1,
+                COMMAND_CHAINED_TIMING,
+                3,
+            )?;
+            wall_ms_samples.push(timing.report.wall_ms);
+            gpu_ms_samples.push(timing.report.gpu_ms);
+        }
+
+        let mut final_layers = Vec::with_capacity(4);
+        for layer in &mut layers {
+            final_layers.push(
+                run_prepared_layer_iterations(
+                    model,
+                    &context,
+                    layer,
+                    0,
+                    1,
+                    COMMAND_CHAINED_COLLECT,
+                    3,
+                )?
+                .report,
+            );
+        }
+
+        Ok(Layers0123BenchReport {
+            warmup_iterations: config.warmup_iterations,
+            iterations: config.iterations,
+            command_buffers_per_iteration: 4,
+            host_waits_per_iteration: 1,
+            retained_hc_handoff: true,
+            kv_cache_layers: 4,
+            wall: summarize_timing(&wall_ms_samples)?,
+            gpu: summarize_timing(&gpu_ms_samples)?,
+            wall_ms_samples,
+            gpu_ms_samples,
+            final_layers,
+        })
+    }
+
     pub fn run_layer0_bench(
         model: &MappedModel,
         config: Layer0BenchConfig,
@@ -3529,113 +3866,91 @@ mod imp {
         command_mode: u32,
         chain_final_layer: u32,
     ) -> Result<Layer0Execution> {
+        let mut prepared = PreparedLayerExecution::new(model, layer_index, measured_iterations)?;
+        run_prepared_layer_iterations(
+            model,
+            context,
+            &mut prepared,
+            warmup_iterations,
+            measured_iterations,
+            command_mode,
+            chain_final_layer,
+        )
+    }
+
+    fn run_prepared_layer_iterations(
+        model: &MappedModel,
+        context: &Context,
+        prepared: &mut PreparedLayerExecution,
+        warmup_iterations: u32,
+        measured_iterations: u32,
+        command_mode: u32,
+        chain_final_layer: u32,
+    ) -> Result<Layer0Execution> {
         const TOKEN: u32 = 201;
-        let embedding = exact_tensor(model, "token_embd.weight", 1, &[4096, 129280])?;
-        let tensor_name = |suffix: &str| format!("blk.{layer_index}.{suffix}");
-        let hc_fn = exact_tensor(model, &tensor_name("hc_attn_fn.weight"), 1, &[16384, 24])?;
-        let hc_scale = exact_tensor(model, &tensor_name("hc_attn_scale.weight"), 0, &[3])?;
-        let hc_base = exact_tensor(model, &tensor_name("hc_attn_base.weight"), 0, &[24])?;
-        let norm_weight = exact_tensor(model, &tensor_name("attn_norm.weight"), 0, &[4096])?;
-        let q_a = exact_tensor(model, &tensor_name("attn_q_a.weight"), 8, &[4096, 1024])?;
-        let q_a_norm = exact_tensor(model, &tensor_name("attn_q_a_norm.weight"), 0, &[1024])?;
-        let kv = exact_tensor(model, &tensor_name("attn_kv.weight"), 8, &[4096, 512])?;
-        let kv_norm_weight = exact_tensor(model, &tensor_name("attn_kv_a_norm.weight"), 0, &[512])?;
-        let q_b = exact_tensor(model, &tensor_name("attn_q_b.weight"), 8, &[1024, 32768])?;
-        let sinks = exact_tensor(model, &tensor_name("attn_sinks.weight"), 0, &[64])?;
-        let output_a = exact_tensor(
-            model,
-            &tensor_name("attn_output_a.weight"),
-            8,
-            &[4096, 8192],
-        )?;
-        let output_b = exact_tensor(
-            model,
-            &tensor_name("attn_output_b.weight"),
-            8,
-            &[8192, 4096],
-        )?;
-        let ffn_hc_fn = exact_tensor(model, &tensor_name("hc_ffn_fn.weight"), 1, &[16384, 24])?;
-        let ffn_hc_scale = exact_tensor(model, &tensor_name("hc_ffn_scale.weight"), 0, &[3])?;
-        let ffn_hc_base = exact_tensor(model, &tensor_name("hc_ffn_base.weight"), 0, &[24])?;
-        let ffn_norm_weight = exact_tensor(model, &tensor_name("ffn_norm.weight"), 0, &[4096])?;
-        let router_gate =
-            exact_tensor(model, &tensor_name("ffn_gate_inp.weight"), 1, &[4096, 256])?;
-        let router_aux = if layer_index < 3 {
-            exact_tensor(
-                model,
-                &tensor_name("ffn_gate_tid2eid.weight"),
-                26,
-                &[6, 129280],
-            )?
-        } else {
-            exact_tensor(model, &tensor_name("exp_probs_b.bias"), 0, &[256])?
-        };
-        let routed_gate = exact_tensor(
-            model,
-            &tensor_name("ffn_gate_exps.weight"),
-            16,
-            &[4096, 2048, 256],
-        )?;
-        let routed_up = exact_tensor(
-            model,
-            &tensor_name("ffn_up_exps.weight"),
-            16,
-            &[4096, 2048, 256],
-        )?;
-        let routed_down = exact_tensor(
-            model,
-            &tensor_name("ffn_down_exps.weight"),
-            10,
-            &[2048, 4096, 256],
-        )?;
-        let shared_gate = exact_tensor(
-            model,
-            &tensor_name("ffn_gate_shexp.weight"),
-            8,
-            &[4096, 2048],
-        )?;
-        let shared_up = exact_tensor(model, &tensor_name("ffn_up_shexp.weight"), 8, &[4096, 2048])?;
-        let shared_down = exact_tensor(
-            model,
-            &tensor_name("ffn_down_shexp.weight"),
-            8,
-            &[2048, 4096],
-        )?;
+        let layer_index = prepared.layer_index;
+        let PreparedLayerExecution {
+            layer_index: _,
+            embedding,
+            hc_fn,
+            hc_scale,
+            hc_base,
+            norm_weight,
+            q_a,
+            q_a_norm,
+            kv,
+            kv_norm_weight,
+            q_b,
+            sinks,
+            output_a,
+            output_b,
+            ffn_hc_fn,
+            ffn_hc_scale,
+            ffn_hc_base,
+            ffn_norm_weight,
+            router_gate,
+            router_aux,
+            routed_gate,
+            routed_up,
+            routed_down,
+            shared_gate,
+            shared_up,
+            shared_down,
+            expected,
+            mixes,
+            split,
+            collapsed,
+            norm,
+            q_lora,
+            q_lora_norm,
+            kv_raw,
+            kv_after_store,
+            q_raw,
+            q_cur,
+            kv_rope,
+            kv_cur,
+            cache_rows,
+            attention_raw,
+            attention_back,
+            attention_low,
+            attention_out,
+            after_attention_hc,
+            ffn_mixes,
+            ffn_split,
+            ffn_norm,
+            router_logits,
+            router_probs,
+            selected,
+            router_weights,
+            routed_mid,
+            routed_out,
+            shared_out,
+            after_ffn_hc,
+            wall_ms_samples,
+            gpu_ms_samples,
+            repeat_bitwise_matches,
+        } = prepared;
 
-        let expected = layer_expected(layer_index)?;
-
-        let mut mixes = vec![0.0_f32; 24];
-        let mut split = vec![0.0_f32; 24];
-        let mut collapsed = vec![0.0_f32; 4096];
-        let mut norm = vec![0.0_f32; 4096];
-        let mut q_lora = vec![0.0_f32; 1024];
-        let mut q_lora_norm = vec![0.0_f32; 1024];
-        let mut kv_raw = vec![0.0_f32; 512];
-        let mut kv_after_store = vec![0.0_f32; 512];
-        let mut q_raw = vec![0.0_f32; 32768];
-        let mut q_cur = vec![0.0_f32; 32768];
-        let mut kv_rope = vec![0.0_f32; 512];
-        let mut kv_cur = vec![0.0_f32; 512];
-        let mut cache_rows = vec![0.0_f32; 3 * 512];
-        let mut attention_raw = vec![0.0_f32; 32768];
-        let mut attention_back = vec![0.0_f32; 32768];
-        let mut attention_low = vec![0.0_f32; 8192];
-        let mut attention_out = vec![0.0_f32; 4096];
-        let mut after_attention_hc = vec![0.0_f32; 4 * 4096];
-        let mut ffn_mixes = vec![0.0_f32; 24];
-        let mut ffn_split = vec![0.0_f32; 24];
-        let mut ffn_norm = vec![0.0_f32; 4096];
-        let mut router_logits = vec![0.0_f32; 256];
-        let mut router_probs = vec![0.0_f32; 256];
-        let mut selected = vec![0_i32; 6];
-        let mut router_weights = vec![0.0_f32; 6];
-        let mut routed_mid = vec![0.0_f32; 6 * 2048];
-        let mut routed_out = vec![0.0_f32; 4096];
-        let mut shared_out = vec![0.0_f32; 4096];
-        let mut after_ffn_hc = vec![0.0_f32; 4 * 4096];
-        let mut wall_ms_samples = vec![0.0_f64; measured_iterations as usize];
-        let mut gpu_ms_samples = vec![0.0_f64; measured_iterations as usize];
-        let mut repeat_bitwise_matches = 1_u32;
         let layer0 = RawLayer0Extension {
             hc_ffn_fn_offset: ffn_hc_fn.absolute_offset,
             hc_ffn_fn_bytes: ffn_hc_fn.bytes,
@@ -3676,7 +3991,7 @@ mod imp {
             measured_iterations,
             wall_ms_samples: wall_ms_samples.as_mut_ptr(),
             gpu_ms_samples: gpu_ms_samples.as_mut_ptr(),
-            repeat_bitwise_matches: &mut repeat_bitwise_matches,
+            repeat_bitwise_matches,
             layer_index,
             reuse_previous_hc: u32::from(layer_index != 0),
             command_mode,
@@ -3780,18 +4095,52 @@ mod imp {
                     shared_out_checksum: 0,
                     final_hc_checksum: 0,
                 },
-                wall_ms_samples,
-                gpu_ms_samples,
+                wall_ms_samples: wall_ms_samples.clone(),
+                gpu_ms_samples: gpu_ms_samples.clone(),
                 repeat_bitwise_match: true,
             });
         }
-        if selected != expected.selected {
+        if command_mode == COMMAND_CHAINED_TIMING {
+            if !raw.wall_ms.is_finite()
+                || raw.wall_ms <= 0.0
+                || !raw.gpu_ms.is_finite()
+                || raw.gpu_ms < 0.0
+            {
+                return Err(Error::invalid(
+                    "Metal four-layer chain returned invalid timing",
+                ));
+            }
+            return Ok(Layer0Execution {
+                report: Layer0ProbeReport {
+                    fixture_id: expected.fixture_id,
+                    token: TOKEN,
+                    dispatches: if layer_index == 0 { 30 } else { 28 },
+                    command_buffers: 1,
+                    selected_experts: expected.selected.clone(),
+                    wrapped_model_ranges: raw.wrapped_model_ranges,
+                    pointer_matches: raw.pointer_matches,
+                    wall_ms: raw.wall_ms,
+                    gpu_ms: raw.gpu_ms,
+                    attention_hc_checksum: 0,
+                    ffn_norm_checksum: 0,
+                    router_weights_checksum: 0,
+                    routed_mid_checksum: 0,
+                    routed_out_checksum: 0,
+                    shared_out_checksum: 0,
+                    final_hc_checksum: 0,
+                },
+                wall_ms_samples: wall_ms_samples.clone(),
+                gpu_ms_samples: gpu_ms_samples.clone(),
+                repeat_bitwise_match: true,
+            });
+        }
+        if *selected != expected.selected {
             return Err(Error::invalid(format!(
                 "complete layer-{layer_index} selected experts differ: actual={selected:?} expected={:?}",
                 expected.selected
             )));
         }
-        if repeat_bitwise_matches != 1 {
+        if *repeat_bitwise_matches != 1 {
             return Err(Error::invalid(
                 "complete layer-0 outputs changed across measured iterations",
             ));
@@ -3923,7 +4272,7 @@ mod imp {
                 token: TOKEN,
                 dispatches: if layer_index == 0 { 30 } else { 28 },
                 command_buffers: 1,
-                selected_experts: selected,
+                selected_experts: selected.clone(),
                 wrapped_model_ranges: raw.wrapped_model_ranges,
                 pointer_matches: raw.pointer_matches,
                 wall_ms: raw.wall_ms,
@@ -3936,9 +4285,9 @@ mod imp {
                 shared_out_checksum: checksum_f32(&shared_out),
                 final_hc_checksum: checksum_f32(&after_ffn_hc),
             },
-            wall_ms_samples,
-            gpu_ms_samples,
-            repeat_bitwise_match: repeat_bitwise_matches == 1,
+            wall_ms_samples: wall_ms_samples.clone(),
+            gpu_ms_samples: gpu_ms_samples.clone(),
+            repeat_bitwise_match: *repeat_bitwise_matches == 1,
         })
     }
 
@@ -4289,6 +4638,20 @@ mod imp {
         ))
     }
 
+    pub fn run_layers0123_bench(
+        model: &MappedModel,
+        config: Layers0123BenchConfig,
+    ) -> Result<Layers0123BenchReport> {
+        let _ = config.validate()?;
+        for layer_index in 0..=3 {
+            let _ = layer_expected(layer_index)?;
+        }
+        let _ = exact_tensor(model, "blk.3.ffn_down_shexp.weight", 8, &[2048, 4096])?;
+        Err(Error::invalid(
+            "the Metal layers-0/1/2/3 benchmark is available only on macOS",
+        ))
+    }
+
     pub fn run_layers012_chained_probe(model: &MappedModel) -> Result<Layers012ChainedProbeReport> {
         let _ = layer_expected(0)?;
         let _ = layer_expected(1)?;
@@ -4448,7 +4811,7 @@ mod imp {
 pub use imp::{
     run_attention_ingress_probe, run_attention_output_probe, run_attention_read_probe,
     run_attention_setup_probe, run_f16_embedding_probe, run_ffn_router_probe, run_layer0_bench,
-    run_layer0_probe, run_layers0123_chained_probe, run_layers0123_probe,
+    run_layer0_probe, run_layers0123_bench, run_layers0123_chained_probe, run_layers0123_probe,
     run_layers012_chained_probe, run_layers012_probe, run_layers01_probe, run_moe_output_probe,
     run_probe, run_q8_projection_probe, run_rope_kv_store_probe, LayerExecutor,
 };
@@ -4760,6 +5123,32 @@ mod tests {
         }
     }
 
+    fn layers0123_bench_report() -> Layers0123BenchReport {
+        Layers0123BenchReport {
+            warmup_iterations: 2,
+            iterations: 3,
+            command_buffers_per_iteration: 4,
+            host_waits_per_iteration: 1,
+            retained_hc_handoff: true,
+            kv_cache_layers: 4,
+            wall_ms_samples: vec![4.0, 3.0, 5.0],
+            gpu_ms_samples: vec![2.0, 1.0, 3.0],
+            wall: TimingSummary {
+                median_ms: 4.0,
+                mad_ms: 1.0,
+                min_ms: 3.0,
+                max_ms: 5.0,
+            },
+            gpu: TimingSummary {
+                median_ms: 2.0,
+                mad_ms: 1.0,
+                min_ms: 1.0,
+                max_ms: 3.0,
+            },
+            final_layers: layers0123_report().layers,
+        }
+    }
+
     #[test]
     fn validates_probe_work_bounds() {
         assert!(ProbeConfig::default().validate().is_ok());
@@ -4787,6 +5176,23 @@ mod tests {
         .validate()
         .is_err());
         assert!(Layer0BenchConfig {
+            warmup_iterations: 1,
+            iterations: MAX_LAYER0_EXECUTIONS,
+        }
+        .validate()
+        .is_err());
+    }
+
+    #[test]
+    fn validates_layers0123_bench_bounds() {
+        assert!(Layers0123BenchConfig::default().validate().is_ok());
+        assert!(Layers0123BenchConfig {
+            warmup_iterations: 0,
+            iterations: 0,
+        }
+        .validate()
+        .is_err());
+        assert!(Layers0123BenchConfig {
             warmup_iterations: 1,
             iterations: MAX_LAYER0_EXECUTIONS,
         }
@@ -4861,6 +5267,17 @@ mod tests {
         assert!(text.contains("\"command_buffers\": 4"));
         assert!(text.contains("\"chain_wall_ms\": 5.000000"));
         assert!(text.contains("\"summed_command_gpu_ms\": 4.000000"));
+    }
+
+    #[test]
+    fn writes_stable_layers0123_bench_json() {
+        let mut output = Vec::new();
+        write_layers0123_bench_json(&mut output, &layers0123_bench_report()).unwrap();
+        let text = String::from_utf8(output).unwrap();
+        assert!(text.contains(&format!("\"schema\": \"{LAYERS0123_BENCH_SCHEMA}\"")));
+        assert!(text.contains("\"correctness_readback\": \"after-final-measured-iteration\""));
+        assert!(text.contains("\"samples\": [4.000000, 3.000000, 5.000000]"));
+        assert!(text.contains("\"final_c0_bitwise_match\": true"));
     }
 
     #[test]

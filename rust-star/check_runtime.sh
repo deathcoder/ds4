@@ -95,6 +95,10 @@ elif [ "$#" -eq 1 ]; then
         echo "==> chained layers 0-3 with one tail wait"
         "$target_dir/release/rust-star" layers0123-chained-probe "$1" \
             --json "$target_dir/layers0123-chained-probe.json"
+        echo "==> repeated layers 0-3 with setup and correctness readback outside timing"
+        "$target_dir/release/rust-star" layers0123-bench "$1" \
+            --warmup 5 --iterations 20 \
+            --json "$target_dir/layers0123-bench.json"
         echo "==> persistent layer-0 steady-state execution"
         "$target_dir/release/rust-star" layer0-bench "$1" \
             --warmup 10 --iterations 30 \

@@ -2,17 +2,18 @@ use rust_star_runtime::gguf::Gguf;
 use rust_star_runtime::metal::{
     run_attention_ingress_probe, run_attention_output_probe, run_attention_read_probe,
     run_attention_setup_probe, run_f16_embedding_probe, run_ffn_router_probe, run_layer0_bench,
-    run_layer0_probe, run_layers0123_chained_probe, run_layers0123_probe,
+    run_layer0_probe, run_layers0123_bench, run_layers0123_chained_probe, run_layers0123_probe,
     run_layers012_chained_probe, run_layers012_probe, run_layers01_probe, run_moe_output_probe,
     run_probe, run_q8_projection_probe, run_rope_kv_store_probe, write_attention_output_probe_json,
     write_attention_read_probe_json, write_attention_setup_probe_json, write_embedding_probe_json,
     write_ffn_router_probe_json, write_ingress_probe_json, write_layer0_bench_json,
-    write_layer0_probe_json, write_layers0123_chained_probe_json, write_layers0123_probe_json,
-    write_layers012_chained_probe_json, write_layers012_probe_json, write_layers01_probe_json,
-    write_moe_output_probe_json, write_probe_json, write_projection_probe_json,
-    write_rope_kv_store_probe_json, AttentionOutputProbeReport, AttentionReadProbeReport,
-    AttentionSetupProbeReport, EmbeddingProbeReport, FfnRouterProbeReport, IngressProbeReport,
-    Layer0BenchConfig, Layer0BenchReport, Layer0ProbeReport, Layers0123ChainedProbeReport,
+    write_layer0_probe_json, write_layers0123_bench_json, write_layers0123_chained_probe_json,
+    write_layers0123_probe_json, write_layers012_chained_probe_json, write_layers012_probe_json,
+    write_layers01_probe_json, write_moe_output_probe_json, write_probe_json,
+    write_projection_probe_json, write_rope_kv_store_probe_json, AttentionOutputProbeReport,
+    AttentionReadProbeReport, AttentionSetupProbeReport, EmbeddingProbeReport,
+    FfnRouterProbeReport, IngressProbeReport, Layer0BenchConfig, Layer0BenchReport,
+    Layer0ProbeReport, Layers0123BenchConfig, Layers0123BenchReport, Layers0123ChainedProbeReport,
     Layers0123ProbeReport, Layers012ChainedProbeReport, Layers012ProbeReport, Layers01ProbeReport,
     MoeOutputProbeReport, ProbeConfig, ProjectionProbeReport, RopeKvStoreProbeReport,
 };
@@ -95,7 +96,72 @@ fn run() -> Result<()> {
     if command == "layers0123-chained-probe" {
         return run_layers0123_chained_command(arguments.collect());
     }
+    if command == "layers0123-bench" {
+        return run_layers0123_bench_command(arguments.collect());
+    }
     run_model_command(&command, arguments.collect())
+}
+
+fn run_layers0123_bench_command(arguments: Vec<OsString>) -> Result<()> {
+    if arguments.is_empty() {
+        return Err(Error::invalid(layers0123_bench_usage()));
+    }
+    if matches!(arguments[0].to_str(), Some("--help") | Some("-h")) {
+        println!("{}", layers0123_bench_usage());
+        return Ok(());
+    }
+    let model_path = PathBuf::from(&arguments[0]);
+    let mut config = Layers0123BenchConfig::default();
+    let mut json_path: Option<PathBuf> = None;
+    let mut arguments = arguments.into_iter().skip(1);
+    while let Some(argument) = arguments.next() {
+        match argument.to_str() {
+            Some("--warmup") => {
+                config.warmup_iterations =
+                    parse_u32_option("--warmup", arguments.next().as_deref())?;
+            }
+            Some("--iterations") => {
+                config.iterations = parse_u32_option("--iterations", arguments.next().as_deref())?;
+            }
+            Some("--json") => {
+                let value = arguments
+                    .next()
+                    .ok_or_else(|| Error::invalid("--json requires a path"))?;
+                if json_path.is_some() {
+                    return Err(Error::invalid("--json may be specified only once"));
+                }
+                json_path = Some(PathBuf::from(value));
+            }
+            Some("--help") | Some("-h") => {
+                println!("{}", layers0123_bench_usage());
+                return Ok(());
+            }
+            _ => return Err(Error::invalid(layers0123_bench_usage())),
+        }
+    }
+    let config = config.validate()?;
+    let model = MappedModel::open(&model_path)?;
+    validate_resident_q2(model.gguf())?;
+    let report = run_layers0123_bench(&model, config)?;
+    println!(
+        "execution: {} warmup + {} measured four-layer chains; {} command buffers and {} tail wait per iteration",
+        report.warmup_iterations,
+        report.iterations,
+        report.command_buffers_per_iteration,
+        report.host_waits_per_iteration
+    );
+    println!(
+        "steady state: wall median={:.3} ms MAD={:.3} ms; summed GPU median={:.3} ms MAD={:.3} ms",
+        report.wall.median_ms, report.wall.mad_ms, report.gpu.median_ms, report.gpu.mad_ms
+    );
+    println!(
+        "result: final post-measurement readback matched all four pinned DwarfStar layers bit-for-bit"
+    );
+    if let Some(path) = json_path {
+        write_layers0123_bench_file(&path, &report)?;
+        println!("json: {}", path.display());
+    }
+    Ok(())
 }
 
 fn run_layers0123_chained_command(arguments: Vec<OsString>) -> Result<()> {
@@ -1458,6 +1524,33 @@ fn write_layer0_bench_file(path: &Path, report: &Layer0BenchReport) -> Result<()
     Ok(())
 }
 
+fn write_layers0123_bench_file(path: &Path, report: &Layers0123BenchReport) -> Result<()> {
+    let temporary = path.with_extension(format!(
+        "{}tmp",
+        path.extension()
+            .and_then(OsStr::to_str)
+            .map(|extension| format!("{extension}."))
+            .unwrap_or_default()
+    ));
+    let file = File::create(&temporary).map_err(|error| {
+        Error::invalid(format!(
+            "cannot create layers-0/1/2/3 steady-state JSON {}: {error}",
+            temporary.display()
+        ))
+    })?;
+    let mut output = BufWriter::new(file);
+    write_layers0123_bench_json(&mut output, report)?;
+    output.flush()?;
+    drop(output);
+    std::fs::rename(&temporary, path).map_err(|error| {
+        Error::invalid(format!(
+            "cannot install layers-0/1/2/3 steady-state JSON {}: {error}",
+            path.display()
+        ))
+    })?;
+    Ok(())
+}
+
 fn write_layers01_probe_file(path: &Path, report: &Layers01ProbeReport) -> Result<()> {
     let temporary = path.with_extension(format!(
         "{}tmp",
@@ -1638,7 +1731,7 @@ fn print_type_counts(gguf: &Gguf) {
 }
 
 fn usage() -> &'static str {
-    "usage:\n  rust-star inspect MODEL.gguf  # strict Flash-0731 resident-Q2 validation\n  rust-star gguf MODEL.gguf     # structural GGUF v3 validation only\n  rust-star metal-probe [OPTIONS]\n  rust-star embedding-probe MODEL.gguf [OPTIONS]\n  rust-star projection-probe MODEL.gguf [OPTIONS]\n  rust-star attention-ingress-probe MODEL.gguf [OPTIONS]\n  rust-star attention-setup-probe MODEL.gguf [OPTIONS]\n  rust-star rope-kv-store-probe MODEL.gguf [OPTIONS]\n  rust-star attention-read-probe MODEL.gguf [OPTIONS]\n  rust-star attention-output-probe MODEL.gguf [OPTIONS]\n  rust-star ffn-router-probe MODEL.gguf [OPTIONS]\n  rust-star moe-output-probe MODEL.gguf [OPTIONS]\n  rust-star layer0-probe MODEL.gguf [OPTIONS]\n  rust-star layer0-bench MODEL.gguf [OPTIONS]\n  rust-star layers01-probe MODEL.gguf [OPTIONS]\n  rust-star layers012-probe MODEL.gguf [OPTIONS]\n  rust-star layers012-chained-probe MODEL.gguf [OPTIONS]\n  rust-star layers0123-probe MODEL.gguf [OPTIONS]\n  rust-star layers0123-chained-probe MODEL.gguf [OPTIONS]"
+    "usage:\n  rust-star inspect MODEL.gguf  # strict Flash-0731 resident-Q2 validation\n  rust-star gguf MODEL.gguf     # structural GGUF v3 validation only\n  rust-star metal-probe [OPTIONS]\n  rust-star embedding-probe MODEL.gguf [OPTIONS]\n  rust-star projection-probe MODEL.gguf [OPTIONS]\n  rust-star attention-ingress-probe MODEL.gguf [OPTIONS]\n  rust-star attention-setup-probe MODEL.gguf [OPTIONS]\n  rust-star rope-kv-store-probe MODEL.gguf [OPTIONS]\n  rust-star attention-read-probe MODEL.gguf [OPTIONS]\n  rust-star attention-output-probe MODEL.gguf [OPTIONS]\n  rust-star ffn-router-probe MODEL.gguf [OPTIONS]\n  rust-star moe-output-probe MODEL.gguf [OPTIONS]\n  rust-star layer0-probe MODEL.gguf [OPTIONS]\n  rust-star layer0-bench MODEL.gguf [OPTIONS]\n  rust-star layers01-probe MODEL.gguf [OPTIONS]\n  rust-star layers012-probe MODEL.gguf [OPTIONS]\n  rust-star layers012-chained-probe MODEL.gguf [OPTIONS]\n  rust-star layers0123-probe MODEL.gguf [OPTIONS]\n  rust-star layers0123-chained-probe MODEL.gguf [OPTIONS]\n  rust-star layers0123-bench MODEL.gguf [OPTIONS]"
 }
 
 fn metal_probe_usage() -> &'static str {
@@ -1707,4 +1800,8 @@ fn layers0123_probe_usage() -> &'static str {
 
 fn layers0123_chained_probe_usage() -> &'static str {
     "usage: rust-star layers0123-chained-probe MODEL.gguf [--json PATH]\n\nCommits complete layers 0 through 3 to one Metal queue without inter-layer host waits, waits once at the tail, and requires all retained DwarfStar boundaries to remain bit-identical."
+}
+
+fn layers0123_bench_usage() -> &'static str {
+    "usage: rust-star layers0123-bench MODEL.gguf [--warmup N] [--iterations N] [--json PATH]\n\nPrepares layers 0 through 3 once, measures repeated four-command-buffer chains with one tail wait and no in-interval boundary readback, then performs one exhaustive final C0 collection."
 }

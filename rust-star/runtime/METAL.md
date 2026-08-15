@@ -338,3 +338,22 @@ first FP32 bit mismatch.
 The report records one host wait, total wall time from the first submission to
 tail completion, and the sum of the four command-buffer GPU intervals. It
 does not promote this four-layer diagnostic to decoder throughput.
+
+## Repeated layers 0–3 steady-state replay
+
+Schema: `rust-star-layers0123-steady-state-v1`.
+
+`layers0123-bench` prepares the four complete layer bindings and host fixture
+buffers once, then reuses the same Rust-owned context, no-copy model views,
+activation allocations, and per-layer KV storage across warmup and measured
+chains. The timing-only collection mode reads the completed command-buffer
+timestamps without copying any tensor boundary to the host.
+
+After the last measured chain, one ordinary collection compares every retained
+boundary in all four layers. The JSON records all wall and summed-GPU samples,
+median/MAD/min/max summaries, the four final fixture identities and routes, and
+the post-measurement C0 result.
+
+The replay always executes token 201 at decode position 1 and restores the
+pinned cache inputs. It is an execution/scheduler microbenchmark, not a decoder
+loop or token-throughput result.

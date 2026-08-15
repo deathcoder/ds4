@@ -23,6 +23,9 @@ compressed-attention RoPE path and layer 3's transition from hash routing to
 biased top-k, match pinned DwarfStar fixtures bit-for-bit. A chained scheduler
 variant now submits all four command buffers without
 inter-layer host waits and performs one exact tail readback. A separate
+persistent four-layer replay prepares all model bindings and fixture buffers
+once, excludes warmups, records command-buffer timing without in-interval host
+readback, and performs one exhaustive C0 collection after the final sample. The
 persistent layer-0 gate reuses its pipelines, 25 no-copy model views, cache
 storage, and activation buffers for repeated steady-state timing; this is not
 yet a decoder.
