@@ -1,30 +1,32 @@
 use rust_star_runtime::gguf::Gguf;
 use rust_star_runtime::metal::{
     run_attention_ingress_probe, run_attention_output_probe, run_attention_read_probe,
-    run_attention_setup_probe, run_decoder_output_probe, run_f16_embedding_probe,
-    run_ffn_router_probe, run_layer0_bench, run_layer0_probe, run_layers01234567_decode_probe,
-    run_layers012345_decode_probe, run_layers0123_bench, run_layers0123_chained_probe,
-    run_layers0123_decode_probe, run_layers0123_probe, run_layers012_chained_probe,
-    run_layers012_probe, run_layers01_probe, run_layers0_to_42_decode_probe, run_moe_output_probe,
-    run_probe, run_q8_projection_probe, run_ratio128_compressor_replay_probe,
-    run_rope_kv_store_probe, write_attention_output_probe_json, write_attention_read_probe_json,
-    write_attention_setup_probe_json, write_decoder_output_probe_json, write_embedding_probe_json,
-    write_ffn_router_probe_json, write_ingress_probe_json, write_layer0_bench_json,
-    write_layer0_probe_json, write_layers01234567_decode_probe_json,
-    write_layers012345_decode_probe_json, write_layers0123_bench_json,
-    write_layers0123_chained_probe_json, write_layers0123_decode_probe_json,
-    write_layers0123_probe_json, write_layers012_chained_probe_json, write_layers012_probe_json,
-    write_layers01_probe_json, write_layers0_to_42_decode_probe_json, write_moe_output_probe_json,
-    write_probe_json, write_projection_probe_json, write_ratio128_compressor_replay_probe_json,
+    run_attention_setup_probe, run_closed_loop_decoder_probe, run_decoder_output_probe,
+    run_f16_embedding_probe, run_ffn_router_probe, run_layer0_bench, run_layer0_probe,
+    run_layers01234567_decode_probe, run_layers012345_decode_probe, run_layers0123_bench,
+    run_layers0123_chained_probe, run_layers0123_decode_probe, run_layers0123_probe,
+    run_layers012_chained_probe, run_layers012_probe, run_layers01_probe,
+    run_layers0_to_42_decode_probe, run_moe_output_probe, run_probe, run_q8_projection_probe,
+    run_ratio128_compressor_replay_probe, run_rope_kv_store_probe,
+    write_attention_output_probe_json, write_attention_read_probe_json,
+    write_attention_setup_probe_json, write_closed_loop_decoder_probe_json,
+    write_decoder_output_probe_json, write_embedding_probe_json, write_ffn_router_probe_json,
+    write_ingress_probe_json, write_layer0_bench_json, write_layer0_probe_json,
+    write_layers01234567_decode_probe_json, write_layers012345_decode_probe_json,
+    write_layers0123_bench_json, write_layers0123_chained_probe_json,
+    write_layers0123_decode_probe_json, write_layers0123_probe_json,
+    write_layers012_chained_probe_json, write_layers012_probe_json, write_layers01_probe_json,
+    write_layers0_to_42_decode_probe_json, write_moe_output_probe_json, write_probe_json,
+    write_projection_probe_json, write_ratio128_compressor_replay_probe_json,
     write_rope_kv_store_probe_json, AttentionOutputProbeReport, AttentionReadProbeReport,
-    AttentionSetupProbeReport, DecoderOutputProbeReport, EmbeddingProbeReport,
-    FfnRouterProbeReport, IngressProbeReport, Layer0BenchConfig, Layer0BenchReport,
-    Layer0ProbeReport, Layers01234567DecodeProbeReport, Layers012345DecodeProbeReport,
-    Layers0123BenchConfig, Layers0123BenchReport, Layers0123ChainedProbeReport,
-    Layers0123DecodeProbeReport, Layers0123ProbeReport, Layers012ChainedProbeReport,
-    Layers012ProbeReport, Layers01ProbeReport, Layers0To42DecodeProbeReport, MoeOutputProbeReport,
-    ProbeConfig, ProjectionProbeReport, Ratio128CompressorReplayProbeReport,
-    RopeKvStoreProbeReport,
+    AttentionSetupProbeReport, ClosedLoopDecoderProbeReport, DecoderOutputProbeReport,
+    EmbeddingProbeReport, FfnRouterProbeReport, IngressProbeReport, Layer0BenchConfig,
+    Layer0BenchReport, Layer0ProbeReport, Layers01234567DecodeProbeReport,
+    Layers012345DecodeProbeReport, Layers0123BenchConfig, Layers0123BenchReport,
+    Layers0123ChainedProbeReport, Layers0123DecodeProbeReport, Layers0123ProbeReport,
+    Layers012ChainedProbeReport, Layers012ProbeReport, Layers01ProbeReport,
+    Layers0To42DecodeProbeReport, MoeOutputProbeReport, ProbeConfig, ProjectionProbeReport,
+    Ratio128CompressorReplayProbeReport, RopeKvStoreProbeReport,
 };
 use rust_star_runtime::model::MappedModel;
 use rust_star_runtime::target::{validate_resident_q2, MODEL_LABEL};
@@ -122,6 +124,9 @@ fn run() -> Result<()> {
     }
     if command == "decoder-output-probe" {
         return run_decoder_output_probe_command(arguments.collect());
+    }
+    if command == "closed-loop-decoder-probe" {
+        return run_closed_loop_decoder_probe_command(arguments.collect());
     }
     if command == "ratio128-compressor-replay-probe" {
         return run_ratio128_compressor_replay_probe_command(arguments.collect());
@@ -377,6 +382,52 @@ fn run_decoder_output_probe_command(arguments: Vec<OsString>) -> Result<()> {
     );
     if let Some(path) = json_path {
         write_decoder_output_probe_file(&path, &report)?;
+        println!("json: {}", path.display());
+    }
+    Ok(())
+}
+
+fn run_closed_loop_decoder_probe_command(arguments: Vec<OsString>) -> Result<()> {
+    if arguments.is_empty() {
+        return Err(Error::invalid(closed_loop_decoder_probe_usage()));
+    }
+    if matches!(arguments[0].to_str(), Some("--help") | Some("-h")) {
+        println!("{}", closed_loop_decoder_probe_usage());
+        return Ok(());
+    }
+    let model_path = PathBuf::from(&arguments[0]);
+    let mut json_path: Option<PathBuf> = None;
+    let mut arguments = arguments.into_iter().skip(1);
+    while let Some(argument) = arguments.next() {
+        match argument.to_str() {
+            Some("--json") => {
+                let value = arguments
+                    .next()
+                    .ok_or_else(|| Error::invalid("--json requires a path"))?;
+                if json_path.is_some() {
+                    return Err(Error::invalid("--json may be specified only once"));
+                }
+                json_path = Some(PathBuf::from(value));
+            }
+            Some("--help") | Some("-h") => {
+                println!("{}", closed_loop_decoder_probe_usage());
+                return Ok(());
+            }
+            _ => return Err(Error::invalid(closed_loop_decoder_probe_usage())),
+        }
+    }
+    let model = MappedModel::open(&model_path)?;
+    validate_resident_q2(model.gguf())?;
+    let report = run_closed_loop_decoder_probe(&model)?;
+    println!("closed-loop decoder: bootstrap token 201 -> generated 361, 1915, 262");
+    println!("C0: all 43 transformer layers and 129280 logits/position are bit-identical");
+    println!(
+        "timed diagnostic: {:.3} tok/s complete, {:.3} tok/s steady; correctness readback excluded",
+        report.generation_tps, report.steady_tps,
+    );
+    println!("paired protocol: ineligible until cold prefill and arbitrary-frontier decode exist");
+    if let Some(path) = json_path {
+        write_closed_loop_decoder_probe_file(&path, &report)?;
         println!("json: {}", path.display());
     }
     Ok(())
@@ -2032,6 +2083,36 @@ fn write_decoder_output_probe_file(path: &Path, report: &DecoderOutputProbeRepor
     Ok(())
 }
 
+fn write_closed_loop_decoder_probe_file(
+    path: &Path,
+    report: &ClosedLoopDecoderProbeReport,
+) -> Result<()> {
+    let temporary = path.with_extension(format!(
+        "{}tmp",
+        path.extension()
+            .and_then(OsStr::to_str)
+            .map(|extension| format!("{extension}."))
+            .unwrap_or_default()
+    ));
+    let file = File::create(&temporary).map_err(|error| {
+        Error::invalid(format!(
+            "cannot create closed-loop decoder JSON {}: {error}",
+            temporary.display()
+        ))
+    })?;
+    let mut output = BufWriter::new(file);
+    write_closed_loop_decoder_probe_json(&mut output, report)?;
+    output.flush()?;
+    drop(output);
+    std::fs::rename(&temporary, path).map_err(|error| {
+        Error::invalid(format!(
+            "cannot install closed-loop decoder JSON {}: {error}",
+            path.display()
+        ))
+    })?;
+    Ok(())
+}
+
 fn write_ratio128_compressor_replay_probe_file(
     path: &Path,
     report: &Ratio128CompressorReplayProbeReport,
@@ -2242,7 +2323,7 @@ fn print_type_counts(gguf: &Gguf) {
 }
 
 fn usage() -> &'static str {
-    "usage:\n  rust-star inspect MODEL.gguf  # strict Flash-0731 resident-Q2 validation\n  rust-star gguf MODEL.gguf     # structural GGUF v3 validation only\n  rust-star metal-probe [OPTIONS]\n  rust-star embedding-probe MODEL.gguf [OPTIONS]\n  rust-star projection-probe MODEL.gguf [OPTIONS]\n  rust-star attention-ingress-probe MODEL.gguf [OPTIONS]\n  rust-star attention-setup-probe MODEL.gguf [OPTIONS]\n  rust-star rope-kv-store-probe MODEL.gguf [OPTIONS]\n  rust-star attention-read-probe MODEL.gguf [OPTIONS]\n  rust-star attention-output-probe MODEL.gguf [OPTIONS]\n  rust-star ffn-router-probe MODEL.gguf [OPTIONS]\n  rust-star moe-output-probe MODEL.gguf [OPTIONS]\n  rust-star layer0-probe MODEL.gguf [OPTIONS]\n  rust-star layer0-bench MODEL.gguf [OPTIONS]\n  rust-star layers01-probe MODEL.gguf [OPTIONS]\n  rust-star layers012-probe MODEL.gguf [OPTIONS]\n  rust-star layers012-chained-probe MODEL.gguf [OPTIONS]\n  rust-star layers0123-probe MODEL.gguf [OPTIONS]\n  rust-star layers0123-chained-probe MODEL.gguf [OPTIONS]\n  rust-star layers0123-bench MODEL.gguf [OPTIONS]\n  rust-star layers0123-decode-probe MODEL.gguf [OPTIONS]\n  rust-star layers012345-decode-probe MODEL.gguf [OPTIONS]\n  rust-star layers01234567-decode-probe MODEL.gguf [OPTIONS]\n  rust-star layers0-42-decode-probe MODEL.gguf [OPTIONS]\n  rust-star decoder-output-probe MODEL.gguf [OPTIONS]\n  rust-star ratio128-compressor-replay-probe MODEL.gguf [OPTIONS]"
+    "usage:\n  rust-star inspect MODEL.gguf  # strict Flash-0731 resident-Q2 validation\n  rust-star gguf MODEL.gguf     # structural GGUF v3 validation only\n  rust-star metal-probe [OPTIONS]\n  rust-star embedding-probe MODEL.gguf [OPTIONS]\n  rust-star projection-probe MODEL.gguf [OPTIONS]\n  rust-star attention-ingress-probe MODEL.gguf [OPTIONS]\n  rust-star attention-setup-probe MODEL.gguf [OPTIONS]\n  rust-star rope-kv-store-probe MODEL.gguf [OPTIONS]\n  rust-star attention-read-probe MODEL.gguf [OPTIONS]\n  rust-star attention-output-probe MODEL.gguf [OPTIONS]\n  rust-star ffn-router-probe MODEL.gguf [OPTIONS]\n  rust-star moe-output-probe MODEL.gguf [OPTIONS]\n  rust-star layer0-probe MODEL.gguf [OPTIONS]\n  rust-star layer0-bench MODEL.gguf [OPTIONS]\n  rust-star layers01-probe MODEL.gguf [OPTIONS]\n  rust-star layers012-probe MODEL.gguf [OPTIONS]\n  rust-star layers012-chained-probe MODEL.gguf [OPTIONS]\n  rust-star layers0123-probe MODEL.gguf [OPTIONS]\n  rust-star layers0123-chained-probe MODEL.gguf [OPTIONS]\n  rust-star layers0123-bench MODEL.gguf [OPTIONS]\n  rust-star layers0123-decode-probe MODEL.gguf [OPTIONS]\n  rust-star layers012345-decode-probe MODEL.gguf [OPTIONS]\n  rust-star layers01234567-decode-probe MODEL.gguf [OPTIONS]\n  rust-star layers0-42-decode-probe MODEL.gguf [OPTIONS]\n  rust-star decoder-output-probe MODEL.gguf [OPTIONS]\n  rust-star closed-loop-decoder-probe MODEL.gguf [OPTIONS]\n  rust-star ratio128-compressor-replay-probe MODEL.gguf [OPTIONS]"
 }
 
 fn metal_probe_usage() -> &'static str {
@@ -2335,6 +2416,10 @@ fn layers0_to_42_decode_probe_usage() -> &'static str {
 
 fn decoder_output_probe_usage() -> &'static str {
     "usage: rust-star decoder-output-probe MODEL.gguf [--json PATH]\n\nExecutes the fixed input tokens 201, 361, and 1915 at positions 1 through 3 across all 43 transformer layers, then applies the exact DwarfStar HC collapse, learned output normalization, full 129280-token Q8_0 vocabulary projection, and lowest-token-ID argmax. Every retained transformer boundary and all five output-head tensors must remain bit-identical to the captured oracle. Input tokens are externally supplied; this is not yet a closed-loop generator."
+}
+
+fn closed_loop_decoder_probe_usage() -> &'static str {
+    "usage: rust-star closed-loop-decoder-probe MODEL.gguf [--json PATH]\n\nRuns an exhaustive three-position C0 pass in which each selected token becomes the next input, then repeats the same closed loop through a diagnostic timed path. Timed intervals include Metal submission, synchronized execution, logits transfer, and lowest-ID argmax while excluding fixture tensor readback. The result is not paired-protocol eligible until Rust Star supports cold prefill and arbitrary-frontier decode."
 }
 
 fn ratio128_compressor_replay_probe_usage() -> &'static str {

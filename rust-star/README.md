@@ -51,10 +51,12 @@ The command retains 43 raw KV caches, validates every even-layer position-3
 ratio-4 emission through layer 42, and hands off layer 42's exact
 16,384-element HC state. The four-, six-, and eight-layer commands remain
 separate regression controls. The persistent layer-0 gate reuses its pipelines,
-25 no-copy model views, cache
-storage, and activation buffers for repeated steady-state timing; this is not
-yet a complete decoder because output normalization, logits, and sampling are
-still outside the deepest exact slice.
+25 no-copy model views, cache storage, and activation buffers for repeated
+steady-state timing. The deepest exact slice now continues through all 43
+layers, full-vocabulary logits, and a three-position greedy feedback loop. Its
+readback-free timed pass is still a diagnostic rather than a paired-benchmark
+candidate because cold prefill and arbitrary-frontier 128-token decode remain
+unimplemented.
 
 Project controls and benchmark contracts:
 

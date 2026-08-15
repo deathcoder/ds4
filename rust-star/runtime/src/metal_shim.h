@@ -115,6 +115,8 @@ typedef struct rust_star_metal_layer0_extension {
 
 int rust_star_metal_create(void **context_out, char *error, size_t error_bytes);
 
+int rust_star_metal_prepare_decoder(void *context, char *error, size_t error_bytes);
+
 int rust_star_metal_run_probe(
     void *context,
     uint64_t elements,
@@ -249,6 +251,7 @@ int rust_star_metal_run_output_head(
     float *hc,
     float *norm,
     float *logits,
+    uint32_t collect_intermediates,
     rust_star_metal_ingress_probe_result *result,
     char *error,
     size_t error_bytes);

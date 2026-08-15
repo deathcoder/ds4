@@ -28,7 +28,9 @@ history; add a correction and update the current-state summary.
   also crosses the first ratio-128 emissions for layers 3 and 5 exactly. The
   ordered position-advancing executor now extends through all 43 transformer
   layers and the exact post-transformer output boundary is complete through
-  full-vocabulary logits and deterministic greedy selection.
+  full-vocabulary logits and deterministic greedy selection. A separate
+  three-position command now closes the feedback edge and has a diagnostic
+  timed path with correctness readback excluded.
   Layers 0 through 42 execute in order under one Rust-owned Metal context with
   exact GPU-resident HC-state handoffs and one retained KV allocation per
   layer. Every even layer from 2 through 42 crosses its first ratio-4
@@ -134,9 +136,13 @@ history; add a correction and update the current-state summary.
   retained state without a host handoff and reproduces the four-value HC
   projection, HC weights, collapsed HC row, learned output norm, and all
   129,280 vocabulary logits at positions 1–3 by FP32 bit pattern. Lowest-ID
-  argmax selects 361, 1915, and 262. Its input tokens remain externally
-  supplied, so closed-loop generation and eligible token-throughput timing are
-  still pending.
+  argmax selects 361, 1915, and 262. The original command keeps those inputs
+  external as a control. `closed-loop-decoder-probe` instead starts from token
+  201 and feeds each selected token into the next position, then repeats the
+  exact sequence without chained tensor collection. The timed intervals retain
+  the required full-logit transfer and CPU argmax but exclude fixture readback
+  and comparison. Cold prefill, arbitrary-frontier decode, and the eligible
+  engine-measurement producer are still pending.
 - Measurements: Metal batching was 42.861x faster than synchronized submission
   in the retained M-002 probe. DwarfStar medians are 164.86 prefill / 19.90
   generation tok/s at 2K and 161.05 prefill / 17.36 generation tok/s at 32K.
@@ -202,7 +208,13 @@ history; add a correction and update the current-state summary.
   reported 15.025/2.946 ms wall/GPU at cold position 1, 1.679/1.355 ms at
   position 2, and 1.691/1.359 ms at position 3. All 129,280 logits and four
   preceding output tensors were C0 exact at every step; these timings include
-  synchronization/readback and are likewise not throughput claims.
+  synchronization/readback and are likewise not throughput claims. The first
+  full-gate closed-loop diagnostic measured 54.610, 51.727, and 53.989 ms for
+  its three committed steps after an exhaustive C0 preparation pass: 18.712
+  tok/s complete and 18.919 tok/s over the final two steps. It includes command
+  encoding, synchronized Metal execution, full logits transfer, and CPU argmax,
+  but remains ineligible for a paired claim because it starts from captured
+  state and generates only three tokens.
 - Manual handoff: `RUST_STAR_MANUAL_TASKS.md` records Actions approval, target
   compilation/model inspection, quick/extended oracle capture, and the deferred
   secure-access decision with exact evidence requirements.
@@ -215,19 +227,63 @@ history; add a correction and update the current-state summary.
 
 ## Immediate Next Actions
 
-1. Close the loop by feeding each selected token into the next decode step,
-   while retaining the explicit-input `decoder-output-probe` as a regression
-   control.
-2. Separate exhaustive correctness collection from a measured decoder path and
-   implement the Rust Star engine-measurement contract required by the paired
-   runner.
-3. Preserve the four-, six-, eight-, 43-layer, and decoder-output commands as
-   independently executed controls while building the measured path.
+1. Replace captured initial state with cold token prefill and generalize KV and
+   compressor ownership beyond position 3.
+2. Extend the closed loop to the protocol's 128 committed tokens and emit the
+   `rust-star-engine-measurement-v1` artifact required by the paired runner.
+3. Preserve the four-, six-, eight-, 43-layer, explicit decoder-output, and
+   closed-loop diagnostic commands as independently executed controls.
 4. Run the extended 2K--1M frontier capture when the Mac can be dedicated to a
    long benchmark; preserve any 512K/1M capacity failure as evidence.
 5. Run or approve the fork's GitHub Actions workflow and retain its URL.
 
 ## Entries
+
+### 2026-08-15 — Three-position decoder loop closed and timed honestly
+
+Objective:
+
+- Feed exact greedy selections back into the following decoder positions and
+  separate exhaustive C0 tensor collection from the measured execution path.
+
+Implementation:
+
+- Added `closed-loop-decoder-probe` and schema
+  `rust-star-closed-loop-decoder-diagnostic-v1` without changing the existing
+  explicit-input `decoder-output-probe` control.
+- The exhaustive pass starts with token 201, derives 361, feeds 361 into
+  position 2, derives and feeds 1915 into position 3, and finally selects 262.
+  Every retained boundary across 43 layers plus all 129,280 logits per position
+  remains C0 bit-identical.
+- Added a prepared output-head mode that omits the four intermediate host
+  copies while retaining the full logits copy required for CPU greedy argmax.
+  The timed pass does not invoke any transformer collector or fixture
+  comparison. Pipeline preparation and the exhaustive C0 allocation pass occur
+  before its step intervals.
+- Stable JSON explicitly classifies the result as diagnostic, records whether
+  correctness/logits/argmax occur in the interval, and marks paired-protocol
+  eligibility false with the remaining cold-prefill/arbitrary-frontier blocker.
+- Added CLI help, runtime-gate coverage, host JSON tests, and runtime/benchmark
+  documentation.
+
+Validation and measurement:
+
+- Formatting, 60 Rust tests, the optimized macOS Rust/Objective-C/Metal build,
+  JSON parsing, and diff checks pass.
+- The complete target-Mac gate passed formatting, 60 Rust tests, 42 Python
+  tests, optimized compilation, all 182 fixture envelopes, every retained live
+  Metal control, and the new closed-loop command.
+- The live model run selected `361, 1915, 262` in both exhaustive and timed
+  loops. The full-gate timed steps were 54.610, 51.727, and 53.989 ms, giving
+  18.712 complete tok/s and 18.919 steady tok/s over the final two tokens.
+- This is not a headline or paired result: it begins from the captured
+  position-0 cache/compressor state, uses only three positions, and performs no
+  cold prompt prefill.
+
+Next:
+
+- Generalize state allocation and execution to cold prefill and positions past
+  three, then drive 128 closed-loop tokens into the engine-measurement contract.
 
 ### 2026-08-15 — Exact decoder output boundary completed
 

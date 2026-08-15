@@ -621,6 +621,24 @@ static int ensure_moe_output_pipelines(
     return 1;
 }
 
+int rust_star_metal_prepare_decoder(
+    void *opaque_context,
+    char *error,
+    size_t error_bytes)
+{
+    if (!opaque_context) {
+        return fail_with_message(error, error_bytes, @"decoder preparation received a null context");
+    }
+    @autoreleasepool {
+        RustStarMetalContext *context = (__bridge RustStarMetalContext *)opaque_context;
+        return ensure_get_rows_f16_pipeline(context, error, error_bytes) &&
+            ensure_attention_ingress_pipelines(context, error, error_bytes) &&
+            ensure_q8_projection_pipeline(context, error, error_bytes) &&
+            ensure_attention_output_pipelines(context, error, error_bytes) &&
+            ensure_moe_output_pipelines(context, error, error_bytes);
+    }
+}
+
 int rust_star_metal_run_probe(
     void *opaque_context,
     uint64_t elements,
@@ -3098,6 +3116,7 @@ int rust_star_metal_run_output_head(
     float *hc,
     float *norm,
     float *logits,
+    uint32_t collect_intermediates,
     rust_star_metal_ingress_probe_result *result,
     char *error,
     size_t error_bytes)
@@ -3107,8 +3126,9 @@ int rust_star_metal_run_output_head(
     const uint32_t hc_dim = n_embd*n_hc;
     const uint32_t n_vocab = 129280u;
     const uint64_t output_row_bytes = (uint64_t)(n_embd/32u)*34u;
-    if (!opaque_context || !model_mapping || !hc_pre || !hc_weights ||
-        !hc || !norm || !logits || !result) {
+    if (!opaque_context || !model_mapping || !logits || !result ||
+        collect_intermediates > 1u ||
+        (collect_intermediates && (!hc_pre || !hc_weights || !hc || !norm))) {
         return fail_with_message(error, error_bytes, @"output head received invalid inputs");
     }
     if (hc_fn_bytes != (uint64_t)hc_dim*n_hc*sizeof(uint16_t) ||
@@ -3268,10 +3288,12 @@ int rust_star_metal_run_output_head(
         if (!command_succeeded(command, error, error_bytes)) return 0;
         const double wall_end = monotonic_ms();
 
-        memcpy(hc_pre, pre_buffer.contents, n_hc*sizeof(float));
-        memcpy(hc_weights, weights_buffer.contents, n_hc*sizeof(float));
-        memcpy(hc, hc_buffer.contents, n_embd*sizeof(float));
-        memcpy(norm, norm_buffer.contents, n_embd*sizeof(float));
+        if (collect_intermediates) {
+            memcpy(hc_pre, pre_buffer.contents, n_hc*sizeof(float));
+            memcpy(hc_weights, weights_buffer.contents, n_hc*sizeof(float));
+            memcpy(hc, hc_buffer.contents, n_embd*sizeof(float));
+            memcpy(norm, norm_buffer.contents, n_embd*sizeof(float));
+        }
         memcpy(logits, logits_buffer.contents, n_vocab*sizeof(float));
         memset(result, 0, sizeof(*result));
         result->model_bytes = model_bytes;

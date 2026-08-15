@@ -443,6 +443,25 @@ correctness path uses 44 command buffers and two host waits per step. It keeps
 the input sequence explicit and external, so it does not yet measure committed
 tokens or claim closed-loop generation throughput.
 
+## Closed-loop decoder diagnostic
+
+Schema: `rust-star-closed-loop-decoder-diagnostic-v1`.
+
+`closed-loop-decoder-probe` preserves `decoder-output-probe` as an explicit
+input control and adds a real feedback edge: token 201 selects 361, 361 becomes
+the position-2 input and selects 1915, and 1915 becomes the position-3 input and
+selects 262. The exhaustive pass still checks all retained layer tensors and
+all full-vocabulary logits by FP32 bit pattern.
+
+A second pass uses the same prepared Metal ownership boundary but does not run
+the chained tensor collectors and asks the output head to transfer only the
+logits required for sampling. Per-step wall intervals span transformer command
+encoding/execution, output-head execution, synchronization, logits transfer,
+and CPU lowest-ID argmax. Pipeline preparation and the exhaustive C0 pass are
+outside those intervals. This is deliberately a three-position diagnostic,
+not a `rust-star-engine-measurement-v1` producer: eligible measurement still
+requires cold prefill and arbitrary-frontier 128-token decode.
+
 ## Position-127 ratio-128 compressor replay
 
 Schema: `rust-star-ratio128-compressor-replay-probe-v1`.

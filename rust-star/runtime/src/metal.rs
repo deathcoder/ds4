@@ -32,6 +32,7 @@ pub const LAYERS0_TO_42_DECODE_PROBE_SCHEMA: &str =
     "rust-star-layers0-42-position-advancing-probe-v1";
 pub const DECODER_OUTPUT_PROBE_SCHEMA: &str =
     "rust-star-decoder-output-position-advancing-probe-v1";
+pub const CLOSED_LOOP_DECODER_PROBE_SCHEMA: &str = "rust-star-closed-loop-decoder-diagnostic-v1";
 pub const RATIO128_COMPRESSOR_REPLAY_PROBE_SCHEMA: &str =
     "rust-star-ratio128-compressor-replay-probe-v1";
 pub const PROJECTION_FIXTURE_ID: &str = "dwarfstar-oracle-v1-layer0-pos1-attn-q-a";
@@ -827,6 +828,29 @@ pub struct DecoderOutputProbeReport {
     pub kv_cache_layers: u32,
     pub cache_capacity_rows: u32,
     pub logits_elements: u32,
+    pub closed_loop_sampling: bool,
+    pub externally_supplied_decode_inputs: bool,
+}
+
+#[derive(Clone, Debug)]
+pub struct TimedDecoderStepReport {
+    pub position: u32,
+    pub input_token: u32,
+    pub selected_token: u32,
+    pub wall_ms: f64,
+    pub output_head_gpu_ms: f64,
+}
+
+#[derive(Clone, Debug)]
+pub struct ClosedLoopDecoderProbeReport {
+    pub correctness: DecoderOutputProbeReport,
+    pub timed_steps: Vec<TimedDecoderStepReport>,
+    pub pipeline_prepare_ms: f64,
+    pub generation_wall_ms: f64,
+    pub generation_tps: f64,
+    pub first_token_ms: f64,
+    pub steady_wall_ms: f64,
+    pub steady_tps: f64,
 }
 
 #[derive(Clone, Debug)]
@@ -1297,6 +1321,7 @@ pub fn write_decoder_output_probe_json<W: Write>(
         || report.kv_cache_layers != 43
         || report.cache_capacity_rows != 4
         || report.logits_elements != 129280
+        || report.closed_loop_sampling == report.externally_supplied_decode_inputs
     {
         return Err(Error::invalid(
             "decoder-output report has inconsistent boundary metadata",
@@ -1367,7 +1392,113 @@ pub fn write_decoder_output_probe_json<W: Write>(
     }
     write!(
         output,
-        "\n  ],\n  \"closed_loop_sampling\": false,\n  \"externally_supplied_decode_inputs\": true,\n  \"full_logits_c0_bitwise_match\": true,\n  \"c0_bitwise_match\": true\n}}\n"
+        "\n  ],\n  \"closed_loop_sampling\": {},\n  \"externally_supplied_decode_inputs\": {},\n  \"full_logits_c0_bitwise_match\": true,\n  \"c0_bitwise_match\": true\n}}\n",
+        report.closed_loop_sampling,
+        report.externally_supplied_decode_inputs,
+    )?;
+    Ok(())
+}
+
+pub fn write_closed_loop_decoder_probe_json<W: Write>(
+    output: &mut W,
+    report: &ClosedLoopDecoderProbeReport,
+) -> Result<()> {
+    let expected_inputs = [201_u32, 361, 1915];
+    let expected_outputs = [361_u32, 1915, 262];
+    if report.correctness.steps.len() != 3
+        || report.correctness.command_buffers_per_step != 44
+        || report.correctness.host_waits_per_step != 2
+        || report.correctness.kv_cache_layers != 43
+        || report.correctness.logits_elements != 129280
+        || !report.correctness.closed_loop_sampling
+        || report.correctness.externally_supplied_decode_inputs
+        || report.timed_steps.len() != 3
+        || !report.pipeline_prepare_ms.is_finite()
+        || report.pipeline_prepare_ms <= 0.0
+        || !report.generation_wall_ms.is_finite()
+        || report.generation_wall_ms <= 0.0
+        || !report.generation_tps.is_finite()
+        || report.generation_tps <= 0.0
+        || !report.first_token_ms.is_finite()
+        || report.first_token_ms <= 0.0
+        || !report.steady_wall_ms.is_finite()
+        || report.steady_wall_ms <= 0.0
+        || !report.steady_tps.is_finite()
+        || report.steady_tps <= 0.0
+    {
+        return Err(Error::invalid(
+            "closed-loop decoder report has inconsistent aggregate metadata",
+        ));
+    }
+    for (index, (correctness, timed)) in report
+        .correctness
+        .steps
+        .iter()
+        .zip(&report.timed_steps)
+        .enumerate()
+    {
+        if correctness.position != index as u32 + 1
+            || correctness.input_token != expected_inputs[index]
+            || correctness.output_head.selected_token != expected_outputs[index]
+            || timed.position != correctness.position
+            || timed.input_token != correctness.input_token
+            || timed.selected_token != correctness.output_head.selected_token
+            || !timed.wall_ms.is_finite()
+            || timed.wall_ms <= 0.0
+            || !timed.output_head_gpu_ms.is_finite()
+            || timed.output_head_gpu_ms < 0.0
+        {
+            return Err(Error::invalid(
+                "closed-loop decoder report has inconsistent step metadata",
+            ));
+        }
+    }
+    let generation_wall_ms = report
+        .timed_steps
+        .iter()
+        .map(|step| step.wall_ms)
+        .sum::<f64>();
+    let steady_wall_ms = report.timed_steps[1..]
+        .iter()
+        .map(|step| step.wall_ms)
+        .sum::<f64>();
+    if report.generation_wall_ms.to_bits() != generation_wall_ms.to_bits()
+        || report.first_token_ms.to_bits() != report.timed_steps[0].wall_ms.to_bits()
+        || report.steady_wall_ms.to_bits() != steady_wall_ms.to_bits()
+        || report.generation_tps.to_bits() != (3000.0 / generation_wall_ms).to_bits()
+        || report.steady_tps.to_bits() != (2000.0 / steady_wall_ms).to_bits()
+    {
+        return Err(Error::invalid(
+            "closed-loop decoder report has inconsistent timing aggregates",
+        ));
+    }
+    write!(
+        output,
+        "{{\n  \"schema\": \"{CLOSED_LOOP_DECODER_PROBE_SCHEMA}\",\n  \"classification\": \"diagnostic\",\n  \"selection\": \"lowest-token-id-argmax\",\n  \"bootstrap_input_token\": 201,\n  \"generated_tokens\": [361, 1915, 262],\n  \"correctness\": {{\n    \"positions\": 3,\n    \"transformer_layers\": 43,\n    \"logits_per_position\": 129280,\n    \"closed_loop_sampling\": true,\n    \"externally_supplied_decode_inputs\": false,\n    \"full_logits_c0_bitwise_match\": true,\n    \"c0_bitwise_match\": true\n  }},\n  \"timed_path\": {{\n    \"pipeline_prepare_ms\": {:.6},\n    \"pipeline_preparation_in_interval\": false,\n    \"command_buffers_per_step\": 44,\n    \"host_waits_per_step\": 2,\n    \"correctness_readback_in_interval\": false,\n    \"sampling_logits_readback_in_interval\": true,\n    \"argmax_in_interval\": true,\n    \"steps\": [",
+        report.pipeline_prepare_ms,
+    )?;
+    for (index, step) in report.timed_steps.iter().enumerate() {
+        if index != 0 {
+            write!(output, ",")?;
+        }
+        write!(
+            output,
+            "\n      {{\"position\": {}, \"input_token\": {}, \"selected_token\": {}, \"wall_ms\": {:.6}, \"output_head_gpu_ms\": {:.6}}}",
+            step.position,
+            step.input_token,
+            step.selected_token,
+            step.wall_ms,
+            step.output_head_gpu_ms,
+        )?;
+    }
+    write!(
+        output,
+        "\n    ],\n    \"metrics\": {{\"gen_tokens\": 3, \"gen_steady_tokens\": 2, \"gen_ms\": {:.6}, \"gen_tps\": {:.6}, \"gen_first_ms\": {:.6}, \"gen_steady_ms\": {:.6}, \"gen_steady_tps\": {:.6}}}\n  }},\n  \"paired_protocol_eligible\": false,\n  \"paired_protocol_blocker\": \"cold prefill and arbitrary-frontier decode are not implemented\"\n}}\n",
+        report.generation_wall_ms,
+        report.generation_tps,
+        report.first_token_ms,
+        report.steady_wall_ms,
+        report.steady_tps,
     )?;
     Ok(())
 }
@@ -2929,6 +3060,7 @@ mod imp {
     use super::*;
     use std::ffi::{c_char, c_void, CStr};
     use std::ptr;
+    use std::time::Instant;
 
     const ERROR_BYTES: usize = 1024;
     const COMMAND_SYNCHRONIZED: u32 = 0;
@@ -3104,6 +3236,11 @@ mod imp {
             error: *mut c_char,
             error_bytes: usize,
         ) -> i32;
+        fn rust_star_metal_prepare_decoder(
+            context: *mut c_void,
+            error: *mut c_char,
+            error_bytes: usize,
+        ) -> i32;
         fn rust_star_metal_run_probe(
             context: *mut c_void,
             elements: u64,
@@ -3238,6 +3375,7 @@ mod imp {
             hc: *mut f32,
             norm: *mut f32,
             logits: *mut f32,
+            collect_intermediates: u32,
             result: *mut RawIngressProbeResult,
             error: *mut c_char,
             error_bytes: usize,
@@ -3411,6 +3549,28 @@ mod imp {
         repeat_bitwise_matches: u32,
     }
 
+    struct PreparedOutputHead {
+        hc_fn: ModelSpan,
+        hc_scale: ModelSpan,
+        hc_base: ModelSpan,
+        output_norm: ModelSpan,
+        output: ModelSpan,
+        logits: Vec<f32>,
+    }
+
+    impl PreparedOutputHead {
+        fn new(model: &MappedModel) -> Result<Self> {
+            Ok(Self {
+                hc_fn: exact_tensor(model, "output_hc_fn.weight", 1, &[16384, 4])?.into(),
+                hc_scale: exact_tensor(model, "output_hc_scale.weight", 0, &[1])?.into(),
+                hc_base: exact_tensor(model, "output_hc_base.weight", 0, &[4])?.into(),
+                output_norm: exact_tensor(model, "output_norm.weight", 0, &[4096])?.into(),
+                output: exact_tensor(model, "output.weight", 8, &[4096, 129280])?.into(),
+                logits: vec![0.0_f32; 129280],
+            })
+        }
+    }
+
     impl PreparedLayerExecution {
         fn new(
             model: &MappedModel,
@@ -3567,6 +3727,19 @@ mod imp {
                 )));
             }
             Ok(Self(pointer))
+        }
+
+        fn prepare_decoder(&self) -> Result<()> {
+            let mut error = [0 as c_char; ERROR_BYTES];
+            let prepared =
+                unsafe { rust_star_metal_prepare_decoder(self.0, error.as_mut_ptr(), error.len()) };
+            if prepared == 0 {
+                return Err(Error::invalid(format!(
+                    "Metal decoder preparation failed: {}",
+                    error_text(&error)
+                )));
+            }
+            Ok(())
         }
     }
 
@@ -5043,6 +5216,7 @@ mod imp {
                 hc.as_mut_ptr(),
                 norm.as_mut_ptr(),
                 logits.as_mut_ptr(),
+                1,
                 &mut raw,
                 error.as_mut_ptr(),
                 error.len(),
@@ -5117,6 +5291,60 @@ mod imp {
             logits_checksum: checksum_f32(&logits),
             selected_token,
         })
+    }
+
+    fn run_sampling_output_head(
+        model: &MappedModel,
+        context: &Context,
+        prepared: &mut PreparedOutputHead,
+    ) -> Result<(u32, f64)> {
+        let mut raw = RawIngressProbeResult::default();
+        let mut error = [0 as c_char; ERROR_BYTES];
+        let succeeded = unsafe {
+            rust_star_metal_run_output_head(
+                context.0,
+                model.mapping_pointer(),
+                model.bytes(),
+                prepared.hc_fn.absolute_offset,
+                prepared.hc_fn.bytes,
+                prepared.hc_scale.absolute_offset,
+                prepared.hc_scale.bytes,
+                prepared.hc_base.absolute_offset,
+                prepared.hc_base.bytes,
+                prepared.output_norm.absolute_offset,
+                prepared.output_norm.bytes,
+                prepared.output.absolute_offset,
+                prepared.output.bytes,
+                ptr::null_mut(),
+                ptr::null_mut(),
+                ptr::null_mut(),
+                ptr::null_mut(),
+                prepared.logits.as_mut_ptr(),
+                0,
+                &mut raw,
+                error.as_mut_ptr(),
+                error.len(),
+            )
+        };
+        if succeeded == 0 {
+            return Err(Error::invalid(format!(
+                "Metal sampling output head failed: {}",
+                error_text(&error)
+            )));
+        }
+        if raw.model_bytes != model.bytes()
+            || raw.wrapped_model_ranges != 5
+            || raw.pointer_matches != 5
+            || !raw.wall_ms.is_finite()
+            || raw.wall_ms <= 0.0
+            || !raw.gpu_ms.is_finite()
+            || raw.gpu_ms < 0.0
+        {
+            return Err(Error::invalid(
+                "Metal sampling output head returned invalid ownership or timing metadata",
+            ));
+        }
+        Ok((lowest_id_argmax(&prepared.logits)?, raw.gpu_ms))
     }
 
     fn run_position_advancing_probe(
@@ -5205,27 +5433,40 @@ mod imp {
         run_position_advancing_probe(model, 43)
     }
 
-    pub fn run_decoder_output_probe(model: &MappedModel) -> Result<DecoderOutputProbeReport> {
-        let context = Context::new()?;
-        let mut layers = (0..43)
-            .map(|layer_index| PreparedLayerExecution::new(model, layer_index, 1, 1))
-            .collect::<Result<Vec<_>>>()?;
+    fn run_decoder_output_correctness_in_context(
+        model: &MappedModel,
+        context: &Context,
+        layers: &mut [PreparedLayerExecution],
+        closed_loop_sampling: bool,
+    ) -> Result<DecoderOutputProbeReport> {
+        if layers.len() != 43 {
+            return Err(Error::invalid(
+                "decoder-output correctness requires all forty-three prepared layers",
+            ));
+        }
         let mut steps = Vec::with_capacity(3);
+        let supplied_inputs = [201_u32, 361, 1915];
+        let mut next_input = supplied_inputs[0];
 
-        for (position, input_token) in [(1_u32, 201_u32), (2_u32, 361_u32), (3_u32, 1915_u32)] {
+        for position in 1_u32..=3 {
+            let input_token = if closed_loop_sampling {
+                next_input
+            } else {
+                supplied_inputs[position as usize - 1]
+            };
             if position > 1 {
                 for (layer_index, layer) in layers.iter_mut().enumerate() {
                     layer.expected = layer_expected(layer_index as u32, position)?;
                 }
             }
-            submit_prepared_layers(model, &context, &mut layers, input_token, position)?;
-            let output_head = run_retained_output_head(model, &context, position)?;
+            submit_prepared_layers(model, context, layers, input_token, position)?;
+            let output_head = run_retained_output_head(model, context, position)?;
             let mut reports = Vec::with_capacity(43);
-            for layer in &mut layers {
+            for layer in layers.iter_mut() {
                 reports.push(
                     run_prepared_layer_iterations(
                         model,
-                        &context,
+                        context,
                         layer,
                         input_token,
                         position,
@@ -5237,6 +5478,7 @@ mod imp {
                     .report,
                 );
             }
+            next_input = output_head.selected_token;
             steps.push(DecoderOutputStepReport {
                 position,
                 input_token,
@@ -5255,6 +5497,100 @@ mod imp {
             kv_cache_layers: 43,
             cache_capacity_rows: 4,
             logits_elements: 129280,
+            closed_loop_sampling,
+            externally_supplied_decode_inputs: !closed_loop_sampling,
+        })
+    }
+
+    fn run_decoder_output_correctness(
+        model: &MappedModel,
+        closed_loop_sampling: bool,
+    ) -> Result<DecoderOutputProbeReport> {
+        let context = Context::new()?;
+        let mut layers = (0..43)
+            .map(|layer_index| PreparedLayerExecution::new(model, layer_index, 1, 1))
+            .collect::<Result<Vec<_>>>()?;
+        run_decoder_output_correctness_in_context(
+            model,
+            &context,
+            &mut layers,
+            closed_loop_sampling,
+        )
+    }
+
+    pub fn run_decoder_output_probe(model: &MappedModel) -> Result<DecoderOutputProbeReport> {
+        run_decoder_output_correctness(model, false)
+    }
+
+    pub fn run_closed_loop_decoder_probe(
+        model: &MappedModel,
+    ) -> Result<ClosedLoopDecoderProbeReport> {
+        let context = Context::new()?;
+        let mut layers = (0..43)
+            .map(|layer_index| PreparedLayerExecution::new(model, layer_index, 1, 1))
+            .collect::<Result<Vec<_>>>()?;
+        let mut output_head = PreparedOutputHead::new(model)?;
+        let prepare_started = Instant::now();
+        context.prepare_decoder()?;
+        let pipeline_prepare_ms = prepare_started.elapsed().as_secs_f64() * 1000.0;
+        let correctness =
+            run_decoder_output_correctness_in_context(model, &context, &mut layers, true)?;
+        for (layer_index, layer) in layers.iter_mut().enumerate() {
+            layer.expected = layer_expected(layer_index as u32, 1)?;
+        }
+        let expected_inputs = [201_u32, 361, 1915];
+        let expected_outputs = [361_u32, 1915, 262];
+        let mut input_token = expected_inputs[0];
+        let mut timed_steps = Vec::with_capacity(3);
+
+        for position in 1_u32..=3 {
+            if input_token != expected_inputs[position as usize - 1] {
+                return Err(Error::invalid(format!(
+                    "closed-loop input mismatch at position {position}: actual={input_token} expected={}",
+                    expected_inputs[position as usize - 1]
+                )));
+            }
+            if position > 1 {
+                for (layer_index, layer) in layers.iter_mut().enumerate() {
+                    layer.expected = layer_expected(layer_index as u32, position)?;
+                }
+            }
+            let started = Instant::now();
+            submit_prepared_layers(model, &context, &mut layers, input_token, position)?;
+            let (selected_token, output_head_gpu_ms) =
+                run_sampling_output_head(model, &context, &mut output_head)?;
+            let wall_ms = started.elapsed().as_secs_f64() * 1000.0;
+            if selected_token != expected_outputs[position as usize - 1] {
+                return Err(Error::invalid(format!(
+                    "timed closed-loop selection mismatch at position {position}: actual={selected_token} expected={}",
+                    expected_outputs[position as usize - 1]
+                )));
+            }
+            timed_steps.push(TimedDecoderStepReport {
+                position,
+                input_token,
+                selected_token,
+                wall_ms,
+                output_head_gpu_ms,
+            });
+            input_token = selected_token;
+        }
+
+        let generation_wall_ms = timed_steps.iter().map(|step| step.wall_ms).sum::<f64>();
+        let first_token_ms = timed_steps[0].wall_ms;
+        let steady_wall_ms = timed_steps[1..]
+            .iter()
+            .map(|step| step.wall_ms)
+            .sum::<f64>();
+        Ok(ClosedLoopDecoderProbeReport {
+            correctness,
+            timed_steps,
+            pipeline_prepare_ms,
+            generation_wall_ms,
+            generation_tps: 3000.0 / generation_wall_ms,
+            first_token_ms,
+            steady_wall_ms,
+            steady_tps: 2000.0 / steady_wall_ms,
         })
     }
 
@@ -6394,6 +6730,18 @@ mod imp {
         ))
     }
 
+    pub fn run_closed_loop_decoder_probe(
+        model: &MappedModel,
+    ) -> Result<ClosedLoopDecoderProbeReport> {
+        for position in 1..=3 {
+            let _ = output_head_expected(position)?;
+        }
+        let _ = exact_tensor(model, "output.weight", 8, &[4096, 129280])?;
+        Err(Error::invalid(
+            "the Metal closed-loop decoder probe is available only on macOS",
+        ))
+    }
+
     pub fn run_ratio128_compressor_replay_probe(
         model: &MappedModel,
     ) -> Result<Ratio128CompressorReplayProbeReport> {
@@ -6569,13 +6917,13 @@ mod imp {
 
 pub use imp::{
     run_attention_ingress_probe, run_attention_output_probe, run_attention_read_probe,
-    run_attention_setup_probe, run_decoder_output_probe, run_f16_embedding_probe,
-    run_ffn_router_probe, run_layer0_bench, run_layer0_probe, run_layers01234567_decode_probe,
-    run_layers012345_decode_probe, run_layers0123_bench, run_layers0123_chained_probe,
-    run_layers0123_decode_probe, run_layers0123_probe, run_layers012_chained_probe,
-    run_layers012_probe, run_layers01_probe, run_layers0_to_42_decode_probe, run_moe_output_probe,
-    run_probe, run_q8_projection_probe, run_ratio128_compressor_replay_probe,
-    run_rope_kv_store_probe, LayerExecutor,
+    run_attention_setup_probe, run_closed_loop_decoder_probe, run_decoder_output_probe,
+    run_f16_embedding_probe, run_ffn_router_probe, run_layer0_bench, run_layer0_probe,
+    run_layers01234567_decode_probe, run_layers012345_decode_probe, run_layers0123_bench,
+    run_layers0123_chained_probe, run_layers0123_decode_probe, run_layers0123_probe,
+    run_layers012_chained_probe, run_layers012_probe, run_layers01_probe,
+    run_layers0_to_42_decode_probe, run_moe_output_probe, run_probe, run_q8_projection_probe,
+    run_ratio128_compressor_replay_probe, run_rope_kv_store_probe, LayerExecutor,
 };
 
 #[cfg(test)]
@@ -7165,6 +7513,39 @@ mod tests {
             kv_cache_layers: 43,
             cache_capacity_rows: 4,
             logits_elements: 129280,
+            closed_loop_sampling: false,
+            externally_supplied_decode_inputs: true,
+        }
+    }
+
+    fn closed_loop_decoder_report() -> ClosedLoopDecoderProbeReport {
+        let mut correctness = decoder_output_report();
+        correctness.closed_loop_sampling = true;
+        correctness.externally_supplied_decode_inputs = false;
+        ClosedLoopDecoderProbeReport {
+            correctness,
+            timed_steps: [
+                (1_u32, 201_u32, 361_u32, 12.0_f64),
+                (2, 361, 1915, 10.0),
+                (3, 1915, 262, 10.0),
+            ]
+            .into_iter()
+            .map(
+                |(position, input_token, selected_token, wall_ms)| TimedDecoderStepReport {
+                    position,
+                    input_token,
+                    selected_token,
+                    wall_ms,
+                    output_head_gpu_ms: 1.0,
+                },
+            )
+            .collect(),
+            pipeline_prepare_ms: 800.0,
+            generation_wall_ms: 32.0,
+            generation_tps: 93.75,
+            first_token_ms: 12.0,
+            steady_wall_ms: 20.0,
+            steady_tps: 100.0,
         }
     }
 
@@ -7385,6 +7766,20 @@ mod tests {
         assert!(text.contains("\"selected_token\": 262"));
         assert!(text.contains("\"closed_loop_sampling\": false"));
         assert!(text.contains("\"full_logits_c0_bitwise_match\": true"));
+    }
+
+    #[test]
+    fn writes_stable_closed_loop_decoder_probe_json() {
+        let mut output = Vec::new();
+        write_closed_loop_decoder_probe_json(&mut output, &closed_loop_decoder_report()).unwrap();
+        let text = String::from_utf8(output).unwrap();
+        assert!(text.contains(&format!(
+            "\"schema\": \"{CLOSED_LOOP_DECODER_PROBE_SCHEMA}\""
+        )));
+        assert!(text.contains("\"generated_tokens\": [361, 1915, 262]"));
+        assert!(text.contains("\"correctness_readback_in_interval\": false"));
+        assert!(text.contains("\"gen_steady_tps\": 100.000000"));
+        assert!(text.contains("\"paired_protocol_eligible\": false"));
     }
 
     #[test]

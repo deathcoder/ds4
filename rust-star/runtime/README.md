@@ -417,6 +417,26 @@ uses 44 command buffers and two host waits per step. Inputs are still supplied
 externally, so this is not a closed-loop generator or a token-throughput
 benchmark.
 
+To verify the feedback edge and exercise the corresponding readback-free timed
+path:
+
+```sh
+rust-star/.work/runtime-target/release/rust-star \
+  closed-loop-decoder-probe \
+  /absolute/path/to/model.gguf \
+  --json rust-star/.work/runtime-target/closed-loop-decoder-probe.json
+```
+
+`closed-loop-decoder-probe` first performs exhaustive C0 collection while
+feeding each lowest-ID argmax result into the next position. It then reuses the
+prepared model views, Metal pipelines, and retained allocations for a separate
+timed pass. Those intervals include all 44 command buffers, both required tail
+waits, the 129,280-logit transfer used for CPU argmax, and the argmax itself;
+they exclude tensor-fixture readback and comparison. Its three-token rate is a
+diagnostic only. The command reports `paired_protocol_eligible: false` because
+the captured slice does not yet implement cold prefill, arbitrary frontiers,
+or the protocol's 128 committed tokens.
+
 To cross the first ratio-128 emission boundary without overstating decoder
 coverage:
 
