@@ -189,6 +189,10 @@ static NSString *const kQ8ProjectionSource =
 @property(nonatomic, strong) id<MTLComputePipelineState> routedDownSumPipeline;
 @property(nonatomic, strong) id<MTLComputePipelineState> sharedGateUpPipeline;
 @property(nonatomic, strong) id<MTLComputePipelineState> sharedDownHcPipeline;
+@property(nonatomic, strong) NSMutableDictionary<NSString *, id<MTLBuffer>> *modelViewCache;
+@property(nonatomic, strong) NSMutableDictionary<NSString *, id<MTLBuffer>> *activationBufferCache;
+@property(nonatomic, assign) const void *modelMapping;
+@property(nonatomic, assign) uint64_t modelBytes;
 @property(nonatomic, assign) double setupMilliseconds;
 @property(nonatomic, assign) double compileMilliseconds;
 @end
@@ -287,6 +291,8 @@ int rust_star_metal_create(void **context_out, char *error, size_t error_bytes) 
         context.device = device;
         context.queue = queue;
         context.probePipeline = pipeline;
+        context.modelViewCache = [NSMutableDictionary dictionary];
+        context.activationBufferCache = [NSMutableDictionary dictionary];
         context.setupMilliseconds = setup_end - setup_start;
         context.compileMilliseconds = compile_end - compile_start;
         *context_out = (__bridge_retained void *)context;
@@ -956,6 +962,13 @@ static id<MTLBuffer> wrap_model_range(
     char *error,
     size_t error_bytes)
 {
+    if (!context.modelMapping) {
+        context.modelMapping = model_mapping;
+        context.modelBytes = model_bytes;
+    } else if (context.modelMapping != model_mapping || context.modelBytes != model_bytes) {
+        fail_with_message(error, error_bytes, @"Metal context cannot be rebound to a different model mapping");
+        return nil;
+    }
     if (offset > model_bytes || bytes > model_bytes - offset) {
         fail_with_message(error, error_bytes, @"attention ingress model range is invalid");
         return nil;
@@ -975,10 +988,15 @@ static id<MTLBuffer> wrap_model_range(
         return nil;
     }
     void *page_pointer = (void *)((uintptr_t)model_mapping + page_offset);
-    id<MTLBuffer> buffer = [context.device newBufferWithBytesNoCopy:page_pointer
-                                                           length:(NSUInteger)buffer_bytes
-                                                          options:MTLResourceStorageModeShared
-                                                      deallocator:nil];
+    NSString *key = [NSString stringWithFormat:@"%llu:%llu", page_offset, buffer_bytes];
+    id<MTLBuffer> buffer = context.modelViewCache[key];
+    if (!buffer) {
+        buffer = [context.device newBufferWithBytesNoCopy:page_pointer
+                                                   length:(NSUInteger)buffer_bytes
+                                                  options:MTLResourceStorageModeShared
+                                              deallocator:nil];
+        if (buffer) context.modelViewCache[key] = buffer;
+    }
     if (!buffer) {
         fail_with_message(error, error_bytes, @"failed to wrap attention ingress model range");
         return nil;
@@ -989,6 +1007,30 @@ static id<MTLBuffer> wrap_model_range(
         fail_with_message(error, error_bytes, @"attention ingress Metal buffer does not preserve mmap identity");
         return nil;
     }
+    return buffer;
+}
+
+static id<MTLBuffer> persistent_buffer(
+    RustStarMetalContext *context,
+    NSString *key,
+    NSUInteger bytes,
+    char *error,
+    size_t error_bytes)
+{
+    id<MTLBuffer> buffer = context.activationBufferCache[key];
+    if (buffer) {
+        if (buffer.length != bytes) {
+            fail_with_message(error, error_bytes, @"persistent Metal buffer size changed");
+            return nil;
+        }
+        return buffer;
+    }
+    buffer = [context.device newBufferWithLength:bytes options:MTLResourceStorageModeShared];
+    if (!buffer) {
+        fail_with_message(error, error_bytes, @"failed to allocate persistent Metal buffer");
+        return nil;
+    }
+    context.activationBufferCache[key] = buffer;
     return buffer;
 }
 
@@ -1198,6 +1240,7 @@ int rust_star_metal_run_attention_ingress(
     const BOOL attention_output = attention_low && attention_out && after_attention_hc;
     const BOOL partial_attention_output = attention_low || attention_out || after_attention_hc;
     const BOOL full_layer = layer0 != NULL;
+    const BOOL continuing_layer = full_layer && layer0->reuse_previous_hc != 0;
     const uint32_t warmup_iterations = full_layer ? layer0->warmup_iterations : 0;
     const uint32_t measured_iterations = full_layer ? layer0->measured_iterations : 1;
     if (!opaque_context || !model_mapping || !mixes || !split || !collapsed ||
@@ -1226,6 +1269,16 @@ int rust_star_metal_run_attention_ingress(
         !layer0->shared_out || !layer0->after_ffn_hc)) {
         return fail_with_message(error, error_bytes,
             @"full layer outputs require the complete attention path and output set");
+    }
+    if (full_layer && (layer0->layer_index > 1 ||
+        (layer0->layer_index == 0 && continuing_layer) ||
+        (layer0->layer_index == 1 && !continuing_layer))) {
+        return fail_with_message(error, error_bytes,
+            @"full layer execution must run layer 0 before continuing into layer 1");
+    }
+    if (continuing_layer && (warmup_iterations != 0 || measured_iterations != 1)) {
+        return fail_with_message(error, error_bytes,
+            @"continued layer execution currently requires exactly one measured iteration");
     }
     if (full_layer && (measured_iterations == 0 || warmup_iterations > 1000 ||
         measured_iterations > 1000 || warmup_iterations > 1000-measured_iterations)) {
@@ -1372,52 +1425,57 @@ int rust_star_metal_run_attention_ingress(
             }
         }
 
-        id<MTLBuffer> embedding = [context.device newBufferWithLength:n_embd*sizeof(float) options:MTLResourceStorageModeShared];
-        id<MTLBuffer> cur_hc = [context.device newBufferWithLength:hc_dim*sizeof(float) options:MTLResourceStorageModeShared];
-        id<MTLBuffer> flat_hc = [context.device newBufferWithLength:hc_dim*sizeof(float) options:MTLResourceStorageModeShared];
-        id<MTLBuffer> mix_buffer = [context.device newBufferWithLength:mix_hc*sizeof(float) options:MTLResourceStorageModeShared];
-        id<MTLBuffer> split_buffer = [context.device newBufferWithLength:mix_hc*sizeof(float) options:MTLResourceStorageModeShared];
-        id<MTLBuffer> collapsed_buffer = [context.device newBufferWithLength:n_embd*sizeof(float) options:MTLResourceStorageModeShared];
-        id<MTLBuffer> norm_buffer = [context.device newBufferWithLength:n_embd*sizeof(float) options:MTLResourceStorageModeShared];
-        id<MTLBuffer> q_buffer = [context.device newBufferWithLength:q_elements*sizeof(float) options:MTLResourceStorageModeShared];
-        id<MTLBuffer> q_norm_buffer = extended ? [context.device newBufferWithLength:q_elements*sizeof(float) options:MTLResourceStorageModeShared] : nil;
-        id<MTLBuffer> kv_raw_buffer = extended ? [context.device newBufferWithLength:kv_elements*sizeof(float) options:MTLResourceStorageModeShared] : nil;
-        id<MTLBuffer> kv_norm_buffer = extended ? [context.device newBufferWithLength:kv_elements*sizeof(float) options:MTLResourceStorageModeShared] : nil;
-        id<MTLBuffer> q_raw_buffer = extended ? [context.device newBufferWithLength:q_raw_elements*sizeof(float) options:MTLResourceStorageModeShared] : nil;
-        id<MTLBuffer> q_cur_buffer = rope_and_store ? [context.device newBufferWithLength:q_raw_elements*sizeof(float) options:MTLResourceStorageModeShared] : nil;
-        id<MTLBuffer> kv_rope_buffer = rope_and_store ? [context.device newBufferWithLength:kv_elements*sizeof(float) options:MTLResourceStorageModeShared] : nil;
-        id<MTLBuffer> cache_buffer = rope_and_store ? [context.device newBufferWithLength:3u*kv_elements*sizeof(float) options:MTLResourceStorageModeShared] : nil;
+        id<MTLBuffer> prior_hc = context.activationBufferCache[@"layer_hc_state"];
+        if (continuing_layer && !prior_hc) {
+            return fail_with_message(error, error_bytes, @"continued layer execution has no retained HC state");
+        }
+        id<MTLBuffer> embedding = persistent_buffer(context, @"embedding", n_embd*sizeof(float), error, error_bytes);
+        id<MTLBuffer> cur_hc = persistent_buffer(context, @"embedding_hc", hc_dim*sizeof(float), error, error_bytes);
+        id<MTLBuffer> layer_input_hc = continuing_layer ? prior_hc : cur_hc;
+        id<MTLBuffer> flat_hc = persistent_buffer(context, @"attention_flat_hc", hc_dim*sizeof(float), error, error_bytes);
+        id<MTLBuffer> mix_buffer = persistent_buffer(context, @"attention_mix", mix_hc*sizeof(float), error, error_bytes);
+        id<MTLBuffer> split_buffer = persistent_buffer(context, @"attention_split", mix_hc*sizeof(float), error, error_bytes);
+        id<MTLBuffer> collapsed_buffer = persistent_buffer(context, @"attention_collapsed", n_embd*sizeof(float), error, error_bytes);
+        id<MTLBuffer> norm_buffer = persistent_buffer(context, @"attention_norm", n_embd*sizeof(float), error, error_bytes);
+        id<MTLBuffer> q_buffer = persistent_buffer(context, @"q_lora", q_elements*sizeof(float), error, error_bytes);
+        id<MTLBuffer> q_norm_buffer = extended ? persistent_buffer(context, @"q_lora_norm", q_elements*sizeof(float), error, error_bytes) : nil;
+        id<MTLBuffer> kv_raw_buffer = extended ? persistent_buffer(context, @"kv_raw", kv_elements*sizeof(float), error, error_bytes) : nil;
+        id<MTLBuffer> kv_norm_buffer = extended ? persistent_buffer(context, @"kv_norm", kv_elements*sizeof(float), error, error_bytes) : nil;
+        id<MTLBuffer> q_raw_buffer = extended ? persistent_buffer(context, @"q_raw", q_raw_elements*sizeof(float), error, error_bytes) : nil;
+        id<MTLBuffer> q_cur_buffer = rope_and_store ? persistent_buffer(context, @"q_cur", q_raw_elements*sizeof(float), error, error_bytes) : nil;
+        id<MTLBuffer> kv_rope_buffer = rope_and_store ? persistent_buffer(context, @"kv_rope", kv_elements*sizeof(float), error, error_bytes) : nil;
+        id<MTLBuffer> cache_buffer = rope_and_store ? persistent_buffer(context, @"kv_cache", 3u*kv_elements*sizeof(float), error, error_bytes) : nil;
         const NSUInteger staged_kv_bytes = 2u*kv_elements*sizeof(uint16_t);
         const NSUInteger mask_bytes = 2u*sizeof(uint16_t);
         const NSUInteger flash_pad_bytes = 2u*32u*kv_elements*sizeof(uint16_t) + 32u*sizeof(uint16_t);
         const NSUInteger flash_tmp_bytes = 64u*kv_elements*32u*sizeof(float) + 64u*64u*sizeof(float);
-        id<MTLBuffer> staged_kv_buffer = attention_read ? [context.device newBufferWithLength:staged_kv_bytes options:MTLResourceStorageModeShared] : nil;
-        id<MTLBuffer> mask_buffer = attention_read ? [context.device newBufferWithLength:mask_bytes options:MTLResourceStorageModeShared] : nil;
-        id<MTLBuffer> flash_pad_buffer = attention_read ? [context.device newBufferWithLength:flash_pad_bytes options:MTLResourceStorageModeShared] : nil;
-        id<MTLBuffer> flash_tmp_buffer = attention_read ? [context.device newBufferWithLength:flash_tmp_bytes options:MTLResourceStorageModeShared] : nil;
-        id<MTLBuffer> attention_raw_buffer = attention_read ? [context.device newBufferWithLength:q_raw_elements*sizeof(float) options:MTLResourceStorageModeShared] : nil;
-        id<MTLBuffer> attention_back_buffer = attention_read ? [context.device newBufferWithLength:q_raw_elements*sizeof(float) options:MTLResourceStorageModeShared] : nil;
-        id<MTLBuffer> attention_low_buffer = attention_output ? [context.device newBufferWithLength:8192u*sizeof(float) options:MTLResourceStorageModeShared] : nil;
-        id<MTLBuffer> attention_out_buffer = attention_output ? [context.device newBufferWithLength:n_embd*sizeof(float) options:MTLResourceStorageModeShared] : nil;
-        id<MTLBuffer> after_attention_hc_buffer = attention_output ? [context.device newBufferWithLength:hc_dim*sizeof(float) options:MTLResourceStorageModeShared] : nil;
-        id<MTLBuffer> ffn_flat_buffer = full_layer ? [context.device newBufferWithLength:hc_dim*sizeof(float) options:MTLResourceStorageModeShared] : nil;
-        id<MTLBuffer> ffn_mix_buffer = full_layer ? [context.device newBufferWithLength:mix_hc*sizeof(float) options:MTLResourceStorageModeShared] : nil;
-        id<MTLBuffer> ffn_split_buffer = full_layer ? [context.device newBufferWithLength:mix_hc*sizeof(float) options:MTLResourceStorageModeShared] : nil;
-        id<MTLBuffer> ffn_cur_buffer = full_layer ? [context.device newBufferWithLength:n_embd*sizeof(float) options:MTLResourceStorageModeShared] : nil;
-        id<MTLBuffer> ffn_norm_buffer = full_layer ? [context.device newBufferWithLength:n_embd*sizeof(float) options:MTLResourceStorageModeShared] : nil;
-        id<MTLBuffer> router_logits_buffer = full_layer ? [context.device newBufferWithLength:256u*sizeof(float) options:MTLResourceStorageModeShared] : nil;
-        id<MTLBuffer> router_probs_buffer = full_layer ? [context.device newBufferWithLength:256u*sizeof(float) options:MTLResourceStorageModeShared] : nil;
-        id<MTLBuffer> selected_buffer = full_layer ? [context.device newBufferWithLength:6u*sizeof(int32_t) options:MTLResourceStorageModeShared] : nil;
-        id<MTLBuffer> route_weights_buffer = full_layer ? [context.device newBufferWithLength:6u*sizeof(float) options:MTLResourceStorageModeShared] : nil;
-        id<MTLBuffer> routed_gate_buffer = full_layer ? [context.device newBufferWithLength:6u*2048u*sizeof(float) options:MTLResourceStorageModeShared] : nil;
-        id<MTLBuffer> routed_up_buffer = full_layer ? [context.device newBufferWithLength:6u*2048u*sizeof(float) options:MTLResourceStorageModeShared] : nil;
-        id<MTLBuffer> routed_mid_buffer = full_layer ? [context.device newBufferWithLength:6u*2048u*sizeof(float) options:MTLResourceStorageModeShared] : nil;
-        id<MTLBuffer> routed_out_buffer = full_layer ? [context.device newBufferWithLength:n_embd*sizeof(float) options:MTLResourceStorageModeShared] : nil;
-        id<MTLBuffer> shared_gate_buffer = full_layer ? [context.device newBufferWithLength:2048u*sizeof(float) options:MTLResourceStorageModeShared] : nil;
-        id<MTLBuffer> shared_up_buffer = full_layer ? [context.device newBufferWithLength:2048u*sizeof(float) options:MTLResourceStorageModeShared] : nil;
-        id<MTLBuffer> shared_mid_buffer = full_layer ? [context.device newBufferWithLength:2048u*sizeof(float) options:MTLResourceStorageModeShared] : nil;
-        id<MTLBuffer> shared_out_buffer = full_layer ? [context.device newBufferWithLength:n_embd*sizeof(float) options:MTLResourceStorageModeShared] : nil;
-        id<MTLBuffer> after_ffn_hc_buffer = full_layer ? [context.device newBufferWithLength:hc_dim*sizeof(float) options:MTLResourceStorageModeShared] : nil;
+        id<MTLBuffer> staged_kv_buffer = attention_read ? persistent_buffer(context, @"staged_kv", staged_kv_bytes, error, error_bytes) : nil;
+        id<MTLBuffer> mask_buffer = attention_read ? persistent_buffer(context, @"attention_mask", mask_bytes, error, error_bytes) : nil;
+        id<MTLBuffer> flash_pad_buffer = attention_read ? persistent_buffer(context, @"flash_pad", flash_pad_bytes, error, error_bytes) : nil;
+        id<MTLBuffer> flash_tmp_buffer = attention_read ? persistent_buffer(context, @"flash_tmp", flash_tmp_bytes, error, error_bytes) : nil;
+        id<MTLBuffer> attention_raw_buffer = attention_read ? persistent_buffer(context, @"attention_raw", q_raw_elements*sizeof(float), error, error_bytes) : nil;
+        id<MTLBuffer> attention_back_buffer = attention_read ? persistent_buffer(context, @"attention_back", q_raw_elements*sizeof(float), error, error_bytes) : nil;
+        id<MTLBuffer> attention_low_buffer = attention_output ? persistent_buffer(context, @"attention_low", 8192u*sizeof(float), error, error_bytes) : nil;
+        id<MTLBuffer> attention_out_buffer = attention_output ? persistent_buffer(context, @"attention_out", n_embd*sizeof(float), error, error_bytes) : nil;
+        id<MTLBuffer> after_attention_hc_buffer = attention_output ? persistent_buffer(context, @"after_attention_hc", hc_dim*sizeof(float), error, error_bytes) : nil;
+        id<MTLBuffer> ffn_flat_buffer = full_layer ? persistent_buffer(context, @"ffn_flat_hc", hc_dim*sizeof(float), error, error_bytes) : nil;
+        id<MTLBuffer> ffn_mix_buffer = full_layer ? persistent_buffer(context, @"ffn_mix", mix_hc*sizeof(float), error, error_bytes) : nil;
+        id<MTLBuffer> ffn_split_buffer = full_layer ? persistent_buffer(context, @"ffn_split", mix_hc*sizeof(float), error, error_bytes) : nil;
+        id<MTLBuffer> ffn_cur_buffer = full_layer ? persistent_buffer(context, @"ffn_cur", n_embd*sizeof(float), error, error_bytes) : nil;
+        id<MTLBuffer> ffn_norm_buffer = full_layer ? persistent_buffer(context, @"ffn_norm", n_embd*sizeof(float), error, error_bytes) : nil;
+        id<MTLBuffer> router_logits_buffer = full_layer ? persistent_buffer(context, @"router_logits", 256u*sizeof(float), error, error_bytes) : nil;
+        id<MTLBuffer> router_probs_buffer = full_layer ? persistent_buffer(context, @"router_probs", 256u*sizeof(float), error, error_bytes) : nil;
+        id<MTLBuffer> selected_buffer = full_layer ? persistent_buffer(context, @"selected_experts", 6u*sizeof(int32_t), error, error_bytes) : nil;
+        id<MTLBuffer> route_weights_buffer = full_layer ? persistent_buffer(context, @"router_weights", 6u*sizeof(float), error, error_bytes) : nil;
+        id<MTLBuffer> routed_gate_buffer = full_layer ? persistent_buffer(context, @"routed_gate", 6u*2048u*sizeof(float), error, error_bytes) : nil;
+        id<MTLBuffer> routed_up_buffer = full_layer ? persistent_buffer(context, @"routed_up", 6u*2048u*sizeof(float), error, error_bytes) : nil;
+        id<MTLBuffer> routed_mid_buffer = full_layer ? persistent_buffer(context, @"routed_mid", 6u*2048u*sizeof(float), error, error_bytes) : nil;
+        id<MTLBuffer> routed_out_buffer = full_layer ? persistent_buffer(context, @"routed_out", n_embd*sizeof(float), error, error_bytes) : nil;
+        id<MTLBuffer> shared_gate_buffer = full_layer ? persistent_buffer(context, @"shared_gate", 2048u*sizeof(float), error, error_bytes) : nil;
+        id<MTLBuffer> shared_up_buffer = full_layer ? persistent_buffer(context, @"shared_up", 2048u*sizeof(float), error, error_bytes) : nil;
+        id<MTLBuffer> shared_mid_buffer = full_layer ? persistent_buffer(context, @"shared_mid", 2048u*sizeof(float), error, error_bytes) : nil;
+        id<MTLBuffer> shared_out_buffer = full_layer ? persistent_buffer(context, @"shared_out", n_embd*sizeof(float), error, error_bytes) : nil;
+        id<MTLBuffer> after_ffn_hc_buffer = full_layer ? persistent_buffer(context, @"layer_hc_state", hc_dim*sizeof(float), error, error_bytes) : nil;
         if (!embedding || !cur_hc || !flat_hc || !mix_buffer || !split_buffer ||
             !collapsed_buffer || !norm_buffer || !q_buffer) {
             return fail_with_message(error, error_bytes, @"failed to allocate attention ingress buffers");
@@ -1713,6 +1771,7 @@ int rust_star_metal_run_attention_ingress(
         id<MTLComputeCommandEncoder> encoder = [command computeCommandEncoder];
         if (!encoder) return fail_with_message(error, error_bytes, @"failed to create attention ingress encoder");
 
+        if (!continuing_layer) {
         [encoder setComputePipelineState:context.getRowsF16Pipeline];
         [encoder setBytes:&get_rows length:sizeof(get_rows) atIndex:0];
         [encoder setBuffer:embedding_weights offset:embedding_inner atIndex:1];
@@ -1726,12 +1785,13 @@ int rust_star_metal_run_attention_ingress(
         [encoder setBuffer:embedding offset:0 atIndex:1];
         [encoder setBuffer:cur_hc offset:0 atIndex:2];
         [encoder dispatchThreadgroups:MTLSizeMake(n_hc,1,1) threadsPerThreadgroup:MTLSizeMake(1024,1,1)];
+        }
 
         [encoder setComputePipelineState:context.rmsNormF32Pipeline];
         [encoder setBytes:&norm length:sizeof(norm) atIndex:0];
-        [encoder setBuffer:cur_hc offset:0 atIndex:1];
-        [encoder setBuffer:cur_hc offset:0 atIndex:2];
-        [encoder setBuffer:cur_hc offset:0 atIndex:3];
+        [encoder setBuffer:layer_input_hc offset:0 atIndex:1];
+        [encoder setBuffer:layer_input_hc offset:0 atIndex:2];
+        [encoder setBuffer:layer_input_hc offset:0 atIndex:3];
         [encoder setBuffer:flat_hc offset:0 atIndex:4];
         [encoder setThreadgroupMemoryLength:32u*sizeof(float) atIndex:0];
         [encoder dispatchThreadgroups:MTLSizeMake(1,1,1) threadsPerThreadgroup:MTLSizeMake(1024,1,1)];
@@ -1749,7 +1809,7 @@ int rust_star_metal_run_attention_ingress(
         [encoder setBuffer:mix_buffer offset:0 atIndex:1];
         [encoder setBuffer:scale_weights offset:scale_inner atIndex:2];
         [encoder setBuffer:base_weights offset:base_inner atIndex:3];
-        [encoder setBuffer:cur_hc offset:0 atIndex:4];
+        [encoder setBuffer:layer_input_hc offset:0 atIndex:4];
         [encoder setBuffer:split_buffer offset:0 atIndex:5];
         [encoder setBuffer:collapsed_buffer offset:0 atIndex:6];
         [encoder setBuffer:norm_weights offset:norm_inner atIndex:7];
@@ -1916,7 +1976,7 @@ int rust_star_metal_run_attention_ingress(
                     [encoder setBuffer:output_b_weights offset:output_b_inner atIndex:2];
                     [encoder setBuffer:attention_low_buffer offset:0 atIndex:3];
                     [encoder setBuffer:attention_out_buffer offset:0 atIndex:4];
-                    [encoder setBuffer:cur_hc offset:0 atIndex:5];
+                    [encoder setBuffer:layer_input_hc offset:0 atIndex:5];
                     [encoder setBuffer:split_buffer offset:4u*sizeof(float) atIndex:6];
                     [encoder setBuffer:split_buffer offset:8u*sizeof(float) atIndex:7];
                     [encoder setBuffer:after_attention_hc_buffer offset:0 atIndex:8];

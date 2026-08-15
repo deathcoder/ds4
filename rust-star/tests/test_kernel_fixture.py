@@ -24,6 +24,7 @@ ATTENTION_READ_FIXTURE = RUST_STAR_DIR / "fixtures" / "layer0-attention-read-v1"
 ATTENTION_OUTPUT_FIXTURE = RUST_STAR_DIR / "fixtures" / "layer0-attention-output-v1"
 FFN_ROUTER_FIXTURE = RUST_STAR_DIR / "fixtures" / "layer0-ffn-router-v1"
 MOE_OUTPUT_FIXTURE = RUST_STAR_DIR / "fixtures" / "layer0-moe-output-v1"
+LAYER1_COMPLETE_FIXTURE = RUST_STAR_DIR / "fixtures" / "layer1-complete-v1"
 
 
 class KernelFixtureTests(unittest.TestCase):
@@ -97,6 +98,14 @@ class KernelFixtureTests(unittest.TestCase):
         self.assertEqual(report["operations"], 4)
         self.assertEqual(report["tensors"], 11)
         self.assertEqual(report["verified_bytes"], 229_520)
+
+    def test_layer1_complete_fixture_manifest_and_payloads(self) -> None:
+        report = validate_differential_fixture(LAYER1_COMPLETE_FIXTURE)
+        self.assertEqual(report["fixture_id"], "dwarfstar-oracle-v1-layer1-pos1-complete")
+        self.assertEqual(report["scope"], "decode-step")
+        self.assertEqual(report["operations"], 28)
+        self.assertEqual(report["tensors"], 33)
+        self.assertEqual(report["verified_bytes"], 741_808)
 
     def test_fixture_shape_tampering_is_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:

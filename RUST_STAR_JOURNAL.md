@@ -21,9 +21,10 @@ history; add a correction and update the current-state summary.
 ## Current State
 
 - Phase: target-Mac bootstrap, quick `oracle-v1`, no-copy model mapping, the
-  canonical differential-fixture envelope, and the connected layer-0
-  attention path through Q/K RoPE and its first exact KV-cache row write are
-  complete; the next increment is the first layer-0 attention scan/readback.
+  canonical differential-fixture envelope, complete layer 0, steady-state
+  layer-0 execution, and the first persistent cross-layer scheduler boundary
+  are complete. Layers 0 and 1 now execute in order under one Rust-owned Metal
+  context with an exact GPU-resident HC-state handoff.
 - Working branch: `agent/rust-star-bootstrap`.
 - Branch base: upstream `antirez/ds4` commit
   `b0309611041655f4e45671cfd9c9886aff161406`.
@@ -64,11 +65,14 @@ history; add a correction and update the current-state summary.
   chain now runs six imported operations in one command buffer from token 201's
   embedding through Q-Lora, with six mmap-backed model spans and bitwise checks
   at mixer, HC split, collapsed HC, learned attention norm, and Q-Lora.
-  The continuation adds Q8 KV projection, fused Q-Lora/KV learned RMSNorm, and
-  Q-B in the same command buffer, yielding full raw Q and normalized KV with
-  ten mmap-backed model spans. The twelve-dispatch continuation imports the
-  exact pinned RoPE and KV-finalizer sources, produces final Q/K, FP8-rounds KV,
-  and writes an FP16-rounded physical cache row while preserving guard rows.
+  The connected path now covers all thirty layer-0 dispatches through Flash
+  attention, output projection, hash routing, routed/shared experts, and final
+  HC update. A narrow Rust `LayerExecutor` owns the Metal context, permanently
+  binds it to one model mmap, and caches exact model views and activation
+  buffers. It executes layer 0 followed by layer 1; layer 1 omits
+  embedding/repeat and consumes layer 0's retained final HC Metal buffer
+  directly. Both layers use independently captured cache-row and differential
+  fixtures and pass every retained boundary by FP32 bit pattern.
 - Measurements: Metal batching was 42.861x faster than synchronized submission
   in the retained M-002 probe. DwarfStar medians are 164.86 prefill / 19.90
   generation tok/s at 2K and 161.05 prefill / 17.36 generation tok/s at 32K.
@@ -83,7 +87,12 @@ history; add a correction and update the current-state summary.
   its final gate, also not a throughput claim. The twelve-dispatch RoPE/cache
   gate matched 34,816 direct outputs plus the 512-value stored row, preserved
   two 512-value guard rows, and reported 0.949 ms GPU time; this is likewise
-  correctness evidence rather than decoder throughput.
+  correctness evidence rather than decoder throughput. Persistent layer-0
+  execution measured 1.503 ms wall median (0.094 ms MAD) and 1.138 ms GPU
+  median (0.033 ms MAD) across 30 bit-identical samples. The first continuous
+  layers-0/1 correctness run reported 75.956/31.655 ms wall/GPU for cold layer
+  0 and 27.276/26.313 ms for layer 1; those two-layer timings include setup and
+  correctness readback and are not decoder-throughput claims.
 - Manual handoff: `RUST_STAR_MANUAL_TASKS.md` records Actions approval, target
   compilation/model inspection, quick/extended oracle capture, and the deferred
   secure-access decision with exact evidence requirements.
@@ -96,16 +105,70 @@ history; add a correction and update the current-state summary.
 
 ## Immediate Next Actions
 
-1. Extend the connected layer-0 path through the uncompressed layer-0
-   FlashAttention scan over the now-validated raw cache and validate its
-   attention output before inverse RoPE.
-2. Define the smallest reusable Rust buffer/scheduling abstraction justified by
-   the now-connected path; do not introduce a general graph framework yet.
+1. Give the executor explicit per-layer KV-cache slices, then extend the same
+   ordered API and C0 capture to layer 2 without introducing a graph framework.
+2. Once three sequential layers are exact, measure whether command-buffer
+   chaining can remove the current inter-layer synchronization without changing
+   arithmetic or lifetime guarantees.
 3. Run the extended 2K--1M frontier capture when the Mac can be dedicated to a
    long benchmark; preserve any 512K/1M capacity failure as evidence.
 4. Run or approve the fork's GitHub Actions workflow and retain its URL.
 
 ## Entries
+
+### 2026-08-15 — Persistent layer-0→layer-1 HC handoff matched DwarfStar
+
+Objective:
+
+- Move setup/execution ownership into the Rust scheduler and prove the first
+  real cross-layer state handoff without a host upload or fixture seam.
+
+Oracle fixture:
+
+- Captured all 32 retained layer-1 position-1 boundaries twice from the pinned
+  DwarfStar executable; every artifact was byte-identical across fresh
+  processes. Captured position-0 `KVcur` separately and derived the exact
+  FP16-rounded cache row used by the two-position attention read.
+- Added `rust-star/fixtures/layer1-complete-v1/`: 28 ordered operations and 33
+  tensors totaling 741,808 verified bytes. The fixture binds the pinned source,
+  executable, model, prompt, machine, token, layer, and position identities.
+
+Implementation:
+
+- Added a narrow Rust `LayerExecutor` with explicit create/execute/destroy
+  lifetime and monotonically ordered layer calls. The Objective-C context now
+  rejects model-mapping rebinding and caches exact mmap-backed Metal views plus
+  reusable activation buffers.
+- Parameterized the proven full-layer chain by layer index. Layer 0 executes
+  thirty dispatches; layer 1 executes twenty-eight by skipping embedding and
+  repeat and reading layer 0's retained final-HC buffer directly.
+- Added a stable `layers01-probe` CLI/JSON contract, fixture and report tests,
+  documentation, and automatic target-model gate execution.
+
+Target-Mac evidence:
+
+- Layer 0 retained 25/25 no-copy model-range pointer matches, selected
+  `[25, 174, 215, 58, 48, 60]`, and remained C0 exact.
+- Layer 1 retained 25/25 pointer matches, selected
+  `[228, 208, 35, 27, 113, 12]`, and matched every retained DwarfStar boundary
+  bit-for-bit while consuming the live layer-0 HC state.
+- The final full gate reported 70.143 ms wall / 30.658 ms GPU for layer 0 and
+  26.414 ms wall / 25.457 ms GPU for layer 1. These intervals are diagnostic
+  because setup, synchronization, and readback remain included.
+- The complete target-Mac gate passed: 37 Rust tests, optimized macOS build, 35
+  Python tests, all nine fixture verifiers, the cross-language C0 smoke, strict
+  validation of all 1,288 required tensors, and every Metal probe.
+
+Decision:
+
+- Accept the scheduler-owned Metal lifetime and direct HC handoff as the first
+  reusable decoder boundary. Keep one synchronized command buffer per layer
+  until per-layer KV ownership and a third sequential layer are exact.
+
+Next:
+
+- Add explicit per-layer KV-cache storage and capture/execute layer 2 through
+  the same ordered executor API.
 
 ### 2026-08-14 — Layer-0 RoPE and first KV-cache write matched DwarfStar
 

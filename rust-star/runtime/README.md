@@ -266,3 +266,21 @@ pinned two-row attention geometry. It is not a full-decoder benchmark and must
 not be multiplied by the layer count to claim model throughput: later layers,
 the recurrent decoder state, cache growth, final normalization, sampling, and
 host scheduling are not represented yet.
+
+To validate the first cross-layer scheduler boundary:
+
+```sh
+rust-star/.work/runtime-target/release/rust-star layers01-probe \
+  /absolute/path/to/model.gguf \
+  --json rust-star/.work/runtime-target/layers01-probe.json
+```
+
+`layers01-probe` creates one Rust-owned executor, binds it to one immutable
+model mapping, and runs complete layers 0 and 1 in order. Exact model views
+and activation buffers remain cached for that executor's lifetime. Layer 1
+skips embedding/repeat and reads layer 0's final four-stream HC state directly
+from the retained Metal buffer; no host upload or fixture handoff occurs at
+the layer seam. Each layer uses one synchronized command buffer, and both
+layers must match their independently captured DwarfStar checkpoints
+bit-for-bit. This proves the two-layer ownership and state-handoff contract,
+not yet a full decoder loop.

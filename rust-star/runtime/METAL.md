@@ -283,3 +283,21 @@ This gate measures only the already validated layer-0, position-1 execution
 shape. It does not include view/pipeline allocation, model parsing, or fixture
 comparison in the samples, but it also does not represent the later-layer
 decoder, growing contexts, sampling, or end-to-end token latency.
+
+## Persistent layers 0–1
+
+Schema: `rust-star-layers01-continuous-probe-v1`.
+
+`layers01-probe` moves setup ownership into a narrow Rust `LayerExecutor`.
+The executor owns one Metal context, binds it permanently to one Rust model
+mmap, caches exact bytes-no-copy model views and activation buffers, and
+requires monotonically ordered layer calls.
+
+Layer 0 executes the established thirty-dispatch chain. After its command
+buffer completes, layer 1 executes twenty-eight dispatches: it omits token
+embedding and HC repeat, and consumes layer 0's retained final HC Metal buffer
+directly. Both layers restore their independently captured position-0 cache
+row, select their expected experts, and pass bitwise comparisons at every
+retained attention, router, expert, and final-HC boundary. The synchronization
+between the two command buffers is currently intentional; removing that
+boundary belongs to later scheduler work.

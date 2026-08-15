@@ -2,14 +2,15 @@ use rust_star_runtime::gguf::Gguf;
 use rust_star_runtime::metal::{
     run_attention_ingress_probe, run_attention_output_probe, run_attention_read_probe,
     run_attention_setup_probe, run_f16_embedding_probe, run_ffn_router_probe, run_layer0_bench,
-    run_layer0_probe, run_moe_output_probe, run_probe, run_q8_projection_probe,
+    run_layer0_probe, run_layers01_probe, run_moe_output_probe, run_probe, run_q8_projection_probe,
     run_rope_kv_store_probe, write_attention_output_probe_json, write_attention_read_probe_json,
     write_attention_setup_probe_json, write_embedding_probe_json, write_ffn_router_probe_json,
     write_ingress_probe_json, write_layer0_bench_json, write_layer0_probe_json,
-    write_moe_output_probe_json, write_probe_json, write_projection_probe_json,
-    write_rope_kv_store_probe_json, AttentionOutputProbeReport, AttentionReadProbeReport,
-    AttentionSetupProbeReport, EmbeddingProbeReport, FfnRouterProbeReport, IngressProbeReport,
-    Layer0BenchConfig, Layer0BenchReport, Layer0ProbeReport, MoeOutputProbeReport, ProbeConfig,
+    write_layers01_probe_json, write_moe_output_probe_json, write_probe_json,
+    write_projection_probe_json, write_rope_kv_store_probe_json, AttentionOutputProbeReport,
+    AttentionReadProbeReport, AttentionSetupProbeReport, EmbeddingProbeReport,
+    FfnRouterProbeReport, IngressProbeReport, Layer0BenchConfig, Layer0BenchReport,
+    Layer0ProbeReport, Layers01ProbeReport, MoeOutputProbeReport, ProbeConfig,
     ProjectionProbeReport, RopeKvStoreProbeReport,
 };
 use rust_star_runtime::model::MappedModel;
@@ -76,7 +77,60 @@ fn run() -> Result<()> {
     if command == "layer0-bench" {
         return run_layer0_bench_command(arguments.collect());
     }
+    if command == "layers01-probe" {
+        return run_layers01_command(arguments.collect());
+    }
     run_model_command(&command, arguments.collect())
+}
+
+fn run_layers01_command(arguments: Vec<OsString>) -> Result<()> {
+    if arguments.is_empty() {
+        return Err(Error::invalid(layers01_probe_usage()));
+    }
+    if matches!(arguments[0].to_str(), Some("--help") | Some("-h")) {
+        println!("{}", layers01_probe_usage());
+        return Ok(());
+    }
+    let model_path = PathBuf::from(&arguments[0]);
+    let mut json_path: Option<PathBuf> = None;
+    let mut arguments = arguments.into_iter().skip(1);
+    while let Some(argument) = arguments.next() {
+        match argument.to_str() {
+            Some("--json") => {
+                let value = arguments
+                    .next()
+                    .ok_or_else(|| Error::invalid("--json requires a path"))?;
+                if json_path.is_some() {
+                    return Err(Error::invalid("--json may be specified only once"));
+                }
+                json_path = Some(PathBuf::from(value));
+            }
+            Some("--help") | Some("-h") => {
+                println!("{}", layers01_probe_usage());
+                return Ok(());
+            }
+            _ => return Err(Error::invalid(layers01_probe_usage())),
+        }
+    }
+    let model = MappedModel::open(&model_path)?;
+    validate_resident_q2(model.gguf())?;
+    let report = run_layers01_probe(&model)?;
+    println!("continuous layers: 0 -> 1");
+    for (layer_index, layer) in report.layers.iter().enumerate() {
+        println!(
+            "layer {layer_index}: {} dispatches, experts {:?}, wall={:.3} ms gpu={:.3} ms, C0 exact",
+            layer.dispatches, layer.selected_experts, layer.wall_ms, layer.gpu_ms
+        );
+    }
+    println!(
+        "handoff: layer 1 read layer 0's retained HC state directly from Metal memory across {} command buffers",
+        report.command_buffers
+    );
+    if let Some(path) = json_path {
+        write_layers01_probe_file(&path, &report)?;
+        println!("json: {}", path.display());
+    }
+    Ok(())
 }
 
 fn run_layer0_bench_command(arguments: Vec<OsString>) -> Result<()> {
@@ -1181,6 +1235,33 @@ fn write_layer0_bench_file(path: &Path, report: &Layer0BenchReport) -> Result<()
     Ok(())
 }
 
+fn write_layers01_probe_file(path: &Path, report: &Layers01ProbeReport) -> Result<()> {
+    let temporary = path.with_extension(format!(
+        "{}tmp",
+        path.extension()
+            .and_then(OsStr::to_str)
+            .map(|extension| format!("{extension}."))
+            .unwrap_or_default()
+    ));
+    let file = File::create(&temporary).map_err(|error| {
+        Error::invalid(format!(
+            "cannot create layers-0/1 probe JSON {}: {error}",
+            temporary.display()
+        ))
+    })?;
+    let mut output = BufWriter::new(file);
+    write_layers01_probe_json(&mut output, report)?;
+    output.flush()?;
+    drop(output);
+    std::fs::rename(&temporary, path).map_err(|error| {
+        Error::invalid(format!(
+            "cannot install layers-0/1 probe JSON {}: {error}",
+            path.display()
+        ))
+    })?;
+    Ok(())
+}
+
 fn write_moe_output_probe_file(path: &Path, report: &MoeOutputProbeReport) -> Result<()> {
     let temporary = path.with_extension(format!(
         "{}tmp",
@@ -1220,7 +1301,7 @@ fn print_type_counts(gguf: &Gguf) {
 }
 
 fn usage() -> &'static str {
-    "usage:\n  rust-star inspect MODEL.gguf  # strict Flash-0731 resident-Q2 validation\n  rust-star gguf MODEL.gguf     # structural GGUF v3 validation only\n  rust-star metal-probe [OPTIONS]\n  rust-star embedding-probe MODEL.gguf [OPTIONS]\n  rust-star projection-probe MODEL.gguf [OPTIONS]\n  rust-star attention-ingress-probe MODEL.gguf [OPTIONS]\n  rust-star attention-setup-probe MODEL.gguf [OPTIONS]\n  rust-star rope-kv-store-probe MODEL.gguf [OPTIONS]\n  rust-star attention-read-probe MODEL.gguf [OPTIONS]\n  rust-star attention-output-probe MODEL.gguf [OPTIONS]\n  rust-star ffn-router-probe MODEL.gguf [OPTIONS]\n  rust-star moe-output-probe MODEL.gguf [OPTIONS]\n  rust-star layer0-probe MODEL.gguf [OPTIONS]\n  rust-star layer0-bench MODEL.gguf [OPTIONS]"
+    "usage:\n  rust-star inspect MODEL.gguf  # strict Flash-0731 resident-Q2 validation\n  rust-star gguf MODEL.gguf     # structural GGUF v3 validation only\n  rust-star metal-probe [OPTIONS]\n  rust-star embedding-probe MODEL.gguf [OPTIONS]\n  rust-star projection-probe MODEL.gguf [OPTIONS]\n  rust-star attention-ingress-probe MODEL.gguf [OPTIONS]\n  rust-star attention-setup-probe MODEL.gguf [OPTIONS]\n  rust-star rope-kv-store-probe MODEL.gguf [OPTIONS]\n  rust-star attention-read-probe MODEL.gguf [OPTIONS]\n  rust-star attention-output-probe MODEL.gguf [OPTIONS]\n  rust-star ffn-router-probe MODEL.gguf [OPTIONS]\n  rust-star moe-output-probe MODEL.gguf [OPTIONS]\n  rust-star layer0-probe MODEL.gguf [OPTIONS]\n  rust-star layer0-bench MODEL.gguf [OPTIONS]\n  rust-star layers01-probe MODEL.gguf [OPTIONS]"
 }
 
 fn metal_probe_usage() -> &'static str {
@@ -1269,4 +1350,8 @@ fn layer0_probe_usage() -> &'static str {
 
 fn layer0_bench_usage() -> &'static str {
     "usage: rust-star layer0-bench MODEL.gguf [--warmup N] [--iterations N] [--json PATH]\n\nCreates model views and activation buffers once, excludes warmups, then measures repeated bit-exact executions of the complete layer-0 command chain."
+}
+
+fn layers01_probe_usage() -> &'static str {
+    "usage: rust-star layers01-probe MODEL.gguf [--json PATH]\n\nRuns complete layers 0 and 1 under one Rust-owned Metal executor, handing layer 0's final HC state directly to layer 1 without a host roundtrip, and requires both layers to match their pinned DwarfStar boundaries bit-for-bit."
 }

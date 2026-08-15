@@ -17,6 +17,7 @@ pub const FFN_ROUTER_PROBE_SCHEMA: &str = "rust-star-layer0-ffn-router-probe-v1"
 pub const MOE_OUTPUT_PROBE_SCHEMA: &str = "rust-star-layer0-moe-output-probe-v1";
 pub const LAYER0_PROBE_SCHEMA: &str = "rust-star-layer0-complete-probe-v1";
 pub const LAYER0_BENCH_SCHEMA: &str = "rust-star-layer0-steady-state-v1";
+pub const LAYERS01_PROBE_SCHEMA: &str = "rust-star-layers01-continuous-probe-v1";
 pub const PROJECTION_FIXTURE_ID: &str = "dwarfstar-oracle-v1-layer0-pos1-attn-q-a";
 pub const INGRESS_FIXTURE_ID: &str = "dwarfstar-oracle-v1-layer0-pos1-attention-ingress";
 pub const ATTENTION_SETUP_FIXTURE_ID: &str = "dwarfstar-oracle-v1-layer0-pos1-qkv-setup";
@@ -26,6 +27,7 @@ pub const ATTENTION_OUTPUT_FIXTURE_ID: &str = "dwarfstar-oracle-v1-layer0-pos1-a
 pub const FFN_ROUTER_FIXTURE_ID: &str = "dwarfstar-oracle-v1-layer0-pos1-ffn-router";
 pub const MOE_OUTPUT_FIXTURE_ID: &str = "dwarfstar-oracle-v1-layer0-pos1-moe-output";
 pub const LAYER0_FIXTURE_ID: &str = "dwarfstar-oracle-v1-layer0-pos1-complete";
+pub const LAYER1_FIXTURE_ID: &str = "dwarfstar-oracle-v1-layer1-pos1-complete";
 pub const DEFAULT_ELEMENTS: u64 = 4096;
 pub const DEFAULT_ITERATIONS: u64 = 100;
 const MAX_ELEMENTS: u64 = 16 * 1024 * 1024;
@@ -126,6 +128,36 @@ const MOE_SHARED_OUT_BYTES: &[u8] =
     include_bytes!("../../fixtures/layer0-moe-output-v1/shared-out.f32le.bin");
 const MOE_HC_POST_BYTES: &[u8] =
     include_bytes!("../../fixtures/layer0-moe-output-v1/hc-ffn-post.f32le.bin");
+const LAYER1_CACHE_ROW0_BYTES: &[u8] =
+    include_bytes!("../../fixtures/layer1-complete-v1/cache-row0.f32le.bin");
+const LAYER1_ATTN_HC_BYTES: &[u8] =
+    include_bytes!("../../fixtures/layer1-complete-v1/hc-attn-post.f32le.bin");
+const LAYER1_FFN_MIXES_BYTES: &[u8] =
+    include_bytes!("../../fixtures/layer1-complete-v1/ffn-mixes.f32le.bin");
+const LAYER1_FFN_PRE_BYTES: &[u8] =
+    include_bytes!("../../fixtures/layer1-complete-v1/ffn-pre.f32le.bin");
+const LAYER1_FFN_POST_BYTES: &[u8] =
+    include_bytes!("../../fixtures/layer1-complete-v1/ffn-post.f32le.bin");
+const LAYER1_FFN_COMB_BYTES: &[u8] =
+    include_bytes!("../../fixtures/layer1-complete-v1/ffn-combination.f32le.bin");
+const LAYER1_FFN_NORM_BYTES: &[u8] =
+    include_bytes!("../../fixtures/layer1-complete-v1/ffn-norm.f32le.bin");
+const LAYER1_ROUTER_LOGITS_BYTES: &[u8] =
+    include_bytes!("../../fixtures/layer1-complete-v1/router-logits.f32le.bin");
+const LAYER1_ROUTER_PROBS_BYTES: &[u8] =
+    include_bytes!("../../fixtures/layer1-complete-v1/router-probs.f32le.bin");
+const LAYER1_SELECTED_BYTES: &[u8] =
+    include_bytes!("../../fixtures/layer1-complete-v1/router-selected.i32le.bin");
+const LAYER1_ROUTER_WEIGHTS_BYTES: &[u8] =
+    include_bytes!("../../fixtures/layer1-complete-v1/router-weights.f32le.bin");
+const LAYER1_ROUTED_MID_BYTES: &[u8] =
+    include_bytes!("../../fixtures/layer1-complete-v1/routed-mid.f32le.bin");
+const LAYER1_ROUTED_OUT_BYTES: &[u8] =
+    include_bytes!("../../fixtures/layer1-complete-v1/routed-out.f32le.bin");
+const LAYER1_SHARED_OUT_BYTES: &[u8] =
+    include_bytes!("../../fixtures/layer1-complete-v1/shared-out.f32le.bin");
+const LAYER1_FINAL_HC_BYTES: &[u8] =
+    include_bytes!("../../fixtures/layer1-complete-v1/hc-ffn-post.f32le.bin");
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct ProbeConfig {
@@ -400,6 +432,13 @@ pub struct Layer0ProbeReport {
     pub final_hc_checksum: u64,
 }
 
+#[derive(Clone, Debug)]
+pub struct Layers01ProbeReport {
+    pub layers: Vec<Layer0ProbeReport>,
+    pub command_buffers: u32,
+    pub retained_hc_handoff: bool,
+}
+
 #[derive(Clone, Copy, Debug)]
 pub struct TimingSummary {
     pub median_ms: f64,
@@ -614,6 +653,42 @@ pub fn write_layer0_probe_json<W: Write>(output: &mut W, report: &Layer0ProbeRep
         report.shared_out_checksum,
         report.final_hc_checksum,
     )?;
+    Ok(())
+}
+
+pub fn write_layers01_probe_json<W: Write>(
+    output: &mut W,
+    report: &Layers01ProbeReport,
+) -> Result<()> {
+    if report.layers.len() != 2 {
+        return Err(Error::invalid(
+            "layers-0/1 report must contain exactly two layers",
+        ));
+    }
+    write!(
+        output,
+        "{{\n  \"schema\": \"{LAYERS01_PROBE_SCHEMA}\",\n  \"command_buffers\": {},\n  \"retained_hc_handoff\": {},\n  \"layers\": [",
+        report.command_buffers, report.retained_hc_handoff,
+    )?;
+    for (index, layer) in report.layers.iter().enumerate() {
+        if index != 0 {
+            write!(output, ",")?;
+        }
+        write!(
+            output,
+            "\n    {{\"layer\": {}, \"fixture\": \"{}\", \"dispatches\": {}, \"selected_experts\": {:?}, \"wrapped_model_ranges\": {}, \"pointer_matches\": {}, \"wall_ms\": {:.6}, \"gpu_ms\": {:.6}, \"final_hc_checksum\": {}, \"c0_bitwise_match\": true}}",
+            index,
+            layer.fixture_id,
+            layer.dispatches,
+            layer.selected_experts,
+            layer.wrapped_model_ranges,
+            layer.pointer_matches,
+            layer.wall_ms,
+            layer.gpu_ms,
+            layer.final_hc_checksum,
+        )?;
+    }
+    write!(output, "\n  ],\n  \"c0_bitwise_match\": true\n}}\n")?;
     Ok(())
 }
 
@@ -1082,6 +1157,91 @@ fn moe_output_fixture() -> Result<MoeOutputFixture> {
     ))
 }
 
+struct LayerExpected {
+    fixture_id: &'static str,
+    cache_row0: Vec<f32>,
+    attention_hc: Vec<f32>,
+    ffn_mixes: Vec<f32>,
+    ffn_split: Vec<f32>,
+    ffn_norm: Vec<f32>,
+    router_logits: Vec<f32>,
+    router_probs: Vec<f32>,
+    selected: Vec<i32>,
+    router_weights: Vec<f32>,
+    routed_mid: Vec<f32>,
+    routed_out: Vec<f32>,
+    shared_out: Vec<f32>,
+    final_hc: Vec<f32>,
+}
+
+fn layer_expected(layer_index: u32) -> Result<LayerExpected> {
+    if layer_index == 0 {
+        let (cache_row0, _, _) = attention_read_fixture()?;
+        let (_, _, _, attention_hc) = attention_output_fixture()?;
+        let (
+            _,
+            ffn_mixes,
+            ffn_split,
+            _,
+            ffn_norm,
+            router_logits,
+            router_probs,
+            selected,
+            router_weights,
+        ) = ffn_router_fixture()?;
+        let (_, _, _, _, _, routed_mid, routed_out, shared_out, final_hc) = moe_output_fixture()?;
+        return Ok(LayerExpected {
+            fixture_id: LAYER0_FIXTURE_ID,
+            cache_row0,
+            attention_hc,
+            ffn_mixes,
+            ffn_split,
+            ffn_norm,
+            router_logits,
+            router_probs,
+            selected,
+            router_weights,
+            routed_mid,
+            routed_out,
+            shared_out,
+            final_hc,
+        });
+    }
+    if layer_index != 1 {
+        return Err(Error::invalid(
+            "the persistent layer executor currently supports layers 0 and 1",
+        ));
+    }
+    let mut ffn_split = decode_f32_fixture(LAYER1_FFN_PRE_BYTES, "layer-1 FFN HC pre weights")?;
+    ffn_split.extend(decode_f32_fixture(
+        LAYER1_FFN_POST_BYTES,
+        "layer-1 FFN HC post weights",
+    )?);
+    ffn_split.extend(decode_f32_fixture(
+        LAYER1_FFN_COMB_BYTES,
+        "layer-1 FFN HC combination",
+    )?);
+    Ok(LayerExpected {
+        fixture_id: LAYER1_FIXTURE_ID,
+        cache_row0: decode_f32_fixture(LAYER1_CACHE_ROW0_BYTES, "layer-1 cache row 0")?,
+        attention_hc: decode_f32_fixture(LAYER1_ATTN_HC_BYTES, "layer-1 attention HC")?,
+        ffn_mixes: decode_f32_fixture(LAYER1_FFN_MIXES_BYTES, "layer-1 FFN HC mixes")?,
+        ffn_split,
+        ffn_norm: decode_f32_fixture(LAYER1_FFN_NORM_BYTES, "layer-1 FFN norm")?,
+        router_logits: decode_f32_fixture(LAYER1_ROUTER_LOGITS_BYTES, "layer-1 router logits")?,
+        router_probs: decode_f32_fixture(
+            LAYER1_ROUTER_PROBS_BYTES,
+            "layer-1 router probabilities",
+        )?,
+        selected: decode_i32_fixture(LAYER1_SELECTED_BYTES, "layer-1 selected experts")?,
+        router_weights: decode_f32_fixture(LAYER1_ROUTER_WEIGHTS_BYTES, "layer-1 router weights")?,
+        routed_mid: decode_f32_fixture(LAYER1_ROUTED_MID_BYTES, "layer-1 routed activation")?,
+        routed_out: decode_f32_fixture(LAYER1_ROUTED_OUT_BYTES, "layer-1 routed output")?,
+        shared_out: decode_f32_fixture(LAYER1_SHARED_OUT_BYTES, "layer-1 shared output")?,
+        final_hc: decode_f32_fixture(LAYER1_FINAL_HC_BYTES, "layer-1 final HC")?,
+    })
+}
+
 fn decode_i32_fixture(bytes: &[u8], label: &str) -> Result<Vec<i32>> {
     if bytes.is_empty() || bytes.len() % 4 != 0 {
         return Err(Error::invalid(format!(
@@ -1278,6 +1438,8 @@ mod imp {
         wall_ms_samples: *mut f64,
         gpu_ms_samples: *mut f64,
         repeat_bitwise_matches: *mut u32,
+        layer_index: u32,
+        reuse_previous_hc: u32,
     }
 
     impl Default for RawProbeResult {
@@ -1469,6 +1631,13 @@ mod imp {
 
     struct Context(*mut c_void);
 
+    pub struct LayerExecutor<'a> {
+        model: &'a MappedModel,
+        context: Context,
+        next_layer: u32,
+        poisoned: bool,
+    }
+
     struct Layer0Execution {
         report: Layer0ProbeReport,
         wall_ms_samples: Vec<f64>,
@@ -1479,6 +1648,52 @@ mod imp {
     impl Drop for Context {
         fn drop(&mut self) {
             unsafe { rust_star_metal_destroy(self.0) };
+        }
+    }
+
+    impl Context {
+        fn new() -> Result<Self> {
+            let mut error = [0 as c_char; ERROR_BYTES];
+            let mut pointer = ptr::null_mut();
+            let created =
+                unsafe { rust_star_metal_create(&mut pointer, error.as_mut_ptr(), error.len()) };
+            if created == 0 || pointer.is_null() {
+                return Err(Error::invalid(format!(
+                    "Metal initialization failed: {}",
+                    error_text(&error)
+                )));
+            }
+            Ok(Self(pointer))
+        }
+    }
+
+    impl<'a> LayerExecutor<'a> {
+        pub fn new(model: &'a MappedModel) -> Result<Self> {
+            Ok(Self {
+                model,
+                context: Context::new()?,
+                next_layer: 0,
+                poisoned: false,
+            })
+        }
+
+        pub fn execute_layer(&mut self, layer_index: u32) -> Result<Layer0ProbeReport> {
+            if self.poisoned {
+                return Err(Error::invalid(
+                    "persistent layer executor cannot continue after a failed execution",
+                ));
+            }
+            if layer_index != self.next_layer {
+                return Err(Error::invalid(format!(
+                    "persistent layer executor expected layer {}, received layer {layer_index}",
+                    self.next_layer
+                )));
+            }
+            self.poisoned = true;
+            let execution = run_layer_iterations(self.model, &self.context, layer_index, 0, 1)?;
+            self.next_layer += 1;
+            self.poisoned = false;
+            Ok(execution.report)
         }
     }
 
@@ -2662,7 +2877,18 @@ mod imp {
     }
 
     pub fn run_layer0_probe(model: &MappedModel) -> Result<Layer0ProbeReport> {
-        Ok(run_layer0_iterations(model, 0, 1)?.report)
+        LayerExecutor::new(model)?.execute_layer(0)
+    }
+
+    pub fn run_layers01_probe(model: &MappedModel) -> Result<Layers01ProbeReport> {
+        let mut executor = LayerExecutor::new(model)?;
+        let layer0 = executor.execute_layer(0)?;
+        let layer1 = executor.execute_layer(1)?;
+        Ok(Layers01ProbeReport {
+            layers: vec![layer0, layer1],
+            command_buffers: 2,
+            retained_hc_handoff: true,
+        })
     }
 
     pub fn run_layer0_bench(
@@ -2670,7 +2896,14 @@ mod imp {
         config: Layer0BenchConfig,
     ) -> Result<Layer0BenchReport> {
         let config = config.validate()?;
-        let execution = run_layer0_iterations(model, config.warmup_iterations, config.iterations)?;
+        let context = Context::new()?;
+        let execution = run_layer_iterations(
+            model,
+            &context,
+            0,
+            config.warmup_iterations,
+            config.iterations,
+        )?;
         let wall = summarize_timing(&execution.wall_ms_samples)?;
         let gpu = summarize_timing(&execution.gpu_ms_samples)?;
         Ok(Layer0BenchReport {
@@ -2692,64 +2925,83 @@ mod imp {
         })
     }
 
-    fn run_layer0_iterations(
+    fn run_layer_iterations(
         model: &MappedModel,
+        context: &Context,
+        layer_index: u32,
         warmup_iterations: u32,
         measured_iterations: u32,
     ) -> Result<Layer0Execution> {
         const TOKEN: u32 = 201;
         let embedding = exact_tensor(model, "token_embd.weight", 1, &[4096, 129280])?;
-        let hc_fn = exact_tensor(model, "blk.0.hc_attn_fn.weight", 1, &[16384, 24])?;
-        let hc_scale = exact_tensor(model, "blk.0.hc_attn_scale.weight", 0, &[3])?;
-        let hc_base = exact_tensor(model, "blk.0.hc_attn_base.weight", 0, &[24])?;
-        let norm_weight = exact_tensor(model, "blk.0.attn_norm.weight", 0, &[4096])?;
-        let q_a = exact_tensor(model, "blk.0.attn_q_a.weight", 8, &[4096, 1024])?;
-        let q_a_norm = exact_tensor(model, "blk.0.attn_q_a_norm.weight", 0, &[1024])?;
-        let kv = exact_tensor(model, "blk.0.attn_kv.weight", 8, &[4096, 512])?;
-        let kv_norm_weight = exact_tensor(model, "blk.0.attn_kv_a_norm.weight", 0, &[512])?;
-        let q_b = exact_tensor(model, "blk.0.attn_q_b.weight", 8, &[1024, 32768])?;
-        let sinks = exact_tensor(model, "blk.0.attn_sinks.weight", 0, &[64])?;
-        let output_a = exact_tensor(model, "blk.0.attn_output_a.weight", 8, &[4096, 8192])?;
-        let output_b = exact_tensor(model, "blk.0.attn_output_b.weight", 8, &[8192, 4096])?;
-        let ffn_hc_fn = exact_tensor(model, "blk.0.hc_ffn_fn.weight", 1, &[16384, 24])?;
-        let ffn_hc_scale = exact_tensor(model, "blk.0.hc_ffn_scale.weight", 0, &[3])?;
-        let ffn_hc_base = exact_tensor(model, "blk.0.hc_ffn_base.weight", 0, &[24])?;
-        let ffn_norm_weight = exact_tensor(model, "blk.0.ffn_norm.weight", 0, &[4096])?;
-        let router_gate = exact_tensor(model, "blk.0.ffn_gate_inp.weight", 1, &[4096, 256])?;
-        let router_hash = exact_tensor(model, "blk.0.ffn_gate_tid2eid.weight", 26, &[6, 129280])?;
-        let routed_gate =
-            exact_tensor(model, "blk.0.ffn_gate_exps.weight", 16, &[4096, 2048, 256])?;
-        let routed_up = exact_tensor(model, "blk.0.ffn_up_exps.weight", 16, &[4096, 2048, 256])?;
-        let routed_down =
-            exact_tensor(model, "blk.0.ffn_down_exps.weight", 10, &[2048, 4096, 256])?;
-        let shared_gate = exact_tensor(model, "blk.0.ffn_gate_shexp.weight", 8, &[4096, 2048])?;
-        let shared_up = exact_tensor(model, "blk.0.ffn_up_shexp.weight", 8, &[4096, 2048])?;
-        let shared_down = exact_tensor(model, "blk.0.ffn_down_shexp.weight", 8, &[2048, 4096])?;
+        let tensor_name = |suffix: &str| format!("blk.{layer_index}.{suffix}");
+        let hc_fn = exact_tensor(model, &tensor_name("hc_attn_fn.weight"), 1, &[16384, 24])?;
+        let hc_scale = exact_tensor(model, &tensor_name("hc_attn_scale.weight"), 0, &[3])?;
+        let hc_base = exact_tensor(model, &tensor_name("hc_attn_base.weight"), 0, &[24])?;
+        let norm_weight = exact_tensor(model, &tensor_name("attn_norm.weight"), 0, &[4096])?;
+        let q_a = exact_tensor(model, &tensor_name("attn_q_a.weight"), 8, &[4096, 1024])?;
+        let q_a_norm = exact_tensor(model, &tensor_name("attn_q_a_norm.weight"), 0, &[1024])?;
+        let kv = exact_tensor(model, &tensor_name("attn_kv.weight"), 8, &[4096, 512])?;
+        let kv_norm_weight = exact_tensor(model, &tensor_name("attn_kv_a_norm.weight"), 0, &[512])?;
+        let q_b = exact_tensor(model, &tensor_name("attn_q_b.weight"), 8, &[1024, 32768])?;
+        let sinks = exact_tensor(model, &tensor_name("attn_sinks.weight"), 0, &[64])?;
+        let output_a = exact_tensor(
+            model,
+            &tensor_name("attn_output_a.weight"),
+            8,
+            &[4096, 8192],
+        )?;
+        let output_b = exact_tensor(
+            model,
+            &tensor_name("attn_output_b.weight"),
+            8,
+            &[8192, 4096],
+        )?;
+        let ffn_hc_fn = exact_tensor(model, &tensor_name("hc_ffn_fn.weight"), 1, &[16384, 24])?;
+        let ffn_hc_scale = exact_tensor(model, &tensor_name("hc_ffn_scale.weight"), 0, &[3])?;
+        let ffn_hc_base = exact_tensor(model, &tensor_name("hc_ffn_base.weight"), 0, &[24])?;
+        let ffn_norm_weight = exact_tensor(model, &tensor_name("ffn_norm.weight"), 0, &[4096])?;
+        let router_gate =
+            exact_tensor(model, &tensor_name("ffn_gate_inp.weight"), 1, &[4096, 256])?;
+        let router_hash = exact_tensor(
+            model,
+            &tensor_name("ffn_gate_tid2eid.weight"),
+            26,
+            &[6, 129280],
+        )?;
+        let routed_gate = exact_tensor(
+            model,
+            &tensor_name("ffn_gate_exps.weight"),
+            16,
+            &[4096, 2048, 256],
+        )?;
+        let routed_up = exact_tensor(
+            model,
+            &tensor_name("ffn_up_exps.weight"),
+            16,
+            &[4096, 2048, 256],
+        )?;
+        let routed_down = exact_tensor(
+            model,
+            &tensor_name("ffn_down_exps.weight"),
+            10,
+            &[2048, 4096, 256],
+        )?;
+        let shared_gate = exact_tensor(
+            model,
+            &tensor_name("ffn_gate_shexp.weight"),
+            8,
+            &[4096, 2048],
+        )?;
+        let shared_up = exact_tensor(model, &tensor_name("ffn_up_shexp.weight"), 8, &[4096, 2048])?;
+        let shared_down = exact_tensor(
+            model,
+            &tensor_name("ffn_down_shexp.weight"),
+            8,
+            &[2048, 4096],
+        )?;
 
-        let (expected_cache_row0, _, _) = attention_read_fixture()?;
-        let (_, _, _, expected_attention_hc) = attention_output_fixture()?;
-        let (
-            _,
-            expected_ffn_mixes,
-            expected_ffn_split,
-            _,
-            expected_ffn_norm,
-            expected_logits,
-            expected_probs,
-            expected_selected,
-            expected_router_weights,
-        ) = ffn_router_fixture()?;
-        let (
-            _,
-            _,
-            _,
-            _,
-            _,
-            expected_routed_mid,
-            expected_routed_out,
-            expected_shared_out,
-            expected_final_hc,
-        ) = moe_output_fixture()?;
+        let expected = layer_expected(layer_index)?;
 
         let mut mixes = vec![0.0_f32; 24];
         let mut split = vec![0.0_f32; 24];
@@ -2824,20 +3076,11 @@ mod imp {
             wall_ms_samples: wall_ms_samples.as_mut_ptr(),
             gpu_ms_samples: gpu_ms_samples.as_mut_ptr(),
             repeat_bitwise_matches: &mut repeat_bitwise_matches,
+            layer_index,
+            reuse_previous_hc: u32::from(layer_index != 0),
         };
 
         let mut error = [0 as c_char; ERROR_BYTES];
-        let mut pointer = ptr::null_mut();
-        let created =
-            unsafe { rust_star_metal_create(&mut pointer, error.as_mut_ptr(), error.len()) };
-        if created == 0 || pointer.is_null() {
-            return Err(Error::invalid(format!(
-                "Metal initialization failed: {}",
-                error_text(&error)
-            )));
-        }
-        let context = Context(pointer);
-        error.fill(0);
         let mut raw = RawIngressProbeResult::default();
         let succeeded = unsafe {
             rust_star_metal_run_attention_ingress(
@@ -2885,7 +3128,7 @@ mod imp {
                 kv_rope.as_mut_ptr(),
                 kv_cur.as_mut_ptr(),
                 cache_rows.as_mut_ptr(),
-                expected_cache_row0.as_ptr(),
+                expected.cache_row0.as_ptr(),
                 attention_raw.as_mut_ptr(),
                 attention_back.as_mut_ptr(),
                 attention_low.as_mut_ptr(),
@@ -2899,7 +3142,7 @@ mod imp {
         };
         if succeeded == 0 {
             return Err(Error::invalid(format!(
-                "Metal complete layer-0 probe failed: {}",
+                "Metal complete layer-{layer_index} probe failed: {}",
                 error_text(&error)
             )));
         }
@@ -2908,12 +3151,13 @@ mod imp {
             || raw.pointer_matches != 25
         {
             return Err(Error::invalid(
-                "Metal complete layer-0 path did not preserve all twenty-five mmap-backed model ranges",
+                "Metal complete layer path did not preserve all twenty-five mmap-backed model ranges",
             ));
         }
-        if selected != expected_selected {
+        if selected != expected.selected {
             return Err(Error::invalid(format!(
-                "complete layer-0 selected experts differ: actual={selected:?} expected={expected_selected:?}"
+                "complete layer-{layer_index} selected experts differ: actual={selected:?} expected={:?}",
+                expected.selected
             )));
         }
         if repeat_bitwise_matches != 1 {
@@ -2925,63 +3169,63 @@ mod imp {
             (
                 "hc_attn_post",
                 after_attention_hc.as_slice(),
-                expected_attention_hc.as_slice(),
+                expected.attention_hc.as_slice(),
             ),
             (
                 "hc_ffn_pre_mixes",
                 ffn_mixes.as_slice(),
-                expected_ffn_mixes.as_slice(),
+                expected.ffn_mixes.as_slice(),
             ),
             (
                 "hc_ffn_pre_split",
                 ffn_split.as_slice(),
-                expected_ffn_split.as_slice(),
+                expected.ffn_split.as_slice(),
             ),
             (
                 "ffn_norm",
                 ffn_norm.as_slice(),
-                expected_ffn_norm.as_slice(),
+                expected.ffn_norm.as_slice(),
             ),
             (
                 "router_logits",
                 router_logits.as_slice(),
-                expected_logits.as_slice(),
+                expected.router_logits.as_slice(),
             ),
             (
                 "router_probs",
                 router_probs.as_slice(),
-                expected_probs.as_slice(),
+                expected.router_probs.as_slice(),
             ),
             (
                 "router_weights",
                 router_weights.as_slice(),
-                expected_router_weights.as_slice(),
+                expected.router_weights.as_slice(),
             ),
             (
                 "routed_mid",
                 routed_mid.as_slice(),
-                expected_routed_mid.as_slice(),
+                expected.routed_mid.as_slice(),
             ),
             (
                 "routed_out",
                 routed_out.as_slice(),
-                expected_routed_out.as_slice(),
+                expected.routed_out.as_slice(),
             ),
             (
                 "shared_out",
                 shared_out.as_slice(),
-                expected_shared_out.as_slice(),
+                expected.shared_out.as_slice(),
             ),
             (
                 "hc_ffn_post",
                 after_ffn_hc.as_slice(),
-                expected_final_hc.as_slice(),
+                expected.final_hc.as_slice(),
             ),
         ] {
             for (index, (actual, expected)) in actual.iter().zip(expected).enumerate() {
                 if actual.to_bits() != expected.to_bits() {
                     return Err(Error::invalid(format!(
-                        "complete layer-0 C0 mismatch in {label}[{index}]: actual={:#010x} expected={:#010x}",
+                        "complete layer-{layer_index} C0 mismatch in {label}[{index}]: actual={:#010x} expected={:#010x}",
                         actual.to_bits(), expected.to_bits()
                     )));
                 }
@@ -2993,14 +3237,14 @@ mod imp {
             || raw.gpu_ms < 0.0
         {
             return Err(Error::invalid(
-                "Metal complete layer-0 returned invalid timing",
+                "Metal complete layer returned invalid timing",
             ));
         }
         Ok(Layer0Execution {
             report: Layer0ProbeReport {
-                fixture_id: LAYER0_FIXTURE_ID,
+                fixture_id: expected.fixture_id,
                 token: TOKEN,
-                dispatches: 30,
+                dispatches: if layer_index == 0 { 30 } else { 28 },
                 command_buffers: 1,
                 selected_experts: selected,
                 wrapped_model_ranges: raw.wrapped_model_ranges,
@@ -3328,6 +3572,39 @@ mod imp {
 mod imp {
     use super::*;
 
+    pub struct LayerExecutor<'a> {
+        model: &'a MappedModel,
+        next_layer: u32,
+    }
+
+    impl<'a> LayerExecutor<'a> {
+        pub fn new(model: &'a MappedModel) -> Result<Self> {
+            Ok(Self {
+                model,
+                next_layer: 0,
+            })
+        }
+
+        pub fn execute_layer(&mut self, layer_index: u32) -> Result<Layer0ProbeReport> {
+            if layer_index != self.next_layer {
+                return Err(Error::invalid(format!(
+                    "persistent layer executor expected layer {}, received layer {layer_index}",
+                    self.next_layer
+                )));
+            }
+            let _ = layer_expected(layer_index)?;
+            let _ = exact_tensor(
+                self.model,
+                &format!("blk.{layer_index}.ffn_down_shexp.weight"),
+                8,
+                &[2048, 4096],
+            )?;
+            Err(Error::invalid(
+                "the persistent Metal layer executor is available only on macOS",
+            ))
+        }
+    }
+
     pub fn run_probe(config: ProbeConfig) -> Result<ProbeReport> {
         config.validate()?;
         Err(Error::invalid(
@@ -3425,6 +3702,15 @@ mod imp {
         ))
     }
 
+    pub fn run_layers01_probe(model: &MappedModel) -> Result<Layers01ProbeReport> {
+        let _ = layer_expected(0)?;
+        let _ = layer_expected(1)?;
+        let _ = exact_tensor(model, "blk.1.ffn_down_shexp.weight", 8, &[2048, 4096])?;
+        Err(Error::invalid(
+            "the continuous Metal layers-0/1 probe is available only on macOS",
+        ))
+    }
+
     pub fn run_layer0_bench(
         model: &MappedModel,
         config: Layer0BenchConfig,
@@ -3443,8 +3729,8 @@ mod imp {
 pub use imp::{
     run_attention_ingress_probe, run_attention_output_probe, run_attention_read_probe,
     run_attention_setup_probe, run_f16_embedding_probe, run_ffn_router_probe, run_layer0_bench,
-    run_layer0_probe, run_moe_output_probe, run_probe, run_q8_projection_probe,
-    run_rope_kv_store_probe,
+    run_layer0_probe, run_layers01_probe, run_moe_output_probe, run_probe, run_q8_projection_probe,
+    run_rope_kv_store_probe, LayerExecutor,
 };
 
 #[cfg(test)]
@@ -3690,6 +3976,19 @@ mod tests {
         }
     }
 
+    fn layers01_report() -> Layers01ProbeReport {
+        let mut layer1 = layer0_report();
+        layer1.fixture_id = LAYER1_FIXTURE_ID;
+        layer1.dispatches = 28;
+        layer1.selected_experts = vec![228, 208, 35, 27, 113, 12];
+        layer1.final_hc_checksum = 8;
+        Layers01ProbeReport {
+            layers: vec![layer0_report(), layer1],
+            command_buffers: 2,
+            retained_hc_handoff: true,
+        }
+    }
+
     #[test]
     fn validates_probe_work_bounds() {
         assert!(ProbeConfig::default().validate().is_ok());
@@ -3733,6 +4032,30 @@ mod tests {
         assert!(text.contains("Apple GPU \\\"fixture\\\""));
         assert!(text.contains("\"dispatches_per_second\": 2000"));
         assert!(text.contains("\"checksum\": 42"));
+    }
+
+    #[test]
+    fn writes_stable_layers01_probe_json() {
+        let mut output = Vec::new();
+        write_layers01_probe_json(&mut output, &layers01_report()).unwrap();
+        let text = String::from_utf8(output).unwrap();
+        assert!(text.contains(&format!("\"schema\": \"{LAYERS01_PROBE_SCHEMA}\"")));
+        assert!(text.contains("\"retained_hc_handoff\": true"));
+        assert!(text.contains(&format!("\"fixture\": \"{LAYER1_FIXTURE_ID}\"")));
+        assert!(text.contains("\"dispatches\": 28"));
+    }
+
+    #[test]
+    fn layer1_complete_fixture_has_target_shapes() {
+        let fixture = layer_expected(1).unwrap();
+        assert_eq!(fixture.cache_row0.len(), 512);
+        assert_eq!(fixture.attention_hc.len(), 4 * 4096);
+        assert_eq!(fixture.ffn_mixes.len(), 24);
+        assert_eq!(fixture.ffn_split.len(), 24);
+        assert_eq!(fixture.router_logits.len(), 256);
+        assert_eq!(fixture.selected, vec![228, 208, 35, 27, 113, 12]);
+        assert_eq!(fixture.routed_mid.len(), 6 * 2048);
+        assert_eq!(fixture.final_hc.len(), 4 * 4096);
     }
 
     #[test]
