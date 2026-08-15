@@ -36,6 +36,7 @@ pub const CLOSED_LOOP_DECODER_PROBE_SCHEMA: &str = "rust-star-closed-loop-decode
 pub const POSITION127_DECODER_PROBE_SCHEMA: &str =
     "rust-star-position127-decoder-frontier-diagnostic-v1";
 pub const COLD_PREFILL_DECODER_PROBE_SCHEMA: &str = "rust-star-cold-prefill-decoder-diagnostic-v1";
+pub const PREFILL_FRONTIER_PROBE_SCHEMA: &str = "rust-star-prefill-frontier-diagnostic-v1";
 pub const RATIO128_COMPRESSOR_REPLAY_PROBE_SCHEMA: &str =
     "rust-star-ratio128-compressor-replay-probe-v1";
 pub const PROJECTION_FIXTURE_ID: &str = "dwarfstar-oracle-v1-layer0-pos1-attn-q-a";
@@ -76,6 +77,7 @@ pub const LAYER5_POS127_COMPRESSOR_FIXTURE_ID: &str =
     "dwarfstar-oracle-v1-layer5-pos127-compressor-replay";
 pub const POSITION127_DECODER_FIXTURE_ID: &str = "dwarfstar-oracle-v1-decoder-frontier-pos127";
 pub const COLD_PREFILL_FIXTURE_ID: &str = "dwarfstar-oracle-v1-cold-prefill-pos0";
+pub const PREFILL_FRONTIER_2048_FIXTURE_ID: &str = "dwarfstar-oracle-v1-prefill-frontier-2048";
 pub const DEFAULT_ELEMENTS: u64 = 4096;
 pub const DEFAULT_ITERATIONS: u64 = 100;
 const MAX_ELEMENTS: u64 = 16 * 1024 * 1024;
@@ -129,6 +131,12 @@ const POSITION127_LOGITS_BYTES: &[u8] =
     include_bytes!("../../fixtures/decoder-frontier-pos127-v1/logits.f32le.bin");
 const COLD_PREFILL_LOGITS_BYTES: &[u8] =
     include_bytes!("../../fixtures/cold-prefill-pos0-v1/logits.f32le.bin");
+const PREFILL_FRONTIER_2048_TOKEN_IDS_BYTES: &[u8] =
+    include_bytes!("../../fixtures/prefill-frontier-2048-v1/token-ids.u32le.bin");
+const PREFILL_FRONTIER_2048_BATCH_LOGITS_BYTES: &[u8] =
+    include_bytes!("../../fixtures/prefill-frontier-2048-v1/batch-prefill-logits.f32le.bin");
+const PREFILL_FRONTIER_2048_DECODE_LOGITS_BYTES: &[u8] =
+    include_bytes!("../../fixtures/prefill-frontier-2048-v1/decode-replay-logits.f32le.bin");
 const PROJECTION_TENSOR: &str = "blk.0.attn_q_a.weight";
 const PROJECTION_INPUT_BYTES: &[u8] =
     include_bytes!("../../fixtures/q8-attn-q-a-v1/activation.f32le.bin");
@@ -906,6 +914,23 @@ pub struct ColdPrefillDecoderProbeReport {
 }
 
 #[derive(Clone, Debug)]
+pub struct PrefillFrontierProbeReport {
+    pub fixture_id: &'static str,
+    pub context_capacity: u32,
+    pub prompt_tokens: u32,
+    pub final_position: u32,
+    pub raw_cache_capacity_rows: u32,
+    pub ratio4_compressed_capacity_rows: u32,
+    pub ratio128_compressed_capacity_rows: u32,
+    pub selected_token: u32,
+    pub wall_ms: f64,
+    pub prefill_tps: f64,
+    pub decode_logits_checksum: u64,
+    pub batch_logits_mismatch_count: u32,
+    pub batch_logits_max_abs_error: f32,
+}
+
+#[derive(Clone, Debug)]
 pub struct Ratio128CompressorLayerReport {
     pub layer: u32,
     pub fixture_id: &'static str,
@@ -1666,10 +1691,65 @@ pub fn write_cold_prefill_decoder_probe_json<W: Write>(
     }
     write!(
         output,
-        "],\n  \"state_initialization\": \"cold-empty-kv-and-compressor-state\",\n  \"prefill\": {{\"tokens\": 1, \"wall_ms\": {:.6}, \"sampling_in_interval\": true, \"full_logits_c0_bitwise_match\": true, \"selected_token\": 201}},\n  \"decode\": {{\"evaluated_positions\": 127, \"wall_ms\": {:.6}, \"evaluated_positions_per_second\": {:.6}}},\n  \"final_logits_c0_bitwise_match\": true,\n  \"integrated_ratio128_rows_c0_bitwise_match\": true,\n  \"captured_initial_state_used\": false,\n  \"paired_protocol_eligible\": false,\n  \"paired_protocol_blocker\": \"arbitrary-frontier prefill is not implemented\"\n}}\n",
+        "],\n  \"state_initialization\": \"cold-empty-kv-and-compressor-state\",\n  \"prefill\": {{\"tokens\": 1, \"wall_ms\": {:.6}, \"sampling_in_interval\": true, \"full_logits_c0_bitwise_match\": true, \"selected_token\": 201}},\n  \"decode\": {{\"evaluated_positions\": 127, \"wall_ms\": {:.6}, \"evaluated_positions_per_second\": {:.6}}},\n  \"final_logits_c0_bitwise_match\": true,\n  \"integrated_ratio128_rows_c0_bitwise_match\": true,\n  \"captured_initial_state_used\": false,\n  \"paired_protocol_eligible\": false,\n  \"paired_protocol_blocker\": \"native batched prefill and ratio-4 sparse indexed decode are not implemented\"\n}}\n",
         report.prefill_wall_ms,
         report.decode_wall_ms,
         report.decode_tps,
+    )?;
+    Ok(())
+}
+
+pub fn write_prefill_frontier_probe_json<W: Write>(
+    output: &mut W,
+    report: &PrefillFrontierProbeReport,
+) -> Result<()> {
+    let (_, batch_logits, decode_logits) = prefill_frontier_2048_fixture()?;
+    let batch_logits_mismatch_count = batch_logits
+        .iter()
+        .zip(&decode_logits)
+        .filter(|(batch, decode)| batch.to_bits() != decode.to_bits())
+        .count() as u32;
+    let batch_logits_max_abs_error = batch_logits
+        .iter()
+        .zip(&decode_logits)
+        .map(|(batch, decode)| (batch - decode).abs())
+        .fold(0.0_f32, f32::max);
+    if report.fixture_id != PREFILL_FRONTIER_2048_FIXTURE_ID
+        || report.context_capacity != 2048
+        || report.prompt_tokens != 2048
+        || report.final_position != 2047
+        || report.raw_cache_capacity_rows != 128
+        || report.ratio4_compressed_capacity_rows != 514
+        || report.ratio128_compressed_capacity_rows != 18
+        || report.selected_token != 15342
+        || !report.wall_ms.is_finite()
+        || report.wall_ms <= 0.0
+        || !report.prefill_tps.is_finite()
+        || report.prefill_tps.to_bits() != (2_048_000.0 / report.wall_ms).to_bits()
+        || report.decode_logits_checksum != checksum_f32(&decode_logits)
+        || report.batch_logits_mismatch_count != batch_logits_mismatch_count
+        || report.batch_logits_max_abs_error.to_bits() != batch_logits_max_abs_error.to_bits()
+    {
+        return Err(Error::invalid(
+            "2K prefill frontier report has inconsistent metadata",
+        ));
+    }
+    write!(
+        output,
+        "{{\n  \"schema\": \"{PREFILL_FRONTIER_PROBE_SCHEMA}\",\n  \"classification\": \"diagnostic\",\n  \"fixture\": \"{}\",\n  \"state_initialization\": \"cold-empty-kv-and-compressor-state\",\n  \"context_capacity\": {},\n  \"prefill\": {{\"tokens\": {}, \"final_position\": {}, \"wall_ms\": {:.6}, \"tokens_per_second\": {:.6}, \"sampling_in_interval\": true, \"selected_token\": {}}},\n  \"cache\": {{\"raw_ring_rows_per_layer\": {}, \"ratio4_compressed_rows_per_layer\": {}, \"ratio128_compressed_rows_per_layer\": {}}},\n  \"decode_replay_logits_c0_bitwise_match\": true,\n  \"batched_prefill_logits_c0_bitwise_match\": false,\n  \"batched_prefill_drift\": {{\"mismatch_count\": {}, \"max_abs_error\": {:.9}}},\n  \"decode_logits_checksum\": {},\n  \"captured_initial_state_used\": false,\n  \"paired_protocol_eligible\": false,\n  \"paired_protocol_blocker\": \"native batched prefill arithmetic and ratio-4 sparse indexed decode are required\"\n}}\n",
+        report.fixture_id,
+        report.context_capacity,
+        report.prompt_tokens,
+        report.final_position,
+        report.wall_ms,
+        report.prefill_tps,
+        report.selected_token,
+        report.raw_cache_capacity_rows,
+        report.ratio4_compressed_capacity_rows,
+        report.ratio128_compressed_capacity_rows,
+        report.batch_logits_mismatch_count,
+        report.batch_logits_max_abs_error,
+        report.decode_logits_checksum,
     )?;
     Ok(())
 }
@@ -2183,6 +2263,35 @@ fn cold_prefill_fixture() -> Result<Vec<f32>> {
         ));
     }
     Ok(logits)
+}
+
+fn prefill_frontier_2048_fixture() -> Result<(Vec<u32>, Vec<f32>, Vec<f32>)> {
+    let tokens = decode_u32_fixture(
+        PREFILL_FRONTIER_2048_TOKEN_IDS_BYTES,
+        "2K prefill token IDs",
+    )?;
+    let batch_logits = decode_f32_fixture(
+        PREFILL_FRONTIER_2048_BATCH_LOGITS_BYTES,
+        "2K batched-prefill frontier logits",
+    )?;
+    let decode_logits = decode_f32_fixture(
+        PREFILL_FRONTIER_2048_DECODE_LOGITS_BYTES,
+        "2K decode-replay frontier logits",
+    )?;
+    if tokens.len() != 2048
+        || tokens.first() != Some(&36662)
+        || tokens.last() != Some(&895)
+        || batch_logits.len() != 129280
+        || decode_logits.len() != 129280
+        || lowest_id_argmax(&batch_logits)? != 15342
+        || lowest_id_argmax(&decode_logits)? != 15342
+        || batch_logits == decode_logits
+    {
+        return Err(Error::invalid(
+            "2K prefill fixture shape, token boundary, or selection is invalid",
+        ));
+    }
+    Ok((tokens, batch_logits, decode_logits))
 }
 
 struct OutputHeadExpected {
@@ -3443,6 +3552,7 @@ mod imp {
         chain_final_layer: u32,
         position: u32,
         initial_state_mode: u32,
+        context_capacity: u32,
     }
 
     impl Default for RawProbeResult {
@@ -3759,6 +3869,7 @@ mod imp {
         attention_compressor: Option<CompressorSpans>,
         indexer_compressor: Option<CompressorSpans>,
         initial_state_mode: u32,
+        context_capacity: u32,
         compressor_prime: Vec<f32>,
         compressed_kv: Vec<f32>,
         compressed_indexer: Vec<f32>,
@@ -3833,11 +3944,27 @@ mod imp {
                 position,
                 measured_iterations,
                 INITIAL_STATE_CAPTURED,
+                128,
             )
         }
 
         fn new_cold(model: &MappedModel, layer_index: u32) -> Result<Self> {
-            Self::new_with_initial_state(model, layer_index, 1, 1, INITIAL_STATE_COLD)
+            Self::new_cold_with_capacity(model, layer_index, 128)
+        }
+
+        fn new_cold_with_capacity(
+            model: &MappedModel,
+            layer_index: u32,
+            context_capacity: u32,
+        ) -> Result<Self> {
+            Self::new_with_initial_state(
+                model,
+                layer_index,
+                1,
+                1,
+                INITIAL_STATE_COLD,
+                context_capacity,
+            )
         }
 
         fn new_with_initial_state(
@@ -3846,9 +3973,13 @@ mod imp {
             position: u32,
             measured_iterations: u32,
             initial_state_mode: u32,
+            context_capacity: u32,
         ) -> Result<Self> {
             if initial_state_mode > INITIAL_STATE_COLD {
                 return Err(Error::invalid("invalid prepared initial-state mode"));
+            }
+            if context_capacity == 0 || context_capacity > 1_048_576 + 128 {
+                return Err(Error::invalid("invalid prepared context capacity"));
             }
             let tensor_name = |suffix: &str| format!("blk.{layer_index}.{suffix}");
             let span = |name: &str, kind: u32, dimensions: &[u64]| -> Result<ModelSpan> {
@@ -3945,6 +4076,7 @@ mod imp {
                 attention_compressor,
                 indexer_compressor,
                 initial_state_mode,
+                context_capacity,
                 compressor_prime,
                 compressed_kv: vec![0.0; 512],
                 compressed_indexer: vec![0.0; 128],
@@ -6106,6 +6238,72 @@ mod imp {
         })
     }
 
+    pub fn run_prefill_frontier_probe(model: &MappedModel) -> Result<PrefillFrontierProbeReport> {
+        let (tokens, batch_logits, decode_logits) = prefill_frontier_2048_fixture()?;
+        let context_capacity = tokens.len() as u32;
+        let context = Context::new()?;
+        let mut layers = (0..43)
+            .map(|layer_index| {
+                PreparedLayerExecution::new_cold_with_capacity(model, layer_index, context_capacity)
+            })
+            .collect::<Result<Vec<_>>>()?;
+        let mut output_head = PreparedOutputHead::new(model)?;
+        context.prepare_decoder()?;
+
+        let started = Instant::now();
+        for (position, token) in tokens.iter().copied().enumerate() {
+            submit_prepared_layers(model, &context, &mut layers, token, position as u32)?;
+        }
+        let (selected_token, _) = run_sampling_output_head(model, &context, &mut output_head)?;
+        let wall_ms = started.elapsed().as_secs_f64() * 1000.0;
+
+        if selected_token != 15342 {
+            return Err(Error::invalid(format!(
+                "2K prefill selected token {selected_token}, expected 15342"
+            )));
+        }
+        for (index, (actual, expected)) in output_head.logits.iter().zip(&decode_logits).enumerate()
+        {
+            if actual.to_bits() != expected.to_bits() {
+                return Err(Error::invalid(format!(
+                    "2K decode-replay logit C0 mismatch at [{index}]: actual={:#010x} expected={:#010x}",
+                    actual.to_bits(),
+                    expected.to_bits()
+                )));
+            }
+        }
+
+        let mut batch_logits_mismatch_count = 0_u32;
+        let mut batch_logits_max_abs_error = 0.0_f32;
+        for (actual, batch) in output_head.logits.iter().zip(&batch_logits) {
+            if actual.to_bits() != batch.to_bits() {
+                batch_logits_mismatch_count += 1;
+            }
+            batch_logits_max_abs_error = batch_logits_max_abs_error.max((actual - batch).abs());
+        }
+        if batch_logits_mismatch_count == 0 {
+            return Err(Error::invalid(
+                "2K sequential decode replay unexpectedly matched batched prefill",
+            ));
+        }
+
+        Ok(PrefillFrontierProbeReport {
+            fixture_id: PREFILL_FRONTIER_2048_FIXTURE_ID,
+            context_capacity,
+            prompt_tokens: context_capacity,
+            final_position: context_capacity - 1,
+            raw_cache_capacity_rows: 128,
+            ratio4_compressed_capacity_rows: context_capacity / 4 + 2,
+            ratio128_compressed_capacity_rows: context_capacity / 128 + 2,
+            selected_token,
+            wall_ms,
+            prefill_tps: f64::from(context_capacity) * 1000.0 / wall_ms,
+            decode_logits_checksum: checksum_f32(&output_head.logits),
+            batch_logits_mismatch_count,
+            batch_logits_max_abs_error,
+        })
+    }
+
     pub fn run_ratio128_compressor_replay_probe(
         model: &MappedModel,
     ) -> Result<Ratio128CompressorReplayProbeReport> {
@@ -6320,6 +6518,7 @@ mod imp {
             attention_compressor,
             indexer_compressor,
             initial_state_mode,
+            context_capacity,
             compressor_prime,
             compressed_kv,
             compressed_indexer,
@@ -6446,6 +6645,7 @@ mod imp {
             chain_final_layer,
             position,
             initial_state_mode: *initial_state_mode,
+            context_capacity: *context_capacity,
         };
 
         let mut error = [0 as c_char; ERROR_BYTES];
@@ -7162,6 +7362,14 @@ mod imp {
         ))
     }
 
+    pub fn run_prefill_frontier_probe(model: &MappedModel) -> Result<PrefillFrontierProbeReport> {
+        let _ = prefill_frontier_2048_fixture()?;
+        let _ = exact_tensor(model, "output.weight", 8, &[4096, 129280])?;
+        Err(Error::invalid(
+            "the Metal 2K prefill frontier probe is available only on macOS",
+        ))
+    }
+
     pub fn run_cold_prefill_decoder_probe(
         model: &MappedModel,
     ) -> Result<ColdPrefillDecoderProbeReport> {
@@ -7459,9 +7667,9 @@ pub use imp::{
     run_layer0_probe, run_layers01234567_decode_probe, run_layers012345_decode_probe,
     run_layers0123_bench, run_layers0123_chained_probe, run_layers0123_decode_probe,
     run_layers0123_probe, run_layers012_chained_probe, run_layers012_probe, run_layers01_probe,
-    run_layers0_to_42_decode_probe, run_moe_output_probe, run_position127_decoder_probe, run_probe,
-    run_q8_projection_probe, run_ratio128_compressor_replay_probe, run_rope_kv_store_probe,
-    LayerExecutor,
+    run_layers0_to_42_decode_probe, run_moe_output_probe, run_position127_decoder_probe,
+    run_prefill_frontier_probe, run_probe, run_q8_projection_probe,
+    run_ratio128_compressor_replay_probe, run_rope_kv_store_probe, LayerExecutor,
 };
 
 #[cfg(test)]
@@ -8156,6 +8364,30 @@ mod tests {
         }
     }
 
+    fn prefill_frontier_report() -> PrefillFrontierProbeReport {
+        let (_, batch_logits, decode_logits) = prefill_frontier_2048_fixture().unwrap();
+        let batch_logits_max_abs_error = batch_logits
+            .iter()
+            .zip(&decode_logits)
+            .map(|(batch, decode)| (batch - decode).abs())
+            .fold(0.0_f32, f32::max);
+        PrefillFrontierProbeReport {
+            fixture_id: PREFILL_FRONTIER_2048_FIXTURE_ID,
+            context_capacity: 2048,
+            prompt_tokens: 2048,
+            final_position: 2047,
+            raw_cache_capacity_rows: 128,
+            ratio4_compressed_capacity_rows: 514,
+            ratio128_compressed_capacity_rows: 18,
+            selected_token: 15342,
+            wall_ms: 12000.0,
+            prefill_tps: 2_048_000.0 / 12000.0,
+            decode_logits_checksum: checksum_f32(&decode_logits),
+            batch_logits_mismatch_count: 129280,
+            batch_logits_max_abs_error,
+        }
+    }
+
     #[test]
     fn validates_probe_work_bounds() {
         assert!(ProbeConfig::default().validate().is_ok());
@@ -8414,6 +8646,19 @@ mod tests {
         assert!(text.contains("\"prompt_token\": 36662"));
         assert!(text.contains("\"full_logits_c0_bitwise_match\": true"));
         assert!(text.contains("\"captured_initial_state_used\": false"));
+    }
+
+    #[test]
+    fn writes_stable_prefill_frontier_probe_json() {
+        let mut output = Vec::new();
+        write_prefill_frontier_probe_json(&mut output, &prefill_frontier_report()).unwrap();
+        let text = String::from_utf8(output).unwrap();
+        assert!(text.contains(&format!("\"schema\": \"{PREFILL_FRONTIER_PROBE_SCHEMA}\"")));
+        assert!(text.contains("\"context_capacity\": 2048"));
+        assert!(text.contains("\"raw_ring_rows_per_layer\": 128"));
+        assert!(text.contains("\"decode_replay_logits_c0_bitwise_match\": true"));
+        assert!(text.contains("\"batched_prefill_logits_c0_bitwise_match\": false"));
+        assert!(text.contains("\"paired_protocol_eligible\": false"));
     }
 
     #[test]
@@ -8858,6 +9103,19 @@ mod tests {
         let logits = cold_prefill_fixture().unwrap();
         assert_eq!(logits.len(), 129280);
         assert_eq!(lowest_id_argmax(&logits).unwrap(), 201);
+    }
+
+    #[test]
+    fn prefill_frontier_fixture_has_target_shape_and_selection() {
+        let (tokens, batch_logits, decode_logits) = prefill_frontier_2048_fixture().unwrap();
+        assert_eq!(tokens.len(), 2048);
+        assert_eq!(tokens.first(), Some(&36662));
+        assert_eq!(tokens.last(), Some(&895));
+        assert_eq!(batch_logits.len(), 129280);
+        assert_eq!(decode_logits.len(), 129280);
+        assert_eq!(lowest_id_argmax(&batch_logits).unwrap(), 15342);
+        assert_eq!(lowest_id_argmax(&decode_logits).unwrap(), 15342);
+        assert_ne!(batch_logits, decode_logits);
     }
 
     #[test]

@@ -6,8 +6,9 @@ use rust_star_runtime::metal::{
     run_layer0_probe, run_layers01234567_decode_probe, run_layers012345_decode_probe,
     run_layers0123_bench, run_layers0123_chained_probe, run_layers0123_decode_probe,
     run_layers0123_probe, run_layers012_chained_probe, run_layers012_probe, run_layers01_probe,
-    run_layers0_to_42_decode_probe, run_moe_output_probe, run_position127_decoder_probe, run_probe,
-    run_q8_projection_probe, run_ratio128_compressor_replay_probe, run_rope_kv_store_probe,
+    run_layers0_to_42_decode_probe, run_moe_output_probe, run_position127_decoder_probe,
+    run_prefill_frontier_probe, run_probe, run_q8_projection_probe,
+    run_ratio128_compressor_replay_probe, run_rope_kv_store_probe,
     write_attention_output_probe_json, write_attention_read_probe_json,
     write_attention_setup_probe_json, write_closed_loop_decoder_probe_json,
     write_cold_prefill_decoder_probe_json, write_decoder_output_probe_json,
@@ -17,17 +18,18 @@ use rust_star_runtime::metal::{
     write_layers0123_chained_probe_json, write_layers0123_decode_probe_json,
     write_layers0123_probe_json, write_layers012_chained_probe_json, write_layers012_probe_json,
     write_layers01_probe_json, write_layers0_to_42_decode_probe_json, write_moe_output_probe_json,
-    write_position127_decoder_probe_json, write_probe_json, write_projection_probe_json,
-    write_ratio128_compressor_replay_probe_json, write_rope_kv_store_probe_json,
-    AttentionOutputProbeReport, AttentionReadProbeReport, AttentionSetupProbeReport,
-    ClosedLoopDecoderProbeReport, ColdPrefillDecoderProbeReport, DecoderOutputProbeReport,
-    EmbeddingProbeReport, FfnRouterProbeReport, IngressProbeReport, Layer0BenchConfig,
-    Layer0BenchReport, Layer0ProbeReport, Layers01234567DecodeProbeReport,
+    write_position127_decoder_probe_json, write_prefill_frontier_probe_json, write_probe_json,
+    write_projection_probe_json, write_ratio128_compressor_replay_probe_json,
+    write_rope_kv_store_probe_json, AttentionOutputProbeReport, AttentionReadProbeReport,
+    AttentionSetupProbeReport, ClosedLoopDecoderProbeReport, ColdPrefillDecoderProbeReport,
+    DecoderOutputProbeReport, EmbeddingProbeReport, FfnRouterProbeReport, IngressProbeReport,
+    Layer0BenchConfig, Layer0BenchReport, Layer0ProbeReport, Layers01234567DecodeProbeReport,
     Layers012345DecodeProbeReport, Layers0123BenchConfig, Layers0123BenchReport,
     Layers0123ChainedProbeReport, Layers0123DecodeProbeReport, Layers0123ProbeReport,
     Layers012ChainedProbeReport, Layers012ProbeReport, Layers01ProbeReport,
-    Layers0To42DecodeProbeReport, MoeOutputProbeReport, Position127DecoderProbeReport, ProbeConfig,
-    ProjectionProbeReport, Ratio128CompressorReplayProbeReport, RopeKvStoreProbeReport,
+    Layers0To42DecodeProbeReport, MoeOutputProbeReport, Position127DecoderProbeReport,
+    PrefillFrontierProbeReport, ProbeConfig, ProjectionProbeReport,
+    Ratio128CompressorReplayProbeReport, RopeKvStoreProbeReport,
 };
 use rust_star_runtime::model::MappedModel;
 use rust_star_runtime::target::{validate_resident_q2, MODEL_LABEL};
@@ -134,6 +136,9 @@ fn run() -> Result<()> {
     }
     if command == "cold-prefill-decoder-probe" {
         return run_cold_prefill_decoder_probe_command(arguments.collect());
+    }
+    if command == "prefill-frontier-probe" {
+        return run_prefill_frontier_probe_command(arguments.collect());
     }
     if command == "ratio128-compressor-replay-probe" {
         return run_ratio128_compressor_replay_probe_command(arguments.collect());
@@ -538,9 +543,65 @@ fn run_cold_prefill_decoder_probe_command(arguments: Vec<OsString>) -> Result<()
         "diagnostic execution: prefill+first selection {:.3} ms; decode {:.3} positions/s",
         report.prefill_wall_ms, report.decode_tps,
     );
-    println!("paired protocol: ineligible until arbitrary-frontier prefill exists");
+    println!("paired protocol: ineligible until native batched prefill and sparse indexed decode");
     if let Some(path) = json_path {
         write_cold_prefill_decoder_probe_file(&path, &report)?;
+        println!("json: {}", path.display());
+    }
+    Ok(())
+}
+
+fn run_prefill_frontier_probe_command(arguments: Vec<OsString>) -> Result<()> {
+    if arguments.is_empty() {
+        return Err(Error::invalid(prefill_frontier_probe_usage()));
+    }
+    if matches!(arguments[0].to_str(), Some("--help") | Some("-h")) {
+        println!("{}", prefill_frontier_probe_usage());
+        return Ok(());
+    }
+    let model_path = PathBuf::from(&arguments[0]);
+    let mut json_path: Option<PathBuf> = None;
+    let mut arguments = arguments.into_iter().skip(1);
+    while let Some(argument) = arguments.next() {
+        match argument.to_str() {
+            Some("--json") => {
+                let value = arguments
+                    .next()
+                    .ok_or_else(|| Error::invalid("--json requires a path"))?;
+                if json_path.is_some() {
+                    return Err(Error::invalid("--json may be specified only once"));
+                }
+                json_path = Some(PathBuf::from(value));
+            }
+            Some("--help") | Some("-h") => {
+                println!("{}", prefill_frontier_probe_usage());
+                return Ok(());
+            }
+            _ => return Err(Error::invalid(prefill_frontier_probe_usage())),
+        }
+    }
+    let model = MappedModel::open(&model_path)?;
+    validate_resident_q2(model.gguf())?;
+    let report = run_prefill_frontier_probe(&model)?;
+    println!(
+        "2K sequential initialization: {} canonical tokens -> token {}, decode-replay logits C0 exact",
+        report.prompt_tokens, report.selected_token,
+    );
+    println!(
+        "diagnostic execution: {:.3} tokens/s over {:.3} ms",
+        report.prefill_tps, report.wall_ms,
+    );
+    println!(
+        "cache ownership: {} raw ring rows, {} ratio-4 compressed rows per layer",
+        report.raw_cache_capacity_rows, report.ratio4_compressed_capacity_rows,
+    );
+    println!(
+        "batched-prefill boundary: {} logits differ, max absolute error {:.6}",
+        report.batch_logits_mismatch_count, report.batch_logits_max_abs_error,
+    );
+    println!("paired protocol: ineligible until native batched prefill and sparse indexed decode");
+    if let Some(path) = json_path {
+        write_prefill_frontier_probe_file(&path, &report)?;
         println!("json: {}", path.display());
     }
     Ok(())
@@ -2286,6 +2347,36 @@ fn write_cold_prefill_decoder_probe_file(
     Ok(())
 }
 
+fn write_prefill_frontier_probe_file(
+    path: &Path,
+    report: &PrefillFrontierProbeReport,
+) -> Result<()> {
+    let temporary = path.with_extension(format!(
+        "{}tmp",
+        path.extension()
+            .and_then(OsStr::to_str)
+            .map(|extension| format!("{extension}."))
+            .unwrap_or_default()
+    ));
+    let file = File::create(&temporary).map_err(|error| {
+        Error::invalid(format!(
+            "cannot create 2K prefill frontier JSON {}: {error}",
+            temporary.display()
+        ))
+    })?;
+    let mut output = BufWriter::new(file);
+    write_prefill_frontier_probe_json(&mut output, report)?;
+    output.flush()?;
+    drop(output);
+    std::fs::rename(&temporary, path).map_err(|error| {
+        Error::invalid(format!(
+            "cannot install 2K prefill frontier JSON {}: {error}",
+            path.display()
+        ))
+    })?;
+    Ok(())
+}
+
 fn write_ratio128_compressor_replay_probe_file(
     path: &Path,
     report: &Ratio128CompressorReplayProbeReport,
@@ -2496,7 +2587,7 @@ fn print_type_counts(gguf: &Gguf) {
 }
 
 fn usage() -> &'static str {
-    "usage:\n  rust-star inspect MODEL.gguf  # strict Flash-0731 resident-Q2 validation\n  rust-star gguf MODEL.gguf     # structural GGUF v3 validation only\n  rust-star metal-probe [OPTIONS]\n  rust-star embedding-probe MODEL.gguf [OPTIONS]\n  rust-star projection-probe MODEL.gguf [OPTIONS]\n  rust-star attention-ingress-probe MODEL.gguf [OPTIONS]\n  rust-star attention-setup-probe MODEL.gguf [OPTIONS]\n  rust-star rope-kv-store-probe MODEL.gguf [OPTIONS]\n  rust-star attention-read-probe MODEL.gguf [OPTIONS]\n  rust-star attention-output-probe MODEL.gguf [OPTIONS]\n  rust-star ffn-router-probe MODEL.gguf [OPTIONS]\n  rust-star moe-output-probe MODEL.gguf [OPTIONS]\n  rust-star layer0-probe MODEL.gguf [OPTIONS]\n  rust-star layer0-bench MODEL.gguf [OPTIONS]\n  rust-star layers01-probe MODEL.gguf [OPTIONS]\n  rust-star layers012-probe MODEL.gguf [OPTIONS]\n  rust-star layers012-chained-probe MODEL.gguf [OPTIONS]\n  rust-star layers0123-probe MODEL.gguf [OPTIONS]\n  rust-star layers0123-chained-probe MODEL.gguf [OPTIONS]\n  rust-star layers0123-bench MODEL.gguf [OPTIONS]\n  rust-star layers0123-decode-probe MODEL.gguf [OPTIONS]\n  rust-star layers012345-decode-probe MODEL.gguf [OPTIONS]\n  rust-star layers01234567-decode-probe MODEL.gguf [OPTIONS]\n  rust-star layers0-42-decode-probe MODEL.gguf [OPTIONS]\n  rust-star decoder-output-probe MODEL.gguf [OPTIONS]\n  rust-star closed-loop-decoder-probe MODEL.gguf [OPTIONS]\n  rust-star position127-decoder-probe MODEL.gguf [OPTIONS]\n  rust-star cold-prefill-decoder-probe MODEL.gguf [OPTIONS]\n  rust-star ratio128-compressor-replay-probe MODEL.gguf [OPTIONS]"
+    "usage:\n  rust-star inspect MODEL.gguf  # strict Flash-0731 resident-Q2 validation\n  rust-star gguf MODEL.gguf     # structural GGUF v3 validation only\n  rust-star metal-probe [OPTIONS]\n  rust-star embedding-probe MODEL.gguf [OPTIONS]\n  rust-star projection-probe MODEL.gguf [OPTIONS]\n  rust-star attention-ingress-probe MODEL.gguf [OPTIONS]\n  rust-star attention-setup-probe MODEL.gguf [OPTIONS]\n  rust-star rope-kv-store-probe MODEL.gguf [OPTIONS]\n  rust-star attention-read-probe MODEL.gguf [OPTIONS]\n  rust-star attention-output-probe MODEL.gguf [OPTIONS]\n  rust-star ffn-router-probe MODEL.gguf [OPTIONS]\n  rust-star moe-output-probe MODEL.gguf [OPTIONS]\n  rust-star layer0-probe MODEL.gguf [OPTIONS]\n  rust-star layer0-bench MODEL.gguf [OPTIONS]\n  rust-star layers01-probe MODEL.gguf [OPTIONS]\n  rust-star layers012-probe MODEL.gguf [OPTIONS]\n  rust-star layers012-chained-probe MODEL.gguf [OPTIONS]\n  rust-star layers0123-probe MODEL.gguf [OPTIONS]\n  rust-star layers0123-chained-probe MODEL.gguf [OPTIONS]\n  rust-star layers0123-bench MODEL.gguf [OPTIONS]\n  rust-star layers0123-decode-probe MODEL.gguf [OPTIONS]\n  rust-star layers012345-decode-probe MODEL.gguf [OPTIONS]\n  rust-star layers01234567-decode-probe MODEL.gguf [OPTIONS]\n  rust-star layers0-42-decode-probe MODEL.gguf [OPTIONS]\n  rust-star decoder-output-probe MODEL.gguf [OPTIONS]\n  rust-star closed-loop-decoder-probe MODEL.gguf [OPTIONS]\n  rust-star position127-decoder-probe MODEL.gguf [OPTIONS]\n  rust-star cold-prefill-decoder-probe MODEL.gguf [OPTIONS]\n  rust-star prefill-frontier-probe MODEL.gguf [OPTIONS]\n  rust-star ratio128-compressor-replay-probe MODEL.gguf [OPTIONS]"
 }
 
 fn metal_probe_usage() -> &'static str {
@@ -2600,7 +2691,11 @@ fn position127_decoder_probe_usage() -> &'static str {
 }
 
 fn cold_prefill_decoder_probe_usage() -> &'static str {
-    "usage: rust-star cold-prefill-decoder-probe MODEL.gguf [--json PATH]\n\nStarts from empty Rust-owned raw and compressed cache state, evaluates the one-token raw oracle prompt at position 0, and requires its full logits to match DwarfStar bit-for-bit before committing token 201. It then reproduces the complete 128-token transcript, final logits, and live layer-3/layer-5 ratio-128 rows. This removes captured initial state but remains diagnostic until arbitrary-frontier prefill exists."
+    "usage: rust-star cold-prefill-decoder-probe MODEL.gguf [--json PATH]\n\nStarts from empty Rust-owned raw and compressed cache state, evaluates the one-token raw oracle prompt at position 0, and requires its full logits to match DwarfStar bit-for-bit before committing token 201. It then reproduces the complete 128-token transcript, final logits, and live layer-3/layer-5 ratio-128 rows. This removes captured initial state but remains diagnostic until native batched prefill and sparse indexed decode exist."
+}
+
+fn prefill_frontier_probe_usage() -> &'static str {
+    "usage: rust-star prefill-frontier-probe MODEL.gguf [--json PATH]\n\nStarts from empty Rust-owned state, sequentially evaluates the canonical 2048-token oracle prefix through all 43 layers, retains a 128-row raw-KV ring plus context-sized compressed memory, and requires the final logits to match two fresh DwarfStar one-token decode replays bit-for-bit. It also preserves and reports the expected divergence from DwarfStar's batched-prefill logits, so this remains ineligible until native batched prefill and sparse indexed attention are implemented."
 }
 
 fn ratio128_compressor_replay_probe_usage() -> &'static str {

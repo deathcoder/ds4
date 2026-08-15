@@ -1191,7 +1191,10 @@ static id<MTLBuffer> persistent_buffer(
     id<MTLBuffer> buffer = context.activationBufferCache[key];
     if (buffer) {
         if (buffer.length != bytes) {
-            fail_with_message(error, error_bytes, @"persistent Metal buffer size changed");
+            fail_with_message(error, error_bytes, [NSString stringWithFormat:
+                @"persistent Metal buffer %@ has %llu bytes, requested %llu",
+                key, (unsigned long long)buffer.length,
+                (unsigned long long)bytes]);
             return nil;
         }
         return buffer;
@@ -1767,12 +1770,22 @@ int rust_star_metal_run_attention_ingress(
     const uint32_t initial_state_mode = full_layer
         ? layer0->initial_state_mode : RUST_STAR_INITIAL_STATE_CAPTURED;
     const BOOL cold_initial_state = initial_state_mode == RUST_STAR_INITIAL_STATE_COLD;
-    const uint32_t cache_capacity_rows = full_layer ? 128u : 3u;
-    const uint32_t attention_capacity_rows = full_layer ? 160u : 3u;
-    const uint32_t compressed_cache_capacity_rows = 32u;
-    const uint32_t visible_cache_rows = position + 1u;
+    const uint32_t context_capacity = full_layer ? layer0->context_capacity : 3u;
+    const uint32_t cache_capacity_rows = full_layer
+        ? (context_capacity < 128u ? context_capacity : 128u) : 3u;
     const BOOL compressed_layer = full_layer && layer0->layer_index >= 2u;
     const uint32_t compressor_ratio = (layer0->layer_index % 2u) == 0u ? 4u : 128u;
+    const uint32_t compressed_cache_capacity_rows = compressed_layer
+        ? context_capacity / compressor_ratio + 2u : 2u;
+    /* Synchronized multi-layer controls intentionally reuse unscoped
+     * attention scratch. Reserve the ratio-4 maximum for every full layer so
+     * its shape does not change when execution crosses into layer 2. */
+    const uint32_t attention_capacity_rows = full_layer
+        ? cache_capacity_rows + context_capacity / 4u + 2u : 3u;
+    const uint32_t visible_cache_rows = position + 1u < cache_capacity_rows
+        ? position + 1u : cache_capacity_rows;
+    const uint32_t raw_cache_start = (position + 1u - visible_cache_rows) %
+        cache_capacity_rows;
     const uint32_t compressor_width = compressor_ratio == 4u ? 1024u : 512u;
     const BOOL indexer_layer = compressed_layer && compressor_ratio == 4u;
     const BOOL compressor_emit = compressed_layer &&
@@ -1823,7 +1836,8 @@ int rust_star_metal_run_attention_ingress(
         return fail_with_message(error, error_bytes,
             @"full layer execution must run layer 0 before continuing into later layers");
     }
-    if (full_layer && (position > 127u || (!cold_initial_state && position < 1u))) {
+    if (full_layer && (context_capacity == 0u || position >= context_capacity ||
+        (!cold_initial_state && position < 1u))) {
         return fail_with_message(error, error_bytes,
             @"the retained decoder frontier received an invalid position/state mode");
     }
@@ -1836,6 +1850,10 @@ int rust_star_metal_run_attention_ingress(
         attention_cache_rows > attention_capacity_rows)) {
         return fail_with_message(error, error_bytes,
             @"the retained decoder frontier exceeds its cache capacities");
+    }
+    if (indexer_layer && compressed_cache_rows > 512u) {
+        return fail_with_message(error, error_bytes,
+            @"ratio-4 attention beyond 512 compressed rows requires sparse indexer selection");
     }
     if (full_layer && position > 1u && command_mode == RUST_STAR_COMMAND_SYNCHRONIZED) {
         return fail_with_message(error, error_bytes,
@@ -2151,7 +2169,10 @@ int rust_star_metal_run_attention_ingress(
         const NSUInteger staged_kv_bytes = attention_capacity_rows*kv_elements*sizeof(uint16_t);
         const NSUInteger mask_storage_bytes = attention_capacity_rows*sizeof(uint16_t);
         const NSUInteger mask_row_bytes = attention_cache_rows*sizeof(uint16_t);
-        const NSUInteger flash_pad_bytes = attention_capacity_rows*32u*kv_elements*sizeof(uint16_t) + 32u*sizeof(uint16_t);
+        /* The vector FlashAttention pad holds two 32-row tiles, not one tile
+         * per cache row. Keeping this scratch shape fixed is what allows the
+         * persistent context capacities to grow without quadratic waste. */
+        const NSUInteger flash_pad_bytes = 2u*32u*kv_elements*sizeof(uint16_t) + 32u*sizeof(uint16_t);
         const NSUInteger flash_tmp_bytes = 64u*kv_elements*32u*sizeof(float) + 64u*64u*sizeof(float);
         id<MTLBuffer> staged_kv_buffer = attention_read ? persistent_buffer(context, layer_buffer_key(@"staged_kv", layer_scoped_buffers, layer0->layer_index), staged_kv_bytes, error, error_bytes) : nil;
         id<MTLBuffer> mask_buffer = attention_read ? persistent_buffer(context, layer_buffer_key(@"attention_mask", layer_scoped_buffers, layer0->layer_index), mask_storage_bytes, error, error_bytes) : nil;
@@ -2213,6 +2234,7 @@ int rust_star_metal_run_attention_ingress(
         }
         if (attention_read && (!staged_kv_buffer || !mask_buffer || !flash_pad_buffer ||
             !flash_tmp_buffer || !attention_raw_buffer || !attention_back_buffer)) {
+            if (error && error_bytes != 0u && error[0] != '\0') return 0;
             return fail_with_message(error, error_bytes, @"failed to allocate attention-read buffers");
         }
         if (attention_output && (!attention_low_buffer || !attention_out_buffer || !after_attention_hc_buffer)) {
@@ -2372,7 +2394,8 @@ int rust_star_metal_run_attention_ingress(
             .src2=false,
         };
         rust_star_kv_store_args kv_store_args = {
-            .head_dim=512, .n_rot=64, .raw_row=(int32_t)position,
+            .head_dim=512, .n_rot=64,
+            .raw_row=(int32_t)(position % cache_capacity_rows),
         };
         const uint64_t attention_head_bytes = (uint64_t)kv_elements*sizeof(float);
         const uint64_t staged_row_bytes = (uint64_t)kv_elements*sizeof(uint16_t);
@@ -2757,14 +2780,32 @@ int rust_star_metal_run_attention_ingress(
             }
 
             if (attention_read) {
-                uint32_t staged_elements = visible_cache_rows*kv_elements;
+                const uint32_t tail_rows = cache_capacity_rows - raw_cache_start <
+                    visible_cache_rows
+                    ? cache_capacity_rows - raw_cache_start
+                    : visible_cache_rows;
+                const uint32_t head_rows = visible_cache_rows - tail_rows;
+                uint32_t staged_elements = tail_rows*kv_elements;
                 [encoder setComputePipelineState:context.cpyF32F16Pipeline];
                 [encoder setBytes:&staged_elements length:sizeof(staged_elements) atIndex:0];
-                [encoder setBuffer:cache_buffer offset:0 atIndex:1];
+                [encoder setBuffer:cache_buffer
+                             offset:raw_cache_start*kv_elements*sizeof(float)
+                            atIndex:1];
                 [encoder setBuffer:staged_kv_buffer offset:0 atIndex:2];
                 const NSUInteger staged_groups = (staged_elements + 1023u) / 1024u;
                 [encoder dispatchThreadgroups:MTLSizeMake(staged_groups,1,1)
                      threadsPerThreadgroup:MTLSizeMake(256,1,1)];
+                if (head_rows != 0u) {
+                    staged_elements = head_rows*kv_elements;
+                    [encoder setBytes:&staged_elements length:sizeof(staged_elements) atIndex:0];
+                    [encoder setBuffer:cache_buffer offset:0 atIndex:1];
+                    [encoder setBuffer:staged_kv_buffer
+                                 offset:tail_rows*kv_elements*sizeof(uint16_t)
+                                atIndex:2];
+                    const NSUInteger head_groups = (staged_elements + 1023u) / 1024u;
+                    [encoder dispatchThreadgroups:MTLSizeMake(head_groups,1,1)
+                         threadsPerThreadgroup:MTLSizeMake(256,1,1)];
+                }
                 const uint32_t prior_compressed_rows = compressed_cache_rows -
                     (compressor_emit ? 1u : 0u);
                 if (prior_compressed_rows != 0u) {
@@ -3388,9 +3429,8 @@ int rust_star_metal_copy_compressed_kv_row(
     size_t error_bytes)
 {
     const uint32_t row_elements = 512u;
-    const uint32_t cache_rows = 32u;
     if (!opaque_context || !output || output_elements != row_elements ||
-        layer_index < 2u || layer_index > 42u || row_index >= cache_rows) {
+        layer_index < 2u || layer_index > 42u) {
         return fail_with_message(error, error_bytes,
             @"compressed-cache readback received invalid inputs");
     }
@@ -3398,7 +3438,9 @@ int rust_star_metal_copy_compressed_kv_row(
         RustStarMetalContext *context = (__bridge RustStarMetalContext *)opaque_context;
         id<MTLBuffer> buffer = context.activationBufferCache[
             layer_buffer_key(@"compressed_kv_cache", YES, layer_index)];
-        if (!buffer || buffer.length != (NSUInteger)cache_rows*row_elements*sizeof(float)) {
+        const NSUInteger row_bytes = (NSUInteger)row_elements*sizeof(float);
+        if (!buffer || buffer.length % row_bytes != 0u ||
+            row_index >= buffer.length/row_bytes) {
             return fail_with_message(error, error_bytes,
                 @"compressed-cache readback could not find the retained layer cache");
         }

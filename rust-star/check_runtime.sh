@@ -119,6 +119,9 @@ elif [ "$#" -eq 1 ]; then
         echo "==> cold one-token prefill and integrated position-127 decoder"
         "$target_dir/release/rust-star" cold-prefill-decoder-probe "$1" \
             --json "$target_dir/cold-prefill-decoder-probe.json"
+        echo "==> 2K sequential frontier and batched-prefill boundary"
+        "$target_dir/release/rust-star" prefill-frontier-probe "$1" \
+            --json "$target_dir/prefill-frontier-probe.json"
         echo "==> bounded position-127 ratio-128 compressor replay"
         "$target_dir/release/rust-star" ratio128-compressor-replay-probe "$1" \
             --json "$target_dir/ratio128-compressor-replay-probe.json"

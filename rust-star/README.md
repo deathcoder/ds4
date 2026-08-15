@@ -58,9 +58,13 @@ cold-start mode begins with empty Rust-owned raw and compressor state, evaluates
 the raw one-token prompt at position 0, matches its full logits bit-for-bit, and
 then commits the complete 128-token oracle transcript. It crosses the first
 live ratio-128 emissions in layers 3 and 5 and matches both those rows and the
-final 129,280 logits. The path is still diagnostic rather than a paired
-benchmark candidate because multi-token arbitrary-frontier prefill remains
-unimplemented.
+final 129,280 logits. A separate 2K command now grows context-sized compressed
+memory, advances a true 128-row raw-KV ring, and exactly matches two fresh
+DwarfStar one-token decode replays over the canonical prompt. It also proves
+that this sequential construction differs from DwarfStar's batched prefill in
+all 129,280 logits despite selecting the same token. The path therefore remains
+diagnostic: eligible measurements require native batched prefill arithmetic and
+sparse indexed attention beyond the first 512 ratio-4 rows.
 
 Project controls and benchmark contracts:
 

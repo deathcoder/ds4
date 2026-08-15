@@ -155,9 +155,13 @@ history; add a correction and update the current-state summary.
   `cold-prefill-decoder-probe` instead starts with empty Rust-owned cache and
   compressor storage, evaluates raw prompt token 36662 at position 0, matches
   all 129,280 prefill logits and selected token 201, and continues through the
-  same 128-token transcript without loading captured initial state. Multi-token
-  arbitrary-frontier initialization and the eligible engine-measurement
-  producer are still pending.
+  same 128-token transcript without loading captured initial state. A separate
+  2K sequential initializer now owns a true 128-row raw-KV ring and
+  context-sized compressed state. It matches two fresh DwarfStar one-token
+  decode replays bit-for-bit at the final logits, but all 129,280 logits differ
+  from two independently repeatable native batched-prefill captures while both
+  select token 15342. Native batched prefill, sparse indexed attention beyond
+  512 ratio-4 rows, and the eligible engine-measurement producer remain pending.
 - Measurements: Metal batching was 42.861x faster than synchronized submission
   in the retained M-002 probe. DwarfStar medians are 164.86 prefill / 19.90
   generation tok/s at 2K and 161.05 prefill / 17.36 generation tok/s at 32K.
@@ -242,7 +246,10 @@ history; add a correction and update the current-state summary.
   prefill and 18.246 evaluated positions/s; the complete gate later reported
   1078.665 ms and 18.311 positions/s. All were bit-identical. None is a paired
   claim because one-token prefill is not a protocol frontier and the residency
-  conditions differ.
+  conditions differ. The first 2K sequential state run reported 18.603
+  tokens/s over 110090.070 ms and was exact against the repeated DwarfStar
+  decode replay. It is not prefill throughput: DwarfStar's native batched
+  prefill is the required oracle and produced a different full-logit tensor.
 - Manual handoff: `RUST_STAR_MANUAL_TASKS.md` records Actions approval, target
   compilation/model inspection, quick/extended oracle capture, and the deferred
   secure-access decision with exact evidence requirements.
@@ -255,17 +262,77 @@ history; add a correction and update the current-state summary.
 
 ## Immediate Next Actions
 
-1. Generalize exact one-token cold prefill to multiple prompt tokens and size
-   raw/compressed state for an arbitrary benchmark frontier.
-2. Emit the `rust-star-engine-measurement-v1` artifact from the exact
-   cold-prefill/128-token loop and connect it to the paired runner.
-3. Preserve the four-, six-, eight-, 43-layer, explicit decoder-output, and
+1. Import the native DwarfStar batched-prefill execution boundary needed to
+   reproduce the pinned 2K frontier logits rather than treating sequential
+   decode replay as eligible prefill.
+2. Add the fixed 512-row ratio-4 indexer top-k and sparse indexed attention so
+   128 generated tokens can continue beyond the 2K frontier.
+3. Emit the `rust-star-engine-measurement-v1` artifact from the exact
+   batched-prefill/128-token loop and connect it to the paired runner.
+4. Preserve the four-, six-, eight-, 43-layer, explicit decoder-output, and
    closed-loop diagnostic commands as independently executed controls.
-4. Run the extended 2K--1M frontier capture when the Mac can be dedicated to a
+5. Run the extended 2K--1M frontier capture when the Mac can be dedicated to a
    long benchmark; preserve any 512K/1M capacity failure as evidence.
-5. Run or approve the fork's GitHub Actions workflow and retain its URL.
+6. Run or approve the fork's GitHub Actions workflow and retain its URL.
 
 ## Entries
+
+### 2026-08-15 — 2K state ownership reached the batched-prefill boundary
+
+Objective:
+
+- Generalize cold state past 128 positions, reach the first protocol context,
+  and determine whether sequential exact decode can initialize eligible
+  benchmark state without importing DwarfStar's batched prefill path.
+
+Oracle evidence:
+
+- Captured the canonical first 2,048 token IDs and two fresh native DwarfStar
+  2K frontier-logit files. Both batch captures were byte-identical after FP32
+  reconstruction, selected token 15342, and have payload SHA-256
+  `7b5e851884bbb0aa8c2a249c8497af0feccb267cbd0a40e0a4a5aee584ecbfaf`.
+- Added a narrow DwarfStar decode-replay capture helper: one-token cold prefill
+  followed by 2,047 ordinary `ds4_session_eval` calls over the same canonical
+  IDs. Two fresh replay logits were byte-identical, selected token 15342, and
+  have SHA-256
+  `aa657efb7a5cb7108ee639ea797eb4f1c223f36360d356f96674499935d1f405`.
+- The batched and replay tensors differ at all 129,280 logits with maximum
+  absolute error 2.325326. Preserve this as an arithmetic-boundary result, not
+  a reason to weaken C0 or relabel sequential decode as prefill.
+
+Implementation:
+
+- Added an immutable context-capacity field to the Rust/Objective-C layer ABI.
+  Raw KV now uses a 128-row physical ring with ordered wrapped-window staging;
+  compressed capacity is derived independently from each layer's ratio.
+- Corrected FlashAttention padding from context-scaled allocation to the two
+  32-row tiles actually consumed by the vector kernel. Added an explicit guard
+  after 512 ratio-4 compressed rows until sparse indexer selection exists.
+- Kept synchronized multi-layer control scratch at the uniform ratio-4 maximum
+  so those legacy controls can safely reuse unscoped buffers across the layer-2
+  transition while compressed-cache ownership remains ratio-specific.
+- Added `prefill-frontier-probe`, a three-payload differential fixture covering
+  canonical token IDs, native batch logits, and decode-replay logits, stable
+  diagnostic JSON, CLI/runtime-gate coverage, and fixture/report tests.
+
+Target-Mac evidence and decision:
+
+- The unchanged one-token/position-127 cold control remained C0 exact and
+  reported 18.533 evaluated decode positions/s after the ring rewrite.
+- The 2K sequential run reported 18.603 tokens/s over 110090.070 ms, matched
+  every decode-replay logit bit, and selected token 15342. It explicitly
+  reports batched-prefill C0 false and is not an engine measurement.
+- The final complete gate passed 66 Rust tests, 46 Python tests, all 229
+  differential manifests, optimized Objective-C/Metal compilation, strict
+  target inspection, and every retained live Metal control. Its cold command
+  reported 843.365 ms for one-token initialization and 17.670 evaluated decode
+  positions/s. Its independent 2K sequential diagnostic again matched every
+  replay-logit bit at 18.252 tokens/s over 112206.922 ms and preserved the
+  expected 129,280-logit batched-prefill mismatch.
+- Accept context-sized state ownership and the raw-ring transition as the next
+  exact decode boundary. Reject the hypothesis that sequential decode can stand
+  in for native batched prefill under C0. Import batched prefill next, then add
+  sparse indexed decode and the measurement producer.
 
 ### 2026-08-15 — Captured initial state replaced by exact cold prefill
 

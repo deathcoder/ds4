@@ -510,6 +510,33 @@ ratio-128 C0 gates. This proves exact cold state construction for one token.
 Multi-token prefill, capacity sized from a requested context, and initialization
 at the paired protocol's arbitrary frontiers remain separate work.
 
+## 2K sequential state frontier
+
+Schema: `rust-star-prefill-frontier-diagnostic-v1`.
+
+`prefill-frontier-probe` widens the cold-state ABI with one immutable context
+capacity. Raw KV is a 128-row physical ring: each store targets `position %
+128`, and two ordered FP32-to-F16 staging dispatches linearize a wrapped logical
+window before FlashAttention. Compressed-cache capacity is derived per layer as
+`context / ratio + 2`. The vector-attention pad remains two 32-row tiles rather
+than scaling with context length. Shared synchronized-control attention scratch
+reserves the ratio-4 maximum for every layer so its allocation shape remains
+stable when those controls reuse buffers across layer boundaries.
+
+The command evaluates the canonical 2,048-token prefix sequentially and matches
+two fresh DwarfStar one-token decode replays at every final-logit bit. That
+diagnostic comparison exposed an important boundary: DwarfStar's native batched
+prefill produces a different, independently repeatable full-logit tensor. All
+129,280 logits differ, with maximum absolute error 2.325326, although both paths
+select token 15342. The report therefore says decode-replay C0 is true and
+batched-prefill C0 is false. Native batched prefill is required before this path
+can produce the engine-measurement contract.
+
+Ratio-4 compressed memory reaches 512 rows exactly at the 2K frontier. Later
+positions are rejected until the fixed 512-row sparse indexer top-k and indexed
+attention path is implemented; silently scanning every compressed row would
+change model semantics and exceed the intended long-context attention shape.
+
 ## Position-127 ratio-128 compressor replay
 
 Schema: `rust-star-ratio128-compressor-replay-probe-v1`.

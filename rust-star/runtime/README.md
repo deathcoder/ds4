@@ -483,6 +483,46 @@ fresh multi-token prefill at arbitrary 2K–256K and later context frontiers.
 Its diagnostic prefill interval includes full-logit projection and CPU greedy
 selection and therefore is not yet the engine-measurement `prefill_ms` field.
 
+To exercise context-sized state through the first protocol frontier:
+
+```sh
+rust-star/.work/runtime-target/release/rust-star \
+  prefill-frontier-probe \
+  /absolute/path/to/model.gguf \
+  --json rust-star/.work/runtime-target/prefill-frontier-probe.json
+```
+
+`prefill-frontier-probe` evaluates the canonical 2,048 token IDs from empty
+state, uses a 128-row raw-KV ring, and allocates 514 ratio-4 or 18 ratio-128
+compressed rows per applicable layer. Its final logits match two independent
+DwarfStar replays built from one-token prefill plus 2,047 ordinary decode calls
+bit-for-bit. The retained `capture_decode_replay.c` helper defines that
+diagnostic oracle boundary.
+
+From the repository root, rebuild that helper against the same DwarfStar
+objects used by `ds4-bench` with:
+
+```sh
+cc -O3 -ffast-math -g -mcpu=native -Wall -Wextra -std=c99 -I. \
+  -o rust-star/.work/capture-decode-replay \
+  rust-star/capture_decode_replay.c \
+  ds4.o ds4_distributed.o ds4_tp.o ds4_ssd.o ds4_metal.o \
+  ds4_layer_pack.o -lm -pthread -framework Foundation -framework Metal
+
+rust-star/.work/capture-decode-replay \
+  /absolute/path/to/model.gguf \
+  speed-bench/promessi_sposi.txt \
+  2048 \
+  rust-star/.work/decode-replay-logits.f32le.bin
+```
+
+This is not batched-prefill C0. Two independent ordinary `ds4-bench` captures
+also agree with each other, but all 129,280 batch-frontier logits differ from
+the decode replay (maximum absolute error 2.325326) while both select token
+15342. The JSON records both facts and remains `paired_protocol_eligible:
+false`. The next inference boundary is native batched prefill; the following
+decode boundary is sparse indexer top-k once ratio-4 memory exceeds 512 rows.
+
 To cross the first ratio-128 emission boundary without overstating decoder
 coverage:
 

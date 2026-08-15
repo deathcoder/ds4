@@ -294,10 +294,13 @@ they describe whenever practical.
 
 ## Open Items
 
-- Generalize the C0-verified one-token cold prefill into multi-token,
-  arbitrary-frontier initialization, then emit the Rust Star engine-measurement
-  contract. The complete 128-token diagnostic no longer depends on captured
-  initial cache/compressor state.
+- Implement native batched prefill arithmetic. The sequential 2K initializer
+  now has correct context-sized state ownership and is C0 exact against
+  DwarfStar's one-token decode replay, but deliberately records that it differs
+  from the paired protocol's batched-prefill oracle.
+- Add ratio-4 sparse indexer selection after 512 compressed rows, then emit the
+  Rust Star engine-measurement contract. The complete 128-token diagnostic no
+  longer depends on captured initial cache/compressor state.
 - Execute `rust-star/BENCHMARK_PROTOCOL.md` and capture the initial paired
   DwarfStar numbers; the v1 protocol itself is now defined.
 - Implement the Rust Star side of `rust-star/ENGINE_MEASUREMENT_FORMAT.md` once

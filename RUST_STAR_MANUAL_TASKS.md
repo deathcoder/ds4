@@ -169,11 +169,12 @@ Return evidence:
 
 ## M-005 — Execute the first paired DwarfStar/Rust Star run
 
-Status: `BLOCKED` on Rust Star multi-token arbitrary-frontier prefill and the
-engine-measurement producer. The cold one-token diagnostic now constructs its
-own initial caches, reproduces the prefill logits, complete 128-token oracle
-transcript, final logits, and first live ratio-128 rows exactly. It remains
-deliberately ineligible because protocol frontiers begin at 2K tokens.
+Status: `BLOCKED` on native batched prefill, ratio-4 sparse indexed attention,
+and the engine-measurement producer. The 2K sequential initializer now owns a
+128-row raw ring plus context-sized compressed state and exactly matches two
+fresh DwarfStar one-token decode replays. It deliberately records a full-logit
+mismatch against DwarfStar's batched-prefill oracle, so it is not eligible for
+the paired protocol even though both paths select the same token.
 
 Prerequisites:
 
