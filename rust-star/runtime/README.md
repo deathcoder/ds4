@@ -285,36 +285,35 @@ layers must match their independently captured DwarfStar checkpoints
 bit-for-bit. This proves the two-layer ownership and state-handoff contract,
 not yet a full decoder loop.
 
-To cross the first compressed-attention boundary with explicit cache
-ownership:
+To cross the first compressed-attention and router-mode boundaries with
+explicit cache ownership:
 
 ```sh
-rust-star/.work/runtime-target/release/rust-star layers012-probe \
+rust-star/.work/runtime-target/release/rust-star layers0123-probe \
   /absolute/path/to/model.gguf \
-  --json rust-star/.work/runtime-target/layers012-probe.json
+  --json rust-star/.work/runtime-target/layers0123-probe.json
 ```
 
-`layers012-probe` extends the same live HC chain through layer 2 and assigns a
-distinct persistent KV-cache allocation to each executed layer. Layer 2 uses
+`layers0123-probe` extends the same live HC chain through layer 3 and assigns a
+distinct persistent KV-cache allocation to each executed layer. Layers 2–3 use
 the model's compressed-attention RoPE parameters (base 160,000, scale 1/16,
-65,536-token original context, and YaRN interpolation) and must match its
-independently captured position-1 DwarfStar checkpoints bit-for-bit. The three
-per-layer command buffers remain synchronized intentionally; the next
-scheduler experiment can remove that host boundary only while preserving the
-same arithmetic and ownership results.
+65,536-token original context, and YaRN interpolation). Layer 3 also replaces
+the first three layers' token-hash router with biased top-k selection using
+`blk.3.exp_probs_b.bias`. All four layers must match their independently
+captured position-1 DwarfStar checkpoints bit-for-bit.
 
 The exact chained scheduler variant is available separately:
 
 ```sh
-rust-star/.work/runtime-target/release/rust-star layers012-chained-probe \
+rust-star/.work/runtime-target/release/rust-star layers0123-chained-probe \
   /absolute/path/to/model.gguf \
-  --json rust-star/.work/runtime-target/layers012-chained-probe.json
+  --json rust-star/.work/runtime-target/layers0123-chained-probe.json
 ```
 
-It commits the same three per-layer command buffers to one queue without
-waiting between layers, then waits once after layer 2. Layer-scoped activation
+It commits the same four per-layer command buffers to one queue without
+waiting between layers, then waits once after layer 3. Layer-scoped activation
 storage keeps every intermediate boundary alive for post-chain C0 comparison;
 the HC dependency remains a direct Metal-buffer edge and KV storage remains
 distinct by layer. Its `chain_wall_ms` spans the first submission through the
-single tail wait, while `summed_command_gpu_ms` sums the three Metal command
+single tail wait, while `summed_command_gpu_ms` sums the four Metal command
 intervals. These are narrow scheduler diagnostics, not decoder throughput.

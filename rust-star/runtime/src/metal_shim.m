@@ -202,6 +202,7 @@ static NSString *const kQ8ProjectionSource =
 @property(nonatomic, strong) NSMutableDictionary<NSNumber *, NSNumber *> *chainedWallStarts;
 @property(nonatomic, assign) double chainedWallEnd;
 @property(nonatomic, assign) BOOL chainedReady;
+@property(nonatomic, assign) uint32_t chainedFinalLayer;
 @property(nonatomic, assign) const void *modelMapping;
 @property(nonatomic, assign) uint64_t modelBytes;
 @property(nonatomic, assign) double setupMilliseconds;
@@ -1296,7 +1297,7 @@ int rust_star_metal_run_attention_ingress(
         return fail_with_message(error, error_bytes,
             @"full layer outputs require the complete attention path and output set");
     }
-    if (full_layer && (layer0->layer_index > 2 ||
+    if (full_layer && (layer0->layer_index > 3 ||
         (layer0->layer_index == 0 && continuing_layer) ||
         (layer0->layer_index > 0 && !continuing_layer))) {
         return fail_with_message(error, error_bytes,
@@ -1304,6 +1305,17 @@ int rust_star_metal_run_attention_ingress(
     }
     if (command_mode > RUST_STAR_COMMAND_CHAINED_COLLECT || (!full_layer && command_mode != 0)) {
         return fail_with_message(error, error_bytes, @"invalid full-layer command mode");
+    }
+    if (full_layer && command_mode == RUST_STAR_COMMAND_SYNCHRONIZED &&
+        layer0->chain_final_layer != 0) {
+        return fail_with_message(error, error_bytes,
+            @"synchronized layer execution must not declare a command-chain tail");
+    }
+    if ((chained_submission || chained_collect) &&
+        (layer0->chain_final_layer < 2 || layer0->chain_final_layer > 3 ||
+         layer0->layer_index > layer0->chain_final_layer)) {
+        return fail_with_message(error, error_bytes,
+            @"chained layer execution has an invalid command-chain tail");
     }
     if (chained_submission && (warmup_iterations != 0 || measured_iterations != 1)) {
         return fail_with_message(error, error_bytes,
@@ -1352,7 +1364,10 @@ int rust_star_metal_run_attention_ingress(
          layer0->hc_ffn_base_bytes != 24u*sizeof(float) ||
          layer0->ffn_norm_bytes != 4096u*sizeof(float) ||
          layer0->router_gate_bytes != 4096ull*256ull*sizeof(uint16_t) ||
-         layer0->router_hash_bytes != 6ull*129280ull*sizeof(int32_t) ||
+         ((layer0->layer_index < 3 &&
+           layer0->router_aux_bytes != 6ull*129280ull*sizeof(int32_t)) ||
+          (layer0->layer_index >= 3 &&
+           layer0->router_aux_bytes != 256u*sizeof(float))) ||
          layer0->routed_gate_bytes != 256ull*2048ull*1056ull ||
          layer0->routed_up_bytes != 256ull*2048ull*1056ull ||
          layer0->routed_down_bytes != 256ull*4096ull*672ull ||
@@ -1377,21 +1392,29 @@ int rust_star_metal_run_attention_ingress(
             [context.chainedWallStarts removeAllObjects];
             context.chainedReady = NO;
             context.chainedWallEnd = 0.0;
+            context.chainedFinalLayer = layer0->chain_final_layer;
         } else if (chained_submission && !context.chainedCommands[@(layer0->layer_index-1)]) {
             return fail_with_message(error, error_bytes,
                 @"chained layer submission is missing its preceding command buffer");
         }
-        if (command_mode == RUST_STAR_COMMAND_CHAINED_FINAL && layer0->layer_index != 2) {
+        if ((chained_submission || chained_collect) &&
+            context.chainedFinalLayer != layer0->chain_final_layer) {
             return fail_with_message(error, error_bytes,
-                @"only layer 2 may finalize the three-layer command chain");
+                @"chained layer execution changed its declared command-chain tail");
         }
-        if (command_mode == RUST_STAR_COMMAND_CHAINED_ENQUEUE && layer0->layer_index == 2) {
+        if (command_mode == RUST_STAR_COMMAND_CHAINED_FINAL &&
+            layer0->layer_index != layer0->chain_final_layer) {
             return fail_with_message(error, error_bytes,
-                @"layer 2 must finalize the three-layer command chain");
+                @"only the declared tail layer may finalize the command chain");
+        }
+        if (command_mode == RUST_STAR_COMMAND_CHAINED_ENQUEUE &&
+            layer0->layer_index == layer0->chain_final_layer) {
+            return fail_with_message(error, error_bytes,
+                @"the declared tail layer must finalize the command chain");
         }
         if (chained_collect && (!context.chainedReady || !context.chainedCommands[chained_key])) {
             return fail_with_message(error, error_bytes,
-                @"chained layer collection requires a completed three-layer command chain");
+                @"chained layer collection requires a completed command chain");
         }
 
         NSUInteger embedding_inner = 0, hc_fn_inner = 0, scale_inner = 0;
@@ -1423,7 +1446,7 @@ int rust_star_metal_run_attention_ingress(
         id<MTLBuffer> output_b_weights = nil;
         NSUInteger layer_inner[12] = {0};
         id<MTLBuffer> ffn_hc_fn = nil, ffn_hc_scale = nil, ffn_hc_base = nil;
-        id<MTLBuffer> ffn_norm_weight = nil, router_gate = nil, router_hash = nil;
+        id<MTLBuffer> ffn_norm_weight = nil, router_gate = nil, router_aux = nil;
         id<MTLBuffer> routed_gate_weight = nil, routed_up_weight = nil, routed_down_weight = nil;
         id<MTLBuffer> shared_gate_weight = nil, shared_up_weight = nil, shared_down_weight = nil;
         if (extended) {
@@ -1453,7 +1476,7 @@ int rust_star_metal_run_attention_ingress(
             const uint64_t layer_offsets[12] = {
                 layer0->hc_ffn_fn_offset, layer0->hc_ffn_scale_offset,
                 layer0->hc_ffn_base_offset, layer0->ffn_norm_offset,
-                layer0->router_gate_offset, layer0->router_hash_offset,
+                layer0->router_gate_offset, layer0->router_aux_offset,
                 layer0->routed_gate_offset, layer0->routed_up_offset,
                 layer0->routed_down_offset, layer0->shared_gate_offset,
                 layer0->shared_up_offset, layer0->shared_down_offset,
@@ -1461,14 +1484,14 @@ int rust_star_metal_run_attention_ingress(
             const uint64_t layer_bytes[12] = {
                 layer0->hc_ffn_fn_bytes, layer0->hc_ffn_scale_bytes,
                 layer0->hc_ffn_base_bytes, layer0->ffn_norm_bytes,
-                layer0->router_gate_bytes, layer0->router_hash_bytes,
+                layer0->router_gate_bytes, layer0->router_aux_bytes,
                 layer0->routed_gate_bytes, layer0->routed_up_bytes,
                 layer0->routed_down_bytes, layer0->shared_gate_bytes,
                 layer0->shared_up_bytes, layer0->shared_down_bytes,
             };
             id<MTLBuffer> __strong *layer_buffers[12] = {
                 &ffn_hc_fn, &ffn_hc_scale, &ffn_hc_base, &ffn_norm_weight,
-                &router_gate, &router_hash, &routed_gate_weight, &routed_up_weight,
+                &router_gate, &router_aux, &routed_gate_weight, &routed_up_weight,
                 &routed_down_weight, &shared_gate_weight, &shared_up_weight,
                 &shared_down_weight,
             };
@@ -1774,9 +1797,13 @@ int rust_star_metal_run_attention_ingress(
             .nb0=sizeof(float), .nb1=256u*sizeof(float),
             .nb2=256u*sizeof(float), .nb3=256u*sizeof(float),
         };
+        const BOOL hash_router = layer0->layer_index < 3;
         rust_star_router_select_one_args layer_router_args = {
-            .has_bias=0, .hash_mode=1, .use_token_buffer=0,
-            .token=201, .hash_rows=129280,
+            .has_bias=hash_router ? 0u : 1u,
+            .hash_mode=hash_router ? 1u : 0u,
+            .use_token_buffer=0,
+            .token=201,
+            .hash_rows=hash_router ? 129280u : 0u,
         };
         rust_star_q8_mv_id_args routed_gate_args = {
             .nei0=6, .nei1=1, .nbi1=6u*sizeof(int32_t),
@@ -2121,8 +2148,13 @@ int rust_star_metal_run_attention_ingress(
                     [encoder setBuffer:router_probs_buffer offset:0 atIndex:1];
                     float zero_bias = 0.0f;
                     int32_t zero_id = 0;
-                    [encoder setBytes:&zero_bias length:sizeof(zero_bias) atIndex:2];
-                    [encoder setBuffer:router_hash offset:layer_inner[5] atIndex:3];
+                    if (hash_router) {
+                        [encoder setBytes:&zero_bias length:sizeof(zero_bias) atIndex:2];
+                        [encoder setBuffer:router_aux offset:layer_inner[5] atIndex:3];
+                    } else {
+                        [encoder setBuffer:router_aux offset:layer_inner[5] atIndex:2];
+                        [encoder setBytes:&zero_id length:sizeof(zero_id) atIndex:3];
+                    }
                     [encoder setBytes:&zero_id length:sizeof(zero_id) atIndex:4];
                     [encoder setBuffer:selected_buffer offset:0 atIndex:5];
                     [encoder setThreadgroupMemoryLength:256u*(sizeof(float)+sizeof(int32_t)) atIndex:0];
@@ -2211,7 +2243,7 @@ int rust_star_metal_run_attention_ingress(
             if (command_mode == RUST_STAR_COMMAND_CHAINED_FINAL) {
                 if (!command_succeeded(command, error, error_bytes)) return 0;
                 context.chainedWallEnd = monotonic_ms();
-                for (uint32_t layer = 0; layer < 3; layer++) {
+                for (uint32_t layer = 0; layer <= layer0->chain_final_layer; layer++) {
                     id<MTLCommandBuffer> chained = context.chainedCommands[@(layer)];
                     if (!chained || chained.status == MTLCommandBufferStatusError) {
                         return fail_with_message(error, error_bytes,

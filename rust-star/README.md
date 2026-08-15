@@ -16,11 +16,12 @@ Before the oracle capture, compile its tests and inspect the model directory:
 ```
 
 See `rust-star/runtime/README.md` for its exact scope. It now has the minimal
-Metal ownership/dispatch probe and a continuous layers-0/1/2 path under one
+Metal ownership/dispatch probe and a continuous layers-0/1/2/3 path under one
 persistent executor, with live GPU HC handoffs and one retained KV-cache
 allocation per layer. All retained boundaries, including layer 2's first
-compressed-attention RoPE path, match pinned DwarfStar fixtures bit-for-bit. A
-chained scheduler variant now submits all three command buffers without
+compressed-attention RoPE path and layer 3's transition from hash routing to
+biased top-k, match pinned DwarfStar fixtures bit-for-bit. A chained scheduler
+variant now submits all four command buffers without
 inter-layer host waits and performs one exact tail readback. A separate
 persistent layer-0 gate reuses its pipelines, 25 no-copy model views, cache
 storage, and activation buffers for repeated steady-state timing; this is not

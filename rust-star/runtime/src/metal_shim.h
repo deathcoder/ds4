@@ -72,7 +72,7 @@ typedef struct rust_star_metal_layer0_extension {
     uint64_t hc_ffn_base_offset, hc_ffn_base_bytes;
     uint64_t ffn_norm_offset, ffn_norm_bytes;
     uint64_t router_gate_offset, router_gate_bytes;
-    uint64_t router_hash_offset, router_hash_bytes;
+    uint64_t router_aux_offset, router_aux_bytes;
     uint64_t routed_gate_offset, routed_gate_bytes;
     uint64_t routed_up_offset, routed_up_bytes;
     uint64_t routed_down_offset, routed_down_bytes;
@@ -98,6 +98,7 @@ typedef struct rust_star_metal_layer0_extension {
     uint32_t layer_index;
     uint32_t reuse_previous_hc;
     uint32_t command_mode;
+    uint32_t chain_final_layer;
 } rust_star_metal_layer0_extension;
 
 int rust_star_metal_create(void **context_out, char *error, size_t error_bytes);

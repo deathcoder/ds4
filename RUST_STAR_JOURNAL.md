@@ -22,10 +22,11 @@ history; add a correction and update the current-state summary.
 
 - Phase: target-Mac bootstrap, quick `oracle-v1`, no-copy model mapping, the
   canonical differential-fixture envelope, complete layer 0, steady-state
-  layer-0 execution, and the first three-layer scheduler boundary are complete.
-  Layers 0, 1, and 2 execute in order under one Rust-owned Metal context with
+  layer-0 execution, and the first four-layer scheduler boundary are complete.
+  Layers 0 through 3 execute in order under one Rust-owned Metal context with
   exact GPU-resident HC-state handoffs and one retained KV allocation per
-  layer. Layer 2 crosses the first compressed-attention RoPE boundary.
+  layer. Layer 2 crosses the first compressed-attention RoPE boundary, and
+  layer 3 crosses from token-hash routing to biased top-k routing.
 - Working branch: `agent/rust-star-bootstrap`.
 - Branch base: upstream `antirez/ds4` commit
   `b0309611041655f4e45671cfd9c9886aff161406`.
@@ -70,16 +71,20 @@ history; add a correction and update the current-state summary.
   attention, output projection, hash routing, routed/shared experts, and final
   HC update. A narrow Rust `LayerExecutor` owns the Metal context, permanently
   binds it to one model mmap, and caches exact model views and activation
-  buffers. It executes layers 0, 1, and 2 in order; later layers omit
+  buffers. It executes layers 0 through 3 in order; later layers omit
   embedding/repeat and consume the preceding layer's retained final HC Metal
   buffer directly. KV storage is keyed by layer identity rather than reusing
-  one scratch allocation. All three layers use independently captured cache-row
+  one scratch allocation. All four layers use independently captured cache-row
   and differential fixtures and pass every retained boundary by FP32 bit
   pattern. Layer 2 derives its compressed RoPE base, scale, original context,
   and YaRN parameters from the model's compression schedule. A separate exact
-  scheduler path commits all three layer command buffers without inter-layer
+  scheduler path commits the declared layer command buffers without inter-layer
   waits, retains layer-scoped activation lifetimes for deferred comparison, and
-  performs one tail wait after layer 2.
+  performs one tail wait after the declared chain tail. The legacy three-layer
+  chain declares layer 2, while the four-layer chain declares layer 3, so both
+  remain independently validated scheduler controls. Layer 3 binds the model's
+  256-value `exp_probs_b.bias` and uses biased top-k selection instead of the
+  early layers' token-indexed hash tables.
 - Measurements: Metal batching was 42.861x faster than synchronized submission
   in the retained M-002 probe. DwarfStar medians are 164.86 prefill / 19.90
   generation tok/s at 2K and 161.05 prefill / 17.36 generation tok/s at 32K.
@@ -106,7 +111,11 @@ history; add a correction and update the current-state summary.
   chained samples measured 82.330 ms versus 80.175 ms median wall time, a
   1.0269x ratio or 2.62% reduction. Median summed command GPU time was 53.488 ms
   versus 52.458 ms, so the scheduler result remains a narrow diagnostic rather
-  than a decoder-throughput claim.
+  than a decoder-throughput claim. Over the four-layer slice, five alternating
+  pairs measured 98.371 ms synchronized versus 97.216 ms chained median wall
+  time, a 1.0119x ratio or 1.17% reduction. Median summed GPU intervals were
+  68.128 and 67.986 ms; this is again a scheduler diagnostic, not a
+  decoder-throughput claim.
 - Manual handoff: `RUST_STAR_MANUAL_TASKS.md` records Actions approval, target
   compilation/model inspection, quick/extended oracle capture, and the deferred
   secure-access decision with exact evidence requirements.
@@ -119,16 +128,87 @@ history; add a correction and update the current-state summary.
 
 ## Immediate Next Actions
 
-1. Extend the ordered executor and C0 capture to the next layer/state boundary
-   rather than introducing a graph framework; preserve synchronized and chained
-   three-layer paths as scheduler controls.
-2. Once a larger layer slice is exact, separate correctness readback from the
-   production execution interval and remeasure scheduling at that scale.
+1. Separate correctness readback from the production execution interval and
+   add a repeated four-layer execution harness so scheduler timing excludes
+   fixture collection and one-time setup.
+2. Extend the ordered executor and C0 capture to the next materially distinct
+   layer/state boundary rather than introducing a graph framework; preserve
+   synchronized and chained four-layer paths as scheduler controls.
 3. Run the extended 2K--1M frontier capture when the Mac can be dedicated to a
    long benchmark; preserve any 512K/1M capacity failure as evidence.
 4. Run or approve the fork's GitHub Actions workflow and retain its URL.
 
 ## Entries
+
+### 2026-08-15 — Layer 3 crossed the biased-top-k boundary and stayed exact
+
+Objective:
+
+- Extend both scheduler controls through layer 3, the first layer after the
+  model's three token-hash router layers, and remeasure command chaining over
+  the larger exact slice.
+
+Oracle fixture:
+
+- Captured all 32 retained layer-3 position-1 boundaries twice from separate
+  fresh processes using the pinned DwarfStar executable; every corresponding
+  artifact was byte-identical. Captured position-0 `KVcur` independently and
+  derived the FP16-rounded cache row used by the two-position attention read.
+- Added `rust-star/fixtures/layer3-complete-v1/`: 28 ordered operations and
+  33 tensors totaling 741,808 verified bytes. The expected expert route is
+  `[1, 58, 68, 240, 20, 24]`.
+
+Implementation:
+
+- Added the stable `rust-star-layers0123-continuous-probe-v1` and
+  `rust-star-layers0123-chained-probe-v1` reports plus their CLI commands.
+  The synchronized path owns four command buffers and four per-layer KV
+  allocations; the chained path commits those buffers without inter-layer
+  waits and waits once at the tail.
+- Made the command-chain tail explicit in the Rust/Objective-C ABI. The
+  existing layers-0/1/2 path declares layer 2, and the new path declares layer
+  3. Objective-C validates the declaration, submission order, finalizer, and
+  deferred collection against the same tail.
+- The first model attempt correctly rejected a nonexistent
+  `blk.3.ffn_gate_tid2eid.weight`. DwarfStar and GGUF inspection confirmed
+  `deepseek4.hash_layer_count=3`: layers 0 through 2 use token-hash tables,
+  while layer 3 uses `blk.3.exp_probs_b.bias` for biased top-k selection.
+  The no-copy auxiliary router view and Metal router arguments now select the
+  correct mode per layer.
+- Updated the standard runtime gate, fixture validation, report writer tests,
+  CLI help, and ownership documentation to cover layers 0 through 3.
+
+Target-Mac evidence:
+
+- The synchronized and chained paths both matched every retained FP32 boundary
+  for all four layers. Layer 3 selected
+  `[1, 58, 68, 240, 20, 24]`, used its own cache allocation, and consumed
+  layer 2's live final HC buffer without a host upload.
+- Five alternating synchronized/chained pairs remained C0 exact. Synchronized
+  wall samples were `[98.490, 97.229, 97.661, 98.371, 100.046]` ms; chained
+  samples were `[97.402, 95.409, 95.495, 97.216, 97.566]` ms. Medians were
+  98.371 and 97.216 ms: 1.0119x, or 1.17% less wall time for chaining.
+- Median summed command GPU intervals were 68.128 ms synchronized and 67.986
+  ms chained. The near-equal GPU work and exact outputs support the intended
+  interpretation: this measures removed host synchronization inside an
+  exhaustive correctness probe, not decoder throughput.
+- The complete target-Mac gate passed: 43 Rust tests, optimized macOS build,
+  37 Python tests, all 11 differential fixtures, strict validation of 1,288
+  required tensors, every standalone Metal probe, synchronized and chained
+  four-layer C0 gates, and 30 bit-identical layer-0 steady-state samples. The
+  gate's four-layer wall intervals were 99.980 ms synchronized and 96.654 ms
+  chained; its layer-0 steady-state median remained 1.500 ms wall.
+
+Decision:
+
+- Accept layer 3, the explicit variable-length chain contract, and the
+  hash-to-biased-top-k router transition. Keep the four-layer synchronized path
+  as the correctness control and the one-wait path as the scheduler candidate.
+
+Next:
+
+- Move exhaustive boundary readback outside the production timing interval and
+  add repeated four-layer execution before extending to another layer.
 
 ### 2026-08-15 — Three-layer command chaining remained C0 exact
 

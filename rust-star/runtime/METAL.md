@@ -302,33 +302,33 @@ retained attention, router, expert, and final-HC boundary. The synchronization
 between the two command buffers is currently intentional; removing that
 boundary belongs to later scheduler work.
 
-## Persistent layers 0–2 and per-layer KV ownership
+## Persistent layers 0–3 and per-layer KV ownership
 
-Schema: `rust-star-layers012-continuous-probe-v1`.
+Schema: `rust-star-layers0123-continuous-probe-v1`.
 
-`layers012-probe` retains the ordered `LayerExecutor` lifetime and extends it
-through layer 2. Cache storage is keyed by layer identity, so layers 0, 1, and
-2 own distinct persistent Metal allocations while the four-stream HC state is
+`layers0123-probe` retains the ordered `LayerExecutor` lifetime and extends it
+through layer 3. Cache storage is keyed by layer identity, so layers 0 through
+3 own distinct persistent Metal allocations while the four-stream HC state is
 the single live cross-layer handoff.
 
-Layer 2 is the first ratio-4 compressed-attention layer. Its Q and KV RoPE use
+Layer 2 is the first compressed-attention layer. Layers 2 and 3 use
 the model's compressed base, scaling, original-context, and YaRN parameters
-instead of the dense-layer values used by layers 0 and 1. The probe compares
-all retained attention and MoE boundaries against two byte-identical
-fresh-process captures and requires the uninterrupted layers 0→1→2 chain to
-remain C0 exact. It still uses one synchronized command buffer per layer;
-command-buffer chaining is a separate optimization gate.
+instead of the dense-layer values used by layers 0 and 1. Layer 3 is also the
+first biased-top-k router layer; its 256-value bias replaces the token-indexed
+hash table used by layers 0 through 2. The probe compares every retained
+attention and MoE boundary against two byte-identical fresh-process captures
+and requires the uninterrupted layers 0→1→2→3 chain to remain C0 exact.
 
-## Chained layers 0–2
+## Chained layers 0–3
 
-Schema: `rust-star-layers012-chained-probe-v1`.
+Schema: `rust-star-layers0123-chained-probe-v1`.
 
-`layers012-chained-probe` uses the same three command buffers and operation
-order as the synchronized control, but commits all three to one Metal queue
+`layers0123-chained-probe` uses the same four command buffers and operation
+order as the synchronized control, but commits all four to one Metal queue
 before issuing a single tail wait. The queue order supplies the HC dependency;
 there is no host upload, event, or fixture seam between layers.
 
-Because correctness readback occurs only after layer 2 completes, this path
+Because correctness readback occurs only after layer 3 completes, this path
 keys transient activation buffers by layer as well as retaining the existing
 per-layer KV allocations. That lifetime rule prevents later layers from
 overwriting earlier C0 checkpoints before collection. Every retained boundary
@@ -336,5 +336,5 @@ is compared after the chain completes, and the chained path is rejected on the
 first FP32 bit mismatch.
 
 The report records one host wait, total wall time from the first submission to
-tail completion, and the sum of the three command-buffer GPU intervals. It
-does not promote this three-layer diagnostic to decoder throughput.
+tail completion, and the sum of the four command-buffer GPU intervals. It
+does not promote this four-layer diagnostic to decoder throughput.
