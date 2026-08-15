@@ -1886,6 +1886,190 @@ int rust_star_metal_run_prefill_q8_boundary(
     }
 }
 
+int rust_star_metal_run_prefill_qkv_boundary(
+    void *opaque_context,
+    const void *model_mapping,
+    uint64_t model_bytes,
+    const rust_star_metal_prefill_qkv_weights *weights,
+    uint32_t rows,
+    uint32_t position_start,
+    const float *attn_norm,
+    float *q_lora,
+    float *q_lora_norm,
+    float *kv_raw,
+    float *kv_norm,
+    float *q_raw,
+    float *q_cur,
+    rust_star_metal_prefill_qkv_probe_result *result,
+    char *error,
+    size_t error_bytes)
+{
+    if (!opaque_context || !model_mapping || !weights || !attn_norm ||
+        !q_lora || !q_lora_norm || !kv_raw || !kv_norm || !q_raw ||
+        !q_cur || !result) {
+        return fail_with_message(error, error_bytes, @"prefill Q/KV boundary received a null input");
+    }
+    if (rows != 32u || position_start != 2016u) {
+        return fail_with_message(error, error_bytes, @"prefill Q/KV boundary dimensions are invalid");
+    }
+
+    @autoreleasepool {
+        RustStarMetalContext *context = (__bridge RustStarMetalContext *)opaque_context;
+        if (!ensure_attention_ingress_pipelines(context, error, error_bytes) ||
+            !ensure_moe_output_pipelines(context, error, error_bytes)) return 0;
+        memset(result, 0, sizeof(*result));
+
+        const uint64_t offsets[5] = {
+            weights->q_a_offset, weights->q_a_norm_offset, weights->kv_offset,
+            weights->kv_norm_offset, weights->q_b_offset,
+        };
+        const uint64_t sizes[5] = {
+            weights->q_a_bytes, weights->q_a_norm_bytes, weights->kv_bytes,
+            weights->kv_norm_bytes, weights->q_b_bytes,
+        };
+        id<MTLBuffer> model_buffers[5] = { nil, nil, nil, nil, nil };
+        NSUInteger inner[5] = { 0, 0, 0, 0, 0 };
+        BOOL matches[5] = { NO, NO, NO, NO, NO };
+        for (uint32_t index = 0; index < 5u; index++) {
+            model_buffers[index] = wrap_model_range(
+                context, model_mapping, model_bytes, offsets[index], sizes[index],
+                &inner[index], &matches[index], error, error_bytes);
+            if (!model_buffers[index]) return 0;
+        }
+
+        enum { n_embd = 4096, q_rank = 1024, kv_dim = 512, q_dim = 32768 };
+        const NSUInteger attn_bytes = rows * n_embd * sizeof(float);
+        const NSUInteger q_rank_bytes = rows * q_rank * sizeof(float);
+        const NSUInteger kv_bytes = rows * kv_dim * sizeof(float);
+        const NSUInteger q_bytes = rows * q_dim * sizeof(float);
+        id<MTLBuffer> attn_buffer = [context.device newBufferWithBytes:attn_norm
+            length:attn_bytes options:MTLResourceStorageModeShared];
+        id<MTLBuffer> q_buffer = [context.device newBufferWithLength:q_rank_bytes
+            options:MTLResourceStorageModeShared];
+        id<MTLBuffer> q_norm_buffer = [context.device newBufferWithLength:q_rank_bytes
+            options:MTLResourceStorageModeShared];
+        id<MTLBuffer> kv_raw_buffer = [context.device newBufferWithLength:kv_bytes
+            options:MTLResourceStorageModeShared];
+        id<MTLBuffer> kv_norm_buffer = [context.device newBufferWithLength:kv_bytes
+            options:MTLResourceStorageModeShared];
+        id<MTLBuffer> q_raw_buffer = [context.device newBufferWithLength:q_bytes
+            options:MTLResourceStorageModeShared];
+        id<MTLBuffer> q_cur_buffer = [context.device newBufferWithLength:q_bytes
+            options:MTLResourceStorageModeShared];
+        if (!attn_buffer || !q_buffer || !q_norm_buffer || !kv_raw_buffer ||
+            !kv_norm_buffer || !q_raw_buffer || !q_cur_buffer) {
+            return fail_with_message(error, error_bytes,
+                @"failed to allocate prefill Q/KV boundary activation buffers");
+        }
+
+#define RUST_STAR_Q8_MM_ARGS(in_width, out_width, weight_bytes) \
+        (rust_star_q8_mm_args){ \
+            .ne00=(in_width), .ne02=1, \
+            .nb01=(uint64_t)((in_width)/32u)*34u, \
+            .nb02=(weight_bytes), .nb03=(weight_bytes), .ne12=1, \
+            .nb10=sizeof(float), .nb11=(uint64_t)(in_width)*sizeof(float), \
+            .nb12=(uint64_t)(in_width)*rows*sizeof(float), \
+            .nb13=(uint64_t)(in_width)*rows*sizeof(float), \
+            .ne0=(out_width), .ne1=(int32_t)rows, .r2=1, .r3=1 \
+        }
+        rust_star_q8_mm_args q_a_args = RUST_STAR_Q8_MM_ARGS(n_embd, q_rank, weights->q_a_bytes);
+        rust_star_q8_mm_args kv_args = RUST_STAR_Q8_MM_ARGS(n_embd, kv_dim, weights->kv_bytes);
+        rust_star_q8_mm_args q_b_args = RUST_STAR_Q8_MM_ARGS(q_rank, q_dim, weights->q_b_bytes);
+#undef RUST_STAR_Q8_MM_ARGS
+        rust_star_qkv_norm_args norm_args = {
+            .q_n=q_rank, .q_n4=q_rank/4, .kv_n=kv_dim, .kv_n4=kv_dim/4,
+            .q_row_stride=q_rank*sizeof(float), .kv_row_stride=kv_dim*sizeof(float),
+            .eps=1.0e-6f,
+        };
+        rust_star_head_norm_rope_args rope_args = {
+            .n_head=64, .head_dim=512, .head_dim4=128, .n_dims=64,
+            .n_ctx_orig=0, .pos0=(int32_t)position_start, .inverse=0,
+            .eps=1.0e-6f, .freq_base=10000.0f, .freq_scale=1.0f,
+            .ext_factor=0.0f, .attn_factor=1.0f,
+            .beta_fast=32.0f, .beta_slow=1.0f,
+        };
+
+        id<MTLCommandBuffer> command = [context.queue commandBuffer];
+        id<MTLComputeCommandEncoder> encoder = [command computeCommandEncoder];
+        if (!command || !encoder) {
+            return fail_with_message(error, error_bytes,
+                @"failed to create prefill Q/KV boundary command encoder");
+        }
+#define RUST_STAR_ENCODE_Q8(args, weight_index, input_buffer, output_buffer, out_width) do { \
+        [encoder setComputePipelineState:context.q8PrefillPipeline]; \
+        [encoder setBytes:&(args) length:sizeof(args) atIndex:0]; \
+        [encoder setBuffer:model_buffers[(weight_index)] offset:inner[(weight_index)] atIndex:1]; \
+        [encoder setBuffer:(input_buffer) offset:0 atIndex:2]; \
+        [encoder setBuffer:(output_buffer) offset:0 atIndex:3]; \
+        [encoder setThreadgroupMemoryLength:6144u atIndex:0]; \
+        [encoder dispatchThreadgroups:MTLSizeMake(1u, (out_width)/64u, 1u) \
+             threadsPerThreadgroup:MTLSizeMake(128, 1, 1)]; \
+    } while (0)
+        RUST_STAR_ENCODE_Q8(q_a_args, 0, attn_buffer, q_buffer, q_rank);
+        RUST_STAR_ENCODE_Q8(kv_args, 2, attn_buffer, kv_raw_buffer, kv_dim);
+
+        [encoder setComputePipelineState:context.qkvNormPipeline];
+        [encoder setBytes:&norm_args length:sizeof(norm_args) atIndex:0];
+        [encoder setBuffer:q_buffer offset:0 atIndex:1];
+        [encoder setBuffer:model_buffers[1] offset:inner[1] atIndex:2];
+        [encoder setBuffer:q_norm_buffer offset:0 atIndex:3];
+        [encoder setBuffer:kv_raw_buffer offset:0 atIndex:4];
+        [encoder setBuffer:model_buffers[3] offset:inner[3] atIndex:5];
+        [encoder setBuffer:kv_norm_buffer offset:0 atIndex:6];
+        [encoder setThreadgroupMemoryLength:32u*sizeof(float) atIndex:0];
+        [encoder dispatchThreadgroups:MTLSizeMake(rows, 2, 1)
+             threadsPerThreadgroup:MTLSizeMake(256, 1, 1)];
+
+        RUST_STAR_ENCODE_Q8(q_b_args, 4, q_norm_buffer, q_raw_buffer, q_dim);
+#undef RUST_STAR_ENCODE_Q8
+        [encoder endEncoding];
+
+        id<MTLBlitCommandEncoder> blit = [command blitCommandEncoder];
+        if (!blit) return fail_with_message(error, error_bytes,
+            @"failed to create prefill Q snapshot encoder");
+        [blit copyFromBuffer:q_raw_buffer sourceOffset:0 toBuffer:q_cur_buffer
+            destinationOffset:0 size:q_bytes];
+        [blit endEncoding];
+
+        encoder = [command computeCommandEncoder];
+        if (!encoder) return fail_with_message(error, error_bytes,
+            @"failed to create prefill Q RoPE encoder");
+        [encoder setComputePipelineState:context.headNormRopePipeline];
+        [encoder setBytes:&rope_args length:sizeof(rope_args) atIndex:0];
+        [encoder setBuffer:q_cur_buffer offset:0 atIndex:1];
+        [encoder setThreadgroupMemoryLength:32u*sizeof(float) atIndex:0];
+        [encoder dispatchThreadgroups:MTLSizeMake(64, rows, 1)
+             threadsPerThreadgroup:MTLSizeMake(256, 1, 1)];
+        [encoder endEncoding];
+
+        const double wall_start = monotonic_ms();
+        [command commit];
+        if (!command_succeeded(command, error, error_bytes)) return 0;
+        const double wall_end = monotonic_ms();
+        memcpy(q_lora, q_buffer.contents, q_rank_bytes);
+        memcpy(q_lora_norm, q_norm_buffer.contents, q_rank_bytes);
+        memcpy(kv_raw, kv_raw_buffer.contents, kv_bytes);
+        memcpy(kv_norm, kv_norm_buffer.contents, kv_bytes);
+        memcpy(q_raw, q_raw_buffer.contents, q_bytes);
+        memcpy(q_cur, q_cur_buffer.contents, q_bytes);
+
+        uint32_t pointer_matches = 0;
+        for (uint32_t index = 0; index < 5u; index++) pointer_matches += matches[index] ? 1u : 0u;
+        result->rows = rows;
+        result->input_elements_per_row = n_embd;
+        result->q_lora_elements_per_row = q_rank;
+        result->kv_elements_per_row = kv_dim;
+        result->q_elements_per_row = q_dim;
+        result->dispatches = 5u;
+        result->wrapped_model_ranges = 5u;
+        result->pointer_matches = pointer_matches;
+        result->position_start = position_start;
+        result->wall_ms = wall_end - wall_start;
+        result->gpu_ms = gpu_elapsed_ms(command);
+        return 1;
+    }
+}
+
 int rust_star_metal_run_attention_ingress(
     void *opaque_context,
     const void *model_mapping,

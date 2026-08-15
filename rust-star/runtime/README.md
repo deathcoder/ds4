@@ -150,6 +150,20 @@ control to match the repeated oracle captures. The two outputs intentionally
 differ in all 1,024 final-row values; this localizes the first 2K schedule
 divergence but does not claim a complete native prefill implementation.
 
+To extend that native boundary through layer-0 Q/KV setup:
+
+```sh
+rust-star/.work/runtime-target/release/rust-star prefill-qkv-boundary-probe \
+  /absolute/path/to/model.gguf \
+  --json rust-star/.work/runtime-target/prefill-qkv-boundary-probe.json
+```
+
+This command runs the final 32 prompt rows through Q-A, KV-A, fused Q/KV
+learned RMSNorm, Q-B, and Q head RMSNorm/RoPE. It wraps five GGUF ranges without
+copying and requires seven independently captured boundaries to match
+bit-for-bit. It is the native M1 arithmetic schedule for that layer segment,
+not a complete prefill implementation or throughput result.
+
 To run the connected layer-0 ingress gate:
 
 ```sh

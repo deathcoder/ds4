@@ -165,7 +165,11 @@ history; add a correction and update the current-state summary.
   between schedules, while `blk.0.attn_q_a.weight` uses the M1 legacy
   `kernel_mul_mm_q8_0_f32` batch kernel and first diverges from the one-row
   matvec. A compact final-128-row fixture and live probe reproduce both kernels
-  bit-for-bit and retain their expected 1,024-value final-row disagreement.
+  bit-for-bit and retain their expected 1,024-value final-row disagreement. A
+  second compact final-32-row boundary now continues through the layer-0 KV
+  projection, fused Q/KV learned RMSNorm, Q-B projection, and Q head
+  RMSNorm/RoPE. Five no-copy model views and all 2,195,456 produced FP32 values
+  match repeated native DwarfStar captures by bit pattern.
   Full native batched prefill, sparse indexed attention beyond 512 ratio-4
   rows, and the eligible engine-measurement producer remain pending.
 - Measurements: Metal batching was 42.861x faster than synchronized submission
@@ -180,6 +184,10 @@ history; add a correction and update the current-state summary.
   for the isolated 128-row batch dispatch. All 1,024 final-row values differ
   between the native batch and sequential schedules with maximum absolute error
   `3.62396240234375e-05`; this is localization evidence, not prefill throughput.
+  The extended final-32-row Q/KV setup matched all 2,195,456 produced FP32
+  values; the complete gate reported 12.023 ms wall / 2.817 ms GPU for its
+  five-dispatch isolated layer segment. This is correctness evidence, not
+  prefill throughput.
   The connected six-dispatch layer segment matched 9,264 retained FP32 values and
   reported 0.102 ms GPU time in the final gate; this remains correctness
   evidence rather than decoder throughput. The nine-dispatch Q/K projection
@@ -273,9 +281,9 @@ history; add a correction and update the current-state summary.
 
 ## Immediate Next Actions
 
-1. Extend the exact native-batch boundary from captured layer-0 normalized
-   activations through the remaining Q/KV setup, then move its input boundary
-   backward through batched HC/norm until the layer can execute from token IDs.
+1. Move the exact native-batch input boundary backward through batched HC/norm
+   until layer 0 can execute from token IDs, while extending the output boundary
+   forward through the attention/cache core.
 2. Add the fixed 512-row ratio-4 indexer top-k and sparse indexed attention so
    128 generated tokens can continue beyond the 2K frontier.
 3. Emit the `rust-star-engine-measurement-v1` artifact from the exact
@@ -287,6 +295,59 @@ history; add a correction and update the current-state summary.
 6. Run or approve the fork's GitHub Actions workflow and retain its URL.
 
 ## Entries
+
+### 2026-08-15 — Native M1 batch boundary extended through layer-0 Q/KV setup
+
+Objective:
+
+- Extend the first exact batch projection through the actual layer-0 M1
+  Q/KV schedule without substituting a debug-only or newer-GPU path.
+
+Oracle evidence and schedule decision:
+
+- Captured `q_lora`, `q_lora_norm`, `KVraw`, `KVnorm`, and `Qcur` across the
+  canonical 2K prompt in two fresh DwarfStar processes. Every corresponding
+  payload was byte-identical; the repeated `q_lora` hash also exactly matched
+  the earlier boundary capture.
+- Captured `Qraw` twice in two additional fresh processes. Both 256 MiB files
+  were byte-identical. The hook selects the explicit Q-B path, but this does
+  not replace active production arithmetic on the pinned M1 build: its fused
+  Q-B/F16 entry point is unavailable and the normal schedule falls back to the
+  same legacy Q8 batch projection followed by fused head RMSNorm/RoPE.
+- Retained only positions 2016 through 2047, one complete legacy 32-row tile,
+  while binding all seven full 2K capture hashes in a reproducible fixture.
+  The seven payloads total 9,306,112 bytes.
+
+Implementation:
+
+- Added `prefill-qkv-boundary-probe` and schema
+  `rust-star-prefill-qkv-boundary-probe-v1`. One Rust-owned Metal command wraps
+  five GGUF ranges without copying and dispatches Q-A, KV-A, fused Q/KV learned
+  RMSNorm, Q-B, and Q head RMSNorm/RoPE with DwarfStar's exact row/position
+  geometry.
+- Added a strict importer, differential manifest, stable privacy-limited JSON,
+  CLI and complete-gate integration, host fixture/report tests, and runtime
+  ownership documentation. The report explicitly rejects a full-prefill or
+  throughput interpretation.
+
+Target-Mac evidence:
+
+- The first focused live run retained 5/5 mmap pointer identities and matched
+  all 2,195,456 produced FP32 values bit-for-bit. It reported 11.200 ms wall and
+  2.346 ms GPU for the isolated five-dispatch tile.
+- The complete gate passed formatting, 70 Rust tests, 48 Python tests, all 231
+  differential manifests, optimized Objective-C/Metal compilation, strict
+  target-model inspection, and every established Metal/decoder control. The
+  new boundary repeated C0 exact at 12.023 ms wall / 2.817 ms GPU. The long 2K
+  sequential control remained exact against its decode-replay oracle at 19.336
+  tokens/s over 105913.888 ms and preserved the expected native-batch mismatch.
+
+Decision and next:
+
+- Accept the complete layer-0 Q/KV setup and Q-head boundary as native M1
+  arithmetic. Move the input boundary backward through batch HC mixing and
+  learned attention norm toward token IDs; in parallel sequence, extend this
+  output boundary through KV RoPE/storage and batched attention.
 
 ### 2026-08-15 — First native M1 batched-prefill arithmetic boundary isolated
 

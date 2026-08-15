@@ -62,6 +62,9 @@ PREFILL_FRONTIER_FIXTURE = (
 PREFILL_Q8_BOUNDARY_FIXTURE = (
     RUST_STAR_DIR / "fixtures" / "prefill-q8-boundary-2048-v1"
 )
+PREFILL_QKV_BOUNDARY_FIXTURE = (
+    RUST_STAR_DIR / "fixtures" / "prefill-qkv-boundary-2048-v1"
+)
 
 
 class KernelFixtureTests(unittest.TestCase):
@@ -341,6 +344,31 @@ class KernelFixtureTests(unittest.TestCase):
             manifest["operations"][0]["dispatch"]["threadgroups"], [4, 16, 1]
         )
         self.assertEqual(manifest["arithmetic_boundary"]["final_row_mismatches"], 1024)
+
+    def test_prefill_qkv_boundary_fixture_manifest_and_payloads(self) -> None:
+        manifest = json.loads(
+            (PREFILL_QKV_BOUNDARY_FIXTURE / "manifest.json").read_text(encoding="utf-8")
+        )
+        report = validate_differential_fixture(PREFILL_QKV_BOUNDARY_FIXTURE)
+        self.assertEqual(
+            report["fixture_id"],
+            "dwarfstar-oracle-v1-prefill-qkv-boundary-2048",
+        )
+        self.assertEqual(report["scope"], "layer-segment")
+        self.assertEqual(report["operations"], 5)
+        self.assertEqual(report["tensors"], 7)
+        self.assertEqual(report["verified_bytes"], 9_306_112)
+        self.assertEqual(manifest["scope"]["captured_position_range"], [2016, 2047])
+        self.assertEqual(
+            [operation["kernel"] for operation in manifest["operations"]],
+            [
+                "kernel_mul_mm_q8_0_f32",
+                "kernel_mul_mm_q8_0_f32",
+                "kernel_dsv4_qkv_rms_norm_f32_4",
+                "kernel_mul_mm_q8_0_f32",
+                "kernel_dsv4_head_rms_norm_rope_tail_f32",
+            ],
+        )
 
     def test_fixture_shape_tampering_is_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:

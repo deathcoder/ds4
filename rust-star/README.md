@@ -68,7 +68,10 @@ sparse indexed attention beyond the first 512 ratio-4 rows. The first native
 batch boundary is now implemented separately: repeated captures localize the
 earliest difference to layer 0's Q8 Q-A projection, and the Rust Metal probe
 matches both the 128-row M1 batch kernel and its one-row decode control
-bit-for-bit. It remains an isolated kernel gate rather than a full prefill path.
+bit-for-bit. A second native boundary now runs the final 32-row tile through
+layer 0's complete Q/KV projection setup and Q head RMSNorm/RoPE, matching all
+2,195,456 produced FP32 values from repeated DwarfStar captures. These remain
+isolated layer gates rather than a full prefill path.
 
 Project controls and benchmark contracts:
 

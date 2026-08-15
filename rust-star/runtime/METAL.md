@@ -129,6 +129,26 @@ shared final input and checks that control independently. The report preserves
 their expected 1,024/1,024 final-row mismatch and maximum absolute error while
 setting `full_prefill_claim` false.
 
+## M1 batched Q/KV setup boundary
+
+Schema: `rust-star-prefill-qkv-boundary-probe-v1`.
+
+`prefill-qkv-boundary-probe` extends the exact native schedule over the final
+32-row legacy tile of the 2K prompt. Five no-copy model views and seven retained
+activation tensors cover Q-A, KV-A, fused Q-Lora/KV learned RMSNorm, Q-B, and
+per-head RMSNorm/RoPE. The three Q8 projections use
+`kernel_mul_mm_q8_0_f32`; the normalization and Q-head kernels retain
+DwarfStar's row and position geometry.
+
+Two fresh normal-schedule captures were byte-identical through `Qcur`. Two
+additional `Qraw` captures were also byte-identical; requesting that hook does
+not replace an active M1 fused Q-B kernel because the pinned Metal entry point
+is unavailable and falls back to the same standalone projection. The compact
+fixture retains positions 2016 through 2047 while binding every full 2K source
+capture by SHA-256. Every one of the 2,195,456 produced FP32 values must match
+by bit pattern. The timing is an isolated layer segment, not prefill
+throughput, and the report keeps `full_prefill_claim` false.
+
 ## Layer-0 attention ingress
 
 Schema: `rust-star-layer0-attention-ingress-probe-v1`.
