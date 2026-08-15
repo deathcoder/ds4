@@ -27,6 +27,10 @@ MOE_OUTPUT_FIXTURE = RUST_STAR_DIR / "fixtures" / "layer0-moe-output-v1"
 LAYER1_COMPLETE_FIXTURE = RUST_STAR_DIR / "fixtures" / "layer1-complete-v1"
 LAYER2_COMPLETE_FIXTURE = RUST_STAR_DIR / "fixtures" / "layer2-complete-v1"
 LAYER3_COMPLETE_FIXTURE = RUST_STAR_DIR / "fixtures" / "layer3-complete-v1"
+POSITION2_COMPLETE_FIXTURES = [
+    RUST_STAR_DIR / "fixtures" / f"layer{layer}-pos2-complete-v1"
+    for layer in range(4)
+]
 
 
 class KernelFixtureTests(unittest.TestCase):
@@ -124,6 +128,19 @@ class KernelFixtureTests(unittest.TestCase):
         self.assertEqual(report["operations"], 28)
         self.assertEqual(report["tensors"], 33)
         self.assertEqual(report["verified_bytes"], 741_808)
+
+    def test_position2_complete_fixtures_manifest_and_payloads(self) -> None:
+        for layer, fixture in enumerate(POSITION2_COMPLETE_FIXTURES):
+            with self.subTest(layer=layer):
+                report = validate_differential_fixture(fixture)
+                self.assertEqual(
+                    report["fixture_id"],
+                    f"dwarfstar-oracle-v1-layer{layer}-pos2-complete",
+                )
+                self.assertEqual(report["scope"], "decode-step")
+                self.assertEqual(report["operations"], 30 if layer == 0 else 28)
+                self.assertEqual(report["tensors"], 32)
+                self.assertEqual(report["verified_bytes"], 739_760)
 
     def test_fixture_shape_tampering_is_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:

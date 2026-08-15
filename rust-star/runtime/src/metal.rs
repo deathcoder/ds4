@@ -23,6 +23,7 @@ pub const LAYERS012_CHAINED_PROBE_SCHEMA: &str = "rust-star-layers012-chained-pr
 pub const LAYERS0123_PROBE_SCHEMA: &str = "rust-star-layers0123-continuous-probe-v1";
 pub const LAYERS0123_CHAINED_PROBE_SCHEMA: &str = "rust-star-layers0123-chained-probe-v1";
 pub const LAYERS0123_BENCH_SCHEMA: &str = "rust-star-layers0123-steady-state-v1";
+pub const LAYERS0123_DECODE_PROBE_SCHEMA: &str = "rust-star-layers0123-position-advancing-probe-v1";
 pub const PROJECTION_FIXTURE_ID: &str = "dwarfstar-oracle-v1-layer0-pos1-attn-q-a";
 pub const INGRESS_FIXTURE_ID: &str = "dwarfstar-oracle-v1-layer0-pos1-attention-ingress";
 pub const ATTENTION_SETUP_FIXTURE_ID: &str = "dwarfstar-oracle-v1-layer0-pos1-qkv-setup";
@@ -35,6 +36,10 @@ pub const LAYER0_FIXTURE_ID: &str = "dwarfstar-oracle-v1-layer0-pos1-complete";
 pub const LAYER1_FIXTURE_ID: &str = "dwarfstar-oracle-v1-layer1-pos1-complete";
 pub const LAYER2_FIXTURE_ID: &str = "dwarfstar-oracle-v1-layer2-pos1-complete";
 pub const LAYER3_FIXTURE_ID: &str = "dwarfstar-oracle-v1-layer3-pos1-complete";
+pub const LAYER0_POS2_FIXTURE_ID: &str = "dwarfstar-oracle-v1-layer0-pos2-complete";
+pub const LAYER1_POS2_FIXTURE_ID: &str = "dwarfstar-oracle-v1-layer1-pos2-complete";
+pub const LAYER2_POS2_FIXTURE_ID: &str = "dwarfstar-oracle-v1-layer2-pos2-complete";
+pub const LAYER3_POS2_FIXTURE_ID: &str = "dwarfstar-oracle-v1-layer3-pos2-complete";
 pub const DEFAULT_ELEMENTS: u64 = 4096;
 pub const DEFAULT_ITERATIONS: u64 = 100;
 const MAX_ELEMENTS: u64 = 16 * 1024 * 1024;
@@ -697,6 +702,27 @@ pub struct Layers0123BenchReport {
     pub final_layers: Vec<Layer0ProbeReport>,
 }
 
+#[derive(Clone, Debug)]
+pub struct Layers0123DecodeStepReport {
+    pub position: u32,
+    pub token: u32,
+    pub cache_rows: u32,
+    pub layers: Vec<Layer0ProbeReport>,
+    pub wall_ms: f64,
+    pub gpu_ms: f64,
+    pub output_hc_checksum: u64,
+}
+
+#[derive(Clone, Debug)]
+pub struct Layers0123DecodeProbeReport {
+    pub steps: Vec<Layers0123DecodeStepReport>,
+    pub command_buffers_per_step: u32,
+    pub host_waits_per_step: u32,
+    pub kv_cache_layers: u32,
+    pub cache_capacity_rows: u32,
+    pub output_hc_elements: u32,
+}
+
 pub fn write_ingress_probe_json<W: Write>(
     output: &mut W,
     report: &IngressProbeReport,
@@ -1103,6 +1129,71 @@ pub fn write_layers0123_bench_json<W: Write>(
     Ok(())
 }
 
+pub fn write_layers0123_decode_probe_json<W: Write>(
+    output: &mut W,
+    report: &Layers0123DecodeProbeReport,
+) -> Result<()> {
+    if report.steps.len() != 2
+        || report.command_buffers_per_step != 4
+        || report.host_waits_per_step != 1
+        || report.kv_cache_layers != 4
+        || report.cache_capacity_rows != 3
+        || report.output_hc_elements != 16384
+    {
+        return Err(Error::invalid(
+            "position-advancing report has inconsistent ownership metadata",
+        ));
+    }
+    write!(
+        output,
+        "{{\n  \"schema\": \"{LAYERS0123_DECODE_PROBE_SCHEMA}\",\n  \"command_buffers_per_step\": {},\n  \"host_waits_per_step\": {},\n  \"kv_cache_layers\": {},\n  \"cache_capacity_rows\": {},\n  \"output_hc_elements\": {},\n  \"steps\": [",
+        report.command_buffers_per_step,
+        report.host_waits_per_step,
+        report.kv_cache_layers,
+        report.cache_capacity_rows,
+        report.output_hc_elements,
+    )?;
+    for (step_index, step) in report.steps.iter().enumerate() {
+        if step_index != 0 {
+            write!(output, ",")?;
+        }
+        if step.layers.len() != 4 || step.cache_rows != step.position + 1 {
+            return Err(Error::invalid(
+                "position-advancing step has inconsistent layer/cache metadata",
+            ));
+        }
+        write!(
+            output,
+            "\n    {{\n      \"position\": {},\n      \"token\": {},\n      \"cache_rows\": {},\n      \"wall_ms\": {:.6},\n      \"summed_gpu_ms\": {:.6},\n      \"output_hc_checksum\": {},\n      \"layers\": [",
+            step.position,
+            step.token,
+            step.cache_rows,
+            step.wall_ms,
+            step.gpu_ms,
+            step.output_hc_checksum,
+        )?;
+        for (layer_index, layer) in step.layers.iter().enumerate() {
+            if layer_index != 0 {
+                write!(output, ",")?;
+            }
+            write!(
+                output,
+                "\n        {{\"layer\": {layer_index}, \"fixture\": \"{}\", \"selected_experts\": {:?}, \"final_hc_checksum\": {}, \"c0_bitwise_match\": true}}",
+                layer.fixture_id, layer.selected_experts, layer.final_hc_checksum,
+            )?;
+        }
+        write!(
+            output,
+            "\n      ],\n      \"c0_bitwise_match\": true\n    }}"
+        )?;
+    }
+    write!(
+        output,
+        "\n  ],\n  \"cache_growth_exact\": true,\n  \"output_handoff_exact\": true,\n  \"c0_bitwise_match\": true\n}}\n"
+    )?;
+    Ok(())
+}
+
 fn write_timing_samples<W: Write>(output: &mut W, samples: &[f64]) -> Result<()> {
     for (index, sample) in samples.iter().enumerate() {
         if index != 0 {
@@ -1384,6 +1475,51 @@ fn f16_to_f32(value: u16) -> f32 {
     f32::from_bits(bits)
 }
 
+fn f32_to_f16(value: f32) -> u16 {
+    let bits = value.to_bits();
+    let sign = ((bits >> 16) & 0x8000) as u16;
+    let exponent = ((bits >> 23) & 0xff) as i32;
+    let mantissa = bits & 0x007f_ffff;
+    if exponent == 0xff {
+        return sign | 0x7c00 | u16::from(mantissa != 0);
+    }
+    let mut half_exponent = exponent - 127 + 15;
+    if half_exponent >= 31 {
+        return sign | 0x7c00;
+    }
+    if half_exponent <= 0 {
+        if half_exponent < -10 {
+            return sign;
+        }
+        let significand = mantissa | 0x0080_0000;
+        let shift = (14 - half_exponent) as u32;
+        let mut half_mantissa = significand >> shift;
+        let remainder = significand & ((1_u32 << shift) - 1);
+        let halfway = 1_u32 << (shift - 1);
+        if remainder > halfway || (remainder == halfway && (half_mantissa & 1) != 0) {
+            half_mantissa += 1;
+        }
+        return sign | half_mantissa as u16;
+    }
+    let mut half_mantissa = mantissa >> 13;
+    let remainder = mantissa & 0x1fff;
+    if remainder > 0x1000 || (remainder == 0x1000 && (half_mantissa & 1) != 0) {
+        half_mantissa += 1;
+        if half_mantissa == 0x400 {
+            half_mantissa = 0;
+            half_exponent += 1;
+            if half_exponent >= 31 {
+                return sign | 0x7c00;
+            }
+        }
+    }
+    sign | ((half_exponent as u16) << 10) | half_mantissa as u16
+}
+
+fn f16_round_f32(value: f32) -> f32 {
+    f16_to_f32(f32_to_f16(value))
+}
+
 fn checksum_f32(values: &[f32]) -> u64 {
     let mut checksum = 0xcbf2_9ce4_8422_2325_u64;
     for value in values {
@@ -1563,7 +1699,268 @@ struct LayerExpected {
     final_hc: Vec<f32>,
 }
 
-fn layer_expected(layer_index: u32) -> Result<LayerExpected> {
+struct LayerExpectedBytes {
+    fixture_id: &'static str,
+    attention_mixes: &'static [u8],
+    attention_pre: &'static [u8],
+    attention_post: &'static [u8],
+    attention_comb: &'static [u8],
+    attention_collapsed: &'static [u8],
+    attention_norm: &'static [u8],
+    q_lora: &'static [u8],
+    q_lora_norm: &'static [u8],
+    kv_raw: &'static [u8],
+    q_raw: &'static [u8],
+    q_cur: &'static [u8],
+    kv_rope: &'static [u8],
+    kv_cur: &'static [u8],
+    attention_back: &'static [u8],
+    attention_low: &'static [u8],
+    attention_out: &'static [u8],
+    attention_hc: &'static [u8],
+    ffn_mixes: &'static [u8],
+    ffn_pre: &'static [u8],
+    ffn_post: &'static [u8],
+    ffn_comb: &'static [u8],
+    ffn_norm: &'static [u8],
+    router_logits: &'static [u8],
+    router_probs: &'static [u8],
+    selected: &'static [u8],
+    router_weights: &'static [u8],
+    routed_mid: &'static [u8],
+    routed_out: &'static [u8],
+    shared_out: &'static [u8],
+    final_hc: &'static [u8],
+}
+
+macro_rules! position2_fixture {
+    ($name:ident, $layer:literal, $fixture_id:expr) => {
+        const $name: LayerExpectedBytes = LayerExpectedBytes {
+            fixture_id: $fixture_id,
+            attention_mixes: include_bytes!(concat!(
+                "../../fixtures/layer",
+                stringify!($layer),
+                "-pos2-complete-v1/attn-mixes.f32le.bin"
+            )),
+            attention_pre: include_bytes!(concat!(
+                "../../fixtures/layer",
+                stringify!($layer),
+                "-pos2-complete-v1/attn-pre.f32le.bin"
+            )),
+            attention_post: include_bytes!(concat!(
+                "../../fixtures/layer",
+                stringify!($layer),
+                "-pos2-complete-v1/attn-post.f32le.bin"
+            )),
+            attention_comb: include_bytes!(concat!(
+                "../../fixtures/layer",
+                stringify!($layer),
+                "-pos2-complete-v1/attn-combination.f32le.bin"
+            )),
+            attention_collapsed: include_bytes!(concat!(
+                "../../fixtures/layer",
+                stringify!($layer),
+                "-pos2-complete-v1/attn-collapsed.f32le.bin"
+            )),
+            attention_norm: include_bytes!(concat!(
+                "../../fixtures/layer",
+                stringify!($layer),
+                "-pos2-complete-v1/attn-norm.f32le.bin"
+            )),
+            q_lora: include_bytes!(concat!(
+                "../../fixtures/layer",
+                stringify!($layer),
+                "-pos2-complete-v1/q-lora.f32le.bin"
+            )),
+            q_lora_norm: include_bytes!(concat!(
+                "../../fixtures/layer",
+                stringify!($layer),
+                "-pos2-complete-v1/q-lora-norm.f32le.bin"
+            )),
+            kv_raw: include_bytes!(concat!(
+                "../../fixtures/layer",
+                stringify!($layer),
+                "-pos2-complete-v1/kv-raw.f32le.bin"
+            )),
+            q_raw: include_bytes!(concat!(
+                "../../fixtures/layer",
+                stringify!($layer),
+                "-pos2-complete-v1/q-raw.f32le.bin"
+            )),
+            q_cur: include_bytes!(concat!(
+                "../../fixtures/layer",
+                stringify!($layer),
+                "-pos2-complete-v1/q-cur.f32le.bin"
+            )),
+            kv_rope: include_bytes!(concat!(
+                "../../fixtures/layer",
+                stringify!($layer),
+                "-pos2-complete-v1/kv-rope.f32le.bin"
+            )),
+            kv_cur: include_bytes!(concat!(
+                "../../fixtures/layer",
+                stringify!($layer),
+                "-pos2-complete-v1/kv-cur.f32le.bin"
+            )),
+            attention_back: include_bytes!(concat!(
+                "../../fixtures/layer",
+                stringify!($layer),
+                "-pos2-complete-v1/kqv-back.f32le.bin"
+            )),
+            attention_low: include_bytes!(concat!(
+                "../../fixtures/layer",
+                stringify!($layer),
+                "-pos2-complete-v1/attn-low.f32le.bin"
+            )),
+            attention_out: include_bytes!(concat!(
+                "../../fixtures/layer",
+                stringify!($layer),
+                "-pos2-complete-v1/attn-out.f32le.bin"
+            )),
+            attention_hc: include_bytes!(concat!(
+                "../../fixtures/layer",
+                stringify!($layer),
+                "-pos2-complete-v1/hc-attn-post.f32le.bin"
+            )),
+            ffn_mixes: include_bytes!(concat!(
+                "../../fixtures/layer",
+                stringify!($layer),
+                "-pos2-complete-v1/ffn-mixes.f32le.bin"
+            )),
+            ffn_pre: include_bytes!(concat!(
+                "../../fixtures/layer",
+                stringify!($layer),
+                "-pos2-complete-v1/ffn-pre.f32le.bin"
+            )),
+            ffn_post: include_bytes!(concat!(
+                "../../fixtures/layer",
+                stringify!($layer),
+                "-pos2-complete-v1/ffn-post.f32le.bin"
+            )),
+            ffn_comb: include_bytes!(concat!(
+                "../../fixtures/layer",
+                stringify!($layer),
+                "-pos2-complete-v1/ffn-combination.f32le.bin"
+            )),
+            ffn_norm: include_bytes!(concat!(
+                "../../fixtures/layer",
+                stringify!($layer),
+                "-pos2-complete-v1/ffn-norm.f32le.bin"
+            )),
+            router_logits: include_bytes!(concat!(
+                "../../fixtures/layer",
+                stringify!($layer),
+                "-pos2-complete-v1/router-logits.f32le.bin"
+            )),
+            router_probs: include_bytes!(concat!(
+                "../../fixtures/layer",
+                stringify!($layer),
+                "-pos2-complete-v1/router-probs.f32le.bin"
+            )),
+            selected: include_bytes!(concat!(
+                "../../fixtures/layer",
+                stringify!($layer),
+                "-pos2-complete-v1/router-selected.i32le.bin"
+            )),
+            router_weights: include_bytes!(concat!(
+                "../../fixtures/layer",
+                stringify!($layer),
+                "-pos2-complete-v1/router-weights.f32le.bin"
+            )),
+            routed_mid: include_bytes!(concat!(
+                "../../fixtures/layer",
+                stringify!($layer),
+                "-pos2-complete-v1/routed-mid.f32le.bin"
+            )),
+            routed_out: include_bytes!(concat!(
+                "../../fixtures/layer",
+                stringify!($layer),
+                "-pos2-complete-v1/routed-out.f32le.bin"
+            )),
+            shared_out: include_bytes!(concat!(
+                "../../fixtures/layer",
+                stringify!($layer),
+                "-pos2-complete-v1/shared-out.f32le.bin"
+            )),
+            final_hc: include_bytes!(concat!(
+                "../../fixtures/layer",
+                stringify!($layer),
+                "-pos2-complete-v1/hc-ffn-post.f32le.bin"
+            )),
+        };
+    };
+}
+
+position2_fixture!(LAYER0_POS2_BYTES, 0, LAYER0_POS2_FIXTURE_ID);
+position2_fixture!(LAYER1_POS2_BYTES, 1, LAYER1_POS2_FIXTURE_ID);
+position2_fixture!(LAYER2_POS2_BYTES, 2, LAYER2_POS2_FIXTURE_ID);
+position2_fixture!(LAYER3_POS2_BYTES, 3, LAYER3_POS2_FIXTURE_ID);
+
+fn apply_position2_fixture(layer_index: u32, mut expected: LayerExpected) -> Result<LayerExpected> {
+    let bytes = match layer_index {
+        0 => &LAYER0_POS2_BYTES,
+        1 => &LAYER1_POS2_BYTES,
+        2 => &LAYER2_POS2_BYTES,
+        3 => &LAYER3_POS2_BYTES,
+        _ => {
+            return Err(Error::invalid(
+                "position-2 fixture layer is outside 0 through 3",
+            ))
+        }
+    };
+    let label = format!("layer-{layer_index} position-2");
+    let decode = |data, name: &str| decode_f32_fixture(data, &format!("{label} {name}"));
+    expected.fixture_id = bytes.fixture_id;
+    expected.attention_mixes = decode(bytes.attention_mixes, "attention HC mixes")?;
+    expected.attention_split = decode(bytes.attention_pre, "attention HC pre weights")?;
+    expected
+        .attention_split
+        .extend(decode(bytes.attention_post, "attention HC post weights")?);
+    expected
+        .attention_split
+        .extend(decode(bytes.attention_comb, "attention HC combination")?);
+    expected.attention_collapsed = decode(bytes.attention_collapsed, "attention collapsed")?;
+    expected.attention_norm = decode(bytes.attention_norm, "attention norm")?;
+    expected.q_lora = decode(bytes.q_lora, "Q-Lora")?;
+    expected.q_lora_norm = decode(bytes.q_lora_norm, "normalized Q-Lora")?;
+    expected.kv_raw = decode(bytes.kv_raw, "raw KV")?;
+    expected.q_raw = decode(bytes.q_raw, "raw Q")?;
+    expected.q_cur = decode(bytes.q_cur, "Q current")?;
+    expected.kv_rope = decode(bytes.kv_rope, "KV before FP8 store")?;
+    expected.kv_cur = decode(bytes.kv_cur, "KV current")?;
+    expected.attention_back = decode(bytes.attention_back, "inverse-RoPE attention")?;
+    expected.attention_low = decode(bytes.attention_low, "low-rank attention output")?;
+    expected.attention_out = decode(bytes.attention_out, "attention output")?;
+    expected.attention_hc = decode(bytes.attention_hc, "attention HC")?;
+    expected.ffn_mixes = decode(bytes.ffn_mixes, "FFN HC mixes")?;
+    expected.ffn_split = decode(bytes.ffn_pre, "FFN HC pre weights")?;
+    expected
+        .ffn_split
+        .extend(decode(bytes.ffn_post, "FFN HC post weights")?);
+    expected
+        .ffn_split
+        .extend(decode(bytes.ffn_comb, "FFN HC combination")?);
+    expected.ffn_norm = decode(bytes.ffn_norm, "FFN norm")?;
+    expected.router_logits = decode(bytes.router_logits, "router logits")?;
+    expected.router_probs = decode(bytes.router_probs, "router probabilities")?;
+    expected.selected = decode_i32_fixture(bytes.selected, &format!("{label} selected experts"))?;
+    expected.router_weights = decode(bytes.router_weights, "router weights")?;
+    expected.routed_mid = decode(bytes.routed_mid, "routed activation")?;
+    expected.routed_out = decode(bytes.routed_out, "routed output")?;
+    expected.shared_out = decode(bytes.shared_out, "shared output")?;
+    expected.final_hc = decode(bytes.final_hc, "final HC")?;
+    Ok(expected)
+}
+
+fn layer_expected(layer_index: u32, position: u32) -> Result<LayerExpected> {
+    if position == 2 {
+        return apply_position2_fixture(layer_index, layer_expected(layer_index, 1)?);
+    }
+    if position != 1 {
+        return Err(Error::invalid(
+            "complete layer fixtures currently cover decode position 1",
+        ));
+    }
     if layer_index == 0 {
         let (attention_mixes, attention_split, attention_collapsed, attention_norm, q_lora) =
             ingress_fixture()?;
@@ -2029,6 +2426,7 @@ mod imp {
         reuse_previous_hc: u32,
         command_mode: u32,
         chain_final_layer: u32,
+        position: u32,
     }
 
     impl Default for RawProbeResult {
@@ -2277,6 +2675,7 @@ mod imp {
         shared_up: ModelSpan,
         shared_down: ModelSpan,
         expected: LayerExpected,
+        expected_cache_rows: Vec<f32>,
         mixes: Vec<f32>,
         split: Vec<f32>,
         collapsed: Vec<f32>,
@@ -2312,7 +2711,12 @@ mod imp {
     }
 
     impl PreparedLayerExecution {
-        fn new(model: &MappedModel, layer_index: u32, measured_iterations: u32) -> Result<Self> {
+        fn new(
+            model: &MappedModel,
+            layer_index: u32,
+            position: u32,
+            measured_iterations: u32,
+        ) -> Result<Self> {
             let tensor_name = |suffix: &str| format!("blk.{layer_index}.{suffix}");
             let span = |name: &str, kind: u32, dimensions: &[u64]| -> Result<ModelSpan> {
                 Ok(exact_tensor(model, name, kind, dimensions)?.into())
@@ -2322,6 +2726,8 @@ mod imp {
             } else {
                 span(&tensor_name("exp_probs_b.bias"), 0, &[256])?
             };
+            let expected = layer_expected(layer_index, position)?;
+            let expected_cache_rows = expected.cache_row0.clone();
             Ok(Self {
                 layer_index,
                 embedding: span("token_embd.weight", 1, &[4096, 129280])?,
@@ -2349,7 +2755,8 @@ mod imp {
                 shared_gate: span(&tensor_name("ffn_gate_shexp.weight"), 8, &[4096, 2048])?,
                 shared_up: span(&tensor_name("ffn_up_shexp.weight"), 8, &[4096, 2048])?,
                 shared_down: span(&tensor_name("ffn_down_shexp.weight"), 8, &[2048, 4096])?,
-                expected: layer_expected(layer_index)?,
+                expected,
+                expected_cache_rows,
                 mixes: vec![0.0; 24],
                 split: vec![0.0; 24],
                 collapsed: vec![0.0; 4096],
@@ -3742,6 +4149,8 @@ mod imp {
         model: &MappedModel,
         context: &Context,
         layers: &mut [PreparedLayerExecution],
+        token: u32,
+        position: u32,
     ) -> Result<()> {
         if layers.len() != 4 {
             return Err(Error::invalid(
@@ -3754,7 +4163,17 @@ mod imp {
             } else {
                 COMMAND_CHAINED_ENQUEUE
             };
-            run_prepared_layer_iterations(model, context, layer, 0, 1, command_mode, 3)?;
+            run_prepared_layer_iterations(
+                model,
+                context,
+                layer,
+                token,
+                position,
+                0,
+                1,
+                command_mode,
+                3,
+            )?;
         }
         Ok(())
     }
@@ -3766,21 +4185,23 @@ mod imp {
         let config = config.validate()?;
         let context = Context::new()?;
         let mut layers = (0..=3)
-            .map(|layer_index| PreparedLayerExecution::new(model, layer_index, 1))
+            .map(|layer_index| PreparedLayerExecution::new(model, layer_index, 1, 1))
             .collect::<Result<Vec<_>>>()?;
 
         for _ in 0..config.warmup_iterations {
-            submit_prepared_layers0123(model, &context, &mut layers)?;
+            submit_prepared_layers0123(model, &context, &mut layers, 201, 1)?;
         }
 
         let mut wall_ms_samples = Vec::with_capacity(config.iterations as usize);
         let mut gpu_ms_samples = Vec::with_capacity(config.iterations as usize);
         for _ in 0..config.iterations {
-            submit_prepared_layers0123(model, &context, &mut layers)?;
+            submit_prepared_layers0123(model, &context, &mut layers, 201, 1)?;
             let timing = run_prepared_layer_iterations(
                 model,
                 &context,
                 &mut layers[0],
+                201,
+                1,
                 0,
                 1,
                 COMMAND_CHAINED_TIMING,
@@ -3797,6 +4218,8 @@ mod imp {
                     model,
                     &context,
                     layer,
+                    201,
+                    1,
                     0,
                     1,
                     COMMAND_CHAINED_COLLECT,
@@ -3818,6 +4241,61 @@ mod imp {
             wall_ms_samples,
             gpu_ms_samples,
             final_layers,
+        })
+    }
+
+    pub fn run_layers0123_decode_probe(model: &MappedModel) -> Result<Layers0123DecodeProbeReport> {
+        let context = Context::new()?;
+        let mut layers = (0..=3)
+            .map(|layer_index| PreparedLayerExecution::new(model, layer_index, 1, 1))
+            .collect::<Result<Vec<_>>>()?;
+        let mut steps = Vec::with_capacity(2);
+
+        for (position, token) in [(1_u32, 201_u32), (2_u32, 361_u32)] {
+            if position > 1 {
+                for (layer_index, layer) in layers.iter_mut().enumerate() {
+                    layer.expected = layer_expected(layer_index as u32, position)?;
+                }
+            }
+            submit_prepared_layers0123(model, &context, &mut layers, token, position)?;
+            let mut reports = Vec::with_capacity(4);
+            for layer in &mut layers {
+                reports.push(
+                    run_prepared_layer_iterations(
+                        model,
+                        &context,
+                        layer,
+                        token,
+                        position,
+                        0,
+                        1,
+                        COMMAND_CHAINED_COLLECT,
+                        3,
+                    )?
+                    .report,
+                );
+            }
+            let wall_ms = reports[0].wall_ms;
+            let gpu_ms = reports.iter().map(|layer| layer.gpu_ms).sum();
+            let output_hc_checksum = reports[3].final_hc_checksum;
+            steps.push(Layers0123DecodeStepReport {
+                position,
+                token,
+                cache_rows: position + 1,
+                layers: reports,
+                wall_ms,
+                gpu_ms,
+                output_hc_checksum,
+            });
+        }
+
+        Ok(Layers0123DecodeProbeReport {
+            steps,
+            command_buffers_per_step: 4,
+            host_waits_per_step: 1,
+            kv_cache_layers: 4,
+            cache_capacity_rows: 3,
+            output_hc_elements: 4 * 4096,
         })
     }
 
@@ -3866,11 +4344,13 @@ mod imp {
         command_mode: u32,
         chain_final_layer: u32,
     ) -> Result<Layer0Execution> {
-        let mut prepared = PreparedLayerExecution::new(model, layer_index, measured_iterations)?;
+        let mut prepared = PreparedLayerExecution::new(model, layer_index, 1, measured_iterations)?;
         run_prepared_layer_iterations(
             model,
             context,
             &mut prepared,
+            201,
+            1,
             warmup_iterations,
             measured_iterations,
             command_mode,
@@ -3882,12 +4362,13 @@ mod imp {
         model: &MappedModel,
         context: &Context,
         prepared: &mut PreparedLayerExecution,
+        token: u32,
+        position: u32,
         warmup_iterations: u32,
         measured_iterations: u32,
         command_mode: u32,
         chain_final_layer: u32,
     ) -> Result<Layer0Execution> {
-        const TOKEN: u32 = 201;
         let layer_index = prepared.layer_index;
         let PreparedLayerExecution {
             layer_index: _,
@@ -3917,6 +4398,7 @@ mod imp {
             shared_up,
             shared_down,
             expected,
+            expected_cache_rows,
             mixes,
             split,
             collapsed,
@@ -3996,6 +4478,7 @@ mod imp {
             reuse_previous_hc: u32::from(layer_index != 0),
             command_mode,
             chain_final_layer,
+            position,
         };
 
         let mut error = [0 as c_char; ERROR_BYTES];
@@ -4005,7 +4488,7 @@ mod imp {
                 context.0,
                 model.mapping_pointer(),
                 model.bytes(),
-                TOKEN,
+                token,
                 129280,
                 embedding.absolute_offset,
                 embedding.bytes,
@@ -4079,7 +4562,7 @@ mod imp {
             return Ok(Layer0Execution {
                 report: Layer0ProbeReport {
                     fixture_id: expected.fixture_id,
-                    token: TOKEN,
+                    token,
                     dispatches: if layer_index == 0 { 30 } else { 28 },
                     command_buffers: 1,
                     selected_experts: expected.selected.clone(),
@@ -4113,7 +4596,7 @@ mod imp {
             return Ok(Layer0Execution {
                 report: Layer0ProbeReport {
                     fixture_id: expected.fixture_id,
-                    token: TOKEN,
+                    token,
                     dispatches: if layer_index == 0 { 30 } else { 28 },
                     command_buffers: 1,
                     selected_experts: expected.selected.clone(),
@@ -4145,6 +4628,48 @@ mod imp {
                 "complete layer-0 outputs changed across measured iterations",
             ));
         }
+        let expected_prior_cache_elements = position as usize * 512;
+        if expected_cache_rows.len() != expected_prior_cache_elements {
+            return Err(Error::invalid(format!(
+                "complete layer-{layer_index} cache history has {} rows before position {position}",
+                expected_cache_rows.len() / 512
+            )));
+        }
+        for (index, (actual, expected_value)) in cache_rows
+            .iter()
+            .take(expected_prior_cache_elements)
+            .zip(expected_cache_rows.iter())
+            .enumerate()
+        {
+            if actual.to_bits() != expected_value.to_bits() {
+                return Err(Error::invalid(format!(
+                    "complete layer-{layer_index} C0 mismatch in retained cache[{index}]: actual={:#010x} expected={:#010x}",
+                    actual.to_bits(),
+                    expected_value.to_bits()
+                )));
+            }
+        }
+        let target_start = expected_prior_cache_elements;
+        let stored_cache_row = expected
+            .kv_cur
+            .iter()
+            .copied()
+            .map(f16_round_f32)
+            .collect::<Vec<_>>();
+        for (index, (actual, expected_value)) in cache_rows[target_start..target_start + 512]
+            .iter()
+            .zip(stored_cache_row.iter())
+            .enumerate()
+        {
+            if actual.to_bits() != expected_value.to_bits() {
+                return Err(Error::invalid(format!(
+                    "complete layer-{layer_index} C0 mismatch in cache row {position}[{index}]: actual={:#010x} expected={:#010x}",
+                    actual.to_bits(),
+                    expected_value.to_bits()
+                )));
+            }
+        }
+        expected_cache_rows.extend_from_slice(&stored_cache_row);
         for (label, actual, expected) in [
             (
                 "hc_attn_pre_mixes",
@@ -4269,7 +4794,7 @@ mod imp {
         Ok(Layer0Execution {
             report: Layer0ProbeReport {
                 fixture_id: expected.fixture_id,
-                token: TOKEN,
+                token,
                 dispatches: if layer_index == 0 { 30 } else { 28 },
                 command_buffers: 1,
                 selected_experts: selected.clone(),
@@ -4618,7 +5143,7 @@ mod imp {
                     self.next_layer
                 )));
             }
-            let _ = layer_expected(layer_index)?;
+            let _ = layer_expected(layer_index, 1)?;
             let _ = exact_tensor(
                 self.model,
                 &format!("blk.{layer_index}.ffn_down_shexp.weight"),
@@ -4644,7 +5169,7 @@ mod imp {
     ) -> Result<Layers0123BenchReport> {
         let _ = config.validate()?;
         for layer_index in 0..=3 {
-            let _ = layer_expected(layer_index)?;
+            let _ = layer_expected(layer_index, 1)?;
         }
         let _ = exact_tensor(model, "blk.3.ffn_down_shexp.weight", 8, &[2048, 4096])?;
         Err(Error::invalid(
@@ -4652,10 +5177,21 @@ mod imp {
         ))
     }
 
+    pub fn run_layers0123_decode_probe(model: &MappedModel) -> Result<Layers0123DecodeProbeReport> {
+        for layer_index in 0..=3 {
+            let _ = layer_expected(layer_index, 1)?;
+            let _ = layer_expected(layer_index, 2)?;
+        }
+        let _ = exact_tensor(model, "blk.3.ffn_down_shexp.weight", 8, &[2048, 4096])?;
+        Err(Error::invalid(
+            "the Metal position-advancing four-layer probe is available only on macOS",
+        ))
+    }
+
     pub fn run_layers012_chained_probe(model: &MappedModel) -> Result<Layers012ChainedProbeReport> {
-        let _ = layer_expected(0)?;
-        let _ = layer_expected(1)?;
-        let _ = layer_expected(2)?;
+        let _ = layer_expected(0, 1)?;
+        let _ = layer_expected(1, 1)?;
+        let _ = layer_expected(2, 1)?;
         let _ = exact_tensor(model, "blk.2.ffn_down_shexp.weight", 8, &[2048, 4096])?;
         Err(Error::invalid(
             "the chained Metal layers-0/1/2 probe is available only on macOS",
@@ -4666,7 +5202,7 @@ mod imp {
         model: &MappedModel,
     ) -> Result<Layers0123ChainedProbeReport> {
         for layer_index in 0..=3 {
-            let _ = layer_expected(layer_index)?;
+            let _ = layer_expected(layer_index, 1)?;
         }
         let _ = exact_tensor(model, "blk.3.ffn_down_shexp.weight", 8, &[2048, 4096])?;
         Err(Error::invalid(
@@ -4765,8 +5301,8 @@ mod imp {
     }
 
     pub fn run_layers01_probe(model: &MappedModel) -> Result<Layers01ProbeReport> {
-        let _ = layer_expected(0)?;
-        let _ = layer_expected(1)?;
+        let _ = layer_expected(0, 1)?;
+        let _ = layer_expected(1, 1)?;
         let _ = exact_tensor(model, "blk.1.ffn_down_shexp.weight", 8, &[2048, 4096])?;
         Err(Error::invalid(
             "the continuous Metal layers-0/1 probe is available only on macOS",
@@ -4774,9 +5310,9 @@ mod imp {
     }
 
     pub fn run_layers012_probe(model: &MappedModel) -> Result<Layers012ProbeReport> {
-        let _ = layer_expected(0)?;
-        let _ = layer_expected(1)?;
-        let _ = layer_expected(2)?;
+        let _ = layer_expected(0, 1)?;
+        let _ = layer_expected(1, 1)?;
+        let _ = layer_expected(2, 1)?;
         let _ = exact_tensor(model, "blk.2.ffn_down_shexp.weight", 8, &[2048, 4096])?;
         Err(Error::invalid(
             "the continuous Metal layers-0/1/2 probe is available only on macOS",
@@ -4785,7 +5321,7 @@ mod imp {
 
     pub fn run_layers0123_probe(model: &MappedModel) -> Result<Layers0123ProbeReport> {
         for layer_index in 0..=3 {
-            let _ = layer_expected(layer_index)?;
+            let _ = layer_expected(layer_index, 1)?;
         }
         let _ = exact_tensor(model, "blk.3.ffn_down_shexp.weight", 8, &[2048, 4096])?;
         Err(Error::invalid(
@@ -4811,14 +5347,22 @@ mod imp {
 pub use imp::{
     run_attention_ingress_probe, run_attention_output_probe, run_attention_read_probe,
     run_attention_setup_probe, run_f16_embedding_probe, run_ffn_router_probe, run_layer0_bench,
-    run_layer0_probe, run_layers0123_bench, run_layers0123_chained_probe, run_layers0123_probe,
-    run_layers012_chained_probe, run_layers012_probe, run_layers01_probe, run_moe_output_probe,
-    run_probe, run_q8_projection_probe, run_rope_kv_store_probe, LayerExecutor,
+    run_layer0_probe, run_layers0123_bench, run_layers0123_chained_probe,
+    run_layers0123_decode_probe, run_layers0123_probe, run_layers012_chained_probe,
+    run_layers012_probe, run_layers01_probe, run_moe_output_probe, run_probe,
+    run_q8_projection_probe, run_rope_kv_store_probe, LayerExecutor,
 };
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    const POSITION2_FIXTURE_IDS: [&str; 4] = [
+        LAYER0_POS2_FIXTURE_ID,
+        LAYER1_POS2_FIXTURE_ID,
+        LAYER2_POS2_FIXTURE_ID,
+        LAYER3_POS2_FIXTURE_ID,
+    ];
 
     fn report() -> ProbeReport {
         ProbeReport {
@@ -5149,6 +5693,42 @@ mod tests {
         }
     }
 
+    fn layers0123_decode_report() -> Layers0123DecodeProbeReport {
+        let position1_layers = layers0123_report().layers;
+        let mut position2_layers = position1_layers.clone();
+        for (layer_index, layer) in position2_layers.iter_mut().enumerate() {
+            layer.fixture_id = POSITION2_FIXTURE_IDS[layer_index];
+            layer.token = 361;
+        }
+        Layers0123DecodeProbeReport {
+            steps: vec![
+                Layers0123DecodeStepReport {
+                    position: 1,
+                    token: 201,
+                    cache_rows: 2,
+                    layers: position1_layers,
+                    wall_ms: 5.0,
+                    gpu_ms: 4.0,
+                    output_hc_checksum: 10,
+                },
+                Layers0123DecodeStepReport {
+                    position: 2,
+                    token: 361,
+                    cache_rows: 3,
+                    layers: position2_layers,
+                    wall_ms: 6.0,
+                    gpu_ms: 5.0,
+                    output_hc_checksum: 11,
+                },
+            ],
+            command_buffers_per_step: 4,
+            host_waits_per_step: 1,
+            kv_cache_layers: 4,
+            cache_capacity_rows: 3,
+            output_hc_elements: 4 * 4096,
+        }
+    }
+
     #[test]
     fn validates_probe_work_bounds() {
         assert!(ProbeConfig::default().validate().is_ok());
@@ -5281,8 +5861,44 @@ mod tests {
     }
 
     #[test]
+    fn writes_stable_layers0123_decode_probe_json() {
+        let mut output = Vec::new();
+        write_layers0123_decode_probe_json(&mut output, &layers0123_decode_report()).unwrap();
+        let text = String::from_utf8(output).unwrap();
+        assert!(text.contains(&format!("\"schema\": \"{LAYERS0123_DECODE_PROBE_SCHEMA}\"")));
+        assert!(text.contains("\"position\": 2"));
+        assert!(text.contains("\"token\": 361"));
+        assert!(text.contains("\"cache_rows\": 3"));
+        assert!(text.contains(&format!("\"fixture\": \"{}\"", POSITION2_FIXTURE_IDS[3])));
+        assert!(text.contains("\"cache_growth_exact\": true"));
+        assert!(text.contains("\"output_handoff_exact\": true"));
+    }
+
+    #[test]
+    fn position2_complete_fixtures_have_target_shapes() {
+        let selected = [
+            vec![191, 152, 163, 99, 109, 156],
+            vec![46, 252, 230, 133, 42, 183],
+            vec![29, 164, 162, 130, 7, 179],
+            vec![211, 122, 64, 68, 1, 24],
+        ];
+        for layer_index in 0..=3 {
+            let fixture = layer_expected(layer_index, 2).unwrap();
+            assert_eq!(
+                fixture.fixture_id,
+                POSITION2_FIXTURE_IDS[layer_index as usize]
+            );
+            assert_eq!(fixture.cache_row0.len(), 512);
+            assert_eq!(fixture.kv_cur.len(), 512);
+            assert_eq!(fixture.attention_hc.len(), 4 * 4096);
+            assert_eq!(fixture.selected, selected[layer_index as usize]);
+            assert_eq!(fixture.final_hc.len(), 4 * 4096);
+        }
+    }
+
+    #[test]
     fn layer1_complete_fixture_has_target_shapes() {
-        let fixture = layer_expected(1).unwrap();
+        let fixture = layer_expected(1, 1).unwrap();
         assert_eq!(fixture.cache_row0.len(), 512);
         assert_eq!(fixture.attention_hc.len(), 4 * 4096);
         assert_eq!(fixture.ffn_mixes.len(), 24);
@@ -5295,7 +5911,7 @@ mod tests {
 
     #[test]
     fn layer2_complete_fixture_has_target_shapes() {
-        let fixture = layer_expected(2).unwrap();
+        let fixture = layer_expected(2, 1).unwrap();
         assert_eq!(fixture.cache_row0.len(), 512);
         assert_eq!(fixture.attention_hc.len(), 4 * 4096);
         assert_eq!(fixture.ffn_mixes.len(), 24);
@@ -5308,7 +5924,7 @@ mod tests {
 
     #[test]
     fn layer3_complete_fixture_has_target_shapes() {
-        let fixture = layer_expected(3).unwrap();
+        let fixture = layer_expected(3, 1).unwrap();
         assert_eq!(fixture.cache_row0.len(), 512);
         assert_eq!(fixture.attention_hc.len(), 4 * 4096);
         assert_eq!(fixture.ffn_mixes.len(), 24);
@@ -5531,6 +6147,21 @@ mod tests {
             (0x0001, 0x3380_0000),
         ] {
             assert_eq!(f16_to_f32(half).to_bits(), single, "half={half:#06x}");
+        }
+    }
+
+    #[test]
+    fn rounds_raw_cache_values_through_f16_exactly() {
+        for (single, half, rounded) in [
+            (0x0000_0000, 0x0000, 0x0000_0000),
+            (0x8000_0000, 0x8000, 0x8000_0000),
+            (0x3f80_0000, 0x3c00, 0x3f80_0000),
+            (0xbe0f_ffff, 0xb080, 0xbe10_0000),
+            (0x3380_0000, 0x0001, 0x3380_0000),
+        ] {
+            let value = f32::from_bits(single);
+            assert_eq!(f32_to_f16(value), half, "single={single:#010x}");
+            assert_eq!(f16_round_f32(value).to_bits(), rounded);
         }
     }
 

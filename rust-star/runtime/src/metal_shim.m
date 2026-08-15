@@ -1263,6 +1263,8 @@ int rust_star_metal_run_attention_ingress(
     const BOOL full_layer = layer0 != NULL;
     rust_star_metal_layer0_extension standalone_layer = {0};
     if (!layer0) layer0 = &standalone_layer;
+    const uint32_t position = full_layer ? layer0->position : 1u;
+    const uint32_t visible_cache_rows = position + 1u;
     const BOOL continuing_layer = full_layer && layer0->reuse_previous_hc != 0;
     const uint32_t command_mode = full_layer ? layer0->command_mode : RUST_STAR_COMMAND_SYNCHRONIZED;
     const BOOL chained_submission = command_mode == RUST_STAR_COMMAND_CHAINED_ENQUEUE ||
@@ -1305,6 +1307,14 @@ int rust_star_metal_run_attention_ingress(
         (layer0->layer_index > 0 && !continuing_layer))) {
         return fail_with_message(error, error_bytes,
             @"full layer execution must run layer 0 before continuing into later layers");
+    }
+    if (full_layer && (position < 1u || position > 2u)) {
+        return fail_with_message(error, error_bytes,
+            @"the exact four-layer slice currently supports decode positions 1 and 2");
+    }
+    if (full_layer && position > 1u && command_mode == RUST_STAR_COMMAND_SYNCHRONIZED) {
+        return fail_with_message(error, error_bytes,
+            @"position-advancing execution requires the layer-scoped chained scheduler");
     }
     if (command_mode > RUST_STAR_COMMAND_CHAINED_TIMING || (!full_layer && command_mode != 0)) {
         return fail_with_message(error, error_bytes, @"invalid full-layer command mode");
@@ -1537,12 +1547,13 @@ int rust_star_metal_run_attention_ingress(
             [NSString stringWithFormat:@"kv_cache_layer_%u", layer0->layer_index] :
             @"kv_cache_probe";
         id<MTLBuffer> cache_buffer = rope_and_store ? persistent_buffer(context, cache_key, 3u*kv_elements*sizeof(float), error, error_bytes) : nil;
-        const NSUInteger staged_kv_bytes = 2u*kv_elements*sizeof(uint16_t);
-        const NSUInteger mask_bytes = 2u*sizeof(uint16_t);
-        const NSUInteger flash_pad_bytes = 2u*32u*kv_elements*sizeof(uint16_t) + 32u*sizeof(uint16_t);
+        const NSUInteger staged_kv_bytes = 3u*kv_elements*sizeof(uint16_t);
+        const NSUInteger mask_storage_bytes = 3u*sizeof(uint16_t);
+        const NSUInteger mask_row_bytes = visible_cache_rows*sizeof(uint16_t);
+        const NSUInteger flash_pad_bytes = 3u*32u*kv_elements*sizeof(uint16_t) + 32u*sizeof(uint16_t);
         const NSUInteger flash_tmp_bytes = 64u*kv_elements*32u*sizeof(float) + 64u*64u*sizeof(float);
         id<MTLBuffer> staged_kv_buffer = attention_read ? persistent_buffer(context, layer_buffer_key(@"staged_kv", layer_scoped_buffers, layer0->layer_index), staged_kv_bytes, error, error_bytes) : nil;
-        id<MTLBuffer> mask_buffer = attention_read ? persistent_buffer(context, layer_buffer_key(@"attention_mask", layer_scoped_buffers, layer0->layer_index), mask_bytes, error, error_bytes) : nil;
+        id<MTLBuffer> mask_buffer = attention_read ? persistent_buffer(context, layer_buffer_key(@"attention_mask", layer_scoped_buffers, layer0->layer_index), mask_storage_bytes, error, error_bytes) : nil;
         id<MTLBuffer> flash_pad_buffer = attention_read ? persistent_buffer(context, layer_buffer_key(@"flash_pad", layer_scoped_buffers, layer0->layer_index), flash_pad_bytes, error, error_bytes) : nil;
         id<MTLBuffer> flash_tmp_buffer = attention_read ? persistent_buffer(context, layer_buffer_key(@"flash_tmp", layer_scoped_buffers, layer0->layer_index), flash_tmp_bytes, error, error_bytes) : nil;
         id<MTLBuffer> attention_raw_buffer = attention_read ? persistent_buffer(context, layer_buffer_key(@"attention_raw", layer_scoped_buffers, layer0->layer_index), q_raw_elements*sizeof(float), error, error_bytes) : nil;
@@ -1593,12 +1604,12 @@ int rust_star_metal_run_attention_ingress(
             !shared_mid_buffer || !shared_out_buffer || !after_ffn_hc_buffer)) {
             return fail_with_message(error, error_bytes, @"failed to allocate full layer buffers");
         }
-        if (rope_and_store && !chained_replay) {
+        if (rope_and_store && !chained_replay && position == 1u) {
             float *cache = cache_buffer.contents;
             for (uint32_t index = 0; index < 3u*kv_elements; index++) cache[index] = -12345.5f;
             if (attention_read) memcpy(cache, cache_row0, kv_elements*sizeof(float));
         }
-        if (attention_read && !chained_replay) memset(mask_buffer.contents, 0, mask_bytes);
+        if (attention_read && !chained_replay) memset(mask_buffer.contents, 0, mask_storage_bytes);
 
         const uint64_t embedding_row_bytes = (uint64_t)n_embd*sizeof(uint16_t);
         rust_star_get_rows_args get_rows = {
@@ -1681,7 +1692,7 @@ int rust_star_metal_run_attention_ingress(
             : 1.0f;
         rust_star_head_norm_rope_args q_rope_args = {
             .n_head=64, .head_dim=512, .head_dim4=128, .n_dims=64,
-            .n_ctx_orig=compressed_attention ? 65536 : 0, .pos0=1, .inverse=0,
+            .n_ctx_orig=compressed_attention ? 65536 : 0, .pos0=(int32_t)position, .inverse=0,
             .eps=1.0e-6f, .freq_base=rope_freq_base, .freq_scale=rope_freq_scale,
             .ext_factor=rope_ext_factor, .attn_factor=rope_attn_factor,
             .beta_fast=32.0f, .beta_slow=1.0f,
@@ -1701,27 +1712,33 @@ int rust_star_metal_run_attention_ingress(
             .src2=false,
         };
         rust_star_kv_store_args kv_store_args = {
-            .head_dim=512, .n_rot=64, .raw_row=1,
+            .head_dim=512, .n_rot=64, .raw_row=(int32_t)position,
         };
         const uint64_t attention_head_bytes = (uint64_t)kv_elements*sizeof(float);
         const uint64_t staged_row_bytes = (uint64_t)kv_elements*sizeof(uint16_t);
         rust_star_flash_pad_args flash_pad_args = {
-            .ne11=2, .ne_12_2=1, .ne_12_3=1,
-            .nb11=staged_row_bytes, .nb12=2u*staged_row_bytes, .nb13=2u*staged_row_bytes,
-            .nb21=staged_row_bytes, .nb22=2u*staged_row_bytes, .nb23=2u*staged_row_bytes,
+            .ne11=(int32_t)visible_cache_rows, .ne_12_2=1, .ne_12_3=1,
+            .nb11=staged_row_bytes, .nb12=(uint64_t)visible_cache_rows*staged_row_bytes,
+            .nb13=(uint64_t)visible_cache_rows*staged_row_bytes,
+            .nb21=staged_row_bytes, .nb22=(uint64_t)visible_cache_rows*staged_row_bytes,
+            .nb23=(uint64_t)visible_cache_rows*staged_row_bytes,
             .ne31=1, .ne32=1, .ne33=1,
-            .nb31=mask_bytes, .nb32=mask_bytes, .nb33=mask_bytes,
+            .nb31=mask_row_bytes, .nb32=mask_row_bytes, .nb33=mask_row_bytes,
         };
         rust_star_flash_vec_args flash_vec_args = {
             .ne01=1, .ne02=64, .ne03=1,
             .nb01=64u*attention_head_bytes, .nb02=attention_head_bytes,
             .nb03=64u*attention_head_bytes,
-            .ne11=2, .ne_12_2=1, .ne_12_3=1, .ns10=512,
-            .nb11=staged_row_bytes, .nb12=2u*staged_row_bytes, .nb13=2u*staged_row_bytes,
+            .ne11=(int32_t)visible_cache_rows, .ne_12_2=1, .ne_12_3=1, .ns10=512,
+            .nb11=staged_row_bytes,
+            .nb12=(uint64_t)visible_cache_rows*staged_row_bytes,
+            .nb13=(uint64_t)visible_cache_rows*staged_row_bytes,
             .ns20=512,
-            .nb21=staged_row_bytes, .nb22=2u*staged_row_bytes, .nb23=2u*staged_row_bytes,
+            .nb21=staged_row_bytes,
+            .nb22=(uint64_t)visible_cache_rows*staged_row_bytes,
+            .nb23=(uint64_t)visible_cache_rows*staged_row_bytes,
             .ne31=1, .ne32=1, .ne33=1,
-            .nb31=mask_bytes, .nb32=mask_bytes, .nb33=mask_bytes,
+            .nb31=mask_row_bytes, .nb32=mask_row_bytes, .nb33=mask_row_bytes,
             .ne1=64, .ne2=1, .ne3=1,
             .scale=1.0f/sqrtf(512.0f), .max_bias=0.0f, .m0=0.0f, .m1=0.0f,
             .n_head_log2=0, .logit_softcap=0.0f,
@@ -1809,7 +1826,7 @@ int rust_star_metal_run_attention_ingress(
             .has_bias=hash_router ? 0u : 1u,
             .hash_mode=hash_router ? 1u : 0u,
             .use_token_buffer=0,
-            .token=201,
+            .token=token,
             .hash_rows=hash_router ? 129280u : 0u,
         };
         rust_star_q8_mv_id_args routed_gate_args = {
@@ -1882,7 +1899,7 @@ int rust_star_metal_run_attention_ingress(
             }
         }
         for (uint32_t execution = 0; execution < total_iterations; execution++) {
-        if (execution > 0 && rope_and_store) {
+        if (execution > 0 && rope_and_store && position == 1u) {
             float *cache = cache_buffer.contents;
             for (uint32_t index = 0; index < 3u*kv_elements; index++) cache[index] = -12345.5f;
             if (attention_read) memcpy(cache, cache_row0, kv_elements*sizeof(float));
@@ -1997,7 +2014,7 @@ int rust_star_metal_run_attention_ingress(
             [encoder setComputePipelineState:context.ropeTailPipeline];
             [encoder setBytes:&kv_rope_args length:sizeof(kv_rope_args) atIndex:0];
             [encoder setBuffer:kv_norm_buffer offset:0 atIndex:1];
-            int32_t rope_position = 1;
+            int32_t rope_position = (int32_t)position;
             [encoder setBytes:&rope_position length:sizeof(rope_position) atIndex:2];
             [encoder setBuffer:kv_norm_buffer offset:0 atIndex:3];
             [encoder setBuffer:kv_norm_buffer offset:0 atIndex:4];
@@ -2023,12 +2040,13 @@ int rust_star_metal_run_attention_ingress(
                  threadsPerThreadgroup:MTLSizeMake(64,1,1)];
 
             if (attention_read) {
-                uint32_t staged_elements = 2u*kv_elements;
+                uint32_t staged_elements = visible_cache_rows*kv_elements;
                 [encoder setComputePipelineState:context.cpyF32F16Pipeline];
                 [encoder setBytes:&staged_elements length:sizeof(staged_elements) atIndex:0];
                 [encoder setBuffer:cache_buffer offset:0 atIndex:1];
                 [encoder setBuffer:staged_kv_buffer offset:0 atIndex:2];
-                [encoder dispatchThreadgroups:MTLSizeMake(1,1,1)
+                const NSUInteger staged_groups = (staged_elements + 1023u) / 1024u;
+                [encoder dispatchThreadgroups:MTLSizeMake(staged_groups,1,1)
                      threadsPerThreadgroup:MTLSizeMake(256,1,1)];
 
                 [encoder setComputePipelineState:context.flashPadPipeline];
@@ -2075,7 +2093,7 @@ int rust_star_metal_run_attention_ingress(
                 [encoder setComputePipelineState:context.ropeTailPipeline];
                 [encoder setBytes:&attention_inverse_args length:sizeof(attention_inverse_args) atIndex:0];
                 [encoder setBuffer:attention_back_buffer offset:0 atIndex:1];
-                int32_t inverse_position = 1;
+                int32_t inverse_position = (int32_t)position;
                 [encoder setBytes:&inverse_position length:sizeof(inverse_position) atIndex:2];
                 [encoder setBuffer:attention_back_buffer offset:0 atIndex:3];
                 [encoder setBuffer:attention_back_buffer offset:0 atIndex:4];

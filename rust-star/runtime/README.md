@@ -318,6 +318,29 @@ distinct by layer. Its `chain_wall_ms` spans the first submission through the
 single tail wait, while `summed_command_gpu_ms` sums the four Metal command
 intervals. These are narrow scheduler diagnostics, not decoder throughput.
 
+To validate position advancement and persistent cache growth:
+
+```sh
+rust-star/.work/runtime-target/release/rust-star layers0123-decode-probe \
+  /absolute/path/to/model.gguf \
+  --json rust-star/.work/runtime-target/layers0123-decode-probe.json
+```
+
+`layers0123-decode-probe` prepares layers 0–3 once, executes token 201 at
+position 1, then reuses the same four layer-scoped KV allocations for token 361
+at position 2. Each step commits four ordered command buffers and waits once at
+the tail. The probe requires every retained attention, router, expert, and HC
+boundary to match independently repeated DwarfStar captures bit-for-bit; it
+also verifies that each raw KV cache preserves its earlier rows and grows from
+two visible rows to three. Layer 3's final 16,384-element HC state is the
+explicit output handoff.
+
+This is the first stateful decode slice, but not a complete decoder or a
+throughput benchmark. It covers four of 43 layers and does not produce logits
+or sample a next token. Layers 2–3 use compression ratio four, so positions 1
+and 2 have no compressed-cache row. Advancing to position 3 requires the real
+compressor/indexer state transition and is the next correctness gate.
+
 For repeated fixed-position execution with preparation and correctness
 collection outside the measured interval:
 

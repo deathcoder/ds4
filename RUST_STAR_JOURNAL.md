@@ -22,7 +22,8 @@ history; add a correction and update the current-state summary.
 
 - Phase: target-Mac bootstrap, quick `oracle-v1`, no-copy model mapping, the
   canonical differential-fixture envelope, complete layer 0, steady-state
-  layer-0 execution, and the first four-layer scheduler boundary are complete.
+  layer-0 execution, the first four-layer scheduler boundary, and the minimum
+  two-step position-advancing four-layer slice are complete.
   Layers 0 through 3 execute in order under one Rust-owned Metal context with
   exact GPU-resident HC-state handoffs and one retained KV allocation per
   layer. Layer 2 crosses the first compressed-attention RoPE boundary, and
@@ -88,7 +89,13 @@ history; add a correction and update the current-state summary.
   now resolves all 100 model spans, decodes the four fixtures, and allocates
   host outputs once. Warmup and measured chains reuse those bindings; measured
   iterations collect only Metal timing metadata, followed by one exhaustive C0
-  readback after the final sample.
+  readback after the final sample. The same prepared executor now advances from
+  token 201/position 1 to token 361/position 2 without recreating its four
+  layer-scoped KV caches. It verifies preserved FP16-rounded raw-cache history,
+  grows each cache from two to three visible rows, derives RoPE/attention/router
+  state from the explicit token and position, and hands off layer 3's final
+  16,384-element HC state. All retained boundaries match pinned position-1 and
+  independently repeated position-2 DwarfStar fixtures bit-for-bit.
 - Measurements: Metal batching was 42.861x faster than synchronized submission
   in the retained M-002 probe. DwarfStar medians are 164.86 prefill / 19.90
   generation tok/s at 2K and 161.05 prefill / 17.36 generation tok/s at 32K.
@@ -123,7 +130,11 @@ history; add a correction and update the current-state summary.
   measured 4.318 ms wall median (0.180 ms MAD) and 3.767 ms summed-GPU median
   (0.131 ms MAD) across 20 samples after five warmups, then passed one complete
   four-layer C0 collection. It is a steady-state execution microbenchmark, not
-  token throughput.
+  token throughput. The first position-advancing run reported 103.106 ms wall
+  and 70.862 ms summed GPU for its cold position-1 step, then 7.333 ms wall and
+  6.347 ms summed GPU for position 2. Both steps were C0 exact across all four
+  layers and cache histories; these remain correctness diagnostics rather than
+  model-throughput measurements.
 - Manual handoff: `RUST_STAR_MANUAL_TASKS.md` records Actions approval, target
   compilation/model inspection, quick/extended oracle capture, and the deferred
   secure-access decision with exact evidence requirements.
@@ -136,17 +147,79 @@ history; add a correction and update the current-state summary.
 
 ## Immediate Next Actions
 
-1. Extend the ordered executor and C0 capture to the next materially distinct
-   layer/state boundary rather than introducing a graph framework; preserve
-   synchronized and chained four-layer paths as scheduler controls.
-2. Define the minimum real decoder loop around the proven four-layer executor:
-   token/position advancement, persistent cache growth, and output handoff,
-   while keeping the fixed-position replay as a regression microbenchmark.
+1. Implement and capture the layer-2/3 compressor/indexer state transition that
+   emits the first compressed-cache row at position 3; keep the two-step probe
+   and fixed-position replay as regression controls.
+2. After the position-3 gate is exact, extend the ordered executor to the next
+   materially distinct layer/state boundary rather than introducing a graph
+   framework.
 3. Run the extended 2K--1M frontier capture when the Mac can be dedicated to a
    long benchmark; preserve any 512K/1M capacity failure as evidence.
 4. Run or approve the fork's GitHub Actions workflow and retain its URL.
 
 ## Entries
+
+### 2026-08-15 — Four-layer state advanced across two exact decode positions
+
+Objective:
+
+- Replace the fixed token-201/position-1 assumption with the smallest real
+  position-advancing loop while preserving the proven four-layer executor and
+  keeping compressed-cache behavior outside the claimed boundary.
+
+Oracle fixture:
+
+- Confirmed the first two generated token IDs as 201 and 361 and captured every
+  retained layer 0–3 boundary at position 2 twice in separate fresh DwarfStar
+  processes.
+- Each layer fixture contains 32 tensors and 739,760 verified bytes. All paired
+  payloads were byte-identical; layer 0 declares 30 operations and layers 1–3
+  declare 28 each.
+
+Implementation:
+
+- Added explicit token and position propagation through Rust, the stable C ABI,
+  and the Objective-C shim. RoPE, inverse RoPE, raw-cache target rows, visible
+  attention geometry, and hash-router tokens now advance with the step.
+- Added `layers0123-decode-probe` and schema
+  `rust-star-layers0123-position-advancing-probe-v1`. One prepared executor
+  submits four command buffers with one tail wait at each position and retains
+  four independent three-row cache allocations across both steps.
+- Strengthened cache validation to cover every retained row and the newly
+  written row after DwarfStar's exact FP16 cache-store rounding. The declared
+  output handoff is layer 3's final 16,384-element HC state.
+- The first position-2 run exposed a stale launch assumption: the FP32→FP16
+  attention staging dispatch covered only the old 1,024-element/two-row shape.
+  Scaling its threadgroups to the visible element count covered all 1,536
+  elements and restored exact attention output.
+
+Target-Mac evidence:
+
+- Position 1/token 201 grew every cache to two rows and matched all four pinned
+  layer fixtures. Position 2/token 361 preserved that history, grew every cache
+  to three rows, and matched all four new fixtures at every retained boundary.
+- The first successful run reported 103.106 ms wall / 70.862 ms summed GPU for
+  the cold position-1 step and 7.333 ms wall / 6.347 ms summed GPU for position
+  2. These values include probe correctness work and are not token throughput.
+- The complete host/fixture portion passed 48 Rust tests, 38 Python tests, all
+  15 differential fixtures, the optimized macOS build, and the strict
+  1,288-tensor target recipe. After an output-poll cancellation, validation
+  resumed from the first unexecuted Metal stage: every remaining incremental,
+  full-layer, synchronized, chained, stateful, and steady-state control passed.
+  The integrated stateful run reported 99.392/69.763 ms wall/summed-GPU at the
+  cold first step and 8.943/6.455 ms at position 2. The 20-sample four-layer
+  replay and 30-sample layer-0 control also completed with exact final readback.
+
+Decision:
+
+- Accept positions 1→2 as the minimum stateful decoder slice. Do not call it a
+  complete decoder: 39 layers, the output head, logits, and sampling remain, and
+  compressed cache state has not yet been emitted.
+
+Next:
+
+- Capture and implement the position-3 compressor/indexer boundary for layers
+  2–3, where compression ratio four emits its first compressed-cache row.
 
 ### 2026-08-15 — Prepared four-layer replay isolated steady-state execution
 
