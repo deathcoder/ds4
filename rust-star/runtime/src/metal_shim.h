@@ -104,6 +104,7 @@ typedef struct rust_star_metal_prefill_layer0_weights {
     uint64_t hc_base_offset, hc_base_bytes;
     uint64_t attn_norm_offset, attn_norm_bytes;
     rust_star_metal_prefill_qkv_weights qkv;
+    uint64_t attn_sinks_offset, attn_sinks_bytes;
 } rust_star_metal_prefill_layer0_weights;
 
 typedef struct rust_star_metal_prefill_layer0_probe_result {
@@ -278,6 +279,10 @@ int rust_star_metal_run_prefill_layer0_boundary(
     float *kv_rope,
     float *kv_cur,
     float *raw_cache,
+    const float *kv_prefix,
+    float *full_kv,
+    float *attention_output,
+    float *attention_back,
     rust_star_metal_prefill_layer0_probe_result *result,
     char *error,
     size_t error_bytes);

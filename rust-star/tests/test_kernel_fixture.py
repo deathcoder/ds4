@@ -68,6 +68,9 @@ PREFILL_QKV_BOUNDARY_FIXTURE = (
 PREFILL_HC_INGRESS_FIXTURE = (
     RUST_STAR_DIR / "fixtures" / "prefill-hc-ingress-2048-v1"
 )
+PREFILL_ATTENTION_READ_FIXTURE = (
+    RUST_STAR_DIR / "fixtures" / "prefill-attention-read-2048-v1"
+)
 
 
 class KernelFixtureTests(unittest.TestCase):
@@ -395,6 +398,34 @@ class KernelFixtureTests(unittest.TestCase):
                 "kernel_rms_norm_f32_4",
                 "kernel_mul_mm_f16_f32",
                 "kernel_dsv4_hc_split_weighted_sum_norm4",
+            ],
+        )
+
+    def test_prefill_attention_read_fixture_manifest_and_payloads(self) -> None:
+        manifest = json.loads(
+            (PREFILL_ATTENTION_READ_FIXTURE / "manifest.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        report = validate_differential_fixture(PREFILL_ATTENTION_READ_FIXTURE)
+        self.assertEqual(
+            report["fixture_id"],
+            "dwarfstar-oracle-v1-prefill-attention-read-2048",
+        )
+        self.assertEqual(report["scope"], "layer-segment")
+        self.assertEqual(report["operations"], 5)
+        self.assertEqual(report["tensors"], 3)
+        self.assertEqual(report["verified_bytes"], 12_517_376)
+        self.assertEqual(manifest["scope"]["query_position_range"], [2016, 2047])
+        self.assertEqual(manifest["scope"]["kv_position_range"], [0, 2047])
+        self.assertEqual(
+            [operation["kernel"] for operation in manifest["operations"]],
+            [
+                "MTLBlitCommandEncoder.copyFromBuffer",
+                "kernel_cpy_contig_f32_f16_4",
+                "kernel_flash_attn_ext_blk",
+                "kernel_flash_attn_ext_f16_dk512_dv512",
+                "kernel_dsv4_rope_tail_f32",
             ],
         )
 

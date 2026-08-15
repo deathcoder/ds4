@@ -70,7 +70,7 @@ elif [ "$#" -eq 1 ]; then
             --json "$target_dir/prefill-q8-boundary-probe.json"
         "$target_dir/release/rust-star" prefill-qkv-boundary-probe "$1" \
             --json "$target_dir/prefill-qkv-boundary-probe.json"
-        echo "==> continuous M1 layer-0 prefill tile through guarded KV storage"
+        echo "==> continuous M1 layer-0 prefill tile through zero-prefix attention"
         "$target_dir/release/rust-star" prefill-layer0-boundary-probe "$1" \
             --json "$target_dir/prefill-layer0-boundary-probe.json"
         echo "==> no-copy layer-0 attention ingress"

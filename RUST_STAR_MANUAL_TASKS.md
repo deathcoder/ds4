@@ -171,11 +171,12 @@ Return evidence:
 
 Status: `BLOCKED` on complete native batched prefill, ratio-4 sparse indexed
 attention, and the engine-measurement producer. The first native M1 batch
-boundary is exact at layer 0's Q-A projection, but the 2K sequential initializer
-still owns a 128-row raw ring plus context-sized compressed state and exactly matches two
-fresh DwarfStar one-token decode replays. It deliberately records a full-logit
-mismatch against DwarfStar's batched-prefill oracle, so it is not eligible for
-the paired protocol even though both paths select the same token.
+boundary is exact through layer 0's zero-prefix FlashAttention and inverse
+RoPE for the final 32 queries, but the 2K sequential initializer
+still owns a 128-row raw ring plus context-sized compressed state and exactly
+matches two fresh DwarfStar one-token decode replays. It deliberately records
+a full-logit mismatch against DwarfStar's batched-prefill oracle, so it is not
+eligible for the paired protocol even though both paths select the same token.
 
 Prerequisites:
 

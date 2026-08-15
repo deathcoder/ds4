@@ -151,7 +151,7 @@ throughput, and the report keeps `full_prefill_claim` false.
 
 ## Continuous M1 layer-0 prefill boundary
 
-Schema: `rust-star-prefill-layer0-boundary-probe-v2`.
+Schema: `rust-star-prefill-layer0-boundary-probe-v3`.
 
 `prefill-layer0-boundary-probe` moves the native input seam back to the final
 32 token IDs of the canonical 2K prompt. One command buffer gathers their F16
@@ -162,16 +162,24 @@ applies the batch KV RoPE kernel at positions 2016--2047, snapshots `KVrope`,
 simulates E4M3FN storage in place, and reproduces DwarfStar's F32-to-F16-to-F32
 raw-cache rounding into physical ring rows 96--127.
 
+The same command buffer then assembles the full 2,048-row `KVcur` tensor from
+the captured rows 0--2015 and the live rows 2016--2047. It stages that tensor
+to F16, executes DwarfStar's rectangular non-vector FlashAttention block-map
+and 512-wide attention kernels for the final 32 queries, and applies inverse
+RoPE to the 64 output heads. This rectangular schedule is C0-equivalent to the
+final tile of DwarfStar's square 2K zero-prefix batch.
+
 The compact HC fixture retains the final 32 token IDs, collapsed HC rows, and
 attention-normalized rows. Two fresh full 2K DwarfStar processes produced
 byte-identical HC and norm captures; the norm hash also equals the independently
 captured Q/KV input. A third fixture binds two byte-identical full 2K `KVrope`
-and `KVcur` captures and derives the exact rounded cache payload. Together the
-three fixtures require 2,506,752 retained produced FP32 values to match by bit
-pattern. All ten model spans remain mmap-backed no-copy views, and sentinel
-guards prove that cache rows 0--95 are unchanged. This is a continuous 14-
-dispatch final-tile arithmetic boundary, not a complete layer or full-prefill
-throughput result.
+and `KVcur` captures and derives the exact rounded cache payload. The attention
+fixture binds two more byte-identical full 2K captures and retains the KV prefix
+plus final `kqv_out` and `kqv_back` tiles. Together the four fixtures require
+4,603,904 retained produced FP32 values to match by bit pattern. All eleven
+model spans remain mmap-backed no-copy views, and sentinel guards prove that
+cache rows 0--95 are unchanged. This is a continuous 18-dispatch final-tile
+arithmetic boundary, not a complete layer or full-prefill throughput result.
 
 ## Layer-0 attention ingress
 

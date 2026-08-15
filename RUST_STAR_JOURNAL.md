@@ -305,6 +305,71 @@ history; add a correction and update the current-state summary.
 
 ## Entries
 
+### 2026-08-15 — Continuous native M1 final tile crosses zero-prefix attention
+
+Objective:
+
+- Extend the exact final 32-row token-to-KV boundary through DwarfStar's active
+  zero-prefix batched FlashAttention read and inverse-RoPE output.
+
+Oracle evidence and schedule decision:
+
+- Traced layer 0's `ratio == 0` batch path. DwarfStar attends over the complete
+  contiguous 2,048-row `KVcur` tensor, uses a 128-token causal window, executes
+  the non-vector block-map plus `kernel_flash_attn_ext_f16_dk512_dv512`, and
+  then applies inverse tail RoPE to 64×512 output heads.
+- Captured full `kqv_out` and `kqv_back` tensors from two fresh pinned
+  DwarfStar processes over the canonical 2K prompt. Both pairs were byte
+  identical. Their full SHA-256 values are
+  `0678586b3fa811f40d053b4cef4f40c9172bb497d0ac1862dc43de7f5b04a1d9`
+  and `79ec161cba188d6e9d1e0b3a84e3071e6c0cba53b5b7a56406d9ac6cf8ddabcc`.
+- Kept continuity without replaying the first 2,016 rows: the runtime loads the
+  repeated captured KV prefix as input, overwrites rows 2016--2047 with its
+  live post-FP8 tile, and evaluates the rectangular 32-query by 2,048-key
+  problem. The production range helper is intended for this geometry; the
+  target-Mac C0 gate proves it matches the final rows of the square oracle.
+
+Implementation:
+
+- Added `prefill-attention-read-2048-v1` and its reproducible strict importer.
+  The importer requires both complete capture pairs and their pinned hashes
+  before retaining the 2,016×512 KV prefix and final 32×64×512 `kqv_out` and
+  `kqv_back` tiles.
+- Evolved `prefill-layer0-boundary-probe` to schema v3. One command buffer now
+  executes 18 compute dispatches continuously from token IDs through the full
+  final-tile attention result. It adds the F32-to-F16 full-KV stage, 8×64
+  block-map specialization, eight-simdgroup non-vector attention kernel, and
+  inverse RoPE. The sink weights are an eleventh mmap-backed no-copy model
+  view.
+- The four joined fixtures require 4,603,904 retained produced FP32 values to
+  match by bit pattern. The probe also checks the complete reconstructed KV
+  tensor, so captured prefix rows and the live replacement seam cannot drift
+  silently.
+
+Target-Mac evidence:
+
+- The optimized live run was C0 exact across every prior and new boundary,
+  preserved 11/11 mmap pointer identities, and reported 59.825 ms wall and
+  5.249 ms GPU. Setup, synchronization, exhaustive readback, and comparison
+  remain in the wall interval; this is correctness evidence, not throughput.
+- The focused host suite passed 74 Rust tests, optimized Objective-C/Metal
+  compilation, and strict validation of the new differential fixture.
+- The complete target-Mac gate passed formatting, all 74 Rust tests, 50 Python
+  tests, all 234 differential manifests, optimized Objective-C/Metal
+  compilation, strict target-model inspection, every established
+  Metal/decoder control, and both steady-state benchmarks. Its fresh v3 run
+  reported 59.465 ms wall and 4.867 ms GPU with 11/11 no-copy views. The long
+  2K sequential diagnostic remained exact against its decode-replay oracle at
+  19.484 tokens/s over 105110.880 ms and preserved the expected native-batch
+  mismatch and paired-protocol ineligibility.
+
+Decision and next:
+
+- Accept the rectangular zero-prefix attention read plus inverse RoPE as the
+  exact continuation of the native M1 final tile. Next extend this same batch
+  command buffer through the grouped Q8 attention output and HC post-update;
+  complete 2K native state construction remains required before paired claims.
+
 ### 2026-08-15 — Continuous native M1 final tile reaches guarded KV storage
 
 Objective:

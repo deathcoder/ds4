@@ -10,7 +10,7 @@ pub const EMBEDDING_PROBE_SCHEMA: &str = "rust-star-f16-embedding-probe-v1";
 pub const PROJECTION_PROBE_SCHEMA: &str = "rust-star-q8-0-projection-probe-v1";
 pub const PREFILL_Q8_BOUNDARY_PROBE_SCHEMA: &str = "rust-star-prefill-q8-boundary-probe-v1";
 pub const PREFILL_QKV_BOUNDARY_PROBE_SCHEMA: &str = "rust-star-prefill-qkv-boundary-probe-v1";
-pub const PREFILL_LAYER0_BOUNDARY_PROBE_SCHEMA: &str = "rust-star-prefill-layer0-boundary-probe-v2";
+pub const PREFILL_LAYER0_BOUNDARY_PROBE_SCHEMA: &str = "rust-star-prefill-layer0-boundary-probe-v3";
 pub const INGRESS_PROBE_SCHEMA: &str = "rust-star-layer0-attention-ingress-probe-v1";
 pub const ATTENTION_SETUP_PROBE_SCHEMA: &str = "rust-star-layer0-attention-setup-probe-v1";
 pub const ROPE_KV_STORE_PROBE_SCHEMA: &str = "rust-star-layer0-rope-kv-store-probe-v1";
@@ -46,6 +46,8 @@ pub const PROJECTION_FIXTURE_ID: &str = "dwarfstar-oracle-v1-layer0-pos1-attn-q-
 pub const PREFILL_Q8_BOUNDARY_FIXTURE_ID: &str = "dwarfstar-oracle-v1-prefill-q8-boundary-2048";
 pub const PREFILL_QKV_BOUNDARY_FIXTURE_ID: &str = "dwarfstar-oracle-v1-prefill-qkv-boundary-2048";
 pub const PREFILL_KV_STATE_FIXTURE_ID: &str = "dwarfstar-oracle-v1-prefill-kv-state-2048";
+pub const PREFILL_ATTENTION_READ_FIXTURE_ID: &str =
+    "dwarfstar-oracle-v1-prefill-attention-read-2048";
 pub const PREFILL_HC_INGRESS_FIXTURE_ID: &str = "dwarfstar-oracle-v1-prefill-hc-ingress-2048";
 pub const INGRESS_FIXTURE_ID: &str = "dwarfstar-oracle-v1-layer0-pos1-attention-ingress";
 pub const ATTENTION_SETUP_FIXTURE_ID: &str = "dwarfstar-oracle-v1-layer0-pos1-qkv-setup";
@@ -175,6 +177,12 @@ const PREFILL_KV_CURRENT_BYTES: &[u8] =
     include_bytes!("../../fixtures/prefill-kv-state-2048-v1/kv-current-final-tile.f32le.bin");
 const PREFILL_RAW_CACHE_BYTES: &[u8] =
     include_bytes!("../../fixtures/prefill-kv-state-2048-v1/raw-cache-final-tile.f32le.bin");
+const PREFILL_ATTENTION_KV_PREFIX_BYTES: &[u8] =
+    include_bytes!("../../fixtures/prefill-attention-read-2048-v1/kv-current-prefix.f32le.bin");
+const PREFILL_ATTENTION_OUTPUT_BYTES: &[u8] =
+    include_bytes!("../../fixtures/prefill-attention-read-2048-v1/kqv-output-final-tile.f32le.bin");
+const PREFILL_ATTENTION_BACK_BYTES: &[u8] =
+    include_bytes!("../../fixtures/prefill-attention-read-2048-v1/kqv-back-final-tile.f32le.bin");
 const PREFILL_HC_TOKEN_IDS_BYTES: &[u8] =
     include_bytes!("../../fixtures/prefill-hc-ingress-2048-v1/token-ids-final-tile.i32le.bin");
 const PREFILL_HC_COLLAPSED_BYTES: &[u8] =
@@ -667,6 +675,7 @@ pub struct PrefillLayer0BoundaryProbeReport {
     pub ingress_fixture_id: &'static str,
     pub qkv_fixture_id: &'static str,
     pub kv_state_fixture_id: &'static str,
+    pub attention_fixture_id: &'static str,
     pub rows: u64,
     pub position_start: u32,
     pub dispatches: u32,
@@ -675,9 +684,11 @@ pub struct PrefillLayer0BoundaryProbeReport {
     pub raw_cache_rows: u32,
     pub raw_cache_target_row: u32,
     pub raw_cache_guard_rows: u32,
+    pub attention_kv_rows: u32,
+    pub attention_kv_prefix_rows: u32,
     pub wall_ms: f64,
     pub gpu_ms: f64,
-    pub checksums: [u64; 12],
+    pub checksums: [u64; 15],
 }
 
 #[derive(Clone, Debug)]
@@ -2218,9 +2229,11 @@ pub fn write_prefill_layer0_boundary_probe_json<W: Write>(
     crate::artifact::write_json_string(output, report.qkv_fixture_id)?;
     output.write_all(b", ")?;
     crate::artifact::write_json_string(output, report.kv_state_fixture_id)?;
+    output.write_all(b", ")?;
+    crate::artifact::write_json_string(output, report.attention_fixture_id)?;
     write!(
         output,
-        "],\n  \"shape\": {{\n    \"rows\": {},\n    \"position_start\": {},\n    \"position_end\": {}\n  }},\n  \"input_boundary\": \"token_ids\",\n  \"schedule\": {{\n    \"dispatches\": {},\n    \"embedding_kernel\": \"kernel_get_rows_f16\",\n    \"hc_projection_kernel\": \"kernel_mul_mm_f16_f32\",\n    \"hc_norm_kernel\": \"kernel_dsv4_hc_split_weighted_sum_norm4\",\n    \"q8_kernel\": \"kernel_mul_mm_q8_0_f32\",\n    \"qkv_norm_kernel\": \"kernel_dsv4_qkv_rms_norm_f32_4\",\n    \"q_head_kernel\": \"kernel_dsv4_head_rms_norm_rope_tail_f32\",\n    \"kv_rope_kernel\": \"kernel_dsv4_rope_tail_f32\",\n    \"kv_fp8_kernel\": \"kernel_dsv4_fp8_kv_quantize_f32\",\n    \"cache_conversion_kernels\": [\"kernel_cpy_contig_f32_f16_4\", \"kernel_cpy_contig_f16_f32_4\"]\n  }},\n  \"raw_cache\": {{\n    \"capacity_rows\": {},\n    \"target_row_start\": {},\n    \"target_row_end\": {},\n    \"guard_rows\": [0, {}],\n    \"guard_rows_intact\": true\n  }},\n  \"mapping\": {{\n    \"wrapped_model_ranges\": {},\n    \"pointer_matches\": {}\n  }},\n  \"timing\": {{\n    \"wall_ms\": {:.6},\n    \"gpu_ms\": {:.6}\n  }},\n  \"checksums\": {{\n    \"token_ids\": {},\n    \"hc_collapsed\": {},\n    \"attn_norm\": {},\n    \"q_lora\": {},\n    \"q_lora_norm\": {},\n    \"kv_raw\": {},\n    \"kv_norm\": {},\n    \"q_raw\": {},\n    \"q_current\": {},\n    \"kv_rope\": {},\n    \"kv_current\": {},\n    \"raw_cache\": {}\n  }},\n  \"c0_bitwise_match\": true,\n  \"continuous_command_buffer\": true,\n  \"native_batch_schedule\": true,\n  \"guarded_cache_mutation\": true,\n  \"full_prefill_claim\": false\n}}\n",
+        "],\n  \"shape\": {{\n    \"rows\": {},\n    \"position_start\": {},\n    \"position_end\": {}\n  }},\n  \"input_boundary\": \"token_ids\",\n  \"schedule\": {{\n    \"dispatches\": {},\n    \"embedding_kernel\": \"kernel_get_rows_f16\",\n    \"hc_projection_kernel\": \"kernel_mul_mm_f16_f32\",\n    \"hc_norm_kernel\": \"kernel_dsv4_hc_split_weighted_sum_norm4\",\n    \"q8_kernel\": \"kernel_mul_mm_q8_0_f32\",\n    \"qkv_norm_kernel\": \"kernel_dsv4_qkv_rms_norm_f32_4\",\n    \"q_head_kernel\": \"kernel_dsv4_head_rms_norm_rope_tail_f32\",\n    \"kv_rope_kernel\": \"kernel_dsv4_rope_tail_f32\",\n    \"kv_fp8_kernel\": \"kernel_dsv4_fp8_kv_quantize_f32\",\n    \"cache_conversion_kernels\": [\"kernel_cpy_contig_f32_f16_4\", \"kernel_cpy_contig_f16_f32_4\"],\n    \"attention_block_kernel\": \"kernel_flash_attn_ext_blk\",\n    \"attention_kernel\": \"kernel_flash_attn_ext_f16_dk512_dv512\",\n    \"attention_inverse_rope_kernel\": \"kernel_dsv4_rope_tail_f32\"\n  }},\n  \"raw_cache\": {{\n    \"capacity_rows\": {},\n    \"target_row_start\": {},\n    \"target_row_end\": {},\n    \"guard_rows\": [0, {}],\n    \"guard_rows_intact\": true\n  }},\n  \"attention\": {{\n    \"query_rows\": {},\n    \"kv_rows\": {},\n    \"captured_kv_prefix_rows\": {},\n    \"live_kv_rows\": {},\n    \"window\": 128\n  }},\n  \"mapping\": {{\n    \"wrapped_model_ranges\": {},\n    \"pointer_matches\": {}\n  }},\n  \"timing\": {{\n    \"wall_ms\": {:.6},\n    \"gpu_ms\": {:.6}\n  }},\n  \"checksums\": {{\n    \"token_ids\": {},\n    \"hc_collapsed\": {},\n    \"attn_norm\": {},\n    \"q_lora\": {},\n    \"q_lora_norm\": {},\n    \"kv_raw\": {},\n    \"kv_norm\": {},\n    \"q_raw\": {},\n    \"q_current\": {},\n    \"kv_rope\": {},\n    \"kv_current\": {},\n    \"raw_cache\": {},\n    \"full_kv_current\": {},\n    \"kqv_output\": {},\n    \"kqv_back\": {}\n  }},\n  \"c0_bitwise_match\": true,\n  \"continuous_command_buffer\": true,\n  \"native_batch_schedule\": true,\n  \"guarded_cache_mutation\": true,\n  \"rectangular_attention_read\": true,\n  \"full_prefill_claim\": false\n}}\n",
         report.rows,
         report.position_start,
         report.position_start + report.rows as u32 - 1,
@@ -2229,6 +2242,10 @@ pub fn write_prefill_layer0_boundary_probe_json<W: Write>(
         report.raw_cache_target_row,
         report.raw_cache_target_row + report.rows as u32 - 1,
         report.raw_cache_guard_rows - 1,
+        report.rows,
+        report.attention_kv_rows,
+        report.attention_kv_prefix_rows,
+        report.rows,
         report.wrapped_model_ranges,
         report.pointer_matches,
         report.wall_ms,
@@ -2245,6 +2262,9 @@ pub fn write_prefill_layer0_boundary_probe_json<W: Write>(
         report.checksums[9],
         report.checksums[10],
         report.checksums[11],
+        report.checksums[12],
+        report.checksums[13],
+        report.checksums[14],
     )?;
     Ok(())
 }
@@ -2698,6 +2718,32 @@ fn prefill_kv_state_fixture() -> Result<[Vec<f32>; 3]> {
     if tensors.iter().any(|tensor| tensor.len() != 32 * 512) {
         return Err(Error::invalid(
             "prefill KV-state fixture dimensions are invalid",
+        ));
+    }
+    Ok(tensors)
+}
+
+fn prefill_attention_read_fixture() -> Result<[Vec<f32>; 3]> {
+    let tensors = [
+        decode_f32_fixture(
+            PREFILL_ATTENTION_KV_PREFIX_BYTES,
+            "prefill attention current-KV prefix",
+        )?,
+        decode_f32_fixture(
+            PREFILL_ATTENTION_OUTPUT_BYTES,
+            "prefill attention output final tile",
+        )?,
+        decode_f32_fixture(
+            PREFILL_ATTENTION_BACK_BYTES,
+            "prefill inverse-RoPE attention final tile",
+        )?,
+    ];
+    if tensors[0].len() != 2016 * 512
+        || tensors[1].len() != 32 * 64 * 512
+        || tensors[2].len() != 32 * 64 * 512
+    {
+        return Err(Error::invalid(
+            "prefill attention-read fixture dimensions are invalid",
         ));
     }
     Ok(tensors)
@@ -3868,6 +3914,8 @@ mod imp {
         attn_norm_offset: u64,
         attn_norm_bytes: u64,
         qkv: RawPrefillQkvWeights,
+        attn_sinks_offset: u64,
+        attn_sinks_bytes: u64,
     }
 
     #[repr(C)]
@@ -4098,6 +4146,10 @@ mod imp {
             kv_rope: *mut f32,
             kv_cur: *mut f32,
             raw_cache: *mut f32,
+            kv_prefix: *const f32,
+            full_kv: *mut f32,
+            attention_output: *mut f32,
+            attention_back: *mut f32,
             result: *mut RawPrefillLayer0ProbeResult,
             error: *mut c_char,
             error_bytes: usize,
@@ -5284,11 +5336,14 @@ mod imp {
         let kv = exact_tensor(model, "blk.0.attn_kv.weight", 8, &[4096, 512])?;
         let kv_norm_weight = exact_tensor(model, "blk.0.attn_kv_a_norm.weight", 0, &[512])?;
         let q_b = exact_tensor(model, "blk.0.attn_q_b.weight", 8, &[1024, 32768])?;
+        let attn_sinks = exact_tensor(model, "blk.0.attn_sinks.weight", 0, &[64])?;
         let (tokens, expected_collapsed, expected_attn_norm) = prefill_hc_ingress_fixture()?;
         let [qkv_attn_norm, expected_q, expected_q_norm, expected_kv_raw, expected_kv_norm, expected_q_raw, expected_q_cur] =
             prefill_qkv_boundary_fixture()?;
         let [expected_kv_rope, expected_kv_cur, expected_raw_cache_tile] =
             prefill_kv_state_fixture()?;
+        let [expected_kv_prefix, expected_attention_output, expected_attention_back] =
+            prefill_attention_read_fixture()?;
         if expected_attn_norm
             .iter()
             .zip(&qkv_attn_norm)
@@ -5322,6 +5377,8 @@ mod imp {
                 q_b_offset: q_b.absolute_offset,
                 q_b_bytes: q_b.bytes,
             },
+            attn_sinks_offset: attn_sinks.absolute_offset,
+            attn_sinks_bytes: attn_sinks.bytes,
         };
         let mut actual_collapsed = vec![0.0_f32; expected_collapsed.len()];
         let mut actual_attn_norm = vec![0.0_f32; expected_attn_norm.len()];
@@ -5334,6 +5391,11 @@ mod imp {
         let mut actual_kv_rope = vec![0.0_f32; expected_kv_rope.len()];
         let mut actual_kv_cur = vec![0.0_f32; expected_kv_cur.len()];
         let mut actual_raw_cache = vec![0.0_f32; 128 * 512];
+        let mut actual_full_kv = vec![0.0_f32; 2048 * 512];
+        let mut actual_attention_output = vec![0.0_f32; expected_attention_output.len()];
+        let mut actual_attention_back = vec![0.0_f32; expected_attention_back.len()];
+        let mut expected_full_kv = expected_kv_prefix.clone();
+        expected_full_kv.extend_from_slice(&expected_kv_cur);
 
         let mut error = [0 as c_char; ERROR_BYTES];
         let mut pointer = ptr::null_mut();
@@ -5369,6 +5431,10 @@ mod imp {
                 actual_kv_rope.as_mut_ptr(),
                 actual_kv_cur.as_mut_ptr(),
                 actual_raw_cache.as_mut_ptr(),
+                expected_kv_prefix.as_ptr(),
+                actual_full_kv.as_mut_ptr(),
+                actual_attention_output.as_mut_ptr(),
+                actual_attention_back.as_mut_ptr(),
                 &mut raw,
                 error.as_mut_ptr(),
                 error.len(),
@@ -5386,9 +5452,9 @@ mod imp {
             || raw.q_lora_elements_per_row != 1024
             || raw.kv_elements_per_row != 512
             || raw.q_elements_per_row != 32768
-            || raw.dispatches != 14
-            || raw.wrapped_model_ranges != 10
-            || raw.pointer_matches != 10
+            || raw.dispatches != 18
+            || raw.wrapped_model_ranges != 11
+            || raw.pointer_matches != 11
             || raw.raw_cache_rows != 128
             || raw.raw_cache_target_row != 96
             || raw.raw_cache_guard_rows != 96
@@ -5441,6 +5507,21 @@ mod imp {
                 &actual_raw_cache[96 * 512..128 * 512],
                 expected_raw_cache_tile.as_slice(),
             ),
+            (
+                "full_KVcur",
+                actual_full_kv.as_slice(),
+                expected_full_kv.as_slice(),
+            ),
+            (
+                "kqv_out",
+                actual_attention_output.as_slice(),
+                expected_attention_output.as_slice(),
+            ),
+            (
+                "kqv_back",
+                actual_attention_back.as_slice(),
+                expected_attention_back.as_slice(),
+            ),
         ] {
             for (index, (actual, expected)) in actual.iter().zip(expected).enumerate() {
                 if actual.to_bits() != expected.to_bits() {
@@ -5475,6 +5556,7 @@ mod imp {
             ingress_fixture_id: PREFILL_HC_INGRESS_FIXTURE_ID,
             qkv_fixture_id: PREFILL_QKV_BOUNDARY_FIXTURE_ID,
             kv_state_fixture_id: PREFILL_KV_STATE_FIXTURE_ID,
+            attention_fixture_id: PREFILL_ATTENTION_READ_FIXTURE_ID,
             rows: raw.rows,
             position_start: raw.position_start,
             dispatches: raw.dispatches,
@@ -5483,6 +5565,8 @@ mod imp {
             raw_cache_rows: raw.raw_cache_rows,
             raw_cache_target_row: raw.raw_cache_target_row,
             raw_cache_guard_rows: raw.raw_cache_guard_rows,
+            attention_kv_rows: 2048,
+            attention_kv_prefix_rows: 2016,
             wall_ms: raw.wall_ms,
             gpu_ms: raw.gpu_ms,
             checksums: [
@@ -5498,6 +5582,9 @@ mod imp {
                 checksum_f32(&actual_kv_rope),
                 checksum_f32(&actual_kv_cur),
                 checksum_f32(&actual_raw_cache),
+                checksum_f32(&actual_full_kv),
+                checksum_f32(&actual_attention_output),
+                checksum_f32(&actual_attention_back),
             ],
         })
     }
@@ -8830,17 +8917,20 @@ mod tests {
             ingress_fixture_id: PREFILL_HC_INGRESS_FIXTURE_ID,
             qkv_fixture_id: PREFILL_QKV_BOUNDARY_FIXTURE_ID,
             kv_state_fixture_id: PREFILL_KV_STATE_FIXTURE_ID,
+            attention_fixture_id: PREFILL_ATTENTION_READ_FIXTURE_ID,
             rows: 32,
             position_start: 2016,
-            dispatches: 14,
-            wrapped_model_ranges: 10,
-            pointer_matches: 10,
+            dispatches: 18,
+            wrapped_model_ranges: 11,
+            pointer_matches: 11,
             raw_cache_rows: 128,
             raw_cache_target_row: 96,
             raw_cache_guard_rows: 96,
+            attention_kv_rows: 2048,
+            attention_kv_prefix_rows: 2016,
             wall_ms: 3.0,
             gpu_ms: 2.0,
-            checksums: [11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22],
+            checksums: [11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25],
         }
     }
 
@@ -10001,8 +10091,10 @@ mod tests {
             "\"schema\": \"{PREFILL_LAYER0_BOUNDARY_PROBE_SCHEMA}\""
         )));
         assert!(text.contains("\"input_boundary\": \"token_ids\""));
-        assert!(text.contains("\"dispatches\": 14"));
+        assert!(text.contains("\"dispatches\": 18"));
         assert!(text.contains("\"target_row_start\": 96"));
+        assert!(text.contains("\"kv_rows\": 2048"));
+        assert!(text.contains("\"rectangular_attention_read\": true"));
         assert!(text.contains("\"guarded_cache_mutation\": true"));
         assert!(text.contains("\"continuous_command_buffer\": true"));
         assert!(text.contains("\"full_prefill_claim\": false"));
@@ -10152,6 +10244,20 @@ mod tests {
             .iter()
             .chain(&kv_current)
             .chain(&raw_cache)
+            .all(|value| value.is_finite()));
+    }
+
+    #[test]
+    fn prefill_attention_read_fixture_has_target_shapes() {
+        let [kv_prefix, attention_output, attention_back] =
+            prefill_attention_read_fixture().unwrap();
+        assert_eq!(kv_prefix.len(), 2016 * 512);
+        assert_eq!(attention_output.len(), 32 * 64 * 512);
+        assert_eq!(attention_back.len(), 32 * 64 * 512);
+        assert!(kv_prefix
+            .iter()
+            .chain(&attention_output)
+            .chain(&attention_back)
             .all(|value| value.is_finite()));
     }
 

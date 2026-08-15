@@ -1695,8 +1695,11 @@ fn run_prefill_layer0_boundary_probe_command(arguments: Vec<OsString>) -> Result
     validate_resident_q2(model.gguf())?;
     let report = run_prefill_layer0_boundary_probe(&model)?;
     println!(
-        "fixtures: {}, {}",
-        report.ingress_fixture_id, report.qkv_fixture_id
+        "fixtures: {}, {}, {}, {}",
+        report.ingress_fixture_id,
+        report.qkv_fixture_id,
+        report.kv_state_fixture_id,
+        report.attention_fixture_id,
     );
     println!(
         "native batch: token IDs at positions {}..{} through {} dispatches, C0 exact",
@@ -1708,7 +1711,9 @@ fn run_prefill_layer0_boundary_probe_command(arguments: Vec<OsString>) -> Result
         "mapping: {}/{} no-copy model ranges; wall={:.3} ms gpu={:.3} ms",
         report.pointer_matches, report.wrapped_model_ranges, report.wall_ms, report.gpu_ms,
     );
-    println!("scope: continuous layer-0 token-to-Q-head tile; no full-prefill claim");
+    println!(
+        "scope: continuous layer-0 token-to-zero-prefix-attention tile; no full-prefill claim"
+    );
     if let Some(path) = json_path {
         write_prefill_layer0_boundary_probe_file(&path, &report)?;
         println!("json: {}", path.display());
@@ -2878,7 +2883,7 @@ fn prefill_qkv_boundary_probe_usage() -> &'static str {
 }
 
 fn prefill_layer0_boundary_probe_usage() -> &'static str {
-    "usage: rust-star prefill-layer0-boundary-probe MODEL.gguf [--json PATH]\n\nRuns the final 32-row native M1 prefill tile continuously from token IDs through embedding, four-stream HC ingress, Q/KV setup, and Q head RMSNorm/RoPE. Every retained boundary must match repeated DwarfStar captures bit-for-bit; this is not a full-prefill claim."
+    "usage: rust-star prefill-layer0-boundary-probe MODEL.gguf [--json PATH]\n\nRuns the final 32-row native M1 prefill tile continuously from token IDs through embedding, four-stream HC ingress, Q/KV setup, guarded raw-cache storage, and zero-prefix batched FlashAttention with inverse RoPE. Every retained boundary must match repeated DwarfStar captures bit-for-bit; this is not a full-prefill claim."
 }
 
 fn ingress_probe_usage() -> &'static str {

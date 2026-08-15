@@ -70,10 +70,12 @@ earliest difference to layer 0's Q8 Q-A projection, and the Rust Metal probe
 matches both the 128-row M1 batch kernel and its one-row decode control
 bit-for-bit. A second native boundary now runs the final 32-row tile continuously
 from token IDs through layer 0's HC ingress, complete Q/KV projection setup,
-both RoPE paths, KV E4M3FN simulation, and the F16-rounded final raw-cache tile.
-It matches all 2,506,752 retained produced FP32 values from repeated DwarfStar
-captures and proves cache rows 0--95 remain untouched. This remains an isolated
-final-tile gate rather than a full prefill path.
+both KV finalization paths, guarded raw-cache storage, and zero-prefix batched
+FlashAttention plus inverse RoPE. It reconstructs the 2,048-row contiguous KV
+input from a captured 2,016-row prefix and the live final tile, matches all
+4,603,904 retained produced FP32 values from repeated DwarfStar captures, and
+proves cache rows 0--95 remain untouched. This remains an isolated final-tile
+gate rather than a full prefill path.
 
 Project controls and benchmark contracts:
 

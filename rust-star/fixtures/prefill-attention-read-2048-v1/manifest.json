@@ -1,0 +1,204 @@
+{
+  "schema": "rust-star-differential-fixture-v1",
+  "fixture_id": "dwarfstar-oracle-v1-prefill-attention-read-2048",
+  "captured_at_utc": "2026-08-15T18:03:09Z",
+  "oracle": {
+    "id": "oracle-v1",
+    "repository": "https://github.com/antirez/ds4.git",
+    "commit": "b0309611041655f4e45671cfd9c9886aff161406",
+    "tree": "20c11af22f90a0bdf25da860da5ef06de4064060",
+    "capture_executable_sha256": "b0b7c31d9832cc3f5cccf810cd2af6f4bc4f6e71de945493674315314f666fc8"
+  },
+  "model": {
+    "family": "DeepSeek-V4-Flash-0731",
+    "sha256": "ca22ae2f838e14077c22bc1c1417b71b45b5e5a3687bd96c2ac6e17fdb6261c0"
+  },
+  "capture": {
+    "backend": "metal",
+    "machine": "Apple M1 Ultra, 48 GPU cores, 128 GB unified memory",
+    "prompt": "first 2048 raw tokens of speed-bench/promessi_sposi.txt",
+    "prompt_sha256": "f53e0d80cb2d4492d24ebd63c7000c397b16ae70f9bf09b3763e5d8323ec209f",
+    "prefill_tokens": 2048,
+    "fresh_process_captures": 2,
+    "fresh_process_bitwise_match": true,
+    "command": "ds4-bench --metal --ctx-start 2048 --ctx-max 2048 --gen-tokens 0 --warm-weights",
+    "environment": {
+      "DS4_METAL_GRAPH_DUMP_LAYER": "0",
+      "DS4_METAL_GRAPH_DUMP_POS": "0",
+      "DS4_METAL_GRAPH_DUMP_NAME": "kqv_out,kqv_back"
+    },
+    "device_path": "legacy Metal rectangular non-vector raw-head FlashAttention plus inverse RoPE; Metal 4 TensorOps disabled on M1 Ultra",
+    "full_capture_sha256": {
+      "KVcur": "bef8d14d805a482960cbf7315ad0efccf211516a27bd767d0884b81f3ad33893",
+      "kqv_out": "0678586b3fa811f40d053b4cef4f40c9172bb497d0ac1862dc43de7f5b04a1d9",
+      "kqv_back": "79ec161cba188d6e9d1e0b3a84e3071e6c0cba53b5b7a56406d9ac6cf8ddabcc"
+    },
+    "kv_prefix_source": "the repeated full KVcur capture from prefill-kv-state-2048-v1"
+  },
+  "scope": {
+    "kind": "layer-segment",
+    "phase": "prefill",
+    "layer": 0,
+    "position": 2047,
+    "query_position_range": [
+      2016,
+      2047
+    ],
+    "kv_position_range": [
+      0,
+      2047
+    ],
+    "retained_kv_prefix_range": [
+      0,
+      2015
+    ],
+    "live_kv_tile_range": [
+      2016,
+      2047
+    ],
+    "attention_window": 128
+  },
+  "operations": [
+    {
+      "name": "assemble-contiguous-kv",
+      "kernel": "MTLBlitCommandEncoder.copyFromBuffer",
+      "dispatch": {
+        "captured_prefix_rows": 2016,
+        "live_tile_rows": 32,
+        "head_dim": 512
+      }
+    },
+    {
+      "name": "raw-kv-f32-to-f16",
+      "kernel": "kernel_cpy_contig_f32_f16_4",
+      "dispatch": {
+        "elements": 1048576,
+        "threads_per_threadgroup": [
+          256,
+          1,
+          1
+        ],
+        "threadgroups": [
+          1024,
+          1,
+          1
+        ]
+      }
+    },
+    {
+      "name": "raw-flash-attention-block-map",
+      "kernel": "kernel_flash_attn_ext_blk",
+      "dispatch": {
+        "query_rows": 32,
+        "kv_rows": 2048,
+        "queries_per_threadgroup": 8,
+        "kv_columns_per_simdgroup": 64,
+        "threads_per_threadgroup": [
+          32,
+          1,
+          1
+        ],
+        "threadgroups": [
+          32,
+          4,
+          1
+        ]
+      }
+    },
+    {
+      "name": "raw-flash-attention-nonvector",
+      "kernel": "kernel_flash_attn_ext_f16_dk512_dv512",
+      "weights": [
+        "blk.0.attn_sinks.weight"
+      ],
+      "dispatch": {
+        "query_rows": 32,
+        "query_row_start": 2016,
+        "kv_rows": 2048,
+        "heads": 64,
+        "head_dim": 512,
+        "attention_window": 128,
+        "simdgroups": 8,
+        "threads_per_threadgroup": [
+          32,
+          8,
+          1
+        ],
+        "threadgroups": [
+          4,
+          64,
+          1
+        ],
+        "threadgroup_memory_bytes": 28672
+      }
+    },
+    {
+      "name": "attention-inverse-rope",
+      "kernel": "kernel_dsv4_rope_tail_f32",
+      "dispatch": {
+        "rows": 32,
+        "heads": 64,
+        "head_dim": 512,
+        "rotary_dim": 64,
+        "position_start": 2016,
+        "inverse": true,
+        "threads_per_threadgroup": [
+          256,
+          1,
+          1
+        ],
+        "threadgroups": [
+          64,
+          32,
+          1
+        ]
+      }
+    }
+  ],
+  "tensors": [
+    {
+      "name": "kv_current_prefix",
+      "hook": "KVcur",
+      "role": "input",
+      "dtype": "f32",
+      "shape": [
+        2016,
+        512
+      ],
+      "encoding": "little-endian-ieee754-binary32",
+      "path": "kv-current-prefix.f32le.bin",
+      "bytes": 4128768,
+      "sha256": "69d504a0639dee77ec1d0cbd62fc7db76666626c907cbe0da382e7cee86d2017"
+    },
+    {
+      "name": "kqv_output_final_tile",
+      "hook": "kqv_out",
+      "role": "intermediate",
+      "dtype": "f32",
+      "shape": [
+        32,
+        64,
+        512
+      ],
+      "encoding": "little-endian-ieee754-binary32",
+      "path": "kqv-output-final-tile.f32le.bin",
+      "bytes": 4194304,
+      "sha256": "2b964befa4ded30729c845736cf0fefd00bdc477f6b757ab83d8fbea46ad6b22"
+    },
+    {
+      "name": "kqv_back_final_tile",
+      "hook": "kqv_back",
+      "role": "output",
+      "dtype": "f32",
+      "shape": [
+        32,
+        64,
+        512
+      ],
+      "encoding": "little-endian-ieee754-binary32",
+      "path": "kqv-back-final-tile.f32le.bin",
+      "bytes": 4194304,
+      "sha256": "8fb2100ca60929afb51f59deef3dcb41b3d18a685e13d09a3a0b99fe28a5d57d"
+    }
+  ]
+}
