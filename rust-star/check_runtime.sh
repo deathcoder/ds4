@@ -101,6 +101,9 @@ elif [ "$#" -eq 1 ]; then
         echo "==> position-advancing layers 0-5 with generalized compressor ownership"
         "$target_dir/release/rust-star" layers012345-decode-probe "$1" \
             --json "$target_dir/layers012345-decode-probe.json"
+        echo "==> position-advancing layers 0-7 with generalized compressor ownership"
+        "$target_dir/release/rust-star" layers01234567-decode-probe "$1" \
+            --json "$target_dir/layers01234567-decode-probe.json"
         echo "==> bounded position-127 ratio-128 compressor replay"
         "$target_dir/release/rust-star" ratio128-compressor-replay-probe "$1" \
             --json "$target_dir/ratio128-compressor-replay-probe.json"

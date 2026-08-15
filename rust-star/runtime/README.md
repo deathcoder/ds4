@@ -361,6 +361,23 @@ state. The six command buffers share one queue and one tail wait per step, and
 all six raw caches and compressor states remain layer-scoped. This still covers
 only six of 43 layers and is a correctness diagnostic, not token throughput.
 
+To extend the same exact stateful boundary through the next compressor pair:
+
+```sh
+rust-star/.work/runtime-target/release/rust-star \
+  layers01234567-decode-probe \
+  /absolute/path/to/model.gguf \
+  --json rust-star/.work/runtime-target/layers01234567-decode-probe.json
+```
+
+`layers01234567-decode-probe` preserves the four-layer and six-layer controls,
+then continues the live HC handoff through layers 6 and 7. Layer 6 owns the
+third ratio-4 attention/indexer compressor pair and validates its position-3
+emission; layer 7 advances non-emitting ratio-128 attention state. Eight raw KV
+caches and all compressor allocations remain layer-scoped, with eight ordered
+command buffers and one tail wait per position. The command covers eight of 43
+layers and remains a correctness diagnostic rather than token throughput.
+
 To cross the first ratio-128 emission boundary without overstating decoder
 coverage:
 

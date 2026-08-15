@@ -1735,7 +1735,7 @@ int rust_star_metal_run_attention_ingress(
         return fail_with_message(error, error_bytes,
             @"full layer outputs require the complete attention path and output set");
     }
-    if (full_layer && (layer0->layer_index > 5 ||
+    if (full_layer && (layer0->layer_index > 7 ||
         (layer0->layer_index == 0 && continuing_layer) ||
         (layer0->layer_index > 0 && !continuing_layer))) {
         return fail_with_message(error, error_bytes,
@@ -1758,7 +1758,7 @@ int rust_star_metal_run_attention_ingress(
             @"synchronized layer execution must not declare a command-chain tail");
     }
     if ((chained_submission || chained_replay) &&
-        (layer0->chain_final_layer < 2 || layer0->chain_final_layer > 5 ||
+        (layer0->chain_final_layer < 2 || layer0->chain_final_layer > 7 ||
          layer0->layer_index > layer0->chain_final_layer)) {
         return fail_with_message(error, error_bytes,
             @"chained layer execution has an invalid command-chain tail");

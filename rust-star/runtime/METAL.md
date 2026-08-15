@@ -385,6 +385,25 @@ emitting. The six-layer path preserves the original four-layer probe as a
 separate regression command and remains a partial correctness slice rather than
 a decoder-throughput measurement.
 
+## Position-advancing layers 0–7
+
+Schema: `rust-star-layers01234567-position-advancing-probe-v1`.
+
+`layers01234567-decode-probe` extends the same prepared, position-advancing
+executor through a checked contiguous tail of eight layers. Layers 6 and 7 use
+the already parity-derived compressor schedule and biased top-k routing. Layer
+6 owns ratio-4 attention and indexer state and validates its first 512-value
+compressed KV row at position 3; layer 7 owns ratio-128 attention state and
+does not emit at this frontier.
+
+Two fresh DwarfStar processes produced 197 byte-identical payload pairs across
+the new layers' position-0 primes and complete position-1/2/3 boundaries. The
+eight-layer path retains eight raw caches, layer-scoped compressor allocations,
+direct GPU-resident HC handoffs, eight command buffers per step, and one tail
+wait. The four-layer and six-layer commands remain separate exact regression
+controls. This still omits 35 decoder layers, the output head, logits, and
+sampling, so its timing is not model token throughput.
+
 ## Position-127 ratio-128 compressor replay
 
 Schema: `rust-star-ratio128-compressor-replay-probe-v1`.

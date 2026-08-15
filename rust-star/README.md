@@ -41,10 +41,12 @@ captured and C0 exact. A bounded position-127 replay now feeds 128 independently
 captured `attn_norm` rows through the layer-3 and layer-5 ratio-128 compressors
 and matches both first emitted KV rows bit-for-bit. Those rows are explicit
 oracle inputs: the replay performs neither sampling nor a complete decoder pass.
-The
+An eight-layer extension continues through layers 6 and 7, validates a third
+ratio-4 emission from layer 6, and retains layer 7's ratio-128 state. All 197
+new oracle payload pairs were independently repeated and byte-identical. The
 persistent layer-0 gate reuses its pipelines, 25 no-copy model views, cache
 storage, and activation buffers for repeated steady-state timing; this is not
-yet a complete decoder because the deepest exact slice has six layers and no
+yet a complete decoder because the deepest exact slice has eight layers and no
 logits or sampling.
 
 Project controls and benchmark contracts:

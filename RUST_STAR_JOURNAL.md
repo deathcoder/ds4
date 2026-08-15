@@ -25,8 +25,9 @@ history; add a correction and update the current-state summary.
   layer-0 execution, the first four-layer scheduler boundary, the minimum
   three-step position-advancing four-layer slice, and the generalized six-layer
   compression-schedule boundary are complete. A bounded position-127 replay now
-  also crosses the first ratio-128 emissions for layers 3 and 5 exactly.
-  Layers 0 through 5 execute in order under one Rust-owned Metal context with
+  also crosses the first ratio-128 emissions for layers 3 and 5 exactly. The
+  ordered position-advancing executor now extends through layer 7.
+  Layers 0 through 7 execute in order under one Rust-owned Metal context with
   exact GPU-resident HC-state handoffs and one retained KV allocation per
   layer. Layers 2 and 4 cross ratio-4 compressed-attention emission boundaries;
   layers 3 and 5 retain their ratio-128 state without emitting at position 3.
@@ -116,7 +117,12 @@ history; add a correction and update the current-state summary.
   steps in one command buffer, performs the legacy single-row reduction only at
   position 127, and matches both 512-value DwarfStar emissions by FP32 bit
   pattern. Its inputs are externally captured `attn_norm` activations: it does
-  not sample tokens and is not a complete decoder execution.
+  not sample tokens and is not a complete decoder execution. The prepared
+  executor's checked contiguous-chain contract now accepts eight layers. Layers
+  6 and 7 retain independent raw caches and compressor states; layer 6 matches
+  its first ratio-4 attention emission and indexer update at position 3, while
+  layer 7 advances ratio-128 state without emitting. The four-layer and
+  six-layer commands remain independently executed regression controls.
 - Measurements: Metal batching was 42.861x faster than synchronized submission
   in the retained M-002 probe. DwarfStar medians are 164.86 prefill / 19.90
   generation tok/s at 2K and 161.05 prefill / 17.36 generation tok/s at 32K.
@@ -168,7 +174,12 @@ history; add a correction and update the current-state summary.
   position-127 ratio-128 replay reported 32.461/8.236 ms wall/GPU for layer 3
   and 6.881/6.273 ms for layer 5. Both first emissions were C0 exact; setup,
   synchronization, and exhaustive comparison remain in scope, so these values
-  are correctness diagnostics rather than inference-speed measurements.
+  are correctness diagnostics rather than inference-speed measurements. The
+  integrated eight-layer gate reported 223.448/190.007 ms at its cold
+  position-1 step, 16.989/16.442 ms at position 2, and 17.782/17.160 ms at
+  position 3 (wall/summed GPU). It matched every retained layer 0–7 boundary
+  and all three ratio-4 emissions. These values are also correctness
+  diagnostics, not token-throughput measurements.
 - Manual handoff: `RUST_STAR_MANUAL_TASKS.md` records Actions approval, target
   compilation/model inspection, quick/extended oracle capture, and the deferred
   secure-access decision with exact evidence requirements.
@@ -181,16 +192,71 @@ history; add a correction and update the current-state summary.
 
 ## Immediate Next Actions
 
-1. Generalize the ordered executor across the remaining decoder layers while
-   retaining the four-layer and six-layer position-advancing paths as controls.
-2. Define the next end-to-end boundary toward the complete decoder loop,
+1. Batch-capture the remaining layer-8–42 position-0/1/2/3 boundaries twice,
+   verifying corresponding payloads before importing any fixture.
+2. Replace pair-specific fixture tables with a checked layer registry, then
+   extend the ordered executor across the remaining decoder layers while
+   retaining the four-, six-, and eight-layer paths as controls.
+3. Define the next end-to-end boundary toward the complete decoder loop,
    output head, and logits without weakening the bounded ratio-128 replay's
    external-activation scope.
-3. Run the extended 2K--1M frontier capture when the Mac can be dedicated to a
+4. Run the extended 2K--1M frontier capture when the Mac can be dedicated to a
    long benchmark; preserve any 512K/1M capacity failure as evidence.
-4. Run or approve the fork's GitHub Actions workflow and retain its URL.
+5. Run or approve the fork's GitHub Actions workflow and retain its URL.
 
 ## Entries
+
+### 2026-08-15 — Ordered exact execution extended through layer 7
+
+Objective:
+
+- Continue the live position-advancing HC handoff through the next ratio-4 and
+  ratio-128 layer pair while retaining every established scheduler and
+  compressor control.
+
+Oracle evidence:
+
+- Captured layer-6/7 position-0 primes and complete position-1/2/3 boundaries
+  twice in fresh pinned DwarfStar processes. All 197 corresponding payload
+  pairs were byte-identical.
+- Layer 6's 512-value position-3 compressed KV row has SHA-256
+  `63ec3c2a44f2eb9a5d73ba67d05d8699bde608cd43b98382465754bf78352a33`.
+  Layer 7 correctly emitted no ratio-128 row at this frontier.
+- Added eight strict fixture envelopes. The repository now contains 39
+  validated differential-fixture manifests.
+
+Implementation:
+
+- Extended expected-tensor embedding, position-specific fixture selection,
+  compressor priming, cache-row ownership, and compressed-emission comparison
+  through layers 6 and 7.
+- Widened the prepared contiguous-submission contract and Objective-C layer and
+  command-tail guards from six to eight layers. The parity-derived compressor
+  and biased-top-k paths required no arithmetic changes.
+- Added `layers01234567-decode-probe`, stable JSON reporting, atomic output,
+  CLI/runtime-gate coverage, host tests, fixture validation, and a reproducible
+  importer backed by the existing repeated-capture construction.
+- Preserved the four-layer and six-layer commands unchanged as independently
+  executed controls.
+
+Validation:
+
+- The complete target-Mac gate passed: formatting, 55 Rust tests, optimized
+  build, 42 Python tests, all 39 fixture manifests, artifact interoperability,
+  strict real-model inspection, every no-copy and layer/scheduler probe, the
+  four-, six-, and eight-layer position-advancing controls, the bounded
+  position-127 replay, and both steady-state harnesses.
+- The eight-layer path was C0 exact at every retained layer 0–7 boundary. The
+  final gate reported 223.448/190.007 ms at position 1, 16.989/16.442 ms at
+  position 2, and 17.782/17.160 ms at position 3 (wall/summed GPU).
+- These intervals include correctness-oriented setup, synchronization, and
+  exhaustive comparison and are not decoder-throughput claims.
+
+Decision:
+
+- Accept the eight-layer frontier. Before repeating pair-specific plumbing 17
+  more times, batch-capture the remaining layers and introduce a checked layer
+  fixture registry that can scale the same exact executor to layer 42.
 
 ### 2026-08-15 — First ratio-128 emissions matched at position 127
 

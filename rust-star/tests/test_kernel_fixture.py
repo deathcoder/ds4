@@ -37,11 +37,11 @@ POSITION3_COMPLETE_FIXTURES = [
 ]
 COMPRESSOR_PRIME_FIXTURES = [
     RUST_STAR_DIR / "fixtures" / f"layer{layer}-pos0-compressor-prime-v1"
-    for layer in (2, 3, 4, 5)
+    for layer in range(2, 8)
 ]
-LAYER45_COMPLETE_FIXTURES = [
+LAYER47_COMPLETE_FIXTURES = [
     RUST_STAR_DIR / "fixtures" / f"layer{layer}-pos{position}-complete-v1"
-    for layer in (4, 5)
+    for layer in range(4, 8)
     for position in (1, 2, 3)
 ]
 RATIO128_COMPRESSOR_FIXTURES = [
@@ -176,7 +176,7 @@ class KernelFixtureTests(unittest.TestCase):
                 )
 
     def test_compressor_prime_fixtures_manifest_and_payloads(self) -> None:
-        for layer, fixture in zip((2, 3, 4, 5), COMPRESSOR_PRIME_FIXTURES):
+        for layer, fixture in zip(range(2, 8), COMPRESSOR_PRIME_FIXTURES):
             with self.subTest(layer=layer):
                 report = validate_differential_fixture(fixture)
                 self.assertEqual(
@@ -188,9 +188,12 @@ class KernelFixtureTests(unittest.TestCase):
                 self.assertEqual(report["tensors"], 1)
                 self.assertEqual(report["verified_bytes"], 16_384)
 
-    def test_layer45_complete_fixtures_manifest_and_payloads(self) -> None:
-        expected_operations = {4: {1: 32, 2: 32, 3: 34}, 5: {1: 30, 2: 30, 3: 30}}
-        for fixture in LAYER45_COMPLETE_FIXTURES:
+    def test_layer47_complete_fixtures_manifest_and_payloads(self) -> None:
+        expected_operations = {
+            layer: ({1: 32, 2: 32, 3: 34} if layer % 2 == 0 else {1: 30, 2: 30, 3: 30})
+            for layer in range(4, 8)
+        }
+        for fixture in LAYER47_COMPLETE_FIXTURES:
             manifest = json.loads((fixture / "manifest.json").read_text(encoding="utf-8"))
             layer = manifest["scope"]["layer"]
             position = manifest["scope"]["position"]
@@ -201,7 +204,10 @@ class KernelFixtureTests(unittest.TestCase):
                     f"dwarfstar-oracle-v1-layer{layer}-pos{position}-complete",
                 )
                 self.assertEqual(report["operations"], expected_operations[layer][position])
-                self.assertEqual(report["tensors"], 33 if position == 1 or (layer, position) == (4, 3) else 32)
+                self.assertEqual(
+                    report["tensors"],
+                    33 if position == 1 or (layer % 2 == 0 and position == 3) else 32,
+                )
                 self.assertEqual(report["verified_bytes"], 741_808 if report["tensors"] == 33 else 739_760)
 
     def test_ratio128_compressor_fixtures_manifest_and_payloads(self) -> None:
