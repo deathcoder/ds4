@@ -65,6 +65,9 @@ elif [ "$#" -eq 1 ]; then
         echo "==> no-copy Q8_0 decode projection"
         "$target_dir/release/rust-star" projection-probe "$1" \
             --json "$target_dir/q8-projection-probe.json"
+        echo "==> exact M1 batched-Q8 prefill arithmetic boundary"
+        "$target_dir/release/rust-star" prefill-q8-boundary-probe "$1" \
+            --json "$target_dir/prefill-q8-boundary-probe.json"
         echo "==> no-copy layer-0 attention ingress"
         "$target_dir/release/rust-star" attention-ingress-probe "$1" \
             --json "$target_dir/attention-ingress-probe.json"

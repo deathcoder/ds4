@@ -160,8 +160,14 @@ history; add a correction and update the current-state summary.
   context-sized compressed state. It matches two fresh DwarfStar one-token
   decode replays bit-for-bit at the final logits, but all 129,280 logits differ
   from two independently repeatable native batched-prefill captures while both
-  select token 15342. Native batched prefill, sparse indexed attention beyond
-  512 ratio-4 rows, and the eligible engine-measurement producer remain pending.
+  select token 15342. The first native-batch arithmetic boundary is now isolated:
+  the layer-0 hidden-combination and learned-normalization inputs are identical
+  between schedules, while `blk.0.attn_q_a.weight` uses the M1 legacy
+  `kernel_mul_mm_q8_0_f32` batch kernel and first diverges from the one-row
+  matvec. A compact final-128-row fixture and live probe reproduce both kernels
+  bit-for-bit and retain their expected 1,024-value final-row disagreement.
+  Full native batched prefill, sparse indexed attention beyond 512 ratio-4
+  rows, and the eligible engine-measurement producer remain pending.
 - Measurements: Metal batching was 42.861x faster than synchronized submission
   in the retained M-002 probe. DwarfStar medians are 164.86 prefill / 19.90
   generation tok/s at 2K and 161.05 prefill / 17.36 generation tok/s at 32K.
@@ -169,7 +175,12 @@ history; add a correction and update the current-state summary.
   validation dispatch reported 0.020 ms GPU time and is not an inference-speed
   claim. The Q8_0 projection matched its 1,024-value decode fixture and reported
   0.031 ms GPU time in its completion gate, also not a throughput claim. The
-  connected six-dispatch layer segment matched 9,264 retained FP32 values and
+  first native M1 batch boundary matched 131,072 Q-A outputs plus its 1,024-value
+  sequential control; the complete gate reported 2.490 ms wall / 0.410 ms GPU
+  for the isolated 128-row batch dispatch. All 1,024 final-row values differ
+  between the native batch and sequential schedules with maximum absolute error
+  `3.62396240234375e-05`; this is localization evidence, not prefill throughput.
+  The connected six-dispatch layer segment matched 9,264 retained FP32 values and
   reported 0.102 ms GPU time in the final gate; this remains correctness
   evidence rather than decoder throughput. The nine-dispatch Q/K projection
   setup matched another 34,816 FP32 values and reported 0.473 ms GPU time in
@@ -262,9 +273,9 @@ history; add a correction and update the current-state summary.
 
 ## Immediate Next Actions
 
-1. Import the native DwarfStar batched-prefill execution boundary needed to
-   reproduce the pinned 2K frontier logits rather than treating sequential
-   decode replay as eligible prefill.
+1. Extend the exact native-batch boundary from captured layer-0 normalized
+   activations through the remaining Q/KV setup, then move its input boundary
+   backward through batched HC/norm until the layer can execute from token IDs.
 2. Add the fixed 512-row ratio-4 indexer top-k and sparse indexed attention so
    128 generated tokens can continue beyond the 2K frontier.
 3. Emit the `rust-star-engine-measurement-v1` artifact from the exact
@@ -276,6 +287,65 @@ history; add a correction and update the current-state summary.
 6. Run or approve the fork's GitHub Actions workflow and retain its URL.
 
 ## Entries
+
+### 2026-08-15 — First native M1 batched-prefill arithmetic boundary isolated
+
+Objective:
+
+- Trace the actual DwarfStar 2K prefill schedule on the M1 Ultra and implement
+  the first exact Rust-owned batch kernel boundary without claiming a complete
+  prefill path.
+
+Oracle evidence and corrected hypothesis:
+
+- Two fresh 2K graph captures were byte-identical for both layer-0
+  `attn_norm` and `q_lora`. The final `attn_norm` row exactly equals the same
+  row produced by 2,048 sequential one-token evaluations, proving the schedule
+  divergence begins after normalization.
+- All 1,024 final-row `q_lora` values differ between schedules; maximum absolute
+  error is `3.62396240234375e-05`.
+- A live diagnostic run printed that Metal 4 tensor kernels are disabled on the
+  M1 Ultra. The earlier source-only assumption that this machine selected the
+  retained N128 TensorOps kernel was false. The actual path is the legacy
+  `kernel_mul_mm_q8_0_f32` with 32-row tiles, 128 threads, and 6,144 bytes of
+  threadgroup memory. A repeated live dump matched the original batch capture
+  SHA-256 exactly.
+
+Implementation:
+
+- Added a reproducible importer and compact fixture containing the final 128
+  normalized rows, their native batch outputs, and the sequential final-row
+  control. The three payloads total 2,625,536 bytes and bind two independent
+  full-batch captures.
+- Added a narrow C ABI and Rust command that wraps
+  `blk.0.attn_q_a.weight` from the shared model mmap, specializes DwarfStar's
+  batch kernel with both bounds constants false, dispatches four by sixteen
+  groups, then runs the existing four-simdgroup one-row kernel over the shared
+  final input.
+- The live M1 probe matched all 131,072 batch outputs and all 1,024 sequential
+  control outputs bit-for-bit. It reported 3.145 ms wall / 1.050 ms GPU for the
+  isolated 128-row batch dispatch and retained the expected 1,024/1,024
+  cross-schedule mismatch. These are boundary timings, not prefill throughput.
+- The initial standalone TensorOps attempt was preserved as a failed
+  hypothesis during development: it first failed because the conditional
+  kernel was absent, then produced different arithmetic when force-enabled.
+  The live DwarfStar device log resolved the discrepancy and the implementation
+  was corrected to the native M1 path.
+
+Validation:
+
+- The complete target-Mac gate passed: formatting, 68 Rust tests, optimized
+  Objective-C/Rust compilation, 47 Python tests, all 230 differential
+  manifests, strict model inspection, and every retained live Metal control.
+- The new boundary repeated C0 exact at 2.490 ms wall / 0.410 ms GPU. The long
+  2K sequential control again matched its decode-replay oracle at 18.478
+  tokens/s over 110832.479 ms and retained the expected 129,280-logit native
+  batch mismatch.
+
+Next:
+
+- Complete documentation and the full target-Mac runtime gate, publish this
+  checkpoint, then extend the batch path through layer-0 Q/KV setup.
 
 ### 2026-08-15 — 2K state ownership reached the batched-prefill boundary
 

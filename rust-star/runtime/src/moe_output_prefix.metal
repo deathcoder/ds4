@@ -1,5 +1,12 @@
 #include <metal_stdlib>
+#ifdef DS4_METAL_HAS_TENSOR
+#include <metal_tensor>
+#include <MetalPerformancePrimitives/MetalPerformancePrimitives.h>
+#endif
 using namespace metal;
+#ifdef DS4_METAL_HAS_TENSOR
+using namespace mpp::tensor_ops;
+#endif
 
 // Exact standalone prefix used by DwarfStar before concatenating its Metal
 // source files. Only the diagnostic page-touch kernel is omitted.

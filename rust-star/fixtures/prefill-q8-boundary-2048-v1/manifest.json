@@ -1,0 +1,127 @@
+{
+  "schema": "rust-star-differential-fixture-v1",
+  "fixture_id": "dwarfstar-oracle-v1-prefill-q8-boundary-2048",
+  "captured_at_utc": "2026-08-15T16:40:02Z",
+  "oracle": {
+    "id": "oracle-v1",
+    "repository": "https://github.com/antirez/ds4.git",
+    "commit": "b0309611041655f4e45671cfd9c9886aff161406",
+    "tree": "20c11af22f90a0bdf25da860da5ef06de4064060",
+    "capture_executable_sha256": "b0b7c31d9832cc3f5cccf810cd2af6f4bc4f6e71de945493674315314f666fc8"
+  },
+  "model": {
+    "family": "DeepSeek-V4-Flash-0731",
+    "sha256": "ca22ae2f838e14077c22bc1c1417b71b45b5e5a3687bd96c2ac6e17fdb6261c0"
+  },
+  "capture": {
+    "backend": "metal",
+    "machine": "Apple M1 Ultra, 48 GPU cores, 128 GB unified memory",
+    "prompt": "first 2048 raw tokens of speed-bench/promessi_sposi.txt",
+    "prompt_sha256": "f53e0d80cb2d4492d24ebd63c7000c397b16ae70f9bf09b3763e5d8323ec209f",
+    "prefill_tokens": 2048,
+    "fresh_process_captures": 2,
+    "fresh_process_bitwise_match": true,
+    "command": "ds4-bench --metal --ctx-start 2048 --ctx-max 2048 --gen-tokens 0 --warm-weights",
+    "environment": {
+      "DS4_METAL_GRAPH_DUMP_LAYER": "0",
+      "DS4_METAL_GRAPH_DUMP_POS": "0",
+      "DS4_METAL_GRAPH_DUMP_NAME": "attn_norm,q_lora"
+    },
+    "device_path": "legacy Metal matmul; Metal 4 TensorOps disabled on M1 Ultra",
+    "sequential_control": {
+      "construction": "one-token cold prefill followed by 2047 ds4_session_eval calls",
+      "final_input_equals_batch_final_input": true,
+      "final_output_equals_batch_final_output": false
+    }
+  },
+  "scope": {
+    "kind": "kernel",
+    "phase": "prefill",
+    "layer": 0,
+    "position": 2047,
+    "captured_position_range": [
+      1920,
+      2047
+    ]
+  },
+  "operations": [
+    {
+      "name": "attn-q-a-prefill-projection-final-tile",
+      "kernel": "kernel_mul_mm_q8_0_f32",
+      "weights": [
+        "blk.0.attn_q_a.weight"
+      ],
+      "dispatch": {
+        "input_elements": 4096,
+        "output_elements": 1024,
+          "rows": 128,
+          "threads_per_threadgroup": [
+          128,
+          1,
+          1
+        ],
+          "threadgroups": [
+            4,
+          16,
+          1
+        ],
+          "threadgroup_memory_bytes": 6144
+      }
+    },
+    {
+      "name": "attn-q-a-sequential-final-row-control",
+      "kernel": "kernel_mul_mv_q8_0_f32",
+      "weights": [
+        "blk.0.attn_q_a.weight"
+      ]
+    }
+  ],
+  "arithmetic_boundary": {
+    "final_row_mismatches": 1024,
+    "final_row_elements": 1024,
+    "max_abs_error": 3.62396240234375e-05
+  },
+  "tensors": [
+    {
+      "name": "attn_norm_final_tile",
+      "hook": "attn_norm",
+      "role": "input",
+      "dtype": "f32",
+      "shape": [
+        128,
+        4096
+      ],
+      "encoding": "little-endian-ieee754-binary32",
+      "path": "attn-norm-final-tile.f32le.bin",
+      "bytes": 2097152,
+      "sha256": "61741368d40533774fd89307ce0e73c5d697ca79e9bc8bfc98c7b59948e38a5c"
+    },
+    {
+      "name": "q_lora_batch_final_tile",
+      "hook": "q_lora",
+      "role": "output",
+      "dtype": "f32",
+      "shape": [
+        128,
+        1024
+      ],
+      "encoding": "little-endian-ieee754-binary32",
+      "path": "q-lora-batch-final-tile.f32le.bin",
+      "bytes": 524288,
+      "sha256": "7306f0b80e03d4a7ea828972aae44825b22d00c8b7a94a26255787ef84c66dbd"
+    },
+    {
+      "name": "q_lora_decode_final_row",
+      "hook": "q_lora",
+      "role": "output",
+      "dtype": "f32",
+      "shape": [
+        1024
+      ],
+      "encoding": "little-endian-ieee754-binary32",
+      "path": "q-lora-decode-final-row.f32le.bin",
+      "bytes": 4096,
+      "sha256": "fad25edc722941f86db6549a380cf15c6b434137d73d66fcbc45bb7d7f8e94f1"
+    }
+  ]
+}

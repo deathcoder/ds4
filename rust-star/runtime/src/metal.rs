@@ -8,6 +8,7 @@ use std::io::Write;
 pub const PROBE_SCHEMA: &str = "rust-star-metal-dispatch-probe-v1";
 pub const EMBEDDING_PROBE_SCHEMA: &str = "rust-star-f16-embedding-probe-v1";
 pub const PROJECTION_PROBE_SCHEMA: &str = "rust-star-q8-0-projection-probe-v1";
+pub const PREFILL_Q8_BOUNDARY_PROBE_SCHEMA: &str = "rust-star-prefill-q8-boundary-probe-v1";
 pub const INGRESS_PROBE_SCHEMA: &str = "rust-star-layer0-attention-ingress-probe-v1";
 pub const ATTENTION_SETUP_PROBE_SCHEMA: &str = "rust-star-layer0-attention-setup-probe-v1";
 pub const ROPE_KV_STORE_PROBE_SCHEMA: &str = "rust-star-layer0-rope-kv-store-probe-v1";
@@ -40,6 +41,7 @@ pub const PREFILL_FRONTIER_PROBE_SCHEMA: &str = "rust-star-prefill-frontier-diag
 pub const RATIO128_COMPRESSOR_REPLAY_PROBE_SCHEMA: &str =
     "rust-star-ratio128-compressor-replay-probe-v1";
 pub const PROJECTION_FIXTURE_ID: &str = "dwarfstar-oracle-v1-layer0-pos1-attn-q-a";
+pub const PREFILL_Q8_BOUNDARY_FIXTURE_ID: &str = "dwarfstar-oracle-v1-prefill-q8-boundary-2048";
 pub const INGRESS_FIXTURE_ID: &str = "dwarfstar-oracle-v1-layer0-pos1-attention-ingress";
 pub const ATTENTION_SETUP_FIXTURE_ID: &str = "dwarfstar-oracle-v1-layer0-pos1-qkv-setup";
 pub const ROPE_KV_STORE_FIXTURE_ID: &str = "dwarfstar-oracle-v1-layer0-pos1-rope-kv-store";
@@ -142,6 +144,12 @@ const PROJECTION_INPUT_BYTES: &[u8] =
     include_bytes!("../../fixtures/q8-attn-q-a-v1/activation.f32le.bin");
 const PROJECTION_OUTPUT_BYTES: &[u8] =
     include_bytes!("../../fixtures/q8-attn-q-a-v1/output.f32le.bin");
+const PREFILL_Q8_INPUT_BYTES: &[u8] =
+    include_bytes!("../../fixtures/prefill-q8-boundary-2048-v1/attn-norm-final-tile.f32le.bin");
+const PREFILL_Q8_BATCH_OUTPUT_BYTES: &[u8] =
+    include_bytes!("../../fixtures/prefill-q8-boundary-2048-v1/q-lora-batch-final-tile.f32le.bin");
+const PREFILL_Q8_DECODE_OUTPUT_BYTES: &[u8] =
+    include_bytes!("../../fixtures/prefill-q8-boundary-2048-v1/q-lora-decode-final-row.f32le.bin");
 const INGRESS_MIXES_BYTES: &[u8] =
     include_bytes!("../../fixtures/layer0-attention-ingress-v1/hc-mixes.f32le.bin");
 const INGRESS_PRE_BYTES: &[u8] =
@@ -586,6 +594,28 @@ pub struct ProjectionProbeReport {
     pub gpu_ms: f64,
     pub input_checksum: u64,
     pub output_checksum: u64,
+}
+
+#[derive(Clone, Debug)]
+pub struct PrefillQ8BoundaryProbeReport {
+    pub fixture_id: &'static str,
+    pub tensor_name: String,
+    pub rows: u64,
+    pub input_elements_per_row: u64,
+    pub output_elements_per_row: u64,
+    pub no_copy_pointer_match: bool,
+    pub batch_threads_per_threadgroup: u32,
+    pub batch_threadgroups_x: u32,
+    pub batch_threadgroups_y: u32,
+    pub batch_wall_ms: f64,
+    pub batch_gpu_ms: f64,
+    pub decode_wall_ms: f64,
+    pub decode_gpu_ms: f64,
+    pub input_checksum: u64,
+    pub batch_output_checksum: u64,
+    pub decode_output_checksum: u64,
+    pub final_row_mismatches: u64,
+    pub final_row_max_abs_error: f32,
 }
 
 #[derive(Clone, Debug)]
@@ -2049,6 +2079,40 @@ pub fn write_projection_probe_json<W: Write>(
     Ok(())
 }
 
+pub fn write_prefill_q8_boundary_probe_json<W: Write>(
+    output: &mut W,
+    report: &PrefillQ8BoundaryProbeReport,
+) -> Result<()> {
+    output.write_all(b"{\n  \"schema\": \"")?;
+    output.write_all(PREFILL_Q8_BOUNDARY_PROBE_SCHEMA.as_bytes())?;
+    output.write_all(b"\",\n  \"fixture\": ")?;
+    crate::artifact::write_json_string(output, report.fixture_id)?;
+    output.write_all(b",\n  \"tensor\": ")?;
+    crate::artifact::write_json_string(output, &report.tensor_name)?;
+    write!(
+        output,
+        ",\n  \"batch_kernel\": \"kernel_mul_mm_q8_0_f32\",\n  \"decode_control_kernel\": \"kernel_mul_mv_q8_0_f32\",\n  \"shape\": {{\n    \"rows\": {},\n    \"input_elements_per_row\": {},\n    \"output_elements_per_row\": {}\n  }},\n  \"batch_dispatch\": {{\n    \"threads_per_threadgroup\": [{}, 1, 1],\n    \"threadgroups\": [{}, {}, 1],\n    \"threadgroup_memory_bytes\": 6144\n  }},\n  \"mapping\": {{\n    \"no_copy_pointer_match\": {}\n  }},\n  \"timing\": {{\n    \"batch_wall_ms\": {:.6},\n    \"batch_gpu_ms\": {:.6},\n    \"decode_wall_ms\": {:.6},\n    \"decode_gpu_ms\": {:.6}\n  }},\n  \"checksums\": {{\n    \"input\": {},\n    \"batch_output\": {},\n    \"decode_output\": {}\n  }},\n  \"arithmetic_boundary\": {{\n    \"shared_final_input_row\": true,\n    \"final_row_mismatches\": {},\n    \"final_row_elements\": {},\n    \"max_abs_error\": {:.9}\n  }},\n  \"batch_c0_bitwise_match\": true,\n  \"decode_control_c0_bitwise_match\": true,\n  \"full_prefill_claim\": false\n}}\n",
+        report.rows,
+        report.input_elements_per_row,
+        report.output_elements_per_row,
+        report.batch_threads_per_threadgroup,
+        report.batch_threadgroups_x,
+        report.batch_threadgroups_y,
+        report.no_copy_pointer_match,
+        report.batch_wall_ms,
+        report.batch_gpu_ms,
+        report.decode_wall_ms,
+        report.decode_gpu_ms,
+        report.input_checksum,
+        report.batch_output_checksum,
+        report.decode_output_checksum,
+        report.final_row_mismatches,
+        report.output_elements_per_row,
+        report.final_row_max_abs_error,
+    )?;
+    Ok(())
+}
+
 fn validate_embedding_inputs(
     model: &MappedModel,
     tensor: &TensorInfo,
@@ -2425,6 +2489,25 @@ fn projection_fixture() -> Result<(Vec<f32>, Vec<f32>)> {
         decode_f32_fixture(PROJECTION_INPUT_BYTES, "projection input")?,
         decode_f32_fixture(PROJECTION_OUTPUT_BYTES, "projection output")?,
     ))
+}
+
+fn prefill_q8_boundary_fixture() -> Result<(Vec<f32>, Vec<f32>, Vec<f32>)> {
+    let input = decode_f32_fixture(PREFILL_Q8_INPUT_BYTES, "prefill Q8 input tile")?;
+    let batch_output = decode_f32_fixture(
+        PREFILL_Q8_BATCH_OUTPUT_BYTES,
+        "prefill Q8 batch output tile",
+    )?;
+    let decode_output = decode_f32_fixture(
+        PREFILL_Q8_DECODE_OUTPUT_BYTES,
+        "prefill Q8 sequential output row",
+    )?;
+    if input.len() != 128 * 4096 || batch_output.len() != 128 * 1024 || decode_output.len() != 1024
+    {
+        return Err(Error::invalid(
+            "prefill Q8 boundary fixture dimensions are invalid",
+        ));
+    }
+    Ok((input, batch_output, decode_output))
 }
 
 fn ingress_fixture() -> Result<(Vec<f32>, Vec<f32>, Vec<f32>, Vec<f32>, Vec<f32>)> {
@@ -3400,6 +3483,43 @@ fn validate_projection_inputs(
     Ok((input_elements, output_elements))
 }
 
+fn validate_prefill_q8_boundary_inputs(
+    model: &MappedModel,
+    tensor: &TensorInfo,
+    input: &[f32],
+    batch_output: &[f32],
+    decode_output: &[f32],
+) -> Result<(u32, u32, u32)> {
+    if tensor.name != PROJECTION_TENSOR
+        || tensor.tensor_type.id != 8
+        || tensor.dimensions != [4096, 1024]
+    {
+        return Err(Error::invalid(
+            "prefill Q8 boundary requires Q8_0 blk.0.attn_q_a.weight [4096, 1024]",
+        ));
+    }
+    const ROWS: u32 = 128;
+    const INPUT: u32 = 4096;
+    const OUTPUT: u32 = 1024;
+    if input.len() != ROWS as usize * INPUT as usize
+        || batch_output.len() != ROWS as usize * OUTPUT as usize
+        || decode_output.len() != OUTPUT as usize
+    {
+        return Err(Error::invalid(
+            "prefill Q8 boundary fixture does not match its N128 dispatch",
+        ));
+    }
+    let expected_bytes = u64::from(INPUT / 32) * 34 * u64::from(OUTPUT);
+    if tensor.bytes != expected_bytes {
+        return Err(Error::invalid(format!(
+            "prefill Q8 tensor has {} bytes, expected {expected_bytes}",
+            tensor.bytes
+        )));
+    }
+    model.tensor_bytes(tensor)?;
+    Ok((INPUT, OUTPUT, ROWS))
+}
+
 #[cfg(target_os = "macos")]
 mod imp {
     use super::*;
@@ -3472,6 +3592,26 @@ mod imp {
         reserved: u32,
         wall_ms: f64,
         gpu_ms: f64,
+    }
+
+    #[repr(C)]
+    #[derive(Default)]
+    struct RawPrefillQ8ProbeResult {
+        model_bytes: u64,
+        tensor_offset: u64,
+        tensor_bytes: u64,
+        input_elements_per_row: u64,
+        output_elements_per_row: u64,
+        rows: u64,
+        max_buffer_length: u64,
+        no_copy_pointer_match: u32,
+        batch_threads_per_threadgroup: u32,
+        batch_threadgroups_x: u32,
+        batch_threadgroups_y: u32,
+        batch_wall_ms: f64,
+        batch_gpu_ms: f64,
+        decode_wall_ms: f64,
+        decode_gpu_ms: f64,
     }
 
     #[repr(C)]
@@ -3625,6 +3765,22 @@ mod imp {
             input: *const f32,
             output: *mut f32,
             result: *mut RawProjectionProbeResult,
+            error: *mut c_char,
+            error_bytes: usize,
+        ) -> i32;
+        fn rust_star_metal_run_prefill_q8_boundary(
+            context: *mut c_void,
+            model_mapping: *const c_void,
+            model_bytes: u64,
+            tensor_offset: u64,
+            tensor_bytes: u64,
+            input_elements_per_row: u32,
+            output_elements_per_row: u32,
+            rows: u32,
+            input: *const f32,
+            batch_output: *mut f32,
+            decode_output: *mut f32,
+            result: *mut RawPrefillQ8ProbeResult,
             error: *mut c_char,
             error_bytes: usize,
         ) -> i32;
@@ -4507,6 +4663,149 @@ mod imp {
             gpu_ms: raw.gpu_ms,
             input_checksum: checksum_f32(&input),
             output_checksum: checksum_f32(&actual),
+        })
+    }
+
+    pub fn run_prefill_q8_boundary_probe(
+        model: &MappedModel,
+    ) -> Result<PrefillQ8BoundaryProbeReport> {
+        let tensor = model.tensor(PROJECTION_TENSOR)?;
+        let (input, expected_batch, expected_decode) = prefill_q8_boundary_fixture()?;
+        let (input_elements, output_elements, rows) = validate_prefill_q8_boundary_inputs(
+            model,
+            tensor,
+            &input,
+            &expected_batch,
+            &expected_decode,
+        )?;
+        let mut actual_batch = vec![0.0_f32; expected_batch.len()];
+        let mut actual_decode = vec![0.0_f32; expected_decode.len()];
+        let mut error = [0 as c_char; ERROR_BYTES];
+        let mut pointer = ptr::null_mut();
+        let created =
+            unsafe { rust_star_metal_create(&mut pointer, error.as_mut_ptr(), error.len()) };
+        if created == 0 || pointer.is_null() {
+            return Err(Error::invalid(format!(
+                "Metal initialization failed: {}",
+                error_text(&error)
+            )));
+        }
+        let context = Context(pointer);
+        error.fill(0);
+        let mut raw = RawPrefillQ8ProbeResult::default();
+        let succeeded = unsafe {
+            rust_star_metal_run_prefill_q8_boundary(
+                context.0,
+                model.mapping_pointer(),
+                model.bytes(),
+                tensor.absolute_offset,
+                tensor.bytes,
+                input_elements,
+                output_elements,
+                rows,
+                input.as_ptr(),
+                actual_batch.as_mut_ptr(),
+                actual_decode.as_mut_ptr(),
+                &mut raw,
+                error.as_mut_ptr(),
+                error.len(),
+            )
+        };
+        if succeeded == 0 {
+            return Err(Error::invalid(format!(
+                "Metal prefill Q8 boundary probe failed: {}",
+                error_text(&error)
+            )));
+        }
+        if raw.model_bytes != model.bytes()
+            || raw.tensor_offset != tensor.absolute_offset
+            || raw.tensor_bytes != tensor.bytes
+            || raw.input_elements_per_row != u64::from(input_elements)
+            || raw.output_elements_per_row != u64::from(output_elements)
+            || raw.rows != u64::from(rows)
+            || raw.batch_threads_per_threadgroup != 128
+            || raw.batch_threadgroups_x != 4
+            || raw.batch_threadgroups_y != 16
+        {
+            return Err(Error::invalid(
+                "Metal prefill Q8 boundary returned unexpected dimensions or dispatch",
+            ));
+        }
+        if raw.no_copy_pointer_match == 0 {
+            return Err(Error::invalid(
+                "Metal prefill Q8 bytes-no-copy buffer did not retain the mmap pointer",
+            ));
+        }
+        for (index, (actual, expected)) in actual_batch.iter().zip(&expected_batch).enumerate() {
+            if actual.to_bits() != expected.to_bits() {
+                return Err(Error::invalid(format!(
+                    "N128 prefill Q8 C0 mismatch at output {index}: actual={:#010x} expected={:#010x}",
+                    actual.to_bits(),
+                    expected.to_bits()
+                )));
+            }
+        }
+        for (index, (actual, expected)) in actual_decode.iter().zip(&expected_decode).enumerate() {
+            if actual.to_bits() != expected.to_bits() {
+                return Err(Error::invalid(format!(
+                    "sequential Q8 control C0 mismatch at output {index}: actual={:#010x} expected={:#010x}",
+                    actual.to_bits(),
+                    expected.to_bits()
+                )));
+            }
+        }
+        for (name, value) in [
+            ("batch_wall_ms", raw.batch_wall_ms),
+            ("batch_gpu_ms", raw.batch_gpu_ms),
+            ("decode_wall_ms", raw.decode_wall_ms),
+            ("decode_gpu_ms", raw.decode_gpu_ms),
+        ] {
+            if !value.is_finite() || value < 0.0 {
+                return Err(Error::invalid(format!(
+                    "Metal prefill Q8 boundary returned invalid {name}"
+                )));
+            }
+        }
+        if raw.batch_wall_ms == 0.0 || raw.decode_wall_ms == 0.0 {
+            return Err(Error::invalid(
+                "Metal prefill Q8 boundary returned a zero wall interval",
+            ));
+        }
+        let final_batch = &actual_batch[actual_batch.len() - output_elements as usize..];
+        let mut final_row_mismatches = 0_u64;
+        let mut final_row_max_abs_error = 0.0_f32;
+        for (batch, decode) in final_batch.iter().zip(&actual_decode) {
+            if batch.to_bits() != decode.to_bits() {
+                final_row_mismatches += 1;
+            }
+            final_row_max_abs_error = final_row_max_abs_error.max((batch - decode).abs());
+        }
+        if final_row_mismatches != u64::from(output_elements)
+            || final_row_max_abs_error.to_bits() != 3.62396240234375e-05_f32.to_bits()
+        {
+            return Err(Error::invalid(
+                "prefill/decode Q8 arithmetic boundary differs from the oracle classification",
+            ));
+        }
+        Ok(PrefillQ8BoundaryProbeReport {
+            fixture_id: PREFILL_Q8_BOUNDARY_FIXTURE_ID,
+            tensor_name: tensor.name.clone(),
+            rows: raw.rows,
+            input_elements_per_row: raw.input_elements_per_row,
+            output_elements_per_row: raw.output_elements_per_row,
+            no_copy_pointer_match: true,
+            batch_threads_per_threadgroup: raw.batch_threads_per_threadgroup,
+            batch_threadgroups_x: raw.batch_threadgroups_x,
+            batch_threadgroups_y: raw.batch_threadgroups_y,
+            batch_wall_ms: raw.batch_wall_ms,
+            batch_gpu_ms: raw.batch_gpu_ms,
+            decode_wall_ms: raw.decode_wall_ms,
+            decode_gpu_ms: raw.decode_gpu_ms,
+            input_checksum: checksum_f32(&input),
+            batch_output_checksum: checksum_f32(&actual_batch),
+            decode_output_checksum: checksum_f32(&actual_decode),
+            final_row_mismatches,
+            final_row_max_abs_error,
         })
     }
 
@@ -7548,6 +7847,17 @@ mod imp {
         ))
     }
 
+    pub fn run_prefill_q8_boundary_probe(
+        model: &MappedModel,
+    ) -> Result<PrefillQ8BoundaryProbeReport> {
+        let tensor = model.tensor(PROJECTION_TENSOR)?;
+        let (input, batch_output, decode_output) = prefill_q8_boundary_fixture()?;
+        validate_prefill_q8_boundary_inputs(model, tensor, &input, &batch_output, &decode_output)?;
+        Err(Error::invalid(
+            "the Metal prefill Q8 boundary probe is available only on macOS",
+        ))
+    }
+
     pub fn run_attention_ingress_probe(model: &MappedModel) -> Result<IngressProbeReport> {
         let _ = ingress_fixture()?;
         let _ = exact_tensor(model, "token_embd.weight", 1, &[4096, 129280])?;
@@ -7668,7 +7978,7 @@ pub use imp::{
     run_layers0123_bench, run_layers0123_chained_probe, run_layers0123_decode_probe,
     run_layers0123_probe, run_layers012_chained_probe, run_layers012_probe, run_layers01_probe,
     run_layers0_to_42_decode_probe, run_moe_output_probe, run_position127_decoder_probe,
-    run_prefill_frontier_probe, run_probe, run_q8_projection_probe,
+    run_prefill_frontier_probe, run_prefill_q8_boundary_probe, run_probe, run_q8_projection_probe,
     run_ratio128_compressor_replay_probe, run_rope_kv_store_probe, LayerExecutor,
 };
 
@@ -7758,6 +8068,29 @@ mod tests {
             gpu_ms: 0.5,
             input_checksum: 11,
             output_checksum: 12,
+        }
+    }
+
+    fn prefill_q8_boundary_report() -> PrefillQ8BoundaryProbeReport {
+        PrefillQ8BoundaryProbeReport {
+            fixture_id: PREFILL_Q8_BOUNDARY_FIXTURE_ID,
+            tensor_name: PROJECTION_TENSOR.to_owned(),
+            rows: 128,
+            input_elements_per_row: 4096,
+            output_elements_per_row: 1024,
+            no_copy_pointer_match: true,
+            batch_threads_per_threadgroup: 128,
+            batch_threadgroups_x: 4,
+            batch_threadgroups_y: 16,
+            batch_wall_ms: 3.0,
+            batch_gpu_ms: 1.0,
+            decode_wall_ms: 0.5,
+            decode_gpu_ms: 0.25,
+            input_checksum: 11,
+            batch_output_checksum: 12,
+            decode_output_checksum: 13,
+            final_row_mismatches: 1024,
+            final_row_max_abs_error: 3.6239624e-05,
         }
     }
 
@@ -8879,6 +9212,21 @@ mod tests {
     }
 
     #[test]
+    fn writes_stable_prefill_q8_boundary_probe_json() {
+        let mut output = Vec::new();
+        write_prefill_q8_boundary_probe_json(&mut output, &prefill_q8_boundary_report()).unwrap();
+        let text = String::from_utf8(output).unwrap();
+        assert!(text.contains(&format!(
+            "\"schema\": \"{PREFILL_Q8_BOUNDARY_PROBE_SCHEMA}\""
+        )));
+        assert!(text.contains("\"batch_kernel\": \"kernel_mul_mm_q8_0_f32\""));
+        assert!(text.contains("\"threadgroups\": [4, 16, 1]"));
+        assert!(text.contains("\"final_row_mismatches\": 1024"));
+        assert!(text.contains("\"batch_c0_bitwise_match\": true"));
+        assert!(text.contains("\"full_prefill_claim\": false"));
+    }
+
+    #[test]
     fn writes_stable_ratio128_compressor_replay_json() {
         let mut output = Vec::new();
         write_ratio128_compressor_replay_probe_json(&mut output, &ratio128_compressor_report())
@@ -9068,6 +9416,23 @@ mod tests {
         assert!(output.iter().all(|value| value.is_finite()));
         assert_eq!(checksum_f32(&input), 6_001_855_774_483_604_828);
         assert_eq!(checksum_f32(&output), 13_770_952_831_385_691_371);
+    }
+
+    #[test]
+    fn prefill_q8_boundary_fixture_has_target_shapes() {
+        let (input, batch_output, decode_output) = prefill_q8_boundary_fixture().unwrap();
+        assert_eq!(input.len(), 128 * 4096);
+        assert_eq!(batch_output.len(), 128 * 1024);
+        assert_eq!(decode_output.len(), 1024);
+        let final_batch = &batch_output[batch_output.len() - 1024..];
+        assert_eq!(
+            final_batch
+                .iter()
+                .zip(&decode_output)
+                .filter(|(batch, decode)| batch.to_bits() != decode.to_bits())
+                .count(),
+            1024
+        );
     }
 
     #[test]

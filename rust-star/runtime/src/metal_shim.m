@@ -180,6 +180,7 @@ static NSString *const kQ8ProjectionSource =
 @property(nonatomic, strong) id<MTLComputePipelineState> probePipeline;
 @property(nonatomic, strong) id<MTLComputePipelineState> getRowsF16Pipeline;
 @property(nonatomic, strong) id<MTLComputePipelineState> q8ProjectionPipeline;
+@property(nonatomic, strong) id<MTLComputePipelineState> q8PrefillPipeline;
 @property(nonatomic, strong) id<MTLComputePipelineState> q8OutputProjectionPipeline;
 @property(nonatomic, strong) id<MTLLibrary> attentionIngressLibrary;
 @property(nonatomic, strong) id<MTLComputePipelineState> repeatF32Pipeline;
@@ -599,8 +600,16 @@ static int ensure_moe_output_pipelines(
         [library newFunctionWithName:@"kernel_dsv4_output_hc_weights4"];
     id<MTLFunction> output_hc_sum_norm =
         [library newFunctionWithName:@"kernel_dsv4_hc_weighted_sum_norm4"];
+    bool bc_inp = false;
+    bool bc_out = false;
+    MTLFunctionConstantValues *q8_prefill_constants = [MTLFunctionConstantValues new];
+    [q8_prefill_constants setConstantValue:&bc_inp type:MTLDataTypeBool atIndex:700];
+    [q8_prefill_constants setConstantValue:&bc_out type:MTLDataTypeBool atIndex:701];
+    id<MTLFunction> q8_prefill =
+        [library newFunctionWithName:@"kernel_mul_mm_q8_0_f32"
+                      constantValues:q8_prefill_constants error:&compile_error];
     if (!routed_pair || !routed_down || !shared_gate_up || !shared_down_hc ||
-        !output_hc_weights || !output_hc_sum_norm) {
+        !output_hc_weights || !output_hc_sum_norm || !q8_prefill) {
         return fail_with_message(error, error_bytes,
             compile_error ? compile_error.localizedDescription : @"MoE output kernel was not found");
     }
@@ -617,9 +626,12 @@ static int ensure_moe_output_pipelines(
         [context.device newComputePipelineStateWithFunction:output_hc_weights error:&compile_error];
     context.outputHcSumNormPipeline =
         [context.device newComputePipelineStateWithFunction:output_hc_sum_norm error:&compile_error];
+    context.q8PrefillPipeline =
+        [context.device newComputePipelineStateWithFunction:q8_prefill error:&compile_error];
     if (!context.routedPairSwigluPipeline || !context.routedDownSumPipeline ||
         !context.sharedGateUpPipeline || !context.sharedDownHcPipeline ||
-        !context.outputHcWeightsPipeline || !context.outputHcSumNormPipeline) {
+        !context.outputHcWeightsPipeline || !context.outputHcSumNormPipeline ||
+        !context.q8PrefillPipeline) {
         return fail_with_message(error, error_bytes, compile_error.localizedDescription);
     }
     context.moeOutputLibrary = library;
@@ -938,6 +950,23 @@ typedef struct rust_star_q8_mv_args {
     int16_t r2;
     int16_t r3;
 } rust_star_q8_mv_args;
+
+typedef struct rust_star_q8_mm_args {
+    int32_t ne00;
+    int32_t ne02;
+    uint64_t nb01;
+    uint64_t nb02;
+    uint64_t nb03;
+    int32_t ne12;
+    uint64_t nb10;
+    uint64_t nb11;
+    uint64_t nb12;
+    uint64_t nb13;
+    int32_t ne0;
+    int32_t ne1;
+    int16_t r2;
+    int16_t r3;
+} rust_star_q8_mm_args;
 
 typedef struct rust_star_repeat_args {
     int32_t ne00, ne01, ne02, ne03;
@@ -1688,6 +1717,171 @@ int rust_star_metal_run_q8_0_projection(
         result->rows_per_threadgroup = 2;
         result->wall_ms = wall_end - wall_start;
         result->gpu_ms = gpu_elapsed_ms(command);
+        return 1;
+    }
+}
+
+int rust_star_metal_run_prefill_q8_boundary(
+    void *opaque_context,
+    const void *model_mapping,
+    uint64_t model_bytes,
+    uint64_t tensor_offset,
+    uint64_t tensor_bytes,
+    uint32_t input_elements_per_row,
+    uint32_t output_elements_per_row,
+    uint32_t rows,
+    const float *input,
+    float *batch_output,
+    float *decode_output,
+    rust_star_metal_prefill_q8_probe_result *result,
+    char *error,
+    size_t error_bytes)
+{
+    if (!opaque_context || !model_mapping || !input || !batch_output ||
+        !decode_output || !result) {
+        return fail_with_message(error, error_bytes, @"prefill Q8 boundary received a null input");
+    }
+    if (rows != 128u || input_elements_per_row == 0u ||
+        (input_elements_per_row % 64u) != 0u || output_elements_per_row == 0u ||
+        (output_elements_per_row % 64u) != 0u) {
+        return fail_with_message(error, error_bytes, @"prefill Q8 boundary dimensions are invalid");
+    }
+    const uint64_t row_bytes = (uint64_t)(input_elements_per_row / 32u) * 34u;
+    if (tensor_bytes != row_bytes * (uint64_t)output_elements_per_row ||
+        tensor_offset > model_bytes || tensor_bytes > model_bytes - tensor_offset) {
+        return fail_with_message(error, error_bytes, @"prefill Q8 tensor range is invalid");
+    }
+
+    @autoreleasepool {
+        RustStarMetalContext *context = (__bridge RustStarMetalContext *)opaque_context;
+        if (!ensure_q8_projection_pipeline(context, error, error_bytes) ||
+            !ensure_moe_output_pipelines(context, error, error_bytes)) return 0;
+        memset(result, 0, sizeof(*result));
+
+        NSUInteger weight_inner = 0;
+        BOOL pointer_match = NO;
+        id<MTLBuffer> weights = wrap_model_range(
+            context, model_mapping, model_bytes, tensor_offset, tensor_bytes,
+            &weight_inner, &pointer_match, error, error_bytes);
+        if (!weights) return 0;
+
+        const NSUInteger input_bytes =
+            (NSUInteger)rows * (NSUInteger)input_elements_per_row * sizeof(float);
+        const NSUInteger batch_output_bytes =
+            (NSUInteger)rows * (NSUInteger)output_elements_per_row * sizeof(float);
+        const NSUInteger decode_output_bytes =
+            (NSUInteger)output_elements_per_row * sizeof(float);
+        id<MTLBuffer> input_buffer =
+            [context.device newBufferWithBytes:input length:input_bytes
+                                       options:MTLResourceStorageModeShared];
+        id<MTLBuffer> batch_output_buffer =
+            [context.device newBufferWithLength:batch_output_bytes
+                                        options:MTLResourceStorageModeShared];
+        id<MTLBuffer> decode_output_buffer =
+            [context.device newBufferWithLength:decode_output_bytes
+                                        options:MTLResourceStorageModeShared];
+        if (!input_buffer || !batch_output_buffer || !decode_output_buffer) {
+            return fail_with_message(error, error_bytes,
+                @"failed to allocate prefill Q8 boundary activation buffers");
+        }
+        rust_star_q8_mm_args mm_args = {
+            .ne00 = (int32_t)input_elements_per_row,
+            .ne02 = 1,
+            .nb01 = row_bytes,
+            .nb02 = row_bytes * output_elements_per_row,
+            .nb03 = row_bytes * output_elements_per_row,
+            .ne12 = 1,
+            .nb10 = sizeof(float),
+            .nb11 = (uint64_t)input_elements_per_row * sizeof(float),
+            .nb12 = (uint64_t)input_elements_per_row * rows * sizeof(float),
+            .nb13 = (uint64_t)input_elements_per_row * rows * sizeof(float),
+            .ne0 = (int32_t)output_elements_per_row,
+            .ne1 = (int32_t)rows,
+            .r2 = 1,
+            .r3 = 1,
+        };
+        id<MTLCommandBuffer> batch_command = [context.queue commandBuffer];
+        id<MTLComputeCommandEncoder> batch_encoder = [batch_command computeCommandEncoder];
+        if (!batch_command || !batch_encoder) {
+            return fail_with_message(error, error_bytes,
+                @"failed to create prefill Q8 batch command encoder");
+        }
+        [batch_encoder setComputePipelineState:context.q8PrefillPipeline];
+        [batch_encoder setBytes:&mm_args length:sizeof(mm_args) atIndex:0];
+        [batch_encoder setBuffer:weights offset:weight_inner atIndex:1];
+        [batch_encoder setBuffer:input_buffer offset:0 atIndex:2];
+        [batch_encoder setBuffer:batch_output_buffer offset:0 atIndex:3];
+        [batch_encoder setThreadgroupMemoryLength:6144u atIndex:0];
+        [batch_encoder dispatchThreadgroups:
+            MTLSizeMake(((NSUInteger)rows + 31u) / 32u,
+                        (NSUInteger)output_elements_per_row / 64u, 1)
+            threadsPerThreadgroup:MTLSizeMake(128, 1, 1)];
+        [batch_encoder endEncoding];
+        const double batch_wall_start = monotonic_ms();
+        [batch_command commit];
+        if (!command_succeeded(batch_command, error, error_bytes)) return 0;
+        const double batch_wall_end = monotonic_ms();
+
+        rust_star_q8_mv_args mv_args = {
+            .ne00 = (int32_t)input_elements_per_row,
+            .ne01 = (int32_t)output_elements_per_row,
+            .ne02 = 1,
+            .nb00 = 34,
+            .nb01 = row_bytes,
+            .nb02 = row_bytes * output_elements_per_row,
+            .nb03 = row_bytes * output_elements_per_row,
+            .ne10 = (int32_t)input_elements_per_row,
+            .ne11 = 1,
+            .ne12 = 1,
+            .nb10 = sizeof(float),
+            .nb11 = (uint64_t)input_elements_per_row * sizeof(float),
+            .nb12 = (uint64_t)input_elements_per_row * sizeof(float),
+            .nb13 = (uint64_t)input_elements_per_row * sizeof(float),
+            .ne0 = (int32_t)output_elements_per_row,
+            .ne1 = 1,
+            .nr0 = 2,
+            .r2 = 1,
+            .r3 = 1,
+        };
+        id<MTLCommandBuffer> decode_command = [context.queue commandBuffer];
+        id<MTLComputeCommandEncoder> decode_encoder = [decode_command computeCommandEncoder];
+        if (!decode_command || !decode_encoder) {
+            return fail_with_message(error, error_bytes,
+                @"failed to create prefill Q8 decode-control command encoder");
+        }
+        [decode_encoder setComputePipelineState:context.q8ProjectionPipeline];
+        [decode_encoder setBytes:&mv_args length:sizeof(mv_args) atIndex:0];
+        [decode_encoder setBuffer:weights offset:weight_inner atIndex:1];
+        [decode_encoder setBuffer:input_buffer
+            offset:(NSUInteger)(rows - 1u) * input_elements_per_row * sizeof(float) atIndex:2];
+        [decode_encoder setBuffer:decode_output_buffer offset:0 atIndex:3];
+        [decode_encoder setThreadgroupMemoryLength:32u * 2u * sizeof(float) atIndex:0];
+        [decode_encoder dispatchThreadgroups:
+            MTLSizeMake(((NSUInteger)output_elements_per_row + 1u) / 2u, 1, 1)
+            threadsPerThreadgroup:MTLSizeMake(32, 4, 1)];
+        [decode_encoder endEncoding];
+        const double decode_wall_start = monotonic_ms();
+        [decode_command commit];
+        if (!command_succeeded(decode_command, error, error_bytes)) return 0;
+        const double decode_wall_end = monotonic_ms();
+
+        memcpy(batch_output, batch_output_buffer.contents, batch_output_bytes);
+        memcpy(decode_output, decode_output_buffer.contents, decode_output_bytes);
+        result->model_bytes = model_bytes;
+        result->tensor_offset = tensor_offset;
+        result->tensor_bytes = tensor_bytes;
+        result->input_elements_per_row = input_elements_per_row;
+        result->output_elements_per_row = output_elements_per_row;
+        result->rows = rows;
+        result->max_buffer_length = context.device.maxBufferLength;
+        result->no_copy_pointer_match = pointer_match ? 1u : 0u;
+        result->batch_threads_per_threadgroup = 128u;
+        result->batch_threadgroups_x = (rows + 31u) / 32u;
+        result->batch_threadgroups_y = output_elements_per_row / 64u;
+        result->batch_wall_ms = batch_wall_end - batch_wall_start;
+        result->batch_gpu_ms = gpu_elapsed_ms(batch_command);
+        result->decode_wall_ms = decode_wall_end - decode_wall_start;
+        result->decode_gpu_ms = gpu_elapsed_ms(decode_command);
         return 1;
     }
 }

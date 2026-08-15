@@ -64,7 +64,11 @@ DwarfStar one-token decode replays over the canonical prompt. It also proves
 that this sequential construction differs from DwarfStar's batched prefill in
 all 129,280 logits despite selecting the same token. The path therefore remains
 diagnostic: eligible measurements require native batched prefill arithmetic and
-sparse indexed attention beyond the first 512 ratio-4 rows.
+sparse indexed attention beyond the first 512 ratio-4 rows. The first native
+batch boundary is now implemented separately: repeated captures localize the
+earliest difference to layer 0's Q8 Q-A projection, and the Rust Metal probe
+matches both the 128-row M1 batch kernel and its one-row decode control
+bit-for-bit. It remains an isolated kernel gate rather than a full prefill path.
 
 Project controls and benchmark contracts:
 

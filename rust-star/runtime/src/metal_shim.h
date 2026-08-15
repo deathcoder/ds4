@@ -57,6 +57,24 @@ typedef struct rust_star_metal_projection_probe_result {
     double gpu_ms;
 } rust_star_metal_projection_probe_result;
 
+typedef struct rust_star_metal_prefill_q8_probe_result {
+    uint64_t model_bytes;
+    uint64_t tensor_offset;
+    uint64_t tensor_bytes;
+    uint64_t input_elements_per_row;
+    uint64_t output_elements_per_row;
+    uint64_t rows;
+    uint64_t max_buffer_length;
+    uint32_t no_copy_pointer_match;
+    uint32_t batch_threads_per_threadgroup;
+    uint32_t batch_threadgroups_x;
+    uint32_t batch_threadgroups_y;
+    double batch_wall_ms;
+    double batch_gpu_ms;
+    double decode_wall_ms;
+    double decode_gpu_ms;
+} rust_star_metal_prefill_q8_probe_result;
+
 typedef struct rust_star_metal_ingress_probe_result {
     uint64_t model_bytes;
     uint64_t max_buffer_length;
@@ -154,6 +172,22 @@ int rust_star_metal_run_q8_0_projection(
     const float *input,
     float *output,
     rust_star_metal_projection_probe_result *result,
+    char *error,
+    size_t error_bytes);
+
+int rust_star_metal_run_prefill_q8_boundary(
+    void *context,
+    const void *model_mapping,
+    uint64_t model_bytes,
+    uint64_t tensor_offset,
+    uint64_t tensor_bytes,
+    uint32_t input_elements_per_row,
+    uint32_t output_elements_per_row,
+    uint32_t rows,
+    const float *input,
+    float *batch_output,
+    float *decode_output,
+    rust_star_metal_prefill_q8_probe_result *result,
     char *error,
     size_t error_bytes);
 

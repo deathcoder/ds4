@@ -110,6 +110,25 @@ input/output checksums. The JSON deliberately excludes fixture contents, mmap
 addresses, and local paths. Its standalone timing includes cold pipeline and
 boundary costs and is not a decode-throughput measurement.
 
+## M1 batched-Q8 prefill boundary
+
+Schema: `rust-star-prefill-q8-boundary-probe-v1`.
+
+`prefill-q8-boundary-probe` isolates the first arithmetic difference between
+DwarfStar's native 2K batch and 2,048 one-token evaluations. Repeated captures
+show that layer-0 hidden combination and learned normalization remain bitwise
+identical through `attn_norm`; the following Q-A projection is the first
+different tensor.
+
+The M1 Ultra runtime explicitly disables Metal 4 TensorOps, so its native batch
+path is `kernel_mul_mm_q8_0_f32`, not the retained N128 cooperative-tensor
+kernel used on newer Apple GPUs. The probe compiles the same legacy kernel with
+both bounds function constants false, dispatches a captured final 128-row tile,
+and checks every output bit. It then applies the existing one-row matvec to the
+shared final input and checks that control independently. The report preserves
+their expected 1,024/1,024 final-row mismatch and maximum absolute error while
+setting `full_prefill_claim` false.
+
 ## Layer-0 attention ingress
 
 Schema: `rust-star-layer0-attention-ingress-probe-v1`.

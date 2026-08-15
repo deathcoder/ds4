@@ -294,10 +294,11 @@ they describe whenever practical.
 
 ## Open Items
 
-- Implement native batched prefill arithmetic. The sequential 2K initializer
-  now has correct context-sized state ownership and is C0 exact against
-  DwarfStar's one-token decode replay, but deliberately records that it differs
-  from the paired protocol's batched-prefill oracle.
+- Extend native batched prefill arithmetic beyond the first exact boundary.
+  The M1 layer-0 Q-A batch projection and one-row control are now independently
+  C0 exact, while the sequential 2K initializer still deliberately records its
+  difference from the paired protocol's batched-prefill oracle. Continue
+  through batch Q/KV setup and then move the boundary back to token IDs.
 - Add ratio-4 sparse indexer selection after 512 compressed rows, then emit the
   Rust Star engine-measurement contract. The complete 128-token diagnostic no
   longer depends on captured initial cache/compressor state.

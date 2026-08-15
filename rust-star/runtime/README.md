@@ -22,6 +22,10 @@ Implemented contracts:
 - DwarfStar's decode-time `kernel_mul_mv_q8_0_f32`, consuming a real layer-0
   decode activation and the no-copy `blk.0.attn_q_a.weight` span, validated
   bit-for-bit against a pinned DwarfStar layer/step fixture.
+- DwarfStar's native M1 `kernel_mul_mm_q8_0_f32` prefill projection over a
+  captured 128-row layer-0 tile, plus a one-row decode control sharing the
+  final normalized input. Both match their oracle tensors bit-for-bit and
+  preserve the expected cross-schedule arithmetic divergence.
 - the connected layer-0 attention ingress from token 201 through the Q-A
   projection, with six no-copy model ranges and bitwise checks at mixer, HC
   split, collapsed HC, learned norm, and Q-Lora boundaries.
@@ -129,6 +133,22 @@ The fixture under `../fixtures/q8-attn-q-a-v1/` was captured from pinned
 DwarfStar at layer 0, decode position 1. The command imports DwarfStar's default
 four-simdgroup/two-row Q8_0 matvec, wraps only the real weight span without a
 copy, and requires all 1,024 output FP32 bit patterns to match the fixture.
+
+To validate the first native batched-prefill arithmetic boundary:
+
+```sh
+rust-star/.work/runtime-target/release/rust-star prefill-q8-boundary-probe \
+  /absolute/path/to/model.gguf \
+  --json rust-star/.work/runtime-target/prefill-q8-boundary-probe.json
+```
+
+The M1 Ultra disables DwarfStar's Metal 4 TensorOps path, so this command uses
+the actual legacy `kernel_mul_mm_q8_0_f32` batch kernel with four 32-row tiles,
+sixteen output groups, 128 threads per group, and 6,144 bytes of threadgroup
+memory. It requires all 131,072 batch outputs and the final one-row decode
+control to match the repeated oracle captures. The two outputs intentionally
+differ in all 1,024 final-row values; this localizes the first 2K schedule
+divergence but does not claim a complete native prefill implementation.
 
 To run the connected layer-0 ingress gate:
 
