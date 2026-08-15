@@ -98,6 +98,9 @@ elif [ "$#" -eq 1 ]; then
         echo "==> position-advancing layers 0-3 with persistent per-layer KV caches"
         "$target_dir/release/rust-star" layers0123-decode-probe "$1" \
             --json "$target_dir/layers0123-decode-probe.json"
+        echo "==> position-advancing layers 0-5 with generalized compressor ownership"
+        "$target_dir/release/rust-star" layers012345-decode-probe "$1" \
+            --json "$target_dir/layers012345-decode-probe.json"
         echo "==> repeated layers 0-3 with setup and correctness readback outside timing"
         "$target_dir/release/rust-star" layers0123-bench "$1" \
             --warmup 5 --iterations 20 \

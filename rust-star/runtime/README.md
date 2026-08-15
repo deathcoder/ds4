@@ -345,6 +345,22 @@ uses ratio 4 and emits at position 3, while layer 3 uses ratio 128 and will not
 emit until position 127. This corrects the earlier documentation statement
 that both layers used ratio 4.
 
+To exercise generalized compressor ownership through the next schedule pair:
+
+```sh
+rust-star/.work/runtime-target/release/rust-star layers012345-decode-probe \
+  /absolute/path/to/model.gguf \
+  --json rust-star/.work/runtime-target/layers012345-decode-probe.json
+```
+
+`layers012345-decode-probe` retains the same positions 1–3 and exact four-layer
+regression boundary, then continues the live HC handoff through layers 4 and 5.
+Layer 4 owns a second ratio-4 attention/indexer compressor pair and validates
+its emitted position-3 KV row; layer 5 owns non-emitting ratio-128 attention
+state. The six command buffers share one queue and one tail wait per step, and
+all six raw caches and compressor states remain layer-scoped. This still covers
+only six of 43 layers and is a correctness diagnostic, not token throughput.
+
 For repeated fixed-position execution with preparation and correctness
 collection outside the measured interval:
 

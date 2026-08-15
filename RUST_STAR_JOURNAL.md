@@ -22,13 +22,14 @@ history; add a correction and update the current-state summary.
 
 - Phase: target-Mac bootstrap, quick `oracle-v1`, no-copy model mapping, the
   canonical differential-fixture envelope, complete layer 0, steady-state
-  layer-0 execution, the first four-layer scheduler boundary, and the minimum
-  three-step position-advancing four-layer slice and the first compressed-cache
-  emission are complete.
-  Layers 0 through 3 execute in order under one Rust-owned Metal context with
+  layer-0 execution, the first four-layer scheduler boundary, the minimum
+  three-step position-advancing four-layer slice, and the generalized six-layer
+  compression-schedule boundary are complete.
+  Layers 0 through 5 execute in order under one Rust-owned Metal context with
   exact GPU-resident HC-state handoffs and one retained KV allocation per
-  layer. Layer 2 crosses the first compressed-attention RoPE boundary, and
-  layer 3 crosses from token-hash routing to biased top-k routing.
+  layer. Layers 2 and 4 cross ratio-4 compressed-attention emission boundaries;
+  layers 3 and 5 retain their ratio-128 state without emitting at position 3.
+  Layer 3 crosses from token-hash routing to biased top-k routing.
 - Working branch: `agent/rust-star-bootstrap`.
 - Branch base: upstream `antirez/ds4` commit
   `b0309611041655f4e45671cfd9c9886aff161406`.
@@ -92,19 +93,23 @@ history; add a correction and update the current-state summary.
   iterations collect only Metal timing metadata, followed by one exhaustive C0
   readback after the final sample. The same prepared executor now advances from
   token 201/position 1 through token 361/position 2 to token 1915/position 3
-  without recreating its four layer-scoped KV caches. It verifies preserved
+  without recreating its six layer-scoped KV caches. It verifies preserved
   FP16-rounded raw-cache history, grows each cache from two to four visible
   rows, derives RoPE/attention/router state from the explicit token and
-  position, and hands off layer 3's final 16,384-element HC state. The decoder
-  now owns the recurrent attention-compressor state for layers 2 and 3 plus the
-  layer-2 indexer-compressor state. On the M1 Ultra it follows DwarfStar's
+  position, and hands off layer 5's final 16,384-element HC state. The original
+  four-layer path remains an independently executed regression control. The
+  decoder now owns recurrent attention-compressor state for layers 2 through 5
+  plus indexer-compressor state for the even compressed layers 2 and 4. On the
+  M1 Ultra it follows DwarfStar's
   separate paired F16 projection and one-row state-store path, retains the
   legacy concat/softmax/multiply/sum reduction for the first ratio-4 emission,
   applies learned norm, compressed RoPE, state shift, and FP8/indexer QAT, then
-  appends the emitted layer-2 row to attention. All retained boundaries match
-  pinned position-1 and independently repeated position-2/3 DwarfStar fixtures
-  bit-for-bit. Corrected schedule: layer 2 uses ratio 4 and emits at position 3;
-  layer 3 uses ratio 128 and only accumulates state at this frontier.
+  appends the emitted layer-2 and layer-4 rows to attention. All retained
+  boundaries match pinned position-1 and independently repeated position-2/3
+  DwarfStar fixtures bit-for-bit. The generalized schedule applies ratio 4 plus
+  indexer compression to even compressed layers and ratio 128 without indexer
+  compression to odd compressed layers; at this frontier layers 2 and 4 emit
+  while layers 3 and 5 only accumulate state.
 - Measurements: Metal batching was 42.861x faster than synchronized submission
   in the retained M-002 probe. DwarfStar medians are 164.86 prefill / 19.90
   generation tok/s at 2K and 161.05 prefill / 17.36 generation tok/s at 32K.
@@ -148,6 +153,11 @@ history; add a correction and update the current-state summary.
   position 2, and 10.455/9.618 ms at position 3 (wall/summed GPU). It matched
   the emitted 512-value FP8 compressed KV row and every downstream layer
   boundary; this is also correctness evidence, not token throughput.
+  The integrated six-layer gate reported 143.285/108.618 ms at the cold
+  position-1 step, 14.098/13.178 ms at position 2, and 11.552/10.111 ms at
+  position 3 (wall/summed GPU). It matched both ratio-4 emissions and every
+  retained layer 0–5 boundary. These are correctness diagnostics, not token
+  throughput measurements.
 - Manual handoff: `RUST_STAR_MANUAL_TASKS.md` records Actions approval, target
   compilation/model inspection, quick/extended oracle capture, and the deferred
   secure-access decision with exact evidence requirements.
@@ -160,17 +170,70 @@ history; add a correction and update the current-state summary.
 
 ## Immediate Next Actions
 
-1. Generalize compressed-state ownership beyond the hard-coded layer-2/3 slice
-   and extend the ordered executor through the next compression-schedule pair,
-   while retaining positions 1–3 and fixed-position replay as controls.
-2. Plan the longer position-127 gate that exercises layer 3's first ratio-128
-   emission without treating 124 externally supplied oracle tokens as a full
-   decoder or sampling claim.
+1. Plan the longer position-127 gate that exercises layer 3's and layer 5's
+   first ratio-128 emissions without treating 124 externally supplied oracle
+   tokens as a full decoder or sampling claim. Start with a bounded layer-3
+   state replay if capturing both layers at once makes the evidence unwieldy.
+2. Generalize the ordered executor across the remaining decoder layers while
+   retaining the four-layer and six-layer position-advancing paths as controls.
 3. Run the extended 2K--1M frontier capture when the Mac can be dedicated to a
    long benchmark; preserve any 512K/1M capacity failure as evidence.
 4. Run or approve the fork's GitHub Actions workflow and retain its URL.
 
 ## Entries
+
+### 2026-08-15 — Compressor ownership generalized through layers 4–5
+
+Objective:
+
+- Replace the layer-2/3-specific compressor schedule with parity-derived
+  ownership, extend the exact position-advancing executor through the next
+  ratio-4/ratio-128 pair, and keep the published four-layer path as a control.
+
+Oracle evidence:
+
+- Captured all retained layer-4/5 boundaries at positions 0–3 twice in fresh
+  DwarfStar processes. All 197 corresponding payloads were byte-identical.
+- Layer 4 emitted its 512-value `KVcompress` row at position 3; both captures
+  have SHA-256
+  `30550322349818d5524c864ca624613c94f18feea0c2f9a57186afd9c8fff5a1`.
+  Layer 5 correctly emitted no compressed row at this ratio-128 frontier.
+- Added eight strict fixture envelopes: one position-0 compressor prime and
+  complete position-1/2/3 boundaries for each layer. The repository now has 29
+  validated differential-fixture manifests.
+
+Implementation:
+
+- Derived compressor ratio, indexer ownership, and emission cadence from layer
+  parity for every compressed layer. Even layers use ratio 4 and own the
+  indexer compressor; odd layers use ratio 128 and do not.
+- Extended exact layer scheduling and the checked prepared-submission tail
+  through layer 5. The common executor accepts a contiguous three-to-six-layer
+  prefix, while the existing layers-0/3 entry point remains unchanged.
+- Added the `layers012345-decode-probe` command, atomic JSON reporting, runtime
+  gate coverage, and independently embedded layer-4/5 fixtures and primes.
+- Added a reproducible importer that verifies both oracle captures before
+  creating the canonical layer-4/5 fixture envelopes.
+
+Validation:
+
+- The complete target-Mac gate passed: formatting, 51 Rust tests, optimized
+  build, 41 Python tests, all 29 differential fixtures, cross-language artifact
+  checks, strict inspection of 1,288 required model spans, every incremental
+  Metal probe, both position-advancing controls, and steady-state benches.
+- The integrated four-layer control remained C0 exact at positions 1–3. The
+  new six-layer path was also C0 exact at every retained boundary and reported
+  143.285/108.618 ms, 14.098/13.178 ms, and 11.552/10.111 ms wall/summed GPU at
+  positions 1, 2, and 3 respectively.
+- These timings include correctness-oriented execution and are diagnostics,
+  not decoder-throughput or end-to-end model-speed claims.
+
+Decision and next gate:
+
+- The next distinct compression boundary is position 127. Plan a bounded
+  recurrent-state replay using the pinned oracle token sequence, beginning
+  with layer 3 if necessary, and explicitly avoid presenting externally
+  supplied tokens as sampling or a complete decoder.
 
 ### 2026-08-15 — First ratio-4 compressed KV emission matched at position 3
 

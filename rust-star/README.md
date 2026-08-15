@@ -33,11 +33,15 @@ layer 3's final 16,384-element HC state. It advances layer 2's ratio-4 attention
 and indexer compressors, validates the first FP8 compressed KV row, and also
 advances layer 3's non-emitting ratio-128 compressor state. Every retained
 boundary in all three steps matches two independent fresh-process DwarfStar
-captures bit-for-bit. The
+captures bit-for-bit. A six-layer extension uses the same prepared scheduler and
+generalized alternating compressor ownership through layers 4 and 5. Layer 4
+matches a second ratio-4 compressed KV emission at position 3, while layer 5
+advances ratio-128 state without emitting; all new boundaries are independently
+captured and C0 exact. The
 persistent layer-0 gate reuses its pipelines, 25 no-copy model views, cache
 storage, and activation buffers for repeated steady-state timing; this is not
-yet a complete decoder because it has only four layers and no logits or
-sampling.
+yet a complete decoder because the deepest exact slice has six layers and no
+logits or sampling.
 
 Project controls and benchmark contracts:
 

@@ -1550,10 +1550,11 @@ int rust_star_metal_run_attention_ingress(
     const uint32_t position = full_layer ? layer0->position : 1u;
     const uint32_t visible_cache_rows = position + 1u;
     const BOOL compressed_layer = full_layer && layer0->layer_index >= 2u;
-    const uint32_t compressor_ratio = layer0->layer_index == 2u ? 4u : 128u;
+    const uint32_t compressor_ratio = (layer0->layer_index % 2u) == 0u ? 4u : 128u;
     const uint32_t compressor_width = compressor_ratio == 4u ? 1024u : 512u;
-    const BOOL indexer_layer = full_layer && layer0->layer_index == 2u;
-    const BOOL compressor_emit = indexer_layer && position == 3u;
+    const BOOL indexer_layer = compressed_layer && compressor_ratio == 4u;
+    const BOOL compressor_emit = compressed_layer &&
+        ((position + 1u) % compressor_ratio) == 0u;
     const uint32_t attention_cache_rows = visible_cache_rows + (compressor_emit ? 1u : 0u);
     const BOOL continuing_layer = full_layer && layer0->reuse_previous_hc != 0;
     const uint32_t command_mode = full_layer ? layer0->command_mode : RUST_STAR_COMMAND_SYNCHRONIZED;
@@ -1592,7 +1593,7 @@ int rust_star_metal_run_attention_ingress(
         return fail_with_message(error, error_bytes,
             @"full layer outputs require the complete attention path and output set");
     }
-    if (full_layer && (layer0->layer_index > 3 ||
+    if (full_layer && (layer0->layer_index > 5 ||
         (layer0->layer_index == 0 && continuing_layer) ||
         (layer0->layer_index > 0 && !continuing_layer))) {
         return fail_with_message(error, error_bytes,
@@ -1600,7 +1601,7 @@ int rust_star_metal_run_attention_ingress(
     }
     if (full_layer && (position < 1u || position > 3u)) {
         return fail_with_message(error, error_bytes,
-            @"the exact four-layer slice currently supports decode positions 1 through 3");
+            @"the exact retained slice currently supports decode positions 1 through 3");
     }
     if (full_layer && position > 1u && command_mode == RUST_STAR_COMMAND_SYNCHRONIZED) {
         return fail_with_message(error, error_bytes,
@@ -1615,7 +1616,7 @@ int rust_star_metal_run_attention_ingress(
             @"synchronized layer execution must not declare a command-chain tail");
     }
     if ((chained_submission || chained_replay) &&
-        (layer0->chain_final_layer < 2 || layer0->chain_final_layer > 3 ||
+        (layer0->chain_final_layer < 2 || layer0->chain_final_layer > 5 ||
          layer0->layer_index > layer0->chain_final_layer)) {
         return fail_with_message(error, error_bytes,
             @"chained layer execution has an invalid command-chain tail");

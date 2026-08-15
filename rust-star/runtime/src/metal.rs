@@ -24,6 +24,8 @@ pub const LAYERS0123_PROBE_SCHEMA: &str = "rust-star-layers0123-continuous-probe
 pub const LAYERS0123_CHAINED_PROBE_SCHEMA: &str = "rust-star-layers0123-chained-probe-v1";
 pub const LAYERS0123_BENCH_SCHEMA: &str = "rust-star-layers0123-steady-state-v1";
 pub const LAYERS0123_DECODE_PROBE_SCHEMA: &str = "rust-star-layers0123-position-advancing-probe-v1";
+pub const LAYERS012345_DECODE_PROBE_SCHEMA: &str =
+    "rust-star-layers012345-position-advancing-probe-v1";
 pub const PROJECTION_FIXTURE_ID: &str = "dwarfstar-oracle-v1-layer0-pos1-attn-q-a";
 pub const INGRESS_FIXTURE_ID: &str = "dwarfstar-oracle-v1-layer0-pos1-attention-ingress";
 pub const ATTENTION_SETUP_FIXTURE_ID: &str = "dwarfstar-oracle-v1-layer0-pos1-qkv-setup";
@@ -36,14 +38,20 @@ pub const LAYER0_FIXTURE_ID: &str = "dwarfstar-oracle-v1-layer0-pos1-complete";
 pub const LAYER1_FIXTURE_ID: &str = "dwarfstar-oracle-v1-layer1-pos1-complete";
 pub const LAYER2_FIXTURE_ID: &str = "dwarfstar-oracle-v1-layer2-pos1-complete";
 pub const LAYER3_FIXTURE_ID: &str = "dwarfstar-oracle-v1-layer3-pos1-complete";
+pub const LAYER4_FIXTURE_ID: &str = "dwarfstar-oracle-v1-layer4-pos1-complete";
+pub const LAYER5_FIXTURE_ID: &str = "dwarfstar-oracle-v1-layer5-pos1-complete";
 pub const LAYER0_POS2_FIXTURE_ID: &str = "dwarfstar-oracle-v1-layer0-pos2-complete";
 pub const LAYER1_POS2_FIXTURE_ID: &str = "dwarfstar-oracle-v1-layer1-pos2-complete";
 pub const LAYER2_POS2_FIXTURE_ID: &str = "dwarfstar-oracle-v1-layer2-pos2-complete";
 pub const LAYER3_POS2_FIXTURE_ID: &str = "dwarfstar-oracle-v1-layer3-pos2-complete";
+pub const LAYER4_POS2_FIXTURE_ID: &str = "dwarfstar-oracle-v1-layer4-pos2-complete";
+pub const LAYER5_POS2_FIXTURE_ID: &str = "dwarfstar-oracle-v1-layer5-pos2-complete";
 pub const LAYER0_POS3_FIXTURE_ID: &str = "dwarfstar-oracle-v1-layer0-pos3-complete";
 pub const LAYER1_POS3_FIXTURE_ID: &str = "dwarfstar-oracle-v1-layer1-pos3-complete";
 pub const LAYER2_POS3_FIXTURE_ID: &str = "dwarfstar-oracle-v1-layer2-pos3-complete";
 pub const LAYER3_POS3_FIXTURE_ID: &str = "dwarfstar-oracle-v1-layer3-pos3-complete";
+pub const LAYER4_POS3_FIXTURE_ID: &str = "dwarfstar-oracle-v1-layer4-pos3-complete";
+pub const LAYER5_POS3_FIXTURE_ID: &str = "dwarfstar-oracle-v1-layer5-pos3-complete";
 pub const DEFAULT_ELEMENTS: u64 = 4096;
 pub const DEFAULT_ITERATIONS: u64 = 100;
 const MAX_ELEMENTS: u64 = 16 * 1024 * 1024;
@@ -727,6 +735,9 @@ pub struct Layers0123DecodeProbeReport {
     pub output_hc_elements: u32,
 }
 
+pub type Layers012345DecodeStepReport = Layers0123DecodeStepReport;
+pub type Layers012345DecodeProbeReport = Layers0123DecodeProbeReport;
+
 pub fn write_ingress_probe_json<W: Write>(
     output: &mut W,
     report: &IngressProbeReport,
@@ -1137,10 +1148,26 @@ pub fn write_layers0123_decode_probe_json<W: Write>(
     output: &mut W,
     report: &Layers0123DecodeProbeReport,
 ) -> Result<()> {
+    write_position_advancing_probe_json(output, report, LAYERS0123_DECODE_PROBE_SCHEMA, 4)
+}
+
+pub fn write_layers012345_decode_probe_json<W: Write>(
+    output: &mut W,
+    report: &Layers012345DecodeProbeReport,
+) -> Result<()> {
+    write_position_advancing_probe_json(output, report, LAYERS012345_DECODE_PROBE_SCHEMA, 6)
+}
+
+fn write_position_advancing_probe_json<W: Write>(
+    output: &mut W,
+    report: &Layers0123DecodeProbeReport,
+    schema: &str,
+    expected_layers: u32,
+) -> Result<()> {
     if report.steps.len() != 3
-        || report.command_buffers_per_step != 4
+        || report.command_buffers_per_step != expected_layers
         || report.host_waits_per_step != 1
-        || report.kv_cache_layers != 4
+        || report.kv_cache_layers != expected_layers
         || report.cache_capacity_rows != 4
         || report.output_hc_elements != 16384
     {
@@ -1150,7 +1177,8 @@ pub fn write_layers0123_decode_probe_json<W: Write>(
     }
     write!(
         output,
-        "{{\n  \"schema\": \"{LAYERS0123_DECODE_PROBE_SCHEMA}\",\n  \"command_buffers_per_step\": {},\n  \"host_waits_per_step\": {},\n  \"kv_cache_layers\": {},\n  \"cache_capacity_rows\": {},\n  \"output_hc_elements\": {},\n  \"steps\": [",
+        "{{\n  \"schema\": \"{}\",\n  \"command_buffers_per_step\": {},\n  \"host_waits_per_step\": {},\n  \"kv_cache_layers\": {},\n  \"cache_capacity_rows\": {},\n  \"output_hc_elements\": {},\n  \"steps\": [",
+        schema,
         report.command_buffers_per_step,
         report.host_waits_per_step,
         report.kv_cache_layers,
@@ -1161,7 +1189,7 @@ pub fn write_layers0123_decode_probe_json<W: Write>(
         if step_index != 0 {
             write!(output, ",")?;
         }
-        if step.layers.len() != 4 || step.cache_rows != step.position + 1 {
+        if step.layers.len() != expected_layers as usize || step.cache_rows != step.position + 1 {
             return Err(Error::invalid(
                 "position-advancing step has inconsistent layer/cache metadata",
             ));
@@ -1960,37 +1988,60 @@ complete_decode_fixture!(LAYER0_POS2_BYTES, 0, 2, LAYER0_POS2_FIXTURE_ID);
 complete_decode_fixture!(LAYER1_POS2_BYTES, 1, 2, LAYER1_POS2_FIXTURE_ID);
 complete_decode_fixture!(LAYER2_POS2_BYTES, 2, 2, LAYER2_POS2_FIXTURE_ID);
 complete_decode_fixture!(LAYER3_POS2_BYTES, 3, 2, LAYER3_POS2_FIXTURE_ID);
+complete_decode_fixture!(LAYER4_POS2_BYTES, 4, 2, LAYER4_POS2_FIXTURE_ID);
+complete_decode_fixture!(LAYER5_POS2_BYTES, 5, 2, LAYER5_POS2_FIXTURE_ID);
 complete_decode_fixture!(LAYER0_POS3_BYTES, 0, 3, LAYER0_POS3_FIXTURE_ID);
 complete_decode_fixture!(LAYER1_POS3_BYTES, 1, 3, LAYER1_POS3_FIXTURE_ID);
 complete_decode_fixture!(LAYER2_POS3_BYTES, 2, 3, LAYER2_POS3_FIXTURE_ID);
 complete_decode_fixture!(LAYER3_POS3_BYTES, 3, 3, LAYER3_POS3_FIXTURE_ID);
+complete_decode_fixture!(LAYER4_POS3_BYTES, 4, 3, LAYER4_POS3_FIXTURE_ID);
+complete_decode_fixture!(LAYER5_POS3_BYTES, 5, 3, LAYER5_POS3_FIXTURE_ID);
+complete_decode_fixture!(LAYER4_POS1_BYTES, 4, 1, LAYER4_FIXTURE_ID);
+complete_decode_fixture!(LAYER5_POS1_BYTES, 5, 1, LAYER5_FIXTURE_ID);
 
 const LAYER2_POS3_COMPRESSED_KV_BYTES: &[u8] =
     include_bytes!("../../fixtures/layer2-pos3-complete-v1/compressed-kv-row0.f32le.bin");
+const LAYER4_POS3_COMPRESSED_KV_BYTES: &[u8] =
+    include_bytes!("../../fixtures/layer4-pos3-complete-v1/compressed-kv-row0.f32le.bin");
 const LAYER2_POS0_COMPRESSOR_PRIME_BYTES: &[u8] =
     include_bytes!("../../fixtures/layer2-pos0-compressor-prime-v1/attn-norm.f32le.bin");
 const LAYER3_POS0_COMPRESSOR_PRIME_BYTES: &[u8] =
     include_bytes!("../../fixtures/layer3-pos0-compressor-prime-v1/attn-norm.f32le.bin");
+const LAYER4_POS0_COMPRESSOR_PRIME_BYTES: &[u8] =
+    include_bytes!("../../fixtures/layer4-pos0-compressor-prime-v1/attn-norm.f32le.bin");
+const LAYER5_POS0_COMPRESSOR_PRIME_BYTES: &[u8] =
+    include_bytes!("../../fixtures/layer5-pos0-compressor-prime-v1/attn-norm.f32le.bin");
+const LAYER4_CACHE_ROW0_BYTES: &[u8] =
+    include_bytes!("../../fixtures/layer4-pos1-complete-v1/cache-row0.f32le.bin");
+const LAYER5_CACHE_ROW0_BYTES: &[u8] =
+    include_bytes!("../../fixtures/layer5-pos1-complete-v1/cache-row0.f32le.bin");
 
 fn apply_complete_decode_fixture(
     layer_index: u32,
     position: u32,
     mut expected: LayerExpected,
 ) -> Result<LayerExpected> {
-    let bytes =
-        match (position, layer_index) {
-            (2, 0) => &LAYER0_POS2_BYTES,
-            (2, 1) => &LAYER1_POS2_BYTES,
-            (2, 2) => &LAYER2_POS2_BYTES,
-            (2, 3) => &LAYER3_POS2_BYTES,
-            (3, 0) => &LAYER0_POS3_BYTES,
-            (3, 1) => &LAYER1_POS3_BYTES,
-            (3, 2) => &LAYER2_POS3_BYTES,
-            (3, 3) => &LAYER3_POS3_BYTES,
-            _ => return Err(Error::invalid(
-                "complete decode fixture is outside positions 2 through 3 and layers 0 through 3",
-            )),
-        };
+    let bytes = match (position, layer_index) {
+        (2, 0) => &LAYER0_POS2_BYTES,
+        (2, 1) => &LAYER1_POS2_BYTES,
+        (2, 2) => &LAYER2_POS2_BYTES,
+        (2, 3) => &LAYER3_POS2_BYTES,
+        (2, 4) => &LAYER4_POS2_BYTES,
+        (2, 5) => &LAYER5_POS2_BYTES,
+        (3, 0) => &LAYER0_POS3_BYTES,
+        (3, 1) => &LAYER1_POS3_BYTES,
+        (3, 2) => &LAYER2_POS3_BYTES,
+        (3, 3) => &LAYER3_POS3_BYTES,
+        (3, 4) => &LAYER4_POS3_BYTES,
+        (3, 5) => &LAYER5_POS3_BYTES,
+        (1, 4) => &LAYER4_POS1_BYTES,
+        (1, 5) => &LAYER5_POS1_BYTES,
+        _ => {
+            return Err(Error::invalid(
+                "complete decode fixture is outside the retained layer/position frontier",
+            ))
+        }
+    };
     let label = format!("layer-{layer_index} position-{position}");
     let decode = |data, name: &str| decode_f32_fixture(data, &format!("{label} {name}"));
     expected.fixture_id = bytes.fixture_id;
@@ -2032,13 +2083,16 @@ fn apply_complete_decode_fixture(
     expected.routed_out = decode(bytes.routed_out, "routed output")?;
     expected.shared_out = decode(bytes.shared_out, "shared output")?;
     expected.final_hc = decode(bytes.final_hc, "final HC")?;
-    expected.compressed_kv = if position == 3 && layer_index == 2 {
-        decode_f32_fixture(
+    expected.compressed_kv = match (position, layer_index) {
+        (3, 2) => decode_f32_fixture(
             LAYER2_POS3_COMPRESSED_KV_BYTES,
             "layer-2 position-3 compressed KV row",
-        )?
-    } else {
-        Vec::new()
+        )?,
+        (3, 4) => decode_f32_fixture(
+            LAYER4_POS3_COMPRESSED_KV_BYTES,
+            "layer-4 position-3 compressed KV row",
+        )?,
+        _ => Vec::new(),
     };
     Ok(expected)
 }
@@ -2050,6 +2104,18 @@ fn layer_expected(layer_index: u32, position: u32) -> Result<LayerExpected> {
             position,
             layer_expected(layer_index, 1)?,
         );
+    }
+    if position == 1 && (layer_index == 4 || layer_index == 5) {
+        let mut expected =
+            apply_complete_decode_fixture(layer_index, position, layer_expected(3, position)?)?;
+        let cache_row = if layer_index == 4 {
+            LAYER4_CACHE_ROW0_BYTES
+        } else {
+            LAYER5_CACHE_ROW0_BYTES
+        };
+        expected.cache_row0 =
+            decode_f32_fixture(cache_row, &format!("layer-{layer_index} cache row 0"))?;
+        return Ok(expected);
     }
     if position != 1 {
         return Err(Error::invalid(
@@ -2859,10 +2925,16 @@ mod imp {
             let (attention_compressor, compressor_prime) = if layer_index >= 2 {
                 let ratio = if layer_index % 2 == 0 { 4 } else { 128 };
                 let width = if ratio == 4 { 1024 } else { 512 };
-                let prime_bytes = if layer_index == 2 {
-                    LAYER2_POS0_COMPRESSOR_PRIME_BYTES
-                } else {
-                    LAYER3_POS0_COMPRESSOR_PRIME_BYTES
+                let prime_bytes = match layer_index {
+                    2 => LAYER2_POS0_COMPRESSOR_PRIME_BYTES,
+                    3 => LAYER3_POS0_COMPRESSOR_PRIME_BYTES,
+                    4 => LAYER4_POS0_COMPRESSOR_PRIME_BYTES,
+                    5 => LAYER5_POS0_COMPRESSOR_PRIME_BYTES,
+                    _ => {
+                        return Err(Error::invalid(format!(
+                            "layer-{layer_index} compressor prime is not captured"
+                        )))
+                    }
                 };
                 (
                     Some(CompressorSpans {
@@ -2887,7 +2959,7 @@ mod imp {
             } else {
                 (None, Vec::new())
             };
-            let indexer_compressor = if layer_index == 2 {
+            let indexer_compressor = if layer_index >= 2 && layer_index % 2 == 0 {
                 Some(CompressorSpans {
                     ape: span(&tensor_name("indexer_compressor_ape.weight"), 1, &[256, 4])?,
                     kv: span(
@@ -4327,20 +4399,26 @@ mod imp {
         })
     }
 
-    fn submit_prepared_layers0123(
+    fn submit_prepared_layers(
         model: &MappedModel,
         context: &Context,
         layers: &mut [PreparedLayerExecution],
         token: u32,
         position: u32,
     ) -> Result<()> {
-        if layers.len() != 4 {
+        if !(3..=6).contains(&layers.len()) {
             return Err(Error::invalid(
-                "four-layer submission requires exactly four prepared layers",
+                "prepared submission requires three through six contiguous layers",
             ));
         }
+        let final_layer = layers.len() as u32 - 1;
         for (layer_index, layer) in layers.iter_mut().enumerate() {
-            let command_mode = if layer_index == 3 {
+            if layer.layer_index != layer_index as u32 {
+                return Err(Error::invalid(
+                    "prepared submission layers must be contiguous and zero-based",
+                ));
+            }
+            let command_mode = if layer_index as u32 == final_layer {
                 COMMAND_CHAINED_FINAL
             } else {
                 COMMAND_CHAINED_ENQUEUE
@@ -4354,7 +4432,7 @@ mod imp {
                 0,
                 1,
                 command_mode,
-                3,
+                final_layer,
             )?;
         }
         Ok(())
@@ -4371,13 +4449,13 @@ mod imp {
             .collect::<Result<Vec<_>>>()?;
 
         for _ in 0..config.warmup_iterations {
-            submit_prepared_layers0123(model, &context, &mut layers, 201, 1)?;
+            submit_prepared_layers(model, &context, &mut layers, 201, 1)?;
         }
 
         let mut wall_ms_samples = Vec::with_capacity(config.iterations as usize);
         let mut gpu_ms_samples = Vec::with_capacity(config.iterations as usize);
         for _ in 0..config.iterations {
-            submit_prepared_layers0123(model, &context, &mut layers, 201, 1)?;
+            submit_prepared_layers(model, &context, &mut layers, 201, 1)?;
             let timing = run_prepared_layer_iterations(
                 model,
                 &context,
@@ -4426,9 +4504,18 @@ mod imp {
         })
     }
 
-    pub fn run_layers0123_decode_probe(model: &MappedModel) -> Result<Layers0123DecodeProbeReport> {
+    fn run_position_advancing_probe(
+        model: &MappedModel,
+        layer_count: u32,
+    ) -> Result<Layers0123DecodeProbeReport> {
+        if layer_count != 4 && layer_count != 6 {
+            return Err(Error::invalid(
+                "position-advancing probe requires four or six layers",
+            ));
+        }
         let context = Context::new()?;
-        let mut layers = (0..=3)
+        let final_layer = layer_count - 1;
+        let mut layers = (0..layer_count)
             .map(|layer_index| PreparedLayerExecution::new(model, layer_index, 1, 1))
             .collect::<Result<Vec<_>>>()?;
         let mut steps = Vec::with_capacity(3);
@@ -4439,8 +4526,8 @@ mod imp {
                     layer.expected = layer_expected(layer_index as u32, position)?;
                 }
             }
-            submit_prepared_layers0123(model, &context, &mut layers, token, position)?;
-            let mut reports = Vec::with_capacity(4);
+            submit_prepared_layers(model, &context, &mut layers, token, position)?;
+            let mut reports = Vec::with_capacity(layer_count as usize);
             for layer in &mut layers {
                 reports.push(
                     run_prepared_layer_iterations(
@@ -4452,14 +4539,14 @@ mod imp {
                         0,
                         1,
                         COMMAND_CHAINED_COLLECT,
-                        3,
+                        final_layer,
                     )?
                     .report,
                 );
             }
             let wall_ms = reports[0].wall_ms;
             let gpu_ms = reports.iter().map(|layer| layer.gpu_ms).sum();
-            let output_hc_checksum = reports[3].final_hc_checksum;
+            let output_hc_checksum = reports[final_layer as usize].final_hc_checksum;
             steps.push(Layers0123DecodeStepReport {
                 position,
                 token,
@@ -4473,12 +4560,22 @@ mod imp {
 
         Ok(Layers0123DecodeProbeReport {
             steps,
-            command_buffers_per_step: 4,
+            command_buffers_per_step: layer_count,
             host_waits_per_step: 1,
-            kv_cache_layers: 4,
+            kv_cache_layers: layer_count,
             cache_capacity_rows: 4,
             output_hc_elements: 4 * 4096,
         })
+    }
+
+    pub fn run_layers0123_decode_probe(model: &MappedModel) -> Result<Layers0123DecodeProbeReport> {
+        run_position_advancing_probe(model, 4)
+    }
+
+    pub fn run_layers012345_decode_probe(
+        model: &MappedModel,
+    ) -> Result<Layers012345DecodeProbeReport> {
+        run_position_advancing_probe(model, 6)
     }
 
     pub fn run_layer0_bench(
@@ -4774,10 +4871,14 @@ mod imp {
                 error_text(&error)
             )));
         }
-        let expected_wrapped_ranges = match layer_index {
-            2 => 33,
-            3 => 29,
-            _ => 25,
+        let expected_wrapped_ranges = if layer_index >= 2 {
+            if layer_index % 2 == 0 {
+                33
+            } else {
+                29
+            }
+        } else {
+            25
         };
         if raw.model_bytes != model.bytes()
             || raw.wrapped_model_ranges != expected_wrapped_ranges
@@ -4787,13 +4888,13 @@ mod imp {
                 "Metal complete layer path did not preserve every required mmap-backed model range",
             ));
         }
-        let dispatches = match (layer_index, position) {
-            (0, _) => 30,
-            (2, 1) => 36,
-            (2, 3) => 48,
-            (2, _) => 32,
-            (3, 1) => 32,
-            (3, _) => 30,
+        let dispatches = match (layer_index, layer_index % 2, position) {
+            (0, _, _) => 30,
+            (layer, 0, 1) if layer >= 2 => 36,
+            (layer, 0, 3) if layer >= 2 => 48,
+            (layer, 0, _) if layer >= 2 => 32,
+            (layer, 1, 1) if layer >= 3 => 32,
+            (layer, 1, _) if layer >= 3 => 30,
             _ => 28,
         };
         if matches!(
@@ -5444,6 +5545,20 @@ mod imp {
         ))
     }
 
+    pub fn run_layers012345_decode_probe(
+        model: &MappedModel,
+    ) -> Result<Layers012345DecodeProbeReport> {
+        for layer_index in 0..=5 {
+            let _ = layer_expected(layer_index, 1)?;
+            let _ = layer_expected(layer_index, 2)?;
+            let _ = layer_expected(layer_index, 3)?;
+        }
+        let _ = exact_tensor(model, "blk.5.ffn_down_shexp.weight", 8, &[2048, 4096])?;
+        Err(Error::invalid(
+            "the Metal position-advancing six-layer probe is available only on macOS",
+        ))
+    }
+
     pub fn run_layers012_chained_probe(model: &MappedModel) -> Result<Layers012ChainedProbeReport> {
         let _ = layer_expected(0, 1)?;
         let _ = layer_expected(1, 1)?;
@@ -5603,27 +5718,31 @@ mod imp {
 pub use imp::{
     run_attention_ingress_probe, run_attention_output_probe, run_attention_read_probe,
     run_attention_setup_probe, run_f16_embedding_probe, run_ffn_router_probe, run_layer0_bench,
-    run_layer0_probe, run_layers0123_bench, run_layers0123_chained_probe,
-    run_layers0123_decode_probe, run_layers0123_probe, run_layers012_chained_probe,
-    run_layers012_probe, run_layers01_probe, run_moe_output_probe, run_probe,
-    run_q8_projection_probe, run_rope_kv_store_probe, LayerExecutor,
+    run_layer0_probe, run_layers012345_decode_probe, run_layers0123_bench,
+    run_layers0123_chained_probe, run_layers0123_decode_probe, run_layers0123_probe,
+    run_layers012_chained_probe, run_layers012_probe, run_layers01_probe, run_moe_output_probe,
+    run_probe, run_q8_projection_probe, run_rope_kv_store_probe, LayerExecutor,
 };
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    const POSITION2_FIXTURE_IDS: [&str; 4] = [
+    const POSITION2_FIXTURE_IDS: [&str; 6] = [
         LAYER0_POS2_FIXTURE_ID,
         LAYER1_POS2_FIXTURE_ID,
         LAYER2_POS2_FIXTURE_ID,
         LAYER3_POS2_FIXTURE_ID,
+        LAYER4_POS2_FIXTURE_ID,
+        LAYER5_POS2_FIXTURE_ID,
     ];
-    const POSITION3_FIXTURE_IDS: [&str; 4] = [
+    const POSITION3_FIXTURE_IDS: [&str; 6] = [
         LAYER0_POS3_FIXTURE_ID,
         LAYER1_POS3_FIXTURE_ID,
         LAYER2_POS3_FIXTURE_ID,
         LAYER3_POS3_FIXTURE_ID,
+        LAYER4_POS3_FIXTURE_ID,
+        LAYER5_POS3_FIXTURE_ID,
     ];
 
     fn report() -> ProbeReport {
@@ -6005,6 +6124,50 @@ mod tests {
         }
     }
 
+    fn layers012345_decode_report() -> Layers012345DecodeProbeReport {
+        let mut report = layers0123_decode_report();
+        for step in &mut report.steps {
+            let mut layer4 = layer0_report();
+            layer4.fixture_id = match step.position {
+                1 => LAYER4_FIXTURE_ID,
+                2 => LAYER4_POS2_FIXTURE_ID,
+                _ => LAYER4_POS3_FIXTURE_ID,
+            };
+            layer4.token = step.token;
+            layer4.dispatches = if step.position == 1 {
+                36
+            } else if step.position == 3 {
+                48
+            } else {
+                32
+            };
+            layer4.selected_experts = match step.position {
+                1 => vec![170, 98, 161, 61, 63, 187],
+                2 => vec![170, 28, 97, 3, 98, 12],
+                _ => vec![242, 170, 184, 182, 97, 86],
+            };
+            let mut layer5 = layer0_report();
+            layer5.fixture_id = match step.position {
+                1 => LAYER5_FIXTURE_ID,
+                2 => LAYER5_POS2_FIXTURE_ID,
+                _ => LAYER5_POS3_FIXTURE_ID,
+            };
+            layer5.token = step.token;
+            layer5.dispatches = if step.position == 1 { 32 } else { 30 };
+            layer5.selected_experts = match step.position {
+                1 => vec![70, 210, 35, 48, 118, 72],
+                2 => vec![210, 70, 225, 255, 206, 10],
+                _ => vec![70, 240, 210, 110, 194, 77],
+            };
+            layer5.final_hc_checksum = 20 + u64::from(step.position);
+            step.output_hc_checksum = layer5.final_hc_checksum;
+            step.layers.extend([layer4, layer5]);
+        }
+        report.command_buffers_per_step = 6;
+        report.kv_cache_layers = 6;
+        report
+    }
+
     #[test]
     fn validates_probe_work_bounds() {
         assert!(ProbeConfig::default().validate().is_ok());
@@ -6155,6 +6318,20 @@ mod tests {
     }
 
     #[test]
+    fn writes_stable_layers012345_decode_probe_json() {
+        let mut output = Vec::new();
+        write_layers012345_decode_probe_json(&mut output, &layers012345_decode_report()).unwrap();
+        let text = String::from_utf8(output).unwrap();
+        assert!(text.contains(&format!(
+            "\"schema\": \"{LAYERS012345_DECODE_PROBE_SCHEMA}\""
+        )));
+        assert!(text.contains("\"command_buffers_per_step\": 6"));
+        assert!(text.contains("\"kv_cache_layers\": 6"));
+        assert!(text.contains(&format!("\"fixture\": \"{LAYER4_POS3_FIXTURE_ID}\"")));
+        assert!(text.contains(&format!("\"fixture\": \"{LAYER5_POS3_FIXTURE_ID}\"")));
+    }
+
+    #[test]
     fn position2_complete_fixtures_have_target_shapes() {
         let selected = [
             vec![191, 152, 163, 99, 109, 156],
@@ -6197,6 +6374,43 @@ mod tests {
                 fixture.compressed_kv.len(),
                 if layer_index == 2 { 512 } else { 0 }
             );
+        }
+    }
+
+    #[test]
+    fn layer45_position_advancing_fixtures_have_target_shapes() {
+        let selected = [
+            [
+                vec![170, 98, 161, 61, 63, 187],
+                vec![170, 28, 97, 3, 98, 12],
+                vec![242, 170, 184, 182, 97, 86],
+            ],
+            [
+                vec![70, 210, 35, 48, 118, 72],
+                vec![210, 70, 225, 255, 206, 10],
+                vec![70, 240, 210, 110, 194, 77],
+            ],
+        ];
+        for layer_index in 4..=5 {
+            for position in 1..=3 {
+                let fixture = layer_expected(layer_index, position).unwrap();
+                assert_eq!(fixture.cache_row0.len(), 512);
+                assert_eq!(fixture.kv_cur.len(), 512);
+                assert_eq!(fixture.attention_hc.len(), 4 * 4096);
+                assert_eq!(
+                    fixture.selected,
+                    selected[(layer_index - 4) as usize][(position - 1) as usize]
+                );
+                assert_eq!(fixture.final_hc.len(), 4 * 4096);
+                assert_eq!(
+                    fixture.compressed_kv.len(),
+                    if layer_index == 4 && position == 3 {
+                        512
+                    } else {
+                        0
+                    }
+                );
+            }
         }
     }
 

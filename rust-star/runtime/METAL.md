@@ -367,6 +367,24 @@ layer-3 HC buffer has 16,384 FP32 elements and is the declared output handoff.
 The probe still omits the remaining 39 layers, output head, logits, and
 sampling, so its timing is not model token throughput.
 
+## Position-advancing layers 0–5
+
+Schema: `rust-star-layers012345-position-advancing-probe-v1`.
+
+`layers012345-decode-probe` generalizes the prepared submission from a fixed
+four-layer tail to a checked contiguous tail of six layers. The Objective-C
+boundary derives compressor ratio, width, emission, and indexer ownership from
+layer parity: even compressed layers use ratio 4 with indexer state; odd layers
+use ratio 128 without indexer state. Every compressor, cache, activation, and HC
+allocation remains keyed by layer identity.
+
+Two fresh DwarfStar processes produced byte-identical fixtures for every layer
+4/5 boundary at positions 0–3. Layer 4 emits and validates its first 512-value
+compressed KV row at position 3; layer 5 accumulates ratio-128 state without
+emitting. The six-layer path preserves the original four-layer probe as a
+separate regression command and remains a partial correctness slice rather than
+a decoder-throughput measurement.
+
 ## Repeated layers 0–3 steady-state replay
 
 Schema: `rust-star-layers0123-steady-state-v1`.
