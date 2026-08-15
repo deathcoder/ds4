@@ -151,21 +151,27 @@ throughput, and the report keeps `full_prefill_claim` false.
 
 ## Continuous M1 layer-0 prefill boundary
 
-Schema: `rust-star-prefill-layer0-boundary-probe-v1`.
+Schema: `rust-star-prefill-layer0-boundary-probe-v2`.
 
 `prefill-layer0-boundary-probe` moves the native input seam back to the final
 32 token IDs of the canonical 2K prompt. One command buffer gathers their F16
 embeddings, repeats the four HC streams, applies plain row RMSNorm, executes
 the legacy F16 batch mixer, and runs the fused HC split/collapse/learned norm
-before continuing through the five-dispatch Q/KV boundary above.
+before continuing through the five-dispatch Q/KV boundary above. It then
+applies the batch KV RoPE kernel at positions 2016--2047, snapshots `KVrope`,
+simulates E4M3FN storage in place, and reproduces DwarfStar's F32-to-F16-to-F32
+raw-cache rounding into physical ring rows 96--127.
 
 The compact HC fixture retains the final 32 token IDs, collapsed HC rows, and
 attention-normalized rows. Two fresh full 2K DwarfStar processes produced
 byte-identical HC and norm captures; the norm hash also equals the independently
-captured Q/KV input. Together the HC and Q/KV fixtures require 2,457,600
-produced FP32 values to match by bit pattern. All ten model spans remain
-mmap-backed no-copy views. This is a continuous final-tile arithmetic boundary,
-not a complete layer or full-prefill throughput result.
+captured Q/KV input. A third fixture binds two byte-identical full 2K `KVrope`
+and `KVcur` captures and derives the exact rounded cache payload. Together the
+three fixtures require 2,506,752 retained produced FP32 values to match by bit
+pattern. All ten model spans remain mmap-backed no-copy views, and sentinel
+guards prove that cache rows 0--95 are unchanged. This is a continuous 14-
+dispatch final-tile arithmetic boundary, not a complete layer or full-prefill
+throughput result.
 
 ## Layer-0 attention ingress
 

@@ -116,6 +116,10 @@ typedef struct rust_star_metal_prefill_layer0_probe_result {
     uint32_t wrapped_model_ranges;
     uint32_t pointer_matches;
     uint32_t position_start;
+    uint32_t raw_cache_rows;
+    uint32_t raw_cache_target_row;
+    uint32_t raw_cache_guard_rows;
+    uint32_t reserved;
     double wall_ms;
     double gpu_ms;
 } rust_star_metal_prefill_layer0_probe_result;
@@ -271,6 +275,9 @@ int rust_star_metal_run_prefill_layer0_boundary(
     float *kv_norm,
     float *q_raw,
     float *q_cur,
+    float *kv_rope,
+    float *kv_cur,
+    float *raw_cache,
     rust_star_metal_prefill_layer0_probe_result *result,
     char *error,
     size_t error_bytes);

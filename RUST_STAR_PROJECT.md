@@ -294,11 +294,12 @@ they describe whenever practical.
 
 ## Open Items
 
-- Extend native batched prefill arithmetic forward through KV RoPE/storage and
-  the attention core. The M1 final tile now runs continuously from token IDs
-  through HC ingress and Q/KV setup to Q head RMSNorm/RoPE with every retained
-  boundary C0 exact, while the sequential 2K initializer still deliberately
-  records its difference from the paired protocol's batched-prefill oracle.
+- Extend native batched prefill arithmetic through the attention core. The M1
+  final tile now runs continuously from token IDs through HC ingress, Q/KV
+  setup, both Q and KV RoPE paths, KV E4M3FN simulation, and guarded raw-cache
+  storage with every retained boundary C0 exact. The sequential 2K initializer
+  still deliberately records its difference from the paired protocol's
+  batched-prefill oracle.
 - Add ratio-4 sparse indexer selection after 512 compressed rows, then emit the
   Rust Star engine-measurement contract. The complete 128-token diagnostic no
   longer depends on captured initial cache/compressor state.

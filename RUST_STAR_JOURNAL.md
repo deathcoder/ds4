@@ -290,9 +290,9 @@ history; add a correction and update the current-state summary.
 
 ## Immediate Next Actions
 
-1. Extend the exact token-ID-to-Qcur native batch tile forward through KV
-   RoPE/storage, batched attention, output projection, and HC update; then
-   broaden the retained row and layer coverage toward complete prefill.
+1. Extend the exact token-ID-to-guarded-KV-store native batch tile forward
+   through batched attention, output projection, and HC update; then broaden
+   the retained row and layer coverage toward complete prefill.
 2. Add the fixed 512-row ratio-4 indexer top-k and sparse indexed attention so
    128 generated tokens can continue beyond the 2K frontier.
 3. Emit the `rust-star-engine-measurement-v1` artifact from the exact
@@ -304,6 +304,69 @@ history; add a correction and update the current-state summary.
 6. Run or approve the fork's GitHub Actions workflow and retain its URL.
 
 ## Entries
+
+### 2026-08-15 — Continuous native M1 final tile reaches guarded KV storage
+
+Objective:
+
+- Extend the exact token-ID-to-Qcur final tile through the pinned M1 batch KV
+  finalization path without claiming a complete 2K cache construction.
+
+Oracle evidence and schedule decision:
+
+- Traced the active batch path as standalone KV tail RoPE, in-place E4M3FN
+  simulation for the 448 non-rotary channels, then F32-to-F16-to-F32 rounding
+  and raw-ring scatter. It does not use the fused one-row decode KV-store
+  kernel. Zero-prefix batch attention consumes the contiguous batch KV tensor;
+  the raw ring preserves state for later chunks and decode.
+- Captured full layer-0 `KVrope` and `KVcur` tensors from two fresh pinned
+  DwarfStar processes over the canonical 2K prompt. Each corresponding pair
+  was byte-identical. The full-capture SHA-256 values are
+  `9a9642491e6ae5018a5dc5012eac67884458d4439f58a8bedb071c82dc3aaeb7`
+  and `bef8d14d805a482960cbf7315ad0efccf211516a27bd767d0884b81f3ad33893`.
+- Retained positions 2016--2047 and derived the exact raw-cache payload by
+  applying IEEE-754 binary16 round-to-nearest-even and expansion back to
+  binary32. Those rows map contiguously to physical ring rows 96--127. Earlier
+  rows remain guards because the full 2K scatter aliases ring destinations and
+  is outside this final-tile checkpoint.
+
+Implementation:
+
+- Added the strict `prefill-kv-state-2048-v1` fixture and reproducible importer.
+  The manifest binds both full captures, records four production kernels, and
+  distinguishes captured values from the derived cache-storage artifact.
+- Evolved `prefill-layer0-boundary-probe` to schema v2. One Rust-owned Metal
+  command buffer now executes 14 dispatches continuously from the final 32
+  token IDs through KV RoPE, FP8 simulation, and F16-rounded cache storage.
+  It snapshots pre-RoPE KV for the prior control, returns `KVrope`, `KVcur`, and
+  the full 128-row raw ring, and requires sentinel rows 0--95 to remain intact.
+- Added the F16-to-F32 contiguous conversion pipeline, extended the C/Rust ABI,
+  stable JSON, host fixture/report checks, complete-gate integration text, and
+  runtime/project documentation. Across the three joined fixtures, 2,506,752
+  retained produced FP32 values must match by bit pattern.
+
+Target-Mac evidence:
+
+- The focused optimized live run was C0 exact across every old and new boundary,
+  retained 10/10 mmap pointer identities, and proved all 49,152 guard-tile
+  elements unchanged. The complete-gate rerun reported 57.703 ms wall and
+  3.569 ms GPU for the cold 14-dispatch tile; setup, synchronization, exhaustive
+  readback, and guard verification remain in scope.
+- The complete gate passed formatting, 72 Rust tests, 49 Python tests, all 233
+  differential manifests, optimized Objective-C/Metal compilation, strict
+  target-model inspection, and every established Metal/decoder control. The
+  long 2K sequential diagnostic remained exact against its decode-replay oracle
+  at 19.521 tokens/s over 104914.162 ms and preserved the expected native-batch
+  mismatch and paired-protocol ineligibility.
+- A final fixture-shape regression test raised the Rust suite to 73 tests; that
+  complete host suite and `git diff --check` passed after the documentation
+  update.
+
+Decision and next:
+
+- Accept token IDs through final-tile guarded KV storage as one continuous
+  native M1 boundary. Next capture and implement the zero-prefix batch
+  FlashAttention read/output for this same tile before broadening retained rows.
 
 ### 2026-08-15 — Continuous native M1 final tile now starts at token IDs
 

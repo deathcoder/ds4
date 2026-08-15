@@ -1,0 +1,184 @@
+{
+  "schema": "rust-star-differential-fixture-v1",
+  "fixture_id": "dwarfstar-oracle-v1-prefill-kv-state-2048",
+  "captured_at_utc": "2026-08-15T19:11:35Z",
+  "oracle": {
+    "id": "oracle-v1",
+    "repository": "https://github.com/antirez/ds4.git",
+    "commit": "b0309611041655f4e45671cfd9c9886aff161406",
+    "tree": "20c11af22f90a0bdf25da860da5ef06de4064060",
+    "capture_executable_sha256": "b0b7c31d9832cc3f5cccf810cd2af6f4bc4f6e71de945493674315314f666fc8"
+  },
+  "model": {
+    "family": "DeepSeek-V4-Flash-0731",
+    "sha256": "ca22ae2f838e14077c22bc1c1417b71b45b5e5a3687bd96c2ac6e17fdb6261c0"
+  },
+  "capture": {
+    "backend": "metal",
+    "machine": "Apple M1 Ultra, 48 GPU cores, 128 GB unified memory",
+    "prompt": "first 2048 raw tokens of speed-bench/promessi_sposi.txt",
+    "prompt_sha256": "f53e0d80cb2d4492d24ebd63c7000c397b16ae70f9bf09b3763e5d8323ec209f",
+    "prefill_tokens": 2048,
+    "fresh_process_captures": 2,
+    "fresh_process_bitwise_match": true,
+    "command": "ds4-bench --metal --ctx-start 2048 --ctx-max 2048 --gen-tokens 0 --warm-weights",
+    "environment": {
+      "DS4_METAL_GRAPH_DUMP_LAYER": "0",
+      "DS4_METAL_GRAPH_DUMP_POS": "0",
+      "DS4_METAL_GRAPH_DUMP_NAME": "KVrope,KVcur"
+    },
+    "device_path": "legacy Metal batch KV RoPE and E4M3FN simulation; Metal 4 TensorOps disabled on M1 Ultra",
+    "full_capture_sha256": {
+      "KVrope": "9a9642491e6ae5018a5dc5012eac67884458d4439f58a8bedb071c82dc3aaeb7",
+      "KVcur": "bef8d14d805a482960cbf7315ad0efccf211516a27bd767d0884b81f3ad33893"
+    }
+  },
+  "scope": {
+    "kind": "layer-segment",
+    "phase": "prefill",
+    "layer": 0,
+    "position": 2047,
+    "captured_position_range": [
+      2016,
+      2047
+    ],
+    "raw_cache_capacity_rows": 128,
+    "raw_cache_target_rows": [
+      96,
+      127
+    ],
+    "raw_cache_guard_rows": [
+      0,
+      95
+    ]
+  },
+  "operations": [
+    {
+      "name": "kv-rope-prefill",
+      "kernel": "kernel_dsv4_rope_tail_f32",
+      "dispatch": {
+        "rows": 32,
+        "heads": 1,
+        "head_dim": 512,
+        "rotary_dim": 64,
+        "position_start": 2016,
+        "threads_per_threadgroup": [
+          256,
+          1,
+          1
+        ],
+        "threadgroups": [
+          1,
+          32,
+          1
+        ]
+      }
+    },
+    {
+      "name": "kv-fp8-simulation-prefill",
+      "kernel": "kernel_dsv4_fp8_kv_quantize_f32",
+      "dispatch": {
+        "rows": 32,
+        "head_dim": 512,
+        "rotary_dim": 64,
+        "threads_per_threadgroup": [
+          64,
+          1,
+          1
+        ],
+        "threadgroups": [
+          32,
+          1,
+          1
+        ]
+      }
+    },
+    {
+      "name": "raw-cache-f32-to-f16",
+      "kernel": "kernel_cpy_contig_f32_f16_4",
+      "dispatch": {
+        "elements": 16384,
+        "threads_per_threadgroup": [
+          256,
+          1,
+          1
+        ],
+        "threadgroups": [
+          16,
+          1,
+          1
+        ]
+      }
+    },
+    {
+      "name": "raw-cache-f16-to-f32",
+      "kernel": "kernel_cpy_contig_f16_f32_4",
+      "dispatch": {
+        "elements": 16384,
+        "target_row_start": 96,
+        "threads_per_threadgroup": [
+          256,
+          1,
+          1
+        ],
+        "threadgroups": [
+          16,
+          1,
+          1
+        ]
+      }
+    }
+  ],
+  "derivations": [
+    {
+      "output": "raw_cache_final_tile",
+      "input": "kv_current_final_tile",
+      "operation": "IEEE-754 binary32 to binary16 round-to-nearest-even, then binary16 to binary32",
+      "reason": "DwarfStar exposes KVcur before raw-cache storage; its batch store performs this exact F16 round trip before scattering rows into the ring"
+    }
+  ],
+  "tensors": [
+    {
+      "name": "kv_rope_final_tile",
+      "hook": "KVrope",
+      "role": "intermediate",
+      "dtype": "f32",
+      "shape": [
+        32,
+        512
+      ],
+      "encoding": "little-endian-ieee754-binary32",
+      "path": "kv-rope-final-tile.f32le.bin",
+      "bytes": 65536,
+      "sha256": "1f4a382b4834a23a52e79cad7ed14b78972a8a1b98f900abfb7eb5362fbd7677"
+    },
+    {
+      "name": "kv_current_final_tile",
+      "hook": "KVcur",
+      "role": "output",
+      "dtype": "f32",
+      "shape": [
+        32,
+        512
+      ],
+      "encoding": "little-endian-ieee754-binary32",
+      "path": "kv-current-final-tile.f32le.bin",
+      "bytes": 65536,
+      "sha256": "35e2c1ad8708ccdefaf2d4d2ddeab34a66dcda47d47f63e47bef82ec3dc3e5d1"
+    },
+    {
+      "name": "raw_cache_final_tile",
+      "hook": "derived",
+      "role": "output",
+      "dtype": "f32",
+      "shape": [
+        32,
+        512
+      ],
+      "encoding": "little-endian-ieee754-binary32",
+      "path": "raw-cache-final-tile.f32le.bin",
+      "bytes": 65536,
+      "sha256": "e30ab37e07e2edc80653718583c24ce5504a1013365e3b02bc1789da8424af77"
+    }
+  ]
+}

@@ -205,6 +205,7 @@ static NSString *const kQ8ProjectionSource =
 @property(nonatomic, strong) id<MTLComputePipelineState> ropeTailPipeline;
 @property(nonatomic, strong) id<MTLComputePipelineState> kvStorePipeline;
 @property(nonatomic, strong) id<MTLComputePipelineState> cpyF32F16Pipeline;
+@property(nonatomic, strong) id<MTLComputePipelineState> cpyF16F32Pipeline;
 @property(nonatomic, strong) id<MTLComputePipelineState> flashPadPipeline;
 @property(nonatomic, strong) id<MTLComputePipelineState> flashVecPipeline;
 @property(nonatomic, strong) id<MTLComputePipelineState> flashReducePipeline;
@@ -427,6 +428,7 @@ static int ensure_attention_ingress_pipelines(
     id<MTLFunction> ropeTail = [library newFunctionWithName:@"kernel_dsv4_rope_tail_f32"];
     id<MTLFunction> kvStore = [library newFunctionWithName:@"kernel_dsv4_kv_fp8_store_f32"];
     id<MTLFunction> cpyF32F16 = [library newFunctionWithName:@"kernel_cpy_contig_f32_f16_4"];
+    id<MTLFunction> cpyF16F32 = [library newFunctionWithName:@"kernel_cpy_contig_f16_f32_4"];
     bool enabled = true;
     bool disabled = false;
     int32_t ncpsg = 32;
@@ -479,7 +481,7 @@ static int ensure_attention_ingress_pipelines(
     id<MTLFunction> compressorFp8 = [library newFunctionWithName:@"kernel_dsv4_fp8_kv_quantize_f32"];
     id<MTLFunction> indexerQat = [library newFunctionWithName:@"kernel_dsv4_indexer_hadamard_fp4_f32"];
     if (!repeat || !norm || !hc || !qkvNorm || !headNormRope || !ropeTail ||
-        !kvStore || !cpyF32F16 || !flashPad || !flashVec || !flashReduce ||
+        !kvStore || !cpyF32F16 || !cpyF16F32 || !flashPad || !flashVec || !flashReduce ||
         !projection || !compressorPair || !compressorStore || !compressorPack ||
         !compressorSoftmax || !compressorMul || !compressorSumRows ||
         !compressorNorm || !compressorShift || !compressorFp8 || !indexerQat ||
@@ -506,6 +508,7 @@ static int ensure_attention_ingress_pipelines(
     context.ropeTailPipeline = [context.device newComputePipelineStateWithFunction:ropeTail error:&compile_error];
     context.kvStorePipeline = [context.device newComputePipelineStateWithFunction:kvStore error:&compile_error];
     context.cpyF32F16Pipeline = [context.device newComputePipelineStateWithFunction:cpyF32F16 error:&compile_error];
+    context.cpyF16F32Pipeline = [context.device newComputePipelineStateWithFunction:cpyF16F32 error:&compile_error];
     context.flashPadPipeline = [context.device newComputePipelineStateWithFunction:flashPad error:&compile_error];
     context.flashVecPipeline = [context.device newComputePipelineStateWithFunction:flashVec error:&compile_error];
     context.flashReducePipeline = [context.device newComputePipelineStateWithFunction:flashReduce error:&compile_error];
@@ -521,7 +524,7 @@ static int ensure_attention_ingress_pipelines(
         !context.indexerQatPipeline || !context.hcIngressPipeline ||
         !context.qkvNormPipeline || !context.headNormRopePipeline ||
         !context.ropeTailPipeline || !context.kvStorePipeline ||
-        !context.cpyF32F16Pipeline || !context.flashPadPipeline ||
+        !context.cpyF32F16Pipeline || !context.cpyF16F32Pipeline || !context.flashPadPipeline ||
         !context.flashVecPipeline || !context.flashReducePipeline ||
         !context.routerProbabilityPipeline || !context.routerFinalizePipeline ||
         !context.routerWeightsPipeline) {
@@ -2097,13 +2100,17 @@ int rust_star_metal_run_prefill_layer0_boundary(
     float *kv_norm,
     float *q_raw,
     float *q_cur,
+    float *kv_rope,
+    float *kv_cur,
+    float *raw_cache,
     rust_star_metal_prefill_layer0_probe_result *result,
     char *error,
     size_t error_bytes)
 {
     if (!opaque_context || !model_mapping || !weights || !tokens ||
         !hc_collapsed || !attn_norm || !q_lora || !q_lora_norm ||
-        !kv_raw || !kv_norm || !q_raw || !q_cur || !result) {
+        !kv_raw || !kv_norm || !q_raw || !q_cur || !kv_rope || !kv_cur ||
+        !raw_cache || !result) {
         return fail_with_message(error, error_bytes,
             @"prefill layer-0 boundary received a null input");
     }
@@ -2146,6 +2153,7 @@ int rust_star_metal_run_prefill_layer0_boundary(
         enum {
             n_embd = 4096, n_hc = 4, hc_dim = 16384, mix_hc = 24,
             q_rank = 1024, kv_dim = 512, q_dim = 32768,
+            raw_cache_rows = 128, raw_cache_target_row = 96,
         };
         const NSUInteger token_bytes = rows*sizeof(uint32_t);
         const NSUInteger embedding_bytes = rows*n_embd*sizeof(float);
@@ -2155,6 +2163,7 @@ int rust_star_metal_run_prefill_layer0_boundary(
         const NSUInteger q_rank_bytes = rows*q_rank*sizeof(float);
         const NSUInteger kv_bytes = rows*kv_dim*sizeof(float);
         const NSUInteger q_bytes = rows*q_dim*sizeof(float);
+        const NSUInteger raw_cache_bytes = raw_cache_rows*kv_dim*sizeof(float);
         id<MTLBuffer> token_buffer = [context.device newBufferWithBytes:tokens
             length:token_bytes options:MTLResourceStorageModeShared];
         id<MTLBuffer> embedding_buffer = [context.device newBufferWithLength:embedding_bytes
@@ -2179,6 +2188,14 @@ int rust_star_metal_run_prefill_layer0_boundary(
             options:MTLResourceStorageModeShared];
         id<MTLBuffer> kv_norm_buffer = [context.device newBufferWithLength:kv_bytes
             options:MTLResourceStorageModeShared];
+        id<MTLBuffer> kv_norm_snapshot_buffer = [context.device newBufferWithLength:kv_bytes
+            options:MTLResourceStorageModeShared];
+        id<MTLBuffer> kv_rope_buffer = [context.device newBufferWithLength:kv_bytes
+            options:MTLResourceStorageModeShared];
+        id<MTLBuffer> kv_half_buffer = [context.device newBufferWithLength:rows*kv_dim*sizeof(uint16_t)
+            options:MTLResourceStorageModeShared];
+        id<MTLBuffer> raw_cache_buffer = [context.device newBufferWithLength:raw_cache_bytes
+            options:MTLResourceStorageModeShared];
         id<MTLBuffer> q_raw_buffer = [context.device newBufferWithLength:q_bytes
             options:MTLResourceStorageModeShared];
         id<MTLBuffer> q_cur_buffer = [context.device newBufferWithLength:q_bytes
@@ -2186,9 +2203,14 @@ int rust_star_metal_run_prefill_layer0_boundary(
         if (!token_buffer || !embedding_buffer || !hc_buffer || !flat_hc_buffer ||
             !mix_buffer || !split_buffer || !collapsed_buffer || !attn_buffer ||
             !q_buffer || !q_norm_buffer || !kv_raw_buffer || !kv_norm_buffer ||
-            !q_raw_buffer || !q_cur_buffer) {
+            !kv_norm_snapshot_buffer || !kv_rope_buffer || !kv_half_buffer ||
+            !raw_cache_buffer || !q_raw_buffer || !q_cur_buffer) {
             return fail_with_message(error, error_bytes,
                 @"failed to allocate prefill layer-0 boundary activation buffers");
+        }
+        float *raw_cache_contents = raw_cache_buffer.contents;
+        for (NSUInteger index = 0; index < raw_cache_rows*kv_dim; index++) {
+            raw_cache_contents[index] = -12345.5f;
         }
 
         rust_star_get_rows_args get_rows = {
@@ -2264,6 +2286,32 @@ int rust_star_metal_run_prefill_layer0_boundary(
             .ext_factor=0.0f, .attn_factor=1.0f,
             .beta_fast=32.0f, .beta_slow=1.0f,
         };
+        rust_star_rope_tail_args kv_rope_args = {
+            .ne00=kv_dim, .ne01=1, .ne02=rows, .ne03=1,
+            .nb00=sizeof(float), .nb01=kv_dim*sizeof(float),
+            .nb02=kv_dim*sizeof(float), .nb03=kv_bytes,
+            .nb0=sizeof(float), .nb1=kv_dim*sizeof(float),
+            .nb2=kv_dim*sizeof(float), .nb3=kv_bytes,
+            .n_dims=64, .mode=0, .n_ctx_orig=0, .inverse=0,
+            .freq_base=10000.0f, .freq_scale=1.0f,
+            .ext_factor=0.0f, .attn_factor=1.0f,
+            .beta_fast=32.0f, .beta_slow=1.0f, .src2=false,
+        };
+        int32_t positions[32];
+        for (uint32_t row = 0; row < rows; row++) {
+            positions[row] = (int32_t)(position_start + row);
+        }
+        id<MTLBuffer> position_buffer = [context.device newBufferWithBytes:positions
+            length:rows*sizeof(int32_t) options:MTLResourceStorageModeShared];
+        rust_star_fp8_quantize_args kv_fp8_args = {
+            .ne00=kv_dim, .ne01=1, .ne02=rows, .ne03=1,
+            .nb00=sizeof(float), .nb01=kv_dim*sizeof(float),
+            .nb02=kv_dim*sizeof(float), .nb03=kv_bytes,
+            .nb0=sizeof(float), .nb1=kv_dim*sizeof(float),
+            .nb2=kv_dim*sizeof(float), .nb3=kv_bytes, .n_rot=64,
+        };
+        if (!position_buffer) return fail_with_message(error, error_bytes,
+            @"failed to allocate prefill layer-0 KV position buffer");
 
         id<MTLCommandBuffer> command = [context.queue commandBuffer];
         id<MTLComputeCommandEncoder> encoder = [command computeCommandEncoder];
@@ -2352,6 +2400,8 @@ int rust_star_metal_run_prefill_layer0_boundary(
             @"failed to create prefill layer-0 Q snapshot encoder");
         [blit copyFromBuffer:q_raw_buffer sourceOffset:0 toBuffer:q_cur_buffer
             destinationOffset:0 size:q_bytes];
+        [blit copyFromBuffer:kv_norm_buffer sourceOffset:0 toBuffer:kv_norm_snapshot_buffer
+            destinationOffset:0 size:kv_bytes];
         [blit endEncoding];
 
         encoder = [command computeCommandEncoder];
@@ -2362,6 +2412,48 @@ int rust_star_metal_run_prefill_layer0_boundary(
         [encoder setBuffer:q_cur_buffer offset:0 atIndex:1];
         [encoder setThreadgroupMemoryLength:32u*sizeof(float) atIndex:0];
         [encoder dispatchThreadgroups:MTLSizeMake(64,rows,1)
+             threadsPerThreadgroup:MTLSizeMake(256,1,1)];
+        [encoder setComputePipelineState:context.ropeTailPipeline];
+        [encoder setBytes:&kv_rope_args length:sizeof(kv_rope_args) atIndex:0];
+        [encoder setBuffer:kv_norm_buffer offset:0 atIndex:1];
+        [encoder setBuffer:position_buffer offset:0 atIndex:2];
+        [encoder setBuffer:kv_norm_buffer offset:0 atIndex:3];
+        [encoder setBuffer:kv_norm_buffer offset:0 atIndex:4];
+        [encoder dispatchThreadgroups:MTLSizeMake(1,rows,1)
+             threadsPerThreadgroup:MTLSizeMake(256,1,1)];
+        [encoder endEncoding];
+
+        blit = [command blitCommandEncoder];
+        if (!blit) return fail_with_message(error, error_bytes,
+            @"failed to create prefill layer-0 KV RoPE snapshot encoder");
+        [blit copyFromBuffer:kv_norm_buffer sourceOffset:0 toBuffer:kv_rope_buffer
+            destinationOffset:0 size:kv_bytes];
+        [blit endEncoding];
+
+        encoder = [command computeCommandEncoder];
+        if (!encoder) return fail_with_message(error, error_bytes,
+            @"failed to create prefill layer-0 KV storage encoder");
+        [encoder setComputePipelineState:context.compressorFp8Pipeline];
+        [encoder setBytes:&kv_fp8_args length:sizeof(kv_fp8_args) atIndex:0];
+        [encoder setBuffer:kv_norm_buffer offset:0 atIndex:1];
+        [encoder setBuffer:kv_norm_buffer offset:0 atIndex:2];
+        [encoder setThreadgroupMemoryLength:64u*sizeof(float) atIndex:0];
+        [encoder dispatchThreadgroups:MTLSizeMake(rows,1,1)
+             threadsPerThreadgroup:MTLSizeMake(64,1,1)];
+        uint32_t kv_elements = rows*kv_dim;
+        const NSUInteger conversion_groups = (kv_elements + 1023u)/1024u;
+        [encoder setComputePipelineState:context.cpyF32F16Pipeline];
+        [encoder setBytes:&kv_elements length:sizeof(kv_elements) atIndex:0];
+        [encoder setBuffer:kv_norm_buffer offset:0 atIndex:1];
+        [encoder setBuffer:kv_half_buffer offset:0 atIndex:2];
+        [encoder dispatchThreadgroups:MTLSizeMake(conversion_groups,1,1)
+             threadsPerThreadgroup:MTLSizeMake(256,1,1)];
+        [encoder setComputePipelineState:context.cpyF16F32Pipeline];
+        [encoder setBytes:&kv_elements length:sizeof(kv_elements) atIndex:0];
+        [encoder setBuffer:kv_half_buffer offset:0 atIndex:1];
+        [encoder setBuffer:raw_cache_buffer
+                     offset:raw_cache_target_row*kv_dim*sizeof(float) atIndex:2];
+        [encoder dispatchThreadgroups:MTLSizeMake(conversion_groups,1,1)
              threadsPerThreadgroup:MTLSizeMake(256,1,1)];
         [encoder endEncoding];
 
@@ -2374,9 +2466,12 @@ int rust_star_metal_run_prefill_layer0_boundary(
         memcpy(q_lora, q_buffer.contents, q_rank_bytes);
         memcpy(q_lora_norm, q_norm_buffer.contents, q_rank_bytes);
         memcpy(kv_raw, kv_raw_buffer.contents, kv_bytes);
-        memcpy(kv_norm, kv_norm_buffer.contents, kv_bytes);
+        memcpy(kv_norm, kv_norm_snapshot_buffer.contents, kv_bytes);
         memcpy(q_raw, q_raw_buffer.contents, q_bytes);
         memcpy(q_cur, q_cur_buffer.contents, q_bytes);
+        memcpy(kv_rope, kv_rope_buffer.contents, kv_bytes);
+        memcpy(kv_cur, kv_norm_buffer.contents, kv_bytes);
+        memcpy(raw_cache, raw_cache_buffer.contents, raw_cache_bytes);
 
         uint32_t pointer_matches = 0;
         for (uint32_t index = 0; index < 10u; index++) {
@@ -2387,10 +2482,13 @@ int rust_star_metal_run_prefill_layer0_boundary(
         result->q_lora_elements_per_row = q_rank;
         result->kv_elements_per_row = kv_dim;
         result->q_elements_per_row = q_dim;
-        result->dispatches = 10u;
+        result->dispatches = 14u;
         result->wrapped_model_ranges = 10u;
         result->pointer_matches = pointer_matches;
         result->position_start = position_start;
+        result->raw_cache_rows = raw_cache_rows;
+        result->raw_cache_target_row = raw_cache_target_row;
+        result->raw_cache_guard_rows = raw_cache_target_row;
         result->wall_ms = wall_end-wall_start;
         result->gpu_ms = gpu_elapsed_ms(command);
         return 1;
