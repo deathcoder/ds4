@@ -1198,6 +1198,8 @@ int rust_star_metal_run_attention_ingress(
     const BOOL attention_output = attention_low && attention_out && after_attention_hc;
     const BOOL partial_attention_output = attention_low || attention_out || after_attention_hc;
     const BOOL full_layer = layer0 != NULL;
+    const uint32_t warmup_iterations = full_layer ? layer0->warmup_iterations : 0;
+    const uint32_t measured_iterations = full_layer ? layer0->measured_iterations : 1;
     if (!opaque_context || !model_mapping || !mixes || !split || !collapsed ||
         !attn_norm || !q_lora || !result || n_vocab == 0 || token >= n_vocab) {
         return fail_with_message(error, error_bytes, @"attention ingress received invalid inputs");
@@ -1224,6 +1226,17 @@ int rust_star_metal_run_attention_ingress(
         !layer0->shared_out || !layer0->after_ffn_hc)) {
         return fail_with_message(error, error_bytes,
             @"full layer outputs require the complete attention path and output set");
+    }
+    if (full_layer && (measured_iterations == 0 || warmup_iterations > 1000 ||
+        measured_iterations > 1000 || warmup_iterations > 1000-measured_iterations)) {
+        return fail_with_message(error, error_bytes,
+            @"full layer iteration counts must be positive and total at most 1000");
+    }
+    if (full_layer && measured_iterations > 1 &&
+        (!layer0->wall_ms_samples || !layer0->gpu_ms_samples ||
+         !layer0->repeat_bitwise_matches)) {
+        return fail_with_message(error, error_bytes,
+            @"repeated full layer execution requires timing and repeat-validation outputs");
     }
     if (embedding_bytes != (uint64_t)n_embd*n_vocab*sizeof(uint16_t) ||
         hc_fn_bytes != (uint64_t)hc_dim*mix_hc*sizeof(uint16_t) ||
@@ -1681,7 +1694,21 @@ int rust_star_metal_run_attention_ingress(
         rust_star_hc_expand_args ffn_hc_post_args = output_hc_args;
         ffn_hc_post_args.has_add = 1;
 
-        id<MTLCommandBuffer> command = [context.queue commandBuffer];
+        const uint32_t total_iterations = warmup_iterations + measured_iterations;
+        double measured_wall_ms = 0.0;
+        double measured_gpu_ms = 0.0;
+        if (full_layer && layer0->repeat_bitwise_matches) {
+            *layer0->repeat_bitwise_matches = 1;
+        }
+        id<MTLCommandBuffer> command = nil;
+        for (uint32_t execution = 0; execution < total_iterations; execution++) {
+        if (execution > 0 && rope_and_store) {
+            float *cache = cache_buffer.contents;
+            for (uint32_t index = 0; index < 3u*kv_elements; index++) cache[index] = -12345.5f;
+            if (attention_read) memcpy(cache, cache_row0, kv_elements*sizeof(float));
+        }
+        const double wall_start = monotonic_ms();
+        command = [context.queue commandBuffer];
         if (!command) return fail_with_message(error, error_bytes, @"failed to create attention ingress command buffer");
         id<MTLComputeCommandEncoder> encoder = [command computeCommandEncoder];
         if (!encoder) return fail_with_message(error, error_bytes, @"failed to create attention ingress encoder");
@@ -2035,10 +2062,49 @@ int rust_star_metal_run_attention_ingress(
             }
         }
 
-        const double wall_start = monotonic_ms();
         [command commit];
         if (!command_succeeded(command, error, error_bytes)) return 0;
         const double wall_end = monotonic_ms();
+        if (execution >= warmup_iterations) {
+            const uint32_t measured = execution-warmup_iterations;
+            const double iteration_wall_ms = wall_end-wall_start;
+            const double iteration_gpu_ms = gpu_elapsed_ms(command);
+            measured_wall_ms += iteration_wall_ms;
+            measured_gpu_ms += iteration_gpu_ms;
+            if (full_layer && layer0->wall_ms_samples) {
+                layer0->wall_ms_samples[measured] = iteration_wall_ms;
+                layer0->gpu_ms_samples[measured] = iteration_gpu_ms;
+            }
+            if (full_layer && measured == 0 && layer0->repeat_bitwise_matches) {
+                memcpy(after_attention_hc, after_attention_hc_buffer.contents, hc_dim*sizeof(float));
+                memcpy(layer0->ffn_mixes, ffn_mix_buffer.contents, mix_hc*sizeof(float));
+                memcpy(layer0->ffn_split, ffn_split_buffer.contents, mix_hc*sizeof(float));
+                memcpy(layer0->ffn_norm, ffn_norm_buffer.contents, n_embd*sizeof(float));
+                memcpy(layer0->router_logits, router_logits_buffer.contents, 256u*sizeof(float));
+                memcpy(layer0->router_probs, router_probs_buffer.contents, 256u*sizeof(float));
+                memcpy(layer0->selected, selected_buffer.contents, 6u*sizeof(int32_t));
+                memcpy(layer0->router_weights, route_weights_buffer.contents, 6u*sizeof(float));
+                memcpy(layer0->routed_mid, routed_mid_buffer.contents, 6u*2048u*sizeof(float));
+                memcpy(layer0->routed_out, routed_out_buffer.contents, n_embd*sizeof(float));
+                memcpy(layer0->shared_out, shared_out_buffer.contents, n_embd*sizeof(float));
+                memcpy(layer0->after_ffn_hc, after_ffn_hc_buffer.contents, hc_dim*sizeof(float));
+            } else if (full_layer && layer0->repeat_bitwise_matches &&
+                (memcmp(after_attention_hc, after_attention_hc_buffer.contents, hc_dim*sizeof(float)) != 0 ||
+                 memcmp(layer0->ffn_mixes, ffn_mix_buffer.contents, mix_hc*sizeof(float)) != 0 ||
+                 memcmp(layer0->ffn_split, ffn_split_buffer.contents, mix_hc*sizeof(float)) != 0 ||
+                 memcmp(layer0->ffn_norm, ffn_norm_buffer.contents, n_embd*sizeof(float)) != 0 ||
+                 memcmp(layer0->router_logits, router_logits_buffer.contents, 256u*sizeof(float)) != 0 ||
+                 memcmp(layer0->router_probs, router_probs_buffer.contents, 256u*sizeof(float)) != 0 ||
+                 memcmp(layer0->selected, selected_buffer.contents, 6u*sizeof(int32_t)) != 0 ||
+                 memcmp(layer0->router_weights, route_weights_buffer.contents, 6u*sizeof(float)) != 0 ||
+                 memcmp(layer0->routed_mid, routed_mid_buffer.contents, 6u*2048u*sizeof(float)) != 0 ||
+                 memcmp(layer0->routed_out, routed_out_buffer.contents, n_embd*sizeof(float)) != 0 ||
+                 memcmp(layer0->shared_out, shared_out_buffer.contents, n_embd*sizeof(float)) != 0 ||
+                 memcmp(layer0->after_ffn_hc, after_ffn_hc_buffer.contents, hc_dim*sizeof(float)) != 0)) {
+                *layer0->repeat_bitwise_matches = 0;
+            }
+        }
+        }
         memcpy(mixes, mix_buffer.contents, mix_hc*sizeof(float));
         memcpy(split, split_buffer.contents, mix_hc*sizeof(float));
         memcpy(collapsed, collapsed_buffer.contents, n_embd*sizeof(float));
@@ -2083,8 +2149,8 @@ int rust_star_metal_run_attention_ingress(
         result->wrapped_model_ranges = full_layer ? 25 :
             (attention_output ? 13 : (attention_read ? 11 : (extended ? 10 : 6)));
         for (uint32_t index = 0; index < result->wrapped_model_ranges; index++) if (matches[index]) result->pointer_matches++;
-        result->wall_ms = wall_end-wall_start;
-        result->gpu_ms = gpu_elapsed_ms(command);
+        result->wall_ms = measured_wall_ms/measured_iterations;
+        result->gpu_ms = measured_gpu_ms/measured_iterations;
         return 1;
     }
 }

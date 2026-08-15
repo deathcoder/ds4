@@ -16,6 +16,7 @@ pub const ATTENTION_OUTPUT_PROBE_SCHEMA: &str = "rust-star-layer0-attention-outp
 pub const FFN_ROUTER_PROBE_SCHEMA: &str = "rust-star-layer0-ffn-router-probe-v1";
 pub const MOE_OUTPUT_PROBE_SCHEMA: &str = "rust-star-layer0-moe-output-probe-v1";
 pub const LAYER0_PROBE_SCHEMA: &str = "rust-star-layer0-complete-probe-v1";
+pub const LAYER0_BENCH_SCHEMA: &str = "rust-star-layer0-steady-state-v1";
 pub const PROJECTION_FIXTURE_ID: &str = "dwarfstar-oracle-v1-layer0-pos1-attn-q-a";
 pub const INGRESS_FIXTURE_ID: &str = "dwarfstar-oracle-v1-layer0-pos1-attention-ingress";
 pub const ATTENTION_SETUP_FIXTURE_ID: &str = "dwarfstar-oracle-v1-layer0-pos1-qkv-setup";
@@ -30,6 +31,7 @@ pub const DEFAULT_ITERATIONS: u64 = 100;
 const MAX_ELEMENTS: u64 = 16 * 1024 * 1024;
 const MAX_ITERATIONS: u64 = 100_000;
 const MAX_THREAD_INVOCATIONS: u64 = 1_000_000_000;
+const MAX_LAYER0_EXECUTIONS: u32 = 1000;
 const MAX_EMBEDDING_TOKENS: usize = 64;
 const PROJECTION_TENSOR: &str = "blk.0.attn_q_a.weight";
 const PROJECTION_INPUT_BYTES: &[u8] =
@@ -129,6 +131,41 @@ const MOE_HC_POST_BYTES: &[u8] =
 pub struct ProbeConfig {
     pub elements: u64,
     pub iterations: u64,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct Layer0BenchConfig {
+    pub warmup_iterations: u32,
+    pub iterations: u32,
+}
+
+impl Default for Layer0BenchConfig {
+    fn default() -> Self {
+        Self {
+            warmup_iterations: 10,
+            iterations: 30,
+        }
+    }
+}
+
+impl Layer0BenchConfig {
+    pub fn validate(self) -> Result<Self> {
+        if self.iterations == 0 {
+            return Err(Error::invalid(
+                "layer-0 benchmark iterations must be positive",
+            ));
+        }
+        let total = self
+            .warmup_iterations
+            .checked_add(self.iterations)
+            .ok_or_else(|| Error::invalid("layer-0 benchmark iteration count overflows"))?;
+        if total > MAX_LAYER0_EXECUTIONS {
+            return Err(Error::invalid(format!(
+                "layer-0 benchmark warmup+iterations must not exceed {MAX_LAYER0_EXECUTIONS}"
+            )));
+        }
+        Ok(self)
+    }
 }
 
 impl Default for ProbeConfig {
@@ -363,6 +400,33 @@ pub struct Layer0ProbeReport {
     pub final_hc_checksum: u64,
 }
 
+#[derive(Clone, Copy, Debug)]
+pub struct TimingSummary {
+    pub median_ms: f64,
+    pub mad_ms: f64,
+    pub min_ms: f64,
+    pub max_ms: f64,
+}
+
+#[derive(Clone, Debug)]
+pub struct Layer0BenchReport {
+    pub fixture_id: &'static str,
+    pub token: u32,
+    pub warmup_iterations: u32,
+    pub iterations: u32,
+    pub dispatches_per_iteration: u32,
+    pub command_buffers_per_iteration: u32,
+    pub selected_experts: Vec<i32>,
+    pub wrapped_model_ranges: u32,
+    pub pointer_matches: u32,
+    pub wall_ms_samples: Vec<f64>,
+    pub gpu_ms_samples: Vec<f64>,
+    pub wall: TimingSummary,
+    pub gpu: TimingSummary,
+    pub repeat_bitwise_match: bool,
+    pub final_hc_checksum: u64,
+}
+
 pub fn write_ingress_probe_json<W: Write>(
     output: &mut W,
     report: &IngressProbeReport,
@@ -551,6 +615,85 @@ pub fn write_layer0_probe_json<W: Write>(output: &mut W, report: &Layer0ProbeRep
         report.final_hc_checksum,
     )?;
     Ok(())
+}
+
+pub fn write_layer0_bench_json<W: Write>(output: &mut W, report: &Layer0BenchReport) -> Result<()> {
+    write!(
+        output,
+        "{{\n  \"schema\": \"{LAYER0_BENCH_SCHEMA}\",\n  \"fixture\": \"{}\",\n  \"token\": {},\n  \"warmup_iterations\": {},\n  \"measured_iterations\": {},\n  \"dispatches_per_iteration\": {},\n  \"command_buffers_per_iteration\": {},\n  \"selected_experts\": {:?},\n  \"mapping\": {{\n    \"wrapped_model_ranges\": {},\n    \"pointer_matches\": {}\n  }},\n  \"wall_ms\": {{\n    \"samples\": [",
+        report.fixture_id,
+        report.token,
+        report.warmup_iterations,
+        report.iterations,
+        report.dispatches_per_iteration,
+        report.command_buffers_per_iteration,
+        report.selected_experts,
+        report.wrapped_model_ranges,
+        report.pointer_matches,
+    )?;
+    write_timing_samples(output, &report.wall_ms_samples)?;
+    write!(
+        output,
+        "],\n    \"median\": {:.6},\n    \"mad\": {:.6},\n    \"min\": {:.6},\n    \"max\": {:.6}\n  }},\n  \"gpu_ms\": {{\n    \"samples\": [",
+        report.wall.median_ms, report.wall.mad_ms, report.wall.min_ms, report.wall.max_ms,
+    )?;
+    write_timing_samples(output, &report.gpu_ms_samples)?;
+    write!(
+        output,
+        "],\n    \"median\": {:.6},\n    \"mad\": {:.6},\n    \"min\": {:.6},\n    \"max\": {:.6}\n  }},\n  \"checksums\": {{\n    \"hc_ffn_post\": {}\n  }},\n  \"repeat_bitwise_match\": {},\n  \"c0_bitwise_match\": true\n}}\n",
+        report.gpu.median_ms,
+        report.gpu.mad_ms,
+        report.gpu.min_ms,
+        report.gpu.max_ms,
+        report.final_hc_checksum,
+        report.repeat_bitwise_match,
+    )?;
+    Ok(())
+}
+
+fn write_timing_samples<W: Write>(output: &mut W, samples: &[f64]) -> Result<()> {
+    for (index, sample) in samples.iter().enumerate() {
+        if index != 0 {
+            write!(output, ", ")?;
+        }
+        write!(output, "{sample:.6}")?;
+    }
+    Ok(())
+}
+
+fn summarize_timing(samples: &[f64]) -> Result<TimingSummary> {
+    if samples.is_empty()
+        || samples
+            .iter()
+            .any(|sample| !sample.is_finite() || *sample < 0.0)
+    {
+        return Err(Error::invalid(
+            "layer-0 benchmark returned invalid timing samples",
+        ));
+    }
+    let mut ordered = samples.to_vec();
+    ordered.sort_by(f64::total_cmp);
+    let median_ms = median_sorted(&ordered);
+    let mut deviations: Vec<f64> = ordered
+        .iter()
+        .map(|sample| (sample - median_ms).abs())
+        .collect();
+    deviations.sort_by(f64::total_cmp);
+    Ok(TimingSummary {
+        median_ms,
+        mad_ms: median_sorted(&deviations),
+        min_ms: ordered[0],
+        max_ms: ordered[ordered.len() - 1],
+    })
+}
+
+fn median_sorted(ordered: &[f64]) -> f64 {
+    let middle = ordered.len() / 2;
+    if ordered.len() % 2 == 0 {
+        (ordered[middle - 1] + ordered[middle]) / 2.0
+    } else {
+        ordered[middle]
+    }
 }
 
 impl ProbeReport {
@@ -1130,6 +1273,11 @@ mod imp {
         routed_out: *mut f32,
         shared_out: *mut f32,
         after_ffn_hc: *mut f32,
+        warmup_iterations: u32,
+        measured_iterations: u32,
+        wall_ms_samples: *mut f64,
+        gpu_ms_samples: *mut f64,
+        repeat_bitwise_matches: *mut u32,
     }
 
     impl Default for RawProbeResult {
@@ -1320,6 +1468,13 @@ mod imp {
     }
 
     struct Context(*mut c_void);
+
+    struct Layer0Execution {
+        report: Layer0ProbeReport,
+        wall_ms_samples: Vec<f64>,
+        gpu_ms_samples: Vec<f64>,
+        repeat_bitwise_match: bool,
+    }
 
     impl Drop for Context {
         fn drop(&mut self) {
@@ -2507,6 +2662,41 @@ mod imp {
     }
 
     pub fn run_layer0_probe(model: &MappedModel) -> Result<Layer0ProbeReport> {
+        Ok(run_layer0_iterations(model, 0, 1)?.report)
+    }
+
+    pub fn run_layer0_bench(
+        model: &MappedModel,
+        config: Layer0BenchConfig,
+    ) -> Result<Layer0BenchReport> {
+        let config = config.validate()?;
+        let execution = run_layer0_iterations(model, config.warmup_iterations, config.iterations)?;
+        let wall = summarize_timing(&execution.wall_ms_samples)?;
+        let gpu = summarize_timing(&execution.gpu_ms_samples)?;
+        Ok(Layer0BenchReport {
+            fixture_id: execution.report.fixture_id,
+            token: execution.report.token,
+            warmup_iterations: config.warmup_iterations,
+            iterations: config.iterations,
+            dispatches_per_iteration: execution.report.dispatches,
+            command_buffers_per_iteration: execution.report.command_buffers,
+            selected_experts: execution.report.selected_experts,
+            wrapped_model_ranges: execution.report.wrapped_model_ranges,
+            pointer_matches: execution.report.pointer_matches,
+            wall_ms_samples: execution.wall_ms_samples,
+            gpu_ms_samples: execution.gpu_ms_samples,
+            wall,
+            gpu,
+            repeat_bitwise_match: execution.repeat_bitwise_match,
+            final_hc_checksum: execution.report.final_hc_checksum,
+        })
+    }
+
+    fn run_layer0_iterations(
+        model: &MappedModel,
+        warmup_iterations: u32,
+        measured_iterations: u32,
+    ) -> Result<Layer0Execution> {
         const TOKEN: u32 = 201;
         let embedding = exact_tensor(model, "token_embd.weight", 1, &[4096, 129280])?;
         let hc_fn = exact_tensor(model, "blk.0.hc_attn_fn.weight", 1, &[16384, 24])?;
@@ -2590,6 +2780,9 @@ mod imp {
         let mut routed_out = vec![0.0_f32; 4096];
         let mut shared_out = vec![0.0_f32; 4096];
         let mut after_ffn_hc = vec![0.0_f32; 4 * 4096];
+        let mut wall_ms_samples = vec![0.0_f64; measured_iterations as usize];
+        let mut gpu_ms_samples = vec![0.0_f64; measured_iterations as usize];
+        let mut repeat_bitwise_matches = 1_u32;
         let layer0 = RawLayer0Extension {
             hc_ffn_fn_offset: ffn_hc_fn.absolute_offset,
             hc_ffn_fn_bytes: ffn_hc_fn.bytes,
@@ -2626,6 +2819,11 @@ mod imp {
             routed_out: routed_out.as_mut_ptr(),
             shared_out: shared_out.as_mut_ptr(),
             after_ffn_hc: after_ffn_hc.as_mut_ptr(),
+            warmup_iterations,
+            measured_iterations,
+            wall_ms_samples: wall_ms_samples.as_mut_ptr(),
+            gpu_ms_samples: gpu_ms_samples.as_mut_ptr(),
+            repeat_bitwise_matches: &mut repeat_bitwise_matches,
         };
 
         let mut error = [0 as c_char; ERROR_BYTES];
@@ -2718,6 +2916,11 @@ mod imp {
                 "complete layer-0 selected experts differ: actual={selected:?} expected={expected_selected:?}"
             )));
         }
+        if repeat_bitwise_matches != 1 {
+            return Err(Error::invalid(
+                "complete layer-0 outputs changed across measured iterations",
+            ));
+        }
         for (label, actual, expected) in [
             (
                 "hc_attn_post",
@@ -2793,23 +2996,28 @@ mod imp {
                 "Metal complete layer-0 returned invalid timing",
             ));
         }
-        Ok(Layer0ProbeReport {
-            fixture_id: LAYER0_FIXTURE_ID,
-            token: TOKEN,
-            dispatches: 30,
-            command_buffers: 1,
-            selected_experts: selected,
-            wrapped_model_ranges: raw.wrapped_model_ranges,
-            pointer_matches: raw.pointer_matches,
-            wall_ms: raw.wall_ms,
-            gpu_ms: raw.gpu_ms,
-            attention_hc_checksum: checksum_f32(&after_attention_hc),
-            ffn_norm_checksum: checksum_f32(&ffn_norm),
-            router_weights_checksum: checksum_f32(&router_weights),
-            routed_mid_checksum: checksum_f32(&routed_mid),
-            routed_out_checksum: checksum_f32(&routed_out),
-            shared_out_checksum: checksum_f32(&shared_out),
-            final_hc_checksum: checksum_f32(&after_ffn_hc),
+        Ok(Layer0Execution {
+            report: Layer0ProbeReport {
+                fixture_id: LAYER0_FIXTURE_ID,
+                token: TOKEN,
+                dispatches: 30,
+                command_buffers: 1,
+                selected_experts: selected,
+                wrapped_model_ranges: raw.wrapped_model_ranges,
+                pointer_matches: raw.pointer_matches,
+                wall_ms: raw.wall_ms,
+                gpu_ms: raw.gpu_ms,
+                attention_hc_checksum: checksum_f32(&after_attention_hc),
+                ffn_norm_checksum: checksum_f32(&ffn_norm),
+                router_weights_checksum: checksum_f32(&router_weights),
+                routed_mid_checksum: checksum_f32(&routed_mid),
+                routed_out_checksum: checksum_f32(&routed_out),
+                shared_out_checksum: checksum_f32(&shared_out),
+                final_hc_checksum: checksum_f32(&after_ffn_hc),
+            },
+            wall_ms_samples,
+            gpu_ms_samples,
+            repeat_bitwise_match: repeat_bitwise_matches == 1,
         })
     }
 
@@ -3216,12 +3424,27 @@ mod imp {
             "the complete Metal layer-0 probe is available only on macOS",
         ))
     }
+
+    pub fn run_layer0_bench(
+        model: &MappedModel,
+        config: Layer0BenchConfig,
+    ) -> Result<Layer0BenchReport> {
+        let _ = config.validate()?;
+        let _ = attention_output_fixture()?;
+        let _ = ffn_router_fixture()?;
+        let _ = moe_output_fixture()?;
+        let _ = exact_tensor(model, "blk.0.ffn_down_shexp.weight", 8, &[2048, 4096])?;
+        Err(Error::invalid(
+            "the Metal layer-0 steady-state benchmark is available only on macOS",
+        ))
+    }
 }
 
 pub use imp::{
     run_attention_ingress_probe, run_attention_output_probe, run_attention_read_probe,
-    run_attention_setup_probe, run_f16_embedding_probe, run_ffn_router_probe, run_layer0_probe,
-    run_moe_output_probe, run_probe, run_q8_projection_probe, run_rope_kv_store_probe,
+    run_attention_setup_probe, run_f16_embedding_probe, run_ffn_router_probe, run_layer0_bench,
+    run_layer0_probe, run_moe_output_probe, run_probe, run_q8_projection_probe,
+    run_rope_kv_store_probe,
 };
 
 #[cfg(test)]
@@ -3437,6 +3660,36 @@ mod tests {
         }
     }
 
+    fn layer0_bench_report() -> Layer0BenchReport {
+        Layer0BenchReport {
+            fixture_id: LAYER0_FIXTURE_ID,
+            token: 201,
+            warmup_iterations: 2,
+            iterations: 3,
+            dispatches_per_iteration: 30,
+            command_buffers_per_iteration: 1,
+            selected_experts: vec![25, 174, 215, 58, 48, 60],
+            wrapped_model_ranges: 25,
+            pointer_matches: 25,
+            wall_ms_samples: vec![1.0, 2.0, 4.0],
+            gpu_ms_samples: vec![0.5, 0.75, 1.0],
+            wall: TimingSummary {
+                median_ms: 2.0,
+                mad_ms: 1.0,
+                min_ms: 1.0,
+                max_ms: 4.0,
+            },
+            gpu: TimingSummary {
+                median_ms: 0.75,
+                mad_ms: 0.25,
+                min_ms: 0.5,
+                max_ms: 1.0,
+            },
+            repeat_bitwise_match: true,
+            final_hc_checksum: 7,
+        }
+    }
+
     #[test]
     fn validates_probe_work_bounds() {
         assert!(ProbeConfig::default().validate().is_ok());
@@ -3449,6 +3702,23 @@ mod tests {
         assert!(ProbeConfig {
             elements: MAX_ELEMENTS,
             iterations: MAX_ITERATIONS,
+        }
+        .validate()
+        .is_err());
+    }
+
+    #[test]
+    fn validates_layer0_bench_bounds() {
+        assert!(Layer0BenchConfig::default().validate().is_ok());
+        assert!(Layer0BenchConfig {
+            warmup_iterations: 0,
+            iterations: 0,
+        }
+        .validate()
+        .is_err());
+        assert!(Layer0BenchConfig {
+            warmup_iterations: 1,
+            iterations: MAX_LAYER0_EXECUTIONS,
         }
         .validate()
         .is_err());
@@ -3578,6 +3848,18 @@ mod tests {
         assert!(text.contains("\"command_buffers\": 1"));
         assert!(text.contains("\"pointer_matches\": 25"));
         assert!(text.contains("\"hc_ffn_post\": 7"));
+    }
+
+    #[test]
+    fn writes_stable_layer0_bench_json() {
+        let mut output = Vec::new();
+        write_layer0_bench_json(&mut output, &layer0_bench_report()).unwrap();
+        let text = String::from_utf8(output).unwrap();
+        assert!(text.contains(&format!("\"schema\": \"{LAYER0_BENCH_SCHEMA}\"")));
+        assert!(text.contains("\"warmup_iterations\": 2"));
+        assert!(text.contains("\"samples\": [1.000000, 2.000000, 4.000000]"));
+        assert!(text.contains("\"median\": 0.750000"));
+        assert!(text.contains("\"repeat_bitwise_match\": true"));
     }
 
     #[test]

@@ -48,6 +48,10 @@ Implemented contracts:
   kernels without fixture handoffs. All thirty dispatches share one command
   buffer, all 25 model ranges remain mmap-backed, and every retained boundary
   through the final four-stream HC state matches C0 bit-for-bit.
+- a persistent steady-state gate that creates those 25 model views and all
+  activation buffers once, excludes configurable warm-up iterations, retains
+  every raw wall/GPU timing sample, and rejects any measured iteration whose
+  outputs differ by one bit from the first or from the pinned oracle.
 
 The validator proves model shape and quantization-recipe identity. It does not
 pretend that a mutable GGUF name proves the `0731` checkpoint. The completed
@@ -238,3 +242,27 @@ experts, and bitwise equality at every retained checkpoint through
 Its wall and GPU intervals include fresh-process mapping, Metal view creation,
 pipeline setup, and fixture readback. They are diagnostic only and must not be
 used as layer latency or decoder-throughput evidence.
+
+To measure repeated execution after that setup is complete:
+
+```sh
+rust-star/.work/runtime-target/release/rust-star layer0-bench \
+  /absolute/path/to/model.gguf \
+  --warmup 10 \
+  --iterations 30 \
+  --json rust-star/.work/runtime-target/layer0-bench.json
+```
+
+`layer0-bench` keeps the Metal context, compiled pipelines, 25 no-copy model
+views, cache scratch, and activation buffers alive across all iterations. Each
+iteration still uses one synchronized command buffer containing thirty
+dispatches. Warm-ups are excluded; JSON retains every measured wall and GPU
+sample plus median, MAD, minimum, and maximum. The command requires all
+measured outputs to be mutually bit-identical and the final outputs to match
+the same C0 fixtures as `layer0-probe`.
+
+This is credible steady-state evidence for the isolated layer-0 path at the
+pinned two-row attention geometry. It is not a full-decoder benchmark and must
+not be multiplied by the layer count to claim model throughput: later layers,
+the recurrent decoder state, cache growth, final normalization, sampling, and
+host scheduling are not represented yet.

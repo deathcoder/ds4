@@ -19,7 +19,9 @@ See `rust-star/runtime/README.md` for its exact scope. It now has the minimal
 Metal ownership/dispatch probe and a complete thirty-dispatch layer-0 path in
 one command buffer, with live GPU handoffs across attention, routing, and the
 routed/shared experts. All retained boundaries match pinned DwarfStar fixtures
-bit-for-bit; it is not yet a decoder.
+bit-for-bit. A persistent gate now reuses its pipelines, 25 no-copy model
+views, cache scratch, and activation buffers for repeated steady-state timing;
+it is not yet a decoder.
 
 Project controls and benchmark contracts:
 

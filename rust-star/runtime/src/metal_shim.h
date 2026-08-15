@@ -90,6 +90,11 @@ typedef struct rust_star_metal_layer0_extension {
     float *routed_out;
     float *shared_out;
     float *after_ffn_hc;
+    uint32_t warmup_iterations;
+    uint32_t measured_iterations;
+    double *wall_ms_samples;
+    double *gpu_ms_samples;
+    uint32_t *repeat_bitwise_matches;
 } rust_star_metal_layer0_extension;
 
 int rust_star_metal_create(void **context_out, char *error, size_t error_bytes);

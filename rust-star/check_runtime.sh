@@ -89,6 +89,10 @@ elif [ "$#" -eq 1 ]; then
         echo "==> continuous complete layer-0 command chain"
         "$target_dir/release/rust-star" layer0-probe "$1" \
             --json "$target_dir/layer0-probe.json"
+        echo "==> persistent layer-0 steady-state execution"
+        "$target_dir/release/rust-star" layer0-bench "$1" \
+            --warmup 10 --iterations 30 \
+            --json "$target_dir/layer0-bench.json"
     fi
 else
     echo "usage: $0 [/absolute/path/to/model.gguf]" >&2

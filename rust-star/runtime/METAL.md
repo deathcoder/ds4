@@ -261,3 +261,25 @@ This establishes the first continuous model layer and its ownership boundary;
 it is not a reusable decoder loop yet. The standalone report's timestamps
 include fresh-process model/view and pipeline setup plus correctness readback,
 so they are deliberately excluded from performance claims.
+
+## Persistent layer-0 steady state
+
+Schema: `rust-star-layer0-steady-state-v1`.
+
+`layer0-bench` separates persistent setup from repeated command execution. It
+creates the Metal context, pipelines, all 25 model views, activation buffers,
+and cache scratch once, then submits one complete layer command buffer per
+iteration. Configurable warm-ups are synchronized but excluded from all
+reported samples.
+
+Every measured wall and Metal GPU interval is retained. The JSON also reports
+median, median absolute deviation, minimum, and maximum rather than selecting
+a best run. Cache inputs are restored before each iteration, the first measured
+output becomes the repeat reference, and all later measured checkpoints must
+match it byte-for-byte. The final output must also pass the full C0 fixture
+comparison in Rust.
+
+This gate measures only the already validated layer-0, position-1 execution
+shape. It does not include view/pipeline allocation, model parsing, or fixture
+comparison in the samples, but it also does not represent the later-layer
+decoder, growing contexts, sampling, or end-to-end token latency.
