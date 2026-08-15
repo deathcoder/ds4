@@ -302,3 +302,19 @@ independently captured position-1 DwarfStar checkpoints bit-for-bit. The three
 per-layer command buffers remain synchronized intentionally; the next
 scheduler experiment can remove that host boundary only while preserving the
 same arithmetic and ownership results.
+
+The exact chained scheduler variant is available separately:
+
+```sh
+rust-star/.work/runtime-target/release/rust-star layers012-chained-probe \
+  /absolute/path/to/model.gguf \
+  --json rust-star/.work/runtime-target/layers012-chained-probe.json
+```
+
+It commits the same three per-layer command buffers to one queue without
+waiting between layers, then waits once after layer 2. Layer-scoped activation
+storage keeps every intermediate boundary alive for post-chain C0 comparison;
+the HC dependency remains a direct Metal-buffer edge and KV storage remains
+distinct by layer. Its `chain_wall_ms` spans the first submission through the
+single tail wait, while `summed_command_gpu_ms` sums the three Metal command
+intervals. These are narrow scheduler diagnostics, not decoder throughput.

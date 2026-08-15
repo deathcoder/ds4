@@ -76,7 +76,10 @@ history; add a correction and update the current-state summary.
   one scratch allocation. All three layers use independently captured cache-row
   and differential fixtures and pass every retained boundary by FP32 bit
   pattern. Layer 2 derives its compressed RoPE base, scale, original context,
-  and YaRN parameters from the model's compression schedule.
+  and YaRN parameters from the model's compression schedule. A separate exact
+  scheduler path commits all three layer command buffers without inter-layer
+  waits, retains layer-scoped activation lifetimes for deferred comparison, and
+  performs one tail wait after layer 2.
 - Measurements: Metal batching was 42.861x faster than synchronized submission
   in the retained M-002 probe. DwarfStar medians are 164.86 prefill / 19.90
   generation tok/s at 2K and 161.05 prefill / 17.36 generation tok/s at 32K.
@@ -99,7 +102,11 @@ history; add a correction and update the current-state summary.
   correctness readback and are not decoder-throughput claims. The canonical
   layers-0/1/2 gate reported 47.226/20.865 ms, 16.310/15.398 ms, and
   16.401/15.662 ms wall/GPU respectively; these intervals likewise include
-  synchronization and correctness readback.
+  synchronization and correctness readback. Five alternating synchronized and
+  chained samples measured 82.330 ms versus 80.175 ms median wall time, a
+  1.0269x ratio or 2.62% reduction. Median summed command GPU time was 53.488 ms
+  versus 52.458 ms, so the scheduler result remains a narrow diagnostic rather
+  than a decoder-throughput claim.
 - Manual handoff: `RUST_STAR_MANUAL_TASKS.md` records Actions approval, target
   compilation/model inspection, quick/extended oracle capture, and the deferred
   secure-access decision with exact evidence requirements.
@@ -112,16 +119,66 @@ history; add a correction and update the current-state summary.
 
 ## Immediate Next Actions
 
-1. Measure whether command-buffer chaining can remove the current inter-layer
-   host synchronization without changing arithmetic, ordering, or lifetime
-   guarantees; keep the synchronized path as the C0 control.
-2. After the chained three-layer gate is exact, extend the ordered executor to
-   the next layer/state boundary rather than introducing a graph framework.
+1. Extend the ordered executor and C0 capture to the next layer/state boundary
+   rather than introducing a graph framework; preserve synchronized and chained
+   three-layer paths as scheduler controls.
+2. Once a larger layer slice is exact, separate correctness readback from the
+   production execution interval and remeasure scheduling at that scale.
 3. Run the extended 2K--1M frontier capture when the Mac can be dedicated to a
    long benchmark; preserve any 512K/1M capacity failure as evidence.
 4. Run or approve the fork's GitHub Actions workflow and retain its URL.
 
 ## Entries
+
+### 2026-08-15 — Three-layer command chaining remained C0 exact
+
+Objective:
+
+- Remove the two inter-layer host waits from the exact layers-0/1/2 scheduler,
+  retain the synchronized path as a control, and measure the result.
+
+Implementation:
+
+- Added `rust-star-layers012-chained-probe-v1` and the
+  `layers012-chained-probe` CLI. It commits the same three command buffers to one
+  Metal queue, waits once after layer 2, then collects every retained boundary.
+- Layer-scoped activation keys preserve layers 0 and 1 until tail comparison;
+  per-layer KV allocations remain distinct, and later layers consume the
+  preceding live HC Metal buffer through queue ordering. No host upload, event,
+  or fixture seam was added.
+- Kept `layers012-probe` unchanged as the synchronized C0 control and added the
+  chained path to `check_runtime.sh`, the stable JSON writer tests, and runtime
+  ownership documentation.
+
+Target-Mac evidence:
+
+- The first chained run matched all three fixtures bit-for-bit with one tail
+  wait. All five subsequent alternating control/chained pairs also remained C0
+  exact with the expected expert routes.
+- Five-pair wall samples were synchronized
+  `[82.834, 82.325, 84.160, 81.209, 82.330]` ms and chained
+  `[81.481, 79.615, 79.922, 80.175, 81.410]` ms. Medians were 82.330 and
+  80.175 ms: 1.0269x, or 2.62% less wall time for chaining.
+- Median summed command GPU time was 53.488 ms synchronized and 52.458 ms
+  chained. Because this small difference includes ordinary GPU variance and the
+  path still performs exhaustive correctness readback, treat the wall result as
+  a scheduler diagnostic rather than decoder throughput.
+- The final target-Mac gate passed: 40 Rust tests, optimized macOS build, 36
+  Python tests, all ten fixture verifiers, strict validation of 1,288 required
+  tensors, every standalone Metal probe, synchronized and chained three-layer
+  C0 gates, and 30 bit-identical layer-0 steady-state samples. Its synchronized
+  wall sum was 83.246 ms and chained wall was 79.899 ms.
+
+Decision:
+
+- Accept the chained lifetime/scheduling boundary and its modest measured wall
+  reduction. Retain both paths: synchronized execution is the control, while
+  chaining is the exact scheduler candidate. Make no token-throughput claim.
+
+Next:
+
+- Capture and execute the next layer/state boundary through the same ordered
+  API, then remeasure chaining over the larger exact slice.
 
 ### 2026-08-15 — Layers 0→1→2 matched with explicit per-layer KV ownership
 

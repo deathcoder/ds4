@@ -14,6 +14,13 @@ static const uint64_t kMaxElements = 16ull * 1024ull * 1024ull;
 static const uint64_t kMaxIterations = 100000ull;
 static const uint64_t kMaxThreadInvocations = 1000000000ull;
 
+enum {
+    RUST_STAR_COMMAND_SYNCHRONIZED = 0,
+    RUST_STAR_COMMAND_CHAINED_ENQUEUE = 1,
+    RUST_STAR_COMMAND_CHAINED_FINAL = 2,
+    RUST_STAR_COMMAND_CHAINED_COLLECT = 3,
+};
+
 static NSString *const kProbeSource =
     @"#include <metal_stdlib>\n"
     @"using namespace metal;\n"
@@ -191,6 +198,10 @@ static NSString *const kQ8ProjectionSource =
 @property(nonatomic, strong) id<MTLComputePipelineState> sharedDownHcPipeline;
 @property(nonatomic, strong) NSMutableDictionary<NSString *, id<MTLBuffer>> *modelViewCache;
 @property(nonatomic, strong) NSMutableDictionary<NSString *, id<MTLBuffer>> *activationBufferCache;
+@property(nonatomic, strong) NSMutableDictionary<NSNumber *, id<MTLCommandBuffer>> *chainedCommands;
+@property(nonatomic, strong) NSMutableDictionary<NSNumber *, NSNumber *> *chainedWallStarts;
+@property(nonatomic, assign) double chainedWallEnd;
+@property(nonatomic, assign) BOOL chainedReady;
 @property(nonatomic, assign) const void *modelMapping;
 @property(nonatomic, assign) uint64_t modelBytes;
 @property(nonatomic, assign) double setupMilliseconds;
@@ -293,6 +304,8 @@ int rust_star_metal_create(void **context_out, char *error, size_t error_bytes) 
         context.probePipeline = pipeline;
         context.modelViewCache = [NSMutableDictionary dictionary];
         context.activationBufferCache = [NSMutableDictionary dictionary];
+        context.chainedCommands = [NSMutableDictionary dictionary];
+        context.chainedWallStarts = [NSMutableDictionary dictionary];
         context.setupMilliseconds = setup_end - setup_start;
         context.compileMilliseconds = compile_end - compile_start;
         *context_out = (__bridge_retained void *)context;
@@ -1034,6 +1047,12 @@ static id<MTLBuffer> persistent_buffer(
     return buffer;
 }
 
+static NSString *layer_buffer_key(NSString *base, BOOL layer_scoped, uint32_t layer_index) {
+    return layer_scoped
+        ? [NSString stringWithFormat:@"%@_layer_%u", base, layer_index]
+        : base;
+}
+
 int rust_star_metal_run_q8_0_projection(
     void *opaque_context,
     const void *model_mapping,
@@ -1240,7 +1259,14 @@ int rust_star_metal_run_attention_ingress(
     const BOOL attention_output = attention_low && attention_out && after_attention_hc;
     const BOOL partial_attention_output = attention_low || attention_out || after_attention_hc;
     const BOOL full_layer = layer0 != NULL;
+    rust_star_metal_layer0_extension standalone_layer = {0};
+    if (!layer0) layer0 = &standalone_layer;
     const BOOL continuing_layer = full_layer && layer0->reuse_previous_hc != 0;
+    const uint32_t command_mode = full_layer ? layer0->command_mode : RUST_STAR_COMMAND_SYNCHRONIZED;
+    const BOOL chained_submission = command_mode == RUST_STAR_COMMAND_CHAINED_ENQUEUE ||
+        command_mode == RUST_STAR_COMMAND_CHAINED_FINAL;
+    const BOOL chained_collect = command_mode == RUST_STAR_COMMAND_CHAINED_COLLECT;
+    const BOOL layer_scoped_buffers = chained_submission || chained_collect;
     const uint32_t warmup_iterations = full_layer ? layer0->warmup_iterations : 0;
     const uint32_t measured_iterations = full_layer ? layer0->measured_iterations : 1;
     if (!opaque_context || !model_mapping || !mixes || !split || !collapsed ||
@@ -1275,6 +1301,13 @@ int rust_star_metal_run_attention_ingress(
         (layer0->layer_index > 0 && !continuing_layer))) {
         return fail_with_message(error, error_bytes,
             @"full layer execution must run layer 0 before continuing into later layers");
+    }
+    if (command_mode > RUST_STAR_COMMAND_CHAINED_COLLECT || (!full_layer && command_mode != 0)) {
+        return fail_with_message(error, error_bytes, @"invalid full-layer command mode");
+    }
+    if (chained_submission && (warmup_iterations != 0 || measured_iterations != 1)) {
+        return fail_with_message(error, error_bytes,
+            @"chained layer submission requires exactly one measured iteration");
     }
     if (continuing_layer && (warmup_iterations != 0 || measured_iterations != 1)) {
         return fail_with_message(error, error_bytes,
@@ -1337,6 +1370,29 @@ int rust_star_metal_run_attention_ingress(
             (attention_output && !ensure_attention_output_pipelines(context, error, error_bytes)) ||
             (full_layer && !ensure_moe_output_pipelines(context, error, error_bytes))) return 0;
         memset(result, 0, sizeof(*result));
+
+        NSNumber *chained_key = @(layer0->layer_index);
+        if (chained_submission && layer0->layer_index == 0) {
+            [context.chainedCommands removeAllObjects];
+            [context.chainedWallStarts removeAllObjects];
+            context.chainedReady = NO;
+            context.chainedWallEnd = 0.0;
+        } else if (chained_submission && !context.chainedCommands[@(layer0->layer_index-1)]) {
+            return fail_with_message(error, error_bytes,
+                @"chained layer submission is missing its preceding command buffer");
+        }
+        if (command_mode == RUST_STAR_COMMAND_CHAINED_FINAL && layer0->layer_index != 2) {
+            return fail_with_message(error, error_bytes,
+                @"only layer 2 may finalize the three-layer command chain");
+        }
+        if (command_mode == RUST_STAR_COMMAND_CHAINED_ENQUEUE && layer0->layer_index == 2) {
+            return fail_with_message(error, error_bytes,
+                @"layer 2 must finalize the three-layer command chain");
+        }
+        if (chained_collect && (!context.chainedReady || !context.chainedCommands[chained_key])) {
+            return fail_with_message(error, error_bytes,
+                @"chained layer collection requires a completed three-layer command chain");
+        }
 
         NSUInteger embedding_inner = 0, hc_fn_inner = 0, scale_inner = 0;
         NSUInteger base_inner = 0, norm_inner = 0, q_inner = 0;
@@ -1425,25 +1481,28 @@ int rust_star_metal_run_attention_ingress(
             }
         }
 
-        id<MTLBuffer> prior_hc = context.activationBufferCache[@"layer_hc_state"];
+        NSString *prior_hc_key = layer_scoped_buffers && layer0->layer_index > 0
+            ? layer_buffer_key(@"layer_hc_state", YES, layer0->layer_index-1)
+            : @"layer_hc_state";
+        id<MTLBuffer> prior_hc = context.activationBufferCache[prior_hc_key];
         if (continuing_layer && !prior_hc) {
             return fail_with_message(error, error_bytes, @"continued layer execution has no retained HC state");
         }
-        id<MTLBuffer> embedding = persistent_buffer(context, @"embedding", n_embd*sizeof(float), error, error_bytes);
-        id<MTLBuffer> cur_hc = persistent_buffer(context, @"embedding_hc", hc_dim*sizeof(float), error, error_bytes);
+        id<MTLBuffer> embedding = persistent_buffer(context, layer_buffer_key(@"embedding", layer_scoped_buffers, layer0->layer_index), n_embd*sizeof(float), error, error_bytes);
+        id<MTLBuffer> cur_hc = persistent_buffer(context, layer_buffer_key(@"embedding_hc", layer_scoped_buffers, layer0->layer_index), hc_dim*sizeof(float), error, error_bytes);
         id<MTLBuffer> layer_input_hc = continuing_layer ? prior_hc : cur_hc;
-        id<MTLBuffer> flat_hc = persistent_buffer(context, @"attention_flat_hc", hc_dim*sizeof(float), error, error_bytes);
-        id<MTLBuffer> mix_buffer = persistent_buffer(context, @"attention_mix", mix_hc*sizeof(float), error, error_bytes);
-        id<MTLBuffer> split_buffer = persistent_buffer(context, @"attention_split", mix_hc*sizeof(float), error, error_bytes);
-        id<MTLBuffer> collapsed_buffer = persistent_buffer(context, @"attention_collapsed", n_embd*sizeof(float), error, error_bytes);
-        id<MTLBuffer> norm_buffer = persistent_buffer(context, @"attention_norm", n_embd*sizeof(float), error, error_bytes);
-        id<MTLBuffer> q_buffer = persistent_buffer(context, @"q_lora", q_elements*sizeof(float), error, error_bytes);
-        id<MTLBuffer> q_norm_buffer = extended ? persistent_buffer(context, @"q_lora_norm", q_elements*sizeof(float), error, error_bytes) : nil;
-        id<MTLBuffer> kv_raw_buffer = extended ? persistent_buffer(context, @"kv_raw", kv_elements*sizeof(float), error, error_bytes) : nil;
-        id<MTLBuffer> kv_norm_buffer = extended ? persistent_buffer(context, @"kv_norm", kv_elements*sizeof(float), error, error_bytes) : nil;
-        id<MTLBuffer> q_raw_buffer = extended ? persistent_buffer(context, @"q_raw", q_raw_elements*sizeof(float), error, error_bytes) : nil;
-        id<MTLBuffer> q_cur_buffer = rope_and_store ? persistent_buffer(context, @"q_cur", q_raw_elements*sizeof(float), error, error_bytes) : nil;
-        id<MTLBuffer> kv_rope_buffer = rope_and_store ? persistent_buffer(context, @"kv_rope", kv_elements*sizeof(float), error, error_bytes) : nil;
+        id<MTLBuffer> flat_hc = persistent_buffer(context, layer_buffer_key(@"attention_flat_hc", layer_scoped_buffers, layer0->layer_index), hc_dim*sizeof(float), error, error_bytes);
+        id<MTLBuffer> mix_buffer = persistent_buffer(context, layer_buffer_key(@"attention_mix", layer_scoped_buffers, layer0->layer_index), mix_hc*sizeof(float), error, error_bytes);
+        id<MTLBuffer> split_buffer = persistent_buffer(context, layer_buffer_key(@"attention_split", layer_scoped_buffers, layer0->layer_index), mix_hc*sizeof(float), error, error_bytes);
+        id<MTLBuffer> collapsed_buffer = persistent_buffer(context, layer_buffer_key(@"attention_collapsed", layer_scoped_buffers, layer0->layer_index), n_embd*sizeof(float), error, error_bytes);
+        id<MTLBuffer> norm_buffer = persistent_buffer(context, layer_buffer_key(@"attention_norm", layer_scoped_buffers, layer0->layer_index), n_embd*sizeof(float), error, error_bytes);
+        id<MTLBuffer> q_buffer = persistent_buffer(context, layer_buffer_key(@"q_lora", layer_scoped_buffers, layer0->layer_index), q_elements*sizeof(float), error, error_bytes);
+        id<MTLBuffer> q_norm_buffer = extended ? persistent_buffer(context, layer_buffer_key(@"q_lora_norm", layer_scoped_buffers, layer0->layer_index), q_elements*sizeof(float), error, error_bytes) : nil;
+        id<MTLBuffer> kv_raw_buffer = extended ? persistent_buffer(context, layer_buffer_key(@"kv_raw", layer_scoped_buffers, layer0->layer_index), kv_elements*sizeof(float), error, error_bytes) : nil;
+        id<MTLBuffer> kv_norm_buffer = extended ? persistent_buffer(context, layer_buffer_key(@"kv_norm", layer_scoped_buffers, layer0->layer_index), kv_elements*sizeof(float), error, error_bytes) : nil;
+        id<MTLBuffer> q_raw_buffer = extended ? persistent_buffer(context, layer_buffer_key(@"q_raw", layer_scoped_buffers, layer0->layer_index), q_raw_elements*sizeof(float), error, error_bytes) : nil;
+        id<MTLBuffer> q_cur_buffer = rope_and_store ? persistent_buffer(context, layer_buffer_key(@"q_cur", layer_scoped_buffers, layer0->layer_index), q_raw_elements*sizeof(float), error, error_bytes) : nil;
+        id<MTLBuffer> kv_rope_buffer = rope_and_store ? persistent_buffer(context, layer_buffer_key(@"kv_rope", layer_scoped_buffers, layer0->layer_index), kv_elements*sizeof(float), error, error_bytes) : nil;
         NSString *cache_key = full_layer ?
             [NSString stringWithFormat:@"kv_cache_layer_%u", layer0->layer_index] :
             @"kv_cache_probe";
@@ -1452,33 +1511,33 @@ int rust_star_metal_run_attention_ingress(
         const NSUInteger mask_bytes = 2u*sizeof(uint16_t);
         const NSUInteger flash_pad_bytes = 2u*32u*kv_elements*sizeof(uint16_t) + 32u*sizeof(uint16_t);
         const NSUInteger flash_tmp_bytes = 64u*kv_elements*32u*sizeof(float) + 64u*64u*sizeof(float);
-        id<MTLBuffer> staged_kv_buffer = attention_read ? persistent_buffer(context, @"staged_kv", staged_kv_bytes, error, error_bytes) : nil;
-        id<MTLBuffer> mask_buffer = attention_read ? persistent_buffer(context, @"attention_mask", mask_bytes, error, error_bytes) : nil;
-        id<MTLBuffer> flash_pad_buffer = attention_read ? persistent_buffer(context, @"flash_pad", flash_pad_bytes, error, error_bytes) : nil;
-        id<MTLBuffer> flash_tmp_buffer = attention_read ? persistent_buffer(context, @"flash_tmp", flash_tmp_bytes, error, error_bytes) : nil;
-        id<MTLBuffer> attention_raw_buffer = attention_read ? persistent_buffer(context, @"attention_raw", q_raw_elements*sizeof(float), error, error_bytes) : nil;
-        id<MTLBuffer> attention_back_buffer = attention_read ? persistent_buffer(context, @"attention_back", q_raw_elements*sizeof(float), error, error_bytes) : nil;
-        id<MTLBuffer> attention_low_buffer = attention_output ? persistent_buffer(context, @"attention_low", 8192u*sizeof(float), error, error_bytes) : nil;
-        id<MTLBuffer> attention_out_buffer = attention_output ? persistent_buffer(context, @"attention_out", n_embd*sizeof(float), error, error_bytes) : nil;
-        id<MTLBuffer> after_attention_hc_buffer = attention_output ? persistent_buffer(context, @"after_attention_hc", hc_dim*sizeof(float), error, error_bytes) : nil;
-        id<MTLBuffer> ffn_flat_buffer = full_layer ? persistent_buffer(context, @"ffn_flat_hc", hc_dim*sizeof(float), error, error_bytes) : nil;
-        id<MTLBuffer> ffn_mix_buffer = full_layer ? persistent_buffer(context, @"ffn_mix", mix_hc*sizeof(float), error, error_bytes) : nil;
-        id<MTLBuffer> ffn_split_buffer = full_layer ? persistent_buffer(context, @"ffn_split", mix_hc*sizeof(float), error, error_bytes) : nil;
-        id<MTLBuffer> ffn_cur_buffer = full_layer ? persistent_buffer(context, @"ffn_cur", n_embd*sizeof(float), error, error_bytes) : nil;
-        id<MTLBuffer> ffn_norm_buffer = full_layer ? persistent_buffer(context, @"ffn_norm", n_embd*sizeof(float), error, error_bytes) : nil;
-        id<MTLBuffer> router_logits_buffer = full_layer ? persistent_buffer(context, @"router_logits", 256u*sizeof(float), error, error_bytes) : nil;
-        id<MTLBuffer> router_probs_buffer = full_layer ? persistent_buffer(context, @"router_probs", 256u*sizeof(float), error, error_bytes) : nil;
-        id<MTLBuffer> selected_buffer = full_layer ? persistent_buffer(context, @"selected_experts", 6u*sizeof(int32_t), error, error_bytes) : nil;
-        id<MTLBuffer> route_weights_buffer = full_layer ? persistent_buffer(context, @"router_weights", 6u*sizeof(float), error, error_bytes) : nil;
-        id<MTLBuffer> routed_gate_buffer = full_layer ? persistent_buffer(context, @"routed_gate", 6u*2048u*sizeof(float), error, error_bytes) : nil;
-        id<MTLBuffer> routed_up_buffer = full_layer ? persistent_buffer(context, @"routed_up", 6u*2048u*sizeof(float), error, error_bytes) : nil;
-        id<MTLBuffer> routed_mid_buffer = full_layer ? persistent_buffer(context, @"routed_mid", 6u*2048u*sizeof(float), error, error_bytes) : nil;
-        id<MTLBuffer> routed_out_buffer = full_layer ? persistent_buffer(context, @"routed_out", n_embd*sizeof(float), error, error_bytes) : nil;
-        id<MTLBuffer> shared_gate_buffer = full_layer ? persistent_buffer(context, @"shared_gate", 2048u*sizeof(float), error, error_bytes) : nil;
-        id<MTLBuffer> shared_up_buffer = full_layer ? persistent_buffer(context, @"shared_up", 2048u*sizeof(float), error, error_bytes) : nil;
-        id<MTLBuffer> shared_mid_buffer = full_layer ? persistent_buffer(context, @"shared_mid", 2048u*sizeof(float), error, error_bytes) : nil;
-        id<MTLBuffer> shared_out_buffer = full_layer ? persistent_buffer(context, @"shared_out", n_embd*sizeof(float), error, error_bytes) : nil;
-        id<MTLBuffer> after_ffn_hc_buffer = full_layer ? persistent_buffer(context, @"layer_hc_state", hc_dim*sizeof(float), error, error_bytes) : nil;
+        id<MTLBuffer> staged_kv_buffer = attention_read ? persistent_buffer(context, layer_buffer_key(@"staged_kv", layer_scoped_buffers, layer0->layer_index), staged_kv_bytes, error, error_bytes) : nil;
+        id<MTLBuffer> mask_buffer = attention_read ? persistent_buffer(context, layer_buffer_key(@"attention_mask", layer_scoped_buffers, layer0->layer_index), mask_bytes, error, error_bytes) : nil;
+        id<MTLBuffer> flash_pad_buffer = attention_read ? persistent_buffer(context, layer_buffer_key(@"flash_pad", layer_scoped_buffers, layer0->layer_index), flash_pad_bytes, error, error_bytes) : nil;
+        id<MTLBuffer> flash_tmp_buffer = attention_read ? persistent_buffer(context, layer_buffer_key(@"flash_tmp", layer_scoped_buffers, layer0->layer_index), flash_tmp_bytes, error, error_bytes) : nil;
+        id<MTLBuffer> attention_raw_buffer = attention_read ? persistent_buffer(context, layer_buffer_key(@"attention_raw", layer_scoped_buffers, layer0->layer_index), q_raw_elements*sizeof(float), error, error_bytes) : nil;
+        id<MTLBuffer> attention_back_buffer = attention_read ? persistent_buffer(context, layer_buffer_key(@"attention_back", layer_scoped_buffers, layer0->layer_index), q_raw_elements*sizeof(float), error, error_bytes) : nil;
+        id<MTLBuffer> attention_low_buffer = attention_output ? persistent_buffer(context, layer_buffer_key(@"attention_low", layer_scoped_buffers, layer0->layer_index), 8192u*sizeof(float), error, error_bytes) : nil;
+        id<MTLBuffer> attention_out_buffer = attention_output ? persistent_buffer(context, layer_buffer_key(@"attention_out", layer_scoped_buffers, layer0->layer_index), n_embd*sizeof(float), error, error_bytes) : nil;
+        id<MTLBuffer> after_attention_hc_buffer = attention_output ? persistent_buffer(context, layer_buffer_key(@"after_attention_hc", layer_scoped_buffers, layer0->layer_index), hc_dim*sizeof(float), error, error_bytes) : nil;
+        id<MTLBuffer> ffn_flat_buffer = full_layer ? persistent_buffer(context, layer_buffer_key(@"ffn_flat_hc", layer_scoped_buffers, layer0->layer_index), hc_dim*sizeof(float), error, error_bytes) : nil;
+        id<MTLBuffer> ffn_mix_buffer = full_layer ? persistent_buffer(context, layer_buffer_key(@"ffn_mix", layer_scoped_buffers, layer0->layer_index), mix_hc*sizeof(float), error, error_bytes) : nil;
+        id<MTLBuffer> ffn_split_buffer = full_layer ? persistent_buffer(context, layer_buffer_key(@"ffn_split", layer_scoped_buffers, layer0->layer_index), mix_hc*sizeof(float), error, error_bytes) : nil;
+        id<MTLBuffer> ffn_cur_buffer = full_layer ? persistent_buffer(context, layer_buffer_key(@"ffn_cur", layer_scoped_buffers, layer0->layer_index), n_embd*sizeof(float), error, error_bytes) : nil;
+        id<MTLBuffer> ffn_norm_buffer = full_layer ? persistent_buffer(context, layer_buffer_key(@"ffn_norm", layer_scoped_buffers, layer0->layer_index), n_embd*sizeof(float), error, error_bytes) : nil;
+        id<MTLBuffer> router_logits_buffer = full_layer ? persistent_buffer(context, layer_buffer_key(@"router_logits", layer_scoped_buffers, layer0->layer_index), 256u*sizeof(float), error, error_bytes) : nil;
+        id<MTLBuffer> router_probs_buffer = full_layer ? persistent_buffer(context, layer_buffer_key(@"router_probs", layer_scoped_buffers, layer0->layer_index), 256u*sizeof(float), error, error_bytes) : nil;
+        id<MTLBuffer> selected_buffer = full_layer ? persistent_buffer(context, layer_buffer_key(@"selected_experts", layer_scoped_buffers, layer0->layer_index), 6u*sizeof(int32_t), error, error_bytes) : nil;
+        id<MTLBuffer> route_weights_buffer = full_layer ? persistent_buffer(context, layer_buffer_key(@"router_weights", layer_scoped_buffers, layer0->layer_index), 6u*sizeof(float), error, error_bytes) : nil;
+        id<MTLBuffer> routed_gate_buffer = full_layer ? persistent_buffer(context, layer_buffer_key(@"routed_gate", layer_scoped_buffers, layer0->layer_index), 6u*2048u*sizeof(float), error, error_bytes) : nil;
+        id<MTLBuffer> routed_up_buffer = full_layer ? persistent_buffer(context, layer_buffer_key(@"routed_up", layer_scoped_buffers, layer0->layer_index), 6u*2048u*sizeof(float), error, error_bytes) : nil;
+        id<MTLBuffer> routed_mid_buffer = full_layer ? persistent_buffer(context, layer_buffer_key(@"routed_mid", layer_scoped_buffers, layer0->layer_index), 6u*2048u*sizeof(float), error, error_bytes) : nil;
+        id<MTLBuffer> routed_out_buffer = full_layer ? persistent_buffer(context, layer_buffer_key(@"routed_out", layer_scoped_buffers, layer0->layer_index), n_embd*sizeof(float), error, error_bytes) : nil;
+        id<MTLBuffer> shared_gate_buffer = full_layer ? persistent_buffer(context, layer_buffer_key(@"shared_gate", layer_scoped_buffers, layer0->layer_index), 2048u*sizeof(float), error, error_bytes) : nil;
+        id<MTLBuffer> shared_up_buffer = full_layer ? persistent_buffer(context, layer_buffer_key(@"shared_up", layer_scoped_buffers, layer0->layer_index), 2048u*sizeof(float), error, error_bytes) : nil;
+        id<MTLBuffer> shared_mid_buffer = full_layer ? persistent_buffer(context, layer_buffer_key(@"shared_mid", layer_scoped_buffers, layer0->layer_index), 2048u*sizeof(float), error, error_bytes) : nil;
+        id<MTLBuffer> shared_out_buffer = full_layer ? persistent_buffer(context, layer_buffer_key(@"shared_out", layer_scoped_buffers, layer0->layer_index), n_embd*sizeof(float), error, error_bytes) : nil;
+        id<MTLBuffer> after_ffn_hc_buffer = full_layer ? persistent_buffer(context, layer_buffer_key(@"layer_hc_state", layer_scoped_buffers, layer0->layer_index), hc_dim*sizeof(float), error, error_bytes) : nil;
         if (!embedding || !cur_hc || !flat_hc || !mix_buffer || !split_buffer ||
             !collapsed_buffer || !norm_buffer || !q_buffer) {
             return fail_with_message(error, error_bytes, @"failed to allocate attention ingress buffers");
@@ -1504,12 +1563,12 @@ int rust_star_metal_run_attention_ingress(
             !shared_mid_buffer || !shared_out_buffer || !after_ffn_hc_buffer)) {
             return fail_with_message(error, error_bytes, @"failed to allocate full layer buffers");
         }
-        if (rope_and_store) {
+        if (rope_and_store && !chained_collect) {
             float *cache = cache_buffer.contents;
             for (uint32_t index = 0; index < 3u*kv_elements; index++) cache[index] = -12345.5f;
             if (attention_read) memcpy(cache, cache_row0, kv_elements*sizeof(float));
         }
-        if (attention_read) memset(mask_buffer.contents, 0, mask_bytes);
+        if (attention_read && !chained_collect) memset(mask_buffer.contents, 0, mask_bytes);
 
         const uint64_t embedding_row_bytes = (uint64_t)n_embd*sizeof(uint16_t);
         rust_star_get_rows_args get_rows = {
@@ -1764,13 +1823,24 @@ int rust_star_metal_run_attention_ingress(
         rust_star_hc_expand_args ffn_hc_post_args = output_hc_args;
         ffn_hc_post_args.has_add = 1;
 
-        const uint32_t total_iterations = warmup_iterations + measured_iterations;
+        const uint32_t total_iterations = chained_collect
+            ? 0 : warmup_iterations + measured_iterations;
         double measured_wall_ms = 0.0;
         double measured_gpu_ms = 0.0;
         if (full_layer && layer0->repeat_bitwise_matches) {
             *layer0->repeat_bitwise_matches = 1;
         }
         id<MTLCommandBuffer> command = nil;
+        if (chained_collect) {
+            command = context.chainedCommands[chained_key];
+            NSNumber *wall_start = context.chainedWallStarts[chained_key];
+            if (!wall_start || command.status != MTLCommandBufferStatusCompleted) {
+                return fail_with_message(error, error_bytes,
+                    @"chained command buffer is not ready for collection");
+            }
+            measured_wall_ms = context.chainedWallEnd-wall_start.doubleValue;
+            measured_gpu_ms = gpu_elapsed_ms(command);
+        }
         for (uint32_t execution = 0; execution < total_iterations; execution++) {
         if (execution > 0 && rope_and_store) {
             float *cache = cache_buffer.contents;
@@ -2135,6 +2205,23 @@ int rust_star_metal_run_attention_ingress(
         }
 
         [command commit];
+        if (chained_submission) {
+            context.chainedCommands[chained_key] = command;
+            context.chainedWallStarts[chained_key] = @(wall_start);
+            if (command_mode == RUST_STAR_COMMAND_CHAINED_FINAL) {
+                if (!command_succeeded(command, error, error_bytes)) return 0;
+                context.chainedWallEnd = monotonic_ms();
+                for (uint32_t layer = 0; layer < 3; layer++) {
+                    id<MTLCommandBuffer> chained = context.chainedCommands[@(layer)];
+                    if (!chained || chained.status == MTLCommandBufferStatusError) {
+                        return fail_with_message(error, error_bytes,
+                            chained.error.localizedDescription ?: @"a chained command buffer failed");
+                    }
+                }
+                context.chainedReady = YES;
+            }
+            continue;
+        }
         if (!command_succeeded(command, error, error_bytes)) return 0;
         const double wall_end = monotonic_ms();
         if (execution >= warmup_iterations) {
@@ -2176,6 +2263,15 @@ int rust_star_metal_run_attention_ingress(
                 *layer0->repeat_bitwise_matches = 0;
             }
         }
+        }
+        if (chained_submission) {
+            result->model_bytes = model_bytes;
+            result->max_buffer_length = context.device.maxBufferLength;
+            result->wrapped_model_ranges = 25;
+            for (uint32_t index = 0; index < 25; index++) {
+                if (matches[index]) result->pointer_matches++;
+            }
+            return 1;
         }
         memcpy(mixes, mix_buffer.contents, mix_hc*sizeof(float));
         memcpy(split, split_buffer.contents, mix_hc*sizeof(float));

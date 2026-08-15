@@ -318,3 +318,23 @@ all retained attention and MoE boundaries against two byte-identical
 fresh-process captures and requires the uninterrupted layers 0→1→2 chain to
 remain C0 exact. It still uses one synchronized command buffer per layer;
 command-buffer chaining is a separate optimization gate.
+
+## Chained layers 0–2
+
+Schema: `rust-star-layers012-chained-probe-v1`.
+
+`layers012-chained-probe` uses the same three command buffers and operation
+order as the synchronized control, but commits all three to one Metal queue
+before issuing a single tail wait. The queue order supplies the HC dependency;
+there is no host upload, event, or fixture seam between layers.
+
+Because correctness readback occurs only after layer 2 completes, this path
+keys transient activation buffers by layer as well as retaining the existing
+per-layer KV allocations. That lifetime rule prevents later layers from
+overwriting earlier C0 checkpoints before collection. Every retained boundary
+is compared after the chain completes, and the chained path is rejected on the
+first FP32 bit mismatch.
+
+The report records one host wait, total wall time from the first submission to
+tail completion, and the sum of the three command-buffer GPU intervals. It
+does not promote this three-layer diagnostic to decoder throughput.

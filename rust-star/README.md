@@ -20,9 +20,11 @@ Metal ownership/dispatch probe and a continuous layers-0/1/2 path under one
 persistent executor, with live GPU HC handoffs and one retained KV-cache
 allocation per layer. All retained boundaries, including layer 2's first
 compressed-attention RoPE path, match pinned DwarfStar fixtures bit-for-bit. A
-separate persistent layer-0 gate reuses its pipelines, 25 no-copy model views,
-cache storage, and activation buffers for repeated steady-state timing; this is
-not yet a decoder.
+chained scheduler variant now submits all three command buffers without
+inter-layer host waits and performs one exact tail readback. A separate
+persistent layer-0 gate reuses its pipelines, 25 no-copy model views, cache
+storage, and activation buffers for repeated steady-state timing; this is not
+yet a decoder.
 
 Project controls and benchmark contracts:
 

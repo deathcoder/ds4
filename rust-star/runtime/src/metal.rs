@@ -19,6 +19,7 @@ pub const LAYER0_PROBE_SCHEMA: &str = "rust-star-layer0-complete-probe-v1";
 pub const LAYER0_BENCH_SCHEMA: &str = "rust-star-layer0-steady-state-v1";
 pub const LAYERS01_PROBE_SCHEMA: &str = "rust-star-layers01-continuous-probe-v1";
 pub const LAYERS012_PROBE_SCHEMA: &str = "rust-star-layers012-continuous-probe-v1";
+pub const LAYERS012_CHAINED_PROBE_SCHEMA: &str = "rust-star-layers012-chained-probe-v1";
 pub const PROJECTION_FIXTURE_ID: &str = "dwarfstar-oracle-v1-layer0-pos1-attn-q-a";
 pub const INGRESS_FIXTURE_ID: &str = "dwarfstar-oracle-v1-layer0-pos1-attention-ingress";
 pub const ATTENTION_SETUP_FIXTURE_ID: &str = "dwarfstar-oracle-v1-layer0-pos1-qkv-setup";
@@ -539,6 +540,17 @@ pub struct LayerSequenceProbeReport {
 pub type Layers01ProbeReport = LayerSequenceProbeReport;
 pub type Layers012ProbeReport = LayerSequenceProbeReport;
 
+#[derive(Clone, Debug)]
+pub struct Layers012ChainedProbeReport {
+    pub layers: Vec<Layer0ProbeReport>,
+    pub command_buffers: u32,
+    pub host_waits: u32,
+    pub retained_hc_handoff: bool,
+    pub kv_cache_layers: u32,
+    pub wall_ms: f64,
+    pub gpu_ms: f64,
+}
+
 #[derive(Clone, Copy, Debug)]
 pub struct TimingSummary {
     pub median_ms: f64,
@@ -768,6 +780,54 @@ pub fn write_layers012_probe_json<W: Write>(
     report: &Layers012ProbeReport,
 ) -> Result<()> {
     write_layer_sequence_probe_json(output, report, LAYERS012_PROBE_SCHEMA, 3)
+}
+
+pub fn write_layers012_chained_probe_json<W: Write>(
+    output: &mut W,
+    report: &Layers012ChainedProbeReport,
+) -> Result<()> {
+    if report.layers.len() != 3
+        || report.command_buffers != 3
+        || report.host_waits != 1
+        || report.kv_cache_layers != 3
+        || !report.wall_ms.is_finite()
+        || report.wall_ms <= 0.0
+        || !report.gpu_ms.is_finite()
+        || report.gpu_ms < 0.0
+    {
+        return Err(Error::invalid(
+            "chained layer-sequence report has inconsistent scheduling metadata",
+        ));
+    }
+    write!(
+        output,
+        "{{\n  \"schema\": \"{LAYERS012_CHAINED_PROBE_SCHEMA}\",\n  \"command_buffers\": {},\n  \"host_waits\": {},\n  \"retained_hc_handoff\": {},\n  \"kv_cache_layers\": {},\n  \"timing\": {{\n    \"chain_wall_ms\": {:.6},\n    \"summed_command_gpu_ms\": {:.6}\n  }},\n  \"layers\": [",
+        report.command_buffers,
+        report.host_waits,
+        report.retained_hc_handoff,
+        report.kv_cache_layers,
+        report.wall_ms,
+        report.gpu_ms,
+    )?;
+    for (index, layer) in report.layers.iter().enumerate() {
+        if index != 0 {
+            write!(output, ",")?;
+        }
+        write!(
+            output,
+            "\n    {{\"layer\": {}, \"fixture\": \"{}\", \"dispatches\": {}, \"selected_experts\": {:?}, \"wrapped_model_ranges\": {}, \"pointer_matches\": {}, \"gpu_ms\": {:.6}, \"final_hc_checksum\": {}, \"c0_bitwise_match\": true}}",
+            index,
+            layer.fixture_id,
+            layer.dispatches,
+            layer.selected_experts,
+            layer.wrapped_model_ranges,
+            layer.pointer_matches,
+            layer.gpu_ms,
+            layer.final_hc_checksum,
+        )?;
+    }
+    write!(output, "\n  ],\n  \"c0_bitwise_match\": true\n}}\n")?;
+    Ok(())
 }
 
 fn write_layer_sequence_probe_json<W: Write>(
@@ -1619,6 +1679,10 @@ mod imp {
     use std::ptr;
 
     const ERROR_BYTES: usize = 1024;
+    const COMMAND_SYNCHRONIZED: u32 = 0;
+    const COMMAND_CHAINED_ENQUEUE: u32 = 1;
+    const COMMAND_CHAINED_FINAL: u32 = 2;
+    const COMMAND_CHAINED_COLLECT: u32 = 3;
 
     #[repr(C)]
     struct RawProbeResult {
@@ -1733,6 +1797,7 @@ mod imp {
         repeat_bitwise_matches: *mut u32,
         layer_index: u32,
         reuse_previous_hc: u32,
+        command_mode: u32,
     }
 
     impl Default for RawProbeResult {
@@ -1983,7 +2048,14 @@ mod imp {
                 )));
             }
             self.poisoned = true;
-            let execution = run_layer_iterations(self.model, &self.context, layer_index, 0, 1)?;
+            let execution = run_layer_iterations(
+                self.model,
+                &self.context,
+                layer_index,
+                0,
+                1,
+                COMMAND_SYNCHRONIZED,
+            )?;
             self.next_layer += 1;
             self.poisoned = false;
             Ok(execution.report)
@@ -3198,6 +3270,31 @@ mod imp {
         })
     }
 
+    pub fn run_layers012_chained_probe(model: &MappedModel) -> Result<Layers012ChainedProbeReport> {
+        let context = Context::new()?;
+        run_layer_iterations(model, &context, 0, 0, 1, COMMAND_CHAINED_ENQUEUE)?;
+        run_layer_iterations(model, &context, 1, 0, 1, COMMAND_CHAINED_ENQUEUE)?;
+        run_layer_iterations(model, &context, 2, 0, 1, COMMAND_CHAINED_FINAL)?;
+
+        let layer0 =
+            run_layer_iterations(model, &context, 0, 0, 1, COMMAND_CHAINED_COLLECT)?.report;
+        let layer1 =
+            run_layer_iterations(model, &context, 1, 0, 1, COMMAND_CHAINED_COLLECT)?.report;
+        let layer2 =
+            run_layer_iterations(model, &context, 2, 0, 1, COMMAND_CHAINED_COLLECT)?.report;
+        let wall_ms = layer0.wall_ms;
+        let gpu_ms = layer0.gpu_ms + layer1.gpu_ms + layer2.gpu_ms;
+        Ok(Layers012ChainedProbeReport {
+            layers: vec![layer0, layer1, layer2],
+            command_buffers: 3,
+            host_waits: 1,
+            retained_hc_handoff: true,
+            kv_cache_layers: 3,
+            wall_ms,
+            gpu_ms,
+        })
+    }
+
     pub fn run_layer0_bench(
         model: &MappedModel,
         config: Layer0BenchConfig,
@@ -3207,9 +3304,10 @@ mod imp {
         let execution = run_layer_iterations(
             model,
             &context,
-            0,
+            COMMAND_SYNCHRONIZED,
             config.warmup_iterations,
             config.iterations,
+            0,
         )?;
         let wall = summarize_timing(&execution.wall_ms_samples)?;
         let gpu = summarize_timing(&execution.gpu_ms_samples)?;
@@ -3238,6 +3336,7 @@ mod imp {
         layer_index: u32,
         warmup_iterations: u32,
         measured_iterations: u32,
+        command_mode: u32,
     ) -> Result<Layer0Execution> {
         const TOKEN: u32 = 201;
         let embedding = exact_tensor(model, "token_embd.weight", 1, &[4096, 129280])?;
@@ -3385,6 +3484,7 @@ mod imp {
             repeat_bitwise_matches: &mut repeat_bitwise_matches,
             layer_index,
             reuse_previous_hc: u32::from(layer_index != 0),
+            command_mode,
         };
 
         let mut error = [0 as c_char; ERROR_BYTES];
@@ -3460,6 +3560,34 @@ mod imp {
             return Err(Error::invalid(
                 "Metal complete layer path did not preserve all twenty-five mmap-backed model ranges",
             ));
+        }
+        if matches!(
+            command_mode,
+            COMMAND_CHAINED_ENQUEUE | COMMAND_CHAINED_FINAL
+        ) {
+            return Ok(Layer0Execution {
+                report: Layer0ProbeReport {
+                    fixture_id: expected.fixture_id,
+                    token: TOKEN,
+                    dispatches: if layer_index == 0 { 30 } else { 28 },
+                    command_buffers: 1,
+                    selected_experts: expected.selected.clone(),
+                    wrapped_model_ranges: raw.wrapped_model_ranges,
+                    pointer_matches: raw.pointer_matches,
+                    wall_ms: 0.0,
+                    gpu_ms: 0.0,
+                    attention_hc_checksum: 0,
+                    ffn_norm_checksum: 0,
+                    router_weights_checksum: 0,
+                    routed_mid_checksum: 0,
+                    routed_out_checksum: 0,
+                    shared_out_checksum: 0,
+                    final_hc_checksum: 0,
+                },
+                wall_ms_samples,
+                gpu_ms_samples,
+                repeat_bitwise_match: true,
+            });
         }
         if selected != expected.selected {
             return Err(Error::invalid(format!(
@@ -3965,6 +4093,16 @@ mod imp {
         ))
     }
 
+    pub fn run_layers012_chained_probe(model: &MappedModel) -> Result<Layers012ChainedProbeReport> {
+        let _ = layer_expected(0)?;
+        let _ = layer_expected(1)?;
+        let _ = layer_expected(2)?;
+        let _ = exact_tensor(model, "blk.2.ffn_down_shexp.weight", 8, &[2048, 4096])?;
+        Err(Error::invalid(
+            "the chained Metal layers-0/1/2 probe is available only on macOS",
+        ))
+    }
+
     pub fn run_f16_embedding_probe(
         model: &MappedModel,
         tensor: &TensorInfo,
@@ -4092,8 +4230,9 @@ mod imp {
 pub use imp::{
     run_attention_ingress_probe, run_attention_output_probe, run_attention_read_probe,
     run_attention_setup_probe, run_f16_embedding_probe, run_ffn_router_probe, run_layer0_bench,
-    run_layer0_probe, run_layers012_probe, run_layers01_probe, run_moe_output_probe, run_probe,
-    run_q8_projection_probe, run_rope_kv_store_probe, LayerExecutor,
+    run_layer0_probe, run_layers012_chained_probe, run_layers012_probe, run_layers01_probe,
+    run_moe_output_probe, run_probe, run_q8_projection_probe, run_rope_kv_store_probe,
+    LayerExecutor,
 };
 
 #[cfg(test)]
@@ -4366,6 +4505,18 @@ mod tests {
         report
     }
 
+    fn layers012_chained_report() -> Layers012ChainedProbeReport {
+        Layers012ChainedProbeReport {
+            layers: layers012_report().layers,
+            command_buffers: 3,
+            host_waits: 1,
+            retained_hc_handoff: true,
+            kv_cache_layers: 3,
+            wall_ms: 4.0,
+            gpu_ms: 3.0,
+        }
+    }
+
     #[test]
     fn validates_probe_work_bounds() {
         assert!(ProbeConfig::default().validate().is_ok());
@@ -4432,6 +4583,17 @@ mod tests {
         assert!(text.contains("\"kv_cache_layers\": 3"));
         assert!(text.contains(&format!("\"fixture\": \"{LAYER2_FIXTURE_ID}\"")));
         assert!(text.contains("\"selected_experts\": [8, 188, 195, 75, 96, 176]"));
+    }
+
+    #[test]
+    fn writes_stable_layers012_chained_probe_json() {
+        let mut output = Vec::new();
+        write_layers012_chained_probe_json(&mut output, &layers012_chained_report()).unwrap();
+        let text = String::from_utf8(output).unwrap();
+        assert!(text.contains(&format!("\"schema\": \"{LAYERS012_CHAINED_PROBE_SCHEMA}\"")));
+        assert!(text.contains("\"host_waits\": 1"));
+        assert!(text.contains("\"chain_wall_ms\": 4.000000"));
+        assert!(text.contains("\"summed_command_gpu_ms\": 3.000000"));
     }
 
     #[test]
