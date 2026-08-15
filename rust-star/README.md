@@ -53,7 +53,9 @@ ratio-4 emission through layer 42, and hands off layer 42's exact
 separate regression controls. The persistent layer-0 gate reuses its pipelines,
 25 no-copy model views, cache storage, and activation buffers for repeated
 steady-state timing. The deepest exact slice now continues through all 43
-layers, full-vocabulary logits, and a three-position greedy feedback loop. Its
+layers, full-vocabulary logits, and a four-position greedy feedback loop. The
+fourth position is C0 exact after reusing the first persistent ratio-4
+compressed rows. Its
 readback-free timed pass is still a diagnostic rather than a paired-benchmark
 candidate because cold prefill and arbitrary-frontier 128-token decode remain
 unimplemented.

@@ -1757,6 +1757,9 @@ int rust_star_metal_run_attention_ingress(
     rust_star_metal_layer0_extension standalone_layer = {0};
     if (!layer0) layer0 = &standalone_layer;
     const uint32_t position = full_layer ? layer0->position : 1u;
+    const uint32_t cache_capacity_rows = full_layer ? 128u : 3u;
+    const uint32_t attention_capacity_rows = full_layer ? 160u : 3u;
+    const uint32_t compressed_cache_capacity_rows = 32u;
     const uint32_t visible_cache_rows = position + 1u;
     const BOOL compressed_layer = full_layer && layer0->layer_index >= 2u;
     const uint32_t compressor_ratio = (layer0->layer_index % 2u) == 0u ? 4u : 128u;
@@ -1764,7 +1767,9 @@ int rust_star_metal_run_attention_ingress(
     const BOOL indexer_layer = compressed_layer && compressor_ratio == 4u;
     const BOOL compressor_emit = compressed_layer &&
         ((position + 1u) % compressor_ratio) == 0u;
-    const uint32_t attention_cache_rows = visible_cache_rows + (compressor_emit ? 1u : 0u);
+    const uint32_t compressed_cache_rows = compressed_layer
+        ? (position + 1u) / compressor_ratio : 0u;
+    const uint32_t attention_cache_rows = visible_cache_rows + compressed_cache_rows;
     const BOOL continuing_layer = full_layer && layer0->reuse_previous_hc != 0;
     const uint32_t command_mode = full_layer ? layer0->command_mode : RUST_STAR_COMMAND_SYNCHRONIZED;
     const BOOL chained_submission = command_mode == RUST_STAR_COMMAND_CHAINED_ENQUEUE ||
@@ -1808,9 +1813,15 @@ int rust_star_metal_run_attention_ingress(
         return fail_with_message(error, error_bytes,
             @"full layer execution must run layer 0 before continuing into later layers");
     }
-    if (full_layer && (position < 1u || position > 3u)) {
+    if (full_layer && (position < 1u || position > 127u)) {
         return fail_with_message(error, error_bytes,
-            @"the exact retained slice currently supports decode positions 1 through 3");
+            @"the retained decoder frontier currently supports positions 1 through 127");
+    }
+    if (full_layer && (visible_cache_rows > cache_capacity_rows ||
+        compressed_cache_rows > compressed_cache_capacity_rows ||
+        attention_cache_rows > attention_capacity_rows)) {
+        return fail_with_message(error, error_bytes,
+            @"the retained decoder frontier exceeds its cache capacities");
     }
     if (full_layer && position > 1u && command_mode == RUST_STAR_COMMAND_SYNCHRONIZED) {
         return fail_with_message(error, error_bytes,
@@ -2121,8 +2132,6 @@ int rust_star_metal_run_attention_ingress(
         NSString *cache_key = full_layer ?
             [NSString stringWithFormat:@"kv_cache_layer_%u", layer0->layer_index] :
             @"kv_cache_probe";
-        const uint32_t cache_capacity_rows = full_layer ? 4u : 3u;
-        const uint32_t attention_capacity_rows = full_layer ? 5u : 3u;
         id<MTLBuffer> cache_buffer = rope_and_store ? persistent_buffer(context, cache_key, cache_capacity_rows*kv_elements*sizeof(float), error, error_bytes) : nil;
         const NSUInteger staged_kv_bytes = attention_capacity_rows*kv_elements*sizeof(uint16_t);
         const NSUInteger mask_storage_bytes = attention_capacity_rows*sizeof(uint16_t);
@@ -2162,7 +2171,8 @@ int rust_star_metal_run_attention_ingress(
         id<MTLBuffer> compressor_score_cur = compressed_layer ? persistent_buffer(context, layer_buffer_key(@"compressor_score_cur", YES, layer0->layer_index), compressor_width*sizeof(float), error, error_bytes) : nil;
         id<MTLBuffer> compressor_state_kv = compressed_layer ? persistent_buffer(context, layer_buffer_key(@"compressor_state_kv", YES, layer0->layer_index), compressor_state_rows*compressor_width*sizeof(float), error, error_bytes) : nil;
         id<MTLBuffer> compressor_state_score = compressed_layer ? persistent_buffer(context, layer_buffer_key(@"compressor_state_score", YES, layer0->layer_index), compressor_state_rows*compressor_width*sizeof(float), error, error_bytes) : nil;
-        id<MTLBuffer> compressed_kv_buffer = compressed_layer ? persistent_buffer(context, layer_buffer_key(@"compressed_kv", YES, layer0->layer_index), 512u*sizeof(float), error, error_bytes) : nil;
+        id<MTLBuffer> compressed_kv_buffer = compressed_layer ? persistent_buffer(context, layer_buffer_key(@"compressed_kv_work", YES, layer0->layer_index), 512u*sizeof(float), error, error_bytes) : nil;
+        id<MTLBuffer> compressed_kv_cache = compressed_layer ? persistent_buffer(context, layer_buffer_key(@"compressed_kv_cache", YES, layer0->layer_index), compressed_cache_capacity_rows*512u*sizeof(float), error, error_bytes) : nil;
         id<MTLBuffer> compressor_packed_kv = compressed_layer ? persistent_buffer(context, layer_buffer_key(@"compressor_packed_kv", YES, layer0->layer_index), 8u*512u*sizeof(float), error, error_bytes) : nil;
         id<MTLBuffer> compressor_packed_score = compressed_layer ? persistent_buffer(context, layer_buffer_key(@"compressor_packed_score", YES, layer0->layer_index), 8u*512u*sizeof(float), error, error_bytes) : nil;
         id<MTLBuffer> compressor_softmax = compressed_layer ? persistent_buffer(context, layer_buffer_key(@"compressor_softmax", YES, layer0->layer_index), 8u*512u*sizeof(float), error, error_bytes) : nil;
@@ -2170,7 +2180,8 @@ int rust_star_metal_run_attention_ingress(
         id<MTLBuffer> indexer_score_cur = indexer_layer ? persistent_buffer(context, layer_buffer_key(@"indexer_score_cur", YES, layer0->layer_index), 256u*sizeof(float), error, error_bytes) : nil;
         id<MTLBuffer> indexer_state_kv = indexer_layer ? persistent_buffer(context, layer_buffer_key(@"indexer_state_kv", YES, layer0->layer_index), 8u*256u*sizeof(float), error, error_bytes) : nil;
         id<MTLBuffer> indexer_state_score = indexer_layer ? persistent_buffer(context, layer_buffer_key(@"indexer_state_score", YES, layer0->layer_index), 8u*256u*sizeof(float), error, error_bytes) : nil;
-        id<MTLBuffer> compressed_indexer_buffer = indexer_layer ? persistent_buffer(context, layer_buffer_key(@"compressed_indexer", YES, layer0->layer_index), 128u*sizeof(float), error, error_bytes) : nil;
+        id<MTLBuffer> compressed_indexer_buffer = indexer_layer ? persistent_buffer(context, layer_buffer_key(@"compressed_indexer_work", YES, layer0->layer_index), 128u*sizeof(float), error, error_bytes) : nil;
+        id<MTLBuffer> compressed_indexer_cache = indexer_layer ? persistent_buffer(context, layer_buffer_key(@"compressed_indexer_cache", YES, layer0->layer_index), compressed_cache_capacity_rows*128u*sizeof(float), error, error_bytes) : nil;
         id<MTLBuffer> indexer_packed_kv = indexer_layer ? persistent_buffer(context, layer_buffer_key(@"indexer_packed_kv", YES, layer0->layer_index), 8u*128u*sizeof(float), error, error_bytes) : nil;
         id<MTLBuffer> indexer_packed_score = indexer_layer ? persistent_buffer(context, layer_buffer_key(@"indexer_packed_score", YES, layer0->layer_index), 8u*128u*sizeof(float), error, error_bytes) : nil;
         id<MTLBuffer> indexer_softmax = indexer_layer ? persistent_buffer(context, layer_buffer_key(@"indexer_softmax", YES, layer0->layer_index), 8u*128u*sizeof(float), error, error_bytes) : nil;
@@ -2201,12 +2212,13 @@ int rust_star_metal_run_attention_ingress(
         }
         if (compressed_layer && (!compressor_prime_buffer || !compressor_kv_cur ||
             !compressor_score_cur || !compressor_state_kv || !compressor_state_score ||
-            !compressed_kv_buffer || !compressor_packed_kv ||
+            !compressed_kv_buffer || !compressed_kv_cache || !compressor_packed_kv ||
             !compressor_packed_score || !compressor_softmax)) {
             return fail_with_message(error, error_bytes, @"failed to allocate attention compressor state");
         }
         if (indexer_layer && (!indexer_kv_cur || !indexer_score_cur ||
             !indexer_state_kv || !indexer_state_score || !compressed_indexer_buffer ||
+            !compressed_indexer_cache ||
             !indexer_packed_kv || !indexer_packed_score || !indexer_softmax)) {
             return fail_with_message(error, error_bytes, @"failed to allocate indexer compressor state");
         }
@@ -2225,10 +2237,14 @@ int rust_star_metal_run_attention_ingress(
             for (uint32_t index = 0; index < compressor_state_rows*compressor_width; index++) {
                 scores[index] = -INFINITY;
             }
+            memset(compressed_kv_cache.contents, 0,
+                compressed_cache_capacity_rows*512u*sizeof(float));
             if (indexer_layer) {
                 memset(indexer_state_kv.contents, 0, 8u*256u*sizeof(float));
                 scores = indexer_state_score.contents;
                 for (uint32_t index = 0; index < 8u*256u; index++) scores[index] = -INFINITY;
+                memset(compressed_indexer_cache.contents, 0,
+                    compressed_cache_capacity_rows*128u*sizeof(float));
             }
         }
 
@@ -2726,13 +2742,28 @@ int rust_star_metal_run_attention_ingress(
                 const NSUInteger staged_groups = (staged_elements + 1023u) / 1024u;
                 [encoder dispatchThreadgroups:MTLSizeMake(staged_groups,1,1)
                      threadsPerThreadgroup:MTLSizeMake(256,1,1)];
+                const uint32_t prior_compressed_rows = compressed_cache_rows -
+                    (compressor_emit ? 1u : 0u);
+                if (prior_compressed_rows != 0u) {
+                    uint32_t compressed_elements = prior_compressed_rows*kv_elements;
+                    [encoder setComputePipelineState:context.cpyF32F16Pipeline];
+                    [encoder setBytes:&compressed_elements length:sizeof(compressed_elements) atIndex:0];
+                    [encoder setBuffer:compressed_kv_cache offset:0 atIndex:1];
+                    [encoder setBuffer:staged_kv_buffer
+                                 offset:visible_cache_rows*kv_elements*sizeof(uint16_t)
+                                atIndex:2];
+                    const NSUInteger compressed_groups = (compressed_elements + 1023u) / 1024u;
+                    [encoder dispatchThreadgroups:MTLSizeMake(compressed_groups,1,1)
+                         threadsPerThreadgroup:MTLSizeMake(256,1,1)];
+                }
                 if (compressor_emit) {
                     uint32_t compressed_elements = kv_elements;
                     [encoder setComputePipelineState:context.cpyF32F16Pipeline];
                     [encoder setBytes:&compressed_elements length:sizeof(compressed_elements) atIndex:0];
                     [encoder setBuffer:compressed_kv_buffer offset:0 atIndex:1];
                     [encoder setBuffer:staged_kv_buffer
-                                 offset:visible_cache_rows*kv_elements*sizeof(uint16_t)
+                                 offset:(visible_cache_rows + prior_compressed_rows)*
+                                    kv_elements*sizeof(uint16_t)
                                 atIndex:2];
                     [encoder dispatchThreadgroups:MTLSizeMake(1,1,1)
                          threadsPerThreadgroup:MTLSizeMake(256,1,1)];
@@ -2768,6 +2799,24 @@ int rust_star_metal_run_attention_ingress(
                      threadsPerThreadgroup:MTLSizeMake(1024,1,1)];
             }
             [encoder endEncoding];
+
+            if (compressor_emit) {
+                const NSUInteger compressed_row = compressed_cache_rows - 1u;
+                id<MTLBlitCommandEncoder> compressed_copy = [command blitCommandEncoder];
+                if (!compressed_copy) return fail_with_message(error, error_bytes,
+                    @"failed to create compressed-cache commit encoder");
+                [compressed_copy copyFromBuffer:compressed_kv_buffer sourceOffset:0
+                                       toBuffer:compressed_kv_cache
+                              destinationOffset:compressed_row*kv_elements*sizeof(float)
+                                          size:kv_elements*sizeof(float)];
+                if (indexer_layer) {
+                    [compressed_copy copyFromBuffer:compressed_indexer_buffer sourceOffset:0
+                                           toBuffer:compressed_indexer_cache
+                                  destinationOffset:compressed_row*128u*sizeof(float)
+                                              size:128u*sizeof(float)];
+                }
+                [compressed_copy endEncoding];
+            }
 
             if (attention_read) {
                 id<MTLBlitCommandEncoder> attention_copy = [command blitCommandEncoder];

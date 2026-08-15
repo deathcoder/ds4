@@ -294,7 +294,7 @@ they describe whenever practical.
 
 ## Open Items
 
-- Generalize the C0-verified three-position closed loop into cold prefill and
+- Generalize the C0-verified four-position closed loop into cold prefill and
   arbitrary-frontier decode, then emit the Rust Star engine-measurement
   contract. The diagnostic timed loop already excludes correctness readback.
 - Execute `rust-star/BENCHMARK_PROTOCOL.md` and capture the initial paired

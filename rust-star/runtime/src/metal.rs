@@ -31,8 +31,8 @@ pub const LAYERS01234567_DECODE_PROBE_SCHEMA: &str =
 pub const LAYERS0_TO_42_DECODE_PROBE_SCHEMA: &str =
     "rust-star-layers0-42-position-advancing-probe-v1";
 pub const DECODER_OUTPUT_PROBE_SCHEMA: &str =
-    "rust-star-decoder-output-position-advancing-probe-v1";
-pub const CLOSED_LOOP_DECODER_PROBE_SCHEMA: &str = "rust-star-closed-loop-decoder-diagnostic-v1";
+    "rust-star-decoder-output-position-advancing-probe-v2";
+pub const CLOSED_LOOP_DECODER_PROBE_SCHEMA: &str = "rust-star-closed-loop-decoder-diagnostic-v2";
 pub const RATIO128_COMPRESSOR_REPLAY_PROBE_SCHEMA: &str =
     "rust-star-ratio128-compressor-replay-probe-v1";
 pub const PROJECTION_FIXTURE_ID: &str = "dwarfstar-oracle-v1-layer0-pos1-attn-q-a";
@@ -108,6 +108,16 @@ const OUTPUT_HEAD_POS3_NORM_BYTES: &[u8] =
     include_bytes!("../../fixtures/output-head-pos3-v1/output-norm.f32le.bin");
 const OUTPUT_HEAD_POS3_LOGITS_BYTES: &[u8] =
     include_bytes!("../../fixtures/output-head-pos3-v1/logits.f32le.bin");
+const OUTPUT_HEAD_POS4_PRE_BYTES: &[u8] =
+    include_bytes!("../../fixtures/output-head-pos4-v1/output-hc-pre.f32le.bin");
+const OUTPUT_HEAD_POS4_WEIGHTS_BYTES: &[u8] =
+    include_bytes!("../../fixtures/output-head-pos4-v1/output-hc-weights.f32le.bin");
+const OUTPUT_HEAD_POS4_HC_BYTES: &[u8] =
+    include_bytes!("../../fixtures/output-head-pos4-v1/output-hc.f32le.bin");
+const OUTPUT_HEAD_POS4_NORM_BYTES: &[u8] =
+    include_bytes!("../../fixtures/output-head-pos4-v1/output-norm.f32le.bin");
+const OUTPUT_HEAD_POS4_LOGITS_BYTES: &[u8] =
+    include_bytes!("../../fixtures/output-head-pos4-v1/logits.f32le.bin");
 const PROJECTION_TENSOR: &str = "blk.0.attn_q_a.weight";
 const PROJECTION_INPUT_BYTES: &[u8] =
     include_bytes!("../../fixtures/q8-attn-q-a-v1/activation.f32le.bin");
@@ -1315,11 +1325,11 @@ pub fn write_decoder_output_probe_json<W: Write>(
     output: &mut W,
     report: &DecoderOutputProbeReport,
 ) -> Result<()> {
-    if report.steps.len() != 3
+    if report.steps.len() != 4
         || report.command_buffers_per_step != 44
         || report.host_waits_per_step != 2
         || report.kv_cache_layers != 43
-        || report.cache_capacity_rows != 4
+        || report.cache_capacity_rows != 128
         || report.logits_elements != 129280
         || report.closed_loop_sampling == report.externally_supplied_decode_inputs
     {
@@ -1329,7 +1339,7 @@ pub fn write_decoder_output_probe_json<W: Write>(
     }
     write!(
         output,
-        "{{\n  \"schema\": \"{DECODER_OUTPUT_PROBE_SCHEMA}\",\n  \"selection\": \"lowest-token-id-argmax\",\n  \"input_tokens\": [201, 361, 1915],\n  \"command_buffers_per_step\": {},\n  \"host_waits_per_step\": {},\n  \"kv_cache_layers\": {},\n  \"cache_capacity_rows\": {},\n  \"logits_elements\": {},\n  \"steps\": [",
+        "{{\n  \"schema\": \"{DECODER_OUTPUT_PROBE_SCHEMA}\",\n  \"selection\": \"lowest-token-id-argmax\",\n  \"input_tokens\": [201, 361, 1915, 262],\n  \"command_buffers_per_step\": {},\n  \"host_waits_per_step\": {},\n  \"kv_cache_layers\": {},\n  \"cache_capacity_rows\": {},\n  \"logits_elements\": {},\n  \"steps\": [",
         report.command_buffers_per_step,
         report.host_waits_per_step,
         report.kv_cache_layers,
@@ -1338,8 +1348,8 @@ pub fn write_decoder_output_probe_json<W: Write>(
     )?;
     for (index, step) in report.steps.iter().enumerate() {
         let expected_position = index as u32 + 1;
-        let expected_input = [201_u32, 361, 1915][index];
-        let expected_selected = [361_u32, 1915, 262][index];
+        let expected_input = [201_u32, 361, 1915, 262][index];
+        let expected_selected = [361_u32, 1915, 262, 1554][index];
         if step.position != expected_position
             || step.input_token != expected_input
             || step.cache_rows != expected_position + 1
@@ -1403,16 +1413,16 @@ pub fn write_closed_loop_decoder_probe_json<W: Write>(
     output: &mut W,
     report: &ClosedLoopDecoderProbeReport,
 ) -> Result<()> {
-    let expected_inputs = [201_u32, 361, 1915];
-    let expected_outputs = [361_u32, 1915, 262];
-    if report.correctness.steps.len() != 3
+    let expected_inputs = [201_u32, 361, 1915, 262];
+    let expected_outputs = [361_u32, 1915, 262, 1554];
+    if report.correctness.steps.len() != 4
         || report.correctness.command_buffers_per_step != 44
         || report.correctness.host_waits_per_step != 2
         || report.correctness.kv_cache_layers != 43
         || report.correctness.logits_elements != 129280
         || !report.correctness.closed_loop_sampling
         || report.correctness.externally_supplied_decode_inputs
-        || report.timed_steps.len() != 3
+        || report.timed_steps.len() != 4
         || !report.pipeline_prepare_ms.is_finite()
         || report.pipeline_prepare_ms <= 0.0
         || !report.generation_wall_ms.is_finite()
@@ -1465,8 +1475,8 @@ pub fn write_closed_loop_decoder_probe_json<W: Write>(
     if report.generation_wall_ms.to_bits() != generation_wall_ms.to_bits()
         || report.first_token_ms.to_bits() != report.timed_steps[0].wall_ms.to_bits()
         || report.steady_wall_ms.to_bits() != steady_wall_ms.to_bits()
-        || report.generation_tps.to_bits() != (3000.0 / generation_wall_ms).to_bits()
-        || report.steady_tps.to_bits() != (2000.0 / steady_wall_ms).to_bits()
+        || report.generation_tps.to_bits() != (4000.0 / generation_wall_ms).to_bits()
+        || report.steady_tps.to_bits() != (3000.0 / steady_wall_ms).to_bits()
     {
         return Err(Error::invalid(
             "closed-loop decoder report has inconsistent timing aggregates",
@@ -1474,7 +1484,7 @@ pub fn write_closed_loop_decoder_probe_json<W: Write>(
     }
     write!(
         output,
-        "{{\n  \"schema\": \"{CLOSED_LOOP_DECODER_PROBE_SCHEMA}\",\n  \"classification\": \"diagnostic\",\n  \"selection\": \"lowest-token-id-argmax\",\n  \"bootstrap_input_token\": 201,\n  \"generated_tokens\": [361, 1915, 262],\n  \"correctness\": {{\n    \"positions\": 3,\n    \"transformer_layers\": 43,\n    \"logits_per_position\": 129280,\n    \"closed_loop_sampling\": true,\n    \"externally_supplied_decode_inputs\": false,\n    \"full_logits_c0_bitwise_match\": true,\n    \"c0_bitwise_match\": true\n  }},\n  \"timed_path\": {{\n    \"pipeline_prepare_ms\": {:.6},\n    \"pipeline_preparation_in_interval\": false,\n    \"command_buffers_per_step\": 44,\n    \"host_waits_per_step\": 2,\n    \"correctness_readback_in_interval\": false,\n    \"sampling_logits_readback_in_interval\": true,\n    \"argmax_in_interval\": true,\n    \"steps\": [",
+        "{{\n  \"schema\": \"{CLOSED_LOOP_DECODER_PROBE_SCHEMA}\",\n  \"classification\": \"diagnostic\",\n  \"selection\": \"lowest-token-id-argmax\",\n  \"bootstrap_input_token\": 201,\n  \"generated_tokens\": [361, 1915, 262, 1554],\n  \"correctness\": {{\n    \"positions\": 4,\n    \"transformer_layers\": 43,\n    \"logits_per_position\": 129280,\n    \"closed_loop_sampling\": true,\n    \"externally_supplied_decode_inputs\": false,\n    \"full_logits_c0_bitwise_match\": true,\n    \"c0_bitwise_match\": true\n  }},\n  \"timed_path\": {{\n    \"pipeline_prepare_ms\": {:.6},\n    \"pipeline_preparation_in_interval\": false,\n    \"command_buffers_per_step\": 44,\n    \"host_waits_per_step\": 2,\n    \"correctness_readback_in_interval\": false,\n    \"sampling_logits_readback_in_interval\": true,\n    \"argmax_in_interval\": true,\n    \"steps\": [",
         report.pipeline_prepare_ms,
     )?;
     for (index, step) in report.timed_steps.iter().enumerate() {
@@ -1493,7 +1503,7 @@ pub fn write_closed_loop_decoder_probe_json<W: Write>(
     }
     write!(
         output,
-        "\n    ],\n    \"metrics\": {{\"gen_tokens\": 3, \"gen_steady_tokens\": 2, \"gen_ms\": {:.6}, \"gen_tps\": {:.6}, \"gen_first_ms\": {:.6}, \"gen_steady_ms\": {:.6}, \"gen_steady_tps\": {:.6}}}\n  }},\n  \"paired_protocol_eligible\": false,\n  \"paired_protocol_blocker\": \"cold prefill and arbitrary-frontier decode are not implemented\"\n}}\n",
+        "\n    ],\n    \"metrics\": {{\"gen_tokens\": 4, \"gen_steady_tokens\": 3, \"gen_ms\": {:.6}, \"gen_tps\": {:.6}, \"gen_first_ms\": {:.6}, \"gen_steady_ms\": {:.6}, \"gen_steady_tps\": {:.6}}}\n  }},\n  \"paired_protocol_eligible\": false,\n  \"paired_protocol_blocker\": \"cold prefill and arbitrary-frontier decode are not implemented\"\n}}\n",
         report.generation_wall_ms,
         report.generation_tps,
         report.first_token_ms,
@@ -1564,7 +1574,7 @@ fn write_position_advancing_probe_json<W: Write>(
         || report.command_buffers_per_step != expected_layers
         || report.host_waits_per_step != 1
         || report.kv_cache_layers != expected_layers
-        || report.cache_capacity_rows != 4
+        || report.cache_capacity_rows != 128
         || report.output_hc_elements != 16384
     {
         return Err(Error::invalid(
@@ -2015,9 +2025,18 @@ fn output_head_expected(position: u32) -> Result<OutputHeadExpected> {
             OUTPUT_HEAD_POS3_LOGITS_BYTES,
             262,
         ),
+        4 => (
+            "dwarfstar-oracle-v1-output-head-pos4",
+            OUTPUT_HEAD_POS4_PRE_BYTES,
+            OUTPUT_HEAD_POS4_WEIGHTS_BYTES,
+            OUTPUT_HEAD_POS4_HC_BYTES,
+            OUTPUT_HEAD_POS4_NORM_BYTES,
+            OUTPUT_HEAD_POS4_LOGITS_BYTES,
+            1554,
+        ),
         _ => {
             return Err(Error::invalid(
-                "output-head fixtures cover positions 1 through 3",
+                "output-head fixtures cover positions 1 through 4",
             ))
         }
     };
@@ -2544,6 +2563,20 @@ complete_decode_fixture_registry!(
     29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42,
 );
 
+macro_rules! position4_fixture_registry {
+    ($($layer:literal),+ $(,)?) => {
+        const POS4_BYTES: &[LayerExpectedBytes] = &[
+            $(complete_decode_fixture!(@value $layer, 4,
+                concat!("dwarfstar-oracle-v1-layer", stringify!($layer), "-pos4-complete"))),+
+        ];
+    };
+}
+
+position4_fixture_registry!(
+    0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25,
+    26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42,
+);
+
 macro_rules! compressed_kv_fixture_registry {
     ($($layer:literal),+ $(,)?) => {
         const LATER_POS3_COMPRESSED_KV_BYTES: &[&[u8]] = &[
@@ -2607,7 +2640,11 @@ fn apply_complete_decode_fixture(
     position: u32,
     mut expected: LayerExpected,
 ) -> Result<LayerExpected> {
-    let bytes = if let Some(index) = later_fixture_index(layer_index) {
+    let bytes = if position == 4 {
+        POS4_BYTES.get(layer_index as usize).ok_or_else(|| {
+            Error::invalid("position-4 fixture layer is outside the retained decoder")
+        })?
+    } else if let Some(index) = later_fixture_index(layer_index) {
         match position {
             1 => &LATER_POS1_BYTES[index],
             2 => &LATER_POS2_BYTES[index],
@@ -2696,7 +2733,7 @@ fn apply_complete_decode_fixture(
 }
 
 fn layer_expected(layer_index: u32, position: u32) -> Result<LayerExpected> {
-    if position == 2 || position == 3 {
+    if (2..=4).contains(&position) {
         return apply_complete_decode_fixture(
             layer_index,
             position,
@@ -3684,7 +3721,7 @@ mod imp {
                 q_cur: vec![0.0; 32768],
                 kv_rope: vec![0.0; 512],
                 kv_cur: vec![0.0; 512],
-                cache_rows: vec![0.0; 4 * 512],
+                cache_rows: vec![0.0; 128 * 512],
                 attention_raw: vec![0.0; 32768],
                 attention_back: vec![0.0; 32768],
                 attention_low: vec![0.0; 8192],
@@ -5406,7 +5443,7 @@ mod imp {
             command_buffers_per_step: layer_count,
             host_waits_per_step: 1,
             kv_cache_layers: layer_count,
-            cache_capacity_rows: 4,
+            cache_capacity_rows: 128,
             output_hc_elements: 4 * 4096,
         })
     }
@@ -5444,11 +5481,11 @@ mod imp {
                 "decoder-output correctness requires all forty-three prepared layers",
             ));
         }
-        let mut steps = Vec::with_capacity(3);
-        let supplied_inputs = [201_u32, 361, 1915];
+        let mut steps = Vec::with_capacity(4);
+        let supplied_inputs = [201_u32, 361, 1915, 262];
         let mut next_input = supplied_inputs[0];
 
-        for position in 1_u32..=3 {
+        for position in 1_u32..=4 {
             let input_token = if closed_loop_sampling {
                 next_input
             } else {
@@ -5495,7 +5532,7 @@ mod imp {
             command_buffers_per_step: 44,
             host_waits_per_step: 2,
             kv_cache_layers: 43,
-            cache_capacity_rows: 4,
+            cache_capacity_rows: 128,
             logits_elements: 129280,
             closed_loop_sampling,
             externally_supplied_decode_inputs: !closed_loop_sampling,
@@ -5538,12 +5575,12 @@ mod imp {
         for (layer_index, layer) in layers.iter_mut().enumerate() {
             layer.expected = layer_expected(layer_index as u32, 1)?;
         }
-        let expected_inputs = [201_u32, 361, 1915];
-        let expected_outputs = [361_u32, 1915, 262];
+        let expected_inputs = [201_u32, 361, 1915, 262];
+        let expected_outputs = [361_u32, 1915, 262, 1554];
         let mut input_token = expected_inputs[0];
-        let mut timed_steps = Vec::with_capacity(3);
+        let mut timed_steps = Vec::with_capacity(4);
 
-        for position in 1_u32..=3 {
+        for position in 1_u32..=4 {
             if input_token != expected_inputs[position as usize - 1] {
                 return Err(Error::invalid(format!(
                     "closed-loop input mismatch at position {position}: actual={input_token} expected={}",
@@ -5587,10 +5624,10 @@ mod imp {
             timed_steps,
             pipeline_prepare_ms,
             generation_wall_ms,
-            generation_tps: 3000.0 / generation_wall_ms,
+            generation_tps: 4000.0 / generation_wall_ms,
             first_token_ms,
             steady_wall_ms,
-            steady_tps: 2000.0 / steady_wall_ms,
+            steady_tps: 3000.0 / steady_wall_ms,
         })
     }
 
@@ -7355,7 +7392,7 @@ mod tests {
             command_buffers_per_step: 4,
             host_waits_per_step: 1,
             kv_cache_layers: 4,
-            cache_capacity_rows: 4,
+            cache_capacity_rows: 128,
             output_hc_elements: 4 * 4096,
         }
     }
@@ -7471,12 +7508,24 @@ mod tests {
     }
 
     fn decoder_output_report() -> DecoderOutputProbeReport {
-        let transformer = layers0_to_42_decode_report();
-        let selected = [361_u32, 1915, 262];
+        let mut transformer = layers0_to_42_decode_report();
+        let mut position4 = transformer.steps[2].clone();
+        position4.position = 4;
+        position4.token = 262;
+        position4.cache_rows = 5;
+        position4.wall_ms = 8.0;
+        position4.gpu_ms = 7.0;
+        for (layer_index, layer) in position4.layers.iter_mut().enumerate() {
+            layer.fixture_id = POS4_BYTES[layer_index].fixture_id;
+            layer.token = 262;
+        }
+        transformer.steps.push(position4);
+        let selected = [361_u32, 1915, 262, 1554];
         let fixtures = [
             "dwarfstar-oracle-v1-output-head-pos1",
             "dwarfstar-oracle-v1-output-head-pos2",
             "dwarfstar-oracle-v1-output-head-pos3",
+            "dwarfstar-oracle-v1-output-head-pos4",
         ];
         DecoderOutputProbeReport {
             steps: transformer
@@ -7511,7 +7560,7 @@ mod tests {
             command_buffers_per_step: 44,
             host_waits_per_step: 2,
             kv_cache_layers: 43,
-            cache_capacity_rows: 4,
+            cache_capacity_rows: 128,
             logits_elements: 129280,
             closed_loop_sampling: false,
             externally_supplied_decode_inputs: true,
@@ -7528,6 +7577,7 @@ mod tests {
                 (1_u32, 201_u32, 361_u32, 12.0_f64),
                 (2, 361, 1915, 10.0),
                 (3, 1915, 262, 10.0),
+                (4, 262, 1554, 10.0),
             ]
             .into_iter()
             .map(
@@ -7541,10 +7591,10 @@ mod tests {
             )
             .collect(),
             pipeline_prepare_ms: 800.0,
-            generation_wall_ms: 32.0,
-            generation_tps: 93.75,
+            generation_wall_ms: 42.0,
+            generation_tps: 4000.0 / 42.0,
             first_token_ms: 12.0,
-            steady_wall_ms: 20.0,
+            steady_wall_ms: 30.0,
             steady_tps: 100.0,
         }
     }
@@ -7743,7 +7793,7 @@ mod tests {
 
     #[test]
     fn output_head_fixtures_have_target_shapes_and_selection() {
-        for (position, selected) in [(1, 361), (2, 1915), (3, 262)] {
+        for (position, selected) in [(1, 361), (2, 1915), (3, 262), (4, 1554)] {
             let fixture = output_head_expected(position).unwrap();
             assert_eq!(fixture.hc_pre.len(), 4);
             assert_eq!(fixture.hc_weights.len(), 4);
@@ -7763,7 +7813,7 @@ mod tests {
         assert!(text.contains(&format!("\"schema\": \"{DECODER_OUTPUT_PROBE_SCHEMA}\"")));
         assert!(text.contains("\"command_buffers_per_step\": 44"));
         assert!(text.contains("\"host_waits_per_step\": 2"));
-        assert!(text.contains("\"selected_token\": 262"));
+        assert!(text.contains("\"selected_token\": 1554"));
         assert!(text.contains("\"closed_loop_sampling\": false"));
         assert!(text.contains("\"full_logits_c0_bitwise_match\": true"));
     }
@@ -7776,7 +7826,7 @@ mod tests {
         assert!(text.contains(&format!(
             "\"schema\": \"{CLOSED_LOOP_DECODER_PROBE_SCHEMA}\""
         )));
-        assert!(text.contains("\"generated_tokens\": [361, 1915, 262]"));
+        assert!(text.contains("\"generated_tokens\": [361, 1915, 262, 1554]"));
         assert!(text.contains("\"correctness_readback_in_interval\": false"));
         assert!(text.contains("\"gen_steady_tps\": 100.000000"));
         assert!(text.contains("\"paired_protocol_eligible\": false"));
@@ -7787,12 +7837,13 @@ mod tests {
         assert_eq!(LATER_POS1_BYTES.len(), 39);
         assert_eq!(LATER_POS2_BYTES.len(), 39);
         assert_eq!(LATER_POS3_BYTES.len(), 39);
+        assert_eq!(POS4_BYTES.len(), 43);
         assert_eq!(LATER_POS0_COMPRESSOR_PRIME_BYTES.len(), 39);
         assert_eq!(LATER_CACHE_ROW0_BYTES.len(), 39);
         assert_eq!(LATER_POS3_COMPRESSED_KV_BYTES.len(), 20);
         for layer_index in 4..=42 {
             assert_eq!(compressor_prime_bytes(layer_index).unwrap().len(), 4096 * 4);
-            for position in 1..=3 {
+            for position in 1..=4 {
                 let fixture = layer_expected(layer_index, position).unwrap();
                 assert_eq!(
                     fixture.fixture_id,

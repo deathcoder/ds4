@@ -419,7 +419,7 @@ fn run_closed_loop_decoder_probe_command(arguments: Vec<OsString>) -> Result<()>
     let model = MappedModel::open(&model_path)?;
     validate_resident_q2(model.gguf())?;
     let report = run_closed_loop_decoder_probe(&model)?;
-    println!("closed-loop decoder: bootstrap token 201 -> generated 361, 1915, 262");
+    println!("closed-loop decoder: bootstrap token 201 -> generated 361, 1915, 262, 1554");
     println!("C0: all 43 transformer layers and 129280 logits/position are bit-identical");
     println!(
         "timed diagnostic: {:.3} tok/s complete, {:.3} tok/s steady; correctness readback excluded",
@@ -2415,11 +2415,11 @@ fn layers0_to_42_decode_probe_usage() -> &'static str {
 }
 
 fn decoder_output_probe_usage() -> &'static str {
-    "usage: rust-star decoder-output-probe MODEL.gguf [--json PATH]\n\nExecutes the fixed input tokens 201, 361, and 1915 at positions 1 through 3 across all 43 transformer layers, then applies the exact DwarfStar HC collapse, learned output normalization, full 129280-token Q8_0 vocabulary projection, and lowest-token-ID argmax. Every retained transformer boundary and all five output-head tensors must remain bit-identical to the captured oracle. Input tokens are externally supplied; this is not yet a closed-loop generator."
+    "usage: rust-star decoder-output-probe MODEL.gguf [--json PATH]\n\nExecutes the fixed input tokens 201, 361, 1915, and 262 at positions 1 through 4 across all 43 transformer layers, then applies the exact DwarfStar HC collapse, learned output normalization, full 129280-token Q8_0 vocabulary projection, and lowest-token-ID argmax. Position 4 consumes the persistent compressed rows emitted at position 3. Every retained transformer boundary and all five output-head tensors must remain bit-identical to the captured oracle. Input tokens are externally supplied; this is not yet a closed-loop generator."
 }
 
 fn closed_loop_decoder_probe_usage() -> &'static str {
-    "usage: rust-star closed-loop-decoder-probe MODEL.gguf [--json PATH]\n\nRuns an exhaustive three-position C0 pass in which each selected token becomes the next input, then repeats the same closed loop through a diagnostic timed path. Timed intervals include Metal submission, synchronized execution, logits transfer, and lowest-ID argmax while excluding fixture tensor readback. The result is not paired-protocol eligible until Rust Star supports cold prefill and arbitrary-frontier decode."
+    "usage: rust-star closed-loop-decoder-probe MODEL.gguf [--json PATH]\n\nRuns an exhaustive four-position C0 pass in which each selected token becomes the next input, including the first step that reuses persistent compressed memory, then repeats the same closed loop through a diagnostic timed path. Timed intervals include Metal submission, synchronized execution, logits transfer, and lowest-ID argmax while excluding fixture tensor readback. The result is not paired-protocol eligible until Rust Star supports cold prefill and arbitrary-frontier decode."
 }
 
 fn ratio128_compressor_replay_probe_usage() -> &'static str {

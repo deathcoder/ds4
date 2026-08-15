@@ -411,8 +411,9 @@ rust-star/.work/runtime-target/release/rust-star \
 DwarfStar's plain HC RMSNorm, F16 four-way HC projection, output-HC weights,
 fused HC collapse/learned RMSNorm, and full 129,280-row Q8_0 vocabulary
 projection. It compares all five output tensors by FP32 bit pattern at
-positions 1–3 and applies lowest-token-ID argmax on the CPU. The fixed input
-tokens `[201, 361, 1915]` select `[361, 1915, 262]`. The correctness schedule
+positions 1–4 and applies lowest-token-ID argmax on the CPU. The fixed input
+tokens `[201, 361, 1915, 262]` select `[361, 1915, 262, 1554]`; the final step
+is the first to consume persistent compressed rows emitted by the prior step. The correctness schedule
 uses 44 command buffers and two host waits per step. Inputs are still supplied
 externally, so this is not a closed-loop generator or a token-throughput
 benchmark.
@@ -432,7 +433,7 @@ feeding each lowest-ID argmax result into the next position. It then reuses the
 prepared model views, Metal pipelines, and retained allocations for a separate
 timed pass. Those intervals include all 44 command buffers, both required tail
 waits, the 129,280-logit transfer used for CPU argmax, and the argmax itself;
-they exclude tensor-fixture readback and comparison. Its three-token rate is a
+they exclude tensor-fixture readback and comparison. Its four-token rate is a
 diagnostic only. The command reports `paired_protocol_eligible: false` because
 the captured slice does not yet implement cold prefill, arbitrary frontiers,
 or the protocol's 128 committed tokens.

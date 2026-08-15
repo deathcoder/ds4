@@ -425,7 +425,7 @@ command so regressions can be localized.
 
 ## Exact decoder output boundary
 
-Schema: `rust-star-decoder-output-position-advancing-probe-v1`.
+Schema: `rust-star-decoder-output-position-advancing-probe-v2`.
 
 `decoder-output-probe` runs the 43-layer position-advancing chain and consumes
 the retained layer-42 HC buffer without a host copy. Five additional model
@@ -436,29 +436,32 @@ projection, exact four-value sigmoid weighting, fused HC collapse/learned
 norm, and full Q8_0 vocabulary projection. The output projection preserves
 DwarfStar's eight-simdgroup specialization for output dimensions above 65,536.
 
-At positions 1–3 the HC pre-values, HC weights, collapsed HC row, learned-norm
+At positions 1–4 the HC pre-values, HC weights, collapsed HC row, learned-norm
 row, and all 129,280 FP32 logits must be bit-identical to independent oracle
-captures. Lowest-token-ID argmax selects 361, 1915, and 262 respectively. The
-correctness path uses 44 command buffers and two host waits per step. It keeps
-the input sequence explicit and external, so it does not yet measure committed
-tokens or claim closed-loop generation throughput.
+captures. Lowest-token-ID argmax selects 361, 1915, 262, and 1554 respectively.
+Position 4 is the first boundary that stages a ratio-4 compressed row emitted
+by the preceding token from persistent per-layer storage. The correctness path
+uses 44 command buffers and two host waits per step. It keeps the input sequence
+explicit and external, so it does not yet measure committed tokens or claim
+closed-loop generation throughput.
 
 ## Closed-loop decoder diagnostic
 
-Schema: `rust-star-closed-loop-decoder-diagnostic-v1`.
+Schema: `rust-star-closed-loop-decoder-diagnostic-v2`.
 
 `closed-loop-decoder-probe` preserves `decoder-output-probe` as an explicit
-input control and adds a real feedback edge: token 201 selects 361, 361 becomes
-the position-2 input and selects 1915, and 1915 becomes the position-3 input and
-selects 262. The exhaustive pass still checks all retained layer tensors and
-all full-vocabulary logits by FP32 bit pattern.
+input control and adds a real feedback edge: token 201 selects 361, then 1915,
+262, and 1554 are selected in order. The position-4 step consumes the first
+persistent compressed rows instead of only the rows emitted in its own command.
+The exhaustive pass still checks all retained layer tensors and all
+full-vocabulary logits by FP32 bit pattern.
 
 A second pass uses the same prepared Metal ownership boundary but does not run
 the chained tensor collectors and asks the output head to transfer only the
 logits required for sampling. Per-step wall intervals span transformer command
 encoding/execution, output-head execution, synchronization, logits transfer,
 and CPU lowest-ID argmax. Pipeline preparation and the exhaustive C0 pass are
-outside those intervals. This is deliberately a three-position diagnostic,
+outside those intervals. This is deliberately a four-position diagnostic,
 not a `rust-star-engine-measurement-v1` producer: eligible measurement still
 requires cold prefill and arbitrary-frontier 128-token decode.
 

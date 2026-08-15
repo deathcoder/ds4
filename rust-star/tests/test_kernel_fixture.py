@@ -35,6 +35,10 @@ POSITION3_COMPLETE_FIXTURES = [
     RUST_STAR_DIR / "fixtures" / f"layer{layer}-pos3-complete-v1"
     for layer in range(4)
 ]
+POSITION4_COMPLETE_FIXTURES = [
+    RUST_STAR_DIR / "fixtures" / f"layer{layer}-pos4-complete-v1"
+    for layer in range(43)
+]
 COMPRESSOR_PRIME_FIXTURES = [
     RUST_STAR_DIR / "fixtures" / f"layer{layer}-pos0-compressor-prime-v1"
     for layer in range(2, 43)
@@ -174,6 +178,26 @@ class KernelFixtureTests(unittest.TestCase):
                 self.assertEqual(
                     report["verified_bytes"], 741_808 if layer == 2 else 739_760
                 )
+
+    def test_position4_complete_fixtures_manifest_and_payloads(self) -> None:
+        for layer, fixture in enumerate(POSITION4_COMPLETE_FIXTURES):
+            with self.subTest(layer=layer):
+                manifest = json.loads((fixture / "manifest.json").read_text(encoding="utf-8"))
+                report = validate_differential_fixture(fixture)
+                self.assertEqual(
+                    report["fixture_id"],
+                    f"dwarfstar-oracle-v1-layer{layer}-pos4-complete",
+                )
+                self.assertEqual(report["scope"], "decode-step")
+                expected_operations = (
+                    30 if layer == 0 else 28 if layer < 4 else 32 if layer % 2 == 0 else 30
+                )
+                self.assertEqual(report["operations"], expected_operations)
+                self.assertEqual(report["tensors"], 32)
+                self.assertEqual(report["verified_bytes"], 739_760)
+                self.assertEqual(manifest["capture"]["token_id"], 262)
+                self.assertEqual(manifest["capture"]["fresh_process_captures"], 2)
+                self.assertEqual(manifest["capture"]["batch_capture_layers"], [0, 42])
 
     def test_compressor_prime_fixtures_manifest_and_payloads(self) -> None:
         for layer, fixture in zip(range(2, 43), COMPRESSOR_PRIME_FIXTURES):

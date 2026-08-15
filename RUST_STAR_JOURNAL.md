@@ -29,13 +29,15 @@ history; add a correction and update the current-state summary.
   ordered position-advancing executor now extends through all 43 transformer
   layers and the exact post-transformer output boundary is complete through
   full-vocabulary logits and deterministic greedy selection. A separate
-  three-position command now closes the feedback edge and has a diagnostic
-  timed path with correctness readback excluded.
+  four-position command now closes the feedback edge, crosses the first
+  persistent compressed-cache reuse boundary, and has a diagnostic timed path
+  with correctness readback excluded.
   Layers 0 through 42 execute in order under one Rust-owned Metal context with
   exact GPU-resident HC-state handoffs and one retained KV allocation per
   layer. Every even layer from 2 through 42 crosses its first ratio-4
-  compressed-attention emission boundary at position 3; odd compressed layers
-  retain ratio-128 state without emitting at this frontier.
+  compressed-attention emission boundary at position 3, and the emitted rows
+  remain visible at position 4; odd compressed layers retain ratio-128 state
+  without emitting at this frontier.
   Layer 3 crosses from token-hash routing to biased top-k routing.
 - Working branch: `agent/rust-star-bootstrap`.
 - Branch base: upstream `antirez/ds4` commit
@@ -238,6 +240,62 @@ history; add a correction and update the current-state summary.
 5. Run or approve the fork's GitHub Actions workflow and retain its URL.
 
 ## Entries
+
+### 2026-08-15 — Persistent compressed memory reused exactly at position 4
+
+Objective:
+
+- Remove the captured position-3 ceiling at the first semantically meaningful
+  boundary: execute the next sampled token while retaining and consuming the
+  ratio-4 compressed rows emitted by the preceding step.
+
+Oracle evidence:
+
+- Ran the preserved pinned DwarfStar executable twice in fresh processes with
+  one prefill token and four generated tokens, batch-dumping every retained
+  position-4 boundary for layers 0–42. All 1,376 payload pairs were
+  byte-identical; their ordered aggregate SHA-256 is
+  `73f0af1597da79b5e53c19716822c105df6256e353ee18d8c013d4809c74c3cb`.
+- Captured the five terminal output-head tensors twice in two additional fresh
+  processes. All pairs were byte-identical with aggregate SHA-256
+  `8ca919fe0b7cc11ff861b9de6f576ba0f736b1fb4376878ff4d464cabc594054`.
+  Position 4 consumes token 262 and lowest-ID argmax selects token 1554.
+- Imported 43 complete layer fixtures plus one output-head fixture. The strict
+  differential registry now contains 226 manifests.
+
+Implementation:
+
+- Replaced the four-row raw-cache allocation with a 128-row frontier and added
+  32 persistent compressed attention/indexer rows per compressed layer. The
+  bounded executor accepts positions 1–127, which covers the protocol's future
+  128-token decode without yet claiming that full execution path.
+- Preserved emission-step ordering: a new compressed row remains in its work
+  buffer for the attention encoder that produced it, then a Metal blit commits
+  it to persistent cache storage. Later positions stage all committed rows;
+  emission positions stage prior committed rows followed by the new work row.
+- Extended both explicit-input and feedback-loop C0 paths through position 4,
+  updated their schemas to v2, and retained the earlier three-position
+  transformer-only commands as independent controls.
+
+Validation:
+
+- The live M1 Ultra closed loop is C0 exact for all 172 layer/position
+  boundaries and all 517,120 logits. It generated
+  `361 -> 1915 -> 262 -> 1554`; the complete gate reported 18.798 tok/s
+  overall and 18.916 tok/s steady over the diagnostic timed path.
+- The timing interval still includes transformer submission/execution, output
+  execution, logits transfer, and CPU argmax while excluding correctness
+  collection. It remains paired-protocol ineligible because cold prefill and
+  arbitrary-frontier initialization are not implemented.
+- The complete gate passed 60 Rust tests, the optimized macOS
+  Objective-C/Metal build, 43 Python tests, all 226 fixture manifests, strict
+  real-model inspection, and every established Metal control.
+
+Decision:
+
+- Accept persistent compressed-cache lifetime and first reuse as exact. The
+  next checkpoint is a 128-step generated-token run through the already-sized
+  frontier, followed by cold prefill and engine-measurement output.
 
 ### 2026-08-15 — Three-position decoder loop closed and timed honestly
 
