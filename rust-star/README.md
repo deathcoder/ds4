@@ -78,10 +78,14 @@ reconstructs the 2,048-row contiguous KV input from a captured 2,016-row prefix
 and the live final tile, matches all 6,979,776 retained produced FP32 values
 plus 192 selected expert IDs from repeated DwarfStar captures, and proves cache
 rows 0--95 remain untouched. This completes layer 0 for the isolated final
-tile, not the full 2K prefill path. A separate preserved control continues the
-same live command buffer through layer 1's four-stream HC collapse, learned
-attention norm, and Q-A projection. Its 47 dispatches and 30 no-copy model
-views reproduce another 294,912 FP32 values from repeated native captures.
+tile, not the full 2K prefill path. Two separate controls continue the same live
+command buffer into layer 1: the shorter 47-dispatch Q-A boundary remains
+independently executable, while the complete 84-dispatch boundary finishes
+layer 1 through attention, routed/shared experts, and the additive FFN HC tail.
+The complete command uses 49 no-copy model views and reproduces 12,878,208
+produced FP32 values plus 384 selected expert IDs across both layers from
+repeated DwarfStar captures. This is still an isolated final-tile claim, not
+complete native 2K prefill.
 
 Project controls and benchmark contracts:
 

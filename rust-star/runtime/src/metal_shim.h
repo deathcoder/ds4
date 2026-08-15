@@ -120,6 +120,42 @@ typedef struct rust_star_metal_prefill_attention_ingress_weights {
     uint64_t q_a_offset, q_a_bytes;
 } rust_star_metal_prefill_attention_ingress_weights;
 
+typedef struct rust_star_metal_prefill_layer_weights {
+    rust_star_metal_prefill_attention_ingress_weights ingress;
+    uint64_t q_a_norm_offset, q_a_norm_bytes;
+    uint64_t kv_offset, kv_bytes;
+    uint64_t kv_norm_offset, kv_norm_bytes;
+    uint64_t q_b_offset, q_b_bytes;
+    uint64_t attn_sinks_offset, attn_sinks_bytes;
+    uint64_t attn_output_a_offset, attn_output_a_bytes;
+    uint64_t attn_output_b_offset, attn_output_b_bytes;
+    rust_star_metal_prefill_ffn_weights ffn;
+} rust_star_metal_prefill_layer_weights;
+
+typedef struct rust_star_metal_prefill_layer_outputs {
+    const float *kv_prefix;
+    float *q_lora_norm;
+    float *kv_norm;
+    float *q_cur;
+    float *kv_rope;
+    float *kv_cur;
+    float *attention_output;
+    float *attention_back;
+    float *attention_low;
+    float *attention_out;
+    float *after_attention_hc;
+    float *ffn_cur;
+    float *ffn_norm;
+    float *router_logits;
+    float *router_probs;
+    int32_t *router_selected;
+    float *router_weights;
+    float *routed_mid;
+    float *routed_out;
+    float *shared_out;
+    float *after_ffn_hc;
+} rust_star_metal_prefill_layer_outputs;
+
 typedef struct rust_star_metal_prefill_layer0_weights {
     uint64_t embedding_offset, embedding_bytes;
     uint64_t hc_fn_offset, hc_fn_bytes;
@@ -291,6 +327,8 @@ int rust_star_metal_run_prefill_layer0_boundary(
     uint64_t model_bytes,
     const rust_star_metal_prefill_layer0_weights *weights,
     const rust_star_metal_prefill_attention_ingress_weights *next_ingress,
+    const rust_star_metal_prefill_layer_weights *next_layer,
+    const rust_star_metal_prefill_layer_outputs *next_outputs,
     uint32_t n_vocab,
     uint32_t rows,
     uint32_t position_start,

@@ -309,8 +309,8 @@ history; add a correction and update the current-state summary.
 
 ## Immediate Next Actions
 
-1. Extend the exact final-tile layer-1 Q-Lora state through the rest of layer
-   1, then broaden retained row coverage toward complete native 2K prefill.
+1. Broaden retained row coverage beyond the exact complete layers-0/1 final
+   tile toward complete native 2K prefill.
 2. Add the fixed 512-row ratio-4 indexer top-k and sparse indexed attention so
    128 generated tokens can continue beyond the 2K frontier.
 3. Emit the `rust-star-engine-measurement-v1` artifact from the exact
@@ -322,6 +322,57 @@ history; add a correction and update the current-state summary.
 6. Run or approve the fork's GitHub Actions workflow and retain its URL.
 
 ## Entries
+
+### 2026-08-15 — Native M1 final tile completes layer 1
+
+Objective:
+
+- Extend the direct live layer-0-to-layer-1 HC handoff through the remainder of
+  uncompressed layer 1 while preserving the 43-dispatch layer-0 and
+  47-dispatch layer-1-Q-A controls as independent commands.
+
+Oracle evidence and fixture:
+
+- Captured twenty full 2K layer-1 tensors twice from fresh pinned DwarfStar
+  processes. Every pair was byte-identical. The strict importer pins every
+  full-capture SHA-256 before retaining the final 32 rows plus the 2,016-row KV
+  prefix needed for rectangular attention.
+- Added `prefill-layer1-complete-2048-v1`: nine operations, twenty-one tensors,
+  and 26,543,616 verified bytes. The fixture covers Q/KV setup and RoPE, KV
+  finalization, FlashAttention, grouped attention output, both HC updates, the
+  decomposed token-hash router, routed experts, and the shared expert.
+
+Implementation:
+
+- Added `prefill-layers01-complete-boundary-probe` with schema
+  `rust-star-prefill-layers01-complete-boundary-probe-v1`. The optional Metal
+  continuation adds the remaining thirty-seven layer-1 dispatches after Q-A,
+  for 84 total: 43 in layer 0 and 41 in layer 1.
+- The same command buffer consumes the live layer-0 four-stream FFN HC state,
+  reconstructs layer 1's 2,048-row contiguous KV input from the captured prefix
+  and live final tile, and finishes at `layer1_hc_ffn_post` without a host
+  activation seam. All 49 model ranges are direct mmap-backed views.
+- The complete command retains and checks 12,878,208 produced FP32 values plus
+  384 selected expert IDs across both layers. Stable JSON asserts the complete
+  layer-1 final-tile claim while continuing to reject a full-prefill claim.
+
+Target-Mac evidence:
+
+- A focused optimized run preserved the 43-dispatch 25/25-view and 47-dispatch
+  30/30-view controls C0 exact, then passed the new 84-dispatch boundary C0
+  exact with 49/49 no-copy views at 243.211 ms wall / 192.411 ms GPU.
+- The complete gate passed formatting, all 80 Rust tests, 54 Python tests, all
+  238 differential fixtures, optimized Objective-C/Metal compilation, strict
+  validation of all 1,288 required model tensors, every established Metal and
+  decoder control, and both steady-state benchmarks. The new boundary remained
+  exact at 277.821 ms wall / 226.582 ms GPU; the preserved 43- and 47-dispatch
+  controls remained exact at 131.947/76.576 and 129.940/78.788 ms wall/GPU.
+
+Decision and next:
+
+- Accept complete native layers 0 and 1 for the isolated final M1 tile. Next
+  broaden native retained-row coverage toward the complete 2K prefill rather
+  than adding another layer to the isolated tile.
 
 ### 2026-08-15 — Native final tile hands layer-0 HC directly into layer-1 Q-A
 

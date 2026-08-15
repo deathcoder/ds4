@@ -76,6 +76,9 @@ elif [ "$#" -eq 1 ]; then
         echo "==> direct native M1 layer-0 to layer-1 prefill handoff"
         "$target_dir/release/rust-star" prefill-layers01-boundary-probe "$1" \
             --json "$target_dir/prefill-layers01-boundary-probe.json"
+        echo "==> continuous complete M1 layers-0/1 prefill final tile"
+        "$target_dir/release/rust-star" prefill-layers01-complete-boundary-probe "$1" \
+            --json "$target_dir/prefill-layers01-complete-boundary-probe.json"
         echo "==> no-copy layer-0 attention ingress"
         "$target_dir/release/rust-star" attention-ingress-probe "$1" \
             --json "$target_dir/attention-ingress-probe.json"

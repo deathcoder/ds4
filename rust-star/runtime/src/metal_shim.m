@@ -2232,6 +2232,8 @@ int rust_star_metal_run_prefill_layer0_boundary(
     uint64_t model_bytes,
     const rust_star_metal_prefill_layer0_weights *weights,
     const rust_star_metal_prefill_attention_ingress_weights *next_ingress,
+    const rust_star_metal_prefill_layer_weights *next_layer,
+    const rust_star_metal_prefill_layer_outputs *next_outputs,
     uint32_t n_vocab,
     uint32_t rows,
     uint32_t position_start,
@@ -2271,7 +2273,8 @@ int rust_star_metal_run_prefill_layer0_boundary(
     char *error,
     size_t error_bytes)
 {
-    const BOOL continue_layer1 = next_ingress != NULL;
+    const BOOL complete_layer1 = next_layer != NULL || next_outputs != NULL;
+    const BOOL continue_layer1 = next_ingress != NULL || complete_layer1;
     const BOOL partial_layer1 = next_hc_collapsed || next_attn_norm || next_q_lora;
     if (!opaque_context || !model_mapping || !weights || !tokens ||
         !hc_collapsed || !attn_norm || !q_lora || !q_lora_norm ||
@@ -2284,10 +2287,27 @@ int rust_star_metal_run_prefill_layer0_boundary(
         return fail_with_message(error, error_bytes,
             @"prefill layer-0 boundary received a null input");
     }
-    if (partial_layer1 != continue_layer1 ||
+    if ((next_ingress && complete_layer1) ||
+        ((next_layer == NULL) != (next_outputs == NULL)) ||
+        partial_layer1 != continue_layer1 ||
         (continue_layer1 && (!next_hc_collapsed || !next_attn_norm || !next_q_lora))) {
         return fail_with_message(error, error_bytes,
             @"prefill layers-0/1 boundary requires the complete layer-1 ingress output set");
+    }
+    if (complete_layer1 &&
+        (!next_outputs->kv_prefix || !next_outputs->q_lora_norm ||
+         !next_outputs->kv_norm || !next_outputs->q_cur ||
+         !next_outputs->kv_rope || !next_outputs->kv_cur ||
+         !next_outputs->attention_output || !next_outputs->attention_back ||
+         !next_outputs->attention_low || !next_outputs->attention_out ||
+         !next_outputs->after_attention_hc || !next_outputs->ffn_cur ||
+         !next_outputs->ffn_norm || !next_outputs->router_logits ||
+         !next_outputs->router_probs || !next_outputs->router_selected ||
+         !next_outputs->router_weights || !next_outputs->routed_mid ||
+         !next_outputs->routed_out || !next_outputs->shared_out ||
+         !next_outputs->after_ffn_hc)) {
+        return fail_with_message(error, error_bytes,
+            @"prefill complete layer-1 boundary received a null fixture/output pointer");
     }
     if (n_vocab != 129280u || rows != 32u || position_start != 2016u) {
         return fail_with_message(error, error_bytes,
@@ -2301,7 +2321,7 @@ int rust_star_metal_run_prefill_layer0_boundary(
             !ensure_moe_output_pipelines(context, error, error_bytes)) return 0;
         memset(result, 0, sizeof(*result));
 
-        uint64_t offsets[30] = {
+        uint64_t offsets[49] = {
             weights->embedding_offset, weights->hc_fn_offset,
             weights->hc_scale_offset, weights->hc_base_offset,
             weights->attn_norm_offset, weights->qkv.q_a_offset,
@@ -2317,7 +2337,7 @@ int rust_star_metal_run_prefill_layer0_boundary(
             weights->ffn.shared_up_offset, weights->ffn.shared_down_offset,
             0, 0, 0, 0, 0,
         };
-        uint64_t sizes[30] = {
+        uint64_t sizes[49] = {
             weights->embedding_bytes, weights->hc_fn_bytes,
             weights->hc_scale_bytes, weights->hc_base_bytes,
             weights->attn_norm_bytes, weights->qkv.q_a_bytes,
@@ -2333,22 +2353,65 @@ int rust_star_metal_run_prefill_layer0_boundary(
             weights->ffn.shared_up_bytes, weights->ffn.shared_down_bytes,
             0, 0, 0, 0, 0,
         };
-        const uint32_t model_range_count = continue_layer1 ? 30u : 25u;
+        const uint32_t model_range_count = complete_layer1 ? 49u :
+            (continue_layer1 ? 30u : 25u);
         if (continue_layer1) {
-            offsets[25] = next_ingress->hc_fn_offset;
-            offsets[26] = next_ingress->hc_scale_offset;
-            offsets[27] = next_ingress->hc_base_offset;
-            offsets[28] = next_ingress->norm_offset;
-            offsets[29] = next_ingress->q_a_offset;
-            sizes[25] = next_ingress->hc_fn_bytes;
-            sizes[26] = next_ingress->hc_scale_bytes;
-            sizes[27] = next_ingress->hc_base_bytes;
-            sizes[28] = next_ingress->norm_bytes;
-            sizes[29] = next_ingress->q_a_bytes;
+            const rust_star_metal_prefill_attention_ingress_weights *ingress =
+                complete_layer1 ? &next_layer->ingress : next_ingress;
+            offsets[25] = ingress->hc_fn_offset;
+            offsets[26] = ingress->hc_scale_offset;
+            offsets[27] = ingress->hc_base_offset;
+            offsets[28] = ingress->norm_offset;
+            offsets[29] = ingress->q_a_offset;
+            sizes[25] = ingress->hc_fn_bytes;
+            sizes[26] = ingress->hc_scale_bytes;
+            sizes[27] = ingress->hc_base_bytes;
+            sizes[28] = ingress->norm_bytes;
+            sizes[29] = ingress->q_a_bytes;
         }
-        id<MTLBuffer> model_buffers[30] = { nil };
-        NSUInteger inner[30] = { 0 };
-        BOOL matches[30] = { NO };
+        if (complete_layer1) {
+            offsets[30] = next_layer->q_a_norm_offset;
+            offsets[31] = next_layer->kv_offset;
+            offsets[32] = next_layer->kv_norm_offset;
+            offsets[33] = next_layer->q_b_offset;
+            offsets[34] = next_layer->attn_sinks_offset;
+            offsets[35] = next_layer->attn_output_a_offset;
+            offsets[36] = next_layer->attn_output_b_offset;
+            offsets[37] = next_layer->ffn.hc_fn_offset;
+            offsets[38] = next_layer->ffn.hc_scale_offset;
+            offsets[39] = next_layer->ffn.hc_base_offset;
+            offsets[40] = next_layer->ffn.norm_offset;
+            offsets[41] = next_layer->ffn.router_gate_offset;
+            offsets[42] = next_layer->ffn.router_hash_offset;
+            offsets[43] = next_layer->ffn.routed_gate_offset;
+            offsets[44] = next_layer->ffn.routed_up_offset;
+            offsets[45] = next_layer->ffn.routed_down_offset;
+            offsets[46] = next_layer->ffn.shared_gate_offset;
+            offsets[47] = next_layer->ffn.shared_up_offset;
+            offsets[48] = next_layer->ffn.shared_down_offset;
+            sizes[30] = next_layer->q_a_norm_bytes;
+            sizes[31] = next_layer->kv_bytes;
+            sizes[32] = next_layer->kv_norm_bytes;
+            sizes[33] = next_layer->q_b_bytes;
+            sizes[34] = next_layer->attn_sinks_bytes;
+            sizes[35] = next_layer->attn_output_a_bytes;
+            sizes[36] = next_layer->attn_output_b_bytes;
+            sizes[37] = next_layer->ffn.hc_fn_bytes;
+            sizes[38] = next_layer->ffn.hc_scale_bytes;
+            sizes[39] = next_layer->ffn.hc_base_bytes;
+            sizes[40] = next_layer->ffn.norm_bytes;
+            sizes[41] = next_layer->ffn.router_gate_bytes;
+            sizes[42] = next_layer->ffn.router_hash_bytes;
+            sizes[43] = next_layer->ffn.routed_gate_bytes;
+            sizes[44] = next_layer->ffn.routed_up_bytes;
+            sizes[45] = next_layer->ffn.routed_down_bytes;
+            sizes[46] = next_layer->ffn.shared_gate_bytes;
+            sizes[47] = next_layer->ffn.shared_up_bytes;
+            sizes[48] = next_layer->ffn.shared_down_bytes;
+        }
+        id<MTLBuffer> model_buffers[49] = { nil };
+        NSUInteger inner[49] = { 0 };
+        BOOL matches[49] = { NO };
         for (uint32_t index = 0; index < model_range_count; index++) {
             model_buffers[index] = wrap_model_range(
                 context, model_mapping, model_bytes, offsets[index], sizes[index],
@@ -2369,12 +2432,14 @@ int rust_star_metal_run_prefill_layer0_boundary(
             return fail_with_message(error, error_bytes,
                 @"prefill layer-0 attention-output tensor shapes are invalid");
         }
+        const rust_star_metal_prefill_attention_ingress_weights *next_ingress_weights =
+            complete_layer1 ? &next_layer->ingress : next_ingress;
         if (continue_layer1 &&
-            (next_ingress->hc_fn_bytes != 16384ull*24ull*sizeof(uint16_t) ||
-             next_ingress->hc_scale_bytes != 3u*sizeof(float) ||
-             next_ingress->hc_base_bytes != 24u*sizeof(float) ||
-             next_ingress->norm_bytes != 4096u*sizeof(float) ||
-             next_ingress->q_a_bytes != 1024ull*((4096ull/32ull)*34ull))) {
+            (next_ingress_weights->hc_fn_bytes != 16384ull*24ull*sizeof(uint16_t) ||
+             next_ingress_weights->hc_scale_bytes != 3u*sizeof(float) ||
+             next_ingress_weights->hc_base_bytes != 24u*sizeof(float) ||
+             next_ingress_weights->norm_bytes != 4096u*sizeof(float) ||
+             next_ingress_weights->q_a_bytes != 1024ull*((4096ull/32ull)*34ull))) {
             return fail_with_message(error, error_bytes,
                 @"prefill layer-1 attention-ingress tensor shapes are invalid");
         }
@@ -2500,6 +2565,35 @@ int rust_star_metal_run_prefill_layer0_boundary(
         id<MTLBuffer> next_cur_buffer = nil;
         id<MTLBuffer> next_norm_buffer = nil;
         id<MTLBuffer> next_q_lora_buffer = nil;
+        id<MTLBuffer> next_q_norm_buffer = nil;
+        id<MTLBuffer> next_kv_raw_buffer = nil;
+        id<MTLBuffer> next_kv_norm_buffer = nil;
+        id<MTLBuffer> next_kv_norm_snapshot_buffer = nil;
+        id<MTLBuffer> next_kv_rope_buffer = nil;
+        id<MTLBuffer> next_kv_half_buffer = nil;
+        id<MTLBuffer> next_raw_cache_buffer = nil;
+        id<MTLBuffer> next_q_raw_buffer = nil;
+        id<MTLBuffer> next_q_cur_buffer = nil;
+        id<MTLBuffer> next_full_kv_buffer = nil;
+        id<MTLBuffer> next_full_kv_half_buffer = nil;
+        id<MTLBuffer> next_attention_output_buffer = nil;
+        id<MTLBuffer> next_attention_back_buffer = nil;
+        id<MTLBuffer> next_attention_low_buffer = nil;
+        id<MTLBuffer> next_attention_out_buffer = nil;
+        id<MTLBuffer> next_after_attention_hc_buffer = nil;
+        id<MTLBuffer> next_ffn_flat_hc_buffer = nil;
+        id<MTLBuffer> next_ffn_mix_buffer = nil;
+        id<MTLBuffer> next_ffn_split_buffer = nil;
+        id<MTLBuffer> next_ffn_cur_buffer = nil;
+        id<MTLBuffer> next_ffn_norm_buffer = nil;
+        id<MTLBuffer> next_router_logits_buffer = nil;
+        id<MTLBuffer> next_router_probs_buffer = nil;
+        id<MTLBuffer> next_router_selected_buffer = nil;
+        id<MTLBuffer> next_router_weights_buffer = nil;
+        id<MTLBuffer> next_routed_mid_buffer = nil;
+        id<MTLBuffer> next_routed_out_buffer = nil;
+        id<MTLBuffer> next_shared_out_buffer = nil;
+        id<MTLBuffer> next_after_ffn_hc_buffer = nil;
         if (continue_layer1) {
             next_flat_hc_buffer = [context.device newBufferWithLength:hc_bytes
                 options:MTLResourceStorageModeShared];
@@ -2513,6 +2607,42 @@ int rust_star_metal_run_prefill_layer0_boundary(
                 options:MTLResourceStorageModeShared];
             next_q_lora_buffer = [context.device newBufferWithLength:q_rank_bytes
                 options:MTLResourceStorageModeShared];
+        }
+        if (complete_layer1) {
+#define RUST_STAR_NEW_L1_BUFFER(name, bytes) \
+            name = [context.device newBufferWithLength:(bytes) \
+                options:MTLResourceStorageModeShared]
+            RUST_STAR_NEW_L1_BUFFER(next_q_norm_buffer, q_rank_bytes);
+            RUST_STAR_NEW_L1_BUFFER(next_kv_raw_buffer, kv_bytes);
+            RUST_STAR_NEW_L1_BUFFER(next_kv_norm_buffer, kv_bytes);
+            RUST_STAR_NEW_L1_BUFFER(next_kv_norm_snapshot_buffer, kv_bytes);
+            RUST_STAR_NEW_L1_BUFFER(next_kv_rope_buffer, kv_bytes);
+            RUST_STAR_NEW_L1_BUFFER(next_kv_half_buffer, rows*kv_dim*sizeof(uint16_t));
+            RUST_STAR_NEW_L1_BUFFER(next_raw_cache_buffer, raw_cache_bytes);
+            RUST_STAR_NEW_L1_BUFFER(next_q_raw_buffer, q_bytes);
+            RUST_STAR_NEW_L1_BUFFER(next_q_cur_buffer, q_bytes);
+            RUST_STAR_NEW_L1_BUFFER(next_full_kv_buffer, full_kv_bytes);
+            RUST_STAR_NEW_L1_BUFFER(next_full_kv_half_buffer,
+                prefill_rows*kv_dim*sizeof(uint16_t));
+            RUST_STAR_NEW_L1_BUFFER(next_attention_output_buffer, q_bytes);
+            RUST_STAR_NEW_L1_BUFFER(next_attention_back_buffer, q_bytes);
+            RUST_STAR_NEW_L1_BUFFER(next_attention_low_buffer, attention_low_bytes);
+            RUST_STAR_NEW_L1_BUFFER(next_attention_out_buffer, attention_out_bytes);
+            RUST_STAR_NEW_L1_BUFFER(next_after_attention_hc_buffer, hc_bytes);
+            RUST_STAR_NEW_L1_BUFFER(next_ffn_flat_hc_buffer, hc_bytes);
+            RUST_STAR_NEW_L1_BUFFER(next_ffn_mix_buffer, mix_bytes);
+            RUST_STAR_NEW_L1_BUFFER(next_ffn_split_buffer, mix_bytes);
+            RUST_STAR_NEW_L1_BUFFER(next_ffn_cur_buffer, attn_bytes);
+            RUST_STAR_NEW_L1_BUFFER(next_ffn_norm_buffer, attn_bytes);
+            RUST_STAR_NEW_L1_BUFFER(next_router_logits_buffer, router_bytes);
+            RUST_STAR_NEW_L1_BUFFER(next_router_probs_buffer, router_bytes);
+            RUST_STAR_NEW_L1_BUFFER(next_router_selected_buffer, selected_bytes);
+            RUST_STAR_NEW_L1_BUFFER(next_router_weights_buffer, selected_bytes);
+            RUST_STAR_NEW_L1_BUFFER(next_routed_mid_buffer, routed_mid_f16_bytes);
+            RUST_STAR_NEW_L1_BUFFER(next_routed_out_buffer, attn_bytes);
+            RUST_STAR_NEW_L1_BUFFER(next_shared_out_buffer, attn_bytes);
+            RUST_STAR_NEW_L1_BUFFER(next_after_ffn_hc_buffer, hc_bytes);
+#undef RUST_STAR_NEW_L1_BUFFER
         }
         const NSUInteger routed_map_tpe_bytes = n_expert*sizeof(int32_t);
         const NSUInteger routed_map_ids_bytes = n_expert*rows*sizeof(int32_t);
@@ -2550,6 +2680,24 @@ int rust_star_metal_run_prefill_layer0_boundary(
             return fail_with_message(error, error_bytes,
                 @"failed to allocate prefill layer-1 ingress activation buffers");
         }
+        if (complete_layer1 &&
+            (!next_q_norm_buffer || !next_kv_raw_buffer || !next_kv_norm_buffer ||
+             !next_kv_norm_snapshot_buffer || !next_kv_rope_buffer ||
+             !next_kv_half_buffer || !next_raw_cache_buffer ||
+             !next_q_raw_buffer || !next_q_cur_buffer || !next_full_kv_buffer ||
+             !next_full_kv_half_buffer || !next_attention_output_buffer ||
+             !next_attention_back_buffer || !next_attention_low_buffer ||
+             !next_attention_out_buffer || !next_after_attention_hc_buffer ||
+             !next_ffn_flat_hc_buffer || !next_ffn_mix_buffer ||
+             !next_ffn_split_buffer || !next_ffn_cur_buffer ||
+             !next_ffn_norm_buffer || !next_router_logits_buffer ||
+             !next_router_probs_buffer || !next_router_selected_buffer ||
+             !next_router_weights_buffer || !next_routed_mid_buffer ||
+             !next_routed_out_buffer || !next_shared_out_buffer ||
+             !next_after_ffn_hc_buffer)) {
+            return fail_with_message(error, error_bytes,
+                @"failed to allocate complete prefill layer-1 activation buffers");
+        }
         float *raw_cache_contents = raw_cache_buffer.contents;
         for (NSUInteger index = 0; index < raw_cache_rows*kv_dim; index++) {
             raw_cache_contents[index] = -12345.5f;
@@ -2559,6 +2707,19 @@ int rust_star_metal_run_prefill_layer0_boundary(
         for (NSUInteger index = kv_prefix_rows*kv_dim;
              index < prefill_rows*kv_dim; index++) {
             full_kv_contents[index] = -23456.5f;
+        }
+        if (complete_layer1) {
+            float *next_raw_cache_contents = next_raw_cache_buffer.contents;
+            for (NSUInteger index = 0; index < raw_cache_rows*kv_dim; index++) {
+                next_raw_cache_contents[index] = -12345.5f;
+            }
+            memcpy(next_full_kv_buffer.contents, next_outputs->kv_prefix,
+                full_kv_prefix_bytes);
+            float *next_full_kv_contents = next_full_kv_buffer.contents;
+            for (NSUInteger index = kv_prefix_rows*kv_dim;
+                 index < prefill_rows*kv_dim; index++) {
+                next_full_kv_contents[index] = -23456.5f;
+            }
         }
         uint16_t *attention_mask = attention_mask_buffer.contents;
         for (uint32_t query = 0; query < rows; query++) {
@@ -3311,6 +3472,374 @@ int rust_star_metal_run_prefill_layer0_boundary(
             [encoder dispatchThreadgroups:MTLSizeMake(1,16,1)
                  threadsPerThreadgroup:MTLSizeMake(128,1,1)];
         }
+        if (complete_layer1) {
+    #define RUST_STAR_ENCODE_LAYER1_Q8(args, weight_index, input, output, out_width) do { \
+            [encoder setComputePipelineState:context.q8PrefillPipeline]; \
+            [encoder setBytes:&(args) length:sizeof(args) atIndex:0]; \
+            [encoder setBuffer:model_buffers[(weight_index)] offset:inner[(weight_index)] atIndex:1]; \
+            [encoder setBuffer:(input) offset:0 atIndex:2]; \
+            [encoder setBuffer:(output) offset:0 atIndex:3]; \
+            [encoder setThreadgroupMemoryLength:6144u atIndex:0]; \
+            [encoder dispatchThreadgroups:MTLSizeMake(1u,(out_width)/64u,1u) \
+                 threadsPerThreadgroup:MTLSizeMake(128,1,1)]; \
+        } while (0)
+            RUST_STAR_ENCODE_LAYER1_Q8(kv_args, 31, next_norm_buffer, next_kv_raw_buffer, kv_dim);
+
+            [encoder setComputePipelineState:context.qkvNormPipeline];
+            [encoder setBytes:&qkv_norm_args length:sizeof(qkv_norm_args) atIndex:0];
+            [encoder setBuffer:next_q_lora_buffer offset:0 atIndex:1];
+            [encoder setBuffer:model_buffers[30] offset:inner[30] atIndex:2];
+            [encoder setBuffer:next_q_norm_buffer offset:0 atIndex:3];
+            [encoder setBuffer:next_kv_raw_buffer offset:0 atIndex:4];
+            [encoder setBuffer:model_buffers[32] offset:inner[32] atIndex:5];
+            [encoder setBuffer:next_kv_norm_buffer offset:0 atIndex:6];
+            [encoder setThreadgroupMemoryLength:32u*sizeof(float) atIndex:0];
+            [encoder dispatchThreadgroups:MTLSizeMake(rows,2,1)
+                 threadsPerThreadgroup:MTLSizeMake(256,1,1)];
+
+            RUST_STAR_ENCODE_LAYER1_Q8(q_b_args, 33, next_q_norm_buffer, next_q_raw_buffer, q_dim);
+    #undef RUST_STAR_ENCODE_LAYER1_Q8
+            [encoder endEncoding];
+
+            id<MTLBlitCommandEncoder> blit = [command blitCommandEncoder];
+            if (!blit) return fail_with_message(error, error_bytes,
+                @"failed to create prefill layer-1 Q snapshot encoder");
+            [blit copyFromBuffer:next_q_raw_buffer sourceOffset:0 toBuffer:next_q_cur_buffer
+                destinationOffset:0 size:q_bytes];
+            [blit copyFromBuffer:next_kv_norm_buffer sourceOffset:0 toBuffer:next_kv_norm_snapshot_buffer
+                destinationOffset:0 size:kv_bytes];
+            [blit endEncoding];
+
+            encoder = [command computeCommandEncoder];
+            if (!encoder) return fail_with_message(error, error_bytes,
+                @"failed to create prefill layer-1 Q RoPE encoder");
+            [encoder setComputePipelineState:context.headNormRopePipeline];
+            [encoder setBytes:&rope_args length:sizeof(rope_args) atIndex:0];
+            [encoder setBuffer:next_q_cur_buffer offset:0 atIndex:1];
+            [encoder setThreadgroupMemoryLength:32u*sizeof(float) atIndex:0];
+            [encoder dispatchThreadgroups:MTLSizeMake(64,rows,1)
+                 threadsPerThreadgroup:MTLSizeMake(256,1,1)];
+            [encoder setComputePipelineState:context.ropeTailPipeline];
+            [encoder setBytes:&kv_rope_args length:sizeof(kv_rope_args) atIndex:0];
+            [encoder setBuffer:next_kv_norm_buffer offset:0 atIndex:1];
+            [encoder setBuffer:position_buffer offset:0 atIndex:2];
+            [encoder setBuffer:next_kv_norm_buffer offset:0 atIndex:3];
+            [encoder setBuffer:next_kv_norm_buffer offset:0 atIndex:4];
+            [encoder dispatchThreadgroups:MTLSizeMake(1,rows,1)
+                 threadsPerThreadgroup:MTLSizeMake(256,1,1)];
+            [encoder endEncoding];
+
+            blit = [command blitCommandEncoder];
+            if (!blit) return fail_with_message(error, error_bytes,
+                @"failed to create prefill layer-1 KV RoPE snapshot encoder");
+            [blit copyFromBuffer:next_kv_norm_buffer sourceOffset:0 toBuffer:next_kv_rope_buffer
+                destinationOffset:0 size:kv_bytes];
+            [blit endEncoding];
+
+            encoder = [command computeCommandEncoder];
+            if (!encoder) return fail_with_message(error, error_bytes,
+                @"failed to create prefill layer-1 KV storage encoder");
+            [encoder setComputePipelineState:context.compressorFp8Pipeline];
+            [encoder setBytes:&kv_fp8_args length:sizeof(kv_fp8_args) atIndex:0];
+            [encoder setBuffer:next_kv_norm_buffer offset:0 atIndex:1];
+            [encoder setBuffer:next_kv_norm_buffer offset:0 atIndex:2];
+            [encoder setThreadgroupMemoryLength:64u*sizeof(float) atIndex:0];
+            [encoder dispatchThreadgroups:MTLSizeMake(rows,1,1)
+                 threadsPerThreadgroup:MTLSizeMake(64,1,1)];
+            uint32_t kv_elements = rows*kv_dim;
+            const NSUInteger conversion_groups = (kv_elements + 1023u)/1024u;
+            [encoder setComputePipelineState:context.cpyF32F16Pipeline];
+            [encoder setBytes:&kv_elements length:sizeof(kv_elements) atIndex:0];
+            [encoder setBuffer:next_kv_norm_buffer offset:0 atIndex:1];
+            [encoder setBuffer:next_kv_half_buffer offset:0 atIndex:2];
+            [encoder dispatchThreadgroups:MTLSizeMake(conversion_groups,1,1)
+                 threadsPerThreadgroup:MTLSizeMake(256,1,1)];
+            [encoder setComputePipelineState:context.cpyF16F32Pipeline];
+            [encoder setBytes:&kv_elements length:sizeof(kv_elements) atIndex:0];
+            [encoder setBuffer:next_kv_half_buffer offset:0 atIndex:1];
+            [encoder setBuffer:next_raw_cache_buffer
+                         offset:raw_cache_target_row*kv_dim*sizeof(float) atIndex:2];
+            [encoder dispatchThreadgroups:MTLSizeMake(conversion_groups,1,1)
+                 threadsPerThreadgroup:MTLSizeMake(256,1,1)];
+            [encoder endEncoding];
+
+            blit = [command blitCommandEncoder];
+            if (!blit) return fail_with_message(error, error_bytes,
+                @"failed to create prefill layer-1 full-KV assembly encoder");
+            [blit copyFromBuffer:next_kv_norm_buffer sourceOffset:0
+                        toBuffer:next_full_kv_buffer destinationOffset:full_kv_prefix_bytes
+                            size:kv_bytes];
+            [blit endEncoding];
+
+            encoder = [command computeCommandEncoder];
+            if (!encoder) return fail_with_message(error, error_bytes,
+                @"failed to create prefill layer-1 attention encoder");
+            uint32_t full_kv_elements = prefill_rows*kv_dim;
+            const NSUInteger full_conversion_groups =
+                (full_kv_elements + 1023u)/1024u;
+            [encoder setComputePipelineState:context.cpyF32F16Pipeline];
+            [encoder setBytes:&full_kv_elements length:sizeof(full_kv_elements) atIndex:0];
+            [encoder setBuffer:next_full_kv_buffer offset:0 atIndex:1];
+            [encoder setBuffer:next_full_kv_half_buffer offset:0 atIndex:2];
+            [encoder dispatchThreadgroups:MTLSizeMake(full_conversion_groups,1,1)
+                 threadsPerThreadgroup:MTLSizeMake(256,1,1)];
+
+            [encoder setComputePipelineState:context.flashBlkPipeline];
+            [encoder setBytes:&attention_blk_args length:sizeof(attention_blk_args) atIndex:0];
+            [encoder setBuffer:attention_mask_buffer offset:0 atIndex:1];
+            [encoder setBuffer:attention_block_buffer offset:0 atIndex:2];
+            [encoder dispatchThreadgroups:MTLSizeMake(32,4,1)
+                 threadsPerThreadgroup:MTLSizeMake(32,1,1)];
+
+            [encoder setComputePipelineState:context.flashNonvecPipeline];
+            [encoder setBytes:&attention_args length:sizeof(attention_args) atIndex:0];
+            [encoder setBuffer:next_q_cur_buffer offset:0 atIndex:1];
+            [encoder setBuffer:next_full_kv_half_buffer offset:0 atIndex:2];
+            [encoder setBuffer:next_full_kv_half_buffer offset:0 atIndex:3];
+            [encoder setBuffer:attention_mask_buffer offset:0 atIndex:4];
+            [encoder setBuffer:model_buffers[34] offset:inner[34] atIndex:5];
+            [encoder setBuffer:attention_pad_buffer offset:0 atIndex:6];
+            [encoder setBuffer:attention_block_buffer offset:0 atIndex:7];
+            [encoder setBuffer:next_attention_output_buffer offset:0 atIndex:8];
+            [encoder setThreadgroupMemoryLength:28672u atIndex:0];
+            [encoder dispatchThreadgroups:MTLSizeMake(4,n_head,1)
+                 threadsPerThreadgroup:MTLSizeMake(32,8,1)];
+            [encoder endEncoding];
+
+            blit = [command blitCommandEncoder];
+            if (!blit) return fail_with_message(error, error_bytes,
+                @"failed to create prefill layer-1 attention snapshot encoder");
+            [blit copyFromBuffer:next_attention_output_buffer sourceOffset:0
+                        toBuffer:next_attention_back_buffer destinationOffset:0 size:q_bytes];
+            [blit endEncoding];
+
+            encoder = [command computeCommandEncoder];
+            if (!encoder) return fail_with_message(error, error_bytes,
+                @"failed to create prefill layer-1 inverse-RoPE encoder");
+            [encoder setComputePipelineState:context.ropeTailPipeline];
+            [encoder setBytes:&attention_inverse_args
+                       length:sizeof(attention_inverse_args) atIndex:0];
+            [encoder setBuffer:next_attention_back_buffer offset:0 atIndex:1];
+            [encoder setBuffer:position_buffer offset:0 atIndex:2];
+            [encoder setBuffer:next_attention_back_buffer offset:0 atIndex:3];
+            [encoder setBuffer:next_attention_back_buffer offset:0 atIndex:4];
+            [encoder dispatchThreadgroups:MTLSizeMake(n_head,rows,1)
+                 threadsPerThreadgroup:MTLSizeMake(256,1,1)];
+
+            [encoder setComputePipelineState:context.attentionOutputBatchMapPipeline];
+            [encoder setBytes:&attention_output_map_args
+                       length:sizeof(attention_output_map_args) atIndex:0];
+            [encoder setBuffer:attention_group_ids_buffer offset:0 atIndex:1];
+            [encoder setBuffer:attention_group_map_buffer offset:0 atIndex:2];
+            [encoder setBuffer:attention_group_map_buffer offset:32u atIndex:3];
+            [encoder setBuffer:attention_group_map_buffer offset:1056u atIndex:4];
+            [encoder setThreadgroupMemoryLength:128u atIndex:0];
+            [encoder dispatchThreadgroups:MTLSizeMake(1,1,1)
+                 threadsPerThreadgroup:MTLSizeMake(8,1,1)];
+
+            [encoder setComputePipelineState:context.attentionOutputBatchLowPipeline];
+            [encoder setBytes:&attention_output_low_args
+                       length:sizeof(attention_output_low_args) atIndex:0];
+            [encoder setBuffer:model_buffers[35] offset:inner[35] atIndex:1];
+            [encoder setBuffer:next_attention_back_buffer offset:0 atIndex:2];
+            [encoder setBuffer:attention_group_map_buffer offset:0 atIndex:3];
+            [encoder setBuffer:attention_group_map_buffer offset:32u atIndex:4];
+            [encoder setBuffer:next_attention_low_buffer offset:0 atIndex:5];
+            [encoder setBuffer:attention_group_map_buffer offset:1056u atIndex:6];
+            [encoder setThreadgroupMemoryLength:8192u atIndex:0];
+            [encoder dispatchThreadgroups:MTLSizeMake(16,16,1)
+                 threadsPerThreadgroup:MTLSizeMake(128,1,1)];
+
+            [encoder setComputePipelineState:context.q8PrefillPipeline];
+            [encoder setBytes:&attention_output_args
+                       length:sizeof(attention_output_args) atIndex:0];
+            [encoder setBuffer:model_buffers[36] offset:inner[36] atIndex:1];
+            [encoder setBuffer:next_attention_low_buffer offset:0 atIndex:2];
+            [encoder setBuffer:next_attention_out_buffer offset:0 atIndex:3];
+            [encoder setThreadgroupMemoryLength:6144u atIndex:0];
+            [encoder dispatchThreadgroups:MTLSizeMake(1,64,1)
+                 threadsPerThreadgroup:MTLSizeMake(128,1,1)];
+
+            [encoder setComputePipelineState:context.hcExpand4Pipeline];
+            [encoder setBytes:&attention_hc_args length:sizeof(attention_hc_args) atIndex:0];
+            [encoder setBuffer:next_attention_out_buffer offset:0 atIndex:1];
+            [encoder setBuffer:after_ffn_hc_buffer offset:0 atIndex:2];
+            [encoder setBuffer:next_split_buffer offset:n_hc*sizeof(float) atIndex:3];
+            [encoder setBuffer:next_split_buffer offset:2u*n_hc*sizeof(float) atIndex:4];
+            [encoder setBuffer:next_attention_out_buffer offset:0 atIndex:5];
+            [encoder setBuffer:next_after_attention_hc_buffer offset:0 atIndex:6];
+            [encoder dispatchThreadgroups:MTLSizeMake((rows*n_embd+255u)/256u,1,1)
+                 threadsPerThreadgroup:MTLSizeMake(256,1,1)];
+
+            [encoder setComputePipelineState:context.rmsNormF32Pipeline];
+            [encoder setBytes:&hc_norm length:sizeof(hc_norm) atIndex:0];
+            [encoder setBuffer:next_after_attention_hc_buffer offset:0 atIndex:1];
+            [encoder setBuffer:next_after_attention_hc_buffer offset:0 atIndex:2];
+            [encoder setBuffer:next_after_attention_hc_buffer offset:0 atIndex:3];
+            [encoder setBuffer:next_ffn_flat_hc_buffer offset:0 atIndex:4];
+            [encoder setThreadgroupMemoryLength:32u*sizeof(float) atIndex:0];
+            [encoder dispatchThreadgroups:MTLSizeMake(rows,1,1)
+                 threadsPerThreadgroup:MTLSizeMake(1024,1,1)];
+
+            [encoder setComputePipelineState:context.f16PrefillPipeline];
+            [encoder setBytes:&ffn_hc_mm length:sizeof(ffn_hc_mm) atIndex:0];
+            [encoder setBuffer:model_buffers[37] offset:inner[37] atIndex:1];
+            [encoder setBuffer:next_ffn_flat_hc_buffer offset:0 atIndex:2];
+            [encoder setBuffer:next_ffn_mix_buffer offset:0 atIndex:3];
+            [encoder setThreadgroupMemoryLength:8192u atIndex:0];
+            [encoder dispatchThreadgroups:MTLSizeMake(1,1,1)
+                 threadsPerThreadgroup:MTLSizeMake(128,1,1)];
+
+            [encoder setComputePipelineState:context.hcIngressPipeline];
+            [encoder setBytes:&ffn_hc_args length:sizeof(ffn_hc_args) atIndex:0];
+            [encoder setBuffer:next_ffn_mix_buffer offset:0 atIndex:1];
+            [encoder setBuffer:model_buffers[38] offset:inner[38] atIndex:2];
+            [encoder setBuffer:model_buffers[39] offset:inner[39] atIndex:3];
+            [encoder setBuffer:next_after_attention_hc_buffer offset:0 atIndex:4];
+            [encoder setBuffer:next_ffn_split_buffer offset:0 atIndex:5];
+            [encoder setBuffer:next_ffn_cur_buffer offset:0 atIndex:6];
+            [encoder setBuffer:model_buffers[40] offset:inner[40] atIndex:7];
+            [encoder setBuffer:next_ffn_norm_buffer offset:0 atIndex:8];
+            [encoder setThreadgroupMemoryLength:(n_embd+4u+32u)*sizeof(float) atIndex:0];
+            [encoder dispatchThreadgroups:MTLSizeMake(rows,1,1)
+                 threadsPerThreadgroup:MTLSizeMake(1024,1,1)];
+
+            [encoder setComputePipelineState:context.f16PrefillPipeline];
+            [encoder setBytes:&router_mm length:sizeof(router_mm) atIndex:0];
+            [encoder setBuffer:model_buffers[41] offset:inner[41] atIndex:1];
+            [encoder setBuffer:next_ffn_norm_buffer offset:0 atIndex:2];
+            [encoder setBuffer:next_router_logits_buffer offset:0 atIndex:3];
+            [encoder setThreadgroupMemoryLength:8192u atIndex:0];
+            [encoder dispatchThreadgroups:MTLSizeMake(1,4,1)
+                 threadsPerThreadgroup:MTLSizeMake(128,1,1)];
+
+            [encoder setComputePipelineState:context.routerSoftplusBatchPipeline];
+            [encoder setBuffer:next_router_logits_buffer offset:0 atIndex:0];
+            [encoder setBuffer:next_router_probs_buffer offset:0 atIndex:1];
+            [encoder dispatchThreads:MTLSizeMake(rows*n_expert,1,1)
+                 threadsPerThreadgroup:MTLSizeMake(256,1,1)];
+            [encoder setComputePipelineState:context.routerSqrtBatchPipeline];
+            [encoder setBuffer:next_router_probs_buffer offset:0 atIndex:0];
+            [encoder setBuffer:next_router_probs_buffer offset:0 atIndex:1];
+            [encoder dispatchThreads:MTLSizeMake(rows*n_expert,1,1)
+                 threadsPerThreadgroup:MTLSizeMake(256,1,1)];
+            [encoder setComputePipelineState:context.routerHashRowsBatchPipeline];
+            [encoder setBuffer:model_buffers[42] offset:inner[42] atIndex:0];
+            [encoder setBuffer:token_buffer offset:0 atIndex:1];
+            [encoder setBuffer:next_router_selected_buffer offset:0 atIndex:2];
+            [encoder dispatchThreads:MTLSizeMake(rows,1,1)
+                 threadsPerThreadgroup:MTLSizeMake(rows,1,1)];
+            [encoder setComputePipelineState:context.routerGatherWeightsBatchPipeline];
+            [encoder setBuffer:next_router_probs_buffer offset:0 atIndex:0];
+            [encoder setBuffer:next_router_selected_buffer offset:0 atIndex:1];
+            [encoder setBuffer:next_router_weights_buffer offset:0 atIndex:2];
+            [encoder dispatchThreads:MTLSizeMake(n_used,rows,1)
+                 threadsPerThreadgroup:MTLSizeMake(n_used,1,1)];
+
+            [encoder setComputePipelineState:context.compressorSumRowsPipeline];
+            [encoder setBytes:&router_sum_args length:sizeof(router_sum_args) atIndex:0];
+            [encoder setBuffer:next_router_weights_buffer offset:0 atIndex:1];
+            [encoder setBuffer:router_weight_sums_buffer offset:0 atIndex:2];
+            [encoder setThreadgroupMemoryLength:32u*sizeof(float) atIndex:0];
+            [encoder dispatchThreadgroups:MTLSizeMake(rows,1,1)
+                 threadsPerThreadgroup:MTLSizeMake(n_used,1,1)];
+            [encoder setComputePipelineState:context.routerClampSumsBatchPipeline];
+            [encoder setBuffer:router_weight_sums_buffer offset:0 atIndex:0];
+            [encoder setBuffer:router_weight_sums_buffer offset:0 atIndex:1];
+            [encoder dispatchThreads:MTLSizeMake(rows,1,1)
+                 threadsPerThreadgroup:MTLSizeMake(rows,1,1)];
+            [encoder setComputePipelineState:context.routerDivideBatchPipeline];
+            [encoder setBuffer:next_router_weights_buffer offset:0 atIndex:0];
+            [encoder setBuffer:router_weight_sums_buffer offset:0 atIndex:1];
+            [encoder setBuffer:next_router_weights_buffer offset:0 atIndex:2];
+            [encoder dispatchThreads:MTLSizeMake(n_used,rows,1)
+                 threadsPerThreadgroup:MTLSizeMake(n_used,1,1)];
+            [encoder setComputePipelineState:context.routerScaleBatchPipeline];
+            [encoder setBuffer:next_router_weights_buffer offset:0 atIndex:0];
+            [encoder setBuffer:next_router_weights_buffer offset:0 atIndex:1];
+            [encoder dispatchThreads:MTLSizeMake(rows*n_used,1,1)
+                 threadsPerThreadgroup:MTLSizeMake(192,1,1)];
+
+            [encoder setComputePipelineState:context.routedBatchMapPipeline];
+            [encoder setBytes:&routed_map_args length:sizeof(routed_map_args) atIndex:0];
+            [encoder setBuffer:next_router_selected_buffer offset:0 atIndex:1];
+            [encoder setBuffer:routed_map_buffer offset:0 atIndex:2];
+            [encoder setBuffer:routed_map_buffer offset:routed_map_tpe_bytes atIndex:3];
+            [encoder setBuffer:routed_map_buffer offset:routed_map_work_offset atIndex:4];
+            [encoder setThreadgroupMemoryLength:n_expert*n_used*sizeof(uint16_t) atIndex:0];
+            [encoder dispatchThreadgroups:MTLSizeMake(1,1,1)
+                 threadsPerThreadgroup:MTLSizeMake(n_expert,1,1)];
+
+            [encoder setComputePipelineState:context.routedBatchPairSwigluPipeline];
+            [encoder setBytes:&routed_gate_args length:sizeof(routed_gate_args) atIndex:0];
+            [encoder setBytes:&routed_activation_args length:sizeof(routed_activation_args) atIndex:1];
+            [encoder setBuffer:model_buffers[43] offset:inner[43] atIndex:2];
+            [encoder setBuffer:model_buffers[44] offset:inner[44] atIndex:3];
+            [encoder setBuffer:next_ffn_norm_buffer offset:0 atIndex:4];
+            [encoder setBuffer:routed_map_buffer offset:0 atIndex:5];
+            [encoder setBuffer:routed_map_buffer offset:routed_map_tpe_bytes atIndex:6];
+            [encoder setBuffer:next_routed_mid_buffer offset:0 atIndex:7];
+            [encoder setBuffer:next_router_weights_buffer offset:0 atIndex:8];
+            [encoder setBuffer:routed_map_buffer offset:routed_map_work_offset atIndex:9];
+            [encoder setThreadgroupMemoryLength:16384u atIndex:0];
+            [encoder dispatchThreadgroups:MTLSizeMake(routed_map_work_cap,32,1)
+                 threadsPerThreadgroup:MTLSizeMake(128,1,1)];
+
+            [encoder setComputePipelineState:context.routedBatchDownPipeline];
+            [encoder setBytes:&routed_down_args length:sizeof(routed_down_args) atIndex:0];
+            [encoder setBuffer:model_buffers[45] offset:inner[45] atIndex:1];
+            [encoder setBuffer:next_routed_mid_buffer offset:0 atIndex:2];
+            [encoder setBuffer:routed_map_buffer offset:0 atIndex:3];
+            [encoder setBuffer:routed_map_buffer offset:routed_map_tpe_bytes atIndex:4];
+            [encoder setBuffer:routed_experts_buffer offset:0 atIndex:5];
+            [encoder setBuffer:routed_map_buffer offset:routed_map_work_offset atIndex:6];
+            [encoder setThreadgroupMemoryLength:8192u atIndex:0];
+            [encoder dispatchThreadgroups:MTLSizeMake(routed_map_work_cap,64,1)
+                 threadsPerThreadgroup:MTLSizeMake(128,1,1)];
+            [encoder setComputePipelineState:context.routedBatchSumPipeline];
+            [encoder setBytes:&routed_sum_args length:sizeof(routed_sum_args) atIndex:0];
+            [encoder setBuffer:routed_experts_buffer offset:0 atIndex:1];
+            [encoder setBuffer:next_routed_out_buffer offset:0 atIndex:2];
+            [encoder dispatchThreadgroups:MTLSizeMake(rows,1,1)
+                 threadsPerThreadgroup:MTLSizeMake(256,1,1)];
+
+    #define RUST_STAR_ENCODE_LAYER1_FFN_Q8(args, weight_index, input, output, out_width) do { \
+            [encoder setComputePipelineState:context.q8PrefillPipeline]; \
+            [encoder setBytes:&(args) length:sizeof(args) atIndex:0]; \
+            [encoder setBuffer:model_buffers[(weight_index)] offset:inner[(weight_index)] atIndex:1]; \
+            [encoder setBuffer:(input) offset:0 atIndex:2]; \
+            [encoder setBuffer:(output) offset:0 atIndex:3]; \
+            [encoder setThreadgroupMemoryLength:6144u atIndex:0]; \
+            [encoder dispatchThreadgroups:MTLSizeMake(1u,(out_width)/64u,1u) \
+                 threadsPerThreadgroup:MTLSizeMake(128,1,1)]; \
+        } while (0)
+            RUST_STAR_ENCODE_LAYER1_FFN_Q8(shared_gate_args, 46, next_ffn_norm_buffer,
+                shared_gate_buffer, ffn_mid);
+            RUST_STAR_ENCODE_LAYER1_FFN_Q8(shared_up_args, 47, next_ffn_norm_buffer,
+                shared_up_buffer, ffn_mid);
+            [encoder setComputePipelineState:context.sharedSwigluBatchPipeline];
+            [encoder setBytes:&shared_swiglu_args length:sizeof(shared_swiglu_args) atIndex:0];
+            [encoder setBuffer:shared_gate_buffer offset:0 atIndex:1];
+            [encoder setBuffer:shared_up_buffer offset:0 atIndex:2];
+            [encoder setBuffer:shared_mid_buffer offset:0 atIndex:3];
+            [encoder dispatchThreadgroups:MTLSizeMake((rows*ffn_mid+255u)/256u,1,1)
+                 threadsPerThreadgroup:MTLSizeMake(256,1,1)];
+            RUST_STAR_ENCODE_LAYER1_FFN_Q8(shared_down_args, 48, shared_mid_buffer,
+                next_shared_out_buffer, n_embd);
+    #undef RUST_STAR_ENCODE_LAYER1_FFN_Q8
+
+            [encoder setComputePipelineState:context.hcExpand4Pipeline];
+            [encoder setBytes:&ffn_hc_post_args length:sizeof(ffn_hc_post_args) atIndex:0];
+            [encoder setBuffer:next_routed_out_buffer offset:0 atIndex:1];
+            [encoder setBuffer:next_after_attention_hc_buffer offset:0 atIndex:2];
+            [encoder setBuffer:next_ffn_split_buffer offset:n_hc*sizeof(float) atIndex:3];
+            [encoder setBuffer:next_ffn_split_buffer offset:2u*n_hc*sizeof(float) atIndex:4];
+            [encoder setBuffer:next_shared_out_buffer offset:0 atIndex:5];
+            [encoder setBuffer:next_after_ffn_hc_buffer offset:0 atIndex:6];
+            [encoder dispatchThreadgroups:MTLSizeMake((rows*n_embd+255u)/256u,1,1)
+                 threadsPerThreadgroup:MTLSizeMake(256,1,1)];
+
+        }
         [encoder endEncoding];
 
         const double wall_start = monotonic_ms();
@@ -3352,6 +3881,45 @@ int rust_star_metal_run_prefill_layer0_boundary(
             memcpy(next_attn_norm, next_norm_buffer.contents, attn_bytes);
             memcpy(next_q_lora, next_q_lora_buffer.contents, q_rank_bytes);
         }
+        if (complete_layer1) {
+            memcpy(next_outputs->q_lora_norm, next_q_norm_buffer.contents,
+                q_rank_bytes);
+            memcpy(next_outputs->kv_norm, next_kv_norm_snapshot_buffer.contents,
+                kv_bytes);
+            memcpy(next_outputs->q_cur, next_q_cur_buffer.contents, q_bytes);
+            memcpy(next_outputs->kv_rope, next_kv_rope_buffer.contents, kv_bytes);
+            memcpy(next_outputs->kv_cur, next_kv_norm_buffer.contents, kv_bytes);
+            memcpy(next_outputs->attention_output,
+                next_attention_output_buffer.contents, q_bytes);
+            memcpy(next_outputs->attention_back,
+                next_attention_back_buffer.contents, q_bytes);
+            memcpy(next_outputs->attention_low,
+                next_attention_low_buffer.contents, attention_low_bytes);
+            memcpy(next_outputs->attention_out,
+                next_attention_out_buffer.contents, attention_out_bytes);
+            memcpy(next_outputs->after_attention_hc,
+                next_after_attention_hc_buffer.contents, hc_bytes);
+            memcpy(next_outputs->ffn_cur, next_ffn_cur_buffer.contents, attn_bytes);
+            memcpy(next_outputs->ffn_norm, next_ffn_norm_buffer.contents, attn_bytes);
+            memcpy(next_outputs->router_logits,
+                next_router_logits_buffer.contents, router_bytes);
+            memcpy(next_outputs->router_probs,
+                next_router_probs_buffer.contents, router_bytes);
+            memcpy(next_outputs->router_selected,
+                next_router_selected_buffer.contents, selected_bytes);
+            memcpy(next_outputs->router_weights,
+                next_router_weights_buffer.contents, selected_bytes);
+            const __fp16 *next_routed_mid_half = next_routed_mid_buffer.contents;
+            for (NSUInteger index = 0; index < rows*n_used*ffn_mid; index++) {
+                next_outputs->routed_mid[index] = (float)next_routed_mid_half[index];
+            }
+            memcpy(next_outputs->routed_out, next_routed_out_buffer.contents,
+                attn_bytes);
+            memcpy(next_outputs->shared_out, next_shared_out_buffer.contents,
+                attn_bytes);
+            memcpy(next_outputs->after_ffn_hc,
+                next_after_ffn_hc_buffer.contents, hc_bytes);
+        }
 
         uint32_t pointer_matches = 0;
         for (uint32_t index = 0; index < model_range_count; index++) {
@@ -3362,7 +3930,8 @@ int rust_star_metal_run_prefill_layer0_boundary(
         result->q_lora_elements_per_row = q_rank;
         result->kv_elements_per_row = kv_dim;
         result->q_elements_per_row = q_dim;
-        result->dispatches = continue_layer1 ? 47u : 43u;
+        result->dispatches = complete_layer1 ? 84u :
+            (continue_layer1 ? 47u : 43u);
         result->wrapped_model_ranges = model_range_count;
         result->pointer_matches = pointer_matches;
         result->position_start = position_start;

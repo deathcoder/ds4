@@ -13,6 +13,8 @@ pub const PREFILL_QKV_BOUNDARY_PROBE_SCHEMA: &str = "rust-star-prefill-qkv-bound
 pub const PREFILL_LAYER0_BOUNDARY_PROBE_SCHEMA: &str = "rust-star-prefill-layer0-boundary-probe-v5";
 pub const PREFILL_LAYERS01_BOUNDARY_PROBE_SCHEMA: &str =
     "rust-star-prefill-layers01-boundary-probe-v1";
+pub const PREFILL_LAYERS01_COMPLETE_BOUNDARY_PROBE_SCHEMA: &str =
+    "rust-star-prefill-layers01-complete-boundary-probe-v1";
 pub const INGRESS_PROBE_SCHEMA: &str = "rust-star-layer0-attention-ingress-probe-v1";
 pub const ATTENTION_SETUP_PROBE_SCHEMA: &str = "rust-star-layer0-attention-setup-probe-v1";
 pub const ROPE_KV_STORE_PROBE_SCHEMA: &str = "rust-star-layer0-rope-kv-store-probe-v1";
@@ -55,6 +57,8 @@ pub const PREFILL_ATTENTION_OUTPUT_FIXTURE_ID: &str =
 pub const PREFILL_FFN_OUTPUT_FIXTURE_ID: &str = "dwarfstar-oracle-v1-prefill-ffn-output-2048";
 pub const PREFILL_LAYER1_INGRESS_FIXTURE_ID: &str =
     "dwarfstar-oracle-v1-prefill-layer1-ingress-2048";
+pub const PREFILL_LAYER1_COMPLETE_FIXTURE_ID: &str =
+    "dwarfstar-oracle-v1-prefill-layer1-complete-2048";
 pub const PREFILL_HC_INGRESS_FIXTURE_ID: &str = "dwarfstar-oracle-v1-prefill-hc-ingress-2048";
 pub const INGRESS_FIXTURE_ID: &str = "dwarfstar-oracle-v1-layer0-pos1-attention-ingress";
 pub const ATTENTION_SETUP_FIXTURE_ID: &str = "dwarfstar-oracle-v1-layer0-pos1-qkv-setup";
@@ -227,6 +231,69 @@ const PREFILL_LAYER1_ATTN_NORM_BYTES: &[u8] = include_bytes!(
 );
 const PREFILL_LAYER1_Q_LORA_BYTES: &[u8] = include_bytes!(
     "../../fixtures/prefill-layer1-ingress-2048-v1/layer1-q-lora-final-tile.f32le.bin"
+);
+const PREFILL_LAYER1_COMPLETE_Q_NORM_BYTES: &[u8] = include_bytes!(
+    "../../fixtures/prefill-layer1-complete-2048-v1/layer1-q-lora-norm-final-tile.f32le.bin"
+);
+const PREFILL_LAYER1_COMPLETE_KV_NORM_BYTES: &[u8] = include_bytes!(
+    "../../fixtures/prefill-layer1-complete-2048-v1/layer1-kvnorm-final-tile.f32le.bin"
+);
+const PREFILL_LAYER1_COMPLETE_Q_CUR_BYTES: &[u8] = include_bytes!(
+    "../../fixtures/prefill-layer1-complete-2048-v1/layer1-qcur-final-tile.f32le.bin"
+);
+const PREFILL_LAYER1_COMPLETE_KV_ROPE_BYTES: &[u8] = include_bytes!(
+    "../../fixtures/prefill-layer1-complete-2048-v1/layer1-kvrope-final-tile.f32le.bin"
+);
+const PREFILL_LAYER1_COMPLETE_KV_CUR_BYTES: &[u8] = include_bytes!(
+    "../../fixtures/prefill-layer1-complete-2048-v1/layer1-kvcur-final-tile.f32le.bin"
+);
+const PREFILL_LAYER1_COMPLETE_KV_PREFIX_BYTES: &[u8] = include_bytes!(
+    "../../fixtures/prefill-layer1-complete-2048-v1/layer1-kv-current-prefix.f32le.bin"
+);
+const PREFILL_LAYER1_COMPLETE_KQV_OUT_BYTES: &[u8] = include_bytes!(
+    "../../fixtures/prefill-layer1-complete-2048-v1/layer1-kqv-out-final-tile.f32le.bin"
+);
+const PREFILL_LAYER1_COMPLETE_KQV_BACK_BYTES: &[u8] = include_bytes!(
+    "../../fixtures/prefill-layer1-complete-2048-v1/layer1-kqv-back-final-tile.f32le.bin"
+);
+const PREFILL_LAYER1_COMPLETE_ATTN_LOW_BYTES: &[u8] = include_bytes!(
+    "../../fixtures/prefill-layer1-complete-2048-v1/layer1-attn-low-final-tile.f32le.bin"
+);
+const PREFILL_LAYER1_COMPLETE_ATTN_OUT_BYTES: &[u8] = include_bytes!(
+    "../../fixtures/prefill-layer1-complete-2048-v1/layer1-attn-out-final-tile.f32le.bin"
+);
+const PREFILL_LAYER1_COMPLETE_HC_ATTN_POST_BYTES: &[u8] = include_bytes!(
+    "../../fixtures/prefill-layer1-complete-2048-v1/layer1-hc-attn-post-final-tile.f32le.bin"
+);
+const PREFILL_LAYER1_COMPLETE_HC_FFN_PRE_BYTES: &[u8] = include_bytes!(
+    "../../fixtures/prefill-layer1-complete-2048-v1/layer1-hc-ffn-pre-final-tile.f32le.bin"
+);
+const PREFILL_LAYER1_COMPLETE_FFN_NORM_BYTES: &[u8] = include_bytes!(
+    "../../fixtures/prefill-layer1-complete-2048-v1/layer1-ffn-norm-final-tile.f32le.bin"
+);
+const PREFILL_LAYER1_COMPLETE_ROUTER_LOGITS_BYTES: &[u8] = include_bytes!(
+    "../../fixtures/prefill-layer1-complete-2048-v1/layer1-ffn-moe-logits-final-tile.f32le.bin"
+);
+const PREFILL_LAYER1_COMPLETE_ROUTER_PROBS_BYTES: &[u8] = include_bytes!(
+    "../../fixtures/prefill-layer1-complete-2048-v1/layer1-ffn-moe-probs-final-tile.f32le.bin"
+);
+const PREFILL_LAYER1_COMPLETE_SELECTED_BYTES: &[u8] = include_bytes!(
+    "../../fixtures/prefill-layer1-complete-2048-v1/layer1-ffn-moe-topk-final-tile.i32le.bin"
+);
+const PREFILL_LAYER1_COMPLETE_ROUTER_WEIGHTS_BYTES: &[u8] = include_bytes!(
+    "../../fixtures/prefill-layer1-complete-2048-v1/layer1-ffn-moe-weights-scaled-final-tile.f32le.bin"
+);
+const PREFILL_LAYER1_COMPLETE_ROUTED_MID_BYTES: &[u8] = include_bytes!(
+    "../../fixtures/prefill-layer1-complete-2048-v1/layer1-ffn-moe-weighted-swiglu-final-tile.f32le.bin"
+);
+const PREFILL_LAYER1_COMPLETE_ROUTED_OUT_BYTES: &[u8] = include_bytes!(
+    "../../fixtures/prefill-layer1-complete-2048-v1/layer1-ffn-moe-out-final-tile.f32le.bin"
+);
+const PREFILL_LAYER1_COMPLETE_SHARED_OUT_BYTES: &[u8] = include_bytes!(
+    "../../fixtures/prefill-layer1-complete-2048-v1/layer1-ffn-shexp-final-tile.f32le.bin"
+);
+const PREFILL_LAYER1_COMPLETE_HC_FFN_POST_BYTES: &[u8] = include_bytes!(
+    "../../fixtures/prefill-layer1-complete-2048-v1/layer1-hc-ffn-post-final-tile.f32le.bin"
 );
 const PREFILL_HC_TOKEN_IDS_BYTES: &[u8] =
     include_bytes!("../../fixtures/prefill-hc-ingress-2048-v1/token-ids-final-tile.i32le.bin");
@@ -743,6 +810,13 @@ pub struct PrefillLayers01BoundaryProbeReport {
     pub layer0: PrefillLayer0BoundaryProbeReport,
     pub layer1_fixture_id: &'static str,
     pub checksums: [u64; 3],
+}
+
+#[derive(Clone, Debug)]
+pub struct PrefillLayers01CompleteBoundaryProbeReport {
+    pub layers01: PrefillLayers01BoundaryProbeReport,
+    pub complete_fixture_id: &'static str,
+    pub checksums: [u64; 20],
 }
 
 #[derive(Clone, Debug)]
@@ -2385,6 +2459,64 @@ pub fn write_prefill_layers01_boundary_probe_json<W: Write>(
     Ok(())
 }
 
+pub fn write_prefill_layers01_complete_boundary_probe_json<W: Write>(
+    output: &mut W,
+    report: &PrefillLayers01CompleteBoundaryProbeReport,
+) -> Result<()> {
+    let layer0 = &report.layers01.layer0;
+    write!(
+        output,
+        "{{\n  \"schema\": \"{PREFILL_LAYERS01_COMPLETE_BOUNDARY_PROBE_SCHEMA}\",\n  \"fixtures\": ["
+    )?;
+    for (index, fixture) in [
+        layer0.ingress_fixture_id,
+        layer0.qkv_fixture_id,
+        layer0.kv_state_fixture_id,
+        layer0.attention_fixture_id,
+        layer0.attention_output_fixture_id,
+        layer0.ffn_output_fixture_id,
+        report.layers01.layer1_fixture_id,
+        report.complete_fixture_id,
+    ]
+    .iter()
+    .enumerate()
+    {
+        if index != 0 {
+            output.write_all(b", ")?;
+        }
+        crate::artifact::write_json_string(output, fixture)?;
+    }
+    write!(
+        output,
+        "],\n  \"shape\": {{\n    \"rows\": {},\n    \"position_start\": {},\n    \"position_end\": {}\n  }},\n  \"input_boundary\": \"token_ids\",\n  \"output_boundary\": \"layer1_hc_ffn_post\",\n  \"schedule\": {{\n    \"dispatches\": {},\n    \"layer0_dispatches\": 43,\n    \"layer1_dispatches\": 41,\n    \"attention_kv_rows\": 2048,\n    \"attention_window\": 128\n  }},\n  \"mapping\": {{\n    \"wrapped_model_ranges\": {},\n    \"pointer_matches\": {}\n  }},\n  \"retained\": {{\n    \"produced_fp32_values\": 12878208,\n    \"selected_expert_ids\": 384\n  }},\n  \"timing\": {{\n    \"wall_ms\": {:.6},\n    \"gpu_ms\": {:.6}\n  }},\n  \"layer1_ingress_checksums\": [",
+        layer0.rows,
+        layer0.position_start,
+        layer0.position_start + layer0.rows as u32 - 1,
+        layer0.dispatches,
+        layer0.wrapped_model_ranges,
+        layer0.pointer_matches,
+        layer0.wall_ms,
+        layer0.gpu_ms,
+    )?;
+    for (index, checksum) in report.layers01.checksums.iter().enumerate() {
+        if index != 0 {
+            output.write_all(b", ")?;
+        }
+        write!(output, "{checksum}")?;
+    }
+    output.write_all(b"],\n  \"layer1_completion_checksums\": [")?;
+    for (index, checksum) in report.checksums.iter().enumerate() {
+        if index != 0 {
+            output.write_all(b", ")?;
+        }
+        write!(output, "{checksum}")?;
+    }
+    output.write_all(
+        b"],\n  \"c0_bitwise_match\": true,\n  \"continuous_command_buffer\": true,\n  \"direct_hc_handoff\": true,\n  \"native_batch_schedule\": true,\n  \"full_layer1_claim\": true,\n  \"full_prefill_claim\": false\n}\n",
+    )?;
+    Ok(())
+}
+
 fn validate_embedding_inputs(
     model: &MappedModel,
     tensor: &TensorInfo,
@@ -2969,6 +3101,111 @@ fn prefill_layer1_ingress_fixture() -> Result<[Vec<f32>; 3]> {
         ));
     }
     Ok(tensors)
+}
+
+fn prefill_layer1_complete_fixture() -> Result<([Vec<f32>; 20], Vec<i32>)> {
+    let tensors = [
+        decode_f32_fixture(PREFILL_LAYER1_COMPLETE_Q_NORM_BYTES, "layer-1 Q-Lora norm")?,
+        decode_f32_fixture(PREFILL_LAYER1_COMPLETE_KV_NORM_BYTES, "layer-1 KV norm")?,
+        decode_f32_fixture(PREFILL_LAYER1_COMPLETE_Q_CUR_BYTES, "layer-1 Q current")?,
+        decode_f32_fixture(PREFILL_LAYER1_COMPLETE_KV_ROPE_BYTES, "layer-1 KV RoPE")?,
+        decode_f32_fixture(PREFILL_LAYER1_COMPLETE_KV_CUR_BYTES, "layer-1 KV current")?,
+        decode_f32_fixture(PREFILL_LAYER1_COMPLETE_KV_PREFIX_BYTES, "layer-1 KV prefix")?,
+        decode_f32_fixture(
+            PREFILL_LAYER1_COMPLETE_KQV_OUT_BYTES,
+            "layer-1 attention output",
+        )?,
+        decode_f32_fixture(
+            PREFILL_LAYER1_COMPLETE_KQV_BACK_BYTES,
+            "layer-1 inverse-RoPE attention",
+        )?,
+        decode_f32_fixture(
+            PREFILL_LAYER1_COMPLETE_ATTN_LOW_BYTES,
+            "layer-1 attention low",
+        )?,
+        decode_f32_fixture(
+            PREFILL_LAYER1_COMPLETE_ATTN_OUT_BYTES,
+            "layer-1 projected attention",
+        )?,
+        decode_f32_fixture(
+            PREFILL_LAYER1_COMPLETE_HC_ATTN_POST_BYTES,
+            "layer-1 attention HC post",
+        )?,
+        decode_f32_fixture(
+            PREFILL_LAYER1_COMPLETE_HC_FFN_PRE_BYTES,
+            "layer-1 FFN current",
+        )?,
+        decode_f32_fixture(PREFILL_LAYER1_COMPLETE_FFN_NORM_BYTES, "layer-1 FFN norm")?,
+        decode_f32_fixture(
+            PREFILL_LAYER1_COMPLETE_ROUTER_LOGITS_BYTES,
+            "layer-1 router logits",
+        )?,
+        decode_f32_fixture(
+            PREFILL_LAYER1_COMPLETE_ROUTER_PROBS_BYTES,
+            "layer-1 router probabilities",
+        )?,
+        decode_f32_fixture(
+            PREFILL_LAYER1_COMPLETE_ROUTER_WEIGHTS_BYTES,
+            "layer-1 router weights",
+        )?,
+        decode_f32_fixture(
+            PREFILL_LAYER1_COMPLETE_ROUTED_MID_BYTES,
+            "layer-1 routed mid",
+        )?,
+        decode_f32_fixture(
+            PREFILL_LAYER1_COMPLETE_ROUTED_OUT_BYTES,
+            "layer-1 routed output",
+        )?,
+        decode_f32_fixture(
+            PREFILL_LAYER1_COMPLETE_SHARED_OUT_BYTES,
+            "layer-1 shared output",
+        )?,
+        decode_f32_fixture(
+            PREFILL_LAYER1_COMPLETE_HC_FFN_POST_BYTES,
+            "layer-1 FFN HC post",
+        )?,
+    ];
+    let expected = [
+        32 * 1024,
+        32 * 512,
+        32 * 32768,
+        32 * 512,
+        32 * 512,
+        2016 * 512,
+        32 * 64 * 512,
+        32 * 64 * 512,
+        32 * 8192,
+        32 * 4096,
+        32 * 16384,
+        32 * 4096,
+        32 * 4096,
+        32 * 256,
+        32 * 256,
+        32 * 6,
+        32 * 6 * 2048,
+        32 * 4096,
+        32 * 4096,
+        32 * 16384,
+    ];
+    if tensors
+        .iter()
+        .zip(expected)
+        .any(|(tensor, elements)| tensor.len() != elements)
+    {
+        return Err(Error::invalid(
+            "prefill complete layer-1 fixture dimensions are invalid",
+        ));
+    }
+    let selected = decode_i32_fixture(
+        PREFILL_LAYER1_COMPLETE_SELECTED_BYTES,
+        "layer-1 selected experts",
+    )?;
+    if selected.len() != 32 * 6 {
+        return Err(Error::invalid(
+            "prefill complete layer-1 selected-expert dimensions are invalid",
+        ));
+    }
+    Ok((tensors, selected))
 }
 
 fn prefill_hc_ingress_fixture() -> Result<(Vec<u32>, Vec<f32>, Vec<f32>)> {
@@ -4094,6 +4331,7 @@ mod imp {
     }
 
     #[repr(C)]
+    #[derive(Clone, Copy)]
     struct RawPrefillQkvWeights {
         q_a_offset: u64,
         q_a_bytes: u64,
@@ -4124,6 +4362,7 @@ mod imp {
     }
 
     #[repr(C)]
+    #[derive(Clone, Copy)]
     struct RawPrefillFfnWeights {
         hc_fn_offset: u64,
         hc_fn_bytes: u64,
@@ -4152,6 +4391,7 @@ mod imp {
     }
 
     #[repr(C)]
+    #[derive(Clone, Copy)]
     struct RawPrefillAttentionIngressWeights {
         hc_fn_offset: u64,
         hc_fn_bytes: u64,
@@ -4163,6 +4403,51 @@ mod imp {
         norm_bytes: u64,
         q_a_offset: u64,
         q_a_bytes: u64,
+    }
+
+    #[repr(C)]
+    struct RawPrefillLayerWeights {
+        ingress: RawPrefillAttentionIngressWeights,
+        q_a_norm_offset: u64,
+        q_a_norm_bytes: u64,
+        kv_offset: u64,
+        kv_bytes: u64,
+        kv_norm_offset: u64,
+        kv_norm_bytes: u64,
+        q_b_offset: u64,
+        q_b_bytes: u64,
+        attn_sinks_offset: u64,
+        attn_sinks_bytes: u64,
+        attn_output_a_offset: u64,
+        attn_output_a_bytes: u64,
+        attn_output_b_offset: u64,
+        attn_output_b_bytes: u64,
+        ffn: RawPrefillFfnWeights,
+    }
+
+    #[repr(C)]
+    struct RawPrefillLayerOutputs {
+        kv_prefix: *const f32,
+        q_lora_norm: *mut f32,
+        kv_norm: *mut f32,
+        q_cur: *mut f32,
+        kv_rope: *mut f32,
+        kv_cur: *mut f32,
+        attention_output: *mut f32,
+        attention_back: *mut f32,
+        attention_low: *mut f32,
+        attention_out: *mut f32,
+        after_attention_hc: *mut f32,
+        ffn_cur: *mut f32,
+        ffn_norm: *mut f32,
+        router_logits: *mut f32,
+        router_probs: *mut f32,
+        router_selected: *mut i32,
+        router_weights: *mut f32,
+        routed_mid: *mut f32,
+        routed_out: *mut f32,
+        shared_out: *mut f32,
+        after_ffn_hc: *mut f32,
     }
 
     #[repr(C)]
@@ -4401,6 +4686,8 @@ mod imp {
             model_bytes: u64,
             weights: *const RawPrefillLayer0Weights,
             next_ingress: *const RawPrefillAttentionIngressWeights,
+            next_layer: *const RawPrefillLayerWeights,
+            next_outputs: *const RawPrefillLayerOutputs,
             n_vocab: u32,
             rows: u32,
             position_start: u32,
@@ -5611,8 +5898,17 @@ mod imp {
 
     fn run_prefill_boundary_probe(
         model: &MappedModel,
-        include_layer1: bool,
-    ) -> Result<(PrefillLayer0BoundaryProbeReport, Option<[u64; 3]>)> {
+        layer1_mode: u8,
+    ) -> Result<(
+        PrefillLayer0BoundaryProbeReport,
+        Option<[u64; 3]>,
+        Option<[u64; 20]>,
+    )> {
+        let include_layer1 = layer1_mode != 0;
+        let complete_layer1 = layer1_mode == 2;
+        if layer1_mode > 2 {
+            return Err(Error::invalid("invalid prefill layer-1 continuation mode"));
+        }
         let embedding = exact_tensor(model, "token_embd.weight", 1, &[4096, 129280])?;
         let hc_fn = exact_tensor(model, "blk.0.hc_attn_fn.weight", 1, &[16384, 24])?;
         let hc_scale = exact_tensor(model, "blk.0.hc_attn_scale.weight", 0, &[3])?;
@@ -5663,6 +5959,11 @@ mod imp {
         let (expected_ffn, expected_selected) = prefill_ffn_output_fixture()?;
         let expected_layer1 = if include_layer1 {
             Some(prefill_layer1_ingress_fixture()?)
+        } else {
+            None
+        };
+        let expected_complete_layer1 = if complete_layer1 {
+            Some(prefill_layer1_complete_fixture()?)
         } else {
             None
         };
@@ -5749,6 +6050,78 @@ mod imp {
                         q_a_bytes: q_a.bytes,
                     },
                 );
+        let raw_complete_layer1_weights = if complete_layer1 {
+            let q_a_norm = exact_tensor(model, "blk.1.attn_q_a_norm.weight", 0, &[1024])?;
+            let kv = exact_tensor(model, "blk.1.attn_kv.weight", 8, &[4096, 512])?;
+            let kv_norm = exact_tensor(model, "blk.1.attn_kv_a_norm.weight", 0, &[512])?;
+            let q_b = exact_tensor(model, "blk.1.attn_q_b.weight", 8, &[1024, 32768])?;
+            let sinks = exact_tensor(model, "blk.1.attn_sinks.weight", 0, &[64])?;
+            let output_a = exact_tensor(model, "blk.1.attn_output_a.weight", 8, &[4096, 8192])?;
+            let output_b = exact_tensor(model, "blk.1.attn_output_b.weight", 8, &[8192, 4096])?;
+            let ffn_hc_fn = exact_tensor(model, "blk.1.hc_ffn_fn.weight", 1, &[16384, 24])?;
+            let ffn_hc_scale = exact_tensor(model, "blk.1.hc_ffn_scale.weight", 0, &[3])?;
+            let ffn_hc_base = exact_tensor(model, "blk.1.hc_ffn_base.weight", 0, &[24])?;
+            let ffn_norm = exact_tensor(model, "blk.1.ffn_norm.weight", 0, &[4096])?;
+            let router_gate = exact_tensor(model, "blk.1.ffn_gate_inp.weight", 1, &[4096, 256])?;
+            let router_hash =
+                exact_tensor(model, "blk.1.ffn_gate_tid2eid.weight", 26, &[6, 129280])?;
+            let routed_gate =
+                exact_tensor(model, "blk.1.ffn_gate_exps.weight", 16, &[4096, 2048, 256])?;
+            let routed_up =
+                exact_tensor(model, "blk.1.ffn_up_exps.weight", 16, &[4096, 2048, 256])?;
+            let routed_down =
+                exact_tensor(model, "blk.1.ffn_down_exps.weight", 10, &[2048, 4096, 256])?;
+            let shared_gate = exact_tensor(model, "blk.1.ffn_gate_shexp.weight", 8, &[4096, 2048])?;
+            let shared_up = exact_tensor(model, "blk.1.ffn_up_shexp.weight", 8, &[4096, 2048])?;
+            let shared_down = exact_tensor(model, "blk.1.ffn_down_shexp.weight", 8, &[2048, 4096])?;
+            Some(RawPrefillLayerWeights {
+                ingress: raw_layer1_weights.ok_or_else(|| {
+                    Error::invalid("complete layer-1 continuation omitted ingress weights")
+                })?,
+                q_a_norm_offset: q_a_norm.absolute_offset,
+                q_a_norm_bytes: q_a_norm.bytes,
+                kv_offset: kv.absolute_offset,
+                kv_bytes: kv.bytes,
+                kv_norm_offset: kv_norm.absolute_offset,
+                kv_norm_bytes: kv_norm.bytes,
+                q_b_offset: q_b.absolute_offset,
+                q_b_bytes: q_b.bytes,
+                attn_sinks_offset: sinks.absolute_offset,
+                attn_sinks_bytes: sinks.bytes,
+                attn_output_a_offset: output_a.absolute_offset,
+                attn_output_a_bytes: output_a.bytes,
+                attn_output_b_offset: output_b.absolute_offset,
+                attn_output_b_bytes: output_b.bytes,
+                ffn: RawPrefillFfnWeights {
+                    hc_fn_offset: ffn_hc_fn.absolute_offset,
+                    hc_fn_bytes: ffn_hc_fn.bytes,
+                    hc_scale_offset: ffn_hc_scale.absolute_offset,
+                    hc_scale_bytes: ffn_hc_scale.bytes,
+                    hc_base_offset: ffn_hc_base.absolute_offset,
+                    hc_base_bytes: ffn_hc_base.bytes,
+                    norm_offset: ffn_norm.absolute_offset,
+                    norm_bytes: ffn_norm.bytes,
+                    router_gate_offset: router_gate.absolute_offset,
+                    router_gate_bytes: router_gate.bytes,
+                    router_hash_offset: router_hash.absolute_offset,
+                    router_hash_bytes: router_hash.bytes,
+                    routed_gate_offset: routed_gate.absolute_offset,
+                    routed_gate_bytes: routed_gate.bytes,
+                    routed_up_offset: routed_up.absolute_offset,
+                    routed_up_bytes: routed_up.bytes,
+                    routed_down_offset: routed_down.absolute_offset,
+                    routed_down_bytes: routed_down.bytes,
+                    shared_gate_offset: shared_gate.absolute_offset,
+                    shared_gate_bytes: shared_gate.bytes,
+                    shared_up_offset: shared_up.absolute_offset,
+                    shared_up_bytes: shared_up.bytes,
+                    shared_down_offset: shared_down.absolute_offset,
+                    shared_down_bytes: shared_down.bytes,
+                },
+            })
+        } else {
+            None
+        };
         let mut actual_collapsed = vec![0.0_f32; expected_collapsed.len()];
         let mut actual_attn_norm = vec![0.0_f32; expected_attn_norm.len()];
         let mut actual_q = vec![0.0_f32; expected_q.len()];
@@ -5794,8 +6167,56 @@ mod imp {
                 .as_ref()
                 .map_or(0, |tensors| tensors[2].len())
         ];
+        let mut actual_complete_layer1: Vec<Vec<f32>> = expected_complete_layer1
+            .as_ref()
+            .map(|(tensors, _)| {
+                tensors
+                    .iter()
+                    .enumerate()
+                    .map(|(index, tensor)| {
+                        if index == 5 {
+                            Vec::new()
+                        } else {
+                            vec![0.0_f32; tensor.len()]
+                        }
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+        let mut actual_complete_selected = expected_complete_layer1
+            .as_ref()
+            .map(|(_, selected)| vec![0_i32; selected.len()])
+            .unwrap_or_default();
         let mut expected_full_kv = expected_kv_prefix.clone();
         expected_full_kv.extend_from_slice(&expected_kv_cur);
+        let raw_complete_layer1_outputs =
+            if let Some((expected, _)) = expected_complete_layer1.as_ref() {
+                Some(RawPrefillLayerOutputs {
+                    kv_prefix: expected[5].as_ptr(),
+                    q_lora_norm: actual_complete_layer1[0].as_mut_ptr(),
+                    kv_norm: actual_complete_layer1[1].as_mut_ptr(),
+                    q_cur: actual_complete_layer1[2].as_mut_ptr(),
+                    kv_rope: actual_complete_layer1[3].as_mut_ptr(),
+                    kv_cur: actual_complete_layer1[4].as_mut_ptr(),
+                    attention_output: actual_complete_layer1[6].as_mut_ptr(),
+                    attention_back: actual_complete_layer1[7].as_mut_ptr(),
+                    attention_low: actual_complete_layer1[8].as_mut_ptr(),
+                    attention_out: actual_complete_layer1[9].as_mut_ptr(),
+                    after_attention_hc: actual_complete_layer1[10].as_mut_ptr(),
+                    ffn_cur: actual_complete_layer1[11].as_mut_ptr(),
+                    ffn_norm: actual_complete_layer1[12].as_mut_ptr(),
+                    router_logits: actual_complete_layer1[13].as_mut_ptr(),
+                    router_probs: actual_complete_layer1[14].as_mut_ptr(),
+                    router_selected: actual_complete_selected.as_mut_ptr(),
+                    router_weights: actual_complete_layer1[15].as_mut_ptr(),
+                    routed_mid: actual_complete_layer1[16].as_mut_ptr(),
+                    routed_out: actual_complete_layer1[17].as_mut_ptr(),
+                    shared_out: actual_complete_layer1[18].as_mut_ptr(),
+                    after_ffn_hc: actual_complete_layer1[19].as_mut_ptr(),
+                })
+            } else {
+                None
+            };
 
         let mut error = [0 as c_char; ERROR_BYTES];
         let mut pointer = ptr::null_mut();
@@ -5816,9 +6237,19 @@ mod imp {
                 model.mapping_pointer(),
                 model.bytes(),
                 &weights,
-                raw_layer1_weights
+                if complete_layer1 {
+                    ptr::null()
+                } else {
+                    raw_layer1_weights
+                        .as_ref()
+                        .map_or(ptr::null(), |weights| weights as *const _)
+                },
+                raw_complete_layer1_weights
                     .as_ref()
                     .map_or(ptr::null(), |weights| weights as *const _),
+                raw_complete_layer1_outputs
+                    .as_ref()
+                    .map_or(ptr::null(), |outputs| outputs as *const _),
                 129280,
                 32,
                 2016,
@@ -5877,8 +6308,20 @@ mod imp {
                 error_text(&error)
             )));
         }
-        let expected_dispatches = if include_layer1 { 47 } else { 43 };
-        let expected_model_ranges = if include_layer1 { 30 } else { 25 };
+        let expected_dispatches = if complete_layer1 {
+            84
+        } else if include_layer1 {
+            47
+        } else {
+            43
+        };
+        let expected_model_ranges = if complete_layer1 {
+            49
+        } else if include_layer1 {
+            30
+        } else {
+            25
+        };
         if raw.rows != 32
             || raw.position_start != 2016
             || raw.input_elements_per_row != 4096
@@ -6069,6 +6512,83 @@ mod imp {
         } else {
             None
         };
+        let complete_layer1_checksums = if let Some((expected, expected_selected)) =
+            expected_complete_layer1.as_ref()
+        {
+            let labels = [
+                "q_lora_norm",
+                "KVnorm",
+                "Qcur",
+                "KVrope",
+                "KVcur",
+                "kv_prefix_input",
+                "kqv_out",
+                "kqv_back",
+                "attn_low",
+                "attn_out",
+                "hc_attn_post",
+                "hc_ffn_pre",
+                "ffn_norm",
+                "ffn_moe_logits",
+                "ffn_moe_probs",
+                "ffn_moe_weights_scaled",
+                "ffn_moe_weighted_swiglu",
+                "ffn_moe_out",
+                "ffn_shexp",
+                "hc_ffn_post",
+            ];
+            for index in (0..expected.len()).filter(|index| *index != 5) {
+                for (element, (actual, expected)) in actual_complete_layer1[index]
+                    .iter()
+                    .zip(&expected[index])
+                    .enumerate()
+                {
+                    if actual.to_bits() != expected.to_bits() {
+                        return Err(Error::invalid(format!(
+                            "prefill complete layer-1 C0 mismatch in {}[{element}]: actual={:#010x} expected={:#010x}",
+                            labels[index],
+                            actual.to_bits(),
+                            expected.to_bits()
+                        )));
+                    }
+                }
+            }
+            for (index, (actual, expected)) in actual_complete_selected
+                .iter()
+                .zip(expected_selected)
+                .enumerate()
+            {
+                if actual != expected {
+                    return Err(Error::invalid(format!(
+                        "prefill complete layer-1 C0 mismatch in ffn_moe_topk[{index}]: actual={actual} expected={expected}"
+                    )));
+                }
+            }
+            Some([
+                checksum_f32(&actual_complete_layer1[0]),
+                checksum_f32(&actual_complete_layer1[1]),
+                checksum_f32(&actual_complete_layer1[2]),
+                checksum_f32(&actual_complete_layer1[3]),
+                checksum_f32(&actual_complete_layer1[4]),
+                checksum_f32(&actual_complete_layer1[6]),
+                checksum_f32(&actual_complete_layer1[7]),
+                checksum_f32(&actual_complete_layer1[8]),
+                checksum_f32(&actual_complete_layer1[9]),
+                checksum_f32(&actual_complete_layer1[10]),
+                checksum_f32(&actual_complete_layer1[11]),
+                checksum_f32(&actual_complete_layer1[12]),
+                checksum_f32(&actual_complete_layer1[13]),
+                checksum_f32(&actual_complete_layer1[14]),
+                checksum_i32(&actual_complete_selected),
+                checksum_f32(&actual_complete_layer1[15]),
+                checksum_f32(&actual_complete_layer1[16]),
+                checksum_f32(&actual_complete_layer1[17]),
+                checksum_f32(&actual_complete_layer1[18]),
+                checksum_f32(&actual_complete_layer1[19]),
+            ])
+        } else {
+            None
+        };
         for (index, value) in actual_raw_cache[..96 * 512].iter().enumerate() {
             if value.to_bits() != (-12345.5_f32).to_bits() {
                 return Err(Error::invalid(format!(
@@ -6139,26 +6659,47 @@ mod imp {
                 checksum_f32(&actual_ffn_hc_post),
             ],
         };
-        Ok((layer0, layer1_checksums))
+        Ok((layer0, layer1_checksums, complete_layer1_checksums))
     }
 
     pub fn run_prefill_layer0_boundary_probe(
         model: &MappedModel,
     ) -> Result<PrefillLayer0BoundaryProbeReport> {
-        let (report, layer1) = run_prefill_boundary_probe(model, false)?;
+        let (report, layer1, complete) = run_prefill_boundary_probe(model, 0)?;
         debug_assert!(layer1.is_none());
+        debug_assert!(complete.is_none());
         Ok(report)
     }
 
     pub fn run_prefill_layers01_boundary_probe(
         model: &MappedModel,
     ) -> Result<PrefillLayers01BoundaryProbeReport> {
-        let (layer0, layer1) = run_prefill_boundary_probe(model, true)?;
+        let (layer0, layer1, complete) = run_prefill_boundary_probe(model, 1)?;
+        debug_assert!(complete.is_none());
         Ok(PrefillLayers01BoundaryProbeReport {
             layer0,
             layer1_fixture_id: PREFILL_LAYER1_INGRESS_FIXTURE_ID,
             checksums: layer1.ok_or_else(|| {
                 Error::invalid("prefill layers-0/1 boundary omitted layer-1 checksums")
+            })?,
+        })
+    }
+
+    pub fn run_prefill_layers01_complete_boundary_probe(
+        model: &MappedModel,
+    ) -> Result<PrefillLayers01CompleteBoundaryProbeReport> {
+        let (layer0, layer1, complete) = run_prefill_boundary_probe(model, 2)?;
+        Ok(PrefillLayers01CompleteBoundaryProbeReport {
+            layers01: PrefillLayers01BoundaryProbeReport {
+                layer0,
+                layer1_fixture_id: PREFILL_LAYER1_INGRESS_FIXTURE_ID,
+                checksums: layer1.ok_or_else(|| {
+                    Error::invalid("complete prefill boundary omitted layer-1 ingress checksums")
+                })?,
+            },
+            complete_fixture_id: PREFILL_LAYER1_COMPLETE_FIXTURE_ID,
+            checksums: complete.ok_or_else(|| {
+                Error::invalid("complete prefill boundary omitted layer-1 completion checksums")
             })?,
         })
     }
@@ -9015,6 +9556,18 @@ mod imp {
         ))
     }
 
+    pub fn run_prefill_layers01_complete_boundary_probe(
+        model: &MappedModel,
+    ) -> Result<PrefillLayers01CompleteBoundaryProbeReport> {
+        let _ = prefill_layer1_ingress_fixture()?;
+        let _ = prefill_layer1_complete_fixture()?;
+        let _ = exact_tensor(model, "blk.1.hc_attn_fn.weight", 1, &[16384, 24])?;
+        let _ = exact_tensor(model, "blk.1.ffn_down_shexp.weight", 8, &[2048, 4096])?;
+        Err(Error::invalid(
+            "the complete Metal prefill layers-0/1 boundary probe is available only on macOS",
+        ))
+    }
+
     pub fn run_prefill_layers01_boundary_probe(
         model: &MappedModel,
     ) -> Result<PrefillLayers01BoundaryProbeReport> {
@@ -9372,9 +9925,10 @@ pub use imp::{
     run_layers0123_probe, run_layers012_chained_probe, run_layers012_probe, run_layers01_probe,
     run_layers0_to_42_decode_probe, run_moe_output_probe, run_position127_decoder_probe,
     run_prefill_frontier_probe, run_prefill_layer0_boundary_probe,
-    run_prefill_layers01_boundary_probe, run_prefill_q8_boundary_probe,
-    run_prefill_qkv_boundary_probe, run_probe, run_q8_projection_probe,
-    run_ratio128_compressor_replay_probe, run_rope_kv_store_probe, LayerExecutor,
+    run_prefill_layers01_boundary_probe, run_prefill_layers01_complete_boundary_probe,
+    run_prefill_q8_boundary_probe, run_prefill_qkv_boundary_probe, run_probe,
+    run_q8_projection_probe, run_ratio128_compressor_replay_probe, run_rope_kv_store_probe,
+    LayerExecutor,
 };
 
 #[cfg(test)]
@@ -9539,6 +10093,18 @@ mod tests {
             layer0,
             layer1_fixture_id: PREFILL_LAYER1_INGRESS_FIXTURE_ID,
             checksums: [39, 40, 41],
+        }
+    }
+
+    fn prefill_layers01_complete_boundary_report() -> PrefillLayers01CompleteBoundaryProbeReport {
+        let mut layers01 = prefill_layers01_boundary_report();
+        layers01.layer0.dispatches = 84;
+        layers01.layer0.wrapped_model_ranges = 49;
+        layers01.layer0.pointer_matches = 49;
+        PrefillLayers01CompleteBoundaryProbeReport {
+            layers01,
+            complete_fixture_id: PREFILL_LAYER1_COMPLETE_FIXTURE_ID,
+            checksums: [42; 20],
         }
     }
 
@@ -10736,6 +11302,26 @@ mod tests {
     }
 
     #[test]
+    fn writes_stable_prefill_layers01_complete_boundary_probe_json() {
+        let mut output = Vec::new();
+        write_prefill_layers01_complete_boundary_probe_json(
+            &mut output,
+            &prefill_layers01_complete_boundary_report(),
+        )
+        .unwrap();
+        let text = String::from_utf8(output).unwrap();
+        assert!(text.contains(&format!(
+            "\"schema\": \"{PREFILL_LAYERS01_COMPLETE_BOUNDARY_PROBE_SCHEMA}\""
+        )));
+        assert!(text.contains("\"output_boundary\": \"layer1_hc_ffn_post\""));
+        assert!(text.contains("\"dispatches\": 84"));
+        assert!(text.contains("\"wrapped_model_ranges\": 49"));
+        assert!(text.contains("\"produced_fp32_values\": 12878208"));
+        assert!(text.contains("\"full_layer1_claim\": true"));
+        assert!(text.contains("\"full_prefill_claim\": false"));
+    }
+
+    #[test]
     fn writes_stable_ratio128_compressor_replay_json() {
         let mut output = Vec::new();
         write_ratio128_compressor_replay_probe_json(&mut output, &ratio128_compressor_report())
@@ -10936,6 +11522,20 @@ mod tests {
             .chain(&norm)
             .chain(&q_lora)
             .all(|value| value.is_finite()));
+    }
+
+    #[test]
+    fn prefill_layer1_complete_fixture_has_target_shapes() {
+        let (tensors, selected) = prefill_layer1_complete_fixture().unwrap();
+        assert_eq!(tensors[0].len(), 32 * 1024);
+        assert_eq!(tensors[2].len(), 32 * 32768);
+        assert_eq!(tensors[5].len(), 2016 * 512);
+        assert_eq!(tensors[6].len(), 32 * 64 * 512);
+        assert_eq!(tensors[10].len(), 32 * 16384);
+        assert_eq!(tensors[16].len(), 32 * 6 * 2048);
+        assert_eq!(tensors[19].len(), 32 * 16384);
+        assert_eq!(selected.len(), 32 * 6);
+        assert!(tensors.iter().flatten().all(|value| value.is_finite()));
     }
 
     #[test]
