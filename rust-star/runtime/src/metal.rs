@@ -10,6 +10,7 @@ pub const EMBEDDING_PROBE_SCHEMA: &str = "rust-star-f16-embedding-probe-v1";
 pub const PROJECTION_PROBE_SCHEMA: &str = "rust-star-q8-0-projection-probe-v1";
 pub const PREFILL_Q8_BOUNDARY_PROBE_SCHEMA: &str = "rust-star-prefill-q8-boundary-probe-v1";
 pub const PREFILL_QKV_BOUNDARY_PROBE_SCHEMA: &str = "rust-star-prefill-qkv-boundary-probe-v1";
+pub const PREFILL_LAYER0_BOUNDARY_PROBE_SCHEMA: &str = "rust-star-prefill-layer0-boundary-probe-v1";
 pub const INGRESS_PROBE_SCHEMA: &str = "rust-star-layer0-attention-ingress-probe-v1";
 pub const ATTENTION_SETUP_PROBE_SCHEMA: &str = "rust-star-layer0-attention-setup-probe-v1";
 pub const ROPE_KV_STORE_PROBE_SCHEMA: &str = "rust-star-layer0-rope-kv-store-probe-v1";
@@ -44,6 +45,7 @@ pub const RATIO128_COMPRESSOR_REPLAY_PROBE_SCHEMA: &str =
 pub const PROJECTION_FIXTURE_ID: &str = "dwarfstar-oracle-v1-layer0-pos1-attn-q-a";
 pub const PREFILL_Q8_BOUNDARY_FIXTURE_ID: &str = "dwarfstar-oracle-v1-prefill-q8-boundary-2048";
 pub const PREFILL_QKV_BOUNDARY_FIXTURE_ID: &str = "dwarfstar-oracle-v1-prefill-qkv-boundary-2048";
+pub const PREFILL_HC_INGRESS_FIXTURE_ID: &str = "dwarfstar-oracle-v1-prefill-hc-ingress-2048";
 pub const INGRESS_FIXTURE_ID: &str = "dwarfstar-oracle-v1-layer0-pos1-attention-ingress";
 pub const ATTENTION_SETUP_FIXTURE_ID: &str = "dwarfstar-oracle-v1-layer0-pos1-qkv-setup";
 pub const ROPE_KV_STORE_FIXTURE_ID: &str = "dwarfstar-oracle-v1-layer0-pos1-rope-kv-store";
@@ -166,6 +168,12 @@ const PREFILL_QKV_Q_RAW_BYTES: &[u8] =
     include_bytes!("../../fixtures/prefill-qkv-boundary-2048-v1/q-raw-final-tile.f32le.bin");
 const PREFILL_QKV_Q_CUR_BYTES: &[u8] =
     include_bytes!("../../fixtures/prefill-qkv-boundary-2048-v1/q-current-final-tile.f32le.bin");
+const PREFILL_HC_TOKEN_IDS_BYTES: &[u8] =
+    include_bytes!("../../fixtures/prefill-hc-ingress-2048-v1/token-ids-final-tile.i32le.bin");
+const PREFILL_HC_COLLAPSED_BYTES: &[u8] =
+    include_bytes!("../../fixtures/prefill-hc-ingress-2048-v1/hc-attn-pre-final-tile.f32le.bin");
+const PREFILL_HC_ATTN_NORM_BYTES: &[u8] =
+    include_bytes!("../../fixtures/prefill-hc-ingress-2048-v1/attn-norm-final-tile.f32le.bin");
 const INGRESS_MIXES_BYTES: &[u8] =
     include_bytes!("../../fixtures/layer0-attention-ingress-v1/hc-mixes.f32le.bin");
 const INGRESS_PRE_BYTES: &[u8] =
@@ -645,6 +653,20 @@ pub struct PrefillQkvBoundaryProbeReport {
     pub wall_ms: f64,
     pub gpu_ms: f64,
     pub checksums: [u64; 7],
+}
+
+#[derive(Clone, Debug)]
+pub struct PrefillLayer0BoundaryProbeReport {
+    pub ingress_fixture_id: &'static str,
+    pub qkv_fixture_id: &'static str,
+    pub rows: u64,
+    pub position_start: u32,
+    pub dispatches: u32,
+    pub wrapped_model_ranges: u32,
+    pub pointer_matches: u32,
+    pub wall_ms: f64,
+    pub gpu_ms: f64,
+    pub checksums: [u64; 9],
 }
 
 #[derive(Clone, Debug)]
@@ -2172,6 +2194,41 @@ pub fn write_prefill_qkv_boundary_probe_json<W: Write>(
     Ok(())
 }
 
+pub fn write_prefill_layer0_boundary_probe_json<W: Write>(
+    output: &mut W,
+    report: &PrefillLayer0BoundaryProbeReport,
+) -> Result<()> {
+    write!(
+        output,
+        "{{\n  \"schema\": \"{PREFILL_LAYER0_BOUNDARY_PROBE_SCHEMA}\",\n  \"fixtures\": ["
+    )?;
+    crate::artifact::write_json_string(output, report.ingress_fixture_id)?;
+    output.write_all(b", ")?;
+    crate::artifact::write_json_string(output, report.qkv_fixture_id)?;
+    write!(
+        output,
+        "],\n  \"shape\": {{\n    \"rows\": {},\n    \"position_start\": {},\n    \"position_end\": {}\n  }},\n  \"input_boundary\": \"token_ids\",\n  \"schedule\": {{\n    \"dispatches\": {},\n    \"embedding_kernel\": \"kernel_get_rows_f16\",\n    \"hc_projection_kernel\": \"kernel_mul_mm_f16_f32\",\n    \"hc_norm_kernel\": \"kernel_dsv4_hc_split_weighted_sum_norm4\",\n    \"q8_kernel\": \"kernel_mul_mm_q8_0_f32\",\n    \"qkv_norm_kernel\": \"kernel_dsv4_qkv_rms_norm_f32_4\",\n    \"q_head_kernel\": \"kernel_dsv4_head_rms_norm_rope_tail_f32\"\n  }},\n  \"mapping\": {{\n    \"wrapped_model_ranges\": {},\n    \"pointer_matches\": {}\n  }},\n  \"timing\": {{\n    \"wall_ms\": {:.6},\n    \"gpu_ms\": {:.6}\n  }},\n  \"checksums\": {{\n    \"token_ids\": {},\n    \"hc_collapsed\": {},\n    \"attn_norm\": {},\n    \"q_lora\": {},\n    \"q_lora_norm\": {},\n    \"kv_raw\": {},\n    \"kv_norm\": {},\n    \"q_raw\": {},\n    \"q_current\": {}\n  }},\n  \"c0_bitwise_match\": true,\n  \"continuous_command_buffer\": true,\n  \"native_batch_schedule\": true,\n  \"full_prefill_claim\": false\n}}\n",
+        report.rows,
+        report.position_start,
+        report.position_start + report.rows as u32 - 1,
+        report.dispatches,
+        report.wrapped_model_ranges,
+        report.pointer_matches,
+        report.wall_ms,
+        report.gpu_ms,
+        report.checksums[0],
+        report.checksums[1],
+        report.checksums[2],
+        report.checksums[3],
+        report.checksums[4],
+        report.checksums[5],
+        report.checksums[6],
+        report.checksums[7],
+        report.checksums[8],
+    )?;
+    Ok(())
+}
+
 fn validate_embedding_inputs(
     model: &MappedModel,
     tensor: &TensorInfo,
@@ -2326,6 +2383,15 @@ fn checksum_f32(values: &[f32]) -> u64 {
     let mut checksum = 0xcbf2_9ce4_8422_2325_u64;
     for value in values {
         checksum ^= u64::from(value.to_bits());
+        checksum = checksum.wrapping_mul(0x0000_0100_0000_01b3);
+    }
+    checksum
+}
+
+fn checksum_u32(values: &[u32]) -> u64 {
+    let mut checksum = 0xcbf2_9ce4_8422_2325_u64;
+    for value in values {
+        checksum ^= u64::from(*value);
         checksum = checksum.wrapping_mul(0x0000_0100_0000_01b3);
     }
     checksum
@@ -2601,6 +2667,24 @@ fn prefill_qkv_boundary_fixture() -> Result<[Vec<f32>; 7]> {
         ));
     }
     Ok(tensors)
+}
+
+fn prefill_hc_ingress_fixture() -> Result<(Vec<u32>, Vec<f32>, Vec<f32>)> {
+    let tokens = decode_u32_fixture(PREFILL_HC_TOKEN_IDS_BYTES, "prefill HC token IDs")?;
+    let collapsed = decode_f32_fixture(
+        PREFILL_HC_COLLAPSED_BYTES,
+        "prefill HC collapsed final tile",
+    )?;
+    let attn_norm = decode_f32_fixture(
+        PREFILL_HC_ATTN_NORM_BYTES,
+        "prefill HC attention norm final tile",
+    )?;
+    if tokens.len() != 32 || collapsed.len() != 32 * 4096 || attn_norm.len() != 32 * 4096 {
+        return Err(Error::invalid(
+            "prefill HC ingress fixture dimensions are invalid",
+        ));
+    }
+    Ok((tokens, collapsed, attn_norm))
 }
 
 fn ingress_fixture() -> Result<(Vec<f32>, Vec<f32>, Vec<f32>, Vec<f32>, Vec<f32>)> {
@@ -3738,6 +3822,37 @@ mod imp {
     }
 
     #[repr(C)]
+    struct RawPrefillLayer0Weights {
+        embedding_offset: u64,
+        embedding_bytes: u64,
+        hc_fn_offset: u64,
+        hc_fn_bytes: u64,
+        hc_scale_offset: u64,
+        hc_scale_bytes: u64,
+        hc_base_offset: u64,
+        hc_base_bytes: u64,
+        attn_norm_offset: u64,
+        attn_norm_bytes: u64,
+        qkv: RawPrefillQkvWeights,
+    }
+
+    #[repr(C)]
+    #[derive(Default)]
+    struct RawPrefillLayer0ProbeResult {
+        rows: u64,
+        input_elements_per_row: u64,
+        q_lora_elements_per_row: u64,
+        kv_elements_per_row: u64,
+        q_elements_per_row: u64,
+        dispatches: u32,
+        wrapped_model_ranges: u32,
+        pointer_matches: u32,
+        position_start: u32,
+        wall_ms: f64,
+        gpu_ms: f64,
+    }
+
+    #[repr(C)]
     #[derive(Default)]
     struct RawIngressProbeResult {
         model_bytes: u64,
@@ -3922,6 +4037,27 @@ mod imp {
             q_raw: *mut f32,
             q_cur: *mut f32,
             result: *mut RawPrefillQkvProbeResult,
+            error: *mut c_char,
+            error_bytes: usize,
+        ) -> i32;
+        fn rust_star_metal_run_prefill_layer0_boundary(
+            context: *mut c_void,
+            model_mapping: *const c_void,
+            model_bytes: u64,
+            weights: *const RawPrefillLayer0Weights,
+            n_vocab: u32,
+            rows: u32,
+            position_start: u32,
+            tokens: *const u32,
+            hc_collapsed: *mut f32,
+            attn_norm: *mut f32,
+            q_lora: *mut f32,
+            q_lora_norm: *mut f32,
+            kv_raw: *mut f32,
+            kv_norm: *mut f32,
+            q_raw: *mut f32,
+            q_cur: *mut f32,
+            result: *mut RawPrefillLayer0ProbeResult,
             error: *mut c_char,
             error_bytes: usize,
         ) -> i32;
@@ -5084,6 +5220,196 @@ mod imp {
             gpu_ms: raw.gpu_ms,
             checksums: [
                 checksum_f32(&input),
+                checksum_f32(&actual_q),
+                checksum_f32(&actual_q_norm),
+                checksum_f32(&actual_kv_raw),
+                checksum_f32(&actual_kv_norm),
+                checksum_f32(&actual_q_raw),
+                checksum_f32(&actual_q_cur),
+            ],
+        })
+    }
+
+    pub fn run_prefill_layer0_boundary_probe(
+        model: &MappedModel,
+    ) -> Result<PrefillLayer0BoundaryProbeReport> {
+        let embedding = exact_tensor(model, "token_embd.weight", 1, &[4096, 129280])?;
+        let hc_fn = exact_tensor(model, "blk.0.hc_attn_fn.weight", 1, &[16384, 24])?;
+        let hc_scale = exact_tensor(model, "blk.0.hc_attn_scale.weight", 0, &[3])?;
+        let hc_base = exact_tensor(model, "blk.0.hc_attn_base.weight", 0, &[24])?;
+        let attn_norm_weight = exact_tensor(model, "blk.0.attn_norm.weight", 0, &[4096])?;
+        let q_a = exact_tensor(model, "blk.0.attn_q_a.weight", 8, &[4096, 1024])?;
+        let q_a_norm = exact_tensor(model, "blk.0.attn_q_a_norm.weight", 0, &[1024])?;
+        let kv = exact_tensor(model, "blk.0.attn_kv.weight", 8, &[4096, 512])?;
+        let kv_norm_weight = exact_tensor(model, "blk.0.attn_kv_a_norm.weight", 0, &[512])?;
+        let q_b = exact_tensor(model, "blk.0.attn_q_b.weight", 8, &[1024, 32768])?;
+        let (tokens, expected_collapsed, expected_attn_norm) = prefill_hc_ingress_fixture()?;
+        let [qkv_attn_norm, expected_q, expected_q_norm, expected_kv_raw, expected_kv_norm, expected_q_raw, expected_q_cur] =
+            prefill_qkv_boundary_fixture()?;
+        if expected_attn_norm
+            .iter()
+            .zip(&qkv_attn_norm)
+            .any(|(left, right)| left.to_bits() != right.to_bits())
+        {
+            return Err(Error::invalid(
+                "prefill HC ingress and Q/KV fixtures disagree at their attention-norm seam",
+            ));
+        }
+
+        let weights = RawPrefillLayer0Weights {
+            embedding_offset: embedding.absolute_offset,
+            embedding_bytes: embedding.bytes,
+            hc_fn_offset: hc_fn.absolute_offset,
+            hc_fn_bytes: hc_fn.bytes,
+            hc_scale_offset: hc_scale.absolute_offset,
+            hc_scale_bytes: hc_scale.bytes,
+            hc_base_offset: hc_base.absolute_offset,
+            hc_base_bytes: hc_base.bytes,
+            attn_norm_offset: attn_norm_weight.absolute_offset,
+            attn_norm_bytes: attn_norm_weight.bytes,
+            qkv: RawPrefillQkvWeights {
+                q_a_offset: q_a.absolute_offset,
+                q_a_bytes: q_a.bytes,
+                q_a_norm_offset: q_a_norm.absolute_offset,
+                q_a_norm_bytes: q_a_norm.bytes,
+                kv_offset: kv.absolute_offset,
+                kv_bytes: kv.bytes,
+                kv_norm_offset: kv_norm_weight.absolute_offset,
+                kv_norm_bytes: kv_norm_weight.bytes,
+                q_b_offset: q_b.absolute_offset,
+                q_b_bytes: q_b.bytes,
+            },
+        };
+        let mut actual_collapsed = vec![0.0_f32; expected_collapsed.len()];
+        let mut actual_attn_norm = vec![0.0_f32; expected_attn_norm.len()];
+        let mut actual_q = vec![0.0_f32; expected_q.len()];
+        let mut actual_q_norm = vec![0.0_f32; expected_q_norm.len()];
+        let mut actual_kv_raw = vec![0.0_f32; expected_kv_raw.len()];
+        let mut actual_kv_norm = vec![0.0_f32; expected_kv_norm.len()];
+        let mut actual_q_raw = vec![0.0_f32; expected_q_raw.len()];
+        let mut actual_q_cur = vec![0.0_f32; expected_q_cur.len()];
+
+        let mut error = [0 as c_char; ERROR_BYTES];
+        let mut pointer = ptr::null_mut();
+        let created =
+            unsafe { rust_star_metal_create(&mut pointer, error.as_mut_ptr(), error.len()) };
+        if created == 0 || pointer.is_null() {
+            return Err(Error::invalid(format!(
+                "Metal initialization failed: {}",
+                error_text(&error)
+            )));
+        }
+        let context = Context(pointer);
+        error.fill(0);
+        let mut raw = RawPrefillLayer0ProbeResult::default();
+        let succeeded = unsafe {
+            rust_star_metal_run_prefill_layer0_boundary(
+                context.0,
+                model.mapping_pointer(),
+                model.bytes(),
+                &weights,
+                129280,
+                32,
+                2016,
+                tokens.as_ptr(),
+                actual_collapsed.as_mut_ptr(),
+                actual_attn_norm.as_mut_ptr(),
+                actual_q.as_mut_ptr(),
+                actual_q_norm.as_mut_ptr(),
+                actual_kv_raw.as_mut_ptr(),
+                actual_kv_norm.as_mut_ptr(),
+                actual_q_raw.as_mut_ptr(),
+                actual_q_cur.as_mut_ptr(),
+                &mut raw,
+                error.as_mut_ptr(),
+                error.len(),
+            )
+        };
+        if succeeded == 0 {
+            return Err(Error::invalid(format!(
+                "Metal prefill layer-0 boundary probe failed: {}",
+                error_text(&error)
+            )));
+        }
+        if raw.rows != 32
+            || raw.position_start != 2016
+            || raw.input_elements_per_row != 4096
+            || raw.q_lora_elements_per_row != 1024
+            || raw.kv_elements_per_row != 512
+            || raw.q_elements_per_row != 32768
+            || raw.dispatches != 10
+            || raw.wrapped_model_ranges != 10
+            || raw.pointer_matches != 10
+        {
+            return Err(Error::invalid(
+                "Metal prefill layer-0 boundary returned an unexpected schedule or mapping",
+            ));
+        }
+        for (label, actual, expected) in [
+            (
+                "hc_attn_pre",
+                actual_collapsed.as_slice(),
+                expected_collapsed.as_slice(),
+            ),
+            (
+                "attn_norm",
+                actual_attn_norm.as_slice(),
+                expected_attn_norm.as_slice(),
+            ),
+            ("q_lora", actual_q.as_slice(), expected_q.as_slice()),
+            (
+                "q_lora_norm",
+                actual_q_norm.as_slice(),
+                expected_q_norm.as_slice(),
+            ),
+            (
+                "KVraw",
+                actual_kv_raw.as_slice(),
+                expected_kv_raw.as_slice(),
+            ),
+            (
+                "KVnorm",
+                actual_kv_norm.as_slice(),
+                expected_kv_norm.as_slice(),
+            ),
+            ("Qraw", actual_q_raw.as_slice(), expected_q_raw.as_slice()),
+            ("Qcur", actual_q_cur.as_slice(), expected_q_cur.as_slice()),
+        ] {
+            for (index, (actual, expected)) in actual.iter().zip(expected).enumerate() {
+                if actual.to_bits() != expected.to_bits() {
+                    return Err(Error::invalid(format!(
+                        "prefill layer-0 C0 mismatch in {label}[{index}]: actual={:#010x} expected={:#010x}",
+                        actual.to_bits(), expected.to_bits()
+                    )));
+                }
+            }
+        }
+        for (name, value) in [("wall_ms", raw.wall_ms), ("gpu_ms", raw.gpu_ms)] {
+            if !value.is_finite() || value < 0.0 {
+                return Err(Error::invalid(format!(
+                    "Metal prefill layer-0 boundary returned invalid {name}"
+                )));
+            }
+        }
+        if raw.wall_ms == 0.0 {
+            return Err(Error::invalid(
+                "Metal prefill layer-0 boundary returned a zero wall interval",
+            ));
+        }
+        Ok(PrefillLayer0BoundaryProbeReport {
+            ingress_fixture_id: PREFILL_HC_INGRESS_FIXTURE_ID,
+            qkv_fixture_id: PREFILL_QKV_BOUNDARY_FIXTURE_ID,
+            rows: raw.rows,
+            position_start: raw.position_start,
+            dispatches: raw.dispatches,
+            wrapped_model_ranges: raw.wrapped_model_ranges,
+            pointer_matches: raw.pointer_matches,
+            wall_ms: raw.wall_ms,
+            gpu_ms: raw.gpu_ms,
+            checksums: [
+                checksum_u32(&tokens),
+                checksum_f32(&actual_collapsed),
+                checksum_f32(&actual_attn_norm),
                 checksum_f32(&actual_q),
                 checksum_f32(&actual_q_norm),
                 checksum_f32(&actual_kv_raw),
@@ -7946,6 +8272,18 @@ mod imp {
         ))
     }
 
+    pub fn run_prefill_layer0_boundary_probe(
+        model: &MappedModel,
+    ) -> Result<PrefillLayer0BoundaryProbeReport> {
+        let _ = prefill_hc_ingress_fixture()?;
+        let _ = prefill_qkv_boundary_fixture()?;
+        let _ = exact_tensor(model, "token_embd.weight", 1, &[4096, 129280])?;
+        let _ = exact_tensor(model, "blk.0.hc_attn_fn.weight", 1, &[16384, 24])?;
+        Err(Error::invalid(
+            "the Metal prefill layer-0 boundary probe is available only on macOS",
+        ))
+    }
+
     pub fn run_prefill_qkv_boundary_probe(
         model: &MappedModel,
     ) -> Result<PrefillQkvBoundaryProbeReport> {
@@ -8273,9 +8611,9 @@ pub use imp::{
     run_layers0123_bench, run_layers0123_chained_probe, run_layers0123_decode_probe,
     run_layers0123_probe, run_layers012_chained_probe, run_layers012_probe, run_layers01_probe,
     run_layers0_to_42_decode_probe, run_moe_output_probe, run_position127_decoder_probe,
-    run_prefill_frontier_probe, run_prefill_q8_boundary_probe, run_prefill_qkv_boundary_probe,
-    run_probe, run_q8_projection_probe, run_ratio128_compressor_replay_probe,
-    run_rope_kv_store_probe, LayerExecutor,
+    run_prefill_frontier_probe, run_prefill_layer0_boundary_probe, run_prefill_q8_boundary_probe,
+    run_prefill_qkv_boundary_probe, run_probe, run_q8_projection_probe,
+    run_ratio128_compressor_replay_probe, run_rope_kv_store_probe, LayerExecutor,
 };
 
 #[cfg(test)]
@@ -8401,6 +8739,21 @@ mod tests {
             wall_ms: 2.0,
             gpu_ms: 1.0,
             checksums: [11, 12, 13, 14, 15, 16, 17],
+        }
+    }
+
+    fn prefill_layer0_boundary_report() -> PrefillLayer0BoundaryProbeReport {
+        PrefillLayer0BoundaryProbeReport {
+            ingress_fixture_id: PREFILL_HC_INGRESS_FIXTURE_ID,
+            qkv_fixture_id: PREFILL_QKV_BOUNDARY_FIXTURE_ID,
+            rows: 32,
+            position_start: 2016,
+            dispatches: 10,
+            wrapped_model_ranges: 10,
+            pointer_matches: 10,
+            wall_ms: 3.0,
+            gpu_ms: 2.0,
+            checksums: [11, 12, 13, 14, 15, 16, 17, 18, 19],
         }
     }
 
@@ -9552,6 +9905,21 @@ mod tests {
     }
 
     #[test]
+    fn writes_stable_prefill_layer0_boundary_probe_json() {
+        let mut output = Vec::new();
+        write_prefill_layer0_boundary_probe_json(&mut output, &prefill_layer0_boundary_report())
+            .unwrap();
+        let text = String::from_utf8(output).unwrap();
+        assert!(text.contains(&format!(
+            "\"schema\": \"{PREFILL_LAYER0_BOUNDARY_PROBE_SCHEMA}\""
+        )));
+        assert!(text.contains("\"input_boundary\": \"token_ids\""));
+        assert!(text.contains("\"dispatches\": 10"));
+        assert!(text.contains("\"continuous_command_buffer\": true"));
+        assert!(text.contains("\"full_prefill_claim\": false"));
+    }
+
+    #[test]
     fn writes_stable_ratio128_compressor_replay_json() {
         let mut output = Vec::new();
         write_ratio128_compressor_replay_probe_json(&mut output, &ratio128_compressor_report())
@@ -9787,6 +10155,17 @@ mod tests {
                 15_715_312_012_925_293_902,
             ]
         );
+    }
+
+    #[test]
+    fn prefill_hc_ingress_fixture_has_target_shapes() {
+        let (tokens, collapsed, attn_norm) = prefill_hc_ingress_fixture().unwrap();
+        assert_eq!(tokens.len(), 32);
+        assert_eq!(collapsed.len(), 32 * 4096);
+        assert_eq!(attn_norm.len(), 32 * 4096);
+        assert_eq!(checksum_u32(&tokens), 4_632_138_271_124_972_668);
+        assert_eq!(checksum_f32(&collapsed), 7_852_831_826_961_088_429);
+        assert_eq!(checksum_f32(&attn_norm), 3_658_078_701_343_054_310);
     }
 
     #[test]

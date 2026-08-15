@@ -149,6 +149,24 @@ capture by SHA-256. Every one of the 2,195,456 produced FP32 values must match
 by bit pattern. The timing is an isolated layer segment, not prefill
 throughput, and the report keeps `full_prefill_claim` false.
 
+## Continuous M1 layer-0 prefill boundary
+
+Schema: `rust-star-prefill-layer0-boundary-probe-v1`.
+
+`prefill-layer0-boundary-probe` moves the native input seam back to the final
+32 token IDs of the canonical 2K prompt. One command buffer gathers their F16
+embeddings, repeats the four HC streams, applies plain row RMSNorm, executes
+the legacy F16 batch mixer, and runs the fused HC split/collapse/learned norm
+before continuing through the five-dispatch Q/KV boundary above.
+
+The compact HC fixture retains the final 32 token IDs, collapsed HC rows, and
+attention-normalized rows. Two fresh full 2K DwarfStar processes produced
+byte-identical HC and norm captures; the norm hash also equals the independently
+captured Q/KV input. Together the HC and Q/KV fixtures require 2,457,600
+produced FP32 values to match by bit pattern. All ten model spans remain
+mmap-backed no-copy views. This is a continuous final-tile arithmetic boundary,
+not a complete layer or full-prefill throughput result.
+
 ## Layer-0 attention ingress
 
 Schema: `rust-star-layer0-attention-ingress-probe-v1`.

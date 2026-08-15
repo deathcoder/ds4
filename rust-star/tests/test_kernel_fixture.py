@@ -65,6 +65,9 @@ PREFILL_Q8_BOUNDARY_FIXTURE = (
 PREFILL_QKV_BOUNDARY_FIXTURE = (
     RUST_STAR_DIR / "fixtures" / "prefill-qkv-boundary-2048-v1"
 )
+PREFILL_HC_INGRESS_FIXTURE = (
+    RUST_STAR_DIR / "fixtures" / "prefill-hc-ingress-2048-v1"
+)
 
 
 class KernelFixtureTests(unittest.TestCase):
@@ -367,6 +370,31 @@ class KernelFixtureTests(unittest.TestCase):
                 "kernel_dsv4_qkv_rms_norm_f32_4",
                 "kernel_mul_mm_q8_0_f32",
                 "kernel_dsv4_head_rms_norm_rope_tail_f32",
+            ],
+        )
+
+    def test_prefill_hc_ingress_fixture_manifest_and_payloads(self) -> None:
+        manifest = json.loads(
+            (PREFILL_HC_INGRESS_FIXTURE / "manifest.json").read_text(encoding="utf-8")
+        )
+        report = validate_differential_fixture(PREFILL_HC_INGRESS_FIXTURE)
+        self.assertEqual(
+            report["fixture_id"],
+            "dwarfstar-oracle-v1-prefill-hc-ingress-2048",
+        )
+        self.assertEqual(report["scope"], "layer-segment")
+        self.assertEqual(report["operations"], 5)
+        self.assertEqual(report["tensors"], 3)
+        self.assertEqual(report["verified_bytes"], 1_048_704)
+        self.assertEqual(manifest["scope"]["captured_position_range"], [2016, 2047])
+        self.assertEqual(
+            [operation["kernel"] for operation in manifest["operations"]],
+            [
+                "kernel_get_rows_f16",
+                "kernel_repeat_f32",
+                "kernel_rms_norm_f32_4",
+                "kernel_mul_mm_f16_f32",
+                "kernel_dsv4_hc_split_weighted_sum_norm4",
             ],
         )
 

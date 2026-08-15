@@ -97,6 +97,29 @@ typedef struct rust_star_metal_prefill_qkv_probe_result {
     double gpu_ms;
 } rust_star_metal_prefill_qkv_probe_result;
 
+typedef struct rust_star_metal_prefill_layer0_weights {
+    uint64_t embedding_offset, embedding_bytes;
+    uint64_t hc_fn_offset, hc_fn_bytes;
+    uint64_t hc_scale_offset, hc_scale_bytes;
+    uint64_t hc_base_offset, hc_base_bytes;
+    uint64_t attn_norm_offset, attn_norm_bytes;
+    rust_star_metal_prefill_qkv_weights qkv;
+} rust_star_metal_prefill_layer0_weights;
+
+typedef struct rust_star_metal_prefill_layer0_probe_result {
+    uint64_t rows;
+    uint64_t input_elements_per_row;
+    uint64_t q_lora_elements_per_row;
+    uint64_t kv_elements_per_row;
+    uint64_t q_elements_per_row;
+    uint32_t dispatches;
+    uint32_t wrapped_model_ranges;
+    uint32_t pointer_matches;
+    uint32_t position_start;
+    double wall_ms;
+    double gpu_ms;
+} rust_star_metal_prefill_layer0_probe_result;
+
 typedef struct rust_star_metal_ingress_probe_result {
     uint64_t model_bytes;
     uint64_t max_buffer_length;
@@ -228,6 +251,27 @@ int rust_star_metal_run_prefill_qkv_boundary(
     float *q_raw,
     float *q_cur,
     rust_star_metal_prefill_qkv_probe_result *result,
+    char *error,
+    size_t error_bytes);
+
+int rust_star_metal_run_prefill_layer0_boundary(
+    void *context,
+    const void *model_mapping,
+    uint64_t model_bytes,
+    const rust_star_metal_prefill_layer0_weights *weights,
+    uint32_t n_vocab,
+    uint32_t rows,
+    uint32_t position_start,
+    const uint32_t *tokens,
+    float *hc_collapsed,
+    float *attn_norm,
+    float *q_lora,
+    float *q_lora_norm,
+    float *kv_raw,
+    float *kv_norm,
+    float *q_raw,
+    float *q_cur,
+    rust_star_metal_prefill_layer0_probe_result *result,
     char *error,
     size_t error_bytes);
 

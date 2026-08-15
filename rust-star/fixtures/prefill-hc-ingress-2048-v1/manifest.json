@@ -1,0 +1,171 @@
+{
+  "schema": "rust-star-differential-fixture-v1",
+  "fixture_id": "dwarfstar-oracle-v1-prefill-hc-ingress-2048",
+  "captured_at_utc": "2026-08-15T16:37:17Z",
+  "oracle": {
+    "id": "oracle-v1",
+    "repository": "https://github.com/antirez/ds4.git",
+    "commit": "b0309611041655f4e45671cfd9c9886aff161406",
+    "tree": "20c11af22f90a0bdf25da860da5ef06de4064060",
+    "capture_executable_sha256": "b0b7c31d9832cc3f5cccf810cd2af6f4bc4f6e71de945493674315314f666fc8"
+  },
+  "model": {
+    "family": "DeepSeek-V4-Flash-0731",
+    "sha256": "ca22ae2f838e14077c22bc1c1417b71b45b5e5a3687bd96c2ac6e17fdb6261c0"
+  },
+  "capture": {
+    "backend": "metal",
+    "machine": "Apple M1 Ultra, 48 GPU cores, 128 GB unified memory",
+    "prompt": "first 2048 raw tokens of speed-bench/promessi_sposi.txt",
+    "prompt_sha256": "f53e0d80cb2d4492d24ebd63c7000c397b16ae70f9bf09b3763e5d8323ec209f",
+    "prompt_token_ids_sha256": "5fdf3b77e31c5cd253345ba1f8c4100e9f0b55eff30a1a5ed3029fb524c80380",
+    "prefill_tokens": 2048,
+    "fresh_process_captures": 2,
+    "fresh_process_bitwise_match": true,
+    "command": "ds4-bench --metal --ctx-start 2048 --ctx-max 2048 --gen-tokens 0 --warm-weights",
+    "environment": {
+      "DS4_METAL_GRAPH_DUMP_LAYER": "0",
+      "DS4_METAL_GRAPH_DUMP_POS": "0",
+      "DS4_METAL_GRAPH_DUMP_NAME": "hc_attn_pre,attn_norm"
+    },
+    "device_path": "F16 embedding gather, HC repeat, plain row RMSNorm, legacy F16 batch matmul, and fused HC split/weighted-sum/learned RMSNorm",
+    "full_capture_sha256": {
+      "hc_attn_pre": "37b12a76bdedb54375492a6785dd5813b924e631280cd0a1324b7a5d8e0b7290",
+      "attn_norm": "5a4c83daeb603f714146b93438a38672515e45c55f0776527e76c86db99476b4",
+      "token_ids": "5fdf3b77e31c5cd253345ba1f8c4100e9f0b55eff30a1a5ed3029fb524c80380"
+    }
+  },
+  "scope": {
+    "kind": "layer-segment",
+    "phase": "prefill",
+    "layer": 0,
+    "position": 2047,
+    "captured_position_range": [
+      2016,
+      2047
+    ]
+  },
+  "operations": [
+    {
+      "name": "token-embedding-prefill",
+      "kernel": "kernel_get_rows_f16",
+      "weights": [
+        "token_embd.weight"
+      ],
+      "dispatch": {
+        "rows": 32,
+        "input_elements": 1,
+        "output_elements": 4096
+      }
+    },
+    {
+      "name": "hc-repeat-prefill",
+      "kernel": "kernel_repeat_f32",
+      "weights": [],
+      "dispatch": {
+        "rows": 32,
+        "hc_streams": 4,
+        "width": 4096
+      }
+    },
+    {
+      "name": "hc-plain-rmsnorm-prefill",
+      "kernel": "kernel_rms_norm_f32_4",
+      "weights": [],
+      "dispatch": {
+        "rows": 32,
+        "width": 16384
+      }
+    },
+    {
+      "name": "hc-mixer-prefill",
+      "kernel": "kernel_mul_mm_f16_f32",
+      "weights": [
+        "blk.0.hc_attn_fn.weight"
+      ],
+      "dispatch": {
+        "input_elements": 16384,
+        "output_elements": 24,
+        "rows": 32,
+        "threads_per_threadgroup": [
+          128,
+          1,
+          1
+        ],
+        "threadgroups": [
+          1,
+          1,
+          1
+        ],
+        "threadgroup_memory_bytes": 8192
+      }
+    },
+    {
+      "name": "hc-split-collapse-attn-norm-prefill",
+      "kernel": "kernel_dsv4_hc_split_weighted_sum_norm4",
+      "weights": [
+        "blk.0.hc_attn_scale.weight",
+        "blk.0.hc_attn_base.weight",
+        "blk.0.attn_norm.weight"
+      ],
+      "dispatch": {
+        "rows": 32,
+        "width": 4096,
+        "threads_per_threadgroup": [
+          1024,
+          1,
+          1
+        ],
+        "threadgroups": [
+          32,
+          1,
+          1
+        ],
+        "threadgroup_memory_bytes": 16512
+      }
+    }
+  ],
+  "tensors": [
+    {
+      "name": "token_ids_final_tile",
+      "hook": "tokenizer",
+      "role": "input",
+      "dtype": "i32",
+      "shape": [
+        32
+      ],
+      "encoding": "little-endian-signed-integer32",
+      "path": "token-ids-final-tile.i32le.bin",
+      "bytes": 128,
+      "sha256": "c301051dee5112466d01b12fe1c382ceab5dc720f025b42aa888779a91c0e2ee"
+    },
+    {
+      "name": "hc_attn_pre_final_tile",
+      "hook": "hc_attn_pre",
+      "role": "intermediate",
+      "dtype": "f32",
+      "shape": [
+        32,
+        4096
+      ],
+      "encoding": "little-endian-ieee754-binary32",
+      "path": "hc-attn-pre-final-tile.f32le.bin",
+      "bytes": 524288,
+      "sha256": "9b0ebbfbfee2463702961c576d1eae27da26f53cf69f3390a178b53c04f4ee31"
+    },
+    {
+      "name": "attn_norm_final_tile",
+      "hook": "attn_norm",
+      "role": "output",
+      "dtype": "f32",
+      "shape": [
+        32,
+        4096
+      ],
+      "encoding": "little-endian-ieee754-binary32",
+      "path": "attn-norm-final-tile.f32le.bin",
+      "bytes": 524288,
+      "sha256": "7530fbcafe54f004df8b565831e4015c48e94c13ed6d460cc8691a6e53cda461"
+    }
+  ]
+}
