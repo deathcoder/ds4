@@ -10,7 +10,7 @@ pub const EMBEDDING_PROBE_SCHEMA: &str = "rust-star-f16-embedding-probe-v1";
 pub const PROJECTION_PROBE_SCHEMA: &str = "rust-star-q8-0-projection-probe-v1";
 pub const PREFILL_Q8_BOUNDARY_PROBE_SCHEMA: &str = "rust-star-prefill-q8-boundary-probe-v1";
 pub const PREFILL_QKV_BOUNDARY_PROBE_SCHEMA: &str = "rust-star-prefill-qkv-boundary-probe-v1";
-pub const PREFILL_LAYER0_BOUNDARY_PROBE_SCHEMA: &str = "rust-star-prefill-layer0-boundary-probe-v4";
+pub const PREFILL_LAYER0_BOUNDARY_PROBE_SCHEMA: &str = "rust-star-prefill-layer0-boundary-probe-v5";
 pub const INGRESS_PROBE_SCHEMA: &str = "rust-star-layer0-attention-ingress-probe-v1";
 pub const ATTENTION_SETUP_PROBE_SCHEMA: &str = "rust-star-layer0-attention-setup-probe-v1";
 pub const ROPE_KV_STORE_PROBE_SCHEMA: &str = "rust-star-layer0-rope-kv-store-probe-v1";
@@ -50,6 +50,7 @@ pub const PREFILL_ATTENTION_READ_FIXTURE_ID: &str =
     "dwarfstar-oracle-v1-prefill-attention-read-2048";
 pub const PREFILL_ATTENTION_OUTPUT_FIXTURE_ID: &str =
     "dwarfstar-oracle-v1-prefill-attention-output-2048";
+pub const PREFILL_FFN_OUTPUT_FIXTURE_ID: &str = "dwarfstar-oracle-v1-prefill-ffn-output-2048";
 pub const PREFILL_HC_INGRESS_FIXTURE_ID: &str = "dwarfstar-oracle-v1-prefill-hc-ingress-2048";
 pub const INGRESS_FIXTURE_ID: &str = "dwarfstar-oracle-v1-layer0-pos1-attention-ingress";
 pub const ATTENTION_SETUP_FIXTURE_ID: &str = "dwarfstar-oracle-v1-layer0-pos1-qkv-setup";
@@ -192,6 +193,28 @@ const PREFILL_ATTENTION_PROJECTED_BYTES: &[u8] =
 const PREFILL_ATTENTION_HC_POST_BYTES: &[u8] = include_bytes!(
     "../../fixtures/prefill-attention-output-2048-v1/hc-attn-post-final-tile.f32le.bin"
 );
+const PREFILL_FFN_CUR_BYTES: &[u8] =
+    include_bytes!("../../fixtures/prefill-ffn-output-2048-v1/hc-ffn-pre-final-tile.f32le.bin");
+const PREFILL_FFN_NORM_BYTES: &[u8] =
+    include_bytes!("../../fixtures/prefill-ffn-output-2048-v1/ffn-norm-final-tile.f32le.bin");
+const PREFILL_FFN_ROUTER_LOGITS_BYTES: &[u8] =
+    include_bytes!("../../fixtures/prefill-ffn-output-2048-v1/ffn-moe-logits-final-tile.f32le.bin");
+const PREFILL_FFN_ROUTER_PROBS_BYTES: &[u8] =
+    include_bytes!("../../fixtures/prefill-ffn-output-2048-v1/ffn-moe-probs-final-tile.f32le.bin");
+const PREFILL_FFN_SELECTED_BYTES: &[u8] =
+    include_bytes!("../../fixtures/prefill-ffn-output-2048-v1/ffn-moe-topk-final-tile.i32le.bin");
+const PREFILL_FFN_ROUTER_WEIGHTS_BYTES: &[u8] = include_bytes!(
+    "../../fixtures/prefill-ffn-output-2048-v1/ffn-moe-weights-scaled-final-tile.f32le.bin"
+);
+const PREFILL_FFN_ROUTED_MID_BYTES: &[u8] = include_bytes!(
+    "../../fixtures/prefill-ffn-output-2048-v1/ffn-moe-weighted-swiglu-final-tile.f32le.bin"
+);
+const PREFILL_FFN_ROUTED_OUT_BYTES: &[u8] =
+    include_bytes!("../../fixtures/prefill-ffn-output-2048-v1/ffn-moe-out-final-tile.f32le.bin");
+const PREFILL_FFN_SHARED_OUT_BYTES: &[u8] =
+    include_bytes!("../../fixtures/prefill-ffn-output-2048-v1/ffn-shexp-final-tile.f32le.bin");
+const PREFILL_FFN_HC_POST_BYTES: &[u8] =
+    include_bytes!("../../fixtures/prefill-ffn-output-2048-v1/hc-ffn-post-final-tile.f32le.bin");
 const PREFILL_HC_TOKEN_IDS_BYTES: &[u8] =
     include_bytes!("../../fixtures/prefill-hc-ingress-2048-v1/token-ids-final-tile.i32le.bin");
 const PREFILL_HC_COLLAPSED_BYTES: &[u8] =
@@ -686,6 +709,7 @@ pub struct PrefillLayer0BoundaryProbeReport {
     pub kv_state_fixture_id: &'static str,
     pub attention_fixture_id: &'static str,
     pub attention_output_fixture_id: &'static str,
+    pub ffn_output_fixture_id: &'static str,
     pub rows: u64,
     pub position_start: u32,
     pub dispatches: u32,
@@ -698,7 +722,7 @@ pub struct PrefillLayer0BoundaryProbeReport {
     pub attention_kv_prefix_rows: u32,
     pub wall_ms: f64,
     pub gpu_ms: f64,
-    pub checksums: [u64; 18],
+    pub checksums: [u64; 28],
 }
 
 #[derive(Clone, Debug)]
@@ -2243,9 +2267,11 @@ pub fn write_prefill_layer0_boundary_probe_json<W: Write>(
     crate::artifact::write_json_string(output, report.attention_fixture_id)?;
     output.write_all(b", ")?;
     crate::artifact::write_json_string(output, report.attention_output_fixture_id)?;
+    output.write_all(b", ")?;
+    crate::artifact::write_json_string(output, report.ffn_output_fixture_id)?;
     write!(
         output,
-        "],\n  \"shape\": {{\n    \"rows\": {},\n    \"position_start\": {},\n    \"position_end\": {}\n  }},\n  \"input_boundary\": \"token_ids\",\n  \"schedule\": {{\n    \"dispatches\": {},\n    \"embedding_kernel\": \"kernel_get_rows_f16\",\n    \"hc_projection_kernel\": \"kernel_mul_mm_f16_f32\",\n    \"hc_norm_kernel\": \"kernel_dsv4_hc_split_weighted_sum_norm4\",\n    \"q8_kernel\": \"kernel_mul_mm_q8_0_f32\",\n    \"qkv_norm_kernel\": \"kernel_dsv4_qkv_rms_norm_f32_4\",\n    \"q_head_kernel\": \"kernel_dsv4_head_rms_norm_rope_tail_f32\",\n    \"kv_rope_kernel\": \"kernel_dsv4_rope_tail_f32\",\n    \"kv_fp8_kernel\": \"kernel_dsv4_fp8_kv_quantize_f32\",\n    \"cache_conversion_kernels\": [\"kernel_cpy_contig_f32_f16_4\", \"kernel_cpy_contig_f16_f32_4\"],\n    \"attention_block_kernel\": \"kernel_flash_attn_ext_blk\",\n    \"attention_kernel\": \"kernel_flash_attn_ext_f16_dk512_dv512\",\n    \"attention_inverse_rope_kernel\": \"kernel_dsv4_rope_tail_f32\",\n    \"attention_output_map_kernel\": \"kernel_mul_mm_id_map0_ne20_8\",\n    \"attention_output_low_kernel\": \"kernel_mul_mm_id_q8_0_f32\",\n    \"attention_output_kernel\": \"kernel_mul_mm_q8_0_f32\",\n    \"attention_hc_post_kernel\": \"kernel_dsv4_hc_expand4\"\n  }},\n  \"raw_cache\": {{\n    \"capacity_rows\": {},\n    \"target_row_start\": {},\n    \"target_row_end\": {},\n    \"guard_rows\": [0, {}],\n    \"guard_rows_intact\": true\n  }},\n  \"attention\": {{\n    \"query_rows\": {},\n    \"kv_rows\": {},\n    \"captured_kv_prefix_rows\": {},\n    \"live_kv_rows\": {},\n    \"window\": 128\n  }},\n  \"mapping\": {{\n    \"wrapped_model_ranges\": {},\n    \"pointer_matches\": {}\n  }},\n  \"timing\": {{\n    \"wall_ms\": {:.6},\n    \"gpu_ms\": {:.6}\n  }},\n  \"checksums\": {{\n    \"token_ids\": {},\n    \"hc_collapsed\": {},\n    \"attn_norm\": {},\n    \"q_lora\": {},\n    \"q_lora_norm\": {},\n    \"kv_raw\": {},\n    \"kv_norm\": {},\n    \"q_raw\": {},\n    \"q_current\": {},\n    \"kv_rope\": {},\n    \"kv_current\": {},\n    \"raw_cache\": {},\n    \"full_kv_current\": {},\n    \"kqv_output\": {},\n    \"kqv_back\": {},\n    \"attention_low\": {},\n    \"attention_out\": {},\n    \"attention_hc_post\": {}\n  }},\n  \"c0_bitwise_match\": true,\n  \"continuous_command_buffer\": true,\n  \"native_batch_schedule\": true,\n  \"guarded_cache_mutation\": true,\n  \"rectangular_attention_read\": true,\n  \"full_prefill_claim\": false\n}}\n",
+        "],\n  \"shape\": {{\n    \"rows\": {},\n    \"position_start\": {},\n    \"position_end\": {}\n  }},\n  \"input_boundary\": \"token_ids\",\n  \"output_boundary\": \"layer0_hc_ffn_post\",\n  \"schedule\": {{\n    \"dispatches\": {},\n    \"embedding_kernel\": \"kernel_get_rows_f16\",\n    \"hc_projection_kernel\": \"kernel_mul_mm_f16_f32\",\n    \"hc_norm_kernel\": \"kernel_dsv4_hc_split_weighted_sum_norm4\",\n    \"q8_kernel\": \"kernel_mul_mm_q8_0_f32\",\n    \"qkv_norm_kernel\": \"kernel_dsv4_qkv_rms_norm_f32_4\",\n    \"q_head_kernel\": \"kernel_dsv4_head_rms_norm_rope_tail_f32\",\n    \"kv_rope_kernel\": \"kernel_dsv4_rope_tail_f32\",\n    \"kv_fp8_kernel\": \"kernel_dsv4_fp8_kv_quantize_f32\",\n    \"cache_conversion_kernels\": [\"kernel_cpy_contig_f32_f16_4\", \"kernel_cpy_contig_f16_f32_4\"],\n    \"attention_block_kernel\": \"kernel_flash_attn_ext_blk\",\n    \"attention_kernel\": \"kernel_flash_attn_ext_f16_dk512_dv512\",\n    \"attention_inverse_rope_kernel\": \"kernel_dsv4_rope_tail_f32\",\n    \"attention_output_map_kernel\": \"kernel_mul_mm_id_map0_ne20_8\",\n    \"attention_output_low_kernel\": \"kernel_mul_mm_id_q8_0_f32\",\n    \"attention_output_kernel\": \"kernel_mul_mm_q8_0_f32\",\n    \"attention_hc_post_kernel\": \"kernel_dsv4_hc_expand4\",\n    \"router_matmul_kernel\": \"kernel_mul_mm_f16_f32\",\n    \"router_schedule\": \"decomposed_m1_batch\",\n    \"routed_map_kernel\": \"kernel_mul_mm_id_map0_ne20_6\",\n    \"routed_pair_kernel\": \"kernel_mul_mm_id_iq2_xxs_pair_swiglu_f16\",\n    \"routed_down_kernel\": \"kernel_mul_mm_id_q2_K_f16\",\n    \"routed_sum_kernel\": \"kernel_dsv4_moe_sum6_f32\",\n    \"shared_swiglu_kernel\": \"kernel_swiglu_flat_f32\",\n    \"ffn_hc_post_kernel\": \"kernel_dsv4_hc_expand4\"\n  }},\n  \"raw_cache\": {{\n    \"capacity_rows\": {},\n    \"target_row_start\": {},\n    \"target_row_end\": {},\n    \"guard_rows\": [0, {}],\n    \"guard_rows_intact\": true\n  }},\n  \"attention\": {{\n    \"query_rows\": {},\n    \"kv_rows\": {},\n    \"captured_kv_prefix_rows\": {},\n    \"live_kv_rows\": {},\n    \"window\": 128\n  }},\n  \"mapping\": {{\n    \"wrapped_model_ranges\": {},\n    \"pointer_matches\": {}\n  }},\n  \"timing\": {{\n    \"wall_ms\": {:.6},\n    \"gpu_ms\": {:.6}\n  }},\n  \"checksums\": {{\n    \"token_ids\": {},\n    \"hc_collapsed\": {},\n    \"attn_norm\": {},\n    \"q_lora\": {},\n    \"q_lora_norm\": {},\n    \"kv_raw\": {},\n    \"kv_norm\": {},\n    \"q_raw\": {},\n    \"q_current\": {},\n    \"kv_rope\": {},\n    \"kv_current\": {},\n    \"raw_cache\": {},\n    \"full_kv_current\": {},\n    \"kqv_output\": {},\n    \"kqv_back\": {},\n    \"attention_low\": {},\n    \"attention_out\": {},\n    \"attention_hc_post\": {},\n    \"ffn_current\": {},\n    \"ffn_norm\": {},\n    \"router_logits\": {},\n    \"router_probs\": {},\n    \"router_selected\": {},\n    \"router_weights\": {},\n    \"routed_mid\": {},\n    \"routed_out\": {},\n    \"shared_out\": {},\n    \"ffn_hc_post\": {}\n  }},\n  \"c0_bitwise_match\": true,\n  \"continuous_command_buffer\": true,\n  \"native_batch_schedule\": true,\n  \"guarded_cache_mutation\": true,\n  \"rectangular_attention_read\": true,\n  \"full_layer0_final_tile_claim\": true,\n  \"full_prefill_claim\": false\n}}\n",
         report.rows,
         report.position_start,
         report.position_start + report.rows as u32 - 1,
@@ -2280,6 +2306,16 @@ pub fn write_prefill_layer0_boundary_probe_json<W: Write>(
         report.checksums[15],
         report.checksums[16],
         report.checksums[17],
+        report.checksums[18],
+        report.checksums[19],
+        report.checksums[20],
+        report.checksums[21],
+        report.checksums[22],
+        report.checksums[23],
+        report.checksums[24],
+        report.checksums[25],
+        report.checksums[26],
+        report.checksums[27],
     )?;
     Ok(())
 }
@@ -2447,6 +2483,15 @@ fn checksum_u32(values: &[u32]) -> u64 {
     let mut checksum = 0xcbf2_9ce4_8422_2325_u64;
     for value in values {
         checksum ^= u64::from(*value);
+        checksum = checksum.wrapping_mul(0x0000_0100_0000_01b3);
+    }
+    checksum
+}
+
+fn checksum_i32(values: &[i32]) -> u64 {
+    let mut checksum = 0xcbf2_9ce4_8422_2325_u64;
+    for value in values {
+        checksum ^= u64::from(*value as u32);
         checksum = checksum.wrapping_mul(0x0000_0100_0000_01b3);
     }
     checksum
@@ -2790,6 +2835,53 @@ fn prefill_attention_output_fixture() -> Result<[Vec<f32>; 3]> {
         ));
     }
     Ok(tensors)
+}
+
+fn prefill_ffn_output_fixture() -> Result<([Vec<f32>; 9], Vec<i32>)> {
+    let tensors = [
+        decode_f32_fixture(PREFILL_FFN_CUR_BYTES, "prefill FFN current final tile")?,
+        decode_f32_fixture(PREFILL_FFN_NORM_BYTES, "prefill FFN norm final tile")?,
+        decode_f32_fixture(PREFILL_FFN_ROUTER_LOGITS_BYTES, "prefill FFN router logits")?,
+        decode_f32_fixture(
+            PREFILL_FFN_ROUTER_PROBS_BYTES,
+            "prefill FFN router probabilities",
+        )?,
+        decode_f32_fixture(
+            PREFILL_FFN_ROUTER_WEIGHTS_BYTES,
+            "prefill FFN router weights",
+        )?,
+        decode_f32_fixture(PREFILL_FFN_ROUTED_MID_BYTES, "prefill FFN routed mid")?,
+        decode_f32_fixture(PREFILL_FFN_ROUTED_OUT_BYTES, "prefill FFN routed output")?,
+        decode_f32_fixture(PREFILL_FFN_SHARED_OUT_BYTES, "prefill FFN shared output")?,
+        decode_f32_fixture(PREFILL_FFN_HC_POST_BYTES, "prefill FFN HC post")?,
+    ];
+    let expected = [
+        32 * 4096,
+        32 * 4096,
+        32 * 256,
+        32 * 256,
+        32 * 6,
+        32 * 6 * 2048,
+        32 * 4096,
+        32 * 4096,
+        32 * 16384,
+    ];
+    if tensors
+        .iter()
+        .zip(expected)
+        .any(|(tensor, elements)| tensor.len() != elements)
+    {
+        return Err(Error::invalid(
+            "prefill FFN-output fixture dimensions are invalid",
+        ));
+    }
+    let selected = decode_i32_fixture(PREFILL_FFN_SELECTED_BYTES, "prefill FFN selected experts")?;
+    if selected.len() != 32 * 6 {
+        return Err(Error::invalid(
+            "prefill FFN selected-expert fixture dimensions are invalid",
+        ));
+    }
+    Ok((tensors, selected))
 }
 
 fn prefill_hc_ingress_fixture() -> Result<(Vec<u32>, Vec<f32>, Vec<f32>)> {
@@ -3945,6 +4037,34 @@ mod imp {
     }
 
     #[repr(C)]
+    struct RawPrefillFfnWeights {
+        hc_fn_offset: u64,
+        hc_fn_bytes: u64,
+        hc_scale_offset: u64,
+        hc_scale_bytes: u64,
+        hc_base_offset: u64,
+        hc_base_bytes: u64,
+        norm_offset: u64,
+        norm_bytes: u64,
+        router_gate_offset: u64,
+        router_gate_bytes: u64,
+        router_hash_offset: u64,
+        router_hash_bytes: u64,
+        routed_gate_offset: u64,
+        routed_gate_bytes: u64,
+        routed_up_offset: u64,
+        routed_up_bytes: u64,
+        routed_down_offset: u64,
+        routed_down_bytes: u64,
+        shared_gate_offset: u64,
+        shared_gate_bytes: u64,
+        shared_up_offset: u64,
+        shared_up_bytes: u64,
+        shared_down_offset: u64,
+        shared_down_bytes: u64,
+    }
+
+    #[repr(C)]
     struct RawPrefillLayer0Weights {
         embedding_offset: u64,
         embedding_bytes: u64,
@@ -3963,6 +4083,7 @@ mod imp {
         attn_output_a_bytes: u64,
         attn_output_b_offset: u64,
         attn_output_b_bytes: u64,
+        ffn: RawPrefillFfnWeights,
     }
 
     #[repr(C)]
@@ -4200,6 +4321,16 @@ mod imp {
             attention_low: *mut f32,
             attention_out: *mut f32,
             after_attention_hc: *mut f32,
+            ffn_cur: *mut f32,
+            ffn_norm: *mut f32,
+            router_logits: *mut f32,
+            router_probs: *mut f32,
+            router_selected: *mut i32,
+            router_weights: *mut f32,
+            routed_mid: *mut f32,
+            routed_out: *mut f32,
+            shared_out: *mut f32,
+            after_ffn_hc: *mut f32,
             result: *mut RawPrefillLayer0ProbeResult,
             error: *mut c_char,
             error_bytes: usize,
@@ -5389,6 +5520,20 @@ mod imp {
         let attn_sinks = exact_tensor(model, "blk.0.attn_sinks.weight", 0, &[64])?;
         let attn_output_a = exact_tensor(model, "blk.0.attn_output_a.weight", 8, &[4096, 8192])?;
         let attn_output_b = exact_tensor(model, "blk.0.attn_output_b.weight", 8, &[8192, 4096])?;
+        let ffn_hc_fn = exact_tensor(model, "blk.0.hc_ffn_fn.weight", 1, &[16384, 24])?;
+        let ffn_hc_scale = exact_tensor(model, "blk.0.hc_ffn_scale.weight", 0, &[3])?;
+        let ffn_hc_base = exact_tensor(model, "blk.0.hc_ffn_base.weight", 0, &[24])?;
+        let ffn_norm_weight = exact_tensor(model, "blk.0.ffn_norm.weight", 0, &[4096])?;
+        let router_gate = exact_tensor(model, "blk.0.ffn_gate_inp.weight", 1, &[4096, 256])?;
+        let router_hash = exact_tensor(model, "blk.0.ffn_gate_tid2eid.weight", 26, &[6, 129280])?;
+        let routed_gate =
+            exact_tensor(model, "blk.0.ffn_gate_exps.weight", 16, &[4096, 2048, 256])?;
+        let routed_up = exact_tensor(model, "blk.0.ffn_up_exps.weight", 16, &[4096, 2048, 256])?;
+        let routed_down =
+            exact_tensor(model, "blk.0.ffn_down_exps.weight", 10, &[2048, 4096, 256])?;
+        let shared_gate = exact_tensor(model, "blk.0.ffn_gate_shexp.weight", 8, &[4096, 2048])?;
+        let shared_up = exact_tensor(model, "blk.0.ffn_up_shexp.weight", 8, &[4096, 2048])?;
+        let shared_down = exact_tensor(model, "blk.0.ffn_down_shexp.weight", 8, &[2048, 4096])?;
         let (tokens, expected_collapsed, expected_attn_norm) = prefill_hc_ingress_fixture()?;
         let [qkv_attn_norm, expected_q, expected_q_norm, expected_kv_raw, expected_kv_norm, expected_q_raw, expected_q_cur] =
             prefill_qkv_boundary_fixture()?;
@@ -5398,6 +5543,7 @@ mod imp {
             prefill_attention_read_fixture()?;
         let [expected_attention_low, expected_attention_projected, expected_attention_hc_post] =
             prefill_attention_output_fixture()?;
+        let (expected_ffn, expected_selected) = prefill_ffn_output_fixture()?;
         if expected_attn_norm
             .iter()
             .zip(&qkv_attn_norm)
@@ -5437,6 +5583,32 @@ mod imp {
             attn_output_a_bytes: attn_output_a.bytes,
             attn_output_b_offset: attn_output_b.absolute_offset,
             attn_output_b_bytes: attn_output_b.bytes,
+            ffn: RawPrefillFfnWeights {
+                hc_fn_offset: ffn_hc_fn.absolute_offset,
+                hc_fn_bytes: ffn_hc_fn.bytes,
+                hc_scale_offset: ffn_hc_scale.absolute_offset,
+                hc_scale_bytes: ffn_hc_scale.bytes,
+                hc_base_offset: ffn_hc_base.absolute_offset,
+                hc_base_bytes: ffn_hc_base.bytes,
+                norm_offset: ffn_norm_weight.absolute_offset,
+                norm_bytes: ffn_norm_weight.bytes,
+                router_gate_offset: router_gate.absolute_offset,
+                router_gate_bytes: router_gate.bytes,
+                router_hash_offset: router_hash.absolute_offset,
+                router_hash_bytes: router_hash.bytes,
+                routed_gate_offset: routed_gate.absolute_offset,
+                routed_gate_bytes: routed_gate.bytes,
+                routed_up_offset: routed_up.absolute_offset,
+                routed_up_bytes: routed_up.bytes,
+                routed_down_offset: routed_down.absolute_offset,
+                routed_down_bytes: routed_down.bytes,
+                shared_gate_offset: shared_gate.absolute_offset,
+                shared_gate_bytes: shared_gate.bytes,
+                shared_up_offset: shared_up.absolute_offset,
+                shared_up_bytes: shared_up.bytes,
+                shared_down_offset: shared_down.absolute_offset,
+                shared_down_bytes: shared_down.bytes,
+            },
         };
         let mut actual_collapsed = vec![0.0_f32; expected_collapsed.len()];
         let mut actual_attn_norm = vec![0.0_f32; expected_attn_norm.len()];
@@ -5455,6 +5627,16 @@ mod imp {
         let mut actual_attention_low = vec![0.0_f32; expected_attention_low.len()];
         let mut actual_attention_projected = vec![0.0_f32; expected_attention_projected.len()];
         let mut actual_attention_hc_post = vec![0.0_f32; expected_attention_hc_post.len()];
+        let mut actual_ffn_cur = vec![0.0_f32; expected_ffn[0].len()];
+        let mut actual_ffn_norm = vec![0.0_f32; expected_ffn[1].len()];
+        let mut actual_router_logits = vec![0.0_f32; expected_ffn[2].len()];
+        let mut actual_router_probs = vec![0.0_f32; expected_ffn[3].len()];
+        let mut actual_selected = vec![0_i32; expected_selected.len()];
+        let mut actual_router_weights = vec![0.0_f32; expected_ffn[4].len()];
+        let mut actual_routed_mid = vec![0.0_f32; expected_ffn[5].len()];
+        let mut actual_routed_out = vec![0.0_f32; expected_ffn[6].len()];
+        let mut actual_shared_out = vec![0.0_f32; expected_ffn[7].len()];
+        let mut actual_ffn_hc_post = vec![0.0_f32; expected_ffn[8].len()];
         let mut expected_full_kv = expected_kv_prefix.clone();
         expected_full_kv.extend_from_slice(&expected_kv_cur);
 
@@ -5499,6 +5681,16 @@ mod imp {
                 actual_attention_low.as_mut_ptr(),
                 actual_attention_projected.as_mut_ptr(),
                 actual_attention_hc_post.as_mut_ptr(),
+                actual_ffn_cur.as_mut_ptr(),
+                actual_ffn_norm.as_mut_ptr(),
+                actual_router_logits.as_mut_ptr(),
+                actual_router_probs.as_mut_ptr(),
+                actual_selected.as_mut_ptr(),
+                actual_router_weights.as_mut_ptr(),
+                actual_routed_mid.as_mut_ptr(),
+                actual_routed_out.as_mut_ptr(),
+                actual_shared_out.as_mut_ptr(),
+                actual_ffn_hc_post.as_mut_ptr(),
                 &mut raw,
                 error.as_mut_ptr(),
                 error.len(),
@@ -5516,9 +5708,9 @@ mod imp {
             || raw.q_lora_elements_per_row != 1024
             || raw.kv_elements_per_row != 512
             || raw.q_elements_per_row != 32768
-            || raw.dispatches != 22
-            || raw.wrapped_model_ranges != 13
-            || raw.pointer_matches != 13
+            || raw.dispatches != 43
+            || raw.wrapped_model_ranges != 25
+            || raw.pointer_matches != 25
             || raw.raw_cache_rows != 128
             || raw.raw_cache_target_row != 96
             || raw.raw_cache_guard_rows != 96
@@ -5601,6 +5793,51 @@ mod imp {
                 actual_attention_hc_post.as_slice(),
                 expected_attention_hc_post.as_slice(),
             ),
+            (
+                "hc_ffn_pre",
+                actual_ffn_cur.as_slice(),
+                expected_ffn[0].as_slice(),
+            ),
+            (
+                "ffn_norm",
+                actual_ffn_norm.as_slice(),
+                expected_ffn[1].as_slice(),
+            ),
+            (
+                "ffn_moe_logits",
+                actual_router_logits.as_slice(),
+                expected_ffn[2].as_slice(),
+            ),
+            (
+                "ffn_moe_probs",
+                actual_router_probs.as_slice(),
+                expected_ffn[3].as_slice(),
+            ),
+            (
+                "ffn_moe_weights_scaled",
+                actual_router_weights.as_slice(),
+                expected_ffn[4].as_slice(),
+            ),
+            (
+                "ffn_moe_weighted_swiglu",
+                actual_routed_mid.as_slice(),
+                expected_ffn[5].as_slice(),
+            ),
+            (
+                "ffn_moe_out",
+                actual_routed_out.as_slice(),
+                expected_ffn[6].as_slice(),
+            ),
+            (
+                "ffn_shexp",
+                actual_shared_out.as_slice(),
+                expected_ffn[7].as_slice(),
+            ),
+            (
+                "hc_ffn_post",
+                actual_ffn_hc_post.as_slice(),
+                expected_ffn[8].as_slice(),
+            ),
         ] {
             for (index, (actual, expected)) in actual.iter().zip(expected).enumerate() {
                 if actual.to_bits() != expected.to_bits() {
@@ -5609,6 +5846,15 @@ mod imp {
                         actual.to_bits(), expected.to_bits()
                     )));
                 }
+            }
+        }
+        for (index, (actual, expected)) in
+            actual_selected.iter().zip(&expected_selected).enumerate()
+        {
+            if actual != expected {
+                return Err(Error::invalid(format!(
+                    "prefill layer-0 C0 mismatch in ffn_moe_topk[{index}]: actual={actual} expected={expected}"
+                )));
             }
         }
         for (index, value) in actual_raw_cache[..96 * 512].iter().enumerate() {
@@ -5637,6 +5883,7 @@ mod imp {
             kv_state_fixture_id: PREFILL_KV_STATE_FIXTURE_ID,
             attention_fixture_id: PREFILL_ATTENTION_READ_FIXTURE_ID,
             attention_output_fixture_id: PREFILL_ATTENTION_OUTPUT_FIXTURE_ID,
+            ffn_output_fixture_id: PREFILL_FFN_OUTPUT_FIXTURE_ID,
             rows: raw.rows,
             position_start: raw.position_start,
             dispatches: raw.dispatches,
@@ -5668,6 +5915,16 @@ mod imp {
                 checksum_f32(&actual_attention_low),
                 checksum_f32(&actual_attention_projected),
                 checksum_f32(&actual_attention_hc_post),
+                checksum_f32(&actual_ffn_cur),
+                checksum_f32(&actual_ffn_norm),
+                checksum_f32(&actual_router_logits),
+                checksum_f32(&actual_router_probs),
+                checksum_i32(&actual_selected),
+                checksum_f32(&actual_router_weights),
+                checksum_f32(&actual_routed_mid),
+                checksum_f32(&actual_routed_out),
+                checksum_f32(&actual_shared_out),
+                checksum_f32(&actual_ffn_hc_post),
             ],
         })
     }
@@ -8532,6 +8789,7 @@ mod imp {
         let _ = prefill_kv_state_fixture()?;
         let _ = prefill_attention_read_fixture()?;
         let _ = prefill_attention_output_fixture()?;
+        let _ = prefill_ffn_output_fixture()?;
         let _ = exact_tensor(model, "token_embd.weight", 1, &[4096, 129280])?;
         let _ = exact_tensor(model, "blk.0.hc_attn_fn.weight", 1, &[16384, 24])?;
         let _ = exact_tensor(model, "blk.0.attn_output_a.weight", 8, &[4096, 8192])?;
@@ -9006,11 +9264,12 @@ mod tests {
             kv_state_fixture_id: PREFILL_KV_STATE_FIXTURE_ID,
             attention_fixture_id: PREFILL_ATTENTION_READ_FIXTURE_ID,
             attention_output_fixture_id: PREFILL_ATTENTION_OUTPUT_FIXTURE_ID,
+            ffn_output_fixture_id: PREFILL_FFN_OUTPUT_FIXTURE_ID,
             rows: 32,
             position_start: 2016,
-            dispatches: 22,
-            wrapped_model_ranges: 13,
-            pointer_matches: 13,
+            dispatches: 43,
+            wrapped_model_ranges: 25,
+            pointer_matches: 25,
             raw_cache_rows: 128,
             raw_cache_target_row: 96,
             raw_cache_guard_rows: 96,
@@ -9019,7 +9278,8 @@ mod tests {
             wall_ms: 3.0,
             gpu_ms: 2.0,
             checksums: [
-                11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28,
+                11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31,
+                32, 33, 34, 35, 36, 37, 38,
             ],
         }
     }
@@ -10181,14 +10441,19 @@ mod tests {
             "\"schema\": \"{PREFILL_LAYER0_BOUNDARY_PROBE_SCHEMA}\""
         )));
         assert!(text.contains("\"input_boundary\": \"token_ids\""));
-        assert!(text.contains("\"dispatches\": 22"));
+        assert!(text.contains("\"dispatches\": 43"));
         assert!(text.contains("\"attention_output_low_kernel\": \"kernel_mul_mm_id_q8_0_f32\""));
         assert!(text.contains("\"attention_hc_post_kernel\": \"kernel_dsv4_hc_expand4\""));
+        assert!(
+            text.contains("\"routed_pair_kernel\": \"kernel_mul_mm_id_iq2_xxs_pair_swiglu_f16\"")
+        );
+        assert!(text.contains("\"output_boundary\": \"layer0_hc_ffn_post\""));
         assert!(text.contains("\"target_row_start\": 96"));
         assert!(text.contains("\"kv_rows\": 2048"));
         assert!(text.contains("\"rectangular_attention_read\": true"));
         assert!(text.contains("\"guarded_cache_mutation\": true"));
         assert!(text.contains("\"continuous_command_buffer\": true"));
+        assert!(text.contains("\"full_layer0_final_tile_claim\": true"));
         assert!(text.contains("\"full_prefill_claim\": false"));
     }
 
@@ -10364,6 +10629,22 @@ mod tests {
             .chain(&out)
             .chain(&hc_post)
             .all(|value| value.is_finite()));
+    }
+
+    #[test]
+    fn prefill_ffn_output_fixture_has_target_shapes() {
+        let (tensors, selected) = prefill_ffn_output_fixture().unwrap();
+        assert_eq!(tensors[0].len(), 32 * 4096);
+        assert_eq!(tensors[1].len(), 32 * 4096);
+        assert_eq!(tensors[2].len(), 32 * 256);
+        assert_eq!(tensors[3].len(), 32 * 256);
+        assert_eq!(selected.len(), 32 * 6);
+        assert_eq!(tensors[4].len(), 32 * 6);
+        assert_eq!(tensors[5].len(), 32 * 6 * 2048);
+        assert_eq!(tensors[6].len(), 32 * 4096);
+        assert_eq!(tensors[7].len(), 32 * 4096);
+        assert_eq!(tensors[8].len(), 32 * 16384);
+        assert!(tensors.iter().flatten().all(|value| value.is_finite()));
     }
 
     #[test]

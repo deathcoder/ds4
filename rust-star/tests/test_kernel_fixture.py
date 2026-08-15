@@ -74,6 +74,9 @@ PREFILL_ATTENTION_READ_FIXTURE = (
 PREFILL_ATTENTION_OUTPUT_FIXTURE = (
     RUST_STAR_DIR / "fixtures" / "prefill-attention-output-2048-v1"
 )
+PREFILL_FFN_OUTPUT_FIXTURE = (
+    RUST_STAR_DIR / "fixtures" / "prefill-ffn-output-2048-v1"
+)
 
 
 class KernelFixtureTests(unittest.TestCase):
@@ -453,6 +456,34 @@ class KernelFixtureTests(unittest.TestCase):
             [
                 "kernel_mul_mm_id_q8_0_f32",
                 "kernel_mul_mm_q8_0_f32",
+                "kernel_dsv4_hc_expand4",
+            ],
+        )
+
+    def test_prefill_ffn_output_fixture_manifest_and_payloads(self) -> None:
+        manifest = json.loads(
+            (PREFILL_FFN_OUTPUT_FIXTURE / "manifest.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        report = validate_differential_fixture(PREFILL_FFN_OUTPUT_FIXTURE)
+        self.assertEqual(
+            report["fixture_id"],
+            "dwarfstar-oracle-v1-prefill-ffn-output-2048",
+        )
+        self.assertEqual(report["scope"], "layer-segment")
+        self.assertEqual(report["operations"], 5)
+        self.assertEqual(report["tensors"], 10)
+        self.assertEqual(report["verified_bytes"], 5_834_240)
+        self.assertEqual(manifest["scope"]["captured_position_range"], [2016, 2047])
+        self.assertTrue(manifest["capture"]["fresh_process_bitwise_match"])
+        self.assertEqual(
+            [operation["kernel"] for operation in manifest["operations"]],
+            [
+                "kernel_dsv4_hc_split_weighted_sum_norm4",
+                "kernel_mul_mm_f16_f32 plus legacy batch router kernels",
+                "kernel_mul_mm_id_iq2_xxs_pair_swiglu_f16",
+                "kernel_mul_mm_q8_0_f32 plus kernel_swiglu_flat_f32",
                 "kernel_dsv4_hc_expand4",
             ],
         )

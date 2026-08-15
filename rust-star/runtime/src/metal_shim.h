@@ -97,6 +97,21 @@ typedef struct rust_star_metal_prefill_qkv_probe_result {
     double gpu_ms;
 } rust_star_metal_prefill_qkv_probe_result;
 
+typedef struct rust_star_metal_prefill_ffn_weights {
+    uint64_t hc_fn_offset, hc_fn_bytes;
+    uint64_t hc_scale_offset, hc_scale_bytes;
+    uint64_t hc_base_offset, hc_base_bytes;
+    uint64_t norm_offset, norm_bytes;
+    uint64_t router_gate_offset, router_gate_bytes;
+    uint64_t router_hash_offset, router_hash_bytes;
+    uint64_t routed_gate_offset, routed_gate_bytes;
+    uint64_t routed_up_offset, routed_up_bytes;
+    uint64_t routed_down_offset, routed_down_bytes;
+    uint64_t shared_gate_offset, shared_gate_bytes;
+    uint64_t shared_up_offset, shared_up_bytes;
+    uint64_t shared_down_offset, shared_down_bytes;
+} rust_star_metal_prefill_ffn_weights;
+
 typedef struct rust_star_metal_prefill_layer0_weights {
     uint64_t embedding_offset, embedding_bytes;
     uint64_t hc_fn_offset, hc_fn_bytes;
@@ -107,6 +122,7 @@ typedef struct rust_star_metal_prefill_layer0_weights {
     uint64_t attn_sinks_offset, attn_sinks_bytes;
     uint64_t attn_output_a_offset, attn_output_a_bytes;
     uint64_t attn_output_b_offset, attn_output_b_bytes;
+    rust_star_metal_prefill_ffn_weights ffn;
 } rust_star_metal_prefill_layer0_weights;
 
 typedef struct rust_star_metal_prefill_layer0_probe_result {
@@ -288,6 +304,16 @@ int rust_star_metal_run_prefill_layer0_boundary(
     float *attention_low,
     float *attention_out,
     float *after_attention_hc,
+    float *ffn_cur,
+    float *ffn_norm,
+    float *router_logits,
+    float *router_probs,
+    int32_t *router_selected,
+    float *router_weights,
+    float *routed_mid,
+    float *routed_out,
+    float *shared_out,
+    float *after_ffn_hc,
     rust_star_metal_prefill_layer0_probe_result *result,
     char *error,
     size_t error_bytes);

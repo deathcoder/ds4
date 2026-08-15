@@ -26,6 +26,7 @@ fn main() {
     println!("cargo:rerun-if-changed=../../metal/softmax.metal");
     println!("cargo:rerun-if-changed=../../metal/sum_rows.metal");
     println!("cargo:rerun-if-changed=../../metal/dense.metal");
+    println!("cargo:rerun-if-changed=../../metal/glu.metal");
     println!("cargo:rerun-if-changed=../../metal/moe.metal");
     println!("cargo:rerun-if-changed=../../metal/dsv4_hc.metal");
     if env::var("CARGO_CFG_TARGET_OS").as_deref() != Ok("macos") {
@@ -61,6 +62,7 @@ fn main() {
             manifest.join("src/moe_output_prefix.metal"),
             manifest.join("../../metal/flash_attn.metal"),
             manifest.join("../../metal/dense.metal"),
+            manifest.join("../../metal/glu.metal"),
             manifest.join("../../metal/moe.metal"),
             manifest.join("../../metal/dsv4_hc.metal"),
         ],

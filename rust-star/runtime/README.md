@@ -175,11 +175,12 @@ rust-star/.work/runtime-target/release/rust-star prefill-layer0-boundary-probe \
 This command gathers the 32 F16 embeddings, constructs and normalizes the four
 HC streams, applies the legacy F16 mixer and fused HC collapse, then continues
 through Q/KV setup, KV finalization, guarded raw-cache storage, rectangular
-zero-prefix FlashAttention over all 2,048 KV rows, and inverse RoPE in one
-18-dispatch command buffer. It wraps eleven GGUF ranges without copying and
-requires 4,603,904 produced FP32 values to match repeated DwarfStar captures
-bit-for-bit. It is a continuous final-tile arithmetic boundary, not a full
-layer or full-prefill throughput result.
+zero-prefix FlashAttention over all 2,048 KV rows, inverse RoPE, grouped
+attention output, FFN routing, routed and shared experts, and the additive FFN
+HC update in one 43-dispatch command buffer. It wraps 25 GGUF ranges without
+copying and requires 6,979,776 produced FP32 values plus 192 selected expert
+IDs to match repeated DwarfStar captures bit-for-bit. It completes layer 0 for
+the isolated final tile, not the full 2K prefill or a throughput result.
 
 To run the connected layer-0 ingress gate:
 

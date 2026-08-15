@@ -95,3 +95,71 @@ kernel void kernel_dsv4_router_weights_one(
     device float *w = (device float *)weights;
     w[tid] = p[s[tid]]/sum*1.5f;
 }
+
+// Exact decomposed M1 batch-router schedule. DwarfStar's generic batch path
+// stores each stage separately; keeping these as individual kernels preserves
+// the same FP32 rounding boundaries before routed-expert execution.
+kernel void rust_star_router_softplus_batch(
+        device const float *src,
+        device float *dst,
+        uint index [[thread_position_in_grid]]) {
+    if (index >= 32u*256u) return;
+    const float x = src[index];
+    dst[index] = select(log(1.0f + exp(x)), x, x > 20.0f);
+}
+
+kernel void rust_star_router_sqrt_batch(
+        device const float *src,
+        device float *dst,
+        uint index [[thread_position_in_grid]]) {
+    if (index >= 32u*256u) return;
+    dst[index] = sqrt(src[index]);
+}
+
+kernel void rust_star_router_hash_rows_batch(
+        device const int *hash,
+        device const uint *tokens,
+        device int *selected,
+        uint row [[thread_position_in_grid]]) {
+    if (row >= 32u) return;
+    const uint token = min(tokens[row], 129279u);
+    for (uint slot = 0; slot < 6u; slot++) {
+        selected[row*6u + slot] = hash[token*6u + slot];
+    }
+}
+
+kernel void rust_star_router_gather_weights_batch(
+        device const float *probs,
+        device const int *selected,
+        device float *weights,
+        uint2 index [[thread_position_in_grid]]) {
+    if (index.x >= 6u || index.y >= 32u) return;
+    weights[index.y*6u + index.x] =
+        probs[index.y*256u + (uint)selected[index.y*6u + index.x]];
+}
+
+kernel void rust_star_router_clamp_sums_batch(
+        device const float *src,
+        device float *dst,
+        uint row [[thread_position_in_grid]]) {
+    if (row >= 32u) return;
+    dst[row] = clamp(src[row], 6.103515625e-5f, INFINITY);
+}
+
+kernel void rust_star_router_divide_batch(
+        device const float *weights,
+        device const float *sums,
+        device float *out,
+        uint2 index [[thread_position_in_grid]]) {
+    if (index.x >= 6u || index.y >= 32u) return;
+    const uint offset = index.y*6u + index.x;
+    out[offset] = weights[offset] / sums[index.y];
+}
+
+kernel void rust_star_router_scale_batch(
+        device const float *weights,
+        device float *out,
+        uint index [[thread_position_in_grid]]) {
+    if (index >= 32u*6u) return;
+    out[index] = weights[index] * 1.5f;
+}

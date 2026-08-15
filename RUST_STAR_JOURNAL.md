@@ -174,7 +174,13 @@ history; add a correction and update the current-state summary.
   plain RMSNorm, the legacy F16 batch mixer, and fused HC collapse/learned norm
   feed that Q/KV schedule in one ten-dispatch command buffer. Ten no-copy model
   views and all 2,457,600 produced FP32 values match repeated native DwarfStar
-  captures by bit pattern.
+  captures by bit pattern. That boundary now continues through grouped
+  attention output, FFN HC ingress and learned norm, the decomposed M1 router,
+  fused IQ2_XXS routed gate/up plus weighted SwiGLU, Q2_K routed down and sum,
+  the Q8_0 shared expert, and the additive FFN HC tail. The complete final-tile
+  layer uses 43 dispatches and 25 no-copy model views; all 6,979,776 retained
+  produced FP32 values and 192 selected expert IDs match repeated native
+  DwarfStar captures exactly.
   Full native batched prefill, sparse indexed attention beyond 512 ratio-4
   rows, and the eligible engine-measurement producer remain pending.
 - Measurements: Metal batching was 42.861x faster than synchronized submission
@@ -197,6 +203,11 @@ history; add a correction and update the current-state summary.
   and reported 56.433 ms wall / 2.544 ms GPU. Its cold standalone wall time
   includes pipeline compilation and readback and is not a throughput claim. The
   complete gate repeated C0 exact at 55.079 ms wall / 2.561 ms GPU.
+  The complete layer-0 final-tile boundary was C0 exact in its focused v5 run
+  at 135.893 ms wall / 73.494 ms GPU with 25/25 no-copy model views. The full
+  gate repeated it at 138.441 ms wall / 81.329 ms GPU. Both intervals include
+  setup, synchronization, exhaustive readback, and comparison and are not
+  prefill-throughput claims.
   The connected six-dispatch layer segment matched 9,264 retained FP32 values and
   reported 0.102 ms GPU time in the final gate; this remains correctness
   evidence rather than decoder throughput. The nine-dispatch Q/K projection
@@ -290,9 +301,8 @@ history; add a correction and update the current-state summary.
 
 ## Immediate Next Actions
 
-1. Extend the exact token-ID-to-attention-HC-post native batch tile through the
-   layer-0 FFN ingress and batched MoE/HC tail; then broaden the retained row
-   and layer coverage toward complete prefill.
+1. Hand the exact final-tile layer-0 FFN HC state directly into layer 1, then
+   broaden retained row coverage toward complete native 2K prefill.
 2. Add the fixed 512-row ratio-4 indexer top-k and sparse indexed attention so
    128 generated tokens can continue beyond the 2K frontier.
 3. Emit the `rust-star-engine-measurement-v1` artifact from the exact
@@ -304,6 +314,67 @@ history; add a correction and update the current-state summary.
 6. Run or approve the fork's GitHub Actions workflow and retain its URL.
 
 ## Entries
+
+### 2026-08-15 — Native M1 final tile completes layer 0 through the FFN HC tail
+
+Objective:
+
+- Extend the continuous final 32-row token-to-attention-HC boundary through
+  layer 0's active M1 FFN router, routed/shared experts, and additive HC tail.
+
+Oracle evidence and schedule decision:
+
+- Traced the pinned M1 production path through legacy F16 FFN ingress/router,
+  decomposed softplus/sqrt/token-hash routing, expert-major mapping, fused
+  IQ2_XXS paired gate/up weighted SwiGLU with an F16 intermediate, Q2_K routed
+  down projection, six-expert sum, three Q8_0 shared projections with flat
+  SwiGLU, and additive `kernel_dsv4_hc_expand4`.
+- Captured `hc_ffn_pre`, `ffn_norm`, router logits/probabilities/top-k/weights,
+  routed weighted-SwiGLU/output, shared output, and `hc_ffn_post` from two fresh
+  pinned 2K DwarfStar processes. All ten full payload pairs were byte-identical.
+  The strict importer binds their exact sizes and full SHA-256 identities
+  before retaining positions 2016--2047.
+- DwarfStar graph capture disables the fused routed pair for observability, but
+  its production source contract requires the retained F16 intermediate and
+  routed output to be bit-identical. Rust Star executes the production fused
+  kernel and compares those outputs to the retained diagnostic boundary.
+
+Implementation:
+
+- Added `prefill-ffn-output-2048-v1`, its reproducible strict importer, Rust
+  shape checks, and Python manifest/payload validation.
+- Evolved `prefill-layer0-boundary-probe` to schema v5. One Rust-owned command
+  buffer now runs 43 compute dispatches continuously from the final 32 token
+  IDs through `hc_ffn_post`. The boundary wraps all 25 GGUF weight ranges as
+  read-only no-copy Metal views and compares 6,979,776 produced FP32 values by
+  bit pattern plus 192 selected expert IDs exactly.
+- Added the seven decomposed M1 batch-router kernels and wired the native
+  expert map, fused IQ2_XXS pair, Q2_K F16 down, sum-six, shared SwiGLU, and HC
+  tail kernels behind the narrow Rust/C ABI. Stable JSON now reports both the
+  attention and FFN oracle fixtures, the full schedule, retained checksums, and
+  an explicit complete-layer-0-final-tile claim while preserving
+  `full_prefill_claim: false`.
+
+Target-Mac evidence:
+
+- The focused optimized v5 run was C0 exact with 43 dispatches and 25/25
+  no-copy views, reporting 135.893 ms wall and 73.494 ms GPU. Setup,
+  synchronization, exhaustive readback, and comparison remain in scope; this
+  is correctness evidence, not throughput.
+- The complete gate passed formatting, all 76 Rust tests, 52 Python tests, all
+  236 differential fixtures, optimized Objective-C/Metal compilation, strict
+  validation of all 1,288 required model tensors, every established Metal and
+  decoder control, and both steady-state benchmarks. Its v5 run remained C0
+  exact at 138.441 ms wall / 81.329 ms GPU with 25/25 no-copy views. The 2K
+  sequential diagnostic remained exact against its replay oracle while
+  preserving the required 129,280-logit native-batch mismatch and paired-run
+  ineligibility.
+
+Decision and next:
+
+- Accept the FFN/MoE/HC suffix as the exact completion of layer 0 for the
+  isolated final native tile. Next hand its live HC state into layer 1 and
+  broaden row coverage; do not relabel the final-tile gate as full 2K prefill.
 
 ### 2026-08-15 — Continuous native M1 final tile crosses attention output and HC post
 

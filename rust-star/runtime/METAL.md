@@ -151,7 +151,7 @@ throughput, and the report keeps `full_prefill_claim` false.
 
 ## Continuous M1 layer-0 prefill boundary
 
-Schema: `rust-star-prefill-layer0-boundary-probe-v3`.
+Schema: `rust-star-prefill-layer0-boundary-probe-v5`.
 
 `prefill-layer0-boundary-probe` moves the native input seam back to the final
 32 token IDs of the canonical 2K prompt. One command buffer gathers their F16
@@ -169,17 +169,27 @@ and 512-wide attention kernels for the final 32 queries, and applies inverse
 RoPE to the 64 output heads. This rectangular schedule is C0-equivalent to the
 final tile of DwarfStar's square 2K zero-prefix batch.
 
+After the grouped attention output and four-stream HC update, the command
+continues through the active M1 FFN schedule. It applies FFN HC collapse and
+learned norm, the legacy F16 router projection, decomposed
+softplus/sqrt/hash/gather/normalize routing, the expert-major map, fused
+IQ2_XXS gate/up weighted SwiGLU with an F16 intermediate, Q2_K expert down
+projection and six-expert sum, the three Q8_0 shared-expert projections with
+flat SwiGLU, and the additive four-stream HC tail.
+
 The compact HC fixture retains the final 32 token IDs, collapsed HC rows, and
 attention-normalized rows. Two fresh full 2K DwarfStar processes produced
 byte-identical HC and norm captures; the norm hash also equals the independently
 captured Q/KV input. A third fixture binds two byte-identical full 2K `KVrope`
 and `KVcur` captures and derives the exact rounded cache payload. The attention
-fixture binds two more byte-identical full 2K captures and retains the KV prefix
-plus final `kqv_out` and `kqv_back` tiles. Together the four fixtures require
-4,603,904 retained produced FP32 values to match by bit pattern. All eleven
-model spans remain mmap-backed no-copy views, and sentinel guards prove that
-cache rows 0--95 are unchanged. This is a continuous 18-dispatch final-tile
-arithmetic boundary, not a complete layer or full-prefill throughput result.
+fixtures bind byte-identical full 2K captures and retain the KV prefix plus
+final attention/output tiles. The FFN fixture binds ten more repeated full
+captures and retains the final router, routed/shared expert, and HC tiles.
+Together the six fixtures require 6,979,776 retained produced FP32 values and
+192 selected expert IDs to match exactly. All 25 model spans remain mmap-backed
+no-copy views, and sentinel guards prove that cache rows 0--95 are unchanged.
+This is a continuous 43-dispatch complete layer-0 final-tile boundary, not a
+full 2K prefill or throughput result.
 
 ## Layer-0 attention ingress
 
