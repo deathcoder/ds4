@@ -30,6 +30,8 @@ pub const LAYERS01234567_DECODE_PROBE_SCHEMA: &str =
     "rust-star-layers01234567-position-advancing-probe-v1";
 pub const LAYERS0_TO_42_DECODE_PROBE_SCHEMA: &str =
     "rust-star-layers0-42-position-advancing-probe-v1";
+pub const DECODER_OUTPUT_PROBE_SCHEMA: &str =
+    "rust-star-decoder-output-position-advancing-probe-v1";
 pub const RATIO128_COMPRESSOR_REPLAY_PROBE_SCHEMA: &str =
     "rust-star-ratio128-compressor-replay-probe-v1";
 pub const PROJECTION_FIXTURE_ID: &str = "dwarfstar-oracle-v1-layer0-pos1-attn-q-a";
@@ -75,6 +77,36 @@ const MAX_ITERATIONS: u64 = 100_000;
 const MAX_THREAD_INVOCATIONS: u64 = 1_000_000_000;
 const MAX_LAYER0_EXECUTIONS: u32 = 1000;
 const MAX_EMBEDDING_TOKENS: usize = 64;
+const OUTPUT_HEAD_POS1_PRE_BYTES: &[u8] =
+    include_bytes!("../../fixtures/output-head-pos1-v1/output-hc-pre.f32le.bin");
+const OUTPUT_HEAD_POS1_WEIGHTS_BYTES: &[u8] =
+    include_bytes!("../../fixtures/output-head-pos1-v1/output-hc-weights.f32le.bin");
+const OUTPUT_HEAD_POS1_HC_BYTES: &[u8] =
+    include_bytes!("../../fixtures/output-head-pos1-v1/output-hc.f32le.bin");
+const OUTPUT_HEAD_POS1_NORM_BYTES: &[u8] =
+    include_bytes!("../../fixtures/output-head-pos1-v1/output-norm.f32le.bin");
+const OUTPUT_HEAD_POS1_LOGITS_BYTES: &[u8] =
+    include_bytes!("../../fixtures/output-head-pos1-v1/logits.f32le.bin");
+const OUTPUT_HEAD_POS2_PRE_BYTES: &[u8] =
+    include_bytes!("../../fixtures/output-head-pos2-v1/output-hc-pre.f32le.bin");
+const OUTPUT_HEAD_POS2_WEIGHTS_BYTES: &[u8] =
+    include_bytes!("../../fixtures/output-head-pos2-v1/output-hc-weights.f32le.bin");
+const OUTPUT_HEAD_POS2_HC_BYTES: &[u8] =
+    include_bytes!("../../fixtures/output-head-pos2-v1/output-hc.f32le.bin");
+const OUTPUT_HEAD_POS2_NORM_BYTES: &[u8] =
+    include_bytes!("../../fixtures/output-head-pos2-v1/output-norm.f32le.bin");
+const OUTPUT_HEAD_POS2_LOGITS_BYTES: &[u8] =
+    include_bytes!("../../fixtures/output-head-pos2-v1/logits.f32le.bin");
+const OUTPUT_HEAD_POS3_PRE_BYTES: &[u8] =
+    include_bytes!("../../fixtures/output-head-pos3-v1/output-hc-pre.f32le.bin");
+const OUTPUT_HEAD_POS3_WEIGHTS_BYTES: &[u8] =
+    include_bytes!("../../fixtures/output-head-pos3-v1/output-hc-weights.f32le.bin");
+const OUTPUT_HEAD_POS3_HC_BYTES: &[u8] =
+    include_bytes!("../../fixtures/output-head-pos3-v1/output-hc.f32le.bin");
+const OUTPUT_HEAD_POS3_NORM_BYTES: &[u8] =
+    include_bytes!("../../fixtures/output-head-pos3-v1/output-norm.f32le.bin");
+const OUTPUT_HEAD_POS3_LOGITS_BYTES: &[u8] =
+    include_bytes!("../../fixtures/output-head-pos3-v1/logits.f32le.bin");
 const PROJECTION_TENSOR: &str = "blk.0.attn_q_a.weight";
 const PROJECTION_INPUT_BYTES: &[u8] =
     include_bytes!("../../fixtures/q8-attn-q-a-v1/activation.f32le.bin");
@@ -759,6 +791,45 @@ pub type Layers0To42DecodeStepReport = Layers0123DecodeStepReport;
 pub type Layers0To42DecodeProbeReport = Layers0123DecodeProbeReport;
 
 #[derive(Clone, Debug)]
+pub struct OutputHeadProbeReport {
+    pub fixture_id: &'static str,
+    pub dispatches: u32,
+    pub command_buffers: u32,
+    pub host_waits: u32,
+    pub wrapped_model_ranges: u32,
+    pub pointer_matches: u32,
+    pub wall_ms: f64,
+    pub gpu_ms: f64,
+    pub hc_pre_checksum: u64,
+    pub hc_weights_checksum: u64,
+    pub hc_checksum: u64,
+    pub norm_checksum: u64,
+    pub logits_checksum: u64,
+    pub selected_token: u32,
+}
+
+#[derive(Clone, Debug)]
+pub struct DecoderOutputStepReport {
+    pub position: u32,
+    pub input_token: u32,
+    pub cache_rows: u32,
+    pub layers: Vec<Layer0ProbeReport>,
+    pub transformer_wall_ms: f64,
+    pub transformer_gpu_ms: f64,
+    pub output_head: OutputHeadProbeReport,
+}
+
+#[derive(Clone, Debug)]
+pub struct DecoderOutputProbeReport {
+    pub steps: Vec<DecoderOutputStepReport>,
+    pub command_buffers_per_step: u32,
+    pub host_waits_per_step: u32,
+    pub kv_cache_layers: u32,
+    pub cache_capacity_rows: u32,
+    pub logits_elements: u32,
+}
+
+#[derive(Clone, Debug)]
 pub struct Ratio128CompressorLayerReport {
     pub layer: u32,
     pub fixture_id: &'static str,
@@ -1214,6 +1285,91 @@ pub fn write_layers0_to_42_decode_probe_json<W: Write>(
     report: &Layers0To42DecodeProbeReport,
 ) -> Result<()> {
     write_position_advancing_probe_json(output, report, LAYERS0_TO_42_DECODE_PROBE_SCHEMA, 43)
+}
+
+pub fn write_decoder_output_probe_json<W: Write>(
+    output: &mut W,
+    report: &DecoderOutputProbeReport,
+) -> Result<()> {
+    if report.steps.len() != 3
+        || report.command_buffers_per_step != 44
+        || report.host_waits_per_step != 2
+        || report.kv_cache_layers != 43
+        || report.cache_capacity_rows != 4
+        || report.logits_elements != 129280
+    {
+        return Err(Error::invalid(
+            "decoder-output report has inconsistent boundary metadata",
+        ));
+    }
+    write!(
+        output,
+        "{{\n  \"schema\": \"{DECODER_OUTPUT_PROBE_SCHEMA}\",\n  \"selection\": \"lowest-token-id-argmax\",\n  \"input_tokens\": [201, 361, 1915],\n  \"command_buffers_per_step\": {},\n  \"host_waits_per_step\": {},\n  \"kv_cache_layers\": {},\n  \"cache_capacity_rows\": {},\n  \"logits_elements\": {},\n  \"steps\": [",
+        report.command_buffers_per_step,
+        report.host_waits_per_step,
+        report.kv_cache_layers,
+        report.cache_capacity_rows,
+        report.logits_elements,
+    )?;
+    for (index, step) in report.steps.iter().enumerate() {
+        let expected_position = index as u32 + 1;
+        let expected_input = [201_u32, 361, 1915][index];
+        let expected_selected = [361_u32, 1915, 262][index];
+        if step.position != expected_position
+            || step.input_token != expected_input
+            || step.cache_rows != expected_position + 1
+            || step.layers.len() != 43
+            || step.output_head.dispatches != 5
+            || step.output_head.command_buffers != 1
+            || step.output_head.host_waits != 1
+            || step.output_head.wrapped_model_ranges != 5
+            || step.output_head.pointer_matches != 5
+            || step.output_head.selected_token != expected_selected
+            || !step.transformer_wall_ms.is_finite()
+            || step.transformer_wall_ms <= 0.0
+            || !step.transformer_gpu_ms.is_finite()
+            || step.transformer_gpu_ms < 0.0
+            || !step.output_head.wall_ms.is_finite()
+            || step.output_head.wall_ms <= 0.0
+            || !step.output_head.gpu_ms.is_finite()
+            || step.output_head.gpu_ms < 0.0
+        {
+            return Err(Error::invalid(
+                "decoder-output step has inconsistent scheduling metadata",
+            ));
+        }
+        if index != 0 {
+            write!(output, ",")?;
+        }
+        write!(
+            output,
+            "\n    {{\n      \"position\": {},\n      \"input_token\": {},\n      \"cache_rows\": {},\n      \"transformer\": {{\"layers\": 43, \"wall_ms\": {:.6}, \"summed_gpu_ms\": {:.6}, \"c0_bitwise_match\": true}},\n      \"output_head\": {{\n        \"fixture\": \"{}\",\n        \"dispatches\": {},\n        \"command_buffers\": {},\n        \"host_waits\": {},\n        \"mapping\": {{\"wrapped_model_ranges\": {}, \"pointer_matches\": {}}},\n        \"timing\": {{\"wall_ms\": {:.6}, \"gpu_ms\": {:.6}}},\n        \"checksums\": {{\"hc_pre\": {}, \"hc_weights\": {}, \"hc\": {}, \"norm\": {}, \"logits\": {}}},\n        \"selected_token\": {},\n        \"full_logits_c0_bitwise_match\": true\n      }}\n    }}",
+            step.position,
+            step.input_token,
+            step.cache_rows,
+            step.transformer_wall_ms,
+            step.transformer_gpu_ms,
+            step.output_head.fixture_id,
+            step.output_head.dispatches,
+            step.output_head.command_buffers,
+            step.output_head.host_waits,
+            step.output_head.wrapped_model_ranges,
+            step.output_head.pointer_matches,
+            step.output_head.wall_ms,
+            step.output_head.gpu_ms,
+            step.output_head.hc_pre_checksum,
+            step.output_head.hc_weights_checksum,
+            step.output_head.hc_checksum,
+            step.output_head.norm_checksum,
+            step.output_head.logits_checksum,
+            step.output_head.selected_token,
+        )?;
+    }
+    write!(
+        output,
+        "\n  ],\n  \"closed_loop_sampling\": false,\n  \"externally_supplied_decode_inputs\": true,\n  \"full_logits_c0_bitwise_match\": true,\n  \"c0_bitwise_match\": true\n}}\n"
+    )?;
+    Ok(())
 }
 
 pub fn write_ratio128_compressor_replay_probe_json<W: Write>(
@@ -1687,6 +1843,95 @@ fn decode_f32_fixture(bytes: &[u8], label: &str) -> Result<Vec<f32>> {
         values.push(value);
     }
     Ok(values)
+}
+
+struct OutputHeadExpected {
+    fixture_id: &'static str,
+    hc_pre: Vec<f32>,
+    hc_weights: Vec<f32>,
+    hc: Vec<f32>,
+    norm: Vec<f32>,
+    logits: Vec<f32>,
+    selected_token: u32,
+}
+
+fn output_head_expected(position: u32) -> Result<OutputHeadExpected> {
+    let (fixture_id, pre, weights, hc, norm, logits, selected_token) = match position {
+        1 => (
+            "dwarfstar-oracle-v1-output-head-pos1",
+            OUTPUT_HEAD_POS1_PRE_BYTES,
+            OUTPUT_HEAD_POS1_WEIGHTS_BYTES,
+            OUTPUT_HEAD_POS1_HC_BYTES,
+            OUTPUT_HEAD_POS1_NORM_BYTES,
+            OUTPUT_HEAD_POS1_LOGITS_BYTES,
+            361,
+        ),
+        2 => (
+            "dwarfstar-oracle-v1-output-head-pos2",
+            OUTPUT_HEAD_POS2_PRE_BYTES,
+            OUTPUT_HEAD_POS2_WEIGHTS_BYTES,
+            OUTPUT_HEAD_POS2_HC_BYTES,
+            OUTPUT_HEAD_POS2_NORM_BYTES,
+            OUTPUT_HEAD_POS2_LOGITS_BYTES,
+            1915,
+        ),
+        3 => (
+            "dwarfstar-oracle-v1-output-head-pos3",
+            OUTPUT_HEAD_POS3_PRE_BYTES,
+            OUTPUT_HEAD_POS3_WEIGHTS_BYTES,
+            OUTPUT_HEAD_POS3_HC_BYTES,
+            OUTPUT_HEAD_POS3_NORM_BYTES,
+            OUTPUT_HEAD_POS3_LOGITS_BYTES,
+            262,
+        ),
+        _ => {
+            return Err(Error::invalid(
+                "output-head fixtures cover positions 1 through 3",
+            ))
+        }
+    };
+    let expected = OutputHeadExpected {
+        fixture_id,
+        hc_pre: decode_f32_fixture(pre, "output HC pre")?,
+        hc_weights: decode_f32_fixture(weights, "output HC weights")?,
+        hc: decode_f32_fixture(hc, "output HC")?,
+        norm: decode_f32_fixture(norm, "output norm")?,
+        logits: decode_f32_fixture(logits, "output logits")?,
+        selected_token,
+    };
+    if expected.hc_pre.len() != 4
+        || expected.hc_weights.len() != 4
+        || expected.hc.len() != 4096
+        || expected.norm.len() != 4096
+        || expected.logits.len() != 129280
+        || lowest_id_argmax(&expected.logits)? != selected_token
+    {
+        return Err(Error::invalid(
+            "output-head fixture shape or selection is invalid",
+        ));
+    }
+    Ok(expected)
+}
+
+fn lowest_id_argmax(values: &[f32]) -> Result<u32> {
+    let first = *values
+        .first()
+        .ok_or_else(|| Error::invalid("cannot select from empty logits"))?;
+    if !first.is_finite() {
+        return Err(Error::invalid("logits contain a non-finite value"));
+    }
+    let mut best_id = 0_u32;
+    let mut best = first;
+    for (index, value) in values.iter().copied().enumerate().skip(1) {
+        if !value.is_finite() {
+            return Err(Error::invalid("logits contain a non-finite value"));
+        }
+        if value > best {
+            best = value;
+            best_id = index as u32;
+        }
+    }
+    Ok(best_id)
 }
 
 fn ratio128_compressor_fixture(layer: u32) -> Result<(&'static str, Vec<f32>, Vec<f32>)> {
@@ -2973,6 +3218,29 @@ mod imp {
             error: *mut c_char,
             error_bytes: usize,
             layer0: *const RawLayer0Extension,
+        ) -> i32;
+        fn rust_star_metal_run_output_head(
+            context: *mut c_void,
+            model_mapping: *const c_void,
+            model_bytes: u64,
+            hc_fn_offset: u64,
+            hc_fn_bytes: u64,
+            hc_scale_offset: u64,
+            hc_scale_bytes: u64,
+            hc_base_offset: u64,
+            hc_base_bytes: u64,
+            output_norm_offset: u64,
+            output_norm_bytes: u64,
+            output_offset: u64,
+            output_bytes: u64,
+            hc_pre: *mut f32,
+            hc_weights: *mut f32,
+            hc: *mut f32,
+            norm: *mut f32,
+            logits: *mut f32,
+            result: *mut RawIngressProbeResult,
+            error: *mut c_char,
+            error_bytes: usize,
         ) -> i32;
         fn rust_star_metal_run_ffn_router(
             context: *mut c_void,
@@ -4737,6 +5005,120 @@ mod imp {
         })
     }
 
+    fn run_retained_output_head(
+        model: &MappedModel,
+        context: &Context,
+        position: u32,
+    ) -> Result<OutputHeadProbeReport> {
+        let expected = output_head_expected(position)?;
+        let hc_fn = exact_tensor(model, "output_hc_fn.weight", 1, &[16384, 4])?;
+        let hc_scale = exact_tensor(model, "output_hc_scale.weight", 0, &[1])?;
+        let hc_base = exact_tensor(model, "output_hc_base.weight", 0, &[4])?;
+        let output_norm = exact_tensor(model, "output_norm.weight", 0, &[4096])?;
+        let output = exact_tensor(model, "output.weight", 8, &[4096, 129280])?;
+        let mut hc_pre = vec![0.0_f32; 4];
+        let mut hc_weights = vec![0.0_f32; 4];
+        let mut hc = vec![0.0_f32; 4096];
+        let mut norm = vec![0.0_f32; 4096];
+        let mut logits = vec![0.0_f32; 129280];
+        let mut raw = RawIngressProbeResult::default();
+        let mut error = [0 as c_char; ERROR_BYTES];
+        let succeeded = unsafe {
+            rust_star_metal_run_output_head(
+                context.0,
+                model.mapping_pointer(),
+                model.bytes(),
+                hc_fn.absolute_offset,
+                hc_fn.bytes,
+                hc_scale.absolute_offset,
+                hc_scale.bytes,
+                hc_base.absolute_offset,
+                hc_base.bytes,
+                output_norm.absolute_offset,
+                output_norm.bytes,
+                output.absolute_offset,
+                output.bytes,
+                hc_pre.as_mut_ptr(),
+                hc_weights.as_mut_ptr(),
+                hc.as_mut_ptr(),
+                norm.as_mut_ptr(),
+                logits.as_mut_ptr(),
+                &mut raw,
+                error.as_mut_ptr(),
+                error.len(),
+            )
+        };
+        if succeeded == 0 {
+            return Err(Error::invalid(format!(
+                "Metal output-head probe failed at position {position}: {}",
+                error_text(&error)
+            )));
+        }
+        if raw.model_bytes != model.bytes()
+            || raw.wrapped_model_ranges != 5
+            || raw.pointer_matches != 5
+        {
+            return Err(Error::invalid(
+                "Metal output head did not preserve all five mmap-backed model ranges",
+            ));
+        }
+        for (label, actual, reference) in [
+            (
+                "output_hc_pre",
+                hc_pre.as_slice(),
+                expected.hc_pre.as_slice(),
+            ),
+            (
+                "output_hc_weights",
+                hc_weights.as_slice(),
+                expected.hc_weights.as_slice(),
+            ),
+            ("output_hc", hc.as_slice(), expected.hc.as_slice()),
+            ("output_norm", norm.as_slice(), expected.norm.as_slice()),
+            ("logits", logits.as_slice(), expected.logits.as_slice()),
+        ] {
+            for (index, (actual, reference)) in actual.iter().zip(reference).enumerate() {
+                if actual.to_bits() != reference.to_bits() {
+                    return Err(Error::invalid(format!(
+                        "output-head C0 mismatch in {label}[{index}] at position {position}: actual={:#010x} expected={:#010x}",
+                        actual.to_bits(),
+                        reference.to_bits()
+                    )));
+                }
+            }
+        }
+        let selected_token = lowest_id_argmax(&logits)?;
+        if selected_token != expected.selected_token {
+            return Err(Error::invalid(format!(
+                "output-head selection mismatch at position {position}: actual={selected_token} expected={}",
+                expected.selected_token
+            )));
+        }
+        if !raw.wall_ms.is_finite()
+            || raw.wall_ms <= 0.0
+            || !raw.gpu_ms.is_finite()
+            || raw.gpu_ms < 0.0
+        {
+            return Err(Error::invalid("Metal output head returned invalid timing"));
+        }
+        Ok(OutputHeadProbeReport {
+            fixture_id: expected.fixture_id,
+            dispatches: 5,
+            command_buffers: 1,
+            host_waits: 1,
+            wrapped_model_ranges: raw.wrapped_model_ranges,
+            pointer_matches: raw.pointer_matches,
+            wall_ms: raw.wall_ms,
+            gpu_ms: raw.gpu_ms,
+            hc_pre_checksum: checksum_f32(&hc_pre),
+            hc_weights_checksum: checksum_f32(&hc_weights),
+            hc_checksum: checksum_f32(&hc),
+            norm_checksum: checksum_f32(&norm),
+            logits_checksum: checksum_f32(&logits),
+            selected_token,
+        })
+    }
+
     fn run_position_advancing_probe(
         model: &MappedModel,
         layer_count: u32,
@@ -4821,6 +5203,59 @@ mod imp {
         model: &MappedModel,
     ) -> Result<Layers0To42DecodeProbeReport> {
         run_position_advancing_probe(model, 43)
+    }
+
+    pub fn run_decoder_output_probe(model: &MappedModel) -> Result<DecoderOutputProbeReport> {
+        let context = Context::new()?;
+        let mut layers = (0..43)
+            .map(|layer_index| PreparedLayerExecution::new(model, layer_index, 1, 1))
+            .collect::<Result<Vec<_>>>()?;
+        let mut steps = Vec::with_capacity(3);
+
+        for (position, input_token) in [(1_u32, 201_u32), (2_u32, 361_u32), (3_u32, 1915_u32)] {
+            if position > 1 {
+                for (layer_index, layer) in layers.iter_mut().enumerate() {
+                    layer.expected = layer_expected(layer_index as u32, position)?;
+                }
+            }
+            submit_prepared_layers(model, &context, &mut layers, input_token, position)?;
+            let output_head = run_retained_output_head(model, &context, position)?;
+            let mut reports = Vec::with_capacity(43);
+            for layer in &mut layers {
+                reports.push(
+                    run_prepared_layer_iterations(
+                        model,
+                        &context,
+                        layer,
+                        input_token,
+                        position,
+                        0,
+                        1,
+                        COMMAND_CHAINED_COLLECT,
+                        42,
+                    )?
+                    .report,
+                );
+            }
+            steps.push(DecoderOutputStepReport {
+                position,
+                input_token,
+                cache_rows: position + 1,
+                transformer_wall_ms: reports[0].wall_ms,
+                transformer_gpu_ms: reports.iter().map(|layer| layer.gpu_ms).sum(),
+                layers: reports,
+                output_head,
+            });
+        }
+
+        Ok(DecoderOutputProbeReport {
+            steps,
+            command_buffers_per_step: 44,
+            host_waits_per_step: 2,
+            kv_cache_layers: 43,
+            cache_capacity_rows: 4,
+            logits_elements: 129280,
+        })
     }
 
     pub fn run_ratio128_compressor_replay_probe(
@@ -5945,6 +6380,20 @@ mod imp {
         ))
     }
 
+    pub fn run_decoder_output_probe(model: &MappedModel) -> Result<DecoderOutputProbeReport> {
+        for position in 1..=3 {
+            let _ = output_head_expected(position)?;
+        }
+        let _ = exact_tensor(model, "output_hc_fn.weight", 1, &[16384, 4])?;
+        let _ = exact_tensor(model, "output_hc_scale.weight", 0, &[1])?;
+        let _ = exact_tensor(model, "output_hc_base.weight", 0, &[4])?;
+        let _ = exact_tensor(model, "output_norm.weight", 0, &[4096])?;
+        let _ = exact_tensor(model, "output.weight", 8, &[4096, 129280])?;
+        Err(Error::invalid(
+            "the Metal decoder-output probe is available only on macOS",
+        ))
+    }
+
     pub fn run_ratio128_compressor_replay_probe(
         model: &MappedModel,
     ) -> Result<Ratio128CompressorReplayProbeReport> {
@@ -6120,12 +6569,13 @@ mod imp {
 
 pub use imp::{
     run_attention_ingress_probe, run_attention_output_probe, run_attention_read_probe,
-    run_attention_setup_probe, run_f16_embedding_probe, run_ffn_router_probe, run_layer0_bench,
-    run_layer0_probe, run_layers01234567_decode_probe, run_layers012345_decode_probe,
-    run_layers0123_bench, run_layers0123_chained_probe, run_layers0123_decode_probe,
-    run_layers0123_probe, run_layers012_chained_probe, run_layers012_probe, run_layers01_probe,
-    run_layers0_to_42_decode_probe, run_moe_output_probe, run_probe, run_q8_projection_probe,
-    run_ratio128_compressor_replay_probe, run_rope_kv_store_probe, LayerExecutor,
+    run_attention_setup_probe, run_decoder_output_probe, run_f16_embedding_probe,
+    run_ffn_router_probe, run_layer0_bench, run_layer0_probe, run_layers01234567_decode_probe,
+    run_layers012345_decode_probe, run_layers0123_bench, run_layers0123_chained_probe,
+    run_layers0123_decode_probe, run_layers0123_probe, run_layers012_chained_probe,
+    run_layers012_probe, run_layers01_probe, run_layers0_to_42_decode_probe, run_moe_output_probe,
+    run_probe, run_q8_projection_probe, run_ratio128_compressor_replay_probe,
+    run_rope_kv_store_probe, LayerExecutor,
 };
 
 #[cfg(test)]
@@ -6672,6 +7122,52 @@ mod tests {
         report
     }
 
+    fn decoder_output_report() -> DecoderOutputProbeReport {
+        let transformer = layers0_to_42_decode_report();
+        let selected = [361_u32, 1915, 262];
+        let fixtures = [
+            "dwarfstar-oracle-v1-output-head-pos1",
+            "dwarfstar-oracle-v1-output-head-pos2",
+            "dwarfstar-oracle-v1-output-head-pos3",
+        ];
+        DecoderOutputProbeReport {
+            steps: transformer
+                .steps
+                .into_iter()
+                .enumerate()
+                .map(|(index, step)| DecoderOutputStepReport {
+                    position: step.position,
+                    input_token: step.token,
+                    cache_rows: step.cache_rows,
+                    layers: step.layers,
+                    transformer_wall_ms: step.wall_ms,
+                    transformer_gpu_ms: step.gpu_ms,
+                    output_head: OutputHeadProbeReport {
+                        fixture_id: fixtures[index],
+                        dispatches: 5,
+                        command_buffers: 1,
+                        host_waits: 1,
+                        wrapped_model_ranges: 5,
+                        pointer_matches: 5,
+                        wall_ms: 2.0,
+                        gpu_ms: 1.0,
+                        hc_pre_checksum: 1,
+                        hc_weights_checksum: 2,
+                        hc_checksum: 3,
+                        norm_checksum: 4,
+                        logits_checksum: 5,
+                        selected_token: selected[index],
+                    },
+                })
+                .collect(),
+            command_buffers_per_step: 44,
+            host_waits_per_step: 2,
+            kv_cache_layers: 43,
+            cache_capacity_rows: 4,
+            logits_elements: 129280,
+        }
+    }
+
     #[test]
     fn validates_probe_work_bounds() {
         assert!(ProbeConfig::default().validate().is_ok());
@@ -6862,6 +7358,33 @@ mod tests {
         assert!(text.contains("\"kv_cache_layers\": 43"));
         assert!(text.contains("\"layer\": 42"));
         assert!(text.contains("\"fixture\": \"dwarfstar-oracle-v1-layer42-pos3-complete\""));
+    }
+
+    #[test]
+    fn output_head_fixtures_have_target_shapes_and_selection() {
+        for (position, selected) in [(1, 361), (2, 1915), (3, 262)] {
+            let fixture = output_head_expected(position).unwrap();
+            assert_eq!(fixture.hc_pre.len(), 4);
+            assert_eq!(fixture.hc_weights.len(), 4);
+            assert_eq!(fixture.hc.len(), 4096);
+            assert_eq!(fixture.norm.len(), 4096);
+            assert_eq!(fixture.logits.len(), 129280);
+            assert_eq!(fixture.selected_token, selected);
+            assert_eq!(lowest_id_argmax(&fixture.logits).unwrap(), selected);
+        }
+    }
+
+    #[test]
+    fn writes_stable_decoder_output_probe_json() {
+        let mut output = Vec::new();
+        write_decoder_output_probe_json(&mut output, &decoder_output_report()).unwrap();
+        let text = String::from_utf8(output).unwrap();
+        assert!(text.contains(&format!("\"schema\": \"{DECODER_OUTPUT_PROBE_SCHEMA}\"")));
+        assert!(text.contains("\"command_buffers_per_step\": 44"));
+        assert!(text.contains("\"host_waits_per_step\": 2"));
+        assert!(text.contains("\"selected_token\": 262"));
+        assert!(text.contains("\"closed_loop_sampling\": false"));
+        assert!(text.contains("\"full_logits_c0_bitwise_match\": true"));
     }
 
     #[test]

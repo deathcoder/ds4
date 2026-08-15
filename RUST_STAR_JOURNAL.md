@@ -27,7 +27,8 @@ history; add a correction and update the current-state summary.
   compression-schedule boundary are complete. A bounded position-127 replay now
   also crosses the first ratio-128 emissions for layers 3 and 5 exactly. The
   ordered position-advancing executor now extends through all 43 transformer
-  layers.
+  layers and the exact post-transformer output boundary is complete through
+  full-vocabulary logits and deterministic greedy selection.
   Layers 0 through 42 execute in order under one Rust-owned Metal context with
   exact GPU-resident HC-state handoffs and one retained KV allocation per
   layer. Every even layer from 2 through 42 crosses its first ratio-4
@@ -129,8 +130,13 @@ history; add a correction and update the current-state summary.
   registry rather than pair-specific branches. The 43-layer command preserves
   all earlier controls, retains 43 raw caches and all layer-scoped compressor
   state, advances three exact decode positions, and hands off layer 42's final
-  16,384-element HC state. It still stops before output normalization, logits,
-  and sampling and therefore is not a complete decoder.
+  16,384-element HC state. The separate `decoder-output-probe` consumes that
+  retained state without a host handoff and reproduces the four-value HC
+  projection, HC weights, collapsed HC row, learned output norm, and all
+  129,280 vocabulary logits at positions 1–3 by FP32 bit pattern. Lowest-ID
+  argmax selects 361, 1915, and 262. Its input tokens remain externally
+  supplied, so closed-loop generation and eligible token-throughput timing are
+  still pending.
 - Measurements: Metal batching was 42.861x faster than synchronized submission
   in the retained M-002 probe. DwarfStar medians are 164.86 prefill / 19.90
   generation tok/s at 2K and 161.05 prefill / 17.36 generation tok/s at 32K.
@@ -192,7 +198,11 @@ history; add a correction and update the current-state summary.
   and 53.374/49.691 ms at position 3 (wall/summed GPU). It matched every
   retained layer 0–42 boundary and all even-layer ratio-4 emissions through
   layer 42. These intervals also include correctness-oriented work and are not
-  token-throughput measurements.
+  token-throughput measurements. The final output-head correctness gate
+  reported 15.025/2.946 ms wall/GPU at cold position 1, 1.679/1.355 ms at
+  position 2, and 1.691/1.359 ms at position 3. All 129,280 logits and four
+  preceding output tensors were C0 exact at every step; these timings include
+  synchronization/readback and are likewise not throughput claims.
 - Manual handoff: `RUST_STAR_MANUAL_TASKS.md` records Actions approval, target
   compilation/model inspection, quick/extended oracle capture, and the deferred
   secure-access decision with exact evidence requirements.
@@ -205,20 +215,88 @@ history; add a correction and update the current-state summary.
 
 ## Immediate Next Actions
 
-1. Define and capture the post-transformer boundary: output normalization,
-   vocabulary projection/logits, and exact next-token selection for the same
-   three positions, without conflating it with the separately bounded
-   position-127 ratio-128 replay.
-2. Convert the exact 43-layer correctness executor into a measured decoder
-   candidate only after the output/logit/sampling boundary is complete and the
-   paired engine adapter can emit the pinned benchmark contract.
-3. Preserve the four-, six-, eight-, and 43-layer commands as independently
-   executed controls while adding the output head.
+1. Close the loop by feeding each selected token into the next decode step,
+   while retaining the explicit-input `decoder-output-probe` as a regression
+   control.
+2. Separate exhaustive correctness collection from a measured decoder path and
+   implement the Rust Star engine-measurement contract required by the paired
+   runner.
+3. Preserve the four-, six-, eight-, 43-layer, and decoder-output commands as
+   independently executed controls while building the measured path.
 4. Run the extended 2K--1M frontier capture when the Mac can be dedicated to a
    long benchmark; preserve any 512K/1M capacity failure as evidence.
 5. Run or approve the fork's GitHub Actions workflow and retain its URL.
 
 ## Entries
+
+### 2026-08-15 — Exact decoder output boundary completed
+
+Objective:
+
+- Extend the exact 43-layer transformer stack through DwarfStar's output HC
+  collapse, learned output normalization, full vocabulary logits, and
+  deterministic next-token selection for positions 1–3.
+
+Oracle evidence:
+
+- Captured `result_hc_pre`, `result_hc_weights`, `result_hc`, `result_norm`,
+  and `result_output` for terminal decode positions 1, 2, and 3 in two fresh
+  pinned DwarfStar processes. All 15 corresponding payload pairs were
+  byte-identical; their ordered aggregate SHA-256 is
+  `3cda1544443ba220b5019201c0232704cc0f177b8ab644689c09d24e70d40728`.
+- Imported three strict output-head fixture envelopes containing 549,920 bytes
+  each. Full-logit lowest-ID argmax selects token 361 at position 1, token 1915
+  at position 2, and token 262 at position 3.
+
+Implementation:
+
+- Added `decoder-output-probe` and schema
+  `rust-star-decoder-output-position-advancing-probe-v1`.
+- Added a no-copy Metal output boundary that consumes the retained layer-42 HC
+  buffer, wraps five output model ranges directly from the GGUF mmap, and
+  dispatches the plain HC norm, F16 HC projection, four-value HC weighting,
+  fused HC collapse/learned norm, and 129,280-row Q8_0 vocabulary projection.
+- Preserved the existing `layers0-42-decode-probe` as an independent
+  transformer-stack control. The new correctness schedule explicitly reports
+  44 command buffers and two host waits per step.
+- Added stable JSON writing, CLI/runtime-gate integration, output-fixture shape
+  and argmax tests, documentation, and a repeated-capture fixture importer.
+- The first live attempt differed by one bit at logit 0 while all preceding
+  output tensors were exact. Tracing DwarfStar's dispatch selection showed that
+  output dimensions above 65,536 force eight simdgroups; using the ordinary
+  four-simdgroup projection changes the reduction order. A dedicated
+  eight-simdgroup output pipeline restored C0 without changing earlier Q8
+  projection controls.
+
+Validation:
+
+- The complete target-Mac gate passed formatting, 59 Rust tests, 42 Python
+  tests, optimized macOS compilation, the cross-language artifact contract,
+  strict validation of all 182 differential fixtures, every prior live Metal
+  control, and the new three-position decoder-output probe.
+- All five output tensors were bit-identical at all three positions, including
+  every FP32 bit in each 129,280-value logit vector.
+- In the final correctness gate the output-head command reported 15.025/2.946
+  ms wall/GPU at cold position 1, 1.679/1.355 ms at position 2, and 1.691/1.359
+  ms at position 3. These intervals include correctness-oriented scheduling
+  and readback and are not token-throughput measurements.
+- Generated JSON evidence remains under the ignored
+  `rust-star/.work/runtime-target/` directory. The user's two untracked
+  console logs remain untouched.
+
+Decision:
+
+- This is an exact explicit-input decoder output boundary, not yet a
+  closed-loop generator. The selected token is computed and reported, but the
+  next input remains supplied by the fixed regression sequence. No committed
+  token-throughput claim is eligible yet.
+
+Next:
+
+- Feed selected tokens directly into subsequent steps, then separate exhaustive
+  C0 collection from the timed path and emit the Rust Star
+  engine-measurement contract for paired benchmarking.
+
 
 ### 2026-08-15 — Ordered exact execution extended through all 43 layers
 

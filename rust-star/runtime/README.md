@@ -394,9 +394,28 @@ It executes 43 ordered command buffers with one tail wait per position, retains
 position-3 compressed KV emission through layer 42, and exposes layer 42's
 exact 16,384-element HC state. Two fresh oracle processes produced 3,448
 byte-identical payload pairs for the newly added layers 8–42 before fixture
-import. This is the full transformer-stack boundary, but it still stops before
-output normalization, vocabulary logits, and token sampling and therefore is
-not yet a complete decoder or a token-throughput benchmark.
+import. This remains the transformer-stack regression control; the separate
+command below extends it through the exact output head.
+
+To validate output normalization, the complete vocabulary projection, and
+deterministic next-token selection:
+
+```sh
+rust-star/.work/runtime-target/release/rust-star \
+  decoder-output-probe \
+  /absolute/path/to/model.gguf \
+  --json rust-star/.work/runtime-target/decoder-output-probe.json
+```
+
+`decoder-output-probe` retains the same 43 layer-scoped KV caches, then runs
+DwarfStar's plain HC RMSNorm, F16 four-way HC projection, output-HC weights,
+fused HC collapse/learned RMSNorm, and full 129,280-row Q8_0 vocabulary
+projection. It compares all five output tensors by FP32 bit pattern at
+positions 1–3 and applies lowest-token-ID argmax on the CPU. The fixed input
+tokens `[201, 361, 1915]` select `[361, 1915, 262]`. The correctness schedule
+uses 44 command buffers and two host waits per step. Inputs are still supplied
+externally, so this is not a closed-loop generator or a token-throughput
+benchmark.
 
 To cross the first ratio-128 emission boundary without overstating decoder
 coverage:

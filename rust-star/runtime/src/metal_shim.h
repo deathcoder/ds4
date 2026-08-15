@@ -230,6 +230,29 @@ int rust_star_metal_run_attention_ingress(
     size_t error_bytes,
     const rust_star_metal_layer0_extension *layer0);
 
+int rust_star_metal_run_output_head(
+    void *context,
+    const void *model_mapping,
+    uint64_t model_bytes,
+    uint64_t hc_fn_offset,
+    uint64_t hc_fn_bytes,
+    uint64_t hc_scale_offset,
+    uint64_t hc_scale_bytes,
+    uint64_t hc_base_offset,
+    uint64_t hc_base_bytes,
+    uint64_t output_norm_offset,
+    uint64_t output_norm_bytes,
+    uint64_t output_offset,
+    uint64_t output_bytes,
+    float *hc_pre,
+    float *hc_weights,
+    float *hc,
+    float *norm,
+    float *logits,
+    rust_star_metal_ingress_probe_result *result,
+    char *error,
+    size_t error_bytes);
+
 int rust_star_metal_run_ffn_router(
     void *context,
     const void *model_mapping,

@@ -419,10 +419,29 @@ The command retains one raw cache and the required compressor allocations per
 layer, submits 43 ordered command buffers and waits once at each position tail,
 validates every even-layer ratio-4 emission through layer 42, and requires
 layer 42's final 16,384-element HC state to match C0. The four-, six-, and
-eight-layer commands remain independent regression controls. This proves the
-transformer-stack boundary only: output normalization, vocabulary logits, and
-sampling remain outside the command, so its timing is not model token
-throughput.
+eight-layer commands remain independent regression controls. This remains the
+transformer-stack-only control; output work is isolated in the following
+command so regressions can be localized.
+
+## Exact decoder output boundary
+
+Schema: `rust-star-decoder-output-position-advancing-probe-v1`.
+
+`decoder-output-probe` runs the 43-layer position-advancing chain and consumes
+the retained layer-42 HC buffer without a host copy. Five additional model
+ranges are wrapped directly from the GGUF mmap: `output_hc_fn.weight`,
+`output_hc_scale.weight`, `output_hc_base.weight`, `output_norm.weight`, and
+`output.weight`. One output command buffer dispatches the plain HC norm, F16 HC
+projection, exact four-value sigmoid weighting, fused HC collapse/learned
+norm, and full Q8_0 vocabulary projection. The output projection preserves
+DwarfStar's eight-simdgroup specialization for output dimensions above 65,536.
+
+At positions 1–3 the HC pre-values, HC weights, collapsed HC row, learned-norm
+row, and all 129,280 FP32 logits must be bit-identical to independent oracle
+captures. Lowest-token-ID argmax selects 361, 1915, and 262 respectively. The
+correctness path uses 44 command buffers and two host waits per step. It keeps
+the input sequence explicit and external, so it does not yet measure committed
+tokens or claim closed-loop generation throughput.
 
 ## Position-127 ratio-128 compressor replay
 

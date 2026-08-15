@@ -81,7 +81,9 @@ static NSString *const kGetRowsF16Source =
 #include "moe_output_source.inc"
 
 // Imported from DwarfStar metal/dense.metal. The fixed target uses DwarfStar's
-// default four simdgroups and two output rows per threadgroup.
+// default four simdgroups and two output rows per threadgroup. DwarfStar forces
+// eight simdgroups for output dimensions above 65,536, so the same source is
+// also specialized separately for the full vocabulary head.
 static NSString *const kQ8ProjectionSource =
     @"#include <metal_stdlib>\n"
     @"using namespace metal;\n"
@@ -173,10 +175,13 @@ static NSString *const kQ8ProjectionSource =
 @property(nonatomic, strong) id<MTLComputePipelineState> probePipeline;
 @property(nonatomic, strong) id<MTLComputePipelineState> getRowsF16Pipeline;
 @property(nonatomic, strong) id<MTLComputePipelineState> q8ProjectionPipeline;
+@property(nonatomic, strong) id<MTLComputePipelineState> q8OutputProjectionPipeline;
 @property(nonatomic, strong) id<MTLLibrary> attentionIngressLibrary;
 @property(nonatomic, strong) id<MTLComputePipelineState> repeatF32Pipeline;
 @property(nonatomic, strong) id<MTLComputePipelineState> rmsNormF32Pipeline;
 @property(nonatomic, strong) id<MTLComputePipelineState> f16ProjectionPipeline;
+@property(nonatomic, strong) id<MTLComputePipelineState> outputHcWeightsPipeline;
+@property(nonatomic, strong) id<MTLComputePipelineState> outputHcSumNormPipeline;
 @property(nonatomic, strong) id<MTLComputePipelineState> compressorPairPipeline;
 @property(nonatomic, strong) id<MTLComputePipelineState> compressorStorePipeline;
 @property(nonatomic, strong) id<MTLComputePipelineState> compressorPackPipeline;
@@ -377,6 +382,20 @@ static int ensure_q8_projection_pipeline(
     if (!context.q8ProjectionPipeline) {
         return fail_with_message(error, error_bytes, compile_error.localizedDescription);
     }
+    simdgroups = 8;
+    constants = [MTLFunctionConstantValues new];
+    [constants setConstantValue:&simdgroups type:MTLDataTypeShort atIndex:600];
+    id<MTLFunction> output_function =
+        [library newFunctionWithName:@"kernel_mul_mv_q8_0_f32"
+                      constantValues:constants error:&compile_error];
+    if (!output_function) {
+        return fail_with_message(error, error_bytes, compile_error.localizedDescription);
+    }
+    context.q8OutputProjectionPipeline =
+        [context.device newComputePipelineStateWithFunction:output_function error:&compile_error];
+    if (!context.q8OutputProjectionPipeline) {
+        return fail_with_message(error, error_bytes, compile_error.localizedDescription);
+    }
     return 1;
 }
 
@@ -571,7 +590,12 @@ static int ensure_moe_output_pipelines(
     id<MTLFunction> shared_down_hc =
         [library newFunctionWithName:@"kernel_dsv4_shared_down_hc_expand4_q8_0"
                       constantValues:shared_constants error:&compile_error];
-    if (!routed_pair || !routed_down || !shared_gate_up || !shared_down_hc) {
+    id<MTLFunction> output_hc_weights =
+        [library newFunctionWithName:@"kernel_dsv4_output_hc_weights4"];
+    id<MTLFunction> output_hc_sum_norm =
+        [library newFunctionWithName:@"kernel_dsv4_hc_weighted_sum_norm4"];
+    if (!routed_pair || !routed_down || !shared_gate_up || !shared_down_hc ||
+        !output_hc_weights || !output_hc_sum_norm) {
         return fail_with_message(error, error_bytes,
             compile_error ? compile_error.localizedDescription : @"MoE output kernel was not found");
     }
@@ -584,8 +608,13 @@ static int ensure_moe_output_pipelines(
         [context.device newComputePipelineStateWithFunction:shared_gate_up error:&compile_error];
     context.sharedDownHcPipeline =
         [context.device newComputePipelineStateWithFunction:shared_down_hc error:&compile_error];
+    context.outputHcWeightsPipeline =
+        [context.device newComputePipelineStateWithFunction:output_hc_weights error:&compile_error];
+    context.outputHcSumNormPipeline =
+        [context.device newComputePipelineStateWithFunction:output_hc_sum_norm error:&compile_error];
     if (!context.routedPairSwigluPipeline || !context.routedDownSumPipeline ||
-        !context.sharedGateUpPipeline || !context.sharedDownHcPipeline) {
+        !context.sharedGateUpPipeline || !context.sharedDownHcPipeline ||
+        !context.outputHcWeightsPipeline || !context.outputHcSumNormPipeline) {
         return fail_with_message(error, error_bytes, compile_error.localizedDescription);
     }
     context.moeOutputLibrary = library;
@@ -901,6 +930,26 @@ typedef struct rust_star_norm_args {
     int32_t nef1[3], nef2[3], nef3[3];
     uint64_t nbf1[3], nbf2[3], nbf3[3];
 } rust_star_norm_args;
+
+typedef struct rust_star_output_hc_weights_args {
+    float post_scale;
+    float eps;
+} rust_star_output_hc_weights_args;
+
+typedef struct rust_star_hc_weighted_sum_norm_args {
+    int64_t n_embd;
+    int64_t n_hc;
+    int64_t n_tokens;
+    uint64_t nb_x0;
+    uint64_t nb_x1;
+    uint64_t nb_x2;
+    uint64_t nb_w0;
+    uint64_t nb_w1;
+    uint64_t nb0;
+    uint64_t nb1;
+    uint64_t nb_norm1;
+    float norm_eps;
+} rust_star_hc_weighted_sum_norm_args;
 
 typedef struct rust_star_hc_ingress_args {
     int64_t n_embd;
@@ -3026,6 +3075,211 @@ int rust_star_metal_run_attention_ingress(
         for (uint32_t index = 0; index < result->wrapped_model_ranges; index++) if (matches[index]) result->pointer_matches++;
         result->wall_ms = measured_wall_ms/measured_iterations;
         result->gpu_ms = measured_gpu_ms/measured_iterations;
+        return 1;
+    }
+}
+
+int rust_star_metal_run_output_head(
+    void *opaque_context,
+    const void *model_mapping,
+    uint64_t model_bytes,
+    uint64_t hc_fn_offset,
+    uint64_t hc_fn_bytes,
+    uint64_t hc_scale_offset,
+    uint64_t hc_scale_bytes,
+    uint64_t hc_base_offset,
+    uint64_t hc_base_bytes,
+    uint64_t output_norm_offset,
+    uint64_t output_norm_bytes,
+    uint64_t output_offset,
+    uint64_t output_bytes,
+    float *hc_pre,
+    float *hc_weights,
+    float *hc,
+    float *norm,
+    float *logits,
+    rust_star_metal_ingress_probe_result *result,
+    char *error,
+    size_t error_bytes)
+{
+    const uint32_t n_embd = 4096u;
+    const uint32_t n_hc = 4u;
+    const uint32_t hc_dim = n_embd*n_hc;
+    const uint32_t n_vocab = 129280u;
+    const uint64_t output_row_bytes = (uint64_t)(n_embd/32u)*34u;
+    if (!opaque_context || !model_mapping || !hc_pre || !hc_weights ||
+        !hc || !norm || !logits || !result) {
+        return fail_with_message(error, error_bytes, @"output head received invalid inputs");
+    }
+    if (hc_fn_bytes != (uint64_t)hc_dim*n_hc*sizeof(uint16_t) ||
+        hc_scale_bytes != sizeof(float) ||
+        hc_base_bytes != n_hc*sizeof(float) ||
+        output_norm_bytes != n_embd*sizeof(float) ||
+        output_bytes != (uint64_t)n_vocab*output_row_bytes) {
+        return fail_with_message(error, error_bytes, @"output head tensor shapes are invalid");
+    }
+
+    @autoreleasepool {
+        RustStarMetalContext *context = (__bridge RustStarMetalContext *)opaque_context;
+        if (!ensure_attention_ingress_pipelines(context, error, error_bytes) ||
+            !ensure_q8_projection_pipeline(context, error, error_bytes) ||
+            !ensure_moe_output_pipelines(context, error, error_bytes)) return 0;
+        if (!context.chainedReady || context.chainedFinalLayer != 42u) {
+            return fail_with_message(error, error_bytes,
+                @"output head requires a completed layers-0-through-42 chain");
+        }
+        id<MTLBuffer> input_hc =
+            context.activationBufferCache[layer_buffer_key(@"layer_hc_state", YES, 42u)];
+        if (!input_hc || input_hc.length != hc_dim*sizeof(float)) {
+            return fail_with_message(error, error_bytes,
+                @"output head could not find the retained layer-42 HC state");
+        }
+
+        NSUInteger inner[5] = {0};
+        BOOL matches[5] = {NO};
+        id<MTLBuffer> hc_fn_weight = wrap_model_range(context, model_mapping, model_bytes,
+            hc_fn_offset, hc_fn_bytes, &inner[0], &matches[0], error, error_bytes);
+        id<MTLBuffer> hc_scale_weight = wrap_model_range(context, model_mapping, model_bytes,
+            hc_scale_offset, hc_scale_bytes, &inner[1], &matches[1], error, error_bytes);
+        id<MTLBuffer> hc_base_weight = wrap_model_range(context, model_mapping, model_bytes,
+            hc_base_offset, hc_base_bytes, &inner[2], &matches[2], error, error_bytes);
+        id<MTLBuffer> norm_weight = wrap_model_range(context, model_mapping, model_bytes,
+            output_norm_offset, output_norm_bytes, &inner[3], &matches[3], error, error_bytes);
+        id<MTLBuffer> output_weight = wrap_model_range(context, model_mapping, model_bytes,
+            output_offset, output_bytes, &inner[4], &matches[4], error, error_bytes);
+        if (!hc_fn_weight || !hc_scale_weight || !hc_base_weight ||
+            !norm_weight || !output_weight) return 0;
+
+        id<MTLBuffer> flat_buffer = persistent_buffer(context, @"output_flat_hc",
+            hc_dim*sizeof(float), error, error_bytes);
+        id<MTLBuffer> pre_buffer = persistent_buffer(context, @"output_hc_pre",
+            n_hc*sizeof(float), error, error_bytes);
+        id<MTLBuffer> weights_buffer = persistent_buffer(context, @"output_hc_weights",
+            n_hc*sizeof(float), error, error_bytes);
+        id<MTLBuffer> hc_buffer = persistent_buffer(context, @"output_hc",
+            n_embd*sizeof(float), error, error_bytes);
+        id<MTLBuffer> norm_buffer = persistent_buffer(context, @"output_norm",
+            n_embd*sizeof(float), error, error_bytes);
+        id<MTLBuffer> logits_buffer = persistent_buffer(context, @"output_logits",
+            n_vocab*sizeof(float), error, error_bytes);
+        if (!flat_buffer || !pre_buffer || !weights_buffer || !hc_buffer ||
+            !norm_buffer || !logits_buffer) return 0;
+
+        const uint64_t hc_bytes = (uint64_t)hc_dim*sizeof(float);
+        rust_star_norm_args plain_norm = {
+            .ne00=(int32_t)hc_dim, .ne00_t=(int32_t)(hc_dim/4u),
+            .nb1=hc_bytes, .nb2=hc_bytes, .nb3=hc_bytes, .eps=1.0e-6f,
+            .nef1={1,1,1}, .nef2={1,1,1}, .nef3={1,1,1},
+            .nbf1={hc_bytes,hc_bytes,hc_bytes},
+            .nbf2={hc_bytes,hc_bytes,hc_bytes},
+            .nbf3={hc_bytes,hc_bytes,hc_bytes},
+        };
+        rust_star_q8_mv_args hc_projection = {
+            .ne00=(int32_t)hc_dim, .ne01=(int32_t)n_hc, .ne02=1,
+            .nb00=sizeof(uint16_t), .nb01=(uint64_t)hc_dim*sizeof(uint16_t),
+            .nb02=hc_fn_bytes, .nb03=hc_fn_bytes,
+            .ne10=(int32_t)hc_dim, .ne11=1, .ne12=1,
+            .nb10=sizeof(float), .nb11=hc_bytes, .nb12=hc_bytes, .nb13=hc_bytes,
+            .ne0=(int32_t)n_hc, .ne1=1, .nr0=2, .r2=1, .r3=1,
+        };
+        rust_star_output_hc_weights_args weights_args = {
+            .post_scale=1.0f, .eps=1.0e-6f,
+        };
+        rust_star_hc_weighted_sum_norm_args sum_norm = {
+            .n_embd=n_embd, .n_hc=n_hc, .n_tokens=1,
+            .nb_x0=sizeof(float), .nb_x1=(uint64_t)n_embd*sizeof(float),
+            .nb_x2=(uint64_t)hc_dim*sizeof(float),
+            .nb_w0=sizeof(float), .nb_w1=n_hc*sizeof(float),
+            .nb0=sizeof(float), .nb1=(uint64_t)n_embd*sizeof(float),
+            .nb_norm1=(uint64_t)n_embd*sizeof(float), .norm_eps=1.0e-6f,
+        };
+        rust_star_q8_mv_args vocab_projection = {
+            .ne00=(int32_t)n_embd, .ne01=(int32_t)n_vocab, .ne02=1,
+            .nb00=34, .nb01=output_row_bytes,
+            .nb02=output_bytes, .nb03=output_bytes,
+            .ne10=(int32_t)n_embd, .ne11=1, .ne12=1,
+            .nb10=sizeof(float), .nb11=(uint64_t)n_embd*sizeof(float),
+            .nb12=(uint64_t)n_embd*sizeof(float), .nb13=(uint64_t)n_embd*sizeof(float),
+            .ne0=(int32_t)n_vocab, .ne1=1, .nr0=2, .r2=1, .r3=1,
+        };
+
+        id<MTLCommandBuffer> command = [context.queue commandBuffer];
+        if (!command) {
+            return fail_with_message(error, error_bytes,
+                @"failed to create output-head command buffer");
+        }
+        id<MTLComputeCommandEncoder> encoder = [command computeCommandEncoder];
+        if (!encoder) {
+            return fail_with_message(error, error_bytes,
+                @"failed to create output-head command encoder");
+        }
+
+        [encoder setComputePipelineState:context.rmsNormF32Pipeline];
+        [encoder setBytes:&plain_norm length:sizeof(plain_norm) atIndex:0];
+        [encoder setBuffer:input_hc offset:0 atIndex:1];
+        [encoder setBuffer:input_hc offset:0 atIndex:2];
+        [encoder setBuffer:input_hc offset:0 atIndex:3];
+        [encoder setBuffer:flat_buffer offset:0 atIndex:4];
+        [encoder setThreadgroupMemoryLength:32u*sizeof(float) atIndex:0];
+        [encoder dispatchThreadgroups:MTLSizeMake(1,1,1)
+             threadsPerThreadgroup:MTLSizeMake(1024,1,1)];
+
+        [encoder setComputePipelineState:context.f16ProjectionPipeline];
+        [encoder setBytes:&hc_projection length:sizeof(hc_projection) atIndex:0];
+        [encoder setBuffer:hc_fn_weight offset:inner[0] atIndex:1];
+        [encoder setBuffer:flat_buffer offset:0 atIndex:2];
+        [encoder setBuffer:pre_buffer offset:0 atIndex:3];
+        [encoder setThreadgroupMemoryLength:32u*2u*sizeof(float) atIndex:0];
+        [encoder dispatchThreadgroups:MTLSizeMake(2,1,1)
+             threadsPerThreadgroup:MTLSizeMake(32,8,1)];
+
+        [encoder setComputePipelineState:context.outputHcWeightsPipeline];
+        [encoder setBytes:&weights_args length:sizeof(weights_args) atIndex:0];
+        [encoder setBuffer:pre_buffer offset:0 atIndex:1];
+        [encoder setBuffer:hc_scale_weight offset:inner[1] atIndex:2];
+        [encoder setBuffer:hc_base_weight offset:inner[2] atIndex:3];
+        [encoder setBuffer:weights_buffer offset:0 atIndex:4];
+        [encoder dispatchThreadgroups:MTLSizeMake(1,1,1)
+             threadsPerThreadgroup:MTLSizeMake(2,1,1)];
+
+        [encoder setComputePipelineState:context.outputHcSumNormPipeline];
+        [encoder setBytes:&sum_norm length:sizeof(sum_norm) atIndex:0];
+        [encoder setBuffer:input_hc offset:0 atIndex:1];
+        [encoder setBuffer:weights_buffer offset:0 atIndex:2];
+        [encoder setBuffer:hc_buffer offset:0 atIndex:3];
+        [encoder setBuffer:norm_weight offset:inner[3] atIndex:4];
+        [encoder setBuffer:norm_buffer offset:0 atIndex:5];
+        [encoder setThreadgroupMemoryLength:(n_embd+32u)*sizeof(float) atIndex:0];
+        [encoder dispatchThreadgroups:MTLSizeMake(1,1,1)
+             threadsPerThreadgroup:MTLSizeMake(1024,1,1)];
+
+        [encoder setComputePipelineState:context.q8OutputProjectionPipeline];
+        [encoder setBytes:&vocab_projection length:sizeof(vocab_projection) atIndex:0];
+        [encoder setBuffer:output_weight offset:inner[4] atIndex:1];
+        [encoder setBuffer:norm_buffer offset:0 atIndex:2];
+        [encoder setBuffer:logits_buffer offset:0 atIndex:3];
+        [encoder setThreadgroupMemoryLength:32u*2u*sizeof(float) atIndex:0];
+        [encoder dispatchThreadgroups:MTLSizeMake((n_vocab+1u)/2u,1,1)
+             threadsPerThreadgroup:MTLSizeMake(32,8,1)];
+        [encoder endEncoding];
+
+        const double wall_start = monotonic_ms();
+        [command commit];
+        if (!command_succeeded(command, error, error_bytes)) return 0;
+        const double wall_end = monotonic_ms();
+
+        memcpy(hc_pre, pre_buffer.contents, n_hc*sizeof(float));
+        memcpy(hc_weights, weights_buffer.contents, n_hc*sizeof(float));
+        memcpy(hc, hc_buffer.contents, n_embd*sizeof(float));
+        memcpy(norm, norm_buffer.contents, n_embd*sizeof(float));
+        memcpy(logits, logits_buffer.contents, n_vocab*sizeof(float));
+        memset(result, 0, sizeof(*result));
+        result->model_bytes = model_bytes;
+        result->max_buffer_length = context.device.maxBufferLength;
+        result->wrapped_model_ranges = 5;
+        for (uint32_t i = 0; i < 5; i++) if (matches[i]) result->pointer_matches++;
+        result->wall_ms = wall_end-wall_start;
+        result->gpu_ms = gpu_elapsed_ms(command);
         return 1;
     }
 }

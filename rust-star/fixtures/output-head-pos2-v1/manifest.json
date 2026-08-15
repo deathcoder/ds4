@@ -1,0 +1,152 @@
+{
+  "schema": "rust-star-differential-fixture-v1",
+  "fixture_id": "dwarfstar-oracle-v1-output-head-pos2",
+  "captured_at_utc": "2026-08-15T11:01:44Z",
+  "oracle": {
+    "id": "oracle-v1",
+    "repository": "https://github.com/antirez/ds4.git",
+    "commit": "b0309611041655f4e45671cfd9c9886aff161406",
+    "tree": "20c11af22f90a0bdf25da860da5ef06de4064060",
+    "capture_executable_sha256": "b0b7c31d9832cc3f5cccf810cd2af6f4bc4f6e71de945493674315314f666fc8"
+  },
+  "model": {
+    "family": "DeepSeek-V4-Flash-0731",
+    "sha256": "ca22ae2f838e14077c22bc1c1417b71b45b5e5a3687bd96c2ac6e17fdb6261c0"
+  },
+  "capture": {
+    "backend": "metal",
+    "machine": "Apple M1 Ultra, 48 GPU cores, 128 GB unified memory",
+    "prompt": "speed-bench/promessi_sposi.txt",
+    "prompt_sha256": "f53e0d80cb2d4492d24ebd63c7000c397b16ae70f9bf09b3763e5d8323ec209f",
+    "prefill_tokens": 1,
+    "decode_step": 2,
+    "input_token_id": 361,
+    "generation_tokens": 2,
+    "terminal_output_dump_writes": 3,
+    "fresh_process_captures": 2,
+    "fresh_process_bitwise_match": true,
+    "environment": {
+      "DS4_METAL_GRAPH_DUMP_LAYER": "43",
+      "DS4_METAL_GRAPH_DUMP_POS": "0",
+      "DS4_METAL_GRAPH_DUMP_NAME": "result_hc_pre,result_hc_weights,result_hc,result_norm,result_output"
+    }
+  },
+  "scope": {
+    "kind": "decode-step",
+    "phase": "decode",
+    "layer": 43,
+    "position": 2
+  },
+  "operations": [
+    {
+      "name": "output-hc-flat-rmsnorm",
+      "kernel": "kernel_rms_norm_f32_4",
+      "weights": []
+    },
+    {
+      "name": "output-hc-projection",
+      "kernel": "kernel_mul_mv_f16_f32_4",
+      "weights": [
+        "output_hc_fn.weight"
+      ]
+    },
+    {
+      "name": "output-hc-weights",
+      "kernel": "kernel_dsv4_output_hc_weights4",
+      "weights": [
+        "output_hc_scale.weight",
+        "output_hc_base.weight"
+      ]
+    },
+    {
+      "name": "output-hc-collapse-and-norm",
+      "kernel": "kernel_dsv4_hc_weighted_sum_norm4",
+      "weights": [
+        "output_norm.weight"
+      ]
+    },
+    {
+      "name": "vocabulary-projection",
+      "kernel": "kernel_mul_mv_q8_0_f32",
+      "weights": [
+        "output.weight"
+      ]
+    },
+    {
+      "name": "next-token-selection",
+      "kernel": "cpu-lowest-id-argmax",
+      "weights": []
+    }
+  ],
+  "selection": {
+    "method": "lowest-token-id-argmax",
+    "token_id": 1915
+  },
+  "tensors": [
+    {
+      "name": "output_hc_pre",
+      "hook": "result_hc_pre",
+      "role": "intermediate",
+      "dtype": "f32",
+      "shape": [
+        4
+      ],
+      "encoding": "little-endian-ieee754-binary32",
+      "path": "output-hc-pre.f32le.bin",
+      "bytes": 16,
+      "sha256": "79e0896b33b0149d163a9389cd9cd712c19811c05ea9a3bca303ef67b8740f30"
+    },
+    {
+      "name": "output_hc_weights",
+      "hook": "result_hc_weights",
+      "role": "intermediate",
+      "dtype": "f32",
+      "shape": [
+        4
+      ],
+      "encoding": "little-endian-ieee754-binary32",
+      "path": "output-hc-weights.f32le.bin",
+      "bytes": 16,
+      "sha256": "d06814bc9550e173ab016c4b66a303b2bd4051a9aa45cecde90c3bef933ebf01"
+    },
+    {
+      "name": "output_hc",
+      "hook": "result_hc",
+      "role": "intermediate",
+      "dtype": "f32",
+      "shape": [
+        4096
+      ],
+      "encoding": "little-endian-ieee754-binary32",
+      "path": "output-hc.f32le.bin",
+      "bytes": 16384,
+      "sha256": "6f3e007cba6772d93b8d2e6c7e2ce5d66c753e0b3fb3b18dfaac5f9efda5334f"
+    },
+    {
+      "name": "output_norm",
+      "hook": "result_norm",
+      "role": "intermediate",
+      "dtype": "f32",
+      "shape": [
+        4096
+      ],
+      "encoding": "little-endian-ieee754-binary32",
+      "path": "output-norm.f32le.bin",
+      "bytes": 16384,
+      "sha256": "da6d1837250ee6160547827a78e2a4d1b9a3cbf7e4fbf2b60594c296afe8ff12"
+    },
+    {
+      "name": "logits",
+      "hook": "result_output",
+      "role": "output",
+      "dtype": "f32",
+      "shape": [
+        129280
+      ],
+      "encoding": "little-endian-ieee754-binary32",
+      "path": "logits.f32le.bin",
+      "bytes": 517120,
+      "sha256": "03b12d02bb75aca68f065c1fc1664acf24afed6812b5b112a5ff74c1a85a1cfe"
+    }
+  ]
+}

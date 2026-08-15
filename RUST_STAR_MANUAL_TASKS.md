@@ -169,7 +169,7 @@ Return evidence:
 
 ## M-005 — Execute the first paired DwarfStar/Rust Star run
 
-Status: `BLOCKED` on a runnable C0 Rust Star decoder
+Status: `BLOCKED` on a closed-loop, measurement-contract Rust Star decoder
 
 Prerequisites:
 
