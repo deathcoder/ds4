@@ -26,6 +26,8 @@ pub const LAYERS0123_BENCH_SCHEMA: &str = "rust-star-layers0123-steady-state-v1"
 pub const LAYERS0123_DECODE_PROBE_SCHEMA: &str = "rust-star-layers0123-position-advancing-probe-v1";
 pub const LAYERS012345_DECODE_PROBE_SCHEMA: &str =
     "rust-star-layers012345-position-advancing-probe-v1";
+pub const RATIO128_COMPRESSOR_REPLAY_PROBE_SCHEMA: &str =
+    "rust-star-ratio128-compressor-replay-probe-v1";
 pub const PROJECTION_FIXTURE_ID: &str = "dwarfstar-oracle-v1-layer0-pos1-attn-q-a";
 pub const INGRESS_FIXTURE_ID: &str = "dwarfstar-oracle-v1-layer0-pos1-attention-ingress";
 pub const ATTENTION_SETUP_FIXTURE_ID: &str = "dwarfstar-oracle-v1-layer0-pos1-qkv-setup";
@@ -52,6 +54,10 @@ pub const LAYER2_POS3_FIXTURE_ID: &str = "dwarfstar-oracle-v1-layer2-pos3-comple
 pub const LAYER3_POS3_FIXTURE_ID: &str = "dwarfstar-oracle-v1-layer3-pos3-complete";
 pub const LAYER4_POS3_FIXTURE_ID: &str = "dwarfstar-oracle-v1-layer4-pos3-complete";
 pub const LAYER5_POS3_FIXTURE_ID: &str = "dwarfstar-oracle-v1-layer5-pos3-complete";
+pub const LAYER3_POS127_COMPRESSOR_FIXTURE_ID: &str =
+    "dwarfstar-oracle-v1-layer3-pos127-compressor-replay";
+pub const LAYER5_POS127_COMPRESSOR_FIXTURE_ID: &str =
+    "dwarfstar-oracle-v1-layer5-pos127-compressor-replay";
 pub const DEFAULT_ELEMENTS: u64 = 4096;
 pub const DEFAULT_ITERATIONS: u64 = 100;
 const MAX_ELEMENTS: u64 = 16 * 1024 * 1024;
@@ -738,6 +744,30 @@ pub struct Layers0123DecodeProbeReport {
 pub type Layers012345DecodeStepReport = Layers0123DecodeStepReport;
 pub type Layers012345DecodeProbeReport = Layers0123DecodeProbeReport;
 
+#[derive(Clone, Debug)]
+pub struct Ratio128CompressorLayerReport {
+    pub layer: u32,
+    pub fixture_id: &'static str,
+    pub activation_rows: u32,
+    pub state_rows: u32,
+    pub dispatches: u32,
+    pub command_buffers: u32,
+    pub host_waits: u32,
+    pub wrapped_model_ranges: u32,
+    pub pointer_matches: u32,
+    pub wall_ms: f64,
+    pub gpu_ms: f64,
+    pub input_checksum: u64,
+    pub output_checksum: u64,
+}
+
+#[derive(Clone, Debug)]
+pub struct Ratio128CompressorReplayProbeReport {
+    pub layers: Vec<Ratio128CompressorLayerReport>,
+    pub final_position: u32,
+    pub externally_supplied_activation_rows: u32,
+}
+
 pub fn write_ingress_probe_json<W: Write>(
     output: &mut W,
     report: &IngressProbeReport,
@@ -1156,6 +1186,57 @@ pub fn write_layers012345_decode_probe_json<W: Write>(
     report: &Layers012345DecodeProbeReport,
 ) -> Result<()> {
     write_position_advancing_probe_json(output, report, LAYERS012345_DECODE_PROBE_SCHEMA, 6)
+}
+
+pub fn write_ratio128_compressor_replay_probe_json<W: Write>(
+    output: &mut W,
+    report: &Ratio128CompressorReplayProbeReport,
+) -> Result<()> {
+    if report.layers.len() != 2
+        || report.final_position != 127
+        || report.externally_supplied_activation_rows != 128
+        || report
+            .layers
+            .iter()
+            .map(|layer| layer.layer)
+            .ne([3_u32, 5_u32])
+    {
+        return Err(Error::invalid(
+            "ratio-128 compressor replay report has inconsistent boundary metadata",
+        ));
+    }
+    write!(
+        output,
+        "{{\n  \"schema\": \"{RATIO128_COMPRESSOR_REPLAY_PROBE_SCHEMA}\",\n  \"boundary\": \"oracle-attn-norm-activation-replay\",\n  \"final_position\": {},\n  \"externally_supplied_activation_rows\": {},\n  \"layers\": [",
+        report.final_position, report.externally_supplied_activation_rows,
+    )?;
+    for (index, layer) in report.layers.iter().enumerate() {
+        if index != 0 {
+            write!(output, ",")?;
+        }
+        write!(
+            output,
+            "\n    {{\n      \"layer\": {},\n      \"fixture\": \"{}\",\n      \"activation_rows\": {},\n      \"state_rows\": {},\n      \"dispatches\": {},\n      \"command_buffers\": {},\n      \"host_waits\": {},\n      \"mapping\": {{\"wrapped_model_ranges\": {}, \"pointer_matches\": {}}},\n      \"timing\": {{\"wall_ms\": {:.6}, \"gpu_ms\": {:.6}}},\n      \"checksums\": {{\"attn_norm_sequence\": {}, \"compressed_kv_row\": {}}},\n      \"c0_bitwise_match\": true\n    }}",
+            layer.layer,
+            layer.fixture_id,
+            layer.activation_rows,
+            layer.state_rows,
+            layer.dispatches,
+            layer.command_buffers,
+            layer.host_waits,
+            layer.wrapped_model_ranges,
+            layer.pointer_matches,
+            layer.wall_ms,
+            layer.gpu_ms,
+            layer.input_checksum,
+            layer.output_checksum,
+        )?;
+    }
+    write!(
+        output,
+        "\n  ],\n  \"sampling_performed\": false,\n  \"full_decoder_claim\": false,\n  \"c0_bitwise_match\": true\n}}\n"
+    )?;
+    Ok(())
 }
 
 fn write_position_advancing_probe_json<W: Write>(
@@ -1578,6 +1659,34 @@ fn decode_f32_fixture(bytes: &[u8], label: &str) -> Result<Vec<f32>> {
         values.push(value);
     }
     Ok(values)
+}
+
+fn ratio128_compressor_fixture(layer: u32) -> Result<(&'static str, Vec<f32>, Vec<f32>)> {
+    let (fixture_id, inputs, output) = match layer {
+        3 => (
+            LAYER3_POS127_COMPRESSOR_FIXTURE_ID,
+            LAYER3_POS127_COMPRESSOR_INPUT_BYTES,
+            LAYER3_POS127_COMPRESSED_KV_BYTES,
+        ),
+        5 => (
+            LAYER5_POS127_COMPRESSOR_FIXTURE_ID,
+            LAYER5_POS127_COMPRESSOR_INPUT_BYTES,
+            LAYER5_POS127_COMPRESSED_KV_BYTES,
+        ),
+        _ => {
+            return Err(Error::invalid(format!(
+                "layer-{layer} ratio-128 compressor replay fixture is not captured"
+            )))
+        }
+    };
+    let inputs = decode_f32_fixture(inputs, &format!("layer-{layer} compressor inputs"))?;
+    let output = decode_f32_fixture(output, &format!("layer-{layer} compressed KV row"))?;
+    if inputs.len() != 128 * 4096 || output.len() != 512 {
+        return Err(Error::invalid(format!(
+            "layer-{layer} ratio-128 compressor fixture dimensions are invalid"
+        )));
+    }
+    Ok((fixture_id, inputs, output))
 }
 
 fn projection_fixture() -> Result<(Vec<f32>, Vec<f32>)> {
@@ -2011,6 +2120,18 @@ const LAYER4_POS0_COMPRESSOR_PRIME_BYTES: &[u8] =
     include_bytes!("../../fixtures/layer4-pos0-compressor-prime-v1/attn-norm.f32le.bin");
 const LAYER5_POS0_COMPRESSOR_PRIME_BYTES: &[u8] =
     include_bytes!("../../fixtures/layer5-pos0-compressor-prime-v1/attn-norm.f32le.bin");
+const LAYER3_POS127_COMPRESSOR_INPUT_BYTES: &[u8] = include_bytes!(
+    "../../fixtures/layer3-pos127-compressor-replay-v1/attn-norm-sequence.f32le.bin"
+);
+const LAYER3_POS127_COMPRESSED_KV_BYTES: &[u8] = include_bytes!(
+    "../../fixtures/layer3-pos127-compressor-replay-v1/compressed-kv-row0.f32le.bin"
+);
+const LAYER5_POS127_COMPRESSOR_INPUT_BYTES: &[u8] = include_bytes!(
+    "../../fixtures/layer5-pos127-compressor-replay-v1/attn-norm-sequence.f32le.bin"
+);
+const LAYER5_POS127_COMPRESSED_KV_BYTES: &[u8] = include_bytes!(
+    "../../fixtures/layer5-pos127-compressor-replay-v1/compressed-kv-row0.f32le.bin"
+);
 const LAYER4_CACHE_ROW0_BYTES: &[u8] =
     include_bytes!("../../fixtures/layer4-pos1-complete-v1/cache-row0.f32le.bin");
 const LAYER5_CACHE_ROW0_BYTES: &[u8] =
@@ -2676,6 +2797,27 @@ mod imp {
             input: *const f32,
             output: *mut f32,
             result: *mut RawProjectionProbeResult,
+            error: *mut c_char,
+            error_bytes: usize,
+        ) -> i32;
+        fn rust_star_metal_run_ratio128_compressor_replay(
+            context: *mut c_void,
+            model_mapping: *const c_void,
+            model_bytes: u64,
+            layer_index: u32,
+            ape_offset: u64,
+            ape_bytes: u64,
+            kv_offset: u64,
+            kv_bytes: u64,
+            gate_offset: u64,
+            gate_bytes: u64,
+            norm_offset: u64,
+            norm_bytes: u64,
+            activation_sequence: *const f32,
+            activation_elements: u64,
+            output: *mut f32,
+            output_elements: u64,
+            result: *mut RawIngressProbeResult,
             error: *mut c_char,
             error_bytes: usize,
         ) -> i32;
@@ -4578,6 +4720,119 @@ mod imp {
         run_position_advancing_probe(model, 6)
     }
 
+    pub fn run_ratio128_compressor_replay_probe(
+        model: &MappedModel,
+    ) -> Result<Ratio128CompressorReplayProbeReport> {
+        let context = Context::new()?;
+        let mut layers = Vec::with_capacity(2);
+        for layer in [3_u32, 5_u32] {
+            let tensor_name = |suffix: &str| format!("blk.{layer}.{suffix}");
+            let ape = exact_tensor(
+                model,
+                &tensor_name("attn_compressor_ape.weight"),
+                1,
+                &[512, 128],
+            )?;
+            let kv = exact_tensor(
+                model,
+                &tensor_name("attn_compressor_kv.weight"),
+                1,
+                &[4096, 512],
+            )?;
+            let gate = exact_tensor(
+                model,
+                &tensor_name("attn_compressor_gate.weight"),
+                1,
+                &[4096, 512],
+            )?;
+            let norm = exact_tensor(
+                model,
+                &tensor_name("attn_compressor_norm.weight"),
+                0,
+                &[512],
+            )?;
+            let (fixture_id, inputs, expected) = ratio128_compressor_fixture(layer)?;
+            let mut output = vec![0.0_f32; 512];
+            let mut raw = RawIngressProbeResult::default();
+            let mut error = [0 as c_char; ERROR_BYTES];
+            let succeeded = unsafe {
+                rust_star_metal_run_ratio128_compressor_replay(
+                    context.0,
+                    model.mapping_pointer(),
+                    model.bytes(),
+                    layer,
+                    ape.absolute_offset,
+                    ape.bytes,
+                    kv.absolute_offset,
+                    kv.bytes,
+                    gate.absolute_offset,
+                    gate.bytes,
+                    norm.absolute_offset,
+                    norm.bytes,
+                    inputs.as_ptr(),
+                    inputs.len() as u64,
+                    output.as_mut_ptr(),
+                    output.len() as u64,
+                    &mut raw,
+                    error.as_mut_ptr(),
+                    error.len(),
+                )
+            };
+            if succeeded == 0 {
+                return Err(Error::invalid(format!(
+                    "Metal layer-{layer} ratio-128 compressor replay failed: {}",
+                    error_text(&error)
+                )));
+            }
+            if raw.model_bytes != model.bytes()
+                || raw.wrapped_model_ranges != 4
+                || raw.pointer_matches != 4
+            {
+                return Err(Error::invalid(format!(
+                    "layer-{layer} ratio-128 replay did not preserve all four mmap-backed model ranges"
+                )));
+            }
+            for (index, (actual, expected)) in output.iter().zip(&expected).enumerate() {
+                if actual.to_bits() != expected.to_bits() {
+                    return Err(Error::invalid(format!(
+                        "layer-{layer} ratio-128 compressed KV C0 mismatch at [{index}]: actual={:#010x} expected={:#010x}",
+                        actual.to_bits(),
+                        expected.to_bits()
+                    )));
+                }
+            }
+            if !raw.wall_ms.is_finite()
+                || raw.wall_ms <= 0.0
+                || !raw.gpu_ms.is_finite()
+                || raw.gpu_ms < 0.0
+            {
+                return Err(Error::invalid(format!(
+                    "layer-{layer} ratio-128 replay returned invalid timing"
+                )));
+            }
+            layers.push(Ratio128CompressorLayerReport {
+                layer,
+                fixture_id,
+                activation_rows: 128,
+                state_rows: 128,
+                dispatches: 263,
+                command_buffers: 1,
+                host_waits: 1,
+                wrapped_model_ranges: raw.wrapped_model_ranges,
+                pointer_matches: raw.pointer_matches,
+                wall_ms: raw.wall_ms,
+                gpu_ms: raw.gpu_ms,
+                input_checksum: checksum_f32(&inputs),
+                output_checksum: checksum_f32(&output),
+            });
+        }
+        Ok(Ratio128CompressorReplayProbeReport {
+            layers,
+            final_position: 127,
+            externally_supplied_activation_rows: 128,
+        })
+    }
+
     pub fn run_layer0_bench(
         model: &MappedModel,
         config: Layer0BenchConfig,
@@ -5559,6 +5814,23 @@ mod imp {
         ))
     }
 
+    pub fn run_ratio128_compressor_replay_probe(
+        model: &MappedModel,
+    ) -> Result<Ratio128CompressorReplayProbeReport> {
+        for layer in [3_u32, 5_u32] {
+            let _ = ratio128_compressor_fixture(layer)?;
+            let _ = exact_tensor(
+                model,
+                &format!("blk.{layer}.attn_compressor_kv.weight"),
+                1,
+                &[4096, 512],
+            )?;
+        }
+        Err(Error::invalid(
+            "the Metal ratio-128 compressor replay probe is available only on macOS",
+        ))
+    }
+
     pub fn run_layers012_chained_probe(model: &MappedModel) -> Result<Layers012ChainedProbeReport> {
         let _ = layer_expected(0, 1)?;
         let _ = layer_expected(1, 1)?;
@@ -5721,7 +5993,8 @@ pub use imp::{
     run_layer0_probe, run_layers012345_decode_probe, run_layers0123_bench,
     run_layers0123_chained_probe, run_layers0123_decode_probe, run_layers0123_probe,
     run_layers012_chained_probe, run_layers012_probe, run_layers01_probe, run_moe_output_probe,
-    run_probe, run_q8_projection_probe, run_rope_kv_store_probe, LayerExecutor,
+    run_probe, run_q8_projection_probe, run_ratio128_compressor_replay_probe,
+    run_rope_kv_store_probe, LayerExecutor,
 };
 
 #[cfg(test)]
@@ -5806,6 +6079,36 @@ mod tests {
             gpu_ms: 0.5,
             input_checksum: 11,
             output_checksum: 12,
+        }
+    }
+
+    fn ratio128_compressor_report() -> Ratio128CompressorReplayProbeReport {
+        Ratio128CompressorReplayProbeReport {
+            layers: [
+                (3, LAYER3_POS127_COMPRESSOR_FIXTURE_ID, 11, 12),
+                (5, LAYER5_POS127_COMPRESSOR_FIXTURE_ID, 13, 14),
+            ]
+            .into_iter()
+            .map(|(layer, fixture_id, input_checksum, output_checksum)| {
+                Ratio128CompressorLayerReport {
+                    layer,
+                    fixture_id,
+                    activation_rows: 128,
+                    state_rows: 128,
+                    dispatches: 263,
+                    command_buffers: 1,
+                    host_waits: 1,
+                    wrapped_model_ranges: 4,
+                    pointer_matches: 4,
+                    wall_ms: 2.0,
+                    gpu_ms: 1.0,
+                    input_checksum,
+                    output_checksum,
+                }
+            })
+            .collect(),
+            final_position: 127,
+            externally_supplied_activation_rows: 128,
         }
     }
 
@@ -6478,6 +6781,22 @@ mod tests {
     }
 
     #[test]
+    fn writes_stable_ratio128_compressor_replay_json() {
+        let mut output = Vec::new();
+        write_ratio128_compressor_replay_probe_json(&mut output, &ratio128_compressor_report())
+            .unwrap();
+        let text = String::from_utf8(output).unwrap();
+        assert!(text.contains(&format!(
+            "\"schema\": \"{RATIO128_COMPRESSOR_REPLAY_PROBE_SCHEMA}\""
+        )));
+        assert!(text.contains("\"final_position\": 127"));
+        assert!(text.contains("\"layer\": 3"));
+        assert!(text.contains("\"layer\": 5"));
+        assert!(text.contains("\"sampling_performed\": false"));
+        assert!(text.contains("\"full_decoder_claim\": false"));
+    }
+
+    #[test]
     fn writes_stable_ingress_probe_json() {
         let mut output = Vec::new();
         write_ingress_probe_json(&mut output, &ingress_report()).unwrap();
@@ -6651,6 +6970,24 @@ mod tests {
         assert!(output.iter().all(|value| value.is_finite()));
         assert_eq!(checksum_f32(&input), 6_001_855_774_483_604_828);
         assert_eq!(checksum_f32(&output), 13_770_952_831_385_691_371);
+    }
+
+    #[test]
+    fn ratio128_compressor_fixtures_have_target_shapes() {
+        for layer in [3_u32, 5_u32] {
+            let (fixture_id, inputs, output) = ratio128_compressor_fixture(layer).unwrap();
+            assert_eq!(
+                fixture_id,
+                if layer == 3 {
+                    LAYER3_POS127_COMPRESSOR_FIXTURE_ID
+                } else {
+                    LAYER5_POS127_COMPRESSOR_FIXTURE_ID
+                }
+            );
+            assert_eq!(inputs.len(), 128 * 4096);
+            assert_eq!(output.len(), 512);
+            assert!(inputs.iter().chain(&output).all(|value| value.is_finite()));
+        }
     }
 
     #[test]

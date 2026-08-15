@@ -956,7 +956,7 @@ typedef struct rust_star_compressor_store_args {
 } rust_star_compressor_store_args;
 
 typedef struct rust_star_compressor_pack_args {
-    uint32_t width, head_dim;
+    uint32_t width, head_dim, ratio;
 } rust_star_compressor_pack_args;
 
 typedef struct rust_star_softmax_args {
@@ -1142,7 +1142,7 @@ static NSString *layer_buffer_key(NSString *base, BOOL layer_scoped, uint32_t la
 static int encode_compressor_step(
     RustStarMetalContext *context,
     id<MTLComputeCommandEncoder> encoder,
-    id<MTLBuffer> activation,
+    id<MTLBuffer> activation, NSUInteger activation_offset,
     id<MTLBuffer> kv_weight, NSUInteger kv_weight_offset,
     id<MTLBuffer> gate_weight, NSUInteger gate_weight_offset,
     id<MTLBuffer> ape, NSUInteger ape_offset,
@@ -1176,7 +1176,7 @@ static int encode_compressor_step(
     [encoder setBytes:&projection length:sizeof(projection) atIndex:0];
     [encoder setBuffer:kv_weight offset:kv_weight_offset atIndex:1];
     [encoder setBuffer:gate_weight offset:gate_weight_offset atIndex:2];
-    [encoder setBuffer:activation offset:0 atIndex:3];
+    [encoder setBuffer:activation offset:activation_offset atIndex:3];
     [encoder setBuffer:projected_kv offset:0 atIndex:4];
     [encoder setBuffer:projected_score offset:0 atIndex:5];
     [encoder setThreadgroupMemoryLength:32u*2u*sizeof(float) atIndex:0];
@@ -1197,8 +1197,11 @@ static int encode_compressor_step(
          threadsPerThreadgroup:MTLSizeMake(256,1,1)];
     if (!emit) return 1;
 
-    rust_star_compressor_pack_args pack = { .width=width, .head_dim=head_dim };
-    const uint32_t packed_elements = 8u*head_dim;
+    const uint32_t pool_rows = ratio == 4u ? 8u : ratio;
+    rust_star_compressor_pack_args pack = {
+        .width=width, .head_dim=head_dim, .ratio=ratio,
+    };
+    const uint32_t packed_elements = pool_rows*head_dim;
     [encoder setComputePipelineState:context.compressorPackPipeline];
     [encoder setBytes:&pack length:sizeof(pack) atIndex:0];
     [encoder setBuffer:state_kv offset:0 atIndex:1];
@@ -1208,13 +1211,13 @@ static int encode_compressor_step(
     [encoder dispatchThreads:MTLSizeMake(packed_elements,1,1)
           threadsPerThreadgroup:MTLSizeMake(256,1,1)];
 
-    const uint64_t softmax_row_bytes = 8u*sizeof(float);
+    const uint64_t softmax_row_bytes = (uint64_t)pool_rows*sizeof(float);
     rust_star_softmax_args softmax_args = {
-        .ne00=8, .ne01=(int32_t)head_dim, .ne02=1,
+        .ne00=(int32_t)pool_rows, .ne01=(int32_t)head_dim, .ne02=1,
         .nb01=softmax_row_bytes,
         .nb02=(uint64_t)head_dim*softmax_row_bytes,
         .nb03=(uint64_t)head_dim*softmax_row_bytes,
-        .ne11=8, .ne12=(int32_t)head_dim, .ne13=1,
+        .ne11=(int32_t)pool_rows, .ne12=(int32_t)head_dim, .ne13=1,
         .nb11=softmax_row_bytes,
         .nb12=(uint64_t)head_dim*softmax_row_bytes,
         .nb13=(uint64_t)head_dim*softmax_row_bytes,
@@ -1242,7 +1245,7 @@ static int encode_compressor_step(
           threadsPerThreadgroup:MTLSizeMake(256,1,1)];
 
     rust_star_sum_rows_args sum = {
-        .ne00=8, .ne01=head_dim, .ne02=1, .ne03=1,
+        .ne00=pool_rows, .ne01=head_dim, .ne02=1, .ne03=1,
         .nb00=sizeof(float), .nb01=softmax_row_bytes,
         .nb02=(uint64_t)head_dim*softmax_row_bytes,
         .nb03=(uint64_t)head_dim*softmax_row_bytes,
@@ -1257,7 +1260,7 @@ static int encode_compressor_step(
     [encoder setBuffer:output offset:0 atIndex:2];
     [encoder setThreadgroupMemoryLength:32u*sizeof(float) atIndex:0];
     [encoder dispatchThreadgroups:MTLSizeMake(head_dim,1,1)
-         threadsPerThreadgroup:MTLSizeMake(8,1,1)];
+         threadsPerThreadgroup:MTLSizeMake(pool_rows,1,1)];
 
     const uint64_t output_bytes = (uint64_t)head_dim*sizeof(float);
     rust_star_norm_args norm = {
@@ -1302,13 +1305,15 @@ static int encode_compressor_step(
     [encoder dispatchThreadgroups:MTLSizeMake(1,1,1)
          threadsPerThreadgroup:MTLSizeMake(MIN((uint32_t)256u,head_dim),1,1)];
 
-    rust_star_ratio4_shift_args shift = { .width=width };
-    [encoder setComputePipelineState:context.compressorShiftPipeline];
-    [encoder setBytes:&shift length:sizeof(shift) atIndex:0];
-    [encoder setBuffer:state_kv offset:0 atIndex:1];
-    [encoder setBuffer:state_score offset:0 atIndex:2];
-    [encoder dispatchThreads:MTLSizeMake(4u*width,1,1)
-          threadsPerThreadgroup:MTLSizeMake(256,1,1)];
+    if (ratio == 4u) {
+        rust_star_ratio4_shift_args shift = { .width=width };
+        [encoder setComputePipelineState:context.compressorShiftPipeline];
+        [encoder setBytes:&shift length:sizeof(shift) atIndex:0];
+        [encoder setBuffer:state_kv offset:0 atIndex:1];
+        [encoder setBuffer:state_score offset:0 atIndex:2];
+        [encoder dispatchThreads:MTLSizeMake(4u*width,1,1)
+              threadsPerThreadgroup:MTLSizeMake(256,1,1)];
+    }
 
     if (indexer) {
         rust_star_indexer_qat_args qat = {
@@ -1337,6 +1342,143 @@ static int encode_compressor_step(
              threadsPerThreadgroup:MTLSizeMake(64,1,1)];
     }
     return 1;
+}
+
+int rust_star_metal_run_ratio128_compressor_replay(
+    void *opaque_context,
+    const void *model_mapping,
+    uint64_t model_bytes,
+    uint32_t layer_index,
+    uint64_t ape_offset,
+    uint64_t ape_bytes,
+    uint64_t kv_offset,
+    uint64_t kv_bytes,
+    uint64_t gate_offset,
+    uint64_t gate_bytes,
+    uint64_t norm_offset,
+    uint64_t norm_bytes,
+    const float *activation_sequence,
+    uint64_t activation_elements,
+    float *output,
+    uint64_t output_elements,
+    rust_star_metal_ingress_probe_result *result,
+    char *error,
+    size_t error_bytes)
+{
+    const uint32_t positions = 128u;
+    const uint32_t activation_width = 4096u;
+    const uint32_t compressor_width = 512u;
+    const uint32_t head_dim = 512u;
+    const uint32_t ratio = 128u;
+    if (!opaque_context || !model_mapping || !activation_sequence || !output || !result) {
+        return fail_with_message(error, error_bytes,
+            @"ratio-128 compressor replay received a null input");
+    }
+    if (layer_index < 3u || (layer_index & 1u) == 0u ||
+        activation_elements != (uint64_t)positions*activation_width ||
+        output_elements != head_dim ||
+        ape_bytes != (uint64_t)compressor_width*ratio*sizeof(uint16_t) ||
+        kv_bytes != (uint64_t)activation_width*compressor_width*sizeof(uint16_t) ||
+        gate_bytes != (uint64_t)activation_width*compressor_width*sizeof(uint16_t) ||
+        norm_bytes != (uint64_t)head_dim*sizeof(float)) {
+        return fail_with_message(error, error_bytes,
+            @"ratio-128 compressor replay dimensions are invalid");
+    }
+
+    @autoreleasepool {
+        RustStarMetalContext *context = (__bridge RustStarMetalContext *)opaque_context;
+        if (!ensure_attention_ingress_pipelines(context, error, error_bytes)) return 0;
+        memset(result, 0, sizeof(*result));
+        memset(output, 0, output_elements*sizeof(float));
+
+        NSUInteger ape_inner = 0, kv_inner = 0, gate_inner = 0, norm_inner = 0;
+        BOOL ape_match = NO, kv_match = NO, gate_match = NO, norm_match = NO;
+        id<MTLBuffer> ape = wrap_model_range(context, model_mapping, model_bytes,
+            ape_offset, ape_bytes, &ape_inner, &ape_match, error, error_bytes);
+        id<MTLBuffer> kv_weight = wrap_model_range(context, model_mapping, model_bytes,
+            kv_offset, kv_bytes, &kv_inner, &kv_match, error, error_bytes);
+        id<MTLBuffer> gate_weight = wrap_model_range(context, model_mapping, model_bytes,
+            gate_offset, gate_bytes, &gate_inner, &gate_match, error, error_bytes);
+        id<MTLBuffer> norm_weight = wrap_model_range(context, model_mapping, model_bytes,
+            norm_offset, norm_bytes, &norm_inner, &norm_match, error, error_bytes);
+        if (!ape || !kv_weight || !gate_weight || !norm_weight) return 0;
+
+        const NSUInteger activation_bytes = (NSUInteger)activation_elements*sizeof(float);
+        const NSUInteger row_bytes = compressor_width*sizeof(float);
+        const NSUInteger state_bytes = (NSUInteger)ratio*row_bytes;
+        const NSUInteger packed_bytes = (NSUInteger)ratio*head_dim*sizeof(float);
+        id<MTLBuffer> activations = [context.device newBufferWithBytes:activation_sequence
+            length:activation_bytes options:MTLResourceStorageModeShared];
+        id<MTLBuffer> projected_kv = [context.device newBufferWithLength:row_bytes
+            options:MTLResourceStorageModeShared];
+        id<MTLBuffer> projected_score = [context.device newBufferWithLength:row_bytes
+            options:MTLResourceStorageModeShared];
+        id<MTLBuffer> state_kv = [context.device newBufferWithLength:state_bytes
+            options:MTLResourceStorageModeShared];
+        id<MTLBuffer> state_score = [context.device newBufferWithLength:state_bytes
+            options:MTLResourceStorageModeShared];
+        id<MTLBuffer> packed_kv = [context.device newBufferWithLength:packed_bytes
+            options:MTLResourceStorageModeShared];
+        id<MTLBuffer> packed_score = [context.device newBufferWithLength:packed_bytes
+            options:MTLResourceStorageModeShared];
+        id<MTLBuffer> softmax = [context.device newBufferWithLength:packed_bytes
+            options:MTLResourceStorageModeShared];
+        id<MTLBuffer> compressed = [context.device newBufferWithLength:head_dim*sizeof(float)
+            options:MTLResourceStorageModeShared];
+        if (!activations || !projected_kv || !projected_score || !state_kv ||
+            !state_score || !packed_kv || !packed_score || !softmax || !compressed) {
+            return fail_with_message(error, error_bytes,
+                @"failed to allocate ratio-128 compressor replay buffers");
+        }
+        memset(state_kv.contents, 0, state_bytes);
+        float *scores = state_score.contents;
+        for (uint32_t index = 0; index < ratio*compressor_width; index++) {
+            scores[index] = -INFINITY;
+        }
+
+        const double wall_start = monotonic_ms();
+        id<MTLCommandBuffer> command = [context.queue commandBuffer];
+        id<MTLComputeCommandEncoder> encoder = [command computeCommandEncoder];
+        if (!command || !encoder) {
+            return fail_with_message(error, error_bytes,
+                @"failed to create ratio-128 compressor replay command buffer");
+        }
+        for (uint32_t position = 0; position < positions; position++) {
+            const NSUInteger activation_offset =
+                (NSUInteger)position*activation_width*sizeof(float);
+            if (!encode_compressor_step(context, encoder,
+                    activations, activation_offset,
+                    kv_weight, kv_inner,
+                    gate_weight, gate_inner,
+                    ape, ape_inner,
+                    norm_weight, norm_inner,
+                    projected_kv, projected_score,
+                    state_kv, state_score,
+                    packed_kv, packed_score, softmax, compressed,
+                    compressor_width, head_dim, ratio, position,
+                    position == positions-1u, NO)) {
+                return fail_with_message(error, error_bytes,
+                    @"failed to encode ratio-128 compressor replay step");
+            }
+        }
+        [encoder endEncoding];
+        [command commit];
+        [command waitUntilCompleted];
+        if (command.status != MTLCommandBufferStatusCompleted) {
+            return fail_with_message(error, error_bytes,
+                command.error.localizedDescription ?: @"ratio-128 compressor replay failed");
+        }
+        memcpy(output, compressed.contents, head_dim*sizeof(float));
+
+        result->model_bytes = model_bytes;
+        result->max_buffer_length = context.device.maxBufferLength;
+        result->wrapped_model_ranges = 4u;
+        result->pointer_matches = (ape_match ? 1u : 0u) + (kv_match ? 1u : 0u) +
+            (gate_match ? 1u : 0u) + (norm_match ? 1u : 0u);
+        result->wall_ms = monotonic_ms()-wall_start;
+        result->gpu_ms = gpu_elapsed_ms(command);
+        return 1;
+    }
 }
 
 int rust_star_metal_run_q8_0_projection(
@@ -2324,7 +2466,7 @@ int rust_star_metal_run_attention_ingress(
 
         if (compressed_layer && position == 1u) {
             if (!encode_compressor_step(context, encoder,
-                    compressor_prime_buffer,
+                    compressor_prime_buffer, 0,
                     compressor_kv_weight, compressor_inner[1],
                     compressor_gate_weight, compressor_inner[2],
                     compressor_ape, compressor_inner[0],
@@ -2337,7 +2479,7 @@ int rust_star_metal_run_attention_ingress(
                 return fail_with_message(error, error_bytes, @"failed to encode attention compressor prime");
             }
             if (indexer_layer && !encode_compressor_step(context, encoder,
-                    compressor_prime_buffer,
+                    compressor_prime_buffer, 0,
                     indexer_kv_weight, indexer_inner[1],
                     indexer_gate_weight, indexer_inner[2],
                     indexer_ape, indexer_inner[0],
@@ -2481,7 +2623,7 @@ int rust_star_metal_run_attention_ingress(
                  threadsPerThreadgroup:MTLSizeMake(64,1,1)];
 
             if (compressed_layer) {
-                if (!encode_compressor_step(context, encoder, norm_buffer,
+                if (!encode_compressor_step(context, encoder, norm_buffer, 0,
                         compressor_kv_weight, compressor_inner[1],
                         compressor_gate_weight, compressor_inner[2],
                         compressor_ape, compressor_inner[0],
@@ -2494,7 +2636,7 @@ int rust_star_metal_run_attention_ingress(
                         compressor_emit, NO)) {
                     return fail_with_message(error, error_bytes, @"failed to encode attention compressor update");
                 }
-                if (indexer_layer && !encode_compressor_step(context, encoder, norm_buffer,
+                if (indexer_layer && !encode_compressor_step(context, encoder, norm_buffer, 0,
                         indexer_kv_weight, indexer_inner[1],
                         indexer_gate_weight, indexer_inner[2],
                         indexer_ape, indexer_inner[0],

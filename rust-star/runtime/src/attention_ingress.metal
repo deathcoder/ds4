@@ -351,10 +351,12 @@ kernel void kernel_mul_mv_f16_f32_pair_4(
 struct rust_star_compressor_pack_args {
     uint width;
     uint head_dim;
+    uint ratio;
 };
 
-// Reproduces the two strided concat copies that precede the legacy compressor
-// softmax graph. Output is [head_dim, 8] with the eight values contiguous.
+// Reproduces the strided-to-contiguous copies that precede the legacy
+// compressor softmax graph. Ratio-4 has two four-row lanes; ratio-128 has one
+// 128-row lane. Output keeps the pooled rows contiguous for each head element.
 kernel void rust_star_compressor_pack_ratio4_one(
         constant rust_star_compressor_pack_args & args,
         device const float * state_kv,
@@ -362,13 +364,16 @@ kernel void rust_star_compressor_pack_ratio4_one(
         device float * packed_kv,
         device float * packed_score,
         uint gid [[thread_position_in_grid]]) {
-    const uint total = args.head_dim*8u;
+    const uint rows = args.ratio == 4u ? 8u : args.ratio;
+    const uint total = args.head_dim*rows;
     if (gid >= total) return;
-    const uint col = gid/8u;
-    const uint row = gid - col*8u;
-    const uint src = row < 4u
-        ? row*args.width + col
-        : row*args.width + args.head_dim + col;
+    const uint col = gid/rows;
+    const uint row = gid - col*rows;
+    const uint src = args.ratio == 4u
+        ? (row < 4u
+            ? row*args.width + col
+            : row*args.width + args.head_dim + col)
+        : row*args.width + col;
     packed_kv[gid] = state_kv[src];
     packed_score[gid] = state_score[src];
 }

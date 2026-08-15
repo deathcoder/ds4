@@ -1,0 +1,97 @@
+{
+  "schema": "rust-star-differential-fixture-v1",
+  "fixture_id": "dwarfstar-oracle-v1-layer3-pos127-compressor-replay",
+  "captured_at_utc": "2026-08-15T09:44:11Z",
+  "oracle": {
+    "id": "oracle-v1",
+    "repository": "https://github.com/antirez/ds4.git",
+    "commit": "b0309611041655f4e45671cfd9c9886aff161406",
+    "tree": "20c11af22f90a0bdf25da860da5ef06de4064060",
+    "capture_executable_sha256": "b0b7c31d9832cc3f5cccf810cd2af6f4bc4f6e71de945493674315314f666fc8"
+  },
+  "model": {
+    "family": "DeepSeek-V4-Flash-0731",
+    "sha256": "ca22ae2f838e14077c22bc1c1417b71b45b5e5a3687bd96c2ac6e17fdb6261c0"
+  },
+  "capture": {
+    "backend": "metal",
+    "machine": "Apple M1 Ultra, 48 GPU cores, 128 GB unified memory",
+    "prompt": "speed-bench/promessi_sposi.txt",
+    "prompt_sha256": "f53e0d80cb2d4492d24ebd63c7000c397b16ae70f9bf09b3763e5d8323ec209f",
+    "prefill_tokens": 1,
+    "decode_steps": 127,
+    "final_decode_position": 127,
+    "intermediate_tokens": "oracle-generated-not-retained",
+    "fresh_process_captures": 2,
+    "fresh_process_bitwise_match": true,
+    "environment": {
+      "DS4_METAL_GRAPH_DUMP_LAYER": "3",
+      "DS4_METAL_GRAPH_DUMP_NAME": "attn_norm,KVcompress",
+      "DS4_METAL_GRAPH_DUMP_POS": "unset-all-positions"
+    }
+  },
+  "scope": {
+    "kind": "layer-segment",
+    "phase": "decode",
+    "layer": 3,
+    "position": 127
+  },
+  "operations": [
+    {
+      "name": "attention-compressor-paired-projection-replay",
+      "kernel": "kernel_mul_mv_f16_f32_pair_4",
+      "weights": [
+        "blk.3.attn_compressor_kv.weight",
+        "blk.3.attn_compressor_gate.weight"
+      ]
+    },
+    {
+      "name": "attention-compressor-recurrent-state-store",
+      "kernel": "kernel_dsv4_compressor_store_one",
+      "weights": [
+        "blk.3.attn_compressor_ape.weight"
+      ]
+    },
+    {
+      "name": "attention-compressor-ratio128-pool",
+      "kernel": "kernel_dsv4_compressor_pack_legacy+kernel_soft_max_4+kernel_mul_mm_f32_4+kernel_sum_rows_f32_4",
+      "weights": []
+    },
+    {
+      "name": "attention-compressor-finalize",
+      "kernel": "kernel_rms_norm_f32_4+kernel_dsv4_rope_tail_f32+kernel_dsv4_fp8_kv_quantize",
+      "weights": [
+        "blk.3.attn_compressor_norm.weight"
+      ]
+    }
+  ],
+  "tensors": [
+    {
+      "name": "attn_norm_sequence",
+      "hook": "attn_norm",
+      "role": "input",
+      "dtype": "f32",
+      "shape": [
+        128,
+        4096
+      ],
+      "encoding": "little-endian-ieee754-binary32",
+      "path": "attn-norm-sequence.f32le.bin",
+      "bytes": 2097152,
+      "sha256": "79c90f2192a18963ec4bc976a25e18e36f1078ffec0437d5b05eb1f8a94c9044"
+    },
+    {
+      "name": "compressed_kv_row0",
+      "hook": "KVcompress",
+      "role": "output",
+      "dtype": "f32",
+      "shape": [
+        512
+      ],
+      "encoding": "little-endian-ieee754-binary32",
+      "path": "compressed-kv-row0.f32le.bin",
+      "bytes": 2048,
+      "sha256": "a0416831e464ab8652402b7fbcf854f1a1a401e878906379cc0382b1d1edcc30"
+    }
+  ]
+}

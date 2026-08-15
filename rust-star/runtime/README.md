@@ -361,6 +361,28 @@ state. The six command buffers share one queue and one tail wait per step, and
 all six raw caches and compressor states remain layer-scoped. This still covers
 only six of 43 layers and is a correctness diagnostic, not token throughput.
 
+To cross the first ratio-128 emission boundary without overstating decoder
+coverage:
+
+```sh
+rust-star/.work/runtime-target/release/rust-star \
+  ratio128-compressor-replay-probe \
+  /absolute/path/to/model.gguf \
+  --json rust-star/.work/runtime-target/ratio128-compressor-replay-probe.json
+```
+
+`ratio128-compressor-replay-probe` consumes 128 pinned DwarfStar `attn_norm`
+rows for each of layers 3 and 5. It replays the exact paired F16 projection,
+APE state store, legacy single-row softmax/multiply/sum reduction, learned
+normalization, compressed RoPE, and FP8 finalization. Each layer owns its own
+128-row recurrent state, uses four mmap-backed model ranges without copying,
+and must reproduce its position-127 `KVcompress` row bit-for-bit.
+
+The intermediate activations are externally supplied oracle evidence. The
+probe does not execute layers 0–5 for positions 4–127, produce logits, or sample
+tokens, so its timing is a compressor correctness diagnostic rather than token
+throughput.
+
 For repeated fixed-position execution with preparation and correctness
 collection outside the measured interval:
 

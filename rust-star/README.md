@@ -37,7 +37,11 @@ captures bit-for-bit. A six-layer extension uses the same prepared scheduler and
 generalized alternating compressor ownership through layers 4 and 5. Layer 4
 matches a second ratio-4 compressed KV emission at position 3, while layer 5
 advances ratio-128 state without emitting; all new boundaries are independently
-captured and C0 exact. The
+captured and C0 exact. A bounded position-127 replay now feeds 128 independently
+captured `attn_norm` rows through the layer-3 and layer-5 ratio-128 compressors
+and matches both first emitted KV rows bit-for-bit. Those rows are explicit
+oracle inputs: the replay performs neither sampling nor a complete decoder pass.
+The
 persistent layer-0 gate reuses its pipelines, 25 no-copy model views, cache
 storage, and activation buffers for repeated steady-state timing; this is not
 yet a complete decoder because the deepest exact slice has six layers and no

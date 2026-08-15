@@ -385,6 +385,29 @@ emitting. The six-layer path preserves the original four-layer probe as a
 separate regression command and remains a partial correctness slice rather than
 a decoder-throughput measurement.
 
+## Position-127 ratio-128 compressor replay
+
+Schema: `rust-star-ratio128-compressor-replay-probe-v1`.
+
+`ratio128-compressor-replay-probe` is a deliberately narrower ownership
+boundary than the position-advancing layer executor. Two fresh oracle processes
+captured all 128 layer-3 and layer-5 `attn_norm` rows plus the first compressed
+row emitted by each layer. The fixture importer requires all 258 corresponding
+payload pairs to be byte-identical before it packs each activation sequence.
+
+Rust owns one 128-row KV state and score state per replayed layer. Objective-C
+wraps the APE, paired projection, and learned-norm weights directly from the
+model mmap, submits all 128 recurrent updates in one command buffer, and waits
+once. At position 127 it preserves DwarfStar's single-compressed-row operation
+boundary: strided state is packed contiguously, then processed by the legacy
+softmax, multiply, sum-rows, learned norm, compressed RoPE, and FP8 kernels.
+Both 512-value outputs must match their pinned DwarfStar rows by FP32 bit
+pattern.
+
+This proves the ratio-128 compressor schedule and state lifetime only. The 128
+`attn_norm` rows are external oracle inputs; no token sampling, preceding-layer
+execution, logits, or full decoder is part of this command.
+
 ## Repeated layers 0–3 steady-state replay
 
 Schema: `rust-star-layers0123-steady-state-v1`.

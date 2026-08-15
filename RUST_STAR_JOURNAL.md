@@ -24,7 +24,8 @@ history; add a correction and update the current-state summary.
   canonical differential-fixture envelope, complete layer 0, steady-state
   layer-0 execution, the first four-layer scheduler boundary, the minimum
   three-step position-advancing four-layer slice, and the generalized six-layer
-  compression-schedule boundary are complete.
+  compression-schedule boundary are complete. A bounded position-127 replay now
+  also crosses the first ratio-128 emissions for layers 3 and 5 exactly.
   Layers 0 through 5 execute in order under one Rust-owned Metal context with
   exact GPU-resident HC-state handoffs and one retained KV allocation per
   layer. Layers 2 and 4 cross ratio-4 compressed-attention emission boundaries;
@@ -109,7 +110,13 @@ history; add a correction and update the current-state summary.
   DwarfStar fixtures bit-for-bit. The generalized schedule applies ratio 4 plus
   indexer compression to even compressed layers and ratio 128 without indexer
   compression to odd compressed layers; at this frontier layers 2 and 4 emit
-  while layers 3 and 5 only accumulate state.
+  while layers 3 and 5 only accumulate state. The new bounded ratio-128 replay
+  independently owns 128 activation rows, projected KV/score state, and four
+  no-copy model-weight views for each of layers 3 and 5. It submits all 128
+  steps in one command buffer, performs the legacy single-row reduction only at
+  position 127, and matches both 512-value DwarfStar emissions by FP32 bit
+  pattern. Its inputs are externally captured `attn_norm` activations: it does
+  not sample tokens and is not a complete decoder execution.
 - Measurements: Metal batching was 42.861x faster than synchronized submission
   in the retained M-002 probe. DwarfStar medians are 164.86 prefill / 19.90
   generation tok/s at 2K and 161.05 prefill / 17.36 generation tok/s at 32K.
@@ -157,7 +164,11 @@ history; add a correction and update the current-state summary.
   position-1 step, 14.098/13.178 ms at position 2, and 11.552/10.111 ms at
   position 3 (wall/summed GPU). It matched both ratio-4 emissions and every
   retained layer 0–5 boundary. These are correctness diagnostics, not token
-  throughput measurements.
+  throughput measurements. In the final integrated gate, the bounded
+  position-127 ratio-128 replay reported 32.461/8.236 ms wall/GPU for layer 3
+  and 6.881/6.273 ms for layer 5. Both first emissions were C0 exact; setup,
+  synchronization, and exhaustive comparison remain in scope, so these values
+  are correctness diagnostics rather than inference-speed measurements.
 - Manual handoff: `RUST_STAR_MANUAL_TASKS.md` records Actions approval, target
   compilation/model inspection, quick/extended oracle capture, and the deferred
   secure-access decision with exact evidence requirements.
@@ -170,17 +181,69 @@ history; add a correction and update the current-state summary.
 
 ## Immediate Next Actions
 
-1. Plan the longer position-127 gate that exercises layer 3's and layer 5's
-   first ratio-128 emissions without treating 124 externally supplied oracle
-   tokens as a full decoder or sampling claim. Start with a bounded layer-3
-   state replay if capturing both layers at once makes the evidence unwieldy.
-2. Generalize the ordered executor across the remaining decoder layers while
+1. Generalize the ordered executor across the remaining decoder layers while
    retaining the four-layer and six-layer position-advancing paths as controls.
+2. Define the next end-to-end boundary toward the complete decoder loop,
+   output head, and logits without weakening the bounded ratio-128 replay's
+   external-activation scope.
 3. Run the extended 2K--1M frontier capture when the Mac can be dedicated to a
    long benchmark; preserve any 512K/1M capacity failure as evidence.
 4. Run or approve the fork's GitHub Actions workflow and retain its URL.
 
 ## Entries
+
+### 2026-08-15 — First ratio-128 emissions matched at position 127
+
+Objective:
+
+- Cross the first layer-3 and layer-5 ratio-128 compressor emissions with a
+  narrowly scoped, independently repeatable GPU replay, while making no token
+  sampling or complete-decoder claim.
+
+Oracle evidence:
+
+- Captured positions 0 through 127 plus the position-127 `KVcompress` emission
+  for layers 3 and 5 twice in fresh DwarfStar processes. All 258 corresponding
+  activation and output payload pairs were byte-identical.
+- The layer-3 emitted row has SHA-256
+  `a0416831e464ab8652402b7fbcf854f1a1a401e878906379cc0382b1d1edcc30`;
+  layer 5 has SHA-256
+  `e63dc05a3efa88affe2e1483f88ea7a9212006730d368f193ff940abd66b230c`.
+- Added two strict layer-segment fixtures, each containing 128 independently
+  repeated 4,096-value `attn_norm` rows and one 512-value compressed output.
+  The repository now has 31 validated differential-fixture manifests.
+
+Implementation:
+
+- Generalized the compressor pack/reduction kernels across ratio 4 and ratio
+  128 while preserving the existing ratio-4 state-shift behavior.
+- Added a standalone Rust-owned replay boundary that wraps the APE, KV, gate,
+  and norm weights directly from the GGUF mmap, owns the 128-row activation and
+  compressor state, encodes 263 dispatches in one command buffer per layer, and
+  emits only at position 127.
+- Added stable JSON reporting, a CLI command, complete-gate coverage, strict
+  fixture tests, and a reproducible importer that rejects disagreement between
+  repeated oracle captures.
+- The report records the external activation boundary and explicitly sets
+  sampling and full-decoder claims to false.
+
+Validation:
+
+- The complete target-Mac gate passed: formatting, 53 Rust tests, optimized
+  build, 42 Python tests, all 31 fixture manifests, artifact interoperability,
+  strict real-model inspection, every earlier no-copy/layer/scheduler probe,
+  the new ratio-128 replay, and both steady-state harnesses.
+- The existing four-layer and six-layer position-advancing controls remained C0
+  exact through positions 1, 2, and 3 after the shared compressor path changed.
+- Layer 3's 512-value position-127 output was C0 exact at 32.461 ms wall and
+  8.236 ms GPU; layer 5 was C0 exact at 6.881 ms wall and 6.273 ms GPU. These
+  include setup, synchronization, and comparison and are not throughput claims.
+
+Decision:
+
+- The first ratio-128 emissions are now correctness-gated. Preserve this replay
+  as a bounded control and resume extending the ordered executor through the
+  remaining decoder layers; do not describe the replay as token generation.
 
 ### 2026-08-15 — Compressor ownership generalized through layers 4–5
 

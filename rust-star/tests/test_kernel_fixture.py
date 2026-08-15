@@ -44,6 +44,10 @@ LAYER45_COMPLETE_FIXTURES = [
     for layer in (4, 5)
     for position in (1, 2, 3)
 ]
+RATIO128_COMPRESSOR_FIXTURES = [
+    RUST_STAR_DIR / "fixtures" / f"layer{layer}-pos127-compressor-replay-v1"
+    for layer in (3, 5)
+]
 
 
 class KernelFixtureTests(unittest.TestCase):
@@ -199,6 +203,19 @@ class KernelFixtureTests(unittest.TestCase):
                 self.assertEqual(report["operations"], expected_operations[layer][position])
                 self.assertEqual(report["tensors"], 33 if position == 1 or (layer, position) == (4, 3) else 32)
                 self.assertEqual(report["verified_bytes"], 741_808 if report["tensors"] == 33 else 739_760)
+
+    def test_ratio128_compressor_fixtures_manifest_and_payloads(self) -> None:
+        for layer, fixture in zip((3, 5), RATIO128_COMPRESSOR_FIXTURES):
+            with self.subTest(layer=layer):
+                report = validate_differential_fixture(fixture)
+                self.assertEqual(
+                    report["fixture_id"],
+                    f"dwarfstar-oracle-v1-layer{layer}-pos127-compressor-replay",
+                )
+                self.assertEqual(report["scope"], "layer-segment")
+                self.assertEqual(report["operations"], 4)
+                self.assertEqual(report["tensors"], 2)
+                self.assertEqual(report["verified_bytes"], 2_099_200)
 
     def test_fixture_shape_tampering_is_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:

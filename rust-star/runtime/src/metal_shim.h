@@ -153,6 +153,27 @@ int rust_star_metal_run_q8_0_projection(
     char *error,
     size_t error_bytes);
 
+int rust_star_metal_run_ratio128_compressor_replay(
+    void *context,
+    const void *model_mapping,
+    uint64_t model_bytes,
+    uint32_t layer_index,
+    uint64_t ape_offset,
+    uint64_t ape_bytes,
+    uint64_t kv_offset,
+    uint64_t kv_bytes,
+    uint64_t gate_offset,
+    uint64_t gate_bytes,
+    uint64_t norm_offset,
+    uint64_t norm_bytes,
+    const float *activation_sequence,
+    uint64_t activation_elements,
+    float *output,
+    uint64_t output_elements,
+    rust_star_metal_ingress_probe_result *result,
+    char *error,
+    size_t error_bytes);
+
 int rust_star_metal_run_attention_ingress(
     void *context,
     const void *model_mapping,
