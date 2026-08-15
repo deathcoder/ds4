@@ -10,7 +10,7 @@ pub const EMBEDDING_PROBE_SCHEMA: &str = "rust-star-f16-embedding-probe-v1";
 pub const PROJECTION_PROBE_SCHEMA: &str = "rust-star-q8-0-projection-probe-v1";
 pub const PREFILL_Q8_BOUNDARY_PROBE_SCHEMA: &str = "rust-star-prefill-q8-boundary-probe-v1";
 pub const PREFILL_QKV_BOUNDARY_PROBE_SCHEMA: &str = "rust-star-prefill-qkv-boundary-probe-v1";
-pub const PREFILL_LAYER0_BOUNDARY_PROBE_SCHEMA: &str = "rust-star-prefill-layer0-boundary-probe-v3";
+pub const PREFILL_LAYER0_BOUNDARY_PROBE_SCHEMA: &str = "rust-star-prefill-layer0-boundary-probe-v4";
 pub const INGRESS_PROBE_SCHEMA: &str = "rust-star-layer0-attention-ingress-probe-v1";
 pub const ATTENTION_SETUP_PROBE_SCHEMA: &str = "rust-star-layer0-attention-setup-probe-v1";
 pub const ROPE_KV_STORE_PROBE_SCHEMA: &str = "rust-star-layer0-rope-kv-store-probe-v1";
@@ -48,6 +48,8 @@ pub const PREFILL_QKV_BOUNDARY_FIXTURE_ID: &str = "dwarfstar-oracle-v1-prefill-q
 pub const PREFILL_KV_STATE_FIXTURE_ID: &str = "dwarfstar-oracle-v1-prefill-kv-state-2048";
 pub const PREFILL_ATTENTION_READ_FIXTURE_ID: &str =
     "dwarfstar-oracle-v1-prefill-attention-read-2048";
+pub const PREFILL_ATTENTION_OUTPUT_FIXTURE_ID: &str =
+    "dwarfstar-oracle-v1-prefill-attention-output-2048";
 pub const PREFILL_HC_INGRESS_FIXTURE_ID: &str = "dwarfstar-oracle-v1-prefill-hc-ingress-2048";
 pub const INGRESS_FIXTURE_ID: &str = "dwarfstar-oracle-v1-layer0-pos1-attention-ingress";
 pub const ATTENTION_SETUP_FIXTURE_ID: &str = "dwarfstar-oracle-v1-layer0-pos1-qkv-setup";
@@ -183,6 +185,13 @@ const PREFILL_ATTENTION_OUTPUT_BYTES: &[u8] =
     include_bytes!("../../fixtures/prefill-attention-read-2048-v1/kqv-output-final-tile.f32le.bin");
 const PREFILL_ATTENTION_BACK_BYTES: &[u8] =
     include_bytes!("../../fixtures/prefill-attention-read-2048-v1/kqv-back-final-tile.f32le.bin");
+const PREFILL_ATTENTION_LOW_BYTES: &[u8] =
+    include_bytes!("../../fixtures/prefill-attention-output-2048-v1/attn-low-final-tile.f32le.bin");
+const PREFILL_ATTENTION_PROJECTED_BYTES: &[u8] =
+    include_bytes!("../../fixtures/prefill-attention-output-2048-v1/attn-out-final-tile.f32le.bin");
+const PREFILL_ATTENTION_HC_POST_BYTES: &[u8] = include_bytes!(
+    "../../fixtures/prefill-attention-output-2048-v1/hc-attn-post-final-tile.f32le.bin"
+);
 const PREFILL_HC_TOKEN_IDS_BYTES: &[u8] =
     include_bytes!("../../fixtures/prefill-hc-ingress-2048-v1/token-ids-final-tile.i32le.bin");
 const PREFILL_HC_COLLAPSED_BYTES: &[u8] =
@@ -676,6 +685,7 @@ pub struct PrefillLayer0BoundaryProbeReport {
     pub qkv_fixture_id: &'static str,
     pub kv_state_fixture_id: &'static str,
     pub attention_fixture_id: &'static str,
+    pub attention_output_fixture_id: &'static str,
     pub rows: u64,
     pub position_start: u32,
     pub dispatches: u32,
@@ -688,7 +698,7 @@ pub struct PrefillLayer0BoundaryProbeReport {
     pub attention_kv_prefix_rows: u32,
     pub wall_ms: f64,
     pub gpu_ms: f64,
-    pub checksums: [u64; 15],
+    pub checksums: [u64; 18],
 }
 
 #[derive(Clone, Debug)]
@@ -2231,9 +2241,11 @@ pub fn write_prefill_layer0_boundary_probe_json<W: Write>(
     crate::artifact::write_json_string(output, report.kv_state_fixture_id)?;
     output.write_all(b", ")?;
     crate::artifact::write_json_string(output, report.attention_fixture_id)?;
+    output.write_all(b", ")?;
+    crate::artifact::write_json_string(output, report.attention_output_fixture_id)?;
     write!(
         output,
-        "],\n  \"shape\": {{\n    \"rows\": {},\n    \"position_start\": {},\n    \"position_end\": {}\n  }},\n  \"input_boundary\": \"token_ids\",\n  \"schedule\": {{\n    \"dispatches\": {},\n    \"embedding_kernel\": \"kernel_get_rows_f16\",\n    \"hc_projection_kernel\": \"kernel_mul_mm_f16_f32\",\n    \"hc_norm_kernel\": \"kernel_dsv4_hc_split_weighted_sum_norm4\",\n    \"q8_kernel\": \"kernel_mul_mm_q8_0_f32\",\n    \"qkv_norm_kernel\": \"kernel_dsv4_qkv_rms_norm_f32_4\",\n    \"q_head_kernel\": \"kernel_dsv4_head_rms_norm_rope_tail_f32\",\n    \"kv_rope_kernel\": \"kernel_dsv4_rope_tail_f32\",\n    \"kv_fp8_kernel\": \"kernel_dsv4_fp8_kv_quantize_f32\",\n    \"cache_conversion_kernels\": [\"kernel_cpy_contig_f32_f16_4\", \"kernel_cpy_contig_f16_f32_4\"],\n    \"attention_block_kernel\": \"kernel_flash_attn_ext_blk\",\n    \"attention_kernel\": \"kernel_flash_attn_ext_f16_dk512_dv512\",\n    \"attention_inverse_rope_kernel\": \"kernel_dsv4_rope_tail_f32\"\n  }},\n  \"raw_cache\": {{\n    \"capacity_rows\": {},\n    \"target_row_start\": {},\n    \"target_row_end\": {},\n    \"guard_rows\": [0, {}],\n    \"guard_rows_intact\": true\n  }},\n  \"attention\": {{\n    \"query_rows\": {},\n    \"kv_rows\": {},\n    \"captured_kv_prefix_rows\": {},\n    \"live_kv_rows\": {},\n    \"window\": 128\n  }},\n  \"mapping\": {{\n    \"wrapped_model_ranges\": {},\n    \"pointer_matches\": {}\n  }},\n  \"timing\": {{\n    \"wall_ms\": {:.6},\n    \"gpu_ms\": {:.6}\n  }},\n  \"checksums\": {{\n    \"token_ids\": {},\n    \"hc_collapsed\": {},\n    \"attn_norm\": {},\n    \"q_lora\": {},\n    \"q_lora_norm\": {},\n    \"kv_raw\": {},\n    \"kv_norm\": {},\n    \"q_raw\": {},\n    \"q_current\": {},\n    \"kv_rope\": {},\n    \"kv_current\": {},\n    \"raw_cache\": {},\n    \"full_kv_current\": {},\n    \"kqv_output\": {},\n    \"kqv_back\": {}\n  }},\n  \"c0_bitwise_match\": true,\n  \"continuous_command_buffer\": true,\n  \"native_batch_schedule\": true,\n  \"guarded_cache_mutation\": true,\n  \"rectangular_attention_read\": true,\n  \"full_prefill_claim\": false\n}}\n",
+        "],\n  \"shape\": {{\n    \"rows\": {},\n    \"position_start\": {},\n    \"position_end\": {}\n  }},\n  \"input_boundary\": \"token_ids\",\n  \"schedule\": {{\n    \"dispatches\": {},\n    \"embedding_kernel\": \"kernel_get_rows_f16\",\n    \"hc_projection_kernel\": \"kernel_mul_mm_f16_f32\",\n    \"hc_norm_kernel\": \"kernel_dsv4_hc_split_weighted_sum_norm4\",\n    \"q8_kernel\": \"kernel_mul_mm_q8_0_f32\",\n    \"qkv_norm_kernel\": \"kernel_dsv4_qkv_rms_norm_f32_4\",\n    \"q_head_kernel\": \"kernel_dsv4_head_rms_norm_rope_tail_f32\",\n    \"kv_rope_kernel\": \"kernel_dsv4_rope_tail_f32\",\n    \"kv_fp8_kernel\": \"kernel_dsv4_fp8_kv_quantize_f32\",\n    \"cache_conversion_kernels\": [\"kernel_cpy_contig_f32_f16_4\", \"kernel_cpy_contig_f16_f32_4\"],\n    \"attention_block_kernel\": \"kernel_flash_attn_ext_blk\",\n    \"attention_kernel\": \"kernel_flash_attn_ext_f16_dk512_dv512\",\n    \"attention_inverse_rope_kernel\": \"kernel_dsv4_rope_tail_f32\",\n    \"attention_output_map_kernel\": \"kernel_mul_mm_id_map0_ne20_8\",\n    \"attention_output_low_kernel\": \"kernel_mul_mm_id_q8_0_f32\",\n    \"attention_output_kernel\": \"kernel_mul_mm_q8_0_f32\",\n    \"attention_hc_post_kernel\": \"kernel_dsv4_hc_expand4\"\n  }},\n  \"raw_cache\": {{\n    \"capacity_rows\": {},\n    \"target_row_start\": {},\n    \"target_row_end\": {},\n    \"guard_rows\": [0, {}],\n    \"guard_rows_intact\": true\n  }},\n  \"attention\": {{\n    \"query_rows\": {},\n    \"kv_rows\": {},\n    \"captured_kv_prefix_rows\": {},\n    \"live_kv_rows\": {},\n    \"window\": 128\n  }},\n  \"mapping\": {{\n    \"wrapped_model_ranges\": {},\n    \"pointer_matches\": {}\n  }},\n  \"timing\": {{\n    \"wall_ms\": {:.6},\n    \"gpu_ms\": {:.6}\n  }},\n  \"checksums\": {{\n    \"token_ids\": {},\n    \"hc_collapsed\": {},\n    \"attn_norm\": {},\n    \"q_lora\": {},\n    \"q_lora_norm\": {},\n    \"kv_raw\": {},\n    \"kv_norm\": {},\n    \"q_raw\": {},\n    \"q_current\": {},\n    \"kv_rope\": {},\n    \"kv_current\": {},\n    \"raw_cache\": {},\n    \"full_kv_current\": {},\n    \"kqv_output\": {},\n    \"kqv_back\": {},\n    \"attention_low\": {},\n    \"attention_out\": {},\n    \"attention_hc_post\": {}\n  }},\n  \"c0_bitwise_match\": true,\n  \"continuous_command_buffer\": true,\n  \"native_batch_schedule\": true,\n  \"guarded_cache_mutation\": true,\n  \"rectangular_attention_read\": true,\n  \"full_prefill_claim\": false\n}}\n",
         report.rows,
         report.position_start,
         report.position_start + report.rows as u32 - 1,
@@ -2265,6 +2277,9 @@ pub fn write_prefill_layer0_boundary_probe_json<W: Write>(
         report.checksums[12],
         report.checksums[13],
         report.checksums[14],
+        report.checksums[15],
+        report.checksums[16],
+        report.checksums[17],
     )?;
     Ok(())
 }
@@ -2744,6 +2759,34 @@ fn prefill_attention_read_fixture() -> Result<[Vec<f32>; 3]> {
     {
         return Err(Error::invalid(
             "prefill attention-read fixture dimensions are invalid",
+        ));
+    }
+    Ok(tensors)
+}
+
+fn prefill_attention_output_fixture() -> Result<[Vec<f32>; 3]> {
+    let tensors = [
+        decode_f32_fixture(
+            PREFILL_ATTENTION_LOW_BYTES,
+            "prefill attention low final tile",
+        )?,
+        decode_f32_fixture(
+            PREFILL_ATTENTION_PROJECTED_BYTES,
+            "prefill projected attention final tile",
+        )?,
+        decode_f32_fixture(
+            PREFILL_ATTENTION_HC_POST_BYTES,
+            "prefill attention HC-post final tile",
+        )?,
+    ];
+    let expected = [32 * 8192, 32 * 4096, 32 * 16384];
+    if tensors
+        .iter()
+        .zip(expected)
+        .any(|(tensor, elements)| tensor.len() != elements)
+    {
+        return Err(Error::invalid(
+            "prefill attention-output fixture dimensions are invalid",
         ));
     }
     Ok(tensors)
@@ -3916,6 +3959,10 @@ mod imp {
         qkv: RawPrefillQkvWeights,
         attn_sinks_offset: u64,
         attn_sinks_bytes: u64,
+        attn_output_a_offset: u64,
+        attn_output_a_bytes: u64,
+        attn_output_b_offset: u64,
+        attn_output_b_bytes: u64,
     }
 
     #[repr(C)]
@@ -4150,6 +4197,9 @@ mod imp {
             full_kv: *mut f32,
             attention_output: *mut f32,
             attention_back: *mut f32,
+            attention_low: *mut f32,
+            attention_out: *mut f32,
+            after_attention_hc: *mut f32,
             result: *mut RawPrefillLayer0ProbeResult,
             error: *mut c_char,
             error_bytes: usize,
@@ -5337,6 +5387,8 @@ mod imp {
         let kv_norm_weight = exact_tensor(model, "blk.0.attn_kv_a_norm.weight", 0, &[512])?;
         let q_b = exact_tensor(model, "blk.0.attn_q_b.weight", 8, &[1024, 32768])?;
         let attn_sinks = exact_tensor(model, "blk.0.attn_sinks.weight", 0, &[64])?;
+        let attn_output_a = exact_tensor(model, "blk.0.attn_output_a.weight", 8, &[4096, 8192])?;
+        let attn_output_b = exact_tensor(model, "blk.0.attn_output_b.weight", 8, &[8192, 4096])?;
         let (tokens, expected_collapsed, expected_attn_norm) = prefill_hc_ingress_fixture()?;
         let [qkv_attn_norm, expected_q, expected_q_norm, expected_kv_raw, expected_kv_norm, expected_q_raw, expected_q_cur] =
             prefill_qkv_boundary_fixture()?;
@@ -5344,6 +5396,8 @@ mod imp {
             prefill_kv_state_fixture()?;
         let [expected_kv_prefix, expected_attention_output, expected_attention_back] =
             prefill_attention_read_fixture()?;
+        let [expected_attention_low, expected_attention_projected, expected_attention_hc_post] =
+            prefill_attention_output_fixture()?;
         if expected_attn_norm
             .iter()
             .zip(&qkv_attn_norm)
@@ -5379,6 +5433,10 @@ mod imp {
             },
             attn_sinks_offset: attn_sinks.absolute_offset,
             attn_sinks_bytes: attn_sinks.bytes,
+            attn_output_a_offset: attn_output_a.absolute_offset,
+            attn_output_a_bytes: attn_output_a.bytes,
+            attn_output_b_offset: attn_output_b.absolute_offset,
+            attn_output_b_bytes: attn_output_b.bytes,
         };
         let mut actual_collapsed = vec![0.0_f32; expected_collapsed.len()];
         let mut actual_attn_norm = vec![0.0_f32; expected_attn_norm.len()];
@@ -5394,6 +5452,9 @@ mod imp {
         let mut actual_full_kv = vec![0.0_f32; 2048 * 512];
         let mut actual_attention_output = vec![0.0_f32; expected_attention_output.len()];
         let mut actual_attention_back = vec![0.0_f32; expected_attention_back.len()];
+        let mut actual_attention_low = vec![0.0_f32; expected_attention_low.len()];
+        let mut actual_attention_projected = vec![0.0_f32; expected_attention_projected.len()];
+        let mut actual_attention_hc_post = vec![0.0_f32; expected_attention_hc_post.len()];
         let mut expected_full_kv = expected_kv_prefix.clone();
         expected_full_kv.extend_from_slice(&expected_kv_cur);
 
@@ -5435,6 +5496,9 @@ mod imp {
                 actual_full_kv.as_mut_ptr(),
                 actual_attention_output.as_mut_ptr(),
                 actual_attention_back.as_mut_ptr(),
+                actual_attention_low.as_mut_ptr(),
+                actual_attention_projected.as_mut_ptr(),
+                actual_attention_hc_post.as_mut_ptr(),
                 &mut raw,
                 error.as_mut_ptr(),
                 error.len(),
@@ -5452,9 +5516,9 @@ mod imp {
             || raw.q_lora_elements_per_row != 1024
             || raw.kv_elements_per_row != 512
             || raw.q_elements_per_row != 32768
-            || raw.dispatches != 18
-            || raw.wrapped_model_ranges != 11
-            || raw.pointer_matches != 11
+            || raw.dispatches != 22
+            || raw.wrapped_model_ranges != 13
+            || raw.pointer_matches != 13
             || raw.raw_cache_rows != 128
             || raw.raw_cache_target_row != 96
             || raw.raw_cache_guard_rows != 96
@@ -5522,6 +5586,21 @@ mod imp {
                 actual_attention_back.as_slice(),
                 expected_attention_back.as_slice(),
             ),
+            (
+                "attn_low",
+                actual_attention_low.as_slice(),
+                expected_attention_low.as_slice(),
+            ),
+            (
+                "attn_out",
+                actual_attention_projected.as_slice(),
+                expected_attention_projected.as_slice(),
+            ),
+            (
+                "hc_attn_post",
+                actual_attention_hc_post.as_slice(),
+                expected_attention_hc_post.as_slice(),
+            ),
         ] {
             for (index, (actual, expected)) in actual.iter().zip(expected).enumerate() {
                 if actual.to_bits() != expected.to_bits() {
@@ -5557,6 +5636,7 @@ mod imp {
             qkv_fixture_id: PREFILL_QKV_BOUNDARY_FIXTURE_ID,
             kv_state_fixture_id: PREFILL_KV_STATE_FIXTURE_ID,
             attention_fixture_id: PREFILL_ATTENTION_READ_FIXTURE_ID,
+            attention_output_fixture_id: PREFILL_ATTENTION_OUTPUT_FIXTURE_ID,
             rows: raw.rows,
             position_start: raw.position_start,
             dispatches: raw.dispatches,
@@ -5585,6 +5665,9 @@ mod imp {
                 checksum_f32(&actual_full_kv),
                 checksum_f32(&actual_attention_output),
                 checksum_f32(&actual_attention_back),
+                checksum_f32(&actual_attention_low),
+                checksum_f32(&actual_attention_projected),
+                checksum_f32(&actual_attention_hc_post),
             ],
         })
     }
@@ -8447,8 +8530,12 @@ mod imp {
         let _ = prefill_hc_ingress_fixture()?;
         let _ = prefill_qkv_boundary_fixture()?;
         let _ = prefill_kv_state_fixture()?;
+        let _ = prefill_attention_read_fixture()?;
+        let _ = prefill_attention_output_fixture()?;
         let _ = exact_tensor(model, "token_embd.weight", 1, &[4096, 129280])?;
         let _ = exact_tensor(model, "blk.0.hc_attn_fn.weight", 1, &[16384, 24])?;
+        let _ = exact_tensor(model, "blk.0.attn_output_a.weight", 8, &[4096, 8192])?;
+        let _ = exact_tensor(model, "blk.0.attn_output_b.weight", 8, &[8192, 4096])?;
         Err(Error::invalid(
             "the Metal prefill layer-0 boundary probe is available only on macOS",
         ))
@@ -8918,11 +9005,12 @@ mod tests {
             qkv_fixture_id: PREFILL_QKV_BOUNDARY_FIXTURE_ID,
             kv_state_fixture_id: PREFILL_KV_STATE_FIXTURE_ID,
             attention_fixture_id: PREFILL_ATTENTION_READ_FIXTURE_ID,
+            attention_output_fixture_id: PREFILL_ATTENTION_OUTPUT_FIXTURE_ID,
             rows: 32,
             position_start: 2016,
-            dispatches: 18,
-            wrapped_model_ranges: 11,
-            pointer_matches: 11,
+            dispatches: 22,
+            wrapped_model_ranges: 13,
+            pointer_matches: 13,
             raw_cache_rows: 128,
             raw_cache_target_row: 96,
             raw_cache_guard_rows: 96,
@@ -8930,7 +9018,9 @@ mod tests {
             attention_kv_prefix_rows: 2016,
             wall_ms: 3.0,
             gpu_ms: 2.0,
-            checksums: [11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25],
+            checksums: [
+                11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28,
+            ],
         }
     }
 
@@ -10091,7 +10181,9 @@ mod tests {
             "\"schema\": \"{PREFILL_LAYER0_BOUNDARY_PROBE_SCHEMA}\""
         )));
         assert!(text.contains("\"input_boundary\": \"token_ids\""));
-        assert!(text.contains("\"dispatches\": 18"));
+        assert!(text.contains("\"dispatches\": 22"));
+        assert!(text.contains("\"attention_output_low_kernel\": \"kernel_mul_mm_id_q8_0_f32\""));
+        assert!(text.contains("\"attention_hc_post_kernel\": \"kernel_dsv4_hc_expand4\""));
         assert!(text.contains("\"target_row_start\": 96"));
         assert!(text.contains("\"kv_rows\": 2048"));
         assert!(text.contains("\"rectangular_attention_read\": true"));
@@ -10258,6 +10350,19 @@ mod tests {
             .iter()
             .chain(&attention_output)
             .chain(&attention_back)
+            .all(|value| value.is_finite()));
+    }
+
+    #[test]
+    fn prefill_attention_output_fixture_has_target_shapes() {
+        let [low, out, hc_post] = prefill_attention_output_fixture().unwrap();
+        assert_eq!(low.len(), 32 * 8192);
+        assert_eq!(out.len(), 32 * 4096);
+        assert_eq!(hc_post.len(), 32 * 16384);
+        assert!(low
+            .iter()
+            .chain(&out)
+            .chain(&hc_post)
             .all(|value| value.is_finite()));
     }
 

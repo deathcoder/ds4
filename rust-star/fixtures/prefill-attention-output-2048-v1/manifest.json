@@ -1,0 +1,162 @@
+{
+  "schema": "rust-star-differential-fixture-v1",
+  "fixture_id": "dwarfstar-oracle-v1-prefill-attention-output-2048",
+  "captured_at_utc": "2026-08-15T18:32:02Z",
+  "oracle": {
+    "id": "oracle-v1",
+    "repository": "https://github.com/antirez/ds4.git",
+    "commit": "b0309611041655f4e45671cfd9c9886aff161406",
+    "tree": "20c11af22f90a0bdf25da860da5ef06de4064060",
+    "capture_executable_sha256": "b0b7c31d9832cc3f5cccf810cd2af6f4bc4f6e71de945493674315314f666fc8"
+  },
+  "model": {
+    "family": "DeepSeek-V4-Flash-0731",
+    "sha256": "ca22ae2f838e14077c22bc1c1417b71b45b5e5a3687bd96c2ac6e17fdb6261c0"
+  },
+  "capture": {
+    "backend": "metal",
+    "machine": "Apple M1 Ultra, 48 GPU cores, 128 GB unified memory",
+    "prompt": "first 2048 raw tokens of speed-bench/promessi_sposi.txt",
+    "prompt_sha256": "f53e0d80cb2d4492d24ebd63c7000c397b16ae70f9bf09b3763e5d8323ec209f",
+    "prefill_tokens": 2048,
+    "fresh_process_captures": 2,
+    "fresh_process_bitwise_match": true,
+    "command": "ds4-bench --metal --ctx-start 2048 --ctx-max 2048 --gen-tokens 0 --warm-weights",
+    "environment": {
+      "DS4_METAL_GRAPH_DUMP_LAYER": "0",
+      "DS4_METAL_GRAPH_DUMP_POS": "0",
+      "DS4_METAL_GRAPH_DUMP_NAME": "attn_low,attn_out,hc_attn_post"
+    },
+    "device_path": "legacy grouped Q8_0 batch matmul, legacy dense Q8_0 batch matmul, and four-stream HC expand; Metal 4 TensorOps unavailable and the Metal F16 attention-output shortcut returns unsupported",
+    "full_capture_sha256": {
+      "attn_low": "edd7304f5f41313b19f432b4077c6bf08c97605c0bbaeb002e6afc749b768fa9",
+      "attn_out": "99d1251d729592a383a208258bf96579c5025fb35ed3215be26d0616f2094871",
+      "hc_attn_post": "19c0a248fce8b530bbc39f4c7e7ba0ff277b97466d8e2bc86ce199639b6739c1"
+    },
+    "input_fixture": "dwarfstar-oracle-v1-prefill-attention-read-2048"
+  },
+  "scope": {
+    "kind": "layer-segment",
+    "phase": "prefill",
+    "layer": 0,
+    "position": 2047,
+    "captured_position_range": [
+      2016,
+      2047
+    ]
+  },
+  "operations": [
+    {
+      "name": "grouped-attention-output-low-prefill",
+      "kernel": "kernel_mul_mm_id_q8_0_f32",
+      "weights": [
+        "blk.0.attn_output_a.weight"
+      ],
+      "dispatch": {
+        "rows": 32,
+        "groups": 8,
+        "group_dim": 4096,
+        "rank": 1024,
+        "map_kernel": "kernel_mul_mm_id_map0_ne20_8",
+        "threads_per_threadgroup": [
+          128,
+          1,
+          1
+        ],
+        "threadgroups": [
+          16,
+          16,
+          1
+        ],
+        "threadgroup_memory_bytes": 8192
+      }
+    },
+    {
+      "name": "attention-output-prefill",
+      "kernel": "kernel_mul_mm_q8_0_f32",
+      "weights": [
+        "blk.0.attn_output_b.weight"
+      ],
+      "dispatch": {
+        "rows": 32,
+        "input_elements": 8192,
+        "output_elements": 4096,
+        "threads_per_threadgroup": [
+          128,
+          1,
+          1
+        ],
+        "threadgroups": [
+          1,
+          64,
+          1
+        ],
+        "threadgroup_memory_bytes": 6144
+      }
+    },
+    {
+      "name": "attention-hc-post-prefill",
+      "kernel": "kernel_dsv4_hc_expand4",
+      "weights": [],
+      "dispatch": {
+        "rows": 32,
+        "width": 4096,
+        "hc_streams": 4,
+        "threads_per_threadgroup": [
+          256,
+          1,
+          1
+        ],
+        "threadgroups": [
+          512,
+          1,
+          1
+        ]
+      }
+    }
+  ],
+  "tensors": [
+    {
+      "name": "attn_low_final_tile",
+      "hook": "attn_low",
+      "role": "intermediate",
+      "dtype": "f32",
+      "shape": [
+        32,
+        8192
+      ],
+      "encoding": "little-endian-ieee754-binary32",
+      "path": "attn-low-final-tile.f32le.bin",
+      "bytes": 1048576,
+      "sha256": "49d7d817f526021b4dd2053d0ad378c145f4a19ffdc7367f4e3f50d90ea0120a"
+    },
+    {
+      "name": "attn_out_final_tile",
+      "hook": "attn_out",
+      "role": "intermediate",
+      "dtype": "f32",
+      "shape": [
+        32,
+        4096
+      ],
+      "encoding": "little-endian-ieee754-binary32",
+      "path": "attn-out-final-tile.f32le.bin",
+      "bytes": 524288,
+      "sha256": "a7f0da215816ae1a49d7146e4f02ea5c669619b499e1c3fac187c0a1ec31615f"
+    },
+    {
+      "name": "hc_attn_post_final_tile",
+      "hook": "hc_attn_post",
+      "role": "output",
+      "dtype": "f32",
+      "shape": [
+        32,
+        16384
+      ],
+      "encoding": "little-endian-ieee754-binary32",
+      "path": "hc-attn-post-final-tile.f32le.bin",
+      "bytes": 2097152,
+      "sha256": "d8baca90be50ea4348eb210721920bfebad12d0b48867d05aadf7b359e634f6b"
+    }
+  ]
+}

@@ -71,11 +71,12 @@ matches both the 128-row M1 batch kernel and its one-row decode control
 bit-for-bit. A second native boundary now runs the final 32-row tile continuously
 from token IDs through layer 0's HC ingress, complete Q/KV projection setup,
 both KV finalization paths, guarded raw-cache storage, and zero-prefix batched
-FlashAttention plus inverse RoPE. It reconstructs the 2,048-row contiguous KV
-input from a captured 2,016-row prefix and the live final tile, matches all
-4,603,904 retained produced FP32 values from repeated DwarfStar captures, and
-proves cache rows 0--95 remain untouched. This remains an isolated final-tile
-gate rather than a full prefill path.
+FlashAttention, inverse RoPE, grouped Q8 attention output, and the four-stream
+HC post-update. It reconstructs the 2,048-row contiguous KV input from a
+captured 2,016-row prefix and the live final tile, matches all 5,521,408
+retained produced FP32 values from repeated DwarfStar captures, and proves
+cache rows 0--95 remain untouched. This remains an isolated final-tile gate
+rather than a full prefill path.
 
 Project controls and benchmark contracts:
 

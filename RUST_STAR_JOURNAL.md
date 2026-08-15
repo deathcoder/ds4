@@ -290,9 +290,9 @@ history; add a correction and update the current-state summary.
 
 ## Immediate Next Actions
 
-1. Extend the exact token-ID-to-guarded-KV-store native batch tile forward
-   through batched attention, output projection, and HC update; then broaden
-   the retained row and layer coverage toward complete prefill.
+1. Extend the exact token-ID-to-attention-HC-post native batch tile through the
+   layer-0 FFN ingress and batched MoE/HC tail; then broaden the retained row
+   and layer coverage toward complete prefill.
 2. Add the fixed 512-row ratio-4 indexer top-k and sparse indexed attention so
    128 generated tokens can continue beyond the 2K frontier.
 3. Emit the `rust-star-engine-measurement-v1` artifact from the exact
@@ -304,6 +304,67 @@ history; add a correction and update the current-state summary.
 6. Run or approve the fork's GitHub Actions workflow and retain its URL.
 
 ## Entries
+
+### 2026-08-15 — Continuous native M1 final tile crosses attention output and HC post
+
+Objective:
+
+- Extend the exact final 32-row token-to-`kqv_back` boundary through layer 0's
+  active grouped Q8 attention output and four-stream HC post-update.
+
+Oracle evidence and schedule decision:
+
+- Traced the M1 path rather than assuming the Metal 4 schedule. On this machine
+  TensorOps is unavailable, `ds4_gpu_attention_output_q8_batch_f16_tensor`
+  returns unsupported, and DwarfStar therefore uses
+  `kernel_mul_mm_id_map0_ne20_8`, `kernel_mul_mm_id_q8_0_f32`,
+  `kernel_mul_mm_q8_0_f32`, and `kernel_dsv4_hc_expand4` with F32 activations.
+  The final 32 rows use the same 32-row legacy arithmetic tiles as the complete
+  2,048-row projection, so no captured predecessor output tile is required.
+- Captured full `attn_low`, `attn_out`, and `hc_attn_post` tensors from two
+  fresh pinned DwarfStar processes over the canonical 2K prompt. Every pair
+  was byte identical. Their full SHA-256 values are
+  `edd7304f5f41313b19f432b4077c6bf08c97605c0bbaeb002e6afc749b768fa9`,
+  `99d1251d729592a383a208258bf96579c5025fb35ed3215be26d0616f2094871`,
+  and `19c0a248fce8b530bbc39f4c7e7ba0ff277b97466d8e2bc86ce199639b6739c1`.
+
+Implementation:
+
+- Added `prefill-attention-output-2048-v1` and a strict importer that requires
+  both full repeated capture sets, their exact sizes, and their pinned hashes
+  before retaining the final `32×8192`, `32×4096`, and `32×16384` tiles.
+- Evolved `prefill-layer0-boundary-probe` to schema v4. Its one Rust-owned
+  command buffer now executes 22 compute dispatches from token IDs through
+  `hc_attn_post`. The two output weights are additional mmap-backed no-copy
+  views, bringing the boundary to 13/13 pointer matches.
+- Imported DwarfStar's exact expert-map/grouped-matmul schedule from the shared
+  Metal source, retained the native dense Q8 projection, and applied the split
+  post/combination weights directly to the live residual HC buffer. The five
+  joined fixtures require 5,521,408 produced FP32 values to match by bit
+  pattern, in addition to guarded cache checks and the reconstructed KV seam.
+
+Target-Mac evidence:
+
+- The focused optimized live run was C0 exact with 22 dispatches and 13/13
+  no-copy model views, reporting 63.477 ms wall and 5.787 ms GPU. Setup,
+  synchronization, exhaustive readback, and comparison remain in the wall
+  interval; this is correctness evidence, not throughput.
+- The complete target-Mac gate passed formatting, all 75 Rust tests, 51 Python
+  tests, all 235 differential manifests, optimized Objective-C/Metal
+  compilation, strict validation of all 1,288 target tensors, every established
+  Metal/decoder control, and both steady-state benchmarks. Its fresh v4 run
+  reported 65.043 ms wall and 7.116 ms GPU with 13/13 no-copy views. The long
+  2K sequential diagnostic remained exact against its decode-replay oracle at
+  19.138 tokens/s over 107012.259 ms and preserved the expected native-batch
+  mismatch and paired-protocol ineligibility.
+
+Decision and next:
+
+- Accept the grouped Q8 attention output and HC post-update as the exact next
+  segment of the native M1 final tile. Extend the same command buffer through
+  the layer-0 FFN ingress and batched MoE/HC tail next; complete 2K native state
+  construction and sparse ratio-4 indexed attention remain required before
+  paired claims.
 
 ### 2026-08-15 — Continuous native M1 final tile crosses zero-prefix attention
 

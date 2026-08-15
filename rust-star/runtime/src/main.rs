@@ -2883,7 +2883,7 @@ fn prefill_qkv_boundary_probe_usage() -> &'static str {
 }
 
 fn prefill_layer0_boundary_probe_usage() -> &'static str {
-    "usage: rust-star prefill-layer0-boundary-probe MODEL.gguf [--json PATH]\n\nRuns the final 32-row native M1 prefill tile continuously from token IDs through embedding, four-stream HC ingress, Q/KV setup, guarded raw-cache storage, and zero-prefix batched FlashAttention with inverse RoPE. Every retained boundary must match repeated DwarfStar captures bit-for-bit; this is not a full-prefill claim."
+    "usage: rust-star prefill-layer0-boundary-probe MODEL.gguf [--json PATH]\n\nRuns the final 32-row native M1 prefill tile continuously from token IDs through embedding, four-stream HC ingress, Q/KV setup, guarded raw-cache storage, zero-prefix batched FlashAttention, grouped Q8 attention output, and the HC post-update. Every retained boundary must match repeated DwarfStar captures bit-for-bit; this is not a full-prefill claim."
 }
 
 fn ingress_probe_usage() -> &'static str {

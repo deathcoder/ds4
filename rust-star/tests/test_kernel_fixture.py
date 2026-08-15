@@ -71,6 +71,9 @@ PREFILL_HC_INGRESS_FIXTURE = (
 PREFILL_ATTENTION_READ_FIXTURE = (
     RUST_STAR_DIR / "fixtures" / "prefill-attention-read-2048-v1"
 )
+PREFILL_ATTENTION_OUTPUT_FIXTURE = (
+    RUST_STAR_DIR / "fixtures" / "prefill-attention-output-2048-v1"
+)
 
 
 class KernelFixtureTests(unittest.TestCase):
@@ -426,6 +429,31 @@ class KernelFixtureTests(unittest.TestCase):
                 "kernel_flash_attn_ext_blk",
                 "kernel_flash_attn_ext_f16_dk512_dv512",
                 "kernel_dsv4_rope_tail_f32",
+            ],
+        )
+
+    def test_prefill_attention_output_fixture_manifest_and_payloads(self) -> None:
+        manifest = json.loads(
+            (PREFILL_ATTENTION_OUTPUT_FIXTURE / "manifest.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        report = validate_differential_fixture(PREFILL_ATTENTION_OUTPUT_FIXTURE)
+        self.assertEqual(
+            report["fixture_id"],
+            "dwarfstar-oracle-v1-prefill-attention-output-2048",
+        )
+        self.assertEqual(report["scope"], "layer-segment")
+        self.assertEqual(report["operations"], 3)
+        self.assertEqual(report["tensors"], 3)
+        self.assertEqual(report["verified_bytes"], 3_670_016)
+        self.assertEqual(manifest["scope"]["captured_position_range"], [2016, 2047])
+        self.assertEqual(
+            [operation["kernel"] for operation in manifest["operations"]],
+            [
+                "kernel_mul_mm_id_q8_0_f32",
+                "kernel_mul_mm_q8_0_f32",
+                "kernel_dsv4_hc_expand4",
             ],
         )
 
