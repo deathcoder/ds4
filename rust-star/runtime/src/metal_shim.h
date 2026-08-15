@@ -79,6 +79,17 @@ typedef struct rust_star_metal_layer0_extension {
     uint64_t shared_gate_offset, shared_gate_bytes;
     uint64_t shared_up_offset, shared_up_bytes;
     uint64_t shared_down_offset, shared_down_bytes;
+    uint64_t attn_compressor_ape_offset, attn_compressor_ape_bytes;
+    uint64_t attn_compressor_kv_offset, attn_compressor_kv_bytes;
+    uint64_t attn_compressor_gate_offset, attn_compressor_gate_bytes;
+    uint64_t attn_compressor_norm_offset, attn_compressor_norm_bytes;
+    uint64_t indexer_compressor_ape_offset, indexer_compressor_ape_bytes;
+    uint64_t indexer_compressor_kv_offset, indexer_compressor_kv_bytes;
+    uint64_t indexer_compressor_gate_offset, indexer_compressor_gate_bytes;
+    uint64_t indexer_compressor_norm_offset, indexer_compressor_norm_bytes;
+    const float *compressor_prime_attn_norm;
+    float *compressed_kv_row;
+    float *compressed_indexer_row;
     float *ffn_mixes;
     float *ffn_split;
     float *ffn_norm;

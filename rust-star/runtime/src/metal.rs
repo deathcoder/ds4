@@ -40,6 +40,10 @@ pub const LAYER0_POS2_FIXTURE_ID: &str = "dwarfstar-oracle-v1-layer0-pos2-comple
 pub const LAYER1_POS2_FIXTURE_ID: &str = "dwarfstar-oracle-v1-layer1-pos2-complete";
 pub const LAYER2_POS2_FIXTURE_ID: &str = "dwarfstar-oracle-v1-layer2-pos2-complete";
 pub const LAYER3_POS2_FIXTURE_ID: &str = "dwarfstar-oracle-v1-layer3-pos2-complete";
+pub const LAYER0_POS3_FIXTURE_ID: &str = "dwarfstar-oracle-v1-layer0-pos3-complete";
+pub const LAYER1_POS3_FIXTURE_ID: &str = "dwarfstar-oracle-v1-layer1-pos3-complete";
+pub const LAYER2_POS3_FIXTURE_ID: &str = "dwarfstar-oracle-v1-layer2-pos3-complete";
+pub const LAYER3_POS3_FIXTURE_ID: &str = "dwarfstar-oracle-v1-layer3-pos3-complete";
 pub const DEFAULT_ELEMENTS: u64 = 4096;
 pub const DEFAULT_ITERATIONS: u64 = 100;
 const MAX_ELEMENTS: u64 = 16 * 1024 * 1024;
@@ -1133,11 +1137,11 @@ pub fn write_layers0123_decode_probe_json<W: Write>(
     output: &mut W,
     report: &Layers0123DecodeProbeReport,
 ) -> Result<()> {
-    if report.steps.len() != 2
+    if report.steps.len() != 3
         || report.command_buffers_per_step != 4
         || report.host_waits_per_step != 1
         || report.kv_cache_layers != 4
-        || report.cache_capacity_rows != 3
+        || report.cache_capacity_rows != 4
         || report.output_hc_elements != 16384
     {
         return Err(Error::invalid(
@@ -1697,6 +1701,7 @@ struct LayerExpected {
     routed_out: Vec<f32>,
     shared_out: Vec<f32>,
     final_hc: Vec<f32>,
+    compressed_kv: Vec<f32>,
 }
 
 struct LayerExpectedBytes {
@@ -1733,182 +1738,260 @@ struct LayerExpectedBytes {
     final_hc: &'static [u8],
 }
 
-macro_rules! position2_fixture {
-    ($name:ident, $layer:literal, $fixture_id:expr) => {
+macro_rules! complete_decode_fixture {
+    ($name:ident, $layer:literal, $position:literal, $fixture_id:expr) => {
         const $name: LayerExpectedBytes = LayerExpectedBytes {
             fixture_id: $fixture_id,
             attention_mixes: include_bytes!(concat!(
                 "../../fixtures/layer",
                 stringify!($layer),
-                "-pos2-complete-v1/attn-mixes.f32le.bin"
+                "-pos",
+                stringify!($position),
+                "-complete-v1/attn-mixes.f32le.bin"
             )),
             attention_pre: include_bytes!(concat!(
                 "../../fixtures/layer",
                 stringify!($layer),
-                "-pos2-complete-v1/attn-pre.f32le.bin"
+                "-pos",
+                stringify!($position),
+                "-complete-v1/attn-pre.f32le.bin"
             )),
             attention_post: include_bytes!(concat!(
                 "../../fixtures/layer",
                 stringify!($layer),
-                "-pos2-complete-v1/attn-post.f32le.bin"
+                "-pos",
+                stringify!($position),
+                "-complete-v1/attn-post.f32le.bin"
             )),
             attention_comb: include_bytes!(concat!(
                 "../../fixtures/layer",
                 stringify!($layer),
-                "-pos2-complete-v1/attn-combination.f32le.bin"
+                "-pos",
+                stringify!($position),
+                "-complete-v1/attn-combination.f32le.bin"
             )),
             attention_collapsed: include_bytes!(concat!(
                 "../../fixtures/layer",
                 stringify!($layer),
-                "-pos2-complete-v1/attn-collapsed.f32le.bin"
+                "-pos",
+                stringify!($position),
+                "-complete-v1/attn-collapsed.f32le.bin"
             )),
             attention_norm: include_bytes!(concat!(
                 "../../fixtures/layer",
                 stringify!($layer),
-                "-pos2-complete-v1/attn-norm.f32le.bin"
+                "-pos",
+                stringify!($position),
+                "-complete-v1/attn-norm.f32le.bin"
             )),
             q_lora: include_bytes!(concat!(
                 "../../fixtures/layer",
                 stringify!($layer),
-                "-pos2-complete-v1/q-lora.f32le.bin"
+                "-pos",
+                stringify!($position),
+                "-complete-v1/q-lora.f32le.bin"
             )),
             q_lora_norm: include_bytes!(concat!(
                 "../../fixtures/layer",
                 stringify!($layer),
-                "-pos2-complete-v1/q-lora-norm.f32le.bin"
+                "-pos",
+                stringify!($position),
+                "-complete-v1/q-lora-norm.f32le.bin"
             )),
             kv_raw: include_bytes!(concat!(
                 "../../fixtures/layer",
                 stringify!($layer),
-                "-pos2-complete-v1/kv-raw.f32le.bin"
+                "-pos",
+                stringify!($position),
+                "-complete-v1/kv-raw.f32le.bin"
             )),
             q_raw: include_bytes!(concat!(
                 "../../fixtures/layer",
                 stringify!($layer),
-                "-pos2-complete-v1/q-raw.f32le.bin"
+                "-pos",
+                stringify!($position),
+                "-complete-v1/q-raw.f32le.bin"
             )),
             q_cur: include_bytes!(concat!(
                 "../../fixtures/layer",
                 stringify!($layer),
-                "-pos2-complete-v1/q-cur.f32le.bin"
+                "-pos",
+                stringify!($position),
+                "-complete-v1/q-cur.f32le.bin"
             )),
             kv_rope: include_bytes!(concat!(
                 "../../fixtures/layer",
                 stringify!($layer),
-                "-pos2-complete-v1/kv-rope.f32le.bin"
+                "-pos",
+                stringify!($position),
+                "-complete-v1/kv-rope.f32le.bin"
             )),
             kv_cur: include_bytes!(concat!(
                 "../../fixtures/layer",
                 stringify!($layer),
-                "-pos2-complete-v1/kv-cur.f32le.bin"
+                "-pos",
+                stringify!($position),
+                "-complete-v1/kv-cur.f32le.bin"
             )),
             attention_back: include_bytes!(concat!(
                 "../../fixtures/layer",
                 stringify!($layer),
-                "-pos2-complete-v1/kqv-back.f32le.bin"
+                "-pos",
+                stringify!($position),
+                "-complete-v1/kqv-back.f32le.bin"
             )),
             attention_low: include_bytes!(concat!(
                 "../../fixtures/layer",
                 stringify!($layer),
-                "-pos2-complete-v1/attn-low.f32le.bin"
+                "-pos",
+                stringify!($position),
+                "-complete-v1/attn-low.f32le.bin"
             )),
             attention_out: include_bytes!(concat!(
                 "../../fixtures/layer",
                 stringify!($layer),
-                "-pos2-complete-v1/attn-out.f32le.bin"
+                "-pos",
+                stringify!($position),
+                "-complete-v1/attn-out.f32le.bin"
             )),
             attention_hc: include_bytes!(concat!(
                 "../../fixtures/layer",
                 stringify!($layer),
-                "-pos2-complete-v1/hc-attn-post.f32le.bin"
+                "-pos",
+                stringify!($position),
+                "-complete-v1/hc-attn-post.f32le.bin"
             )),
             ffn_mixes: include_bytes!(concat!(
                 "../../fixtures/layer",
                 stringify!($layer),
-                "-pos2-complete-v1/ffn-mixes.f32le.bin"
+                "-pos",
+                stringify!($position),
+                "-complete-v1/ffn-mixes.f32le.bin"
             )),
             ffn_pre: include_bytes!(concat!(
                 "../../fixtures/layer",
                 stringify!($layer),
-                "-pos2-complete-v1/ffn-pre.f32le.bin"
+                "-pos",
+                stringify!($position),
+                "-complete-v1/ffn-pre.f32le.bin"
             )),
             ffn_post: include_bytes!(concat!(
                 "../../fixtures/layer",
                 stringify!($layer),
-                "-pos2-complete-v1/ffn-post.f32le.bin"
+                "-pos",
+                stringify!($position),
+                "-complete-v1/ffn-post.f32le.bin"
             )),
             ffn_comb: include_bytes!(concat!(
                 "../../fixtures/layer",
                 stringify!($layer),
-                "-pos2-complete-v1/ffn-combination.f32le.bin"
+                "-pos",
+                stringify!($position),
+                "-complete-v1/ffn-combination.f32le.bin"
             )),
             ffn_norm: include_bytes!(concat!(
                 "../../fixtures/layer",
                 stringify!($layer),
-                "-pos2-complete-v1/ffn-norm.f32le.bin"
+                "-pos",
+                stringify!($position),
+                "-complete-v1/ffn-norm.f32le.bin"
             )),
             router_logits: include_bytes!(concat!(
                 "../../fixtures/layer",
                 stringify!($layer),
-                "-pos2-complete-v1/router-logits.f32le.bin"
+                "-pos",
+                stringify!($position),
+                "-complete-v1/router-logits.f32le.bin"
             )),
             router_probs: include_bytes!(concat!(
                 "../../fixtures/layer",
                 stringify!($layer),
-                "-pos2-complete-v1/router-probs.f32le.bin"
+                "-pos",
+                stringify!($position),
+                "-complete-v1/router-probs.f32le.bin"
             )),
             selected: include_bytes!(concat!(
                 "../../fixtures/layer",
                 stringify!($layer),
-                "-pos2-complete-v1/router-selected.i32le.bin"
+                "-pos",
+                stringify!($position),
+                "-complete-v1/router-selected.i32le.bin"
             )),
             router_weights: include_bytes!(concat!(
                 "../../fixtures/layer",
                 stringify!($layer),
-                "-pos2-complete-v1/router-weights.f32le.bin"
+                "-pos",
+                stringify!($position),
+                "-complete-v1/router-weights.f32le.bin"
             )),
             routed_mid: include_bytes!(concat!(
                 "../../fixtures/layer",
                 stringify!($layer),
-                "-pos2-complete-v1/routed-mid.f32le.bin"
+                "-pos",
+                stringify!($position),
+                "-complete-v1/routed-mid.f32le.bin"
             )),
             routed_out: include_bytes!(concat!(
                 "../../fixtures/layer",
                 stringify!($layer),
-                "-pos2-complete-v1/routed-out.f32le.bin"
+                "-pos",
+                stringify!($position),
+                "-complete-v1/routed-out.f32le.bin"
             )),
             shared_out: include_bytes!(concat!(
                 "../../fixtures/layer",
                 stringify!($layer),
-                "-pos2-complete-v1/shared-out.f32le.bin"
+                "-pos",
+                stringify!($position),
+                "-complete-v1/shared-out.f32le.bin"
             )),
             final_hc: include_bytes!(concat!(
                 "../../fixtures/layer",
                 stringify!($layer),
-                "-pos2-complete-v1/hc-ffn-post.f32le.bin"
+                "-pos",
+                stringify!($position),
+                "-complete-v1/hc-ffn-post.f32le.bin"
             )),
         };
     };
 }
 
-position2_fixture!(LAYER0_POS2_BYTES, 0, LAYER0_POS2_FIXTURE_ID);
-position2_fixture!(LAYER1_POS2_BYTES, 1, LAYER1_POS2_FIXTURE_ID);
-position2_fixture!(LAYER2_POS2_BYTES, 2, LAYER2_POS2_FIXTURE_ID);
-position2_fixture!(LAYER3_POS2_BYTES, 3, LAYER3_POS2_FIXTURE_ID);
+complete_decode_fixture!(LAYER0_POS2_BYTES, 0, 2, LAYER0_POS2_FIXTURE_ID);
+complete_decode_fixture!(LAYER1_POS2_BYTES, 1, 2, LAYER1_POS2_FIXTURE_ID);
+complete_decode_fixture!(LAYER2_POS2_BYTES, 2, 2, LAYER2_POS2_FIXTURE_ID);
+complete_decode_fixture!(LAYER3_POS2_BYTES, 3, 2, LAYER3_POS2_FIXTURE_ID);
+complete_decode_fixture!(LAYER0_POS3_BYTES, 0, 3, LAYER0_POS3_FIXTURE_ID);
+complete_decode_fixture!(LAYER1_POS3_BYTES, 1, 3, LAYER1_POS3_FIXTURE_ID);
+complete_decode_fixture!(LAYER2_POS3_BYTES, 2, 3, LAYER2_POS3_FIXTURE_ID);
+complete_decode_fixture!(LAYER3_POS3_BYTES, 3, 3, LAYER3_POS3_FIXTURE_ID);
 
-fn apply_position2_fixture(layer_index: u32, mut expected: LayerExpected) -> Result<LayerExpected> {
-    let bytes = match layer_index {
-        0 => &LAYER0_POS2_BYTES,
-        1 => &LAYER1_POS2_BYTES,
-        2 => &LAYER2_POS2_BYTES,
-        3 => &LAYER3_POS2_BYTES,
-        _ => {
-            return Err(Error::invalid(
-                "position-2 fixture layer is outside 0 through 3",
-            ))
-        }
-    };
-    let label = format!("layer-{layer_index} position-2");
+const LAYER2_POS3_COMPRESSED_KV_BYTES: &[u8] =
+    include_bytes!("../../fixtures/layer2-pos3-complete-v1/compressed-kv-row0.f32le.bin");
+const LAYER2_POS0_COMPRESSOR_PRIME_BYTES: &[u8] =
+    include_bytes!("../../fixtures/layer2-pos0-compressor-prime-v1/attn-norm.f32le.bin");
+const LAYER3_POS0_COMPRESSOR_PRIME_BYTES: &[u8] =
+    include_bytes!("../../fixtures/layer3-pos0-compressor-prime-v1/attn-norm.f32le.bin");
+
+fn apply_complete_decode_fixture(
+    layer_index: u32,
+    position: u32,
+    mut expected: LayerExpected,
+) -> Result<LayerExpected> {
+    let bytes =
+        match (position, layer_index) {
+            (2, 0) => &LAYER0_POS2_BYTES,
+            (2, 1) => &LAYER1_POS2_BYTES,
+            (2, 2) => &LAYER2_POS2_BYTES,
+            (2, 3) => &LAYER3_POS2_BYTES,
+            (3, 0) => &LAYER0_POS3_BYTES,
+            (3, 1) => &LAYER1_POS3_BYTES,
+            (3, 2) => &LAYER2_POS3_BYTES,
+            (3, 3) => &LAYER3_POS3_BYTES,
+            _ => return Err(Error::invalid(
+                "complete decode fixture is outside positions 2 through 3 and layers 0 through 3",
+            )),
+        };
+    let label = format!("layer-{layer_index} position-{position}");
     let decode = |data, name: &str| decode_f32_fixture(data, &format!("{label} {name}"));
     expected.fixture_id = bytes.fixture_id;
     expected.attention_mixes = decode(bytes.attention_mixes, "attention HC mixes")?;
@@ -1949,12 +2032,24 @@ fn apply_position2_fixture(layer_index: u32, mut expected: LayerExpected) -> Res
     expected.routed_out = decode(bytes.routed_out, "routed output")?;
     expected.shared_out = decode(bytes.shared_out, "shared output")?;
     expected.final_hc = decode(bytes.final_hc, "final HC")?;
+    expected.compressed_kv = if position == 3 && layer_index == 2 {
+        decode_f32_fixture(
+            LAYER2_POS3_COMPRESSED_KV_BYTES,
+            "layer-2 position-3 compressed KV row",
+        )?
+    } else {
+        Vec::new()
+    };
     Ok(expected)
 }
 
 fn layer_expected(layer_index: u32, position: u32) -> Result<LayerExpected> {
-    if position == 2 {
-        return apply_position2_fixture(layer_index, layer_expected(layer_index, 1)?);
+    if position == 2 || position == 3 {
+        return apply_complete_decode_fixture(
+            layer_index,
+            position,
+            layer_expected(layer_index, 1)?,
+        );
     }
     if position != 1 {
         return Err(Error::invalid(
@@ -2009,6 +2104,7 @@ fn layer_expected(layer_index: u32, position: u32) -> Result<LayerExpected> {
             routed_out,
             shared_out,
             final_hc,
+            compressed_kv: Vec::new(),
         });
     }
     let (
@@ -2218,6 +2314,7 @@ fn layer_expected(layer_index: u32, position: u32) -> Result<LayerExpected> {
         routed_out: decode_f32_fixture(routed_out, &format!("{label} routed output"))?,
         shared_out: decode_f32_fixture(shared_out, &format!("{label} shared output"))?,
         final_hc: decode_f32_fixture(final_hc, &format!("{label} final HC"))?,
+        compressed_kv: Vec::new(),
     })
 }
 
@@ -2406,6 +2503,25 @@ mod imp {
         shared_up_bytes: u64,
         shared_down_offset: u64,
         shared_down_bytes: u64,
+        attn_compressor_ape_offset: u64,
+        attn_compressor_ape_bytes: u64,
+        attn_compressor_kv_offset: u64,
+        attn_compressor_kv_bytes: u64,
+        attn_compressor_gate_offset: u64,
+        attn_compressor_gate_bytes: u64,
+        attn_compressor_norm_offset: u64,
+        attn_compressor_norm_bytes: u64,
+        indexer_compressor_ape_offset: u64,
+        indexer_compressor_ape_bytes: u64,
+        indexer_compressor_kv_offset: u64,
+        indexer_compressor_kv_bytes: u64,
+        indexer_compressor_gate_offset: u64,
+        indexer_compressor_gate_bytes: u64,
+        indexer_compressor_norm_offset: u64,
+        indexer_compressor_norm_bytes: u64,
+        compressor_prime_attn_norm: *const f32,
+        compressed_kv_row: *mut f32,
+        compressed_indexer_row: *mut f32,
         ffn_mixes: *mut f32,
         ffn_split: *mut f32,
         ffn_norm: *mut f32,
@@ -2647,6 +2763,13 @@ mod imp {
         }
     }
 
+    struct CompressorSpans {
+        ape: ModelSpan,
+        kv: ModelSpan,
+        gate: ModelSpan,
+        norm: ModelSpan,
+    }
+
     struct PreparedLayerExecution {
         layer_index: u32,
         embedding: ModelSpan,
@@ -2674,6 +2797,11 @@ mod imp {
         shared_gate: ModelSpan,
         shared_up: ModelSpan,
         shared_down: ModelSpan,
+        attention_compressor: Option<CompressorSpans>,
+        indexer_compressor: Option<CompressorSpans>,
+        compressor_prime: Vec<f32>,
+        compressed_kv: Vec<f32>,
+        compressed_indexer: Vec<f32>,
         expected: LayerExpected,
         expected_cache_rows: Vec<f32>,
         mixes: Vec<f32>,
@@ -2728,6 +2856,55 @@ mod imp {
             };
             let expected = layer_expected(layer_index, position)?;
             let expected_cache_rows = expected.cache_row0.clone();
+            let (attention_compressor, compressor_prime) = if layer_index >= 2 {
+                let ratio = if layer_index % 2 == 0 { 4 } else { 128 };
+                let width = if ratio == 4 { 1024 } else { 512 };
+                let prime_bytes = if layer_index == 2 {
+                    LAYER2_POS0_COMPRESSOR_PRIME_BYTES
+                } else {
+                    LAYER3_POS0_COMPRESSOR_PRIME_BYTES
+                };
+                (
+                    Some(CompressorSpans {
+                        ape: span(
+                            &tensor_name("attn_compressor_ape.weight"),
+                            1,
+                            &[width, ratio],
+                        )?,
+                        kv: span(&tensor_name("attn_compressor_kv.weight"), 1, &[4096, width])?,
+                        gate: span(
+                            &tensor_name("attn_compressor_gate.weight"),
+                            1,
+                            &[4096, width],
+                        )?,
+                        norm: span(&tensor_name("attn_compressor_norm.weight"), 0, &[512])?,
+                    }),
+                    decode_f32_fixture(
+                        prime_bytes,
+                        &format!("layer-{layer_index} compressor prime"),
+                    )?,
+                )
+            } else {
+                (None, Vec::new())
+            };
+            let indexer_compressor = if layer_index == 2 {
+                Some(CompressorSpans {
+                    ape: span(&tensor_name("indexer_compressor_ape.weight"), 1, &[256, 4])?,
+                    kv: span(
+                        &tensor_name("indexer_compressor_kv.weight"),
+                        1,
+                        &[4096, 256],
+                    )?,
+                    gate: span(
+                        &tensor_name("indexer_compressor_gate.weight"),
+                        1,
+                        &[4096, 256],
+                    )?,
+                    norm: span(&tensor_name("indexer_compressor_norm.weight"), 0, &[128])?,
+                })
+            } else {
+                None
+            };
             Ok(Self {
                 layer_index,
                 embedding: span("token_embd.weight", 1, &[4096, 129280])?,
@@ -2755,6 +2932,11 @@ mod imp {
                 shared_gate: span(&tensor_name("ffn_gate_shexp.weight"), 8, &[4096, 2048])?,
                 shared_up: span(&tensor_name("ffn_up_shexp.weight"), 8, &[4096, 2048])?,
                 shared_down: span(&tensor_name("ffn_down_shexp.weight"), 8, &[2048, 4096])?,
+                attention_compressor,
+                indexer_compressor,
+                compressor_prime,
+                compressed_kv: vec![0.0; 512],
+                compressed_indexer: vec![0.0; 128],
                 expected,
                 expected_cache_rows,
                 mixes: vec![0.0; 24],
@@ -2769,7 +2951,7 @@ mod imp {
                 q_cur: vec![0.0; 32768],
                 kv_rope: vec![0.0; 512],
                 kv_cur: vec![0.0; 512],
-                cache_rows: vec![0.0; 3 * 512],
+                cache_rows: vec![0.0; 4 * 512],
                 attention_raw: vec![0.0; 32768],
                 attention_back: vec![0.0; 32768],
                 attention_low: vec![0.0; 8192],
@@ -4249,9 +4431,9 @@ mod imp {
         let mut layers = (0..=3)
             .map(|layer_index| PreparedLayerExecution::new(model, layer_index, 1, 1))
             .collect::<Result<Vec<_>>>()?;
-        let mut steps = Vec::with_capacity(2);
+        let mut steps = Vec::with_capacity(3);
 
-        for (position, token) in [(1_u32, 201_u32), (2_u32, 361_u32)] {
+        for (position, token) in [(1_u32, 201_u32), (2_u32, 361_u32), (3_u32, 1915_u32)] {
             if position > 1 {
                 for (layer_index, layer) in layers.iter_mut().enumerate() {
                     layer.expected = layer_expected(layer_index as u32, position)?;
@@ -4294,7 +4476,7 @@ mod imp {
             command_buffers_per_step: 4,
             host_waits_per_step: 1,
             kv_cache_layers: 4,
-            cache_capacity_rows: 3,
+            cache_capacity_rows: 4,
             output_hc_elements: 4 * 4096,
         })
     }
@@ -4397,6 +4579,11 @@ mod imp {
             shared_gate,
             shared_up,
             shared_down,
+            attention_compressor,
+            indexer_compressor,
+            compressor_prime,
+            compressed_kv,
+            compressed_indexer,
             expected,
             expected_cache_rows,
             mixes,
@@ -4433,6 +4620,23 @@ mod imp {
             repeat_bitwise_matches,
         } = prepared;
 
+        let compressor_fields = |spans: &Option<CompressorSpans>| {
+            spans.as_ref().map_or([0_u64; 8], |spans| {
+                [
+                    spans.ape.absolute_offset,
+                    spans.ape.bytes,
+                    spans.kv.absolute_offset,
+                    spans.kv.bytes,
+                    spans.gate.absolute_offset,
+                    spans.gate.bytes,
+                    spans.norm.absolute_offset,
+                    spans.norm.bytes,
+                ]
+            })
+        };
+        let attention_compressor_fields = compressor_fields(attention_compressor);
+        let indexer_compressor_fields = compressor_fields(indexer_compressor);
+
         let layer0 = RawLayer0Extension {
             hc_ffn_fn_offset: ffn_hc_fn.absolute_offset,
             hc_ffn_fn_bytes: ffn_hc_fn.bytes,
@@ -4458,6 +4662,29 @@ mod imp {
             shared_up_bytes: shared_up.bytes,
             shared_down_offset: shared_down.absolute_offset,
             shared_down_bytes: shared_down.bytes,
+            attn_compressor_ape_offset: attention_compressor_fields[0],
+            attn_compressor_ape_bytes: attention_compressor_fields[1],
+            attn_compressor_kv_offset: attention_compressor_fields[2],
+            attn_compressor_kv_bytes: attention_compressor_fields[3],
+            attn_compressor_gate_offset: attention_compressor_fields[4],
+            attn_compressor_gate_bytes: attention_compressor_fields[5],
+            attn_compressor_norm_offset: attention_compressor_fields[6],
+            attn_compressor_norm_bytes: attention_compressor_fields[7],
+            indexer_compressor_ape_offset: indexer_compressor_fields[0],
+            indexer_compressor_ape_bytes: indexer_compressor_fields[1],
+            indexer_compressor_kv_offset: indexer_compressor_fields[2],
+            indexer_compressor_kv_bytes: indexer_compressor_fields[3],
+            indexer_compressor_gate_offset: indexer_compressor_fields[4],
+            indexer_compressor_gate_bytes: indexer_compressor_fields[5],
+            indexer_compressor_norm_offset: indexer_compressor_fields[6],
+            indexer_compressor_norm_bytes: indexer_compressor_fields[7],
+            compressor_prime_attn_norm: if compressor_prime.is_empty() {
+                ptr::null()
+            } else {
+                compressor_prime.as_ptr()
+            },
+            compressed_kv_row: compressed_kv.as_mut_ptr(),
+            compressed_indexer_row: compressed_indexer.as_mut_ptr(),
             ffn_mixes: ffn_mixes.as_mut_ptr(),
             ffn_split: ffn_split.as_mut_ptr(),
             ffn_norm: ffn_norm.as_mut_ptr(),
@@ -4547,14 +4774,28 @@ mod imp {
                 error_text(&error)
             )));
         }
+        let expected_wrapped_ranges = match layer_index {
+            2 => 33,
+            3 => 29,
+            _ => 25,
+        };
         if raw.model_bytes != model.bytes()
-            || raw.wrapped_model_ranges != 25
-            || raw.pointer_matches != 25
+            || raw.wrapped_model_ranges != expected_wrapped_ranges
+            || raw.pointer_matches != expected_wrapped_ranges
         {
             return Err(Error::invalid(
-                "Metal complete layer path did not preserve all twenty-five mmap-backed model ranges",
+                "Metal complete layer path did not preserve every required mmap-backed model range",
             ));
         }
+        let dispatches = match (layer_index, position) {
+            (0, _) => 30,
+            (2, 1) => 36,
+            (2, 3) => 48,
+            (2, _) => 32,
+            (3, 1) => 32,
+            (3, _) => 30,
+            _ => 28,
+        };
         if matches!(
             command_mode,
             COMMAND_CHAINED_ENQUEUE | COMMAND_CHAINED_FINAL
@@ -4563,7 +4804,7 @@ mod imp {
                 report: Layer0ProbeReport {
                     fixture_id: expected.fixture_id,
                     token,
-                    dispatches: if layer_index == 0 { 30 } else { 28 },
+                    dispatches,
                     command_buffers: 1,
                     selected_experts: expected.selected.clone(),
                     wrapped_model_ranges: raw.wrapped_model_ranges,
@@ -4597,7 +4838,7 @@ mod imp {
                 report: Layer0ProbeReport {
                     fixture_id: expected.fixture_id,
                     token,
-                    dispatches: if layer_index == 0 { 30 } else { 28 },
+                    dispatches,
                     command_buffers: 1,
                     selected_experts: expected.selected.clone(),
                     wrapped_model_ranges: raw.wrapped_model_ranges,
@@ -4670,6 +4911,20 @@ mod imp {
             }
         }
         expected_cache_rows.extend_from_slice(&stored_cache_row);
+        if !expected.compressed_kv.is_empty() {
+            for (index, (actual, expected)) in compressed_kv
+                .iter()
+                .zip(expected.compressed_kv.iter())
+                .enumerate()
+            {
+                if actual.to_bits() != expected.to_bits() {
+                    return Err(Error::invalid(format!(
+                        "complete layer-{layer_index} C0 mismatch in compressed KV row[{index}]: actual={:#010x} expected={:#010x}",
+                        actual.to_bits(), expected.to_bits()
+                    )));
+                }
+            }
+        }
         for (label, actual, expected) in [
             (
                 "hc_attn_pre_mixes",
@@ -4795,7 +5050,7 @@ mod imp {
             report: Layer0ProbeReport {
                 fixture_id: expected.fixture_id,
                 token,
-                dispatches: if layer_index == 0 { 30 } else { 28 },
+                dispatches,
                 command_buffers: 1,
                 selected_experts: selected.clone(),
                 wrapped_model_ranges: raw.wrapped_model_ranges,
@@ -5181,6 +5436,7 @@ mod imp {
         for layer_index in 0..=3 {
             let _ = layer_expected(layer_index, 1)?;
             let _ = layer_expected(layer_index, 2)?;
+            let _ = layer_expected(layer_index, 3)?;
         }
         let _ = exact_tensor(model, "blk.3.ffn_down_shexp.weight", 8, &[2048, 4096])?;
         Err(Error::invalid(
@@ -5362,6 +5618,12 @@ mod tests {
         LAYER1_POS2_FIXTURE_ID,
         LAYER2_POS2_FIXTURE_ID,
         LAYER3_POS2_FIXTURE_ID,
+    ];
+    const POSITION3_FIXTURE_IDS: [&str; 4] = [
+        LAYER0_POS3_FIXTURE_ID,
+        LAYER1_POS3_FIXTURE_ID,
+        LAYER2_POS3_FIXTURE_ID,
+        LAYER3_POS3_FIXTURE_ID,
     ];
 
     fn report() -> ProbeReport {
@@ -5700,6 +5962,11 @@ mod tests {
             layer.fixture_id = POSITION2_FIXTURE_IDS[layer_index];
             layer.token = 361;
         }
+        let mut position3_layers = position2_layers.clone();
+        for (layer_index, layer) in position3_layers.iter_mut().enumerate() {
+            layer.fixture_id = POSITION3_FIXTURE_IDS[layer_index];
+            layer.token = 1915;
+        }
         Layers0123DecodeProbeReport {
             steps: vec![
                 Layers0123DecodeStepReport {
@@ -5720,11 +5987,20 @@ mod tests {
                     gpu_ms: 5.0,
                     output_hc_checksum: 11,
                 },
+                Layers0123DecodeStepReport {
+                    position: 3,
+                    token: 1915,
+                    cache_rows: 4,
+                    layers: position3_layers,
+                    wall_ms: 7.0,
+                    gpu_ms: 6.0,
+                    output_hc_checksum: 12,
+                },
             ],
             command_buffers_per_step: 4,
             host_waits_per_step: 1,
             kv_cache_layers: 4,
-            cache_capacity_rows: 3,
+            cache_capacity_rows: 4,
             output_hc_elements: 4 * 4096,
         }
     }
@@ -5869,6 +6145,10 @@ mod tests {
         assert!(text.contains("\"position\": 2"));
         assert!(text.contains("\"token\": 361"));
         assert!(text.contains("\"cache_rows\": 3"));
+        assert!(text.contains("\"position\": 3"));
+        assert!(text.contains("\"token\": 1915"));
+        assert!(text.contains("\"cache_rows\": 4"));
+        assert!(text.contains(&format!("\"fixture\": \"{}\"", POSITION3_FIXTURE_IDS[2])));
         assert!(text.contains(&format!("\"fixture\": \"{}\"", POSITION2_FIXTURE_IDS[3])));
         assert!(text.contains("\"cache_growth_exact\": true"));
         assert!(text.contains("\"output_handoff_exact\": true"));
@@ -5893,6 +6173,30 @@ mod tests {
             assert_eq!(fixture.attention_hc.len(), 4 * 4096);
             assert_eq!(fixture.selected, selected[layer_index as usize]);
             assert_eq!(fixture.final_hc.len(), 4 * 4096);
+        }
+    }
+
+    #[test]
+    fn position3_complete_fixtures_have_target_shapes() {
+        let selected = [
+            vec![133, 217, 222, 94, 234, 246],
+            vec![107, 58, 141, 226, 233, 88],
+            vec![90, 98, 196, 23, 62, 19],
+            vec![64, 87, 198, 214, 128, 1],
+        ];
+        for layer_index in 0..=3 {
+            let fixture = layer_expected(layer_index, 3).unwrap();
+            assert_eq!(
+                fixture.fixture_id,
+                POSITION3_FIXTURE_IDS[layer_index as usize]
+            );
+            assert_eq!(fixture.kv_cur.len(), 512);
+            assert_eq!(fixture.selected, selected[layer_index as usize]);
+            assert_eq!(fixture.final_hc.len(), 4 * 4096);
+            assert_eq!(
+                fixture.compressed_kv.len(),
+                if layer_index == 2 { 512 } else { 0 }
+            );
         }
     }
 

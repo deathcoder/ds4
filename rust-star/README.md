@@ -26,13 +26,14 @@ inter-layer host waits and performs one exact tail readback. A separate
 persistent four-layer replay prepares all model bindings and fixture buffers
 once, excludes warmups, records command-buffer timing without in-interval host
 readback, and performs one exhaustive C0 collection after the final sample. The
-persistent executor also has a two-step correctness path that advances from
-token 201/position 1 to token 361/position 2, retains and grows all four raw KV
-caches from two to three rows, and hands off layer 3's final 16,384-element HC
-state. Every retained boundary in both steps matches two independent
-fresh-process DwarfStar captures bit-for-bit. Positions 1 and 2 deliberately
-precede the first compressed-cache emission; position 3 remains gated on the
-compressor/indexer boundary. The
+persistent executor also has a three-step correctness path that advances from
+token 201/position 1 through token 361/position 2 to token 1915/position 3,
+retains and grows all four raw KV caches from two to four rows, and hands off
+layer 3's final 16,384-element HC state. It advances layer 2's ratio-4 attention
+and indexer compressors, validates the first FP8 compressed KV row, and also
+advances layer 3's non-emitting ratio-128 compressor state. Every retained
+boundary in all three steps matches two independent fresh-process DwarfStar
+captures bit-for-bit. The
 persistent layer-0 gate reuses its pipelines, 25 no-copy model views, cache
 storage, and activation buffers for repeated steady-state timing; this is not
 yet a complete decoder because it has only four layers and no logits or

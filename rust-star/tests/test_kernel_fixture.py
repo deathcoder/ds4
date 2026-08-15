@@ -31,6 +31,14 @@ POSITION2_COMPLETE_FIXTURES = [
     RUST_STAR_DIR / "fixtures" / f"layer{layer}-pos2-complete-v1"
     for layer in range(4)
 ]
+POSITION3_COMPLETE_FIXTURES = [
+    RUST_STAR_DIR / "fixtures" / f"layer{layer}-pos3-complete-v1"
+    for layer in range(4)
+]
+COMPRESSOR_PRIME_FIXTURES = [
+    RUST_STAR_DIR / "fixtures" / f"layer{layer}-pos0-compressor-prime-v1"
+    for layer in (2, 3)
+]
 
 
 class KernelFixtureTests(unittest.TestCase):
@@ -141,6 +149,35 @@ class KernelFixtureTests(unittest.TestCase):
                 self.assertEqual(report["operations"], 30 if layer == 0 else 28)
                 self.assertEqual(report["tensors"], 32)
                 self.assertEqual(report["verified_bytes"], 739_760)
+
+    def test_position3_complete_fixtures_manifest_and_payloads(self) -> None:
+        expected_operations = [30, 28, 34, 30]
+        for layer, fixture in enumerate(POSITION3_COMPLETE_FIXTURES):
+            with self.subTest(layer=layer):
+                report = validate_differential_fixture(fixture)
+                self.assertEqual(
+                    report["fixture_id"],
+                    f"dwarfstar-oracle-v1-layer{layer}-pos3-complete",
+                )
+                self.assertEqual(report["scope"], "decode-step")
+                self.assertEqual(report["operations"], expected_operations[layer])
+                self.assertEqual(report["tensors"], 33 if layer == 2 else 32)
+                self.assertEqual(
+                    report["verified_bytes"], 741_808 if layer == 2 else 739_760
+                )
+
+    def test_compressor_prime_fixtures_manifest_and_payloads(self) -> None:
+        for layer, fixture in zip((2, 3), COMPRESSOR_PRIME_FIXTURES):
+            with self.subTest(layer=layer):
+                report = validate_differential_fixture(fixture)
+                self.assertEqual(
+                    report["fixture_id"],
+                    f"dwarfstar-oracle-v1-layer{layer}-pos0-compressor-prime",
+                )
+                self.assertEqual(report["scope"], "layer-segment")
+                self.assertEqual(report["operations"], 1)
+                self.assertEqual(report["tensors"], 1)
+                self.assertEqual(report["verified_bytes"], 16_384)
 
     def test_fixture_shape_tampering_is_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:

@@ -1892,5 +1892,5 @@ fn layers0123_bench_usage() -> &'static str {
 }
 
 fn layers0123_decode_probe_usage() -> &'static str {
-    "usage: rust-star layers0123-decode-probe MODEL.gguf [--json PATH]\n\nExecutes token 201 at position 1 and token 361 at position 2 through layers 0 through 3, preserves three raw KV rows per layer across the step boundary, and requires every retained DwarfStar boundary plus the final HC output handoff to remain bit-identical."
+    "usage: rust-star layers0123-decode-probe MODEL.gguf [--json PATH]\n\nExecutes tokens 201, 361, and 1915 at positions 1 through 3 across layers 0 through 3, preserves four raw KV rows per layer, advances the layer-2 ratio-4 and layer-3 ratio-128 compressor states, validates layer 2's first compressed KV emission, and requires every retained DwarfStar boundary plus the final HC output handoff to remain bit-identical."
 }

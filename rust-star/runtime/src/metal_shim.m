@@ -177,6 +177,16 @@ static NSString *const kQ8ProjectionSource =
 @property(nonatomic, strong) id<MTLComputePipelineState> repeatF32Pipeline;
 @property(nonatomic, strong) id<MTLComputePipelineState> rmsNormF32Pipeline;
 @property(nonatomic, strong) id<MTLComputePipelineState> f16ProjectionPipeline;
+@property(nonatomic, strong) id<MTLComputePipelineState> compressorPairPipeline;
+@property(nonatomic, strong) id<MTLComputePipelineState> compressorStorePipeline;
+@property(nonatomic, strong) id<MTLComputePipelineState> compressorPackPipeline;
+@property(nonatomic, strong) id<MTLComputePipelineState> compressorSoftmaxPipeline;
+@property(nonatomic, strong) id<MTLComputePipelineState> compressorMulPipeline;
+@property(nonatomic, strong) id<MTLComputePipelineState> compressorSumRowsPipeline;
+@property(nonatomic, strong) id<MTLComputePipelineState> compressorNormPipeline;
+@property(nonatomic, strong) id<MTLComputePipelineState> compressorShiftPipeline;
+@property(nonatomic, strong) id<MTLComputePipelineState> compressorFp8Pipeline;
+@property(nonatomic, strong) id<MTLComputePipelineState> indexerQatPipeline;
 @property(nonatomic, strong) id<MTLComputePipelineState> hcIngressPipeline;
 @property(nonatomic, strong) id<MTLComputePipelineState> qkvNormPipeline;
 @property(nonatomic, strong) id<MTLComputePipelineState> headNormRopePipeline;
@@ -427,15 +437,43 @@ static int ensure_attention_ingress_pipelines(
     id<MTLFunction> projection = [library newFunctionWithName:@"kernel_mul_mv_f16_f32_4"
                                                constantValues:constants
                                                         error:&compile_error];
+    id<MTLFunction> compressorPair = [library newFunctionWithName:@"kernel_mul_mv_f16_f32_pair_4"
+                                                   constantValues:constants error:&compile_error];
+    id<MTLFunction> compressorStore = [library newFunctionWithName:@"kernel_dsv4_compressor_store_one"];
+    id<MTLFunction> compressorPack = [library newFunctionWithName:@"rust_star_compressor_pack_ratio4_one"];
+    id<MTLFunction> compressorSoftmax = [library newFunctionWithName:@"kernel_soft_max_f32_4"];
+    id<MTLFunction> compressorMul = [library newFunctionWithName:@"rust_star_mul_f32"];
+    int16_t sumOperation = 10;
+    MTLFunctionConstantValues *sumConstants = [MTLFunctionConstantValues new];
+    [sumConstants setConstantValue:&sumOperation type:MTLDataTypeShort atIndex:1400];
+    id<MTLFunction> compressorSumRows = [library newFunctionWithName:@"kernel_sum_rows_f32_f32"
+                                                      constantValues:sumConstants error:&compile_error];
+    id<MTLFunction> compressorNorm = [library newFunctionWithName:@"kernel_rms_norm_f32_weighted_4"];
+    id<MTLFunction> compressorShift = [library newFunctionWithName:@"kernel_dsv4_ratio4_shift_f32"];
+    id<MTLFunction> compressorFp8 = [library newFunctionWithName:@"kernel_dsv4_fp8_kv_quantize_f32"];
+    id<MTLFunction> indexerQat = [library newFunctionWithName:@"kernel_dsv4_indexer_hadamard_fp4_f32"];
     if (!repeat || !norm || !hc || !qkvNorm || !headNormRope || !ropeTail ||
         !kvStore || !cpyF32F16 || !flashPad || !flashVec || !flashReduce ||
-        !projection || !routerProbability || !routerFinalize || !routerWeights) {
+        !projection || !compressorPair || !compressorStore || !compressorPack ||
+        !compressorSoftmax || !compressorMul || !compressorSumRows ||
+        !compressorNorm || !compressorShift || !compressorFp8 || !indexerQat ||
+        !routerProbability || !routerFinalize || !routerWeights) {
         return fail_with_message(error, error_bytes,
             compile_error ? compile_error.localizedDescription : @"attention ingress kernel was not found");
     }
     context.repeatF32Pipeline = [context.device newComputePipelineStateWithFunction:repeat error:&compile_error];
     context.rmsNormF32Pipeline = [context.device newComputePipelineStateWithFunction:norm error:&compile_error];
     context.f16ProjectionPipeline = [context.device newComputePipelineStateWithFunction:projection error:&compile_error];
+    context.compressorPairPipeline = [context.device newComputePipelineStateWithFunction:compressorPair error:&compile_error];
+    context.compressorStorePipeline = [context.device newComputePipelineStateWithFunction:compressorStore error:&compile_error];
+    context.compressorPackPipeline = [context.device newComputePipelineStateWithFunction:compressorPack error:&compile_error];
+    context.compressorSoftmaxPipeline = [context.device newComputePipelineStateWithFunction:compressorSoftmax error:&compile_error];
+    context.compressorMulPipeline = [context.device newComputePipelineStateWithFunction:compressorMul error:&compile_error];
+    context.compressorSumRowsPipeline = [context.device newComputePipelineStateWithFunction:compressorSumRows error:&compile_error];
+    context.compressorNormPipeline = [context.device newComputePipelineStateWithFunction:compressorNorm error:&compile_error];
+    context.compressorShiftPipeline = [context.device newComputePipelineStateWithFunction:compressorShift error:&compile_error];
+    context.compressorFp8Pipeline = [context.device newComputePipelineStateWithFunction:compressorFp8 error:&compile_error];
+    context.indexerQatPipeline = [context.device newComputePipelineStateWithFunction:indexerQat error:&compile_error];
     context.hcIngressPipeline = [context.device newComputePipelineStateWithFunction:hc error:&compile_error];
     context.qkvNormPipeline = [context.device newComputePipelineStateWithFunction:qkvNorm error:&compile_error];
     context.headNormRopePipeline = [context.device newComputePipelineStateWithFunction:headNormRope error:&compile_error];
@@ -449,7 +487,12 @@ static int ensure_attention_ingress_pipelines(
     context.routerFinalizePipeline = [context.device newComputePipelineStateWithFunction:routerFinalize error:&compile_error];
     context.routerWeightsPipeline = [context.device newComputePipelineStateWithFunction:routerWeights error:&compile_error];
     if (!context.repeatF32Pipeline || !context.rmsNormF32Pipeline ||
-        !context.f16ProjectionPipeline || !context.hcIngressPipeline ||
+        !context.f16ProjectionPipeline || !context.compressorPairPipeline ||
+        !context.compressorStorePipeline || !context.compressorPackPipeline ||
+        !context.compressorSoftmaxPipeline || !context.compressorMulPipeline ||
+        !context.compressorSumRowsPipeline || !context.compressorNormPipeline ||
+        !context.compressorShiftPipeline || !context.compressorFp8Pipeline ||
+        !context.indexerQatPipeline || !context.hcIngressPipeline ||
         !context.qkvNormPipeline || !context.headNormRopePipeline ||
         !context.ropeTailPipeline || !context.kvStorePipeline ||
         !context.cpyF32F16Pipeline || !context.flashPadPipeline ||
@@ -908,6 +951,47 @@ typedef struct rust_star_kv_store_args {
     int32_t head_dim, n_rot, raw_row;
 } rust_star_kv_store_args;
 
+typedef struct rust_star_compressor_store_args {
+    uint32_t width, ratio, pos, ape_type;
+} rust_star_compressor_store_args;
+
+typedef struct rust_star_compressor_pack_args {
+    uint32_t width, head_dim;
+} rust_star_compressor_pack_args;
+
+typedef struct rust_star_softmax_args {
+    int32_t ne00, ne01, ne02;
+    uint64_t nb01, nb02, nb03;
+    int32_t ne11, ne12, ne13;
+    uint64_t nb11, nb12, nb13;
+    uint64_t nb1, nb2, nb3;
+    float scale, max_bias, m0, m1;
+    int32_t n_head_log2;
+} rust_star_softmax_args;
+
+typedef struct rust_star_sum_rows_args {
+    int64_t ne00, ne01, ne02, ne03;
+    uint64_t nb00, nb01, nb02, nb03;
+    int64_t ne0, ne1, ne2, ne3;
+    uint64_t nb0, nb1, nb2, nb3;
+} rust_star_sum_rows_args;
+
+typedef struct rust_star_fp8_quantize_args {
+    int64_t ne00, ne01, ne02, ne03;
+    uint64_t nb00, nb01, nb02, nb03;
+    uint64_t nb0, nb1, nb2, nb3;
+    int32_t n_rot;
+} rust_star_fp8_quantize_args;
+
+typedef struct rust_star_indexer_qat_args {
+    uint32_t n_rows, head_dim;
+    uint64_t row_stride;
+} rust_star_indexer_qat_args;
+
+typedef struct rust_star_ratio4_shift_args {
+    uint32_t width;
+} rust_star_ratio4_shift_args;
+
 typedef struct rust_star_flash_pad_args {
     int32_t ne11, ne_12_2, ne_12_3;
     uint64_t nb11, nb12, nb13;
@@ -1053,6 +1137,206 @@ static NSString *layer_buffer_key(NSString *base, BOOL layer_scoped, uint32_t la
     return layer_scoped
         ? [NSString stringWithFormat:@"%@_layer_%u", base, layer_index]
         : base;
+}
+
+static int encode_compressor_step(
+    RustStarMetalContext *context,
+    id<MTLComputeCommandEncoder> encoder,
+    id<MTLBuffer> activation,
+    id<MTLBuffer> kv_weight, NSUInteger kv_weight_offset,
+    id<MTLBuffer> gate_weight, NSUInteger gate_weight_offset,
+    id<MTLBuffer> ape, NSUInteger ape_offset,
+    id<MTLBuffer> norm_weight, NSUInteger norm_weight_offset,
+    id<MTLBuffer> projected_kv,
+    id<MTLBuffer> projected_score,
+    id<MTLBuffer> state_kv,
+    id<MTLBuffer> state_score,
+    id<MTLBuffer> packed_kv,
+    id<MTLBuffer> packed_score,
+    id<MTLBuffer> softmax,
+    id<MTLBuffer> output,
+    uint32_t width,
+    uint32_t head_dim,
+    uint32_t ratio,
+    uint32_t position,
+    BOOL emit,
+    BOOL indexer)
+{
+    rust_star_q8_mv_args projection = {
+        .ne00=4096, .ne01=(int32_t)width, .ne02=1,
+        .nb00=sizeof(uint16_t), .nb01=4096ull*sizeof(uint16_t),
+        .nb02=4096ull*width*sizeof(uint16_t),
+        .nb03=4096ull*width*sizeof(uint16_t),
+        .ne10=4096, .ne11=1, .ne12=1,
+        .nb10=sizeof(float), .nb11=4096ull*sizeof(float),
+        .nb12=4096ull*sizeof(float), .nb13=4096ull*sizeof(float),
+        .ne0=(int32_t)width, .ne1=1, .nr0=2, .r2=1, .r3=1,
+    };
+    [encoder setComputePipelineState:context.compressorPairPipeline];
+    [encoder setBytes:&projection length:sizeof(projection) atIndex:0];
+    [encoder setBuffer:kv_weight offset:kv_weight_offset atIndex:1];
+    [encoder setBuffer:gate_weight offset:gate_weight_offset atIndex:2];
+    [encoder setBuffer:activation offset:0 atIndex:3];
+    [encoder setBuffer:projected_kv offset:0 atIndex:4];
+    [encoder setBuffer:projected_score offset:0 atIndex:5];
+    [encoder setThreadgroupMemoryLength:32u*2u*sizeof(float) atIndex:0];
+    [encoder dispatchThreadgroups:MTLSizeMake((width+1u)/2u,1,1)
+         threadsPerThreadgroup:MTLSizeMake(32,8,1)];
+
+    rust_star_compressor_store_args store = {
+        .width=width, .ratio=ratio, .pos=position, .ape_type=1,
+    };
+    [encoder setComputePipelineState:context.compressorStorePipeline];
+    [encoder setBytes:&store length:sizeof(store) atIndex:0];
+    [encoder setBuffer:projected_kv offset:0 atIndex:1];
+    [encoder setBuffer:projected_score offset:0 atIndex:2];
+    [encoder setBuffer:ape offset:ape_offset atIndex:3];
+    [encoder setBuffer:state_kv offset:0 atIndex:4];
+    [encoder setBuffer:state_score offset:0 atIndex:5];
+    [encoder dispatchThreadgroups:MTLSizeMake((width+255u)/256u,1,1)
+         threadsPerThreadgroup:MTLSizeMake(256,1,1)];
+    if (!emit) return 1;
+
+    rust_star_compressor_pack_args pack = { .width=width, .head_dim=head_dim };
+    const uint32_t packed_elements = 8u*head_dim;
+    [encoder setComputePipelineState:context.compressorPackPipeline];
+    [encoder setBytes:&pack length:sizeof(pack) atIndex:0];
+    [encoder setBuffer:state_kv offset:0 atIndex:1];
+    [encoder setBuffer:state_score offset:0 atIndex:2];
+    [encoder setBuffer:packed_kv offset:0 atIndex:3];
+    [encoder setBuffer:packed_score offset:0 atIndex:4];
+    [encoder dispatchThreads:MTLSizeMake(packed_elements,1,1)
+          threadsPerThreadgroup:MTLSizeMake(256,1,1)];
+
+    const uint64_t softmax_row_bytes = 8u*sizeof(float);
+    rust_star_softmax_args softmax_args = {
+        .ne00=8, .ne01=(int32_t)head_dim, .ne02=1,
+        .nb01=softmax_row_bytes,
+        .nb02=(uint64_t)head_dim*softmax_row_bytes,
+        .nb03=(uint64_t)head_dim*softmax_row_bytes,
+        .ne11=8, .ne12=(int32_t)head_dim, .ne13=1,
+        .nb11=softmax_row_bytes,
+        .nb12=(uint64_t)head_dim*softmax_row_bytes,
+        .nb13=(uint64_t)head_dim*softmax_row_bytes,
+        .nb1=softmax_row_bytes,
+        .nb2=(uint64_t)head_dim*softmax_row_bytes,
+        .nb3=(uint64_t)head_dim*softmax_row_bytes,
+        .scale=1.0f, .max_bias=0.0f, .m0=0.0f, .m1=0.0f,
+        .n_head_log2=1,
+    };
+    [encoder setComputePipelineState:context.compressorSoftmaxPipeline];
+    [encoder setBytes:&softmax_args length:sizeof(softmax_args) atIndex:0];
+    [encoder setBuffer:packed_score offset:0 atIndex:1];
+    [encoder setBuffer:packed_score offset:0 atIndex:2];
+    [encoder setBuffer:packed_score offset:0 atIndex:3];
+    [encoder setBuffer:softmax offset:0 atIndex:4];
+    [encoder setThreadgroupMemoryLength:32u*sizeof(float) atIndex:0];
+    [encoder dispatchThreadgroups:MTLSizeMake(head_dim,1,1)
+         threadsPerThreadgroup:MTLSizeMake(32,1,1)];
+
+    [encoder setComputePipelineState:context.compressorMulPipeline];
+    [encoder setBuffer:packed_kv offset:0 atIndex:0];
+    [encoder setBuffer:softmax offset:0 atIndex:1];
+    [encoder setBuffer:packed_kv offset:0 atIndex:2];
+    [encoder dispatchThreads:MTLSizeMake(packed_elements,1,1)
+          threadsPerThreadgroup:MTLSizeMake(256,1,1)];
+
+    rust_star_sum_rows_args sum = {
+        .ne00=8, .ne01=head_dim, .ne02=1, .ne03=1,
+        .nb00=sizeof(float), .nb01=softmax_row_bytes,
+        .nb02=(uint64_t)head_dim*softmax_row_bytes,
+        .nb03=(uint64_t)head_dim*softmax_row_bytes,
+        .ne0=1, .ne1=head_dim, .ne2=1, .ne3=1,
+        .nb0=sizeof(float), .nb1=sizeof(float),
+        .nb2=(uint64_t)head_dim*sizeof(float),
+        .nb3=(uint64_t)head_dim*sizeof(float),
+    };
+    [encoder setComputePipelineState:context.compressorSumRowsPipeline];
+    [encoder setBytes:&sum length:sizeof(sum) atIndex:0];
+    [encoder setBuffer:packed_kv offset:0 atIndex:1];
+    [encoder setBuffer:output offset:0 atIndex:2];
+    [encoder setThreadgroupMemoryLength:32u*sizeof(float) atIndex:0];
+    [encoder dispatchThreadgroups:MTLSizeMake(head_dim,1,1)
+         threadsPerThreadgroup:MTLSizeMake(8,1,1)];
+
+    const uint64_t output_bytes = (uint64_t)head_dim*sizeof(float);
+    rust_star_norm_args norm = {
+        .ne00=(int32_t)head_dim, .ne00_t=(int32_t)(head_dim/4u),
+        .nb1=output_bytes, .nb2=output_bytes, .nb3=output_bytes,
+        .eps=1.0e-6f,
+        .nef1={1,1,1}, .nef2={1,1,1}, .nef3={1,1,1},
+        .nbf1={output_bytes,output_bytes,output_bytes},
+        .nbf2={output_bytes,output_bytes,output_bytes},
+        .nbf3={output_bytes,output_bytes,output_bytes},
+    };
+    [encoder setComputePipelineState:context.compressorNormPipeline];
+    [encoder setBytes:&norm length:sizeof(norm) atIndex:0];
+    [encoder setBuffer:output offset:0 atIndex:1];
+    [encoder setBuffer:norm_weight offset:norm_weight_offset atIndex:2];
+    [encoder setBuffer:output offset:0 atIndex:3];
+    [encoder setBuffer:output offset:0 atIndex:4];
+    [encoder setThreadgroupMemoryLength:32u*sizeof(float) atIndex:0];
+    const NSUInteger norm_threads = head_dim == 512u ? 128u : 32u;
+    [encoder dispatchThreadgroups:MTLSizeMake(1,1,1)
+         threadsPerThreadgroup:MTLSizeMake(norm_threads,1,1)];
+
+    rust_star_rope_tail_args rope = {
+        .ne00=(int32_t)head_dim, .ne01=1, .ne02=1, .ne03=1,
+        .nb00=sizeof(float), .nb01=output_bytes,
+        .nb02=output_bytes, .nb03=output_bytes,
+        .nb0=sizeof(float), .nb1=output_bytes,
+        .nb2=output_bytes, .nb3=output_bytes,
+        .n_dims=64, .mode=0, .n_ctx_orig=65536, .inverse=0,
+        .freq_base=160000.0f, .freq_scale=1.0f/16.0f,
+        .ext_factor=1.0f,
+        .attn_factor=1.0f/(1.0f+0.1f*logf(16.0f)),
+        .beta_fast=32.0f, .beta_slow=1.0f, .src2=false,
+    };
+    int32_t compressed_position = 0;
+    [encoder setComputePipelineState:context.ropeTailPipeline];
+    [encoder setBytes:&rope length:sizeof(rope) atIndex:0];
+    [encoder setBuffer:output offset:0 atIndex:1];
+    [encoder setBytes:&compressed_position length:sizeof(compressed_position) atIndex:2];
+    [encoder setBuffer:output offset:0 atIndex:3];
+    [encoder setBuffer:output offset:0 atIndex:4];
+    [encoder dispatchThreadgroups:MTLSizeMake(1,1,1)
+         threadsPerThreadgroup:MTLSizeMake(MIN((uint32_t)256u,head_dim),1,1)];
+
+    rust_star_ratio4_shift_args shift = { .width=width };
+    [encoder setComputePipelineState:context.compressorShiftPipeline];
+    [encoder setBytes:&shift length:sizeof(shift) atIndex:0];
+    [encoder setBuffer:state_kv offset:0 atIndex:1];
+    [encoder setBuffer:state_score offset:0 atIndex:2];
+    [encoder dispatchThreads:MTLSizeMake(4u*width,1,1)
+          threadsPerThreadgroup:MTLSizeMake(256,1,1)];
+
+    if (indexer) {
+        rust_star_indexer_qat_args qat = {
+            .n_rows=1, .head_dim=head_dim, .row_stride=output_bytes,
+        };
+        [encoder setComputePipelineState:context.indexerQatPipeline];
+        [encoder setBytes:&qat length:sizeof(qat) atIndex:0];
+        [encoder setBuffer:output offset:0 atIndex:1];
+        [encoder setThreadgroupMemoryLength:256u*sizeof(float) atIndex:0];
+        [encoder dispatchThreadgroups:MTLSizeMake(1,1,1)
+             threadsPerThreadgroup:MTLSizeMake(128,1,1)];
+    } else {
+        rust_star_fp8_quantize_args fp8 = {
+            .ne00=head_dim, .ne01=1, .ne02=1, .ne03=1,
+            .nb00=sizeof(float), .nb01=output_bytes,
+            .nb02=output_bytes, .nb03=output_bytes,
+            .nb0=sizeof(float), .nb1=output_bytes,
+            .nb2=output_bytes, .nb3=output_bytes, .n_rot=64,
+        };
+        [encoder setComputePipelineState:context.compressorFp8Pipeline];
+        [encoder setBytes:&fp8 length:sizeof(fp8) atIndex:0];
+        [encoder setBuffer:output offset:0 atIndex:1];
+        [encoder setBuffer:output offset:0 atIndex:2];
+        [encoder setThreadgroupMemoryLength:64u*sizeof(float) atIndex:0];
+        [encoder dispatchThreadgroups:MTLSizeMake(1,1,1)
+             threadsPerThreadgroup:MTLSizeMake(64,1,1)];
+    }
+    return 1;
 }
 
 int rust_star_metal_run_q8_0_projection(
@@ -1265,6 +1549,12 @@ int rust_star_metal_run_attention_ingress(
     if (!layer0) layer0 = &standalone_layer;
     const uint32_t position = full_layer ? layer0->position : 1u;
     const uint32_t visible_cache_rows = position + 1u;
+    const BOOL compressed_layer = full_layer && layer0->layer_index >= 2u;
+    const uint32_t compressor_ratio = layer0->layer_index == 2u ? 4u : 128u;
+    const uint32_t compressor_width = compressor_ratio == 4u ? 1024u : 512u;
+    const BOOL indexer_layer = full_layer && layer0->layer_index == 2u;
+    const BOOL compressor_emit = indexer_layer && position == 3u;
+    const uint32_t attention_cache_rows = visible_cache_rows + (compressor_emit ? 1u : 0u);
     const BOOL continuing_layer = full_layer && layer0->reuse_previous_hc != 0;
     const uint32_t command_mode = full_layer ? layer0->command_mode : RUST_STAR_COMMAND_SYNCHRONIZED;
     const BOOL chained_submission = command_mode == RUST_STAR_COMMAND_CHAINED_ENQUEUE ||
@@ -1308,9 +1598,9 @@ int rust_star_metal_run_attention_ingress(
         return fail_with_message(error, error_bytes,
             @"full layer execution must run layer 0 before continuing into later layers");
     }
-    if (full_layer && (position < 1u || position > 2u)) {
+    if (full_layer && (position < 1u || position > 3u)) {
         return fail_with_message(error, error_bytes,
-            @"the exact four-layer slice currently supports decode positions 1 and 2");
+            @"the exact four-layer slice currently supports decode positions 1 through 3");
     }
     if (full_layer && position > 1u && command_mode == RUST_STAR_COMMAND_SYNCHRONIZED) {
         return fail_with_message(error, error_bytes,
@@ -1389,6 +1679,27 @@ int rust_star_metal_run_attention_ingress(
          layer0->shared_down_bytes != 4096ull*2176ull)) {
         return fail_with_message(error, error_bytes, @"full layer tensor shapes are invalid");
     }
+    if (compressed_layer &&
+        (!layer0->compressor_prime_attn_norm || !layer0->compressed_kv_row ||
+         layer0->attn_compressor_ape_bytes != (uint64_t)compressor_width*compressor_ratio*sizeof(uint16_t) ||
+         layer0->attn_compressor_kv_bytes != (uint64_t)4096u*compressor_width*sizeof(uint16_t) ||
+         layer0->attn_compressor_gate_bytes != (uint64_t)4096u*compressor_width*sizeof(uint16_t) ||
+         layer0->attn_compressor_norm_bytes != 512u*sizeof(float))) {
+        return fail_with_message(error, error_bytes, @"attention compressor tensor shapes are invalid");
+    }
+    if (!compressed_layer &&
+        (layer0->attn_compressor_ape_bytes || layer0->attn_compressor_kv_bytes ||
+         layer0->attn_compressor_gate_bytes || layer0->attn_compressor_norm_bytes)) {
+        return fail_with_message(error, error_bytes, @"raw-attention layer unexpectedly supplied compressor tensors");
+    }
+    if (indexer_layer &&
+        (!layer0->compressed_indexer_row ||
+         layer0->indexer_compressor_ape_bytes != 256u*4u*sizeof(uint16_t) ||
+         layer0->indexer_compressor_kv_bytes != 4096ull*256ull*sizeof(uint16_t) ||
+         layer0->indexer_compressor_gate_bytes != 4096ull*256ull*sizeof(uint16_t) ||
+         layer0->indexer_compressor_norm_bytes != 128u*sizeof(float))) {
+        return fail_with_message(error, error_bytes, @"indexer compressor tensor shapes are invalid");
+    }
 
     @autoreleasepool {
         RustStarMetalContext *context = (__bridge RustStarMetalContext *)opaque_context;
@@ -1439,7 +1750,7 @@ int rust_star_metal_run_attention_ingress(
         NSUInteger q_norm_inner = 0, kv_inner = 0, kv_norm_inner = 0, q_b_inner = 0;
         NSUInteger sinks_inner = 0;
         NSUInteger output_a_inner = 0, output_b_inner = 0;
-        BOOL matches[25] = {NO};
+        BOOL matches[33] = {NO};
         id<MTLBuffer> embedding_weights = wrap_model_range(context, model_mapping, model_bytes,
             embedding_offset, embedding_bytes, &embedding_inner, &matches[0], error, error_bytes);
         id<MTLBuffer> hc_fn_weights = wrap_model_range(context, model_mapping, model_bytes,
@@ -1466,6 +1777,12 @@ int rust_star_metal_run_attention_ingress(
         id<MTLBuffer> ffn_norm_weight = nil, router_gate = nil, router_aux = nil;
         id<MTLBuffer> routed_gate_weight = nil, routed_up_weight = nil, routed_down_weight = nil;
         id<MTLBuffer> shared_gate_weight = nil, shared_up_weight = nil, shared_down_weight = nil;
+        NSUInteger compressor_inner[4] = {0};
+        NSUInteger indexer_inner[4] = {0};
+        id<MTLBuffer> compressor_ape = nil, compressor_kv_weight = nil;
+        id<MTLBuffer> compressor_gate_weight = nil, compressor_norm_weight = nil;
+        id<MTLBuffer> indexer_ape = nil, indexer_kv_weight = nil;
+        id<MTLBuffer> indexer_gate_weight = nil, indexer_norm_weight = nil;
         if (extended) {
             q_norm_weights = wrap_model_range(context, model_mapping, model_bytes,
                 q_a_norm_offset, q_a_norm_bytes, &q_norm_inner, &matches[6], error, error_bytes);
@@ -1520,6 +1837,54 @@ int rust_star_metal_run_attention_ingress(
                 if (!*layer_buffers[index]) return 0;
             }
         }
+        if (compressed_layer) {
+            const uint64_t offsets[4] = {
+                layer0->attn_compressor_ape_offset,
+                layer0->attn_compressor_kv_offset,
+                layer0->attn_compressor_gate_offset,
+                layer0->attn_compressor_norm_offset,
+            };
+            const uint64_t bytes[4] = {
+                layer0->attn_compressor_ape_bytes,
+                layer0->attn_compressor_kv_bytes,
+                layer0->attn_compressor_gate_bytes,
+                layer0->attn_compressor_norm_bytes,
+            };
+            id<MTLBuffer> __strong *buffers[4] = {
+                &compressor_ape, &compressor_kv_weight,
+                &compressor_gate_weight, &compressor_norm_weight,
+            };
+            for (uint32_t index = 0; index < 4; index++) {
+                *buffers[index] = wrap_model_range(context, model_mapping, model_bytes,
+                    offsets[index], bytes[index], &compressor_inner[index],
+                    &matches[25u+index], error, error_bytes);
+                if (!*buffers[index]) return 0;
+            }
+        }
+        if (indexer_layer) {
+            const uint64_t offsets[4] = {
+                layer0->indexer_compressor_ape_offset,
+                layer0->indexer_compressor_kv_offset,
+                layer0->indexer_compressor_gate_offset,
+                layer0->indexer_compressor_norm_offset,
+            };
+            const uint64_t bytes[4] = {
+                layer0->indexer_compressor_ape_bytes,
+                layer0->indexer_compressor_kv_bytes,
+                layer0->indexer_compressor_gate_bytes,
+                layer0->indexer_compressor_norm_bytes,
+            };
+            id<MTLBuffer> __strong *buffers[4] = {
+                &indexer_ape, &indexer_kv_weight,
+                &indexer_gate_weight, &indexer_norm_weight,
+            };
+            for (uint32_t index = 0; index < 4; index++) {
+                *buffers[index] = wrap_model_range(context, model_mapping, model_bytes,
+                    offsets[index], bytes[index], &indexer_inner[index],
+                    &matches[29u+index], error, error_bytes);
+                if (!*buffers[index]) return 0;
+            }
+        }
 
         NSString *prior_hc_key = layer_scoped_buffers && layer0->layer_index > 0
             ? layer_buffer_key(@"layer_hc_state", YES, layer0->layer_index-1)
@@ -1546,11 +1911,13 @@ int rust_star_metal_run_attention_ingress(
         NSString *cache_key = full_layer ?
             [NSString stringWithFormat:@"kv_cache_layer_%u", layer0->layer_index] :
             @"kv_cache_probe";
-        id<MTLBuffer> cache_buffer = rope_and_store ? persistent_buffer(context, cache_key, 3u*kv_elements*sizeof(float), error, error_bytes) : nil;
-        const NSUInteger staged_kv_bytes = 3u*kv_elements*sizeof(uint16_t);
-        const NSUInteger mask_storage_bytes = 3u*sizeof(uint16_t);
-        const NSUInteger mask_row_bytes = visible_cache_rows*sizeof(uint16_t);
-        const NSUInteger flash_pad_bytes = 3u*32u*kv_elements*sizeof(uint16_t) + 32u*sizeof(uint16_t);
+        const uint32_t cache_capacity_rows = full_layer ? 4u : 3u;
+        const uint32_t attention_capacity_rows = full_layer ? 5u : 3u;
+        id<MTLBuffer> cache_buffer = rope_and_store ? persistent_buffer(context, cache_key, cache_capacity_rows*kv_elements*sizeof(float), error, error_bytes) : nil;
+        const NSUInteger staged_kv_bytes = attention_capacity_rows*kv_elements*sizeof(uint16_t);
+        const NSUInteger mask_storage_bytes = attention_capacity_rows*sizeof(uint16_t);
+        const NSUInteger mask_row_bytes = attention_cache_rows*sizeof(uint16_t);
+        const NSUInteger flash_pad_bytes = attention_capacity_rows*32u*kv_elements*sizeof(uint16_t) + 32u*sizeof(uint16_t);
         const NSUInteger flash_tmp_bytes = 64u*kv_elements*32u*sizeof(float) + 64u*64u*sizeof(float);
         id<MTLBuffer> staged_kv_buffer = attention_read ? persistent_buffer(context, layer_buffer_key(@"staged_kv", layer_scoped_buffers, layer0->layer_index), staged_kv_bytes, error, error_bytes) : nil;
         id<MTLBuffer> mask_buffer = attention_read ? persistent_buffer(context, layer_buffer_key(@"attention_mask", layer_scoped_buffers, layer0->layer_index), mask_storage_bytes, error, error_bytes) : nil;
@@ -1579,6 +1946,24 @@ int rust_star_metal_run_attention_ingress(
         id<MTLBuffer> shared_mid_buffer = full_layer ? persistent_buffer(context, layer_buffer_key(@"shared_mid", layer_scoped_buffers, layer0->layer_index), 2048u*sizeof(float), error, error_bytes) : nil;
         id<MTLBuffer> shared_out_buffer = full_layer ? persistent_buffer(context, layer_buffer_key(@"shared_out", layer_scoped_buffers, layer0->layer_index), n_embd*sizeof(float), error, error_bytes) : nil;
         id<MTLBuffer> after_ffn_hc_buffer = full_layer ? persistent_buffer(context, layer_buffer_key(@"layer_hc_state", layer_scoped_buffers, layer0->layer_index), hc_dim*sizeof(float), error, error_bytes) : nil;
+        const uint32_t compressor_state_rows = compressor_ratio == 4u ? 8u : compressor_ratio;
+        id<MTLBuffer> compressor_prime_buffer = compressed_layer ? persistent_buffer(context, layer_buffer_key(@"compressor_prime", YES, layer0->layer_index), n_embd*sizeof(float), error, error_bytes) : nil;
+        id<MTLBuffer> compressor_kv_cur = compressed_layer ? persistent_buffer(context, layer_buffer_key(@"compressor_kv_cur", YES, layer0->layer_index), compressor_width*sizeof(float), error, error_bytes) : nil;
+        id<MTLBuffer> compressor_score_cur = compressed_layer ? persistent_buffer(context, layer_buffer_key(@"compressor_score_cur", YES, layer0->layer_index), compressor_width*sizeof(float), error, error_bytes) : nil;
+        id<MTLBuffer> compressor_state_kv = compressed_layer ? persistent_buffer(context, layer_buffer_key(@"compressor_state_kv", YES, layer0->layer_index), compressor_state_rows*compressor_width*sizeof(float), error, error_bytes) : nil;
+        id<MTLBuffer> compressor_state_score = compressed_layer ? persistent_buffer(context, layer_buffer_key(@"compressor_state_score", YES, layer0->layer_index), compressor_state_rows*compressor_width*sizeof(float), error, error_bytes) : nil;
+        id<MTLBuffer> compressed_kv_buffer = compressed_layer ? persistent_buffer(context, layer_buffer_key(@"compressed_kv", YES, layer0->layer_index), 512u*sizeof(float), error, error_bytes) : nil;
+        id<MTLBuffer> compressor_packed_kv = compressed_layer ? persistent_buffer(context, layer_buffer_key(@"compressor_packed_kv", YES, layer0->layer_index), 8u*512u*sizeof(float), error, error_bytes) : nil;
+        id<MTLBuffer> compressor_packed_score = compressed_layer ? persistent_buffer(context, layer_buffer_key(@"compressor_packed_score", YES, layer0->layer_index), 8u*512u*sizeof(float), error, error_bytes) : nil;
+        id<MTLBuffer> compressor_softmax = compressed_layer ? persistent_buffer(context, layer_buffer_key(@"compressor_softmax", YES, layer0->layer_index), 8u*512u*sizeof(float), error, error_bytes) : nil;
+        id<MTLBuffer> indexer_kv_cur = indexer_layer ? persistent_buffer(context, layer_buffer_key(@"indexer_kv_cur", YES, layer0->layer_index), 256u*sizeof(float), error, error_bytes) : nil;
+        id<MTLBuffer> indexer_score_cur = indexer_layer ? persistent_buffer(context, layer_buffer_key(@"indexer_score_cur", YES, layer0->layer_index), 256u*sizeof(float), error, error_bytes) : nil;
+        id<MTLBuffer> indexer_state_kv = indexer_layer ? persistent_buffer(context, layer_buffer_key(@"indexer_state_kv", YES, layer0->layer_index), 8u*256u*sizeof(float), error, error_bytes) : nil;
+        id<MTLBuffer> indexer_state_score = indexer_layer ? persistent_buffer(context, layer_buffer_key(@"indexer_state_score", YES, layer0->layer_index), 8u*256u*sizeof(float), error, error_bytes) : nil;
+        id<MTLBuffer> compressed_indexer_buffer = indexer_layer ? persistent_buffer(context, layer_buffer_key(@"compressed_indexer", YES, layer0->layer_index), 128u*sizeof(float), error, error_bytes) : nil;
+        id<MTLBuffer> indexer_packed_kv = indexer_layer ? persistent_buffer(context, layer_buffer_key(@"indexer_packed_kv", YES, layer0->layer_index), 8u*128u*sizeof(float), error, error_bytes) : nil;
+        id<MTLBuffer> indexer_packed_score = indexer_layer ? persistent_buffer(context, layer_buffer_key(@"indexer_packed_score", YES, layer0->layer_index), 8u*128u*sizeof(float), error, error_bytes) : nil;
+        id<MTLBuffer> indexer_softmax = indexer_layer ? persistent_buffer(context, layer_buffer_key(@"indexer_softmax", YES, layer0->layer_index), 8u*128u*sizeof(float), error, error_bytes) : nil;
         if (!embedding || !cur_hc || !flat_hc || !mix_buffer || !split_buffer ||
             !collapsed_buffer || !norm_buffer || !q_buffer) {
             return fail_with_message(error, error_bytes, @"failed to allocate attention ingress buffers");
@@ -1604,12 +1989,38 @@ int rust_star_metal_run_attention_ingress(
             !shared_mid_buffer || !shared_out_buffer || !after_ffn_hc_buffer)) {
             return fail_with_message(error, error_bytes, @"failed to allocate full layer buffers");
         }
+        if (compressed_layer && (!compressor_prime_buffer || !compressor_kv_cur ||
+            !compressor_score_cur || !compressor_state_kv || !compressor_state_score ||
+            !compressed_kv_buffer || !compressor_packed_kv ||
+            !compressor_packed_score || !compressor_softmax)) {
+            return fail_with_message(error, error_bytes, @"failed to allocate attention compressor state");
+        }
+        if (indexer_layer && (!indexer_kv_cur || !indexer_score_cur ||
+            !indexer_state_kv || !indexer_state_score || !compressed_indexer_buffer ||
+            !indexer_packed_kv || !indexer_packed_score || !indexer_softmax)) {
+            return fail_with_message(error, error_bytes, @"failed to allocate indexer compressor state");
+        }
         if (rope_and_store && !chained_replay && position == 1u) {
             float *cache = cache_buffer.contents;
-            for (uint32_t index = 0; index < 3u*kv_elements; index++) cache[index] = -12345.5f;
+            for (uint32_t index = 0; index < cache_capacity_rows*kv_elements; index++) cache[index] = -12345.5f;
             if (attention_read) memcpy(cache, cache_row0, kv_elements*sizeof(float));
         }
         if (attention_read && !chained_replay) memset(mask_buffer.contents, 0, mask_storage_bytes);
+        if (compressed_layer && !chained_replay && position == 1u) {
+            memcpy(compressor_prime_buffer.contents, layer0->compressor_prime_attn_norm,
+                n_embd*sizeof(float));
+            memset(compressor_state_kv.contents, 0,
+                compressor_state_rows*compressor_width*sizeof(float));
+            float *scores = compressor_state_score.contents;
+            for (uint32_t index = 0; index < compressor_state_rows*compressor_width; index++) {
+                scores[index] = -INFINITY;
+            }
+            if (indexer_layer) {
+                memset(indexer_state_kv.contents, 0, 8u*256u*sizeof(float));
+                scores = indexer_state_score.contents;
+                for (uint32_t index = 0; index < 8u*256u; index++) scores[index] = -INFINITY;
+            }
+        }
 
         const uint64_t embedding_row_bytes = (uint64_t)n_embd*sizeof(uint16_t);
         rust_star_get_rows_args get_rows = {
@@ -1717,11 +2128,11 @@ int rust_star_metal_run_attention_ingress(
         const uint64_t attention_head_bytes = (uint64_t)kv_elements*sizeof(float);
         const uint64_t staged_row_bytes = (uint64_t)kv_elements*sizeof(uint16_t);
         rust_star_flash_pad_args flash_pad_args = {
-            .ne11=(int32_t)visible_cache_rows, .ne_12_2=1, .ne_12_3=1,
-            .nb11=staged_row_bytes, .nb12=(uint64_t)visible_cache_rows*staged_row_bytes,
-            .nb13=(uint64_t)visible_cache_rows*staged_row_bytes,
-            .nb21=staged_row_bytes, .nb22=(uint64_t)visible_cache_rows*staged_row_bytes,
-            .nb23=(uint64_t)visible_cache_rows*staged_row_bytes,
+            .ne11=(int32_t)attention_cache_rows, .ne_12_2=1, .ne_12_3=1,
+            .nb11=staged_row_bytes, .nb12=(uint64_t)attention_cache_rows*staged_row_bytes,
+            .nb13=(uint64_t)attention_cache_rows*staged_row_bytes,
+            .nb21=staged_row_bytes, .nb22=(uint64_t)attention_cache_rows*staged_row_bytes,
+            .nb23=(uint64_t)attention_cache_rows*staged_row_bytes,
             .ne31=1, .ne32=1, .ne33=1,
             .nb31=mask_row_bytes, .nb32=mask_row_bytes, .nb33=mask_row_bytes,
         };
@@ -1729,14 +2140,14 @@ int rust_star_metal_run_attention_ingress(
             .ne01=1, .ne02=64, .ne03=1,
             .nb01=64u*attention_head_bytes, .nb02=attention_head_bytes,
             .nb03=64u*attention_head_bytes,
-            .ne11=(int32_t)visible_cache_rows, .ne_12_2=1, .ne_12_3=1, .ns10=512,
+            .ne11=(int32_t)attention_cache_rows, .ne_12_2=1, .ne_12_3=1, .ns10=512,
             .nb11=staged_row_bytes,
-            .nb12=(uint64_t)visible_cache_rows*staged_row_bytes,
-            .nb13=(uint64_t)visible_cache_rows*staged_row_bytes,
+            .nb12=(uint64_t)attention_cache_rows*staged_row_bytes,
+            .nb13=(uint64_t)attention_cache_rows*staged_row_bytes,
             .ns20=512,
             .nb21=staged_row_bytes,
-            .nb22=(uint64_t)visible_cache_rows*staged_row_bytes,
-            .nb23=(uint64_t)visible_cache_rows*staged_row_bytes,
+            .nb22=(uint64_t)attention_cache_rows*staged_row_bytes,
+            .nb23=(uint64_t)attention_cache_rows*staged_row_bytes,
             .ne31=1, .ne32=1, .ne33=1,
             .nb31=mask_row_bytes, .nb32=mask_row_bytes, .nb33=mask_row_bytes,
             .ne1=64, .ne2=1, .ne3=1,
@@ -1901,7 +2312,7 @@ int rust_star_metal_run_attention_ingress(
         for (uint32_t execution = 0; execution < total_iterations; execution++) {
         if (execution > 0 && rope_and_store && position == 1u) {
             float *cache = cache_buffer.contents;
-            for (uint32_t index = 0; index < 3u*kv_elements; index++) cache[index] = -12345.5f;
+            for (uint32_t index = 0; index < cache_capacity_rows*kv_elements; index++) cache[index] = -12345.5f;
             if (attention_read) memcpy(cache, cache_row0, kv_elements*sizeof(float));
         }
         const double wall_start = monotonic_ms();
@@ -1909,6 +2320,35 @@ int rust_star_metal_run_attention_ingress(
         if (!command) return fail_with_message(error, error_bytes, @"failed to create attention ingress command buffer");
         id<MTLComputeCommandEncoder> encoder = [command computeCommandEncoder];
         if (!encoder) return fail_with_message(error, error_bytes, @"failed to create attention ingress encoder");
+
+        if (compressed_layer && position == 1u) {
+            if (!encode_compressor_step(context, encoder,
+                    compressor_prime_buffer,
+                    compressor_kv_weight, compressor_inner[1],
+                    compressor_gate_weight, compressor_inner[2],
+                    compressor_ape, compressor_inner[0],
+                    compressor_norm_weight, compressor_inner[3],
+                    compressor_kv_cur, compressor_score_cur,
+                    compressor_state_kv, compressor_state_score,
+                    compressor_packed_kv, compressor_packed_score,
+                    compressor_softmax, compressed_kv_buffer,
+                    compressor_width, 512u, compressor_ratio, 0u, NO, NO)) {
+                return fail_with_message(error, error_bytes, @"failed to encode attention compressor prime");
+            }
+            if (indexer_layer && !encode_compressor_step(context, encoder,
+                    compressor_prime_buffer,
+                    indexer_kv_weight, indexer_inner[1],
+                    indexer_gate_weight, indexer_inner[2],
+                    indexer_ape, indexer_inner[0],
+                    indexer_norm_weight, indexer_inner[3],
+                    indexer_kv_cur, indexer_score_cur,
+                    indexer_state_kv, indexer_state_score,
+                    indexer_packed_kv, indexer_packed_score,
+                    indexer_softmax, compressed_indexer_buffer,
+                    256u, 128u, 4u, 0u, NO, YES)) {
+                return fail_with_message(error, error_bytes, @"failed to encode indexer compressor prime");
+            }
+        }
 
         if (!continuing_layer) {
         [encoder setComputePipelineState:context.getRowsF16Pipeline];
@@ -2039,6 +2479,34 @@ int rust_star_metal_run_attention_ingress(
             [encoder dispatchThreadgroups:MTLSizeMake(1,1,1)
                  threadsPerThreadgroup:MTLSizeMake(64,1,1)];
 
+            if (compressed_layer) {
+                if (!encode_compressor_step(context, encoder, norm_buffer,
+                        compressor_kv_weight, compressor_inner[1],
+                        compressor_gate_weight, compressor_inner[2],
+                        compressor_ape, compressor_inner[0],
+                        compressor_norm_weight, compressor_inner[3],
+                        compressor_kv_cur, compressor_score_cur,
+                        compressor_state_kv, compressor_state_score,
+                        compressor_packed_kv, compressor_packed_score,
+                        compressor_softmax, compressed_kv_buffer,
+                        compressor_width, 512u, compressor_ratio, position,
+                        compressor_emit, NO)) {
+                    return fail_with_message(error, error_bytes, @"failed to encode attention compressor update");
+                }
+                if (indexer_layer && !encode_compressor_step(context, encoder, norm_buffer,
+                        indexer_kv_weight, indexer_inner[1],
+                        indexer_gate_weight, indexer_inner[2],
+                        indexer_ape, indexer_inner[0],
+                        indexer_norm_weight, indexer_inner[3],
+                        indexer_kv_cur, indexer_score_cur,
+                        indexer_state_kv, indexer_state_score,
+                        indexer_packed_kv, indexer_packed_score,
+                        indexer_softmax, compressed_indexer_buffer,
+                        256u, 128u, 4u, position, compressor_emit, YES)) {
+                    return fail_with_message(error, error_bytes, @"failed to encode indexer compressor update");
+                }
+            }
+
             if (attention_read) {
                 uint32_t staged_elements = visible_cache_rows*kv_elements;
                 [encoder setComputePipelineState:context.cpyF32F16Pipeline];
@@ -2048,6 +2516,17 @@ int rust_star_metal_run_attention_ingress(
                 const NSUInteger staged_groups = (staged_elements + 1023u) / 1024u;
                 [encoder dispatchThreadgroups:MTLSizeMake(staged_groups,1,1)
                      threadsPerThreadgroup:MTLSizeMake(256,1,1)];
+                if (compressor_emit) {
+                    uint32_t compressed_elements = kv_elements;
+                    [encoder setComputePipelineState:context.cpyF32F16Pipeline];
+                    [encoder setBytes:&compressed_elements length:sizeof(compressed_elements) atIndex:0];
+                    [encoder setBuffer:compressed_kv_buffer offset:0 atIndex:1];
+                    [encoder setBuffer:staged_kv_buffer
+                                 offset:visible_cache_rows*kv_elements*sizeof(uint16_t)
+                                atIndex:2];
+                    [encoder dispatchThreadgroups:MTLSizeMake(1,1,1)
+                         threadsPerThreadgroup:MTLSizeMake(256,1,1)];
+                }
 
                 [encoder setComputePipelineState:context.flashPadPipeline];
                 [encoder setBytes:&flash_pad_args length:sizeof(flash_pad_args) atIndex:0];
@@ -2330,8 +2809,9 @@ int rust_star_metal_run_attention_ingress(
         if (chained_submission) {
             result->model_bytes = model_bytes;
             result->max_buffer_length = context.device.maxBufferLength;
-            result->wrapped_model_ranges = 25;
-            for (uint32_t index = 0; index < 25; index++) {
+            result->wrapped_model_ranges = 25u + (compressed_layer ? 4u : 0u) +
+                (indexer_layer ? 4u : 0u);
+            for (uint32_t index = 0; index < result->wrapped_model_ranges; index++) {
                 if (matches[index]) result->pointer_matches++;
             }
             return 1;
@@ -2339,8 +2819,9 @@ int rust_star_metal_run_attention_ingress(
         if (chained_timing) {
             result->model_bytes = model_bytes;
             result->max_buffer_length = context.device.maxBufferLength;
-            result->wrapped_model_ranges = 25;
-            for (uint32_t index = 0; index < 25; index++) {
+            result->wrapped_model_ranges = 25u + (compressed_layer ? 4u : 0u) +
+                (indexer_layer ? 4u : 0u);
+            for (uint32_t index = 0; index < result->wrapped_model_ranges; index++) {
                 if (matches[index]) result->pointer_matches++;
             }
             result->wall_ms = measured_wall_ms;
@@ -2362,7 +2843,15 @@ int rust_star_metal_run_attention_ingress(
             memcpy(q_cur, q_cur_buffer.contents, q_raw_elements*sizeof(float));
             memcpy(kv_rope, kv_rope_buffer.contents, kv_elements*sizeof(float));
             memcpy(kv_cur, kv_norm_buffer.contents, kv_elements*sizeof(float));
-            memcpy(cache_rows, cache_buffer.contents, 3u*kv_elements*sizeof(float));
+            memcpy(cache_rows, cache_buffer.contents, cache_capacity_rows*kv_elements*sizeof(float));
+            if (compressed_layer) {
+                memcpy(layer0->compressed_kv_row, compressed_kv_buffer.contents,
+                    kv_elements*sizeof(float));
+            }
+            if (indexer_layer) {
+                memcpy(layer0->compressed_indexer_row, compressed_indexer_buffer.contents,
+                    128u*sizeof(float));
+            }
         }
         if (attention_read) {
             memcpy(attention_raw, attention_raw_buffer.contents, q_raw_elements*sizeof(float));
@@ -2388,7 +2877,8 @@ int rust_star_metal_run_attention_ingress(
         }
         result->model_bytes = model_bytes;
         result->max_buffer_length = context.device.maxBufferLength;
-        result->wrapped_model_ranges = full_layer ? 25 :
+        result->wrapped_model_ranges = full_layer
+            ? 25u + (compressed_layer ? 4u : 0u) + (indexer_layer ? 4u : 0u) :
             (attention_output ? 13 : (attention_read ? 11 : (extended ? 10 : 6)));
         for (uint32_t index = 0; index < result->wrapped_model_ranges; index++) if (matches[index]) result->pointer_matches++;
         result->wall_ms = measured_wall_ms/measured_iterations;

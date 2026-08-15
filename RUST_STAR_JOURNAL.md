@@ -23,7 +23,8 @@ history; add a correction and update the current-state summary.
 - Phase: target-Mac bootstrap, quick `oracle-v1`, no-copy model mapping, the
   canonical differential-fixture envelope, complete layer 0, steady-state
   layer-0 execution, the first four-layer scheduler boundary, and the minimum
-  two-step position-advancing four-layer slice are complete.
+  three-step position-advancing four-layer slice and the first compressed-cache
+  emission are complete.
   Layers 0 through 3 execute in order under one Rust-owned Metal context with
   exact GPU-resident HC-state handoffs and one retained KV allocation per
   layer. Layer 2 crosses the first compressed-attention RoPE boundary, and
@@ -90,12 +91,20 @@ history; add a correction and update the current-state summary.
   host outputs once. Warmup and measured chains reuse those bindings; measured
   iterations collect only Metal timing metadata, followed by one exhaustive C0
   readback after the final sample. The same prepared executor now advances from
-  token 201/position 1 to token 361/position 2 without recreating its four
-  layer-scoped KV caches. It verifies preserved FP16-rounded raw-cache history,
-  grows each cache from two to three visible rows, derives RoPE/attention/router
-  state from the explicit token and position, and hands off layer 3's final
-  16,384-element HC state. All retained boundaries match pinned position-1 and
-  independently repeated position-2 DwarfStar fixtures bit-for-bit.
+  token 201/position 1 through token 361/position 2 to token 1915/position 3
+  without recreating its four layer-scoped KV caches. It verifies preserved
+  FP16-rounded raw-cache history, grows each cache from two to four visible
+  rows, derives RoPE/attention/router state from the explicit token and
+  position, and hands off layer 3's final 16,384-element HC state. The decoder
+  now owns the recurrent attention-compressor state for layers 2 and 3 plus the
+  layer-2 indexer-compressor state. On the M1 Ultra it follows DwarfStar's
+  separate paired F16 projection and one-row state-store path, retains the
+  legacy concat/softmax/multiply/sum reduction for the first ratio-4 emission,
+  applies learned norm, compressed RoPE, state shift, and FP8/indexer QAT, then
+  appends the emitted layer-2 row to attention. All retained boundaries match
+  pinned position-1 and independently repeated position-2/3 DwarfStar fixtures
+  bit-for-bit. Corrected schedule: layer 2 uses ratio 4 and emits at position 3;
+  layer 3 uses ratio 128 and only accumulates state at this frontier.
 - Measurements: Metal batching was 42.861x faster than synchronized submission
   in the retained M-002 probe. DwarfStar medians are 164.86 prefill / 19.90
   generation tok/s at 2K and 161.05 prefill / 17.36 generation tok/s at 32K.
@@ -134,7 +143,11 @@ history; add a correction and update the current-state summary.
   and 70.862 ms summed GPU for its cold position-1 step, then 7.333 ms wall and
   6.347 ms summed GPU for position 2. Both steps were C0 exact across all four
   layers and cache histories; these remain correctness diagnostics rather than
-  model-throughput measurements.
+  model-throughput measurements. The first exact position-3 compressor run
+  reported 110.896/77.239 ms at the cold position-1 step, 8.863/8.123 ms at
+  position 2, and 10.455/9.618 ms at position 3 (wall/summed GPU). It matched
+  the emitted 512-value FP8 compressed KV row and every downstream layer
+  boundary; this is also correctness evidence, not token throughput.
 - Manual handoff: `RUST_STAR_MANUAL_TASKS.md` records Actions approval, target
   compilation/model inspection, quick/extended oracle capture, and the deferred
   secure-access decision with exact evidence requirements.
@@ -147,17 +160,95 @@ history; add a correction and update the current-state summary.
 
 ## Immediate Next Actions
 
-1. Implement and capture the layer-2/3 compressor/indexer state transition that
-   emits the first compressed-cache row at position 3; keep the two-step probe
-   and fixed-position replay as regression controls.
-2. After the position-3 gate is exact, extend the ordered executor to the next
-   materially distinct layer/state boundary rather than introducing a graph
-   framework.
+1. Generalize compressed-state ownership beyond the hard-coded layer-2/3 slice
+   and extend the ordered executor through the next compression-schedule pair,
+   while retaining positions 1–3 and fixed-position replay as controls.
+2. Plan the longer position-127 gate that exercises layer 3's first ratio-128
+   emission without treating 124 externally supplied oracle tokens as a full
+   decoder or sampling claim.
 3. Run the extended 2K--1M frontier capture when the Mac can be dedicated to a
    long benchmark; preserve any 512K/1M capacity failure as evidence.
 4. Run or approve the fork's GitHub Actions workflow and retain its URL.
 
 ## Entries
+
+### 2026-08-15 — First ratio-4 compressed KV emission matched at position 3
+
+Objective:
+
+- Cross the first compressed-attention boundary with real recurrent state,
+  preserve the existing four-layer scheduler/cache controls, and require the
+  emitted row plus all downstream boundaries to remain C0 exact.
+
+Oracle evidence:
+
+- Captured every retained layer 0–3 boundary at position 3 twice in independent
+  fresh DwarfStar processes. All 131 corresponding payloads were byte-identical.
+- Resolved the position-3 token as 1915 by uniquely matching the layer-0 hash
+  router row. The standard selected routes were `[133,217,222,94,234,246]`,
+  `[107,58,141,226,233,88]`, `[90,98,196,23,62,19]`, and
+  `[64,87,198,214,128,1]` for layers 0 through 3.
+- Captured layer 2's 512-value `KVcompress` row twice; both copies have SHA-256
+  `73cbd1e2e062b9b52e67223b8fe024a7992eeaf9be49a461ebdf7d659ebd32c8`.
+  Also captured independent layer-2/3 position-0 `attn_norm` inputs so Rust Star
+  can prime the recurrent state without substituting a synthetic activation.
+- Added four position-3 complete fixture envelopes and two position-0 prime
+  envelopes. Layer 2's complete fixture contains 33 tensors and 741,808 bytes;
+  the other complete fixtures contain 32 tensors and 739,760 bytes each.
+
+Schedule correction:
+
+- The earlier journal/README statement that layers 2 and 3 both used ratio 4
+  was incorrect. DwarfStar's schedule alternates ratio 4 on even compressed
+  layers and ratio 128 on odd compressed layers. Therefore layer 2 emits both
+  attention and indexer compressed rows at position 3; layer 3 only updates its
+  attention state and will first emit at position 127. Historical entries are
+  retained unchanged; this entry and Current State are authoritative.
+
+Implementation:
+
+- Added persistent layer-scoped attention-compressor state for layers 2/3 and
+  indexer-compressor state for layer 2, including exact position-0 priming.
+- Mirrored the pinned M1 Ultra path: paired F16 matvec with two rows per
+  threadgroup, separate one-row APE state store, and the legacy single-emission
+  concat/softmax/multiply/sum reduction. The newer M3/M5 fused store and direct
+  ratio-4 pool paths are not used.
+- Added learned weighted RMS norm, compressed RoPE, ratio-4 state shift, FP8 KV
+  quantization, and indexer Hadamard/FP4 QAT. The emitted layer-2 KV row is
+  staged after four raw rows and consumed by FlashAttention at position 3.
+- Grew each raw cache to four rows and the mixed attention staging capacity to
+  five rows. Layer 2 now binds 33 no-copy model ranges, layer 3 binds 29, and
+  layers 0/1 remain at 25.
+
+Target-Mac evidence:
+
+- `layers0123-decode-probe` passed at positions 1, 2, and 3. The emitted layer-2
+  compressed row matched all 512 FP32 bit patterns, and every retained
+  attention, router, expert, HC, and raw-cache boundary remained exact through
+  layer 3.
+- The first passing run reported 110.896/77.239 ms at position 1,
+  8.863/8.123 ms at position 2, and 10.455/9.618 ms at position 3
+  (wall/summed GPU). These intervals include correctness-probe behavior and are
+  not decoder-throughput measurements.
+- The pre-documentation gate passed 48 Rust tests and the optimized macOS run.
+  The completed repository gate passed formatting, 49 Rust tests, 40 Python
+  tests, all 21 differential fixture envelopes, the optimized macOS build, the
+  strict 1,288-tensor target recipe, and every earlier incremental,
+  synchronized, chained, and steady-state Metal control. Its integrated
+  position-advancing run reported 110.111/74.626 ms at position 1,
+  7.014/6.520 ms at position 2, and 9.448/7.164 ms at position 3
+  (wall/summed GPU), all C0 exact.
+- The first full-gate attempt exposed a lifetime bug outside the chained path:
+  synchronized layers 2 and 3 shared compressor scratch keys despite their
+  different state sizes. Compressor and indexer allocations are now always
+  keyed by layer identity. The failed control passed before the complete gate
+  was rerun from the beginning.
+
+Next:
+
+- Generalize the compressor schedule/state plumbing for the next layer pair,
+  then design a bounded position-127 oracle-token gate for layer 3's first
+  ratio-128 emission.
 
 ### 2026-08-15 — Four-layer state advanced across two exact decode positions
 

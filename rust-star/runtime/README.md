@@ -327,19 +327,23 @@ rust-star/.work/runtime-target/release/rust-star layers0123-decode-probe \
 ```
 
 `layers0123-decode-probe` prepares layers 0–3 once, executes token 201 at
-position 1, then reuses the same four layer-scoped KV allocations for token 361
-at position 2. Each step commits four ordered command buffers and waits once at
-the tail. The probe requires every retained attention, router, expert, and HC
-boundary to match independently repeated DwarfStar captures bit-for-bit; it
-also verifies that each raw KV cache preserves its earlier rows and grows from
-two visible rows to three. Layer 3's final 16,384-element HC state is the
-explicit output handoff.
+position 1, token 361 at position 2, and token 1915 at position 3 while reusing
+the same four layer-scoped KV allocations. Each step commits four ordered
+command buffers and waits once at the tail. The probe requires every retained
+attention, router, expert, and HC boundary to match independently repeated
+DwarfStar captures bit-for-bit; it also verifies that each raw KV cache
+preserves its earlier rows and grows from two visible rows to four. Layer 2
+advances its ratio-4 attention and indexer compressor states, emits and checks
+its first compressed KV row, and appends that row to its position-3 attention
+input. Layer 3 advances its ratio-128 attention compressor without emitting.
+Layer 3's final 16,384-element HC state is the explicit output handoff.
 
 This is the first stateful decode slice, but not a complete decoder or a
 throughput benchmark. It covers four of 43 layers and does not produce logits
-or sample a next token. Layers 2–3 use compression ratio four, so positions 1
-and 2 have no compressed-cache row. Advancing to position 3 requires the real
-compressor/indexer state transition and is the next correctness gate.
+or sample a next token. The compression schedule is layer-specific: layer 2
+uses ratio 4 and emits at position 3, while layer 3 uses ratio 128 and will not
+emit until position 127. This corrects the earlier documentation statement
+that both layers used ratio 4.
 
 For repeated fixed-position execution with preparation and correctness
 collection outside the measured interval:

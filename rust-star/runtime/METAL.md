@@ -344,25 +344,28 @@ does not promote this four-layer diagnostic to decoder throughput.
 Schema: `rust-star-layers0123-position-advancing-probe-v1`.
 
 `layers0123-decode-probe` retains one prepared execution object and one raw KV
-allocation for each of layers 0–3 across two real decode steps. Token 201 at
+allocation for each of layers 0–3 across three real decode steps. Token 201 at
 position 1 writes raw row 1 and reads rows 0–1. Token 361 at position 2
-preserves those rows, writes raw row 2, and reads rows 0–2. Both steps submit
-four layer command buffers to the same queue and perform one tail wait.
+preserves those rows, writes raw row 2, and reads rows 0–2. Token 1915 at
+position 3 writes raw row 3; layer 2 also emits a compressed row, so its
+attention reads five rows while the other layers read four. Every step submits
+four layer command buffers to the same queue and performs one tail wait.
 
 The ABI carries token and position explicitly. RoPE, inverse RoPE, raw-cache
 targeting, visible attention geometry, and hash routing all derive from those
 values. Raw KV values are validated after the same FP16 store rounding used by
 DwarfStar, including all retained history. The FP32→FP16 attention staging
-dispatch scales with the visible row count, so the third row is covered rather
-than inheriting the old two-row launch geometry.
+dispatch scales with the mixed visible row count.
 
-All 32 retained position-2 tensor boundaries per layer come from two
-byte-identical fresh-process DwarfStar captures. The final layer-3 HC buffer has
-16,384 FP32 elements and is the declared output handoff. This slice deliberately
-stops before position 3: layers 2–3 have compression ratio four, and their first
-compressed-cache emission requires the compressor/indexer state that is not yet
-implemented. The probe also omits the remaining 39 layers, output head, logits,
-and sampling, so its timing is not model token throughput.
+All retained position-2 and position-3 tensor boundaries come from two
+byte-identical fresh-process DwarfStar captures. Layer 2 owns ratio-4 attention
+and indexer compressor state, reproduces the M1 separate paired-projection and
+state-store path, and validates its first 512-value compressed KV emission.
+Layer 3 owns ratio-128 attention state and does not emit at this frontier. This
+corrects the earlier assumption that both layers used ratio four. The final
+layer-3 HC buffer has 16,384 FP32 elements and is the declared output handoff.
+The probe still omits the remaining 39 layers, output head, logits, and
+sampling, so its timing is not model token throughput.
 
 ## Repeated layers 0–3 steady-state replay
 

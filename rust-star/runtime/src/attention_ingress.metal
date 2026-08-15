@@ -127,6 +127,7 @@ kernel void kernel_rms_norm_fuse_impl(
 
 typedef decltype(kernel_rms_norm_fuse_impl<float4, 1>) kernel_rms_norm_fuse_t;
 template [[host_name("kernel_rms_norm_f32_4")]] kernel kernel_rms_norm_fuse_t kernel_rms_norm_fuse_impl<float4, 1>;
+template [[host_name("kernel_rms_norm_f32_weighted_4")]] kernel kernel_rms_norm_fuse_t kernel_rms_norm_fuse_impl<float4, 2>;
 
 struct ds4_metal_args_qkv_rms_norm {
     int q_n; int q_n4; int kv_n; int kv_n4;
@@ -254,6 +255,130 @@ kernel void kernel_mul_mv_f16_f32_4(
         ushort tiisg [[thread_index_in_simdgroup]],
         ushort sgitg [[simdgroup_index_in_threadgroup]]) {
     kernel_mul_mv_f16_f32_4_impl<2>(args, src0, src1, dst, shmem, tgpig, tiisg, sgitg);
+}
+
+// Exact DwarfStar M1 compressor pair path. The two projections retain the
+// original per-matrix reduction order while sharing the activation stream.
+template<short NR0>
+void kernel_mul_mv_f16_f32_pair_4_impl(
+        constant ds4_metal_args_mul_mv & args,
+        device const char * src0_a, device const char * src0_b,
+        device const char * src1, device char * dst_a, device char * dst_b,
+        threadgroup char * shmem, uint3 tgpig, ushort tiisg, ushort sgitg) {
+    const short NSG = FC_mul_mv_nsg;
+    constexpr short NW = 32;
+    constexpr short NB = 32;
+    constexpr short NF = 16;
+    constexpr short NF4 = 4;
+    const int nb = args.ne00/NB;
+    const int r0 = tgpig.x*NR0;
+    const int r1 = tgpig.y;
+    const int im = tgpig.z;
+    const uint i12 = im%args.ne12;
+    const uint i13 = im/args.ne12;
+    const uint64_t offset1 = r1*args.nb11 + i12*args.nb12 + i13*args.nb13;
+    device const float * y = (device const float *)(src1 + offset1);
+    device const float4 * y4 = (device const float4 *)(src1 + offset1);
+    device const half * ax_a[NR0];
+    device const half4 * ax4_a[NR0];
+    device const half * ax_b[NR0];
+    device const half4 * ax4_b[NR0];
+    FOR_UNROLL (short row = 0; row < NR0; ++row) {
+        const uint64_t offset0 = (r0 + row)*args.nb01 +
+            (i12/args.r2)*args.nb02 + (i13/args.r3)*args.nb03;
+        ax_a[row] = (device const half *)(src0_a + offset0);
+        ax4_a[row] = (device const half4 *)(src0_a + offset0);
+        ax_b[row] = (device const half *)(src0_b + offset0);
+        ax4_b[row] = (device const half4 *)(src0_b + offset0);
+    }
+    float sum_a[NR0] = {0.f};
+    float sum_b[NR0] = {0.f};
+    const short ix = tiisg/(NW/NF);
+    const short il = tiisg%(NW/NF);
+    const int ib0 = sgitg*NF + ix;
+    float4 yl4[NF4];
+    device const float4 * yb4 = y4 + (ib0*NB + il*NF)/4;
+    for (int ib = ib0; ib < nb; ib += NSG*NF) {
+        for (short i = 0; i < NF4; ++i) yl4[i] = yb4[i];
+        for (short row = 0; row < NR0; row++) {
+            device const half4 * xb4_a = ax4_a[row] + (ib*NB + il*NF)/4;
+            device const half4 * xb4_b = ax4_b[row] + (ib*NB + il*NF)/4;
+            float suma = 0.f;
+            float sumb = 0.f;
+            FOR_UNROLL (short i = 0; i < NF4; ++i) {
+                const float4 yv = float4(yl4[i]);
+                suma += dot(float4(xb4_a[i]), yv);
+                sumb += dot(float4(xb4_b[i]), yv);
+            }
+            sum_a[row] += suma;
+            sum_b[row] += sumb;
+        }
+        yb4 += NSG*NF*NW/4;
+    }
+    for (int i = nb*NB + sgitg*NW + tiisg; i < args.ne00; i += NW*NSG) {
+        for (short row = 0; row < NR0; row++) {
+            const float yi = y[i];
+            sum_a[row] += ax_a[row][i]*yi;
+            sum_b[row] += ax_b[row][i]*yi;
+        }
+    }
+    device float * dst_a_f32 = (device float *)dst_a +
+        (uint64_t)im*args.ne0*args.ne1 + (uint64_t)r1*args.ne0;
+    device float * dst_b_f32 = (device float *)dst_b +
+        (uint64_t)im*args.ne0*args.ne1 + (uint64_t)r1*args.ne0;
+    helper_mv_reduce_and_write<NR0>(dst_a_f32, sum_a, r0, args.ne01, tiisg, sgitg, shmem);
+    threadgroup_barrier(mem_flags::mem_threadgroup);
+    helper_mv_reduce_and_write<NR0>(dst_b_f32, sum_b, r0, args.ne01, tiisg, sgitg, shmem);
+}
+
+kernel void kernel_mul_mv_f16_f32_pair_4(
+        constant ds4_metal_args_mul_mv & args,
+        device const char * src0_a, device const char * src0_b,
+        device const char * src1, device char * dst_a, device char * dst_b,
+        threadgroup char * shmem [[threadgroup(0)]],
+        uint3 tgpig [[threadgroup_position_in_grid]],
+        ushort tiisg [[thread_index_in_simdgroup]],
+        ushort sgitg [[simdgroup_index_in_threadgroup]]) {
+    if (args.nr0 == 4) {
+        kernel_mul_mv_f16_f32_pair_4_impl<4>(args, src0_a, src0_b, src1,
+            dst_a, dst_b, shmem, tgpig, tiisg, sgitg);
+    } else {
+        kernel_mul_mv_f16_f32_pair_4_impl<2>(args, src0_a, src0_b, src1,
+            dst_a, dst_b, shmem, tgpig, tiisg, sgitg);
+    }
+}
+
+struct rust_star_compressor_pack_args {
+    uint width;
+    uint head_dim;
+};
+
+// Reproduces the two strided concat copies that precede the legacy compressor
+// softmax graph. Output is [head_dim, 8] with the eight values contiguous.
+kernel void rust_star_compressor_pack_ratio4_one(
+        constant rust_star_compressor_pack_args & args,
+        device const float * state_kv,
+        device const float * state_score,
+        device float * packed_kv,
+        device float * packed_score,
+        uint gid [[thread_position_in_grid]]) {
+    const uint total = args.head_dim*8u;
+    if (gid >= total) return;
+    const uint col = gid/8u;
+    const uint row = gid - col*8u;
+    const uint src = row < 4u
+        ? row*args.width + col
+        : row*args.width + args.head_dim + col;
+    packed_kv[gid] = state_kv[src];
+    packed_score[gid] = state_score[src];
+}
+
+kernel void rust_star_mul_f32(
+        device const float * a,
+        device const float * b,
+        device float * dst,
+        uint gid [[thread_position_in_grid]]) {
+    dst[gid] = a[gid]*b[gid];
 }
 
 struct ds4_metal_args_dsv4_hc_split_weighted_sum_norm {

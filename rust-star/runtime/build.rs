@@ -23,6 +23,8 @@ fn main() {
     println!("cargo:rerun-if-changed=../../metal/dsv4_kv.metal");
     println!("cargo:rerun-if-changed=../../metal/cpy.metal");
     println!("cargo:rerun-if-changed=../../metal/flash_attn.metal");
+    println!("cargo:rerun-if-changed=../../metal/softmax.metal");
+    println!("cargo:rerun-if-changed=../../metal/sum_rows.metal");
     println!("cargo:rerun-if-changed=../../metal/dense.metal");
     println!("cargo:rerun-if-changed=../../metal/moe.metal");
     println!("cargo:rerun-if-changed=../../metal/dsv4_hc.metal");
@@ -43,6 +45,8 @@ fn main() {
             manifest.join("../../metal/dsv4_kv.metal"),
             manifest.join("../../metal/cpy.metal"),
             manifest.join("../../metal/flash_attn.metal"),
+            manifest.join("../../metal/softmax.metal"),
+            manifest.join("../../metal/sum_rows.metal"),
         ],
         &output.join("attention_ingress_source.inc"),
         "kAttentionIngressSource",
