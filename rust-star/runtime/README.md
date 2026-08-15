@@ -378,6 +378,26 @@ caches and all compressor allocations remain layer-scoped, with eight ordered
 command buffers and one tail wait per position. The command covers eight of 43
 layers and remains a correctness diagnostic rather than token throughput.
 
+To execute the same exact boundary through the complete transformer stack:
+
+```sh
+rust-star/.work/runtime-target/release/rust-star \
+  layers0-42-decode-probe \
+  /absolute/path/to/model.gguf \
+  --json rust-star/.work/runtime-target/layers0-42-decode-probe.json
+```
+
+`layers0-42-decode-probe` uses one checked fixture registry for layers 4–42
+and preserves the four-, six-, and eight-layer commands as separate controls.
+It executes 43 ordered command buffers with one tail wait per position, retains
+43 raw KV caches plus layer-scoped compressor state, validates every even-layer
+position-3 compressed KV emission through layer 42, and exposes layer 42's
+exact 16,384-element HC state. Two fresh oracle processes produced 3,448
+byte-identical payload pairs for the newly added layers 8–42 before fixture
+import. This is the full transformer-stack boundary, but it still stops before
+output normalization, vocabulary logits, and token sampling and therefore is
+not yet a complete decoder or a token-throughput benchmark.
+
 To cross the first ratio-128 emission boundary without overstating decoder
 coverage:
 

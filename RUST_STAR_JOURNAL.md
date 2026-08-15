@@ -26,11 +26,13 @@ history; add a correction and update the current-state summary.
   three-step position-advancing four-layer slice, and the generalized six-layer
   compression-schedule boundary are complete. A bounded position-127 replay now
   also crosses the first ratio-128 emissions for layers 3 and 5 exactly. The
-  ordered position-advancing executor now extends through layer 7.
-  Layers 0 through 7 execute in order under one Rust-owned Metal context with
+  ordered position-advancing executor now extends through all 43 transformer
+  layers.
+  Layers 0 through 42 execute in order under one Rust-owned Metal context with
   exact GPU-resident HC-state handoffs and one retained KV allocation per
-  layer. Layers 2 and 4 cross ratio-4 compressed-attention emission boundaries;
-  layers 3 and 5 retain their ratio-128 state without emitting at position 3.
+  layer. Every even layer from 2 through 42 crosses its first ratio-4
+  compressed-attention emission boundary at position 3; odd compressed layers
+  retain ratio-128 state without emitting at this frontier.
   Layer 3 crosses from token-hash routing to biased top-k routing.
 - Working branch: `agent/rust-star-bootstrap`.
 - Branch base: upstream `antirez/ds4` commit
@@ -123,6 +125,12 @@ history; add a correction and update the current-state summary.
   its first ratio-4 attention emission and indexer update at position 3, while
   layer 7 advances ratio-128 state without emitting. The four-layer and
   six-layer commands remain independently executed regression controls.
+  The remaining layer-8–42 boundaries are represented by one checked fixture
+  registry rather than pair-specific branches. The 43-layer command preserves
+  all earlier controls, retains 43 raw caches and all layer-scoped compressor
+  state, advances three exact decode positions, and hands off layer 42's final
+  16,384-element HC state. It still stops before output normalization, logits,
+  and sampling and therefore is not a complete decoder.
 - Measurements: Metal batching was 42.861x faster than synchronized submission
   in the retained M-002 probe. DwarfStar medians are 164.86 prefill / 19.90
   generation tok/s at 2K and 161.05 prefill / 17.36 generation tok/s at 32K.
@@ -179,7 +187,12 @@ history; add a correction and update the current-state summary.
   position-1 step, 16.989/16.442 ms at position 2, and 17.782/17.160 ms at
   position 3 (wall/summed GPU). It matched every retained layer 0–7 boundary
   and all three ratio-4 emissions. These values are also correctness
-  diagnostics, not token-throughput measurements.
+  diagnostics, not token-throughput measurements. The complete 43-layer gate
+  reported 837.045/800.215 ms at position 1, 62.799/61.229 ms at position 2,
+  and 53.374/49.691 ms at position 3 (wall/summed GPU). It matched every
+  retained layer 0–42 boundary and all even-layer ratio-4 emissions through
+  layer 42. These intervals also include correctness-oriented work and are not
+  token-throughput measurements.
 - Manual handoff: `RUST_STAR_MANUAL_TASKS.md` records Actions approval, target
   compilation/model inspection, quick/extended oracle capture, and the deferred
   secure-access decision with exact evidence requirements.
@@ -192,19 +205,76 @@ history; add a correction and update the current-state summary.
 
 ## Immediate Next Actions
 
-1. Batch-capture the remaining layer-8–42 position-0/1/2/3 boundaries twice,
-   verifying corresponding payloads before importing any fixture.
-2. Replace pair-specific fixture tables with a checked layer registry, then
-   extend the ordered executor across the remaining decoder layers while
-   retaining the four-, six-, and eight-layer paths as controls.
-3. Define the next end-to-end boundary toward the complete decoder loop,
-   output head, and logits without weakening the bounded ratio-128 replay's
-   external-activation scope.
+1. Define and capture the post-transformer boundary: output normalization,
+   vocabulary projection/logits, and exact next-token selection for the same
+   three positions, without conflating it with the separately bounded
+   position-127 ratio-128 replay.
+2. Convert the exact 43-layer correctness executor into a measured decoder
+   candidate only after the output/logit/sampling boundary is complete and the
+   paired engine adapter can emit the pinned benchmark contract.
+3. Preserve the four-, six-, eight-, and 43-layer commands as independently
+   executed controls while adding the output head.
 4. Run the extended 2K--1M frontier capture when the Mac can be dedicated to a
    long benchmark; preserve any 512K/1M capacity failure as evidence.
 5. Run or approve the fork's GitHub Actions workflow and retain its URL.
 
 ## Entries
+
+### 2026-08-15 — Ordered exact execution extended through all 43 layers
+
+Objective:
+
+- Complete the transformer-stack boundary through layer 42 while retaining the
+  published four-, six-, and eight-layer controls and every C0 contract.
+
+Oracle evidence:
+
+- Batch-captured positions 0–3 for layers 8–42 twice in fresh pinned
+  DwarfStar processes. All 3,448 corresponding payload pairs, totaling
+  78,356,784 bytes per run, were byte-identical. Their ordered aggregate
+  SHA-256 is
+  `0c63afebdf0b0e40ed48f2efb2c06b3b7fe193e420d7456de2a8fdbf84cd1f29`.
+- All eight capture CSVs recorded one context/prefill token and three generated
+  tokens. Position 3 contained `KVcompress` rows for exactly the 18 even layers
+  from 8 through 42 and none of the odd layers.
+- Imported 140 new strict fixture envelopes: one position-0 compressor prime
+  and complete position-1/2/3 boundaries for each remaining layer. The
+  repository now contains 179 validated differential-fixture manifests.
+
+Implementation:
+
+- Replaced layer-4–7 pair-specific complete-fixture, cache-row, compressor
+  prime, and compressed-row branches with a checked registry covering layers
+  4–42. The registry has explicit bounds and a separate even-layer compressed
+  output table.
+- Widened the checked contiguous scheduler and Objective-C layer/tail guards to
+  43 layers without changing compressor arithmetic or the existing control
+  commands.
+- Added `layers0-42-decode-probe`, schema
+  `rust-star-layers0-42-position-advancing-probe-v1`, atomic JSON output,
+  runtime-gate coverage, registry/shape tests, and a reproducible repeated-run
+  fixture importer.
+
+Validation:
+
+- The complete target-Mac gate passed: formatting, 57 Rust tests, optimized
+  Objective-C/Metal build, 42 Python tests, all 179 fixture manifests, artifact
+  interoperability, strict real-model inspection, every established no-copy,
+  layer, scheduler, compressor, and benchmark control, plus the new 43-layer
+  command.
+- The 43-layer path was C0 exact for all 129 layer/position boundaries. The
+  final gate reported 837.045/800.215 ms at position 1, 62.799/61.229 ms at
+  position 2, and 53.374/49.691 ms at position 3 (wall/summed GPU).
+- It retains 43 raw KV caches, validates every position-3 even-layer compressed
+  KV row through layer 42, and exposes layer 42's exact 16,384-element HC state.
+  Setup, synchronization, and exhaustive comparison remain in scope, so these
+  timings are correctness diagnostics rather than token-throughput claims.
+
+Decision:
+
+- Accept the full transformer-stack boundary. The next exact gate is output
+  normalization, logits, and token selection; do not call the current command
+  a complete decoder until that boundary is implemented and verified.
 
 ### 2026-08-15 — Ordered exact execution extended through layer 7
 

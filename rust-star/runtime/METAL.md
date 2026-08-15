@@ -404,6 +404,26 @@ wait. The four-layer and six-layer commands remain separate exact regression
 controls. This still omits 35 decoder layers, the output head, logits, and
 sampling, so its timing is not model token throughput.
 
+## Position-advancing layers 0–42
+
+Schema: `rust-star-layers0-42-position-advancing-probe-v1`.
+
+`layers0-42-decode-probe` widens the same checked contiguous scheduler through
+all 43 transformer layers. A bounded registry maps layers 4–42 to their
+position-0 compressor primes, position-1 cache rows, complete position-1/2/3
+boundaries, and the position-3 compressed output for even layers. Layers 8–42
+were captured twice in fresh DwarfStar processes; all 3,448 corresponding
+payload pairs were byte-identical before import.
+
+The command retains one raw cache and the required compressor allocations per
+layer, submits 43 ordered command buffers and waits once at each position tail,
+validates every even-layer ratio-4 emission through layer 42, and requires
+layer 42's final 16,384-element HC state to match C0. The four-, six-, and
+eight-layer commands remain independent regression controls. This proves the
+transformer-stack boundary only: output normalization, vocabulary logits, and
+sampling remain outside the command, so its timing is not model token
+throughput.
+
 ## Position-127 ratio-128 compressor replay
 
 Schema: `rust-star-ratio128-compressor-replay-probe-v1`.

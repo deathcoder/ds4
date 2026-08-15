@@ -44,10 +44,17 @@ oracle inputs: the replay performs neither sampling nor a complete decoder pass.
 An eight-layer extension continues through layers 6 and 7, validates a third
 ratio-4 emission from layer 6, and retains layer 7's ratio-128 state. All 197
 new oracle payload pairs were independently repeated and byte-identical. The
-persistent layer-0 gate reuses its pipelines, 25 no-copy model views, cache
+persistent executor now also has a checked all-transformer command covering
+layers 0 through 42. Its remaining 3,448 oracle payload pairs were captured
+twice and matched byte-for-byte before 140 new fixture envelopes were imported.
+The command retains 43 raw KV caches, validates every even-layer position-3
+ratio-4 emission through layer 42, and hands off layer 42's exact
+16,384-element HC state. The four-, six-, and eight-layer commands remain
+separate regression controls. The persistent layer-0 gate reuses its pipelines,
+25 no-copy model views, cache
 storage, and activation buffers for repeated steady-state timing; this is not
-yet a complete decoder because the deepest exact slice has eight layers and no
-logits or sampling.
+yet a complete decoder because output normalization, logits, and sampling are
+still outside the deepest exact slice.
 
 Project controls and benchmark contracts:
 
