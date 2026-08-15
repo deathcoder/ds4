@@ -33,6 +33,8 @@ pub const LAYERS0_TO_42_DECODE_PROBE_SCHEMA: &str =
 pub const DECODER_OUTPUT_PROBE_SCHEMA: &str =
     "rust-star-decoder-output-position-advancing-probe-v2";
 pub const CLOSED_LOOP_DECODER_PROBE_SCHEMA: &str = "rust-star-closed-loop-decoder-diagnostic-v2";
+pub const POSITION127_DECODER_PROBE_SCHEMA: &str =
+    "rust-star-position127-decoder-frontier-diagnostic-v1";
 pub const RATIO128_COMPRESSOR_REPLAY_PROBE_SCHEMA: &str =
     "rust-star-ratio128-compressor-replay-probe-v1";
 pub const PROJECTION_FIXTURE_ID: &str = "dwarfstar-oracle-v1-layer0-pos1-attn-q-a";
@@ -71,6 +73,7 @@ pub const LAYER3_POS127_COMPRESSOR_FIXTURE_ID: &str =
     "dwarfstar-oracle-v1-layer3-pos127-compressor-replay";
 pub const LAYER5_POS127_COMPRESSOR_FIXTURE_ID: &str =
     "dwarfstar-oracle-v1-layer5-pos127-compressor-replay";
+pub const POSITION127_DECODER_FIXTURE_ID: &str = "dwarfstar-oracle-v1-decoder-frontier-pos127";
 pub const DEFAULT_ELEMENTS: u64 = 4096;
 pub const DEFAULT_ITERATIONS: u64 = 100;
 const MAX_ELEMENTS: u64 = 16 * 1024 * 1024;
@@ -118,6 +121,10 @@ const OUTPUT_HEAD_POS4_NORM_BYTES: &[u8] =
     include_bytes!("../../fixtures/output-head-pos4-v1/output-norm.f32le.bin");
 const OUTPUT_HEAD_POS4_LOGITS_BYTES: &[u8] =
     include_bytes!("../../fixtures/output-head-pos4-v1/logits.f32le.bin");
+const POSITION127_TOKEN_IDS_BYTES: &[u8] =
+    include_bytes!("../../fixtures/decoder-frontier-pos127-v1/token-ids.u32le.bin");
+const POSITION127_LOGITS_BYTES: &[u8] =
+    include_bytes!("../../fixtures/decoder-frontier-pos127-v1/logits.f32le.bin");
 const PROJECTION_TENSOR: &str = "blk.0.attn_q_a.weight";
 const PROJECTION_INPUT_BYTES: &[u8] =
     include_bytes!("../../fixtures/q8-attn-q-a-v1/activation.f32le.bin");
@@ -864,6 +871,23 @@ pub struct ClosedLoopDecoderProbeReport {
 }
 
 #[derive(Clone, Debug)]
+pub struct Position127DecoderProbeReport {
+    pub fixture_id: &'static str,
+    pub committed_tokens: Vec<u32>,
+    pub evaluated_positions: u32,
+    pub final_position: u32,
+    pub cache_capacity_rows: u32,
+    pub compressed_cache_capacity_rows: u32,
+    pub command_buffers_per_position: u32,
+    pub host_waits_per_position: u32,
+    pub wall_ms: f64,
+    pub eval_tps: f64,
+    pub final_logits_checksum: u64,
+    pub ratio128_layer3_checksum: u64,
+    pub ratio128_layer5_checksum: u64,
+}
+
+#[derive(Clone, Debug)]
 pub struct Ratio128CompressorLayerReport {
     pub layer: u32,
     pub fixture_id: &'static str,
@@ -1513,6 +1537,69 @@ pub fn write_closed_loop_decoder_probe_json<W: Write>(
     Ok(())
 }
 
+pub fn write_position127_decoder_probe_json<W: Write>(
+    output: &mut W,
+    report: &Position127DecoderProbeReport,
+) -> Result<()> {
+    let (expected_tokens, expected_logits) = position127_decoder_fixture()?;
+    let expected_layer3 = decode_f32_fixture(
+        LAYER3_POS127_COMPRESSED_KV_BYTES,
+        "layer-3 position-127 compressed KV row",
+    )?;
+    let expected_layer5 = decode_f32_fixture(
+        LAYER5_POS127_COMPRESSED_KV_BYTES,
+        "layer-5 position-127 compressed KV row",
+    )?;
+    if report.fixture_id != POSITION127_DECODER_FIXTURE_ID
+        || report.committed_tokens != expected_tokens
+        || report.evaluated_positions != 127
+        || report.final_position != 127
+        || report.cache_capacity_rows != 128
+        || report.compressed_cache_capacity_rows != 32
+        || report.command_buffers_per_position != 44
+        || report.host_waits_per_position != 2
+        || !report.wall_ms.is_finite()
+        || report.wall_ms <= 0.0
+        || !report.eval_tps.is_finite()
+        || report.eval_tps <= 0.0
+        || report.eval_tps.to_bits() != (127000.0 / report.wall_ms).to_bits()
+        || report.final_logits_checksum != checksum_f32(&expected_logits)
+        || report.ratio128_layer3_checksum != checksum_f32(&expected_layer3)
+        || report.ratio128_layer5_checksum != checksum_f32(&expected_layer5)
+    {
+        return Err(Error::invalid(
+            "position-127 decoder report has inconsistent frontier metadata",
+        ));
+    }
+    write!(
+        output,
+        "{{\n  \"schema\": \"{POSITION127_DECODER_PROBE_SCHEMA}\",\n  \"classification\": \"diagnostic\",\n  \"fixture\": \"{}\",\n  \"bootstrap_prompt_token\": 36662,\n  \"committed_tokens\": [",
+        report.fixture_id,
+    )?;
+    for (index, token) in report.committed_tokens.iter().enumerate() {
+        if index != 0 {
+            write!(output, ",")?;
+        }
+        write!(output, "{token}")?;
+    }
+    write!(
+        output,
+        "],\n  \"frontier\": {{\"evaluated_positions\": {}, \"final_position\": {}, \"raw_cache_capacity_rows\": {}, \"compressed_cache_capacity_rows\": {}}},\n  \"schedule\": {{\"command_buffers_per_position\": {}, \"host_waits_per_position\": {}}},\n  \"timing\": {{\"wall_ms\": {:.6}, \"evaluated_positions_per_second\": {:.6}, \"correctness_readback_in_interval\": false}},\n  \"checksums\": {{\"final_logits\": {}, \"layer3_ratio128_row0\": {}, \"layer5_ratio128_row0\": {}}},\n  \"transcript_token_match\": true,\n  \"final_logits_c0_bitwise_match\": true,\n  \"integrated_ratio128_rows_c0_bitwise_match\": true,\n  \"paired_protocol_eligible\": false,\n  \"paired_protocol_blocker\": \"cold prefill and arbitrary-frontier decode are not implemented\"\n}}\n",
+        report.evaluated_positions,
+        report.final_position,
+        report.cache_capacity_rows,
+        report.compressed_cache_capacity_rows,
+        report.command_buffers_per_position,
+        report.host_waits_per_position,
+        report.wall_ms,
+        report.eval_tps,
+        report.final_logits_checksum,
+        report.ratio128_layer3_checksum,
+        report.ratio128_layer5_checksum,
+    )?;
+    Ok(())
+}
+
 pub fn write_ratio128_compressor_replay_probe_json<W: Write>(
     output: &mut W,
     report: &Ratio128CompressorReplayProbeReport,
@@ -1984,6 +2071,34 @@ fn decode_f32_fixture(bytes: &[u8], label: &str) -> Result<Vec<f32>> {
         values.push(value);
     }
     Ok(values)
+}
+
+fn decode_u32_fixture(bytes: &[u8], label: &str) -> Result<Vec<u32>> {
+    if bytes.is_empty() || bytes.len() % 4 != 0 {
+        return Err(Error::invalid(format!(
+            "{label} fixture must contain nonempty little-endian U32 data"
+        )));
+    }
+    Ok(bytes
+        .chunks_exact(4)
+        .map(|chunk| u32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]))
+        .collect())
+}
+
+fn position127_decoder_fixture() -> Result<(Vec<u32>, Vec<f32>)> {
+    let tokens = decode_u32_fixture(POSITION127_TOKEN_IDS_BYTES, "position-127 token transcript")?;
+    let logits = decode_f32_fixture(POSITION127_LOGITS_BYTES, "position-127 logits")?;
+    if tokens.len() != 128
+        || tokens.first() != Some(&201)
+        || tokens.get(1..5) != Some(&[361, 1915, 262, 1554])
+        || logits.len() != 129280
+        || lowest_id_argmax(&logits)? != *tokens.last().unwrap_or(&u32::MAX)
+    {
+        return Err(Error::invalid(
+            "position-127 decoder fixture shape, prefix, or final selection is invalid",
+        ));
+    }
+    Ok((tokens, logits))
 }
 
 struct OutputHeadExpected {
@@ -3417,6 +3532,15 @@ mod imp {
             error: *mut c_char,
             error_bytes: usize,
         ) -> i32;
+        fn rust_star_metal_copy_compressed_kv_row(
+            context: *mut c_void,
+            layer_index: u32,
+            row_index: u32,
+            output: *mut f32,
+            output_elements: u64,
+            error: *mut c_char,
+            error_bytes: usize,
+        ) -> i32;
         fn rust_star_metal_run_ffn_router(
             context: *mut c_void,
             model_mapping: *const c_void,
@@ -3777,6 +3901,29 @@ mod imp {
                 )));
             }
             Ok(())
+        }
+
+        fn compressed_kv_row(&self, layer_index: u32, row_index: u32) -> Result<Vec<f32>> {
+            let mut output = vec![0.0_f32; 512];
+            let mut error = [0 as c_char; ERROR_BYTES];
+            let succeeded = unsafe {
+                rust_star_metal_copy_compressed_kv_row(
+                    self.0,
+                    layer_index,
+                    row_index,
+                    output.as_mut_ptr(),
+                    output.len() as u64,
+                    error.as_mut_ptr(),
+                    error.len(),
+                )
+            };
+            if succeeded == 0 {
+                return Err(Error::invalid(format!(
+                    "Metal layer-{layer_index} compressed-cache readback failed: {}",
+                    error_text(&error)
+                )));
+            }
+            Ok(output)
         }
     }
 
@@ -5631,6 +5778,98 @@ mod imp {
         })
     }
 
+    pub fn run_position127_decoder_probe(
+        model: &MappedModel,
+    ) -> Result<Position127DecoderProbeReport> {
+        let (expected_tokens, expected_logits) = position127_decoder_fixture()?;
+        let context = Context::new()?;
+        let mut layers = (0..43)
+            .map(|layer_index| PreparedLayerExecution::new(model, layer_index, 1, 1))
+            .collect::<Result<Vec<_>>>()?;
+        let mut output_head = PreparedOutputHead::new(model)?;
+        context.prepare_decoder()?;
+
+        let mut actual_tokens = Vec::with_capacity(128);
+        let mut input_token = expected_tokens[0];
+        actual_tokens.push(input_token);
+        let started = Instant::now();
+        for position in 1_u32..=127 {
+            submit_prepared_layers(model, &context, &mut layers, input_token, position)?;
+            let (selected_token, _) = run_sampling_output_head(model, &context, &mut output_head)?;
+            actual_tokens.push(selected_token);
+            input_token = selected_token;
+        }
+        let wall_ms = started.elapsed().as_secs_f64() * 1000.0;
+
+        if actual_tokens != expected_tokens {
+            let mismatch = actual_tokens
+                .iter()
+                .zip(&expected_tokens)
+                .position(|(actual, expected)| actual != expected)
+                .unwrap_or(actual_tokens.len().min(expected_tokens.len()));
+            return Err(Error::invalid(format!(
+                "position-127 closed-loop transcript differs at committed token {mismatch}: actual={:?} expected={:?}",
+                actual_tokens.get(mismatch),
+                expected_tokens.get(mismatch)
+            )));
+        }
+        let layer3_row = context.compressed_kv_row(3, 0)?;
+        let layer5_row = context.compressed_kv_row(5, 0)?;
+        for (layer, actual, expected_bytes) in [
+            (
+                3_u32,
+                layer3_row.as_slice(),
+                LAYER3_POS127_COMPRESSED_KV_BYTES,
+            ),
+            (
+                5_u32,
+                layer5_row.as_slice(),
+                LAYER5_POS127_COMPRESSED_KV_BYTES,
+            ),
+        ] {
+            let expected = decode_f32_fixture(
+                expected_bytes,
+                &format!("layer-{layer} position-127 compressed KV row"),
+            )?;
+            for (index, (actual, expected)) in actual.iter().zip(&expected).enumerate() {
+                if actual.to_bits() != expected.to_bits() {
+                    return Err(Error::invalid(format!(
+                        "integrated layer-{layer} ratio-128 C0 mismatch at [{index}]: actual={:#010x} expected={:#010x}",
+                        actual.to_bits(),
+                        expected.to_bits()
+                    )));
+                }
+            }
+        }
+        for (index, (actual, expected)) in
+            output_head.logits.iter().zip(&expected_logits).enumerate()
+        {
+            if actual.to_bits() != expected.to_bits() {
+                return Err(Error::invalid(format!(
+                    "position-127 final-logit C0 mismatch at [{index}]: actual={:#010x} expected={:#010x}",
+                    actual.to_bits(),
+                    expected.to_bits()
+                )));
+            }
+        }
+
+        Ok(Position127DecoderProbeReport {
+            fixture_id: POSITION127_DECODER_FIXTURE_ID,
+            committed_tokens: actual_tokens,
+            evaluated_positions: 127,
+            final_position: 127,
+            cache_capacity_rows: 128,
+            compressed_cache_capacity_rows: 32,
+            command_buffers_per_position: 44,
+            host_waits_per_position: 2,
+            wall_ms,
+            eval_tps: 127000.0 / wall_ms,
+            final_logits_checksum: checksum_f32(&output_head.logits),
+            ratio128_layer3_checksum: checksum_f32(&layer3_row),
+            ratio128_layer5_checksum: checksum_f32(&layer5_row),
+        })
+    }
+
     pub fn run_ratio128_compressor_replay_probe(
         model: &MappedModel,
     ) -> Result<Ratio128CompressorReplayProbeReport> {
@@ -6754,7 +6993,7 @@ mod imp {
     }
 
     pub fn run_decoder_output_probe(model: &MappedModel) -> Result<DecoderOutputProbeReport> {
-        for position in 1..=3 {
+        for position in 1..=4 {
             let _ = output_head_expected(position)?;
         }
         let _ = exact_tensor(model, "output_hc_fn.weight", 1, &[16384, 4])?;
@@ -6770,12 +7009,24 @@ mod imp {
     pub fn run_closed_loop_decoder_probe(
         model: &MappedModel,
     ) -> Result<ClosedLoopDecoderProbeReport> {
-        for position in 1..=3 {
+        for position in 1..=4 {
             let _ = output_head_expected(position)?;
         }
         let _ = exact_tensor(model, "output.weight", 8, &[4096, 129280])?;
         Err(Error::invalid(
             "the Metal closed-loop decoder probe is available only on macOS",
+        ))
+    }
+
+    pub fn run_position127_decoder_probe(
+        model: &MappedModel,
+    ) -> Result<Position127DecoderProbeReport> {
+        let _ = position127_decoder_fixture()?;
+        let _ = ratio128_compressor_fixture(3)?;
+        let _ = ratio128_compressor_fixture(5)?;
+        let _ = exact_tensor(model, "output.weight", 8, &[4096, 129280])?;
+        Err(Error::invalid(
+            "the Metal position-127 decoder frontier probe is available only on macOS",
         ))
     }
 
@@ -6959,8 +7210,9 @@ pub use imp::{
     run_layers01234567_decode_probe, run_layers012345_decode_probe, run_layers0123_bench,
     run_layers0123_chained_probe, run_layers0123_decode_probe, run_layers0123_probe,
     run_layers012_chained_probe, run_layers012_probe, run_layers01_probe,
-    run_layers0_to_42_decode_probe, run_moe_output_probe, run_probe, run_q8_projection_probe,
-    run_ratio128_compressor_replay_probe, run_rope_kv_store_probe, LayerExecutor,
+    run_layers0_to_42_decode_probe, run_moe_output_probe, run_position127_decoder_probe, run_probe,
+    run_q8_projection_probe, run_ratio128_compressor_replay_probe, run_rope_kv_store_probe,
+    LayerExecutor,
 };
 
 #[cfg(test)]
@@ -7599,6 +7851,35 @@ mod tests {
         }
     }
 
+    fn position127_decoder_report() -> Position127DecoderProbeReport {
+        let (tokens, logits) = position127_decoder_fixture().unwrap();
+        let layer3 = decode_f32_fixture(
+            LAYER3_POS127_COMPRESSED_KV_BYTES,
+            "layer-3 position-127 compressed KV row",
+        )
+        .unwrap();
+        let layer5 = decode_f32_fixture(
+            LAYER5_POS127_COMPRESSED_KV_BYTES,
+            "layer-5 position-127 compressed KV row",
+        )
+        .unwrap();
+        Position127DecoderProbeReport {
+            fixture_id: POSITION127_DECODER_FIXTURE_ID,
+            committed_tokens: tokens,
+            evaluated_positions: 127,
+            final_position: 127,
+            cache_capacity_rows: 128,
+            compressed_cache_capacity_rows: 32,
+            command_buffers_per_position: 44,
+            host_waits_per_position: 2,
+            wall_ms: 7000.0,
+            eval_tps: 127000.0 / 7000.0,
+            final_logits_checksum: checksum_f32(&logits),
+            ratio128_layer3_checksum: checksum_f32(&layer3),
+            ratio128_layer5_checksum: checksum_f32(&layer5),
+        }
+    }
+
     #[test]
     fn validates_probe_work_bounds() {
         assert!(ProbeConfig::default().validate().is_ok());
@@ -7830,6 +8111,20 @@ mod tests {
         assert!(text.contains("\"correctness_readback_in_interval\": false"));
         assert!(text.contains("\"gen_steady_tps\": 100.000000"));
         assert!(text.contains("\"paired_protocol_eligible\": false"));
+    }
+
+    #[test]
+    fn writes_stable_position127_decoder_probe_json() {
+        let mut output = Vec::new();
+        write_position127_decoder_probe_json(&mut output, &position127_decoder_report()).unwrap();
+        let text = String::from_utf8(output).unwrap();
+        assert!(text.contains(&format!(
+            "\"schema\": \"{POSITION127_DECODER_PROBE_SCHEMA}\""
+        )));
+        assert!(text.contains("\"final_position\": 127"));
+        assert!(text.contains("\"committed_tokens\": [201,361,1915,262,1554"));
+        assert!(text.contains("\"final_logits_c0_bitwise_match\": true"));
+        assert!(text.contains("\"integrated_ratio128_rows_c0_bitwise_match\": true"));
     }
 
     #[test]
@@ -8257,6 +8552,16 @@ mod tests {
             assert_eq!(output.len(), 512);
             assert!(inputs.iter().chain(&output).all(|value| value.is_finite()));
         }
+    }
+
+    #[test]
+    fn position127_decoder_fixture_has_target_shapes() {
+        let (tokens, logits) = position127_decoder_fixture().unwrap();
+        assert_eq!(tokens.len(), 128);
+        assert_eq!(&tokens[..5], &[201, 361, 1915, 262, 1554]);
+        assert_eq!(tokens.last(), Some(&33148));
+        assert_eq!(logits.len(), 129280);
+        assert_eq!(lowest_id_argmax(&logits).unwrap(), 33148);
     }
 
     #[test]

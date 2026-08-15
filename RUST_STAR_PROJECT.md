@@ -294,16 +294,17 @@ they describe whenever practical.
 
 ## Open Items
 
-- Generalize the C0-verified four-position closed loop into cold prefill and
-  arbitrary-frontier decode, then emit the Rust Star engine-measurement
-  contract. The diagnostic timed loop already excludes correctness readback.
+- Replace the C0-verified position-127 loop's captured initial state with cold
+  prefill and arbitrary-frontier initialization, then emit the Rust Star
+  engine-measurement contract. The diagnostic timed loop already excludes
+  correctness readback.
 - Execute `rust-star/BENCHMARK_PROTOCOL.md` and capture the initial paired
   DwarfStar numbers; the v1 protocol itself is now defined.
 - Implement the Rust Star side of `rust-star/ENGINE_MEASUREMENT_FORMAT.md` once
   the decoder can run; the checkpointed paired orchestrator and DwarfStar side
   are implemented.
-- Convert the exact 43-layer plus output-head diagnostic into the protocol's
-  128-token batch-one workload while retaining every existing correctness
-  command as an independent control.
+- Preserve the exact 128-token, 43-layer-plus-output-head diagnostic and every
+  shorter correctness command as independent controls while adding eligible
+  benchmark state initialization.
 - Reproduce the Q2 versus Q2/Q4 throughput observation under controlled runs.
 - Define the first coding-agent workload corpus before agent co-design claims.

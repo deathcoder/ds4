@@ -256,6 +256,15 @@ int rust_star_metal_run_output_head(
     char *error,
     size_t error_bytes);
 
+int rust_star_metal_copy_compressed_kv_row(
+    void *context,
+    uint32_t layer_index,
+    uint32_t row_index,
+    float *output,
+    uint64_t output_elements,
+    char *error,
+    size_t error_bytes);
+
 int rust_star_metal_run_ffn_router(
     void *context,
     const void *model_mapping,

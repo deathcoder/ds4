@@ -24,14 +24,17 @@ history; add a correction and update the current-state summary.
   canonical differential-fixture envelope, complete layer 0, steady-state
   layer-0 execution, the first four-layer scheduler boundary, the minimum
   three-step position-advancing four-layer slice, and the generalized six-layer
-  compression-schedule boundary are complete. A bounded position-127 replay now
-  also crosses the first ratio-128 emissions for layers 3 and 5 exactly. The
+  compression-schedule boundary are complete. A bounded position-127 replay
+  first crossed the ratio-128 emissions for layers 3 and 5 with external
+  activations; the integrated decoder now crosses the same boundary while
+  committing the complete 128-token oracle transcript. The
   ordered position-advancing executor now extends through all 43 transformer
   layers and the exact post-transformer output boundary is complete through
   full-vocabulary logits and deterministic greedy selection. A separate
-  four-position command now closes the feedback edge, crosses the first
-  persistent compressed-cache reuse boundary, and has a diagnostic timed path
-  with correctness readback excluded.
+  four-position command remains an independent control. A position-127 command
+  closes the feedback edge at every step, matches the final full-vocabulary
+  logits and live layer-3/layer-5 ratio-128 rows, and has a diagnostic timed
+  path with correctness readback excluded.
   Layers 0 through 42 execute in order under one Rust-owned Metal context with
   exact GPU-resident HC-state handoffs and one retained KV allocation per
   layer. Every even layer from 2 through 42 crosses its first ratio-4
@@ -143,7 +146,11 @@ history; add a correction and update the current-state summary.
   201 and feeds each selected token into the next position, then repeats the
   exact sequence without chained tensor collection. The timed intervals retain
   the required full-logit transfer and CPU argmax but exclude fixture readback
-  and comparison. Cold prefill, arbitrary-frontier decode, and the eligible
+  and comparison. `position127-decoder-probe` extends the same ownership
+  boundary through positions 1–127. With initial committed token 201 it
+  reproduces all 128 oracle tokens, then compares the final 129,280 logits and
+  persistent layer-3/layer-5 ratio-128 compressed rows bit-for-bit. Cold
+  prefill, arbitrary-frontier initialization, and the eligible
   engine-measurement producer are still pending.
 - Measurements: Metal batching was 42.861x faster than synchronized submission
   in the retained M-002 probe. DwarfStar medians are 164.86 prefill / 19.90
@@ -217,6 +224,11 @@ history; add a correction and update the current-state summary.
   encoding, synchronized Metal execution, full logits transfer, and CPU argmax,
   but remains ineligible for a paired claim because it starts from captured
   state and generates only three tokens.
+  The integrated position-127 diagnostic evaluates 127 closed-loop positions,
+  reproduces the 128-token transcript, and reported 16.493 evaluated
+  positions/s in the complete gate. Correctness readback occurs after timing.
+  This is not paired throughput because the initial cache and compressor state
+  are captured rather than produced by cold prefill.
 - Manual handoff: `RUST_STAR_MANUAL_TASKS.md` records Actions approval, target
   compilation/model inspection, quick/extended oracle capture, and the deferred
   secure-access decision with exact evidence requirements.
@@ -229,10 +241,10 @@ history; add a correction and update the current-state summary.
 
 ## Immediate Next Actions
 
-1. Replace captured initial state with cold token prefill and generalize KV and
-   compressor ownership beyond position 3.
-2. Extend the closed loop to the protocol's 128 committed tokens and emit the
-   `rust-star-engine-measurement-v1` artifact required by the paired runner.
+1. Replace captured initial cache/compressor state with cold token prefill and
+   support initialization at an arbitrary benchmark frontier.
+2. Emit the `rust-star-engine-measurement-v1` artifact from the now-complete
+   128-token closed loop and connect it to the paired runner.
 3. Preserve the four-, six-, eight-, 43-layer, explicit decoder-output, and
    closed-loop diagnostic commands as independently executed controls.
 4. Run the extended 2K--1M frontier capture when the Mac can be dedicated to a
@@ -240,6 +252,64 @@ history; add a correction and update the current-state summary.
 5. Run or approve the fork's GitHub Actions workflow and retain its URL.
 
 ## Entries
+
+### 2026-08-15 — Integrated decoder crossed position 127 exactly
+
+Objective:
+
+- Extend the exact greedy decoder from its four-position control through the
+  complete 128-token oracle transcript and verify the first ratio-128
+  compressor emissions in live end-to-end execution.
+
+Oracle evidence:
+
+- Ran the pinned DwarfStar executable twice in fresh processes for 127
+  evaluated positions, retaining initial committed token 201 plus all 127
+  selected tokens and the final full-vocabulary logits. Both captures were
+  byte-identical. The token payload SHA-256 is
+  `95aedd05c1843ed9638bcd24e93b9ed4cde360a341f8c720c7efc908c3586697`;
+  the position-127 logits SHA-256 is
+  `1258d4c3ab662f72ac1f70be80ddbc8f9cf72db35b4450231369f3b6ae07c895`.
+- Imported one strict decode-step fixture containing 128 token IDs and all
+  129,280 final logits. The final selected token is 33148, and the differential
+  registry now contains 227 manifests.
+
+Implementation:
+
+- Added `position127-decoder-probe`, its stable diagnostic JSON schema, CLI and
+  complete-gate coverage. One prepared executor advances positions 1–127,
+  feeds each lowest-ID argmax into the following step, and retains all
+  layer-scoped raw and compressed state.
+- Added a synchronization-only, layer-scoped compressed-cache row readback.
+  The final C0 phase compares the complete token transcript, final logits, and
+  live layer-3/layer-5 ratio-128 rows. Its timer ends before those readbacks and
+  comparisons.
+- Added a reproducible frontier-fixture importer plus Rust fixture/JSON and
+  Python manifest tests.
+
+Failed hypotheses and correctness fixes:
+
+- The first integrated run diverged at committed token 16. The decoder used a
+  fixed compressed-RoPE origin; the correct origin is the beginning of the
+  completed compression window, `position + 1 - ratio`.
+- After token exactness was restored, the live ratio-128 row was zero. A
+  temporary synchronized work-buffer check localized the failure before the
+  persistent-cache blit: packed KV, score, and softmax scratch allocations had
+  room for eight rows instead of the active 128-row window. All compressor
+  scratch is now sized from its ratio. The temporary diagnostic was removed.
+
+Validation and decision:
+
+- The live M1 Ultra command reproduced all 128 tokens, final token 33148, every
+  final logit, and both first ratio-128 rows bit-for-bit. The complete gate
+  reported 16.493 evaluated positions/s over 127 positions and passed 62 Rust
+  tests, 44 Python tests, all 227 differential manifests, the optimized
+  Objective-C/Metal build, strict model inspection, and every retained live
+  Metal control.
+- Accept the position-127 integrated frontier as C0 exact, but not as paired
+  throughput. It begins from captured one-token cache/compressor state. The
+  next checkpoint is cold prefill plus arbitrary-frontier initialization,
+  followed by the engine-measurement producer.
 
 ### 2026-08-15 — Persistent compressed memory reused exactly at position 4
 

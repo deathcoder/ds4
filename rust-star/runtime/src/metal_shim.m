@@ -1362,7 +1362,9 @@ static int encode_compressor_step(
         .attn_factor=1.0f/(1.0f+0.1f*logf(16.0f)),
         .beta_fast=32.0f, .beta_slow=1.0f, .src2=false,
     };
-    int32_t compressed_position = 0;
+    // The emitted row represents the first token in this compression window.
+    // Position 3 therefore uses 0, position 7 uses 4, and so on.
+    int32_t compressed_position = (int32_t)(position + 1u - ratio);
     [encoder setComputePipelineState:context.ropeTailPipeline];
     [encoder setBytes:&rope length:sizeof(rope) atIndex:0];
     [encoder setBuffer:output offset:0 atIndex:1];
@@ -2166,6 +2168,7 @@ int rust_star_metal_run_attention_ingress(
         id<MTLBuffer> shared_out_buffer = full_layer ? persistent_buffer(context, layer_buffer_key(@"shared_out", layer_scoped_buffers, layer0->layer_index), n_embd*sizeof(float), error, error_bytes) : nil;
         id<MTLBuffer> after_ffn_hc_buffer = full_layer ? persistent_buffer(context, layer_buffer_key(@"layer_hc_state", layer_scoped_buffers, layer0->layer_index), hc_dim*sizeof(float), error, error_bytes) : nil;
         const uint32_t compressor_state_rows = compressor_ratio == 4u ? 8u : compressor_ratio;
+        const uint32_t compressor_pool_rows = compressor_state_rows;
         id<MTLBuffer> compressor_prime_buffer = compressed_layer ? persistent_buffer(context, layer_buffer_key(@"compressor_prime", YES, layer0->layer_index), n_embd*sizeof(float), error, error_bytes) : nil;
         id<MTLBuffer> compressor_kv_cur = compressed_layer ? persistent_buffer(context, layer_buffer_key(@"compressor_kv_cur", YES, layer0->layer_index), compressor_width*sizeof(float), error, error_bytes) : nil;
         id<MTLBuffer> compressor_score_cur = compressed_layer ? persistent_buffer(context, layer_buffer_key(@"compressor_score_cur", YES, layer0->layer_index), compressor_width*sizeof(float), error, error_bytes) : nil;
@@ -2173,9 +2176,9 @@ int rust_star_metal_run_attention_ingress(
         id<MTLBuffer> compressor_state_score = compressed_layer ? persistent_buffer(context, layer_buffer_key(@"compressor_state_score", YES, layer0->layer_index), compressor_state_rows*compressor_width*sizeof(float), error, error_bytes) : nil;
         id<MTLBuffer> compressed_kv_buffer = compressed_layer ? persistent_buffer(context, layer_buffer_key(@"compressed_kv_work", YES, layer0->layer_index), 512u*sizeof(float), error, error_bytes) : nil;
         id<MTLBuffer> compressed_kv_cache = compressed_layer ? persistent_buffer(context, layer_buffer_key(@"compressed_kv_cache", YES, layer0->layer_index), compressed_cache_capacity_rows*512u*sizeof(float), error, error_bytes) : nil;
-        id<MTLBuffer> compressor_packed_kv = compressed_layer ? persistent_buffer(context, layer_buffer_key(@"compressor_packed_kv", YES, layer0->layer_index), 8u*512u*sizeof(float), error, error_bytes) : nil;
-        id<MTLBuffer> compressor_packed_score = compressed_layer ? persistent_buffer(context, layer_buffer_key(@"compressor_packed_score", YES, layer0->layer_index), 8u*512u*sizeof(float), error, error_bytes) : nil;
-        id<MTLBuffer> compressor_softmax = compressed_layer ? persistent_buffer(context, layer_buffer_key(@"compressor_softmax", YES, layer0->layer_index), 8u*512u*sizeof(float), error, error_bytes) : nil;
+        id<MTLBuffer> compressor_packed_kv = compressed_layer ? persistent_buffer(context, layer_buffer_key(@"compressor_packed_kv", YES, layer0->layer_index), compressor_pool_rows*512u*sizeof(float), error, error_bytes) : nil;
+        id<MTLBuffer> compressor_packed_score = compressed_layer ? persistent_buffer(context, layer_buffer_key(@"compressor_packed_score", YES, layer0->layer_index), compressor_pool_rows*512u*sizeof(float), error, error_bytes) : nil;
+        id<MTLBuffer> compressor_softmax = compressed_layer ? persistent_buffer(context, layer_buffer_key(@"compressor_softmax", YES, layer0->layer_index), compressor_pool_rows*512u*sizeof(float), error, error_bytes) : nil;
         id<MTLBuffer> indexer_kv_cur = indexer_layer ? persistent_buffer(context, layer_buffer_key(@"indexer_kv_cur", YES, layer0->layer_index), 256u*sizeof(float), error, error_bytes) : nil;
         id<MTLBuffer> indexer_score_cur = indexer_layer ? persistent_buffer(context, layer_buffer_key(@"indexer_score_cur", YES, layer0->layer_index), 256u*sizeof(float), error, error_bytes) : nil;
         id<MTLBuffer> indexer_state_kv = indexer_layer ? persistent_buffer(context, layer_buffer_key(@"indexer_state_kv", YES, layer0->layer_index), 8u*256u*sizeof(float), error, error_bytes) : nil;
@@ -3351,6 +3354,37 @@ int rust_star_metal_run_output_head(
         for (uint32_t i = 0; i < 5; i++) if (matches[i]) result->pointer_matches++;
         result->wall_ms = wall_end-wall_start;
         result->gpu_ms = gpu_elapsed_ms(command);
+        return 1;
+    }
+}
+
+int rust_star_metal_copy_compressed_kv_row(
+    void *opaque_context,
+    uint32_t layer_index,
+    uint32_t row_index,
+    float *output,
+    uint64_t output_elements,
+    char *error,
+    size_t error_bytes)
+{
+    const uint32_t row_elements = 512u;
+    const uint32_t cache_rows = 32u;
+    if (!opaque_context || !output || output_elements != row_elements ||
+        layer_index < 2u || layer_index > 42u || row_index >= cache_rows) {
+        return fail_with_message(error, error_bytes,
+            @"compressed-cache readback received invalid inputs");
+    }
+    @autoreleasepool {
+        RustStarMetalContext *context = (__bridge RustStarMetalContext *)opaque_context;
+        id<MTLBuffer> buffer = context.activationBufferCache[
+            layer_buffer_key(@"compressed_kv_cache", YES, layer_index)];
+        if (!buffer || buffer.length != (NSUInteger)cache_rows*row_elements*sizeof(float)) {
+            return fail_with_message(error, error_bytes,
+                @"compressed-cache readback could not find the retained layer cache");
+        }
+        const uint8_t *source = (const uint8_t *)buffer.contents +
+            (NSUInteger)row_index*row_elements*sizeof(float);
+        memcpy(output, source, row_elements*sizeof(float));
         return 1;
     }
 }

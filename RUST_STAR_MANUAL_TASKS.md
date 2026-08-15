@@ -170,8 +170,10 @@ Return evidence:
 ## M-005 — Execute the first paired DwarfStar/Rust Star run
 
 Status: `BLOCKED` on Rust Star cold prefill, arbitrary-frontier decode, and the
-engine-measurement producer. The four-position closed-loop diagnostic is C0
-exact but deliberately not protocol-eligible.
+engine-measurement producer. The integrated position-127 diagnostic reproduces
+the complete 128-token oracle transcript, final logits, and first live
+ratio-128 rows exactly, but is deliberately not protocol-eligible because its
+initial state is captured.
 
 Prerequisites:
 

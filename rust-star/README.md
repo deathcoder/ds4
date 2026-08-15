@@ -53,11 +53,13 @@ ratio-4 emission through layer 42, and hands off layer 42's exact
 separate regression controls. The persistent layer-0 gate reuses its pipelines,
 25 no-copy model views, cache storage, and activation buffers for repeated
 steady-state timing. The deepest exact slice now continues through all 43
-layers, full-vocabulary logits, and a four-position greedy feedback loop. The
-fourth position is C0 exact after reusing the first persistent ratio-4
-compressed rows. Its
+layers, full-vocabulary logits, and a position-127 greedy feedback loop.
+Starting from captured one-token prompt state and initial committed token 201,
+it commits the complete 128-token oracle transcript, crosses the first live
+ratio-128 emissions in layers 3 and 5, and matches both those rows and the final
+129,280 logits bit-for-bit. Its
 readback-free timed pass is still a diagnostic rather than a paired-benchmark
-candidate because cold prefill and arbitrary-frontier 128-token decode remain
+candidate because cold prefill and arbitrary-frontier initialization remain
 unimplemented.
 
 Project controls and benchmark contracts:

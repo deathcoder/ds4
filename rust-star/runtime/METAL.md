@@ -461,9 +461,35 @@ the chained tensor collectors and asks the output head to transfer only the
 logits required for sampling. Per-step wall intervals span transformer command
 encoding/execution, output-head execution, synchronization, logits transfer,
 and CPU lowest-ID argmax. Pipeline preparation and the exhaustive C0 pass are
-outside those intervals. This is deliberately a four-position diagnostic,
-not a `rust-star-engine-measurement-v1` producer: eligible measurement still
-requires cold prefill and arbitrary-frontier 128-token decode.
+outside those intervals. This remains an independently executed four-position
+regression control. The protocol-length diagnostic below supersedes its
+coverage claim, but eligible measurement still requires cold prefill and
+arbitrary-frontier initialization.
+
+## Integrated position-127 decoder frontier
+
+Schema: `rust-star-position127-decoder-frontier-diagnostic-v1`.
+
+`position127-decoder-probe` advances one Rust-owned prepared executor through
+127 evaluated positions and closes the greedy feedback edge at every step.
+With initial committed token 201, its transcript contains 128 tokens. The final
+correctness phase compares the complete transcript, all 129,280 final
+logits, and the persistent layer-3 and layer-5 ratio-128 compressed KV rows by
+bit pattern. The narrow compressed-row FFI permits readback only after the
+decoder step has synchronized; Metal retains ownership of the layer-scoped
+cache during execution.
+
+Two implementation details are part of the exactness contract. Compressed RoPE
+uses the first source position in the completed compression window,
+`position + 1 - ratio`, rather than a fixed origin. Compressor packing,
+softmax, and reduction scratch capacity is sized for the active ratio (4 or
+128), so the full ratio-128 recurrent window is preserved before the first
+emission.
+
+The timing boundary ends before correctness collection and reports diagnostic
+evaluated positions per second. It does not produce
+`rust-star-engine-measurement-v1`: captured initial caches and compressor state
+still need to be replaced by cold prefill and arbitrary-frontier setup.
 
 ## Position-127 ratio-128 compressor replay
 

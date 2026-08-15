@@ -435,8 +435,30 @@ timed pass. Those intervals include all 44 command buffers, both required tail
 waits, the 129,280-logit transfer used for CPU argmax, and the argmax itself;
 they exclude tensor-fixture readback and comparison. Its four-token rate is a
 diagnostic only. The command reports `paired_protocol_eligible: false` because
-the captured slice does not yet implement cold prefill, arbitrary frontiers,
-or the protocol's 128 committed tokens.
+the captured slice does not yet implement cold prefill or arbitrary frontiers.
+The longer command below now covers the protocol-length transcript.
+
+To exercise the integrated decoder through its first ratio-128 emissions:
+
+```sh
+rust-star/.work/runtime-target/release/rust-star \
+  position127-decoder-probe \
+  /absolute/path/to/model.gguf \
+  --json rust-star/.work/runtime-target/position127-decoder-probe.json
+```
+
+`position127-decoder-probe` owns one prepared 43-layer executor and advances it
+through positions 1–127. Together with initial committed token 201, the 127
+greedy selections must reproduce the complete 128-token DwarfStar transcript.
+After the last synchronized step it compares all 129,280 final logits and reads the
+first persistent ratio-128 compressed-cache rows from layers 3 and 5; all three
+boundaries must be FP32 bit-identical to independently repeated oracle data.
+
+The timed interval ends before those correctness readbacks and comparisons and
+reports evaluated positions per second. It is still diagnostic and sets
+`paired_protocol_eligible: false`: the starting raw caches and compressor state
+are captured fixtures rather than the result of cold prompt prefill, and an
+arbitrary benchmark frontier cannot yet be initialized.
 
 To cross the first ratio-128 emission boundary without overstating decoder
 coverage:

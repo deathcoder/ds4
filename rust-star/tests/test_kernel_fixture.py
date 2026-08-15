@@ -52,6 +52,9 @@ RATIO128_COMPRESSOR_FIXTURES = [
     RUST_STAR_DIR / "fixtures" / f"layer{layer}-pos127-compressor-replay-v1"
     for layer in (3, 5)
 ]
+POSITION127_DECODER_FIXTURE = (
+    RUST_STAR_DIR / "fixtures" / "decoder-frontier-pos127-v1"
+)
 
 
 class KernelFixtureTests(unittest.TestCase):
@@ -261,6 +264,22 @@ class KernelFixtureTests(unittest.TestCase):
                 self.assertEqual(report["operations"], 4)
                 self.assertEqual(report["tensors"], 2)
                 self.assertEqual(report["verified_bytes"], 2_099_200)
+
+    def test_position127_decoder_fixture_manifest_and_payloads(self) -> None:
+        manifest = json.loads(
+            (POSITION127_DECODER_FIXTURE / "manifest.json").read_text(encoding="utf-8")
+        )
+        report = validate_differential_fixture(POSITION127_DECODER_FIXTURE)
+        self.assertEqual(
+            report["fixture_id"],
+            "dwarfstar-oracle-v1-decoder-frontier-pos127",
+        )
+        self.assertEqual(report["scope"], "decode-step")
+        self.assertEqual(report["operations"], 2)
+        self.assertEqual(report["tensors"], 2)
+        self.assertEqual(report["verified_bytes"], 517_632)
+        self.assertEqual(manifest["capture"]["committed_tokens"], 128)
+        self.assertEqual(manifest["selection"]["token_id"], 33148)
 
     def test_fixture_shape_tampering_is_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:

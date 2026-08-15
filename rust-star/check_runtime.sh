@@ -113,6 +113,9 @@ elif [ "$#" -eq 1 ]; then
         echo "==> C0 closed-loop decoder and readback-free timed diagnostic"
         "$target_dir/release/rust-star" closed-loop-decoder-probe "$1" \
             --json "$target_dir/closed-loop-decoder-probe.json"
+        echo "==> integrated position-127 closed-loop decoder frontier"
+        "$target_dir/release/rust-star" position127-decoder-probe "$1" \
+            --json "$target_dir/position127-decoder-probe.json"
         echo "==> bounded position-127 ratio-128 compressor replay"
         "$target_dir/release/rust-star" ratio128-compressor-replay-probe "$1" \
             --json "$target_dir/ratio128-compressor-replay-probe.json"
