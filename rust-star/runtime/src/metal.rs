@@ -35,6 +35,7 @@ pub const DECODER_OUTPUT_PROBE_SCHEMA: &str =
 pub const CLOSED_LOOP_DECODER_PROBE_SCHEMA: &str = "rust-star-closed-loop-decoder-diagnostic-v2";
 pub const POSITION127_DECODER_PROBE_SCHEMA: &str =
     "rust-star-position127-decoder-frontier-diagnostic-v1";
+pub const COLD_PREFILL_DECODER_PROBE_SCHEMA: &str = "rust-star-cold-prefill-decoder-diagnostic-v1";
 pub const RATIO128_COMPRESSOR_REPLAY_PROBE_SCHEMA: &str =
     "rust-star-ratio128-compressor-replay-probe-v1";
 pub const PROJECTION_FIXTURE_ID: &str = "dwarfstar-oracle-v1-layer0-pos1-attn-q-a";
@@ -74,6 +75,7 @@ pub const LAYER3_POS127_COMPRESSOR_FIXTURE_ID: &str =
 pub const LAYER5_POS127_COMPRESSOR_FIXTURE_ID: &str =
     "dwarfstar-oracle-v1-layer5-pos127-compressor-replay";
 pub const POSITION127_DECODER_FIXTURE_ID: &str = "dwarfstar-oracle-v1-decoder-frontier-pos127";
+pub const COLD_PREFILL_FIXTURE_ID: &str = "dwarfstar-oracle-v1-cold-prefill-pos0";
 pub const DEFAULT_ELEMENTS: u64 = 4096;
 pub const DEFAULT_ITERATIONS: u64 = 100;
 const MAX_ELEMENTS: u64 = 16 * 1024 * 1024;
@@ -125,6 +127,8 @@ const POSITION127_TOKEN_IDS_BYTES: &[u8] =
     include_bytes!("../../fixtures/decoder-frontier-pos127-v1/token-ids.u32le.bin");
 const POSITION127_LOGITS_BYTES: &[u8] =
     include_bytes!("../../fixtures/decoder-frontier-pos127-v1/logits.f32le.bin");
+const COLD_PREFILL_LOGITS_BYTES: &[u8] =
+    include_bytes!("../../fixtures/cold-prefill-pos0-v1/logits.f32le.bin");
 const PROJECTION_TENSOR: &str = "blk.0.attn_q_a.weight";
 const PROJECTION_INPUT_BYTES: &[u8] =
     include_bytes!("../../fixtures/q8-attn-q-a-v1/activation.f32le.bin");
@@ -888,6 +892,20 @@ pub struct Position127DecoderProbeReport {
 }
 
 #[derive(Clone, Debug)]
+pub struct ColdPrefillDecoderProbeReport {
+    pub fixture_id: &'static str,
+    pub prompt_token: u32,
+    pub committed_tokens: Vec<u32>,
+    pub prefill_wall_ms: f64,
+    pub prefill_logits_checksum: u64,
+    pub decode_wall_ms: f64,
+    pub decode_tps: f64,
+    pub final_logits_checksum: u64,
+    pub ratio128_layer3_checksum: u64,
+    pub ratio128_layer5_checksum: u64,
+}
+
+#[derive(Clone, Debug)]
 pub struct Ratio128CompressorLayerReport {
     pub layer: u32,
     pub fixture_id: &'static str,
@@ -1527,7 +1545,7 @@ pub fn write_closed_loop_decoder_probe_json<W: Write>(
     }
     write!(
         output,
-        "\n    ],\n    \"metrics\": {{\"gen_tokens\": 4, \"gen_steady_tokens\": 3, \"gen_ms\": {:.6}, \"gen_tps\": {:.6}, \"gen_first_ms\": {:.6}, \"gen_steady_ms\": {:.6}, \"gen_steady_tps\": {:.6}}}\n  }},\n  \"paired_protocol_eligible\": false,\n  \"paired_protocol_blocker\": \"cold prefill and arbitrary-frontier decode are not implemented\"\n}}\n",
+        "\n    ],\n    \"metrics\": {{\"gen_tokens\": 4, \"gen_steady_tokens\": 3, \"gen_ms\": {:.6}, \"gen_tps\": {:.6}, \"gen_first_ms\": {:.6}, \"gen_steady_ms\": {:.6}, \"gen_steady_tps\": {:.6}}}\n  }},\n  \"paired_protocol_eligible\": false,\n  \"paired_protocol_blocker\": \"captured initial state and only four committed positions\"\n}}\n",
         report.generation_wall_ms,
         report.generation_tps,
         report.first_token_ms,
@@ -1584,7 +1602,7 @@ pub fn write_position127_decoder_probe_json<W: Write>(
     }
     write!(
         output,
-        "],\n  \"frontier\": {{\"evaluated_positions\": {}, \"final_position\": {}, \"raw_cache_capacity_rows\": {}, \"compressed_cache_capacity_rows\": {}}},\n  \"schedule\": {{\"command_buffers_per_position\": {}, \"host_waits_per_position\": {}}},\n  \"timing\": {{\"wall_ms\": {:.6}, \"evaluated_positions_per_second\": {:.6}, \"correctness_readback_in_interval\": false}},\n  \"checksums\": {{\"final_logits\": {}, \"layer3_ratio128_row0\": {}, \"layer5_ratio128_row0\": {}}},\n  \"transcript_token_match\": true,\n  \"final_logits_c0_bitwise_match\": true,\n  \"integrated_ratio128_rows_c0_bitwise_match\": true,\n  \"paired_protocol_eligible\": false,\n  \"paired_protocol_blocker\": \"cold prefill and arbitrary-frontier decode are not implemented\"\n}}\n",
+        "],\n  \"frontier\": {{\"evaluated_positions\": {}, \"final_position\": {}, \"raw_cache_capacity_rows\": {}, \"compressed_cache_capacity_rows\": {}}},\n  \"schedule\": {{\"command_buffers_per_position\": {}, \"host_waits_per_position\": {}}},\n  \"timing\": {{\"wall_ms\": {:.6}, \"evaluated_positions_per_second\": {:.6}, \"correctness_readback_in_interval\": false}},\n  \"checksums\": {{\"final_logits\": {}, \"layer3_ratio128_row0\": {}, \"layer5_ratio128_row0\": {}}},\n  \"transcript_token_match\": true,\n  \"final_logits_c0_bitwise_match\": true,\n  \"integrated_ratio128_rows_c0_bitwise_match\": true,\n  \"paired_protocol_eligible\": false,\n  \"paired_protocol_blocker\": \"captured initial state; cold prefill is covered by a separate control\"\n}}\n",
         report.evaluated_positions,
         report.final_position,
         report.cache_capacity_rows,
@@ -1596,6 +1614,62 @@ pub fn write_position127_decoder_probe_json<W: Write>(
         report.final_logits_checksum,
         report.ratio128_layer3_checksum,
         report.ratio128_layer5_checksum,
+    )?;
+    Ok(())
+}
+
+pub fn write_cold_prefill_decoder_probe_json<W: Write>(
+    output: &mut W,
+    report: &ColdPrefillDecoderProbeReport,
+) -> Result<()> {
+    let (expected_tokens, expected_logits) = position127_decoder_fixture()?;
+    let expected_prefill_logits = cold_prefill_fixture()?;
+    let expected_layer3 = decode_f32_fixture(
+        LAYER3_POS127_COMPRESSED_KV_BYTES,
+        "layer-3 position-127 compressed KV row",
+    )?;
+    let expected_layer5 = decode_f32_fixture(
+        LAYER5_POS127_COMPRESSED_KV_BYTES,
+        "layer-5 position-127 compressed KV row",
+    )?;
+    if report.fixture_id != COLD_PREFILL_FIXTURE_ID
+        || report.prompt_token != 36662
+        || report.committed_tokens != expected_tokens
+        || !report.prefill_wall_ms.is_finite()
+        || report.prefill_wall_ms <= 0.0
+        || report.prefill_logits_checksum != checksum_f32(&expected_prefill_logits)
+        || !report.decode_wall_ms.is_finite()
+        || report.decode_wall_ms <= 0.0
+        || !report.decode_tps.is_finite()
+        || report.decode_tps <= 0.0
+        || report.decode_tps.to_bits() != (127000.0 / report.decode_wall_ms).to_bits()
+        || report.final_logits_checksum != checksum_f32(&expected_logits)
+        || report.ratio128_layer3_checksum != checksum_f32(&expected_layer3)
+        || report.ratio128_layer5_checksum != checksum_f32(&expected_layer5)
+        || lowest_id_argmax(&expected_prefill_logits)? != expected_tokens[0]
+    {
+        return Err(Error::invalid(
+            "cold-prefill decoder report has inconsistent frontier metadata",
+        ));
+    }
+    write!(
+        output,
+        "{{\n  \"schema\": \"{COLD_PREFILL_DECODER_PROBE_SCHEMA}\",\n  \"classification\": \"diagnostic\",\n  \"fixture\": \"{}\",\n  \"prompt_token\": {},\n  \"committed_tokens\": [",
+        report.fixture_id,
+        report.prompt_token,
+    )?;
+    for (index, token) in report.committed_tokens.iter().enumerate() {
+        if index != 0 {
+            write!(output, ",")?;
+        }
+        write!(output, "{token}")?;
+    }
+    write!(
+        output,
+        "],\n  \"state_initialization\": \"cold-empty-kv-and-compressor-state\",\n  \"prefill\": {{\"tokens\": 1, \"wall_ms\": {:.6}, \"sampling_in_interval\": true, \"full_logits_c0_bitwise_match\": true, \"selected_token\": 201}},\n  \"decode\": {{\"evaluated_positions\": 127, \"wall_ms\": {:.6}, \"evaluated_positions_per_second\": {:.6}}},\n  \"final_logits_c0_bitwise_match\": true,\n  \"integrated_ratio128_rows_c0_bitwise_match\": true,\n  \"captured_initial_state_used\": false,\n  \"paired_protocol_eligible\": false,\n  \"paired_protocol_blocker\": \"arbitrary-frontier prefill is not implemented\"\n}}\n",
+        report.prefill_wall_ms,
+        report.decode_wall_ms,
+        report.decode_tps,
     )?;
     Ok(())
 }
@@ -2099,6 +2173,16 @@ fn position127_decoder_fixture() -> Result<(Vec<u32>, Vec<f32>)> {
         ));
     }
     Ok((tokens, logits))
+}
+
+fn cold_prefill_fixture() -> Result<Vec<f32>> {
+    let logits = decode_f32_fixture(COLD_PREFILL_LOGITS_BYTES, "cold-prefill logits")?;
+    if logits.len() != 129280 || lowest_id_argmax(&logits)? != 201 {
+        return Err(Error::invalid(
+            "cold-prefill fixture shape or selected token is invalid",
+        ));
+    }
+    Ok(logits)
 }
 
 struct OutputHeadExpected {
@@ -3220,6 +3304,8 @@ mod imp {
     const COMMAND_CHAINED_FINAL: u32 = 2;
     const COMMAND_CHAINED_COLLECT: u32 = 3;
     const COMMAND_CHAINED_TIMING: u32 = 4;
+    const INITIAL_STATE_CAPTURED: u32 = 0;
+    const INITIAL_STATE_COLD: u32 = 1;
 
     #[repr(C)]
     struct RawProbeResult {
@@ -3356,6 +3442,7 @@ mod imp {
         command_mode: u32,
         chain_final_layer: u32,
         position: u32,
+        initial_state_mode: u32,
     }
 
     impl Default for RawProbeResult {
@@ -3671,6 +3758,7 @@ mod imp {
         shared_down: ModelSpan,
         attention_compressor: Option<CompressorSpans>,
         indexer_compressor: Option<CompressorSpans>,
+        initial_state_mode: u32,
         compressor_prime: Vec<f32>,
         compressed_kv: Vec<f32>,
         compressed_indexer: Vec<f32>,
@@ -3739,6 +3827,29 @@ mod imp {
             position: u32,
             measured_iterations: u32,
         ) -> Result<Self> {
+            Self::new_with_initial_state(
+                model,
+                layer_index,
+                position,
+                measured_iterations,
+                INITIAL_STATE_CAPTURED,
+            )
+        }
+
+        fn new_cold(model: &MappedModel, layer_index: u32) -> Result<Self> {
+            Self::new_with_initial_state(model, layer_index, 1, 1, INITIAL_STATE_COLD)
+        }
+
+        fn new_with_initial_state(
+            model: &MappedModel,
+            layer_index: u32,
+            position: u32,
+            measured_iterations: u32,
+            initial_state_mode: u32,
+        ) -> Result<Self> {
+            if initial_state_mode > INITIAL_STATE_COLD {
+                return Err(Error::invalid("invalid prepared initial-state mode"));
+            }
             let tensor_name = |suffix: &str| format!("blk.{layer_index}.{suffix}");
             let span = |name: &str, kind: u32, dimensions: &[u64]| -> Result<ModelSpan> {
                 Ok(exact_tensor(model, name, kind, dimensions)?.into())
@@ -3753,11 +3864,19 @@ mod imp {
             let (attention_compressor, compressor_prime) = if layer_index >= 2 {
                 let ratio = if layer_index % 2 == 0 { 4 } else { 128 };
                 let width = if ratio == 4 { 1024 } else { 512 };
-                let prime_bytes = compressor_prime_bytes(layer_index).ok_or_else(|| {
-                    Error::invalid(format!(
-                        "layer-{layer_index} compressor prime is not captured"
-                    ))
-                })?;
+                let compressor_prime = if initial_state_mode == INITIAL_STATE_CAPTURED {
+                    let prime_bytes = compressor_prime_bytes(layer_index).ok_or_else(|| {
+                        Error::invalid(format!(
+                            "layer-{layer_index} compressor prime is not captured"
+                        ))
+                    })?;
+                    decode_f32_fixture(
+                        prime_bytes,
+                        &format!("layer-{layer_index} compressor prime"),
+                    )?
+                } else {
+                    Vec::new()
+                };
                 (
                     Some(CompressorSpans {
                         ape: span(
@@ -3773,10 +3892,7 @@ mod imp {
                         )?,
                         norm: span(&tensor_name("attn_compressor_norm.weight"), 0, &[512])?,
                     }),
-                    decode_f32_fixture(
-                        prime_bytes,
-                        &format!("layer-{layer_index} compressor prime"),
-                    )?,
+                    compressor_prime,
                 )
             } else {
                 (None, Vec::new())
@@ -3828,6 +3944,7 @@ mod imp {
                 shared_down: span(&tensor_name("ffn_down_shexp.weight"), 8, &[2048, 4096])?,
                 attention_compressor,
                 indexer_compressor,
+                initial_state_mode,
                 compressor_prime,
                 compressed_kv: vec![0.0; 512],
                 compressed_indexer: vec![0.0; 128],
@@ -5870,6 +5987,125 @@ mod imp {
         })
     }
 
+    pub fn run_cold_prefill_decoder_probe(
+        model: &MappedModel,
+    ) -> Result<ColdPrefillDecoderProbeReport> {
+        let expected_prefill_logits = cold_prefill_fixture()?;
+        let (expected_tokens, expected_final_logits) = position127_decoder_fixture()?;
+        let context = Context::new()?;
+        let mut layers = (0..43)
+            .map(|layer_index| PreparedLayerExecution::new_cold(model, layer_index))
+            .collect::<Result<Vec<_>>>()?;
+        let mut output_head = PreparedOutputHead::new(model)?;
+        context.prepare_decoder()?;
+
+        let prefill_started = Instant::now();
+        submit_prepared_layers(model, &context, &mut layers, 36662, 0)?;
+        let (first_token, _) = run_sampling_output_head(model, &context, &mut output_head)?;
+        let prefill_wall_ms = prefill_started.elapsed().as_secs_f64() * 1000.0;
+        if first_token != expected_tokens[0] {
+            return Err(Error::invalid(format!(
+                "cold prefill selected token {first_token}, expected {}",
+                expected_tokens[0]
+            )));
+        }
+        for (index, (actual, expected)) in output_head
+            .logits
+            .iter()
+            .zip(&expected_prefill_logits)
+            .enumerate()
+        {
+            if actual.to_bits() != expected.to_bits() {
+                return Err(Error::invalid(format!(
+                    "cold-prefill logit C0 mismatch at [{index}]: actual={:#010x} expected={:#010x}",
+                    actual.to_bits(),
+                    expected.to_bits()
+                )));
+            }
+        }
+        let prefill_logits_checksum = checksum_f32(&output_head.logits);
+
+        let mut actual_tokens = Vec::with_capacity(128);
+        actual_tokens.push(first_token);
+        let mut input_token = first_token;
+        let decode_started = Instant::now();
+        for position in 1_u32..=127 {
+            submit_prepared_layers(model, &context, &mut layers, input_token, position)?;
+            let (selected_token, _) = run_sampling_output_head(model, &context, &mut output_head)?;
+            actual_tokens.push(selected_token);
+            input_token = selected_token;
+        }
+        let decode_wall_ms = decode_started.elapsed().as_secs_f64() * 1000.0;
+        if actual_tokens != expected_tokens {
+            let mismatch = actual_tokens
+                .iter()
+                .zip(&expected_tokens)
+                .position(|(actual, expected)| actual != expected)
+                .unwrap_or(actual_tokens.len().min(expected_tokens.len()));
+            return Err(Error::invalid(format!(
+                "cold-prefill transcript differs at committed token {mismatch}: actual={:?} expected={:?}",
+                actual_tokens.get(mismatch),
+                expected_tokens.get(mismatch)
+            )));
+        }
+
+        let layer3_row = context.compressed_kv_row(3, 0)?;
+        let layer5_row = context.compressed_kv_row(5, 0)?;
+        for (layer, actual, expected_bytes) in [
+            (
+                3_u32,
+                layer3_row.as_slice(),
+                LAYER3_POS127_COMPRESSED_KV_BYTES,
+            ),
+            (
+                5_u32,
+                layer5_row.as_slice(),
+                LAYER5_POS127_COMPRESSED_KV_BYTES,
+            ),
+        ] {
+            let expected = decode_f32_fixture(
+                expected_bytes,
+                &format!("layer-{layer} position-127 compressed KV row"),
+            )?;
+            for (index, (actual, expected)) in actual.iter().zip(&expected).enumerate() {
+                if actual.to_bits() != expected.to_bits() {
+                    return Err(Error::invalid(format!(
+                        "cold-prefill layer-{layer} ratio-128 C0 mismatch at [{index}]: actual={:#010x} expected={:#010x}",
+                        actual.to_bits(),
+                        expected.to_bits()
+                    )));
+                }
+            }
+        }
+        for (index, (actual, expected)) in output_head
+            .logits
+            .iter()
+            .zip(&expected_final_logits)
+            .enumerate()
+        {
+            if actual.to_bits() != expected.to_bits() {
+                return Err(Error::invalid(format!(
+                    "cold-prefill final-logit C0 mismatch at [{index}]: actual={:#010x} expected={:#010x}",
+                    actual.to_bits(),
+                    expected.to_bits()
+                )));
+            }
+        }
+
+        Ok(ColdPrefillDecoderProbeReport {
+            fixture_id: COLD_PREFILL_FIXTURE_ID,
+            prompt_token: 36662,
+            committed_tokens: actual_tokens,
+            prefill_wall_ms,
+            prefill_logits_checksum,
+            decode_wall_ms,
+            decode_tps: 127000.0 / decode_wall_ms,
+            final_logits_checksum: checksum_f32(&output_head.logits),
+            ratio128_layer3_checksum: checksum_f32(&layer3_row),
+            ratio128_layer5_checksum: checksum_f32(&layer5_row),
+        })
+    }
+
     pub fn run_ratio128_compressor_replay_probe(
         model: &MappedModel,
     ) -> Result<Ratio128CompressorReplayProbeReport> {
@@ -6083,6 +6319,7 @@ mod imp {
             shared_down,
             attention_compressor,
             indexer_compressor,
+            initial_state_mode,
             compressor_prime,
             compressed_kv,
             compressed_indexer,
@@ -6208,6 +6445,7 @@ mod imp {
             command_mode,
             chain_final_layer,
             position,
+            initial_state_mode: *initial_state_mode,
         };
 
         let mut error = [0 as c_char; ERROR_BYTES];
@@ -6924,6 +7162,17 @@ mod imp {
         ))
     }
 
+    pub fn run_cold_prefill_decoder_probe(
+        model: &MappedModel,
+    ) -> Result<ColdPrefillDecoderProbeReport> {
+        let _ = cold_prefill_fixture()?;
+        let _ = position127_decoder_fixture()?;
+        let _ = exact_tensor(model, "output.weight", 8, &[4096, 129280])?;
+        Err(Error::invalid(
+            "the Metal cold-prefill decoder probe is available only on macOS",
+        ))
+    }
+
     pub fn run_layers0123_bench(
         model: &MappedModel,
         config: Layers0123BenchConfig,
@@ -7205,11 +7454,11 @@ mod imp {
 
 pub use imp::{
     run_attention_ingress_probe, run_attention_output_probe, run_attention_read_probe,
-    run_attention_setup_probe, run_closed_loop_decoder_probe, run_decoder_output_probe,
-    run_f16_embedding_probe, run_ffn_router_probe, run_layer0_bench, run_layer0_probe,
-    run_layers01234567_decode_probe, run_layers012345_decode_probe, run_layers0123_bench,
-    run_layers0123_chained_probe, run_layers0123_decode_probe, run_layers0123_probe,
-    run_layers012_chained_probe, run_layers012_probe, run_layers01_probe,
+    run_attention_setup_probe, run_closed_loop_decoder_probe, run_cold_prefill_decoder_probe,
+    run_decoder_output_probe, run_f16_embedding_probe, run_ffn_router_probe, run_layer0_bench,
+    run_layer0_probe, run_layers01234567_decode_probe, run_layers012345_decode_probe,
+    run_layers0123_bench, run_layers0123_chained_probe, run_layers0123_decode_probe,
+    run_layers0123_probe, run_layers012_chained_probe, run_layers012_probe, run_layers01_probe,
     run_layers0_to_42_decode_probe, run_moe_output_probe, run_position127_decoder_probe, run_probe,
     run_q8_projection_probe, run_ratio128_compressor_replay_probe, run_rope_kv_store_probe,
     LayerExecutor,
@@ -7880,6 +8129,33 @@ mod tests {
         }
     }
 
+    fn cold_prefill_decoder_report() -> ColdPrefillDecoderProbeReport {
+        let prefill_logits = cold_prefill_fixture().unwrap();
+        let (tokens, final_logits) = position127_decoder_fixture().unwrap();
+        let layer3 = decode_f32_fixture(
+            LAYER3_POS127_COMPRESSED_KV_BYTES,
+            "layer-3 position-127 compressed KV row",
+        )
+        .unwrap();
+        let layer5 = decode_f32_fixture(
+            LAYER5_POS127_COMPRESSED_KV_BYTES,
+            "layer-5 position-127 compressed KV row",
+        )
+        .unwrap();
+        ColdPrefillDecoderProbeReport {
+            fixture_id: COLD_PREFILL_FIXTURE_ID,
+            prompt_token: 36662,
+            committed_tokens: tokens,
+            prefill_wall_ms: 50.0,
+            prefill_logits_checksum: checksum_f32(&prefill_logits),
+            decode_wall_ms: 7000.0,
+            decode_tps: 127000.0 / 7000.0,
+            final_logits_checksum: checksum_f32(&final_logits),
+            ratio128_layer3_checksum: checksum_f32(&layer3),
+            ratio128_layer5_checksum: checksum_f32(&layer5),
+        }
+    }
+
     #[test]
     fn validates_probe_work_bounds() {
         assert!(ProbeConfig::default().validate().is_ok());
@@ -8125,6 +8401,19 @@ mod tests {
         assert!(text.contains("\"committed_tokens\": [201,361,1915,262,1554"));
         assert!(text.contains("\"final_logits_c0_bitwise_match\": true"));
         assert!(text.contains("\"integrated_ratio128_rows_c0_bitwise_match\": true"));
+    }
+
+    #[test]
+    fn writes_stable_cold_prefill_decoder_probe_json() {
+        let mut output = Vec::new();
+        write_cold_prefill_decoder_probe_json(&mut output, &cold_prefill_decoder_report()).unwrap();
+        let text = String::from_utf8(output).unwrap();
+        assert!(text.contains(&format!(
+            "\"schema\": \"{COLD_PREFILL_DECODER_PROBE_SCHEMA}\""
+        )));
+        assert!(text.contains("\"prompt_token\": 36662"));
+        assert!(text.contains("\"full_logits_c0_bitwise_match\": true"));
+        assert!(text.contains("\"captured_initial_state_used\": false"));
     }
 
     #[test]
@@ -8562,6 +8851,13 @@ mod tests {
         assert_eq!(tokens.last(), Some(&33148));
         assert_eq!(logits.len(), 129280);
         assert_eq!(lowest_id_argmax(&logits).unwrap(), 33148);
+    }
+
+    #[test]
+    fn cold_prefill_fixture_has_target_shape_and_selection() {
+        let logits = cold_prefill_fixture().unwrap();
+        assert_eq!(logits.len(), 129280);
+        assert_eq!(lowest_id_argmax(&logits).unwrap(), 201);
     }
 
     #[test]

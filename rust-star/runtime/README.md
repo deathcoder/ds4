@@ -460,6 +460,29 @@ reports evaluated positions per second. It is still diagnostic and sets
 are captured fixtures rather than the result of cold prompt prefill, and an
 arbitrary benchmark frontier cannot yet be initialized.
 
+To replace that captured initial state with a live one-token prefill:
+
+```sh
+rust-star/.work/runtime-target/release/rust-star \
+  cold-prefill-decoder-probe \
+  /absolute/path/to/model.gguf \
+  --json rust-star/.work/runtime-target/cold-prefill-decoder-probe.json
+```
+
+`cold-prefill-decoder-probe` initializes empty raw KV, attention-compressor,
+indexer-compressor, and compressed-cache storage. It evaluates raw prompt token
+36662 at position 0, requires every one of its 129,280 logits and selected token
+201 to match two fresh DwarfStar captures, and retains the resulting live state
+for positions 1–127. The complete 128-token transcript, final logits, and
+layer-3/layer-5 ratio-128 rows must remain exact.
+
+This command never copies the captured position-0 cache rows or compressor
+activations into Metal. It remains `paired_protocol_eligible: false` because it
+only prefills the one-token correctness frontier; the paired protocol requires
+fresh multi-token prefill at arbitrary 2K–256K and later context frontiers.
+Its diagnostic prefill interval includes full-logit projection and CPU greedy
+selection and therefore is not yet the engine-measurement `prefill_ms` field.
+
 To cross the first ratio-128 emission boundary without overstating decoder
 coverage:
 

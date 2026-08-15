@@ -111,6 +111,7 @@ typedef struct rust_star_metal_layer0_extension {
     uint32_t command_mode;
     uint32_t chain_final_layer;
     uint32_t position;
+    uint32_t initial_state_mode;
 } rust_star_metal_layer0_extension;
 
 int rust_star_metal_create(void **context_out, char *error, size_t error_bytes);

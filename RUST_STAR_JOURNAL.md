@@ -34,7 +34,9 @@ history; add a correction and update the current-state summary.
   four-position command remains an independent control. A position-127 command
   closes the feedback edge at every step, matches the final full-vocabulary
   logits and live layer-3/layer-5 ratio-128 rows, and has a diagnostic timed
-  path with correctness readback excluded.
+  path with correctness readback excluded. A separate cold-prefill command now
+  constructs position-0 raw/compressor state from the live prompt token, matches
+  the complete prefill logits, and preserves the same position-127 exactness.
   Layers 0 through 42 execute in order under one Rust-owned Metal context with
   exact GPU-resident HC-state handoffs and one retained KV allocation per
   layer. Every even layer from 2 through 42 crosses its first ratio-4
@@ -149,9 +151,13 @@ history; add a correction and update the current-state summary.
   and comparison. `position127-decoder-probe` extends the same ownership
   boundary through positions 1–127. With initial committed token 201 it
   reproduces all 128 oracle tokens, then compares the final 129,280 logits and
-  persistent layer-3/layer-5 ratio-128 compressed rows bit-for-bit. Cold
-  prefill, arbitrary-frontier initialization, and the eligible
-  engine-measurement producer are still pending.
+  persistent layer-3/layer-5 ratio-128 compressed rows bit-for-bit.
+  `cold-prefill-decoder-probe` instead starts with empty Rust-owned cache and
+  compressor storage, evaluates raw prompt token 36662 at position 0, matches
+  all 129,280 prefill logits and selected token 201, and continues through the
+  same 128-token transcript without loading captured initial state. Multi-token
+  arbitrary-frontier initialization and the eligible engine-measurement
+  producer are still pending.
 - Measurements: Metal batching was 42.861x faster than synchronized submission
   in the retained M-002 probe. DwarfStar medians are 164.86 prefill / 19.90
   generation tok/s at 2K and 161.05 prefill / 17.36 generation tok/s at 32K.
@@ -229,6 +235,14 @@ history; add a correction and update the current-state summary.
   positions/s in the complete gate. Correctness readback occurs after timing.
   This is not paired throughput because the initial cache and compressor state
   are captured rather than produced by cold prefill.
+  The first exact cold-state run paid model-residency costs and reported
+  3379.018 ms for one-token prefill/first selection plus 0.729 evaluated decode
+  positions/s.
+  An immediate fresh-process repeat with resident weights reported 1130.755 ms
+  prefill and 18.246 evaluated positions/s; the complete gate later reported
+  1078.665 ms and 18.311 positions/s. All were bit-identical. None is a paired
+  claim because one-token prefill is not a protocol frontier and the residency
+  conditions differ.
 - Manual handoff: `RUST_STAR_MANUAL_TASKS.md` records Actions approval, target
   compilation/model inspection, quick/extended oracle capture, and the deferred
   secure-access decision with exact evidence requirements.
@@ -241,10 +255,10 @@ history; add a correction and update the current-state summary.
 
 ## Immediate Next Actions
 
-1. Replace captured initial cache/compressor state with cold token prefill and
-   support initialization at an arbitrary benchmark frontier.
-2. Emit the `rust-star-engine-measurement-v1` artifact from the now-complete
-   128-token closed loop and connect it to the paired runner.
+1. Generalize exact one-token cold prefill to multiple prompt tokens and size
+   raw/compressed state for an arbitrary benchmark frontier.
+2. Emit the `rust-star-engine-measurement-v1` artifact from the exact
+   cold-prefill/128-token loop and connect it to the paired runner.
 3. Preserve the four-, six-, eight-, 43-layer, explicit decoder-output, and
    closed-loop diagnostic commands as independently executed controls.
 4. Run the extended 2K--1M frontier capture when the Mac can be dedicated to a
@@ -252,6 +266,56 @@ history; add a correction and update the current-state summary.
 5. Run or approve the fork's GitHub Actions workflow and retain its URL.
 
 ## Entries
+
+### 2026-08-15 — Captured initial state replaced by exact cold prefill
+
+Objective:
+
+- Construct position-0 raw KV and compressor state from the live prompt token
+  rather than copied oracle rows, while retaining the complete position-127
+  transcript and cache-emission gates.
+
+Oracle evidence:
+
+- Verified that the first 26-space prefix of the pinned benchmark input
+  tokenizes to the single token 36662. Two fresh pinned DwarfStar processes
+  wrote the full logits immediately after raw one-token prefill; both 517,120
+  byte payloads were identical, selected token 201, and have SHA-256
+  `a4973c1e1f53bf1659a9a15e66c3186d03432810e7606387c55f8ee083ffba35`.
+- Added a strict prefill decode-step fixture and reproducible two-capture
+  importer. The differential registry now contains 228 manifests.
+
+Implementation:
+
+- Added an explicit cold initial-state mode to the stable Rust/Objective-C
+  layer boundary. Position 0 clears raw caches, recurrent compressor state, and
+  persistent compressed rows, then the ordinary layer path writes raw KV row 0
+  and seeds each compressor from its live attention-normalization activation.
+- Position 1 in cold mode continues that state and cannot execute the captured
+  cache-row/compressor-prime initialization branch. Existing commands retain
+  the captured mode as independent regression controls.
+- Added `cold-prefill-decoder-probe`, stable diagnostic JSON, CLI help, complete
+  gate coverage, host fixture/report tests, and ownership documentation. It
+  compares every position-0 logit before running the unchanged 127-position
+  feedback loop and final ratio-128 checks.
+
+Target-Mac evidence and decision:
+
+- The first live cold-state process matched all prefill logits, all 128
+  committed tokens, final token 33148, every final logit, and both first live
+  ratio-128 rows. It reported 3379.018 ms prefill and 0.729 evaluated
+  positions/s while paying cold model-residency costs.
+- An immediate fresh-process repeat remained bit-identical and reported
+  1130.755 ms prefill plus 18.246 evaluated positions/s with resident weights.
+  Preserve both as diagnostics; their residency conditions differ and the
+  one-token prompt is not a paired-protocol frontier.
+- The complete gate passed 64 Rust tests, 45 Python tests, all 228 differential
+  manifests, optimized Objective-C/Metal compilation, strict model inspection,
+  every retained live Metal control, and both position-127 commands. Its cold
+  command reported 1078.665 ms prefill and 18.311 evaluated positions/s.
+- Accept removal of captured initial state at the one-token frontier. The next
+  checkpoint is multi-token prefill with context-sized raw/compressed ownership
+  and arbitrary-frontier initialization, followed by the measurement producer.
 
 ### 2026-08-15 — Integrated decoder crossed position 127 exactly
 

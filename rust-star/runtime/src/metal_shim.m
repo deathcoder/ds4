@@ -22,6 +22,11 @@ enum {
     RUST_STAR_COMMAND_CHAINED_TIMING = 4,
 };
 
+enum {
+    RUST_STAR_INITIAL_STATE_CAPTURED = 0,
+    RUST_STAR_INITIAL_STATE_COLD = 1,
+};
+
 static NSString *const kProbeSource =
     @"#include <metal_stdlib>\n"
     @"using namespace metal;\n"
@@ -1759,6 +1764,9 @@ int rust_star_metal_run_attention_ingress(
     rust_star_metal_layer0_extension standalone_layer = {0};
     if (!layer0) layer0 = &standalone_layer;
     const uint32_t position = full_layer ? layer0->position : 1u;
+    const uint32_t initial_state_mode = full_layer
+        ? layer0->initial_state_mode : RUST_STAR_INITIAL_STATE_CAPTURED;
+    const BOOL cold_initial_state = initial_state_mode == RUST_STAR_INITIAL_STATE_COLD;
     const uint32_t cache_capacity_rows = full_layer ? 128u : 3u;
     const uint32_t attention_capacity_rows = full_layer ? 160u : 3u;
     const uint32_t compressed_cache_capacity_rows = 32u;
@@ -1815,9 +1823,13 @@ int rust_star_metal_run_attention_ingress(
         return fail_with_message(error, error_bytes,
             @"full layer execution must run layer 0 before continuing into later layers");
     }
-    if (full_layer && (position < 1u || position > 127u)) {
+    if (full_layer && (position > 127u || (!cold_initial_state && position < 1u))) {
         return fail_with_message(error, error_bytes,
-            @"the retained decoder frontier currently supports positions 1 through 127");
+            @"the retained decoder frontier received an invalid position/state mode");
+    }
+    if (full_layer && initial_state_mode > RUST_STAR_INITIAL_STATE_COLD) {
+        return fail_with_message(error, error_bytes,
+            @"the retained decoder frontier received an invalid initial-state mode");
     }
     if (full_layer && (visible_cache_rows > cache_capacity_rows ||
         compressed_cache_rows > compressed_cache_capacity_rows ||
@@ -1903,7 +1915,8 @@ int rust_star_metal_run_attention_ingress(
         return fail_with_message(error, error_bytes, @"full layer tensor shapes are invalid");
     }
     if (compressed_layer &&
-        (!layer0->compressor_prime_attn_norm || !layer0->compressed_kv_row ||
+        ((!cold_initial_state && !layer0->compressor_prime_attn_norm) ||
+         !layer0->compressed_kv_row ||
          layer0->attn_compressor_ape_bytes != (uint64_t)compressor_width*compressor_ratio*sizeof(uint16_t) ||
          layer0->attn_compressor_kv_bytes != (uint64_t)4096u*compressor_width*sizeof(uint16_t) ||
          layer0->attn_compressor_gate_bytes != (uint64_t)4096u*compressor_width*sizeof(uint16_t) ||
@@ -2225,15 +2238,22 @@ int rust_star_metal_run_attention_ingress(
             !indexer_packed_kv || !indexer_packed_score || !indexer_softmax)) {
             return fail_with_message(error, error_bytes, @"failed to allocate indexer compressor state");
         }
-        if (rope_and_store && !chained_replay && position == 1u) {
+        const BOOL initialize_state = !chained_replay &&
+            ((cold_initial_state && position == 0u) ||
+             (!cold_initial_state && position == 1u));
+        if (rope_and_store && initialize_state) {
             float *cache = cache_buffer.contents;
             for (uint32_t index = 0; index < cache_capacity_rows*kv_elements; index++) cache[index] = -12345.5f;
-            if (attention_read) memcpy(cache, cache_row0, kv_elements*sizeof(float));
+            if (!cold_initial_state && attention_read) {
+                memcpy(cache, cache_row0, kv_elements*sizeof(float));
+            }
         }
         if (attention_read && !chained_replay) memset(mask_buffer.contents, 0, mask_storage_bytes);
-        if (compressed_layer && !chained_replay && position == 1u) {
-            memcpy(compressor_prime_buffer.contents, layer0->compressor_prime_attn_norm,
-                n_embd*sizeof(float));
+        if (compressed_layer && initialize_state) {
+            if (!cold_initial_state) {
+                memcpy(compressor_prime_buffer.contents, layer0->compressor_prime_attn_norm,
+                    n_embd*sizeof(float));
+            }
             memset(compressor_state_kv.contents, 0,
                 compressor_state_rows*compressor_width*sizeof(float));
             float *scores = compressor_state_score.contents;
@@ -2550,7 +2570,7 @@ int rust_star_metal_run_attention_ingress(
         id<MTLComputeCommandEncoder> encoder = [command computeCommandEncoder];
         if (!encoder) return fail_with_message(error, error_bytes, @"failed to create attention ingress encoder");
 
-        if (compressed_layer && position == 1u) {
+        if (compressed_layer && !cold_initial_state && position == 1u) {
             if (!encode_compressor_step(context, encoder,
                     compressor_prime_buffer, 0,
                     compressor_kv_weight, compressor_inner[1],

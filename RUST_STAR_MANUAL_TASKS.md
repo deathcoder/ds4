@@ -169,11 +169,11 @@ Return evidence:
 
 ## M-005 — Execute the first paired DwarfStar/Rust Star run
 
-Status: `BLOCKED` on Rust Star cold prefill, arbitrary-frontier decode, and the
-engine-measurement producer. The integrated position-127 diagnostic reproduces
-the complete 128-token oracle transcript, final logits, and first live
-ratio-128 rows exactly, but is deliberately not protocol-eligible because its
-initial state is captured.
+Status: `BLOCKED` on Rust Star multi-token arbitrary-frontier prefill and the
+engine-measurement producer. The cold one-token diagnostic now constructs its
+own initial caches, reproduces the prefill logits, complete 128-token oracle
+transcript, final logits, and first live ratio-128 rows exactly. It remains
+deliberately ineligible because protocol frontiers begin at 2K tokens.
 
 Prerequisites:
 

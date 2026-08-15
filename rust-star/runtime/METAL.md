@@ -488,8 +488,27 @@ emission.
 
 The timing boundary ends before correctness collection and reports diagnostic
 evaluated positions per second. It does not produce
-`rust-star-engine-measurement-v1`: captured initial caches and compressor state
-still need to be replaced by cold prefill and arbitrary-frontier setup.
+`rust-star-engine-measurement-v1`: this command deliberately remains the
+captured-state control. The command below removes that dependency at the
+one-token frontier; arbitrary-frontier setup remains pending.
+
+## Cold one-token prefill
+
+Schema: `rust-star-cold-prefill-decoder-diagnostic-v1`.
+
+`cold-prefill-decoder-probe` selects the explicit cold initial-state mode in the
+Rust/Objective-C ABI. Position 0 clears each layer's raw and compressed caches
+and recurrent compressor storage. The normal layer command then writes raw KV
+row 0 and seeds both attention and indexer compressors from the live learned
+attention-normalization activation. Position 1 continues those allocations; it
+does not execute the captured-row/compressor-prime initialization branch.
+
+The position-0 output head must match the independently repeated 129,280-logit
+prefill fixture and select token 201. The same context then closes the loop
+through position 127 and reuses the existing transcript, final-logit, and
+ratio-128 C0 gates. This proves exact cold state construction for one token.
+Multi-token prefill, capacity sized from a requested context, and initialization
+at the paired protocol's arbitrary frontiers remain separate work.
 
 ## Position-127 ratio-128 compressor replay
 

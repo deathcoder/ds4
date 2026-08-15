@@ -294,10 +294,10 @@ they describe whenever practical.
 
 ## Open Items
 
-- Replace the C0-verified position-127 loop's captured initial state with cold
-  prefill and arbitrary-frontier initialization, then emit the Rust Star
-  engine-measurement contract. The diagnostic timed loop already excludes
-  correctness readback.
+- Generalize the C0-verified one-token cold prefill into multi-token,
+  arbitrary-frontier initialization, then emit the Rust Star engine-measurement
+  contract. The complete 128-token diagnostic no longer depends on captured
+  initial cache/compressor state.
 - Execute `rust-star/BENCHMARK_PROTOCOL.md` and capture the initial paired
   DwarfStar numbers; the v1 protocol itself is now defined.
 - Implement the Rust Star side of `rust-star/ENGINE_MEASUREMENT_FORMAT.md` once
