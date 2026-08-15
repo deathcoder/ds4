@@ -1270,11 +1270,11 @@ int rust_star_metal_run_attention_ingress(
         return fail_with_message(error, error_bytes,
             @"full layer outputs require the complete attention path and output set");
     }
-    if (full_layer && (layer0->layer_index > 1 ||
+    if (full_layer && (layer0->layer_index > 2 ||
         (layer0->layer_index == 0 && continuing_layer) ||
-        (layer0->layer_index == 1 && !continuing_layer))) {
+        (layer0->layer_index > 0 && !continuing_layer))) {
         return fail_with_message(error, error_bytes,
-            @"full layer execution must run layer 0 before continuing into layer 1");
+            @"full layer execution must run layer 0 before continuing into later layers");
     }
     if (continuing_layer && (warmup_iterations != 0 || measured_iterations != 1)) {
         return fail_with_message(error, error_bytes,
@@ -1444,7 +1444,10 @@ int rust_star_metal_run_attention_ingress(
         id<MTLBuffer> q_raw_buffer = extended ? persistent_buffer(context, @"q_raw", q_raw_elements*sizeof(float), error, error_bytes) : nil;
         id<MTLBuffer> q_cur_buffer = rope_and_store ? persistent_buffer(context, @"q_cur", q_raw_elements*sizeof(float), error, error_bytes) : nil;
         id<MTLBuffer> kv_rope_buffer = rope_and_store ? persistent_buffer(context, @"kv_rope", kv_elements*sizeof(float), error, error_bytes) : nil;
-        id<MTLBuffer> cache_buffer = rope_and_store ? persistent_buffer(context, @"kv_cache", 3u*kv_elements*sizeof(float), error, error_bytes) : nil;
+        NSString *cache_key = full_layer ?
+            [NSString stringWithFormat:@"kv_cache_layer_%u", layer0->layer_index] :
+            @"kv_cache_probe";
+        id<MTLBuffer> cache_buffer = rope_and_store ? persistent_buffer(context, cache_key, 3u*kv_elements*sizeof(float), error, error_bytes) : nil;
         const NSUInteger staged_kv_bytes = 2u*kv_elements*sizeof(uint16_t);
         const NSUInteger mask_bytes = 2u*sizeof(uint16_t);
         const NSUInteger flash_pad_bytes = 2u*32u*kv_elements*sizeof(uint16_t) + 32u*sizeof(uint16_t);
@@ -1580,11 +1583,18 @@ int rust_star_metal_run_attention_ingress(
             .nb12=q_elements*sizeof(float), .nb13=q_elements*sizeof(float),
             .ne0=(int32_t)q_raw_elements, .ne1=1, .nr0=2, .r2=1, .r3=1,
         };
+        const bool compressed_attention = full_layer && layer0->layer_index >= 2;
+        const float rope_freq_base = compressed_attention ? 160000.0f : 10000.0f;
+        const float rope_freq_scale = compressed_attention ? (1.0f/16.0f) : 1.0f;
+        const float rope_ext_factor = compressed_attention ? 1.0f : 0.0f;
+        const float rope_attn_factor = compressed_attention
+            ? 1.0f/(1.0f + 0.1f*logf(1.0f/rope_freq_scale))
+            : 1.0f;
         rust_star_head_norm_rope_args q_rope_args = {
             .n_head=64, .head_dim=512, .head_dim4=128, .n_dims=64,
-            .n_ctx_orig=0, .pos0=1, .inverse=0,
-            .eps=1.0e-6f, .freq_base=10000.0f, .freq_scale=1.0f,
-            .ext_factor=0.0f, .attn_factor=1.0f,
+            .n_ctx_orig=compressed_attention ? 65536 : 0, .pos0=1, .inverse=0,
+            .eps=1.0e-6f, .freq_base=rope_freq_base, .freq_scale=rope_freq_scale,
+            .ext_factor=rope_ext_factor, .attn_factor=rope_attn_factor,
             .beta_fast=32.0f, .beta_slow=1.0f,
         };
         const uint64_t kv_row_f32_bytes = (uint64_t)kv_elements*sizeof(float);
@@ -1594,9 +1604,11 @@ int rust_star_metal_run_attention_ingress(
             .nb02=kv_row_f32_bytes, .nb03=kv_row_f32_bytes,
             .nb0=sizeof(float), .nb1=kv_row_f32_bytes,
             .nb2=kv_row_f32_bytes, .nb3=kv_row_f32_bytes,
-            .n_dims=64, .mode=0, .n_ctx_orig=0, .inverse=0,
-            .freq_base=10000.0f, .freq_scale=1.0f, .ext_factor=0.0f,
-            .attn_factor=1.0f, .beta_fast=32.0f, .beta_slow=1.0f,
+            .n_dims=64, .mode=0,
+            .n_ctx_orig=compressed_attention ? 65536 : 0, .inverse=0,
+            .freq_base=rope_freq_base, .freq_scale=rope_freq_scale,
+            .ext_factor=rope_ext_factor, .attn_factor=rope_attn_factor,
+            .beta_fast=32.0f, .beta_slow=1.0f,
             .src2=false,
         };
         rust_star_kv_store_args kv_store_args = {

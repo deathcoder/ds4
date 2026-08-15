@@ -89,9 +89,9 @@ elif [ "$#" -eq 1 ]; then
         echo "==> continuous complete layer-0 command chain"
         "$target_dir/release/rust-star" layer0-probe "$1" \
             --json "$target_dir/layer0-probe.json"
-        echo "==> persistent layers 0-1 with direct HC-state handoff"
-        "$target_dir/release/rust-star" layers01-probe "$1" \
-            --json "$target_dir/layers01-probe.json"
+        echo "==> persistent layers 0-2 with direct HC-state handoffs and per-layer KV caches"
+        "$target_dir/release/rust-star" layers012-probe "$1" \
+            --json "$target_dir/layers012-probe.json"
         echo "==> persistent layer-0 steady-state execution"
         "$target_dir/release/rust-star" layer0-bench "$1" \
             --warmup 10 --iterations 30 \

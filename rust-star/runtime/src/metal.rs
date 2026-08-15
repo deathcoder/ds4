@@ -18,6 +18,7 @@ pub const MOE_OUTPUT_PROBE_SCHEMA: &str = "rust-star-layer0-moe-output-probe-v1"
 pub const LAYER0_PROBE_SCHEMA: &str = "rust-star-layer0-complete-probe-v1";
 pub const LAYER0_BENCH_SCHEMA: &str = "rust-star-layer0-steady-state-v1";
 pub const LAYERS01_PROBE_SCHEMA: &str = "rust-star-layers01-continuous-probe-v1";
+pub const LAYERS012_PROBE_SCHEMA: &str = "rust-star-layers012-continuous-probe-v1";
 pub const PROJECTION_FIXTURE_ID: &str = "dwarfstar-oracle-v1-layer0-pos1-attn-q-a";
 pub const INGRESS_FIXTURE_ID: &str = "dwarfstar-oracle-v1-layer0-pos1-attention-ingress";
 pub const ATTENTION_SETUP_FIXTURE_ID: &str = "dwarfstar-oracle-v1-layer0-pos1-qkv-setup";
@@ -28,6 +29,7 @@ pub const FFN_ROUTER_FIXTURE_ID: &str = "dwarfstar-oracle-v1-layer0-pos1-ffn-rou
 pub const MOE_OUTPUT_FIXTURE_ID: &str = "dwarfstar-oracle-v1-layer0-pos1-moe-output";
 pub const LAYER0_FIXTURE_ID: &str = "dwarfstar-oracle-v1-layer0-pos1-complete";
 pub const LAYER1_FIXTURE_ID: &str = "dwarfstar-oracle-v1-layer1-pos1-complete";
+pub const LAYER2_FIXTURE_ID: &str = "dwarfstar-oracle-v1-layer2-pos1-complete";
 pub const DEFAULT_ELEMENTS: u64 = 4096;
 pub const DEFAULT_ITERATIONS: u64 = 100;
 const MAX_ELEMENTS: u64 = 16 * 1024 * 1024;
@@ -130,6 +132,38 @@ const MOE_HC_POST_BYTES: &[u8] =
     include_bytes!("../../fixtures/layer0-moe-output-v1/hc-ffn-post.f32le.bin");
 const LAYER1_CACHE_ROW0_BYTES: &[u8] =
     include_bytes!("../../fixtures/layer1-complete-v1/cache-row0.f32le.bin");
+const LAYER1_ATTN_MIXES_BYTES: &[u8] =
+    include_bytes!("../../fixtures/layer1-complete-v1/attn-mixes.f32le.bin");
+const LAYER1_ATTN_PRE_BYTES: &[u8] =
+    include_bytes!("../../fixtures/layer1-complete-v1/attn-pre.f32le.bin");
+const LAYER1_ATTN_POST_BYTES: &[u8] =
+    include_bytes!("../../fixtures/layer1-complete-v1/attn-post.f32le.bin");
+const LAYER1_ATTN_COMB_BYTES: &[u8] =
+    include_bytes!("../../fixtures/layer1-complete-v1/attn-combination.f32le.bin");
+const LAYER1_ATTN_COLLAPSED_BYTES: &[u8] =
+    include_bytes!("../../fixtures/layer1-complete-v1/attn-collapsed.f32le.bin");
+const LAYER1_ATTN_NORM_BYTES: &[u8] =
+    include_bytes!("../../fixtures/layer1-complete-v1/attn-norm.f32le.bin");
+const LAYER1_Q_LORA_BYTES: &[u8] =
+    include_bytes!("../../fixtures/layer1-complete-v1/q-lora.f32le.bin");
+const LAYER1_Q_LORA_NORM_BYTES: &[u8] =
+    include_bytes!("../../fixtures/layer1-complete-v1/q-lora-norm.f32le.bin");
+const LAYER1_KV_RAW_BYTES: &[u8] =
+    include_bytes!("../../fixtures/layer1-complete-v1/kv-raw.f32le.bin");
+const LAYER1_Q_RAW_BYTES: &[u8] =
+    include_bytes!("../../fixtures/layer1-complete-v1/q-raw.f32le.bin");
+const LAYER1_Q_CUR_BYTES: &[u8] =
+    include_bytes!("../../fixtures/layer1-complete-v1/q-cur.f32le.bin");
+const LAYER1_KV_ROPE_BYTES: &[u8] =
+    include_bytes!("../../fixtures/layer1-complete-v1/kv-rope.f32le.bin");
+const LAYER1_KV_CUR_BYTES: &[u8] =
+    include_bytes!("../../fixtures/layer1-complete-v1/kv-cur.f32le.bin");
+const LAYER1_KQV_BACK_BYTES: &[u8] =
+    include_bytes!("../../fixtures/layer1-complete-v1/kqv-back.f32le.bin");
+const LAYER1_ATTN_LOW_BYTES: &[u8] =
+    include_bytes!("../../fixtures/layer1-complete-v1/attn-low.f32le.bin");
+const LAYER1_ATTN_OUT_BYTES: &[u8] =
+    include_bytes!("../../fixtures/layer1-complete-v1/attn-out.f32le.bin");
 const LAYER1_ATTN_HC_BYTES: &[u8] =
     include_bytes!("../../fixtures/layer1-complete-v1/hc-attn-post.f32le.bin");
 const LAYER1_FFN_MIXES_BYTES: &[u8] =
@@ -158,6 +192,68 @@ const LAYER1_SHARED_OUT_BYTES: &[u8] =
     include_bytes!("../../fixtures/layer1-complete-v1/shared-out.f32le.bin");
 const LAYER1_FINAL_HC_BYTES: &[u8] =
     include_bytes!("../../fixtures/layer1-complete-v1/hc-ffn-post.f32le.bin");
+const LAYER2_CACHE_ROW0_BYTES: &[u8] =
+    include_bytes!("../../fixtures/layer2-complete-v1/cache-row0.f32le.bin");
+const LAYER2_ATTN_MIXES_BYTES: &[u8] =
+    include_bytes!("../../fixtures/layer2-complete-v1/attn-mixes.f32le.bin");
+const LAYER2_ATTN_PRE_BYTES: &[u8] =
+    include_bytes!("../../fixtures/layer2-complete-v1/attn-pre.f32le.bin");
+const LAYER2_ATTN_POST_BYTES: &[u8] =
+    include_bytes!("../../fixtures/layer2-complete-v1/attn-post.f32le.bin");
+const LAYER2_ATTN_COMB_BYTES: &[u8] =
+    include_bytes!("../../fixtures/layer2-complete-v1/attn-combination.f32le.bin");
+const LAYER2_ATTN_COLLAPSED_BYTES: &[u8] =
+    include_bytes!("../../fixtures/layer2-complete-v1/attn-collapsed.f32le.bin");
+const LAYER2_ATTN_NORM_BYTES: &[u8] =
+    include_bytes!("../../fixtures/layer2-complete-v1/attn-norm.f32le.bin");
+const LAYER2_Q_LORA_BYTES: &[u8] =
+    include_bytes!("../../fixtures/layer2-complete-v1/q-lora.f32le.bin");
+const LAYER2_Q_LORA_NORM_BYTES: &[u8] =
+    include_bytes!("../../fixtures/layer2-complete-v1/q-lora-norm.f32le.bin");
+const LAYER2_KV_RAW_BYTES: &[u8] =
+    include_bytes!("../../fixtures/layer2-complete-v1/kv-raw.f32le.bin");
+const LAYER2_Q_RAW_BYTES: &[u8] =
+    include_bytes!("../../fixtures/layer2-complete-v1/q-raw.f32le.bin");
+const LAYER2_Q_CUR_BYTES: &[u8] =
+    include_bytes!("../../fixtures/layer2-complete-v1/q-cur.f32le.bin");
+const LAYER2_KV_ROPE_BYTES: &[u8] =
+    include_bytes!("../../fixtures/layer2-complete-v1/kv-rope.f32le.bin");
+const LAYER2_KV_CUR_BYTES: &[u8] =
+    include_bytes!("../../fixtures/layer2-complete-v1/kv-cur.f32le.bin");
+const LAYER2_KQV_BACK_BYTES: &[u8] =
+    include_bytes!("../../fixtures/layer2-complete-v1/kqv-back.f32le.bin");
+const LAYER2_ATTN_LOW_BYTES: &[u8] =
+    include_bytes!("../../fixtures/layer2-complete-v1/attn-low.f32le.bin");
+const LAYER2_ATTN_OUT_BYTES: &[u8] =
+    include_bytes!("../../fixtures/layer2-complete-v1/attn-out.f32le.bin");
+const LAYER2_ATTN_HC_BYTES: &[u8] =
+    include_bytes!("../../fixtures/layer2-complete-v1/hc-attn-post.f32le.bin");
+const LAYER2_FFN_MIXES_BYTES: &[u8] =
+    include_bytes!("../../fixtures/layer2-complete-v1/ffn-mixes.f32le.bin");
+const LAYER2_FFN_PRE_BYTES: &[u8] =
+    include_bytes!("../../fixtures/layer2-complete-v1/ffn-pre.f32le.bin");
+const LAYER2_FFN_POST_BYTES: &[u8] =
+    include_bytes!("../../fixtures/layer2-complete-v1/ffn-post.f32le.bin");
+const LAYER2_FFN_COMB_BYTES: &[u8] =
+    include_bytes!("../../fixtures/layer2-complete-v1/ffn-combination.f32le.bin");
+const LAYER2_FFN_NORM_BYTES: &[u8] =
+    include_bytes!("../../fixtures/layer2-complete-v1/ffn-norm.f32le.bin");
+const LAYER2_ROUTER_LOGITS_BYTES: &[u8] =
+    include_bytes!("../../fixtures/layer2-complete-v1/router-logits.f32le.bin");
+const LAYER2_ROUTER_PROBS_BYTES: &[u8] =
+    include_bytes!("../../fixtures/layer2-complete-v1/router-probs.f32le.bin");
+const LAYER2_SELECTED_BYTES: &[u8] =
+    include_bytes!("../../fixtures/layer2-complete-v1/router-selected.i32le.bin");
+const LAYER2_ROUTER_WEIGHTS_BYTES: &[u8] =
+    include_bytes!("../../fixtures/layer2-complete-v1/router-weights.f32le.bin");
+const LAYER2_ROUTED_MID_BYTES: &[u8] =
+    include_bytes!("../../fixtures/layer2-complete-v1/routed-mid.f32le.bin");
+const LAYER2_ROUTED_OUT_BYTES: &[u8] =
+    include_bytes!("../../fixtures/layer2-complete-v1/routed-out.f32le.bin");
+const LAYER2_SHARED_OUT_BYTES: &[u8] =
+    include_bytes!("../../fixtures/layer2-complete-v1/shared-out.f32le.bin");
+const LAYER2_FINAL_HC_BYTES: &[u8] =
+    include_bytes!("../../fixtures/layer2-complete-v1/hc-ffn-post.f32le.bin");
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct ProbeConfig {
@@ -433,11 +529,15 @@ pub struct Layer0ProbeReport {
 }
 
 #[derive(Clone, Debug)]
-pub struct Layers01ProbeReport {
+pub struct LayerSequenceProbeReport {
     pub layers: Vec<Layer0ProbeReport>,
     pub command_buffers: u32,
     pub retained_hc_handoff: bool,
+    pub kv_cache_layers: u32,
 }
+
+pub type Layers01ProbeReport = LayerSequenceProbeReport;
+pub type Layers012ProbeReport = LayerSequenceProbeReport;
 
 #[derive(Clone, Copy, Debug)]
 pub struct TimingSummary {
@@ -660,15 +760,37 @@ pub fn write_layers01_probe_json<W: Write>(
     output: &mut W,
     report: &Layers01ProbeReport,
 ) -> Result<()> {
-    if report.layers.len() != 2 {
+    write_layer_sequence_probe_json(output, report, LAYERS01_PROBE_SCHEMA, 2)
+}
+
+pub fn write_layers012_probe_json<W: Write>(
+    output: &mut W,
+    report: &Layers012ProbeReport,
+) -> Result<()> {
+    write_layer_sequence_probe_json(output, report, LAYERS012_PROBE_SCHEMA, 3)
+}
+
+fn write_layer_sequence_probe_json<W: Write>(
+    output: &mut W,
+    report: &LayerSequenceProbeReport,
+    schema: &str,
+    expected_layers: usize,
+) -> Result<()> {
+    if report.layers.len() != expected_layers
+        || report.command_buffers != expected_layers as u32
+        || report.kv_cache_layers != expected_layers as u32
+    {
         return Err(Error::invalid(
-            "layers-0/1 report must contain exactly two layers",
+            "layer-sequence report has inconsistent layer ownership metadata",
         ));
     }
     write!(
         output,
-        "{{\n  \"schema\": \"{LAYERS01_PROBE_SCHEMA}\",\n  \"command_buffers\": {},\n  \"retained_hc_handoff\": {},\n  \"layers\": [",
-        report.command_buffers, report.retained_hc_handoff,
+        "{{\n  \"schema\": \"{}\",\n  \"command_buffers\": {},\n  \"retained_hc_handoff\": {},\n  \"kv_cache_layers\": {},\n  \"layers\": [",
+        schema,
+        report.command_buffers,
+        report.retained_hc_handoff,
+        report.kv_cache_layers,
     )?;
     for (index, layer) in report.layers.iter().enumerate() {
         if index != 0 {
@@ -1160,6 +1282,20 @@ fn moe_output_fixture() -> Result<MoeOutputFixture> {
 struct LayerExpected {
     fixture_id: &'static str,
     cache_row0: Vec<f32>,
+    attention_mixes: Vec<f32>,
+    attention_split: Vec<f32>,
+    attention_collapsed: Vec<f32>,
+    attention_norm: Vec<f32>,
+    q_lora: Vec<f32>,
+    q_lora_norm: Vec<f32>,
+    kv_raw: Vec<f32>,
+    q_raw: Vec<f32>,
+    q_cur: Vec<f32>,
+    kv_rope: Vec<f32>,
+    kv_cur: Vec<f32>,
+    attention_back: Vec<f32>,
+    attention_low: Vec<f32>,
+    attention_out: Vec<f32>,
     attention_hc: Vec<f32>,
     ffn_mixes: Vec<f32>,
     ffn_split: Vec<f32>,
@@ -1176,8 +1312,12 @@ struct LayerExpected {
 
 fn layer_expected(layer_index: u32) -> Result<LayerExpected> {
     if layer_index == 0 {
-        let (cache_row0, _, _) = attention_read_fixture()?;
-        let (_, _, _, attention_hc) = attention_output_fixture()?;
+        let (attention_mixes, attention_split, attention_collapsed, attention_norm, q_lora) =
+            ingress_fixture()?;
+        let (q_lora_norm, kv_raw, _, q_raw) = attention_setup_fixture()?;
+        let (cache_row0, _, attention_back) = attention_read_fixture()?;
+        let (q_cur, kv_rope, kv_cur, _) = rope_kv_store_fixture()?;
+        let (_, attention_low, attention_out, attention_hc) = attention_output_fixture()?;
         let (
             _,
             ffn_mixes,
@@ -1193,6 +1333,20 @@ fn layer_expected(layer_index: u32) -> Result<LayerExpected> {
         return Ok(LayerExpected {
             fixture_id: LAYER0_FIXTURE_ID,
             cache_row0,
+            attention_mixes,
+            attention_split,
+            attention_collapsed,
+            attention_norm,
+            q_lora,
+            q_lora_norm,
+            kv_raw,
+            q_raw,
+            q_cur,
+            kv_rope,
+            kv_cur,
+            attention_back,
+            attention_low,
+            attention_out,
             attention_hc,
             ffn_mixes,
             ffn_split,
@@ -1207,38 +1361,177 @@ fn layer_expected(layer_index: u32) -> Result<LayerExpected> {
             final_hc,
         });
     }
-    if layer_index != 1 {
-        return Err(Error::invalid(
-            "the persistent layer executor currently supports layers 0 and 1",
-        ));
-    }
-    let mut ffn_split = decode_f32_fixture(LAYER1_FFN_PRE_BYTES, "layer-1 FFN HC pre weights")?;
+    let (
+        fixture_id,
+        label,
+        cache_row0,
+        attention_mixes,
+        attention_pre,
+        attention_post,
+        attention_comb,
+        attention_collapsed,
+        attention_norm,
+        q_lora,
+        q_lora_norm,
+        kv_raw,
+        q_raw,
+        q_cur,
+        kv_rope,
+        kv_cur,
+        attention_back,
+        attention_low,
+        attention_out,
+        attention_hc,
+        ffn_mixes,
+        ffn_pre,
+        ffn_post,
+        ffn_comb,
+        ffn_norm,
+        router_logits,
+        router_probs,
+        selected,
+        router_weights,
+        routed_mid,
+        routed_out,
+        shared_out,
+        final_hc,
+    ) = match layer_index {
+        1 => (
+            LAYER1_FIXTURE_ID,
+            "layer-1",
+            LAYER1_CACHE_ROW0_BYTES,
+            LAYER1_ATTN_MIXES_BYTES,
+            LAYER1_ATTN_PRE_BYTES,
+            LAYER1_ATTN_POST_BYTES,
+            LAYER1_ATTN_COMB_BYTES,
+            LAYER1_ATTN_COLLAPSED_BYTES,
+            LAYER1_ATTN_NORM_BYTES,
+            LAYER1_Q_LORA_BYTES,
+            LAYER1_Q_LORA_NORM_BYTES,
+            LAYER1_KV_RAW_BYTES,
+            LAYER1_Q_RAW_BYTES,
+            LAYER1_Q_CUR_BYTES,
+            LAYER1_KV_ROPE_BYTES,
+            LAYER1_KV_CUR_BYTES,
+            LAYER1_KQV_BACK_BYTES,
+            LAYER1_ATTN_LOW_BYTES,
+            LAYER1_ATTN_OUT_BYTES,
+            LAYER1_ATTN_HC_BYTES,
+            LAYER1_FFN_MIXES_BYTES,
+            LAYER1_FFN_PRE_BYTES,
+            LAYER1_FFN_POST_BYTES,
+            LAYER1_FFN_COMB_BYTES,
+            LAYER1_FFN_NORM_BYTES,
+            LAYER1_ROUTER_LOGITS_BYTES,
+            LAYER1_ROUTER_PROBS_BYTES,
+            LAYER1_SELECTED_BYTES,
+            LAYER1_ROUTER_WEIGHTS_BYTES,
+            LAYER1_ROUTED_MID_BYTES,
+            LAYER1_ROUTED_OUT_BYTES,
+            LAYER1_SHARED_OUT_BYTES,
+            LAYER1_FINAL_HC_BYTES,
+        ),
+        2 => (
+            LAYER2_FIXTURE_ID,
+            "layer-2",
+            LAYER2_CACHE_ROW0_BYTES,
+            LAYER2_ATTN_MIXES_BYTES,
+            LAYER2_ATTN_PRE_BYTES,
+            LAYER2_ATTN_POST_BYTES,
+            LAYER2_ATTN_COMB_BYTES,
+            LAYER2_ATTN_COLLAPSED_BYTES,
+            LAYER2_ATTN_NORM_BYTES,
+            LAYER2_Q_LORA_BYTES,
+            LAYER2_Q_LORA_NORM_BYTES,
+            LAYER2_KV_RAW_BYTES,
+            LAYER2_Q_RAW_BYTES,
+            LAYER2_Q_CUR_BYTES,
+            LAYER2_KV_ROPE_BYTES,
+            LAYER2_KV_CUR_BYTES,
+            LAYER2_KQV_BACK_BYTES,
+            LAYER2_ATTN_LOW_BYTES,
+            LAYER2_ATTN_OUT_BYTES,
+            LAYER2_ATTN_HC_BYTES,
+            LAYER2_FFN_MIXES_BYTES,
+            LAYER2_FFN_PRE_BYTES,
+            LAYER2_FFN_POST_BYTES,
+            LAYER2_FFN_COMB_BYTES,
+            LAYER2_FFN_NORM_BYTES,
+            LAYER2_ROUTER_LOGITS_BYTES,
+            LAYER2_ROUTER_PROBS_BYTES,
+            LAYER2_SELECTED_BYTES,
+            LAYER2_ROUTER_WEIGHTS_BYTES,
+            LAYER2_ROUTED_MID_BYTES,
+            LAYER2_ROUTED_OUT_BYTES,
+            LAYER2_SHARED_OUT_BYTES,
+            LAYER2_FINAL_HC_BYTES,
+        ),
+        _ => {
+            return Err(Error::invalid(
+                "the persistent layer executor currently supports layers 0 through 2",
+            ))
+        }
+    };
+    let mut attention_split =
+        decode_f32_fixture(attention_pre, &format!("{label} attention HC pre weights"))?;
+    attention_split.extend(decode_f32_fixture(
+        attention_post,
+        &format!("{label} attention HC post weights"),
+    )?);
+    attention_split.extend(decode_f32_fixture(
+        attention_comb,
+        &format!("{label} attention HC combination"),
+    )?);
+    let mut ffn_split = decode_f32_fixture(ffn_pre, &format!("{label} FFN HC pre weights"))?;
     ffn_split.extend(decode_f32_fixture(
-        LAYER1_FFN_POST_BYTES,
-        "layer-1 FFN HC post weights",
+        ffn_post,
+        &format!("{label} FFN HC post weights"),
     )?);
     ffn_split.extend(decode_f32_fixture(
-        LAYER1_FFN_COMB_BYTES,
-        "layer-1 FFN HC combination",
+        ffn_comb,
+        &format!("{label} FFN HC combination"),
     )?);
     Ok(LayerExpected {
-        fixture_id: LAYER1_FIXTURE_ID,
-        cache_row0: decode_f32_fixture(LAYER1_CACHE_ROW0_BYTES, "layer-1 cache row 0")?,
-        attention_hc: decode_f32_fixture(LAYER1_ATTN_HC_BYTES, "layer-1 attention HC")?,
-        ffn_mixes: decode_f32_fixture(LAYER1_FFN_MIXES_BYTES, "layer-1 FFN HC mixes")?,
-        ffn_split,
-        ffn_norm: decode_f32_fixture(LAYER1_FFN_NORM_BYTES, "layer-1 FFN norm")?,
-        router_logits: decode_f32_fixture(LAYER1_ROUTER_LOGITS_BYTES, "layer-1 router logits")?,
-        router_probs: decode_f32_fixture(
-            LAYER1_ROUTER_PROBS_BYTES,
-            "layer-1 router probabilities",
+        fixture_id,
+        cache_row0: decode_f32_fixture(cache_row0, &format!("{label} cache row 0"))?,
+        attention_mixes: decode_f32_fixture(
+            attention_mixes,
+            &format!("{label} attention HC mixes"),
         )?,
-        selected: decode_i32_fixture(LAYER1_SELECTED_BYTES, "layer-1 selected experts")?,
-        router_weights: decode_f32_fixture(LAYER1_ROUTER_WEIGHTS_BYTES, "layer-1 router weights")?,
-        routed_mid: decode_f32_fixture(LAYER1_ROUTED_MID_BYTES, "layer-1 routed activation")?,
-        routed_out: decode_f32_fixture(LAYER1_ROUTED_OUT_BYTES, "layer-1 routed output")?,
-        shared_out: decode_f32_fixture(LAYER1_SHARED_OUT_BYTES, "layer-1 shared output")?,
-        final_hc: decode_f32_fixture(LAYER1_FINAL_HC_BYTES, "layer-1 final HC")?,
+        attention_split,
+        attention_collapsed: decode_f32_fixture(
+            attention_collapsed,
+            &format!("{label} attention collapsed state"),
+        )?,
+        attention_norm: decode_f32_fixture(attention_norm, &format!("{label} attention norm"))?,
+        q_lora: decode_f32_fixture(q_lora, &format!("{label} Q-Lora"))?,
+        q_lora_norm: decode_f32_fixture(q_lora_norm, &format!("{label} normalized Q-Lora"))?,
+        kv_raw: decode_f32_fixture(kv_raw, &format!("{label} raw KV"))?,
+        q_raw: decode_f32_fixture(q_raw, &format!("{label} raw Q"))?,
+        q_cur: decode_f32_fixture(q_cur, &format!("{label} Q current"))?,
+        kv_rope: decode_f32_fixture(kv_rope, &format!("{label} KV before FP8 store"))?,
+        kv_cur: decode_f32_fixture(kv_cur, &format!("{label} KV current"))?,
+        attention_back: decode_f32_fixture(
+            attention_back,
+            &format!("{label} inverse-RoPE attention output"),
+        )?,
+        attention_low: decode_f32_fixture(
+            attention_low,
+            &format!("{label} low-rank attention output"),
+        )?,
+        attention_out: decode_f32_fixture(attention_out, &format!("{label} attention output"))?,
+        attention_hc: decode_f32_fixture(attention_hc, &format!("{label} attention HC"))?,
+        ffn_mixes: decode_f32_fixture(ffn_mixes, &format!("{label} FFN HC mixes"))?,
+        ffn_split,
+        ffn_norm: decode_f32_fixture(ffn_norm, &format!("{label} FFN norm"))?,
+        router_logits: decode_f32_fixture(router_logits, &format!("{label} router logits"))?,
+        router_probs: decode_f32_fixture(router_probs, &format!("{label} router probabilities"))?,
+        selected: decode_i32_fixture(selected, &format!("{label} selected experts"))?,
+        router_weights: decode_f32_fixture(router_weights, &format!("{label} router weights"))?,
+        routed_mid: decode_f32_fixture(routed_mid, &format!("{label} routed activation"))?,
+        routed_out: decode_f32_fixture(routed_out, &format!("{label} routed output"))?,
+        shared_out: decode_f32_fixture(shared_out, &format!("{label} shared output"))?,
+        final_hc: decode_f32_fixture(final_hc, &format!("{label} final HC"))?,
     })
 }
 
@@ -2884,10 +3177,24 @@ mod imp {
         let mut executor = LayerExecutor::new(model)?;
         let layer0 = executor.execute_layer(0)?;
         let layer1 = executor.execute_layer(1)?;
-        Ok(Layers01ProbeReport {
+        Ok(LayerSequenceProbeReport {
             layers: vec![layer0, layer1],
             command_buffers: 2,
             retained_hc_handoff: true,
+            kv_cache_layers: 2,
+        })
+    }
+
+    pub fn run_layers012_probe(model: &MappedModel) -> Result<Layers012ProbeReport> {
+        let mut executor = LayerExecutor::new(model)?;
+        let layer0 = executor.execute_layer(0)?;
+        let layer1 = executor.execute_layer(1)?;
+        let layer2 = executor.execute_layer(2)?;
+        Ok(LayerSequenceProbeReport {
+            layers: vec![layer0, layer1, layer2],
+            command_buffers: 3,
+            retained_hc_handoff: true,
+            kv_cache_layers: 3,
         })
     }
 
@@ -3166,6 +3473,52 @@ mod imp {
             ));
         }
         for (label, actual, expected) in [
+            (
+                "hc_attn_pre_mixes",
+                mixes.as_slice(),
+                expected.attention_mixes.as_slice(),
+            ),
+            (
+                "hc_attn_pre_split",
+                split.as_slice(),
+                expected.attention_split.as_slice(),
+            ),
+            (
+                "hc_attn_pre",
+                collapsed.as_slice(),
+                expected.attention_collapsed.as_slice(),
+            ),
+            (
+                "attn_norm",
+                norm.as_slice(),
+                expected.attention_norm.as_slice(),
+            ),
+            ("q_lora", q_lora.as_slice(), expected.q_lora.as_slice()),
+            (
+                "q_lora_norm",
+                q_lora_norm.as_slice(),
+                expected.q_lora_norm.as_slice(),
+            ),
+            ("kv_raw", kv_raw.as_slice(), expected.kv_raw.as_slice()),
+            ("q_raw", q_raw.as_slice(), expected.q_raw.as_slice()),
+            ("q_cur", q_cur.as_slice(), expected.q_cur.as_slice()),
+            ("kv_rope", kv_rope.as_slice(), expected.kv_rope.as_slice()),
+            ("kv_cur", kv_cur.as_slice(), expected.kv_cur.as_slice()),
+            (
+                "kqv_back",
+                attention_back.as_slice(),
+                expected.attention_back.as_slice(),
+            ),
+            (
+                "attn_low",
+                attention_low.as_slice(),
+                expected.attention_low.as_slice(),
+            ),
+            (
+                "attn_out",
+                attention_out.as_slice(),
+                expected.attention_out.as_slice(),
+            ),
             (
                 "hc_attn_post",
                 after_attention_hc.as_slice(),
@@ -3711,6 +4064,16 @@ mod imp {
         ))
     }
 
+    pub fn run_layers012_probe(model: &MappedModel) -> Result<Layers012ProbeReport> {
+        let _ = layer_expected(0)?;
+        let _ = layer_expected(1)?;
+        let _ = layer_expected(2)?;
+        let _ = exact_tensor(model, "blk.2.ffn_down_shexp.weight", 8, &[2048, 4096])?;
+        Err(Error::invalid(
+            "the continuous Metal layers-0/1/2 probe is available only on macOS",
+        ))
+    }
+
     pub fn run_layer0_bench(
         model: &MappedModel,
         config: Layer0BenchConfig,
@@ -3729,8 +4092,8 @@ mod imp {
 pub use imp::{
     run_attention_ingress_probe, run_attention_output_probe, run_attention_read_probe,
     run_attention_setup_probe, run_f16_embedding_probe, run_ffn_router_probe, run_layer0_bench,
-    run_layer0_probe, run_layers01_probe, run_moe_output_probe, run_probe, run_q8_projection_probe,
-    run_rope_kv_store_probe, LayerExecutor,
+    run_layer0_probe, run_layers012_probe, run_layers01_probe, run_moe_output_probe, run_probe,
+    run_q8_projection_probe, run_rope_kv_store_probe, LayerExecutor,
 };
 
 #[cfg(test)]
@@ -3982,11 +4345,25 @@ mod tests {
         layer1.dispatches = 28;
         layer1.selected_experts = vec![228, 208, 35, 27, 113, 12];
         layer1.final_hc_checksum = 8;
-        Layers01ProbeReport {
+        LayerSequenceProbeReport {
             layers: vec![layer0_report(), layer1],
             command_buffers: 2,
             retained_hc_handoff: true,
+            kv_cache_layers: 2,
         }
+    }
+
+    fn layers012_report() -> Layers012ProbeReport {
+        let mut report = layers01_report();
+        let mut layer2 = layer0_report();
+        layer2.fixture_id = LAYER2_FIXTURE_ID;
+        layer2.dispatches = 28;
+        layer2.selected_experts = vec![8, 188, 195, 75, 96, 176];
+        layer2.final_hc_checksum = 9;
+        report.layers.push(layer2);
+        report.command_buffers = 3;
+        report.kv_cache_layers = 3;
+        report
     }
 
     #[test]
@@ -4041,8 +4418,20 @@ mod tests {
         let text = String::from_utf8(output).unwrap();
         assert!(text.contains(&format!("\"schema\": \"{LAYERS01_PROBE_SCHEMA}\"")));
         assert!(text.contains("\"retained_hc_handoff\": true"));
+        assert!(text.contains("\"kv_cache_layers\": 2"));
         assert!(text.contains(&format!("\"fixture\": \"{LAYER1_FIXTURE_ID}\"")));
         assert!(text.contains("\"dispatches\": 28"));
+    }
+
+    #[test]
+    fn writes_stable_layers012_probe_json() {
+        let mut output = Vec::new();
+        write_layers012_probe_json(&mut output, &layers012_report()).unwrap();
+        let text = String::from_utf8(output).unwrap();
+        assert!(text.contains(&format!("\"schema\": \"{LAYERS012_PROBE_SCHEMA}\"")));
+        assert!(text.contains("\"kv_cache_layers\": 3"));
+        assert!(text.contains(&format!("\"fixture\": \"{LAYER2_FIXTURE_ID}\"")));
+        assert!(text.contains("\"selected_experts\": [8, 188, 195, 75, 96, 176]"));
     }
 
     #[test]
@@ -4054,6 +4443,19 @@ mod tests {
         assert_eq!(fixture.ffn_split.len(), 24);
         assert_eq!(fixture.router_logits.len(), 256);
         assert_eq!(fixture.selected, vec![228, 208, 35, 27, 113, 12]);
+        assert_eq!(fixture.routed_mid.len(), 6 * 2048);
+        assert_eq!(fixture.final_hc.len(), 4 * 4096);
+    }
+
+    #[test]
+    fn layer2_complete_fixture_has_target_shapes() {
+        let fixture = layer_expected(2).unwrap();
+        assert_eq!(fixture.cache_row0.len(), 512);
+        assert_eq!(fixture.attention_hc.len(), 4 * 4096);
+        assert_eq!(fixture.ffn_mixes.len(), 24);
+        assert_eq!(fixture.ffn_split.len(), 24);
+        assert_eq!(fixture.router_logits.len(), 256);
+        assert_eq!(fixture.selected, vec![8, 188, 195, 75, 96, 176]);
         assert_eq!(fixture.routed_mid.len(), 6 * 2048);
         assert_eq!(fixture.final_hc.len(), 4 * 4096);
     }

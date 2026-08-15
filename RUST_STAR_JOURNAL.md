@@ -22,9 +22,10 @@ history; add a correction and update the current-state summary.
 
 - Phase: target-Mac bootstrap, quick `oracle-v1`, no-copy model mapping, the
   canonical differential-fixture envelope, complete layer 0, steady-state
-  layer-0 execution, and the first persistent cross-layer scheduler boundary
-  are complete. Layers 0 and 1 now execute in order under one Rust-owned Metal
-  context with an exact GPU-resident HC-state handoff.
+  layer-0 execution, and the first three-layer scheduler boundary are complete.
+  Layers 0, 1, and 2 execute in order under one Rust-owned Metal context with
+  exact GPU-resident HC-state handoffs and one retained KV allocation per
+  layer. Layer 2 crosses the first compressed-attention RoPE boundary.
 - Working branch: `agent/rust-star-bootstrap`.
 - Branch base: upstream `antirez/ds4` commit
   `b0309611041655f4e45671cfd9c9886aff161406`.
@@ -69,10 +70,13 @@ history; add a correction and update the current-state summary.
   attention, output projection, hash routing, routed/shared experts, and final
   HC update. A narrow Rust `LayerExecutor` owns the Metal context, permanently
   binds it to one model mmap, and caches exact model views and activation
-  buffers. It executes layer 0 followed by layer 1; layer 1 omits
-  embedding/repeat and consumes layer 0's retained final HC Metal buffer
-  directly. Both layers use independently captured cache-row and differential
-  fixtures and pass every retained boundary by FP32 bit pattern.
+  buffers. It executes layers 0, 1, and 2 in order; later layers omit
+  embedding/repeat and consume the preceding layer's retained final HC Metal
+  buffer directly. KV storage is keyed by layer identity rather than reusing
+  one scratch allocation. All three layers use independently captured cache-row
+  and differential fixtures and pass every retained boundary by FP32 bit
+  pattern. Layer 2 derives its compressed RoPE base, scale, original context,
+  and YaRN parameters from the model's compression schedule.
 - Measurements: Metal batching was 42.861x faster than synchronized submission
   in the retained M-002 probe. DwarfStar medians are 164.86 prefill / 19.90
   generation tok/s at 2K and 161.05 prefill / 17.36 generation tok/s at 32K.
@@ -92,7 +96,10 @@ history; add a correction and update the current-state summary.
   median (0.033 ms MAD) across 30 bit-identical samples. The first continuous
   layers-0/1 correctness run reported 75.956/31.655 ms wall/GPU for cold layer
   0 and 27.276/26.313 ms for layer 1; those two-layer timings include setup and
-  correctness readback and are not decoder-throughput claims.
+  correctness readback and are not decoder-throughput claims. The canonical
+  layers-0/1/2 gate reported 47.226/20.865 ms, 16.310/15.398 ms, and
+  16.401/15.662 ms wall/GPU respectively; these intervals likewise include
+  synchronization and correctness readback.
 - Manual handoff: `RUST_STAR_MANUAL_TASKS.md` records Actions approval, target
   compilation/model inspection, quick/extended oracle capture, and the deferred
   secure-access decision with exact evidence requirements.
@@ -105,16 +112,76 @@ history; add a correction and update the current-state summary.
 
 ## Immediate Next Actions
 
-1. Give the executor explicit per-layer KV-cache slices, then extend the same
-   ordered API and C0 capture to layer 2 without introducing a graph framework.
-2. Once three sequential layers are exact, measure whether command-buffer
-   chaining can remove the current inter-layer synchronization without changing
-   arithmetic or lifetime guarantees.
+1. Measure whether command-buffer chaining can remove the current inter-layer
+   host synchronization without changing arithmetic, ordering, or lifetime
+   guarantees; keep the synchronized path as the C0 control.
+2. After the chained three-layer gate is exact, extend the ordered executor to
+   the next layer/state boundary rather than introducing a graph framework.
 3. Run the extended 2K--1M frontier capture when the Mac can be dedicated to a
    long benchmark; preserve any 512K/1M capacity failure as evidence.
 4. Run or approve the fork's GitHub Actions workflow and retain its URL.
 
 ## Entries
+
+### 2026-08-15 — Layers 0→1→2 matched with explicit per-layer KV ownership
+
+Objective:
+
+- Prove a continuous third-layer handoff, give each executed layer persistent
+  cache ownership, and cross the first compressed-attention RoPE boundary.
+
+Oracle fixture:
+
+- Captured all 32 retained layer-2 position-1 boundaries twice from separate
+  fresh processes using the pinned DwarfStar executable; all artifacts were
+  byte-identical. Captured position-0 `KVcur` independently and derived the
+  exact FP16-rounded cache row used by the two-position attention read.
+- Added `rust-star/fixtures/layer2-complete-v1/`: 28 ordered operations and 33
+  tensors totaling 741,808 verified bytes. The expected expert route is
+  `[8, 188, 195, 75, 96, 176]`.
+
+Implementation:
+
+- Replaced the executor's reusable cache scratch object with persistent Metal
+  buffers keyed by layer identity. The layers-0/1/2 sequence therefore retains
+  three distinct KV allocations while carrying one live four-stream HC state
+  across the two layer seams.
+- Added the stable `rust-star-layers012-continuous-probe-v1` report and
+  `layers012-probe` CLI, host tests, fixture validation, documentation, and
+  automatic execution in `check_runtime.sh`.
+- The first layer-2 run localized its earliest mismatch to `Qcur` after exact
+  attention ingress, norm, Q-Lora, Q-Lora norm, and `Qraw` boundaries. DwarfStar
+  source inspection showed that layer 2 starts the compressed-attention
+  schedule. Parameterizing Q and KV RoPE with base 160,000, scale 1/16,
+  original context 65,536, and the matching YaRN factors restored C0 without
+  weakening any comparison.
+
+Target-Mac evidence:
+
+- The uninterrupted sequence matched every retained boundary: layer 0 selected
+  `[25, 174, 215, 58, 48, 60]`, layer 1 selected
+  `[228, 208, 35, 27, 113, 12]`, and layer 2 selected
+  `[8, 188, 195, 75, 96, 176]`.
+- The canonical run reported 47.226/20.865 ms wall/GPU for layer 0,
+  16.310/15.398 ms for layer 1, and 16.401/15.662 ms for layer 2. It used three
+  synchronized command buffers and three retained per-layer cache allocations;
+  these are diagnostic correctness intervals, not throughput evidence.
+- The complete target-Mac gate passed: 39 Rust tests, optimized macOS build, 36
+  Python tests, all ten differential fixture verifiers, the cross-language C0
+  smoke, strict validation of all 1,288 required tensors, every standalone
+  Metal probe, the three-layer gate, and 30 bit-identical layer-0 steady-state
+  samples.
+
+Decision:
+
+- Accept explicit per-layer cache ownership and the compressed-RoPE third-layer
+  handoff. Keep one synchronized command buffer per layer as the correctness
+  control for the next scheduler experiment.
+
+Next:
+
+- Implement and measure a three-layer command-buffer-chained variant, requiring
+  the same bitwise checkpoints and ownership report before accepting it.
 
 ### 2026-08-15 — Persistent layer-0→layer-1 HC handoff matched DwarfStar
 

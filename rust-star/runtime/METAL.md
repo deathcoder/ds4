@@ -301,3 +301,20 @@ row, select their expected experts, and pass bitwise comparisons at every
 retained attention, router, expert, and final-HC boundary. The synchronization
 between the two command buffers is currently intentional; removing that
 boundary belongs to later scheduler work.
+
+## Persistent layers 0–2 and per-layer KV ownership
+
+Schema: `rust-star-layers012-continuous-probe-v1`.
+
+`layers012-probe` retains the ordered `LayerExecutor` lifetime and extends it
+through layer 2. Cache storage is keyed by layer identity, so layers 0, 1, and
+2 own distinct persistent Metal allocations while the four-stream HC state is
+the single live cross-layer handoff.
+
+Layer 2 is the first ratio-4 compressed-attention layer. Its Q and KV RoPE use
+the model's compressed base, scaling, original-context, and YaRN parameters
+instead of the dense-layer values used by layers 0 and 1. The probe compares
+all retained attention and MoE boundaries against two byte-identical
+fresh-process captures and requires the uninterrupted layers 0→1→2 chain to
+remain C0 exact. It still uses one synchronized command buffer per layer;
+command-buffer chaining is a separate optimization gate.
