@@ -182,7 +182,7 @@ typedef struct rust_star_metal_prefill_layer0_probe_result {
     uint32_t raw_cache_rows;
     uint32_t raw_cache_target_row;
     uint32_t raw_cache_guard_rows;
-    uint32_t reserved;
+    uint32_t kv_state_mode;
     double wall_ms;
     double gpu_ms;
 } rust_star_metal_prefill_layer0_probe_result;
@@ -332,6 +332,7 @@ int rust_star_metal_run_prefill_layer0_boundary(
     uint32_t n_vocab,
     uint32_t rows,
     uint32_t position_start,
+    uint32_t kv_state_mode,
     const uint32_t *tokens,
     float *hc_collapsed,
     float *attn_norm,

@@ -184,7 +184,14 @@ history; add a correction and update the current-state summary.
   live command buffer into layer 1's HC ingress, learned attention norm, and
   Q-A projection. It uses 47 dispatches and 30 no-copy model views; the three
   new final tiles add 294,912 exact FP32 values without a host activation
-  handoff.
+  handoff. The 84-dispatch complete boundary now finishes layer 1's attention,
+  routed/shared experts, and additive FFN HC tail with 49 no-copy views. The
+  generalized executor is exact for two adjacent tiles spanning positions
+  1984--2047. Its independent control loads a captured prefix for each tile;
+  its persistent-context control instead retains both layers' live first-tile
+  KV buffers and makes the final tile append to and consume that state. The
+  final execution prefix is not assembled from the capture, while an explicit
+  oracle comparison still guards both retained buffers before continuation.
   Full native batched prefill, sparse indexed attention beyond 512 ratio-4
   rows, and the eligible engine-measurement producer remain pending.
 - Measurements: Metal batching was 42.861x faster than synchronized submission
@@ -309,8 +316,8 @@ history; add a correction and update the current-state summary.
 
 ## Immediate Next Actions
 
-1. Chain live KV state between the two exact complete layers-0/1 tiles, then
-   extend the reusable 32-row tile loop toward complete native 2K prefill.
+1. Extend the persistent live-KV 32-row tile chain backward from position 1984
+   toward position 0, then generalize complete native prefill beyond layer 1.
 2. Add the fixed 512-row ratio-4 indexer top-k and sparse indexed attention so
    128 generated tokens can continue beyond the 2K frontier.
 3. Emit the `rust-star-engine-measurement-v1` artifact from the exact
@@ -322,6 +329,53 @@ history; add a correction and update the current-state summary.
 6. Run or approve the fork's GitHub Actions workflow and retain its URL.
 
 ## Entries
+
+### 2026-08-16 — Live layer-0/layer-1 KV state crosses the tile boundary
+
+Objective:
+
+- Replace the captured KV boundary between the two exact complete layers-0/1
+  tiles with Rust-owned, device-resident state while preserving the independent
+  captured-prefix replay as a regression control.
+
+Implementation:
+
+- Added explicit reset/retain/consume modes to the native prefill boundary and
+  persistent layer-0/layer-1 full-KV buffers to one Metal context.
+- The positions 1984--2015 tile initializes from its 1,984-row oracle prefix,
+  appends both live 32-row KV tiles, and retains 2,016 rows per layer. The
+  positions 2016--2047 tile requires that contiguous state, validates both
+  retained prefixes against the C0 oracle, then appends and attends from the
+  retained buffers rather than copying its captured prefix into execution
+  storage.
+- Added `prefill-layers01-live-kv-chain-probe` and stable schema
+  `rust-star-prefill-layers01-live-kv-chain-probe-v1`. Its artifact explicitly
+  records one persistent context, two command buffers, one inter-tile host
+  wait, a captured first prefix, no captured final execution prefix, and no
+  full-prefill or single-command-buffer claim.
+- Kept `prefill-layers01-row-coverage-probe` unchanged as the independent
+  captured-prefix-per-tile control and added both commands to the Mac gate.
+
+Target-Mac evidence:
+
+- The focused live chain passed both tiles bit-for-bit with 49/49 no-copy model
+  views per tile. It retained 2,016 rows after the first tile and 2,048 after
+  the second; the focused intervals were 129.589/90.751 and 52.422/51.523 ms
+  wall/GPU.
+- The independent captured-prefix control also remained exact at
+  129.548/90.039 and 127.754/87.312 ms wall/GPU.
+- The complete gate passed formatting, all 83 Rust tests, 55 Python tests, all
+  239 differential fixtures, optimized Objective-C/Metal compilation, strict
+  validation of all 1,288 required model tensors, every established Metal and
+  decoder control, and both steady-state benchmarks. The live first/final
+  tiles repeated exact at 129.000/90.011 and 52.492/51.516 ms wall/GPU.
+
+Decision and next:
+
+- Accept persistent two-tile layer-0/layer-1 KV ownership as the next native
+  prefill checkpoint. Next turn the pair into a reusable backward-extending
+  tile loop, preserving per-tile C0 evidence while avoiding a premature full
+  2K or throughput claim.
 
 ### 2026-08-16 — Exact layers-0/1 coverage expands to two prompt tiles
 

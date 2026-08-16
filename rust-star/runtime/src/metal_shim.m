@@ -241,6 +241,9 @@ static NSString *const kQ8ProjectionSource =
 @property(nonatomic, strong) NSMutableDictionary<NSString *, id<MTLBuffer>> *activationBufferCache;
 @property(nonatomic, strong) NSMutableDictionary<NSNumber *, id<MTLCommandBuffer>> *chainedCommands;
 @property(nonatomic, strong) NSMutableDictionary<NSNumber *, NSNumber *> *chainedWallStarts;
+@property(nonatomic, strong) id<MTLBuffer> prefillLayer0FullKv;
+@property(nonatomic, strong) id<MTLBuffer> prefillLayer1FullKv;
+@property(nonatomic, assign) uint32_t prefillKvRows;
 @property(nonatomic, assign) double chainedWallEnd;
 @property(nonatomic, assign) BOOL chainedReady;
 @property(nonatomic, assign) uint32_t chainedFinalLayer;
@@ -2237,6 +2240,7 @@ int rust_star_metal_run_prefill_layer0_boundary(
     uint32_t n_vocab,
     uint32_t rows,
     uint32_t position_start,
+    uint32_t kv_state_mode,
     const uint32_t *tokens,
     float *hc_collapsed,
     float *attn_norm,
@@ -2317,6 +2321,26 @@ int rust_star_metal_run_prefill_layer0_boundary(
 
     @autoreleasepool {
         RustStarMetalContext *context = (__bridge RustStarMetalContext *)opaque_context;
+        const BOOL retain_kv_state = kv_state_mode == 1u;
+        const BOOL consume_kv_state = kv_state_mode == 2u;
+        if (kv_state_mode > 2u ||
+            ((retain_kv_state || consume_kv_state) && !complete_layer1) ||
+            (retain_kv_state && position_start != 1984u) ||
+            (consume_kv_state && position_start != 2016u)) {
+            return fail_with_message(error, error_bytes,
+                @"prefill live-KV state mode is invalid for this tile");
+        }
+        if (retain_kv_state) {
+            context.prefillLayer0FullKv = nil;
+            context.prefillLayer1FullKv = nil;
+            context.prefillKvRows = 0u;
+        }
+        if (consume_kv_state &&
+            (!context.prefillLayer0FullKv || !context.prefillLayer1FullKv ||
+             context.prefillKvRows != position_start)) {
+            return fail_with_message(error, error_bytes,
+                @"prefill live-KV continuation state is missing or noncontiguous");
+        }
         if (!ensure_get_rows_f16_pipeline(context, error, error_bytes) ||
             !ensure_attention_ingress_pipelines(context, error, error_bytes) ||
             !ensure_moe_output_pipelines(context, error, error_bytes)) return 0;
@@ -2500,8 +2524,10 @@ int rust_star_metal_run_prefill_layer0_boundary(
             options:MTLResourceStorageModeShared];
         id<MTLBuffer> q_cur_buffer = [context.device newBufferWithLength:q_bytes
             options:MTLResourceStorageModeShared];
-        id<MTLBuffer> full_kv_buffer = [context.device newBufferWithLength:full_kv_bytes
-            options:MTLResourceStorageModeShared];
+        id<MTLBuffer> full_kv_buffer = consume_kv_state ?
+            context.prefillLayer0FullKv :
+            [context.device newBufferWithLength:full_kv_bytes
+                options:MTLResourceStorageModeShared];
         id<MTLBuffer> full_kv_half_buffer = [context.device
             newBufferWithLength:prefill_rows*kv_dim*sizeof(uint16_t)
             options:MTLResourceStorageModeShared];
@@ -2623,7 +2649,11 @@ int rust_star_metal_run_prefill_layer0_boundary(
             RUST_STAR_NEW_L1_BUFFER(next_raw_cache_buffer, raw_cache_bytes);
             RUST_STAR_NEW_L1_BUFFER(next_q_raw_buffer, q_bytes);
             RUST_STAR_NEW_L1_BUFFER(next_q_cur_buffer, q_bytes);
-            RUST_STAR_NEW_L1_BUFFER(next_full_kv_buffer, full_kv_bytes);
+            if (consume_kv_state) {
+                next_full_kv_buffer = context.prefillLayer1FullKv;
+            } else {
+                RUST_STAR_NEW_L1_BUFFER(next_full_kv_buffer, full_kv_bytes);
+            }
             RUST_STAR_NEW_L1_BUFFER(next_full_kv_half_buffer,
                 prefill_rows*kv_dim*sizeof(uint16_t));
             RUST_STAR_NEW_L1_BUFFER(next_attention_output_buffer, q_bytes);
@@ -2704,23 +2734,35 @@ int rust_star_metal_run_prefill_layer0_boundary(
         for (NSUInteger index = 0; index < raw_cache_rows*kv_dim; index++) {
             raw_cache_contents[index] = -12345.5f;
         }
-        memcpy(full_kv_buffer.contents, kv_prefix, full_kv_prefix_bytes);
-        float *full_kv_contents = full_kv_buffer.contents;
-        for (NSUInteger index = kv_prefix_rows*kv_dim;
-             index < prefill_rows*kv_dim; index++) {
-            full_kv_contents[index] = -23456.5f;
+        if (consume_kv_state) {
+            if (memcmp(full_kv_buffer.contents, kv_prefix,
+                       full_kv_prefix_bytes) != 0 ||
+                memcmp(next_full_kv_buffer.contents, next_outputs->kv_prefix,
+                       full_kv_prefix_bytes) != 0) {
+                return fail_with_message(error, error_bytes,
+                    @"prefill retained live-KV prefix differs from the C0 oracle");
+            }
+        } else {
+            memcpy(full_kv_buffer.contents, kv_prefix, full_kv_prefix_bytes);
+            float *full_kv_contents = full_kv_buffer.contents;
+            for (NSUInteger index = kv_prefix_rows*kv_dim;
+                 index < prefill_rows*kv_dim; index++) {
+                full_kv_contents[index] = -23456.5f;
+            }
         }
         if (complete_layer1) {
             float *next_raw_cache_contents = next_raw_cache_buffer.contents;
             for (NSUInteger index = 0; index < raw_cache_rows*kv_dim; index++) {
                 next_raw_cache_contents[index] = -12345.5f;
             }
-            memcpy(next_full_kv_buffer.contents, next_outputs->kv_prefix,
-                full_kv_prefix_bytes);
-            float *next_full_kv_contents = next_full_kv_buffer.contents;
-            for (NSUInteger index = kv_prefix_rows*kv_dim;
-                 index < prefill_rows*kv_dim; index++) {
-                next_full_kv_contents[index] = -23456.5f;
+            if (!consume_kv_state) {
+                memcpy(next_full_kv_buffer.contents, next_outputs->kv_prefix,
+                    full_kv_prefix_bytes);
+                float *next_full_kv_contents = next_full_kv_buffer.contents;
+                for (NSUInteger index = kv_prefix_rows*kv_dim;
+                     index < prefill_rows*kv_dim; index++) {
+                    next_full_kv_contents[index] = -23456.5f;
+                }
             }
         }
         uint16_t *attention_mask = attention_mask_buffer.contents;
@@ -3848,6 +3890,11 @@ int rust_star_metal_run_prefill_layer0_boundary(
         [command commit];
         if (!command_succeeded(command, error, error_bytes)) return 0;
         const double wall_end = monotonic_ms();
+        if (retain_kv_state || consume_kv_state) {
+            context.prefillLayer0FullKv = full_kv_buffer;
+            context.prefillLayer1FullKv = next_full_kv_buffer;
+            context.prefillKvRows = position_start + rows;
+        }
         memcpy(hc_collapsed, collapsed_buffer.contents, attn_bytes);
         memcpy(attn_norm, attn_buffer.contents, attn_bytes);
         memcpy(q_lora, q_buffer.contents, q_rank_bytes);
@@ -3940,6 +3987,7 @@ int rust_star_metal_run_prefill_layer0_boundary(
         result->raw_cache_rows = raw_cache_rows;
         result->raw_cache_target_row = raw_cache_target_row;
         result->raw_cache_guard_rows = raw_cache_target_row;
+        result->kv_state_mode = kv_state_mode;
         result->wall_ms = wall_end-wall_start;
         result->gpu_ms = gpu_elapsed_ms(command);
         return 1;

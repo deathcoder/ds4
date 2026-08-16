@@ -87,9 +87,13 @@ produced FP32 values plus 384 selected expert IDs across both layers from
 repeated DwarfStar captures. The same executor now also reproduces the previous
 tile at positions 1984--2015, including its different RoPE positions,
 1,984-row KV prefix, and raw-ring target row 64. Together the two controls cover
-64 exact prompt rows. They still use captured KV prefixes independently, so the
-next checkpoint is live inter-tile KV chaining rather than a complete native
-2K-prefill claim.
+64 exact prompt rows. An additional persistent-context control retains both
+layers' first-tile KV buffers, validates the retained 2,016-row prefixes against
+the oracle, and has the second tile append to and consume those live buffers
+without reassembling its execution state from a captured prefix. It remains a
+two-command-buffer checkpoint with one inter-tile host wait, not a complete
+native 2K-prefill claim. The next checkpoint is a reusable multi-tile loop
+extending backward toward position 0 and then through the remaining layers.
 
 Project controls and benchmark contracts:
 
