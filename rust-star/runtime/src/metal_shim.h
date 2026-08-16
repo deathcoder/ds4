@@ -150,6 +150,24 @@ typedef struct rust_star_metal_prefill_compressor_weights {
     uint64_t indexer_norm_offset, indexer_norm_bytes;
 } rust_star_metal_prefill_compressor_weights;
 
+typedef struct rust_star_metal_prefill_layer2_attention_weights {
+    uint64_t q_b_offset, q_b_bytes;
+    uint64_t attn_sinks_offset, attn_sinks_bytes;
+    uint64_t attn_output_a_offset, attn_output_a_bytes;
+    uint64_t attn_output_b_offset, attn_output_b_bytes;
+} rust_star_metal_prefill_layer2_attention_weights;
+
+typedef struct rust_star_metal_prefill_layer2_attention_result {
+    uint32_t rows;
+    uint32_t raw_kv_rows;
+    uint32_t compressed_kv_rows;
+    uint32_t dispatches;
+    uint32_t wrapped_model_ranges;
+    uint32_t pointer_matches;
+    double wall_ms;
+    double gpu_ms;
+} rust_star_metal_prefill_layer2_attention_result;
+
 typedef struct rust_star_metal_prefill_layer_outputs {
     const float *kv_prefix;
     float *q_lora_norm;
@@ -419,6 +437,16 @@ int rust_star_metal_run_ratio128_compressor_replay(
     float *output,
     uint64_t output_elements,
     rust_star_metal_ingress_probe_result *result,
+    char *error,
+    size_t error_bytes);
+
+int rust_star_metal_run_prefill_layer2_attention(
+    void *context,
+    const void *model_mapping,
+    uint64_t model_bytes,
+    const rust_star_metal_prefill_layer2_attention_weights *weights,
+    float *attention_output,
+    rust_star_metal_prefill_layer2_attention_result *result,
     char *error,
     size_t error_bytes);
 

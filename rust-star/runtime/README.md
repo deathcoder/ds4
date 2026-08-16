@@ -230,6 +230,24 @@ Every accumulated prefix plus every `KVnorm`, `KVrope`, and `KVcur` tile must
 match the repeated DwarfStar captures bit-for-bit. The attention/indexer
 compressors, mixed attention, layer-2 FFN, and later model remain pending.
 
+To continue through both ratio-4 compressors and exact dense mixed attention:
+
+```sh
+rust-star/.work/runtime-target/release/rust-star \
+  prefill-layers012-attention-loop-probe \
+  /absolute/path/to/model.gguf \
+  --json rust-star/.work/runtime-target/prefill-layers012-attention-loop-probe.json
+```
+
+This command retains the same 64-tile context, first requires all 512
+attention/indexer compressed rows and final recurrent states to match, then
+executes full layer-2 Q-B, compressed YaRN, dense mixed FlashAttention over
+2,048 raw plus 512 compressed rows, inverse RoPE, and both Q8 output
+projections. All 8,388,608 output values must match the repeated DwarfStar
+fixture bit-for-bit. Exactly 512 compressed rows still use the dense path;
+sparse top-k begins only after this 2K boundary. Layer-2 HC post-processing,
+FFN, later layers, output logits, and throughput remain outside this command.
+
 To run the connected layer-0 ingress gate:
 
 ```sh

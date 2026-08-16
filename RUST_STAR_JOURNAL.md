@@ -205,11 +205,19 @@ history; add a correction and update the current-state summary.
   `KVcur` value plus each accumulated prefix. The same empty-seed loop now owns
   both layer-2 ratio-4 compressors. It matches all 512 attention and indexer
   compressed rows and the four final recurrent state tensors bit-for-bit while
-  preserving 65 no-copy model mappings per tile. Mixed attention, FFN, and
-  complete model prefill remain pending.
+  preserving 65 no-copy model mappings per tile. The same persistent context
+  now retains every normalized layer-2 query row and executes exact dense mixed
+  attention over 2,048 raw plus 512 compressed rows. Q-B, compressed YaRN,
+  FlashAttention, inverse RoPE, and both attention-output projections reproduce
+  all 8,388,608 attention-output values bit-for-bit with four additional
+  no-copy model mappings. Layer-2 HC post-processing, FFN, and complete model
+  prefill remain pending.
   Full native batched prefill, sparse indexed attention beyond 512 ratio-4
   rows, and the eligible engine-measurement producer remain pending.
-- Measurements: Metal batching was 42.861x faster than synchronized submission
+- Measurements: The exact full-2K layer-2 dense mixed-attention command reported
+  196.069 ms wall / 169.211 ms GPU across ten dispatches with 4/4 no-copy model
+  mappings. It includes full correctness readback and is not a throughput
+  claim. Metal batching was 42.861x faster than synchronized submission
   in the retained M-002 probe. DwarfStar medians are 164.86 prefill / 19.90
   generation tok/s at 2K and 161.05 prefill / 17.36 generation tok/s at 32K.
   The first real-model kernel matched all 20,480 checked FP32 values; its final
@@ -349,6 +357,65 @@ history; add a correction and update the current-state summary.
 6. Run or approve the fork's GitHub Actions workflow and retain its URL.
 
 ## Entries
+
+### 2026-08-16 — Exact layer-2 dense mixed attention reaches the full 2K frontier
+
+Objective:
+
+- Continue the exact empty-seed layers-0/1/2 prefill path through layer 2's
+  first real attention consumption boundary.
+
+Oracle evidence:
+
+- Tracing the pinned DwarfStar path corrected an important boundary
+  assumption: exactly 512 ratio-4 compressed rows still use dense mixed
+  attention. Sparse indexer top-k begins only when the compressed cache grows
+  beyond 512 rows, after the 2K prompt.
+- Two fresh-process full-2K attention-output captures were byte-identical.
+- The retained 2048 x 4096 FP32 payload is 33,554,432 bytes with SHA-256
+  68c2110283b472105f00e192817dbb682ebe0815f2ba4a76cd73ed20f3d97508.
+- prefill-layer2-attention-2048-v1 records the exact 2,048 raw plus 512
+  compressed KV shape and the absence of sparse selection at this boundary.
+
+Implementation:
+
+- The persistent tile context now retains all 2,048 layer-2 normalized query
+  rows alongside the already exact raw KV and paired-compressor state.
+- rust_star_metal_run_prefill_layer2_attention maps Q-B, attention sinks, and
+  both output tensors once without copying, then executes a ten-dispatch
+  command: full Q8 Q-B, compressed YaRN head norm/RoPE, raw and compressed F16
+  staging, dense mixed FlashAttention, inverse compressed RoPE, and
+  grouped/dense Q8 output projection.
+- The mixed mask preserves the 128-row raw causal window and exposes
+  (query + 1) / 4 compressed rows.
+- prefill-layers012-attention-loop-probe reuses the exact 64-tile compressor
+  loop in the same Metal context and compares all 8,388,608 output values by
+  FP32 bit pattern.
+
+Validation:
+
+- The first optimized M1 Ultra run matched the complete DwarfStar attention
+  output bit-for-bit.
+- The isolated attention command retained 4/4 no-copy model mappings, used ten
+  dispatches, and reported 196.069 ms wall / 169.211 ms GPU. This interval
+  includes correctness-oriented setup, synchronization, and full readback; it
+  is not a prefill-throughput claim.
+- The fixture verifier, optimized build, all 92 Rust tests, all 58 Python
+  artifact tests, and the complete target-model Metal runtime gate pass.
+
+Scope:
+
+- Layer 2 now has exact full-2K raw KV, both ratio-4 compressors, dense mixed
+  attention, inverse RoPE, and attention output projection.
+- Layer-2 attention HC post-processing, FFN, complete layer-2 prefill, later
+  layers, output logits, and sparse ratio-4 attention after the prompt remain
+  pending.
+
+Next:
+
+- Continue the live full-2K boundary through layer 2's attention HC update and
+  FFN, then decide whether to advance batched prefill layer-by-layer or isolate
+  the first 513-to-512 sparse selection in post-prompt decode.
 
 ### 2026-08-16 — Layer-2 paired compressors reach the full 2K frontier
 

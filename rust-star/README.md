@@ -105,10 +105,18 @@ preserves 57/57 no-copy model views. This validates all live layer-1 output rows
 through a downstream native boundary. The next exact command continues every
 tile through layer 2's YaRN-scaled compressed-attention RoPE and E4M3FN KV
 finalization. It retains a live 2,048-row layer-2 KV allocation, validates the
-complete prefix before every append, and matches all full-2K `KVrope` and
-`KVcur` values from two fresh DwarfStar captures. This completes layer 2's raw
-KV state, not its attention compressor, mixed raw/compressed attention, FFN,
-the remaining layers, or the output head, and it is not a throughput claim.
+complete prefix before every append, and matches all full-2K KVrope and KVcur
+values from two fresh DwarfStar captures. The persistent loop now also owns
+both ratio-4 compressors, matches all 512 attention/indexer compressed rows and
+their final recurrent states, and retains every normalized layer-2 query row.
+A final ten-dispatch command executes Q-B, compressed YaRN, dense mixed
+FlashAttention over 2,048 raw plus 512 compressed rows, inverse RoPE, and both
+Q8 attention-output projections. Its complete 2048 x 4096 output matches two
+fresh DwarfStar captures bit-for-bit with 4/4 no-copy attention weight views.
+Exactly 512 compressed rows remain dense; sparse indexer top-k starts only after
+this prompt boundary. Layer-2 HC post-processing, FFN, later layers, output
+logits, and sparse post-prompt attention remain pending, and this is not a
+throughput claim.
 
 Project controls and benchmark contracts:
 

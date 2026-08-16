@@ -27,6 +27,8 @@ pub const PREFILL_LAYERS012_KV_STATE_LOOP_PROBE_SCHEMA: &str =
     "rust-star-prefill-layers012-kv-state-loop-probe-v1";
 pub const PREFILL_LAYERS012_COMPRESSOR_LOOP_PROBE_SCHEMA: &str =
     "rust-star-prefill-layers012-compressor-loop-probe-v1";
+pub const PREFILL_LAYERS012_ATTENTION_LOOP_PROBE_SCHEMA: &str =
+    "rust-star-prefill-layers012-attention-loop-probe-v1";
 pub const INGRESS_PROBE_SCHEMA: &str = "rust-star-layer0-attention-ingress-probe-v1";
 pub const ATTENTION_SETUP_PROBE_SCHEMA: &str = "rust-star-layer0-attention-setup-probe-v1";
 pub const ROPE_KV_STORE_PROBE_SCHEMA: &str = "rust-star-layer0-rope-kv-store-probe-v1";
@@ -76,6 +78,8 @@ pub const PREFILL_LAYER2_KV_STATE_FIXTURE_ID: &str =
     "dwarfstar-oracle-v1-prefill-layer2-kv-state-2048";
 pub const PREFILL_LAYER2_COMPRESSOR_FIXTURE_ID: &str =
     "dwarfstar-oracle-v1-prefill-layer2-compressors-2048";
+pub const PREFILL_LAYER2_ATTENTION_FIXTURE_ID: &str =
+    "dwarfstar-oracle-v1-prefill-layer2-attention-2048";
 pub const PREFILL_LAYERS01_PREVIOUS_TILE_FIXTURE_ID: &str =
     "dwarfstar-oracle-v1-prefill-layers01-previous-tile-2048";
 pub const PREFILL_HC_INGRESS_FIXTURE_ID: &str = "dwarfstar-oracle-v1-prefill-hc-ingress-2048";
@@ -354,6 +358,9 @@ const PREFILL_LAYER2_INDEXER_STATE_KV_BYTES: &[u8] =
     include_bytes!("../../fixtures/prefill-layer2-compressors-2048-v1/indexer-state-kv.f32le.bin");
 const PREFILL_LAYER2_INDEXER_STATE_SCORE_BITS: &[u8] = include_bytes!(
     "../../fixtures/prefill-layer2-compressors-2048-v1/indexer-state-score.i32le.bin"
+);
+const PREFILL_LAYER2_ATTENTION_OUTPUT_BYTES: &[u8] = include_bytes!(
+    "../../fixtures/prefill-layer2-attention-2048-v1/layer2-attention-output.f32le.bin"
 );
 const PREFILL_HC_TOKEN_IDS_BYTES: &[u8] =
     include_bytes!("../../fixtures/prefill-hc-ingress-2048-v1/token-ids-final-tile.i32le.bin");
@@ -933,6 +940,21 @@ pub struct PrefillLayers012CompressorLoopProbeReport {
     pub layer2_checksums: Vec<[u64; 3]>,
     pub layer2_compressor_checksums: Vec<[u64; 6]>,
     pub final_tile: PrefillLayers01CompleteBoundaryProbeReport,
+}
+
+#[derive(Clone, Debug)]
+pub struct PrefillLayers012AttentionLoopProbeReport {
+    pub compressor: PrefillLayers012CompressorLoopProbeReport,
+    pub attention_fixture_id: &'static str,
+    pub rows: u32,
+    pub raw_kv_rows: u32,
+    pub compressed_kv_rows: u32,
+    pub dispatches: u32,
+    pub wrapped_model_ranges: u32,
+    pub pointer_matches: u32,
+    pub wall_ms: f64,
+    pub gpu_ms: f64,
+    pub output_checksum: u64,
 }
 
 #[derive(Clone, Debug)]
@@ -2951,6 +2973,71 @@ pub fn write_prefill_layers012_compressor_loop_probe_json<W: Write>(
     Ok(())
 }
 
+pub fn write_prefill_layers012_attention_loop_probe_json<W: Write>(
+    output: &mut W,
+    report: &PrefillLayers012AttentionLoopProbeReport,
+) -> Result<()> {
+    let expected = prefill_layer2_attention_fixture()?;
+    if report.compressor.tiles.len() != 64
+        || report.attention_fixture_id != PREFILL_LAYER2_ATTENTION_FIXTURE_ID
+        || report.rows != 2048
+        || report.raw_kv_rows != 2048
+        || report.compressed_kv_rows != 512
+        || report.dispatches != 10
+        || report.wrapped_model_ranges != 4
+        || report.pointer_matches != 4
+        || report.output_checksum != checksum_f32(&expected)
+        || !report.wall_ms.is_finite()
+        || report.wall_ms <= 0.0
+        || !report.gpu_ms.is_finite()
+        || report.gpu_ms < 0.0
+    {
+        return Err(Error::invalid(
+            "prefill layers-0/1/2 attention report has inconsistent metadata",
+        ));
+    }
+    let tile_wall_ms: f64 = report
+        .compressor
+        .tiles
+        .iter()
+        .map(|tile| tile.wall_ms)
+        .sum();
+    let tile_gpu_ms: f64 = report.compressor.tiles.iter().map(|tile| tile.gpu_ms).sum();
+    write!(
+        output,
+        "{{\n  \"schema\": \"{PREFILL_LAYERS012_ATTENTION_LOOP_PROBE_SCHEMA}\",\n  \"fixtures\": ["
+    )?;
+    for (index, fixture) in [
+        report.compressor.layer2_kvnorm_fixture_id,
+        report.compressor.layer2_kv_state_fixture_id,
+        report.compressor.layer2_compressor_fixture_id,
+        report.attention_fixture_id,
+    ]
+    .iter()
+    .enumerate()
+    {
+        if index != 0 {
+            output.write_all(b", ")?;
+        }
+        crate::artifact::write_json_string(output, fixture)?;
+    }
+    write!(
+        output,
+        "],\n  \"coverage\": {{\"position_start\": 0, \"position_end\": 2047, \"rows\": {}, \"complete_layers\": [0, 1], \"downstream_layer\": 2, \"output_boundary\": \"layer2_attention_output\"}},\n  \"mixed_attention\": {{\"raw_kv_rows\": {}, \"compressed_kv_rows\": {}, \"raw_window\": 128, \"compressor_ratio\": 4, \"sparse_indexer_topk\": false, \"dense_compressed_limit_rows\": 512}},\n  \"schedule\": {{\"tile_command_buffers\": 64, \"attention_command_buffers\": 1, \"attention_dispatches\": {}, \"wrapped_attention_model_ranges\": {}, \"query_projection_kernel\": \"kernel_mul_mm_q8_0_f32\", \"query_rope_kernel\": \"kernel_dsv4_head_rms_norm_rope_tail_f32\", \"attention_kernel\": \"kernel_flash_attn_ext_f16_dk512_dv512\", \"inverse_rope_kernel\": \"kernel_dsv4_rope_tail_f32\", \"output_low_kernel\": \"kernel_mul_mm_id_q8_0_f32\", \"output_kernel\": \"kernel_mul_mm_q8_0_f32\"}},\n  \"timing\": {{\"tile_summed_wall_ms\": {:.6}, \"tile_summed_gpu_ms\": {:.6}, \"attention_wall_ms\": {:.6}, \"attention_gpu_ms\": {:.6}}},\n  \"checksums\": {{\"layer2_attention_output\": {}}},\n  \"persistent_metal_context\": true,\n  \"all_layer2_compressed_rows_c0_bitwise_match\": true,\n  \"layer2_attention_output_c0_bitwise_match\": true,\n  \"complete_layer2_dense_mixed_attention_claim\": true,\n  \"complete_layer2_ffn_claim\": false,\n  \"complete_layer2_prefill_claim\": false,\n  \"sparse_ratio4_decode_claim\": false,\n  \"complete_model_prefill_claim\": false,\n  \"throughput_claim\": false\n}}\n",
+        report.rows,
+        report.raw_kv_rows,
+        report.compressed_kv_rows,
+        report.dispatches,
+        report.wrapped_model_ranges,
+        tile_wall_ms,
+        tile_gpu_ms,
+        report.wall_ms,
+        report.gpu_ms,
+        report.output_checksum,
+    )?;
+    Ok(())
+}
+
 fn validate_embedding_inputs(
     model: &MappedModel,
     tensor: &TensorInfo,
@@ -3764,6 +3851,19 @@ fn prefill_layer2_compressor_fixture() -> Result<[Vec<f32>; 6]> {
         indexer_state_kv,
         indexer_state_score,
     ])
+}
+
+fn prefill_layer2_attention_fixture() -> Result<Vec<f32>> {
+    let values = decode_f32_fixture(
+        PREFILL_LAYER2_ATTENTION_OUTPUT_BYTES,
+        "prefill layer-2 dense mixed-attention output",
+    )?;
+    if values.len() != 2048 * 4096 {
+        return Err(Error::invalid(
+            "prefill layer-2 attention fixture dimensions are invalid",
+        ));
+    }
+    Ok(values)
 }
 
 fn prefill_hc_ingress_fixture() -> Result<(Vec<u32>, Vec<f32>, Vec<f32>)> {
@@ -5015,6 +5115,31 @@ mod imp {
     }
 
     #[repr(C)]
+    struct RawPrefillLayer2AttentionWeights {
+        q_b_offset: u64,
+        q_b_bytes: u64,
+        attn_sinks_offset: u64,
+        attn_sinks_bytes: u64,
+        attn_output_a_offset: u64,
+        attn_output_a_bytes: u64,
+        attn_output_b_offset: u64,
+        attn_output_b_bytes: u64,
+    }
+
+    #[repr(C)]
+    #[derive(Default)]
+    struct RawPrefillLayer2AttentionResult {
+        rows: u32,
+        raw_kv_rows: u32,
+        compressed_kv_rows: u32,
+        dispatches: u32,
+        wrapped_model_ranges: u32,
+        pointer_matches: u32,
+        wall_ms: f64,
+        gpu_ms: f64,
+    }
+
+    #[repr(C)]
     struct RawPrefillLayerOutputs {
         kv_prefix: *const f32,
         q_lora_norm: *mut f32,
@@ -5328,6 +5453,16 @@ mod imp {
             next_attn_norm: *mut f32,
             next_q_lora: *mut f32,
             result: *mut RawPrefillLayer0ProbeResult,
+            error: *mut c_char,
+            error_bytes: usize,
+        ) -> i32;
+        fn rust_star_metal_run_prefill_layer2_attention(
+            context: *mut c_void,
+            model_mapping: *const c_void,
+            model_bytes: u64,
+            weights: *const RawPrefillLayer2AttentionWeights,
+            attention_output: *mut f32,
+            result: *mut RawPrefillLayer2AttentionResult,
             error: *mut c_char,
             error_bytes: usize,
         ) -> i32;
@@ -8017,10 +8152,10 @@ mod imp {
         })
     }
 
-    pub fn run_prefill_layers012_compressor_loop_probe(
+    fn run_prefill_layers012_compressor_loop_probe_in_context(
         model: &MappedModel,
+        context: &Context,
     ) -> Result<PrefillLayers012CompressorLoopProbeReport> {
-        let context = Context::new()?;
         let mut tiles = Vec::with_capacity(64);
         let mut layer2_checksums = Vec::with_capacity(64);
         let mut layer2_compressor_checksums = Vec::with_capacity(64);
@@ -8031,7 +8166,7 @@ mod imp {
                 model,
                 2,
                 position_start,
-                Some(&context),
+                Some(context),
                 kv_state_mode,
                 true,
                 true,
@@ -8083,6 +8218,89 @@ mod imp {
             layer2_compressor_checksums,
             final_tile: final_tile
                 .ok_or_else(|| Error::invalid("layer-2 compressor loop omitted the final tile"))?,
+        })
+    }
+
+    pub fn run_prefill_layers012_compressor_loop_probe(
+        model: &MappedModel,
+    ) -> Result<PrefillLayers012CompressorLoopProbeReport> {
+        let context = Context::new()?;
+        run_prefill_layers012_compressor_loop_probe_in_context(model, &context)
+    }
+
+    pub fn run_prefill_layers012_attention_loop_probe(
+        model: &MappedModel,
+    ) -> Result<PrefillLayers012AttentionLoopProbeReport> {
+        let context = Context::new()?;
+        let compressor = run_prefill_layers012_compressor_loop_probe_in_context(model, &context)?;
+        let expected = prefill_layer2_attention_fixture()?;
+        let q_b = exact_tensor(model, "blk.2.attn_q_b.weight", 8, &[1024, 32768])?;
+        let sinks = exact_tensor(model, "blk.2.attn_sinks.weight", 0, &[64])?;
+        let output_a = exact_tensor(model, "blk.2.attn_output_a.weight", 8, &[4096, 8192])?;
+        let output_b = exact_tensor(model, "blk.2.attn_output_b.weight", 8, &[8192, 4096])?;
+        let weights = RawPrefillLayer2AttentionWeights {
+            q_b_offset: q_b.absolute_offset,
+            q_b_bytes: q_b.bytes,
+            attn_sinks_offset: sinks.absolute_offset,
+            attn_sinks_bytes: sinks.bytes,
+            attn_output_a_offset: output_a.absolute_offset,
+            attn_output_a_bytes: output_a.bytes,
+            attn_output_b_offset: output_b.absolute_offset,
+            attn_output_b_bytes: output_b.bytes,
+        };
+        let mut actual = vec![0.0_f32; expected.len()];
+        let mut raw = RawPrefillLayer2AttentionResult::default();
+        let mut error = [0 as c_char; ERROR_BYTES];
+        let succeeded = unsafe {
+            rust_star_metal_run_prefill_layer2_attention(
+                context.0,
+                model.mapping_pointer(),
+                model.bytes(),
+                &weights,
+                actual.as_mut_ptr(),
+                &mut raw,
+                error.as_mut_ptr(),
+                error.len(),
+            )
+        };
+        if succeeded == 0 {
+            return Err(Error::invalid(format!(
+                "Metal prefill layer-2 attention probe failed: {}",
+                error_text(&error)
+            )));
+        }
+        for (index, (actual, expected)) in actual.iter().zip(&expected).enumerate() {
+            if actual.to_bits() != expected.to_bits() {
+                return Err(Error::invalid(format!(
+                    "prefill layer-2 attention C0 mismatch at element {index}: actual={:#010x} expected={:#010x}",
+                    actual.to_bits(),
+                    expected.to_bits(),
+                )));
+            }
+        }
+        if raw.rows != 2048
+            || raw.raw_kv_rows != 2048
+            || raw.compressed_kv_rows != 512
+            || raw.dispatches != 10
+            || raw.wrapped_model_ranges != 4
+            || raw.pointer_matches != 4
+        {
+            return Err(Error::invalid(
+                "Metal prefill layer-2 attention returned an unexpected schedule or mapping",
+            ));
+        }
+        Ok(PrefillLayers012AttentionLoopProbeReport {
+            compressor,
+            attention_fixture_id: PREFILL_LAYER2_ATTENTION_FIXTURE_ID,
+            rows: raw.rows,
+            raw_kv_rows: raw.raw_kv_rows,
+            compressed_kv_rows: raw.compressed_kv_rows,
+            dispatches: raw.dispatches,
+            wrapped_model_ranges: raw.wrapped_model_ranges,
+            pointer_matches: raw.pointer_matches,
+            wall_ms: raw.wall_ms,
+            gpu_ms: raw.gpu_ms,
+            output_checksum: checksum_f32(&actual),
         })
     }
 
@@ -10938,6 +11156,16 @@ mod imp {
         ))
     }
 
+    pub fn run_prefill_layers012_attention_loop_probe(
+        model: &MappedModel,
+    ) -> Result<PrefillLayers012AttentionLoopProbeReport> {
+        let _ = prefill_layer2_attention_fixture()?;
+        let _ = exact_tensor(model, "blk.2.attn_q_b.weight", 8, &[1024, 32768])?;
+        Err(Error::invalid(
+            "the Metal prefill layers-0/1/2 attention loop probe is available only on macOS",
+        ))
+    }
+
     pub fn run_prefill_layers012_compressor_loop_probe(
         model: &MappedModel,
     ) -> Result<PrefillLayers012CompressorLoopProbeReport> {
@@ -11374,13 +11602,13 @@ pub use imp::{
     run_layers0123_probe, run_layers012_chained_probe, run_layers012_probe, run_layers01_probe,
     run_layers0_to_42_decode_probe, run_moe_output_probe, run_position127_decoder_probe,
     run_prefill_frontier_probe, run_prefill_layer0_boundary_probe,
-    run_prefill_layers012_compressor_loop_probe, run_prefill_layers012_kv_state_loop_probe,
-    run_prefill_layers012_kvnorm_loop_probe, run_prefill_layers01_boundary_probe,
-    run_prefill_layers01_complete_boundary_probe, run_prefill_layers01_live_kv_chain_probe,
-    run_prefill_layers01_live_kv_loop_probe, run_prefill_layers01_row_coverage_probe,
-    run_prefill_q8_boundary_probe, run_prefill_qkv_boundary_probe, run_probe,
-    run_q8_projection_probe, run_ratio128_compressor_replay_probe, run_rope_kv_store_probe,
-    LayerExecutor,
+    run_prefill_layers012_attention_loop_probe, run_prefill_layers012_compressor_loop_probe,
+    run_prefill_layers012_kv_state_loop_probe, run_prefill_layers012_kvnorm_loop_probe,
+    run_prefill_layers01_boundary_probe, run_prefill_layers01_complete_boundary_probe,
+    run_prefill_layers01_live_kv_chain_probe, run_prefill_layers01_live_kv_loop_probe,
+    run_prefill_layers01_row_coverage_probe, run_prefill_q8_boundary_probe,
+    run_prefill_qkv_boundary_probe, run_probe, run_q8_projection_probe,
+    run_ratio128_compressor_replay_probe, run_rope_kv_store_probe, LayerExecutor,
 };
 
 #[cfg(test)]
@@ -11674,6 +11902,22 @@ mod tests {
                 })
                 .collect(),
             final_tile: base.final_tile,
+        }
+    }
+
+    fn prefill_layers012_attention_loop_report() -> PrefillLayers012AttentionLoopProbeReport {
+        PrefillLayers012AttentionLoopProbeReport {
+            compressor: prefill_layers012_compressor_loop_report(),
+            attention_fixture_id: PREFILL_LAYER2_ATTENTION_FIXTURE_ID,
+            rows: 2048,
+            raw_kv_rows: 2048,
+            compressed_kv_rows: 512,
+            dispatches: 10,
+            wrapped_model_ranges: 4,
+            pointer_matches: 4,
+            wall_ms: 196.0,
+            gpu_ms: 169.0,
+            output_checksum: checksum_f32(&prefill_layer2_attention_fixture().unwrap()),
         }
     }
 
@@ -13010,6 +13254,26 @@ mod tests {
     }
 
     #[test]
+    fn writes_stable_prefill_layers012_attention_loop_probe_json() {
+        let mut output = Vec::new();
+        write_prefill_layers012_attention_loop_probe_json(
+            &mut output,
+            &prefill_layers012_attention_loop_report(),
+        )
+        .unwrap();
+        let text = String::from_utf8(output).unwrap();
+        assert!(text.contains(&format!(
+            "\"schema\": \"{PREFILL_LAYERS012_ATTENTION_LOOP_PROBE_SCHEMA}\""
+        )));
+        assert!(text.contains("\"compressed_kv_rows\": 512"));
+        assert!(text.contains("\"sparse_indexer_topk\": false"));
+        assert!(text.contains("\"attention_dispatches\": 10"));
+        assert!(text.contains("\"layer2_attention_output_c0_bitwise_match\": true"));
+        assert!(text.contains("\"complete_layer2_dense_mixed_attention_claim\": true"));
+        assert!(text.contains("\"complete_layer2_ffn_claim\": false"));
+    }
+
+    #[test]
     fn writes_stable_ratio128_compressor_replay_json() {
         let mut output = Vec::new();
         write_ratio128_compressor_replay_probe_json(&mut output, &ratio128_compressor_report())
@@ -13256,6 +13520,13 @@ mod tests {
         assert!(tensors.iter().flatten().all(|value| !value.is_nan()));
         assert!(tensors[2].iter().any(|value| *value == f32::NEG_INFINITY));
         assert!(tensors[5].iter().any(|value| *value == f32::NEG_INFINITY));
+    }
+
+    #[test]
+    fn prefill_layer2_attention_fixture_has_target_shape() {
+        let tensor = prefill_layer2_attention_fixture().unwrap();
+        assert_eq!(tensor.len(), 2048 * 4096);
+        assert!(tensor.iter().all(|value| value.is_finite()));
     }
 
     #[test]
