@@ -195,9 +195,12 @@ history; add a correction and update the current-state summary.
   The same ownership contract now runs all 64 native tiles from position 0
   through 2047. It starts with empty KV buffers, consumes all canonical prompt
   tokens, and validates both accumulated layer prefixes before every append.
-  This establishes exact complete-2K layer-0/layer-1 KV state; exhaustive full
-  output validation remains limited to the retained tail controls, so native
-  layer 2 and complete model prefill are still pending.
+  This establishes exact complete-2K layer-0/layer-1 KV state. Every live
+  layer-1 output tile now also feeds native layer-2 HC ingress, Q-A/KV
+  projection, and fused learned norm. All 1,048,576 values in the repeated
+  full-2K layer-2 `KVnorm` oracle match bit-for-bit, closing downstream
+  validation of the non-final layer-1 outputs. Layer-2 compressed attention,
+  FFN, and complete model prefill remain pending.
   Full native batched prefill, sparse indexed attention beyond 512 ratio-4
   rows, and the eligible engine-measurement producer remain pending.
 - Measurements: Metal batching was 42.861x faster than synchronized submission
@@ -322,9 +325,9 @@ history; add a correction and update the current-state summary.
 
 ## Immediate Next Actions
 
-1. Capture/import the decisive native layer-2 batched-prefill KV oracle and
-   extend the empty-seed 64-tile loop through layer 2, using its KV state to
-   validate the live layer-1 outputs that currently stop at the layer boundary.
+1. Extend the exact native layer-2 boundary past `KVnorm` through compressed
+   RoPE, raw/compressed cache storage, attention, and its FFN HC tail while
+   preserving the 64-tile empty-seed layers-0/1 loop as a control.
 2. Add the fixed 512-row ratio-4 indexer top-k and sparse indexed attention so
    128 generated tokens can continue beyond the 2K frontier.
 3. Emit the `rust-star-engine-measurement-v1` artifact from the exact
@@ -336,6 +339,43 @@ history; add a correction and update the current-state summary.
 6. Run or approve the fork's GitHub Actions workflow and retain its URL.
 
 ## Entries
+
+### 2026-08-16 — Every live layer-1 output reaches exact layer-2 KVnorm
+
+Objective:
+
+- Use a compact downstream layer-2 oracle to validate every post-FFN layer-1
+  output produced by the full native 2K loop.
+
+Oracle and implementation:
+
+- Captured layer 2's full `KVnorm` tensor twice from fresh DwarfStar processes.
+  Both 4 MiB payloads were byte-identical with SHA-256
+  `089138d8fc82c1eb55754451707f59475f2afb2a356dcc505314ddf29814e7b6`.
+- Added the strict `prefill-layer2-kvnorm-2048-v1` fixture/importer and the
+  `prefill-layers012-kvnorm-loop-probe` command. Each of the 64 tiles now adds
+  layer-2 HC RMSNorm, F16 HC projection, fused HC collapse/learned norm, Q8_0
+  Q-A and KV projection, and fused Q/KV learned RMSNorm.
+- The new schedule uses 90 dispatches and 57 mmap-backed no-copy model views per
+  tile. Each `32x512` output slice is compared bit-for-bit before continuation.
+
+Target-Mac evidence:
+
+- The focused full-2K loop passed all 64 layer-2 slices and every retained
+  layer-0/layer-1 KV-prefix check. Summed correctness-oriented intervals were
+  3688.567 ms wall and 3593.970 ms GPU.
+- The complete gate repeated the new loop at 3543.522/3450.060 ms wall/GPU,
+  then passed formatting, all 86 Rust tests, 56 Python tests, all 240 pinned
+  differential fixtures, optimized Objective-C/Metal compilation, all 1,288
+  required model tensors, every established Metal/decoder control, and both
+  steady-state benchmarks.
+
+Decision and next:
+
+- Accept every live layer-1 output row as downstream C0 validated through the
+  native layer-2 normalized-KV seam. Do not treat these summed intervals as
+  throughput. Next cross layer 2's compressed RoPE/cache/attention boundary and
+  finish its FFN before generalizing the full native prefill layer loop.
 
 ### 2026-08-16 — Empty-seed layers-0/1 KV ownership reaches all 2K prompt rows
 

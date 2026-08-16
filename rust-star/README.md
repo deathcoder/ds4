@@ -96,10 +96,15 @@ loop now starts with empty layer-0/layer-1 KV buffers and advances all 2,048
 canonical prompt rows in one persistent context. Every accumulated prefix is
 validated bit-for-bit before the next tile, every tile preserves 49/49 no-copy
 model views, and the final tile retains its exhaustive output comparison.
-Non-final layer-1 full outputs are not all retained, so this is an exact 2K KV
-ownership checkpoint rather than a complete native model-prefill claim. The
-next boundary is native layer 2, whose KV oracle will also validate the live
-layer-1 outputs feeding it.
+The native layer-2 boundary now consumes every one of those live layer-1 output
+tiles. Six additional dispatches per tile execute layer 2's HC ingress,
+attention normalization, Q-A/KV projections, and fused Q/KV learned norm. A
+new repeated full-2K `KVnorm` capture is byte-identical across fresh DwarfStar
+processes, and all 1,048,576 runtime values match it bit-for-bit. Every tile
+preserves 57/57 no-copy model views. This validates all live layer-1 output rows
+through a downstream native boundary; it does not yet execute layer 2's
+compressed RoPE, attention, FFN, the remaining layers, or the output head, and
+it is not a throughput claim.
 
 Project controls and benchmark contracts:
 

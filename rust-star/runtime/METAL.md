@@ -208,6 +208,27 @@ by bit pattern. The complete boundary uses 47 dispatches and 30 mmap-backed
 no-copy model views. It proves the live inter-layer HC handoff through layer-1
 Q-Lora, not a complete layer 1, full 2K prefill, or throughput result.
 
+## Full-2K layers-0/1 loop through layer-2 KVnorm
+
+Schema: `rust-star-prefill-layers012-kvnorm-loop-probe-v1`.
+
+`prefill-layers012-kvnorm-loop-probe` starts with empty layer-0 and layer-1 KV
+buffers and advances all 64 native 32-row tiles in one persistent Metal context.
+Each tile completes layers 0 and 1, retains and validates both accumulated KV
+prefixes, then passes the live layer-1 four-stream state directly into layer 2.
+Layer 2 executes plain HC RMSNorm, the F16 HC mixer, fused HC collapse and
+learned attention norm, both Q8_0 Q-A and KV projections, and fused Q/KV learned
+RMSNorm. The resulting `32x512` `KVnorm` slice is compared by FP32 bit pattern
+for every tile.
+
+Two fresh DwarfStar processes produced the same 4 MiB full-2K layer-2 `KVnorm`
+payload with SHA-256
+`089138d8fc82c1eb55754451707f59475f2afb2a356dcc505314ddf29814e7b6`.
+The native schedule uses 90 dispatches and 57 mmap-backed no-copy model views
+per tile. This downstream boundary validates every live layer-1 output row. It
+does not yet cover layer-2 compressed RoPE, cache storage, attention, FFN,
+complete-model prefill, or throughput.
+
 ## Layer-0 attention ingress
 
 Schema: `rust-star-layer0-attention-ingress-probe-v1`.

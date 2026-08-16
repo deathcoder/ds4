@@ -88,6 +88,9 @@ elif [ "$#" -eq 1 ]; then
         echo "==> empty-seed full-2K live-KV loop across native M1 layers 0/1"
         "$target_dir/release/rust-star" prefill-layers01-live-kv-loop-probe "$1" \
             --json "$target_dir/prefill-layers01-live-kv-loop-probe.json"
+        echo "==> downstream layer-2 KVnorm validation across the full native 2K layers-0/1 loop"
+        "$target_dir/release/rust-star" prefill-layers012-kvnorm-loop-probe "$1" \
+            --json "$target_dir/prefill-layers012-kvnorm-loop-probe.json"
         echo "==> no-copy layer-0 attention ingress"
         "$target_dir/release/rust-star" attention-ingress-probe "$1" \
             --json "$target_dir/attention-ingress-probe.json"

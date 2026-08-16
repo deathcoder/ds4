@@ -197,6 +197,23 @@ It wraps five additional model ranges without copying and requires the final
 `32×4096` HC/norm tiles and `32×1024` Q-Lora tile to match two fresh DwarfStar
 captures bit-for-bit. It is not a complete layer-1 or full-prefill claim.
 
+To validate every native layer-1 output row through layer 2's normalized KV
+boundary:
+
+```sh
+rust-star/.work/runtime-target/release/rust-star \
+  prefill-layers012-kvnorm-loop-probe \
+  /absolute/path/to/model.gguf \
+  --json rust-star/.work/runtime-target/prefill-layers012-kvnorm-loop-probe.json
+```
+
+This command runs all 2,048 prompt rows as 64 complete native layers-0/1 tiles
+with empty-seed live KV ownership. Each live layer-1 output feeds six native
+layer-2 dispatches through fused Q/KV learned norm. All 1,048,576 layer-2
+`KVnorm` values must match the repeated DwarfStar fixture bit-for-bit, and every
+tile must preserve 57/57 no-copy model views. Layer-2 compressed attention and
+FFN, later layers, output logits, and throughput remain outside this boundary.
+
 To run the connected layer-0 ingress gate:
 
 ```sh

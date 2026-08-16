@@ -294,17 +294,16 @@ they describe whenever practical.
 
 ## Open Items
 
-- Broaden native batched prefill beyond the two exact complete layers-0/1
-  tiles. The persistent executor now runs all 64 aligned 32-row schedules from
-  an empty KV seed over positions 0--2047. Before every continuation, both
-  accumulated layer-0/layer-1 prefixes match the captured oracle bit-for-bit;
-  all 49 model ranges preserve the mmap pointer in every tile. This proves the
-  complete 2K live KV chain for layers 0 and 1, plus exhaustive outputs at the
-  two retained tail tiles. It does not retain or claim every non-final layer-1
-  output. Extend the native batch boundary into layer 2 so its KV oracle can
-  validate the preceding layer-1 outputs, then continue across the remaining
-  layers. The sequential 2K initializer still deliberately records its
-  difference from the paired protocol's batched-prefill oracle.
+- Broaden native batched prefill beyond the exact complete layers-0/1 loop and
+  layer-2 normalized KV boundary. The persistent executor runs all 64 aligned
+  32-row schedules from an empty KV seed over positions 0--2047. Before every
+  continuation, both accumulated layer-0/layer-1 prefixes match the oracle;
+  every live layer-1 post-FFN tile then feeds layer 2 through HC ingress, Q-A/KV
+  projection, and fused learned norm. All 1,048,576 layer-2 `KVnorm` values are
+  C0 exact and every tile preserves 57 mmap pointers. Continue layer 2 through
+  compressed RoPE, cache storage, attention, and FFN, then extend across the
+  remaining layers. The sequential 2K initializer still deliberately records
+  its difference from the paired protocol's batched-prefill oracle.
 - Add ratio-4 sparse indexer selection after 512 compressed rows, then emit the
   Rust Star engine-measurement contract. The complete 128-token diagnostic no
   longer depends on captured initial cache/compressor state.

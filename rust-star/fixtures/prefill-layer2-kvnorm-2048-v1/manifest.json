@@ -1,0 +1,68 @@
+{
+  "schema": "rust-star-differential-fixture-v1",
+  "fixture_id": "dwarfstar-oracle-v1-prefill-layer2-kvnorm-2048",
+  "captured_at_utc": "2026-08-16T06:51:54Z",
+  "oracle": {
+    "id": "oracle-v1",
+    "repository": "https://github.com/antirez/ds4.git",
+    "commit": "b0309611041655f4e45671cfd9c9886aff161406",
+    "tree": "20c11af22f90a0bdf25da860da5ef06de4064060",
+    "capture_executable_sha256": "b0b7c31d9832cc3f5cccf810cd2af6f4bc4f6e71de945493674315314f666fc8"
+  },
+  "model": {
+    "family": "DeepSeek-V4-Flash-0731",
+    "sha256": "ca22ae2f838e14077c22bc1c1417b71b45b5e5a3687bd96c2ac6e17fdb6261c0"
+  },
+  "capture": {
+    "backend": "metal",
+    "machine": "Apple M1 Ultra, 48 GPU cores, 128 GB unified memory",
+    "prompt": "first 2048 raw tokens of speed-bench/promessi_sposi.txt",
+    "prompt_sha256": "f53e0d80cb2d4492d24ebd63c7000c397b16ae70f9bf09b3763e5d8323ec209f",
+    "prefill_tokens": 2048,
+    "fresh_process_captures": 2,
+    "fresh_process_bitwise_match": true,
+    "command": "ds4-bench --metal --ctx-start 2048 --ctx-max 2048 --gen-tokens 0 --warm-weights",
+    "environment": {
+      "DS4_METAL_GRAPH_DUMP_LAYER": "2",
+      "DS4_METAL_GRAPH_DUMP_POS": "0",
+      "DS4_METAL_GRAPH_DUMP_NAME": "KVnorm"
+    },
+    "device_path": "native layers-0/1 batched prefill feeding layer-2 HC ingress, learned attention norm, Q8_0 KV projection, and fused KV RMSNorm",
+    "full_capture_sha256": {
+      "KVnorm": "089138d8fc82c1eb55754451707f59475f2afb2a356dcc505314ddf29814e7b6"
+    },
+    "input_fixture": "dwarfstar-oracle-v1-prefill-layer1-complete-2048"
+  },
+  "scope": {
+    "kind": "layer-segment",
+    "phase": "prefill",
+    "layer": 2,
+    "position": 2047,
+    "captured_position_range": [
+      0,
+      2047
+    ]
+  },
+  "operations": [
+    {
+      "name": "layer2-attention-ingress-kvnorm",
+      "kernel": "HC batch projection/collapse plus kernel_mul_mm_q8_0_f32 and kernel_dsv4_qkv_rms_norm_f32_4"
+    }
+  ],
+  "tensors": [
+    {
+      "name": "layer2_kv_norm",
+      "hook": "KVnorm",
+      "role": "output",
+      "dtype": "f32",
+      "shape": [
+        2048,
+        512
+      ],
+      "encoding": "little-endian-ieee754-binary32",
+      "path": "layer2-kv-norm.f32le.bin",
+      "bytes": 4194304,
+      "sha256": "089138d8fc82c1eb55754451707f59475f2afb2a356dcc505314ddf29814e7b6"
+    }
+  ]
+}

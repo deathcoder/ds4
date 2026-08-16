@@ -132,6 +132,13 @@ typedef struct rust_star_metal_prefill_layer_weights {
     rust_star_metal_prefill_ffn_weights ffn;
 } rust_star_metal_prefill_layer_weights;
 
+typedef struct rust_star_metal_prefill_kvnorm_weights {
+    rust_star_metal_prefill_attention_ingress_weights ingress;
+    uint64_t q_a_norm_offset, q_a_norm_bytes;
+    uint64_t kv_offset, kv_bytes;
+    uint64_t kv_norm_offset, kv_norm_bytes;
+} rust_star_metal_prefill_kvnorm_weights;
+
 typedef struct rust_star_metal_prefill_layer_outputs {
     const float *kv_prefix;
     float *q_lora_norm;
@@ -329,6 +336,8 @@ int rust_star_metal_run_prefill_layer0_boundary(
     const rust_star_metal_prefill_attention_ingress_weights *next_ingress,
     const rust_star_metal_prefill_layer_weights *next_layer,
     const rust_star_metal_prefill_layer_outputs *next_outputs,
+    const rust_star_metal_prefill_kvnorm_weights *layer2_kvnorm,
+    float *layer2_kv_norm_output,
     uint32_t n_vocab,
     uint32_t rows,
     uint32_t position_start,

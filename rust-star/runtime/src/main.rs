@@ -8,11 +8,11 @@ use rust_star_runtime::metal::{
     run_layers0123_probe, run_layers012_chained_probe, run_layers012_probe, run_layers01_probe,
     run_layers0_to_42_decode_probe, run_moe_output_probe, run_position127_decoder_probe,
     run_prefill_frontier_probe, run_prefill_layer0_boundary_probe,
-    run_prefill_layers01_boundary_probe, run_prefill_layers01_complete_boundary_probe,
-    run_prefill_layers01_live_kv_chain_probe, run_prefill_layers01_live_kv_loop_probe,
-    run_prefill_layers01_row_coverage_probe, run_prefill_q8_boundary_probe,
-    run_prefill_qkv_boundary_probe, run_probe, run_q8_projection_probe,
-    run_ratio128_compressor_replay_probe, run_rope_kv_store_probe,
+    run_prefill_layers012_kvnorm_loop_probe, run_prefill_layers01_boundary_probe,
+    run_prefill_layers01_complete_boundary_probe, run_prefill_layers01_live_kv_chain_probe,
+    run_prefill_layers01_live_kv_loop_probe, run_prefill_layers01_row_coverage_probe,
+    run_prefill_q8_boundary_probe, run_prefill_qkv_boundary_probe, run_probe,
+    run_q8_projection_probe, run_ratio128_compressor_replay_probe, run_rope_kv_store_probe,
     write_attention_output_probe_json, write_attention_read_probe_json,
     write_attention_setup_probe_json, write_closed_loop_decoder_probe_json,
     write_cold_prefill_decoder_probe_json, write_decoder_output_probe_json,
@@ -23,7 +23,8 @@ use rust_star_runtime::metal::{
     write_layers0123_probe_json, write_layers012_chained_probe_json, write_layers012_probe_json,
     write_layers01_probe_json, write_layers0_to_42_decode_probe_json, write_moe_output_probe_json,
     write_position127_decoder_probe_json, write_prefill_frontier_probe_json,
-    write_prefill_layer0_boundary_probe_json, write_prefill_layers01_boundary_probe_json,
+    write_prefill_layer0_boundary_probe_json, write_prefill_layers012_kvnorm_loop_probe_json,
+    write_prefill_layers01_boundary_probe_json,
     write_prefill_layers01_complete_boundary_probe_json,
     write_prefill_layers01_live_kv_chain_probe_json,
     write_prefill_layers01_live_kv_loop_probe_json, write_prefill_layers01_row_coverage_probe_json,
@@ -38,11 +39,11 @@ use rust_star_runtime::metal::{
     Layers012ChainedProbeReport, Layers012ProbeReport, Layers01ProbeReport,
     Layers0To42DecodeProbeReport, MoeOutputProbeReport, Position127DecoderProbeReport,
     PrefillFrontierProbeReport, PrefillLayer0BoundaryProbeReport,
-    PrefillLayers01BoundaryProbeReport, PrefillLayers01CompleteBoundaryProbeReport,
-    PrefillLayers01LiveKvChainProbeReport, PrefillLayers01LiveKvLoopProbeReport,
-    PrefillLayers01RowCoverageProbeReport, PrefillQ8BoundaryProbeReport,
-    PrefillQkvBoundaryProbeReport, ProbeConfig, ProjectionProbeReport,
-    Ratio128CompressorReplayProbeReport, RopeKvStoreProbeReport,
+    PrefillLayers012KvnormLoopProbeReport, PrefillLayers01BoundaryProbeReport,
+    PrefillLayers01CompleteBoundaryProbeReport, PrefillLayers01LiveKvChainProbeReport,
+    PrefillLayers01LiveKvLoopProbeReport, PrefillLayers01RowCoverageProbeReport,
+    PrefillQ8BoundaryProbeReport, PrefillQkvBoundaryProbeReport, ProbeConfig,
+    ProjectionProbeReport, Ratio128CompressorReplayProbeReport, RopeKvStoreProbeReport,
 };
 use rust_star_runtime::model::MappedModel;
 use rust_star_runtime::target::{validate_resident_q2, MODEL_LABEL};
@@ -104,6 +105,9 @@ fn run() -> Result<()> {
     }
     if command == "prefill-layers01-live-kv-loop-probe" {
         return run_prefill_layers01_live_kv_loop_probe_command(arguments.collect());
+    }
+    if command == "prefill-layers012-kvnorm-loop-probe" {
+        return run_prefill_layers012_kvnorm_loop_probe_command(arguments.collect());
     }
     if command == "attention-ingress-probe" {
         return run_ingress_probe(arguments.collect());
@@ -2039,6 +2043,53 @@ fn run_prefill_layers01_live_kv_loop_probe_command(arguments: Vec<OsString>) -> 
     Ok(())
 }
 
+fn run_prefill_layers012_kvnorm_loop_probe_command(arguments: Vec<OsString>) -> Result<()> {
+    if arguments.is_empty() {
+        return Err(Error::invalid(prefill_layers012_kvnorm_loop_probe_usage()));
+    }
+    if matches!(arguments[0].to_str(), Some("--help") | Some("-h")) {
+        println!("{}", prefill_layers012_kvnorm_loop_probe_usage());
+        return Ok(());
+    }
+    let model_path = PathBuf::from(&arguments[0]);
+    let mut json_path: Option<PathBuf> = None;
+    let mut arguments = arguments.into_iter().skip(1);
+    while let Some(argument) = arguments.next() {
+        match argument.to_str() {
+            Some("--json") => {
+                let value = arguments
+                    .next()
+                    .ok_or_else(|| Error::invalid("--json requires a path"))?;
+                if json_path.is_some() {
+                    return Err(Error::invalid("--json may be specified only once"));
+                }
+                json_path = Some(PathBuf::from(value));
+            }
+            Some("--help") | Some("-h") => {
+                println!("{}", prefill_layers012_kvnorm_loop_probe_usage());
+                return Ok(());
+            }
+            _ => return Err(Error::invalid(prefill_layers012_kvnorm_loop_probe_usage())),
+        }
+    }
+    let model = MappedModel::open(&model_path)?;
+    validate_resident_q2(model.gguf())?;
+    let report = run_prefill_layers012_kvnorm_loop_probe(&model)?;
+    let total_wall_ms: f64 = report.tiles.iter().map(|tile| tile.wall_ms).sum();
+    let total_gpu_ms: f64 = report.tiles.iter().map(|tile| tile.gpu_ms).sum();
+    println!(
+        "native layer-2 KVnorm loop: positions 0..2047 across 64 complete layers-0/1 schedules"
+    );
+    println!("downstream validation: every live layer-1 output row matched the captured layer-2 KVnorm boundary bit-for-bit");
+    println!("mapping: every tile preserved 57/57 no-copy model ranges; 90 dispatches/tile; summed wall={total_wall_ms:.3} ms gpu={total_gpu_ms:.3} ms");
+    println!("scope: complete native layers 0/1 plus layer-2 HC ingress and normalized Q/KV projections; no compressed layer-2 attention, complete-model-prefill, or throughput claim");
+    if let Some(path) = json_path {
+        write_prefill_layers012_kvnorm_loop_probe_file(&path, &report)?;
+        println!("json: {}", path.display());
+    }
+    Ok(())
+}
+
 fn run_embedding_probe(arguments: Vec<OsString>) -> Result<()> {
     if arguments.is_empty() {
         return Err(Error::invalid(embedding_probe_usage()));
@@ -2598,6 +2649,36 @@ fn write_prefill_layers01_live_kv_loop_probe_file(
     std::fs::rename(&temporary, path).map_err(|error| {
         Error::invalid(format!(
             "cannot install prefill layers-0/1 live-KV-loop JSON {}: {error}",
+            path.display()
+        ))
+    })?;
+    Ok(())
+}
+
+fn write_prefill_layers012_kvnorm_loop_probe_file(
+    path: &Path,
+    report: &PrefillLayers012KvnormLoopProbeReport,
+) -> Result<()> {
+    let temporary = path.with_extension(format!(
+        "{}tmp",
+        path.extension()
+            .and_then(OsStr::to_str)
+            .map(|extension| format!("{extension}."))
+            .unwrap_or_default()
+    ));
+    let file = File::create(&temporary).map_err(|error| {
+        Error::invalid(format!(
+            "cannot create prefill layers-0/1/2 KVnorm-loop JSON {}: {error}",
+            temporary.display()
+        ))
+    })?;
+    let mut output = BufWriter::new(file);
+    write_prefill_layers012_kvnorm_loop_probe_json(&mut output, report)?;
+    output.flush()?;
+    drop(output);
+    std::fs::rename(&temporary, path).map_err(|error| {
+        Error::invalid(format!(
+            "cannot install prefill layers-0/1/2 KVnorm-loop JSON {}: {error}",
             path.display()
         ))
     })?;
@@ -3327,7 +3408,7 @@ fn print_type_counts(gguf: &Gguf) {
 }
 
 fn usage() -> &'static str {
-    "usage:\n  rust-star inspect MODEL.gguf  # strict Flash-0731 resident-Q2 validation\n  rust-star gguf MODEL.gguf     # structural GGUF v3 validation only\n  rust-star metal-probe [OPTIONS]\n  rust-star embedding-probe MODEL.gguf [OPTIONS]\n  rust-star projection-probe MODEL.gguf [OPTIONS]\n  rust-star prefill-q8-boundary-probe MODEL.gguf [OPTIONS]\n  rust-star prefill-qkv-boundary-probe MODEL.gguf [OPTIONS]\n  rust-star prefill-layer0-boundary-probe MODEL.gguf [OPTIONS]\n  rust-star prefill-layers01-boundary-probe MODEL.gguf [OPTIONS]\n  rust-star prefill-layers01-complete-boundary-probe MODEL.gguf [OPTIONS]\n  rust-star prefill-layers01-row-coverage-probe MODEL.gguf [OPTIONS]\n  rust-star prefill-layers01-live-kv-chain-probe MODEL.gguf [OPTIONS]\n  rust-star prefill-layers01-live-kv-loop-probe MODEL.gguf [OPTIONS]\n  rust-star attention-ingress-probe MODEL.gguf [OPTIONS]\n  rust-star attention-setup-probe MODEL.gguf [OPTIONS]\n  rust-star rope-kv-store-probe MODEL.gguf [OPTIONS]\n  rust-star attention-read-probe MODEL.gguf [OPTIONS]\n  rust-star attention-output-probe MODEL.gguf [OPTIONS]\n  rust-star ffn-router-probe MODEL.gguf [OPTIONS]\n  rust-star moe-output-probe MODEL.gguf [OPTIONS]\n  rust-star layer0-probe MODEL.gguf [OPTIONS]\n  rust-star layer0-bench MODEL.gguf [OPTIONS]\n  rust-star layers01-probe MODEL.gguf [OPTIONS]\n  rust-star layers012-probe MODEL.gguf [OPTIONS]\n  rust-star layers012-chained-probe MODEL.gguf [OPTIONS]\n  rust-star layers0123-probe MODEL.gguf [OPTIONS]\n  rust-star layers0123-chained-probe MODEL.gguf [OPTIONS]\n  rust-star layers0123-bench MODEL.gguf [OPTIONS]\n  rust-star layers0123-decode-probe MODEL.gguf [OPTIONS]\n  rust-star layers012345-decode-probe MODEL.gguf [OPTIONS]\n  rust-star layers01234567-decode-probe MODEL.gguf [OPTIONS]\n  rust-star layers0-42-decode-probe MODEL.gguf [OPTIONS]\n  rust-star decoder-output-probe MODEL.gguf [OPTIONS]\n  rust-star closed-loop-decoder-probe MODEL.gguf [OPTIONS]\n  rust-star position127-decoder-probe MODEL.gguf [OPTIONS]\n  rust-star cold-prefill-decoder-probe MODEL.gguf [OPTIONS]\n  rust-star prefill-frontier-probe MODEL.gguf [OPTIONS]\n  rust-star ratio128-compressor-replay-probe MODEL.gguf [OPTIONS]"
+    "usage:\n  rust-star inspect MODEL.gguf  # strict Flash-0731 resident-Q2 validation\n  rust-star gguf MODEL.gguf     # structural GGUF v3 validation only\n  rust-star metal-probe [OPTIONS]\n  rust-star embedding-probe MODEL.gguf [OPTIONS]\n  rust-star projection-probe MODEL.gguf [OPTIONS]\n  rust-star prefill-q8-boundary-probe MODEL.gguf [OPTIONS]\n  rust-star prefill-qkv-boundary-probe MODEL.gguf [OPTIONS]\n  rust-star prefill-layer0-boundary-probe MODEL.gguf [OPTIONS]\n  rust-star prefill-layers01-boundary-probe MODEL.gguf [OPTIONS]\n  rust-star prefill-layers01-complete-boundary-probe MODEL.gguf [OPTIONS]\n  rust-star prefill-layers01-row-coverage-probe MODEL.gguf [OPTIONS]\n  rust-star prefill-layers01-live-kv-chain-probe MODEL.gguf [OPTIONS]\n  rust-star prefill-layers01-live-kv-loop-probe MODEL.gguf [OPTIONS]\n  rust-star prefill-layers012-kvnorm-loop-probe MODEL.gguf [OPTIONS]\n  rust-star attention-ingress-probe MODEL.gguf [OPTIONS]\n  rust-star attention-setup-probe MODEL.gguf [OPTIONS]\n  rust-star rope-kv-store-probe MODEL.gguf [OPTIONS]\n  rust-star attention-read-probe MODEL.gguf [OPTIONS]\n  rust-star attention-output-probe MODEL.gguf [OPTIONS]\n  rust-star ffn-router-probe MODEL.gguf [OPTIONS]\n  rust-star moe-output-probe MODEL.gguf [OPTIONS]\n  rust-star layer0-probe MODEL.gguf [OPTIONS]\n  rust-star layer0-bench MODEL.gguf [OPTIONS]\n  rust-star layers01-probe MODEL.gguf [OPTIONS]\n  rust-star layers012-probe MODEL.gguf [OPTIONS]\n  rust-star layers012-chained-probe MODEL.gguf [OPTIONS]\n  rust-star layers0123-probe MODEL.gguf [OPTIONS]\n  rust-star layers0123-chained-probe MODEL.gguf [OPTIONS]\n  rust-star layers0123-bench MODEL.gguf [OPTIONS]\n  rust-star layers0123-decode-probe MODEL.gguf [OPTIONS]\n  rust-star layers012345-decode-probe MODEL.gguf [OPTIONS]\n  rust-star layers01234567-decode-probe MODEL.gguf [OPTIONS]\n  rust-star layers0-42-decode-probe MODEL.gguf [OPTIONS]\n  rust-star decoder-output-probe MODEL.gguf [OPTIONS]\n  rust-star closed-loop-decoder-probe MODEL.gguf [OPTIONS]\n  rust-star position127-decoder-probe MODEL.gguf [OPTIONS]\n  rust-star cold-prefill-decoder-probe MODEL.gguf [OPTIONS]\n  rust-star prefill-frontier-probe MODEL.gguf [OPTIONS]\n  rust-star ratio128-compressor-replay-probe MODEL.gguf [OPTIONS]"
 }
 
 fn metal_probe_usage() -> &'static str {
@@ -3372,6 +3453,10 @@ fn prefill_layers01_live_kv_chain_probe_usage() -> &'static str {
 
 fn prefill_layers01_live_kv_loop_probe_usage() -> &'static str {
     "usage: rust-star prefill-layers01-live-kv-loop-probe MODEL.gguf [--json PATH]\n\nRuns all 64 native 32-row layers-0/1 schedules over positions 0--2047 in one persistent Metal context. It starts with empty KV buffers, validates every accumulated layer-0/layer-1 prefix against the DwarfStar oracle before each continuation, and retains an exact final 2K KV state. The final tile keeps its exhaustive output comparison; non-final full outputs are not all retained. This is not a complete-model-prefill or throughput claim."
+}
+
+fn prefill_layers012_kvnorm_loop_probe_usage() -> &'static str {
+    "usage: rust-star prefill-layers012-kvnorm-loop-probe MODEL.gguf [--json PATH]\n\nRuns all 64 native 32-row schedules over positions 0--2047 in one persistent Metal context. Layers 0 and 1 execute completely with live KV ownership; each resulting layer-1 tile feeds native layer-2 HC ingress, attention normalization, Q-A/KV projections, and fused QKV normalization. Every layer-2 KVnorm tile is compared bit-for-bit with the captured DwarfStar oracle. This does not claim compressed layer-2 attention, complete-model prefill, or throughput."
 }
 
 fn ingress_probe_usage() -> &'static str {
