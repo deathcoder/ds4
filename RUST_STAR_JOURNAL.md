@@ -199,8 +199,11 @@ history; add a correction and update the current-state summary.
   layer-1 output tile now also feeds native layer-2 HC ingress, Q-A/KV
   projection, and fused learned norm. All 1,048,576 values in the repeated
   full-2K layer-2 `KVnorm` oracle match bit-for-bit, closing downstream
-  validation of the non-final layer-1 outputs. Layer-2 compressed attention,
-  FFN, and complete model prefill remain pending.
+  validation of the non-final layer-1 outputs. The same 64-tile schedule now
+  applies layer 2's compressed-attention RoPE and E4M3FN finalization, retains
+  one live full-2K layer-2 raw-KV allocation, and matches every `KVrope` and
+  `KVcur` value plus each accumulated prefix. Layer-2 compressors, mixed
+  attention, FFN, and complete model prefill remain pending.
   Full native batched prefill, sparse indexed attention beyond 512 ratio-4
   rows, and the eligible engine-measurement producer remain pending.
 - Measurements: Metal batching was 42.861x faster than synchronized submission
@@ -325,9 +328,9 @@ history; add a correction and update the current-state summary.
 
 ## Immediate Next Actions
 
-1. Extend the exact native layer-2 boundary past `KVnorm` through compressed
-   RoPE, raw/compressed cache storage, attention, and its FFN HC tail while
-   preserving the 64-tile empty-seed layers-0/1 loop as a control.
+1. Extend the exact native layer-2 boundary from finalized raw KV through its
+   ratio-4 attention/indexer compressors, mixed raw/compressed attention, and
+   FFN HC tail while preserving the shorter 64-tile controls.
 2. Add the fixed 512-row ratio-4 indexer top-k and sparse indexed attention so
    128 generated tokens can continue beyond the 2K frontier.
 3. Emit the `rust-star-engine-measurement-v1` artifact from the exact
@@ -339,6 +342,47 @@ history; add a correction and update the current-state summary.
 6. Run or approve the fork's GitHub Actions workflow and retain its URL.
 
 ## Entries
+
+### 2026-08-16 — Layer-2 raw KV ownership reaches the full 2K frontier
+
+Objective:
+
+- Continue the exact layer-2 normalized-KV seam through its compressed-attention
+  RoPE, E4M3FN finalization, and retained raw-KV state.
+
+Oracle and implementation:
+
+- Captured full-2K layer-2 `KVrope` and `KVcur` twice in fresh DwarfStar
+  processes. Each corresponding 4 MiB pair was byte-identical. Their SHA-256
+  values are `d46da14951b304fb4a19be43b82d350b273337de042da2308530438e431e117d`
+  and `07f19c5197442f3c85350b32d0661e81b3f105a0e8640d3b3bced6c333267135`.
+- Added the strict `prefill-layer2-kv-state-2048-v1` fixture/importer and the
+  `prefill-layers012-kv-state-loop-probe` command. Layer 2 uses the production
+  YaRN constants and E4M3FN simulation, then appends each finalized tile into
+  one persistent GPU allocation.
+- Every continuation compares the retained layer-2 prefix against the oracle.
+  The extended tile uses 92 dispatches and 57 mmap-backed model views.
+
+Target-Mac evidence:
+
+- The focused full-2K loop passed all 64 `KVnorm`, `KVrope`, and `KVcur` tile
+  comparisons plus all accumulated layer-0/layer-1/layer-2 KV-prefix gates.
+  Summed correctness-oriented intervals were 3605.869 ms wall and 3497.958 ms
+  GPU.
+- Formatting, compilation, 88 Rust tests, and 32 focused Python fixture tests
+  passed before the full repository gate.
+- The complete target-Mac gate then passed 88 Rust tests, all 57 Python tests,
+  all 241 pinned differential fixtures, and strict validation of all 1,288
+  required model tensors. Its independent layer-2 KV-state replay reported
+  3600.907 ms wall and 3497.247 ms GPU, preserved 57/57 no-copy model mappings
+  for every tile, and was followed by every retained decoder control and
+  steady-state benchmark.
+
+Decision and next:
+
+- Accept the complete native layer-2 raw-KV state as C0 exact ownership
+  evidence, not throughput. Next implement the paired ratio-4 attention and
+  indexer compressors, then cross mixed raw/compressed attention and the FFN.
 
 ### 2026-08-16 — Every live layer-1 output reaches exact layer-2 KVnorm
 

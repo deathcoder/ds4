@@ -214,6 +214,22 @@ layer-2 dispatches through fused Q/KV learned norm. All 1,048,576 layer-2
 tile must preserve 57/57 no-copy model views. Layer-2 compressed attention and
 FFN, later layers, output logits, and throughput remain outside this boundary.
 
+To continue that boundary through compressed-attention RoPE and finalized raw
+KV ownership:
+
+```sh
+rust-star/.work/runtime-target/release/rust-star \
+  prefill-layers012-kv-state-loop-probe \
+  /absolute/path/to/model.gguf \
+  --json rust-star/.work/runtime-target/prefill-layers012-kv-state-loop-probe.json
+```
+
+The extended 92-dispatch tile applies layer 2's YaRN parameters, E4M3FN
+finalization, and a GPU append into one persistent full-2K layer-2 KV buffer.
+Every accumulated prefix plus every `KVnorm`, `KVrope`, and `KVcur` tile must
+match the repeated DwarfStar captures bit-for-bit. The attention/indexer
+compressors, mixed attention, layer-2 FFN, and later model remain pending.
+
 To run the connected layer-0 ingress gate:
 
 ```sh

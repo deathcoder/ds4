@@ -102,9 +102,13 @@ attention normalization, Q-A/KV projections, and fused Q/KV learned norm. A
 new repeated full-2K `KVnorm` capture is byte-identical across fresh DwarfStar
 processes, and all 1,048,576 runtime values match it bit-for-bit. Every tile
 preserves 57/57 no-copy model views. This validates all live layer-1 output rows
-through a downstream native boundary; it does not yet execute layer 2's
-compressed RoPE, attention, FFN, the remaining layers, or the output head, and
-it is not a throughput claim.
+through a downstream native boundary. The next exact command continues every
+tile through layer 2's YaRN-scaled compressed-attention RoPE and E4M3FN KV
+finalization. It retains a live 2,048-row layer-2 KV allocation, validates the
+complete prefix before every append, and matches all full-2K `KVrope` and
+`KVcur` values from two fresh DwarfStar captures. This completes layer 2's raw
+KV state, not its attention compressor, mixed raw/compressed attention, FFN,
+the remaining layers, or the output head, and it is not a throughput claim.
 
 Project controls and benchmark contracts:
 

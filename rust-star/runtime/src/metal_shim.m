@@ -243,6 +243,7 @@ static NSString *const kQ8ProjectionSource =
 @property(nonatomic, strong) NSMutableDictionary<NSNumber *, NSNumber *> *chainedWallStarts;
 @property(nonatomic, strong) id<MTLBuffer> prefillLayer0FullKv;
 @property(nonatomic, strong) id<MTLBuffer> prefillLayer1FullKv;
+@property(nonatomic, strong) id<MTLBuffer> prefillLayer2FullKv;
 @property(nonatomic, assign) uint32_t prefillKvRows;
 @property(nonatomic, assign) double chainedWallEnd;
 @property(nonatomic, assign) BOOL chainedReady;
@@ -2239,6 +2240,9 @@ int rust_star_metal_run_prefill_layer0_boundary(
     const rust_star_metal_prefill_layer_outputs *next_outputs,
     const rust_star_metal_prefill_kvnorm_weights *layer2_kvnorm,
     float *layer2_kv_norm_output,
+    float *layer2_kv_rope_output,
+    float *layer2_kv_cur_output,
+    const float *layer2_kv_prefix,
     uint32_t n_vocab,
     uint32_t rows,
     uint32_t position_start,
@@ -2282,6 +2286,9 @@ int rust_star_metal_run_prefill_layer0_boundary(
     const BOOL complete_layer1 = next_layer != NULL || next_outputs != NULL;
     const BOOL continue_layer1 = next_ingress != NULL || complete_layer1;
     const BOOL continue_layer2 = layer2_kvnorm != NULL || layer2_kv_norm_output != NULL;
+    const BOOL continue_layer2_kv_state =
+        layer2_kv_rope_output != NULL || layer2_kv_cur_output != NULL ||
+        layer2_kv_prefix != NULL;
     const BOOL partial_layer1 = next_hc_collapsed || next_attn_norm || next_q_lora;
     if (!opaque_context || !model_mapping || !weights || !tokens ||
         !hc_collapsed || !attn_norm || !q_lora || !q_lora_norm ||
@@ -2298,6 +2305,9 @@ int rust_star_metal_run_prefill_layer0_boundary(
         ((next_layer == NULL) != (next_outputs == NULL)) ||
         ((layer2_kvnorm == NULL) != (layer2_kv_norm_output == NULL)) ||
         (continue_layer2 && !complete_layer1) ||
+        (continue_layer2_kv_state &&
+         (!continue_layer2 || !layer2_kv_rope_output ||
+          !layer2_kv_cur_output || !layer2_kv_prefix)) ||
         partial_layer1 != continue_layer1 ||
         (continue_layer1 && (!next_hc_collapsed || !next_attn_norm || !next_q_lora))) {
         return fail_with_message(error, error_bytes,
@@ -2336,6 +2346,7 @@ int rust_star_metal_run_prefill_layer0_boundary(
         if (retain_kv_state) {
             context.prefillLayer0FullKv = nil;
             context.prefillLayer1FullKv = nil;
+            context.prefillLayer2FullKv = nil;
             context.prefillKvRows = 0u;
         }
         if (consume_kv_state &&
@@ -2343,6 +2354,11 @@ int rust_star_metal_run_prefill_layer0_boundary(
              context.prefillKvRows != position_start)) {
             return fail_with_message(error, error_bytes,
                 @"prefill live-KV continuation state is missing or noncontiguous");
+        }
+        if (consume_kv_state && continue_layer2_kv_state &&
+            !context.prefillLayer2FullKv) {
+            return fail_with_message(error, error_bytes,
+                @"prefill live layer-2 KV continuation state is missing");
         }
         if (!ensure_get_rows_f16_pipeline(context, error, error_bytes) ||
             !ensure_attention_ingress_pipelines(context, error, error_bytes) ||
@@ -2664,6 +2680,9 @@ int rust_star_metal_run_prefill_layer0_boundary(
         id<MTLBuffer> layer2_q_norm_buffer = nil;
         id<MTLBuffer> layer2_kv_raw_buffer = nil;
         id<MTLBuffer> layer2_kv_norm_buffer = nil;
+        id<MTLBuffer> layer2_kv_norm_snapshot_buffer = nil;
+        id<MTLBuffer> layer2_kv_rope_buffer = nil;
+        id<MTLBuffer> layer2_full_kv_buffer = nil;
         if (continue_layer1) {
             next_flat_hc_buffer = [context.device newBufferWithLength:hc_bytes
                 options:MTLResourceStorageModeShared];
@@ -2731,6 +2750,15 @@ int rust_star_metal_run_prefill_layer0_boundary(
             RUST_STAR_NEW_L2_BUFFER(layer2_q_norm_buffer, q_rank_bytes);
             RUST_STAR_NEW_L2_BUFFER(layer2_kv_raw_buffer, kv_bytes);
             RUST_STAR_NEW_L2_BUFFER(layer2_kv_norm_buffer, kv_bytes);
+            if (continue_layer2_kv_state) {
+                RUST_STAR_NEW_L2_BUFFER(layer2_kv_norm_snapshot_buffer, kv_bytes);
+                RUST_STAR_NEW_L2_BUFFER(layer2_kv_rope_buffer, kv_bytes);
+                if (consume_kv_state) {
+                    layer2_full_kv_buffer = context.prefillLayer2FullKv;
+                } else {
+                    RUST_STAR_NEW_L2_BUFFER(layer2_full_kv_buffer, full_kv_bytes);
+                }
+            }
 #undef RUST_STAR_NEW_L2_BUFFER
         }
         const NSUInteger routed_map_tpe_bytes = n_expert*sizeof(int32_t);
@@ -2791,7 +2819,10 @@ int rust_star_metal_run_prefill_layer0_boundary(
             (!layer2_flat_hc_buffer || !layer2_mix_buffer || !layer2_split_buffer ||
              !layer2_cur_buffer || !layer2_norm_buffer || !layer2_q_lora_buffer ||
              !layer2_q_norm_buffer || !layer2_kv_raw_buffer ||
-             !layer2_kv_norm_buffer)) {
+             !layer2_kv_norm_buffer ||
+             (continue_layer2_kv_state &&
+              (!layer2_kv_norm_snapshot_buffer || !layer2_kv_rope_buffer ||
+               !layer2_full_kv_buffer)))) {
             return fail_with_message(error, error_bytes,
                 @"failed to allocate prefill layer-2 KVnorm activation buffers");
         }
@@ -2831,6 +2862,25 @@ int rust_star_metal_run_prefill_layer0_boundary(
                 for (NSUInteger index = kv_prefix_rows*kv_dim;
                      index < prefill_rows*kv_dim; index++) {
                     next_full_kv_contents[index] = -23456.5f;
+                }
+            }
+        }
+        if (continue_layer2_kv_state) {
+            if (consume_kv_state) {
+                if (memcmp(layer2_full_kv_buffer.contents, layer2_kv_prefix,
+                           full_kv_prefix_bytes) != 0) {
+                    return fail_with_message(error, error_bytes,
+                        @"prefill retained live layer-2 KV prefix differs from the C0 oracle");
+                }
+            } else {
+                if (full_kv_prefix_bytes > 0) {
+                    memcpy(layer2_full_kv_buffer.contents, layer2_kv_prefix,
+                           full_kv_prefix_bytes);
+                }
+                float *layer2_full_kv_contents = layer2_full_kv_buffer.contents;
+                for (NSUInteger index = kv_prefix_rows*kv_dim;
+                     index < prefill_rows*kv_dim; index++) {
+                    layer2_full_kv_contents[index] = -23456.5f;
                 }
             }
         }
@@ -2935,6 +2985,14 @@ int rust_star_metal_run_prefill_layer0_boundary(
             .ext_factor=0.0f, .attn_factor=1.0f,
             .beta_fast=32.0f, .beta_slow=1.0f, .src2=false,
         };
+        const float layer2_freq_scale = 1.0f/16.0f;
+        rust_star_rope_tail_args layer2_kv_rope_args = kv_rope_args;
+        layer2_kv_rope_args.n_ctx_orig = 65536;
+        layer2_kv_rope_args.freq_base = 160000.0f;
+        layer2_kv_rope_args.freq_scale = layer2_freq_scale;
+        layer2_kv_rope_args.ext_factor = 1.0f;
+        layer2_kv_rope_args.attn_factor =
+            1.0f/(1.0f + 0.1f*logf(1.0f/layer2_freq_scale));
         int32_t positions[32];
         for (uint32_t row = 0; row < rows; row++) {
             positions[row] = (int32_t)(position_start + row);
@@ -4014,8 +4072,64 @@ int rust_star_metal_run_prefill_layer0_boundary(
             [encoder setThreadgroupMemoryLength:32u*sizeof(float) atIndex:0];
             [encoder dispatchThreadgroups:MTLSizeMake(rows,2,1)
                  threadsPerThreadgroup:MTLSizeMake(256,1,1)];
+            if (continue_layer2_kv_state) {
+                [encoder endEncoding];
+
+                blit = [command blitCommandEncoder];
+                if (!blit) return fail_with_message(error, error_bytes,
+                    @"failed to create prefill layer-2 KVnorm snapshot encoder");
+                [blit copyFromBuffer:layer2_kv_norm_buffer sourceOffset:0
+                            toBuffer:layer2_kv_norm_snapshot_buffer destinationOffset:0
+                                size:kv_bytes];
+                [blit endEncoding];
+
+                encoder = [command computeCommandEncoder];
+                if (!encoder) return fail_with_message(error, error_bytes,
+                    @"failed to create prefill layer-2 KV RoPE encoder");
+                [encoder setComputePipelineState:context.ropeTailPipeline];
+                [encoder setBytes:&layer2_kv_rope_args
+                           length:sizeof(layer2_kv_rope_args) atIndex:0];
+                [encoder setBuffer:layer2_kv_norm_buffer offset:0 atIndex:1];
+                [encoder setBuffer:position_buffer offset:0 atIndex:2];
+                [encoder setBuffer:layer2_kv_norm_buffer offset:0 atIndex:3];
+                [encoder setBuffer:layer2_kv_norm_buffer offset:0 atIndex:4];
+                [encoder dispatchThreadgroups:MTLSizeMake(1,rows,1)
+                     threadsPerThreadgroup:MTLSizeMake(256,1,1)];
+                [encoder endEncoding];
+
+                blit = [command blitCommandEncoder];
+                if (!blit) return fail_with_message(error, error_bytes,
+                    @"failed to create prefill layer-2 KVrope snapshot encoder");
+                [blit copyFromBuffer:layer2_kv_norm_buffer sourceOffset:0
+                            toBuffer:layer2_kv_rope_buffer destinationOffset:0
+                                size:kv_bytes];
+                [blit endEncoding];
+
+                encoder = [command computeCommandEncoder];
+                if (!encoder) return fail_with_message(error, error_bytes,
+                    @"failed to create prefill layer-2 KV finalization encoder");
+                [encoder setComputePipelineState:context.compressorFp8Pipeline];
+                [encoder setBytes:&kv_fp8_args length:sizeof(kv_fp8_args) atIndex:0];
+                [encoder setBuffer:layer2_kv_norm_buffer offset:0 atIndex:1];
+                [encoder setBuffer:layer2_kv_norm_buffer offset:0 atIndex:2];
+                [encoder setThreadgroupMemoryLength:64u*sizeof(float) atIndex:0];
+                [encoder dispatchThreadgroups:MTLSizeMake(rows,1,1)
+                     threadsPerThreadgroup:MTLSizeMake(64,1,1)];
+                [encoder endEncoding];
+
+                blit = [command blitCommandEncoder];
+                if (!blit) return fail_with_message(error, error_bytes,
+                    @"failed to create prefill layer-2 live-KV append encoder");
+                [blit copyFromBuffer:layer2_kv_norm_buffer sourceOffset:0
+                            toBuffer:layer2_full_kv_buffer
+                   destinationOffset:full_kv_prefix_bytes size:kv_bytes];
+                [blit endEncoding];
+            } else {
+                [encoder endEncoding];
+            }
+        } else {
+            [encoder endEncoding];
         }
-        [encoder endEncoding];
 
         const double wall_start = monotonic_ms();
         [command commit];
@@ -4024,6 +4138,9 @@ int rust_star_metal_run_prefill_layer0_boundary(
         if (retain_kv_state || consume_kv_state) {
             context.prefillLayer0FullKv = full_kv_buffer;
             context.prefillLayer1FullKv = next_full_kv_buffer;
+            if (continue_layer2_kv_state) {
+                context.prefillLayer2FullKv = layer2_full_kv_buffer;
+            }
             context.prefillKvRows = position_start + rows;
         }
         memcpy(hc_collapsed, collapsed_buffer.contents, attn_bytes);
@@ -4101,7 +4218,14 @@ int rust_star_metal_run_prefill_layer0_boundary(
                 next_after_ffn_hc_buffer.contents, hc_bytes);
         }
         if (continue_layer2) {
-            memcpy(layer2_kv_norm_output, layer2_kv_norm_buffer.contents, kv_bytes);
+            memcpy(layer2_kv_norm_output,
+                continue_layer2_kv_state ? layer2_kv_norm_snapshot_buffer.contents :
+                    layer2_kv_norm_buffer.contents,
+                kv_bytes);
+        }
+        if (continue_layer2_kv_state) {
+            memcpy(layer2_kv_rope_output, layer2_kv_rope_buffer.contents, kv_bytes);
+            memcpy(layer2_kv_cur_output, layer2_kv_norm_buffer.contents, kv_bytes);
         }
 
         uint32_t pointer_matches = 0;
@@ -4113,8 +4237,8 @@ int rust_star_metal_run_prefill_layer0_boundary(
         result->q_lora_elements_per_row = q_rank;
         result->kv_elements_per_row = kv_dim;
         result->q_elements_per_row = q_dim;
-        result->dispatches = continue_layer2 ? 90u :
-            (complete_layer1 ? 84u : (continue_layer1 ? 47u : 43u));
+        result->dispatches = continue_layer2_kv_state ? 92u : (continue_layer2 ? 90u :
+            (complete_layer1 ? 84u : (continue_layer1 ? 47u : 43u)));
         result->wrapped_model_ranges = model_range_count;
         result->pointer_matches = pointer_matches;
         result->position_start = position_start;

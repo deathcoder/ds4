@@ -299,11 +299,14 @@ they describe whenever practical.
   32-row schedules from an empty KV seed over positions 0--2047. Before every
   continuation, both accumulated layer-0/layer-1 prefixes match the oracle;
   every live layer-1 post-FFN tile then feeds layer 2 through HC ingress, Q-A/KV
-  projection, and fused learned norm. All 1,048,576 layer-2 `KVnorm` values are
-  C0 exact and every tile preserves 57 mmap pointers. Continue layer 2 through
-  compressed RoPE, cache storage, attention, and FFN, then extend across the
-  remaining layers. The sequential 2K initializer still deliberately records
-  its difference from the paired protocol's batched-prefill oracle.
+  projection, fused learned norm, YaRN-scaled compressed-attention RoPE, and
+  E4M3FN finalization. All full-2K layer-2 `KVnorm`, `KVrope`, and `KVcur`
+  values are C0 exact, one persistent raw-KV allocation is prefix-validated
+  before every append, and every tile preserves 57 mmap pointers. Continue
+  layer 2 through both ratio-4 compressors, mixed attention, and FFN, then
+  extend across the remaining layers. The sequential 2K initializer still
+  deliberately records its difference from the paired protocol's
+  batched-prefill oracle.
 - Add ratio-4 sparse indexer selection after 512 compressed rows, then emit the
   Rust Star engine-measurement contract. The complete 128-token diagnostic no
   longer depends on captured initial cache/compressor state.

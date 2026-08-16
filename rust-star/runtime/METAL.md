@@ -229,6 +229,18 @@ per tile. This downstream boundary validates every live layer-1 output row. It
 does not yet cover layer-2 compressed RoPE, cache storage, attention, FFN,
 complete-model prefill, or throughput.
 
+`prefill-layers012-kv-state-loop-probe` extends the same 64-tile schedule with
+layer 2's YaRN-scaled compressed-attention RoPE and E4M3FN KV finalizer. Its
+separate repeated fixture retains the full 2,048x512 `KVrope` and `KVcur`
+tensors; both pairs were byte-identical across fresh DwarfStar processes. Rust
+owns one persistent full-2K layer-2 allocation, compares its accumulated prefix
+before every continuation, and appends the live finalized tile on the GPU.
+
+The extended schedule uses 92 dispatches and the same 57 no-copy model views
+per tile. It proves exact layer-2 normalized, rotated, finalized, and retained
+raw KV state. The layer-2 attention/indexer compressors, mixed attention, FFN,
+complete-model prefill, and throughput remain outside this boundary.
+
 ## Layer-0 attention ingress
 
 Schema: `rust-star-layer0-attention-ingress-probe-v1`.
