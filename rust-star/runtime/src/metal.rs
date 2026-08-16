@@ -80,6 +80,8 @@ pub const PREFILL_LAYER2_COMPRESSOR_FIXTURE_ID: &str =
     "dwarfstar-oracle-v1-prefill-layer2-compressors-2048";
 pub const PREFILL_LAYER2_ATTENTION_FIXTURE_ID: &str =
     "dwarfstar-oracle-v1-prefill-layer2-attention-2048";
+pub const PREFILL_LAYER2_COMPLETE_FIXTURE_ID: &str =
+    "dwarfstar-oracle-v1-prefill-layer2-complete-2048";
 pub const PREFILL_LAYERS01_PREVIOUS_TILE_FIXTURE_ID: &str =
     "dwarfstar-oracle-v1-prefill-layers01-previous-tile-2048";
 pub const PREFILL_HC_INGRESS_FIXTURE_ID: &str = "dwarfstar-oracle-v1-prefill-hc-ingress-2048";
@@ -361,6 +363,32 @@ const PREFILL_LAYER2_INDEXER_STATE_SCORE_BITS: &[u8] = include_bytes!(
 );
 const PREFILL_LAYER2_ATTENTION_OUTPUT_BYTES: &[u8] = include_bytes!(
     "../../fixtures/prefill-layer2-attention-2048-v1/layer2-attention-output.f32le.bin"
+);
+const PREFILL_LAYER2_HC_ATTN_POST_FINAL_TILE_BYTES: &[u8] = include_bytes!(
+    "../../fixtures/prefill-layer2-complete-2048-v1/layer2-hc-attn-post-final-tile.f32le.bin"
+);
+const PREFILL_LAYER2_HC_ATTN_POST_FULL_CHECKSUM: u64 = 0x82a4_9f8f_e742_1325;
+const PREFILL_LAYER2_HC_FFN_POST_FINAL_TILE_BYTES: &[u8] = include_bytes!(
+    "../../fixtures/prefill-layer2-complete-2048-v1/layer2-hc-ffn-post-final-tile.f32le.bin"
+);
+const PREFILL_LAYER2_HC_FFN_POST_FULL_CHECKSUM: u64 = 0xbdb1_d4ab_45ce_d224;
+const PREFILL_LAYER2_FFN_CUR_FINAL_TILE_BYTES: &[u8] = include_bytes!(
+    "../../fixtures/prefill-layer2-complete-2048-v1/layer2-hc-ffn-pre-final-tile.f32le.bin"
+);
+const PREFILL_LAYER2_FFN_NORM_FINAL_TILE_BYTES: &[u8] = include_bytes!(
+    "../../fixtures/prefill-layer2-complete-2048-v1/layer2-ffn-norm-final-tile.f32le.bin"
+);
+const PREFILL_LAYER2_ROUTER_SELECTED_FINAL_TILE_BYTES: &[u8] = include_bytes!(
+    "../../fixtures/prefill-layer2-complete-2048-v1/layer2-ffn-moe-topk-final-tile.i32le.bin"
+);
+const PREFILL_LAYER2_ROUTER_WEIGHTS_FINAL_TILE_BYTES: &[u8] = include_bytes!(
+    "../../fixtures/prefill-layer2-complete-2048-v1/layer2-ffn-moe-weights-scaled-final-tile.f32le.bin"
+);
+const PREFILL_LAYER2_ROUTED_OUT_FINAL_TILE_BYTES: &[u8] = include_bytes!(
+    "../../fixtures/prefill-layer2-complete-2048-v1/layer2-ffn-moe-out-final-tile.f32le.bin"
+);
+const PREFILL_LAYER2_SHARED_OUT_FINAL_TILE_BYTES: &[u8] = include_bytes!(
+    "../../fixtures/prefill-layer2-complete-2048-v1/layer2-ffn-shexp-final-tile.f32le.bin"
 );
 const PREFILL_HC_TOKEN_IDS_BYTES: &[u8] =
     include_bytes!("../../fixtures/prefill-hc-ingress-2048-v1/token-ids-final-tile.i32le.bin");
@@ -946,6 +974,7 @@ pub struct PrefillLayers012CompressorLoopProbeReport {
 pub struct PrefillLayers012AttentionLoopProbeReport {
     pub compressor: PrefillLayers012CompressorLoopProbeReport,
     pub attention_fixture_id: &'static str,
+    pub attention_hc_fixture_id: &'static str,
     pub rows: u32,
     pub raw_kv_rows: u32,
     pub compressed_kv_rows: u32,
@@ -955,6 +984,8 @@ pub struct PrefillLayers012AttentionLoopProbeReport {
     pub wall_ms: f64,
     pub gpu_ms: f64,
     pub output_checksum: u64,
+    pub after_attention_hc_checksum: u64,
+    pub after_ffn_hc_checksum: u64,
 }
 
 #[derive(Clone, Debug)]
@@ -2980,13 +3011,16 @@ pub fn write_prefill_layers012_attention_loop_probe_json<W: Write>(
     let expected = prefill_layer2_attention_fixture()?;
     if report.compressor.tiles.len() != 64
         || report.attention_fixture_id != PREFILL_LAYER2_ATTENTION_FIXTURE_ID
+        || report.attention_hc_fixture_id != PREFILL_LAYER2_COMPLETE_FIXTURE_ID
         || report.rows != 2048
         || report.raw_kv_rows != 2048
         || report.compressed_kv_rows != 512
-        || report.dispatches != 10
-        || report.wrapped_model_ranges != 4
-        || report.pointer_matches != 4
+        || report.dispatches != 32
+        || report.wrapped_model_ranges != 16
+        || report.pointer_matches != 16
         || report.output_checksum != checksum_f32(&expected)
+        || report.after_attention_hc_checksum != PREFILL_LAYER2_HC_ATTN_POST_FULL_CHECKSUM
+        || report.after_ffn_hc_checksum != PREFILL_LAYER2_HC_FFN_POST_FULL_CHECKSUM
         || !report.wall_ms.is_finite()
         || report.wall_ms <= 0.0
         || !report.gpu_ms.is_finite()
@@ -3012,6 +3046,7 @@ pub fn write_prefill_layers012_attention_loop_probe_json<W: Write>(
         report.compressor.layer2_kv_state_fixture_id,
         report.compressor.layer2_compressor_fixture_id,
         report.attention_fixture_id,
+        report.attention_hc_fixture_id,
     ]
     .iter()
     .enumerate()
@@ -3023,7 +3058,7 @@ pub fn write_prefill_layers012_attention_loop_probe_json<W: Write>(
     }
     write!(
         output,
-        "],\n  \"coverage\": {{\"position_start\": 0, \"position_end\": 2047, \"rows\": {}, \"complete_layers\": [0, 1], \"downstream_layer\": 2, \"output_boundary\": \"layer2_attention_output\"}},\n  \"mixed_attention\": {{\"raw_kv_rows\": {}, \"compressed_kv_rows\": {}, \"raw_window\": 128, \"compressor_ratio\": 4, \"sparse_indexer_topk\": false, \"dense_compressed_limit_rows\": 512}},\n  \"schedule\": {{\"tile_command_buffers\": 64, \"attention_command_buffers\": 1, \"attention_dispatches\": {}, \"wrapped_attention_model_ranges\": {}, \"query_projection_kernel\": \"kernel_mul_mm_q8_0_f32\", \"query_rope_kernel\": \"kernel_dsv4_head_rms_norm_rope_tail_f32\", \"attention_kernel\": \"kernel_flash_attn_ext_f16_dk512_dv512\", \"inverse_rope_kernel\": \"kernel_dsv4_rope_tail_f32\", \"output_low_kernel\": \"kernel_mul_mm_id_q8_0_f32\", \"output_kernel\": \"kernel_mul_mm_q8_0_f32\"}},\n  \"timing\": {{\"tile_summed_wall_ms\": {:.6}, \"tile_summed_gpu_ms\": {:.6}, \"attention_wall_ms\": {:.6}, \"attention_gpu_ms\": {:.6}}},\n  \"checksums\": {{\"layer2_attention_output\": {}}},\n  \"persistent_metal_context\": true,\n  \"all_layer2_compressed_rows_c0_bitwise_match\": true,\n  \"layer2_attention_output_c0_bitwise_match\": true,\n  \"complete_layer2_dense_mixed_attention_claim\": true,\n  \"complete_layer2_ffn_claim\": false,\n  \"complete_layer2_prefill_claim\": false,\n  \"sparse_ratio4_decode_claim\": false,\n  \"complete_model_prefill_claim\": false,\n  \"throughput_claim\": false\n}}\n",
+        "],\n  \"coverage\": {{\"position_start\": 0, \"position_end\": 2047, \"rows\": {}, \"complete_layers\": [0, 1, 2], \"downstream_layer\": 2, \"output_boundary\": \"layer2_ffn_hc_post\"}},\n  \"mixed_attention\": {{\"raw_kv_rows\": {}, \"compressed_kv_rows\": {}, \"raw_window\": 128, \"compressor_ratio\": 4, \"sparse_indexer_topk\": false, \"dense_compressed_limit_rows\": 512}},\n  \"schedule\": {{\"tile_command_buffers\": 64, \"terminal_command_buffers\": 1, \"terminal_dispatches\": {}, \"wrapped_terminal_model_ranges\": {}, \"query_projection_kernel\": \"kernel_mul_mm_q8_0_f32\", \"query_rope_kernel\": \"kernel_dsv4_head_rms_norm_rope_tail_f32\", \"attention_kernel\": \"kernel_flash_attn_ext_f16_dk512_dv512\", \"inverse_rope_kernel\": \"kernel_dsv4_rope_tail_f32\", \"output_low_kernel\": \"kernel_mul_mm_id_q8_0_f32\", \"output_kernel\": \"kernel_mul_mm_q8_0_f32\", \"attention_hc_post_kernel\": \"kernel_dsv4_hc_expand4\", \"ffn_router\": \"token-hash batch\", \"routed_experts\": \"fused IQ2_XXS pair-SwiGLU plus Q2_K down\", \"shared_expert\": \"Q8_0 gate/up/down\", \"ffn_hc_post_kernel\": \"kernel_dsv4_hc_expand4\"}},\n  \"timing\": {{\"tile_summed_wall_ms\": {:.6}, \"tile_summed_gpu_ms\": {:.6}, \"terminal_wall_ms\": {:.6}, \"terminal_gpu_ms\": {:.6}}},\n  \"checksums\": {{\"layer2_attention_output\": {}, \"layer2_attention_hc_post\": {}, \"layer2_ffn_hc_post\": {}}},\n  \"persistent_metal_context\": true,\n  \"all_layer2_compressed_rows_c0_bitwise_match\": true,\n  \"layer2_attention_output_c0_bitwise_match\": true,\n  \"layer2_attention_hc_post_c0_bitwise_match\": true,\n  \"layer2_ffn_hc_post_c0_bitwise_match\": true,\n  \"complete_layer2_dense_mixed_attention_claim\": true,\n  \"complete_layer2_attention_hc_post_claim\": true,\n  \"complete_layer2_ffn_claim\": true,\n  \"complete_layer2_prefill_claim\": true,\n  \"sparse_ratio4_decode_claim\": false,\n  \"complete_model_prefill_claim\": false,\n  \"throughput_claim\": false\n}}\n",
         report.rows,
         report.raw_kv_rows,
         report.compressed_kv_rows,
@@ -3034,6 +3069,8 @@ pub fn write_prefill_layers012_attention_loop_probe_json<W: Write>(
         report.wall_ms,
         report.gpu_ms,
         report.output_checksum,
+        report.after_attention_hc_checksum,
+        report.after_ffn_hc_checksum,
     )?;
     Ok(())
 }
@@ -3864,6 +3901,78 @@ fn prefill_layer2_attention_fixture() -> Result<Vec<f32>> {
         ));
     }
     Ok(values)
+}
+
+fn prefill_layer2_hc_attn_post_final_tile_fixture() -> Result<Vec<f32>> {
+    let values = decode_f32_fixture(
+        PREFILL_LAYER2_HC_ATTN_POST_FINAL_TILE_BYTES,
+        "prefill layer-2 attention HC post final tile",
+    )?;
+    if values.len() != 32 * 4 * 4096 {
+        return Err(Error::invalid(
+            "prefill layer-2 attention HC post fixture dimensions are invalid",
+        ));
+    }
+    Ok(values)
+}
+
+fn prefill_layer2_hc_ffn_post_final_tile_fixture() -> Result<Vec<f32>> {
+    let values = decode_f32_fixture(
+        PREFILL_LAYER2_HC_FFN_POST_FINAL_TILE_BYTES,
+        "prefill layer-2 FFN HC post final tile",
+    )?;
+    if values.len() != 32 * 4 * 4096 {
+        return Err(Error::invalid(
+            "prefill layer-2 FFN HC post fixture dimensions are invalid",
+        ));
+    }
+    Ok(values)
+}
+
+fn prefill_layer2_ffn_ingress_final_tile_fixture() -> Result<(Vec<f32>, Vec<f32>)> {
+    let cur = decode_f32_fixture(
+        PREFILL_LAYER2_FFN_CUR_FINAL_TILE_BYTES,
+        "prefill layer-2 FFN current final tile",
+    )?;
+    let norm = decode_f32_fixture(
+        PREFILL_LAYER2_FFN_NORM_FINAL_TILE_BYTES,
+        "prefill layer-2 FFN norm final tile",
+    )?;
+    if cur.len() != 32 * 4096 || norm.len() != 32 * 4096 {
+        return Err(Error::invalid(
+            "prefill layer-2 FFN ingress fixture dimensions are invalid",
+        ));
+    }
+    Ok((cur, norm))
+}
+
+fn prefill_layer2_ffn_output_final_tile_fixture() -> Result<(Vec<i32>, [Vec<f32>; 3])> {
+    let selected = decode_i32_fixture(
+        PREFILL_LAYER2_ROUTER_SELECTED_FINAL_TILE_BYTES,
+        "prefill layer-2 router selection final tile",
+    )?;
+    let weights = decode_f32_fixture(
+        PREFILL_LAYER2_ROUTER_WEIGHTS_FINAL_TILE_BYTES,
+        "prefill layer-2 router weights final tile",
+    )?;
+    let routed = decode_f32_fixture(
+        PREFILL_LAYER2_ROUTED_OUT_FINAL_TILE_BYTES,
+        "prefill layer-2 routed output final tile",
+    )?;
+    let shared = decode_f32_fixture(
+        PREFILL_LAYER2_SHARED_OUT_FINAL_TILE_BYTES,
+        "prefill layer-2 shared output final tile",
+    )?;
+    if selected.len() != 32 * 6
+        || weights.len() != 32 * 6
+        || routed.len() != 32 * 4096
+        || shared.len() != 32 * 4096
+    {
+        return Err(Error::invalid(
+            "prefill layer-2 FFN output fixture dimensions are invalid",
+        ));
+    }
+    Ok((selected, [weights, routed, shared]))
 }
 
 fn prefill_hc_ingress_fixture() -> Result<(Vec<u32>, Vec<f32>, Vec<f32>)> {
@@ -5124,6 +5233,7 @@ mod imp {
         attn_output_a_bytes: u64,
         attn_output_b_offset: u64,
         attn_output_b_bytes: u64,
+        ffn: RawPrefillFfnWeights,
     }
 
     #[repr(C)]
@@ -5462,6 +5572,14 @@ mod imp {
             model_bytes: u64,
             weights: *const RawPrefillLayer2AttentionWeights,
             attention_output: *mut f32,
+            after_attention_hc: *mut f32,
+            after_ffn_hc: *mut f32,
+            ffn_cur_final_tile: *mut f32,
+            ffn_norm_final_tile: *mut f32,
+            router_selected_final_tile: *mut i32,
+            router_weights_final_tile: *mut f32,
+            routed_out_final_tile: *mut f32,
+            shared_out_final_tile: *mut f32,
             result: *mut RawPrefillLayer2AttentionResult,
             error: *mut c_char,
             error_bytes: usize,
@@ -8234,10 +8352,30 @@ mod imp {
         let context = Context::new()?;
         let compressor = run_prefill_layers012_compressor_loop_probe_in_context(model, &context)?;
         let expected = prefill_layer2_attention_fixture()?;
+        let expected_hc_final_tile = prefill_layer2_hc_attn_post_final_tile_fixture()?;
+        let expected_ffn_hc_final_tile = prefill_layer2_hc_ffn_post_final_tile_fixture()?;
+        let (expected_ffn_cur_final_tile, expected_ffn_norm_final_tile) =
+            prefill_layer2_ffn_ingress_final_tile_fixture()?;
+        let (expected_router_selected, expected_ffn_outputs) =
+            prefill_layer2_ffn_output_final_tile_fixture()?;
         let q_b = exact_tensor(model, "blk.2.attn_q_b.weight", 8, &[1024, 32768])?;
         let sinks = exact_tensor(model, "blk.2.attn_sinks.weight", 0, &[64])?;
         let output_a = exact_tensor(model, "blk.2.attn_output_a.weight", 8, &[4096, 8192])?;
         let output_b = exact_tensor(model, "blk.2.attn_output_b.weight", 8, &[8192, 4096])?;
+        let ffn_hc_fn = exact_tensor(model, "blk.2.hc_ffn_fn.weight", 1, &[16384, 24])?;
+        let ffn_hc_scale = exact_tensor(model, "blk.2.hc_ffn_scale.weight", 0, &[3])?;
+        let ffn_hc_base = exact_tensor(model, "blk.2.hc_ffn_base.weight", 0, &[24])?;
+        let ffn_norm = exact_tensor(model, "blk.2.ffn_norm.weight", 0, &[4096])?;
+        let router_gate = exact_tensor(model, "blk.2.ffn_gate_inp.weight", 1, &[4096, 256])?;
+        let router_hash = exact_tensor(model, "blk.2.ffn_gate_tid2eid.weight", 26, &[6, 129280])?;
+        let routed_gate =
+            exact_tensor(model, "blk.2.ffn_gate_exps.weight", 16, &[4096, 2048, 256])?;
+        let routed_up = exact_tensor(model, "blk.2.ffn_up_exps.weight", 16, &[4096, 2048, 256])?;
+        let routed_down =
+            exact_tensor(model, "blk.2.ffn_down_exps.weight", 10, &[2048, 4096, 256])?;
+        let shared_gate = exact_tensor(model, "blk.2.ffn_gate_shexp.weight", 8, &[4096, 2048])?;
+        let shared_up = exact_tensor(model, "blk.2.ffn_up_shexp.weight", 8, &[4096, 2048])?;
+        let shared_down = exact_tensor(model, "blk.2.ffn_down_shexp.weight", 8, &[2048, 4096])?;
         let weights = RawPrefillLayer2AttentionWeights {
             q_b_offset: q_b.absolute_offset,
             q_b_bytes: q_b.bytes,
@@ -8247,8 +8385,42 @@ mod imp {
             attn_output_a_bytes: output_a.bytes,
             attn_output_b_offset: output_b.absolute_offset,
             attn_output_b_bytes: output_b.bytes,
+            ffn: RawPrefillFfnWeights {
+                hc_fn_offset: ffn_hc_fn.absolute_offset,
+                hc_fn_bytes: ffn_hc_fn.bytes,
+                hc_scale_offset: ffn_hc_scale.absolute_offset,
+                hc_scale_bytes: ffn_hc_scale.bytes,
+                hc_base_offset: ffn_hc_base.absolute_offset,
+                hc_base_bytes: ffn_hc_base.bytes,
+                norm_offset: ffn_norm.absolute_offset,
+                norm_bytes: ffn_norm.bytes,
+                router_gate_offset: router_gate.absolute_offset,
+                router_gate_bytes: router_gate.bytes,
+                router_hash_offset: router_hash.absolute_offset,
+                router_hash_bytes: router_hash.bytes,
+                routed_gate_offset: routed_gate.absolute_offset,
+                routed_gate_bytes: routed_gate.bytes,
+                routed_up_offset: routed_up.absolute_offset,
+                routed_up_bytes: routed_up.bytes,
+                routed_down_offset: routed_down.absolute_offset,
+                routed_down_bytes: routed_down.bytes,
+                shared_gate_offset: shared_gate.absolute_offset,
+                shared_gate_bytes: shared_gate.bytes,
+                shared_up_offset: shared_up.absolute_offset,
+                shared_up_bytes: shared_up.bytes,
+                shared_down_offset: shared_down.absolute_offset,
+                shared_down_bytes: shared_down.bytes,
+            },
         };
         let mut actual = vec![0.0_f32; expected.len()];
+        let mut actual_hc = vec![0.0_f32; 2048 * 4 * 4096];
+        let mut actual_ffn_hc = vec![0.0_f32; 2048 * 4 * 4096];
+        let mut actual_ffn_cur_final_tile = vec![0.0_f32; 32 * 4096];
+        let mut actual_ffn_norm_final_tile = vec![0.0_f32; 32 * 4096];
+        let mut actual_router_selected = vec![0_i32; 32 * 6];
+        let mut actual_router_weights = vec![0.0_f32; 32 * 6];
+        let mut actual_routed_out = vec![0.0_f32; 32 * 4096];
+        let mut actual_shared_out = vec![0.0_f32; 32 * 4096];
         let mut raw = RawPrefillLayer2AttentionResult::default();
         let mut error = [0 as c_char; ERROR_BYTES];
         let succeeded = unsafe {
@@ -8258,6 +8430,14 @@ mod imp {
                 model.bytes(),
                 &weights,
                 actual.as_mut_ptr(),
+                actual_hc.as_mut_ptr(),
+                actual_ffn_hc.as_mut_ptr(),
+                actual_ffn_cur_final_tile.as_mut_ptr(),
+                actual_ffn_norm_final_tile.as_mut_ptr(),
+                actual_router_selected.as_mut_ptr(),
+                actual_router_weights.as_mut_ptr(),
+                actual_routed_out.as_mut_ptr(),
+                actual_shared_out.as_mut_ptr(),
                 &mut raw,
                 error.as_mut_ptr(),
                 error.len(),
@@ -8268,6 +8448,95 @@ mod imp {
                 "Metal prefill layer-2 attention probe failed: {}",
                 error_text(&error)
             )));
+        }
+        for (label, actual, expected) in [
+            (
+                "HC collapse",
+                &actual_ffn_cur_final_tile,
+                &expected_ffn_cur_final_tile,
+            ),
+            (
+                "learned norm",
+                &actual_ffn_norm_final_tile,
+                &expected_ffn_norm_final_tile,
+            ),
+        ] {
+            for (index, (actual, expected)) in actual.iter().zip(expected).enumerate() {
+                if actual.to_bits() != expected.to_bits() {
+                    return Err(Error::invalid(format!(
+                        "prefill layer-2 FFN {label} C0 mismatch at final-tile element {index}: actual={:#010x} expected={:#010x}",
+                        actual.to_bits(),
+                        expected.to_bits(),
+                    )));
+                }
+            }
+        }
+        for (index, (actual, expected)) in actual_router_selected
+            .iter()
+            .zip(&expected_router_selected)
+            .enumerate()
+        {
+            if actual != expected {
+                return Err(Error::invalid(format!(
+                    "prefill layer-2 router selection C0 mismatch at final-tile element {index}: actual={actual} expected={expected}",
+                )));
+            }
+        }
+        for (label, actual, expected) in [
+            (
+                "router weights",
+                &actual_router_weights,
+                &expected_ffn_outputs[0],
+            ),
+            (
+                "routed output",
+                &actual_routed_out,
+                &expected_ffn_outputs[1],
+            ),
+            (
+                "shared output",
+                &actual_shared_out,
+                &expected_ffn_outputs[2],
+            ),
+        ] {
+            for (index, (actual, expected)) in actual.iter().zip(expected).enumerate() {
+                if actual.to_bits() != expected.to_bits() {
+                    return Err(Error::invalid(format!(
+                        "prefill layer-2 {label} C0 mismatch at final-tile element {index}: actual={:#010x} expected={:#010x}",
+                        actual.to_bits(),
+                        expected.to_bits(),
+                    )));
+                }
+            }
+        }
+        let actual_ffn_hc_final_tile =
+            &actual_ffn_hc[actual_ffn_hc.len() - expected_ffn_hc_final_tile.len()..];
+        for (index, (actual, expected)) in actual_ffn_hc_final_tile
+            .iter()
+            .zip(&expected_ffn_hc_final_tile)
+            .enumerate()
+        {
+            if actual.to_bits() != expected.to_bits() {
+                return Err(Error::invalid(format!(
+                    "prefill layer-2 FFN HC post C0 mismatch at final-tile element {index}: actual={:#010x} expected={:#010x}",
+                    actual.to_bits(),
+                    expected.to_bits(),
+                )));
+            }
+        }
+        let actual_hc_final_tile = &actual_hc[actual_hc.len() - expected_hc_final_tile.len()..];
+        for (index, (actual, expected)) in actual_hc_final_tile
+            .iter()
+            .zip(&expected_hc_final_tile)
+            .enumerate()
+        {
+            if actual.to_bits() != expected.to_bits() {
+                return Err(Error::invalid(format!(
+                    "prefill layer-2 attention HC post C0 mismatch at final-tile element {index}: actual={:#010x} expected={:#010x}",
+                    actual.to_bits(),
+                    expected.to_bits(),
+                )));
+            }
         }
         for (index, (actual, expected)) in actual.iter().zip(&expected).enumerate() {
             if actual.to_bits() != expected.to_bits() {
@@ -8281,9 +8550,9 @@ mod imp {
         if raw.rows != 2048
             || raw.raw_kv_rows != 2048
             || raw.compressed_kv_rows != 512
-            || raw.dispatches != 10
-            || raw.wrapped_model_ranges != 4
-            || raw.pointer_matches != 4
+            || raw.dispatches != 32
+            || raw.wrapped_model_ranges != 16
+            || raw.pointer_matches != 16
         {
             return Err(Error::invalid(
                 "Metal prefill layer-2 attention returned an unexpected schedule or mapping",
@@ -8292,6 +8561,7 @@ mod imp {
         Ok(PrefillLayers012AttentionLoopProbeReport {
             compressor,
             attention_fixture_id: PREFILL_LAYER2_ATTENTION_FIXTURE_ID,
+            attention_hc_fixture_id: PREFILL_LAYER2_COMPLETE_FIXTURE_ID,
             rows: raw.rows,
             raw_kv_rows: raw.raw_kv_rows,
             compressed_kv_rows: raw.compressed_kv_rows,
@@ -8301,6 +8571,8 @@ mod imp {
             wall_ms: raw.wall_ms,
             gpu_ms: raw.gpu_ms,
             output_checksum: checksum_f32(&actual),
+            after_attention_hc_checksum: checksum_f32(&actual_hc),
+            after_ffn_hc_checksum: checksum_f32(&actual_ffn_hc),
         })
     }
 
@@ -11909,15 +12181,18 @@ mod tests {
         PrefillLayers012AttentionLoopProbeReport {
             compressor: prefill_layers012_compressor_loop_report(),
             attention_fixture_id: PREFILL_LAYER2_ATTENTION_FIXTURE_ID,
+            attention_hc_fixture_id: PREFILL_LAYER2_COMPLETE_FIXTURE_ID,
             rows: 2048,
             raw_kv_rows: 2048,
             compressed_kv_rows: 512,
-            dispatches: 10,
-            wrapped_model_ranges: 4,
-            pointer_matches: 4,
+            dispatches: 32,
+            wrapped_model_ranges: 16,
+            pointer_matches: 16,
             wall_ms: 196.0,
             gpu_ms: 169.0,
             output_checksum: checksum_f32(&prefill_layer2_attention_fixture().unwrap()),
+            after_attention_hc_checksum: PREFILL_LAYER2_HC_ATTN_POST_FULL_CHECKSUM,
+            after_ffn_hc_checksum: PREFILL_LAYER2_HC_FFN_POST_FULL_CHECKSUM,
         }
     }
 
@@ -13267,10 +13542,12 @@ mod tests {
         )));
         assert!(text.contains("\"compressed_kv_rows\": 512"));
         assert!(text.contains("\"sparse_indexer_topk\": false"));
-        assert!(text.contains("\"attention_dispatches\": 10"));
+        assert!(text.contains("\"terminal_dispatches\": 32"));
         assert!(text.contains("\"layer2_attention_output_c0_bitwise_match\": true"));
         assert!(text.contains("\"complete_layer2_dense_mixed_attention_claim\": true"));
-        assert!(text.contains("\"complete_layer2_ffn_claim\": false"));
+        assert!(text.contains("\"layer2_ffn_hc_post_c0_bitwise_match\": true"));
+        assert!(text.contains("\"complete_layer2_ffn_claim\": true"));
+        assert!(text.contains("\"complete_layer2_prefill_claim\": true"));
     }
 
     #[test]
@@ -13527,6 +13804,31 @@ mod tests {
         let tensor = prefill_layer2_attention_fixture().unwrap();
         assert_eq!(tensor.len(), 2048 * 4096);
         assert!(tensor.iter().all(|value| value.is_finite()));
+    }
+
+    #[test]
+    fn prefill_layer2_complete_fixture_has_target_shapes() {
+        assert_eq!(
+            prefill_layer2_hc_attn_post_final_tile_fixture()
+                .unwrap()
+                .len(),
+            32 * 4 * 4096
+        );
+        assert_eq!(
+            prefill_layer2_hc_ffn_post_final_tile_fixture()
+                .unwrap()
+                .len(),
+            32 * 4 * 4096
+        );
+        let (cur, norm) = prefill_layer2_ffn_ingress_final_tile_fixture().unwrap();
+        assert_eq!(cur.len(), 32 * 4096);
+        assert_eq!(norm.len(), 32 * 4096);
+        let (selected, [weights, routed, shared]) =
+            prefill_layer2_ffn_output_final_tile_fixture().unwrap();
+        assert_eq!(selected.len(), 32 * 6);
+        assert_eq!(weights.len(), 32 * 6);
+        assert_eq!(routed.len(), 32 * 4096);
+        assert_eq!(shared.len(), 32 * 4096);
     }
 
     #[test]

@@ -2243,16 +2243,16 @@ fn run_prefill_layers012_attention_loop_probe_command(arguments: Vec<OsString>) 
     let model = MappedModel::open(&model_path)?;
     validate_resident_q2(model.gguf())?;
     let report = run_prefill_layers012_attention_loop_probe(&model)?;
-    println!("native layer-2 exact-2K mixed attention: 2048 raw rows + 512 dense compressed rows");
+    println!("native layer-2 exact-2K completion: 2048 raw rows + 512 dense compressed rows");
     println!(
-        "attention schedule: {} dispatches, {}/{} no-copy attention model ranges, wall={:.3} ms gpu={:.3} ms",
+        "terminal attention/FFN schedule: {} dispatches, {}/{} no-copy model ranges, wall={:.3} ms gpu={:.3} ms",
         report.dispatches,
         report.pointer_matches,
         report.wrapped_model_ranges,
         report.wall_ms,
         report.gpu_ms,
     );
-    println!("scope: complete native layers 0/1 plus exact layer-2 raw KV, paired compressors, dense mixed attention, inverse RoPE, and output projections; no sparse top-k, layer-2 FFN, complete-model-prefill, or throughput claim");
+    println!("scope: complete native layers 0/1/2 at the exact 2K prompt boundary, including layer-2 raw KV, paired compressors, dense mixed attention, both HC updates, token-hash routed/shared FFN, and final 16,384-wide HC state; no sparse post-prompt top-k, later layers, complete-model-prefill, or throughput claim");
     if let Some(path) = json_path {
         write_prefill_layers012_attention_loop_probe_file(&path, &report)?;
         println!("json: {}", path.display());
@@ -3728,7 +3728,7 @@ fn prefill_layers012_compressor_loop_probe_usage() -> &'static str {
 }
 
 fn prefill_layers012_attention_loop_probe_usage() -> &'static str {
-    "usage: rust-star prefill-layers012-attention-loop-probe MODEL.gguf [--json PATH]\n\nRuns all 64 native 32-row schedules over positions 0--2047 in one persistent Metal context, then executes the exact layer-2 dense mixed-attention boundary over 2048 raw and 512 compressed KV rows. The full 2048x4096 attention output must match the DwarfStar oracle bit-for-bit. Exactly 512 compressed rows remain dense; sparse indexer top-k begins only after this prompt boundary. This does not claim layer-2 FFN, complete-model prefill, sparse ratio-4 decode, or throughput."
+    "usage: rust-star prefill-layers012-attention-loop-probe MODEL.gguf [--json PATH]\n\nRuns all 64 native 32-row schedules over positions 0--2047 in one persistent Metal context, then completes layer 2 in one terminal batch: dense mixed attention over 2048 raw and 512 compressed KV rows, attention HC post, token-hash routed/shared FFN, and FFN HC post. Full attention and HC identities plus exact final-tile boundaries must match repeated DwarfStar captures. Exactly 512 compressed rows remain dense; sparse indexer top-k begins only after this prompt boundary. This does not claim later layers, complete-model prefill, sparse ratio-4 decode, or throughput."
 }
 
 fn ingress_probe_usage() -> &'static str {

@@ -305,9 +305,11 @@ they describe whenever practical.
   before every append, and the same empty-seed loop produces all 512 exact
   ratio-4 attention and indexer compressed rows plus their exact final recurrent
   states. Every compressor tile preserves 65 mmap pointers and uses 118
-  dispatches, with a 122-dispatch final tail refresh. Continue layer 2 through
-  mixed raw/compressed attention and FFN, then extend across the remaining
-  layers. The sequential 2K initializer still
+  dispatches, with a 122-dispatch final tail refresh. One terminal 32-dispatch
+  batch now completes layer 2 through mixed raw/compressed attention, both HC
+  updates, token-hash routing, routed/shared experts, and the final 2K HC state.
+  Extend the same retained-state strategy across the remaining layers. The
+  sequential 2K initializer still
   deliberately records its difference from the paired protocol's
   batched-prefill oracle.
 - Add ratio-4 sparse indexer selection after 512 compressed rows, then emit the

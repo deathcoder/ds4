@@ -210,14 +210,19 @@ history; add a correction and update the current-state summary.
   attention over 2,048 raw plus 512 compressed rows. Q-B, compressed YaRN,
   FlashAttention, inverse RoPE, and both attention-output projections reproduce
   all 8,388,608 attention-output values bit-for-bit with four additional
-  no-copy model mappings. Layer-2 HC post-processing, FFN, and complete model
-  prefill remain pending.
+  no-copy model mappings. The terminal command now continues through attention
+  HC post-processing, the full token-hash routed/shared FFN, and the additive
+  FFN HC update. Full 2K attention-HC and final-HC identities plus exact
+  final-tile intermediates match the repeated oracle, completing native layers
+  0, 1, and 2 at the 2K prompt boundary with 16/16 terminal no-copy mappings.
+  Later-layer batched prefill remains pending.
   Full native batched prefill, sparse indexed attention beyond 512 ratio-4
   rows, and the eligible engine-measurement producer remain pending.
-- Measurements: The exact full-2K layer-2 dense mixed-attention command reported
-  196.069 ms wall / 169.211 ms GPU across ten dispatches with 4/4 no-copy model
+- Measurements: The exact full-2K layer-2 completion command reported
+  408.397 ms wall / 338.484 ms GPU across 32 dispatches with 16/16 no-copy model
   mappings. It includes full correctness readback and is not a throughput
-  claim. Metal batching was 42.861x faster than synchronized submission
+  claim. The prior attention-only control was 196.069 ms wall / 169.211 ms GPU.
+  Metal batching was 42.861x faster than synchronized submission
   in the retained M-002 probe. DwarfStar medians are 164.86 prefill / 19.90
   generation tok/s at 2K and 161.05 prefill / 17.36 generation tok/s at 32K.
   The first real-model kernel matched all 20,480 checked FP32 values; its final
@@ -343,9 +348,8 @@ history; add a correction and update the current-state summary.
 
 ## Immediate Next Actions
 
-1. Extend the exact native layer-2 boundary from finalized raw KV and paired
-   ratio-4 compressors through indexer selection and mixed raw/compressed
-   attention, then the FFN HC tail, while preserving the shorter controls.
+1. Extend the exact native 2K prefill from the completed layer-2 HC state into
+   layer 3, preserving the shorter layer-2 controls and retained-state checks.
 2. Add the fixed 512-row ratio-4 indexer top-k and sparse indexed attention so
    128 generated tokens can continue beyond the 2K frontier.
 3. Emit the `rust-star-engine-measurement-v1` artifact from the exact
@@ -357,6 +361,51 @@ history; add a correction and update the current-state summary.
 6. Run or approve the fork's GitHub Actions workflow and retain its URL.
 
 ## Entries
+
+### 2026-08-16 — Complete layer 2 reaches the exact full-2K HC frontier
+
+Objective:
+
+- Continue the exact layer-2 mixed-attention boundary through both HC updates,
+  token-hash routing, routed/shared experts, and the final 16,384-wide HC state.
+
+Oracle evidence:
+
+- Two fresh DwarfStar processes produced byte-identical full-2K captures for
+  `hc_attn_post`, FFN ingress/norm/router/expert boundaries, and `hc_ffn_post`.
+- The full attention-HC state has SHA-256
+  `4f7c61ad617347f186cb959457d5c6f1c95692451bf186c751f863a6417baad2`;
+  the full final-HC state has SHA-256
+  `67dbac97346ee6bea6bb967eafa6c7841fb3477798f9cc154c9dfed24ff5564b`.
+- `prefill-layer2-complete-2048-v1` retains exact final-tile payloads and pins
+  every full capture identity without adding a single 128 MiB fixture blob.
+
+Implementation:
+
+- The 64-tile context now retains every layer-2 input HC row, attention split,
+  and token ID alongside Q/KV and compressor state.
+- The terminal Metal command adds the attention HC expand and a full 2,048-row
+  FFN batch: HC ingress/learned norm, token-hash router, fused IQ2_XXS
+  pair-SwiGLU, Q2_K routed down/sum, Q8_0 shared expert, and additive HC expand.
+- The decomposed router kernels' explicit maximum grew from 32 to 2,048 rows;
+  the existing 32-row paths preserve identical dispatch sizes and arithmetic.
+
+Validation:
+
+- The full attention output, attention-HC final tile, FFN ingress, router
+  selection/weights, routed/shared outputs, and final-HC final tile all match
+  DwarfStar by FP32 bit pattern.
+- Full-state checksums match both 2K HC capture identities. The terminal command
+  retains 16/16 no-copy model mappings and uses 32 dispatches.
+- The focused M1 Ultra run reported 408.397 ms wall / 338.484 ms GPU, including
+  synchronization and correctness readback; it is not a throughput claim.
+- The complete target-model runtime gate, 58 Python tests, all Rust tests, every
+  pinned fixture verifier, and all prior Metal decode/prefill controls pass.
+
+Next:
+
+- Carry the final layer-2 HC state into the first exact layer-3
+  batched-prefill boundary while retaining this complete layer-2 control.
 
 ### 2026-08-16 — Exact layer-2 dense mixed attention reaches the full 2K frontier
 

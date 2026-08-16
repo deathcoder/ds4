@@ -109,14 +109,17 @@ complete prefix before every append, and matches all full-2K KVrope and KVcur
 values from two fresh DwarfStar captures. The persistent loop now also owns
 both ratio-4 compressors, matches all 512 attention/indexer compressed rows and
 their final recurrent states, and retains every normalized layer-2 query row.
-A final ten-dispatch command executes Q-B, compressed YaRN, dense mixed
+A final 32-dispatch command executes Q-B, compressed YaRN, dense mixed
 FlashAttention over 2,048 raw plus 512 compressed rows, inverse RoPE, and both
-Q8 attention-output projections. Its complete 2048 x 4096 output matches two
-fresh DwarfStar captures bit-for-bit with 4/4 no-copy attention weight views.
+Q8 attention-output projections, then both four-stream HC updates and the full
+token-hash routed/shared FFN. Its complete 2048 x 4096 attention output, full
+attention-HC state, and full final 2048 x 16384 HC state match two fresh
+DwarfStar captures, with exact final-tile intermediate gates and 16/16 no-copy
+model views. The custom decomposed router kernels now support the complete
+2,048-row batch while preserving the established 32-row schedules.
 Exactly 512 compressed rows remain dense; sparse indexer top-k starts only after
-this prompt boundary. Layer-2 HC post-processing, FFN, later layers, output
-logits, and sparse post-prompt attention remain pending, and this is not a
-throughput claim.
+this prompt boundary. Later layers, output logits, and sparse post-prompt
+attention remain pending, and this is not a throughput claim.
 
 Project controls and benchmark contracts:
 
