@@ -202,8 +202,11 @@ history; add a correction and update the current-state summary.
   validation of the non-final layer-1 outputs. The same 64-tile schedule now
   applies layer 2's compressed-attention RoPE and E4M3FN finalization, retains
   one live full-2K layer-2 raw-KV allocation, and matches every `KVrope` and
-  `KVcur` value plus each accumulated prefix. Layer-2 compressors, mixed
-  attention, FFN, and complete model prefill remain pending.
+  `KVcur` value plus each accumulated prefix. The same empty-seed loop now owns
+  both layer-2 ratio-4 compressors. It matches all 512 attention and indexer
+  compressed rows and the four final recurrent state tensors bit-for-bit while
+  preserving 65 no-copy model mappings per tile. Mixed attention, FFN, and
+  complete model prefill remain pending.
   Full native batched prefill, sparse indexed attention beyond 512 ratio-4
   rows, and the eligible engine-measurement producer remain pending.
 - Measurements: Metal batching was 42.861x faster than synchronized submission
@@ -316,6 +319,10 @@ history; add a correction and update the current-state summary.
   tokens/s over 110090.070 ms and was exact against the repeated DwarfStar
   decode replay. It is not prefill throughput: DwarfStar's native batched
   prefill is the required oracle and produced a different full-logit tensor.
+  The first exact paired-compressor full-2K run reported 3624.704 ms summed
+  wall and 3514.757 ms summed GPU time across its 64 correctness-oriented
+  tiles. It retained 65/65 model mappings, used 118 dispatches on regular tiles
+  and 122 on the final state refresh, and is not a prefill-throughput claim.
 - Manual handoff: `RUST_STAR_MANUAL_TASKS.md` records Actions approval, target
   compilation/model inspection, quick/extended oracle capture, and the deferred
   secure-access decision with exact evidence requirements.
@@ -328,9 +335,9 @@ history; add a correction and update the current-state summary.
 
 ## Immediate Next Actions
 
-1. Extend the exact native layer-2 boundary from finalized raw KV through its
-   ratio-4 attention/indexer compressors, mixed raw/compressed attention, and
-   FFN HC tail while preserving the shorter 64-tile controls.
+1. Extend the exact native layer-2 boundary from finalized raw KV and paired
+   ratio-4 compressors through indexer selection and mixed raw/compressed
+   attention, then the FFN HC tail, while preserving the shorter controls.
 2. Add the fixed 512-row ratio-4 indexer top-k and sparse indexed attention so
    128 generated tokens can continue beyond the 2K frontier.
 3. Emit the `rust-star-engine-measurement-v1` artifact from the exact
@@ -342,6 +349,59 @@ history; add a correction and update the current-state summary.
 6. Run or approve the fork's GitHub Actions workflow and retain its URL.
 
 ## Entries
+
+### 2026-08-16 — Layer-2 paired compressors reach the full 2K frontier
+
+Objective:
+
+- Extend the empty-seed native layers-0/1 and layer-2 raw-KV loop through both
+  ratio-4 compressors without introducing a host activation handoff.
+
+Oracle and implementation:
+
+- Captured the complete layer-2 attention/indexer compressed caches and final
+  recurrent KV/score states twice in fresh DwarfStar processes. All six payload
+  pairs were byte-identical. Added the strict
+  `prefill-layer2-compressors-2048-v1` fixture, its provenance-preserving
+  importer, and fixture-shape tests.
+- Expanded the persistent Metal context from 57 to 65 mmap-backed model ranges
+  and added owned attention/indexer compressed caches plus recurrent states.
+  Four aligned F16 projections feed DwarfStar-equivalent fused eight-row
+  pooling, learned norm, compressed RoPE, and E4M3FN/indexer QAT.
+- Preserving DwarfStar arithmetic required two distinct details. The one-shot
+  2K capture pools the aligned compressor rows as one fused batch rather than
+  repeating the legacy one-row reduction. Regular tiles keep batch-projected
+  tail state so later rows remain identical to that one-shot capture; only the
+  final tile reruns its four-row tail with the small-batch projection used by
+  DwarfStar's published final recurrent state.
+- Added `prefill-layers012-compressor-loop-probe`, a stable JSON schema, atomic
+  CLI output, exact prefix/state validation, and the command to the target-Mac
+  validation script. Regular tiles use 118 dispatches; the final tail refresh
+  uses 122.
+
+Target-Mac evidence:
+
+- The focused full-2K command passed all 512 attention compressed rows, all 512
+  indexer compressed rows, and the four final recurrent state tensors by FP32
+  bit pattern. Every tile preserved 65/65 no-copy mappings. Summed diagnostic
+  intervals were 3624.704 ms wall and 3514.757 ms GPU; setup, synchronization,
+  and exhaustive correctness checks make these non-throughput measurements.
+- The pinned fixture verifier accepted 8 operations, 6 tensors, and 1,392,640
+  payload bytes. Formatting and 90 Rust tests passed after adding the command
+  and report contracts.
+- The complete target-Mac gate repeated the new command at 3548.253 ms summed
+  wall and 3444.137 ms summed GPU, then passed all retained runtime controls.
+  The gate included 90 Rust tests, 57 Python tests, all 242 pinned differential
+  fixtures, an optimized macOS build, strict validation of all 1,288 required
+  model tensors, and both steady-state benchmark controls.
+
+Decision and next:
+
+- Accept exact persistent ownership of both layer-2 ratio-4 compressors across
+  native 2K prefill. Next consume the resulting 512-row indexer cache for exact
+  selection and mixed raw/compressed attention, then cross the layer-2 FFN.
+- This checkpoint makes no claim about layer-2 mixed attention, layer-2 FFN,
+  complete-model prefill, or inference throughput.
 
 ### 2026-08-16 — Layer-2 raw KV ownership reaches the full 2K frontier
 

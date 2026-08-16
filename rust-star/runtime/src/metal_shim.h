@@ -139,6 +139,17 @@ typedef struct rust_star_metal_prefill_kvnorm_weights {
     uint64_t kv_norm_offset, kv_norm_bytes;
 } rust_star_metal_prefill_kvnorm_weights;
 
+typedef struct rust_star_metal_prefill_compressor_weights {
+    uint64_t attn_ape_offset, attn_ape_bytes;
+    uint64_t attn_kv_offset, attn_kv_bytes;
+    uint64_t attn_gate_offset, attn_gate_bytes;
+    uint64_t attn_norm_offset, attn_norm_bytes;
+    uint64_t indexer_ape_offset, indexer_ape_bytes;
+    uint64_t indexer_kv_offset, indexer_kv_bytes;
+    uint64_t indexer_gate_offset, indexer_gate_bytes;
+    uint64_t indexer_norm_offset, indexer_norm_bytes;
+} rust_star_metal_prefill_compressor_weights;
+
 typedef struct rust_star_metal_prefill_layer_outputs {
     const float *kv_prefix;
     float *q_lora_norm;
@@ -337,10 +348,19 @@ int rust_star_metal_run_prefill_layer0_boundary(
     const rust_star_metal_prefill_layer_weights *next_layer,
     const rust_star_metal_prefill_layer_outputs *next_outputs,
     const rust_star_metal_prefill_kvnorm_weights *layer2_kvnorm,
+    const rust_star_metal_prefill_compressor_weights *layer2_compressors,
     float *layer2_kv_norm_output,
     float *layer2_kv_rope_output,
     float *layer2_kv_cur_output,
     const float *layer2_kv_prefix,
+    float *layer2_attn_compressed_output,
+    float *layer2_indexer_compressed_output,
+    float *layer2_attn_state_kv_output,
+    float *layer2_attn_state_score_output,
+    float *layer2_indexer_state_kv_output,
+    float *layer2_indexer_state_score_output,
+    const float *layer2_attn_compressed_prefix,
+    const float *layer2_indexer_compressed_prefix,
     uint32_t n_vocab,
     uint32_t rows,
     uint32_t position_start,

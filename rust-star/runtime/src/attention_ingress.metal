@@ -386,6 +386,104 @@ kernel void rust_star_mul_f32(
     dst[gid] = a[gid]*b[gid];
 }
 
+struct rust_star_compressor_score_batch_args {
+    uint width;
+    uint ratio;
+    uint pos0;
+    uint n_tokens;
+};
+
+kernel void rust_star_compressor_score_ape_f16_batch(
+        constant rust_star_compressor_score_batch_args & args,
+        device const float * score,
+        device const half * ape,
+        device float * dst,
+        uint gid [[thread_position_in_grid]]) {
+    const ulong total = (ulong)args.n_tokens*args.width;
+    if ((ulong)gid >= total) return;
+    const uint token = gid/args.width;
+    const uint col = gid-token*args.width;
+    const uint ape_row = (args.pos0+token)%args.ratio;
+    dst[gid] = score[gid] + float(ape[(ulong)ape_row*args.width+col]);
+}
+
+struct rust_star_compressor_pack_batch_args {
+    uint head_dim;
+    uint n_comp;
+    uint replay;
+    uint n_threads;
+};
+
+kernel void rust_star_compressor_pack_ratio4_batch(
+        constant rust_star_compressor_pack_batch_args & args,
+        device const uint * kv,
+        device const uint * score,
+        device const uint * state_kv,
+        device const uint * state_score,
+        device uint * packed_kv,
+        device uint * packed_score,
+        uint2 group [[threadgroup_position_in_grid]],
+        uint tid [[thread_index_in_threadgroup]]) {
+    if (group.x >= args.n_comp || group.y >= 8u ||
+        args.head_dim == 0u || args.n_threads == 0u) return;
+    const uint plane = group.x;
+    const uint row = group.y;
+    const ulong input_stride = 2ul*args.head_dim;
+    const ulong dst_row = ((ulong)plane*8u+row)*args.head_dim;
+    for (uint col = tid; col < args.head_dim; col += args.n_threads) {
+        const ulong dst = dst_row+col;
+        if (row >= 4u) {
+            const uint token = plane*4u+(row-4u);
+            const ulong src = (ulong)token*input_stride+args.head_dim+col;
+            packed_kv[dst] = kv[src];
+            packed_score[dst] = score[src];
+        } else if (plane != 0u) {
+            const uint token = (plane-1u)*4u+row;
+            const ulong src = (ulong)token*input_stride+col;
+            packed_kv[dst] = kv[src];
+            packed_score[dst] = score[src];
+        } else if (args.replay != 0u) {
+            const ulong src = (ulong)row*input_stride+col;
+            packed_kv[dst] = state_kv[src];
+            packed_score[dst] = state_score[src];
+        } else {
+            packed_kv[dst] = 0u;
+            packed_score[dst] = 0xff800000u;
+        }
+    }
+}
+
+struct rust_star_compressor_pool_batch_args {
+    uint head_dim;
+    uint n_comp;
+};
+
+kernel void rust_star_compressor_softmax_pool_batch(
+        constant rust_star_compressor_pool_batch_args & args,
+        device const float * kv,
+        device const float * score,
+        device float * dst,
+        uint gid [[thread_position_in_grid]]) {
+    const ulong total = (ulong)args.head_dim*args.n_comp;
+    if ((ulong)gid >= total) return;
+    const uint id = gid%args.head_dim;
+    const uint plane = gid/args.head_dim;
+    const ulong base = ((ulong)plane*8u)*args.head_dim+id;
+    float max_s = -INFINITY;
+    for (uint row = 0; row < 8u; row++) {
+        max_s = max(max_s, score[base+(ulong)row*args.head_dim]);
+    }
+    float sum = 0.0f;
+    float acc = 0.0f;
+    for (uint row = 0; row < 8u; row++) {
+        const ulong index = base+(ulong)row*args.head_dim;
+        const float weight = exp(score[index]-max_s);
+        sum += weight;
+        acc += kv[index]*weight;
+    }
+    dst[gid] = acc/sum;
+}
+
 struct ds4_metal_args_dsv4_hc_split_weighted_sum_norm {
     long n_embd; int n_hc; int sinkhorn_iters; long n_rows; long mix_hc;
     ulong nb_mix1; ulong nb_split1;

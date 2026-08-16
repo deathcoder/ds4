@@ -25,6 +25,8 @@ pub const PREFILL_LAYERS012_KVNORM_LOOP_PROBE_SCHEMA: &str =
     "rust-star-prefill-layers012-kvnorm-loop-probe-v1";
 pub const PREFILL_LAYERS012_KV_STATE_LOOP_PROBE_SCHEMA: &str =
     "rust-star-prefill-layers012-kv-state-loop-probe-v1";
+pub const PREFILL_LAYERS012_COMPRESSOR_LOOP_PROBE_SCHEMA: &str =
+    "rust-star-prefill-layers012-compressor-loop-probe-v1";
 pub const INGRESS_PROBE_SCHEMA: &str = "rust-star-layer0-attention-ingress-probe-v1";
 pub const ATTENTION_SETUP_PROBE_SCHEMA: &str = "rust-star-layer0-attention-setup-probe-v1";
 pub const ROPE_KV_STORE_PROBE_SCHEMA: &str = "rust-star-layer0-rope-kv-store-probe-v1";
@@ -72,6 +74,8 @@ pub const PREFILL_LAYER1_COMPLETE_FIXTURE_ID: &str =
 pub const PREFILL_LAYER2_KVNORM_FIXTURE_ID: &str = "dwarfstar-oracle-v1-prefill-layer2-kvnorm-2048";
 pub const PREFILL_LAYER2_KV_STATE_FIXTURE_ID: &str =
     "dwarfstar-oracle-v1-prefill-layer2-kv-state-2048";
+pub const PREFILL_LAYER2_COMPRESSOR_FIXTURE_ID: &str =
+    "dwarfstar-oracle-v1-prefill-layer2-compressors-2048";
 pub const PREFILL_LAYERS01_PREVIOUS_TILE_FIXTURE_ID: &str =
     "dwarfstar-oracle-v1-prefill-layers01-previous-tile-2048";
 pub const PREFILL_HC_INGRESS_FIXTURE_ID: &str = "dwarfstar-oracle-v1-prefill-hc-ingress-2048";
@@ -334,6 +338,23 @@ const PREFILL_LAYER2_KV_ROPE_BYTES: &[u8] =
     include_bytes!("../../fixtures/prefill-layer2-kv-state-2048-v1/layer2-kv-rope.f32le.bin");
 const PREFILL_LAYER2_KV_CURRENT_BYTES: &[u8] =
     include_bytes!("../../fixtures/prefill-layer2-kv-state-2048-v1/layer2-kv-current.f32le.bin");
+const PREFILL_LAYER2_ATTN_COMPRESSED_BYTES: &[u8] = include_bytes!(
+    "../../fixtures/prefill-layer2-compressors-2048-v1/attention-compressed-kv.f32le.bin"
+);
+const PREFILL_LAYER2_ATTN_STATE_KV_BYTES: &[u8] = include_bytes!(
+    "../../fixtures/prefill-layer2-compressors-2048-v1/attention-state-kv.f32le.bin"
+);
+const PREFILL_LAYER2_ATTN_STATE_SCORE_BITS: &[u8] = include_bytes!(
+    "../../fixtures/prefill-layer2-compressors-2048-v1/attention-state-score.i32le.bin"
+);
+const PREFILL_LAYER2_INDEXER_COMPRESSED_BYTES: &[u8] = include_bytes!(
+    "../../fixtures/prefill-layer2-compressors-2048-v1/indexer-compressed-kv.f32le.bin"
+);
+const PREFILL_LAYER2_INDEXER_STATE_KV_BYTES: &[u8] =
+    include_bytes!("../../fixtures/prefill-layer2-compressors-2048-v1/indexer-state-kv.f32le.bin");
+const PREFILL_LAYER2_INDEXER_STATE_SCORE_BITS: &[u8] = include_bytes!(
+    "../../fixtures/prefill-layer2-compressors-2048-v1/indexer-state-score.i32le.bin"
+);
 const PREFILL_HC_TOKEN_IDS_BYTES: &[u8] =
     include_bytes!("../../fixtures/prefill-hc-ingress-2048-v1/token-ids-final-tile.i32le.bin");
 const PREFILL_HC_COLLAPSED_BYTES: &[u8] =
@@ -900,6 +921,17 @@ pub struct PrefillLayers012KvStateLoopProbeReport {
     pub layer2_kvnorm_fixture_id: &'static str,
     pub layer2_kv_state_fixture_id: &'static str,
     pub layer2_checksums: Vec<[u64; 3]>,
+    pub final_tile: PrefillLayers01CompleteBoundaryProbeReport,
+}
+
+#[derive(Clone, Debug)]
+pub struct PrefillLayers012CompressorLoopProbeReport {
+    pub tiles: Vec<PrefillLayer0BoundaryProbeReport>,
+    pub layer2_kvnorm_fixture_id: &'static str,
+    pub layer2_kv_state_fixture_id: &'static str,
+    pub layer2_compressor_fixture_id: &'static str,
+    pub layer2_checksums: Vec<[u64; 3]>,
+    pub layer2_compressor_checksums: Vec<[u64; 6]>,
     pub final_tile: PrefillLayers01CompleteBoundaryProbeReport,
 }
 
@@ -2852,6 +2884,73 @@ pub fn write_prefill_layers012_kv_state_loop_probe_json<W: Write>(
     Ok(())
 }
 
+pub fn write_prefill_layers012_compressor_loop_probe_json<W: Write>(
+    output: &mut W,
+    report: &PrefillLayers012CompressorLoopProbeReport,
+) -> Result<()> {
+    if report.tiles.len() != 64
+        || report.layer2_checksums.len() != 64
+        || report.layer2_compressor_checksums.len() != 64
+        || report.tiles.iter().enumerate().any(|(index, tile)| {
+            tile.position_start != index as u32 * 32
+                || tile.rows != 32
+                || tile.dispatches != (if index == 63 { 122 } else { 118 })
+                || tile.wrapped_model_ranges != 65
+                || tile.pointer_matches != 65
+        })
+        || report.final_tile.layers01.layer0.position_start != 2016
+    {
+        return Err(Error::invalid(
+            "prefill layers-0/1/2 compressor report must contain all 64 contiguous tiles",
+        ));
+    }
+    let total_wall_ms: f64 = report.tiles.iter().map(|tile| tile.wall_ms).sum();
+    let total_gpu_ms: f64 = report.tiles.iter().map(|tile| tile.gpu_ms).sum();
+    write!(
+        output,
+        "{{\n  \"schema\": \"{PREFILL_LAYERS012_COMPRESSOR_LOOP_PROBE_SCHEMA}\",\n  \"fixtures\": ["
+    )?;
+    crate::artifact::write_json_string(output, report.layer2_kvnorm_fixture_id)?;
+    output.write_all(b", ")?;
+    crate::artifact::write_json_string(output, report.layer2_kv_state_fixture_id)?;
+    output.write_all(b", ")?;
+    crate::artifact::write_json_string(output, report.layer2_compressor_fixture_id)?;
+    output.write_all(
+        b"],\n  \"coverage\": {\"position_start\": 0, \"position_end\": 2047, \"rows\": 2048, \"tile_rows\": 32, \"tiles\": 64, \"complete_layers\": [0, 1], \"downstream_layer\": 2, \"output_boundary\": \"layer2 paired ratio-4 compressors\"},\n  \"tiles\": [\n",
+    )?;
+    for (index, ((tile, kv), compressors)) in report
+        .tiles
+        .iter()
+        .zip(&report.layer2_checksums)
+        .zip(&report.layer2_compressor_checksums)
+        .enumerate()
+    {
+        write!(
+            output,
+            "    {{\"position_start\": {}, \"position_end\": {}, \"retained_layer012_kv_rows\": {}, \"retained_layer2_compressed_rows\": {}, \"dispatches\": {}, \"wrapped_model_ranges\": {}, \"pointer_matches\": {}, \"layer2_kv_checksums\": [{}, {}, {}], \"layer2_compressor_checksums\": [{}, {}, {}, {}, {}, {}], \"wall_ms\": {:.6}, \"gpu_ms\": {:.6}, \"layer2_compressor_c0_bitwise_match\": true}}{}\n",
+            tile.position_start,
+            tile.position_start + tile.rows as u32 - 1,
+            tile.position_start + tile.rows as u32,
+            (tile.position_start + tile.rows as u32) / 4,
+            tile.dispatches,
+            tile.wrapped_model_ranges,
+            tile.pointer_matches,
+            kv[0], kv[1], kv[2],
+            compressors[0], compressors[1], compressors[2],
+            compressors[3], compressors[4], compressors[5],
+            tile.wall_ms,
+            tile.gpu_ms,
+            if index + 1 == report.tiles.len() { "" } else { "," },
+        )?;
+    }
+    write!(
+        output,
+        "  ],\n  \"timing\": {{\"summed_wall_ms\": {:.6}, \"summed_gpu_ms\": {:.6}}},\n  \"schedule\": {{\"dispatches_per_regular_tile\": 118, \"dispatches_final_tile\": 122, \"layer01_dispatches_per_tile\": 84, \"layer2_raw_kv_dispatches_per_tile\": 8, \"layer2_compressor_batch_projection_dispatches_per_tile\": 4, \"layer2_compressor_batch_dispatches_per_tile\": 22, \"layer2_compressor_tail_projection_dispatches_final_tile\": 4, \"wrapped_model_ranges_per_tile\": 65, \"projection_kernel\": \"kernel_mul_mm_f16_f32\", \"tail_projection_kernel\": \"kernel_mul_mv_ext_f16_f32_r1_4\", \"pool_kernel\": \"DwarfStar-equivalent fused 8-row softmax pool\", \"store_kernel\": \"kernel_dsv4_compressor_store_one\", \"ratio4_shift_kernel\": \"kernel_dsv4_ratio4_shift_f32\"}},\n  \"persistent_metal_context\": true,\n  \"command_buffers\": 64,\n  \"inter_tile_host_waits\": 63,\n  \"captured_kv_seed_rows\": 0,\n  \"retained_prefix_oracle_validation\": true,\n  \"all_layer2_compressed_rows_c0_bitwise_match\": true,\n  \"final_layer2_compressor_states_c0_bitwise_match\": true,\n  \"complete_layer2_raw_kv_state_claim\": true,\n  \"complete_layer2_paired_compressor_claim\": true,\n  \"complete_layer2_attention_claim\": false,\n  \"complete_layer2_ffn_claim\": false,\n  \"complete_layer2_prefill_claim\": false,\n  \"complete_model_prefill_claim\": false,\n  \"throughput_claim\": false\n}}\n",
+        total_wall_ms, total_gpu_ms,
+    )?;
+    Ok(())
+}
+
 fn validate_embedding_inputs(
     model: &MappedModel,
     tensor: &TensorInfo,
@@ -3613,6 +3712,58 @@ fn prefill_layer2_kv_state_fixture() -> Result<[Vec<f32>; 2]> {
         ));
     }
     Ok([rope, current])
+}
+
+fn prefill_layer2_compressor_fixture() -> Result<[Vec<f32>; 6]> {
+    let attention_compressed = decode_f32_fixture(
+        PREFILL_LAYER2_ATTN_COMPRESSED_BYTES,
+        "prefill layer-2 attention compressed KV",
+    )?;
+    let attention_state_kv = decode_f32_fixture(
+        PREFILL_LAYER2_ATTN_STATE_KV_BYTES,
+        "prefill layer-2 attention compressor KV state",
+    )?;
+    let attention_state_score = decode_i32_fixture(
+        PREFILL_LAYER2_ATTN_STATE_SCORE_BITS,
+        "prefill layer-2 attention compressor score-state bits",
+    )?
+    .into_iter()
+    .map(|bits| f32::from_bits(bits as u32))
+    .collect::<Vec<_>>();
+    let indexer_compressed = decode_f32_fixture(
+        PREFILL_LAYER2_INDEXER_COMPRESSED_BYTES,
+        "prefill layer-2 indexer compressed KV",
+    )?;
+    let indexer_state_kv = decode_f32_fixture(
+        PREFILL_LAYER2_INDEXER_STATE_KV_BYTES,
+        "prefill layer-2 indexer compressor KV state",
+    )?;
+    let indexer_state_score = decode_i32_fixture(
+        PREFILL_LAYER2_INDEXER_STATE_SCORE_BITS,
+        "prefill layer-2 indexer compressor score-state bits",
+    )?
+    .into_iter()
+    .map(|bits| f32::from_bits(bits as u32))
+    .collect::<Vec<_>>();
+    if attention_compressed.len() != 512 * 512
+        || attention_state_kv.len() != 8 * 1024
+        || attention_state_score.len() != 8 * 1024
+        || indexer_compressed.len() != 512 * 128
+        || indexer_state_kv.len() != 8 * 256
+        || indexer_state_score.len() != 8 * 256
+    {
+        return Err(Error::invalid(
+            "prefill layer-2 compressor fixture dimensions are invalid",
+        ));
+    }
+    Ok([
+        attention_compressed,
+        attention_state_kv,
+        attention_state_score,
+        indexer_compressed,
+        indexer_state_kv,
+        indexer_state_score,
+    ])
 }
 
 fn prefill_hc_ingress_fixture() -> Result<(Vec<u32>, Vec<f32>, Vec<f32>)> {
@@ -4844,6 +4995,26 @@ mod imp {
     }
 
     #[repr(C)]
+    struct RawPrefillCompressorWeights {
+        attn_ape_offset: u64,
+        attn_ape_bytes: u64,
+        attn_kv_offset: u64,
+        attn_kv_bytes: u64,
+        attn_gate_offset: u64,
+        attn_gate_bytes: u64,
+        attn_norm_offset: u64,
+        attn_norm_bytes: u64,
+        indexer_ape_offset: u64,
+        indexer_ape_bytes: u64,
+        indexer_kv_offset: u64,
+        indexer_kv_bytes: u64,
+        indexer_gate_offset: u64,
+        indexer_gate_bytes: u64,
+        indexer_norm_offset: u64,
+        indexer_norm_bytes: u64,
+    }
+
+    #[repr(C)]
     struct RawPrefillLayerOutputs {
         kv_prefix: *const f32,
         q_lora_norm: *mut f32,
@@ -5107,10 +5278,19 @@ mod imp {
             next_layer: *const RawPrefillLayerWeights,
             next_outputs: *const RawPrefillLayerOutputs,
             layer2_kvnorm: *const RawPrefillKvnormWeights,
+            layer2_compressors: *const RawPrefillCompressorWeights,
             layer2_kv_norm_output: *mut f32,
             layer2_kv_rope_output: *mut f32,
             layer2_kv_cur_output: *mut f32,
             layer2_kv_prefix: *const f32,
+            layer2_attn_compressed_output: *mut f32,
+            layer2_indexer_compressed_output: *mut f32,
+            layer2_attn_state_kv_output: *mut f32,
+            layer2_attn_state_score_output: *mut f32,
+            layer2_indexer_state_kv_output: *mut f32,
+            layer2_indexer_state_score_output: *mut f32,
+            layer2_attn_compressed_prefix: *const f32,
+            layer2_indexer_compressed_prefix: *const f32,
             n_vocab: u32,
             rows: u32,
             position_start: u32,
@@ -6328,11 +6508,13 @@ mod imp {
         kv_state_mode: u32,
         include_layer2_kvnorm: bool,
         include_layer2_kv_state: bool,
+        include_layer2_compressors: bool,
     ) -> Result<(
         PrefillLayer0BoundaryProbeReport,
         Option<[u64; 3]>,
         Option<[u64; 20]>,
         Option<[u64; 3]>,
+        Option<[u64; 6]>,
     )> {
         let include_layer1 = layer1_mode != 0;
         let complete_layer1 = layer1_mode == 2;
@@ -6350,6 +6532,11 @@ mod imp {
         if include_layer2_kv_state && !include_layer2_kvnorm {
             return Err(Error::invalid(
                 "prefill layer-2 KV state requires the layer-2 KVnorm boundary",
+            ));
+        }
+        if include_layer2_compressors && !include_layer2_kv_state {
+            return Err(Error::invalid(
+                "prefill layer-2 compressors require retained layer-2 KV state",
             ));
         }
         let final_tile = position_start == 2016;
@@ -6440,6 +6627,11 @@ mod imp {
         };
         let expected_layer2_kv_state = if include_layer2_kv_state {
             Some(prefill_layer2_kv_state_fixture()?)
+        } else {
+            None
+        };
+        let expected_layer2_compressors = if include_layer2_compressors {
+            Some(prefill_layer2_compressor_fixture()?)
         } else {
             None
         };
@@ -6631,6 +6823,45 @@ mod imp {
         } else {
             None
         };
+        let raw_layer2_compressor_weights = if include_layer2_compressors {
+            let attn_ape = exact_tensor(model, "blk.2.attn_compressor_ape.weight", 1, &[1024, 4])?;
+            let attn_kv = exact_tensor(model, "blk.2.attn_compressor_kv.weight", 1, &[4096, 1024])?;
+            let attn_gate =
+                exact_tensor(model, "blk.2.attn_compressor_gate.weight", 1, &[4096, 1024])?;
+            let attn_norm = exact_tensor(model, "blk.2.attn_compressor_norm.weight", 0, &[512])?;
+            let indexer_ape =
+                exact_tensor(model, "blk.2.indexer_compressor_ape.weight", 1, &[256, 4])?;
+            let indexer_kv =
+                exact_tensor(model, "blk.2.indexer_compressor_kv.weight", 1, &[4096, 256])?;
+            let indexer_gate = exact_tensor(
+                model,
+                "blk.2.indexer_compressor_gate.weight",
+                1,
+                &[4096, 256],
+            )?;
+            let indexer_norm =
+                exact_tensor(model, "blk.2.indexer_compressor_norm.weight", 0, &[128])?;
+            Some(RawPrefillCompressorWeights {
+                attn_ape_offset: attn_ape.absolute_offset,
+                attn_ape_bytes: attn_ape.bytes,
+                attn_kv_offset: attn_kv.absolute_offset,
+                attn_kv_bytes: attn_kv.bytes,
+                attn_gate_offset: attn_gate.absolute_offset,
+                attn_gate_bytes: attn_gate.bytes,
+                attn_norm_offset: attn_norm.absolute_offset,
+                attn_norm_bytes: attn_norm.bytes,
+                indexer_ape_offset: indexer_ape.absolute_offset,
+                indexer_ape_bytes: indexer_ape.bytes,
+                indexer_kv_offset: indexer_kv.absolute_offset,
+                indexer_kv_bytes: indexer_kv.bytes,
+                indexer_gate_offset: indexer_gate.absolute_offset,
+                indexer_gate_bytes: indexer_gate.bytes,
+                indexer_norm_offset: indexer_norm.absolute_offset,
+                indexer_norm_bytes: indexer_norm.bytes,
+            })
+        } else {
+            None
+        };
         let mut actual_collapsed = vec![0.0_f32; expected_collapsed.len()];
         let mut actual_attn_norm = vec![0.0_f32; expected_attn_norm.len()];
         let mut actual_q = vec![0.0_f32; expected_q.len()];
@@ -6701,6 +6932,17 @@ mod imp {
         let mut actual_layer2_kv_rope =
             vec![0.0_f32; expected_layer2_kv_state.as_ref().map_or(0, |_| 32 * 512)];
         let mut actual_layer2_kv_cur = vec![0.0_f32; actual_layer2_kv_rope.len()];
+        let mut actual_layer2_attn_compressed =
+            vec![0.0_f32; expected_layer2_compressors.as_ref().map_or(0, |_| 8 * 512)];
+        let mut actual_layer2_indexer_compressed =
+            vec![0.0_f32; expected_layer2_compressors.as_ref().map_or(0, |_| 8 * 128)];
+        let mut actual_layer2_attn_state_kv =
+            vec![0.0_f32; expected_layer2_compressors.as_ref().map_or(0, |_| 8 * 1024)];
+        let mut actual_layer2_attn_state_score = vec![0.0_f32; actual_layer2_attn_state_kv.len()];
+        let mut actual_layer2_indexer_state_kv =
+            vec![0.0_f32; expected_layer2_compressors.as_ref().map_or(0, |_| 8 * 256)];
+        let mut actual_layer2_indexer_state_score =
+            vec![0.0_f32; actual_layer2_indexer_state_kv.len()];
         let mut expected_full_kv = expected_kv_prefix.clone();
         expected_full_kv.extend_from_slice(&expected_kv_cur);
         let raw_complete_layer1_outputs =
@@ -6765,6 +7007,9 @@ mod imp {
                 raw_layer2_kvnorm_weights
                     .as_ref()
                     .map_or(ptr::null(), |weights| weights as *const _),
+                raw_layer2_compressor_weights
+                    .as_ref()
+                    .map_or(ptr::null(), |weights| weights as *const _),
                 if include_layer2_kvnorm {
                     actual_layer2_kvnorm.as_mut_ptr()
                 } else {
@@ -6782,6 +7027,46 @@ mod imp {
                 },
                 if let Some(expected) = expected_layer2_kv_state.as_ref() {
                     expected[1].as_ptr()
+                } else {
+                    ptr::null()
+                },
+                if include_layer2_compressors {
+                    actual_layer2_attn_compressed.as_mut_ptr()
+                } else {
+                    ptr::null_mut()
+                },
+                if include_layer2_compressors {
+                    actual_layer2_indexer_compressed.as_mut_ptr()
+                } else {
+                    ptr::null_mut()
+                },
+                if include_layer2_compressors {
+                    actual_layer2_attn_state_kv.as_mut_ptr()
+                } else {
+                    ptr::null_mut()
+                },
+                if include_layer2_compressors {
+                    actual_layer2_attn_state_score.as_mut_ptr()
+                } else {
+                    ptr::null_mut()
+                },
+                if include_layer2_compressors {
+                    actual_layer2_indexer_state_kv.as_mut_ptr()
+                } else {
+                    ptr::null_mut()
+                },
+                if include_layer2_compressors {
+                    actual_layer2_indexer_state_score.as_mut_ptr()
+                } else {
+                    ptr::null_mut()
+                },
+                if let Some(expected) = expected_layer2_compressors.as_ref() {
+                    expected[0].as_ptr()
+                } else {
+                    ptr::null()
+                },
+                if let Some(expected) = expected_layer2_compressors.as_ref() {
+                    expected[3].as_ptr()
                 } else {
                     ptr::null()
                 },
@@ -6844,7 +7129,13 @@ mod imp {
                 error_text(&error)
             )));
         }
-        let expected_dispatches = if include_layer2_kv_state {
+        let expected_dispatches = if include_layer2_compressors {
+            if final_tile {
+                122
+            } else {
+                118
+            }
+        } else if include_layer2_kv_state {
             92
         } else if include_layer2_kvnorm {
             90
@@ -6855,7 +7146,9 @@ mod imp {
         } else {
             43
         };
-        let expected_model_ranges = if include_layer2_kvnorm {
+        let expected_model_ranges = if include_layer2_compressors {
+            65
+        } else if include_layer2_kvnorm {
             57
         } else if complete_layer1 {
             49
@@ -7229,6 +7522,65 @@ mod imp {
                 }
             }
         }
+        if let Some(expected) = expected_layer2_compressors.as_ref() {
+            let compressed_start = position_start as usize / 4;
+            for (label, actual, expected) in [
+                (
+                    "attention KVcompress",
+                    actual_layer2_attn_compressed.as_slice(),
+                    &expected[0][compressed_start * 512..(compressed_start + 8) * 512],
+                ),
+                (
+                    "indexer KVcompress",
+                    actual_layer2_indexer_compressed.as_slice(),
+                    &expected[3][compressed_start * 128..(compressed_start + 8) * 128],
+                ),
+            ] {
+                for (index, (actual, expected)) in actual.iter().zip(expected).enumerate() {
+                    if actual.to_bits() != expected.to_bits() {
+                        return Err(Error::invalid(format!(
+                            "prefill layer-2 {label} C0 mismatch at position {position_start}, element {index}: actual={:#010x} expected={:#010x}",
+                            actual.to_bits(),
+                            expected.to_bits()
+                        )));
+                    }
+                }
+            }
+            if final_tile {
+                for (label, actual, expected) in [
+                    (
+                        "attention compressor KV state",
+                        actual_layer2_attn_state_kv.as_slice(),
+                        expected[1].as_slice(),
+                    ),
+                    (
+                        "attention compressor score state",
+                        actual_layer2_attn_state_score.as_slice(),
+                        expected[2].as_slice(),
+                    ),
+                    (
+                        "indexer compressor KV state",
+                        actual_layer2_indexer_state_kv.as_slice(),
+                        expected[4].as_slice(),
+                    ),
+                    (
+                        "indexer compressor score state",
+                        actual_layer2_indexer_state_score.as_slice(),
+                        expected[5].as_slice(),
+                    ),
+                ] {
+                    for (index, (actual, expected)) in actual.iter().zip(expected).enumerate() {
+                        if actual.to_bits() != expected.to_bits() {
+                            return Err(Error::invalid(format!(
+                                "prefill layer-2 {label} C0 mismatch at final element {index}: actual={:#010x} expected={:#010x}",
+                                actual.to_bits(),
+                                expected.to_bits()
+                            )));
+                        }
+                    }
+                }
+            }
+        }
         let guard_elements = raw.raw_cache_guard_rows as usize * 512;
         for (index, value) in actual_raw_cache[..guard_elements].iter().enumerate() {
             if value.to_bits() != (-12345.5_f32).to_bits() {
@@ -7307,32 +7659,45 @@ mod imp {
                 checksum_f32(&actual_layer2_kv_cur),
             ]
         });
+        let layer2_compressor_checksums = expected_layer2_compressors.as_ref().map(|_| {
+            [
+                checksum_f32(&actual_layer2_attn_compressed),
+                checksum_f32(&actual_layer2_indexer_compressed),
+                checksum_f32(&actual_layer2_attn_state_kv),
+                checksum_f32(&actual_layer2_attn_state_score),
+                checksum_f32(&actual_layer2_indexer_state_kv),
+                checksum_f32(&actual_layer2_indexer_state_score),
+            ]
+        });
         Ok((
             layer0,
             layer1_checksums,
             complete_layer1_checksums,
             layer2_checksums,
+            layer2_compressor_checksums,
         ))
     }
 
     pub fn run_prefill_layer0_boundary_probe(
         model: &MappedModel,
     ) -> Result<PrefillLayer0BoundaryProbeReport> {
-        let (report, layer1, complete, layer2) =
-            run_prefill_boundary_probe(model, 0, 2016, None, 0, false, false)?;
+        let (report, layer1, complete, layer2, compressors) =
+            run_prefill_boundary_probe(model, 0, 2016, None, 0, false, false, false)?;
         debug_assert!(layer1.is_none());
         debug_assert!(complete.is_none());
         debug_assert!(layer2.is_none());
+        debug_assert!(compressors.is_none());
         Ok(report)
     }
 
     pub fn run_prefill_layers01_boundary_probe(
         model: &MappedModel,
     ) -> Result<PrefillLayers01BoundaryProbeReport> {
-        let (layer0, layer1, complete, layer2) =
-            run_prefill_boundary_probe(model, 1, 2016, None, 0, false, false)?;
+        let (layer0, layer1, complete, layer2, compressors) =
+            run_prefill_boundary_probe(model, 1, 2016, None, 0, false, false, false)?;
         debug_assert!(complete.is_none());
         debug_assert!(layer2.is_none());
+        debug_assert!(compressors.is_none());
         Ok(PrefillLayers01BoundaryProbeReport {
             layer0,
             layer1_fixture_id: PREFILL_LAYER1_INGRESS_FIXTURE_ID,
@@ -7345,9 +7710,10 @@ mod imp {
     pub fn run_prefill_layers01_complete_boundary_probe(
         model: &MappedModel,
     ) -> Result<PrefillLayers01CompleteBoundaryProbeReport> {
-        let (layer0, layer1, complete, layer2) =
-            run_prefill_boundary_probe(model, 2, 2016, None, 0, false, false)?;
+        let (layer0, layer1, complete, layer2, compressors) =
+            run_prefill_boundary_probe(model, 2, 2016, None, 0, false, false, false)?;
         debug_assert!(layer2.is_none());
+        debug_assert!(compressors.is_none());
         Ok(PrefillLayers01CompleteBoundaryProbeReport {
             layers01: PrefillLayers01BoundaryProbeReport {
                 layer0,
@@ -7366,9 +7732,10 @@ mod imp {
     pub fn run_prefill_layers01_row_coverage_probe(
         model: &MappedModel,
     ) -> Result<PrefillLayers01RowCoverageProbeReport> {
-        let (previous, previous_ingress, previous_complete, layer2) =
-            run_prefill_boundary_probe(model, 2, 1984, None, 0, false, false)?;
+        let (previous, previous_ingress, previous_complete, layer2, compressors) =
+            run_prefill_boundary_probe(model, 2, 1984, None, 0, false, false, false)?;
         debug_assert!(layer2.is_none());
+        debug_assert!(compressors.is_none());
         let previous_ingress = previous_ingress.ok_or_else(|| {
             Error::invalid("previous-tile replay omitted layer-1 ingress checksums")
         })?;
@@ -7403,9 +7770,10 @@ mod imp {
         model: &MappedModel,
     ) -> Result<PrefillLayers01LiveKvChainProbeReport> {
         let context = Context::new()?;
-        let (previous, previous_ingress, previous_complete, first_layer2) =
-            run_prefill_boundary_probe(model, 2, 1984, Some(&context), 1, false, false)?;
+        let (previous, previous_ingress, previous_complete, first_layer2, first_compressors) =
+            run_prefill_boundary_probe(model, 2, 1984, Some(&context), 1, false, false, false)?;
         debug_assert!(first_layer2.is_none());
+        debug_assert!(first_compressors.is_none());
         let previous_ingress = previous_ingress.ok_or_else(|| {
             Error::invalid("live-KV first tile omitted layer-1 ingress checksums")
         })?;
@@ -7413,9 +7781,10 @@ mod imp {
         let previous_complete = previous_complete.ok_or_else(|| {
             Error::invalid("live-KV first tile omitted layer-1 completion checksums")
         })?;
-        let (final_layer0, final_ingress, final_complete, final_layer2) =
-            run_prefill_boundary_probe(model, 2, 2016, Some(&context), 2, false, false)?;
+        let (final_layer0, final_ingress, final_complete, final_layer2, final_compressors) =
+            run_prefill_boundary_probe(model, 2, 2016, Some(&context), 2, false, false, false)?;
         debug_assert!(final_layer2.is_none());
+        debug_assert!(final_compressors.is_none());
         if previous.position_start + previous.rows as u32 != final_layer0.position_start {
             return Err(Error::invalid("live-KV tiles are not contiguous"));
         }
@@ -7466,7 +7835,7 @@ mod imp {
         let mut final_tile = None;
         for position_start in (0..2048).step_by(32) {
             let kv_state_mode = if position_start == 0 { 1 } else { 2 };
-            let (layer0, layer1, complete, layer2) = run_prefill_boundary_probe(
+            let (layer0, layer1, complete, layer2, compressors) = run_prefill_boundary_probe(
                 model,
                 2,
                 position_start,
@@ -7474,8 +7843,10 @@ mod imp {
                 kv_state_mode,
                 false,
                 false,
+                false,
             )?;
             debug_assert!(layer2.is_none());
+            debug_assert!(compressors.is_none());
             let layer1 = layer1.ok_or_else(|| {
                 Error::invalid("live-KV loop tile omitted layer-1 ingress checksums")
             })?;
@@ -7524,15 +7895,18 @@ mod imp {
         let mut final_tile = None;
         for position_start in (0..2048).step_by(32) {
             let kv_state_mode = if position_start == 0 { 1 } else { 2 };
-            let (layer0, layer1, complete, layer2_kvnorm) = run_prefill_boundary_probe(
-                model,
-                2,
-                position_start,
-                Some(&context),
-                kv_state_mode,
-                true,
-                false,
-            )?;
+            let (layer0, layer1, complete, layer2_kvnorm, compressors) =
+                run_prefill_boundary_probe(
+                    model,
+                    2,
+                    position_start,
+                    Some(&context),
+                    kv_state_mode,
+                    true,
+                    false,
+                    false,
+                )?;
+            debug_assert!(compressors.is_none());
             let layer1 = layer1.ok_or_else(|| {
                 Error::invalid("layers-0/1/2 KVnorm loop tile omitted layer-1 ingress checksums")
             })?;
@@ -7587,7 +7961,7 @@ mod imp {
         let mut final_tile = None;
         for position_start in (0..2048).step_by(32) {
             let kv_state_mode = if position_start == 0 { 1 } else { 2 };
-            let (layer0, layer1, complete, layer2) = run_prefill_boundary_probe(
+            let (layer0, layer1, complete, layer2, compressors) = run_prefill_boundary_probe(
                 model,
                 2,
                 position_start,
@@ -7595,7 +7969,9 @@ mod imp {
                 kv_state_mode,
                 true,
                 true,
+                false,
             )?;
+            debug_assert!(compressors.is_none());
             let layer1 = layer1.ok_or_else(|| {
                 Error::invalid("layers-0/1/2 KV-state loop omitted layer-1 ingress checksums")
             })?;
@@ -7638,6 +8014,75 @@ mod imp {
             final_tile: final_tile.ok_or_else(|| {
                 Error::invalid("layers-0/1/2 KV-state loop omitted the final tile")
             })?,
+        })
+    }
+
+    pub fn run_prefill_layers012_compressor_loop_probe(
+        model: &MappedModel,
+    ) -> Result<PrefillLayers012CompressorLoopProbeReport> {
+        let context = Context::new()?;
+        let mut tiles = Vec::with_capacity(64);
+        let mut layer2_checksums = Vec::with_capacity(64);
+        let mut layer2_compressor_checksums = Vec::with_capacity(64);
+        let mut final_tile = None;
+        for position_start in (0..2048).step_by(32) {
+            let kv_state_mode = if position_start == 0 { 1 } else { 2 };
+            let (layer0, layer1, complete, layer2, compressors) = run_prefill_boundary_probe(
+                model,
+                2,
+                position_start,
+                Some(&context),
+                kv_state_mode,
+                true,
+                true,
+                true,
+            )?;
+            let layer1 = layer1.ok_or_else(|| {
+                Error::invalid("layer-2 compressor loop omitted layer-1 ingress checksums")
+            })?;
+            let complete = complete.ok_or_else(|| {
+                Error::invalid("layer-2 compressor loop omitted layer-1 completion checksums")
+            })?;
+            layer2_checksums.push(layer2.ok_or_else(|| {
+                Error::invalid("layer-2 compressor loop omitted layer-2 KV checksums")
+            })?);
+            layer2_compressor_checksums.push(compressors.ok_or_else(|| {
+                Error::invalid("layer-2 compressor loop omitted compressor checksums")
+            })?);
+            if position_start == 2016 {
+                final_tile = Some(PrefillLayers01CompleteBoundaryProbeReport {
+                    layers01: PrefillLayers01BoundaryProbeReport {
+                        layer0: layer0.clone(),
+                        layer1_fixture_id: PREFILL_LAYER1_INGRESS_FIXTURE_ID,
+                        checksums: layer1,
+                    },
+                    complete_fixture_id: PREFILL_LAYER1_COMPLETE_FIXTURE_ID,
+                    checksums: complete,
+                });
+            }
+            tiles.push(layer0);
+        }
+        for (index, tile) in tiles.iter().enumerate() {
+            if tile.position_start != index as u32 * 32
+                || tile.rows != 32
+                || tile.dispatches != (if index == 63 { 122 } else { 118 })
+                || tile.wrapped_model_ranges != 65
+                || tile.pointer_matches != 65
+            {
+                return Err(Error::invalid(
+                    "layer-2 compressor loop returned a noncontiguous tile or unexpected schedule",
+                ));
+            }
+        }
+        Ok(PrefillLayers012CompressorLoopProbeReport {
+            tiles,
+            layer2_kvnorm_fixture_id: PREFILL_LAYER2_KVNORM_FIXTURE_ID,
+            layer2_kv_state_fixture_id: PREFILL_LAYER2_KV_STATE_FIXTURE_ID,
+            layer2_compressor_fixture_id: PREFILL_LAYER2_COMPRESSOR_FIXTURE_ID,
+            layer2_checksums,
+            layer2_compressor_checksums,
+            final_tile: final_tile
+                .ok_or_else(|| Error::invalid("layer-2 compressor loop omitted the final tile"))?,
         })
     }
 
@@ -10493,6 +10938,18 @@ mod imp {
         ))
     }
 
+    pub fn run_prefill_layers012_compressor_loop_probe(
+        model: &MappedModel,
+    ) -> Result<PrefillLayers012CompressorLoopProbeReport> {
+        let _ = prefill_layer2_kvnorm_fixture()?;
+        let _ = prefill_layer2_kv_state_fixture()?;
+        let _ = prefill_layer2_compressor_fixture()?;
+        let _ = exact_tensor(model, "blk.2.attn_compressor_kv.weight", 1, &[4096, 1024])?;
+        Err(Error::invalid(
+            "the Metal prefill layers-0/1/2 compressor loop probe is available only on macOS",
+        ))
+    }
+
     pub fn run_prefill_layers012_kv_state_loop_probe(
         model: &MappedModel,
     ) -> Result<PrefillLayers012KvStateLoopProbeReport> {
@@ -10917,12 +11374,13 @@ pub use imp::{
     run_layers0123_probe, run_layers012_chained_probe, run_layers012_probe, run_layers01_probe,
     run_layers0_to_42_decode_probe, run_moe_output_probe, run_position127_decoder_probe,
     run_prefill_frontier_probe, run_prefill_layer0_boundary_probe,
-    run_prefill_layers012_kv_state_loop_probe, run_prefill_layers012_kvnorm_loop_probe,
-    run_prefill_layers01_boundary_probe, run_prefill_layers01_complete_boundary_probe,
-    run_prefill_layers01_live_kv_chain_probe, run_prefill_layers01_live_kv_loop_probe,
-    run_prefill_layers01_row_coverage_probe, run_prefill_q8_boundary_probe,
-    run_prefill_qkv_boundary_probe, run_probe, run_q8_projection_probe,
-    run_ratio128_compressor_replay_probe, run_rope_kv_store_probe, LayerExecutor,
+    run_prefill_layers012_compressor_loop_probe, run_prefill_layers012_kv_state_loop_probe,
+    run_prefill_layers012_kvnorm_loop_probe, run_prefill_layers01_boundary_probe,
+    run_prefill_layers01_complete_boundary_probe, run_prefill_layers01_live_kv_chain_probe,
+    run_prefill_layers01_live_kv_loop_probe, run_prefill_layers01_row_coverage_probe,
+    run_prefill_q8_boundary_probe, run_prefill_qkv_boundary_probe, run_probe,
+    run_q8_projection_probe, run_ratio128_compressor_replay_probe, run_rope_kv_store_probe,
+    LayerExecutor,
 };
 
 #[cfg(test)]
@@ -11180,6 +11638,40 @@ mod tests {
             layer2_kv_state_fixture_id: PREFILL_LAYER2_KV_STATE_FIXTURE_ID,
             layer2_checksums: (0..64)
                 .map(|index| [index + 100, index + 200, index + 300])
+                .collect(),
+            final_tile: base.final_tile,
+        }
+    }
+
+    fn prefill_layers012_compressor_loop_report() -> PrefillLayers012CompressorLoopProbeReport {
+        let mut base = prefill_layers01_live_kv_loop_report();
+        for (index, tile) in base.tiles.iter_mut().enumerate() {
+            tile.dispatches = if index == 63 { 122 } else { 118 };
+            tile.wrapped_model_ranges = 65;
+            tile.pointer_matches = 65;
+        }
+        base.final_tile.layers01.layer0.dispatches = 122;
+        base.final_tile.layers01.layer0.wrapped_model_ranges = 65;
+        base.final_tile.layers01.layer0.pointer_matches = 65;
+        PrefillLayers012CompressorLoopProbeReport {
+            tiles: base.tiles,
+            layer2_kvnorm_fixture_id: PREFILL_LAYER2_KVNORM_FIXTURE_ID,
+            layer2_kv_state_fixture_id: PREFILL_LAYER2_KV_STATE_FIXTURE_ID,
+            layer2_compressor_fixture_id: PREFILL_LAYER2_COMPRESSOR_FIXTURE_ID,
+            layer2_checksums: (0..64)
+                .map(|index| [index + 100, index + 200, index + 300])
+                .collect(),
+            layer2_compressor_checksums: (0..64)
+                .map(|index| {
+                    [
+                        index + 1,
+                        index + 2,
+                        index + 3,
+                        index + 4,
+                        index + 5,
+                        index + 6,
+                    ]
+                })
                 .collect(),
             final_tile: base.final_tile,
         }
@@ -12500,6 +12992,24 @@ mod tests {
     }
 
     #[test]
+    fn writes_stable_prefill_layers012_compressor_loop_probe_json() {
+        let mut output = Vec::new();
+        write_prefill_layers012_compressor_loop_probe_json(
+            &mut output,
+            &prefill_layers012_compressor_loop_report(),
+        )
+        .unwrap();
+        let text = String::from_utf8(output).unwrap();
+        assert!(text.contains(&format!(
+            "\"schema\": \"{PREFILL_LAYERS012_COMPRESSOR_LOOP_PROBE_SCHEMA}\""
+        )));
+        assert!(text.contains("\"dispatches_per_regular_tile\": 118"));
+        assert!(text.contains("\"dispatches_final_tile\": 122"));
+        assert!(text.contains("\"complete_layer2_paired_compressor_claim\": true"));
+        assert!(text.contains("\"complete_layer2_attention_claim\": false"));
+    }
+
+    #[test]
     fn writes_stable_ratio128_compressor_replay_json() {
         let mut output = Vec::new();
         write_ratio128_compressor_replay_probe_json(&mut output, &ratio128_compressor_report())
@@ -12732,6 +13242,20 @@ mod tests {
             assert!(tensor.iter().all(|value| value.is_finite()));
             assert_ne!(checksum_f32(&tensor), 0);
         }
+    }
+
+    #[test]
+    fn prefill_layer2_compressor_fixture_has_target_shapes() {
+        let tensors = prefill_layer2_compressor_fixture().unwrap();
+        assert_eq!(tensors[0].len(), 512 * 512);
+        assert_eq!(tensors[1].len(), 8 * 1024);
+        assert_eq!(tensors[2].len(), 8 * 1024);
+        assert_eq!(tensors[3].len(), 512 * 128);
+        assert_eq!(tensors[4].len(), 8 * 256);
+        assert_eq!(tensors[5].len(), 8 * 256);
+        assert!(tensors.iter().flatten().all(|value| !value.is_nan()));
+        assert!(tensors[2].iter().any(|value| *value == f32::NEG_INFINITY));
+        assert!(tensors[5].iter().any(|value| *value == f32::NEG_INFINITY));
     }
 
     #[test]

@@ -174,7 +174,9 @@ attention, and the engine-measurement producer. The native M1 batch boundary
 now runs complete layers 0 and 1 over all 2,048 prompt rows from empty KV state,
 and every live layer-1 output is downstream exact through layer 2's normalized
 KV boundary, compressed-attention RoPE, E4M3FN finalization, and retained raw
-KV state. Layer-2 compressors, mixed attention, FFN, and the remaining model
+KV state. The same loop now owns both layer-2 ratio-4 compressors, matches all
+512 attention and indexer compressed rows, and finishes with exact recurrent
+states. Layer-2 mixed raw/compressed attention, FFN, and the remaining model
 are still pending. The 2K sequential initializer
 still owns a 128-row raw ring plus context-sized compressed state and exactly
 matches two fresh DwarfStar one-token decode replays. It deliberately records

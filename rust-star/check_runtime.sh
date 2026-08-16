@@ -94,6 +94,9 @@ elif [ "$#" -eq 1 ]; then
         echo "==> full native layer-2 rotated/finalized KV-state ownership"
         "$target_dir/release/rust-star" prefill-layers012-kv-state-loop-probe "$1" \
             --json "$target_dir/prefill-layers012-kv-state-loop-probe.json"
+        echo "==> paired layer-2 ratio-4 compressors across the full native 2K loop"
+        "$target_dir/release/rust-star" prefill-layers012-compressor-loop-probe "$1" \
+            --json "$target_dir/prefill-layers012-compressor-loop-probe.json"
         echo "==> no-copy layer-0 attention ingress"
         "$target_dir/release/rust-star" attention-ingress-probe "$1" \
             --json "$target_dir/attention-ingress-probe.json"

@@ -295,16 +295,19 @@ they describe whenever practical.
 ## Open Items
 
 - Broaden native batched prefill beyond the exact complete layers-0/1 loop and
-  layer-2 normalized KV boundary. The persistent executor runs all 64 aligned
+  layer-2 paired-compressor boundary. The persistent executor runs all 64 aligned
   32-row schedules from an empty KV seed over positions 0--2047. Before every
   continuation, both accumulated layer-0/layer-1 prefixes match the oracle;
   every live layer-1 post-FFN tile then feeds layer 2 through HC ingress, Q-A/KV
   projection, fused learned norm, YaRN-scaled compressed-attention RoPE, and
   E4M3FN finalization. All full-2K layer-2 `KVnorm`, `KVrope`, and `KVcur`
   values are C0 exact, one persistent raw-KV allocation is prefix-validated
-  before every append, and every tile preserves 57 mmap pointers. Continue
-  layer 2 through both ratio-4 compressors, mixed attention, and FFN, then
-  extend across the remaining layers. The sequential 2K initializer still
+  before every append, and the same empty-seed loop produces all 512 exact
+  ratio-4 attention and indexer compressed rows plus their exact final recurrent
+  states. Every compressor tile preserves 65 mmap pointers and uses 118
+  dispatches, with a 122-dispatch final tail refresh. Continue layer 2 through
+  mixed raw/compressed attention and FFN, then extend across the remaining
+  layers. The sequential 2K initializer still
   deliberately records its difference from the paired protocol's
   batched-prefill oracle.
 - Add ratio-4 sparse indexer selection after 512 compressed rows, then emit the
