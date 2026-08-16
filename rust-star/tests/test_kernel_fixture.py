@@ -83,6 +83,9 @@ PREFILL_LAYER1_INGRESS_FIXTURE = (
 PREFILL_LAYER1_COMPLETE_FIXTURE = (
     RUST_STAR_DIR / "fixtures" / "prefill-layer1-complete-2048-v1"
 )
+PREFILL_LAYERS01_PREVIOUS_TILE_FIXTURE = (
+    RUST_STAR_DIR / "fixtures" / "prefill-layers01-previous-tile-2048-v1"
+)
 
 
 class KernelFixtureTests(unittest.TestCase):
@@ -530,6 +533,25 @@ class KernelFixtureTests(unittest.TestCase):
         self.assertEqual(report["verified_bytes"], 26_543_616)
         self.assertEqual(manifest["scope"]["layer"], 1)
         self.assertEqual(manifest["scope"]["captured_position_range"], [2016, 2047])
+        self.assertTrue(manifest["capture"]["fresh_process_bitwise_match"])
+
+    def test_prefill_layers01_previous_tile_fixture_manifest_and_payloads(self) -> None:
+        manifest = json.loads(
+            (PREFILL_LAYERS01_PREVIOUS_TILE_FIXTURE / "manifest.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        report = validate_differential_fixture(PREFILL_LAYERS01_PREVIOUS_TILE_FIXTURE)
+        self.assertEqual(
+            report["fixture_id"],
+            "dwarfstar-oracle-v1-prefill-layers01-previous-tile-2048",
+        )
+        self.assertEqual(report["scope"], "layer-segment")
+        self.assertEqual(report["operations"], 2)
+        self.assertEqual(report["tensors"], 6)
+        self.assertEqual(report["verified_bytes"], 4_326_912)
+        self.assertEqual(manifest["scope"]["layers"], [0, 1])
+        self.assertEqual(manifest["scope"]["captured_position_range"], [1984, 2015])
         self.assertTrue(manifest["capture"]["fresh_process_bitwise_match"])
 
     def test_fixture_shape_tampering_is_rejected(self) -> None:

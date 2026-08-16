@@ -294,12 +294,13 @@ they describe whenever practical.
 
 ## Open Items
 
-- Broaden native batched prefill beyond the complete layer-1 final tile. The M1
-  final tile now runs continuously from token IDs through both complete
-  uncompressed layers with all 49 model ranges preserving the mmap pointer and
-  every retained boundary C0 exact. The next boundary should preserve more
-  rows toward a complete native 2K prefill. The sequential 2K initializer still
-  deliberately records its difference from the paired protocol's
+- Broaden native batched prefill beyond the two exact complete layers-0/1
+  tiles. The executor now accepts an arbitrary aligned 32-row position and is
+  C0 exact over positions 1984--2047 with all 49 model ranges preserving the
+  mmap pointer. Each tile still consumes a captured KV prefix independently;
+  the next boundary should chain live KV state between tiles, then extend the
+  tile loop toward complete native 2K prefill. The sequential 2K initializer
+  still deliberately records its difference from the paired protocol's
   batched-prefill oracle.
 - Add ratio-4 sparse indexer selection after 512 compressed rows, then emit the
   Rust Star engine-measurement contract. The complete 128-token diagnostic no

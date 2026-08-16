@@ -309,8 +309,8 @@ history; add a correction and update the current-state summary.
 
 ## Immediate Next Actions
 
-1. Broaden retained row coverage beyond the exact complete layers-0/1 final
-   tile toward complete native 2K prefill.
+1. Chain live KV state between the two exact complete layers-0/1 tiles, then
+   extend the reusable 32-row tile loop toward complete native 2K prefill.
 2. Add the fixed 512-row ratio-4 indexer top-k and sparse indexed attention so
    128 generated tokens can continue beyond the 2K frontier.
 3. Emit the `rust-star-engine-measurement-v1` artifact from the exact
@@ -322,6 +322,55 @@ history; add a correction and update the current-state summary.
 6. Run or approve the fork's GitHub Actions workflow and retain its URL.
 
 ## Entries
+
+### 2026-08-16 — Exact layers-0/1 coverage expands to two prompt tiles
+
+Objective:
+
+- Remove the final-tile-only position and cache-row assumptions, then prove the
+  complete layers-0/1 schedule at the immediately preceding M1 tile while
+  preserving every shorter boundary as an independent control.
+
+Oracle evidence and fixture:
+
+- Reused full layer-0 and layer-1 DwarfStar captures from two fresh 2K
+  processes. The layer-0/layer-1 `KVcur`, `hc_ffn_post`, and
+  `ffn_moe_topk` full-tensor pairs were byte-identical and retained their
+  previously pinned SHA-256 identities.
+- Added `prefill-layers01-previous-tile-2048-v1`, a compact decisive fixture
+  for positions 1984--2015 containing six tensors and 4,326,912 verified bytes.
+  It retains both layers' KV tile, selected expert IDs, and final four-stream
+  HC state without duplicating every large intermediate.
+
+Implementation:
+
+- Generalized the 84-dispatch complete layers-0/1 executor from fixed position
+  2016 to any aligned 32-row tile within the 2K frontier. KV-prefix length,
+  RoPE positions, attention visibility, raw-ring target row, and guard length
+  now derive from `position_start`.
+- Added `prefill-layers01-row-coverage-probe` with schema
+  `rust-star-prefill-layers01-row-coverage-probe-v1`. It executes positions
+  1984--2015 and the preserved 2016--2047 control as two complete native tiles,
+  each with 49 direct mmap-backed model views.
+- Stable JSON explicitly records that the two tiles use captured per-tile KV
+  prefixes and therefore does not claim a live inter-tile KV chain or complete
+  native prefill.
+
+Target-Mac evidence:
+
+- The warm focused probe passed both tiles C0 exact at 127.196/87.020 ms and
+  124.717/87.421 ms wall/GPU, with 49/49 no-copy views for each tile.
+- The complete gate passed formatting, all 82 Rust tests, 55 Python tests, all
+  239 differential fixtures, optimized Objective-C/Metal compilation, strict
+  validation of all 1,288 required model tensors, every established Metal and
+  decoder control, and both steady-state benchmarks. The earlier/final tiles
+  remained C0 exact at 128.771/91.582 and 124.334/87.370 ms wall/GPU.
+
+Decision and next:
+
+- Accept arbitrary-position exact 32-row replay and 64 covered prompt rows as
+  the next row-coverage checkpoint. Next replace the captured boundary between
+  these two tiles with live per-layer KV ownership before scaling the tile loop.
 
 ### 2026-08-15 — Native M1 final tile completes layer 1
 

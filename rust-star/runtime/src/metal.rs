@@ -15,6 +15,8 @@ pub const PREFILL_LAYERS01_BOUNDARY_PROBE_SCHEMA: &str =
     "rust-star-prefill-layers01-boundary-probe-v1";
 pub const PREFILL_LAYERS01_COMPLETE_BOUNDARY_PROBE_SCHEMA: &str =
     "rust-star-prefill-layers01-complete-boundary-probe-v1";
+pub const PREFILL_LAYERS01_ROW_COVERAGE_PROBE_SCHEMA: &str =
+    "rust-star-prefill-layers01-row-coverage-probe-v1";
 pub const INGRESS_PROBE_SCHEMA: &str = "rust-star-layer0-attention-ingress-probe-v1";
 pub const ATTENTION_SETUP_PROBE_SCHEMA: &str = "rust-star-layer0-attention-setup-probe-v1";
 pub const ROPE_KV_STORE_PROBE_SCHEMA: &str = "rust-star-layer0-rope-kv-store-probe-v1";
@@ -59,6 +61,8 @@ pub const PREFILL_LAYER1_INGRESS_FIXTURE_ID: &str =
     "dwarfstar-oracle-v1-prefill-layer1-ingress-2048";
 pub const PREFILL_LAYER1_COMPLETE_FIXTURE_ID: &str =
     "dwarfstar-oracle-v1-prefill-layer1-complete-2048";
+pub const PREFILL_LAYERS01_PREVIOUS_TILE_FIXTURE_ID: &str =
+    "dwarfstar-oracle-v1-prefill-layers01-previous-tile-2048";
 pub const PREFILL_HC_INGRESS_FIXTURE_ID: &str = "dwarfstar-oracle-v1-prefill-hc-ingress-2048";
 pub const INGRESS_FIXTURE_ID: &str = "dwarfstar-oracle-v1-layer0-pos1-attention-ingress";
 pub const ATTENTION_SETUP_FIXTURE_ID: &str = "dwarfstar-oracle-v1-layer0-pos1-qkv-setup";
@@ -294,6 +298,24 @@ const PREFILL_LAYER1_COMPLETE_SHARED_OUT_BYTES: &[u8] = include_bytes!(
 );
 const PREFILL_LAYER1_COMPLETE_HC_FFN_POST_BYTES: &[u8] = include_bytes!(
     "../../fixtures/prefill-layer1-complete-2048-v1/layer1-hc-ffn-post-final-tile.f32le.bin"
+);
+const PREFILL_PREVIOUS_LAYER0_KV_CUR_BYTES: &[u8] = include_bytes!(
+    "../../fixtures/prefill-layers01-previous-tile-2048-v1/layer0-kv-current.f32le.bin"
+);
+const PREFILL_PREVIOUS_LAYER0_HC_POST_BYTES: &[u8] = include_bytes!(
+    "../../fixtures/prefill-layers01-previous-tile-2048-v1/layer0-hc-ffn-post.f32le.bin"
+);
+const PREFILL_PREVIOUS_LAYER0_SELECTED_BYTES: &[u8] = include_bytes!(
+    "../../fixtures/prefill-layers01-previous-tile-2048-v1/layer0-selected.i32le.bin"
+);
+const PREFILL_PREVIOUS_LAYER1_KV_CUR_BYTES: &[u8] = include_bytes!(
+    "../../fixtures/prefill-layers01-previous-tile-2048-v1/layer1-kv-current.f32le.bin"
+);
+const PREFILL_PREVIOUS_LAYER1_HC_POST_BYTES: &[u8] = include_bytes!(
+    "../../fixtures/prefill-layers01-previous-tile-2048-v1/layer1-hc-ffn-post.f32le.bin"
+);
+const PREFILL_PREVIOUS_LAYER1_SELECTED_BYTES: &[u8] = include_bytes!(
+    "../../fixtures/prefill-layers01-previous-tile-2048-v1/layer1-selected.i32le.bin"
 );
 const PREFILL_HC_TOKEN_IDS_BYTES: &[u8] =
     include_bytes!("../../fixtures/prefill-hc-ingress-2048-v1/token-ids-final-tile.i32le.bin");
@@ -817,6 +839,21 @@ pub struct PrefillLayers01CompleteBoundaryProbeReport {
     pub layers01: PrefillLayers01BoundaryProbeReport,
     pub complete_fixture_id: &'static str,
     pub checksums: [u64; 20],
+}
+
+#[derive(Clone, Debug)]
+pub struct PrefillLayers01RowCoverageProbeReport {
+    pub previous_fixture_id: &'static str,
+    pub previous_position_start: u32,
+    pub previous_position_end: u32,
+    pub previous_dispatches: u32,
+    pub previous_wrapped_model_ranges: u32,
+    pub previous_pointer_matches: u32,
+    pub previous_raw_cache_target_row: u32,
+    pub previous_wall_ms: f64,
+    pub previous_gpu_ms: f64,
+    pub previous_checksums: [u64; 6],
+    pub final_tile: PrefillLayers01CompleteBoundaryProbeReport,
 }
 
 #[derive(Clone, Debug)]
@@ -2517,6 +2554,53 @@ pub fn write_prefill_layers01_complete_boundary_probe_json<W: Write>(
     Ok(())
 }
 
+pub fn write_prefill_layers01_row_coverage_probe_json<W: Write>(
+    output: &mut W,
+    report: &PrefillLayers01RowCoverageProbeReport,
+) -> Result<()> {
+    let final_layer0 = &report.final_tile.layers01.layer0;
+    write!(
+        output,
+        "{{\n  \"schema\": \"{PREFILL_LAYERS01_ROW_COVERAGE_PROBE_SCHEMA}\",\n  \"fixtures\": ["
+    )?;
+    crate::artifact::write_json_string(output, report.previous_fixture_id)?;
+    output.write_all(b", ")?;
+    crate::artifact::write_json_string(output, report.final_tile.complete_fixture_id)?;
+    write!(
+        output,
+        "],\n  \"coverage\": {{\n    \"position_start\": {},\n    \"position_end\": {},\n    \"rows\": 64,\n    \"tile_rows\": 32,\n    \"tiles\": 2\n  }},\n  \"previous_tile\": {{\n    \"position_start\": {},\n    \"position_end\": {},\n    \"dispatches\": {},\n    \"wrapped_model_ranges\": {},\n    \"pointer_matches\": {},\n    \"raw_cache_target_row\": {},\n    \"wall_ms\": {:.6},\n    \"gpu_ms\": {:.6},\n    \"checksums\": [",
+        report.previous_position_start,
+        final_layer0.position_start + final_layer0.rows as u32 - 1,
+        report.previous_position_start,
+        report.previous_position_end,
+        report.previous_dispatches,
+        report.previous_wrapped_model_ranges,
+        report.previous_pointer_matches,
+        report.previous_raw_cache_target_row,
+        report.previous_wall_ms,
+        report.previous_gpu_ms,
+    )?;
+    for (index, checksum) in report.previous_checksums.iter().enumerate() {
+        if index != 0 {
+            output.write_all(b", ")?;
+        }
+        write!(output, "{checksum}")?;
+    }
+    write!(
+        output,
+        "],\n    \"c0_bitwise_match\": true\n  }},\n  \"final_tile\": {{\n    \"position_start\": {},\n    \"position_end\": {},\n    \"dispatches\": {},\n    \"wrapped_model_ranges\": {},\n    \"pointer_matches\": {},\n    \"raw_cache_target_row\": {},\n    \"wall_ms\": {:.6},\n    \"gpu_ms\": {:.6},\n    \"c0_bitwise_match\": true\n  }},\n  \"command_buffers\": 2,\n  \"captured_prefix_per_tile\": true,\n  \"chained_live_kv_between_tiles\": false,\n  \"arbitrary_tile_position_claim\": true,\n  \"complete_layers01_tile_claim\": true,\n  \"full_prefill_claim\": false\n}}\n",
+        final_layer0.position_start,
+        final_layer0.position_start + final_layer0.rows as u32 - 1,
+        final_layer0.dispatches,
+        final_layer0.wrapped_model_ranges,
+        final_layer0.pointer_matches,
+        final_layer0.raw_cache_target_row,
+        final_layer0.wall_ms,
+        final_layer0.gpu_ms,
+    )?;
+    Ok(())
+}
+
 fn validate_embedding_inputs(
     model: &MappedModel,
     tensor: &TensorInfo,
@@ -3203,6 +3287,48 @@ fn prefill_layer1_complete_fixture() -> Result<([Vec<f32>; 20], Vec<i32>)> {
     if selected.len() != 32 * 6 {
         return Err(Error::invalid(
             "prefill complete layer-1 selected-expert dimensions are invalid",
+        ));
+    }
+    Ok((tensors, selected))
+}
+
+fn prefill_layers01_previous_tile_fixture() -> Result<([Vec<f32>; 4], [Vec<i32>; 2])> {
+    let tensors = [
+        decode_f32_fixture(
+            PREFILL_PREVIOUS_LAYER0_KV_CUR_BYTES,
+            "previous layer-0 KV current",
+        )?,
+        decode_f32_fixture(
+            PREFILL_PREVIOUS_LAYER0_HC_POST_BYTES,
+            "previous layer-0 HC post",
+        )?,
+        decode_f32_fixture(
+            PREFILL_PREVIOUS_LAYER1_KV_CUR_BYTES,
+            "previous layer-1 KV current",
+        )?,
+        decode_f32_fixture(
+            PREFILL_PREVIOUS_LAYER1_HC_POST_BYTES,
+            "previous layer-1 HC post",
+        )?,
+    ];
+    let selected = [
+        decode_i32_fixture(
+            PREFILL_PREVIOUS_LAYER0_SELECTED_BYTES,
+            "previous layer-0 experts",
+        )?,
+        decode_i32_fixture(
+            PREFILL_PREVIOUS_LAYER1_SELECTED_BYTES,
+            "previous layer-1 experts",
+        )?,
+    ];
+    if tensors[0].len() != 32 * 512
+        || tensors[1].len() != 32 * 16384
+        || tensors[2].len() != 32 * 512
+        || tensors[3].len() != 32 * 16384
+        || selected.iter().any(|values| values.len() != 32 * 6)
+    {
+        return Err(Error::invalid(
+            "prefill layers-0/1 previous-tile fixture dimensions are invalid",
         ));
     }
     Ok((tensors, selected))
@@ -5899,6 +6025,7 @@ mod imp {
     fn run_prefill_boundary_probe(
         model: &MappedModel,
         layer1_mode: u8,
+        position_start: u32,
     ) -> Result<(
         PrefillLayer0BoundaryProbeReport,
         Option<[u64; 3]>,
@@ -5908,6 +6035,12 @@ mod imp {
         let complete_layer1 = layer1_mode == 2;
         if layer1_mode > 2 {
             return Err(Error::invalid("invalid prefill layer-1 continuation mode"));
+        }
+        let previous_tile = position_start == 1984;
+        if position_start != 2016 && !(previous_tile && complete_layer1) {
+            return Err(Error::invalid(
+                "prefill boundary supports the final tile or complete previous-tile replay",
+            ));
         }
         let embedding = exact_tensor(model, "token_embd.weight", 1, &[4096, 129280])?;
         let hc_fn = exact_tensor(model, "blk.0.hc_attn_fn.weight", 1, &[16384, 24])?;
@@ -5947,13 +6080,21 @@ mod imp {
         } else {
             None
         };
-        let (tokens, expected_collapsed, expected_attn_norm) = prefill_hc_ingress_fixture()?;
+        let (mut tokens, expected_collapsed, expected_attn_norm) = prefill_hc_ingress_fixture()?;
+        if previous_tile {
+            let full_tokens = decode_u32_fixture(
+                PREFILL_FRONTIER_2048_TOKEN_IDS_BYTES,
+                "prefill frontier token IDs",
+            )?;
+            tokens = full_tokens[position_start as usize..position_start as usize + 32].to_vec();
+        }
         let [qkv_attn_norm, expected_q, expected_q_norm, expected_kv_raw, expected_kv_norm, expected_q_raw, expected_q_cur] =
             prefill_qkv_boundary_fixture()?;
         let [expected_kv_rope, expected_kv_cur, expected_raw_cache_tile] =
             prefill_kv_state_fixture()?;
-        let [expected_kv_prefix, expected_attention_output, expected_attention_back] =
+        let [mut expected_kv_prefix, expected_attention_output, expected_attention_back] =
             prefill_attention_read_fixture()?;
+        expected_kv_prefix.truncate(position_start as usize * 512);
         let [expected_attention_low, expected_attention_projected, expected_attention_hc_post] =
             prefill_attention_output_fixture()?;
         let (expected_ffn, expected_selected) = prefill_ffn_output_fixture()?;
@@ -5967,10 +6108,16 @@ mod imp {
         } else {
             None
         };
-        if expected_attn_norm
-            .iter()
-            .zip(&qkv_attn_norm)
-            .any(|(left, right)| left.to_bits() != right.to_bits())
+        let expected_previous_tile = if previous_tile {
+            Some(prefill_layers01_previous_tile_fixture()?)
+        } else {
+            None
+        };
+        if !previous_tile
+            && expected_attn_norm
+                .iter()
+                .zip(&qkv_attn_norm)
+                .any(|(left, right)| left.to_bits() != right.to_bits())
         {
             return Err(Error::invalid(
                 "prefill HC ingress and Q/KV fixtures disagree at their attention-norm seam",
@@ -6252,7 +6399,7 @@ mod imp {
                     .map_or(ptr::null(), |outputs| outputs as *const _),
                 129280,
                 32,
-                2016,
+                position_start,
                 tokens.as_ptr(),
                 actual_collapsed.as_mut_ptr(),
                 actual_attn_norm.as_mut_ptr(),
@@ -6323,7 +6470,7 @@ mod imp {
             25
         };
         if raw.rows != 32
-            || raw.position_start != 2016
+            || raw.position_start != position_start
             || raw.input_elements_per_row != 4096
             || raw.q_lora_elements_per_row != 1024
             || raw.kv_elements_per_row != 512
@@ -6332,175 +6479,179 @@ mod imp {
             || raw.wrapped_model_ranges != expected_model_ranges
             || raw.pointer_matches != expected_model_ranges
             || raw.raw_cache_rows != 128
-            || raw.raw_cache_target_row != 96
-            || raw.raw_cache_guard_rows != 96
+            || raw.raw_cache_target_row != position_start % 128
+            || raw.raw_cache_guard_rows != position_start % 128
         {
             return Err(Error::invalid(
                 "Metal prefill boundary returned an unexpected schedule or mapping",
             ));
         }
-        for (label, actual, expected) in [
-            (
-                "hc_attn_pre",
-                actual_collapsed.as_slice(),
-                expected_collapsed.as_slice(),
-            ),
-            (
-                "attn_norm",
-                actual_attn_norm.as_slice(),
-                expected_attn_norm.as_slice(),
-            ),
-            ("q_lora", actual_q.as_slice(), expected_q.as_slice()),
-            (
-                "q_lora_norm",
-                actual_q_norm.as_slice(),
-                expected_q_norm.as_slice(),
-            ),
-            (
-                "KVraw",
-                actual_kv_raw.as_slice(),
-                expected_kv_raw.as_slice(),
-            ),
-            (
-                "KVnorm",
-                actual_kv_norm.as_slice(),
-                expected_kv_norm.as_slice(),
-            ),
-            ("Qraw", actual_q_raw.as_slice(), expected_q_raw.as_slice()),
-            ("Qcur", actual_q_cur.as_slice(), expected_q_cur.as_slice()),
-            (
-                "KVrope",
-                actual_kv_rope.as_slice(),
-                expected_kv_rope.as_slice(),
-            ),
-            (
-                "KVcur",
-                actual_kv_cur.as_slice(),
-                expected_kv_cur.as_slice(),
-            ),
-            (
-                "raw_cache",
-                &actual_raw_cache[96 * 512..128 * 512],
-                expected_raw_cache_tile.as_slice(),
-            ),
-            (
-                "full_KVcur",
-                actual_full_kv.as_slice(),
-                expected_full_kv.as_slice(),
-            ),
-            (
-                "kqv_out",
-                actual_attention_output.as_slice(),
-                expected_attention_output.as_slice(),
-            ),
-            (
-                "kqv_back",
-                actual_attention_back.as_slice(),
-                expected_attention_back.as_slice(),
-            ),
-            (
-                "attn_low",
-                actual_attention_low.as_slice(),
-                expected_attention_low.as_slice(),
-            ),
-            (
-                "attn_out",
-                actual_attention_projected.as_slice(),
-                expected_attention_projected.as_slice(),
-            ),
-            (
-                "hc_attn_post",
-                actual_attention_hc_post.as_slice(),
-                expected_attention_hc_post.as_slice(),
-            ),
-            (
-                "hc_ffn_pre",
-                actual_ffn_cur.as_slice(),
-                expected_ffn[0].as_slice(),
-            ),
-            (
-                "ffn_norm",
-                actual_ffn_norm.as_slice(),
-                expected_ffn[1].as_slice(),
-            ),
-            (
-                "ffn_moe_logits",
-                actual_router_logits.as_slice(),
-                expected_ffn[2].as_slice(),
-            ),
-            (
-                "ffn_moe_probs",
-                actual_router_probs.as_slice(),
-                expected_ffn[3].as_slice(),
-            ),
-            (
-                "ffn_moe_weights_scaled",
-                actual_router_weights.as_slice(),
-                expected_ffn[4].as_slice(),
-            ),
-            (
-                "ffn_moe_weighted_swiglu",
-                actual_routed_mid.as_slice(),
-                expected_ffn[5].as_slice(),
-            ),
-            (
-                "ffn_moe_out",
-                actual_routed_out.as_slice(),
-                expected_ffn[6].as_slice(),
-            ),
-            (
-                "ffn_shexp",
-                actual_shared_out.as_slice(),
-                expected_ffn[7].as_slice(),
-            ),
-            (
-                "hc_ffn_post",
-                actual_ffn_hc_post.as_slice(),
-                expected_ffn[8].as_slice(),
-            ),
-        ] {
-            for (index, (actual, expected)) in actual.iter().zip(expected).enumerate() {
-                if actual.to_bits() != expected.to_bits() {
-                    return Err(Error::invalid(format!(
-                        "prefill layer-0 C0 mismatch in {label}[{index}]: actual={:#010x} expected={:#010x}",
-                        actual.to_bits(), expected.to_bits()
-                    )));
-                }
-            }
-        }
-        for (index, (actual, expected)) in
-            actual_selected.iter().zip(&expected_selected).enumerate()
-        {
-            if actual != expected {
-                return Err(Error::invalid(format!(
-                    "prefill layer-0 C0 mismatch in ffn_moe_topk[{index}]: actual={actual} expected={expected}"
-                )));
-            }
-        }
-        let layer1_checksums = if let Some(expected) = expected_layer1.as_ref() {
+        if !previous_tile {
             for (label, actual, expected) in [
                 (
-                    "layer1_hc_attn_pre",
-                    actual_layer1_hc.as_slice(),
-                    expected[0].as_slice(),
+                    "hc_attn_pre",
+                    actual_collapsed.as_slice(),
+                    expected_collapsed.as_slice(),
                 ),
                 (
-                    "layer1_attn_norm",
-                    actual_layer1_norm.as_slice(),
-                    expected[1].as_slice(),
+                    "attn_norm",
+                    actual_attn_norm.as_slice(),
+                    expected_attn_norm.as_slice(),
+                ),
+                ("q_lora", actual_q.as_slice(), expected_q.as_slice()),
+                (
+                    "q_lora_norm",
+                    actual_q_norm.as_slice(),
+                    expected_q_norm.as_slice(),
                 ),
                 (
-                    "layer1_q_lora",
-                    actual_layer1_q.as_slice(),
-                    expected[2].as_slice(),
+                    "KVraw",
+                    actual_kv_raw.as_slice(),
+                    expected_kv_raw.as_slice(),
+                ),
+                (
+                    "KVnorm",
+                    actual_kv_norm.as_slice(),
+                    expected_kv_norm.as_slice(),
+                ),
+                ("Qraw", actual_q_raw.as_slice(), expected_q_raw.as_slice()),
+                ("Qcur", actual_q_cur.as_slice(), expected_q_cur.as_slice()),
+                (
+                    "KVrope",
+                    actual_kv_rope.as_slice(),
+                    expected_kv_rope.as_slice(),
+                ),
+                (
+                    "KVcur",
+                    actual_kv_cur.as_slice(),
+                    expected_kv_cur.as_slice(),
+                ),
+                (
+                    "raw_cache",
+                    &actual_raw_cache[96 * 512..128 * 512],
+                    expected_raw_cache_tile.as_slice(),
+                ),
+                (
+                    "full_KVcur",
+                    actual_full_kv.as_slice(),
+                    expected_full_kv.as_slice(),
+                ),
+                (
+                    "kqv_out",
+                    actual_attention_output.as_slice(),
+                    expected_attention_output.as_slice(),
+                ),
+                (
+                    "kqv_back",
+                    actual_attention_back.as_slice(),
+                    expected_attention_back.as_slice(),
+                ),
+                (
+                    "attn_low",
+                    actual_attention_low.as_slice(),
+                    expected_attention_low.as_slice(),
+                ),
+                (
+                    "attn_out",
+                    actual_attention_projected.as_slice(),
+                    expected_attention_projected.as_slice(),
+                ),
+                (
+                    "hc_attn_post",
+                    actual_attention_hc_post.as_slice(),
+                    expected_attention_hc_post.as_slice(),
+                ),
+                (
+                    "hc_ffn_pre",
+                    actual_ffn_cur.as_slice(),
+                    expected_ffn[0].as_slice(),
+                ),
+                (
+                    "ffn_norm",
+                    actual_ffn_norm.as_slice(),
+                    expected_ffn[1].as_slice(),
+                ),
+                (
+                    "ffn_moe_logits",
+                    actual_router_logits.as_slice(),
+                    expected_ffn[2].as_slice(),
+                ),
+                (
+                    "ffn_moe_probs",
+                    actual_router_probs.as_slice(),
+                    expected_ffn[3].as_slice(),
+                ),
+                (
+                    "ffn_moe_weights_scaled",
+                    actual_router_weights.as_slice(),
+                    expected_ffn[4].as_slice(),
+                ),
+                (
+                    "ffn_moe_weighted_swiglu",
+                    actual_routed_mid.as_slice(),
+                    expected_ffn[5].as_slice(),
+                ),
+                (
+                    "ffn_moe_out",
+                    actual_routed_out.as_slice(),
+                    expected_ffn[6].as_slice(),
+                ),
+                (
+                    "ffn_shexp",
+                    actual_shared_out.as_slice(),
+                    expected_ffn[7].as_slice(),
+                ),
+                (
+                    "hc_ffn_post",
+                    actual_ffn_hc_post.as_slice(),
+                    expected_ffn[8].as_slice(),
                 ),
             ] {
                 for (index, (actual, expected)) in actual.iter().zip(expected).enumerate() {
                     if actual.to_bits() != expected.to_bits() {
                         return Err(Error::invalid(format!(
-                            "prefill layers-0/1 C0 mismatch in {label}[{index}]: actual={:#010x} expected={:#010x}",
+                            "prefill layer-0 C0 mismatch in {label}[{index}]: actual={:#010x} expected={:#010x}",
                             actual.to_bits(), expected.to_bits()
                         )));
+                    }
+                }
+            }
+            for (index, (actual, expected)) in
+                actual_selected.iter().zip(&expected_selected).enumerate()
+            {
+                if actual != expected {
+                    return Err(Error::invalid(format!(
+                        "prefill layer-0 C0 mismatch in ffn_moe_topk[{index}]: actual={actual} expected={expected}"
+                    )));
+                }
+            }
+        }
+        let layer1_checksums = if let Some(expected) = expected_layer1.as_ref() {
+            if !previous_tile {
+                for (label, actual, expected) in [
+                    (
+                        "layer1_hc_attn_pre",
+                        actual_layer1_hc.as_slice(),
+                        expected[0].as_slice(),
+                    ),
+                    (
+                        "layer1_attn_norm",
+                        actual_layer1_norm.as_slice(),
+                        expected[1].as_slice(),
+                    ),
+                    (
+                        "layer1_q_lora",
+                        actual_layer1_q.as_slice(),
+                        expected[2].as_slice(),
+                    ),
+                ] {
+                    for (index, (actual, expected)) in actual.iter().zip(expected).enumerate() {
+                        if actual.to_bits() != expected.to_bits() {
+                            return Err(Error::invalid(format!(
+                                "prefill layers-0/1 C0 mismatch in {label}[{index}]: actual={:#010x} expected={:#010x}",
+                                actual.to_bits(), expected.to_bits()
+                            )));
+                        }
                     }
                 }
             }
@@ -6515,53 +6666,55 @@ mod imp {
         let complete_layer1_checksums = if let Some((expected, expected_selected)) =
             expected_complete_layer1.as_ref()
         {
-            let labels = [
-                "q_lora_norm",
-                "KVnorm",
-                "Qcur",
-                "KVrope",
-                "KVcur",
-                "kv_prefix_input",
-                "kqv_out",
-                "kqv_back",
-                "attn_low",
-                "attn_out",
-                "hc_attn_post",
-                "hc_ffn_pre",
-                "ffn_norm",
-                "ffn_moe_logits",
-                "ffn_moe_probs",
-                "ffn_moe_weights_scaled",
-                "ffn_moe_weighted_swiglu",
-                "ffn_moe_out",
-                "ffn_shexp",
-                "hc_ffn_post",
-            ];
-            for index in (0..expected.len()).filter(|index| *index != 5) {
-                for (element, (actual, expected)) in actual_complete_layer1[index]
-                    .iter()
-                    .zip(&expected[index])
-                    .enumerate()
-                {
-                    if actual.to_bits() != expected.to_bits() {
-                        return Err(Error::invalid(format!(
-                            "prefill complete layer-1 C0 mismatch in {}[{element}]: actual={:#010x} expected={:#010x}",
-                            labels[index],
-                            actual.to_bits(),
-                            expected.to_bits()
-                        )));
+            if !previous_tile {
+                let labels = [
+                    "q_lora_norm",
+                    "KVnorm",
+                    "Qcur",
+                    "KVrope",
+                    "KVcur",
+                    "kv_prefix_input",
+                    "kqv_out",
+                    "kqv_back",
+                    "attn_low",
+                    "attn_out",
+                    "hc_attn_post",
+                    "hc_ffn_pre",
+                    "ffn_norm",
+                    "ffn_moe_logits",
+                    "ffn_moe_probs",
+                    "ffn_moe_weights_scaled",
+                    "ffn_moe_weighted_swiglu",
+                    "ffn_moe_out",
+                    "ffn_shexp",
+                    "hc_ffn_post",
+                ];
+                for index in (0..expected.len()).filter(|index| *index != 5) {
+                    for (element, (actual, expected)) in actual_complete_layer1[index]
+                        .iter()
+                        .zip(&expected[index])
+                        .enumerate()
+                    {
+                        if actual.to_bits() != expected.to_bits() {
+                            return Err(Error::invalid(format!(
+                                "prefill complete layer-1 C0 mismatch in {}[{element}]: actual={:#010x} expected={:#010x}",
+                                labels[index],
+                                actual.to_bits(),
+                                expected.to_bits()
+                            )));
+                        }
                     }
                 }
-            }
-            for (index, (actual, expected)) in actual_complete_selected
-                .iter()
-                .zip(expected_selected)
-                .enumerate()
-            {
-                if actual != expected {
-                    return Err(Error::invalid(format!(
-                        "prefill complete layer-1 C0 mismatch in ffn_moe_topk[{index}]: actual={actual} expected={expected}"
-                    )));
+                for (index, (actual, expected)) in actual_complete_selected
+                    .iter()
+                    .zip(expected_selected)
+                    .enumerate()
+                {
+                    if actual != expected {
+                        return Err(Error::invalid(format!(
+                            "prefill complete layer-1 C0 mismatch in ffn_moe_topk[{index}]: actual={actual} expected={expected}"
+                        )));
+                    }
                 }
             }
             Some([
@@ -6589,7 +6742,62 @@ mod imp {
         } else {
             None
         };
-        for (index, value) in actual_raw_cache[..96 * 512].iter().enumerate() {
+        if let Some((expected, expected_selected)) = expected_previous_tile.as_ref() {
+            for (label, actual, expected) in [
+                (
+                    "layer0_KVcur",
+                    actual_kv_cur.as_slice(),
+                    expected[0].as_slice(),
+                ),
+                (
+                    "layer0_hc_ffn_post",
+                    actual_ffn_hc_post.as_slice(),
+                    expected[1].as_slice(),
+                ),
+                (
+                    "layer1_KVcur",
+                    actual_complete_layer1[4].as_slice(),
+                    expected[2].as_slice(),
+                ),
+                (
+                    "layer1_hc_ffn_post",
+                    actual_complete_layer1[19].as_slice(),
+                    expected[3].as_slice(),
+                ),
+            ] {
+                for (index, (actual, expected)) in actual.iter().zip(expected).enumerate() {
+                    if actual.to_bits() != expected.to_bits() {
+                        return Err(Error::invalid(format!(
+                            "prefill previous-tile C0 mismatch in {label}[{index}]: actual={:#010x} expected={:#010x}",
+                            actual.to_bits(),
+                            expected.to_bits()
+                        )));
+                    }
+                }
+            }
+            for (layer, actual, expected) in [
+                (
+                    0,
+                    actual_selected.as_slice(),
+                    expected_selected[0].as_slice(),
+                ),
+                (
+                    1,
+                    actual_complete_selected.as_slice(),
+                    expected_selected[1].as_slice(),
+                ),
+            ] {
+                for (index, (actual, expected)) in actual.iter().zip(expected).enumerate() {
+                    if actual != expected {
+                        return Err(Error::invalid(format!(
+                            "prefill previous-tile layer-{layer} selected expert mismatch at {index}: actual={actual} expected={expected}"
+                        )));
+                    }
+                }
+            }
+        }
+        let guard_elements = raw.raw_cache_guard_rows as usize * 512;
+        for (index, value) in actual_raw_cache[..guard_elements].iter().enumerate() {
             if value.to_bits() != (-12345.5_f32).to_bits() {
                 return Err(Error::invalid(format!(
                     "prefill layer-0 raw-cache guard changed at element {index}: actual={:#010x}",
@@ -6625,7 +6833,7 @@ mod imp {
             raw_cache_target_row: raw.raw_cache_target_row,
             raw_cache_guard_rows: raw.raw_cache_guard_rows,
             attention_kv_rows: 2048,
-            attention_kv_prefix_rows: 2016,
+            attention_kv_prefix_rows: position_start,
             wall_ms: raw.wall_ms,
             gpu_ms: raw.gpu_ms,
             checksums: [
@@ -6665,7 +6873,7 @@ mod imp {
     pub fn run_prefill_layer0_boundary_probe(
         model: &MappedModel,
     ) -> Result<PrefillLayer0BoundaryProbeReport> {
-        let (report, layer1, complete) = run_prefill_boundary_probe(model, 0)?;
+        let (report, layer1, complete) = run_prefill_boundary_probe(model, 0, 2016)?;
         debug_assert!(layer1.is_none());
         debug_assert!(complete.is_none());
         Ok(report)
@@ -6674,7 +6882,7 @@ mod imp {
     pub fn run_prefill_layers01_boundary_probe(
         model: &MappedModel,
     ) -> Result<PrefillLayers01BoundaryProbeReport> {
-        let (layer0, layer1, complete) = run_prefill_boundary_probe(model, 1)?;
+        let (layer0, layer1, complete) = run_prefill_boundary_probe(model, 1, 2016)?;
         debug_assert!(complete.is_none());
         Ok(PrefillLayers01BoundaryProbeReport {
             layer0,
@@ -6688,7 +6896,7 @@ mod imp {
     pub fn run_prefill_layers01_complete_boundary_probe(
         model: &MappedModel,
     ) -> Result<PrefillLayers01CompleteBoundaryProbeReport> {
-        let (layer0, layer1, complete) = run_prefill_boundary_probe(model, 2)?;
+        let (layer0, layer1, complete) = run_prefill_boundary_probe(model, 2, 2016)?;
         Ok(PrefillLayers01CompleteBoundaryProbeReport {
             layers01: PrefillLayers01BoundaryProbeReport {
                 layer0,
@@ -6701,6 +6909,41 @@ mod imp {
             checksums: complete.ok_or_else(|| {
                 Error::invalid("complete prefill boundary omitted layer-1 completion checksums")
             })?,
+        })
+    }
+
+    pub fn run_prefill_layers01_row_coverage_probe(
+        model: &MappedModel,
+    ) -> Result<PrefillLayers01RowCoverageProbeReport> {
+        let (previous, previous_ingress, previous_complete) =
+            run_prefill_boundary_probe(model, 2, 1984)?;
+        let previous_ingress = previous_ingress.ok_or_else(|| {
+            Error::invalid("previous-tile replay omitted layer-1 ingress checksums")
+        })?;
+        debug_assert_eq!(previous_ingress.len(), 3);
+        let previous_complete = previous_complete.ok_or_else(|| {
+            Error::invalid("previous-tile replay omitted layer-1 completion checksums")
+        })?;
+        let final_tile = run_prefill_layers01_complete_boundary_probe(model)?;
+        Ok(PrefillLayers01RowCoverageProbeReport {
+            previous_fixture_id: PREFILL_LAYERS01_PREVIOUS_TILE_FIXTURE_ID,
+            previous_position_start: previous.position_start,
+            previous_position_end: previous.position_start + previous.rows as u32 - 1,
+            previous_dispatches: previous.dispatches,
+            previous_wrapped_model_ranges: previous.wrapped_model_ranges,
+            previous_pointer_matches: previous.pointer_matches,
+            previous_raw_cache_target_row: previous.raw_cache_target_row,
+            previous_wall_ms: previous.wall_ms,
+            previous_gpu_ms: previous.gpu_ms,
+            previous_checksums: [
+                previous.checksums[10],
+                previous.checksums[27],
+                previous.checksums[22],
+                previous_complete[4],
+                previous_complete[19],
+                previous_complete[14],
+            ],
+            final_tile,
         })
     }
 
@@ -9556,6 +9799,16 @@ mod imp {
         ))
     }
 
+    pub fn run_prefill_layers01_row_coverage_probe(
+        model: &MappedModel,
+    ) -> Result<PrefillLayers01RowCoverageProbeReport> {
+        let _ = prefill_layers01_previous_tile_fixture()?;
+        let _ = exact_tensor(model, "blk.1.hc_attn_fn.weight", 1, &[16384, 24])?;
+        Err(Error::invalid(
+            "the Metal prefill layers-0/1 row-coverage probe is available only on macOS",
+        ))
+    }
+
     pub fn run_prefill_layers01_complete_boundary_probe(
         model: &MappedModel,
     ) -> Result<PrefillLayers01CompleteBoundaryProbeReport> {
@@ -9926,9 +10179,9 @@ pub use imp::{
     run_layers0_to_42_decode_probe, run_moe_output_probe, run_position127_decoder_probe,
     run_prefill_frontier_probe, run_prefill_layer0_boundary_probe,
     run_prefill_layers01_boundary_probe, run_prefill_layers01_complete_boundary_probe,
-    run_prefill_q8_boundary_probe, run_prefill_qkv_boundary_probe, run_probe,
-    run_q8_projection_probe, run_ratio128_compressor_replay_probe, run_rope_kv_store_probe,
-    LayerExecutor,
+    run_prefill_layers01_row_coverage_probe, run_prefill_q8_boundary_probe,
+    run_prefill_qkv_boundary_probe, run_probe, run_q8_projection_probe,
+    run_ratio128_compressor_replay_probe, run_rope_kv_store_probe, LayerExecutor,
 };
 
 #[cfg(test)]
@@ -10105,6 +10358,22 @@ mod tests {
             layers01,
             complete_fixture_id: PREFILL_LAYER1_COMPLETE_FIXTURE_ID,
             checksums: [42; 20],
+        }
+    }
+
+    fn prefill_layers01_row_coverage_report() -> PrefillLayers01RowCoverageProbeReport {
+        PrefillLayers01RowCoverageProbeReport {
+            previous_fixture_id: PREFILL_LAYERS01_PREVIOUS_TILE_FIXTURE_ID,
+            previous_position_start: 1984,
+            previous_position_end: 2015,
+            previous_dispatches: 84,
+            previous_wrapped_model_ranges: 49,
+            previous_pointer_matches: 49,
+            previous_raw_cache_target_row: 64,
+            previous_wall_ms: 4.0,
+            previous_gpu_ms: 3.0,
+            previous_checksums: [42; 6],
+            final_tile: prefill_layers01_complete_boundary_report(),
         }
     }
 
@@ -11322,6 +11591,27 @@ mod tests {
     }
 
     #[test]
+    fn writes_stable_prefill_layers01_row_coverage_probe_json() {
+        let mut output = Vec::new();
+        write_prefill_layers01_row_coverage_probe_json(
+            &mut output,
+            &prefill_layers01_row_coverage_report(),
+        )
+        .unwrap();
+        let text = String::from_utf8(output).unwrap();
+        assert!(text.contains(&format!(
+            "\"schema\": \"{PREFILL_LAYERS01_ROW_COVERAGE_PROBE_SCHEMA}\""
+        )));
+        assert!(text.contains("\"position_start\": 1984"));
+        assert!(text.contains("\"position_end\": 2047"));
+        assert!(text.contains("\"rows\": 64"));
+        assert!(text.contains("\"raw_cache_target_row\": 64"));
+        assert!(text.contains("\"chained_live_kv_between_tiles\": false"));
+        assert!(text.contains("\"arbitrary_tile_position_claim\": true"));
+        assert!(text.contains("\"full_prefill_claim\": false"));
+    }
+
+    #[test]
     fn writes_stable_ratio128_compressor_replay_json() {
         let mut output = Vec::new();
         write_ratio128_compressor_replay_probe_json(&mut output, &ratio128_compressor_report())
@@ -11535,6 +11825,18 @@ mod tests {
         assert_eq!(tensors[16].len(), 32 * 6 * 2048);
         assert_eq!(tensors[19].len(), 32 * 16384);
         assert_eq!(selected.len(), 32 * 6);
+        assert!(tensors.iter().flatten().all(|value| value.is_finite()));
+    }
+
+    #[test]
+    fn prefill_layers01_previous_tile_fixture_has_target_shapes() {
+        let (tensors, selected) = prefill_layers01_previous_tile_fixture().unwrap();
+        assert_eq!(tensors[0].len(), 32 * 512);
+        assert_eq!(tensors[1].len(), 32 * 16384);
+        assert_eq!(tensors[2].len(), 32 * 512);
+        assert_eq!(tensors[3].len(), 32 * 16384);
+        assert_eq!(selected[0].len(), 32 * 6);
+        assert_eq!(selected[1].len(), 32 * 6);
         assert!(tensors.iter().flatten().all(|value| value.is_finite()));
     }
 

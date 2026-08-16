@@ -79,6 +79,9 @@ elif [ "$#" -eq 1 ]; then
         echo "==> continuous complete M1 layers-0/1 prefill final tile"
         "$target_dir/release/rust-star" prefill-layers01-complete-boundary-probe "$1" \
             --json "$target_dir/prefill-layers01-complete-boundary-probe.json"
+        echo "==> arbitrary-position M1 layers-0/1 prefill row coverage"
+        "$target_dir/release/rust-star" prefill-layers01-row-coverage-probe "$1" \
+            --json "$target_dir/prefill-layers01-row-coverage-probe.json"
         echo "==> no-copy layer-0 attention ingress"
         "$target_dir/release/rust-star" attention-ingress-probe "$1" \
             --json "$target_dir/attention-ingress-probe.json"

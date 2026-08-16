@@ -84,8 +84,12 @@ independently executable, while the complete 84-dispatch boundary finishes
 layer 1 through attention, routed/shared experts, and the additive FFN HC tail.
 The complete command uses 49 no-copy model views and reproduces 12,878,208
 produced FP32 values plus 384 selected expert IDs across both layers from
-repeated DwarfStar captures. This is still an isolated final-tile claim, not
-complete native 2K prefill.
+repeated DwarfStar captures. The same executor now also reproduces the previous
+tile at positions 1984--2015, including its different RoPE positions,
+1,984-row KV prefix, and raw-ring target row 64. Together the two controls cover
+64 exact prompt rows. They still use captured KV prefixes independently, so the
+next checkpoint is live inter-tile KV chaining rather than a complete native
+2K-prefill claim.
 
 Project controls and benchmark contracts:
 

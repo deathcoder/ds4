@@ -2309,7 +2309,8 @@ int rust_star_metal_run_prefill_layer0_boundary(
         return fail_with_message(error, error_bytes,
             @"prefill complete layer-1 boundary received a null fixture/output pointer");
     }
-    if (n_vocab != 129280u || rows != 32u || position_start != 2016u) {
+    if (n_vocab != 129280u || rows != 32u || position_start % 32u != 0u ||
+        position_start + rows > 2048u) {
         return fail_with_message(error, error_bytes,
             @"prefill layer-0 boundary dimensions are invalid");
     }
@@ -2422,11 +2423,12 @@ int rust_star_metal_run_prefill_layer0_boundary(
         enum {
             n_embd = 4096, n_hc = 4, hc_dim = 16384, mix_hc = 24,
             q_rank = 1024, kv_dim = 512, q_dim = 32768,
-            raw_cache_rows = 128, raw_cache_target_row = 96,
-            prefill_rows = 2048, kv_prefix_rows = 2016,
+            raw_cache_rows = 128, prefill_rows = 2048,
             n_head = 64, attention_window = 128,
             n_expert = 256, n_used = 6, ffn_mid = 2048,
         };
+        const uint32_t raw_cache_target_row = position_start % raw_cache_rows;
+        const uint32_t kv_prefix_rows = position_start;
         if (weights->attn_output_a_bytes != 8ull*1024ull*((4096ull/32ull)*34ull) ||
             weights->attn_output_b_bytes != 4096ull*((8192ull/32ull)*34ull)) {
             return fail_with_message(error, error_bytes,
