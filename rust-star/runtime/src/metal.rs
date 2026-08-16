@@ -19,6 +19,8 @@ pub const PREFILL_LAYERS01_ROW_COVERAGE_PROBE_SCHEMA: &str =
     "rust-star-prefill-layers01-row-coverage-probe-v1";
 pub const PREFILL_LAYERS01_LIVE_KV_CHAIN_PROBE_SCHEMA: &str =
     "rust-star-prefill-layers01-live-kv-chain-probe-v1";
+pub const PREFILL_LAYERS01_LIVE_KV_LOOP_PROBE_SCHEMA: &str =
+    "rust-star-prefill-layers01-live-kv-loop-probe-v1";
 pub const INGRESS_PROBE_SCHEMA: &str = "rust-star-layer0-attention-ingress-probe-v1";
 pub const ATTENTION_SETUP_PROBE_SCHEMA: &str = "rust-star-layer0-attention-setup-probe-v1";
 pub const ROPE_KV_STORE_PROBE_SCHEMA: &str = "rust-star-layer0-rope-kv-store-probe-v1";
@@ -863,6 +865,12 @@ pub struct PrefillLayers01LiveKvChainProbeReport {
     pub tiles: PrefillLayers01RowCoverageProbeReport,
     pub retained_kv_rows_after_first_tile: u32,
     pub retained_kv_rows_after_final_tile: u32,
+}
+
+#[derive(Clone, Debug)]
+pub struct PrefillLayers01LiveKvLoopProbeReport {
+    pub tiles: Vec<PrefillLayer0BoundaryProbeReport>,
+    pub final_tile: PrefillLayers01CompleteBoundaryProbeReport,
 }
 
 #[derive(Clone, Debug)]
@@ -2637,6 +2645,55 @@ pub fn write_prefill_layers01_live_kv_chain_probe_json<W: Write>(
         report.retained_kv_rows_after_final_tile,
         final_layer0.wall_ms,
         final_layer0.gpu_ms,
+    )?;
+    Ok(())
+}
+
+pub fn write_prefill_layers01_live_kv_loop_probe_json<W: Write>(
+    output: &mut W,
+    report: &PrefillLayers01LiveKvLoopProbeReport,
+) -> Result<()> {
+    if report.tiles.len() != 64
+        || report.tiles.first().map(|tile| tile.position_start) != Some(0)
+        || report.tiles.last().map(|tile| tile.position_start) != Some(2016)
+        || report.tiles.iter().enumerate().any(|(index, tile)| {
+            tile.position_start != index as u32 * 32
+                || tile.rows != 32
+                || tile.dispatches != 84
+                || tile.wrapped_model_ranges != 49
+                || tile.pointer_matches != 49
+        })
+        || report.final_tile.layers01.layer0.position_start != 2016
+    {
+        return Err(Error::invalid(
+            "prefill live-KV loop report must contain all 64 contiguous tiles",
+        ));
+    }
+    let total_wall_ms: f64 = report.tiles.iter().map(|tile| tile.wall_ms).sum();
+    let total_gpu_ms: f64 = report.tiles.iter().map(|tile| tile.gpu_ms).sum();
+    write!(
+        output,
+        "{{\n  \"schema\": \"{PREFILL_LAYERS01_LIVE_KV_LOOP_PROBE_SCHEMA}\",\n  \"coverage\": {{\n    \"position_start\": 0,\n    \"position_end\": 2047,\n    \"rows\": 2048,\n    \"tile_rows\": 32,\n    \"tiles\": 64,\n    \"layers\": [0, 1]\n  }},\n  \"tiles\": [\n"
+    )?;
+    for (index, tile) in report.tiles.iter().enumerate() {
+        write!(
+            output,
+            "    {{\"position_start\": {}, \"position_end\": {}, \"retained_kv_rows\": {}, \"dispatches\": {}, \"wrapped_model_ranges\": {}, \"pointer_matches\": {}, \"wall_ms\": {:.6}, \"gpu_ms\": {:.6}, \"layer01_kv_c0_bitwise_match\": true}}{}\n",
+            tile.position_start,
+            tile.position_start + tile.rows as u32 - 1,
+            tile.position_start + tile.rows as u32,
+            tile.dispatches,
+            tile.wrapped_model_ranges,
+            tile.pointer_matches,
+            tile.wall_ms,
+            tile.gpu_ms,
+            if index + 1 == report.tiles.len() { "" } else { "," },
+        )?;
+    }
+    write!(
+        output,
+        "  ],\n  \"timing\": {{\"summed_wall_ms\": {:.6}, \"summed_gpu_ms\": {:.6}}},\n  \"persistent_metal_context\": true,\n  \"command_buffers\": 64,\n  \"inter_tile_host_waits\": 63,\n  \"captured_kv_seed_rows\": 0,\n  \"retained_prefix_oracle_validation\": true,\n  \"all_layer01_kv_c0_bitwise_match\": true,\n  \"previous_tile_full_outputs_c0_bitwise_match\": true,\n  \"final_tile_full_outputs_c0_bitwise_match\": true,\n  \"all_tile_full_outputs_c0_bitwise_match\": false,\n  \"single_command_buffer\": false,\n  \"complete_layers01_prefill_claim\": false,\n  \"complete_model_prefill_claim\": false\n}}\n",
+        total_wall_ms, total_gpu_ms,
     )?;
     Ok(())
 }
@@ -6082,10 +6139,12 @@ mod imp {
         if kv_state_mode > 2 || (kv_state_mode != 0 && !complete_layer1) {
             return Err(Error::invalid("invalid prefill live-KV state mode"));
         }
-        let previous_tile = position_start == 1984;
-        if position_start != 2016 && !(previous_tile && complete_layer1) {
+        let final_tile = position_start == 2016;
+        let previous_fixture_tile = position_start == 1984;
+        let live_kv_tile = kv_state_mode != 0 && position_start < 2016;
+        if !final_tile && !(complete_layer1 && (previous_fixture_tile || live_kv_tile)) {
             return Err(Error::invalid(
-                "prefill boundary supports the final tile or complete previous-tile replay",
+                "prefill boundary supports the final tile, the previous-tile control, or a live-KV tile",
             ));
         }
         let embedding = exact_tensor(model, "token_embd.weight", 1, &[4096, 129280])?;
@@ -6127,7 +6186,7 @@ mod imp {
             None
         };
         let (mut tokens, expected_collapsed, expected_attn_norm) = prefill_hc_ingress_fixture()?;
-        if previous_tile {
+        if !final_tile {
             let full_tokens = decode_u32_fixture(
                 PREFILL_FRONTIER_2048_TOKEN_IDS_BYTES,
                 "prefill frontier token IDs",
@@ -6154,12 +6213,12 @@ mod imp {
         } else {
             None
         };
-        let expected_previous_tile = if previous_tile {
+        let expected_previous_tile = if previous_fixture_tile {
             Some(prefill_layers01_previous_tile_fixture()?)
         } else {
             None
         };
-        if !previous_tile
+        if final_tile
             && expected_attn_norm
                 .iter()
                 .zip(&qkv_attn_norm)
@@ -6532,7 +6591,7 @@ mod imp {
                 "Metal prefill boundary returned an unexpected schedule or mapping",
             ));
         }
-        if !previous_tile {
+        if final_tile {
             for (label, actual, expected) in [
                 (
                     "hc_attn_pre",
@@ -6673,7 +6732,7 @@ mod imp {
             }
         }
         let layer1_checksums = if let Some(expected) = expected_layer1.as_ref() {
-            if !previous_tile {
+            if final_tile {
                 for (label, actual, expected) in [
                     (
                         "layer1_hc_attn_pre",
@@ -6712,7 +6771,7 @@ mod imp {
         let complete_layer1_checksums = if let Some((expected, expected_selected)) =
             expected_complete_layer1.as_ref()
         {
-            if !previous_tile {
+            if final_tile {
                 let labels = [
                     "q_lora_norm",
                     "KVnorm",
@@ -7047,6 +7106,60 @@ mod imp {
             },
             retained_kv_rows_after_first_tile: 2016,
             retained_kv_rows_after_final_tile: 2048,
+        })
+    }
+
+    pub fn run_prefill_layers01_live_kv_loop_probe(
+        model: &MappedModel,
+    ) -> Result<PrefillLayers01LiveKvLoopProbeReport> {
+        let context = Context::new()?;
+        let mut tiles = Vec::with_capacity(64);
+        let mut final_tile = None;
+        for position_start in (0..2048).step_by(32) {
+            let kv_state_mode = if position_start == 0 { 1 } else { 2 };
+            let (layer0, layer1, complete) = run_prefill_boundary_probe(
+                model,
+                2,
+                position_start,
+                Some(&context),
+                kv_state_mode,
+            )?;
+            let layer1 = layer1.ok_or_else(|| {
+                Error::invalid("live-KV loop tile omitted layer-1 ingress checksums")
+            })?;
+            let complete = complete.ok_or_else(|| {
+                Error::invalid("live-KV loop tile omitted layer-1 completion checksums")
+            })?;
+            if position_start == 2016 {
+                final_tile = Some(PrefillLayers01CompleteBoundaryProbeReport {
+                    layers01: PrefillLayers01BoundaryProbeReport {
+                        layer0: layer0.clone(),
+                        layer1_fixture_id: PREFILL_LAYER1_INGRESS_FIXTURE_ID,
+                        checksums: layer1,
+                    },
+                    complete_fixture_id: PREFILL_LAYER1_COMPLETE_FIXTURE_ID,
+                    checksums: complete,
+                });
+            }
+            tiles.push(layer0);
+        }
+        for (index, tile) in tiles.iter().enumerate() {
+            let expected_position = index as u32 * 32;
+            if tile.position_start != expected_position
+                || tile.rows != 32
+                || tile.dispatches != 84
+                || tile.wrapped_model_ranges != 49
+                || tile.pointer_matches != 49
+            {
+                return Err(Error::invalid(
+                    "live-KV loop returned a noncontiguous tile or unexpected schedule",
+                ));
+            }
+        }
+        Ok(PrefillLayers01LiveKvLoopProbeReport {
+            tiles,
+            final_tile: final_tile
+                .ok_or_else(|| Error::invalid("live-KV loop omitted the final tile"))?,
         })
     }
 
@@ -9922,6 +10035,18 @@ mod imp {
         ))
     }
 
+    pub fn run_prefill_layers01_live_kv_loop_probe(
+        model: &MappedModel,
+    ) -> Result<PrefillLayers01LiveKvLoopProbeReport> {
+        let _ = prefill_frontier_2048_fixture()?;
+        let _ = prefill_attention_read_fixture()?;
+        let _ = prefill_layer1_complete_fixture()?;
+        let _ = exact_tensor(model, "blk.1.hc_attn_fn.weight", 1, &[16384, 24])?;
+        Err(Error::invalid(
+            "the Metal prefill layers-0/1 live-KV loop probe is available only on macOS",
+        ))
+    }
+
     pub fn run_prefill_layers01_complete_boundary_probe(
         model: &MappedModel,
     ) -> Result<PrefillLayers01CompleteBoundaryProbeReport> {
@@ -10292,10 +10417,10 @@ pub use imp::{
     run_layers0_to_42_decode_probe, run_moe_output_probe, run_position127_decoder_probe,
     run_prefill_frontier_probe, run_prefill_layer0_boundary_probe,
     run_prefill_layers01_boundary_probe, run_prefill_layers01_complete_boundary_probe,
-    run_prefill_layers01_live_kv_chain_probe, run_prefill_layers01_row_coverage_probe,
-    run_prefill_q8_boundary_probe, run_prefill_qkv_boundary_probe, run_probe,
-    run_q8_projection_probe, run_ratio128_compressor_replay_probe, run_rope_kv_store_probe,
-    LayerExecutor,
+    run_prefill_layers01_live_kv_chain_probe, run_prefill_layers01_live_kv_loop_probe,
+    run_prefill_layers01_row_coverage_probe, run_prefill_q8_boundary_probe,
+    run_prefill_qkv_boundary_probe, run_probe, run_q8_projection_probe,
+    run_ratio128_compressor_replay_probe, run_rope_kv_store_probe, LayerExecutor,
 };
 
 #[cfg(test)]
@@ -10496,6 +10621,26 @@ mod tests {
             tiles: prefill_layers01_row_coverage_report(),
             retained_kv_rows_after_first_tile: 2016,
             retained_kv_rows_after_final_tile: 2048,
+        }
+    }
+
+    fn prefill_layers01_live_kv_loop_report() -> PrefillLayers01LiveKvLoopProbeReport {
+        let tiles = (0..64)
+            .map(|index| {
+                let mut tile = prefill_layer0_boundary_report();
+                tile.position_start = index * 32;
+                tile.dispatches = 84;
+                tile.wrapped_model_ranges = 49;
+                tile.pointer_matches = 49;
+                tile.raw_cache_target_row = tile.position_start % 128;
+                tile.raw_cache_guard_rows = tile.raw_cache_target_row;
+                tile.attention_kv_prefix_rows = tile.position_start;
+                tile
+            })
+            .collect();
+        PrefillLayers01LiveKvLoopProbeReport {
+            tiles,
+            final_tile: prefill_layers01_complete_boundary_report(),
         }
     }
 
@@ -11754,6 +11899,27 @@ mod tests {
         assert!(text.contains("\"chained_live_kv_between_tiles\": true"));
         assert!(text.contains("\"single_command_buffer\": false"));
         assert!(text.contains("\"full_prefill_claim\": false"));
+    }
+
+    #[test]
+    fn writes_stable_prefill_layers01_live_kv_loop_probe_json() {
+        let mut output = Vec::new();
+        write_prefill_layers01_live_kv_loop_probe_json(
+            &mut output,
+            &prefill_layers01_live_kv_loop_report(),
+        )
+        .unwrap();
+        let text = String::from_utf8(output).unwrap();
+        assert!(text.contains(&format!(
+            "\"schema\": \"{PREFILL_LAYERS01_LIVE_KV_LOOP_PROBE_SCHEMA}\""
+        )));
+        assert!(text.contains("\"position_start\": 0"));
+        assert!(text.contains("\"position_end\": 2047"));
+        assert!(text.contains("\"tiles\": 64"));
+        assert!(text.contains("\"captured_kv_seed_rows\": 0"));
+        assert!(text.contains("\"all_layer01_kv_c0_bitwise_match\": true"));
+        assert!(text.contains("\"all_tile_full_outputs_c0_bitwise_match\": false"));
+        assert!(text.contains("\"complete_model_prefill_claim\": false"));
     }
 
     #[test]

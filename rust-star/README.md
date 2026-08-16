@@ -91,9 +91,15 @@ tile at positions 1984--2015, including its different RoPE positions,
 layers' first-tile KV buffers, validates the retained 2,016-row prefixes against
 the oracle, and has the second tile append to and consume those live buffers
 without reassembling its execution state from a captured prefix. It remains a
-two-command-buffer checkpoint with one inter-tile host wait, not a complete
-native 2K-prefill claim. The next checkpoint is a reusable multi-tile loop
-extending backward toward position 0 and then through the remaining layers.
+two-command-buffer checkpoint with one inter-tile host wait. A separate 64-tile
+loop now starts with empty layer-0/layer-1 KV buffers and advances all 2,048
+canonical prompt rows in one persistent context. Every accumulated prefix is
+validated bit-for-bit before the next tile, every tile preserves 49/49 no-copy
+model views, and the final tile retains its exhaustive output comparison.
+Non-final layer-1 full outputs are not all retained, so this is an exact 2K KV
+ownership checkpoint rather than a complete native model-prefill claim. The
+next boundary is native layer 2, whose KV oracle will also validate the live
+layer-1 outputs feeding it.
 
 Project controls and benchmark contracts:
 

@@ -2324,9 +2324,7 @@ int rust_star_metal_run_prefill_layer0_boundary(
         const BOOL retain_kv_state = kv_state_mode == 1u;
         const BOOL consume_kv_state = kv_state_mode == 2u;
         if (kv_state_mode > 2u ||
-            ((retain_kv_state || consume_kv_state) && !complete_layer1) ||
-            (retain_kv_state && position_start != 1984u) ||
-            (consume_kv_state && position_start != 2016u)) {
+            ((retain_kv_state || consume_kv_state) && !complete_layer1)) {
             return fail_with_message(error, error_bytes,
                 @"prefill live-KV state mode is invalid for this tile");
         }
@@ -2743,7 +2741,9 @@ int rust_star_metal_run_prefill_layer0_boundary(
                     @"prefill retained live-KV prefix differs from the C0 oracle");
             }
         } else {
-            memcpy(full_kv_buffer.contents, kv_prefix, full_kv_prefix_bytes);
+            if (full_kv_prefix_bytes > 0) {
+                memcpy(full_kv_buffer.contents, kv_prefix, full_kv_prefix_bytes);
+            }
             float *full_kv_contents = full_kv_buffer.contents;
             for (NSUInteger index = kv_prefix_rows*kv_dim;
                  index < prefill_rows*kv_dim; index++) {
@@ -2756,8 +2756,10 @@ int rust_star_metal_run_prefill_layer0_boundary(
                 next_raw_cache_contents[index] = -12345.5f;
             }
             if (!consume_kv_state) {
-                memcpy(next_full_kv_buffer.contents, next_outputs->kv_prefix,
-                    full_kv_prefix_bytes);
+                if (full_kv_prefix_bytes > 0) {
+                    memcpy(next_full_kv_buffer.contents, next_outputs->kv_prefix,
+                        full_kv_prefix_bytes);
+                }
                 float *next_full_kv_contents = next_full_kv_buffer.contents;
                 for (NSUInteger index = kv_prefix_rows*kv_dim;
                      index < prefill_rows*kv_dim; index++) {

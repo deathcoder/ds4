@@ -192,6 +192,12 @@ history; add a correction and update the current-state summary.
   KV buffers and makes the final tile append to and consume that state. The
   final execution prefix is not assembled from the capture, while an explicit
   oracle comparison still guards both retained buffers before continuation.
+  The same ownership contract now runs all 64 native tiles from position 0
+  through 2047. It starts with empty KV buffers, consumes all canonical prompt
+  tokens, and validates both accumulated layer prefixes before every append.
+  This establishes exact complete-2K layer-0/layer-1 KV state; exhaustive full
+  output validation remains limited to the retained tail controls, so native
+  layer 2 and complete model prefill are still pending.
   Full native batched prefill, sparse indexed attention beyond 512 ratio-4
   rows, and the eligible engine-measurement producer remain pending.
 - Measurements: Metal batching was 42.861x faster than synchronized submission
@@ -316,8 +322,9 @@ history; add a correction and update the current-state summary.
 
 ## Immediate Next Actions
 
-1. Extend the persistent live-KV 32-row tile chain backward from position 1984
-   toward position 0, then generalize complete native prefill beyond layer 1.
+1. Capture/import the decisive native layer-2 batched-prefill KV oracle and
+   extend the empty-seed 64-tile loop through layer 2, using its KV state to
+   validate the live layer-1 outputs that currently stop at the layer boundary.
 2. Add the fixed 512-row ratio-4 indexer top-k and sparse indexed attention so
    128 generated tokens can continue beyond the 2K frontier.
 3. Emit the `rust-star-engine-measurement-v1` artifact from the exact
@@ -329,6 +336,49 @@ history; add a correction and update the current-state summary.
 6. Run or approve the fork's GitHub Actions workflow and retain its URL.
 
 ## Entries
+
+### 2026-08-16 — Empty-seed layers-0/1 KV ownership reaches all 2K prompt rows
+
+Objective:
+
+- Turn the two-tile persistent checkpoint into a reusable loop from position 0
+  through 2047 without introducing another captured execution prefix.
+
+Oracle reuse and implementation:
+
+- Reused the existing 2,048 canonical token IDs plus the captured layer-0 and
+  layer-1 KV prefixes through row 2015. No new large fixture was required.
+- Generalized native reset/retain/consume state from the tail pair to every
+  aligned 32-row tile. Tile 0 starts with zero captured KV rows; each of the 63
+  continuations requires contiguous retained state and compares both complete
+  accumulated prefixes against the oracle before appending.
+- Added `prefill-layers01-live-kv-loop-probe` with schema
+  `rust-star-prefill-layers01-live-kv-loop-probe-v1`. Its stable artifact
+  records all 64 tile schedules, retained row counts, mapping identity, timing,
+  and the exact claim boundary.
+- The final tile still performs exhaustive layer-0/layer-1 output comparison,
+  and the independently retained positions 1984--2015 tile remains fully C0
+  checked. Other non-final layer-1 post-FFN outputs execute but are not all
+  retained, so the artifact explicitly denies a complete layers-0/1 or model
+  prefill claim.
+
+Target-Mac evidence:
+
+- The focused full loop advanced empty KV buffers to 2,048 exact rows for both
+  layers. All 64 tiles preserved 49/49 mmap-backed model views; summed
+  correctness-oriented intervals were 3492.491 ms wall and 3393.021 ms GPU.
+- The complete gate repeated the 64-tile result at 3489.173/3383.418 ms
+  wall/GPU, then passed formatting, all 84 Rust tests, 55 Python tests, all 239
+  differential fixtures, optimized Objective-C/Metal compilation, all 1,288
+  required model tensors, every established Metal/decoder control, and both
+  steady-state benchmarks.
+
+Decision and next:
+
+- Accept the complete 2K layer-0/layer-1 KV chain as exact state-ownership
+  evidence, not as a throughput or complete-prefill result. Next extend native
+  batched execution through layer 2 and use the layer-2 KV oracle as the
+  downstream validation boundary for live layer-1 outputs.
 
 ### 2026-08-16 — Live layer-0/layer-1 KV state crosses the tile boundary
 

@@ -85,6 +85,9 @@ elif [ "$#" -eq 1 ]; then
         echo "==> persistent live-KV chain across two M1 layers-0/1 prefill tiles"
         "$target_dir/release/rust-star" prefill-layers01-live-kv-chain-probe "$1" \
             --json "$target_dir/prefill-layers01-live-kv-chain-probe.json"
+        echo "==> empty-seed full-2K live-KV loop across native M1 layers 0/1"
+        "$target_dir/release/rust-star" prefill-layers01-live-kv-loop-probe "$1" \
+            --json "$target_dir/prefill-layers01-live-kv-loop-probe.json"
         echo "==> no-copy layer-0 attention ingress"
         "$target_dir/release/rust-star" attention-ingress-probe "$1" \
             --json "$target_dir/attention-ingress-probe.json"
