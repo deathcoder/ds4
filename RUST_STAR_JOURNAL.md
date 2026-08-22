@@ -214,14 +214,20 @@ history; add a correction and update the current-state summary.
   HC post-processing, the full token-hash routed/shared FFN, and the additive
   FFN HC update. Full 2K attention-HC and final-HC identities plus exact
   final-tile intermediates match the repeated oracle, completing native layers
-  0, 1, and 2 at the 2K prompt boundary with 16/16 terminal no-copy mappings.
-  Later-layer batched prefill remains pending.
+  0, 1, and 2 at the 2K prompt boundary. The terminal command now carries that
+  full final HC state directly through layer 3's HC attention ingress, learned
+  norm, and Q-Lora projection. The three new boundaries match a repeated
+  DwarfStar capture exactly, and the expanded command preserves 21/21 terminal
+  no-copy mappings across 36 dispatches. Layer-3 KV/attention/FFN remains
+  pending.
   Full native batched prefill, sparse indexed attention beyond 512 ratio-4
   rows, and the eligible engine-measurement producer remain pending.
-- Measurements: The exact full-2K layer-2 completion command reported
-  408.397 ms wall / 338.484 ms GPU across 32 dispatches with 16/16 no-copy model
-  mappings. It includes full correctness readback and is not a throughput
-  claim. The prior attention-only control was 196.069 ms wall / 169.211 ms GPU.
+- Measurements: The exact full-2K layer-2 completion plus layer-3 ingress
+  command reported 441.440 ms wall / 371.934 ms GPU across 36 dispatches with
+  21/21 no-copy model mappings. It includes full correctness readback and is
+  not a throughput claim. The prior layer-2-only control was 408.397 ms wall /
+  338.484 ms GPU, and the prior attention-only control was 196.069 ms wall /
+  169.211 ms GPU.
   Metal batching was 42.861x faster than synchronized submission
   in the retained M-002 probe. DwarfStar medians are 164.86 prefill / 19.90
   generation tok/s at 2K and 161.05 prefill / 17.36 generation tok/s at 32K.
@@ -348,8 +354,9 @@ history; add a correction and update the current-state summary.
 
 ## Immediate Next Actions
 
-1. Extend the exact native 2K prefill from the completed layer-2 HC state into
-   layer 3, preserving the shorter layer-2 controls and retained-state checks.
+1. Extend the exact native 2K layer-3 boundary from Q-Lora through Q/KV setup,
+   raw KV ownership, and its paired compressor schedule while preserving the
+   completed layer-2 and layer-3-ingress controls.
 2. Add the fixed 512-row ratio-4 indexer top-k and sparse indexed attention so
    128 generated tokens can continue beyond the 2K frontier.
 3. Emit the `rust-star-engine-measurement-v1` artifact from the exact
@@ -361,6 +368,57 @@ history; add a correction and update the current-state summary.
 6. Run or approve the fork's GitHub Actions workflow and retain its URL.
 
 ## Entries
+
+### 2026-08-22 — Full-2K layer-2 HC flows directly into layer-3 Q-Lora
+
+Objective:
+
+- Cross the first native layer-3 batched-prefill boundary without uploading or
+  reconstructing layer 2's completed 16,384-wide HC state on the host.
+
+Oracle evidence:
+
+- Two fresh DwarfStar processes produced byte-identical full-2K captures for
+  layer 3 `hc_attn_pre`, `attn_norm`, and `q_lora`.
+- Their full capture SHA-256 values are respectively
+  `615f67cb9738b583263e1a7abd3970ad4df818f0bc9220053be4cbc6ba7d6cab`,
+  `1348e3368a4c6b7185e730f11545c74a7fe8fa1c9877fcc9200a5de405f2b818`,
+  and `bafe82a1535457caec52278bdb3c95e317aacb128c94f704fc523ca9581d6265`.
+- `prefill-layer3-ingress-2048-v1` retains the exact final 32 rows for all
+  three boundaries and pins the full captures in its manifest.
+
+Implementation:
+
+- Extended the existing terminal layer-2 command with four dispatches: HC RMS
+  norm, the F16 HC mixer, fused HC collapse plus learned attention norm, and
+  the Q8 Q-A projection.
+- Added five mmap-backed layer-3 model views and kept the complete layer-2 HC
+  buffer GPU-resident across the boundary.
+- Extended the Rust ABI, exact tensor-shape validation, JSON evidence, fixture
+  importer, fixture verifier coverage, and focused unit tests.
+
+Validation:
+
+- The optimized real-model probe passed on the M1 Ultra with all three new
+  final-tile tensors bitwise equal to DwarfStar and their full-2K FNV checksums
+  equal to `0xcb93e0a251fd7280`, `0xe64fba2f04bfcb54`, and
+  `0xd01875758ab4b722`.
+- The terminal schedule used 36 dispatches and retained 21/21 no-copy model
+  mappings. It reported 441.440 ms wall / 371.934 ms GPU with correctness
+  readback in scope; this is not a throughput measurement.
+- The complete target-Mac gate passed: 94 Rust tests, the optimized build,
+  Metal ownership/dispatch validation, all differential
+  fixtures, the Rust/Python artifact contract, every real-model Metal control,
+  and the 2K sequential diagnostic. The gate repeated the new boundary at
+  456.961 ms wall / 376.116 ms GPU.
+- After adding the fixture-specific Python catalog assertion, the final
+  platform-independent regression pass contained 59 Python tests; all passed.
+
+Decision and next:
+
+- Accept `layer3_q_lora` as the next exact native-batch checkpoint. Continue
+  through layer 3's Q/KV setup and state ownership before implementing its
+  distinct biased top-k FFN.
 
 ### 2026-08-16 — Complete layer 2 reaches the exact full-2K HC frontier
 
