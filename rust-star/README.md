@@ -171,12 +171,15 @@ same retained state now drives layer 5's dense mixed attention over 2,048 raw
 plus 16 compressed rows, inverse RoPE, both Q8 attention-output projections,
 and the additive HC post. The complete 2048 x 4096 attention output and final
 HC identity match two fresh DwarfStar captures bit-for-bit. The combined
-terminal schedule uses 175 dispatches and preserves 92/92 no-copy model
-mappings, establishing complete layer-4 prefill ownership plus exact layer-5
-attention state.
+terminal schedule then carries that HC state through layer 5's learned FFN
+ingress, biased top-6 routing, routed IQ2_XXS/Q2_K experts, shared Q8_0 expert,
+and additive final HC update. Every retained FFN boundary and the complete final
+HC identity match two fresh DwarfStar processes exactly. The command uses 196
+dispatches and preserves 104/104 no-copy model mappings, establishing complete
+native layers 0 through 5 at the full 2K prompt boundary.
 Exactly 512 compressed rows remain dense; sparse indexer top-k starts only after
-this prompt boundary. Layer-5 FFN, later prefill, output
-logits, and sparse post-prompt attention remain pending, and
+this prompt boundary. Layer-6 and later prefill, output logits, and sparse
+post-prompt attention remain pending, and
 this is not a throughput claim.
 
 Project controls and benchmark contracts:

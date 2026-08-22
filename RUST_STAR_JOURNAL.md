@@ -255,12 +255,20 @@ history; add a correction and update the current-state summary.
   drive layer 5's dense mixed attention over 2,048 raw plus 16 compressed rows,
   inverse RoPE, both Q8 output projections, and the additive attention HC post.
   The complete 2048x4096 attention output, diagnostic rows, final HC tile, and
-  full HC identity match two fresh DwarfStar processes exactly. The command
-  preserves 92/92 no-copy mappings across 175 dispatches, establishing complete
-  native layer-4 prefill ownership plus exact full-2K layer-5 attention state.
+  full HC identity match two fresh DwarfStar processes exactly. Twelve final
+  no-copy views now carry that state through layer 5's FFN HC ingress, learned
+  norm, biased top-6 routing, routed/shared experts, and additive final HC
+  update. Every retained FFN boundary and the complete final HC identity match
+  two fresh DwarfStar processes exactly. The command preserves 104/104 no-copy
+  mappings across 196 dispatches, establishing complete native layers 0–5 at
+  the full-2K prompt boundary.
   Full native batched prefill, sparse indexed attention beyond 512 ratio-4
   rows, and the eligible engine-measurement producer remain pending.
-- Measurements: The exact complete native layers-0/1/2/3/4 plus layer-5 dense
+- Measurements: The exact complete native layers-0/1/2/3/4/5 full-2K command
+  reported 1358.984 ms wall / 1270.350 ms GPU in its focused correctness run
+  and 1363.509 ms wall / 1272.876 ms GPU in the complete target-Mac gate,
+  across 196 dispatches with 104/104 no-copy model mappings. The prior exact
+  complete native layers-0/1/2/3/4 plus layer-5 dense
   mixed-attention full-2K command reported 1242.696 ms wall / 1152.157 ms GPU
   in its focused correctness run and 1253.568 ms wall / 1159.442 ms GPU in the
   complete target-Mac gate, across 175 dispatches with 92/92 no-copy model
@@ -419,8 +427,8 @@ history; add a correction and update the current-state summary.
 
 ## Immediate Next Actions
 
-1. Continue the retained layer-5 post-attention HC state through the complete
-   biased-top-k routed/shared FFN and additive HC update.
+1. Continue the retained layer-5 final HC state into layer 6's native Q/KV
+   boundary, preserving the complete layers-0–5 command as a regression control.
 2. Add the fixed 512-row ratio-4 indexer top-k and sparse indexed attention so
    128 generated tokens can continue beyond the 2K frontier.
 3. Emit the `rust-star-engine-measurement-v1` artifact from the exact
@@ -432,6 +440,44 @@ history; add a correction and update the current-state summary.
 6. Run or approve the fork's GitHub Actions workflow and retain its URL.
 
 ## Entries
+
+### 2026-08-22 — Exact complete layer-5 full-2K prefill
+
+Objective:
+
+- Continue the retained layer-5 post-attention HC state through its complete
+  biased-top-6 routed/shared FFN and additive final HC update.
+
+Implementation:
+
+- Captured `hc_ffn_pre`, `ffn_norm`, router logits/probabilities/top-k/scaled
+  weights, routed weighted-SwiGLU/output, shared-expert output, and
+  `hc_ffn_post` twice in fresh DwarfStar processes. All ten complete tensors
+  were byte-identical.
+- Added `prefill-layer5-complete-2048-v1`, retaining the exact final 32-row
+  comparison tiles while SHA-256-pinning all complete source tensors and the
+  complete final HC identity.
+- Wrapped layer 5's twelve FFN tensors directly from the GGUF mmap and appended
+  the proven 21-dispatch biased-top-6 schedule to the retained Metal command.
+- Extended the C ABI, exact Rust comparisons, stable JSON, CLI, documentation,
+  fixture verification, and target-Mac gate. The artifact now closes at
+  `layer5_ffn_hc_post` and explicitly denies later-layer, sparse-attention,
+  complete-model-prefill, and throughput claims.
+
+Validation:
+
+- Fixture verifier: valid ten-tensor, 5,834,240-byte differential fixture.
+- Rust unit suite: 108 passed.
+- Focused optimized M1 Ultra run: every new boundary C0 exact, 1358.984 ms wall
+  / 1270.350 ms GPU, 196 dispatches, and 104/104 no-copy model mappings.
+- Full target-Mac gate: 108 Rust tests and 61 Python tests passed; the extended
+  command remained exact at 1363.509 ms wall / 1272.876 ms GPU with 104/104
+  mappings. These intervals include exhaustive correctness readback and are not
+  throughput claims.
+
+Next:
+
+- Begin layer 6's native Q/KV boundary from the retained layer-5 final HC state.
 
 ### 2026-08-22 — Exact layer-5 full-2K dense mixed attention
 
