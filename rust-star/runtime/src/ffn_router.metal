@@ -130,6 +130,32 @@ kernel void rust_star_router_hash_rows_batch(
     }
 }
 
+kernel void rust_star_router_topk_rows_batch(
+        device const float *probs,
+        device const float *bias,
+        device int *selected,
+        uint row [[thread_position_in_grid]]) {
+    if (row >= rust_star_router_max_batch_rows) return;
+    int top[6] = {-1, -1, -1, -1, -1, -1};
+    device const float *row_probs = probs + row*256u;
+    for (uint expert = 0; expert < 256u; expert++) {
+        const float score = row_probs[expert] + bias[expert];
+        for (uint slot = 0; slot < 6u; slot++) {
+            if (top[slot] < 0 ||
+                score > row_probs[(uint)top[slot]] + bias[(uint)top[slot]]) {
+                for (uint move = 5u; move > slot; move--) {
+                    top[move] = top[move - 1u];
+                }
+                top[slot] = (int)expert;
+                break;
+            }
+        }
+    }
+    for (uint slot = 0; slot < 6u; slot++) {
+        selected[row*6u + slot] = top[slot];
+    }
+}
+
 kernel void rust_star_router_gather_weights_batch(
         device const float *probs,
         device const int *selected,

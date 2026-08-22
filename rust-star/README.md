@@ -134,12 +134,16 @@ both Q8 attention-output projections before the additive four-stream HC post.
 The 2,064 logical keys use a fully masked 2,112-row physical extent required by
 the 64-row FlashAttention block contract. The complete 2048 x 4096 attention
 output and final 32-row HC tile match fresh-process DwarfStar captures exactly;
-the full HC identity is pinned by checksum. This establishes exact layer-3
-attention ownership; the layer-3 FFN remains pending.
+the full HC identity is pinned by checksum. The same command now continues
+through layer 3's FFN HC ingress, learned norm, biased top-6 expert selection,
+unbiased router-weight normalization, routed IQ2_XXS/Q2_K experts, the shared
+Q8_0 expert, and the additive FFN HC update. Two fresh DwarfStar captures agree
+bit-for-bit on every retained final-tile boundary and the complete final HC
+identity. The terminal schedule uses 79 dispatches and preserves all 44/44
+no-copy model mappings, establishing exact complete layer-3 prefill ownership.
 Exactly 512 compressed rows remain dense; sparse indexer top-k starts only after
-this prompt boundary. Layer-3 FFN, later layers, output
-logits, and sparse post-prompt attention remain pending, and this is not a
-throughput claim.
+this prompt boundary. Layer 4 and later prefill, output logits, and sparse
+post-prompt attention remain pending, and this is not a throughput claim.
 
 Project controls and benchmark contracts:
 

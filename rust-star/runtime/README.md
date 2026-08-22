@@ -230,7 +230,7 @@ Every accumulated prefix plus every `KVnorm`, `KVrope`, and `KVcur` tile must
 match the repeated DwarfStar captures bit-for-bit. The attention/indexer
 compressors, mixed attention, layer-2 FFN, and later model remain pending.
 
-To complete layer 2 and retain layer 3's exact 2K ratio-128 compressor state:
+To complete native 2K prefill through layer 3:
 
 ```sh
 rust-star/.work/runtime-target/release/rust-star \
@@ -245,15 +245,19 @@ executes full layer-2 Q-B, compressed YaRN, dense mixed FlashAttention over
 2,048 raw plus 512 compressed rows, inverse RoPE, both Q8 output projections,
 the attention HC update, and the complete routed/shared FFN. It hands the exact
 final HC buffer directly into layer 3 without a host upload. Layer 3 then runs
-HC ingress, Q/KV setup, compressed RoPE, FP8 raw-KV finalization, and its full
-ratio-128 attention compressor. All 16 compressed rows, both 128x512 recurrent
-state tensors, the 2,048 raw-KV rows, and every retained prior boundary must be
-bit-identical to repeated DwarfStar captures. The terminal command uses 49
-dispatches and 29/29 no-copy model views.
+HC ingress, Q/KV setup, compressed RoPE, FP8 raw-KV finalization, its full
+ratio-128 attention compressor, dense mixed attention over 2,048 raw plus 16
+compressed rows, output projections, additive attention HC post, and the
+complete FFN. Its router selects top-6 experts from biased probabilities but
+normalizes expert weights from the unbiased probabilities. All compressed
+rows, recurrent states, raw-KV rows, attention output, FFN intermediates, final
+HC identity, and every retained prior boundary must be bit-identical to
+repeated DwarfStar captures. The terminal command uses 79 dispatches and 44/44
+no-copy model views.
 
 Exactly 512 layer-2 compressed rows still use the dense path; sparse top-k
-begins only after this 2K boundary. Layer-3 mixed attention/FFN, later layers,
-output logits, and throughput remain outside this command.
+begins only after this 2K boundary. Layer 4 and later prefill, output logits,
+and throughput remain outside this command.
 
 To run the connected layer-0 ingress gate:
 

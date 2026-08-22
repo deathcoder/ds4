@@ -225,14 +225,20 @@ history; add a correction and update the current-state summary.
   bit-for-bit. It now also owns layer 3's dense mixed attention, inverse RoPE,
   Q8 output projections, and additive HC post. The full 2048x4096 attention
   output and final HC tile match repeated captures exactly, with the full HC
-  identity checksum-pinned. The expanded command preserves 32/32 terminal
-  no-copy mappings across 58 dispatches. Layer-3 FFN remains pending.
+  identity checksum-pinned. The same command now owns layer 3's complete FFN:
+  HC ingress, learned norm, biased top-6 selection, unbiased router-weight
+  normalization, routed/shared experts, and the additive final HC update. All
+  final-tile intermediates and the full final HC identity match two fresh
+  DwarfStar processes exactly. The expanded command preserves 44/44 terminal
+  no-copy mappings across 79 dispatches. Layer-4 prefill remains pending.
   Full native batched prefill, sparse indexed attention beyond 512 ratio-4
   rows, and the eligible engine-measurement producer remain pending.
-- Measurements: The exact full-2K layer-2 completion plus layer-3 attention HC
-  post command reported 583.424 ms wall / 501.227 ms GPU in its focused run and
-  569.588 ms wall / 490.821 ms in the complete target-Mac gate, across 58
-  dispatches with 32/32 no-copy model mappings. The prior ratio-128
+- Measurements: The exact complete native layers-0/1/2/3 full-2K command
+  reported 675.511 ms wall / 592.734 ms GPU in its focused run and 759.645 ms
+  wall / 671.882 ms GPU in the complete target-Mac gate, across 79 dispatches
+  with 44/44 no-copy model mappings. The prior layer-3 attention-only checkpoint
+  reported 583.424 ms wall / 501.227 ms GPU focused and 569.588 ms wall /
+  490.821 ms GPU in its complete gate. The prior ratio-128
   compressor checkpoint reported 494.638 ms wall / 396.686 ms GPU focused and
   483.530 ms wall / 399.101 ms in the complete target-Mac gate. The prior Q/KV
   command reported 482.230 ms wall / 402.931 ms GPU in its focused run and
@@ -367,8 +373,8 @@ history; add a correction and update the current-state summary.
 
 ## Immediate Next Actions
 
-1. Extend the exact native 2K layer-3 boundary through biased top-k routing,
-   routed/shared experts, and the additive FFN HC post-state.
+1. Extend exact native 2K prefill into layer 4, reusing the established
+   ratio-4 attention/indexer and token-hash FFN path.
 2. Add the fixed 512-row ratio-4 indexer top-k and sparse indexed attention so
    128 generated tokens can continue beyond the 2K frontier.
 3. Emit the `rust-star-engine-measurement-v1` artifact from the exact
@@ -380,6 +386,47 @@ history; add a correction and update the current-state summary.
 6. Run or approve the fork's GitHub Actions workflow and retain its URL.
 
 ## Entries
+
+### 2026-08-22 — Native 2K prefill is complete through layer 3
+
+Objective:
+
+- Continue the exact full-2K layer-3 attention state through its complete FFN
+  and additive four-stream HC post-state without a host activation handoff.
+
+Changes:
+
+- Captured the ten layer-3 FFN oracle boundaries twice in fresh DwarfStar
+  processes. Every full tensor was byte-identical; the compact checked fixture
+  retains all final 32-row boundaries and pins every full-2K SHA-256 identity.
+- Added a batch Metal top-k router that reproduces DwarfStar's sequential
+  strict-`>` top-6 selection over `sqrt(softplus(logits)) + bias`. Expert
+  weights are gathered from the unbiased probabilities before normalization
+  and the 1.5 scale.
+- Extended the terminal command through FFN HC ingress, router projection,
+  routed IQ2_XXS gate/up plus Q2_K down, the Q8_0 shared expert, and the final
+  additive HC update. Large routed/shared scratch allocations are reused only
+  after layer 2 completes.
+- Added twelve layer-3 FFN model spans, seven ABI outputs, exact final-tile C0
+  checks, a full-final-HC checksum guard, stable JSON metadata, and a complete
+  layer-3 prefill claim.
+
+Validation:
+
+- Two fresh oracle captures agreed bit-for-bit for all 2,048 rows, including
+  all biased top-k selections and the complete 128 MiB final HC tensor.
+- Focused optimized M1 Ultra run: C0 exact, 79 dispatches, 44/44 no-copy model
+  mappings, 675.511 ms wall / 592.734 ms GPU.
+- Complete target-Mac gate: 98 Rust tests and 61 Python tests passed, every
+  differential fixture verified, all retained Metal controls remained exact,
+  and the new boundary repeated C0 exact at 759.645 ms wall / 671.882 ms GPU.
+- These timings include correctness-oriented execution/readback and are not a
+  throughput claim.
+
+Next:
+
+- Continue the native 2K prefill chain through layer 4, then implement sparse
+  indexed attention beyond the fixed 512-row dense ratio-4 prompt boundary.
 
 ### 2026-08-22 — Layer 3 owns dense mixed attention and additive HC post
 
