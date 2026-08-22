@@ -230,13 +230,21 @@ history; add a correction and update the current-state summary.
   normalization, routed/shared experts, and the additive final HC update. All
   final-tile intermediates and the full final HC identity match two fresh
   DwarfStar processes exactly. The expanded command preserves 44/44 terminal
-  no-copy mappings across 79 dispatches. Layer-4 prefill remains pending.
+  no-copy mappings across 79 dispatches. That retained final HC now feeds layer
+  4's HC attention ingress, Q/KV learned normalization, compressed RoPE, and
+  FP8 KV finalization without a host activation upload. All ten final-tile
+  boundaries match four fresh DwarfStar captures; the complete tensor
+  identities are SHA-256 pinned. The expanded terminal command preserves 53/53
+  no-copy mappings across 89 dispatches and retains layer 4's full Q/KV state.
+  Layer-4 compressors, attention, and FFN remain pending.
   Full native batched prefill, sparse indexed attention beyond 512 ratio-4
   rows, and the eligible engine-measurement producer remain pending.
-- Measurements: The exact complete native layers-0/1/2/3 full-2K command
-  reported 675.511 ms wall / 592.734 ms GPU in its focused run and 759.645 ms
-  wall / 671.882 ms GPU in the complete target-Mac gate, across 79 dispatches
-  with 44/44 no-copy model mappings. The prior layer-3 attention-only checkpoint
+- Measurements: The exact complete native layers-0/1/2/3 plus layer-4 Q/KV
+  full-2K command reported 1169.303 ms wall / 647.777 ms GPU in its focused run
+  and 947.998 ms wall / 651.830 ms GPU in the complete target-Mac gate, across
+  89 dispatches with 53/53 no-copy model mappings. The prior complete-layer-3
+  checkpoint reported 675.511 ms wall / 592.734 ms GPU focused and 759.645 ms
+  wall / 671.882 ms GPU in its complete gate. The layer-3 attention-only checkpoint
   reported 583.424 ms wall / 501.227 ms GPU focused and 569.588 ms wall /
   490.821 ms GPU in its complete gate. The prior ratio-128
   compressor checkpoint reported 494.638 ms wall / 396.686 ms GPU focused and
@@ -373,8 +381,9 @@ history; add a correction and update the current-state summary.
 
 ## Immediate Next Actions
 
-1. Extend exact native 2K prefill into layer 4, reusing the established
-   ratio-4 attention/indexer and token-hash FFN path.
+1. Extend the retained layer-4 Q/KV state through both ratio-4 attention and
+   indexer compressors, validating all 512 prompt emissions and recurrent
+   states.
 2. Add the fixed 512-row ratio-4 indexer top-k and sparse indexed attention so
    128 generated tokens can continue beyond the 2K frontier.
 3. Emit the `rust-star-engine-measurement-v1` artifact from the exact
@@ -386,6 +395,42 @@ history; add a correction and update the current-state summary.
 6. Run or approve the fork's GitHub Actions workflow and retain its URL.
 
 ## Entries
+
+### 2026-08-22 — Complete layer 3 flows into exact layer-4 Q/KV state
+
+Objective:
+
+- Continue the exact native 2K chain from layer 3's retained final HC through
+  layer 4's complete pre-compressor Q/KV boundary.
+
+Changes:
+
+- Captured layer 4's HC attention ingress, learned norm, Q-Lora, fused Q/KV
+  norm, Q-B, Q/KV RoPE, and FP8 KV-finalization tensors in four fresh DwarfStar
+  processes. The separately captured 256 MiB Qraw tensors and every other full
+  tensor were byte-identical between repeats.
+- Added `prefill-layer4-qkv-2048-v1`, retaining ten exact final tiles while
+  pinning all complete 2K identities by SHA-256.
+- Added nine no-copy layer-4 model spans and ten Metal dispatches to the
+  terminal command. The runtime retains the full layer-4 Q, KV, input HC, and
+  attention split buffers for its compressor/attention continuation.
+- Extended the ABI, C0 checks, stable JSON report, documentation, and fixture
+  shape coverage through the `layer4_KVcur` boundary.
+
+Validation:
+
+- Focused optimized M1 Ultra run: all ten boundaries C0 exact, 89 dispatches,
+  53/53 no-copy model mappings, 1169.303 ms wall / 647.777 ms GPU.
+- Complete target-Mac gate: 99 Rust tests and 61 Python tests passed, every
+  differential fixture verified, all retained Metal controls stayed exact,
+  and the new boundary repeated C0 exact at 947.998 ms wall / 651.830 ms GPU.
+- These timings include correctness setup/readback and are not throughput
+  claims.
+
+Next:
+
+- Drive layer 4's paired ratio-4 attention/indexer compressors from the
+  retained normalized activations and validate all 512 prompt emissions.
 
 ### 2026-08-22 — Native 2K prefill is complete through layer 3
 

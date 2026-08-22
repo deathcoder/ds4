@@ -141,9 +141,17 @@ Q8_0 expert, and the additive FFN HC update. Two fresh DwarfStar captures agree
 bit-for-bit on every retained final-tile boundary and the complete final HC
 identity. The terminal schedule uses 79 dispatches and preserves all 44/44
 no-copy model mappings, establishing exact complete layer-3 prefill ownership.
+The retained layer-3 final HC now flows directly into layer 4's HC attention
+ingress, learned norm, Q-A/KV projections, fused Q/KV learned norm, Q-B,
+compressed RoPE, and FP8 KV finalization. All ten final-tile boundaries match
+four fresh DwarfStar captures exactly; the full-2K tensor identities are pinned
+by SHA-256. The expanded terminal schedule uses 89 dispatches and preserves
+53/53 no-copy model mappings while retaining the full layer-4 Q/KV state for
+the next boundary.
 Exactly 512 compressed rows remain dense; sparse indexer top-k starts only after
-this prompt boundary. Layer 4 and later prefill, output logits, and sparse
-post-prompt attention remain pending, and this is not a throughput claim.
+this prompt boundary. Layer-4 compressors, attention, and FFN plus later
+prefill, output logits, and sparse post-prompt attention remain pending, and
+this is not a throughput claim.
 
 Project controls and benchmark contracts:
 

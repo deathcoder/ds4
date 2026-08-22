@@ -253,11 +253,16 @@ normalizes expert weights from the unbiased probabilities. All compressed
 rows, recurrent states, raw-KV rows, attention output, FFN intermediates, final
 HC identity, and every retained prior boundary must be bit-identical to
 repeated DwarfStar captures. The terminal command uses 79 dispatches and 44/44
-no-copy model views.
+no-copy model views for complete layer 3, then adds ten dispatches and nine
+model views for layer-4 HC ingress, Q/KV learned normalization, compressed
+RoPE, and FP8 KV finalization. All ten layer-4 final-tile boundaries match four
+fresh DwarfStar captures bit-for-bit, and the full Q/KV state remains in the
+persistent Metal context. The combined terminal schedule uses 89 dispatches
+and 53/53 no-copy model views.
 
 Exactly 512 layer-2 compressed rows still use the dense path; sparse top-k
-begins only after this 2K boundary. Layer 4 and later prefill, output logits,
-and throughput remain outside this command.
+begins only after this 2K boundary. Layer-4 compressors, attention, and FFN,
+later prefill, output logits, and throughput remain outside this command.
 
 To run the connected layer-0 ingress gate:
 
