@@ -230,7 +230,7 @@ Every accumulated prefix plus every `KVnorm`, `KVrope`, and `KVcur` tile must
 match the repeated DwarfStar captures bit-for-bit. The attention/indexer
 compressors, mixed attention, layer-2 FFN, and later model remain pending.
 
-To complete native 2K prefill through layer 3:
+To complete native 2K prefill through layer 4 and enter layer 5:
 
 ```sh
 rust-star/.work/runtime-target/release/rust-star \
@@ -252,17 +252,18 @@ complete FFN. Its router selects top-6 experts from biased probabilities but
 normalizes expert weights from the unbiased probabilities. All compressed
 rows, recurrent states, raw-KV rows, attention output, FFN intermediates, final
 HC identity, and every retained prior boundary must be bit-identical to
-repeated DwarfStar captures. The terminal command uses 79 dispatches and 44/44
-no-copy model views for complete layer 3, then adds ten dispatches and nine
-model views for layer-4 HC ingress, Q/KV learned normalization, compressed
-RoPE, and FP8 KV finalization. All ten layer-4 final-tile boundaries match four
-fresh DwarfStar captures bit-for-bit, and the full Q/KV state remains in the
-persistent Metal context. The combined terminal schedule uses 89 dispatches
-and 53/53 no-copy model views.
+repeated DwarfStar captures. It then completes layer 4 through its paired
+ratio-4 compressors, dense mixed attention, biased top-6 routed/shared FFN,
+and both additive HC updates. The retained final HC flows directly into layer
+5's HC ingress, Q-A/KV projections, fused learned normalization, Q-B,
+compressed RoPE, and FP8 KV finalization. All ten layer-5 final-tile boundaries
+match four fresh DwarfStar captures bit-for-bit, and the full layer-5 Q/KV
+state remains in the persistent Metal context. The combined terminal schedule
+uses 159 dispatches and 85/85 no-copy model views.
 
-Exactly 512 layer-2 compressed rows still use the dense path; sparse top-k
-begins only after this 2K boundary. Layer-4 compressors, attention, and FFN,
-later prefill, output logits, and throughput remain outside this command.
+Exactly 512 layer-2/layer-4 compressed rows still use the dense path; sparse
+top-k begins only after this 2K boundary. Layer-5 compression, attention, and
+FFN, later prefill, output logits, and throughput remain outside this command.
 
 To run the connected layer-0 ingress gate:
 

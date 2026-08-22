@@ -160,11 +160,17 @@ layer 4 through FFN HC ingress, learned norm, biased top-6 selection, unbiased
 router-weight normalization, routed IQ2_XXS/Q2_K experts, the shared Q8_0
 expert, and the additive FFN HC update. Every retained final-tile boundary and
 the complete final HC identity match two fresh DwarfStar processes exactly.
-The terminal schedule now uses 149 dispatches and preserves 76/76 no-copy
-model mappings, establishing complete layer-4 prefill ownership.
+The terminal schedule now continues directly from layer 4's final HC into
+layer 5's HC attention ingress, learned norm, Q-A/KV projections, fused Q/KV
+normalization, Q-B, compressed RoPE, and FP8 KV finalization. All ten layer-5
+final-tile boundaries match four fresh DwarfStar captures bit-for-bit. The
+full layer-5 Q/KV buffers remain resident for the next compressor boundary.
+The combined terminal schedule uses 159 dispatches and preserves 85/85
+no-copy model mappings, establishing complete layer-4 prefill ownership plus
+exact layer-5 Q/KV state.
 Exactly 512 compressed rows remain dense; sparse indexer top-k starts only after
-this prompt boundary. Layer-5 and later prefill, output logits, and sparse
-post-prompt attention remain pending, and
+this prompt boundary. Layer-5 compression/attention/FFN, later prefill, output
+logits, and sparse post-prompt attention remain pending, and
 this is not a throughput claim.
 
 Project controls and benchmark contracts:

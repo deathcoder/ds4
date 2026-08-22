@@ -244,12 +244,19 @@ history; add a correction and update the current-state summary.
   exactly. Twelve final no-copy views now drive layer 4 through FFN HC ingress,
   learned norm, biased top-6 routing, routed/shared experts, and the additive
   final HC update. Every retained FFN boundary and the complete final HC
-  identity match two fresh DwarfStar processes exactly. It preserves 76/76
-  no-copy mappings across 149 dispatches, establishing complete native
-  layer-4 prefill ownership.
+  identity match two fresh DwarfStar processes exactly. That final HC now feeds
+  layer 5's HC attention ingress, learned norm, Q-A/KV projections, fused Q/KV
+  normalization, Q-B, compressed RoPE, and FP8 KV finalization without a host
+  activation upload. All ten layer-5 final-tile boundaries match four fresh
+  DwarfStar processes exactly. The command preserves 85/85 no-copy mappings
+  across 159 dispatches, establishing complete native layer-4 prefill ownership
+  plus exact full-2K layer-5 Q/KV state.
   Full native batched prefill, sparse indexed attention beyond 512 ratio-4
   rows, and the eligible engine-measurement producer remain pending.
-- Measurements: The exact complete native layers-0/1/2/3/4 full-2K command
+- Measurements: The exact complete native layers-0/1/2/3/4 plus layer-5 Q/KV
+  full-2K command reported 1085.161 ms wall / 994.834 ms GPU in its focused
+  run, across 159 dispatches with 85/85 no-copy model mappings. The prior exact
+  complete native layers-0/1/2/3/4 full-2K command
   reported 1079.281 ms wall / 991.837 ms GPU in its focused run and 1601.151 ms
   wall / 985.798 ms GPU in the complete target-Mac gate, across 149 dispatches
   with 76/76 no-copy model mappings. The prior attention-only checkpoint
@@ -399,8 +406,8 @@ history; add a correction and update the current-state summary.
 
 ## Immediate Next Actions
 
-1. Extend the retained layer-4 Q/KV and paired-compressor state through dense
-   mixed attention, attention HC post-processing, and the complete FFN.
+1. Continue the retained layer-5 Q/KV state through its ratio-128 compressor,
+   dense mixed attention, attention HC post-processing, and complete FFN.
 2. Add the fixed 512-row ratio-4 indexer top-k and sparse indexed attention so
    128 generated tokens can continue beyond the 2K frontier.
 3. Emit the `rust-star-engine-measurement-v1` artifact from the exact
@@ -412,6 +419,42 @@ history; add a correction and update the current-state summary.
 6. Run or approve the fork's GitHub Actions workflow and retain its URL.
 
 ## Entries
+
+### 2026-08-22 — Exact layer-5 HC ingress and full-2K Q/KV state
+
+Objective:
+
+- Carry layer 4's retained final HC directly into layer 5 and establish an
+  exact, GPU-resident Q/KV checkpoint for the next ratio-128 compressor step.
+
+Implementation:
+
+- Captured layer-5 HC attention ingress, learned norm, Q-Lora, Q-Lora norm,
+  raw/current Q, and raw/normalized/RoPE/final KV across four fresh DwarfStar
+  processes. Every repeated full tensor was byte-stable.
+- Added `prefill-layer5-qkv-2048-v1`, retaining compact final 32-row tiles for
+  ten boundaries while pinning each complete tensor identity by SHA-256.
+- Wrapped nine additional layer-5 tensors directly from the model mmap and
+  extended the terminal command with the proven ten-dispatch HC/QKV schedule.
+  The full finalized Q and KV buffers remain in the persistent Metal context.
+- Extended stable JSON to the `layer5_qkv_state` boundary with explicit layer-5
+  correctness and scope claims.
+
+Validation:
+
+- Fixture verifier: valid ten-tensor, 9,961,472-byte differential fixture.
+- Rust unit suite: 104 passed.
+- Focused optimized M1 Ultra run: all ten layer-5 boundaries C0 exact,
+  1085.161 ms wall / 994.834 ms GPU, 159 dispatches, and 85/85 no-copy model
+  mappings.
+- Full target-Mac gate: 104 Rust tests and 61 Python tests passed, every native
+  control remained exact, and the extended command reported 1088.225 ms wall /
+  991.314 ms GPU with 85/85 no-copy mappings.
+
+Next:
+
+- Continue the retained full layer-5 Q/KV state through all 16 ratio-128
+  compressor emissions and its final recurrent state.
 
 ### 2026-08-22 — Complete exact layer-4 prefill
 
