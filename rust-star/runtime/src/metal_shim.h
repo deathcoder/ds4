@@ -158,6 +158,7 @@ typedef struct rust_star_metal_prefill_layer2_attention_weights {
     rust_star_metal_prefill_ffn_weights ffn;
     rust_star_metal_prefill_kvnorm_weights layer3_kvnorm;
     uint64_t layer3_q_b_offset, layer3_q_b_bytes;
+    rust_star_metal_prefill_compressor_weights layer3_compressor;
 } rust_star_metal_prefill_layer2_attention_weights;
 
 typedef struct rust_star_metal_prefill_layer2_attention_result {
@@ -167,6 +168,7 @@ typedef struct rust_star_metal_prefill_layer2_attention_result {
     uint32_t dispatches;
     uint32_t wrapped_model_ranges;
     uint32_t pointer_matches;
+    uint32_t layer3_compressed_kv_rows;
     double wall_ms;
     double gpu_ms;
 } rust_star_metal_prefill_layer2_attention_result;
@@ -467,6 +469,9 @@ int rust_star_metal_run_prefill_layer2_attention(
     float *layer3_q_cur_final_tile,
     float *layer3_kv_rope,
     float *layer3_kv_cur,
+    float *layer3_attn_compressed,
+    float *layer3_attn_state_kv,
+    int32_t *layer3_attn_state_score,
     rust_star_metal_prefill_layer2_attention_result *result,
     char *error,
     size_t error_bytes);

@@ -230,7 +230,7 @@ Every accumulated prefix plus every `KVnorm`, `KVrope`, and `KVcur` tile must
 match the repeated DwarfStar captures bit-for-bit. The attention/indexer
 compressors, mixed attention, layer-2 FFN, and later model remain pending.
 
-To continue through both ratio-4 compressors and exact dense mixed attention:
+To complete layer 2 and retain layer 3's exact 2K ratio-128 compressor state:
 
 ```sh
 rust-star/.work/runtime-target/release/rust-star \
@@ -239,14 +239,21 @@ rust-star/.work/runtime-target/release/rust-star \
   --json rust-star/.work/runtime-target/prefill-layers012-attention-loop-probe.json
 ```
 
-This command retains the same 64-tile context, first requires all 512
+This command retains the same 64-tile context, first requires all 512 layer-2
 attention/indexer compressed rows and final recurrent states to match, then
 executes full layer-2 Q-B, compressed YaRN, dense mixed FlashAttention over
-2,048 raw plus 512 compressed rows, inverse RoPE, and both Q8 output
-projections. All 8,388,608 output values must match the repeated DwarfStar
-fixture bit-for-bit. Exactly 512 compressed rows still use the dense path;
-sparse top-k begins only after this 2K boundary. Layer-2 HC post-processing,
-FFN, later layers, output logits, and throughput remain outside this command.
+2,048 raw plus 512 compressed rows, inverse RoPE, both Q8 output projections,
+the attention HC update, and the complete routed/shared FFN. It hands the exact
+final HC buffer directly into layer 3 without a host upload. Layer 3 then runs
+HC ingress, Q/KV setup, compressed RoPE, FP8 raw-KV finalization, and its full
+ratio-128 attention compressor. All 16 compressed rows, both 128x512 recurrent
+state tensors, the 2,048 raw-KV rows, and every retained prior boundary must be
+bit-identical to repeated DwarfStar captures. The terminal command uses 49
+dispatches and 29/29 no-copy model views.
+
+Exactly 512 layer-2 compressed rows still use the dense path; sparse top-k
+begins only after this 2K boundary. Layer-3 mixed attention/FFN, later layers,
+output logits, and throughput remain outside this command.
 
 To run the connected layer-0 ingress gate:
 

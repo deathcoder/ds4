@@ -484,6 +484,56 @@ kernel void rust_star_compressor_softmax_pool_batch(
     dst[gid] = acc/sum;
 }
 
+struct rust_star_compressor_softmax_pool_strided_args {
+    long ne00;
+    long ne01;
+    long ne02;
+    ulong nb00;
+    ulong nb01;
+    ulong nb02;
+    ulong nb10;
+    ulong nb11;
+    ulong nb12;
+    long ne0;
+    long ne1;
+    ulong nb0;
+    ulong nb1;
+};
+
+// Exact full-prefill ratio-128 path. This intentionally preserves the scalar
+// reduction order of DwarfStar's kernel_dsv4_softmax_pool implementation.
+kernel void rust_star_compressor_softmax_pool_strided(
+        constant rust_star_compressor_softmax_pool_strided_args & args,
+        device const char * kv,
+        device const char * score,
+        device char * dst,
+        uint gid [[thread_position_in_grid]]) {
+    const long n = args.ne0*args.ne1;
+    if ((long)gid >= n) return;
+
+    const long id = gid%args.ne0;
+    const long ic = gid/args.ne0;
+    float max_s = -INFINITY;
+    for (long row = 0; row < args.ne00; row++) {
+        const float value = *((device const float *)(
+            score + row*args.nb10 + id*args.nb11 + ic*args.nb12));
+        max_s = max(max_s, value);
+    }
+
+    float sum = 0.0f;
+    float acc = 0.0f;
+    for (long row = 0; row < args.ne00; row++) {
+        const float value = *((device const float *)(
+            score + row*args.nb10 + id*args.nb11 + ic*args.nb12));
+        const float weight = exp(value-max_s);
+        const float projected = *((device const float *)(
+            kv + row*args.nb00 + id*args.nb01 + ic*args.nb02));
+        sum += weight;
+        acc += projected*weight;
+    }
+    *((device float *)(dst + id*args.nb0 + ic*args.nb1)) = acc/sum;
+}
+
 struct ds4_metal_args_dsv4_hc_split_weighted_sum_norm {
     long n_embd; int n_hc; int sinkhorn_iters; long n_rows; long mix_hc;
     ulong nb_mix1; ulong nb_split1;
