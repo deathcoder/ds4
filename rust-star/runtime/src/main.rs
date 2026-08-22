@@ -3728,7 +3728,7 @@ fn prefill_layers012_compressor_loop_probe_usage() -> &'static str {
 }
 
 fn prefill_layers012_attention_loop_probe_usage() -> &'static str {
-    "usage: rust-star prefill-layers012-attention-loop-probe MODEL.gguf [--json PATH]\n\nRuns all 64 native 32-row schedules over positions 0--2047 in one persistent Metal context and completes layers 2 through 6. Layer 6 includes paired ratio-4 attention/indexer compressors, dense mixed attention, biased top-6 routed/shared experts, and the additive final HC update. Every retained boundary must match repeated DwarfStar captures bit-for-bit. The 2,064 logical layer-3/layer-5 keys use a 2,112-row masked physical extent required by the 64-row FlashAttention block contract. This does not claim layer-7 prefill, sparse post-prompt ratio-4 attention, complete-model prefill, or throughput."
+    "usage: rust-star prefill-layers012-attention-loop-probe MODEL.gguf [--json PATH]\n\nRuns all 64 native 32-row schedules over positions 0--2047 in one persistent Metal context and completes layers 2 through 7. Layer 6 includes paired ratio-4 attention/indexer compressors; layer 7 continues through its ratio-128 compressor, dense mixed attention, biased top-6 routed/shared experts, and additive final HC update. Every retained boundary must match repeated DwarfStar captures bit-for-bit. The 2,064 logical layer-3/layer-5/layer-7 keys use a 2,112-row masked physical extent required by the 64-row FlashAttention block contract. This does not claim layer-8 prefill, sparse post-prompt ratio-4 attention, complete-model prefill, output logits, or throughput."
 }
 
 fn ingress_probe_usage() -> &'static str {

@@ -303,6 +303,15 @@ static NSString *const kQ8ProjectionSource =
 @property(nonatomic, strong) id<MTLBuffer> prefillLayer6IndexerStateScore;
 @property(nonatomic, strong) id<MTLBuffer> prefillLayer6AfterAttentionHc;
 @property(nonatomic, strong) id<MTLBuffer> prefillLayer6AfterFfnHc;
+@property(nonatomic, strong) id<MTLBuffer> prefillLayer7FullQ;
+@property(nonatomic, strong) id<MTLBuffer> prefillLayer7FullKv;
+@property(nonatomic, strong) id<MTLBuffer> prefillLayer7InputHc;
+@property(nonatomic, strong) id<MTLBuffer> prefillLayer7AttnSplit;
+@property(nonatomic, strong) id<MTLBuffer> prefillLayer7AttnCompressed;
+@property(nonatomic, strong) id<MTLBuffer> prefillLayer7AttnStateKv;
+@property(nonatomic, strong) id<MTLBuffer> prefillLayer7AttnStateScore;
+@property(nonatomic, strong) id<MTLBuffer> prefillLayer7AfterAttentionHc;
+@property(nonatomic, strong) id<MTLBuffer> prefillLayer7AfterFfnHc;
 @property(nonatomic, assign) uint32_t prefillKvRows;
 @property(nonatomic, assign) double chainedWallEnd;
 @property(nonatomic, assign) BOOL chainedReady;
@@ -5256,6 +5265,31 @@ int rust_star_metal_run_prefill_layer2_attention(
     float *layer6_router_weights_final_tile,
     float *layer6_routed_out_final_tile,
     float *layer6_shared_out_final_tile,
+    float *layer7_hc_attn_pre_final_tile,
+    float *layer7_attn_norm_final_tile,
+    float *layer7_q_lora_final_tile,
+    float *layer7_q_lora_norm_final_tile,
+    float *layer7_kv_raw_final_tile,
+    float *layer7_kv_norm_final_tile,
+    float *layer7_q_raw_final_tile,
+    float *layer7_q_cur_final_tile,
+    float *layer7_kv_rope_final_tile,
+    float *layer7_kv_cur_final_tile,
+    float *layer7_attn_compressed,
+    float *layer7_attn_state_kv,
+    int32_t *layer7_attn_state_score,
+    float *layer7_kqv_out_row0,
+    float *layer7_kqv_back_row0,
+    float *layer7_attn_low_row0,
+    float *layer7_attention_output,
+    float *layer7_after_attention_hc,
+    float *layer7_after_ffn_hc,
+    float *layer7_ffn_cur_final_tile,
+    float *layer7_ffn_norm_final_tile,
+    int32_t *layer7_router_selected_final_tile,
+    float *layer7_router_weights_final_tile,
+    float *layer7_routed_out_final_tile,
+    float *layer7_shared_out_final_tile,
     rust_star_metal_prefill_layer2_attention_result *result,
     char *error,
     size_t error_bytes)
@@ -5318,6 +5352,19 @@ int rust_star_metal_run_prefill_layer2_attention(
         !layer6_ffn_norm_final_tile || !layer6_router_selected_final_tile ||
         !layer6_router_weights_final_tile || !layer6_routed_out_final_tile ||
         !layer6_shared_out_final_tile ||
+        !layer7_hc_attn_pre_final_tile || !layer7_attn_norm_final_tile ||
+        !layer7_q_lora_final_tile || !layer7_q_lora_norm_final_tile ||
+        !layer7_kv_raw_final_tile || !layer7_kv_norm_final_tile ||
+        !layer7_q_raw_final_tile || !layer7_q_cur_final_tile ||
+        !layer7_kv_rope_final_tile || !layer7_kv_cur_final_tile ||
+        !layer7_attn_compressed || !layer7_attn_state_kv ||
+        !layer7_attn_state_score || !layer7_kqv_out_row0 ||
+        !layer7_kqv_back_row0 || !layer7_attn_low_row0 ||
+        !layer7_attention_output || !layer7_after_attention_hc ||
+        !layer7_after_ffn_hc || !layer7_ffn_cur_final_tile ||
+        !layer7_ffn_norm_final_tile || !layer7_router_selected_final_tile ||
+        !layer7_router_weights_final_tile || !layer7_routed_out_final_tile ||
+        !layer7_shared_out_final_tile ||
         !result) {
         return fail_with_message(error, error_bytes,
             @"prefill layer-2 attention received a null input");
@@ -5559,6 +5606,50 @@ int rust_star_metal_run_prefill_layer2_attention(
             weights->layer6_ffn.shared_up_bytes !=
                 2048ull*(n_embd/32u)*34u ||
             weights->layer6_ffn.shared_down_bytes !=
+                n_embd*(2048u/32u)*34u ||
+            weights->layer7_kvnorm.ingress.hc_fn_bytes !=
+                16384ull*24ull*sizeof(uint16_t) ||
+            weights->layer7_kvnorm.ingress.hc_scale_bytes != 3u*sizeof(float) ||
+            weights->layer7_kvnorm.ingress.hc_base_bytes != 24u*sizeof(float) ||
+            weights->layer7_kvnorm.ingress.norm_bytes != n_embd*sizeof(float) ||
+            weights->layer7_kvnorm.ingress.q_a_bytes !=
+                1024ull*((uint64_t)n_embd/32u)*34u ||
+            weights->layer7_kvnorm.q_a_norm_bytes != 1024u*sizeof(float) ||
+            weights->layer7_kvnorm.kv_bytes !=
+                512ull*((uint64_t)n_embd/32u)*34u ||
+            weights->layer7_kvnorm.kv_norm_bytes != 512u*sizeof(float) ||
+            weights->layer7_q_b_bytes !=
+                (uint64_t)q_dim*(1024u/32u)*34u ||
+            weights->layer7_compressor.attn_ape_bytes !=
+                (uint64_t)layer3_compressor_ratio*layer3_compressor_width*
+                    sizeof(uint16_t) ||
+            weights->layer7_compressor.attn_kv_bytes !=
+                (uint64_t)n_embd*layer3_compressor_width*sizeof(uint16_t) ||
+            weights->layer7_compressor.attn_gate_bytes !=
+                (uint64_t)n_embd*layer3_compressor_width*sizeof(uint16_t) ||
+            weights->layer7_compressor.attn_norm_bytes !=
+                layer3_compressor_width*sizeof(float) ||
+            weights->layer7_attn_sinks_bytes != n_head*sizeof(float) ||
+            weights->layer7_attn_output_a_bytes !=
+                8ull*output_rank*((uint64_t)n_embd/32u)*34u ||
+            weights->layer7_attn_output_b_bytes !=
+                (uint64_t)n_embd*((uint64_t)(8u*output_rank)/32u)*34u ||
+            weights->layer7_ffn.hc_fn_bytes !=
+                16384ull*24ull*sizeof(uint16_t) ||
+            weights->layer7_ffn.hc_scale_bytes != 3u*sizeof(float) ||
+            weights->layer7_ffn.hc_base_bytes != 24u*sizeof(float) ||
+            weights->layer7_ffn.norm_bytes != n_embd*sizeof(float) ||
+            weights->layer7_ffn.router_gate_bytes !=
+                (uint64_t)n_embd*256u*sizeof(uint16_t) ||
+            weights->layer7_ffn.router_hash_bytes != 256u*sizeof(float) ||
+            weights->layer7_ffn.routed_gate_bytes != 256ull*2048ull*1056ull ||
+            weights->layer7_ffn.routed_up_bytes != 256ull*2048ull*1056ull ||
+            weights->layer7_ffn.routed_down_bytes != 256ull*n_embd*672ull ||
+            weights->layer7_ffn.shared_gate_bytes !=
+                2048ull*(n_embd/32u)*34u ||
+            weights->layer7_ffn.shared_up_bytes !=
+                2048ull*(n_embd/32u)*34u ||
+            weights->layer7_ffn.shared_down_bytes !=
                 n_embd*(2048u/32u)*34u) {
             return fail_with_message(error, error_bytes,
                 @"prefill layer-2 attention tensor shapes are invalid");
@@ -5567,7 +5658,7 @@ int rust_star_metal_run_prefill_layer2_attention(
             !ensure_moe_output_pipelines(context, error, error_bytes)) return 0;
         memset(result, 0, sizeof(*result));
 
-        uint64_t offsets[136] = {
+        uint64_t offsets[164] = {
             weights->q_b_offset, weights->attn_sinks_offset,
             weights->attn_output_a_offset, weights->attn_output_b_offset,
             weights->ffn.hc_fn_offset, weights->ffn.hc_scale_offset,
@@ -5696,8 +5787,36 @@ int rust_star_metal_run_prefill_layer2_attention(
             weights->layer6_ffn.shared_gate_offset,
             weights->layer6_ffn.shared_up_offset,
             weights->layer6_ffn.shared_down_offset,
+            weights->layer7_kvnorm.ingress.hc_fn_offset,
+            weights->layer7_kvnorm.ingress.hc_scale_offset,
+            weights->layer7_kvnorm.ingress.hc_base_offset,
+            weights->layer7_kvnorm.ingress.norm_offset,
+            weights->layer7_kvnorm.ingress.q_a_offset,
+            weights->layer7_kvnorm.q_a_norm_offset,
+            weights->layer7_kvnorm.kv_offset,
+            weights->layer7_kvnorm.kv_norm_offset,
+            weights->layer7_q_b_offset,
+            weights->layer7_compressor.attn_ape_offset,
+            weights->layer7_compressor.attn_kv_offset,
+            weights->layer7_compressor.attn_gate_offset,
+            weights->layer7_compressor.attn_norm_offset,
+            weights->layer7_attn_sinks_offset,
+            weights->layer7_attn_output_a_offset,
+            weights->layer7_attn_output_b_offset,
+            weights->layer7_ffn.hc_fn_offset,
+            weights->layer7_ffn.hc_scale_offset,
+            weights->layer7_ffn.hc_base_offset,
+            weights->layer7_ffn.norm_offset,
+            weights->layer7_ffn.router_gate_offset,
+            weights->layer7_ffn.router_hash_offset,
+            weights->layer7_ffn.routed_gate_offset,
+            weights->layer7_ffn.routed_up_offset,
+            weights->layer7_ffn.routed_down_offset,
+            weights->layer7_ffn.shared_gate_offset,
+            weights->layer7_ffn.shared_up_offset,
+            weights->layer7_ffn.shared_down_offset,
         };
-        uint64_t sizes[136] = {
+        uint64_t sizes[164] = {
             weights->q_b_bytes, weights->attn_sinks_bytes,
             weights->attn_output_a_bytes, weights->attn_output_b_bytes,
             weights->ffn.hc_fn_bytes, weights->ffn.hc_scale_bytes,
@@ -5826,11 +5945,39 @@ int rust_star_metal_run_prefill_layer2_attention(
             weights->layer6_ffn.shared_gate_bytes,
             weights->layer6_ffn.shared_up_bytes,
             weights->layer6_ffn.shared_down_bytes,
+            weights->layer7_kvnorm.ingress.hc_fn_bytes,
+            weights->layer7_kvnorm.ingress.hc_scale_bytes,
+            weights->layer7_kvnorm.ingress.hc_base_bytes,
+            weights->layer7_kvnorm.ingress.norm_bytes,
+            weights->layer7_kvnorm.ingress.q_a_bytes,
+            weights->layer7_kvnorm.q_a_norm_bytes,
+            weights->layer7_kvnorm.kv_bytes,
+            weights->layer7_kvnorm.kv_norm_bytes,
+            weights->layer7_q_b_bytes,
+            weights->layer7_compressor.attn_ape_bytes,
+            weights->layer7_compressor.attn_kv_bytes,
+            weights->layer7_compressor.attn_gate_bytes,
+            weights->layer7_compressor.attn_norm_bytes,
+            weights->layer7_attn_sinks_bytes,
+            weights->layer7_attn_output_a_bytes,
+            weights->layer7_attn_output_b_bytes,
+            weights->layer7_ffn.hc_fn_bytes,
+            weights->layer7_ffn.hc_scale_bytes,
+            weights->layer7_ffn.hc_base_bytes,
+            weights->layer7_ffn.norm_bytes,
+            weights->layer7_ffn.router_gate_bytes,
+            weights->layer7_ffn.router_hash_bytes,
+            weights->layer7_ffn.routed_gate_bytes,
+            weights->layer7_ffn.routed_up_bytes,
+            weights->layer7_ffn.routed_down_bytes,
+            weights->layer7_ffn.shared_gate_bytes,
+            weights->layer7_ffn.shared_up_bytes,
+            weights->layer7_ffn.shared_down_bytes,
         };
-        id<MTLBuffer> model_buffers[136] = { nil };
-        NSUInteger inner[136] = { 0 };
-        BOOL matches[136] = { NO };
-        for (uint32_t index = 0; index < 136u; index++) {
+        id<MTLBuffer> model_buffers[164] = { nil };
+        NSUInteger inner[164] = { 0 };
+        BOOL matches[164] = { NO };
+        for (uint32_t index = 0; index < 164u; index++) {
             model_buffers[index] = wrap_model_range(
                 context, model_mapping, model_bytes, offsets[index], sizes[index],
                 &inner[index], &matches[index], error, error_bytes);
@@ -6187,6 +6334,62 @@ int rust_star_metal_run_prefill_layer2_attention(
         RUST_STAR_NEW_L2_ATTN_BUFFER(layer6_routed_out_buffer, output_bytes);
         RUST_STAR_NEW_L2_ATTN_BUFFER(layer6_shared_out_buffer, output_bytes);
         RUST_STAR_NEW_L2_ATTN_BUFFER(layer6_after_ffn_hc_buffer, hc_bytes);
+        RUST_STAR_NEW_L2_ATTN_BUFFER(layer7_flat_hc_buffer, hc_bytes);
+        RUST_STAR_NEW_L2_ATTN_BUFFER(layer7_mix_buffer, ffn_mix_bytes);
+        RUST_STAR_NEW_L2_ATTN_BUFFER(layer7_split_buffer, ffn_mix_bytes);
+        RUST_STAR_NEW_L2_ATTN_BUFFER(layer7_cur_buffer, output_bytes);
+        RUST_STAR_NEW_L2_ATTN_BUFFER(layer7_norm_buffer, output_bytes);
+        RUST_STAR_NEW_L2_ATTN_BUFFER(layer7_q_lora_buffer, layer3_q_rank_bytes);
+        RUST_STAR_NEW_L2_ATTN_BUFFER(layer7_q_norm_buffer, layer3_q_rank_bytes);
+        RUST_STAR_NEW_L2_ATTN_BUFFER(layer7_kv_raw_buffer, layer3_kv_bytes);
+        RUST_STAR_NEW_L2_ATTN_BUFFER(layer7_kv_norm_buffer, layer3_kv_bytes);
+        RUST_STAR_NEW_L2_ATTN_BUFFER(layer7_kv_norm_snapshot_buffer,
+            layer3_kv_bytes);
+        RUST_STAR_NEW_L2_ATTN_BUFFER(layer7_kv_rope_buffer, layer3_kv_bytes);
+        RUST_STAR_NEW_L2_ATTN_BUFFER(layer7_q_raw_buffer, q_bytes);
+        RUST_STAR_NEW_L2_ATTN_BUFFER(layer7_q_cur_buffer, q_bytes);
+        RUST_STAR_NEW_L2_ATTN_BUFFER(layer7_attn_projected_kv_buffer,
+            layer3_compressor_projection_bytes);
+        RUST_STAR_NEW_L2_ATTN_BUFFER(layer7_attn_projected_score_buffer,
+            layer3_compressor_projection_bytes);
+        RUST_STAR_NEW_L2_ATTN_BUFFER(layer7_attn_score_ape_buffer,
+            layer3_compressor_projection_bytes);
+        RUST_STAR_NEW_L2_ATTN_BUFFER(layer7_attn_compressed_buffer,
+            layer3_compressed_bytes);
+        RUST_STAR_NEW_L2_ATTN_BUFFER(layer7_attn_state_kv_buffer,
+            layer3_compressor_state_bytes);
+        RUST_STAR_NEW_L2_ATTN_BUFFER(layer7_attn_state_score_buffer,
+            layer3_compressor_state_bytes);
+        RUST_STAR_NEW_L2_ATTN_BUFFER(layer7_compressed_position_buffer,
+            layer3_compressed_rows*sizeof(int32_t));
+        RUST_STAR_NEW_L2_ATTN_BUFFER(layer7_kqv_out_row0_buffer,
+            q_dim*sizeof(float));
+        RUST_STAR_NEW_L2_ATTN_BUFFER(layer7_kqv_back_row0_buffer,
+            q_dim*sizeof(float));
+        RUST_STAR_NEW_L2_ATTN_BUFFER(layer7_attn_low_row0_buffer,
+            8u*output_rank*sizeof(float));
+        RUST_STAR_NEW_L2_ATTN_BUFFER(layer7_attention_output_buffer,
+            output_bytes);
+        RUST_STAR_NEW_L2_ATTN_BUFFER(layer7_after_attention_hc_buffer,
+            hc_bytes);
+        RUST_STAR_NEW_L2_ATTN_BUFFER(layer7_ffn_flat_hc_buffer, hc_bytes);
+        RUST_STAR_NEW_L2_ATTN_BUFFER(layer7_ffn_mix_buffer, ffn_mix_bytes);
+        RUST_STAR_NEW_L2_ATTN_BUFFER(layer7_ffn_split_buffer, ffn_mix_bytes);
+        RUST_STAR_NEW_L2_ATTN_BUFFER(layer7_ffn_cur_buffer, output_bytes);
+        RUST_STAR_NEW_L2_ATTN_BUFFER(layer7_ffn_norm_buffer, output_bytes);
+        RUST_STAR_NEW_L2_ATTN_BUFFER(layer7_router_logits_buffer,
+            ffn_router_bytes);
+        RUST_STAR_NEW_L2_ATTN_BUFFER(layer7_router_probs_buffer,
+            ffn_router_bytes);
+        RUST_STAR_NEW_L2_ATTN_BUFFER(layer7_router_selected_buffer,
+            ffn_selected_bytes);
+        RUST_STAR_NEW_L2_ATTN_BUFFER(layer7_router_weights_buffer,
+            ffn_selected_bytes);
+        RUST_STAR_NEW_L2_ATTN_BUFFER(layer7_router_weight_sums_buffer,
+            rows*sizeof(float));
+        RUST_STAR_NEW_L2_ATTN_BUFFER(layer7_routed_out_buffer, output_bytes);
+        RUST_STAR_NEW_L2_ATTN_BUFFER(layer7_shared_out_buffer, output_bytes);
+        RUST_STAR_NEW_L2_ATTN_BUFFER(layer7_after_ffn_hc_buffer, hc_bytes);
 #undef RUST_STAR_NEW_L2_ATTN_BUFFER
         if (!q_buffer || !staged_kv_buffer || !mask_buffer || !block_buffer ||
             !pad_buffer || !heads_buffer || !attention_low_buffer || !output_buffer ||
@@ -6305,7 +6508,28 @@ int rust_star_metal_run_prefill_layer2_attention(
             !layer6_router_probs_buffer || !layer6_router_selected_buffer ||
             !layer6_router_weights_buffer ||
             !layer6_router_weight_sums_buffer || !layer6_routed_out_buffer ||
-            !layer6_shared_out_buffer || !layer6_after_ffn_hc_buffer) {
+            !layer6_shared_out_buffer || !layer6_after_ffn_hc_buffer ||
+            !layer7_flat_hc_buffer || !layer7_mix_buffer ||
+            !layer7_split_buffer || !layer7_cur_buffer || !layer7_norm_buffer ||
+            !layer7_q_lora_buffer || !layer7_q_norm_buffer ||
+            !layer7_kv_raw_buffer || !layer7_kv_norm_buffer ||
+            !layer7_kv_norm_snapshot_buffer || !layer7_kv_rope_buffer ||
+            !layer7_q_raw_buffer || !layer7_q_cur_buffer ||
+            !layer7_attn_projected_kv_buffer ||
+            !layer7_attn_projected_score_buffer ||
+            !layer7_attn_score_ape_buffer || !layer7_attn_compressed_buffer ||
+            !layer7_attn_state_kv_buffer || !layer7_attn_state_score_buffer ||
+            !layer7_compressed_position_buffer ||
+            !layer7_kqv_out_row0_buffer || !layer7_kqv_back_row0_buffer ||
+            !layer7_attn_low_row0_buffer || !layer7_attention_output_buffer ||
+            !layer7_after_attention_hc_buffer ||
+            !layer7_ffn_flat_hc_buffer || !layer7_ffn_mix_buffer ||
+            !layer7_ffn_split_buffer || !layer7_ffn_cur_buffer ||
+            !layer7_ffn_norm_buffer || !layer7_router_logits_buffer ||
+            !layer7_router_probs_buffer || !layer7_router_selected_buffer ||
+            !layer7_router_weights_buffer ||
+            !layer7_router_weight_sums_buffer || !layer7_routed_out_buffer ||
+            !layer7_shared_out_buffer || !layer7_after_ffn_hc_buffer) {
             return fail_with_message(error, error_bytes,
                 @"failed to allocate prefill layer-2 attention buffers");
         }
@@ -6373,6 +6597,12 @@ int rust_star_metal_run_prefill_layer2_attention(
             layer5_compressed_positions[row] =
                 (int32_t)(row*layer3_compressor_ratio);
         }
+        int32_t *layer7_compressed_positions =
+            layer7_compressed_position_buffer.contents;
+        for (uint32_t row = 0; row < layer3_compressed_rows; row++) {
+            layer7_compressed_positions[row] =
+                (int32_t)(row*layer3_compressor_ratio);
+        }
         memset(layer4_attn_state_kv_buffer.contents, 0, layer4_attn_state_bytes);
         memset(layer4_indexer_state_kv_buffer.contents, 0,
                layer4_indexer_state_bytes);
@@ -6418,6 +6648,14 @@ int rust_star_metal_run_prefill_layer2_attention(
         for (NSUInteger index = 0;
              index < layer3_compressor_state_bytes/sizeof(uint32_t); index++) {
             layer5_state_score_bits[index] = 0xff800000u;
+        }
+        memset(layer7_attn_state_kv_buffer.contents, 0,
+               layer3_compressor_state_bytes);
+        uint32_t *layer7_state_score_bits =
+            layer7_attn_state_score_buffer.contents;
+        for (NSUInteger index = 0;
+             index < layer3_compressor_state_bytes/sizeof(uint32_t); index++) {
+            layer7_state_score_bits[index] = 0xff800000u;
         }
 
         rust_star_q8_mm_args q_b_args = {
@@ -8961,6 +9199,466 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setBuffer:layer6_after_ffn_hc_buffer offset:0 atIndex:6];
         [encoder dispatchThreadgroups:MTLSizeMake((rows*n_embd+255u)/256u,1,1)
              threadsPerThreadgroup:MTLSizeMake(256,1,1)];
+        [encoder setComputePipelineState:context.rmsNormF32Pipeline];
+        [encoder setBytes:&ffn_hc_norm_args length:sizeof(ffn_hc_norm_args) atIndex:0];
+        [encoder setBuffer:layer6_after_ffn_hc_buffer offset:0 atIndex:1];
+        [encoder setBuffer:layer6_after_ffn_hc_buffer offset:0 atIndex:2];
+        [encoder setBuffer:layer6_after_ffn_hc_buffer offset:0 atIndex:3];
+        [encoder setBuffer:layer7_flat_hc_buffer offset:0 atIndex:4];
+        [encoder setThreadgroupMemoryLength:32u*sizeof(float) atIndex:0];
+        [encoder dispatchThreadgroups:MTLSizeMake(rows,1,1)
+             threadsPerThreadgroup:MTLSizeMake(1024,1,1)];
+
+        [encoder setComputePipelineState:context.f16PrefillPipeline];
+        [encoder setBytes:&ffn_hc_mm_args length:sizeof(ffn_hc_mm_args) atIndex:0];
+        [encoder setBuffer:model_buffers[136] offset:inner[136] atIndex:1];
+        [encoder setBuffer:layer7_flat_hc_buffer offset:0 atIndex:2];
+        [encoder setBuffer:layer7_mix_buffer offset:0 atIndex:3];
+        [encoder setThreadgroupMemoryLength:8192u atIndex:0];
+        [encoder dispatchThreadgroups:MTLSizeMake(rows/32u,1,1)
+             threadsPerThreadgroup:MTLSizeMake(128,1,1)];
+
+        [encoder setComputePipelineState:context.hcIngressPipeline];
+        [encoder setBytes:&ffn_hc_ingress_args length:sizeof(ffn_hc_ingress_args) atIndex:0];
+        [encoder setBuffer:layer7_mix_buffer offset:0 atIndex:1];
+        [encoder setBuffer:model_buffers[137] offset:inner[137] atIndex:2];
+        [encoder setBuffer:model_buffers[138] offset:inner[138] atIndex:3];
+        [encoder setBuffer:layer6_after_ffn_hc_buffer offset:0 atIndex:4];
+        [encoder setBuffer:layer7_split_buffer offset:0 atIndex:5];
+        [encoder setBuffer:layer7_cur_buffer offset:0 atIndex:6];
+        [encoder setBuffer:model_buffers[139] offset:inner[139] atIndex:7];
+        [encoder setBuffer:layer7_norm_buffer offset:0 atIndex:8];
+        [encoder setThreadgroupMemoryLength:(n_embd+4u+32u)*sizeof(float) atIndex:0];
+        [encoder dispatchThreadgroups:MTLSizeMake(rows,1,1)
+             threadsPerThreadgroup:MTLSizeMake(1024,1,1)];
+
+        [encoder setComputePipelineState:context.q8PrefillPipeline];
+        [encoder setBytes:&layer5_q_a_args length:sizeof(layer5_q_a_args) atIndex:0];
+        [encoder setBuffer:model_buffers[140] offset:inner[140] atIndex:1];
+        [encoder setBuffer:layer7_norm_buffer offset:0 atIndex:2];
+        [encoder setBuffer:layer7_q_lora_buffer offset:0 atIndex:3];
+        [encoder setThreadgroupMemoryLength:6144u atIndex:0];
+        [encoder dispatchThreadgroups:MTLSizeMake(rows/32u,1024u/64u,1)
+             threadsPerThreadgroup:MTLSizeMake(128,1,1)];
+
+        [encoder setComputePipelineState:context.q8PrefillPipeline];
+        [encoder setBytes:&layer5_kv_args length:sizeof(layer5_kv_args) atIndex:0];
+        [encoder setBuffer:model_buffers[142] offset:inner[142] atIndex:1];
+        [encoder setBuffer:layer7_norm_buffer offset:0 atIndex:2];
+        [encoder setBuffer:layer7_kv_raw_buffer offset:0 atIndex:3];
+        [encoder setThreadgroupMemoryLength:6144u atIndex:0];
+        [encoder dispatchThreadgroups:MTLSizeMake(rows/32u,512u/64u,1)
+             threadsPerThreadgroup:MTLSizeMake(128,1,1)];
+
+        [encoder setComputePipelineState:context.qkvNormPipeline];
+        [encoder setBytes:&layer3_qkv_norm_args
+                   length:sizeof(layer3_qkv_norm_args) atIndex:0];
+        [encoder setBuffer:layer7_q_lora_buffer offset:0 atIndex:1];
+        [encoder setBuffer:model_buffers[141] offset:inner[141] atIndex:2];
+        [encoder setBuffer:layer7_q_norm_buffer offset:0 atIndex:3];
+        [encoder setBuffer:layer7_kv_raw_buffer offset:0 atIndex:4];
+        [encoder setBuffer:model_buffers[143] offset:inner[143] atIndex:5];
+        [encoder setBuffer:layer7_kv_norm_buffer offset:0 atIndex:6];
+        [encoder setThreadgroupMemoryLength:32u*sizeof(float) atIndex:0];
+        [encoder dispatchThreadgroups:MTLSizeMake(rows,2,1)
+             threadsPerThreadgroup:MTLSizeMake(256,1,1)];
+
+        [encoder setComputePipelineState:context.q8PrefillPipeline];
+        [encoder setBytes:&layer5_q_b_args length:sizeof(layer5_q_b_args) atIndex:0];
+        [encoder setBuffer:model_buffers[144] offset:inner[144] atIndex:1];
+        [encoder setBuffer:layer7_q_norm_buffer offset:0 atIndex:2];
+        [encoder setBuffer:layer7_q_raw_buffer offset:0 atIndex:3];
+        [encoder setThreadgroupMemoryLength:6144u atIndex:0];
+        [encoder dispatchThreadgroups:MTLSizeMake(rows/32u,q_dim/64u,1)
+             threadsPerThreadgroup:MTLSizeMake(128,1,1)];
+        [encoder endEncoding];
+
+        id<MTLBlitCommandEncoder> layer7_blit = [command blitCommandEncoder];
+        if (!layer7_blit) return fail_with_message(error, error_bytes,
+            @"failed to create prefill layer-7 Q/KV snapshot encoder");
+        [layer7_blit copyFromBuffer:layer7_q_raw_buffer sourceOffset:0
+                           toBuffer:layer7_q_cur_buffer destinationOffset:0
+                               size:q_bytes];
+        [layer7_blit copyFromBuffer:layer7_kv_norm_buffer sourceOffset:0
+                           toBuffer:layer7_kv_norm_snapshot_buffer destinationOffset:0
+                               size:layer3_kv_bytes];
+        [layer7_blit endEncoding];
+
+        encoder = [command computeCommandEncoder];
+        if (!encoder) return fail_with_message(error, error_bytes,
+            @"failed to create prefill layer-7 RoPE encoder");
+        [encoder setComputePipelineState:context.headNormRopePipeline];
+        [encoder setBytes:&q_rope_args length:sizeof(q_rope_args) atIndex:0];
+        [encoder setBuffer:layer7_q_cur_buffer offset:0 atIndex:1];
+        [encoder setThreadgroupMemoryLength:32u*sizeof(float) atIndex:0];
+        [encoder dispatchThreadgroups:MTLSizeMake(n_head,rows,1)
+             threadsPerThreadgroup:MTLSizeMake(256,1,1)];
+        [encoder setComputePipelineState:context.ropeTailPipeline];
+        [encoder setBytes:&layer3_kv_rope_args
+                   length:sizeof(layer3_kv_rope_args) atIndex:0];
+        [encoder setBuffer:layer7_kv_norm_buffer offset:0 atIndex:1];
+        [encoder setBuffer:position_buffer offset:0 atIndex:2];
+        [encoder setBuffer:layer7_kv_norm_buffer offset:0 atIndex:3];
+        [encoder setBuffer:layer7_kv_norm_buffer offset:0 atIndex:4];
+        [encoder dispatchThreadgroups:MTLSizeMake(1,rows,1)
+             threadsPerThreadgroup:MTLSizeMake(256,1,1)];
+        [encoder endEncoding];
+
+        layer7_blit = [command blitCommandEncoder];
+        if (!layer7_blit) return fail_with_message(error, error_bytes,
+            @"failed to create prefill layer-7 KVrope snapshot encoder");
+        [layer7_blit copyFromBuffer:layer7_kv_norm_buffer sourceOffset:0
+                           toBuffer:layer7_kv_rope_buffer destinationOffset:0
+                               size:layer3_kv_bytes];
+        [layer7_blit endEncoding];
+
+        encoder = [command computeCommandEncoder];
+        if (!encoder) return fail_with_message(error, error_bytes,
+            @"failed to create prefill layer-7 KV finalization encoder");
+        [encoder setComputePipelineState:context.compressorFp8Pipeline];
+        [encoder setBytes:&layer3_kv_fp8_args
+                   length:sizeof(layer3_kv_fp8_args) atIndex:0];
+        [encoder setBuffer:layer7_kv_norm_buffer offset:0 atIndex:1];
+        [encoder setBuffer:layer7_kv_norm_buffer offset:0 atIndex:2];
+        [encoder setThreadgroupMemoryLength:64u*sizeof(float) atIndex:0];
+        [encoder dispatchThreadgroups:MTLSizeMake(rows,1,1)
+             threadsPerThreadgroup:MTLSizeMake(64,1,1)];
+
+#define RUST_STAR_ENCODE_LAYER7_COMPRESSOR_PROJECTION(args, index, output) do { \
+        [encoder setComputePipelineState:context.f16AlignedPrefillPipeline]; \
+        [encoder setBytes:&(args) length:sizeof(args) atIndex:0]; \
+        [encoder setBuffer:model_buffers[(index)] offset:inner[(index)] atIndex:1]; \
+        [encoder setBuffer:layer7_norm_buffer offset:0 atIndex:2]; \
+        [encoder setBuffer:(output) offset:0 atIndex:3]; \
+        [encoder setThreadgroupMemoryLength:6144u atIndex:0]; \
+        [encoder dispatchThreadgroups:MTLSizeMake( \
+                rows/32u,layer3_compressor_width/64u,1) \
+             threadsPerThreadgroup:MTLSizeMake(128,1,1)]; \
+    } while (0)
+        RUST_STAR_ENCODE_LAYER7_COMPRESSOR_PROJECTION(
+            layer5_attn_compressor_kv_args, 146,
+            layer7_attn_projected_kv_buffer);
+        RUST_STAR_ENCODE_LAYER7_COMPRESSOR_PROJECTION(
+            layer5_attn_compressor_gate_args, 147,
+            layer7_attn_projected_score_buffer);
+#undef RUST_STAR_ENCODE_LAYER7_COMPRESSOR_PROJECTION
+
+        if (!encode_projected_compressor_batch_ratio128(
+                context, encoder,
+                layer7_attn_projected_kv_buffer,
+                layer7_attn_projected_score_buffer,
+                layer7_attn_score_ape_buffer,
+                model_buffers[145], inner[145],
+                model_buffers[148], inner[148],
+                layer7_attn_compressed_buffer,
+                layer7_compressed_position_buffer,
+                0u, rows)) {
+            return fail_with_message(error, error_bytes,
+                @"failed to encode prefill layer-7 ratio-128 compressor");
+        }
+
+        uint32_t layer7_raw_elements = raw_rows*head_dim;
+        [encoder setComputePipelineState:context.cpyF32F16Pipeline];
+        [encoder setBytes:&layer7_raw_elements
+                   length:sizeof(layer7_raw_elements) atIndex:0];
+        [encoder setBuffer:layer7_kv_norm_buffer offset:0 atIndex:1];
+        [encoder setBuffer:staged_kv_buffer offset:0 atIndex:2];
+        [encoder dispatchThreadgroups:MTLSizeMake(
+                (layer7_raw_elements+1023u)/1024u,1,1)
+             threadsPerThreadgroup:MTLSizeMake(256,1,1)];
+
+        uint32_t layer7_compressed_elements =
+            layer3_compressed_rows*head_dim;
+        [encoder setBytes:&layer7_compressed_elements
+                   length:sizeof(layer7_compressed_elements) atIndex:0];
+        [encoder setBuffer:layer7_attn_compressed_buffer offset:0 atIndex:1];
+        [encoder setBuffer:staged_kv_buffer
+                     offset:(NSUInteger)raw_rows*head_f16_bytes atIndex:2];
+        [encoder dispatchThreadgroups:MTLSizeMake(
+                (layer7_compressed_elements+1023u)/1024u,1,1)
+             threadsPerThreadgroup:MTLSizeMake(256,1,1)];
+
+        [encoder setComputePipelineState:context.flashBlkPipeline];
+        [encoder setBytes:&layer3_block_args
+                   length:sizeof(layer3_block_args) atIndex:0];
+        [encoder setBuffer:layer3_mask_buffer offset:0 atIndex:1];
+        [encoder setBuffer:block_buffer offset:0 atIndex:2];
+        [encoder dispatchThreadgroups:MTLSizeMake(
+                layer3_attention_rows/64u,256,1)
+             threadsPerThreadgroup:MTLSizeMake(32,1,1)];
+
+        [encoder setComputePipelineState:context.flashNonvecPipeline];
+        [encoder setBytes:&layer3_attention_args
+                   length:sizeof(layer3_attention_args) atIndex:0];
+        [encoder setBuffer:layer7_q_cur_buffer offset:0 atIndex:1];
+        [encoder setBuffer:staged_kv_buffer offset:0 atIndex:2];
+        [encoder setBuffer:staged_kv_buffer offset:0 atIndex:3];
+        [encoder setBuffer:layer3_mask_buffer offset:0 atIndex:4];
+        [encoder setBuffer:model_buffers[149] offset:inner[149] atIndex:5];
+        [encoder setBuffer:pad_buffer offset:0 atIndex:6];
+        [encoder setBuffer:block_buffer offset:0 atIndex:7];
+        [encoder setBuffer:heads_buffer offset:0 atIndex:8];
+        [encoder setThreadgroupMemoryLength:28672u atIndex:0];
+        [encoder dispatchThreadgroups:MTLSizeMake(256,n_head,1)
+             threadsPerThreadgroup:MTLSizeMake(32,8,1)];
+        [encoder endEncoding];
+
+        id<MTLBlitCommandEncoder> layer7_attention_blit =
+            [command blitCommandEncoder];
+        if (!layer7_attention_blit) return fail_with_message(
+            error, error_bytes,
+            @"failed to create prefill layer-7 attention snapshot encoder");
+        [layer7_attention_blit copyFromBuffer:heads_buffer sourceOffset:0
+                                    toBuffer:layer7_kqv_out_row0_buffer
+                           destinationOffset:0 size:q_dim*sizeof(float)];
+        [layer7_attention_blit endEncoding];
+        encoder = [command computeCommandEncoder];
+        if (!encoder) return fail_with_message(
+            error, error_bytes,
+            @"failed to resume prefill layer-7 attention encoder");
+
+        [encoder setComputePipelineState:context.ropeTailPipeline];
+        [encoder setBytes:&inverse_args length:sizeof(inverse_args) atIndex:0];
+        [encoder setBuffer:heads_buffer offset:0 atIndex:1];
+        [encoder setBuffer:position_buffer offset:0 atIndex:2];
+        [encoder setBuffer:heads_buffer offset:0 atIndex:3];
+        [encoder setBuffer:heads_buffer offset:0 atIndex:4];
+        [encoder dispatchThreadgroups:MTLSizeMake(n_head,rows,1)
+             threadsPerThreadgroup:MTLSizeMake(256,1,1)];
+
+        [encoder setComputePipelineState:context.attentionOutputBatchMapPipeline];
+        [encoder setBytes:&map_args length:sizeof(map_args) atIndex:0];
+        [encoder setBuffer:group_ids_buffer offset:0 atIndex:1];
+        [encoder setBuffer:group_map_buffer offset:0 atIndex:2];
+        [encoder setBuffer:group_map_buffer offset:tpe_bytes atIndex:3];
+        [encoder setBuffer:group_map_buffer offset:work_offset atIndex:4];
+        [encoder setThreadgroupMemoryLength:128u atIndex:0];
+        [encoder dispatchThreadgroups:MTLSizeMake(1,1,1)
+             threadsPerThreadgroup:MTLSizeMake(8,1,1)];
+
+        [encoder setComputePipelineState:context.attentionOutputBatchLowPipeline];
+        [encoder setBytes:&layer5_low_args length:sizeof(layer5_low_args) atIndex:0];
+        [encoder setBuffer:model_buffers[150] offset:inner[150] atIndex:1];
+        [encoder setBuffer:heads_buffer offset:0 atIndex:2];
+        [encoder setBuffer:group_map_buffer offset:0 atIndex:3];
+        [encoder setBuffer:group_map_buffer offset:tpe_bytes atIndex:4];
+        [encoder setBuffer:attention_low_buffer offset:0 atIndex:5];
+        [encoder setBuffer:group_map_buffer offset:work_offset atIndex:6];
+        [encoder setThreadgroupMemoryLength:8192u atIndex:0];
+        [encoder dispatchThreadgroups:MTLSizeMake(work_cap,output_rank/64u,1)
+             threadsPerThreadgroup:MTLSizeMake(128,1,1)];
+
+        [encoder setComputePipelineState:context.q8PrefillPipeline];
+        [encoder setBytes:&layer5_output_args
+                   length:sizeof(layer5_output_args) atIndex:0];
+        [encoder setBuffer:model_buffers[151] offset:inner[151] atIndex:1];
+        [encoder setBuffer:attention_low_buffer offset:0 atIndex:2];
+        [encoder setBuffer:layer7_attention_output_buffer offset:0 atIndex:3];
+        [encoder setThreadgroupMemoryLength:6144u atIndex:0];
+        [encoder dispatchThreadgroups:MTLSizeMake(rows/32u,n_embd/64u,1)
+             threadsPerThreadgroup:MTLSizeMake(128,1,1)];
+
+        [encoder setComputePipelineState:context.hcExpand4Pipeline];
+        [encoder setBytes:&attention_hc_args
+                   length:sizeof(attention_hc_args) atIndex:0];
+        [encoder setBuffer:layer7_attention_output_buffer offset:0 atIndex:1];
+        [encoder setBuffer:layer6_after_ffn_hc_buffer offset:0 atIndex:2];
+        [encoder setBuffer:layer7_split_buffer
+                     offset:4u*sizeof(float) atIndex:3];
+        [encoder setBuffer:layer7_split_buffer
+                     offset:8u*sizeof(float) atIndex:4];
+        [encoder setBuffer:layer7_attention_output_buffer offset:0 atIndex:5];
+        [encoder setBuffer:layer7_after_attention_hc_buffer offset:0 atIndex:6];
+        [encoder dispatchThreadgroups:MTLSizeMake((rows*n_embd+255u)/256u,1,1)
+             threadsPerThreadgroup:MTLSizeMake(256,1,1)];
+        [encoder endEncoding];
+
+        id<MTLBlitCommandEncoder> layer7_attention_tail_blit =
+            [command blitCommandEncoder];
+        if (!layer7_attention_tail_blit) return fail_with_message(
+            error, error_bytes,
+            @"failed to create retained prefill layer-7 attention tail encoder");
+        [layer7_attention_tail_blit copyFromBuffer:heads_buffer sourceOffset:0
+                                         toBuffer:layer7_kqv_back_row0_buffer
+                                destinationOffset:0 size:q_dim*sizeof(float)];
+        [layer7_attention_tail_blit copyFromBuffer:attention_low_buffer
+                                      sourceOffset:0
+                                         toBuffer:layer7_attn_low_row0_buffer
+                                destinationOffset:0
+                                           size:8u*output_rank*sizeof(float)];
+        [layer7_attention_tail_blit endEncoding];
+        encoder = [command computeCommandEncoder];
+        if (!encoder) return fail_with_message(
+            error, error_bytes,
+            @"failed to resume prefill layer-7 FFN encoder");
+
+        [encoder setComputePipelineState:context.rmsNormF32Pipeline];
+        [encoder setBytes:&ffn_hc_norm_args length:sizeof(ffn_hc_norm_args) atIndex:0];
+        [encoder setBuffer:layer7_after_attention_hc_buffer offset:0 atIndex:1];
+        [encoder setBuffer:layer7_after_attention_hc_buffer offset:0 atIndex:2];
+        [encoder setBuffer:layer7_after_attention_hc_buffer offset:0 atIndex:3];
+        [encoder setBuffer:layer7_ffn_flat_hc_buffer offset:0 atIndex:4];
+        [encoder setThreadgroupMemoryLength:32u*sizeof(float) atIndex:0];
+        [encoder dispatchThreadgroups:MTLSizeMake(rows,1,1)
+             threadsPerThreadgroup:MTLSizeMake(1024,1,1)];
+
+        [encoder setComputePipelineState:context.f16PrefillPipeline];
+        [encoder setBytes:&ffn_hc_mm_args length:sizeof(ffn_hc_mm_args) atIndex:0];
+        [encoder setBuffer:model_buffers[152] offset:inner[152] atIndex:1];
+        [encoder setBuffer:layer7_ffn_flat_hc_buffer offset:0 atIndex:2];
+        [encoder setBuffer:layer7_ffn_mix_buffer offset:0 atIndex:3];
+        [encoder setThreadgroupMemoryLength:8192u atIndex:0];
+        [encoder dispatchThreadgroups:MTLSizeMake(rows/32u,1,1)
+             threadsPerThreadgroup:MTLSizeMake(128,1,1)];
+
+        [encoder setComputePipelineState:context.hcIngressPipeline];
+        [encoder setBytes:&ffn_hc_ingress_args length:sizeof(ffn_hc_ingress_args) atIndex:0];
+        [encoder setBuffer:layer7_ffn_mix_buffer offset:0 atIndex:1];
+        [encoder setBuffer:model_buffers[153] offset:inner[153] atIndex:2];
+        [encoder setBuffer:model_buffers[154] offset:inner[154] atIndex:3];
+        [encoder setBuffer:layer7_after_attention_hc_buffer offset:0 atIndex:4];
+        [encoder setBuffer:layer7_ffn_split_buffer offset:0 atIndex:5];
+        [encoder setBuffer:layer7_ffn_cur_buffer offset:0 atIndex:6];
+        [encoder setBuffer:model_buffers[155] offset:inner[155] atIndex:7];
+        [encoder setBuffer:layer7_ffn_norm_buffer offset:0 atIndex:8];
+        [encoder setThreadgroupMemoryLength:(n_embd+4u+32u)*sizeof(float) atIndex:0];
+        [encoder dispatchThreadgroups:MTLSizeMake(rows,1,1)
+             threadsPerThreadgroup:MTLSizeMake(1024,1,1)];
+
+        [encoder setComputePipelineState:context.f16PrefillPipeline];
+        [encoder setBytes:&router_args length:sizeof(router_args) atIndex:0];
+        [encoder setBuffer:model_buffers[156] offset:inner[156] atIndex:1];
+        [encoder setBuffer:layer7_ffn_norm_buffer offset:0 atIndex:2];
+        [encoder setBuffer:layer7_router_logits_buffer offset:0 atIndex:3];
+        [encoder setThreadgroupMemoryLength:8192u atIndex:0];
+        [encoder dispatchThreadgroups:MTLSizeMake(rows/32u,4,1)
+             threadsPerThreadgroup:MTLSizeMake(128,1,1)];
+
+        [encoder setComputePipelineState:context.routerSoftplusBatchPipeline];
+        [encoder setBuffer:layer7_router_logits_buffer offset:0 atIndex:0];
+        [encoder setBuffer:layer7_router_probs_buffer offset:0 atIndex:1];
+        [encoder dispatchThreads:MTLSizeMake(rows*256u,1,1)
+             threadsPerThreadgroup:MTLSizeMake(256,1,1)];
+        [encoder setComputePipelineState:context.routerSqrtBatchPipeline];
+        [encoder setBuffer:layer7_router_probs_buffer offset:0 atIndex:0];
+        [encoder setBuffer:layer7_router_probs_buffer offset:0 atIndex:1];
+        [encoder dispatchThreads:MTLSizeMake(rows*256u,1,1)
+             threadsPerThreadgroup:MTLSizeMake(256,1,1)];
+        [encoder setComputePipelineState:context.routerTopkRowsBatchPipeline];
+        [encoder setBuffer:layer7_router_probs_buffer offset:0 atIndex:0];
+        [encoder setBuffer:model_buffers[157] offset:inner[157] atIndex:1];
+        [encoder setBuffer:layer7_router_selected_buffer offset:0 atIndex:2];
+        [encoder dispatchThreads:MTLSizeMake(rows,1,1)
+             threadsPerThreadgroup:MTLSizeMake(256,1,1)];
+        [encoder setComputePipelineState:context.routerGatherWeightsBatchPipeline];
+        [encoder setBuffer:layer7_router_probs_buffer offset:0 atIndex:0];
+        [encoder setBuffer:layer7_router_selected_buffer offset:0 atIndex:1];
+        [encoder setBuffer:layer7_router_weights_buffer offset:0 atIndex:2];
+        [encoder dispatchThreads:MTLSizeMake(6,rows,1)
+             threadsPerThreadgroup:MTLSizeMake(6,1,1)];
+
+        [encoder setComputePipelineState:context.compressorSumRowsPipeline];
+        [encoder setBytes:&router_sum_args length:sizeof(router_sum_args) atIndex:0];
+        [encoder setBuffer:layer7_router_weights_buffer offset:0 atIndex:1];
+        [encoder setBuffer:layer7_router_weight_sums_buffer offset:0 atIndex:2];
+        [encoder setThreadgroupMemoryLength:32u*sizeof(float) atIndex:0];
+        [encoder dispatchThreadgroups:MTLSizeMake(rows,1,1)
+             threadsPerThreadgroup:MTLSizeMake(6,1,1)];
+        [encoder setComputePipelineState:context.routerClampSumsBatchPipeline];
+        [encoder setBuffer:layer7_router_weight_sums_buffer offset:0 atIndex:0];
+        [encoder setBuffer:layer7_router_weight_sums_buffer offset:0 atIndex:1];
+        [encoder dispatchThreads:MTLSizeMake(rows,1,1)
+             threadsPerThreadgroup:MTLSizeMake(256,1,1)];
+        [encoder setComputePipelineState:context.routerDivideBatchPipeline];
+        [encoder setBuffer:layer7_router_weights_buffer offset:0 atIndex:0];
+        [encoder setBuffer:layer7_router_weight_sums_buffer offset:0 atIndex:1];
+        [encoder setBuffer:layer7_router_weights_buffer offset:0 atIndex:2];
+        [encoder dispatchThreads:MTLSizeMake(6,rows,1)
+             threadsPerThreadgroup:MTLSizeMake(6,1,1)];
+        [encoder setComputePipelineState:context.routerScaleBatchPipeline];
+        [encoder setBuffer:layer7_router_weights_buffer offset:0 atIndex:0];
+        [encoder setBuffer:layer7_router_weights_buffer offset:0 atIndex:1];
+        [encoder dispatchThreads:MTLSizeMake(rows*6u,1,1)
+             threadsPerThreadgroup:MTLSizeMake(192,1,1)];
+
+        [encoder setComputePipelineState:context.routedBatchMapPipeline];
+        [encoder setBytes:&routed_map_args length:sizeof(routed_map_args) atIndex:0];
+        [encoder setBuffer:layer7_router_selected_buffer offset:0 atIndex:1];
+        [encoder setBuffer:routed_map_buffer offset:0 atIndex:2];
+        [encoder setBuffer:routed_map_buffer offset:routed_map_tpe_bytes atIndex:3];
+        [encoder setBuffer:routed_map_buffer offset:routed_map_work_offset atIndex:4];
+        [encoder setThreadgroupMemoryLength:256u*6u*sizeof(uint16_t) atIndex:0];
+        [encoder dispatchThreadgroups:MTLSizeMake(1,1,1)
+             threadsPerThreadgroup:MTLSizeMake(256,1,1)];
+
+        [encoder setComputePipelineState:context.routedBatchPairSwigluPipeline];
+        [encoder setBytes:&routed_gate_args length:sizeof(routed_gate_args) atIndex:0];
+        [encoder setBytes:&routed_activation_args length:sizeof(routed_activation_args) atIndex:1];
+        [encoder setBuffer:model_buffers[158] offset:inner[158] atIndex:2];
+        [encoder setBuffer:model_buffers[159] offset:inner[159] atIndex:3];
+        [encoder setBuffer:layer7_ffn_norm_buffer offset:0 atIndex:4];
+        [encoder setBuffer:routed_map_buffer offset:0 atIndex:5];
+        [encoder setBuffer:routed_map_buffer offset:routed_map_tpe_bytes atIndex:6];
+        [encoder setBuffer:routed_mid_buffer offset:0 atIndex:7];
+        [encoder setBuffer:layer7_router_weights_buffer offset:0 atIndex:8];
+        [encoder setBuffer:routed_map_buffer offset:routed_map_work_offset atIndex:9];
+        [encoder setThreadgroupMemoryLength:16384u atIndex:0];
+        [encoder dispatchThreadgroups:MTLSizeMake(routed_map_work_cap,32,1)
+             threadsPerThreadgroup:MTLSizeMake(128,1,1)];
+
+        [encoder setComputePipelineState:context.routedBatchDownPipeline];
+        [encoder setBytes:&routed_down_args length:sizeof(routed_down_args) atIndex:0];
+        [encoder setBuffer:model_buffers[160] offset:inner[160] atIndex:1];
+        [encoder setBuffer:routed_mid_buffer offset:0 atIndex:2];
+        [encoder setBuffer:routed_map_buffer offset:0 atIndex:3];
+        [encoder setBuffer:routed_map_buffer offset:routed_map_tpe_bytes atIndex:4];
+        [encoder setBuffer:routed_experts_buffer offset:0 atIndex:5];
+        [encoder setBuffer:routed_map_buffer offset:routed_map_work_offset atIndex:6];
+        [encoder setThreadgroupMemoryLength:8192u atIndex:0];
+        [encoder dispatchThreadgroups:MTLSizeMake(routed_map_work_cap,64,1)
+             threadsPerThreadgroup:MTLSizeMake(128,1,1)];
+        [encoder setComputePipelineState:context.routedBatchSumPipeline];
+        [encoder setBytes:&routed_sum_args length:sizeof(routed_sum_args) atIndex:0];
+        [encoder setBuffer:routed_experts_buffer offset:0 atIndex:1];
+        [encoder setBuffer:layer7_routed_out_buffer offset:0 atIndex:2];
+        [encoder dispatchThreadgroups:MTLSizeMake(rows,1,1)
+             threadsPerThreadgroup:MTLSizeMake(256,1,1)];
+
+#define RUST_STAR_ENCODE_L7_SHARED(args, index, input, output, width) do { \
+        [encoder setComputePipelineState:context.q8PrefillPipeline]; \
+        [encoder setBytes:&(args) length:sizeof(args) atIndex:0]; \
+        [encoder setBuffer:model_buffers[(index)] offset:inner[(index)] atIndex:1]; \
+        [encoder setBuffer:(input) offset:0 atIndex:2]; \
+        [encoder setBuffer:(output) offset:0 atIndex:3]; \
+        [encoder setThreadgroupMemoryLength:6144u atIndex:0]; \
+        [encoder dispatchThreadgroups:MTLSizeMake(rows/32u,(width)/64u,1) \
+             threadsPerThreadgroup:MTLSizeMake(128,1,1)]; \
+    } while (0)
+        RUST_STAR_ENCODE_L7_SHARED(shared_gate_args, 161, layer7_ffn_norm_buffer,
+            shared_gate_buffer, 2048);
+        RUST_STAR_ENCODE_L7_SHARED(shared_up_args, 162, layer7_ffn_norm_buffer,
+            shared_up_buffer, 2048);
+        [encoder setComputePipelineState:context.sharedSwigluBatchPipeline];
+        [encoder setBytes:&shared_swiglu_args length:sizeof(shared_swiglu_args) atIndex:0];
+        [encoder setBuffer:shared_gate_buffer offset:0 atIndex:1];
+        [encoder setBuffer:shared_up_buffer offset:0 atIndex:2];
+        [encoder setBuffer:shared_mid_buffer offset:0 atIndex:3];
+        [encoder dispatchThreadgroups:MTLSizeMake((rows*2048u+255u)/256u,1,1)
+             threadsPerThreadgroup:MTLSizeMake(256,1,1)];
+        RUST_STAR_ENCODE_L7_SHARED(shared_down_args, 163, shared_mid_buffer,
+            layer7_shared_out_buffer, n_embd);
+#undef RUST_STAR_ENCODE_L7_SHARED
+
+        [encoder setComputePipelineState:context.hcExpand4Pipeline];
+        [encoder setBytes:&ffn_hc_post_args length:sizeof(ffn_hc_post_args) atIndex:0];
+        [encoder setBuffer:layer7_routed_out_buffer offset:0 atIndex:1];
+        [encoder setBuffer:layer7_after_attention_hc_buffer offset:0 atIndex:2];
+        [encoder setBuffer:layer7_ffn_split_buffer offset:4u*sizeof(float) atIndex:3];
+        [encoder setBuffer:layer7_ffn_split_buffer offset:8u*sizeof(float) atIndex:4];
+        [encoder setBuffer:layer7_shared_out_buffer offset:0 atIndex:5];
+        [encoder setBuffer:layer7_after_ffn_hc_buffer offset:0 atIndex:6];
+        [encoder dispatchThreadgroups:MTLSizeMake((rows*n_embd+255u)/256u,1,1)
+             threadsPerThreadgroup:MTLSizeMake(256,1,1)];
         [encoder endEncoding];
 
         const double wall_start = monotonic_ms();
@@ -9308,16 +10006,95 @@ int rust_star_metal_run_prefill_layer2_attention(
         memcpy(layer6_shared_out_final_tile,
                (const uint8_t *)layer6_shared_out_buffer.contents+final_tile_offset,
                32u*n_embd*sizeof(float));
+        memcpy(layer7_hc_attn_pre_final_tile,
+               (const uint8_t *)layer7_cur_buffer.contents+final_tile_offset,
+               32u*n_embd*sizeof(float));
+        memcpy(layer7_attn_norm_final_tile,
+               (const uint8_t *)layer7_norm_buffer.contents+final_tile_offset,
+               32u*n_embd*sizeof(float));
+        memcpy(layer7_q_lora_final_tile,
+               (const uint8_t *)layer7_q_lora_buffer.contents+
+                   layer4_q_rank_final_tile_offset,
+               32u*1024u*sizeof(float));
+        memcpy(layer7_q_lora_norm_final_tile,
+               (const uint8_t *)layer7_q_norm_buffer.contents+
+                   layer4_q_rank_final_tile_offset,
+               32u*1024u*sizeof(float));
+        memcpy(layer7_kv_raw_final_tile,
+               (const uint8_t *)layer7_kv_raw_buffer.contents+
+                   layer4_kv_final_tile_offset,
+               32u*512u*sizeof(float));
+        memcpy(layer7_kv_norm_final_tile,
+               (const uint8_t *)layer7_kv_norm_snapshot_buffer.contents+
+                   layer4_kv_final_tile_offset,
+               32u*512u*sizeof(float));
+        memcpy(layer7_q_raw_final_tile,
+               (const uint8_t *)layer7_q_raw_buffer.contents+
+                   layer3_q_final_tile_offset,
+               32u*q_dim*sizeof(float));
+        memcpy(layer7_q_cur_final_tile,
+               (const uint8_t *)layer7_q_cur_buffer.contents+
+                   layer3_q_final_tile_offset,
+               32u*q_dim*sizeof(float));
+        memcpy(layer7_kv_rope_final_tile,
+               (const uint8_t *)layer7_kv_rope_buffer.contents+
+                   layer4_kv_final_tile_offset,
+               32u*512u*sizeof(float));
+        memcpy(layer7_kv_cur_final_tile,
+               (const uint8_t *)layer7_kv_norm_buffer.contents+
+                   layer4_kv_final_tile_offset,
+               32u*512u*sizeof(float));
+        memcpy(layer7_attn_compressed,
+               layer7_attn_compressed_buffer.contents, layer3_compressed_bytes);
+        memcpy(layer7_attn_state_kv,
+               layer7_attn_state_kv_buffer.contents,
+               layer3_compressor_state_bytes);
+        memcpy(layer7_attn_state_score,
+               layer7_attn_state_score_buffer.contents,
+               layer3_compressor_state_bytes);
+        memcpy(layer7_kqv_out_row0,
+               layer7_kqv_out_row0_buffer.contents, q_dim*sizeof(float));
+        memcpy(layer7_kqv_back_row0,
+               layer7_kqv_back_row0_buffer.contents, q_dim*sizeof(float));
+        memcpy(layer7_attn_low_row0,
+               layer7_attn_low_row0_buffer.contents,
+               8u*output_rank*sizeof(float));
+        memcpy(layer7_attention_output,
+               layer7_attention_output_buffer.contents, output_bytes);
+        memcpy(layer7_after_attention_hc,
+               layer7_after_attention_hc_buffer.contents, hc_bytes);
+        memcpy(layer7_after_ffn_hc,
+               layer7_after_ffn_hc_buffer.contents, hc_bytes);
+        memcpy(layer7_ffn_cur_final_tile,
+               (const uint8_t *)layer7_ffn_cur_buffer.contents+final_tile_offset,
+               32u*n_embd*sizeof(float));
+        memcpy(layer7_ffn_norm_final_tile,
+               (const uint8_t *)layer7_ffn_norm_buffer.contents+final_tile_offset,
+               32u*n_embd*sizeof(float));
+        memcpy(layer7_router_selected_final_tile,
+               (const uint8_t *)layer7_router_selected_buffer.contents+
+                   final_selected_offset,
+               32u*6u*sizeof(int32_t));
+        memcpy(layer7_router_weights_final_tile,
+               (const uint8_t *)layer7_router_weights_buffer.contents+
+                   final_selected_offset,
+               32u*6u*sizeof(float));
+        memcpy(layer7_routed_out_final_tile,
+               (const uint8_t *)layer7_routed_out_buffer.contents+final_tile_offset,
+               32u*n_embd*sizeof(float));
+        memcpy(layer7_shared_out_final_tile,
+               (const uint8_t *)layer7_shared_out_buffer.contents+final_tile_offset,
+               32u*n_embd*sizeof(float));
 
         uint32_t pointer_matches = 0;
-        for (uint32_t index = 0; index < 136u; index++) {
+        for (uint32_t index = 0; index < 164u; index++) {
             pointer_matches += matches[index] ? 1u : 0u;
         }
         result->rows = rows;
         result->raw_kv_rows = raw_rows;
         result->compressed_kv_rows = compressed_rows;
-        result->dispatches = 266u;
-        result->wrapped_model_ranges = 136u;
+        result->dispatches = 313u;
+        result->wrapped_model_ranges = 164u;
         result->pointer_matches = pointer_matches;
         result->layer3_compressed_kv_rows = layer3_compressed_rows;
         result->wall_ms = wall_end-wall_start;
@@ -9366,6 +10143,16 @@ int rust_star_metal_run_prefill_layer2_attention(
         context.prefillLayer6IndexerStateScore = layer6_indexer_state_score_buffer;
         context.prefillLayer6AfterAttentionHc = layer6_after_attention_hc_buffer;
         context.prefillLayer6AfterFfnHc = layer6_after_ffn_hc_buffer;
+        context.prefillLayer7FullQ = layer7_q_cur_buffer;
+        context.prefillLayer7FullKv = layer7_kv_norm_buffer;
+        context.prefillLayer7InputHc = layer6_after_ffn_hc_buffer;
+        context.prefillLayer7AttnSplit = layer7_split_buffer;
+        context.prefillLayer7AttnCompressed = layer7_attn_compressed_buffer;
+        context.prefillLayer7AttnStateKv = layer7_attn_state_kv_buffer;
+        context.prefillLayer7AttnStateScore = layer7_attn_state_score_buffer;
+        context.prefillLayer7AfterAttentionHc =
+            layer7_after_attention_hc_buffer;
+        context.prefillLayer7AfterFfnHc = layer7_after_ffn_hc_buffer;
         return 1;
     }
 }

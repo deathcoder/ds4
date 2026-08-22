@@ -276,15 +276,25 @@ history; add a correction and update the current-state summary.
   norm, biased top-6 routing, routed/shared experts, and additive final HC
   update. Every retained FFN boundary and the complete final HC identity match
   two fresh DwarfStar processes exactly, establishing complete native layers
-  0–6 at the 2K prompt boundary.
-  Full native batched prefill, sparse indexed attention beyond 512 ratio-4
+  0–6 at the 2K prompt boundary. The retained final state now continues through
+  layer 7's complete Q/KV state, ratio-128 compressor, dense mixed attention,
+  biased top-6 routed/shared FFN, and additive final HC update. All retained
+  layer-7 boundaries, full attention output, compressor states, and full HC
+  identities match fresh DwarfStar processes exactly, establishing complete
+  native layers 0–7 at the same prompt boundary with 164/164 no-copy mappings
+  across 313 terminal dispatches.
+  Full native model prefill, sparse indexed attention beyond 512 ratio-4
   rows, and the eligible engine-measurement producer remain pending.
-- Measurements: The exact complete native layers-0/1/2/3/4/5/6 full-2K
-  command reported 1709.387 ms wall / 1620.434 ms GPU in its focused
-  correctness run, across 266 dispatches with 136/136 no-copy model mappings.
-  The complete target-Mac gate reported 1636.955 ms wall / 1548.723 ms GPU
+- Measurements: The exact complete native layers-0/1/2/3/4/5/6/7 full-2K
+  command reported 1950.645 ms wall / 1864.381 ms GPU in its focused
+  correctness run, across 313 dispatches with 164/164 no-copy model mappings.
+  The complete target-Mac gate reported 1915.398 ms wall / 1819.682 ms GPU
   with the same schedule and mapping counts. These intervals include exhaustive
-  correctness readback and are not throughput claims.
+  correctness readback and are not throughput claims. The prior exact complete
+  native layers-0/1/2/3/4/5/6 full-2K command reported 1709.387 ms wall /
+  1620.434 ms GPU in its focused correctness run, across 266 dispatches with
+  136/136 no-copy model mappings; its complete gate reported 1636.955 ms wall /
+  1548.723 ms GPU.
   The prior exact complete native layers-0/1/2/3/4/5 plus layer-6
   dense-attention full-2K command reported 1545.043 ms wall / 1464.156 ms GPU
   in its focused correctness run, across 245 dispatches with 124/124 no-copy
@@ -453,9 +463,9 @@ history; add a correction and update the current-state summary.
 
 ## Immediate Next Actions
 
-1. Carry layer 6's retained final HC directly into layer 7 and extend the exact
-   full-2K prefill frontier through layer 7, preserving the complete layers-0–6
-   command as a regression control.
+1. Carry layer 7's retained final HC directly into layer 8 and extend the exact
+   full-2K prefill frontier while preserving the complete layers-0–7 command as
+   a regression control.
 2. Add the fixed 512-row ratio-4 indexer top-k and sparse indexed attention so
    128 generated tokens can continue beyond the 2K frontier.
 3. Emit the `rust-star-engine-measurement-v1` artifact from the exact
@@ -467,6 +477,53 @@ history; add a correction and update the current-state summary.
 6. Run or approve the fork's GitHub Actions workflow and retain its URL.
 
 ## Entries
+
+### 2026-08-22 — Exact complete layer-7 full-2K prefill
+
+Objective:
+
+- Carry layer 6's retained final HC directly through layer 7's complete native
+  prefill schedule without a host activation handoff.
+
+Implementation:
+
+- Captured layer 7's ten Q/KV boundaries, ratio-128 compressor output/state,
+  dense-attention diagnostics/output/HC post, and complete routed/shared FFN in
+  independent fresh DwarfStar processes; every paired full capture was
+  byte-identical.
+- Added four differential fixtures covering 28 retained tensors and
+  52,299,264 bytes, with full-capture SHA-256 identities retained in their
+  manifests.
+- Wrapped 28 additional GGUF spans without copies, extended the shared Metal
+  schedule by 47 dispatches, retained all layer-7 state in the persistent
+  context, and added exhaustive C0 comparisons and stable JSON reporting.
+- Initialized layer 7's compressed-position buffer with the canonical
+  ratio-128 positions; the first device run exposed this otherwise-silent
+  ownership requirement at the compressed-KV boundary.
+- Restored the standalone Q8 projection encoder lifecycle after the initial
+  schedule-block relocation removed its original `endEncoding`; the projection
+  regression control is C0 exact again.
+- Updated the CLI and runtime documentation. The artifact closes at
+  `layer7_ffn_hc_post` and explicitly denies layer-8, sparse post-prompt,
+  complete-model-prefill, output-logit, and throughput claims.
+
+Validation:
+
+- All four new differential fixtures validate independently.
+- Rust unit suite: 117 passed. Python tooling suite: 61 passed.
+- Focused optimized M1 Ultra run: every retained layer-7 boundary C0 exact,
+  1950.645 ms wall / 1864.381 ms GPU, 313 dispatches, and 164/164 no-copy model
+  mappings.
+- Full target-Mac gate: all host/runtime controls passed; the complete
+  layers-0–7 command reported 1915.398 ms wall / 1819.682 ms GPU with the same
+  schedule and mapping counts. These intervals include exhaustive correctness
+  readback and are not throughput claims.
+
+Next:
+
+- Extend the exact terminal prefill frontier through layer 8, or prioritize the
+  fixed 512-row ratio-4 sparse-indexed decode boundary if decode progression is
+  the nearer benchmark gate.
 
 ### 2026-08-22 — Exact complete layer-6 FFN and final HC
 

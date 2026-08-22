@@ -113,6 +113,13 @@ pub const PREFILL_LAYER6_ATTENTION_FIXTURE_ID: &str =
     "dwarfstar-oracle-v1-prefill-layer6-attention-2048";
 pub const PREFILL_LAYER6_COMPLETE_FIXTURE_ID: &str =
     "dwarfstar-oracle-v1-prefill-layer6-complete-2048";
+pub const PREFILL_LAYER7_QKV_FIXTURE_ID: &str = "dwarfstar-oracle-v1-prefill-layer7-qkv-2048";
+pub const PREFILL_LAYER7_COMPRESSOR_FIXTURE_ID: &str =
+    "dwarfstar-oracle-v1-prefill-layer7-compressor-2048";
+pub const PREFILL_LAYER7_ATTENTION_FIXTURE_ID: &str =
+    "dwarfstar-oracle-v1-prefill-layer7-attention-2048";
+pub const PREFILL_LAYER7_COMPLETE_FIXTURE_ID: &str =
+    "dwarfstar-oracle-v1-prefill-layer7-complete-2048";
 pub const PREFILL_LAYERS01_PREVIOUS_TILE_FIXTURE_ID: &str =
     "dwarfstar-oracle-v1-prefill-layers01-previous-tile-2048";
 pub const PREFILL_HC_INGRESS_FIXTURE_ID: &str = "dwarfstar-oracle-v1-prefill-hc-ingress-2048";
@@ -442,6 +449,30 @@ const PREFILL_LAYER6_KQV_BACK_ROW0_BYTES: &[u8] = include_bytes!(
 const PREFILL_LAYER6_ATTN_LOW_ROW0_BYTES: &[u8] = include_bytes!(
     "../../fixtures/prefill-layer6-attention-2048-v1/layer6-attn-low-row0.f32le.bin"
 );
+const PREFILL_LAYER7_ATTN_COMPRESSED_BYTES: &[u8] = include_bytes!(
+    "../../fixtures/prefill-layer7-compressor-2048-v1/attention-compressed-kv.f32le.bin"
+);
+const PREFILL_LAYER7_ATTN_STATE_KV_BYTES: &[u8] =
+    include_bytes!("../../fixtures/prefill-layer7-compressor-2048-v1/attention-state-kv.f32le.bin");
+const PREFILL_LAYER7_ATTN_STATE_SCORE_BYTES: &[u8] = include_bytes!(
+    "../../fixtures/prefill-layer7-compressor-2048-v1/attention-state-score.i32le.bin"
+);
+const PREFILL_LAYER7_ATTENTION_OUTPUT_BYTES: &[u8] = include_bytes!(
+    "../../fixtures/prefill-layer7-attention-2048-v1/layer7-attention-output.f32le.bin"
+);
+const PREFILL_LAYER7_ATTENTION_OUTPUT_CHECKSUM: u64 = 0x06b5_6be5_5f70_8ac7;
+const PREFILL_LAYER7_HC_ATTN_POST_FINAL_TILE_BYTES: &[u8] = include_bytes!(
+    "../../fixtures/prefill-layer7-attention-2048-v1/layer7-hc-attn-post-final-tile.f32le.bin"
+);
+const PREFILL_LAYER7_HC_ATTN_POST_FULL_CHECKSUM: u64 = 0x411a_0c36_d954_e04c;
+const PREFILL_LAYER7_KQV_OUT_ROW0_BYTES: &[u8] =
+    include_bytes!("../../fixtures/prefill-layer7-attention-2048-v1/layer7-kqv-out-row0.f32le.bin");
+const PREFILL_LAYER7_KQV_BACK_ROW0_BYTES: &[u8] = include_bytes!(
+    "../../fixtures/prefill-layer7-attention-2048-v1/layer7-kqv-back-row0.f32le.bin"
+);
+const PREFILL_LAYER7_ATTN_LOW_ROW0_BYTES: &[u8] = include_bytes!(
+    "../../fixtures/prefill-layer7-attention-2048-v1/layer7-attn-low-row0.f32le.bin"
+);
 const PREFILL_LAYER4_ATTENTION_OUTPUT_BYTES: &[u8] = include_bytes!(
     "../../fixtures/prefill-layer4-attention-2048-v1/layer4-attention-output.f32le.bin"
 );
@@ -524,6 +555,28 @@ const PREFILL_LAYER6_HC_FFN_POST_FINAL_TILE_BYTES: &[u8] = include_bytes!(
     "../../fixtures/prefill-layer6-complete-2048-v1/layer6-hc-ffn-post-final-tile.f32le.bin"
 );
 const PREFILL_LAYER6_HC_FFN_POST_FULL_CHECKSUM: u64 = 0x0ea8_e5a3_2059_5193;
+const PREFILL_LAYER7_FFN_CUR_FINAL_TILE_BYTES: &[u8] = include_bytes!(
+    "../../fixtures/prefill-layer7-complete-2048-v1/layer7-hc-ffn-pre-final-tile.f32le.bin"
+);
+const PREFILL_LAYER7_FFN_NORM_FINAL_TILE_BYTES: &[u8] = include_bytes!(
+    "../../fixtures/prefill-layer7-complete-2048-v1/layer7-ffn-norm-final-tile.f32le.bin"
+);
+const PREFILL_LAYER7_ROUTER_SELECTED_FINAL_TILE_BYTES: &[u8] = include_bytes!(
+    "../../fixtures/prefill-layer7-complete-2048-v1/layer7-ffn-moe-topk-final-tile.i32le.bin"
+);
+const PREFILL_LAYER7_ROUTER_WEIGHTS_FINAL_TILE_BYTES: &[u8] = include_bytes!(
+    "../../fixtures/prefill-layer7-complete-2048-v1/layer7-ffn-moe-weights-scaled-final-tile.f32le.bin"
+);
+const PREFILL_LAYER7_ROUTED_OUT_FINAL_TILE_BYTES: &[u8] = include_bytes!(
+    "../../fixtures/prefill-layer7-complete-2048-v1/layer7-ffn-moe-out-final-tile.f32le.bin"
+);
+const PREFILL_LAYER7_SHARED_OUT_FINAL_TILE_BYTES: &[u8] = include_bytes!(
+    "../../fixtures/prefill-layer7-complete-2048-v1/layer7-ffn-shexp-final-tile.f32le.bin"
+);
+const PREFILL_LAYER7_HC_FFN_POST_FINAL_TILE_BYTES: &[u8] = include_bytes!(
+    "../../fixtures/prefill-layer7-complete-2048-v1/layer7-hc-ffn-post-final-tile.f32le.bin"
+);
+const PREFILL_LAYER7_HC_FFN_POST_FULL_CHECKSUM: u64 = 0xf0fc_a3b4_33f3_4a72;
 const PREFILL_LAYER2_ATTENTION_OUTPUT_BYTES: &[u8] = include_bytes!(
     "../../fixtures/prefill-layer2-attention-2048-v1/layer2-attention-output.f32le.bin"
 );
@@ -720,6 +773,28 @@ const PREFILL_LAYER6_QKV_FINAL_TILE_BYTES: [&[u8]; 10] = [
     include_bytes!("../../fixtures/prefill-layer6-qkv-2048-v1/layer6-kv-rope-final-tile.f32le.bin"),
     include_bytes!(
         "../../fixtures/prefill-layer6-qkv-2048-v1/layer6-kv-current-final-tile.f32le.bin"
+    ),
+];
+const PREFILL_LAYER7_QKV_FINAL_TILE_BYTES: [&[u8]; 10] = [
+    include_bytes!(
+        "../../fixtures/prefill-layer7-qkv-2048-v1/layer7-hc-attn-pre-final-tile.f32le.bin"
+    ),
+    include_bytes!(
+        "../../fixtures/prefill-layer7-qkv-2048-v1/layer7-attn-norm-final-tile.f32le.bin"
+    ),
+    include_bytes!("../../fixtures/prefill-layer7-qkv-2048-v1/layer7-q-lora-final-tile.f32le.bin"),
+    include_bytes!(
+        "../../fixtures/prefill-layer7-qkv-2048-v1/layer7-q-lora-norm-final-tile.f32le.bin"
+    ),
+    include_bytes!("../../fixtures/prefill-layer7-qkv-2048-v1/layer7-kv-raw-final-tile.f32le.bin"),
+    include_bytes!("../../fixtures/prefill-layer7-qkv-2048-v1/layer7-kv-norm-final-tile.f32le.bin"),
+    include_bytes!("../../fixtures/prefill-layer7-qkv-2048-v1/layer7-q-raw-final-tile.f32le.bin"),
+    include_bytes!(
+        "../../fixtures/prefill-layer7-qkv-2048-v1/layer7-q-current-final-tile.f32le.bin"
+    ),
+    include_bytes!("../../fixtures/prefill-layer7-qkv-2048-v1/layer7-kv-rope-final-tile.f32le.bin"),
+    include_bytes!(
+        "../../fixtures/prefill-layer7-qkv-2048-v1/layer7-kv-current-final-tile.f32le.bin"
     ),
 ];
 const PREFILL_LAYER3_KQV_OUT_ROW0_BYTES: &[u8] =
@@ -1332,6 +1407,10 @@ pub struct PrefillLayers012AttentionLoopProbeReport {
     pub layer6_compressor_fixture_id: &'static str,
     pub layer6_attention_fixture_id: &'static str,
     pub layer6_complete_fixture_id: &'static str,
+    pub layer7_qkv_fixture_id: &'static str,
+    pub layer7_compressor_fixture_id: &'static str,
+    pub layer7_attention_fixture_id: &'static str,
+    pub layer7_complete_fixture_id: &'static str,
     pub rows: u32,
     pub raw_kv_rows: u32,
     pub compressed_kv_rows: u32,
@@ -1375,6 +1454,11 @@ pub struct PrefillLayers012AttentionLoopProbeReport {
     pub layer6_attention_output_checksum: u64,
     pub layer6_after_attention_hc_checksum: u64,
     pub layer6_after_ffn_hc_checksum: u64,
+    pub layer7_qkv_checksums: [u64; 10],
+    pub layer7_compressor_checksums: [u64; 3],
+    pub layer7_attention_output_checksum: u64,
+    pub layer7_after_attention_hc_checksum: u64,
+    pub layer7_after_ffn_hc_checksum: u64,
 }
 
 #[derive(Clone, Debug)]
@@ -3414,6 +3498,10 @@ pub fn write_prefill_layers012_attention_loop_probe_json<W: Write>(
     let layer6_compressor = prefill_layer6_compressor_fixture()?;
     let _layer6_attention = prefill_layer6_attention_fixture()?;
     let _layer6_complete = prefill_layer6_complete_final_tile_fixture()?;
+    let layer7_qkv = prefill_layer7_qkv_final_tile_fixture()?;
+    let layer7_compressor = prefill_layer7_compressor_fixture()?;
+    let _layer7_attention = prefill_layer7_attention_fixture()?;
+    let _layer7_complete = prefill_layer7_complete_final_tile_fixture()?;
     if report.compressor.tiles.len() != 64
         || report.attention_fixture_id != PREFILL_LAYER2_ATTENTION_FIXTURE_ID
         || report.attention_hc_fixture_id != PREFILL_LAYER2_COMPLETE_FIXTURE_ID
@@ -3434,13 +3522,17 @@ pub fn write_prefill_layers012_attention_loop_probe_json<W: Write>(
         || report.layer6_compressor_fixture_id != PREFILL_LAYER6_COMPRESSOR_FIXTURE_ID
         || report.layer6_attention_fixture_id != PREFILL_LAYER6_ATTENTION_FIXTURE_ID
         || report.layer6_complete_fixture_id != PREFILL_LAYER6_COMPLETE_FIXTURE_ID
+        || report.layer7_qkv_fixture_id != PREFILL_LAYER7_QKV_FIXTURE_ID
+        || report.layer7_compressor_fixture_id != PREFILL_LAYER7_COMPRESSOR_FIXTURE_ID
+        || report.layer7_attention_fixture_id != PREFILL_LAYER7_ATTENTION_FIXTURE_ID
+        || report.layer7_complete_fixture_id != PREFILL_LAYER7_COMPLETE_FIXTURE_ID
         || report.rows != 2048
         || report.raw_kv_rows != 2048
         || report.compressed_kv_rows != 512
         || report.layer3_compressed_kv_rows != 16
-        || report.dispatches != 266
-        || report.wrapped_model_ranges != 136
-        || report.pointer_matches != 136
+        || report.dispatches != 313
+        || report.wrapped_model_ranges != 164
+        || report.pointer_matches != 164
         || report.output_checksum != checksum_f32(&expected)
         || report.after_attention_hc_checksum != PREFILL_LAYER2_HC_ATTN_POST_FULL_CHECKSUM
         || report.after_ffn_hc_checksum != PREFILL_LAYER2_HC_FFN_POST_FULL_CHECKSUM
@@ -3486,6 +3578,16 @@ pub fn write_prefill_layers012_attention_loop_probe_json<W: Write>(
         || report.layer6_attention_output_checksum != PREFILL_LAYER6_ATTENTION_OUTPUT_CHECKSUM
         || report.layer6_after_attention_hc_checksum != PREFILL_LAYER6_HC_ATTN_POST_FULL_CHECKSUM
         || report.layer6_after_ffn_hc_checksum != PREFILL_LAYER6_HC_FFN_POST_FULL_CHECKSUM
+        || report.layer7_qkv_checksums != layer7_qkv.each_ref().map(|tensor| checksum_f32(tensor))
+        || report.layer7_compressor_checksums
+            != [
+                checksum_f32(&layer7_compressor.0),
+                checksum_f32(&layer7_compressor.1),
+                checksum_i32(&layer7_compressor.2),
+            ]
+        || report.layer7_attention_output_checksum != PREFILL_LAYER7_ATTENTION_OUTPUT_CHECKSUM
+        || report.layer7_after_attention_hc_checksum != PREFILL_LAYER7_HC_ATTN_POST_FULL_CHECKSUM
+        || report.layer7_after_ffn_hc_checksum != PREFILL_LAYER7_HC_FFN_POST_FULL_CHECKSUM
         || !report.wall_ms.is_finite()
         || report.wall_ms <= 0.0
         || !report.gpu_ms.is_finite()
@@ -3529,6 +3631,10 @@ pub fn write_prefill_layers012_attention_loop_probe_json<W: Write>(
         report.layer6_compressor_fixture_id,
         report.layer6_attention_fixture_id,
         report.layer6_complete_fixture_id,
+        report.layer7_qkv_fixture_id,
+        report.layer7_compressor_fixture_id,
+        report.layer7_attention_fixture_id,
+        report.layer7_complete_fixture_id,
     ]
     .iter()
     .enumerate()
@@ -3539,7 +3645,7 @@ pub fn write_prefill_layers012_attention_loop_probe_json<W: Write>(
         crate::artifact::write_json_string(output, fixture)?;
     }
     let rendered = format!(
-        "],\n  \"coverage\": {{\"position_start\": 0, \"position_end\": 2047, \"rows\": {}, \"complete_layers\": [0, 1, 2, 3], \"downstream_layer\": 4, \"output_boundary\": \"layer4_paired_compressors\"}},\n  \"mixed_attention\": {{\"raw_kv_rows\": {}, \"compressed_kv_rows\": {}, \"raw_window\": 128, \"compressor_ratio\": 4, \"sparse_indexer_topk\": false, \"dense_compressed_limit_rows\": 512, \"layer3_compressor_ratio\": 128, \"layer3_compressed_rows\": {}}},\n  \"schedule\": {{\"tile_command_buffers\": 64, \"terminal_command_buffers\": 1, \"terminal_dispatches\": {}, \"wrapped_terminal_model_ranges\": {}, \"query_projection_kernel\": \"kernel_mul_mm_q8_0_f32\", \"query_rope_kernel\": \"kernel_dsv4_head_rms_norm_rope_tail_f32\", \"attention_kernel\": \"kernel_flash_attn_ext_f16_dk512_dv512\", \"inverse_rope_kernel\": \"kernel_dsv4_rope_tail_f32\", \"output_low_kernel\": \"kernel_mul_mm_id_q8_0_f32\", \"output_kernel\": \"kernel_mul_mm_q8_0_f32\", \"attention_hc_post_kernel\": \"kernel_dsv4_hc_expand4\", \"ffn_router\": \"token-hash batch\", \"routed_experts\": \"fused IQ2_XXS pair-SwiGLU plus Q2_K down\", \"shared_expert\": \"Q8_0 gate/up/down\", \"ffn_hc_post_kernel\": \"kernel_dsv4_hc_expand4\", \"layer3_attention_ingress_dispatches\": 4, \"layer3_qkv_state_dispatches\": 6, \"layer3_ratio128_compressor_dispatches\": 7, \"layer3_dense_attention_dispatches\": 9, \"layer3_ffn_dispatches\": 21, \"layer4_qkv_dispatches\": 10, \"layer4_paired_compressor_dispatches\": 30, \"layer4_compressor_projection_kernel\": \"kernel_mul_mm_f16_f32 x4\", \"layer4_compressor_ratio4_kernels\": [\"score plus APE\", \"replay pack\", \"softmax pool\", \"weighted RMSNorm\", \"compressed RoPE\", \"E4M3FN/indexer QAT\", \"tail projection and recurrent-state refresh\"]}},\n  \"timing\": {{\"tile_summed_wall_ms\": {:.6}, \"tile_summed_gpu_ms\": {:.6}, \"terminal_wall_ms\": {:.6}, \"terminal_gpu_ms\": {:.6}}},\n  \"checksums\": {{\"layer2_attention_output\": {}, \"layer2_attention_hc_post\": {}, \"layer2_ffn_hc_post\": {}, \"layer3_hc_attn_pre\": {}, \"layer3_attn_norm\": {}, \"layer3_q_lora\": {}, \"layer3_q_lora_norm\": {}, \"layer3_kv_raw\": {}, \"layer3_kv_norm\": {}, \"layer3_q_raw_final_tile\": {}, \"layer3_q_cur_final_tile\": {}, \"layer3_kv_rope\": {}, \"layer3_kv_cur\": {}, \"layer3_attn_compressed\": {}, \"layer3_attn_state_kv\": {}, \"layer3_attn_state_score_bits\": {}, \"layer3_attention_output\": {}, \"layer3_attention_hc_post\": {}, \"layer3_ffn_hc_post\": {}, \"layer4_qkv_final_tiles\": [{}, {}, {}, {}, {}, {}, {}, {}, {}, {}], \"layer4_paired_compressors\": [{}, {}, {}, {}, {}, {}]}},\n  \"persistent_metal_context\": true,\n  \"all_layer2_compressed_rows_c0_bitwise_match\": true,\n  \"layer2_attention_output_c0_bitwise_match\": true,\n  \"layer2_attention_hc_post_c0_bitwise_match\": true,\n  \"layer2_ffn_hc_post_c0_bitwise_match\": true,\n  \"layer3_attention_ingress_c0_bitwise_match\": true,\n  \"layer3_qkv_state_c0_bitwise_match\": true,\n  \"layer3_ratio128_compressor_c0_bitwise_match\": true,\n  \"layer3_attention_output_c0_bitwise_match\": true,\n  \"layer3_attention_hc_post_c0_bitwise_match\": true,\n  \"layer3_ffn_biased_topk_c0_bitwise_match\": true,\n  \"layer3_ffn_outputs_c0_bitwise_match\": true,\n  \"layer3_ffn_hc_post_c0_bitwise_match\": true,\n  \"layer4_qkv_state_c0_bitwise_match\": true,\n  \"layer4_paired_compressors_c0_bitwise_match\": true,\n  \"complete_layer2_dense_mixed_attention_claim\": true,\n  \"complete_layer2_attention_hc_post_claim\": true,\n  \"complete_layer2_ffn_claim\": true,\n  \"complete_layer2_prefill_claim\": true,\n  \"complete_layer3_qkv_state_claim\": true,\n  \"complete_layer3_ratio128_compressor_claim\": true,\n  \"complete_layer3_dense_mixed_attention_claim\": true,\n  \"complete_layer3_attention_hc_post_claim\": true,\n  \"complete_layer3_ffn_claim\": true,\n  \"complete_layer3_prefill_claim\": true,\n  \"complete_layer4_qkv_state_claim\": true,\n  \"complete_layer4_paired_compressor_claim\": true,\n  \"complete_layer4_prefill_claim\": false,\n  \"sparse_ratio4_decode_claim\": false,\n  \"complete_model_prefill_claim\": false,\n  \"throughput_claim\": false\n}}\n",
+        "],\n  \"coverage\": {{\"position_start\": 0, \"position_end\": 2047, \"rows\": {}, \"complete_layers\": [0, 1, 2, 3], \"downstream_layer\": 4, \"output_boundary\": \"layer4_paired_compressors\"}},\n  \"mixed_attention\": {{\"raw_kv_rows\": {}, \"compressed_kv_rows\": {}, \"raw_window\": 128, \"compressor_ratio\": 4, \"sparse_indexer_topk\": false, \"dense_compressed_limit_rows\": 512, \"layer3_compressor_ratio\": 128, \"layer3_compressed_rows\": {}, \"layer7_compressor_ratio\": 128, \"layer7_compressed_rows\": 16}},\n  \"schedule\": {{\"tile_command_buffers\": 64, \"terminal_command_buffers\": 1, \"terminal_dispatches\": {}, \"wrapped_terminal_model_ranges\": {}, \"query_projection_kernel\": \"kernel_mul_mm_q8_0_f32\", \"query_rope_kernel\": \"kernel_dsv4_head_rms_norm_rope_tail_f32\", \"attention_kernel\": \"kernel_flash_attn_ext_f16_dk512_dv512\", \"inverse_rope_kernel\": \"kernel_dsv4_rope_tail_f32\", \"output_low_kernel\": \"kernel_mul_mm_id_q8_0_f32\", \"output_kernel\": \"kernel_mul_mm_q8_0_f32\", \"attention_hc_post_kernel\": \"kernel_dsv4_hc_expand4\", \"ffn_router\": \"token-hash batch\", \"routed_experts\": \"fused IQ2_XXS pair-SwiGLU plus Q2_K down\", \"shared_expert\": \"Q8_0 gate/up/down\", \"ffn_hc_post_kernel\": \"kernel_dsv4_hc_expand4\", \"layer3_attention_ingress_dispatches\": 4, \"layer3_qkv_state_dispatches\": 6, \"layer3_ratio128_compressor_dispatches\": 7, \"layer3_dense_attention_dispatches\": 9, \"layer3_ffn_dispatches\": 21, \"layer4_qkv_dispatches\": 10, \"layer4_paired_compressor_dispatches\": 30, \"layer4_compressor_projection_kernel\": \"kernel_mul_mm_f16_f32 x4\", \"layer4_compressor_ratio4_kernels\": [\"score plus APE\", \"replay pack\", \"softmax pool\", \"weighted RMSNorm\", \"compressed RoPE\", \"E4M3FN/indexer QAT\", \"tail projection and recurrent-state refresh\"]}},\n  \"timing\": {{\"tile_summed_wall_ms\": {:.6}, \"tile_summed_gpu_ms\": {:.6}, \"terminal_wall_ms\": {:.6}, \"terminal_gpu_ms\": {:.6}}},\n  \"checksums\": {{\"layer2_attention_output\": {}, \"layer2_attention_hc_post\": {}, \"layer2_ffn_hc_post\": {}, \"layer3_hc_attn_pre\": {}, \"layer3_attn_norm\": {}, \"layer3_q_lora\": {}, \"layer3_q_lora_norm\": {}, \"layer3_kv_raw\": {}, \"layer3_kv_norm\": {}, \"layer3_q_raw_final_tile\": {}, \"layer3_q_cur_final_tile\": {}, \"layer3_kv_rope\": {}, \"layer3_kv_cur\": {}, \"layer3_attn_compressed\": {}, \"layer3_attn_state_kv\": {}, \"layer3_attn_state_score_bits\": {}, \"layer3_attention_output\": {}, \"layer3_attention_hc_post\": {}, \"layer3_ffn_hc_post\": {}, \"layer4_qkv_final_tiles\": [{}, {}, {}, {}, {}, {}, {}, {}, {}, {}], \"layer4_paired_compressors\": [{}, {}, {}, {}, {}, {}]}},\n  \"persistent_metal_context\": true,\n  \"all_layer2_compressed_rows_c0_bitwise_match\": true,\n  \"layer2_attention_output_c0_bitwise_match\": true,\n  \"layer2_attention_hc_post_c0_bitwise_match\": true,\n  \"layer2_ffn_hc_post_c0_bitwise_match\": true,\n  \"layer3_attention_ingress_c0_bitwise_match\": true,\n  \"layer3_qkv_state_c0_bitwise_match\": true,\n  \"layer3_ratio128_compressor_c0_bitwise_match\": true,\n  \"layer3_attention_output_c0_bitwise_match\": true,\n  \"layer3_attention_hc_post_c0_bitwise_match\": true,\n  \"layer3_ffn_biased_topk_c0_bitwise_match\": true,\n  \"layer3_ffn_outputs_c0_bitwise_match\": true,\n  \"layer3_ffn_hc_post_c0_bitwise_match\": true,\n  \"layer4_qkv_state_c0_bitwise_match\": true,\n  \"layer4_paired_compressors_c0_bitwise_match\": true,\n  \"complete_layer2_dense_mixed_attention_claim\": true,\n  \"complete_layer2_attention_hc_post_claim\": true,\n  \"complete_layer2_ffn_claim\": true,\n  \"complete_layer2_prefill_claim\": true,\n  \"complete_layer3_qkv_state_claim\": true,\n  \"complete_layer3_ratio128_compressor_claim\": true,\n  \"complete_layer3_dense_mixed_attention_claim\": true,\n  \"complete_layer3_attention_hc_post_claim\": true,\n  \"complete_layer3_ffn_claim\": true,\n  \"complete_layer3_prefill_claim\": true,\n  \"complete_layer4_qkv_state_claim\": true,\n  \"complete_layer4_paired_compressor_claim\": true,\n  \"complete_layer4_prefill_claim\": false,\n  \"sparse_ratio4_decode_claim\": false,\n  \"complete_model_prefill_claim\": false,\n  \"throughput_claim\": false\n}}\n",
         report.rows,
         report.raw_kv_rows,
         report.compressed_kv_rows,
@@ -3587,7 +3693,7 @@ pub fn write_prefill_layers012_attention_loop_probe_json<W: Write>(
         report.layer4_compressor_checksums[5],
     );
     let checksum_tail = format!(
-        "], \"layer4_attention_output\": {}, \"layer4_attention_hc_post\": {}, \"layer4_ffn_hc_post\": {}, \"layer5_qkv_final_tiles\": [{}, {}, {}, {}, {}, {}, {}, {}, {}, {}], \"layer5_ratio128_compressor\": [{}, {}, {}], \"layer5_attention_output\": {}, \"layer5_attention_hc_post\": {}, \"layer5_ffn_hc_post\": {}, \"layer6_qkv_final_tiles\": [{}, {}, {}, {}, {}, {}, {}, {}, {}, {}], \"layer6_paired_compressors\": [{}, {}, {}, {}, {}, {}], \"layer6_attention_output\": {}, \"layer6_attention_hc_post\": {}, \"layer6_ffn_hc_post\": {}}},\n  \"persistent_metal_context\"",
+        "], \"layer4_attention_output\": {}, \"layer4_attention_hc_post\": {}, \"layer4_ffn_hc_post\": {}, \"layer5_qkv_final_tiles\": [{}, {}, {}, {}, {}, {}, {}, {}, {}, {}], \"layer5_ratio128_compressor\": [{}, {}, {}], \"layer5_attention_output\": {}, \"layer5_attention_hc_post\": {}, \"layer5_ffn_hc_post\": {}, \"layer6_qkv_final_tiles\": [{}, {}, {}, {}, {}, {}, {}, {}, {}, {}], \"layer6_paired_compressors\": [{}, {}, {}, {}, {}, {}], \"layer6_attention_output\": {}, \"layer6_attention_hc_post\": {}, \"layer6_ffn_hc_post\": {}, \"layer7_qkv_final_tiles\": [{}, {}, {}, {}, {}, {}, {}, {}, {}, {}], \"layer7_ratio128_compressor\": [{}, {}, {}], \"layer7_attention_output\": {}, \"layer7_attention_hc_post\": {}, \"layer7_ffn_hc_post\": {}}},\n  \"persistent_metal_context\"",
         report.layer4_attention_output_checksum,
         report.layer4_after_attention_hc_checksum,
         report.layer4_after_ffn_hc_checksum,
@@ -3626,6 +3732,22 @@ pub fn write_prefill_layers012_attention_loop_probe_json<W: Write>(
         report.layer6_attention_output_checksum,
         report.layer6_after_attention_hc_checksum,
         report.layer6_after_ffn_hc_checksum,
+        report.layer7_qkv_checksums[0],
+        report.layer7_qkv_checksums[1],
+        report.layer7_qkv_checksums[2],
+        report.layer7_qkv_checksums[3],
+        report.layer7_qkv_checksums[4],
+        report.layer7_qkv_checksums[5],
+        report.layer7_qkv_checksums[6],
+        report.layer7_qkv_checksums[7],
+        report.layer7_qkv_checksums[8],
+        report.layer7_qkv_checksums[9],
+        report.layer7_compressor_checksums[0],
+        report.layer7_compressor_checksums[1],
+        report.layer7_compressor_checksums[2],
+        report.layer7_attention_output_checksum,
+        report.layer7_after_attention_hc_checksum,
+        report.layer7_after_ffn_hc_checksum,
     );
     let rendered = rendered
         .replace(
@@ -3784,6 +3906,26 @@ pub fn write_prefill_layers012_attention_loop_probe_json<W: Write>(
         .replace(
             "\"complete_layer6_prefill_claim\": false,",
             "\"complete_layer6_prefill_claim\": true,",
+        )
+        .replace(
+            "\"complete_layers\": [0, 1, 2, 3, 4, 5, 6], \"downstream_layer\": null",
+            "\"complete_layers\": [0, 1, 2, 3, 4, 5, 6, 7], \"downstream_layer\": null",
+        )
+        .replace(
+            "\"output_boundary\": \"layer6_ffn_hc_post\"",
+            "\"output_boundary\": \"layer7_ffn_hc_post\"",
+        )
+        .replace(
+            "\"layer6_ffn_router\": \"biased top-6 batch\",",
+            "\"layer6_ffn_router\": \"biased top-6 batch\", \"layer7_qkv_dispatches\": 10, \"layer7_ratio128_compressor_dispatches\": 7, \"layer7_dense_attention_dispatches\": 9, \"layer7_ffn_dispatches\": 21, \"layer7_ffn_router\": \"biased top-6 batch\",",
+        )
+        .replace(
+            "\"layer6_ffn_hc_post_c0_bitwise_match\": true,",
+            "\"layer6_ffn_hc_post_c0_bitwise_match\": true,\n  \"layer7_qkv_state_c0_bitwise_match\": true,\n  \"layer7_ratio128_compressor_c0_bitwise_match\": true,\n  \"layer7_attention_output_c0_bitwise_match\": true,\n  \"layer7_attention_hc_post_c0_bitwise_match\": true,\n  \"layer7_ffn_biased_topk_c0_bitwise_match\": true,\n  \"layer7_ffn_outputs_c0_bitwise_match\": true,\n  \"layer7_ffn_hc_post_c0_bitwise_match\": true,",
+        )
+        .replace(
+            "\"complete_layer6_prefill_claim\": true,",
+            "\"complete_layer6_prefill_claim\": true,\n  \"complete_layer7_qkv_state_claim\": true,\n  \"complete_layer7_ratio128_compressor_claim\": true,\n  \"complete_layer7_dense_mixed_attention_claim\": true,\n  \"complete_layer7_attention_hc_post_claim\": true,\n  \"complete_layer7_ffn_claim\": true,\n  \"complete_layer7_prefill_claim\": true,",
         );
     output.write_all(rendered.as_bytes())?;
     Ok(())
@@ -4975,6 +5117,28 @@ fn prefill_layer5_compressor_fixture() -> Result<(Vec<f32>, Vec<f32>, Vec<i32>)>
     Ok((compressed, state_kv, state_score))
 }
 
+fn prefill_layer7_compressor_fixture() -> Result<(Vec<f32>, Vec<f32>, Vec<i32>)> {
+    let compressed = decode_f32_fixture(
+        PREFILL_LAYER7_ATTN_COMPRESSED_BYTES,
+        "prefill layer-7 ratio-128 compressed KV",
+    )?;
+    let state_kv = decode_f32_fixture(
+        PREFILL_LAYER7_ATTN_STATE_KV_BYTES,
+        "prefill layer-7 ratio-128 recurrent KV state",
+    )?;
+    let state_score = decode_i32_fixture(
+        PREFILL_LAYER7_ATTN_STATE_SCORE_BYTES,
+        "prefill layer-7 ratio-128 recurrent score-state bits",
+    )?;
+    if compressed.len() != 16 * 512 || state_kv.len() != 128 * 512 || state_score.len() != 128 * 512
+    {
+        return Err(Error::invalid(
+            "prefill layer-7 ratio-128 compressor fixture dimensions are invalid",
+        ));
+    }
+    Ok((compressed, state_kv, state_score))
+}
+
 fn prefill_layer5_attention_fixture() -> Result<(Vec<f32>, Vec<f32>)> {
     let attention = decode_f32_fixture(
         PREFILL_LAYER5_ATTENTION_OUTPUT_BYTES,
@@ -5007,6 +5171,43 @@ fn prefill_layer5_attention_diagnostics_fixture() -> Result<[Vec<f32>; 3]> {
     if tensors[0].len() != 32_768 || tensors[1].len() != 32_768 || tensors[2].len() != 8_192 {
         return Err(Error::invalid(
             "prefill layer-5 attention diagnostic fixture dimensions are invalid",
+        ));
+    }
+    Ok(tensors)
+}
+
+fn prefill_layer7_attention_fixture() -> Result<(Vec<f32>, Vec<f32>)> {
+    let attention = decode_f32_fixture(
+        PREFILL_LAYER7_ATTENTION_OUTPUT_BYTES,
+        "prefill layer-7 dense mixed-attention output",
+    )?;
+    let hc_final_tile = decode_f32_fixture(
+        PREFILL_LAYER7_HC_ATTN_POST_FINAL_TILE_BYTES,
+        "prefill layer-7 attention HC post final tile",
+    )?;
+    if attention.len() != 2048 * 4096 || hc_final_tile.len() != 32 * 4 * 4096 {
+        return Err(Error::invalid(
+            "prefill layer-7 attention fixture dimensions are invalid",
+        ));
+    }
+    Ok((attention, hc_final_tile))
+}
+
+fn prefill_layer7_attention_diagnostics_fixture() -> Result<[Vec<f32>; 3]> {
+    let tensors = [
+        decode_f32_fixture(
+            PREFILL_LAYER7_KQV_OUT_ROW0_BYTES,
+            "layer-7 KQV output row 0",
+        )?,
+        decode_f32_fixture(PREFILL_LAYER7_KQV_BACK_ROW0_BYTES, "layer-7 KQV back row 0")?,
+        decode_f32_fixture(
+            PREFILL_LAYER7_ATTN_LOW_ROW0_BYTES,
+            "layer-7 attention low row 0",
+        )?,
+    ];
+    if tensors[0].len() != 32_768 || tensors[1].len() != 32_768 || tensors[2].len() != 8_192 {
+        return Err(Error::invalid(
+            "prefill layer-7 attention diagnostic fixture dimensions are invalid",
         ));
     }
     Ok(tensors)
@@ -5243,6 +5444,52 @@ fn prefill_layer6_complete_final_tile_fixture() -> Result<PrefillLayer3CompleteF
     Ok(fixture)
 }
 
+fn prefill_layer7_complete_final_tile_fixture() -> Result<PrefillLayer3CompleteFixture> {
+    let fixture = PrefillLayer3CompleteFixture {
+        ffn_cur: decode_f32_fixture(
+            PREFILL_LAYER7_FFN_CUR_FINAL_TILE_BYTES,
+            "prefill layer-7 FFN HC ingress final tile",
+        )?,
+        ffn_norm: decode_f32_fixture(
+            PREFILL_LAYER7_FFN_NORM_FINAL_TILE_BYTES,
+            "prefill layer-7 FFN norm final tile",
+        )?,
+        router_selected: decode_i32_fixture(
+            PREFILL_LAYER7_ROUTER_SELECTED_FINAL_TILE_BYTES,
+            "prefill layer-7 biased top-k selections final tile",
+        )?,
+        router_weights: decode_f32_fixture(
+            PREFILL_LAYER7_ROUTER_WEIGHTS_FINAL_TILE_BYTES,
+            "prefill layer-7 router weights final tile",
+        )?,
+        routed_out: decode_f32_fixture(
+            PREFILL_LAYER7_ROUTED_OUT_FINAL_TILE_BYTES,
+            "prefill layer-7 routed output final tile",
+        )?,
+        shared_out: decode_f32_fixture(
+            PREFILL_LAYER7_SHARED_OUT_FINAL_TILE_BYTES,
+            "prefill layer-7 shared output final tile",
+        )?,
+        hc_post: decode_f32_fixture(
+            PREFILL_LAYER7_HC_FFN_POST_FINAL_TILE_BYTES,
+            "prefill layer-7 FFN HC post final tile",
+        )?,
+    };
+    if fixture.ffn_cur.len() != 32 * 4096
+        || fixture.ffn_norm.len() != 32 * 4096
+        || fixture.router_selected.len() != 32 * 6
+        || fixture.router_weights.len() != 32 * 6
+        || fixture.routed_out.len() != 32 * 4096
+        || fixture.shared_out.len() != 32 * 4096
+        || fixture.hc_post.len() != 32 * 4 * 4096
+    {
+        return Err(Error::invalid(
+            "prefill layer-7 complete fixture dimensions are invalid",
+        ));
+    }
+    Ok(fixture)
+}
+
 fn prefill_layer4_qkv_final_tile_fixture() -> Result<[Vec<f32>; 10]> {
     let labels = [
         "HC attention ingress",
@@ -5373,6 +5620,50 @@ fn prefill_layer6_qkv_final_tile_fixture() -> Result<[Vec<f32>; 10]> {
     tensors
         .try_into()
         .map_err(|_| Error::invalid("prefill layer-6 Q/KV fixture count is invalid"))
+}
+
+fn prefill_layer7_qkv_final_tile_fixture() -> Result<[Vec<f32>; 10]> {
+    let labels = [
+        "HC attention ingress",
+        "attention norm",
+        "Q-Lora",
+        "Q-Lora norm",
+        "KV raw",
+        "KV norm",
+        "Q raw",
+        "Q current",
+        "KV rope",
+        "KV current",
+    ];
+    let expected_lengths = [
+        32 * 4096,
+        32 * 4096,
+        32 * 1024,
+        32 * 1024,
+        32 * 512,
+        32 * 512,
+        32 * 32768,
+        32 * 32768,
+        32 * 512,
+        32 * 512,
+    ];
+    let mut tensors = Vec::with_capacity(PREFILL_LAYER7_QKV_FINAL_TILE_BYTES.len());
+    for ((bytes, label), expected_length) in PREFILL_LAYER7_QKV_FINAL_TILE_BYTES
+        .into_iter()
+        .zip(labels)
+        .zip(expected_lengths)
+    {
+        let tensor = decode_f32_fixture(bytes, &format!("prefill layer-7 {label} final tile"))?;
+        if tensor.len() != expected_length {
+            return Err(Error::invalid(format!(
+                "prefill layer-7 {label} fixture dimensions are invalid"
+            )));
+        }
+        tensors.push(tensor);
+    }
+    tensors
+        .try_into()
+        .map_err(|_| Error::invalid("prefill layer-7 Q/KV fixture count is invalid"))
 }
 
 fn prefill_hc_ingress_fixture() -> Result<(Vec<u32>, Vec<f32>, Vec<f32>)> {
@@ -6679,6 +6970,17 @@ mod imp {
         layer6_attn_output_b_offset: u64,
         layer6_attn_output_b_bytes: u64,
         layer6_ffn: RawPrefillFfnWeights,
+        layer7_kvnorm: RawPrefillKvnormWeights,
+        layer7_q_b_offset: u64,
+        layer7_q_b_bytes: u64,
+        layer7_compressor: RawPrefillCompressorWeights,
+        layer7_attn_sinks_offset: u64,
+        layer7_attn_sinks_bytes: u64,
+        layer7_attn_output_a_offset: u64,
+        layer7_attn_output_a_bytes: u64,
+        layer7_attn_output_b_offset: u64,
+        layer7_attn_output_b_bytes: u64,
+        layer7_ffn: RawPrefillFfnWeights,
     }
 
     #[repr(C)]
@@ -7132,6 +7434,31 @@ mod imp {
             layer6_router_weights_final_tile: *mut f32,
             layer6_routed_out_final_tile: *mut f32,
             layer6_shared_out_final_tile: *mut f32,
+            layer7_hc_attn_pre_final_tile: *mut f32,
+            layer7_attn_norm_final_tile: *mut f32,
+            layer7_q_lora_final_tile: *mut f32,
+            layer7_q_lora_norm_final_tile: *mut f32,
+            layer7_kv_raw_final_tile: *mut f32,
+            layer7_kv_norm_final_tile: *mut f32,
+            layer7_q_raw_final_tile: *mut f32,
+            layer7_q_cur_final_tile: *mut f32,
+            layer7_kv_rope_final_tile: *mut f32,
+            layer7_kv_cur_final_tile: *mut f32,
+            layer7_attn_compressed: *mut f32,
+            layer7_attn_state_kv: *mut f32,
+            layer7_attn_state_score: *mut i32,
+            layer7_kqv_out_row0: *mut f32,
+            layer7_kqv_back_row0: *mut f32,
+            layer7_attn_low_row0: *mut f32,
+            layer7_attention_output: *mut f32,
+            layer7_after_attention_hc: *mut f32,
+            layer7_after_ffn_hc: *mut f32,
+            layer7_ffn_cur_final_tile: *mut f32,
+            layer7_ffn_norm_final_tile: *mut f32,
+            layer7_router_selected_final_tile: *mut i32,
+            layer7_router_weights_final_tile: *mut f32,
+            layer7_routed_out_final_tile: *mut f32,
+            layer7_shared_out_final_tile: *mut f32,
             result: *mut RawPrefillLayer2AttentionResult,
             error: *mut c_char,
             error_bytes: usize,
@@ -9931,6 +10258,11 @@ mod imp {
         let expected_layer6_attention = prefill_layer6_attention_fixture()?;
         let expected_layer6_attention_diagnostics = prefill_layer6_attention_diagnostics_fixture()?;
         let expected_layer6_complete = prefill_layer6_complete_final_tile_fixture()?;
+        let expected_layer7_qkv = prefill_layer7_qkv_final_tile_fixture()?;
+        let expected_layer7_compressor = prefill_layer7_compressor_fixture()?;
+        let expected_layer7_attention = prefill_layer7_attention_fixture()?;
+        let expected_layer7_attention_diagnostics = prefill_layer7_attention_diagnostics_fixture()?;
+        let expected_layer7_complete = prefill_layer7_complete_final_tile_fixture()?;
         let q_b = exact_tensor(model, "blk.2.attn_q_b.weight", 8, &[1024, 32768])?;
         let sinks = exact_tensor(model, "blk.2.attn_sinks.weight", 0, &[64])?;
         let output_a = exact_tensor(model, "blk.2.attn_output_a.weight", 8, &[4096, 8192])?;
@@ -10121,6 +10453,43 @@ mod imp {
         let layer6_shared_up = exact_tensor(model, "blk.6.ffn_up_shexp.weight", 8, &[4096, 2048])?;
         let layer6_shared_down =
             exact_tensor(model, "blk.6.ffn_down_shexp.weight", 8, &[2048, 4096])?;
+        let layer7_hc_fn = exact_tensor(model, "blk.7.hc_attn_fn.weight", 1, &[16384, 24])?;
+        let layer7_hc_scale = exact_tensor(model, "blk.7.hc_attn_scale.weight", 0, &[3])?;
+        let layer7_hc_base = exact_tensor(model, "blk.7.hc_attn_base.weight", 0, &[24])?;
+        let layer7_norm = exact_tensor(model, "blk.7.attn_norm.weight", 0, &[4096])?;
+        let layer7_q_a = exact_tensor(model, "blk.7.attn_q_a.weight", 8, &[4096, 1024])?;
+        let layer7_q_a_norm = exact_tensor(model, "blk.7.attn_q_a_norm.weight", 0, &[1024])?;
+        let layer7_kv = exact_tensor(model, "blk.7.attn_kv.weight", 8, &[4096, 512])?;
+        let layer7_kv_norm = exact_tensor(model, "blk.7.attn_kv_a_norm.weight", 0, &[512])?;
+        let layer7_q_b = exact_tensor(model, "blk.7.attn_q_b.weight", 8, &[1024, 32768])?;
+        let layer7_attn_ape =
+            exact_tensor(model, "blk.7.attn_compressor_ape.weight", 1, &[512, 128])?;
+        let layer7_attn_kv =
+            exact_tensor(model, "blk.7.attn_compressor_kv.weight", 1, &[4096, 512])?;
+        let layer7_attn_gate =
+            exact_tensor(model, "blk.7.attn_compressor_gate.weight", 1, &[4096, 512])?;
+        let layer7_attn_compressor_norm =
+            exact_tensor(model, "blk.7.attn_compressor_norm.weight", 0, &[512])?;
+        let layer7_sinks = exact_tensor(model, "blk.7.attn_sinks.weight", 0, &[64])?;
+        let layer7_output_a = exact_tensor(model, "blk.7.attn_output_a.weight", 8, &[4096, 8192])?;
+        let layer7_output_b = exact_tensor(model, "blk.7.attn_output_b.weight", 8, &[8192, 4096])?;
+        let layer7_ffn_hc_fn = exact_tensor(model, "blk.7.hc_ffn_fn.weight", 1, &[16384, 24])?;
+        let layer7_ffn_hc_scale = exact_tensor(model, "blk.7.hc_ffn_scale.weight", 0, &[3])?;
+        let layer7_ffn_hc_base = exact_tensor(model, "blk.7.hc_ffn_base.weight", 0, &[24])?;
+        let layer7_ffn_norm = exact_tensor(model, "blk.7.ffn_norm.weight", 0, &[4096])?;
+        let layer7_router_gate = exact_tensor(model, "blk.7.ffn_gate_inp.weight", 1, &[4096, 256])?;
+        let layer7_router_bias = exact_tensor(model, "blk.7.exp_probs_b.bias", 0, &[256])?;
+        let layer7_routed_gate =
+            exact_tensor(model, "blk.7.ffn_gate_exps.weight", 16, &[4096, 2048, 256])?;
+        let layer7_routed_up =
+            exact_tensor(model, "blk.7.ffn_up_exps.weight", 16, &[4096, 2048, 256])?;
+        let layer7_routed_down =
+            exact_tensor(model, "blk.7.ffn_down_exps.weight", 10, &[2048, 4096, 256])?;
+        let layer7_shared_gate =
+            exact_tensor(model, "blk.7.ffn_gate_shexp.weight", 8, &[4096, 2048])?;
+        let layer7_shared_up = exact_tensor(model, "blk.7.ffn_up_shexp.weight", 8, &[4096, 2048])?;
+        let layer7_shared_down =
+            exact_tensor(model, "blk.7.ffn_down_shexp.weight", 8, &[2048, 4096])?;
         let weights = RawPrefillLayer2AttentionWeights {
             q_b_offset: q_b.absolute_offset,
             q_b_bytes: q_b.bytes,
@@ -10430,6 +10799,71 @@ mod imp {
                 shared_down_offset: layer6_shared_down.absolute_offset,
                 shared_down_bytes: layer6_shared_down.bytes,
             },
+            layer7_kvnorm: RawPrefillKvnormWeights {
+                ingress: RawPrefillAttentionIngressWeights {
+                    hc_fn_offset: layer7_hc_fn.absolute_offset,
+                    hc_fn_bytes: layer7_hc_fn.bytes,
+                    hc_scale_offset: layer7_hc_scale.absolute_offset,
+                    hc_scale_bytes: layer7_hc_scale.bytes,
+                    hc_base_offset: layer7_hc_base.absolute_offset,
+                    hc_base_bytes: layer7_hc_base.bytes,
+                    norm_offset: layer7_norm.absolute_offset,
+                    norm_bytes: layer7_norm.bytes,
+                    q_a_offset: layer7_q_a.absolute_offset,
+                    q_a_bytes: layer7_q_a.bytes,
+                },
+                q_a_norm_offset: layer7_q_a_norm.absolute_offset,
+                q_a_norm_bytes: layer7_q_a_norm.bytes,
+                kv_offset: layer7_kv.absolute_offset,
+                kv_bytes: layer7_kv.bytes,
+                kv_norm_offset: layer7_kv_norm.absolute_offset,
+                kv_norm_bytes: layer7_kv_norm.bytes,
+            },
+            layer7_q_b_offset: layer7_q_b.absolute_offset,
+            layer7_q_b_bytes: layer7_q_b.bytes,
+            layer7_compressor: RawPrefillCompressorWeights {
+                attn_ape_offset: layer7_attn_ape.absolute_offset,
+                attn_ape_bytes: layer7_attn_ape.bytes,
+                attn_kv_offset: layer7_attn_kv.absolute_offset,
+                attn_kv_bytes: layer7_attn_kv.bytes,
+                attn_gate_offset: layer7_attn_gate.absolute_offset,
+                attn_gate_bytes: layer7_attn_gate.bytes,
+                attn_norm_offset: layer7_attn_compressor_norm.absolute_offset,
+                attn_norm_bytes: layer7_attn_compressor_norm.bytes,
+                ..RawPrefillCompressorWeights::default()
+            },
+            layer7_attn_sinks_offset: layer7_sinks.absolute_offset,
+            layer7_attn_sinks_bytes: layer7_sinks.bytes,
+            layer7_attn_output_a_offset: layer7_output_a.absolute_offset,
+            layer7_attn_output_a_bytes: layer7_output_a.bytes,
+            layer7_attn_output_b_offset: layer7_output_b.absolute_offset,
+            layer7_attn_output_b_bytes: layer7_output_b.bytes,
+            layer7_ffn: RawPrefillFfnWeights {
+                hc_fn_offset: layer7_ffn_hc_fn.absolute_offset,
+                hc_fn_bytes: layer7_ffn_hc_fn.bytes,
+                hc_scale_offset: layer7_ffn_hc_scale.absolute_offset,
+                hc_scale_bytes: layer7_ffn_hc_scale.bytes,
+                hc_base_offset: layer7_ffn_hc_base.absolute_offset,
+                hc_base_bytes: layer7_ffn_hc_base.bytes,
+                norm_offset: layer7_ffn_norm.absolute_offset,
+                norm_bytes: layer7_ffn_norm.bytes,
+                router_gate_offset: layer7_router_gate.absolute_offset,
+                router_gate_bytes: layer7_router_gate.bytes,
+                router_hash_offset: layer7_router_bias.absolute_offset,
+                router_hash_bytes: layer7_router_bias.bytes,
+                routed_gate_offset: layer7_routed_gate.absolute_offset,
+                routed_gate_bytes: layer7_routed_gate.bytes,
+                routed_up_offset: layer7_routed_up.absolute_offset,
+                routed_up_bytes: layer7_routed_up.bytes,
+                routed_down_offset: layer7_routed_down.absolute_offset,
+                routed_down_bytes: layer7_routed_down.bytes,
+                shared_gate_offset: layer7_shared_gate.absolute_offset,
+                shared_gate_bytes: layer7_shared_gate.bytes,
+                shared_up_offset: layer7_shared_up.absolute_offset,
+                shared_up_bytes: layer7_shared_up.bytes,
+                shared_down_offset: layer7_shared_down.absolute_offset,
+                shared_down_bytes: layer7_shared_down.bytes,
+            },
         };
         let mut actual = vec![0.0_f32; expected.len()];
         let mut actual_hc = vec![0.0_f32; 2048 * 4 * 4096];
@@ -10565,6 +10999,36 @@ mod imp {
         let mut actual_layer6_router_weights = vec![0.0_f32; 32 * 6];
         let mut actual_layer6_routed_out = vec![0.0_f32; 32 * 4096];
         let mut actual_layer6_shared_out = vec![0.0_f32; 32 * 4096];
+        let mut actual_layer7_qkv: [Vec<f32>; 10] = [
+            vec![0.0_f32; 32 * 4096],
+            vec![0.0_f32; 32 * 4096],
+            vec![0.0_f32; 32 * 1024],
+            vec![0.0_f32; 32 * 1024],
+            vec![0.0_f32; 32 * 512],
+            vec![0.0_f32; 32 * 512],
+            vec![0.0_f32; 32 * 32768],
+            vec![0.0_f32; 32 * 32768],
+            vec![0.0_f32; 32 * 512],
+            vec![0.0_f32; 32 * 512],
+        ];
+        let layer7_qkv_pointers = actual_layer7_qkv
+            .each_mut()
+            .map(|tensor| tensor.as_mut_ptr());
+        let mut actual_layer7_attn_compressed = vec![0.0_f32; 16 * 512];
+        let mut actual_layer7_attn_state_kv = vec![0.0_f32; 128 * 512];
+        let mut actual_layer7_attn_state_score = vec![0_i32; 128 * 512];
+        let mut actual_layer7_kqv_out_row0 = vec![0.0_f32; 32_768];
+        let mut actual_layer7_kqv_back_row0 = vec![0.0_f32; 32_768];
+        let mut actual_layer7_attn_low_row0 = vec![0.0_f32; 8_192];
+        let mut actual_layer7_attention = vec![0.0_f32; 2048 * 4096];
+        let mut actual_layer7_after_attention_hc = vec![0.0_f32; 2048 * 4 * 4096];
+        let mut actual_layer7_after_ffn_hc = vec![0.0_f32; 2048 * 4 * 4096];
+        let mut actual_layer7_ffn_cur_final_tile = vec![0.0_f32; 32 * 4096];
+        let mut actual_layer7_ffn_norm_final_tile = vec![0.0_f32; 32 * 4096];
+        let mut actual_layer7_router_selected = vec![0_i32; 32 * 6];
+        let mut actual_layer7_router_weights = vec![0.0_f32; 32 * 6];
+        let mut actual_layer7_routed_out = vec![0.0_f32; 32 * 4096];
+        let mut actual_layer7_shared_out = vec![0.0_f32; 32 * 4096];
         let mut raw = RawPrefillLayer2AttentionResult::default();
         let mut error = [0 as c_char; ERROR_BYTES];
         let succeeded = unsafe {
@@ -10688,6 +11152,31 @@ mod imp {
                 actual_layer6_router_weights.as_mut_ptr(),
                 actual_layer6_routed_out.as_mut_ptr(),
                 actual_layer6_shared_out.as_mut_ptr(),
+                layer7_qkv_pointers[0],
+                layer7_qkv_pointers[1],
+                layer7_qkv_pointers[2],
+                layer7_qkv_pointers[3],
+                layer7_qkv_pointers[4],
+                layer7_qkv_pointers[5],
+                layer7_qkv_pointers[6],
+                layer7_qkv_pointers[7],
+                layer7_qkv_pointers[8],
+                layer7_qkv_pointers[9],
+                actual_layer7_attn_compressed.as_mut_ptr(),
+                actual_layer7_attn_state_kv.as_mut_ptr(),
+                actual_layer7_attn_state_score.as_mut_ptr(),
+                actual_layer7_kqv_out_row0.as_mut_ptr(),
+                actual_layer7_kqv_back_row0.as_mut_ptr(),
+                actual_layer7_attn_low_row0.as_mut_ptr(),
+                actual_layer7_attention.as_mut_ptr(),
+                actual_layer7_after_attention_hc.as_mut_ptr(),
+                actual_layer7_after_ffn_hc.as_mut_ptr(),
+                actual_layer7_ffn_cur_final_tile.as_mut_ptr(),
+                actual_layer7_ffn_norm_final_tile.as_mut_ptr(),
+                actual_layer7_router_selected.as_mut_ptr(),
+                actual_layer7_router_weights.as_mut_ptr(),
+                actual_layer7_routed_out.as_mut_ptr(),
+                actual_layer7_shared_out.as_mut_ptr(),
                 &mut raw,
                 error.as_mut_ptr(),
                 error.len(),
@@ -11452,6 +11941,200 @@ mod imp {
                 "prefill layer-6 FFN HC post full-2K checksum mismatch",
             ));
         }
+        for ((label, actual), expected) in [
+            "HC attention ingress",
+            "attention norm",
+            "Q-Lora",
+            "Q-Lora norm",
+            "KV raw",
+            "KV norm",
+            "Q raw",
+            "Q current",
+            "KV rope",
+            "KV current",
+        ]
+        .into_iter()
+        .zip(&actual_layer7_qkv)
+        .zip(&expected_layer7_qkv)
+        {
+            for (index, (actual, expected)) in actual.iter().zip(expected).enumerate() {
+                if actual.to_bits() != expected.to_bits() {
+                    return Err(Error::invalid(format!(
+                        "prefill layer-7 {label} C0 mismatch at final-tile element {index}: actual={:#010x} expected={:#010x}",
+                        actual.to_bits(), expected.to_bits(),
+                    )));
+                }
+            }
+        }
+        for (label, actual, expected) in [
+            (
+                "compressed KV",
+                &actual_layer7_attn_compressed,
+                &expected_layer7_compressor.0,
+            ),
+            (
+                "recurrent KV state",
+                &actual_layer7_attn_state_kv,
+                &expected_layer7_compressor.1,
+            ),
+        ] {
+            for (index, (actual, expected)) in actual.iter().zip(expected).enumerate() {
+                if actual.to_bits() != expected.to_bits() {
+                    return Err(Error::invalid(format!(
+                        "prefill layer-7 ratio-128 {label} C0 mismatch at element {index}: actual={:#010x} expected={:#010x}",
+                        actual.to_bits(), expected.to_bits(),
+                    )));
+                }
+            }
+        }
+        for (index, (actual, expected)) in actual_layer7_attn_state_score
+            .iter()
+            .zip(&expected_layer7_compressor.2)
+            .enumerate()
+        {
+            if actual != expected {
+                return Err(Error::invalid(format!(
+                    "prefill layer-7 ratio-128 recurrent score state C0 mismatch at element {index}: actual={:#010x} expected={:#010x}",
+                    *actual as u32, *expected as u32,
+                )));
+            }
+        }
+        for (label, actual, expected) in [
+            (
+                "KQV output row 0",
+                &actual_layer7_kqv_out_row0,
+                &expected_layer7_attention_diagnostics[0],
+            ),
+            (
+                "KQV back row 0",
+                &actual_layer7_kqv_back_row0,
+                &expected_layer7_attention_diagnostics[1],
+            ),
+            (
+                "attention low row 0",
+                &actual_layer7_attn_low_row0,
+                &expected_layer7_attention_diagnostics[2],
+            ),
+        ] {
+            for (index, (actual, expected)) in actual.iter().zip(expected).enumerate() {
+                if actual.to_bits() != expected.to_bits() {
+                    return Err(Error::invalid(format!(
+                        "prefill layer-7 {label} C0 mismatch at element {index}: actual={:#010x} expected={:#010x}",
+                        actual.to_bits(), expected.to_bits(),
+                    )));
+                }
+            }
+        }
+        for (index, (actual, expected)) in actual_layer7_attention
+            .iter()
+            .zip(&expected_layer7_attention.0)
+            .enumerate()
+        {
+            if actual.to_bits() != expected.to_bits() {
+                return Err(Error::invalid(format!(
+                    "prefill layer-7 dense mixed-attention C0 mismatch at element {index}: actual={:#010x} expected={:#010x}",
+                    actual.to_bits(), expected.to_bits(),
+                )));
+            }
+        }
+        let layer7_hc_final_tile = &actual_layer7_after_attention_hc
+            [actual_layer7_after_attention_hc.len() - expected_layer7_attention.1.len()..];
+        for (index, (actual, expected)) in layer7_hc_final_tile
+            .iter()
+            .zip(&expected_layer7_attention.1)
+            .enumerate()
+        {
+            if actual.to_bits() != expected.to_bits() {
+                return Err(Error::invalid(format!(
+                    "prefill layer-7 attention HC post C0 mismatch at final-tile element {index}: actual={:#010x} expected={:#010x}",
+                    actual.to_bits(), expected.to_bits(),
+                )));
+            }
+        }
+        if checksum_f32(&actual_layer7_after_attention_hc)
+            != PREFILL_LAYER7_HC_ATTN_POST_FULL_CHECKSUM
+        {
+            return Err(Error::invalid(
+                "prefill layer-7 attention HC post full-2K checksum mismatch",
+            ));
+        }
+        for (label, actual, expected) in [
+            (
+                "HC collapse",
+                &actual_layer7_ffn_cur_final_tile,
+                &expected_layer7_complete.ffn_cur,
+            ),
+            (
+                "learned norm",
+                &actual_layer7_ffn_norm_final_tile,
+                &expected_layer7_complete.ffn_norm,
+            ),
+        ] {
+            for (index, (actual, expected)) in actual.iter().zip(expected).enumerate() {
+                if actual.to_bits() != expected.to_bits() {
+                    return Err(Error::invalid(format!(
+                        "prefill layer-7 FFN {label} C0 mismatch at final-tile element {index}: actual={:#010x} expected={:#010x}",
+                        actual.to_bits(), expected.to_bits(),
+                    )));
+                }
+            }
+        }
+        for (index, (actual, expected)) in actual_layer7_router_selected
+            .iter()
+            .zip(&expected_layer7_complete.router_selected)
+            .enumerate()
+        {
+            if actual != expected {
+                return Err(Error::invalid(format!(
+                    "prefill layer-7 router selection C0 mismatch at final-tile element {index}: actual={actual} expected={expected}",
+                )));
+            }
+        }
+        for (label, actual, expected) in [
+            (
+                "router weights",
+                &actual_layer7_router_weights,
+                &expected_layer7_complete.router_weights,
+            ),
+            (
+                "routed output",
+                &actual_layer7_routed_out,
+                &expected_layer7_complete.routed_out,
+            ),
+            (
+                "shared output",
+                &actual_layer7_shared_out,
+                &expected_layer7_complete.shared_out,
+            ),
+        ] {
+            for (index, (actual, expected)) in actual.iter().zip(expected).enumerate() {
+                if actual.to_bits() != expected.to_bits() {
+                    return Err(Error::invalid(format!(
+                        "prefill layer-7 {label} C0 mismatch at final-tile element {index}: actual={:#010x} expected={:#010x}",
+                        actual.to_bits(), expected.to_bits(),
+                    )));
+                }
+            }
+        }
+        let layer7_ffn_hc_final_tile = &actual_layer7_after_ffn_hc
+            [actual_layer7_after_ffn_hc.len() - expected_layer7_complete.hc_post.len()..];
+        for (index, (actual, expected)) in layer7_ffn_hc_final_tile
+            .iter()
+            .zip(&expected_layer7_complete.hc_post)
+            .enumerate()
+        {
+            if actual.to_bits() != expected.to_bits() {
+                return Err(Error::invalid(format!(
+                    "prefill layer-7 FFN HC post C0 mismatch at final-tile element {index}: actual={:#010x} expected={:#010x}",
+                    actual.to_bits(), expected.to_bits(),
+                )));
+            }
+        }
+        if checksum_f32(&actual_layer7_after_ffn_hc) != PREFILL_LAYER7_HC_FFN_POST_FULL_CHECKSUM {
+            return Err(Error::invalid(
+                "prefill layer-7 FFN HC post full-2K checksum mismatch",
+            ));
+        }
         for (index, (actual, expected)) in actual_router_selected
             .iter()
             .zip(&expected_router_selected)
@@ -11562,9 +12245,9 @@ mod imp {
             || raw.raw_kv_rows != 2048
             || raw.compressed_kv_rows != 512
             || raw.layer3_compressed_kv_rows != 16
-            || raw.dispatches != 266
-            || raw.wrapped_model_ranges != 136
-            || raw.pointer_matches != 136
+            || raw.dispatches != 313
+            || raw.wrapped_model_ranges != 164
+            || raw.pointer_matches != 164
         {
             return Err(Error::invalid(
                 "Metal prefill layer-2 attention returned an unexpected schedule or mapping",
@@ -11591,6 +12274,10 @@ mod imp {
             layer6_compressor_fixture_id: PREFILL_LAYER6_COMPRESSOR_FIXTURE_ID,
             layer6_attention_fixture_id: PREFILL_LAYER6_ATTENTION_FIXTURE_ID,
             layer6_complete_fixture_id: PREFILL_LAYER6_COMPLETE_FIXTURE_ID,
+            layer7_qkv_fixture_id: PREFILL_LAYER7_QKV_FIXTURE_ID,
+            layer7_compressor_fixture_id: PREFILL_LAYER7_COMPRESSOR_FIXTURE_ID,
+            layer7_attention_fixture_id: PREFILL_LAYER7_ATTENTION_FIXTURE_ID,
+            layer7_complete_fixture_id: PREFILL_LAYER7_COMPLETE_FIXTURE_ID,
             rows: raw.rows,
             raw_kv_rows: raw.raw_kv_rows,
             compressed_kv_rows: raw.compressed_kv_rows,
@@ -11648,6 +12335,17 @@ mod imp {
             layer6_attention_output_checksum: checksum_f32(&actual_layer6_attention),
             layer6_after_attention_hc_checksum: checksum_f32(&actual_layer6_after_attention_hc),
             layer6_after_ffn_hc_checksum: checksum_f32(&actual_layer6_after_ffn_hc),
+            layer7_qkv_checksums: actual_layer7_qkv
+                .each_ref()
+                .map(|tensor| checksum_f32(tensor)),
+            layer7_compressor_checksums: [
+                checksum_f32(&actual_layer7_attn_compressed),
+                checksum_f32(&actual_layer7_attn_state_kv),
+                checksum_i32(&actual_layer7_attn_state_score),
+            ],
+            layer7_attention_output_checksum: checksum_f32(&actual_layer7_attention),
+            layer7_after_attention_hc_checksum: checksum_f32(&actual_layer7_after_attention_hc),
+            layer7_after_ffn_hc_checksum: checksum_f32(&actual_layer7_after_ffn_hc),
         })
     }
 
@@ -15277,13 +15975,17 @@ mod tests {
             layer6_compressor_fixture_id: PREFILL_LAYER6_COMPRESSOR_FIXTURE_ID,
             layer6_attention_fixture_id: PREFILL_LAYER6_ATTENTION_FIXTURE_ID,
             layer6_complete_fixture_id: PREFILL_LAYER6_COMPLETE_FIXTURE_ID,
+            layer7_qkv_fixture_id: PREFILL_LAYER7_QKV_FIXTURE_ID,
+            layer7_compressor_fixture_id: PREFILL_LAYER7_COMPRESSOR_FIXTURE_ID,
+            layer7_attention_fixture_id: PREFILL_LAYER7_ATTENTION_FIXTURE_ID,
+            layer7_complete_fixture_id: PREFILL_LAYER7_COMPLETE_FIXTURE_ID,
             rows: 2048,
             raw_kv_rows: 2048,
             compressed_kv_rows: 512,
             layer3_compressed_kv_rows: 16,
-            dispatches: 266,
-            wrapped_model_ranges: 136,
-            pointer_matches: 136,
+            dispatches: 313,
+            wrapped_model_ranges: 164,
+            pointer_matches: 164,
             wall_ms: 196.0,
             gpu_ms: 169.0,
             output_checksum: checksum_f32(&prefill_layer2_attention_fixture().unwrap()),
@@ -15346,6 +16048,21 @@ mod tests {
             layer6_attention_output_checksum: PREFILL_LAYER6_ATTENTION_OUTPUT_CHECKSUM,
             layer6_after_attention_hc_checksum: PREFILL_LAYER6_HC_ATTN_POST_FULL_CHECKSUM,
             layer6_after_ffn_hc_checksum: PREFILL_LAYER6_HC_FFN_POST_FULL_CHECKSUM,
+            layer7_qkv_checksums: prefill_layer7_qkv_final_tile_fixture()
+                .unwrap()
+                .each_ref()
+                .map(|tensor| checksum_f32(tensor)),
+            layer7_compressor_checksums: {
+                let fixture = prefill_layer7_compressor_fixture().unwrap();
+                [
+                    checksum_f32(&fixture.0),
+                    checksum_f32(&fixture.1),
+                    checksum_i32(&fixture.2),
+                ]
+            },
+            layer7_attention_output_checksum: PREFILL_LAYER7_ATTENTION_OUTPUT_CHECKSUM,
+            layer7_after_attention_hc_checksum: PREFILL_LAYER7_HC_ATTN_POST_FULL_CHECKSUM,
+            layer7_after_ffn_hc_checksum: PREFILL_LAYER7_HC_FFN_POST_FULL_CHECKSUM,
         }
     }
 
@@ -16695,9 +17412,11 @@ mod tests {
         )));
         assert!(text.contains("\"compressed_kv_rows\": 512"));
         assert!(text.contains("\"sparse_indexer_topk\": false"));
-        assert!(text.contains("\"terminal_dispatches\": 266"));
+        assert!(text.contains("\"terminal_dispatches\": 313"));
         assert!(text.contains("\"layer3_compressor_ratio\": 128"));
         assert!(text.contains("\"layer3_compressed_rows\": 16"));
+        assert!(text.contains("\"layer7_compressor_ratio\": 128"));
+        assert!(text.contains("\"layer7_compressed_rows\": 16"));
         assert!(text.contains("\"layer2_attention_output_c0_bitwise_match\": true"));
         assert!(text.contains("\"complete_layer2_dense_mixed_attention_claim\": true"));
         assert!(text.contains("\"layer2_ffn_hc_post_c0_bitwise_match\": true"));
@@ -16716,8 +17435,8 @@ mod tests {
         assert!(text.contains("\"layer3_ffn_hc_post_c0_bitwise_match\": true"));
         assert!(text.contains("\"complete_layer3_ffn_claim\": true"));
         assert!(text.contains("\"complete_layer3_prefill_claim\": true"));
-        assert!(text.contains("\"output_boundary\": \"layer6_ffn_hc_post\""));
-        assert!(text.contains("\"complete_layers\": [0, 1, 2, 3, 4, 5, 6]"));
+        assert!(text.contains("\"output_boundary\": \"layer7_ffn_hc_post\""));
+        assert!(text.contains("\"complete_layers\": [0, 1, 2, 3, 4, 5, 6, 7]"));
         assert!(text.contains("\"downstream_layer\": null"));
         assert!(text.contains("\"layer4_qkv_state_c0_bitwise_match\": true"));
         assert!(text.contains("\"complete_layer4_qkv_state_claim\": true"));
@@ -16771,6 +17490,23 @@ mod tests {
         assert!(text.contains("\"layer6_ffn_hc_post_c0_bitwise_match\": true"));
         assert!(text.contains("\"complete_layer6_ffn_claim\": true"));
         assert!(text.contains("\"complete_layer6_prefill_claim\": true"));
+        assert!(text.contains("\"layer7_qkv_dispatches\": 10"));
+        assert!(text.contains("\"layer7_ratio128_compressor_dispatches\": 7"));
+        assert!(text.contains("\"layer7_dense_attention_dispatches\": 9"));
+        assert!(text.contains("\"layer7_ffn_dispatches\": 21"));
+        assert!(text.contains("\"layer7_qkv_state_c0_bitwise_match\": true"));
+        assert!(text.contains("\"layer7_ratio128_compressor_c0_bitwise_match\": true"));
+        assert!(text.contains("\"layer7_attention_output_c0_bitwise_match\": true"));
+        assert!(text.contains("\"layer7_attention_hc_post_c0_bitwise_match\": true"));
+        assert!(text.contains("\"layer7_ffn_biased_topk_c0_bitwise_match\": true"));
+        assert!(text.contains("\"layer7_ffn_outputs_c0_bitwise_match\": true"));
+        assert!(text.contains("\"layer7_ffn_hc_post_c0_bitwise_match\": true"));
+        assert!(text.contains("\"complete_layer7_qkv_state_claim\": true"));
+        assert!(text.contains("\"complete_layer7_ratio128_compressor_claim\": true"));
+        assert!(text.contains("\"complete_layer7_dense_mixed_attention_claim\": true"));
+        assert!(text.contains("\"complete_layer7_attention_hc_post_claim\": true"));
+        assert!(text.contains("\"complete_layer7_ffn_claim\": true"));
+        assert!(text.contains("\"complete_layer7_prefill_claim\": true"));
     }
 
     #[test]
@@ -17216,6 +17952,65 @@ mod tests {
     #[test]
     fn prefill_layer6_complete_fixture_has_target_shapes() {
         let fixture = prefill_layer6_complete_final_tile_fixture().unwrap();
+        assert_eq!(fixture.ffn_cur.len(), 32 * 4096);
+        assert_eq!(fixture.ffn_norm.len(), 32 * 4096);
+        assert_eq!(fixture.router_selected.len(), 32 * 6);
+        assert_eq!(fixture.router_weights.len(), 32 * 6);
+        assert_eq!(fixture.routed_out.len(), 32 * 4096);
+        assert_eq!(fixture.shared_out.len(), 32 * 4096);
+        assert_eq!(fixture.hc_post.len(), 32 * 4 * 4096);
+    }
+
+    #[test]
+    fn prefill_layer7_qkv_fixture_has_target_shapes() {
+        let tensors = prefill_layer7_qkv_final_tile_fixture().unwrap();
+        assert_eq!(
+            tensors.each_ref().map(|tensor| tensor.len()),
+            [
+                32 * 4096,
+                32 * 4096,
+                32 * 1024,
+                32 * 1024,
+                32 * 512,
+                32 * 512,
+                32 * 32768,
+                32 * 32768,
+                32 * 512,
+                32 * 512,
+            ]
+        );
+        assert!(tensors.iter().flatten().all(|value| value.is_finite()));
+    }
+
+    #[test]
+    fn prefill_layer7_compressor_fixture_has_target_shapes() {
+        let (compressed, state_kv, state_score) = prefill_layer7_compressor_fixture().unwrap();
+        assert_eq!(compressed.len(), 16 * 512);
+        assert_eq!(state_kv.len(), 128 * 512);
+        assert_eq!(state_score.len(), 128 * 512);
+        assert!(compressed.iter().all(|value| value.is_finite()));
+        assert!(state_kv.iter().all(|value| value.to_bits() == 0));
+        assert!(state_score.iter().all(|value| *value as u32 == 0xff80_0000));
+    }
+
+    #[test]
+    fn prefill_layer7_attention_fixture_has_target_shapes() {
+        let (attention, hc_post) = prefill_layer7_attention_fixture().unwrap();
+        let diagnostics = prefill_layer7_attention_diagnostics_fixture().unwrap();
+        assert_eq!(attention.len(), 2048 * 4096);
+        assert_eq!(hc_post.len(), 32 * 4 * 4096);
+        assert_eq!(
+            diagnostics.each_ref().map(|tensor| tensor.len()),
+            [32_768, 32_768, 8_192]
+        );
+        assert!(attention.iter().all(|value| value.is_finite()));
+        assert!(hc_post.iter().all(|value| value.is_finite()));
+        assert!(diagnostics.iter().flatten().all(|value| value.is_finite()));
+    }
+
+    #[test]
+    fn prefill_layer7_complete_fixture_has_target_shapes() {
+        let fixture = prefill_layer7_complete_final_tile_fixture().unwrap();
         assert_eq!(fixture.ffn_cur.len(), 32 * 4096);
         assert_eq!(fixture.ffn_norm.len(), 32 * 4096);
         assert_eq!(fixture.router_selected.len(), 32 * 6);
