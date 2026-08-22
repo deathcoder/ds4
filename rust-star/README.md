@@ -155,11 +155,16 @@ views now drive layer 4's dense mixed attention across 2,048 raw plus 512
 compressed rows, inverse RoPE, and both Q8 attention-output projections before
 the additive four-stream HC post. The complete 2048 x 4096 attention output
 and final 32-row HC tile match two fresh DwarfStar captures bit-for-bit, with
-their full identities checksum-pinned. The terminal schedule now uses 128
-dispatches and preserves 64/64 no-copy model mappings.
+their full identities checksum-pinned. Twelve final no-copy views then carry
+layer 4 through FFN HC ingress, learned norm, biased top-6 selection, unbiased
+router-weight normalization, routed IQ2_XXS/Q2_K experts, the shared Q8_0
+expert, and the additive FFN HC update. Every retained final-tile boundary and
+the complete final HC identity match two fresh DwarfStar processes exactly.
+The terminal schedule now uses 149 dispatches and preserves 76/76 no-copy
+model mappings, establishing complete layer-4 prefill ownership.
 Exactly 512 compressed rows remain dense; sparse indexer top-k starts only after
-this prompt boundary. Layer-4 FFN plus later
-prefill, output logits, and sparse post-prompt attention remain pending, and
+this prompt boundary. Layer-5 and later prefill, output logits, and sparse
+post-prompt attention remain pending, and
 this is not a throughput claim.
 
 Project controls and benchmark contracts:

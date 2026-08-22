@@ -241,14 +241,20 @@ history; add a correction and update the current-state summary.
   dense mixed attention over 2,048 raw plus 512 compressed rows, inverse RoPE,
   both Q8 output projections, and the additive HC post. The full 2048x4096
   attention output and final HC tile match two fresh DwarfStar processes
-  exactly. It preserves 64/64 no-copy mappings across 128 dispatches and
-  retains the post-attention HC state. Layer-4 FFN remains pending.
+  exactly. Twelve final no-copy views now drive layer 4 through FFN HC ingress,
+  learned norm, biased top-6 routing, routed/shared experts, and the additive
+  final HC update. Every retained FFN boundary and the complete final HC
+  identity match two fresh DwarfStar processes exactly. It preserves 76/76
+  no-copy mappings across 149 dispatches, establishing complete native
+  layer-4 prefill ownership.
   Full native batched prefill, sparse indexed attention beyond 512 ratio-4
   rows, and the eligible engine-measurement producer remain pending.
-- Measurements: The exact complete native layers-0/1/2/3 plus layer-4 dense
-  mixed attention and HC-post full-2K command reported 934.193 ms wall /
-  833.479 ms GPU in its focused run and 952.654 ms wall / 851.603 ms GPU in the
-  complete target-Mac gate, across 128 dispatches with 64/64 no-copy model
+- Measurements: The exact complete native layers-0/1/2/3/4 full-2K command
+  reported 1079.281 ms wall / 991.837 ms GPU in its focused run and 1601.151 ms
+  wall / 985.798 ms GPU in the complete target-Mac gate, across 149 dispatches
+  with 76/76 no-copy model mappings. The prior attention-only checkpoint
+  reported 934.193 ms wall / 833.479 ms GPU focused and 952.654 ms wall /
+  851.603 ms GPU in the complete gate, across 128 dispatches with 64/64
   mappings. The prior paired-compressor checkpoint reported 740.517 ms wall /
   656.454 ms GPU focused and 750.548 ms wall / 655.250 ms GPU in the complete
   gate, across 119 dispatches with 61/61 mappings.
@@ -406,6 +412,43 @@ history; add a correction and update the current-state summary.
 6. Run or approve the fork's GitHub Actions workflow and retain its URL.
 
 ## Entries
+
+### 2026-08-22 — Complete exact layer-4 prefill
+
+Objective:
+
+- Continue the retained layer-4 post-attention HC state through the complete
+  FFN and establish native full-2K ownership through layer 4.
+
+Implementation:
+
+- Captured ten FFN hooks twice in fresh DwarfStar processes: HC ingress,
+  learned norm, router logits/probabilities, biased top-6 selections, scaled
+  weights, fused routed activations/output, shared output, and final HC. All
+  full-2K identities were byte-stable.
+- Added `prefill-layer4-complete-2048-v1`, retaining exact final-tile payloads
+  and pinning the complete 128 MiB final-HC identity by SHA-256 and checksum.
+- Wrapped twelve additional layer-4 FFN tensors directly from the model mmap
+  and added the proven 21-dispatch biased router, routed IQ2_XXS/Q2_K expert,
+  shared Q8_0 expert, and additive HC schedule.
+- Extended the stable JSON boundary to `layer4_ffn_hc_post`, with 149 terminal
+  dispatches, 76/76 no-copy mappings, exact FFN flags, and a complete layer-4
+  prefill claim.
+
+Validation:
+
+- Fixture verifier: valid ten-tensor, 5,834,240-byte differential fixture.
+- Rust unit suite: 103 passed.
+- Focused optimized M1 Ultra run: every retained FFN boundary and the complete
+  final HC identity C0 exact, 1079.281 ms wall / 991.837 ms GPU.
+- Full target-Mac gate: 103 Rust tests and 61 Python tests passed, every native
+  control remained exact, and the complete layer-4 command reported 1601.151
+  ms wall / 985.798 ms GPU with 76/76 no-copy mappings.
+
+Next:
+
+- Continue the retained final HC state into layer 5, beginning with its HC
+  attention ingress and Q/KV state.
 
 ### 2026-08-22 — Exact layer-4 dense mixed attention and HC post
 
