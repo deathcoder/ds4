@@ -216,18 +216,21 @@ history; add a correction and update the current-state summary.
   final-tile intermediates match the repeated oracle, completing native layers
   0, 1, and 2 at the 2K prompt boundary. The terminal command now carries that
   full final HC state directly through layer 3's HC attention ingress, learned
-  norm, and Q-Lora projection. The three new boundaries match a repeated
-  DwarfStar capture exactly, and the expanded command preserves 21/21 terminal
-  no-copy mappings across 36 dispatches. Layer-3 KV/attention/FFN remains
-  pending.
+  norm, Q-Lora projection, Q/KV learned normalization, compressed RoPE, and FP8
+  KV finalization. It retains all 2,048 layer-3 raw-KV rows plus the exact Q,
+  HC, and attention-split state for continuation. All ten layer-3 boundaries
+  match repeated DwarfStar captures exactly, and the expanded command preserves
+  25/25 terminal no-copy mappings across 42 dispatches. Layer-3 ratio-128
+  compression, attention, and FFN remain pending.
   Full native batched prefill, sparse indexed attention beyond 512 ratio-4
   rows, and the eligible engine-measurement producer remain pending.
-- Measurements: The exact full-2K layer-2 completion plus layer-3 ingress
-  command reported 441.440 ms wall / 371.934 ms GPU across 36 dispatches with
-  21/21 no-copy model mappings. It includes full correctness readback and is
-  not a throughput claim. The prior layer-2-only control was 408.397 ms wall /
-  338.484 ms GPU, and the prior attention-only control was 196.069 ms wall /
-  169.211 ms GPU.
+- Measurements: The exact full-2K layer-2 completion plus layer-3 Q/KV-state
+  command reported 482.230 ms wall / 402.931 ms GPU in its focused run and
+  447.543 ms wall / 366.771 ms GPU in the complete target-Mac gate, across 42
+  dispatches with 25/25 no-copy model mappings. It includes full correctness
+  readback and is not a throughput claim. The prior layer-3-ingress control was 441.440 ms wall
+  / 371.934 ms GPU, the layer-2-only control was 408.397 ms wall / 338.484 ms
+  GPU, and the attention-only control was 196.069 ms wall / 169.211 ms GPU.
   Metal batching was 42.861x faster than synchronized submission
   in the retained M-002 probe. DwarfStar medians are 164.86 prefill / 19.90
   generation tok/s at 2K and 161.05 prefill / 17.36 generation tok/s at 32K.
@@ -354,9 +357,9 @@ history; add a correction and update the current-state summary.
 
 ## Immediate Next Actions
 
-1. Extend the exact native 2K layer-3 boundary from Q-Lora through Q/KV setup,
-   raw KV ownership, and its paired compressor schedule while preserving the
-   completed layer-2 and layer-3-ingress controls.
+1. Extend the exact native 2K layer-3 boundary through its ratio-128 attention
+   compressor state and 16 emitted rows, preserving the completed layer-2 and
+   layer-3 Q/KV controls.
 2. Add the fixed 512-row ratio-4 indexer top-k and sparse indexed attention so
    128 generated tokens can continue beyond the 2K frontier.
 3. Emit the `rust-star-engine-measurement-v1` artifact from the exact
@@ -368,6 +371,54 @@ history; add a correction and update the current-state summary.
 6. Run or approve the fork's GitHub Actions workflow and retain its URL.
 
 ## Entries
+
+### 2026-08-22 — Layer 3 owns exact full-2K Q/KV state
+
+Objective:
+
+- Continue the exact native layer-3 batch from Q-Lora through Q/KV setup,
+  compressed RoPE, FP8 finalization, and persistent raw-KV ownership.
+
+Oracle evidence:
+
+- Two fresh primary DwarfStar processes produced byte-identical full-2K
+  `q_lora_norm`, `KVraw`, `KVnorm`, `Qcur`, `KVrope`, and `KVcur` captures.
+  Two additional fresh processes produced identical 256 MiB `Qraw` captures.
+- The repeated `q_lora` capture retained SHA-256
+  `bafe82a1535457caec52278bdb3c95e317aacb128c94f704fc523ca9581d6265`,
+  exactly matching the prior checkpoint.
+- `prefill-layer3-kv-state-2048-v1` retains exact final tiles for all seven new
+  boundaries and pins their full capture SHA-256 identities.
+
+Implementation:
+
+- Added six dispatches to the existing terminal command: Q8 KV projection,
+  fused Q/KV learned norm, Q8 Q-B, Q head norm/RoPE, KV RoPE, and FP8 KV
+  finalization.
+- Added four no-copy model views and retained the complete layer-3 finalized
+  KV, Q, input HC, and attention split buffers in the persistent Metal context.
+- Extended the ABI, strict tensor checks, stable JSON, fixture importer, and
+  Rust/Python fixture tests. Large Qraw/Qcur identities use exact final tiles;
+  the manifest pins their complete 2K SHA-256 captures.
+
+Validation:
+
+- The optimized focused probe matched all seven new final-tile boundaries
+  bit-for-bit and matched the full-2K checksums for Q-Lora norm, KVraw, KVnorm,
+  KVrope, and KVcur.
+- The terminal schedule used 42 dispatches and 25/25 no-copy mappings. It
+  reported 482.230 ms wall / 402.931 ms GPU with correctness readback in scope;
+  this is not a throughput measurement.
+- The complete target-Mac gate passed 95 Rust tests and 60 Python tests, every
+  fixture verifier and retained Metal control, and a second exact layer-3 run
+  at 447.543 ms wall / 366.771 ms GPU. The 2K sequential control also remained
+  C0 exact at 20.168 tokens/s over 101546.809 ms.
+
+Decision and next:
+
+- Accept `layer3_kv_cur` as the next exact native-batch checkpoint. Build the
+  layer-3 ratio-128 compressor state and its 16 prompt emissions before dense
+  mixed attention and the distinct biased top-k FFN.
 
 ### 2026-08-22 — Full-2K layer-2 HC flows directly into layer-3 Q-Lora
 

@@ -156,7 +156,8 @@ typedef struct rust_star_metal_prefill_layer2_attention_weights {
     uint64_t attn_output_a_offset, attn_output_a_bytes;
     uint64_t attn_output_b_offset, attn_output_b_bytes;
     rust_star_metal_prefill_ffn_weights ffn;
-    rust_star_metal_prefill_attention_ingress_weights layer3_ingress;
+    rust_star_metal_prefill_kvnorm_weights layer3_kvnorm;
+    uint64_t layer3_q_b_offset, layer3_q_b_bytes;
 } rust_star_metal_prefill_layer2_attention_weights;
 
 typedef struct rust_star_metal_prefill_layer2_attention_result {
@@ -459,6 +460,13 @@ int rust_star_metal_run_prefill_layer2_attention(
     float *layer3_hc_attn_pre,
     float *layer3_attn_norm,
     float *layer3_q_lora,
+    float *layer3_q_lora_norm,
+    float *layer3_kv_raw,
+    float *layer3_kv_norm,
+    float *layer3_q_raw_final_tile,
+    float *layer3_q_cur_final_tile,
+    float *layer3_kv_rope,
+    float *layer3_kv_cur,
     rust_star_metal_prefill_layer2_attention_result *result,
     char *error,
     size_t error_bytes);

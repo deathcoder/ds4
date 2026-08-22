@@ -259,6 +259,10 @@ static NSString *const kQ8ProjectionSource =
 @property(nonatomic, strong) id<MTLBuffer> prefillLayer2IndexerCompressed;
 @property(nonatomic, strong) id<MTLBuffer> prefillLayer2IndexerStateKv;
 @property(nonatomic, strong) id<MTLBuffer> prefillLayer2IndexerStateScore;
+@property(nonatomic, strong) id<MTLBuffer> prefillLayer3FullQ;
+@property(nonatomic, strong) id<MTLBuffer> prefillLayer3FullKv;
+@property(nonatomic, strong) id<MTLBuffer> prefillLayer3InputHc;
+@property(nonatomic, strong) id<MTLBuffer> prefillLayer3AttnSplit;
 @property(nonatomic, assign) uint32_t prefillKvRows;
 @property(nonatomic, assign) double chainedWallEnd;
 @property(nonatomic, assign) BOOL chainedReady;
@@ -4982,6 +4986,13 @@ int rust_star_metal_run_prefill_layer2_attention(
     float *layer3_hc_attn_pre,
     float *layer3_attn_norm,
     float *layer3_q_lora,
+    float *layer3_q_lora_norm,
+    float *layer3_kv_raw,
+    float *layer3_kv_norm,
+    float *layer3_q_raw_final_tile,
+    float *layer3_q_cur_final_tile,
+    float *layer3_kv_rope,
+    float *layer3_kv_cur,
     rust_star_metal_prefill_layer2_attention_result *result,
     char *error,
     size_t error_bytes)
@@ -4991,7 +5002,10 @@ int rust_star_metal_run_prefill_layer2_attention(
         !ffn_norm_final_tile || !router_selected_final_tile ||
         !router_weights_final_tile || !routed_out_final_tile ||
         !shared_out_final_tile || !layer3_hc_attn_pre || !layer3_attn_norm ||
-        !layer3_q_lora || !result) {
+        !layer3_q_lora || !layer3_q_lora_norm || !layer3_kv_raw ||
+        !layer3_kv_norm || !layer3_q_raw_final_tile ||
+        !layer3_q_cur_final_tile || !layer3_kv_rope || !layer3_kv_cur ||
+        !result) {
         return fail_with_message(error, error_bytes,
             @"prefill layer-2 attention received a null input");
     }
@@ -5033,12 +5047,19 @@ int rust_star_metal_run_prefill_layer2_attention(
             weights->ffn.shared_gate_bytes != 2048ull*(n_embd/32u)*34u ||
             weights->ffn.shared_up_bytes != 2048ull*(n_embd/32u)*34u ||
             weights->ffn.shared_down_bytes != n_embd*(2048u/32u)*34u ||
-            weights->layer3_ingress.hc_fn_bytes != 16384ull*24ull*sizeof(uint16_t) ||
-            weights->layer3_ingress.hc_scale_bytes != 3u*sizeof(float) ||
-            weights->layer3_ingress.hc_base_bytes != 24u*sizeof(float) ||
-            weights->layer3_ingress.norm_bytes != n_embd*sizeof(float) ||
-            weights->layer3_ingress.q_a_bytes !=
-                1024ull*((uint64_t)n_embd/32u)*34u) {
+            weights->layer3_kvnorm.ingress.hc_fn_bytes !=
+                16384ull*24ull*sizeof(uint16_t) ||
+            weights->layer3_kvnorm.ingress.hc_scale_bytes != 3u*sizeof(float) ||
+            weights->layer3_kvnorm.ingress.hc_base_bytes != 24u*sizeof(float) ||
+            weights->layer3_kvnorm.ingress.norm_bytes != n_embd*sizeof(float) ||
+            weights->layer3_kvnorm.ingress.q_a_bytes !=
+                1024ull*((uint64_t)n_embd/32u)*34u ||
+            weights->layer3_kvnorm.q_a_norm_bytes != 1024u*sizeof(float) ||
+            weights->layer3_kvnorm.kv_bytes !=
+                512ull*((uint64_t)n_embd/32u)*34u ||
+            weights->layer3_kvnorm.kv_norm_bytes != 512u*sizeof(float) ||
+            weights->layer3_q_b_bytes !=
+                (uint64_t)q_dim*(1024u/32u)*34u) {
             return fail_with_message(error, error_bytes,
                 @"prefill layer-2 attention tensor shapes are invalid");
         }
@@ -5046,7 +5067,7 @@ int rust_star_metal_run_prefill_layer2_attention(
             !ensure_moe_output_pipelines(context, error, error_bytes)) return 0;
         memset(result, 0, sizeof(*result));
 
-        uint64_t offsets[21] = {
+        uint64_t offsets[25] = {
             weights->q_b_offset, weights->attn_sinks_offset,
             weights->attn_output_a_offset, weights->attn_output_b_offset,
             weights->ffn.hc_fn_offset, weights->ffn.hc_scale_offset,
@@ -5055,13 +5076,17 @@ int rust_star_metal_run_prefill_layer2_attention(
             weights->ffn.routed_gate_offset, weights->ffn.routed_up_offset,
             weights->ffn.routed_down_offset, weights->ffn.shared_gate_offset,
             weights->ffn.shared_up_offset, weights->ffn.shared_down_offset,
-            weights->layer3_ingress.hc_fn_offset,
-            weights->layer3_ingress.hc_scale_offset,
-            weights->layer3_ingress.hc_base_offset,
-            weights->layer3_ingress.norm_offset,
-            weights->layer3_ingress.q_a_offset,
+            weights->layer3_kvnorm.ingress.hc_fn_offset,
+            weights->layer3_kvnorm.ingress.hc_scale_offset,
+            weights->layer3_kvnorm.ingress.hc_base_offset,
+            weights->layer3_kvnorm.ingress.norm_offset,
+            weights->layer3_kvnorm.ingress.q_a_offset,
+            weights->layer3_kvnorm.q_a_norm_offset,
+            weights->layer3_kvnorm.kv_offset,
+            weights->layer3_kvnorm.kv_norm_offset,
+            weights->layer3_q_b_offset,
         };
-        uint64_t sizes[21] = {
+        uint64_t sizes[25] = {
             weights->q_b_bytes, weights->attn_sinks_bytes,
             weights->attn_output_a_bytes, weights->attn_output_b_bytes,
             weights->ffn.hc_fn_bytes, weights->ffn.hc_scale_bytes,
@@ -5070,16 +5095,20 @@ int rust_star_metal_run_prefill_layer2_attention(
             weights->ffn.routed_gate_bytes, weights->ffn.routed_up_bytes,
             weights->ffn.routed_down_bytes, weights->ffn.shared_gate_bytes,
             weights->ffn.shared_up_bytes, weights->ffn.shared_down_bytes,
-            weights->layer3_ingress.hc_fn_bytes,
-            weights->layer3_ingress.hc_scale_bytes,
-            weights->layer3_ingress.hc_base_bytes,
-            weights->layer3_ingress.norm_bytes,
-            weights->layer3_ingress.q_a_bytes,
+            weights->layer3_kvnorm.ingress.hc_fn_bytes,
+            weights->layer3_kvnorm.ingress.hc_scale_bytes,
+            weights->layer3_kvnorm.ingress.hc_base_bytes,
+            weights->layer3_kvnorm.ingress.norm_bytes,
+            weights->layer3_kvnorm.ingress.q_a_bytes,
+            weights->layer3_kvnorm.q_a_norm_bytes,
+            weights->layer3_kvnorm.kv_bytes,
+            weights->layer3_kvnorm.kv_norm_bytes,
+            weights->layer3_q_b_bytes,
         };
-        id<MTLBuffer> model_buffers[21] = { nil };
-        NSUInteger inner[21] = { 0 };
-        BOOL matches[21] = { NO };
-        for (uint32_t index = 0; index < 21u; index++) {
+        id<MTLBuffer> model_buffers[25] = { nil };
+        NSUInteger inner[25] = { 0 };
+        BOOL matches[25] = { NO };
+        for (uint32_t index = 0; index < 25u; index++) {
             model_buffers[index] = wrap_model_range(
                 context, model_mapping, model_bytes, offsets[index], sizes[index],
                 &inner[index], &matches[index], error, error_bytes);
@@ -5160,6 +5189,14 @@ int rust_star_metal_run_prefill_layer2_attention(
         RUST_STAR_NEW_L2_ATTN_BUFFER(layer3_norm_buffer, output_bytes);
         RUST_STAR_NEW_L2_ATTN_BUFFER(layer3_q_lora_buffer,
             (NSUInteger)rows*1024u*sizeof(float));
+        const NSUInteger layer3_q_rank_bytes = (NSUInteger)rows*1024u*sizeof(float);
+        const NSUInteger layer3_kv_bytes = (NSUInteger)rows*512u*sizeof(float);
+        RUST_STAR_NEW_L2_ATTN_BUFFER(layer3_q_norm_buffer, layer3_q_rank_bytes);
+        RUST_STAR_NEW_L2_ATTN_BUFFER(layer3_kv_raw_buffer, layer3_kv_bytes);
+        RUST_STAR_NEW_L2_ATTN_BUFFER(layer3_kv_norm_buffer, layer3_kv_bytes);
+        RUST_STAR_NEW_L2_ATTN_BUFFER(layer3_kv_norm_snapshot_buffer, layer3_kv_bytes);
+        RUST_STAR_NEW_L2_ATTN_BUFFER(layer3_kv_rope_buffer, layer3_kv_bytes);
+        RUST_STAR_NEW_L2_ATTN_BUFFER(layer3_q_cur_buffer, q_bytes);
 #undef RUST_STAR_NEW_L2_ATTN_BUFFER
         if (!q_buffer || !staged_kv_buffer || !mask_buffer || !block_buffer ||
             !pad_buffer || !heads_buffer || !attention_low_buffer || !output_buffer ||
@@ -5173,7 +5210,10 @@ int rust_star_metal_run_prefill_layer2_attention(
             !shared_gate_buffer || !shared_up_buffer || !shared_mid_buffer ||
             !shared_out_buffer || !after_ffn_hc_buffer || !layer3_flat_hc_buffer ||
             !layer3_mix_buffer || !layer3_split_buffer || !layer3_cur_buffer ||
-            !layer3_norm_buffer || !layer3_q_lora_buffer) {
+            !layer3_norm_buffer || !layer3_q_lora_buffer ||
+            !layer3_q_norm_buffer || !layer3_kv_raw_buffer ||
+            !layer3_kv_norm_buffer || !layer3_kv_norm_snapshot_buffer ||
+            !layer3_kv_rope_buffer || !layer3_q_cur_buffer) {
             return fail_with_message(error, error_bytes,
                 @"failed to allocate prefill layer-2 attention buffers");
         }
@@ -5412,13 +5452,57 @@ int rust_star_metal_run_prefill_layer2_attention(
         rust_star_q8_mm_args layer3_q_a_args = {
             .ne00=n_embd, .ne02=1,
             .nb01=(n_embd/32u)*34u,
-            .nb02=weights->layer3_ingress.q_a_bytes,
-            .nb03=weights->layer3_ingress.q_a_bytes,
+            .nb02=weights->layer3_kvnorm.ingress.q_a_bytes,
+            .nb03=weights->layer3_kvnorm.ingress.q_a_bytes,
             .ne12=1, .nb10=sizeof(float),
             .nb11=n_embd*sizeof(float),
             .nb12=(uint64_t)rows*n_embd*sizeof(float),
             .nb13=(uint64_t)rows*n_embd*sizeof(float),
             .ne0=1024, .ne1=rows, .r2=1, .r3=1,
+        };
+        rust_star_q8_mm_args layer3_kv_args = {
+            .ne00=n_embd, .ne02=1,
+            .nb01=(n_embd/32u)*34u,
+            .nb02=weights->layer3_kvnorm.kv_bytes,
+            .nb03=weights->layer3_kvnorm.kv_bytes,
+            .ne12=1, .nb10=sizeof(float),
+            .nb11=n_embd*sizeof(float),
+            .nb12=(uint64_t)rows*n_embd*sizeof(float),
+            .nb13=(uint64_t)rows*n_embd*sizeof(float),
+            .ne0=512, .ne1=rows, .r2=1, .r3=1,
+        };
+        rust_star_q8_mm_args layer3_q_b_args = {
+            .ne00=1024, .ne02=1, .nb01=(1024u/32u)*34u,
+            .nb02=weights->layer3_q_b_bytes,
+            .nb03=weights->layer3_q_b_bytes,
+            .ne12=1, .nb10=sizeof(float), .nb11=1024u*sizeof(float),
+            .nb12=(uint64_t)rows*1024u*sizeof(float),
+            .nb13=(uint64_t)rows*1024u*sizeof(float),
+            .ne0=q_dim, .ne1=rows, .r2=1, .r3=1,
+        };
+        rust_star_qkv_norm_args layer3_qkv_norm_args = {
+            .q_n=1024, .q_n4=256, .kv_n=512, .kv_n4=128,
+            .q_row_stride=1024u*sizeof(float),
+            .kv_row_stride=512u*sizeof(float), .eps=1.0e-6f,
+        };
+        rust_star_rope_tail_args layer3_kv_rope_args = {
+            .ne00=512, .ne01=1, .ne02=rows, .ne03=1,
+            .nb00=sizeof(float), .nb01=512u*sizeof(float),
+            .nb02=512u*sizeof(float), .nb03=(uint64_t)rows*512u*sizeof(float),
+            .nb0=sizeof(float), .nb1=512u*sizeof(float),
+            .nb2=512u*sizeof(float), .nb3=(uint64_t)rows*512u*sizeof(float),
+            .n_dims=64, .mode=0, .n_ctx_orig=65536, .inverse=0,
+            .freq_base=160000.0f, .freq_scale=freq_scale,
+            .ext_factor=1.0f, .attn_factor=attn_factor,
+            .beta_fast=32.0f, .beta_slow=1.0f, .src2=false,
+        };
+        rust_star_fp8_quantize_args layer3_kv_fp8_args = {
+            .ne00=512, .ne01=1, .ne02=rows, .ne03=1,
+            .nb00=sizeof(float), .nb01=512u*sizeof(float),
+            .nb02=512u*sizeof(float), .nb03=(uint64_t)rows*512u*sizeof(float),
+            .nb0=sizeof(float), .nb1=512u*sizeof(float),
+            .nb2=512u*sizeof(float), .nb3=(uint64_t)rows*512u*sizeof(float),
+            .n_rot=64,
         };
 
         id<MTLCommandBuffer> command = [context.queue commandBuffer];
@@ -5741,6 +5825,89 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setThreadgroupMemoryLength:6144u atIndex:0];
         [encoder dispatchThreadgroups:MTLSizeMake(rows/32u,1024u/64u,1)
              threadsPerThreadgroup:MTLSizeMake(128,1,1)];
+
+        [encoder setComputePipelineState:context.q8PrefillPipeline];
+        [encoder setBytes:&layer3_kv_args length:sizeof(layer3_kv_args) atIndex:0];
+        [encoder setBuffer:model_buffers[22] offset:inner[22] atIndex:1];
+        [encoder setBuffer:layer3_norm_buffer offset:0 atIndex:2];
+        [encoder setBuffer:layer3_kv_raw_buffer offset:0 atIndex:3];
+        [encoder setThreadgroupMemoryLength:6144u atIndex:0];
+        [encoder dispatchThreadgroups:MTLSizeMake(rows/32u,512u/64u,1)
+             threadsPerThreadgroup:MTLSizeMake(128,1,1)];
+
+        [encoder setComputePipelineState:context.qkvNormPipeline];
+        [encoder setBytes:&layer3_qkv_norm_args
+                   length:sizeof(layer3_qkv_norm_args) atIndex:0];
+        [encoder setBuffer:layer3_q_lora_buffer offset:0 atIndex:1];
+        [encoder setBuffer:model_buffers[21] offset:inner[21] atIndex:2];
+        [encoder setBuffer:layer3_q_norm_buffer offset:0 atIndex:3];
+        [encoder setBuffer:layer3_kv_raw_buffer offset:0 atIndex:4];
+        [encoder setBuffer:model_buffers[23] offset:inner[23] atIndex:5];
+        [encoder setBuffer:layer3_kv_norm_buffer offset:0 atIndex:6];
+        [encoder setThreadgroupMemoryLength:32u*sizeof(float) atIndex:0];
+        [encoder dispatchThreadgroups:MTLSizeMake(rows,2,1)
+             threadsPerThreadgroup:MTLSizeMake(256,1,1)];
+
+        [encoder setComputePipelineState:context.q8PrefillPipeline];
+        [encoder setBytes:&layer3_q_b_args length:sizeof(layer3_q_b_args) atIndex:0];
+        [encoder setBuffer:model_buffers[24] offset:inner[24] atIndex:1];
+        [encoder setBuffer:layer3_q_norm_buffer offset:0 atIndex:2];
+        [encoder setBuffer:q_buffer offset:0 atIndex:3];
+        [encoder setThreadgroupMemoryLength:6144u atIndex:0];
+        [encoder dispatchThreadgroups:MTLSizeMake(rows/32u,q_dim/64u,1)
+             threadsPerThreadgroup:MTLSizeMake(128,1,1)];
+        [encoder endEncoding];
+
+        id<MTLBlitCommandEncoder> layer3_blit = [command blitCommandEncoder];
+        if (!layer3_blit) return fail_with_message(error, error_bytes,
+            @"failed to create prefill layer-3 Q/KV snapshot encoder");
+        [layer3_blit copyFromBuffer:q_buffer sourceOffset:0
+                           toBuffer:layer3_q_cur_buffer destinationOffset:0
+                               size:q_bytes];
+        [layer3_blit copyFromBuffer:layer3_kv_norm_buffer sourceOffset:0
+                           toBuffer:layer3_kv_norm_snapshot_buffer destinationOffset:0
+                               size:layer3_kv_bytes];
+        [layer3_blit endEncoding];
+
+        encoder = [command computeCommandEncoder];
+        if (!encoder) return fail_with_message(error, error_bytes,
+            @"failed to create prefill layer-3 RoPE encoder");
+        [encoder setComputePipelineState:context.headNormRopePipeline];
+        [encoder setBytes:&q_rope_args length:sizeof(q_rope_args) atIndex:0];
+        [encoder setBuffer:layer3_q_cur_buffer offset:0 atIndex:1];
+        [encoder setThreadgroupMemoryLength:32u*sizeof(float) atIndex:0];
+        [encoder dispatchThreadgroups:MTLSizeMake(n_head,rows,1)
+             threadsPerThreadgroup:MTLSizeMake(256,1,1)];
+        [encoder setComputePipelineState:context.ropeTailPipeline];
+        [encoder setBytes:&layer3_kv_rope_args
+                   length:sizeof(layer3_kv_rope_args) atIndex:0];
+        [encoder setBuffer:layer3_kv_norm_buffer offset:0 atIndex:1];
+        [encoder setBuffer:position_buffer offset:0 atIndex:2];
+        [encoder setBuffer:layer3_kv_norm_buffer offset:0 atIndex:3];
+        [encoder setBuffer:layer3_kv_norm_buffer offset:0 atIndex:4];
+        [encoder dispatchThreadgroups:MTLSizeMake(1,rows,1)
+             threadsPerThreadgroup:MTLSizeMake(256,1,1)];
+        [encoder endEncoding];
+
+        layer3_blit = [command blitCommandEncoder];
+        if (!layer3_blit) return fail_with_message(error, error_bytes,
+            @"failed to create prefill layer-3 KVrope snapshot encoder");
+        [layer3_blit copyFromBuffer:layer3_kv_norm_buffer sourceOffset:0
+                           toBuffer:layer3_kv_rope_buffer destinationOffset:0
+                               size:layer3_kv_bytes];
+        [layer3_blit endEncoding];
+
+        encoder = [command computeCommandEncoder];
+        if (!encoder) return fail_with_message(error, error_bytes,
+            @"failed to create prefill layer-3 KV finalization encoder");
+        [encoder setComputePipelineState:context.compressorFp8Pipeline];
+        [encoder setBytes:&layer3_kv_fp8_args
+                   length:sizeof(layer3_kv_fp8_args) atIndex:0];
+        [encoder setBuffer:layer3_kv_norm_buffer offset:0 atIndex:1];
+        [encoder setBuffer:layer3_kv_norm_buffer offset:0 atIndex:2];
+        [encoder setThreadgroupMemoryLength:64u*sizeof(float) atIndex:0];
+        [encoder dispatchThreadgroups:MTLSizeMake(rows,1,1)
+             threadsPerThreadgroup:MTLSizeMake(64,1,1)];
         [encoder endEncoding];
 
         const double wall_start = monotonic_ms();
@@ -5754,6 +5921,22 @@ int rust_star_metal_run_prefill_layer2_attention(
         memcpy(layer3_attn_norm, layer3_norm_buffer.contents, output_bytes);
         memcpy(layer3_q_lora, layer3_q_lora_buffer.contents,
                (NSUInteger)rows*1024u*sizeof(float));
+        memcpy(layer3_q_lora_norm, layer3_q_norm_buffer.contents,
+               layer3_q_rank_bytes);
+        memcpy(layer3_kv_raw, layer3_kv_raw_buffer.contents, layer3_kv_bytes);
+        memcpy(layer3_kv_norm, layer3_kv_norm_snapshot_buffer.contents,
+               layer3_kv_bytes);
+        const NSUInteger layer3_q_final_tile_offset =
+            (NSUInteger)(rows-32u)*q_dim*sizeof(float);
+        memcpy(layer3_q_raw_final_tile,
+               (const uint8_t *)q_buffer.contents+layer3_q_final_tile_offset,
+               32ull*q_dim*sizeof(float));
+        memcpy(layer3_q_cur_final_tile,
+               (const uint8_t *)layer3_q_cur_buffer.contents+
+                   layer3_q_final_tile_offset,
+               32ull*q_dim*sizeof(float));
+        memcpy(layer3_kv_rope, layer3_kv_rope_buffer.contents, layer3_kv_bytes);
+        memcpy(layer3_kv_cur, layer3_kv_norm_buffer.contents, layer3_kv_bytes);
         const NSUInteger final_tile_offset = (NSUInteger)(rows-32u)*n_embd*sizeof(float);
         memcpy(ffn_cur_final_tile,
                (const uint8_t *)ffn_cur_buffer.contents+final_tile_offset,
@@ -5776,17 +5959,21 @@ int rust_star_metal_run_prefill_layer2_attention(
                32u*n_embd*sizeof(float));
 
         uint32_t pointer_matches = 0;
-        for (uint32_t index = 0; index < 21u; index++) {
+        for (uint32_t index = 0; index < 25u; index++) {
             pointer_matches += matches[index] ? 1u : 0u;
         }
         result->rows = rows;
         result->raw_kv_rows = raw_rows;
         result->compressed_kv_rows = compressed_rows;
-        result->dispatches = 36u;
-        result->wrapped_model_ranges = 21u;
+        result->dispatches = 42u;
+        result->wrapped_model_ranges = 25u;
         result->pointer_matches = pointer_matches;
         result->wall_ms = wall_end-wall_start;
         result->gpu_ms = gpu_elapsed_ms(command);
+        context.prefillLayer3FullQ = layer3_q_cur_buffer;
+        context.prefillLayer3FullKv = layer3_kv_norm_buffer;
+        context.prefillLayer3InputHc = after_ffn_hc_buffer;
+        context.prefillLayer3AttnSplit = layer3_split_buffer;
         return 1;
     }
 }

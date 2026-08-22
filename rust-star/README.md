@@ -119,13 +119,16 @@ model views. The custom decomposed router kernels now support the complete
 2,048-row batch while preserving the established 32-row schedules.
 The same terminal command now continues directly from layer 2's full final HC
 buffer through layer 3's four-dispatch HC attention ingress, learned norm, and
-Q-Lora projection. It uses five additional no-copy model views and matches the
-repeated DwarfStar final-tile boundaries plus pinned full-2K checksums exactly,
-without a host HC upload. This establishes the first native layer-3 boundary;
-it does not complete layer 3.
+Q-Lora projection, then through KV projection, fused Q/KV learned norm, Q-B,
+compressed Q/KV RoPE, and FP8 KV finalization. It uses nine additional no-copy
+model views, retains all 2,048 layer-3 raw-KV rows in the Metal context, and
+matches the repeated DwarfStar final-tile boundaries plus pinned full-2K
+checksums exactly without a host HC upload. This establishes exact layer-3
+Q/KV ownership; it does not complete layer 3.
 Exactly 512 compressed rows remain dense; sparse indexer top-k starts only after
-this prompt boundary. Layer-3 KV/attention/FFN, later layers, output logits, and
-sparse post-prompt attention remain pending, and this is not a throughput claim.
+this prompt boundary. Layer-3 ratio-128 compression, attention/FFN, later
+layers, output logits, and sparse post-prompt attention remain pending, and this
+is not a throughput claim.
 
 Project controls and benchmark contracts:
 
