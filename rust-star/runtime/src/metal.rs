@@ -106,6 +106,7 @@ pub const PREFILL_LAYER5_ATTENTION_FIXTURE_ID: &str =
     "dwarfstar-oracle-v1-prefill-layer5-attention-2048";
 pub const PREFILL_LAYER5_COMPLETE_FIXTURE_ID: &str =
     "dwarfstar-oracle-v1-prefill-layer5-complete-2048";
+pub const PREFILL_LAYER6_QKV_FIXTURE_ID: &str = "dwarfstar-oracle-v1-prefill-layer6-qkv-2048";
 pub const PREFILL_LAYERS01_PREVIOUS_TILE_FIXTURE_ID: &str =
     "dwarfstar-oracle-v1-prefill-layers01-previous-tile-2048";
 pub const PREFILL_HC_INGRESS_FIXTURE_ID: &str = "dwarfstar-oracle-v1-prefill-hc-ingress-2048";
@@ -636,6 +637,28 @@ const PREFILL_LAYER5_QKV_FINAL_TILE_BYTES: [&[u8]; 10] = [
     include_bytes!("../../fixtures/prefill-layer5-qkv-2048-v1/layer5-kv-rope-final-tile.f32le.bin"),
     include_bytes!(
         "../../fixtures/prefill-layer5-qkv-2048-v1/layer5-kv-current-final-tile.f32le.bin"
+    ),
+];
+const PREFILL_LAYER6_QKV_FINAL_TILE_BYTES: [&[u8]; 10] = [
+    include_bytes!(
+        "../../fixtures/prefill-layer6-qkv-2048-v1/layer6-hc-attn-pre-final-tile.f32le.bin"
+    ),
+    include_bytes!(
+        "../../fixtures/prefill-layer6-qkv-2048-v1/layer6-attn-norm-final-tile.f32le.bin"
+    ),
+    include_bytes!("../../fixtures/prefill-layer6-qkv-2048-v1/layer6-q-lora-final-tile.f32le.bin"),
+    include_bytes!(
+        "../../fixtures/prefill-layer6-qkv-2048-v1/layer6-q-lora-norm-final-tile.f32le.bin"
+    ),
+    include_bytes!("../../fixtures/prefill-layer6-qkv-2048-v1/layer6-kv-raw-final-tile.f32le.bin"),
+    include_bytes!("../../fixtures/prefill-layer6-qkv-2048-v1/layer6-kv-norm-final-tile.f32le.bin"),
+    include_bytes!("../../fixtures/prefill-layer6-qkv-2048-v1/layer6-q-raw-final-tile.f32le.bin"),
+    include_bytes!(
+        "../../fixtures/prefill-layer6-qkv-2048-v1/layer6-q-current-final-tile.f32le.bin"
+    ),
+    include_bytes!("../../fixtures/prefill-layer6-qkv-2048-v1/layer6-kv-rope-final-tile.f32le.bin"),
+    include_bytes!(
+        "../../fixtures/prefill-layer6-qkv-2048-v1/layer6-kv-current-final-tile.f32le.bin"
     ),
 ];
 const PREFILL_LAYER3_KQV_OUT_ROW0_BYTES: &[u8] =
@@ -1244,6 +1267,7 @@ pub struct PrefillLayers012AttentionLoopProbeReport {
     pub layer5_compressor_fixture_id: &'static str,
     pub layer5_attention_fixture_id: &'static str,
     pub layer5_complete_fixture_id: &'static str,
+    pub layer6_qkv_fixture_id: &'static str,
     pub rows: u32,
     pub raw_kv_rows: u32,
     pub compressed_kv_rows: u32,
@@ -1282,6 +1306,7 @@ pub struct PrefillLayers012AttentionLoopProbeReport {
     pub layer5_attention_output_checksum: u64,
     pub layer5_after_attention_hc_checksum: u64,
     pub layer5_after_ffn_hc_checksum: u64,
+    pub layer6_qkv_checksums: [u64; 10],
 }
 
 #[derive(Clone, Debug)]
@@ -3317,6 +3342,7 @@ pub fn write_prefill_layers012_attention_loop_probe_json<W: Write>(
     let layer5_compressor = prefill_layer5_compressor_fixture()?;
     let _layer5_attention = prefill_layer5_attention_fixture()?;
     let _layer5_complete = prefill_layer5_complete_final_tile_fixture()?;
+    let layer6_qkv = prefill_layer6_qkv_final_tile_fixture()?;
     if report.compressor.tiles.len() != 64
         || report.attention_fixture_id != PREFILL_LAYER2_ATTENTION_FIXTURE_ID
         || report.attention_hc_fixture_id != PREFILL_LAYER2_COMPLETE_FIXTURE_ID
@@ -3333,13 +3359,14 @@ pub fn write_prefill_layers012_attention_loop_probe_json<W: Write>(
         || report.layer5_compressor_fixture_id != PREFILL_LAYER5_COMPRESSOR_FIXTURE_ID
         || report.layer5_attention_fixture_id != PREFILL_LAYER5_ATTENTION_FIXTURE_ID
         || report.layer5_complete_fixture_id != PREFILL_LAYER5_COMPLETE_FIXTURE_ID
+        || report.layer6_qkv_fixture_id != PREFILL_LAYER6_QKV_FIXTURE_ID
         || report.rows != 2048
         || report.raw_kv_rows != 2048
         || report.compressed_kv_rows != 512
         || report.layer3_compressed_kv_rows != 16
-        || report.dispatches != 196
-        || report.wrapped_model_ranges != 104
-        || report.pointer_matches != 104
+        || report.dispatches != 206
+        || report.wrapped_model_ranges != 113
+        || report.pointer_matches != 113
         || report.output_checksum != checksum_f32(&expected)
         || report.after_attention_hc_checksum != PREFILL_LAYER2_HC_ATTN_POST_FULL_CHECKSUM
         || report.after_ffn_hc_checksum != PREFILL_LAYER2_HC_FFN_POST_FULL_CHECKSUM
@@ -3377,6 +3404,7 @@ pub fn write_prefill_layers012_attention_loop_probe_json<W: Write>(
         || report.layer5_attention_output_checksum != PREFILL_LAYER5_ATTENTION_OUTPUT_CHECKSUM
         || report.layer5_after_attention_hc_checksum != PREFILL_LAYER5_HC_ATTN_POST_FULL_CHECKSUM
         || report.layer5_after_ffn_hc_checksum != PREFILL_LAYER5_HC_FFN_POST_FULL_CHECKSUM
+        || report.layer6_qkv_checksums != layer6_qkv.each_ref().map(|tensor| checksum_f32(tensor))
         || !report.wall_ms.is_finite()
         || report.wall_ms <= 0.0
         || !report.gpu_ms.is_finite()
@@ -3416,6 +3444,7 @@ pub fn write_prefill_layers012_attention_loop_probe_json<W: Write>(
         report.layer5_compressor_fixture_id,
         report.layer5_attention_fixture_id,
         report.layer5_complete_fixture_id,
+        report.layer6_qkv_fixture_id,
     ]
     .iter()
     .enumerate()
@@ -3474,7 +3503,7 @@ pub fn write_prefill_layers012_attention_loop_probe_json<W: Write>(
         report.layer4_compressor_checksums[5],
     );
     let checksum_tail = format!(
-        "], \"layer4_attention_output\": {}, \"layer4_attention_hc_post\": {}, \"layer4_ffn_hc_post\": {}, \"layer5_qkv_final_tiles\": [{}, {}, {}, {}, {}, {}, {}, {}, {}, {}], \"layer5_ratio128_compressor\": [{}, {}, {}], \"layer5_attention_output\": {}, \"layer5_attention_hc_post\": {}, \"layer5_ffn_hc_post\": {}}},\n  \"persistent_metal_context\"",
+        "], \"layer4_attention_output\": {}, \"layer4_attention_hc_post\": {}, \"layer4_ffn_hc_post\": {}, \"layer5_qkv_final_tiles\": [{}, {}, {}, {}, {}, {}, {}, {}, {}, {}], \"layer5_ratio128_compressor\": [{}, {}, {}], \"layer5_attention_output\": {}, \"layer5_attention_hc_post\": {}, \"layer5_ffn_hc_post\": {}, \"layer6_qkv_final_tiles\": [{}, {}, {}, {}, {}, {}, {}, {}, {}, {}]}},\n  \"persistent_metal_context\"",
         report.layer4_attention_output_checksum,
         report.layer4_after_attention_hc_checksum,
         report.layer4_after_ffn_hc_checksum,
@@ -3494,6 +3523,16 @@ pub fn write_prefill_layers012_attention_loop_probe_json<W: Write>(
         report.layer5_attention_output_checksum,
         report.layer5_after_attention_hc_checksum,
         report.layer5_after_ffn_hc_checksum,
+        report.layer6_qkv_checksums[0],
+        report.layer6_qkv_checksums[1],
+        report.layer6_qkv_checksums[2],
+        report.layer6_qkv_checksums[3],
+        report.layer6_qkv_checksums[4],
+        report.layer6_qkv_checksums[5],
+        report.layer6_qkv_checksums[6],
+        report.layer6_qkv_checksums[7],
+        report.layer6_qkv_checksums[8],
+        report.layer6_qkv_checksums[9],
     );
     let rendered = rendered
         .replace(
@@ -3576,6 +3615,26 @@ pub fn write_prefill_layers012_attention_loop_probe_json<W: Write>(
         .replace(
             "\"complete_layer5_prefill_claim\": false,",
             "\"complete_layer5_prefill_claim\": true,",
+        )
+        .replace(
+            "\"complete_layers\": [0, 1, 2, 3, 4, 5], \"downstream_layer\": null",
+            "\"complete_layers\": [0, 1, 2, 3, 4, 5], \"downstream_layer\": 6",
+        )
+        .replace(
+            "\"output_boundary\": \"layer5_ffn_hc_post\"",
+            "\"output_boundary\": \"layer6_qkv_state\"",
+        )
+        .replace(
+            "\"layer5_ffn_router\": \"biased top-6 batch\",",
+            "\"layer5_ffn_router\": \"biased top-6 batch\", \"layer6_qkv_dispatches\": 10,",
+        )
+        .replace(
+            "\"layer5_ffn_hc_post_c0_bitwise_match\": true,",
+            "\"layer5_ffn_hc_post_c0_bitwise_match\": true,\n  \"layer6_qkv_state_c0_bitwise_match\": true,",
+        )
+        .replace(
+            "\"complete_layer5_prefill_claim\": true,",
+            "\"complete_layer5_prefill_claim\": true,\n  \"complete_layer6_qkv_state_claim\": true,\n  \"complete_layer6_prefill_claim\": false,",
         );
     output.write_all(rendered.as_bytes())?;
     Ok(())
@@ -4988,6 +5047,50 @@ fn prefill_layer5_qkv_final_tile_fixture() -> Result<[Vec<f32>; 10]> {
         .map_err(|_| Error::invalid("prefill layer-5 Q/KV fixture count is invalid"))
 }
 
+fn prefill_layer6_qkv_final_tile_fixture() -> Result<[Vec<f32>; 10]> {
+    let labels = [
+        "HC attention ingress",
+        "attention norm",
+        "Q-Lora",
+        "Q-Lora norm",
+        "KV raw",
+        "KV norm",
+        "Q raw",
+        "Q current",
+        "KV rope",
+        "KV current",
+    ];
+    let expected_lengths = [
+        32 * 4096,
+        32 * 4096,
+        32 * 1024,
+        32 * 1024,
+        32 * 512,
+        32 * 512,
+        32 * 32768,
+        32 * 32768,
+        32 * 512,
+        32 * 512,
+    ];
+    let mut tensors = Vec::with_capacity(PREFILL_LAYER6_QKV_FINAL_TILE_BYTES.len());
+    for ((bytes, label), expected_length) in PREFILL_LAYER6_QKV_FINAL_TILE_BYTES
+        .into_iter()
+        .zip(labels)
+        .zip(expected_lengths)
+    {
+        let tensor = decode_f32_fixture(bytes, &format!("prefill layer-6 {label} final tile"))?;
+        if tensor.len() != expected_length {
+            return Err(Error::invalid(format!(
+                "prefill layer-6 {label} fixture dimensions are invalid"
+            )));
+        }
+        tensors.push(tensor);
+    }
+    tensors
+        .try_into()
+        .map_err(|_| Error::invalid("prefill layer-6 Q/KV fixture count is invalid"))
+}
+
 fn prefill_hc_ingress_fixture() -> Result<(Vec<u32>, Vec<f32>, Vec<f32>)> {
     let tokens = decode_u32_fixture(PREFILL_HC_TOKEN_IDS_BYTES, "prefill HC token IDs")?;
     let collapsed = decode_f32_fixture(
@@ -6281,6 +6384,9 @@ mod imp {
         layer5_attn_output_b_offset: u64,
         layer5_attn_output_b_bytes: u64,
         layer5_ffn: RawPrefillFfnWeights,
+        layer6_kvnorm: RawPrefillKvnormWeights,
+        layer6_q_b_offset: u64,
+        layer6_q_b_bytes: u64,
     }
 
     #[repr(C)]
@@ -6706,6 +6812,16 @@ mod imp {
             layer5_router_weights_final_tile: *mut f32,
             layer5_routed_out_final_tile: *mut f32,
             layer5_shared_out_final_tile: *mut f32,
+            layer6_hc_attn_pre_final_tile: *mut f32,
+            layer6_attn_norm_final_tile: *mut f32,
+            layer6_q_lora_final_tile: *mut f32,
+            layer6_q_lora_norm_final_tile: *mut f32,
+            layer6_kv_raw_final_tile: *mut f32,
+            layer6_kv_norm_final_tile: *mut f32,
+            layer6_q_raw_final_tile: *mut f32,
+            layer6_q_cur_final_tile: *mut f32,
+            layer6_kv_rope_final_tile: *mut f32,
+            layer6_kv_cur_final_tile: *mut f32,
             result: *mut RawPrefillLayer2AttentionResult,
             error: *mut c_char,
             error_bytes: usize,
@@ -9500,6 +9616,7 @@ mod imp {
         let expected_layer5_attention = prefill_layer5_attention_fixture()?;
         let expected_layer5_attention_diagnostics = prefill_layer5_attention_diagnostics_fixture()?;
         let expected_layer5_complete = prefill_layer5_complete_final_tile_fixture()?;
+        let expected_layer6_qkv = prefill_layer6_qkv_final_tile_fixture()?;
         let q_b = exact_tensor(model, "blk.2.attn_q_b.weight", 8, &[1024, 32768])?;
         let sinks = exact_tensor(model, "blk.2.attn_sinks.weight", 0, &[64])?;
         let output_a = exact_tensor(model, "blk.2.attn_output_a.weight", 8, &[4096, 8192])?;
@@ -9641,6 +9758,15 @@ mod imp {
         let layer5_shared_up = exact_tensor(model, "blk.5.ffn_up_shexp.weight", 8, &[4096, 2048])?;
         let layer5_shared_down =
             exact_tensor(model, "blk.5.ffn_down_shexp.weight", 8, &[2048, 4096])?;
+        let layer6_hc_fn = exact_tensor(model, "blk.6.hc_attn_fn.weight", 1, &[16384, 24])?;
+        let layer6_hc_scale = exact_tensor(model, "blk.6.hc_attn_scale.weight", 0, &[3])?;
+        let layer6_hc_base = exact_tensor(model, "blk.6.hc_attn_base.weight", 0, &[24])?;
+        let layer6_norm = exact_tensor(model, "blk.6.attn_norm.weight", 0, &[4096])?;
+        let layer6_q_a = exact_tensor(model, "blk.6.attn_q_a.weight", 8, &[4096, 1024])?;
+        let layer6_q_a_norm = exact_tensor(model, "blk.6.attn_q_a_norm.weight", 0, &[1024])?;
+        let layer6_kv = exact_tensor(model, "blk.6.attn_kv.weight", 8, &[4096, 512])?;
+        let layer6_kv_norm = exact_tensor(model, "blk.6.attn_kv_a_norm.weight", 0, &[512])?;
+        let layer6_q_b = exact_tensor(model, "blk.6.attn_q_b.weight", 8, &[1024, 32768])?;
         let weights = RawPrefillLayer2AttentionWeights {
             q_b_offset: q_b.absolute_offset,
             q_b_bytes: q_b.bytes,
@@ -9878,6 +10004,28 @@ mod imp {
                 shared_down_offset: layer5_shared_down.absolute_offset,
                 shared_down_bytes: layer5_shared_down.bytes,
             },
+            layer6_kvnorm: RawPrefillKvnormWeights {
+                ingress: RawPrefillAttentionIngressWeights {
+                    hc_fn_offset: layer6_hc_fn.absolute_offset,
+                    hc_fn_bytes: layer6_hc_fn.bytes,
+                    hc_scale_offset: layer6_hc_scale.absolute_offset,
+                    hc_scale_bytes: layer6_hc_scale.bytes,
+                    hc_base_offset: layer6_hc_base.absolute_offset,
+                    hc_base_bytes: layer6_hc_base.bytes,
+                    norm_offset: layer6_norm.absolute_offset,
+                    norm_bytes: layer6_norm.bytes,
+                    q_a_offset: layer6_q_a.absolute_offset,
+                    q_a_bytes: layer6_q_a.bytes,
+                },
+                q_a_norm_offset: layer6_q_a_norm.absolute_offset,
+                q_a_norm_bytes: layer6_q_a_norm.bytes,
+                kv_offset: layer6_kv.absolute_offset,
+                kv_bytes: layer6_kv.bytes,
+                kv_norm_offset: layer6_kv_norm.absolute_offset,
+                kv_norm_bytes: layer6_kv_norm.bytes,
+            },
+            layer6_q_b_offset: layer6_q_b.absolute_offset,
+            layer6_q_b_bytes: layer6_q_b.bytes,
         };
         let mut actual = vec![0.0_f32; expected.len()];
         let mut actual_hc = vec![0.0_f32; 2048 * 4 * 4096];
@@ -9978,6 +10126,21 @@ mod imp {
         let mut actual_layer5_router_weights = vec![0.0_f32; 32 * 6];
         let mut actual_layer5_routed_out = vec![0.0_f32; 32 * 4096];
         let mut actual_layer5_shared_out = vec![0.0_f32; 32 * 4096];
+        let mut actual_layer6_qkv: [Vec<f32>; 10] = [
+            vec![0.0_f32; 32 * 4096],
+            vec![0.0_f32; 32 * 4096],
+            vec![0.0_f32; 32 * 1024],
+            vec![0.0_f32; 32 * 1024],
+            vec![0.0_f32; 32 * 512],
+            vec![0.0_f32; 32 * 512],
+            vec![0.0_f32; 32 * 32768],
+            vec![0.0_f32; 32 * 32768],
+            vec![0.0_f32; 32 * 512],
+            vec![0.0_f32; 32 * 512],
+        ];
+        let layer6_qkv_pointers = actual_layer6_qkv
+            .each_mut()
+            .map(|tensor| tensor.as_mut_ptr());
         let mut raw = RawPrefillLayer2AttentionResult::default();
         let mut error = [0 as c_char; ERROR_BYTES];
         let succeeded = unsafe {
@@ -10073,6 +10236,16 @@ mod imp {
                 actual_layer5_router_weights.as_mut_ptr(),
                 actual_layer5_routed_out.as_mut_ptr(),
                 actual_layer5_shared_out.as_mut_ptr(),
+                layer6_qkv_pointers[0],
+                layer6_qkv_pointers[1],
+                layer6_qkv_pointers[2],
+                layer6_qkv_pointers[3],
+                layer6_qkv_pointers[4],
+                layer6_qkv_pointers[5],
+                layer6_qkv_pointers[6],
+                layer6_qkv_pointers[7],
+                layer6_qkv_pointers[8],
+                layer6_qkv_pointers[9],
                 &mut raw,
                 error.as_mut_ptr(),
                 error.len(),
@@ -10666,6 +10839,31 @@ mod imp {
                 "prefill layer-5 FFN HC post full-2K checksum mismatch",
             ));
         }
+        for ((label, actual), expected) in [
+            "HC attention ingress",
+            "attention norm",
+            "Q-Lora",
+            "Q-Lora norm",
+            "KV raw",
+            "KV norm",
+            "Q raw",
+            "Q current",
+            "KV rope",
+            "KV current",
+        ]
+        .into_iter()
+        .zip(&actual_layer6_qkv)
+        .zip(&expected_layer6_qkv)
+        {
+            for (index, (actual, expected)) in actual.iter().zip(expected).enumerate() {
+                if actual.to_bits() != expected.to_bits() {
+                    return Err(Error::invalid(format!(
+                        "prefill layer-6 {label} C0 mismatch at final-tile element {index}: actual={:#010x} expected={:#010x}",
+                        actual.to_bits(), expected.to_bits(),
+                    )));
+                }
+            }
+        }
         for (index, (actual, expected)) in actual_router_selected
             .iter()
             .zip(&expected_router_selected)
@@ -10776,9 +10974,9 @@ mod imp {
             || raw.raw_kv_rows != 2048
             || raw.compressed_kv_rows != 512
             || raw.layer3_compressed_kv_rows != 16
-            || raw.dispatches != 196
-            || raw.wrapped_model_ranges != 104
-            || raw.pointer_matches != 104
+            || raw.dispatches != 206
+            || raw.wrapped_model_ranges != 113
+            || raw.pointer_matches != 113
         {
             return Err(Error::invalid(
                 "Metal prefill layer-2 attention returned an unexpected schedule or mapping",
@@ -10801,6 +10999,7 @@ mod imp {
             layer5_compressor_fixture_id: PREFILL_LAYER5_COMPRESSOR_FIXTURE_ID,
             layer5_attention_fixture_id: PREFILL_LAYER5_ATTENTION_FIXTURE_ID,
             layer5_complete_fixture_id: PREFILL_LAYER5_COMPLETE_FIXTURE_ID,
+            layer6_qkv_fixture_id: PREFILL_LAYER6_QKV_FIXTURE_ID,
             rows: raw.rows,
             raw_kv_rows: raw.raw_kv_rows,
             compressed_kv_rows: raw.compressed_kv_rows,
@@ -10849,6 +11048,9 @@ mod imp {
             layer5_attention_output_checksum: checksum_f32(&actual_layer5_attention),
             layer5_after_attention_hc_checksum: checksum_f32(&actual_layer5_after_attention_hc),
             layer5_after_ffn_hc_checksum: checksum_f32(&actual_layer5_after_ffn_hc),
+            layer6_qkv_checksums: actual_layer6_qkv
+                .each_ref()
+                .map(|tensor| checksum_f32(tensor)),
         })
     }
 
@@ -14474,13 +14676,14 @@ mod tests {
             layer5_compressor_fixture_id: PREFILL_LAYER5_COMPRESSOR_FIXTURE_ID,
             layer5_attention_fixture_id: PREFILL_LAYER5_ATTENTION_FIXTURE_ID,
             layer5_complete_fixture_id: PREFILL_LAYER5_COMPLETE_FIXTURE_ID,
+            layer6_qkv_fixture_id: PREFILL_LAYER6_QKV_FIXTURE_ID,
             rows: 2048,
             raw_kv_rows: 2048,
             compressed_kv_rows: 512,
             layer3_compressed_kv_rows: 16,
-            dispatches: 196,
-            wrapped_model_ranges: 104,
-            pointer_matches: 104,
+            dispatches: 206,
+            wrapped_model_ranges: 113,
+            pointer_matches: 113,
             wall_ms: 196.0,
             gpu_ms: 169.0,
             output_checksum: checksum_f32(&prefill_layer2_attention_fixture().unwrap()),
@@ -14532,6 +14735,10 @@ mod tests {
             layer5_attention_output_checksum: PREFILL_LAYER5_ATTENTION_OUTPUT_CHECKSUM,
             layer5_after_attention_hc_checksum: PREFILL_LAYER5_HC_ATTN_POST_FULL_CHECKSUM,
             layer5_after_ffn_hc_checksum: PREFILL_LAYER5_HC_FFN_POST_FULL_CHECKSUM,
+            layer6_qkv_checksums: prefill_layer6_qkv_final_tile_fixture()
+                .unwrap()
+                .each_ref()
+                .map(|tensor| checksum_f32(tensor)),
         }
     }
 
@@ -15881,7 +16088,7 @@ mod tests {
         )));
         assert!(text.contains("\"compressed_kv_rows\": 512"));
         assert!(text.contains("\"sparse_indexer_topk\": false"));
-        assert!(text.contains("\"terminal_dispatches\": 196"));
+        assert!(text.contains("\"terminal_dispatches\": 206"));
         assert!(text.contains("\"layer3_compressor_ratio\": 128"));
         assert!(text.contains("\"layer3_compressed_rows\": 16"));
         assert!(text.contains("\"layer2_attention_output_c0_bitwise_match\": true"));
@@ -15902,9 +16109,9 @@ mod tests {
         assert!(text.contains("\"layer3_ffn_hc_post_c0_bitwise_match\": true"));
         assert!(text.contains("\"complete_layer3_ffn_claim\": true"));
         assert!(text.contains("\"complete_layer3_prefill_claim\": true"));
-        assert!(text.contains("\"output_boundary\": \"layer5_ffn_hc_post\""));
+        assert!(text.contains("\"output_boundary\": \"layer6_qkv_state\""));
         assert!(text.contains("\"complete_layers\": [0, 1, 2, 3, 4, 5]"));
-        assert!(text.contains("\"downstream_layer\": null"));
+        assert!(text.contains("\"downstream_layer\": 6"));
         assert!(text.contains("\"layer4_qkv_state_c0_bitwise_match\": true"));
         assert!(text.contains("\"complete_layer4_qkv_state_claim\": true"));
         assert!(text.contains("\"layer4_paired_compressors_c0_bitwise_match\": true"));
@@ -15939,6 +16146,10 @@ mod tests {
         assert!(text.contains("\"layer5_ffn_hc_post_c0_bitwise_match\": true"));
         assert!(text.contains("\"complete_layer5_ffn_claim\": true"));
         assert!(text.contains("\"complete_layer5_prefill_claim\": true"));
+        assert!(text.contains("\"layer6_qkv_dispatches\": 10"));
+        assert!(text.contains("\"layer6_qkv_state_c0_bitwise_match\": true"));
+        assert!(text.contains("\"complete_layer6_qkv_state_claim\": true"));
+        assert!(text.contains("\"complete_layer6_prefill_claim\": false"));
     }
 
     #[test]
@@ -16296,6 +16507,27 @@ mod tests {
     #[test]
     fn prefill_layer5_qkv_fixture_has_target_shapes() {
         let tensors = prefill_layer5_qkv_final_tile_fixture().unwrap();
+        assert_eq!(
+            tensors.each_ref().map(|tensor| tensor.len()),
+            [
+                32 * 4096,
+                32 * 4096,
+                32 * 1024,
+                32 * 1024,
+                32 * 512,
+                32 * 512,
+                32 * 32768,
+                32 * 32768,
+                32 * 512,
+                32 * 512,
+            ]
+        );
+        assert!(tensors.iter().flatten().all(|value| value.is_finite()));
+    }
+
+    #[test]
+    fn prefill_layer6_qkv_fixture_has_target_shapes() {
+        let tensors = prefill_layer6_qkv_final_tile_fixture().unwrap();
         assert_eq!(
             tensors.each_ref().map(|tensor| tensor.len()),
             [

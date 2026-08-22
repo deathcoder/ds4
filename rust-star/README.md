@@ -174,12 +174,16 @@ HC identity match two fresh DwarfStar captures bit-for-bit. The combined
 terminal schedule then carries that HC state through layer 5's learned FFN
 ingress, biased top-6 routing, routed IQ2_XXS/Q2_K experts, shared Q8_0 expert,
 and additive final HC update. Every retained FFN boundary and the complete final
-HC identity match two fresh DwarfStar processes exactly. The command uses 196
-dispatches and preserves 104/104 no-copy model mappings, establishing complete
-native layers 0 through 5 at the full 2K prompt boundary.
+HC identity match two fresh DwarfStar processes exactly. That final state now
+feeds layer 6's HC attention ingress, Q-A/KV projections, fused learned Q/KV
+normalization, Q-B, compressed RoPE, and FP8 KV finalization. All ten layer-6
+final-tile boundaries match four fresh DwarfStar captures bit-for-bit, with
+their complete 2K identities SHA-256-pinned. The command uses 206 dispatches
+and preserves 113/113 no-copy model mappings, establishing complete native
+layers 0 through 5 plus exact layer-6 Q/KV state at the full 2K boundary.
 Exactly 512 compressed rows remain dense; sparse indexer top-k starts only after
-this prompt boundary. Layer-6 and later prefill, output logits, and sparse
-post-prompt attention remain pending, and
+this prompt boundary. Layer-6 compressors/attention/FFN, later prefill, output
+logits, and sparse post-prompt attention remain pending, and
 this is not a throughput claim.
 
 Project controls and benchmark contracts:

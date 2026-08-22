@@ -259,12 +259,19 @@ history; add a correction and update the current-state summary.
   no-copy views now carry that state through layer 5's FFN HC ingress, learned
   norm, biased top-6 routing, routed/shared experts, and additive final HC
   update. Every retained FFN boundary and the complete final HC identity match
-  two fresh DwarfStar processes exactly. The command preserves 104/104 no-copy
-  mappings across 196 dispatches, establishing complete native layers 0–5 at
-  the full-2K prompt boundary.
+  two fresh DwarfStar processes exactly. That retained final state now feeds
+  layer 6's HC attention ingress, learned norm, Q-A/KV projections, fused Q/KV
+  normalization, Q-B, compressed RoPE, and FP8 KV finalization. All ten new
+  boundaries match four fresh DwarfStar captures exactly. The command preserves
+  113/113 no-copy mappings across 206 dispatches, establishing complete native
+  layers 0–5 plus exact full-2K layer-6 Q/KV state.
   Full native batched prefill, sparse indexed attention beyond 512 ratio-4
   rows, and the eligible engine-measurement producer remain pending.
-- Measurements: The exact complete native layers-0/1/2/3/4/5 full-2K command
+- Measurements: The exact complete native layers-0/1/2/3/4/5 plus layer-6 Q/KV
+  full-2K command reported 1338.542 ms wall / 1247.536 ms GPU in its focused
+  correctness run and 1328.350 ms wall / 1241.698 ms GPU in the complete
+  target-Mac gate, across 206 dispatches with 113/113 no-copy model mappings.
+  The prior exact complete native layers-0/1/2/3/4/5 full-2K command
   reported 1358.984 ms wall / 1270.350 ms GPU in its focused correctness run
   and 1363.509 ms wall / 1272.876 ms GPU in the complete target-Mac gate,
   across 196 dispatches with 104/104 no-copy model mappings. The prior exact
@@ -427,8 +434,9 @@ history; add a correction and update the current-state summary.
 
 ## Immediate Next Actions
 
-1. Continue the retained layer-5 final HC state into layer 6's native Q/KV
-   boundary, preserving the complete layers-0–5 command as a regression control.
+1. Continue the retained layer-6 Q/KV state through both native ratio-4
+   attention/indexer compressors, preserving the complete layers-0–5 command as
+   a regression control.
 2. Add the fixed 512-row ratio-4 indexer top-k and sparse indexed attention so
    128 generated tokens can continue beyond the 2K frontier.
 3. Emit the `rust-star-engine-measurement-v1` artifact from the exact
@@ -440,6 +448,43 @@ history; add a correction and update the current-state summary.
 6. Run or approve the fork's GitHub Actions workflow and retain its URL.
 
 ## Entries
+
+### 2026-08-22 — Exact layer-6 full-2K Q/KV state
+
+Objective:
+
+- Continue the retained layer-5 final HC state through layer 6's native Q/KV
+  path without a host activation handoff.
+
+Implementation:
+
+- Captured `hc_attn_pre`, `attn_norm`, `q_lora`, `q_lora_norm`, `KVraw`,
+  `KVnorm`, `Qraw`, `Qcur`, `KVrope`, and `KVcur` in four fresh DwarfStar
+  processes. Both primary captures and both isolated `Qraw` captures were
+  byte-identical.
+- Added `prefill-layer6-qkv-2048-v1`, retaining exact final 32-row tiles while
+  SHA-256-pinning the complete 2K identities.
+- Wrapped layer 6's nine HC/QKV tensors directly from the GGUF mmap and appended
+  the proven ten-dispatch Q/KV schedule to the retained Metal command.
+- Extended the C ABI, Rust exact comparisons, stable JSON, CLI, documentation,
+  fixture verification, and target-Mac gate. The artifact now closes at
+  `layer6_qkv_state` and explicitly denies layer-6 compressors, attention, FFN,
+  complete-model-prefill, and throughput claims.
+
+Validation:
+
+- Fixture verifier: valid ten-tensor, 9,961,472-byte differential fixture.
+- Rust unit suite: 109 passed.
+- Focused optimized M1 Ultra run: every new boundary C0 exact, 1338.542 ms wall
+  / 1247.536 ms GPU, 206 dispatches, and 113/113 no-copy model mappings.
+- Full target-Mac gate: 109 Rust tests and 61 Python tests passed; the extended
+  command remained exact at 1328.350 ms wall / 1241.698 ms GPU with 113/113
+  mappings. These intervals include exhaustive correctness readback and are not
+  throughput claims.
+
+Next:
+
+- Continue through layer 6's paired ratio-4 attention/indexer compressors.
 
 ### 2026-08-22 — Exact complete layer-5 full-2K prefill
 
