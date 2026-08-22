@@ -149,11 +149,16 @@ by SHA-256. The expanded terminal schedule now continues through both layer-4
 ratio-4 compressors. Four F16 projections feed the exact replay pool, learned
 norm, compressed RoPE, E4M3FN/indexer QAT, and recurrent-state refresh. All 512
 attention rows, all 512 indexer rows, and all four final state tensors match
-fresh-process DwarfStar captures bit-for-bit. It uses 119 dispatches and
-preserves 61/61 no-copy model mappings while retaining the full layer-4 Q/KV
-and paired-compressor state for the next boundary.
+fresh-process DwarfStar captures bit-for-bit while retaining the full layer-4
+Q/KV and paired-compressor state for the next boundary. Three more no-copy model
+views now drive layer 4's dense mixed attention across 2,048 raw plus 512
+compressed rows, inverse RoPE, and both Q8 attention-output projections before
+the additive four-stream HC post. The complete 2048 x 4096 attention output
+and final 32-row HC tile match two fresh DwarfStar captures bit-for-bit, with
+their full identities checksum-pinned. The terminal schedule now uses 128
+dispatches and preserves 64/64 no-copy model mappings.
 Exactly 512 compressed rows remain dense; sparse indexer top-k starts only after
-this prompt boundary. Layer-4 attention and FFN plus later
+this prompt boundary. Layer-4 FFN plus later
 prefill, output logits, and sparse post-prompt attention remain pending, and
 this is not a throughput claim.
 

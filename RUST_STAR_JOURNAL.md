@@ -237,15 +237,21 @@ history; add a correction and update the current-state summary.
   identities are SHA-256 pinned. The expanded terminal command now also owns
   both layer-4 ratio-4 compressors. All 512 attention rows, all 512 indexer
   rows, and all four final recurrent-state tensors match two fresh DwarfStar
-  processes bit-for-bit. It preserves 61/61 no-copy mappings across 119
-  dispatches and retains layer 4's full Q/KV and compressor state. Layer-4
-  attention and FFN remain pending.
+  processes bit-for-bit. Three additional no-copy views now drive layer 4's
+  dense mixed attention over 2,048 raw plus 512 compressed rows, inverse RoPE,
+  both Q8 output projections, and the additive HC post. The full 2048x4096
+  attention output and final HC tile match two fresh DwarfStar processes
+  exactly. It preserves 64/64 no-copy mappings across 128 dispatches and
+  retains the post-attention HC state. Layer-4 FFN remains pending.
   Full native batched prefill, sparse indexed attention beyond 512 ratio-4
   rows, and the eligible engine-measurement producer remain pending.
-- Measurements: The exact complete native layers-0/1/2/3 plus layer-4 Q/KV and
-  paired-compressor full-2K command reported 740.517 ms wall / 656.454 ms GPU
-  in its focused run and 750.548 ms wall / 655.250 ms GPU in the complete
-  target-Mac gate, across 119 dispatches with 61/61 no-copy model mappings.
+- Measurements: The exact complete native layers-0/1/2/3 plus layer-4 dense
+  mixed attention and HC-post full-2K command reported 934.193 ms wall /
+  833.479 ms GPU in its focused run and 952.654 ms wall / 851.603 ms GPU in the
+  complete target-Mac gate, across 128 dispatches with 64/64 no-copy model
+  mappings. The prior paired-compressor checkpoint reported 740.517 ms wall /
+  656.454 ms GPU focused and 750.548 ms wall / 655.250 ms GPU in the complete
+  gate, across 119 dispatches with 61/61 mappings.
   The prior Q/KV-only checkpoint reported 1169.303 ms wall / 647.777 ms GPU in
   its focused run and 947.998 ms wall / 651.830 ms GPU in the complete
   target-Mac gate, across 89 dispatches with 53/53 mappings. The prior complete-layer-3
@@ -400,6 +406,43 @@ history; add a correction and update the current-state summary.
 6. Run or approve the fork's GitHub Actions workflow and retain its URL.
 
 ## Entries
+
+### 2026-08-22 — Exact layer-4 dense mixed attention and HC post
+
+Objective:
+
+- Continue the retained full-2K layer-4 Q/KV and paired-compressor state
+  through dense mixed attention and the additive four-stream HC update without
+  a host activation upload.
+
+Implementation:
+
+- Captured `kqv_out`, `kqv_back`, `attn_low`, `attn_out`, and `hc_attn_post`
+  twice in fresh DwarfStar processes. Every capture was byte-stable.
+- Added `prefill-layer4-attention-2048-v1`, retaining the complete 2048x4096
+  attention output, final 32-row HC tile, and compact row-zero diagnostics.
+- Wrapped layer 4's sinks and two attention-output weights directly from the
+  model mmap. Added the F32/F16 staging, FlashAttention, inverse RoPE, grouped
+  map, low/output projections, and HC expansion as nine terminal dispatches.
+- Snapshotted layer 3's shared diagnostic buffers before their reuse by layer
+  4. The first focused run exposed that lifetime overlap; the corrected run
+  passed all retained layer-3 and layer-4 comparisons.
+- Extended the stable JSON boundary to `layer4_attention_hc_post`, with 128
+  terminal dispatches, 64/64 no-copy mappings, and pinned full-output checksums.
+
+Validation:
+
+- Fixture verifier: valid five-tensor, 35,946,496-byte differential fixture.
+- Rust unit suite: 102 passed.
+- Focused optimized M1 Ultra run: complete attention output and HC post C0
+  exact, 934.193 ms wall / 833.479 ms GPU.
+- Full target-Mac gate: 102 Rust tests and 61 Python tests passed, every native
+  control remained exact, and the terminal command reported 952.654 ms wall /
+  851.603 ms GPU with 64/64 no-copy mappings.
+
+Next:
+
+- Complete the layer-4 FFN from the retained post-attention HC state.
 
 ### 2026-08-22 — Exact layer-4 paired ratio-4 compressors
 
