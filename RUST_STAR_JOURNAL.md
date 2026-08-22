@@ -222,15 +222,19 @@ history; add a correction and update the current-state summary.
   match repeated DwarfStar captures exactly. The same terminal command now owns
   layer 3's full ratio-128 attention compressor. All 16 emitted FP8 rows and
   both 128x512 final recurrent-state tensors match two fresh DwarfStar processes
-  bit-for-bit. The expanded command retains those buffers and preserves 29/29
-  terminal no-copy mappings across 49 dispatches. Layer-3 mixed attention and
-  FFN remain pending.
+  bit-for-bit. It now also owns layer 3's dense mixed attention, inverse RoPE,
+  Q8 output projections, and additive HC post. The full 2048x4096 attention
+  output and final HC tile match repeated captures exactly, with the full HC
+  identity checksum-pinned. The expanded command preserves 32/32 terminal
+  no-copy mappings across 58 dispatches. Layer-3 FFN remains pending.
   Full native batched prefill, sparse indexed attention beyond 512 ratio-4
   rows, and the eligible engine-measurement producer remain pending.
-- Measurements: The exact full-2K layer-2 completion plus layer-3 ratio-128
-  compressor command reported 494.638 ms wall / 396.686 ms GPU in its focused
-  run and 483.530 ms wall / 399.101 ms GPU in the complete target-Mac gate,
-  across 49 dispatches with 29/29 no-copy model mappings. The prior Q/KV
+- Measurements: The exact full-2K layer-2 completion plus layer-3 attention HC
+  post command reported 583.424 ms wall / 501.227 ms GPU in its focused run and
+  569.588 ms wall / 490.821 ms in the complete target-Mac gate, across 58
+  dispatches with 32/32 no-copy model mappings. The prior ratio-128
+  compressor checkpoint reported 494.638 ms wall / 396.686 ms GPU focused and
+  483.530 ms wall / 399.101 ms in the complete target-Mac gate. The prior Q/KV
   command reported 482.230 ms wall / 402.931 ms GPU in its focused run and
   447.543 ms wall / 366.771 ms GPU in the complete target-Mac gate, across 42
   dispatches with 25/25 no-copy model mappings. These include full correctness
@@ -363,9 +367,8 @@ history; add a correction and update the current-state summary.
 
 ## Immediate Next Actions
 
-1. Extend the exact native 2K layer-3 boundary through dense mixed attention
-   and its additive HC post-state, preserving the completed Q/KV and ratio-128
-   compressor controls.
+1. Extend the exact native 2K layer-3 boundary through biased top-k routing,
+   routed/shared experts, and the additive FFN HC post-state.
 2. Add the fixed 512-row ratio-4 indexer top-k and sparse indexed attention so
    128 generated tokens can continue beyond the 2K frontier.
 3. Emit the `rust-star-engine-measurement-v1` artifact from the exact
@@ -377,6 +380,56 @@ history; add a correction and update the current-state summary.
 6. Run or approve the fork's GitHub Actions workflow and retain its URL.
 
 ## Entries
+
+### 2026-08-22 — Layer 3 owns dense mixed attention and additive HC post
+
+Objective:
+
+- Continue the exact native layer-3 batch from its ratio-128 compressor through
+  dense mixed attention, inverse RoPE, both output projections, and additive HC
+  post-state.
+
+Oracle evidence:
+
+- Two fresh DwarfStar processes produced byte-identical layer-3 `attn_out` and
+  `hc_attn_post` captures. Their full SHA-256 identities are
+  `5bfadcbc1d2ee7b42753b506420045409ba277ae2ffc7dbd0e87187e51b74e13`
+  and `47c26665144097e0912284961d95f9b3ae72c8ce40c271e028dfdf71f4ee453b`.
+- Independent repeated `kqv_out`, `kqv_back`, and `attn_low` captures pin row-0
+  diagnostics for the attention and output-projection stages.
+- `prefill-layer3-attention-2048-v1` retains the complete 32 MiB attention
+  output, the final 32-row HC tile, and the three row-0 diagnostic tensors. The
+  full 128 MiB HC identity is pinned without retaining a duplicate large blob.
+
+Implementation:
+
+- Added three mmap-backed model views for layer-3 sinks and Q8 attention output
+  weights, plus nine ordered Metal dispatches for raw/compressed F16 staging,
+  mask block scan, FlashAttention, inverse RoPE, grouped low projection, dense
+  output projection, and four-stream HC expansion.
+- The 2,064 logical keys are physically padded to 2,112 rows with 48 fully
+  masked entries. This satisfies the non-vector FlashAttention specialization's
+  64-row block contract; the prior 2,560-key layer-2 path was already aligned
+  and therefore did not expose the requirement.
+- Extended the C ABI, Rust report/JSON contract, fixture importer, persistent
+  layer-3 HC ownership, and diagnostic comparisons. The terminal checkpoint now
+  uses 58 dispatches and 32/32 no-copy model mappings.
+
+Validation:
+
+- The optimized real-model probe reproduced all 8,388,608 layer-3 attention
+  values and the final 524,288-value HC tile bit-for-bit while preserving every
+  prior boundary. It reported 583.424 ms wall / 501.227 ms GPU with correctness
+  readback in scope; this is not a throughput measurement.
+- The complete target-Mac gate passed 97 Rust tests and 61 Python tests, every
+  fixture verifier and retained Metal control, and a second exact layer-3
+  attention run at 569.588 ms wall / 490.821 ms GPU. The 2K sequential control
+  remained C0 exact at 21.958 tokens/s over 93270.010 ms.
+
+Decision and next:
+
+- Accept `layer3_attention_hc_post` as the next exact native-batch checkpoint.
+  Continue through the layer-3 biased top-k FFN and additive FFN HC post-state.
 
 ### 2026-08-22 — Layer 3 owns all 16 ratio-128 prompt emissions
 

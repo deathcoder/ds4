@@ -128,10 +128,16 @@ the layer-3 ratio-128 compressor weights. Its two full-batch F16 projections,
 score/APE update, exact 128-row pooling order, learned norm, compressed RoPE,
 and FP8 finalization reproduce all 16 prompt emissions and both final recurrent
 state tensors bit-for-bit. The persistent context retains the compressed rows
-and state for the next boundary. This establishes exact layer-3 Q/KV and
-compressor ownership; it does not complete layer 3.
+and state for the next boundary. Three final no-copy views then drive layer 3's
+dense mixed attention over 2,048 raw plus 16 compressed rows, inverse RoPE, and
+both Q8 attention-output projections before the additive four-stream HC post.
+The 2,064 logical keys use a fully masked 2,112-row physical extent required by
+the 64-row FlashAttention block contract. The complete 2048 x 4096 attention
+output and final 32-row HC tile match fresh-process DwarfStar captures exactly;
+the full HC identity is pinned by checksum. This establishes exact layer-3
+attention ownership; the layer-3 FFN remains pending.
 Exactly 512 compressed rows remain dense; sparse indexer top-k starts only after
-this prompt boundary. Layer-3 dense mixed attention/FFN, later layers, output
+this prompt boundary. Layer-3 FFN, later layers, output
 logits, and sparse post-prompt attention remain pending, and this is not a
 throughput claim.
 

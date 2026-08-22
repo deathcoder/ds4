@@ -97,7 +97,7 @@ elif [ "$#" -eq 1 ]; then
         echo "==> paired layer-2 ratio-4 compressors across the full native 2K loop"
         "$target_dir/release/rust-star" prefill-layers012-compressor-loop-probe "$1" \
             --json "$target_dir/prefill-layers012-compressor-loop-probe.json"
-        echo "==> exact complete layer-2 plus layer-3 ratio-128 compressor ownership across the full native 2K loop"
+        echo "==> exact complete layer-2 plus layer-3 dense attention HC post across the full native 2K loop"
         "$target_dir/release/rust-star" prefill-layers012-attention-loop-probe "$1" \
             --json "$target_dir/prefill-layers012-attention-loop-probe.json"
         echo "==> no-copy layer-0 attention ingress"
