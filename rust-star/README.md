@@ -145,11 +145,15 @@ The retained layer-3 final HC now flows directly into layer 4's HC attention
 ingress, learned norm, Q-A/KV projections, fused Q/KV learned norm, Q-B,
 compressed RoPE, and FP8 KV finalization. All ten final-tile boundaries match
 four fresh DwarfStar captures exactly; the full-2K tensor identities are pinned
-by SHA-256. The expanded terminal schedule uses 89 dispatches and preserves
-53/53 no-copy model mappings while retaining the full layer-4 Q/KV state for
-the next boundary.
+by SHA-256. The expanded terminal schedule now continues through both layer-4
+ratio-4 compressors. Four F16 projections feed the exact replay pool, learned
+norm, compressed RoPE, E4M3FN/indexer QAT, and recurrent-state refresh. All 512
+attention rows, all 512 indexer rows, and all four final state tensors match
+fresh-process DwarfStar captures bit-for-bit. It uses 119 dispatches and
+preserves 61/61 no-copy model mappings while retaining the full layer-4 Q/KV
+and paired-compressor state for the next boundary.
 Exactly 512 compressed rows remain dense; sparse indexer top-k starts only after
-this prompt boundary. Layer-4 compressors, attention, and FFN plus later
+this prompt boundary. Layer-4 attention and FFN plus later
 prefill, output logits, and sparse post-prompt attention remain pending, and
 this is not a throughput claim.
 

@@ -331,8 +331,12 @@ kernel void kernel_dsv4_ratio4_shift_f32(
     const uint n = 4u * args.width;
     if (gid >= n) return;
 
-    state_kv[gid] = state_kv[n + gid];
-    state_score[gid] = state_score[n + gid];
+    const float next_kv = state_kv[n + gid];
+    const float next_score = state_score[n + gid];
+    state_kv[gid] = next_kv;
+    state_score[gid] = next_score;
+    state_kv[n + gid] = 0.0f;
+    state_score[n + gid] = -INFINITY;
 }
 
 // One-token compressor frontier update. Decode appends exactly one projected KV

@@ -2252,7 +2252,7 @@ fn run_prefill_layers012_attention_loop_probe_command(arguments: Vec<OsString>) 
         report.wall_ms,
         report.gpu_ms,
     );
-    println!("scope: complete native layers 0/1/2/3 at the exact 2K prompt boundary, followed without a host HC handoff by exact layer-4 HC ingress, Q/KV learned normalization, compressed RoPE, and FP8 KV finalization; no layer-4 compressors/attention/FFN, sparse post-prompt top-k, complete-model-prefill, or throughput claim");
+    println!("scope: complete native layers 0/1/2/3 at the exact 2K prompt boundary, followed without a host HC handoff by exact layer-4 Q/KV state and paired ratio-4 attention/indexer compressors; no layer-4 attention/FFN, sparse post-prompt top-k, complete-model-prefill, or throughput claim");
     if let Some(path) = json_path {
         write_prefill_layers012_attention_loop_probe_file(&path, &report)?;
         println!("json: {}", path.display());
@@ -3728,7 +3728,7 @@ fn prefill_layers012_compressor_loop_probe_usage() -> &'static str {
 }
 
 fn prefill_layers012_attention_loop_probe_usage() -> &'static str {
-    "usage: rust-star prefill-layers012-attention-loop-probe MODEL.gguf [--json PATH]\n\nRuns all 64 native 32-row schedules over positions 0--2047 in one persistent Metal context, completes layers 2 and 3 in one terminal batch, then continues directly through layer-4 HC ingress, Q/KV learned normalization, compressed RoPE, and FP8 KV finalization. Every retained layer-2/layer-3/layer-4 boundary must match repeated DwarfStar captures. The 2,064 logical layer-3 keys use a 2,112-row masked physical extent required by the 64-row FlashAttention block contract. This does not claim layer-4 compressors, attention, FFN, complete-model prefill, sparse ratio-4 decode, or throughput."
+    "usage: rust-star prefill-layers012-attention-loop-probe MODEL.gguf [--json PATH]\n\nRuns all 64 native 32-row schedules over positions 0--2047 in one persistent Metal context, completes layers 2 and 3 in one terminal batch, then continues directly through layer-4 Q/KV state and the paired ratio-4 attention/indexer compressors. Every retained layer-2/layer-3/layer-4 boundary, all 1,024 layer-4 emissions, and all four layer-4 recurrent-state tensors must match repeated DwarfStar captures. The 2,064 logical layer-3 keys use a 2,112-row masked physical extent required by the 64-row FlashAttention block contract. This does not claim layer-4 attention, FFN, complete-model prefill, sparse ratio-4 decode, or throughput."
 }
 
 fn ingress_probe_usage() -> &'static str {

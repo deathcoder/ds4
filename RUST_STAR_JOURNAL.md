@@ -234,15 +234,21 @@ history; add a correction and update the current-state summary.
   4's HC attention ingress, Q/KV learned normalization, compressed RoPE, and
   FP8 KV finalization without a host activation upload. All ten final-tile
   boundaries match four fresh DwarfStar captures; the complete tensor
-  identities are SHA-256 pinned. The expanded terminal command preserves 53/53
-  no-copy mappings across 89 dispatches and retains layer 4's full Q/KV state.
-  Layer-4 compressors, attention, and FFN remain pending.
+  identities are SHA-256 pinned. The expanded terminal command now also owns
+  both layer-4 ratio-4 compressors. All 512 attention rows, all 512 indexer
+  rows, and all four final recurrent-state tensors match two fresh DwarfStar
+  processes bit-for-bit. It preserves 61/61 no-copy mappings across 119
+  dispatches and retains layer 4's full Q/KV and compressor state. Layer-4
+  attention and FFN remain pending.
   Full native batched prefill, sparse indexed attention beyond 512 ratio-4
   rows, and the eligible engine-measurement producer remain pending.
-- Measurements: The exact complete native layers-0/1/2/3 plus layer-4 Q/KV
-  full-2K command reported 1169.303 ms wall / 647.777 ms GPU in its focused run
-  and 947.998 ms wall / 651.830 ms GPU in the complete target-Mac gate, across
-  89 dispatches with 53/53 no-copy model mappings. The prior complete-layer-3
+- Measurements: The exact complete native layers-0/1/2/3 plus layer-4 Q/KV and
+  paired-compressor full-2K command reported 740.517 ms wall / 656.454 ms GPU
+  in its focused run and 750.548 ms wall / 655.250 ms GPU in the complete
+  target-Mac gate, across 119 dispatches with 61/61 no-copy model mappings.
+  The prior Q/KV-only checkpoint reported 1169.303 ms wall / 647.777 ms GPU in
+  its focused run and 947.998 ms wall / 651.830 ms GPU in the complete
+  target-Mac gate, across 89 dispatches with 53/53 mappings. The prior complete-layer-3
   checkpoint reported 675.511 ms wall / 592.734 ms GPU focused and 759.645 ms
   wall / 671.882 ms GPU in its complete gate. The layer-3 attention-only checkpoint
   reported 583.424 ms wall / 501.227 ms GPU focused and 569.588 ms wall /
@@ -381,9 +387,8 @@ history; add a correction and update the current-state summary.
 
 ## Immediate Next Actions
 
-1. Extend the retained layer-4 Q/KV state through both ratio-4 attention and
-   indexer compressors, validating all 512 prompt emissions and recurrent
-   states.
+1. Extend the retained layer-4 Q/KV and paired-compressor state through dense
+   mixed attention, attention HC post-processing, and the complete FFN.
 2. Add the fixed 512-row ratio-4 indexer top-k and sparse indexed attention so
    128 generated tokens can continue beyond the 2K frontier.
 3. Emit the `rust-star-engine-measurement-v1` artifact from the exact
@@ -395,6 +400,45 @@ history; add a correction and update the current-state summary.
 6. Run or approve the fork's GitHub Actions workflow and retain its URL.
 
 ## Entries
+
+### 2026-08-22 — Exact layer-4 paired ratio-4 compressors
+
+Objective:
+
+- Continue the retained full-2K layer-4 normalized activation through both
+  even-layer ratio-4 compressors without a host activation upload.
+
+Implementation:
+
+- Captured `KVcompress`, `attn_state_kv`, `attn_state_score`,
+  `indexer_KVcompress`, `indexer_state_kv`, and `indexer_state_score` twice in
+  fresh DwarfStar processes. All six identities were byte-stable.
+- Added `prefill-layer4-compressors-2048-v1`, containing 512 attention rows,
+  512 indexer rows, and all four final recurrent-state tensors.
+- Wrapped eight additional layer-4 compressor tensors directly from the model
+  mmap and added four full-batch F16 projections plus exact ratio-4 replay
+  pooling, learned norm, compressed RoPE, E4M3FN/indexer QAT, and final state
+  refresh.
+- Corrected the fused ratio-4 shift kernel to restore the consumed upper state
+  bank to DwarfStar's canonical zero/negative-infinity scratch state. The first
+  focused comparison localized the issue at the exact four-row bank boundary;
+  the corrected run passed every C0 comparison.
+- Extended the stable JSON boundary to `layer4_paired_compressors`, with
+  119 terminal dispatches, 61/61 no-copy mappings, and six pinned checksums.
+
+Validation:
+
+- Fixture verifier: valid six-tensor, 1,392,640-byte differential fixture.
+- Rust unit suite: 100 passed.
+- Focused optimized M1 Ultra run: all 1,024 emissions and four recurrent-state
+  tensors C0 exact, 740.517 ms wall / 656.454 ms GPU.
+- Full target-Mac gate: 100 Rust tests and 61 Python tests passed, every native
+  control remained exact, and the new terminal command reported 750.548 ms
+  wall / 655.250 ms GPU with 61/61 no-copy mappings.
+
+Next:
+
+- Complete layer-4 dense mixed attention and FFN from the retained state.
 
 ### 2026-08-22 — Complete layer 3 flows into exact layer-4 Q/KV state
 
