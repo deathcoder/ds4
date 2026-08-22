@@ -230,7 +230,7 @@ Every accumulated prefix plus every `KVnorm`, `KVrope`, and `KVcur` tile must
 match the repeated DwarfStar captures bit-for-bit. The attention/indexer
 compressors, mixed attention, layer-2 FFN, and later model remain pending.
 
-To complete native 2K prefill through layer 4 and enter layer 5:
+To complete native 2K prefill through layer 5 and enter layer 6:
 
 ```sh
 rust-star/.work/runtime-target/release/rust-star \
@@ -258,12 +258,17 @@ and both additive HC updates. The retained final HC flows directly into layer
 5's HC ingress, Q-A/KV projections, fused learned normalization, Q-B,
 compressed RoPE, and FP8 KV finalization. All ten layer-5 final-tile boundaries
 match four fresh DwarfStar captures bit-for-bit, and the full layer-5 Q/KV
-state remains in the persistent Metal context. The combined terminal schedule
-uses 159 dispatches and 85/85 no-copy model views.
+state remains in the persistent Metal context. The same command continues
+through layer 5's ratio-128 compressor, dense mixed attention, biased top-6
+routed/shared FFN, and final HC update. It then executes layer 6's full Q/KV
+state and paired ratio-4 attention/indexer compressors. All 512 layer-6
+compressed rows and all four recurrent-state tensors match repeated DwarfStar
+captures bit-for-bit. The combined terminal schedule uses 236 dispatches and
+121/121 no-copy model views.
 
-Exactly 512 layer-2/layer-4 compressed rows still use the dense path; sparse
-top-k begins only after this 2K boundary. Layer-5 compression, attention, and
-FFN, later prefill, output logits, and throughput remain outside this command.
+Exactly 512 layer-2/layer-4/layer-6 compressed rows still use the dense path;
+sparse top-k begins only after this 2K boundary. Layer-6 attention and FFN,
+later prefill, output logits, and throughput remain outside this command.
 
 To run the connected layer-0 ingress gate:
 

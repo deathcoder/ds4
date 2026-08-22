@@ -263,14 +263,18 @@ history; add a correction and update the current-state summary.
   layer 6's HC attention ingress, learned norm, Q-A/KV projections, fused Q/KV
   normalization, Q-B, compressed RoPE, and FP8 KV finalization. All ten new
   boundaries match four fresh DwarfStar captures exactly. The command preserves
-  113/113 no-copy mappings across 206 dispatches, establishing complete native
-  layers 0–5 plus exact full-2K layer-6 Q/KV state.
+  121/121 no-copy mappings across 236 dispatches after continuing through layer
+  6's paired ratio-4 attention/indexer compressors. All 512 compressed rows and
+  four final recurrent-state tensors match two fresh DwarfStar captures
+  bit-for-bit, establishing complete native layers 0–5 plus exact full-2K
+  layer-6 paired-compressor state.
   Full native batched prefill, sparse indexed attention beyond 512 ratio-4
   rows, and the eligible engine-measurement producer remain pending.
-- Measurements: The exact complete native layers-0/1/2/3/4/5 plus layer-6 Q/KV
-  full-2K command reported 1338.542 ms wall / 1247.536 ms GPU in its focused
-  correctness run and 1328.350 ms wall / 1241.698 ms GPU in the complete
-  target-Mac gate, across 206 dispatches with 113/113 no-copy model mappings.
+- Measurements: The exact complete native layers-0/1/2/3/4/5 plus layer-6
+  paired-compressor full-2K command reported 1358.621 ms wall / 1266.291 ms GPU
+  in its focused correctness run, across 236 dispatches with 121/121 no-copy
+  model mappings. The complete target-Mac gate reported 1365.469 ms wall /
+  1265.535 ms GPU with the same schedule and mapping counts.
   The prior exact complete native layers-0/1/2/3/4/5 full-2K command
   reported 1358.984 ms wall / 1270.350 ms GPU in its focused correctness run
   and 1363.509 ms wall / 1272.876 ms GPU in the complete target-Mac gate,
@@ -434,9 +438,9 @@ history; add a correction and update the current-state summary.
 
 ## Immediate Next Actions
 
-1. Continue the retained layer-6 Q/KV state through both native ratio-4
-   attention/indexer compressors, preserving the complete layers-0–5 command as
-   a regression control.
+1. Continue the retained layer-6 paired-compressor state through dense mixed
+   attention and its additive HC post, preserving the complete layers-0–5
+   command as a regression control.
 2. Add the fixed 512-row ratio-4 indexer top-k and sparse indexed attention so
    128 generated tokens can continue beyond the 2K frontier.
 3. Emit the `rust-star-engine-measurement-v1` artifact from the exact
@@ -448,6 +452,44 @@ history; add a correction and update the current-state summary.
 6. Run or approve the fork's GitHub Actions workflow and retain its URL.
 
 ## Entries
+
+### 2026-08-22 — Exact layer-6 paired ratio-4 compressors
+
+Objective:
+
+- Continue the retained layer-6 Q/KV state through both native ratio-4
+  attention/indexer compressors without a host activation handoff.
+
+Implementation:
+
+- Captured KVcompress, attn_state_kv, attn_state_score,
+  indexer_KVcompress, indexer_state_kv, and indexer_state_score in two fresh
+  DwarfStar processes; all six repeated captures were byte-identical.
+- Added prefill-layer6-compressors-2048-v1, containing all 512 attention and
+  indexer compressed rows plus the four final recurrent-state tensors.
+- Wrapped the eight layer-6 compressor tensors directly from the GGUF mmap and
+  appended the proven 30-dispatch paired ratio-4 schedule to the retained
+  terminal Metal command.
+- Extended the C ABI, exact Rust comparisons, stable JSON, CLI, documentation,
+  fixture verification, and target-Mac gate. The artifact closes at
+  layer6_paired_compressors and explicitly denies layer-6 attention, FFN,
+  complete-model-prefill, and throughput claims.
+
+Validation:
+
+- Fixture verifier: valid six-tensor, 1,392,640-byte differential fixture.
+- Rust unit suite: 110 passed.
+- Focused optimized M1 Ultra run: every new boundary C0 exact, 1358.621 ms wall
+  / 1266.291 ms GPU, 236 dispatches, and 121/121 no-copy model mappings.
+- Full target-Mac gate: 110 Rust tests and 61 Python tests passed; the extended
+  command remained exact at 1365.469 ms wall / 1265.535 ms GPU with 121/121
+  mappings. These intervals include exhaustive correctness readback and are not
+  throughput claims.
+
+Next:
+
+- Continue through layer 6's dense mixed attention and additive attention HC
+  post.
 
 ### 2026-08-22 — Exact layer-6 full-2K Q/KV state
 

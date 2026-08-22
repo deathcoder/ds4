@@ -2243,7 +2243,7 @@ fn run_prefill_layers012_attention_loop_probe_command(arguments: Vec<OsString>) 
     let model = MappedModel::open(&model_path)?;
     validate_resident_q2(model.gguf())?;
     let report = run_prefill_layers012_attention_loop_probe(&model)?;
-    println!("native complete layers 0-5 plus layer-6 Q/KV at 2K: 2048 raw rows + 512 dense layer-2/layer-4 compressed rows + 16 layer-3 and 16 layer-5 compressed rows");
+    println!("native complete layers 0-5 plus layer-6 paired compressors at 2K: 2048 raw rows + 512 dense layer-2/layer-4/layer-6 compressed rows + 16 layer-3 and 16 layer-5 compressed rows");
     println!(
         "terminal attention/FFN schedule: {} dispatches, {}/{} no-copy model ranges, wall={:.3} ms gpu={:.3} ms",
         report.dispatches,
@@ -2252,7 +2252,7 @@ fn run_prefill_layers012_attention_loop_probe_command(arguments: Vec<OsString>) 
         report.wall_ms,
         report.gpu_ms,
     );
-    println!("scope: complete native layers 0/1/2/3/4/5 plus exact layer-6 HC attention ingress, Q/KV projections, learned normalization, compressed RoPE, and FP8 KV finalization at the 2K prompt boundary; no layer-6 compressors, attention, FFN, sparse post-prompt top-k, complete-model-prefill, or throughput claim");
+    println!("scope: complete native layers 0/1/2/3/4/5 plus exact layer-6 HC attention ingress, Q/KV state, and paired ratio-4 attention/indexer compressors at the 2K prompt boundary; no layer-6 attention, FFN, sparse post-prompt top-k, complete-model-prefill, or throughput claim");
     if let Some(path) = json_path {
         write_prefill_layers012_attention_loop_probe_file(&path, &report)?;
         println!("json: {}", path.display());
