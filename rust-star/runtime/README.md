@@ -263,12 +263,15 @@ through layer 5's ratio-128 compressor, dense mixed attention, biased top-6
 routed/shared FFN, and final HC update. It then executes layer 6's full Q/KV
 state and paired ratio-4 attention/indexer compressors. All 512 layer-6
 compressed rows and all four recurrent-state tensors match repeated DwarfStar
-captures bit-for-bit. The combined terminal schedule uses 236 dispatches and
-121/121 no-copy model views.
+captures bit-for-bit. The retained state then drives layer 6's dense mixed
+attention, inverse RoPE, grouped/dense output projections, and additive
+attention HC post. The complete attention output and full HC identity match
+repeated DwarfStar captures exactly. The combined terminal schedule uses 245
+dispatches and 124/124 no-copy model views.
 
 Exactly 512 layer-2/layer-4/layer-6 compressed rows still use the dense path;
-sparse top-k begins only after this 2K boundary. Layer-6 attention and FFN,
-later prefill, output logits, and throughput remain outside this command.
+sparse top-k begins only after this 2K boundary. Layer-6 FFN, later prefill,
+output logits, and throughput remain outside this command.
 
 To run the connected layer-0 ingress gate:
 

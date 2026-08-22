@@ -185,10 +185,15 @@ recurrent-state refresh. All 512 attention/indexer compressed rows and four
 final recurrent-state tensors match two fresh DwarfStar processes bit-for-bit.
 The command uses 236 dispatches and preserves 121/121 no-copy model mappings,
 establishing complete native layers 0 through 5 plus exact layer-6 paired
-compressors at the full 2K boundary. Exactly 512 compressed rows remain dense;
-sparse indexer top-k starts only after this prompt boundary. Layer-6
-attention/FFN, later prefill, output logits, and sparse post-prompt attention
-remain pending, and this is not a throughput claim.
+compressors at the full 2K boundary. The same retained state now drives dense
+mixed attention over 2,048 raw plus 512 compressed rows, inverse RoPE, both Q8
+attention-output projections, and the additive HC post. The complete
+2048x4096 attention output, three diagnostic rows, final HC tile, and full HC
+identity match two fresh DwarfStar processes exactly. The extended command uses
+245 dispatches and preserves 124/124 no-copy model mappings. Exactly 512
+compressed rows remain dense; sparse indexer top-k starts only after this prompt
+boundary. Layer-6 FFN, later prefill, output logits, and sparse post-prompt
+attention remain pending, and this is not a throughput claim.
 
 Project controls and benchmark contracts:
 

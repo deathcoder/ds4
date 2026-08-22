@@ -266,15 +266,19 @@ history; add a correction and update the current-state summary.
   121/121 no-copy mappings across 236 dispatches after continuing through layer
   6's paired ratio-4 attention/indexer compressors. All 512 compressed rows and
   four final recurrent-state tensors match two fresh DwarfStar captures
-  bit-for-bit, establishing complete native layers 0–5 plus exact full-2K
-  layer-6 paired-compressor state.
+  bit-for-bit. Three additional no-copy views now drive layer 6's dense mixed
+  attention over 2,048 raw plus 512 compressed rows, inverse RoPE, both Q8
+  output projections, and the additive attention HC post. The complete
+  2048x4096 attention output, diagnostic rows, final HC tile, and full HC
+  identity match two fresh DwarfStar processes exactly, establishing complete
+  native layers 0–5 plus exact full-2K layer-6 attention HC post.
   Full native batched prefill, sparse indexed attention beyond 512 ratio-4
   rows, and the eligible engine-measurement producer remain pending.
 - Measurements: The exact complete native layers-0/1/2/3/4/5 plus layer-6
-  paired-compressor full-2K command reported 1358.621 ms wall / 1266.291 ms GPU
-  in its focused correctness run, across 236 dispatches with 121/121 no-copy
-  model mappings. The complete target-Mac gate reported 1365.469 ms wall /
-  1265.535 ms GPU with the same schedule and mapping counts.
+  dense-attention full-2K command reported 1545.043 ms wall / 1464.156 ms GPU
+  in its focused correctness run, across 245 dispatches with 124/124 no-copy
+  model mappings. The complete target-Mac gate reported 1635.054 ms wall /
+  1454.353 ms GPU with the same schedule and mapping counts.
   The prior exact complete native layers-0/1/2/3/4/5 full-2K command
   reported 1358.984 ms wall / 1270.350 ms GPU in its focused correctness run
   and 1363.509 ms wall / 1272.876 ms GPU in the complete target-Mac gate,
@@ -438,9 +442,9 @@ history; add a correction and update the current-state summary.
 
 ## Immediate Next Actions
 
-1. Continue the retained layer-6 paired-compressor state through dense mixed
-   attention and its additive HC post, preserving the complete layers-0–5
-   command as a regression control.
+1. Continue the retained layer-6 attention HC post through its biased-top-6
+   routed/shared FFN and additive final HC update, preserving the complete
+   layers-0–5 command as a regression control.
 2. Add the fixed 512-row ratio-4 indexer top-k and sparse indexed attention so
    128 generated tokens can continue beyond the 2K frontier.
 3. Emit the `rust-star-engine-measurement-v1` artifact from the exact
@@ -452,6 +456,48 @@ history; add a correction and update the current-state summary.
 6. Run or approve the fork's GitHub Actions workflow and retain its URL.
 
 ## Entries
+
+### 2026-08-22 — Exact layer-6 dense mixed attention HC post
+
+Objective:
+
+- Continue the retained layer-6 paired-compressor state through dense mixed
+  attention and its additive HC post without a host activation handoff.
+
+Implementation:
+
+- Captured attn_out, hc_attn_post, kqv_out, kqv_back, and attn_low in two fresh
+  DwarfStar processes; all five full repeated captures were byte-identical.
+- Added prefill-layer6-attention-2048-v1, retaining the complete 32 MiB
+  attention output, three row-0 diagnostics, and final 32-row HC tile while
+  checksum-pinning the complete 128 MiB HC identity.
+- Wrapped layer 6's attention sinks and two Q8 output projections directly from
+  the GGUF mmap and appended the proven nine-dispatch dense mixed-attention
+  schedule.
+- Added explicit retained buffers for layer 5's KQV-back and attention-low
+  diagnostics. Those values previously remained in shared scratch only; layer
+  6 attention correctly reuses that scratch, so the snapshots preserve the
+  already-published layer-5 evidence boundary without adding dispatches.
+- Extended the C ABI, exhaustive Rust comparisons, stable JSON, CLI,
+  documentation, fixture verification, and target-Mac gate. The artifact closes
+  at layer6_attention_hc_post and explicitly denies layer-6 FFN,
+  complete-model-prefill, and throughput claims.
+
+Validation:
+
+- Fixture verifier: valid five-tensor, 35,946,496-byte differential fixture.
+- Rust unit suite: 112 passed.
+- Focused optimized M1 Ultra run: every new boundary C0 exact, 1545.043 ms wall
+  / 1464.156 ms GPU, 245 dispatches, and 124/124 no-copy model mappings.
+- Full target-Mac gate: 112 Rust tests and 61 Python tests passed; the extended
+  command remained exact at 1635.054 ms wall / 1454.353 ms GPU with 124/124
+  mappings. These intervals include exhaustive correctness readback and are not
+  throughput claims.
+
+Next:
+
+- Continue through layer 6's biased-top-6 routed/shared FFN and additive final
+  HC update.
 
 ### 2026-08-22 — Exact layer-6 paired ratio-4 compressors
 
