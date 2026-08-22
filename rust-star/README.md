@@ -164,12 +164,14 @@ The terminal schedule now continues directly from layer 4's final HC into
 layer 5's HC attention ingress, learned norm, Q-A/KV projections, fused Q/KV
 normalization, Q-B, compressed RoPE, and FP8 KV finalization. All ten layer-5
 final-tile boundaries match four fresh DwarfStar captures bit-for-bit. The
-full layer-5 Q/KV buffers remain resident for the next compressor boundary.
-The combined terminal schedule uses 159 dispatches and preserves 85/85
-no-copy model mappings, establishing complete layer-4 prefill ownership plus
-exact layer-5 Q/KV state.
+full layer-5 Q/KV buffers then feed both F16 compressor projections and the
+exact ratio-128 batch path. All 16 compressed rows and both final 128x512
+recurrent-state tensors match two fresh DwarfStar processes bit-for-bit. The
+combined terminal schedule uses 166 dispatches and preserves 89/89 no-copy
+model mappings, establishing complete layer-4 prefill ownership plus exact
+layer-5 Q/KV and compressor state.
 Exactly 512 compressed rows remain dense; sparse indexer top-k starts only after
-this prompt boundary. Layer-5 compression/attention/FFN, later prefill, output
+this prompt boundary. Layer-5 attention/FFN, later prefill, output
 logits, and sparse post-prompt attention remain pending, and
 this is not a throughput claim.
 

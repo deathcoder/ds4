@@ -286,6 +286,9 @@ static NSString *const kQ8ProjectionSource =
 @property(nonatomic, strong) id<MTLBuffer> prefillLayer5FullKv;
 @property(nonatomic, strong) id<MTLBuffer> prefillLayer5InputHc;
 @property(nonatomic, strong) id<MTLBuffer> prefillLayer5AttnSplit;
+@property(nonatomic, strong) id<MTLBuffer> prefillLayer5AttnCompressed;
+@property(nonatomic, strong) id<MTLBuffer> prefillLayer5AttnStateKv;
+@property(nonatomic, strong) id<MTLBuffer> prefillLayer5AttnStateScore;
 @property(nonatomic, assign) uint32_t prefillKvRows;
 @property(nonatomic, assign) double chainedWallEnd;
 @property(nonatomic, assign) BOOL chainedReady;
@@ -5196,6 +5199,9 @@ int rust_star_metal_run_prefill_layer2_attention(
     float *layer5_q_cur_final_tile,
     float *layer5_kv_rope_final_tile,
     float *layer5_kv_cur_final_tile,
+    float *layer5_attn_compressed,
+    float *layer5_attn_state_kv,
+    int32_t *layer5_attn_state_score,
     rust_star_metal_prefill_layer2_attention_result *result,
     char *error,
     size_t error_bytes)
@@ -5236,6 +5242,8 @@ int rust_star_metal_run_prefill_layer2_attention(
         !layer5_kv_raw_final_tile || !layer5_kv_norm_final_tile ||
         !layer5_q_raw_final_tile || !layer5_q_cur_final_tile ||
         !layer5_kv_rope_final_tile || !layer5_kv_cur_final_tile ||
+        !layer5_attn_compressed || !layer5_attn_state_kv ||
+        !layer5_attn_state_score ||
         !result) {
         return fail_with_message(error, error_bytes,
             @"prefill layer-2 attention received a null input");
@@ -5395,7 +5403,16 @@ int rust_star_metal_run_prefill_layer2_attention(
                 512ull*((uint64_t)n_embd/32u)*34u ||
             weights->layer5_kvnorm.kv_norm_bytes != 512u*sizeof(float) ||
             weights->layer5_q_b_bytes !=
-                (uint64_t)q_dim*(1024u/32u)*34u) {
+                (uint64_t)q_dim*(1024u/32u)*34u ||
+            weights->layer5_compressor.attn_ape_bytes !=
+                (uint64_t)layer3_compressor_ratio*layer3_compressor_width*
+                    sizeof(uint16_t) ||
+            weights->layer5_compressor.attn_kv_bytes !=
+                (uint64_t)n_embd*layer3_compressor_width*sizeof(uint16_t) ||
+            weights->layer5_compressor.attn_gate_bytes !=
+                (uint64_t)n_embd*layer3_compressor_width*sizeof(uint16_t) ||
+            weights->layer5_compressor.attn_norm_bytes !=
+                layer3_compressor_width*sizeof(float)) {
             return fail_with_message(error, error_bytes,
                 @"prefill layer-2 attention tensor shapes are invalid");
         }
@@ -5403,7 +5420,7 @@ int rust_star_metal_run_prefill_layer2_attention(
             !ensure_moe_output_pipelines(context, error, error_bytes)) return 0;
         memset(result, 0, sizeof(*result));
 
-        uint64_t offsets[85] = {
+        uint64_t offsets[89] = {
             weights->q_b_offset, weights->attn_sinks_offset,
             weights->attn_output_a_offset, weights->attn_output_b_offset,
             weights->ffn.hc_fn_offset, weights->ffn.hc_scale_offset,
@@ -5481,8 +5498,12 @@ int rust_star_metal_run_prefill_layer2_attention(
             weights->layer5_kvnorm.kv_offset,
             weights->layer5_kvnorm.kv_norm_offset,
             weights->layer5_q_b_offset,
+            weights->layer5_compressor.attn_ape_offset,
+            weights->layer5_compressor.attn_kv_offset,
+            weights->layer5_compressor.attn_gate_offset,
+            weights->layer5_compressor.attn_norm_offset,
         };
-        uint64_t sizes[85] = {
+        uint64_t sizes[89] = {
             weights->q_b_bytes, weights->attn_sinks_bytes,
             weights->attn_output_a_bytes, weights->attn_output_b_bytes,
             weights->ffn.hc_fn_bytes, weights->ffn.hc_scale_bytes,
@@ -5560,11 +5581,15 @@ int rust_star_metal_run_prefill_layer2_attention(
             weights->layer5_kvnorm.kv_bytes,
             weights->layer5_kvnorm.kv_norm_bytes,
             weights->layer5_q_b_bytes,
+            weights->layer5_compressor.attn_ape_bytes,
+            weights->layer5_compressor.attn_kv_bytes,
+            weights->layer5_compressor.attn_gate_bytes,
+            weights->layer5_compressor.attn_norm_bytes,
         };
-        id<MTLBuffer> model_buffers[85] = { nil };
-        NSUInteger inner[85] = { 0 };
-        BOOL matches[85] = { NO };
-        for (uint32_t index = 0; index < 85u; index++) {
+        id<MTLBuffer> model_buffers[89] = { nil };
+        NSUInteger inner[89] = { 0 };
+        BOOL matches[89] = { NO };
+        for (uint32_t index = 0; index < 89u; index++) {
             model_buffers[index] = wrap_model_range(
                 context, model_mapping, model_bytes, offsets[index], sizes[index],
                 &inner[index], &matches[index], error, error_bytes);
@@ -5799,6 +5824,20 @@ int rust_star_metal_run_prefill_layer2_attention(
         RUST_STAR_NEW_L2_ATTN_BUFFER(layer5_kv_rope_buffer, layer3_kv_bytes);
         RUST_STAR_NEW_L2_ATTN_BUFFER(layer5_q_raw_buffer, q_bytes);
         RUST_STAR_NEW_L2_ATTN_BUFFER(layer5_q_cur_buffer, q_bytes);
+        RUST_STAR_NEW_L2_ATTN_BUFFER(layer5_attn_projected_kv_buffer,
+            layer3_compressor_projection_bytes);
+        RUST_STAR_NEW_L2_ATTN_BUFFER(layer5_attn_projected_score_buffer,
+            layer3_compressor_projection_bytes);
+        RUST_STAR_NEW_L2_ATTN_BUFFER(layer5_attn_score_ape_buffer,
+            layer3_compressor_projection_bytes);
+        RUST_STAR_NEW_L2_ATTN_BUFFER(layer5_attn_compressed_buffer,
+            layer3_compressed_bytes);
+        RUST_STAR_NEW_L2_ATTN_BUFFER(layer5_attn_state_kv_buffer,
+            layer3_compressor_state_bytes);
+        RUST_STAR_NEW_L2_ATTN_BUFFER(layer5_attn_state_score_buffer,
+            layer3_compressor_state_bytes);
+        RUST_STAR_NEW_L2_ATTN_BUFFER(layer5_compressed_position_buffer,
+            layer3_compressed_rows*sizeof(int32_t));
 #undef RUST_STAR_NEW_L2_ATTN_BUFFER
         if (!q_buffer || !staged_kv_buffer || !mask_buffer || !block_buffer ||
             !pad_buffer || !heads_buffer || !attention_low_buffer || !output_buffer ||
@@ -5868,7 +5907,13 @@ int rust_star_metal_run_prefill_layer2_attention(
             !layer5_q_lora_buffer || !layer5_q_norm_buffer ||
             !layer5_kv_raw_buffer || !layer5_kv_norm_buffer ||
             !layer5_kv_norm_snapshot_buffer || !layer5_kv_rope_buffer ||
-            !layer5_q_raw_buffer || !layer5_q_cur_buffer) {
+            !layer5_q_raw_buffer || !layer5_q_cur_buffer ||
+            !layer5_attn_projected_kv_buffer ||
+            !layer5_attn_projected_score_buffer ||
+            !layer5_attn_score_ape_buffer ||
+            !layer5_attn_compressed_buffer || !layer5_attn_state_kv_buffer ||
+            !layer5_attn_state_score_buffer ||
+            !layer5_compressed_position_buffer) {
             return fail_with_message(error, error_bytes,
                 @"failed to allocate prefill layer-2 attention buffers");
         }
@@ -5925,6 +5970,12 @@ int rust_star_metal_run_prefill_layer2_attention(
         for (uint32_t row = 0; row < compressed_rows; row++) {
             layer4_compressed_positions[row] = (int32_t)(row*compressor_ratio);
         }
+        int32_t *layer5_compressed_positions =
+            layer5_compressed_position_buffer.contents;
+        for (uint32_t row = 0; row < layer3_compressed_rows; row++) {
+            layer5_compressed_positions[row] =
+                (int32_t)(row*layer3_compressor_ratio);
+        }
         memset(layer4_attn_state_kv_buffer.contents, 0, layer4_attn_state_bytes);
         memset(layer4_indexer_state_kv_buffer.contents, 0,
                layer4_indexer_state_bytes);
@@ -5947,6 +5998,14 @@ int rust_star_metal_run_prefill_layer2_attention(
         for (NSUInteger index = 0;
              index < layer3_compressor_state_bytes/sizeof(uint32_t); index++) {
             layer3_state_score_bits[index] = 0xff800000u;
+        }
+        memset(layer5_attn_state_kv_buffer.contents, 0,
+               layer3_compressor_state_bytes);
+        uint32_t *layer5_state_score_bits =
+            layer5_attn_state_score_buffer.contents;
+        for (NSUInteger index = 0;
+             index < layer3_compressor_state_bytes/sizeof(uint32_t); index++) {
+            layer5_state_score_bits[index] = 0xff800000u;
         }
 
         rust_star_q8_mm_args q_b_args = {
@@ -6267,6 +6326,18 @@ int rust_star_metal_run_prefill_layer2_attention(
         rust_star_q8_mm_args layer5_q_b_args = layer3_q_b_args;
         layer5_q_b_args.nb02 = weights->layer5_q_b_bytes;
         layer5_q_b_args.nb03 = weights->layer5_q_b_bytes;
+        rust_star_q8_mm_args layer5_attn_compressor_kv_args =
+            layer3_attn_compressor_kv_args;
+        layer5_attn_compressor_kv_args.nb02 =
+            weights->layer5_compressor.attn_kv_bytes;
+        layer5_attn_compressor_kv_args.nb03 =
+            weights->layer5_compressor.attn_kv_bytes;
+        rust_star_q8_mm_args layer5_attn_compressor_gate_args =
+            layer5_attn_compressor_kv_args;
+        layer5_attn_compressor_gate_args.nb02 =
+            weights->layer5_compressor.attn_gate_bytes;
+        layer5_attn_compressor_gate_args.nb03 =
+            weights->layer5_compressor.attn_gate_bytes;
         rust_star_q8_mm_args layer4_attn_compressor_kv_args = {
             .ne00=n_embd, .ne02=1,
             .nb01=(uint64_t)n_embd*sizeof(uint16_t),
@@ -7609,6 +7680,39 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setThreadgroupMemoryLength:64u*sizeof(float) atIndex:0];
         [encoder dispatchThreadgroups:MTLSizeMake(rows,1,1)
              threadsPerThreadgroup:MTLSizeMake(64,1,1)];
+
+#define RUST_STAR_ENCODE_LAYER5_COMPRESSOR_PROJECTION(args, index, output) do { \
+        [encoder setComputePipelineState:context.f16AlignedPrefillPipeline]; \
+        [encoder setBytes:&(args) length:sizeof(args) atIndex:0]; \
+        [encoder setBuffer:model_buffers[(index)] offset:inner[(index)] atIndex:1]; \
+        [encoder setBuffer:layer5_norm_buffer offset:0 atIndex:2]; \
+        [encoder setBuffer:(output) offset:0 atIndex:3]; \
+        [encoder setThreadgroupMemoryLength:6144u atIndex:0]; \
+        [encoder dispatchThreadgroups:MTLSizeMake( \
+                rows/32u,layer3_compressor_width/64u,1) \
+             threadsPerThreadgroup:MTLSizeMake(128,1,1)]; \
+    } while (0)
+        RUST_STAR_ENCODE_LAYER5_COMPRESSOR_PROJECTION(
+            layer5_attn_compressor_kv_args, 86,
+            layer5_attn_projected_kv_buffer);
+        RUST_STAR_ENCODE_LAYER5_COMPRESSOR_PROJECTION(
+            layer5_attn_compressor_gate_args, 87,
+            layer5_attn_projected_score_buffer);
+#undef RUST_STAR_ENCODE_LAYER5_COMPRESSOR_PROJECTION
+
+        if (!encode_projected_compressor_batch_ratio128(
+                context, encoder,
+                layer5_attn_projected_kv_buffer,
+                layer5_attn_projected_score_buffer,
+                layer5_attn_score_ape_buffer,
+                model_buffers[85], inner[85],
+                model_buffers[88], inner[88],
+                layer5_attn_compressed_buffer,
+                layer5_compressed_position_buffer,
+                0u, rows)) {
+            return fail_with_message(error, error_bytes,
+                @"failed to encode prefill layer-5 ratio-128 compressor");
+        }
         [encoder endEncoding];
 
         const double wall_start = monotonic_ms();
@@ -7827,16 +7931,24 @@ int rust_star_metal_run_prefill_layer2_attention(
                (const uint8_t *)layer5_kv_norm_buffer.contents+
                    layer4_kv_final_tile_offset,
                32u*512u*sizeof(float));
+        memcpy(layer5_attn_compressed,
+               layer5_attn_compressed_buffer.contents, layer3_compressed_bytes);
+        memcpy(layer5_attn_state_kv,
+               layer5_attn_state_kv_buffer.contents,
+               layer3_compressor_state_bytes);
+        memcpy(layer5_attn_state_score,
+               layer5_attn_state_score_buffer.contents,
+               layer3_compressor_state_bytes);
 
         uint32_t pointer_matches = 0;
-        for (uint32_t index = 0; index < 85u; index++) {
+        for (uint32_t index = 0; index < 89u; index++) {
             pointer_matches += matches[index] ? 1u : 0u;
         }
         result->rows = rows;
         result->raw_kv_rows = raw_rows;
         result->compressed_kv_rows = compressed_rows;
-        result->dispatches = 159u;
-        result->wrapped_model_ranges = 85u;
+        result->dispatches = 166u;
+        result->wrapped_model_ranges = 89u;
         result->pointer_matches = pointer_matches;
         result->layer3_compressed_kv_rows = layer3_compressed_rows;
         result->wall_ms = wall_end-wall_start;
@@ -7867,6 +7979,9 @@ int rust_star_metal_run_prefill_layer2_attention(
         context.prefillLayer5FullKv = layer5_kv_norm_buffer;
         context.prefillLayer5InputHc = layer4_after_ffn_hc_buffer;
         context.prefillLayer5AttnSplit = layer5_split_buffer;
+        context.prefillLayer5AttnCompressed = layer5_attn_compressed_buffer;
+        context.prefillLayer5AttnStateKv = layer5_attn_state_kv_buffer;
+        context.prefillLayer5AttnStateScore = layer5_attn_state_score_buffer;
         return 1;
     }
 }

@@ -248,14 +248,20 @@ history; add a correction and update the current-state summary.
   layer 5's HC attention ingress, learned norm, Q-A/KV projections, fused Q/KV
   normalization, Q-B, compressed RoPE, and FP8 KV finalization without a host
   activation upload. All ten layer-5 final-tile boundaries match four fresh
-  DwarfStar processes exactly. The command preserves 85/85 no-copy mappings
-  across 159 dispatches, establishing complete native layer-4 prefill ownership
-  plus exact full-2K layer-5 Q/KV state.
+  DwarfStar processes exactly. That retained state now feeds layer 5's paired
+  F16 compressor projections and exact full-batch ratio-128 schedule. All 16
+  compressed rows and both final 128x512 recurrent-state tensors match two
+  fresh DwarfStar processes bit-for-bit. The command preserves 89/89 no-copy
+  mappings across 166 dispatches, establishing complete native layer-4 prefill
+  ownership plus exact full-2K layer-5 Q/KV and compressor state.
   Full native batched prefill, sparse indexed attention beyond 512 ratio-4
   rows, and the eligible engine-measurement producer remain pending.
 - Measurements: The exact complete native layers-0/1/2/3/4 plus layer-5 Q/KV
-  full-2K command reported 1085.161 ms wall / 994.834 ms GPU in its focused
-  run, across 159 dispatches with 85/85 no-copy model mappings. The prior exact
+  and ratio-128 compressor full-2K command reported 1076.840 ms wall / 991.235
+  ms GPU in its focused correctness run and 1072.662 ms wall / 972.161 ms GPU
+  in the complete target-Mac gate, across 166 dispatches with 89/89 no-copy
+  model mappings. The prior layer-5 Q/KV checkpoint reported 1085.161
+  ms wall / 994.834 ms GPU across 159 dispatches and 85/85 mappings. The prior exact
   complete native layers-0/1/2/3/4 full-2K command
   reported 1079.281 ms wall / 991.837 ms GPU in its focused run and 1601.151 ms
   wall / 985.798 ms GPU in the complete target-Mac gate, across 149 dispatches
@@ -406,7 +412,7 @@ history; add a correction and update the current-state summary.
 
 ## Immediate Next Actions
 
-1. Continue the retained layer-5 Q/KV state through its ratio-128 compressor,
+1. Continue the retained layer-5 Q/KV and ratio-128 compressor state through
    dense mixed attention, attention HC post-processing, and complete FFN.
 2. Add the fixed 512-row ratio-4 indexer top-k and sparse indexed attention so
    128 generated tokens can continue beyond the 2K frontier.
@@ -419,6 +425,44 @@ history; add a correction and update the current-state summary.
 6. Run or approve the fork's GitHub Actions workflow and retain its URL.
 
 ## Entries
+
+### 2026-08-22 — Exact layer-5 full-2K ratio-128 compressor
+
+Objective:
+
+- Continue the retained layer-5 Q/KV state through all 16 ratio-128 emissions
+  and establish the exact final recurrent-state boundary before dense attention.
+
+Implementation:
+
+- Captured `KVcompress`, `attn_state_kv`, and `attn_state_score` twice in fresh
+  DwarfStar processes. Both captures were byte-identical; the aligned 2K batch
+  ends with canonical zero KV scratch and negative-infinity score scratch.
+- Added `prefill-layer5-compressor-2048-v1`, pinning 557,056 bytes across the
+  16x512 compressed output and two 128x512 final state tensors.
+- Wrapped four additional layer-5 compressor tensors directly from the model
+  mmap and extended the retained Metal command with two F16 projections plus
+  the proven five-dispatch ratio-128 batch schedule.
+- Extended the Rust ABI, exhaustive C0 comparisons, stable JSON boundary, CLI,
+  documentation, and target-Mac gate label. Layer-5 attention and FFN remain
+  explicitly out of scope.
+
+Validation:
+
+- Fixture verifier: valid three-tensor, 557,056-byte differential fixture.
+- Rust unit suite: 105 passed.
+- Focused optimized M1 Ultra run: all 16 emissions and both terminal states C0
+  exact, 1076.840 ms wall / 991.235 ms GPU, 166 dispatches, and 89/89 no-copy
+  model mappings. This includes exhaustive correctness readback and is not a
+  throughput claim.
+- Full target-Mac gate: 105 Rust tests and 61 Python tests passed, every native
+  regression control remained exact, and the extended command reported
+  1072.662 ms wall / 972.161 ms GPU with 89/89 no-copy mappings.
+
+Next:
+
+- Continue the retained layer-5 state through dense mixed attention, additive
+  attention HC post-processing, and the complete FFN.
 
 ### 2026-08-22 — Exact layer-5 HC ingress and full-2K Q/KV state
 
