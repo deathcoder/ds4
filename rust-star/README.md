@@ -190,10 +190,15 @@ mixed attention over 2,048 raw plus 512 compressed rows, inverse RoPE, both Q8
 attention-output projections, and the additive HC post. The complete
 2048x4096 attention output, three diagnostic rows, final HC tile, and full HC
 identity match two fresh DwarfStar processes exactly. The extended command uses
-245 dispatches and preserves 124/124 no-copy model mappings. Exactly 512
-compressed rows remain dense; sparse indexer top-k starts only after this prompt
-boundary. Layer-6 FFN, later prefill, output logits, and sparse post-prompt
-attention remain pending, and this is not a throughput claim.
+245 dispatches and preserves 124/124 no-copy model mappings. That attention HC
+state now feeds layer 6's learned FFN ingress, biased top-6 routing, routed
+IQ2_XXS/Q2_K experts, shared Q8_0 expert, and additive final HC update. Every
+retained FFN boundary and the complete final HC identity match two fresh
+DwarfStar processes exactly. The complete layers-0--6 command uses 266
+dispatches and preserves 136/136 no-copy model mappings. Exactly 512 compressed
+rows remain dense; sparse indexer top-k starts only after this prompt boundary.
+Layer-7 prefill, output logits, and sparse post-prompt attention remain pending,
+and this is not a throughput claim.
 
 Project controls and benchmark contracts:
 

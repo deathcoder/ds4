@@ -271,10 +271,21 @@ history; add a correction and update the current-state summary.
   output projections, and the additive attention HC post. The complete
   2048x4096 attention output, diagnostic rows, final HC tile, and full HC
   identity match two fresh DwarfStar processes exactly, establishing complete
-  native layers 0–5 plus exact full-2K layer-6 attention HC post.
+  native layers 0–5 plus exact full-2K layer-6 attention HC post. Twelve final
+  no-copy views now carry that state through layer 6's FFN HC ingress, learned
+  norm, biased top-6 routing, routed/shared experts, and additive final HC
+  update. Every retained FFN boundary and the complete final HC identity match
+  two fresh DwarfStar processes exactly, establishing complete native layers
+  0–6 at the 2K prompt boundary.
   Full native batched prefill, sparse indexed attention beyond 512 ratio-4
   rows, and the eligible engine-measurement producer remain pending.
-- Measurements: The exact complete native layers-0/1/2/3/4/5 plus layer-6
+- Measurements: The exact complete native layers-0/1/2/3/4/5/6 full-2K
+  command reported 1709.387 ms wall / 1620.434 ms GPU in its focused
+  correctness run, across 266 dispatches with 136/136 no-copy model mappings.
+  The complete target-Mac gate reported 1636.955 ms wall / 1548.723 ms GPU
+  with the same schedule and mapping counts. These intervals include exhaustive
+  correctness readback and are not throughput claims.
+  The prior exact complete native layers-0/1/2/3/4/5 plus layer-6
   dense-attention full-2K command reported 1545.043 ms wall / 1464.156 ms GPU
   in its focused correctness run, across 245 dispatches with 124/124 no-copy
   model mappings. The complete target-Mac gate reported 1635.054 ms wall /
@@ -442,9 +453,9 @@ history; add a correction and update the current-state summary.
 
 ## Immediate Next Actions
 
-1. Continue the retained layer-6 attention HC post through its biased-top-6
-   routed/shared FFN and additive final HC update, preserving the complete
-   layers-0–5 command as a regression control.
+1. Carry layer 6's retained final HC directly into layer 7 and extend the exact
+   full-2K prefill frontier through layer 7, preserving the complete layers-0–6
+   command as a regression control.
 2. Add the fixed 512-row ratio-4 indexer top-k and sparse indexed attention so
    128 generated tokens can continue beyond the 2K frontier.
 3. Emit the `rust-star-engine-measurement-v1` artifact from the exact
@@ -456,6 +467,47 @@ history; add a correction and update the current-state summary.
 6. Run or approve the fork's GitHub Actions workflow and retain its URL.
 
 ## Entries
+
+### 2026-08-22 — Exact complete layer-6 FFN and final HC
+
+Objective:
+
+- Continue the retained layer-6 attention HC post through its routed/shared FFN
+  and additive final HC update without a host activation handoff.
+
+Implementation:
+
+- Captured `hc_ffn_pre`, `ffn_norm`, router logits/probabilities/top-k/scaled
+  weights, weighted routed SwiGLU, routed output, shared-expert output, and
+  `hc_ffn_post` in two fresh DwarfStar processes; all ten full repeated captures
+  were byte-identical.
+- Added `prefill-layer6-complete-2048-v1`, retaining exact final-tile payloads
+  while SHA-256-pinning every full 2K tensor identity, including the complete
+  128 MiB final HC state.
+- Wrapped layer 6's twelve FFN model spans directly from the GGUF mmap and
+  appended the proven 21-dispatch HC ingress, biased top-6 router,
+  IQ2_XXS/Q2_K routed expert, Q8_0 shared expert, and additive HC schedule.
+- Extended the C ABI, retained Metal ownership, exhaustive Rust comparisons,
+  stable JSON, CLI, documentation, fixture verification, and target-Mac gate.
+  The artifact now closes at `layer6_ffn_hc_post` and explicitly denies layer-7
+  prefill, sparse post-prompt top-k, complete-model-prefill, and throughput
+  claims.
+
+Validation:
+
+- Fixture verifier: valid ten-tensor, 5,834,240-byte differential fixture.
+- Rust unit suite: 113 passed.
+- Focused optimized M1 Ultra run: every new boundary C0 exact, 1709.387 ms wall
+  / 1620.434 ms GPU, 266 dispatches, and 136/136 no-copy model mappings.
+- Full target-Mac gate: 113 Rust tests and 61 Python tests passed; every retained
+  runtime control remained exact, and the complete layers-0–6 command reported
+  1636.955 ms wall / 1548.723 ms GPU with 136/136 mappings. These intervals
+  include exhaustive correctness readback and are not throughput claims.
+
+Next:
+
+- Carry the retained layer-6 final HC into layer 7 and extend the complete
+  full-2K prefill frontier one layer deeper.
 
 ### 2026-08-22 — Exact layer-6 dense mixed attention HC post
 
