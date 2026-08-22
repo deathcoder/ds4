@@ -2243,7 +2243,7 @@ fn run_prefill_layers012_attention_loop_probe_command(arguments: Vec<OsString>) 
     let model = MappedModel::open(&model_path)?;
     validate_resident_q2(model.gguf())?;
     let report = run_prefill_layers012_attention_loop_probe(&model)?;
-    println!("native complete layers 0-4 plus layer-5 Q/KV and ratio-128 compressor at 2K: 2048 raw rows + 512 dense layer-2/layer-4 compressed rows + 16 layer-3 and 16 layer-5 compressed rows");
+    println!("native complete layers 0-4 plus layer-5 dense mixed attention at 2K: 2048 raw rows + 512 dense layer-2/layer-4 compressed rows + 16 layer-3 and 16 layer-5 compressed rows");
     println!(
         "terminal attention/FFN schedule: {} dispatches, {}/{} no-copy model ranges, wall={:.3} ms gpu={:.3} ms",
         report.dispatches,
@@ -2252,7 +2252,7 @@ fn run_prefill_layers012_attention_loop_probe_command(arguments: Vec<OsString>) 
         report.wall_ms,
         report.gpu_ms,
     );
-    println!("scope: complete native layers 0/1/2/3/4 plus exact layer-5 HC attention ingress, finalized Q/KV state, all 16 ratio-128 emissions, and final recurrent state at the 2K prompt boundary; no layer-5 attention, FFN, sparse post-prompt top-k, complete-model-prefill, or throughput claim");
+    println!("scope: complete native layers 0/1/2/3/4 plus exact layer-5 Q/KV, all 16 ratio-128 emissions, dense mixed attention, and additive attention HC post-state at the 2K prompt boundary; no layer-5 FFN, sparse post-prompt top-k, complete-model-prefill, or throughput claim");
     if let Some(path) = json_path {
         write_prefill_layers012_attention_loop_probe_file(&path, &report)?;
         println!("json: {}", path.display());
@@ -3728,7 +3728,7 @@ fn prefill_layers012_compressor_loop_probe_usage() -> &'static str {
 }
 
 fn prefill_layers012_attention_loop_probe_usage() -> &'static str {
-    "usage: rust-star prefill-layers012-attention-loop-probe MODEL.gguf [--json PATH]\n\nRuns all 64 native 32-row schedules over positions 0--2047 in one persistent Metal context, completes layers 2 through 4, then carries layer 4's final HC directly through layer-5 HC attention ingress, finalized Q/KV state, and the full ratio-128 compressor batch. Every retained layer-2/layer-3/layer-4 boundary, all ten layer-5 final-tile Q/KV boundaries, all 16 compressed rows, and both final recurrent-state tensors must match repeated DwarfStar captures bit-for-bit. The 2,064 logical layer-3 keys use a 2,112-row masked physical extent required by the 64-row FlashAttention block contract. This does not claim layer-5 attention, FFN, sparse ratio-4 decode, complete-model prefill, or throughput."
+    "usage: rust-star prefill-layers012-attention-loop-probe MODEL.gguf [--json PATH]\n\nRuns all 64 native 32-row schedules over positions 0--2047 in one persistent Metal context, completes layers 2 through 4, then carries layer 4's final HC directly through layer-5 Q/KV, the full ratio-128 compressor batch, dense mixed attention, inverse RoPE, output projections, and additive attention HC post-state. Every retained layer-2/layer-3/layer-4 boundary, all layer-5 Q/KV and compressor boundaries, the complete 2048x4096 attention output, diagnostic rows, and final HC identity must match repeated DwarfStar captures bit-for-bit. The 2,064 logical layer-3/layer-5 keys use a 2,112-row masked physical extent required by the 64-row FlashAttention block contract. This does not claim the layer-5 FFN, sparse ratio-4 decode, complete-model prefill, or throughput."
 }
 
 fn ingress_probe_usage() -> &'static str {

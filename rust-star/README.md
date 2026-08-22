@@ -167,11 +167,15 @@ final-tile boundaries match four fresh DwarfStar captures bit-for-bit. The
 full layer-5 Q/KV buffers then feed both F16 compressor projections and the
 exact ratio-128 batch path. All 16 compressed rows and both final 128x512
 recurrent-state tensors match two fresh DwarfStar processes bit-for-bit. The
-combined terminal schedule uses 166 dispatches and preserves 89/89 no-copy
-model mappings, establishing complete layer-4 prefill ownership plus exact
-layer-5 Q/KV and compressor state.
+same retained state now drives layer 5's dense mixed attention over 2,048 raw
+plus 16 compressed rows, inverse RoPE, both Q8 attention-output projections,
+and the additive HC post. The complete 2048 x 4096 attention output and final
+HC identity match two fresh DwarfStar captures bit-for-bit. The combined
+terminal schedule uses 175 dispatches and preserves 92/92 no-copy model
+mappings, establishing complete layer-4 prefill ownership plus exact layer-5
+attention state.
 Exactly 512 compressed rows remain dense; sparse indexer top-k starts only after
-this prompt boundary. Layer-5 attention/FFN, later prefill, output
+this prompt boundary. Layer-5 FFN, later prefill, output
 logits, and sparse post-prompt attention remain pending, and
 this is not a throughput claim.
 

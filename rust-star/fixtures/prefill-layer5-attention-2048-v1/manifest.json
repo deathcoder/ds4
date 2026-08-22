@@ -1,0 +1,143 @@
+{
+  "schema": "rust-star-differential-fixture-v1",
+  "fixture_id": "dwarfstar-oracle-v1-prefill-layer5-attention-2048",
+  "captured_at_utc": "2026-08-22T15:58:37Z",
+  "oracle": {
+    "id": "oracle-v1",
+    "repository": "https://github.com/antirez/ds4.git",
+    "commit": "b0309611041655f4e45671cfd9c9886aff161406",
+    "tree": "20c11af22f90a0bdf25da860da5ef06de4064060",
+    "capture_executable_sha256": "b0b7c31d9832cc3f5cccf810cd2af6f4bc4f6e71de945493674315314f666fc8"
+  },
+  "model": {
+    "family": "DeepSeek-V4-Flash-0731",
+    "sha256": "ca22ae2f838e14077c22bc1c1417b71b45b5e5a3687bd96c2ac6e17fdb6261c0"
+  },
+  "capture": {
+    "backend": "metal",
+    "machine": "Apple M1 Ultra, 48 GPU cores, 128 GB unified memory",
+    "prompt": "first 2048 raw tokens of speed-bench/promessi_sposi.txt",
+    "prompt_sha256": "f53e0d80cb2d4492d24ebd63c7000c397b16ae70f9bf09b3763e5d8323ec209f",
+    "prefill_tokens": 2048,
+    "fresh_process_captures": 2,
+    "fresh_process_bitwise_match": true,
+    "command": "ds4-bench --metal --ctx-start 2048 --ctx-max 2048 --gen-tokens 0 --warm-weights",
+    "environment": {
+      "DS4_METAL_GRAPH_DUMP_LAYER": "5",
+      "DS4_METAL_GRAPH_DUMP_POS": "0",
+      "DS4_METAL_GRAPH_DUMP_NAME": "attn_out,hc_attn_post,kqv_out,kqv_back,attn_low"
+    },
+    "full_capture_sha256": {
+      "attn_out": "cd8fa45e025155709682f9479441998fb89566bb80f70bab61c1275fc1e4e3cd",
+      "hc_attn_post": "529c1139057c0733b2c660c718a05605e09c6f66c09ace454c5443dece0d181a"
+    },
+    "diagnostic_full_capture_sha256": {
+      "kqv_out": "daf21a8ac02efc190e778fcb747a69f7e92d7a15a9635e3a2574526bd00728f8",
+      "kqv_back": "e473d63c789f3cb6a43c189a9906589b48e44ca546e938916aeae486c8663aa0",
+      "attn_low": "1edfcb86724792007946bdddfb81ffd038ecf2e389510aec62e0600392aa8eb8"
+    },
+    "device_path": "full Q projection, dense mixed 2048 raw plus 16 ratio-128 compressed FlashAttention, inverse compressed RoPE, grouped/dense Q8_0 output projections, and additive HC post",
+    "input_fixture": "dwarfstar-oracle-v1-prefill-layer5-compressor-2048",
+    "storage_note": "The full 32 MiB attention output is retained. Only the final 32-row HC tile is retained; the full 128 MiB HC identity is SHA-256 pinned."
+  },
+  "scope": {
+    "kind": "layer-segment",
+    "phase": "prefill",
+    "layer": 5,
+    "position": 2047,
+    "captured_position_range": [
+      0,
+      2047
+    ]
+  },
+  "operations": [
+    {
+      "name": "layer5-dense-mixed-attention",
+      "kernel": "kernel_flash_attn_ext_f16_dk512_dv512"
+    },
+    {
+      "name": "layer5-attention-inverse-rope",
+      "kernel": "kernel_rope_norm_f32"
+    },
+    {
+      "name": "layer5-attention-output-projections",
+      "kernel": "kernel_mul_mm_id_q8_0_f32 + kernel_mul_mm_q8_0_f32"
+    },
+    {
+      "name": "layer5-attention-hc-post",
+      "kernel": "kernel_dsv4_hc_expand4"
+    }
+  ],
+  "tensors": [
+    {
+      "name": "layer5_kqv_out_row0",
+      "hook": "kqv_out",
+      "role": "intermediate",
+      "dtype": "f32",
+      "shape": [
+        1,
+        32768
+      ],
+      "encoding": "little-endian-ieee754-binary32",
+      "path": "layer5-kqv-out-row0.f32le.bin",
+      "bytes": 131072,
+      "sha256": "51ffa69667f17fed0ebabdfe12617dfbb35832b4525dc34adf20dc2d464553db"
+    },
+    {
+      "name": "layer5_kqv_back_row0",
+      "hook": "kqv_back",
+      "role": "intermediate",
+      "dtype": "f32",
+      "shape": [
+        1,
+        32768
+      ],
+      "encoding": "little-endian-ieee754-binary32",
+      "path": "layer5-kqv-back-row0.f32le.bin",
+      "bytes": 131072,
+      "sha256": "51ffa69667f17fed0ebabdfe12617dfbb35832b4525dc34adf20dc2d464553db"
+    },
+    {
+      "name": "layer5_attn_low_row0",
+      "hook": "attn_low",
+      "role": "intermediate",
+      "dtype": "f32",
+      "shape": [
+        1,
+        8192
+      ],
+      "encoding": "little-endian-ieee754-binary32",
+      "path": "layer5-attn-low-row0.f32le.bin",
+      "bytes": 32768,
+      "sha256": "b17fa7a23f2f81e5caf24f10b9c7284f909f247bd1faa1b94f604823b6b9357f"
+    },
+    {
+      "name": "layer5_attention_output",
+      "hook": "attn_out",
+      "role": "output",
+      "dtype": "f32",
+      "shape": [
+        2048,
+        4096
+      ],
+      "encoding": "little-endian-ieee754-binary32",
+      "path": "layer5-attention-output.f32le.bin",
+      "bytes": 33554432,
+      "sha256": "cd8fa45e025155709682f9479441998fb89566bb80f70bab61c1275fc1e4e3cd"
+    },
+    {
+      "name": "layer5_hc_attn_post_final_tile",
+      "hook": "hc_attn_post",
+      "role": "output",
+      "dtype": "f32",
+      "shape": [
+        32,
+        16384
+      ],
+      "encoding": "little-endian-ieee754-binary32",
+      "path": "layer5-hc-attn-post-final-tile.f32le.bin",
+      "bytes": 2097152,
+      "sha256": "da7a96cad7986766e4459aaff6975b188dbc989201a90fd8ecc54bcc8d6a009b"
+    }
+  ]
+}
