@@ -166,6 +166,9 @@ elif [ "$#" -eq 1 ]; then
         echo "==> retained layer-2 production sparse boundary"
         "$target_dir/release/rust-star" retained-sparse-boundary-probe "$1" \
             --json "$target_dir/retained-sparse-boundary-probe.json"
+        echo "==> retained layer-2 repeated sparse merge boundary"
+        "$target_dir/release/rust-star" retained-sparse-multimerge-probe "$1" \
+            --json "$target_dir/retained-sparse-multimerge-probe.json"
         echo "==> repeated layers 0-3 with setup and correctness readback outside timing"
         "$target_dir/release/rust-star" layers0123-bench "$1" \
             --warmup 5 --iterations 20 \

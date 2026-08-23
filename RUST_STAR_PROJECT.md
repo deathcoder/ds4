@@ -312,14 +312,14 @@ they describe whenever practical.
   sequential 2K initializer still
   deliberately records its difference from the paired protocol's
   batched-prefill oracle.
-- Generalize the exact retained argsort/merge workspace beyond 1,025 compressed
-  rows, then drive a complete decoder through the sparse branch and emit the
-  Rust Star engine-measurement contract. The diagnostic 513-row override, two
-  fresh production-default 1,025-row isolated captures, and a seeded retained
-  layer-2 position-4099 execution are C0 exact. The retained control commits row
-  1,025 through the general 54-dispatch layer schedule and matches 16 tensors
-  with 35/35 model pointer identities, but deliberately makes no complete-layer
-  or preceding-layer claim.
+- Drive a complete decoder through the now-generalized sparse branch and emit
+  the Rust Star engine-measurement contract. The diagnostic 513-row override,
+  two fresh production-default 1,025-row isolated captures, and seeded retained
+  layer-2 executions at rows 1,025 and 2,049 are C0 exact. The latter uses a
+  capacity-stable ping-pong workspace, three initial sort blocks, and two merge
+  passes; it matches 16 tensors through attention HC post over 55 dispatches
+  with 35/35 model pointer identities. Both retained controls deliberately make
+  no token-dependent complete-layer or preceding-layer claim.
 - Execute `rust-star/BENCHMARK_PROTOCOL.md` and capture the initial paired
   DwarfStar numbers; the v1 protocol itself is now defined.
 - Implement the Rust Star side of `rust-star/ENGINE_MEASUREMENT_FORMAT.md` once

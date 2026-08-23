@@ -809,6 +809,30 @@ int rust_star_metal_copy_retained_sparse_layer2_position4099(
     char *error,
     size_t error_bytes);
 
+/* Diagnostic-only state import/readback for the first three-sort-block,
+ * two-merge-pass sparse boundary at layer 2 position 8195. */
+int rust_star_metal_seed_retained_sparse_layer2_position8195(
+    void *context,
+    const float *input_hc,
+    const float *raw_cache_prior,
+    const float *attention_compressed_prior,
+    const float *indexer_compressed_prior,
+    const float *attention_state_kv_pre,
+    const float *attention_state_score_pre,
+    const float *indexer_state_kv_pre,
+    const float *indexer_state_score_pre,
+    char *error,
+    size_t error_bytes);
+
+int rust_star_metal_copy_retained_sparse_layer2_position8195(
+    void *context,
+    float *indexer_q,
+    float *indexer_weights,
+    float *indexer_scores,
+    int32_t *indexer_topk,
+    char *error,
+    size_t error_bytes);
+
 int rust_star_metal_copy_compressed_kv_row(
     void *context,
     uint32_t layer_index,

@@ -302,9 +302,16 @@ history; add a correction and update the current-state summary.
   executes the general retained layer path through its 1,025th compressed row,
   and matches 16 sparse-boundary tensors by bit pattern across 54 dispatches.
   It intentionally stops its correctness claim before the token-dependent FFN
-  and does not claim preceding-layer execution. A complete decoder run through
-  that branch, merge generalization beyond 1,025 rows, full native model
-  prefill, and the eligible engine-measurement producer remain pending.
+  and does not claim preceding-layer execution. The retained scheduler now
+  generalizes the same exact top-k algorithm beyond that first boundary. Its
+  scratch allocation is fixed from context capacity, while each step derives
+  the initial sort blocks, active work width, ping-pong offsets, merge count,
+  and final top-512 dispatch from visible rows. A second seeded layer-2 control
+  at position 8195 commits compressed row 2,049, runs three initial sort blocks
+  and two merge passes over a 1,025-index work width, and matches the same 16
+  boundaries across 55 dispatches with 35/35 mappings. A complete decoder run
+  through the sparse branch, full native model prefill, and the eligible
+  engine-measurement producer remain pending.
 - Measurements: The exact complete native layers-0/1/2/3/4/5/6/7/8 full-2K
   command reported 2241.471 ms wall / 2153.893625 ms GPU in its focused
   correctness run, across 383 dispatches with 196/196 no-copy model mappings.
@@ -323,6 +330,11 @@ history; add a correction and update the current-state summary.
   a throughput claim. The complete target-Mac gate repeated it at 58.511 ms
   wall / 30.369250 ms GPU with the same exact tensor, dispatch, and mapping
   counts.
+  The focused retained multimerge control reported 61.399 ms wall /
+  32.045250 ms GPU across 55 dispatches with 35/35 pointer matches. It includes
+  seed upload, synchronization, and exhaustive correctness readback and is not
+  a throughput claim. The complete target-Mac gate repeated it at 49.455 ms
+  wall / 28.882250 ms GPU with identical tensor, schedule, and mapping counts.
   The complete target-Mac gate reported 2289.152 ms wall / 2161.306708 ms GPU
   with the same schedule and mapping counts. These intervals include exhaustive
   correctness readback and are not throughput claims. The prior exact complete
@@ -504,10 +516,9 @@ history; add a correction and update the current-state summary.
 
 ## Immediate Next Actions
 
-1. Generalize repeated top-k merges and workspace sizing beyond 1,025
-   compressed rows, preserving the isolated 513/1,025-row probes and the new
-   retained-state row-1,025 control as independent regressions; then drive a
-   complete retained decoder execution through the sparse branch.
+1. Drive a complete retained decoder execution through the generalized sparse
+   branch, preserving the isolated 513/1,025-row probes and the retained-state
+   row-1,025/2,049 controls as independent regressions.
 2. Continue the exact batched-prefill frontier through layer 9 while preserving
    the complete layers-0–8 command as a regression control.
 3. Emit the `rust-star-engine-measurement-v1` artifact from the exact
@@ -519,6 +530,55 @@ history; add a correction and update the current-state summary.
 6. Run or approve the fork's GitHub Actions workflow and retain its URL.
 
 ## Entries
+
+### 2026-08-23 — Retained sparse top-k generalized through repeated merges
+
+Objective:
+
+- Remove the first-boundary guard and prove the production retained scheduler
+  at the first row count that requires more than one top-k merge pass.
+
+Implementation:
+
+- Traced DwarfStar's complete sort schedule: choose the largest power-of-two
+  sort width supported by the pipeline, retain up to 512 indices per initial
+  block, derive the compact work width from the final partial block, then
+  ping-pong pairwise merge passes until one exact top-512 remains.
+- Added `retained-sparse-layer2-pos8195-v1`, a strict 38-operation, 47-tensor,
+  6,567,092-byte fixture from two fresh 8K DwarfStar processes. It seeds a
+  wrapped 127-row raw-ring window, 2,048 rows in both compressed caches, and all
+  four recurrent states immediately before layer 2 position 8195.
+- Replaced the fixed 513-index scratch and single merge with capacity-stable
+  ping-pong storage plus visible-row schedule derivation. At row 2,049 this
+  produces three 1,024-thread initial blocks, a 1,025-index active work width,
+  and two merge dispatches. The original 1,025-row schedule remains one merge.
+- Added `retained-sparse-multimerge-probe`, its stable JSON contract, CLI and
+  runtime-gate integration. The command continues to deny preceding-layer,
+  token-dependent FFN, complete-decoder, logits, and throughput claims.
+- Removed all temporary DwarfStar capture hooks immediately after capture;
+  `ds4.c` is unchanged. Two diagnostic-only oversized clamped expert scratch
+  dumps had non-semantic fresh-process differences and were excluded; every
+  seed, sparse tensor, weighted expert result, routed output, and final HC was
+  byte-identical.
+
+Validation:
+
+- Strict fixture verification accepted 38 operations, 47 tensors, and
+  6,567,092 bytes. Rust host suite: 129 tests passed. Optimized
+  Rust/Objective-C/Metal compilation passed on the M1 Ultra.
+- Focused runs kept both retained regressions C0 exact. Row 1,025 still matched
+  16 tensors over 54 dispatches with 35/35 mappings. Row 2,049 matched 16
+  tensors over 55 dispatches with 35/35 mappings and reported 61.399 ms wall /
+  32.045250 ms GPU with correctness setup/readback in scope.
+- The complete target-Mac gate passed 129 Rust tests, 61 Python tests, strict
+  fixture validation, optimized Rust/Objective-C/Metal compilation, and every
+  model-backed control. It repeated row 1,025 C0 exact at 51.990 ms wall /
+  28.167000 ms GPU and row 2,049 at 49.455 ms wall / 28.882250 ms GPU.
+
+Next:
+
+- Drive the generalized schedule from complete retained decoder progression,
+  then use the eligible native prefill/decode loop for engine measurements.
 
 ### 2026-08-23 — Retained state crosses the first default sparse row
 

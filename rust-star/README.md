@@ -73,6 +73,13 @@ before position 4099 and executes the production retained schedule through its
 boundary, but not preceding-layer execution, the token-dependent FFN, a
 complete decoder, output logits, or throughput.
 
+The retained sparse scheduler now uses a context-capacity-sized ping-pong
+workspace and derives its active sort/merge schedule from visible compressed
+rows. A second exact control at layer 2 position 8195 seeds 2,048 prior rows,
+commits row 2,049, runs three initial sort blocks and two merge passes, and
+matches 16 tensors over 55 dispatches with 35/35 no-copy mappings. The same
+complete-layer and decoder limitations still apply.
+
 The first native
 batch boundary is now implemented separately: repeated captures localize the
 earliest difference to layer 0's Q8 Q-A projection, and the Rust Metal probe

@@ -11263,10 +11263,6 @@ int rust_star_metal_run_attention_ingress(
         return fail_with_message(error, error_bytes,
             @"the retained decoder frontier exceeds its cache capacities");
     }
-    if (indexer_layer && compressed_cache_rows > 1025u) {
-        return fail_with_message(error, error_bytes,
-            @"retained sparse indexed attention is currently gated to the first 1025-row boundary");
-    }
     if (full_layer && position > 1u && command_mode == RUST_STAR_COMMAND_SYNCHRONIZED) {
         return fail_with_message(error, error_bytes,
             @"position-advancing execution requires the layer-scoped chained scheduler");
@@ -11381,6 +11377,53 @@ int rust_star_metal_run_attention_ingress(
             (sparse_indexed_attention && !ensure_sparse_indexed_pipelines(context, error, error_bytes)) ||
             (full_layer && !ensure_moe_output_pipelines(context, error, error_bytes))) return 0;
         memset(result, 0, sizeof(*result));
+
+        NSUInteger sparse_sort_threads = 1u;
+        NSUInteger sparse_sort_smem = 0u;
+        uint32_t sparse_sort_blocks = 0u;
+        uint32_t sparse_block_top_k = 0u;
+        uint32_t sparse_topk_work_width = 0u;
+        uint32_t sparse_topk_capacity_work_width = 0u;
+        if (sparse_indexed_attention) {
+            NSUInteger max_threads = context.indexerTopkPipeline.maxTotalThreadsPerThreadgroup;
+            if (max_threads == 0u) max_threads = 256u;
+            while (sparse_sort_threads < compressed_cache_rows &&
+                   2u*sparse_sort_threads <= max_threads) {
+                sparse_sort_threads *= 2u;
+            }
+            sparse_sort_blocks = (uint32_t)(((NSUInteger)compressed_cache_rows +
+                sparse_sort_threads - 1u) / sparse_sort_threads);
+            sparse_block_top_k = (uint32_t)(sparse_sort_threads < 512u
+                ? sparse_sort_threads : 512u);
+            sparse_topk_work_width = 512u;
+            if (sparse_sort_blocks > 1u) {
+                const uint32_t last_block = compressed_cache_rows -
+                    (sparse_sort_blocks-1u)*(uint32_t)sparse_sort_threads;
+                sparse_topk_work_width = (sparse_sort_blocks-1u)*sparse_block_top_k +
+                    (last_block < sparse_block_top_k ? last_block : sparse_block_top_k);
+            }
+            NSUInteger capacity_sort_threads = 1u;
+            while (capacity_sort_threads < compressed_cache_capacity_rows &&
+                   2u*capacity_sort_threads <= max_threads) {
+                capacity_sort_threads *= 2u;
+            }
+            const uint32_t capacity_sort_blocks = (uint32_t)(
+                ((NSUInteger)compressed_cache_capacity_rows + capacity_sort_threads - 1u) /
+                capacity_sort_threads);
+            const uint32_t capacity_block_top_k = (uint32_t)(capacity_sort_threads < 512u
+                ? capacity_sort_threads : 512u);
+            sparse_topk_capacity_work_width = 512u;
+            if (capacity_sort_blocks > 1u) {
+                const uint32_t capacity_last_block = compressed_cache_capacity_rows -
+                    (capacity_sort_blocks-1u)*(uint32_t)capacity_sort_threads;
+                sparse_topk_capacity_work_width =
+                    (capacity_sort_blocks-1u)*capacity_block_top_k +
+                    (capacity_last_block < capacity_block_top_k
+                        ? capacity_last_block : capacity_block_top_k);
+            }
+            sparse_sort_smem = (sparse_sort_threads *
+                (sizeof(int32_t)+sizeof(float)) + 15u) & ~(NSUInteger)15u;
+        }
 
         NSNumber *chained_key = @(layer0->layer_index);
         if (chained_submission && layer0->layer_index == 0) {
@@ -11659,7 +11702,7 @@ int rust_star_metal_run_attention_ingress(
         id<MTLBuffer> sparse_indexer_weights = sparse_indexed_attention ? persistent_buffer(context, layer_buffer_key(@"sparse_indexer_weights", YES, layer0->layer_index), 64u*sizeof(float), error, error_bytes) : nil;
         id<MTLBuffer> sparse_indexer_scores = sparse_indexed_attention ? persistent_buffer(context, layer_buffer_key(@"sparse_indexer_scores", YES, layer0->layer_index), compressed_cache_capacity_rows*sizeof(float), error, error_bytes) : nil;
         id<MTLBuffer> sparse_indexer_topk = sparse_indexed_attention ? persistent_buffer(context, layer_buffer_key(@"sparse_indexer_topk", YES, layer0->layer_index), 512u*sizeof(int32_t), error, error_bytes) : nil;
-        id<MTLBuffer> sparse_indexer_topk_scratch = sparse_indexed_attention ? persistent_buffer(context, layer_buffer_key(@"sparse_indexer_topk_scratch", YES, layer0->layer_index), 513u*sizeof(int32_t), error, error_bytes) : nil;
+        id<MTLBuffer> sparse_indexer_topk_scratch = sparse_indexed_attention ? persistent_buffer(context, layer_buffer_key(@"sparse_indexer_topk_scratch", YES, layer0->layer_index), 2u*(NSUInteger)sparse_topk_capacity_work_width*sizeof(int32_t), error, error_bytes) : nil;
         id<MTLBuffer> sparse_attention_tmp = sparse_indexed_attention ? persistent_buffer(context, layer_buffer_key(@"sparse_attention_tmp", YES, layer0->layer_index), sparse_partial_bytes+sparse_stats_bytes, error, error_bytes) : nil;
         if (!embedding || !cur_hc || !flat_hc || !mix_buffer || !split_buffer ||
             !collapsed_buffer || !norm_buffer || !q_buffer) {
@@ -11926,14 +11969,8 @@ int rust_star_metal_run_attention_ingress(
             .nb00=sizeof(float), .nb01=(uint64_t)compressed_cache_rows*sizeof(float),
             .nb02=(uint64_t)compressed_cache_rows*sizeof(float),
             .nb03=(uint64_t)compressed_cache_rows*sizeof(float),
-            .ne0=513, .ne1=1, .ne2=1, .ne3=1, .top_k=512,
-        };
-        rust_star_argsort_merge_args sparse_merge_args = {
-            .ne00=compressed_cache_rows, .ne01=1, .ne02=1, .ne03=1,
-            .nb00=sizeof(float), .nb01=(uint64_t)compressed_cache_rows*sizeof(float),
-            .nb02=(uint64_t)compressed_cache_rows*sizeof(float),
-            .nb03=(uint64_t)compressed_cache_rows*sizeof(float),
-            .ne0=513, .ne1=1, .ne2=1, .ne3=1, .top_k=512, .len=512,
+            .ne0=(int32_t)sparse_topk_work_width, .ne1=1, .ne2=1, .ne3=1,
+            .top_k=(int32_t)sparse_block_top_k,
         };
         rust_star_indexed_attention_args sparse_attention_args = {
             .n_tokens=1, .n_head=64,
@@ -12426,18 +12463,54 @@ int rust_star_metal_run_attention_ingress(
                     [encoder setComputePipelineState:context.indexerTopkPipeline];
                     [encoder setBytes:&sparse_sort_args length:sizeof(sparse_sort_args) atIndex:0];
                     [encoder setBuffer:sparse_indexer_scores offset:0 atIndex:1];
-                    [encoder setBuffer:sparse_indexer_topk_scratch offset:0 atIndex:2];
-                    [encoder setThreadgroupMemoryLength:1024u*(sizeof(int32_t)+sizeof(float)) atIndex:0];
-                    [encoder dispatchThreadgroups:MTLSizeMake(2,1,1)
-                         threadsPerThreadgroup:MTLSizeMake(1024,1,1)];
+                    [encoder setBuffer:sparse_sort_blocks > 1u
+                        ? sparse_indexer_topk_scratch : sparse_indexer_topk
+                                offset:0 atIndex:2];
+                    [encoder setThreadgroupMemoryLength:sparse_sort_smem atIndex:0];
+                    [encoder dispatchThreadgroups:MTLSizeMake(sparse_sort_blocks,1,1)
+                         threadsPerThreadgroup:MTLSizeMake(sparse_sort_threads,1,1)];
 
-                    [encoder setComputePipelineState:context.indexerTopkMergePipeline];
-                    [encoder setBytes:&sparse_merge_args length:sizeof(sparse_merge_args) atIndex:0];
-                    [encoder setBuffer:sparse_indexer_scores offset:0 atIndex:1];
-                    [encoder setBuffer:sparse_indexer_topk_scratch offset:0 atIndex:2];
-                    [encoder setBuffer:sparse_indexer_topk offset:0 atIndex:3];
-                    [encoder dispatchThreadgroups:MTLSizeMake(1,1,1)
-                         threadsPerThreadgroup:MTLSizeMake(512,1,1)];
+                    NSUInteger sparse_merge_cur_offset = 0u;
+                    NSUInteger sparse_merge_next_offset =
+                        (NSUInteger)sparse_topk_work_width*sizeof(int32_t);
+                    uint32_t sparse_merge_len = sparse_block_top_k;
+                    while (sparse_merge_len < sparse_topk_work_width) {
+                        const uint32_t merge_groups = (sparse_topk_work_width +
+                            2u*sparse_merge_len - 1u) / (2u*sparse_merge_len);
+                        const BOOL final_merge = merge_groups == 1u;
+                        NSUInteger merge_threads =
+                            context.indexerTopkMergePipeline.maxTotalThreadsPerThreadgroup;
+                        if (merge_threads == 0u || merge_threads > 512u) merge_threads = 512u;
+                        if (merge_threads > sparse_merge_len) merge_threads = sparse_merge_len;
+                        if (merge_threads == 0u) merge_threads = 1u;
+                        rust_star_argsort_merge_args sparse_merge_args = {
+                            .ne00=compressed_cache_rows, .ne01=1, .ne02=1, .ne03=1,
+                            .nb00=sizeof(float),
+                            .nb01=(uint64_t)compressed_cache_rows*sizeof(float),
+                            .nb02=(uint64_t)compressed_cache_rows*sizeof(float),
+                            .nb03=(uint64_t)compressed_cache_rows*sizeof(float),
+                            .ne0=(int32_t)sparse_topk_work_width,
+                            .ne1=1, .ne2=1, .ne3=1,
+                            .top_k=final_merge ? 512 : (int32_t)sparse_topk_work_width,
+                            .len=(int32_t)sparse_merge_len,
+                        };
+                        [encoder setComputePipelineState:context.indexerTopkMergePipeline];
+                        [encoder setBytes:&sparse_merge_args
+                                   length:sizeof(sparse_merge_args) atIndex:0];
+                        [encoder setBuffer:sparse_indexer_scores offset:0 atIndex:1];
+                        [encoder setBuffer:sparse_indexer_topk_scratch
+                                    offset:sparse_merge_cur_offset atIndex:2];
+                        [encoder setBuffer:final_merge
+                            ? sparse_indexer_topk : sparse_indexer_topk_scratch
+                                    offset:final_merge ? 0u : sparse_merge_next_offset
+                                   atIndex:3];
+                        [encoder dispatchThreadgroups:MTLSizeMake(merge_groups,1,1)
+                             threadsPerThreadgroup:MTLSizeMake(merge_threads,1,1)];
+                        const NSUInteger previous_offset = sparse_merge_cur_offset;
+                        sparse_merge_cur_offset = sparse_merge_next_offset;
+                        sparse_merge_next_offset = previous_offset;
+                        sparse_merge_len *= 2u;
+                    }
 
                     [encoder setComputePipelineState:context.indexedAttentionSplitPipeline];
                     [encoder setBytes:&sparse_attention_args length:sizeof(sparse_attention_args) atIndex:0];
@@ -13048,8 +13121,11 @@ int rust_star_metal_run_output_head(
     }
 }
 
-int rust_star_metal_seed_retained_sparse_layer2_position4099(
+static int seed_retained_sparse_layer2_boundary(
     void *opaque_context,
+    uint32_t position,
+    uint32_t prior_compressed_rows,
+    uint32_t compressed_capacity_rows,
     const float *input_hc,
     const float *raw_cache_prior,
     const float *attention_compressed_prior,
@@ -13062,11 +13138,8 @@ int rust_star_metal_seed_retained_sparse_layer2_position4099(
     size_t error_bytes)
 {
     const uint32_t layer_index = 2u;
-    const uint32_t position = 4099u;
     const uint32_t raw_capacity_rows = 128u;
     const uint32_t prior_raw_rows = 127u;
-    const uint32_t compressed_capacity_rows = 1027u;
-    const uint32_t prior_compressed_rows = 1024u;
     if (!opaque_context || !input_hc || !raw_cache_prior ||
         !attention_compressed_prior || !indexer_compressed_prior ||
         !attention_state_kv_pre || !attention_state_score_pre ||
@@ -13158,8 +13231,49 @@ int rust_star_metal_seed_retained_sparse_layer2_position4099(
     }
 }
 
-int rust_star_metal_copy_retained_sparse_layer2_position4099(
+int rust_star_metal_seed_retained_sparse_layer2_position4099(
     void *opaque_context,
+    const float *input_hc,
+    const float *raw_cache_prior,
+    const float *attention_compressed_prior,
+    const float *indexer_compressed_prior,
+    const float *attention_state_kv_pre,
+    const float *attention_state_score_pre,
+    const float *indexer_state_kv_pre,
+    const float *indexer_state_score_pre,
+    char *error,
+    size_t error_bytes)
+{
+    return seed_retained_sparse_layer2_boundary(
+        opaque_context, 4099u, 1024u, 1027u, input_hc, raw_cache_prior,
+        attention_compressed_prior, indexer_compressed_prior,
+        attention_state_kv_pre, attention_state_score_pre,
+        indexer_state_kv_pre, indexer_state_score_pre, error, error_bytes);
+}
+
+int rust_star_metal_seed_retained_sparse_layer2_position8195(
+    void *opaque_context,
+    const float *input_hc,
+    const float *raw_cache_prior,
+    const float *attention_compressed_prior,
+    const float *indexer_compressed_prior,
+    const float *attention_state_kv_pre,
+    const float *attention_state_score_pre,
+    const float *indexer_state_kv_pre,
+    const float *indexer_state_score_pre,
+    char *error,
+    size_t error_bytes)
+{
+    return seed_retained_sparse_layer2_boundary(
+        opaque_context, 8195u, 2048u, 2051u, input_hc, raw_cache_prior,
+        attention_compressed_prior, indexer_compressed_prior,
+        attention_state_kv_pre, attention_state_score_pre,
+        indexer_state_kv_pre, indexer_state_score_pre, error, error_bytes);
+}
+
+static int copy_retained_sparse_layer2_boundary(
+    void *opaque_context,
+    uint32_t score_rows,
     float *indexer_q,
     float *indexer_weights,
     float *indexer_scores,
@@ -13184,17 +13298,45 @@ int rust_star_metal_copy_retained_sparse_layer2_position4099(
             layer_buffer_key(@"sparse_indexer_topk", YES, 2u)];
         if (!q || q.length != 64u*128u*sizeof(float) ||
             !weights || weights.length != 64u*sizeof(float) ||
-            !scores || scores.length < 1025u*sizeof(float) ||
+            !scores || scores.length < (NSUInteger)score_rows*sizeof(float) ||
             !topk || topk.length != 512u*sizeof(int32_t)) {
             return fail_with_message(error, error_bytes,
                 @"retained sparse-boundary readback could not find exact buffers");
         }
         memcpy(indexer_q, q.contents, 64u*128u*sizeof(float));
         memcpy(indexer_weights, weights.contents, 64u*sizeof(float));
-        memcpy(indexer_scores, scores.contents, 1025u*sizeof(float));
+        memcpy(indexer_scores, scores.contents, (NSUInteger)score_rows*sizeof(float));
         memcpy(indexer_topk, topk.contents, 512u*sizeof(int32_t));
         return 1;
     }
+}
+
+int rust_star_metal_copy_retained_sparse_layer2_position4099(
+    void *opaque_context,
+    float *indexer_q,
+    float *indexer_weights,
+    float *indexer_scores,
+    int32_t *indexer_topk,
+    char *error,
+    size_t error_bytes)
+{
+    return copy_retained_sparse_layer2_boundary(
+        opaque_context, 1025u, indexer_q, indexer_weights, indexer_scores,
+        indexer_topk, error, error_bytes);
+}
+
+int rust_star_metal_copy_retained_sparse_layer2_position8195(
+    void *opaque_context,
+    float *indexer_q,
+    float *indexer_weights,
+    float *indexer_scores,
+    int32_t *indexer_topk,
+    char *error,
+    size_t error_bytes)
+{
+    return copy_retained_sparse_layer2_boundary(
+        opaque_context, 2049u, indexer_q, indexer_weights, indexer_scores,
+        indexer_topk, error, error_bytes);
 }
 
 int rust_star_metal_copy_compressed_kv_row(

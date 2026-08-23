@@ -669,8 +669,12 @@ switches at row 1,025 to the exact F16 indexer projections, compressed RoPE,
 QAT, direct scores, two-block argsort/merge, fixed top-512, and 12-split indexed
 attention path. The emitted attention/indexer rows are committed before scoring
 so the first sparse step sees its newly completed row, matching DwarfStar's
-state ordering. A deliberate guard remains after row 1,025 until the merge
-workspace and repeated merge passes are generalized for larger contexts.
+state ordering. Beyond row 1,025, the top-k scratch is allocated once from the
+context's compressed capacity. Each step independently derives the largest
+supported power-of-two sort width, initial block count, compact active work
+width, and pairwise merge count. Intermediate merges ping-pong between two
+capacity-stable scratch regions; only the final pass writes the 512-index
+selection consumed by attention.
 
 `retained-sparse-boundary-probe` seeds the exact persistent layer-2 keys just
 before position 4099: incoming HC, 127 logical raw-ring rows, 1,024 rows in each
@@ -681,6 +685,13 @@ Two empty, queue-ordered predecessor command buffers establish the declared
 layer-2 chain tail without claiming that captured layers 0 and 1 executed. The
 control ends its claim at the attention HC post because its placeholder token
 is not the DwarfStar FFN oracle.
+
+`retained-sparse-multimerge-probe` applies the same ownership boundary at layer
+2 position 8195. It seeds 2,048 compressed rows, appends row 2,049, sorts three
+blocks, and performs two merges over a 1,025-index active work width. All 16
+checked attention boundaries match two fresh DwarfStar processes across 55
+dispatches and 35/35 no-copy model views. This is the first repeated-merge
+control, not a complete-layer or complete-decoder claim.
 
 ## Position-127 ratio-128 compressor replay
 

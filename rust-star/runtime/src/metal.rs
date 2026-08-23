@@ -63,12 +63,15 @@ pub const RATIO128_COMPRESSOR_REPLAY_PROBE_SCHEMA: &str =
 pub const SPARSE_INDEXED_ATTENTION_PROBE_SCHEMA: &str =
     "rust-star-sparse-indexed-attention-boundary-v2";
 pub const RETAINED_SPARSE_BOUNDARY_PROBE_SCHEMA: &str = "rust-star-retained-sparse-boundary-v1";
+pub const RETAINED_SPARSE_MULTIMERGE_PROBE_SCHEMA: &str = "rust-star-retained-sparse-multimerge-v1";
 pub const SPARSE_INDEXED_ATTENTION_FIXTURE_ID: &str =
     "dwarfstar-oracle-v1-layer2-pos2051-sparse-indexed-attention";
 pub const SPARSE_INDEXED_ATTENTION_DEFAULT_FIXTURE_ID: &str =
     "dwarfstar-oracle-v1-layer2-pos4099-sparse-indexed-attention";
 pub const RETAINED_SPARSE_BOUNDARY_FIXTURE_ID: &str =
     "dwarfstar-oracle-v1-retained-layer2-pos4099-sparse";
+pub const RETAINED_SPARSE_MULTIMERGE_FIXTURE_ID: &str =
+    "dwarfstar-oracle-v1-retained-layer2-pos8195-sparse-multimerge";
 pub const PROJECTION_FIXTURE_ID: &str = "dwarfstar-oracle-v1-layer0-pos1-attn-q-a";
 pub const PREFILL_Q8_BOUNDARY_FIXTURE_ID: &str = "dwarfstar-oracle-v1-prefill-q8-boundary-2048";
 pub const PREFILL_QKV_BOUNDARY_FIXTURE_ID: &str = "dwarfstar-oracle-v1-prefill-qkv-boundary-2048";
@@ -348,6 +351,59 @@ const RETAINED_SPARSE_ATTN_OUT_BYTES: &[u8] =
     include_bytes!("../../fixtures/retained-sparse-layer2-pos4099-v1/attn-out.f32le.bin");
 const RETAINED_SPARSE_HC_ATTN_POST_BYTES: &[u8] =
     include_bytes!("../../fixtures/retained-sparse-layer2-pos4099-v1/hc-attn-post.f32le.bin");
+const RETAINED_MULTIMERGE_INPUT_HC_BYTES: &[u8] =
+    include_bytes!("../../fixtures/retained-sparse-layer2-pos8195-v1/retained-input-hc.f32le.bin");
+const RETAINED_MULTIMERGE_RAW_PRIOR_BYTES: &[u8] =
+    include_bytes!("../../fixtures/retained-sparse-layer2-pos8195-v1/raw-cache-prior.f32le.bin");
+const RETAINED_MULTIMERGE_ATTN_COMP_PRIOR_BYTES: &[u8] = include_bytes!(
+    "../../fixtures/retained-sparse-layer2-pos8195-v1/attention-compressed-prior.f32le.bin"
+);
+const RETAINED_MULTIMERGE_INDEX_COMP_PRIOR_BYTES: &[u8] = include_bytes!(
+    "../../fixtures/retained-sparse-layer2-pos8195-v1/indexer-compressed-prior.f32le.bin"
+);
+const RETAINED_MULTIMERGE_ATTN_STATE_KV_BYTES: &[u8] = include_bytes!(
+    "../../fixtures/retained-sparse-layer2-pos8195-v1/attention-state-kv-pre.f32le.bin"
+);
+const RETAINED_MULTIMERGE_ATTN_STATE_SCORE_BITS: &[u8] = include_bytes!(
+    "../../fixtures/retained-sparse-layer2-pos8195-v1/attention-state-score-pre-bits.i32le.bin"
+);
+const RETAINED_MULTIMERGE_INDEX_STATE_KV_BYTES: &[u8] = include_bytes!(
+    "../../fixtures/retained-sparse-layer2-pos8195-v1/indexer-state-kv-pre.f32le.bin"
+);
+const RETAINED_MULTIMERGE_INDEX_STATE_SCORE_BITS: &[u8] = include_bytes!(
+    "../../fixtures/retained-sparse-layer2-pos8195-v1/indexer-state-score-pre-bits.i32le.bin"
+);
+const RETAINED_MULTIMERGE_Q_LORA_NORM_BYTES: &[u8] =
+    include_bytes!("../../fixtures/retained-sparse-layer2-pos8195-v1/q-lora-norm.f32le.bin");
+const RETAINED_MULTIMERGE_ATTN_NORM_BYTES: &[u8] =
+    include_bytes!("../../fixtures/retained-sparse-layer2-pos8195-v1/attn-norm.f32le.bin");
+const RETAINED_MULTIMERGE_Q_CUR_BYTES: &[u8] =
+    include_bytes!("../../fixtures/retained-sparse-layer2-pos8195-v1/q-cur.f32le.bin");
+const RETAINED_MULTIMERGE_KV_CUR_BYTES: &[u8] =
+    include_bytes!("../../fixtures/retained-sparse-layer2-pos8195-v1/kv-cur.f32le.bin");
+const RETAINED_MULTIMERGE_COMPRESSED_KV_BYTES: &[u8] =
+    include_bytes!("../../fixtures/retained-sparse-layer2-pos8195-v1/compressed-kv-row0.f32le.bin");
+const RETAINED_MULTIMERGE_COMPRESSED_INDEXER_BYTES: &[u8] = include_bytes!(
+    "../../fixtures/retained-sparse-layer2-pos8195-v1/compressed-indexer-row2048.f32le.bin"
+);
+const RETAINED_MULTIMERGE_INDEXER_Q_BYTES: &[u8] =
+    include_bytes!("../../fixtures/retained-sparse-layer2-pos8195-v1/indexer-q.f32le.bin");
+const RETAINED_MULTIMERGE_INDEXER_WEIGHTS_BYTES: &[u8] =
+    include_bytes!("../../fixtures/retained-sparse-layer2-pos8195-v1/indexer-weights.f32le.bin");
+const RETAINED_MULTIMERGE_INDEXER_SCORES_BYTES: &[u8] =
+    include_bytes!("../../fixtures/retained-sparse-layer2-pos8195-v1/indexer-scores.f32le.bin");
+const RETAINED_MULTIMERGE_INDEXER_TOPK_BYTES: &[u8] =
+    include_bytes!("../../fixtures/retained-sparse-layer2-pos8195-v1/indexer-topk.i32le.bin");
+const RETAINED_MULTIMERGE_KQV_OUT_BYTES: &[u8] =
+    include_bytes!("../../fixtures/retained-sparse-layer2-pos8195-v1/kqv-out.f32le.bin");
+const RETAINED_MULTIMERGE_KQV_BACK_BYTES: &[u8] =
+    include_bytes!("../../fixtures/retained-sparse-layer2-pos8195-v1/kqv-back.f32le.bin");
+const RETAINED_MULTIMERGE_ATTN_LOW_BYTES: &[u8] =
+    include_bytes!("../../fixtures/retained-sparse-layer2-pos8195-v1/attn-low.f32le.bin");
+const RETAINED_MULTIMERGE_ATTN_OUT_BYTES: &[u8] =
+    include_bytes!("../../fixtures/retained-sparse-layer2-pos8195-v1/attn-out.f32le.bin");
+const RETAINED_MULTIMERGE_HC_ATTN_POST_BYTES: &[u8] =
+    include_bytes!("../../fixtures/retained-sparse-layer2-pos8195-v1/hc-attn-post.f32le.bin");
 const PREFILL_Q8_BATCH_OUTPUT_BYTES: &[u8] =
     include_bytes!("../../fixtures/prefill-q8-boundary-2048-v1/q-lora-batch-final-tile.f32le.bin");
 const PREFILL_Q8_DECODE_OUTPUT_BYTES: &[u8] =
@@ -2067,6 +2123,9 @@ pub struct RetainedSparseBoundaryProbeReport {
     pub compressed_rows: u32,
     pub seeded_compressed_rows: u32,
     pub top_k: u32,
+    pub sort_blocks: u32,
+    pub merge_passes: u32,
+    pub topk_work_width: u32,
     pub dispatches: u32,
     pub wrapped_model_ranges: u32,
     pub pointer_matches: u32,
@@ -2999,6 +3058,9 @@ pub fn write_retained_sparse_boundary_probe_json<W: Write>(
         || report.compressed_rows != 1025
         || report.seeded_compressed_rows != 1024
         || report.top_k != 512
+        || report.sort_blocks != 2
+        || report.merge_passes != 1
+        || report.topk_work_width != 513
         || report.dispatches != 54
         || report.wrapped_model_ranges != 35
         || report.pointer_matches != 35
@@ -3010,7 +3072,7 @@ pub fn write_retained_sparse_boundary_probe_json<W: Write>(
     }
     write!(
         output,
-        "{{\n  \"schema\": \"{RETAINED_SPARSE_BOUNDARY_PROBE_SCHEMA}\",\n  \"classification\": \"retained-state-c0-control\",\n  \"fixture\": \"{}\",\n  \"boundary\": {{\"layer\": {}, \"position\": {}, \"raw_rows\": {}, \"compressed_rows\": {}, \"top_k\": {}}},\n  \"seed\": {{\"incoming_hc\": true, \"raw_rows\": {}, \"compressed_rows\": {}, \"recurrent_attention_state\": true, \"recurrent_indexer_state\": true}},\n  \"schedule\": {{\"dispatches\": {}, \"same_step_compressed_row_commit\": true, \"two_block_topk_merge\": true, \"indexed_attention_splits\": 12}},\n  \"mapping\": {{\"wrapped_model_ranges\": {}, \"pointer_matches\": {}}},\n  \"timing\": {{\"wall_ms\": {:.6}, \"gpu_ms\": {:.6}}},\n  \"checksums\": {{\"q_current\": {}, \"compressed_kv\": {}, \"compressed_indexer\": {}, \"indexer_scores\": {}, \"indexer_topk\": {}, \"kqv_out\": {}, \"kqv_back\": {}, \"attention_hc\": {}}},\n  \"exact_tensor_checks\": {},\n  \"c0_bitwise_match\": true,\n  \"retained_layer_execution_claim\": true,\n  \"complete_decoder_claim\": false,\n  \"output_logits_claim\": false,\n  \"complete_layer_claim\": false,\n  \"throughput_claim\": false\n}}\n",
+        "{{\n  \"schema\": \"{RETAINED_SPARSE_BOUNDARY_PROBE_SCHEMA}\",\n  \"classification\": \"retained-state-c0-control\",\n  \"fixture\": \"{}\",\n  \"boundary\": {{\"layer\": {}, \"position\": {}, \"raw_rows\": {}, \"compressed_rows\": {}, \"top_k\": {}}},\n  \"seed\": {{\"incoming_hc\": true, \"raw_rows\": {}, \"compressed_rows\": {}, \"recurrent_attention_state\": true, \"recurrent_indexer_state\": true}},\n  \"schedule\": {{\"dispatches\": {}, \"sort_blocks\": {}, \"merge_passes\": {}, \"topk_work_width\": {}, \"two_block_topk_merge\": true, \"same_step_compressed_row_commit\": true, \"indexed_attention_splits\": 12}},\n  \"mapping\": {{\"wrapped_model_ranges\": {}, \"pointer_matches\": {}}},\n  \"timing\": {{\"wall_ms\": {:.6}, \"gpu_ms\": {:.6}}},\n  \"checksums\": {{\"q_current\": {}, \"compressed_kv\": {}, \"compressed_indexer\": {}, \"indexer_scores\": {}, \"indexer_topk\": {}, \"kqv_out\": {}, \"kqv_back\": {}, \"attention_hc\": {}}},\n  \"exact_tensor_checks\": {},\n  \"c0_bitwise_match\": true,\n  \"retained_layer_execution_claim\": true,\n  \"complete_decoder_claim\": false,\n  \"output_logits_claim\": false,\n  \"complete_layer_claim\": false,\n  \"throughput_claim\": false\n}}\n",
         report.fixture_id,
         report.layer,
         report.position,
@@ -3020,6 +3082,65 @@ pub fn write_retained_sparse_boundary_probe_json<W: Write>(
         report.seeded_raw_rows,
         report.seeded_compressed_rows,
         report.dispatches,
+        report.sort_blocks,
+        report.merge_passes,
+        report.topk_work_width,
+        report.wrapped_model_ranges,
+        report.pointer_matches,
+        report.wall_ms,
+        report.gpu_ms,
+        report.q_current_checksum,
+        report.compressed_kv_checksum,
+        report.compressed_indexer_checksum,
+        report.indexer_scores_checksum,
+        report.indexer_topk_checksum,
+        report.kqv_out_checksum,
+        report.kqv_back_checksum,
+        report.attention_hc_checksum,
+        report.exact_tensor_checks,
+    )?;
+    Ok(())
+}
+
+pub fn write_retained_sparse_multimerge_probe_json<W: Write>(
+    output: &mut W,
+    report: &RetainedSparseBoundaryProbeReport,
+) -> Result<()> {
+    if report.fixture_id != RETAINED_SPARSE_MULTIMERGE_FIXTURE_ID
+        || report.layer != 2
+        || report.position != 8195
+        || report.raw_rows != 128
+        || report.seeded_raw_rows != 127
+        || report.compressed_rows != 2049
+        || report.seeded_compressed_rows != 2048
+        || report.top_k != 512
+        || report.sort_blocks != 3
+        || report.merge_passes != 2
+        || report.topk_work_width != 1025
+        || report.dispatches != 55
+        || report.wrapped_model_ranges != 35
+        || report.pointer_matches != 35
+        || report.exact_tensor_checks != 16
+    {
+        return Err(Error::invalid(
+            "retained sparse multimerge report has inconsistent metadata",
+        ));
+    }
+    write!(
+        output,
+        "{{\n  \"schema\": \"{RETAINED_SPARSE_MULTIMERGE_PROBE_SCHEMA}\",\n  \"classification\": \"retained-state-c0-control\",\n  \"fixture\": \"{}\",\n  \"boundary\": {{\"layer\": {}, \"position\": {}, \"raw_rows\": {}, \"compressed_rows\": {}, \"top_k\": {}}},\n  \"seed\": {{\"incoming_hc\": true, \"raw_rows\": {}, \"compressed_rows\": {}, \"recurrent_attention_state\": true, \"recurrent_indexer_state\": true}},\n  \"schedule\": {{\"dispatches\": {}, \"sort_blocks\": {}, \"merge_passes\": {}, \"topk_work_width\": {}, \"ping_pong_workspace\": true, \"same_step_compressed_row_commit\": true, \"indexed_attention_splits\": 12}},\n  \"mapping\": {{\"wrapped_model_ranges\": {}, \"pointer_matches\": {}}},\n  \"timing\": {{\"wall_ms\": {:.6}, \"gpu_ms\": {:.6}}},\n  \"checksums\": {{\"q_current\": {}, \"compressed_kv\": {}, \"compressed_indexer\": {}, \"indexer_scores\": {}, \"indexer_topk\": {}, \"kqv_out\": {}, \"kqv_back\": {}, \"attention_hc\": {}}},\n  \"exact_tensor_checks\": {},\n  \"c0_bitwise_match\": true,\n  \"retained_layer_execution_claim\": true,\n  \"repeated_merge_boundary_claim\": true,\n  \"complete_decoder_claim\": false,\n  \"output_logits_claim\": false,\n  \"complete_layer_claim\": false,\n  \"throughput_claim\": false\n}}\n",
+        report.fixture_id,
+        report.layer,
+        report.position,
+        report.raw_rows,
+        report.compressed_rows,
+        report.top_k,
+        report.seeded_raw_rows,
+        report.seeded_compressed_rows,
+        report.dispatches,
+        report.sort_blocks,
+        report.merge_passes,
+        report.topk_work_width,
         report.wrapped_model_ranges,
         report.pointer_matches,
         report.wall_ms,
@@ -4510,6 +4631,30 @@ fn checksum_f32(values: &[f32]) -> u64 {
         checksum = checksum.wrapping_mul(0x0000_0100_0000_01b3);
     }
     checksum
+}
+
+fn retained_sparse_topk_schedule(compressed_rows: u32) -> (u32, u32, u32) {
+    const MAX_SORT_THREADS: u32 = 1024;
+    const TOP_K: u32 = 512;
+    let mut sort_threads = 1;
+    while sort_threads < compressed_rows && 2 * sort_threads <= MAX_SORT_THREADS {
+        sort_threads *= 2;
+    }
+    let sort_blocks = compressed_rows.div_ceil(sort_threads);
+    let block_top_k = TOP_K.min(sort_threads);
+    let work_width = if sort_blocks <= 1 {
+        TOP_K.min(compressed_rows)
+    } else {
+        let last_block = compressed_rows - (sort_blocks - 1) * sort_threads;
+        (sort_blocks - 1) * block_top_k + last_block.min(block_top_k)
+    };
+    let mut merge_passes = 0;
+    let mut merge_len = block_top_k;
+    while merge_len < work_width {
+        merge_passes += 1;
+        merge_len *= 2;
+    }
+    (sort_blocks, merge_passes, work_width)
 }
 
 fn checksum_u32(values: &[u32]) -> u64 {
@@ -8334,6 +8479,28 @@ mod imp {
             error_bytes: usize,
         ) -> i32;
         fn rust_star_metal_copy_retained_sparse_layer2_position4099(
+            context: *mut c_void,
+            indexer_q: *mut f32,
+            indexer_weights: *mut f32,
+            indexer_scores: *mut f32,
+            indexer_topk: *mut i32,
+            error: *mut c_char,
+            error_bytes: usize,
+        ) -> i32;
+        fn rust_star_metal_seed_retained_sparse_layer2_position8195(
+            context: *mut c_void,
+            input_hc: *const f32,
+            raw_cache_prior: *const f32,
+            attention_compressed_prior: *const f32,
+            indexer_compressed_prior: *const f32,
+            attention_state_kv_pre: *const f32,
+            attention_state_score_pre: *const f32,
+            indexer_state_kv_pre: *const f32,
+            indexer_state_score_pre: *const f32,
+            error: *mut c_char,
+            error_bytes: usize,
+        ) -> i32;
+        fn rust_star_metal_copy_retained_sparse_layer2_position8195(
             context: *mut c_void,
             indexer_q: *mut f32,
             indexer_weights: *mut f32,
@@ -13655,28 +13822,113 @@ mod imp {
         run_sparse_indexed_attention_fixture_probe(model, true)
     }
 
-    pub fn run_retained_sparse_boundary_probe(
+    fn run_retained_sparse_fixture_probe(
         model: &MappedModel,
+        multimerge: bool,
     ) -> Result<RetainedSparseBoundaryProbeReport> {
-        const POSITION: u32 = 4099;
-        const CONTEXT_CAPACITY: u32 = 4100;
-        let input_hc = decode_f32_fixture(RETAINED_SPARSE_INPUT_HC_BYTES, "retained input HC")?;
-        let raw_prior =
-            decode_f32_fixture(RETAINED_SPARSE_RAW_PRIOR_BYTES, "retained raw-cache seed")?;
+        let position = if multimerge { 8195 } else { 4099 };
+        let context_capacity = position + 1;
+        let compressed_rows = if multimerge { 2049 } else { 1025 };
+        let seeded_compressed_rows = compressed_rows - 1;
+        let (sort_blocks, merge_passes, topk_work_width) =
+            retained_sparse_topk_schedule(compressed_rows);
+        let expected_dispatches = 53 + merge_passes;
+        let (
+            fixture_id,
+            input_hc_bytes,
+            raw_prior_bytes,
+            attention_prior_bytes,
+            indexer_prior_bytes,
+            attention_state_kv_bytes,
+            attention_state_score_bits,
+            indexer_state_kv_bytes,
+            indexer_state_score_bits,
+            q_lora_norm_bytes,
+            attn_norm_bytes,
+            q_cur_bytes,
+            kv_cur_bytes,
+            compressed_kv_bytes,
+            compressed_indexer_bytes,
+            indexer_q_bytes,
+            indexer_weights_bytes,
+            indexer_scores_bytes,
+            indexer_topk_bytes,
+            kqv_out_bytes,
+            kqv_back_bytes,
+            attn_low_bytes,
+            attn_out_bytes,
+            hc_attn_post_bytes,
+        ) = if multimerge {
+            (
+                RETAINED_SPARSE_MULTIMERGE_FIXTURE_ID,
+                RETAINED_MULTIMERGE_INPUT_HC_BYTES,
+                RETAINED_MULTIMERGE_RAW_PRIOR_BYTES,
+                RETAINED_MULTIMERGE_ATTN_COMP_PRIOR_BYTES,
+                RETAINED_MULTIMERGE_INDEX_COMP_PRIOR_BYTES,
+                RETAINED_MULTIMERGE_ATTN_STATE_KV_BYTES,
+                RETAINED_MULTIMERGE_ATTN_STATE_SCORE_BITS,
+                RETAINED_MULTIMERGE_INDEX_STATE_KV_BYTES,
+                RETAINED_MULTIMERGE_INDEX_STATE_SCORE_BITS,
+                RETAINED_MULTIMERGE_Q_LORA_NORM_BYTES,
+                RETAINED_MULTIMERGE_ATTN_NORM_BYTES,
+                RETAINED_MULTIMERGE_Q_CUR_BYTES,
+                RETAINED_MULTIMERGE_KV_CUR_BYTES,
+                RETAINED_MULTIMERGE_COMPRESSED_KV_BYTES,
+                RETAINED_MULTIMERGE_COMPRESSED_INDEXER_BYTES,
+                RETAINED_MULTIMERGE_INDEXER_Q_BYTES,
+                RETAINED_MULTIMERGE_INDEXER_WEIGHTS_BYTES,
+                RETAINED_MULTIMERGE_INDEXER_SCORES_BYTES,
+                RETAINED_MULTIMERGE_INDEXER_TOPK_BYTES,
+                RETAINED_MULTIMERGE_KQV_OUT_BYTES,
+                RETAINED_MULTIMERGE_KQV_BACK_BYTES,
+                RETAINED_MULTIMERGE_ATTN_LOW_BYTES,
+                RETAINED_MULTIMERGE_ATTN_OUT_BYTES,
+                RETAINED_MULTIMERGE_HC_ATTN_POST_BYTES,
+            )
+        } else {
+            (
+                RETAINED_SPARSE_BOUNDARY_FIXTURE_ID,
+                RETAINED_SPARSE_INPUT_HC_BYTES,
+                RETAINED_SPARSE_RAW_PRIOR_BYTES,
+                RETAINED_SPARSE_ATTN_COMP_PRIOR_BYTES,
+                RETAINED_SPARSE_INDEX_COMP_PRIOR_BYTES,
+                RETAINED_SPARSE_ATTN_STATE_KV_BYTES,
+                RETAINED_SPARSE_ATTN_STATE_SCORE_BITS,
+                RETAINED_SPARSE_INDEX_STATE_KV_BYTES,
+                RETAINED_SPARSE_INDEX_STATE_SCORE_BITS,
+                RETAINED_SPARSE_Q_LORA_NORM_BYTES,
+                RETAINED_SPARSE_ATTN_NORM_BYTES,
+                RETAINED_SPARSE_Q_CUR_BYTES,
+                RETAINED_SPARSE_KV_CUR_BYTES,
+                RETAINED_SPARSE_COMPRESSED_KV_BYTES,
+                RETAINED_SPARSE_COMPRESSED_INDEXER_BYTES,
+                RETAINED_SPARSE_INDEXER_Q_BYTES,
+                RETAINED_SPARSE_INDEXER_WEIGHTS_BYTES,
+                RETAINED_SPARSE_INDEXER_SCORES_BYTES,
+                RETAINED_SPARSE_INDEXER_TOPK_BYTES,
+                RETAINED_SPARSE_KQV_OUT_BYTES,
+                RETAINED_SPARSE_KQV_BACK_BYTES,
+                RETAINED_SPARSE_ATTN_LOW_BYTES,
+                RETAINED_SPARSE_ATTN_OUT_BYTES,
+                RETAINED_SPARSE_HC_ATTN_POST_BYTES,
+            )
+        };
+        let input_hc = decode_f32_fixture(input_hc_bytes, "retained input HC")?;
+        let raw_prior = decode_f32_fixture(raw_prior_bytes, "retained raw-cache seed")?;
         let attention_prior = decode_f32_fixture(
-            RETAINED_SPARSE_ATTN_COMP_PRIOR_BYTES,
+            attention_prior_bytes,
             "retained attention compressed-cache seed",
         )?;
         let indexer_prior = decode_f32_fixture(
-            RETAINED_SPARSE_INDEX_COMP_PRIOR_BYTES,
+            indexer_prior_bytes,
             "retained indexer compressed-cache seed",
         )?;
         let attention_state_kv = decode_f32_fixture(
-            RETAINED_SPARSE_ATTN_STATE_KV_BYTES,
+            attention_state_kv_bytes,
             "retained attention recurrent KV state",
         )?;
         let attention_state_score_bits = decode_i32_fixture(
-            RETAINED_SPARSE_ATTN_STATE_SCORE_BITS,
+            attention_state_score_bits,
             "retained attention recurrent score state bits",
         )?;
         let attention_state_score = attention_state_score_bits
@@ -13684,11 +13936,11 @@ mod imp {
             .map(|bits| f32::from_bits(*bits as u32))
             .collect::<Vec<_>>();
         let indexer_state_kv = decode_f32_fixture(
-            RETAINED_SPARSE_INDEX_STATE_KV_BYTES,
+            indexer_state_kv_bytes,
             "retained indexer recurrent KV state",
         )?;
         let indexer_state_score_bits = decode_i32_fixture(
-            RETAINED_SPARSE_INDEX_STATE_SCORE_BITS,
+            indexer_state_score_bits,
             "retained indexer recurrent score state bits",
         )?;
         let indexer_state_score = indexer_state_score_bits
@@ -13699,7 +13951,12 @@ mod imp {
         let context = Context::new()?;
         let mut error = [0 as c_char; ERROR_BYTES];
         let seeded = unsafe {
-            rust_star_metal_seed_retained_sparse_layer2_position4099(
+            let seed = if multimerge {
+                rust_star_metal_seed_retained_sparse_layer2_position8195
+            } else {
+                rust_star_metal_seed_retained_sparse_layer2_position4099
+            };
+            seed(
                 context.0,
                 input_hc.as_ptr(),
                 raw_prior.as_ptr(),
@@ -13721,14 +13978,14 @@ mod imp {
         }
 
         let mut prepared =
-            PreparedLayerExecution::new_cold_with_capacity(model, 2, CONTEXT_CAPACITY)?;
+            PreparedLayerExecution::new_cold_with_capacity(model, 2, context_capacity)?;
         prepared.validate_expected = false;
         run_prepared_layer_iterations(
             model,
             &context,
             &mut prepared,
             0,
-            POSITION,
+            position,
             0,
             1,
             COMMAND_CHAINED_FINAL,
@@ -13739,7 +13996,7 @@ mod imp {
             &context,
             &mut prepared,
             0,
-            POSITION,
+            position,
             0,
             1,
             COMMAND_CHAINED_COLLECT,
@@ -13748,11 +14005,16 @@ mod imp {
 
         let mut indexer_q = vec![0.0_f32; 64 * 128];
         let mut indexer_weights = vec![0.0_f32; 64];
-        let mut indexer_scores = vec![0.0_f32; 1025];
+        let mut indexer_scores = vec![0.0_f32; compressed_rows as usize];
         let mut indexer_topk = vec![0_i32; 512];
         error.fill(0);
         let copied = unsafe {
-            rust_star_metal_copy_retained_sparse_layer2_position4099(
+            let copy = if multimerge {
+                rust_star_metal_copy_retained_sparse_layer2_position8195
+            } else {
+                rust_star_metal_copy_retained_sparse_layer2_position4099
+            };
+            copy(
                 context.0,
                 indexer_q.as_mut_ptr(),
                 indexer_weights.as_mut_ptr(),
@@ -13769,56 +14031,33 @@ mod imp {
             )));
         }
 
-        let expected_q_lora_norm = decode_f32_fixture(
-            RETAINED_SPARSE_Q_LORA_NORM_BYTES,
-            "retained sparse Q-Lora norm",
-        )?;
-        let expected_attn_norm = decode_f32_fixture(
-            RETAINED_SPARSE_ATTN_NORM_BYTES,
-            "retained sparse attention norm",
-        )?;
-        let expected_q_cur =
-            decode_f32_fixture(RETAINED_SPARSE_Q_CUR_BYTES, "retained sparse Q current")?;
-        let expected_kv_cur =
-            decode_f32_fixture(RETAINED_SPARSE_KV_CUR_BYTES, "retained sparse KV current")?;
-        let expected_compressed_kv = decode_f32_fixture(
-            RETAINED_SPARSE_COMPRESSED_KV_BYTES,
-            "retained sparse compressed KV row",
-        )?;
+        let expected_q_lora_norm =
+            decode_f32_fixture(q_lora_norm_bytes, "retained sparse Q-Lora norm")?;
+        let expected_attn_norm =
+            decode_f32_fixture(attn_norm_bytes, "retained sparse attention norm")?;
+        let expected_q_cur = decode_f32_fixture(q_cur_bytes, "retained sparse Q current")?;
+        let expected_kv_cur = decode_f32_fixture(kv_cur_bytes, "retained sparse KV current")?;
+        let expected_compressed_kv =
+            decode_f32_fixture(compressed_kv_bytes, "retained sparse compressed KV row")?;
         let expected_compressed_indexer = decode_f32_fixture(
-            RETAINED_SPARSE_COMPRESSED_INDEXER_BYTES,
+            compressed_indexer_bytes,
             "retained sparse compressed indexer row",
         )?;
-        let expected_indexer_q =
-            decode_f32_fixture(RETAINED_SPARSE_INDEXER_Q_BYTES, "retained sparse indexer Q")?;
-        let expected_indexer_weights = decode_f32_fixture(
-            RETAINED_SPARSE_INDEXER_WEIGHTS_BYTES,
-            "retained sparse indexer weights",
-        )?;
-        let expected_indexer_scores = decode_f32_fixture(
-            RETAINED_SPARSE_INDEXER_SCORES_BYTES,
-            "retained sparse indexer scores",
-        )?;
-        let expected_indexer_topk = decode_i32_fixture(
-            RETAINED_SPARSE_INDEXER_TOPK_BYTES,
-            "retained sparse indexer top-k",
-        )?;
-        let expected_kqv_out =
-            decode_f32_fixture(RETAINED_SPARSE_KQV_OUT_BYTES, "retained sparse KQV output")?;
-        let expected_kqv_back =
-            decode_f32_fixture(RETAINED_SPARSE_KQV_BACK_BYTES, "retained sparse KQV back")?;
-        let expected_attn_low = decode_f32_fixture(
-            RETAINED_SPARSE_ATTN_LOW_BYTES,
-            "retained sparse attention low projection",
-        )?;
-        let expected_attn_out = decode_f32_fixture(
-            RETAINED_SPARSE_ATTN_OUT_BYTES,
-            "retained sparse attention projection",
-        )?;
-        let expected_hc_post = decode_f32_fixture(
-            RETAINED_SPARSE_HC_ATTN_POST_BYTES,
-            "retained sparse attention HC post",
-        )?;
+        let expected_indexer_q = decode_f32_fixture(indexer_q_bytes, "retained sparse indexer Q")?;
+        let expected_indexer_weights =
+            decode_f32_fixture(indexer_weights_bytes, "retained sparse indexer weights")?;
+        let expected_indexer_scores =
+            decode_f32_fixture(indexer_scores_bytes, "retained sparse indexer scores")?;
+        let expected_indexer_topk =
+            decode_i32_fixture(indexer_topk_bytes, "retained sparse indexer top-k")?;
+        let expected_kqv_out = decode_f32_fixture(kqv_out_bytes, "retained sparse KQV output")?;
+        let expected_kqv_back = decode_f32_fixture(kqv_back_bytes, "retained sparse KQV back")?;
+        let expected_attn_low =
+            decode_f32_fixture(attn_low_bytes, "retained sparse attention low projection")?;
+        let expected_attn_out =
+            decode_f32_fixture(attn_out_bytes, "retained sparse attention projection")?;
+        let expected_hc_post =
+            decode_f32_fixture(hc_attn_post_bytes, "retained sparse attention HC post")?;
 
         let check_f32 = |label: &str, actual: &[f32], expected: &[f32]| -> Result<()> {
             if actual.len() != expected.len() {
@@ -13913,7 +14152,7 @@ mod imp {
         ] {
             check_f32(label, actual, expected)?;
         }
-        let raw_slot = (POSITION as usize % 128) * 512;
+        let raw_slot = (position as usize % 128) * 512;
         let expected_stored = expected_kv_cur
             .iter()
             .copied()
@@ -13935,7 +14174,7 @@ mod imp {
                 indexer_topk[mismatch], expected_indexer_topk[mismatch]
             )));
         }
-        if execution.report.dispatches != 54
+        if execution.report.dispatches != expected_dispatches
             || execution.report.wrapped_model_ranges != 35
             || execution.report.pointer_matches != 35
         {
@@ -13945,14 +14184,17 @@ mod imp {
         }
 
         Ok(RetainedSparseBoundaryProbeReport {
-            fixture_id: RETAINED_SPARSE_BOUNDARY_FIXTURE_ID,
+            fixture_id,
             layer: 2,
-            position: POSITION,
+            position,
             raw_rows: 128,
             seeded_raw_rows: 127,
-            compressed_rows: 1025,
-            seeded_compressed_rows: 1024,
+            compressed_rows,
+            seeded_compressed_rows,
             top_k: 512,
+            sort_blocks,
+            merge_passes,
+            topk_work_width,
             dispatches: execution.report.dispatches,
             wrapped_model_ranges: execution.report.wrapped_model_ranges,
             pointer_matches: execution.report.pointer_matches,
@@ -13968,6 +14210,18 @@ mod imp {
             kqv_back_checksum: checksum_f32(&prepared.attention_back),
             attention_hc_checksum: checksum_f32(&prepared.after_attention_hc),
         })
+    }
+
+    pub fn run_retained_sparse_boundary_probe(
+        model: &MappedModel,
+    ) -> Result<RetainedSparseBoundaryProbeReport> {
+        run_retained_sparse_fixture_probe(model, false)
+    }
+
+    pub fn run_retained_sparse_multimerge_probe(
+        model: &MappedModel,
+    ) -> Result<RetainedSparseBoundaryProbeReport> {
+        run_retained_sparse_fixture_probe(model, true)
     }
 
     pub fn run_attention_ingress_probe(model: &MappedModel) -> Result<IngressProbeReport> {
@@ -16214,7 +16468,10 @@ mod imp {
             (0, _, _) => 30,
             (layer, 0, 1) if layer >= 2 => 36,
             (layer, 0, 3) if layer >= 2 => 48,
-            (layer, 0, _) if layer >= 2 && sparse_indexed_attention => 54,
+            (layer, 0, _) if layer >= 2 && sparse_indexed_attention => {
+                let compressed_rows = (position + 1) / 4;
+                53 + retained_sparse_topk_schedule(compressed_rows).1
+            }
             (layer, 0, _) if layer >= 2 => 32,
             (layer, 1, 1) if layer >= 3 => 32,
             (layer, 1, _) if layer >= 3 => 30,
@@ -16876,6 +17133,19 @@ mod imp {
         ))
     }
 
+    pub fn run_retained_sparse_multimerge_probe(
+        model: &MappedModel,
+    ) -> Result<RetainedSparseBoundaryProbeReport> {
+        let _ = decode_f32_fixture(
+            RETAINED_MULTIMERGE_INPUT_HC_BYTES,
+            "retained sparse multimerge input HC",
+        )?;
+        let _ = exact_tensor(model, "blk.2.indexer.attn_q_b.weight", 1, &[1024, 8192])?;
+        Err(Error::invalid(
+            "the Metal retained sparse multimerge probe is available only on macOS",
+        ))
+    }
+
     pub fn run_retained_sparse_boundary_probe(
         model: &MappedModel,
     ) -> Result<RetainedSparseBoundaryProbeReport> {
@@ -17352,7 +17622,8 @@ pub use imp::{
     run_prefill_layers01_row_coverage_probe, run_prefill_q8_boundary_probe,
     run_prefill_qkv_boundary_probe, run_probe, run_q8_projection_probe,
     run_ratio128_compressor_replay_probe, run_retained_sparse_boundary_probe,
-    run_rope_kv_store_probe, run_sparse_indexed_attention_probe, LayerExecutor,
+    run_retained_sparse_multimerge_probe, run_rope_kv_store_probe,
+    run_sparse_indexed_attention_probe, LayerExecutor,
 };
 
 #[cfg(test)]
@@ -20139,6 +20410,37 @@ mod tests {
     }
 
     #[test]
+    fn retained_sparse_multimerge_fixture_has_target_shapes() {
+        assert_eq!(RETAINED_MULTIMERGE_INPUT_HC_BYTES.len(), 16_384 * 4);
+        assert_eq!(RETAINED_MULTIMERGE_RAW_PRIOR_BYTES.len(), 127 * 512 * 4);
+        assert_eq!(
+            RETAINED_MULTIMERGE_ATTN_COMP_PRIOR_BYTES.len(),
+            2_048 * 512 * 4
+        );
+        assert_eq!(
+            RETAINED_MULTIMERGE_INDEX_COMP_PRIOR_BYTES.len(),
+            2_048 * 128 * 4
+        );
+        assert_eq!(RETAINED_MULTIMERGE_ATTN_STATE_KV_BYTES.len(), 8_192 * 4);
+        assert_eq!(RETAINED_MULTIMERGE_ATTN_STATE_SCORE_BITS.len(), 8_192 * 4);
+        assert_eq!(RETAINED_MULTIMERGE_INDEX_STATE_KV_BYTES.len(), 2_048 * 4);
+        assert_eq!(RETAINED_MULTIMERGE_INDEX_STATE_SCORE_BITS.len(), 2_048 * 4);
+        assert_eq!(RETAINED_MULTIMERGE_INDEXER_SCORES_BYTES.len(), 2_049 * 4);
+        assert_eq!(RETAINED_MULTIMERGE_INDEXER_TOPK_BYTES.len(), 512 * 4);
+        assert_eq!(RETAINED_MULTIMERGE_KQV_OUT_BYTES.len(), 32_768 * 4);
+        assert_eq!(RETAINED_MULTIMERGE_HC_ATTN_POST_BYTES.len(), 16_384 * 4);
+    }
+
+    #[test]
+    fn retained_sparse_topk_schedule_generalizes_merge_passes() {
+        assert_eq!(retained_sparse_topk_schedule(513), (1, 0, 512));
+        assert_eq!(retained_sparse_topk_schedule(1025), (2, 1, 513));
+        assert_eq!(retained_sparse_topk_schedule(2048), (2, 1, 1024));
+        assert_eq!(retained_sparse_topk_schedule(2049), (3, 2, 1025));
+        assert_eq!(retained_sparse_topk_schedule(4097), (5, 3, 2049));
+    }
+
+    #[test]
     fn writes_stable_sparse_indexed_attention_probe_json() {
         let report = SparseIndexedAttentionProbeReport {
             fixture_id: SPARSE_INDEXED_ATTENTION_DEFAULT_FIXTURE_ID,
@@ -20184,6 +20486,9 @@ mod tests {
             compressed_rows: 1025,
             seeded_compressed_rows: 1024,
             top_k: 512,
+            sort_blocks: 2,
+            merge_passes: 1,
+            topk_work_width: 513,
             dispatches: 54,
             wrapped_model_ranges: 35,
             pointer_matches: 35,
@@ -20203,8 +20508,50 @@ mod tests {
         write_retained_sparse_boundary_probe_json(&mut output, &report).unwrap();
         let text = String::from_utf8(output).unwrap();
         assert!(text.contains("\"schema\": \"rust-star-retained-sparse-boundary-v1\""));
+        assert!(text.contains("\"two_block_topk_merge\": true"));
         assert!(text.contains("\"retained_layer_execution_claim\": true"));
         assert!(text.contains("\"complete_layer_claim\": false"));
+        assert!(text.contains("\"complete_decoder_claim\": false"));
+        assert!(text.contains("\"throughput_claim\": false"));
+    }
+
+    #[test]
+    fn writes_stable_retained_sparse_multimerge_probe_json() {
+        let report = RetainedSparseBoundaryProbeReport {
+            fixture_id: RETAINED_SPARSE_MULTIMERGE_FIXTURE_ID,
+            layer: 2,
+            position: 8195,
+            raw_rows: 128,
+            seeded_raw_rows: 127,
+            compressed_rows: 2049,
+            seeded_compressed_rows: 2048,
+            top_k: 512,
+            sort_blocks: 3,
+            merge_passes: 2,
+            topk_work_width: 1025,
+            dispatches: 55,
+            wrapped_model_ranges: 35,
+            pointer_matches: 35,
+            wall_ms: 1.0,
+            gpu_ms: 0.5,
+            exact_tensor_checks: 16,
+            q_current_checksum: 1,
+            compressed_kv_checksum: 2,
+            compressed_indexer_checksum: 3,
+            indexer_scores_checksum: 4,
+            indexer_topk_checksum: 5,
+            kqv_out_checksum: 6,
+            kqv_back_checksum: 7,
+            attention_hc_checksum: 8,
+        };
+        let mut output = Vec::new();
+        write_retained_sparse_multimerge_probe_json(&mut output, &report).unwrap();
+        let text = String::from_utf8(output).unwrap();
+        assert!(text.contains("\"schema\": \"rust-star-retained-sparse-multimerge-v1\""));
+        assert!(text.contains("\"sort_blocks\": 3"));
+        assert!(text.contains("\"merge_passes\": 2"));
+        assert!(text.contains("\"ping_pong_workspace\": true"));
+        assert!(text.contains("\"repeated_merge_boundary_claim\": true"));
         assert!(text.contains("\"complete_decoder_claim\": false"));
         assert!(text.contains("\"throughput_claim\": false"));
     }

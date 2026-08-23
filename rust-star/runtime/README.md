@@ -696,8 +696,9 @@ the two-block argsort plus merge, exact descending top-512, 12-way indexed mixed
 attention, reduction, and inverse RoPE bit-for-bit while preserving all three
 mmap model pointers. This proves the default switch layer segment, not complete
 decode, output logits, or throughput. The retained even-layer decoder now owns
-the same first-boundary schedule and deliberately stops beyond 1,025 rows until
-its merge workspace is generalized.
+the same schedule. Its top-k scratch is fixed from context capacity, while the
+active sort blocks, compact work width, ping-pong offsets, merge count, and
+final top-512 dispatch are derived from the visible compressed rows.
 
 To prove the same boundary through the general retained executor:
 
@@ -716,6 +717,24 @@ no-copy model mappings. Empty queue predecessors preserve declared scheduler
 ownership without claiming layers 0 and 1 executed. The placeholder token also
 means the token-dependent FFN is outside the oracle; complete-layer,
 complete-decoder, logits, and throughput claims remain false.
+
+To validate the first schedule that needs repeated merge passes:
+
+```sh
+rust-star/.work/runtime-target/release/rust-star \
+  retained-sparse-multimerge-probe \
+  /absolute/path/to/model.gguf \
+  --json rust-star/.work/runtime-target/retained-sparse-multimerge-probe.json
+```
+
+This control seeds the exact layer-2 position-8195 boundary, including a
+wrapped 127-row raw-ring window and 2,048 prior rows in both compressed caches.
+The ordinary retained schedule commits row 2,049, emits three initial sort
+blocks into a 1,025-index active workspace, performs two ping-pong merge passes,
+and matches 16 tensors by bit pattern across 55 dispatches with 35/35 no-copy
+mappings. The workspace allocation itself is based on context capacity so its
+identity remains stable as visible rows grow. Preceding layers, the
+token-dependent FFN, complete decoder, logits, and throughput remain unclaimed.
 
 To cross the first ratio-128 emission boundary without overstating decoder
 coverage:
