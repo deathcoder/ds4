@@ -196,13 +196,16 @@ IQ2_XXS/Q2_K experts, shared Q8_0 expert, and additive final HC update. Every
 retained FFN boundary and the complete final HC identity match two fresh
 DwarfStar processes exactly. The retained layer-6 final HC then feeds layer 7
 through its complete Q/KV state, ratio-128 compressor, dense mixed attention,
-biased top-6 routed/shared FFN, and additive final HC update. All layer-7 final
-tiles, the full attention output, compressor states, and full HC identities
-match fresh DwarfStar processes exactly. The complete layers-0--7 command uses
-313 dispatches and preserves 164/164 no-copy model mappings. Exactly 512
-ratio-4 compressed rows remain dense; sparse indexer top-k starts only after
-this prompt boundary. Layer-8 prefill, output logits, and sparse post-prompt
-attention remain pending, and this is not a throughput claim.
+biased top-6 routed/shared FFN, and additive final HC update. Layer 7's final HC
+now continues directly through layer 8's complete Q/KV state, paired ratio-4
+attention/indexer compressors, dense mixed attention, routed/shared FFN, and
+final HC update. All layer-7 and layer-8 retained boundaries, full attention
+outputs, compressor states, and full HC identities match fresh DwarfStar
+processes exactly. The complete layers-0--8 command uses 383 dispatches and
+preserves 196/196 no-copy model mappings. Exactly 512 ratio-4 compressed rows
+remain dense; sparse indexer top-k starts only after this prompt boundary.
+Output logits and sparse post-prompt attention remain pending, and this is not
+a throughput claim.
 
 Project controls and benchmark contracts:
 

@@ -271,14 +271,17 @@ learned FFN ingress, biased top-6 routing, routed/shared experts, and additive
 final HC update. Every retained FFN boundary and the full final HC identity
 match repeated DwarfStar captures exactly. Its retained final HC then flows
 directly through layer 7's full Q/KV state, ratio-128 compressor, dense mixed
-attention, biased top-6 routed/shared FFN, and additive final HC update. Every
-retained layer-7 boundary, full attention output, compressor state, and full HC
-identity matches fresh DwarfStar processes exactly. The combined terminal
-schedule uses 313 dispatches and 164/164 no-copy model views.
+attention, biased top-6 routed/shared FFN, and additive final HC update. Layer
+7's final HC continues directly through layer 8's full Q/KV state, paired
+ratio-4 attention/indexer compressors, dense mixed attention, routed/shared
+FFN, and additive final HC update. Every retained layer-7 and layer-8 boundary,
+full attention output, compressor state, and full HC identity matches fresh
+DwarfStar processes exactly. The combined terminal schedule uses 383
+dispatches and 196/196 no-copy model views.
 
-Exactly 512 layer-2/layer-4/layer-6 compressed rows still use the dense path;
-sparse top-k begins only after this 2K boundary. Layer-8 prefill, output logits,
-and throughput remain outside this command.
+Exactly 512 layer-2/layer-4/layer-6/layer-8 compressed rows still use the dense
+path; sparse top-k begins only after this 2K boundary. Sparse post-prompt
+attention, output logits, and throughput remain outside this command.
 
 To run the connected layer-0 ingress gate:
 
