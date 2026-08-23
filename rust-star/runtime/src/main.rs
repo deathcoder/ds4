@@ -14,8 +14,8 @@ use rust_star_runtime::metal::{
     run_prefill_layers01_live_kv_chain_probe, run_prefill_layers01_live_kv_loop_probe,
     run_prefill_layers01_row_coverage_probe, run_prefill_q8_boundary_probe,
     run_prefill_qkv_boundary_probe, run_probe, run_q8_projection_probe,
-    run_ratio128_compressor_replay_probe, run_rope_kv_store_probe,
-    run_sparse_indexed_attention_probe, write_attention_output_probe_json,
+    run_ratio128_compressor_replay_probe, run_retained_sparse_boundary_probe,
+    run_rope_kv_store_probe, run_sparse_indexed_attention_probe, write_attention_output_probe_json,
     write_attention_read_probe_json, write_attention_setup_probe_json,
     write_closed_loop_decoder_probe_json, write_cold_prefill_decoder_probe_json,
     write_decoder_output_probe_json, write_embedding_probe_json, write_ffn_router_probe_json,
@@ -35,23 +35,24 @@ use rust_star_runtime::metal::{
     write_prefill_layers01_live_kv_loop_probe_json, write_prefill_layers01_row_coverage_probe_json,
     write_prefill_q8_boundary_probe_json, write_prefill_qkv_boundary_probe_json, write_probe_json,
     write_projection_probe_json, write_ratio128_compressor_replay_probe_json,
-    write_rope_kv_store_probe_json, write_sparse_indexed_attention_probe_json,
-    AttentionOutputProbeReport, AttentionReadProbeReport, AttentionSetupProbeReport,
-    ClosedLoopDecoderProbeReport, ColdPrefillDecoderProbeReport, DecoderOutputProbeReport,
-    EmbeddingProbeReport, FfnRouterProbeReport, IngressProbeReport, Layer0BenchConfig,
-    Layer0BenchReport, Layer0ProbeReport, Layers01234567DecodeProbeReport,
-    Layers012345DecodeProbeReport, Layers0123BenchConfig, Layers0123BenchReport,
-    Layers0123ChainedProbeReport, Layers0123DecodeProbeReport, Layers0123ProbeReport,
-    Layers012ChainedProbeReport, Layers012ProbeReport, Layers01ProbeReport,
-    Layers0To42DecodeProbeReport, MoeOutputProbeReport, Position127DecoderProbeReport,
-    PrefillFrontierProbeReport, PrefillLayer0BoundaryProbeReport,
+    write_retained_sparse_boundary_probe_json, write_rope_kv_store_probe_json,
+    write_sparse_indexed_attention_probe_json, AttentionOutputProbeReport,
+    AttentionReadProbeReport, AttentionSetupProbeReport, ClosedLoopDecoderProbeReport,
+    ColdPrefillDecoderProbeReport, DecoderOutputProbeReport, EmbeddingProbeReport,
+    FfnRouterProbeReport, IngressProbeReport, Layer0BenchConfig, Layer0BenchReport,
+    Layer0ProbeReport, Layers01234567DecodeProbeReport, Layers012345DecodeProbeReport,
+    Layers0123BenchConfig, Layers0123BenchReport, Layers0123ChainedProbeReport,
+    Layers0123DecodeProbeReport, Layers0123ProbeReport, Layers012ChainedProbeReport,
+    Layers012ProbeReport, Layers01ProbeReport, Layers0To42DecodeProbeReport, MoeOutputProbeReport,
+    Position127DecoderProbeReport, PrefillFrontierProbeReport, PrefillLayer0BoundaryProbeReport,
     PrefillLayers012AttentionLoopProbeReport, PrefillLayers012CompressorLoopProbeReport,
     PrefillLayers012KvStateLoopProbeReport, PrefillLayers012KvnormLoopProbeReport,
     PrefillLayers01BoundaryProbeReport, PrefillLayers01CompleteBoundaryProbeReport,
     PrefillLayers01LiveKvChainProbeReport, PrefillLayers01LiveKvLoopProbeReport,
     PrefillLayers01RowCoverageProbeReport, PrefillQ8BoundaryProbeReport,
     PrefillQkvBoundaryProbeReport, ProbeConfig, ProjectionProbeReport,
-    Ratio128CompressorReplayProbeReport, RopeKvStoreProbeReport, SparseIndexedAttentionProbeReport,
+    Ratio128CompressorReplayProbeReport, RetainedSparseBoundaryProbeReport, RopeKvStoreProbeReport,
+    SparseIndexedAttentionProbeReport,
 };
 use rust_star_runtime::model::MappedModel;
 use rust_star_runtime::target::{validate_resident_q2, MODEL_LABEL};
@@ -203,6 +204,9 @@ fn run() -> Result<()> {
     }
     if command == "sparse-indexed-attention-probe" {
         return run_sparse_indexed_attention_probe_command(arguments.collect());
+    }
+    if command == "retained-sparse-boundary-probe" {
+        return run_retained_sparse_boundary_probe_command(arguments.collect());
     }
     run_model_command(&command, arguments.collect())
 }
@@ -769,6 +773,58 @@ fn run_sparse_indexed_attention_probe_command(arguments: Vec<OsString>) -> Resul
     println!("claims: complete-decode=false logits=false throughput=false");
     if let Some(path) = json_path {
         write_sparse_indexed_attention_probe_file(&path, &report)?;
+        println!("json: {}", path.display());
+    }
+    Ok(())
+}
+
+fn run_retained_sparse_boundary_probe_command(arguments: Vec<OsString>) -> Result<()> {
+    if arguments.is_empty() {
+        return Err(Error::invalid(retained_sparse_boundary_probe_usage()));
+    }
+    if matches!(arguments[0].to_str(), Some("--help") | Some("-h")) {
+        println!("{}", retained_sparse_boundary_probe_usage());
+        return Ok(());
+    }
+    let model_path = PathBuf::from(&arguments[0]);
+    let mut json_path: Option<PathBuf> = None;
+    let mut arguments = arguments.into_iter().skip(1);
+    while let Some(argument) = arguments.next() {
+        match argument.to_str() {
+            Some("--json") => {
+                let value = arguments
+                    .next()
+                    .ok_or_else(|| Error::invalid("--json requires a path"))?;
+                if json_path.is_some() {
+                    return Err(Error::invalid("--json may be specified only once"));
+                }
+                json_path = Some(PathBuf::from(value));
+            }
+            Some("--help") | Some("-h") => {
+                println!("{}", retained_sparse_boundary_probe_usage());
+                return Ok(());
+            }
+            _ => return Err(Error::invalid(retained_sparse_boundary_probe_usage())),
+        }
+    }
+    let model = MappedModel::open(&model_path)?;
+    validate_resident_q2(model.gguf())?;
+    let report = run_retained_sparse_boundary_probe(&model)?;
+    println!(
+        "retained layer {} position {}: seeded {} prior compressed rows, emitted row {}, and matched {} tensors by bit pattern",
+        report.layer,
+        report.position,
+        report.seeded_compressed_rows,
+        report.compressed_rows,
+        report.exact_tensor_checks,
+    );
+    println!(
+        "mapping: {}/{} mmap-backed model ranges preserve pointer identity; {} dispatches",
+        report.pointer_matches, report.wrapped_model_ranges, report.dispatches,
+    );
+    println!("claims: retained-layer=true complete-layer=false complete-decoder=false logits=false throughput=false");
+    if let Some(path) = json_path {
+        write_retained_sparse_boundary_probe_file(&path, &report)?;
         println!("json: {}", path.display());
     }
     Ok(())
@@ -3575,6 +3631,36 @@ fn write_sparse_indexed_attention_probe_file(
     Ok(())
 }
 
+fn write_retained_sparse_boundary_probe_file(
+    path: &Path,
+    report: &RetainedSparseBoundaryProbeReport,
+) -> Result<()> {
+    let temporary = path.with_extension(format!(
+        "{}tmp",
+        path.extension()
+            .and_then(OsStr::to_str)
+            .map(|extension| format!("{extension}."))
+            .unwrap_or_default()
+    ));
+    let file = File::create(&temporary).map_err(|error| {
+        Error::invalid(format!(
+            "cannot create retained sparse-boundary JSON {}: {error}",
+            temporary.display()
+        ))
+    })?;
+    let mut output = BufWriter::new(file);
+    write_retained_sparse_boundary_probe_json(&mut output, report)?;
+    output.flush()?;
+    drop(output);
+    std::fs::rename(&temporary, path).map_err(|error| {
+        Error::invalid(format!(
+            "cannot install retained sparse-boundary JSON {}: {error}",
+            path.display()
+        ))
+    })?;
+    Ok(())
+}
+
 fn write_layers01_probe_file(path: &Path, report: &Layers01ProbeReport) -> Result<()> {
     let temporary = path.with_extension(format!(
         "{}tmp",
@@ -3755,7 +3841,7 @@ fn print_type_counts(gguf: &Gguf) {
 }
 
 fn usage() -> &'static str {
-    "usage:\n  rust-star inspect MODEL.gguf  # strict Flash-0731 resident-Q2 validation\n  rust-star gguf MODEL.gguf     # structural GGUF v3 validation only\n  rust-star metal-probe [OPTIONS]\n  rust-star embedding-probe MODEL.gguf [OPTIONS]\n  rust-star projection-probe MODEL.gguf [OPTIONS]\n  rust-star prefill-q8-boundary-probe MODEL.gguf [OPTIONS]\n  rust-star prefill-qkv-boundary-probe MODEL.gguf [OPTIONS]\n  rust-star prefill-layer0-boundary-probe MODEL.gguf [OPTIONS]\n  rust-star prefill-layers01-boundary-probe MODEL.gguf [OPTIONS]\n  rust-star prefill-layers01-complete-boundary-probe MODEL.gguf [OPTIONS]\n  rust-star prefill-layers01-row-coverage-probe MODEL.gguf [OPTIONS]\n  rust-star prefill-layers01-live-kv-chain-probe MODEL.gguf [OPTIONS]\n  rust-star prefill-layers01-live-kv-loop-probe MODEL.gguf [OPTIONS]\n  rust-star prefill-layers012-kvnorm-loop-probe MODEL.gguf [OPTIONS]\n  rust-star prefill-layers012-kv-state-loop-probe MODEL.gguf [OPTIONS]\n  rust-star prefill-layers012-compressor-loop-probe MODEL.gguf [OPTIONS]\n  rust-star attention-ingress-probe MODEL.gguf [OPTIONS]\n  rust-star attention-setup-probe MODEL.gguf [OPTIONS]\n  rust-star rope-kv-store-probe MODEL.gguf [OPTIONS]\n  rust-star attention-read-probe MODEL.gguf [OPTIONS]\n  rust-star attention-output-probe MODEL.gguf [OPTIONS]\n  rust-star ffn-router-probe MODEL.gguf [OPTIONS]\n  rust-star moe-output-probe MODEL.gguf [OPTIONS]\n  rust-star layer0-probe MODEL.gguf [OPTIONS]\n  rust-star layer0-bench MODEL.gguf [OPTIONS]\n  rust-star layers01-probe MODEL.gguf [OPTIONS]\n  rust-star layers012-probe MODEL.gguf [OPTIONS]\n  rust-star layers012-chained-probe MODEL.gguf [OPTIONS]\n  rust-star layers0123-probe MODEL.gguf [OPTIONS]\n  rust-star layers0123-chained-probe MODEL.gguf [OPTIONS]\n  rust-star layers0123-bench MODEL.gguf [OPTIONS]\n  rust-star layers0123-decode-probe MODEL.gguf [OPTIONS]\n  rust-star layers012345-decode-probe MODEL.gguf [OPTIONS]\n  rust-star layers01234567-decode-probe MODEL.gguf [OPTIONS]\n  rust-star layers0-42-decode-probe MODEL.gguf [OPTIONS]\n  rust-star decoder-output-probe MODEL.gguf [OPTIONS]\n  rust-star closed-loop-decoder-probe MODEL.gguf [OPTIONS]\n  rust-star position127-decoder-probe MODEL.gguf [OPTIONS]\n  rust-star cold-prefill-decoder-probe MODEL.gguf [OPTIONS]\n  rust-star prefill-frontier-probe MODEL.gguf [OPTIONS]\n  rust-star ratio128-compressor-replay-probe MODEL.gguf [OPTIONS]"
+    "usage:\n  rust-star inspect MODEL.gguf  # strict Flash-0731 resident-Q2 validation\n  rust-star gguf MODEL.gguf     # structural GGUF v3 validation only\n  rust-star metal-probe [OPTIONS]\n  rust-star embedding-probe MODEL.gguf [OPTIONS]\n  rust-star projection-probe MODEL.gguf [OPTIONS]\n  rust-star prefill-q8-boundary-probe MODEL.gguf [OPTIONS]\n  rust-star prefill-qkv-boundary-probe MODEL.gguf [OPTIONS]\n  rust-star prefill-layer0-boundary-probe MODEL.gguf [OPTIONS]\n  rust-star prefill-layers01-boundary-probe MODEL.gguf [OPTIONS]\n  rust-star prefill-layers01-complete-boundary-probe MODEL.gguf [OPTIONS]\n  rust-star prefill-layers01-row-coverage-probe MODEL.gguf [OPTIONS]\n  rust-star prefill-layers01-live-kv-chain-probe MODEL.gguf [OPTIONS]\n  rust-star prefill-layers01-live-kv-loop-probe MODEL.gguf [OPTIONS]\n  rust-star prefill-layers012-kvnorm-loop-probe MODEL.gguf [OPTIONS]\n  rust-star prefill-layers012-kv-state-loop-probe MODEL.gguf [OPTIONS]\n  rust-star prefill-layers012-compressor-loop-probe MODEL.gguf [OPTIONS]\n  rust-star attention-ingress-probe MODEL.gguf [OPTIONS]\n  rust-star attention-setup-probe MODEL.gguf [OPTIONS]\n  rust-star rope-kv-store-probe MODEL.gguf [OPTIONS]\n  rust-star attention-read-probe MODEL.gguf [OPTIONS]\n  rust-star attention-output-probe MODEL.gguf [OPTIONS]\n  rust-star ffn-router-probe MODEL.gguf [OPTIONS]\n  rust-star moe-output-probe MODEL.gguf [OPTIONS]\n  rust-star layer0-probe MODEL.gguf [OPTIONS]\n  rust-star layer0-bench MODEL.gguf [OPTIONS]\n  rust-star layers01-probe MODEL.gguf [OPTIONS]\n  rust-star layers012-probe MODEL.gguf [OPTIONS]\n  rust-star layers012-chained-probe MODEL.gguf [OPTIONS]\n  rust-star layers0123-probe MODEL.gguf [OPTIONS]\n  rust-star layers0123-chained-probe MODEL.gguf [OPTIONS]\n  rust-star layers0123-bench MODEL.gguf [OPTIONS]\n  rust-star layers0123-decode-probe MODEL.gguf [OPTIONS]\n  rust-star layers012345-decode-probe MODEL.gguf [OPTIONS]\n  rust-star layers01234567-decode-probe MODEL.gguf [OPTIONS]\n  rust-star layers0-42-decode-probe MODEL.gguf [OPTIONS]\n  rust-star decoder-output-probe MODEL.gguf [OPTIONS]\n  rust-star closed-loop-decoder-probe MODEL.gguf [OPTIONS]\n  rust-star position127-decoder-probe MODEL.gguf [OPTIONS]\n  rust-star cold-prefill-decoder-probe MODEL.gguf [OPTIONS]\n  rust-star prefill-frontier-probe MODEL.gguf [OPTIONS]\n  rust-star ratio128-compressor-replay-probe MODEL.gguf [OPTIONS]\n  rust-star sparse-indexed-attention-probe MODEL.gguf [OPTIONS]\n  rust-star retained-sparse-boundary-probe MODEL.gguf [OPTIONS]"
 }
 
 fn metal_probe_usage() -> &'static str {
@@ -3920,4 +4006,8 @@ fn ratio128_compressor_replay_probe_usage() -> &'static str {
 
 fn sparse_indexed_attention_probe_usage() -> &'static str {
     "usage: rust-star sparse-indexed-attention-probe MODEL.gguf [--json PATH]\n\nRuns two isolated layer-2 sparse-indexed-attention controls against repeated DwarfStar captures: the position-2051 diagnostic threshold override and the production-default position-4099 switch at 1,025 compressed rows. The latter includes the exact two-block argsort merge. This is not a complete-decode, logits, or throughput claim."
+}
+
+fn retained_sparse_boundary_probe_usage() -> &'static str {
+    "usage: rust-star retained-sparse-boundary-probe MODEL.gguf [--json PATH]\n\nSeeds the independently repeated incoming layer-2 HC, 127 raw rows, 1,024 compressed rows, and recurrent compressor state, then executes the production retained layer path at position 4099. It requires the emitted row 1,025 and every sparse-attention boundary through HC post to match DwarfStar bit-for-bit. FFN, complete-decoder, logits, and throughput claims remain false."
 }

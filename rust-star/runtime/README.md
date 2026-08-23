@@ -699,6 +699,24 @@ decode, output logits, or throughput. The retained even-layer decoder now owns
 the same first-boundary schedule and deliberately stops beyond 1,025 rows until
 its merge workspace is generalized.
 
+To prove the same boundary through the general retained executor:
+
+```sh
+rust-star/.work/runtime-target/release/rust-star \
+  retained-sparse-boundary-probe \
+  /absolute/path/to/model.gguf \
+  --json rust-star/.work/runtime-target/retained-sparse-boundary-probe.json
+```
+
+This diagnostic seeds the captured layer-2 HC, 127 prior raw-ring rows, 1,024
+prior attention/indexer compressed rows, and both pre-update recurrent states.
+It then runs the ordinary retained position-4099 layer schedule, commits row
+1,025, and matches 16 tensors by bit pattern across 54 dispatches with 35/35
+no-copy model mappings. Empty queue predecessors preserve declared scheduler
+ownership without claiming layers 0 and 1 executed. The placeholder token also
+means the token-dependent FFN is outside the oracle; complete-layer,
+complete-decoder, logits, and throughput claims remain false.
+
 To cross the first ratio-128 emission boundary without overstating decoder
 coverage:
 

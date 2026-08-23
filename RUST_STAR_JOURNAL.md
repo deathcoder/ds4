@@ -297,9 +297,14 @@ history; add a correction and update the current-state summary.
   production-default captures at position 4099 now match on every sparse
   boundary, including the two-block argsort merge required by 1,025 rows. The
   same schedule is wired into retained even-layer state, including same-step
-  attention/indexer row commit and 35 no-copy mappings. A complete decoder run
-  through that branch, merge generalization beyond 1,025 rows, full native
-  model prefill, and the eligible engine-measurement producer remain pending.
+  attention/indexer row commit and 35 no-copy mappings. A retained-state C0
+  control now seeds the exact layer-2 state immediately before position 4099,
+  executes the general retained layer path through its 1,025th compressed row,
+  and matches 16 sparse-boundary tensors by bit pattern across 54 dispatches.
+  It intentionally stops its correctness claim before the token-dependent FFN
+  and does not claim preceding-layer execution. A complete decoder run through
+  that branch, merge generalization beyond 1,025 rows, full native model
+  prefill, and the eligible engine-measurement producer remain pending.
 - Measurements: The exact complete native layers-0/1/2/3/4/5/6/7/8 full-2K
   command reported 2241.471 ms wall / 2153.893625 ms GPU in its focused
   correctness run, across 383 dispatches with 196/196 no-copy model mappings.
@@ -312,6 +317,12 @@ history; add a correction and update the current-state summary.
   command also reran the 513-row diagnostic first. This is correctness evidence,
   not throughput. The complete target-Mac gate repeated the default boundary at
   22.303 ms wall / 0.547833 ms GPU with the same schedule and mapping counts.
+  The focused retained-state boundary control reported 53.413 ms wall /
+  29.894125 ms GPU across 54 dispatches with 35/35 pointer matches. It includes
+  seed upload, synchronization, and exhaustive correctness readback and is not
+  a throughput claim. The complete target-Mac gate repeated it at 58.511 ms
+  wall / 30.369250 ms GPU with the same exact tensor, dispatch, and mapping
+  counts.
   The complete target-Mac gate reported 2289.152 ms wall / 2161.306708 ms GPU
   with the same schedule and mapping counts. These intervals include exhaustive
   correctness readback and are not throughput claims. The prior exact complete
@@ -493,9 +504,10 @@ history; add a correction and update the current-state summary.
 
 ## Immediate Next Actions
 
-1. Drive a complete retained decoder execution through the newly wired
-   1,025-row sparse branch, preserving the diagnostic 513-row override as an
-   independent control; then generalize repeated top-k merges beyond that row.
+1. Generalize repeated top-k merges and workspace sizing beyond 1,025
+   compressed rows, preserving the isolated 513/1,025-row probes and the new
+   retained-state row-1,025 control as independent regressions; then drive a
+   complete retained decoder execution through the sparse branch.
 2. Continue the exact batched-prefill frontier through layer 9 while preserving
    the complete layers-0–8 command as a regression control.
 3. Emit the `rust-star-engine-measurement-v1` artifact from the exact
@@ -507,6 +519,57 @@ history; add a correction and update the current-state summary.
 6. Run or approve the fork's GitHub Actions workflow and retain its URL.
 
 ## Entries
+
+### 2026-08-23 — Retained state crosses the first default sparse row
+
+Objective:
+
+- Prove that the production retained layer executor, rather than only the
+  isolated sparse diagnostic, reaches DwarfStar's first default sparse row with
+  the correct cache, recurrent-state, and same-step update ordering.
+
+Implementation:
+
+- Captured two fresh DwarfStar layer-2 position-4099 controls and required exact
+  agreement for the incoming HC, four pre-update compressor states, and all
+  sparse-boundary outputs. Temporary capture hooks were removed immediately;
+  `ds4.c` remains unchanged.
+- Added `retained-sparse-layer2-pos4099-v1`, a strict 38-operation, 47-tensor,
+  3,941,556-byte layer-segment fixture, plus a deterministic importer. The two
+  score-state payloads preserve their exact non-finite bit patterns as integer
+  tensors and are reinterpreted only at the runtime boundary.
+- Added a diagnostic seed API that populates the exact persistent Metal keys
+  used by the general retained executor: the incoming layer-2 HC, 127 raw ring
+  rows, 1,024 attention/indexer compressed rows, and both recurrent states.
+  Queue-ordered empty predecessors preserve the scheduler's declared layer-2
+  chain ownership without claiming that layers 0 and 1 were executed.
+- Added `retained-sparse-boundary-probe`. It executes the normal retained
+  layer-2 position-4099 schedule, commits compressed row 1,025, runs the
+  two-block top-k merge and 12-split indexed attention, and verifies 16 tensors
+  by FP32 or integer bit pattern. The JSON explicitly denies complete-layer,
+  complete-decoder, output-logit, and throughput claims because the captured HC
+  bypasses preceding layers and the placeholder token is not an FFN oracle.
+
+Validation:
+
+- Strict fixture verification accepted 38 operations, 47 tensors, and
+  3,941,556 bytes. The two fresh source captures matched for every new seed
+  tensor.
+- Rust host suite: 126 tests passed. Optimized Rust/Objective-C/Metal
+  compilation and the focused M1 Ultra model run passed.
+- The focused retained-state run matched all 16 tensors, preserved 35/35 model
+  mmap pointers, and submitted 54 dispatches. It reported 53.413 ms wall /
+  29.894125 ms GPU with seed, synchronization, and exhaustive readback in
+  scope; this is correctness evidence only.
+- The complete target-Mac gate passed 126 Rust tests, 61 Python tests, strict
+  fixture validation, optimized Rust/Objective-C/Metal compilation, and every
+  model-backed control. Its retained-state replay was C0 exact at 58.511 ms
+  wall / 30.369250 ms GPU with the same 54 dispatches and 35/35 mappings.
+
+Next:
+
+- Generalize the retained argsort/merge workspace and repeated merge schedule
+  beyond 1,025 compressed rows, then use it in a complete decoder progression.
 
 ### 2026-08-23 — Production-default sparse switch captured and wired
 

@@ -62,10 +62,13 @@ pub const RATIO128_COMPRESSOR_REPLAY_PROBE_SCHEMA: &str =
     "rust-star-ratio128-compressor-replay-probe-v1";
 pub const SPARSE_INDEXED_ATTENTION_PROBE_SCHEMA: &str =
     "rust-star-sparse-indexed-attention-boundary-v2";
+pub const RETAINED_SPARSE_BOUNDARY_PROBE_SCHEMA: &str = "rust-star-retained-sparse-boundary-v1";
 pub const SPARSE_INDEXED_ATTENTION_FIXTURE_ID: &str =
     "dwarfstar-oracle-v1-layer2-pos2051-sparse-indexed-attention";
 pub const SPARSE_INDEXED_ATTENTION_DEFAULT_FIXTURE_ID: &str =
     "dwarfstar-oracle-v1-layer2-pos4099-sparse-indexed-attention";
+pub const RETAINED_SPARSE_BOUNDARY_FIXTURE_ID: &str =
+    "dwarfstar-oracle-v1-retained-layer2-pos4099-sparse";
 pub const PROJECTION_FIXTURE_ID: &str = "dwarfstar-oracle-v1-layer0-pos1-attn-q-a";
 pub const PREFILL_Q8_BOUNDARY_FIXTURE_ID: &str = "dwarfstar-oracle-v1-prefill-q8-boundary-2048";
 pub const PREFILL_QKV_BOUNDARY_FIXTURE_ID: &str = "dwarfstar-oracle-v1-prefill-qkv-boundary-2048";
@@ -292,6 +295,59 @@ const SPARSE_DEFAULT_KQV_OUT_BYTES: &[u8] =
     include_bytes!("../../fixtures/sparse-indexed-attention-pos4099-v1/kqv-out.f32le.bin");
 const SPARSE_DEFAULT_KQV_BACK_BYTES: &[u8] =
     include_bytes!("../../fixtures/sparse-indexed-attention-pos4099-v1/kqv-back.f32le.bin");
+const RETAINED_SPARSE_INPUT_HC_BYTES: &[u8] =
+    include_bytes!("../../fixtures/retained-sparse-layer2-pos4099-v1/retained-input-hc.f32le.bin");
+const RETAINED_SPARSE_RAW_PRIOR_BYTES: &[u8] =
+    include_bytes!("../../fixtures/retained-sparse-layer2-pos4099-v1/raw-cache-prior.f32le.bin");
+const RETAINED_SPARSE_ATTN_COMP_PRIOR_BYTES: &[u8] = include_bytes!(
+    "../../fixtures/retained-sparse-layer2-pos4099-v1/attention-compressed-prior.f32le.bin"
+);
+const RETAINED_SPARSE_INDEX_COMP_PRIOR_BYTES: &[u8] = include_bytes!(
+    "../../fixtures/retained-sparse-layer2-pos4099-v1/indexer-compressed-prior.f32le.bin"
+);
+const RETAINED_SPARSE_ATTN_STATE_KV_BYTES: &[u8] = include_bytes!(
+    "../../fixtures/retained-sparse-layer2-pos4099-v1/attention-state-kv-pre.f32le.bin"
+);
+const RETAINED_SPARSE_ATTN_STATE_SCORE_BITS: &[u8] = include_bytes!(
+    "../../fixtures/retained-sparse-layer2-pos4099-v1/attention-state-score-pre-bits.i32le.bin"
+);
+const RETAINED_SPARSE_INDEX_STATE_KV_BYTES: &[u8] = include_bytes!(
+    "../../fixtures/retained-sparse-layer2-pos4099-v1/indexer-state-kv-pre.f32le.bin"
+);
+const RETAINED_SPARSE_INDEX_STATE_SCORE_BITS: &[u8] = include_bytes!(
+    "../../fixtures/retained-sparse-layer2-pos4099-v1/indexer-state-score-pre-bits.i32le.bin"
+);
+const RETAINED_SPARSE_Q_LORA_NORM_BYTES: &[u8] =
+    include_bytes!("../../fixtures/retained-sparse-layer2-pos4099-v1/q-lora-norm.f32le.bin");
+const RETAINED_SPARSE_ATTN_NORM_BYTES: &[u8] =
+    include_bytes!("../../fixtures/retained-sparse-layer2-pos4099-v1/attn-norm.f32le.bin");
+const RETAINED_SPARSE_Q_CUR_BYTES: &[u8] =
+    include_bytes!("../../fixtures/retained-sparse-layer2-pos4099-v1/q-cur.f32le.bin");
+const RETAINED_SPARSE_KV_CUR_BYTES: &[u8] =
+    include_bytes!("../../fixtures/retained-sparse-layer2-pos4099-v1/kv-cur.f32le.bin");
+const RETAINED_SPARSE_COMPRESSED_KV_BYTES: &[u8] =
+    include_bytes!("../../fixtures/retained-sparse-layer2-pos4099-v1/compressed-kv-row0.f32le.bin");
+const RETAINED_SPARSE_COMPRESSED_INDEXER_BYTES: &[u8] = include_bytes!(
+    "../../fixtures/retained-sparse-layer2-pos4099-v1/compressed-indexer-row1024.f32le.bin"
+);
+const RETAINED_SPARSE_INDEXER_Q_BYTES: &[u8] =
+    include_bytes!("../../fixtures/retained-sparse-layer2-pos4099-v1/indexer-q.f32le.bin");
+const RETAINED_SPARSE_INDEXER_WEIGHTS_BYTES: &[u8] =
+    include_bytes!("../../fixtures/retained-sparse-layer2-pos4099-v1/indexer-weights.f32le.bin");
+const RETAINED_SPARSE_INDEXER_SCORES_BYTES: &[u8] =
+    include_bytes!("../../fixtures/retained-sparse-layer2-pos4099-v1/indexer-scores.f32le.bin");
+const RETAINED_SPARSE_INDEXER_TOPK_BYTES: &[u8] =
+    include_bytes!("../../fixtures/retained-sparse-layer2-pos4099-v1/indexer-topk.i32le.bin");
+const RETAINED_SPARSE_KQV_OUT_BYTES: &[u8] =
+    include_bytes!("../../fixtures/retained-sparse-layer2-pos4099-v1/kqv-out.f32le.bin");
+const RETAINED_SPARSE_KQV_BACK_BYTES: &[u8] =
+    include_bytes!("../../fixtures/retained-sparse-layer2-pos4099-v1/kqv-back.f32le.bin");
+const RETAINED_SPARSE_ATTN_LOW_BYTES: &[u8] =
+    include_bytes!("../../fixtures/retained-sparse-layer2-pos4099-v1/attn-low.f32le.bin");
+const RETAINED_SPARSE_ATTN_OUT_BYTES: &[u8] =
+    include_bytes!("../../fixtures/retained-sparse-layer2-pos4099-v1/attn-out.f32le.bin");
+const RETAINED_SPARSE_HC_ATTN_POST_BYTES: &[u8] =
+    include_bytes!("../../fixtures/retained-sparse-layer2-pos4099-v1/hc-attn-post.f32le.bin");
 const PREFILL_Q8_BATCH_OUTPUT_BYTES: &[u8] =
     include_bytes!("../../fixtures/prefill-q8-boundary-2048-v1/q-lora-batch-final-tile.f32le.bin");
 const PREFILL_Q8_DECODE_OUTPUT_BYTES: &[u8] =
@@ -2001,6 +2057,32 @@ pub struct SparseIndexedAttentionProbeReport {
     pub kqv_back_checksum: u64,
 }
 
+#[derive(Clone, Debug)]
+pub struct RetainedSparseBoundaryProbeReport {
+    pub fixture_id: &'static str,
+    pub layer: u32,
+    pub position: u32,
+    pub raw_rows: u32,
+    pub seeded_raw_rows: u32,
+    pub compressed_rows: u32,
+    pub seeded_compressed_rows: u32,
+    pub top_k: u32,
+    pub dispatches: u32,
+    pub wrapped_model_ranges: u32,
+    pub pointer_matches: u32,
+    pub wall_ms: f64,
+    pub gpu_ms: f64,
+    pub exact_tensor_checks: u32,
+    pub q_current_checksum: u64,
+    pub compressed_kv_checksum: u64,
+    pub compressed_indexer_checksum: u64,
+    pub indexer_scores_checksum: u64,
+    pub indexer_topk_checksum: u64,
+    pub kqv_out_checksum: u64,
+    pub kqv_back_checksum: u64,
+    pub attention_hc_checksum: u64,
+}
+
 pub fn write_ingress_probe_json<W: Write>(
     output: &mut W,
     report: &IngressProbeReport,
@@ -2901,6 +2983,56 @@ pub fn write_sparse_indexed_attention_probe_json<W: Write>(
         report.indexer_topk_checksum,
         report.kqv_out_checksum,
         report.kqv_back_checksum,
+    )?;
+    Ok(())
+}
+
+pub fn write_retained_sparse_boundary_probe_json<W: Write>(
+    output: &mut W,
+    report: &RetainedSparseBoundaryProbeReport,
+) -> Result<()> {
+    if report.fixture_id != RETAINED_SPARSE_BOUNDARY_FIXTURE_ID
+        || report.layer != 2
+        || report.position != 4099
+        || report.raw_rows != 128
+        || report.seeded_raw_rows != 127
+        || report.compressed_rows != 1025
+        || report.seeded_compressed_rows != 1024
+        || report.top_k != 512
+        || report.dispatches != 54
+        || report.wrapped_model_ranges != 35
+        || report.pointer_matches != 35
+        || report.exact_tensor_checks != 16
+    {
+        return Err(Error::invalid(
+            "retained sparse-boundary report has inconsistent metadata",
+        ));
+    }
+    write!(
+        output,
+        "{{\n  \"schema\": \"{RETAINED_SPARSE_BOUNDARY_PROBE_SCHEMA}\",\n  \"classification\": \"retained-state-c0-control\",\n  \"fixture\": \"{}\",\n  \"boundary\": {{\"layer\": {}, \"position\": {}, \"raw_rows\": {}, \"compressed_rows\": {}, \"top_k\": {}}},\n  \"seed\": {{\"incoming_hc\": true, \"raw_rows\": {}, \"compressed_rows\": {}, \"recurrent_attention_state\": true, \"recurrent_indexer_state\": true}},\n  \"schedule\": {{\"dispatches\": {}, \"same_step_compressed_row_commit\": true, \"two_block_topk_merge\": true, \"indexed_attention_splits\": 12}},\n  \"mapping\": {{\"wrapped_model_ranges\": {}, \"pointer_matches\": {}}},\n  \"timing\": {{\"wall_ms\": {:.6}, \"gpu_ms\": {:.6}}},\n  \"checksums\": {{\"q_current\": {}, \"compressed_kv\": {}, \"compressed_indexer\": {}, \"indexer_scores\": {}, \"indexer_topk\": {}, \"kqv_out\": {}, \"kqv_back\": {}, \"attention_hc\": {}}},\n  \"exact_tensor_checks\": {},\n  \"c0_bitwise_match\": true,\n  \"retained_layer_execution_claim\": true,\n  \"complete_decoder_claim\": false,\n  \"output_logits_claim\": false,\n  \"complete_layer_claim\": false,\n  \"throughput_claim\": false\n}}\n",
+        report.fixture_id,
+        report.layer,
+        report.position,
+        report.raw_rows,
+        report.compressed_rows,
+        report.top_k,
+        report.seeded_raw_rows,
+        report.seeded_compressed_rows,
+        report.dispatches,
+        report.wrapped_model_ranges,
+        report.pointer_matches,
+        report.wall_ms,
+        report.gpu_ms,
+        report.q_current_checksum,
+        report.compressed_kv_checksum,
+        report.compressed_indexer_checksum,
+        report.indexer_scores_checksum,
+        report.indexer_topk_checksum,
+        report.kqv_out_checksum,
+        report.kqv_back_checksum,
+        report.attention_hc_checksum,
+        report.exact_tensor_checks,
     )?;
     Ok(())
 }
@@ -8188,6 +8320,28 @@ mod imp {
             error: *mut c_char,
             error_bytes: usize,
         ) -> i32;
+        fn rust_star_metal_seed_retained_sparse_layer2_position4099(
+            context: *mut c_void,
+            input_hc: *const f32,
+            raw_cache_prior: *const f32,
+            attention_compressed_prior: *const f32,
+            indexer_compressed_prior: *const f32,
+            attention_state_kv_pre: *const f32,
+            attention_state_score_pre: *const f32,
+            indexer_state_kv_pre: *const f32,
+            indexer_state_score_pre: *const f32,
+            error: *mut c_char,
+            error_bytes: usize,
+        ) -> i32;
+        fn rust_star_metal_copy_retained_sparse_layer2_position4099(
+            context: *mut c_void,
+            indexer_q: *mut f32,
+            indexer_weights: *mut f32,
+            indexer_scores: *mut f32,
+            indexer_topk: *mut i32,
+            error: *mut c_char,
+            error_bytes: usize,
+        ) -> i32;
         fn rust_star_metal_destroy(context: *mut c_void);
     }
 
@@ -8260,6 +8414,7 @@ mod imp {
         indexer_compressor: Option<CompressorSpans>,
         indexer_q: Option<ModelSpan>,
         indexer_weight: Option<ModelSpan>,
+        validate_expected: bool,
         initial_state_mode: u32,
         context_capacity: u32,
         compressor_prime: Vec<f32>,
@@ -8481,6 +8636,7 @@ mod imp {
                 indexer_compressor,
                 indexer_q,
                 indexer_weight,
+                validate_expected: true,
                 initial_state_mode,
                 context_capacity,
                 compressor_prime,
@@ -13499,6 +13655,321 @@ mod imp {
         run_sparse_indexed_attention_fixture_probe(model, true)
     }
 
+    pub fn run_retained_sparse_boundary_probe(
+        model: &MappedModel,
+    ) -> Result<RetainedSparseBoundaryProbeReport> {
+        const POSITION: u32 = 4099;
+        const CONTEXT_CAPACITY: u32 = 4100;
+        let input_hc = decode_f32_fixture(RETAINED_SPARSE_INPUT_HC_BYTES, "retained input HC")?;
+        let raw_prior =
+            decode_f32_fixture(RETAINED_SPARSE_RAW_PRIOR_BYTES, "retained raw-cache seed")?;
+        let attention_prior = decode_f32_fixture(
+            RETAINED_SPARSE_ATTN_COMP_PRIOR_BYTES,
+            "retained attention compressed-cache seed",
+        )?;
+        let indexer_prior = decode_f32_fixture(
+            RETAINED_SPARSE_INDEX_COMP_PRIOR_BYTES,
+            "retained indexer compressed-cache seed",
+        )?;
+        let attention_state_kv = decode_f32_fixture(
+            RETAINED_SPARSE_ATTN_STATE_KV_BYTES,
+            "retained attention recurrent KV state",
+        )?;
+        let attention_state_score_bits = decode_i32_fixture(
+            RETAINED_SPARSE_ATTN_STATE_SCORE_BITS,
+            "retained attention recurrent score state bits",
+        )?;
+        let attention_state_score = attention_state_score_bits
+            .iter()
+            .map(|bits| f32::from_bits(*bits as u32))
+            .collect::<Vec<_>>();
+        let indexer_state_kv = decode_f32_fixture(
+            RETAINED_SPARSE_INDEX_STATE_KV_BYTES,
+            "retained indexer recurrent KV state",
+        )?;
+        let indexer_state_score_bits = decode_i32_fixture(
+            RETAINED_SPARSE_INDEX_STATE_SCORE_BITS,
+            "retained indexer recurrent score state bits",
+        )?;
+        let indexer_state_score = indexer_state_score_bits
+            .iter()
+            .map(|bits| f32::from_bits(*bits as u32))
+            .collect::<Vec<_>>();
+
+        let context = Context::new()?;
+        let mut error = [0 as c_char; ERROR_BYTES];
+        let seeded = unsafe {
+            rust_star_metal_seed_retained_sparse_layer2_position4099(
+                context.0,
+                input_hc.as_ptr(),
+                raw_prior.as_ptr(),
+                attention_prior.as_ptr(),
+                indexer_prior.as_ptr(),
+                attention_state_kv.as_ptr(),
+                attention_state_score.as_ptr(),
+                indexer_state_kv.as_ptr(),
+                indexer_state_score.as_ptr(),
+                error.as_mut_ptr(),
+                error.len(),
+            )
+        };
+        if seeded == 0 {
+            return Err(Error::invalid(format!(
+                "Metal retained sparse-boundary seed failed: {}",
+                error_text(&error)
+            )));
+        }
+
+        let mut prepared =
+            PreparedLayerExecution::new_cold_with_capacity(model, 2, CONTEXT_CAPACITY)?;
+        prepared.validate_expected = false;
+        run_prepared_layer_iterations(
+            model,
+            &context,
+            &mut prepared,
+            0,
+            POSITION,
+            0,
+            1,
+            COMMAND_CHAINED_FINAL,
+            2,
+        )?;
+        let execution = run_prepared_layer_iterations(
+            model,
+            &context,
+            &mut prepared,
+            0,
+            POSITION,
+            0,
+            1,
+            COMMAND_CHAINED_COLLECT,
+            2,
+        )?;
+
+        let mut indexer_q = vec![0.0_f32; 64 * 128];
+        let mut indexer_weights = vec![0.0_f32; 64];
+        let mut indexer_scores = vec![0.0_f32; 1025];
+        let mut indexer_topk = vec![0_i32; 512];
+        error.fill(0);
+        let copied = unsafe {
+            rust_star_metal_copy_retained_sparse_layer2_position4099(
+                context.0,
+                indexer_q.as_mut_ptr(),
+                indexer_weights.as_mut_ptr(),
+                indexer_scores.as_mut_ptr(),
+                indexer_topk.as_mut_ptr(),
+                error.as_mut_ptr(),
+                error.len(),
+            )
+        };
+        if copied == 0 {
+            return Err(Error::invalid(format!(
+                "Metal retained sparse-boundary diagnostic readback failed: {}",
+                error_text(&error)
+            )));
+        }
+
+        let expected_q_lora_norm = decode_f32_fixture(
+            RETAINED_SPARSE_Q_LORA_NORM_BYTES,
+            "retained sparse Q-Lora norm",
+        )?;
+        let expected_attn_norm = decode_f32_fixture(
+            RETAINED_SPARSE_ATTN_NORM_BYTES,
+            "retained sparse attention norm",
+        )?;
+        let expected_q_cur =
+            decode_f32_fixture(RETAINED_SPARSE_Q_CUR_BYTES, "retained sparse Q current")?;
+        let expected_kv_cur =
+            decode_f32_fixture(RETAINED_SPARSE_KV_CUR_BYTES, "retained sparse KV current")?;
+        let expected_compressed_kv = decode_f32_fixture(
+            RETAINED_SPARSE_COMPRESSED_KV_BYTES,
+            "retained sparse compressed KV row",
+        )?;
+        let expected_compressed_indexer = decode_f32_fixture(
+            RETAINED_SPARSE_COMPRESSED_INDEXER_BYTES,
+            "retained sparse compressed indexer row",
+        )?;
+        let expected_indexer_q =
+            decode_f32_fixture(RETAINED_SPARSE_INDEXER_Q_BYTES, "retained sparse indexer Q")?;
+        let expected_indexer_weights = decode_f32_fixture(
+            RETAINED_SPARSE_INDEXER_WEIGHTS_BYTES,
+            "retained sparse indexer weights",
+        )?;
+        let expected_indexer_scores = decode_f32_fixture(
+            RETAINED_SPARSE_INDEXER_SCORES_BYTES,
+            "retained sparse indexer scores",
+        )?;
+        let expected_indexer_topk = decode_i32_fixture(
+            RETAINED_SPARSE_INDEXER_TOPK_BYTES,
+            "retained sparse indexer top-k",
+        )?;
+        let expected_kqv_out =
+            decode_f32_fixture(RETAINED_SPARSE_KQV_OUT_BYTES, "retained sparse KQV output")?;
+        let expected_kqv_back =
+            decode_f32_fixture(RETAINED_SPARSE_KQV_BACK_BYTES, "retained sparse KQV back")?;
+        let expected_attn_low = decode_f32_fixture(
+            RETAINED_SPARSE_ATTN_LOW_BYTES,
+            "retained sparse attention low projection",
+        )?;
+        let expected_attn_out = decode_f32_fixture(
+            RETAINED_SPARSE_ATTN_OUT_BYTES,
+            "retained sparse attention projection",
+        )?;
+        let expected_hc_post = decode_f32_fixture(
+            RETAINED_SPARSE_HC_ATTN_POST_BYTES,
+            "retained sparse attention HC post",
+        )?;
+
+        let check_f32 = |label: &str, actual: &[f32], expected: &[f32]| -> Result<()> {
+            if actual.len() != expected.len() {
+                return Err(Error::invalid(format!(
+                    "retained sparse-boundary {label} length mismatch"
+                )));
+            }
+            if let Some((index, (actual, expected))) = actual
+                .iter()
+                .zip(expected)
+                .enumerate()
+                .find(|(_, (actual, expected))| actual.to_bits() != expected.to_bits())
+            {
+                return Err(Error::invalid(format!(
+                    "retained sparse-boundary {label} C0 mismatch at {index}: actual={:#010x} expected={:#010x}",
+                    actual.to_bits(), expected.to_bits()
+                )));
+            }
+            Ok(())
+        };
+        for (label, actual, expected) in [
+            (
+                "Q-Lora norm",
+                prepared.q_lora_norm.as_slice(),
+                expected_q_lora_norm.as_slice(),
+            ),
+            (
+                "attention norm",
+                prepared.norm.as_slice(),
+                expected_attn_norm.as_slice(),
+            ),
+            (
+                "Q current",
+                prepared.q_cur.as_slice(),
+                expected_q_cur.as_slice(),
+            ),
+            (
+                "KV current",
+                prepared.kv_cur.as_slice(),
+                expected_kv_cur.as_slice(),
+            ),
+            (
+                "compressed KV",
+                prepared.compressed_kv.as_slice(),
+                expected_compressed_kv.as_slice(),
+            ),
+            (
+                "compressed indexer",
+                prepared.compressed_indexer.as_slice(),
+                expected_compressed_indexer.as_slice(),
+            ),
+            (
+                "indexer Q",
+                indexer_q.as_slice(),
+                expected_indexer_q.as_slice(),
+            ),
+            (
+                "indexer weights",
+                indexer_weights.as_slice(),
+                expected_indexer_weights.as_slice(),
+            ),
+            (
+                "indexer scores",
+                indexer_scores.as_slice(),
+                expected_indexer_scores.as_slice(),
+            ),
+            (
+                "KQV output",
+                prepared.attention_raw.as_slice(),
+                expected_kqv_out.as_slice(),
+            ),
+            (
+                "KQV back",
+                prepared.attention_back.as_slice(),
+                expected_kqv_back.as_slice(),
+            ),
+            (
+                "attention low",
+                prepared.attention_low.as_slice(),
+                expected_attn_low.as_slice(),
+            ),
+            (
+                "attention output",
+                prepared.attention_out.as_slice(),
+                expected_attn_out.as_slice(),
+            ),
+            (
+                "attention HC post",
+                prepared.after_attention_hc.as_slice(),
+                expected_hc_post.as_slice(),
+            ),
+        ] {
+            check_f32(label, actual, expected)?;
+        }
+        let raw_slot = (POSITION as usize % 128) * 512;
+        let expected_stored = expected_kv_cur
+            .iter()
+            .copied()
+            .map(f16_round_f32)
+            .collect::<Vec<_>>();
+        check_f32(
+            "raw cache current row",
+            &prepared.cache_rows[raw_slot..raw_slot + 512],
+            &expected_stored,
+        )?;
+        if indexer_topk != expected_indexer_topk {
+            let mismatch = indexer_topk
+                .iter()
+                .zip(&expected_indexer_topk)
+                .position(|(actual, expected)| actual != expected)
+                .unwrap_or(0);
+            return Err(Error::invalid(format!(
+                "retained sparse-boundary top-k mismatch at {mismatch}: actual={} expected={}",
+                indexer_topk[mismatch], expected_indexer_topk[mismatch]
+            )));
+        }
+        if execution.report.dispatches != 54
+            || execution.report.wrapped_model_ranges != 35
+            || execution.report.pointer_matches != 35
+        {
+            return Err(Error::invalid(
+                "retained sparse-boundary execution metadata is invalid",
+            ));
+        }
+
+        Ok(RetainedSparseBoundaryProbeReport {
+            fixture_id: RETAINED_SPARSE_BOUNDARY_FIXTURE_ID,
+            layer: 2,
+            position: POSITION,
+            raw_rows: 128,
+            seeded_raw_rows: 127,
+            compressed_rows: 1025,
+            seeded_compressed_rows: 1024,
+            top_k: 512,
+            dispatches: execution.report.dispatches,
+            wrapped_model_ranges: execution.report.wrapped_model_ranges,
+            pointer_matches: execution.report.pointer_matches,
+            wall_ms: execution.report.wall_ms,
+            gpu_ms: execution.report.gpu_ms,
+            exact_tensor_checks: 16,
+            q_current_checksum: checksum_f32(&prepared.q_cur),
+            compressed_kv_checksum: checksum_f32(&prepared.compressed_kv),
+            compressed_indexer_checksum: checksum_f32(&prepared.compressed_indexer),
+            indexer_scores_checksum: checksum_f32(&indexer_scores),
+            indexer_topk_checksum: checksum_i32(&indexer_topk),
+            kqv_out_checksum: checksum_f32(&prepared.attention_raw),
+            kqv_back_checksum: checksum_f32(&prepared.attention_back),
+            attention_hc_checksum: checksum_f32(&prepared.after_attention_hc),
+        })
+    }
+
     pub fn run_attention_ingress_probe(model: &MappedModel) -> Result<IngressProbeReport> {
         const TOKEN: u32 = 201;
         let embedding = exact_tensor(model, "token_embd.weight", 1, &[4096, 129280])?;
@@ -15508,6 +15979,7 @@ mod imp {
             indexer_compressor,
             indexer_q,
             indexer_weight,
+            validate_expected,
             initial_state_mode,
             context_capacity,
             compressor_prime,
@@ -15804,6 +16276,40 @@ mod imp {
                     routed_out_checksum: 0,
                     shared_out_checksum: 0,
                     final_hc_checksum: 0,
+                },
+                wall_ms_samples: wall_ms_samples.clone(),
+                gpu_ms_samples: gpu_ms_samples.clone(),
+                repeat_bitwise_match: true,
+            });
+        }
+        if !*validate_expected {
+            if !raw.wall_ms.is_finite()
+                || raw.wall_ms <= 0.0
+                || !raw.gpu_ms.is_finite()
+                || raw.gpu_ms < 0.0
+            {
+                return Err(Error::invalid(
+                    "unchecked retained layer collection returned invalid timing",
+                ));
+            }
+            return Ok(Layer0Execution {
+                report: Layer0ProbeReport {
+                    fixture_id: RETAINED_SPARSE_BOUNDARY_FIXTURE_ID,
+                    token,
+                    dispatches,
+                    command_buffers: 1,
+                    selected_experts: selected.clone(),
+                    wrapped_model_ranges: raw.wrapped_model_ranges,
+                    pointer_matches: raw.pointer_matches,
+                    wall_ms: raw.wall_ms,
+                    gpu_ms: raw.gpu_ms,
+                    attention_hc_checksum: checksum_f32(after_attention_hc),
+                    ffn_norm_checksum: checksum_f32(ffn_norm),
+                    router_weights_checksum: checksum_f32(router_weights),
+                    routed_mid_checksum: checksum_f32(routed_mid),
+                    routed_out_checksum: checksum_f32(routed_out),
+                    shared_out_checksum: checksum_f32(shared_out),
+                    final_hc_checksum: checksum_f32(after_ffn_hc),
                 },
                 wall_ms_samples: wall_ms_samples.clone(),
                 gpu_ms_samples: gpu_ms_samples.clone(),
@@ -16370,6 +16876,16 @@ mod imp {
         ))
     }
 
+    pub fn run_retained_sparse_boundary_probe(
+        model: &MappedModel,
+    ) -> Result<RetainedSparseBoundaryProbeReport> {
+        let _ = decode_f32_fixture(RETAINED_SPARSE_INPUT_HC_BYTES, "retained sparse input HC")?;
+        let _ = exact_tensor(model, "blk.2.indexer.attn_q_b.weight", 1, &[1024, 8192])?;
+        Err(Error::invalid(
+            "the Metal retained sparse-boundary probe is available only on macOS",
+        ))
+    }
+
     pub fn run_sparse_indexed_attention_probe(
         model: &MappedModel,
     ) -> Result<SparseIndexedAttentionProbeReport> {
@@ -16835,8 +17351,8 @@ pub use imp::{
     run_prefill_layers01_live_kv_chain_probe, run_prefill_layers01_live_kv_loop_probe,
     run_prefill_layers01_row_coverage_probe, run_prefill_q8_boundary_probe,
     run_prefill_qkv_boundary_probe, run_probe, run_q8_projection_probe,
-    run_ratio128_compressor_replay_probe, run_rope_kv_store_probe,
-    run_sparse_indexed_attention_probe, LayerExecutor,
+    run_ratio128_compressor_replay_probe, run_retained_sparse_boundary_probe,
+    run_rope_kv_store_probe, run_sparse_indexed_attention_probe, LayerExecutor,
 };
 
 #[cfg(test)]
@@ -19593,6 +20109,36 @@ mod tests {
     }
 
     #[test]
+    fn retained_sparse_boundary_fixture_has_target_shapes() {
+        assert_eq!(RETAINED_SPARSE_INPUT_HC_BYTES.len(), 16_384 * 4);
+        assert_eq!(RETAINED_SPARSE_RAW_PRIOR_BYTES.len(), 127 * 512 * 4);
+        assert_eq!(RETAINED_SPARSE_ATTN_COMP_PRIOR_BYTES.len(), 1_024 * 512 * 4);
+        assert_eq!(
+            RETAINED_SPARSE_INDEX_COMP_PRIOR_BYTES.len(),
+            1_024 * 128 * 4
+        );
+        assert_eq!(RETAINED_SPARSE_ATTN_STATE_KV_BYTES.len(), 8_192 * 4);
+        assert_eq!(RETAINED_SPARSE_ATTN_STATE_SCORE_BITS.len(), 8_192 * 4);
+        assert_eq!(RETAINED_SPARSE_INDEX_STATE_KV_BYTES.len(), 2_048 * 4);
+        assert_eq!(RETAINED_SPARSE_INDEX_STATE_SCORE_BITS.len(), 2_048 * 4);
+        assert_eq!(RETAINED_SPARSE_Q_LORA_NORM_BYTES.len(), 1_024 * 4);
+        assert_eq!(RETAINED_SPARSE_ATTN_NORM_BYTES.len(), 4_096 * 4);
+        assert_eq!(RETAINED_SPARSE_Q_CUR_BYTES.len(), 32_768 * 4);
+        assert_eq!(RETAINED_SPARSE_KV_CUR_BYTES.len(), 512 * 4);
+        assert_eq!(RETAINED_SPARSE_COMPRESSED_KV_BYTES.len(), 512 * 4);
+        assert_eq!(RETAINED_SPARSE_COMPRESSED_INDEXER_BYTES.len(), 128 * 4);
+        assert_eq!(RETAINED_SPARSE_INDEXER_Q_BYTES.len(), 8_192 * 4);
+        assert_eq!(RETAINED_SPARSE_INDEXER_WEIGHTS_BYTES.len(), 64 * 4);
+        assert_eq!(RETAINED_SPARSE_INDEXER_SCORES_BYTES.len(), 1_025 * 4);
+        assert_eq!(RETAINED_SPARSE_INDEXER_TOPK_BYTES.len(), 512 * 4);
+        assert_eq!(RETAINED_SPARSE_KQV_OUT_BYTES.len(), 32_768 * 4);
+        assert_eq!(RETAINED_SPARSE_KQV_BACK_BYTES.len(), 32_768 * 4);
+        assert_eq!(RETAINED_SPARSE_ATTN_LOW_BYTES.len(), 8_192 * 4);
+        assert_eq!(RETAINED_SPARSE_ATTN_OUT_BYTES.len(), 4_096 * 4);
+        assert_eq!(RETAINED_SPARSE_HC_ATTN_POST_BYTES.len(), 16_384 * 4);
+    }
+
+    #[test]
     fn writes_stable_sparse_indexed_attention_probe_json() {
         let report = SparseIndexedAttentionProbeReport {
             fixture_id: SPARSE_INDEXED_ATTENTION_DEFAULT_FIXTURE_ID,
@@ -19624,6 +20170,42 @@ mod tests {
         assert!(text.contains("\"diagnostic_override\": null"));
         assert!(text.contains("kernel_argsort_merge_f32_i32_desc"));
         assert!(text.contains("\"complete_decode_claim\": false"));
+        assert!(text.contains("\"throughput_claim\": false"));
+    }
+
+    #[test]
+    fn writes_stable_retained_sparse_boundary_probe_json() {
+        let report = RetainedSparseBoundaryProbeReport {
+            fixture_id: RETAINED_SPARSE_BOUNDARY_FIXTURE_ID,
+            layer: 2,
+            position: 4099,
+            raw_rows: 128,
+            seeded_raw_rows: 127,
+            compressed_rows: 1025,
+            seeded_compressed_rows: 1024,
+            top_k: 512,
+            dispatches: 54,
+            wrapped_model_ranges: 35,
+            pointer_matches: 35,
+            wall_ms: 1.0,
+            gpu_ms: 0.5,
+            exact_tensor_checks: 16,
+            q_current_checksum: 1,
+            compressed_kv_checksum: 2,
+            compressed_indexer_checksum: 3,
+            indexer_scores_checksum: 4,
+            indexer_topk_checksum: 5,
+            kqv_out_checksum: 6,
+            kqv_back_checksum: 7,
+            attention_hc_checksum: 8,
+        };
+        let mut output = Vec::new();
+        write_retained_sparse_boundary_probe_json(&mut output, &report).unwrap();
+        let text = String::from_utf8(output).unwrap();
+        assert!(text.contains("\"schema\": \"rust-star-retained-sparse-boundary-v1\""));
+        assert!(text.contains("\"retained_layer_execution_claim\": true"));
+        assert!(text.contains("\"complete_layer_claim\": false"));
+        assert!(text.contains("\"complete_decoder_claim\": false"));
         assert!(text.contains("\"throughput_claim\": false"));
     }
 

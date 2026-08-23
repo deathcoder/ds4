@@ -672,6 +672,16 @@ so the first sparse step sees its newly completed row, matching DwarfStar's
 state ordering. A deliberate guard remains after row 1,025 until the merge
 workspace and repeated merge passes are generalized for larger contexts.
 
+`retained-sparse-boundary-probe` seeds the exact persistent layer-2 keys just
+before position 4099: incoming HC, 127 logical raw-ring rows, 1,024 rows in each
+compressed cache, and the attention/indexer recurrent states. It then uses the
+general retained 54-dispatch schedule to append compressed row 1,025 and checks
+16 produced or persisted tensors by bit pattern with 35/35 no-copy model views.
+Two empty, queue-ordered predecessor command buffers establish the declared
+layer-2 chain tail without claiming that captured layers 0 and 1 executed. The
+control ends its claim at the attention HC post because its placeholder token
+is not the DwarfStar FFN oracle.
+
 ## Position-127 ratio-128 compressor replay
 
 Schema: `rust-star-ratio128-compressor-replay-probe-v1`.

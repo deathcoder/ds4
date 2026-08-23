@@ -163,6 +163,9 @@ elif [ "$#" -eq 1 ]; then
         echo "==> diagnostic fixed-top-512 sparse indexed attention"
         "$target_dir/release/rust-star" sparse-indexed-attention-probe "$1" \
             --json "$target_dir/sparse-indexed-attention-probe.json"
+        echo "==> retained layer-2 production sparse boundary"
+        "$target_dir/release/rust-star" retained-sparse-boundary-probe "$1" \
+            --json "$target_dir/retained-sparse-boundary-probe.json"
         echo "==> repeated layers 0-3 with setup and correctness readback outside timing"
         "$target_dir/release/rust-star" layers0123-bench "$1" \
             --warmup 5 --iterations 20 \

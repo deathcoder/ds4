@@ -13048,6 +13048,155 @@ int rust_star_metal_run_output_head(
     }
 }
 
+int rust_star_metal_seed_retained_sparse_layer2_position4099(
+    void *opaque_context,
+    const float *input_hc,
+    const float *raw_cache_prior,
+    const float *attention_compressed_prior,
+    const float *indexer_compressed_prior,
+    const float *attention_state_kv_pre,
+    const float *attention_state_score_pre,
+    const float *indexer_state_kv_pre,
+    const float *indexer_state_score_pre,
+    char *error,
+    size_t error_bytes)
+{
+    const uint32_t layer_index = 2u;
+    const uint32_t position = 4099u;
+    const uint32_t raw_capacity_rows = 128u;
+    const uint32_t prior_raw_rows = 127u;
+    const uint32_t compressed_capacity_rows = 1027u;
+    const uint32_t prior_compressed_rows = 1024u;
+    if (!opaque_context || !input_hc || !raw_cache_prior ||
+        !attention_compressed_prior || !indexer_compressed_prior ||
+        !attention_state_kv_pre || !attention_state_score_pre ||
+        !indexer_state_kv_pre || !indexer_state_score_pre) {
+        return fail_with_message(error, error_bytes,
+            @"retained sparse-boundary seed received a null input");
+    }
+    @autoreleasepool {
+        RustStarMetalContext *context = (__bridge RustStarMetalContext *)opaque_context;
+        id<MTLBuffer> prior_hc = persistent_buffer(
+            context, layer_buffer_key(@"layer_hc_state", YES, layer_index-1u),
+            4u*4096u*sizeof(float), error, error_bytes);
+        id<MTLBuffer> raw_cache = persistent_buffer(
+            context, @"kv_cache_layer_2",
+            raw_capacity_rows*512u*sizeof(float), error, error_bytes);
+        id<MTLBuffer> attention_cache = persistent_buffer(
+            context, layer_buffer_key(@"compressed_kv_cache", YES, layer_index),
+            compressed_capacity_rows*512u*sizeof(float), error, error_bytes);
+        id<MTLBuffer> indexer_cache = persistent_buffer(
+            context, layer_buffer_key(@"compressed_indexer_cache", YES, layer_index),
+            compressed_capacity_rows*128u*sizeof(float), error, error_bytes);
+        id<MTLBuffer> attention_state_kv = persistent_buffer(
+            context, layer_buffer_key(@"compressor_state_kv", YES, layer_index),
+            8u*1024u*sizeof(float), error, error_bytes);
+        id<MTLBuffer> attention_state_score = persistent_buffer(
+            context, layer_buffer_key(@"compressor_state_score", YES, layer_index),
+            8u*1024u*sizeof(float), error, error_bytes);
+        id<MTLBuffer> indexer_state_kv = persistent_buffer(
+            context, layer_buffer_key(@"indexer_state_kv", YES, layer_index),
+            8u*256u*sizeof(float), error, error_bytes);
+        id<MTLBuffer> indexer_state_score = persistent_buffer(
+            context, layer_buffer_key(@"indexer_state_score", YES, layer_index),
+            8u*256u*sizeof(float), error, error_bytes);
+        if (!prior_hc || !raw_cache || !attention_cache || !indexer_cache ||
+            !attention_state_kv || !attention_state_score ||
+            !indexer_state_kv || !indexer_state_score) {
+            if (error && error_bytes != 0u && error[0] != '\0') return 0;
+            return fail_with_message(error, error_bytes,
+                @"retained sparse-boundary seed could not allocate state");
+        }
+
+        memcpy(prior_hc.contents, input_hc, 4u*4096u*sizeof(float));
+        memset(raw_cache.contents, 0, raw_capacity_rows*512u*sizeof(float));
+        for (uint32_t row = 0; row < prior_raw_rows; row++) {
+            const uint32_t logical_position = position-prior_raw_rows+row;
+            const uint32_t slot = logical_position % raw_capacity_rows;
+            memcpy((uint8_t *)raw_cache.contents +
+                       (NSUInteger)slot*512u*sizeof(float),
+                   raw_cache_prior + (NSUInteger)row*512u,
+                   512u*sizeof(float));
+        }
+        memset(attention_cache.contents, 0,
+            compressed_capacity_rows*512u*sizeof(float));
+        memcpy(attention_cache.contents, attention_compressed_prior,
+            prior_compressed_rows*512u*sizeof(float));
+        memset(indexer_cache.contents, 0,
+            compressed_capacity_rows*128u*sizeof(float));
+        memcpy(indexer_cache.contents, indexer_compressed_prior,
+            prior_compressed_rows*128u*sizeof(float));
+        memcpy(attention_state_kv.contents, attention_state_kv_pre,
+            8u*1024u*sizeof(float));
+        memcpy(attention_state_score.contents, attention_state_score_pre,
+            8u*1024u*sizeof(float));
+        memcpy(indexer_state_kv.contents, indexer_state_kv_pre,
+            8u*256u*sizeof(float));
+        memcpy(indexer_state_score.contents, indexer_state_score_pre,
+            8u*256u*sizeof(float));
+
+        /* The normal chained scheduler requires contiguous lower-layer
+         * command ownership. Two empty queue-ordered predecessors represent
+         * the captured incoming layer-2 HC boundary without pretending that
+         * layers 0 and 1 were executed by this diagnostic. */
+        [context.chainedCommands removeAllObjects];
+        [context.chainedWallStarts removeAllObjects];
+        context.chainedReady = NO;
+        context.chainedWallEnd = 0.0;
+        context.chainedFinalLayer = layer_index;
+        for (uint32_t layer = 0; layer < layer_index; layer++) {
+            id<MTLCommandBuffer> predecessor = [context.queue commandBuffer];
+            if (!predecessor) {
+                return fail_with_message(error, error_bytes,
+                    @"retained sparse-boundary seed could not create predecessor command");
+            }
+            context.chainedCommands[@(layer)] = predecessor;
+            context.chainedWallStarts[@(layer)] = @(monotonic_ms());
+            [predecessor commit];
+        }
+        return 1;
+    }
+}
+
+int rust_star_metal_copy_retained_sparse_layer2_position4099(
+    void *opaque_context,
+    float *indexer_q,
+    float *indexer_weights,
+    float *indexer_scores,
+    int32_t *indexer_topk,
+    char *error,
+    size_t error_bytes)
+{
+    if (!opaque_context || !indexer_q || !indexer_weights ||
+        !indexer_scores || !indexer_topk) {
+        return fail_with_message(error, error_bytes,
+            @"retained sparse-boundary readback received a null output");
+    }
+    @autoreleasepool {
+        RustStarMetalContext *context = (__bridge RustStarMetalContext *)opaque_context;
+        id<MTLBuffer> q = context.activationBufferCache[
+            layer_buffer_key(@"sparse_indexer_q", YES, 2u)];
+        id<MTLBuffer> weights = context.activationBufferCache[
+            layer_buffer_key(@"sparse_indexer_weights", YES, 2u)];
+        id<MTLBuffer> scores = context.activationBufferCache[
+            layer_buffer_key(@"sparse_indexer_scores", YES, 2u)];
+        id<MTLBuffer> topk = context.activationBufferCache[
+            layer_buffer_key(@"sparse_indexer_topk", YES, 2u)];
+        if (!q || q.length != 64u*128u*sizeof(float) ||
+            !weights || weights.length != 64u*sizeof(float) ||
+            !scores || scores.length < 1025u*sizeof(float) ||
+            !topk || topk.length != 512u*sizeof(int32_t)) {
+            return fail_with_message(error, error_bytes,
+                @"retained sparse-boundary readback could not find exact buffers");
+        }
+        memcpy(indexer_q, q.contents, 64u*128u*sizeof(float));
+        memcpy(indexer_weights, weights.contents, 64u*sizeof(float));
+        memcpy(indexer_scores, scores.contents, 1025u*sizeof(float));
+        memcpy(indexer_topk, topk.contents, 512u*sizeof(int32_t));
+        return 1;
+    }
+}
+
 int rust_star_metal_copy_compressed_kv_row(
     void *opaque_context,
     uint32_t layer_index,

@@ -65,6 +65,14 @@ that this sequential construction differs from DwarfStar's batched prefill in
 all 129,280 logits despite selecting the same token. The path therefore remains
 diagnostic: eligible measurements still require complete native batched prefill
 and a full decoder run through the sparse frontier.
+
+A separate retained-state control now seeds the exact layer-2 state immediately
+before position 4099 and executes the production retained schedule through its
+1,025th compressed row. It matches 16 sparse-boundary tensors bit-for-bit over
+54 dispatches with 35/35 no-copy mappings. This closes the first retained sparse
+boundary, but not preceding-layer execution, the token-dependent FFN, a
+complete decoder, output logits, or throughput.
+
 The first native
 batch boundary is now implemented separately: repeated captures localize the
 earliest difference to layer 0's Q8 Q-A projection, and the Rust Metal probe
