@@ -727,18 +727,20 @@ rust-star/.work/runtime-target/release/rust-star \
   --json rust-star/.work/runtime-target/retained-sparse-multimerge-probe.json
 ```
 
-This control seeds the exact layer-2 position-8195 boundary, including a
-wrapped 127-row raw-ring window and 2,048 prior rows in both compressed caches.
-The ordinary retained schedule commits row 2,049, emits three initial sort
-blocks into a 1,025-index active workspace, performs two ping-pong merge passes,
-and matches all 39 fixture-produced tensors plus the derived f16 raw-cache row
-by bit pattern across 55 dispatches with 35/35 no-copy mappings. Two fresh
-DwarfStar processes independently bind the token-hashed layer-2 router to token
-381. The exact checks continue through selected experts, the weighted SwiGLU,
-routed and shared-expert outputs, and final layer HC, so this is a complete
-retained layer-2 C0 control. The workspace allocation itself is based on context
-capacity so its identity remains stable as visible rows grow. Preceding layers,
-the complete decoder, logits, and throughput remain unclaimed.
+This control seeds the prior 127-row raw-ring histories for layers 0-2 and the
+2,048 prior rows plus recurrent states in both layer-2 compressed paths. It does
+not seed incoming HC. Layers 0 and 1 execute normally for token 381, their live
+HC handoff feeds layer 2, and the ordinary retained schedule commits row 2,049,
+emits three initial sort blocks, and performs two ping-pong merge passes. Two
+fresh DwarfStar processes independently pin both predecessor cache histories
+and HC checkpoints. All 44 checked boundaries match by bit pattern across 113
+total dispatches with 85/85 no-copy mappings; layer 2 accounts for 55 dispatches
+and 35/35 mappings. The exact checks continue through selected experts, weighted
+SwiGLU, routed/shared outputs, and final layer HC. The workspace allocation is
+based on context capacity so its identity remains stable as visible rows grow.
+Preceding layers 0 and 1 and the complete retained layer 2 are now claimed; the
+seeded prior histories, complete decoder, logits, and throughput remain outside
+the claim.
 
 To cross the first ratio-128 emission boundary without overstating decoder
 coverage:

@@ -75,14 +75,15 @@ complete decoder, output logits, or throughput.
 
 The retained sparse scheduler now uses a context-capacity-sized ping-pong
 workspace and derives its active sort/merge schedule from visible compressed
-rows. A second exact control at layer 2 position 8195 seeds 2,048 prior rows,
-commits row 2,049, runs three initial sort blocks and two merge passes, and
-matches every one of the fixture's 39 produced tensors plus the derived raw
-cache row over 55 dispatches with 35/35 no-copy mappings. Two fresh DwarfStar
-processes independently bind the hash router to token 381. The attention path,
-token-dependent FFN, selected experts, routed/shared outputs, and final layer HC
-therefore form a complete retained layer-2 C0 control. Preceding layers, a
-complete decoder, output logits, and throughput remain unclaimed.
+rows. A second exact control at position 8195 seeds the prior 127-row raw-cache
+histories for layers 0-2 plus layer 2's compressed/recurrent state, but no
+incoming HC. It executes layers 0, 1, and 2 normally for token 381, commits
+compressed row 2,049, and runs three initial sort blocks plus two merge passes.
+All 44 checked boundaries match, including both predecessor cache writes and HC
+handoffs, over 113 dispatches with 85/85 no-copy mappings. This proves live
+preceding-layer execution and the complete retained sparse layer, while still
+leaving the prior cache histories seeded. A complete decoder, output logits,
+and throughput remain unclaimed.
 
 The first native
 batch boundary is now implemented separately: repeated captures localize the

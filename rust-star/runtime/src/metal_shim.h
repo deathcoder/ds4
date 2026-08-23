@@ -826,6 +826,23 @@ int rust_star_metal_seed_retained_sparse_layer2_position8195(
     char *error,
     size_t error_bytes);
 
+/* Seeds only the captured raw/compressed cache histories and recurrent
+ * layer-2 compressor states. Layers 0 and 1 then execute normally and produce
+ * the live HC handoff consumed by layer 2. */
+int rust_star_metal_seed_retained_sparse_layers012_position8195(
+    void *context,
+    const float *layer0_raw_cache_prior,
+    const float *layer1_raw_cache_prior,
+    const float *layer2_raw_cache_prior,
+    const float *attention_compressed_prior,
+    const float *indexer_compressed_prior,
+    const float *attention_state_kv_pre,
+    const float *attention_state_score_pre,
+    const float *indexer_state_kv_pre,
+    const float *indexer_state_score_pre,
+    char *error,
+    size_t error_bytes);
+
 int rust_star_metal_copy_retained_sparse_layer2_position8195(
     void *context,
     float *indexer_q,

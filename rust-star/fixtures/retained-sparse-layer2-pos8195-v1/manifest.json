@@ -30,7 +30,17 @@
     "excluded_nondeterministic_scratch_hooks": [
       "ffn_moe_gate_clamped",
       "ffn_moe_up_clamped"
-    ]
+    ],
+    "predecessor_layers": [
+      0,
+      1
+    ],
+    "predecessor_fresh_process_captures": 2,
+    "predecessor_fresh_process_bitwise_match": true,
+    "predecessor_layer1_handoff_match": true,
+    "predecessor_raw_capture_executable_sha256": "a8206cf77be4e903a1c6a56fc39f794a348a9e5fdb907236f62c49f6d6d4da53",
+    "predecessor_hc_capture_executable_sha256": "d32bff9535405147fa58eba8b505bfadccd15adb2a2eb8ff2549ff983e775b18",
+    "temporary_predecessor_raw_hook_removed_after_capture": true
   },
   "scope": {
     "kind": "layer-segment",
@@ -44,7 +54,12 @@
     "prior_compressed_rows": 2048,
     "sort_blocks": 3,
     "merge_passes": 2,
-    "top_k": 512
+    "top_k": 512,
+    "executed_predecessor_layers": [
+      0,
+      1
+    ],
+    "predecessor_prior_raw_rows": 127
   },
   "operations": [
     {
@@ -294,7 +309,10 @@
     "complete_decoder": false,
     "output_logits": false,
     "throughput": false,
-    "repeated_merge_boundary": true
+    "repeated_merge_boundary": true,
+    "complete_layer": true,
+    "preceding_layers_execution": true,
+    "preceding_layer_raw_history_seeded": true
   },
   "tensors": [
     {
@@ -925,6 +943,74 @@
       "path": "kqv-out.f32le.bin",
       "bytes": 131072,
       "sha256": "e1796294e2732dce3623cea312c0439778367129d1ffddb372e16db2b547cacc"
+    },
+    {
+      "name": "layer0_raw_cache_prior",
+      "hook": "raw_cache_decode",
+      "role": "input",
+      "dtype": "f32",
+      "shape": [
+        127,
+        512
+      ],
+      "encoding": "little-endian-ieee754-binary32",
+      "path": "layer0-raw-cache-prior.f32le.bin",
+      "bytes": 260096,
+      "sha256": "feef1a1a51346f07f2ce0d1c66fdfd80840a7c3c4d1fd69849c59331853f307b"
+    },
+    {
+      "name": "layer0_raw_cache_current",
+      "hook": "raw_cache_decode",
+      "role": "intermediate",
+      "dtype": "f32",
+      "shape": [
+        512
+      ],
+      "encoding": "little-endian-ieee754-binary32",
+      "path": "layer0-raw-cache-current.f32le.bin",
+      "bytes": 2048,
+      "sha256": "23595f01d1fcec5e168233e14bc80a5fc5db4e6f73ddca63cea093d79f9f59a7"
+    },
+    {
+      "name": "layer1_raw_cache_prior",
+      "hook": "raw_cache_decode",
+      "role": "input",
+      "dtype": "f32",
+      "shape": [
+        127,
+        512
+      ],
+      "encoding": "little-endian-ieee754-binary32",
+      "path": "layer1-raw-cache-prior.f32le.bin",
+      "bytes": 260096,
+      "sha256": "b12c17b82140cad8437e376d1c5e28bcdc495861ea449e842bffbbccfc3bbc5b"
+    },
+    {
+      "name": "layer1_raw_cache_current",
+      "hook": "raw_cache_decode",
+      "role": "intermediate",
+      "dtype": "f32",
+      "shape": [
+        512
+      ],
+      "encoding": "little-endian-ieee754-binary32",
+      "path": "layer1-raw-cache-current.f32le.bin",
+      "bytes": 2048,
+      "sha256": "f1d8d7f2b12c63ba7940bc0d9c0072596f71aeb666d92816759952dc14c3e3a3"
+    },
+    {
+      "name": "layer0_hc_ffn_post",
+      "hook": "hc_ffn_post",
+      "role": "intermediate",
+      "dtype": "f32",
+      "shape": [
+        4,
+        4096
+      ],
+      "encoding": "little-endian-ieee754-binary32",
+      "path": "layer0-hc-ffn-post.f32le.bin",
+      "bytes": 65536,
+      "sha256": "bf27243a62d52ec3be9ef3206851d6189b4fb041008eb151efba6e83fe9140e9"
     }
   ]
 }

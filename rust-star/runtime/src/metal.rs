@@ -457,6 +457,20 @@ const RETAINED_MULTIMERGE_FFN_SHEXP_BYTES: &[u8] =
     include_bytes!("../../fixtures/retained-sparse-layer2-pos8195-v1/ffn-shexp.f32le.bin");
 const RETAINED_MULTIMERGE_HC_FFN_POST_BYTES: &[u8] =
     include_bytes!("../../fixtures/retained-sparse-layer2-pos8195-v1/hc-ffn-post.f32le.bin");
+const RETAINED_MULTIMERGE_LAYER0_RAW_PRIOR_BYTES: &[u8] = include_bytes!(
+    "../../fixtures/retained-sparse-layer2-pos8195-v1/layer0-raw-cache-prior.f32le.bin"
+);
+const RETAINED_MULTIMERGE_LAYER1_RAW_PRIOR_BYTES: &[u8] = include_bytes!(
+    "../../fixtures/retained-sparse-layer2-pos8195-v1/layer1-raw-cache-prior.f32le.bin"
+);
+const RETAINED_MULTIMERGE_LAYER0_RAW_CURRENT_BYTES: &[u8] = include_bytes!(
+    "../../fixtures/retained-sparse-layer2-pos8195-v1/layer0-raw-cache-current.f32le.bin"
+);
+const RETAINED_MULTIMERGE_LAYER1_RAW_CURRENT_BYTES: &[u8] = include_bytes!(
+    "../../fixtures/retained-sparse-layer2-pos8195-v1/layer1-raw-cache-current.f32le.bin"
+);
+const RETAINED_MULTIMERGE_LAYER0_HC_FFN_POST_BYTES: &[u8] =
+    include_bytes!("../../fixtures/retained-sparse-layer2-pos8195-v1/layer0-hc-ffn-post.f32le.bin");
 const PREFILL_Q8_BATCH_OUTPUT_BYTES: &[u8] =
     include_bytes!("../../fixtures/prefill-q8-boundary-2048-v1/q-lora-batch-final-tile.f32le.bin");
 const PREFILL_Q8_DECODE_OUTPUT_BYTES: &[u8] =
@@ -2186,6 +2200,11 @@ pub struct RetainedSparseBoundaryProbeReport {
     pub wall_ms: f64,
     pub gpu_ms: f64,
     pub exact_tensor_checks: u32,
+    pub executed_predecessor_layers: u32,
+    pub seeded_predecessor_raw_rows_per_layer: u32,
+    pub total_dispatches: u32,
+    pub total_wrapped_model_ranges: u32,
+    pub total_pointer_matches: u32,
     pub q_current_checksum: u64,
     pub compressed_kv_checksum: u64,
     pub compressed_indexer_checksum: u64,
@@ -2196,6 +2215,10 @@ pub struct RetainedSparseBoundaryProbeReport {
     pub attention_hc_checksum: u64,
     pub selected_experts_checksum: u64,
     pub final_hc_checksum: u64,
+    pub layer0_raw_current_checksum: u64,
+    pub layer1_raw_current_checksum: u64,
+    pub layer0_final_hc_checksum: u64,
+    pub layer1_final_hc_checksum: u64,
 }
 
 pub fn write_ingress_probe_json<W: Write>(
@@ -3122,6 +3145,11 @@ pub fn write_retained_sparse_boundary_probe_json<W: Write>(
         || report.wrapped_model_ranges != 35
         || report.pointer_matches != 35
         || report.exact_tensor_checks != 16
+        || report.executed_predecessor_layers != 0
+        || report.seeded_predecessor_raw_rows_per_layer != 0
+        || report.total_dispatches != 54
+        || report.total_wrapped_model_ranges != 35
+        || report.total_pointer_matches != 35
     {
         return Err(Error::invalid(
             "retained sparse-boundary report has inconsistent metadata",
@@ -3181,7 +3209,12 @@ pub fn write_retained_sparse_multimerge_probe_json<W: Write>(
         || report.dispatches != 55
         || report.wrapped_model_ranges != 35
         || report.pointer_matches != 35
-        || report.exact_tensor_checks != 40
+        || report.exact_tensor_checks != 44
+        || report.executed_predecessor_layers != 2
+        || report.seeded_predecessor_raw_rows_per_layer != 127
+        || report.total_dispatches != 113
+        || report.total_wrapped_model_ranges != 85
+        || report.total_pointer_matches != 85
     {
         return Err(Error::invalid(
             "retained sparse multimerge report has inconsistent metadata",
@@ -3189,7 +3222,7 @@ pub fn write_retained_sparse_multimerge_probe_json<W: Write>(
     }
     write!(
         output,
-        "{{\n  \"schema\": \"{RETAINED_SPARSE_MULTIMERGE_PROBE_SCHEMA}\",\n  \"classification\": \"retained-complete-layer-c0-control\",\n  \"fixture\": \"{}\",\n  \"token\": {},\n  \"boundary\": {{\"layer\": {}, \"position\": {}, \"raw_rows\": {}, \"compressed_rows\": {}, \"top_k\": {}}},\n  \"seed\": {{\"incoming_hc\": true, \"raw_rows\": {}, \"compressed_rows\": {}, \"recurrent_attention_state\": true, \"recurrent_indexer_state\": true}},\n  \"schedule\": {{\"dispatches\": {}, \"sort_blocks\": {}, \"merge_passes\": {}, \"topk_work_width\": {}, \"ping_pong_workspace\": true, \"same_step_compressed_row_commit\": true, \"indexed_attention_splits\": 12}},\n  \"mapping\": {{\"wrapped_model_ranges\": {}, \"pointer_matches\": {}}},\n  \"timing\": {{\"wall_ms\": {:.6}, \"gpu_ms\": {:.6}}},\n  \"checksums\": {{\"q_current\": {}, \"compressed_kv\": {}, \"compressed_indexer\": {}, \"indexer_scores\": {}, \"indexer_topk\": {}, \"kqv_out\": {}, \"kqv_back\": {}, \"attention_hc\": {}, \"selected_experts\": {}, \"final_hc\": {}}},\n  \"exact_tensor_checks\": {},\n  \"c0_bitwise_match\": true,\n  \"retained_layer_execution_claim\": true,\n  \"repeated_merge_boundary_claim\": true,\n  \"complete_layer_claim\": true,\n  \"preceding_layers_execution_claim\": false,\n  \"complete_decoder_claim\": false,\n  \"output_logits_claim\": false,\n  \"throughput_claim\": false\n}}\n",
+        "{{\n  \"schema\": \"{RETAINED_SPARSE_MULTIMERGE_PROBE_SCHEMA}\",\n  \"classification\": \"retained-layers012-sparse-c0-control\",\n  \"fixture\": \"{}\",\n  \"token\": {},\n  \"boundary\": {{\"layer\": {}, \"position\": {}, \"raw_rows\": {}, \"compressed_rows\": {}, \"top_k\": {}}},\n  \"seed\": {{\"incoming_hc\": false, \"predecessor_raw_rows_per_layer\": {}, \"layer2_raw_rows\": {}, \"compressed_rows\": {}, \"recurrent_attention_state\": true, \"recurrent_indexer_state\": true}},\n  \"execution\": {{\"predecessor_layers\": {}, \"total_dispatches\": {}, \"layer2_dispatches\": {}}},\n  \"schedule\": {{\"sort_blocks\": {}, \"merge_passes\": {}, \"topk_work_width\": {}, \"ping_pong_workspace\": true, \"same_step_compressed_row_commit\": true, \"indexed_attention_splits\": 12}},\n  \"mapping\": {{\"total_wrapped_model_ranges\": {}, \"total_pointer_matches\": {}, \"layer2_wrapped_model_ranges\": {}, \"layer2_pointer_matches\": {}}},\n  \"timing\": {{\"layer2_wall_ms\": {:.6}, \"layer2_gpu_ms\": {:.6}}},\n  \"checksums\": {{\"layer0_raw_current\": {}, \"layer1_raw_current\": {}, \"layer0_final_hc\": {}, \"layer1_final_hc\": {}, \"q_current\": {}, \"compressed_kv\": {}, \"compressed_indexer\": {}, \"indexer_scores\": {}, \"indexer_topk\": {}, \"kqv_out\": {}, \"kqv_back\": {}, \"attention_hc\": {}, \"selected_experts\": {}, \"final_hc\": {}}},\n  \"exact_tensor_checks\": {},\n  \"c0_bitwise_match\": true,\n  \"retained_layer_execution_claim\": true,\n  \"repeated_merge_boundary_claim\": true,\n  \"complete_layer_claim\": true,\n  \"preceding_layers_execution_claim\": true,\n  \"preceding_layer_history_seeded_claim\": true,\n  \"complete_decoder_claim\": false,\n  \"output_logits_claim\": false,\n  \"throughput_claim\": false\n}}\n",
         report.fixture_id,
         report.token,
         report.layer,
@@ -3197,16 +3230,25 @@ pub fn write_retained_sparse_multimerge_probe_json<W: Write>(
         report.raw_rows,
         report.compressed_rows,
         report.top_k,
+        report.seeded_predecessor_raw_rows_per_layer,
         report.seeded_raw_rows,
         report.seeded_compressed_rows,
+        report.executed_predecessor_layers,
+        report.total_dispatches,
         report.dispatches,
         report.sort_blocks,
         report.merge_passes,
         report.topk_work_width,
+        report.total_wrapped_model_ranges,
+        report.total_pointer_matches,
         report.wrapped_model_ranges,
         report.pointer_matches,
         report.wall_ms,
         report.gpu_ms,
+        report.layer0_raw_current_checksum,
+        report.layer1_raw_current_checksum,
+        report.layer0_final_hc_checksum,
+        report.layer1_final_hc_checksum,
         report.q_current_checksum,
         report.compressed_kv_checksum,
         report.compressed_indexer_checksum,
@@ -8553,10 +8595,11 @@ mod imp {
             error: *mut c_char,
             error_bytes: usize,
         ) -> i32;
-        fn rust_star_metal_seed_retained_sparse_layer2_position8195(
+        fn rust_star_metal_seed_retained_sparse_layers012_position8195(
             context: *mut c_void,
-            input_hc: *const f32,
-            raw_cache_prior: *const f32,
+            layer0_raw_cache_prior: *const f32,
+            layer1_raw_cache_prior: *const f32,
+            layer2_raw_cache_prior: *const f32,
             attention_compressed_prior: *const f32,
             indexer_compressed_prior: *const f32,
             attention_state_kv_pre: *const f32,
@@ -14021,25 +14064,53 @@ mod imp {
 
         let context = Context::new()?;
         let mut error = [0 as c_char; ERROR_BYTES];
+        let layer0_raw_prior = if multimerge {
+            decode_f32_fixture(
+                RETAINED_MULTIMERGE_LAYER0_RAW_PRIOR_BYTES,
+                "retained layer-0 raw-cache seed",
+            )?
+        } else {
+            Vec::new()
+        };
+        let layer1_raw_prior = if multimerge {
+            decode_f32_fixture(
+                RETAINED_MULTIMERGE_LAYER1_RAW_PRIOR_BYTES,
+                "retained layer-1 raw-cache seed",
+            )?
+        } else {
+            Vec::new()
+        };
         let seeded = unsafe {
-            let seed = if multimerge {
-                rust_star_metal_seed_retained_sparse_layer2_position8195
+            if multimerge {
+                rust_star_metal_seed_retained_sparse_layers012_position8195(
+                    context.0,
+                    layer0_raw_prior.as_ptr(),
+                    layer1_raw_prior.as_ptr(),
+                    raw_prior.as_ptr(),
+                    attention_prior.as_ptr(),
+                    indexer_prior.as_ptr(),
+                    attention_state_kv.as_ptr(),
+                    attention_state_score.as_ptr(),
+                    indexer_state_kv.as_ptr(),
+                    indexer_state_score.as_ptr(),
+                    error.as_mut_ptr(),
+                    error.len(),
+                )
             } else {
-                rust_star_metal_seed_retained_sparse_layer2_position4099
-            };
-            seed(
-                context.0,
-                input_hc.as_ptr(),
-                raw_prior.as_ptr(),
-                attention_prior.as_ptr(),
-                indexer_prior.as_ptr(),
-                attention_state_kv.as_ptr(),
-                attention_state_score.as_ptr(),
-                indexer_state_kv.as_ptr(),
-                indexer_state_score.as_ptr(),
-                error.as_mut_ptr(),
-                error.len(),
-            )
+                rust_star_metal_seed_retained_sparse_layer2_position4099(
+                    context.0,
+                    input_hc.as_ptr(),
+                    raw_prior.as_ptr(),
+                    attention_prior.as_ptr(),
+                    indexer_prior.as_ptr(),
+                    attention_state_kv.as_ptr(),
+                    attention_state_score.as_ptr(),
+                    indexer_state_kv.as_ptr(),
+                    indexer_state_score.as_ptr(),
+                    error.as_mut_ptr(),
+                    error.len(),
+                )
+            }
         };
         if seeded == 0 {
             return Err(Error::invalid(format!(
@@ -14048,31 +14119,95 @@ mod imp {
             )));
         }
 
-        let mut prepared =
-            PreparedLayerExecution::new_cold_with_capacity(model, 2, context_capacity)?;
-        prepared.validate_expected = false;
-        run_prepared_layer_iterations(
-            model,
-            &context,
-            &mut prepared,
-            token,
-            position,
-            0,
-            1,
-            COMMAND_CHAINED_FINAL,
-            2,
-        )?;
-        let execution = run_prepared_layer_iterations(
-            model,
-            &context,
-            &mut prepared,
-            token,
-            position,
-            0,
-            1,
-            COMMAND_CHAINED_COLLECT,
-            2,
-        )?;
+        let (prepared, execution, predecessor_layers, predecessor_reports) = if multimerge {
+            let mut layers = (0..=2)
+                .map(|layer_index| {
+                    PreparedLayerExecution::new_cold_with_capacity(
+                        model,
+                        layer_index,
+                        context_capacity,
+                    )
+                })
+                .collect::<Result<Vec<_>>>()?;
+            for layer in &mut layers {
+                layer.validate_expected = false;
+            }
+            for (layer_index, layer) in layers.iter_mut().enumerate() {
+                run_prepared_layer_iterations(
+                    model,
+                    &context,
+                    layer,
+                    token,
+                    position,
+                    0,
+                    1,
+                    if layer_index == 2 {
+                        COMMAND_CHAINED_FINAL
+                    } else {
+                        COMMAND_CHAINED_ENQUEUE
+                    },
+                    2,
+                )?;
+            }
+            let mut reports = Vec::with_capacity(3);
+            let mut layer2_execution = None;
+            for (layer_index, layer) in layers.iter_mut().enumerate() {
+                let collected = run_prepared_layer_iterations(
+                    model,
+                    &context,
+                    layer,
+                    token,
+                    position,
+                    0,
+                    1,
+                    COMMAND_CHAINED_COLLECT,
+                    2,
+                )?;
+                if layer_index == 2 {
+                    layer2_execution = Some(collected);
+                } else {
+                    reports.push(collected.report);
+                }
+            }
+            let layer2 = layers.pop().ok_or_else(|| {
+                Error::invalid("retained predecessor execution lost its layer-2 state")
+            })?;
+            (
+                layer2,
+                layer2_execution.ok_or_else(|| {
+                    Error::invalid("retained predecessor execution lost its layer-2 report")
+                })?,
+                layers,
+                reports,
+            )
+        } else {
+            let mut layer =
+                PreparedLayerExecution::new_cold_with_capacity(model, 2, context_capacity)?;
+            layer.validate_expected = false;
+            run_prepared_layer_iterations(
+                model,
+                &context,
+                &mut layer,
+                token,
+                position,
+                0,
+                1,
+                COMMAND_CHAINED_FINAL,
+                2,
+            )?;
+            let collected = run_prepared_layer_iterations(
+                model,
+                &context,
+                &mut layer,
+                token,
+                position,
+                0,
+                1,
+                COMMAND_CHAINED_COLLECT,
+                2,
+            )?;
+            (layer, collected, Vec::new(), Vec::new())
+        };
 
         let mut indexer_q = vec![0.0_f32; 64 * 128];
         let mut indexer_weights = vec![0.0_f32; 64];
@@ -14246,6 +14381,50 @@ mod imp {
             )));
         }
         if multimerge {
+            if predecessor_layers.len() != 2 || predecessor_reports.len() != 2 {
+                return Err(Error::invalid(
+                    "retained sparse-boundary predecessor execution is incomplete",
+                ));
+            }
+            let expected_layer0_raw_current = decode_f32_fixture(
+                RETAINED_MULTIMERGE_LAYER0_RAW_CURRENT_BYTES,
+                "retained layer-0 current raw-cache row",
+            )?;
+            let expected_layer1_raw_current = decode_f32_fixture(
+                RETAINED_MULTIMERGE_LAYER1_RAW_CURRENT_BYTES,
+                "retained layer-1 current raw-cache row",
+            )?;
+            let expected_layer0_final_hc = decode_f32_fixture(
+                RETAINED_MULTIMERGE_LAYER0_HC_FFN_POST_BYTES,
+                "retained layer-0 final HC",
+            )?;
+            let predecessor_raw_slot = position as usize % 128 * 512;
+            for (label, actual, expected) in [
+                (
+                    "layer-0 current raw-cache row",
+                    &predecessor_layers[0].cache_rows
+                        [predecessor_raw_slot..predecessor_raw_slot + 512],
+                    expected_layer0_raw_current.as_slice(),
+                ),
+                (
+                    "layer-1 current raw-cache row",
+                    &predecessor_layers[1].cache_rows
+                        [predecessor_raw_slot..predecessor_raw_slot + 512],
+                    expected_layer1_raw_current.as_slice(),
+                ),
+                (
+                    "layer-0 final HC",
+                    predecessor_layers[0].after_ffn_hc.as_slice(),
+                    expected_layer0_final_hc.as_slice(),
+                ),
+                (
+                    "layer-1 final HC / layer-2 handoff",
+                    predecessor_layers[1].after_ffn_hc.as_slice(),
+                    input_hc.as_slice(),
+                ),
+            ] {
+                check_f32(label, actual, expected)?;
+            }
             let expected_attention_mixes = decode_f32_fixture(
                 RETAINED_MULTIMERGE_HC_ATTN_PRE_MIXES_BYTES,
                 "retained attention HC pre mixes",
@@ -14471,6 +14650,43 @@ mod imp {
                 "retained sparse-boundary execution metadata is invalid",
             ));
         }
+        if multimerge
+            && (predecessor_reports[0].dispatches != 30
+                || predecessor_reports[1].dispatches != 28
+                || predecessor_reports[0].wrapped_model_ranges != 25
+                || predecessor_reports[1].wrapped_model_ranges != 25
+                || predecessor_reports[0].pointer_matches != 25
+                || predecessor_reports[1].pointer_matches != 25)
+        {
+            return Err(Error::invalid(
+                "retained sparse-boundary predecessor metadata is invalid",
+            ));
+        }
+        let predecessor_dispatches = predecessor_reports
+            .iter()
+            .map(|report| report.dispatches)
+            .sum::<u32>();
+        let predecessor_wrapped_model_ranges = predecessor_reports
+            .iter()
+            .map(|report| report.wrapped_model_ranges)
+            .sum::<u32>();
+        let predecessor_pointer_matches = predecessor_reports
+            .iter()
+            .map(|report| report.pointer_matches)
+            .sum::<u32>();
+        let predecessor_raw_slot = position as usize % 128 * 512;
+        let layer0_raw_current_checksum = predecessor_layers.first().map_or(0, |layer| {
+            checksum_f32(&layer.cache_rows[predecessor_raw_slot..predecessor_raw_slot + 512])
+        });
+        let layer1_raw_current_checksum = predecessor_layers.get(1).map_or(0, |layer| {
+            checksum_f32(&layer.cache_rows[predecessor_raw_slot..predecessor_raw_slot + 512])
+        });
+        let layer0_final_hc_checksum = predecessor_layers
+            .first()
+            .map_or(0, |layer| checksum_f32(&layer.after_ffn_hc));
+        let layer1_final_hc_checksum = predecessor_layers
+            .get(1)
+            .map_or(0, |layer| checksum_f32(&layer.after_ffn_hc));
 
         Ok(RetainedSparseBoundaryProbeReport {
             fixture_id,
@@ -14490,7 +14706,13 @@ mod imp {
             pointer_matches: execution.report.pointer_matches,
             wall_ms: execution.report.wall_ms,
             gpu_ms: execution.report.gpu_ms,
-            exact_tensor_checks: if multimerge { 40 } else { 16 },
+            exact_tensor_checks: if multimerge { 44 } else { 16 },
+            executed_predecessor_layers: predecessor_layers.len() as u32,
+            seeded_predecessor_raw_rows_per_layer: if multimerge { 127 } else { 0 },
+            total_dispatches: predecessor_dispatches + execution.report.dispatches,
+            total_wrapped_model_ranges: predecessor_wrapped_model_ranges
+                + execution.report.wrapped_model_ranges,
+            total_pointer_matches: predecessor_pointer_matches + execution.report.pointer_matches,
             q_current_checksum: checksum_f32(&prepared.q_cur),
             compressed_kv_checksum: checksum_f32(&prepared.compressed_kv),
             compressed_indexer_checksum: checksum_f32(&prepared.compressed_indexer),
@@ -14501,6 +14723,10 @@ mod imp {
             attention_hc_checksum: checksum_f32(&prepared.after_attention_hc),
             selected_experts_checksum: checksum_i32(&prepared.selected),
             final_hc_checksum: checksum_f32(&prepared.after_ffn_hc),
+            layer0_raw_current_checksum,
+            layer1_raw_current_checksum,
+            layer0_final_hc_checksum,
+            layer1_final_hc_checksum,
         })
     }
 
@@ -20746,6 +20972,20 @@ mod tests {
         assert_eq!(RETAINED_MULTIMERGE_FFN_MOE_OUT_BYTES.len(), 4_096 * 4);
         assert_eq!(RETAINED_MULTIMERGE_FFN_SHEXP_BYTES.len(), 4_096 * 4);
         assert_eq!(RETAINED_MULTIMERGE_HC_FFN_POST_BYTES.len(), 16_384 * 4);
+        assert_eq!(
+            RETAINED_MULTIMERGE_LAYER0_RAW_PRIOR_BYTES.len(),
+            127 * 512 * 4
+        );
+        assert_eq!(
+            RETAINED_MULTIMERGE_LAYER1_RAW_PRIOR_BYTES.len(),
+            127 * 512 * 4
+        );
+        assert_eq!(RETAINED_MULTIMERGE_LAYER0_RAW_CURRENT_BYTES.len(), 512 * 4);
+        assert_eq!(RETAINED_MULTIMERGE_LAYER1_RAW_CURRENT_BYTES.len(), 512 * 4);
+        assert_eq!(
+            RETAINED_MULTIMERGE_LAYER0_HC_FFN_POST_BYTES.len(),
+            16_384 * 4
+        );
     }
 
     #[test]
@@ -20813,6 +21053,11 @@ mod tests {
             wall_ms: 1.0,
             gpu_ms: 0.5,
             exact_tensor_checks: 16,
+            executed_predecessor_layers: 0,
+            seeded_predecessor_raw_rows_per_layer: 0,
+            total_dispatches: 54,
+            total_wrapped_model_ranges: 35,
+            total_pointer_matches: 35,
             q_current_checksum: 1,
             compressed_kv_checksum: 2,
             compressed_indexer_checksum: 3,
@@ -20823,6 +21068,10 @@ mod tests {
             attention_hc_checksum: 8,
             selected_experts_checksum: 9,
             final_hc_checksum: 10,
+            layer0_raw_current_checksum: 0,
+            layer1_raw_current_checksum: 0,
+            layer0_final_hc_checksum: 0,
+            layer1_final_hc_checksum: 0,
         };
         let mut output = Vec::new();
         write_retained_sparse_boundary_probe_json(&mut output, &report).unwrap();
@@ -20855,7 +21104,12 @@ mod tests {
             pointer_matches: 35,
             wall_ms: 1.0,
             gpu_ms: 0.5,
-            exact_tensor_checks: 40,
+            exact_tensor_checks: 44,
+            executed_predecessor_layers: 2,
+            seeded_predecessor_raw_rows_per_layer: 127,
+            total_dispatches: 113,
+            total_wrapped_model_ranges: 85,
+            total_pointer_matches: 85,
             q_current_checksum: 1,
             compressed_kv_checksum: 2,
             compressed_indexer_checksum: 3,
@@ -20866,6 +21120,10 @@ mod tests {
             attention_hc_checksum: 8,
             selected_experts_checksum: 9,
             final_hc_checksum: 10,
+            layer0_raw_current_checksum: 11,
+            layer1_raw_current_checksum: 12,
+            layer0_final_hc_checksum: 13,
+            layer1_final_hc_checksum: 14,
         };
         let mut output = Vec::new();
         write_retained_sparse_multimerge_probe_json(&mut output, &report).unwrap();
@@ -20876,9 +21134,12 @@ mod tests {
         assert!(text.contains("\"ping_pong_workspace\": true"));
         assert!(text.contains("\"repeated_merge_boundary_claim\": true"));
         assert!(text.contains("\"token\": 381"));
-        assert!(text.contains("\"exact_tensor_checks\": 40"));
+        assert!(text.contains("\"exact_tensor_checks\": 44"));
+        assert!(text.contains("\"predecessor_layers\": 2"));
+        assert!(text.contains("\"total_dispatches\": 113"));
         assert!(text.contains("\"complete_layer_claim\": true"));
-        assert!(text.contains("\"preceding_layers_execution_claim\": false"));
+        assert!(text.contains("\"preceding_layers_execution_claim\": true"));
+        assert!(text.contains("\"preceding_layer_history_seeded_claim\": true"));
         assert!(text.contains("\"complete_decoder_claim\": false"));
         assert!(text.contains("\"throughput_claim\": false"));
     }

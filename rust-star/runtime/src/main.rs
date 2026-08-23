@@ -879,14 +879,14 @@ fn run_retained_sparse_multimerge_probe_command(arguments: Vec<OsString>) -> Res
         report.exact_tensor_checks,
     );
     println!(
-        "mapping: {}/{} mmap-backed model ranges preserve pointer identity; {} dispatches; top-k workspace width {}",
-        report.pointer_matches,
-        report.wrapped_model_ranges,
-        report.dispatches,
+        "execution: layers 0-2, {}/{} mmap-backed model ranges preserve pointer identity, {} total dispatches; layer-2 top-k workspace width {}",
+        report.total_pointer_matches,
+        report.total_wrapped_model_ranges,
+        report.total_dispatches,
         report.topk_work_width,
     );
     println!(
-        "claims: retained-layer=true repeated-merge=true complete-layer=true preceding-layers=false complete-decoder=false logits=false throughput=false"
+        "claims: retained-layer=true repeated-merge=true complete-layer=true preceding-layers=true preceding-history-seeded=true complete-decoder=false logits=false throughput=false"
     );
     if let Some(path) = json_path {
         write_retained_sparse_multimerge_probe_file(&path, &report)?;
