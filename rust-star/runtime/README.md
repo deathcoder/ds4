@@ -678,7 +678,8 @@ false`. The next inference boundary is native batched prefill; the following
 decode boundary is sparse indexer top-k once ratio-4 memory exceeds the pinned
 default threshold of 1,024 rows. The model top-k itself remains fixed at 512.
 
-To validate that mechanism at a small diagnostic boundary:
+To validate that mechanism at both the small diagnostic boundary and the
+production default's first sparse row:
 
 ```sh
 rust-star/.work/runtime-target/release/rust-star \
@@ -687,13 +688,16 @@ rust-star/.work/runtime-target/release/rust-star \
   --json rust-star/.work/runtime-target/sparse-indexed-attention-probe.json
 ```
 
-This uses two repeated layer-2 position-2051 oracle captures made with
-`DS4_METAL_DECODE_INDEXER_SPARSE_THRESHOLD=512`. It reproduces the F16 indexer
-projections, compressed RoPE, QAT, direct scores, exact descending top-512,
-12-way indexed mixed attention, reduction, and inverse RoPE bit-for-bit while
-preserving all three mmap model pointers. The pinned default is still 1,024;
-this command claims neither the default switch position, complete decode,
-output logits, nor throughput.
+The command first preserves the repeated layer-2 position-2051 oracle control
+made with `DS4_METAL_DECODE_INDEXER_SPARSE_THRESHOLD=512`, then validates two
+fresh production-default captures at position 4099 and 1,025 compressed rows.
+It reproduces the F16 indexer projections, compressed RoPE, QAT, direct scores,
+the two-block argsort plus merge, exact descending top-512, 12-way indexed mixed
+attention, reduction, and inverse RoPE bit-for-bit while preserving all three
+mmap model pointers. This proves the default switch layer segment, not complete
+decode, output logits, or throughput. The retained even-layer decoder now owns
+the same first-boundary schedule and deliberately stops beyond 1,025 rows until
+its merge workspace is generalized.
 
 To cross the first ratio-128 emission boundary without overstating decoder
 coverage:

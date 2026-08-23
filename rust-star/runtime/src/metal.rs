@@ -61,9 +61,11 @@ pub const PREFILL_FRONTIER_PROBE_SCHEMA: &str = "rust-star-prefill-frontier-diag
 pub const RATIO128_COMPRESSOR_REPLAY_PROBE_SCHEMA: &str =
     "rust-star-ratio128-compressor-replay-probe-v1";
 pub const SPARSE_INDEXED_ATTENTION_PROBE_SCHEMA: &str =
-    "rust-star-sparse-indexed-attention-diagnostic-v1";
+    "rust-star-sparse-indexed-attention-boundary-v2";
 pub const SPARSE_INDEXED_ATTENTION_FIXTURE_ID: &str =
     "dwarfstar-oracle-v1-layer2-pos2051-sparse-indexed-attention";
+pub const SPARSE_INDEXED_ATTENTION_DEFAULT_FIXTURE_ID: &str =
+    "dwarfstar-oracle-v1-layer2-pos4099-sparse-indexed-attention";
 pub const PROJECTION_FIXTURE_ID: &str = "dwarfstar-oracle-v1-layer0-pos1-attn-q-a";
 pub const PREFILL_Q8_BOUNDARY_FIXTURE_ID: &str = "dwarfstar-oracle-v1-prefill-q8-boundary-2048";
 pub const PREFILL_QKV_BOUNDARY_FIXTURE_ID: &str = "dwarfstar-oracle-v1-prefill-qkv-boundary-2048";
@@ -264,6 +266,32 @@ const SPARSE_KQV_OUT_BYTES: &[u8] =
     include_bytes!("../../fixtures/sparse-indexed-attention-pos2051-v1/kqv-out.f32le.bin");
 const SPARSE_KQV_BACK_BYTES: &[u8] =
     include_bytes!("../../fixtures/sparse-indexed-attention-pos2051-v1/kqv-back.f32le.bin");
+const SPARSE_DEFAULT_Q_LORA_NORM_BYTES: &[u8] =
+    include_bytes!("../../fixtures/sparse-indexed-attention-pos4099-v1/q-lora-norm.f32le.bin");
+const SPARSE_DEFAULT_ATTN_NORM_BYTES: &[u8] =
+    include_bytes!("../../fixtures/sparse-indexed-attention-pos4099-v1/attn-norm.f32le.bin");
+const SPARSE_DEFAULT_Q_CURRENT_BYTES: &[u8] =
+    include_bytes!("../../fixtures/sparse-indexed-attention-pos4099-v1/q-current.f32le.bin");
+const SPARSE_DEFAULT_RAW_CACHE_BYTES: &[u8] =
+    include_bytes!("../../fixtures/sparse-indexed-attention-pos4099-v1/raw-cache.f32le.bin");
+const SPARSE_DEFAULT_ATTN_COMP_CACHE_BYTES: &[u8] = include_bytes!(
+    "../../fixtures/sparse-indexed-attention-pos4099-v1/attention-comp-cache.f32le.bin"
+);
+const SPARSE_DEFAULT_INDEX_COMP_CACHE_BYTES: &[u8] = include_bytes!(
+    "../../fixtures/sparse-indexed-attention-pos4099-v1/indexer-comp-cache.f32le.bin"
+);
+const SPARSE_DEFAULT_INDEXER_Q_BYTES: &[u8] =
+    include_bytes!("../../fixtures/sparse-indexed-attention-pos4099-v1/indexer-q.f32le.bin");
+const SPARSE_DEFAULT_INDEXER_WEIGHTS_BYTES: &[u8] =
+    include_bytes!("../../fixtures/sparse-indexed-attention-pos4099-v1/indexer-weights.f32le.bin");
+const SPARSE_DEFAULT_INDEXER_SCORES_BYTES: &[u8] =
+    include_bytes!("../../fixtures/sparse-indexed-attention-pos4099-v1/indexer-scores.f32le.bin");
+const SPARSE_DEFAULT_INDEXER_TOPK_BYTES: &[u8] =
+    include_bytes!("../../fixtures/sparse-indexed-attention-pos4099-v1/indexer-topk.i32le.bin");
+const SPARSE_DEFAULT_KQV_OUT_BYTES: &[u8] =
+    include_bytes!("../../fixtures/sparse-indexed-attention-pos4099-v1/kqv-out.f32le.bin");
+const SPARSE_DEFAULT_KQV_BACK_BYTES: &[u8] =
+    include_bytes!("../../fixtures/sparse-indexed-attention-pos4099-v1/kqv-back.f32le.bin");
 const PREFILL_Q8_BATCH_OUTPUT_BYTES: &[u8] =
     include_bytes!("../../fixtures/prefill-q8-boundary-2048-v1/q-lora-batch-final-tile.f32le.bin");
 const PREFILL_Q8_DECODE_OUTPUT_BYTES: &[u8] =
@@ -2828,15 +2856,15 @@ pub fn write_sparse_indexed_attention_probe_json<W: Write>(
     output: &mut W,
     report: &SparseIndexedAttentionProbeReport,
 ) -> Result<()> {
-    if report.fixture_id != SPARSE_INDEXED_ATTENTION_FIXTURE_ID
-        || report.position != 2051
-        || report.compressed_rows != 513
+    if report.fixture_id != SPARSE_INDEXED_ATTENTION_DEFAULT_FIXTURE_ID
+        || report.position != 4099
+        || report.compressed_rows != 1025
         || report.raw_rows != 128
         || report.top_k != 512
-        || report.diagnostic_threshold_override != 512
+        || report.diagnostic_threshold_override != 0
         || report.pinned_default_threshold != 1024
         || report.first_default_sparse_rows != 1025
-        || report.dispatches != 10
+        || report.dispatches != 11
         || report.wrapped_model_ranges != 3
         || report.pointer_matches != 3
         || report.split_count != 12
@@ -2845,15 +2873,20 @@ pub fn write_sparse_indexed_attention_probe_json<W: Write>(
             "sparse indexed-attention report has inconsistent boundary metadata",
         ));
     }
+    let diagnostic_override = if report.diagnostic_threshold_override == 0 {
+        "null".to_owned()
+    } else {
+        report.diagnostic_threshold_override.to_string()
+    };
     write!(
         output,
-        "{{\n  \"schema\": \"{SPARSE_INDEXED_ATTENTION_PROBE_SCHEMA}\",\n  \"classification\": \"diagnostic-layer-segment\",\n  \"fixture\": \"{}\",\n  \"boundary\": {{\"layer\": 2, \"position\": {}, \"compressed_rows\": {}, \"raw_rows\": {}, \"top_k\": {}}},\n  \"threshold\": {{\"diagnostic_override\": {}, \"pinned_default\": {}, \"first_default_sparse_rows\": {}}},\n  \"schedule\": {{\"dispatches\": {}, \"split_count\": {}, \"score_kernel\": \"kernel_dsv4_indexer_score_one_direct\", \"topk_kernel\": \"kernel_argsort_f32_i32_desc\", \"attention_kernels\": [\"kernel_dsv4_indexed_mixed_attention_heads8_split\", \"kernel_dsv4_indexed_mixed_attention_heads8_split_reduce\"]}},\n  \"mapping\": {{\"wrapped_model_ranges\": {}, \"pointer_matches\": {}}},\n  \"timing\": {{\"wall_ms\": {:.6}, \"gpu_ms\": {:.6}}},\n  \"checksums\": {{\"indexer_q\": {}, \"indexer_weights\": {}, \"indexer_scores\": {}, \"indexer_topk\": {}, \"kqv_out\": {}, \"kqv_back\": {}}},\n  \"c0_bitwise_match\": true,\n  \"default_threshold_boundary_claim\": false,\n  \"complete_decode_claim\": false,\n  \"output_logits_claim\": false,\n  \"throughput_claim\": false\n}}\n",
+        "{{\n  \"schema\": \"{SPARSE_INDEXED_ATTENTION_PROBE_SCHEMA}\",\n  \"classification\": \"default-threshold-layer-segment\",\n  \"fixture\": \"{}\",\n  \"boundary\": {{\"layer\": 2, \"position\": {}, \"compressed_rows\": {}, \"raw_rows\": {}, \"top_k\": {}}},\n  \"threshold\": {{\"diagnostic_override\": {}, \"pinned_default\": {}, \"first_default_sparse_rows\": {}}},\n  \"schedule\": {{\"dispatches\": {}, \"split_count\": {}, \"score_kernel\": \"kernel_dsv4_indexer_score_one_direct\", \"topk_kernels\": [\"kernel_argsort_f32_i32_desc\", \"kernel_argsort_merge_f32_i32_desc\"], \"attention_kernels\": [\"kernel_dsv4_indexed_mixed_attention_heads8_split\", \"kernel_dsv4_indexed_mixed_attention_heads8_split_reduce\"]}},\n  \"mapping\": {{\"wrapped_model_ranges\": {}, \"pointer_matches\": {}}},\n  \"timing\": {{\"wall_ms\": {:.6}, \"gpu_ms\": {:.6}}},\n  \"checksums\": {{\"indexer_q\": {}, \"indexer_weights\": {}, \"indexer_scores\": {}, \"indexer_topk\": {}, \"kqv_out\": {}, \"kqv_back\": {}}},\n  \"c0_bitwise_match\": true,\n  \"default_threshold_boundary_claim\": true,\n  \"complete_decode_claim\": false,\n  \"output_logits_claim\": false,\n  \"throughput_claim\": false\n}}\n",
         report.fixture_id,
         report.position,
         report.compressed_rows,
         report.raw_rows,
         report.top_k,
-        report.diagnostic_threshold_override,
+        diagnostic_override,
         report.pinned_default_threshold,
         report.first_default_sparse_rows,
         report.dispatches,
@@ -7579,6 +7612,10 @@ mod imp {
         indexer_compressor_gate_bytes: u64,
         indexer_compressor_norm_offset: u64,
         indexer_compressor_norm_bytes: u64,
+        indexer_q_offset: u64,
+        indexer_q_bytes: u64,
+        indexer_weight_offset: u64,
+        indexer_weight_bytes: u64,
         compressor_prime_attn_norm: *const f32,
         compressed_kv_row: *mut f32,
         compressed_indexer_row: *mut f32,
@@ -8133,6 +8170,8 @@ mod imp {
             indexer_weight_bytes: u64,
             sinks_offset: u64,
             sinks_bytes: u64,
+            position: u32,
+            compressed_rows: u32,
             q_lora_norm: *const f32,
             attn_norm: *const f32,
             q_current: *const f32,
@@ -8219,6 +8258,8 @@ mod imp {
         shared_down: ModelSpan,
         attention_compressor: Option<CompressorSpans>,
         indexer_compressor: Option<CompressorSpans>,
+        indexer_q: Option<ModelSpan>,
+        indexer_weight: Option<ModelSpan>,
         initial_state_mode: u32,
         context_capacity: u32,
         compressor_prime: Vec<f32>,
@@ -8397,6 +8438,18 @@ mod imp {
             } else {
                 None
             };
+            let (indexer_q, indexer_weight) = if layer_index >= 2 && layer_index % 2 == 0 {
+                (
+                    Some(span(
+                        &tensor_name("indexer.attn_q_b.weight"),
+                        1,
+                        &[1024, 8192],
+                    )?),
+                    Some(span(&tensor_name("indexer.proj.weight"), 1, &[4096, 64])?),
+                )
+            } else {
+                (None, None)
+            };
             Ok(Self {
                 layer_index,
                 embedding: span("token_embd.weight", 1, &[4096, 129280])?,
@@ -8426,6 +8479,8 @@ mod imp {
                 shared_down: span(&tensor_name("ffn_down_shexp.weight"), 8, &[2048, 4096])?,
                 attention_compressor,
                 indexer_compressor,
+                indexer_q,
+                indexer_weight,
                 initial_state_mode,
                 context_capacity,
                 compressor_prime,
@@ -13238,32 +13293,82 @@ mod imp {
         })
     }
 
-    pub fn run_sparse_indexed_attention_probe(
+    fn run_sparse_indexed_attention_fixture_probe(
         model: &MappedModel,
+        default_boundary: bool,
     ) -> Result<SparseIndexedAttentionProbeReport> {
         let q_weight = exact_tensor(model, "blk.2.indexer.attn_q_b.weight", 1, &[1024, 8192])?;
         let indexer_weight = exact_tensor(model, "blk.2.indexer.proj.weight", 1, &[4096, 64])?;
         let sinks = exact_tensor(model, "blk.2.attn_sinks.weight", 0, &[64])?;
-        let q_lora_norm = decode_f32_fixture(SPARSE_Q_LORA_NORM_BYTES, "sparse Q-Lora norm")?;
-        let attn_norm = decode_f32_fixture(SPARSE_ATTN_NORM_BYTES, "sparse attention norm")?;
-        let q_current = decode_f32_fixture(SPARSE_Q_CURRENT_BYTES, "sparse Q current")?;
-        let raw_cache = decode_f32_fixture(SPARSE_RAW_CACHE_BYTES, "sparse raw cache")?;
+        let choose = |diagnostic: &'static [u8], default: &'static [u8]| {
+            if default_boundary {
+                default
+            } else {
+                diagnostic
+            }
+        };
+        let position = if default_boundary { 4099 } else { 2051 };
+        let compressed_rows = if default_boundary { 1025 } else { 513 };
+        let q_lora_norm = decode_f32_fixture(
+            choose(SPARSE_Q_LORA_NORM_BYTES, SPARSE_DEFAULT_Q_LORA_NORM_BYTES),
+            "sparse Q-Lora norm",
+        )?;
+        let attn_norm = decode_f32_fixture(
+            choose(SPARSE_ATTN_NORM_BYTES, SPARSE_DEFAULT_ATTN_NORM_BYTES),
+            "sparse attention norm",
+        )?;
+        let q_current = decode_f32_fixture(
+            choose(SPARSE_Q_CURRENT_BYTES, SPARSE_DEFAULT_Q_CURRENT_BYTES),
+            "sparse Q current",
+        )?;
+        let raw_cache = decode_f32_fixture(
+            choose(SPARSE_RAW_CACHE_BYTES, SPARSE_DEFAULT_RAW_CACHE_BYTES),
+            "sparse raw cache",
+        )?;
         let attention_comp_cache = decode_f32_fixture(
-            SPARSE_ATTN_COMP_CACHE_BYTES,
+            choose(
+                SPARSE_ATTN_COMP_CACHE_BYTES,
+                SPARSE_DEFAULT_ATTN_COMP_CACHE_BYTES,
+            ),
             "sparse attention compressed cache",
         )?;
         let indexer_comp_cache = decode_f32_fixture(
-            SPARSE_INDEX_COMP_CACHE_BYTES,
+            choose(
+                SPARSE_INDEX_COMP_CACHE_BYTES,
+                SPARSE_DEFAULT_INDEX_COMP_CACHE_BYTES,
+            ),
             "sparse indexer compressed cache",
         )?;
-        let expected_q = decode_f32_fixture(SPARSE_INDEXER_Q_BYTES, "sparse indexer Q")?;
-        let expected_weights =
-            decode_f32_fixture(SPARSE_INDEXER_WEIGHTS_BYTES, "sparse indexer weights")?;
-        let expected_scores =
-            decode_f32_fixture(SPARSE_INDEXER_SCORES_BYTES, "sparse indexer scores")?;
-        let expected_topk = decode_i32_fixture(SPARSE_INDEXER_TOPK_BYTES, "sparse indexer top-k")?;
-        let expected_out = decode_f32_fixture(SPARSE_KQV_OUT_BYTES, "sparse KQV output")?;
-        let expected_back = decode_f32_fixture(SPARSE_KQV_BACK_BYTES, "sparse KQV back")?;
+        let expected_q = decode_f32_fixture(
+            choose(SPARSE_INDEXER_Q_BYTES, SPARSE_DEFAULT_INDEXER_Q_BYTES),
+            "sparse indexer Q",
+        )?;
+        let expected_weights = decode_f32_fixture(
+            choose(
+                SPARSE_INDEXER_WEIGHTS_BYTES,
+                SPARSE_DEFAULT_INDEXER_WEIGHTS_BYTES,
+            ),
+            "sparse indexer weights",
+        )?;
+        let expected_scores = decode_f32_fixture(
+            choose(
+                SPARSE_INDEXER_SCORES_BYTES,
+                SPARSE_DEFAULT_INDEXER_SCORES_BYTES,
+            ),
+            "sparse indexer scores",
+        )?;
+        let expected_topk = decode_i32_fixture(
+            choose(SPARSE_INDEXER_TOPK_BYTES, SPARSE_DEFAULT_INDEXER_TOPK_BYTES),
+            "sparse indexer top-k",
+        )?;
+        let expected_out = decode_f32_fixture(
+            choose(SPARSE_KQV_OUT_BYTES, SPARSE_DEFAULT_KQV_OUT_BYTES),
+            "sparse KQV output",
+        )?;
+        let expected_back = decode_f32_fixture(
+            choose(SPARSE_KQV_BACK_BYTES, SPARSE_DEFAULT_KQV_BACK_BYTES),
+            "sparse KQV back",
+        )?;
         let mut actual_q = vec![0.0_f32; expected_q.len()];
         let mut actual_weights = vec![0.0_f32; expected_weights.len()];
         let mut actual_scores = vec![0.0_f32; expected_scores.len()];
@@ -13284,6 +13389,8 @@ mod imp {
                 indexer_weight.bytes,
                 sinks.absolute_offset,
                 sinks.bytes,
+                position,
+                compressed_rows,
                 q_lora_norm.as_ptr(),
                 attn_norm.as_ptr(),
                 q_current.as_ptr(),
@@ -13340,11 +13447,11 @@ mod imp {
                 "sparse indexed-attention top-k mismatch at {index}: actual={actual} expected={expected}"
             )));
         }
-        if raw.position != 2051
-            || raw.compressed_rows != 513
+        if raw.position != position
+            || raw.compressed_rows != compressed_rows
             || raw.raw_rows != 128
             || raw.top_k != 512
-            || raw.dispatches != 10
+            || raw.dispatches != if default_boundary { 11 } else { 10 }
             || raw.wrapped_model_ranges != 3
             || raw.pointer_matches != 3
             || raw.split_count != 12
@@ -13358,12 +13465,16 @@ mod imp {
             ));
         }
         Ok(SparseIndexedAttentionProbeReport {
-            fixture_id: SPARSE_INDEXED_ATTENTION_FIXTURE_ID,
+            fixture_id: if default_boundary {
+                SPARSE_INDEXED_ATTENTION_DEFAULT_FIXTURE_ID
+            } else {
+                SPARSE_INDEXED_ATTENTION_FIXTURE_ID
+            },
             position: raw.position,
             compressed_rows: raw.compressed_rows,
             raw_rows: raw.raw_rows,
             top_k: raw.top_k,
-            diagnostic_threshold_override: 512,
+            diagnostic_threshold_override: if default_boundary { 0 } else { 512 },
             pinned_default_threshold: 1024,
             first_default_sparse_rows: 1025,
             dispatches: raw.dispatches,
@@ -13379,6 +13490,13 @@ mod imp {
             kqv_out_checksum: checksum_f32(&actual_out),
             kqv_back_checksum: checksum_f32(&actual_back),
         })
+    }
+
+    pub fn run_sparse_indexed_attention_probe(
+        model: &MappedModel,
+    ) -> Result<SparseIndexedAttentionProbeReport> {
+        let _diagnostic = run_sparse_indexed_attention_fixture_probe(model, false)?;
+        run_sparse_indexed_attention_fixture_probe(model, true)
     }
 
     pub fn run_attention_ingress_probe(model: &MappedModel) -> Result<IngressProbeReport> {
@@ -15388,6 +15506,8 @@ mod imp {
             shared_down,
             attention_compressor,
             indexer_compressor,
+            indexer_q,
+            indexer_weight,
             initial_state_mode,
             context_capacity,
             compressor_prime,
@@ -15445,6 +15565,12 @@ mod imp {
         };
         let attention_compressor_fields = compressor_fields(attention_compressor);
         let indexer_compressor_fields = compressor_fields(indexer_compressor);
+        let model_span_fields = |span: &Option<ModelSpan>| {
+            span.as_ref()
+                .map_or([0_u64; 2], |span| [span.absolute_offset, span.bytes])
+        };
+        let indexer_q_fields = model_span_fields(indexer_q);
+        let indexer_weight_fields = model_span_fields(indexer_weight);
 
         let layer0 = RawLayer0Extension {
             hc_ffn_fn_offset: ffn_hc_fn.absolute_offset,
@@ -15487,6 +15613,10 @@ mod imp {
             indexer_compressor_gate_bytes: indexer_compressor_fields[5],
             indexer_compressor_norm_offset: indexer_compressor_fields[6],
             indexer_compressor_norm_bytes: indexer_compressor_fields[7],
+            indexer_q_offset: indexer_q_fields[0],
+            indexer_q_bytes: indexer_q_fields[1],
+            indexer_weight_offset: indexer_weight_fields[0],
+            indexer_weight_bytes: indexer_weight_fields[1],
             compressor_prime_attn_norm: if compressor_prime.is_empty() {
                 ptr::null()
             } else {
@@ -15585,9 +15715,15 @@ mod imp {
                 error_text(&error)
             )));
         }
+        let sparse_indexed_attention =
+            layer_index >= 2 && layer_index % 2 == 0 && (position + 1) / 4 > 1024;
         let expected_wrapped_ranges = if layer_index >= 2 {
             if layer_index % 2 == 0 {
-                33
+                if sparse_indexed_attention {
+                    35
+                } else {
+                    33
+                }
             } else {
                 29
             }
@@ -15606,6 +15742,7 @@ mod imp {
             (0, _, _) => 30,
             (layer, 0, 1) if layer >= 2 => 36,
             (layer, 0, 3) if layer >= 2 => 48,
+            (layer, 0, _) if layer >= 2 && sparse_indexed_attention => 54,
             (layer, 0, _) if layer >= 2 => 32,
             (layer, 1, 1) if layer >= 3 => 32,
             (layer, 1, _) if layer >= 3 => 30,
@@ -19439,20 +19576,34 @@ mod tests {
         assert_eq!(checksum_i32(&topk), 10_522_194_933_279_573_573);
         assert_eq!(checksum_f32(&out), 2_951_582_711_540_827_778);
         assert_eq!(checksum_f32(&back), 10_450_464_586_724_796_497);
+
+        let default_scores = decode_f32_fixture(
+            SPARSE_DEFAULT_INDEXER_SCORES_BYTES,
+            "default-boundary indexer scores",
+        )
+        .unwrap();
+        let default_topk = decode_i32_fixture(
+            SPARSE_DEFAULT_INDEXER_TOPK_BYTES,
+            "default-boundary indexer top-k",
+        )
+        .unwrap();
+        assert_eq!(default_scores.len(), 1025);
+        assert_eq!(default_topk.len(), 512);
+        assert!(default_topk.iter().all(|index| (0..1025).contains(index)));
     }
 
     #[test]
     fn writes_stable_sparse_indexed_attention_probe_json() {
         let report = SparseIndexedAttentionProbeReport {
-            fixture_id: SPARSE_INDEXED_ATTENTION_FIXTURE_ID,
-            position: 2051,
-            compressed_rows: 513,
+            fixture_id: SPARSE_INDEXED_ATTENTION_DEFAULT_FIXTURE_ID,
+            position: 4099,
+            compressed_rows: 1025,
             raw_rows: 128,
             top_k: 512,
-            diagnostic_threshold_override: 512,
+            diagnostic_threshold_override: 0,
             pinned_default_threshold: 1024,
             first_default_sparse_rows: 1025,
-            dispatches: 10,
+            dispatches: 11,
             wrapped_model_ranges: 3,
             pointer_matches: 3,
             split_count: 12,
@@ -19470,6 +19621,8 @@ mod tests {
         let text = String::from_utf8(output).unwrap();
         assert!(text.contains("\"c0_bitwise_match\": true"));
         assert!(text.contains("\"pinned_default\": 1024"));
+        assert!(text.contains("\"diagnostic_override\": null"));
+        assert!(text.contains("kernel_argsort_merge_f32_i32_desc"));
         assert!(text.contains("\"complete_decode_claim\": false"));
         assert!(text.contains("\"throughput_claim\": false"));
     }

@@ -297,6 +297,8 @@ typedef struct rust_star_metal_layer0_extension {
     uint64_t indexer_compressor_kv_offset, indexer_compressor_kv_bytes;
     uint64_t indexer_compressor_gate_offset, indexer_compressor_gate_bytes;
     uint64_t indexer_compressor_norm_offset, indexer_compressor_norm_bytes;
+    uint64_t indexer_q_offset, indexer_q_bytes;
+    uint64_t indexer_weight_offset, indexer_weight_bytes;
     const float *compressor_prime_attn_norm;
     float *compressed_kv_row;
     float *compressed_indexer_row;
@@ -740,6 +742,8 @@ int rust_star_metal_run_sparse_indexed_attention(
     uint64_t indexer_weight_bytes,
     uint64_t sinks_offset,
     uint64_t sinks_bytes,
+    uint32_t position,
+    uint32_t compressed_rows,
     const float *q_lora_norm,
     const float *attn_norm,
     const float *q_current,

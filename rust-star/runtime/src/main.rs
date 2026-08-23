@@ -763,10 +763,8 @@ fn run_sparse_indexed_attention_probe_command(arguments: Vec<OsString>) -> Resul
         report.pointer_matches, report.wrapped_model_ranges, report.dispatches,
     );
     println!(
-        "scope: diagnostic threshold override {}; pinned default remains {} (first default sparse row count {})",
-        report.diagnostic_threshold_override,
-        report.pinned_default_threshold,
-        report.first_default_sparse_rows,
+        "scope: pinned default threshold {} reached at its first sparse row count {}; the 513-row override also passed as an independent control",
+        report.pinned_default_threshold, report.first_default_sparse_rows,
     );
     println!("claims: complete-decode=false logits=false throughput=false");
     if let Some(path) = json_path {
@@ -3921,5 +3919,5 @@ fn ratio128_compressor_replay_probe_usage() -> &'static str {
 }
 
 fn sparse_indexed_attention_probe_usage() -> &'static str {
-    "usage: rust-star sparse-indexed-attention-probe MODEL.gguf [--json PATH]\n\nRuns the isolated layer-2 position-2051 sparse indexer and exact top-512 indexed-attention mechanism against two repeated DwarfStar captures. The fixture uses a diagnostic threshold override of 512; the pinned default remains 1024, so this is not a default-switch, complete-decode, logits, or throughput claim."
+    "usage: rust-star sparse-indexed-attention-probe MODEL.gguf [--json PATH]\n\nRuns two isolated layer-2 sparse-indexed-attention controls against repeated DwarfStar captures: the position-2051 diagnostic threshold override and the production-default position-4099 switch at 1,025 compressed rows. The latter includes the exact two-block argsort merge. This is not a complete-decode, logits, or throughput claim."
 }

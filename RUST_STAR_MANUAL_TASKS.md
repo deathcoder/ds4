@@ -169,18 +169,13 @@ Return evidence:
 
 ## M-005 — Execute the first paired DwarfStar/Rust Star run
 
-Status: `BLOCKED` on complete native batched prefill, retained-decoder
-integration of ratio-4 sparse indexed attention, and the engine-measurement
-producer. The isolated fixed-top-512 sparse mechanism is C0 exact at a
-diagnostic 513-row threshold override; the pinned default first switches at
-1,025 rows. The native M1 batch boundary
-now runs complete layers 0 and 1 over all 2,048 prompt rows from empty KV state,
-and every live layer-1 output is downstream exact through layer 2's normalized
-KV boundary, compressed-attention RoPE, E4M3FN finalization, and retained raw
-KV state. The same loop now owns both layer-2 ratio-4 compressors, matches all
-512 attention and indexer compressed rows, and finishes with exact recurrent
-states. Layer-2 mixed raw/compressed attention, FFN, and the remaining model
-are still pending. The 2K sequential initializer
+Status: `BLOCKED` on complete native batched prefill, a complete retained
+decoder run through ratio-4 sparse indexed attention, and the engine-measurement
+producer. The diagnostic 513-row override and production-default 1,025-row
+layer segments are C0 exact; the latter includes DwarfStar's two-block top-k
+merge, and that first-boundary schedule is wired into retained even-layer
+state. Native M1 batched prefill now runs complete layers 0 through 8 over all
+2,048 prompt rows from empty state. The 2K sequential initializer
 still owns a 128-row raw ring plus context-sized compressed state and exactly
 matches two fresh DwarfStar one-token decode replays. It deliberately records
 a full-logit mismatch against DwarfStar's batched-prefill oracle, so it is not

@@ -663,10 +663,14 @@ select token 15342. The report therefore says decode-replay C0 is true and
 batched-prefill C0 is false. Native batched prefill is required before this path
 can produce the engine-measurement contract.
 
-Ratio-4 compressed memory reaches 512 rows exactly at the 2K frontier. Later
-positions are rejected until the fixed 512-row sparse indexer top-k and indexed
-attention path is implemented; silently scanning every compressed row would
-change model semantics and exceed the intended long-context attention shape.
+Ratio-4 compressed memory reaches 512 rows exactly at the 2K frontier. The
+retained even-layer schedule remains dense through 1,024 compressed rows, then
+switches at row 1,025 to the exact F16 indexer projections, compressed RoPE,
+QAT, direct scores, two-block argsort/merge, fixed top-512, and 12-split indexed
+attention path. The emitted attention/indexer rows are committed before scoring
+so the first sparse step sees its newly completed row, matching DwarfStar's
+state ordering. A deliberate guard remains after row 1,025 until the merge
+workspace and repeated merge passes are generalized for larger contexts.
 
 ## Position-127 ratio-128 compressor replay
 

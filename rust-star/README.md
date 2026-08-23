@@ -63,8 +63,8 @@ memory, advances a true 128-row raw-KV ring, and exactly matches two fresh
 DwarfStar one-token decode replays over the canonical prompt. It also proves
 that this sequential construction differs from DwarfStar's batched prefill in
 all 129,280 logits despite selecting the same token. The path therefore remains
-diagnostic: eligible measurements require native batched prefill arithmetic and
-integrated sparse indexed attention beyond the pinned 1,024-row dense threshold.
+diagnostic: eligible measurements still require complete native batched prefill
+and a full decoder run through the sparse frontier.
 The first native
 batch boundary is now implemented separately: repeated captures localize the
 earliest difference to layer 0's Q8 Q-A projection, and the Rust Metal probe
@@ -205,11 +205,13 @@ outputs, compressor states, and full HC identities match fresh DwarfStar
 processes exactly. The complete layers-0--8 command uses 383 dispatches and
 preserves 196/196 no-copy model mappings. Exactly 512 ratio-4 compressed rows
 remain dense at the prompt boundary. The pinned DwarfStar default remains dense
-through 1,024 rows and first switches at 1,025. A diagnostic position-2051
-fixture uses an explicit threshold override of 512 and now validates the full
-fixed-top-512 score/sort/indexed-attention mechanism bit-for-bit on the M1
-Ultra. Integration into the retained decoder, output logits, and throughput
-remain pending.
+through 1,024 rows and first switches at 1,025. The position-2051 override
+remains an independent one-block control; two fresh production-default captures
+at position 4099 now add the exact two-block argsort merge and validate all
+1,025 scores, top-512 indices, indexed attention, and inverse RoPE bit-for-bit.
+The same first-boundary schedule is wired into retained even-layer state with
+35 no-copy model mappings. Execution of a complete decoder through that branch,
+output-logit C0, generalization past 1,025 rows, and throughput remain pending.
 
 Project controls and benchmark contracts:
 
