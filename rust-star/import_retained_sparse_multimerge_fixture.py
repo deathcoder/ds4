@@ -11,6 +11,7 @@ from pathlib import Path
 
 
 POSITION = 8195
+TOKEN = 381
 LAYER = 2
 RAW_ROWS = 128
 PRIOR_RAW_ROWS = 127
@@ -181,6 +182,9 @@ def main() -> int:
             **copy.deepcopy(template["capture"]),
             "prefill_tokens": 8192,
             "captured_position": POSITION,
+            "captured_token": TOKEN,
+            "token_fresh_process_captures": 2,
+            "token_fresh_process_match": True,
             "fresh_process_captures": 2,
             "fresh_process_bitwise_match": True,
             "excluded_nondeterministic_scratch_hooks": [

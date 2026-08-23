@@ -688,10 +688,14 @@ is not the DwarfStar FFN oracle.
 
 `retained-sparse-multimerge-probe` applies the same ownership boundary at layer
 2 position 8195. It seeds 2,048 compressed rows, appends row 2,049, sorts three
-blocks, and performs two merges over a 1,025-index active work width. All 16
-checked attention boundaries match two fresh DwarfStar processes across 55
-dispatches and 35/35 no-copy model views. This is the first repeated-merge
-control, not a complete-layer or complete-decoder claim.
+blocks, and performs two merges over a 1,025-index active work width. Two fresh
+DwarfStar processes independently identify token 381 for the token-hashed
+layer-2 router. All 39 fixture-produced tensors, plus the derived f16 raw-cache
+row, match by bit pattern across 55 dispatches and 35/35 no-copy model views.
+The checked path includes the complete attention and FFN boundaries, selected
+experts, routed and shared-expert outputs, and final layer HC. This is the first
+repeated-merge complete retained-layer control; it does not claim execution of
+preceding layers, a complete decoder, logits, or throughput.
 
 ## Position-127 ratio-128 compressor replay
 

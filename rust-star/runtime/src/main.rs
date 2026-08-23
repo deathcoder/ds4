@@ -885,7 +885,9 @@ fn run_retained_sparse_multimerge_probe_command(arguments: Vec<OsString>) -> Res
         report.dispatches,
         report.topk_work_width,
     );
-    println!("claims: retained-layer=true repeated-merge=true complete-layer=false complete-decoder=false logits=false throughput=false");
+    println!(
+        "claims: retained-layer=true repeated-merge=true complete-layer=true preceding-layers=false complete-decoder=false logits=false throughput=false"
+    );
     if let Some(path) = json_path {
         write_retained_sparse_multimerge_probe_file(&path, &report)?;
         println!("json: {}", path.display());

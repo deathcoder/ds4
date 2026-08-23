@@ -302,8 +302,10 @@ typedef struct rust_star_metal_layer0_extension {
     const float *compressor_prime_attn_norm;
     float *compressed_kv_row;
     float *compressed_indexer_row;
+    float *kv_norm_pre_rope;
     float *ffn_mixes;
     float *ffn_split;
+    float *ffn_cur;
     float *ffn_norm;
     float *router_logits;
     float *router_probs;

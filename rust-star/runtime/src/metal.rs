@@ -404,6 +404,59 @@ const RETAINED_MULTIMERGE_ATTN_OUT_BYTES: &[u8] =
     include_bytes!("../../fixtures/retained-sparse-layer2-pos8195-v1/attn-out.f32le.bin");
 const RETAINED_MULTIMERGE_HC_ATTN_POST_BYTES: &[u8] =
     include_bytes!("../../fixtures/retained-sparse-layer2-pos8195-v1/hc-attn-post.f32le.bin");
+const RETAINED_MULTIMERGE_HC_ATTN_PRE_MIXES_BYTES: &[u8] =
+    include_bytes!("../../fixtures/retained-sparse-layer2-pos8195-v1/hc-attn-pre-mixes.f32le.bin");
+const RETAINED_MULTIMERGE_HC_ATTN_PRE_WEIGHTS_BYTES: &[u8] = include_bytes!(
+    "../../fixtures/retained-sparse-layer2-pos8195-v1/hc-attn-pre-weights.f32le.bin"
+);
+const RETAINED_MULTIMERGE_HC_ATTN_PRE_POST_WEIGHTS_BYTES: &[u8] = include_bytes!(
+    "../../fixtures/retained-sparse-layer2-pos8195-v1/hc-attn-pre-post-weights.f32le.bin"
+);
+const RETAINED_MULTIMERGE_HC_ATTN_PRE_COMB_BYTES: &[u8] =
+    include_bytes!("../../fixtures/retained-sparse-layer2-pos8195-v1/hc-attn-pre-comb.f32le.bin");
+const RETAINED_MULTIMERGE_HC_ATTN_PRE_BYTES: &[u8] =
+    include_bytes!("../../fixtures/retained-sparse-layer2-pos8195-v1/hc-attn-pre.f32le.bin");
+const RETAINED_MULTIMERGE_Q_LORA_BYTES: &[u8] =
+    include_bytes!("../../fixtures/retained-sparse-layer2-pos8195-v1/q-lora.f32le.bin");
+const RETAINED_MULTIMERGE_KV_RAW_BYTES: &[u8] =
+    include_bytes!("../../fixtures/retained-sparse-layer2-pos8195-v1/kv-raw.f32le.bin");
+const RETAINED_MULTIMERGE_KV_NORM_BYTES: &[u8] =
+    include_bytes!("../../fixtures/retained-sparse-layer2-pos8195-v1/kv-norm.f32le.bin");
+const RETAINED_MULTIMERGE_Q_RAW_BYTES: &[u8] =
+    include_bytes!("../../fixtures/retained-sparse-layer2-pos8195-v1/q-raw.f32le.bin");
+const RETAINED_MULTIMERGE_KV_ROPE_BYTES: &[u8] =
+    include_bytes!("../../fixtures/retained-sparse-layer2-pos8195-v1/kv-rope.f32le.bin");
+const RETAINED_MULTIMERGE_HC_FFN_PRE_MIXES_BYTES: &[u8] =
+    include_bytes!("../../fixtures/retained-sparse-layer2-pos8195-v1/hc-ffn-pre-mixes.f32le.bin");
+const RETAINED_MULTIMERGE_HC_FFN_PRE_WEIGHTS_BYTES: &[u8] =
+    include_bytes!("../../fixtures/retained-sparse-layer2-pos8195-v1/hc-ffn-pre-weights.f32le.bin");
+const RETAINED_MULTIMERGE_HC_FFN_PRE_POST_WEIGHTS_BYTES: &[u8] = include_bytes!(
+    "../../fixtures/retained-sparse-layer2-pos8195-v1/hc-ffn-pre-post-weights.f32le.bin"
+);
+const RETAINED_MULTIMERGE_HC_FFN_PRE_COMB_BYTES: &[u8] =
+    include_bytes!("../../fixtures/retained-sparse-layer2-pos8195-v1/hc-ffn-pre-comb.f32le.bin");
+const RETAINED_MULTIMERGE_HC_FFN_PRE_BYTES: &[u8] =
+    include_bytes!("../../fixtures/retained-sparse-layer2-pos8195-v1/hc-ffn-pre.f32le.bin");
+const RETAINED_MULTIMERGE_FFN_NORM_BYTES: &[u8] =
+    include_bytes!("../../fixtures/retained-sparse-layer2-pos8195-v1/ffn-norm.f32le.bin");
+const RETAINED_MULTIMERGE_FFN_MOE_LOGITS_BYTES: &[u8] =
+    include_bytes!("../../fixtures/retained-sparse-layer2-pos8195-v1/ffn-moe-logits.f32le.bin");
+const RETAINED_MULTIMERGE_FFN_MOE_PROBS_BYTES: &[u8] =
+    include_bytes!("../../fixtures/retained-sparse-layer2-pos8195-v1/ffn-moe-probs.f32le.bin");
+const RETAINED_MULTIMERGE_FFN_MOE_TOPK_BYTES: &[u8] =
+    include_bytes!("../../fixtures/retained-sparse-layer2-pos8195-v1/ffn-moe-topk.i32le.bin");
+const RETAINED_MULTIMERGE_FFN_MOE_WEIGHTS_SCALED_BYTES: &[u8] = include_bytes!(
+    "../../fixtures/retained-sparse-layer2-pos8195-v1/ffn-moe-weights-scaled.f32le.bin"
+);
+const RETAINED_MULTIMERGE_FFN_MOE_WEIGHTED_SWIGLU_BYTES: &[u8] = include_bytes!(
+    "../../fixtures/retained-sparse-layer2-pos8195-v1/ffn-moe-weighted-swiglu.f32le.bin"
+);
+const RETAINED_MULTIMERGE_FFN_MOE_OUT_BYTES: &[u8] =
+    include_bytes!("../../fixtures/retained-sparse-layer2-pos8195-v1/ffn-moe-out.f32le.bin");
+const RETAINED_MULTIMERGE_FFN_SHEXP_BYTES: &[u8] =
+    include_bytes!("../../fixtures/retained-sparse-layer2-pos8195-v1/ffn-shexp.f32le.bin");
+const RETAINED_MULTIMERGE_HC_FFN_POST_BYTES: &[u8] =
+    include_bytes!("../../fixtures/retained-sparse-layer2-pos8195-v1/hc-ffn-post.f32le.bin");
 const PREFILL_Q8_BATCH_OUTPUT_BYTES: &[u8] =
     include_bytes!("../../fixtures/prefill-q8-boundary-2048-v1/q-lora-batch-final-tile.f32le.bin");
 const PREFILL_Q8_DECODE_OUTPUT_BYTES: &[u8] =
@@ -2116,6 +2169,7 @@ pub struct SparseIndexedAttentionProbeReport {
 #[derive(Clone, Debug)]
 pub struct RetainedSparseBoundaryProbeReport {
     pub fixture_id: &'static str,
+    pub token: u32,
     pub layer: u32,
     pub position: u32,
     pub raw_rows: u32,
@@ -2140,6 +2194,8 @@ pub struct RetainedSparseBoundaryProbeReport {
     pub kqv_out_checksum: u64,
     pub kqv_back_checksum: u64,
     pub attention_hc_checksum: u64,
+    pub selected_experts_checksum: u64,
+    pub final_hc_checksum: u64,
 }
 
 pub fn write_ingress_probe_json<W: Write>(
@@ -3051,6 +3107,7 @@ pub fn write_retained_sparse_boundary_probe_json<W: Write>(
     report: &RetainedSparseBoundaryProbeReport,
 ) -> Result<()> {
     if report.fixture_id != RETAINED_SPARSE_BOUNDARY_FIXTURE_ID
+        || report.token != 0
         || report.layer != 2
         || report.position != 4099
         || report.raw_rows != 128
@@ -3072,8 +3129,9 @@ pub fn write_retained_sparse_boundary_probe_json<W: Write>(
     }
     write!(
         output,
-        "{{\n  \"schema\": \"{RETAINED_SPARSE_BOUNDARY_PROBE_SCHEMA}\",\n  \"classification\": \"retained-state-c0-control\",\n  \"fixture\": \"{}\",\n  \"boundary\": {{\"layer\": {}, \"position\": {}, \"raw_rows\": {}, \"compressed_rows\": {}, \"top_k\": {}}},\n  \"seed\": {{\"incoming_hc\": true, \"raw_rows\": {}, \"compressed_rows\": {}, \"recurrent_attention_state\": true, \"recurrent_indexer_state\": true}},\n  \"schedule\": {{\"dispatches\": {}, \"sort_blocks\": {}, \"merge_passes\": {}, \"topk_work_width\": {}, \"two_block_topk_merge\": true, \"same_step_compressed_row_commit\": true, \"indexed_attention_splits\": 12}},\n  \"mapping\": {{\"wrapped_model_ranges\": {}, \"pointer_matches\": {}}},\n  \"timing\": {{\"wall_ms\": {:.6}, \"gpu_ms\": {:.6}}},\n  \"checksums\": {{\"q_current\": {}, \"compressed_kv\": {}, \"compressed_indexer\": {}, \"indexer_scores\": {}, \"indexer_topk\": {}, \"kqv_out\": {}, \"kqv_back\": {}, \"attention_hc\": {}}},\n  \"exact_tensor_checks\": {},\n  \"c0_bitwise_match\": true,\n  \"retained_layer_execution_claim\": true,\n  \"complete_decoder_claim\": false,\n  \"output_logits_claim\": false,\n  \"complete_layer_claim\": false,\n  \"throughput_claim\": false\n}}\n",
+        "{{\n  \"schema\": \"{RETAINED_SPARSE_BOUNDARY_PROBE_SCHEMA}\",\n  \"classification\": \"retained-state-c0-control\",\n  \"fixture\": \"{}\",\n  \"token\": {},\n  \"boundary\": {{\"layer\": {}, \"position\": {}, \"raw_rows\": {}, \"compressed_rows\": {}, \"top_k\": {}}},\n  \"seed\": {{\"incoming_hc\": true, \"raw_rows\": {}, \"compressed_rows\": {}, \"recurrent_attention_state\": true, \"recurrent_indexer_state\": true}},\n  \"schedule\": {{\"dispatches\": {}, \"sort_blocks\": {}, \"merge_passes\": {}, \"topk_work_width\": {}, \"two_block_topk_merge\": true, \"same_step_compressed_row_commit\": true, \"indexed_attention_splits\": 12}},\n  \"mapping\": {{\"wrapped_model_ranges\": {}, \"pointer_matches\": {}}},\n  \"timing\": {{\"wall_ms\": {:.6}, \"gpu_ms\": {:.6}}},\n  \"checksums\": {{\"q_current\": {}, \"compressed_kv\": {}, \"compressed_indexer\": {}, \"indexer_scores\": {}, \"indexer_topk\": {}, \"kqv_out\": {}, \"kqv_back\": {}, \"attention_hc\": {}, \"selected_experts\": {}, \"final_hc\": {}}},\n  \"exact_tensor_checks\": {},\n  \"c0_bitwise_match\": true,\n  \"retained_layer_execution_claim\": true,\n  \"preceding_layers_execution_claim\": false,\n  \"complete_decoder_claim\": false,\n  \"output_logits_claim\": false,\n  \"complete_layer_claim\": false,\n  \"throughput_claim\": false\n}}\n",
         report.fixture_id,
+        report.token,
         report.layer,
         report.position,
         report.raw_rows,
@@ -3097,6 +3155,8 @@ pub fn write_retained_sparse_boundary_probe_json<W: Write>(
         report.kqv_out_checksum,
         report.kqv_back_checksum,
         report.attention_hc_checksum,
+        report.selected_experts_checksum,
+        report.final_hc_checksum,
         report.exact_tensor_checks,
     )?;
     Ok(())
@@ -3107,6 +3167,7 @@ pub fn write_retained_sparse_multimerge_probe_json<W: Write>(
     report: &RetainedSparseBoundaryProbeReport,
 ) -> Result<()> {
     if report.fixture_id != RETAINED_SPARSE_MULTIMERGE_FIXTURE_ID
+        || report.token != 381
         || report.layer != 2
         || report.position != 8195
         || report.raw_rows != 128
@@ -3120,7 +3181,7 @@ pub fn write_retained_sparse_multimerge_probe_json<W: Write>(
         || report.dispatches != 55
         || report.wrapped_model_ranges != 35
         || report.pointer_matches != 35
-        || report.exact_tensor_checks != 16
+        || report.exact_tensor_checks != 40
     {
         return Err(Error::invalid(
             "retained sparse multimerge report has inconsistent metadata",
@@ -3128,8 +3189,9 @@ pub fn write_retained_sparse_multimerge_probe_json<W: Write>(
     }
     write!(
         output,
-        "{{\n  \"schema\": \"{RETAINED_SPARSE_MULTIMERGE_PROBE_SCHEMA}\",\n  \"classification\": \"retained-state-c0-control\",\n  \"fixture\": \"{}\",\n  \"boundary\": {{\"layer\": {}, \"position\": {}, \"raw_rows\": {}, \"compressed_rows\": {}, \"top_k\": {}}},\n  \"seed\": {{\"incoming_hc\": true, \"raw_rows\": {}, \"compressed_rows\": {}, \"recurrent_attention_state\": true, \"recurrent_indexer_state\": true}},\n  \"schedule\": {{\"dispatches\": {}, \"sort_blocks\": {}, \"merge_passes\": {}, \"topk_work_width\": {}, \"ping_pong_workspace\": true, \"same_step_compressed_row_commit\": true, \"indexed_attention_splits\": 12}},\n  \"mapping\": {{\"wrapped_model_ranges\": {}, \"pointer_matches\": {}}},\n  \"timing\": {{\"wall_ms\": {:.6}, \"gpu_ms\": {:.6}}},\n  \"checksums\": {{\"q_current\": {}, \"compressed_kv\": {}, \"compressed_indexer\": {}, \"indexer_scores\": {}, \"indexer_topk\": {}, \"kqv_out\": {}, \"kqv_back\": {}, \"attention_hc\": {}}},\n  \"exact_tensor_checks\": {},\n  \"c0_bitwise_match\": true,\n  \"retained_layer_execution_claim\": true,\n  \"repeated_merge_boundary_claim\": true,\n  \"complete_decoder_claim\": false,\n  \"output_logits_claim\": false,\n  \"complete_layer_claim\": false,\n  \"throughput_claim\": false\n}}\n",
+        "{{\n  \"schema\": \"{RETAINED_SPARSE_MULTIMERGE_PROBE_SCHEMA}\",\n  \"classification\": \"retained-complete-layer-c0-control\",\n  \"fixture\": \"{}\",\n  \"token\": {},\n  \"boundary\": {{\"layer\": {}, \"position\": {}, \"raw_rows\": {}, \"compressed_rows\": {}, \"top_k\": {}}},\n  \"seed\": {{\"incoming_hc\": true, \"raw_rows\": {}, \"compressed_rows\": {}, \"recurrent_attention_state\": true, \"recurrent_indexer_state\": true}},\n  \"schedule\": {{\"dispatches\": {}, \"sort_blocks\": {}, \"merge_passes\": {}, \"topk_work_width\": {}, \"ping_pong_workspace\": true, \"same_step_compressed_row_commit\": true, \"indexed_attention_splits\": 12}},\n  \"mapping\": {{\"wrapped_model_ranges\": {}, \"pointer_matches\": {}}},\n  \"timing\": {{\"wall_ms\": {:.6}, \"gpu_ms\": {:.6}}},\n  \"checksums\": {{\"q_current\": {}, \"compressed_kv\": {}, \"compressed_indexer\": {}, \"indexer_scores\": {}, \"indexer_topk\": {}, \"kqv_out\": {}, \"kqv_back\": {}, \"attention_hc\": {}, \"selected_experts\": {}, \"final_hc\": {}}},\n  \"exact_tensor_checks\": {},\n  \"c0_bitwise_match\": true,\n  \"retained_layer_execution_claim\": true,\n  \"repeated_merge_boundary_claim\": true,\n  \"complete_layer_claim\": true,\n  \"preceding_layers_execution_claim\": false,\n  \"complete_decoder_claim\": false,\n  \"output_logits_claim\": false,\n  \"throughput_claim\": false\n}}\n",
         report.fixture_id,
+        report.token,
         report.layer,
         report.position,
         report.raw_rows,
@@ -3153,6 +3215,8 @@ pub fn write_retained_sparse_multimerge_probe_json<W: Write>(
         report.kqv_out_checksum,
         report.kqv_back_checksum,
         report.attention_hc_checksum,
+        report.selected_experts_checksum,
+        report.final_hc_checksum,
         report.exact_tensor_checks,
     )?;
     Ok(())
@@ -7896,8 +7960,10 @@ mod imp {
         compressor_prime_attn_norm: *const f32,
         compressed_kv_row: *mut f32,
         compressed_indexer_row: *mut f32,
+        kv_norm_pre_rope: *mut f32,
         ffn_mixes: *mut f32,
         ffn_split: *mut f32,
+        ffn_cur: *mut f32,
         ffn_norm: *mut f32,
         router_logits: *mut f32,
         router_probs: *mut f32,
@@ -8597,6 +8663,7 @@ mod imp {
         q_lora_norm: Vec<f32>,
         kv_raw: Vec<f32>,
         kv_after_store: Vec<f32>,
+        kv_norm_pre_rope: Vec<f32>,
         q_raw: Vec<f32>,
         q_cur: Vec<f32>,
         kv_rope: Vec<f32>,
@@ -8609,6 +8676,7 @@ mod imp {
         after_attention_hc: Vec<f32>,
         ffn_mixes: Vec<f32>,
         ffn_split: Vec<f32>,
+        ffn_cur: Vec<f32>,
         ffn_norm: Vec<f32>,
         router_logits: Vec<f32>,
         router_probs: Vec<f32>,
@@ -8819,6 +8887,7 @@ mod imp {
                 q_lora_norm: vec![0.0; 1024],
                 kv_raw: vec![0.0; 512],
                 kv_after_store: vec![0.0; 512],
+                kv_norm_pre_rope: vec![0.0; 512],
                 q_raw: vec![0.0; 32768],
                 q_cur: vec![0.0; 32768],
                 kv_rope: vec![0.0; 512],
@@ -8831,6 +8900,7 @@ mod imp {
                 after_attention_hc: vec![0.0; 4 * 4096],
                 ffn_mixes: vec![0.0; 24],
                 ffn_split: vec![0.0; 24],
+                ffn_cur: vec![0.0; 4096],
                 ffn_norm: vec![0.0; 4096],
                 router_logits: vec![0.0; 256],
                 router_probs: vec![0.0; 256],
@@ -13827,6 +13897,7 @@ mod imp {
         multimerge: bool,
     ) -> Result<RetainedSparseBoundaryProbeReport> {
         let position = if multimerge { 8195 } else { 4099 };
+        let token = if multimerge { 381 } else { 0 };
         let context_capacity = position + 1;
         let compressed_rows = if multimerge { 2049 } else { 1025 };
         let seeded_compressed_rows = compressed_rows - 1;
@@ -13984,7 +14055,7 @@ mod imp {
             model,
             &context,
             &mut prepared,
-            0,
+            token,
             position,
             0,
             1,
@@ -13995,7 +14066,7 @@ mod imp {
             model,
             &context,
             &mut prepared,
-            0,
+            token,
             position,
             0,
             1,
@@ -14174,6 +14245,224 @@ mod imp {
                 indexer_topk[mismatch], expected_indexer_topk[mismatch]
             )));
         }
+        if multimerge {
+            let expected_attention_mixes = decode_f32_fixture(
+                RETAINED_MULTIMERGE_HC_ATTN_PRE_MIXES_BYTES,
+                "retained attention HC pre mixes",
+            )?;
+            let expected_attention_weights = decode_f32_fixture(
+                RETAINED_MULTIMERGE_HC_ATTN_PRE_WEIGHTS_BYTES,
+                "retained attention HC pre weights",
+            )?;
+            let expected_attention_post_weights = decode_f32_fixture(
+                RETAINED_MULTIMERGE_HC_ATTN_PRE_POST_WEIGHTS_BYTES,
+                "retained attention HC pre post-weights",
+            )?;
+            let expected_attention_comb = decode_f32_fixture(
+                RETAINED_MULTIMERGE_HC_ATTN_PRE_COMB_BYTES,
+                "retained attention HC pre combination",
+            )?;
+            let expected_attention_pre = decode_f32_fixture(
+                RETAINED_MULTIMERGE_HC_ATTN_PRE_BYTES,
+                "retained attention HC pre",
+            )?;
+            let expected_q_lora =
+                decode_f32_fixture(RETAINED_MULTIMERGE_Q_LORA_BYTES, "retained Q-Lora")?;
+            let expected_kv_raw =
+                decode_f32_fixture(RETAINED_MULTIMERGE_KV_RAW_BYTES, "retained raw KV")?;
+            let expected_kv_norm =
+                decode_f32_fixture(RETAINED_MULTIMERGE_KV_NORM_BYTES, "retained normalized KV")?;
+            let expected_q_raw =
+                decode_f32_fixture(RETAINED_MULTIMERGE_Q_RAW_BYTES, "retained raw Q")?;
+            let expected_kv_rope = decode_f32_fixture(
+                RETAINED_MULTIMERGE_KV_ROPE_BYTES,
+                "retained KV before cache store",
+            )?;
+            let expected_ffn_mixes = decode_f32_fixture(
+                RETAINED_MULTIMERGE_HC_FFN_PRE_MIXES_BYTES,
+                "retained FFN HC pre mixes",
+            )?;
+            let expected_ffn_weights = decode_f32_fixture(
+                RETAINED_MULTIMERGE_HC_FFN_PRE_WEIGHTS_BYTES,
+                "retained FFN HC pre weights",
+            )?;
+            let expected_ffn_post_weights = decode_f32_fixture(
+                RETAINED_MULTIMERGE_HC_FFN_PRE_POST_WEIGHTS_BYTES,
+                "retained FFN HC pre post-weights",
+            )?;
+            let expected_ffn_comb = decode_f32_fixture(
+                RETAINED_MULTIMERGE_HC_FFN_PRE_COMB_BYTES,
+                "retained FFN HC pre combination",
+            )?;
+            let expected_ffn_pre =
+                decode_f32_fixture(RETAINED_MULTIMERGE_HC_FFN_PRE_BYTES, "retained FFN HC pre")?;
+            let expected_ffn_norm =
+                decode_f32_fixture(RETAINED_MULTIMERGE_FFN_NORM_BYTES, "retained FFN norm")?;
+            let expected_router_logits = decode_f32_fixture(
+                RETAINED_MULTIMERGE_FFN_MOE_LOGITS_BYTES,
+                "retained FFN router logits",
+            )?;
+            let expected_router_probs = decode_f32_fixture(
+                RETAINED_MULTIMERGE_FFN_MOE_PROBS_BYTES,
+                "retained FFN router probabilities",
+            )?;
+            let expected_selected = decode_i32_fixture(
+                RETAINED_MULTIMERGE_FFN_MOE_TOPK_BYTES,
+                "retained FFN selected experts",
+            )?;
+            let expected_router_weights = decode_f32_fixture(
+                RETAINED_MULTIMERGE_FFN_MOE_WEIGHTS_SCALED_BYTES,
+                "retained FFN scaled router weights",
+            )?;
+            let expected_routed_mid = decode_f32_fixture(
+                RETAINED_MULTIMERGE_FFN_MOE_WEIGHTED_SWIGLU_BYTES,
+                "retained FFN weighted SwiGLU",
+            )?;
+            let expected_routed_out = decode_f32_fixture(
+                RETAINED_MULTIMERGE_FFN_MOE_OUT_BYTES,
+                "retained FFN routed output",
+            )?;
+            let expected_shared_out = decode_f32_fixture(
+                RETAINED_MULTIMERGE_FFN_SHEXP_BYTES,
+                "retained FFN shared-expert output",
+            )?;
+            let expected_final_hc = decode_f32_fixture(
+                RETAINED_MULTIMERGE_HC_FFN_POST_BYTES,
+                "retained final layer HC",
+            )?;
+
+            for (label, actual, expected) in [
+                (
+                    "attention HC pre mixes",
+                    prepared.mixes.as_slice(),
+                    expected_attention_mixes.as_slice(),
+                ),
+                (
+                    "attention HC pre weights",
+                    &prepared.split[0..4],
+                    expected_attention_weights.as_slice(),
+                ),
+                (
+                    "attention HC pre post-weights",
+                    &prepared.split[4..8],
+                    expected_attention_post_weights.as_slice(),
+                ),
+                (
+                    "attention HC pre combination",
+                    &prepared.split[8..24],
+                    expected_attention_comb.as_slice(),
+                ),
+                (
+                    "attention HC pre",
+                    prepared.collapsed.as_slice(),
+                    expected_attention_pre.as_slice(),
+                ),
+                (
+                    "Q-Lora",
+                    prepared.q_lora.as_slice(),
+                    expected_q_lora.as_slice(),
+                ),
+                (
+                    "raw KV",
+                    prepared.kv_raw.as_slice(),
+                    expected_kv_raw.as_slice(),
+                ),
+                (
+                    "normalized KV",
+                    prepared.kv_norm_pre_rope.as_slice(),
+                    expected_kv_norm.as_slice(),
+                ),
+                (
+                    "raw Q",
+                    prepared.q_raw.as_slice(),
+                    expected_q_raw.as_slice(),
+                ),
+                (
+                    "KV before cache store",
+                    prepared.kv_rope.as_slice(),
+                    expected_kv_rope.as_slice(),
+                ),
+                (
+                    "FFN HC pre mixes",
+                    prepared.ffn_mixes.as_slice(),
+                    expected_ffn_mixes.as_slice(),
+                ),
+                (
+                    "FFN HC pre weights",
+                    &prepared.ffn_split[0..4],
+                    expected_ffn_weights.as_slice(),
+                ),
+                (
+                    "FFN HC pre post-weights",
+                    &prepared.ffn_split[4..8],
+                    expected_ffn_post_weights.as_slice(),
+                ),
+                (
+                    "FFN HC pre combination",
+                    &prepared.ffn_split[8..24],
+                    expected_ffn_comb.as_slice(),
+                ),
+                (
+                    "FFN HC pre",
+                    prepared.ffn_cur.as_slice(),
+                    expected_ffn_pre.as_slice(),
+                ),
+                (
+                    "FFN norm",
+                    prepared.ffn_norm.as_slice(),
+                    expected_ffn_norm.as_slice(),
+                ),
+                (
+                    "FFN router logits",
+                    prepared.router_logits.as_slice(),
+                    expected_router_logits.as_slice(),
+                ),
+                (
+                    "FFN router probabilities",
+                    prepared.router_probs.as_slice(),
+                    expected_router_probs.as_slice(),
+                ),
+                (
+                    "FFN scaled router weights",
+                    prepared.router_weights.as_slice(),
+                    expected_router_weights.as_slice(),
+                ),
+                (
+                    "FFN weighted SwiGLU",
+                    prepared.routed_mid.as_slice(),
+                    expected_routed_mid.as_slice(),
+                ),
+                (
+                    "FFN routed output",
+                    prepared.routed_out.as_slice(),
+                    expected_routed_out.as_slice(),
+                ),
+                (
+                    "FFN shared-expert output",
+                    prepared.shared_out.as_slice(),
+                    expected_shared_out.as_slice(),
+                ),
+                (
+                    "final layer HC",
+                    prepared.after_ffn_hc.as_slice(),
+                    expected_final_hc.as_slice(),
+                ),
+            ] {
+                check_f32(label, actual, expected)?;
+            }
+            if prepared.selected != expected_selected {
+                let mismatch = prepared
+                    .selected
+                    .iter()
+                    .zip(&expected_selected)
+                    .position(|(actual, expected)| actual != expected)
+                    .unwrap_or(0);
+                return Err(Error::invalid(format!(
+                    "retained sparse-boundary FFN selected-expert mismatch at {mismatch}: actual={} expected={}",
+                    prepared.selected[mismatch], expected_selected[mismatch]
+                )));
+            }
+        }
         if execution.report.dispatches != expected_dispatches
             || execution.report.wrapped_model_ranges != 35
             || execution.report.pointer_matches != 35
@@ -14185,6 +14474,7 @@ mod imp {
 
         Ok(RetainedSparseBoundaryProbeReport {
             fixture_id,
+            token,
             layer: 2,
             position,
             raw_rows: 128,
@@ -14200,7 +14490,7 @@ mod imp {
             pointer_matches: execution.report.pointer_matches,
             wall_ms: execution.report.wall_ms,
             gpu_ms: execution.report.gpu_ms,
-            exact_tensor_checks: 16,
+            exact_tensor_checks: if multimerge { 40 } else { 16 },
             q_current_checksum: checksum_f32(&prepared.q_cur),
             compressed_kv_checksum: checksum_f32(&prepared.compressed_kv),
             compressed_indexer_checksum: checksum_f32(&prepared.compressed_indexer),
@@ -14209,6 +14499,8 @@ mod imp {
             kqv_out_checksum: checksum_f32(&prepared.attention_raw),
             kqv_back_checksum: checksum_f32(&prepared.attention_back),
             attention_hc_checksum: checksum_f32(&prepared.after_attention_hc),
+            selected_experts_checksum: checksum_i32(&prepared.selected),
+            final_hc_checksum: checksum_f32(&prepared.after_ffn_hc),
         })
     }
 
@@ -16249,6 +16541,7 @@ mod imp {
             q_lora_norm,
             kv_raw,
             kv_after_store,
+            kv_norm_pre_rope,
             q_raw,
             q_cur,
             kv_rope,
@@ -16261,6 +16554,7 @@ mod imp {
             after_attention_hc,
             ffn_mixes,
             ffn_split,
+            ffn_cur,
             ffn_norm,
             router_logits,
             router_probs,
@@ -16350,8 +16644,10 @@ mod imp {
             },
             compressed_kv_row: compressed_kv.as_mut_ptr(),
             compressed_indexer_row: compressed_indexer.as_mut_ptr(),
+            kv_norm_pre_rope: kv_norm_pre_rope.as_mut_ptr(),
             ffn_mixes: ffn_mixes.as_mut_ptr(),
             ffn_split: ffn_split.as_mut_ptr(),
+            ffn_cur: ffn_cur.as_mut_ptr(),
             ffn_norm: ffn_norm.as_mut_ptr(),
             router_logits: router_logits.as_mut_ptr(),
             router_probs: router_probs.as_mut_ptr(),
@@ -20429,6 +20725,27 @@ mod tests {
         assert_eq!(RETAINED_MULTIMERGE_INDEXER_TOPK_BYTES.len(), 512 * 4);
         assert_eq!(RETAINED_MULTIMERGE_KQV_OUT_BYTES.len(), 32_768 * 4);
         assert_eq!(RETAINED_MULTIMERGE_HC_ATTN_POST_BYTES.len(), 16_384 * 4);
+        assert_eq!(RETAINED_MULTIMERGE_HC_ATTN_PRE_MIXES_BYTES.len(), 24 * 4);
+        assert_eq!(RETAINED_MULTIMERGE_HC_ATTN_PRE_WEIGHTS_BYTES.len(), 4 * 4);
+        assert_eq!(RETAINED_MULTIMERGE_HC_ATTN_PRE_COMB_BYTES.len(), 16 * 4);
+        assert_eq!(RETAINED_MULTIMERGE_HC_ATTN_PRE_BYTES.len(), 4_096 * 4);
+        assert_eq!(RETAINED_MULTIMERGE_Q_LORA_BYTES.len(), 1_024 * 4);
+        assert_eq!(RETAINED_MULTIMERGE_KV_RAW_BYTES.len(), 512 * 4);
+        assert_eq!(RETAINED_MULTIMERGE_Q_RAW_BYTES.len(), 32_768 * 4);
+        assert_eq!(RETAINED_MULTIMERGE_HC_FFN_PRE_MIXES_BYTES.len(), 24 * 4);
+        assert_eq!(RETAINED_MULTIMERGE_HC_FFN_PRE_WEIGHTS_BYTES.len(), 4 * 4);
+        assert_eq!(RETAINED_MULTIMERGE_HC_FFN_PRE_COMB_BYTES.len(), 16 * 4);
+        assert_eq!(RETAINED_MULTIMERGE_HC_FFN_PRE_BYTES.len(), 4_096 * 4);
+        assert_eq!(RETAINED_MULTIMERGE_FFN_NORM_BYTES.len(), 4_096 * 4);
+        assert_eq!(RETAINED_MULTIMERGE_FFN_MOE_LOGITS_BYTES.len(), 256 * 4);
+        assert_eq!(RETAINED_MULTIMERGE_FFN_MOE_TOPK_BYTES.len(), 6 * 4);
+        assert_eq!(
+            RETAINED_MULTIMERGE_FFN_MOE_WEIGHTED_SWIGLU_BYTES.len(),
+            6 * 2_048 * 4
+        );
+        assert_eq!(RETAINED_MULTIMERGE_FFN_MOE_OUT_BYTES.len(), 4_096 * 4);
+        assert_eq!(RETAINED_MULTIMERGE_FFN_SHEXP_BYTES.len(), 4_096 * 4);
+        assert_eq!(RETAINED_MULTIMERGE_HC_FFN_POST_BYTES.len(), 16_384 * 4);
     }
 
     #[test]
@@ -20479,6 +20796,7 @@ mod tests {
     fn writes_stable_retained_sparse_boundary_probe_json() {
         let report = RetainedSparseBoundaryProbeReport {
             fixture_id: RETAINED_SPARSE_BOUNDARY_FIXTURE_ID,
+            token: 0,
             layer: 2,
             position: 4099,
             raw_rows: 128,
@@ -20503,6 +20821,8 @@ mod tests {
             kqv_out_checksum: 6,
             kqv_back_checksum: 7,
             attention_hc_checksum: 8,
+            selected_experts_checksum: 9,
+            final_hc_checksum: 10,
         };
         let mut output = Vec::new();
         write_retained_sparse_boundary_probe_json(&mut output, &report).unwrap();
@@ -20519,6 +20839,7 @@ mod tests {
     fn writes_stable_retained_sparse_multimerge_probe_json() {
         let report = RetainedSparseBoundaryProbeReport {
             fixture_id: RETAINED_SPARSE_MULTIMERGE_FIXTURE_ID,
+            token: 381,
             layer: 2,
             position: 8195,
             raw_rows: 128,
@@ -20534,7 +20855,7 @@ mod tests {
             pointer_matches: 35,
             wall_ms: 1.0,
             gpu_ms: 0.5,
-            exact_tensor_checks: 16,
+            exact_tensor_checks: 40,
             q_current_checksum: 1,
             compressed_kv_checksum: 2,
             compressed_indexer_checksum: 3,
@@ -20543,6 +20864,8 @@ mod tests {
             kqv_out_checksum: 6,
             kqv_back_checksum: 7,
             attention_hc_checksum: 8,
+            selected_experts_checksum: 9,
+            final_hc_checksum: 10,
         };
         let mut output = Vec::new();
         write_retained_sparse_multimerge_probe_json(&mut output, &report).unwrap();
@@ -20552,6 +20875,10 @@ mod tests {
         assert!(text.contains("\"merge_passes\": 2"));
         assert!(text.contains("\"ping_pong_workspace\": true"));
         assert!(text.contains("\"repeated_merge_boundary_claim\": true"));
+        assert!(text.contains("\"token\": 381"));
+        assert!(text.contains("\"exact_tensor_checks\": 40"));
+        assert!(text.contains("\"complete_layer_claim\": true"));
+        assert!(text.contains("\"preceding_layers_execution_claim\": false"));
         assert!(text.contains("\"complete_decoder_claim\": false"));
         assert!(text.contains("\"throughput_claim\": false"));
     }

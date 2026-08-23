@@ -77,8 +77,12 @@ The retained sparse scheduler now uses a context-capacity-sized ping-pong
 workspace and derives its active sort/merge schedule from visible compressed
 rows. A second exact control at layer 2 position 8195 seeds 2,048 prior rows,
 commits row 2,049, runs three initial sort blocks and two merge passes, and
-matches 16 tensors over 55 dispatches with 35/35 no-copy mappings. The same
-complete-layer and decoder limitations still apply.
+matches every one of the fixture's 39 produced tensors plus the derived raw
+cache row over 55 dispatches with 35/35 no-copy mappings. Two fresh DwarfStar
+processes independently bind the hash router to token 381. The attention path,
+token-dependent FFN, selected experts, routed/shared outputs, and final layer HC
+therefore form a complete retained layer-2 C0 control. Preceding layers, a
+complete decoder, output logits, and throughput remain unclaimed.
 
 The first native
 batch boundary is now implemented separately: repeated captures localize the

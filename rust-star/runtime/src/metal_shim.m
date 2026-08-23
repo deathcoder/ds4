@@ -11235,7 +11235,8 @@ int rust_star_metal_run_attention_ingress(
             @"attention-output results require the complete attention-read output set");
     }
     if (full_layer && (!attention_output ||
-        !layer0->ffn_mixes || !layer0->ffn_split || !layer0->ffn_norm ||
+        !layer0->kv_norm_pre_rope || !layer0->ffn_mixes || !layer0->ffn_split ||
+        !layer0->ffn_cur || !layer0->ffn_norm ||
         !layer0->router_logits || !layer0->router_probs || !layer0->selected ||
         !layer0->router_weights || !layer0->routed_mid || !layer0->routed_out ||
         !layer0->shared_out || !layer0->after_ffn_hc)) {
@@ -11636,6 +11637,7 @@ int rust_star_metal_run_attention_ingress(
         id<MTLBuffer> q_raw_buffer = extended ? persistent_buffer(context, layer_buffer_key(@"q_raw", layer_scoped_buffers, layer0->layer_index), q_raw_elements*sizeof(float), error, error_bytes) : nil;
         id<MTLBuffer> q_cur_buffer = rope_and_store ? persistent_buffer(context, layer_buffer_key(@"q_cur", layer_scoped_buffers, layer0->layer_index), q_raw_elements*sizeof(float), error, error_bytes) : nil;
         id<MTLBuffer> kv_rope_buffer = rope_and_store ? persistent_buffer(context, layer_buffer_key(@"kv_rope", layer_scoped_buffers, layer0->layer_index), kv_elements*sizeof(float), error, error_bytes) : nil;
+        id<MTLBuffer> kv_pre_rope_buffer = rope_and_store ? persistent_buffer(context, layer_buffer_key(@"kv_pre_rope", layer_scoped_buffers, layer0->layer_index), kv_elements*sizeof(float), error, error_bytes) : nil;
         NSString *cache_key = full_layer ?
             [NSString stringWithFormat:@"kv_cache_layer_%u", layer0->layer_index] :
             @"kv_cache_probe";
@@ -11711,7 +11713,7 @@ int rust_star_metal_run_attention_ingress(
         if (extended && (!q_norm_buffer || !kv_raw_buffer || !kv_norm_buffer || !q_raw_buffer)) {
             return fail_with_message(error, error_bytes, @"failed to allocate attention setup buffers");
         }
-        if (rope_and_store && (!q_cur_buffer || !kv_rope_buffer || !cache_buffer)) {
+        if (rope_and_store && (!q_cur_buffer || !kv_rope_buffer || !kv_pre_rope_buffer || !cache_buffer)) {
             return fail_with_message(error, error_bytes, @"failed to allocate attention RoPE/cache buffers");
         }
         if (attention_read && (!staged_kv_buffer || !mask_buffer || !flash_pad_buffer ||
@@ -12263,6 +12265,9 @@ int rust_star_metal_run_attention_ingress(
             [q_copy copyFromBuffer:q_raw_buffer sourceOffset:0
                           toBuffer:q_cur_buffer destinationOffset:0
                               size:q_raw_elements*sizeof(float)];
+            [q_copy copyFromBuffer:kv_norm_buffer sourceOffset:0
+                          toBuffer:kv_pre_rope_buffer destinationOffset:0
+                              size:kv_elements*sizeof(float)];
             [q_copy endEncoding];
 
             encoder = [command computeCommandEncoder];
@@ -12802,8 +12807,11 @@ int rust_star_metal_run_attention_ingress(
             }
             if (full_layer && measured == 0 && layer0->repeat_bitwise_matches) {
                 memcpy(after_attention_hc, after_attention_hc_buffer.contents, hc_dim*sizeof(float));
+                memcpy(layer0->kv_norm_pre_rope, kv_pre_rope_buffer.contents,
+                    kv_elements*sizeof(float));
                 memcpy(layer0->ffn_mixes, ffn_mix_buffer.contents, mix_hc*sizeof(float));
                 memcpy(layer0->ffn_split, ffn_split_buffer.contents, mix_hc*sizeof(float));
+                memcpy(layer0->ffn_cur, ffn_cur_buffer.contents, n_embd*sizeof(float));
                 memcpy(layer0->ffn_norm, ffn_norm_buffer.contents, n_embd*sizeof(float));
                 memcpy(layer0->router_logits, router_logits_buffer.contents, 256u*sizeof(float));
                 memcpy(layer0->router_probs, router_probs_buffer.contents, 256u*sizeof(float));
@@ -12815,8 +12823,11 @@ int rust_star_metal_run_attention_ingress(
                 memcpy(layer0->after_ffn_hc, after_ffn_hc_buffer.contents, hc_dim*sizeof(float));
             } else if (full_layer && layer0->repeat_bitwise_matches &&
                 (memcmp(after_attention_hc, after_attention_hc_buffer.contents, hc_dim*sizeof(float)) != 0 ||
+                 memcmp(layer0->kv_norm_pre_rope, kv_pre_rope_buffer.contents,
+                    kv_elements*sizeof(float)) != 0 ||
                  memcmp(layer0->ffn_mixes, ffn_mix_buffer.contents, mix_hc*sizeof(float)) != 0 ||
                  memcmp(layer0->ffn_split, ffn_split_buffer.contents, mix_hc*sizeof(float)) != 0 ||
+                 memcmp(layer0->ffn_cur, ffn_cur_buffer.contents, n_embd*sizeof(float)) != 0 ||
                  memcmp(layer0->ffn_norm, ffn_norm_buffer.contents, n_embd*sizeof(float)) != 0 ||
                  memcmp(layer0->router_logits, router_logits_buffer.contents, 256u*sizeof(float)) != 0 ||
                  memcmp(layer0->router_probs, router_probs_buffer.contents, 256u*sizeof(float)) != 0 ||
@@ -12887,8 +12898,11 @@ int rust_star_metal_run_attention_ingress(
             memcpy(after_attention_hc, after_attention_hc_buffer.contents, hc_dim*sizeof(float));
         }
         if (full_layer) {
+            memcpy(layer0->kv_norm_pre_rope, kv_pre_rope_buffer.contents,
+                kv_elements*sizeof(float));
             memcpy(layer0->ffn_mixes, ffn_mix_buffer.contents, mix_hc*sizeof(float));
             memcpy(layer0->ffn_split, ffn_split_buffer.contents, mix_hc*sizeof(float));
+            memcpy(layer0->ffn_cur, ffn_cur_buffer.contents, n_embd*sizeof(float));
             memcpy(layer0->ffn_norm, ffn_norm_buffer.contents, n_embd*sizeof(float));
             memcpy(layer0->router_logits, router_logits_buffer.contents, 256u*sizeof(float));
             memcpy(layer0->router_probs, router_probs_buffer.contents, 256u*sizeof(float));
