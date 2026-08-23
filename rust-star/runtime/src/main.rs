@@ -15,15 +15,16 @@ use rust_star_runtime::metal::{
     run_prefill_layers01_row_coverage_probe, run_prefill_q8_boundary_probe,
     run_prefill_qkv_boundary_probe, run_probe, run_q8_projection_probe,
     run_ratio128_compressor_replay_probe, run_rope_kv_store_probe,
-    write_attention_output_probe_json, write_attention_read_probe_json,
-    write_attention_setup_probe_json, write_closed_loop_decoder_probe_json,
-    write_cold_prefill_decoder_probe_json, write_decoder_output_probe_json,
-    write_embedding_probe_json, write_ffn_router_probe_json, write_ingress_probe_json,
-    write_layer0_bench_json, write_layer0_probe_json, write_layers01234567_decode_probe_json,
-    write_layers012345_decode_probe_json, write_layers0123_bench_json,
-    write_layers0123_chained_probe_json, write_layers0123_decode_probe_json,
-    write_layers0123_probe_json, write_layers012_chained_probe_json, write_layers012_probe_json,
-    write_layers01_probe_json, write_layers0_to_42_decode_probe_json, write_moe_output_probe_json,
+    run_sparse_indexed_attention_probe, write_attention_output_probe_json,
+    write_attention_read_probe_json, write_attention_setup_probe_json,
+    write_closed_loop_decoder_probe_json, write_cold_prefill_decoder_probe_json,
+    write_decoder_output_probe_json, write_embedding_probe_json, write_ffn_router_probe_json,
+    write_ingress_probe_json, write_layer0_bench_json, write_layer0_probe_json,
+    write_layers01234567_decode_probe_json, write_layers012345_decode_probe_json,
+    write_layers0123_bench_json, write_layers0123_chained_probe_json,
+    write_layers0123_decode_probe_json, write_layers0123_probe_json,
+    write_layers012_chained_probe_json, write_layers012_probe_json, write_layers01_probe_json,
+    write_layers0_to_42_decode_probe_json, write_moe_output_probe_json,
     write_position127_decoder_probe_json, write_prefill_frontier_probe_json,
     write_prefill_layer0_boundary_probe_json, write_prefill_layers012_attention_loop_probe_json,
     write_prefill_layers012_compressor_loop_probe_json,
@@ -34,10 +35,11 @@ use rust_star_runtime::metal::{
     write_prefill_layers01_live_kv_loop_probe_json, write_prefill_layers01_row_coverage_probe_json,
     write_prefill_q8_boundary_probe_json, write_prefill_qkv_boundary_probe_json, write_probe_json,
     write_projection_probe_json, write_ratio128_compressor_replay_probe_json,
-    write_rope_kv_store_probe_json, AttentionOutputProbeReport, AttentionReadProbeReport,
-    AttentionSetupProbeReport, ClosedLoopDecoderProbeReport, ColdPrefillDecoderProbeReport,
-    DecoderOutputProbeReport, EmbeddingProbeReport, FfnRouterProbeReport, IngressProbeReport,
-    Layer0BenchConfig, Layer0BenchReport, Layer0ProbeReport, Layers01234567DecodeProbeReport,
+    write_rope_kv_store_probe_json, write_sparse_indexed_attention_probe_json,
+    AttentionOutputProbeReport, AttentionReadProbeReport, AttentionSetupProbeReport,
+    ClosedLoopDecoderProbeReport, ColdPrefillDecoderProbeReport, DecoderOutputProbeReport,
+    EmbeddingProbeReport, FfnRouterProbeReport, IngressProbeReport, Layer0BenchConfig,
+    Layer0BenchReport, Layer0ProbeReport, Layers01234567DecodeProbeReport,
     Layers012345DecodeProbeReport, Layers0123BenchConfig, Layers0123BenchReport,
     Layers0123ChainedProbeReport, Layers0123DecodeProbeReport, Layers0123ProbeReport,
     Layers012ChainedProbeReport, Layers012ProbeReport, Layers01ProbeReport,
@@ -49,7 +51,7 @@ use rust_star_runtime::metal::{
     PrefillLayers01LiveKvChainProbeReport, PrefillLayers01LiveKvLoopProbeReport,
     PrefillLayers01RowCoverageProbeReport, PrefillQ8BoundaryProbeReport,
     PrefillQkvBoundaryProbeReport, ProbeConfig, ProjectionProbeReport,
-    Ratio128CompressorReplayProbeReport, RopeKvStoreProbeReport,
+    Ratio128CompressorReplayProbeReport, RopeKvStoreProbeReport, SparseIndexedAttentionProbeReport,
 };
 use rust_star_runtime::model::MappedModel;
 use rust_star_runtime::target::{validate_resident_q2, MODEL_LABEL};
@@ -198,6 +200,9 @@ fn run() -> Result<()> {
     }
     if command == "ratio128-compressor-replay-probe" {
         return run_ratio128_compressor_replay_probe_command(arguments.collect());
+    }
+    if command == "sparse-indexed-attention-probe" {
+        return run_sparse_indexed_attention_probe_command(arguments.collect());
     }
     run_model_command(&command, arguments.collect())
 }
@@ -712,6 +717,60 @@ fn run_ratio128_compressor_replay_probe_command(arguments: Vec<OsString>) -> Res
     );
     if let Some(path) = json_path {
         write_ratio128_compressor_replay_probe_file(&path, &report)?;
+        println!("json: {}", path.display());
+    }
+    Ok(())
+}
+
+fn run_sparse_indexed_attention_probe_command(arguments: Vec<OsString>) -> Result<()> {
+    if arguments.is_empty() {
+        return Err(Error::invalid(sparse_indexed_attention_probe_usage()));
+    }
+    if matches!(arguments[0].to_str(), Some("--help") | Some("-h")) {
+        println!("{}", sparse_indexed_attention_probe_usage());
+        return Ok(());
+    }
+    let model_path = PathBuf::from(&arguments[0]);
+    let mut json_path: Option<PathBuf> = None;
+    let mut arguments = arguments.into_iter().skip(1);
+    while let Some(argument) = arguments.next() {
+        match argument.to_str() {
+            Some("--json") => {
+                let value = arguments
+                    .next()
+                    .ok_or_else(|| Error::invalid("--json requires a path"))?;
+                if json_path.is_some() {
+                    return Err(Error::invalid("--json may be specified only once"));
+                }
+                json_path = Some(PathBuf::from(value));
+            }
+            Some("--help") | Some("-h") => {
+                println!("{}", sparse_indexed_attention_probe_usage());
+                return Ok(());
+            }
+            _ => return Err(Error::invalid(sparse_indexed_attention_probe_usage())),
+        }
+    }
+    let model = MappedModel::open(&model_path)?;
+    validate_resident_q2(model.gguf())?;
+    let report = run_sparse_indexed_attention_probe(&model)?;
+    println!(
+        "layer-2 position {}: {} compressed rows -> exact top-{}, {}-split indexed attention, C0 exact",
+        report.position, report.compressed_rows, report.top_k, report.split_count,
+    );
+    println!(
+        "mapping: {}/{} mmap-backed model ranges preserve pointer identity; {} dispatches",
+        report.pointer_matches, report.wrapped_model_ranges, report.dispatches,
+    );
+    println!(
+        "scope: diagnostic threshold override {}; pinned default remains {} (first default sparse row count {})",
+        report.diagnostic_threshold_override,
+        report.pinned_default_threshold,
+        report.first_default_sparse_rows,
+    );
+    println!("claims: complete-decode=false logits=false throughput=false");
+    if let Some(path) = json_path {
+        write_sparse_indexed_attention_probe_file(&path, &report)?;
         println!("json: {}", path.display());
     }
     Ok(())
@@ -3488,6 +3547,36 @@ fn write_ratio128_compressor_replay_probe_file(
     Ok(())
 }
 
+fn write_sparse_indexed_attention_probe_file(
+    path: &Path,
+    report: &SparseIndexedAttentionProbeReport,
+) -> Result<()> {
+    let temporary = path.with_extension(format!(
+        "{}tmp",
+        path.extension()
+            .and_then(OsStr::to_str)
+            .map(|extension| format!("{extension}."))
+            .unwrap_or_default()
+    ));
+    let file = File::create(&temporary).map_err(|error| {
+        Error::invalid(format!(
+            "cannot create sparse indexed-attention JSON {}: {error}",
+            temporary.display()
+        ))
+    })?;
+    let mut output = BufWriter::new(file);
+    write_sparse_indexed_attention_probe_json(&mut output, report)?;
+    output.flush()?;
+    drop(output);
+    std::fs::rename(&temporary, path).map_err(|error| {
+        Error::invalid(format!(
+            "cannot install sparse indexed-attention JSON {}: {error}",
+            path.display()
+        ))
+    })?;
+    Ok(())
+}
+
 fn write_layers01_probe_file(path: &Path, report: &Layers01ProbeReport) -> Result<()> {
     let temporary = path.with_extension(format!(
         "{}tmp",
@@ -3829,4 +3918,8 @@ fn prefill_frontier_probe_usage() -> &'static str {
 
 fn ratio128_compressor_replay_probe_usage() -> &'static str {
     "usage: rust-star ratio128-compressor-replay-probe MODEL.gguf [--json PATH]\n\nReplays 128 independently captured DwarfStar attn_norm rows through the layer-3 and layer-5 ratio-128 attention compressors, validates both first emitted KV rows bit-for-bit, and explicitly performs neither token sampling nor a complete decoder pass."
+}
+
+fn sparse_indexed_attention_probe_usage() -> &'static str {
+    "usage: rust-star sparse-indexed-attention-probe MODEL.gguf [--json PATH]\n\nRuns the isolated layer-2 position-2051 sparse indexer and exact top-512 indexed-attention mechanism against two repeated DwarfStar captures. The fixture uses a diagnostic threshold override of 512; the pinned default remains 1024, so this is not a default-switch, complete-decode, logits, or throughput claim."
 }

@@ -312,9 +312,11 @@ they describe whenever practical.
   sequential 2K initializer still
   deliberately records its difference from the paired protocol's
   batched-prefill oracle.
-- Add ratio-4 sparse indexer selection after 512 compressed rows, then emit the
-  Rust Star engine-measurement contract. The complete 128-token diagnostic no
-  longer depends on captured initial cache/compressor state.
+- Integrate ratio-4 sparse indexer selection into the retained decoder after
+  the pinned 1,024-row dense threshold, then emit the Rust Star
+  engine-measurement contract. The isolated fixed-top-512 mechanism is already
+  C0 exact at a diagnostic 513-row boundary captured with an explicit threshold
+  override; this does not change the production default.
 - Execute `rust-star/BENCHMARK_PROTOCOL.md` and capture the initial paired
   DwarfStar numbers; the v1 protocol itself is now defined.
 - Implement the Rust Star side of `rust-star/ENGINE_MEASUREMENT_FORMAT.md` once

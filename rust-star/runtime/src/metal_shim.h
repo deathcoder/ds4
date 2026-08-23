@@ -717,6 +717,45 @@ int rust_star_metal_run_attention_ingress(
     size_t error_bytes,
     const rust_star_metal_layer0_extension *layer0);
 
+typedef struct rust_star_metal_sparse_indexed_result {
+    uint32_t position;
+    uint32_t compressed_rows;
+    uint32_t raw_rows;
+    uint32_t top_k;
+    uint32_t dispatches;
+    uint32_t wrapped_model_ranges;
+    uint32_t pointer_matches;
+    uint32_t split_count;
+    double wall_ms;
+    double gpu_ms;
+} rust_star_metal_sparse_indexed_result;
+
+int rust_star_metal_run_sparse_indexed_attention(
+    void *context,
+    const void *model_mapping,
+    uint64_t model_bytes,
+    uint64_t indexer_q_offset,
+    uint64_t indexer_q_bytes,
+    uint64_t indexer_weight_offset,
+    uint64_t indexer_weight_bytes,
+    uint64_t sinks_offset,
+    uint64_t sinks_bytes,
+    const float *q_lora_norm,
+    const float *attn_norm,
+    const float *q_current,
+    const float *raw_cache,
+    const float *attention_comp_cache,
+    const float *indexer_comp_cache,
+    float *indexer_q,
+    float *indexer_weights,
+    float *indexer_scores,
+    int32_t *indexer_topk,
+    float *kqv_out,
+    float *kqv_back,
+    rust_star_metal_sparse_indexed_result *result,
+    char *error,
+    size_t error_bytes);
+
 int rust_star_metal_run_output_head(
     void *context,
     const void *model_mapping,

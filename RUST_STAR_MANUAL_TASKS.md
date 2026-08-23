@@ -169,8 +169,11 @@ Return evidence:
 
 ## M-005 — Execute the first paired DwarfStar/Rust Star run
 
-Status: `BLOCKED` on complete native batched prefill, ratio-4 sparse indexed
-attention, and the engine-measurement producer. The native M1 batch boundary
+Status: `BLOCKED` on complete native batched prefill, retained-decoder
+integration of ratio-4 sparse indexed attention, and the engine-measurement
+producer. The isolated fixed-top-512 sparse mechanism is C0 exact at a
+diagnostic 513-row threshold override; the pinned default first switches at
+1,025 rows. The native M1 batch boundary
 now runs complete layers 0 and 1 over all 2,048 prompt rows from empty KV state,
 and every live layer-1 output is downstream exact through layer 2's normalized
 KV boundary, compressed-attention RoPE, E4M3FN finalization, and retained raw

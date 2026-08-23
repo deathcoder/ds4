@@ -160,6 +160,9 @@ elif [ "$#" -eq 1 ]; then
         echo "==> bounded position-127 ratio-128 compressor replay"
         "$target_dir/release/rust-star" ratio128-compressor-replay-probe "$1" \
             --json "$target_dir/ratio128-compressor-replay-probe.json"
+        echo "==> diagnostic fixed-top-512 sparse indexed attention"
+        "$target_dir/release/rust-star" sparse-indexed-attention-probe "$1" \
+            --json "$target_dir/sparse-indexed-attention-probe.json"
         echo "==> repeated layers 0-3 with setup and correctness readback outside timing"
         "$target_dir/release/rust-star" layers0123-bench "$1" \
             --warmup 5 --iterations 20 \

@@ -60,6 +60,10 @@ pub const COLD_PREFILL_DECODER_PROBE_SCHEMA: &str = "rust-star-cold-prefill-deco
 pub const PREFILL_FRONTIER_PROBE_SCHEMA: &str = "rust-star-prefill-frontier-diagnostic-v1";
 pub const RATIO128_COMPRESSOR_REPLAY_PROBE_SCHEMA: &str =
     "rust-star-ratio128-compressor-replay-probe-v1";
+pub const SPARSE_INDEXED_ATTENTION_PROBE_SCHEMA: &str =
+    "rust-star-sparse-indexed-attention-diagnostic-v1";
+pub const SPARSE_INDEXED_ATTENTION_FIXTURE_ID: &str =
+    "dwarfstar-oracle-v1-layer2-pos2051-sparse-indexed-attention";
 pub const PROJECTION_FIXTURE_ID: &str = "dwarfstar-oracle-v1-layer0-pos1-attn-q-a";
 pub const PREFILL_Q8_BOUNDARY_FIXTURE_ID: &str = "dwarfstar-oracle-v1-prefill-q8-boundary-2048";
 pub const PREFILL_QKV_BOUNDARY_FIXTURE_ID: &str = "dwarfstar-oracle-v1-prefill-qkv-boundary-2048";
@@ -234,6 +238,32 @@ const PROJECTION_OUTPUT_BYTES: &[u8] =
     include_bytes!("../../fixtures/q8-attn-q-a-v1/output.f32le.bin");
 const PREFILL_Q8_INPUT_BYTES: &[u8] =
     include_bytes!("../../fixtures/prefill-q8-boundary-2048-v1/attn-norm-final-tile.f32le.bin");
+const SPARSE_Q_LORA_NORM_BYTES: &[u8] =
+    include_bytes!("../../fixtures/sparse-indexed-attention-pos2051-v1/q-lora-norm.f32le.bin");
+const SPARSE_ATTN_NORM_BYTES: &[u8] =
+    include_bytes!("../../fixtures/sparse-indexed-attention-pos2051-v1/attn-norm.f32le.bin");
+const SPARSE_Q_CURRENT_BYTES: &[u8] =
+    include_bytes!("../../fixtures/sparse-indexed-attention-pos2051-v1/q-current.f32le.bin");
+const SPARSE_RAW_CACHE_BYTES: &[u8] =
+    include_bytes!("../../fixtures/sparse-indexed-attention-pos2051-v1/raw-cache.f32le.bin");
+const SPARSE_ATTN_COMP_CACHE_BYTES: &[u8] = include_bytes!(
+    "../../fixtures/sparse-indexed-attention-pos2051-v1/attention-comp-cache.f32le.bin"
+);
+const SPARSE_INDEX_COMP_CACHE_BYTES: &[u8] = include_bytes!(
+    "../../fixtures/sparse-indexed-attention-pos2051-v1/indexer-comp-cache.f32le.bin"
+);
+const SPARSE_INDEXER_Q_BYTES: &[u8] =
+    include_bytes!("../../fixtures/sparse-indexed-attention-pos2051-v1/indexer-q.f32le.bin");
+const SPARSE_INDEXER_WEIGHTS_BYTES: &[u8] =
+    include_bytes!("../../fixtures/sparse-indexed-attention-pos2051-v1/indexer-weights.f32le.bin");
+const SPARSE_INDEXER_SCORES_BYTES: &[u8] =
+    include_bytes!("../../fixtures/sparse-indexed-attention-pos2051-v1/indexer-scores.f32le.bin");
+const SPARSE_INDEXER_TOPK_BYTES: &[u8] =
+    include_bytes!("../../fixtures/sparse-indexed-attention-pos2051-v1/indexer-topk.i32le.bin");
+const SPARSE_KQV_OUT_BYTES: &[u8] =
+    include_bytes!("../../fixtures/sparse-indexed-attention-pos2051-v1/kqv-out.f32le.bin");
+const SPARSE_KQV_BACK_BYTES: &[u8] =
+    include_bytes!("../../fixtures/sparse-indexed-attention-pos2051-v1/kqv-back.f32le.bin");
 const PREFILL_Q8_BATCH_OUTPUT_BYTES: &[u8] =
     include_bytes!("../../fixtures/prefill-q8-boundary-2048-v1/q-lora-batch-final-tile.f32le.bin");
 const PREFILL_Q8_DECODE_OUTPUT_BYTES: &[u8] =
@@ -1919,6 +1949,30 @@ pub struct Ratio128CompressorReplayProbeReport {
     pub externally_supplied_activation_rows: u32,
 }
 
+#[derive(Clone, Debug)]
+pub struct SparseIndexedAttentionProbeReport {
+    pub fixture_id: &'static str,
+    pub position: u32,
+    pub compressed_rows: u32,
+    pub raw_rows: u32,
+    pub top_k: u32,
+    pub diagnostic_threshold_override: u32,
+    pub pinned_default_threshold: u32,
+    pub first_default_sparse_rows: u32,
+    pub dispatches: u32,
+    pub wrapped_model_ranges: u32,
+    pub pointer_matches: u32,
+    pub split_count: u32,
+    pub wall_ms: f64,
+    pub gpu_ms: f64,
+    pub indexer_q_checksum: u64,
+    pub indexer_weights_checksum: u64,
+    pub indexer_scores_checksum: u64,
+    pub indexer_topk_checksum: u64,
+    pub kqv_out_checksum: u64,
+    pub kqv_back_checksum: u64,
+}
+
 pub fn write_ingress_probe_json<W: Write>(
     output: &mut W,
     report: &IngressProbeReport,
@@ -2766,6 +2820,54 @@ pub fn write_ratio128_compressor_replay_probe_json<W: Write>(
     write!(
         output,
         "\n  ],\n  \"sampling_performed\": false,\n  \"full_decoder_claim\": false,\n  \"c0_bitwise_match\": true\n}}\n"
+    )?;
+    Ok(())
+}
+
+pub fn write_sparse_indexed_attention_probe_json<W: Write>(
+    output: &mut W,
+    report: &SparseIndexedAttentionProbeReport,
+) -> Result<()> {
+    if report.fixture_id != SPARSE_INDEXED_ATTENTION_FIXTURE_ID
+        || report.position != 2051
+        || report.compressed_rows != 513
+        || report.raw_rows != 128
+        || report.top_k != 512
+        || report.diagnostic_threshold_override != 512
+        || report.pinned_default_threshold != 1024
+        || report.first_default_sparse_rows != 1025
+        || report.dispatches != 10
+        || report.wrapped_model_ranges != 3
+        || report.pointer_matches != 3
+        || report.split_count != 12
+    {
+        return Err(Error::invalid(
+            "sparse indexed-attention report has inconsistent boundary metadata",
+        ));
+    }
+    write!(
+        output,
+        "{{\n  \"schema\": \"{SPARSE_INDEXED_ATTENTION_PROBE_SCHEMA}\",\n  \"classification\": \"diagnostic-layer-segment\",\n  \"fixture\": \"{}\",\n  \"boundary\": {{\"layer\": 2, \"position\": {}, \"compressed_rows\": {}, \"raw_rows\": {}, \"top_k\": {}}},\n  \"threshold\": {{\"diagnostic_override\": {}, \"pinned_default\": {}, \"first_default_sparse_rows\": {}}},\n  \"schedule\": {{\"dispatches\": {}, \"split_count\": {}, \"score_kernel\": \"kernel_dsv4_indexer_score_one_direct\", \"topk_kernel\": \"kernel_argsort_f32_i32_desc\", \"attention_kernels\": [\"kernel_dsv4_indexed_mixed_attention_heads8_split\", \"kernel_dsv4_indexed_mixed_attention_heads8_split_reduce\"]}},\n  \"mapping\": {{\"wrapped_model_ranges\": {}, \"pointer_matches\": {}}},\n  \"timing\": {{\"wall_ms\": {:.6}, \"gpu_ms\": {:.6}}},\n  \"checksums\": {{\"indexer_q\": {}, \"indexer_weights\": {}, \"indexer_scores\": {}, \"indexer_topk\": {}, \"kqv_out\": {}, \"kqv_back\": {}}},\n  \"c0_bitwise_match\": true,\n  \"default_threshold_boundary_claim\": false,\n  \"complete_decode_claim\": false,\n  \"output_logits_claim\": false,\n  \"throughput_claim\": false\n}}\n",
+        report.fixture_id,
+        report.position,
+        report.compressed_rows,
+        report.raw_rows,
+        report.top_k,
+        report.diagnostic_threshold_override,
+        report.pinned_default_threshold,
+        report.first_default_sparse_rows,
+        report.dispatches,
+        report.split_count,
+        report.wrapped_model_ranges,
+        report.pointer_matches,
+        report.wall_ms,
+        report.gpu_ms,
+        report.indexer_q_checksum,
+        report.indexer_weights_checksum,
+        report.indexer_scores_checksum,
+        report.indexer_topk_checksum,
+        report.kqv_out_checksum,
+        report.kqv_back_checksum,
     )?;
     Ok(())
 }
@@ -7421,6 +7523,21 @@ mod imp {
     }
 
     #[repr(C)]
+    #[derive(Default)]
+    struct RawSparseIndexedResult {
+        position: u32,
+        compressed_rows: u32,
+        raw_rows: u32,
+        top_k: u32,
+        dispatches: u32,
+        wrapped_model_ranges: u32,
+        pointer_matches: u32,
+        split_count: u32,
+        wall_ms: f64,
+        gpu_ms: f64,
+    }
+
+    #[repr(C)]
     struct RawLayer0Extension {
         hc_ffn_fn_offset: u64,
         hc_ffn_fn_bytes: u64,
@@ -8003,6 +8120,32 @@ mod imp {
             shared_out: *mut f32,
             after_ffn_hc: *mut f32,
             result: *mut RawIngressProbeResult,
+            error: *mut c_char,
+            error_bytes: usize,
+        ) -> i32;
+        fn rust_star_metal_run_sparse_indexed_attention(
+            context: *mut c_void,
+            model_mapping: *const c_void,
+            model_bytes: u64,
+            indexer_q_offset: u64,
+            indexer_q_bytes: u64,
+            indexer_weight_offset: u64,
+            indexer_weight_bytes: u64,
+            sinks_offset: u64,
+            sinks_bytes: u64,
+            q_lora_norm: *const f32,
+            attn_norm: *const f32,
+            q_current: *const f32,
+            raw_cache: *const f32,
+            attention_comp_cache: *const f32,
+            indexer_comp_cache: *const f32,
+            indexer_q: *mut f32,
+            indexer_weights: *mut f32,
+            indexer_scores: *mut f32,
+            indexer_topk: *mut i32,
+            kqv_out: *mut f32,
+            kqv_back: *mut f32,
+            result: *mut RawSparseIndexedResult,
             error: *mut c_char,
             error_bytes: usize,
         ) -> i32;
@@ -13095,6 +13238,149 @@ mod imp {
         })
     }
 
+    pub fn run_sparse_indexed_attention_probe(
+        model: &MappedModel,
+    ) -> Result<SparseIndexedAttentionProbeReport> {
+        let q_weight = exact_tensor(model, "blk.2.indexer.attn_q_b.weight", 1, &[1024, 8192])?;
+        let indexer_weight = exact_tensor(model, "blk.2.indexer.proj.weight", 1, &[4096, 64])?;
+        let sinks = exact_tensor(model, "blk.2.attn_sinks.weight", 0, &[64])?;
+        let q_lora_norm = decode_f32_fixture(SPARSE_Q_LORA_NORM_BYTES, "sparse Q-Lora norm")?;
+        let attn_norm = decode_f32_fixture(SPARSE_ATTN_NORM_BYTES, "sparse attention norm")?;
+        let q_current = decode_f32_fixture(SPARSE_Q_CURRENT_BYTES, "sparse Q current")?;
+        let raw_cache = decode_f32_fixture(SPARSE_RAW_CACHE_BYTES, "sparse raw cache")?;
+        let attention_comp_cache = decode_f32_fixture(
+            SPARSE_ATTN_COMP_CACHE_BYTES,
+            "sparse attention compressed cache",
+        )?;
+        let indexer_comp_cache = decode_f32_fixture(
+            SPARSE_INDEX_COMP_CACHE_BYTES,
+            "sparse indexer compressed cache",
+        )?;
+        let expected_q = decode_f32_fixture(SPARSE_INDEXER_Q_BYTES, "sparse indexer Q")?;
+        let expected_weights =
+            decode_f32_fixture(SPARSE_INDEXER_WEIGHTS_BYTES, "sparse indexer weights")?;
+        let expected_scores =
+            decode_f32_fixture(SPARSE_INDEXER_SCORES_BYTES, "sparse indexer scores")?;
+        let expected_topk = decode_i32_fixture(SPARSE_INDEXER_TOPK_BYTES, "sparse indexer top-k")?;
+        let expected_out = decode_f32_fixture(SPARSE_KQV_OUT_BYTES, "sparse KQV output")?;
+        let expected_back = decode_f32_fixture(SPARSE_KQV_BACK_BYTES, "sparse KQV back")?;
+        let mut actual_q = vec![0.0_f32; expected_q.len()];
+        let mut actual_weights = vec![0.0_f32; expected_weights.len()];
+        let mut actual_scores = vec![0.0_f32; expected_scores.len()];
+        let mut actual_topk = vec![0_i32; expected_topk.len()];
+        let mut actual_out = vec![0.0_f32; expected_out.len()];
+        let mut actual_back = vec![0.0_f32; expected_back.len()];
+        let context = Context::new()?;
+        let mut raw = RawSparseIndexedResult::default();
+        let mut error = [0 as c_char; ERROR_BYTES];
+        let succeeded = unsafe {
+            rust_star_metal_run_sparse_indexed_attention(
+                context.0,
+                model.mapping_pointer(),
+                model.bytes(),
+                q_weight.absolute_offset,
+                q_weight.bytes,
+                indexer_weight.absolute_offset,
+                indexer_weight.bytes,
+                sinks.absolute_offset,
+                sinks.bytes,
+                q_lora_norm.as_ptr(),
+                attn_norm.as_ptr(),
+                q_current.as_ptr(),
+                raw_cache.as_ptr(),
+                attention_comp_cache.as_ptr(),
+                indexer_comp_cache.as_ptr(),
+                actual_q.as_mut_ptr(),
+                actual_weights.as_mut_ptr(),
+                actual_scores.as_mut_ptr(),
+                actual_topk.as_mut_ptr(),
+                actual_out.as_mut_ptr(),
+                actual_back.as_mut_ptr(),
+                &mut raw,
+                error.as_mut_ptr(),
+                error.len(),
+            )
+        };
+        if succeeded == 0 {
+            return Err(Error::invalid(format!(
+                "Metal sparse indexed-attention probe failed: {}",
+                error_text(&error)
+            )));
+        }
+        for (label, actual, expected) in [
+            ("indexer Q", &actual_q[..], &expected_q[..]),
+            (
+                "indexer weights",
+                &actual_weights[..],
+                &expected_weights[..],
+            ),
+            ("indexer scores", &actual_scores[..], &expected_scores[..]),
+            ("KQV output", &actual_out[..], &expected_out[..]),
+            ("KQV back", &actual_back[..], &expected_back[..]),
+        ] {
+            if let Some((index, (actual, expected))) = actual
+                .iter()
+                .zip(expected)
+                .enumerate()
+                .find(|(_, (actual, expected))| actual.to_bits() != expected.to_bits())
+            {
+                return Err(Error::invalid(format!(
+                    "sparse indexed-attention {label} C0 mismatch at {index}: actual={:#010x} expected={:#010x}",
+                    actual.to_bits(), expected.to_bits()
+                )));
+            }
+        }
+        if let Some((index, (actual, expected))) = actual_topk
+            .iter()
+            .zip(&expected_topk)
+            .enumerate()
+            .find(|(_, (actual, expected))| actual != expected)
+        {
+            return Err(Error::invalid(format!(
+                "sparse indexed-attention top-k mismatch at {index}: actual={actual} expected={expected}"
+            )));
+        }
+        if raw.position != 2051
+            || raw.compressed_rows != 513
+            || raw.raw_rows != 128
+            || raw.top_k != 512
+            || raw.dispatches != 10
+            || raw.wrapped_model_ranges != 3
+            || raw.pointer_matches != 3
+            || raw.split_count != 12
+            || !raw.wall_ms.is_finite()
+            || raw.wall_ms <= 0.0
+            || !raw.gpu_ms.is_finite()
+            || raw.gpu_ms <= 0.0
+        {
+            return Err(Error::invalid(
+                "Metal sparse indexed-attention result metadata is invalid",
+            ));
+        }
+        Ok(SparseIndexedAttentionProbeReport {
+            fixture_id: SPARSE_INDEXED_ATTENTION_FIXTURE_ID,
+            position: raw.position,
+            compressed_rows: raw.compressed_rows,
+            raw_rows: raw.raw_rows,
+            top_k: raw.top_k,
+            diagnostic_threshold_override: 512,
+            pinned_default_threshold: 1024,
+            first_default_sparse_rows: 1025,
+            dispatches: raw.dispatches,
+            wrapped_model_ranges: raw.wrapped_model_ranges,
+            pointer_matches: raw.pointer_matches,
+            split_count: raw.split_count,
+            wall_ms: raw.wall_ms,
+            gpu_ms: raw.gpu_ms,
+            indexer_q_checksum: checksum_f32(&actual_q),
+            indexer_weights_checksum: checksum_f32(&actual_weights),
+            indexer_scores_checksum: checksum_f32(&actual_scores),
+            indexer_topk_checksum: checksum_i32(&actual_topk),
+            kqv_out_checksum: checksum_f32(&actual_out),
+            kqv_back_checksum: checksum_f32(&actual_back),
+        })
+    }
+
     pub fn run_attention_ingress_probe(model: &MappedModel) -> Result<IngressProbeReport> {
         const TOKEN: u32 = 201;
         let embedding = exact_tensor(model, "token_embd.weight", 1, &[4096, 129280])?;
@@ -15947,6 +16233,16 @@ mod imp {
         ))
     }
 
+    pub fn run_sparse_indexed_attention_probe(
+        model: &MappedModel,
+    ) -> Result<SparseIndexedAttentionProbeReport> {
+        let _ = decode_f32_fixture(SPARSE_INDEXER_SCORES_BYTES, "sparse indexer scores")?;
+        let _ = exact_tensor(model, "blk.2.indexer.attn_q_b.weight", 1, &[1024, 8192])?;
+        Err(Error::invalid(
+            "the Metal sparse indexed-attention probe is available only on macOS",
+        ))
+    }
+
     pub fn run_prefill_layers012_attention_loop_probe(
         model: &MappedModel,
     ) -> Result<PrefillLayers012AttentionLoopProbeReport> {
@@ -16402,7 +16698,8 @@ pub use imp::{
     run_prefill_layers01_live_kv_chain_probe, run_prefill_layers01_live_kv_loop_probe,
     run_prefill_layers01_row_coverage_probe, run_prefill_q8_boundary_probe,
     run_prefill_qkv_boundary_probe, run_probe, run_q8_projection_probe,
-    run_ratio128_compressor_replay_probe, run_rope_kv_store_probe, LayerExecutor,
+    run_ratio128_compressor_replay_probe, run_rope_kv_store_probe,
+    run_sparse_indexed_attention_probe, LayerExecutor,
 };
 
 #[cfg(test)]
@@ -19117,6 +19414,64 @@ mod tests {
         assert_eq!(lowest_id_argmax(&batch_logits).unwrap(), 15342);
         assert_eq!(lowest_id_argmax(&decode_logits).unwrap(), 15342);
         assert_ne!(batch_logits, decode_logits);
+    }
+
+    #[test]
+    fn sparse_indexed_attention_fixture_has_target_shapes() {
+        let q = decode_f32_fixture(SPARSE_INDEXER_Q_BYTES, "indexer Q").unwrap();
+        let weights = decode_f32_fixture(SPARSE_INDEXER_WEIGHTS_BYTES, "indexer weights").unwrap();
+        let scores = decode_f32_fixture(SPARSE_INDEXER_SCORES_BYTES, "indexer scores").unwrap();
+        let topk = decode_i32_fixture(SPARSE_INDEXER_TOPK_BYTES, "indexer top-k").unwrap();
+        let out = decode_f32_fixture(SPARSE_KQV_OUT_BYTES, "KQV output").unwrap();
+        let back = decode_f32_fixture(SPARSE_KQV_BACK_BYTES, "KQV back").unwrap();
+        assert_eq!(q.len(), 64 * 128);
+        assert_eq!(weights.len(), 64);
+        assert_eq!(scores.len(), 513);
+        assert_eq!(topk.len(), 512);
+        assert_eq!(out.len(), 64 * 512);
+        assert_eq!(back.len(), 64 * 512);
+        assert!(topk.iter().all(|index| (0..513).contains(index)));
+        let mut unique = topk.clone();
+        unique.sort_unstable();
+        unique.dedup();
+        assert_eq!(unique.len(), 512);
+        assert_eq!(checksum_f32(&q), 11_009_500_198_888_317_733);
+        assert_eq!(checksum_i32(&topk), 10_522_194_933_279_573_573);
+        assert_eq!(checksum_f32(&out), 2_951_582_711_540_827_778);
+        assert_eq!(checksum_f32(&back), 10_450_464_586_724_796_497);
+    }
+
+    #[test]
+    fn writes_stable_sparse_indexed_attention_probe_json() {
+        let report = SparseIndexedAttentionProbeReport {
+            fixture_id: SPARSE_INDEXED_ATTENTION_FIXTURE_ID,
+            position: 2051,
+            compressed_rows: 513,
+            raw_rows: 128,
+            top_k: 512,
+            diagnostic_threshold_override: 512,
+            pinned_default_threshold: 1024,
+            first_default_sparse_rows: 1025,
+            dispatches: 10,
+            wrapped_model_ranges: 3,
+            pointer_matches: 3,
+            split_count: 12,
+            wall_ms: 1.0,
+            gpu_ms: 0.5,
+            indexer_q_checksum: 1,
+            indexer_weights_checksum: 2,
+            indexer_scores_checksum: 3,
+            indexer_topk_checksum: 4,
+            kqv_out_checksum: 5,
+            kqv_back_checksum: 6,
+        };
+        let mut output = Vec::new();
+        write_sparse_indexed_attention_probe_json(&mut output, &report).unwrap();
+        let text = String::from_utf8(output).unwrap();
+        assert!(text.contains("\"c0_bitwise_match\": true"));
+        assert!(text.contains("\"pinned_default\": 1024"));
+        assert!(text.contains("\"complete_decode_claim\": false"));
+        assert!(text.contains("\"throughput_claim\": false"));
     }
 
     #[test]

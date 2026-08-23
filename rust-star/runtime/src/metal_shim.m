@@ -84,6 +84,7 @@ static NSString *const kGetRowsF16Source =
 #include "attention_ingress_source.inc"
 #include "attention_output_source.inc"
 #include "moe_output_source.inc"
+#include "sparse_indexed_source.inc"
 
 // Imported from DwarfStar metal/dense.metal. The fixed target uses DwarfStar's
 // default four simdgroups and two output rows per threadgroup. DwarfStar forces
@@ -186,6 +187,11 @@ static NSString *const kQ8ProjectionSource =
 @property(nonatomic, strong) id<MTLComputePipelineState> f16Tail4Pipeline;
 @property(nonatomic, strong) id<MTLComputePipelineState> q8OutputProjectionPipeline;
 @property(nonatomic, strong) id<MTLLibrary> attentionIngressLibrary;
+@property(nonatomic, strong) id<MTLLibrary> sparseIndexedLibrary;
+@property(nonatomic, strong) id<MTLComputePipelineState> indexerScorePipeline;
+@property(nonatomic, strong) id<MTLComputePipelineState> indexerTopkPipeline;
+@property(nonatomic, strong) id<MTLComputePipelineState> indexedAttentionSplitPipeline;
+@property(nonatomic, strong) id<MTLComputePipelineState> indexedAttentionReducePipeline;
 @property(nonatomic, strong) id<MTLComputePipelineState> repeatF32Pipeline;
 @property(nonatomic, strong) id<MTLComputePipelineState> rmsNormF32Pipeline;
 @property(nonatomic, strong) id<MTLComputePipelineState> f16ProjectionPipeline;
@@ -742,6 +748,46 @@ static int ensure_attention_output_pipelines(
         return fail_with_message(error, error_bytes, compile_error.localizedDescription);
     }
     context.attentionOutputLibrary = library;
+    return 1;
+}
+
+static int ensure_sparse_indexed_pipelines(
+    RustStarMetalContext *context,
+    char *error,
+    size_t error_bytes)
+{
+    if (context.sparseIndexedLibrary) return 1;
+    NSError *compile_error = nil;
+    id<MTLLibrary> library =
+        [context.device newLibraryWithSource:kSparseIndexedSource
+                                      options:[MTLCompileOptions new]
+                                        error:&compile_error];
+    if (!library) return fail_with_message(error, error_bytes, compile_error.localizedDescription);
+    id<MTLFunction> score =
+        [library newFunctionWithName:@"kernel_dsv4_indexer_score_one_direct"];
+    id<MTLFunction> topk =
+        [library newFunctionWithName:@"kernel_argsort_f32_i32_desc"];
+    id<MTLFunction> split =
+        [library newFunctionWithName:@"kernel_dsv4_indexed_mixed_attention_heads8_split"];
+    id<MTLFunction> reduce =
+        [library newFunctionWithName:@"kernel_dsv4_indexed_mixed_attention_heads8_split_reduce"];
+    if (!score || !topk || !split || !reduce) {
+        return fail_with_message(error, error_bytes,
+            compile_error ? compile_error.localizedDescription : @"sparse indexed-attention kernel was not found");
+    }
+    context.indexerScorePipeline =
+        [context.device newComputePipelineStateWithFunction:score error:&compile_error];
+    context.indexerTopkPipeline =
+        [context.device newComputePipelineStateWithFunction:topk error:&compile_error];
+    context.indexedAttentionSplitPipeline =
+        [context.device newComputePipelineStateWithFunction:split error:&compile_error];
+    context.indexedAttentionReducePipeline =
+        [context.device newComputePipelineStateWithFunction:reduce error:&compile_error];
+    if (!context.indexerScorePipeline || !context.indexerTopkPipeline ||
+        !context.indexedAttentionSplitPipeline || !context.indexedAttentionReducePipeline) {
+        return fail_with_message(error, error_bytes, compile_error.localizedDescription);
+    }
+    context.sparseIndexedLibrary = library;
     return 1;
 }
 
@@ -1392,6 +1438,27 @@ typedef struct rust_star_indexer_qat_args {
     uint32_t n_rows, head_dim;
     uint64_t row_stride;
 } rust_star_indexer_qat_args;
+
+typedef struct rust_star_indexer_score_args {
+    uint32_t n_comp, n_tokens, n_head, head_dim, pos0, ratio;
+    uint64_t q_token_stride, q_head_stride, weights_token_stride;
+    uint64_t index_row_stride, score_token_stride;
+    float scale;
+} rust_star_indexer_score_args;
+
+typedef struct rust_star_argsort_args {
+    int32_t ne00, ne01, ne02, ne03;
+    uint64_t nb00, nb01, nb02, nb03;
+    int32_t ne0, ne1, ne2, ne3, top_k;
+} rust_star_argsort_args;
+
+typedef struct rust_star_indexed_attention_args {
+    uint32_t n_tokens, n_head, n_raw, raw_cap, raw_start;
+    uint32_t n_comp, top_k, pos0, window, ratio, comp_kv_f16, n_splits;
+    uint64_t q_token_stride, q_head_stride, raw_row_stride, comp_row_stride;
+    uint64_t topk_token_stride, dst_token_stride, dst_head_stride;
+    float scale;
+} rust_star_indexed_attention_args;
 
 typedef struct rust_star_ratio4_shift_args {
     uint32_t width;
@@ -11183,9 +11250,9 @@ int rust_star_metal_run_attention_ingress(
         return fail_with_message(error, error_bytes,
             @"the retained decoder frontier exceeds its cache capacities");
     }
-    if (indexer_layer && compressed_cache_rows > 512u) {
+    if (indexer_layer && compressed_cache_rows > 1024u) {
         return fail_with_message(error, error_bytes,
-            @"ratio-4 attention beyond 512 compressed rows requires sparse indexer selection");
+            @"ratio-4 attention beyond the pinned 1024-row dense threshold requires sparse indexer selection");
     }
     if (full_layer && position > 1u && command_mode == RUST_STAR_COMMAND_SYNCHRONIZED) {
         return fail_with_message(error, error_bytes,
@@ -13242,6 +13309,316 @@ int rust_star_metal_run_moe_output(
         result->max_buffer_length = context.device.maxBufferLength;
         result->wrapped_model_ranges = 6;
         for (uint32_t i = 0; i < 6; i++) if (matches[i]) result->pointer_matches++;
+        result->wall_ms = wall_end-wall_start;
+        result->gpu_ms = gpu_elapsed_ms(command);
+        return 1;
+    }
+}
+
+int rust_star_metal_run_sparse_indexed_attention(
+    void *opaque_context,
+    const void *model_mapping,
+    uint64_t model_bytes,
+    uint64_t indexer_q_offset,
+    uint64_t indexer_q_bytes,
+    uint64_t indexer_weight_offset,
+    uint64_t indexer_weight_bytes,
+    uint64_t sinks_offset,
+    uint64_t sinks_bytes,
+    const float *q_lora_norm,
+    const float *attn_norm,
+    const float *q_current,
+    const float *raw_cache,
+    const float *attention_comp_cache,
+    const float *indexer_comp_cache,
+    float *indexer_q,
+    float *indexer_weights,
+    float *indexer_scores,
+    int32_t *indexer_topk,
+    float *kqv_out,
+    float *kqv_back,
+    rust_star_metal_sparse_indexed_result *result,
+    char *error,
+    size_t error_bytes)
+{
+    enum {
+        position = 2051,
+        compressed_rows = 513,
+        raw_rows = 128,
+        top_k = 512,
+        attention_heads = 64,
+        attention_width = 512,
+        indexer_width = 128,
+        split_count = 12,
+    };
+    if (!opaque_context || !model_mapping || !result || !q_lora_norm ||
+        !attn_norm || !q_current || !raw_cache || !attention_comp_cache ||
+        !indexer_comp_cache || !indexer_q || !indexer_weights ||
+        !indexer_scores || !indexer_topk || !kqv_out || !kqv_back) {
+        return fail_with_message(error, error_bytes, @"sparse indexed-attention argument is null");
+    }
+    const uint64_t expected_q_bytes = 1024ull*8192ull*sizeof(uint16_t);
+    const uint64_t expected_weight_bytes = 4096ull*64ull*sizeof(uint16_t);
+    if (indexer_q_bytes != expected_q_bytes ||
+        indexer_weight_bytes != expected_weight_bytes ||
+        sinks_bytes != attention_heads*sizeof(float)) {
+        return fail_with_message(error, error_bytes, @"sparse indexed-attention model tensor size is invalid");
+    }
+
+    @autoreleasepool {
+        RustStarMetalContext *context = (__bridge RustStarMetalContext *)opaque_context;
+        if (!ensure_attention_ingress_pipelines(context, error, error_bytes) ||
+            !ensure_sparse_indexed_pipelines(context, error, error_bytes)) return 0;
+        memset(result, 0, sizeof(*result));
+
+        NSUInteger inner[3] = {0,0,0};
+        BOOL matches[3] = {NO,NO,NO};
+        id<MTLBuffer> q_weights = wrap_model_range(context, model_mapping, model_bytes,
+            indexer_q_offset, indexer_q_bytes, &inner[0], &matches[0], error, error_bytes);
+        id<MTLBuffer> weight_weights = wrap_model_range(context, model_mapping, model_bytes,
+            indexer_weight_offset, indexer_weight_bytes, &inner[1], &matches[1], error, error_bytes);
+        id<MTLBuffer> sinks = wrap_model_range(context, model_mapping, model_bytes,
+            sinks_offset, sinks_bytes, &inner[2], &matches[2], error, error_bytes);
+        if (!q_weights || !weight_weights || !sinks) return 0;
+
+        const NSUInteger q_lora_bytes = 1024u*sizeof(float);
+        const NSUInteger attn_norm_bytes = 4096u*sizeof(float);
+        const NSUInteger q_bytes = attention_heads*attention_width*sizeof(float);
+        const NSUInteger raw_bytes = raw_rows*attention_width*sizeof(float);
+        const NSUInteger comp_f32_bytes = compressed_rows*attention_width*sizeof(float);
+        const NSUInteger comp_f16_bytes = compressed_rows*attention_width*sizeof(uint16_t);
+        const NSUInteger index_comp_bytes = compressed_rows*indexer_width*sizeof(float);
+        const NSUInteger indexer_q_out_bytes = attention_heads*indexer_width*sizeof(float);
+        const NSUInteger indexer_weight_out_bytes = attention_heads*sizeof(float);
+        const NSUInteger score_bytes = compressed_rows*sizeof(float);
+        const NSUInteger topk_bytes = top_k*sizeof(int32_t);
+        const NSUInteger partial_bytes = attention_heads*attention_width*split_count*sizeof(float);
+        const NSUInteger stats_bytes = attention_heads*split_count*2u*sizeof(float);
+
+#define RS_NEW_INPUT(name, pointer, bytes) \
+        id<MTLBuffer> name = [context.device newBufferWithBytes:(pointer) length:(bytes) \
+                                                        options:MTLResourceStorageModeShared]
+#define RS_NEW_OUTPUT(name, bytes) \
+        id<MTLBuffer> name = [context.device newBufferWithLength:(bytes) \
+                                                        options:MTLResourceStorageModeShared]
+        RS_NEW_INPUT(q_lora_buffer, q_lora_norm, q_lora_bytes);
+        RS_NEW_INPUT(attn_norm_buffer, attn_norm, attn_norm_bytes);
+        RS_NEW_INPUT(q_buffer, q_current, q_bytes);
+        RS_NEW_INPUT(raw_buffer, raw_cache, raw_bytes);
+        RS_NEW_INPUT(comp_f32_buffer, attention_comp_cache, comp_f32_bytes);
+        RS_NEW_INPUT(index_comp_buffer, indexer_comp_cache, index_comp_bytes);
+        RS_NEW_OUTPUT(comp_f16_buffer, comp_f16_bytes);
+        RS_NEW_OUTPUT(indexer_q_buffer, indexer_q_out_bytes);
+        RS_NEW_OUTPUT(indexer_weight_buffer, indexer_weight_out_bytes);
+        RS_NEW_OUTPUT(score_buffer, score_bytes);
+        RS_NEW_OUTPUT(topk_buffer, topk_bytes);
+        RS_NEW_OUTPUT(attention_buffer, q_bytes);
+        RS_NEW_OUTPUT(back_buffer, q_bytes);
+        RS_NEW_OUTPUT(tmp_buffer, partial_bytes+stats_bytes);
+#undef RS_NEW_INPUT
+#undef RS_NEW_OUTPUT
+        if (!q_lora_buffer || !attn_norm_buffer || !q_buffer || !raw_buffer ||
+            !comp_f32_buffer || !index_comp_buffer || !comp_f16_buffer ||
+            !indexer_q_buffer || !indexer_weight_buffer || !score_buffer ||
+            !topk_buffer || !attention_buffer || !back_buffer || !tmp_buffer) {
+            return fail_with_message(error, error_bytes, @"failed to allocate sparse indexed-attention buffers");
+        }
+
+        rust_star_q8_mv_args q_projection = {
+            .ne00=1024, .ne01=8192, .ne02=1,
+            .nb00=sizeof(uint16_t), .nb01=1024ull*sizeof(uint16_t),
+            .nb02=indexer_q_bytes, .nb03=indexer_q_bytes,
+            .ne10=1024, .ne11=1, .ne12=1,
+            .nb10=sizeof(float), .nb11=q_lora_bytes,
+            .nb12=q_lora_bytes, .nb13=q_lora_bytes,
+            .ne0=8192, .ne1=1, .nr0=2, .r2=1, .r3=1,
+        };
+        rust_star_q8_mv_args weight_projection = {
+            .ne00=4096, .ne01=64, .ne02=1,
+            .nb00=sizeof(uint16_t), .nb01=4096ull*sizeof(uint16_t),
+            .nb02=indexer_weight_bytes, .nb03=indexer_weight_bytes,
+            .ne10=4096, .ne11=1, .ne12=1,
+            .nb10=sizeof(float), .nb11=attn_norm_bytes,
+            .nb12=attn_norm_bytes, .nb13=attn_norm_bytes,
+            .ne0=64, .ne1=1, .nr0=2, .r2=1, .r3=1,
+        };
+        rust_star_rope_tail_args indexer_rope = {
+            .ne00=indexer_width, .ne01=attention_heads, .ne02=1, .ne03=1,
+            .nb00=sizeof(float), .nb01=indexer_width*sizeof(float),
+            .nb02=indexer_q_out_bytes, .nb03=indexer_q_out_bytes,
+            .nb0=sizeof(float), .nb1=indexer_width*sizeof(float),
+            .nb2=indexer_q_out_bytes, .nb3=indexer_q_out_bytes,
+            .n_dims=64, .mode=0, .n_ctx_orig=65536, .inverse=0,
+            .freq_base=160000.0f, .freq_scale=1.0f/16.0f,
+            .ext_factor=1.0f, .attn_factor=1.0f/(1.0f+0.1f*logf(16.0f)),
+            .beta_fast=32.0f, .beta_slow=1.0f, .src2=false,
+        };
+        rust_star_indexer_qat_args qat = {
+            .n_rows=attention_heads, .head_dim=indexer_width,
+            .row_stride=indexer_width*sizeof(float),
+        };
+        rust_star_indexer_score_args score_args = {
+            .n_comp=compressed_rows, .n_tokens=1, .n_head=attention_heads,
+            .head_dim=indexer_width, .pos0=position, .ratio=4,
+            .q_token_stride=indexer_q_out_bytes,
+            .q_head_stride=indexer_width*sizeof(float),
+            .weights_token_stride=attention_heads*sizeof(float),
+            .index_row_stride=indexer_width*sizeof(float),
+            .score_token_stride=score_bytes,
+            .scale=1.0f/sqrtf(8192.0f),
+        };
+        rust_star_argsort_args sort_args = {
+            .ne00=compressed_rows, .ne01=1, .ne02=1, .ne03=1,
+            .nb00=sizeof(float), .nb01=score_bytes,
+            .nb02=score_bytes, .nb03=score_bytes,
+            .ne0=top_k, .ne1=1, .ne2=1, .ne3=1, .top_k=top_k,
+        };
+        rust_star_indexed_attention_args attention_args = {
+            .n_tokens=1, .n_head=attention_heads,
+            .n_raw=raw_rows, .raw_cap=raw_rows, .raw_start=0,
+            .n_comp=compressed_rows, .top_k=top_k, .pos0=position,
+            .window=128, .ratio=4, .comp_kv_f16=1, .n_splits=split_count,
+            .q_token_stride=q_bytes, .q_head_stride=attention_width*sizeof(float),
+            .raw_row_stride=attention_width*sizeof(float),
+            .comp_row_stride=attention_width*sizeof(uint16_t),
+            .topk_token_stride=topk_bytes,
+            .dst_token_stride=q_bytes, .dst_head_stride=attention_width*sizeof(float),
+            .scale=1.0f/sqrtf(512.0f),
+        };
+        rust_star_rope_tail_args inverse_rope = {
+            .ne00=attention_width, .ne01=attention_heads, .ne02=1, .ne03=1,
+            .nb00=sizeof(float), .nb01=attention_width*sizeof(float),
+            .nb02=q_bytes, .nb03=q_bytes,
+            .nb0=sizeof(float), .nb1=attention_width*sizeof(float),
+            .nb2=q_bytes, .nb3=q_bytes,
+            .n_dims=64, .mode=0, .n_ctx_orig=65536, .inverse=1,
+            .freq_base=160000.0f, .freq_scale=1.0f/16.0f,
+            .ext_factor=1.0f, .attn_factor=1.0f/(1.0f+0.1f*logf(16.0f)),
+            .beta_fast=32.0f, .beta_slow=1.0f, .src2=false,
+        };
+
+        id<MTLCommandBuffer> command = [context.queue commandBuffer];
+        id<MTLComputeCommandEncoder> encoder = [command computeCommandEncoder];
+        if (!command || !encoder) return fail_with_message(error, error_bytes,
+            @"failed to create sparse indexed-attention command encoder");
+
+        [encoder setComputePipelineState:context.f16ProjectionPipeline];
+        [encoder setBytes:&q_projection length:sizeof(q_projection) atIndex:0];
+        [encoder setBuffer:q_weights offset:inner[0] atIndex:1];
+        [encoder setBuffer:q_lora_buffer offset:0 atIndex:2];
+        [encoder setBuffer:indexer_q_buffer offset:0 atIndex:3];
+        [encoder setThreadgroupMemoryLength:32u*2u*sizeof(float) atIndex:0];
+        [encoder dispatchThreadgroups:MTLSizeMake(4096,1,1)
+             threadsPerThreadgroup:MTLSizeMake(32,8,1)];
+
+        [encoder setComputePipelineState:context.ropeTailPipeline];
+        [encoder setBytes:&indexer_rope length:sizeof(indexer_rope) atIndex:0];
+        int32_t rope_position = position;
+        [encoder setBuffer:indexer_q_buffer offset:0 atIndex:1];
+        [encoder setBytes:&rope_position length:sizeof(rope_position) atIndex:2];
+        [encoder setBuffer:indexer_q_buffer offset:0 atIndex:3];
+        [encoder setBuffer:indexer_q_buffer offset:0 atIndex:4];
+        [encoder dispatchThreadgroups:MTLSizeMake(attention_heads,1,1)
+             threadsPerThreadgroup:MTLSizeMake(128,1,1)];
+
+        [encoder setComputePipelineState:context.indexerQatPipeline];
+        [encoder setBytes:&qat length:sizeof(qat) atIndex:0];
+        [encoder setBuffer:indexer_q_buffer offset:0 atIndex:1];
+        [encoder setThreadgroupMemoryLength:256u*sizeof(float) atIndex:0];
+        [encoder dispatchThreadgroups:MTLSizeMake(attention_heads,1,1)
+             threadsPerThreadgroup:MTLSizeMake(128,1,1)];
+
+        [encoder setComputePipelineState:context.f16ProjectionPipeline];
+        [encoder setBytes:&weight_projection length:sizeof(weight_projection) atIndex:0];
+        [encoder setBuffer:weight_weights offset:inner[1] atIndex:1];
+        [encoder setBuffer:attn_norm_buffer offset:0 atIndex:2];
+        [encoder setBuffer:indexer_weight_buffer offset:0 atIndex:3];
+        [encoder setThreadgroupMemoryLength:32u*2u*sizeof(float) atIndex:0];
+        [encoder dispatchThreadgroups:MTLSizeMake(32,1,1)
+             threadsPerThreadgroup:MTLSizeMake(32,8,1)];
+
+        [encoder setComputePipelineState:context.indexerScorePipeline];
+        [encoder setBytes:&score_args length:sizeof(score_args) atIndex:0];
+        [encoder setBuffer:indexer_q_buffer offset:0 atIndex:1];
+        [encoder setBuffer:indexer_weight_buffer offset:0 atIndex:2];
+        [encoder setBuffer:index_comp_buffer offset:0 atIndex:3];
+        [encoder setBuffer:score_buffer offset:0 atIndex:4];
+        [encoder setThreadgroupMemoryLength:(128u+4u)*sizeof(float) atIndex:0];
+        [encoder dispatchThreadgroups:MTLSizeMake(compressed_rows,1,1)
+             threadsPerThreadgroup:MTLSizeMake(128,1,1)];
+
+        uint32_t comp_elements = compressed_rows*attention_width;
+        [encoder setComputePipelineState:context.cpyF32F16Pipeline];
+        [encoder setBytes:&comp_elements length:sizeof(comp_elements) atIndex:0];
+        [encoder setBuffer:comp_f32_buffer offset:0 atIndex:1];
+        [encoder setBuffer:comp_f16_buffer offset:0 atIndex:2];
+        [encoder dispatchThreadgroups:MTLSizeMake((comp_elements+1023u)/1024u,1,1)
+             threadsPerThreadgroup:MTLSizeMake(256,1,1)];
+
+        [encoder setComputePipelineState:context.indexerTopkPipeline];
+        [encoder setBytes:&sort_args length:sizeof(sort_args) atIndex:0];
+        [encoder setBuffer:score_buffer offset:0 atIndex:1];
+        [encoder setBuffer:topk_buffer offset:0 atIndex:2];
+        [encoder setThreadgroupMemoryLength:1024u*(sizeof(int32_t)+sizeof(float)) atIndex:0];
+        [encoder dispatchThreadgroups:MTLSizeMake(1,1,1)
+             threadsPerThreadgroup:MTLSizeMake(1024,1,1)];
+
+        [encoder setComputePipelineState:context.indexedAttentionSplitPipeline];
+        [encoder setBytes:&attention_args length:sizeof(attention_args) atIndex:0];
+        [encoder setBuffer:q_buffer offset:0 atIndex:1];
+        [encoder setBuffer:raw_buffer offset:0 atIndex:2];
+        [encoder setBuffer:comp_f16_buffer offset:0 atIndex:3];
+        [encoder setBuffer:topk_buffer offset:0 atIndex:4];
+        [encoder setBuffer:tmp_buffer offset:0 atIndex:5];
+        [encoder setThreadgroupMemoryLength:16u*128u*sizeof(uint16_t)*4u atIndex:0];
+        [encoder dispatchThreadgroups:MTLSizeMake(1,8,split_count)
+             threadsPerThreadgroup:MTLSizeMake(32,8,1)];
+
+        [encoder setComputePipelineState:context.indexedAttentionReducePipeline];
+        [encoder setBytes:&attention_args length:sizeof(attention_args) atIndex:0];
+        [encoder setBuffer:tmp_buffer offset:0 atIndex:1];
+        [encoder setBuffer:sinks offset:inner[2] atIndex:2];
+        [encoder setBuffer:attention_buffer offset:0 atIndex:3];
+        [encoder dispatchThreadgroups:MTLSizeMake(attention_heads,1,1)
+             threadsPerThreadgroup:MTLSizeMake(32,4,1)];
+        [encoder endEncoding];
+
+        id<MTLBlitCommandEncoder> blit = [command blitCommandEncoder];
+        if (!blit) return fail_with_message(error, error_bytes,
+            @"failed to create sparse indexed-attention snapshot encoder");
+        [blit copyFromBuffer:attention_buffer sourceOffset:0
+                    toBuffer:back_buffer destinationOffset:0 size:q_bytes];
+        [blit endEncoding];
+
+        encoder = [command computeCommandEncoder];
+        [encoder setComputePipelineState:context.ropeTailPipeline];
+        [encoder setBytes:&inverse_rope length:sizeof(inverse_rope) atIndex:0];
+        [encoder setBuffer:back_buffer offset:0 atIndex:1];
+        [encoder setBytes:&rope_position length:sizeof(rope_position) atIndex:2];
+        [encoder setBuffer:back_buffer offset:0 atIndex:3];
+        [encoder setBuffer:back_buffer offset:0 atIndex:4];
+        [encoder dispatchThreadgroups:MTLSizeMake(attention_heads,1,1)
+             threadsPerThreadgroup:MTLSizeMake(256,1,1)];
+        [encoder endEncoding];
+
+        const double wall_start = monotonic_ms();
+        [command commit];
+        if (!command_succeeded(command, error, error_bytes)) return 0;
+        const double wall_end = monotonic_ms();
+        memcpy(indexer_q, indexer_q_buffer.contents, indexer_q_out_bytes);
+        memcpy(indexer_weights, indexer_weight_buffer.contents, indexer_weight_out_bytes);
+        memcpy(indexer_scores, score_buffer.contents, score_bytes);
+        memcpy(indexer_topk, topk_buffer.contents, topk_bytes);
+        memcpy(kqv_out, attention_buffer.contents, q_bytes);
+        memcpy(kqv_back, back_buffer.contents, q_bytes);
+        result->position = position;
+        result->compressed_rows = compressed_rows;
+        result->raw_rows = raw_rows;
+        result->top_k = top_k;
+        result->dispatches = 10;
+        result->wrapped_model_ranges = 3;
+        for (uint32_t i = 0; i < 3; i++) if (matches[i]) result->pointer_matches++;
+        result->split_count = split_count;
         result->wall_ms = wall_end-wall_start;
         result->gpu_ms = gpu_elapsed_ms(command);
         return 1;

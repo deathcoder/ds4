@@ -64,7 +64,8 @@ DwarfStar one-token decode replays over the canonical prompt. It also proves
 that this sequential construction differs from DwarfStar's batched prefill in
 all 129,280 logits despite selecting the same token. The path therefore remains
 diagnostic: eligible measurements require native batched prefill arithmetic and
-sparse indexed attention beyond the first 512 ratio-4 rows. The first native
+integrated sparse indexed attention beyond the pinned 1,024-row dense threshold.
+The first native
 batch boundary is now implemented separately: repeated captures localize the
 earliest difference to layer 0's Q8 Q-A projection, and the Rust Metal probe
 matches both the 128-row M1 batch kernel and its one-row decode control
@@ -203,9 +204,12 @@ final HC update. All layer-7 and layer-8 retained boundaries, full attention
 outputs, compressor states, and full HC identities match fresh DwarfStar
 processes exactly. The complete layers-0--8 command uses 383 dispatches and
 preserves 196/196 no-copy model mappings. Exactly 512 ratio-4 compressed rows
-remain dense; sparse indexer top-k starts only after this prompt boundary.
-Output logits and sparse post-prompt attention remain pending, and this is not
-a throughput claim.
+remain dense at the prompt boundary. The pinned DwarfStar default remains dense
+through 1,024 rows and first switches at 1,025. A diagnostic position-2051
+fixture uses an explicit threshold override of 512 and now validates the full
+fixed-top-512 score/sort/indexed-attention mechanism bit-for-bit on the M1
+Ultra. Integration into the retained decoder, output logits, and throughput
+remain pending.
 
 Project controls and benchmark contracts:
 

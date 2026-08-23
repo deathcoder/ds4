@@ -280,8 +280,9 @@ DwarfStar processes exactly. The combined terminal schedule uses 383
 dispatches and 196/196 no-copy model views.
 
 Exactly 512 layer-2/layer-4/layer-6/layer-8 compressed rows still use the dense
-path; sparse top-k begins only after this 2K boundary. Sparse post-prompt
-attention, output logits, and throughput remain outside this command.
+path. The pinned default remains dense through 1,024 rows; sparse top-k first
+applies at 1,025 rows. Sparse post-prompt integration, output logits, and
+throughput remain outside this command.
 
 To run the connected layer-0 ingress gate:
 
@@ -674,7 +675,25 @@ also agree with each other, but all 129,280 batch-frontier logits differ from
 the decode replay (maximum absolute error 2.325326) while both select token
 15342. The JSON records both facts and remains `paired_protocol_eligible:
 false`. The next inference boundary is native batched prefill; the following
-decode boundary is sparse indexer top-k once ratio-4 memory exceeds 512 rows.
+decode boundary is sparse indexer top-k once ratio-4 memory exceeds the pinned
+default threshold of 1,024 rows. The model top-k itself remains fixed at 512.
+
+To validate that mechanism at a small diagnostic boundary:
+
+```sh
+rust-star/.work/runtime-target/release/rust-star \
+  sparse-indexed-attention-probe \
+  /absolute/path/to/model.gguf \
+  --json rust-star/.work/runtime-target/sparse-indexed-attention-probe.json
+```
+
+This uses two repeated layer-2 position-2051 oracle captures made with
+`DS4_METAL_DECODE_INDEXER_SPARSE_THRESHOLD=512`. It reproduces the F16 indexer
+projections, compressed RoPE, QAT, direct scores, exact descending top-512,
+12-way indexed mixed attention, reduction, and inverse RoPE bit-for-bit while
+preserving all three mmap model pointers. The pinned default is still 1,024;
+this command claims neither the default switch position, complete decode,
+output logits, nor throughput.
 
 To cross the first ratio-128 emission boundary without overstating decoder
 coverage:

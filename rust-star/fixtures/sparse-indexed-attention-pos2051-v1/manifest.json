@@ -1,0 +1,223 @@
+{
+  "schema": "rust-star-differential-fixture-v1",
+  "fixture_id": "dwarfstar-oracle-v1-layer2-pos2051-sparse-indexed-attention",
+  "captured_at_utc": "2026-08-23T07:44:34Z",
+  "oracle": {
+    "id": "oracle-v1",
+    "repository": "https://github.com/antirez/ds4.git",
+    "commit": "b0309611041655f4e45671cfd9c9886aff161406",
+    "tree": "20c11af22f90a0bdf25da860da5ef06de4064060",
+    "capture_executable_sha256": "70bc7a047a87234e6b2f46f5ba679e48b7eb8001bbf8894602e2daa87f1a66d7"
+  },
+  "model": {
+    "family": "DeepSeek-V4-Flash-0731",
+    "sha256": "ca22ae2f838e14077c22bc1c1417b71b45b5e5a3687bd96c2ac6e17fdb6261c0"
+  },
+  "capture": {
+    "backend": "metal",
+    "machine": "Apple M1 Ultra, 48 GPU cores, 128 GB unified memory",
+    "prompt": "speed-bench/promessi_sposi.txt",
+    "prompt_sha256": "f53e0d80cb2d4492d24ebd63c7000c397b16ae70f9bf09b3763e5d8323ec209f",
+    "prefill_tokens": 2048,
+    "decode_steps": 4,
+    "captured_position": 2051,
+    "fresh_process_captures": 2,
+    "fresh_process_bitwise_match": true,
+    "environment": {
+      "DS4_METAL_DECODE_INDEXER_SPARSE_THRESHOLD": "512",
+      "DS4_METAL_GRAPH_DUMP_LAYER": "2",
+      "DS4_METAL_GRAPH_DUMP_POS": "2051"
+    }
+  },
+  "scope": {
+    "kind": "layer-segment",
+    "phase": "decode",
+    "layer": 2,
+    "position": 2051,
+    "compressed_rows": 513,
+    "raw_rows": 128,
+    "raw_source_physical_rows": [
+      1924,
+      2051
+    ],
+    "raw_fixture_start": 0,
+    "top_k": 512
+  },
+  "threshold_semantics": {
+    "diagnostic_override": 512,
+    "pinned_oracle_default": 1024,
+    "first_default_sparse_compressed_rows": 1025,
+    "model_top_k": 512,
+    "validates_default_switch_position": false
+  },
+  "operations": [
+    {"name": "indexer-q-f16-projection", "kernel": "kernel_mul_mv_f16_f32_4"},
+    {"name": "indexer-q-rope-tail", "kernel": "kernel_dsv4_rope_tail_f32"},
+    {"name": "indexer-q-hadamard-fp4-qat", "kernel": "kernel_dsv4_indexer_hadamard_fp4_f32"},
+    {"name": "indexer-weight-f16-projection", "kernel": "kernel_mul_mv_f16_f32_4"},
+    {"name": "indexer-direct-score", "kernel": "kernel_dsv4_indexer_score_one_direct"},
+    {"name": "exact-descending-top512", "kernel": "kernel_argsort_f32_i32_desc"},
+    {"name": "indexed-mixed-attention-split12", "kernel": "kernel_dsv4_indexed_mixed_attention_heads8_split"},
+    {"name": "indexed-mixed-attention-reduce", "kernel": "kernel_dsv4_indexed_mixed_attention_heads8_split_reduce"},
+    {"name": "attention-inverse-rope-tail", "kernel": "kernel_dsv4_rope_tail_f32"}
+  ],
+  "claims": {
+    "complete_decode": false,
+    "output_logits": false,
+    "default_threshold_boundary": false,
+    "throughput": false
+  },
+  "tensors": [
+    {
+      "name": "q_lora_norm",
+      "role": "input",
+      "dtype": "f32",
+      "shape": [
+        1024
+      ],
+      "encoding": "little-endian-ieee754-binary32",
+      "path": "q-lora-norm.f32le.bin",
+      "bytes": 4096,
+      "sha256": "1ae20aa39090593425d74d874d1a3667f4b9616b257c6e2634bd9d4f184cb9e3"
+    },
+    {
+      "name": "attn_norm",
+      "role": "input",
+      "dtype": "f32",
+      "shape": [
+        4096
+      ],
+      "encoding": "little-endian-ieee754-binary32",
+      "path": "attn-norm.f32le.bin",
+      "bytes": 16384,
+      "sha256": "388c92d0747ab97b82b8fa0148b0747efb2a929f0321a8afffcef7b9f47631b3"
+    },
+    {
+      "name": "q_current",
+      "role": "input",
+      "dtype": "f32",
+      "shape": [
+        64,
+        512
+      ],
+      "encoding": "little-endian-ieee754-binary32",
+      "path": "q-current.f32le.bin",
+      "bytes": 131072,
+      "sha256": "b92fc27e28bd8a4b9c1818046b6f03fd52c84ddc81d044b5ce10740d084676dc"
+    },
+    {
+      "name": "raw_cache",
+      "role": "input",
+      "dtype": "f32",
+      "shape": [
+        128,
+        512
+      ],
+      "encoding": "little-endian-ieee754-binary32",
+      "path": "raw-cache.f32le.bin",
+      "bytes": 262144,
+      "sha256": "fa36e4723a3e2a631ac67d9551db540afb86a30ab4d2852e3eaf3d7dcd7d940c"
+    },
+    {
+      "name": "attention_comp_cache",
+      "role": "input",
+      "dtype": "f32",
+      "shape": [
+        513,
+        512
+      ],
+      "encoding": "little-endian-ieee754-binary32",
+      "path": "attention-comp-cache.f32le.bin",
+      "bytes": 1050624,
+      "sha256": "08ebca3ad52fc3d9427c4ab125935aa573d47db5a7a7dfc19f0cda1fa02ecc27"
+    },
+    {
+      "name": "indexer_comp_cache",
+      "role": "input",
+      "dtype": "f32",
+      "shape": [
+        513,
+        128
+      ],
+      "encoding": "little-endian-ieee754-binary32",
+      "path": "indexer-comp-cache.f32le.bin",
+      "bytes": 262656,
+      "sha256": "555ac5d4ab9fe0cb045a4ea7934cd9cc24a2bbc18cc859b5ee0e408e22c2f734"
+    },
+    {
+      "name": "indexer_q",
+      "role": "intermediate",
+      "dtype": "f32",
+      "shape": [
+        64,
+        128
+      ],
+      "encoding": "little-endian-ieee754-binary32",
+      "path": "indexer-q.f32le.bin",
+      "bytes": 32768,
+      "sha256": "2e67bd4938ac74cf61c597552fc6105de2a48c6d48e460dafba101a908fb5227"
+    },
+    {
+      "name": "indexer_weights",
+      "role": "intermediate",
+      "dtype": "f32",
+      "shape": [
+        64
+      ],
+      "encoding": "little-endian-ieee754-binary32",
+      "path": "indexer-weights.f32le.bin",
+      "bytes": 256,
+      "sha256": "5c0d95bcd773c5aeccc19f452f1301a967a27152b37acb3c6b09bce78a149ae4"
+    },
+    {
+      "name": "indexer_scores",
+      "role": "intermediate",
+      "dtype": "f32",
+      "shape": [
+        513
+      ],
+      "encoding": "little-endian-ieee754-binary32",
+      "path": "indexer-scores.f32le.bin",
+      "bytes": 2052,
+      "sha256": "b3855fa2f350323e813807fcc4d8544c982c54aad360c678a33f2c3cf7e98628"
+    },
+    {
+      "name": "indexer_topk",
+      "role": "intermediate",
+      "dtype": "i32",
+      "shape": [
+        512
+      ],
+      "encoding": "little-endian-signed-integer32",
+      "path": "indexer-topk.i32le.bin",
+      "bytes": 2048,
+      "sha256": "1a377181500db74b50a1819136068bac2d02beb476c8dd25e2ded5d0d6ff505b"
+    },
+    {
+      "name": "kqv_out",
+      "role": "output",
+      "dtype": "f32",
+      "shape": [
+        64,
+        512
+      ],
+      "encoding": "little-endian-ieee754-binary32",
+      "path": "kqv-out.f32le.bin",
+      "bytes": 131072,
+      "sha256": "852c22426cf1a059d9afd9677c540de20bbebea400b8bd153f6ae181b8793b00"
+    },
+    {
+      "name": "kqv_back",
+      "role": "output",
+      "dtype": "f32",
+      "shape": [
+        64,
+        512
+      ],
+      "encoding": "little-endian-ieee754-binary32",
+      "path": "kqv-back.f32le.bin",
+      "bytes": 131072,
+      "sha256": "f734f143769aff8c26c79272407234b51886081c9afe9060323ec65d59996f8f"
+    }
+  ]
+}

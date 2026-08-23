@@ -284,12 +284,26 @@ history; add a correction and update the current-state summary.
   All retained layer-7 and layer-8 boundaries, full attention outputs,
   compressor states, and full HC identities match fresh DwarfStar processes
   exactly, establishing complete native layers 0–8 at the same prompt boundary
-  with 196/196 no-copy mappings across 383 terminal dispatches.
-  Full native model prefill, sparse indexed attention beyond 512 ratio-4
-  rows, and the eligible engine-measurement producer remain pending.
+  with 196/196 no-copy mappings across 383 terminal dispatches. A separate
+  layer-2 position-2051 diagnostic now covers the complete ratio-4 sparse
+  mechanism: F16 indexer projections, compressed RoPE, indexer QAT, direct
+  scores, exact descending top-512 selection, the 12-way indexed mixed
+  attention/reduction, and inverse RoPE. Twelve retained tensors from two fresh
+  DwarfStar processes match bit-for-bit, and all three model spans preserve
+  mmap pointer identity. The capture explicitly overrides the sparse threshold
+  to 512; source inspection corrected the prior assumption that the default
+  switched immediately after 512 rows. Pinned DwarfStar remains dense through
+  1,024 compressed rows and first switches at 1,025. Rust Star's dense guard is
+  aligned to that pinned default. Full native model prefill, integration of the
+  sparse path into retained decode, and the eligible engine-measurement
+  producer remain pending.
 - Measurements: The exact complete native layers-0/1/2/3/4/5/6/7/8 full-2K
   command reported 2241.471 ms wall / 2153.893625 ms GPU in its focused
   correctness run, across 383 dispatches with 196/196 no-copy model mappings.
+  The isolated sparse indexed-attention diagnostic reported 18.864 ms wall /
+  0.497625 ms GPU across 10 dispatches with 3/3 no-copy model mappings. Its wall
+  interval includes command setup, synchronization, and exhaustive readback;
+  neither value is a throughput claim.
   The complete target-Mac gate reported 2289.152 ms wall / 2161.306708 ms GPU
   with the same schedule and mapping counts. These intervals include exhaustive
   correctness readback and are not throughput claims. The prior exact complete
@@ -471,8 +485,10 @@ history; add a correction and update the current-state summary.
 
 ## Immediate Next Actions
 
-1. Add the fixed 512-row ratio-4 indexer top-k and sparse indexed attention so
-   128 generated tokens can continue beyond the 2K frontier.
+1. Integrate the now-C0-exact fixed-top-512 sparse indexed-attention mechanism
+   into the retained decoder at the pinned default's first sparse boundary of
+   1,025 compressed rows; preserve the diagnostic 513-row override as an
+   independent control.
 2. Continue the exact batched-prefill frontier through layer 9 while preserving
    the complete layers-0–8 command as a regression control.
 3. Emit the `rust-star-engine-measurement-v1` artifact from the exact
@@ -484,6 +500,55 @@ history; add a correction and update the current-state summary.
 6. Run or approve the fork's GitHub Actions workflow and retain its URL.
 
 ## Entries
+
+### 2026-08-23 — Exact diagnostic top-512 sparse indexed attention
+
+Objective:
+
+- Validate DwarfStar's complete ratio-4 indexer selection and sparse indexed
+  attention mechanism on the M1 Ultra before changing retained decoder state.
+
+Correction:
+
+- The earlier journal wording that sparse selection begins immediately after
+  512 compressed rows was incomplete. Pinned source commit `b030961` uses a
+  default sparse threshold of 1,024 and a fixed model top-k of 512; the default
+  first sparse row count is 1,025. A diagnostic environment override may lower
+  the threshold without changing the production default.
+
+Implementation:
+
+- Captured layer 2 at position 2051 twice in fresh DwarfStar processes with
+  `DS4_METAL_DECODE_INDEXER_SPARSE_THRESHOLD=512`. All 13 dump artifacts were
+  byte-identical, including indexer Q/weights/scores, exact top-512 indices,
+  indexed-attention output, and inverse-RoPE output.
+- Added a strict importer and a 12-tensor, 2,026,244-byte differential fixture.
+  Its manifest records the override, pinned default, physical-to-compact raw
+  cache slice, and explicit denial of default-switch, complete-decode, logits,
+  and throughput claims.
+- Imported DwarfStar's direct score, exact argsort, 12-way indexed attention,
+  and reduction kernels. Added one no-copy ABI/CLI command that also reuses the
+  existing F16 matvec, RoPE, indexer-QAT, and F32-to-F16 conversion kernels.
+- Aligned Rust Star's dense-path guard with the pinned 1,024-row default. The
+  isolated sparse path is not yet connected to retained 43-layer decoder state.
+
+Validation:
+
+- Fixture integrity validation passed: 9 operations, 12 tensors, 2,026,244
+  verified bytes.
+- Focused optimized M1 Ultra run: all retained values C0 exact, 10 dispatches,
+  3/3 mmap pointer identities, 18.864 ms wall / 0.497625 ms GPU. This includes
+  correctness setup/readback and is not a throughput measurement.
+- Full target-Mac gate passed: 124 Rust tests, 61 Python tests, all prior
+  model-backed controls, cross-language artifact validation, and the new
+  fixture/probe. The gate sparse run repeated C0 exact with 3/3 mmap pointers
+  at 21.616 ms wall / 0.538250 ms GPU; this remains diagnostic only.
+
+Next:
+
+- Integrate the sparse schedule into retained decoder ownership at 1,025
+  compressed rows, with the 513-row override remaining an independent kernel
+  boundary; then continue native prefill through layer 9.
 
 ### 2026-08-22 — Exact complete layer-8 full-2K prefill
 
