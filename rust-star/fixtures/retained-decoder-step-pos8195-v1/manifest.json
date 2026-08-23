@@ -1,0 +1,253 @@
+{
+  "schema": "rust-star-differential-fixture-v1",
+  "fixture_id": "dwarfstar-oracle-v1-retained-decoder-step-pos8195",
+  "captured_at_utc": "2026-08-23T19:27:12Z",
+  "oracle": {
+    "id": "oracle-v1",
+    "repository": "https://github.com/antirez/ds4.git",
+    "commit": "b0309611041655f4e45671cfd9c9886aff161406",
+    "tree": "20c11af22f90a0bdf25da860da5ef06de4064060",
+    "capture_executable_sha256": "137bdfe21cf55c138d1e77037d90eff87514aaca0984e47b6ee7919726e93b5d"
+  },
+  "model": {
+    "family": "DeepSeek-V4-Flash-0731",
+    "sha256": "ca22ae2f838e14077c22bc1c1417b71b45b5e5a3687bd96c2ac6e17fdb6261c0"
+  },
+  "capture": {
+    "backend": "metal",
+    "machine": "Apple M1 Ultra, 48 GPU cores, 128 GB unified memory",
+    "prompt": "speed-bench/promessi_sposi.txt",
+    "prompt_sha256": "f53e0d80cb2d4492d24ebd63c7000c397b16ae70f9bf09b3763e5d8323ec209f",
+    "prefix_tokens": 8195,
+    "captured_position": 8195,
+    "captured_token": 381,
+    "fresh_process_captures": 2,
+    "fresh_process_bitwise_match": true,
+    "session_layer_payload_bytes": 136200592,
+    "session_layer_payload_sha256": "837f3c0838da4aaf36ee037f3ec5d6c304fe1febcf005ea0b1062c5c6c6f8154",
+    "topk_replay_executable_sha256": "e2ca04e65b074cdfa3d9ed26411a08073bbc0f8ac7707ac6e975170249382273",
+    "topk_replay_bitwise_match": true,
+    "temporary_sparse_topk_hook_removed_after_capture": true
+  },
+  "scope": {
+    "kind": "decode-step",
+    "phase": "decode",
+    "position": 8195,
+    "layers": 43,
+    "prior_raw_rows": 127,
+    "ratio4_prior_compressed_rows": 2048,
+    "ratio128_prior_compressed_rows": 64,
+    "sparse_top_k": 512,
+    "selected_token": 35597
+  },
+  "operations": [
+    {
+      "name": "retained-state-seed",
+      "kernel": "host-to-shared-Metal-state"
+    },
+    {
+      "name": "transformer-layers-0-through-42",
+      "kernel": "Rust-Star-Metal-decoder-layer-chain"
+    },
+    {
+      "name": "output-head",
+      "kernel": "Rust-Star-Metal-output-head"
+    }
+  ],
+  "claims": {
+    "preceding_layers_execution": true,
+    "preceding_layer_history_seeded": true,
+    "complete_decoder_step": true,
+    "output_logits": true,
+    "native_prefill": false,
+    "throughput": false
+  },
+  "tensors": [
+    {
+      "name": "raw_cache_prior",
+      "hook": "session_layer_payload",
+      "role": "input",
+      "dtype": "f16",
+      "shape": [
+        43,
+        127,
+        512
+      ],
+      "encoding": "little-endian-ieee754-binary16",
+      "path": "raw-cache-prior.f16le.bin",
+      "bytes": 5592064,
+      "sha256": "a990df4551c8976409729e09ac63b330bb51ad44abe342ca0a11d662641d711e"
+    },
+    {
+      "name": "even_attention_selected_prior",
+      "hook": "session_layer_payload",
+      "role": "input",
+      "dtype": "f16",
+      "shape": [
+        21,
+        512,
+        512
+      ],
+      "encoding": "little-endian-ieee754-binary16",
+      "path": "even-attention-selected-prior.f16le.bin",
+      "bytes": 11010048,
+      "sha256": "cfeeeb08a327a1769eb0427ab7db7904d47f2d35032183728822ba8263d60dbc"
+    },
+    {
+      "name": "even_attention_selected_indices",
+      "hook": "session_layer_payload",
+      "role": "input",
+      "dtype": "i32",
+      "shape": [
+        21,
+        512
+      ],
+      "encoding": "little-endian-signed-integer32",
+      "path": "even-attention-selected-indices.i32le.bin",
+      "bytes": 43008,
+      "sha256": "8834e728ed1d7ecdeea074079ebe5a76be247ec4eee0efff9de1a656567c57f5"
+    },
+    {
+      "name": "odd_attention_prior",
+      "hook": "session_layer_payload",
+      "role": "input",
+      "dtype": "f16",
+      "shape": [
+        20,
+        64,
+        512
+      ],
+      "encoding": "little-endian-ieee754-binary16",
+      "path": "odd-attention-prior.f16le.bin",
+      "bytes": 1310720,
+      "sha256": "9cf9dc1d43711b31a771bd18e57d236d90bd8a8322216f23a96ab3ff1b2964a4"
+    },
+    {
+      "name": "even_indexer_prior",
+      "hook": "session_layer_payload",
+      "role": "input",
+      "dtype": "f32",
+      "shape": [
+        21,
+        2048,
+        128
+      ],
+      "encoding": "little-endian-ieee754-binary32",
+      "path": "even-indexer-prior.f32le.bin",
+      "bytes": 22020096,
+      "sha256": "b5777545b144f1933a271a276c7124863ce2f0c845b21a0f900c21e3d644f606"
+    },
+    {
+      "name": "even_attention_state_kv",
+      "hook": "session_layer_payload",
+      "role": "input",
+      "dtype": "f32",
+      "shape": [
+        21,
+        8192
+      ],
+      "encoding": "little-endian-ieee754-binary32",
+      "path": "even-attention-state-kv.f32le.bin",
+      "bytes": 688128,
+      "sha256": "c11a0e77dba9b8d9c765dd255f5e8ea006f50a9b5801194d3bf80a5a836ef32b"
+    },
+    {
+      "name": "even_attention_state_score_bits",
+      "hook": "session_layer_payload",
+      "role": "input",
+      "dtype": "i32",
+      "shape": [
+        21,
+        8192
+      ],
+      "encoding": "little-endian-signed-integer32",
+      "path": "even-attention-state-score-bits.i32le.bin",
+      "bytes": 688128,
+      "sha256": "325a108f6034905f983d14580612a82ad9dffaf9f23a34e319b41e1db612e332"
+    },
+    {
+      "name": "odd_attention_state_kv",
+      "hook": "session_layer_payload",
+      "role": "input",
+      "dtype": "f32",
+      "shape": [
+        20,
+        65536
+      ],
+      "encoding": "little-endian-ieee754-binary32",
+      "path": "odd-attention-state-kv.f32le.bin",
+      "bytes": 5242880,
+      "sha256": "53652d65cb1a92ad95f1f01ac141568ee8f62148512cfcef4798f44febad5cb1"
+    },
+    {
+      "name": "odd_attention_state_score_bits",
+      "hook": "session_layer_payload",
+      "role": "input",
+      "dtype": "i32",
+      "shape": [
+        20,
+        65536
+      ],
+      "encoding": "little-endian-signed-integer32",
+      "path": "odd-attention-state-score-bits.i32le.bin",
+      "bytes": 5242880,
+      "sha256": "3726824e25a2d829d74c8ff7eaebad455ca1471413b815cbc3c7eb8b2d01ef66"
+    },
+    {
+      "name": "even_indexer_state_kv",
+      "hook": "session_layer_payload",
+      "role": "input",
+      "dtype": "f32",
+      "shape": [
+        21,
+        2048
+      ],
+      "encoding": "little-endian-ieee754-binary32",
+      "path": "even-indexer-state-kv.f32le.bin",
+      "bytes": 172032,
+      "sha256": "f5a27d19ae6ff009ff4195774cd3121e616b1fc003b57f6e18474130bb2c67c8"
+    },
+    {
+      "name": "even_indexer_state_score_bits",
+      "hook": "session_layer_payload",
+      "role": "input",
+      "dtype": "i32",
+      "shape": [
+        21,
+        2048
+      ],
+      "encoding": "little-endian-signed-integer32",
+      "path": "even-indexer-state-score-bits.i32le.bin",
+      "bytes": 172032,
+      "sha256": "6c99b98ebf72c8385e6574a98729a43db98bfb0adb91fced7513370cefaf8bea"
+    },
+    {
+      "name": "layer_hc_ffn_post",
+      "hook": "layer_hc_ffn_post",
+      "role": "intermediate",
+      "dtype": "f32",
+      "shape": [
+        43,
+        4,
+        4096
+      ],
+      "encoding": "little-endian-ieee754-binary32",
+      "path": "layer-hc-ffn-post.f32le.bin",
+      "bytes": 2818048,
+      "sha256": "df5f5d164434b184ac9cce067464e7fe84a44509f85a9b9ab265290354e76b7f"
+    },
+    {
+      "name": "output_logits",
+      "hook": "output_logits",
+      "role": "output",
+      "dtype": "f32",
+      "shape": [
+        129280
+      ],
+      "encoding": "little-endian-ieee754-binary32",
+      "path": "output-logits.f32le.bin",
+      "bytes": 517120,
+      "sha256": "c09dbc6b987cfad019dcda0c1b5c40e8e5cfe04b909a79699bb09ce6ae12d44f"
+    }
+  ]
+}

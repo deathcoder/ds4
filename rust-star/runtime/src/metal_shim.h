@@ -843,6 +843,27 @@ int rust_star_metal_seed_retained_sparse_layers012_position8195(
     char *error,
     size_t error_bytes);
 
+/* Seeds one layer's exact pre-position-8195 retained history. Ratio-4
+ * attention rows may be sparse and carry their original row indices; the
+ * indexer cache remains complete because it determines the 512 visible rows. */
+int rust_star_metal_seed_retained_decoder_layer_position8195(
+    void *context,
+    uint32_t layer_index,
+    const float *raw_cache_prior,
+    const int32_t *attention_row_indices,
+    const float *attention_compressed_prior,
+    uint32_t attention_rows,
+    const float *attention_state_kv_pre,
+    const float *attention_state_score_pre,
+    uint32_t attention_state_elements,
+    const float *indexer_compressed_prior,
+    uint32_t indexer_rows,
+    const float *indexer_state_kv_pre,
+    const float *indexer_state_score_pre,
+    uint32_t indexer_state_elements,
+    char *error,
+    size_t error_bytes);
+
 int rust_star_metal_copy_retained_sparse_layer2_position8195(
     void *context,
     float *indexer_q,

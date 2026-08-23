@@ -85,6 +85,16 @@ preceding-layer execution and the complete retained sparse layer, while still
 leaving the prior cache histories seeded. A complete decoder, output logits,
 and throughput remain unclaimed.
 
+The retained boundary now extends through the complete transformer and output
+head at position 8195. Two fresh DwarfStar processes produced identical
+136,200,592-byte layer-state payloads, all 43 FFN HC handoffs, and all 129,280
+logits for token 381. The compact fixture preserves the 127 prior raw rows per
+layer, every recurrent compressor state, the full ratio-4 indexer histories,
+and only the 512 attention rows selected by each sparse layer. Rust executes
+all 43 layers with live HC handoffs, matches 44 pinned outputs bit-for-bit, and
+selects token 35,597. This proves a complete retained decoder step with seeded
+history and exact output logits; native prefill and throughput remain unclaimed.
+
 The first native
 batch boundary is now implemented separately: repeated captures localize the
 earliest difference to layer 0's Q8 Q-A projection, and the Rust Metal probe

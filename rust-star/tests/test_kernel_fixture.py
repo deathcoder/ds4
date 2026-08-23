@@ -59,6 +59,9 @@ COLD_PREFILL_FIXTURE = RUST_STAR_DIR / "fixtures" / "cold-prefill-pos0-v1"
 PREFILL_FRONTIER_FIXTURE = (
     RUST_STAR_DIR / "fixtures" / "prefill-frontier-2048-v1"
 )
+RETAINED_DECODER_STEP_FIXTURE = (
+    RUST_STAR_DIR / "fixtures" / "retained-decoder-step-pos8195-v1"
+)
 PREFILL_Q8_BOUNDARY_FIXTURE = (
     RUST_STAR_DIR / "fixtures" / "prefill-q8-boundary-2048-v1"
 )
@@ -107,6 +110,17 @@ PREFILL_LAYER3_COMPRESSOR_FIXTURE = (
 
 
 class KernelFixtureTests(unittest.TestCase):
+    def test_retained_decoder_step_fixture_manifest_and_payloads(self) -> None:
+        report = validate_differential_fixture(RETAINED_DECODER_STEP_FIXTURE)
+        self.assertEqual(
+            report["fixture_id"],
+            "dwarfstar-oracle-v1-retained-decoder-step-pos8195",
+        )
+        self.assertEqual(report["scope"], "decode-step")
+        self.assertEqual(report["operations"], 3)
+        self.assertEqual(report["tensors"], 13)
+        self.assertEqual(report["verified_bytes"], 55_517_184)
+
     def test_q8_projection_fixture_manifest_and_payloads(self) -> None:
         manifest = json.loads((FIXTURE / "manifest.json").read_text(encoding="utf-8"))
         self.assertEqual(manifest["schema"], "rust-star-differential-fixture-v1")

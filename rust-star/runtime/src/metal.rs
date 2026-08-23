@@ -64,6 +64,7 @@ pub const SPARSE_INDEXED_ATTENTION_PROBE_SCHEMA: &str =
     "rust-star-sparse-indexed-attention-boundary-v2";
 pub const RETAINED_SPARSE_BOUNDARY_PROBE_SCHEMA: &str = "rust-star-retained-sparse-boundary-v1";
 pub const RETAINED_SPARSE_MULTIMERGE_PROBE_SCHEMA: &str = "rust-star-retained-sparse-multimerge-v1";
+pub const RETAINED_DECODER_STEP_PROBE_SCHEMA: &str = "rust-star-retained-decoder-step-v1";
 pub const SPARSE_INDEXED_ATTENTION_FIXTURE_ID: &str =
     "dwarfstar-oracle-v1-layer2-pos2051-sparse-indexed-attention";
 pub const SPARSE_INDEXED_ATTENTION_DEFAULT_FIXTURE_ID: &str =
@@ -72,6 +73,8 @@ pub const RETAINED_SPARSE_BOUNDARY_FIXTURE_ID: &str =
     "dwarfstar-oracle-v1-retained-layer2-pos4099-sparse";
 pub const RETAINED_SPARSE_MULTIMERGE_FIXTURE_ID: &str =
     "dwarfstar-oracle-v1-retained-layer2-pos8195-sparse-multimerge";
+pub const RETAINED_DECODER_STEP_FIXTURE_ID: &str =
+    "dwarfstar-oracle-v1-retained-decoder-step-pos8195";
 pub const PROJECTION_FIXTURE_ID: &str = "dwarfstar-oracle-v1-layer0-pos1-attn-q-a";
 pub const PREFILL_Q8_BOUNDARY_FIXTURE_ID: &str = "dwarfstar-oracle-v1-prefill-q8-boundary-2048";
 pub const PREFILL_QKV_BOUNDARY_FIXTURE_ID: &str = "dwarfstar-oracle-v1-prefill-qkv-boundary-2048";
@@ -471,6 +474,40 @@ const RETAINED_MULTIMERGE_LAYER1_RAW_CURRENT_BYTES: &[u8] = include_bytes!(
 );
 const RETAINED_MULTIMERGE_LAYER0_HC_FFN_POST_BYTES: &[u8] =
     include_bytes!("../../fixtures/retained-sparse-layer2-pos8195-v1/layer0-hc-ffn-post.f32le.bin");
+const RETAINED_DECODER_RAW_PRIOR_BYTES: &[u8] =
+    include_bytes!("../../fixtures/retained-decoder-step-pos8195-v1/raw-cache-prior.f16le.bin");
+const RETAINED_DECODER_EVEN_ATTN_BYTES: &[u8] = include_bytes!(
+    "../../fixtures/retained-decoder-step-pos8195-v1/even-attention-selected-prior.f16le.bin"
+);
+const RETAINED_DECODER_EVEN_ATTN_INDICES_BYTES: &[u8] = include_bytes!(
+    "../../fixtures/retained-decoder-step-pos8195-v1/even-attention-selected-indices.i32le.bin"
+);
+const RETAINED_DECODER_ODD_ATTN_BYTES: &[u8] =
+    include_bytes!("../../fixtures/retained-decoder-step-pos8195-v1/odd-attention-prior.f16le.bin");
+const RETAINED_DECODER_EVEN_INDEXER_BYTES: &[u8] =
+    include_bytes!("../../fixtures/retained-decoder-step-pos8195-v1/even-indexer-prior.f32le.bin");
+const RETAINED_DECODER_EVEN_ATTN_STATE_KV_BYTES: &[u8] = include_bytes!(
+    "../../fixtures/retained-decoder-step-pos8195-v1/even-attention-state-kv.f32le.bin"
+);
+const RETAINED_DECODER_EVEN_ATTN_STATE_SCORE_BITS: &[u8] = include_bytes!(
+    "../../fixtures/retained-decoder-step-pos8195-v1/even-attention-state-score-bits.i32le.bin"
+);
+const RETAINED_DECODER_ODD_ATTN_STATE_KV_BYTES: &[u8] = include_bytes!(
+    "../../fixtures/retained-decoder-step-pos8195-v1/odd-attention-state-kv.f32le.bin"
+);
+const RETAINED_DECODER_ODD_ATTN_STATE_SCORE_BITS: &[u8] = include_bytes!(
+    "../../fixtures/retained-decoder-step-pos8195-v1/odd-attention-state-score-bits.i32le.bin"
+);
+const RETAINED_DECODER_EVEN_INDEX_STATE_KV_BYTES: &[u8] = include_bytes!(
+    "../../fixtures/retained-decoder-step-pos8195-v1/even-indexer-state-kv.f32le.bin"
+);
+const RETAINED_DECODER_EVEN_INDEX_STATE_SCORE_BITS: &[u8] = include_bytes!(
+    "../../fixtures/retained-decoder-step-pos8195-v1/even-indexer-state-score-bits.i32le.bin"
+);
+const RETAINED_DECODER_HC_OUTPUTS_BYTES: &[u8] =
+    include_bytes!("../../fixtures/retained-decoder-step-pos8195-v1/layer-hc-ffn-post.f32le.bin");
+const RETAINED_DECODER_LOGITS_BYTES: &[u8] =
+    include_bytes!("../../fixtures/retained-decoder-step-pos8195-v1/output-logits.f32le.bin");
 const PREFILL_Q8_BATCH_OUTPUT_BYTES: &[u8] =
     include_bytes!("../../fixtures/prefill-q8-boundary-2048-v1/q-lora-batch-final-tile.f32le.bin");
 const PREFILL_Q8_DECODE_OUTPUT_BYTES: &[u8] =
@@ -2221,6 +2258,23 @@ pub struct RetainedSparseBoundaryProbeReport {
     pub layer1_final_hc_checksum: u64,
 }
 
+#[derive(Clone, Debug)]
+pub struct RetainedDecoderStepProbeReport {
+    pub fixture_id: &'static str,
+    pub token: u32,
+    pub position: u32,
+    pub layers: Vec<Layer0ProbeReport>,
+    pub total_dispatches: u32,
+    pub total_wrapped_model_ranges: u32,
+    pub total_pointer_matches: u32,
+    pub transformer_wall_ms: f64,
+    pub transformer_gpu_ms: f64,
+    pub output_head_gpu_ms: f64,
+    pub logits_checksum: u64,
+    pub selected_token: u32,
+    pub exact_tensor_checks: u32,
+}
+
 pub fn write_ingress_probe_json<W: Write>(
     output: &mut W,
     report: &IngressProbeReport,
@@ -3259,6 +3313,41 @@ pub fn write_retained_sparse_multimerge_probe_json<W: Write>(
         report.attention_hc_checksum,
         report.selected_experts_checksum,
         report.final_hc_checksum,
+        report.exact_tensor_checks,
+    )?;
+    Ok(())
+}
+
+pub fn write_retained_decoder_step_probe_json<W: Write>(
+    output: &mut W,
+    report: &RetainedDecoderStepProbeReport,
+) -> Result<()> {
+    if report.fixture_id != RETAINED_DECODER_STEP_FIXTURE_ID
+        || report.token != 381
+        || report.position != 8195
+        || report.layers.len() != 43
+        || report.selected_token != 35597
+        || report.exact_tensor_checks != 44
+        || report.total_wrapped_model_ranges != report.total_pointer_matches
+    {
+        return Err(Error::invalid(
+            "retained decoder-step report has inconsistent metadata",
+        ));
+    }
+    write!(
+        output,
+        "{{\n  \"schema\": \"{RETAINED_DECODER_STEP_PROBE_SCHEMA}\",\n  \"classification\": \"retained-full-decoder-step-c0-control\",\n  \"fixture\": \"{}\",\n  \"position\": {},\n  \"input_token\": {},\n  \"selected_token\": {},\n  \"seed\": {{\"raw_history_rows_per_layer\": 127, \"ratio4_compressed_rows\": 2048, \"ratio128_compressed_rows\": 64, \"recurrent_compressor_state\": true}},\n  \"execution\": {{\"layers\": 43, \"transformer_dispatches\": {}, \"output_head_dispatches\": 5, \"command_buffers\": 44, \"host_waits\": 2}},\n  \"mapping\": {{\"wrapped_model_ranges\": {}, \"pointer_matches\": {}}},\n  \"timing\": {{\"transformer_wall_ms\": {:.6}, \"transformer_summed_gpu_ms\": {:.6}, \"output_head_gpu_ms\": {:.6}}},\n  \"checksums\": {{\"logits\": {}}},\n  \"exact_tensor_checks\": {},\n  \"c0_bitwise_match\": true,\n  \"preceding_layers_execution_claim\": true,\n  \"preceding_layer_history_seeded_claim\": true,\n  \"complete_decoder_step_claim\": true,\n  \"output_logits_claim\": true,\n  \"native_prefill_claim\": false,\n  \"throughput_claim\": false\n}}\n",
+        report.fixture_id,
+        report.position,
+        report.token,
+        report.selected_token,
+        report.total_dispatches,
+        report.total_wrapped_model_ranges,
+        report.total_pointer_matches,
+        report.transformer_wall_ms,
+        report.transformer_gpu_ms,
+        report.output_head_gpu_ms,
+        report.logits_checksum,
         report.exact_tensor_checks,
     )?;
     Ok(())
@@ -4793,6 +4882,40 @@ fn decode_f32_fixture(bytes: &[u8], label: &str) -> Result<Vec<f32>> {
         if !value.is_finite() {
             return Err(Error::invalid(format!(
                 "{label} fixture contains a non-finite FP32 value"
+            )));
+        }
+        values.push(value);
+    }
+    Ok(values)
+}
+
+fn decode_f16_fixture(bytes: &[u8], label: &str) -> Result<Vec<f32>> {
+    if bytes.is_empty() || bytes.len() % 2 != 0 {
+        return Err(Error::invalid(format!(
+            "{label} fixture must contain nonempty little-endian FP16 data"
+        )));
+    }
+    let mut values = Vec::with_capacity(bytes.len() / 2);
+    for chunk in bytes.chunks_exact(2) {
+        let bits = u16::from_le_bytes([chunk[0], chunk[1]]);
+        let sign = u32::from(bits & 0x8000) << 16;
+        let exponent = (bits >> 10) & 0x1f;
+        let fraction = u32::from(bits & 0x03ff);
+        let value_bits = match exponent {
+            0 if fraction == 0 => sign,
+            0 => {
+                let leading = fraction.leading_zeros() - 22;
+                let normalized = fraction << (leading + 1);
+                let f32_exponent = 127_u32 - 15 - leading;
+                sign | (f32_exponent << 23) | ((normalized & 0x03ff) << 13)
+            }
+            0x1f => sign | 0x7f80_0000 | (fraction << 13),
+            _ => sign | ((u32::from(exponent) + 112) << 23) | (fraction << 13),
+        };
+        let value = f32::from_bits(value_bits);
+        if !value.is_finite() {
+            return Err(Error::invalid(format!(
+                "{label} fixture contains a non-finite FP16 value"
             )));
         }
         values.push(value);
@@ -8606,6 +8729,24 @@ mod imp {
             attention_state_score_pre: *const f32,
             indexer_state_kv_pre: *const f32,
             indexer_state_score_pre: *const f32,
+            error: *mut c_char,
+            error_bytes: usize,
+        ) -> i32;
+        fn rust_star_metal_seed_retained_decoder_layer_position8195(
+            context: *mut c_void,
+            layer_index: u32,
+            raw_cache_prior: *const f32,
+            attention_row_indices: *const i32,
+            attention_compressed_prior: *const f32,
+            attention_rows: u32,
+            attention_state_kv_pre: *const f32,
+            attention_state_score_pre: *const f32,
+            attention_state_elements: u32,
+            indexer_compressed_prior: *const f32,
+            indexer_rows: u32,
+            indexer_state_kv_pre: *const f32,
+            indexer_state_score_pre: *const f32,
+            indexer_state_elements: u32,
             error: *mut c_char,
             error_bytes: usize,
         ) -> i32;
@@ -14742,6 +14883,261 @@ mod imp {
         run_retained_sparse_fixture_probe(model, true)
     }
 
+    pub fn run_retained_decoder_step_probe(
+        model: &MappedModel,
+    ) -> Result<RetainedDecoderStepProbeReport> {
+        const POSITION: u32 = 8195;
+        const TOKEN: u32 = 381;
+        const CONTEXT_CAPACITY: u32 = 8196;
+        let raw = decode_f16_fixture(RETAINED_DECODER_RAW_PRIOR_BYTES, "retained raw history")?;
+        let even_attention = decode_f16_fixture(
+            RETAINED_DECODER_EVEN_ATTN_BYTES,
+            "retained even-layer attention history",
+        )?;
+        let even_attention_indices = decode_i32_fixture(
+            RETAINED_DECODER_EVEN_ATTN_INDICES_BYTES,
+            "retained even-layer attention indices",
+        )?;
+        let odd_attention = decode_f16_fixture(
+            RETAINED_DECODER_ODD_ATTN_BYTES,
+            "retained odd-layer attention history",
+        )?;
+        let even_indexer = decode_f32_fixture(
+            RETAINED_DECODER_EVEN_INDEXER_BYTES,
+            "retained even-layer indexer history",
+        )?;
+        let even_attention_state_kv = decode_f32_fixture(
+            RETAINED_DECODER_EVEN_ATTN_STATE_KV_BYTES,
+            "retained even-layer attention KV state",
+        )?;
+        let even_attention_state_score = decode_i32_fixture(
+            RETAINED_DECODER_EVEN_ATTN_STATE_SCORE_BITS,
+            "retained even-layer attention score state bits",
+        )?
+        .into_iter()
+        .map(|bits| f32::from_bits(bits as u32))
+        .collect::<Vec<_>>();
+        let odd_attention_state_kv = decode_f32_fixture(
+            RETAINED_DECODER_ODD_ATTN_STATE_KV_BYTES,
+            "retained odd-layer attention KV state",
+        )?;
+        let odd_attention_state_score = decode_i32_fixture(
+            RETAINED_DECODER_ODD_ATTN_STATE_SCORE_BITS,
+            "retained odd-layer attention score state bits",
+        )?
+        .into_iter()
+        .map(|bits| f32::from_bits(bits as u32))
+        .collect::<Vec<_>>();
+        let even_index_state_kv = decode_f32_fixture(
+            RETAINED_DECODER_EVEN_INDEX_STATE_KV_BYTES,
+            "retained even-layer indexer KV state",
+        )?;
+        let even_index_state_score = decode_i32_fixture(
+            RETAINED_DECODER_EVEN_INDEX_STATE_SCORE_BITS,
+            "retained even-layer indexer score state bits",
+        )?
+        .into_iter()
+        .map(|bits| f32::from_bits(bits as u32))
+        .collect::<Vec<_>>();
+        let expected_hc = decode_f32_fixture(
+            RETAINED_DECODER_HC_OUTPUTS_BYTES,
+            "retained decoder layer HC outputs",
+        )?;
+        let expected_logits = decode_f32_fixture(
+            RETAINED_DECODER_LOGITS_BYTES,
+            "retained decoder output logits",
+        )?;
+        if raw.len() != 43 * 127 * 512
+            || even_attention.len() != 21 * 512 * 512
+            || even_attention_indices.len() != 21 * 512
+            || odd_attention.len() != 20 * 64 * 512
+            || even_indexer.len() != 21 * 2048 * 128
+            || even_attention_state_kv.len() != 21 * 8192
+            || even_attention_state_score.len() != 21 * 8192
+            || odd_attention_state_kv.len() != 20 * 65536
+            || odd_attention_state_score.len() != 20 * 65536
+            || even_index_state_kv.len() != 21 * 2048
+            || even_index_state_score.len() != 21 * 2048
+            || expected_hc.len() != 43 * 4 * 4096
+            || expected_logits.len() != 129280
+        {
+            return Err(Error::invalid(
+                "retained decoder-step fixture has inconsistent tensor shapes",
+            ));
+        }
+
+        let context = Context::new()?;
+        let mut layers = (0..43)
+            .map(|layer_index| {
+                PreparedLayerExecution::new_cold_with_capacity(model, layer_index, CONTEXT_CAPACITY)
+            })
+            .collect::<Result<Vec<_>>>()?;
+        for layer in &mut layers {
+            layer.validate_expected = false;
+        }
+        let mut error = [0 as c_char; ERROR_BYTES];
+        for layer in 0..43_usize {
+            let raw_start = layer * 127 * 512;
+            let (
+                attention_indices,
+                attention,
+                attention_rows,
+                attention_kv,
+                attention_score,
+                attention_state_elements,
+                indexer,
+                indexer_rows,
+                index_kv,
+                index_score,
+                index_state_elements,
+            ) = if layer < 2 {
+                (
+                    ptr::null(),
+                    ptr::null(),
+                    0,
+                    ptr::null(),
+                    ptr::null(),
+                    0,
+                    ptr::null(),
+                    0,
+                    ptr::null(),
+                    ptr::null(),
+                    0,
+                )
+            } else if layer % 2 == 0 {
+                let ordinal = (layer - 2) / 2;
+                (
+                    even_attention_indices[ordinal * 512..].as_ptr(),
+                    even_attention[ordinal * 512 * 512..].as_ptr(),
+                    512,
+                    even_attention_state_kv[ordinal * 8192..].as_ptr(),
+                    even_attention_state_score[ordinal * 8192..].as_ptr(),
+                    8192,
+                    even_indexer[ordinal * 2048 * 128..].as_ptr(),
+                    2048,
+                    even_index_state_kv[ordinal * 2048..].as_ptr(),
+                    even_index_state_score[ordinal * 2048..].as_ptr(),
+                    2048,
+                )
+            } else {
+                let ordinal = (layer - 3) / 2;
+                (
+                    ptr::null(),
+                    odd_attention[ordinal * 64 * 512..].as_ptr(),
+                    64,
+                    odd_attention_state_kv[ordinal * 65536..].as_ptr(),
+                    odd_attention_state_score[ordinal * 65536..].as_ptr(),
+                    65536,
+                    ptr::null(),
+                    0,
+                    ptr::null(),
+                    ptr::null(),
+                    0,
+                )
+            };
+            error.fill(0);
+            let seeded = unsafe {
+                rust_star_metal_seed_retained_decoder_layer_position8195(
+                    context.0,
+                    layer as u32,
+                    raw[raw_start..].as_ptr(),
+                    attention_indices,
+                    attention,
+                    attention_rows,
+                    attention_kv,
+                    attention_score,
+                    attention_state_elements,
+                    indexer,
+                    indexer_rows,
+                    index_kv,
+                    index_score,
+                    index_state_elements,
+                    error.as_mut_ptr(),
+                    error.len(),
+                )
+            };
+            if seeded == 0 {
+                return Err(Error::invalid(format!(
+                    "Metal retained decoder-step layer-{layer} seed failed: {}",
+                    error_text(&error)
+                )));
+            }
+        }
+
+        submit_prepared_layers(model, &context, &mut layers, TOKEN, POSITION)?;
+        let mut output_head = PreparedOutputHead::new(model)?;
+        let (selected_token, output_head_gpu_ms) =
+            run_sampling_output_head(model, &context, &mut output_head)?;
+        let mut reports = Vec::with_capacity(43);
+        for (layer_index, layer) in layers.iter_mut().enumerate() {
+            let execution = run_prepared_layer_iterations(
+                model,
+                &context,
+                layer,
+                TOKEN,
+                POSITION,
+                0,
+                1,
+                COMMAND_CHAINED_COLLECT,
+                42,
+            )?;
+            let expected = &expected_hc[layer_index * 16384..(layer_index + 1) * 16384];
+            if let Some((index, (actual, expected))) = layer
+                .after_ffn_hc
+                .iter()
+                .zip(expected)
+                .enumerate()
+                .find(|(_, (actual, expected))| actual.to_bits() != expected.to_bits())
+            {
+                return Err(Error::invalid(format!(
+                    "retained decoder-step layer-{layer_index} HC C0 mismatch at {index}: actual={:#010x} expected={:#010x}",
+                    actual.to_bits(), expected.to_bits()
+                )));
+            }
+            reports.push(execution.report);
+        }
+        if let Some((index, (actual, expected))) = output_head
+            .logits
+            .iter()
+            .zip(&expected_logits)
+            .enumerate()
+            .find(|(_, (actual, expected))| actual.to_bits() != expected.to_bits())
+        {
+            return Err(Error::invalid(format!(
+                "retained decoder-step logits C0 mismatch at {index}: actual={:#010x} expected={:#010x}",
+                actual.to_bits(), expected.to_bits()
+            )));
+        }
+        if selected_token != 35597 {
+            return Err(Error::invalid(format!(
+                "retained decoder-step selected token mismatch: {selected_token}"
+            )));
+        }
+        Ok(RetainedDecoderStepProbeReport {
+            fixture_id: RETAINED_DECODER_STEP_FIXTURE_ID,
+            token: TOKEN,
+            position: POSITION,
+            total_dispatches: reports.iter().map(|report| report.dispatches).sum(),
+            total_wrapped_model_ranges: reports
+                .iter()
+                .map(|report| report.wrapped_model_ranges)
+                .sum::<u32>()
+                + 5,
+            total_pointer_matches: reports
+                .iter()
+                .map(|report| report.pointer_matches)
+                .sum::<u32>()
+                + 5,
+            transformer_wall_ms: reports[0].wall_ms,
+            transformer_gpu_ms: reports.iter().map(|report| report.gpu_ms).sum(),
+            output_head_gpu_ms,
+            logits_checksum: checksum_f32(&output_head.logits),
+            selected_token,
+            exact_tensor_checks: 44,
+            layers: reports,
+        })
+    }
+
     pub fn run_attention_ingress_probe(model: &MappedModel) -> Result<IngressProbeReport> {
         const TOKEN: u32 = 201;
         let embedding = exact_tensor(model, "token_embd.weight", 1, &[4096, 129280])?;
@@ -17655,6 +18051,17 @@ mod imp {
         ))
     }
 
+    pub fn run_retained_decoder_step_probe(
+        model: &MappedModel,
+    ) -> Result<RetainedDecoderStepProbeReport> {
+        let _ = decode_f16_fixture(RETAINED_DECODER_RAW_PRIOR_BYTES, "retained raw history")?;
+        let _ = decode_f32_fixture(RETAINED_DECODER_LOGITS_BYTES, "retained output logits")?;
+        let _ = exact_tensor(model, "output.weight", 8, &[4096, 129280])?;
+        Err(Error::invalid(
+            "the Metal retained decoder-step probe is available only on macOS",
+        ))
+    }
+
     pub fn run_retained_sparse_multimerge_probe(
         model: &MappedModel,
     ) -> Result<RetainedSparseBoundaryProbeReport> {
@@ -18143,9 +18550,9 @@ pub use imp::{
     run_prefill_layers01_live_kv_chain_probe, run_prefill_layers01_live_kv_loop_probe,
     run_prefill_layers01_row_coverage_probe, run_prefill_q8_boundary_probe,
     run_prefill_qkv_boundary_probe, run_probe, run_q8_projection_probe,
-    run_ratio128_compressor_replay_probe, run_retained_sparse_boundary_probe,
-    run_retained_sparse_multimerge_probe, run_rope_kv_store_probe,
-    run_sparse_indexed_attention_probe, LayerExecutor,
+    run_ratio128_compressor_replay_probe, run_retained_decoder_step_probe,
+    run_retained_sparse_boundary_probe, run_retained_sparse_multimerge_probe,
+    run_rope_kv_store_probe, run_sparse_indexed_attention_probe, LayerExecutor,
 };
 
 #[cfg(test)]
@@ -20989,6 +21396,33 @@ mod tests {
     }
 
     #[test]
+    fn retained_decoder_step_fixture_has_target_shapes() {
+        assert_eq!(RETAINED_DECODER_RAW_PRIOR_BYTES.len(), 43 * 127 * 512 * 2);
+        assert_eq!(RETAINED_DECODER_EVEN_ATTN_BYTES.len(), 21 * 512 * 512 * 2);
+        assert_eq!(RETAINED_DECODER_EVEN_ATTN_INDICES_BYTES.len(), 21 * 512 * 4);
+        assert_eq!(RETAINED_DECODER_ODD_ATTN_BYTES.len(), 20 * 64 * 512 * 2);
+        assert_eq!(
+            RETAINED_DECODER_EVEN_INDEXER_BYTES.len(),
+            21 * 2048 * 128 * 4
+        );
+        assert_eq!(
+            RETAINED_DECODER_EVEN_ATTN_STATE_KV_BYTES.len(),
+            21 * 8192 * 4
+        );
+        assert_eq!(
+            RETAINED_DECODER_ODD_ATTN_STATE_KV_BYTES.len(),
+            20 * 65536 * 4
+        );
+        assert_eq!(
+            RETAINED_DECODER_EVEN_INDEX_STATE_KV_BYTES.len(),
+            21 * 2048 * 4
+        );
+        assert_eq!(RETAINED_DECODER_HC_OUTPUTS_BYTES.len(), 43 * 16384 * 4);
+        assert_eq!(RETAINED_DECODER_LOGITS_BYTES.len(), 129280 * 4);
+        assert_eq!(decode_f16_fixture(&[0x00, 0x3c], "one").unwrap(), [1.0]);
+    }
+
+    #[test]
     fn retained_sparse_topk_schedule_generalizes_merge_passes() {
         assert_eq!(retained_sparse_topk_schedule(513), (1, 0, 512));
         assert_eq!(retained_sparse_topk_schedule(1025), (2, 1, 513));
@@ -21141,6 +21575,33 @@ mod tests {
         assert!(text.contains("\"preceding_layers_execution_claim\": true"));
         assert!(text.contains("\"preceding_layer_history_seeded_claim\": true"));
         assert!(text.contains("\"complete_decoder_claim\": false"));
+        assert!(text.contains("\"throughput_claim\": false"));
+    }
+
+    #[test]
+    fn writes_stable_retained_decoder_step_probe_json() {
+        let report = RetainedDecoderStepProbeReport {
+            fixture_id: RETAINED_DECODER_STEP_FIXTURE_ID,
+            token: 381,
+            position: 8195,
+            layers: vec![layer0_report(); 43],
+            total_dispatches: 1813,
+            total_wrapped_model_ranges: 1370,
+            total_pointer_matches: 1370,
+            transformer_wall_ms: 1.0,
+            transformer_gpu_ms: 0.5,
+            output_head_gpu_ms: 0.1,
+            logits_checksum: 7,
+            selected_token: 35597,
+            exact_tensor_checks: 44,
+        };
+        let mut output = Vec::new();
+        write_retained_decoder_step_probe_json(&mut output, &report).unwrap();
+        let text = String::from_utf8(output).unwrap();
+        assert!(text.contains("\"schema\": \"rust-star-retained-decoder-step-v1\""));
+        assert!(text.contains("\"complete_decoder_step_claim\": true"));
+        assert!(text.contains("\"output_logits_claim\": true"));
+        assert!(text.contains("\"native_prefill_claim\": false"));
         assert!(text.contains("\"throughput_claim\": false"));
     }
 

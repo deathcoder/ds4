@@ -742,6 +742,25 @@ Preceding layers 0 and 1 and the complete retained layer 2 are now claimed; the
 seeded prior histories, complete decoder, logits, and throughput remain outside
 the claim.
 
+To validate the complete retained step at the same position:
+
+```sh
+rust-star/.work/runtime-target/release/rust-star \
+  retained-decoder-step-probe \
+  /absolute/path/to/model.gguf \
+  --json rust-star/.work/runtime-target/retained-decoder-step-probe.json
+```
+
+Two fresh DwarfStar processes pin identical pre-step state, every layer's final
+HC, and the full output vector. Rust seeds 127 prior raw rows in all 43 layers,
+the 2,048/64 compressed histories and recurrent state in the alternating
+ratio-4/ratio-128 layers, and the complete ratio-4 indexer histories. It then
+executes layers 0 through 42 with live HC handoffs and runs the output head.
+All 43 HCs and all 129,280 logits match by bit pattern, selecting token 35,597
+across 1,813 transformer dispatches and 1,370/1,370 no-copy model mappings.
+This is a complete retained decoder step with seeded history, not native
+prefill or a throughput result.
+
 To cross the first ratio-128 emission boundary without overstating decoder
 coverage:
 

@@ -15,10 +15,11 @@ Its `scope.kind` is one of `kernel`, `layer-segment`, or `decode-step`, and its
 `operations` array records the ordered oracle operations represented by the
 fixture. Every tensor descriptor records a unique name and relative path, its
 boundary role, shape and encoding, byte count, and SHA-256. Payloads may use
-little-endian finite IEEE-754 binary32 (`f32`) or little-endian signed 32-bit
-integers (`i32`); the latter preserves discrete boundaries such as selected
-expert IDs. The verifier requires byte counts to agree with the declared shape
-and all FP32 values to be finite.
+little-endian finite IEEE-754 binary16 (`f16`), binary32 (`f32`), or
+little-endian signed 32-bit integers (`i32`); the latter preserves discrete
+boundaries and exact FP32 bit patterns such as selected expert IDs or compressor
+score states. The verifier requires byte counts to agree with the declared shape
+and all floating-point values to be finite.
 
 The manifest pins the DwarfStar oracle commit/tree and capture executable, the
 model SHA-256, execution phase, layer where applicable, and token position.

@@ -402,10 +402,12 @@ def validate_differential_fixture(root: Path) -> dict[str, Any]:
         valid_encoding = (
             dtype == "f32" and encoding == "little-endian-ieee754-binary32"
         ) or (
+            dtype == "f16" and encoding == "little-endian-ieee754-binary16"
+        ) or (
             dtype == "i32" and encoding == "little-endian-signed-integer32"
         )
         if not valid_encoding:
-            raise ArtifactError(f"{location} must use a supported little-endian 32-bit encoding")
+            raise ArtifactError(f"{location} must use a supported little-endian encoding")
         shape = descriptor.get("shape")
         if not isinstance(shape, list) or not shape:
             raise ArtifactError(f"{location}.shape must be a nonempty array")
@@ -419,7 +421,8 @@ def validate_differential_fixture(root: Path) -> dict[str, Any]:
         if relative in tensor_paths:
             raise ArtifactError(f"duplicate tensor path: {relative}")
         tensor_paths.add(relative)
-        expected_bytes = elements * 4
+        element_bytes = 2 if dtype == "f16" else 4
+        expected_bytes = elements * element_bytes
         if descriptor.get("bytes") != expected_bytes:
             raise ArtifactError(
                 f"{location}.bytes does not match shape: expected={expected_bytes}, actual={descriptor.get('bytes')!r}"
@@ -435,12 +438,18 @@ def validate_differential_fixture(root: Path) -> dict[str, Any]:
         if actual_bytes != expected_bytes or actual_sha256 != expected_sha256:
             raise ArtifactError(f"fixture tensor integrity mismatch: {relative}")
         with path.open("rb") as stream:
-            for element_index, packed in enumerate(iter(lambda: stream.read(4), b"")):
-                if len(packed) != 4:
+            for element_index, packed in enumerate(
+                iter(lambda: stream.read(element_bytes), b"")
+            ):
+                if len(packed) != element_bytes:
                     raise ArtifactError(f"fixture tensor is truncated: {relative}")
                 if dtype == "f32" and not math.isfinite(struct.unpack("<f", packed)[0]):
                     raise ArtifactError(
                         f"fixture tensor contains non-finite f32 at element {element_index}: {relative}"
+                    )
+                if dtype == "f16" and not math.isfinite(struct.unpack("<e", packed)[0]):
+                    raise ArtifactError(
+                        f"fixture tensor contains non-finite f16 at element {element_index}: {relative}"
                     )
         verified_bytes += actual_bytes
 

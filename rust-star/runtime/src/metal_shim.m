@@ -13362,6 +13362,125 @@ int rust_star_metal_seed_retained_sparse_layers012_position8195(
         error, error_bytes);
 }
 
+int rust_star_metal_seed_retained_decoder_layer_position8195(
+    void *opaque_context,
+    uint32_t layer_index,
+    const float *raw_cache_prior,
+    const int32_t *attention_row_indices,
+    const float *attention_compressed_prior,
+    uint32_t attention_rows,
+    const float *attention_state_kv_pre,
+    const float *attention_state_score_pre,
+    uint32_t attention_state_elements,
+    const float *indexer_compressed_prior,
+    uint32_t indexer_rows,
+    const float *indexer_state_kv_pre,
+    const float *indexer_state_score_pre,
+    uint32_t indexer_state_elements,
+    char *error,
+    size_t error_bytes)
+{
+    const uint32_t position = 8195u;
+    const uint32_t raw_capacity_rows = 128u;
+    const uint32_t prior_raw_rows = 127u;
+    const BOOL compressed = layer_index >= 2u;
+    const uint32_t ratio = !compressed ? 0u :
+        ((layer_index % 2u) == 0u ? 4u : 128u);
+    const BOOL indexed = ratio == 4u;
+    const uint32_t compressed_capacity_rows = ratio == 4u ? 2051u : 66u;
+    const uint32_t expected_attention_rows = ratio == 4u ? 512u :
+        (ratio == 128u ? 64u : 0u);
+    const uint32_t expected_attention_state = ratio == 4u ? 8192u :
+        (ratio == 128u ? 65536u : 0u);
+    if (!opaque_context || !raw_cache_prior || layer_index >= 43u ||
+        attention_rows != expected_attention_rows ||
+        attention_state_elements != expected_attention_state ||
+        indexer_rows != (indexed ? 2048u : 0u) ||
+        indexer_state_elements != (indexed ? 2048u : 0u) ||
+        (compressed && (!attention_compressed_prior || !attention_state_kv_pre ||
+                        !attention_state_score_pre)) ||
+        (indexed && (!attention_row_indices || !indexer_compressed_prior ||
+                     !indexer_state_kv_pre || !indexer_state_score_pre))) {
+        return fail_with_message(error, error_bytes,
+            @"retained decoder-layer seed received invalid inputs");
+    }
+    @autoreleasepool {
+        RustStarMetalContext *context = (__bridge RustStarMetalContext *)opaque_context;
+        id<MTLBuffer> raw_cache = persistent_buffer(
+            context, [NSString stringWithFormat:@"kv_cache_layer_%u", layer_index],
+            raw_capacity_rows*512u*sizeof(float), error, error_bytes);
+        id<MTLBuffer> attention_cache = compressed ? persistent_buffer(
+            context, layer_buffer_key(@"compressed_kv_cache", YES, layer_index),
+            compressed_capacity_rows*512u*sizeof(float), error, error_bytes) : nil;
+        id<MTLBuffer> attention_state_kv = compressed ? persistent_buffer(
+            context, layer_buffer_key(@"compressor_state_kv", YES, layer_index),
+            attention_state_elements*sizeof(float), error, error_bytes) : nil;
+        id<MTLBuffer> attention_state_score = compressed ? persistent_buffer(
+            context, layer_buffer_key(@"compressor_state_score", YES, layer_index),
+            attention_state_elements*sizeof(float), error, error_bytes) : nil;
+        id<MTLBuffer> indexer_cache = indexed ? persistent_buffer(
+            context, layer_buffer_key(@"compressed_indexer_cache", YES, layer_index),
+            compressed_capacity_rows*128u*sizeof(float), error, error_bytes) : nil;
+        id<MTLBuffer> indexer_state_kv = indexed ? persistent_buffer(
+            context, layer_buffer_key(@"indexer_state_kv", YES, layer_index),
+            indexer_state_elements*sizeof(float), error, error_bytes) : nil;
+        id<MTLBuffer> indexer_state_score = indexed ? persistent_buffer(
+            context, layer_buffer_key(@"indexer_state_score", YES, layer_index),
+            indexer_state_elements*sizeof(float), error, error_bytes) : nil;
+        if (!raw_cache || (compressed && (!attention_cache || !attention_state_kv ||
+            !attention_state_score)) || (indexed && (!indexer_cache ||
+            !indexer_state_kv || !indexer_state_score))) {
+            if (error && error_bytes != 0u && error[0] != '\0') return 0;
+            return fail_with_message(error, error_bytes,
+                @"retained decoder-layer seed could not allocate state");
+        }
+
+        memset(raw_cache.contents, 0, raw_capacity_rows*512u*sizeof(float));
+        for (uint32_t row = 0; row < prior_raw_rows; row++) {
+            const uint32_t logical_position = position-prior_raw_rows+row;
+            const uint32_t slot = logical_position % raw_capacity_rows;
+            memcpy((uint8_t *)raw_cache.contents +
+                       (NSUInteger)slot*512u*sizeof(float),
+                   raw_cache_prior + (NSUInteger)row*512u,
+                   512u*sizeof(float));
+        }
+        if (!compressed) return 1;
+
+        memset(attention_cache.contents, 0,
+               compressed_capacity_rows*512u*sizeof(float));
+        for (uint32_t row = 0; row < attention_rows; row++) {
+            const int32_t destination = attention_row_indices ?
+                attention_row_indices[row] : (int32_t)row;
+            if (destination < 0 || destination > 2048) {
+                return fail_with_message(error, error_bytes,
+                    @"retained decoder-layer seed has an invalid attention row");
+            }
+            /* Row 2048 is the current position's ratio-4 emission. The live
+             * layer computes it before indexed attention consumes the cache. */
+            if (indexed && destination == 2048) continue;
+            memcpy((uint8_t *)attention_cache.contents +
+                       (NSUInteger)destination*512u*sizeof(float),
+                   attention_compressed_prior + (NSUInteger)row*512u,
+                   512u*sizeof(float));
+        }
+        memcpy(attention_state_kv.contents, attention_state_kv_pre,
+               attention_state_elements*sizeof(float));
+        memcpy(attention_state_score.contents, attention_state_score_pre,
+               attention_state_elements*sizeof(float));
+        if (indexed) {
+            memset(indexer_cache.contents, 0,
+                   compressed_capacity_rows*128u*sizeof(float));
+            memcpy(indexer_cache.contents, indexer_compressed_prior,
+                   indexer_rows*128u*sizeof(float));
+            memcpy(indexer_state_kv.contents, indexer_state_kv_pre,
+                   indexer_state_elements*sizeof(float));
+            memcpy(indexer_state_score.contents, indexer_state_score_pre,
+                   indexer_state_elements*sizeof(float));
+        }
+        return 1;
+    }
+}
+
 static int copy_retained_sparse_layer2_boundary(
     void *opaque_context,
     uint32_t score_rows,

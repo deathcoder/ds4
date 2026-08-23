@@ -699,6 +699,16 @@ dispatches and 35/35 views. The claim now includes execution of preceding layers
 0 and 1 and the complete retained layer 2. Their prior cache histories remain
 seeded, so this is not a complete-decoder, logits, or throughput claim.
 
+`retained-decoder-step-probe` generalizes that state boundary to all 43 layers
+at position 8195. The fixture comes from two bitwise-identical DwarfStar layer
+payloads and retains every raw ring, compressed history, and recurrent state.
+For ratio-4 attention it stores only the 512 rows selected by the exact full
+indexer cache; the current row is produced live before attention consumes it.
+Rust chains all transformer layers, checks each 16,384-element final HC, then
+runs the output head and checks all 129,280 logits. The exact result selects
+token 35,597. The command claims a complete retained decoder step and output
+logits with seeded history; native prefill and throughput remain false.
+
 ## Position-127 ratio-128 compressor replay
 
 Schema: `rust-star-ratio128-compressor-replay-probe-v1`.
