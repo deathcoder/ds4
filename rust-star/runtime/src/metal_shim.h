@@ -198,6 +198,13 @@ typedef struct rust_star_metal_prefill_layer2_attention_weights {
     uint64_t layer8_attn_output_a_offset, layer8_attn_output_a_bytes;
     uint64_t layer8_attn_output_b_offset, layer8_attn_output_b_bytes;
     rust_star_metal_prefill_ffn_weights layer8_ffn;
+    rust_star_metal_prefill_kvnorm_weights layer9_kvnorm;
+    uint64_t layer9_q_b_offset, layer9_q_b_bytes;
+    rust_star_metal_prefill_compressor_weights layer9_compressor;
+    uint64_t layer9_attn_sinks_offset, layer9_attn_sinks_bytes;
+    uint64_t layer9_attn_output_a_offset, layer9_attn_output_a_bytes;
+    uint64_t layer9_attn_output_b_offset, layer9_attn_output_b_bytes;
+    rust_star_metal_prefill_ffn_weights layer9_ffn;
 } rust_star_metal_prefill_layer2_attention_weights;
 
 typedef struct rust_star_metal_prefill_layer2_attention_result {
@@ -661,6 +668,31 @@ int rust_star_metal_run_prefill_layer2_attention(
     float *layer8_router_weights_final_tile,
     float *layer8_routed_out_final_tile,
     float *layer8_shared_out_final_tile,
+    float *layer9_hc_attn_pre_final_tile,
+    float *layer9_attn_norm_final_tile,
+    float *layer9_q_lora_final_tile,
+    float *layer9_q_lora_norm_final_tile,
+    float *layer9_kv_raw_final_tile,
+    float *layer9_kv_norm_final_tile,
+    float *layer9_q_raw_final_tile,
+    float *layer9_q_cur_final_tile,
+    float *layer9_kv_rope_final_tile,
+    float *layer9_kv_cur_final_tile,
+    float *layer9_attn_compressed,
+    float *layer9_attn_state_kv,
+    int32_t *layer9_attn_state_score,
+    float *layer9_kqv_out_row0,
+    float *layer9_kqv_back_row0,
+    float *layer9_attn_low_row0,
+    float *layer9_attention_output,
+    float *layer9_after_attention_hc,
+    float *layer9_after_ffn_hc,
+    float *layer9_ffn_cur_final_tile,
+    float *layer9_ffn_norm_final_tile,
+    int32_t *layer9_router_selected_final_tile,
+    float *layer9_router_weights_final_tile,
+    float *layer9_routed_out_final_tile,
+    float *layer9_shared_out_final_tile,
     rust_star_metal_prefill_layer2_attention_result *result,
     char *error,
     size_t error_bytes);
