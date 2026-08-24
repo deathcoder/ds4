@@ -240,10 +240,12 @@ Layer 11's retained final HC now continues through layer 12's complete Q/KV
 state, paired ratio-4 attention/indexer compressors, dense mixed attention,
 routed/shared FFN, and final HC update, then through layer 13's complete Q/KV
 state, ratio-128 compressor, dense mixed attention, routed/shared FFN, and
-final HC update. All layer-7 through layer-13 retained
+final HC update, and then through layer 14's complete Q/KV state, paired
+ratio-4 attention/indexer compressors, dense mixed attention, routed/shared
+FFN, and final HC update. All layer-7 through layer-14 retained
 boundaries, full attention outputs, compressor states, and full HC identities
-match fresh DwarfStar processes exactly. The complete layers-0--13 command uses
-664 dispatches and preserves 344/344 no-copy model mappings. Exactly 512 ratio-4
+match fresh DwarfStar processes exactly. The complete layers-0--14 command uses
+734 dispatches and preserves 376/376 no-copy model mappings. Exactly 512 ratio-4
 compressed rows remain dense at the prompt boundary. The pinned DwarfStar default remains dense
 through 1,024 rows and first switches at 1,025. The position-2051 override
 remains an independent one-block control; two fresh production-default captures
@@ -251,7 +253,7 @@ at position 4099 now add the exact two-block argsort merge and validate all
 1,025 scores, top-512 indices, indexed attention, and inverse RoPE bit-for-bit.
 The same first-boundary schedule is wired into retained even-layer state with
 35 no-copy model mappings. Execution of a complete decoder through that branch,
-output-logit C0, generalization past 1,025 rows, and throughput remain pending.
+layer-15 prefill, output-logit C0, and throughput remain pending.
 
 Project controls and benchmark contracts:
 
