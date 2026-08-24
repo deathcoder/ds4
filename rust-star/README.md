@@ -235,11 +235,13 @@ Q/KV state, ratio-128 compressor, dense mixed attention, routed/shared FFN, and
 final HC update, then through layer 10's complete Q/KV state, paired ratio-4
 attention/indexer compressors, dense mixed attention, routed/shared FFN, and
 final HC update, and then through layer 11's complete Q/KV state, ratio-128
-compressor, dense mixed attention, routed/shared FFN, and final HC update. All
-layer-7 through layer-11 retained boundaries, full
-attention outputs, compressor states, and full HC identities match fresh
-DwarfStar processes exactly. The complete layers-0--11 command uses 547
-dispatches and preserves 284/284 no-copy model mappings. Exactly 512 ratio-4
+compressor, dense mixed attention, routed/shared FFN, and final HC update.
+Layer 11's retained final HC now continues through layer 12's complete Q/KV
+state, paired ratio-4 attention/indexer compressors, dense mixed attention,
+routed/shared FFN, and final HC update. All layer-7 through layer-12 retained
+boundaries, full attention outputs, compressor states, and full HC identities
+match fresh DwarfStar processes exactly. The complete layers-0--12 command uses
+617 dispatches and preserves 316/316 no-copy model mappings. Exactly 512 ratio-4
 compressed rows remain dense at the prompt boundary. The pinned DwarfStar default remains dense
 through 1,024 rows and first switches at 1,025. The position-2051 override
 remains an independent one-block control; two fresh production-default captures

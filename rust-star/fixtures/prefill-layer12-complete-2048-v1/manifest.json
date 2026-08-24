@@ -1,0 +1,201 @@
+{
+  "schema": "rust-star-differential-fixture-v1",
+  "fixture_id": "dwarfstar-oracle-v1-prefill-layer12-complete-2048",
+  "captured_at_utc": "2026-08-24T10:50:37Z",
+  "oracle": {
+    "id": "oracle-v1",
+    "repository": "https://github.com/antirez/ds4.git",
+    "commit": "b0309611041655f4e45671cfd9c9886aff161406",
+    "tree": "20c11af22f90a0bdf25da860da5ef06de4064060",
+    "capture_executable_sha256": "b0b7c31d9832cc3f5cccf810cd2af6f4bc4f6e71de945493674315314f666fc8"
+  },
+  "model": {
+    "family": "DeepSeek-V4-Flash-0731",
+    "sha256": "ca22ae2f838e14077c22bc1c1417b71b45b5e5a3687bd96c2ac6e17fdb6261c0"
+  },
+  "capture": {
+    "backend": "metal",
+    "machine": "Apple M1 Ultra, 48 GPU cores, 128 GB unified memory",
+    "prompt": "first 2048 raw tokens of speed-bench/promessi_sposi.txt",
+    "prompt_sha256": "f53e0d80cb2d4492d24ebd63c7000c397b16ae70f9bf09b3763e5d8323ec209f",
+    "prefill_tokens": 2048,
+    "fresh_process_bitwise_match": true,
+    "command": "ds4-bench --metal --ctx-start 2048 --ctx-max 2048 --gen-tokens 0 --warm-weights",
+    "fresh_process_captures": 2,
+    "full_capture_sha256": {
+      "hc_ffn_pre": "cec2e4d668dae8a3ac50b78ff58333dfdbc7a102e3e98ecf1d31a78700cf7f16",
+      "ffn_norm": "8fa1baf44e26d3cabcb7d74081295fa20559e5181c6a8d6f0829e04c526d69bc",
+      "ffn_moe_logits": "27ca54a65973d320bf0f69dd82bf4c7d11f8dc7dcd9b78f58d74ad1af7831180",
+      "ffn_moe_probs": "d30989bf7e5b6a96ca96fc722cab3f9fddd6cf93ed1075b8ee08dbe20a37df76",
+      "ffn_moe_topk": "118c9a3646e374f14bc87a154ddf07761a9b1099b130d7c9004a55051fbbf486",
+      "ffn_moe_weights_scaled": "1f707cccbc2495139e25092fa20c6113d1ebe380ff5662d7ed7dde920b9a8a52",
+      "ffn_moe_weighted_swiglu": "5a28b7808b552ab58d7d97a50ccb806d24d6a4d170bd9ceb060cf18e40c612e0",
+      "ffn_moe_out": "dafdf91e4059b5326685397cff8725eb122ecf0ead6f30a85497b2f16d77d330",
+      "ffn_shexp": "ab4de22de03c9e4137267e8908dfe54c8e15124771eadde0ee88a67715c5d408",
+      "hc_ffn_post": "b3e73554fcdd72201832fd6520abd22c60bcba863e7e59bdb0daa22caa7267dc"
+    },
+    "input_fixture": "dwarfstar-oracle-v1-prefill-layer12-attention-2048"
+  },
+  "scope": {
+    "kind": "layer-segment",
+    "phase": "prefill",
+    "layer": 12,
+    "position": 2047,
+    "captured_position_range": [
+      0,
+      2047
+    ]
+  },
+  "operations": [
+    {
+      "name": "ffn-hc-ingress-and-router",
+      "kernel": "biased top-6 batch"
+    },
+    {
+      "name": "routed-shared-experts-and-hc-post",
+      "kernel": "IQ2/Q2 routed plus Q8 shared"
+    }
+  ],
+  "tensors": [
+    {
+      "name": "layer12_hc_ffn_pre_final_tile",
+      "hook": "hc_ffn_pre",
+      "role": "intermediate",
+      "dtype": "f32",
+      "shape": [
+        32,
+        4096
+      ],
+      "encoding": "little-endian-ieee754-binary32",
+      "path": "layer12-hc-ffn-pre-final-tile.f32le.bin",
+      "bytes": 524288,
+      "sha256": "8522d78ce2a1792e2ad2e163c5c214dfa825619129944174e22aaaafe2e9aeb0"
+    },
+    {
+      "name": "layer12_ffn_norm_final_tile",
+      "hook": "ffn_norm",
+      "role": "intermediate",
+      "dtype": "f32",
+      "shape": [
+        32,
+        4096
+      ],
+      "encoding": "little-endian-ieee754-binary32",
+      "path": "layer12-ffn-norm-final-tile.f32le.bin",
+      "bytes": 524288,
+      "sha256": "00e40b3a92e8331b708860525b1326666c7f0bdd1031684378161a80ded85ab2"
+    },
+    {
+      "name": "layer12_ffn_moe_logits_final_tile",
+      "hook": "ffn_moe_logits",
+      "role": "intermediate",
+      "dtype": "f32",
+      "shape": [
+        32,
+        256
+      ],
+      "encoding": "little-endian-ieee754-binary32",
+      "path": "layer12-ffn-moe-logits-final-tile.f32le.bin",
+      "bytes": 32768,
+      "sha256": "a97f4b3457ed9bf631ffdbe5bde3319dab0f1e316c69710a152f637b1416d905"
+    },
+    {
+      "name": "layer12_ffn_moe_probs_final_tile",
+      "hook": "ffn_moe_probs",
+      "role": "intermediate",
+      "dtype": "f32",
+      "shape": [
+        32,
+        256
+      ],
+      "encoding": "little-endian-ieee754-binary32",
+      "path": "layer12-ffn-moe-probs-final-tile.f32le.bin",
+      "bytes": 32768,
+      "sha256": "28b1feb32170a3f649f9a6c1a1c14279f72e7bdb10916c71210bc7f841863d4a"
+    },
+    {
+      "name": "layer12_ffn_moe_topk_final_tile",
+      "hook": "ffn_moe_topk",
+      "role": "intermediate",
+      "dtype": "i32",
+      "shape": [
+        32,
+        6
+      ],
+      "encoding": "little-endian-signed-integer32",
+      "path": "layer12-ffn-moe-topk-final-tile.i32le.bin",
+      "bytes": 768,
+      "sha256": "e770b4efcb18627794df475b0179997f1c5effc73f7e37617200c7a0086b94ba"
+    },
+    {
+      "name": "layer12_ffn_moe_weights_scaled_final_tile",
+      "hook": "ffn_moe_weights_scaled",
+      "role": "intermediate",
+      "dtype": "f32",
+      "shape": [
+        32,
+        6
+      ],
+      "encoding": "little-endian-ieee754-binary32",
+      "path": "layer12-ffn-moe-weights-scaled-final-tile.f32le.bin",
+      "bytes": 768,
+      "sha256": "188530d595390b6ec561a41ad22ac6afc13d3afe27af40133fcfc66a4944ec3a"
+    },
+    {
+      "name": "layer12_ffn_moe_weighted_swiglu_final_tile",
+      "hook": "ffn_moe_weighted_swiglu",
+      "role": "intermediate",
+      "dtype": "f32",
+      "shape": [
+        32,
+        12288
+      ],
+      "encoding": "little-endian-ieee754-binary32",
+      "path": "layer12-ffn-moe-weighted-swiglu-final-tile.f32le.bin",
+      "bytes": 1572864,
+      "sha256": "e5cd5830f3140d2df45002682fdd8290c3240036e3e83af46438890dd14474e5"
+    },
+    {
+      "name": "layer12_ffn_moe_out_final_tile",
+      "hook": "ffn_moe_out",
+      "role": "intermediate",
+      "dtype": "f32",
+      "shape": [
+        32,
+        4096
+      ],
+      "encoding": "little-endian-ieee754-binary32",
+      "path": "layer12-ffn-moe-out-final-tile.f32le.bin",
+      "bytes": 524288,
+      "sha256": "9bfc26979850c996c31bd46a8a799c188420f6c739e4c6137bc0b998628a16d9"
+    },
+    {
+      "name": "layer12_ffn_shexp_final_tile",
+      "hook": "ffn_shexp",
+      "role": "intermediate",
+      "dtype": "f32",
+      "shape": [
+        32,
+        4096
+      ],
+      "encoding": "little-endian-ieee754-binary32",
+      "path": "layer12-ffn-shexp-final-tile.f32le.bin",
+      "bytes": 524288,
+      "sha256": "b296dfea367629760f077fb85916a7f8c5227f9dd13f66407f5deda9b68d9e1e"
+    },
+    {
+      "name": "layer12_hc_ffn_post_final_tile",
+      "hook": "hc_ffn_post",
+      "role": "output",
+      "dtype": "f32",
+      "shape": [
+        32,
+        16384
+      ],
+      "encoding": "little-endian-ieee754-binary32",
+      "path": "layer12-hc-ffn-post-final-tile.f32le.bin",
+      "bytes": 2097152,
+      "sha256": "7124958382ac17766d698ce5ac8406c620c2ecbdc238ff5e7b6135062d887cb0"
+    }
+  ]
+}
