@@ -276,13 +276,15 @@ attention, biased top-6 routed/shared FFN, and additive final HC update. Layer
 ratio-4 attention/indexer compressors, dense mixed attention, routed/shared
 FFN, and additive final HC update. Layer 8's final HC then continues through
 layer 9's full Q/KV state, ratio-128 compressor, dense mixed attention,
-routed/shared FFN, and additive final HC update. Every retained layer-7 through
-layer-9 boundary, full attention output, compressor state, and full HC identity
-matches fresh DwarfStar processes exactly. The combined terminal schedule uses
-430 dispatches and 224/224 no-copy model views.
+routed/shared FFN, and additive final HC update, then through layer 10's full
+Q/KV state, paired ratio-4 attention/indexer compressors, dense mixed
+attention, routed/shared FFN, and additive final HC update. Every retained
+layer-7 through layer-10 boundary, full attention output, compressor state, and
+full HC identity matches fresh DwarfStar processes exactly. The combined
+terminal schedule uses 500 dispatches and 256/256 no-copy model views.
 
-Exactly 512 layer-2/layer-4/layer-6/layer-8 compressed rows still use the dense
-path; each odd compressed layer retains 16 ratio-128 rows. The pinned default
+Exactly 512 layer-2/layer-4/layer-6/layer-8/layer-10 compressed rows still use
+the dense path; each odd compressed layer retains 16 ratio-128 rows. The pinned default
 remains dense through 1,024 rows; sparse top-k first
 applies at 1,025 rows. Sparse post-prompt integration, output logits, and
 throughput remain outside this command.

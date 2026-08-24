@@ -1,0 +1,126 @@
+{
+  "schema": "rust-star-differential-fixture-v1",
+  "fixture_id": "dwarfstar-oracle-v1-prefill-layer10-attention-2048",
+  "captured_at_utc": "2026-08-24T05:54:52Z",
+  "oracle": {
+    "id": "oracle-v1",
+    "repository": "https://github.com/antirez/ds4.git",
+    "commit": "b0309611041655f4e45671cfd9c9886aff161406",
+    "tree": "20c11af22f90a0bdf25da860da5ef06de4064060",
+    "capture_executable_sha256": "b0b7c31d9832cc3f5cccf810cd2af6f4bc4f6e71de945493674315314f666fc8"
+  },
+  "model": {
+    "family": "DeepSeek-V4-Flash-0731",
+    "sha256": "ca22ae2f838e14077c22bc1c1417b71b45b5e5a3687bd96c2ac6e17fdb6261c0"
+  },
+  "capture": {
+    "backend": "metal",
+    "machine": "Apple M1 Ultra, 48 GPU cores, 128 GB unified memory",
+    "prompt": "first 2048 raw tokens of speed-bench/promessi_sposi.txt",
+    "prompt_sha256": "f53e0d80cb2d4492d24ebd63c7000c397b16ae70f9bf09b3763e5d8323ec209f",
+    "prefill_tokens": 2048,
+    "fresh_process_bitwise_match": true,
+    "command": "ds4-bench --metal --ctx-start 2048 --ctx-max 2048 --gen-tokens 0 --warm-weights",
+    "fresh_process_captures": 2,
+    "full_capture_sha256": {
+      "attn_out": "654b98992b3eb3a277ddf8a3d4123137833200551688ee2029f1ce968ee6f55f",
+      "hc_attn_post": "c5925f2d8b7e6e1ca916b4f842a0d6072acfbbbcc85915173541e3163c9e5e57",
+      "kqv_out": "d482ad736b7289feb5f742deedf5de965486955ffd6a5decbff8fced9788f29b",
+      "kqv_back": "e08576b3b6733dc17a73bb483022319c3c2f1518a7fde3e850e3286e3269d1e6",
+      "attn_low": "6994ef3b843f36bcdac5d6ec9299ff239aa502f8420112438159d9db5eaebb2b"
+    },
+    "input_fixture": "dwarfstar-oracle-v1-prefill-layer10-compressor-2048"
+  },
+  "scope": {
+    "kind": "layer-segment",
+    "phase": "prefill",
+    "layer": 10,
+    "position": 2047,
+    "captured_position_range": [
+      0,
+      2047
+    ]
+  },
+  "operations": [
+    {
+      "name": "dense-mixed-attention",
+      "kernel": "kernel_flash_attn_ext_f16_dk512_dv512"
+    },
+    {
+      "name": "attention-output-and-hc-post",
+      "kernel": "Q8 output projections plus HC expand4"
+    }
+  ],
+  "tensors": [
+    {
+      "name": "layer10_kqv_out_row0",
+      "hook": "kqv_out",
+      "role": "intermediate",
+      "dtype": "f32",
+      "shape": [
+        1,
+        32768
+      ],
+      "encoding": "little-endian-ieee754-binary32",
+      "path": "layer10-kqv-out-row0.f32le.bin",
+      "bytes": 131072,
+      "sha256": "42c4d33b644f1d17fd3c1a12d7df369a341f442440a8e2887685a2876bcddab8"
+    },
+    {
+      "name": "layer10_kqv_back_row0",
+      "hook": "kqv_back",
+      "role": "intermediate",
+      "dtype": "f32",
+      "shape": [
+        1,
+        32768
+      ],
+      "encoding": "little-endian-ieee754-binary32",
+      "path": "layer10-kqv-back-row0.f32le.bin",
+      "bytes": 131072,
+      "sha256": "42c4d33b644f1d17fd3c1a12d7df369a341f442440a8e2887685a2876bcddab8"
+    },
+    {
+      "name": "layer10_attn_low_row0",
+      "hook": "attn_low",
+      "role": "intermediate",
+      "dtype": "f32",
+      "shape": [
+        1,
+        8192
+      ],
+      "encoding": "little-endian-ieee754-binary32",
+      "path": "layer10-attn-low-row0.f32le.bin",
+      "bytes": 32768,
+      "sha256": "10e95bfb2f321ce566dc49fd2ec2ad3a5de21057fc99777cda2d9d3ee74132a1"
+    },
+    {
+      "name": "layer10_attention_output",
+      "hook": "attn_out",
+      "role": "output",
+      "dtype": "f32",
+      "shape": [
+        2048,
+        4096
+      ],
+      "encoding": "little-endian-ieee754-binary32",
+      "path": "layer10-attention-output.f32le.bin",
+      "bytes": 33554432,
+      "sha256": "654b98992b3eb3a277ddf8a3d4123137833200551688ee2029f1ce968ee6f55f"
+    },
+    {
+      "name": "layer10_hc_attn_post_final_tile",
+      "hook": "hc_attn_post",
+      "role": "output",
+      "dtype": "f32",
+      "shape": [
+        32,
+        16384
+      ],
+      "encoding": "little-endian-ieee754-binary32",
+      "path": "layer10-hc-attn-post-final-tile.f32le.bin",
+      "bytes": 2097152,
+      "sha256": "876b6ca3563f2537eea70777dbd5d95a7db0619e660a80add1b860c9cc0e9e1e"
+    }
+  ]
+}

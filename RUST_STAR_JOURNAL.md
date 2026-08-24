@@ -281,11 +281,12 @@ history; add a correction and update the current-state summary.
   biased top-6 routed/shared FFN, and additive final HC update, then directly
   through layer 8's complete Q/KV state, paired ratio-4 attention/indexer
   compressors, dense mixed attention, routed/shared FFN, and final HC update,
-  then through layer 9's complete ratio-128 path. All retained layer-7 through
-  layer-9 boundaries, full attention outputs, compressor states, and full HC
-  identities match fresh DwarfStar processes exactly, establishing complete
-  native layers 0–9 at the same prompt boundary with 224/224 no-copy mappings
-  across 430 terminal dispatches. A separate
+  then through layer 9's complete ratio-128 path and layer 10's complete paired
+  ratio-4 path. All retained layer-7 through layer-10 boundaries, full
+  attention outputs, compressor states, and full HC identities match fresh
+  DwarfStar processes exactly, establishing complete native layers 0–10 at the
+  same prompt boundary with 256/256 no-copy mappings across 500 terminal
+  dispatches. A separate
   layer-2 position-2051 diagnostic now covers the complete ratio-4 sparse
   mechanism: F16 indexer projections, compressed RoPE, indexer QAT, direct
   scores, exact descending top-512 selection, the 12-way indexed mixed
@@ -313,9 +314,9 @@ history; add a correction and update the current-state summary.
   boundaries across 55 dispatches with 35/35 mappings. A complete decoder run
   through the sparse branch, full native model prefill, and the eligible
   engine-measurement producer remain pending.
-- Measurements: The exact complete native layers-0/1/2/3/4/5/6/7/8/9 full-2K
-  command reported 2535.036 ms wall / 2462.104 ms GPU in its focused
-  correctness run, across 430 dispatches with 224/224 no-copy model mappings.
+- Measurements: The exact complete native layers-0/1/2/3/4/5/6/7/8/9/10
+  full-2K command reported 2871.412 ms wall / 2792.469 ms GPU in its final focused
+  correctness run, across 500 dispatches with 256/256 no-copy model mappings.
   The isolated sparse indexed-attention diagnostic reported 18.864 ms wall /
   0.497625 ms GPU across 10 dispatches with 3/3 no-copy model mappings. Its wall
   interval includes command setup, synchronization, and exhaustive readback;
@@ -520,8 +521,8 @@ history; add a correction and update the current-state summary.
 1. Drive a complete retained decoder execution through the generalized sparse
    branch, preserving the isolated 513/1,025-row probes and the retained-state
    row-1,025/2,049 controls as independent regressions.
-2. Continue the exact batched-prefill frontier through layer 9 while preserving
-   the complete layers-0–8 command as a regression control.
+2. Continue the exact batched-prefill frontier through layer 11 while preserving
+   the complete layers-0–10 command as a regression control.
 3. Emit the `rust-star-engine-measurement-v1` artifact from the exact
    batched-prefill/128-token loop and connect it to the paired runner.
 4. Preserve the four-, six-, eight-, 43-layer, explicit decoder-output, and
@@ -531,6 +532,46 @@ history; add a correction and update the current-state summary.
 6. Run or approve the fork's GitHub Actions workflow and retain its URL.
 
 ## Entries
+
+### 2026-08-24 — Exact complete layer-10 full-2K prefill
+
+Objective:
+
+- Carry layer 9's retained final HC through layer 10's complete native prefill
+  path and validate the even-layer paired compressors independently against
+  DwarfStar.
+
+Evidence:
+
+- Captured 31 layer-10 tensors from ten fresh DwarfStar processes over the
+  canonical 2,048-token prompt. Every first/second capture pair was bitwise
+  identical.
+- Imported four versioned differential fixtures covering Q/KV, paired ratio-4
+  attention/indexer compressor state, dense mixed attention, FFN, and both
+  additive HC updates.
+- Extended the persistent Metal context with 32 no-copy layer-10 model mappings
+  and 70 dispatches, taking the complete terminal schedule to 500 dispatches
+  and 256/256 pointer matches.
+- The optimized M1 Ultra correctness run matched all 31 retained tensors and
+  the full attention/HC checksums bit-for-bit. Its final gate reported 2871.412
+  ms wall and 2792.469 ms GPU; this includes exhaustive correctness readback
+  and is not a throughput claim.
+- The complete host-runtime gate passed after the focused hardware run:
+  formatting, Objective-C/Metal compilation, optimized build, all 140 Rust
+  tests, 62 Python tests, every pinned differential fixture, and the
+  cross-language C0 artifact contract.
+
+Decision:
+
+- The exact native full-2K prefill frontier is now complete through layer 10.
+  Layer 11, complete-model prefill, output logits, and a throughput-producing
+  path remain outside this claim.
+
+Next:
+
+- Extend the same exact full-2K frontier through layer 11, then reassess whether
+  to continue layer-by-layer or connect the retained prefill state more directly
+  to the existing decoder/output path.
 
 ### 2026-08-24 — Exact complete layer-9 full-2K prefill
 

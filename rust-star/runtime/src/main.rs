@@ -2476,7 +2476,7 @@ fn run_prefill_layers012_attention_loop_probe_command(arguments: Vec<OsString>) 
     let model = MappedModel::open(&model_path)?;
     validate_resident_q2(model.gguf())?;
     let report = run_prefill_layers012_attention_loop_probe(&model)?;
-    println!("native complete layers 0-9 at 2K: 2048 raw rows + 512 dense layer-2/layer-4/layer-6/layer-8 compressed rows + 16 layer-3/layer-5/layer-7/layer-9 compressed rows");
+    println!("native complete layers 0-10 at 2K: 2048 raw rows + 512 dense layer-2/layer-4/layer-6/layer-8/layer-10 compressed rows + 16 layer-3/layer-5/layer-7/layer-9 compressed rows");
     println!(
         "terminal attention/FFN schedule: {} dispatches, {}/{} no-copy model ranges, wall={:.3} ms gpu={:.3} ms",
         report.dispatches,
@@ -2485,7 +2485,7 @@ fn run_prefill_layers012_attention_loop_probe_command(arguments: Vec<OsString>) 
         report.wall_ms,
         report.gpu_ms,
     );
-    println!("scope: complete native layers 0-9, including exact paired ratio-4 and ratio-128 compressors, dense mixed attention, biased top-6 routed/shared FFNs, and additive final HC updates at the 2K prompt boundary; no layer-10 prefill, sparse post-prompt top-k, complete-model-prefill, output-logit, or throughput claim");
+    println!("scope: complete native layers 0-10, including exact paired ratio-4 and ratio-128 compressors, dense mixed attention, biased top-6 routed/shared FFNs, and additive final HC updates at the 2K prompt boundary; no layer-11 prefill, sparse post-prompt top-k, complete-model-prefill, output-logit, or throughput claim");
     if let Some(path) = json_path {
         write_prefill_layers012_attention_loop_probe_file(&path, &report)?;
         println!("json: {}", path.display());
