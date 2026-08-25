@@ -1,0 +1,96 @@
+{
+  "schema": "rust-star-differential-fixture-v1",
+  "fixture_id": "dwarfstar-oracle-v1-prefill-layer21-compressor-2048",
+  "captured_at_utc": "2026-08-25T15:20:32Z",
+  "oracle": {
+    "id": "oracle-v1",
+    "repository": "https://github.com/antirez/ds4.git",
+    "commit": "b0309611041655f4e45671cfd9c9886aff161406",
+    "tree": "20c11af22f90a0bdf25da860da5ef06de4064060",
+    "capture_executable_sha256": "b0b7c31d9832cc3f5cccf810cd2af6f4bc4f6e71de945493674315314f666fc8"
+  },
+  "model": {
+    "family": "DeepSeek-V4-Flash-0731",
+    "sha256": "ca22ae2f838e14077c22bc1c1417b71b45b5e5a3687bd96c2ac6e17fdb6261c0"
+  },
+  "capture": {
+    "backend": "metal",
+    "machine": "Apple M1 Ultra, 48 GPU cores, 128 GB unified memory",
+    "prompt": "first 2048 raw tokens of speed-bench/promessi_sposi.txt",
+    "prompt_sha256": "f53e0d80cb2d4492d24ebd63c7000c397b16ae70f9bf09b3763e5d8323ec209f",
+    "prefill_tokens": 2048,
+    "fresh_process_bitwise_match": true,
+    "command": "ds4-bench --metal --ctx-start 2048 --ctx-max 2048 --gen-tokens 0 --warm-weights",
+    "fresh_process_captures": 2,
+    "full_capture_sha256": {
+      "KVcompress": "1c31c5ecc6af9460107cce850d0da3de7359800a552b2cb4b7743a7147de636d",
+      "attn_state_kv": "8a39d2abd3999ab73c34db2476849cddf303ce389b35826850f9a700589b4a90",
+      "attn_state_score": "6470bc26e7cc29bf2cc0672d57eb7062150933581c52927d2a4f7be0f5ed0778"
+    },
+    "input_fixture": "dwarfstar-oracle-v1-prefill-layer21-qkv-2048"
+  },
+  "scope": {
+    "kind": "layer-segment",
+    "phase": "prefill",
+    "layer": 21,
+    "position": 2047,
+    "captured_position_range": [
+      0,
+      2047
+    ]
+  },
+  "operations": [
+    {
+      "name": "ratio128-paired-projections",
+      "kernel": "kernel_mul_mm_f16_f32"
+    },
+    {
+      "name": "ratio128-pool-and-finalize",
+      "kernel": "softmax pool plus norm/RoPE/E4M3FN"
+    }
+  ],
+  "tensors": [
+    {
+      "name": "layer21_kvcompress",
+      "hook": "KVcompress",
+      "role": "output",
+      "dtype": "f32",
+      "shape": [
+        16,
+        512
+      ],
+      "encoding": "little-endian-ieee754-binary32",
+      "path": "attention-compressed-kv.f32le.bin",
+      "bytes": 32768,
+      "sha256": "1c31c5ecc6af9460107cce850d0da3de7359800a552b2cb4b7743a7147de636d"
+    },
+    {
+      "name": "layer21_attn_state_kv",
+      "hook": "attn_state_kv",
+      "role": "output",
+      "dtype": "f32",
+      "shape": [
+        128,
+        512
+      ],
+      "encoding": "little-endian-ieee754-binary32",
+      "path": "attention-state-kv.f32le.bin",
+      "bytes": 262144,
+      "sha256": "8a39d2abd3999ab73c34db2476849cddf303ce389b35826850f9a700589b4a90"
+    },
+    {
+      "name": "layer21_attn_state_score",
+      "hook": "attn_state_score",
+      "role": "output",
+      "dtype": "i32",
+      "shape": [
+        128,
+        512
+      ],
+      "encoding": "little-endian-signed-integer32",
+      "path": "attention-state-score.i32le.bin",
+      "bytes": 262144,
+      "sha256": "6470bc26e7cc29bf2cc0672d57eb7062150933581c52927d2a4f7be0f5ed0778"
+    }
+  ]
+}
