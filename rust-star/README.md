@@ -247,10 +247,12 @@ compressor, dense mixed attention, routed/shared FFN, and final HC update, and
 then through layer 16's complete Q/KV state, paired ratio-4 attention/indexer
 compressors, dense mixed attention, routed/shared FFN, and final HC update, and
 then through layer 17's complete Q/KV state, ratio-128 compressor, dense mixed
-attention, routed/shared FFN, and final HC update. All layer-7 through layer-17 retained
+attention, routed/shared FFN, and final HC update, and then through layer 18's
+complete Q/KV state, paired ratio-4 attention/indexer compressors, dense mixed
+attention, routed/shared FFN, and final HC update. All layer-7 through layer-18 retained
 boundaries, full attention outputs, compressor states, and full HC identities
-match fresh DwarfStar processes exactly. The complete layers-0--17 command uses
-898 dispatches and preserves 464/464 no-copy model mappings. Exactly 512 ratio-4
+match fresh DwarfStar processes exactly. The complete layers-0--18 command uses
+968 dispatches and preserves 496/496 no-copy model mappings. Exactly 512 ratio-4
 compressed rows and 16 ratio-128 rows remain dense at the prompt boundary. The
 pinned DwarfStar default remains dense through 1,024 rows and first switches at
 1,025. The position-2051 override
@@ -260,7 +262,7 @@ at position 4099 now add the exact two-block argsort merge and validate all
 The same first-boundary schedule is wired into retained even-layer state with
 35 no-copy model mappings, and a complete retained position-8195 decoder step
 now executes all 43 layers through that branch and matches full-vocabulary
-logits exactly. Layer-18 prefill, complete native batched model prefill,
+logits exactly. Layer-19 prefill, complete native batched model prefill,
 eligible engine measurement, and throughput remain pending.
 
 Project controls and benchmark contracts:
