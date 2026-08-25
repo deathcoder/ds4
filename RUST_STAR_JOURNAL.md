@@ -284,12 +284,13 @@ history; add a correction and update the current-state summary.
   then through layer 9's complete ratio-128 path and layer 10's complete paired
   ratio-4 path, through layer 11's complete ratio-128 path, and then through
   layer 12's complete paired ratio-4 path, through layer 13's complete
-  ratio-128 path, and then through layer 14's complete paired ratio-4 path. All
-  retained layer-7 through layer-14 boundaries, full
+  ratio-128 path, then through layer 14's complete paired ratio-4 path, and
+  through layer 15's complete ratio-128 path. All retained layer-7 through
+  layer-15 boundaries, full
   attention outputs, compressor states, and full HC
   identities match fresh DwarfStar processes exactly, establishing complete
-  native layers 0–14 at the same prompt boundary with 376/376 no-copy mappings
-  across 734 terminal dispatches. A separate
+  native layers 0–15 at the same prompt boundary with 404/404 no-copy mappings
+  across 781 terminal dispatches. A separate
   layer-2 position-2051 diagnostic now covers the complete ratio-4 sparse
   mechanism: F16 indexer projections, compressed RoPE, indexer QAT, direct
   scores, exact descending top-512 selection, the 12-way indexed mixed
@@ -527,8 +528,8 @@ history; add a correction and update the current-state summary.
 1. Drive a complete retained decoder execution through the generalized sparse
    branch, preserving the isolated 513/1,025-row probes and the retained-state
    row-1,025/2,049 controls as independent regressions.
-2. Continue the exact batched-prefill frontier through layer 15 while preserving
-   every retained layers-0–14 boundary as a regression control.
+2. Continue the exact batched-prefill frontier through layer 16 while preserving
+   every retained layers-0–15 boundary as a regression control.
 3. Emit the `rust-star-engine-measurement-v1` artifact from the exact
    batched-prefill/128-token loop and connect it to the paired runner.
 4. Preserve the four-, six-, eight-, 43-layer, explicit decoder-output, and
@@ -538,6 +539,52 @@ history; add a correction and update the current-state summary.
 6. Run or approve the fork's GitHub Actions workflow and retain its URL.
 
 ## Entries
+
+### 2026-08-25 — Exact complete layer-15 full-2K prefill
+
+Objective:
+
+- Carry layer 14's retained final HC through layer 15's complete native
+  prefill path and validate the odd-layer ratio-128 compressor independently
+  against DwarfStar.
+
+Evidence:
+
+- Captured 28 layer-15 tensors from ten fresh DwarfStar processes over the
+  canonical 2,048-token prompt. Every first/second capture pair was bitwise
+  identical.
+- Imported four versioned differential fixtures covering Q/KV, ratio-128
+  attention-compressor state, dense mixed attention, FFN, and both additive HC
+  updates. Their complete captures are SHA-256-pinned.
+- Extended the persistent Metal context with 28 no-copy layer-15 model mappings
+  and 47 dispatches, taking the complete terminal schedule to 781 dispatches
+  and 404/404 pointer matches.
+- The optimized M1 Ultra focused correctness run matched every retained tensor
+  and the full attention/HC checksums bit-for-bit. It reported 4477.729 ms wall
+  and 4303.657 ms GPU; this is a correctness timing with exhaustive readback,
+  not a throughput claim.
+- The complete target-Mac validation matrix passed optimized
+  Objective-C/Metal compilation, all 162 Rust tests, 62 Python tests, the
+  complete pinned fixture corpus, every retained decoder/sparse regression,
+  and both benchmark smoke controls. It repeated the layer-15 boundary at
+  4504.211 ms wall and 4307.917 ms GPU.
+- The first sequential-control attempt was terminated after 40 minutes by an
+  app-session interruption without producing an artifact. An isolated recovery
+  then reproduced the decode-replay logits exactly over 529388.007 ms at a
+  diagnostic 3.869 tokens/s. This remains correctness evidence rather than a
+  performance measurement; the incomplete batched prefill still differs from
+  the complete-model logits as explicitly reported.
+
+Decision:
+
+- The exact native full-2K prefill frontier is now complete through layer 15.
+  Layer 16, complete-model prefill, output logits, and a throughput-producing
+  path remain outside this claim.
+
+Next:
+
+- Extend the same exact full-2K frontier through layer 16 while preserving all
+  retained layers-0–15 boundaries as regression controls.
 
 ### 2026-08-24 — Exact complete layer-14 full-2K prefill
 
