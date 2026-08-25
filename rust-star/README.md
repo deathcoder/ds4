@@ -242,12 +242,14 @@ routed/shared FFN, and final HC update, then through layer 13's complete Q/KV
 state, ratio-128 compressor, dense mixed attention, routed/shared FFN, and
 final HC update, then through layer 14's complete Q/KV state, paired ratio-4
 attention/indexer compressors, dense mixed attention, routed/shared FFN, and
-final HC update, and then through layer 15's complete Q/KV state, ratio-128
-compressor, dense mixed attention, routed/shared FFN, and final HC update. All
-layer-7 through layer-15 retained
+final HC update, then through layer 15's complete Q/KV state, ratio-128
+compressor, dense mixed attention, routed/shared FFN, and final HC update, and
+then through layer 16's complete Q/KV state, paired ratio-4 attention/indexer
+compressors, dense mixed attention, routed/shared FFN, and final HC update. All
+layer-7 through layer-16 retained
 boundaries, full attention outputs, compressor states, and full HC identities
-match fresh DwarfStar processes exactly. The complete layers-0--15 command uses
-781 dispatches and preserves 404/404 no-copy model mappings. Exactly 512 ratio-4
+match fresh DwarfStar processes exactly. The complete layers-0--16 command uses
+851 dispatches and preserves 436/436 no-copy model mappings. Exactly 512 ratio-4
 compressed rows and 16 ratio-128 rows remain dense at the prompt boundary. The
 pinned DwarfStar default remains dense through 1,024 rows and first switches at
 1,025. The position-2051 override
@@ -255,8 +257,10 @@ remains an independent one-block control; two fresh production-default captures
 at position 4099 now add the exact two-block argsort merge and validate all
 1,025 scores, top-512 indices, indexed attention, and inverse RoPE bit-for-bit.
 The same first-boundary schedule is wired into retained even-layer state with
-35 no-copy model mappings. Execution of a complete decoder through that branch,
-layer-16 prefill, output-logit C0, and throughput remain pending.
+35 no-copy model mappings, and a complete retained position-8195 decoder step
+now executes all 43 layers through that branch and matches full-vocabulary
+logits exactly. Layer-17 prefill, complete native batched model prefill,
+eligible engine measurement, and throughput remain pending.
 
 Project controls and benchmark contracts:
 
