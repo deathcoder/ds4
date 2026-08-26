@@ -293,12 +293,12 @@ history; add a correction and update the current-state summary.
   then through layer 21's complete ratio-128 path, and then through layer 22's
   complete paired ratio-4 attention/indexer path, and then through layer 23's
   complete ratio-128 path, and then through layer 24's complete paired ratio-4
-  attention/indexer path.
-  All retained layer-7 through layer-24 boundaries, full
+  attention/indexer path, and then through layer 25's complete ratio-128 path.
+  All retained layer-7 through layer-25 boundaries, full
   attention outputs, compressor states, and full HC
   identities match fresh DwarfStar processes exactly, establishing complete
-  native layers 0–24 at the same prompt boundary with 676/676 no-copy mappings
-  across 1,319 terminal dispatches. A separate
+  native layers 0–25 at the same prompt boundary with 704/704 no-copy mappings
+  across 1,366 terminal dispatches. A separate
   layer-2 position-2051 diagnostic now covers the complete ratio-4 sparse
   mechanism: F16 indexer projections, compressed RoPE, indexer QAT, direct
   scores, exact descending top-512 selection, the 12-way indexed mixed
@@ -329,11 +329,11 @@ history; add a correction and update the current-state summary.
   35597 across 1,813 transformer dispatches with 1,370/1,370 pointer matches.
   Full native model prefill and the eligible engine-measurement producer remain
   pending.
-- Measurements: The exact complete native layers-0–24 full-2K command reported
-  8274.750 ms wall / 8160.218 ms GPU in its focused
-  correctness run and 7757.827 ms wall / 7637.127 ms GPU in the complete gate,
-  across 1,319 dispatches with 676/676 no-copy model mappings. Both
-  include exhaustive correctness readback and are not throughput claims.
+- Measurements: The exact complete native layers-0–25 full-2K command reported
+  14256.520 ms wall / 13414.574 ms GPU in its focused correctness run across
+  1,366 dispatches with 704/704 no-copy model mappings. The complete gate
+  repeated it at 12407.395 ms wall / 12278.251 ms GPU. Both include exhaustive
+  correctness readback and are not throughput claims.
   The isolated sparse indexed-attention diagnostic reported 18.864 ms wall /
   0.497625 ms GPU across 10 dispatches with 3/3 no-copy model mappings. Its wall
   interval includes command setup, synchronization, and exhaustive readback;
@@ -535,8 +535,8 @@ history; add a correction and update the current-state summary.
 
 ## Immediate Next Actions
 
-1. Continue the exact batched-prefill frontier through layer 25 while preserving
-   every retained layers-0–24 boundary as a regression control.
+1. Continue the exact batched-prefill frontier through layer 26 while preserving
+   every retained layers-0–25 boundary as a regression control.
 2. Preserve the complete retained position-8195 decoder step, isolated
    513/1,025-row probes, and retained-state row-1,025/2,049 controls as
    independent sparse regressions.
@@ -549,6 +549,52 @@ history; add a correction and update the current-state summary.
 6. Run or approve the fork's GitHub Actions workflow and retain its URL.
 
 ## Entries
+
+### 2026-08-25 — Exact complete layer-25 full-2K prefill
+
+Objective:
+
+- Carry layer 24's retained final HC through layer 25's complete native
+  prefill path and validate the odd-layer ratio-128 compressor against
+  DwarfStar.
+
+Evidence:
+
+- Captured 28 layer-25 tensors from ten fresh DwarfStar processes over the
+  canonical 2,048-token prompt. Every first/second capture pair was bitwise
+  identical, and no capture log contained an error or mismatch.
+- Imported four SHA-256-pinned differential fixtures covering Q/KV,
+  ratio-128 compressor state, dense mixed attention, FFN, and both additive
+  HC updates, chained from the layer-24 complete fixture.
+- Extended the persistent Metal context with 28 no-copy layer-25 mappings and
+  47 dispatches, taking the terminal schedule to 1,366 dispatches and 704/704
+  pointer matches.
+- Crossing layer 25 initially pushed embedded Rust fixture metadata beyond
+  Mach-O's 4-GiB section limit. Layer-25 oracle payloads now load from their
+  pinned fixture files at probe startup, preserving exact validation while
+  removing that binary-growth failure.
+- All 207 optimized Rust tests passed. The M1 Ultra focused correctness run
+  matched every retained tensor and full attention/HC checksum bit-for-bit,
+  reporting 14256.520 ms wall / 13414.574 ms GPU. This includes exhaustive
+  correctness readback and is not a throughput claim.
+- The complete target-model gate independently repeated the exact layer-25
+  boundary at 12407.395 ms wall / 12278.251 ms GPU, then passed all 62 Python
+  tests, the complete fixture corpus, the 2K sequential diagnostic, retained
+  sparse controls, exact position-8195 decoder/logits, and both benchmark
+  smokes. The 2K diagnostic was resumed after an operator interruption and
+  completed in 126413.791 ms without rerunning the already-passed earlier
+  stages.
+
+Decision:
+
+- The exact native full-2K prefill frontier is now complete through layer 25.
+  Layer 26, complete-model native batched prefill, output logits, and a
+  throughput-producing path remain outside this claim.
+
+Next:
+
+- Extend the exact full-2K frontier through layer 26 while preserving all
+  retained layers-0–25 boundaries as regression controls.
 
 ### 2026-08-25 — Exact complete layer-24 full-2K prefill
 

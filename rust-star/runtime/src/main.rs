@@ -2476,7 +2476,7 @@ fn run_prefill_layers012_attention_loop_probe_command(arguments: Vec<OsString>) 
     let model = MappedModel::open(&model_path)?;
     validate_resident_q2(model.gguf())?;
     let report = run_prefill_layers012_attention_loop_probe(&model)?;
-    println!("native complete layers 0-24 at 2K: 2048 raw rows + 512 dense layer-2/layer-4/layer-6/layer-8/layer-10/layer-12/layer-14/layer-16/layer-18/layer-20/layer-22/layer-24 compressed rows + 16 layer-3/layer-5/layer-7/layer-9/layer-11/layer-13/layer-15/layer-17/layer-19/layer-21/layer-23 compressed rows");
+    println!("native complete layers 0-25 at 2K: 2048 raw rows + 512 dense layer-2/layer-4/layer-6/layer-8/layer-10/layer-12/layer-14/layer-16/layer-18/layer-20/layer-22/layer-24 compressed rows + 16 layer-3/layer-5/layer-7/layer-9/layer-11/layer-13/layer-15/layer-17/layer-19/layer-21/layer-23/layer-25 compressed rows");
     println!(
         "terminal attention/FFN schedule: {} dispatches, {}/{} no-copy model ranges, wall={:.3} ms gpu={:.3} ms",
         report.dispatches,
@@ -2485,7 +2485,7 @@ fn run_prefill_layers012_attention_loop_probe_command(arguments: Vec<OsString>) 
         report.wall_ms,
         report.gpu_ms,
     );
-    println!("scope: complete native layers 0-24, including exact paired ratio-4 and ratio-128 compressors, dense mixed attention, biased top-6 routed/shared FFNs, and additive final HC updates at the 2K prompt boundary; no layer-25 prefill, sparse post-prompt top-k, complete-model-prefill, output-logit, or throughput claim");
+    println!("scope: complete native layers 0-25, including exact paired ratio-4 and ratio-128 compressors, dense mixed attention, biased top-6 routed/shared FFNs, and additive final HC updates at the 2K prompt boundary; no layer-26 prefill, sparse post-prompt top-k, complete-model-prefill, output-logit, or throughput claim");
     if let Some(path) = json_path {
         write_prefill_layers012_attention_loop_probe_file(&path, &report)?;
         println!("json: {}", path.display());
@@ -4088,7 +4088,7 @@ fn prefill_layers012_compressor_loop_probe_usage() -> &'static str {
 }
 
 fn prefill_layers012_attention_loop_probe_usage() -> &'static str {
-    "usage: rust-star prefill-layers012-attention-loop-probe MODEL.gguf [--json PATH]\n\nRuns all 64 native 32-row schedules over positions 0--2047 in one persistent Metal context and completes layers 2 through 24. Even layers 2/4/6/8/10/12/14/16/18/20/22/24 include paired ratio-4 attention/indexer compressors; odd layers 3/5/7/9/11/13/15/17/19/21/23 use ratio-128 attention compressors. Each layer continues through dense mixed attention, biased top-6 routed/shared experts, and its additive final HC update. Every retained boundary must match repeated DwarfStar captures bit-for-bit. The 2,064 logical odd-layer keys use a 2,112-row masked physical extent required by the 64-row FlashAttention block contract. Exactly 512 ratio-4 rows remain on the dense path at this prompt boundary. This does not claim layer-25 prefill, sparse post-prompt ratio-4 attention, complete-model prefill, output logits, or throughput."
+    "usage: rust-star prefill-layers012-attention-loop-probe MODEL.gguf [--json PATH]\n\nRuns all 64 native 32-row schedules over positions 0--2047 in one persistent Metal context and completes layers 2 through 25. Even layers 2/4/6/8/10/12/14/16/18/20/22/24 include paired ratio-4 attention/indexer compressors; odd layers 3/5/7/9/11/13/15/17/19/21/23/25 use ratio-128 attention compressors. Each layer continues through dense mixed attention, biased top-6 routed/shared experts, and its additive final HC update. Every retained boundary must match repeated DwarfStar captures bit-for-bit. The 2,064 logical odd-layer keys use a 2,112-row masked physical extent required by the 64-row FlashAttention block contract. Exactly 512 ratio-4 rows remain on the dense path at this prompt boundary. This does not claim layer-26 prefill, sparse post-prompt ratio-4 attention, complete-model prefill, output logits, or throughput."
 }
 
 fn ingress_probe_usage() -> &'static str {
