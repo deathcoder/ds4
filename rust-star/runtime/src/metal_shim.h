@@ -380,6 +380,13 @@ typedef struct rust_star_metal_prefill_layer2_attention_weights {
     uint64_t layer34_attn_output_a_offset, layer34_attn_output_a_bytes;
     uint64_t layer34_attn_output_b_offset, layer34_attn_output_b_bytes;
     rust_star_metal_prefill_ffn_weights layer34_ffn;
+    rust_star_metal_prefill_kvnorm_weights layer35_kvnorm;
+    uint64_t layer35_q_b_offset, layer35_q_b_bytes;
+    rust_star_metal_prefill_compressor_weights layer35_compressor;
+    uint64_t layer35_attn_sinks_offset, layer35_attn_sinks_bytes;
+    uint64_t layer35_attn_output_a_offset, layer35_attn_output_a_bytes;
+    uint64_t layer35_attn_output_b_offset, layer35_attn_output_b_bytes;
+    rust_star_metal_prefill_ffn_weights layer35_ffn;
 
 } rust_star_metal_prefill_layer2_attention_weights;
 
@@ -1533,6 +1540,31 @@ int rust_star_metal_run_prefill_layer2_attention(
     float *layer34_router_weights_final_tile,
     float *layer34_routed_out_final_tile,
     float *layer34_shared_out_final_tile,
+    float *layer35_hc_attn_pre_final_tile,
+    float *layer35_attn_norm_final_tile,
+    float *layer35_q_lora_final_tile,
+    float *layer35_q_lora_norm_final_tile,
+    float *layer35_kv_raw_final_tile,
+    float *layer35_kv_norm_final_tile,
+    float *layer35_q_raw_final_tile,
+    float *layer35_q_cur_final_tile,
+    float *layer35_kv_rope_final_tile,
+    float *layer35_kv_cur_final_tile,
+    float *layer35_attn_compressed,
+    float *layer35_attn_state_kv,
+    int32_t *layer35_attn_state_score,
+    float *layer35_kqv_out_row0,
+    float *layer35_kqv_back_row0,
+    float *layer35_attn_low_row0,
+    float *layer35_attention_output,
+    float *layer35_after_attention_hc,
+    float *layer35_after_ffn_hc,
+    float *layer35_ffn_cur_final_tile,
+    float *layer35_ffn_norm_final_tile,
+    int32_t *layer35_router_selected_final_tile,
+    float *layer35_router_weights_final_tile,
+    float *layer35_routed_out_final_tile,
+    float *layer35_shared_out_final_tile,
     rust_star_metal_prefill_layer2_attention_result *result,
     char *error,
     size_t error_bytes);

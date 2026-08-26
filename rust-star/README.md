@@ -284,8 +284,10 @@ attention/indexer compressors, dense mixed attention, routed/shared FFN, and
 final HC update, and then through layer 33's complete Q/KV state, ratio-128
 compressor, dense mixed attention, routed/shared FFN, and final HC update, and
 then through layer 34's complete Q/KV state, paired ratio-4 attention/indexer
-compressors, dense mixed attention, routed/shared FFN, and final HC update. The
-complete layers-0--34 command uses 1,904 dispatches and preserves 976/976
+compressors, dense mixed attention, routed/shared FFN, and final HC update, and
+then through layer 35's complete Q/KV state, ratio-128 compressor, dense mixed
+attention, routed/shared FFN, and final HC update. The complete layers-0--35
+command uses 1,951 dispatches and preserves 1,004/1,004
 no-copy model mappings.
 Exactly 512 ratio-4 compressed
 rows and 16 ratio-128 rows remain dense at the prompt boundary. The
@@ -297,7 +299,7 @@ at position 4099 now add the exact two-block argsort merge and validate all
 The same first-boundary schedule is wired into retained even-layer state with
 35 no-copy model mappings, and a complete retained position-8195 decoder step
 now executes all 43 layers through that branch and matches full-vocabulary
-logits exactly. Layer-35 prefill, complete native batched model prefill,
+logits exactly. Layer-36 prefill, complete native batched model prefill,
 eligible engine measurement, and throughput remain pending.
 
 Project controls and benchmark contracts:
