@@ -302,12 +302,13 @@ history; add a correction and update the current-state summary.
   then through layer 32's complete paired ratio-4 attention/indexer path, and
   then through layer 33's complete ratio-128 path, and then through layer 34's
   complete paired ratio-4 attention/indexer path, and then through layer 35's
-  complete ratio-128 path.
-  All retained layer-7 through layer-35 boundaries, full
+  complete ratio-128 path, and then through layer 36's complete paired ratio-4
+  attention/indexer path.
+  All retained layer-7 through layer-36 boundaries, full
   attention outputs, compressor states, and full HC
   identities match fresh DwarfStar processes exactly, establishing complete
-  native layers 0–35 at the same prompt boundary with 1,004/1,004 no-copy
-  mappings across 1,951 terminal dispatches. A separate
+  native layers 0–36 at the same prompt boundary with 1,036/1,036 no-copy
+  mappings across 2,021 terminal dispatches. A separate
   layer-2 position-2051 diagnostic now covers the complete ratio-4 sparse
   mechanism: F16 indexer projections, compressed RoPE, indexer QAT, direct
   scores, exact descending top-512 selection, the 12-way indexed mixed
@@ -585,8 +586,8 @@ history; add a correction and update the current-state summary.
 
 ## Immediate Next Actions
 
-1. Continue the exact batched-prefill frontier through layer 36 while preserving
-   every retained layers-0–35 boundary as a regression control.
+1. Continue the exact batched-prefill frontier through layer 37 while preserving
+   every retained layers-0–36 boundary as a regression control.
 2. Preserve the complete retained position-8195 decoder step, isolated
    513/1,025-row probes, and retained-state row-1,025/2,049 controls as
    independent sparse regressions.
@@ -599,6 +600,54 @@ history; add a correction and update the current-state summary.
 6. Run or approve the fork's GitHub Actions workflow and retain its URL.
 
 ## Entries
+
+### 2026-08-26 — Exact complete layer-36 full-2K prefill
+
+Objective:
+
+- Carry layer 35's retained final HC through layer 36's complete native
+  prefill path and validate both even-layer ratio-4 compressors independently
+  against DwarfStar.
+
+Evidence:
+
+- Captured 31 layer-36 tensors from ten sequential fresh DwarfStar processes
+  over the canonical 2,048-token prompt. Every first/second capture pair was
+  bitwise identical, all ten measurement CSVs were complete, and no capture
+  log contained an error or mismatch. The capture used the preserved
+  `b030961` oracle executable with SHA-256 `55a39062aa8a88c7301f0992dc23a44157e5327137371204822ae5a48e213c51`,
+  isolated from the separately active DSpark worktree.
+- Imported four SHA-256-pinned differential fixtures covering Q/KV, paired
+  attention/indexer compressor state, dense mixed attention, FFN, and both
+  additive HC updates, chained from the layer-35 complete fixture. Together
+  they retain 53,134,848 verified bytes.
+- Extended the persistent Metal context with 32 no-copy layer-36 mappings and
+  70 dispatches, taking the terminal schedule to 2,021 dispatches and
+  1,036/1,036 pointer matches.
+- All 257 Rust tests and all 62 Python tests passed. All four new fixture
+  bundles passed independent manifest, size, and SHA-256 verification.
+- The optimized M1 Ultra focused correctness run matched every retained tensor
+  and the full layer-36 attention/HC checksums bit-for-bit, reporting
+  24203.696 ms wall / 24099.362 ms GPU. This includes exhaustive correctness
+  readback and is not a throughput claim.
+- The complete target-Mac gate independently repeated the exact layer-36
+  boundary at 27551.388 ms wall / 26790.433 ms GPU, then passed the complete
+  fixture corpus, all retained sparse controls, the exact 43-layer
+  decoder/logits path, the 2K sequential diagnostic, and both benchmark
+  smokes. The sequential diagnostic reproduced decode-replay logits exactly
+  over 97424.253 ms at 21.021 tokens/s; that is correctness evidence, not a
+  native batched-prefill throughput measurement.
+
+Decision:
+
+- The exact native full-2K prefill frontier is now complete through layer 36.
+  Layer 37, complete-model native batched prefill, output logits, and a
+  throughput-producing path remain outside this claim.
+
+Next:
+
+- Extend the exact full-2K frontier through layer 37 while preserving all
+  retained layers-0–36 boundaries as regression controls.
 
 ### 2026-08-26 — Exact complete layer-35 full-2K prefill
 
