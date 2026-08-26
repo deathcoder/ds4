@@ -295,12 +295,13 @@ history; add a correction and update the current-state summary.
   complete ratio-128 path, and then through layer 24's complete paired ratio-4
   attention/indexer path, then through layer 25's complete ratio-128 path,
   through layer 26's complete paired ratio-4 attention/indexer path, and then
-  through layer 27's complete ratio-128 path.
-  All retained layer-7 through layer-27 boundaries, full
+  through layer 27's complete ratio-128 path, and then through layer 28's
+  complete paired ratio-4 attention/indexer path.
+  All retained layer-7 through layer-28 boundaries, full
   attention outputs, compressor states, and full HC
   identities match fresh DwarfStar processes exactly, establishing complete
-  native layers 0–27 at the same prompt boundary with 764/764 no-copy mappings
-  across 1,483 terminal dispatches. A separate
+  native layers 0–28 at the same prompt boundary with 796/796 no-copy mappings
+  across 1,553 terminal dispatches. A separate
   layer-2 position-2051 diagnostic now covers the complete ratio-4 sparse
   mechanism: F16 indexer projections, compressed RoPE, indexer QAT, direct
   scores, exact descending top-512 selection, the 12-way indexed mixed
@@ -331,12 +332,12 @@ history; add a correction and update the current-state summary.
   35597 across 1,813 transformer dispatches with 1,370/1,370 pointer matches.
   Full native model prefill and the eligible engine-measurement producer remain
   pending.
-- Measurements: The exact complete native layers-0–27 full-2K command reported
-  20828.778 ms wall / 20099.925 ms GPU in its focused correctness run across
-  1,483 dispatches with 764/764 no-copy model mappings. This includes
+- Measurements: The exact complete native layers-0–28 full-2K command reported
+  23550.771 ms wall / 22839.249 ms GPU in its focused correctness run across
+  1,553 dispatches with 796/796 no-copy model mappings. This includes
   exhaustive correctness readback and is not a throughput claim. The complete
   target-Mac gate independently repeated the same exact boundary at
-  9444.319 ms wall / 9320.928 ms GPU with identical dispatch and mapping
+  14864.326 ms wall / 14745.832 ms GPU with identical dispatch and mapping
   counts.
   The isolated sparse indexed-attention diagnostic reported 18.864 ms wall /
   0.497625 ms GPU across 10 dispatches with 3/3 no-copy model mappings. Its wall
@@ -539,8 +540,8 @@ history; add a correction and update the current-state summary.
 
 ## Immediate Next Actions
 
-1. Continue the exact batched-prefill frontier through layer 28 while preserving
-   every retained layers-0–27 boundary as a regression control.
+1. Continue the exact batched-prefill frontier through layer 29 while preserving
+   every retained layers-0–28 boundary as a regression control.
 2. Preserve the complete retained position-8195 decoder step, isolated
    513/1,025-row probes, and retained-state row-1,025/2,049 controls as
    independent sparse regressions.
@@ -553,6 +554,50 @@ history; add a correction and update the current-state summary.
 6. Run or approve the fork's GitHub Actions workflow and retain its URL.
 
 ## Entries
+
+### 2026-08-26 — Exact complete layer-28 full-2K prefill
+
+Objective:
+
+- Carry layer 27's retained final HC through layer 28's complete native
+  prefill path and validate both even-layer ratio-4 compressors independently
+  against DwarfStar.
+
+Evidence:
+
+- Captured 31 layer-28 tensors from ten fresh DwarfStar processes over the
+  canonical 2,048-token prompt. Every first/second capture pair was bitwise
+  identical, and no capture log contained an error or mismatch.
+- Imported four SHA-256-pinned differential fixtures covering Q/KV, paired
+  attention/indexer compressor state, dense mixed attention, FFN, and both
+  additive HC updates, chained from the layer-27 complete fixture.
+- Extended the persistent Metal context with 32 no-copy layer-28 mappings and
+  70 dispatches, taking the terminal schedule to 1,553 dispatches and 796/796
+  pointer matches.
+- Kept the layer-28 oracle payloads runtime-loaded so the growing fixture
+  corpus remains below Mach-O's 4-GiB Rust metadata-section limit.
+- All 221 Rust tests and 62 Python tests passed. All four new fixture bundles
+  passed independent manifest, size, and SHA-256 verification.
+- The optimized M1 Ultra focused correctness run matched every retained tensor
+  and the full layer-28 attention/HC checksums bit-for-bit, reporting
+  23550.771 ms wall / 22839.249 ms GPU. This includes exhaustive correctness
+  readback and is not a throughput claim.
+- The complete target-Mac gate independently repeated the exact layer-28
+  boundary at 14864.326 ms wall / 14745.832 ms GPU, then passed the complete
+  fixture corpus, all retained sparse controls, the exact 43-layer
+  decoder/logits path, the 2K sequential diagnostic, and both benchmark
+  smokes.
+
+Decision:
+
+- The exact native full-2K prefill frontier is now complete through layer 28.
+  Layer 29, complete-model native batched prefill, output logits, and a
+  throughput-producing path remain outside this claim.
+
+Next:
+
+- Extend the exact full-2K frontier through layer 29 while preserving all
+  retained layers-0–28 boundaries as regression controls.
 
 ### 2026-08-26 — Exact complete layer-27 full-2K prefill
 
