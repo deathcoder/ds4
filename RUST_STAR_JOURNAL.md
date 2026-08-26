@@ -299,12 +299,13 @@ history; add a correction and update the current-state summary.
   complete paired ratio-4 attention/indexer path, and then through layer 29's
   complete ratio-128 path, and then through layer 30's complete paired ratio-4
   attention/indexer path, then through layer 31's complete ratio-128 path, and
-  then through layer 32's complete paired ratio-4 attention/indexer path.
-  All retained layer-7 through layer-32 boundaries, full
+  then through layer 32's complete paired ratio-4 attention/indexer path, and
+  then through layer 33's complete ratio-128 path.
+  All retained layer-7 through layer-33 boundaries, full
   attention outputs, compressor states, and full HC
   identities match fresh DwarfStar processes exactly, establishing complete
-  native layers 0–32 at the same prompt boundary with 916/916 no-copy mappings
-  across 1,787 terminal dispatches. A separate
+  native layers 0–33 at the same prompt boundary with 944/944 no-copy mappings
+  across 1,834 terminal dispatches. A separate
   layer-2 position-2051 diagnostic now covers the complete ratio-4 sparse
   mechanism: F16 indexer projections, compressed RoPE, indexer QAT, direct
   scores, exact descending top-512 selection, the 12-way indexed mixed
@@ -335,7 +336,14 @@ history; add a correction and update the current-state summary.
   35597 across 1,813 transformer dispatches with 1,370/1,370 pointer matches.
   Full native model prefill and the eligible engine-measurement producer remain
   pending.
-- Measurements: The exact complete native layers-0–32 full-2K command reported
+- Measurements: The exact complete native layers-0–33 full-2K command reported
+  13126.804 ms wall / 12632.873 ms GPU in its focused correctness run across
+  1,834 dispatches with 944/944 no-copy model mappings. This includes
+  exhaustive correctness readback and is not a throughput claim.
+  The complete target-Mac gate independently repeated the same exact boundary
+  at 15919.880 ms wall / 15796.966 ms GPU with identical dispatch and mapping
+  counts.
+  The prior exact complete native layers-0–32 full-2K command reported
   14678.233 ms wall / 14571.577 ms GPU in its focused correctness run across
   1,787 dispatches with 916/916 no-copy model mappings. This includes
   exhaustive correctness readback and is not a throughput claim.
@@ -561,8 +569,8 @@ history; add a correction and update the current-state summary.
 
 ## Immediate Next Actions
 
-1. Continue the exact batched-prefill frontier through layer 33 while preserving
-   every retained layers-0–32 boundary as a regression control.
+1. Continue the exact batched-prefill frontier through layer 34 while preserving
+   every retained layers-0–33 boundary as a regression control.
 2. Preserve the complete retained position-8195 decoder step, isolated
    513/1,025-row probes, and retained-state row-1,025/2,049 controls as
    independent sparse regressions.
@@ -575,6 +583,51 @@ history; add a correction and update the current-state summary.
 6. Run or approve the fork's GitHub Actions workflow and retain its URL.
 
 ## Entries
+
+### 2026-08-26 — Exact complete layer-33 full-2K prefill
+
+Objective:
+
+- Carry layer 32's retained final HC through layer 33's complete native
+  prefill path and validate the odd-layer ratio-128 compressor independently
+  against DwarfStar.
+
+Evidence:
+
+- Captured 28 layer-33 tensors from ten sequential fresh DwarfStar processes
+  over the canonical 2,048-token prompt. Every first/second capture pair was
+  bitwise identical, and no capture process failed.
+- Imported four SHA-256-pinned differential fixtures covering Q/KV,
+  ratio-128 attention-compressor state, dense mixed attention, FFN, and both
+  additive HC updates, chained from the layer-32 complete fixture. Together
+  they retain 52,299,264 verified bytes.
+- Extended the persistent Metal context with 28 no-copy layer-33 mappings and
+  47 dispatches, taking the terminal schedule to 1,834 dispatches and 944/944
+  pointer matches.
+- All 243 Rust tests and all 62 Python tests passed. All four new fixture
+  bundles passed independent manifest, size, and SHA-256 verification.
+- The optimized M1 Ultra focused correctness run matched every retained tensor
+  and the full layer-33 attention/HC checksums bit-for-bit, reporting
+  13126.804 ms wall / 12632.873 ms GPU. This includes exhaustive correctness
+  readback and is not a throughput claim.
+- The complete target-Mac gate independently repeated the exact layer-33
+  boundary at 15919.880 ms wall / 15796.966 ms GPU, then passed the complete
+  fixture corpus, all retained sparse controls, the exact 43-layer
+  decoder/logits path, the 2K sequential diagnostic, and both benchmark
+  smokes. The sequential diagnostic reproduced decode-replay logits exactly
+  over 93650.728 ms at 21.868 tokens/s; that is correctness evidence, not a
+  native batched-prefill throughput measurement.
+
+Decision:
+
+- The exact native full-2K prefill frontier is now complete through layer 33.
+  Layer 34, complete-model native batched prefill, output logits, and a
+  throughput-producing path remain outside this claim.
+
+Next:
+
+- Extend the exact full-2K frontier through layer 34 while preserving all
+  retained layers-0–33 boundaries as regression controls.
 
 ### 2026-08-26 — Exact complete layer-32 full-2K prefill
 

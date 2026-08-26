@@ -181,7 +181,7 @@ token-dependent FFN, or a complete decoder. The fixed first-boundary guard is
 now removed: a second seeded control at position 8195 commits row 2,049 and
 matches the first three-block, two-pass top-k merge schedule across the same 16
 tensors with 35/35 mappings. Native M1 batched prefill now runs complete
-layers 0 through 32 over all 2,048 prompt rows from empty state. The 2K
+layers 0 through 33 over all 2,048 prompt rows from empty state. The 2K
 sequential initializer
 still owns a 128-row raw ring plus context-sized compressed state and exactly
 matches two fresh DwarfStar one-token decode replays. It deliberately records
