@@ -230,7 +230,7 @@ Every accumulated prefix plus every `KVnorm`, `KVrope`, and `KVcur` tile must
 match the repeated DwarfStar captures bit-for-bit. The attention/indexer
 compressors, mixed attention, layer-2 FFN, and later model remain pending.
 
-To complete native 2K prefill through layer 26:
+To complete native 2K prefill through layer 27:
 
 ```sh
 rust-star/.work/runtime-target/release/rust-star \
@@ -311,16 +311,18 @@ additive final HC update, and then through layer 25's full Q/KV state,
 ratio-128 compressor, dense mixed attention, routed/shared FFN, and additive
 final HC update, and then through layer 26's full Q/KV state, paired ratio-4
 attention/indexer compressors, dense mixed attention, routed/shared FFN, and
-additive final HC update. Every retained layer-7 through layer-26 boundary,
-full attention output, compressor state, and full HC identity matches fresh
-DwarfStar processes exactly. The combined terminal schedule uses 1,436
-dispatches and 736/736 no-copy model views.
+additive final HC update, and then through layer 27's full Q/KV state,
+ratio-128 compressor, dense mixed attention, routed/shared FFN, and additive
+final HC update. Every retained layer-7 through layer-27 boundary, full
+attention output, compressor state, and full HC identity matches fresh
+DwarfStar processes exactly. The combined terminal schedule uses 1,483
+dispatches and 764/764 no-copy model views.
 
 Exactly 512 compressed rows for each even layer from 2 through 26 still use the
 dense path; each odd compressed layer through layer 23 retains 16 ratio-128
-rows, as does layer 25. The pinned default
+rows, as do layers 25 and 27. The pinned default
 remains dense through 1,024 rows; sparse top-k first
-applies at 1,025 rows. Layer-27 prefill, sparse post-prompt integration,
+applies at 1,025 rows. Layer-28 prefill, sparse post-prompt integration,
 complete-model batched prefill, output logits, and throughput remain outside
 this command.
 
