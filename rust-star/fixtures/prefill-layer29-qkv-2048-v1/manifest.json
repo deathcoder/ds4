@@ -1,0 +1,201 @@
+{
+  "schema": "rust-star-differential-fixture-v1",
+  "fixture_id": "dwarfstar-oracle-v1-prefill-layer29-qkv-2048",
+  "captured_at_utc": "2026-08-26T12:38:25Z",
+  "oracle": {
+    "id": "oracle-v1",
+    "repository": "https://github.com/antirez/ds4.git",
+    "commit": "b0309611041655f4e45671cfd9c9886aff161406",
+    "tree": "20c11af22f90a0bdf25da860da5ef06de4064060",
+    "capture_executable_sha256": "55a39062aa8a88c7301f0992dc23a44157e5327137371204822ae5a48e213c51"
+  },
+  "model": {
+    "family": "DeepSeek-V4-Flash-0731",
+    "sha256": "ca22ae2f838e14077c22bc1c1417b71b45b5e5a3687bd96c2ac6e17fdb6261c0"
+  },
+  "capture": {
+    "backend": "metal",
+    "machine": "Apple M1 Ultra, 48 GPU cores, 128 GB unified memory",
+    "prompt": "first 2048 raw tokens of speed-bench/promessi_sposi.txt",
+    "prompt_sha256": "f53e0d80cb2d4492d24ebd63c7000c397b16ae70f9bf09b3763e5d8323ec209f",
+    "prefill_tokens": 2048,
+    "fresh_process_bitwise_match": true,
+    "command": "ds4-bench --metal --ctx-start 2048 --ctx-max 2048 --gen-tokens 0 --warm-weights",
+    "fresh_process_captures": 4,
+    "full_capture_sha256": {
+      "hc_attn_pre": "35292fc6ab7200b606258c094ba18f6dd280094273a47f0820f3f33524137868",
+      "attn_norm": "652b4384db5658f375519bddf724ac5c2a9b0a480adb24ce344066eaf8e85637",
+      "q_lora": "f32955683f079f3380ab7175690d221282f1ba073d86440009893c79f8139a3c",
+      "q_lora_norm": "a6d7c819020bcbb378ff6ae54ab70bff4d10a1f6c7794e1d1269433573268930",
+      "KVraw": "c622ea967a9935a6db1f1d15cdc73c9632d805f03a18ed28807c68d0844d8749",
+      "KVnorm": "66460a4eaa7b5cc9385975269407c052ecb2bd3d456d0635624354aa0f762124",
+      "Qraw": "c934ce03e7a13505ddf568ccc078eed04411af1a7a5b6089f1987405ead9a28c",
+      "Qcur": "ac9e4fecf31eddf53c8f83a7e9c5cfb327ae3ef53527b65d3adb0750976f1a58",
+      "KVrope": "ef1e641a5fae0e0575eb165525fc79971748e598055d1ed0e510e8a3133cd3b5",
+      "KVcur": "2e7be15d36e4036b625a132b4161d452567283beed3b22fd567863a5558222ad"
+    },
+    "input_fixture": "dwarfstar-oracle-v1-prefill-layer28-complete-2048"
+  },
+  "scope": {
+    "kind": "layer-segment",
+    "phase": "prefill",
+    "layer": 29,
+    "position": 2047,
+    "captured_position_range": [
+      0,
+      2047
+    ]
+  },
+  "operations": [
+    {
+      "name": "attention-hc-ingress-and-norm",
+      "kernel": "HC ingress plus learned norm"
+    },
+    {
+      "name": "q-kv-state",
+      "kernel": "Q8 projections plus RoPE and E4M3FN"
+    }
+  ],
+  "tensors": [
+    {
+      "name": "layer29_hc_attn_pre_final_tile",
+      "hook": "hc_attn_pre",
+      "role": "intermediate",
+      "dtype": "f32",
+      "shape": [
+        32,
+        4096
+      ],
+      "encoding": "little-endian-ieee754-binary32",
+      "path": "layer29-hc-attn-pre-final-tile.f32le.bin",
+      "bytes": 524288,
+      "sha256": "ad476304a35dd436e0cf30bfeefd4cbd2ca6145f170321a886d0ef284a8850a9"
+    },
+    {
+      "name": "layer29_attn_norm_final_tile",
+      "hook": "attn_norm",
+      "role": "intermediate",
+      "dtype": "f32",
+      "shape": [
+        32,
+        4096
+      ],
+      "encoding": "little-endian-ieee754-binary32",
+      "path": "layer29-attn-norm-final-tile.f32le.bin",
+      "bytes": 524288,
+      "sha256": "5a6a27c859fed760132ddcfd6e117318524199299cc618d949b72eb6360033da"
+    },
+    {
+      "name": "layer29_q_lora_final_tile",
+      "hook": "q_lora",
+      "role": "intermediate",
+      "dtype": "f32",
+      "shape": [
+        32,
+        1024
+      ],
+      "encoding": "little-endian-ieee754-binary32",
+      "path": "layer29-q-lora-final-tile.f32le.bin",
+      "bytes": 131072,
+      "sha256": "bb5f4bfe638a39ac1d029eeedd74582e8484c227257e87aa119643c6b3afe9ef"
+    },
+    {
+      "name": "layer29_q_lora_norm_final_tile",
+      "hook": "q_lora_norm",
+      "role": "intermediate",
+      "dtype": "f32",
+      "shape": [
+        32,
+        1024
+      ],
+      "encoding": "little-endian-ieee754-binary32",
+      "path": "layer29-q-lora-norm-final-tile.f32le.bin",
+      "bytes": 131072,
+      "sha256": "5b3076c03c6ff9e4bc23e87267534dbbeec6cd67c59763f794dae12519e32e79"
+    },
+    {
+      "name": "layer29_kvraw_final_tile",
+      "hook": "KVraw",
+      "role": "intermediate",
+      "dtype": "f32",
+      "shape": [
+        32,
+        512
+      ],
+      "encoding": "little-endian-ieee754-binary32",
+      "path": "layer29-kvraw-final-tile.f32le.bin",
+      "bytes": 65536,
+      "sha256": "b2cd00dd52c64745708975571c525ed7e59dec84359e509b8186981443c764cd"
+    },
+    {
+      "name": "layer29_kvnorm_final_tile",
+      "hook": "KVnorm",
+      "role": "intermediate",
+      "dtype": "f32",
+      "shape": [
+        32,
+        512
+      ],
+      "encoding": "little-endian-ieee754-binary32",
+      "path": "layer29-kvnorm-final-tile.f32le.bin",
+      "bytes": 65536,
+      "sha256": "915507f500c1f2f3c9d4a229dc6da64b6034e130ab9305c5227194bb8e219581"
+    },
+    {
+      "name": "layer29_qraw_final_tile",
+      "hook": "Qraw",
+      "role": "intermediate",
+      "dtype": "f32",
+      "shape": [
+        32,
+        32768
+      ],
+      "encoding": "little-endian-ieee754-binary32",
+      "path": "layer29-qraw-final-tile.f32le.bin",
+      "bytes": 4194304,
+      "sha256": "7aa4768fb2135acc70512f5b642ca1118e1c593cc718dc771e74f44a78f6d05e"
+    },
+    {
+      "name": "layer29_qcur_final_tile",
+      "hook": "Qcur",
+      "role": "intermediate",
+      "dtype": "f32",
+      "shape": [
+        32,
+        32768
+      ],
+      "encoding": "little-endian-ieee754-binary32",
+      "path": "layer29-qcur-final-tile.f32le.bin",
+      "bytes": 4194304,
+      "sha256": "48e1e69b524d659e96971eeaa26f6c5b46c6a05842faf7c11809291502fb8ba5"
+    },
+    {
+      "name": "layer29_kvrope_final_tile",
+      "hook": "KVrope",
+      "role": "intermediate",
+      "dtype": "f32",
+      "shape": [
+        32,
+        512
+      ],
+      "encoding": "little-endian-ieee754-binary32",
+      "path": "layer29-kvrope-final-tile.f32le.bin",
+      "bytes": 65536,
+      "sha256": "3c0e92b04c683e548ef2979c72bd43951fd3b200707f96e7dd2e10ef4c475477"
+    },
+    {
+      "name": "layer29_kvcur_final_tile",
+      "hook": "KVcur",
+      "role": "output",
+      "dtype": "f32",
+      "shape": [
+        32,
+        512
+      ],
+      "encoding": "little-endian-ieee754-binary32",
+      "path": "layer29-kvcur-final-tile.f32le.bin",
+      "bytes": 65536,
+      "sha256": "90bce370f11f00c1428b34a8e440016b507c17100f257ab40582eed0c5a02798"
+    }
+  ]
+}

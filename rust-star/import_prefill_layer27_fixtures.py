@@ -11,6 +11,7 @@ from pathlib import Path
 
 
 LAYER = 27
+TEMPLATE_LAYER = 26
 ROWS = 2_048
 TILE_ROWS = 32
 CAPTURED_AT_UTC = "2026-08-26T06:57:06Z"
@@ -207,7 +208,7 @@ def main() -> int:
     template = json.loads(
         (
             args.fixtures_root
-            / "prefill-layer26-complete-2048-v1"
+            / f"prefill-layer{TEMPLATE_LAYER}-complete-2048-v1"
             / "manifest.json"
         ).read_text(encoding="utf-8")
     )
@@ -259,7 +260,7 @@ def main() -> int:
             **common_capture,
             "fresh_process_captures": 4,
             "full_capture_sha256": QKV_SHA256,
-            "input_fixture": "dwarfstar-oracle-v1-prefill-layer26-complete-2048",
+            "input_fixture": f"dwarfstar-oracle-v1-prefill-layer{TEMPLATE_LAYER}-complete-2048",
         },
         [
             {
@@ -303,7 +304,7 @@ def main() -> int:
             "full_capture_sha256": {
                 hook: spec[3] for hook, spec in COMPRESSOR.items()
             },
-            "input_fixture": "dwarfstar-oracle-v1-prefill-layer27-qkv-2048",
+            "input_fixture": f"dwarfstar-oracle-v1-prefill-layer{LAYER}-qkv-2048",
         },
         [
             {
@@ -389,7 +390,7 @@ def main() -> int:
             **common_capture,
             "fresh_process_captures": 2,
             "full_capture_sha256": ATTENTION_SHA256,
-            "input_fixture": "dwarfstar-oracle-v1-prefill-layer27-compressor-2048",
+            "input_fixture": f"dwarfstar-oracle-v1-prefill-layer{LAYER}-compressor-2048",
         },
         [
             {
@@ -440,7 +441,7 @@ def main() -> int:
             **common_capture,
             "fresh_process_captures": 2,
             "full_capture_sha256": FFN_SHA256,
-            "input_fixture": "dwarfstar-oracle-v1-prefill-layer27-attention-2048",
+            "input_fixture": f"dwarfstar-oracle-v1-prefill-layer{LAYER}-attention-2048",
         },
         [
             {

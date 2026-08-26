@@ -272,8 +272,11 @@ final HC update. The retained state then continues through layer 27's complete
 Q/KV state, ratio-128 compressor, dense mixed attention, routed/shared FFN,
 and final HC update. The retained state then continues through layer 28's
 complete Q/KV state, paired ratio-4 attention/indexer compressors, dense mixed
-attention, routed/shared FFN, and final HC update. The complete layers-0--28
-command uses 1,553 dispatches and preserves 796/796 no-copy model mappings.
+attention, routed/shared FFN, and final HC update. The retained state then
+continues through layer 29's complete Q/KV state, ratio-128 compressor, dense
+mixed attention, routed/shared FFN, and final HC update. The complete
+layers-0--29 command uses 1,600 dispatches and preserves 824/824 no-copy model
+mappings.
 Exactly 512 ratio-4 compressed
 rows and 16 ratio-128 rows remain dense at the prompt boundary. The
 pinned DwarfStar default remains dense through 1,024 rows and first switches at
@@ -284,7 +287,7 @@ at position 4099 now add the exact two-block argsort merge and validate all
 The same first-boundary schedule is wired into retained even-layer state with
 35 no-copy model mappings, and a complete retained position-8195 decoder step
 now executes all 43 layers through that branch and matches full-vocabulary
-logits exactly. Layer-29 prefill, complete native batched model prefill,
+logits exactly. Layer-30 prefill, complete native batched model prefill,
 eligible engine measurement, and throughput remain pending.
 
 Project controls and benchmark contracts:
