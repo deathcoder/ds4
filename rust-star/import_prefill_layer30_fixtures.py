@@ -12,6 +12,8 @@ from pathlib import Path
 
 ROWS = 2_048
 TILE_ROWS = 32
+LAYER = 30
+TEMPLATE_LAYER = 29
 CAPTURED_AT_UTC = "2026-08-26T13:41:03Z"
 CAPTURE_EXECUTABLE_SHA256 = (
     "55a39062aa8a88c7301f0992dc23a44157e5327137371204822ae5a48e213c51"
@@ -100,7 +102,9 @@ def sha256(payload: bytes) -> str:
 
 def capture(directory: Path, hook: str) -> bytes:
     suffix = "i32" if hook == "ffn_moe_topk" else "bin"
-    return (directory / f"{directory.name}_{hook}-30_pos0.{suffix}").read_bytes()
+    return (
+        directory / f"{directory.name}_{hook}-{LAYER}_pos0.{suffix}"
+    ).read_bytes()
 
 
 def repeated(
@@ -109,11 +113,11 @@ def repeated(
     first = capture(root / f"{group}_first", hook)
     second = capture(root / f"{group}_second", hook)
     if len(first) != expected_bytes or len(second) != expected_bytes:
-        raise SystemExit(f"layer-30 {hook} capture has the wrong size")
+        raise SystemExit(f"layer-{LAYER} {hook} capture has the wrong size")
     if first != second:
-        raise SystemExit(f"fresh-process layer-30 {hook} captures differ")
+        raise SystemExit(f"fresh-process layer-{LAYER} {hook} captures differ")
     if sha256(first) != identity:
-        raise SystemExit(f"layer-30 {hook} capture identity changed")
+        raise SystemExit(f"layer-{LAYER} {hook} capture identity changed")
     return first
 
 
@@ -170,7 +174,7 @@ def write_fixture(
         "scope": {
             "kind": "layer-segment",
             "phase": "prefill",
-            "layer": 30,
+            "layer": LAYER,
             "position": ROWS - 1,
             "captured_position_range": [0, ROWS - 1],
         },
@@ -194,7 +198,11 @@ def main() -> int:
     )
     args = parser.parse_args()
     template = json.loads(
-        (args.fixtures_root / "prefill-layer29-complete-2048-v1" / "manifest.json")
+        (
+            args.fixtures_root
+            / f"prefill-layer{TEMPLATE_LAYER}-complete-2048-v1"
+            / "manifest.json"
+        )
         .read_text(encoding="utf-8")
     )
     template["oracle"]["capture_executable_sha256"] = CAPTURE_EXECUTABLE_SHA256
@@ -219,34 +227,34 @@ def main() -> int:
         for name, width in QKV_WIDTHS.items()
     }
     qkv_filenames = {
-        "hc_attn_pre": "layer30-hc-attn-pre-final-tile.f32le.bin",
-        "attn_norm": "layer30-attn-norm-final-tile.f32le.bin",
-        "q_lora": "layer30-q-lora-final-tile.f32le.bin",
-        "q_lora_norm": "layer30-q-lora-norm-final-tile.f32le.bin",
-        "KVraw": "layer30-kv-raw-final-tile.f32le.bin",
-        "KVnorm": "layer30-kv-norm-final-tile.f32le.bin",
-        "Qraw": "layer30-q-raw-final-tile.f32le.bin",
-        "Qcur": "layer30-q-current-final-tile.f32le.bin",
-        "KVrope": "layer30-kv-rope-final-tile.f32le.bin",
-        "KVcur": "layer30-kv-current-final-tile.f32le.bin",
+        "hc_attn_pre": f"layer{LAYER}-hc-attn-pre-final-tile.f32le.bin",
+        "attn_norm": f"layer{LAYER}-attn-norm-final-tile.f32le.bin",
+        "q_lora": f"layer{LAYER}-q-lora-final-tile.f32le.bin",
+        "q_lora_norm": f"layer{LAYER}-q-lora-norm-final-tile.f32le.bin",
+        "KVraw": f"layer{LAYER}-kv-raw-final-tile.f32le.bin",
+        "KVnorm": f"layer{LAYER}-kv-norm-final-tile.f32le.bin",
+        "Qraw": f"layer{LAYER}-q-raw-final-tile.f32le.bin",
+        "Qcur": f"layer{LAYER}-q-current-final-tile.f32le.bin",
+        "KVrope": f"layer{LAYER}-kv-rope-final-tile.f32le.bin",
+        "KVcur": f"layer{LAYER}-kv-current-final-tile.f32le.bin",
     }
     qkv_tensors = []
     for name, width in QKV_WIDTHS.items():
         payload = qkv_payloads[name][-TILE_ROWS * width * 4 :]
         filename = qkv_filenames[name]
         qkv_tensors.append((filename, payload, tensor(
-            f"layer30_{name.lower()}_final_tile", name, "f32",
+            f"layer{LAYER}_{name.lower()}_final_tile", name, "f32",
             [TILE_ROWS, width], filename, payload,
             "output" if name == "KVcur" else "intermediate",
         )))
     write_fixture(
         args.fixtures_root,
-        "prefill-layer30-qkv-2048-v1",
-        "dwarfstar-oracle-v1-prefill-layer30-qkv-2048",
+        f"prefill-layer{LAYER}-qkv-2048-v1",
+        f"dwarfstar-oracle-v1-prefill-layer{LAYER}-qkv-2048",
         template,
         {**common_capture, "fresh_process_captures": 4,
          "full_capture_sha256": QKV_SHA256,
-         "input_fixture": "dwarfstar-oracle-v1-prefill-layer29-complete-2048"},
+         "input_fixture": f"dwarfstar-oracle-v1-prefill-layer{TEMPLATE_LAYER}-complete-2048"},
         [
             {"name": "attention-hc-ingress-and-norm", "kernel": "HC ingress plus learned norm"},
             {"name": "q-kv-state", "kernel": "Q8 projections plus RoPE and E4M3FN"},
@@ -269,16 +277,16 @@ def main() -> int:
         payload = compressor_payloads[hook]
         dtype = "i32" if hook.endswith("state_score") else "f32"
         compressor_tensors.append((filename, payload, tensor(
-            f"layer30_{hook.lower()}", hook, dtype, shape, filename, payload, "output"
+            f"layer{LAYER}_{hook.lower()}", hook, dtype, shape, filename, payload, "output"
         )))
     write_fixture(
         args.fixtures_root,
-        "prefill-layer30-compressor-2048-v1",
-        "dwarfstar-oracle-v1-prefill-layer30-compressor-2048",
+        f"prefill-layer{LAYER}-compressor-2048-v1",
+        f"dwarfstar-oracle-v1-prefill-layer{LAYER}-compressor-2048",
         template,
         {**common_capture, "fresh_process_captures": 2,
          "full_capture_sha256": {hook: spec[3] for hook, spec in COMPRESSOR.items()},
-         "input_fixture": "dwarfstar-oracle-v1-prefill-layer30-qkv-2048"},
+         "input_fixture": f"dwarfstar-oracle-v1-prefill-layer{LAYER}-qkv-2048"},
         [
             {"name": "ratio4-attention-and-indexer-projections", "kernel": "kernel_mul_mm_f16_f32 x4"},
             {"name": "ratio4-pool-and-finalize", "kernel": "replay pool plus norm/RoPE/E4M3FN/indexer QAT"},
@@ -297,30 +305,30 @@ def main() -> int:
     for name in ("kqv_out", "kqv_back", "attn_low"):
         width = ATTENTION_WIDTHS[name]
         payload = attention_payloads[name][: width * 4]
-        filename = f"layer30-{name.replace('_', '-')}-row0.f32le.bin"
+        filename = f"layer{LAYER}-{name.replace('_', '-')}-row0.f32le.bin"
         attention_tensors.append((filename, payload, tensor(
-            f"layer30_{name}_row0", name, "f32", [1, width], filename, payload
+            f"layer{LAYER}_{name}_row0", name, "f32", [1, width], filename, payload
         )))
     attention_payload = attention_payloads["attn_out"]
-    attention_filename = "layer30-attention-output.f32le.bin"
+    attention_filename = f"layer{LAYER}-attention-output.f32le.bin"
     attention_tensors.append((attention_filename, attention_payload, tensor(
-        "layer30_attention_output", "attn_out", "f32", [ROWS, 4096],
+        f"layer{LAYER}_attention_output", "attn_out", "f32", [ROWS, 4096],
         attention_filename, attention_payload, "output"
     )))
     attention_hc = attention_payloads["hc_attn_post"][-TILE_ROWS * 16384 * 4 :]
-    attention_hc_filename = "layer30-hc-attn-post-final-tile.f32le.bin"
+    attention_hc_filename = f"layer{LAYER}-hc-attn-post-final-tile.f32le.bin"
     attention_tensors.append((attention_hc_filename, attention_hc, tensor(
-        "layer30_hc_attn_post_final_tile", "hc_attn_post", "f32",
+        f"layer{LAYER}_hc_attn_post_final_tile", "hc_attn_post", "f32",
         [TILE_ROWS, 16384], attention_hc_filename, attention_hc, "output"
     )))
     write_fixture(
         args.fixtures_root,
-        "prefill-layer30-attention-2048-v1",
-        "dwarfstar-oracle-v1-prefill-layer30-attention-2048",
+        f"prefill-layer{LAYER}-attention-2048-v1",
+        f"dwarfstar-oracle-v1-prefill-layer{LAYER}-attention-2048",
         template,
         {**common_capture, "fresh_process_captures": 2,
          "full_capture_sha256": ATTENTION_SHA256,
-         "input_fixture": "dwarfstar-oracle-v1-prefill-layer30-compressor-2048"},
+         "input_fixture": f"dwarfstar-oracle-v1-prefill-layer{LAYER}-compressor-2048"},
         [
             {"name": "dense-mixed-attention", "kernel": "kernel_flash_attn_ext_f16_dk512_dv512"},
             {"name": "attention-output-and-hc-post", "kernel": "Q8 output projections plus HC expand4"},
@@ -338,19 +346,19 @@ def main() -> int:
     for name, width in FFN_WIDTHS.items():
         payload = ffn_payloads[name][-TILE_ROWS * width * 4 :]
         dtype = "i32" if name == "ffn_moe_topk" else "f32"
-        filename = f"layer30-{name.replace('_', '-')}-final-tile.{dtype}le.bin"
+        filename = f"layer{LAYER}-{name.replace('_', '-')}-final-tile.{dtype}le.bin"
         ffn_tensors.append((filename, payload, tensor(
-            f"layer30_{name}_final_tile", name, dtype, [TILE_ROWS, width],
+            f"layer{LAYER}_{name}_final_tile", name, dtype, [TILE_ROWS, width],
             filename, payload, "output" if name == "hc_ffn_post" else "intermediate"
         )))
     write_fixture(
         args.fixtures_root,
-        "prefill-layer30-complete-2048-v1",
-        "dwarfstar-oracle-v1-prefill-layer30-complete-2048",
+        f"prefill-layer{LAYER}-complete-2048-v1",
+        f"dwarfstar-oracle-v1-prefill-layer{LAYER}-complete-2048",
         template,
         {**common_capture, "fresh_process_captures": 2,
          "full_capture_sha256": FFN_SHA256,
-         "input_fixture": "dwarfstar-oracle-v1-prefill-layer30-attention-2048"},
+         "input_fixture": f"dwarfstar-oracle-v1-prefill-layer{LAYER}-attention-2048"},
         [
             {"name": "ffn-hc-ingress-and-router", "kernel": "biased top-6 batch"},
             {"name": "routed-shared-experts-and-hc-post", "kernel": "IQ2/Q2 routed plus Q8 shared"},

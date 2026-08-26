@@ -1,0 +1,141 @@
+{
+  "schema": "rust-star-differential-fixture-v1",
+  "fixture_id": "dwarfstar-oracle-v1-prefill-layer32-compressor-2048",
+  "captured_at_utc": "2026-08-26T16:28:32Z",
+  "oracle": {
+    "id": "oracle-v1",
+    "repository": "https://github.com/antirez/ds4.git",
+    "commit": "b0309611041655f4e45671cfd9c9886aff161406",
+    "tree": "20c11af22f90a0bdf25da860da5ef06de4064060",
+    "capture_executable_sha256": "55a39062aa8a88c7301f0992dc23a44157e5327137371204822ae5a48e213c51"
+  },
+  "model": {
+    "family": "DeepSeek-V4-Flash-0731",
+    "sha256": "ca22ae2f838e14077c22bc1c1417b71b45b5e5a3687bd96c2ac6e17fdb6261c0"
+  },
+  "capture": {
+    "backend": "metal",
+    "machine": "Apple M1 Ultra, 48 GPU cores, 128 GB unified memory",
+    "prompt": "first 2048 raw tokens of speed-bench/promessi_sposi.txt",
+    "prompt_sha256": "f53e0d80cb2d4492d24ebd63c7000c397b16ae70f9bf09b3763e5d8323ec209f",
+    "prefill_tokens": 2048,
+    "fresh_process_bitwise_match": true,
+    "command": "ds4-bench --metal --ctx-start 2048 --ctx-max 2048 --gen-tokens 0 --warm-weights",
+    "fresh_process_captures": 2,
+    "full_capture_sha256": {
+      "KVcompress": "dda3294aef10b4fc3649ee3e2b2d8728747f85e47d3cd1e7dcb2a971e19f2887",
+      "attn_state_kv": "1ef7f193df9139b649d51128b1010669bca259866add01401ee7938b6a123f8c",
+      "attn_state_score": "0177373455a0961de6456de99c3b6c9126123baa239b95b576ec4313c3cbe571",
+      "indexer_KVcompress": "2f25bc8075a8c0457f5a4095e3a30afb0228e2f285c38179e7c24d8d8ebeb14d",
+      "indexer_state_kv": "4b67cbd2e64c624b730e1580f17c0fe7884c44292b6dab4e6c74ae606dba4cd3",
+      "indexer_state_score": "0f71b7e0995873a73980265263b5235889881dea13f784e786b664271dc2619c"
+    },
+    "input_fixture": "dwarfstar-oracle-v1-prefill-layer32-qkv-2048"
+  },
+  "scope": {
+    "kind": "layer-segment",
+    "phase": "prefill",
+    "layer": 32,
+    "position": 2047,
+    "captured_position_range": [
+      0,
+      2047
+    ]
+  },
+  "operations": [
+    {
+      "name": "ratio4-attention-and-indexer-projections",
+      "kernel": "kernel_mul_mm_f16_f32 x4"
+    },
+    {
+      "name": "ratio4-pool-and-finalize",
+      "kernel": "replay pool plus norm/RoPE/E4M3FN/indexer QAT"
+    }
+  ],
+  "tensors": [
+    {
+      "name": "layer32_kvcompress",
+      "hook": "KVcompress",
+      "role": "output",
+      "dtype": "f32",
+      "shape": [
+        512,
+        512
+      ],
+      "encoding": "little-endian-ieee754-binary32",
+      "path": "attention-compressed-kv.f32le.bin",
+      "bytes": 1048576,
+      "sha256": "dda3294aef10b4fc3649ee3e2b2d8728747f85e47d3cd1e7dcb2a971e19f2887"
+    },
+    {
+      "name": "layer32_attn_state_kv",
+      "hook": "attn_state_kv",
+      "role": "output",
+      "dtype": "f32",
+      "shape": [
+        8,
+        1024
+      ],
+      "encoding": "little-endian-ieee754-binary32",
+      "path": "attention-state-kv.f32le.bin",
+      "bytes": 32768,
+      "sha256": "1ef7f193df9139b649d51128b1010669bca259866add01401ee7938b6a123f8c"
+    },
+    {
+      "name": "layer32_attn_state_score",
+      "hook": "attn_state_score",
+      "role": "output",
+      "dtype": "i32",
+      "shape": [
+        8,
+        1024
+      ],
+      "encoding": "little-endian-signed-integer32",
+      "path": "attention-state-score.i32le.bin",
+      "bytes": 32768,
+      "sha256": "0177373455a0961de6456de99c3b6c9126123baa239b95b576ec4313c3cbe571"
+    },
+    {
+      "name": "layer32_indexer_kvcompress",
+      "hook": "indexer_KVcompress",
+      "role": "output",
+      "dtype": "f32",
+      "shape": [
+        512,
+        128
+      ],
+      "encoding": "little-endian-ieee754-binary32",
+      "path": "indexer-compressed-kv.f32le.bin",
+      "bytes": 262144,
+      "sha256": "2f25bc8075a8c0457f5a4095e3a30afb0228e2f285c38179e7c24d8d8ebeb14d"
+    },
+    {
+      "name": "layer32_indexer_state_kv",
+      "hook": "indexer_state_kv",
+      "role": "output",
+      "dtype": "f32",
+      "shape": [
+        8,
+        256
+      ],
+      "encoding": "little-endian-ieee754-binary32",
+      "path": "indexer-state-kv.f32le.bin",
+      "bytes": 8192,
+      "sha256": "4b67cbd2e64c624b730e1580f17c0fe7884c44292b6dab4e6c74ae606dba4cd3"
+    },
+    {
+      "name": "layer32_indexer_state_score",
+      "hook": "indexer_state_score",
+      "role": "output",
+      "dtype": "i32",
+      "shape": [
+        8,
+        256
+      ],
+      "encoding": "little-endian-signed-integer32",
+      "path": "indexer-state-score.i32le.bin",
+      "bytes": 8192,
+      "sha256": "0f71b7e0995873a73980265263b5235889881dea13f784e786b664271dc2619c"
+    }
+  ]
+}
