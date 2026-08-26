@@ -317,16 +317,18 @@ final HC update, and then through layer 28's full Q/KV state, paired ratio-4
 attention/indexer compressors, dense mixed attention, routed/shared FFN, and
 additive final HC update, and then through layer 29's full Q/KV state,
 ratio-128 compressor, dense mixed attention, routed/shared FFN, and additive
-final HC update. Every retained layer-7 through layer-29 boundary, full
-attention output, compressor state, and full HC identity matches fresh
-DwarfStar processes exactly. The combined terminal schedule uses 1,600
-dispatches and 824/824 no-copy model views.
+final HC update, and then through layer 30's full Q/KV state, paired ratio-4
+attention/indexer compressors, dense mixed attention, routed/shared FFN, and
+additive final HC update. Every retained layer-7 through layer-30 boundary,
+full attention output, compressor state, and full HC identity matches fresh
+DwarfStar processes exactly. The combined terminal schedule uses 1,670
+dispatches and 856/856 no-copy model views.
 
-Exactly 512 compressed rows for each even layer from 2 through 28 still use the
+Exactly 512 compressed rows for each even layer from 2 through 30 still use the
 dense path; each odd compressed layer through layer 23 retains 16 ratio-128
 rows, as do layers 25, 27, and 29. The pinned default
 remains dense through 1,024 rows; sparse top-k first
-applies at 1,025 rows. Layer-30 prefill, sparse post-prompt integration,
+applies at 1,025 rows. Layer-31 prefill, sparse post-prompt integration,
 complete-model batched prefill, output logits, and throughput remain outside
 this command.
 
