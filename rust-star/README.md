@@ -302,7 +302,11 @@ routed/shared FFN, and final HC update, and then through layer 42's complete
 Q/KV state, paired ratio-4 attention/indexer compressors, dense mixed
 attention, routed/shared FFN, and final HC update. The complete transformer
 layers-0--42 command uses 2,372 dispatches and preserves 1,216/1,216
-no-copy model mappings.
+no-copy model mappings. The same persistent context now applies the exact
+five-dispatch output head to the retained final layer-42 row, preserving 5/5
+additional no-copy model mappings and matching all 129,280 repeated DwarfStar
+batched-prefill logits bit-for-bit. Lowest-ID argmax selects token 15342, so
+the complete native model schedule uses 2,377 dispatches and 1,221 mappings.
 Exactly 512 ratio-4 compressed rows for each even layer through layer 42 and
 16 ratio-128 rows for each odd layer through layer 41 remain dense at the
 prompt boundary. The
@@ -314,8 +318,8 @@ at position 4099 now add the exact two-block argsort merge and validate all
 The same first-boundary schedule is wired into retained even-layer state with
 35 no-copy model mappings, and a complete retained position-8195 decoder step
 now executes all 43 layers through that branch and matches full-vocabulary
-logits exactly. Output-head integration with the native batched transformer
-path, eligible engine measurement, and throughput remain pending.
+logits exactly. Sparse post-prompt integration, an eligible engine
+measurement, and throughput remain pending.
 
 Project controls and benchmark contracts:
 

@@ -313,7 +313,13 @@ history; add a correction and update the current-state summary.
   attention outputs, compressor states, and full HC
   identities match fresh DwarfStar processes exactly, establishing complete
   native transformer layers 0–42 at the same prompt boundary with 1,216/1,216
-  no-copy mappings across 2,372 terminal dispatches. A separate
+  no-copy mappings across 2,372 terminal dispatches. The same persistent
+  context now consumes the retained final layer-42 HC row through the exact
+  five-dispatch output head. Its five additional model mappings preserve
+  pointer identity, all 129,280 logits match the independently repeated
+  DwarfStar batched-prefill frontier bit-for-bit, and lowest-ID argmax selects
+  token 15342. This establishes complete native batched model prefill through
+  logits with 2,377 dispatches and 1,221 no-copy mappings. A separate
   layer-2 position-2051 diagnostic now covers the complete ratio-4 sparse
   mechanism: F16 indexer projections, compressed RoPE, indexer QAT, direct
   scores, exact descending top-512 selection, the 12-way indexed mixed
@@ -579,6 +585,12 @@ history; add a correction and update the current-state summary.
   wall and 3514.757 ms summed GPU time across its 64 correctness-oriented
   tiles. It retained 65/65 model mappings, used 118 dispatches on regular tiles
   and 122 on the final state refresh, and is not a prefill-throughput claim.
+  The first complete-model native 2K prefill run reported 21478.015/21389.015
+  ms wall/GPU for the terminal 43-layer transformer schedule and
+  270.931/2.697 ms for its synchronized output-head correctness pass. Every
+  one of the 129,280 batched-prefill logits was C0 exact and token 15342 was
+  selected. These remain correctness timings, not an eligible engine
+  measurement.
 - Manual handoff: `RUST_STAR_MANUAL_TASKS.md` records Actions approval, target
   compilation/model inspection, quick/extended oracle capture, and the deferred
   secure-access decision with exact evidence requirements.
@@ -591,14 +603,14 @@ history; add a correction and update the current-state summary.
 
 ## Immediate Next Actions
 
-1. Integrate the output head with the exact native layers-0–42 batched-prefill
-   frontier while preserving every retained transformer boundary as a
-   regression control.
+1. Connect the exact native 2K batched-prefill state to post-prompt decoding,
+   integrating the production-default sparse ratio-4 path when compressed
+   history first exceeds 1,024 rows.
 2. Preserve the complete retained position-8195 decoder step, isolated
    513/1,025-row probes, and retained-state row-1,025/2,049 controls as
    independent sparse regressions.
-3. Emit the `rust-star-engine-measurement-v1` artifact from the exact
-   batched-prefill/128-token loop and connect it to the paired runner.
+3. Emit the `rust-star-engine-measurement-v1` artifact from the exact native
+   batched-prefill/128-token closed loop and connect it to the paired runner.
 4. Preserve the four-, six-, eight-, 43-layer, explicit decoder-output, and
    closed-loop diagnostic commands as independently executed controls.
 5. Run the extended 2K--1M frontier capture when the Mac can be dedicated to a
@@ -606,6 +618,55 @@ history; add a correction and update the current-state summary.
 6. Run or approve the fork's GitHub Actions workflow and retain its URL.
 
 ## Entries
+
+### 2026-08-27 — Exact complete-model native 2K prefill through logits
+
+Objective:
+
+- Consume the retained final layer-42 HC row directly from the native batched
+  prefill context and complete the exact output head without weakening any
+  transformer-only regression boundary.
+
+Evidence:
+
+- Reused the independently repeated DwarfStar 2K batched-prefill frontier
+  fixture. Its 129,280-logit payload has SHA-256
+  `7b5e851884bbb0aa8c2a249c8497af0feccb267cbd0a40e0a4a5aee584ecbfaf`
+  and selects token 15342 by lowest-ID argmax.
+- Extended the proven decode output-head implementation to select either its
+  retained one-row layer-42 buffer or row 2047 of the retained 2K prefill
+  layer-42 HC buffer. Decode ownership and all prior transformer controls
+  remain unchanged.
+- The exact plain HC RMSNorm, F16 four-way HC projection, HC weighting, fused
+  HC collapse/learned RMSNorm, and 129,280-row Q8_0 vocabulary projection add
+  five dispatches and five pointer-identical model mappings. The complete
+  native model schedule is now 2,377 dispatches and 1,221 no-copy mappings.
+- The optimized focused M1 run matched every transformer boundary and every
+  output logit bit-for-bit, selected token 15342, and reported 21478.015 ms
+  wall / 21389.015 ms GPU for the terminal transformer schedule plus
+  270.931 ms wall / 2.697 ms GPU for the correctness-readback output head.
+  These intervals are correctness diagnostics, not throughput claims.
+- The repeated target-model gate again matched all 129,280 logits and selected
+  token 15342. It reported 32159.143 ms wall / 31397.883 ms GPU for the
+  transformer schedule and 69.829 ms wall / 2.700 ms GPU for the output head.
+  All 284 Rust tests, 62 Python tests, the complete pinned fixture corpus,
+  strict target-model inspection, and every native runtime control passed.
+- The retained sequential-replay diagnostic remained exact against its decode
+  oracle at 21.708 tokens/s over 94341.601 ms. Its intentional divergence from
+  batched-prefill arithmetic still makes it ineligible for paired throughput.
+
+Decision:
+
+- Native batched model prefill is now exact and complete through full logits
+  and deterministic greedy selection at the canonical 2K prompt boundary.
+  Sparse post-prompt integration and an eligible throughput path remain
+  outside this claim.
+
+Next:
+
+- Connect the retained native 2K state to closed-loop decoding and integrate
+  the production-default sparse ratio-4 path before emitting paired engine
+  measurements.
 
 ### 2026-08-27 — Exact complete layer-42 full-2K transformer prefill
 

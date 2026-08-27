@@ -28,7 +28,7 @@ pub const PREFILL_LAYERS012_KV_STATE_LOOP_PROBE_SCHEMA: &str =
 pub const PREFILL_LAYERS012_COMPRESSOR_LOOP_PROBE_SCHEMA: &str =
     "rust-star-prefill-layers012-compressor-loop-probe-v1";
 pub const PREFILL_LAYERS012_ATTENTION_LOOP_PROBE_SCHEMA: &str =
-    "rust-star-prefill-layers012-attention-loop-probe-v1";
+    "rust-star-prefill-layers012-attention-loop-probe-v2";
 pub const INGRESS_PROBE_SCHEMA: &str = "rust-star-layer0-attention-ingress-probe-v1";
 pub const ATTENTION_SETUP_PROBE_SCHEMA: &str = "rust-star-layer0-attention-setup-probe-v1";
 pub const ROPE_KV_STORE_PROBE_SCHEMA: &str = "rust-star-layer0-rope-kv-store-probe-v1";
@@ -3886,6 +3886,7 @@ pub struct PrefillLayers012AttentionLoopProbeReport {
     pub layer42_attention_output_checksum: u64,
     pub layer42_after_attention_hc_checksum: u64,
     pub layer42_after_ffn_hc_checksum: u64,
+    pub output_head: OutputHeadProbeReport,
 }
 
 #[derive(Clone, Debug)]
@@ -5073,7 +5074,7 @@ pub fn write_cold_prefill_decoder_probe_json<W: Write>(
     }
     write!(
         output,
-        "],\n  \"state_initialization\": \"cold-empty-kv-and-compressor-state\",\n  \"prefill\": {{\"tokens\": 1, \"wall_ms\": {:.6}, \"sampling_in_interval\": true, \"full_logits_c0_bitwise_match\": true, \"selected_token\": 201}},\n  \"decode\": {{\"evaluated_positions\": 127, \"wall_ms\": {:.6}, \"evaluated_positions_per_second\": {:.6}}},\n  \"final_logits_c0_bitwise_match\": true,\n  \"integrated_ratio128_rows_c0_bitwise_match\": true,\n  \"captured_initial_state_used\": false,\n  \"paired_protocol_eligible\": false,\n  \"paired_protocol_blocker\": \"native batched prefill and ratio-4 sparse indexed decode are not implemented\"\n}}\n",
+        "],\n  \"state_initialization\": \"cold-empty-kv-and-compressor-state\",\n  \"prefill\": {{\"tokens\": 1, \"wall_ms\": {:.6}, \"sampling_in_interval\": true, \"full_logits_c0_bitwise_match\": true, \"selected_token\": 201}},\n  \"decode\": {{\"evaluated_positions\": 127, \"wall_ms\": {:.6}, \"evaluated_positions_per_second\": {:.6}}},\n  \"final_logits_c0_bitwise_match\": true,\n  \"integrated_ratio128_rows_c0_bitwise_match\": true,\n  \"captured_initial_state_used\": false,\n  \"paired_protocol_eligible\": false,\n  \"paired_protocol_blocker\": \"ineligible one-token prefill control; native 2K-to-decode sparse handoff remains pending\"\n}}\n",
         report.prefill_wall_ms,
         report.decode_wall_ms,
         report.decode_tps,
@@ -5118,7 +5119,7 @@ pub fn write_prefill_frontier_probe_json<W: Write>(
     }
     write!(
         output,
-        "{{\n  \"schema\": \"{PREFILL_FRONTIER_PROBE_SCHEMA}\",\n  \"classification\": \"diagnostic\",\n  \"fixture\": \"{}\",\n  \"state_initialization\": \"cold-empty-kv-and-compressor-state\",\n  \"context_capacity\": {},\n  \"prefill\": {{\"tokens\": {}, \"final_position\": {}, \"wall_ms\": {:.6}, \"tokens_per_second\": {:.6}, \"sampling_in_interval\": true, \"selected_token\": {}}},\n  \"cache\": {{\"raw_ring_rows_per_layer\": {}, \"ratio4_compressed_rows_per_layer\": {}, \"ratio128_compressed_rows_per_layer\": {}}},\n  \"decode_replay_logits_c0_bitwise_match\": true,\n  \"batched_prefill_logits_c0_bitwise_match\": false,\n  \"batched_prefill_drift\": {{\"mismatch_count\": {}, \"max_abs_error\": {:.9}}},\n  \"decode_logits_checksum\": {},\n  \"captured_initial_state_used\": false,\n  \"paired_protocol_eligible\": false,\n  \"paired_protocol_blocker\": \"native batched prefill arithmetic and ratio-4 sparse indexed decode are required\"\n}}\n",
+        "{{\n  \"schema\": \"{PREFILL_FRONTIER_PROBE_SCHEMA}\",\n  \"classification\": \"diagnostic\",\n  \"fixture\": \"{}\",\n  \"state_initialization\": \"cold-empty-kv-and-compressor-state\",\n  \"context_capacity\": {},\n  \"prefill\": {{\"tokens\": {}, \"final_position\": {}, \"wall_ms\": {:.6}, \"tokens_per_second\": {:.6}, \"sampling_in_interval\": true, \"selected_token\": {}}},\n  \"cache\": {{\"raw_ring_rows_per_layer\": {}, \"ratio4_compressed_rows_per_layer\": {}, \"ratio128_compressed_rows_per_layer\": {}}},\n  \"decode_replay_logits_c0_bitwise_match\": true,\n  \"batched_prefill_logits_c0_bitwise_match\": false,\n  \"batched_prefill_drift\": {{\"mismatch_count\": {}, \"max_abs_error\": {:.9}}},\n  \"decode_logits_checksum\": {},\n  \"captured_initial_state_used\": false,\n  \"paired_protocol_eligible\": false,\n  \"paired_protocol_blocker\": \"ineligible sequential-replay control; exact native batched prefill exists separately and its sparse decode handoff remains pending\"\n}}\n",
         report.fixture_id,
         report.context_capacity,
         report.prompt_tokens,
@@ -6918,6 +6919,18 @@ pub fn write_prefill_layers012_attention_loop_probe_json<W: Write>(
         || report.layer42_attention_output_checksum != PREFILL_LAYER42_ATTENTION_OUTPUT_CHECKSUM
         || report.layer42_after_attention_hc_checksum != PREFILL_LAYER42_HC_ATTN_POST_FULL_CHECKSUM
         || report.layer42_after_ffn_hc_checksum != PREFILL_LAYER42_HC_FFN_POST_FULL_CHECKSUM
+        || report.output_head.fixture_id != PREFILL_FRONTIER_2048_FIXTURE_ID
+        || report.output_head.dispatches != 5
+        || report.output_head.command_buffers != 1
+        || report.output_head.host_waits != 1
+        || report.output_head.wrapped_model_ranges != 5
+        || report.output_head.pointer_matches != 5
+        || report.output_head.selected_token != 15342
+        || report.output_head.logits_checksum != checksum_f32(&prefill_frontier_2048_fixture()?.1)
+        || !report.output_head.wall_ms.is_finite()
+        || report.output_head.wall_ms <= 0.0
+        || !report.output_head.gpu_ms.is_finite()
+        || report.output_head.gpu_ms < 0.0
         || !report.wall_ms.is_finite()
         || report.wall_ms <= 0.0
         || !report.gpu_ms.is_finite()
@@ -7105,6 +7118,7 @@ pub fn write_prefill_layers012_attention_loop_probe_json<W: Write>(
         report.layer42_compressor_fixture_id,
         report.layer42_attention_fixture_id,
         report.layer42_complete_fixture_id,
+        report.output_head.fixture_id,
     ]
     .iter()
     .enumerate()
@@ -8981,6 +8995,43 @@ pub fn write_prefill_layers012_attention_loop_probe_json<W: Write>(
         .replace(
             "\"complete_layer41_prefill_claim\": true,",
             "\"complete_layer41_prefill_claim\": true,\n  \"complete_layer42_qkv_state_claim\": true,\n  \"complete_layer42_paired_compressor_claim\": true,\n  \"complete_layer42_dense_mixed_attention_claim\": true,\n  \"complete_layer42_attention_hc_post_claim\": true,\n  \"complete_layer42_ffn_claim\": true,\n  \"complete_layer42_prefill_claim\": true,",
+        );
+    let rendered = rendered
+        .replace(
+            "\"output_boundary\": \"layer42_ffn_hc_post\"",
+            "\"output_boundary\": \"full_logits\"",
+        )
+        .replace(
+            "\"terminal_dispatches\": 2372",
+            "\"terminal_dispatches\": 2372, \"output_head_dispatches\": 5, \"complete_model_dispatches\": 2377",
+        )
+        .replace(
+            "\"wrapped_terminal_model_ranges\": 1216",
+            "\"wrapped_terminal_model_ranges\": 1216, \"output_head_model_ranges\": 5, \"complete_model_ranges\": 1221",
+        )
+        .replace(
+            "  \"persistent_metal_context\": true,",
+            &format!(
+                "  \"output_head\": {{\"fixture\": \"{}\", \"dispatches\": {}, \"command_buffers\": {}, \"host_waits\": {}, \"mapping\": {{\"wrapped_model_ranges\": {}, \"pointer_matches\": {}}}, \"timing\": {{\"wall_ms\": {:.6}, \"gpu_ms\": {:.6}}}, \"checksums\": {{\"hc_pre\": {}, \"hc_weights\": {}, \"hc\": {}, \"norm\": {}, \"logits\": {}}}, \"selected_token\": {}, \"full_logits_c0_bitwise_match\": true}},\n  \"persistent_metal_context\": true,",
+                report.output_head.fixture_id,
+                report.output_head.dispatches,
+                report.output_head.command_buffers,
+                report.output_head.host_waits,
+                report.output_head.wrapped_model_ranges,
+                report.output_head.pointer_matches,
+                report.output_head.wall_ms,
+                report.output_head.gpu_ms,
+                report.output_head.hc_pre_checksum,
+                report.output_head.hc_weights_checksum,
+                report.output_head.hc_checksum,
+                report.output_head.norm_checksum,
+                report.output_head.logits_checksum,
+                report.output_head.selected_token,
+            ),
+        )
+        .replace(
+            "  \"complete_model_prefill_claim\": false,",
+            "  \"complete_model_prefill_claim\": true,\n  \"output_logits_claim\": true,\n  \"greedy_selection_claim\": true,\n  \"output_logits_c0_bitwise_match\": true,",
         );
     output.write_all(rendered.as_bytes())?;
     Ok(())
@@ -37705,6 +37756,7 @@ mod imp {
                 "Metal prefill layer-2 attention returned an unexpected schedule or mapping",
             ));
         }
+        let output_head = run_prefill_output_head(model, &context)?;
         Ok(PrefillLayers012AttentionLoopProbeReport {
             compressor,
             attention_fixture_id: PREFILL_LAYER2_ATTENTION_FIXTURE_ID,
@@ -38287,6 +38339,7 @@ mod imp {
             layer42_attention_output_checksum: checksum_f32(&actual_layer42_attention),
             layer42_after_attention_hc_checksum: checksum_f32(&actual_layer42_after_attention_hc),
             layer42_after_ffn_hc_checksum: checksum_f32(&actual_layer42_after_ffn_hc),
+            output_head,
         })
     }
 
@@ -40826,6 +40879,99 @@ mod imp {
             ));
         }
         Ok((lowest_id_argmax(&prepared.logits)?, raw.gpu_ms))
+    }
+
+    fn run_prefill_output_head(
+        model: &MappedModel,
+        context: &Context,
+    ) -> Result<OutputHeadProbeReport> {
+        let (_, expected_logits, _) = prefill_frontier_2048_fixture()?;
+        let mut prepared = PreparedOutputHead::new(model)?;
+        let mut hc_pre = vec![0.0_f32; 4];
+        let mut hc_weights = vec![0.0_f32; 4];
+        let mut hc = vec![0.0_f32; 4096];
+        let mut norm = vec![0.0_f32; 4096];
+        let mut raw = RawIngressProbeResult::default();
+        let mut error = [0 as c_char; ERROR_BYTES];
+        let succeeded = unsafe {
+            rust_star_metal_run_output_head(
+                context.0,
+                model.mapping_pointer(),
+                model.bytes(),
+                prepared.hc_fn.absolute_offset,
+                prepared.hc_fn.bytes,
+                prepared.hc_scale.absolute_offset,
+                prepared.hc_scale.bytes,
+                prepared.hc_base.absolute_offset,
+                prepared.hc_base.bytes,
+                prepared.output_norm.absolute_offset,
+                prepared.output_norm.bytes,
+                prepared.output.absolute_offset,
+                prepared.output.bytes,
+                hc_pre.as_mut_ptr(),
+                hc_weights.as_mut_ptr(),
+                hc.as_mut_ptr(),
+                norm.as_mut_ptr(),
+                prepared.logits.as_mut_ptr(),
+                1,
+                &mut raw,
+                error.as_mut_ptr(),
+                error.len(),
+            )
+        };
+        if succeeded == 0 {
+            return Err(Error::invalid(format!(
+                "Metal 2K prefill output head failed: {}",
+                error_text(&error)
+            )));
+        }
+        if raw.model_bytes != model.bytes()
+            || raw.wrapped_model_ranges != 5
+            || raw.pointer_matches != 5
+            || !raw.wall_ms.is_finite()
+            || raw.wall_ms <= 0.0
+            || !raw.gpu_ms.is_finite()
+            || raw.gpu_ms < 0.0
+        {
+            return Err(Error::invalid(
+                "Metal 2K prefill output head returned invalid ownership or timing metadata",
+            ));
+        }
+        if let Some((index, (actual, expected))) = prepared
+            .logits
+            .iter()
+            .zip(&expected_logits)
+            .enumerate()
+            .find(|(_, (actual, expected))| actual.to_bits() != expected.to_bits())
+        {
+            return Err(Error::invalid(format!(
+                "2K batched-prefill logit C0 mismatch at [{index}]: actual={:#010x} expected={:#010x}",
+                actual.to_bits(),
+                expected.to_bits(),
+            )));
+        }
+        let selected_token = lowest_id_argmax(&prepared.logits)?;
+        if selected_token != 15342 {
+            return Err(Error::invalid(format!(
+                "2K batched-prefill selected token mismatch: {selected_token}"
+            )));
+        }
+        Ok(OutputHeadProbeReport {
+            fixture_id: PREFILL_FRONTIER_2048_FIXTURE_ID,
+            dispatches: 5,
+            command_buffers: 1,
+            host_waits: 1,
+            wrapped_model_ranges: raw.wrapped_model_ranges,
+            pointer_matches: raw.pointer_matches,
+            wall_ms: raw.wall_ms,
+            gpu_ms: raw.gpu_ms,
+            hc_pre_checksum: checksum_f32(&hc_pre),
+            hc_weights_checksum: checksum_f32(&hc_weights),
+            hc_checksum: checksum_f32(&hc),
+            norm_checksum: checksum_f32(&norm),
+            logits_checksum: checksum_f32(&prepared.logits),
+            selected_token,
+        })
     }
 
     fn run_position_advancing_probe(
@@ -43972,6 +44118,22 @@ mod tests {
             layer42_attention_output_checksum: PREFILL_LAYER42_ATTENTION_OUTPUT_CHECKSUM,
             layer42_after_attention_hc_checksum: PREFILL_LAYER42_HC_ATTN_POST_FULL_CHECKSUM,
             layer42_after_ffn_hc_checksum: PREFILL_LAYER42_HC_FFN_POST_FULL_CHECKSUM,
+            output_head: OutputHeadProbeReport {
+                fixture_id: PREFILL_FRONTIER_2048_FIXTURE_ID,
+                dispatches: 5,
+                command_buffers: 1,
+                host_waits: 1,
+                wrapped_model_ranges: 5,
+                pointer_matches: 5,
+                wall_ms: 1.0,
+                gpu_ms: 0.5,
+                hc_pre_checksum: 101,
+                hc_weights_checksum: 102,
+                hc_checksum: 103,
+                norm_checksum: 104,
+                logits_checksum: checksum_f32(&prefill_frontier_2048_fixture().unwrap().1),
+                selected_token: 15342,
+            },
         }
     }
 
@@ -45345,7 +45507,7 @@ mod tests {
         assert!(text.contains("\"layer3_ffn_hc_post_c0_bitwise_match\": true"));
         assert!(text.contains("\"complete_layer3_ffn_claim\": true"));
         assert!(text.contains("\"complete_layer3_prefill_claim\": true"));
-        assert!(text.contains("\"output_boundary\": \"layer42_ffn_hc_post\""));
+        assert!(text.contains("\"output_boundary\": \"full_logits\""));
         assert!(text.contains(
             "\"complete_layers\": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42]"
         ));
@@ -45857,6 +46019,19 @@ mod tests {
         assert!(text.contains("\"layer42_attention_hc_post_c0_bitwise_match\": true"));
         assert!(text.contains("\"layer42_ffn_hc_post_c0_bitwise_match\": true"));
         assert!(text.contains("\"complete_layer42_prefill_claim\": true"));
+        assert!(text.contains("\"output_head_dispatches\": 5"));
+        assert!(text.contains("\"complete_model_dispatches\": 2377"));
+        assert!(text.contains("\"output_head_model_ranges\": 5"));
+        assert!(text.contains("\"complete_model_ranges\": 1221"));
+        assert!(text.contains(&format!(
+            "\"fixture\": \"{PREFILL_FRONTIER_2048_FIXTURE_ID}\""
+        )));
+        assert!(text.contains("\"selected_token\": 15342"));
+        assert!(text.contains("\"full_logits_c0_bitwise_match\": true"));
+        assert!(text.contains("\"complete_model_prefill_claim\": true"));
+        assert!(text.contains("\"output_logits_claim\": true"));
+        assert!(text.contains("\"greedy_selection_claim\": true"));
+        assert!(text.contains("\"output_logits_c0_bitwise_match\": true"));
         assert!(text.contains("\"sparse_ratio4_decode_claim\": false"));
     }
 

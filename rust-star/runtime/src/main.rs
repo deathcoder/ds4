@@ -618,7 +618,7 @@ fn run_cold_prefill_decoder_probe_command(arguments: Vec<OsString>) -> Result<()
         "diagnostic execution: prefill+first selection {:.3} ms; decode {:.3} positions/s",
         report.prefill_wall_ms, report.decode_tps,
     );
-    println!("paired protocol: ineligible until native batched prefill and sparse indexed decode");
+    println!("paired protocol: ineligible one-token prefill control; native 2K-to-decode sparse handoff remains pending");
     if let Some(path) = json_path {
         write_cold_prefill_decoder_probe_file(&path, &report)?;
         println!("json: {}", path.display());
@@ -674,7 +674,7 @@ fn run_prefill_frontier_probe_command(arguments: Vec<OsString>) -> Result<()> {
         "batched-prefill boundary: {} logits differ, max absolute error {:.6}",
         report.batch_logits_mismatch_count, report.batch_logits_max_abs_error,
     );
-    println!("paired protocol: ineligible until native batched prefill and sparse indexed decode");
+    println!("paired protocol: ineligible sequential-replay control; exact native batched prefill exists separately and its sparse decode handoff remains pending");
     if let Some(path) = json_path {
         write_prefill_frontier_probe_file(&path, &report)?;
         println!("json: {}", path.display());
@@ -2485,7 +2485,16 @@ fn run_prefill_layers012_attention_loop_probe_command(arguments: Vec<OsString>) 
         report.wall_ms,
         report.gpu_ms,
     );
-    println!("scope: complete native transformer layers 0-42, including exact paired ratio-4 and ratio-128 compressors, dense mixed attention, biased top-6 routed/shared FFNs, and additive final HC updates at the 2K prompt boundary; output-head integration, sparse post-prompt top-k, complete-model-prefill, output-logit, and throughput claims remain pending");
+    println!(
+        "exact output head: {} dispatches, {}/{} no-copy model ranges, wall={:.3} ms gpu={:.3} ms, selected token {}",
+        report.output_head.dispatches,
+        report.output_head.pointer_matches,
+        report.output_head.wrapped_model_ranges,
+        report.output_head.wall_ms,
+        report.output_head.gpu_ms,
+        report.output_head.selected_token,
+    );
+    println!("scope: complete native batched model prefill through exact full logits and greedy selection at the 2K prompt boundary; every retained transformer boundary remains an independent C0 regression control. Sparse post-prompt top-k integration and an eligible throughput claim remain pending");
     if let Some(path) = json_path {
         write_prefill_layers012_attention_loop_probe_file(&path, &report)?;
         println!("json: {}", path.display());
@@ -4088,7 +4097,7 @@ fn prefill_layers012_compressor_loop_probe_usage() -> &'static str {
 }
 
 fn prefill_layers012_attention_loop_probe_usage() -> &'static str {
-    "usage: rust-star prefill-layers012-attention-loop-probe MODEL.gguf [--json PATH]\n\nRuns all 64 native 32-row schedules over positions 0--2047 in one persistent Metal context and completes transformer layers 2 through 42. Even layers 2/4/6/8/10/12/14/16/18/20/22/24/26/28/30/32/34/36/38/40/42 include paired ratio-4 attention/indexer compressors; odd layers 3/5/7/9/11/13/15/17/19/21/23/25/27/29/31/33/35/37/39/41 use ratio-128 attention compressors. Each layer continues through dense mixed attention, biased top-6 routed/shared experts, and its additive final HC update. Every retained boundary must match repeated DwarfStar captures bit-for-bit. The 2,064 logical odd-layer keys use a 2,112-row masked physical extent required by the 64-row FlashAttention block contract. Exactly 512 ratio-4 rows remain on the dense path at this prompt boundary. This does not yet claim output-head integration, sparse post-prompt ratio-4 attention, complete-model prefill, output logits, or throughput."
+    "usage: rust-star prefill-layers012-attention-loop-probe MODEL.gguf [--json PATH]\n\nRuns all 64 native 32-row schedules over positions 0--2047 in one persistent Metal context, completes transformer layers 2 through 42, and applies the exact output head to the retained final row. Even layers 2/4/6/8/10/12/14/16/18/20/22/24/26/28/30/32/34/36/38/40/42 include paired ratio-4 attention/indexer compressors; odd layers 3/5/7/9/11/13/15/17/19/21/23/25/27/29/31/33/35/37/39/41 use ratio-128 attention compressors. Each layer continues through dense mixed attention, biased top-6 routed/shared experts, and its additive final HC update. Every retained transformer boundary and all 129,280 output logits must match repeated DwarfStar captures bit-for-bit. The 2,064 logical odd-layer keys use a 2,112-row masked physical extent required by the 64-row FlashAttention block contract. Exactly 512 ratio-4 rows remain on the dense path at this prompt boundary. This claims complete native batched model prefill and exact greedy selection, but not sparse post-prompt ratio-4 attention or throughput."
 }
 
 fn ingress_probe_usage() -> &'static str {
@@ -4180,11 +4189,11 @@ fn position127_decoder_probe_usage() -> &'static str {
 }
 
 fn cold_prefill_decoder_probe_usage() -> &'static str {
-    "usage: rust-star cold-prefill-decoder-probe MODEL.gguf [--json PATH]\n\nStarts from empty Rust-owned raw and compressed cache state, evaluates the one-token raw oracle prompt at position 0, and requires its full logits to match DwarfStar bit-for-bit before committing token 201. It then reproduces the complete 128-token transcript, final logits, and live layer-3/layer-5 ratio-128 rows. This removes captured initial state but remains diagnostic until native batched prefill and sparse indexed decode exist."
+    "usage: rust-star cold-prefill-decoder-probe MODEL.gguf [--json PATH]\n\nStarts from empty Rust-owned raw and compressed cache state, evaluates the one-token raw oracle prompt at position 0, and requires its full logits to match DwarfStar bit-for-bit before committing token 201. It then reproduces the complete 128-token transcript, final logits, and live layer-3/layer-5 ratio-128 rows. This removes captured initial state but remains an ineligible one-token prefill control; exact native 2K batched prefill exists separately, and its sparse post-prompt decode handoff remains pending."
 }
 
 fn prefill_frontier_probe_usage() -> &'static str {
-    "usage: rust-star prefill-frontier-probe MODEL.gguf [--json PATH]\n\nStarts from empty Rust-owned state, sequentially evaluates the canonical 2048-token oracle prefix through all 43 layers, retains a 128-row raw-KV ring plus context-sized compressed memory, and requires the final logits to match two fresh DwarfStar one-token decode replays bit-for-bit. It also preserves and reports the expected divergence from DwarfStar's batched-prefill logits, so this remains ineligible until native batched prefill and sparse indexed attention are implemented."
+    "usage: rust-star prefill-frontier-probe MODEL.gguf [--json PATH]\n\nStarts from empty Rust-owned state, sequentially evaluates the canonical 2048-token oracle prefix through all 43 layers, retains a 128-row raw-KV ring plus context-sized compressed memory, and requires the final logits to match two fresh DwarfStar one-token decode replays bit-for-bit. It also preserves and reports the expected divergence from DwarfStar's batched-prefill logits. This remains an ineligible sequential-replay control; the exact native batched path exists separately, and its sparse post-prompt decode handoff remains pending."
 }
 
 fn ratio128_compressor_replay_probe_usage() -> &'static str {

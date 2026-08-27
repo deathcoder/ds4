@@ -41101,15 +41101,27 @@ int rust_star_metal_run_output_head(
         if (!ensure_attention_ingress_pipelines(context, error, error_bytes) ||
             !ensure_q8_projection_pipeline(context, error, error_bytes) ||
             !ensure_moe_output_pipelines(context, error, error_bytes)) return 0;
-        if (!context.chainedReady || context.chainedFinalLayer != 42u) {
+        id<MTLBuffer> input_hc = nil;
+        NSUInteger input_hc_offset = 0u;
+        if (context.chainedReady && context.chainedFinalLayer == 42u) {
+            input_hc = context.activationBufferCache[
+                layer_buffer_key(@"layer_hc_state", YES, 42u)];
+            if (!input_hc || input_hc.length != hc_dim*sizeof(float)) {
+                return fail_with_message(error, error_bytes,
+                    @"output head could not find the retained decode layer-42 HC state");
+            }
+        } else if (context.prefillLayer42AfterFfnHc) {
+            const NSUInteger prefill_rows = 2048u;
+            const NSUInteger prefill_hc_bytes = prefill_rows*hc_dim*sizeof(float);
+            input_hc = context.prefillLayer42AfterFfnHc;
+            if (input_hc.length != prefill_hc_bytes) {
+                return fail_with_message(error, error_bytes,
+                    @"output head found an invalid retained prefill layer-42 HC state");
+            }
+            input_hc_offset = (prefill_rows-1u)*hc_dim*sizeof(float);
+        } else {
             return fail_with_message(error, error_bytes,
-                @"output head requires a completed layers-0-through-42 chain");
-        }
-        id<MTLBuffer> input_hc =
-            context.activationBufferCache[layer_buffer_key(@"layer_hc_state", YES, 42u)];
-        if (!input_hc || input_hc.length != hc_dim*sizeof(float)) {
-            return fail_with_message(error, error_bytes,
-                @"output head could not find the retained layer-42 HC state");
+                @"output head requires a completed decode or 2K prefill layers-0-through-42 chain");
         }
 
         NSUInteger inner[5] = {0};
@@ -41193,9 +41205,9 @@ int rust_star_metal_run_output_head(
 
         [encoder setComputePipelineState:context.rmsNormF32Pipeline];
         [encoder setBytes:&plain_norm length:sizeof(plain_norm) atIndex:0];
-        [encoder setBuffer:input_hc offset:0 atIndex:1];
-        [encoder setBuffer:input_hc offset:0 atIndex:2];
-        [encoder setBuffer:input_hc offset:0 atIndex:3];
+        [encoder setBuffer:input_hc offset:input_hc_offset atIndex:1];
+        [encoder setBuffer:input_hc offset:input_hc_offset atIndex:2];
+        [encoder setBuffer:input_hc offset:input_hc_offset atIndex:3];
         [encoder setBuffer:flat_buffer offset:0 atIndex:4];
         [encoder setThreadgroupMemoryLength:32u*sizeof(float) atIndex:0];
         [encoder dispatchThreadgroups:MTLSizeMake(1,1,1)
@@ -41221,7 +41233,7 @@ int rust_star_metal_run_output_head(
 
         [encoder setComputePipelineState:context.outputHcSumNormPipeline];
         [encoder setBytes:&sum_norm length:sizeof(sum_norm) atIndex:0];
-        [encoder setBuffer:input_hc offset:0 atIndex:1];
+        [encoder setBuffer:input_hc offset:input_hc_offset atIndex:1];
         [encoder setBuffer:weights_buffer offset:0 atIndex:2];
         [encoder setBuffer:hc_buffer offset:0 atIndex:3];
         [encoder setBuffer:norm_weight offset:inner[3] atIndex:4];
