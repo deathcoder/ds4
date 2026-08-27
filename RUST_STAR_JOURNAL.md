@@ -307,12 +307,13 @@ history; add a correction and update the current-state summary.
   then through layer 38's complete paired ratio-4 attention/indexer path, and
   then through layer 39's complete ratio-128 path, and then through layer 40's
   complete paired ratio-4 attention/indexer path, and then through layer 41's
-  complete ratio-128 path.
-  All retained layer-7 through layer-41 boundaries, full
+  complete ratio-128 path, and then through layer 42's complete paired ratio-4
+  attention/indexer path.
+  All retained layer-7 through layer-42 boundaries, full
   attention outputs, compressor states, and full HC
   identities match fresh DwarfStar processes exactly, establishing complete
-  native layers 0–41 at the same prompt boundary with 1,184/1,184 no-copy
-  mappings across 2,302 terminal dispatches. A separate
+  native transformer layers 0–42 at the same prompt boundary with 1,216/1,216
+  no-copy mappings across 2,372 terminal dispatches. A separate
   layer-2 position-2051 diagnostic now covers the complete ratio-4 sparse
   mechanism: F16 indexer projections, compressed RoPE, indexer QAT, direct
   scores, exact descending top-512 selection, the 12-way indexed mixed
@@ -590,8 +591,9 @@ history; add a correction and update the current-state summary.
 
 ## Immediate Next Actions
 
-1. Continue the exact batched-prefill frontier through layer 42 while preserving
-   every retained layers-0–41 boundary as a regression control.
+1. Integrate the output head with the exact native layers-0–42 batched-prefill
+   frontier while preserving every retained transformer boundary as a
+   regression control.
 2. Preserve the complete retained position-8195 decoder step, isolated
    513/1,025-row probes, and retained-state row-1,025/2,049 controls as
    independent sparse regressions.
@@ -604,6 +606,55 @@ history; add a correction and update the current-state summary.
 6. Run or approve the fork's GitHub Actions workflow and retain its URL.
 
 ## Entries
+
+### 2026-08-27 — Exact complete layer-42 full-2K transformer prefill
+
+Objective:
+
+- Carry layer 41's retained final HC through the final transformer layer's
+  complete native prefill path and validate the even-layer paired ratio-4
+  attention/indexer compressors independently against DwarfStar.
+
+Evidence:
+
+- Captured 31 layer-42 tensors from ten sequential fresh DwarfStar processes
+  over the canonical 2,048-token prompt. Every first/second capture pair was
+  bitwise identical, all ten measurement CSVs were complete, and no capture
+  log contained an error or mismatch. The capture used the preserved oracle
+  executable with SHA-256 `55a39062aa8a88c7301f0992dc23a44157e5327137371204822ae5a48e213c51`,
+  isolated from the separately active DSpark worktree.
+- Imported four SHA-256-pinned differential fixtures covering Q/KV, both
+  ratio-4 compressors and recurrent states, dense mixed attention, FFN, and
+  both additive HC updates, chained from the layer-41 complete fixture.
+  Together they retain 53,134,848 verified bytes.
+- Extended the persistent Metal context with 32 no-copy layer-42 mappings and
+  70 dispatches, taking the terminal schedule to 2,372 dispatches and
+  1,216/1,216 pointer matches.
+- The optimized focused M1 correctness run matched every retained tensor and
+  the full layer-42 attention/HC checksums bit-for-bit, reporting 20845.548 ms
+  wall / 20741.050 ms GPU. This includes exhaustive correctness readback and
+  is not a throughput claim.
+- The complete target-model regression repeated the 2K layers 0–42 schedule
+  at 35813.130 ms wall / 35048.038 ms GPU with all 2,372 terminal dispatches
+  and 1,216/1,216 no-copy mappings intact. The separate sequential frontier
+  remained decode-replay C0 exact at 21.283 tokens/s over 96226.723 ms; its
+  captured-state schedule is explicitly ineligible for a throughput claim.
+- All 284 Rust tests and all 62 Python tests passed. The complete pinned
+  differential corpus, all four new fixture bundles, strict target-model
+  inspection, retained sparse controls, decoder/logit controls, and runtime
+  benchmarks passed the one-command Mac Studio gate.
+
+Decision:
+
+- The exact native full-2K transformer prefill frontier is now complete
+  through all layers 0–42. Output-head integration, complete-model native
+  batched prefill, output logits, and a throughput-producing path remain
+  outside this claim.
+
+Next:
+
+- Integrate the exact output head with the retained layer-42 final HC while
+  preserving every transformer boundary as a regression control.
 
 ### 2026-08-27 — Exact complete layer-41 full-2K prefill
 
