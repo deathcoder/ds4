@@ -61,11 +61,11 @@ history; add a correction and update the current-state summary.
   layer-segment, and decode-step scopes with strict tensor shape, path,
   finiteness, size, and hash verification.
 - Benchmarking: `rust-star/BENCHMARK_PROTOCOL.md` fixes the v1 paired workload,
-  eligibility, run ordering, aggregation, and capacity semantics; execution
-  awaits the target Mac and a runnable candidate. The paired raw/summary JSON
-  contract and offline validator/aggregator are implemented and synthetically
-  tested. A fresh-process DwarfStar adapter now normalizes one frontier while
-  externally recording wall time and peak RSS. The checkpointed paired runner
+  eligibility, run ordering, aggregation, and capacity semantics. The paired
+  raw/summary JSON contract and offline validator/aggregator are implemented
+  and synthetically tested. A fresh-process DwarfStar adapter now normalizes
+  one frontier while externally recording wall time and peak RSS. The
+  checkpointed paired runner
   enforces warm-up, A/B and context ordering, explicit retries, and final
   validated export through an engine-neutral contract. Rust Star now has a
   fresh-process adapter and a raw `rust-star-engine-run-v1` producer for the
@@ -74,9 +74,12 @@ history; add a correction and update the current-state summary.
   raw run whose prefill/generation collection, transcript, or scheduler
   metadata is inconsistent. Native prefill now has a separate execution-only
   mode that retains its GPU state while omitting diagnostic fixture decoding,
-  host boundary allocation, and boundary copies. The initial target-Mac 2K/128
-  artifact passed the adapter's paired-eligibility checks; repeated paired A/B
-  execution remains pending.
+  host boundary allocation, and boundary copies. The first five-pair target-Mac
+  2K/128 development comparison completed without retries or invalid attempts.
+  Rust Star's paired median was 0.7534x DwarfStar for steady decode, 0.3083x for
+  complete generation, and 0.4133x for prefill. The first-token wall interval
+  was 225.84x the oracle median pairwise ratio, making cold decoder transition
+  work the clearest immediate bottleneck.
 - Implementation: dependency-free Rust host scaffold under `rust-star/runtime/`
   strictly parses GGUF v3 directories, validates the Flash resident-Q2
   shape/recipe, and writes candidate full-logit artifacts. A macOS-only
@@ -618,9 +621,10 @@ history; add a correction and update the current-state summary.
 
 ## Immediate Next Actions
 
-1. Run the checkpointed paired DwarfStar/Rust Star protocol at 2K/128 with the
-   new eligible Rust Star adapter artifact, preserving alternating process
-   order and all raw evidence before drawing a throughput conclusion.
+1. Isolate the 10.95-second median Rust Star first generated step into command
+   preparation, Metal pipeline/weight warm-up, transformer execution, output
+   head, and sampling without adding instrumentation to a timed pair. Reuse or
+   warm the exact production resources before the declared generation interval.
 2. Preserve the exact 2K-to-position-4099 native handoff, complete retained
    position-8195 decoder step, isolated
    513/1,025-row probes, and retained-state row-1,025/2,049 controls as
@@ -632,6 +636,70 @@ history; add a correction and update the current-state summary.
 5. Run or approve the fork's GitHub Actions workflow and retain its URL.
 
 ## Entries
+
+### 2026-08-27 — First checkpointed C0 paired 2K/128 comparison complete
+
+Objective:
+
+- Replace single-run bring-up numbers with the predeclared five-pair,
+  alternating-order development comparison against the pinned DwarfStar oracle.
+
+Changes and evidence:
+
+- Corrected the paired runner's warm-up to use the plan's declared generation
+  length. The prior hardcoded eight-token warm-up was incompatible with the
+  intentionally narrow exact 2K/128 candidate. The protocol requires an untimed
+  smallest-context warm-up but does not require a shorter generation. The
+  checkpoint/resume test now verifies both warm-up artifacts use 128 tokens.
+- Committed that runner-only change as `983d5f3`, rebuilt the unchanged Rust
+  runtime release binary, and passed all 68 Python tests. The candidate
+  executable SHA-256 remained
+  `0754a2e3edf8563002b4d83d8642f1aef85bc7426f1d2dd2109a95ecc1975822`.
+- Froze an immutable local plan with SHA-256
+  `4eeee3a90e830ccfc446e6762a8ad55a34c1792b3d484b2ef6f702f5665b81da`.
+  It binds source commits/trees, exact executable/model/prompt hashes, explicit
+  build/runtime configurations, the privacy-filtered host manifest, and the C0
+  correctness manifest.
+- Both full-length warm-ups passed. All five timed 2K/128 pairs completed in
+  alternating `AB`, `BA`, `AB`, `BA`, `AB` order with zero failures, retries,
+  invalid attempts, capacity events, or recorded macOS thermal/performance
+  warnings.
+- Rust Star steady decode had median 17.493423061 tok/s (MAD 0.425360410,
+  range 17.068062651--19.317236451) versus DwarfStar 22.95 tok/s (MAD 0.27,
+  range 22.64--24.03). The within-pair candidate/oracle median was 0.753377393x
+  (MAD 0.005669741, range 0.747707652--0.803880002).
+- Complete generation, which includes the first generated step, measured a
+  paired median 0.308332588x (range 0.298489542--0.319406508). Rust Star's
+  median was 7.041875502 tok/s versus DwarfStar's 22.60 tok/s.
+- Prefill measured a paired median 0.413274711x (range
+  0.375442069--0.493098704). Rust Star's raw median was 74.480368506 tok/s
+  versus DwarfStar's 178.29 tok/s.
+- Rust Star's first generated step took a 10,952.916750 ms median versus
+  DwarfStar's 49.088 ms. The within-pair latency ratio was 225.843754304x
+  (range 210.176285188--237.544243664), explaining why its complete-generation
+  ratio is far below its steady-state ratio.
+- Finalization rehashed every measurement. Independent aggregation reproduced
+  the byte-identical summary. Raw SHA-256 is
+  `b8daf73a1ef556d9181e0100fe9dadec0c6d65c14d798121440d1e5548571997`;
+  summary SHA-256 is
+  `7ebc757a361584de75ae452ce757a4d683a0b5343f709948ad4b40c6c7ed5c78`.
+  Complete private-path evidence remains under
+  `rust-star/.work/paired-2k-128-983d5f3/` and is intentionally untracked.
+
+Decision:
+
+- This is valid C0 development evidence at 2K, not the protocol's publishable
+  256K primary claim. Rust Star is currently slower at every user-visible
+  metric. Preserve the negative result and optimize from its measured shape:
+  first remove the cold decoder-transition penalty, then improve native prefill
+  and the remaining roughly 25% steady-decode gap.
+
+Next:
+
+- Add a correctness-neutral diagnostic around the first post-prefill decoder
+  step to distinguish resource/pipeline warm-up and weight residency from real
+  transformer/output-head execution. Keep the paired interval unchanged and
+  rerun the five-pair plan only after a measured fix.
 
 ### 2026-08-27 — Timing-only native prefill reached an eligible 2K/128 measurement
 

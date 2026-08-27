@@ -325,9 +325,12 @@ The same first-boundary schedule is wired into retained even-layer state with
 35 no-copy model mappings, and a complete retained position-8195 decoder step
 now executes all 43 layers through that branch and matches full-vocabulary
 logits exactly. Exact sparse post-prompt integration is now complete through
-position 4099 via the GPU-only native-prefill handoff. An initial eligible Rust
-Star engine measurement is complete; a repeated paired DwarfStar/Rust Star
-throughput comparison remains pending.
+position 4099 via the GPU-only native-prefill handoff. The first checkpointed
+five-pair C0 development comparison at 2K/128 is complete. Rust Star measured a
+0.7534x paired median for steady decode, 0.3083x for complete generation, and
+0.4133x for prefill. Its 10.95-second median first generated step is now the
+primary optimization target; this development result is not the protocol's
+256K headline claim.
 
 Project controls and benchmark contracts:
 
