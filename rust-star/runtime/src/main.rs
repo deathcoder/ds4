@@ -809,13 +809,15 @@ fn run_engine_measurement_command(arguments: Vec<OsString>) -> Result<()> {
     let report = run_engine_measurement(&model, context_tokens, gen_tokens)?;
     write_engine_run_file(&json_path, &report)?;
     println!(
-        "Rust Star development measurement: prefill {:.3} tok/s, generation {:.3} tok/s, steady {:.3} tok/s",
+        "Rust Star eligible measurement: prefill {:.3} tok/s, generation {:.3} tok/s, steady {:.3} tok/s",
         f64::from(report.context) * 1000.0 / report.prefill_ms,
         f64::from(report.gen_tokens) * 1000.0 / report.gen_ms,
         f64::from(report.gen_steady_tokens) * 1000.0 / report.gen_steady_ms,
     );
-    println!("correctness: exact 128-token oracle transcript; generation collection disabled");
-    println!("paired protocol: ineligible until native prefill boundary collection is disabled");
+    println!(
+        "correctness: exact 128-token oracle transcript; prefill and generation collection disabled"
+    );
+    println!("paired protocol: eligible");
     println!("json: {}", json_path.display());
     Ok(())
 }
@@ -2632,7 +2634,7 @@ fn run_prefill_layers012_attention_loop_probe_command(arguments: Vec<OsString>) 
         report.output_head.gpu_ms,
         report.output_head.selected_token,
     );
-    println!("scope: complete native batched model prefill through exact full logits and greedy selection at the 2K prompt boundary; every retained transformer boundary remains an independent C0 regression control. Sparse post-prompt top-k integration and an eligible throughput claim remain pending");
+    println!("scope: complete native batched model prefill through exact full logits and greedy selection at the 2K prompt boundary; every retained transformer boundary remains an independent C0 regression control. Sparse post-prompt integration and timing are validated by separate commands");
     if let Some(path) = json_path {
         write_prefill_layers012_attention_loop_probe_file(&path, &report)?;
         println!("json: {}", path.display());
@@ -4396,7 +4398,7 @@ fn prefill_decode_frontier_probe_usage() -> &'static str {
 }
 
 fn engine_measurement_usage() -> &'static str {
-    "usage: rust-star engine-measure MODEL.gguf --context 2048 --gen-tokens 128 --json PATH\n\nRuns the exact native 2K prefill and a timed 128-token closed loop. Generation command encoding, synchronized execution, lowest-ID argmax, and token commitment are timed without tensor comparison or boundary collection. The initial producer remains paired-ineligible because native prefill still materializes diagnostic tensors outside its GPU intervals."
+    "usage: rust-star engine-measure MODEL.gguf --context 2048 --gen-tokens 128 --json PATH\n\nRuns the exact native 2K prefill and a timed 128-token closed loop. Prefill and generation execute without diagnostic tensor collection. Command encoding, synchronized execution, lowest-ID argmax, and token commitment are included in their declared intervals. The selected-token transcript is validated after timing, and the raw record is eligible for the paired adapter only when both collection paths remain disabled."
 }
 
 fn ratio128_compressor_replay_probe_usage() -> &'static str {

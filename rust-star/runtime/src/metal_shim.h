@@ -715,6 +715,7 @@ int rust_star_metal_run_prefill_layer0_boundary(
     float *next_hc_collapsed,
     float *next_attn_norm,
     float *next_q_lora,
+    uint32_t collect_outputs,
     rust_star_metal_prefill_layer0_probe_result *result,
     char *error,
     size_t error_bytes);
@@ -1814,6 +1815,7 @@ int rust_star_metal_run_prefill_layer2_attention(
     float *layer42_router_weights_final_tile,
     float *layer42_routed_out_final_tile,
     float *layer42_shared_out_final_tile,
+    uint32_t collect_outputs,
     rust_star_metal_prefill_layer2_attention_result *result,
     char *error,
     size_t error_bytes);

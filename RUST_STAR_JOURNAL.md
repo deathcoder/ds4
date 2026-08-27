@@ -72,8 +72,11 @@ history; add a correction and update the current-state summary.
   exact 2K/128 path. Generation uses timing-only submission and validates the
   selected-token transcript afterward. The adapter independently rejects any
   raw run whose prefill/generation collection, transcript, or scheduler
-  metadata is inconsistent. The producer remains deliberately paired-ineligible
-  because native prefill still retains its exhaustive boundary collection.
+  metadata is inconsistent. Native prefill now has a separate execution-only
+  mode that retains its GPU state while omitting diagnostic fixture decoding,
+  host boundary allocation, and boundary copies. The initial target-Mac 2K/128
+  artifact passed the adapter's paired-eligibility checks; repeated paired A/B
+  execution remains pending.
 - Implementation: dependency-free Rust host scaffold under `rust-star/runtime/`
   strictly parses GGUF v3 directories, validates the Flash resident-Q2
   shape/recipe, and writes candidate full-logit artifacts. A macOS-only
@@ -615,10 +618,9 @@ history; add a correction and update the current-state summary.
 
 ## Immediate Next Actions
 
-1. Split native 2K prefill execution from its exhaustive diagnostic fixture and
-   output collection, preserving the exact C0 probe as a separate gate. Then
-   mark the existing 2K/128 producer eligible and run it through the Rust Star
-   adapter.
+1. Run the checkpointed paired DwarfStar/Rust Star protocol at 2K/128 with the
+   new eligible Rust Star adapter artifact, preserving alternating process
+   order and all raw evidence before drawing a throughput conclusion.
 2. Preserve the exact 2K-to-position-4099 native handoff, complete retained
    position-8195 decoder step, isolated
    513/1,025-row probes, and retained-state row-1,025/2,049 controls as
@@ -630,6 +632,59 @@ history; add a correction and update the current-state summary.
 5. Run or approve the fork's GitHub Actions workflow and retain its URL.
 
 ## Entries
+
+### 2026-08-27 — Timing-only native prefill reached an eligible 2K/128 measurement
+
+Objective:
+
+- Remove exhaustive prefill boundary collection from measured execution while
+  preserving the exact complete-model C0 command unchanged.
+
+Changes and evidence:
+
+- Added an explicit `collect_outputs` boundary to both native prefill Metal
+  ABIs. Diagnostic callers still validate every output pointer and copy every
+  retained tensor; timing callers execute the same command schedules while
+  retaining only GPU-owned decoder state.
+- The Rust timing path does not decode diagnostic output fixtures or allocate
+  their host tensors. It transfers only final output-head logits for mandatory
+  lowest-ID argmax and validates the complete selected-token transcript after
+  all generation intervals.
+- The unchanged `prefill-layers012-attention-loop-probe` passed on the M1 Ultra:
+  2,372 transformer dispatches, 1,216/1,216 no-copy model ranges, 17,772.379 ms
+  wall time, exact full logits, and selected token 15,342. Its JSON SHA-256 is
+  `df1c7eedb4e1a7079c470d1575618088239aa113b1ad83e9c1a02e413f4f7577`.
+- The first timing attempt failed safely before Metal work on one remaining
+  diagnostic raw-cache slice. The guarded retry passed `measure_ruststar.py`
+  with both collection flags false, 44 command buffers and two waits per
+  generated token, and the exact 128-token oracle transcript.
+- The clean eligible single-run artifact reported 90.668305877 prefill tok/s,
+  7.775007935 generation tok/s including the first step, and 18.406557599
+  steady tok/s. Intervals were 22,587.826917 ms prefill, 9,563.290792 ms first
+  generation step, and 6,899.714915 ms for the remaining 127 tokens. The normalized
+  measurement SHA-256 is
+  `6fb9f647ff6926b784f2dd377672f29577181afec8792c3621205bbe8714bca6`.
+- The adapter recorded 73,873.229625 ms complete-process wall time and
+  121,602,048 bytes child peak RSS. This is the adapter's host RSS field, not a
+  claim about total Metal/unified-memory residency.
+- The complete host-runtime gate passed: formatting, 287 Rust tests, optimized
+  macOS build, the M1 Ultra dispatch probe, 68 Python tests, every pinned
+  differential fixture, the Rust/Python artifact smoke test, all native prefill
+  controls, the full 2K-to-position-4099 handoff, retained sparse controls, and
+  the steady-state diagnostic benches.
+
+Decision:
+
+- The raw producer may now set `paired_protocol_eligible: true`; the adapter
+  still fails closed if either collection flag, transcript, scheduler metadata,
+  or blocker field is inconsistent. The exact C0 command remains an independent
+  regression control and is not replaced by transcript validation.
+
+Next:
+
+- Run the checkpointed alternating-order DwarfStar/Rust Star A/B plan at
+  2K/128. Treat this single Rust Star run as bring-up evidence, not a comparative
+  performance conclusion.
 
 ### 2026-08-27 — Rust Star measurement boundary added; prefill collection isolated as blocker
 

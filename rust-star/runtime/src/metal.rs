@@ -10683,6 +10683,7 @@ fn prefill_layer3_attention_diagnostics_fixture() -> Result<[Vec<f32>; 3]> {
     Ok(tensors)
 }
 
+#[derive(Default)]
 struct PrefillLayer3CompleteFixture {
     ffn_cur: Vec<f32>,
     ffn_norm: Vec<f32>,
@@ -19322,6 +19323,7 @@ mod imp {
             next_hc_collapsed: *mut f32,
             next_attn_norm: *mut f32,
             next_q_lora: *mut f32,
+            collect_outputs: u32,
             result: *mut RawPrefillLayer0ProbeResult,
             error: *mut c_char,
             error_bytes: usize,
@@ -20400,6 +20402,7 @@ mod imp {
             layer42_router_weights_final_tile: *mut f32,
             layer42_routed_out_final_tile: *mut f32,
             layer42_shared_out_final_tile: *mut f32,
+            collect_outputs: u32,
             result: *mut RawPrefillLayer2AttentionResult,
             error: *mut c_char,
             error_bytes: usize,
@@ -21752,6 +21755,7 @@ mod imp {
         include_layer2_kvnorm: bool,
         include_layer2_kv_state: bool,
         include_layer2_compressors: bool,
+        collect_outputs: bool,
     ) -> Result<(
         PrefillLayer0BoundaryProbeReport,
         Option<[u64; 3]>,
@@ -21828,8 +21832,12 @@ mod imp {
         } else {
             None
         };
-        let (mut tokens, expected_collapsed, expected_attn_norm) = prefill_hc_ingress_fixture()?;
-        if !final_tile {
+        let (mut tokens, expected_collapsed, expected_attn_norm) = if collect_outputs {
+            prefill_hc_ingress_fixture()?
+        } else {
+            (Vec::new(), Vec::new(), Vec::new())
+        };
+        if !collect_outputs || !final_tile {
             let full_tokens = decode_u32_fixture(
                 PREFILL_FRONTIER_2048_TOKEN_IDS_BYTES,
                 "prefill frontier token IDs",
@@ -21837,43 +21845,62 @@ mod imp {
             tokens = full_tokens[position_start as usize..position_start as usize + 32].to_vec();
         }
         let [qkv_attn_norm, expected_q, expected_q_norm, expected_kv_raw, expected_kv_norm, expected_q_raw, expected_q_cur] =
-            prefill_qkv_boundary_fixture()?;
-        let [expected_kv_rope, expected_kv_cur, expected_raw_cache_tile] =
-            prefill_kv_state_fixture()?;
+            if collect_outputs {
+                prefill_qkv_boundary_fixture()?
+            } else {
+                Default::default()
+            };
+        let [expected_kv_rope, expected_kv_cur, expected_raw_cache_tile] = if collect_outputs {
+            prefill_kv_state_fixture()?
+        } else {
+            Default::default()
+        };
         let [mut expected_kv_prefix, expected_attention_output, expected_attention_back] =
-            prefill_attention_read_fixture()?;
+            if collect_outputs {
+                prefill_attention_read_fixture()?
+            } else {
+                Default::default()
+            };
         expected_kv_prefix.truncate(position_start as usize * 512);
         let [expected_attention_low, expected_attention_projected, expected_attention_hc_post] =
-            prefill_attention_output_fixture()?;
-        let (expected_ffn, expected_selected) = prefill_ffn_output_fixture()?;
-        let expected_layer1 = if include_layer1 {
+            if collect_outputs {
+                prefill_attention_output_fixture()?
+            } else {
+                Default::default()
+            };
+        let (expected_ffn, expected_selected) = if collect_outputs {
+            prefill_ffn_output_fixture()?
+        } else {
+            Default::default()
+        };
+        let expected_layer1 = if collect_outputs && include_layer1 {
             Some(prefill_layer1_ingress_fixture()?)
         } else {
             None
         };
-        let expected_complete_layer1 = if complete_layer1 {
+        let expected_complete_layer1 = if collect_outputs && complete_layer1 {
             Some(prefill_layer1_complete_fixture()?)
         } else {
             None
         };
-        let expected_previous_tile = if previous_fixture_tile {
+        let expected_previous_tile = if collect_outputs && previous_fixture_tile {
             Some(prefill_layers01_previous_tile_fixture()?)
         } else {
             None
         };
-        let expected_layer2_kvnorm = if include_layer2_kvnorm {
+        let expected_layer2_kvnorm = if collect_outputs && include_layer2_kvnorm {
             let full = prefill_layer2_kvnorm_fixture()?;
             let start = position_start as usize * 512;
             Some(full[start..start + 32 * 512].to_vec())
         } else {
             None
         };
-        let expected_layer2_kv_state = if include_layer2_kv_state {
+        let expected_layer2_kv_state = if collect_outputs && include_layer2_kv_state {
             Some(prefill_layer2_kv_state_fixture()?)
         } else {
             None
         };
-        let expected_layer2_compressors = if include_layer2_compressors {
+        let expected_layer2_compressors = if collect_outputs && include_layer2_compressors {
             Some(prefill_layer2_compressor_fixture()?)
         } else {
             None
@@ -22105,6 +22132,11 @@ mod imp {
         } else {
             None
         };
+        macro_rules! vec {
+            ($value:expr; $length:expr) => {
+                std::vec![$value; if collect_outputs { $length } else { 0 }]
+            };
+        }
         let mut actual_collapsed = vec![0.0_f32; expected_collapsed.len()];
         let mut actual_attn_norm = vec![0.0_f32; expected_attn_norm.len()];
         let mut actual_q = vec![0.0_f32; expected_q.len()];
@@ -22270,6 +22302,8 @@ mod imp {
                 },
                 if let Some(expected) = expected_layer2_kv_state.as_ref() {
                     expected[1].as_ptr()
+                } else if include_layer2_kv_state {
+                    actual_layer2_kv_cur.as_ptr()
                 } else {
                     ptr::null()
                 },
@@ -22305,11 +22339,15 @@ mod imp {
                 },
                 if let Some(expected) = expected_layer2_compressors.as_ref() {
                     expected[0].as_ptr()
+                } else if include_layer2_compressors {
+                    actual_layer2_attn_compressed.as_ptr()
                 } else {
                     ptr::null()
                 },
                 if let Some(expected) = expected_layer2_compressors.as_ref() {
                     expected[3].as_ptr()
+                } else if include_layer2_compressors {
+                    actual_layer2_indexer_compressed.as_ptr()
                 } else {
                     ptr::null()
                 },
@@ -22361,6 +22399,7 @@ mod imp {
                 } else {
                     ptr::null_mut()
                 },
+                u32::from(collect_outputs),
                 &mut raw,
                 error.as_mut_ptr(),
                 error.len(),
@@ -22418,7 +22457,7 @@ mod imp {
                 "Metal prefill boundary returned an unexpected schedule or mapping",
             ));
         }
-        if final_tile {
+        if collect_outputs && final_tile {
             for (label, actual, expected) in [
                 (
                     "hc_attn_pre",
@@ -22825,12 +22864,14 @@ mod imp {
             }
         }
         let guard_elements = raw.raw_cache_guard_rows as usize * 512;
-        for (index, value) in actual_raw_cache[..guard_elements].iter().enumerate() {
-            if value.to_bits() != (-12345.5_f32).to_bits() {
-                return Err(Error::invalid(format!(
-                    "prefill layer-0 raw-cache guard changed at element {index}: actual={:#010x}",
-                    value.to_bits()
-                )));
+        if collect_outputs {
+            for (index, value) in actual_raw_cache[..guard_elements].iter().enumerate() {
+                if value.to_bits() != (-12345.5_f32).to_bits() {
+                    return Err(Error::invalid(format!(
+                        "prefill layer-0 raw-cache guard changed at element {index}: actual={:#010x}",
+                        value.to_bits()
+                    )));
+                }
             }
         }
         for (name, value) in [("wall_ms", raw.wall_ms), ("gpu_ms", raw.gpu_ms)] {
@@ -22925,7 +22966,7 @@ mod imp {
         model: &MappedModel,
     ) -> Result<PrefillLayer0BoundaryProbeReport> {
         let (report, layer1, complete, layer2, compressors) =
-            run_prefill_boundary_probe(model, 0, 2016, None, 0, false, false, false)?;
+            run_prefill_boundary_probe(model, 0, 2016, None, 0, false, false, false, true)?;
         debug_assert!(layer1.is_none());
         debug_assert!(complete.is_none());
         debug_assert!(layer2.is_none());
@@ -22937,7 +22978,7 @@ mod imp {
         model: &MappedModel,
     ) -> Result<PrefillLayers01BoundaryProbeReport> {
         let (layer0, layer1, complete, layer2, compressors) =
-            run_prefill_boundary_probe(model, 1, 2016, None, 0, false, false, false)?;
+            run_prefill_boundary_probe(model, 1, 2016, None, 0, false, false, false, true)?;
         debug_assert!(complete.is_none());
         debug_assert!(layer2.is_none());
         debug_assert!(compressors.is_none());
@@ -22954,7 +22995,7 @@ mod imp {
         model: &MappedModel,
     ) -> Result<PrefillLayers01CompleteBoundaryProbeReport> {
         let (layer0, layer1, complete, layer2, compressors) =
-            run_prefill_boundary_probe(model, 2, 2016, None, 0, false, false, false)?;
+            run_prefill_boundary_probe(model, 2, 2016, None, 0, false, false, false, true)?;
         debug_assert!(layer2.is_none());
         debug_assert!(compressors.is_none());
         Ok(PrefillLayers01CompleteBoundaryProbeReport {
@@ -22976,7 +23017,7 @@ mod imp {
         model: &MappedModel,
     ) -> Result<PrefillLayers01RowCoverageProbeReport> {
         let (previous, previous_ingress, previous_complete, layer2, compressors) =
-            run_prefill_boundary_probe(model, 2, 1984, None, 0, false, false, false)?;
+            run_prefill_boundary_probe(model, 2, 1984, None, 0, false, false, false, true)?;
         debug_assert!(layer2.is_none());
         debug_assert!(compressors.is_none());
         let previous_ingress = previous_ingress.ok_or_else(|| {
@@ -23014,7 +23055,17 @@ mod imp {
     ) -> Result<PrefillLayers01LiveKvChainProbeReport> {
         let context = Context::new()?;
         let (previous, previous_ingress, previous_complete, first_layer2, first_compressors) =
-            run_prefill_boundary_probe(model, 2, 1984, Some(&context), 1, false, false, false)?;
+            run_prefill_boundary_probe(
+                model,
+                2,
+                1984,
+                Some(&context),
+                1,
+                false,
+                false,
+                false,
+                true,
+            )?;
         debug_assert!(first_layer2.is_none());
         debug_assert!(first_compressors.is_none());
         let previous_ingress = previous_ingress.ok_or_else(|| {
@@ -23025,7 +23076,17 @@ mod imp {
             Error::invalid("live-KV first tile omitted layer-1 completion checksums")
         })?;
         let (final_layer0, final_ingress, final_complete, final_layer2, final_compressors) =
-            run_prefill_boundary_probe(model, 2, 2016, Some(&context), 2, false, false, false)?;
+            run_prefill_boundary_probe(
+                model,
+                2,
+                2016,
+                Some(&context),
+                2,
+                false,
+                false,
+                false,
+                true,
+            )?;
         debug_assert!(final_layer2.is_none());
         debug_assert!(final_compressors.is_none());
         if previous.position_start + previous.rows as u32 != final_layer0.position_start {
@@ -23087,6 +23148,7 @@ mod imp {
                 false,
                 false,
                 false,
+                true,
             )?;
             debug_assert!(layer2.is_none());
             debug_assert!(compressors.is_none());
@@ -23148,6 +23210,7 @@ mod imp {
                     true,
                     false,
                     false,
+                    true,
                 )?;
             debug_assert!(compressors.is_none());
             let layer1 = layer1.ok_or_else(|| {
@@ -23213,6 +23276,7 @@ mod imp {
                 true,
                 true,
                 false,
+                true,
             )?;
             debug_assert!(compressors.is_none());
             let layer1 = layer1.ok_or_else(|| {
@@ -23263,7 +23327,8 @@ mod imp {
     fn run_prefill_layers012_compressor_loop_probe_in_context(
         model: &MappedModel,
         context: &Context,
-    ) -> Result<PrefillLayers012CompressorLoopProbeReport> {
+        collect_outputs: bool,
+    ) -> Result<Option<PrefillLayers012CompressorLoopProbeReport>> {
         let mut tiles = Vec::with_capacity(64);
         let mut layer2_checksums = Vec::with_capacity(64);
         let mut layer2_compressor_checksums = Vec::with_capacity(64);
@@ -23279,29 +23344,32 @@ mod imp {
                 true,
                 true,
                 true,
+                collect_outputs,
             )?;
-            let layer1 = layer1.ok_or_else(|| {
-                Error::invalid("layer-2 compressor loop omitted layer-1 ingress checksums")
-            })?;
-            let complete = complete.ok_or_else(|| {
-                Error::invalid("layer-2 compressor loop omitted layer-1 completion checksums")
-            })?;
-            layer2_checksums.push(layer2.ok_or_else(|| {
-                Error::invalid("layer-2 compressor loop omitted layer-2 KV checksums")
-            })?);
-            layer2_compressor_checksums.push(compressors.ok_or_else(|| {
-                Error::invalid("layer-2 compressor loop omitted compressor checksums")
-            })?);
-            if position_start == 2016 {
-                final_tile = Some(PrefillLayers01CompleteBoundaryProbeReport {
-                    layers01: PrefillLayers01BoundaryProbeReport {
-                        layer0: layer0.clone(),
-                        layer1_fixture_id: PREFILL_LAYER1_INGRESS_FIXTURE_ID,
-                        checksums: layer1,
-                    },
-                    complete_fixture_id: PREFILL_LAYER1_COMPLETE_FIXTURE_ID,
-                    checksums: complete,
-                });
+            if collect_outputs {
+                let layer1 = layer1.ok_or_else(|| {
+                    Error::invalid("layer-2 compressor loop omitted layer-1 ingress checksums")
+                })?;
+                let complete = complete.ok_or_else(|| {
+                    Error::invalid("layer-2 compressor loop omitted layer-1 completion checksums")
+                })?;
+                layer2_checksums.push(layer2.ok_or_else(|| {
+                    Error::invalid("layer-2 compressor loop omitted layer-2 KV checksums")
+                })?);
+                layer2_compressor_checksums.push(compressors.ok_or_else(|| {
+                    Error::invalid("layer-2 compressor loop omitted compressor checksums")
+                })?);
+                if position_start == 2016 {
+                    final_tile = Some(PrefillLayers01CompleteBoundaryProbeReport {
+                        layers01: PrefillLayers01BoundaryProbeReport {
+                            layer0: layer0.clone(),
+                            layer1_fixture_id: PREFILL_LAYER1_INGRESS_FIXTURE_ID,
+                            checksums: layer1,
+                        },
+                        complete_fixture_id: PREFILL_LAYER1_COMPLETE_FIXTURE_ID,
+                        checksums: complete,
+                    });
+                }
             }
             tiles.push(layer0);
         }
@@ -23317,7 +23385,10 @@ mod imp {
                 ));
             }
         }
-        Ok(PrefillLayers012CompressorLoopProbeReport {
+        if !collect_outputs {
+            return Ok(None);
+        }
+        Ok(Some(PrefillLayers012CompressorLoopProbeReport {
             tiles,
             layer2_kvnorm_fixture_id: PREFILL_LAYER2_KVNORM_FIXTURE_ID,
             layer2_kv_state_fixture_id: PREFILL_LAYER2_KV_STATE_FIXTURE_ID,
@@ -23326,14 +23397,15 @@ mod imp {
             layer2_compressor_checksums,
             final_tile: final_tile
                 .ok_or_else(|| Error::invalid("layer-2 compressor loop omitted the final tile"))?,
-        })
+        }))
     }
 
     pub fn run_prefill_layers012_compressor_loop_probe(
         model: &MappedModel,
     ) -> Result<PrefillLayers012CompressorLoopProbeReport> {
         let context = Context::new()?;
-        run_prefill_layers012_compressor_loop_probe_in_context(model, &context)
+        run_prefill_layers012_compressor_loop_probe_in_context(model, &context, true)?
+            .ok_or_else(|| Error::invalid("diagnostic compressor loop omitted its report"))
     }
 
     pub fn run_prefill_layers012_attention_loop_probe(
@@ -23346,249 +23418,328 @@ mod imp {
     fn run_prefill_layers012_attention_loop_probe_with_context(
         model: &MappedModel,
     ) -> Result<(Context, PrefillLayers012AttentionLoopProbeReport)> {
+        let (context, report, _) = run_prefill_layers012_attention_loop_in_context(model, true)?;
+        Ok((
+            context,
+            report.ok_or_else(|| Error::invalid("diagnostic prefill omitted its report"))?,
+        ))
+    }
+
+    fn run_prefill_layers012_attention_loop_in_context(
+        model: &MappedModel,
+        collect_outputs: bool,
+    ) -> Result<(
+        Context,
+        Option<PrefillLayers012AttentionLoopProbeReport>,
+        u32,
+    )> {
         let context = Context::new()?;
-        let compressor = run_prefill_layers012_compressor_loop_probe_in_context(model, &context)?;
-        let expected = prefill_layer2_attention_fixture()?;
-        let expected_hc_final_tile = prefill_layer2_hc_attn_post_final_tile_fixture()?;
-        let expected_ffn_hc_final_tile = prefill_layer2_hc_ffn_post_final_tile_fixture()?;
+        let compressor = run_prefill_layers012_compressor_loop_probe_in_context(
+            model,
+            &context,
+            collect_outputs,
+        )?;
+        macro_rules! diagnostic_fixture {
+            ($value:expr) => {
+                if collect_outputs {
+                    $value?
+                } else {
+                    Default::default()
+                }
+            };
+        }
+        let expected = diagnostic_fixture!(prefill_layer2_attention_fixture());
+        let expected_hc_final_tile =
+            diagnostic_fixture!(prefill_layer2_hc_attn_post_final_tile_fixture());
+        let expected_ffn_hc_final_tile =
+            diagnostic_fixture!(prefill_layer2_hc_ffn_post_final_tile_fixture());
         let (expected_ffn_cur_final_tile, expected_ffn_norm_final_tile) =
-            prefill_layer2_ffn_ingress_final_tile_fixture()?;
+            diagnostic_fixture!(prefill_layer2_ffn_ingress_final_tile_fixture());
         let (expected_router_selected, expected_ffn_outputs) =
-            prefill_layer2_ffn_output_final_tile_fixture()?;
-        let expected_layer3_ingress = prefill_layer3_ingress_final_tile_fixture()?;
-        let expected_layer3_kv_state = prefill_layer3_kv_state_final_tile_fixture()?;
-        let expected_layer3_compressor = prefill_layer3_compressor_fixture()?;
-        let expected_layer3_attention = prefill_layer3_attention_fixture()?;
-        let expected_layer3_attention_diagnostics = prefill_layer3_attention_diagnostics_fixture()?;
-        let expected_layer3_complete = prefill_layer3_complete_final_tile_fixture()?;
-        let expected_layer4_qkv = prefill_layer4_qkv_final_tile_fixture()?;
-        let expected_layer4_compressor = prefill_layer4_compressor_fixture()?;
-        let expected_layer4_attention = prefill_layer4_attention_fixture()?;
-        let expected_layer4_attention_diagnostics = prefill_layer4_attention_diagnostics_fixture()?;
-        let expected_layer4_complete = prefill_layer4_complete_final_tile_fixture()?;
-        let expected_layer5_qkv = prefill_layer5_qkv_final_tile_fixture()?;
-        let expected_layer5_compressor = prefill_layer5_compressor_fixture()?;
-        let expected_layer5_attention = prefill_layer5_attention_fixture()?;
-        let expected_layer5_attention_diagnostics = prefill_layer5_attention_diagnostics_fixture()?;
-        let expected_layer5_complete = prefill_layer5_complete_final_tile_fixture()?;
-        let expected_layer6_qkv = prefill_layer6_qkv_final_tile_fixture()?;
-        let expected_layer6_compressor = prefill_layer6_compressor_fixture()?;
-        let expected_layer6_attention = prefill_layer6_attention_fixture()?;
-        let expected_layer6_attention_diagnostics = prefill_layer6_attention_diagnostics_fixture()?;
-        let expected_layer6_complete = prefill_layer6_complete_final_tile_fixture()?;
-        let expected_layer7_qkv = prefill_layer7_qkv_final_tile_fixture()?;
-        let expected_layer7_compressor = prefill_layer7_compressor_fixture()?;
-        let expected_layer7_attention = prefill_layer7_attention_fixture()?;
-        let expected_layer7_attention_diagnostics = prefill_layer7_attention_diagnostics_fixture()?;
-        let expected_layer7_complete = prefill_layer7_complete_final_tile_fixture()?;
-        let expected_layer8_qkv = prefill_layer8_qkv_final_tile_fixture()?;
-        let expected_layer8_compressor = prefill_layer8_compressor_fixture()?;
-        let expected_layer8_attention = prefill_layer8_attention_fixture()?;
-        let expected_layer8_attention_diagnostics = prefill_layer8_attention_diagnostics_fixture()?;
-        let expected_layer8_complete = prefill_layer8_complete_final_tile_fixture()?;
-        let expected_layer9_qkv = prefill_layer9_qkv_final_tile_fixture()?;
-        let expected_layer9_compressor = prefill_layer9_compressor_fixture()?;
-        let expected_layer9_attention = prefill_layer9_attention_fixture()?;
-        let expected_layer9_attention_diagnostics = prefill_layer9_attention_diagnostics_fixture()?;
-        let expected_layer9_complete = prefill_layer9_complete_final_tile_fixture()?;
-        let expected_layer10_qkv = prefill_layer10_qkv_final_tile_fixture()?;
-        let expected_layer10_compressor = prefill_layer10_compressor_fixture()?;
-        let expected_layer10_attention = prefill_layer10_attention_fixture()?;
+            diagnostic_fixture!(prefill_layer2_ffn_output_final_tile_fixture());
+        let expected_layer3_ingress =
+            diagnostic_fixture!(prefill_layer3_ingress_final_tile_fixture());
+        let expected_layer3_kv_state =
+            diagnostic_fixture!(prefill_layer3_kv_state_final_tile_fixture());
+        let expected_layer3_compressor = diagnostic_fixture!(prefill_layer3_compressor_fixture());
+        let expected_layer3_attention = diagnostic_fixture!(prefill_layer3_attention_fixture());
+        let expected_layer3_attention_diagnostics =
+            diagnostic_fixture!(prefill_layer3_attention_diagnostics_fixture());
+        let expected_layer3_complete =
+            diagnostic_fixture!(prefill_layer3_complete_final_tile_fixture());
+        let expected_layer4_qkv = diagnostic_fixture!(prefill_layer4_qkv_final_tile_fixture());
+        let expected_layer4_compressor = diagnostic_fixture!(prefill_layer4_compressor_fixture());
+        let expected_layer4_attention = diagnostic_fixture!(prefill_layer4_attention_fixture());
+        let expected_layer4_attention_diagnostics =
+            diagnostic_fixture!(prefill_layer4_attention_diagnostics_fixture());
+        let expected_layer4_complete =
+            diagnostic_fixture!(prefill_layer4_complete_final_tile_fixture());
+        let expected_layer5_qkv = diagnostic_fixture!(prefill_layer5_qkv_final_tile_fixture());
+        let expected_layer5_compressor = diagnostic_fixture!(prefill_layer5_compressor_fixture());
+        let expected_layer5_attention = diagnostic_fixture!(prefill_layer5_attention_fixture());
+        let expected_layer5_attention_diagnostics =
+            diagnostic_fixture!(prefill_layer5_attention_diagnostics_fixture());
+        let expected_layer5_complete =
+            diagnostic_fixture!(prefill_layer5_complete_final_tile_fixture());
+        let expected_layer6_qkv = diagnostic_fixture!(prefill_layer6_qkv_final_tile_fixture());
+        let expected_layer6_compressor = diagnostic_fixture!(prefill_layer6_compressor_fixture());
+        let expected_layer6_attention = diagnostic_fixture!(prefill_layer6_attention_fixture());
+        let expected_layer6_attention_diagnostics =
+            diagnostic_fixture!(prefill_layer6_attention_diagnostics_fixture());
+        let expected_layer6_complete =
+            diagnostic_fixture!(prefill_layer6_complete_final_tile_fixture());
+        let expected_layer7_qkv = diagnostic_fixture!(prefill_layer7_qkv_final_tile_fixture());
+        let expected_layer7_compressor = diagnostic_fixture!(prefill_layer7_compressor_fixture());
+        let expected_layer7_attention = diagnostic_fixture!(prefill_layer7_attention_fixture());
+        let expected_layer7_attention_diagnostics =
+            diagnostic_fixture!(prefill_layer7_attention_diagnostics_fixture());
+        let expected_layer7_complete =
+            diagnostic_fixture!(prefill_layer7_complete_final_tile_fixture());
+        let expected_layer8_qkv = diagnostic_fixture!(prefill_layer8_qkv_final_tile_fixture());
+        let expected_layer8_compressor = diagnostic_fixture!(prefill_layer8_compressor_fixture());
+        let expected_layer8_attention = diagnostic_fixture!(prefill_layer8_attention_fixture());
+        let expected_layer8_attention_diagnostics =
+            diagnostic_fixture!(prefill_layer8_attention_diagnostics_fixture());
+        let expected_layer8_complete =
+            diagnostic_fixture!(prefill_layer8_complete_final_tile_fixture());
+        let expected_layer9_qkv = diagnostic_fixture!(prefill_layer9_qkv_final_tile_fixture());
+        let expected_layer9_compressor = diagnostic_fixture!(prefill_layer9_compressor_fixture());
+        let expected_layer9_attention = diagnostic_fixture!(prefill_layer9_attention_fixture());
+        let expected_layer9_attention_diagnostics =
+            diagnostic_fixture!(prefill_layer9_attention_diagnostics_fixture());
+        let expected_layer9_complete =
+            diagnostic_fixture!(prefill_layer9_complete_final_tile_fixture());
+        let expected_layer10_qkv = diagnostic_fixture!(prefill_layer10_qkv_final_tile_fixture());
+        let expected_layer10_compressor = diagnostic_fixture!(prefill_layer10_compressor_fixture());
+        let expected_layer10_attention = diagnostic_fixture!(prefill_layer10_attention_fixture());
         let expected_layer10_attention_diagnostics =
-            prefill_layer10_attention_diagnostics_fixture()?;
-        let expected_layer10_complete = prefill_layer10_complete_final_tile_fixture()?;
-        let expected_layer11_qkv = prefill_layer11_qkv_final_tile_fixture()?;
-        let expected_layer11_compressor = prefill_layer11_compressor_fixture()?;
-        let expected_layer11_attention = prefill_layer11_attention_fixture()?;
+            diagnostic_fixture!(prefill_layer10_attention_diagnostics_fixture());
+        let expected_layer10_complete =
+            diagnostic_fixture!(prefill_layer10_complete_final_tile_fixture());
+        let expected_layer11_qkv = diagnostic_fixture!(prefill_layer11_qkv_final_tile_fixture());
+        let expected_layer11_compressor = diagnostic_fixture!(prefill_layer11_compressor_fixture());
+        let expected_layer11_attention = diagnostic_fixture!(prefill_layer11_attention_fixture());
         let expected_layer11_attention_diagnostics =
-            prefill_layer11_attention_diagnostics_fixture()?;
-        let expected_layer11_complete = prefill_layer11_complete_final_tile_fixture()?;
-        let expected_layer12_qkv = prefill_layer12_qkv_final_tile_fixture()?;
-        let expected_layer12_compressor = prefill_layer12_compressor_fixture()?;
-        let expected_layer12_attention = prefill_layer12_attention_fixture()?;
+            diagnostic_fixture!(prefill_layer11_attention_diagnostics_fixture());
+        let expected_layer11_complete =
+            diagnostic_fixture!(prefill_layer11_complete_final_tile_fixture());
+        let expected_layer12_qkv = diagnostic_fixture!(prefill_layer12_qkv_final_tile_fixture());
+        let expected_layer12_compressor = diagnostic_fixture!(prefill_layer12_compressor_fixture());
+        let expected_layer12_attention = diagnostic_fixture!(prefill_layer12_attention_fixture());
         let expected_layer12_attention_diagnostics =
-            prefill_layer12_attention_diagnostics_fixture()?;
-        let expected_layer12_complete = prefill_layer12_complete_final_tile_fixture()?;
-        let expected_layer13_qkv = prefill_layer13_qkv_final_tile_fixture()?;
-        let expected_layer13_compressor = prefill_layer13_compressor_fixture()?;
-        let expected_layer13_attention = prefill_layer13_attention_fixture()?;
+            diagnostic_fixture!(prefill_layer12_attention_diagnostics_fixture());
+        let expected_layer12_complete =
+            diagnostic_fixture!(prefill_layer12_complete_final_tile_fixture());
+        let expected_layer13_qkv = diagnostic_fixture!(prefill_layer13_qkv_final_tile_fixture());
+        let expected_layer13_compressor = diagnostic_fixture!(prefill_layer13_compressor_fixture());
+        let expected_layer13_attention = diagnostic_fixture!(prefill_layer13_attention_fixture());
         let expected_layer13_attention_diagnostics =
-            prefill_layer13_attention_diagnostics_fixture()?;
-        let expected_layer13_complete = prefill_layer13_complete_final_tile_fixture()?;
-        let expected_layer14_qkv = prefill_layer14_qkv_final_tile_fixture()?;
-        let expected_layer14_compressor = prefill_layer14_compressor_fixture()?;
-        let expected_layer14_attention = prefill_layer14_attention_fixture()?;
+            diagnostic_fixture!(prefill_layer13_attention_diagnostics_fixture());
+        let expected_layer13_complete =
+            diagnostic_fixture!(prefill_layer13_complete_final_tile_fixture());
+        let expected_layer14_qkv = diagnostic_fixture!(prefill_layer14_qkv_final_tile_fixture());
+        let expected_layer14_compressor = diagnostic_fixture!(prefill_layer14_compressor_fixture());
+        let expected_layer14_attention = diagnostic_fixture!(prefill_layer14_attention_fixture());
         let expected_layer14_attention_diagnostics =
-            prefill_layer14_attention_diagnostics_fixture()?;
-        let expected_layer14_complete = prefill_layer14_complete_final_tile_fixture()?;
-        let expected_layer15_qkv = prefill_layer15_qkv_final_tile_fixture()?;
-        let expected_layer15_compressor = prefill_layer15_compressor_fixture()?;
-        let expected_layer15_attention = prefill_layer15_attention_fixture()?;
+            diagnostic_fixture!(prefill_layer14_attention_diagnostics_fixture());
+        let expected_layer14_complete =
+            diagnostic_fixture!(prefill_layer14_complete_final_tile_fixture());
+        let expected_layer15_qkv = diagnostic_fixture!(prefill_layer15_qkv_final_tile_fixture());
+        let expected_layer15_compressor = diagnostic_fixture!(prefill_layer15_compressor_fixture());
+        let expected_layer15_attention = diagnostic_fixture!(prefill_layer15_attention_fixture());
         let expected_layer15_attention_diagnostics =
-            prefill_layer15_attention_diagnostics_fixture()?;
-        let expected_layer15_complete = prefill_layer15_complete_final_tile_fixture()?;
-        let expected_layer16_qkv = prefill_layer16_qkv_final_tile_fixture()?;
-        let expected_layer16_compressor = prefill_layer16_compressor_fixture()?;
-        let expected_layer16_attention = prefill_layer16_attention_fixture()?;
+            diagnostic_fixture!(prefill_layer15_attention_diagnostics_fixture());
+        let expected_layer15_complete =
+            diagnostic_fixture!(prefill_layer15_complete_final_tile_fixture());
+        let expected_layer16_qkv = diagnostic_fixture!(prefill_layer16_qkv_final_tile_fixture());
+        let expected_layer16_compressor = diagnostic_fixture!(prefill_layer16_compressor_fixture());
+        let expected_layer16_attention = diagnostic_fixture!(prefill_layer16_attention_fixture());
         let expected_layer16_attention_diagnostics =
-            prefill_layer16_attention_diagnostics_fixture()?;
-        let expected_layer16_complete = prefill_layer16_complete_final_tile_fixture()?;
-        let expected_layer17_qkv = prefill_layer17_qkv_final_tile_fixture()?;
-        let expected_layer17_compressor = prefill_layer17_compressor_fixture()?;
-        let expected_layer17_attention = prefill_layer17_attention_fixture()?;
+            diagnostic_fixture!(prefill_layer16_attention_diagnostics_fixture());
+        let expected_layer16_complete =
+            diagnostic_fixture!(prefill_layer16_complete_final_tile_fixture());
+        let expected_layer17_qkv = diagnostic_fixture!(prefill_layer17_qkv_final_tile_fixture());
+        let expected_layer17_compressor = diagnostic_fixture!(prefill_layer17_compressor_fixture());
+        let expected_layer17_attention = diagnostic_fixture!(prefill_layer17_attention_fixture());
         let expected_layer17_attention_diagnostics =
-            prefill_layer17_attention_diagnostics_fixture()?;
-        let expected_layer17_complete = prefill_layer17_complete_final_tile_fixture()?;
-        let expected_layer18_qkv = prefill_layer18_qkv_final_tile_fixture()?;
-        let expected_layer18_compressor = prefill_layer18_compressor_fixture()?;
-        let expected_layer18_attention = prefill_layer18_attention_fixture()?;
+            diagnostic_fixture!(prefill_layer17_attention_diagnostics_fixture());
+        let expected_layer17_complete =
+            diagnostic_fixture!(prefill_layer17_complete_final_tile_fixture());
+        let expected_layer18_qkv = diagnostic_fixture!(prefill_layer18_qkv_final_tile_fixture());
+        let expected_layer18_compressor = diagnostic_fixture!(prefill_layer18_compressor_fixture());
+        let expected_layer18_attention = diagnostic_fixture!(prefill_layer18_attention_fixture());
         let expected_layer18_attention_diagnostics =
-            prefill_layer18_attention_diagnostics_fixture()?;
-        let expected_layer18_complete = prefill_layer18_complete_final_tile_fixture()?;
-        let expected_layer19_qkv = prefill_layer19_qkv_final_tile_fixture()?;
-        let expected_layer19_compressor = prefill_layer19_compressor_fixture()?;
-        let expected_layer19_attention = prefill_layer19_attention_fixture()?;
+            diagnostic_fixture!(prefill_layer18_attention_diagnostics_fixture());
+        let expected_layer18_complete =
+            diagnostic_fixture!(prefill_layer18_complete_final_tile_fixture());
+        let expected_layer19_qkv = diagnostic_fixture!(prefill_layer19_qkv_final_tile_fixture());
+        let expected_layer19_compressor = diagnostic_fixture!(prefill_layer19_compressor_fixture());
+        let expected_layer19_attention = diagnostic_fixture!(prefill_layer19_attention_fixture());
         let expected_layer19_attention_diagnostics =
-            prefill_layer19_attention_diagnostics_fixture()?;
-        let expected_layer19_complete = prefill_layer19_complete_final_tile_fixture()?;
-        let expected_layer20_qkv = prefill_layer20_qkv_final_tile_fixture()?;
-        let expected_layer20_compressor = prefill_layer20_compressor_fixture()?;
-        let expected_layer20_attention = prefill_layer20_attention_fixture()?;
+            diagnostic_fixture!(prefill_layer19_attention_diagnostics_fixture());
+        let expected_layer19_complete =
+            diagnostic_fixture!(prefill_layer19_complete_final_tile_fixture());
+        let expected_layer20_qkv = diagnostic_fixture!(prefill_layer20_qkv_final_tile_fixture());
+        let expected_layer20_compressor = diagnostic_fixture!(prefill_layer20_compressor_fixture());
+        let expected_layer20_attention = diagnostic_fixture!(prefill_layer20_attention_fixture());
         let expected_layer20_attention_diagnostics =
-            prefill_layer20_attention_diagnostics_fixture()?;
-        let expected_layer20_complete = prefill_layer20_complete_final_tile_fixture()?;
-        let expected_layer21_qkv = prefill_layer21_qkv_final_tile_fixture()?;
-        let expected_layer21_compressor = prefill_layer21_compressor_fixture()?;
-        let expected_layer21_attention = prefill_layer21_attention_fixture()?;
+            diagnostic_fixture!(prefill_layer20_attention_diagnostics_fixture());
+        let expected_layer20_complete =
+            diagnostic_fixture!(prefill_layer20_complete_final_tile_fixture());
+        let expected_layer21_qkv = diagnostic_fixture!(prefill_layer21_qkv_final_tile_fixture());
+        let expected_layer21_compressor = diagnostic_fixture!(prefill_layer21_compressor_fixture());
+        let expected_layer21_attention = diagnostic_fixture!(prefill_layer21_attention_fixture());
         let expected_layer21_attention_diagnostics =
-            prefill_layer21_attention_diagnostics_fixture()?;
-        let expected_layer21_complete = prefill_layer21_complete_final_tile_fixture()?;
-        let expected_layer22_qkv = prefill_layer22_qkv_final_tile_fixture()?;
-        let expected_layer22_compressor = prefill_layer22_compressor_fixture()?;
-        let expected_layer22_attention = prefill_layer22_attention_fixture()?;
+            diagnostic_fixture!(prefill_layer21_attention_diagnostics_fixture());
+        let expected_layer21_complete =
+            diagnostic_fixture!(prefill_layer21_complete_final_tile_fixture());
+        let expected_layer22_qkv = diagnostic_fixture!(prefill_layer22_qkv_final_tile_fixture());
+        let expected_layer22_compressor = diagnostic_fixture!(prefill_layer22_compressor_fixture());
+        let expected_layer22_attention = diagnostic_fixture!(prefill_layer22_attention_fixture());
         let expected_layer22_attention_diagnostics =
-            prefill_layer22_attention_diagnostics_fixture()?;
-        let expected_layer22_complete = prefill_layer22_complete_final_tile_fixture()?;
-        let expected_layer23_qkv = prefill_layer23_qkv_final_tile_fixture()?;
-        let expected_layer23_compressor = prefill_layer23_compressor_fixture()?;
-        let expected_layer23_attention = prefill_layer23_attention_fixture()?;
+            diagnostic_fixture!(prefill_layer22_attention_diagnostics_fixture());
+        let expected_layer22_complete =
+            diagnostic_fixture!(prefill_layer22_complete_final_tile_fixture());
+        let expected_layer23_qkv = diagnostic_fixture!(prefill_layer23_qkv_final_tile_fixture());
+        let expected_layer23_compressor = diagnostic_fixture!(prefill_layer23_compressor_fixture());
+        let expected_layer23_attention = diagnostic_fixture!(prefill_layer23_attention_fixture());
         let expected_layer23_attention_diagnostics =
-            prefill_layer23_attention_diagnostics_fixture()?;
-        let expected_layer23_complete = prefill_layer23_complete_final_tile_fixture()?;
-        let expected_layer24_qkv = prefill_layer24_qkv_final_tile_fixture()?;
-        let expected_layer24_compressor = prefill_layer24_compressor_fixture()?;
-        let expected_layer24_attention = prefill_layer24_attention_fixture()?;
+            diagnostic_fixture!(prefill_layer23_attention_diagnostics_fixture());
+        let expected_layer23_complete =
+            diagnostic_fixture!(prefill_layer23_complete_final_tile_fixture());
+        let expected_layer24_qkv = diagnostic_fixture!(prefill_layer24_qkv_final_tile_fixture());
+        let expected_layer24_compressor = diagnostic_fixture!(prefill_layer24_compressor_fixture());
+        let expected_layer24_attention = diagnostic_fixture!(prefill_layer24_attention_fixture());
         let expected_layer24_attention_diagnostics =
-            prefill_layer24_attention_diagnostics_fixture()?;
-        let expected_layer24_complete = prefill_layer24_complete_final_tile_fixture()?;
-        let expected_layer25_qkv = prefill_layer25_qkv_final_tile_fixture()?;
-        let expected_layer25_compressor = prefill_layer25_compressor_fixture()?;
-        let expected_layer25_attention = prefill_layer25_attention_fixture()?;
+            diagnostic_fixture!(prefill_layer24_attention_diagnostics_fixture());
+        let expected_layer24_complete =
+            diagnostic_fixture!(prefill_layer24_complete_final_tile_fixture());
+        let expected_layer25_qkv = diagnostic_fixture!(prefill_layer25_qkv_final_tile_fixture());
+        let expected_layer25_compressor = diagnostic_fixture!(prefill_layer25_compressor_fixture());
+        let expected_layer25_attention = diagnostic_fixture!(prefill_layer25_attention_fixture());
         let expected_layer25_attention_diagnostics =
-            prefill_layer25_attention_diagnostics_fixture()?;
-        let expected_layer25_complete = prefill_layer25_complete_final_tile_fixture()?;
-        let expected_layer26_qkv = prefill_layer26_qkv_final_tile_fixture()?;
-        let expected_layer26_compressor = prefill_layer26_compressor_fixture()?;
-        let expected_layer26_attention = prefill_layer26_attention_fixture()?;
+            diagnostic_fixture!(prefill_layer25_attention_diagnostics_fixture());
+        let expected_layer25_complete =
+            diagnostic_fixture!(prefill_layer25_complete_final_tile_fixture());
+        let expected_layer26_qkv = diagnostic_fixture!(prefill_layer26_qkv_final_tile_fixture());
+        let expected_layer26_compressor = diagnostic_fixture!(prefill_layer26_compressor_fixture());
+        let expected_layer26_attention = diagnostic_fixture!(prefill_layer26_attention_fixture());
         let expected_layer26_attention_diagnostics =
-            prefill_layer26_attention_diagnostics_fixture()?;
-        let expected_layer26_complete = prefill_layer26_complete_final_tile_fixture()?;
-        let expected_layer27_qkv = prefill_layer27_qkv_final_tile_fixture()?;
-        let expected_layer27_compressor = prefill_layer27_compressor_fixture()?;
-        let expected_layer27_attention = prefill_layer27_attention_fixture()?;
+            diagnostic_fixture!(prefill_layer26_attention_diagnostics_fixture());
+        let expected_layer26_complete =
+            diagnostic_fixture!(prefill_layer26_complete_final_tile_fixture());
+        let expected_layer27_qkv = diagnostic_fixture!(prefill_layer27_qkv_final_tile_fixture());
+        let expected_layer27_compressor = diagnostic_fixture!(prefill_layer27_compressor_fixture());
+        let expected_layer27_attention = diagnostic_fixture!(prefill_layer27_attention_fixture());
         let expected_layer27_attention_diagnostics =
-            prefill_layer27_attention_diagnostics_fixture()?;
-        let expected_layer27_complete = prefill_layer27_complete_final_tile_fixture()?;
-        let expected_layer28_qkv = prefill_layer28_qkv_final_tile_fixture()?;
-        let expected_layer28_compressor = prefill_layer28_compressor_fixture()?;
-        let expected_layer28_attention = prefill_layer28_attention_fixture()?;
+            diagnostic_fixture!(prefill_layer27_attention_diagnostics_fixture());
+        let expected_layer27_complete =
+            diagnostic_fixture!(prefill_layer27_complete_final_tile_fixture());
+        let expected_layer28_qkv = diagnostic_fixture!(prefill_layer28_qkv_final_tile_fixture());
+        let expected_layer28_compressor = diagnostic_fixture!(prefill_layer28_compressor_fixture());
+        let expected_layer28_attention = diagnostic_fixture!(prefill_layer28_attention_fixture());
         let expected_layer28_attention_diagnostics =
-            prefill_layer28_attention_diagnostics_fixture()?;
-        let expected_layer28_complete = prefill_layer28_complete_final_tile_fixture()?;
-        let expected_layer29_qkv = prefill_layer29_qkv_final_tile_fixture()?;
-        let expected_layer29_compressor = prefill_layer29_compressor_fixture()?;
-        let expected_layer29_attention = prefill_layer29_attention_fixture()?;
+            diagnostic_fixture!(prefill_layer28_attention_diagnostics_fixture());
+        let expected_layer28_complete =
+            diagnostic_fixture!(prefill_layer28_complete_final_tile_fixture());
+        let expected_layer29_qkv = diagnostic_fixture!(prefill_layer29_qkv_final_tile_fixture());
+        let expected_layer29_compressor = diagnostic_fixture!(prefill_layer29_compressor_fixture());
+        let expected_layer29_attention = diagnostic_fixture!(prefill_layer29_attention_fixture());
         let expected_layer29_attention_diagnostics =
-            prefill_layer29_attention_diagnostics_fixture()?;
-        let expected_layer29_complete = prefill_layer29_complete_final_tile_fixture()?;
-        let expected_layer30_qkv = prefill_layer30_qkv_final_tile_fixture()?;
-        let expected_layer30_compressor = prefill_layer30_compressor_fixture()?;
-        let expected_layer30_attention = prefill_layer30_attention_fixture()?;
+            diagnostic_fixture!(prefill_layer29_attention_diagnostics_fixture());
+        let expected_layer29_complete =
+            diagnostic_fixture!(prefill_layer29_complete_final_tile_fixture());
+        let expected_layer30_qkv = diagnostic_fixture!(prefill_layer30_qkv_final_tile_fixture());
+        let expected_layer30_compressor = diagnostic_fixture!(prefill_layer30_compressor_fixture());
+        let expected_layer30_attention = diagnostic_fixture!(prefill_layer30_attention_fixture());
         let expected_layer30_attention_diagnostics =
-            prefill_layer30_attention_diagnostics_fixture()?;
-        let expected_layer30_complete = prefill_layer30_complete_final_tile_fixture()?;
-        let expected_layer31_qkv = prefill_layer31_qkv_final_tile_fixture()?;
-        let expected_layer31_compressor = prefill_layer31_compressor_fixture()?;
-        let expected_layer31_attention = prefill_layer31_attention_fixture()?;
+            diagnostic_fixture!(prefill_layer30_attention_diagnostics_fixture());
+        let expected_layer30_complete =
+            diagnostic_fixture!(prefill_layer30_complete_final_tile_fixture());
+        let expected_layer31_qkv = diagnostic_fixture!(prefill_layer31_qkv_final_tile_fixture());
+        let expected_layer31_compressor = diagnostic_fixture!(prefill_layer31_compressor_fixture());
+        let expected_layer31_attention = diagnostic_fixture!(prefill_layer31_attention_fixture());
         let expected_layer31_attention_diagnostics =
-            prefill_layer31_attention_diagnostics_fixture()?;
-        let expected_layer31_complete = prefill_layer31_complete_final_tile_fixture()?;
-        let expected_layer32_qkv = prefill_layer32_qkv_final_tile_fixture()?;
-        let expected_layer32_compressor = prefill_layer32_compressor_fixture()?;
-        let expected_layer32_attention = prefill_layer32_attention_fixture()?;
+            diagnostic_fixture!(prefill_layer31_attention_diagnostics_fixture());
+        let expected_layer31_complete =
+            diagnostic_fixture!(prefill_layer31_complete_final_tile_fixture());
+        let expected_layer32_qkv = diagnostic_fixture!(prefill_layer32_qkv_final_tile_fixture());
+        let expected_layer32_compressor = diagnostic_fixture!(prefill_layer32_compressor_fixture());
+        let expected_layer32_attention = diagnostic_fixture!(prefill_layer32_attention_fixture());
         let expected_layer32_attention_diagnostics =
-            prefill_layer32_attention_diagnostics_fixture()?;
-        let expected_layer32_complete = prefill_layer32_complete_final_tile_fixture()?;
-        let expected_layer33_qkv = prefill_layer33_qkv_final_tile_fixture()?;
-        let expected_layer33_compressor = prefill_layer33_compressor_fixture()?;
-        let expected_layer33_attention = prefill_layer33_attention_fixture()?;
+            diagnostic_fixture!(prefill_layer32_attention_diagnostics_fixture());
+        let expected_layer32_complete =
+            diagnostic_fixture!(prefill_layer32_complete_final_tile_fixture());
+        let expected_layer33_qkv = diagnostic_fixture!(prefill_layer33_qkv_final_tile_fixture());
+        let expected_layer33_compressor = diagnostic_fixture!(prefill_layer33_compressor_fixture());
+        let expected_layer33_attention = diagnostic_fixture!(prefill_layer33_attention_fixture());
         let expected_layer33_attention_diagnostics =
-            prefill_layer33_attention_diagnostics_fixture()?;
-        let expected_layer33_complete = prefill_layer33_complete_final_tile_fixture()?;
-        let expected_layer34_qkv = prefill_layer34_qkv_final_tile_fixture()?;
-        let expected_layer34_compressor = prefill_layer34_compressor_fixture()?;
-        let expected_layer34_attention = prefill_layer34_attention_fixture()?;
+            diagnostic_fixture!(prefill_layer33_attention_diagnostics_fixture());
+        let expected_layer33_complete =
+            diagnostic_fixture!(prefill_layer33_complete_final_tile_fixture());
+        let expected_layer34_qkv = diagnostic_fixture!(prefill_layer34_qkv_final_tile_fixture());
+        let expected_layer34_compressor = diagnostic_fixture!(prefill_layer34_compressor_fixture());
+        let expected_layer34_attention = diagnostic_fixture!(prefill_layer34_attention_fixture());
         let expected_layer34_attention_diagnostics =
-            prefill_layer34_attention_diagnostics_fixture()?;
-        let expected_layer34_complete = prefill_layer34_complete_final_tile_fixture()?;
-        let expected_layer35_qkv = prefill_layer35_qkv_final_tile_fixture()?;
-        let expected_layer35_compressor = prefill_layer35_compressor_fixture()?;
-        let expected_layer35_attention = prefill_layer35_attention_fixture()?;
+            diagnostic_fixture!(prefill_layer34_attention_diagnostics_fixture());
+        let expected_layer34_complete =
+            diagnostic_fixture!(prefill_layer34_complete_final_tile_fixture());
+        let expected_layer35_qkv = diagnostic_fixture!(prefill_layer35_qkv_final_tile_fixture());
+        let expected_layer35_compressor = diagnostic_fixture!(prefill_layer35_compressor_fixture());
+        let expected_layer35_attention = diagnostic_fixture!(prefill_layer35_attention_fixture());
         let expected_layer35_attention_diagnostics =
-            prefill_layer35_attention_diagnostics_fixture()?;
-        let expected_layer35_complete = prefill_layer35_complete_final_tile_fixture()?;
-        let expected_layer36_qkv = prefill_layer36_qkv_final_tile_fixture()?;
-        let expected_layer36_compressor = prefill_layer36_compressor_fixture()?;
-        let expected_layer36_attention = prefill_layer36_attention_fixture()?;
+            diagnostic_fixture!(prefill_layer35_attention_diagnostics_fixture());
+        let expected_layer35_complete =
+            diagnostic_fixture!(prefill_layer35_complete_final_tile_fixture());
+        let expected_layer36_qkv = diagnostic_fixture!(prefill_layer36_qkv_final_tile_fixture());
+        let expected_layer36_compressor = diagnostic_fixture!(prefill_layer36_compressor_fixture());
+        let expected_layer36_attention = diagnostic_fixture!(prefill_layer36_attention_fixture());
         let expected_layer36_attention_diagnostics =
-            prefill_layer36_attention_diagnostics_fixture()?;
-        let expected_layer36_complete = prefill_layer36_complete_final_tile_fixture()?;
-        let expected_layer37_qkv = prefill_layer37_qkv_final_tile_fixture()?;
-        let expected_layer37_compressor = prefill_layer37_compressor_fixture()?;
-        let expected_layer37_attention = prefill_layer37_attention_fixture()?;
+            diagnostic_fixture!(prefill_layer36_attention_diagnostics_fixture());
+        let expected_layer36_complete =
+            diagnostic_fixture!(prefill_layer36_complete_final_tile_fixture());
+        let expected_layer37_qkv = diagnostic_fixture!(prefill_layer37_qkv_final_tile_fixture());
+        let expected_layer37_compressor = diagnostic_fixture!(prefill_layer37_compressor_fixture());
+        let expected_layer37_attention = diagnostic_fixture!(prefill_layer37_attention_fixture());
         let expected_layer37_attention_diagnostics =
-            prefill_layer37_attention_diagnostics_fixture()?;
-        let expected_layer37_complete = prefill_layer37_complete_final_tile_fixture()?;
-        let expected_layer38_qkv = prefill_layer38_qkv_final_tile_fixture()?;
-        let expected_layer38_compressor = prefill_layer38_compressor_fixture()?;
-        let expected_layer38_attention = prefill_layer38_attention_fixture()?;
+            diagnostic_fixture!(prefill_layer37_attention_diagnostics_fixture());
+        let expected_layer37_complete =
+            diagnostic_fixture!(prefill_layer37_complete_final_tile_fixture());
+        let expected_layer38_qkv = diagnostic_fixture!(prefill_layer38_qkv_final_tile_fixture());
+        let expected_layer38_compressor = diagnostic_fixture!(prefill_layer38_compressor_fixture());
+        let expected_layer38_attention = diagnostic_fixture!(prefill_layer38_attention_fixture());
         let expected_layer38_attention_diagnostics =
-            prefill_layer38_attention_diagnostics_fixture()?;
-        let expected_layer38_complete = prefill_layer38_complete_final_tile_fixture()?;
-        let expected_layer39_qkv = prefill_layer39_qkv_final_tile_fixture()?;
-        let expected_layer39_compressor = prefill_layer39_compressor_fixture()?;
-        let expected_layer39_attention = prefill_layer39_attention_fixture()?;
+            diagnostic_fixture!(prefill_layer38_attention_diagnostics_fixture());
+        let expected_layer38_complete =
+            diagnostic_fixture!(prefill_layer38_complete_final_tile_fixture());
+        let expected_layer39_qkv = diagnostic_fixture!(prefill_layer39_qkv_final_tile_fixture());
+        let expected_layer39_compressor = diagnostic_fixture!(prefill_layer39_compressor_fixture());
+        let expected_layer39_attention = diagnostic_fixture!(prefill_layer39_attention_fixture());
         let expected_layer39_attention_diagnostics =
-            prefill_layer39_attention_diagnostics_fixture()?;
-        let expected_layer39_complete = prefill_layer39_complete_final_tile_fixture()?;
-        let expected_layer40_qkv = prefill_layer40_qkv_final_tile_fixture()?;
-        let expected_layer40_compressor = prefill_layer40_compressor_fixture()?;
-        let expected_layer40_attention = prefill_layer40_attention_fixture()?;
+            diagnostic_fixture!(prefill_layer39_attention_diagnostics_fixture());
+        let expected_layer39_complete =
+            diagnostic_fixture!(prefill_layer39_complete_final_tile_fixture());
+        let expected_layer40_qkv = diagnostic_fixture!(prefill_layer40_qkv_final_tile_fixture());
+        let expected_layer40_compressor = diagnostic_fixture!(prefill_layer40_compressor_fixture());
+        let expected_layer40_attention = diagnostic_fixture!(prefill_layer40_attention_fixture());
         let expected_layer40_attention_diagnostics =
-            prefill_layer40_attention_diagnostics_fixture()?;
-        let expected_layer40_complete = prefill_layer40_complete_final_tile_fixture()?;
-        let expected_layer41_qkv = prefill_layer41_qkv_final_tile_fixture()?;
-        let expected_layer41_compressor = prefill_layer41_compressor_fixture()?;
-        let expected_layer41_attention = prefill_layer41_attention_fixture()?;
+            diagnostic_fixture!(prefill_layer40_attention_diagnostics_fixture());
+        let expected_layer40_complete =
+            diagnostic_fixture!(prefill_layer40_complete_final_tile_fixture());
+        let expected_layer41_qkv = diagnostic_fixture!(prefill_layer41_qkv_final_tile_fixture());
+        let expected_layer41_compressor = diagnostic_fixture!(prefill_layer41_compressor_fixture());
+        let expected_layer41_attention = diagnostic_fixture!(prefill_layer41_attention_fixture());
         let expected_layer41_attention_diagnostics =
-            prefill_layer41_attention_diagnostics_fixture()?;
-        let expected_layer41_complete = prefill_layer41_complete_final_tile_fixture()?;
-        let expected_layer42_qkv = prefill_layer42_qkv_final_tile_fixture()?;
-        let expected_layer42_compressor = prefill_layer42_compressor_fixture()?;
-        let expected_layer42_attention = prefill_layer42_attention_fixture()?;
+            diagnostic_fixture!(prefill_layer41_attention_diagnostics_fixture());
+        let expected_layer41_complete =
+            diagnostic_fixture!(prefill_layer41_complete_final_tile_fixture());
+        let expected_layer42_qkv = diagnostic_fixture!(prefill_layer42_qkv_final_tile_fixture());
+        let expected_layer42_compressor = diagnostic_fixture!(prefill_layer42_compressor_fixture());
+        let expected_layer42_attention = diagnostic_fixture!(prefill_layer42_attention_fixture());
         let expected_layer42_attention_diagnostics =
-            prefill_layer42_attention_diagnostics_fixture()?;
-        let expected_layer42_complete = prefill_layer42_complete_final_tile_fixture()?;
+            diagnostic_fixture!(prefill_layer42_attention_diagnostics_fixture());
+        let expected_layer42_complete =
+            diagnostic_fixture!(prefill_layer42_complete_final_tile_fixture());
         let q_b = exact_tensor(model, "blk.2.attn_q_b.weight", 8, &[1024, 32768])?;
         let sinks = exact_tensor(model, "blk.2.attn_sinks.weight", 0, &[64])?;
         let output_a = exact_tensor(model, "blk.2.attn_output_a.weight", 8, &[4096, 8192])?;
@@ -28371,6 +28522,11 @@ mod imp {
                 shared_down_bytes: layer42_shared_down.bytes,
             },
         };
+        macro_rules! vec {
+            ($value:expr; $length:expr) => {
+                std::vec![$value; if collect_outputs { $length } else { 0 }]
+            };
+        }
         let mut actual = vec![0.0_f32; expected.len()];
         let mut actual_hc = vec![0.0_f32; 2048 * 4 * 4096];
         let mut actual_ffn_hc = vec![0.0_f32; 2048 * 4 * 4096];
@@ -30752,6 +30908,7 @@ mod imp {
                 actual_layer42_router_weights.as_mut_ptr(),
                 actual_layer42_routed_out.as_mut_ptr(),
                 actual_layer42_shared_out.as_mut_ptr(),
+                u32::from(collect_outputs),
                 &mut raw,
                 error.as_mut_ptr(),
                 error.len(),
@@ -30762,6 +30919,27 @@ mod imp {
                 "Metal prefill layer-2 attention probe failed: {}",
                 error_text(&error)
             )));
+        }
+        if raw.rows != 2048
+            || raw.raw_kv_rows != 2048
+            || raw.compressed_kv_rows != 512
+            || raw.layer3_compressed_kv_rows != 16
+            || raw.dispatches != 2372
+            || raw.wrapped_model_ranges != 1216
+            || raw.pointer_matches != 1216
+            || !raw.wall_ms.is_finite()
+            || raw.wall_ms <= 0.0
+            || !raw.gpu_ms.is_finite()
+            || raw.gpu_ms < 0.0
+        {
+            return Err(Error::invalid(
+                "Metal prefill layer-2 attention returned invalid schedule, ownership, or timing metadata",
+            ));
+        }
+        if !collect_outputs {
+            let mut output_head = PreparedOutputHead::new(model)?;
+            let (selected_token, _) = run_sampling_output_head(model, &context, &mut output_head)?;
+            return Ok((context, None, selected_token));
         }
         for (label, actual, expected) in [
             (
@@ -38105,9 +38283,12 @@ mod imp {
             ));
         }
         let output_head = run_prefill_output_head(model, &context)?;
+        let selected_token = output_head.selected_token;
+        let compressor = compressor
+            .ok_or_else(|| Error::invalid("diagnostic prefill omitted its compressor report"))?;
         Ok((
             context,
-            PrefillLayers012AttentionLoopProbeReport {
+            Some(PrefillLayers012AttentionLoopProbeReport {
                 compressor,
                 attention_fixture_id: PREFILL_LAYER2_ATTENTION_FIXTURE_ID,
                 attention_hc_fixture_id: PREFILL_LAYER2_COMPLETE_FIXTURE_ID,
@@ -38756,7 +38937,8 @@ mod imp {
                 ),
                 layer42_after_ffn_hc_checksum: checksum_f32(&actual_layer42_after_ffn_hc),
                 output_head,
-            },
+            }),
+            selected_token,
         ))
     }
 
@@ -41545,8 +41727,14 @@ mod imp {
         }
 
         let prefill_started = Instant::now();
-        let (context, prefill) = run_prefill_layers012_attention_loop_probe_with_context(model)?;
-        if prefill.output_head.selected_token != oracle_inputs[0] {
+        let (context, prefill_report, prefill_selected_token) =
+            run_prefill_layers012_attention_loop_in_context(model, false)?;
+        if prefill_report.is_some() {
+            return Err(Error::invalid(
+                "timing-only native prefill unexpectedly collected a diagnostic report",
+            ));
+        }
+        if prefill_selected_token != oracle_inputs[0] {
             return Err(Error::invalid(
                 "native prefill selected a different measurement input token",
             ));
@@ -41623,7 +41811,7 @@ mod imp {
                 .ok_or_else(|| Error::invalid("engine measurement selected no tokens"))?,
             selected_tokens_checksum: checksum_u32(&selected_tokens),
             transcript_match: true,
-            prefill_correctness_collection: true,
+            prefill_correctness_collection: false,
             generation_correctness_collection: false,
             generation_command_buffers_per_token: 44,
             generation_host_waits_per_token: 2,
@@ -45502,7 +45690,7 @@ mod tests {
             final_selected_token: 293,
             selected_tokens_checksum: 7,
             transcript_match: true,
-            prefill_correctness_collection: true,
+            prefill_correctness_collection: false,
             generation_correctness_collection: false,
             generation_command_buffers_per_token: 44,
             generation_host_waits_per_token: 2,
@@ -45806,8 +45994,8 @@ mod tests {
         assert!(text.contains(&format!("\"schema\": \"{ENGINE_RUN_SCHEMA}\"")));
         assert!(text.contains("\"gen_steady_tokens\": 127"));
         assert!(text.contains("\"generation_correctness_collection\": false"));
-        assert!(text.contains("\"prefill_correctness_collection\": true"));
-        assert!(text.contains("\"paired_protocol_eligible\": false"));
+        assert!(text.contains("\"prefill_correctness_collection\": false"));
+        assert!(text.contains("\"paired_protocol_eligible\": true"));
     }
 
     #[test]

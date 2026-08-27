@@ -67,8 +67,10 @@ diagnostic. The exact native path now retains all 43 layers of batched-prefill
 state, adopts its raw rings, compressed histories, and recurrent states with
 one GPU blit command, and greedily decodes positions 2048--4099. All 2,052
 selected tokens and both pinned full-logit frontiers are exact, including the
-first production-default 1,025-row sparse ratio-4 step. Eligible measurements
-still require a timing-specific engine-measurement producer.
+first production-default 1,025-row sparse ratio-4 step. The timing-specific
+engine producer now runs native prefill without diagnostic output collection,
+preserves the exact transcript, and passes the fresh-process adapter's
+paired-eligibility checks at the initial 2K/128 frontier.
 
 A separate retained-state control now seeds the exact layer-2 state immediately
 before position 4099 and executes the production retained schedule through its
@@ -323,8 +325,9 @@ The same first-boundary schedule is wired into retained even-layer state with
 35 no-copy model mappings, and a complete retained position-8195 decoder step
 now executes all 43 layers through that branch and matches full-vocabulary
 logits exactly. Exact sparse post-prompt integration is now complete through
-position 4099 via the GPU-only native-prefill handoff. An eligible engine
-measurement and throughput comparison remain pending.
+position 4099 via the GPU-only native-prefill handoff. An initial eligible Rust
+Star engine measurement is complete; a repeated paired DwarfStar/Rust Star
+throughput comparison remains pending.
 
 Project controls and benchmark contracts:
 

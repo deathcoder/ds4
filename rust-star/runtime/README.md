@@ -856,16 +856,16 @@ rust-star/.work/runtime-target/release/rust-star \
   --json rust-star/.work/runtime-target/rust-star-engine-run.json
 ```
 
-The generation intervals include command encoding, synchronized transformer
-and output-head execution, CPU lowest-ID argmax, and token commitment. They do
-not collect diagnostic tensors; the complete 128-token selection transcript is
-compared with the pinned oracle after timing. This development producer remains
-`paired_protocol_eligible: false` because the reused native prefill path still
-materializes and verifies every diagnostic boundary. A first observed run
-reached generation but peaked at 66.9 GB and ended before installing its atomic
-JSON artifact. Its rates therefore are neither available nor claimable. The
-next production step is to separate prefill execution from boundary collection,
-then rerun this same process contract through `measure_ruststar.py`.
+The prefill interval follows the same native Metal schedule as the exact C0
+command, but does not decode diagnostic output fixtures, allocate host boundary
+tensors, or copy transformer boundaries to the host. It retains only the GPU
+state required by the decoder and transfers the final logits for lowest-ID
+argmax. The generation intervals include command encoding, synchronized
+transformer and output-head execution, CPU argmax, and token commitment. They
+do not collect diagnostic tensors; the complete 128-token selection transcript
+is compared with the pinned oracle after timing. The raw producer is
+`paired_protocol_eligible: true` only when both collection paths are disabled.
+Run it through `measure_ruststar.py` for normalized, checksummed evidence.
 
 To validate the complete retained step at the same position:
 

@@ -46,7 +46,7 @@ Run either adapter as a fresh Python process for every measurement. Peak-RSS
 collection relies on having exactly one child process in that adapter process.
 The paired runner enforces this automatically.
 
-Rust Star currently exposes its development boundary as:
+Rust Star exposes its initial eligible boundary as:
 
 ```sh
 python3 rust-star/measure_ruststar.py \
@@ -57,8 +57,10 @@ python3 rust-star/measure_ruststar.py \
   --output /path/to/results/rust-star-ctx-2048-run-01
 ```
 
-The native producer already times a 128-token loop without generation tensor
-collection and checks the selected-token transcript afterward. Its native 2K
-prefill still materializes diagnostic boundary tensors, so the raw record sets
-`paired_protocol_eligible: false` and the adapter intentionally returns a
-failed measurement. This is a safety boundary, not a command-line limitation.
+The native producer executes its 2K prefill without decoding diagnostic output
+fixtures, allocating host boundary tensors, or copying transformer boundaries
+to the host. It then times a 128-token loop without generation tensor
+collection and checks the selected-token transcript afterward. The independent
+C0 prefill command remains the mandatory regression gate. The adapter accepts
+the raw record only when both collection flags are false, the transcript is
+exact, and the declared generation schedule matches the protocol.

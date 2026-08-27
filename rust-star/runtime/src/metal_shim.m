@@ -3210,6 +3210,7 @@ int rust_star_metal_run_prefill_layer0_boundary(
     float *next_hc_collapsed,
     float *next_attn_norm,
     float *next_q_lora,
+    uint32_t collect_outputs,
     rust_star_metal_prefill_layer0_probe_result *result,
     char *error,
     size_t error_bytes)
@@ -3230,19 +3231,20 @@ int rust_star_metal_run_prefill_layer0_boundary(
         layer2_attn_compressed_prefix != NULL ||
         layer2_indexer_compressed_prefix != NULL;
     const BOOL partial_layer1 = next_hc_collapsed || next_attn_norm || next_q_lora;
-    if (!opaque_context || !model_mapping || !weights || !tokens ||
-        !hc_collapsed || !attn_norm || !q_lora || !q_lora_norm ||
-        !kv_raw || !kv_norm || !q_raw || !q_cur || !kv_rope || !kv_cur ||
-        !raw_cache || !kv_prefix || !full_kv || !attention_output ||
-        !attention_back || !attention_low || !attention_out ||
-        !after_attention_hc || !ffn_cur || !ffn_norm || !router_logits ||
-        !router_probs || !router_selected || !router_weights || !routed_mid ||
-        !routed_out || !shared_out || !after_ffn_hc || !result) {
+    if (!opaque_context || !model_mapping || !weights || !tokens || !result ||
+        (collect_outputs &&
+         (!hc_collapsed || !attn_norm || !q_lora || !q_lora_norm ||
+          !kv_raw || !kv_norm || !q_raw || !q_cur || !kv_rope || !kv_cur ||
+          !raw_cache || !kv_prefix || !full_kv || !attention_output ||
+          !attention_back || !attention_low || !attention_out ||
+          !after_attention_hc || !ffn_cur || !ffn_norm || !router_logits ||
+          !router_probs || !router_selected || !router_weights || !routed_mid ||
+          !routed_out || !shared_out || !after_ffn_hc))) {
         return fail_with_message(error, error_bytes,
             @"prefill layer-0 boundary received a null input");
     }
     if ((next_ingress && complete_layer1) ||
-        ((next_layer == NULL) != (next_outputs == NULL)) ||
+        (collect_outputs && ((next_layer == NULL) != (next_outputs == NULL))) ||
         ((layer2_kvnorm == NULL) != (layer2_kv_norm_output == NULL)) ||
         (continue_layer2 && !complete_layer1) ||
         (continue_layer2_kv_state &&
@@ -3259,7 +3261,7 @@ int rust_star_metal_run_prefill_layer0_boundary(
         return fail_with_message(error, error_bytes,
             @"prefill layers-0/1 boundary requires the complete layer-1 ingress output set");
     }
-    if (complete_layer1 &&
+    if (collect_outputs && complete_layer1 &&
         (!next_outputs->kv_prefix || !next_outputs->q_lora_norm ||
          !next_outputs->kv_norm || !next_outputs->q_cur ||
          !next_outputs->kv_rope || !next_outputs->kv_cur ||
@@ -3949,10 +3951,11 @@ int rust_star_metal_run_prefill_layer0_boundary(
             raw_cache_contents[index] = -12345.5f;
         }
         if (consume_kv_state) {
-            if (memcmp(full_kv_buffer.contents, kv_prefix,
-                       full_kv_prefix_bytes) != 0 ||
-                memcmp(next_full_kv_buffer.contents, next_outputs->kv_prefix,
-                       full_kv_prefix_bytes) != 0) {
+            if (collect_outputs &&
+                (memcmp(full_kv_buffer.contents, kv_prefix,
+                        full_kv_prefix_bytes) != 0 ||
+                 memcmp(next_full_kv_buffer.contents, next_outputs->kv_prefix,
+                        full_kv_prefix_bytes) != 0)) {
                 return fail_with_message(error, error_bytes,
                     @"prefill retained live-KV prefix differs from the C0 oracle");
             }
@@ -3971,7 +3974,7 @@ int rust_star_metal_run_prefill_layer0_boundary(
             for (NSUInteger index = 0; index < raw_cache_rows*kv_dim; index++) {
                 next_raw_cache_contents[index] = -12345.5f;
             }
-            if (!consume_kv_state) {
+            if (!consume_kv_state && collect_outputs) {
                 if (full_kv_prefix_bytes > 0) {
                     memcpy(next_full_kv_buffer.contents, next_outputs->kv_prefix,
                         full_kv_prefix_bytes);
@@ -3985,7 +3988,8 @@ int rust_star_metal_run_prefill_layer0_boundary(
         }
         if (continue_layer2_kv_state) {
             if (consume_kv_state) {
-                if (memcmp(layer2_full_kv_buffer.contents, layer2_kv_prefix,
+                if (collect_outputs &&
+                    memcmp(layer2_full_kv_buffer.contents, layer2_kv_prefix,
                            full_kv_prefix_bytes) != 0) {
                     return fail_with_message(error, error_bytes,
                         @"prefill retained live layer-2 KV prefix differs from the C0 oracle");
@@ -4004,12 +4008,13 @@ int rust_star_metal_run_prefill_layer0_boundary(
         }
         if (continue_layer2_compressors) {
             if (consume_kv_state) {
-                if (memcmp(layer2_attn_compressed_buffer.contents,
-                           layer2_attn_compressed_prefix,
-                           attn_compressed_prefix_bytes) != 0 ||
-                    memcmp(layer2_indexer_compressed_buffer.contents,
-                           layer2_indexer_compressed_prefix,
-                           indexer_compressed_prefix_bytes) != 0) {
+                if (collect_outputs &&
+                    (memcmp(layer2_attn_compressed_buffer.contents,
+                            layer2_attn_compressed_prefix,
+                            attn_compressed_prefix_bytes) != 0 ||
+                     memcmp(layer2_indexer_compressed_buffer.contents,
+                            layer2_indexer_compressed_prefix,
+                            indexer_compressed_prefix_bytes) != 0)) {
                     return fail_with_message(error, error_bytes,
                         @"prefill retained live layer-2 compressor prefix differs from the C0 oracle");
                 }
@@ -5464,6 +5469,7 @@ int rust_star_metal_run_prefill_layer0_boundary(
             }
             context.prefillKvRows = position_start + rows;
         }
+        if (collect_outputs) {
         memcpy(hc_collapsed, collapsed_buffer.contents, attn_bytes);
         memcpy(attn_norm, attn_buffer.contents, attn_bytes);
         memcpy(q_lora, q_buffer.contents, q_rank_bytes);
@@ -5565,6 +5571,7 @@ int rust_star_metal_run_prefill_layer0_boundary(
                 layer2_indexer_state_kv_buffer.contents, indexer_state_bytes);
             memcpy(layer2_indexer_state_score_output,
                 layer2_indexer_state_score_buffer.contents, indexer_state_bytes);
+        }
         }
 
         uint32_t pointer_matches = 0;
@@ -6667,11 +6674,13 @@ int rust_star_metal_run_prefill_layer2_attention(
     float *layer42_router_weights_final_tile,
     float *layer42_routed_out_final_tile,
     float *layer42_shared_out_final_tile,
+    uint32_t collect_outputs,
     rust_star_metal_prefill_layer2_attention_result *result,
     char *error,
     size_t error_bytes)
 {
-    if (!opaque_context || !model_mapping || !weights || !attention_output ||
+    if (!opaque_context || !model_mapping || !weights || !result ||
+        (collect_outputs && (!attention_output ||
         !after_attention_hc || !after_ffn_hc || !ffn_cur_final_tile ||
         !ffn_norm_final_tile || !router_selected_final_tile ||
         !router_weights_final_tile || !routed_out_final_tile ||
@@ -7232,8 +7241,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         !layer42_ffn_cur_final_tile || !layer42_ffn_norm_final_tile ||
         !layer42_router_selected_final_tile ||
         !layer42_router_weights_final_tile || !layer42_routed_out_final_tile ||
-        !layer42_shared_out_final_tile ||
-        !result) {
+        !layer42_shared_out_final_tile))) {
         return fail_with_message(error, error_bytes,
             @"prefill layer-2 attention received a null input");
     }
@@ -35442,6 +35450,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [command commit];
         if (!command_succeeded(command, error, error_bytes)) return 0;
         const double wall_end = monotonic_ms();
+        if (collect_outputs) {
         memcpy(attention_output, output_buffer.contents, output_bytes);
         memcpy(after_attention_hc, after_attention_hc_buffer.contents, hc_bytes);
         memcpy(after_ffn_hc, after_ffn_hc_buffer.contents, hc_bytes);
@@ -38774,6 +38783,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         memcpy(layer42_shared_out_final_tile,
                (const uint8_t *)layer42_shared_out_buffer.contents+final_tile_offset,
                32u*n_embd*sizeof(float));
+        }
         uint32_t pointer_matches = 0;
         for (uint32_t index = 0; index < 1216u; index++) {
             pointer_matches += matches[index] ? 1u : 0u;
