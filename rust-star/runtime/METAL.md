@@ -641,6 +641,29 @@ ratio-128 C0 gates. This proves exact cold state construction for one token.
 Multi-token prefill, capacity sized from a requested context, and initialization
 at the paired protocol's arbitrary frontiers remain separate work.
 
+## Native 2K prefill-to-decode handoff
+
+Schema: `rust-star-prefill-decode-frontier-probe-v1`.
+
+The exact batched-prefill context retains full 2,048-row raw KV buffers,
+ratio-4 or ratio-128 compressed histories, recurrent KV/score state, and the
+final layer-42 HC. `rust_star_metal_adopt_prefill_decoder_state` translates
+that representation into the ordinary retained decoder keys without host
+readback. A single blit command encodes 229 copies: 43 raw-ring tails, 41
+attention compressed caches plus both recurrent states, and 21 even-layer
+indexer caches plus both recurrent states. The decoder capacity is 4,100, while
+only the visible 512/16 compressed rows are copied at the prompt boundary.
+
+`prefill-decode-frontier-probe` then constructs the normal 43 prepared layer
+executions over those adopted allocations and greedily evaluates positions
+2048--4099. Every selection must equal the independently repeated DwarfStar
+transcript; the first and final 129,280 logits are compared bit-for-bit. The
+final position appends ratio-4 row 1,025 before scoring, enters the exact
+two-block merge/top-512 schedule in all 21 even layers, and selects token 2538
+from input token 312. This closes native-prefill state ownership and the first
+production sparse frontier. The command synchronizes twice per position for
+correctness/timing collection and deliberately makes no throughput claim.
+
 ## 2K sequential state frontier
 
 Schema: `rust-star-prefill-frontier-diagnostic-v1`.

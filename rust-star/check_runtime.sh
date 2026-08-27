@@ -157,6 +157,9 @@ elif [ "$#" -eq 1 ]; then
         echo "==> 2K sequential frontier and batched-prefill boundary"
         "$target_dir/release/rust-star" prefill-frontier-probe "$1" \
             --json "$target_dir/prefill-frontier-probe.json"
+        echo "==> exact native 2K prefill-to-decode handoff through first production sparse boundary"
+        "$target_dir/release/rust-star" prefill-decode-frontier-probe "$1" \
+            --json "$target_dir/prefill-decode-frontier-probe.json"
         echo "==> bounded position-127 ratio-128 compressor replay"
         "$target_dir/release/rust-star" ratio128-compressor-replay-probe "$1" \
             --json "$target_dir/ratio128-compressor-replay-probe.json"

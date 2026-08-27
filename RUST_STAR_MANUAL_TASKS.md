@@ -169,24 +169,15 @@ Return evidence:
 
 ## M-005 — Execute the first paired DwarfStar/Rust Star run
 
-Status: `BLOCKED` on complete native batched prefill, a complete retained
-decoder run through ratio-4 sparse indexed attention, and the engine-measurement
-producer. The diagnostic 513-row override and production-default 1,025-row
-layer segments are C0 exact; the latter includes DwarfStar's two-block top-k
-merge, and that first-boundary schedule is wired into retained even-layer
-state. A seeded retained layer-2 control now executes that general schedule at
-position 4099, commits compressed row 1,025, and matches 16 sparse-boundary
-tensors with 35/35 no-copy mappings. It does not claim preceding layers, the
-token-dependent FFN, or a complete decoder. The fixed first-boundary guard is
-now removed: a second seeded control at position 8195 commits row 2,049 and
-matches the first three-block, two-pass top-k merge schedule across the same 16
-tensors with 35/35 mappings. Native M1 batched prefill now runs complete
-layers 0 through 35 over all 2,048 prompt rows from empty state. The 2K
-sequential initializer
-still owns a 128-row raw ring plus context-sized compressed state and exactly
-matches two fresh DwarfStar one-token decode replays. It deliberately records
-a full-logit mismatch against DwarfStar's batched-prefill oracle, so it is not
-eligible for the paired protocol even though both paths select the same token.
+Status: `BLOCKED` only on the timing-specific engine-measurement producer and
+its adapter. Native M1 batched prefill now completes all 43 layers and full
+logits from empty state. One GPU-only handoff adopts every raw ring, compressed
+history, and recurrent state into the ordinary decoder representation. The
+continuous exact path then matches all 2,052 greedy positions through 4099,
+including complete logits and all 21 even layers' first production-default
+1,025-row sparse ratio-4 step. The separate seeded position-4099/8195 controls
+and sequential 2K diagnostic remain independent regressions; they are no
+longer blockers for end-to-end correctness.
 
 Prerequisites:
 

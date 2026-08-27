@@ -591,6 +591,12 @@ history; add a correction and update the current-state summary.
   one of the 129,280 batched-prefill logits was C0 exact and token 15342 was
   selected. These remain correctness timings, not an eligible engine
   measurement.
+  The first exact native-prefill handoff used one 229-copy GPU blit command
+  across all 43 layers, then matched all 2,052 post-prompt greedy selections
+  through position 4099. Its first and final full-logit tensors were C0 exact,
+  including all 21 even layers' first production sparse step at compressed row
+  1,025. The correctness-oriented run reported 78.904 ms handoff wall time and
+  16.563 synchronized positions/s; neither is a throughput claim.
 - Manual handoff: `RUST_STAR_MANUAL_TASKS.md` records Actions approval, target
   compilation/model inspection, quick/extended oracle capture, and the deferred
   secure-access decision with exact evidence requirements.
@@ -603,21 +609,63 @@ history; add a correction and update the current-state summary.
 
 ## Immediate Next Actions
 
-1. Connect the exact native 2K batched-prefill state to post-prompt decoding,
-   integrating the production-default sparse ratio-4 path when compressed
-   history first exceeds 1,024 rows.
-2. Preserve the complete retained position-8195 decoder step, isolated
+1. Emit the `rust-star-engine-measurement-v1` artifact from the exact native
+   batched-prefill/128-token closed loop with timing-only collection and connect
+   it to the paired runner.
+2. Preserve the exact 2K-to-position-4099 native handoff, complete retained
+   position-8195 decoder step, isolated
    513/1,025-row probes, and retained-state row-1,025/2,049 controls as
    independent sparse regressions.
-3. Emit the `rust-star-engine-measurement-v1` artifact from the exact native
-   batched-prefill/128-token closed loop and connect it to the paired runner.
-4. Preserve the four-, six-, eight-, 43-layer, explicit decoder-output, and
+3. Preserve the four-, six-, eight-, 43-layer, explicit decoder-output, and
    closed-loop diagnostic commands as independently executed controls.
-5. Run the extended 2K--1M frontier capture when the Mac can be dedicated to a
+4. Run the extended 2K--1M frontier capture when the Mac can be dedicated to a
    long benchmark; preserve any 512K/1M capacity failure as evidence.
-6. Run or approve the fork's GitHub Actions workflow and retain its URL.
+5. Run or approve the fork's GitHub Actions workflow and retain its URL.
 
 ## Entries
+
+### 2026-08-27 — Exact native 2K handoff through production sparse position 4099
+
+Objective:
+
+- Transfer the retained exact batched-prefill state into the ordinary decoder
+  representation without host readback, then prove the complete closed loop
+  through the first default sparse ratio-4 step.
+
+Evidence:
+
+- Added a pinned-oracle capture that performs exact 2,048-token
+  `ds4_session_sync`, then greedily evaluates positions 2048--4099. Two fresh
+  processes produced the same 2,052 input-token transcript, immediate logits,
+  final logits, and 51,659,152-byte retained prefill payload bit-for-bit.
+- The compact fixture retains only the transcript and the two 129,280-logit
+  frontiers. The full retained payload remains local diagnostic evidence and
+  is not imported into the repository.
+- Added one GPU-only adoption ABI. It copies all 43 raw-ring tails, layers
+  2--42 attention compressed/recurrent state, and all even-layer indexer
+  compressed/recurrent state in 229 blits under one command buffer and one
+  host wait.
+- The optimized M1 Ultra run matched the native prefill token 15342, every one
+  of the 2,052 greedy selections, all position-2048 logits, and all
+  position-4099 logits. At position 4099 all 21 even layers observed newly
+  committed compressed row 1,025 and used the production two-block top-512
+  sparse schedule. Input token 312 selected token 2538.
+- The run reported 21,803.054/21,712.993 ms transformer wall/GPU time,
+  262.624/2.705 ms output-head wall/GPU time, 78.904/0.207 ms handoff wall/GPU
+  time, and 16.563 synchronized decode positions/s. These are correctness
+  diagnostics with per-position waits and full frontier checks, not an engine
+  throughput claim.
+
+Decision:
+
+- Native batched prefill, persistent-state ownership, exact post-prompt decode,
+  and the first production sparse frontier are now one continuous C0 path.
+  Captured initial state is no longer used by this control.
+
+Next:
+
+- Build a timing-specific 128-token engine-measurement producer from this
+  exact state path, validate its artifact, and connect it to the paired runner.
 
 ### 2026-08-27 — Exact complete-model native 2K prefill through logits
 

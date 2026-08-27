@@ -819,6 +819,31 @@ Preceding layers 0 and 1 and the complete retained layer 2 are now claimed; the
 seeded prior histories, complete decoder, logits, and throughput remain outside
 the claim.
 
+To validate the exact native-prefill handoff and closed-loop sparse frontier:
+
+```sh
+rust-star/.work/runtime-target/release/rust-star \
+  prefill-decode-frontier-probe \
+  /absolute/path/to/model.gguf \
+  --json rust-star/.work/runtime-target/prefill-decode-frontier-probe.json
+```
+
+This command starts with the complete exact 2K batched-prefill schedule and
+keeps its raw KV, compressed caches, recurrent compressor states, and final HC
+resident in the same Metal context. One blit command performs 229 GPU-to-GPU
+copies: the final 128 raw rows for all 43 layers, attention compressed/state
+storage for layers 2--42, and indexer compressed/state storage for every even
+layer. No state is read through the host during adoption.
+
+The resulting decoder greedily evaluates positions 2048--4099 against a
+2,052-token transcript captured bit-identically in two fresh DwarfStar
+processes. It requires the complete position-2048 and position-4099 logits to
+match by bit pattern. Position 4099 commits compressed row 1,025 before the
+same step's fixed top-512 lookup and therefore exercises all 21 even layers at
+the production-default sparse threshold. Per-position synchronization and
+correctness checks remain enabled, so the reported 16.563 positions/s from the
+first focused run is diagnostic and not a throughput result.
+
 To validate the complete retained step at the same position:
 
 ```sh

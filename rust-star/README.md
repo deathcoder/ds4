@@ -62,9 +62,13 @@ final 129,280 logits. A separate 2K command now grows context-sized compressed
 memory, advances a true 128-row raw-KV ring, and exactly matches two fresh
 DwarfStar one-token decode replays over the canonical prompt. It also proves
 that this sequential construction differs from DwarfStar's batched prefill in
-all 129,280 logits despite selecting the same token. The path therefore remains
-diagnostic: eligible measurements still require complete native batched prefill
-and a full decoder run through the sparse frontier.
+all 129,280 logits despite selecting the same token. That path therefore remains
+diagnostic. The exact native path now retains all 43 layers of batched-prefill
+state, adopts its raw rings, compressed histories, and recurrent states with
+one GPU blit command, and greedily decodes positions 2048--4099. All 2,052
+selected tokens and both pinned full-logit frontiers are exact, including the
+first production-default 1,025-row sparse ratio-4 step. Eligible measurements
+still require a timing-specific engine-measurement producer.
 
 A separate retained-state control now seeds the exact layer-2 state immediately
 before position 4099 and executes the production retained schedule through its
@@ -318,8 +322,9 @@ at position 4099 now add the exact two-block argsort merge and validate all
 The same first-boundary schedule is wired into retained even-layer state with
 35 no-copy model mappings, and a complete retained position-8195 decoder step
 now executes all 43 layers through that branch and matches full-vocabulary
-logits exactly. Sparse post-prompt integration, an eligible engine
-measurement, and throughput remain pending.
+logits exactly. Exact sparse post-prompt integration is now complete through
+position 4099 via the GPU-only native-prefill handoff. An eligible engine
+measurement and throughput comparison remain pending.
 
 Project controls and benchmark contracts:
 

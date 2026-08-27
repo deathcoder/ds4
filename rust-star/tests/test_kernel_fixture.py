@@ -59,6 +59,9 @@ COLD_PREFILL_FIXTURE = RUST_STAR_DIR / "fixtures" / "cold-prefill-pos0-v1"
 PREFILL_FRONTIER_FIXTURE = (
     RUST_STAR_DIR / "fixtures" / "prefill-frontier-2048-v1"
 )
+PREFILL_DECODE_FRONTIER_FIXTURE = (
+    RUST_STAR_DIR / "fixtures" / "prefill-decode-frontier-4099-v1"
+)
 RETAINED_DECODER_STEP_FIXTURE = (
     RUST_STAR_DIR / "fixtures" / "retained-decoder-step-pos8195-v1"
 )
@@ -376,6 +379,30 @@ class KernelFixtureTests(unittest.TestCase):
         self.assertEqual(manifest["capture"]["prefill_tokens"], 2048)
         self.assertFalse(manifest["capture"]["decode_replay"]["equals_batched_prefill"])
         self.assertEqual(manifest["selection"]["token_id"], 15342)
+
+    def test_prefill_decode_frontier_fixture_manifest_and_payloads(self) -> None:
+        manifest = json.loads(
+            (PREFILL_DECODE_FRONTIER_FIXTURE / "manifest.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        report = validate_differential_fixture(PREFILL_DECODE_FRONTIER_FIXTURE)
+        self.assertEqual(
+            report["fixture_id"],
+            "dwarfstar-oracle-v1-prefill-decode-frontier-4099",
+        )
+        self.assertEqual(report["scope"], "decode-step")
+        self.assertEqual(report["operations"], 2)
+        self.assertEqual(report["tensors"], 3)
+        self.assertEqual(report["verified_bytes"], 1_042_448)
+        self.assertEqual(manifest["scope"]["prefill_tokens"], 2048)
+        self.assertEqual(manifest["scope"]["position_end"], 4099)
+        self.assertTrue(manifest["capture"]["fresh_process_bitwise_match"])
+        self.assertFalse(
+            manifest["capture"]["retained_prefill_payload"]["imported"]
+        )
+        self.assertEqual(manifest["selection"]["position_2048_selected_token"], 201)
+        self.assertEqual(manifest["selection"]["position_4099_selected_token"], 2538)
 
     def test_prefill_q8_boundary_fixture_manifest_and_payloads(self) -> None:
         manifest = json.loads(

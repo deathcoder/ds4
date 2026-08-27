@@ -1,0 +1,100 @@
+{
+  "schema": "rust-star-differential-fixture-v1",
+  "fixture_id": "dwarfstar-oracle-v1-prefill-decode-frontier-4099",
+  "captured_at_utc": "2026-08-27T13:24:48Z",
+  "oracle": {
+    "id": "oracle-v1",
+    "repository": "https://github.com/antirez/ds4.git",
+    "commit": "b0309611041655f4e45671cfd9c9886aff161406",
+    "tree": "20c11af22f90a0bdf25da860da5ef06de4064060",
+    "capture_executable_sha256": "b0b7c31d9832cc3f5cccf810cd2af6f4bc4f6e71de945493674315314f666fc8"
+  },
+  "model": {
+    "family": "DeepSeek-V4-Flash-0731",
+    "sha256": "ca22ae2f838e14077c22bc1c1417b71b45b5e5a3687bd96c2ac6e17fdb6261c0"
+  },
+  "capture": {
+    "backend": "metal",
+    "machine": "Apple M1 Ultra, 48 GPU cores, 128 GB unified memory",
+    "construction": "exact 2048-token batched prefill followed by greedy ds4_session_eval calls through position 4099",
+    "fresh_process_captures": 2,
+    "fresh_process_bitwise_match": true,
+    "capture_executable_sha256": "3a2e2f64dc70341b5729bf4c29713c4212e1658f81555492fffeba616573167a",
+    "command": "capture-prefill-decode-frontier MODEL token-ids.u32le.bin 4099 ...",
+    "retained_prefill_payload": {
+      "bytes": 51659152,
+      "sha256": "296554d691a66bc9869cf670d93320a645b4977c622c0c94321473d485532654",
+      "imported": false,
+      "purpose": "repeatability evidence and local diagnosis only"
+    }
+  },
+  "scope": {
+    "kind": "decode-step",
+    "phase": "decode",
+    "position": 4099,
+    "prefill_tokens": 2048,
+    "position_start": 2048,
+    "position_end": 4099,
+    "evaluated_positions": 2052,
+    "first_default_sparse_position": 4099,
+    "ratio4_compressed_rows": 1025
+  },
+  "operations": [
+    {
+      "name": "exact_batched_prefill",
+      "kernel": "ds4_session_sync"
+    },
+    {
+      "name": "greedy_decode_positions_2048_4099",
+      "kernel": "ds4_session_eval"
+    }
+  ],
+  "selection": {
+    "method": "lowest-token-id-argmax",
+    "prefill_selected_token": 15342,
+    "position_2048_selected_token": 201,
+    "position_4099_input_token": 312,
+    "position_4099_selected_token": 2538
+  },
+  "tensors": [
+    {
+      "name": "decode_input_token_ids",
+      "hook": "closed_loop_input",
+      "role": "input",
+      "dtype": "i32",
+      "shape": [
+        2052
+      ],
+      "encoding": "little-endian-signed-integer32",
+      "path": "input-tokens.u32le.bin",
+      "bytes": 8208,
+      "sha256": "ebcfa0c483d2ce202c3ee425047fdd41b2dfc7f9f56bd47318cfe8a5ddb104fe"
+    },
+    {
+      "name": "position_2048_logits",
+      "hook": "session_decode_logits",
+      "role": "output",
+      "dtype": "f32",
+      "shape": [
+        129280
+      ],
+      "encoding": "little-endian-ieee754-binary32",
+      "path": "first-logits.f32le.bin",
+      "bytes": 517120,
+      "sha256": "ba543a4eb2fd2cef42d2976eb6a0ea408feeb30377c6e6e77522b5f983e730a3"
+    },
+    {
+      "name": "position_4099_logits",
+      "hook": "session_decode_logits",
+      "role": "output",
+      "dtype": "f32",
+      "shape": [
+        129280
+      ],
+      "encoding": "little-endian-ieee754-binary32",
+      "path": "final-logits.f32le.bin",
+      "bytes": 517120,
+      "sha256": "b0d3d11d08f336d4a40e10eea5c5d2018d205aae61068c76d8ec8ce824fa5f8c"
+    }
+  ]
+}

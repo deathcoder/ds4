@@ -97,6 +97,19 @@ typedef struct rust_star_metal_prefill_qkv_probe_result {
     double gpu_ms;
 } rust_star_metal_prefill_qkv_probe_result;
 
+typedef struct rust_star_metal_prefill_decode_handoff_result {
+    uint32_t layers;
+    uint32_t raw_rows_per_layer;
+    uint32_t ratio4_rows_per_layer;
+    uint32_t ratio128_rows_per_layer;
+    uint32_t blit_copies;
+    uint32_t command_buffers;
+    uint32_t host_waits;
+    uint32_t reserved;
+    double wall_ms;
+    double gpu_ms;
+} rust_star_metal_prefill_decode_handoff_result;
+
 typedef struct rust_star_metal_prefill_ffn_weights {
     uint64_t hc_fn_offset, hc_fn_bytes;
     uint64_t hc_scale_offset, hc_scale_bytes;
@@ -2001,6 +2014,15 @@ int rust_star_metal_seed_retained_decoder_layer_position8195(
     const float *indexer_state_kv_pre,
     const float *indexer_state_score_pre,
     uint32_t indexer_state_elements,
+    char *error,
+    size_t error_bytes);
+
+/* Adopts the exact 2K batched-prefill buffers into the decoder's raw ring,
+ * compressed histories, and recurrent compressor state without host readback. */
+int rust_star_metal_adopt_prefill_decoder_state(
+    void *context,
+    uint32_t decoder_context_capacity,
+    rust_star_metal_prefill_decode_handoff_result *result,
     char *error,
     size_t error_bytes);
 

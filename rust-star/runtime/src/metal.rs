@@ -58,6 +58,7 @@ pub const POSITION127_DECODER_PROBE_SCHEMA: &str =
     "rust-star-position127-decoder-frontier-diagnostic-v1";
 pub const COLD_PREFILL_DECODER_PROBE_SCHEMA: &str = "rust-star-cold-prefill-decoder-diagnostic-v1";
 pub const PREFILL_FRONTIER_PROBE_SCHEMA: &str = "rust-star-prefill-frontier-diagnostic-v1";
+pub const PREFILL_DECODE_FRONTIER_PROBE_SCHEMA: &str = "rust-star-prefill-decode-frontier-probe-v1";
 pub const RATIO128_COMPRESSOR_REPLAY_PROBE_SCHEMA: &str =
     "rust-star-ratio128-compressor-replay-probe-v1";
 pub const SPARSE_INDEXED_ATTENTION_PROBE_SCHEMA: &str =
@@ -421,6 +422,8 @@ pub const LAYER5_POS127_COMPRESSOR_FIXTURE_ID: &str =
 pub const POSITION127_DECODER_FIXTURE_ID: &str = "dwarfstar-oracle-v1-decoder-frontier-pos127";
 pub const COLD_PREFILL_FIXTURE_ID: &str = "dwarfstar-oracle-v1-cold-prefill-pos0";
 pub const PREFILL_FRONTIER_2048_FIXTURE_ID: &str = "dwarfstar-oracle-v1-prefill-frontier-2048";
+pub const PREFILL_DECODE_FRONTIER_4099_FIXTURE_ID: &str =
+    "dwarfstar-oracle-v1-prefill-decode-frontier-4099";
 pub const DEFAULT_ELEMENTS: u64 = 4096;
 pub const DEFAULT_ITERATIONS: u64 = 100;
 const MAX_ELEMENTS: u64 = 16 * 1024 * 1024;
@@ -480,6 +483,12 @@ const PREFILL_FRONTIER_2048_BATCH_LOGITS_BYTES: &[u8] =
     include_bytes!("../../fixtures/prefill-frontier-2048-v1/batch-prefill-logits.f32le.bin");
 const PREFILL_FRONTIER_2048_DECODE_LOGITS_BYTES: &[u8] =
     include_bytes!("../../fixtures/prefill-frontier-2048-v1/decode-replay-logits.f32le.bin");
+const PREFILL_DECODE_4099_INPUT_TOKENS_BYTES: &[u8] =
+    include_bytes!("../../fixtures/prefill-decode-frontier-4099-v1/input-tokens.u32le.bin");
+const PREFILL_DECODE_2048_LOGITS_BYTES: &[u8] =
+    include_bytes!("../../fixtures/prefill-decode-frontier-4099-v1/first-logits.f32le.bin");
+const PREFILL_DECODE_4099_LOGITS_BYTES: &[u8] =
+    include_bytes!("../../fixtures/prefill-decode-frontier-4099-v1/final-logits.f32le.bin");
 const PROJECTION_TENSOR: &str = "blk.0.attn_q_a.weight";
 const PROJECTION_INPUT_BYTES: &[u8] =
     include_bytes!("../../fixtures/q8-attn-q-a-v1/activation.f32le.bin");
@@ -4232,6 +4241,54 @@ pub struct PrefillFrontierProbeReport {
 }
 
 #[derive(Clone, Debug)]
+pub struct PrefillDecodeHandoffReport {
+    pub layers: u32,
+    pub raw_rows_per_layer: u32,
+    pub ratio4_rows_per_layer: u32,
+    pub ratio128_rows_per_layer: u32,
+    pub blit_copies: u32,
+    pub command_buffers: u32,
+    pub host_waits: u32,
+    pub wall_ms: f64,
+    pub gpu_ms: f64,
+}
+
+#[derive(Clone, Debug)]
+pub struct PrefillDecodeFrontierProbeReport {
+    pub fixture_id: &'static str,
+    pub prefill_fixture_id: &'static str,
+    pub prefill_tokens: u32,
+    pub prefill_dispatches: u32,
+    pub prefill_model_mappings: u32,
+    pub prefill_transformer_wall_ms: f64,
+    pub prefill_transformer_gpu_ms: f64,
+    pub prefill_output_head_wall_ms: f64,
+    pub prefill_output_head_gpu_ms: f64,
+    pub handoff: PrefillDecodeHandoffReport,
+    pub position_start: u32,
+    pub position_end: u32,
+    pub evaluated_positions: u32,
+    pub dense_positions: u32,
+    pub sparse_positions: u32,
+    pub dense_transformer_dispatches: u32,
+    pub sparse_transformer_dispatches: u32,
+    pub dense_model_mappings: u32,
+    pub sparse_model_mappings: u32,
+    pub command_buffers_per_position: u32,
+    pub host_waits_per_position: u32,
+    pub decode_wall_ms: f64,
+    pub transformer_gpu_ms: f64,
+    pub output_head_gpu_ms: f64,
+    pub first_input_token: u32,
+    pub first_selected_token: u32,
+    pub final_input_token: u32,
+    pub final_selected_token: u32,
+    pub input_tokens_checksum: u64,
+    pub first_logits_checksum: u64,
+    pub final_logits_checksum: u64,
+}
+
+#[derive(Clone, Debug)]
 pub struct Ratio128CompressorLayerReport {
     pub layer: u32,
     pub fixture_id: &'static str,
@@ -5074,7 +5131,7 @@ pub fn write_cold_prefill_decoder_probe_json<W: Write>(
     }
     write!(
         output,
-        "],\n  \"state_initialization\": \"cold-empty-kv-and-compressor-state\",\n  \"prefill\": {{\"tokens\": 1, \"wall_ms\": {:.6}, \"sampling_in_interval\": true, \"full_logits_c0_bitwise_match\": true, \"selected_token\": 201}},\n  \"decode\": {{\"evaluated_positions\": 127, \"wall_ms\": {:.6}, \"evaluated_positions_per_second\": {:.6}}},\n  \"final_logits_c0_bitwise_match\": true,\n  \"integrated_ratio128_rows_c0_bitwise_match\": true,\n  \"captured_initial_state_used\": false,\n  \"paired_protocol_eligible\": false,\n  \"paired_protocol_blocker\": \"ineligible one-token prefill control; native 2K-to-decode sparse handoff remains pending\"\n}}\n",
+        "],\n  \"state_initialization\": \"cold-empty-kv-and-compressor-state\",\n  \"prefill\": {{\"tokens\": 1, \"wall_ms\": {:.6}, \"sampling_in_interval\": true, \"full_logits_c0_bitwise_match\": true, \"selected_token\": 201}},\n  \"decode\": {{\"evaluated_positions\": 127, \"wall_ms\": {:.6}, \"evaluated_positions_per_second\": {:.6}}},\n  \"final_logits_c0_bitwise_match\": true,\n  \"integrated_ratio128_rows_c0_bitwise_match\": true,\n  \"captured_initial_state_used\": false,\n  \"paired_protocol_eligible\": false,\n  \"paired_protocol_blocker\": \"ineligible one-token prefill control; exact native 2K-to-decode sparse correctness is covered by the dedicated frontier probe\"\n}}\n",
         report.prefill_wall_ms,
         report.decode_wall_ms,
         report.decode_tps,
@@ -5119,7 +5176,7 @@ pub fn write_prefill_frontier_probe_json<W: Write>(
     }
     write!(
         output,
-        "{{\n  \"schema\": \"{PREFILL_FRONTIER_PROBE_SCHEMA}\",\n  \"classification\": \"diagnostic\",\n  \"fixture\": \"{}\",\n  \"state_initialization\": \"cold-empty-kv-and-compressor-state\",\n  \"context_capacity\": {},\n  \"prefill\": {{\"tokens\": {}, \"final_position\": {}, \"wall_ms\": {:.6}, \"tokens_per_second\": {:.6}, \"sampling_in_interval\": true, \"selected_token\": {}}},\n  \"cache\": {{\"raw_ring_rows_per_layer\": {}, \"ratio4_compressed_rows_per_layer\": {}, \"ratio128_compressed_rows_per_layer\": {}}},\n  \"decode_replay_logits_c0_bitwise_match\": true,\n  \"batched_prefill_logits_c0_bitwise_match\": false,\n  \"batched_prefill_drift\": {{\"mismatch_count\": {}, \"max_abs_error\": {:.9}}},\n  \"decode_logits_checksum\": {},\n  \"captured_initial_state_used\": false,\n  \"paired_protocol_eligible\": false,\n  \"paired_protocol_blocker\": \"ineligible sequential-replay control; exact native batched prefill exists separately and its sparse decode handoff remains pending\"\n}}\n",
+        "{{\n  \"schema\": \"{PREFILL_FRONTIER_PROBE_SCHEMA}\",\n  \"classification\": \"diagnostic\",\n  \"fixture\": \"{}\",\n  \"state_initialization\": \"cold-empty-kv-and-compressor-state\",\n  \"context_capacity\": {},\n  \"prefill\": {{\"tokens\": {}, \"final_position\": {}, \"wall_ms\": {:.6}, \"tokens_per_second\": {:.6}, \"sampling_in_interval\": true, \"selected_token\": {}}},\n  \"cache\": {{\"raw_ring_rows_per_layer\": {}, \"ratio4_compressed_rows_per_layer\": {}, \"ratio128_compressed_rows_per_layer\": {}}},\n  \"decode_replay_logits_c0_bitwise_match\": true,\n  \"batched_prefill_logits_c0_bitwise_match\": false,\n  \"batched_prefill_drift\": {{\"mismatch_count\": {}, \"max_abs_error\": {:.9}}},\n  \"decode_logits_checksum\": {},\n  \"captured_initial_state_used\": false,\n  \"paired_protocol_eligible\": false,\n  \"paired_protocol_blocker\": \"ineligible sequential-replay control; exact native batched prefill-to-sparse-decode correctness is covered by the dedicated frontier probe\"\n}}\n",
         report.fixture_id,
         report.context_capacity,
         report.prompt_tokens,
@@ -5133,6 +5190,111 @@ pub fn write_prefill_frontier_probe_json<W: Write>(
         report.batch_logits_mismatch_count,
         report.batch_logits_max_abs_error,
         report.decode_logits_checksum,
+    )?;
+    Ok(())
+}
+
+pub fn write_prefill_decode_frontier_probe_json<W: Write>(
+    output: &mut W,
+    report: &PrefillDecodeFrontierProbeReport,
+) -> Result<()> {
+    let (tokens, first_logits, final_logits) = prefill_decode_frontier_4099_fixture()?;
+    if report.fixture_id != PREFILL_DECODE_FRONTIER_4099_FIXTURE_ID
+        || report.prefill_fixture_id != PREFILL_FRONTIER_2048_FIXTURE_ID
+        || report.prefill_tokens != 2048
+        || report.prefill_dispatches != 2377
+        || report.prefill_model_mappings != 1221
+        || report.handoff.layers != 43
+        || report.handoff.raw_rows_per_layer != 128
+        || report.handoff.ratio4_rows_per_layer != 512
+        || report.handoff.ratio128_rows_per_layer != 16
+        || report.handoff.blit_copies != 229
+        || report.handoff.command_buffers != 1
+        || report.handoff.host_waits != 1
+        || report.position_start != 2048
+        || report.position_end != 4099
+        || report.evaluated_positions != 2052
+        || report.dense_positions != 2051
+        || report.sparse_positions != 1
+        || report.dense_transformer_dispatches != 1330
+        || report.sparse_transformer_dispatches != 1792
+        || report.dense_model_mappings != 1323
+        || report.sparse_model_mappings != 1365
+        || report.command_buffers_per_position != 44
+        || report.host_waits_per_position != 2
+        || report.first_input_token != 15342
+        || report.first_selected_token != 201
+        || report.final_input_token != 312
+        || report.final_selected_token != 2538
+        || report.input_tokens_checksum != checksum_u32(&tokens)
+        || report.first_logits_checksum != checksum_f32(&first_logits)
+        || report.final_logits_checksum != checksum_f32(&final_logits)
+        || !report.prefill_transformer_wall_ms.is_finite()
+        || report.prefill_transformer_wall_ms <= 0.0
+        || !report.prefill_transformer_gpu_ms.is_finite()
+        || report.prefill_transformer_gpu_ms < 0.0
+        || !report.prefill_output_head_wall_ms.is_finite()
+        || report.prefill_output_head_wall_ms <= 0.0
+        || !report.prefill_output_head_gpu_ms.is_finite()
+        || report.prefill_output_head_gpu_ms < 0.0
+        || !report.handoff.wall_ms.is_finite()
+        || report.handoff.wall_ms <= 0.0
+        || !report.handoff.gpu_ms.is_finite()
+        || report.handoff.gpu_ms < 0.0
+        || !report.decode_wall_ms.is_finite()
+        || report.decode_wall_ms <= 0.0
+        || !report.transformer_gpu_ms.is_finite()
+        || report.transformer_gpu_ms < 0.0
+        || !report.output_head_gpu_ms.is_finite()
+        || report.output_head_gpu_ms < 0.0
+    {
+        return Err(Error::invalid(
+            "2K-prefill decoder frontier report has inconsistent metadata",
+        ));
+    }
+    write!(
+        output,
+        "{{\n  \"schema\": \"{PREFILL_DECODE_FRONTIER_PROBE_SCHEMA}\",\n  \"classification\": \"exact-native-prefill-closed-loop-sparse-c0-control\",\n  \"fixture\": \"{}\",\n  \"prefill\": {{\"fixture\": \"{}\", \"tokens\": {}, \"dispatches\": {}, \"no_copy_model_mappings\": {}, \"timing\": {{\"transformer_wall_ms\": {:.6}, \"transformer_gpu_ms\": {:.6}, \"output_head_wall_ms\": {:.6}, \"output_head_gpu_ms\": {:.6}}}, \"selected_token\": {}}},\n  \"handoff\": {{\"kind\": \"gpu_blit_no_host_readback\", \"layers\": {}, \"raw_rows_per_layer\": {}, \"ratio4_rows_per_layer\": {}, \"ratio128_rows_per_layer\": {}, \"blit_copies\": {}, \"command_buffers\": {}, \"host_waits\": {}, \"wall_ms\": {:.6}, \"gpu_ms\": {:.6}}},\n  \"decode\": {{\"position_start\": {}, \"position_end\": {}, \"evaluated_positions\": {}, \"dense_positions\": {}, \"sparse_positions\": {}, \"command_buffers_per_position\": {}, \"host_waits_per_position\": {}, \"wall_ms\": {:.6}, \"transformer_summed_gpu_ms\": {:.6}, \"output_head_summed_gpu_ms\": {:.6}}},\n  \"schedule\": {{\"dense_transformer_dispatches_per_position\": {}, \"first_sparse_transformer_dispatches\": {}, \"dense_no_copy_model_mappings_per_position\": {}, \"first_sparse_no_copy_model_mappings\": {}, \"output_head_dispatches_per_position\": 5}},\n  \"sparse_boundary\": {{\"position\": 4099, \"ratio4_compressed_rows\": 1025, \"top_k\": 512, \"layers\": 21, \"same_step_compressed_row_commit\": true, \"production_default_threshold\": true}},\n  \"selection\": {{\"first_input_token\": {}, \"first_selected_token\": {}, \"final_input_token\": {}, \"final_selected_token\": {}}},\n  \"checksums\": {{\"input_tokens\": {}, \"position_2048_logits\": {}, \"position_4099_logits\": {}}},\n  \"native_batched_prefill_claim\": true,\n  \"prefill_state_handoff_claim\": true,\n  \"closed_loop_decode_claim\": true,\n  \"production_sparse_ratio4_claim\": true,\n  \"output_logits_c0_bitwise_match\": true,\n  \"greedy_transcript_match\": true,\n  \"captured_initial_state_used\": false,\n  \"throughput_claim\": false\n}}\n",
+        report.fixture_id,
+        report.prefill_fixture_id,
+        report.prefill_tokens,
+        report.prefill_dispatches,
+        report.prefill_model_mappings,
+        report.prefill_transformer_wall_ms,
+        report.prefill_transformer_gpu_ms,
+        report.prefill_output_head_wall_ms,
+        report.prefill_output_head_gpu_ms,
+        report.first_input_token,
+        report.handoff.layers,
+        report.handoff.raw_rows_per_layer,
+        report.handoff.ratio4_rows_per_layer,
+        report.handoff.ratio128_rows_per_layer,
+        report.handoff.blit_copies,
+        report.handoff.command_buffers,
+        report.handoff.host_waits,
+        report.handoff.wall_ms,
+        report.handoff.gpu_ms,
+        report.position_start,
+        report.position_end,
+        report.evaluated_positions,
+        report.dense_positions,
+        report.sparse_positions,
+        report.command_buffers_per_position,
+        report.host_waits_per_position,
+        report.decode_wall_ms,
+        report.transformer_gpu_ms,
+        report.output_head_gpu_ms,
+        report.dense_transformer_dispatches,
+        report.sparse_transformer_dispatches,
+        report.dense_model_mappings,
+        report.sparse_model_mappings,
+        report.first_input_token,
+        report.first_selected_token,
+        report.final_input_token,
+        report.final_selected_token,
+        report.input_tokens_checksum,
+        report.first_logits_checksum,
+        report.final_logits_checksum,
     )?;
     Ok(())
 }
@@ -9356,6 +9518,35 @@ fn prefill_frontier_2048_fixture() -> Result<(Vec<u32>, Vec<f32>, Vec<f32>)> {
         ));
     }
     Ok((tokens, batch_logits, decode_logits))
+}
+
+fn prefill_decode_frontier_4099_fixture() -> Result<(Vec<u32>, Vec<f32>, Vec<f32>)> {
+    let tokens = decode_u32_fixture(
+        PREFILL_DECODE_4099_INPUT_TOKENS_BYTES,
+        "2K-prefill decoder input transcript",
+    )?;
+    let first_logits = decode_f32_fixture(
+        PREFILL_DECODE_2048_LOGITS_BYTES,
+        "2K-prefill position-2048 logits",
+    )?;
+    let final_logits = decode_f32_fixture(
+        PREFILL_DECODE_4099_LOGITS_BYTES,
+        "2K-prefill position-4099 logits",
+    )?;
+    if tokens.len() != 2052
+        || tokens.first() != Some(&15342)
+        || tokens.get(1) != Some(&201)
+        || tokens.last() != Some(&312)
+        || first_logits.len() != 129280
+        || final_logits.len() != 129280
+        || lowest_id_argmax(&first_logits)? != 201
+        || lowest_id_argmax(&final_logits)? != 2538
+    {
+        return Err(Error::invalid(
+            "2K-prefill decoder frontier shape, transcript, or selection is invalid",
+        ));
+    }
+    Ok((tokens, first_logits, final_logits))
 }
 
 struct OutputHeadExpected {
@@ -18142,6 +18333,21 @@ mod imp {
     }
 
     #[repr(C)]
+    #[derive(Default)]
+    struct RawPrefillDecodeHandoffResult {
+        layers: u32,
+        raw_rows_per_layer: u32,
+        ratio4_rows_per_layer: u32,
+        ratio128_rows_per_layer: u32,
+        blit_copies: u32,
+        command_buffers: u32,
+        host_waits: u32,
+        reserved: u32,
+        wall_ms: f64,
+        gpu_ms: f64,
+    }
+
+    #[repr(C)]
     #[derive(Clone, Copy)]
     struct RawPrefillFfnWeights {
         hc_fn_offset: u64,
@@ -20221,6 +20427,13 @@ mod imp {
             error: *mut c_char,
             error_bytes: usize,
         ) -> i32;
+        fn rust_star_metal_adopt_prefill_decoder_state(
+            context: *mut c_void,
+            decoder_context_capacity: u32,
+            result: *mut RawPrefillDecodeHandoffResult,
+            error: *mut c_char,
+            error_bytes: usize,
+        ) -> i32;
         fn rust_star_metal_copy_compressed_kv_row(
             context: *mut c_void,
             layer_index: u32,
@@ -20755,6 +20968,56 @@ mod imp {
                 )));
             }
             Ok(())
+        }
+
+        fn adopt_prefill_decoder_state(
+            &self,
+            context_capacity: u32,
+        ) -> Result<PrefillDecodeHandoffReport> {
+            let mut raw = RawPrefillDecodeHandoffResult::default();
+            let mut error = [0 as c_char; ERROR_BYTES];
+            let adopted = unsafe {
+                rust_star_metal_adopt_prefill_decoder_state(
+                    self.0,
+                    context_capacity,
+                    &mut raw,
+                    error.as_mut_ptr(),
+                    error.len(),
+                )
+            };
+            if adopted == 0 {
+                return Err(Error::invalid(format!(
+                    "Metal prefill-to-decode state handoff failed: {}",
+                    error_text(&error)
+                )));
+            }
+            if raw.layers != 43
+                || raw.raw_rows_per_layer != 128
+                || raw.ratio4_rows_per_layer != 512
+                || raw.ratio128_rows_per_layer != 16
+                || raw.blit_copies != 229
+                || raw.command_buffers != 1
+                || raw.host_waits != 1
+                || !raw.wall_ms.is_finite()
+                || raw.wall_ms <= 0.0
+                || !raw.gpu_ms.is_finite()
+                || raw.gpu_ms < 0.0
+            {
+                return Err(Error::invalid(
+                    "Metal prefill-to-decode state handoff returned invalid metadata",
+                ));
+            }
+            Ok(PrefillDecodeHandoffReport {
+                layers: raw.layers,
+                raw_rows_per_layer: raw.raw_rows_per_layer,
+                ratio4_rows_per_layer: raw.ratio4_rows_per_layer,
+                ratio128_rows_per_layer: raw.ratio128_rows_per_layer,
+                blit_copies: raw.blit_copies,
+                command_buffers: raw.command_buffers,
+                host_waits: raw.host_waits,
+                wall_ms: raw.wall_ms,
+                gpu_ms: raw.gpu_ms,
+            })
         }
 
         fn compressed_kv_row(&self, layer_index: u32, row_index: u32) -> Result<Vec<f32>> {
@@ -22998,6 +23261,13 @@ mod imp {
     pub fn run_prefill_layers012_attention_loop_probe(
         model: &MappedModel,
     ) -> Result<PrefillLayers012AttentionLoopProbeReport> {
+        let (_, report) = run_prefill_layers012_attention_loop_probe_with_context(model)?;
+        Ok(report)
+    }
+
+    fn run_prefill_layers012_attention_loop_probe_with_context(
+        model: &MappedModel,
+    ) -> Result<(Context, PrefillLayers012AttentionLoopProbeReport)> {
         let context = Context::new()?;
         let compressor = run_prefill_layers012_compressor_loop_probe_in_context(model, &context)?;
         let expected = prefill_layer2_attention_fixture()?;
@@ -37757,590 +38027,659 @@ mod imp {
             ));
         }
         let output_head = run_prefill_output_head(model, &context)?;
-        Ok(PrefillLayers012AttentionLoopProbeReport {
-            compressor,
-            attention_fixture_id: PREFILL_LAYER2_ATTENTION_FIXTURE_ID,
-            attention_hc_fixture_id: PREFILL_LAYER2_COMPLETE_FIXTURE_ID,
-            layer3_ingress_fixture_id: PREFILL_LAYER3_INGRESS_FIXTURE_ID,
-            layer3_kv_state_fixture_id: PREFILL_LAYER3_KV_STATE_FIXTURE_ID,
-            layer3_compressor_fixture_id: PREFILL_LAYER3_COMPRESSOR_FIXTURE_ID,
-            layer3_attention_fixture_id: PREFILL_LAYER3_ATTENTION_FIXTURE_ID,
-            layer3_complete_fixture_id: PREFILL_LAYER3_COMPLETE_FIXTURE_ID,
-            layer4_qkv_fixture_id: PREFILL_LAYER4_QKV_FIXTURE_ID,
-            layer4_compressor_fixture_id: PREFILL_LAYER4_COMPRESSOR_FIXTURE_ID,
-            layer4_attention_fixture_id: PREFILL_LAYER4_ATTENTION_FIXTURE_ID,
-            layer4_complete_fixture_id: PREFILL_LAYER4_COMPLETE_FIXTURE_ID,
-            layer5_qkv_fixture_id: PREFILL_LAYER5_QKV_FIXTURE_ID,
-            layer5_compressor_fixture_id: PREFILL_LAYER5_COMPRESSOR_FIXTURE_ID,
-            layer5_attention_fixture_id: PREFILL_LAYER5_ATTENTION_FIXTURE_ID,
-            layer5_complete_fixture_id: PREFILL_LAYER5_COMPLETE_FIXTURE_ID,
-            layer6_qkv_fixture_id: PREFILL_LAYER6_QKV_FIXTURE_ID,
-            layer6_compressor_fixture_id: PREFILL_LAYER6_COMPRESSOR_FIXTURE_ID,
-            layer6_attention_fixture_id: PREFILL_LAYER6_ATTENTION_FIXTURE_ID,
-            layer6_complete_fixture_id: PREFILL_LAYER6_COMPLETE_FIXTURE_ID,
-            layer7_qkv_fixture_id: PREFILL_LAYER7_QKV_FIXTURE_ID,
-            layer7_compressor_fixture_id: PREFILL_LAYER7_COMPRESSOR_FIXTURE_ID,
-            layer7_attention_fixture_id: PREFILL_LAYER7_ATTENTION_FIXTURE_ID,
-            layer7_complete_fixture_id: PREFILL_LAYER7_COMPLETE_FIXTURE_ID,
-            layer8_qkv_fixture_id: PREFILL_LAYER8_QKV_FIXTURE_ID,
-            layer8_compressor_fixture_id: PREFILL_LAYER8_COMPRESSOR_FIXTURE_ID,
-            layer8_attention_fixture_id: PREFILL_LAYER8_ATTENTION_FIXTURE_ID,
-            layer8_complete_fixture_id: PREFILL_LAYER8_COMPLETE_FIXTURE_ID,
-            layer9_qkv_fixture_id: PREFILL_LAYER9_QKV_FIXTURE_ID,
-            layer9_compressor_fixture_id: PREFILL_LAYER9_COMPRESSOR_FIXTURE_ID,
-            layer9_attention_fixture_id: PREFILL_LAYER9_ATTENTION_FIXTURE_ID,
-            layer9_complete_fixture_id: PREFILL_LAYER9_COMPLETE_FIXTURE_ID,
-            layer10_qkv_fixture_id: PREFILL_LAYER10_QKV_FIXTURE_ID,
-            layer10_compressor_fixture_id: PREFILL_LAYER10_COMPRESSOR_FIXTURE_ID,
-            layer10_attention_fixture_id: PREFILL_LAYER10_ATTENTION_FIXTURE_ID,
-            layer10_complete_fixture_id: PREFILL_LAYER10_COMPLETE_FIXTURE_ID,
-            layer11_qkv_fixture_id: PREFILL_LAYER11_QKV_FIXTURE_ID,
-            layer11_compressor_fixture_id: PREFILL_LAYER11_COMPRESSOR_FIXTURE_ID,
-            layer11_attention_fixture_id: PREFILL_LAYER11_ATTENTION_FIXTURE_ID,
-            layer11_complete_fixture_id: PREFILL_LAYER11_COMPLETE_FIXTURE_ID,
-            layer12_qkv_fixture_id: PREFILL_LAYER12_QKV_FIXTURE_ID,
-            layer12_compressor_fixture_id: PREFILL_LAYER12_COMPRESSOR_FIXTURE_ID,
-            layer12_attention_fixture_id: PREFILL_LAYER12_ATTENTION_FIXTURE_ID,
-            layer12_complete_fixture_id: PREFILL_LAYER12_COMPLETE_FIXTURE_ID,
-            layer13_qkv_fixture_id: PREFILL_LAYER13_QKV_FIXTURE_ID,
-            layer13_compressor_fixture_id: PREFILL_LAYER13_COMPRESSOR_FIXTURE_ID,
-            layer13_attention_fixture_id: PREFILL_LAYER13_ATTENTION_FIXTURE_ID,
-            layer13_complete_fixture_id: PREFILL_LAYER13_COMPLETE_FIXTURE_ID,
-            layer14_qkv_fixture_id: PREFILL_LAYER14_QKV_FIXTURE_ID,
-            layer14_compressor_fixture_id: PREFILL_LAYER14_COMPRESSOR_FIXTURE_ID,
-            layer14_attention_fixture_id: PREFILL_LAYER14_ATTENTION_FIXTURE_ID,
-            layer14_complete_fixture_id: PREFILL_LAYER14_COMPLETE_FIXTURE_ID,
-            layer15_qkv_fixture_id: PREFILL_LAYER15_QKV_FIXTURE_ID,
-            layer15_compressor_fixture_id: PREFILL_LAYER15_COMPRESSOR_FIXTURE_ID,
-            layer15_attention_fixture_id: PREFILL_LAYER15_ATTENTION_FIXTURE_ID,
-            layer15_complete_fixture_id: PREFILL_LAYER15_COMPLETE_FIXTURE_ID,
-            layer16_qkv_fixture_id: PREFILL_LAYER16_QKV_FIXTURE_ID,
-            layer16_compressor_fixture_id: PREFILL_LAYER16_COMPRESSOR_FIXTURE_ID,
-            layer16_attention_fixture_id: PREFILL_LAYER16_ATTENTION_FIXTURE_ID,
-            layer16_complete_fixture_id: PREFILL_LAYER16_COMPLETE_FIXTURE_ID,
-            layer17_qkv_fixture_id: PREFILL_LAYER17_QKV_FIXTURE_ID,
-            layer17_compressor_fixture_id: PREFILL_LAYER17_COMPRESSOR_FIXTURE_ID,
-            layer17_attention_fixture_id: PREFILL_LAYER17_ATTENTION_FIXTURE_ID,
-            layer17_complete_fixture_id: PREFILL_LAYER17_COMPLETE_FIXTURE_ID,
-            layer18_qkv_fixture_id: PREFILL_LAYER18_QKV_FIXTURE_ID,
-            layer18_compressor_fixture_id: PREFILL_LAYER18_COMPRESSOR_FIXTURE_ID,
-            layer18_attention_fixture_id: PREFILL_LAYER18_ATTENTION_FIXTURE_ID,
-            layer18_complete_fixture_id: PREFILL_LAYER18_COMPLETE_FIXTURE_ID,
-            layer19_qkv_fixture_id: PREFILL_LAYER19_QKV_FIXTURE_ID,
-            layer19_compressor_fixture_id: PREFILL_LAYER19_COMPRESSOR_FIXTURE_ID,
-            layer19_attention_fixture_id: PREFILL_LAYER19_ATTENTION_FIXTURE_ID,
-            layer19_complete_fixture_id: PREFILL_LAYER19_COMPLETE_FIXTURE_ID,
-            layer20_qkv_fixture_id: PREFILL_LAYER20_QKV_FIXTURE_ID,
-            layer20_compressor_fixture_id: PREFILL_LAYER20_COMPRESSOR_FIXTURE_ID,
-            layer20_attention_fixture_id: PREFILL_LAYER20_ATTENTION_FIXTURE_ID,
-            layer20_complete_fixture_id: PREFILL_LAYER20_COMPLETE_FIXTURE_ID,
-            layer21_qkv_fixture_id: PREFILL_LAYER21_QKV_FIXTURE_ID,
-            layer21_compressor_fixture_id: PREFILL_LAYER21_COMPRESSOR_FIXTURE_ID,
-            layer21_attention_fixture_id: PREFILL_LAYER21_ATTENTION_FIXTURE_ID,
-            layer21_complete_fixture_id: PREFILL_LAYER21_COMPLETE_FIXTURE_ID,
-            layer22_qkv_fixture_id: PREFILL_LAYER22_QKV_FIXTURE_ID,
-            layer22_compressor_fixture_id: PREFILL_LAYER22_COMPRESSOR_FIXTURE_ID,
-            layer22_attention_fixture_id: PREFILL_LAYER22_ATTENTION_FIXTURE_ID,
-            layer22_complete_fixture_id: PREFILL_LAYER22_COMPLETE_FIXTURE_ID,
-            layer23_qkv_fixture_id: PREFILL_LAYER23_QKV_FIXTURE_ID,
-            layer23_compressor_fixture_id: PREFILL_LAYER23_COMPRESSOR_FIXTURE_ID,
-            layer23_attention_fixture_id: PREFILL_LAYER23_ATTENTION_FIXTURE_ID,
-            layer23_complete_fixture_id: PREFILL_LAYER23_COMPLETE_FIXTURE_ID,
-            layer24_qkv_fixture_id: PREFILL_LAYER24_QKV_FIXTURE_ID,
-            layer24_compressor_fixture_id: PREFILL_LAYER24_COMPRESSOR_FIXTURE_ID,
-            layer24_attention_fixture_id: PREFILL_LAYER24_ATTENTION_FIXTURE_ID,
-            layer24_complete_fixture_id: PREFILL_LAYER24_COMPLETE_FIXTURE_ID,
-            layer25_qkv_fixture_id: PREFILL_LAYER25_QKV_FIXTURE_ID,
-            layer25_compressor_fixture_id: PREFILL_LAYER25_COMPRESSOR_FIXTURE_ID,
-            layer25_attention_fixture_id: PREFILL_LAYER25_ATTENTION_FIXTURE_ID,
-            layer25_complete_fixture_id: PREFILL_LAYER25_COMPLETE_FIXTURE_ID,
-            layer26_qkv_fixture_id: PREFILL_LAYER26_QKV_FIXTURE_ID,
-            layer26_compressor_fixture_id: PREFILL_LAYER26_COMPRESSOR_FIXTURE_ID,
-            layer26_attention_fixture_id: PREFILL_LAYER26_ATTENTION_FIXTURE_ID,
-            layer26_complete_fixture_id: PREFILL_LAYER26_COMPLETE_FIXTURE_ID,
-            layer27_qkv_fixture_id: PREFILL_LAYER27_QKV_FIXTURE_ID,
-            layer27_compressor_fixture_id: PREFILL_LAYER27_COMPRESSOR_FIXTURE_ID,
-            layer27_attention_fixture_id: PREFILL_LAYER27_ATTENTION_FIXTURE_ID,
-            layer27_complete_fixture_id: PREFILL_LAYER27_COMPLETE_FIXTURE_ID,
-            layer28_qkv_fixture_id: PREFILL_LAYER28_QKV_FIXTURE_ID,
-            layer28_compressor_fixture_id: PREFILL_LAYER28_COMPRESSOR_FIXTURE_ID,
-            layer28_attention_fixture_id: PREFILL_LAYER28_ATTENTION_FIXTURE_ID,
-            layer28_complete_fixture_id: PREFILL_LAYER28_COMPLETE_FIXTURE_ID,
-            layer29_qkv_fixture_id: PREFILL_LAYER29_QKV_FIXTURE_ID,
-            layer29_compressor_fixture_id: PREFILL_LAYER29_COMPRESSOR_FIXTURE_ID,
-            layer29_attention_fixture_id: PREFILL_LAYER29_ATTENTION_FIXTURE_ID,
-            layer29_complete_fixture_id: PREFILL_LAYER29_COMPLETE_FIXTURE_ID,
-            layer30_qkv_fixture_id: PREFILL_LAYER30_QKV_FIXTURE_ID,
-            layer30_compressor_fixture_id: PREFILL_LAYER30_COMPRESSOR_FIXTURE_ID,
-            layer30_attention_fixture_id: PREFILL_LAYER30_ATTENTION_FIXTURE_ID,
-            layer30_complete_fixture_id: PREFILL_LAYER30_COMPLETE_FIXTURE_ID,
-            layer31_qkv_fixture_id: PREFILL_LAYER31_QKV_FIXTURE_ID,
-            layer31_compressor_fixture_id: PREFILL_LAYER31_COMPRESSOR_FIXTURE_ID,
-            layer31_attention_fixture_id: PREFILL_LAYER31_ATTENTION_FIXTURE_ID,
-            layer31_complete_fixture_id: PREFILL_LAYER31_COMPLETE_FIXTURE_ID,
-            layer32_qkv_fixture_id: PREFILL_LAYER32_QKV_FIXTURE_ID,
-            layer32_compressor_fixture_id: PREFILL_LAYER32_COMPRESSOR_FIXTURE_ID,
-            layer32_attention_fixture_id: PREFILL_LAYER32_ATTENTION_FIXTURE_ID,
-            layer32_complete_fixture_id: PREFILL_LAYER32_COMPLETE_FIXTURE_ID,
-            layer33_qkv_fixture_id: PREFILL_LAYER33_QKV_FIXTURE_ID,
-            layer33_compressor_fixture_id: PREFILL_LAYER33_COMPRESSOR_FIXTURE_ID,
-            layer33_attention_fixture_id: PREFILL_LAYER33_ATTENTION_FIXTURE_ID,
-            layer33_complete_fixture_id: PREFILL_LAYER33_COMPLETE_FIXTURE_ID,
-            layer34_qkv_fixture_id: PREFILL_LAYER34_QKV_FIXTURE_ID,
-            layer34_compressor_fixture_id: PREFILL_LAYER34_COMPRESSOR_FIXTURE_ID,
-            layer34_attention_fixture_id: PREFILL_LAYER34_ATTENTION_FIXTURE_ID,
-            layer34_complete_fixture_id: PREFILL_LAYER34_COMPLETE_FIXTURE_ID,
-            layer35_qkv_fixture_id: PREFILL_LAYER35_QKV_FIXTURE_ID,
-            layer35_compressor_fixture_id: PREFILL_LAYER35_COMPRESSOR_FIXTURE_ID,
-            layer35_attention_fixture_id: PREFILL_LAYER35_ATTENTION_FIXTURE_ID,
-            layer35_complete_fixture_id: PREFILL_LAYER35_COMPLETE_FIXTURE_ID,
-            layer36_qkv_fixture_id: PREFILL_LAYER36_QKV_FIXTURE_ID,
-            layer36_compressor_fixture_id: PREFILL_LAYER36_COMPRESSOR_FIXTURE_ID,
-            layer36_attention_fixture_id: PREFILL_LAYER36_ATTENTION_FIXTURE_ID,
-            layer36_complete_fixture_id: PREFILL_LAYER36_COMPLETE_FIXTURE_ID,
-            layer37_qkv_fixture_id: PREFILL_LAYER37_QKV_FIXTURE_ID,
-            layer37_compressor_fixture_id: PREFILL_LAYER37_COMPRESSOR_FIXTURE_ID,
-            layer37_attention_fixture_id: PREFILL_LAYER37_ATTENTION_FIXTURE_ID,
-            layer37_complete_fixture_id: PREFILL_LAYER37_COMPLETE_FIXTURE_ID,
-            layer38_qkv_fixture_id: PREFILL_LAYER38_QKV_FIXTURE_ID,
-            layer38_compressor_fixture_id: PREFILL_LAYER38_COMPRESSOR_FIXTURE_ID,
-            layer38_attention_fixture_id: PREFILL_LAYER38_ATTENTION_FIXTURE_ID,
-            layer38_complete_fixture_id: PREFILL_LAYER38_COMPLETE_FIXTURE_ID,
-            layer39_qkv_fixture_id: PREFILL_LAYER39_QKV_FIXTURE_ID,
-            layer39_compressor_fixture_id: PREFILL_LAYER39_COMPRESSOR_FIXTURE_ID,
-            layer39_attention_fixture_id: PREFILL_LAYER39_ATTENTION_FIXTURE_ID,
-            layer39_complete_fixture_id: PREFILL_LAYER39_COMPLETE_FIXTURE_ID,
-            layer40_qkv_fixture_id: PREFILL_LAYER40_QKV_FIXTURE_ID,
-            layer40_compressor_fixture_id: PREFILL_LAYER40_COMPRESSOR_FIXTURE_ID,
-            layer40_attention_fixture_id: PREFILL_LAYER40_ATTENTION_FIXTURE_ID,
-            layer40_complete_fixture_id: PREFILL_LAYER40_COMPLETE_FIXTURE_ID,
-            layer41_qkv_fixture_id: PREFILL_LAYER41_QKV_FIXTURE_ID,
-            layer41_compressor_fixture_id: PREFILL_LAYER41_COMPRESSOR_FIXTURE_ID,
-            layer41_attention_fixture_id: PREFILL_LAYER41_ATTENTION_FIXTURE_ID,
-            layer41_complete_fixture_id: PREFILL_LAYER41_COMPLETE_FIXTURE_ID,
-            layer42_qkv_fixture_id: PREFILL_LAYER42_QKV_FIXTURE_ID,
-            layer42_compressor_fixture_id: PREFILL_LAYER42_COMPRESSOR_FIXTURE_ID,
-            layer42_attention_fixture_id: PREFILL_LAYER42_ATTENTION_FIXTURE_ID,
-            layer42_complete_fixture_id: PREFILL_LAYER42_COMPLETE_FIXTURE_ID,
-            rows: raw.rows,
-            raw_kv_rows: raw.raw_kv_rows,
-            compressed_kv_rows: raw.compressed_kv_rows,
-            layer3_compressed_kv_rows: raw.layer3_compressed_kv_rows,
-            dispatches: raw.dispatches,
-            wrapped_model_ranges: raw.wrapped_model_ranges,
-            pointer_matches: raw.pointer_matches,
-            wall_ms: raw.wall_ms,
-            gpu_ms: raw.gpu_ms,
-            output_checksum: checksum_f32(&actual),
-            after_attention_hc_checksum: checksum_f32(&actual_hc),
-            after_ffn_hc_checksum: checksum_f32(&actual_ffn_hc),
-            layer3_hc_attn_pre_checksum: checksum_f32(&actual_layer3_hc_attn_pre),
-            layer3_attn_norm_checksum: checksum_f32(&actual_layer3_attn_norm),
-            layer3_q_lora_checksum: checksum_f32(&actual_layer3_q_lora),
-            layer3_q_lora_norm_checksum: checksum_f32(&actual_layer3_q_lora_norm),
-            layer3_kv_raw_checksum: checksum_f32(&actual_layer3_kv_raw),
-            layer3_kv_norm_checksum: checksum_f32(&actual_layer3_kv_norm),
-            layer3_q_raw_final_tile_checksum: checksum_f32(&actual_layer3_q_raw_final_tile),
-            layer3_q_cur_final_tile_checksum: checksum_f32(&actual_layer3_q_cur_final_tile),
-            layer3_kv_rope_checksum: checksum_f32(&actual_layer3_kv_rope),
-            layer3_kv_cur_checksum: checksum_f32(&actual_layer3_kv_cur),
-            layer3_attn_compressed_checksum: checksum_f32(&actual_layer3_attn_compressed),
-            layer3_attn_state_kv_checksum: checksum_f32(&actual_layer3_attn_state_kv),
-            layer3_attn_state_score_checksum: checksum_i32(&actual_layer3_attn_state_score),
-            layer3_attention_output_checksum: checksum_f32(&actual_layer3_attention),
-            layer3_after_attention_hc_checksum: checksum_f32(&actual_layer3_after_attention_hc),
-            layer3_after_ffn_hc_checksum: checksum_f32(&actual_layer3_after_ffn_hc),
-            layer4_qkv_checksums: actual_layer4_qkv
-                .each_ref()
-                .map(|tensor| checksum_f32(tensor)),
-            layer4_compressor_checksums: actual_layer4_compressor
-                .each_ref()
-                .map(|tensor| checksum_f32(tensor)),
-            layer4_attention_output_checksum: checksum_f32(&actual_layer4_attention),
-            layer4_after_attention_hc_checksum: checksum_f32(&actual_layer4_after_attention_hc),
-            layer4_after_ffn_hc_checksum: checksum_f32(&actual_layer4_after_ffn_hc),
-            layer5_qkv_checksums: actual_layer5_qkv
-                .each_ref()
-                .map(|tensor| checksum_f32(tensor)),
-            layer5_compressor_checksums: [
-                checksum_f32(&actual_layer5_attn_compressed),
-                checksum_f32(&actual_layer5_attn_state_kv),
-                checksum_i32(&actual_layer5_attn_state_score),
-            ],
-            layer5_attention_output_checksum: checksum_f32(&actual_layer5_attention),
-            layer5_after_attention_hc_checksum: checksum_f32(&actual_layer5_after_attention_hc),
-            layer5_after_ffn_hc_checksum: checksum_f32(&actual_layer5_after_ffn_hc),
-            layer6_qkv_checksums: actual_layer6_qkv
-                .each_ref()
-                .map(|tensor| checksum_f32(tensor)),
-            layer6_compressor_checksums: actual_layer6_compressor
-                .each_ref()
-                .map(|tensor| checksum_f32(tensor)),
-            layer6_attention_output_checksum: checksum_f32(&actual_layer6_attention),
-            layer6_after_attention_hc_checksum: checksum_f32(&actual_layer6_after_attention_hc),
-            layer6_after_ffn_hc_checksum: checksum_f32(&actual_layer6_after_ffn_hc),
-            layer7_qkv_checksums: actual_layer7_qkv
-                .each_ref()
-                .map(|tensor| checksum_f32(tensor)),
-            layer7_compressor_checksums: [
-                checksum_f32(&actual_layer7_attn_compressed),
-                checksum_f32(&actual_layer7_attn_state_kv),
-                checksum_i32(&actual_layer7_attn_state_score),
-            ],
-            layer7_attention_output_checksum: checksum_f32(&actual_layer7_attention),
-            layer7_after_attention_hc_checksum: checksum_f32(&actual_layer7_after_attention_hc),
-            layer7_after_ffn_hc_checksum: checksum_f32(&actual_layer7_after_ffn_hc),
-            layer8_qkv_checksums: actual_layer8_qkv
-                .each_ref()
-                .map(|tensor| checksum_f32(tensor)),
-            layer8_compressor_checksums: actual_layer8_compressor
-                .each_ref()
-                .map(|tensor| checksum_f32(tensor)),
-            layer8_attention_output_checksum: checksum_f32(&actual_layer8_attention),
-            layer8_after_attention_hc_checksum: checksum_f32(&actual_layer8_after_attention_hc),
-            layer8_after_ffn_hc_checksum: checksum_f32(&actual_layer8_after_ffn_hc),
-            layer9_qkv_checksums: actual_layer9_qkv
-                .each_ref()
-                .map(|tensor| checksum_f32(tensor)),
-            layer9_compressor_checksums: [
-                checksum_f32(&actual_layer9_attn_compressed),
-                checksum_f32(&actual_layer9_attn_state_kv),
-                checksum_i32(&actual_layer9_attn_state_score),
-            ],
-            layer9_attention_output_checksum: checksum_f32(&actual_layer9_attention),
-            layer9_after_attention_hc_checksum: checksum_f32(&actual_layer9_after_attention_hc),
-            layer9_after_ffn_hc_checksum: checksum_f32(&actual_layer9_after_ffn_hc),
-            layer10_qkv_checksums: actual_layer10_qkv
-                .each_ref()
-                .map(|tensor| checksum_f32(tensor)),
-            layer10_compressor_checksums: actual_layer10_compressor
-                .each_ref()
-                .map(|tensor| checksum_f32(tensor)),
-            layer10_attention_output_checksum: checksum_f32(&actual_layer10_attention),
-            layer10_after_attention_hc_checksum: checksum_f32(&actual_layer10_after_attention_hc),
-            layer10_after_ffn_hc_checksum: checksum_f32(&actual_layer10_after_ffn_hc),
-            layer11_qkv_checksums: actual_layer11_qkv
-                .each_ref()
-                .map(|tensor| checksum_f32(tensor)),
-            layer11_compressor_checksums: [
-                checksum_f32(&actual_layer11_attn_compressed),
-                checksum_f32(&actual_layer11_attn_state_kv),
-                checksum_i32(&actual_layer11_attn_state_score),
-            ],
-            layer11_attention_output_checksum: checksum_f32(&actual_layer11_attention),
-            layer11_after_attention_hc_checksum: checksum_f32(&actual_layer11_after_attention_hc),
-            layer11_after_ffn_hc_checksum: checksum_f32(&actual_layer11_after_ffn_hc),
-            layer12_qkv_checksums: actual_layer12_qkv
-                .each_ref()
-                .map(|tensor| checksum_f32(tensor)),
-            layer12_compressor_checksums: actual_layer12_compressor
-                .each_ref()
-                .map(|tensor| checksum_f32(tensor)),
-            layer12_attention_output_checksum: checksum_f32(&actual_layer12_attention),
-            layer12_after_attention_hc_checksum: checksum_f32(&actual_layer12_after_attention_hc),
-            layer12_after_ffn_hc_checksum: checksum_f32(&actual_layer12_after_ffn_hc),
-            layer13_qkv_checksums: actual_layer13_qkv
-                .each_ref()
-                .map(|tensor| checksum_f32(tensor)),
-            layer13_compressor_checksums: [
-                checksum_f32(&actual_layer13_attn_compressed),
-                checksum_f32(&actual_layer13_attn_state_kv),
-                checksum_i32(&actual_layer13_attn_state_score),
-            ],
-            layer13_attention_output_checksum: checksum_f32(&actual_layer13_attention),
-            layer13_after_attention_hc_checksum: checksum_f32(&actual_layer13_after_attention_hc),
-            layer13_after_ffn_hc_checksum: checksum_f32(&actual_layer13_after_ffn_hc),
-            layer14_qkv_checksums: actual_layer14_qkv
-                .each_ref()
-                .map(|tensor| checksum_f32(tensor)),
-            layer14_compressor_checksums: actual_layer14_compressor
-                .each_ref()
-                .map(|tensor| checksum_f32(tensor)),
-            layer14_attention_output_checksum: checksum_f32(&actual_layer14_attention),
-            layer14_after_attention_hc_checksum: checksum_f32(&actual_layer14_after_attention_hc),
-            layer14_after_ffn_hc_checksum: checksum_f32(&actual_layer14_after_ffn_hc),
-            layer15_qkv_checksums: actual_layer15_qkv
-                .each_ref()
-                .map(|tensor| checksum_f32(tensor)),
-            layer15_compressor_checksums: [
-                checksum_f32(&actual_layer15_attn_compressed),
-                checksum_f32(&actual_layer15_attn_state_kv),
-                checksum_i32(&actual_layer15_attn_state_score),
-            ],
-            layer15_attention_output_checksum: checksum_f32(&actual_layer15_attention),
-            layer15_after_attention_hc_checksum: checksum_f32(&actual_layer15_after_attention_hc),
-            layer15_after_ffn_hc_checksum: checksum_f32(&actual_layer15_after_ffn_hc),
-            layer16_qkv_checksums: actual_layer16_qkv
-                .each_ref()
-                .map(|tensor| checksum_f32(tensor)),
-            layer16_compressor_checksums: actual_layer16_compressor
-                .each_ref()
-                .map(|tensor| checksum_f32(tensor)),
-            layer16_attention_output_checksum: checksum_f32(&actual_layer16_attention),
-            layer16_after_attention_hc_checksum: checksum_f32(&actual_layer16_after_attention_hc),
-            layer16_after_ffn_hc_checksum: checksum_f32(&actual_layer16_after_ffn_hc),
-            layer17_qkv_checksums: actual_layer17_qkv
-                .each_ref()
-                .map(|tensor| checksum_f32(tensor)),
-            layer17_compressor_checksums: [
-                checksum_f32(&actual_layer17_attn_compressed),
-                checksum_f32(&actual_layer17_attn_state_kv),
-                checksum_i32(&actual_layer17_attn_state_score),
-            ],
-            layer17_attention_output_checksum: checksum_f32(&actual_layer17_attention),
-            layer17_after_attention_hc_checksum: checksum_f32(&actual_layer17_after_attention_hc),
-            layer17_after_ffn_hc_checksum: checksum_f32(&actual_layer17_after_ffn_hc),
-            layer18_qkv_checksums: actual_layer18_qkv
-                .each_ref()
-                .map(|tensor| checksum_f32(tensor)),
-            layer18_compressor_checksums: actual_layer18_compressor
-                .each_ref()
-                .map(|tensor| checksum_f32(tensor)),
-            layer18_attention_output_checksum: checksum_f32(&actual_layer18_attention),
-            layer18_after_attention_hc_checksum: checksum_f32(&actual_layer18_after_attention_hc),
-            layer18_after_ffn_hc_checksum: checksum_f32(&actual_layer18_after_ffn_hc),
-            layer19_qkv_checksums: actual_layer19_qkv
-                .each_ref()
-                .map(|tensor| checksum_f32(tensor)),
-            layer19_compressor_checksums: [
-                checksum_f32(&actual_layer19_attn_compressed),
-                checksum_f32(&actual_layer19_attn_state_kv),
-                checksum_i32(&actual_layer19_attn_state_score),
-            ],
-            layer19_attention_output_checksum: checksum_f32(&actual_layer19_attention),
-            layer19_after_attention_hc_checksum: checksum_f32(&actual_layer19_after_attention_hc),
-            layer19_after_ffn_hc_checksum: checksum_f32(&actual_layer19_after_ffn_hc),
-            layer20_qkv_checksums: actual_layer20_qkv
-                .each_ref()
-                .map(|tensor| checksum_f32(tensor)),
-            layer20_compressor_checksums: actual_layer20_compressor
-                .each_ref()
-                .map(|tensor| checksum_f32(tensor)),
-            layer20_attention_output_checksum: checksum_f32(&actual_layer20_attention),
-            layer20_after_attention_hc_checksum: checksum_f32(&actual_layer20_after_attention_hc),
-            layer20_after_ffn_hc_checksum: checksum_f32(&actual_layer20_after_ffn_hc),
-            layer21_qkv_checksums: actual_layer21_qkv
-                .each_ref()
-                .map(|tensor| checksum_f32(tensor)),
-            layer21_compressor_checksums: [
-                checksum_f32(&actual_layer21_attn_compressed),
-                checksum_f32(&actual_layer21_attn_state_kv),
-                checksum_i32(&actual_layer21_attn_state_score),
-            ],
-            layer21_attention_output_checksum: checksum_f32(&actual_layer21_attention),
-            layer21_after_attention_hc_checksum: checksum_f32(&actual_layer21_after_attention_hc),
-            layer21_after_ffn_hc_checksum: checksum_f32(&actual_layer21_after_ffn_hc),
-            layer22_qkv_checksums: actual_layer22_qkv
-                .each_ref()
-                .map(|tensor| checksum_f32(tensor)),
-            layer22_compressor_checksums: actual_layer22_compressor
-                .each_ref()
-                .map(|tensor| checksum_f32(tensor)),
-            layer22_attention_output_checksum: checksum_f32(&actual_layer22_attention),
-            layer22_after_attention_hc_checksum: checksum_f32(&actual_layer22_after_attention_hc),
-            layer22_after_ffn_hc_checksum: checksum_f32(&actual_layer22_after_ffn_hc),
-            layer23_qkv_checksums: actual_layer23_qkv
-                .each_ref()
-                .map(|tensor| checksum_f32(tensor)),
-            layer23_compressor_checksums: [
-                checksum_f32(&actual_layer23_attn_compressed),
-                checksum_f32(&actual_layer23_attn_state_kv),
-                checksum_i32(&actual_layer23_attn_state_score),
-            ],
-            layer23_attention_output_checksum: checksum_f32(&actual_layer23_attention),
-            layer23_after_attention_hc_checksum: checksum_f32(&actual_layer23_after_attention_hc),
-            layer23_after_ffn_hc_checksum: checksum_f32(&actual_layer23_after_ffn_hc),
-            layer24_qkv_checksums: actual_layer24_qkv
-                .each_ref()
-                .map(|tensor| checksum_f32(tensor)),
-            layer24_compressor_checksums: actual_layer24_compressor
-                .each_ref()
-                .map(|tensor| checksum_f32(tensor)),
-            layer24_attention_output_checksum: checksum_f32(&actual_layer24_attention),
-            layer24_after_attention_hc_checksum: checksum_f32(&actual_layer24_after_attention_hc),
-            layer24_after_ffn_hc_checksum: checksum_f32(&actual_layer24_after_ffn_hc),
-            layer25_qkv_checksums: actual_layer25_qkv
-                .each_ref()
-                .map(|tensor| checksum_f32(tensor)),
-            layer25_compressor_checksums: [
-                checksum_f32(&actual_layer25_attn_compressed),
-                checksum_f32(&actual_layer25_attn_state_kv),
-                checksum_i32(&actual_layer25_attn_state_score),
-            ],
-            layer25_attention_output_checksum: checksum_f32(&actual_layer25_attention),
-            layer25_after_attention_hc_checksum: checksum_f32(&actual_layer25_after_attention_hc),
-            layer25_after_ffn_hc_checksum: checksum_f32(&actual_layer25_after_ffn_hc),
-            layer26_qkv_checksums: actual_layer26_qkv
-                .each_ref()
-                .map(|tensor| checksum_f32(tensor)),
-            layer26_compressor_checksums: actual_layer26_compressor
-                .each_ref()
-                .map(|tensor| checksum_f32(tensor)),
-            layer26_attention_output_checksum: checksum_f32(&actual_layer26_attention),
-            layer26_after_attention_hc_checksum: checksum_f32(&actual_layer26_after_attention_hc),
-            layer26_after_ffn_hc_checksum: checksum_f32(&actual_layer26_after_ffn_hc),
-            layer27_qkv_checksums: actual_layer27_qkv
-                .each_ref()
-                .map(|tensor| checksum_f32(tensor)),
-            layer27_compressor_checksums: [
-                checksum_f32(&actual_layer27_attn_compressed),
-                checksum_f32(&actual_layer27_attn_state_kv),
-                checksum_i32(&actual_layer27_attn_state_score),
-            ],
-            layer27_attention_output_checksum: checksum_f32(&actual_layer27_attention),
-            layer27_after_attention_hc_checksum: checksum_f32(&actual_layer27_after_attention_hc),
-            layer27_after_ffn_hc_checksum: checksum_f32(&actual_layer27_after_ffn_hc),
-            layer28_qkv_checksums: actual_layer28_qkv
-                .each_ref()
-                .map(|tensor| checksum_f32(tensor)),
-            layer28_compressor_checksums: actual_layer28_compressor
-                .each_ref()
-                .map(|tensor| checksum_f32(tensor)),
-            layer28_attention_output_checksum: checksum_f32(&actual_layer28_attention),
-            layer28_after_attention_hc_checksum: checksum_f32(&actual_layer28_after_attention_hc),
-            layer28_after_ffn_hc_checksum: checksum_f32(&actual_layer28_after_ffn_hc),
-            layer29_qkv_checksums: actual_layer29_qkv
-                .each_ref()
-                .map(|tensor| checksum_f32(tensor)),
-            layer29_compressor_checksums: [
-                checksum_f32(&actual_layer29_attn_compressed),
-                checksum_f32(&actual_layer29_attn_state_kv),
-                checksum_i32(&actual_layer29_attn_state_score),
-            ],
-            layer29_attention_output_checksum: checksum_f32(&actual_layer29_attention),
-            layer29_after_attention_hc_checksum: checksum_f32(&actual_layer29_after_attention_hc),
-            layer29_after_ffn_hc_checksum: checksum_f32(&actual_layer29_after_ffn_hc),
-            layer30_qkv_checksums: actual_layer30_qkv
-                .each_ref()
-                .map(|tensor| checksum_f32(tensor)),
-            layer30_compressor_checksums: actual_layer30_compressor
-                .each_ref()
-                .map(|tensor| checksum_f32(tensor)),
-            layer30_attention_output_checksum: checksum_f32(&actual_layer30_attention),
-            layer30_after_attention_hc_checksum: checksum_f32(&actual_layer30_after_attention_hc),
-            layer30_after_ffn_hc_checksum: checksum_f32(&actual_layer30_after_ffn_hc),
-            layer31_qkv_checksums: actual_layer31_qkv
-                .each_ref()
-                .map(|tensor| checksum_f32(tensor)),
-            layer31_compressor_checksums: [
-                checksum_f32(&actual_layer31_attn_compressed),
-                checksum_f32(&actual_layer31_attn_state_kv),
-                checksum_i32(&actual_layer31_attn_state_score),
-            ],
-            layer31_attention_output_checksum: checksum_f32(&actual_layer31_attention),
-            layer31_after_attention_hc_checksum: checksum_f32(&actual_layer31_after_attention_hc),
-            layer31_after_ffn_hc_checksum: checksum_f32(&actual_layer31_after_ffn_hc),
-            layer32_qkv_checksums: actual_layer32_qkv
-                .each_ref()
-                .map(|tensor| checksum_f32(tensor)),
-            layer32_compressor_checksums: actual_layer32_compressor
-                .each_ref()
-                .map(|tensor| checksum_f32(tensor)),
-            layer32_attention_output_checksum: checksum_f32(&actual_layer32_attention),
-            layer32_after_attention_hc_checksum: checksum_f32(&actual_layer32_after_attention_hc),
-            layer32_after_ffn_hc_checksum: checksum_f32(&actual_layer32_after_ffn_hc),
-            layer33_qkv_checksums: actual_layer33_qkv
-                .each_ref()
-                .map(|tensor| checksum_f32(tensor)),
-            layer33_compressor_checksums: [
-                checksum_f32(&actual_layer33_attn_compressed),
-                checksum_f32(&actual_layer33_attn_state_kv),
-                checksum_i32(&actual_layer33_attn_state_score),
-            ],
-            layer33_attention_output_checksum: checksum_f32(&actual_layer33_attention),
-            layer33_after_attention_hc_checksum: checksum_f32(&actual_layer33_after_attention_hc),
-            layer33_after_ffn_hc_checksum: checksum_f32(&actual_layer33_after_ffn_hc),
-            layer34_qkv_checksums: actual_layer34_qkv
-                .each_ref()
-                .map(|tensor| checksum_f32(tensor)),
-            layer34_compressor_checksums: actual_layer34_compressor
-                .each_ref()
-                .map(|tensor| checksum_f32(tensor)),
-            layer34_attention_output_checksum: checksum_f32(&actual_layer34_attention),
-            layer34_after_attention_hc_checksum: checksum_f32(&actual_layer34_after_attention_hc),
-            layer34_after_ffn_hc_checksum: checksum_f32(&actual_layer34_after_ffn_hc),
-            layer35_qkv_checksums: actual_layer35_qkv
-                .each_ref()
-                .map(|tensor| checksum_f32(tensor)),
-            layer35_compressor_checksums: [
-                checksum_f32(&actual_layer35_attn_compressed),
-                checksum_f32(&actual_layer35_attn_state_kv),
-                checksum_i32(&actual_layer35_attn_state_score),
-            ],
-            layer35_attention_output_checksum: checksum_f32(&actual_layer35_attention),
-            layer35_after_attention_hc_checksum: checksum_f32(&actual_layer35_after_attention_hc),
-            layer35_after_ffn_hc_checksum: checksum_f32(&actual_layer35_after_ffn_hc),
-            layer36_qkv_checksums: actual_layer36_qkv
-                .each_ref()
-                .map(|tensor| checksum_f32(tensor)),
-            layer36_compressor_checksums: actual_layer36_compressor
-                .each_ref()
-                .map(|tensor| checksum_f32(tensor)),
-            layer36_attention_output_checksum: checksum_f32(&actual_layer36_attention),
-            layer36_after_attention_hc_checksum: checksum_f32(&actual_layer36_after_attention_hc),
-            layer36_after_ffn_hc_checksum: checksum_f32(&actual_layer36_after_ffn_hc),
-            layer37_qkv_checksums: actual_layer37_qkv
-                .each_ref()
-                .map(|tensor| checksum_f32(tensor)),
-            layer37_compressor_checksums: [
-                checksum_f32(&actual_layer37_attn_compressed),
-                checksum_f32(&actual_layer37_attn_state_kv),
-                checksum_i32(&actual_layer37_attn_state_score),
-            ],
-            layer37_attention_output_checksum: checksum_f32(&actual_layer37_attention),
-            layer37_after_attention_hc_checksum: checksum_f32(&actual_layer37_after_attention_hc),
-            layer37_after_ffn_hc_checksum: checksum_f32(&actual_layer37_after_ffn_hc),
-            layer38_qkv_checksums: actual_layer38_qkv
-                .each_ref()
-                .map(|tensor| checksum_f32(tensor)),
-            layer38_compressor_checksums: actual_layer38_compressor
-                .each_ref()
-                .map(|tensor| checksum_f32(tensor)),
-            layer38_attention_output_checksum: checksum_f32(&actual_layer38_attention),
-            layer38_after_attention_hc_checksum: checksum_f32(&actual_layer38_after_attention_hc),
-            layer38_after_ffn_hc_checksum: checksum_f32(&actual_layer38_after_ffn_hc),
-            layer39_qkv_checksums: actual_layer39_qkv
-                .each_ref()
-                .map(|tensor| checksum_f32(tensor)),
-            layer39_compressor_checksums: [
-                checksum_f32(&actual_layer39_attn_compressed),
-                checksum_f32(&actual_layer39_attn_state_kv),
-                checksum_i32(&actual_layer39_attn_state_score),
-            ],
-            layer39_attention_output_checksum: checksum_f32(&actual_layer39_attention),
-            layer39_after_attention_hc_checksum: checksum_f32(&actual_layer39_after_attention_hc),
-            layer39_after_ffn_hc_checksum: checksum_f32(&actual_layer39_after_ffn_hc),
-            layer40_qkv_checksums: actual_layer40_qkv
-                .each_ref()
-                .map(|tensor| checksum_f32(tensor)),
-            layer40_compressor_checksums: actual_layer40_compressor
-                .each_ref()
-                .map(|tensor| checksum_f32(tensor)),
-            layer40_attention_output_checksum: checksum_f32(&actual_layer40_attention),
-            layer40_after_attention_hc_checksum: checksum_f32(&actual_layer40_after_attention_hc),
-            layer40_after_ffn_hc_checksum: checksum_f32(&actual_layer40_after_ffn_hc),
-            layer41_qkv_checksums: actual_layer41_qkv
-                .each_ref()
-                .map(|tensor| checksum_f32(tensor)),
-            layer41_compressor_checksums: [
-                checksum_f32(&actual_layer41_attn_compressed),
-                checksum_f32(&actual_layer41_attn_state_kv),
-                checksum_i32(&actual_layer41_attn_state_score),
-            ],
-            layer41_attention_output_checksum: checksum_f32(&actual_layer41_attention),
-            layer41_after_attention_hc_checksum: checksum_f32(&actual_layer41_after_attention_hc),
-            layer41_after_ffn_hc_checksum: checksum_f32(&actual_layer41_after_ffn_hc),
-            layer42_qkv_checksums: actual_layer42_qkv
-                .each_ref()
-                .map(|tensor| checksum_f32(tensor)),
-            layer42_compressor_checksums: actual_layer42_compressor
-                .each_ref()
-                .map(|tensor| checksum_f32(tensor)),
-            layer42_attention_output_checksum: checksum_f32(&actual_layer42_attention),
-            layer42_after_attention_hc_checksum: checksum_f32(&actual_layer42_after_attention_hc),
-            layer42_after_ffn_hc_checksum: checksum_f32(&actual_layer42_after_ffn_hc),
-            output_head,
-        })
+        Ok((
+            context,
+            PrefillLayers012AttentionLoopProbeReport {
+                compressor,
+                attention_fixture_id: PREFILL_LAYER2_ATTENTION_FIXTURE_ID,
+                attention_hc_fixture_id: PREFILL_LAYER2_COMPLETE_FIXTURE_ID,
+                layer3_ingress_fixture_id: PREFILL_LAYER3_INGRESS_FIXTURE_ID,
+                layer3_kv_state_fixture_id: PREFILL_LAYER3_KV_STATE_FIXTURE_ID,
+                layer3_compressor_fixture_id: PREFILL_LAYER3_COMPRESSOR_FIXTURE_ID,
+                layer3_attention_fixture_id: PREFILL_LAYER3_ATTENTION_FIXTURE_ID,
+                layer3_complete_fixture_id: PREFILL_LAYER3_COMPLETE_FIXTURE_ID,
+                layer4_qkv_fixture_id: PREFILL_LAYER4_QKV_FIXTURE_ID,
+                layer4_compressor_fixture_id: PREFILL_LAYER4_COMPRESSOR_FIXTURE_ID,
+                layer4_attention_fixture_id: PREFILL_LAYER4_ATTENTION_FIXTURE_ID,
+                layer4_complete_fixture_id: PREFILL_LAYER4_COMPLETE_FIXTURE_ID,
+                layer5_qkv_fixture_id: PREFILL_LAYER5_QKV_FIXTURE_ID,
+                layer5_compressor_fixture_id: PREFILL_LAYER5_COMPRESSOR_FIXTURE_ID,
+                layer5_attention_fixture_id: PREFILL_LAYER5_ATTENTION_FIXTURE_ID,
+                layer5_complete_fixture_id: PREFILL_LAYER5_COMPLETE_FIXTURE_ID,
+                layer6_qkv_fixture_id: PREFILL_LAYER6_QKV_FIXTURE_ID,
+                layer6_compressor_fixture_id: PREFILL_LAYER6_COMPRESSOR_FIXTURE_ID,
+                layer6_attention_fixture_id: PREFILL_LAYER6_ATTENTION_FIXTURE_ID,
+                layer6_complete_fixture_id: PREFILL_LAYER6_COMPLETE_FIXTURE_ID,
+                layer7_qkv_fixture_id: PREFILL_LAYER7_QKV_FIXTURE_ID,
+                layer7_compressor_fixture_id: PREFILL_LAYER7_COMPRESSOR_FIXTURE_ID,
+                layer7_attention_fixture_id: PREFILL_LAYER7_ATTENTION_FIXTURE_ID,
+                layer7_complete_fixture_id: PREFILL_LAYER7_COMPLETE_FIXTURE_ID,
+                layer8_qkv_fixture_id: PREFILL_LAYER8_QKV_FIXTURE_ID,
+                layer8_compressor_fixture_id: PREFILL_LAYER8_COMPRESSOR_FIXTURE_ID,
+                layer8_attention_fixture_id: PREFILL_LAYER8_ATTENTION_FIXTURE_ID,
+                layer8_complete_fixture_id: PREFILL_LAYER8_COMPLETE_FIXTURE_ID,
+                layer9_qkv_fixture_id: PREFILL_LAYER9_QKV_FIXTURE_ID,
+                layer9_compressor_fixture_id: PREFILL_LAYER9_COMPRESSOR_FIXTURE_ID,
+                layer9_attention_fixture_id: PREFILL_LAYER9_ATTENTION_FIXTURE_ID,
+                layer9_complete_fixture_id: PREFILL_LAYER9_COMPLETE_FIXTURE_ID,
+                layer10_qkv_fixture_id: PREFILL_LAYER10_QKV_FIXTURE_ID,
+                layer10_compressor_fixture_id: PREFILL_LAYER10_COMPRESSOR_FIXTURE_ID,
+                layer10_attention_fixture_id: PREFILL_LAYER10_ATTENTION_FIXTURE_ID,
+                layer10_complete_fixture_id: PREFILL_LAYER10_COMPLETE_FIXTURE_ID,
+                layer11_qkv_fixture_id: PREFILL_LAYER11_QKV_FIXTURE_ID,
+                layer11_compressor_fixture_id: PREFILL_LAYER11_COMPRESSOR_FIXTURE_ID,
+                layer11_attention_fixture_id: PREFILL_LAYER11_ATTENTION_FIXTURE_ID,
+                layer11_complete_fixture_id: PREFILL_LAYER11_COMPLETE_FIXTURE_ID,
+                layer12_qkv_fixture_id: PREFILL_LAYER12_QKV_FIXTURE_ID,
+                layer12_compressor_fixture_id: PREFILL_LAYER12_COMPRESSOR_FIXTURE_ID,
+                layer12_attention_fixture_id: PREFILL_LAYER12_ATTENTION_FIXTURE_ID,
+                layer12_complete_fixture_id: PREFILL_LAYER12_COMPLETE_FIXTURE_ID,
+                layer13_qkv_fixture_id: PREFILL_LAYER13_QKV_FIXTURE_ID,
+                layer13_compressor_fixture_id: PREFILL_LAYER13_COMPRESSOR_FIXTURE_ID,
+                layer13_attention_fixture_id: PREFILL_LAYER13_ATTENTION_FIXTURE_ID,
+                layer13_complete_fixture_id: PREFILL_LAYER13_COMPLETE_FIXTURE_ID,
+                layer14_qkv_fixture_id: PREFILL_LAYER14_QKV_FIXTURE_ID,
+                layer14_compressor_fixture_id: PREFILL_LAYER14_COMPRESSOR_FIXTURE_ID,
+                layer14_attention_fixture_id: PREFILL_LAYER14_ATTENTION_FIXTURE_ID,
+                layer14_complete_fixture_id: PREFILL_LAYER14_COMPLETE_FIXTURE_ID,
+                layer15_qkv_fixture_id: PREFILL_LAYER15_QKV_FIXTURE_ID,
+                layer15_compressor_fixture_id: PREFILL_LAYER15_COMPRESSOR_FIXTURE_ID,
+                layer15_attention_fixture_id: PREFILL_LAYER15_ATTENTION_FIXTURE_ID,
+                layer15_complete_fixture_id: PREFILL_LAYER15_COMPLETE_FIXTURE_ID,
+                layer16_qkv_fixture_id: PREFILL_LAYER16_QKV_FIXTURE_ID,
+                layer16_compressor_fixture_id: PREFILL_LAYER16_COMPRESSOR_FIXTURE_ID,
+                layer16_attention_fixture_id: PREFILL_LAYER16_ATTENTION_FIXTURE_ID,
+                layer16_complete_fixture_id: PREFILL_LAYER16_COMPLETE_FIXTURE_ID,
+                layer17_qkv_fixture_id: PREFILL_LAYER17_QKV_FIXTURE_ID,
+                layer17_compressor_fixture_id: PREFILL_LAYER17_COMPRESSOR_FIXTURE_ID,
+                layer17_attention_fixture_id: PREFILL_LAYER17_ATTENTION_FIXTURE_ID,
+                layer17_complete_fixture_id: PREFILL_LAYER17_COMPLETE_FIXTURE_ID,
+                layer18_qkv_fixture_id: PREFILL_LAYER18_QKV_FIXTURE_ID,
+                layer18_compressor_fixture_id: PREFILL_LAYER18_COMPRESSOR_FIXTURE_ID,
+                layer18_attention_fixture_id: PREFILL_LAYER18_ATTENTION_FIXTURE_ID,
+                layer18_complete_fixture_id: PREFILL_LAYER18_COMPLETE_FIXTURE_ID,
+                layer19_qkv_fixture_id: PREFILL_LAYER19_QKV_FIXTURE_ID,
+                layer19_compressor_fixture_id: PREFILL_LAYER19_COMPRESSOR_FIXTURE_ID,
+                layer19_attention_fixture_id: PREFILL_LAYER19_ATTENTION_FIXTURE_ID,
+                layer19_complete_fixture_id: PREFILL_LAYER19_COMPLETE_FIXTURE_ID,
+                layer20_qkv_fixture_id: PREFILL_LAYER20_QKV_FIXTURE_ID,
+                layer20_compressor_fixture_id: PREFILL_LAYER20_COMPRESSOR_FIXTURE_ID,
+                layer20_attention_fixture_id: PREFILL_LAYER20_ATTENTION_FIXTURE_ID,
+                layer20_complete_fixture_id: PREFILL_LAYER20_COMPLETE_FIXTURE_ID,
+                layer21_qkv_fixture_id: PREFILL_LAYER21_QKV_FIXTURE_ID,
+                layer21_compressor_fixture_id: PREFILL_LAYER21_COMPRESSOR_FIXTURE_ID,
+                layer21_attention_fixture_id: PREFILL_LAYER21_ATTENTION_FIXTURE_ID,
+                layer21_complete_fixture_id: PREFILL_LAYER21_COMPLETE_FIXTURE_ID,
+                layer22_qkv_fixture_id: PREFILL_LAYER22_QKV_FIXTURE_ID,
+                layer22_compressor_fixture_id: PREFILL_LAYER22_COMPRESSOR_FIXTURE_ID,
+                layer22_attention_fixture_id: PREFILL_LAYER22_ATTENTION_FIXTURE_ID,
+                layer22_complete_fixture_id: PREFILL_LAYER22_COMPLETE_FIXTURE_ID,
+                layer23_qkv_fixture_id: PREFILL_LAYER23_QKV_FIXTURE_ID,
+                layer23_compressor_fixture_id: PREFILL_LAYER23_COMPRESSOR_FIXTURE_ID,
+                layer23_attention_fixture_id: PREFILL_LAYER23_ATTENTION_FIXTURE_ID,
+                layer23_complete_fixture_id: PREFILL_LAYER23_COMPLETE_FIXTURE_ID,
+                layer24_qkv_fixture_id: PREFILL_LAYER24_QKV_FIXTURE_ID,
+                layer24_compressor_fixture_id: PREFILL_LAYER24_COMPRESSOR_FIXTURE_ID,
+                layer24_attention_fixture_id: PREFILL_LAYER24_ATTENTION_FIXTURE_ID,
+                layer24_complete_fixture_id: PREFILL_LAYER24_COMPLETE_FIXTURE_ID,
+                layer25_qkv_fixture_id: PREFILL_LAYER25_QKV_FIXTURE_ID,
+                layer25_compressor_fixture_id: PREFILL_LAYER25_COMPRESSOR_FIXTURE_ID,
+                layer25_attention_fixture_id: PREFILL_LAYER25_ATTENTION_FIXTURE_ID,
+                layer25_complete_fixture_id: PREFILL_LAYER25_COMPLETE_FIXTURE_ID,
+                layer26_qkv_fixture_id: PREFILL_LAYER26_QKV_FIXTURE_ID,
+                layer26_compressor_fixture_id: PREFILL_LAYER26_COMPRESSOR_FIXTURE_ID,
+                layer26_attention_fixture_id: PREFILL_LAYER26_ATTENTION_FIXTURE_ID,
+                layer26_complete_fixture_id: PREFILL_LAYER26_COMPLETE_FIXTURE_ID,
+                layer27_qkv_fixture_id: PREFILL_LAYER27_QKV_FIXTURE_ID,
+                layer27_compressor_fixture_id: PREFILL_LAYER27_COMPRESSOR_FIXTURE_ID,
+                layer27_attention_fixture_id: PREFILL_LAYER27_ATTENTION_FIXTURE_ID,
+                layer27_complete_fixture_id: PREFILL_LAYER27_COMPLETE_FIXTURE_ID,
+                layer28_qkv_fixture_id: PREFILL_LAYER28_QKV_FIXTURE_ID,
+                layer28_compressor_fixture_id: PREFILL_LAYER28_COMPRESSOR_FIXTURE_ID,
+                layer28_attention_fixture_id: PREFILL_LAYER28_ATTENTION_FIXTURE_ID,
+                layer28_complete_fixture_id: PREFILL_LAYER28_COMPLETE_FIXTURE_ID,
+                layer29_qkv_fixture_id: PREFILL_LAYER29_QKV_FIXTURE_ID,
+                layer29_compressor_fixture_id: PREFILL_LAYER29_COMPRESSOR_FIXTURE_ID,
+                layer29_attention_fixture_id: PREFILL_LAYER29_ATTENTION_FIXTURE_ID,
+                layer29_complete_fixture_id: PREFILL_LAYER29_COMPLETE_FIXTURE_ID,
+                layer30_qkv_fixture_id: PREFILL_LAYER30_QKV_FIXTURE_ID,
+                layer30_compressor_fixture_id: PREFILL_LAYER30_COMPRESSOR_FIXTURE_ID,
+                layer30_attention_fixture_id: PREFILL_LAYER30_ATTENTION_FIXTURE_ID,
+                layer30_complete_fixture_id: PREFILL_LAYER30_COMPLETE_FIXTURE_ID,
+                layer31_qkv_fixture_id: PREFILL_LAYER31_QKV_FIXTURE_ID,
+                layer31_compressor_fixture_id: PREFILL_LAYER31_COMPRESSOR_FIXTURE_ID,
+                layer31_attention_fixture_id: PREFILL_LAYER31_ATTENTION_FIXTURE_ID,
+                layer31_complete_fixture_id: PREFILL_LAYER31_COMPLETE_FIXTURE_ID,
+                layer32_qkv_fixture_id: PREFILL_LAYER32_QKV_FIXTURE_ID,
+                layer32_compressor_fixture_id: PREFILL_LAYER32_COMPRESSOR_FIXTURE_ID,
+                layer32_attention_fixture_id: PREFILL_LAYER32_ATTENTION_FIXTURE_ID,
+                layer32_complete_fixture_id: PREFILL_LAYER32_COMPLETE_FIXTURE_ID,
+                layer33_qkv_fixture_id: PREFILL_LAYER33_QKV_FIXTURE_ID,
+                layer33_compressor_fixture_id: PREFILL_LAYER33_COMPRESSOR_FIXTURE_ID,
+                layer33_attention_fixture_id: PREFILL_LAYER33_ATTENTION_FIXTURE_ID,
+                layer33_complete_fixture_id: PREFILL_LAYER33_COMPLETE_FIXTURE_ID,
+                layer34_qkv_fixture_id: PREFILL_LAYER34_QKV_FIXTURE_ID,
+                layer34_compressor_fixture_id: PREFILL_LAYER34_COMPRESSOR_FIXTURE_ID,
+                layer34_attention_fixture_id: PREFILL_LAYER34_ATTENTION_FIXTURE_ID,
+                layer34_complete_fixture_id: PREFILL_LAYER34_COMPLETE_FIXTURE_ID,
+                layer35_qkv_fixture_id: PREFILL_LAYER35_QKV_FIXTURE_ID,
+                layer35_compressor_fixture_id: PREFILL_LAYER35_COMPRESSOR_FIXTURE_ID,
+                layer35_attention_fixture_id: PREFILL_LAYER35_ATTENTION_FIXTURE_ID,
+                layer35_complete_fixture_id: PREFILL_LAYER35_COMPLETE_FIXTURE_ID,
+                layer36_qkv_fixture_id: PREFILL_LAYER36_QKV_FIXTURE_ID,
+                layer36_compressor_fixture_id: PREFILL_LAYER36_COMPRESSOR_FIXTURE_ID,
+                layer36_attention_fixture_id: PREFILL_LAYER36_ATTENTION_FIXTURE_ID,
+                layer36_complete_fixture_id: PREFILL_LAYER36_COMPLETE_FIXTURE_ID,
+                layer37_qkv_fixture_id: PREFILL_LAYER37_QKV_FIXTURE_ID,
+                layer37_compressor_fixture_id: PREFILL_LAYER37_COMPRESSOR_FIXTURE_ID,
+                layer37_attention_fixture_id: PREFILL_LAYER37_ATTENTION_FIXTURE_ID,
+                layer37_complete_fixture_id: PREFILL_LAYER37_COMPLETE_FIXTURE_ID,
+                layer38_qkv_fixture_id: PREFILL_LAYER38_QKV_FIXTURE_ID,
+                layer38_compressor_fixture_id: PREFILL_LAYER38_COMPRESSOR_FIXTURE_ID,
+                layer38_attention_fixture_id: PREFILL_LAYER38_ATTENTION_FIXTURE_ID,
+                layer38_complete_fixture_id: PREFILL_LAYER38_COMPLETE_FIXTURE_ID,
+                layer39_qkv_fixture_id: PREFILL_LAYER39_QKV_FIXTURE_ID,
+                layer39_compressor_fixture_id: PREFILL_LAYER39_COMPRESSOR_FIXTURE_ID,
+                layer39_attention_fixture_id: PREFILL_LAYER39_ATTENTION_FIXTURE_ID,
+                layer39_complete_fixture_id: PREFILL_LAYER39_COMPLETE_FIXTURE_ID,
+                layer40_qkv_fixture_id: PREFILL_LAYER40_QKV_FIXTURE_ID,
+                layer40_compressor_fixture_id: PREFILL_LAYER40_COMPRESSOR_FIXTURE_ID,
+                layer40_attention_fixture_id: PREFILL_LAYER40_ATTENTION_FIXTURE_ID,
+                layer40_complete_fixture_id: PREFILL_LAYER40_COMPLETE_FIXTURE_ID,
+                layer41_qkv_fixture_id: PREFILL_LAYER41_QKV_FIXTURE_ID,
+                layer41_compressor_fixture_id: PREFILL_LAYER41_COMPRESSOR_FIXTURE_ID,
+                layer41_attention_fixture_id: PREFILL_LAYER41_ATTENTION_FIXTURE_ID,
+                layer41_complete_fixture_id: PREFILL_LAYER41_COMPLETE_FIXTURE_ID,
+                layer42_qkv_fixture_id: PREFILL_LAYER42_QKV_FIXTURE_ID,
+                layer42_compressor_fixture_id: PREFILL_LAYER42_COMPRESSOR_FIXTURE_ID,
+                layer42_attention_fixture_id: PREFILL_LAYER42_ATTENTION_FIXTURE_ID,
+                layer42_complete_fixture_id: PREFILL_LAYER42_COMPLETE_FIXTURE_ID,
+                rows: raw.rows,
+                raw_kv_rows: raw.raw_kv_rows,
+                compressed_kv_rows: raw.compressed_kv_rows,
+                layer3_compressed_kv_rows: raw.layer3_compressed_kv_rows,
+                dispatches: raw.dispatches,
+                wrapped_model_ranges: raw.wrapped_model_ranges,
+                pointer_matches: raw.pointer_matches,
+                wall_ms: raw.wall_ms,
+                gpu_ms: raw.gpu_ms,
+                output_checksum: checksum_f32(&actual),
+                after_attention_hc_checksum: checksum_f32(&actual_hc),
+                after_ffn_hc_checksum: checksum_f32(&actual_ffn_hc),
+                layer3_hc_attn_pre_checksum: checksum_f32(&actual_layer3_hc_attn_pre),
+                layer3_attn_norm_checksum: checksum_f32(&actual_layer3_attn_norm),
+                layer3_q_lora_checksum: checksum_f32(&actual_layer3_q_lora),
+                layer3_q_lora_norm_checksum: checksum_f32(&actual_layer3_q_lora_norm),
+                layer3_kv_raw_checksum: checksum_f32(&actual_layer3_kv_raw),
+                layer3_kv_norm_checksum: checksum_f32(&actual_layer3_kv_norm),
+                layer3_q_raw_final_tile_checksum: checksum_f32(&actual_layer3_q_raw_final_tile),
+                layer3_q_cur_final_tile_checksum: checksum_f32(&actual_layer3_q_cur_final_tile),
+                layer3_kv_rope_checksum: checksum_f32(&actual_layer3_kv_rope),
+                layer3_kv_cur_checksum: checksum_f32(&actual_layer3_kv_cur),
+                layer3_attn_compressed_checksum: checksum_f32(&actual_layer3_attn_compressed),
+                layer3_attn_state_kv_checksum: checksum_f32(&actual_layer3_attn_state_kv),
+                layer3_attn_state_score_checksum: checksum_i32(&actual_layer3_attn_state_score),
+                layer3_attention_output_checksum: checksum_f32(&actual_layer3_attention),
+                layer3_after_attention_hc_checksum: checksum_f32(&actual_layer3_after_attention_hc),
+                layer3_after_ffn_hc_checksum: checksum_f32(&actual_layer3_after_ffn_hc),
+                layer4_qkv_checksums: actual_layer4_qkv
+                    .each_ref()
+                    .map(|tensor| checksum_f32(tensor)),
+                layer4_compressor_checksums: actual_layer4_compressor
+                    .each_ref()
+                    .map(|tensor| checksum_f32(tensor)),
+                layer4_attention_output_checksum: checksum_f32(&actual_layer4_attention),
+                layer4_after_attention_hc_checksum: checksum_f32(&actual_layer4_after_attention_hc),
+                layer4_after_ffn_hc_checksum: checksum_f32(&actual_layer4_after_ffn_hc),
+                layer5_qkv_checksums: actual_layer5_qkv
+                    .each_ref()
+                    .map(|tensor| checksum_f32(tensor)),
+                layer5_compressor_checksums: [
+                    checksum_f32(&actual_layer5_attn_compressed),
+                    checksum_f32(&actual_layer5_attn_state_kv),
+                    checksum_i32(&actual_layer5_attn_state_score),
+                ],
+                layer5_attention_output_checksum: checksum_f32(&actual_layer5_attention),
+                layer5_after_attention_hc_checksum: checksum_f32(&actual_layer5_after_attention_hc),
+                layer5_after_ffn_hc_checksum: checksum_f32(&actual_layer5_after_ffn_hc),
+                layer6_qkv_checksums: actual_layer6_qkv
+                    .each_ref()
+                    .map(|tensor| checksum_f32(tensor)),
+                layer6_compressor_checksums: actual_layer6_compressor
+                    .each_ref()
+                    .map(|tensor| checksum_f32(tensor)),
+                layer6_attention_output_checksum: checksum_f32(&actual_layer6_attention),
+                layer6_after_attention_hc_checksum: checksum_f32(&actual_layer6_after_attention_hc),
+                layer6_after_ffn_hc_checksum: checksum_f32(&actual_layer6_after_ffn_hc),
+                layer7_qkv_checksums: actual_layer7_qkv
+                    .each_ref()
+                    .map(|tensor| checksum_f32(tensor)),
+                layer7_compressor_checksums: [
+                    checksum_f32(&actual_layer7_attn_compressed),
+                    checksum_f32(&actual_layer7_attn_state_kv),
+                    checksum_i32(&actual_layer7_attn_state_score),
+                ],
+                layer7_attention_output_checksum: checksum_f32(&actual_layer7_attention),
+                layer7_after_attention_hc_checksum: checksum_f32(&actual_layer7_after_attention_hc),
+                layer7_after_ffn_hc_checksum: checksum_f32(&actual_layer7_after_ffn_hc),
+                layer8_qkv_checksums: actual_layer8_qkv
+                    .each_ref()
+                    .map(|tensor| checksum_f32(tensor)),
+                layer8_compressor_checksums: actual_layer8_compressor
+                    .each_ref()
+                    .map(|tensor| checksum_f32(tensor)),
+                layer8_attention_output_checksum: checksum_f32(&actual_layer8_attention),
+                layer8_after_attention_hc_checksum: checksum_f32(&actual_layer8_after_attention_hc),
+                layer8_after_ffn_hc_checksum: checksum_f32(&actual_layer8_after_ffn_hc),
+                layer9_qkv_checksums: actual_layer9_qkv
+                    .each_ref()
+                    .map(|tensor| checksum_f32(tensor)),
+                layer9_compressor_checksums: [
+                    checksum_f32(&actual_layer9_attn_compressed),
+                    checksum_f32(&actual_layer9_attn_state_kv),
+                    checksum_i32(&actual_layer9_attn_state_score),
+                ],
+                layer9_attention_output_checksum: checksum_f32(&actual_layer9_attention),
+                layer9_after_attention_hc_checksum: checksum_f32(&actual_layer9_after_attention_hc),
+                layer9_after_ffn_hc_checksum: checksum_f32(&actual_layer9_after_ffn_hc),
+                layer10_qkv_checksums: actual_layer10_qkv
+                    .each_ref()
+                    .map(|tensor| checksum_f32(tensor)),
+                layer10_compressor_checksums: actual_layer10_compressor
+                    .each_ref()
+                    .map(|tensor| checksum_f32(tensor)),
+                layer10_attention_output_checksum: checksum_f32(&actual_layer10_attention),
+                layer10_after_attention_hc_checksum: checksum_f32(
+                    &actual_layer10_after_attention_hc,
+                ),
+                layer10_after_ffn_hc_checksum: checksum_f32(&actual_layer10_after_ffn_hc),
+                layer11_qkv_checksums: actual_layer11_qkv
+                    .each_ref()
+                    .map(|tensor| checksum_f32(tensor)),
+                layer11_compressor_checksums: [
+                    checksum_f32(&actual_layer11_attn_compressed),
+                    checksum_f32(&actual_layer11_attn_state_kv),
+                    checksum_i32(&actual_layer11_attn_state_score),
+                ],
+                layer11_attention_output_checksum: checksum_f32(&actual_layer11_attention),
+                layer11_after_attention_hc_checksum: checksum_f32(
+                    &actual_layer11_after_attention_hc,
+                ),
+                layer11_after_ffn_hc_checksum: checksum_f32(&actual_layer11_after_ffn_hc),
+                layer12_qkv_checksums: actual_layer12_qkv
+                    .each_ref()
+                    .map(|tensor| checksum_f32(tensor)),
+                layer12_compressor_checksums: actual_layer12_compressor
+                    .each_ref()
+                    .map(|tensor| checksum_f32(tensor)),
+                layer12_attention_output_checksum: checksum_f32(&actual_layer12_attention),
+                layer12_after_attention_hc_checksum: checksum_f32(
+                    &actual_layer12_after_attention_hc,
+                ),
+                layer12_after_ffn_hc_checksum: checksum_f32(&actual_layer12_after_ffn_hc),
+                layer13_qkv_checksums: actual_layer13_qkv
+                    .each_ref()
+                    .map(|tensor| checksum_f32(tensor)),
+                layer13_compressor_checksums: [
+                    checksum_f32(&actual_layer13_attn_compressed),
+                    checksum_f32(&actual_layer13_attn_state_kv),
+                    checksum_i32(&actual_layer13_attn_state_score),
+                ],
+                layer13_attention_output_checksum: checksum_f32(&actual_layer13_attention),
+                layer13_after_attention_hc_checksum: checksum_f32(
+                    &actual_layer13_after_attention_hc,
+                ),
+                layer13_after_ffn_hc_checksum: checksum_f32(&actual_layer13_after_ffn_hc),
+                layer14_qkv_checksums: actual_layer14_qkv
+                    .each_ref()
+                    .map(|tensor| checksum_f32(tensor)),
+                layer14_compressor_checksums: actual_layer14_compressor
+                    .each_ref()
+                    .map(|tensor| checksum_f32(tensor)),
+                layer14_attention_output_checksum: checksum_f32(&actual_layer14_attention),
+                layer14_after_attention_hc_checksum: checksum_f32(
+                    &actual_layer14_after_attention_hc,
+                ),
+                layer14_after_ffn_hc_checksum: checksum_f32(&actual_layer14_after_ffn_hc),
+                layer15_qkv_checksums: actual_layer15_qkv
+                    .each_ref()
+                    .map(|tensor| checksum_f32(tensor)),
+                layer15_compressor_checksums: [
+                    checksum_f32(&actual_layer15_attn_compressed),
+                    checksum_f32(&actual_layer15_attn_state_kv),
+                    checksum_i32(&actual_layer15_attn_state_score),
+                ],
+                layer15_attention_output_checksum: checksum_f32(&actual_layer15_attention),
+                layer15_after_attention_hc_checksum: checksum_f32(
+                    &actual_layer15_after_attention_hc,
+                ),
+                layer15_after_ffn_hc_checksum: checksum_f32(&actual_layer15_after_ffn_hc),
+                layer16_qkv_checksums: actual_layer16_qkv
+                    .each_ref()
+                    .map(|tensor| checksum_f32(tensor)),
+                layer16_compressor_checksums: actual_layer16_compressor
+                    .each_ref()
+                    .map(|tensor| checksum_f32(tensor)),
+                layer16_attention_output_checksum: checksum_f32(&actual_layer16_attention),
+                layer16_after_attention_hc_checksum: checksum_f32(
+                    &actual_layer16_after_attention_hc,
+                ),
+                layer16_after_ffn_hc_checksum: checksum_f32(&actual_layer16_after_ffn_hc),
+                layer17_qkv_checksums: actual_layer17_qkv
+                    .each_ref()
+                    .map(|tensor| checksum_f32(tensor)),
+                layer17_compressor_checksums: [
+                    checksum_f32(&actual_layer17_attn_compressed),
+                    checksum_f32(&actual_layer17_attn_state_kv),
+                    checksum_i32(&actual_layer17_attn_state_score),
+                ],
+                layer17_attention_output_checksum: checksum_f32(&actual_layer17_attention),
+                layer17_after_attention_hc_checksum: checksum_f32(
+                    &actual_layer17_after_attention_hc,
+                ),
+                layer17_after_ffn_hc_checksum: checksum_f32(&actual_layer17_after_ffn_hc),
+                layer18_qkv_checksums: actual_layer18_qkv
+                    .each_ref()
+                    .map(|tensor| checksum_f32(tensor)),
+                layer18_compressor_checksums: actual_layer18_compressor
+                    .each_ref()
+                    .map(|tensor| checksum_f32(tensor)),
+                layer18_attention_output_checksum: checksum_f32(&actual_layer18_attention),
+                layer18_after_attention_hc_checksum: checksum_f32(
+                    &actual_layer18_after_attention_hc,
+                ),
+                layer18_after_ffn_hc_checksum: checksum_f32(&actual_layer18_after_ffn_hc),
+                layer19_qkv_checksums: actual_layer19_qkv
+                    .each_ref()
+                    .map(|tensor| checksum_f32(tensor)),
+                layer19_compressor_checksums: [
+                    checksum_f32(&actual_layer19_attn_compressed),
+                    checksum_f32(&actual_layer19_attn_state_kv),
+                    checksum_i32(&actual_layer19_attn_state_score),
+                ],
+                layer19_attention_output_checksum: checksum_f32(&actual_layer19_attention),
+                layer19_after_attention_hc_checksum: checksum_f32(
+                    &actual_layer19_after_attention_hc,
+                ),
+                layer19_after_ffn_hc_checksum: checksum_f32(&actual_layer19_after_ffn_hc),
+                layer20_qkv_checksums: actual_layer20_qkv
+                    .each_ref()
+                    .map(|tensor| checksum_f32(tensor)),
+                layer20_compressor_checksums: actual_layer20_compressor
+                    .each_ref()
+                    .map(|tensor| checksum_f32(tensor)),
+                layer20_attention_output_checksum: checksum_f32(&actual_layer20_attention),
+                layer20_after_attention_hc_checksum: checksum_f32(
+                    &actual_layer20_after_attention_hc,
+                ),
+                layer20_after_ffn_hc_checksum: checksum_f32(&actual_layer20_after_ffn_hc),
+                layer21_qkv_checksums: actual_layer21_qkv
+                    .each_ref()
+                    .map(|tensor| checksum_f32(tensor)),
+                layer21_compressor_checksums: [
+                    checksum_f32(&actual_layer21_attn_compressed),
+                    checksum_f32(&actual_layer21_attn_state_kv),
+                    checksum_i32(&actual_layer21_attn_state_score),
+                ],
+                layer21_attention_output_checksum: checksum_f32(&actual_layer21_attention),
+                layer21_after_attention_hc_checksum: checksum_f32(
+                    &actual_layer21_after_attention_hc,
+                ),
+                layer21_after_ffn_hc_checksum: checksum_f32(&actual_layer21_after_ffn_hc),
+                layer22_qkv_checksums: actual_layer22_qkv
+                    .each_ref()
+                    .map(|tensor| checksum_f32(tensor)),
+                layer22_compressor_checksums: actual_layer22_compressor
+                    .each_ref()
+                    .map(|tensor| checksum_f32(tensor)),
+                layer22_attention_output_checksum: checksum_f32(&actual_layer22_attention),
+                layer22_after_attention_hc_checksum: checksum_f32(
+                    &actual_layer22_after_attention_hc,
+                ),
+                layer22_after_ffn_hc_checksum: checksum_f32(&actual_layer22_after_ffn_hc),
+                layer23_qkv_checksums: actual_layer23_qkv
+                    .each_ref()
+                    .map(|tensor| checksum_f32(tensor)),
+                layer23_compressor_checksums: [
+                    checksum_f32(&actual_layer23_attn_compressed),
+                    checksum_f32(&actual_layer23_attn_state_kv),
+                    checksum_i32(&actual_layer23_attn_state_score),
+                ],
+                layer23_attention_output_checksum: checksum_f32(&actual_layer23_attention),
+                layer23_after_attention_hc_checksum: checksum_f32(
+                    &actual_layer23_after_attention_hc,
+                ),
+                layer23_after_ffn_hc_checksum: checksum_f32(&actual_layer23_after_ffn_hc),
+                layer24_qkv_checksums: actual_layer24_qkv
+                    .each_ref()
+                    .map(|tensor| checksum_f32(tensor)),
+                layer24_compressor_checksums: actual_layer24_compressor
+                    .each_ref()
+                    .map(|tensor| checksum_f32(tensor)),
+                layer24_attention_output_checksum: checksum_f32(&actual_layer24_attention),
+                layer24_after_attention_hc_checksum: checksum_f32(
+                    &actual_layer24_after_attention_hc,
+                ),
+                layer24_after_ffn_hc_checksum: checksum_f32(&actual_layer24_after_ffn_hc),
+                layer25_qkv_checksums: actual_layer25_qkv
+                    .each_ref()
+                    .map(|tensor| checksum_f32(tensor)),
+                layer25_compressor_checksums: [
+                    checksum_f32(&actual_layer25_attn_compressed),
+                    checksum_f32(&actual_layer25_attn_state_kv),
+                    checksum_i32(&actual_layer25_attn_state_score),
+                ],
+                layer25_attention_output_checksum: checksum_f32(&actual_layer25_attention),
+                layer25_after_attention_hc_checksum: checksum_f32(
+                    &actual_layer25_after_attention_hc,
+                ),
+                layer25_after_ffn_hc_checksum: checksum_f32(&actual_layer25_after_ffn_hc),
+                layer26_qkv_checksums: actual_layer26_qkv
+                    .each_ref()
+                    .map(|tensor| checksum_f32(tensor)),
+                layer26_compressor_checksums: actual_layer26_compressor
+                    .each_ref()
+                    .map(|tensor| checksum_f32(tensor)),
+                layer26_attention_output_checksum: checksum_f32(&actual_layer26_attention),
+                layer26_after_attention_hc_checksum: checksum_f32(
+                    &actual_layer26_after_attention_hc,
+                ),
+                layer26_after_ffn_hc_checksum: checksum_f32(&actual_layer26_after_ffn_hc),
+                layer27_qkv_checksums: actual_layer27_qkv
+                    .each_ref()
+                    .map(|tensor| checksum_f32(tensor)),
+                layer27_compressor_checksums: [
+                    checksum_f32(&actual_layer27_attn_compressed),
+                    checksum_f32(&actual_layer27_attn_state_kv),
+                    checksum_i32(&actual_layer27_attn_state_score),
+                ],
+                layer27_attention_output_checksum: checksum_f32(&actual_layer27_attention),
+                layer27_after_attention_hc_checksum: checksum_f32(
+                    &actual_layer27_after_attention_hc,
+                ),
+                layer27_after_ffn_hc_checksum: checksum_f32(&actual_layer27_after_ffn_hc),
+                layer28_qkv_checksums: actual_layer28_qkv
+                    .each_ref()
+                    .map(|tensor| checksum_f32(tensor)),
+                layer28_compressor_checksums: actual_layer28_compressor
+                    .each_ref()
+                    .map(|tensor| checksum_f32(tensor)),
+                layer28_attention_output_checksum: checksum_f32(&actual_layer28_attention),
+                layer28_after_attention_hc_checksum: checksum_f32(
+                    &actual_layer28_after_attention_hc,
+                ),
+                layer28_after_ffn_hc_checksum: checksum_f32(&actual_layer28_after_ffn_hc),
+                layer29_qkv_checksums: actual_layer29_qkv
+                    .each_ref()
+                    .map(|tensor| checksum_f32(tensor)),
+                layer29_compressor_checksums: [
+                    checksum_f32(&actual_layer29_attn_compressed),
+                    checksum_f32(&actual_layer29_attn_state_kv),
+                    checksum_i32(&actual_layer29_attn_state_score),
+                ],
+                layer29_attention_output_checksum: checksum_f32(&actual_layer29_attention),
+                layer29_after_attention_hc_checksum: checksum_f32(
+                    &actual_layer29_after_attention_hc,
+                ),
+                layer29_after_ffn_hc_checksum: checksum_f32(&actual_layer29_after_ffn_hc),
+                layer30_qkv_checksums: actual_layer30_qkv
+                    .each_ref()
+                    .map(|tensor| checksum_f32(tensor)),
+                layer30_compressor_checksums: actual_layer30_compressor
+                    .each_ref()
+                    .map(|tensor| checksum_f32(tensor)),
+                layer30_attention_output_checksum: checksum_f32(&actual_layer30_attention),
+                layer30_after_attention_hc_checksum: checksum_f32(
+                    &actual_layer30_after_attention_hc,
+                ),
+                layer30_after_ffn_hc_checksum: checksum_f32(&actual_layer30_after_ffn_hc),
+                layer31_qkv_checksums: actual_layer31_qkv
+                    .each_ref()
+                    .map(|tensor| checksum_f32(tensor)),
+                layer31_compressor_checksums: [
+                    checksum_f32(&actual_layer31_attn_compressed),
+                    checksum_f32(&actual_layer31_attn_state_kv),
+                    checksum_i32(&actual_layer31_attn_state_score),
+                ],
+                layer31_attention_output_checksum: checksum_f32(&actual_layer31_attention),
+                layer31_after_attention_hc_checksum: checksum_f32(
+                    &actual_layer31_after_attention_hc,
+                ),
+                layer31_after_ffn_hc_checksum: checksum_f32(&actual_layer31_after_ffn_hc),
+                layer32_qkv_checksums: actual_layer32_qkv
+                    .each_ref()
+                    .map(|tensor| checksum_f32(tensor)),
+                layer32_compressor_checksums: actual_layer32_compressor
+                    .each_ref()
+                    .map(|tensor| checksum_f32(tensor)),
+                layer32_attention_output_checksum: checksum_f32(&actual_layer32_attention),
+                layer32_after_attention_hc_checksum: checksum_f32(
+                    &actual_layer32_after_attention_hc,
+                ),
+                layer32_after_ffn_hc_checksum: checksum_f32(&actual_layer32_after_ffn_hc),
+                layer33_qkv_checksums: actual_layer33_qkv
+                    .each_ref()
+                    .map(|tensor| checksum_f32(tensor)),
+                layer33_compressor_checksums: [
+                    checksum_f32(&actual_layer33_attn_compressed),
+                    checksum_f32(&actual_layer33_attn_state_kv),
+                    checksum_i32(&actual_layer33_attn_state_score),
+                ],
+                layer33_attention_output_checksum: checksum_f32(&actual_layer33_attention),
+                layer33_after_attention_hc_checksum: checksum_f32(
+                    &actual_layer33_after_attention_hc,
+                ),
+                layer33_after_ffn_hc_checksum: checksum_f32(&actual_layer33_after_ffn_hc),
+                layer34_qkv_checksums: actual_layer34_qkv
+                    .each_ref()
+                    .map(|tensor| checksum_f32(tensor)),
+                layer34_compressor_checksums: actual_layer34_compressor
+                    .each_ref()
+                    .map(|tensor| checksum_f32(tensor)),
+                layer34_attention_output_checksum: checksum_f32(&actual_layer34_attention),
+                layer34_after_attention_hc_checksum: checksum_f32(
+                    &actual_layer34_after_attention_hc,
+                ),
+                layer34_after_ffn_hc_checksum: checksum_f32(&actual_layer34_after_ffn_hc),
+                layer35_qkv_checksums: actual_layer35_qkv
+                    .each_ref()
+                    .map(|tensor| checksum_f32(tensor)),
+                layer35_compressor_checksums: [
+                    checksum_f32(&actual_layer35_attn_compressed),
+                    checksum_f32(&actual_layer35_attn_state_kv),
+                    checksum_i32(&actual_layer35_attn_state_score),
+                ],
+                layer35_attention_output_checksum: checksum_f32(&actual_layer35_attention),
+                layer35_after_attention_hc_checksum: checksum_f32(
+                    &actual_layer35_after_attention_hc,
+                ),
+                layer35_after_ffn_hc_checksum: checksum_f32(&actual_layer35_after_ffn_hc),
+                layer36_qkv_checksums: actual_layer36_qkv
+                    .each_ref()
+                    .map(|tensor| checksum_f32(tensor)),
+                layer36_compressor_checksums: actual_layer36_compressor
+                    .each_ref()
+                    .map(|tensor| checksum_f32(tensor)),
+                layer36_attention_output_checksum: checksum_f32(&actual_layer36_attention),
+                layer36_after_attention_hc_checksum: checksum_f32(
+                    &actual_layer36_after_attention_hc,
+                ),
+                layer36_after_ffn_hc_checksum: checksum_f32(&actual_layer36_after_ffn_hc),
+                layer37_qkv_checksums: actual_layer37_qkv
+                    .each_ref()
+                    .map(|tensor| checksum_f32(tensor)),
+                layer37_compressor_checksums: [
+                    checksum_f32(&actual_layer37_attn_compressed),
+                    checksum_f32(&actual_layer37_attn_state_kv),
+                    checksum_i32(&actual_layer37_attn_state_score),
+                ],
+                layer37_attention_output_checksum: checksum_f32(&actual_layer37_attention),
+                layer37_after_attention_hc_checksum: checksum_f32(
+                    &actual_layer37_after_attention_hc,
+                ),
+                layer37_after_ffn_hc_checksum: checksum_f32(&actual_layer37_after_ffn_hc),
+                layer38_qkv_checksums: actual_layer38_qkv
+                    .each_ref()
+                    .map(|tensor| checksum_f32(tensor)),
+                layer38_compressor_checksums: actual_layer38_compressor
+                    .each_ref()
+                    .map(|tensor| checksum_f32(tensor)),
+                layer38_attention_output_checksum: checksum_f32(&actual_layer38_attention),
+                layer38_after_attention_hc_checksum: checksum_f32(
+                    &actual_layer38_after_attention_hc,
+                ),
+                layer38_after_ffn_hc_checksum: checksum_f32(&actual_layer38_after_ffn_hc),
+                layer39_qkv_checksums: actual_layer39_qkv
+                    .each_ref()
+                    .map(|tensor| checksum_f32(tensor)),
+                layer39_compressor_checksums: [
+                    checksum_f32(&actual_layer39_attn_compressed),
+                    checksum_f32(&actual_layer39_attn_state_kv),
+                    checksum_i32(&actual_layer39_attn_state_score),
+                ],
+                layer39_attention_output_checksum: checksum_f32(&actual_layer39_attention),
+                layer39_after_attention_hc_checksum: checksum_f32(
+                    &actual_layer39_after_attention_hc,
+                ),
+                layer39_after_ffn_hc_checksum: checksum_f32(&actual_layer39_after_ffn_hc),
+                layer40_qkv_checksums: actual_layer40_qkv
+                    .each_ref()
+                    .map(|tensor| checksum_f32(tensor)),
+                layer40_compressor_checksums: actual_layer40_compressor
+                    .each_ref()
+                    .map(|tensor| checksum_f32(tensor)),
+                layer40_attention_output_checksum: checksum_f32(&actual_layer40_attention),
+                layer40_after_attention_hc_checksum: checksum_f32(
+                    &actual_layer40_after_attention_hc,
+                ),
+                layer40_after_ffn_hc_checksum: checksum_f32(&actual_layer40_after_ffn_hc),
+                layer41_qkv_checksums: actual_layer41_qkv
+                    .each_ref()
+                    .map(|tensor| checksum_f32(tensor)),
+                layer41_compressor_checksums: [
+                    checksum_f32(&actual_layer41_attn_compressed),
+                    checksum_f32(&actual_layer41_attn_state_kv),
+                    checksum_i32(&actual_layer41_attn_state_score),
+                ],
+                layer41_attention_output_checksum: checksum_f32(&actual_layer41_attention),
+                layer41_after_attention_hc_checksum: checksum_f32(
+                    &actual_layer41_after_attention_hc,
+                ),
+                layer41_after_ffn_hc_checksum: checksum_f32(&actual_layer41_after_ffn_hc),
+                layer42_qkv_checksums: actual_layer42_qkv
+                    .each_ref()
+                    .map(|tensor| checksum_f32(tensor)),
+                layer42_compressor_checksums: actual_layer42_compressor
+                    .each_ref()
+                    .map(|tensor| checksum_f32(tensor)),
+                layer42_attention_output_checksum: checksum_f32(&actual_layer42_attention),
+                layer42_after_attention_hc_checksum: checksum_f32(
+                    &actual_layer42_after_attention_hc,
+                ),
+                layer42_after_ffn_hc_checksum: checksum_f32(&actual_layer42_after_ffn_hc),
+                output_head,
+            },
+        ))
     }
 
     fn run_sparse_indexed_attention_fixture_probe(
@@ -40974,6 +41313,141 @@ mod imp {
         })
     }
 
+    pub fn run_prefill_decode_frontier_probe(
+        model: &MappedModel,
+    ) -> Result<PrefillDecodeFrontierProbeReport> {
+        const CONTEXT_CAPACITY: u32 = 4100;
+        const POSITION_START: u32 = 2048;
+        const POSITION_END: u32 = 4099;
+        let (expected_inputs, expected_first_logits, expected_final_logits) =
+            prefill_decode_frontier_4099_fixture()?;
+        let (context, prefill) = run_prefill_layers012_attention_loop_probe_with_context(model)?;
+        if prefill.output_head.selected_token != expected_inputs[0] {
+            return Err(Error::invalid(
+                "native batched prefill did not select the oracle continuation token",
+            ));
+        }
+        let handoff = context.adopt_prefill_decoder_state(CONTEXT_CAPACITY)?;
+        let mut layers = (0..43)
+            .map(|layer_index| {
+                PreparedLayerExecution::new_cold_with_capacity(model, layer_index, CONTEXT_CAPACITY)
+            })
+            .collect::<Result<Vec<_>>>()?;
+        for layer in &mut layers {
+            layer.validate_expected = false;
+        }
+        let mut output_head = PreparedOutputHead::new(model)?;
+        context.prepare_decoder()?;
+
+        let started = Instant::now();
+        let mut transformer_gpu_ms = 0.0;
+        let mut output_head_gpu_ms = 0.0;
+        let mut first_selected_token = None;
+        let mut final_selected_token = None;
+        for (index, input_token) in expected_inputs.iter().copied().enumerate() {
+            let position = POSITION_START + index as u32;
+            submit_prepared_layers(model, &context, &mut layers, input_token, position)?;
+            transformer_gpu_ms += run_prepared_layer_iterations(
+                model,
+                &context,
+                &mut layers[0],
+                input_token,
+                position,
+                0,
+                1,
+                COMMAND_CHAINED_TIMING,
+                42,
+            )?
+            .report
+            .gpu_ms;
+            let (selected_token, head_gpu_ms) =
+                run_sampling_output_head(model, &context, &mut output_head)?;
+            output_head_gpu_ms += head_gpu_ms;
+            if index == 0 {
+                if let Some((logit, (actual, expected))) = output_head
+                    .logits
+                    .iter()
+                    .zip(&expected_first_logits)
+                    .enumerate()
+                    .find(|(_, (actual, expected))| actual.to_bits() != expected.to_bits())
+                {
+                    return Err(Error::invalid(format!(
+                        "post-prefill position-2048 logit C0 mismatch at [{logit}]: actual={:#010x} expected={:#010x}",
+                        actual.to_bits(), expected.to_bits(),
+                    )));
+                }
+                first_selected_token = Some(selected_token);
+            }
+            if let Some(expected_next) = expected_inputs.get(index + 1) {
+                if selected_token != *expected_next {
+                    return Err(Error::invalid(format!(
+                        "post-prefill greedy transcript mismatch after position {position}: actual={selected_token} expected={expected_next}"
+                    )));
+                }
+            } else {
+                if let Some((logit, (actual, expected))) = output_head
+                    .logits
+                    .iter()
+                    .zip(&expected_final_logits)
+                    .enumerate()
+                    .find(|(_, (actual, expected))| actual.to_bits() != expected.to_bits())
+                {
+                    return Err(Error::invalid(format!(
+                        "post-prefill position-4099 logit C0 mismatch at [{logit}]: actual={:#010x} expected={:#010x}",
+                        actual.to_bits(), expected.to_bits(),
+                    )));
+                }
+                if selected_token != 2538 {
+                    return Err(Error::invalid(format!(
+                        "post-prefill position-4099 selection mismatch: actual={selected_token} expected=2538"
+                    )));
+                }
+                final_selected_token = Some(selected_token);
+            }
+        }
+        let decode_wall_ms = started.elapsed().as_secs_f64() * 1000.0;
+        Ok(PrefillDecodeFrontierProbeReport {
+            fixture_id: PREFILL_DECODE_FRONTIER_4099_FIXTURE_ID,
+            prefill_fixture_id: PREFILL_FRONTIER_2048_FIXTURE_ID,
+            prefill_tokens: 2048,
+            prefill_dispatches: prefill.dispatches + prefill.output_head.dispatches,
+            prefill_model_mappings: prefill.wrapped_model_ranges
+                + prefill.output_head.wrapped_model_ranges,
+            prefill_transformer_wall_ms: prefill.wall_ms,
+            prefill_transformer_gpu_ms: prefill.gpu_ms,
+            prefill_output_head_wall_ms: prefill.output_head.wall_ms,
+            prefill_output_head_gpu_ms: prefill.output_head.gpu_ms,
+            handoff,
+            position_start: POSITION_START,
+            position_end: POSITION_END,
+            evaluated_positions: POSITION_END - POSITION_START + 1,
+            dense_positions: POSITION_END - POSITION_START,
+            sparse_positions: 1,
+            dense_transformer_dispatches: 1330,
+            sparse_transformer_dispatches: 1792,
+            dense_model_mappings: 1323,
+            sparse_model_mappings: 1365,
+            command_buffers_per_position: 44,
+            host_waits_per_position: 2,
+            decode_wall_ms,
+            transformer_gpu_ms,
+            output_head_gpu_ms,
+            first_input_token: expected_inputs[0],
+            first_selected_token: first_selected_token.ok_or_else(|| {
+                Error::invalid("post-prefill continuation omitted its first selection")
+            })?,
+            final_input_token: *expected_inputs
+                .last()
+                .ok_or_else(|| Error::invalid("post-prefill continuation transcript is empty"))?,
+            final_selected_token: final_selected_token.ok_or_else(|| {
+                Error::invalid("post-prefill continuation omitted its final selection")
+            })?,
+            input_tokens_checksum: checksum_u32(&expected_inputs),
+            first_logits_checksum: checksum_f32(&expected_first_logits),
+            final_logits_checksum: checksum_f32(&expected_final_logits),
+        })
+    }
+
     fn run_position_advancing_probe(
         model: &MappedModel,
         layer_count: u32,
@@ -42617,6 +43091,16 @@ mod imp {
         ))
     }
 
+    pub fn run_prefill_decode_frontier_probe(
+        model: &MappedModel,
+    ) -> Result<PrefillDecodeFrontierProbeReport> {
+        let _ = prefill_decode_frontier_4099_fixture()?;
+        let _ = exact_tensor(model, "output.weight", 8, &[4096, 129280])?;
+        Err(Error::invalid(
+            "the Metal prefill-to-decode frontier probe is available only on macOS",
+        ))
+    }
+
     pub fn run_retained_decoder_step_probe(
         model: &MappedModel,
     ) -> Result<RetainedDecoderStepProbeReport> {
@@ -43109,14 +43593,14 @@ pub use imp::{
     run_layers0123_bench, run_layers0123_chained_probe, run_layers0123_decode_probe,
     run_layers0123_probe, run_layers012_chained_probe, run_layers012_probe, run_layers01_probe,
     run_layers0_to_42_decode_probe, run_moe_output_probe, run_position127_decoder_probe,
-    run_prefill_frontier_probe, run_prefill_layer0_boundary_probe,
-    run_prefill_layers012_attention_loop_probe, run_prefill_layers012_compressor_loop_probe,
-    run_prefill_layers012_kv_state_loop_probe, run_prefill_layers012_kvnorm_loop_probe,
-    run_prefill_layers01_boundary_probe, run_prefill_layers01_complete_boundary_probe,
-    run_prefill_layers01_live_kv_chain_probe, run_prefill_layers01_live_kv_loop_probe,
-    run_prefill_layers01_row_coverage_probe, run_prefill_q8_boundary_probe,
-    run_prefill_qkv_boundary_probe, run_probe, run_q8_projection_probe,
-    run_ratio128_compressor_replay_probe, run_retained_decoder_step_probe,
+    run_prefill_decode_frontier_probe, run_prefill_frontier_probe,
+    run_prefill_layer0_boundary_probe, run_prefill_layers012_attention_loop_probe,
+    run_prefill_layers012_compressor_loop_probe, run_prefill_layers012_kv_state_loop_probe,
+    run_prefill_layers012_kvnorm_loop_probe, run_prefill_layers01_boundary_probe,
+    run_prefill_layers01_complete_boundary_probe, run_prefill_layers01_live_kv_chain_probe,
+    run_prefill_layers01_live_kv_loop_probe, run_prefill_layers01_row_coverage_probe,
+    run_prefill_q8_boundary_probe, run_prefill_qkv_boundary_probe, run_probe,
+    run_q8_projection_probe, run_ratio128_compressor_replay_probe, run_retained_decoder_step_probe,
     run_retained_sparse_boundary_probe, run_retained_sparse_multimerge_probe,
     run_rope_kv_store_probe, run_sparse_indexed_attention_probe, LayerExecutor,
 };
@@ -44764,6 +45248,53 @@ mod tests {
         }
     }
 
+    fn prefill_decode_frontier_report() -> PrefillDecodeFrontierProbeReport {
+        let (tokens, first_logits, final_logits) = prefill_decode_frontier_4099_fixture().unwrap();
+        PrefillDecodeFrontierProbeReport {
+            fixture_id: PREFILL_DECODE_FRONTIER_4099_FIXTURE_ID,
+            prefill_fixture_id: PREFILL_FRONTIER_2048_FIXTURE_ID,
+            prefill_tokens: 2048,
+            prefill_dispatches: 2377,
+            prefill_model_mappings: 1221,
+            prefill_transformer_wall_ms: 1000.0,
+            prefill_transformer_gpu_ms: 900.0,
+            prefill_output_head_wall_ms: 10.0,
+            prefill_output_head_gpu_ms: 5.0,
+            handoff: PrefillDecodeHandoffReport {
+                layers: 43,
+                raw_rows_per_layer: 128,
+                ratio4_rows_per_layer: 512,
+                ratio128_rows_per_layer: 16,
+                blit_copies: 229,
+                command_buffers: 1,
+                host_waits: 1,
+                wall_ms: 2.0,
+                gpu_ms: 1.0,
+            },
+            position_start: 2048,
+            position_end: 4099,
+            evaluated_positions: 2052,
+            dense_positions: 2051,
+            sparse_positions: 1,
+            dense_transformer_dispatches: 1330,
+            sparse_transformer_dispatches: 1792,
+            dense_model_mappings: 1323,
+            sparse_model_mappings: 1365,
+            command_buffers_per_position: 44,
+            host_waits_per_position: 2,
+            decode_wall_ms: 2000.0,
+            transformer_gpu_ms: 1800.0,
+            output_head_gpu_ms: 100.0,
+            first_input_token: 15342,
+            first_selected_token: 201,
+            final_input_token: 312,
+            final_selected_token: 2538,
+            input_tokens_checksum: checksum_u32(&tokens),
+            first_logits_checksum: checksum_f32(&first_logits),
+            final_logits_checksum: checksum_f32(&final_logits),
+        }
+    }
+
     #[test]
     fn validates_probe_work_bounds() {
         assert!(ProbeConfig::default().validate().is_ok());
@@ -45035,6 +45566,22 @@ mod tests {
         assert!(text.contains("\"decode_replay_logits_c0_bitwise_match\": true"));
         assert!(text.contains("\"batched_prefill_logits_c0_bitwise_match\": false"));
         assert!(text.contains("\"paired_protocol_eligible\": false"));
+    }
+
+    #[test]
+    fn writes_stable_prefill_decode_frontier_probe_json() {
+        let mut output = Vec::new();
+        write_prefill_decode_frontier_probe_json(&mut output, &prefill_decode_frontier_report())
+            .unwrap();
+        let text = String::from_utf8(output).unwrap();
+        assert!(text.contains(&format!(
+            "\"schema\": \"{PREFILL_DECODE_FRONTIER_PROBE_SCHEMA}\""
+        )));
+        assert!(text.contains("\"blit_copies\": 229"));
+        assert!(text.contains("\"position_end\": 4099"));
+        assert!(text.contains("\"production_sparse_ratio4_claim\": true"));
+        assert!(text.contains("\"output_logits_c0_bitwise_match\": true"));
+        assert!(text.contains("\"throughput_claim\": false"));
     }
 
     #[test]
@@ -48976,6 +49523,19 @@ mod tests {
         assert_eq!(lowest_id_argmax(&batch_logits).unwrap(), 15342);
         assert_eq!(lowest_id_argmax(&decode_logits).unwrap(), 15342);
         assert_ne!(batch_logits, decode_logits);
+    }
+
+    #[test]
+    fn prefill_decode_frontier_fixture_has_target_shape_and_selection() {
+        let (tokens, first_logits, final_logits) = prefill_decode_frontier_4099_fixture().unwrap();
+        assert_eq!(tokens.len(), 2052);
+        assert_eq!(tokens.first(), Some(&15342));
+        assert_eq!(tokens.get(1), Some(&201));
+        assert_eq!(tokens.last(), Some(&312));
+        assert_eq!(first_logits.len(), 129280);
+        assert_eq!(final_logits.len(), 129280);
+        assert_eq!(lowest_id_argmax(&first_logits).unwrap(), 201);
+        assert_eq!(lowest_id_argmax(&final_logits).unwrap(), 2538);
     }
 
     #[test]
