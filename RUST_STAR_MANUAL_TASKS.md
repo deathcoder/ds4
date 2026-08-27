@@ -169,8 +169,10 @@ Return evidence:
 
 ## M-005 — Execute the first paired DwarfStar/Rust Star run
 
-Status: `BLOCKED` only on the timing-specific engine-measurement producer and
-its adapter. Native M1 batched prefill now completes all 43 layers and full
+Status: `BLOCKED` only on timing-only native prefill. The Rust Star development
+producer and fresh-process adapter now exist, but the adapter correctly rejects
+the raw record while prefill diagnostic collection remains enabled. Native M1
+batched prefill now completes all 43 layers and full
 logits from empty state. One GPU-only handoff adopts every raw ring, compressed
 history, and recurrent state into the ordinary decoder representation. The
 continuous exact path then matches all 2,052 greedy positions through 4099,
@@ -178,6 +180,11 @@ including complete logits and all 21 even layers' first production-default
 1,025-row sparse ratio-4 step. The separate seeded position-4099/8195 controls
 and sequential 2K diagnostic remain independent regressions; they are no
 longer blockers for end-to-end correctness.
+
+The first observed 2K/128 development run reached the timed generation loop,
+but sampling showed a 66.9 GB peak caused by the retained prefill correctness
+fixtures and outputs. It ended without installing the atomic engine-run JSON,
+so it is failure evidence and not a benchmark attempt eligible for retry rules.
 
 Prerequisites:
 

@@ -2,12 +2,12 @@ use rust_star_runtime::gguf::Gguf;
 use rust_star_runtime::metal::{
     run_attention_ingress_probe, run_attention_output_probe, run_attention_read_probe,
     run_attention_setup_probe, run_closed_loop_decoder_probe, run_cold_prefill_decoder_probe,
-    run_decoder_output_probe, run_f16_embedding_probe, run_ffn_router_probe, run_layer0_bench,
-    run_layer0_probe, run_layers01234567_decode_probe, run_layers012345_decode_probe,
-    run_layers0123_bench, run_layers0123_chained_probe, run_layers0123_decode_probe,
-    run_layers0123_probe, run_layers012_chained_probe, run_layers012_probe, run_layers01_probe,
-    run_layers0_to_42_decode_probe, run_moe_output_probe, run_position127_decoder_probe,
-    run_prefill_decode_frontier_probe, run_prefill_frontier_probe,
+    run_decoder_output_probe, run_engine_measurement, run_f16_embedding_probe,
+    run_ffn_router_probe, run_layer0_bench, run_layer0_probe, run_layers01234567_decode_probe,
+    run_layers012345_decode_probe, run_layers0123_bench, run_layers0123_chained_probe,
+    run_layers0123_decode_probe, run_layers0123_probe, run_layers012_chained_probe,
+    run_layers012_probe, run_layers01_probe, run_layers0_to_42_decode_probe, run_moe_output_probe,
+    run_position127_decoder_probe, run_prefill_decode_frontier_probe, run_prefill_frontier_probe,
     run_prefill_layer0_boundary_probe, run_prefill_layers012_attention_loop_probe,
     run_prefill_layers012_compressor_loop_probe, run_prefill_layers012_kv_state_loop_probe,
     run_prefill_layers012_kvnorm_loop_probe, run_prefill_layers01_boundary_probe,
@@ -19,13 +19,13 @@ use rust_star_runtime::metal::{
     run_rope_kv_store_probe, run_sparse_indexed_attention_probe, write_attention_output_probe_json,
     write_attention_read_probe_json, write_attention_setup_probe_json,
     write_closed_loop_decoder_probe_json, write_cold_prefill_decoder_probe_json,
-    write_decoder_output_probe_json, write_embedding_probe_json, write_ffn_router_probe_json,
-    write_ingress_probe_json, write_layer0_bench_json, write_layer0_probe_json,
-    write_layers01234567_decode_probe_json, write_layers012345_decode_probe_json,
-    write_layers0123_bench_json, write_layers0123_chained_probe_json,
-    write_layers0123_decode_probe_json, write_layers0123_probe_json,
-    write_layers012_chained_probe_json, write_layers012_probe_json, write_layers01_probe_json,
-    write_layers0_to_42_decode_probe_json, write_moe_output_probe_json,
+    write_decoder_output_probe_json, write_embedding_probe_json, write_engine_run_json,
+    write_ffn_router_probe_json, write_ingress_probe_json, write_layer0_bench_json,
+    write_layer0_probe_json, write_layers01234567_decode_probe_json,
+    write_layers012345_decode_probe_json, write_layers0123_bench_json,
+    write_layers0123_chained_probe_json, write_layers0123_decode_probe_json,
+    write_layers0123_probe_json, write_layers012_chained_probe_json, write_layers012_probe_json,
+    write_layers01_probe_json, write_layers0_to_42_decode_probe_json, write_moe_output_probe_json,
     write_position127_decoder_probe_json, write_prefill_decode_frontier_probe_json,
     write_prefill_frontier_probe_json, write_prefill_layer0_boundary_probe_json,
     write_prefill_layers012_attention_loop_probe_json,
@@ -41,7 +41,7 @@ use rust_star_runtime::metal::{
     write_retained_sparse_multimerge_probe_json, write_rope_kv_store_probe_json,
     write_sparse_indexed_attention_probe_json, AttentionOutputProbeReport,
     AttentionReadProbeReport, AttentionSetupProbeReport, ClosedLoopDecoderProbeReport,
-    ColdPrefillDecoderProbeReport, DecoderOutputProbeReport, EmbeddingProbeReport,
+    ColdPrefillDecoderProbeReport, DecoderOutputProbeReport, EmbeddingProbeReport, EngineRunReport,
     FfnRouterProbeReport, IngressProbeReport, Layer0BenchConfig, Layer0BenchReport,
     Layer0ProbeReport, Layers01234567DecodeProbeReport, Layers012345DecodeProbeReport,
     Layers0123BenchConfig, Layers0123BenchReport, Layers0123ChainedProbeReport,
@@ -206,6 +206,9 @@ fn run() -> Result<()> {
     }
     if command == "prefill-decode-frontier-probe" {
         return run_prefill_decode_frontier_probe_command(arguments.collect());
+    }
+    if command == "engine-measure" {
+        return run_engine_measurement_command(arguments.collect());
     }
     if command == "ratio128-compressor-replay-probe" {
         return run_ratio128_compressor_replay_probe_command(arguments.collect());
@@ -747,6 +750,73 @@ fn run_prefill_decode_frontier_probe_command(arguments: Vec<OsString>) -> Result
         write_prefill_decode_frontier_probe_file(&path, &report)?;
         println!("json: {}", path.display());
     }
+    Ok(())
+}
+
+fn run_engine_measurement_command(arguments: Vec<OsString>) -> Result<()> {
+    if arguments.is_empty() {
+        return Err(Error::invalid(engine_measurement_usage()));
+    }
+    if matches!(arguments[0].to_str(), Some("--help") | Some("-h")) {
+        println!("{}", engine_measurement_usage());
+        return Ok(());
+    }
+    let model_path = PathBuf::from(&arguments[0]);
+    let mut context_tokens = None;
+    let mut gen_tokens = None;
+    let mut json_path = None;
+    let mut arguments = arguments.into_iter().skip(1);
+    while let Some(argument) = arguments.next() {
+        let (slot, label): (&mut Option<_>, &str) = match argument.to_str() {
+            Some("--context") => (&mut context_tokens, "--context"),
+            Some("--gen-tokens") => (&mut gen_tokens, "--gen-tokens"),
+            Some("--json") => {
+                let value = arguments
+                    .next()
+                    .ok_or_else(|| Error::invalid("--json requires a path"))?;
+                if json_path.replace(PathBuf::from(value)).is_some() {
+                    return Err(Error::invalid("--json may be specified only once"));
+                }
+                continue;
+            }
+            Some("--help") | Some("-h") => {
+                println!("{}", engine_measurement_usage());
+                return Ok(());
+            }
+            _ => return Err(Error::invalid(engine_measurement_usage())),
+        };
+        let value = arguments
+            .next()
+            .ok_or_else(|| Error::invalid(format!("{label} requires a value")))?;
+        if slot.is_some() {
+            return Err(Error::invalid(format!(
+                "{label} may be specified only once"
+            )));
+        }
+        let value = value
+            .to_str()
+            .ok_or_else(|| Error::invalid(format!("{label} must be UTF-8")))?
+            .parse::<u32>()
+            .map_err(|_| Error::invalid(format!("{label} must be an unsigned integer")))?;
+        *slot = Some(value);
+    }
+    let context_tokens = context_tokens.ok_or_else(|| Error::invalid("--context is required"))?;
+    let gen_tokens = gen_tokens.ok_or_else(|| Error::invalid("--gen-tokens is required"))?;
+    let json_path = json_path.ok_or_else(|| Error::invalid("--json is required"))?;
+
+    let model = MappedModel::open(&model_path)?;
+    validate_resident_q2(model.gguf())?;
+    let report = run_engine_measurement(&model, context_tokens, gen_tokens)?;
+    write_engine_run_file(&json_path, &report)?;
+    println!(
+        "Rust Star development measurement: prefill {:.3} tok/s, generation {:.3} tok/s, steady {:.3} tok/s",
+        f64::from(report.context) * 1000.0 / report.prefill_ms,
+        f64::from(report.gen_tokens) * 1000.0 / report.gen_ms,
+        f64::from(report.gen_steady_tokens) * 1000.0 / report.gen_steady_ms,
+    );
+    println!("correctness: exact 128-token oracle transcript; generation collection disabled");
+    println!("paired protocol: ineligible until native prefill boundary collection is disabled");
+    println!("json: {}", json_path.display());
     Ok(())
 }
 
@@ -3798,6 +3868,33 @@ fn write_prefill_decode_frontier_probe_file(
     Ok(())
 }
 
+fn write_engine_run_file(path: &Path, report: &EngineRunReport) -> Result<()> {
+    let temporary = path.with_extension(format!(
+        "{}tmp",
+        path.extension()
+            .and_then(OsStr::to_str)
+            .map(|extension| format!("{extension}."))
+            .unwrap_or_default()
+    ));
+    let file = File::create(&temporary).map_err(|error| {
+        Error::invalid(format!(
+            "cannot create Rust Star engine-run JSON {}: {error}",
+            temporary.display()
+        ))
+    })?;
+    let mut output = BufWriter::new(file);
+    write_engine_run_json(&mut output, report)?;
+    output.flush()?;
+    drop(output);
+    std::fs::rename(&temporary, path).map_err(|error| {
+        Error::invalid(format!(
+            "cannot install Rust Star engine-run JSON {}: {error}",
+            path.display()
+        ))
+    })?;
+    Ok(())
+}
+
 fn write_ratio128_compressor_replay_probe_file(
     path: &Path,
     report: &Ratio128CompressorReplayProbeReport,
@@ -4133,7 +4230,7 @@ fn usage() -> &'static str {
 
 fn full_usage() -> String {
     format!(
-        "{}\n  rust-star prefill-decode-frontier-probe MODEL.gguf [OPTIONS]\n  rust-star retained-sparse-multimerge-probe MODEL.gguf [OPTIONS]\n  rust-star retained-decoder-step-probe MODEL.gguf [OPTIONS]",
+        "{}\n  rust-star prefill-decode-frontier-probe MODEL.gguf [OPTIONS]\n  rust-star engine-measure MODEL.gguf --context N --gen-tokens N --json PATH\n  rust-star retained-sparse-multimerge-probe MODEL.gguf [OPTIONS]\n  rust-star retained-decoder-step-probe MODEL.gguf [OPTIONS]",
         usage()
     )
 }
@@ -4296,6 +4393,10 @@ fn prefill_frontier_probe_usage() -> &'static str {
 
 fn prefill_decode_frontier_probe_usage() -> &'static str {
     "usage: rust-star prefill-decode-frontier-probe MODEL.gguf [--json PATH]\n\nRuns exact native 2K batched prefill and full logits, adopts its retained raw, compressed, and recurrent state entirely on the GPU, then greedily decodes positions 2048--4099. The complete input transcript, immediate handoff logits, and first production-default 1,025-row sparse ratio-4 boundary logits must match repeated DwarfStar captures bit-for-bit. This synchronizes for correctness and is not a throughput claim."
+}
+
+fn engine_measurement_usage() -> &'static str {
+    "usage: rust-star engine-measure MODEL.gguf --context 2048 --gen-tokens 128 --json PATH\n\nRuns the exact native 2K prefill and a timed 128-token closed loop. Generation command encoding, synchronized execution, lowest-ID argmax, and token commitment are timed without tensor comparison or boundary collection. The initial producer remains paired-ineligible because native prefill still materializes diagnostic tensors outside its GPU intervals."
 }
 
 fn ratio128_compressor_replay_probe_usage() -> &'static str {

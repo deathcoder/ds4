@@ -67,7 +67,13 @@ history; add a correction and update the current-state summary.
   tested. A fresh-process DwarfStar adapter now normalizes one frontier while
   externally recording wall time and peak RSS. The checkpointed paired runner
   enforces warm-up, A/B and context ordering, explicit retries, and final
-  validated export through an engine-neutral contract.
+  validated export through an engine-neutral contract. Rust Star now has a
+  fresh-process adapter and a raw `rust-star-engine-run-v1` producer for the
+  exact 2K/128 path. Generation uses timing-only submission and validates the
+  selected-token transcript afterward. The adapter independently rejects any
+  raw run whose prefill/generation collection, transcript, or scheduler
+  metadata is inconsistent. The producer remains deliberately paired-ineligible
+  because native prefill still retains its exhaustive boundary collection.
 - Implementation: dependency-free Rust host scaffold under `rust-star/runtime/`
   strictly parses GGUF v3 directories, validates the Flash resident-Q2
   shape/recipe, and writes candidate full-logit artifacts. A macOS-only
@@ -609,9 +615,10 @@ history; add a correction and update the current-state summary.
 
 ## Immediate Next Actions
 
-1. Emit the `rust-star-engine-measurement-v1` artifact from the exact native
-   batched-prefill/128-token closed loop with timing-only collection and connect
-   it to the paired runner.
+1. Split native 2K prefill execution from its exhaustive diagnostic fixture and
+   output collection, preserving the exact C0 probe as a separate gate. Then
+   mark the existing 2K/128 producer eligible and run it through the Rust Star
+   adapter.
 2. Preserve the exact 2K-to-position-4099 native handoff, complete retained
    position-8195 decoder step, isolated
    513/1,025-row probes, and retained-state row-1,025/2,049 controls as
@@ -623,6 +630,50 @@ history; add a correction and update the current-state summary.
 5. Run or approve the fork's GitHub Actions workflow and retain its URL.
 
 ## Entries
+
+### 2026-08-27 — Rust Star measurement boundary added; prefill collection isolated as blocker
+
+Objective:
+
+- Connect the exact native-prefill/decoder path to the engine-neutral paired
+  process contract without reporting correctness-oriented intervals as speed.
+
+Changes and evidence:
+
+- Added `engine-measure` and stable `rust-star-engine-run-v1` output for the
+  exact 2,048-token prefill plus 128 committed greedy tokens.
+- The generation loop prepares model bindings outside timing, includes command
+  encoding, 44 synchronized command buffers, two waits, full output-head
+  sampling, and token commitment per step, and compares all selected tokens
+  with the pinned oracle only after timing.
+- Added `measure_ruststar.py` and its library. The fresh-process adapter records
+  wall time and child peak RSS, sanitizes logs, checksums evidence, normalizes
+  rates, and refuses inconsistent eligibility, collection, transcript, or
+  scheduler metadata.
+- Unit coverage exercises successful normalization, rate inconsistency,
+  explicit ineligibility, and an eligibility flag contradicted by prefill
+  collection metadata.
+- The complete host-runtime gate passed 287 Rust tests, an optimized macOS
+  build, the M1 Ultra Metal dispatch probe, 68 Python tests, every pinned
+  differential fixture, and the Rust-writer/Python-reader C0 smoke test.
+- The first optimized target-Mac 2K/128 development run reached Metal generation.
+  A live process sample measured 22.3 GB current physical footprint and 66.9 GB
+  peak footprint. The peak came from exhaustive native-prefill fixtures and
+  host output materialization. The run ended before atomic JSON installation,
+  so no throughput number is retained or claimed.
+
+Decision:
+
+- Keep the raw producer explicitly `paired_protocol_eligible: false` and make
+  the adapter fail closed. The next change must split timing-only native prefill
+  from the exact diagnostic collector rather than weakening C0 validation or
+  publishing a memory-distorted rate.
+
+Next:
+
+- Give the prefill Metal ABI an execution-only path with no host boundary
+  outputs, construct model descriptors without decoding fixtures, retain the
+  existing correctness command unchanged, and repeat the exact 2K/128 run.
 
 ### 2026-08-27 — Exact native 2K handoff through production sparse position 4099
 

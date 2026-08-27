@@ -52,7 +52,14 @@ Minimal structural example:
   "candidate": {
     "identity": "<Rust Star engine identity object>",
     "working_directory": "/path/to/rust-star/source",
-    "adapter_command": ["<adapter>", "{context}", "{gen_tokens}", "{output}"]
+    "adapter_command": [
+      "python3", "/path/to/measure_ruststar.py",
+      "--executable", "/path/to/rust-star",
+      "--model", "/path/to/model.gguf",
+      "--context", "{context}",
+      "--gen-tokens", "{gen_tokens}",
+      "--output", "{output}"
+    ]
   }
 }
 ```

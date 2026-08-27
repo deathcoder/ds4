@@ -3,9 +3,10 @@
 Schema: `rust-star-engine-measurement-v1`.
 
 This is the shared process boundary between the checkpointed paired runner and
-any inference engine. The DwarfStar adapter implements it today. The future Rust
-Star benchmark executable must either emit it directly or use a thin adapter
-that preserves the same timed intervals.
+any inference engine. Both engine adapters implement it. Rust Star first writes
+the narrower `rust-star-engine-run-v1` record; `measure_ruststar.py`
+independently validates that record and adds complete-process wall time, peak
+RSS, sanitized logs, and checksummed artifacts.
 
 ## Invocation boundary
 
@@ -65,6 +66,13 @@ For Rust Star, device work must be synchronized before stopping each interval.
 Command encoding, model execution, argmax sampling, and committing the token
 belong inside the generation intervals. Correctness dumping and profiler capture
 must remain disabled in timed mode.
+
+The Rust Star adapter accepts an engine run only when its raw timing metadata
+also states that prefill and generation correctness collection were disabled,
+the exact oracle transcript matched after timing, and the expected 44 command
+buffers plus two host waits were used per generated token. An engine may emit
+an ineligible raw record with a blocker for development, but the adapter must
+turn it into a failed measurement rather than forwarding its rates.
 
 ## Failure measurement
 

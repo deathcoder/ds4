@@ -1,13 +1,14 @@
-# DwarfStar Measurement Adapter
+# Engine Measurement Adapters
 
 Schema: `rust-star-engine-measurement-v1`.
 
-The engine-neutral form of this schema, including the future Rust Star side, is
-defined in `ENGINE_MEASUREMENT_FORMAT.md`.
+The engine-neutral form of this schema is defined in
+`ENGINE_MEASUREMENT_FORMAT.md`.
 
-`measure_dwarfstar.py` is the first engine-side boundary for the future paired
-runner. Each invocation launches exactly one fresh `ds4-bench` process for one
-context frontier and writes a self-contained evidence directory.
+`measure_dwarfstar.py` and `measure_ruststar.py` are the two engine-side
+boundaries for the paired runner. Each invocation launches exactly one fresh
+engine process for one context frontier and writes a self-contained evidence
+directory.
 
 It deliberately does not orchestrate A/B ordering or retries yet. Keeping the
 single-engine adapter separate lets the paired runner eventually invoke the
@@ -32,7 +33,7 @@ The output directory must be new or empty. It receives:
 - `stdout.log` and `stderr.log`: logs with the executable, model, prompt, and
   temporary paths replaced by stable placeholders.
 
-The adapter records externally measured complete-process wall time and peak
+The adapters record externally measured complete-process wall time and peak
 resident memory. Prefill/generation intervals are derived from DwarfStar's
 reported token counts and rates. `process_overhead_ms` is the residual outside
 those intervals; it is not labeled as pure model-load time.
@@ -41,6 +42,23 @@ At a terminal single frontier DwarfStar does not create the session snapshot
 whose serialized size populates `kvcache_bytes`. The adapter records `null` in
 that case rather than claiming that live KV memory is zero.
 
-Run this adapter as a fresh Python process for every measurement. Its peak-RSS
+Run either adapter as a fresh Python process for every measurement. Peak-RSS
 collection relies on having exactly one child process in that adapter process.
-The later paired runner will enforce this automatically.
+The paired runner enforces this automatically.
+
+Rust Star currently exposes its development boundary as:
+
+```sh
+python3 rust-star/measure_ruststar.py \
+  --executable /path/to/rust-star \
+  --model /path/to/model.gguf \
+  --context 2048 \
+  --gen-tokens 128 \
+  --output /path/to/results/rust-star-ctx-2048-run-01
+```
+
+The native producer already times a 128-token loop without generation tensor
+collection and checks the selected-token transcript afterward. Its native 2K
+prefill still materializes diagnostic boundary tensors, so the raw record sets
+`paired_protocol_eligible: false` and the adapter intentionally returns a
+failed measurement. This is a safety boundary, not a command-line limitation.

@@ -59,6 +59,7 @@ pub const POSITION127_DECODER_PROBE_SCHEMA: &str =
 pub const COLD_PREFILL_DECODER_PROBE_SCHEMA: &str = "rust-star-cold-prefill-decoder-diagnostic-v1";
 pub const PREFILL_FRONTIER_PROBE_SCHEMA: &str = "rust-star-prefill-frontier-diagnostic-v1";
 pub const PREFILL_DECODE_FRONTIER_PROBE_SCHEMA: &str = "rust-star-prefill-decode-frontier-probe-v1";
+pub const ENGINE_RUN_SCHEMA: &str = "rust-star-engine-run-v1";
 pub const RATIO128_COMPRESSOR_REPLAY_PROBE_SCHEMA: &str =
     "rust-star-ratio128-compressor-replay-probe-v1";
 pub const SPARSE_INDEXED_ATTENTION_PROBE_SCHEMA: &str =
@@ -4289,6 +4290,25 @@ pub struct PrefillDecodeFrontierProbeReport {
 }
 
 #[derive(Clone, Debug)]
+pub struct EngineRunReport {
+    pub context: u32,
+    pub gen_tokens: u32,
+    pub gen_steady_tokens: u32,
+    pub prefill_ms: f64,
+    pub gen_ms: f64,
+    pub gen_first_ms: f64,
+    pub gen_steady_ms: f64,
+    pub prefill_selected_token: u32,
+    pub final_selected_token: u32,
+    pub selected_tokens_checksum: u64,
+    pub transcript_match: bool,
+    pub prefill_correctness_collection: bool,
+    pub generation_correctness_collection: bool,
+    pub generation_command_buffers_per_token: u32,
+    pub generation_host_waits_per_token: u32,
+}
+
+#[derive(Clone, Debug)]
 pub struct Ratio128CompressorLayerReport {
     pub layer: u32,
     pub fixture_id: &'static str,
@@ -5295,6 +5315,64 @@ pub fn write_prefill_decode_frontier_probe_json<W: Write>(
         report.input_tokens_checksum,
         report.first_logits_checksum,
         report.final_logits_checksum,
+    )?;
+    Ok(())
+}
+
+pub fn write_engine_run_json<W: Write>(output: &mut W, report: &EngineRunReport) -> Result<()> {
+    if report.context != 2048
+        || report.gen_tokens != 128
+        || report.gen_steady_tokens != 127
+        || !report.prefill_ms.is_finite()
+        || report.prefill_ms <= 0.0
+        || !report.gen_ms.is_finite()
+        || report.gen_ms <= 0.0
+        || !report.gen_first_ms.is_finite()
+        || report.gen_first_ms <= 0.0
+        || !report.gen_steady_ms.is_finite()
+        || report.gen_steady_ms <= 0.0
+        || (report.gen_first_ms + report.gen_steady_ms - report.gen_ms).abs() > 1.0e-6
+        || report.prefill_selected_token != 15342
+        || !report.transcript_match
+        || report.generation_correctness_collection
+        || report.generation_command_buffers_per_token != 44
+        || report.generation_host_waits_per_token != 2
+    {
+        return Err(Error::invalid(
+            "Rust Star engine run has inconsistent measurement metadata",
+        ));
+    }
+    let prefill_tps = f64::from(report.context) * 1000.0 / report.prefill_ms;
+    let gen_tps = f64::from(report.gen_tokens) * 1000.0 / report.gen_ms;
+    let gen_steady_tps = f64::from(report.gen_steady_tokens) * 1000.0 / report.gen_steady_ms;
+    write!(
+        output,
+        "{{\n  \"schema\": \"{ENGINE_RUN_SCHEMA}\",\n  \"engine\": \"rust-star\",\n  \"context\": {},\n  \"gen_tokens\": {},\n  \"metrics\": {{\"ctx_tokens\": {}, \"prefill_tokens\": {}, \"gen_tokens\": {}, \"gen_steady_tokens\": {}, \"prefill_tps\": {:.9}, \"prefill_ms\": {:.9}, \"gen_tps\": {:.9}, \"gen_ms\": {:.9}, \"gen_first_ms\": {:.9}, \"gen_steady_tps\": {:.9}, \"gen_steady_ms\": {:.9}}},\n  \"selection\": {{\"prefill_token\": {}, \"final_token\": {}, \"selected_tokens_checksum\": {}, \"oracle_transcript_match\": true}},\n  \"timing\": {{\"generation_command_buffers_per_token\": {}, \"generation_host_waits_per_token\": {}, \"generation_correctness_collection\": false, \"prefill_correctness_collection\": {}}},\n  \"paired_protocol_eligible\": {},\n  \"paired_protocol_blocker\": {}\n}}\n",
+        report.context,
+        report.gen_tokens,
+        report.context,
+        report.context,
+        report.gen_tokens,
+        report.gen_steady_tokens,
+        prefill_tps,
+        report.prefill_ms,
+        gen_tps,
+        report.gen_ms,
+        report.gen_first_ms,
+        gen_steady_tps,
+        report.gen_steady_ms,
+        report.prefill_selected_token,
+        report.final_selected_token,
+        report.selected_tokens_checksum,
+        report.generation_command_buffers_per_token,
+        report.generation_host_waits_per_token,
+        report.prefill_correctness_collection,
+        !report.prefill_correctness_collection,
+        if report.prefill_correctness_collection {
+            "\"native prefill still materializes and verifies diagnostic boundary tensors outside its GPU intervals\""
+        } else {
+            "null"
+        },
     )?;
     Ok(())
 }
@@ -41448,6 +41526,110 @@ mod imp {
         })
     }
 
+    pub fn run_engine_measurement(
+        model: &MappedModel,
+        context_tokens: u32,
+        gen_tokens: u32,
+    ) -> Result<EngineRunReport> {
+        if context_tokens != 2048 || gen_tokens != 128 {
+            return Err(Error::invalid(
+                "the initial Rust Star engine measurement supports exactly context=2048 and gen_tokens=128",
+            ));
+        }
+        let (oracle_inputs, _, _) = prefill_decode_frontier_4099_fixture()?;
+        let required_inputs = gen_tokens as usize + 1;
+        if oracle_inputs.len() < required_inputs {
+            return Err(Error::invalid(
+                "the post-prefill oracle transcript is shorter than the requested measurement",
+            ));
+        }
+
+        let prefill_started = Instant::now();
+        let (context, prefill) = run_prefill_layers012_attention_loop_probe_with_context(model)?;
+        if prefill.output_head.selected_token != oracle_inputs[0] {
+            return Err(Error::invalid(
+                "native prefill selected a different measurement input token",
+            ));
+        }
+        let decoder_capacity = context_tokens
+            .checked_add(gen_tokens)
+            .ok_or_else(|| Error::invalid("measurement context capacity overflow"))?;
+        context.adopt_prefill_decoder_state(decoder_capacity)?;
+        let prefill_ms = prefill_started.elapsed().as_secs_f64() * 1000.0;
+
+        let mut layers = (0..43)
+            .map(|layer_index| {
+                PreparedLayerExecution::new_cold_with_capacity(model, layer_index, decoder_capacity)
+            })
+            .collect::<Result<Vec<_>>>()?;
+        for layer in &mut layers {
+            layer.validate_expected = false;
+        }
+        let mut output_head = PreparedOutputHead::new(model)?;
+        context.prepare_decoder()?;
+
+        let mut input_token = oracle_inputs[0];
+        let mut selected_tokens = Vec::with_capacity(gen_tokens as usize);
+        let mut step_ms = Vec::with_capacity(gen_tokens as usize);
+        for step in 0..gen_tokens {
+            let position = context_tokens + step;
+            let started = Instant::now();
+            submit_prepared_layers(model, &context, &mut layers, input_token, position)?;
+            run_prepared_layer_iterations(
+                model,
+                &context,
+                &mut layers[0],
+                input_token,
+                position,
+                0,
+                1,
+                COMMAND_CHAINED_TIMING,
+                42,
+            )?;
+            let (selected_token, _) = run_sampling_output_head(model, &context, &mut output_head)?;
+            selected_tokens.push(selected_token);
+            input_token = selected_token;
+            step_ms.push(started.elapsed().as_secs_f64() * 1000.0);
+        }
+
+        let expected_selected = &oracle_inputs[1..required_inputs];
+        if let Some((step, (actual, expected))) = selected_tokens
+            .iter()
+            .zip(expected_selected)
+            .enumerate()
+            .find(|(_, (actual, expected))| actual != expected)
+        {
+            return Err(Error::invalid(format!(
+                "timed engine transcript mismatch after generation step {}: actual={} expected={}",
+                step + 1,
+                actual,
+                expected,
+            )));
+        }
+        let gen_first_ms = step_ms[0];
+        let gen_steady_ms = step_ms[1..].iter().sum::<f64>();
+        let gen_ms = gen_first_ms + gen_steady_ms;
+        Ok(EngineRunReport {
+            context: context_tokens,
+            gen_tokens,
+            gen_steady_tokens: gen_tokens - 1,
+            prefill_ms,
+            gen_ms,
+            gen_first_ms,
+            gen_steady_ms,
+            prefill_selected_token: oracle_inputs[0],
+            final_selected_token: *selected_tokens
+                .last()
+                .ok_or_else(|| Error::invalid("engine measurement selected no tokens"))?,
+            selected_tokens_checksum: checksum_u32(&selected_tokens),
+            transcript_match: true,
+            prefill_correctness_collection: true,
+            generation_correctness_collection: false,
+            generation_command_buffers_per_token: 44,
+            generation_host_waits_per_token: 2,
+        })
+    }
+
     fn run_position_advancing_probe(
         model: &MappedModel,
         layer_count: u32,
@@ -43091,6 +43273,18 @@ mod imp {
         ))
     }
 
+    pub fn run_engine_measurement(
+        model: &MappedModel,
+        _context_tokens: u32,
+        _gen_tokens: u32,
+    ) -> Result<EngineRunReport> {
+        let _ = prefill_decode_frontier_4099_fixture()?;
+        let _ = exact_tensor(model, "output.weight", 8, &[4096, 129280])?;
+        Err(Error::invalid(
+            "the Rust Star engine measurement is available only on macOS",
+        ))
+    }
+
     pub fn run_prefill_decode_frontier_probe(
         model: &MappedModel,
     ) -> Result<PrefillDecodeFrontierProbeReport> {
@@ -43588,12 +43782,12 @@ mod imp {
 pub use imp::{
     run_attention_ingress_probe, run_attention_output_probe, run_attention_read_probe,
     run_attention_setup_probe, run_closed_loop_decoder_probe, run_cold_prefill_decoder_probe,
-    run_decoder_output_probe, run_f16_embedding_probe, run_ffn_router_probe, run_layer0_bench,
-    run_layer0_probe, run_layers01234567_decode_probe, run_layers012345_decode_probe,
-    run_layers0123_bench, run_layers0123_chained_probe, run_layers0123_decode_probe,
-    run_layers0123_probe, run_layers012_chained_probe, run_layers012_probe, run_layers01_probe,
-    run_layers0_to_42_decode_probe, run_moe_output_probe, run_position127_decoder_probe,
-    run_prefill_decode_frontier_probe, run_prefill_frontier_probe,
+    run_decoder_output_probe, run_engine_measurement, run_f16_embedding_probe,
+    run_ffn_router_probe, run_layer0_bench, run_layer0_probe, run_layers01234567_decode_probe,
+    run_layers012345_decode_probe, run_layers0123_bench, run_layers0123_chained_probe,
+    run_layers0123_decode_probe, run_layers0123_probe, run_layers012_chained_probe,
+    run_layers012_probe, run_layers01_probe, run_layers0_to_42_decode_probe, run_moe_output_probe,
+    run_position127_decoder_probe, run_prefill_decode_frontier_probe, run_prefill_frontier_probe,
     run_prefill_layer0_boundary_probe, run_prefill_layers012_attention_loop_probe,
     run_prefill_layers012_compressor_loop_probe, run_prefill_layers012_kv_state_loop_probe,
     run_prefill_layers012_kvnorm_loop_probe, run_prefill_layers01_boundary_probe,
@@ -45295,6 +45489,26 @@ mod tests {
         }
     }
 
+    fn engine_run_report() -> EngineRunReport {
+        EngineRunReport {
+            context: 2048,
+            gen_tokens: 128,
+            gen_steady_tokens: 127,
+            prefill_ms: 20000.0,
+            gen_ms: 7000.0,
+            gen_first_ms: 60.0,
+            gen_steady_ms: 6940.0,
+            prefill_selected_token: 15342,
+            final_selected_token: 293,
+            selected_tokens_checksum: 7,
+            transcript_match: true,
+            prefill_correctness_collection: true,
+            generation_correctness_collection: false,
+            generation_command_buffers_per_token: 44,
+            generation_host_waits_per_token: 2,
+        }
+    }
+
     #[test]
     fn validates_probe_work_bounds() {
         assert!(ProbeConfig::default().validate().is_ok());
@@ -45582,6 +45796,18 @@ mod tests {
         assert!(text.contains("\"production_sparse_ratio4_claim\": true"));
         assert!(text.contains("\"output_logits_c0_bitwise_match\": true"));
         assert!(text.contains("\"throughput_claim\": false"));
+    }
+
+    #[test]
+    fn writes_stable_engine_run_json() {
+        let mut output = Vec::new();
+        write_engine_run_json(&mut output, &engine_run_report()).unwrap();
+        let text = String::from_utf8(output).unwrap();
+        assert!(text.contains(&format!("\"schema\": \"{ENGINE_RUN_SCHEMA}\"")));
+        assert!(text.contains("\"gen_steady_tokens\": 127"));
+        assert!(text.contains("\"generation_correctness_collection\": false"));
+        assert!(text.contains("\"prefill_correctness_collection\": true"));
+        assert!(text.contains("\"paired_protocol_eligible\": false"));
     }
 
     #[test]

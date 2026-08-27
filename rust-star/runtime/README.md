@@ -844,6 +844,29 @@ the production-default sparse threshold. Per-position synchronization and
 correctness checks remain enabled, so the reported 16.563 positions/s from the
 first focused run is diagnostic and not a throughput result.
 
+To exercise the first engine-measurement process boundary at the exact 2K/128
+workload:
+
+```sh
+rust-star/.work/runtime-target/release/rust-star \
+  engine-measure \
+  /absolute/path/to/model.gguf \
+  --context 2048 \
+  --gen-tokens 128 \
+  --json rust-star/.work/runtime-target/rust-star-engine-run.json
+```
+
+The generation intervals include command encoding, synchronized transformer
+and output-head execution, CPU lowest-ID argmax, and token commitment. They do
+not collect diagnostic tensors; the complete 128-token selection transcript is
+compared with the pinned oracle after timing. This development producer remains
+`paired_protocol_eligible: false` because the reused native prefill path still
+materializes and verifies every diagnostic boundary. A first observed run
+reached generation but peaked at 66.9 GB and ended before installing its atomic
+JSON artifact. Its rates therefore are neither available nor claimable. The
+next production step is to separate prefill execution from boundary collection,
+then rerun this same process contract through `measure_ruststar.py`.
+
 To validate the complete retained step at the same position:
 
 ```sh
