@@ -83,11 +83,11 @@ python3 rust-star/run_paired_benchmark.py run paired-plan.json \
 ```
 
 The same command resumes from `state.json`. The runner performs one untimed
-smallest-context warm-up per engine, alternates A/B versus B/A by repetition,
-and alternates ascending versus descending contexts. Every adapter invocation
-is a fresh process group. Finalization re-hashes and revalidates the underlying
-measurement artifacts, so editing cached metrics in `state.json` cannot create
-a publishable result.
+smallest-context warm-up per engine at the plan's predeclared generation
+length, alternates A/B versus B/A by repetition, and alternates ascending versus
+descending contexts. Every adapter invocation is a fresh process group.
+Finalization re-hashes and revalidates the underlying measurement artifacts, so
+editing cached metrics in `state.json` cannot create a publishable result.
 
 Inspect progress without running an engine:
 

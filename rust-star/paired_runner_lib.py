@@ -496,7 +496,7 @@ def ensure_warmups(plan: PairedPlan, output_dir: Path, state: dict[str, Any]) ->
             _adapter(plan, label),
             label=label,
             context=context,
-            gen_tokens=min(8, plan.gen_tokens),
+            gen_tokens=plan.gen_tokens,
             output_dir=output_dir,
             relative_output=relative,
         )

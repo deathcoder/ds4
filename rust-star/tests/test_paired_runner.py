@@ -154,6 +154,12 @@ class PairedRunnerTests(unittest.TestCase):
         self.assertTrue(run_remaining(plan, output, state, max_new_pairs=1))
         self.assertEqual(state["phase"], "paused")
         self.assertEqual(len(state["attempts"]), 1)
+        for label in ("oracle", "candidate"):
+            warmup = state["warmups"][label][0]
+            measurement = json.loads(
+                (output / warmup["output"] / "measurement.json").read_text(encoding="utf-8")
+            )
+            self.assertEqual(measurement["gen_tokens"], 128)
 
         plan = load_paired_plan(self.plan_path)
         output, state = initialize_or_load_state(plan, output)
