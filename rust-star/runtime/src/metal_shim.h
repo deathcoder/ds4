@@ -401,6 +401,13 @@ typedef struct rust_star_metal_prefill_layer2_attention_weights {
     uint64_t layer37_attn_output_a_offset, layer37_attn_output_a_bytes;
     uint64_t layer37_attn_output_b_offset, layer37_attn_output_b_bytes;
     rust_star_metal_prefill_ffn_weights layer37_ffn;
+    rust_star_metal_prefill_kvnorm_weights layer38_kvnorm;
+    uint64_t layer38_q_b_offset, layer38_q_b_bytes;
+    rust_star_metal_prefill_compressor_weights layer38_compressor;
+    uint64_t layer38_attn_sinks_offset, layer38_attn_sinks_bytes;
+    uint64_t layer38_attn_output_a_offset, layer38_attn_output_a_bytes;
+    uint64_t layer38_attn_output_b_offset, layer38_attn_output_b_bytes;
+    rust_star_metal_prefill_ffn_weights layer38_ffn;
 
 } rust_star_metal_prefill_layer2_attention_weights;
 
@@ -1632,6 +1639,34 @@ int rust_star_metal_run_prefill_layer2_attention(
     float *layer37_router_weights_final_tile,
     float *layer37_routed_out_final_tile,
     float *layer37_shared_out_final_tile,
+    float *layer38_hc_attn_pre_final_tile,
+    float *layer38_attn_norm_final_tile,
+    float *layer38_q_lora_final_tile,
+    float *layer38_q_lora_norm_final_tile,
+    float *layer38_kv_raw_final_tile,
+    float *layer38_kv_norm_final_tile,
+    float *layer38_q_raw_final_tile,
+    float *layer38_q_cur_final_tile,
+    float *layer38_kv_rope_final_tile,
+    float *layer38_kv_cur_final_tile,
+    float *layer38_attn_compressed,
+    float *layer38_attn_state_kv,
+    int32_t *layer38_attn_state_score,
+    float *layer38_indexer_compressed,
+    float *layer38_indexer_state_kv,
+    int32_t *layer38_indexer_state_score,
+    float *layer38_kqv_out_row0,
+    float *layer38_kqv_back_row0,
+    float *layer38_attn_low_row0,
+    float *layer38_attention_output,
+    float *layer38_after_attention_hc,
+    float *layer38_after_ffn_hc,
+    float *layer38_ffn_cur_final_tile,
+    float *layer38_ffn_norm_final_tile,
+    int32_t *layer38_router_selected_final_tile,
+    float *layer38_router_weights_final_tile,
+    float *layer38_routed_out_final_tile,
+    float *layer38_shared_out_final_tile,
     rust_star_metal_prefill_layer2_attention_result *result,
     char *error,
     size_t error_bytes);
