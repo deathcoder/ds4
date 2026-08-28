@@ -137,6 +137,7 @@ static NSString *const kGetRowsF16Source =
 #include "attention_ingress_source.inc"
 #include "attention_output_source.inc"
 #include "moe_output_source.inc"
+#include "q8_projection_pair_source.inc"
 #include "sparse_indexed_source.inc"
 
 // Kept as one compile-time knob so routed decode launch experiments cannot
@@ -240,6 +241,8 @@ static NSString *const kQ8ProjectionSource =
 @property(nonatomic, strong) id<MTLComputePipelineState> argmaxPipeline;
 @property(nonatomic, strong) id<MTLComputePipelineState> getRowsF16Pipeline;
 @property(nonatomic, strong) id<MTLComputePipelineState> q8ProjectionPipeline;
+@property(nonatomic, strong) id<MTLComputePipelineState> q8PairProjectionPipeline;
+@property(nonatomic, assign) BOOL useQkvPair;
 @property(nonatomic, strong) id<MTLComputePipelineState> q8PrefillPipeline;
 @property(nonatomic, strong) id<MTLComputePipelineState> f16PrefillPipeline;
 @property(nonatomic, strong) id<MTLComputePipelineState> f16AlignedPrefillPipeline;
@@ -877,6 +880,7 @@ int rust_star_metal_create(void **context_out, char *error, size_t error_bytes) 
         context.queue = queue;
         context.probePipeline = pipeline;
         context.argmaxPipeline = argmax_pipeline;
+        context.useQkvPair = YES;
         context.modelViewCache = [NSMutableDictionary dictionary];
         context.activationBufferCache = [NSMutableDictionary dictionary];
         context.chainedCommands = [NSMutableDictionary dictionary];
@@ -919,7 +923,8 @@ static int ensure_q8_projection_pipeline(
     char *error,
     size_t error_bytes)
 {
-    if (context.q8ProjectionPipeline) return 1;
+    if (context.q8ProjectionPipeline && context.q8PairProjectionPipeline &&
+        context.q8OutputProjectionPipeline) return 1;
     NSError *compile_error = nil;
     id<MTLLibrary> library = [context.device newLibraryWithSource:kQ8ProjectionSource
                                                           options:[MTLCompileOptions new]
@@ -939,6 +944,27 @@ static int ensure_q8_projection_pipeline(
     context.q8ProjectionPipeline =
         [context.device newComputePipelineStateWithFunction:function error:&compile_error];
     if (!context.q8ProjectionPipeline) {
+        return fail_with_message(error, error_bytes, compile_error.localizedDescription);
+    }
+    id<MTLLibrary> pair_library =
+        [context.device newLibraryWithSource:kQ8ProjectionPairSource
+                                      options:[MTLCompileOptions new]
+                                        error:&compile_error];
+    if (!pair_library) {
+        return fail_with_message(error, error_bytes, compile_error.localizedDescription);
+    }
+    int16_t pair_simdgroups = 4;
+    MTLFunctionConstantValues *pair_constants = [MTLFunctionConstantValues new];
+    [pair_constants setConstantValue:&pair_simdgroups type:MTLDataTypeShort atIndex:600];
+    id<MTLFunction> pair_function =
+        [pair_library newFunctionWithName:@"kernel_mul_mv_q8_0_f32_pair"
+                           constantValues:pair_constants error:&compile_error];
+    if (!pair_function) {
+        return fail_with_message(error, error_bytes, compile_error.localizedDescription);
+    }
+    context.q8PairProjectionPipeline =
+        [context.device newComputePipelineStateWithFunction:pair_function error:&compile_error];
+    if (!context.q8PairProjectionPipeline) {
         return fail_with_message(error, error_bytes, compile_error.localizedDescription);
     }
     simdgroups = 8;
@@ -1438,6 +1464,21 @@ int rust_star_metal_select_routed_nsg(
         context.routedDownSumPipeline = context.routedDownSumNsg4Pipeline;
     }
     context.routedNsg = simdgroups;
+    return 1;
+}
+
+int rust_star_metal_select_qkv_pair(
+    void *opaque_context,
+    uint32_t enabled,
+    char *error,
+    size_t error_bytes)
+{
+    if (!opaque_context || enabled > 1u) {
+        return fail_with_message(error, error_bytes, @"QKV pair selector must be 0 or 1");
+    }
+    RustStarMetalContext *context = (__bridge RustStarMetalContext *)opaque_context;
+    if (!ensure_q8_projection_pipeline(context, error, error_bytes)) return 0;
+    context.useQkvPair = enabled != 0u;
     return 1;
 }
 
@@ -40688,22 +40729,18 @@ int rust_star_metal_run_attention_ingress(
         [encoder setThreadgroupMemoryLength:(n_embd+4u+32u)*sizeof(float) atIndex:0];
         [encoder dispatchThreadgroups:MTLSizeMake(1,1,1) threadsPerThreadgroup:MTLSizeMake(1024,1,1)];
 
-        [encoder setComputePipelineState:context.q8ProjectionPipeline];
-        [encoder setBytes:&q_mv length:sizeof(q_mv) atIndex:0];
-        [encoder setBuffer:q_weights offset:q_inner atIndex:1];
-        [encoder setBuffer:norm_buffer offset:0 atIndex:2];
-        [encoder setBuffer:q_buffer offset:0 atIndex:3];
-        [encoder setThreadgroupMemoryLength:32u*2u*sizeof(float) atIndex:0];
-        [encoder dispatchThreadgroups:MTLSizeMake(q_elements/2u,1,1) threadsPerThreadgroup:MTLSizeMake(32,4,1)];
-
-        if (extended) {
-            [encoder setComputePipelineState:context.q8ProjectionPipeline];
-            [encoder setBytes:&kv_mv length:sizeof(kv_mv) atIndex:0];
-            [encoder setBuffer:kv_weights offset:kv_inner atIndex:1];
-            [encoder setBuffer:norm_buffer offset:0 atIndex:2];
-            [encoder setBuffer:kv_raw_buffer offset:0 atIndex:3];
-            [encoder setThreadgroupMemoryLength:32u*2u*sizeof(float) atIndex:0];
-            [encoder dispatchThreadgroups:MTLSizeMake(kv_elements/2u,1,1) threadsPerThreadgroup:MTLSizeMake(32,4,1)];
+        if (extended && context.useQkvPair) {
+            [encoder setComputePipelineState:context.q8PairProjectionPipeline];
+            [encoder setBytes:&q_mv length:sizeof(q_mv) atIndex:0];
+            [encoder setBytes:&kv_mv length:sizeof(kv_mv) atIndex:1];
+            [encoder setBuffer:q_weights offset:q_inner atIndex:2];
+            [encoder setBuffer:kv_weights offset:kv_inner atIndex:3];
+            [encoder setBuffer:norm_buffer offset:0 atIndex:4];
+            [encoder setBuffer:q_buffer offset:0 atIndex:5];
+            [encoder setBuffer:kv_raw_buffer offset:0 atIndex:6];
+            [encoder setThreadgroupMemoryLength:32u*4u*sizeof(float) atIndex:0];
+            [encoder dispatchThreadgroups:MTLSizeMake(q_elements/2u,1,1)
+                 threadsPerThreadgroup:MTLSizeMake(32,4,1)];
 
             [encoder setComputePipelineState:context.qkvNormPipeline];
             [encoder setBytes:&qkv_norm_args length:sizeof(qkv_norm_args) atIndex:0];
@@ -40728,6 +40765,52 @@ int rust_star_metal_run_attention_ingress(
                 encoder = stage_compute_encoder(command, stage_samples, stage_base + 1u);
                 if (!encoder) return fail_with_message(error, error_bytes,
                     @"failed to create RoPE/compressor profile encoder");
+            }
+        } else {
+            [encoder setComputePipelineState:context.q8ProjectionPipeline];
+            [encoder setBytes:&q_mv length:sizeof(q_mv) atIndex:0];
+            [encoder setBuffer:q_weights offset:q_inner atIndex:1];
+            [encoder setBuffer:norm_buffer offset:0 atIndex:2];
+            [encoder setBuffer:q_buffer offset:0 atIndex:3];
+            [encoder setThreadgroupMemoryLength:32u*2u*sizeof(float) atIndex:0];
+            [encoder dispatchThreadgroups:MTLSizeMake(q_elements/2u,1,1)
+                 threadsPerThreadgroup:MTLSizeMake(32,4,1)];
+            if (extended) {
+                [encoder setComputePipelineState:context.q8ProjectionPipeline];
+                [encoder setBytes:&kv_mv length:sizeof(kv_mv) atIndex:0];
+                [encoder setBuffer:kv_weights offset:kv_inner atIndex:1];
+                [encoder setBuffer:norm_buffer offset:0 atIndex:2];
+                [encoder setBuffer:kv_raw_buffer offset:0 atIndex:3];
+                [encoder setThreadgroupMemoryLength:32u*2u*sizeof(float) atIndex:0];
+                [encoder dispatchThreadgroups:MTLSizeMake(kv_elements/2u,1,1)
+                     threadsPerThreadgroup:MTLSizeMake(32,4,1)];
+
+                [encoder setComputePipelineState:context.qkvNormPipeline];
+                [encoder setBytes:&qkv_norm_args length:sizeof(qkv_norm_args) atIndex:0];
+                [encoder setBuffer:q_buffer offset:0 atIndex:1];
+                [encoder setBuffer:q_norm_weights offset:q_norm_inner atIndex:2];
+                [encoder setBuffer:q_norm_buffer offset:0 atIndex:3];
+                [encoder setBuffer:kv_raw_buffer offset:0 atIndex:4];
+                [encoder setBuffer:kv_norm_weights offset:kv_norm_inner atIndex:5];
+                [encoder setBuffer:kv_norm_buffer offset:0 atIndex:6];
+                [encoder setThreadgroupMemoryLength:32u*sizeof(float) atIndex:0];
+                [encoder dispatchThreadgroups:MTLSizeMake(1,2,1)
+                     threadsPerThreadgroup:MTLSizeMake(256,1,1)];
+
+                [encoder setComputePipelineState:context.q8ProjectionPipeline];
+                [encoder setBytes:&q_b_mv length:sizeof(q_b_mv) atIndex:0];
+                [encoder setBuffer:q_b_weights offset:q_b_inner atIndex:1];
+                [encoder setBuffer:q_norm_buffer offset:0 atIndex:2];
+                [encoder setBuffer:q_raw_buffer offset:0 atIndex:3];
+                [encoder setThreadgroupMemoryLength:32u*2u*sizeof(float) atIndex:0];
+                [encoder dispatchThreadgroups:MTLSizeMake(q_raw_elements/2u,1,1)
+                     threadsPerThreadgroup:MTLSizeMake(32,4,1)];
+                if (stage_samples) {
+                    [encoder endEncoding];
+                    encoder = stage_compute_encoder(command, stage_samples, stage_base + 1u);
+                    if (!encoder) return fail_with_message(error, error_bytes,
+                        @"failed to create RoPE/compressor profile encoder");
+                }
             }
         }
         if (collect_outputs) [encoder endEncoding];

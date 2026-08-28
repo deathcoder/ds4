@@ -2135,6 +2135,12 @@ int rust_star_metal_select_routed_nsg(
     char *error,
     size_t error_bytes);
 
+int rust_star_metal_select_qkv_pair(
+    void *context,
+    uint32_t enabled,
+    char *error,
+    size_t error_bytes);
+
 void rust_star_metal_destroy(void *context);
 
 #endif

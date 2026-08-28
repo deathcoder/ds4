@@ -37,6 +37,7 @@ pub const ATTENTION_OUTPUT_PROBE_SCHEMA: &str = "rust-star-layer0-attention-outp
 pub const FFN_ROUTER_PROBE_SCHEMA: &str = "rust-star-layer0-ffn-router-probe-v1";
 pub const MOE_OUTPUT_PROBE_SCHEMA: &str = "rust-star-layer0-moe-output-probe-v1";
 pub const ROUTED_NSG_BENCH_SCHEMA: &str = "rust-star-routed-nsg-bench-v1";
+pub const QKV_PAIR_BENCH_SCHEMA: &str = "rust-star-qkv-pair-bench-v1";
 pub const LAYER0_PROBE_SCHEMA: &str = "rust-star-layer0-complete-probe-v1";
 pub const LAYER0_BENCH_SCHEMA: &str = "rust-star-layer0-steady-state-v1";
 pub const LAYERS01_PROBE_SCHEMA: &str = "rust-star-layers01-continuous-probe-v1";
@@ -4046,6 +4047,25 @@ pub struct RoutedNsgBenchReport {
 }
 
 #[derive(Clone, Debug)]
+pub struct QkvPairBenchReport {
+    pub fixture_id: &'static str,
+    pub warmup_rounds: u32,
+    pub measured_rounds: u32,
+    pub separate_wall_ms_samples: Vec<f64>,
+    pub separate_gpu_ms_samples: Vec<f64>,
+    pub paired_wall_ms_samples: Vec<f64>,
+    pub paired_gpu_ms_samples: Vec<f64>,
+    pub separate_wall: TimingSummary,
+    pub separate_gpu: TimingSummary,
+    pub paired_wall: TimingSummary,
+    pub paired_gpu: TimingSummary,
+    pub q_lora_norm_checksum: u64,
+    pub kv_raw_checksum: u64,
+    pub kv_norm_checksum: u64,
+    pub q_raw_checksum: u64,
+}
+
+#[derive(Clone, Debug)]
 pub struct Layer0ProbeReport {
     pub fixture_id: &'static str,
     pub token: u32,
@@ -4663,6 +4683,44 @@ pub fn write_routed_nsg_bench_json<W: Write>(
         report.nsg4_gpu.mad_ms,
         report.routed_mid_checksum,
         report.routed_out_checksum,
+    )?;
+    Ok(())
+}
+
+pub fn write_qkv_pair_bench_json<W: Write>(
+    output: &mut W,
+    report: &QkvPairBenchReport,
+) -> Result<()> {
+    write!(
+        output,
+        "{{\n  \"schema\": \"{QKV_PAIR_BENCH_SCHEMA}\",\n  \"fixture\": \"{}\",\n  \"warmup_rounds\": {},\n  \"measured_rounds\": {},\n  \"separate\": {{\n    \"dispatches\": 9,\n    \"wall_ms_samples\": [",
+        report.fixture_id, report.warmup_rounds, report.measured_rounds,
+    )?;
+    write_timing_samples(output, &report.separate_wall_ms_samples)?;
+    write!(output, "],\n    \"gpu_ms_samples\": [")?;
+    write_timing_samples(output, &report.separate_gpu_ms_samples)?;
+    write!(
+        output,
+        "],\n    \"wall_median_ms\": {:.6},\n    \"wall_mad_ms\": {:.6},\n    \"gpu_median_ms\": {:.6},\n    \"gpu_mad_ms\": {:.6}\n  }},\n  \"paired\": {{\n    \"dispatches\": 8,\n    \"wall_ms_samples\": [",
+        report.separate_wall.median_ms,
+        report.separate_wall.mad_ms,
+        report.separate_gpu.median_ms,
+        report.separate_gpu.mad_ms,
+    )?;
+    write_timing_samples(output, &report.paired_wall_ms_samples)?;
+    write!(output, "],\n    \"gpu_ms_samples\": [")?;
+    write_timing_samples(output, &report.paired_gpu_ms_samples)?;
+    write!(
+        output,
+        "],\n    \"wall_median_ms\": {:.6},\n    \"wall_mad_ms\": {:.6},\n    \"gpu_median_ms\": {:.6},\n    \"gpu_mad_ms\": {:.6}\n  }},\n  \"checksums\": {{\n    \"q_lora_norm\": {},\n    \"kv_raw\": {},\n    \"kv_norm\": {},\n    \"q_raw\": {}\n  }},\n  \"alternating_order\": true,\n  \"single_metal_context\": true,\n  \"c0_bitwise_match\": true,\n  \"paired_claim_eligible\": false\n}}\n",
+        report.paired_wall.median_ms,
+        report.paired_wall.mad_ms,
+        report.paired_gpu.median_ms,
+        report.paired_gpu.mad_ms,
+        report.q_lora_norm_checksum,
+        report.kv_raw_checksum,
+        report.kv_norm_checksum,
+        report.q_raw_checksum,
     )?;
     Ok(())
 }
@@ -5323,8 +5381,8 @@ pub fn write_prefill_decode_frontier_probe_json<W: Write>(
         || report.evaluated_positions != 2052
         || report.dense_positions != 2051
         || report.sparse_positions != 1
-        || report.dense_transformer_dispatches != 1330
-        || report.sparse_transformer_dispatches != 1792
+        || report.dense_transformer_dispatches != 1287
+        || report.sparse_transformer_dispatches != 1749
         || report.dense_model_mappings != 1323
         || report.sparse_model_mappings != 1365
         || report.command_buffers_per_position != 44
@@ -20831,6 +20889,12 @@ mod imp {
         fn rust_star_metal_select_routed_nsg(
             context: *mut c_void,
             simdgroups: u32,
+            error: *mut c_char,
+            error_bytes: usize,
+        ) -> i32;
+        fn rust_star_metal_select_qkv_pair(
+            context: *mut c_void,
+            enabled: u32,
             error: *mut c_char,
             error_bytes: usize,
         ) -> i32;
@@ -40189,8 +40253,8 @@ mod imp {
             ));
         }
         if multimerge
-            && (predecessor_reports[0].dispatches != 30
-                || predecessor_reports[1].dispatches != 28
+            && (predecessor_reports[0].dispatches != 29
+                || predecessor_reports[1].dispatches != 27
                 || predecessor_reports[0].wrapped_model_ranges != 25
                 || predecessor_reports[1].wrapped_model_ranges != 25
                 || predecessor_reports[0].pointer_matches != 25
@@ -40841,11 +40905,218 @@ mod imp {
         Ok(AttentionSetupProbeReport {
             fixture_id: ATTENTION_SETUP_FIXTURE_ID,
             token: TOKEN,
-            dispatches: 9,
+            dispatches: 8,
             wrapped_model_ranges: raw.wrapped_model_ranges,
             pointer_matches: raw.pointer_matches,
             wall_ms: raw.wall_ms,
             gpu_ms: raw.gpu_ms,
+            q_lora_norm_checksum: checksum_f32(&q_lora_norm),
+            kv_raw_checksum: checksum_f32(&kv_raw),
+            kv_norm_checksum: checksum_f32(&kv_norm),
+            q_raw_checksum: checksum_f32(&q_raw),
+        })
+    }
+
+    pub fn run_qkv_pair_bench(
+        model: &MappedModel,
+        warmup_rounds: u32,
+        measured_rounds: u32,
+    ) -> Result<QkvPairBenchReport> {
+        const TOKEN: u32 = 201;
+        if measured_rounds == 0 || warmup_rounds.saturating_add(measured_rounds) > 1000 {
+            return Err(Error::invalid(
+                "QKV pair benchmark requires 1..=1000 total rounds",
+            ));
+        }
+        let embedding = exact_tensor(model, "token_embd.weight", 1, &[4096, 129280])?;
+        let hc_fn = exact_tensor(model, "blk.0.hc_attn_fn.weight", 1, &[16384, 24])?;
+        let hc_scale = exact_tensor(model, "blk.0.hc_attn_scale.weight", 0, &[3])?;
+        let hc_base = exact_tensor(model, "blk.0.hc_attn_base.weight", 0, &[24])?;
+        let norm_weight = exact_tensor(model, "blk.0.attn_norm.weight", 0, &[4096])?;
+        let q_a = exact_tensor(model, "blk.0.attn_q_a.weight", 8, &[4096, 1024])?;
+        let q_a_norm = exact_tensor(model, "blk.0.attn_q_a_norm.weight", 0, &[1024])?;
+        let kv = exact_tensor(model, "blk.0.attn_kv.weight", 8, &[4096, 512])?;
+        let kv_norm_weight = exact_tensor(model, "blk.0.attn_kv_a_norm.weight", 0, &[512])?;
+        let q_b = exact_tensor(model, "blk.0.attn_q_b.weight", 8, &[1024, 32768])?;
+        let (expected_q_norm, expected_kv_raw, expected_kv_norm, expected_q_raw) =
+            attention_setup_fixture()?;
+
+        let mut mixes = vec![0.0_f32; 24];
+        let mut split = vec![0.0_f32; 24];
+        let mut collapsed = vec![0.0_f32; 4096];
+        let mut norm = vec![0.0_f32; 4096];
+        let mut q_lora = vec![0.0_f32; 1024];
+        let mut q_lora_norm = vec![0.0_f32; 1024];
+        let mut kv_raw = vec![0.0_f32; 512];
+        let mut kv_norm = vec![0.0_f32; 512];
+        let mut q_raw = vec![0.0_f32; 32768];
+        let context = Context::new()?;
+        let mut error = [0 as c_char; ERROR_BYTES];
+        let mut separate_wall = Vec::with_capacity(measured_rounds as usize);
+        let mut separate_gpu = Vec::with_capacity(measured_rounds as usize);
+        let mut paired_wall = Vec::with_capacity(measured_rounds as usize);
+        let mut paired_gpu = Vec::with_capacity(measured_rounds as usize);
+        let total_rounds = warmup_rounds + measured_rounds;
+
+        for round in 0..total_rounds {
+            let order = if round % 2 == 0 {
+                [0_u32, 1]
+            } else {
+                [1_u32, 0]
+            };
+            for paired in order {
+                error.fill(0);
+                if unsafe {
+                    rust_star_metal_select_qkv_pair(
+                        context.0,
+                        paired,
+                        error.as_mut_ptr(),
+                        error.len(),
+                    )
+                } == 0
+                {
+                    return Err(Error::invalid(format!(
+                        "Metal QKV pair={paired} selection failed: {}",
+                        error_text(&error)
+                    )));
+                }
+                let mut raw = RawIngressProbeResult::default();
+                error.fill(0);
+                let succeeded = unsafe {
+                    rust_star_metal_run_attention_ingress(
+                        context.0,
+                        model.mapping_pointer(),
+                        model.bytes(),
+                        TOKEN,
+                        129280,
+                        embedding.absolute_offset,
+                        embedding.bytes,
+                        hc_fn.absolute_offset,
+                        hc_fn.bytes,
+                        hc_scale.absolute_offset,
+                        hc_scale.bytes,
+                        hc_base.absolute_offset,
+                        hc_base.bytes,
+                        norm_weight.absolute_offset,
+                        norm_weight.bytes,
+                        q_a.absolute_offset,
+                        q_a.bytes,
+                        q_a_norm.absolute_offset,
+                        q_a_norm.bytes,
+                        kv.absolute_offset,
+                        kv.bytes,
+                        kv_norm_weight.absolute_offset,
+                        kv_norm_weight.bytes,
+                        q_b.absolute_offset,
+                        q_b.bytes,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        mixes.as_mut_ptr(),
+                        split.as_mut_ptr(),
+                        collapsed.as_mut_ptr(),
+                        norm.as_mut_ptr(),
+                        q_lora.as_mut_ptr(),
+                        q_lora_norm.as_mut_ptr(),
+                        kv_raw.as_mut_ptr(),
+                        kv_norm.as_mut_ptr(),
+                        q_raw.as_mut_ptr(),
+                        ptr::null_mut(),
+                        ptr::null_mut(),
+                        ptr::null_mut(),
+                        ptr::null_mut(),
+                        ptr::null(),
+                        ptr::null_mut(),
+                        ptr::null_mut(),
+                        ptr::null_mut(),
+                        ptr::null_mut(),
+                        ptr::null_mut(),
+                        &mut raw,
+                        error.as_mut_ptr(),
+                        error.len(),
+                        ptr::null(),
+                    )
+                };
+                if succeeded == 0 {
+                    return Err(Error::invalid(format!(
+                        "Metal QKV pair={paired} benchmark failed: {}",
+                        error_text(&error)
+                    )));
+                }
+                if raw.model_bytes != model.bytes()
+                    || raw.wrapped_model_ranges != 10
+                    || raw.pointer_matches != 10
+                {
+                    return Err(Error::invalid(format!(
+                        "QKV pair={paired} did not preserve all ten mmap-backed model ranges"
+                    )));
+                }
+                if !raw.wall_ms.is_finite()
+                    || raw.wall_ms <= 0.0
+                    || !raw.gpu_ms.is_finite()
+                    || raw.gpu_ms < 0.0
+                {
+                    return Err(Error::invalid(format!(
+                        "QKV pair={paired} returned invalid timing"
+                    )));
+                }
+                for (label, actual, expected) in [
+                    (
+                        "q_lora_norm",
+                        q_lora_norm.as_slice(),
+                        expected_q_norm.as_slice(),
+                    ),
+                    ("KVraw", kv_raw.as_slice(), expected_kv_raw.as_slice()),
+                    ("KVnorm", kv_norm.as_slice(), expected_kv_norm.as_slice()),
+                    ("Qraw", q_raw.as_slice(), expected_q_raw.as_slice()),
+                ] {
+                    if let Some((index, (actual, expected))) = actual
+                        .iter()
+                        .zip(expected)
+                        .enumerate()
+                        .find(|(_, (actual, expected))| actual.to_bits() != expected.to_bits())
+                    {
+                        return Err(Error::invalid(format!(
+                            "QKV pair={paired} C0 mismatch in {label}[{index}]: actual={:#010x} expected={:#010x}",
+                            actual.to_bits(), expected.to_bits()
+                        )));
+                    }
+                }
+                if round >= warmup_rounds {
+                    let (wall, gpu) = if paired == 0 {
+                        (&mut separate_wall, &mut separate_gpu)
+                    } else {
+                        (&mut paired_wall, &mut paired_gpu)
+                    };
+                    wall.push(raw.wall_ms);
+                    gpu.push(raw.gpu_ms);
+                }
+            }
+        }
+        error.fill(0);
+        if unsafe { rust_star_metal_select_qkv_pair(context.0, 1, error.as_mut_ptr(), error.len()) }
+            == 0
+        {
+            return Err(Error::invalid(format!(
+                "failed to restore production paired QKV projection: {}",
+                error_text(&error)
+            )));
+        }
+        Ok(QkvPairBenchReport {
+            fixture_id: ATTENTION_SETUP_FIXTURE_ID,
+            warmup_rounds,
+            measured_rounds,
+            separate_wall: summarize_timing(&separate_wall)?,
+            separate_gpu: summarize_timing(&separate_gpu)?,
+            paired_wall: summarize_timing(&paired_wall)?,
+            paired_gpu: summarize_timing(&paired_gpu)?,
+            separate_wall_ms_samples: separate_wall,
+            separate_gpu_ms_samples: separate_gpu,
+            paired_wall_ms_samples: paired_wall,
+            paired_gpu_ms_samples: paired_gpu,
             q_lora_norm_checksum: checksum_f32(&q_lora_norm),
             kv_raw_checksum: checksum_f32(&kv_raw),
             kv_norm_checksum: checksum_f32(&kv_norm),
@@ -41034,7 +41305,7 @@ mod imp {
         Ok(RopeKvStoreProbeReport {
             fixture_id: ROPE_KV_STORE_FIXTURE_ID,
             token: TOKEN,
-            dispatches: 12,
+            dispatches: 11,
             cache_capacity_rows: CACHE_ROWS as u32,
             cache_target_row: CACHE_ROW as u32,
             cache_guard_rows_intact: guards_intact,
@@ -41223,7 +41494,7 @@ mod imp {
         Ok(AttentionReadProbeReport {
             fixture_id: ATTENTION_READ_FIXTURE_ID,
             token: TOKEN,
-            dispatches: 17,
+            dispatches: 16,
             cache_capacity_rows: CACHE_ROWS as u32,
             cache_rows_read: 2,
             cache_row0_preserved: true,
@@ -41409,7 +41680,7 @@ mod imp {
         Ok(AttentionOutputProbeReport {
             fixture_id: ATTENTION_OUTPUT_FIXTURE_ID,
             token: TOKEN,
-            dispatches: 19,
+            dispatches: 18,
             output_groups: 8,
             output_rank: 1024,
             wrapped_model_ranges: raw.wrapped_model_ranges,
@@ -42072,8 +42343,8 @@ mod imp {
             evaluated_positions: POSITION_END - POSITION_START + 1,
             dense_positions: POSITION_END - POSITION_START,
             sparse_positions: 1,
-            dense_transformer_dispatches: 1330,
-            sparse_transformer_dispatches: 1792,
+            dense_transformer_dispatches: 1287,
+            sparse_transformer_dispatches: 1749,
             dense_model_mappings: 1323,
             sparse_model_mappings: 1365,
             command_buffers_per_position: 44,
@@ -43307,17 +43578,17 @@ mod imp {
             ));
         }
         let dispatches = match (layer_index, layer_index % 2, position) {
-            (0, _, _) => 30,
-            (layer, 0, 1) if layer >= 2 => 36,
-            (layer, 0, 3) if layer >= 2 => 48,
+            (0, _, _) => 29,
+            (layer, 0, 1) if layer >= 2 => 35,
+            (layer, 0, 3) if layer >= 2 => 47,
             (layer, 0, _) if layer >= 2 && sparse_indexed_attention => {
                 let compressed_rows = (position + 1) / 4;
-                53 + retained_sparse_topk_schedule(compressed_rows).1
+                52 + retained_sparse_topk_schedule(compressed_rows).1
             }
-            (layer, 0, _) if layer >= 2 => 32,
-            (layer, 1, 1) if layer >= 3 => 32,
-            (layer, 1, _) if layer >= 3 => 30,
-            _ => 28,
+            (layer, 0, _) if layer >= 2 => 31,
+            (layer, 1, 1) if layer >= 3 => 31,
+            (layer, 1, _) if layer >= 3 => 29,
+            _ => 27,
         };
         if matches!(
             command_mode,
@@ -44157,6 +44428,17 @@ mod imp {
         ))
     }
 
+    pub fn run_qkv_pair_bench(
+        model: &MappedModel,
+        warmup_rounds: u32,
+        measured_rounds: u32,
+    ) -> Result<QkvPairBenchReport> {
+        let _ = (model, warmup_rounds, measured_rounds);
+        Err(Error::invalid(
+            "the QKV pair benchmark is available only on macOS",
+        ))
+    }
+
     pub fn run_engine_measurement(
         model: &MappedModel,
         _context_tokens: u32,
@@ -44702,10 +44984,10 @@ pub use imp::{
     run_prefill_layers01_complete_boundary_probe, run_prefill_layers01_live_kv_chain_probe,
     run_prefill_layers01_live_kv_loop_probe, run_prefill_layers01_row_coverage_probe,
     run_prefill_q8_boundary_probe, run_prefill_qkv_boundary_probe, run_probe,
-    run_q8_projection_probe, run_ratio128_compressor_replay_probe, run_retained_decoder_step_probe,
-    run_retained_sparse_boundary_probe, run_retained_sparse_multimerge_probe,
-    run_rope_kv_store_probe, run_routed_nsg_bench, run_sparse_indexed_attention_probe,
-    LayerExecutor,
+    run_q8_projection_probe, run_qkv_pair_bench, run_ratio128_compressor_replay_probe,
+    run_retained_decoder_step_probe, run_retained_sparse_boundary_probe,
+    run_retained_sparse_multimerge_probe, run_rope_kv_store_probe, run_routed_nsg_bench,
+    run_sparse_indexed_attention_probe, LayerExecutor,
 };
 
 #[cfg(test)]
@@ -45774,7 +46056,7 @@ mod tests {
         AttentionSetupProbeReport {
             fixture_id: ATTENTION_SETUP_FIXTURE_ID,
             token: 201,
-            dispatches: 9,
+            dispatches: 8,
             wrapped_model_ranges: 10,
             pointer_matches: 10,
             wall_ms: 2.0,
@@ -45790,7 +46072,7 @@ mod tests {
         RopeKvStoreProbeReport {
             fixture_id: ROPE_KV_STORE_FIXTURE_ID,
             token: 201,
-            dispatches: 12,
+            dispatches: 11,
             cache_capacity_rows: 3,
             cache_target_row: 1,
             cache_guard_rows_intact: true,
@@ -45809,7 +46091,7 @@ mod tests {
         AttentionReadProbeReport {
             fixture_id: ATTENTION_READ_FIXTURE_ID,
             token: 201,
-            dispatches: 17,
+            dispatches: 16,
             cache_capacity_rows: 3,
             cache_rows_read: 2,
             cache_row0_preserved: true,
@@ -45827,7 +46109,7 @@ mod tests {
         AttentionOutputProbeReport {
             fixture_id: ATTENTION_OUTPUT_FIXTURE_ID,
             token: 201,
-            dispatches: 19,
+            dispatches: 18,
             output_groups: 8,
             output_rank: 1024,
             wrapped_model_ranges: 13,
@@ -45917,11 +46199,51 @@ mod tests {
         }
     }
 
+    fn qkv_pair_bench_report() -> QkvPairBenchReport {
+        QkvPairBenchReport {
+            fixture_id: ATTENTION_SETUP_FIXTURE_ID,
+            warmup_rounds: 2,
+            measured_rounds: 3,
+            separate_wall_ms_samples: vec![1.0, 2.0, 3.0],
+            separate_gpu_ms_samples: vec![0.5, 0.6, 0.7],
+            paired_wall_ms_samples: vec![0.9, 1.9, 2.9],
+            paired_gpu_ms_samples: vec![0.4, 0.5, 0.6],
+            separate_wall: TimingSummary {
+                median_ms: 2.0,
+                mad_ms: 1.0,
+                min_ms: 1.0,
+                max_ms: 3.0,
+            },
+            separate_gpu: TimingSummary {
+                median_ms: 0.6,
+                mad_ms: 0.1,
+                min_ms: 0.5,
+                max_ms: 0.7,
+            },
+            paired_wall: TimingSummary {
+                median_ms: 1.9,
+                mad_ms: 1.0,
+                min_ms: 0.9,
+                max_ms: 2.9,
+            },
+            paired_gpu: TimingSummary {
+                median_ms: 0.5,
+                mad_ms: 0.1,
+                min_ms: 0.4,
+                max_ms: 0.6,
+            },
+            q_lora_norm_checksum: 1,
+            kv_raw_checksum: 2,
+            kv_norm_checksum: 3,
+            q_raw_checksum: 4,
+        }
+    }
+
     fn layer0_report() -> Layer0ProbeReport {
         Layer0ProbeReport {
             fixture_id: LAYER0_FIXTURE_ID,
             token: 201,
-            dispatches: 30,
+            dispatches: 29,
             command_buffers: 1,
             selected_experts: vec![25, 174, 215, 58, 48, 60],
             wrapped_model_ranges: 25,
@@ -45944,7 +46266,7 @@ mod tests {
             token: 201,
             warmup_iterations: 2,
             iterations: 3,
-            dispatches_per_iteration: 30,
+            dispatches_per_iteration: 29,
             command_buffers_per_iteration: 1,
             selected_experts: vec![25, 174, 215, 58, 48, 60],
             wrapped_model_ranges: 25,
@@ -45971,7 +46293,7 @@ mod tests {
     fn layers01_report() -> Layers01ProbeReport {
         let mut layer1 = layer0_report();
         layer1.fixture_id = LAYER1_FIXTURE_ID;
-        layer1.dispatches = 28;
+        layer1.dispatches = 27;
         layer1.selected_experts = vec![228, 208, 35, 27, 113, 12];
         layer1.final_hc_checksum = 8;
         LayerSequenceProbeReport {
@@ -45986,7 +46308,7 @@ mod tests {
         let mut report = layers01_report();
         let mut layer2 = layer0_report();
         layer2.fixture_id = LAYER2_FIXTURE_ID;
-        layer2.dispatches = 28;
+        layer2.dispatches = 27;
         layer2.selected_experts = vec![8, 188, 195, 75, 96, 176];
         layer2.final_hc_checksum = 9;
         report.layers.push(layer2);
@@ -46011,7 +46333,7 @@ mod tests {
         let mut report = layers012_report();
         let mut layer3 = layer0_report();
         layer3.fixture_id = LAYER3_FIXTURE_ID;
-        layer3.dispatches = 28;
+        layer3.dispatches = 27;
         layer3.selected_experts = vec![1, 58, 68, 240, 20, 24];
         layer3.final_hc_checksum = 10;
         report.layers.push(layer3);
@@ -46119,11 +46441,11 @@ mod tests {
             };
             layer4.token = step.token;
             layer4.dispatches = if step.position == 1 {
-                36
+                35
             } else if step.position == 3 {
-                48
+                47
             } else {
-                32
+                31
             };
             layer4.selected_experts = match step.position {
                 1 => vec![170, 98, 161, 61, 63, 187],
@@ -46137,7 +46459,7 @@ mod tests {
                 _ => LAYER5_POS3_FIXTURE_ID,
             };
             layer5.token = step.token;
-            layer5.dispatches = if step.position == 1 { 32 } else { 30 };
+            layer5.dispatches = if step.position == 1 { 31 } else { 29 };
             layer5.selected_experts = match step.position {
                 1 => vec![70, 210, 35, 48, 118, 72],
                 2 => vec![210, 70, 225, 255, 206, 10],
@@ -46163,11 +46485,11 @@ mod tests {
             };
             layer6.token = step.token;
             layer6.dispatches = if step.position == 1 {
-                36
+                35
             } else if step.position == 3 {
-                48
+                47
             } else {
-                32
+                31
             };
             layer6.selected_experts = match step.position {
                 1 => vec![82, 171, 1, 57, 16, 108],
@@ -46181,7 +46503,7 @@ mod tests {
                 _ => LAYER7_POS3_FIXTURE_ID,
             };
             layer7.token = step.token;
-            layer7.dispatches = if step.position == 1 { 32 } else { 30 };
+            layer7.dispatches = if step.position == 1 { 31 } else { 29 };
             layer7.selected_experts = match step.position {
                 1 => vec![29, 122, 5, 241, 162, 62],
                 2 => vec![122, 29, 66, 120, 213, 223],
@@ -46418,8 +46740,8 @@ mod tests {
             evaluated_positions: 2052,
             dense_positions: 2051,
             sparse_positions: 1,
-            dense_transformer_dispatches: 1330,
-            sparse_transformer_dispatches: 1792,
+            dense_transformer_dispatches: 1287,
+            sparse_transformer_dispatches: 1749,
             dense_model_mappings: 1323,
             sparse_model_mappings: 1365,
             command_buffers_per_position: 44,
@@ -46547,7 +46869,7 @@ mod tests {
         assert!(text.contains("\"retained_hc_handoff\": true"));
         assert!(text.contains("\"kv_cache_layers\": 2"));
         assert!(text.contains(&format!("\"fixture\": \"{LAYER1_FIXTURE_ID}\"")));
-        assert!(text.contains("\"dispatches\": 28"));
+        assert!(text.contains("\"dispatches\": 27"));
     }
 
     #[test]
@@ -47847,7 +48169,7 @@ mod tests {
         let text = String::from_utf8(output).unwrap();
         assert!(text.contains(&format!("\"schema\": \"{ATTENTION_SETUP_PROBE_SCHEMA}\"")));
         assert!(text.contains(&format!("\"fixture\": \"{ATTENTION_SETUP_FIXTURE_ID}\"")));
-        assert!(text.contains("\"dispatches\": 9"));
+        assert!(text.contains("\"dispatches\": 8"));
         assert!(text.contains("\"pointer_matches\": 10"));
         assert!(text.contains("\"c0_bitwise_match\": true"));
     }
@@ -47859,7 +48181,7 @@ mod tests {
         let text = String::from_utf8(output).unwrap();
         assert!(text.contains(&format!("\"schema\": \"{ROPE_KV_STORE_PROBE_SCHEMA}\"")));
         assert!(text.contains(&format!("\"fixture\": \"{ROPE_KV_STORE_FIXTURE_ID}\"")));
-        assert!(text.contains("\"dispatches\": 12"));
+        assert!(text.contains("\"dispatches\": 11"));
         assert!(text.contains("\"guard_rows_intact\": true"));
         assert!(text.contains("\"c0_bitwise_match\": true"));
     }
@@ -47920,12 +48242,24 @@ mod tests {
     }
 
     #[test]
+    fn writes_stable_qkv_pair_bench_json() {
+        let mut output = Vec::new();
+        write_qkv_pair_bench_json(&mut output, &qkv_pair_bench_report()).unwrap();
+        let text = String::from_utf8(output).unwrap();
+        assert!(text.contains(&format!("\"schema\": \"{QKV_PAIR_BENCH_SCHEMA}\"")));
+        assert!(text.contains("\"dispatches\": 9"));
+        assert!(text.contains("\"dispatches\": 8"));
+        assert!(text.contains("\"single_metal_context\": true"));
+        assert!(text.contains("\"paired_claim_eligible\": false"));
+    }
+
+    #[test]
     fn writes_stable_layer0_probe_json() {
         let mut output = Vec::new();
         write_layer0_probe_json(&mut output, &layer0_report()).unwrap();
         let text = String::from_utf8(output).unwrap();
         assert!(text.contains(&format!("\"schema\": \"{LAYER0_PROBE_SCHEMA}\"")));
-        assert!(text.contains("\"dispatches\": 30"));
+        assert!(text.contains("\"dispatches\": 29"));
         assert!(text.contains("\"command_buffers\": 1"));
         assert!(text.contains("\"pointer_matches\": 25"));
         assert!(text.contains("\"hc_ffn_post\": 7"));

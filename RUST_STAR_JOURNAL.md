@@ -126,6 +126,10 @@ history; add a correction and update the current-state summary.
   NSG=2 and NSG=4 pipelines together and checks every output against the pinned
   layer-0 fixture. On 100 measured rounds, NSG=4 was 1.83% slower in median GPU
   time, so production remains at DwarfStar's NSG=2 geometry.
+  Attention QKV ingress now matches pinned DwarfStar's paired Q-A/KV Q8_0
+  projection, removing one decode dispatch per layer. A 100-round alternating
+  single-context diagnostic measured 0.213 ms paired versus 0.216 ms separate
+  median GPU time for the exact attention-setup chain, a 1.44% reduction.
 - Implementation: dependency-free Rust host scaffold under `rust-star/runtime/`
   strictly parses GGUF v3 directories, validates the Flash resident-Q2
   shape/recipe, and writes candidate full-logit artifacts. A macOS-only
@@ -142,7 +146,7 @@ history; add a correction and update the current-state summary.
   chain now runs six imported operations in one command buffer from token 201's
   embedding through Q-Lora, with six mmap-backed model spans and bitwise checks
   at mixer, HC split, collapsed HC, learned attention norm, and Q-Lora.
-  The connected path now covers all thirty layer-0 dispatches through Flash
+  The connected path now covers all 29 layer-0 dispatches through Flash
   attention, output projection, hash routing, routed/shared experts, and final
   HC update. A narrow Rust `LayerExecutor` owns the Metal context, permanently
   binds it to one model mmap, and caches exact model views and activation
@@ -692,6 +696,65 @@ history; add a correction and update the current-state summary.
 6. Run or approve the fork's GitHub Actions workflow and retain its URL.
 
 ## Entries
+
+### 2026-08-28 — Paired Q-A/KV projection accepted
+
+Objective:
+
+- Reduce the second-largest profiled family, attention QKV ingress at 22.82%
+  of steady transformer GPU time, without changing any decode arithmetic.
+
+Implementation:
+
+- Ported pinned DwarfStar's `kernel_mul_mv_q8_0_f32_pair` and its exact
+  standalone reduction trees into a dedicated Metal source.
+- Replaced the separate layer Q-A and KV Q8_0 dispatches with one paired
+  dispatch while retaining both standalone pipelines as an explicit diagnostic
+  control.
+- Added `qkv-pair-bench`, which alternates separate and paired paths in one
+  persistent Metal context, reverses order every round, and validates Q-Lora
+  norm, KV raw/norm, and the complete 32,768-value Q raw output after every
+  execution.
+- Updated the decode schedule contract from 30 to 29 dispatches for layer 0,
+  1,330 to 1,287 for the dense transformer, and 1,792 to 1,749 for the sparse
+  transformer. Native batched-prefill schedules are unchanged.
+
+Evidence:
+
+- `rust-star/.work/qkv-pair-bench-100.json` records 20 warmup plus 100 measured
+  alternating rounds per path; SHA-256
+  `5138e0e3d11fcd70f69ada8f1bef2e7f934f63b433a655a6cae8681e671249bc`.
+- Separate Q-A/KV: 0.216 ms median GPU time, 0.002 ms MAD.
+- Paired Q-A/KV: 0.213 ms median GPU time, 0.001 ms MAD, 1.44% faster for the
+  full eight/nine-dispatch attention-setup chain.
+- The focused attention-setup fixture is exact; evidence SHA-256
+  `083d2489ca5cb163ae9213a5dab010ccdeb94a3f6451358d49f41069b67aed4c`.
+- The complete 29-dispatch layer-0 continuation is exact through attention,
+  router, routed/shared experts, and final HC state; evidence SHA-256
+  `a5a735cb2480dcf2bb2d63f6d75935b08234b4d610734e52367804f6c5bdcbde`.
+- A separate full-engine baseline entered the known paging/throttled mode at
+  0.598 steady tok/s and is retained only as failure evidence, not as a speed
+  comparison.
+
+Validation:
+
+- Optimized macOS build passed and the paired kernel compiled on the M1 Ultra.
+- All 291 Rust tests and 68 Python tests passed.
+- Both A/B paths reproduced every pinned QKV boundary on all 100 measured
+  executions, and the downstream complete layer remained bitwise exact.
+
+Decision:
+
+- Keep paired Q-A/KV enabled in production. The controlled 1.44% family-chain
+  improvement is modest but repeatable, removes 43 transformer dispatches per
+  decode token, and restores parity with pinned DwarfStar's structural path.
+- Do not claim a full-engine throughput gain from the paging-distorted run.
+
+Next:
+
+- Re-profile the immutable fused build in a healthy memory/power state, then
+  move to the remaining attention-output/HC family or Q-B geometry based on the
+  refreshed stage distribution.
 
 ### 2026-08-28 — Routed-expert NSG=4 launch geometry rejected
 

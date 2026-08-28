@@ -19,6 +19,7 @@ fn main() {
     println!("cargo:rerun-if-changed=src/attention_output.metal");
     println!("cargo:rerun-if-changed=src/ffn_router.metal");
     println!("cargo:rerun-if-changed=src/moe_output_prefix.metal");
+    println!("cargo:rerun-if-changed=src/q8_projection_pair.metal");
     println!("cargo:rerun-if-changed=src/sparse_indexed_prefix.metal");
     println!("cargo:rerun-if-changed=../../metal/dsv4_rope.metal");
     println!("cargo:rerun-if-changed=../../metal/dsv4_kv.metal");
@@ -41,6 +42,11 @@ fn main() {
     let object = output.join("metal_shim.o");
     let archive = output.join("librust_star_metal.a");
     let source = manifest.join("src/metal_shim.m");
+    write_metal_source_include(
+        &[manifest.join("src/q8_projection_pair.metal")],
+        &output.join("q8_projection_pair_source.inc"),
+        "kQ8ProjectionPairSource",
+    );
     write_metal_source_include(
         &[
             manifest.join("src/attention_ingress.metal"),
