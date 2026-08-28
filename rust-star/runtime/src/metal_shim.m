@@ -300,6 +300,14 @@ static NSString *const kQ8ProjectionSource =
 @property(nonatomic, strong) id<MTLLibrary> attentionOutputLibrary;
 @property(nonatomic, strong) id<MTLComputePipelineState> attentionOutputLowPipeline;
 @property(nonatomic, strong) id<MTLComputePipelineState> attentionOutputHcPipeline;
+@property(nonatomic, strong) id<MTLComputePipelineState> attentionOutputLowNsg4Pipeline;
+@property(nonatomic, strong) id<MTLComputePipelineState> attentionOutputHcNsg4Pipeline;
+@property(nonatomic, strong) id<MTLComputePipelineState> attentionOutputLowNsg2Pipeline;
+@property(nonatomic, strong) id<MTLComputePipelineState> attentionOutputHcNsg2Pipeline;
+@property(nonatomic, strong) id<MTLComputePipelineState> attentionOutputLowNsg8Pipeline;
+@property(nonatomic, strong) id<MTLComputePipelineState> attentionOutputHcNsg8Pipeline;
+@property(nonatomic, assign) uint32_t attentionOutputLowNsg;
+@property(nonatomic, assign) uint32_t attentionOutputHcNsg;
 @property(nonatomic, strong) id<MTLLibrary> moeOutputLibrary;
 @property(nonatomic, strong) id<MTLComputePipelineState> routedPairSwigluPipeline;
 @property(nonatomic, strong) id<MTLComputePipelineState> routedDownSumPipeline;
@@ -1217,6 +1225,10 @@ static int ensure_attention_output_pipelines(
     if (!context.attentionOutputLowPipeline || !context.attentionOutputHcPipeline) {
         return fail_with_message(error, error_bytes, compile_error.localizedDescription);
     }
+    context.attentionOutputLowNsg4Pipeline = context.attentionOutputLowPipeline;
+    context.attentionOutputHcNsg4Pipeline = context.attentionOutputHcPipeline;
+    context.attentionOutputLowNsg = 4u;
+    context.attentionOutputHcNsg = 4u;
     context.attentionOutputLibrary = library;
     return 1;
 }
@@ -1479,6 +1491,97 @@ int rust_star_metal_select_qkv_pair(
     RustStarMetalContext *context = (__bridge RustStarMetalContext *)opaque_context;
     if (!ensure_q8_projection_pipeline(context, error, error_bytes)) return 0;
     context.useQkvPair = enabled != 0u;
+    return 1;
+}
+
+int rust_star_metal_select_attention_output_nsg(
+    void *opaque_context,
+    uint32_t low_simdgroups,
+    uint32_t hc_simdgroups,
+    char *error,
+    size_t error_bytes)
+{
+    if (!opaque_context ||
+        (low_simdgroups != 2u && low_simdgroups != 4u && low_simdgroups != 8u) ||
+        (hc_simdgroups != 2u && hc_simdgroups != 4u && hc_simdgroups != 8u)) {
+        return fail_with_message(error, error_bytes,
+            @"attention-output NSG values must be 2, 4, or 8");
+    }
+    RustStarMetalContext *context = (__bridge RustStarMetalContext *)opaque_context;
+    if (!ensure_attention_output_pipelines(context, error, error_bytes)) return 0;
+
+    NSError *compile_error = nil;
+    if (low_simdgroups == 2u && !context.attentionOutputLowNsg2Pipeline) {
+        int16_t nsg = 2;
+        MTLFunctionConstantValues *constants = [MTLFunctionConstantValues new];
+        [constants setConstantValue:&nsg type:MTLDataTypeShort atIndex:600];
+        id<MTLFunction> function =
+            [context.attentionOutputLibrary
+                newFunctionWithName:@"kernel_dsv4_attn_out_low_q8_0_f32"
+                      constantValues:constants error:&compile_error];
+        if (function) context.attentionOutputLowNsg2Pipeline =
+            [context.device newComputePipelineStateWithFunction:function error:&compile_error];
+        if (!context.attentionOutputLowNsg2Pipeline) {
+            return fail_with_message(error, error_bytes,
+                compile_error ? compile_error.localizedDescription : @"NSG=2 attention-low kernel was not found");
+        }
+    }
+    if (low_simdgroups == 8u && !context.attentionOutputLowNsg8Pipeline) {
+        int16_t nsg = 8;
+        MTLFunctionConstantValues *constants = [MTLFunctionConstantValues new];
+        [constants setConstantValue:&nsg type:MTLDataTypeShort atIndex:600];
+        id<MTLFunction> function =
+            [context.attentionOutputLibrary
+                newFunctionWithName:@"kernel_dsv4_attn_out_low_q8_0_f32"
+                      constantValues:constants error:&compile_error];
+        if (function) context.attentionOutputLowNsg8Pipeline =
+            [context.device newComputePipelineStateWithFunction:function error:&compile_error];
+        if (!context.attentionOutputLowNsg8Pipeline) {
+            return fail_with_message(error, error_bytes,
+                compile_error ? compile_error.localizedDescription : @"NSG=8 attention-low kernel was not found");
+        }
+    }
+    if (hc_simdgroups == 2u && !context.attentionOutputHcNsg2Pipeline) {
+        int16_t nsg = 2;
+        MTLFunctionConstantValues *constants = [MTLFunctionConstantValues new];
+        [constants setConstantValue:&nsg type:MTLDataTypeShort atIndex:600];
+        id<MTLFunction> function =
+            [context.attentionOutputLibrary
+                newFunctionWithName:@"kernel_dsv4_q8_hc_expand4_q8_0"
+                      constantValues:constants error:&compile_error];
+        if (function) context.attentionOutputHcNsg2Pipeline =
+            [context.device newComputePipelineStateWithFunction:function error:&compile_error];
+        if (!context.attentionOutputHcNsg2Pipeline) {
+            return fail_with_message(error, error_bytes,
+                compile_error ? compile_error.localizedDescription : @"NSG=2 attention-HC kernel was not found");
+        }
+    }
+    if (hc_simdgroups == 8u && !context.attentionOutputHcNsg8Pipeline) {
+        int16_t nsg = 8;
+        MTLFunctionConstantValues *constants = [MTLFunctionConstantValues new];
+        [constants setConstantValue:&nsg type:MTLDataTypeShort atIndex:600];
+        id<MTLFunction> function =
+            [context.attentionOutputLibrary
+                newFunctionWithName:@"kernel_dsv4_q8_hc_expand4_q8_0"
+                      constantValues:constants error:&compile_error];
+        if (function) context.attentionOutputHcNsg8Pipeline =
+            [context.device newComputePipelineStateWithFunction:function error:&compile_error];
+        if (!context.attentionOutputHcNsg8Pipeline) {
+            return fail_with_message(error, error_bytes,
+                compile_error ? compile_error.localizedDescription : @"NSG=8 attention-HC kernel was not found");
+        }
+    }
+
+    context.attentionOutputLowPipeline = low_simdgroups == 2u
+        ? context.attentionOutputLowNsg2Pipeline
+        : (low_simdgroups == 8u ? context.attentionOutputLowNsg8Pipeline
+                                : context.attentionOutputLowNsg4Pipeline);
+    context.attentionOutputHcPipeline = hc_simdgroups == 2u
+        ? context.attentionOutputHcNsg2Pipeline
+        : (hc_simdgroups == 8u ? context.attentionOutputHcNsg8Pipeline
+                               : context.attentionOutputHcNsg4Pipeline);
+    context.attentionOutputLowNsg = low_simdgroups;
+    context.attentionOutputHcNsg = hc_simdgroups;
     return 1;
 }
 
@@ -41215,7 +41318,7 @@ int rust_star_metal_run_attention_ingress(
                     [encoder setBuffer:attention_low_buffer offset:0 atIndex:3];
                     [encoder setThreadgroupMemoryLength:32u*2u*sizeof(float) atIndex:0];
                     [encoder dispatchThreadgroups:MTLSizeMake(512,1,8)
-                         threadsPerThreadgroup:MTLSizeMake(32,4,1)];
+                         threadsPerThreadgroup:MTLSizeMake(32,context.attentionOutputLowNsg,1)];
 
                     [encoder setComputePipelineState:context.attentionOutputHcPipeline];
                     [encoder setBytes:&output_hc_mv_args length:sizeof(output_hc_mv_args) atIndex:0];
@@ -41229,7 +41332,7 @@ int rust_star_metal_run_attention_ingress(
                     [encoder setBuffer:after_attention_hc_buffer offset:0 atIndex:8];
                     [encoder setThreadgroupMemoryLength:32u*2u*sizeof(float) atIndex:0];
                     [encoder dispatchThreadgroups:MTLSizeMake(2048,1,1)
-                         threadsPerThreadgroup:MTLSizeMake(32,4,1)];
+                         threadsPerThreadgroup:MTLSizeMake(32,context.attentionOutputHcNsg,1)];
                     if (stage_samples) {
                         [encoder endEncoding];
                         encoder = stage_compute_encoder(command, stage_samples, stage_base + 5u);

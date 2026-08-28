@@ -38,6 +38,7 @@ pub const FFN_ROUTER_PROBE_SCHEMA: &str = "rust-star-layer0-ffn-router-probe-v1"
 pub const MOE_OUTPUT_PROBE_SCHEMA: &str = "rust-star-layer0-moe-output-probe-v1";
 pub const ROUTED_NSG_BENCH_SCHEMA: &str = "rust-star-routed-nsg-bench-v1";
 pub const QKV_PAIR_BENCH_SCHEMA: &str = "rust-star-qkv-pair-bench-v1";
+pub const ATTENTION_OUTPUT_NSG_BENCH_SCHEMA: &str = "rust-star-attention-output-nsg-bench-v1";
 pub const LAYER0_PROBE_SCHEMA: &str = "rust-star-layer0-complete-probe-v1";
 pub const LAYER0_BENCH_SCHEMA: &str = "rust-star-layer0-steady-state-v1";
 pub const LAYERS01_PROBE_SCHEMA: &str = "rust-star-layers01-continuous-probe-v1";
@@ -4066,6 +4067,26 @@ pub struct QkvPairBenchReport {
 }
 
 #[derive(Clone, Debug)]
+pub struct AttentionOutputNsgBenchReport {
+    pub fixture_id: &'static str,
+    pub warmup_rounds: u32,
+    pub measured_rounds: u32,
+    pub candidate_low_nsg: u32,
+    pub candidate_hc_nsg: u32,
+    pub baseline_wall_ms_samples: Vec<f64>,
+    pub baseline_gpu_ms_samples: Vec<f64>,
+    pub candidate_wall_ms_samples: Vec<f64>,
+    pub candidate_gpu_ms_samples: Vec<f64>,
+    pub baseline_wall: TimingSummary,
+    pub baseline_gpu: TimingSummary,
+    pub candidate_wall: TimingSummary,
+    pub candidate_gpu: TimingSummary,
+    pub attention_low_checksum: u64,
+    pub attention_out_checksum: u64,
+    pub hc_post_checksum: u64,
+}
+
+#[derive(Clone, Debug)]
 pub struct Layer0ProbeReport {
     pub fixture_id: &'static str,
     pub token: u32,
@@ -4721,6 +4742,45 @@ pub fn write_qkv_pair_bench_json<W: Write>(
         report.kv_raw_checksum,
         report.kv_norm_checksum,
         report.q_raw_checksum,
+    )?;
+    Ok(())
+}
+
+pub fn write_attention_output_nsg_bench_json<W: Write>(
+    output: &mut W,
+    report: &AttentionOutputNsgBenchReport,
+) -> Result<()> {
+    write!(
+        output,
+        "{{\n  \"schema\": \"{ATTENTION_OUTPUT_NSG_BENCH_SCHEMA}\",\n  \"fixture\": \"{}\",\n  \"warmup_rounds\": {},\n  \"measured_rounds\": {},\n  \"baseline\": {{\n    \"low_nsg\": 4,\n    \"hc_nsg\": 4,\n    \"wall_ms_samples\": [",
+        report.fixture_id, report.warmup_rounds, report.measured_rounds,
+    )?;
+    write_timing_samples(output, &report.baseline_wall_ms_samples)?;
+    write!(output, "],\n    \"gpu_ms_samples\": [")?;
+    write_timing_samples(output, &report.baseline_gpu_ms_samples)?;
+    write!(
+        output,
+        "],\n    \"wall_median_ms\": {:.6},\n    \"wall_mad_ms\": {:.6},\n    \"gpu_median_ms\": {:.6},\n    \"gpu_mad_ms\": {:.6}\n  }},\n  \"candidate\": {{\n    \"low_nsg\": {},\n    \"hc_nsg\": {},\n    \"wall_ms_samples\": [",
+        report.baseline_wall.median_ms,
+        report.baseline_wall.mad_ms,
+        report.baseline_gpu.median_ms,
+        report.baseline_gpu.mad_ms,
+        report.candidate_low_nsg,
+        report.candidate_hc_nsg,
+    )?;
+    write_timing_samples(output, &report.candidate_wall_ms_samples)?;
+    write!(output, "],\n    \"gpu_ms_samples\": [")?;
+    write_timing_samples(output, &report.candidate_gpu_ms_samples)?;
+    write!(
+        output,
+        "],\n    \"wall_median_ms\": {:.6},\n    \"wall_mad_ms\": {:.6},\n    \"gpu_median_ms\": {:.6},\n    \"gpu_mad_ms\": {:.6}\n  }},\n  \"checksums\": {{\n    \"attention_low\": {},\n    \"attention_out\": {},\n    \"hc_post\": {}\n  }},\n  \"alternating_order\": true,\n  \"single_metal_context\": true,\n  \"c0_bitwise_match\": true,\n  \"paired_claim_eligible\": false\n}}\n",
+        report.candidate_wall.median_ms,
+        report.candidate_wall.mad_ms,
+        report.candidate_gpu.median_ms,
+        report.candidate_gpu.mad_ms,
+        report.attention_low_checksum,
+        report.attention_out_checksum,
+        report.hc_post_checksum,
     )?;
     Ok(())
 }
@@ -20895,6 +20955,13 @@ mod imp {
         fn rust_star_metal_select_qkv_pair(
             context: *mut c_void,
             enabled: u32,
+            error: *mut c_char,
+            error_bytes: usize,
+        ) -> i32;
+        fn rust_star_metal_select_attention_output_nsg(
+            context: *mut c_void,
+            low_simdgroups: u32,
+            hc_simdgroups: u32,
             error: *mut c_char,
             error_bytes: usize,
         ) -> i32;
@@ -41693,6 +41760,258 @@ mod imp {
         })
     }
 
+    pub fn run_attention_output_nsg_bench(
+        model: &MappedModel,
+        candidate_low_nsg: u32,
+        candidate_hc_nsg: u32,
+        warmup_rounds: u32,
+        measured_rounds: u32,
+    ) -> Result<AttentionOutputNsgBenchReport> {
+        const TOKEN: u32 = 201;
+        if ![2_u32, 4, 8].contains(&candidate_low_nsg)
+            || ![2_u32, 4, 8].contains(&candidate_hc_nsg)
+            || (candidate_low_nsg == 4 && candidate_hc_nsg == 4)
+        {
+            return Err(Error::invalid(
+                "attention-output NSG candidate must differ from baseline and use only 2, 4, or 8",
+            ));
+        }
+        if measured_rounds == 0 || warmup_rounds.saturating_add(measured_rounds) > 1000 {
+            return Err(Error::invalid(
+                "attention-output NSG benchmark requires 1..=1000 total rounds",
+            ));
+        }
+        let embedding = exact_tensor(model, "token_embd.weight", 1, &[4096, 129280])?;
+        let hc_fn = exact_tensor(model, "blk.0.hc_attn_fn.weight", 1, &[16384, 24])?;
+        let hc_scale = exact_tensor(model, "blk.0.hc_attn_scale.weight", 0, &[3])?;
+        let hc_base = exact_tensor(model, "blk.0.hc_attn_base.weight", 0, &[24])?;
+        let norm_weight = exact_tensor(model, "blk.0.attn_norm.weight", 0, &[4096])?;
+        let q_a = exact_tensor(model, "blk.0.attn_q_a.weight", 8, &[4096, 1024])?;
+        let q_a_norm = exact_tensor(model, "blk.0.attn_q_a_norm.weight", 0, &[1024])?;
+        let kv = exact_tensor(model, "blk.0.attn_kv.weight", 8, &[4096, 512])?;
+        let kv_norm_weight = exact_tensor(model, "blk.0.attn_kv_a_norm.weight", 0, &[512])?;
+        let q_b = exact_tensor(model, "blk.0.attn_q_b.weight", 8, &[1024, 32768])?;
+        let sinks = exact_tensor(model, "blk.0.attn_sinks.weight", 0, &[64])?;
+        let output_a = exact_tensor(model, "blk.0.attn_output_a.weight", 8, &[4096, 8192])?;
+        let output_b = exact_tensor(model, "blk.0.attn_output_b.weight", 8, &[8192, 4096])?;
+        let (expected_cache_row0, _, _) = attention_read_fixture()?;
+        let (expected_back, expected_low, expected_out, expected_hc_post) =
+            attention_output_fixture()?;
+
+        let mut mixes = vec![0.0_f32; 24];
+        let mut split = vec![0.0_f32; 24];
+        let mut collapsed = vec![0.0_f32; 4096];
+        let mut norm = vec![0.0_f32; 4096];
+        let mut q_lora = vec![0.0_f32; 1024];
+        let mut q_lora_norm = vec![0.0_f32; 1024];
+        let mut kv_raw = vec![0.0_f32; 512];
+        let mut kv_after_store = vec![0.0_f32; 512];
+        let mut q_raw = vec![0.0_f32; 32768];
+        let mut q_cur = vec![0.0_f32; 32768];
+        let mut kv_rope = vec![0.0_f32; 512];
+        let mut kv_cur = vec![0.0_f32; 512];
+        let mut cache_rows = vec![0.0_f32; 3 * 512];
+        let mut attention_raw = vec![0.0_f32; 32768];
+        let mut attention_back = vec![0.0_f32; 32768];
+        let mut attention_low = vec![0.0_f32; 8192];
+        let mut attention_out = vec![0.0_f32; 4096];
+        let mut after_attention_hc = vec![0.0_f32; 4 * 4096];
+        let context = Context::new()?;
+        let mut error = [0 as c_char; ERROR_BYTES];
+        let mut baseline_wall = Vec::with_capacity(measured_rounds as usize);
+        let mut baseline_gpu = Vec::with_capacity(measured_rounds as usize);
+        let mut candidate_wall = Vec::with_capacity(measured_rounds as usize);
+        let mut candidate_gpu = Vec::with_capacity(measured_rounds as usize);
+        let total_rounds = warmup_rounds + measured_rounds;
+
+        for round in 0..total_rounds {
+            let order = if round % 2 == 0 {
+                [(4_u32, 4_u32), (candidate_low_nsg, candidate_hc_nsg)]
+            } else {
+                [(candidate_low_nsg, candidate_hc_nsg), (4_u32, 4_u32)]
+            };
+            for (low_nsg, hc_nsg) in order {
+                error.fill(0);
+                if unsafe {
+                    rust_star_metal_select_attention_output_nsg(
+                        context.0,
+                        low_nsg,
+                        hc_nsg,
+                        error.as_mut_ptr(),
+                        error.len(),
+                    )
+                } == 0
+                {
+                    return Err(Error::invalid(format!(
+                        "Metal attention-output NSG={low_nsg}/{hc_nsg} selection failed: {}",
+                        error_text(&error)
+                    )));
+                }
+                let mut raw = RawIngressProbeResult::default();
+                error.fill(0);
+                let succeeded = unsafe {
+                    rust_star_metal_run_attention_ingress(
+                        context.0,
+                        model.mapping_pointer(),
+                        model.bytes(),
+                        TOKEN,
+                        129280,
+                        embedding.absolute_offset,
+                        embedding.bytes,
+                        hc_fn.absolute_offset,
+                        hc_fn.bytes,
+                        hc_scale.absolute_offset,
+                        hc_scale.bytes,
+                        hc_base.absolute_offset,
+                        hc_base.bytes,
+                        norm_weight.absolute_offset,
+                        norm_weight.bytes,
+                        q_a.absolute_offset,
+                        q_a.bytes,
+                        q_a_norm.absolute_offset,
+                        q_a_norm.bytes,
+                        kv.absolute_offset,
+                        kv.bytes,
+                        kv_norm_weight.absolute_offset,
+                        kv_norm_weight.bytes,
+                        q_b.absolute_offset,
+                        q_b.bytes,
+                        sinks.absolute_offset,
+                        sinks.bytes,
+                        output_a.absolute_offset,
+                        output_a.bytes,
+                        output_b.absolute_offset,
+                        output_b.bytes,
+                        mixes.as_mut_ptr(),
+                        split.as_mut_ptr(),
+                        collapsed.as_mut_ptr(),
+                        norm.as_mut_ptr(),
+                        q_lora.as_mut_ptr(),
+                        q_lora_norm.as_mut_ptr(),
+                        kv_raw.as_mut_ptr(),
+                        kv_after_store.as_mut_ptr(),
+                        q_raw.as_mut_ptr(),
+                        q_cur.as_mut_ptr(),
+                        kv_rope.as_mut_ptr(),
+                        kv_cur.as_mut_ptr(),
+                        cache_rows.as_mut_ptr(),
+                        expected_cache_row0.as_ptr(),
+                        attention_raw.as_mut_ptr(),
+                        attention_back.as_mut_ptr(),
+                        attention_low.as_mut_ptr(),
+                        attention_out.as_mut_ptr(),
+                        after_attention_hc.as_mut_ptr(),
+                        &mut raw,
+                        error.as_mut_ptr(),
+                        error.len(),
+                        ptr::null(),
+                    )
+                };
+                if succeeded == 0 {
+                    return Err(Error::invalid(format!(
+                        "Metal attention-output NSG={low_nsg}/{hc_nsg} benchmark failed: {}",
+                        error_text(&error)
+                    )));
+                }
+                if raw.model_bytes != model.bytes()
+                    || raw.wrapped_model_ranges != 13
+                    || raw.pointer_matches != 13
+                {
+                    return Err(Error::invalid(format!(
+                        "attention-output NSG={low_nsg}/{hc_nsg} did not preserve all thirteen mmap-backed model ranges"
+                    )));
+                }
+                if !raw.wall_ms.is_finite()
+                    || raw.wall_ms <= 0.0
+                    || !raw.gpu_ms.is_finite()
+                    || raw.gpu_ms < 0.0
+                {
+                    return Err(Error::invalid(format!(
+                        "attention-output NSG={low_nsg}/{hc_nsg} returned invalid timing"
+                    )));
+                }
+                for (label, actual, expected) in [
+                    (
+                        "kqv_back",
+                        attention_back.as_slice(),
+                        expected_back.as_slice(),
+                    ),
+                    (
+                        "attn_low",
+                        attention_low.as_slice(),
+                        expected_low.as_slice(),
+                    ),
+                    (
+                        "attn_out",
+                        attention_out.as_slice(),
+                        expected_out.as_slice(),
+                    ),
+                    (
+                        "hc_attn_post",
+                        after_attention_hc.as_slice(),
+                        expected_hc_post.as_slice(),
+                    ),
+                ] {
+                    if let Some((index, (actual, expected))) = actual
+                        .iter()
+                        .zip(expected)
+                        .enumerate()
+                        .find(|(_, (actual, expected))| actual.to_bits() != expected.to_bits())
+                    {
+                        return Err(Error::invalid(format!(
+                            "attention-output NSG={low_nsg}/{hc_nsg} C0 mismatch in {label}[{index}]: actual={:#010x} expected={:#010x}",
+                            actual.to_bits(), expected.to_bits()
+                        )));
+                    }
+                }
+                if round >= warmup_rounds {
+                    let baseline = low_nsg == 4 && hc_nsg == 4;
+                    let (wall, gpu) = if baseline {
+                        (&mut baseline_wall, &mut baseline_gpu)
+                    } else {
+                        (&mut candidate_wall, &mut candidate_gpu)
+                    };
+                    wall.push(raw.wall_ms);
+                    gpu.push(raw.gpu_ms);
+                }
+            }
+        }
+        error.fill(0);
+        if unsafe {
+            rust_star_metal_select_attention_output_nsg(
+                context.0,
+                4,
+                4,
+                error.as_mut_ptr(),
+                error.len(),
+            )
+        } == 0
+        {
+            return Err(Error::invalid(format!(
+                "failed to restore production attention-output NSG=4/4: {}",
+                error_text(&error)
+            )));
+        }
+        Ok(AttentionOutputNsgBenchReport {
+            fixture_id: ATTENTION_OUTPUT_FIXTURE_ID,
+            warmup_rounds,
+            measured_rounds,
+            candidate_low_nsg,
+            candidate_hc_nsg,
+            baseline_wall: summarize_timing(&baseline_wall)?,
+            baseline_gpu: summarize_timing(&baseline_gpu)?,
+            candidate_wall: summarize_timing(&candidate_wall)?,
+            candidate_gpu: summarize_timing(&candidate_gpu)?,
+            baseline_wall_ms_samples: baseline_wall,
+            baseline_gpu_ms_samples: baseline_gpu,
+            candidate_wall_ms_samples: candidate_wall,
+            candidate_gpu_ms_samples: candidate_gpu,
+            attention_low_checksum: checksum_f32(&attention_low),
+            attention_out_checksum: checksum_f32(&attention_out),
+            hc_post_checksum: checksum_f32(&after_attention_hc),
+        })
+    }
+
     pub fn run_layer0_probe(model: &MappedModel) -> Result<Layer0ProbeReport> {
         LayerExecutor::new(model)?.execute_layer(0)
     }
@@ -44428,6 +44747,25 @@ mod imp {
         ))
     }
 
+    pub fn run_attention_output_nsg_bench(
+        model: &MappedModel,
+        candidate_low_nsg: u32,
+        candidate_hc_nsg: u32,
+        warmup_rounds: u32,
+        measured_rounds: u32,
+    ) -> Result<AttentionOutputNsgBenchReport> {
+        let _ = (
+            model,
+            candidate_low_nsg,
+            candidate_hc_nsg,
+            warmup_rounds,
+            measured_rounds,
+        );
+        Err(Error::invalid(
+            "the attention-output NSG benchmark is available only on macOS",
+        ))
+    }
+
     pub fn run_qkv_pair_bench(
         model: &MappedModel,
         warmup_rounds: u32,
@@ -44969,13 +45307,13 @@ mod imp {
 }
 
 pub use imp::{
-    run_attention_ingress_probe, run_attention_output_probe, run_attention_read_probe,
-    run_attention_setup_probe, run_closed_loop_decoder_probe, run_cold_prefill_decoder_probe,
-    run_decoder_output_probe, run_engine_layer_profile, run_engine_measurement,
-    run_f16_embedding_probe, run_ffn_router_probe, run_layer0_bench, run_layer0_probe,
-    run_layers01234567_decode_probe, run_layers012345_decode_probe, run_layers0123_bench,
-    run_layers0123_chained_probe, run_layers0123_decode_probe, run_layers0123_probe,
-    run_layers012_chained_probe, run_layers012_probe, run_layers01_probe,
+    run_attention_ingress_probe, run_attention_output_nsg_bench, run_attention_output_probe,
+    run_attention_read_probe, run_attention_setup_probe, run_closed_loop_decoder_probe,
+    run_cold_prefill_decoder_probe, run_decoder_output_probe, run_engine_layer_profile,
+    run_engine_measurement, run_f16_embedding_probe, run_ffn_router_probe, run_layer0_bench,
+    run_layer0_probe, run_layers01234567_decode_probe, run_layers012345_decode_probe,
+    run_layers0123_bench, run_layers0123_chained_probe, run_layers0123_decode_probe,
+    run_layers0123_probe, run_layers012_chained_probe, run_layers012_probe, run_layers01_probe,
     run_layers0_to_42_decode_probe, run_moe_output_probe, run_position127_decoder_probe,
     run_prefill_decode_frontier_probe, run_prefill_frontier_probe,
     run_prefill_layer0_boundary_probe, run_prefill_layers012_attention_loop_probe,
@@ -46236,6 +46574,47 @@ mod tests {
             kv_raw_checksum: 2,
             kv_norm_checksum: 3,
             q_raw_checksum: 4,
+        }
+    }
+
+    fn attention_output_nsg_bench_report() -> AttentionOutputNsgBenchReport {
+        AttentionOutputNsgBenchReport {
+            fixture_id: ATTENTION_OUTPUT_FIXTURE_ID,
+            warmup_rounds: 2,
+            measured_rounds: 3,
+            candidate_low_nsg: 2,
+            candidate_hc_nsg: 4,
+            baseline_wall_ms_samples: vec![1.0, 2.0, 3.0],
+            baseline_gpu_ms_samples: vec![0.5, 0.6, 0.7],
+            candidate_wall_ms_samples: vec![0.9, 1.9, 2.9],
+            candidate_gpu_ms_samples: vec![0.4, 0.5, 0.6],
+            baseline_wall: TimingSummary {
+                median_ms: 2.0,
+                mad_ms: 1.0,
+                min_ms: 1.0,
+                max_ms: 3.0,
+            },
+            baseline_gpu: TimingSummary {
+                median_ms: 0.6,
+                mad_ms: 0.1,
+                min_ms: 0.5,
+                max_ms: 0.7,
+            },
+            candidate_wall: TimingSummary {
+                median_ms: 1.9,
+                mad_ms: 1.0,
+                min_ms: 0.9,
+                max_ms: 2.9,
+            },
+            candidate_gpu: TimingSummary {
+                median_ms: 0.5,
+                mad_ms: 0.1,
+                min_ms: 0.4,
+                max_ms: 0.6,
+            },
+            attention_low_checksum: 1,
+            attention_out_checksum: 2,
+            hc_post_checksum: 3,
         }
     }
 
@@ -48249,6 +48628,21 @@ mod tests {
         assert!(text.contains(&format!("\"schema\": \"{QKV_PAIR_BENCH_SCHEMA}\"")));
         assert!(text.contains("\"dispatches\": 9"));
         assert!(text.contains("\"dispatches\": 8"));
+        assert!(text.contains("\"single_metal_context\": true"));
+        assert!(text.contains("\"paired_claim_eligible\": false"));
+    }
+
+    #[test]
+    fn writes_stable_attention_output_nsg_bench_json() {
+        let mut output = Vec::new();
+        write_attention_output_nsg_bench_json(&mut output, &attention_output_nsg_bench_report())
+            .unwrap();
+        let text = String::from_utf8(output).unwrap();
+        assert!(text.contains(&format!(
+            "\"schema\": \"{ATTENTION_OUTPUT_NSG_BENCH_SCHEMA}\""
+        )));
+        assert!(text.contains("\"low_nsg\": 2"));
+        assert!(text.contains("\"hc_nsg\": 4"));
         assert!(text.contains("\"single_metal_context\": true"));
         assert!(text.contains("\"paired_claim_eligible\": false"));
     }

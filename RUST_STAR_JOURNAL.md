@@ -130,6 +130,9 @@ history; add a correction and update the current-state summary.
   projection, removing one decode dispatch per layer. A 100-round alternating
   single-context diagnostic measured 0.213 ms paired versus 0.216 ms separate
   median GPU time for the exact attention-setup chain, a 1.44% reduction.
+  Attention output/HC launch tuning is now bounded by an exact same-context
+  harness. All four independent NSG=2/8 alternatives changed the Q8 reduction
+  result, so production remains at pinned DwarfStar's NSG=4/4 geometry.
 - Implementation: dependency-free Rust host scaffold under `rust-star/runtime/`
   strictly parses GGUF v3 directories, validates the Flash resident-Q2
   shape/recipe, and writes candidate full-logit artifacts. A macOS-only
@@ -696,6 +699,66 @@ history; add a correction and update the current-state summary.
 6. Run or approve the fork's GitHub Actions workflow and retain its URL.
 
 ## Entries
+
+### 2026-08-28 — Attention-output launch alternatives rejected by C0
+
+Objective:
+
+- Refresh the immutable `298e4ac` stage profile and test whether the
+  attention-output/HC family can improve on pinned DwarfStar's NSG=4/4 launch
+  geometry without changing arithmetic.
+
+Implementation:
+
+- Added `attention-output-nsg-bench`, which lazily compiles NSG=2/4/8 variants
+  for the grouped attention-low and fused output-B/HC kernels, alternates one
+  candidate against NSG=4/4 in a persistent Metal context, and checks inverse
+  RoPE, attention low/out, and the four-stream HC post-state after every run.
+- Kept the production pipeline and threadgroup geometry at NSG=4/4. Candidate
+  pipeline selection is diagnostic-only and restores production before return.
+
+Evidence:
+
+- The fresh immutable full-engine profile launched with 94% system memory
+  availability, zero throttled pages, and essentially unused swap, but still
+  entered the known slow GPU residency state: 0.594 steady tok/s. The exact
+  transcript passed, but the report is retained only as failure evidence;
+  SHA-256
+  `eff3250e27d7cde40eba778e833290fe16986acd7663041970ac961ebc6c7bd2`.
+- Attention-low NSG=2 first differed at `attn_low[1]`, actual `0x3e4db9c2`
+  versus expected `0x3e4db9c4`; evidence SHA-256
+  `ebcce5347aa60b302b98addcc0045608ba018506efa7e2f53c6e55480327beda`.
+- Attention-low NSG=8 first differed at `attn_low[1]`, actual `0x3e4db9c0`
+  versus expected `0x3e4db9c4`; evidence SHA-256
+  `4c2ffb08bea9406439105736ab955590c22568250737aff53709dc9d458ee75b`.
+- Output-B/HC NSG=2 first differed at `attn_out[0]`, actual `0xbf36d5e4`
+  versus expected `0xbf36d5e6`; evidence SHA-256
+  `1eb5c2a3a9a96bd2fd393943b9084eb457e77f36231f2dcd3ca3ed5141906af2`.
+- Output-B/HC NSG=8 first differed at `attn_out[1]`, actual `0x3fb7a5c1`
+  versus expected `0x3fb7a5c4`; evidence SHA-256
+  `e0ae7df582f6af37b2202e63a015029c347a8f9431b4a8e62508cd441695efa9`.
+
+Validation:
+
+- Optimized macOS build passed and all candidate Metal functions compiled on
+  the M1 Ultra.
+- All 292 Rust tests and 68 Python tests passed.
+- Every invalid candidate was rejected before timing or production selection.
+
+Decision:
+
+- Retain NSG=4/4. Unlike routed-expert launch tuning, changing either
+  attention-output reduction tree is not C0-compatible, so no performance
+  comparison or eligible full-engine run is warranted.
+- Retain the benchmark because it makes this exactness boundary executable and
+  prevents future tuning from accepting a few-ULP drift as a speedup.
+
+Next:
+
+- Investigate fusing inverse RoPE into the attention boundary. It can remove a
+  complete decode dispatch and an in-place 32,768-value pass per layer, so its
+  potential is materially larger than suppressing the diagnostic-only 4,096-
+  value `attn_out` store.
 
 ### 2026-08-28 — Paired Q-A/KV projection accepted
 

@@ -1,12 +1,12 @@
 use rust_star_runtime::gguf::Gguf;
 use rust_star_runtime::metal::{
-    run_attention_ingress_probe, run_attention_output_probe, run_attention_read_probe,
-    run_attention_setup_probe, run_closed_loop_decoder_probe, run_cold_prefill_decoder_probe,
-    run_decoder_output_probe, run_engine_layer_profile, run_engine_measurement,
-    run_f16_embedding_probe, run_ffn_router_probe, run_layer0_bench, run_layer0_probe,
-    run_layers01234567_decode_probe, run_layers012345_decode_probe, run_layers0123_bench,
-    run_layers0123_chained_probe, run_layers0123_decode_probe, run_layers0123_probe,
-    run_layers012_chained_probe, run_layers012_probe, run_layers01_probe,
+    run_attention_ingress_probe, run_attention_output_nsg_bench, run_attention_output_probe,
+    run_attention_read_probe, run_attention_setup_probe, run_closed_loop_decoder_probe,
+    run_cold_prefill_decoder_probe, run_decoder_output_probe, run_engine_layer_profile,
+    run_engine_measurement, run_f16_embedding_probe, run_ffn_router_probe, run_layer0_bench,
+    run_layer0_probe, run_layers01234567_decode_probe, run_layers012345_decode_probe,
+    run_layers0123_bench, run_layers0123_chained_probe, run_layers0123_decode_probe,
+    run_layers0123_probe, run_layers012_chained_probe, run_layers012_probe, run_layers01_probe,
     run_layers0_to_42_decode_probe, run_moe_output_probe, run_position127_decoder_probe,
     run_prefill_decode_frontier_probe, run_prefill_frontier_probe,
     run_prefill_layer0_boundary_probe, run_prefill_layers012_attention_loop_probe,
@@ -18,16 +18,17 @@ use rust_star_runtime::metal::{
     run_q8_projection_probe, run_qkv_pair_bench, run_ratio128_compressor_replay_probe,
     run_retained_decoder_step_probe, run_retained_sparse_boundary_probe,
     run_retained_sparse_multimerge_probe, run_rope_kv_store_probe, run_routed_nsg_bench,
-    run_sparse_indexed_attention_probe, write_attention_output_probe_json,
-    write_attention_read_probe_json, write_attention_setup_probe_json,
-    write_closed_loop_decoder_probe_json, write_cold_prefill_decoder_probe_json,
-    write_decoder_output_probe_json, write_embedding_probe_json, write_engine_run_json,
-    write_ffn_router_probe_json, write_ingress_probe_json, write_layer0_bench_json,
-    write_layer0_probe_json, write_layers01234567_decode_probe_json,
-    write_layers012345_decode_probe_json, write_layers0123_bench_json,
-    write_layers0123_chained_probe_json, write_layers0123_decode_probe_json,
-    write_layers0123_probe_json, write_layers012_chained_probe_json, write_layers012_probe_json,
-    write_layers01_probe_json, write_layers0_to_42_decode_probe_json, write_moe_output_probe_json,
+    run_sparse_indexed_attention_probe, write_attention_output_nsg_bench_json,
+    write_attention_output_probe_json, write_attention_read_probe_json,
+    write_attention_setup_probe_json, write_closed_loop_decoder_probe_json,
+    write_cold_prefill_decoder_probe_json, write_decoder_output_probe_json,
+    write_embedding_probe_json, write_engine_run_json, write_ffn_router_probe_json,
+    write_ingress_probe_json, write_layer0_bench_json, write_layer0_probe_json,
+    write_layers01234567_decode_probe_json, write_layers012345_decode_probe_json,
+    write_layers0123_bench_json, write_layers0123_chained_probe_json,
+    write_layers0123_decode_probe_json, write_layers0123_probe_json,
+    write_layers012_chained_probe_json, write_layers012_probe_json, write_layers01_probe_json,
+    write_layers0_to_42_decode_probe_json, write_moe_output_probe_json,
     write_position127_decoder_probe_json, write_prefill_decode_frontier_probe_json,
     write_prefill_frontier_probe_json, write_prefill_layer0_boundary_probe_json,
     write_prefill_layers012_attention_loop_probe_json,
@@ -42,24 +43,25 @@ use rust_star_runtime::metal::{
     write_ratio128_compressor_replay_probe_json, write_retained_decoder_step_probe_json,
     write_retained_sparse_boundary_probe_json, write_retained_sparse_multimerge_probe_json,
     write_rope_kv_store_probe_json, write_routed_nsg_bench_json,
-    write_sparse_indexed_attention_probe_json, AttentionOutputProbeReport,
-    AttentionReadProbeReport, AttentionSetupProbeReport, ClosedLoopDecoderProbeReport,
-    ColdPrefillDecoderProbeReport, DecoderOutputProbeReport, EmbeddingProbeReport, EngineRunReport,
-    FfnRouterProbeReport, IngressProbeReport, Layer0BenchConfig, Layer0BenchReport,
-    Layer0ProbeReport, Layers01234567DecodeProbeReport, Layers012345DecodeProbeReport,
-    Layers0123BenchConfig, Layers0123BenchReport, Layers0123ChainedProbeReport,
-    Layers0123DecodeProbeReport, Layers0123ProbeReport, Layers012ChainedProbeReport,
-    Layers012ProbeReport, Layers01ProbeReport, Layers0To42DecodeProbeReport, MoeOutputProbeReport,
-    Position127DecoderProbeReport, PrefillDecodeFrontierProbeReport, PrefillFrontierProbeReport,
-    PrefillLayer0BoundaryProbeReport, PrefillLayers012AttentionLoopProbeReport,
-    PrefillLayers012CompressorLoopProbeReport, PrefillLayers012KvStateLoopProbeReport,
-    PrefillLayers012KvnormLoopProbeReport, PrefillLayers01BoundaryProbeReport,
-    PrefillLayers01CompleteBoundaryProbeReport, PrefillLayers01LiveKvChainProbeReport,
-    PrefillLayers01LiveKvLoopProbeReport, PrefillLayers01RowCoverageProbeReport,
-    PrefillQ8BoundaryProbeReport, PrefillQkvBoundaryProbeReport, ProbeConfig,
-    ProjectionProbeReport, QkvPairBenchReport, Ratio128CompressorReplayProbeReport,
-    RetainedDecoderStepProbeReport, RetainedSparseBoundaryProbeReport, RopeKvStoreProbeReport,
-    RoutedNsgBenchReport, SparseIndexedAttentionProbeReport,
+    write_sparse_indexed_attention_probe_json, AttentionOutputNsgBenchReport,
+    AttentionOutputProbeReport, AttentionReadProbeReport, AttentionSetupProbeReport,
+    ClosedLoopDecoderProbeReport, ColdPrefillDecoderProbeReport, DecoderOutputProbeReport,
+    EmbeddingProbeReport, EngineRunReport, FfnRouterProbeReport, IngressProbeReport,
+    Layer0BenchConfig, Layer0BenchReport, Layer0ProbeReport, Layers01234567DecodeProbeReport,
+    Layers012345DecodeProbeReport, Layers0123BenchConfig, Layers0123BenchReport,
+    Layers0123ChainedProbeReport, Layers0123DecodeProbeReport, Layers0123ProbeReport,
+    Layers012ChainedProbeReport, Layers012ProbeReport, Layers01ProbeReport,
+    Layers0To42DecodeProbeReport, MoeOutputProbeReport, Position127DecoderProbeReport,
+    PrefillDecodeFrontierProbeReport, PrefillFrontierProbeReport, PrefillLayer0BoundaryProbeReport,
+    PrefillLayers012AttentionLoopProbeReport, PrefillLayers012CompressorLoopProbeReport,
+    PrefillLayers012KvStateLoopProbeReport, PrefillLayers012KvnormLoopProbeReport,
+    PrefillLayers01BoundaryProbeReport, PrefillLayers01CompleteBoundaryProbeReport,
+    PrefillLayers01LiveKvChainProbeReport, PrefillLayers01LiveKvLoopProbeReport,
+    PrefillLayers01RowCoverageProbeReport, PrefillQ8BoundaryProbeReport,
+    PrefillQkvBoundaryProbeReport, ProbeConfig, ProjectionProbeReport, QkvPairBenchReport,
+    Ratio128CompressorReplayProbeReport, RetainedDecoderStepProbeReport,
+    RetainedSparseBoundaryProbeReport, RopeKvStoreProbeReport, RoutedNsgBenchReport,
+    SparseIndexedAttentionProbeReport,
 };
 use rust_star_runtime::model::MappedModel;
 use rust_star_runtime::target::{validate_resident_q2, MODEL_LABEL};
@@ -153,6 +155,9 @@ fn run() -> Result<()> {
     }
     if command == "attention-output-probe" {
         return run_attention_output_command(arguments.collect());
+    }
+    if command == "attention-output-nsg-bench" {
+        return run_attention_output_nsg_bench_command(arguments.collect());
     }
     if command == "ffn-router-probe" {
         return run_ffn_router_command(arguments.collect());
@@ -1786,6 +1791,87 @@ fn run_attention_output_command(arguments: Vec<OsString>) -> Result<()> {
     println!("result: grouped attention output and fused HC post-state match the pinned DwarfStar boundaries bit-for-bit");
     if let Some(path) = json_path {
         write_attention_output_probe_file(&path, &report)?;
+        println!("json: {}", path.display());
+    }
+    Ok(())
+}
+
+fn run_attention_output_nsg_bench_command(arguments: Vec<OsString>) -> Result<()> {
+    if arguments.is_empty() {
+        return Err(Error::invalid(attention_output_nsg_bench_usage()));
+    }
+    if matches!(arguments[0].to_str(), Some("--help") | Some("-h")) {
+        println!("{}", attention_output_nsg_bench_usage());
+        return Ok(());
+    }
+    let model_path = PathBuf::from(&arguments[0]);
+    let mut low_nsg = 4_u32;
+    let mut hc_nsg = 4_u32;
+    let mut warmup_rounds = 10_u32;
+    let mut measured_rounds = 50_u32;
+    let mut json_path: Option<PathBuf> = None;
+    let mut arguments = arguments.into_iter().skip(1);
+    while let Some(argument) = arguments.next() {
+        match argument.to_str() {
+            Some("--low-nsg") => {
+                low_nsg = parse_u32_option("--low-nsg", arguments.next().as_deref())?;
+            }
+            Some("--hc-nsg") => {
+                hc_nsg = parse_u32_option("--hc-nsg", arguments.next().as_deref())?;
+            }
+            Some("--warmup") => {
+                warmup_rounds = parse_u32_option("--warmup", arguments.next().as_deref())?;
+            }
+            Some("--iterations") => {
+                measured_rounds = parse_u32_option("--iterations", arguments.next().as_deref())?;
+            }
+            Some("--json") => {
+                let value = arguments
+                    .next()
+                    .ok_or_else(|| Error::invalid("--json requires a path"))?;
+                if json_path.is_some() {
+                    return Err(Error::invalid("--json may be specified only once"));
+                }
+                json_path = Some(PathBuf::from(value));
+            }
+            Some("--help") | Some("-h") => {
+                println!("{}", attention_output_nsg_bench_usage());
+                return Ok(());
+            }
+            _ => return Err(Error::invalid(attention_output_nsg_bench_usage())),
+        }
+    }
+    let model = MappedModel::open(&model_path)?;
+    validate_resident_q2(model.gguf())?;
+    let report =
+        run_attention_output_nsg_bench(&model, low_nsg, hc_nsg, warmup_rounds, measured_rounds)?;
+    let gpu_change = (report.candidate_gpu.median_ms / report.baseline_gpu.median_ms - 1.0) * 100.0;
+    println!("fixture: {}", report.fixture_id);
+    println!(
+        "execution: {} warmup + {} measured alternating rounds per path",
+        report.warmup_rounds, report.measured_rounds
+    );
+    println!(
+        "NSG=4/4: wall median={:.3} ms MAD={:.3} ms; gpu median={:.3} ms MAD={:.3} ms",
+        report.baseline_wall.median_ms,
+        report.baseline_wall.mad_ms,
+        report.baseline_gpu.median_ms,
+        report.baseline_gpu.mad_ms,
+    );
+    println!(
+        "NSG={}/{}: wall median={:.3} ms MAD={:.3} ms; gpu median={:.3} ms MAD={:.3} ms ({gpu_change:+.2}%)",
+        report.candidate_low_nsg,
+        report.candidate_hc_nsg,
+        report.candidate_wall.median_ms,
+        report.candidate_wall.mad_ms,
+        report.candidate_gpu.median_ms,
+        report.candidate_gpu.mad_ms,
+    );
+    println!(
+        "result: both launch geometries matched all pinned attention-output boundaries bit-for-bit"
+    );
+    if let Some(path) = json_path {
+        write_attention_output_nsg_bench_file(&path, &report)?;
         println!("json: {}", path.display());
     }
     Ok(())
@@ -3635,6 +3721,36 @@ fn write_attention_output_probe_file(
     Ok(())
 }
 
+fn write_attention_output_nsg_bench_file(
+    path: &Path,
+    report: &AttentionOutputNsgBenchReport,
+) -> Result<()> {
+    let temporary = path.with_extension(format!(
+        "{}tmp",
+        path.extension()
+            .and_then(OsStr::to_str)
+            .map(|extension| format!("{extension}."))
+            .unwrap_or_default()
+    ));
+    let file = File::create(&temporary).map_err(|error| {
+        Error::invalid(format!(
+            "cannot create attention-output NSG benchmark JSON {}: {error}",
+            temporary.display()
+        ))
+    })?;
+    let mut output = BufWriter::new(file);
+    write_attention_output_nsg_bench_json(&mut output, report)?;
+    output.flush()?;
+    drop(output);
+    std::fs::rename(&temporary, path).map_err(|error| {
+        Error::invalid(format!(
+            "cannot install attention-output NSG benchmark JSON {}: {error}",
+            path.display()
+        ))
+    })?;
+    Ok(())
+}
+
 fn write_ffn_router_probe_file(path: &Path, report: &FfnRouterProbeReport) -> Result<()> {
     let temporary = path.with_extension(format!(
         "{}tmp",
@@ -4456,7 +4572,7 @@ fn usage() -> &'static str {
 
 fn full_usage() -> String {
     format!(
-        "{}\n  rust-star qkv-pair-bench MODEL.gguf [OPTIONS]\n  rust-star routed-nsg-bench MODEL.gguf [OPTIONS]\n  rust-star prefill-decode-frontier-probe MODEL.gguf [OPTIONS]\n  rust-star engine-measure MODEL.gguf --context N --gen-tokens N --json PATH\n  rust-star engine-profile MODEL.gguf --context N --gen-tokens N --json PATH\n  rust-star retained-sparse-multimerge-probe MODEL.gguf [OPTIONS]\n  rust-star retained-decoder-step-probe MODEL.gguf [OPTIONS]",
+        "{}\n  rust-star attention-output-nsg-bench MODEL.gguf [OPTIONS]\n  rust-star qkv-pair-bench MODEL.gguf [OPTIONS]\n  rust-star routed-nsg-bench MODEL.gguf [OPTIONS]\n  rust-star prefill-decode-frontier-probe MODEL.gguf [OPTIONS]\n  rust-star engine-measure MODEL.gguf --context N --gen-tokens N --json PATH\n  rust-star engine-profile MODEL.gguf --context N --gen-tokens N --json PATH\n  rust-star retained-sparse-multimerge-probe MODEL.gguf [OPTIONS]\n  rust-star retained-decoder-step-probe MODEL.gguf [OPTIONS]",
         usage()
     )
 }
@@ -4543,6 +4659,10 @@ fn attention_read_probe_usage() -> &'static str {
 
 fn attention_output_probe_usage() -> &'static str {
     "usage: rust-star attention-output-probe MODEL.gguf [--json PATH]\n\nExtends the connected layer-0 path through DwarfStar's grouped Q8 attention output projection and fused four-stream HC post-update."
+}
+
+fn attention_output_nsg_bench_usage() -> &'static str {
+    "usage: rust-star attention-output-nsg-bench MODEL.gguf --low-nsg N --hc-nsg N [--warmup N] [--iterations N] [--json PATH]\n\nAlternates production NSG=4/4 against one 2/4/8 attention-low/HC launch candidate in one Metal context, checks every output bit-for-bit, and reports diagnostic timing only."
 }
 
 fn ffn_router_probe_usage() -> &'static str {
