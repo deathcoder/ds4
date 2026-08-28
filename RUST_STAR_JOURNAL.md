@@ -122,6 +122,10 @@ history; add a correction and update the current-state summary.
   when `engine-profile` enables it. Routed experts account for 25.31% of the
   profiled steady transformer GPU interval, attention QKV ingress 22.82%, and
   attention output/HC 14.72%; together they account for 62.85%.
+  A single-context alternating routed-expert launch benchmark now compiles the
+  NSG=2 and NSG=4 pipelines together and checks every output against the pinned
+  layer-0 fixture. On 100 measured rounds, NSG=4 was 1.83% slower in median GPU
+  time, so production remains at DwarfStar's NSG=2 geometry.
 - Implementation: dependency-free Rust host scaffold under `rust-star/runtime/`
   strictly parses GGUF v3 directories, validates the Flash resident-Q2
   shape/recipe, and writes candidate full-logit artifacts. A macOS-only
@@ -688,6 +692,60 @@ history; add a correction and update the current-state summary.
 6. Run or approve the fork's GitHub Actions workflow and retain its URL.
 
 ## Entries
+
+### 2026-08-28 — Routed-expert NSG=4 launch geometry rejected
+
+Objective:
+
+- Test whether the largest profiled dispatch family can improve on
+  DwarfStar's two-SIMD-group IQ2/Q2 decode launch geometry on the M1 Ultra.
+
+Implementation:
+
+- Generalized the fused IQ2_XXS gate/up lookup-table loader so NSG=1/2/4 split
+  all 256 grid and 128 sign values across the specialized threadgroup. NSG=2
+  preserves the prior indexes and arithmetic exactly.
+- Centralized production routed launch geometry behind one NSG value and kept
+  that value at two.
+- Compiled NSG=2 and NSG=4 routed pair/down pipelines in one Metal context and
+  added `routed-nsg-bench`, which reverses A/B order each round, records each
+  command buffer's GPU interval, and verifies routed mid/output tensors by
+  exact FP32 bit pattern after every execution.
+
+Evidence:
+
+- `rust-star/.work/routed-nsg-tune/alternating-100.json` records 10 warmup plus
+  100 measured alternating rounds per variant; SHA-256
+  `007bea23bf5e1a2fe3e5b31e81a490df543dec14ebeb076a6f6ac1802cf83d1f`.
+- NSG=2: 0.278 ms median GPU time, 0.004 ms MAD.
+- NSG=4: 0.283 ms median GPU time, 0.004 ms MAD, 1.83% slower.
+- Both variants reproduced the pinned routed-mid and routed-output fixtures on
+  every execution.
+- Separate-process measurements were explicitly rejected as decision evidence:
+  GPU power/residency modes reversed the apparent winner, and one control run
+  degraded to 0.606 steady tok/s despite exact output.
+
+Validation:
+
+- Optimized macOS build passed.
+- All 290 Rust tests and 68 Python tests passed.
+- The 100-round target-Mac diagnostic completed with exact output on every
+  NSG=2 and NSG=4 execution.
+- A final 30-round smoke test on the lazy diagnostic pipeline path reproduced
+  the rejection (NSG=4 was 2.90% slower); evidence SHA-256
+  `df61c5047b1881e2fcbf398d2088ed6c34bc1d2ed0e89c70564b6e7665ebf3fe`.
+
+Decision:
+
+- Keep production at NSG=2. The source now supports controlled specialization,
+  but NSG=4 does not advance to an eligible full-engine comparison.
+- Retain the alternating diagnostic because it prevents future launch tuning
+  from being misled by the M1 Ultra's multimodal GPU timing state.
+
+Next:
+
+- Move to attention QKV ingress, the second-largest profiled family, and look
+  for a structural optimization rather than another launch-only change.
 
 ### 2026-08-28 — Metal stage counters attribute the remaining transformer cost
 

@@ -36,6 +36,7 @@ pub const ATTENTION_READ_PROBE_SCHEMA: &str = "rust-star-layer0-attention-read-p
 pub const ATTENTION_OUTPUT_PROBE_SCHEMA: &str = "rust-star-layer0-attention-output-probe-v1";
 pub const FFN_ROUTER_PROBE_SCHEMA: &str = "rust-star-layer0-ffn-router-probe-v1";
 pub const MOE_OUTPUT_PROBE_SCHEMA: &str = "rust-star-layer0-moe-output-probe-v1";
+pub const ROUTED_NSG_BENCH_SCHEMA: &str = "rust-star-routed-nsg-bench-v1";
 pub const LAYER0_PROBE_SCHEMA: &str = "rust-star-layer0-complete-probe-v1";
 pub const LAYER0_BENCH_SCHEMA: &str = "rust-star-layer0-steady-state-v1";
 pub const LAYERS01_PROBE_SCHEMA: &str = "rust-star-layers01-continuous-probe-v1";
@@ -4027,6 +4028,24 @@ pub struct MoeOutputProbeReport {
 }
 
 #[derive(Clone, Debug)]
+pub struct RoutedNsgBenchReport {
+    pub fixture_id: &'static str,
+    pub warmup_rounds: u32,
+    pub measured_rounds: u32,
+    pub selected_experts: Vec<i32>,
+    pub nsg2_wall_ms_samples: Vec<f64>,
+    pub nsg2_gpu_ms_samples: Vec<f64>,
+    pub nsg4_wall_ms_samples: Vec<f64>,
+    pub nsg4_gpu_ms_samples: Vec<f64>,
+    pub nsg2_wall: TimingSummary,
+    pub nsg2_gpu: TimingSummary,
+    pub nsg4_wall: TimingSummary,
+    pub nsg4_gpu: TimingSummary,
+    pub routed_mid_checksum: u64,
+    pub routed_out_checksum: u64,
+}
+
+#[derive(Clone, Debug)]
 pub struct Layer0ProbeReport {
     pub fixture_id: &'static str,
     pub token: u32,
@@ -4605,6 +4624,45 @@ pub fn write_moe_output_probe_json<W: Write>(
         report.routed_out_checksum,
         report.shared_out_checksum,
         report.hc_post_checksum,
+    )?;
+    Ok(())
+}
+
+pub fn write_routed_nsg_bench_json<W: Write>(
+    output: &mut W,
+    report: &RoutedNsgBenchReport,
+) -> Result<()> {
+    write!(
+        output,
+        "{{\n  \"schema\": \"{ROUTED_NSG_BENCH_SCHEMA}\",\n  \"fixture\": \"{}\",\n  \"warmup_rounds\": {},\n  \"measured_rounds\": {},\n  \"selected_experts\": {:?},\n  \"nsg2\": {{\n    \"wall_ms_samples\": [",
+        report.fixture_id,
+        report.warmup_rounds,
+        report.measured_rounds,
+        report.selected_experts,
+    )?;
+    write_timing_samples(output, &report.nsg2_wall_ms_samples)?;
+    write!(output, "],\n    \"gpu_ms_samples\": [")?;
+    write_timing_samples(output, &report.nsg2_gpu_ms_samples)?;
+    write!(
+        output,
+        "],\n    \"wall_median_ms\": {:.6},\n    \"wall_mad_ms\": {:.6},\n    \"gpu_median_ms\": {:.6},\n    \"gpu_mad_ms\": {:.6}\n  }},\n  \"nsg4\": {{\n    \"wall_ms_samples\": [",
+        report.nsg2_wall.median_ms,
+        report.nsg2_wall.mad_ms,
+        report.nsg2_gpu.median_ms,
+        report.nsg2_gpu.mad_ms,
+    )?;
+    write_timing_samples(output, &report.nsg4_wall_ms_samples)?;
+    write!(output, "],\n    \"gpu_ms_samples\": [")?;
+    write_timing_samples(output, &report.nsg4_gpu_ms_samples)?;
+    write!(
+        output,
+        "],\n    \"wall_median_ms\": {:.6},\n    \"wall_mad_ms\": {:.6},\n    \"gpu_median_ms\": {:.6},\n    \"gpu_mad_ms\": {:.6}\n  }},\n  \"checksums\": {{\n    \"routed_mid\": {},\n    \"routed_out\": {}\n  }},\n  \"alternating_order\": true,\n  \"c0_bitwise_match\": true,\n  \"paired_claim_eligible\": false\n}}\n",
+        report.nsg4_wall.median_ms,
+        report.nsg4_wall.mad_ms,
+        report.nsg4_gpu.median_ms,
+        report.nsg4_gpu.mad_ms,
+        report.routed_mid_checksum,
+        report.routed_out_checksum,
     )?;
     Ok(())
 }
@@ -20767,6 +20825,12 @@ mod imp {
             shared_out: *mut f32,
             after_ffn_hc: *mut f32,
             result: *mut RawIngressProbeResult,
+            error: *mut c_char,
+            error_bytes: usize,
+        ) -> i32;
+        fn rust_star_metal_select_routed_nsg(
+            context: *mut c_void,
+            simdgroups: u32,
             error: *mut c_char,
             error_bytes: usize,
         ) -> i32;
@@ -43865,6 +43929,188 @@ mod imp {
             hc_post_checksum: checksum_f32(&hc_post),
         })
     }
+
+    pub fn run_routed_nsg_bench(
+        model: &MappedModel,
+        warmup_rounds: u32,
+        measured_rounds: u32,
+    ) -> Result<RoutedNsgBenchReport> {
+        if measured_rounds == 0 || warmup_rounds.saturating_add(measured_rounds) > 1000 {
+            return Err(Error::invalid(
+                "routed NSG benchmark requires 1..=1000 total rounds",
+            ));
+        }
+        let routed_gate =
+            exact_tensor(model, "blk.0.ffn_gate_exps.weight", 16, &[4096, 2048, 256])?;
+        let routed_up = exact_tensor(model, "blk.0.ffn_up_exps.weight", 16, &[4096, 2048, 256])?;
+        let routed_down =
+            exact_tensor(model, "blk.0.ffn_down_exps.weight", 10, &[2048, 4096, 256])?;
+        let shared_gate = exact_tensor(model, "blk.0.ffn_gate_shexp.weight", 8, &[4096, 2048])?;
+        let shared_up = exact_tensor(model, "blk.0.ffn_up_shexp.weight", 8, &[4096, 2048])?;
+        let shared_down = exact_tensor(model, "blk.0.ffn_down_shexp.weight", 8, &[2048, 4096])?;
+        let (
+            ffn_norm,
+            selected,
+            weights,
+            input_hc,
+            split,
+            expected_routed_mid,
+            expected_routed_out,
+            _,
+            _,
+        ) = moe_output_fixture()?;
+        let mut routed_mid = vec![0.0_f32; 6 * 2048];
+        let mut routed_out = vec![0.0_f32; 4096];
+        let mut shared_out = vec![0.0_f32; 4096];
+        let mut hc_post = vec![0.0_f32; 4 * 4096];
+        let context = Context::new()?;
+        let mut error = [0 as c_char; ERROR_BYTES];
+        let mut nsg2_wall = Vec::with_capacity(measured_rounds as usize);
+        let mut nsg2_gpu = Vec::with_capacity(measured_rounds as usize);
+        let mut nsg4_wall = Vec::with_capacity(measured_rounds as usize);
+        let mut nsg4_gpu = Vec::with_capacity(measured_rounds as usize);
+        let total_rounds = warmup_rounds + measured_rounds;
+
+        for round in 0..total_rounds {
+            let order = if round % 2 == 0 {
+                [2_u32, 4]
+            } else {
+                [4_u32, 2]
+            };
+            for simdgroups in order {
+                error.fill(0);
+                let selected_pipeline = unsafe {
+                    rust_star_metal_select_routed_nsg(
+                        context.0,
+                        simdgroups,
+                        error.as_mut_ptr(),
+                        error.len(),
+                    )
+                };
+                if selected_pipeline == 0 {
+                    return Err(Error::invalid(format!(
+                        "Metal routed NSG={simdgroups} selection failed: {}",
+                        error_text(&error)
+                    )));
+                }
+                let mut raw = RawIngressProbeResult::default();
+                error.fill(0);
+                let succeeded = unsafe {
+                    rust_star_metal_run_moe_output(
+                        context.0,
+                        model.mapping_pointer(),
+                        model.bytes(),
+                        routed_gate.absolute_offset,
+                        routed_gate.bytes,
+                        routed_up.absolute_offset,
+                        routed_up.bytes,
+                        routed_down.absolute_offset,
+                        routed_down.bytes,
+                        shared_gate.absolute_offset,
+                        shared_gate.bytes,
+                        shared_up.absolute_offset,
+                        shared_up.bytes,
+                        shared_down.absolute_offset,
+                        shared_down.bytes,
+                        ffn_norm.as_ptr(),
+                        selected.as_ptr(),
+                        weights.as_ptr(),
+                        input_hc.as_ptr(),
+                        split.as_ptr(),
+                        routed_mid.as_mut_ptr(),
+                        routed_out.as_mut_ptr(),
+                        shared_out.as_mut_ptr(),
+                        hc_post.as_mut_ptr(),
+                        &mut raw,
+                        error.as_mut_ptr(),
+                        error.len(),
+                    )
+                };
+                if succeeded == 0 {
+                    return Err(Error::invalid(format!(
+                        "Metal routed NSG={simdgroups} benchmark failed: {}",
+                        error_text(&error)
+                    )));
+                }
+                if raw.model_bytes != model.bytes()
+                    || raw.wrapped_model_ranges != 6
+                    || raw.pointer_matches != 6
+                {
+                    return Err(Error::invalid(format!(
+                        "routed NSG={simdgroups} did not preserve all six mmap-backed model ranges"
+                    )));
+                }
+                if !raw.wall_ms.is_finite()
+                    || raw.wall_ms <= 0.0
+                    || !raw.gpu_ms.is_finite()
+                    || raw.gpu_ms < 0.0
+                {
+                    return Err(Error::invalid(format!(
+                        "routed NSG={simdgroups} returned invalid timing"
+                    )));
+                }
+                for (label, actual, expected) in [
+                    (
+                        "routed_mid",
+                        routed_mid.as_slice(),
+                        expected_routed_mid.as_slice(),
+                    ),
+                    (
+                        "routed_out",
+                        routed_out.as_slice(),
+                        expected_routed_out.as_slice(),
+                    ),
+                ] {
+                    if let Some((index, (actual, expected))) = actual
+                        .iter()
+                        .zip(expected)
+                        .enumerate()
+                        .find(|(_, (actual, expected))| actual.to_bits() != expected.to_bits())
+                    {
+                        return Err(Error::invalid(format!(
+                            "routed NSG={simdgroups} C0 mismatch in {label}[{index}]: actual={:#010x} expected={:#010x}",
+                            actual.to_bits(), expected.to_bits()
+                        )));
+                    }
+                }
+                if round >= warmup_rounds {
+                    let (wall, gpu) = if simdgroups == 2 {
+                        (&mut nsg2_wall, &mut nsg2_gpu)
+                    } else {
+                        (&mut nsg4_wall, &mut nsg4_gpu)
+                    };
+                    wall.push(raw.wall_ms);
+                    gpu.push(raw.gpu_ms);
+                }
+            }
+        }
+        error.fill(0);
+        if unsafe {
+            rust_star_metal_select_routed_nsg(context.0, 2, error.as_mut_ptr(), error.len())
+        } == 0
+        {
+            return Err(Error::invalid(format!(
+                "failed to restore production routed NSG=2: {}",
+                error_text(&error)
+            )));
+        }
+        Ok(RoutedNsgBenchReport {
+            fixture_id: MOE_OUTPUT_FIXTURE_ID,
+            warmup_rounds,
+            measured_rounds,
+            selected_experts: selected,
+            nsg2_wall: summarize_timing(&nsg2_wall)?,
+            nsg2_gpu: summarize_timing(&nsg2_gpu)?,
+            nsg4_wall: summarize_timing(&nsg4_wall)?,
+            nsg4_gpu: summarize_timing(&nsg4_gpu)?,
+            nsg2_wall_ms_samples: nsg2_wall,
+            nsg2_gpu_ms_samples: nsg2_gpu,
+            nsg4_wall_ms_samples: nsg4_wall,
+            nsg4_gpu_ms_samples: nsg4_gpu,
+            routed_mid_checksum: checksum_f32(&routed_mid),
+            routed_out_checksum: checksum_f32(&routed_out),
+        })
+    }
 }
 
 #[cfg(not(target_os = "macos"))]
@@ -44427,6 +44673,17 @@ mod imp {
             "the Metal layer-0 steady-state benchmark is available only on macOS",
         ))
     }
+
+    pub fn run_routed_nsg_bench(
+        model: &MappedModel,
+        warmup_rounds: u32,
+        measured_rounds: u32,
+    ) -> Result<RoutedNsgBenchReport> {
+        let _ = (model, warmup_rounds, measured_rounds);
+        Err(Error::invalid(
+            "the routed NSG benchmark is available only on macOS",
+        ))
+    }
 }
 
 pub use imp::{
@@ -44447,7 +44704,8 @@ pub use imp::{
     run_prefill_q8_boundary_probe, run_prefill_qkv_boundary_probe, run_probe,
     run_q8_projection_probe, run_ratio128_compressor_replay_probe, run_retained_decoder_step_probe,
     run_retained_sparse_boundary_probe, run_retained_sparse_multimerge_probe,
-    run_rope_kv_store_probe, run_sparse_indexed_attention_probe, LayerExecutor,
+    run_rope_kv_store_probe, run_routed_nsg_bench, run_sparse_indexed_attention_probe,
+    LayerExecutor,
 };
 
 #[cfg(test)]
@@ -45617,6 +45875,45 @@ mod tests {
             routed_out_checksum: 2,
             shared_out_checksum: 3,
             hc_post_checksum: 4,
+        }
+    }
+
+    fn routed_nsg_bench_report() -> RoutedNsgBenchReport {
+        RoutedNsgBenchReport {
+            fixture_id: MOE_OUTPUT_FIXTURE_ID,
+            warmup_rounds: 2,
+            measured_rounds: 3,
+            selected_experts: vec![25, 174, 215, 58, 48, 60],
+            nsg2_wall_ms_samples: vec![1.0, 2.0, 3.0],
+            nsg2_gpu_ms_samples: vec![0.5, 0.6, 0.7],
+            nsg4_wall_ms_samples: vec![1.1, 2.1, 3.1],
+            nsg4_gpu_ms_samples: vec![0.6, 0.7, 0.8],
+            nsg2_wall: TimingSummary {
+                median_ms: 2.0,
+                mad_ms: 1.0,
+                min_ms: 1.0,
+                max_ms: 3.0,
+            },
+            nsg2_gpu: TimingSummary {
+                median_ms: 0.6,
+                mad_ms: 0.1,
+                min_ms: 0.5,
+                max_ms: 0.7,
+            },
+            nsg4_wall: TimingSummary {
+                median_ms: 2.1,
+                mad_ms: 1.0,
+                min_ms: 1.1,
+                max_ms: 3.1,
+            },
+            nsg4_gpu: TimingSummary {
+                median_ms: 0.7,
+                mad_ms: 0.1,
+                min_ms: 0.6,
+                max_ms: 0.8,
+            },
+            routed_mid_checksum: 1,
+            routed_out_checksum: 2,
         }
     }
 
@@ -47609,6 +47906,17 @@ mod tests {
         assert!(text.contains("\"dispatches\": 4"));
         assert!(text.contains("\"selected_experts\": [25, 174, 215, 58, 48, 60]"));
         assert!(text.contains("\"hc_ffn_post\": 4"));
+    }
+
+    #[test]
+    fn writes_stable_routed_nsg_bench_json() {
+        let mut output = Vec::new();
+        write_routed_nsg_bench_json(&mut output, &routed_nsg_bench_report()).unwrap();
+        let text = String::from_utf8(output).unwrap();
+        assert!(text.contains(&format!("\"schema\": \"{ROUTED_NSG_BENCH_SCHEMA}\"")));
+        assert!(text.contains("\"alternating_order\": true"));
+        assert!(text.contains("\"gpu_median_ms\": 0.600000"));
+        assert!(text.contains("\"paired_claim_eligible\": false"));
     }
 
     #[test]

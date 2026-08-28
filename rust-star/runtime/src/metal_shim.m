@@ -139,6 +139,11 @@ static NSString *const kGetRowsF16Source =
 #include "moe_output_source.inc"
 #include "sparse_indexed_source.inc"
 
+// Kept as one compile-time knob so routed decode launch experiments cannot
+// accidentally specialize the Metal functions and dispatch them differently.
+// Valid IQ2/Q2 decode candidates are 1, 2, and 4 SIMD groups.
+static const int16_t kRustStarRoutedNsg = 2;
+
 // Imported from DwarfStar metal/dense.metal. The fixed target uses DwarfStar's
 // default four simdgroups and two output rows per threadgroup. DwarfStar forces
 // eight simdgroups for output dimensions above 65,536, so the same source is
@@ -295,6 +300,11 @@ static NSString *const kQ8ProjectionSource =
 @property(nonatomic, strong) id<MTLLibrary> moeOutputLibrary;
 @property(nonatomic, strong) id<MTLComputePipelineState> routedPairSwigluPipeline;
 @property(nonatomic, strong) id<MTLComputePipelineState> routedDownSumPipeline;
+@property(nonatomic, strong) id<MTLComputePipelineState> routedPairSwigluNsg2Pipeline;
+@property(nonatomic, strong) id<MTLComputePipelineState> routedDownSumNsg2Pipeline;
+@property(nonatomic, strong) id<MTLComputePipelineState> routedPairSwigluNsg4Pipeline;
+@property(nonatomic, strong) id<MTLComputePipelineState> routedDownSumNsg4Pipeline;
+@property(nonatomic) uint32_t routedNsg;
 @property(nonatomic, strong) id<MTLComputePipelineState> sharedGateUpPipeline;
 @property(nonatomic, strong) id<MTLComputePipelineState> sharedDownHcPipeline;
 @property(nonatomic, strong) id<MTLComputePipelineState> attentionOutputBatchMapPipeline;
@@ -1243,7 +1253,7 @@ static int ensure_moe_output_pipelines(
                                         error:&compile_error];
     if (!library) return fail_with_message(error, error_bytes, compile_error.localizedDescription);
 
-    int16_t simdgroups = 2;
+    int16_t simdgroups = kRustStarRoutedNsg;
     MTLFunctionConstantValues *routed_constants = [MTLFunctionConstantValues new];
     [routed_constants setConstantValue:&simdgroups type:MTLDataTypeShort atIndex:600];
     id<MTLFunction> routed_pair =
@@ -1327,10 +1337,13 @@ static int ensure_moe_output_pipelines(
             compile_error ? compile_error.localizedDescription : @"MoE output kernel was not found");
     }
 
-    context.routedPairSwigluPipeline =
+    context.routedPairSwigluNsg2Pipeline =
         [context.device newComputePipelineStateWithFunction:routed_pair error:&compile_error];
-    context.routedDownSumPipeline =
+    context.routedDownSumNsg2Pipeline =
         [context.device newComputePipelineStateWithFunction:routed_down error:&compile_error];
+    context.routedPairSwigluPipeline = context.routedPairSwigluNsg2Pipeline;
+    context.routedDownSumPipeline = context.routedDownSumNsg2Pipeline;
+    context.routedNsg = 2;
     context.sharedGateUpPipeline =
         [context.device newComputePipelineStateWithFunction:shared_gate_up error:&compile_error];
     context.sharedDownHcPipeline =
@@ -1365,7 +1378,7 @@ static int ensure_moe_output_pipelines(
         [context.device newComputePipelineStateWithFunction:routed_batch_sum error:&compile_error];
     context.sharedSwigluBatchPipeline =
         [context.device newComputePipelineStateWithFunction:shared_swiglu_batch error:&compile_error];
-    if (!context.routedPairSwigluPipeline || !context.routedDownSumPipeline ||
+    if (!context.routedPairSwigluNsg2Pipeline || !context.routedDownSumNsg2Pipeline ||
         !context.sharedGateUpPipeline || !context.sharedDownHcPipeline ||
         !context.outputHcWeightsPipeline || !context.outputHcSumNormPipeline ||
         !context.q8PrefillPipeline || !context.f16PrefillPipeline ||
@@ -1378,6 +1391,53 @@ static int ensure_moe_output_pipelines(
         return fail_with_message(error, error_bytes, compile_error.localizedDescription);
     }
     context.moeOutputLibrary = library;
+    return 1;
+}
+
+int rust_star_metal_select_routed_nsg(
+    void *opaque_context,
+    uint32_t simdgroups,
+    char *error,
+    size_t error_bytes)
+{
+    if (!opaque_context || (simdgroups != 2 && simdgroups != 4)) {
+        return fail_with_message(error, error_bytes, @"routed NSG must be 2 or 4");
+    }
+    RustStarMetalContext *context = (__bridge RustStarMetalContext *)opaque_context;
+    if (!ensure_moe_output_pipelines(context, error, error_bytes)) return 0;
+    if (simdgroups == 2) {
+        context.routedPairSwigluPipeline = context.routedPairSwigluNsg2Pipeline;
+        context.routedDownSumPipeline = context.routedDownSumNsg2Pipeline;
+    } else {
+        if (!context.routedPairSwigluNsg4Pipeline || !context.routedDownSumNsg4Pipeline) {
+            NSError *compile_error = nil;
+            int16_t nsg4 = 4;
+            MTLFunctionConstantValues *constants = [MTLFunctionConstantValues new];
+            [constants setConstantValue:&nsg4 type:MTLDataTypeShort atIndex:600];
+            id<MTLFunction> pair =
+                [context.moeOutputLibrary
+                    newFunctionWithName:@"kernel_mul_mv_id_iq2_xxs_pair_swiglu_f32"
+                          constantValues:constants error:&compile_error];
+            id<MTLFunction> down =
+                [context.moeOutputLibrary
+                    newFunctionWithName:@"kernel_mul_mv_id_q2_K_sum6_f32"
+                          constantValues:constants error:&compile_error];
+            if (!pair || !down) {
+                return fail_with_message(error, error_bytes,
+                    compile_error ? compile_error.localizedDescription : @"NSG=4 routed kernel was not found");
+            }
+            context.routedPairSwigluNsg4Pipeline =
+                [context.device newComputePipelineStateWithFunction:pair error:&compile_error];
+            context.routedDownSumNsg4Pipeline =
+                [context.device newComputePipelineStateWithFunction:down error:&compile_error];
+            if (!context.routedPairSwigluNsg4Pipeline || !context.routedDownSumNsg4Pipeline) {
+                return fail_with_message(error, error_bytes, compile_error.localizedDescription);
+            }
+        }
+        context.routedPairSwigluPipeline = context.routedPairSwigluNsg4Pipeline;
+        context.routedDownSumPipeline = context.routedDownSumNsg4Pipeline;
+    }
+    context.routedNsg = simdgroups;
     return 1;
 }
 
@@ -41191,8 +41251,8 @@ int rust_star_metal_run_attention_ingress(
                     [encoder setBuffer:selected_buffer offset:0 atIndex:8];
                     [encoder setBuffer:route_weights_buffer offset:0 atIndex:9];
                     [encoder setThreadgroupMemoryLength:2176u atIndex:0];
-                    [encoder dispatchThreadgroups:MTLSizeMake(256,1,6)
-                         threadsPerThreadgroup:MTLSizeMake(32,2,1)];
+                    [encoder dispatchThreadgroups:MTLSizeMake(512/context.routedNsg,1,6)
+                         threadsPerThreadgroup:MTLSizeMake(32,context.routedNsg,1)];
                     if (collect_outputs) {
                         [encoder endEncoding];
                         encoder = [command computeCommandEncoder];
@@ -41204,8 +41264,8 @@ int rust_star_metal_run_attention_ingress(
                     [encoder setBuffer:routed_out_buffer offset:0 atIndex:3];
                     [encoder setBuffer:selected_buffer offset:0 atIndex:4];
                     [encoder setBuffer:routed_out_buffer offset:0 atIndex:5];
-                    [encoder dispatchThreadgroups:MTLSizeMake(512,1,1)
-                         threadsPerThreadgroup:MTLSizeMake(32,2,1)];
+                    [encoder dispatchThreadgroups:MTLSizeMake(1024/context.routedNsg,1,1)
+                         threadsPerThreadgroup:MTLSizeMake(32,context.routedNsg,1)];
                     if (stage_samples) {
                         [encoder endEncoding];
                         encoder = stage_compute_encoder(command, stage_samples, stage_base + 7u);
@@ -42705,8 +42765,8 @@ int rust_star_metal_run_moe_output(
         [encoder setBuffer:ids offset:0 atIndex:8];
         [encoder setBuffer:route_weights offset:0 atIndex:9];
         [encoder setThreadgroupMemoryLength:2176u atIndex:0];
-        [encoder dispatchThreadgroups:MTLSizeMake(256, 1, 6)
-             threadsPerThreadgroup:MTLSizeMake(32, 2, 1)];
+        [encoder dispatchThreadgroups:MTLSizeMake(512/context.routedNsg, 1, 6)
+             threadsPerThreadgroup:MTLSizeMake(32, context.routedNsg, 1)];
         [encoder endEncoding];
 
         encoder = [command computeCommandEncoder];
@@ -42717,8 +42777,8 @@ int rust_star_metal_run_moe_output(
         [encoder setBuffer:routed_out_buffer offset:0 atIndex:3];
         [encoder setBuffer:ids offset:0 atIndex:4];
         [encoder setBuffer:routed_out_buffer offset:0 atIndex:5];
-        [encoder dispatchThreadgroups:MTLSizeMake(512, 1, 1)
-             threadsPerThreadgroup:MTLSizeMake(32, 2, 1)];
+        [encoder dispatchThreadgroups:MTLSizeMake(1024/context.routedNsg, 1, 1)
+             threadsPerThreadgroup:MTLSizeMake(32, context.routedNsg, 1)];
         [encoder endEncoding];
 
         const float clamp = 10.0f;

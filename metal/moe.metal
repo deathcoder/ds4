@@ -3960,10 +3960,14 @@ kernel void kernel_mul_mv_id_iq2_xxs_pair_swiglu_f32(
     threadgroup uint64_t *svalues = (threadgroup uint64_t *)(shmem);
     threadgroup uint8_t  *ssigns  = (threadgroup uint8_t *)(svalues + 256);
     {
-        int nval = 4;
+        // The lookup tables contain 256 grid values and 128 sign values.  Split
+        // those loads across every lane in the specialized threadgroup so the
+        // decode kernel remains correct when FC_mul_mv_nsg is tuned away from
+        // DwarfStar's default of two SIMD groups.
+        int nval = 8 / NSG;
         int pos = (32 * sgitg + tiisg) * nval;
         for (int i = 0; i < nval; ++i) svalues[pos + i] = ds4_metal_iq2xxs_grid[pos + i];
-        nval = 2;
+        nval = 4 / NSG;
         pos = (32 * sgitg + tiisg) * nval;
         for (int i = 0; i < nval; ++i) ssigns[pos + i] = ds4_metal_ksigns_iq2xs[pos + i];
         threadgroup_barrier(mem_flags::mem_threadgroup);

@@ -2129,6 +2129,12 @@ int rust_star_metal_run_moe_output(
     char *error,
     size_t error_bytes);
 
+int rust_star_metal_select_routed_nsg(
+    void *context,
+    uint32_t simdgroups,
+    char *error,
+    size_t error_bytes);
+
 void rust_star_metal_destroy(void *context);
 
 #endif
