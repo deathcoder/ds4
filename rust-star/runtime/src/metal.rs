@@ -38,6 +38,7 @@ pub const FFN_ROUTER_PROBE_SCHEMA: &str = "rust-star-layer0-ffn-router-probe-v1"
 pub const MOE_OUTPUT_PROBE_SCHEMA: &str = "rust-star-layer0-moe-output-probe-v1";
 pub const ROUTED_NSG_BENCH_SCHEMA: &str = "rust-star-routed-nsg-bench-v1";
 pub const QKV_PAIR_BENCH_SCHEMA: &str = "rust-star-qkv-pair-bench-v1";
+pub const QB_ROWS_BENCH_SCHEMA: &str = "rust-star-qb-rows-bench-v1";
 pub const ATTENTION_OUTPUT_NSG_BENCH_SCHEMA: &str = "rust-star-attention-output-nsg-bench-v1";
 pub const ATTENTION_ROPE_FUSION_BENCH_SCHEMA: &str = "rust-star-attention-rope-fusion-bench-v1";
 pub const LAYER0_PROBE_SCHEMA: &str = "rust-star-layer0-complete-probe-v1";
@@ -4068,6 +4069,26 @@ pub struct QkvPairBenchReport {
 }
 
 #[derive(Clone, Debug)]
+pub struct QbRowsBenchReport {
+    pub fixture_id: &'static str,
+    pub warmup_rounds: u32,
+    pub measured_rounds: u32,
+    pub candidate_rows: u32,
+    pub baseline_wall_ms_samples: Vec<f64>,
+    pub baseline_gpu_ms_samples: Vec<f64>,
+    pub candidate_wall_ms_samples: Vec<f64>,
+    pub candidate_gpu_ms_samples: Vec<f64>,
+    pub baseline_wall: TimingSummary,
+    pub baseline_gpu: TimingSummary,
+    pub candidate_wall: TimingSummary,
+    pub candidate_gpu: TimingSummary,
+    pub q_lora_norm_checksum: u64,
+    pub kv_raw_checksum: u64,
+    pub kv_norm_checksum: u64,
+    pub q_raw_checksum: u64,
+}
+
+#[derive(Clone, Debug)]
 pub struct AttentionOutputNsgBenchReport {
     pub fixture_id: &'static str,
     pub warmup_rounds: u32,
@@ -4757,6 +4778,46 @@ pub fn write_qkv_pair_bench_json<W: Write>(
         report.paired_wall.mad_ms,
         report.paired_gpu.median_ms,
         report.paired_gpu.mad_ms,
+        report.q_lora_norm_checksum,
+        report.kv_raw_checksum,
+        report.kv_norm_checksum,
+        report.q_raw_checksum,
+    )?;
+    Ok(())
+}
+
+pub fn write_qb_rows_bench_json<W: Write>(
+    output: &mut W,
+    report: &QbRowsBenchReport,
+) -> Result<()> {
+    write!(
+        output,
+        "{{\n  \"schema\": \"{QB_ROWS_BENCH_SCHEMA}\",\n  \"fixture\": \"{}\",\n  \"warmup_rounds\": {},\n  \"measured_rounds\": {},\n  \"baseline\": {{\n    \"rows_per_workgroup\": 2,\n    \"workgroups\": 16384,\n    \"wall_ms_samples\": [",
+        report.fixture_id, report.warmup_rounds, report.measured_rounds,
+    )?;
+    write_timing_samples(output, &report.baseline_wall_ms_samples)?;
+    write!(output, "],\n    \"gpu_ms_samples\": [")?;
+    write_timing_samples(output, &report.baseline_gpu_ms_samples)?;
+    write!(
+        output,
+        "],\n    \"wall_median_ms\": {:.6},\n    \"wall_mad_ms\": {:.6},\n    \"gpu_median_ms\": {:.6},\n    \"gpu_mad_ms\": {:.6}\n  }},\n  \"candidate\": {{\n    \"rows_per_workgroup\": {},\n    \"workgroups\": {},\n    \"wall_ms_samples\": [",
+        report.baseline_wall.median_ms,
+        report.baseline_wall.mad_ms,
+        report.baseline_gpu.median_ms,
+        report.baseline_gpu.mad_ms,
+        report.candidate_rows,
+        32768 / report.candidate_rows,
+    )?;
+    write_timing_samples(output, &report.candidate_wall_ms_samples)?;
+    write!(output, "],\n    \"gpu_ms_samples\": [")?;
+    write_timing_samples(output, &report.candidate_gpu_ms_samples)?;
+    write!(
+        output,
+        "],\n    \"wall_median_ms\": {:.6},\n    \"wall_mad_ms\": {:.6},\n    \"gpu_median_ms\": {:.6},\n    \"gpu_mad_ms\": {:.6}\n  }},\n  \"checksums\": {{\n    \"q_lora_norm\": {},\n    \"kv_raw\": {},\n    \"kv_norm\": {},\n    \"q_raw\": {}\n  }},\n  \"alternating_order\": true,\n  \"single_metal_context\": true,\n  \"c0_bitwise_match\": true,\n  \"paired_claim_eligible\": false\n}}\n",
+        report.candidate_wall.median_ms,
+        report.candidate_wall.mad_ms,
+        report.candidate_gpu.median_ms,
+        report.candidate_gpu.mad_ms,
         report.q_lora_norm_checksum,
         report.kv_raw_checksum,
         report.kv_norm_checksum,
@@ -21011,6 +21072,12 @@ mod imp {
         fn rust_star_metal_select_qkv_pair(
             context: *mut c_void,
             enabled: u32,
+            error: *mut c_char,
+            error_bytes: usize,
+        ) -> i32;
+        fn rust_star_metal_select_qb_rows(
+            context: *mut c_void,
+            rows: u32,
             error: *mut c_char,
             error_bytes: usize,
         ) -> i32;
@@ -41051,6 +41118,50 @@ mod imp {
         warmup_rounds: u32,
         measured_rounds: u32,
     ) -> Result<QkvPairBenchReport> {
+        run_attention_setup_variant_bench(model, warmup_rounds, measured_rounds, None)
+    }
+
+    pub fn run_qb_rows_bench(
+        model: &MappedModel,
+        candidate_rows: u32,
+        warmup_rounds: u32,
+        measured_rounds: u32,
+    ) -> Result<QbRowsBenchReport> {
+        if candidate_rows != 4 && candidate_rows != 8 {
+            return Err(Error::invalid("Q-B row candidate must be 4 or 8"));
+        }
+        let report = run_attention_setup_variant_bench(
+            model,
+            warmup_rounds,
+            measured_rounds,
+            Some(candidate_rows),
+        )?;
+        Ok(QbRowsBenchReport {
+            fixture_id: report.fixture_id,
+            warmup_rounds: report.warmup_rounds,
+            measured_rounds: report.measured_rounds,
+            candidate_rows,
+            baseline_wall_ms_samples: report.separate_wall_ms_samples,
+            baseline_gpu_ms_samples: report.separate_gpu_ms_samples,
+            candidate_wall_ms_samples: report.paired_wall_ms_samples,
+            candidate_gpu_ms_samples: report.paired_gpu_ms_samples,
+            baseline_wall: report.separate_wall,
+            baseline_gpu: report.separate_gpu,
+            candidate_wall: report.paired_wall,
+            candidate_gpu: report.paired_gpu,
+            q_lora_norm_checksum: report.q_lora_norm_checksum,
+            kv_raw_checksum: report.kv_raw_checksum,
+            kv_norm_checksum: report.kv_norm_checksum,
+            q_raw_checksum: report.q_raw_checksum,
+        })
+    }
+
+    fn run_attention_setup_variant_bench(
+        model: &MappedModel,
+        warmup_rounds: u32,
+        measured_rounds: u32,
+        qb_candidate_rows: Option<u32>,
+    ) -> Result<QkvPairBenchReport> {
         const TOKEN: u32 = 201;
         if measured_rounds == 0 || warmup_rounds.saturating_add(measured_rounds) > 1000 {
             return Err(Error::invalid(
@@ -41093,7 +41204,15 @@ mod imp {
             } else {
                 [1_u32, 0]
             };
-            for paired in order {
+            for candidate in order {
+                let paired = if qb_candidate_rows.is_some() {
+                    1
+                } else {
+                    candidate
+                };
+                let qb_rows = qb_candidate_rows
+                    .map(|rows| if candidate == 0 { 2 } else { rows })
+                    .unwrap_or(4);
                 error.fill(0);
                 if unsafe {
                     rust_star_metal_select_qkv_pair(
@@ -41106,6 +41225,21 @@ mod imp {
                 {
                     return Err(Error::invalid(format!(
                         "Metal QKV pair={paired} selection failed: {}",
+                        error_text(&error)
+                    )));
+                }
+                error.fill(0);
+                if unsafe {
+                    rust_star_metal_select_qb_rows(
+                        context.0,
+                        qb_rows,
+                        error.as_mut_ptr(),
+                        error.len(),
+                    )
+                } == 0
+                {
+                    return Err(Error::invalid(format!(
+                        "Metal Q-B rows={qb_rows} selection failed: {}",
                         error_text(&error)
                     )));
                 }
@@ -41215,7 +41349,7 @@ mod imp {
                     }
                 }
                 if round >= warmup_rounds {
-                    let (wall, gpu) = if paired == 0 {
+                    let (wall, gpu) = if candidate == 0 {
                         (&mut separate_wall, &mut separate_gpu)
                     } else {
                         (&mut paired_wall, &mut paired_gpu)
@@ -41231,6 +41365,15 @@ mod imp {
         {
             return Err(Error::invalid(format!(
                 "failed to restore production paired QKV projection: {}",
+                error_text(&error)
+            )));
+        }
+        error.fill(0);
+        if unsafe { rust_star_metal_select_qb_rows(context.0, 4, error.as_mut_ptr(), error.len()) }
+            == 0
+        {
+            return Err(Error::invalid(format!(
+                "failed to restore production Q-B rows=4: {}",
                 error_text(&error)
             )));
         }
@@ -44888,6 +45031,18 @@ mod imp {
         ))
     }
 
+    pub fn run_qb_rows_bench(
+        model: &MappedModel,
+        candidate_rows: u32,
+        warmup_rounds: u32,
+        measured_rounds: u32,
+    ) -> Result<QbRowsBenchReport> {
+        let _ = (model, candidate_rows, warmup_rounds, measured_rounds);
+        Err(Error::invalid(
+            "the Q-B row-group benchmark is available only on macOS",
+        ))
+    }
+
     pub fn run_attention_rope_fusion_bench(
         model: &MappedModel,
         warmup_rounds: u32,
@@ -45474,10 +45629,11 @@ pub use imp::{
     run_prefill_layers01_complete_boundary_probe, run_prefill_layers01_live_kv_chain_probe,
     run_prefill_layers01_live_kv_loop_probe, run_prefill_layers01_row_coverage_probe,
     run_prefill_q8_boundary_probe, run_prefill_qkv_boundary_probe, run_probe,
-    run_q8_projection_probe, run_qkv_pair_bench, run_ratio128_compressor_replay_probe,
-    run_retained_decoder_step_probe, run_retained_sparse_boundary_probe,
-    run_retained_sparse_multimerge_probe, run_rope_kv_store_probe, run_routed_nsg_bench,
-    run_sparse_indexed_attention_probe, LayerExecutor,
+    run_q8_projection_probe, run_qb_rows_bench, run_qkv_pair_bench,
+    run_ratio128_compressor_replay_probe, run_retained_decoder_step_probe,
+    run_retained_sparse_boundary_probe, run_retained_sparse_multimerge_probe,
+    run_rope_kv_store_probe, run_routed_nsg_bench, run_sparse_indexed_attention_probe,
+    LayerExecutor,
 };
 
 #[cfg(test)]
@@ -46726,6 +46882,28 @@ mod tests {
             kv_raw_checksum: 2,
             kv_norm_checksum: 3,
             q_raw_checksum: 4,
+        }
+    }
+
+    fn qb_rows_bench_report() -> QbRowsBenchReport {
+        let report = qkv_pair_bench_report();
+        QbRowsBenchReport {
+            fixture_id: report.fixture_id,
+            warmup_rounds: report.warmup_rounds,
+            measured_rounds: report.measured_rounds,
+            candidate_rows: 4,
+            baseline_wall_ms_samples: report.separate_wall_ms_samples,
+            baseline_gpu_ms_samples: report.separate_gpu_ms_samples,
+            candidate_wall_ms_samples: report.paired_wall_ms_samples,
+            candidate_gpu_ms_samples: report.paired_gpu_ms_samples,
+            baseline_wall: report.separate_wall,
+            baseline_gpu: report.separate_gpu,
+            candidate_wall: report.paired_wall,
+            candidate_gpu: report.paired_gpu,
+            q_lora_norm_checksum: report.q_lora_norm_checksum,
+            kv_raw_checksum: report.kv_raw_checksum,
+            kv_norm_checksum: report.kv_norm_checksum,
+            q_raw_checksum: report.q_raw_checksum,
         }
     }
 
@@ -48802,6 +48980,18 @@ mod tests {
         assert!(text.contains("\"dispatches\": 8"));
         assert!(text.contains("\"single_metal_context\": true"));
         assert!(text.contains("\"paired_claim_eligible\": false"));
+    }
+
+    #[test]
+    fn writes_stable_qb_rows_bench_json() {
+        let mut output = Vec::new();
+        write_qb_rows_bench_json(&mut output, &qb_rows_bench_report()).unwrap();
+        let text = String::from_utf8(output).unwrap();
+        assert!(text.contains(&format!("\"schema\": \"{QB_ROWS_BENCH_SCHEMA}\"")));
+        assert!(text.contains("\"rows_per_workgroup\": 2"));
+        assert!(text.contains("\"rows_per_workgroup\": 4"));
+        assert!(text.contains("\"workgroups\": 8192"));
+        assert!(text.contains("\"single_metal_context\": true"));
     }
 
     #[test]

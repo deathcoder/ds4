@@ -232,6 +232,26 @@ static NSString *const kQ8ProjectionSource =
     @"        ushort tiisg [[thread_index_in_simdgroup]],\n"
     @"        ushort sgitg [[simdgroup_index_in_threadgroup]]) {\n"
     @"    kernel_mul_mv_q8_0_f32_impl<N_R0_Q8_0>(args, src0, src1, dst, shmem, tgpig, tiisg, sgitg);\n"
+    @"}\n"
+    @"[[host_name(\"kernel_mul_mv_q8_0_f32_nr4\")]]\n"
+    @"kernel void kernel_mul_mv_q8_0_f32_nr4(\n"
+    @"        constant ds4_metal_args_mul_mv & args, device const char * src0,\n"
+    @"        device const char * src1, device char * dst,\n"
+    @"        threadgroup char * shmem [[threadgroup(0)]],\n"
+    @"        uint3 tgpig [[threadgroup_position_in_grid]],\n"
+    @"        ushort tiisg [[thread_index_in_simdgroup]],\n"
+    @"        ushort sgitg [[simdgroup_index_in_threadgroup]]) {\n"
+    @"    kernel_mul_mv_q8_0_f32_impl<4>(args, src0, src1, dst, shmem, tgpig, tiisg, sgitg);\n"
+    @"}\n"
+    @"[[host_name(\"kernel_mul_mv_q8_0_f32_nr8\")]]\n"
+    @"kernel void kernel_mul_mv_q8_0_f32_nr8(\n"
+    @"        constant ds4_metal_args_mul_mv & args, device const char * src0,\n"
+    @"        device const char * src1, device char * dst,\n"
+    @"        threadgroup char * shmem [[threadgroup(0)]],\n"
+    @"        uint3 tgpig [[threadgroup_position_in_grid]],\n"
+    @"        ushort tiisg [[thread_index_in_simdgroup]],\n"
+    @"        ushort sgitg [[simdgroup_index_in_threadgroup]]) {\n"
+    @"    kernel_mul_mv_q8_0_f32_impl<8>(args, src0, src1, dst, shmem, tgpig, tiisg, sgitg);\n"
     @"}\n";
 
 @interface RustStarMetalContext : NSObject
@@ -241,6 +261,10 @@ static NSString *const kQ8ProjectionSource =
 @property(nonatomic, strong) id<MTLComputePipelineState> argmaxPipeline;
 @property(nonatomic, strong) id<MTLComputePipelineState> getRowsF16Pipeline;
 @property(nonatomic, strong) id<MTLComputePipelineState> q8ProjectionPipeline;
+@property(nonatomic, strong) id<MTLComputePipelineState> q8QbNr4Pipeline;
+@property(nonatomic, strong) id<MTLComputePipelineState> q8QbNr8Pipeline;
+@property(nonatomic, strong) id<MTLComputePipelineState> q8QbPipeline;
+@property(nonatomic, assign) uint32_t q8QbRows;
 @property(nonatomic, strong) id<MTLComputePipelineState> q8PairProjectionPipeline;
 @property(nonatomic, assign) BOOL useQkvPair;
 @property(nonatomic, strong) id<MTLComputePipelineState> q8PrefillPipeline;
@@ -934,7 +958,8 @@ static int ensure_q8_projection_pipeline(
     char *error,
     size_t error_bytes)
 {
-    if (context.q8ProjectionPipeline && context.q8PairProjectionPipeline &&
+    if (context.q8ProjectionPipeline && context.q8QbNr4Pipeline &&
+        context.q8QbNr8Pipeline && context.q8PairProjectionPipeline &&
         context.q8OutputProjectionPipeline) return 1;
     NSError *compile_error = nil;
     id<MTLLibrary> library = [context.device newLibraryWithSource:kQ8ProjectionSource
@@ -957,6 +982,25 @@ static int ensure_q8_projection_pipeline(
     if (!context.q8ProjectionPipeline) {
         return fail_with_message(error, error_bytes, compile_error.localizedDescription);
     }
+    id<MTLFunction> nr4_function =
+        [library newFunctionWithName:@"kernel_mul_mv_q8_0_f32_nr4"
+                      constantValues:constants error:&compile_error];
+    id<MTLFunction> nr8_function =
+        [library newFunctionWithName:@"kernel_mul_mv_q8_0_f32_nr8"
+                      constantValues:constants error:&compile_error];
+    if (!nr4_function || !nr8_function) {
+        return fail_with_message(error, error_bytes,
+            compile_error ? compile_error.localizedDescription : @"Q-B row-group kernel was not found");
+    }
+    context.q8QbNr4Pipeline =
+        [context.device newComputePipelineStateWithFunction:nr4_function error:&compile_error];
+    context.q8QbNr8Pipeline =
+        [context.device newComputePipelineStateWithFunction:nr8_function error:&compile_error];
+    if (!context.q8QbNr4Pipeline || !context.q8QbNr8Pipeline) {
+        return fail_with_message(error, error_bytes, compile_error.localizedDescription);
+    }
+    context.q8QbPipeline = context.q8QbNr4Pipeline;
+    context.q8QbRows = 4u;
     id<MTLLibrary> pair_library =
         [context.device newLibraryWithSource:kQ8ProjectionPairSource
                                       options:[MTLCompileOptions new]
@@ -1499,6 +1543,23 @@ int rust_star_metal_select_qkv_pair(
     RustStarMetalContext *context = (__bridge RustStarMetalContext *)opaque_context;
     if (!ensure_q8_projection_pipeline(context, error, error_bytes)) return 0;
     context.useQkvPair = enabled != 0u;
+    return 1;
+}
+
+int rust_star_metal_select_qb_rows(
+    void *opaque_context,
+    uint32_t rows,
+    char *error,
+    size_t error_bytes)
+{
+    if (!opaque_context || (rows != 2u && rows != 4u && rows != 8u)) {
+        return fail_with_message(error, error_bytes, @"Q-B rows must be 2, 4, or 8");
+    }
+    RustStarMetalContext *context = (__bridge RustStarMetalContext *)opaque_context;
+    if (!ensure_q8_projection_pipeline(context, error, error_bytes)) return 0;
+    context.q8QbPipeline = rows == 4u ? context.q8QbNr4Pipeline
+        : (rows == 8u ? context.q8QbNr8Pipeline : context.q8ProjectionPipeline);
+    context.q8QbRows = rows;
     return 1;
 }
 
@@ -40883,13 +40944,14 @@ int rust_star_metal_run_attention_ingress(
             [encoder setThreadgroupMemoryLength:32u*sizeof(float) atIndex:0];
             [encoder dispatchThreadgroups:MTLSizeMake(1,2,1) threadsPerThreadgroup:MTLSizeMake(256,1,1)];
 
-            [encoder setComputePipelineState:context.q8ProjectionPipeline];
+            [encoder setComputePipelineState:context.q8QbPipeline];
             [encoder setBytes:&q_b_mv length:sizeof(q_b_mv) atIndex:0];
             [encoder setBuffer:q_b_weights offset:q_b_inner atIndex:1];
             [encoder setBuffer:q_norm_buffer offset:0 atIndex:2];
             [encoder setBuffer:q_raw_buffer offset:0 atIndex:3];
-            [encoder setThreadgroupMemoryLength:32u*2u*sizeof(float) atIndex:0];
-            [encoder dispatchThreadgroups:MTLSizeMake(q_raw_elements/2u,1,1) threadsPerThreadgroup:MTLSizeMake(32,4,1)];
+            [encoder setThreadgroupMemoryLength:32u*context.q8QbRows*sizeof(float) atIndex:0];
+            [encoder dispatchThreadgroups:MTLSizeMake(q_raw_elements/context.q8QbRows,1,1)
+                 threadsPerThreadgroup:MTLSizeMake(32,4,1)];
             if (stage_samples) {
                 [encoder endEncoding];
                 encoder = stage_compute_encoder(command, stage_samples, stage_base + 1u);
@@ -40927,13 +40989,13 @@ int rust_star_metal_run_attention_ingress(
                 [encoder dispatchThreadgroups:MTLSizeMake(1,2,1)
                      threadsPerThreadgroup:MTLSizeMake(256,1,1)];
 
-                [encoder setComputePipelineState:context.q8ProjectionPipeline];
+                [encoder setComputePipelineState:context.q8QbPipeline];
                 [encoder setBytes:&q_b_mv length:sizeof(q_b_mv) atIndex:0];
                 [encoder setBuffer:q_b_weights offset:q_b_inner atIndex:1];
                 [encoder setBuffer:q_norm_buffer offset:0 atIndex:2];
                 [encoder setBuffer:q_raw_buffer offset:0 atIndex:3];
-                [encoder setThreadgroupMemoryLength:32u*2u*sizeof(float) atIndex:0];
-                [encoder dispatchThreadgroups:MTLSizeMake(q_raw_elements/2u,1,1)
+                [encoder setThreadgroupMemoryLength:32u*context.q8QbRows*sizeof(float) atIndex:0];
+                [encoder dispatchThreadgroups:MTLSizeMake(q_raw_elements/context.q8QbRows,1,1)
                      threadsPerThreadgroup:MTLSizeMake(32,4,1)];
                 if (stage_samples) {
                     [encoder endEncoding];

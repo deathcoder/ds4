@@ -277,6 +277,14 @@ the raw and learned-normalized 512-value KV row, the learned-normalized
 DwarfStar processes produced byte-identical artifacts. The probe requires all
 four new runtime boundaries to match bit-for-bit before reporting success.
 
+Rust Star's production decode specializes Q-B to four output rows per
+workgroup, halving its workgroup count from 16,384 to 8,192 while preserving
+each row's accumulation and SIMD reduction order. `qb-rows-bench` alternates
+the original two-row path against a four- or eight-row candidate in one Metal
+context and checks every attention-setup boundary after every run. The paired
+Q-A/KV projection and all other Q8 projections retain their own fixed launch
+geometry.
+
 ## Layer-0 RoPE and guarded KV-cache store
 
 Schema: `rust-star-layer0-rope-kv-store-probe-v1`.

@@ -386,6 +386,21 @@ This runs eight dispatches over ten no-copy model views and verifies Q-Lora
 norm, KV raw/norm, and all 32,768 raw Q values against
 `../fixtures/layer0-qkv-setup-v1/`.
 
+The production Q-B projection processes four output rows per workgroup while
+retaining the exact per-row Q8_0 accumulation and reduction order. To compare
+it with the original two-row geometry or the eight-row control:
+
+```sh
+rust-star/.work/runtime-target/release/rust-star qb-rows-bench \
+  /absolute/path/to/model.gguf \
+  --rows 4 --warmup 10 --iterations 100 \
+  --json rust-star/.work/runtime-target/qb-rows-bench.json
+```
+
+The command alternates both paths in one Metal context and checks Q-Lora norm,
+KV raw/norm, and every raw Q value after each execution. Its timing is a focused
+diagnostic rather than a paired full-engine throughput claim.
+
 To cross the first stateful attention boundary:
 
 ```sh

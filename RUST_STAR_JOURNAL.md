@@ -674,13 +674,13 @@ history; add a correction and update the current-state summary.
 
 ## Immediate Next Actions
 
-1. Re-profile the accepted QKV and inverse-RoPE fusions in a healthy immutable
-   engine run, then isolate Q-B or the next attention setup kernel by measured
-   share. Treat the earlier profile milliseconds as perturbed diagnostics:
-   compute-pass splitting inflated transformer GPU time by 14.23%, while the
-   family ranking and shares remain useful for choosing the search order. The
-   validated paired gap remains 3.02% until an immutable optimization passes a
-   new paired full-engine comparison.
+1. Re-profile the accepted QKV, Q-B row-group, and inverse-RoPE optimizations in
+   a healthy immutable engine run, then isolate the Q-head RMSNorm/RoPE or the
+   next attention setup kernel by measured share. Treat the earlier profile
+   milliseconds as perturbed diagnostics: compute-pass splitting inflated
+   transformer GPU time by 14.23%, while the family ranking and shares remain
+   useful for choosing the search order. The validated paired gap remains 3.02%
+   until an immutable optimization passes a new paired full-engine comparison.
 2. Isolate the remaining first-token residency/scheduling cost: the new paired
    median is 871.961417 ms versus DwarfStar's 50.26 ms. Rust's internal median
    is 868.859875 ms transformer wall but only 67.742042 ms summed transformer
@@ -698,6 +698,70 @@ history; add a correction and update the current-state summary.
 6. Run or approve the fork's GitHub Actions workflow and retain its URL.
 
 ## Entries
+
+### 2026-08-28 — Four-row Q-B projection accepted
+
+Objective:
+
+- Reduce Q-B projection overhead without changing any output row's Q8_0
+  accumulation or SIMD reduction order.
+
+Implementation:
+
+- Added exact four- and eight-output-row specializations of the existing Q8_0
+  matrix-vector kernel. Both retain NSG=4 and only share the normalized Q input
+  across more independently accumulated output rows.
+- Added `qb-rows-bench`, which alternates the original two-row geometry against
+  one candidate in a persistent Metal context and validates Q-Lora norm, KV
+  raw/norm, and all 32,768 raw Q values after every execution.
+- Selected four rows for production: it halves Q-B workgroups from 16,384 to
+  8,192, matched eight rows' GPU median, and used less shared/register state.
+
+Evidence:
+
+- The finalized four-row 10-warmup/100-measured run recorded 0.215 ms baseline
+  versus 0.175 ms candidate median GPU time for the full attention-setup chain,
+  an 18.89% reduction. Evidence SHA-256
+  `a8d7d4437a62949b622c6226d48edd0e8d0c0e6fdb251fadb0b27130cba74920`.
+- The eight-row control was also exact and recorded 0.174 ms candidate median,
+  but its 0.429 ms wall median was worse than the first four-row run's 0.418 ms
+  and it doubles per-workgroup row state. Evidence SHA-256
+  `01a06211b984815a48d163c7878d0e35706e35bb12d44769d8baead4c650e40a`.
+- The complete 43-layer position-advancing decoder remained bit-exact at
+  positions 1, 2, and 3. Evidence SHA-256
+  `5ef626cc909a74ac55f197ccf892bc847d9118089818b5b22f0f438afd4ea0d4`.
+
+Full-engine control:
+
+- Immutable executable SHA-256
+  `6966067a1cb42e0a32fca91a20820ecaa92dc45f4480e0fe8dfa26f3ce4c0216`
+  reproduced the exact 128-token transcript and remained paired eligible, but
+  again entered the slow residency mode at 0.547 steady tok/s despite 94% free
+  memory and no thermal or performance warning. It is failure evidence only;
+  report SHA-256
+  `bf5ae65149b035b663bb3d35d8ba1d1296d1045d55341e5c0217038f8614b87c`.
+
+Validation:
+
+- Both row-group candidates matched every pinned setup value for all 100
+  measured executions.
+- Layers 0--42 matched every retained C0 boundary at three consecutive decode
+  positions with production four-row Q-B enabled.
+- The optimized macOS runtime built successfully; all 294 Rust tests and all 68
+  Python artifact, adapter, and paired-runner tests passed.
+
+Decision:
+
+- Keep four-row Q-B enabled in production. Do not choose eight rows on a
+  statistically indistinguishable GPU median when four rows have lower state
+  pressure and better observed host interval.
+- Do not use the slow immutable run for a throughput claim or updated project
+  headline.
+
+Next:
+
+- Continue with the Q-head RMSNorm/RoPE boundary while waiting for a healthy
+  full-engine residency state.
 
 ### 2026-08-28 — Dense Flash reduction/inverse-RoPE fusion accepted
 
