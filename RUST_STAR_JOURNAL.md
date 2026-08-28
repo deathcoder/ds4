@@ -674,6 +674,46 @@ history; add a correction and update the current-state summary.
 
 ## Entries
 
+### 2026-08-28 — Cross-layer command-buffer grouping rejected
+
+Objective:
+
+- Determine whether the remaining 3.54% steady gap comes from Rust Star's 43
+  transformer command buffers per generated token versus DwarfStar's larger
+  batch submission.
+
+Experiment and evidence:
+
+- Implemented an internal production-only command-buffer grouping contract.
+  Exact diagnostic paths retained one buffer per layer, while the seeded
+  position-8195 complete-decoder control exercised each grouped production
+  schedule. Every tested grouping remained C0 across all 43 final HC states,
+  all 129,280 logits, and selected token 35597.
+- One transformer command buffer was decisively slower: its eligible exact run
+  measured 19.317714414 steady tok/s. Steady transformer GPU time remained
+  about 40.384 ms/token, but transformer wall time rose to 49.261 ms/token
+  because the GPU could not start until Rust finished encoding the complete
+  1,813-dispatch transformer graph.
+- Four-layer groups, eleven transformer buffers plus the output head, measured
+  21.674 steady tok/s and also failed to beat the validated baseline.
+- Two-layer groups, 22 transformer buffers plus the output head, measured
+  22.166830346, 21.910702064, and 21.912 steady tok/s in three fresh eligible
+  processes. The median is only about 0.17% above the validated 21.875065281
+  tok/s baseline and lies inside observed run variation; it does not justify a
+  new scheduler contract or paired run.
+- Private evidence is retained under
+  `rust-star/.work/single-transformer-command-*`,
+  `rust-star/.work/four-layer-command-groups-*`, and
+  `rust-star/.work/two-layer-command-groups-*`.
+
+Decision and next step:
+
+- Rejected all command-buffer grouping variants and restored the validated
+  43-buffer production scheduler. Queue-ordered per-layer commits are useful:
+  they overlap GPU execution of early layers with CPU encoding of later ones.
+- The residual steady gap is not command-buffer commit overhead. Continue with
+  kernel/dispatch-family attribution inside the repeated layer GPU work.
+
 ### 2026-08-28 — Production scheduling reaches 96.46% of DwarfStar in five exact pairs
 
 Objective:
