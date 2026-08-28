@@ -585,6 +585,13 @@ int rust_star_metal_create(void **context_out, char *error, size_t error_bytes);
 
 int rust_star_metal_prepare_decoder(void *context, char *error, size_t error_bytes);
 
+int rust_star_metal_copy_chained_layer_gpu_times(
+    void *context,
+    uint32_t layer_count,
+    double *gpu_ms,
+    char *error,
+    size_t error_bytes);
+
 int rust_star_metal_run_probe(
     void *context,
     uint64_t elements,

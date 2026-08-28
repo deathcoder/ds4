@@ -11,6 +11,7 @@ use std::fs::File;
 use std::io::BufReader;
 use std::path::Path;
 use std::ptr::NonNull;
+use std::time::Instant;
 
 #[cfg(unix)]
 use std::os::fd::AsRawFd;
@@ -23,6 +24,14 @@ pub struct MappedModel {
     // but the explicit ownership mirrors the model lifetime and simplifies
     // future residency/prefetch operations.
     _file: File,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct ModelWarmReport {
+    pub bytes: u64,
+    pub pages: u64,
+    pub checksum: u64,
+    pub wall_ms: f64,
 }
 
 impl MappedModel {
@@ -110,6 +119,44 @@ impl MappedModel {
         Ok(unsafe { std::slice::from_raw_parts(pointer, bytes) })
     }
 
+    /// Match DwarfStar's `--warm-weights` policy before internal inference
+    /// timers: advise and touch one byte from every mapped tensor-data page.
+    pub fn warm_tensor_pages(&self) -> Result<ModelWarmReport> {
+        let start = usize::try_from(self.gguf.tensor_data_offset).map_err(|_| {
+            Error::invalid("tensor-data offset does not fit the host address space")
+        })?;
+        if start >= self.mapping_bytes {
+            return Err(Error::invalid("mapped model has no tensor payload to warm"));
+        }
+        let page_size = unsafe { getpagesize() };
+        if page_size <= 0 {
+            return Err(Error::invalid("host page size is invalid"));
+        }
+        let page_size = page_size as usize;
+        let bytes = self.mapping_bytes - start;
+        let pointer = unsafe { self.mapping.as_ptr().cast::<u8>().add(start) };
+        let started = Instant::now();
+        unsafe {
+            const POSIX_MADV_WILLNEED: i32 = 3;
+            let _ = posix_madvise(pointer.cast(), bytes, POSIX_MADV_WILLNEED);
+        }
+        let mut checksum = 0_u64;
+        for offset in (0..bytes).step_by(page_size) {
+            checksum = checksum.wrapping_add(u64::from(unsafe {
+                std::ptr::read_volatile(pointer.add(offset))
+            }));
+        }
+        checksum = checksum.wrapping_add(u64::from(unsafe {
+            std::ptr::read_volatile(pointer.add(bytes - 1))
+        }));
+        Ok(ModelWarmReport {
+            bytes: bytes as u64,
+            pages: bytes.div_ceil(page_size) as u64,
+            checksum,
+            wall_ms: started.elapsed().as_secs_f64() * 1000.0,
+        })
+    }
+
     pub(crate) fn mapping_pointer(&self) -> *const c_void {
         self.mapping.as_ptr()
     }
@@ -135,4 +182,6 @@ extern "C" {
         offset: i64,
     ) -> *mut c_void;
     fn munmap(address: *mut c_void, length: usize) -> i32;
+    fn getpagesize() -> i32;
+    fn posix_madvise(address: *mut c_void, length: usize, advice: i32) -> i32;
 }

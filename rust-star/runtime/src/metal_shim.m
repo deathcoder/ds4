@@ -1,11 +1,13 @@
 #import <Foundation/Foundation.h>
 #import <Metal/Metal.h>
+#import <objc/runtime.h>
 
 #include "metal_shim.h"
 
 #include <stdio.h>
 #include <stdint.h>
 #include <math.h>
+#include <stdlib.h>
 #include <string.h>
 #include <time.h>
 #include <unistd.h>
@@ -1323,6 +1325,35 @@ int rust_star_metal_prepare_decoder(
     }
 }
 
+int rust_star_metal_copy_chained_layer_gpu_times(
+    void *opaque_context,
+    uint32_t layer_count,
+    double *gpu_ms,
+    char *error,
+    size_t error_bytes)
+{
+    if (!opaque_context || !gpu_ms || layer_count == 0u || layer_count > 43u) {
+        return fail_with_message(error, error_bytes,
+            @"chained layer timing received invalid inputs");
+    }
+    @autoreleasepool {
+        RustStarMetalContext *context = (__bridge RustStarMetalContext *)opaque_context;
+        if (!context.chainedReady || context.chainedFinalLayer + 1u != layer_count) {
+            return fail_with_message(error, error_bytes,
+                @"chained layer timing requires a completed matching command chain");
+        }
+        for (uint32_t layer = 0u; layer < layer_count; layer++) {
+            id<MTLCommandBuffer> command = context.chainedCommands[@(layer)];
+            if (!command || command.status != MTLCommandBufferStatusCompleted) {
+                return fail_with_message(error, error_bytes,
+                    @"chained layer timing found an incomplete command buffer");
+            }
+            gpu_ms[layer] = gpu_elapsed_ms(command);
+        }
+        return 1;
+    }
+}
+
 int rust_star_metal_run_probe(
     void *opaque_context,
     uint64_t elements,
@@ -1995,6 +2026,56 @@ static id<MTLBuffer> persistent_buffer(
         return nil;
     }
     context.activationBufferCache[key] = buffer;
+    return buffer;
+}
+
+static BOOL prefill_buffer_is_decoder_state(const char *role)
+{
+    return strcmp(role, "kv_norm_buffer") == 0 ||
+        strcmp(role, "attn_compressed_buffer") == 0 ||
+        strcmp(role, "attn_state_kv_buffer") == 0 ||
+        strcmp(role, "attn_state_score_buffer") == 0 ||
+        strcmp(role, "indexer_compressed_buffer") == 0 ||
+        strcmp(role, "indexer_state_kv_buffer") == 0 ||
+        strcmp(role, "indexer_state_score_buffer") == 0;
+}
+
+static id<MTLBuffer> prefill_layer_buffer(
+    RustStarMetalContext *context,
+    const char *name,
+    NSUInteger bytes,
+    BOOL collect_outputs,
+    char *error,
+    size_t error_bytes)
+{
+    char *layer_end = NULL;
+    unsigned long layer = 0u;
+    if (strncmp(name, "layer", 5u) == 0) {
+        layer = strtoul(name + 5u, &layer_end, 10);
+    }
+    const BOOL is_layer_buffer = layer_end && layer_end != name + 5u &&
+        *layer_end == '_' && layer >= 3u && layer <= 42u;
+    const char *role = is_layer_buffer ? layer_end + 1u : name;
+    /* Production prefill encodes layers serially into one command buffer, so
+     * same-role transient scratch is dead before the following layer reuses it.
+     * The final HC is the sole cross-layer transient and therefore ping-pongs;
+     * persistent decoder state stays layer-scoped. Diagnostic collection keeps
+     * distinct buffers because it reads every retained layer boundary. */
+    if (!collect_outputs && is_layer_buffer &&
+        !prefill_buffer_is_decoder_state(role)) {
+        const unsigned long slot = strcmp(role, "after_ffn_hc_buffer") == 0
+            ? layer % 2u : 0u;
+        NSString *key = [NSString stringWithFormat:
+            @"prefill_transient_%s_%lu_%llu", role, slot,
+            (unsigned long long)bytes];
+        return persistent_buffer(context, key, bytes, error, error_bytes);
+    }
+    id<MTLBuffer> buffer = [context.device newBufferWithLength:bytes
+        options:MTLResourceStorageModeShared];
+    if (!buffer) {
+        fail_with_message(error, error_bytes,
+            @"failed to allocate prefill layer buffer");
+    }
     return buffer;
 }
 
@@ -11654,8 +11735,8 @@ int rust_star_metal_run_prefill_layer2_attention(
         const NSUInteger group_map_bytes = work_offset + 8u + work_cap*8u;
 
 #define RUST_STAR_NEW_L2_ATTN_BUFFER(name, bytes) \
-        id<MTLBuffer> name = [context.device newBufferWithLength:(bytes) \
-            options:MTLResourceStorageModeShared]
+        id<MTLBuffer> name = prefill_layer_buffer( \
+            context, #name, (bytes), collect_outputs, error, error_bytes)
         RUST_STAR_NEW_L2_ATTN_BUFFER(q_buffer, q_bytes);
         RUST_STAR_NEW_L2_ATTN_BUFFER(staged_kv_buffer, staged_kv_bytes);
         RUST_STAR_NEW_L2_ATTN_BUFFER(mask_buffer, mask_bytes);
@@ -41077,6 +41158,35 @@ static id<MTLBuffer> retained_prefill_layer_buffer(
     return [context valueForKey:key];
 }
 
+static void release_prefill_layer_buffers(RustStarMetalContext *context)
+{
+    /* Once the decoder state blit has completed, the full-batch prefill
+     * intermediates have no remaining consumer. Releasing them here is the
+     * ownership boundary between prefill and decode; retaining hundreds of
+     * multi-row buffers otherwise evicts mapped weight pages immediately
+     * before the first single-token command chain. */
+    unsigned int property_count = 0u;
+    objc_property_t *properties = class_copyPropertyList(
+        [RustStarMetalContext class], &property_count);
+    if (!properties) return;
+    for (unsigned int index = 0u; index < property_count; index++) {
+        const char *name = property_getName(properties[index]);
+        const char *attributes = property_getAttributes(properties[index]);
+        if (name && attributes && strncmp(name, "prefillLayer", 12u) == 0 &&
+            attributes[0] == 'T' && attributes[1] == '@') {
+            [context setValue:nil forKey:[NSString stringWithUTF8String:name]];
+        }
+    }
+    free(properties);
+    NSArray<NSString *> *activation_keys = [context.activationBufferCache.allKeys copy];
+    for (NSString *key in activation_keys) {
+        if ([key hasPrefix:@"prefill_transient_"]) {
+            [context.activationBufferCache removeObjectForKey:key];
+        }
+    }
+    context.prefillKvRows = 0u;
+}
+
 int rust_star_metal_adopt_prefill_decoder_state(
     void *opaque_context,
     uint32_t decoder_context_capacity,
@@ -41221,6 +41331,7 @@ int rust_star_metal_adopt_prefill_decoder_state(
         [context.chainedWallStarts removeAllObjects];
         context.chainedReady = NO;
         context.chainedFinalLayer = 0u;
+        release_prefill_layer_buffers(context);
         result->layers = layers;
         result->raw_rows_per_layer = raw_rows;
         result->ratio4_rows_per_layer = ratio4_rows;

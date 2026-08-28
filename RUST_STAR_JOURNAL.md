@@ -78,8 +78,21 @@ history; add a correction and update the current-state summary.
   2K/128 development comparison completed without retries or invalid attempts.
   Rust Star's paired median was 0.7534x DwarfStar for steady decode, 0.3083x for
   complete generation, and 0.4133x for prefill. The first-token wall interval
-  was 225.84x the oracle median pairwise ratio, making cold decoder transition
-  work the clearest immediate bottleneck.
+  was 225.84x the oracle median pairwise ratio. Per-layer timing then traced the
+  transition cliff to full-2K transient scratch retained across all 43 prefill
+  layers, which exhausted unified-memory headroom and evicted early mapped
+  weights before decode. Production prefill now pools same-role dead scratch,
+  ping-pongs the cross-layer HC state, and releases prefill storage after the
+  GPU state handoff while leaving diagnostic collection and persistent decoder
+  state distinct. Two exact fresh-process 2K/128 development runs improved the
+  first generated step to 833.639 and 732.984 ms, steady decode to 20.555 and
+  20.789 tok/s, complete generation to 18.254 and 18.708 tok/s, and prefill to
+  125.378 and 129.047 tok/s. Against the earlier five-pair medians this is about
+  a 14.9x first-token improvement, 18.8% higher steady decode, 2.66x higher
+  complete-generation throughput, and 73.3% higher prefill. The faster repeat
+  remains approximately 9.4% below DwarfStar's 22.95 tok/s steady median; a new
+  immutable paired comparison is required before treating these runs as a
+  benchmark result.
 - Implementation: dependency-free Rust host scaffold under `rust-star/runtime/`
   strictly parses GGUF v3 directories, validates the Flash resident-Q2
   shape/recipe, and writes candidate full-logit artifacts. A macOS-only
@@ -621,21 +634,80 @@ history; add a correction and update the current-state summary.
 
 ## Immediate Next Actions
 
-1. Isolate the 10.95-second median Rust Star first generated step into command
-   preparation, Metal pipeline/weight warm-up, transformer execution, output
-   head, and sampling without adding instrumentation to a timed pair. Reuse or
-   warm the exact production resources before the declared generation interval.
-2. Preserve the exact 2K-to-position-4099 native handoff, complete retained
+1. Freeze the scratch-residency candidate and rerun the predeclared fresh-process
+   five-pair exact 2K/128 comparison against the unchanged DwarfStar oracle.
+2. If the gain reproduces, profile the steady decoder's per-layer and per-kernel
+   GPU path and close the remaining approximately 9.4% gap without weakening C0.
+3. Preserve the exact 2K-to-position-4099 native handoff, complete retained
    position-8195 decoder step, isolated
    513/1,025-row probes, and retained-state row-1,025/2,049 controls as
    independent sparse regressions.
-3. Preserve the four-, six-, eight-, 43-layer, explicit decoder-output, and
+4. Preserve the four-, six-, eight-, 43-layer, explicit decoder-output, and
    closed-loop diagnostic commands as independently executed controls.
-4. Run the extended 2K--1M frontier capture when the Mac can be dedicated to a
+5. Run the extended 2K--1M frontier capture when the Mac can be dedicated to a
    long benchmark; preserve any 512K/1M capacity failure as evidence.
-5. Run or approve the fork's GitHub Actions workflow and retain its URL.
+6. Run or approve the fork's GitHub Actions workflow and retain its URL.
 
 ## Entries
+
+### 2026-08-28 — Timing-only prefill scratch reuse removes decoder residency cliff
+
+Objective:
+
+- Explain and remove Rust Star's 10.95-second first generated step without
+  changing arithmetic, weakening C0, or instrumenting the timed paired runs.
+
+Changes and evidence:
+
+- Added DwarfStar-equivalent mapped-weight warming before internal inference
+  timers: `POSIX_MADV_WILLNEED` plus one volatile byte touch per tensor-data
+  page. The raw engine report now records warm bytes, pages, checksum, and wall
+  time so residency policy is explicit and independently auditable.
+- Added untimed diagnostic breakdowns for decoder preparation, first and steady
+  transformer wall/GPU time, output-head wall/GPU time, and the first token's
+  43 completed per-layer command-buffer GPU intervals. Reading those timestamps
+  submits no work and occurs after the first-token stopwatch.
+- The diagnostic run showed early decoder layers taking roughly 676--701 ms
+  each while late layers took roughly 23--29 ms. Native timing-only prefill had
+  encoded the entire 43-layer schedule into one command buffer while retaining
+  distinct multi-row scratch for every layer. That working set consumed the
+  remaining 128 GB unified-memory headroom and evicted early mapped weights in
+  layer order; the first decode then faulted them back in sequentially.
+- Production native prefill now reuses transient buffers by semantic role for
+  layers 3--42. The final HC buffer uses two parity slots because the next layer
+  consumes it. Raw KV, compressed attention/indexer rows, and their score/KV
+  states remain unique per layer. Diagnostic collection still allocates every
+  layer boundary independently. After the decoder-state blit completes, the
+  prefill properties and pooled activation-cache entries are released.
+- Fresh-process run `rust-star/.work/rust-star-ctx-2048-warm-04` remained exact
+  and reported 125.377945557 prefill tok/s, 833.638750 ms first token,
+  20.554818230 steady tok/s, and 18.253799463 complete-generation tok/s. Its
+  first-token per-layer median was 20.472 ms and maximum 73.675 ms.
+- Fresh-process repeat `rust-star/.work/rust-star-ctx-2048-warm-05` reproduced
+  the exact 128-token checksum `17615242442502606640` and reported
+  129.046988121 prefill tok/s, 732.983916 ms first token, 20.788667769 steady
+  tok/s, and 18.707757287 complete-generation tok/s. Its first-token per-layer
+  median was 20.113 ms and maximum 28.771 ms.
+- Relative to the earlier five-pair Rust medians, the repeat is about 14.9x
+  faster on first-token latency, 18.8% faster on steady decode, 2.66x faster on
+  complete generation, and 73.3% faster on prefill. This is diagnostic evidence,
+  not a paired headline result. Rust Star is now approximately 9.4% behind the
+  earlier DwarfStar steady median of 22.95 tok/s.
+- The full Mac regression resumed after an interruption and passed every
+  remaining exact model gate: 2K live-KV, layer-2 KV norm/state, compressor,
+  exact native 2K prefill across all 1,216 no-copy mappings, full 43-layer
+  decode/output head, four-token closed loop, position 127, native prefill
+  handoff through position 4099, sparse/multimerge controls, and retained
+  position 8195. The complete Rust suite passed 287 tests; the Python suite
+  passed all 68 tests; formatting, optimized Mac compilation, and the runtime
+  model gates are green.
+
+Decision and next step:
+
+- Keep the C0-safe scratch lifetime optimization. Commit and freeze this
+  candidate, then rerun the unchanged five-pair 2K/128 protocol. If reproduced,
+  optimize the remaining steady transformer GPU/command path; the output head
+  is no longer the dominant gap.
 
 ### 2026-08-27 — First checkpointed C0 paired 2K/128 comparison complete
 

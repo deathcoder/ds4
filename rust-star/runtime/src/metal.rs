@@ -4294,10 +4294,24 @@ pub struct EngineRunReport {
     pub context: u32,
     pub gen_tokens: u32,
     pub gen_steady_tokens: u32,
+    pub model_warm_bytes: u64,
+    pub model_warm_pages: u64,
+    pub model_warm_checksum: u64,
+    pub model_warm_ms: f64,
     pub prefill_ms: f64,
+    pub decoder_prepare_ms: f64,
     pub gen_ms: f64,
     pub gen_first_ms: f64,
     pub gen_steady_ms: f64,
+    pub gen_first_transformer_wall_ms: f64,
+    pub gen_first_transformer_gpu_ms: f64,
+    pub gen_first_layer_gpu_ms: Vec<f64>,
+    pub gen_first_output_head_wall_ms: f64,
+    pub gen_first_output_head_gpu_ms: f64,
+    pub gen_steady_transformer_wall_ms: f64,
+    pub gen_steady_transformer_gpu_ms: f64,
+    pub gen_steady_output_head_wall_ms: f64,
+    pub gen_steady_output_head_gpu_ms: f64,
     pub prefill_selected_token: u32,
     pub final_selected_token: u32,
     pub selected_tokens_checksum: u64,
@@ -5323,14 +5337,40 @@ pub fn write_engine_run_json<W: Write>(output: &mut W, report: &EngineRunReport)
     if report.context != 2048
         || report.gen_tokens != 128
         || report.gen_steady_tokens != 127
+        || report.model_warm_bytes == 0
+        || report.model_warm_pages == 0
+        || !report.model_warm_ms.is_finite()
+        || report.model_warm_ms <= 0.0
         || !report.prefill_ms.is_finite()
         || report.prefill_ms <= 0.0
+        || !report.decoder_prepare_ms.is_finite()
+        || report.decoder_prepare_ms <= 0.0
         || !report.gen_ms.is_finite()
         || report.gen_ms <= 0.0
         || !report.gen_first_ms.is_finite()
         || report.gen_first_ms <= 0.0
         || !report.gen_steady_ms.is_finite()
         || report.gen_steady_ms <= 0.0
+        || ![
+            report.gen_first_transformer_wall_ms,
+            report.gen_first_transformer_gpu_ms,
+            report.gen_first_output_head_wall_ms,
+            report.gen_first_output_head_gpu_ms,
+            report.gen_steady_transformer_wall_ms,
+            report.gen_steady_transformer_gpu_ms,
+            report.gen_steady_output_head_wall_ms,
+            report.gen_steady_output_head_gpu_ms,
+        ]
+        .into_iter()
+        .all(|value| value.is_finite() && value > 0.0)
+        || report.gen_first_layer_gpu_ms.len() != 43
+        || report
+            .gen_first_layer_gpu_ms
+            .iter()
+            .any(|value| !value.is_finite() || *value <= 0.0)
+        || (report.gen_first_layer_gpu_ms.iter().sum::<f64>() - report.gen_first_transformer_gpu_ms)
+            .abs()
+            > 1.0e-3
         || (report.gen_first_ms + report.gen_steady_ms - report.gen_ms).abs() > 1.0e-6
         || report.prefill_selected_token != 15342
         || !report.transcript_match
@@ -5345,9 +5385,15 @@ pub fn write_engine_run_json<W: Write>(output: &mut W, report: &EngineRunReport)
     let prefill_tps = f64::from(report.context) * 1000.0 / report.prefill_ms;
     let gen_tps = f64::from(report.gen_tokens) * 1000.0 / report.gen_ms;
     let gen_steady_tps = f64::from(report.gen_steady_tokens) * 1000.0 / report.gen_steady_ms;
+    let gen_first_layer_gpu_ms = report
+        .gen_first_layer_gpu_ms
+        .iter()
+        .map(|value| format!("{value:.9}"))
+        .collect::<Vec<_>>()
+        .join(",");
     write!(
         output,
-        "{{\n  \"schema\": \"{ENGINE_RUN_SCHEMA}\",\n  \"engine\": \"rust-star\",\n  \"context\": {},\n  \"gen_tokens\": {},\n  \"metrics\": {{\"ctx_tokens\": {}, \"prefill_tokens\": {}, \"gen_tokens\": {}, \"gen_steady_tokens\": {}, \"prefill_tps\": {:.9}, \"prefill_ms\": {:.9}, \"gen_tps\": {:.9}, \"gen_ms\": {:.9}, \"gen_first_ms\": {:.9}, \"gen_steady_tps\": {:.9}, \"gen_steady_ms\": {:.9}}},\n  \"selection\": {{\"prefill_token\": {}, \"final_token\": {}, \"selected_tokens_checksum\": {}, \"oracle_transcript_match\": true}},\n  \"timing\": {{\"generation_command_buffers_per_token\": {}, \"generation_host_waits_per_token\": {}, \"generation_correctness_collection\": false, \"prefill_correctness_collection\": {}}},\n  \"paired_protocol_eligible\": {},\n  \"paired_protocol_blocker\": {}\n}}\n",
+        "{{\n  \"schema\": \"{ENGINE_RUN_SCHEMA}\",\n  \"engine\": \"rust-star\",\n  \"context\": {},\n  \"gen_tokens\": {},\n  \"metrics\": {{\"ctx_tokens\": {}, \"prefill_tokens\": {}, \"gen_tokens\": {}, \"gen_steady_tokens\": {}, \"prefill_tps\": {:.9}, \"prefill_ms\": {:.9}, \"gen_tps\": {:.9}, \"gen_ms\": {:.9}, \"gen_first_ms\": {:.9}, \"gen_steady_tps\": {:.9}, \"gen_steady_ms\": {:.9}}},\n  \"selection\": {{\"prefill_token\": {}, \"final_token\": {}, \"selected_tokens_checksum\": {}, \"oracle_transcript_match\": true}},\n  \"timing\": {{\"model_warm_bytes\": {}, \"model_warm_pages\": {}, \"model_warm_checksum\": {}, \"model_warm_ms\": {:.9}, \"decoder_prepare_ms\": {:.9}, \"gen_first_transformer_wall_ms\": {:.9}, \"gen_first_transformer_gpu_ms\": {:.9}, \"gen_first_layer_gpu_ms\": [{}], \"gen_first_output_head_wall_ms\": {:.9}, \"gen_first_output_head_gpu_ms\": {:.9}, \"gen_steady_transformer_wall_ms\": {:.9}, \"gen_steady_transformer_gpu_ms\": {:.9}, \"gen_steady_output_head_wall_ms\": {:.9}, \"gen_steady_output_head_gpu_ms\": {:.9}, \"generation_command_buffers_per_token\": {}, \"generation_host_waits_per_token\": {}, \"generation_correctness_collection\": false, \"prefill_correctness_collection\": {}}},\n  \"paired_protocol_eligible\": {},\n  \"paired_protocol_blocker\": {}\n}}\n",
         report.context,
         report.gen_tokens,
         report.context,
@@ -5364,6 +5410,20 @@ pub fn write_engine_run_json<W: Write>(output: &mut W, report: &EngineRunReport)
         report.prefill_selected_token,
         report.final_selected_token,
         report.selected_tokens_checksum,
+        report.model_warm_bytes,
+        report.model_warm_pages,
+        report.model_warm_checksum,
+        report.model_warm_ms,
+        report.decoder_prepare_ms,
+        report.gen_first_transformer_wall_ms,
+        report.gen_first_transformer_gpu_ms,
+        gen_first_layer_gpu_ms,
+        report.gen_first_output_head_wall_ms,
+        report.gen_first_output_head_gpu_ms,
+        report.gen_steady_transformer_wall_ms,
+        report.gen_steady_transformer_gpu_ms,
+        report.gen_steady_output_head_wall_ms,
+        report.gen_steady_output_head_gpu_ms,
         report.generation_command_buffers_per_token,
         report.generation_host_waits_per_token,
         report.prefill_correctness_collection,
@@ -19193,6 +19253,13 @@ mod imp {
             error: *mut c_char,
             error_bytes: usize,
         ) -> i32;
+        fn rust_star_metal_copy_chained_layer_gpu_times(
+            context: *mut c_void,
+            layer_count: u32,
+            gpu_ms: *mut f64,
+            error: *mut c_char,
+            error_bytes: usize,
+        ) -> i32;
         fn rust_star_metal_run_probe(
             context: *mut c_void,
             elements: u64,
@@ -21049,6 +21116,35 @@ mod imp {
                 )));
             }
             Ok(())
+        }
+
+        fn chained_layer_gpu_times(&self, layer_count: u32) -> Result<Vec<f64>> {
+            let mut gpu_ms = vec![0.0; layer_count as usize];
+            let mut error = [0 as c_char; ERROR_BYTES];
+            let copied = unsafe {
+                rust_star_metal_copy_chained_layer_gpu_times(
+                    self.0,
+                    layer_count,
+                    gpu_ms.as_mut_ptr(),
+                    error.as_mut_ptr(),
+                    error.len(),
+                )
+            };
+            if copied == 0 {
+                return Err(Error::invalid(format!(
+                    "Metal chained layer timing failed: {}",
+                    error_text(&error)
+                )));
+            }
+            if gpu_ms
+                .iter()
+                .any(|value| !value.is_finite() || *value <= 0.0)
+            {
+                return Err(Error::invalid(
+                    "Metal chained layer timing returned invalid values",
+                ));
+            }
+            Ok(gpu_ms)
         }
 
         fn adopt_prefill_decoder_state(
@@ -41726,6 +41822,8 @@ mod imp {
             ));
         }
 
+        let model_warm = model.warm_tensor_pages()?;
+
         let prefill_started = Instant::now();
         let (context, prefill_report, prefill_selected_token) =
             run_prefill_layers012_attention_loop_in_context(model, false)?;
@@ -41745,6 +41843,7 @@ mod imp {
         context.adopt_prefill_decoder_state(decoder_capacity)?;
         let prefill_ms = prefill_started.elapsed().as_secs_f64() * 1000.0;
 
+        let decoder_prepare_started = Instant::now();
         let mut layers = (0..43)
             .map(|layer_index| {
                 PreparedLayerExecution::new_cold_with_capacity(model, layer_index, decoder_capacity)
@@ -41755,15 +41854,23 @@ mod imp {
         }
         let mut output_head = PreparedOutputHead::new(model)?;
         context.prepare_decoder()?;
+        let decoder_prepare_ms = decoder_prepare_started.elapsed().as_secs_f64() * 1000.0;
 
         let mut input_token = oracle_inputs[0];
         let mut selected_tokens = Vec::with_capacity(gen_tokens as usize);
         let mut step_ms = Vec::with_capacity(gen_tokens as usize);
+        let mut transformer_wall_ms = Vec::with_capacity(gen_tokens as usize);
+        let mut transformer_gpu_ms = Vec::with_capacity(gen_tokens as usize);
+        let mut output_head_wall_ms = Vec::with_capacity(gen_tokens as usize);
+        let mut output_head_gpu_ms = Vec::with_capacity(gen_tokens as usize);
+        let mut first_layer_gpu_ms = Vec::new();
         for step in 0..gen_tokens {
             let position = context_tokens + step;
             let started = Instant::now();
+
+            let transformer_started = Instant::now();
             submit_prepared_layers(model, &context, &mut layers, input_token, position)?;
-            run_prepared_layer_iterations(
+            let transformer = run_prepared_layer_iterations(
                 model,
                 &context,
                 &mut layers[0],
@@ -41774,10 +41881,20 @@ mod imp {
                 COMMAND_CHAINED_TIMING,
                 42,
             )?;
-            let (selected_token, _) = run_sampling_output_head(model, &context, &mut output_head)?;
+            transformer_wall_ms.push(transformer_started.elapsed().as_secs_f64() * 1000.0);
+            transformer_gpu_ms.push(transformer.report.gpu_ms);
+
+            let output_head_started = Instant::now();
+            let (selected_token, output_head_gpu) =
+                run_sampling_output_head(model, &context, &mut output_head)?;
+            output_head_wall_ms.push(output_head_started.elapsed().as_secs_f64() * 1000.0);
+            output_head_gpu_ms.push(output_head_gpu);
             selected_tokens.push(selected_token);
             input_token = selected_token;
             step_ms.push(started.elapsed().as_secs_f64() * 1000.0);
+            if step == 0 {
+                first_layer_gpu_ms = context.chained_layer_gpu_times(43)?;
+            }
         }
 
         let expected_selected = &oracle_inputs[1..required_inputs];
@@ -41801,10 +41918,24 @@ mod imp {
             context: context_tokens,
             gen_tokens,
             gen_steady_tokens: gen_tokens - 1,
+            model_warm_bytes: model_warm.bytes,
+            model_warm_pages: model_warm.pages,
+            model_warm_checksum: model_warm.checksum,
+            model_warm_ms: model_warm.wall_ms,
             prefill_ms,
+            decoder_prepare_ms,
             gen_ms,
             gen_first_ms,
             gen_steady_ms,
+            gen_first_transformer_wall_ms: transformer_wall_ms[0],
+            gen_first_transformer_gpu_ms: transformer_gpu_ms[0],
+            gen_first_layer_gpu_ms: first_layer_gpu_ms,
+            gen_first_output_head_wall_ms: output_head_wall_ms[0],
+            gen_first_output_head_gpu_ms: output_head_gpu_ms[0],
+            gen_steady_transformer_wall_ms: transformer_wall_ms[1..].iter().sum(),
+            gen_steady_transformer_gpu_ms: transformer_gpu_ms[1..].iter().sum(),
+            gen_steady_output_head_wall_ms: output_head_wall_ms[1..].iter().sum(),
+            gen_steady_output_head_gpu_ms: output_head_gpu_ms[1..].iter().sum(),
             prefill_selected_token: oracle_inputs[0],
             final_selected_token: *selected_tokens
                 .last()
@@ -45682,10 +45813,24 @@ mod tests {
             context: 2048,
             gen_tokens: 128,
             gen_steady_tokens: 127,
+            model_warm_bytes: 87_000_000_000,
+            model_warm_pages: 5_310_059,
+            model_warm_checksum: 42,
+            model_warm_ms: 4000.0,
             prefill_ms: 20000.0,
+            decoder_prepare_ms: 100.0,
             gen_ms: 7000.0,
             gen_first_ms: 60.0,
             gen_steady_ms: 6940.0,
+            gen_first_transformer_wall_ms: 52.0,
+            gen_first_transformer_gpu_ms: 50.0,
+            gen_first_layer_gpu_ms: vec![50.0 / 43.0; 43],
+            gen_first_output_head_wall_ms: 8.0,
+            gen_first_output_head_gpu_ms: 7.0,
+            gen_steady_transformer_wall_ms: 6000.0,
+            gen_steady_transformer_gpu_ms: 5900.0,
+            gen_steady_output_head_wall_ms: 940.0,
+            gen_steady_output_head_gpu_ms: 900.0,
             prefill_selected_token: 15342,
             final_selected_token: 293,
             selected_tokens_checksum: 7,
@@ -45995,6 +46140,9 @@ mod tests {
         assert!(text.contains("\"gen_steady_tokens\": 127"));
         assert!(text.contains("\"generation_correctness_collection\": false"));
         assert!(text.contains("\"prefill_correctness_collection\": false"));
+        assert!(text.contains("\"model_warm_ms\": 4000.000000000"));
+        assert!(text.contains("\"gen_first_transformer_gpu_ms\": 50.000000000"));
+        assert!(text.contains("\"gen_first_layer_gpu_ms\": [1.162790698"));
         assert!(text.contains("\"paired_protocol_eligible\": true"));
     }
 
