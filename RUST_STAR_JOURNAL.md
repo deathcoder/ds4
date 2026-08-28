@@ -116,7 +116,12 @@ history; add a correction and update the current-state summary.
   without a failure, retry, or invalid attempt. Rust Star measured
   21.940665084 tok/s steady versus DwarfStar's 22.61, for a median within-pair
   ratio of 0.969791317x. The validated remaining steady gap is now approximately
-  3.02%.
+  3.02%. A new M1-native diagnostic profiler now attributes the transformer
+  command chain across eight dispatch families using one shared Metal timestamp
+  counter buffer. It is explicitly ineligible and splits compute encoders only
+  when `engine-profile` enables it. Routed experts account for 25.31% of the
+  profiled steady transformer GPU interval, attention QKV ingress 22.82%, and
+  attention output/HC 14.72%; together they account for 62.85%.
 - Implementation: dependency-free Rust host scaffold under `rust-star/runtime/`
   strictly parses GGUF v3 directories, validates the Flash resident-Q2
   shape/recipe, and writes candidate full-logit artifacts. A macOS-only
@@ -658,12 +663,14 @@ history; add a correction and update the current-state summary.
 
 ## Immediate Next Actions
 
-1. Use per-kernel or dispatch-family profiling to attribute the transformer
-   portion of the remaining validated 3.02% steady gap without perturbing the
-   eligible path. GPU top-1 removed about 0.20 ms/token of output-head wall time
-   in two local A/B pairs, confirming that the output boundary is not the main
-   residual. The current five-pair median is 21.940665084 tok/s for Rust Star
-   versus 22.61 for DwarfStar, with a 0.969791317x median within-pair ratio.
+1. Compare Rust Star's routed gate/up and down/sum kernels with DwarfStar's
+   exact production implementation and obtain a narrow same-input GPU replay.
+   Routed experts are the largest measured family at 25.31% and 11.582 profiled
+   ms/token; QKV ingress is next at 22.82% and 10.439 profiled ms/token. Treat
+   the milliseconds as perturbed diagnostics: compute-pass splitting inflated
+   transformer GPU time by 14.23%, while the family ranking and shares identify
+   the optimization search order. The validated paired gap remains 3.02% until
+   an immutable optimization passes a new paired comparison.
 2. Isolate the remaining first-token residency/scheduling cost: the new paired
    median is 871.961417 ms versus DwarfStar's 50.26 ms. Rust's internal median
    is 868.859875 ms transformer wall but only 67.742042 ms summed transformer
@@ -681,6 +688,64 @@ history; add a correction and update the current-state summary.
 6. Run or approve the fork's GitHub Actions workflow and retain its URL.
 
 ## Entries
+
+### 2026-08-28 — Metal stage counters attribute the remaining transformer cost
+
+Objective:
+
+- Attribute Rust Star's steady transformer GPU interval to coarse production
+  dispatch families without changing the paired-eligible scheduler.
+
+Actions and evidence:
+
+- Added an explicit `engine-profile` counter path with eight compute families:
+  attention QKV ingress; RoPE/KV/compressors; attention cache/index routing;
+  attention; attention output/HC; FFN ingress/router; routed experts; and the
+  shared expert/final FFN HC update.
+- The M1 Ultra reports dispatch-boundary counter sampling as unsupported. It
+  supports compute-stage boundaries but rejected 43 separate counter buffers,
+  so the final implementation uses one shared 688-sample timestamp buffer with
+  disjoint 16-sample ranges for all 43 layer command buffers.
+- Profiling is disabled by default. Enabling it splits compute encoders at the
+  eight family boundaries, resolves counters only after the completed chain,
+  scales counter shares to the completed per-layer command-buffer GPU
+  intervals, marks the record perturbed, and makes paired eligibility false.
+- The exact 2K/128 profile completed the full oracle transcript. Its steady
+  transformer attribution was: routed experts 25.314% / 11.582 ms per token;
+  QKV ingress 22.816% / 10.439 ms; attention output/HC 14.717% / 6.733 ms;
+  attention 10.832% / 4.956 ms; RoPE/KV/compressors 10.414% / 4.765 ms; FFN
+  ingress/router 7.763% / 3.552 ms; shared expert/final HC 6.662% / 3.048 ms;
+  and cache/index routing 1.481% / 0.678 ms.
+- Encoder splitting inflated steady transformer GPU time from 40.051 ms/token
+  in the adjacent eligible control to 45.751 ms/token in the profile, a 14.23%
+  perturbation. The profile's absolute milliseconds are diagnostic; its ranking
+  and shares define the next search order.
+- The adjacent normal `engine-measure` control retained exact selection,
+  disabled correctness/layer/counter collection, remained paired eligible, and
+  reported 22.522450779 steady tok/s. This is a single control, not a new paired
+  claim. Its null stage report demonstrates that dormant profiling does not
+  alter the production schedule.
+- Private evidence is under
+  `rust-star/.work/stage-profile-dispatch-family/`. Profile report SHA-256 is
+  `f68064503b67b83a17e0b40e938cc79c73cdd05f15877e3f683f905870f86b8f`;
+  eligible-control report SHA-256 is
+  `387988ed33d20d602cbc6eda673e5f1bd736c627772829456e6e7c5a1ad45161`.
+
+Validation:
+
+- Optimized macOS build and all 289 Rust tests.
+- All 68 Python artifact/adapter/paired-runner tests.
+- Exact 128-token oracle transcript in both the perturbed profile and the
+  unprofiled eligible control.
+- `cargo fmt --check` and `git diff --check`.
+
+Decision and next step:
+
+- Start with the routed-expert family because it is the largest measured
+  target. Compare the fused IQ2_XXS gate/up plus weighted SwiGLU and Q2_K
+  down/sum paths against pinned DwarfStar, then isolate any candidate in a
+  same-input replay before touching the eligible engine path. QKV ingress is
+  the second target if routed-expert parity leaves no actionable difference.
 
 ### 2026-08-28 — Production sampling moves lowest-ID argmax onto Metal
 

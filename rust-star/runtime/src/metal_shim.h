@@ -586,10 +586,23 @@ int rust_star_metal_create(void **context_out, char *error, size_t error_bytes);
 
 int rust_star_metal_prepare_decoder(void *context, char *error, size_t error_bytes);
 
+int rust_star_metal_enable_chained_stage_profiling(
+    void *context,
+    char *error,
+    size_t error_bytes);
+
 int rust_star_metal_copy_chained_layer_gpu_times(
     void *context,
     uint32_t layer_count,
     double *gpu_ms,
+    char *error,
+    size_t error_bytes);
+
+int rust_star_metal_copy_chained_layer_stage_ticks(
+    void *context,
+    uint32_t layer_count,
+    uint32_t sample_count,
+    uint64_t *ticks,
     char *error,
     size_t error_bytes);
 

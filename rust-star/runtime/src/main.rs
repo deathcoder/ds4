@@ -4427,7 +4427,7 @@ fn engine_measurement_usage() -> &'static str {
 }
 
 fn engine_profile_usage() -> &'static str {
-    "usage: rust-star engine-profile MODEL.gguf --context 2048 --gen-tokens 128 --json PATH\n\nRuns the exact engine workload while collecting every completed layer command buffer's GPU timestamps between generated-token intervals. The selected-token transcript remains exact, but this diagnostic mode is deliberately ineligible for paired claims."
+    "usage: rust-star engine-profile MODEL.gguf --context 2048 --gen-tokens 128 --json PATH\n\nRuns the exact engine workload while collecting every completed layer command buffer's GPU timestamps and Metal compute-stage timestamp counters across eight dispatch families. The diagnostic path splits compute encoders at family boundaries, and counter shares are scaled to completed command-buffer GPU intervals. The selected-token transcript remains exact, but this perturbing mode is deliberately ineligible for paired claims."
 }
 
 fn ratio128_compressor_replay_probe_usage() -> &'static str {

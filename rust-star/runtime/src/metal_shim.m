@@ -309,6 +309,7 @@ static NSString *const kQ8ProjectionSource =
 @property(nonatomic, strong) NSMutableDictionary<NSString *, id<MTLBuffer>> *activationBufferCache;
 @property(nonatomic, strong) NSMutableDictionary<NSNumber *, id<MTLCommandBuffer>> *chainedCommands;
 @property(nonatomic, strong) NSMutableDictionary<NSNumber *, NSNumber *> *chainedWallStarts;
+@property(nonatomic, strong) NSMutableDictionary<NSNumber *, id<MTLCounterSampleBuffer>> *chainedStageSamples;
 @property(nonatomic, strong) id<MTLBuffer> prefillLayer0FullKv;
 @property(nonatomic, strong) id<MTLBuffer> prefillLayer1FullKv;
 @property(nonatomic, strong) id<MTLBuffer> prefillLayer2FullKv;
@@ -746,6 +747,7 @@ static NSString *const kQ8ProjectionSource =
 @property(nonatomic, assign) double chainedWallEnd;
 @property(nonatomic, assign) BOOL chainedReady;
 @property(nonatomic, assign) uint32_t chainedFinalLayer;
+@property(nonatomic, assign) BOOL chainedStageProfiling;
 @property(nonatomic, assign) const void *modelMapping;
 @property(nonatomic, assign) uint64_t modelBytes;
 @property(nonatomic, assign) double setupMilliseconds;
@@ -779,6 +781,21 @@ static int command_succeeded(
         return fail_with_message(error, error_bytes, command.error.localizedDescription);
     }
     return 1;
+}
+
+static id<MTLComputeCommandEncoder> stage_compute_encoder(
+    id<MTLCommandBuffer> command,
+    id<MTLCounterSampleBuffer> samples,
+    NSUInteger stage)
+{
+    if (!samples) return [command computeCommandEncoder];
+    MTLComputePassDescriptor *descriptor = [MTLComputePassDescriptor computePassDescriptor];
+    MTLComputePassSampleBufferAttachmentDescriptor *attachment =
+        descriptor.sampleBufferAttachments[0];
+    attachment.sampleBuffer = samples;
+    attachment.startOfEncoderSampleIndex = 2u*stage;
+    attachment.endOfEncoderSampleIndex = 2u*stage + 1u;
+    return [command computeCommandEncoderWithDescriptor:descriptor];
 }
 
 static int encode_probe(
@@ -854,6 +871,7 @@ int rust_star_metal_create(void **context_out, char *error, size_t error_bytes) 
         context.activationBufferCache = [NSMutableDictionary dictionary];
         context.chainedCommands = [NSMutableDictionary dictionary];
         context.chainedWallStarts = [NSMutableDictionary dictionary];
+        context.chainedStageSamples = [NSMutableDictionary dictionary];
         context.setupMilliseconds = setup_end - setup_start;
         context.compileMilliseconds = compile_end - compile_start;
         *context_out = (__bridge_retained void *)context;
@@ -1381,6 +1399,55 @@ int rust_star_metal_prepare_decoder(
     }
 }
 
+int rust_star_metal_enable_chained_stage_profiling(
+    void *opaque_context,
+    char *error,
+    size_t error_bytes)
+{
+    if (!opaque_context) {
+        return fail_with_message(error, error_bytes,
+            @"stage profiling received a null context");
+    }
+    @autoreleasepool {
+        RustStarMetalContext *context = (__bridge RustStarMetalContext *)opaque_context;
+        if (![context.device supportsCounterSampling:MTLCounterSamplingPointAtStageBoundary]) {
+            return fail_with_message(error, error_bytes,
+                @"Metal device does not support compute-stage counter sampling");
+        }
+        id<MTLCounterSet> timestamp_set = nil;
+        for (id<MTLCounterSet> counter_set in context.device.counterSets) {
+            if ([counter_set.name isEqualToString:MTLCommonCounterSetTimestamp]) {
+                timestamp_set = counter_set;
+                break;
+            }
+        }
+        if (!timestamp_set) {
+            return fail_with_message(error, error_bytes,
+                @"Metal device does not expose the timestamp counter set");
+        }
+        [context.chainedStageSamples removeAllObjects];
+        MTLCounterSampleBufferDescriptor *descriptor =
+            [MTLCounterSampleBufferDescriptor new];
+        descriptor.counterSet = timestamp_set;
+        descriptor.storageMode = MTLStorageModeShared;
+        descriptor.sampleCount = 43u*16u;
+        descriptor.label = @"rust-star chained layer stage timestamps";
+        NSError *sample_error = nil;
+        id<MTLCounterSampleBuffer> samples =
+            [context.device newCounterSampleBufferWithDescriptor:descriptor
+                                                           error:&sample_error];
+        if (!samples) {
+            return fail_with_message(error, error_bytes,
+                sample_error.localizedDescription ?: @"failed to create timestamp sample buffer");
+        }
+        for (uint32_t layer = 0u; layer < 43u; layer++) {
+            context.chainedStageSamples[@(layer)] = samples;
+        }
+        context.chainedStageProfiling = YES;
+        return 1;
+    }
+}
+
 int rust_star_metal_copy_chained_layer_gpu_times(
     void *opaque_context,
     uint32_t layer_count,
@@ -1405,6 +1472,54 @@ int rust_star_metal_copy_chained_layer_gpu_times(
                     @"chained layer timing found an incomplete command buffer");
             }
             gpu_ms[layer] = gpu_elapsed_ms(command);
+        }
+        return 1;
+    }
+}
+
+int rust_star_metal_copy_chained_layer_stage_ticks(
+    void *opaque_context,
+    uint32_t layer_count,
+    uint32_t sample_count,
+    uint64_t *ticks,
+    char *error,
+    size_t error_bytes)
+{
+    if (!opaque_context || !ticks || layer_count == 0u || layer_count > 43u ||
+        sample_count != 16u) {
+        return fail_with_message(error, error_bytes,
+            @"chained stage timing received invalid inputs");
+    }
+    @autoreleasepool {
+        RustStarMetalContext *context = (__bridge RustStarMetalContext *)opaque_context;
+        if (!context.chainedStageProfiling || !context.chainedReady ||
+            context.chainedFinalLayer + 1u != layer_count) {
+            return fail_with_message(error, error_bytes,
+                @"chained stage timing requires a completed profiled command chain");
+        }
+        for (uint32_t layer = 0u; layer < layer_count; layer++) {
+            id<MTLCommandBuffer> command = context.chainedCommands[@(layer)];
+            id<MTLCounterSampleBuffer> samples = context.chainedStageSamples[@(layer)];
+            if (!command || command.status != MTLCommandBufferStatusCompleted || !samples) {
+                return fail_with_message(error, error_bytes,
+                    @"chained stage timing found an incomplete layer sample");
+            }
+            NSData *resolved = [samples resolveCounterRange:NSMakeRange(
+                (NSUInteger)layer*sample_count, sample_count)];
+            if (!resolved || resolved.length < sample_count*sizeof(MTLCounterResultTimestamp)) {
+                return fail_with_message(error, error_bytes,
+                    @"failed to resolve chained stage timestamps");
+            }
+            const MTLCounterResultTimestamp *timestamps = resolved.bytes;
+            for (uint32_t sample = 0u; sample < sample_count; sample++) {
+                const uint64_t value = timestamps[sample].timestamp;
+                if (value == MTLCounterErrorValue ||
+                    (sample != 0u && value <= timestamps[sample-1u].timestamp)) {
+                    return fail_with_message(error, error_bytes,
+                        @"chained stage timing returned invalid timestamps");
+                }
+                ticks[(uint64_t)layer*sample_count + sample] = value;
+            }
         }
         return 1;
     }
@@ -40429,7 +40544,13 @@ int rust_star_metal_run_attention_ingress(
         const double wall_start = monotonic_ms();
         command = [context.queue commandBuffer];
         if (!command) return fail_with_message(error, error_bytes, @"failed to create attention ingress command buffer");
-        id<MTLComputeCommandEncoder> encoder = [command computeCommandEncoder];
+        id<MTLCounterSampleBuffer> stage_samples =
+            context.chainedStageProfiling && full_layer && chained_submission
+                ? context.chainedStageSamples[@(layer0->layer_index)] : nil;
+        const NSUInteger stage_base = stage_samples
+            ? (NSUInteger)layer0->layer_index*8u : 0u;
+        id<MTLComputeCommandEncoder> encoder =
+            stage_compute_encoder(command, stage_samples, stage_base);
         if (!encoder) return fail_with_message(error, error_bytes, @"failed to create attention ingress encoder");
 
         if (compressed_layer && !cold_initial_state && position == 1u) {
@@ -40542,6 +40663,12 @@ int rust_star_metal_run_attention_ingress(
             [encoder setBuffer:q_raw_buffer offset:0 atIndex:3];
             [encoder setThreadgroupMemoryLength:32u*2u*sizeof(float) atIndex:0];
             [encoder dispatchThreadgroups:MTLSizeMake(q_raw_elements/2u,1,1) threadsPerThreadgroup:MTLSizeMake(32,4,1)];
+            if (stage_samples) {
+                [encoder endEncoding];
+                encoder = stage_compute_encoder(command, stage_samples, stage_base + 1u);
+                if (!encoder) return fail_with_message(error, error_bytes,
+                    @"failed to create RoPE/compressor profile encoder");
+            }
         }
         if (collect_outputs) [encoder endEncoding];
 
@@ -40627,13 +40754,16 @@ int rust_star_metal_run_attention_ingress(
                     return fail_with_message(error, error_bytes, @"failed to encode indexer compressor update");
                 }
             }
+            if (stage_samples) {
+                [encoder endEncoding];
+            }
 
             /* The first sparse decode row participates in indexer scoring in
              * the same step that emits it. Commit both work rows before the
              * score dispatch; the dense path keeps its established work-buffer
              * staging and post-attention commit order. */
             if (sparse_indexed_attention && compressor_emit) {
-                [encoder endEncoding];
+                if (!stage_samples) [encoder endEncoding];
                 const NSUInteger compressed_row = compressed_cache_rows - 1u;
                 id<MTLBlitCommandEncoder> sparse_commit = [command blitCommandEncoder];
                 if (!sparse_commit) return fail_with_message(error, error_bytes,
@@ -40647,9 +40777,14 @@ int rust_star_metal_run_attention_ingress(
                             destinationOffset:compressed_row*128u*sizeof(float)
                                         size:128u*sizeof(float)];
                 [sparse_commit endEncoding];
-                encoder = [command computeCommandEncoder];
+                encoder = stage_compute_encoder(command, stage_samples, stage_base + 2u);
                 if (!encoder) return fail_with_message(error, error_bytes,
                     @"failed to resume after sparse compressed-cache commit");
+            }
+            if (stage_samples && !(sparse_indexed_attention && compressor_emit)) {
+                encoder = stage_compute_encoder(command, stage_samples, stage_base + 2u);
+                if (!encoder) return fail_with_message(error, error_bytes,
+                    @"failed to create cache/index profile encoder");
             }
 
             if (attention_read) {
@@ -40810,6 +40945,13 @@ int rust_star_metal_run_attention_ingress(
                         sparse_merge_len *= 2u;
                     }
 
+                    if (stage_samples) {
+                        [encoder endEncoding];
+                        encoder = stage_compute_encoder(command, stage_samples, stage_base + 3u);
+                        if (!encoder) return fail_with_message(error, error_bytes,
+                            @"failed to create sparse-attention profile encoder");
+                    }
+
                     [encoder setComputePipelineState:context.indexedAttentionSplitPipeline];
                     [encoder setBytes:&sparse_attention_args length:sizeof(sparse_attention_args) atIndex:0];
                     [encoder setBuffer:q_rope_work_buffer offset:0 atIndex:1];
@@ -40831,6 +40973,12 @@ int rust_star_metal_run_attention_ingress(
                     [encoder dispatchThreadgroups:MTLSizeMake(64,1,1)
                          threadsPerThreadgroup:MTLSizeMake(32,4,1)];
                 } else {
+                if (stage_samples) {
+                    [encoder endEncoding];
+                    encoder = stage_compute_encoder(command, stage_samples, stage_base + 3u);
+                    if (!encoder) return fail_with_message(error, error_bytes,
+                        @"failed to create dense-attention profile encoder");
+                }
                 [encoder setComputePipelineState:context.flashPadPipeline];
                 [encoder setBytes:&flash_pad_args length:sizeof(flash_pad_args) atIndex:0];
                 [encoder setBuffer:staged_kv_buffer offset:0 atIndex:1];
@@ -40861,9 +41009,12 @@ int rust_star_metal_run_attention_ingress(
                      threadsPerThreadgroup:MTLSizeMake(1024,1,1)];
                 }
             }
+            if (stage_samples) {
+                [encoder endEncoding];
+            }
             const BOOL needs_compressed_commit =
                 compressor_emit && !sparse_indexed_attention;
-            if (needs_compressed_commit || collect_outputs) [encoder endEncoding];
+            if (!stage_samples && (needs_compressed_commit || collect_outputs)) [encoder endEncoding];
 
             if (needs_compressed_commit) {
                 const NSUInteger compressed_row = compressed_cache_rows - 1u;
@@ -40894,7 +41045,11 @@ int rust_star_metal_run_attention_ingress(
                                               size:q_raw_elements*sizeof(float)];
                     [attention_copy endEncoding];
                 }
-                if (needs_compressed_commit || collect_outputs) {
+                if (stage_samples) {
+                    encoder = stage_compute_encoder(command, stage_samples, stage_base + 4u);
+                    if (!encoder) return fail_with_message(error, error_bytes,
+                        @"failed to create attention-output profile encoder");
+                } else if (needs_compressed_commit || collect_outputs) {
                     encoder = [command computeCommandEncoder];
                     if (!encoder) return fail_with_message(error, error_bytes,
                         @"failed to create inverse-RoPE encoder");
@@ -40932,6 +41087,12 @@ int rust_star_metal_run_attention_ingress(
                     [encoder setThreadgroupMemoryLength:32u*2u*sizeof(float) atIndex:0];
                     [encoder dispatchThreadgroups:MTLSizeMake(2048,1,1)
                          threadsPerThreadgroup:MTLSizeMake(32,4,1)];
+                    if (stage_samples) {
+                        [encoder endEncoding];
+                        encoder = stage_compute_encoder(command, stage_samples, stage_base + 5u);
+                        if (!encoder) return fail_with_message(error, error_bytes,
+                            @"failed to create FFN/router profile encoder");
+                    }
                 }
                 if (full_layer) {
                     [encoder setComputePipelineState:context.rmsNormF32Pipeline];
@@ -41007,11 +41168,17 @@ int rust_star_metal_run_attention_ingress(
                     [encoder setBuffer:route_weights_buffer offset:0 atIndex:2];
                     [encoder dispatchThreads:MTLSizeMake(6,1,1)
                          threadsPerThreadgroup:MTLSizeMake(6,1,1)];
+                    if (stage_samples) {
+                        [encoder endEncoding];
+                        encoder = stage_compute_encoder(command, stage_samples, stage_base + 6u);
+                        if (!encoder) return fail_with_message(error, error_bytes,
+                            @"failed to create routed-expert profile encoder");
+                    }
                 }
-                if (collect_outputs || !full_layer) [encoder endEncoding];
+                if (!stage_samples && (collect_outputs || !full_layer)) [encoder endEncoding];
 
                 if (full_layer) {
-                    if (collect_outputs) encoder = [command computeCommandEncoder];
+                    if (collect_outputs && !stage_samples) encoder = [command computeCommandEncoder];
                     [encoder setComputePipelineState:context.routedPairSwigluPipeline];
                     [encoder setBytes:&routed_gate_args length:sizeof(routed_gate_args) atIndex:0];
                     [encoder setBytes:&routed_activation_args length:sizeof(routed_activation_args) atIndex:1];
@@ -41039,6 +41206,12 @@ int rust_star_metal_run_attention_ingress(
                     [encoder setBuffer:routed_out_buffer offset:0 atIndex:5];
                     [encoder dispatchThreadgroups:MTLSizeMake(512,1,1)
                          threadsPerThreadgroup:MTLSizeMake(32,2,1)];
+                    if (stage_samples) {
+                        [encoder endEncoding];
+                        encoder = stage_compute_encoder(command, stage_samples, stage_base + 7u);
+                        if (!encoder) return fail_with_message(error, error_bytes,
+                            @"failed to create shared-expert profile encoder");
+                    }
                     const float layer_clamp = 10.0f;
                     if (collect_outputs) {
                         [encoder endEncoding];

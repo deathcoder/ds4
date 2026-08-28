@@ -60,6 +60,16 @@ pub const COLD_PREFILL_DECODER_PROBE_SCHEMA: &str = "rust-star-cold-prefill-deco
 pub const PREFILL_FRONTIER_PROBE_SCHEMA: &str = "rust-star-prefill-frontier-diagnostic-v1";
 pub const PREFILL_DECODE_FRONTIER_PROBE_SCHEMA: &str = "rust-star-prefill-decode-frontier-probe-v1";
 pub const ENGINE_RUN_SCHEMA: &str = "rust-star-engine-run-v1";
+const ENGINE_STAGE_NAMES: [&str; 8] = [
+    "attention_ingress_qkv",
+    "rope_kv_compressors",
+    "attention_cache_and_routing",
+    "attention",
+    "attention_output_hc",
+    "ffn_ingress_router",
+    "routed_experts",
+    "shared_expert_ffn_hc",
+];
 pub const RATIO128_COMPRESSOR_REPLAY_PROBE_SCHEMA: &str =
     "rust-star-ratio128-compressor-replay-probe-v1";
 pub const SPARSE_INDEXED_ATTENTION_PROBE_SCHEMA: &str =
@@ -4311,6 +4321,8 @@ pub struct EngineRunReport {
     pub gen_steady_transformer_wall_ms: f64,
     pub gen_steady_transformer_gpu_ms: f64,
     pub gen_steady_layer_gpu_ms: Option<Vec<f64>>,
+    pub gen_first_stage_gpu_ms: Option<Vec<f64>>,
+    pub gen_steady_stage_gpu_ms: Option<Vec<f64>>,
     pub gen_steady_output_head_wall_ms: f64,
     pub gen_steady_output_head_gpu_ms: f64,
     pub prefill_selected_token: u32,
@@ -4320,6 +4332,7 @@ pub struct EngineRunReport {
     pub prefill_correctness_collection: bool,
     pub generation_correctness_collection: bool,
     pub generation_layer_timing_collection: bool,
+    pub generation_stage_counter_collection: bool,
     pub generation_command_buffers_per_token: u32,
     pub generation_host_waits_per_token: u32,
 }
@@ -5385,6 +5398,30 @@ pub fn write_engine_run_json<W: Write>(output: &mut W, report: &EngineRunReport)
                     || (values.iter().sum::<f64>() - report.gen_steady_transformer_gpu_ms).abs()
                         > 1.0e-3
             })
+        || report.generation_stage_counter_collection
+            != (report.gen_first_stage_gpu_ms.is_some() && report.gen_steady_stage_gpu_ms.is_some())
+        || report
+            .gen_first_stage_gpu_ms
+            .as_ref()
+            .is_some_and(|values| {
+                values.len() != ENGINE_STAGE_NAMES.len()
+                    || values
+                        .iter()
+                        .any(|value| !value.is_finite() || *value <= 0.0)
+                    || (values.iter().sum::<f64>() - report.gen_first_transformer_gpu_ms).abs()
+                        > 1.0e-3
+            })
+        || report
+            .gen_steady_stage_gpu_ms
+            .as_ref()
+            .is_some_and(|values| {
+                values.len() != ENGINE_STAGE_NAMES.len()
+                    || values
+                        .iter()
+                        .any(|value| !value.is_finite() || *value <= 0.0)
+                    || (values.iter().sum::<f64>() - report.gen_steady_transformer_gpu_ms).abs()
+                        > 1.0e-3
+            })
         || (report.gen_first_ms + report.gen_steady_ms - report.gen_ms).abs() > 1.0e-6
         || report.prefill_selected_token != 15342
         || !report.transcript_match
@@ -5418,10 +5455,38 @@ pub fn write_engine_run_json<W: Write>(output: &mut W, report: &EngineRunReport)
             )
         },
     );
-    let paired_protocol_eligible =
-        !report.prefill_correctness_collection && !report.generation_layer_timing_collection;
+    let stage_profile = match (
+        report.gen_first_stage_gpu_ms.as_ref(),
+        report.gen_steady_stage_gpu_ms.as_ref(),
+    ) {
+        (Some(first), Some(steady)) => {
+            let stages = ENGINE_STAGE_NAMES
+                .iter()
+                .zip(first)
+                .zip(steady)
+                .map(|((name, first_ms), steady_ms)| {
+                    format!(
+                        "{{\"name\":\"{name}\",\"first_gpu_ms\":{first_ms:.9},\"steady_gpu_ms\":{steady_ms:.9},\"steady_gpu_ms_per_token\":{:.9},\"steady_share\":{:.9}}}",
+                        steady_ms / f64::from(report.gen_steady_tokens),
+                        steady_ms / report.gen_steady_transformer_gpu_ms,
+                    )
+                })
+                .collect::<Vec<_>>()
+                .join(",");
+            format!(
+                "{{\"method\":\"metal-compute-stage-boundary-timestamp-counters\",\"encoder_splitting\":true,\"profile_perturbed\":true,\"scaling\":\"counter shares scaled to completed layer command-buffer GPU intervals\",\"stages\":[{stages}]}}"
+            )
+        }
+        (None, None) => "null".to_owned(),
+        _ => unreachable!("validated stage profiles are complete"),
+    };
+    let paired_protocol_eligible = !report.prefill_correctness_collection
+        && !report.generation_layer_timing_collection
+        && !report.generation_stage_counter_collection;
     let paired_protocol_blocker = if report.prefill_correctness_collection {
         "\"native prefill still materializes and verifies diagnostic boundary tensors outside its GPU intervals\""
+    } else if report.generation_stage_counter_collection {
+        "\"Metal stage counters split compute encoders and perturb generated-token dispatch families\""
     } else if report.generation_layer_timing_collection {
         "\"steady per-layer GPU timestamps are collected between generated-token intervals\""
     } else {
@@ -5429,7 +5494,7 @@ pub fn write_engine_run_json<W: Write>(output: &mut W, report: &EngineRunReport)
     };
     write!(
         output,
-        "{{\n  \"schema\": \"{ENGINE_RUN_SCHEMA}\",\n  \"engine\": \"rust-star\",\n  \"context\": {},\n  \"gen_tokens\": {},\n  \"metrics\": {{\"ctx_tokens\": {}, \"prefill_tokens\": {}, \"gen_tokens\": {}, \"gen_steady_tokens\": {}, \"prefill_tps\": {:.9}, \"prefill_ms\": {:.9}, \"gen_tps\": {:.9}, \"gen_ms\": {:.9}, \"gen_first_ms\": {:.9}, \"gen_steady_tps\": {:.9}, \"gen_steady_ms\": {:.9}}},\n  \"selection\": {{\"prefill_token\": {}, \"final_token\": {}, \"selected_tokens_checksum\": {}, \"oracle_transcript_match\": true}},\n  \"timing\": {{\"model_warm_bytes\": {}, \"model_warm_pages\": {}, \"model_warm_checksum\": {}, \"model_warm_ms\": {:.9}, \"decoder_prepare_ms\": {:.9}, \"gen_first_transformer_wall_ms\": {:.9}, \"gen_first_transformer_gpu_ms\": {:.9}, \"gen_first_layer_gpu_ms\": [{}], \"gen_first_output_head_wall_ms\": {:.9}, \"gen_first_output_head_gpu_ms\": {:.9}, \"gen_steady_transformer_wall_ms\": {:.9}, \"gen_steady_transformer_gpu_ms\": {:.9}, \"gen_steady_layer_gpu_ms\": {}, \"gen_steady_output_head_wall_ms\": {:.9}, \"gen_steady_output_head_gpu_ms\": {:.9}, \"generation_command_buffers_per_token\": {}, \"generation_host_waits_per_token\": {}, \"generation_correctness_collection\": false, \"generation_layer_timing_collection\": {}, \"prefill_correctness_collection\": {}}},\n  \"paired_protocol_eligible\": {},\n  \"paired_protocol_blocker\": {}\n}}\n",
+        "{{\n  \"schema\": \"{ENGINE_RUN_SCHEMA}\",\n  \"engine\": \"rust-star\",\n  \"context\": {},\n  \"gen_tokens\": {},\n  \"metrics\": {{\"ctx_tokens\": {}, \"prefill_tokens\": {}, \"gen_tokens\": {}, \"gen_steady_tokens\": {}, \"prefill_tps\": {:.9}, \"prefill_ms\": {:.9}, \"gen_tps\": {:.9}, \"gen_ms\": {:.9}, \"gen_first_ms\": {:.9}, \"gen_steady_tps\": {:.9}, \"gen_steady_ms\": {:.9}}},\n  \"selection\": {{\"prefill_token\": {}, \"final_token\": {}, \"selected_tokens_checksum\": {}, \"oracle_transcript_match\": true}},\n  \"timing\": {{\"model_warm_bytes\": {}, \"model_warm_pages\": {}, \"model_warm_checksum\": {}, \"model_warm_ms\": {:.9}, \"decoder_prepare_ms\": {:.9}, \"gen_first_transformer_wall_ms\": {:.9}, \"gen_first_transformer_gpu_ms\": {:.9}, \"gen_first_layer_gpu_ms\": [{}], \"gen_first_output_head_wall_ms\": {:.9}, \"gen_first_output_head_gpu_ms\": {:.9}, \"gen_steady_transformer_wall_ms\": {:.9}, \"gen_steady_transformer_gpu_ms\": {:.9}, \"gen_steady_layer_gpu_ms\": {}, \"gen_steady_output_head_wall_ms\": {:.9}, \"gen_steady_output_head_gpu_ms\": {:.9}, \"generation_command_buffers_per_token\": {}, \"generation_host_waits_per_token\": {}, \"generation_correctness_collection\": false, \"generation_layer_timing_collection\": {}, \"generation_stage_counter_collection\": {}, \"prefill_correctness_collection\": {}}},\n  \"stage_profile\": {},\n  \"paired_protocol_eligible\": {},\n  \"paired_protocol_blocker\": {}\n}}\n",
         report.context,
         report.gen_tokens,
         report.context,
@@ -5464,7 +5529,9 @@ pub fn write_engine_run_json<W: Write>(output: &mut W, report: &EngineRunReport)
         report.generation_command_buffers_per_token,
         report.generation_host_waits_per_token,
         report.generation_layer_timing_collection,
+        report.generation_stage_counter_collection,
         report.prefill_correctness_collection,
+        stage_profile,
         paired_protocol_eligible,
         paired_protocol_blocker,
     )?;
@@ -19291,10 +19358,23 @@ mod imp {
             error: *mut c_char,
             error_bytes: usize,
         ) -> i32;
+        fn rust_star_metal_enable_chained_stage_profiling(
+            context: *mut c_void,
+            error: *mut c_char,
+            error_bytes: usize,
+        ) -> i32;
         fn rust_star_metal_copy_chained_layer_gpu_times(
             context: *mut c_void,
             layer_count: u32,
             gpu_ms: *mut f64,
+            error: *mut c_char,
+            error_bytes: usize,
+        ) -> i32;
+        fn rust_star_metal_copy_chained_layer_stage_ticks(
+            context: *mut c_void,
+            layer_count: u32,
+            sample_count: u32,
+            ticks: *mut u64,
             error: *mut c_char,
             error_bytes: usize,
         ) -> i32;
@@ -21159,6 +21239,24 @@ mod imp {
             Ok(())
         }
 
+        fn enable_chained_stage_profiling(&self) -> Result<()> {
+            let mut error = [0 as c_char; ERROR_BYTES];
+            let enabled = unsafe {
+                rust_star_metal_enable_chained_stage_profiling(
+                    self.0,
+                    error.as_mut_ptr(),
+                    error.len(),
+                )
+            };
+            if enabled == 0 {
+                return Err(Error::invalid(format!(
+                    "Metal stage profiling setup failed: {}",
+                    error_text(&error)
+                )));
+            }
+            Ok(())
+        }
+
         fn chained_layer_gpu_times(&self, layer_count: u32) -> Result<Vec<f64>> {
             let mut gpu_ms = vec![0.0; layer_count as usize];
             let mut error = [0 as c_char; ERROR_BYTES];
@@ -21186,6 +21284,32 @@ mod imp {
                 ));
             }
             Ok(gpu_ms)
+        }
+
+        fn chained_layer_stage_ticks(
+            &self,
+            layer_count: u32,
+            sample_count: u32,
+        ) -> Result<Vec<u64>> {
+            let mut ticks = vec![0; layer_count as usize * sample_count as usize];
+            let mut error = [0 as c_char; ERROR_BYTES];
+            let copied = unsafe {
+                rust_star_metal_copy_chained_layer_stage_ticks(
+                    self.0,
+                    layer_count,
+                    sample_count,
+                    ticks.as_mut_ptr(),
+                    error.as_mut_ptr(),
+                    error.len(),
+                )
+            };
+            if copied == 0 {
+                return Err(Error::invalid(format!(
+                    "Metal chained stage timing failed: {}",
+                    error_text(&error)
+                )));
+            }
+            Ok(ticks)
         }
 
         fn adopt_prefill_decoder_state(
@@ -41925,6 +42049,39 @@ mod imp {
         run_engine_measurement_impl(model, context_tokens, gen_tokens, true)
     }
 
+    fn scale_layer_stage_ticks(timestamps: &[u64], transformer_gpu_ms: f64) -> Result<Vec<f64>> {
+        const SAMPLES_PER_LAYER: usize = ENGINE_STAGE_NAMES.len() * 2;
+        if timestamps.len() != 43 * SAMPLES_PER_LAYER
+            || !transformer_gpu_ms.is_finite()
+            || transformer_gpu_ms <= 0.0
+        {
+            return Err(Error::invalid("invalid Metal stage-profile sample set"));
+        }
+        let mut stage_ticks = [0_u128; ENGINE_STAGE_NAMES.len()];
+        for samples in timestamps.chunks_exact(SAMPLES_PER_LAYER) {
+            for stage in 0..ENGINE_STAGE_NAMES.len() {
+                let elapsed = samples[2 * stage + 1]
+                    .checked_sub(samples[2 * stage])
+                    .ok_or_else(|| Error::invalid("Metal stage timestamps are not monotonic"))?;
+                if elapsed == 0 {
+                    return Err(Error::invalid("Metal stage timestamp interval is empty"));
+                }
+                stage_ticks[stage] += u128::from(elapsed);
+            }
+        }
+        let total_ticks = stage_ticks.iter().sum::<u128>();
+        if total_ticks == 0 {
+            return Err(Error::invalid(
+                "Metal stage profile contains no elapsed ticks",
+            ));
+        }
+        let scale = transformer_gpu_ms / total_ticks as f64;
+        Ok(stage_ticks
+            .into_iter()
+            .map(|ticks| ticks as f64 * scale)
+            .collect())
+    }
+
     fn run_engine_measurement_impl(
         model: &MappedModel,
         context_tokens: u32,
@@ -41977,6 +42134,9 @@ mod imp {
         }
         let output_head = PreparedOutputHead::new(model)?;
         context.prepare_decoder()?;
+        if collect_steady_layer_times {
+            context.enable_chained_stage_profiling()?;
+        }
         let decoder_prepare_ms = decoder_prepare_started.elapsed().as_secs_f64() * 1000.0;
 
         let mut input_token = oracle_inputs[0];
@@ -41988,6 +42148,9 @@ mod imp {
         let mut output_head_gpu_ms = Vec::with_capacity(gen_tokens as usize);
         let mut first_layer_gpu_ms = Vec::new();
         let mut steady_layer_gpu_ms = collect_steady_layer_times.then(|| vec![0.0; 43]);
+        let mut first_stage_gpu_ms = None;
+        let mut steady_stage_gpu_ms =
+            collect_steady_layer_times.then(|| vec![0.0; ENGINE_STAGE_NAMES.len()]);
         for step in 0..gen_tokens {
             let position = context_tokens + step;
             let started = Instant::now();
@@ -42018,10 +42181,28 @@ mod imp {
             step_ms.push(started.elapsed().as_secs_f64() * 1000.0);
             if step == 0 || collect_steady_layer_times {
                 let layer_gpu_ms = context.chained_layer_gpu_times(43)?;
+                let stage_gpu_ms = if collect_steady_layer_times {
+                    Some(scale_layer_stage_ticks(
+                        &context
+                            .chained_layer_stage_ticks(43, (ENGINE_STAGE_NAMES.len() * 2) as u32)?,
+                        layer_gpu_ms.iter().sum(),
+                    )?)
+                } else {
+                    None
+                };
                 if step == 0 {
                     first_layer_gpu_ms = layer_gpu_ms;
+                    first_stage_gpu_ms = stage_gpu_ms;
                 } else if let Some(steady) = &mut steady_layer_gpu_ms {
                     for (total, value) in steady.iter_mut().zip(layer_gpu_ms) {
+                        *total += value;
+                    }
+                    for (total, value) in steady_stage_gpu_ms
+                        .as_mut()
+                        .expect("stage totals accompany layer profiling")
+                        .iter_mut()
+                        .zip(stage_gpu_ms.expect("profiled step has stage timings"))
+                    {
                         *total += value;
                     }
                 }
@@ -42066,6 +42247,8 @@ mod imp {
             gen_steady_transformer_wall_ms: transformer_wall_ms[1..].iter().sum(),
             gen_steady_transformer_gpu_ms: transformer_gpu_ms[1..].iter().sum(),
             gen_steady_layer_gpu_ms: steady_layer_gpu_ms,
+            gen_first_stage_gpu_ms: first_stage_gpu_ms,
+            gen_steady_stage_gpu_ms: steady_stage_gpu_ms,
             gen_steady_output_head_wall_ms: output_head_wall_ms[1..].iter().sum(),
             gen_steady_output_head_gpu_ms: output_head_gpu_ms[1..].iter().sum(),
             prefill_selected_token: oracle_inputs[0],
@@ -42077,6 +42260,7 @@ mod imp {
             prefill_correctness_collection: false,
             generation_correctness_collection: false,
             generation_layer_timing_collection: collect_steady_layer_times,
+            generation_stage_counter_collection: collect_steady_layer_times,
             generation_command_buffers_per_token: 44,
             generation_host_waits_per_token: 2,
         })
@@ -45978,6 +46162,8 @@ mod tests {
             gen_steady_transformer_wall_ms: 6000.0,
             gen_steady_transformer_gpu_ms: 5900.0,
             gen_steady_layer_gpu_ms: None,
+            gen_first_stage_gpu_ms: None,
+            gen_steady_stage_gpu_ms: None,
             gen_steady_output_head_wall_ms: 940.0,
             gen_steady_output_head_gpu_ms: 900.0,
             prefill_selected_token: 15342,
@@ -45987,6 +46173,7 @@ mod tests {
             prefill_correctness_collection: false,
             generation_correctness_collection: false,
             generation_layer_timing_collection: false,
+            generation_stage_counter_collection: false,
             generation_command_buffers_per_token: 44,
             generation_host_waits_per_token: 2,
         }
@@ -46310,6 +46497,25 @@ mod tests {
         assert!(text.contains("\"generation_layer_timing_collection\": true"));
         assert!(text.contains("\"paired_protocol_eligible\": false"));
         assert!(text.contains("steady per-layer GPU timestamps are collected"));
+    }
+
+    #[test]
+    fn stage_counter_profile_is_labeled_and_not_paired_eligible() {
+        let mut report = engine_run_report();
+        report.gen_steady_layer_gpu_ms = Some(vec![5900.0 / 43.0; 43]);
+        report.gen_first_stage_gpu_ms = Some(vec![6.25; 8]);
+        report.gen_steady_stage_gpu_ms = Some(vec![737.5; 8]);
+        report.generation_layer_timing_collection = true;
+        report.generation_stage_counter_collection = true;
+        let mut output = Vec::new();
+        write_engine_run_json(&mut output, &report).unwrap();
+        let text = String::from_utf8(output).unwrap();
+        assert!(text.contains("\"generation_stage_counter_collection\": true"));
+        assert!(text.contains("\"method\":\"metal-compute-stage-boundary-timestamp-counters\""));
+        assert!(text.contains("\"name\":\"routed_experts\""));
+        assert!(text.contains("\"steady_share\":0.125000000"));
+        assert!(text.contains("Metal stage counters split compute encoders"));
+        assert!(text.contains("\"paired_protocol_eligible\": false"));
     }
 
     #[test]
