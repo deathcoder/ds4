@@ -15,21 +15,21 @@ use rust_star_runtime::metal::{
     run_prefill_layers01_complete_boundary_probe, run_prefill_layers01_live_kv_chain_probe,
     run_prefill_layers01_live_kv_loop_probe, run_prefill_layers01_row_coverage_probe,
     run_prefill_q8_boundary_probe, run_prefill_qkv_boundary_probe, run_probe,
-    run_q8_projection_probe, run_qb_rows_bench, run_qkv_pair_bench,
-    run_ratio128_compressor_replay_probe, run_retained_decoder_step_probe,
-    run_retained_sparse_boundary_probe, run_retained_sparse_multimerge_probe,
-    run_rope_kv_store_probe, run_routed_nsg_bench, run_sparse_indexed_attention_probe,
-    write_attention_output_nsg_bench_json, write_attention_output_probe_json,
-    write_attention_read_probe_json, write_attention_rope_fusion_bench_json,
-    write_attention_setup_probe_json, write_closed_loop_decoder_probe_json,
-    write_cold_prefill_decoder_probe_json, write_decoder_output_probe_json,
-    write_embedding_probe_json, write_engine_run_json, write_ffn_router_probe_json,
-    write_ingress_probe_json, write_layer0_bench_json, write_layer0_probe_json,
-    write_layers01234567_decode_probe_json, write_layers012345_decode_probe_json,
-    write_layers0123_bench_json, write_layers0123_chained_probe_json,
-    write_layers0123_decode_probe_json, write_layers0123_probe_json,
-    write_layers012_chained_probe_json, write_layers012_probe_json, write_layers01_probe_json,
-    write_layers0_to_42_decode_probe_json, write_moe_output_probe_json,
+    run_q8_projection_probe, run_q_head_kv_fusion_bench, run_q_head_threads_bench,
+    run_qb_rows_bench, run_qkv_pair_bench, run_ratio128_compressor_replay_probe,
+    run_retained_decoder_step_probe, run_retained_sparse_boundary_probe,
+    run_retained_sparse_multimerge_probe, run_rope_kv_store_probe, run_routed_nsg_bench,
+    run_sparse_indexed_attention_probe, write_attention_output_nsg_bench_json,
+    write_attention_output_probe_json, write_attention_read_probe_json,
+    write_attention_rope_fusion_bench_json, write_attention_setup_probe_json,
+    write_closed_loop_decoder_probe_json, write_cold_prefill_decoder_probe_json,
+    write_decoder_output_probe_json, write_embedding_probe_json, write_engine_run_json,
+    write_ffn_router_probe_json, write_ingress_probe_json, write_layer0_bench_json,
+    write_layer0_probe_json, write_layers01234567_decode_probe_json,
+    write_layers012345_decode_probe_json, write_layers0123_bench_json,
+    write_layers0123_chained_probe_json, write_layers0123_decode_probe_json,
+    write_layers0123_probe_json, write_layers012_chained_probe_json, write_layers012_probe_json,
+    write_layers01_probe_json, write_layers0_to_42_decode_probe_json, write_moe_output_probe_json,
     write_position127_decoder_probe_json, write_prefill_decode_frontier_probe_json,
     write_prefill_frontier_probe_json, write_prefill_layer0_boundary_probe_json,
     write_prefill_layers012_attention_loop_probe_json,
@@ -40,7 +40,8 @@ use rust_star_runtime::metal::{
     write_prefill_layers01_live_kv_chain_probe_json,
     write_prefill_layers01_live_kv_loop_probe_json, write_prefill_layers01_row_coverage_probe_json,
     write_prefill_q8_boundary_probe_json, write_prefill_qkv_boundary_probe_json, write_probe_json,
-    write_projection_probe_json, write_qb_rows_bench_json, write_qkv_pair_bench_json,
+    write_projection_probe_json, write_q_head_kv_fusion_bench_json,
+    write_q_head_threads_bench_json, write_qb_rows_bench_json, write_qkv_pair_bench_json,
     write_ratio128_compressor_replay_probe_json, write_retained_decoder_step_probe_json,
     write_retained_sparse_boundary_probe_json, write_retained_sparse_multimerge_probe_json,
     write_rope_kv_store_probe_json, write_routed_nsg_bench_json,
@@ -59,8 +60,9 @@ use rust_star_runtime::metal::{
     PrefillLayers01BoundaryProbeReport, PrefillLayers01CompleteBoundaryProbeReport,
     PrefillLayers01LiveKvChainProbeReport, PrefillLayers01LiveKvLoopProbeReport,
     PrefillLayers01RowCoverageProbeReport, PrefillQ8BoundaryProbeReport,
-    PrefillQkvBoundaryProbeReport, ProbeConfig, ProjectionProbeReport, QbRowsBenchReport,
-    QkvPairBenchReport, Ratio128CompressorReplayProbeReport, RetainedDecoderStepProbeReport,
+    PrefillQkvBoundaryProbeReport, ProbeConfig, ProjectionProbeReport, QHeadKvFusionBenchReport,
+    QHeadThreadsBenchReport, QbRowsBenchReport, QkvPairBenchReport,
+    Ratio128CompressorReplayProbeReport, RetainedDecoderStepProbeReport,
     RetainedSparseBoundaryProbeReport, RopeKvStoreProbeReport, RoutedNsgBenchReport,
     SparseIndexedAttentionProbeReport,
 };
@@ -150,6 +152,12 @@ fn run() -> Result<()> {
     }
     if command == "qb-rows-bench" {
         return run_qb_rows_bench_command(arguments.collect());
+    }
+    if command == "q-head-threads-bench" {
+        return run_q_head_threads_bench_command(arguments.collect());
+    }
+    if command == "q-head-kv-fusion-bench" {
+        return run_q_head_kv_fusion_bench_command(arguments.collect());
     }
     if command == "rope-kv-store-probe" {
         return run_rope_kv_store_command(arguments.collect());
@@ -2185,6 +2193,122 @@ fn run_qb_rows_bench_command(arguments: Vec<OsString>) -> Result<()> {
     println!("result: both Q-B row-group paths matched every pinned attention-setup boundary bit-for-bit");
     if let Some(path) = json_path {
         write_qb_rows_bench_file(&path, &report)?;
+        println!("json: {}", path.display());
+    }
+    Ok(())
+}
+
+fn run_q_head_threads_bench_command(arguments: Vec<OsString>) -> Result<()> {
+    let mut warmup_rounds = 10_u32;
+    let mut measured_rounds = 100_u32;
+    let mut json_path: Option<PathBuf> = None;
+    let mut arguments = arguments.into_iter();
+    while let Some(argument) = arguments.next() {
+        match argument.to_str() {
+            Some("--warmup") => {
+                warmup_rounds = parse_u32_option("--warmup", arguments.next().as_deref())?;
+            }
+            Some("--iterations") => {
+                measured_rounds = parse_u32_option("--iterations", arguments.next().as_deref())?;
+            }
+            Some("--json") => {
+                let value = arguments
+                    .next()
+                    .ok_or_else(|| Error::invalid("--json requires a path"))?;
+                if json_path.is_some() {
+                    return Err(Error::invalid("--json may be specified only once"));
+                }
+                json_path = Some(PathBuf::from(value));
+            }
+            Some("--help") | Some("-h") => {
+                println!("{}", q_head_threads_bench_usage());
+                return Ok(());
+            }
+            _ => return Err(Error::invalid(q_head_threads_bench_usage())),
+        }
+    }
+    let report = run_q_head_threads_bench(warmup_rounds, measured_rounds)?;
+    let gpu_change = (report.candidate_gpu.median_ms / report.baseline_gpu.median_ms - 1.0) * 100.0;
+    println!("fixture: {}", report.fixture_id);
+    println!(
+        "execution: {} warmup + {} measured alternating rounds per path",
+        report.warmup_rounds, report.measured_rounds
+    );
+    println!(
+        "Q-head threads=256: wall median={:.3} ms MAD={:.3} ms; gpu median={:.3} ms MAD={:.3} ms",
+        report.baseline_wall.median_ms,
+        report.baseline_wall.mad_ms,
+        report.baseline_gpu.median_ms,
+        report.baseline_gpu.mad_ms,
+    );
+    println!(
+        "Q-head threads=128: wall median={:.3} ms MAD={:.3} ms; gpu median={:.3} ms MAD={:.3} ms ({gpu_change:+.2}%)",
+        report.candidate_wall.median_ms,
+        report.candidate_wall.mad_ms,
+        report.candidate_gpu.median_ms,
+        report.candidate_gpu.mad_ms,
+    );
+    println!("result: both launch geometries matched all 32,768 Q-head values bit-for-bit");
+    if let Some(path) = json_path {
+        write_q_head_threads_bench_file(&path, &report)?;
+        println!("json: {}", path.display());
+    }
+    Ok(())
+}
+
+fn run_q_head_kv_fusion_bench_command(arguments: Vec<OsString>) -> Result<()> {
+    let mut warmup_rounds = 10_u32;
+    let mut measured_rounds = 100_u32;
+    let mut json_path: Option<PathBuf> = None;
+    let mut arguments = arguments.into_iter();
+    while let Some(argument) = arguments.next() {
+        match argument.to_str() {
+            Some("--warmup") => {
+                warmup_rounds = parse_u32_option("--warmup", arguments.next().as_deref())?;
+            }
+            Some("--iterations") => {
+                measured_rounds = parse_u32_option("--iterations", arguments.next().as_deref())?;
+            }
+            Some("--json") => {
+                let value = arguments
+                    .next()
+                    .ok_or_else(|| Error::invalid("--json requires a path"))?;
+                if json_path.is_some() {
+                    return Err(Error::invalid("--json may be specified only once"));
+                }
+                json_path = Some(PathBuf::from(value));
+            }
+            Some("--help") | Some("-h") => {
+                println!("{}", q_head_kv_fusion_bench_usage());
+                return Ok(());
+            }
+            _ => return Err(Error::invalid(q_head_kv_fusion_bench_usage())),
+        }
+    }
+    let report = run_q_head_kv_fusion_bench(warmup_rounds, measured_rounds)?;
+    let gpu_change = (report.fused_gpu.median_ms / report.separate_gpu.median_ms - 1.0) * 100.0;
+    println!("fixture: {}", report.fixture_id);
+    println!(
+        "execution: {} warmup + {} measured alternating rounds per path",
+        report.warmup_rounds, report.measured_rounds
+    );
+    println!(
+        "separate Q/KV RoPE: wall median={:.3} ms MAD={:.3} ms; gpu median={:.3} ms MAD={:.3} ms",
+        report.separate_wall.median_ms,
+        report.separate_wall.mad_ms,
+        report.separate_gpu.median_ms,
+        report.separate_gpu.mad_ms,
+    );
+    println!(
+        "fused Q/KV RoPE: wall median={:.3} ms MAD={:.3} ms; gpu median={:.3} ms MAD={:.3} ms ({gpu_change:+.2}%)",
+        report.fused_wall.median_ms,
+        report.fused_wall.mad_ms,
+        report.fused_gpu.median_ms,
+        report.fused_gpu.mad_ms,
+    );
+    println!("result: both paths matched all Q-head and KV-RoPE values bit-for-bit");
+    if let Some(path) = json_path {
+        write_q_head_kv_fusion_bench_file(&path, &report)?;
         println!("json: {}", path.display());
     }
     Ok(())
@@ -4735,6 +4859,60 @@ fn write_qb_rows_bench_file(path: &Path, report: &QbRowsBenchReport) -> Result<(
     Ok(())
 }
 
+fn write_q_head_threads_bench_file(path: &Path, report: &QHeadThreadsBenchReport) -> Result<()> {
+    let temporary = path.with_extension(format!(
+        "{}tmp",
+        path.extension()
+            .and_then(OsStr::to_str)
+            .map(|extension| format!("{extension}."))
+            .unwrap_or_default()
+    ));
+    let file = File::create(&temporary).map_err(|error| {
+        Error::invalid(format!(
+            "cannot create Q-head thread benchmark JSON {}: {error}",
+            temporary.display()
+        ))
+    })?;
+    let mut output = BufWriter::new(file);
+    write_q_head_threads_bench_json(&mut output, report)?;
+    output.flush()?;
+    drop(output);
+    std::fs::rename(&temporary, path).map_err(|error| {
+        Error::invalid(format!(
+            "cannot install Q-head thread benchmark JSON {}: {error}",
+            path.display()
+        ))
+    })?;
+    Ok(())
+}
+
+fn write_q_head_kv_fusion_bench_file(path: &Path, report: &QHeadKvFusionBenchReport) -> Result<()> {
+    let temporary = path.with_extension(format!(
+        "{}tmp",
+        path.extension()
+            .and_then(OsStr::to_str)
+            .map(|extension| format!("{extension}."))
+            .unwrap_or_default()
+    ));
+    let file = File::create(&temporary).map_err(|error| {
+        Error::invalid(format!(
+            "cannot create Q-head/KV fusion benchmark JSON {}: {error}",
+            temporary.display()
+        ))
+    })?;
+    let mut output = BufWriter::new(file);
+    write_q_head_kv_fusion_bench_json(&mut output, report)?;
+    output.flush()?;
+    drop(output);
+    std::fs::rename(&temporary, path).map_err(|error| {
+        Error::invalid(format!(
+            "cannot install Q-head/KV fusion benchmark JSON {}: {error}",
+            path.display()
+        ))
+    })?;
+    Ok(())
+}
+
 fn write_qkv_pair_bench_file(path: &Path, report: &QkvPairBenchReport) -> Result<()> {
     let temporary = path.with_extension(format!(
         "{}tmp",
@@ -4779,7 +4957,7 @@ fn usage() -> &'static str {
 
 fn full_usage() -> String {
     format!(
-        "{}\n  rust-star attention-output-nsg-bench MODEL.gguf [OPTIONS]\n  rust-star attention-rope-fusion-bench MODEL.gguf [OPTIONS]\n  rust-star qkv-pair-bench MODEL.gguf [OPTIONS]\n  rust-star qb-rows-bench MODEL.gguf [OPTIONS]\n  rust-star routed-nsg-bench MODEL.gguf [OPTIONS]\n  rust-star prefill-decode-frontier-probe MODEL.gguf [OPTIONS]\n  rust-star engine-measure MODEL.gguf --context N --gen-tokens N --json PATH\n  rust-star engine-profile MODEL.gguf --context N --gen-tokens N --json PATH\n  rust-star retained-sparse-multimerge-probe MODEL.gguf [OPTIONS]\n  rust-star retained-decoder-step-probe MODEL.gguf [OPTIONS]",
+        "{}\n  rust-star attention-output-nsg-bench MODEL.gguf [OPTIONS]\n  rust-star attention-rope-fusion-bench MODEL.gguf [OPTIONS]\n  rust-star qkv-pair-bench MODEL.gguf [OPTIONS]\n  rust-star qb-rows-bench MODEL.gguf [OPTIONS]\n  rust-star q-head-threads-bench [OPTIONS]\n  rust-star q-head-kv-fusion-bench [OPTIONS]\n  rust-star routed-nsg-bench MODEL.gguf [OPTIONS]\n  rust-star prefill-decode-frontier-probe MODEL.gguf [OPTIONS]\n  rust-star engine-measure MODEL.gguf --context N --gen-tokens N --json PATH\n  rust-star engine-profile MODEL.gguf --context N --gen-tokens N --json PATH\n  rust-star retained-sparse-multimerge-probe MODEL.gguf [OPTIONS]\n  rust-star retained-decoder-step-probe MODEL.gguf [OPTIONS]",
         usage()
     )
 }
@@ -4858,6 +5036,14 @@ fn qkv_pair_bench_usage() -> &'static str {
 
 fn qb_rows_bench_usage() -> &'static str {
     "usage: rust-star qb-rows-bench MODEL.gguf --rows N [--warmup N] [--iterations N] [--json PATH]\n\nAlternates the original two-row Q-B workgroup against an exact four- or eight-row candidate in one Metal context, validates every attention-setup boundary bit-for-bit, and reports diagnostic timing only."
+}
+
+fn q_head_threads_bench_usage() -> &'static str {
+    "usage: rust-star q-head-threads-bench [--warmup N] [--iterations N] [--json PATH]\n\nAlternates the original 256-thread Q-head RMSNorm/RoPE launch against the exact 128-thread candidate in one Metal context, validates all 32,768 output values bit-for-bit, and reports diagnostic timing only."
+}
+
+fn q_head_kv_fusion_bench_usage() -> &'static str {
+    "usage: rust-star q-head-kv-fusion-bench [--warmup N] [--iterations N] [--json PATH]\n\nAlternates separate Q-head RMSNorm/RoPE and KV RoPE dispatches against the fused 65-workgroup kernel in one Metal context, validates both outputs bit-for-bit, and reports diagnostic timing only."
 }
 
 fn rope_kv_store_probe_usage() -> &'static str {

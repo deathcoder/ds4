@@ -289,9 +289,12 @@ geometry.
 
 Schema: `rust-star-layer0-rope-kv-store-probe-v1`.
 
-`rope-kv-store-probe` adds the three DwarfStar release kernels immediately
-before attention: fused per-head Q RMSNorm/RoPE, the in-place KV RoPE, and the
-fused E4M3FN KV finalizer/raw-cache store. The build embeds the pinned
+`rope-kv-store-probe` reaches the three DwarfStar release operations immediately
+before attention: per-head Q RMSNorm/RoPE, in-place KV RoPE, and the fused
+E4M3FN KV finalizer/raw-cache store. Production Rust Star combines the first two
+operations into one 65-workgroup dispatch: groups 0--63 retain the exact Q
+reduction and lane mapping, while group 64 retains the exact KV tail equations.
+The build embeds the pinned
 `metal/dsv4_rope.metal` and `metal/dsv4_kv.metal` sources directly instead of
 maintaining approximate copies.
 
@@ -311,7 +314,7 @@ stateful write boundary.
 
 Schema: `rust-star-layer0-attention-read-probe-v1`.
 
-`attention-read-probe` extends the connected path to fifteen dispatches. It
+`attention-read-probe` extends the connected path to fourteen dispatches. It
 imports DwarfStar's contiguous F32-to-F16 cache staging, partial-block padding,
 512-wide vector FlashAttention, and the Rust Star split-K
 reduction/inverse-RoPE fusion. The exact
@@ -347,8 +350,9 @@ attention output values, and all 16,384 updated HC-state values to match their
 FP32 bit patterns exactly.
 
 `attention-rope-fusion-bench` retains the original split-K reducer and inverse
-RoPE pipelines as a same-context control. It alternates that 18-dispatch chain
-against the 17-dispatch fused chain, preserves the raw pre-RoPE tensor in probe
+RoPE pipelines as a same-context control. With Q/KV RoPE fusion enabled ahead
+of it, the benchmark alternates that 17-dispatch chain against the 16-dispatch
+fused chain, preserves the raw pre-RoPE tensor in probe
 mode, and checks all 32,768 post-RoPE values plus both attention projections and
 the final HC state after every execution. Production decode aliases the two
 buffers and removes one launch per dense-attention layer; sparse indexed

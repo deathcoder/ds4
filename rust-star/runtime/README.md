@@ -401,6 +401,20 @@ The command alternates both paths in one Metal context and checks Q-Lora norm,
 KV raw/norm, and every raw Q value after each execution. Its timing is a focused
 diagnostic rather than a paired full-engine throughput claim.
 
+Production decode also folds the single KV RoPE workgroup into the 64-head Q
+RMSNorm/RoPE launch. To replay the separate and fused kernels directly:
+
+```sh
+rust-star/.work/runtime-target/release/rust-star q-head-kv-fusion-bench \
+  --warmup 10 --iterations 500 \
+  --json rust-star/.work/runtime-target/q-head-kv-fusion-bench.json
+```
+
+The focused command alternates both paths in one Metal context and checks all
+32,768 Q values plus all 512 KV values after every run. The retained
+`q-head-threads-bench` control records why the exact 128-thread Q launch was
+rejected in favor of the original 256-thread reduction geometry.
+
 To cross the first stateful attention boundary:
 
 ```sh
@@ -409,8 +423,8 @@ rust-star/.work/runtime-target/release/rust-star rope-kv-store-probe \
   --json rust-star/.work/runtime-target/rope-kv-store-probe.json
 ```
 
-This extends the same path to eleven dispatches with DwarfStar's fused Q head
-RMSNorm/RoPE, the layer-0 KV RoPE, and its fused E4M3FN KV finalizer/cache
+This extends the same path to ten dispatches with Rust Star's combined Q-head
+RMSNorm/Q-RoPE/KV-RoPE launch and the fused E4M3FN KV finalizer/cache
 store. It matches `Qcur`, `KVrope`, and `KVcur` bit-for-bit, then verifies the
 FP16-rounded target cache row while two sentinel neighbor rows remain intact.
 
@@ -422,7 +436,7 @@ rust-star/.work/runtime-target/release/rust-star attention-read-probe \
   --json rust-star/.work/runtime-target/attention-read-probe.json
 ```
 
-This fifteen-dispatch checkpoint stages cache rows 0-1 to F16, executes
+This fourteen-dispatch checkpoint stages cache rows 0-1 to F16, executes
 DwarfStar's padded 512-wide FlashAttention, and folds inverse RoPE into the
 split-K reduction. It preserves the first cache row and guard row and requires the complete
 64×512 `kqv_back` result to match the pinned DwarfStar oracle bit-for-bit.
@@ -450,7 +464,7 @@ rust-star/.work/runtime-target/release/rust-star attention-rope-fusion-bench \
   --json rust-star/.work/runtime-target/attention-rope-fusion-bench.json
 ```
 
-The benchmark alternates the 18-dispatch control and 17-dispatch fused chain,
+The benchmark alternates the 17-dispatch control and 16-dispatch fused chain,
 preserves both the pre- and post-RoPE diagnostic boundaries, and rejects either
 path on the first non-bitwise output. Its timings are diagnostic rather than a
 paired full-engine throughput claim.

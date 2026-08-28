@@ -423,6 +423,127 @@ kernel void kernel_dsv4_head_rms_norm_rope_tail_f32(
     }
 }
 
+// The 64 Q heads and the single in-place KV tail use the same position and
+// YaRN parameters. Group 64 folds the standalone KV RoPE launch into the Q
+// dispatch while groups 0..63 retain the exact Q reduction and lane mapping.
+kernel void kernel_dsv4_head_rms_norm_q_kv_rope_tail_f32(
+        constant ds4_metal_args_dsv4_head_norm_rope & args,
+        device char * qraw,
+        device char * kvraw,
+        threadgroup float * shmem_f32 [[threadgroup(0)]],
+        uint3 tgpig [[threadgroup_position_in_grid]],
+        ushort3 tpitg [[thread_position_in_threadgroup]],
+        ushort sgitg [[simdgroup_index_in_threadgroup]],
+        ushort tiisg [[thread_index_in_simdgroup]],
+        ushort3 ntg [[threads_per_threadgroup]]) {
+    const uint head = tgpig.x;
+    const uint tok = tgpig.y;
+    const int n_nope = args.head_dim - args.n_dims;
+    if (n_nope < 0) {
+        return;
+    }
+
+    if (head == (uint)args.n_head) {
+        float corr_dims[2];
+        rope_yarn_corr_dims(args.n_dims, args.n_ctx_orig, args.freq_base,
+                            args.beta_fast, args.beta_slow, corr_dims);
+        const float theta_base = (float)(args.pos0 + (int)tok);
+        const float inv_ndims = -1.0f / args.n_dims;
+        device float * xs = (device float *)kvraw +
+            (uint64_t)tok * (uint64_t)args.head_dim;
+
+        for (int i0 = tpitg.x; i0 < args.head_dim; i0 += ntg.x) {
+            if (i0 < n_nope) {
+                continue;
+            }
+            const int r = i0 - n_nope;
+            if ((r & 1) != 0) {
+                continue;
+            }
+#ifdef DS4_METAL_ROPE_EXP2_LOG2
+            const float theta =
+                theta_base * exp2(inv_ndims * (float)r * log2(args.freq_base));
+#else
+            const float theta =
+                theta_base * pow(args.freq_base, inv_ndims * r);
+#endif
+            float cos_theta;
+            float sin_theta;
+            rope_yarn(theta, args.freq_scale, corr_dims, r,
+                      args.ext_factor, args.attn_factor,
+                      &cos_theta, &sin_theta);
+            if (args.inverse) {
+                sin_theta = -sin_theta;
+            }
+            const float x0 = xs[i0];
+            const float x1 = xs[i0 + 1];
+            xs[i0] = x0 * cos_theta - x1 * sin_theta;
+            xs[i0 + 1] = x0 * sin_theta + x1 * cos_theta;
+        }
+        return;
+    }
+    if (head >= (uint)args.n_head) {
+        return;
+    }
+
+    if (sgitg == 0) {
+        shmem_f32[tiisg] = 0.0f;
+    }
+    device float4 * x4 = (device float4 *)qraw +
+        ((uint64_t)tok * (uint64_t)args.n_head + head) *
+        (uint64_t)args.head_dim4;
+    float sumf = 0.0f;
+    for (int i00 = tpitg.x; i00 < args.head_dim4; i00 += ntg.x) {
+        sumf += dot(x4[i00], x4[i00]);
+    }
+    sumf = simd_sum(sumf);
+
+    threadgroup_barrier(mem_flags::mem_threadgroup);
+    if (tiisg == 0) {
+        shmem_f32[sgitg] = sumf;
+    }
+    threadgroup_barrier(mem_flags::mem_threadgroup);
+
+    sumf = simd_sum(shmem_f32[tiisg]);
+    const float scale = 1.0f / sqrt(sumf / args.head_dim + args.eps);
+    float corr_dims[2];
+    rope_yarn_corr_dims(args.n_dims, args.n_ctx_orig, args.freq_base,
+                        args.beta_fast, args.beta_slow, corr_dims);
+    const float theta_base = (float)(args.pos0 + (int)tok);
+    const float inv_ndims = -1.0f / args.n_dims;
+    device float * xs = (device float *)x4;
+
+    for (int i0 = tpitg.x; i0 < args.head_dim; i0 += ntg.x) {
+        if (i0 < n_nope) {
+            xs[i0] = xs[i0] * scale;
+            continue;
+        }
+        const int r = i0 - n_nope;
+        if ((r & 1) != 0) {
+            continue;
+        }
+#ifdef DS4_METAL_ROPE_EXP2_LOG2
+        const float theta =
+            theta_base * exp2(inv_ndims * (float)r * log2(args.freq_base));
+#else
+        const float theta =
+            theta_base * pow(args.freq_base, inv_ndims * r);
+#endif
+        float cos_theta;
+        float sin_theta;
+        rope_yarn(theta, args.freq_scale, corr_dims, r,
+                  args.ext_factor, args.attn_factor,
+                  &cos_theta, &sin_theta);
+        if (args.inverse) {
+            sin_theta = -sin_theta;
+        }
+        const float x0 = xs[i0] * scale;
+        const float x1 = xs[i0 + 1] * scale;
+        xs[i0] = x0 * cos_theta - x1 * sin_theta;
+        xs[i0 + 1] = x0 * sin_theta + x1 * cos_theta;
+    }
+}
+
 // DS4 positions are always affine within one RoPE dispatch. This variant
 // reconstructs the same wrapped int32 position in-kernel, avoiding the host
 // position array and its buffer binding while preserving the pair lane mapping

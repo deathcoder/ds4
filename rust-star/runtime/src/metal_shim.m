@@ -301,6 +301,9 @@ static NSString *const kQ8ProjectionSource =
 @property(nonatomic, strong) id<MTLComputePipelineState> hcIngressPipeline;
 @property(nonatomic, strong) id<MTLComputePipelineState> qkvNormPipeline;
 @property(nonatomic, strong) id<MTLComputePipelineState> headNormRopePipeline;
+@property(nonatomic, strong) id<MTLComputePipelineState> headNormKvRopePipeline;
+@property(nonatomic, assign) uint32_t headNormRopeThreads;
+@property(nonatomic, assign) BOOL useQHeadKvRopeFusion;
 @property(nonatomic, strong) id<MTLComputePipelineState> ropeTailPipeline;
 @property(nonatomic, strong) id<MTLComputePipelineState> kvStorePipeline;
 @property(nonatomic, strong) id<MTLComputePipelineState> cpyF32F16Pipeline;
@@ -1057,6 +1060,8 @@ static int ensure_attention_ingress_pipelines(
     id<MTLFunction> hc = [library newFunctionWithName:@"kernel_dsv4_hc_split_weighted_sum_norm4"];
     id<MTLFunction> qkvNorm = [library newFunctionWithName:@"kernel_dsv4_qkv_rms_norm_f32_4"];
     id<MTLFunction> headNormRope = [library newFunctionWithName:@"kernel_dsv4_head_rms_norm_rope_tail_f32"];
+    id<MTLFunction> headNormKvRope =
+        [library newFunctionWithName:@"kernel_dsv4_head_rms_norm_q_kv_rope_tail_f32"];
     id<MTLFunction> ropeTail = [library newFunctionWithName:@"kernel_dsv4_rope_tail_f32"];
     id<MTLFunction> kvStore = [library newFunctionWithName:@"kernel_dsv4_kv_fp8_store_f32"];
     id<MTLFunction> cpyF32F16 = [library newFunctionWithName:@"kernel_cpy_contig_f32_f16_4"];
@@ -1151,7 +1156,7 @@ static int ensure_attention_ingress_pipelines(
     id<MTLFunction> compressorShift = [library newFunctionWithName:@"kernel_dsv4_ratio4_shift_f32"];
     id<MTLFunction> compressorFp8 = [library newFunctionWithName:@"kernel_dsv4_fp8_kv_quantize_f32"];
     id<MTLFunction> indexerQat = [library newFunctionWithName:@"kernel_dsv4_indexer_hadamard_fp4_f32"];
-    if (!repeat || !norm || !hc || !qkvNorm || !headNormRope || !ropeTail ||
+    if (!repeat || !norm || !hc || !qkvNorm || !headNormRope || !headNormKvRope || !ropeTail ||
         !kvStore || !cpyF32F16 || !cpyF16F32 || !flashPad || !flashBlk ||
         !flashNonvec || !flashVec || !flashReduce || !flashReduceInverseRope ||
         !projection || !compressorPair || !compressorStore || !compressorPack ||
@@ -1195,6 +1200,10 @@ static int ensure_attention_ingress_pipelines(
     context.hcIngressPipeline = [context.device newComputePipelineStateWithFunction:hc error:&compile_error];
     context.qkvNormPipeline = [context.device newComputePipelineStateWithFunction:qkvNorm error:&compile_error];
     context.headNormRopePipeline = [context.device newComputePipelineStateWithFunction:headNormRope error:&compile_error];
+    context.headNormKvRopePipeline =
+        [context.device newComputePipelineStateWithFunction:headNormKvRope error:&compile_error];
+    context.headNormRopeThreads = 256u;
+    context.useQHeadKvRopeFusion = YES;
     context.ropeTailPipeline = [context.device newComputePipelineStateWithFunction:ropeTail error:&compile_error];
     context.kvStorePipeline = [context.device newComputePipelineStateWithFunction:kvStore error:&compile_error];
     context.cpyF32F16Pipeline = [context.device newComputePipelineStateWithFunction:cpyF32F16 error:&compile_error];
@@ -1229,6 +1238,7 @@ static int ensure_attention_ingress_pipelines(
         !context.compressorShiftPipeline || !context.compressorFp8Pipeline ||
         !context.indexerQatPipeline || !context.hcIngressPipeline ||
         !context.qkvNormPipeline || !context.headNormRopePipeline ||
+        !context.headNormKvRopePipeline ||
         !context.ropeTailPipeline || !context.kvStorePipeline ||
         !context.cpyF32F16Pipeline || !context.cpyF16F32Pipeline ||
         !context.flashPadPipeline || !context.flashBlkPipeline ||
@@ -1560,6 +1570,22 @@ int rust_star_metal_select_qb_rows(
     context.q8QbPipeline = rows == 4u ? context.q8QbNr4Pipeline
         : (rows == 8u ? context.q8QbNr8Pipeline : context.q8ProjectionPipeline);
     context.q8QbRows = rows;
+    return 1;
+}
+
+int rust_star_metal_select_q_head_kv_rope_fusion(
+    void *opaque_context,
+    uint32_t enabled,
+    char *error,
+    size_t error_bytes)
+{
+    if (!opaque_context || enabled > 1u) {
+        return fail_with_message(error, error_bytes,
+            @"Q-head/KV RoPE fusion selector must be 0 or 1");
+    }
+    RustStarMetalContext *context = (__bridge RustStarMetalContext *)opaque_context;
+    if (!ensure_attention_ingress_pipelines(context, error, error_bytes)) return 0;
+    context.useQHeadKvRopeFusion = enabled != 0u;
     return 1;
 }
 
@@ -39782,6 +39808,158 @@ int rust_star_metal_run_prefill_layer2_attention(
     }
 }
 
+int rust_star_metal_run_q_head_threads(
+    void *opaque_context,
+    const float *q_raw,
+    uint64_t q_elements,
+    uint32_t threads,
+    float *q_cur,
+    rust_star_metal_q_head_result *result,
+    char *error,
+    size_t error_bytes)
+{
+    if (!opaque_context || !q_raw || !q_cur || !result ||
+        q_elements != 64u*512u || (threads != 128u && threads != 256u)) {
+        return fail_with_message(error, error_bytes,
+            @"Q-head benchmark requires 32,768 values and 128 or 256 threads");
+    }
+    @autoreleasepool {
+        RustStarMetalContext *context = (__bridge RustStarMetalContext *)opaque_context;
+        if (!ensure_attention_ingress_pipelines(context, error, error_bytes)) return 0;
+        const NSUInteger q_bytes = (NSUInteger)q_elements*sizeof(float);
+        id<MTLBuffer> q_buffer = [context.device newBufferWithBytes:q_raw
+                                                            length:q_bytes
+                                                           options:MTLResourceStorageModeShared];
+        if (!q_buffer) {
+            return fail_with_message(error, error_bytes,
+                @"failed to allocate Q-head benchmark buffer");
+        }
+        rust_star_head_norm_rope_args args = {
+            .n_head=64, .head_dim=512, .head_dim4=128, .n_dims=64,
+            .n_ctx_orig=0, .pos0=1, .inverse=0,
+            .eps=1.0e-6f, .freq_base=10000.0f, .freq_scale=1.0f,
+            .ext_factor=0.0f, .attn_factor=1.0f,
+            .beta_fast=32.0f, .beta_slow=1.0f,
+        };
+        id<MTLCommandBuffer> command = [context.queue commandBuffer];
+        if (!command) {
+            return fail_with_message(error, error_bytes,
+                @"failed to create Q-head benchmark command buffer");
+        }
+        id<MTLComputeCommandEncoder> encoder = [command computeCommandEncoder];
+        if (!encoder) {
+            return fail_with_message(error, error_bytes,
+                @"failed to create Q-head benchmark encoder");
+        }
+        [encoder setComputePipelineState:context.headNormRopePipeline];
+        [encoder setBytes:&args length:sizeof(args) atIndex:0];
+        [encoder setBuffer:q_buffer offset:0 atIndex:1];
+        [encoder setThreadgroupMemoryLength:32u*sizeof(float) atIndex:0];
+        [encoder dispatchThreadgroups:MTLSizeMake(64,1,1)
+             threadsPerThreadgroup:MTLSizeMake(threads,1,1)];
+        [encoder endEncoding];
+        const double start = monotonic_ms();
+        [command commit];
+        if (!command_succeeded(command, error, error_bytes)) return 0;
+        result->wall_ms = monotonic_ms() - start;
+        result->gpu_ms = gpu_elapsed_ms(command);
+        memcpy(q_cur, q_buffer.contents, q_bytes);
+        return 1;
+    }
+}
+
+int rust_star_metal_run_q_head_kv_rope_fusion(
+    void *opaque_context,
+    const float *q_raw,
+    uint64_t q_elements,
+    const float *kv_raw,
+    uint64_t kv_elements,
+    uint32_t fused,
+    float *q_cur,
+    float *kv_cur,
+    rust_star_metal_q_head_result *result,
+    char *error,
+    size_t error_bytes)
+{
+    if (!opaque_context || !q_raw || !kv_raw || !q_cur || !kv_cur || !result ||
+        q_elements != 64u*512u || kv_elements != 512u || fused > 1u) {
+        return fail_with_message(error, error_bytes,
+            @"Q-head/KV fusion benchmark received invalid inputs");
+    }
+    @autoreleasepool {
+        RustStarMetalContext *context = (__bridge RustStarMetalContext *)opaque_context;
+        if (!ensure_attention_ingress_pipelines(context, error, error_bytes)) return 0;
+        const NSUInteger q_bytes = (NSUInteger)q_elements*sizeof(float);
+        const NSUInteger kv_bytes = (NSUInteger)kv_elements*sizeof(float);
+        id<MTLBuffer> q_buffer = [context.device newBufferWithBytes:q_raw
+                                                            length:q_bytes
+                                                           options:MTLResourceStorageModeShared];
+        id<MTLBuffer> kv_buffer = [context.device newBufferWithBytes:kv_raw
+                                                             length:kv_bytes
+                                                            options:MTLResourceStorageModeShared];
+        if (!q_buffer || !kv_buffer) {
+            return fail_with_message(error, error_bytes,
+                @"failed to allocate Q-head/KV fusion benchmark buffers");
+        }
+        rust_star_head_norm_rope_args q_args = {
+            .n_head=64, .head_dim=512, .head_dim4=128, .n_dims=64,
+            .n_ctx_orig=0, .pos0=1, .inverse=0,
+            .eps=1.0e-6f, .freq_base=10000.0f, .freq_scale=1.0f,
+            .ext_factor=0.0f, .attn_factor=1.0f,
+            .beta_fast=32.0f, .beta_slow=1.0f,
+        };
+        rust_star_rope_tail_args kv_args = {
+            .ne00=512, .ne01=1, .ne02=1, .ne03=1,
+            .nb00=sizeof(float), .nb01=kv_bytes, .nb02=kv_bytes, .nb03=kv_bytes,
+            .nb0=sizeof(float), .nb1=kv_bytes, .nb2=kv_bytes, .nb3=kv_bytes,
+            .n_dims=64, .mode=0, .n_ctx_orig=0, .inverse=0,
+            .freq_base=10000.0f, .freq_scale=1.0f,
+            .ext_factor=0.0f, .attn_factor=1.0f,
+            .beta_fast=32.0f, .beta_slow=1.0f, .src2=false,
+        };
+        id<MTLCommandBuffer> command = [context.queue commandBuffer];
+        id<MTLComputeCommandEncoder> encoder = [command computeCommandEncoder];
+        if (!command || !encoder) {
+            return fail_with_message(error, error_bytes,
+                @"failed to create Q-head/KV fusion benchmark command");
+        }
+        if (fused) {
+            [encoder setComputePipelineState:context.headNormKvRopePipeline];
+            [encoder setBytes:&q_args length:sizeof(q_args) atIndex:0];
+            [encoder setBuffer:q_buffer offset:0 atIndex:1];
+            [encoder setBuffer:kv_buffer offset:0 atIndex:2];
+            [encoder setThreadgroupMemoryLength:32u*sizeof(float) atIndex:0];
+            [encoder dispatchThreadgroups:MTLSizeMake(65,1,1)
+                 threadsPerThreadgroup:MTLSizeMake(256,1,1)];
+        } else {
+            [encoder setComputePipelineState:context.headNormRopePipeline];
+            [encoder setBytes:&q_args length:sizeof(q_args) atIndex:0];
+            [encoder setBuffer:q_buffer offset:0 atIndex:1];
+            [encoder setThreadgroupMemoryLength:32u*sizeof(float) atIndex:0];
+            [encoder dispatchThreadgroups:MTLSizeMake(64,1,1)
+                 threadsPerThreadgroup:MTLSizeMake(256,1,1)];
+            [encoder setComputePipelineState:context.ropeTailPipeline];
+            [encoder setBytes:&kv_args length:sizeof(kv_args) atIndex:0];
+            [encoder setBuffer:kv_buffer offset:0 atIndex:1];
+            int32_t position = 1;
+            [encoder setBytes:&position length:sizeof(position) atIndex:2];
+            [encoder setBuffer:kv_buffer offset:0 atIndex:3];
+            [encoder setBuffer:kv_buffer offset:0 atIndex:4];
+            [encoder dispatchThreadgroups:MTLSizeMake(1,1,1)
+                 threadsPerThreadgroup:MTLSizeMake(256,1,1)];
+        }
+        [encoder endEncoding];
+        const double start = monotonic_ms();
+        [command commit];
+        if (!command_succeeded(command, error, error_bytes)) return 0;
+        result->wall_ms = monotonic_ms() - start;
+        result->gpu_ms = gpu_elapsed_ms(command);
+        memcpy(q_cur, q_buffer.contents, q_bytes);
+        memcpy(kv_cur, kv_buffer.contents, kv_bytes);
+        return 1;
+    }
+}
+
 int rust_star_metal_run_attention_ingress(
     void *opaque_context,
     const void *model_mapping,
@@ -41024,22 +41202,32 @@ int rust_star_metal_run_attention_ingress(
                 if (!encoder) return fail_with_message(error, error_bytes,
                     @"failed to create RoPE encoder");
             }
-            [encoder setComputePipelineState:context.headNormRopePipeline];
-            [encoder setBytes:&q_rope_args length:sizeof(q_rope_args) atIndex:0];
-            [encoder setBuffer:q_rope_work_buffer offset:0 atIndex:1];
-            [encoder setThreadgroupMemoryLength:32u*sizeof(float) atIndex:0];
-            [encoder dispatchThreadgroups:MTLSizeMake(64,1,1)
-                 threadsPerThreadgroup:MTLSizeMake(256,1,1)];
+            if (context.useQHeadKvRopeFusion) {
+                [encoder setComputePipelineState:context.headNormKvRopePipeline];
+                [encoder setBytes:&q_rope_args length:sizeof(q_rope_args) atIndex:0];
+                [encoder setBuffer:q_rope_work_buffer offset:0 atIndex:1];
+                [encoder setBuffer:kv_norm_buffer offset:0 atIndex:2];
+                [encoder setThreadgroupMemoryLength:32u*sizeof(float) atIndex:0];
+                [encoder dispatchThreadgroups:MTLSizeMake(65,1,1)
+                     threadsPerThreadgroup:MTLSizeMake(256,1,1)];
+            } else {
+                [encoder setComputePipelineState:context.headNormRopePipeline];
+                [encoder setBytes:&q_rope_args length:sizeof(q_rope_args) atIndex:0];
+                [encoder setBuffer:q_rope_work_buffer offset:0 atIndex:1];
+                [encoder setThreadgroupMemoryLength:32u*sizeof(float) atIndex:0];
+                [encoder dispatchThreadgroups:MTLSizeMake(64,1,1)
+                     threadsPerThreadgroup:MTLSizeMake(context.headNormRopeThreads,1,1)];
 
-            [encoder setComputePipelineState:context.ropeTailPipeline];
-            [encoder setBytes:&kv_rope_args length:sizeof(kv_rope_args) atIndex:0];
-            [encoder setBuffer:kv_norm_buffer offset:0 atIndex:1];
-            int32_t rope_position = (int32_t)position;
-            [encoder setBytes:&rope_position length:sizeof(rope_position) atIndex:2];
-            [encoder setBuffer:kv_norm_buffer offset:0 atIndex:3];
-            [encoder setBuffer:kv_norm_buffer offset:0 atIndex:4];
-            [encoder dispatchThreadgroups:MTLSizeMake(1,1,1)
-                 threadsPerThreadgroup:MTLSizeMake(256,1,1)];
+                [encoder setComputePipelineState:context.ropeTailPipeline];
+                [encoder setBytes:&kv_rope_args length:sizeof(kv_rope_args) atIndex:0];
+                [encoder setBuffer:kv_norm_buffer offset:0 atIndex:1];
+                int32_t rope_position = (int32_t)position;
+                [encoder setBytes:&rope_position length:sizeof(rope_position) atIndex:2];
+                [encoder setBuffer:kv_norm_buffer offset:0 atIndex:3];
+                [encoder setBuffer:kv_norm_buffer offset:0 atIndex:4];
+                [encoder dispatchThreadgroups:MTLSizeMake(1,1,1)
+                     threadsPerThreadgroup:MTLSizeMake(256,1,1)];
+            }
             if (collect_outputs) {
                 [encoder endEncoding];
                 id<MTLBlitCommandEncoder> kv_copy = [command blitCommandEncoder];

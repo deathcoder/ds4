@@ -528,6 +528,11 @@ typedef struct rust_star_metal_ingress_probe_result {
     double gpu_ms;
 } rust_star_metal_ingress_probe_result;
 
+typedef struct rust_star_metal_q_head_result {
+    double wall_ms;
+    double gpu_ms;
+} rust_star_metal_q_head_result;
+
 typedef struct rust_star_metal_layer0_extension {
     uint64_t hc_ffn_fn_offset, hc_ffn_fn_bytes;
     uint64_t hc_ffn_scale_offset, hc_ffn_scale_bytes;
@@ -1897,6 +1902,29 @@ int rust_star_metal_run_attention_ingress(
     size_t error_bytes,
     const rust_star_metal_layer0_extension *layer0);
 
+int rust_star_metal_run_q_head_threads(
+    void *context,
+    const float *q_raw,
+    uint64_t q_elements,
+    uint32_t threads,
+    float *q_cur,
+    rust_star_metal_q_head_result *result,
+    char *error,
+    size_t error_bytes);
+
+int rust_star_metal_run_q_head_kv_rope_fusion(
+    void *context,
+    const float *q_raw,
+    uint64_t q_elements,
+    const float *kv_raw,
+    uint64_t kv_elements,
+    uint32_t fused,
+    float *q_cur,
+    float *kv_cur,
+    rust_star_metal_q_head_result *result,
+    char *error,
+    size_t error_bytes);
+
 typedef struct rust_star_metal_sparse_indexed_result {
     uint32_t position;
     uint32_t compressed_rows;
@@ -2144,6 +2172,12 @@ int rust_star_metal_select_qkv_pair(
 int rust_star_metal_select_qb_rows(
     void *context,
     uint32_t rows,
+    char *error,
+    size_t error_bytes);
+
+int rust_star_metal_select_q_head_kv_rope_fusion(
+    void *context,
+    uint32_t enabled,
     char *error,
     size_t error_bytes);
 

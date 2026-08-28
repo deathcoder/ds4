@@ -39,6 +39,8 @@ pub const MOE_OUTPUT_PROBE_SCHEMA: &str = "rust-star-layer0-moe-output-probe-v1"
 pub const ROUTED_NSG_BENCH_SCHEMA: &str = "rust-star-routed-nsg-bench-v1";
 pub const QKV_PAIR_BENCH_SCHEMA: &str = "rust-star-qkv-pair-bench-v1";
 pub const QB_ROWS_BENCH_SCHEMA: &str = "rust-star-qb-rows-bench-v1";
+pub const Q_HEAD_THREADS_BENCH_SCHEMA: &str = "rust-star-q-head-threads-bench-v1";
+pub const Q_HEAD_KV_FUSION_BENCH_SCHEMA: &str = "rust-star-q-head-kv-fusion-bench-v1";
 pub const ATTENTION_OUTPUT_NSG_BENCH_SCHEMA: &str = "rust-star-attention-output-nsg-bench-v1";
 pub const ATTENTION_ROPE_FUSION_BENCH_SCHEMA: &str = "rust-star-attention-rope-fusion-bench-v1";
 pub const LAYER0_PROBE_SCHEMA: &str = "rust-star-layer0-complete-probe-v1";
@@ -4089,6 +4091,39 @@ pub struct QbRowsBenchReport {
 }
 
 #[derive(Clone, Debug)]
+pub struct QHeadThreadsBenchReport {
+    pub fixture_id: &'static str,
+    pub warmup_rounds: u32,
+    pub measured_rounds: u32,
+    pub baseline_wall_ms_samples: Vec<f64>,
+    pub baseline_gpu_ms_samples: Vec<f64>,
+    pub candidate_wall_ms_samples: Vec<f64>,
+    pub candidate_gpu_ms_samples: Vec<f64>,
+    pub baseline_wall: TimingSummary,
+    pub baseline_gpu: TimingSummary,
+    pub candidate_wall: TimingSummary,
+    pub candidate_gpu: TimingSummary,
+    pub q_cur_checksum: u64,
+}
+
+#[derive(Clone, Debug)]
+pub struct QHeadKvFusionBenchReport {
+    pub fixture_id: &'static str,
+    pub warmup_rounds: u32,
+    pub measured_rounds: u32,
+    pub separate_wall_ms_samples: Vec<f64>,
+    pub separate_gpu_ms_samples: Vec<f64>,
+    pub fused_wall_ms_samples: Vec<f64>,
+    pub fused_gpu_ms_samples: Vec<f64>,
+    pub separate_wall: TimingSummary,
+    pub separate_gpu: TimingSummary,
+    pub fused_wall: TimingSummary,
+    pub fused_gpu: TimingSummary,
+    pub q_cur_checksum: u64,
+    pub kv_rope_checksum: u64,
+}
+
+#[derive(Clone, Debug)]
 pub struct AttentionOutputNsgBenchReport {
     pub fixture_id: &'static str,
     pub warmup_rounds: u32,
@@ -4826,6 +4861,77 @@ pub fn write_qb_rows_bench_json<W: Write>(
     Ok(())
 }
 
+pub fn write_q_head_threads_bench_json<W: Write>(
+    output: &mut W,
+    report: &QHeadThreadsBenchReport,
+) -> Result<()> {
+    write!(
+        output,
+        "{{\n  \"schema\": \"{Q_HEAD_THREADS_BENCH_SCHEMA}\",\n  \"fixture\": \"{}\",\n  \"warmup_rounds\": {},\n  \"measured_rounds\": {},\n  \"baseline\": {{\n    \"threads_per_workgroup\": 256,\n    \"workgroups\": 64,\n    \"wall_ms_samples\": [",
+        report.fixture_id, report.warmup_rounds, report.measured_rounds,
+    )?;
+    write_timing_samples(output, &report.baseline_wall_ms_samples)?;
+    write!(output, "],\n    \"gpu_ms_samples\": [")?;
+    write_timing_samples(output, &report.baseline_gpu_ms_samples)?;
+    write!(
+        output,
+        "],\n    \"wall_median_ms\": {:.6},\n    \"wall_mad_ms\": {:.6},\n    \"gpu_median_ms\": {:.6},\n    \"gpu_mad_ms\": {:.6}\n  }},\n  \"candidate\": {{\n    \"threads_per_workgroup\": 128,\n    \"workgroups\": 64,\n    \"wall_ms_samples\": [",
+        report.baseline_wall.median_ms,
+        report.baseline_wall.mad_ms,
+        report.baseline_gpu.median_ms,
+        report.baseline_gpu.mad_ms,
+    )?;
+    write_timing_samples(output, &report.candidate_wall_ms_samples)?;
+    write!(output, "],\n    \"gpu_ms_samples\": [")?;
+    write_timing_samples(output, &report.candidate_gpu_ms_samples)?;
+    write!(
+        output,
+        "],\n    \"wall_median_ms\": {:.6},\n    \"wall_mad_ms\": {:.6},\n    \"gpu_median_ms\": {:.6},\n    \"gpu_mad_ms\": {:.6}\n  }},\n  \"checksums\": {{\n    \"q_current\": {}\n  }},\n  \"alternating_order\": true,\n  \"single_metal_context\": true,\n  \"c0_bitwise_match\": true,\n  \"paired_claim_eligible\": false\n}}\n",
+        report.candidate_wall.median_ms,
+        report.candidate_wall.mad_ms,
+        report.candidate_gpu.median_ms,
+        report.candidate_gpu.mad_ms,
+        report.q_cur_checksum,
+    )?;
+    Ok(())
+}
+
+pub fn write_q_head_kv_fusion_bench_json<W: Write>(
+    output: &mut W,
+    report: &QHeadKvFusionBenchReport,
+) -> Result<()> {
+    write!(
+        output,
+        "{{\n  \"schema\": \"{Q_HEAD_KV_FUSION_BENCH_SCHEMA}\",\n  \"fixture\": \"{}\",\n  \"warmup_rounds\": {},\n  \"measured_rounds\": {},\n  \"separate\": {{\n    \"dispatches\": 2,\n    \"wall_ms_samples\": [",
+        report.fixture_id, report.warmup_rounds, report.measured_rounds,
+    )?;
+    write_timing_samples(output, &report.separate_wall_ms_samples)?;
+    write!(output, "],\n    \"gpu_ms_samples\": [")?;
+    write_timing_samples(output, &report.separate_gpu_ms_samples)?;
+    write!(
+        output,
+        "],\n    \"wall_median_ms\": {:.6},\n    \"wall_mad_ms\": {:.6},\n    \"gpu_median_ms\": {:.6},\n    \"gpu_mad_ms\": {:.6}\n  }},\n  \"fused\": {{\n    \"dispatches\": 1,\n    \"wall_ms_samples\": [",
+        report.separate_wall.median_ms,
+        report.separate_wall.mad_ms,
+        report.separate_gpu.median_ms,
+        report.separate_gpu.mad_ms,
+    )?;
+    write_timing_samples(output, &report.fused_wall_ms_samples)?;
+    write!(output, "],\n    \"gpu_ms_samples\": [")?;
+    write_timing_samples(output, &report.fused_gpu_ms_samples)?;
+    write!(
+        output,
+        "],\n    \"wall_median_ms\": {:.6},\n    \"wall_mad_ms\": {:.6},\n    \"gpu_median_ms\": {:.6},\n    \"gpu_mad_ms\": {:.6}\n  }},\n  \"checksums\": {{\n    \"q_current\": {},\n    \"kv_rope\": {}\n  }},\n  \"alternating_order\": true,\n  \"single_metal_context\": true,\n  \"c0_bitwise_match\": true,\n  \"paired_claim_eligible\": false\n}}\n",
+        report.fused_wall.median_ms,
+        report.fused_wall.mad_ms,
+        report.fused_gpu.median_ms,
+        report.fused_gpu.mad_ms,
+        report.q_cur_checksum,
+        report.kv_rope_checksum,
+    )?;
+    Ok(())
+}
+
 pub fn write_attention_output_nsg_bench_json<W: Write>(
     output: &mut W,
     report: &AttentionOutputNsgBenchReport,
@@ -4871,7 +4977,7 @@ pub fn write_attention_rope_fusion_bench_json<W: Write>(
 ) -> Result<()> {
     write!(
         output,
-        "{{\n  \"schema\": \"{ATTENTION_ROPE_FUSION_BENCH_SCHEMA}\",\n  \"fixture\": \"{}\",\n  \"warmup_rounds\": {},\n  \"measured_rounds\": {},\n  \"separate\": {{\n    \"dispatches\": 18,\n    \"wall_ms_samples\": [",
+        "{{\n  \"schema\": \"{ATTENTION_ROPE_FUSION_BENCH_SCHEMA}\",\n  \"fixture\": \"{}\",\n  \"warmup_rounds\": {},\n  \"measured_rounds\": {},\n  \"separate\": {{\n    \"dispatches\": 17,\n    \"wall_ms_samples\": [",
         report.fixture_id, report.warmup_rounds, report.measured_rounds,
     )?;
     write_timing_samples(output, &report.separate_wall_ms_samples)?;
@@ -4879,7 +4985,7 @@ pub fn write_attention_rope_fusion_bench_json<W: Write>(
     write_timing_samples(output, &report.separate_gpu_ms_samples)?;
     write!(
         output,
-        "],\n    \"wall_median_ms\": {:.6},\n    \"wall_mad_ms\": {:.6},\n    \"gpu_median_ms\": {:.6},\n    \"gpu_mad_ms\": {:.6}\n  }},\n  \"fused\": {{\n    \"dispatches\": 17,\n    \"wall_ms_samples\": [",
+        "],\n    \"wall_median_ms\": {:.6},\n    \"wall_mad_ms\": {:.6},\n    \"gpu_median_ms\": {:.6},\n    \"gpu_mad_ms\": {:.6}\n  }},\n  \"fused\": {{\n    \"dispatches\": 16,\n    \"wall_ms_samples\": [",
         report.separate_wall.median_ms,
         report.separate_wall.mad_ms,
         report.separate_gpu.median_ms,
@@ -18799,6 +18905,13 @@ mod imp {
 
     #[repr(C)]
     #[derive(Default)]
+    struct RawQHeadResult {
+        wall_ms: f64,
+        gpu_ms: f64,
+    }
+
+    #[repr(C)]
+    #[derive(Default)]
     struct RawProjectionProbeResult {
         model_bytes: u64,
         tensor_offset: u64,
@@ -20961,6 +21074,29 @@ mod imp {
             error: *mut c_char,
             error_bytes: usize,
             layer0: *const RawLayer0Extension,
+        ) -> i32;
+        fn rust_star_metal_run_q_head_threads(
+            context: *mut c_void,
+            q_raw: *const f32,
+            q_elements: u64,
+            threads: u32,
+            q_cur: *mut f32,
+            result: *mut RawQHeadResult,
+            error: *mut c_char,
+            error_bytes: usize,
+        ) -> i32;
+        fn rust_star_metal_run_q_head_kv_rope_fusion(
+            context: *mut c_void,
+            q_raw: *const f32,
+            q_elements: u64,
+            kv_raw: *const f32,
+            kv_elements: u64,
+            fused: u32,
+            q_cur: *mut f32,
+            kv_cur: *mut f32,
+            result: *mut RawQHeadResult,
+            error: *mut c_char,
+            error_bytes: usize,
         ) -> i32;
         fn rust_star_metal_run_output_head(
             context: *mut c_void,
@@ -41396,6 +41532,202 @@ mod imp {
         })
     }
 
+    pub fn run_q_head_threads_bench(
+        warmup_rounds: u32,
+        measured_rounds: u32,
+    ) -> Result<QHeadThreadsBenchReport> {
+        if measured_rounds == 0 || warmup_rounds.saturating_add(measured_rounds) > 1000 {
+            return Err(Error::invalid(
+                "Q-head thread benchmark requires 1..=1000 total rounds",
+            ));
+        }
+        let (_, _, _, q_raw) = attention_setup_fixture()?;
+        let (expected_q_cur, _, _, _) = rope_kv_store_fixture()?;
+        let context = Context::new()?;
+        let mut error = [0 as c_char; ERROR_BYTES];
+        let mut q_cur = vec![0.0_f32; q_raw.len()];
+        let mut baseline_wall = Vec::with_capacity(measured_rounds as usize);
+        let mut baseline_gpu = Vec::with_capacity(measured_rounds as usize);
+        let mut candidate_wall = Vec::with_capacity(measured_rounds as usize);
+        let mut candidate_gpu = Vec::with_capacity(measured_rounds as usize);
+
+        for round in 0..warmup_rounds + measured_rounds {
+            let order = if round % 2 == 0 {
+                [256_u32, 128]
+            } else {
+                [128_u32, 256]
+            };
+            for threads in order {
+                error.fill(0);
+                let mut raw = RawQHeadResult::default();
+                let succeeded = unsafe {
+                    rust_star_metal_run_q_head_threads(
+                        context.0,
+                        q_raw.as_ptr(),
+                        q_raw.len() as u64,
+                        threads,
+                        q_cur.as_mut_ptr(),
+                        &mut raw,
+                        error.as_mut_ptr(),
+                        error.len(),
+                    )
+                };
+                if succeeded == 0 {
+                    return Err(Error::invalid(format!(
+                        "Metal Q-head threads={threads} benchmark failed: {}",
+                        error_text(&error)
+                    )));
+                }
+                if !raw.wall_ms.is_finite()
+                    || raw.wall_ms <= 0.0
+                    || !raw.gpu_ms.is_finite()
+                    || raw.gpu_ms < 0.0
+                {
+                    return Err(Error::invalid(format!(
+                        "Q-head threads={threads} returned invalid timing"
+                    )));
+                }
+                if let Some((index, (actual, expected))) = q_cur
+                    .iter()
+                    .zip(&expected_q_cur)
+                    .enumerate()
+                    .find(|(_, (actual, expected))| actual.to_bits() != expected.to_bits())
+                {
+                    return Err(Error::invalid(format!(
+                        "Q-head threads={threads} C0 mismatch in Qcur[{index}]: actual={:#010x} expected={:#010x}",
+                        actual.to_bits(), expected.to_bits()
+                    )));
+                }
+                if round >= warmup_rounds {
+                    let (wall, gpu) = if threads == 256 {
+                        (&mut baseline_wall, &mut baseline_gpu)
+                    } else {
+                        (&mut candidate_wall, &mut candidate_gpu)
+                    };
+                    wall.push(raw.wall_ms);
+                    gpu.push(raw.gpu_ms);
+                }
+            }
+        }
+        Ok(QHeadThreadsBenchReport {
+            fixture_id: ROPE_KV_STORE_FIXTURE_ID,
+            warmup_rounds,
+            measured_rounds,
+            baseline_wall: summarize_timing(&baseline_wall)?,
+            baseline_gpu: summarize_timing(&baseline_gpu)?,
+            candidate_wall: summarize_timing(&candidate_wall)?,
+            candidate_gpu: summarize_timing(&candidate_gpu)?,
+            baseline_wall_ms_samples: baseline_wall,
+            baseline_gpu_ms_samples: baseline_gpu,
+            candidate_wall_ms_samples: candidate_wall,
+            candidate_gpu_ms_samples: candidate_gpu,
+            q_cur_checksum: checksum_f32(&q_cur),
+        })
+    }
+
+    pub fn run_q_head_kv_fusion_bench(
+        warmup_rounds: u32,
+        measured_rounds: u32,
+    ) -> Result<QHeadKvFusionBenchReport> {
+        if measured_rounds == 0 || warmup_rounds.saturating_add(measured_rounds) > 1000 {
+            return Err(Error::invalid(
+                "Q-head/KV fusion benchmark requires 1..=1000 total rounds",
+            ));
+        }
+        let (_, _, expected_kv_norm, q_raw) = attention_setup_fixture()?;
+        let (expected_q_cur, expected_kv_rope, _, _) = rope_kv_store_fixture()?;
+        let context = Context::new()?;
+        let mut error = [0 as c_char; ERROR_BYTES];
+        let mut q_cur = vec![0.0_f32; q_raw.len()];
+        let mut kv_cur = vec![0.0_f32; expected_kv_norm.len()];
+        let mut separate_wall = Vec::with_capacity(measured_rounds as usize);
+        let mut separate_gpu = Vec::with_capacity(measured_rounds as usize);
+        let mut fused_wall = Vec::with_capacity(measured_rounds as usize);
+        let mut fused_gpu = Vec::with_capacity(measured_rounds as usize);
+
+        for round in 0..warmup_rounds + measured_rounds {
+            let order = if round % 2 == 0 {
+                [0_u32, 1]
+            } else {
+                [1_u32, 0]
+            };
+            for fused in order {
+                error.fill(0);
+                let mut raw = RawQHeadResult::default();
+                let succeeded = unsafe {
+                    rust_star_metal_run_q_head_kv_rope_fusion(
+                        context.0,
+                        q_raw.as_ptr(),
+                        q_raw.len() as u64,
+                        expected_kv_norm.as_ptr(),
+                        expected_kv_norm.len() as u64,
+                        fused,
+                        q_cur.as_mut_ptr(),
+                        kv_cur.as_mut_ptr(),
+                        &mut raw,
+                        error.as_mut_ptr(),
+                        error.len(),
+                    )
+                };
+                if succeeded == 0 {
+                    return Err(Error::invalid(format!(
+                        "Metal Q-head/KV fused={fused} benchmark failed: {}",
+                        error_text(&error)
+                    )));
+                }
+                if !raw.wall_ms.is_finite()
+                    || raw.wall_ms <= 0.0
+                    || !raw.gpu_ms.is_finite()
+                    || raw.gpu_ms < 0.0
+                {
+                    return Err(Error::invalid(format!(
+                        "Q-head/KV fused={fused} returned invalid timing"
+                    )));
+                }
+                for (label, actual, expected) in [
+                    ("Qcur", q_cur.as_slice(), expected_q_cur.as_slice()),
+                    ("KVrope", kv_cur.as_slice(), expected_kv_rope.as_slice()),
+                ] {
+                    if let Some((index, (actual, expected))) = actual
+                        .iter()
+                        .zip(expected)
+                        .enumerate()
+                        .find(|(_, (actual, expected))| actual.to_bits() != expected.to_bits())
+                    {
+                        return Err(Error::invalid(format!(
+                            "Q-head/KV fused={fused} C0 mismatch in {label}[{index}]: actual={:#010x} expected={:#010x}",
+                            actual.to_bits(), expected.to_bits()
+                        )));
+                    }
+                }
+                if round >= warmup_rounds {
+                    let (wall, gpu) = if fused == 0 {
+                        (&mut separate_wall, &mut separate_gpu)
+                    } else {
+                        (&mut fused_wall, &mut fused_gpu)
+                    };
+                    wall.push(raw.wall_ms);
+                    gpu.push(raw.gpu_ms);
+                }
+            }
+        }
+        Ok(QHeadKvFusionBenchReport {
+            fixture_id: ROPE_KV_STORE_FIXTURE_ID,
+            warmup_rounds,
+            measured_rounds,
+            separate_wall: summarize_timing(&separate_wall)?,
+            separate_gpu: summarize_timing(&separate_gpu)?,
+            fused_wall: summarize_timing(&fused_wall)?,
+            fused_gpu: summarize_timing(&fused_gpu)?,
+            separate_wall_ms_samples: separate_wall,
+            separate_gpu_ms_samples: separate_gpu,
+            fused_wall_ms_samples: fused_wall,
+            fused_gpu_ms_samples: fused_gpu,
+            q_cur_checksum: checksum_f32(&q_cur),
+            kv_rope_checksum: checksum_f32(&kv_cur),
+        })
+    }
+
     pub fn run_rope_kv_store_probe(model: &MappedModel) -> Result<RopeKvStoreProbeReport> {
         const TOKEN: u32 = 201;
         const CACHE_ROWS: usize = 3;
@@ -41577,7 +41909,7 @@ mod imp {
         Ok(RopeKvStoreProbeReport {
             fixture_id: ROPE_KV_STORE_FIXTURE_ID,
             token: TOKEN,
-            dispatches: 11,
+            dispatches: 10,
             cache_capacity_rows: CACHE_ROWS as u32,
             cache_target_row: CACHE_ROW as u32,
             cache_guard_rows_intact: guards_intact,
@@ -41766,7 +42098,7 @@ mod imp {
         Ok(AttentionReadProbeReport {
             fixture_id: ATTENTION_READ_FIXTURE_ID,
             token: TOKEN,
-            dispatches: 15,
+            dispatches: 14,
             cache_capacity_rows: CACHE_ROWS as u32,
             cache_rows_read: 2,
             cache_row0_preserved: true,
@@ -41952,7 +42284,7 @@ mod imp {
         Ok(AttentionOutputProbeReport {
             fixture_id: ATTENTION_OUTPUT_FIXTURE_ID,
             token: TOKEN,
-            dispatches: 17,
+            dispatches: 16,
             output_groups: 8,
             output_rank: 1024,
             wrapped_model_ranges: raw.wrapped_model_ranges,
@@ -44181,17 +44513,17 @@ mod imp {
             ));
         }
         let dispatches = match (layer_index, layer_index % 2, position) {
-            (0, _, _) => 28,
-            (layer, 0, 1) if layer >= 2 => 34,
-            (layer, 0, 3) if layer >= 2 => 46,
+            (0, _, _) => 27,
+            (layer, 0, 1) if layer >= 2 => 33,
+            (layer, 0, 3) if layer >= 2 => 45,
             (layer, 0, _) if layer >= 2 && sparse_indexed_attention => {
                 let compressed_rows = (position + 1) / 4;
-                52 + retained_sparse_topk_schedule(compressed_rows).1
+                51 + retained_sparse_topk_schedule(compressed_rows).1
             }
-            (layer, 0, _) if layer >= 2 => 30,
-            (layer, 1, 1) if layer >= 3 => 30,
-            (layer, 1, _) if layer >= 3 => 28,
-            _ => 26,
+            (layer, 0, _) if layer >= 2 => 29,
+            (layer, 1, 1) if layer >= 3 => 29,
+            (layer, 1, _) if layer >= 3 => 27,
+            _ => 25,
         };
         if matches!(
             command_mode,
@@ -45031,6 +45363,26 @@ mod imp {
         ))
     }
 
+    pub fn run_q_head_kv_fusion_bench(
+        warmup_rounds: u32,
+        measured_rounds: u32,
+    ) -> Result<QHeadKvFusionBenchReport> {
+        let _ = (warmup_rounds, measured_rounds);
+        Err(Error::invalid(
+            "the Q-head/KV fusion benchmark is available only on macOS",
+        ))
+    }
+
+    pub fn run_q_head_threads_bench(
+        warmup_rounds: u32,
+        measured_rounds: u32,
+    ) -> Result<QHeadThreadsBenchReport> {
+        let _ = (warmup_rounds, measured_rounds);
+        Err(Error::invalid(
+            "the Q-head thread benchmark is available only on macOS",
+        ))
+    }
+
     pub fn run_qb_rows_bench(
         model: &MappedModel,
         candidate_rows: u32,
@@ -45629,11 +45981,11 @@ pub use imp::{
     run_prefill_layers01_complete_boundary_probe, run_prefill_layers01_live_kv_chain_probe,
     run_prefill_layers01_live_kv_loop_probe, run_prefill_layers01_row_coverage_probe,
     run_prefill_q8_boundary_probe, run_prefill_qkv_boundary_probe, run_probe,
-    run_q8_projection_probe, run_qb_rows_bench, run_qkv_pair_bench,
-    run_ratio128_compressor_replay_probe, run_retained_decoder_step_probe,
-    run_retained_sparse_boundary_probe, run_retained_sparse_multimerge_probe,
-    run_rope_kv_store_probe, run_routed_nsg_bench, run_sparse_indexed_attention_probe,
-    LayerExecutor,
+    run_q8_projection_probe, run_q_head_kv_fusion_bench, run_q_head_threads_bench,
+    run_qb_rows_bench, run_qkv_pair_bench, run_ratio128_compressor_replay_probe,
+    run_retained_decoder_step_probe, run_retained_sparse_boundary_probe,
+    run_retained_sparse_multimerge_probe, run_rope_kv_store_probe, run_routed_nsg_bench,
+    run_sparse_indexed_attention_probe, LayerExecutor,
 };
 
 #[cfg(test)]
@@ -46718,7 +47070,7 @@ mod tests {
         RopeKvStoreProbeReport {
             fixture_id: ROPE_KV_STORE_FIXTURE_ID,
             token: 201,
-            dispatches: 11,
+            dispatches: 10,
             cache_capacity_rows: 3,
             cache_target_row: 1,
             cache_guard_rows_intact: true,
@@ -46737,7 +47089,7 @@ mod tests {
         AttentionReadProbeReport {
             fixture_id: ATTENTION_READ_FIXTURE_ID,
             token: 201,
-            dispatches: 15,
+            dispatches: 14,
             cache_capacity_rows: 3,
             cache_rows_read: 2,
             cache_row0_preserved: true,
@@ -46907,6 +47259,43 @@ mod tests {
         }
     }
 
+    fn q_head_threads_bench_report() -> QHeadThreadsBenchReport {
+        let report = qkv_pair_bench_report();
+        QHeadThreadsBenchReport {
+            fixture_id: ROPE_KV_STORE_FIXTURE_ID,
+            warmup_rounds: report.warmup_rounds,
+            measured_rounds: report.measured_rounds,
+            baseline_wall_ms_samples: report.separate_wall_ms_samples,
+            baseline_gpu_ms_samples: report.separate_gpu_ms_samples,
+            candidate_wall_ms_samples: report.paired_wall_ms_samples,
+            candidate_gpu_ms_samples: report.paired_gpu_ms_samples,
+            baseline_wall: report.separate_wall,
+            baseline_gpu: report.separate_gpu,
+            candidate_wall: report.paired_wall,
+            candidate_gpu: report.paired_gpu,
+            q_cur_checksum: 5,
+        }
+    }
+
+    fn q_head_kv_fusion_bench_report() -> QHeadKvFusionBenchReport {
+        let report = qkv_pair_bench_report();
+        QHeadKvFusionBenchReport {
+            fixture_id: ROPE_KV_STORE_FIXTURE_ID,
+            warmup_rounds: report.warmup_rounds,
+            measured_rounds: report.measured_rounds,
+            separate_wall_ms_samples: report.separate_wall_ms_samples,
+            separate_gpu_ms_samples: report.separate_gpu_ms_samples,
+            fused_wall_ms_samples: report.paired_wall_ms_samples,
+            fused_gpu_ms_samples: report.paired_gpu_ms_samples,
+            separate_wall: report.separate_wall,
+            separate_gpu: report.separate_gpu,
+            fused_wall: report.paired_wall,
+            fused_gpu: report.paired_gpu,
+            q_cur_checksum: 5,
+            kv_rope_checksum: 6,
+        }
+    }
+
     fn attention_output_nsg_bench_report() -> AttentionOutputNsgBenchReport {
         AttentionOutputNsgBenchReport {
             fixture_id: ATTENTION_OUTPUT_FIXTURE_ID,
@@ -46972,7 +47361,7 @@ mod tests {
         Layer0ProbeReport {
             fixture_id: LAYER0_FIXTURE_ID,
             token: 201,
-            dispatches: 28,
+            dispatches: 27,
             command_buffers: 1,
             selected_experts: vec![25, 174, 215, 58, 48, 60],
             wrapped_model_ranges: 25,
@@ -48910,7 +49299,7 @@ mod tests {
         let text = String::from_utf8(output).unwrap();
         assert!(text.contains(&format!("\"schema\": \"{ROPE_KV_STORE_PROBE_SCHEMA}\"")));
         assert!(text.contains(&format!("\"fixture\": \"{ROPE_KV_STORE_FIXTURE_ID}\"")));
-        assert!(text.contains("\"dispatches\": 11"));
+        assert!(text.contains("\"dispatches\": 10"));
         assert!(text.contains("\"guard_rows_intact\": true"));
         assert!(text.contains("\"c0_bitwise_match\": true"));
     }
@@ -48995,6 +49384,28 @@ mod tests {
     }
 
     #[test]
+    fn writes_stable_q_head_threads_bench_json() {
+        let mut output = Vec::new();
+        write_q_head_threads_bench_json(&mut output, &q_head_threads_bench_report()).unwrap();
+        let text = String::from_utf8(output).unwrap();
+        assert!(text.contains(&format!("\"schema\": \"{Q_HEAD_THREADS_BENCH_SCHEMA}\"")));
+        assert!(text.contains("\"threads_per_workgroup\": 256"));
+        assert!(text.contains("\"threads_per_workgroup\": 128"));
+        assert!(text.contains("\"q_current\": 5"));
+    }
+
+    #[test]
+    fn writes_stable_q_head_kv_fusion_bench_json() {
+        let mut output = Vec::new();
+        write_q_head_kv_fusion_bench_json(&mut output, &q_head_kv_fusion_bench_report()).unwrap();
+        let text = String::from_utf8(output).unwrap();
+        assert!(text.contains(&format!("\"schema\": \"{Q_HEAD_KV_FUSION_BENCH_SCHEMA}\"")));
+        assert!(text.contains("\"dispatches\": 2"));
+        assert!(text.contains("\"dispatches\": 1"));
+        assert!(text.contains("\"kv_rope\": 6"));
+    }
+
+    #[test]
     fn writes_stable_attention_output_nsg_bench_json() {
         let mut output = Vec::new();
         write_attention_output_nsg_bench_json(&mut output, &attention_output_nsg_bench_report())
@@ -49018,8 +49429,8 @@ mod tests {
         assert!(text.contains(&format!(
             "\"schema\": \"{ATTENTION_ROPE_FUSION_BENCH_SCHEMA}\""
         )));
-        assert!(text.contains("\"dispatches\": 18"));
         assert!(text.contains("\"dispatches\": 17"));
+        assert!(text.contains("\"dispatches\": 16"));
         assert!(text.contains("\"pre_rope_boundary_preserved\": true"));
         assert!(text.contains("\"single_metal_context\": true"));
     }
@@ -49030,7 +49441,7 @@ mod tests {
         write_layer0_probe_json(&mut output, &layer0_report()).unwrap();
         let text = String::from_utf8(output).unwrap();
         assert!(text.contains(&format!("\"schema\": \"{LAYER0_PROBE_SCHEMA}\"")));
-        assert!(text.contains("\"dispatches\": 28"));
+        assert!(text.contains("\"dispatches\": 27"));
         assert!(text.contains("\"command_buffers\": 1"));
         assert!(text.contains("\"pointer_matches\": 25"));
         assert!(text.contains("\"hc_ffn_post\": 7"));

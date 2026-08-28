@@ -674,9 +674,9 @@ history; add a correction and update the current-state summary.
 
 ## Immediate Next Actions
 
-1. Re-profile the accepted QKV, Q-B row-group, and inverse-RoPE optimizations in
-   a healthy immutable engine run, then isolate the Q-head RMSNorm/RoPE or the
-   next attention setup kernel by measured share. Treat the earlier profile
+1. Re-profile the accepted QKV, Q-B row-group, Q/KV RoPE, and inverse-RoPE
+   optimizations in a healthy immutable engine run, then isolate the next
+   attention setup kernel by measured share. Treat the earlier profile
    milliseconds as perturbed diagnostics: compute-pass splitting inflated
    transformer GPU time by 14.23%, while the family ranking and shares remain
    useful for choosing the search order. The validated paired gap remains 3.02%
@@ -698,6 +698,57 @@ history; add a correction and update the current-state summary.
 6. Run or approve the fork's GitHub Actions workflow and retain its URL.
 
 ## Entries
+
+### 2026-08-28 — Q-head/KV RoPE dispatch fusion accepted
+
+Objective:
+
+- Reduce the decode Q/KV RoPE boundary without changing the Q-head RMSNorm
+  reduction tree or either RoPE arithmetic path.
+
+Implementation:
+
+- Tested an exact 128-thread Q-head launch against the original 256-thread
+  geometry. It preserves the four active SIMD-group contributions and all
+  32,768 outputs, but was rejected after measuring slower.
+- Added a combined 65-workgroup kernel. Groups 0--63 reproduce the accepted
+  per-head Q RMSNorm/RoPE kernel exactly; group 64 reproduces the standalone
+  in-place KV tail RoPE equations with the same dense or compressed YaRN
+  parameters.
+- Production decode now uses the combined dispatch while the split path remains
+  selectable and directly benchmarked. Prefill launch geometry is unchanged.
+
+Evidence:
+
+- The 10-warmup/100-measured thread control recorded 0.015 ms GPU median for
+  256 threads and 0.016 ms for 128 threads, a 7.34% regression. It remains
+  rejection evidence; SHA-256
+  `66a8d86769183cfae7776fd9c7c88e936fafdc101c84b0ba3768466b1b92a56e`.
+- The finalized optimized-runtime 10-warmup/500-measured fusion run recorded
+  0.018 ms separate versus 0.010 ms fused GPU median, a 46.71% reduction, while matching all
+  32,768 Q and 512 KV values after every execution. Evidence SHA-256
+  `29b8150145aec0f60d47a156fc37eded06c0ab8a1303a99a9759daf2d1c29a28`.
+- The complete 43-layer position-advancing decoder remained bit-exact at
+  positions 1, 2, and 3, covering both dense and compressed YaRN parameters.
+  Evidence SHA-256
+  `44869d802080ecfe9435e4aa2655d029398fcccffeea2b99e75665f24de79df1`.
+
+Decision:
+
+- Keep the original 256-thread Q reduction geometry and enable Q-head/KV RoPE
+  dispatch fusion in production decode.
+- Treat the focused result as diagnostic evidence until a healthy immutable
+  full-engine comparison is available.
+
+Validation:
+
+- The optimized macOS runtime built successfully; all 296 Rust tests and all 68
+  Python artifact, adapter, and paired-runner tests passed.
+
+Next:
+
+- Continue measured attention-setup work or retry the immutable full-engine
+  control under healthy residency.
 
 ### 2026-08-28 — Four-row Q-B projection accepted
 
