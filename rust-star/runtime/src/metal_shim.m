@@ -39432,6 +39432,7 @@ int rust_star_metal_run_attention_ingress(
     const BOOL chained_timing = command_mode == RUST_STAR_COMMAND_CHAINED_TIMING;
     const BOOL chained_replay = chained_collect || chained_timing;
     const BOOL layer_scoped_buffers = chained_submission || chained_replay;
+    const BOOL collect_outputs = !full_layer || layer0->collect_outputs != 0u;
     const uint32_t warmup_iterations = full_layer ? layer0->warmup_iterations : 0;
     const uint32_t measured_iterations = full_layer ? layer0->measured_iterations : 1;
     if (!opaque_context || !model_mapping || !mixes || !split || !collapsed ||
@@ -39476,6 +39477,10 @@ int rust_star_metal_run_attention_ingress(
     if (full_layer && initial_state_mode > RUST_STAR_INITIAL_STATE_COLD) {
         return fail_with_message(error, error_bytes,
             @"the retained decoder frontier received an invalid initial-state mode");
+    }
+    if (full_layer && layer0->collect_outputs > 1u) {
+        return fail_with_message(error, error_bytes,
+            @"full-layer output collection must be boolean");
     }
     if (full_layer && (visible_cache_rows > cache_capacity_rows ||
         compressed_cache_rows > compressed_cache_capacity_rows ||
@@ -39875,6 +39880,12 @@ int rust_star_metal_run_attention_ingress(
         id<MTLBuffer> flash_tmp_buffer = attention_read ? persistent_buffer(context, layer_buffer_key(@"flash_tmp", layer_scoped_buffers, layer0->layer_index), flash_tmp_bytes, error, error_bytes) : nil;
         id<MTLBuffer> attention_raw_buffer = attention_read ? persistent_buffer(context, layer_buffer_key(@"attention_raw", layer_scoped_buffers, layer0->layer_index), q_raw_elements*sizeof(float), error, error_bytes) : nil;
         id<MTLBuffer> attention_back_buffer = attention_read ? persistent_buffer(context, layer_buffer_key(@"attention_back", layer_scoped_buffers, layer0->layer_index), q_raw_elements*sizeof(float), error, error_bytes) : nil;
+        /* Exact probes preserve pre/post-RoPE snapshots. Production decode has
+         * no consumer for them, so run both transforms in place and avoid three
+         * blit encoders per layer. */
+        id<MTLBuffer> q_rope_work_buffer = collect_outputs ? q_cur_buffer : q_raw_buffer;
+        id<MTLBuffer> attention_back_work_buffer = collect_outputs
+            ? attention_back_buffer : attention_raw_buffer;
         id<MTLBuffer> attention_low_buffer = attention_output ? persistent_buffer(context, layer_buffer_key(@"attention_low", layer_scoped_buffers, layer0->layer_index), 8192u*sizeof(float), error, error_bytes) : nil;
         id<MTLBuffer> attention_out_buffer = attention_output ? persistent_buffer(context, layer_buffer_key(@"attention_out", layer_scoped_buffers, layer0->layer_index), n_embd*sizeof(float), error, error_bytes) : nil;
         id<MTLBuffer> after_attention_hc_buffer = attention_output ? persistent_buffer(context, layer_buffer_key(@"after_attention_hc", layer_scoped_buffers, layer0->layer_index), hc_dim*sizeof(float), error, error_bytes) : nil;
@@ -40476,24 +40487,28 @@ int rust_star_metal_run_attention_ingress(
             [encoder setThreadgroupMemoryLength:32u*2u*sizeof(float) atIndex:0];
             [encoder dispatchThreadgroups:MTLSizeMake(q_raw_elements/2u,1,1) threadsPerThreadgroup:MTLSizeMake(32,4,1)];
         }
-        [encoder endEncoding];
+        if (collect_outputs) [encoder endEncoding];
 
         if (rope_and_store) {
-            id<MTLBlitCommandEncoder> q_copy = [command blitCommandEncoder];
-            if (!q_copy) return fail_with_message(error, error_bytes, @"failed to create Q snapshot encoder");
-            [q_copy copyFromBuffer:q_raw_buffer sourceOffset:0
-                          toBuffer:q_cur_buffer destinationOffset:0
-                              size:q_raw_elements*sizeof(float)];
-            [q_copy copyFromBuffer:kv_norm_buffer sourceOffset:0
-                          toBuffer:kv_pre_rope_buffer destinationOffset:0
-                              size:kv_elements*sizeof(float)];
-            [q_copy endEncoding];
+            if (collect_outputs) {
+                id<MTLBlitCommandEncoder> q_copy = [command blitCommandEncoder];
+                if (!q_copy) return fail_with_message(error, error_bytes,
+                    @"failed to create Q snapshot encoder");
+                [q_copy copyFromBuffer:q_raw_buffer sourceOffset:0
+                              toBuffer:q_cur_buffer destinationOffset:0
+                                  size:q_raw_elements*sizeof(float)];
+                [q_copy copyFromBuffer:kv_norm_buffer sourceOffset:0
+                              toBuffer:kv_pre_rope_buffer destinationOffset:0
+                                  size:kv_elements*sizeof(float)];
+                [q_copy endEncoding];
 
-            encoder = [command computeCommandEncoder];
-            if (!encoder) return fail_with_message(error, error_bytes, @"failed to create RoPE encoder");
+                encoder = [command computeCommandEncoder];
+                if (!encoder) return fail_with_message(error, error_bytes,
+                    @"failed to create RoPE encoder");
+            }
             [encoder setComputePipelineState:context.headNormRopePipeline];
             [encoder setBytes:&q_rope_args length:sizeof(q_rope_args) atIndex:0];
-            [encoder setBuffer:q_cur_buffer offset:0 atIndex:1];
+            [encoder setBuffer:q_rope_work_buffer offset:0 atIndex:1];
             [encoder setThreadgroupMemoryLength:32u*sizeof(float) atIndex:0];
             [encoder dispatchThreadgroups:MTLSizeMake(64,1,1)
                  threadsPerThreadgroup:MTLSizeMake(256,1,1)];
@@ -40507,17 +40522,20 @@ int rust_star_metal_run_attention_ingress(
             [encoder setBuffer:kv_norm_buffer offset:0 atIndex:4];
             [encoder dispatchThreadgroups:MTLSizeMake(1,1,1)
                  threadsPerThreadgroup:MTLSizeMake(256,1,1)];
-            [encoder endEncoding];
+            if (collect_outputs) {
+                [encoder endEncoding];
+                id<MTLBlitCommandEncoder> kv_copy = [command blitCommandEncoder];
+                if (!kv_copy) return fail_with_message(error, error_bytes,
+                    @"failed to create KV snapshot encoder");
+                [kv_copy copyFromBuffer:kv_norm_buffer sourceOffset:0
+                               toBuffer:kv_rope_buffer destinationOffset:0
+                                   size:kv_elements*sizeof(float)];
+                [kv_copy endEncoding];
 
-            id<MTLBlitCommandEncoder> kv_copy = [command blitCommandEncoder];
-            if (!kv_copy) return fail_with_message(error, error_bytes, @"failed to create KV snapshot encoder");
-            [kv_copy copyFromBuffer:kv_norm_buffer sourceOffset:0
-                           toBuffer:kv_rope_buffer destinationOffset:0
-                               size:kv_elements*sizeof(float)];
-            [kv_copy endEncoding];
-
-            encoder = [command computeCommandEncoder];
-            if (!encoder) return fail_with_message(error, error_bytes, @"failed to create KV-store encoder");
+                encoder = [command computeCommandEncoder];
+                if (!encoder) return fail_with_message(error, error_bytes,
+                    @"failed to create KV-store encoder");
+            }
             [encoder setComputePipelineState:context.kvStorePipeline];
             [encoder setBytes:&kv_store_args length:sizeof(kv_store_args) atIndex:0];
             [encoder setBuffer:kv_norm_buffer offset:0 atIndex:1];
@@ -40738,7 +40756,7 @@ int rust_star_metal_run_attention_ingress(
 
                     [encoder setComputePipelineState:context.indexedAttentionSplitPipeline];
                     [encoder setBytes:&sparse_attention_args length:sizeof(sparse_attention_args) atIndex:0];
-                    [encoder setBuffer:q_cur_buffer offset:0 atIndex:1];
+                    [encoder setBuffer:q_rope_work_buffer offset:0 atIndex:1];
                     [encoder setBuffer:cache_buffer offset:0 atIndex:2];
                     [encoder setBuffer:staged_kv_buffer
                                  offset:visible_cache_rows*kv_elements*sizeof(uint16_t)
@@ -40768,7 +40786,7 @@ int rust_star_metal_run_attention_ingress(
 
                 [encoder setComputePipelineState:context.flashVecPipeline];
                 [encoder setBytes:&flash_vec_args length:sizeof(flash_vec_args) atIndex:0];
-                [encoder setBuffer:q_cur_buffer offset:0 atIndex:1];
+                [encoder setBuffer:q_rope_work_buffer offset:0 atIndex:1];
                 [encoder setBuffer:staged_kv_buffer offset:0 atIndex:2];
                 [encoder setBuffer:staged_kv_buffer offset:0 atIndex:3];
                 [encoder setBuffer:mask_buffer offset:0 atIndex:4];
@@ -40787,9 +40805,11 @@ int rust_star_metal_run_attention_ingress(
                      threadsPerThreadgroup:MTLSizeMake(1024,1,1)];
                 }
             }
-            [encoder endEncoding];
+            const BOOL needs_compressed_commit =
+                compressor_emit && !sparse_indexed_attention;
+            if (needs_compressed_commit || collect_outputs) [encoder endEncoding];
 
-            if (compressor_emit && !sparse_indexed_attention) {
+            if (needs_compressed_commit) {
                 const NSUInteger compressed_row = compressed_cache_rows - 1u;
                 id<MTLBlitCommandEncoder> compressed_copy = [command blitCommandEncoder];
                 if (!compressed_copy) return fail_with_message(error, error_bytes,
@@ -40808,22 +40828,28 @@ int rust_star_metal_run_attention_ingress(
             }
 
             if (attention_read) {
-                id<MTLBlitCommandEncoder> attention_copy = [command blitCommandEncoder];
-                if (!attention_copy) return fail_with_message(error, error_bytes, @"failed to create attention snapshot encoder");
-                [attention_copy copyFromBuffer:attention_raw_buffer sourceOffset:0
-                                      toBuffer:attention_back_buffer destinationOffset:0
-                                          size:q_raw_elements*sizeof(float)];
-                [attention_copy endEncoding];
-
-                encoder = [command computeCommandEncoder];
-                if (!encoder) return fail_with_message(error, error_bytes, @"failed to create inverse-RoPE encoder");
+                if (collect_outputs) {
+                    id<MTLBlitCommandEncoder> attention_copy =
+                        [command blitCommandEncoder];
+                    if (!attention_copy) return fail_with_message(error, error_bytes,
+                        @"failed to create attention snapshot encoder");
+                    [attention_copy copyFromBuffer:attention_raw_buffer sourceOffset:0
+                                          toBuffer:attention_back_buffer destinationOffset:0
+                                              size:q_raw_elements*sizeof(float)];
+                    [attention_copy endEncoding];
+                }
+                if (needs_compressed_commit || collect_outputs) {
+                    encoder = [command computeCommandEncoder];
+                    if (!encoder) return fail_with_message(error, error_bytes,
+                        @"failed to create inverse-RoPE encoder");
+                }
                 [encoder setComputePipelineState:context.ropeTailPipeline];
                 [encoder setBytes:&attention_inverse_args length:sizeof(attention_inverse_args) atIndex:0];
-                [encoder setBuffer:attention_back_buffer offset:0 atIndex:1];
+                [encoder setBuffer:attention_back_work_buffer offset:0 atIndex:1];
                 int32_t inverse_position = (int32_t)position;
                 [encoder setBytes:&inverse_position length:sizeof(inverse_position) atIndex:2];
-                [encoder setBuffer:attention_back_buffer offset:0 atIndex:3];
-                [encoder setBuffer:attention_back_buffer offset:0 atIndex:4];
+                [encoder setBuffer:attention_back_work_buffer offset:0 atIndex:3];
+                [encoder setBuffer:attention_back_work_buffer offset:0 atIndex:4];
                 [encoder dispatchThreadgroups:MTLSizeMake(64,1,1)
                      threadsPerThreadgroup:MTLSizeMake(256,1,1)];
 
@@ -40831,7 +40857,7 @@ int rust_star_metal_run_attention_ingress(
                     [encoder setComputePipelineState:context.attentionOutputLowPipeline];
                     [encoder setBytes:&output_low_args length:sizeof(output_low_args) atIndex:0];
                     [encoder setBuffer:output_a_weights offset:output_a_inner atIndex:1];
-                    [encoder setBuffer:attention_back_buffer offset:0 atIndex:2];
+                    [encoder setBuffer:attention_back_work_buffer offset:0 atIndex:2];
                     [encoder setBuffer:attention_low_buffer offset:0 atIndex:3];
                     [encoder setThreadgroupMemoryLength:32u*2u*sizeof(float) atIndex:0];
                     [encoder dispatchThreadgroups:MTLSizeMake(512,1,8)
@@ -40926,10 +40952,10 @@ int rust_star_metal_run_attention_ingress(
                     [encoder dispatchThreads:MTLSizeMake(6,1,1)
                          threadsPerThreadgroup:MTLSizeMake(6,1,1)];
                 }
-                [encoder endEncoding];
+                if (collect_outputs || !full_layer) [encoder endEncoding];
 
                 if (full_layer) {
-                    encoder = [command computeCommandEncoder];
+                    if (collect_outputs) encoder = [command computeCommandEncoder];
                     [encoder setComputePipelineState:context.routedPairSwigluPipeline];
                     [encoder setBytes:&routed_gate_args length:sizeof(routed_gate_args) atIndex:0];
                     [encoder setBytes:&routed_activation_args length:sizeof(routed_activation_args) atIndex:1];
@@ -40944,9 +40970,10 @@ int rust_star_metal_run_attention_ingress(
                     [encoder setThreadgroupMemoryLength:2176u atIndex:0];
                     [encoder dispatchThreadgroups:MTLSizeMake(256,1,6)
                          threadsPerThreadgroup:MTLSizeMake(32,2,1)];
-                    [encoder endEncoding];
-
-                    encoder = [command computeCommandEncoder];
+                    if (collect_outputs) {
+                        [encoder endEncoding];
+                        encoder = [command computeCommandEncoder];
+                    }
                     [encoder setComputePipelineState:context.routedDownSumPipeline];
                     [encoder setBytes:&routed_down_args length:sizeof(routed_down_args) atIndex:0];
                     [encoder setBuffer:routed_down_weight offset:layer_inner[8] atIndex:1];
@@ -40956,10 +40983,11 @@ int rust_star_metal_run_attention_ingress(
                     [encoder setBuffer:routed_out_buffer offset:0 atIndex:5];
                     [encoder dispatchThreadgroups:MTLSizeMake(512,1,1)
                          threadsPerThreadgroup:MTLSizeMake(32,2,1)];
-                    [encoder endEncoding];
-
                     const float layer_clamp = 10.0f;
-                    encoder = [command computeCommandEncoder];
+                    if (collect_outputs) {
+                        [encoder endEncoding];
+                        encoder = [command computeCommandEncoder];
+                    }
                     [encoder setComputePipelineState:context.sharedGateUpPipeline];
                     [encoder setBytes:&shared_gate_mv length:sizeof(shared_gate_mv) atIndex:0];
                     [encoder setBuffer:shared_gate_weight offset:layer_inner[9] atIndex:1];
@@ -40972,9 +41000,10 @@ int rust_star_metal_run_attention_ingress(
                     [encoder setThreadgroupMemoryLength:512u atIndex:0];
                     [encoder dispatchThreadgroups:MTLSizeMake(1024,1,1)
                          threadsPerThreadgroup:MTLSizeMake(32,4,1)];
-                    [encoder endEncoding];
-
-                    encoder = [command computeCommandEncoder];
+                    if (collect_outputs) {
+                        [encoder endEncoding];
+                        encoder = [command computeCommandEncoder];
+                    }
                     [encoder setComputePipelineState:context.sharedDownHcPipeline];
                     [encoder setBytes:&shared_down_mv length:sizeof(shared_down_mv) atIndex:0];
                     [encoder setBytes:&ffn_hc_post_args length:sizeof(ffn_hc_post_args) atIndex:1];

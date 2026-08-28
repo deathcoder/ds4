@@ -99,7 +99,16 @@ history; add a correction and update the current-state summary.
   14.531941455x first-token latency. Relative to the prior Rust medians, the
   validated candidate improved steady decode 14.5%, complete generation 2.58x,
   prefill 66.9%, and first-token latency 93.5%. The remaining paired steady gap
-  is approximately 14.9%.
+  was approximately 14.9%. A new explicitly ineligible per-layer profile found
+  that steady transformer cost is distributed across the repeated layer
+  schedule rather than concentrated in one pathological layer. Removing three
+  unused diagnostic snapshots per layer, performing both RoPE transforms in
+  place, and retaining a compute encoder across adjacent FFN stages reduced
+  profiled steady transformer GPU time by 9.16% and raised profiled steady
+  decode from 20.171 to 21.938 tok/s. Two fresh eligible runs reproduced 21.864
+  and 21.769 tok/s with the exact 128-token transcript. Against the preceding
+  DwarfStar median this suggests a roughly 7.4% steady gap, but a new frozen
+  five-pair comparison is still required before updating the paired claim.
 - Implementation: dependency-free Rust host scaffold under `rust-star/runtime/`
   strictly parses GGUF v3 directories, validates the Flash resident-Q2
   shape/recipe, and writes candidate full-logit artifacts. A macOS-only
@@ -641,11 +650,11 @@ history; add a correction and update the current-state summary.
 
 ## Immediate Next Actions
 
-1. Profile the steady decoder's per-layer and per-kernel GPU path and close the
-   remaining approximately 14.9% paired gap without weakening C0. The validated
-   medians put 47.247 ms/token in transformer wall time, 44.693 ms/token in
-   summed transformer GPU time, 2.666 ms/token in output-head wall time, and
-   1.386 ms/token in output-head GPU time.
+1. Freeze the production-schedule checkpoint and run a new five-pair 2K/128
+   comparison. Two eligible development runs measure 21.864 and 21.769 steady
+   tok/s, suggesting that the prior paired gap has fallen from 14.9% to roughly
+   7.4%; do not replace the validated paired result until the new immutable run
+   completes. Then use per-kernel profiling to attribute the residual gap.
 2. Isolate the remaining first-token transformer residency cost: its paired
    median is 705.921 ms transformer wall and 688.398 ms GPU while the output
    head is only 2.875/2.190 ms. Do not move a second weight warm outside the
@@ -661,6 +670,80 @@ history; add a correction and update the current-state summary.
 6. Run or approve the fork's GitHub Actions workflow and retain its URL.
 
 ## Entries
+
+### 2026-08-28 — Production decode drops unused snapshots and redundant encoder boundaries
+
+Objective:
+
+- Attribute the remaining 14.9% paired steady-decode gap and keep the best
+  production optimization only if the retained complete-decoder C0 control
+  remains bit-identical.
+
+Changes and evidence:
+
+- Added `engine-profile`, an explicitly paired-ineligible form of the exact
+  2K/128 engine workload. It reads the already completed 43 layer command
+  buffers' GPU timestamps after each generated-token interval and emits the
+  summed steady per-layer values. Normal `engine-measure` remains separate,
+  emits `null` for the profile array, records collection as false, and remains
+  paired eligible.
+- Baseline profile evidence under
+  `rust-star/.work/steady-layer-profile-01/` has manifest SHA-256
+  `524aa791a3e853fa9049cf718207662fd3306a34a6862490d961be8ea28e0ecd`.
+  It measured 20.171179318 steady tok/s, 46.960839 ms transformer wall and
+  44.164538 ms transformer GPU per steady token. The hottest single layer was
+  only 1.128632 ms/token or 2.56% of transformer GPU time; ratio-4 even layers
+  accounted for 51.68% and ratio-128 odd layers for 44.19%. The remaining cost
+  was therefore repeated schedule overhead/work, not one anomalous layer.
+- Source comparison with pinned DwarfStar showed that its batch path reuses a
+  compute encoder, while Rust Star's timing-only production layer still kept
+  three probe-only snapshots and repeatedly ended/recreated encoders. Added an
+  internal output-collection contract to the Rust/Objective-C boundary. Exact
+  tensor probes preserve the old observable schedule. Production decode skips
+  the Q/pre-RoPE-KV, post-RoPE-KV, and attention pre-inverse-RoPE snapshots,
+  executes Q and inverse RoPE in place, and keeps adjacent FFN dispatches in
+  one encoder. Required persistent compressed-cache commits still use blits and
+  retain their dependency boundaries.
+- Optimized profile evidence under
+  `rust-star/.work/steady-layer-profile-02-inplace/` has manifest SHA-256
+  `b62c868d6e46179259f619564d17084a711ec9f0c0103abfc7da613b35ec8b11`.
+  It measured 21.937837562 steady tok/s, up 8.76%; transformer wall fell 8.29%
+  to 43.066214 ms/token and transformer GPU fell 9.16% to 40.121048 ms/token.
+  Prefill was effectively unchanged. The first-token sample worsened from
+  741.225 to 795.800 ms, so this checkpoint makes no first-token improvement
+  claim.
+- The optimized production schedule passed the seeded position-8195 retained
+  decoder control: every one of 43 16,384-float layer HC outputs and all
+  129,280 logits matched DwarfStar by FP32 bit pattern, and the exact selected
+  token remained 35597. The report SHA-256 is
+  `2202486531c149d2666515334a357a317e03d7ebf1bbc7ee1823550ba20e4c02`
+  under `rust-star/.work/production-schedule-c0-01/`.
+- Two independent non-profiled `engine-measure` processes remained paired
+  eligible, matched transcript checksum `17615242442502606640`, and measured
+  21.863585930 and 21.769 steady tok/s. Their complete-generation rates were
+  19.376402772 and 19.363778103 tok/s; prefill measured 123.294150291 and
+  123.200729385 tok/s. Evidence is under
+  `rust-star/.work/production-schedule-measure-01/` and intentionally untracked.
+
+Validation:
+
+- Optimized macOS release build.
+- Retained position-8195 complete-decoder C0 control across all layer HC states
+  and full logits.
+- Two exact fresh-process eligible 2K/128 engine measurements.
+- `cargo fmt --check` and all 288 Rust tests.
+- All 68 Python artifact/adapter/paired-runner tests.
+- `git diff --check` before publication.
+
+Decision and next step:
+
+- Keep the production-only schedule optimization. It applies the useful
+  Polars-style lesson—remove redundant materialization and preserve a fixed
+  execution plan—at the GPU scheduling boundary where profiling found the
+  cost; no broad or unjustified `unsafe` Rust was added.
+- Freeze the new commit and run a fresh five-pair alternating-order comparison.
+  Until then the 21.8 tok/s development result is evidence, not a replacement
+  for the last validated paired ratio.
 
 ### 2026-08-28 — Scratch-residency gain reproduces in five exact pairs
 

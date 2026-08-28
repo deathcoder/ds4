@@ -2,12 +2,13 @@ use rust_star_runtime::gguf::Gguf;
 use rust_star_runtime::metal::{
     run_attention_ingress_probe, run_attention_output_probe, run_attention_read_probe,
     run_attention_setup_probe, run_closed_loop_decoder_probe, run_cold_prefill_decoder_probe,
-    run_decoder_output_probe, run_engine_measurement, run_f16_embedding_probe,
-    run_ffn_router_probe, run_layer0_bench, run_layer0_probe, run_layers01234567_decode_probe,
-    run_layers012345_decode_probe, run_layers0123_bench, run_layers0123_chained_probe,
-    run_layers0123_decode_probe, run_layers0123_probe, run_layers012_chained_probe,
-    run_layers012_probe, run_layers01_probe, run_layers0_to_42_decode_probe, run_moe_output_probe,
-    run_position127_decoder_probe, run_prefill_decode_frontier_probe, run_prefill_frontier_probe,
+    run_decoder_output_probe, run_engine_layer_profile, run_engine_measurement,
+    run_f16_embedding_probe, run_ffn_router_probe, run_layer0_bench, run_layer0_probe,
+    run_layers01234567_decode_probe, run_layers012345_decode_probe, run_layers0123_bench,
+    run_layers0123_chained_probe, run_layers0123_decode_probe, run_layers0123_probe,
+    run_layers012_chained_probe, run_layers012_probe, run_layers01_probe,
+    run_layers0_to_42_decode_probe, run_moe_output_probe, run_position127_decoder_probe,
+    run_prefill_decode_frontier_probe, run_prefill_frontier_probe,
     run_prefill_layer0_boundary_probe, run_prefill_layers012_attention_loop_probe,
     run_prefill_layers012_compressor_loop_probe, run_prefill_layers012_kv_state_loop_probe,
     run_prefill_layers012_kvnorm_loop_probe, run_prefill_layers01_boundary_probe,
@@ -208,7 +209,10 @@ fn run() -> Result<()> {
         return run_prefill_decode_frontier_probe_command(arguments.collect());
     }
     if command == "engine-measure" {
-        return run_engine_measurement_command(arguments.collect());
+        return run_engine_measurement_command(arguments.collect(), false);
+    }
+    if command == "engine-profile" {
+        return run_engine_measurement_command(arguments.collect(), true);
     }
     if command == "ratio128-compressor-replay-probe" {
         return run_ratio128_compressor_replay_probe_command(arguments.collect());
@@ -753,12 +757,17 @@ fn run_prefill_decode_frontier_probe_command(arguments: Vec<OsString>) -> Result
     Ok(())
 }
 
-fn run_engine_measurement_command(arguments: Vec<OsString>) -> Result<()> {
+fn run_engine_measurement_command(arguments: Vec<OsString>, profile_layers: bool) -> Result<()> {
+    let usage = if profile_layers {
+        engine_profile_usage()
+    } else {
+        engine_measurement_usage()
+    };
     if arguments.is_empty() {
-        return Err(Error::invalid(engine_measurement_usage()));
+        return Err(Error::invalid(usage));
     }
     if matches!(arguments[0].to_str(), Some("--help") | Some("-h")) {
-        println!("{}", engine_measurement_usage());
+        println!("{usage}");
         return Ok(());
     }
     let model_path = PathBuf::from(&arguments[0]);
@@ -780,10 +789,10 @@ fn run_engine_measurement_command(arguments: Vec<OsString>) -> Result<()> {
                 continue;
             }
             Some("--help") | Some("-h") => {
-                println!("{}", engine_measurement_usage());
+                println!("{usage}");
                 return Ok(());
             }
-            _ => return Err(Error::invalid(engine_measurement_usage())),
+            _ => return Err(Error::invalid(usage)),
         };
         let value = arguments
             .next()
@@ -806,10 +815,19 @@ fn run_engine_measurement_command(arguments: Vec<OsString>) -> Result<()> {
 
     let model = MappedModel::open(&model_path)?;
     validate_resident_q2(model.gguf())?;
-    let report = run_engine_measurement(&model, context_tokens, gen_tokens)?;
+    let report = if profile_layers {
+        run_engine_layer_profile(&model, context_tokens, gen_tokens)?
+    } else {
+        run_engine_measurement(&model, context_tokens, gen_tokens)?
+    };
     write_engine_run_file(&json_path, &report)?;
     println!(
-        "Rust Star eligible measurement: prefill {:.3} tok/s, generation {:.3} tok/s, steady {:.3} tok/s",
+        "Rust Star {}: prefill {:.3} tok/s, generation {:.3} tok/s, steady {:.3} tok/s",
+        if profile_layers {
+            "layer profile"
+        } else {
+            "eligible measurement"
+        },
         f64::from(report.context) * 1000.0 / report.prefill_ms,
         f64::from(report.gen_tokens) * 1000.0 / report.gen_ms,
         f64::from(report.gen_steady_tokens) * 1000.0 / report.gen_steady_ms,
@@ -817,7 +835,14 @@ fn run_engine_measurement_command(arguments: Vec<OsString>) -> Result<()> {
     println!(
         "correctness: exact 128-token oracle transcript; prefill and generation collection disabled"
     );
-    println!("paired protocol: eligible");
+    println!(
+        "paired protocol: {}",
+        if profile_layers {
+            "ineligible diagnostic"
+        } else {
+            "eligible"
+        }
+    );
     println!("json: {}", json_path.display());
     Ok(())
 }
@@ -4232,7 +4257,7 @@ fn usage() -> &'static str {
 
 fn full_usage() -> String {
     format!(
-        "{}\n  rust-star prefill-decode-frontier-probe MODEL.gguf [OPTIONS]\n  rust-star engine-measure MODEL.gguf --context N --gen-tokens N --json PATH\n  rust-star retained-sparse-multimerge-probe MODEL.gguf [OPTIONS]\n  rust-star retained-decoder-step-probe MODEL.gguf [OPTIONS]",
+        "{}\n  rust-star prefill-decode-frontier-probe MODEL.gguf [OPTIONS]\n  rust-star engine-measure MODEL.gguf --context N --gen-tokens N --json PATH\n  rust-star engine-profile MODEL.gguf --context N --gen-tokens N --json PATH\n  rust-star retained-sparse-multimerge-probe MODEL.gguf [OPTIONS]\n  rust-star retained-decoder-step-probe MODEL.gguf [OPTIONS]",
         usage()
     )
 }
@@ -4399,6 +4424,10 @@ fn prefill_decode_frontier_probe_usage() -> &'static str {
 
 fn engine_measurement_usage() -> &'static str {
     "usage: rust-star engine-measure MODEL.gguf --context 2048 --gen-tokens 128 --json PATH\n\nRuns the exact native 2K prefill and a timed 128-token closed loop. Prefill and generation execute without diagnostic tensor collection. Command encoding, synchronized execution, lowest-ID argmax, and token commitment are included in their declared intervals. The selected-token transcript is validated after timing, and the raw record is eligible for the paired adapter only when both collection paths remain disabled."
+}
+
+fn engine_profile_usage() -> &'static str {
+    "usage: rust-star engine-profile MODEL.gguf --context 2048 --gen-tokens 128 --json PATH\n\nRuns the exact engine workload while collecting every completed layer command buffer's GPU timestamps between generated-token intervals. The selected-token transcript remains exact, but this diagnostic mode is deliberately ineligible for paired claims."
 }
 
 fn ratio128_compressor_replay_probe_usage() -> &'static str {
