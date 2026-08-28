@@ -89,10 +89,17 @@ history; add a correction and update the current-state summary.
   20.789 tok/s, complete generation to 18.254 and 18.708 tok/s, and prefill to
   125.378 and 129.047 tok/s. Against the earlier five-pair medians this is about
   a 14.9x first-token improvement, 18.8% higher steady decode, 2.66x higher
-  complete-generation throughput, and 73.3% higher prefill. The faster repeat
-  remains approximately 9.4% below DwarfStar's 22.95 tok/s steady median; a new
-  immutable paired comparison is required before treating these runs as a
-  benchmark result.
+  complete-generation throughput, and 73.3% higher prefill. The immutable
+  `35ee7bb` candidate then completed a new five-pair exact comparison without
+  retries or invalid attempts. Rust Star measured 20.031224379 tok/s steady,
+  18.162539840 tok/s complete generation, 124.303074737 tok/s prefill, and
+  708.321500 ms first-token latency. DwarfStar measured 23.56, 23.16, 181.83,
+  and 47.741 ms respectively. The median within-pair ratios were 0.850831888x
+  steady, 0.783881737x complete generation, 0.683350269x prefill, and
+  14.531941455x first-token latency. Relative to the prior Rust medians, the
+  validated candidate improved steady decode 14.5%, complete generation 2.58x,
+  prefill 66.9%, and first-token latency 93.5%. The remaining paired steady gap
+  is approximately 14.9%.
 - Implementation: dependency-free Rust host scaffold under `rust-star/runtime/`
   strictly parses GGUF v3 directories, validates the Flash resident-Q2
   shape/recipe, and writes candidate full-logit artifacts. A macOS-only
@@ -634,10 +641,15 @@ history; add a correction and update the current-state summary.
 
 ## Immediate Next Actions
 
-1. Freeze the scratch-residency candidate and rerun the predeclared fresh-process
-   five-pair exact 2K/128 comparison against the unchanged DwarfStar oracle.
-2. If the gain reproduces, profile the steady decoder's per-layer and per-kernel
-   GPU path and close the remaining approximately 9.4% gap without weakening C0.
+1. Profile the steady decoder's per-layer and per-kernel GPU path and close the
+   remaining approximately 14.9% paired gap without weakening C0. The validated
+   medians put 47.247 ms/token in transformer wall time, 44.693 ms/token in
+   summed transformer GPU time, 2.666 ms/token in output-head wall time, and
+   1.386 ms/token in output-head GPU time.
+2. Isolate the remaining first-token transformer residency cost: its paired
+   median is 705.921 ms transformer wall and 688.398 ms GPU while the output
+   head is only 2.875/2.190 ms. Do not move a second weight warm outside the
+   declared interval merely to improve the metric.
 3. Preserve the exact 2K-to-position-4099 native handoff, complete retained
    position-8195 decoder step, isolated
    513/1,025-row probes, and retained-state row-1,025/2,049 controls as
@@ -649,6 +661,77 @@ history; add a correction and update the current-state summary.
 6. Run or approve the fork's GitHub Actions workflow and retain its URL.
 
 ## Entries
+
+### 2026-08-28 — Scratch-residency gain reproduces in five exact pairs
+
+Objective:
+
+- Freeze `35ee7bb` and determine whether the diagnostic scratch-residency gain
+  survives the predeclared alternating-order paired protocol.
+
+Changes and evidence:
+
+- Rebuilt the optimized runtime from committed source. Candidate executable
+  SHA-256 is
+  `1f401310cdde2d15a127a4833269e09f4f67f1c4cb85933ebc7a2cce0201968d`;
+  source tree is `59c18a01cfcb62a523aaa6baef470fb29e6ad114`.
+- Captured a fresh privacy-filtered host manifest with AC power, no recorded
+  thermal/performance warning, 95% free memory, zero throttled pages, and no
+  model process. Froze plan SHA-256
+  `ed69618ada4d5a830ed327de48f5229140f36a72843c0f3638bea79d627aef65`.
+- Both full-length warm-ups passed. All five 2K/128 pairs completed in the
+  declared `AB`, `BA`, `AB`, `BA`, `AB` order with zero failures, retries,
+  invalid attempts, capacity failures, or observed thermal events. Post-run
+  memory returned to 93% free with zero throttled pages.
+- Rust Star steady decode measured median 20.031224379 tok/s (MAD
+  0.018443385, range 19.987054309--20.050703952) versus DwarfStar 23.56 tok/s
+  (MAD 0.06, range 22.54--23.62). The within-pair candidate/oracle median was
+  0.850831888x (MAD 0.003550728, range 0.847281160--0.888696734).
+- Complete generation measured Rust 18.162539840 tok/s versus DwarfStar 23.16
+  tok/s. The within-pair median was 0.783881737x (range
+  0.779761425--0.827919048).
+- Prefill measured Rust 124.303074737 tok/s versus DwarfStar 181.83 tok/s. The
+  within-pair median was 0.683350269x (range 0.681938272--0.685419985).
+- First-token latency measured Rust 708.321500 ms versus DwarfStar 47.741 ms.
+  The within-pair median ratio was 14.531941455x (range
+  12.219232661--15.366224835).
+- Relative to the prior five-pair Rust medians, scratch reuse improved steady
+  decode 14.5%, complete generation 2.58x, prefill 66.9%, and first-token
+  latency 93.5%. The paired steady ratio improved from 0.753377393x to
+  0.850831888x. Rust Star has not yet beaten DwarfStar.
+- Finalization rehashed every measurement. Independent aggregation reproduced
+  the byte-identical summary. Raw SHA-256 is
+  `139561e3dd048a0a5d504e841aa8cd09e254dc22b42e39a5c063b88f682fa970`;
+  summary SHA-256 is
+  `b0eb0563e5bf8ce0570650dc75c955c065b9259e3a1a41ad5cdf018670d329df`.
+  Complete private-path evidence remains under
+  `rust-star/.work/paired-2k-128-35ee7bb/` and is intentionally untracked.
+- Internal timing medians place steady transformer execution at 47.247 ms wall
+  and 44.693 ms summed GPU per token. The output head costs 2.666 ms wall and
+  1.386 ms GPU per token. The first generated step is 705.921/688.398 ms in the
+  transformer but only 2.875/2.190 ms in the output head, so both remaining
+  gaps are transformer/device-residency problems rather than output sampling.
+
+Performance-engineering note:
+
+- The suggested animal-branded Rust project was likely Polars. Its transferable
+  advantages are columnar/contiguous data, zero-copy Arrow views, fixed query
+  plans, SIMD, parallelism, and eliminating allocations and redundant work;
+  `unsafe` supports a few proven low-level primitives but is not itself the
+  source of speed. Rust Star should continue applying the analogous zero-copy,
+  fixed-shape, buffer-lifetime, and scheduled-work principles. Test
+  `-C target-cpu=native` and unchecked host loops only as isolated profiled
+  candidates. Keep unsafe surfaces narrow, document their caller invariants,
+  and retain a safe/C0 differential control; current timing shows Metal GPU
+  work dominates, so broad unsafe Rust changes would not close the main gap.
+
+Decision and next step:
+
+- Keep and publish the scratch-residency checkpoint and its paired evidence.
+  Next add timing-only steady per-layer/kernel attribution, then optimize the
+  largest Metal schedule or memory-traffic contributor. Separately trace the
+  residual first-token weight-residency cliff without shifting warm-up work out
+  of a declared inference interval.
 
 ### 2026-08-28 — Timing-only prefill scratch reuse removes decoder residency cliff
 
