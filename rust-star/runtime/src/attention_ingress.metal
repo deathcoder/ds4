@@ -1,6 +1,11 @@
 #include <metal_stdlib>
 using namespace metal;
 
+// Marks composite runtime libraries that include the attention/RoPE types.
+// Shared upstream sources such as flash_attn.metal are also compiled into the
+// MoE-only library, where those types deliberately do not exist.
+#define RUST_STAR_ATTENTION_INGRESS 1
+
 #define N_SIMDWIDTH 32
 #define FC_MUL_MV 600
 #define FOR_UNROLL(x) _Pragma("clang loop unroll(full)") for (x)

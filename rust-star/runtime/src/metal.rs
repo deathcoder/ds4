@@ -39,6 +39,7 @@ pub const MOE_OUTPUT_PROBE_SCHEMA: &str = "rust-star-layer0-moe-output-probe-v1"
 pub const ROUTED_NSG_BENCH_SCHEMA: &str = "rust-star-routed-nsg-bench-v1";
 pub const QKV_PAIR_BENCH_SCHEMA: &str = "rust-star-qkv-pair-bench-v1";
 pub const ATTENTION_OUTPUT_NSG_BENCH_SCHEMA: &str = "rust-star-attention-output-nsg-bench-v1";
+pub const ATTENTION_ROPE_FUSION_BENCH_SCHEMA: &str = "rust-star-attention-rope-fusion-bench-v1";
 pub const LAYER0_PROBE_SCHEMA: &str = "rust-star-layer0-complete-probe-v1";
 pub const LAYER0_BENCH_SCHEMA: &str = "rust-star-layer0-steady-state-v1";
 pub const LAYERS01_PROBE_SCHEMA: &str = "rust-star-layers01-continuous-probe-v1";
@@ -4087,6 +4088,24 @@ pub struct AttentionOutputNsgBenchReport {
 }
 
 #[derive(Clone, Debug)]
+pub struct AttentionRopeFusionBenchReport {
+    pub fixture_id: &'static str,
+    pub warmup_rounds: u32,
+    pub measured_rounds: u32,
+    pub separate_wall_ms_samples: Vec<f64>,
+    pub separate_gpu_ms_samples: Vec<f64>,
+    pub fused_wall_ms_samples: Vec<f64>,
+    pub fused_gpu_ms_samples: Vec<f64>,
+    pub separate_wall: TimingSummary,
+    pub separate_gpu: TimingSummary,
+    pub fused_wall: TimingSummary,
+    pub fused_gpu: TimingSummary,
+    pub attention_low_checksum: u64,
+    pub attention_out_checksum: u64,
+    pub hc_post_checksum: u64,
+}
+
+#[derive(Clone, Debug)]
 pub struct Layer0ProbeReport {
     pub fixture_id: &'static str,
     pub token: u32,
@@ -4785,6 +4804,43 @@ pub fn write_attention_output_nsg_bench_json<W: Write>(
     Ok(())
 }
 
+pub fn write_attention_rope_fusion_bench_json<W: Write>(
+    output: &mut W,
+    report: &AttentionRopeFusionBenchReport,
+) -> Result<()> {
+    write!(
+        output,
+        "{{\n  \"schema\": \"{ATTENTION_ROPE_FUSION_BENCH_SCHEMA}\",\n  \"fixture\": \"{}\",\n  \"warmup_rounds\": {},\n  \"measured_rounds\": {},\n  \"separate\": {{\n    \"dispatches\": 18,\n    \"wall_ms_samples\": [",
+        report.fixture_id, report.warmup_rounds, report.measured_rounds,
+    )?;
+    write_timing_samples(output, &report.separate_wall_ms_samples)?;
+    write!(output, "],\n    \"gpu_ms_samples\": [")?;
+    write_timing_samples(output, &report.separate_gpu_ms_samples)?;
+    write!(
+        output,
+        "],\n    \"wall_median_ms\": {:.6},\n    \"wall_mad_ms\": {:.6},\n    \"gpu_median_ms\": {:.6},\n    \"gpu_mad_ms\": {:.6}\n  }},\n  \"fused\": {{\n    \"dispatches\": 17,\n    \"wall_ms_samples\": [",
+        report.separate_wall.median_ms,
+        report.separate_wall.mad_ms,
+        report.separate_gpu.median_ms,
+        report.separate_gpu.mad_ms,
+    )?;
+    write_timing_samples(output, &report.fused_wall_ms_samples)?;
+    write!(output, "],\n    \"gpu_ms_samples\": [")?;
+    write_timing_samples(output, &report.fused_gpu_ms_samples)?;
+    write!(
+        output,
+        "],\n    \"wall_median_ms\": {:.6},\n    \"wall_mad_ms\": {:.6},\n    \"gpu_median_ms\": {:.6},\n    \"gpu_mad_ms\": {:.6}\n  }},\n  \"checksums\": {{\n    \"attention_low\": {},\n    \"attention_out\": {},\n    \"hc_post\": {}\n  }},\n  \"alternating_order\": true,\n  \"single_metal_context\": true,\n  \"pre_rope_boundary_preserved\": true,\n  \"c0_bitwise_match\": true,\n  \"paired_claim_eligible\": false\n}}\n",
+        report.fused_wall.median_ms,
+        report.fused_wall.mad_ms,
+        report.fused_gpu.median_ms,
+        report.fused_gpu.mad_ms,
+        report.attention_low_checksum,
+        report.attention_out_checksum,
+        report.hc_post_checksum,
+    )?;
+    Ok(())
+}
+
 pub fn write_layer0_probe_json<W: Write>(output: &mut W, report: &Layer0ProbeReport) -> Result<()> {
     write!(
         output,
@@ -5441,8 +5497,8 @@ pub fn write_prefill_decode_frontier_probe_json<W: Write>(
         || report.evaluated_positions != 2052
         || report.dense_positions != 2051
         || report.sparse_positions != 1
-        || report.dense_transformer_dispatches != 1287
-        || report.sparse_transformer_dispatches != 1749
+        || report.dense_transformer_dispatches != 1244
+        || report.sparse_transformer_dispatches != 1727
         || report.dense_model_mappings != 1323
         || report.sparse_model_mappings != 1365
         || report.command_buffers_per_position != 44
@@ -20953,6 +21009,12 @@ mod imp {
             error_bytes: usize,
         ) -> i32;
         fn rust_star_metal_select_qkv_pair(
+            context: *mut c_void,
+            enabled: u32,
+            error: *mut c_char,
+            error_bytes: usize,
+        ) -> i32;
+        fn rust_star_metal_select_flash_reduce_inverse_rope(
             context: *mut c_void,
             enabled: u32,
             error: *mut c_char,
@@ -41561,7 +41623,7 @@ mod imp {
         Ok(AttentionReadProbeReport {
             fixture_id: ATTENTION_READ_FIXTURE_ID,
             token: TOKEN,
-            dispatches: 16,
+            dispatches: 15,
             cache_capacity_rows: CACHE_ROWS as u32,
             cache_rows_read: 2,
             cache_row0_preserved: true,
@@ -41747,7 +41809,7 @@ mod imp {
         Ok(AttentionOutputProbeReport {
             fixture_id: ATTENTION_OUTPUT_FIXTURE_ID,
             token: TOKEN,
-            dispatches: 18,
+            dispatches: 17,
             output_groups: 8,
             output_rank: 1024,
             wrapped_model_ranges: raw.wrapped_model_ranges,
@@ -41767,7 +41829,6 @@ mod imp {
         warmup_rounds: u32,
         measured_rounds: u32,
     ) -> Result<AttentionOutputNsgBenchReport> {
-        const TOKEN: u32 = 201;
         if ![2_u32, 4, 8].contains(&candidate_low_nsg)
             || ![2_u32, 4, 8].contains(&candidate_hc_nsg)
             || (candidate_low_nsg == 4 && candidate_hc_nsg == 4)
@@ -41776,6 +41837,48 @@ mod imp {
                 "attention-output NSG candidate must differ from baseline and use only 2, 4, or 8",
             ));
         }
+        run_attention_output_variant_bench(
+            model,
+            candidate_low_nsg,
+            candidate_hc_nsg,
+            warmup_rounds,
+            measured_rounds,
+        )
+    }
+
+    pub fn run_attention_rope_fusion_bench(
+        model: &MappedModel,
+        warmup_rounds: u32,
+        measured_rounds: u32,
+    ) -> Result<AttentionRopeFusionBenchReport> {
+        let report =
+            run_attention_output_variant_bench(model, 0, 0, warmup_rounds, measured_rounds)?;
+        Ok(AttentionRopeFusionBenchReport {
+            fixture_id: report.fixture_id,
+            warmup_rounds: report.warmup_rounds,
+            measured_rounds: report.measured_rounds,
+            separate_wall_ms_samples: report.baseline_wall_ms_samples,
+            separate_gpu_ms_samples: report.baseline_gpu_ms_samples,
+            fused_wall_ms_samples: report.candidate_wall_ms_samples,
+            fused_gpu_ms_samples: report.candidate_gpu_ms_samples,
+            separate_wall: report.baseline_wall,
+            separate_gpu: report.baseline_gpu,
+            fused_wall: report.candidate_wall,
+            fused_gpu: report.candidate_gpu,
+            attention_low_checksum: report.attention_low_checksum,
+            attention_out_checksum: report.attention_out_checksum,
+            hc_post_checksum: report.hc_post_checksum,
+        })
+    }
+
+    fn run_attention_output_variant_bench(
+        model: &MappedModel,
+        candidate_low_nsg: u32,
+        candidate_hc_nsg: u32,
+        warmup_rounds: u32,
+        measured_rounds: u32,
+    ) -> Result<AttentionOutputNsgBenchReport> {
+        const TOKEN: u32 = 201;
         if measured_rounds == 0 || warmup_rounds.saturating_add(measured_rounds) > 1000 {
             return Err(Error::invalid(
                 "attention-output NSG benchmark requires 1..=1000 total rounds",
@@ -41823,6 +41926,7 @@ mod imp {
         let mut candidate_wall = Vec::with_capacity(measured_rounds as usize);
         let mut candidate_gpu = Vec::with_capacity(measured_rounds as usize);
         let total_rounds = warmup_rounds + measured_rounds;
+        let fusion_benchmark = candidate_low_nsg == 0 && candidate_hc_nsg == 0;
 
         for round in 0..total_rounds {
             let order = if round % 2 == 0 {
@@ -41831,12 +41935,34 @@ mod imp {
                 [(candidate_low_nsg, candidate_hc_nsg), (4_u32, 4_u32)]
             };
             for (low_nsg, hc_nsg) in order {
+                let fused_candidate = low_nsg == 0 && hc_nsg == 0;
+                let use_fusion = !fusion_benchmark || fused_candidate;
+                error.fill(0);
+                if unsafe {
+                    rust_star_metal_select_flash_reduce_inverse_rope(
+                        context.0,
+                        u32::from(use_fusion),
+                        error.as_mut_ptr(),
+                        error.len(),
+                    )
+                } == 0
+                {
+                    return Err(Error::invalid(format!(
+                        "Metal Flash-reduce inverse-RoPE={use_fusion} selection failed: {}",
+                        error_text(&error)
+                    )));
+                }
+                let (selected_low_nsg, selected_hc_nsg) = if fused_candidate {
+                    (4, 4)
+                } else {
+                    (low_nsg, hc_nsg)
+                };
                 error.fill(0);
                 if unsafe {
                     rust_star_metal_select_attention_output_nsg(
                         context.0,
-                        low_nsg,
-                        hc_nsg,
+                        selected_low_nsg,
+                        selected_hc_nsg,
                         error.as_mut_ptr(),
                         error.len(),
                     )
@@ -41965,7 +42091,7 @@ mod imp {
                     }
                 }
                 if round >= warmup_rounds {
-                    let baseline = low_nsg == 4 && hc_nsg == 4;
+                    let baseline = !fused_candidate && low_nsg == 4 && hc_nsg == 4;
                     let (wall, gpu) = if baseline {
                         (&mut baseline_wall, &mut baseline_gpu)
                     } else {
@@ -41989,6 +42115,21 @@ mod imp {
         {
             return Err(Error::invalid(format!(
                 "failed to restore production attention-output NSG=4/4: {}",
+                error_text(&error)
+            )));
+        }
+        error.fill(0);
+        if unsafe {
+            rust_star_metal_select_flash_reduce_inverse_rope(
+                context.0,
+                1,
+                error.as_mut_ptr(),
+                error.len(),
+            )
+        } == 0
+        {
+            return Err(Error::invalid(format!(
+                "failed to restore production Flash-reduce inverse-RoPE fusion: {}",
                 error_text(&error)
             )));
         }
@@ -42662,8 +42803,8 @@ mod imp {
             evaluated_positions: POSITION_END - POSITION_START + 1,
             dense_positions: POSITION_END - POSITION_START,
             sparse_positions: 1,
-            dense_transformer_dispatches: 1287,
-            sparse_transformer_dispatches: 1749,
+            dense_transformer_dispatches: 1244,
+            sparse_transformer_dispatches: 1727,
             dense_model_mappings: 1323,
             sparse_model_mappings: 1365,
             command_buffers_per_position: 44,
@@ -43897,17 +44038,17 @@ mod imp {
             ));
         }
         let dispatches = match (layer_index, layer_index % 2, position) {
-            (0, _, _) => 29,
-            (layer, 0, 1) if layer >= 2 => 35,
-            (layer, 0, 3) if layer >= 2 => 47,
+            (0, _, _) => 28,
+            (layer, 0, 1) if layer >= 2 => 34,
+            (layer, 0, 3) if layer >= 2 => 46,
             (layer, 0, _) if layer >= 2 && sparse_indexed_attention => {
                 let compressed_rows = (position + 1) / 4;
                 52 + retained_sparse_topk_schedule(compressed_rows).1
             }
-            (layer, 0, _) if layer >= 2 => 31,
-            (layer, 1, 1) if layer >= 3 => 31,
-            (layer, 1, _) if layer >= 3 => 29,
-            _ => 27,
+            (layer, 0, _) if layer >= 2 => 30,
+            (layer, 1, 1) if layer >= 3 => 30,
+            (layer, 1, _) if layer >= 3 => 28,
+            _ => 26,
         };
         if matches!(
             command_mode,
@@ -44747,6 +44888,17 @@ mod imp {
         ))
     }
 
+    pub fn run_attention_rope_fusion_bench(
+        model: &MappedModel,
+        warmup_rounds: u32,
+        measured_rounds: u32,
+    ) -> Result<AttentionRopeFusionBenchReport> {
+        let _ = (model, warmup_rounds, measured_rounds);
+        Err(Error::invalid(
+            "the attention RoPE-fusion benchmark is available only on macOS",
+        ))
+    }
+
     pub fn run_attention_output_nsg_bench(
         model: &MappedModel,
         candidate_low_nsg: u32,
@@ -45308,14 +45460,14 @@ mod imp {
 
 pub use imp::{
     run_attention_ingress_probe, run_attention_output_nsg_bench, run_attention_output_probe,
-    run_attention_read_probe, run_attention_setup_probe, run_closed_loop_decoder_probe,
-    run_cold_prefill_decoder_probe, run_decoder_output_probe, run_engine_layer_profile,
-    run_engine_measurement, run_f16_embedding_probe, run_ffn_router_probe, run_layer0_bench,
-    run_layer0_probe, run_layers01234567_decode_probe, run_layers012345_decode_probe,
-    run_layers0123_bench, run_layers0123_chained_probe, run_layers0123_decode_probe,
-    run_layers0123_probe, run_layers012_chained_probe, run_layers012_probe, run_layers01_probe,
-    run_layers0_to_42_decode_probe, run_moe_output_probe, run_position127_decoder_probe,
-    run_prefill_decode_frontier_probe, run_prefill_frontier_probe,
+    run_attention_read_probe, run_attention_rope_fusion_bench, run_attention_setup_probe,
+    run_closed_loop_decoder_probe, run_cold_prefill_decoder_probe, run_decoder_output_probe,
+    run_engine_layer_profile, run_engine_measurement, run_f16_embedding_probe,
+    run_ffn_router_probe, run_layer0_bench, run_layer0_probe, run_layers01234567_decode_probe,
+    run_layers012345_decode_probe, run_layers0123_bench, run_layers0123_chained_probe,
+    run_layers0123_decode_probe, run_layers0123_probe, run_layers012_chained_probe,
+    run_layers012_probe, run_layers01_probe, run_layers0_to_42_decode_probe, run_moe_output_probe,
+    run_position127_decoder_probe, run_prefill_decode_frontier_probe, run_prefill_frontier_probe,
     run_prefill_layer0_boundary_probe, run_prefill_layers012_attention_loop_probe,
     run_prefill_layers012_compressor_loop_probe, run_prefill_layers012_kv_state_loop_probe,
     run_prefill_layers012_kvnorm_loop_probe, run_prefill_layers01_boundary_probe,
@@ -46429,7 +46581,7 @@ mod tests {
         AttentionReadProbeReport {
             fixture_id: ATTENTION_READ_FIXTURE_ID,
             token: 201,
-            dispatches: 16,
+            dispatches: 15,
             cache_capacity_rows: 3,
             cache_rows_read: 2,
             cache_row0_preserved: true,
@@ -46447,7 +46599,7 @@ mod tests {
         AttentionOutputProbeReport {
             fixture_id: ATTENTION_OUTPUT_FIXTURE_ID,
             token: 201,
-            dispatches: 18,
+            dispatches: 17,
             output_groups: 8,
             output_rank: 1024,
             wrapped_model_ranges: 13,
@@ -46618,11 +46770,31 @@ mod tests {
         }
     }
 
+    fn attention_rope_fusion_bench_report() -> AttentionRopeFusionBenchReport {
+        let report = attention_output_nsg_bench_report();
+        AttentionRopeFusionBenchReport {
+            fixture_id: report.fixture_id,
+            warmup_rounds: report.warmup_rounds,
+            measured_rounds: report.measured_rounds,
+            separate_wall_ms_samples: report.baseline_wall_ms_samples,
+            separate_gpu_ms_samples: report.baseline_gpu_ms_samples,
+            fused_wall_ms_samples: report.candidate_wall_ms_samples,
+            fused_gpu_ms_samples: report.candidate_gpu_ms_samples,
+            separate_wall: report.baseline_wall,
+            separate_gpu: report.baseline_gpu,
+            fused_wall: report.candidate_wall,
+            fused_gpu: report.candidate_gpu,
+            attention_low_checksum: report.attention_low_checksum,
+            attention_out_checksum: report.attention_out_checksum,
+            hc_post_checksum: report.hc_post_checksum,
+        }
+    }
+
     fn layer0_report() -> Layer0ProbeReport {
         Layer0ProbeReport {
             fixture_id: LAYER0_FIXTURE_ID,
             token: 201,
-            dispatches: 29,
+            dispatches: 28,
             command_buffers: 1,
             selected_experts: vec![25, 174, 215, 58, 48, 60],
             wrapped_model_ranges: 25,
@@ -47119,8 +47291,8 @@ mod tests {
             evaluated_positions: 2052,
             dense_positions: 2051,
             sparse_positions: 1,
-            dense_transformer_dispatches: 1287,
-            sparse_transformer_dispatches: 1749,
+            dense_transformer_dispatches: 1244,
+            sparse_transformer_dispatches: 1727,
             dense_model_mappings: 1323,
             sparse_model_mappings: 1365,
             command_buffers_per_position: 44,
@@ -48648,12 +48820,27 @@ mod tests {
     }
 
     #[test]
+    fn writes_stable_attention_rope_fusion_bench_json() {
+        let mut output = Vec::new();
+        write_attention_rope_fusion_bench_json(&mut output, &attention_rope_fusion_bench_report())
+            .unwrap();
+        let text = String::from_utf8(output).unwrap();
+        assert!(text.contains(&format!(
+            "\"schema\": \"{ATTENTION_ROPE_FUSION_BENCH_SCHEMA}\""
+        )));
+        assert!(text.contains("\"dispatches\": 18"));
+        assert!(text.contains("\"dispatches\": 17"));
+        assert!(text.contains("\"pre_rope_boundary_preserved\": true"));
+        assert!(text.contains("\"single_metal_context\": true"));
+    }
+
+    #[test]
     fn writes_stable_layer0_probe_json() {
         let mut output = Vec::new();
         write_layer0_probe_json(&mut output, &layer0_report()).unwrap();
         let text = String::from_utf8(output).unwrap();
         assert!(text.contains(&format!("\"schema\": \"{LAYER0_PROBE_SCHEMA}\"")));
-        assert!(text.contains("\"dispatches\": 29"));
+        assert!(text.contains("\"dispatches\": 28"));
         assert!(text.contains("\"command_buffers\": 1"));
         assert!(text.contains("\"pointer_matches\": 25"));
         assert!(text.contains("\"hc_ffn_post\": 7"));

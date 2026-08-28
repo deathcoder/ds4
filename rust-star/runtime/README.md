@@ -382,7 +382,7 @@ rust-star/.work/runtime-target/release/rust-star attention-setup-probe \
   --json rust-star/.work/runtime-target/attention-setup-probe.json
 ```
 
-This runs nine dispatches over ten no-copy model views and verifies Q-Lora
+This runs eight dispatches over ten no-copy model views and verifies Q-Lora
 norm, KV raw/norm, and all 32,768 raw Q values against
 `../fixtures/layer0-qkv-setup-v1/`.
 
@@ -394,7 +394,7 @@ rust-star/.work/runtime-target/release/rust-star rope-kv-store-probe \
   --json rust-star/.work/runtime-target/rope-kv-store-probe.json
 ```
 
-This extends the same path to twelve dispatches with DwarfStar's fused Q head
+This extends the same path to eleven dispatches with DwarfStar's fused Q head
 RMSNorm/RoPE, the layer-0 KV RoPE, and its fused E4M3FN KV finalizer/cache
 store. It matches `Qcur`, `KVrope`, and `KVcur` bit-for-bit, then verifies the
 FP16-rounded target cache row while two sentinel neighbor rows remain intact.
@@ -407,9 +407,9 @@ rust-star/.work/runtime-target/release/rust-star attention-read-probe \
   --json rust-star/.work/runtime-target/attention-read-probe.json
 ```
 
-This seventeen-dispatch checkpoint stages cache rows 0-1 to F16, executes
-DwarfStar's padded 512-wide FlashAttention and reduction, then applies inverse
-RoPE. It preserves the first cache row and guard row and requires the complete
+This fifteen-dispatch checkpoint stages cache rows 0-1 to F16, executes
+DwarfStar's padded 512-wide FlashAttention, and folds inverse RoPE into the
+split-K reduction. It preserves the first cache row and guard row and requires the complete
 64×512 `kqv_back` result to match the pinned DwarfStar oracle bit-for-bit.
 
 To validate the attention output and HC state update:
@@ -424,6 +424,21 @@ This adds the two release Q8 kernels used by DwarfStar: the eight-group
 block-diagonal projection to 8×1,024 low-rank values, followed by the fused
 8,192-to-4,096 expansion and four-stream HC post-update. All three retained
 boundaries must match the oracle bit-for-bit.
+
+To replay the accepted reduction/inverse-RoPE optimization against its
+separate-launch control in one Metal context:
+
+```sh
+rust-star/.work/runtime-target/release/rust-star attention-rope-fusion-bench \
+  /absolute/path/to/model.gguf \
+  --warmup 10 --iterations 100 \
+  --json rust-star/.work/runtime-target/attention-rope-fusion-bench.json
+```
+
+The benchmark alternates the 18-dispatch control and 17-dispatch fused chain,
+preserves both the pre- and post-RoPE diagnostic boundaries, and rejects either
+path on the first non-bitwise output. Its timings are diagnostic rather than a
+paired full-engine throughput claim.
 
 To validate the layer-0 FFN ingress and router boundary:
 

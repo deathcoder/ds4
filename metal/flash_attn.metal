@@ -1439,3 +1439,91 @@ kernel void kernel_flash_attn_ext_vec_reduce(
 #undef NWG
 #undef DV
 }
+
+#ifdef RUST_STAR_ATTENTION_INGRESS
+// Decode-only DS4 specialization that folds the immediately following inverse
+// partial-RoPE pass into split-K reduction. The reduction statements above are
+// intentionally kept unchanged. `dst` retains the pre-RoPE diagnostic boundary;
+// `rope_dst` may alias it in production or point at the separately captured
+// post-RoPE boundary in probes.
+kernel void kernel_flash_attn_ext_vec_reduce_inverse_rope(
+        constant ds4_metal_args_flash_attn_ext_vec_reduce & args,
+        device  const char * htmp,
+        device        char * dst,
+        device        char * rope_dst,
+        constant ds4_metal_args_dsv4_rope_tail & rope_args,
+        device  const char * position_bytes,
+        uint   tgpig[[threadgroup_position_in_grid]],
+        uint   tid[[thread_index_in_threadgroup]],
+        ushort tiisg[[thread_index_in_simdgroup]],
+        ushort sgitg[[simdgroup_index_in_threadgroup]]) {
+#define NWG (FC_flash_attn_ext_vec_reduce_NWG)
+#define DV  (FC_flash_attn_ext_vec_reduce_DV)
+
+    const uint64_t rid = tgpig;
+    const short iwg = tiisg;
+    device const float * ss = (device const float *) htmp + (uint64_t)args.nrows*DV*NWG;
+    float S = ss[rid*(2*NWG) + 2*iwg + 0];
+    float M = ss[rid*(2*NWG) + 2*iwg + 1];
+    const float m = simd_max(M);
+    const float ms = exp(M - m);
+    S = simd_sum(S*ms);
+    S = S == 0.0f ? 0.0f : 1.0f/S;
+
+    const short DV4 = DV/4;
+    device const float4 * htmp4 = (device const float4 *) htmp + rid*DV4*NWG;
+    device float4 * dst4 = (device float4 *) dst + rid*DV4;
+    for (short i = sgitg; i < DV4; i += NWG) {
+        const float4 v = simd_sum(htmp4[i*NWG + iwg]*ms);
+        if (iwg == 0) {
+            dst4[i] = v*S;
+        }
+    }
+
+    threadgroup_barrier(mem_flags::mem_device);
+
+    if (tid >= 256 || rope_args.mode != 0 || rope_args.ne00 != DV) {
+        return;
+    }
+    const int n_nope = rope_args.ne00 - rope_args.n_dims;
+    device const float * src = (device const float *) dst + rid*DV;
+    device float * out = (device float *) rope_dst + rid*DV;
+    device const int32_t * pos = (device const int32_t *)position_bytes;
+    float corr_dims[2];
+    rope_yarn_corr_dims(rope_args.n_dims, rope_args.n_ctx_orig, rope_args.freq_base,
+                        rope_args.beta_fast, rope_args.beta_slow, corr_dims);
+    const float theta_base = (float)pos[0];
+    const float inv_ndims = -1.f/rope_args.n_dims;
+    for (int i0 = tid; i0 < rope_args.ne00; i0 += 256) {
+        if (i0 < n_nope) {
+            out[i0] = src[i0];
+            continue;
+        }
+        const int r = i0 - n_nope;
+        if ((r & 1) != 0) {
+            continue;
+        }
+#ifdef DS4_METAL_ROPE_EXP2_LOG2
+        const float theta = theta_base * exp2(inv_ndims * (float)r * log2(rope_args.freq_base));
+#else
+        const float theta = theta_base * pow(rope_args.freq_base, inv_ndims*r);
+#endif
+        float cos_theta;
+        float sin_theta;
+        rope_yarn(theta, rope_args.freq_scale, corr_dims, r, rope_args.ext_factor,
+                  rope_args.attn_factor, &cos_theta, &sin_theta);
+        if (rope_args.inverse) {
+            sin_theta = -sin_theta;
+        }
+        const int j0 = n_nope + r;
+        const int j1 = j0 + 1;
+        const float x0 = src[j0];
+        const float x1 = src[j1];
+        out[j0] = x0*cos_theta - x1*sin_theta;
+        out[j1] = x0*sin_theta + x1*cos_theta;
+    }
+
+#undef NWG
+#undef DV
+}
+#endif

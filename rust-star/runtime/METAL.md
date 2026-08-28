@@ -268,7 +268,7 @@ Schema: `rust-star-layer0-attention-setup-probe-v1`.
 
 `attention-setup-probe` extends the connected command buffer with the Q8_0 KV
 projection, DwarfStar's fused Q-Lora/KV learned RMSNorm, and the Q8_0 Q-B
-projection. The full path now contains nine dispatches and ten independently
+projection. The full path now contains eight dispatches and ten independently
 wrapped mmap-backed model ranges.
 
 The `layer0-qkv-setup-v1` fixture preserves Q-Lora and attention-norm inputs,
@@ -303,9 +303,10 @@ stateful write boundary.
 
 Schema: `rust-star-layer0-attention-read-probe-v1`.
 
-`attention-read-probe` extends the connected path to seventeen dispatches. It
+`attention-read-probe` extends the connected path to fifteen dispatches. It
 imports DwarfStar's contiguous F32-to-F16 cache staging, partial-block padding,
-512-wide vector FlashAttention, reduction, and inverse-RoPE kernels. The exact
+512-wide vector FlashAttention, and the Rust Star split-K
+reduction/inverse-RoPE fusion. The exact
 decode geometry is two raw cache rows, 64 heads, 512 values per head, one
 simdgroup per FlashAttention threadgroup, and 32 reduction workgroups.
 
@@ -323,7 +324,7 @@ and all 32,768 post-inverse-RoPE attention values to match DwarfStar bit-for-bit
 
 Schema: `rust-star-layer0-attention-output-probe-v1`.
 
-`attention-output-probe` extends the connected path to nineteen dispatches and
+`attention-output-probe` extends the connected path to seventeen dispatches and
 thirteen independently wrapped mmap-backed model ranges. It imports the two
 exact release kernels after inverse RoPE. The first treats the 64 attention
 heads as eight fixed groups and applies the block-diagonal Q8_0 output-A
@@ -336,6 +337,14 @@ fresh-process DwarfStar captures of `attn_low`, `attn_out`, and
 `hc_attn_post`. The runtime requires all 8,192 low-rank values, all 4,096
 attention output values, and all 16,384 updated HC-state values to match their
 FP32 bit patterns exactly.
+
+`attention-rope-fusion-bench` retains the original split-K reducer and inverse
+RoPE pipelines as a same-context control. It alternates that 18-dispatch chain
+against the 17-dispatch fused chain, preserves the raw pre-RoPE tensor in probe
+mode, and checks all 32,768 post-RoPE values plus both attention projections and
+the final HC state after every execution. Production decode aliases the two
+buffers and removes one launch per dense-attention layer; sparse indexed
+attention retains its separate inverse-RoPE path.
 
 ## Layer-0 FFN HC ingress and hash router
 

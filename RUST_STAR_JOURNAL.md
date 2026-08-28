@@ -674,14 +674,13 @@ history; add a correction and update the current-state summary.
 
 ## Immediate Next Actions
 
-1. Compare Rust Star's routed gate/up and down/sum kernels with DwarfStar's
-   exact production implementation and obtain a narrow same-input GPU replay.
-   Routed experts are the largest measured family at 25.31% and 11.582 profiled
-   ms/token; QKV ingress is next at 22.82% and 10.439 profiled ms/token. Treat
-   the milliseconds as perturbed diagnostics: compute-pass splitting inflated
-   transformer GPU time by 14.23%, while the family ranking and shares identify
-   the optimization search order. The validated paired gap remains 3.02% until
-   an immutable optimization passes a new paired comparison.
+1. Re-profile the accepted QKV and inverse-RoPE fusions in a healthy immutable
+   engine run, then isolate Q-B or the next attention setup kernel by measured
+   share. Treat the earlier profile milliseconds as perturbed diagnostics:
+   compute-pass splitting inflated transformer GPU time by 14.23%, while the
+   family ranking and shares remain useful for choosing the search order. The
+   validated paired gap remains 3.02% until an immutable optimization passes a
+   new paired full-engine comparison.
 2. Isolate the remaining first-token residency/scheduling cost: the new paired
    median is 871.961417 ms versus DwarfStar's 50.26 ms. Rust's internal median
    is 868.859875 ms transformer wall but only 67.742042 ms summed transformer
@@ -699,6 +698,65 @@ history; add a correction and update the current-state summary.
 6. Run or approve the fork's GitHub Actions workflow and retain its URL.
 
 ## Entries
+
+### 2026-08-28 — Dense Flash reduction/inverse-RoPE fusion accepted
+
+Objective:
+
+- Remove the standalone inverse-RoPE dispatch and its in-place 32,768-value
+  attention pass without changing any observable FP32 boundary.
+
+Implementation:
+
+- Added `kernel_flash_attn_ext_vec_reduce_inverse_rope`, retaining the exact
+  split-K reduction statements, publishing the pre-RoPE diagnostic output,
+  synchronizing device memory, and then executing the reference 256-lane
+  inverse-RoPE loop inside each head workgroup.
+- Production aliases the raw/post-RoPE buffers and selects the fused reducer for
+  dense attention. Exact probes keep distinct buffers; sparse indexed attention
+  retains its standalone inverse-RoPE kernel.
+- Added `attention-rope-fusion-bench`, which alternates the 18-dispatch control
+  and 17-dispatch candidate in one Metal context and validates every post-RoPE,
+  attention-low, attention-out, and HC-post value after each execution.
+- Updated dense decode from 1,287 to 1,244 transformer dispatches. The first
+  production sparse schedule drops only its 22 dense-attention launches, from
+  1,749 to 1,727; its 21 sparse indexed-attention layers are unchanged.
+
+Evidence:
+
+- The finalized 10-warmup/100-measured alternating run recorded 0.576 ms
+  separate versus 0.535 ms fused median GPU time, a 7.12% reduction for the
+  full layer-0 attention-output chain. Evidence SHA-256
+  `be119bad8056fa1c137796051decb764853f1b42c5f2e129d855aa33b00537ec`.
+- A first layer-0-only prototype passed but a 43-layer run correctly rejected a
+  one-ULP YaRN mismatch at layer 2. Restoring the reference kernel's exact
+  256-lane loop eliminated the drift; the final layers-0--2 evidence SHA-256 is
+  `a0b32c3a85cdfa1cc94acbf01c04b6b7c0984458d142cda4d38cf81df9b96074`.
+- The complete 43-layer position-advancing decoder is bit-exact at positions
+  1, 2, and 3, including every compressed YaRN layer. Evidence SHA-256
+  `749efad3ddaeb23419796e277c9424e527cfc97f3ddf6fd349801dd80d4655be`.
+
+Validation:
+
+- All 293 Rust tests passed.
+- The fused and separate paths preserved the pre-RoPE boundary and reproduced
+  every pinned downstream boundary on all 100 measured executions.
+- The complete 43-layer decoder reproduced all retained C0 fixtures at three
+  consecutive positions.
+
+Decision:
+
+- Keep dense Flash reduction/inverse-RoPE fusion enabled in production. It
+  removes 43 launches from dense decode and shows a repeatable focused-chain
+  improvement while preserving the strict C0 contract.
+- Do not apply it to sparse indexed attention until that reducer receives its
+  own exact fusion and same-context validation.
+
+Next:
+
+- Obtain a healthy immutable engine measurement, then use the refreshed profile
+  to choose between Q-B launch geometry and another structural attention/setup
+  fusion.
 
 ### 2026-08-28 — Attention-output launch alternatives rejected by C0
 

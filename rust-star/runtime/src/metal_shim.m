@@ -286,6 +286,8 @@ static NSString *const kQ8ProjectionSource =
 @property(nonatomic, strong) id<MTLComputePipelineState> flashNonvecPipeline;
 @property(nonatomic, strong) id<MTLComputePipelineState> flashVecPipeline;
 @property(nonatomic, strong) id<MTLComputePipelineState> flashReducePipeline;
+@property(nonatomic, strong) id<MTLComputePipelineState> flashReduceInverseRopePipeline;
+@property(nonatomic, assign) BOOL useFlashReduceInverseRope;
 @property(nonatomic, strong) id<MTLComputePipelineState> routerProbabilityPipeline;
 @property(nonatomic, strong) id<MTLComputePipelineState> routerFinalizePipeline;
 @property(nonatomic, strong) id<MTLComputePipelineState> routerWeightsPipeline;
@@ -889,6 +891,7 @@ int rust_star_metal_create(void **context_out, char *error, size_t error_bytes) 
         context.probePipeline = pipeline;
         context.argmaxPipeline = argmax_pipeline;
         context.useQkvPair = YES;
+        context.useFlashReduceInverseRope = YES;
         context.modelViewCache = [NSMutableDictionary dictionary];
         context.activationBufferCache = [NSMutableDictionary dictionary];
         context.chainedCommands = [NSMutableDictionary dictionary];
@@ -1061,6 +1064,9 @@ static int ensure_attention_ingress_pipelines(
     [reduceConstants setConstantValue:&nwg type:MTLDataTypeInt atIndex:501];
     id<MTLFunction> flashReduce = [library newFunctionWithName:@"kernel_flash_attn_ext_vec_reduce"
                                                constantValues:reduceConstants error:&compile_error];
+    id<MTLFunction> flashReduceInverseRope =
+        [library newFunctionWithName:@"kernel_flash_attn_ext_vec_reduce_inverse_rope"
+                      constantValues:reduceConstants error:&compile_error];
     id<MTLFunction> routerProbability = [library newFunctionWithName:@"kernel_dsv4_softplus_sqrt_f32_4"];
     id<MTLFunction> routerFinalize = [library newFunctionWithName:@"kernel_dsv4_router_finalize_one"];
     id<MTLFunction> routerWeights = [library newFunctionWithName:@"kernel_dsv4_router_weights_one"];
@@ -1103,7 +1109,7 @@ static int ensure_attention_ingress_pipelines(
     id<MTLFunction> indexerQat = [library newFunctionWithName:@"kernel_dsv4_indexer_hadamard_fp4_f32"];
     if (!repeat || !norm || !hc || !qkvNorm || !headNormRope || !ropeTail ||
         !kvStore || !cpyF32F16 || !cpyF16F32 || !flashPad || !flashBlk ||
-        !flashNonvec || !flashVec || !flashReduce ||
+        !flashNonvec || !flashVec || !flashReduce || !flashReduceInverseRope ||
         !projection || !compressorPair || !compressorStore || !compressorPack ||
         !compressorSoftmax || !compressorMul || !compressorSumRows ||
         !compressorScoreBatch || !compressorPackBatch || !compressorPoolBatch ||
@@ -1154,6 +1160,8 @@ static int ensure_attention_ingress_pipelines(
     context.flashNonvecPipeline = [context.device newComputePipelineStateWithFunction:flashNonvec error:&compile_error];
     context.flashVecPipeline = [context.device newComputePipelineStateWithFunction:flashVec error:&compile_error];
     context.flashReducePipeline = [context.device newComputePipelineStateWithFunction:flashReduce error:&compile_error];
+    context.flashReduceInverseRopePipeline =
+        [context.device newComputePipelineStateWithFunction:flashReduceInverseRope error:&compile_error];
     context.routerProbabilityPipeline = [context.device newComputePipelineStateWithFunction:routerProbability error:&compile_error];
     context.routerFinalizePipeline = [context.device newComputePipelineStateWithFunction:routerFinalize error:&compile_error];
     context.routerWeightsPipeline = [context.device newComputePipelineStateWithFunction:routerWeights error:&compile_error];
@@ -1181,7 +1189,7 @@ static int ensure_attention_ingress_pipelines(
         !context.cpyF32F16Pipeline || !context.cpyF16F32Pipeline ||
         !context.flashPadPipeline || !context.flashBlkPipeline ||
         !context.flashNonvecPipeline || !context.flashVecPipeline ||
-        !context.flashReducePipeline ||
+        !context.flashReducePipeline || !context.flashReduceInverseRopePipeline ||
         !context.routerProbabilityPipeline || !context.routerFinalizePipeline ||
         !context.routerWeightsPipeline || !context.routerSoftplusBatchPipeline ||
         !context.routerSqrtBatchPipeline || !context.routerHashRowsBatchPipeline ||
@@ -1491,6 +1499,22 @@ int rust_star_metal_select_qkv_pair(
     RustStarMetalContext *context = (__bridge RustStarMetalContext *)opaque_context;
     if (!ensure_q8_projection_pipeline(context, error, error_bytes)) return 0;
     context.useQkvPair = enabled != 0u;
+    return 1;
+}
+
+int rust_star_metal_select_flash_reduce_inverse_rope(
+    void *opaque_context,
+    uint32_t enabled,
+    char *error,
+    size_t error_bytes)
+{
+    if (!opaque_context || enabled > 1u) {
+        return fail_with_message(error, error_bytes,
+            @"Flash-reduce inverse-RoPE selector must be 0 or 1");
+    }
+    RustStarMetalContext *context = (__bridge RustStarMetalContext *)opaque_context;
+    if (!ensure_attention_ingress_pipelines(context, error, error_bytes)) return 0;
+    context.useFlashReduceInverseRope = enabled != 0u;
     return 1;
 }
 
@@ -40530,6 +40554,9 @@ int rust_star_metal_run_attention_ingress(
         attention_inverse_args.nb2 = 64u*attention_head_bytes;
         attention_inverse_args.nb3 = 64u*attention_head_bytes;
         attention_inverse_args.inverse = 1;
+        const BOOL fused_dense_inverse_rope = attention_read &&
+            !sparse_indexed_attention && context.useFlashReduceInverseRope;
+        int32_t inverse_position = (int32_t)position;
         rust_star_q8_mv_args sparse_indexer_q_projection = {
             .ne00=1024, .ne01=8192, .ne02=1,
             .nb00=sizeof(uint16_t), .nb01=1024ull*sizeof(uint16_t),
@@ -41247,10 +41274,18 @@ int rust_star_metal_run_attention_ingress(
                 [encoder dispatchThreadgroups:MTLSizeMake(1,64,32)
                      threadsPerThreadgroup:MTLSizeMake(32,1,1)];
 
-                [encoder setComputePipelineState:context.flashReducePipeline];
+                [encoder setComputePipelineState:fused_dense_inverse_rope
+                    ? context.flashReduceInverseRopePipeline
+                    : context.flashReducePipeline];
                 [encoder setBytes:&flash_reduce_args length:sizeof(flash_reduce_args) atIndex:0];
                 [encoder setBuffer:flash_tmp_buffer offset:0 atIndex:1];
                 [encoder setBuffer:attention_raw_buffer offset:0 atIndex:2];
+                if (fused_dense_inverse_rope) {
+                    [encoder setBuffer:attention_back_work_buffer offset:0 atIndex:3];
+                    [encoder setBytes:&attention_inverse_args
+                               length:sizeof(attention_inverse_args) atIndex:4];
+                    [encoder setBytes:&inverse_position length:sizeof(inverse_position) atIndex:5];
+                }
                 [encoder dispatchThreadgroups:MTLSizeMake(64,1,1)
                      threadsPerThreadgroup:MTLSizeMake(1024,1,1)];
                 }
@@ -41281,7 +41316,7 @@ int rust_star_metal_run_attention_ingress(
             }
 
             if (attention_read) {
-                if (collect_outputs) {
+                if (collect_outputs && !fused_dense_inverse_rope) {
                     id<MTLBlitCommandEncoder> attention_copy =
                         [command blitCommandEncoder];
                     if (!attention_copy) return fail_with_message(error, error_bytes,
@@ -41300,15 +41335,16 @@ int rust_star_metal_run_attention_ingress(
                     if (!encoder) return fail_with_message(error, error_bytes,
                         @"failed to create inverse-RoPE encoder");
                 }
-                [encoder setComputePipelineState:context.ropeTailPipeline];
-                [encoder setBytes:&attention_inverse_args length:sizeof(attention_inverse_args) atIndex:0];
-                [encoder setBuffer:attention_back_work_buffer offset:0 atIndex:1];
-                int32_t inverse_position = (int32_t)position;
-                [encoder setBytes:&inverse_position length:sizeof(inverse_position) atIndex:2];
-                [encoder setBuffer:attention_back_work_buffer offset:0 atIndex:3];
-                [encoder setBuffer:attention_back_work_buffer offset:0 atIndex:4];
-                [encoder dispatchThreadgroups:MTLSizeMake(64,1,1)
-                     threadsPerThreadgroup:MTLSizeMake(256,1,1)];
+                if (!fused_dense_inverse_rope) {
+                    [encoder setComputePipelineState:context.ropeTailPipeline];
+                    [encoder setBytes:&attention_inverse_args length:sizeof(attention_inverse_args) atIndex:0];
+                    [encoder setBuffer:attention_back_work_buffer offset:0 atIndex:1];
+                    [encoder setBytes:&inverse_position length:sizeof(inverse_position) atIndex:2];
+                    [encoder setBuffer:attention_back_work_buffer offset:0 atIndex:3];
+                    [encoder setBuffer:attention_back_work_buffer offset:0 atIndex:4];
+                    [encoder dispatchThreadgroups:MTLSizeMake(64,1,1)
+                         threadsPerThreadgroup:MTLSizeMake(256,1,1)];
+                }
 
                 if (attention_output) {
                     [encoder setComputePipelineState:context.attentionOutputLowPipeline];

@@ -2141,6 +2141,12 @@ int rust_star_metal_select_qkv_pair(
     char *error,
     size_t error_bytes);
 
+int rust_star_metal_select_flash_reduce_inverse_rope(
+    void *context,
+    uint32_t enabled,
+    char *error,
+    size_t error_bytes);
+
 int rust_star_metal_select_attention_output_nsg(
     void *context,
     uint32_t low_simdgroups,
