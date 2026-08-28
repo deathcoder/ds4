@@ -1944,7 +1944,9 @@ int rust_star_metal_run_output_head(
     float *hc,
     float *norm,
     float *logits,
-    uint32_t collect_intermediates,
+    uint32_t *selected_token,
+    /* 0: full logits, 1: full logits plus intermediates, 2: GPU top-1 only. */
+    uint32_t output_mode,
     rust_star_metal_ingress_probe_result *result,
     char *error,
     size_t error_bytes);

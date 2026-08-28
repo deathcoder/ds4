@@ -4423,7 +4423,7 @@ fn prefill_decode_frontier_probe_usage() -> &'static str {
 }
 
 fn engine_measurement_usage() -> &'static str {
-    "usage: rust-star engine-measure MODEL.gguf --context 2048 --gen-tokens 128 --json PATH\n\nRuns the exact native 2K prefill and a timed 128-token closed loop. Prefill and generation execute without diagnostic tensor collection. Command encoding, synchronized execution, lowest-ID argmax, and token commitment are included in their declared intervals. The selected-token transcript is validated after timing, and the raw record is eligible for the paired adapter only when both collection paths remain disabled."
+    "usage: rust-star engine-measure MODEL.gguf --context 2048 --gen-tokens 128 --json PATH\n\nRuns the exact native 2K prefill and a timed 128-token closed loop. Prefill and generation execute without diagnostic tensor collection. Command encoding, synchronized execution, GPU lowest-ID argmax, its eight-byte selection readback, and token commitment are included in their declared intervals. The selected-token transcript is validated after timing, and the raw record is eligible for the paired adapter only when both collection paths remain disabled."
 }
 
 fn engine_profile_usage() -> &'static str {

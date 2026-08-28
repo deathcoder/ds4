@@ -29,12 +29,63 @@ enum {
     RUST_STAR_INITIAL_STATE_COLD = 1,
 };
 
+enum {
+    RUST_STAR_OUTPUT_LOGITS = 0,
+    RUST_STAR_OUTPUT_INTERMEDIATES = 1,
+    RUST_STAR_OUTPUT_TOP1 = 2,
+};
+
 static NSString *const kProbeSource =
     @"#include <metal_stdlib>\n"
     @"using namespace metal;\n"
     @"kernel void rust_star_dispatch_probe(device uint *values [[buffer(0)]],\n"
     @"    uint gid [[thread_position_in_grid]]) {\n"
     @"    values[gid] = values[gid] * 1664525u + 1013904223u;\n"
+    @"}\n"
+    @"kernel void rust_star_argmax_f32(device const float *values [[buffer(0)]],\n"
+    @"    device uint *result [[buffer(1)]], constant uint &count [[buffer(2)]],\n"
+    @"    uint tid [[thread_index_in_threadgroup]],\n"
+    @"    uint lane [[thread_index_in_simdgroup]],\n"
+    @"    uint simd_group [[simdgroup_index_in_threadgroup]],\n"
+    @"    uint3 group_size [[threads_per_threadgroup]]) {\n"
+    @"    float best = -INFINITY;\n"
+    @"    uint best_id = UINT_MAX;\n"
+    @"    uint invalid = 0u;\n"
+    @"    for (uint i = tid; i < count; i += group_size.x) {\n"
+    @"        const float value = values[i];\n"
+    @"        if (!isfinite(value)) invalid = 1u;\n"
+    @"        else if (value > best || (value == best && i < best_id)) { best = value; best_id = i; }\n"
+    @"    }\n"
+    @"    for (uint offset = 16u; offset != 0u; offset >>= 1u) {\n"
+    @"        const float other = simd_shuffle_down(best, offset);\n"
+    @"        const uint other_id = simd_shuffle_down(best_id, offset);\n"
+    @"        const uint other_invalid = simd_shuffle_down(invalid, offset);\n"
+    @"        if (lane + offset < 32u && (other > best || (other == best && other_id < best_id))) {\n"
+    @"            best = other; best_id = other_id;\n"
+    @"        }\n"
+    @"        if (lane + offset < 32u) invalid += other_invalid;\n"
+    @"    }\n"
+    @"    threadgroup float group_best[32];\n"
+    @"    threadgroup uint group_id[32];\n"
+    @"    threadgroup uint group_invalid[32];\n"
+    @"    if (lane == 0u) { group_best[simd_group] = best; group_id[simd_group] = best_id; group_invalid[simd_group] = invalid; }\n"
+    @"    threadgroup_barrier(mem_flags::mem_threadgroup);\n"
+    @"    if (simd_group == 0u) {\n"
+    @"        const uint groups = (group_size.x + 31u) / 32u;\n"
+    @"        best = lane < groups ? group_best[lane] : -INFINITY;\n"
+    @"        best_id = lane < groups ? group_id[lane] : UINT_MAX;\n"
+    @"        invalid = lane < groups ? group_invalid[lane] : 0u;\n"
+    @"        for (uint offset = 16u; offset != 0u; offset >>= 1u) {\n"
+    @"            const float other = simd_shuffle_down(best, offset);\n"
+    @"            const uint other_id = simd_shuffle_down(best_id, offset);\n"
+    @"            const uint other_invalid = simd_shuffle_down(invalid, offset);\n"
+    @"            if (lane + offset < 32u && (other > best || (other == best && other_id < best_id))) {\n"
+    @"                best = other; best_id = other_id;\n"
+    @"            }\n"
+    @"            if (lane + offset < 32u) invalid += other_invalid;\n"
+    @"        }\n"
+    @"        if (lane == 0u) { result[0] = invalid == 0u ? best_id : UINT_MAX; result[1] = invalid; }\n"
+    @"    }\n"
     @"}\n";
 
 // Imported from DwarfStar metal/get_rows.metal. Keeping its argument layout,
@@ -181,6 +232,7 @@ static NSString *const kQ8ProjectionSource =
 @property(nonatomic, strong) id<MTLDevice> device;
 @property(nonatomic, strong) id<MTLCommandQueue> queue;
 @property(nonatomic, strong) id<MTLComputePipelineState> probePipeline;
+@property(nonatomic, strong) id<MTLComputePipelineState> argmaxPipeline;
 @property(nonatomic, strong) id<MTLComputePipelineState> getRowsF16Pipeline;
 @property(nonatomic, strong) id<MTLComputePipelineState> q8ProjectionPipeline;
 @property(nonatomic, strong) id<MTLComputePipelineState> q8PrefillPipeline;
@@ -780,12 +832,15 @@ int rust_star_metal_create(void **context_out, char *error, size_t error_bytes) 
             return fail_with_message(error, error_bytes, compile_error.localizedDescription);
         }
         id<MTLFunction> function = [library newFunctionWithName:@"rust_star_dispatch_probe"];
-        if (!function) {
-            return fail_with_message(error, error_bytes, @"probe kernel was not found in Metal library");
+        id<MTLFunction> argmax_function = [library newFunctionWithName:@"rust_star_argmax_f32"];
+        if (!function || !argmax_function) {
+            return fail_with_message(error, error_bytes, @"probe or argmax kernel was not found in Metal library");
         }
         id<MTLComputePipelineState> pipeline =
             [device newComputePipelineStateWithFunction:function error:&compile_error];
-        if (!pipeline) {
+        id<MTLComputePipelineState> argmax_pipeline =
+            [device newComputePipelineStateWithFunction:argmax_function error:&compile_error];
+        if (!pipeline || !argmax_pipeline) {
             return fail_with_message(error, error_bytes, compile_error.localizedDescription);
         }
         const double compile_end = monotonic_ms();
@@ -794,6 +849,7 @@ int rust_star_metal_create(void **context_out, char *error, size_t error_bytes) 
         context.device = device;
         context.queue = queue;
         context.probePipeline = pipeline;
+        context.argmaxPipeline = argmax_pipeline;
         context.modelViewCache = [NSMutableDictionary dictionary];
         context.activationBufferCache = [NSMutableDictionary dictionary];
         context.chainedCommands = [NSMutableDictionary dictionary];
@@ -41393,7 +41449,8 @@ int rust_star_metal_run_output_head(
     float *hc,
     float *norm,
     float *logits,
-    uint32_t collect_intermediates,
+    uint32_t *selected_token,
+    uint32_t output_mode,
     rust_star_metal_ingress_probe_result *result,
     char *error,
     size_t error_bytes)
@@ -41403,8 +41460,11 @@ int rust_star_metal_run_output_head(
     const uint32_t hc_dim = n_embd*n_hc;
     const uint32_t n_vocab = 129280u;
     const uint64_t output_row_bytes = (uint64_t)(n_embd/32u)*34u;
-    if (!opaque_context || !model_mapping || !logits || !result ||
-        collect_intermediates > 1u ||
+    const BOOL collect_intermediates = output_mode == RUST_STAR_OUTPUT_INTERMEDIATES;
+    const BOOL select_top1 = output_mode == RUST_STAR_OUTPUT_TOP1;
+    if (!opaque_context || !model_mapping || !result ||
+        output_mode > RUST_STAR_OUTPUT_TOP1 ||
+        (select_top1 ? (!selected_token || logits) : (!logits || selected_token)) ||
         (collect_intermediates && (!hc_pre || !hc_weights || !hc || !norm))) {
         return fail_with_message(error, error_bytes, @"output head received invalid inputs");
     }
@@ -41471,8 +41531,10 @@ int rust_star_metal_run_output_head(
             n_embd*sizeof(float), error, error_bytes);
         id<MTLBuffer> logits_buffer = persistent_buffer(context, @"output_logits",
             n_vocab*sizeof(float), error, error_bytes);
+        id<MTLBuffer> top1_buffer = select_top1 ? persistent_buffer(context, @"output_top1",
+            2u*sizeof(uint32_t), error, error_bytes) : nil;
         if (!flat_buffer || !pre_buffer || !weights_buffer || !hc_buffer ||
-            !norm_buffer || !logits_buffer) return 0;
+            !norm_buffer || !logits_buffer || (select_top1 && !top1_buffer)) return 0;
 
         const uint64_t hc_bytes = (uint64_t)hc_dim*sizeof(float);
         rust_star_norm_args plain_norm = {
@@ -41570,6 +41632,28 @@ int rust_star_metal_run_output_head(
         [encoder setThreadgroupMemoryLength:32u*2u*sizeof(float) atIndex:0];
         [encoder dispatchThreadgroups:MTLSizeMake((n_vocab+1u)/2u,1,1)
              threadsPerThreadgroup:MTLSizeMake(32,8,1)];
+        if (select_top1) {
+            NSUInteger argmax_threads = MIN((NSUInteger)1024,
+                context.argmaxPipeline.maxTotalThreadsPerThreadgroup);
+            const NSUInteger execution_width = context.argmaxPipeline.threadExecutionWidth;
+            if (execution_width == 0u) {
+                [encoder endEncoding];
+                return fail_with_message(error, error_bytes,
+                    @"argmax pipeline reported zero execution width");
+            }
+            argmax_threads -= argmax_threads % execution_width;
+            if (argmax_threads == 0u || argmax_threads/execution_width > 32u) {
+                [encoder endEncoding];
+                return fail_with_message(error, error_bytes,
+                    @"argmax pipeline reported unsupported threadgroup geometry");
+            }
+            [encoder setComputePipelineState:context.argmaxPipeline];
+            [encoder setBuffer:logits_buffer offset:0 atIndex:0];
+            [encoder setBuffer:top1_buffer offset:0 atIndex:1];
+            [encoder setBytes:&n_vocab length:sizeof(n_vocab) atIndex:2];
+            [encoder dispatchThreadgroups:MTLSizeMake(1,1,1)
+                 threadsPerThreadgroup:MTLSizeMake(argmax_threads,1,1)];
+        }
         [encoder endEncoding];
 
         const double wall_start = monotonic_ms();
@@ -41583,7 +41667,16 @@ int rust_star_metal_run_output_head(
             memcpy(hc, hc_buffer.contents, n_embd*sizeof(float));
             memcpy(norm, norm_buffer.contents, n_embd*sizeof(float));
         }
-        memcpy(logits, logits_buffer.contents, n_vocab*sizeof(float));
+        if (select_top1) {
+            const uint32_t *top1 = top1_buffer.contents;
+            if (top1[1] != 0u || top1[0] == UINT32_MAX) {
+                return fail_with_message(error, error_bytes,
+                    @"output-head logits contain a non-finite value");
+            }
+            *selected_token = top1[0];
+        } else {
+            memcpy(logits, logits_buffer.contents, n_vocab*sizeof(float));
+        }
         memset(result, 0, sizeof(*result));
         result->model_bytes = model_bytes;
         result->max_buffer_length = context.device.maxBufferLength;

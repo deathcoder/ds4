@@ -111,6 +111,11 @@ history; add a correction and update the current-state summary.
   invalid attempt. Rust Star measured 21.875065281 tok/s steady versus
   DwarfStar's 22.66, for a median within-pair ratio of 0.964571386x. The
   validated remaining steady gap is now approximately 3.54%.
+  A production-only GPU top-1 output path now avoids transferring and scanning
+  the 129,280-logit row during timed greedy sampling. Two alternating local
+  development pairs against the immutable `771b7c4` binary measured 1.00178x
+  and 1.00781x steady throughput ratios. This is a small provisional gain, not
+  yet a new five-pair DwarfStar comparison.
 - Implementation: dependency-free Rust host scaffold under `rust-star/runtime/`
   strictly parses GGUF v3 directories, validates the Flash resident-Q2
   shape/recipe, and writes candidate full-logit artifacts. A macOS-only
@@ -652,8 +657,11 @@ history; add a correction and update the current-state summary.
 
 ## Immediate Next Actions
 
-1. Use per-kernel or dispatch-family profiling to attribute the remaining
-   validated 3.54% steady gap without perturbing the eligible path. The current
+1. Use per-kernel or dispatch-family profiling to attribute the transformer
+   portion of the remaining validated 3.54% steady gap without perturbing the
+   eligible path. GPU top-1 removed about 0.20 ms/token of output-head wall time
+   in two local A/B pairs, confirming that the output boundary is not the main
+   residual. The current
    five-pair median is 21.875065281 tok/s for Rust Star versus 22.66 for
    DwarfStar, with a 0.964571386x median within-pair ratio.
 2. Isolate the remaining first-token residency/scheduling cost: the new paired
@@ -673,6 +681,59 @@ history; add a correction and update the current-state summary.
 6. Run or approve the fork's GitHub Actions workflow and retain its URL.
 
 ## Entries
+
+### 2026-08-28 — Production sampling moves lowest-ID argmax onto Metal
+
+Objective:
+
+- Test whether Rust Star's full 129,280-logit host copy and checked CPU scan
+  account for the residual 3.54% steady gap, after confirming that DwarfStar's
+  greedy path performs top-1 selection on the GPU.
+
+Actions and evidence:
+
+- Added a finite-checked, lowest-token-ID Metal reduction to the existing
+  output-head command. Production timing now reads an eight-byte token/validity
+  result; full-logit and intermediate readback remain unchanged in every C0
+  diagnostic.
+- The complete 2K/128 engine path matched the exact 128-token oracle transcript
+  in every run. All 288 optimized Rust tests passed, including the unchanged
+  full-logit fixture and stable-report controls.
+- Two alternating local development pairs compared the immutable `771b7c4`
+  executable with the new path. Pair ratios were 1.001781148x and 1.007805722x
+  steady throughput. Old/new medians were 21.793512982 and 21.897939975 tok/s,
+  a provisional 1.004793435x ratio.
+- Output-head wall time fell from 2.487554 to 2.262153 ms/token in the first
+  pair and from 2.506579 to 2.332198 ms/token in the reversed-order pair. The
+  single-threadgroup reduction added about 0.057 ms/token of GPU work, leaving
+  a median wall saving of about 0.20 ms/token.
+- One earlier run immediately after the large optimized link was invalid for
+  performance interpretation: transformer wall time rose to roughly 1.50
+  seconds/token under page pressure. Its transcript was exact, and an immediate
+  clean rerun restored normal 21.861 tok/s behavior. It is retained only as
+  failure evidence under `rust-star/.work/top1-output-head-01/`.
+- Valid development evidence is retained under
+  `rust-star/.work/top1-output-head-02/` and
+  `rust-star/.work/top1-output-head-ab/`.
+
+Validation:
+
+- Optimized macOS build and all 288 Rust tests.
+- All 68 Python artifact/adapter/paired-runner tests.
+- Exact retained position-8195 control across 43 layer HC states and all
+  129,280 final logits; selected token 35597. Report SHA-256 is
+  `165443d86ddf8187dc4bd172ca55fae17944ce397da6280eaeecb4d4258be1a9`.
+- Candidate executable SHA-256 is
+  `22eb2bab4f6a52f34c73fad8b018695c451d3120e6900511304f4504808b3ea8`.
+- `cargo fmt --check` and `git diff --check`.
+
+Decision and next step:
+
+- Keep GPU top-1 as a narrow production improvement aligned with DwarfStar's
+  greedy boundary. The gain is reproducible but small; it does not explain the
+  remaining gap and does not motivate broad unchecked Rust memory access.
+- Freeze and run the standard five-pair DwarfStar comparison, then continue
+  attribution inside repeated transformer dispatch families.
 
 ### 2026-08-28 — Cross-layer command-buffer grouping rejected
 

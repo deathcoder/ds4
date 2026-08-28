@@ -70,7 +70,10 @@ selected tokens and both pinned full-logit frontiers are exact, including the
 first production-default 1,025-row sparse ratio-4 step. The timing-specific
 engine producer now runs native prefill without diagnostic output collection,
 preserves the exact transcript, and passes the fresh-process adapter's
-paired-eligibility checks at the initial 2K/128 frontier.
+paired-eligibility checks at the initial 2K/128 frontier. Greedy production
+sampling appends a lowest-ID GPU top-1 reduction to the output-head command and
+reads back only its eight-byte result. The diagnostic paths still transfer and
+compare all 129,280 logits, so the C0 boundary is unchanged.
 
 A separate retained-state control now seeds the exact layer-2 state immediately
 before position 4099 and executes the production retained schedule through its

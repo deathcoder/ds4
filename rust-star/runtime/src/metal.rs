@@ -18395,6 +18395,9 @@ mod imp {
     const COMMAND_CHAINED_TIMING: u32 = 4;
     const INITIAL_STATE_CAPTURED: u32 = 0;
     const INITIAL_STATE_COLD: u32 = 1;
+    const OUTPUT_MODE_LOGITS: u32 = 0;
+    const OUTPUT_MODE_INTERMEDIATES: u32 = 1;
+    const OUTPUT_MODE_TOP1: u32 = 2;
 
     #[repr(C)]
     struct RawProbeResult {
@@ -20605,7 +20608,8 @@ mod imp {
             hc: *mut f32,
             norm: *mut f32,
             logits: *mut f32,
-            collect_intermediates: u32,
+            selected_token: *mut u32,
+            output_mode: u32,
             result: *mut RawIngressProbeResult,
             error: *mut c_char,
             error_bytes: usize,
@@ -31070,8 +31074,8 @@ mod imp {
             ));
         }
         if !collect_outputs {
-            let mut output_head = PreparedOutputHead::new(model)?;
-            let (selected_token, _) = run_sampling_output_head(model, &context, &mut output_head)?;
+            let output_head = PreparedOutputHead::new(model)?;
+            let (selected_token, _) = run_top1_output_head(model, &context, &output_head)?;
             return Ok((context, None, selected_token));
         }
         for (label, actual, expected) in [
@@ -41486,7 +41490,8 @@ mod imp {
                 hc.as_mut_ptr(),
                 norm.as_mut_ptr(),
                 logits.as_mut_ptr(),
-                1,
+                ptr::null_mut(),
+                OUTPUT_MODE_INTERMEDIATES,
                 &mut raw,
                 error.as_mut_ptr(),
                 error.len(),
@@ -41590,7 +41595,8 @@ mod imp {
                 ptr::null_mut(),
                 ptr::null_mut(),
                 prepared.logits.as_mut_ptr(),
-                0,
+                ptr::null_mut(),
+                OUTPUT_MODE_LOGITS,
                 &mut raw,
                 error.as_mut_ptr(),
                 error.len(),
@@ -41615,6 +41621,63 @@ mod imp {
             ));
         }
         Ok((lowest_id_argmax(&prepared.logits)?, raw.gpu_ms))
+    }
+
+    fn run_top1_output_head(
+        model: &MappedModel,
+        context: &Context,
+        prepared: &PreparedOutputHead,
+    ) -> Result<(u32, f64)> {
+        let mut selected_token = u32::MAX;
+        let mut raw = RawIngressProbeResult::default();
+        let mut error = [0 as c_char; ERROR_BYTES];
+        let succeeded = unsafe {
+            rust_star_metal_run_output_head(
+                context.0,
+                model.mapping_pointer(),
+                model.bytes(),
+                prepared.hc_fn.absolute_offset,
+                prepared.hc_fn.bytes,
+                prepared.hc_scale.absolute_offset,
+                prepared.hc_scale.bytes,
+                prepared.hc_base.absolute_offset,
+                prepared.hc_base.bytes,
+                prepared.output_norm.absolute_offset,
+                prepared.output_norm.bytes,
+                prepared.output.absolute_offset,
+                prepared.output.bytes,
+                ptr::null_mut(),
+                ptr::null_mut(),
+                ptr::null_mut(),
+                ptr::null_mut(),
+                ptr::null_mut(),
+                &mut selected_token,
+                OUTPUT_MODE_TOP1,
+                &mut raw,
+                error.as_mut_ptr(),
+                error.len(),
+            )
+        };
+        if succeeded == 0 {
+            return Err(Error::invalid(format!(
+                "Metal top-1 output head failed: {}",
+                error_text(&error)
+            )));
+        }
+        if raw.model_bytes != model.bytes()
+            || raw.wrapped_model_ranges != 5
+            || raw.pointer_matches != 5
+            || selected_token >= 129_280
+            || !raw.wall_ms.is_finite()
+            || raw.wall_ms <= 0.0
+            || !raw.gpu_ms.is_finite()
+            || raw.gpu_ms < 0.0
+        {
+            return Err(Error::invalid(
+                "Metal top-1 output head returned invalid selection, ownership, or timing metadata",
+            ));
+        }
+        Ok((selected_token, raw.gpu_ms))
     }
 
     fn run_prefill_output_head(
@@ -41649,7 +41712,8 @@ mod imp {
                 hc.as_mut_ptr(),
                 norm.as_mut_ptr(),
                 prepared.logits.as_mut_ptr(),
-                1,
+                ptr::null_mut(),
+                OUTPUT_MODE_INTERMEDIATES,
                 &mut raw,
                 error.as_mut_ptr(),
                 error.len(),
@@ -41911,7 +41975,7 @@ mod imp {
             layer.validate_expected = false;
             layer.collect_outputs = false;
         }
-        let mut output_head = PreparedOutputHead::new(model)?;
+        let output_head = PreparedOutputHead::new(model)?;
         context.prepare_decoder()?;
         let decoder_prepare_ms = decoder_prepare_started.elapsed().as_secs_f64() * 1000.0;
 
@@ -41946,7 +42010,7 @@ mod imp {
 
             let output_head_started = Instant::now();
             let (selected_token, output_head_gpu) =
-                run_sampling_output_head(model, &context, &mut output_head)?;
+                run_top1_output_head(model, &context, &output_head)?;
             output_head_wall_ms.push(output_head_started.elapsed().as_secs_f64() * 1000.0);
             output_head_gpu_ms.push(output_head_gpu);
             selected_tokens.push(selected_token);

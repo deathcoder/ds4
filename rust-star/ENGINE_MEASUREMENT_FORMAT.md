@@ -63,9 +63,11 @@ configuration. Optional nonnegative `model_load_ms` is allowed only when backed
 by a real engine timer.
 
 For Rust Star, device work must be synchronized before stopping each interval.
-Command encoding, model execution, argmax sampling, and committing the token
-belong inside the generation intervals. Correctness dumping and profiler capture
-must remain disabled in timed mode.
+Command encoding, model execution, GPU argmax sampling, selection readback, and
+committing the token belong inside the generation intervals. Rust Star's timed
+path reads back an eight-byte top-1 result instead of the complete logit row;
+the independent C0 controls retain full-logit readback and comparison.
+Correctness dumping and profiler capture must remain disabled in timed mode.
 
 The Rust Star adapter accepts an engine run only when its raw timing metadata
 also states that prefill and generation correctness collection were disabled,
