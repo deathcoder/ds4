@@ -106,9 +106,11 @@ history; add a correction and update the current-state summary.
   place, and retaining a compute encoder across adjacent FFN stages reduced
   profiled steady transformer GPU time by 9.16% and raised profiled steady
   decode from 20.171 to 21.938 tok/s. Two fresh eligible runs reproduced 21.864
-  and 21.769 tok/s with the exact 128-token transcript. Against the preceding
-  DwarfStar median this suggests a roughly 7.4% steady gap, but a new frozen
-  five-pair comparison is still required before updating the paired claim.
+  and 21.769 tok/s with the exact 128-token transcript. Immutable commit
+  `771b7c4` then completed five new exact pairs without a failure, retry, or
+  invalid attempt. Rust Star measured 21.875065281 tok/s steady versus
+  DwarfStar's 22.66, for a median within-pair ratio of 0.964571386x. The
+  validated remaining steady gap is now approximately 3.54%.
 - Implementation: dependency-free Rust host scaffold under `rust-star/runtime/`
   strictly parses GGUF v3 directories, validates the Flash resident-Q2
   shape/recipe, and writes candidate full-logit artifacts. A macOS-only
@@ -650,15 +652,16 @@ history; add a correction and update the current-state summary.
 
 ## Immediate Next Actions
 
-1. Freeze the production-schedule checkpoint and run a new five-pair 2K/128
-   comparison. Two eligible development runs measure 21.864 and 21.769 steady
-   tok/s, suggesting that the prior paired gap has fallen from 14.9% to roughly
-   7.4%; do not replace the validated paired result until the new immutable run
-   completes. Then use per-kernel profiling to attribute the residual gap.
-2. Isolate the remaining first-token transformer residency cost: its paired
-   median is 705.921 ms transformer wall and 688.398 ms GPU while the output
-   head is only 2.875/2.190 ms. Do not move a second weight warm outside the
-   declared interval merely to improve the metric.
+1. Use per-kernel or dispatch-family profiling to attribute the remaining
+   validated 3.54% steady gap without perturbing the eligible path. The current
+   five-pair median is 21.875065281 tok/s for Rust Star versus 22.66 for
+   DwarfStar, with a 0.964571386x median within-pair ratio.
+2. Isolate the remaining first-token residency/scheduling cost: the new paired
+   median is 812.705917 ms versus DwarfStar's 50.857 ms. Rust's internal median
+   is 808.765875 ms transformer wall but only 65.855583 ms summed transformer
+   GPU, while the output head is 3.321041/2.677417 ms wall/GPU. Do not move a
+   second weight warm outside the declared interval merely to improve the
+   metric.
 3. Preserve the exact 2K-to-position-4099 native handoff, complete retained
    position-8195 decoder step, isolated
    513/1,025-row probes, and retained-state row-1,025/2,049 controls as
@@ -670,6 +673,58 @@ history; add a correction and update the current-state summary.
 6. Run or approve the fork's GitHub Actions workflow and retain its URL.
 
 ## Entries
+
+### 2026-08-28 — Production scheduling reaches 96.46% of DwarfStar in five exact pairs
+
+Objective:
+
+- Freeze the production no-snapshot schedule and determine whether its 8.76%
+  profile gain survives the predeclared alternating-order paired protocol.
+
+Actions and evidence:
+
+- Published source commit `771b7c4ccb5beabbeb145e09a7f5fe73c582f20d`
+  with tree `750c2f65da27de5afd98f3c8647f9ba9eba63dfb`, then copied its optimized
+  executable to an immutable local candidate path. Executable SHA-256 is
+  `56c252ab8def1b0ce71580757accb27ff3a21dd0c96cbff0fffbf4191f71e05b`.
+- Froze plan SHA-256
+  `e0ab758fdd751e7ef69fc9313f40745defade85585021008a7a68a89520ea51e`.
+  Before the run the Mac was on AC, reported no recorded thermal/performance
+  warning, had 94% free memory, zero throttled pages, and no model process.
+- Both full-length warm-ups passed. Five pairs completed in the declared `AB`,
+  `BA`, `AB`, `BA`, `AB` order with zero adapter failures, retries, invalid
+  attempts, capacity failures, or observed thermal events. Afterward the Mac
+  still reported 94% free memory, zero throttled pages, and no recorded thermal
+  or performance warning.
+- Rust Star steady decode measured median 21.875065281 tok/s (MAD
+  0.012764947, range 21.789438485--21.887830228) versus DwarfStar 22.66 tok/s
+  (MAD 0.05, range 22.59--22.74). The within-pair median was 0.964571386x
+  (MAD 0.000363122, range 0.962476742--0.968059718). The remaining validated
+  steady gap is 3.54%, down from 14.9% at `35ee7bb`.
+- Complete generation measured Rust 19.343260789 tok/s versus DwarfStar 22.1,
+  for a 0.874572570x median pairwise ratio. Prefill measured 123.187716755
+  versus 180.01 tok/s, for 0.684338185x. First-token latency measured
+  812.705917 versus 50.857 ms, for 15.505437619x.
+- Relative to `35ee7bb`, the Rust median improved 9.20% in steady decode and
+  6.50% in complete generation. Prefill changed -0.90%, while first-token
+  latency worsened 14.74%; this optimization does not address either frontier.
+- Independent aggregation reproduced the byte-identical summary. Raw SHA-256
+  is `ac80b093057f15f0fa5ecf8a96c09fd417a0ee1050ca97176b083c00ed1af0a9`;
+  summary SHA-256 is
+  `1f4833ffa653921fafb639d45026efe7d218ab6277201f256ed7f55ba985c9d1`.
+  The local result-manifest SHA-256 is
+  `8ff7475a10ccbcee7f94372efa736304efd828905dfb1d46f34e3a310a10d70a`.
+  Full private-path evidence is under
+  `rust-star/.work/paired-2k-128-771b7c4/` and intentionally untracked.
+
+Decision and next step:
+
+- Accept 96.46% of DwarfStar as the new validated steady baseline. Rust Star
+  has not yet beaten DwarfStar, but the residual is now small enough for
+  dispatch-family/kernel attribution rather than broad host-side optimization.
+- Profile the remaining repeated transformer GPU work without adding reads or
+  waits to `engine-measure`; keep first-token residency and prefill as separate
+  problems.
 
 ### 2026-08-28 — Production decode drops unused snapshots and redundant encoder boundaries
 
