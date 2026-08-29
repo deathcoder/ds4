@@ -133,6 +133,14 @@ history; add a correction and update the current-state summary.
   Attention output/HC launch tuning is now bounded by an exact same-context
   harness. All four independent NSG=2/8 alternatives changed the Q8 reduction
   result, so production remains at pinned DwarfStar's NSG=4/4 geometry.
+  Immutable commit `7de9511` then completed five exact 2K/128 pairs without a
+  failure, retry, or invalid attempt. Rust Star measured 23.495447999 tok/s
+  steady versus DwarfStar's 22.91, and all five pairs favored Rust Star. The
+  median within-pair steady ratio was 1.025554256x: Rust Star is now 2.56%
+  faster at this development frontier. Complete generation remains 3.60%
+  behind at 0.964026748x, prefill remains 31.54% behind at 0.684638182x, and
+  first-token latency remains 12.192259243x higher. This is an exact 2K/128
+  development result, not the protocol's 256K headline claim.
 - Implementation: dependency-free Rust host scaffold under `rust-star/runtime/`
   strictly parses GGUF v3 directories, validates the Flash resident-Q2
   shape/recipe, and writes candidate full-logit artifacts. A macOS-only
@@ -674,30 +682,79 @@ history; add a correction and update the current-state summary.
 
 ## Immediate Next Actions
 
-1. Re-profile the accepted QKV, Q-B row-group, Q/KV RoPE, and inverse-RoPE
-   optimizations in a healthy immutable engine run, then isolate the next
-   attention setup kernel by measured share. Treat the earlier profile
-   milliseconds as perturbed diagnostics: compute-pass splitting inflated
-   transformer GPU time by 14.23%, while the family ranking and shares remain
-   useful for choosing the search order. The validated paired gap remains 3.02%
-   until an immutable optimization passes a new paired full-engine comparison.
-2. Isolate the remaining first-token residency/scheduling cost: the new paired
-   median is 871.961417 ms versus DwarfStar's 50.26 ms. Rust's internal median
-   is 868.859875 ms transformer wall but only 67.742042 ms summed transformer
-   GPU, while the output head is 3.281083/2.755208 ms wall/GPU. Do not move a
-   second weight warm outside the declared interval merely to improve the
-   metric.
-3. Preserve the exact 2K-to-position-4099 native handoff, complete retained
+1. Isolate the remaining first-token residency/scheduling cost. The new paired
+   median is 546.059208 ms versus DwarfStar's 45.98 ms, a 12.192259243x ratio.
+   The accepted kernel work reduced this latency 37.38% relative to `4fc61f7`,
+   but the interval still dominates the 3.60% complete-generation deficit.
+   Preserve the declared timing boundary; do not move a second weight warm
+   outside it merely to improve the metric.
+2. Close the complete-generation gap without regressing the validated 2.56%
+   steady lead. Re-profile the immutable `7de9511` engine only where needed to
+   distinguish first-step residency, command encoding, and actual GPU work.
+3. Attribute and reduce the remaining 31.54% prefill throughput deficit while
+   preserving the exact native-prefill handoff and pooled scratch lifetimes.
+4. Preserve the exact 2K-to-position-4099 native handoff, complete retained
    position-8195 decoder step, isolated
    513/1,025-row probes, and retained-state row-1,025/2,049 controls as
    independent sparse regressions.
-4. Preserve the four-, six-, eight-, 43-layer, explicit decoder-output, and
+5. Preserve the four-, six-, eight-, 43-layer, explicit decoder-output, and
    closed-loop diagnostic commands as independently executed controls.
-5. Run the extended 2K--1M frontier capture when the Mac can be dedicated to a
+6. Run the extended 2K--1M frontier capture when the Mac can be dedicated to a
    long benchmark; preserve any 512K/1M capacity failure as evidence.
-6. Run or approve the fork's GitHub Actions workflow and retain its URL.
+7. Run or approve the fork's GitHub Actions workflow and retain its URL.
 
 ## Entries
+
+### 2026-08-29 — Rust Star crosses DwarfStar in validated steady decode
+
+Objective:
+
+- Re-measure the accepted attention optimizations as one immutable engine and
+  determine whether their focused gains survive the exact paired workload.
+
+Evidence:
+
+- Published source commit `7de9511ff858333cfaa4a6ae0ac9814a24488d7a`
+  with tree `7d1f61971742c6b840ef9e51ecff384b6fc38c85`, then copied its
+  optimized executable to an immutable local path. Executable SHA-256 is
+  `4c4a65bd2bec62448f9bedd57b7c17efc0524c60bf7ed2618b4bbce303857983`.
+- An initial healthy exact engine control matched the complete 128-token oracle
+  transcript and reported 23.702300769 steady tok/s. Its report SHA-256 is
+  `a880c4ebcff89bf4fff737a60f20f0878104a235451fbce45f9303bc4f8db2ed`.
+- Froze paired plan SHA-256
+  `ee690ee8f7ec7978b804451ac3675582e9a9a938bd28a0b4917540a57956479d`.
+  Both warmups and all five `AB`, `BA`, `AB`, `BA`, `AB` pairs passed with no
+  adapter failure, retry, invalid attempt, capacity failure, swap use, or
+  observed thermal event.
+- Rust Star steady decode measured median 23.495447999 tok/s (MAD
+  0.104610085, range 23.220698759--24.110855674) versus DwarfStar 22.91 tok/s
+  (MAD 0.26, range 22.56--23.65). All five pairs favored Rust Star. The median
+  within-pair ratio was 1.025554256x (MAD 0.006067758, range
+  1.002188121--1.045779226), a validated 2.56% Rust Star lead.
+- Complete generation measured Rust 21.512204760 versus DwarfStar 22.31 tok/s,
+  for a 0.964026748x median pairwise ratio. Prefill measured 129.293920693
+  versus 188.85 tok/s, for 0.684638182x. First-token latency measured
+  546.059208 versus 45.98 ms, for a 12.192259243x median pairwise ratio.
+- Relative to the prior `4fc61f7` Rust medians, this checkpoint improved steady
+  decode 7.09%, complete generation 11.94%, prefill 4.22%, and first-token
+  latency 37.38%. The paired steady ratio improved 5.75%.
+- Raw SHA-256 is
+  `434aa14133dbbf7a3cb261d65c669801420669834c646abf8310de687a31e545`;
+  summary SHA-256 is
+  `d35d9a778e00613af3ac66c56be58b82ee1803bc581616691765f04c8cbc405c`;
+  runner-state SHA-256 is
+  `d9a0774482273520992e9862ced67f435733c615e88e24f8a7029b45455c72df`;
+  and result-manifest SHA-256 is
+  `49fe8da8bc80fe6a1c9fe20bf1a8b93b17a1f047ad8fb08809895e1a90b88e02`.
+  Full private-path evidence is under
+  `rust-star/.work/paired-2k-128-7de9511/` and intentionally untracked.
+
+Decision and next step:
+
+- Accept the steady 2K/128 lead as the new development frontier. It is not the
+  protocol's 256K headline claim. Optimize first-token residency/scheduling
+  next because it now explains the remaining complete-generation deficit;
+  keep prefill as the second independent performance gap.
 
 ### 2026-08-28 — Q-head/KV RoPE dispatch fusion accepted
 
