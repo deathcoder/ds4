@@ -3956,7 +3956,8 @@ int rust_star_metal_run_prefill_layer0_boundary(
         return fail_with_message(error, error_bytes,
             @"prefill complete layer-1 boundary received a null fixture/output pointer");
     }
-    if (n_vocab != 129280u || rows != 32u || position_start % 32u != 0u ||
+    if (n_vocab != 129280u || (rows != 32u && rows != 64u) ||
+        position_start % rows != 0u ||
         position_start + rows > 2048u) {
         return fail_with_message(error, error_bytes,
             @"prefill layer-0 boundary dimensions are invalid");
@@ -4169,10 +4170,11 @@ int rust_star_metal_run_prefill_layer0_boundary(
             n_expert = 256, n_used = 6, ffn_mid = 2048,
             compressor_ratio = 4, compressor_state_rows = 8,
             compressor_rows = prefill_rows/compressor_ratio,
-            compressor_tile_rows = 32/compressor_ratio,
             attn_compressor_width = 1024, attn_compressor_head = 512,
             indexer_compressor_width = 256, indexer_compressor_head = 128,
         };
+        const uint32_t compressor_tile_rows = rows/compressor_ratio;
+        const NSUInteger row_tiles = (rows+31u)/32u;
         const uint32_t raw_cache_target_row = position_start % raw_cache_rows;
         const uint32_t kv_prefix_rows = position_start;
         if (weights->attn_output_a_bytes != 8ull*1024ull*((4096ull/32ull)*34ull) ||
@@ -4234,6 +4236,13 @@ int rust_star_metal_run_prefill_layer0_boundary(
         const NSUInteger attention_mask_bytes = rows*prefill_rows*sizeof(uint16_t);
         const NSUInteger attention_low_bytes = rows*8192u*sizeof(float);
         const NSUInteger attention_out_bytes = rows*n_embd*sizeof(float);
+        const NSUInteger attention_map_tpe_bytes = 8u*sizeof(uint32_t);
+        const NSUInteger attention_map_ids_bytes = 8u*rows*sizeof(int32_t);
+        const NSUInteger attention_map_work_offset =
+            (attention_map_tpe_bytes+attention_map_ids_bytes+7u)&~7u;
+        const NSUInteger attention_map_work_cap = 8u*row_tiles;
+        const NSUInteger attention_map_bytes =
+            attention_map_work_offset+8u+attention_map_work_cap*8u;
         const NSUInteger router_bytes = rows*n_expert*sizeof(float);
         const NSUInteger selected_bytes = rows*n_used*sizeof(int32_t);
         const NSUInteger routed_mid_f16_bytes = rows*n_used*ffn_mid*sizeof(uint16_t);
@@ -4312,7 +4321,8 @@ int rust_star_metal_run_prefill_layer0_boundary(
             options:MTLResourceStorageModeShared];
         id<MTLBuffer> attention_group_ids_buffer = [context.device
             newBufferWithLength:rows*8u*sizeof(int32_t) options:MTLResourceStorageModeShared];
-        id<MTLBuffer> attention_group_map_buffer = [context.device newBufferWithLength:1192u
+        id<MTLBuffer> attention_group_map_buffer = [context.device
+            newBufferWithLength:attention_map_bytes
             options:MTLResourceStorageModeShared];
         id<MTLBuffer> ffn_flat_hc_buffer = [context.device newBufferWithLength:hc_bytes
             options:MTLResourceStorageModeShared];
@@ -4880,13 +4890,13 @@ int rust_star_metal_run_prefill_layer0_boundary(
         layer2_kv_rope_args.ext_factor = 1.0f;
         layer2_kv_rope_args.attn_factor =
             1.0f/(1.0f + 0.1f*logf(1.0f/layer2_freq_scale));
-        int32_t positions[32];
+        int32_t positions[64];
         for (uint32_t row = 0; row < rows; row++) {
             positions[row] = (int32_t)(position_start + row);
         }
         id<MTLBuffer> position_buffer = [context.device newBufferWithBytes:positions
             length:rows*sizeof(int32_t) options:MTLResourceStorageModeShared];
-        int32_t compressed_positions[8];
+        int32_t compressed_positions[16];
         for (uint32_t row = 0; row < compressor_tile_rows; row++) {
             compressed_positions[row] =
                 (int32_t)(position_start + row*compressor_ratio);
@@ -5114,7 +5124,7 @@ int rust_star_metal_run_prefill_layer0_boundary(
         [encoder setBuffer:flat_hc_buffer offset:0 atIndex:2];
         [encoder setBuffer:mix_buffer offset:0 atIndex:3];
         [encoder setThreadgroupMemoryLength:8192u atIndex:0];
-        [encoder dispatchThreadgroups:MTLSizeMake(1,1,1)
+        [encoder dispatchThreadgroups:MTLSizeMake(row_tiles,1,1)
              threadsPerThreadgroup:MTLSizeMake(128,1,1)];
 
         [encoder setComputePipelineState:context.hcIngressPipeline];
@@ -5138,7 +5148,7 @@ int rust_star_metal_run_prefill_layer0_boundary(
         [encoder setBuffer:(input) offset:0 atIndex:2]; \
         [encoder setBuffer:(output) offset:0 atIndex:3]; \
         [encoder setThreadgroupMemoryLength:6144u atIndex:0]; \
-        [encoder dispatchThreadgroups:MTLSizeMake(1u,(out_width)/64u,1u) \
+        [encoder dispatchThreadgroups:MTLSizeMake(row_tiles,(out_width)/64u,1u) \
              threadsPerThreadgroup:MTLSizeMake(128,1,1)]; \
     } while (0)
         RUST_STAR_ENCODE_LAYER0_Q8(q_a_args, 5, attn_buffer, q_buffer, q_rank);
@@ -5247,7 +5257,7 @@ int rust_star_metal_run_prefill_layer0_boundary(
         [encoder setBytes:&attention_blk_args length:sizeof(attention_blk_args) atIndex:0];
         [encoder setBuffer:attention_mask_buffer offset:0 atIndex:1];
         [encoder setBuffer:attention_block_buffer offset:0 atIndex:2];
-        [encoder dispatchThreadgroups:MTLSizeMake(32,4,1)
+        [encoder dispatchThreadgroups:MTLSizeMake(32,(rows+7u)/8u,1)
              threadsPerThreadgroup:MTLSizeMake(32,1,1)];
 
         [encoder setComputePipelineState:context.flashNonvecPipeline];
@@ -5261,7 +5271,7 @@ int rust_star_metal_run_prefill_layer0_boundary(
         [encoder setBuffer:attention_block_buffer offset:0 atIndex:7];
         [encoder setBuffer:attention_output_buffer offset:0 atIndex:8];
         [encoder setThreadgroupMemoryLength:28672u atIndex:0];
-        [encoder dispatchThreadgroups:MTLSizeMake(4,n_head,1)
+        [encoder dispatchThreadgroups:MTLSizeMake((rows+7u)/8u,n_head,1)
              threadsPerThreadgroup:MTLSizeMake(32,8,1)];
         [encoder endEncoding];
 
@@ -5290,8 +5300,10 @@ int rust_star_metal_run_prefill_layer0_boundary(
                    length:sizeof(attention_output_map_args) atIndex:0];
         [encoder setBuffer:attention_group_ids_buffer offset:0 atIndex:1];
         [encoder setBuffer:attention_group_map_buffer offset:0 atIndex:2];
-        [encoder setBuffer:attention_group_map_buffer offset:32u atIndex:3];
-        [encoder setBuffer:attention_group_map_buffer offset:1056u atIndex:4];
+        [encoder setBuffer:attention_group_map_buffer
+                    offset:attention_map_tpe_bytes atIndex:3];
+        [encoder setBuffer:attention_group_map_buffer
+                    offset:attention_map_work_offset atIndex:4];
         [encoder setThreadgroupMemoryLength:128u atIndex:0];
         [encoder dispatchThreadgroups:MTLSizeMake(1,1,1)
              threadsPerThreadgroup:MTLSizeMake(8,1,1)];
@@ -5302,11 +5314,13 @@ int rust_star_metal_run_prefill_layer0_boundary(
         [encoder setBuffer:model_buffers[11] offset:inner[11] atIndex:1];
         [encoder setBuffer:attention_back_buffer offset:0 atIndex:2];
         [encoder setBuffer:attention_group_map_buffer offset:0 atIndex:3];
-        [encoder setBuffer:attention_group_map_buffer offset:32u atIndex:4];
+        [encoder setBuffer:attention_group_map_buffer
+                    offset:attention_map_tpe_bytes atIndex:4];
         [encoder setBuffer:attention_low_buffer offset:0 atIndex:5];
-        [encoder setBuffer:attention_group_map_buffer offset:1056u atIndex:6];
+        [encoder setBuffer:attention_group_map_buffer
+                    offset:attention_map_work_offset atIndex:6];
         [encoder setThreadgroupMemoryLength:8192u atIndex:0];
-        [encoder dispatchThreadgroups:MTLSizeMake(16,16,1)
+        [encoder dispatchThreadgroups:MTLSizeMake(attention_map_work_cap,16,1)
              threadsPerThreadgroup:MTLSizeMake(128,1,1)];
 
         [encoder setComputePipelineState:context.q8PrefillPipeline];
@@ -5316,7 +5330,7 @@ int rust_star_metal_run_prefill_layer0_boundary(
         [encoder setBuffer:attention_low_buffer offset:0 atIndex:2];
         [encoder setBuffer:attention_out_buffer offset:0 atIndex:3];
         [encoder setThreadgroupMemoryLength:6144u atIndex:0];
-        [encoder dispatchThreadgroups:MTLSizeMake(1,64,1)
+        [encoder dispatchThreadgroups:MTLSizeMake(row_tiles,64,1)
              threadsPerThreadgroup:MTLSizeMake(128,1,1)];
 
         [encoder setComputePipelineState:context.hcExpand4Pipeline];
@@ -5346,7 +5360,7 @@ int rust_star_metal_run_prefill_layer0_boundary(
         [encoder setBuffer:ffn_flat_hc_buffer offset:0 atIndex:2];
         [encoder setBuffer:ffn_mix_buffer offset:0 atIndex:3];
         [encoder setThreadgroupMemoryLength:8192u atIndex:0];
-        [encoder dispatchThreadgroups:MTLSizeMake(1,1,1)
+        [encoder dispatchThreadgroups:MTLSizeMake(row_tiles,1,1)
              threadsPerThreadgroup:MTLSizeMake(128,1,1)];
 
         [encoder setComputePipelineState:context.hcIngressPipeline];
@@ -5369,7 +5383,7 @@ int rust_star_metal_run_prefill_layer0_boundary(
         [encoder setBuffer:ffn_norm_buffer offset:0 atIndex:2];
         [encoder setBuffer:router_logits_buffer offset:0 atIndex:3];
         [encoder setThreadgroupMemoryLength:8192u atIndex:0];
-        [encoder dispatchThreadgroups:MTLSizeMake(1,4,1)
+        [encoder dispatchThreadgroups:MTLSizeMake(row_tiles,4,1)
              threadsPerThreadgroup:MTLSizeMake(128,1,1)];
 
         [encoder setComputePipelineState:context.routerSoftplusBatchPipeline];
@@ -5469,7 +5483,7 @@ int rust_star_metal_run_prefill_layer0_boundary(
         [encoder setBuffer:(input) offset:0 atIndex:2]; \
         [encoder setBuffer:(output) offset:0 atIndex:3]; \
         [encoder setThreadgroupMemoryLength:6144u atIndex:0]; \
-        [encoder dispatchThreadgroups:MTLSizeMake(1u,(out_width)/64u,1u) \
+        [encoder dispatchThreadgroups:MTLSizeMake(row_tiles,(out_width)/64u,1u) \
              threadsPerThreadgroup:MTLSizeMake(128,1,1)]; \
     } while (0)
         RUST_STAR_ENCODE_FFN_Q8(shared_gate_args, 22, ffn_norm_buffer,
@@ -5515,7 +5529,7 @@ int rust_star_metal_run_prefill_layer0_boundary(
             [encoder setBuffer:next_flat_hc_buffer offset:0 atIndex:2];
             [encoder setBuffer:next_mix_buffer offset:0 atIndex:3];
             [encoder setThreadgroupMemoryLength:8192u atIndex:0];
-            [encoder dispatchThreadgroups:MTLSizeMake(1,1,1)
+            [encoder dispatchThreadgroups:MTLSizeMake(row_tiles,1,1)
                  threadsPerThreadgroup:MTLSizeMake(128,1,1)];
 
             [encoder setComputePipelineState:context.hcIngressPipeline];
@@ -5538,7 +5552,7 @@ int rust_star_metal_run_prefill_layer0_boundary(
             [encoder setBuffer:next_norm_buffer offset:0 atIndex:2];
             [encoder setBuffer:next_q_lora_buffer offset:0 atIndex:3];
             [encoder setThreadgroupMemoryLength:6144u atIndex:0];
-            [encoder dispatchThreadgroups:MTLSizeMake(1,16,1)
+            [encoder dispatchThreadgroups:MTLSizeMake(row_tiles,16,1)
                  threadsPerThreadgroup:MTLSizeMake(128,1,1)];
         }
         if (complete_layer1) {
@@ -5549,7 +5563,7 @@ int rust_star_metal_run_prefill_layer0_boundary(
             [encoder setBuffer:(input) offset:0 atIndex:2]; \
             [encoder setBuffer:(output) offset:0 atIndex:3]; \
             [encoder setThreadgroupMemoryLength:6144u atIndex:0]; \
-            [encoder dispatchThreadgroups:MTLSizeMake(1u,(out_width)/64u,1u) \
+            [encoder dispatchThreadgroups:MTLSizeMake(row_tiles,(out_width)/64u,1u) \
                  threadsPerThreadgroup:MTLSizeMake(128,1,1)]; \
         } while (0)
             RUST_STAR_ENCODE_LAYER1_Q8(kv_args, 31, next_norm_buffer, next_kv_raw_buffer, kv_dim);
@@ -5657,7 +5671,7 @@ int rust_star_metal_run_prefill_layer0_boundary(
             [encoder setBytes:&attention_blk_args length:sizeof(attention_blk_args) atIndex:0];
             [encoder setBuffer:attention_mask_buffer offset:0 atIndex:1];
             [encoder setBuffer:attention_block_buffer offset:0 atIndex:2];
-            [encoder dispatchThreadgroups:MTLSizeMake(32,4,1)
+            [encoder dispatchThreadgroups:MTLSizeMake(32,(rows+7u)/8u,1)
                  threadsPerThreadgroup:MTLSizeMake(32,1,1)];
 
             [encoder setComputePipelineState:context.flashNonvecPipeline];
@@ -5671,7 +5685,7 @@ int rust_star_metal_run_prefill_layer0_boundary(
             [encoder setBuffer:attention_block_buffer offset:0 atIndex:7];
             [encoder setBuffer:next_attention_output_buffer offset:0 atIndex:8];
             [encoder setThreadgroupMemoryLength:28672u atIndex:0];
-            [encoder dispatchThreadgroups:MTLSizeMake(4,n_head,1)
+            [encoder dispatchThreadgroups:MTLSizeMake((rows+7u)/8u,n_head,1)
                  threadsPerThreadgroup:MTLSizeMake(32,8,1)];
             [encoder endEncoding];
 
@@ -5700,8 +5714,10 @@ int rust_star_metal_run_prefill_layer0_boundary(
                        length:sizeof(attention_output_map_args) atIndex:0];
             [encoder setBuffer:attention_group_ids_buffer offset:0 atIndex:1];
             [encoder setBuffer:attention_group_map_buffer offset:0 atIndex:2];
-            [encoder setBuffer:attention_group_map_buffer offset:32u atIndex:3];
-            [encoder setBuffer:attention_group_map_buffer offset:1056u atIndex:4];
+            [encoder setBuffer:attention_group_map_buffer
+                        offset:attention_map_tpe_bytes atIndex:3];
+            [encoder setBuffer:attention_group_map_buffer
+                        offset:attention_map_work_offset atIndex:4];
             [encoder setThreadgroupMemoryLength:128u atIndex:0];
             [encoder dispatchThreadgroups:MTLSizeMake(1,1,1)
                  threadsPerThreadgroup:MTLSizeMake(8,1,1)];
@@ -5712,11 +5728,13 @@ int rust_star_metal_run_prefill_layer0_boundary(
             [encoder setBuffer:model_buffers[35] offset:inner[35] atIndex:1];
             [encoder setBuffer:next_attention_back_buffer offset:0 atIndex:2];
             [encoder setBuffer:attention_group_map_buffer offset:0 atIndex:3];
-            [encoder setBuffer:attention_group_map_buffer offset:32u atIndex:4];
+            [encoder setBuffer:attention_group_map_buffer
+                        offset:attention_map_tpe_bytes atIndex:4];
             [encoder setBuffer:next_attention_low_buffer offset:0 atIndex:5];
-            [encoder setBuffer:attention_group_map_buffer offset:1056u atIndex:6];
+            [encoder setBuffer:attention_group_map_buffer
+                        offset:attention_map_work_offset atIndex:6];
             [encoder setThreadgroupMemoryLength:8192u atIndex:0];
-            [encoder dispatchThreadgroups:MTLSizeMake(16,16,1)
+            [encoder dispatchThreadgroups:MTLSizeMake(attention_map_work_cap,16,1)
                  threadsPerThreadgroup:MTLSizeMake(128,1,1)];
 
             [encoder setComputePipelineState:context.q8PrefillPipeline];
@@ -5726,7 +5744,7 @@ int rust_star_metal_run_prefill_layer0_boundary(
             [encoder setBuffer:next_attention_low_buffer offset:0 atIndex:2];
             [encoder setBuffer:next_attention_out_buffer offset:0 atIndex:3];
             [encoder setThreadgroupMemoryLength:6144u atIndex:0];
-            [encoder dispatchThreadgroups:MTLSizeMake(1,64,1)
+            [encoder dispatchThreadgroups:MTLSizeMake(row_tiles,64,1)
                  threadsPerThreadgroup:MTLSizeMake(128,1,1)];
 
             [encoder setComputePipelineState:context.hcExpand4Pipeline];
@@ -5756,7 +5774,7 @@ int rust_star_metal_run_prefill_layer0_boundary(
             [encoder setBuffer:next_ffn_flat_hc_buffer offset:0 atIndex:2];
             [encoder setBuffer:next_ffn_mix_buffer offset:0 atIndex:3];
             [encoder setThreadgroupMemoryLength:8192u atIndex:0];
-            [encoder dispatchThreadgroups:MTLSizeMake(1,1,1)
+            [encoder dispatchThreadgroups:MTLSizeMake(row_tiles,1,1)
                  threadsPerThreadgroup:MTLSizeMake(128,1,1)];
 
             [encoder setComputePipelineState:context.hcIngressPipeline];
@@ -5779,7 +5797,7 @@ int rust_star_metal_run_prefill_layer0_boundary(
             [encoder setBuffer:next_ffn_norm_buffer offset:0 atIndex:2];
             [encoder setBuffer:next_router_logits_buffer offset:0 atIndex:3];
             [encoder setThreadgroupMemoryLength:8192u atIndex:0];
-            [encoder dispatchThreadgroups:MTLSizeMake(1,4,1)
+            [encoder dispatchThreadgroups:MTLSizeMake(row_tiles,4,1)
                  threadsPerThreadgroup:MTLSizeMake(128,1,1)];
 
             [encoder setComputePipelineState:context.routerSoftplusBatchPipeline];
@@ -5879,7 +5897,7 @@ int rust_star_metal_run_prefill_layer0_boundary(
             [encoder setBuffer:(input) offset:0 atIndex:2]; \
             [encoder setBuffer:(output) offset:0 atIndex:3]; \
             [encoder setThreadgroupMemoryLength:6144u atIndex:0]; \
-            [encoder dispatchThreadgroups:MTLSizeMake(1u,(out_width)/64u,1u) \
+            [encoder dispatchThreadgroups:MTLSizeMake(row_tiles,(out_width)/64u,1u) \
                  threadsPerThreadgroup:MTLSizeMake(128,1,1)]; \
         } while (0)
             RUST_STAR_ENCODE_LAYER1_FFN_Q8(shared_gate_args, 46, next_ffn_norm_buffer,
@@ -5926,7 +5944,7 @@ int rust_star_metal_run_prefill_layer0_boundary(
             [encoder setBuffer:layer2_flat_hc_buffer offset:0 atIndex:2];
             [encoder setBuffer:layer2_mix_buffer offset:0 atIndex:3];
             [encoder setThreadgroupMemoryLength:8192u atIndex:0];
-            [encoder dispatchThreadgroups:MTLSizeMake(1,1,1)
+            [encoder dispatchThreadgroups:MTLSizeMake(row_tiles,1,1)
                  threadsPerThreadgroup:MTLSizeMake(128,1,1)];
 
             [encoder setComputePipelineState:context.hcIngressPipeline];
@@ -5950,7 +5968,7 @@ int rust_star_metal_run_prefill_layer0_boundary(
             [encoder setBuffer:(input) offset:0 atIndex:2]; \
             [encoder setBuffer:(output) offset:0 atIndex:3]; \
             [encoder setThreadgroupMemoryLength:6144u atIndex:0]; \
-            [encoder dispatchThreadgroups:MTLSizeMake(1u,(out_width)/64u,1u) \
+            [encoder dispatchThreadgroups:MTLSizeMake(row_tiles,(out_width)/64u,1u) \
                  threadsPerThreadgroup:MTLSizeMake(128,1,1)]; \
         } while (0)
             RUST_STAR_ENCODE_LAYER2_Q8(q_a_args, 53, layer2_norm_buffer,
@@ -5979,7 +5997,7 @@ int rust_star_metal_run_prefill_layer0_boundary(
                 [encoder setBuffer:layer2_norm_buffer offset:0 atIndex:2]; \
                 [encoder setBuffer:(output) offset:0 atIndex:3]; \
                 [encoder setThreadgroupMemoryLength:6144u atIndex:0]; \
-                [encoder dispatchThreadgroups:MTLSizeMake(1u,(out_width)/64u,1u) \
+                [encoder dispatchThreadgroups:MTLSizeMake(row_tiles,(out_width)/64u,1u) \
                      threadsPerThreadgroup:MTLSizeMake(128,1,1)]; \
             } while (0)
                 RUST_STAR_ENCODE_COMPRESSOR_F16(attn_compressor_kv_args, 58,
@@ -6301,7 +6319,7 @@ int rust_star_metal_run_prefill_layer0_boundary(
         result->kv_elements_per_row = kv_dim;
         result->q_elements_per_row = q_dim;
         result->dispatches = continue_layer2_compressors ?
-            (position_start == 2016u ? 122u : 118u) :
+            (position_start + rows == 2048u ? 122u : 118u) :
             (continue_layer2_kv_state ? 92u : (continue_layer2 ? 90u :
             (complete_layer1 ? 84u : (continue_layer1 ? 47u : 43u))));
         result->wrapped_model_ranges = model_range_count;

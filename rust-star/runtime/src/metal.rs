@@ -22575,7 +22575,7 @@ mod imp {
         })
     }
 
-    fn run_prefill_boundary_probe(
+    fn run_prefill_boundary_probe_rows(
         model: &MappedModel,
         layer1_mode: u8,
         position_start: u32,
@@ -22585,6 +22585,7 @@ mod imp {
         include_layer2_kv_state: bool,
         include_layer2_compressors: bool,
         collect_outputs: bool,
+        rows: u32,
     ) -> Result<(
         PrefillLayer0BoundaryProbeReport,
         Option<[u64; 3]>,
@@ -22615,9 +22616,20 @@ mod imp {
                 "prefill layer-2 compressors require retained layer-2 KV state",
             ));
         }
-        let final_tile = position_start == 2016;
+        if rows != 32 && rows != 64 {
+            return Err(Error::invalid("invalid prefill boundary tile width"));
+        }
+        if position_start % rows != 0 || position_start + rows > 2048 {
+            return Err(Error::invalid("invalid prefill boundary tile position"));
+        }
+        if collect_outputs && rows != 32 {
+            return Err(Error::invalid(
+                "diagnostic prefill boundary fixtures require 32-row tiles",
+            ));
+        }
+        let final_tile = position_start + rows == 2048;
         let previous_fixture_tile = position_start == 1984;
-        let live_kv_tile = kv_state_mode != 0 && position_start < 2016;
+        let live_kv_tile = kv_state_mode != 0 && !final_tile;
         if !final_tile && !(complete_layer1 && (previous_fixture_tile || live_kv_tile)) {
             return Err(Error::invalid(
                 "prefill boundary supports the final tile, the previous-tile control, or a live-KV tile",
@@ -22671,7 +22683,8 @@ mod imp {
                 PREFILL_FRONTIER_2048_TOKEN_IDS_BYTES,
                 "prefill frontier token IDs",
             )?;
-            tokens = full_tokens[position_start as usize..position_start as usize + 32].to_vec();
+            tokens = full_tokens[position_start as usize..position_start as usize + rows as usize]
+                .to_vec();
         }
         let [qkv_attn_norm, expected_q, expected_q_norm, expected_kv_raw, expected_kv_norm, expected_q_raw, expected_q_cur] =
             if collect_outputs {
@@ -23181,7 +23194,7 @@ mod imp {
                     ptr::null()
                 },
                 129280,
-                32,
+                rows,
                 position_start,
                 kv_state_mode,
                 tokens.as_ptr(),
@@ -23268,7 +23281,7 @@ mod imp {
         } else {
             25
         };
-        if raw.rows != 32
+        if raw.rows != u64::from(rows)
             || raw.position_start != position_start
             || raw.input_elements_per_row != 4096
             || raw.q_lora_elements_per_row != 1024
@@ -23791,6 +23804,37 @@ mod imp {
         ))
     }
 
+    fn run_prefill_boundary_probe(
+        model: &MappedModel,
+        layer1_mode: u8,
+        position_start: u32,
+        shared_context: Option<&Context>,
+        kv_state_mode: u32,
+        include_layer2_kvnorm: bool,
+        include_layer2_kv_state: bool,
+        include_layer2_compressors: bool,
+        collect_outputs: bool,
+    ) -> Result<(
+        PrefillLayer0BoundaryProbeReport,
+        Option<[u64; 3]>,
+        Option<[u64; 20]>,
+        Option<[u64; 3]>,
+        Option<[u64; 6]>,
+    )> {
+        run_prefill_boundary_probe_rows(
+            model,
+            layer1_mode,
+            position_start,
+            shared_context,
+            kv_state_mode,
+            include_layer2_kvnorm,
+            include_layer2_kv_state,
+            include_layer2_compressors,
+            collect_outputs,
+            32,
+        )
+    }
+
     pub fn run_prefill_layer0_boundary_probe(
         model: &MappedModel,
     ) -> Result<PrefillLayer0BoundaryProbeReport> {
@@ -24171,22 +24215,31 @@ mod imp {
         Option<PrefillLayers012CompressorLoopProbeReport>,
         NativePrefillTiming,
     )> {
-        let mut tiles = Vec::with_capacity(64);
-        let mut layer2_checksums = Vec::with_capacity(64);
-        let mut layer2_compressor_checksums = Vec::with_capacity(64);
+        const DIAGNOSTIC_TILE_ROWS: usize = 32;
+        const PRODUCTION_TILE_ROWS: usize = 64;
+        let tile_rows = if collect_outputs {
+            DIAGNOSTIC_TILE_ROWS
+        } else {
+            PRODUCTION_TILE_ROWS
+        };
+        let tile_count = 2048 / tile_rows;
+        let mut tiles = Vec::with_capacity(tile_count);
+        let mut layer2_checksums = Vec::with_capacity(tile_count);
+        let mut layer2_compressor_checksums = Vec::with_capacity(tile_count);
         let mut final_tile = None;
-        for position_start in (0..2048).step_by(32) {
+        for position_start in (0..2048).step_by(tile_rows) {
             let kv_state_mode = if position_start == 0 { 1 } else { 2 };
-            let (layer0, layer1, complete, layer2, compressors) = run_prefill_boundary_probe(
+            let (layer0, layer1, complete, layer2, compressors) = run_prefill_boundary_probe_rows(
                 model,
                 2,
-                position_start,
+                position_start as u32,
                 Some(context),
                 kv_state_mode,
                 true,
                 true,
                 true,
                 collect_outputs,
+                tile_rows as u32,
             )?;
             if collect_outputs {
                 let layer1 = layer1.ok_or_else(|| {
@@ -24201,7 +24254,7 @@ mod imp {
                 layer2_compressor_checksums.push(compressors.ok_or_else(|| {
                     Error::invalid("layer-2 compressor loop omitted compressor checksums")
                 })?);
-                if position_start == 2016 {
+                if position_start + tile_rows == 2048 {
                     final_tile = Some(PrefillLayers01CompleteBoundaryProbeReport {
                         layers01: PrefillLayers01BoundaryProbeReport {
                             layer0: layer0.clone(),
@@ -24216,9 +24269,10 @@ mod imp {
             tiles.push(layer0);
         }
         for (index, tile) in tiles.iter().enumerate() {
-            if tile.position_start != index as u32 * 32
-                || tile.rows != 32
-                || tile.dispatches != (if index == 63 { 122 } else { 118 })
+            let expected_dispatches = if index + 1 == tile_count { 122 } else { 118 };
+            if tile.position_start != (index * tile_rows) as u32
+                || tile.rows != tile_rows as u64
+                || tile.dispatches != expected_dispatches
                 || tile.wrapped_model_ranges != 65
                 || tile.pointer_matches != 65
             {
