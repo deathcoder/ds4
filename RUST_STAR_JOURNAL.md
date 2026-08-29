@@ -190,6 +190,13 @@ history; add a correction and update the current-state summary.
   groups. Three exact profiles cut the representative kernel medians by 63.4%
   and 65.4%, and three eligible controls raised median prefill from 138.083 to
   171.682 tok/s without changing the 128-token transcript or decode schedule.
+  Immutable `0cbffdf` completed five exact pairs with no retries or invalid
+  attempts. Rust measured 163.873 prefill tok/s versus DwarfStar's 182.370;
+  the 0.897865x median pairwise ratio leaves 10.21%, down from `cdb6377`'s
+  28.61% validated gap. Steady decode is effectively tied/slightly ahead at
+  1.001367x and complete generation is 1.014559x ahead. With the profiled Rust
+  transformer now faster than Dwarf's earlier split total, the next target is
+  the 64-row bootstrap/residency interval before the transformer.
 - Implementation: dependency-free Rust host scaffold under `rust-star/runtime/`
   strictly parses GGUF v3 directories, validates the Flash resident-Q2
   shape/recipe, and writes candidate full-logit artifacts. A macOS-only
@@ -731,8 +738,9 @@ history; add a correction and update the current-state summary.
 
 ## Immediate Next Actions
 
-1. Freeze the accepted four-SIMD-group FlashAttention candidate and run a fresh
-   immutable five-pair 2K/128 comparison against pinned DwarfStar.
+1. Attribute and reduce the 64-row prefill bootstrap/residency interval. The
+   accepted NSG=4 transformer is now ahead in the synchronized split evidence;
+   preserve it unchanged while localizing the remaining 10.21% paired gap.
 2. Extend the eligible engine and exact transcript gate to the next context
    frontier before treating this narrow 2K result as representative.
 3. Preserve the exact 2K-to-position-4099 native handoff, complete retained
@@ -746,6 +754,40 @@ history; add a correction and update the current-state summary.
 6. Run or approve the fork's GitHub Actions workflow and retain its URL.
 
 ## Entries
+
+### 2026-08-29 — NSG=4 closes 18.40 points of the validated prefill gap
+
+- Froze executable SHA-256
+  `d453ba11c37fa0f9738b32491848a09953bbd8af51b3d413076c876db5c59a24`
+  from immutable commit `0cbffdf59dfb84127ffc49ebf14a250d6253f7bd` and
+  tree `8e32fa77c3d3f94ce91af155c411200d32be3c4f`.
+- Ran predeclared plan SHA-256
+  `6f3ed971728d155a27fa426c9152c7a74267d21c5710b808a8e01468181737cc`
+  against pinned DwarfStar. Both warmups and all five C0 pairs passed; there
+  were no failures, retries, blocked pairs, or retained invalid attempts.
+- Rust Star median prefill was 163.873178865 tok/s versus DwarfStar's 182.37.
+  The median within-pair ratio is 0.897865063x, leaving a 10.21% gap. Compared
+  with `cdb6377`'s 0.713851042x ratio and 28.61% gap, this is a 25.78% relative
+  ratio improvement and closes 18.40 percentage points of the gap.
+- Rust Star steady decode measured 23.462039051 versus 23.43 tok/s, a
+  1.001367437x paired ratio. Complete generation measured 23.405874030 versus
+  23.07 tok/s, a 1.014558909x ratio. First-token latency was 55.307 versus
+  48.724 ms, a 1.126438498x latency ratio.
+- Final raw and summary SHA-256 values are
+  `d5a851705a07518b5757b2176be569c807f65aaef90fc531cb488e37a03269fc`
+  and `701b2b1f0c28b6842ec8ea4cf4966e081520420d8cfa7dd2354f568f75249b57`.
+  An independent validator reproduced the summary byte-for-byte.
+- Decision: the remaining 2K prefill deficit is no longer transformer
+  FlashAttention. NSG=4's synchronized transformer profile is about 8.46 s GPU
+  versus DwarfStar's earlier 10.41 s layer total, while Rust still spends about
+  2.36 s GPU in its 64-row bootstrap plus residency/host overhead. Preserve the
+  accepted transformer and next localize that pre-transformer interval.
+
+Validation:
+
+- Five exact paired measurements plus both fresh-process warmups.
+- Zero retries, invalid attempts, or blocked pairs.
+- Independent paired-result validation and byte-identical summary.
 
 ### 2026-08-29 — Four-SIMD-group FlashAttention cuts prefill by 24.3%
 

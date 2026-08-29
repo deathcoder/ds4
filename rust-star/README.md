@@ -371,10 +371,15 @@ this evidence. Reducing the 512-wide non-vector pipeline and all 43 matching
 launches from eight to four SIMD groups preserved the exact transcript and cut
 the median representative Flash intervals by 63.4% and 65.4%. Three eligible
 runs measured 170.329--172.234 prefill tok/s, with a 171.682 median versus
-138.083 for the immediately preceding NSG=8 control, a 24.3% gain. A final
-control from the named production constant remained exact and paired eligible.
-The profiler's 52 command buffers and waits remain diagnostic only; the next
-gate is a fresh immutable five-pair comparison against DwarfStar.
+138.083 for the immediately preceding NSG=8 control, a 24.3% gain. Immutable
+commit `0cbffdf` then completed five C0 pairs without a retry or invalid
+attempt. Rust measured 163.873 prefill tok/s versus DwarfStar's 182.370, for a
+0.897865x median pairwise ratio and a remaining 10.21% gap. The previous
+validated ratio was 0.713851x, so NSG=4 closes 18.40 percentage points of the
+gap. Steady decode is effectively tied/slightly ahead at 1.001367x and complete
+generation is 1.014559x ahead. The profiler's 52 command buffers and waits
+remain diagnostic only; the next target is the pre-transformer bootstrap and
+residency interval, not transformer attention.
 
 Project controls and benchmark contracts:
 
