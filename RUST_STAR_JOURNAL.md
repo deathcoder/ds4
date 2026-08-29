@@ -141,14 +141,18 @@ history; add a correction and update the current-state summary.
   behind at 0.964026748x, prefill remains 31.54% behind at 0.684638182x, and
   first-token latency remains 12.192259243x higher. This is an exact 2K/128
   development result, not the protocol's 256K headline claim.
-  A new model-residency candidate identifies that first-token gap as Metal VM
-  residency rather than decoder allocation. It registers all 1,136 existing
+  Immutable commit `2c6f80e` then completed five exact 2K/128 pairs without a
+  timed failure, retry, or invalid attempt. It registers all 1,136 existing
   no-copy model views in a residency set attached to the inference queue and
-  performs a coarse GPU touch inside `prefill_ms`. Two exact development runs
-  reduced first-token latency to 53.511 and 49.586 ms; an adjacent immutable
-  `7de9511` control still required 615.953 ms. The repeat reached 24.072612466
-  tok/s steady and 24.036244767 tok/s complete generation. The five-pair
-  comparison remains pending, so the validated headline above is unchanged.
+  performs a coarse GPU touch inside `prefill_ms`. Rust Star measured
+  24.230812222 tok/s steady versus DwarfStar's 23.39, and all five pairs favored
+  Rust Star. The median within-pair steady ratio was 1.037257019x, a validated
+  3.73% lead. Complete generation measured 24.198539179 versus 22.81 tok/s; all
+  five pairs favored Rust and the median ratio was 1.061823177x, a 6.18% lead.
+  Median Rust first-token latency fell from `7de9511`'s 546.059208 ms to
+  48.720167 ms and is effectively tied with DwarfStar at a 0.995386079x paired
+  ratio. Prefill remains 34.07% behind at 0.659348296x. This is an exact 2K/128
+  development result, not the protocol's 256K headline claim.
 - Implementation: dependency-free Rust host scaffold under `rust-star/runtime/`
   strictly parses GGUF v3 directories, validates the Flash resident-Q2
   shape/recipe, and writes candidate full-logit artifacts. A macOS-only
@@ -690,23 +694,19 @@ history; add a correction and update the current-state summary.
 
 ## Immediate Next Actions
 
-1. Freeze and publish the model-residency candidate, then run the formal five
-   exact 2K/128 pairs. Preserve the declared timing boundary: residency setup
-   and its GPU touch remain charged to `prefill_ms`.
-2. Confirm that the candidate closes the complete-generation gap without
-   regressing the validated 2.56% steady lead, and quantify its first-token
-   latency against DwarfStar's paired distribution.
-3. Attribute and reduce the remaining 31.54% prefill throughput deficit while
+1. Attribute and reduce the remaining 34.07% prefill throughput deficit while
    preserving the exact native-prefill handoff and pooled scratch lifetimes.
-4. Preserve the exact 2K-to-position-4099 native handoff, complete retained
+2. Extend the eligible engine and exact transcript gate to the next context
+   frontier before treating this narrow 2K result as representative.
+3. Preserve the exact 2K-to-position-4099 native handoff, complete retained
    position-8195 decoder step, isolated
    513/1,025-row probes, and retained-state row-1,025/2,049 controls as
    independent sparse regressions.
-5. Preserve the four-, six-, eight-, 43-layer, explicit decoder-output, and
+4. Preserve the four-, six-, eight-, 43-layer, explicit decoder-output, and
    closed-loop diagnostic commands as independently executed controls.
-6. Run the extended 2K--1M frontier capture when the Mac can be dedicated to a
+5. Run the extended 2K--1M frontier capture when the Mac can be dedicated to a
    long benchmark; preserve any 512K/1M capacity failure as evidence.
-7. Run or approve the fork's GitHub Actions workflow and retain its URL.
+6. Run or approve the fork's GitHub Actions workflow and retain its URL.
 
 ## Entries
 
@@ -751,18 +751,47 @@ Evidence:
   `b93e32fa1f465d7aee2bea11aa42812de1e86cd8fe01e882376d7eb4f51a9d47`.
   The candidate therefore reduced adjacent-control first-token latency 91.95%
   while retaining the exact transcript.
+- Published source commit `2c6f80e93340938e14d369a90c0e15d535e371ab`
+  with tree `bc664db70bf9a03ea82b44cd70b007a84a2fff2e`. The immutable
+  optimized executable SHA-256 is
+  `bc28df410a504cf8197f21782eed11669da355ac5d973bff493f22b137d7e747`.
+- The first attempted plan correctly blocked during candidate warmup because it
+  was mistakenly bound to a stale executable that lacked the new residency
+  record. No timed pair ran. That checkpoint remains preserved under
+  `paired-2k-128-2c6f80e`; the corrected plan uses a new output directory and
+  SHA-256 `edd2341a277d361ac16ac9a7ee82f7295e2f2ffcd305cda4afd16a0a564a47c1`.
+- Both corrected warmups and all five `AB`, `BA`, `AB`, `BA`, `AB` pairs passed
+  with no timed failure, retry, invalid attempt, capacity failure, swap use, or
+  recorded thermal/performance warning. All exact candidate transcripts passed
+  the adapter's independent residency, scheduler, and transcript gates.
+- Rust Star steady decode measured median 24.230812222 tok/s (MAD 0.030629462,
+  range 24.197976798--24.285034979) versus DwarfStar 23.39 tok/s (MAD 0.04,
+  range 23.33--23.44). All five pairs favored Rust. The median within-pair ratio
+  was 1.037257019x (MAD 0.001239146, range 1.032336894--1.038496166), a
+  validated 3.73% lead.
+- Complete generation measured Rust 24.198539179 versus DwarfStar 22.81 tok/s;
+  all five pairs favored Rust and the median ratio was 1.061823177x, a 6.18%
+  lead. Median first-token latency was 48.720167 versus 48.661 ms, with a
+  0.995386079x median paired ratio. Prefill measured 131.607846785 versus
+  199.62 tok/s, a 0.659348296x ratio and 34.07% remaining deficit.
+- Relative to `7de9511`, the new Rust median improved 3.13% steady, 12.49%
+  complete generation, and 1.79% prefill while first-token latency fell 91.08%.
+  The validated summary re-aggregates to SHA-256
+  `5308900982d45da6fe0a3f13cc5ea46b11bf38a5bdac3d061a1bec636f5e062f`.
+  The local result-manifest SHA-256 is
+  `503d5e82793f9bedfdbdf86d4f700a93495545d5d90038c36acc4d3a99e2eaf1`.
 
 Decision:
 
-- Accept the residency policy as a measured candidate and make the independent
-  adapter reject missing or inconsistent residency evidence. Preserve the
-  prior five-pair result as the headline until a new immutable five-pair run
-  completes.
+- Accept and publish the residency policy. The exact 2K/128 development
+  headline is now a 3.73% steady-decode lead, 6.18% complete-generation lead,
+  and effectively tied first-token latency. Keep prefill as the next
+  performance bottleneck and do not extrapolate this narrow result to 256K.
 
 Next:
 
-- Publish the immutable candidate and execute the formal five-pair exact
-  comparison.
+- Profile and reduce the remaining prefill deficit, then extend the eligible
+  exact engine to the next context frontier.
 
 ### 2026-08-29 — Rust Star crosses DwarfStar in validated steady decode
 

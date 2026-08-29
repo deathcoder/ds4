@@ -330,21 +330,15 @@ now executes all 43 layers through that branch and matches full-vocabulary
 logits exactly. Exact sparse post-prompt integration is now complete through
 position 4099 via the GPU-only native-prefill handoff. The latest checkpointed
 five-pair C0 development comparison at 2K/128 completed without retries or
-invalid attempts. Rust Star measured 23.495447999 tok/s steady versus
-DwarfStar's 22.91, and all five pairs favored Rust Star. The 1.025554256x paired
-median is a validated 2.56% steady-decode lead. Complete generation remains
-3.60% behind, prefill remains 31.54% behind, and first-token latency remains
-12.19x higher. This development result is not the protocol's 256K headline
-claim.
-
-A subsequent development candidate mirrors the oracle's Metal residency
-policy: existing no-copy model views are registered with the command queue and
-receive a coarse GPU touch inside the measured prefill interval. Two exact
-candidate runs reduced first-token latency to 53.511 and 49.586 ms; an adjacent
-immutable `7de9511` control still required 615.953 ms. The repeated candidate
-reached 24.073 tok/s steady and 24.036 tok/s complete generation. These are
-causal development checks, not a new paired headline; the formal five-pair
-comparison is the next gate.
+invalid attempts, and all five pairs favored Rust Star on both generation
+measures. Immutable commit `2c6f80e` measured 24.230812222 tok/s steady versus
+DwarfStar's 23.39, a 1.037257019x median pairwise ratio and validated 3.73%
+lead. Complete generation measured 24.198539179 versus 22.81 tok/s, a
+1.061823177x ratio and 6.18% lead. The residency policy reduced median
+first-token latency from the preceding Rust checkpoint's 546.059 ms to 48.720
+ms; its 0.995386079x paired ratio is effectively tied with DwarfStar. Prefill
+remains 34.07% behind at 0.659348296x. This exact development result is not the
+protocol's 256K headline claim.
 
 Project controls and benchmark contracts:
 
