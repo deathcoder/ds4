@@ -371,6 +371,7 @@ static NSString *const kQ8ProjectionSource =
 @property(nonatomic, strong) NSMutableDictionary<NSNumber *, NSNumber *> *chainedWallStarts;
 @property(nonatomic, strong) NSMutableDictionary<NSNumber *, id<MTLCounterSampleBuffer>> *chainedStageSamples;
 @property(nonatomic, strong) NSMutableArray<NSNumber *> *prefillLayerGpuTimes;
+@property(nonatomic, strong) NSMutableArray<NSNumber *> *prefillRepresentativeStageGpuTimes;
 @property(nonatomic, assign) BOOL prefillLayerProfiling;
 @property(nonatomic, strong) NSMutableArray<id<MTLCommandBuffer>> *prefillBoundaryCommands;
 @property(nonatomic, assign) double prefillBoundaryWallStart;
@@ -943,6 +944,7 @@ int rust_star_metal_create(void **context_out, char *error, size_t error_bytes) 
         context.chainedWallStarts = [NSMutableDictionary dictionary];
         context.chainedStageSamples = [NSMutableDictionary dictionary];
         context.prefillLayerGpuTimes = [NSMutableArray array];
+        context.prefillRepresentativeStageGpuTimes = [NSMutableArray array];
         context.setupMilliseconds = setup_end - setup_start;
         context.compileMilliseconds = compile_end - compile_start;
         *context_out = (__bridge_retained void *)context;
@@ -1891,7 +1893,39 @@ int rust_star_metal_enable_prefill_layer_profiling(
     @autoreleasepool {
         RustStarMetalContext *context = (__bridge RustStarMetalContext *)opaque_context;
         [context.prefillLayerGpuTimes removeAllObjects];
+        [context.prefillRepresentativeStageGpuTimes removeAllObjects];
         context.prefillLayerProfiling = YES;
+        return 1;
+    }
+}
+
+int rust_star_metal_copy_prefill_representative_stage_gpu_times(
+    void *opaque_context,
+    uint32_t stage_count,
+    double *gpu_ms,
+    char *error,
+    size_t error_bytes)
+{
+    if (!opaque_context || !gpu_ms || stage_count != 4u) {
+        return fail_with_message(error, error_bytes,
+            @"prefill representative stage timing received invalid inputs");
+    }
+    @autoreleasepool {
+        RustStarMetalContext *context = (__bridge RustStarMetalContext *)opaque_context;
+        if (!context.prefillLayerProfiling ||
+            context.prefillRepresentativeStageGpuTimes.count != stage_count) {
+            return fail_with_message(error, error_bytes,
+                @"prefill representative stage timing requires a completed profiled prefill");
+        }
+        for (uint32_t stage = 0u; stage < stage_count; stage++) {
+            const double value =
+                context.prefillRepresentativeStageGpuTimes[stage].doubleValue;
+            if (!isfinite(value) || value <= 0.0) {
+                return fail_with_message(error, error_bytes,
+                    @"prefill representative stage timing returned an invalid GPU interval");
+            }
+            gpu_ms[stage] = value;
+        }
         return 1;
     }
 }
@@ -17347,6 +17381,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         const BOOL prefill_layer_profiling = context.prefillLayerProfiling;
         const double prefill_profile_wall_start = monotonic_ms();
         double prefill_profile_gpu_ms = 0.0;
+        double prefill_profile_current_layer_gpu_ms = 0.0;
 #define RUST_STAR_PREFILL_LAYER_BOUNDARY(index) do { \
         if (prefill_layer_profiling && (index) != 0u) { \
             [encoder endEncoding]; \
@@ -17356,12 +17391,41 @@ int rust_star_metal_run_prefill_layer2_attention(
             if (!isfinite(layer_gpu_ms) || layer_gpu_ms <= 0.0) \
                 return fail_with_message(error, error_bytes, \
                     @"prefill layer profile returned an invalid GPU interval"); \
-            [context.prefillLayerGpuTimes addObject:@(layer_gpu_ms)]; \
+            prefill_profile_current_layer_gpu_ms += layer_gpu_ms; \
+            [context.prefillLayerGpuTimes \
+                addObject:@(prefill_profile_current_layer_gpu_ms)]; \
+            if ((index) == 3u || (index) == 4u) { \
+                [context.prefillRepresentativeStageGpuTimes \
+                    addObject:@(layer_gpu_ms)]; \
+            } \
             prefill_profile_gpu_ms += layer_gpu_ms; \
+            prefill_profile_current_layer_gpu_ms = 0.0; \
             command = [context.queue commandBuffer]; \
             encoder = [command computeCommandEncoder]; \
             if (!command || !encoder) return fail_with_message(error, error_bytes, \
                 @"failed to resume prefill after layer timing boundary"); \
+        } \
+    } while (0)
+#define RUST_STAR_PREFILL_REPRESENTATIVE_ATTENTION_BOUNDARY() do { \
+        if (prefill_layer_profiling) { \
+            [command commit]; \
+            if (!command_succeeded(command, error, error_bytes)) return 0; \
+            const double attention_gpu_ms = gpu_elapsed_ms(command); \
+            if (!isfinite(attention_gpu_ms) || attention_gpu_ms <= 0.0) \
+                return fail_with_message(error, error_bytes, \
+                    @"prefill representative attention profile returned an invalid GPU interval"); \
+            [context.prefillRepresentativeStageGpuTimes \
+                addObject:@(attention_gpu_ms)]; \
+            prefill_profile_current_layer_gpu_ms += attention_gpu_ms; \
+            prefill_profile_gpu_ms += attention_gpu_ms; \
+            command = [context.queue commandBuffer]; \
+            encoder = [command computeCommandEncoder]; \
+            if (!command || !encoder) return fail_with_message(error, error_bytes, \
+                @"failed to resume prefill after representative attention timing boundary"); \
+        } else { \
+            encoder = [command computeCommandEncoder]; \
+            if (!encoder) return fail_with_message(error, error_bytes, \
+                @"failed to resume prefill representative FFN encoder"); \
         } \
     } while (0)
         RUST_STAR_PREFILL_LAYER_BOUNDARY(0u);
@@ -18390,10 +18454,7 @@ int rust_star_metal_run_prefill_layer2_attention(
                            destinationOffset:0
                                       size:8u*output_rank*sizeof(float)];
         [layer4_attention_blit endEncoding];
-        encoder = [command computeCommandEncoder];
-        if (!encoder) return fail_with_message(
-            error, error_bytes,
-            @"failed to resume prefill layer-4 FFN encoder");
+        RUST_STAR_PREFILL_REPRESENTATIVE_ATTENTION_BOUNDARY();
 
         [encoder setComputePipelineState:context.rmsNormF32Pipeline];
         [encoder setBytes:&ffn_hc_norm_args length:sizeof(ffn_hc_norm_args) atIndex:0];
@@ -18852,10 +18913,7 @@ int rust_star_metal_run_prefill_layer2_attention(
                                 destinationOffset:0
                                            size:8u*output_rank*sizeof(float)];
         [layer5_attention_tail_blit endEncoding];
-        encoder = [command computeCommandEncoder];
-        if (!encoder) return fail_with_message(
-            error, error_bytes,
-            @"failed to resume prefill layer-5 FFN encoder");
+        RUST_STAR_PREFILL_REPRESENTATIVE_ATTENTION_BOUNDARY();
 
         [encoder setComputePipelineState:context.rmsNormF32Pipeline];
         [encoder setBytes:&ffn_hc_norm_args length:sizeof(ffn_hc_norm_args) atIndex:0];
@@ -36291,6 +36349,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder dispatchThreadgroups:MTLSizeMake((rows*n_embd+255u)/256u,1,1)
              threadsPerThreadgroup:MTLSizeMake(256,1,1)];
         RUST_STAR_PREFILL_LAYER_BOUNDARY(41u);
+#undef RUST_STAR_PREFILL_REPRESENTATIVE_ATTENTION_BOUNDARY
 #undef RUST_STAR_PREFILL_LAYER_BOUNDARY
         [encoder endEncoding];
 

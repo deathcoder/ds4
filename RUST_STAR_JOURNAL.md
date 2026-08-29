@@ -718,9 +718,9 @@ history; add a correction and update the current-state summary.
 
 ## Immediate Next Actions
 
-1. Add paired-ineligible attention-versus-FFN attribution inside one
-   representative even and odd native-prefill layer, then optimize the shared
-   attention path and the even ratio-4 compressor/indexer additions first.
+1. Add a focused alternating A/B harness inside representative prefill
+   attention, separating QKV/RoPE, compressor, FlashAttention, and output/HC
+   work before changing the shared production path.
 2. Extend the eligible engine and exact transcript gate to the next context
    frontier before treating this narrow 2K result as representative.
 3. Preserve the exact 2K-to-position-4099 native handoff, complete retained
@@ -734,6 +734,51 @@ history; add a correction and update the current-state summary.
 6. Run or approve the fork's GitHub Actions workflow and retain its URL.
 
 ## Entries
+
+### 2026-08-29 — Representative layers localize the prefill deficit to attention
+
+- Extended the paired-ineligible prefill profiler with one additional
+  synchronized boundary in representative even layer 4 and odd layer 5. The
+  report preserves all 41 layer totals and additionally requires each
+  attention-plus-FFN pair to sum exactly to its layer total.
+- The exact 128-token transcript remained unchanged across two clean profiles.
+  Layer 4 measured 220.694--228.611 ms attention and 100.945--101.421 ms FFN;
+  DwarfStar's independent split profile measured 182.709 and 97.515 ms.
+  Rust's layer-4 attention is 20.79--25.12% slower while its FFN is only
+  3.52--4.11% slower. Attention accounts for 90.68--93.05% of the
+  representative total-layer deficit.
+- Layer 5 measured 145.157--150.229 ms attention and 103.672--104.385 ms FFN;
+  DwarfStar measured 119.490 and 100.706 ms. Rust's layer-5 attention is
+  21.48--25.73% slower while its FFN is 2.95--3.65% slower. Attention accounts
+  for 89.31--89.64% of this deficit.
+- Final accepted evidence:
+  `rust-star/.work/prefill-stage-profile-02/engine-run.json`, SHA-256
+  `1f2a6c3b1241ad85170ed831b96dacf508ad451248be9dea2a421f4b0ff955a1`.
+  The final profiled executable SHA-256 is
+  `10ea66c49de49c8712e144d1851a7ffe7f57ebdcb2c2822343fd7e9dd0c0503b`.
+  The first clean repeat remains at SHA-256
+  `9c21df58e352b2816980cf50f2393bbdf8621b393a6da1705ae46db3037d4013`.
+- Tested a bounded production-only snapshot-elision hypothesis on layers 4 and
+  5. It aliased Q/KV state in place and removed diagnostic blit/encoder breaks.
+  A live exact profile moved layer 4 from 329.556 to 332.064 ms and layer 5
+  from 254.614 to 257.081 ms, with both attention intervals also slower. The
+  candidate was rejected and fully reverted; its raw SHA-256 is
+  `0cb08cad76a0e1cae398ceee09b3c16d35e8bacc8e3218c90f9d11bf02e51ce4`.
+- Decision: do not generalize snapshot elision from whole-engine noise. Build
+  an alternating same-context attention harness that separately measures
+  QKV/RoPE, compressor, FlashAttention, and output/HC candidates. The shared
+  attention path, not FFN or one anomalous layer, is the established target.
+- A final normal-path control from the same executable selected token 15342,
+  matched the full transcript, emitted both prefill profile fields as `null`,
+  remained paired eligible, and measured 132.706 prefill tok/s plus 23.211
+  steady decode tok/s. Raw SHA-256:
+  `11abfb087e86a06842b6f14e4e7e759c6865c43b0d0d54bb3b2e9b12e91e972b`.
+
+Validation:
+
+- Optimized macOS release build and exact live `engine-profile`.
+- Full Rust and Python suites pass at the final checkpoint.
+- `cargo fmt` and `git diff --check` pass.
 
 ### 2026-08-29 — Remaining prefill gap follows the alternating layer families
 

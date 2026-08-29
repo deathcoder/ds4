@@ -70,13 +70,15 @@ the independent C0 controls retain full-logit readback and comparison.
 Correctness dumping and profiler capture must remain disabled in timed mode.
 
 The development-only `engine-profile` record may include
-`prefill_transformer_layer_gpu_ms` and `prefill_layer_profile`. That mode
+`prefill_transformer_layer_gpu_ms`,
+`prefill_representative_stage_gpu_ms`, and `prefill_layer_profile`. That mode
 splits native prefill layers 2 through 42 into 41 synchronized command buffers,
-records their completed Metal GPU intervals, and sets
+adds attention-to-FFN boundaries in representative layers 4 and 5, records the
+completed Metal GPU intervals, and sets
 `prefill_layer_timing_collection: true`. It must report
 `paired_protocol_eligible: false`; the normalized adapter must reject it.
-Eligible `engine-measure` records require the array and profile to be `null`
-and the collection flag to be false.
+Eligible `engine-measure` records require both arrays and the profile to be
+`null` and the collection flag to be false.
 
 Rust Star's prefill interval also includes its Metal model-residency setup. The
 runtime registers every existing no-copy model view in one residency set,

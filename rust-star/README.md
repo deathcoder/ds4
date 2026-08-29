@@ -358,7 +358,16 @@ split profile averages 283.103 and 223.180 ms respectively. The similar
 alternating ratios (1.296x Rust, 1.268x Dwarf) rule out a single pathological
 layer and prioritize shared prefill attention work, followed by the even-only
 ratio-4 compressor/indexer path. A normal-path control remains exact and paired
-eligible; the profiler's 41 command buffers and waits are diagnostic only.
+eligible; the profiler's 44 command buffers and waits are diagnostic only.
+
+The representative attention-to-FFN split makes that priority concrete. Two
+clean profiles put layer 4 attention 20.79--25.12% behind DwarfStar while its
+FFN is only 3.52--4.11% behind; attention explains 90.68--93.05% of the layer
+gap. Layer 5 attention is 21.48--25.73% behind while its FFN is 2.95--3.65%
+behind; attention explains 89.31--89.64% of the gap. A bounded attempt to
+remove production-only snapshot blits from those layers moved both timings in
+the wrong direction and was reverted. The next gate is a focused alternating
+attention harness, not a broad production edit.
 
 Project controls and benchmark contracts:
 
