@@ -159,8 +159,11 @@ history; add a correction and update the current-state summary.
   command buffers and synchronizing only at the tail; the exact 128-token
   transcript remains eligible. Wider 64-row and full-2K tiles failed the
   first-token oracle and were rejected. A fresh normalized candidate measured
-  126.983490539 prefill tok/s; a formal immutable paired comparison remains the
-  next performance gate.
+  126.983490539 prefill tok/s. Immutable commit `eae11df` then completed five
+  exact pairs without a failure, retry, or invalid attempt. Rust Star's paired
+  prefill ratio improved from `2c6f80e`'s 0.659348296x to 0.673232187x, reducing
+  the validated 2K gap from 34.07% to 32.68%. Steady decode remains 3.71%
+  faster than DwarfStar and complete generation remains 6.45% faster.
 - Implementation: dependency-free Rust host scaffold under `rust-star/runtime/`
   strictly parses GGUF v3 directories, validates the Flash resident-Q2
   shape/recipe, and writes candidate full-logit artifacts. A macOS-only
@@ -717,6 +720,35 @@ history; add a correction and update the current-state summary.
 6. Run or approve the fork's GitHub Actions workflow and retain its URL.
 
 ## Entries
+
+### 2026-08-29 — Queued prefill improves the paired ratio, not enough to close the gap
+
+- Published immutable candidate `eae11df60c1441445faef8170335fd1846b3ffaa`
+  with source tree `01ecc7181638f08b3ade0d881e2cca945af4a617` and
+  executable SHA-256
+  `3cb264ad88f0afc2ebc2d579b9484809d805560b9608cd3d6f03722b7789eb1f`.
+- Ran the exact five-pair 2K/128 schedule from plan SHA-256
+  `ada7c64751b40b1aebf4d0e59702142c310d0ba6d3843fc539c50b11a3b188fd`.
+  Both warmups and all five timed pairs passed; there were no failures, retries,
+  blocked pairs, or retained invalid attempts.
+- Rust Star median prefill was 126.958125743 tok/s versus DwarfStar's 188.58.
+  The median within-pair ratio was 0.673232187x, leaving a 32.68% gap. Compared
+  with `2c6f80e`'s 0.659348296x ratio, queueing improves the paired ratio 2.11%
+  relatively and narrows the gap by 1.39 percentage points. Absolute throughput
+  was lower for both engines in this run, so the paired ratio is the valid
+  cross-session comparison.
+- Rust Star retained its decode lead: 23.655165050 versus 22.81 tok/s steady
+  (1.037052391x, +3.71%) and 23.611303513 versus 22.18 tok/s complete generation
+  (1.064531267x, +6.45%). First-token wall time was effectively tied at a
+  1.013342227x paired ratio.
+- Private finalized summary SHA-256:
+  `2baf206b59714f66a42743667d74ce22e977ad9647813db7f9ca4f7d252e016f`.
+  Raw result SHA-256:
+  `05de7b8b18e8c749a230044afa54e4c1249ca36644f2328853f5da6288bdba8b`.
+- Decision: retain the one-wait 32-row queue because it is exact and modestly
+  improves paired prefill. The next prefill work must reduce GPU kernel/schedule
+  cost while preserving 32-row arithmetic; wider-row batching is closed by the
+  oracle failures.
 
 ### 2026-08-29 — Exact prefill attribution and queued 32-row bootstrap
 

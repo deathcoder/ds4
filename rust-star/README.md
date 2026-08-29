@@ -331,14 +331,14 @@ logits exactly. Exact sparse post-prompt integration is now complete through
 position 4099 via the GPU-only native-prefill handoff. The latest checkpointed
 five-pair C0 development comparison at 2K/128 completed without retries or
 invalid attempts, and all five pairs favored Rust Star on both generation
-measures. Immutable commit `2c6f80e` measured 24.230812222 tok/s steady versus
-DwarfStar's 23.39, a 1.037257019x median pairwise ratio and validated 3.73%
-lead. Complete generation measured 24.198539179 versus 22.81 tok/s, a
-1.061823177x ratio and 6.18% lead. The residency policy reduced median
-first-token latency from the preceding Rust checkpoint's 546.059 ms to 48.720
-ms; its 0.995386079x paired ratio is effectively tied with DwarfStar. Prefill
-remains 34.07% behind at 0.659348296x. This exact development result is not the
-protocol's 256K headline claim.
+measures. Immutable commit `eae11df` measured 23.655165050 tok/s steady versus
+DwarfStar's 22.81, a 1.037052391x median pairwise ratio and validated 3.71%
+lead. Complete generation measured 23.611303513 versus 22.18 tok/s, a
+1.064531267x ratio and 6.45% lead. First-token latency is effectively tied at a
+1.013342227x paired ratio. Queuing the exact 64-by-32-row prefill schedule with
+one tail wait improved the prefill ratio from `2c6f80e`'s 0.659348296x to
+0.673232187x; the remaining prefill gap is 32.68%. This exact development
+result is not the protocol's 256K headline claim.
 
 Project controls and benchmark contracts:
 
