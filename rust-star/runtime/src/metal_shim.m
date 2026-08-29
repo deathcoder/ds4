@@ -370,6 +370,8 @@ static NSString *const kQ8ProjectionSource =
 @property(nonatomic, strong) NSMutableDictionary<NSNumber *, id<MTLCommandBuffer>> *chainedCommands;
 @property(nonatomic, strong) NSMutableDictionary<NSNumber *, NSNumber *> *chainedWallStarts;
 @property(nonatomic, strong) NSMutableDictionary<NSNumber *, id<MTLCounterSampleBuffer>> *chainedStageSamples;
+@property(nonatomic, strong) NSMutableArray<NSNumber *> *prefillLayerGpuTimes;
+@property(nonatomic, assign) BOOL prefillLayerProfiling;
 @property(nonatomic, strong) NSMutableArray<id<MTLCommandBuffer>> *prefillBoundaryCommands;
 @property(nonatomic, assign) double prefillBoundaryWallStart;
 @property(nonatomic, strong) id<MTLBuffer> prefillLayer0FullKv;
@@ -940,6 +942,7 @@ int rust_star_metal_create(void **context_out, char *error, size_t error_bytes) 
         context.chainedCommands = [NSMutableDictionary dictionary];
         context.chainedWallStarts = [NSMutableDictionary dictionary];
         context.chainedStageSamples = [NSMutableDictionary dictionary];
+        context.prefillLayerGpuTimes = [NSMutableArray array];
         context.setupMilliseconds = setup_end - setup_start;
         context.compileMilliseconds = compile_end - compile_start;
         *context_out = (__bridge_retained void *)context;
@@ -1872,6 +1875,53 @@ int rust_star_metal_enable_chained_stage_profiling(
             context.chainedStageSamples[@(layer)] = samples;
         }
         context.chainedStageProfiling = YES;
+        return 1;
+    }
+}
+
+int rust_star_metal_enable_prefill_layer_profiling(
+    void *opaque_context,
+    char *error,
+    size_t error_bytes)
+{
+    if (!opaque_context) {
+        return fail_with_message(error, error_bytes,
+            @"prefill layer profiling received a null context");
+    }
+    @autoreleasepool {
+        RustStarMetalContext *context = (__bridge RustStarMetalContext *)opaque_context;
+        [context.prefillLayerGpuTimes removeAllObjects];
+        context.prefillLayerProfiling = YES;
+        return 1;
+    }
+}
+
+int rust_star_metal_copy_prefill_layer_gpu_times(
+    void *opaque_context,
+    uint32_t layer_count,
+    double *gpu_ms,
+    char *error,
+    size_t error_bytes)
+{
+    if (!opaque_context || !gpu_ms || layer_count != 41u) {
+        return fail_with_message(error, error_bytes,
+            @"prefill layer timing received invalid inputs");
+    }
+    @autoreleasepool {
+        RustStarMetalContext *context = (__bridge RustStarMetalContext *)opaque_context;
+        if (!context.prefillLayerProfiling ||
+            context.prefillLayerGpuTimes.count != layer_count) {
+            return fail_with_message(error, error_bytes,
+                @"prefill layer timing requires a completed profiled prefill");
+        }
+        for (uint32_t layer = 0u; layer < layer_count; layer++) {
+            const double value = context.prefillLayerGpuTimes[layer].doubleValue;
+            if (!isfinite(value) || value <= 0.0) {
+                return fail_with_message(error, error_bytes,
+                    @"prefill layer timing returned an invalid GPU interval");
+            }
+            gpu_ms[layer] = value;
+        }
         return 1;
     }
 }
@@ -17294,6 +17344,27 @@ int rust_star_metal_run_prefill_layer2_attention(
         id<MTLComputeCommandEncoder> encoder = [command computeCommandEncoder];
         if (!command || !encoder) return fail_with_message(error, error_bytes,
             @"failed to create prefill layer-2 attention command");
+        const BOOL prefill_layer_profiling = context.prefillLayerProfiling;
+        const double prefill_profile_wall_start = monotonic_ms();
+        double prefill_profile_gpu_ms = 0.0;
+#define RUST_STAR_PREFILL_LAYER_BOUNDARY(index) do { \
+        if (prefill_layer_profiling && (index) != 0u) { \
+            [encoder endEncoding]; \
+            [command commit]; \
+            if (!command_succeeded(command, error, error_bytes)) return 0; \
+            const double layer_gpu_ms = gpu_elapsed_ms(command); \
+            if (!isfinite(layer_gpu_ms) || layer_gpu_ms <= 0.0) \
+                return fail_with_message(error, error_bytes, \
+                    @"prefill layer profile returned an invalid GPU interval"); \
+            [context.prefillLayerGpuTimes addObject:@(layer_gpu_ms)]; \
+            prefill_profile_gpu_ms += layer_gpu_ms; \
+            command = [context.queue commandBuffer]; \
+            encoder = [command computeCommandEncoder]; \
+            if (!command || !encoder) return fail_with_message(error, error_bytes, \
+                @"failed to resume prefill after layer timing boundary"); \
+        } \
+    } while (0)
+        RUST_STAR_PREFILL_LAYER_BOUNDARY(0u);
 
         [encoder setComputePipelineState:context.q8PrefillPipeline];
         [encoder setBytes:&q_b_args length:sizeof(q_b_args) atIndex:0];
@@ -17569,6 +17640,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder dispatchThreadgroups:MTLSizeMake((rows*n_embd+255u)/256u,1,1)
              threadsPerThreadgroup:MTLSizeMake(256,1,1)];
 
+        RUST_STAR_PREFILL_LAYER_BOUNDARY(1u);
         [encoder setComputePipelineState:context.rmsNormF32Pipeline];
         [encoder setBytes:&ffn_hc_norm_args length:sizeof(ffn_hc_norm_args) atIndex:0];
         [encoder setBuffer:after_ffn_hc_buffer offset:0 atIndex:1];
@@ -18011,6 +18083,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder dispatchThreadgroups:MTLSizeMake((rows*n_embd+255u)/256u,1,1)
              threadsPerThreadgroup:MTLSizeMake(256,1,1)];
 
+        RUST_STAR_PREFILL_LAYER_BOUNDARY(2u);
         [encoder setComputePipelineState:context.rmsNormF32Pipeline];
         [encoder setBytes:&ffn_hc_norm_args length:sizeof(ffn_hc_norm_args) atIndex:0];
         [encoder setBuffer:layer3_after_ffn_hc_buffer offset:0 atIndex:1];
@@ -18490,6 +18563,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder dispatchThreadgroups:MTLSizeMake((rows*n_embd+255u)/256u,1,1)
              threadsPerThreadgroup:MTLSizeMake(256,1,1)];
 
+        RUST_STAR_PREFILL_LAYER_BOUNDARY(3u);
         [encoder setComputePipelineState:context.rmsNormF32Pipeline];
         [encoder setBytes:&ffn_hc_norm_args length:sizeof(ffn_hc_norm_args) atIndex:0];
         [encoder setBuffer:layer4_after_ffn_hc_buffer offset:0 atIndex:1];
@@ -18950,6 +19024,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setBuffer:layer5_after_ffn_hc_buffer offset:0 atIndex:6];
         [encoder dispatchThreadgroups:MTLSizeMake((rows*n_embd+255u)/256u,1,1)
              threadsPerThreadgroup:MTLSizeMake(256,1,1)];
+        RUST_STAR_PREFILL_LAYER_BOUNDARY(4u);
         [encoder setComputePipelineState:context.rmsNormF32Pipeline];
         [encoder setBytes:&ffn_hc_norm_args length:sizeof(ffn_hc_norm_args) atIndex:0];
         [encoder setBuffer:layer5_after_ffn_hc_buffer offset:0 atIndex:1];
@@ -19421,6 +19496,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setBuffer:layer6_after_ffn_hc_buffer offset:0 atIndex:6];
         [encoder dispatchThreadgroups:MTLSizeMake((rows*n_embd+255u)/256u,1,1)
              threadsPerThreadgroup:MTLSizeMake(256,1,1)];
+        RUST_STAR_PREFILL_LAYER_BOUNDARY(5u);
         [encoder setComputePipelineState:context.rmsNormF32Pipeline];
         [encoder setBytes:&ffn_hc_norm_args length:sizeof(ffn_hc_norm_args) atIndex:0];
         [encoder setBuffer:layer6_after_ffn_hc_buffer offset:0 atIndex:1];
@@ -19881,6 +19957,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setBuffer:layer7_after_ffn_hc_buffer offset:0 atIndex:6];
         [encoder dispatchThreadgroups:MTLSizeMake((rows*n_embd+255u)/256u,1,1)
              threadsPerThreadgroup:MTLSizeMake(256,1,1)];
+        RUST_STAR_PREFILL_LAYER_BOUNDARY(6u);
         [encoder setComputePipelineState:context.rmsNormF32Pipeline];
         [encoder setBytes:&ffn_hc_norm_args length:sizeof(ffn_hc_norm_args) atIndex:0];
         [encoder setBuffer:layer7_after_ffn_hc_buffer offset:0 atIndex:1];
@@ -20352,6 +20429,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setBuffer:layer8_after_ffn_hc_buffer offset:0 atIndex:6];
         [encoder dispatchThreadgroups:MTLSizeMake((rows*n_embd+255u)/256u,1,1)
              threadsPerThreadgroup:MTLSizeMake(256,1,1)];
+        RUST_STAR_PREFILL_LAYER_BOUNDARY(7u);
         [encoder setComputePipelineState:context.rmsNormF32Pipeline];
         [encoder setBytes:&ffn_hc_norm_args length:sizeof(ffn_hc_norm_args) atIndex:0];
         [encoder setBuffer:layer8_after_ffn_hc_buffer offset:0 atIndex:1];
@@ -20812,6 +20890,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setBuffer:layer9_after_ffn_hc_buffer offset:0 atIndex:6];
         [encoder dispatchThreadgroups:MTLSizeMake((rows*n_embd+255u)/256u,1,1)
              threadsPerThreadgroup:MTLSizeMake(256,1,1)];
+        RUST_STAR_PREFILL_LAYER_BOUNDARY(8u);
         [encoder setComputePipelineState:context.rmsNormF32Pipeline];
         [encoder setBytes:&ffn_hc_norm_args length:sizeof(ffn_hc_norm_args) atIndex:0];
         [encoder setBuffer:layer9_after_ffn_hc_buffer offset:0 atIndex:1];
@@ -21283,6 +21362,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setBuffer:layer10_after_ffn_hc_buffer offset:0 atIndex:6];
         [encoder dispatchThreadgroups:MTLSizeMake((rows*n_embd+255u)/256u,1,1)
              threadsPerThreadgroup:MTLSizeMake(256,1,1)];
+        RUST_STAR_PREFILL_LAYER_BOUNDARY(9u);
         [encoder setComputePipelineState:context.rmsNormF32Pipeline];
         [encoder setBytes:&ffn_hc_norm_args length:sizeof(ffn_hc_norm_args) atIndex:0];
         [encoder setBuffer:layer10_after_ffn_hc_buffer offset:0 atIndex:1];
@@ -21743,6 +21823,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setBuffer:layer11_after_ffn_hc_buffer offset:0 atIndex:6];
         [encoder dispatchThreadgroups:MTLSizeMake((rows*n_embd+255u)/256u,1,1)
              threadsPerThreadgroup:MTLSizeMake(256,1,1)];
+        RUST_STAR_PREFILL_LAYER_BOUNDARY(10u);
         [encoder setComputePipelineState:context.rmsNormF32Pipeline];
         [encoder setBytes:&ffn_hc_norm_args length:sizeof(ffn_hc_norm_args) atIndex:0];
         [encoder setBuffer:layer11_after_ffn_hc_buffer offset:0 atIndex:1];
@@ -22214,6 +22295,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setBuffer:layer12_after_ffn_hc_buffer offset:0 atIndex:6];
         [encoder dispatchThreadgroups:MTLSizeMake((rows*n_embd+255u)/256u,1,1)
              threadsPerThreadgroup:MTLSizeMake(256,1,1)];
+        RUST_STAR_PREFILL_LAYER_BOUNDARY(11u);
         [encoder setComputePipelineState:context.rmsNormF32Pipeline];
         [encoder setBytes:&ffn_hc_norm_args length:sizeof(ffn_hc_norm_args) atIndex:0];
         [encoder setBuffer:layer12_after_ffn_hc_buffer offset:0 atIndex:1];
@@ -22674,6 +22756,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setBuffer:layer13_after_ffn_hc_buffer offset:0 atIndex:6];
         [encoder dispatchThreadgroups:MTLSizeMake((rows*n_embd+255u)/256u,1,1)
              threadsPerThreadgroup:MTLSizeMake(256,1,1)];
+        RUST_STAR_PREFILL_LAYER_BOUNDARY(12u);
         [encoder setComputePipelineState:context.rmsNormF32Pipeline];
         [encoder setBytes:&ffn_hc_norm_args length:sizeof(ffn_hc_norm_args) atIndex:0];
         [encoder setBuffer:layer13_after_ffn_hc_buffer offset:0 atIndex:1];
@@ -23145,6 +23228,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setBuffer:layer14_after_ffn_hc_buffer offset:0 atIndex:6];
         [encoder dispatchThreadgroups:MTLSizeMake((rows*n_embd+255u)/256u,1,1)
              threadsPerThreadgroup:MTLSizeMake(256,1,1)];
+        RUST_STAR_PREFILL_LAYER_BOUNDARY(13u);
         [encoder setComputePipelineState:context.rmsNormF32Pipeline];
         [encoder setBytes:&ffn_hc_norm_args length:sizeof(ffn_hc_norm_args) atIndex:0];
         [encoder setBuffer:layer14_after_ffn_hc_buffer offset:0 atIndex:1];
@@ -23605,6 +23689,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setBuffer:layer15_after_ffn_hc_buffer offset:0 atIndex:6];
         [encoder dispatchThreadgroups:MTLSizeMake((rows*n_embd+255u)/256u,1,1)
              threadsPerThreadgroup:MTLSizeMake(256,1,1)];
+        RUST_STAR_PREFILL_LAYER_BOUNDARY(14u);
         [encoder setComputePipelineState:context.rmsNormF32Pipeline];
         [encoder setBytes:&ffn_hc_norm_args length:sizeof(ffn_hc_norm_args) atIndex:0];
         [encoder setBuffer:layer15_after_ffn_hc_buffer offset:0 atIndex:1];
@@ -24076,6 +24161,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setBuffer:layer16_after_ffn_hc_buffer offset:0 atIndex:6];
         [encoder dispatchThreadgroups:MTLSizeMake((rows*n_embd+255u)/256u,1,1)
              threadsPerThreadgroup:MTLSizeMake(256,1,1)];
+        RUST_STAR_PREFILL_LAYER_BOUNDARY(15u);
         [encoder setComputePipelineState:context.rmsNormF32Pipeline];
         [encoder setBytes:&ffn_hc_norm_args length:sizeof(ffn_hc_norm_args) atIndex:0];
         [encoder setBuffer:layer16_after_ffn_hc_buffer offset:0 atIndex:1];
@@ -24536,6 +24622,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setBuffer:layer17_after_ffn_hc_buffer offset:0 atIndex:6];
         [encoder dispatchThreadgroups:MTLSizeMake((rows*n_embd+255u)/256u,1,1)
              threadsPerThreadgroup:MTLSizeMake(256,1,1)];
+        RUST_STAR_PREFILL_LAYER_BOUNDARY(16u);
         [encoder setComputePipelineState:context.rmsNormF32Pipeline];
         [encoder setBytes:&ffn_hc_norm_args length:sizeof(ffn_hc_norm_args) atIndex:0];
         [encoder setBuffer:layer17_after_ffn_hc_buffer offset:0 atIndex:1];
@@ -25007,6 +25094,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setBuffer:layer18_after_ffn_hc_buffer offset:0 atIndex:6];
         [encoder dispatchThreadgroups:MTLSizeMake((rows*n_embd+255u)/256u,1,1)
              threadsPerThreadgroup:MTLSizeMake(256,1,1)];
+        RUST_STAR_PREFILL_LAYER_BOUNDARY(17u);
         [encoder setComputePipelineState:context.rmsNormF32Pipeline];
         [encoder setBytes:&ffn_hc_norm_args length:sizeof(ffn_hc_norm_args) atIndex:0];
         [encoder setBuffer:layer18_after_ffn_hc_buffer offset:0 atIndex:1];
@@ -25467,6 +25555,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setBuffer:layer19_after_ffn_hc_buffer offset:0 atIndex:6];
         [encoder dispatchThreadgroups:MTLSizeMake((rows*n_embd+255u)/256u,1,1)
              threadsPerThreadgroup:MTLSizeMake(256,1,1)];
+        RUST_STAR_PREFILL_LAYER_BOUNDARY(18u);
         [encoder setComputePipelineState:context.rmsNormF32Pipeline];
         [encoder setBytes:&ffn_hc_norm_args length:sizeof(ffn_hc_norm_args) atIndex:0];
         [encoder setBuffer:layer19_after_ffn_hc_buffer offset:0 atIndex:1];
@@ -25938,6 +26027,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setBuffer:layer20_after_ffn_hc_buffer offset:0 atIndex:6];
         [encoder dispatchThreadgroups:MTLSizeMake((rows*n_embd+255u)/256u,1,1)
              threadsPerThreadgroup:MTLSizeMake(256,1,1)];
+        RUST_STAR_PREFILL_LAYER_BOUNDARY(19u);
         [encoder setComputePipelineState:context.rmsNormF32Pipeline];
         [encoder setBytes:&ffn_hc_norm_args length:sizeof(ffn_hc_norm_args) atIndex:0];
         [encoder setBuffer:layer20_after_ffn_hc_buffer offset:0 atIndex:1];
@@ -26398,6 +26488,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setBuffer:layer21_after_ffn_hc_buffer offset:0 atIndex:6];
         [encoder dispatchThreadgroups:MTLSizeMake((rows*n_embd+255u)/256u,1,1)
              threadsPerThreadgroup:MTLSizeMake(256,1,1)];
+        RUST_STAR_PREFILL_LAYER_BOUNDARY(20u);
         [encoder setComputePipelineState:context.rmsNormF32Pipeline];
         [encoder setBytes:&ffn_hc_norm_args length:sizeof(ffn_hc_norm_args) atIndex:0];
         [encoder setBuffer:layer21_after_ffn_hc_buffer offset:0 atIndex:1];
@@ -26869,6 +26960,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setBuffer:layer22_after_ffn_hc_buffer offset:0 atIndex:6];
         [encoder dispatchThreadgroups:MTLSizeMake((rows*n_embd+255u)/256u,1,1)
              threadsPerThreadgroup:MTLSizeMake(256,1,1)];
+        RUST_STAR_PREFILL_LAYER_BOUNDARY(21u);
         [encoder setComputePipelineState:context.rmsNormF32Pipeline];
         [encoder setBytes:&ffn_hc_norm_args length:sizeof(ffn_hc_norm_args) atIndex:0];
         [encoder setBuffer:layer22_after_ffn_hc_buffer offset:0 atIndex:1];
@@ -27329,6 +27421,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setBuffer:layer23_after_ffn_hc_buffer offset:0 atIndex:6];
         [encoder dispatchThreadgroups:MTLSizeMake((rows*n_embd+255u)/256u,1,1)
              threadsPerThreadgroup:MTLSizeMake(256,1,1)];
+        RUST_STAR_PREFILL_LAYER_BOUNDARY(22u);
         [encoder setComputePipelineState:context.rmsNormF32Pipeline];
         [encoder setBytes:&ffn_hc_norm_args length:sizeof(ffn_hc_norm_args) atIndex:0];
         [encoder setBuffer:layer23_after_ffn_hc_buffer offset:0 atIndex:1];
@@ -27800,6 +27893,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setBuffer:layer24_after_ffn_hc_buffer offset:0 atIndex:6];
         [encoder dispatchThreadgroups:MTLSizeMake((rows*n_embd+255u)/256u,1,1)
              threadsPerThreadgroup:MTLSizeMake(256,1,1)];
+        RUST_STAR_PREFILL_LAYER_BOUNDARY(23u);
         [encoder setComputePipelineState:context.rmsNormF32Pipeline];
         [encoder setBytes:&ffn_hc_norm_args length:sizeof(ffn_hc_norm_args) atIndex:0];
         [encoder setBuffer:layer24_after_ffn_hc_buffer offset:0 atIndex:1];
@@ -28260,6 +28354,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setBuffer:layer25_after_ffn_hc_buffer offset:0 atIndex:6];
         [encoder dispatchThreadgroups:MTLSizeMake((rows*n_embd+255u)/256u,1,1)
              threadsPerThreadgroup:MTLSizeMake(256,1,1)];
+        RUST_STAR_PREFILL_LAYER_BOUNDARY(24u);
         [encoder setComputePipelineState:context.rmsNormF32Pipeline];
         [encoder setBytes:&ffn_hc_norm_args length:sizeof(ffn_hc_norm_args) atIndex:0];
         [encoder setBuffer:layer25_after_ffn_hc_buffer offset:0 atIndex:1];
@@ -28731,6 +28826,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setBuffer:layer26_after_ffn_hc_buffer offset:0 atIndex:6];
         [encoder dispatchThreadgroups:MTLSizeMake((rows*n_embd+255u)/256u,1,1)
              threadsPerThreadgroup:MTLSizeMake(256,1,1)];
+        RUST_STAR_PREFILL_LAYER_BOUNDARY(25u);
         [encoder setComputePipelineState:context.rmsNormF32Pipeline];
         [encoder setBytes:&ffn_hc_norm_args length:sizeof(ffn_hc_norm_args) atIndex:0];
         [encoder setBuffer:layer26_after_ffn_hc_buffer offset:0 atIndex:1];
@@ -29191,6 +29287,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setBuffer:layer27_after_ffn_hc_buffer offset:0 atIndex:6];
         [encoder dispatchThreadgroups:MTLSizeMake((rows*n_embd+255u)/256u,1,1)
              threadsPerThreadgroup:MTLSizeMake(256,1,1)];
+        RUST_STAR_PREFILL_LAYER_BOUNDARY(26u);
         [encoder setComputePipelineState:context.rmsNormF32Pipeline];
         [encoder setBytes:&ffn_hc_norm_args length:sizeof(ffn_hc_norm_args) atIndex:0];
         [encoder setBuffer:layer27_after_ffn_hc_buffer offset:0 atIndex:1];
@@ -29662,6 +29759,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setBuffer:layer28_after_ffn_hc_buffer offset:0 atIndex:6];
         [encoder dispatchThreadgroups:MTLSizeMake((rows*n_embd+255u)/256u,1,1)
              threadsPerThreadgroup:MTLSizeMake(256,1,1)];
+        RUST_STAR_PREFILL_LAYER_BOUNDARY(27u);
         [encoder setComputePipelineState:context.rmsNormF32Pipeline];
         [encoder setBytes:&ffn_hc_norm_args length:sizeof(ffn_hc_norm_args) atIndex:0];
         [encoder setBuffer:layer28_after_ffn_hc_buffer offset:0 atIndex:1];
@@ -30122,6 +30220,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setBuffer:layer29_after_ffn_hc_buffer offset:0 atIndex:6];
         [encoder dispatchThreadgroups:MTLSizeMake((rows*n_embd+255u)/256u,1,1)
              threadsPerThreadgroup:MTLSizeMake(256,1,1)];
+        RUST_STAR_PREFILL_LAYER_BOUNDARY(28u);
         [encoder setComputePipelineState:context.rmsNormF32Pipeline];
         [encoder setBytes:&ffn_hc_norm_args length:sizeof(ffn_hc_norm_args) atIndex:0];
         [encoder setBuffer:layer29_after_ffn_hc_buffer offset:0 atIndex:1];
@@ -30593,6 +30692,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setBuffer:layer30_after_ffn_hc_buffer offset:0 atIndex:6];
         [encoder dispatchThreadgroups:MTLSizeMake((rows*n_embd+255u)/256u,1,1)
              threadsPerThreadgroup:MTLSizeMake(256,1,1)];
+        RUST_STAR_PREFILL_LAYER_BOUNDARY(29u);
         [encoder setComputePipelineState:context.rmsNormF32Pipeline];
         [encoder setBytes:&ffn_hc_norm_args length:sizeof(ffn_hc_norm_args) atIndex:0];
         [encoder setBuffer:layer30_after_ffn_hc_buffer offset:0 atIndex:1];
@@ -31053,6 +31153,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setBuffer:layer31_after_ffn_hc_buffer offset:0 atIndex:6];
         [encoder dispatchThreadgroups:MTLSizeMake((rows*n_embd+255u)/256u,1,1)
              threadsPerThreadgroup:MTLSizeMake(256,1,1)];
+        RUST_STAR_PREFILL_LAYER_BOUNDARY(30u);
         [encoder setComputePipelineState:context.rmsNormF32Pipeline];
         [encoder setBytes:&ffn_hc_norm_args length:sizeof(ffn_hc_norm_args) atIndex:0];
         [encoder setBuffer:layer31_after_ffn_hc_buffer offset:0 atIndex:1];
@@ -31524,6 +31625,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setBuffer:layer32_after_ffn_hc_buffer offset:0 atIndex:6];
         [encoder dispatchThreadgroups:MTLSizeMake((rows*n_embd+255u)/256u,1,1)
              threadsPerThreadgroup:MTLSizeMake(256,1,1)];
+        RUST_STAR_PREFILL_LAYER_BOUNDARY(31u);
         [encoder setComputePipelineState:context.rmsNormF32Pipeline];
         [encoder setBytes:&ffn_hc_norm_args length:sizeof(ffn_hc_norm_args) atIndex:0];
         [encoder setBuffer:layer32_after_ffn_hc_buffer offset:0 atIndex:1];
@@ -31984,6 +32086,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setBuffer:layer33_after_ffn_hc_buffer offset:0 atIndex:6];
         [encoder dispatchThreadgroups:MTLSizeMake((rows*n_embd+255u)/256u,1,1)
              threadsPerThreadgroup:MTLSizeMake(256,1,1)];
+        RUST_STAR_PREFILL_LAYER_BOUNDARY(32u);
         [encoder setComputePipelineState:context.rmsNormF32Pipeline];
         [encoder setBytes:&ffn_hc_norm_args length:sizeof(ffn_hc_norm_args) atIndex:0];
         [encoder setBuffer:layer33_after_ffn_hc_buffer offset:0 atIndex:1];
@@ -32455,6 +32558,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setBuffer:layer34_after_ffn_hc_buffer offset:0 atIndex:6];
         [encoder dispatchThreadgroups:MTLSizeMake((rows*n_embd+255u)/256u,1,1)
              threadsPerThreadgroup:MTLSizeMake(256,1,1)];
+        RUST_STAR_PREFILL_LAYER_BOUNDARY(33u);
         [encoder setComputePipelineState:context.rmsNormF32Pipeline];
         [encoder setBytes:&ffn_hc_norm_args length:sizeof(ffn_hc_norm_args) atIndex:0];
         [encoder setBuffer:layer34_after_ffn_hc_buffer offset:0 atIndex:1];
@@ -32915,6 +33019,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setBuffer:layer35_after_ffn_hc_buffer offset:0 atIndex:6];
         [encoder dispatchThreadgroups:MTLSizeMake((rows*n_embd+255u)/256u,1,1)
              threadsPerThreadgroup:MTLSizeMake(256,1,1)];
+        RUST_STAR_PREFILL_LAYER_BOUNDARY(34u);
         [encoder setComputePipelineState:context.rmsNormF32Pipeline];
         [encoder setBytes:&ffn_hc_norm_args length:sizeof(ffn_hc_norm_args) atIndex:0];
         [encoder setBuffer:layer35_after_ffn_hc_buffer offset:0 atIndex:1];
@@ -33386,6 +33491,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setBuffer:layer36_after_ffn_hc_buffer offset:0 atIndex:6];
         [encoder dispatchThreadgroups:MTLSizeMake((rows*n_embd+255u)/256u,1,1)
              threadsPerThreadgroup:MTLSizeMake(256,1,1)];
+        RUST_STAR_PREFILL_LAYER_BOUNDARY(35u);
         [encoder setComputePipelineState:context.rmsNormF32Pipeline];
         [encoder setBytes:&ffn_hc_norm_args length:sizeof(ffn_hc_norm_args) atIndex:0];
         [encoder setBuffer:layer36_after_ffn_hc_buffer offset:0 atIndex:1];
@@ -33846,6 +33952,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setBuffer:layer37_after_ffn_hc_buffer offset:0 atIndex:6];
         [encoder dispatchThreadgroups:MTLSizeMake((rows*n_embd+255u)/256u,1,1)
              threadsPerThreadgroup:MTLSizeMake(256,1,1)];
+        RUST_STAR_PREFILL_LAYER_BOUNDARY(36u);
         [encoder setComputePipelineState:context.rmsNormF32Pipeline];
         [encoder setBytes:&ffn_hc_norm_args length:sizeof(ffn_hc_norm_args) atIndex:0];
         [encoder setBuffer:layer37_after_ffn_hc_buffer offset:0 atIndex:1];
@@ -34317,6 +34424,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setBuffer:layer38_after_ffn_hc_buffer offset:0 atIndex:6];
         [encoder dispatchThreadgroups:MTLSizeMake((rows*n_embd+255u)/256u,1,1)
              threadsPerThreadgroup:MTLSizeMake(256,1,1)];
+        RUST_STAR_PREFILL_LAYER_BOUNDARY(37u);
         [encoder setComputePipelineState:context.rmsNormF32Pipeline];
         [encoder setBytes:&ffn_hc_norm_args length:sizeof(ffn_hc_norm_args) atIndex:0];
         [encoder setBuffer:layer38_after_ffn_hc_buffer offset:0 atIndex:1];
@@ -34777,6 +34885,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setBuffer:layer39_after_ffn_hc_buffer offset:0 atIndex:6];
         [encoder dispatchThreadgroups:MTLSizeMake((rows*n_embd+255u)/256u,1,1)
              threadsPerThreadgroup:MTLSizeMake(256,1,1)];
+        RUST_STAR_PREFILL_LAYER_BOUNDARY(38u);
         [encoder setComputePipelineState:context.rmsNormF32Pipeline];
         [encoder setBytes:&ffn_hc_norm_args length:sizeof(ffn_hc_norm_args) atIndex:0];
         [encoder setBuffer:layer39_after_ffn_hc_buffer offset:0 atIndex:1];
@@ -35248,6 +35357,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setBuffer:layer40_after_ffn_hc_buffer offset:0 atIndex:6];
         [encoder dispatchThreadgroups:MTLSizeMake((rows*n_embd+255u)/256u,1,1)
              threadsPerThreadgroup:MTLSizeMake(256,1,1)];
+        RUST_STAR_PREFILL_LAYER_BOUNDARY(39u);
         [encoder setComputePipelineState:context.rmsNormF32Pipeline];
         [encoder setBytes:&ffn_hc_norm_args length:sizeof(ffn_hc_norm_args) atIndex:0];
         [encoder setBuffer:layer40_after_ffn_hc_buffer offset:0 atIndex:1];
@@ -35708,6 +35818,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setBuffer:layer41_after_ffn_hc_buffer offset:0 atIndex:6];
         [encoder dispatchThreadgroups:MTLSizeMake((rows*n_embd+255u)/256u,1,1)
              threadsPerThreadgroup:MTLSizeMake(256,1,1)];
+        RUST_STAR_PREFILL_LAYER_BOUNDARY(40u);
         [encoder setComputePipelineState:context.rmsNormF32Pipeline];
         [encoder setBytes:&ffn_hc_norm_args length:sizeof(ffn_hc_norm_args) atIndex:0];
         [encoder setBuffer:layer41_after_ffn_hc_buffer offset:0 atIndex:1];
@@ -36179,6 +36290,8 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setBuffer:layer42_after_ffn_hc_buffer offset:0 atIndex:6];
         [encoder dispatchThreadgroups:MTLSizeMake((rows*n_embd+255u)/256u,1,1)
              threadsPerThreadgroup:MTLSizeMake(256,1,1)];
+        RUST_STAR_PREFILL_LAYER_BOUNDARY(41u);
+#undef RUST_STAR_PREFILL_LAYER_BOUNDARY
         [encoder endEncoding];
 
         const double wall_start = monotonic_ms();
@@ -39530,8 +39643,12 @@ int rust_star_metal_run_prefill_layer2_attention(
         result->wrapped_model_ranges = 1216u;
         result->pointer_matches = pointer_matches;
         result->layer3_compressed_kv_rows = layer3_compressed_rows;
-        result->wall_ms = wall_end-wall_start;
-        result->gpu_ms = gpu_elapsed_ms(command);
+        result->wall_ms = prefill_layer_profiling
+            ? wall_end-prefill_profile_wall_start
+            : wall_end-wall_start;
+        result->gpu_ms = prefill_layer_profiling
+            ? prefill_profile_gpu_ms
+            : gpu_elapsed_ms(command);
         context.prefillLayer3FullQ = layer3_q_cur_buffer;
         context.prefillLayer3FullKv = layer3_kv_norm_buffer;
         context.prefillLayer3InputHc = after_ffn_hc_buffer;

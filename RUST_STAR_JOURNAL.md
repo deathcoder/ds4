@@ -171,7 +171,12 @@ history; add a correction and update the current-state summary.
   tok/s versus DwarfStar's 186.35; the median pairwise ratio is 0.713851042x
   and the remaining gap is 28.61%. Rust retains a 3.87% steady-decode lead and
   6.47% complete-generation lead. A full-2K bootstrap remains rejected because
-  the 128-row raw-cache append requires wrapping.
+  the 128-row raw-cache append requires wrapping. An explicitly ineligible
+  synchronized per-layer prefill profile now attributes layers 2 through 42.
+  Rust's 21 even layers average 326.577 ms GPU and its 20 odd layers average
+  251.904 ms (1.296x); DwarfStar's split profile averages 283.103 and 223.180
+  ms respectively (1.268x). The remaining transformer deficit is distributed
+  across the alternating attention families rather than one anomalous layer.
 - Implementation: dependency-free Rust host scaffold under `rust-star/runtime/`
   strictly parses GGUF v3 directories, validates the Flash resident-Q2
   shape/recipe, and writes candidate full-logit artifacts. A macOS-only
@@ -713,9 +718,9 @@ history; add a correction and update the current-state summary.
 
 ## Immediate Next Actions
 
-1. Add paired-ineligible per-layer attribution to the remaining prefill
-   transformer interval and compare it with DwarfStar's split profile before
-   changing more production kernels.
+1. Add paired-ineligible attention-versus-FFN attribution inside one
+   representative even and odd native-prefill layer, then optimize the shared
+   attention path and the even ratio-4 compressor/indexer additions first.
 2. Extend the eligible engine and exact transcript gate to the next context
    frontier before treating this narrow 2K result as representative.
 3. Preserve the exact 2K-to-position-4099 native handoff, complete retained
@@ -729,6 +734,51 @@ history; add a correction and update the current-state summary.
 6. Run or approve the fork's GitHub Actions workflow and retain its URL.
 
 ## Entries
+
+### 2026-08-29 — Remaining prefill gap follows the alternating layer families
+
+- Extended `engine-profile` with a prefill-only diagnostic that splits the
+  native layers-2-through-42 transformer command into 41 synchronized layer
+  command buffers and records each completed Metal GPU interval. Normal
+  `engine-measure` does not allocate profiling state, split the command, or add
+  waits. The raw report carries all 41 values, their shares, the perturbation
+  method, and a fail-closed paired-protocol blocker.
+- Rejected two timestamp-counter designs before accepting evidence. The M1
+  Ultra does not expose dispatch-boundary sampling. Stage-boundary marker
+  passes resolve, but their timestamps are not global workload fences: four
+  markers absorbed multi-layer scheduler intervals and produced false
+  2.6--2.9 second spikes. Those runs are not optimization evidence.
+- The accepted synchronized profile preserved the exact 128-token oracle
+  transcript and reported 11,896.204 ms summed GPU time across layers 2--42.
+  Even layers totaled 6,858.124 ms (326.577 ms mean); odd layers totaled
+  5,038.080 ms (251.904 ms mean), a 1.296436x even/odd ratio.
+- DwarfStar's independent split profile totals 10,408.751 ms over the same
+  layers. Its even layers average 283.103 ms and odd layers 223.180 ms, a
+  1.268498x ratio. Rust is therefore broadly 15.35% slower on the even family
+  and 12.87% slower on the odd family. No single Rust layer is pathological;
+  the largest accepted interval is layer 36 at 333.502 ms.
+- Accepted profile evidence:
+  `rust-star/.work/prefill-layer-profile-05/engine-run.json`, SHA-256
+  `4ab018bdac5c47559e976f3bde660aa84f72cee36b2f60d877ce588860738b0d`.
+  The release executable SHA-256 is
+  `71627f7b9cf9ee6263b7e2dd2bcd21369bf9ce4c7444b713fb26ed1d86b3dabd`.
+- A fresh unprofiled control from the same executable selected prefill token
+  15342, matched the exact transcript, emitted no prefill profile, remained
+  paired eligible, and measured 132.637 prefill tok/s plus 23.664 steady
+  decode tok/s. Its raw SHA-256 is
+  `d7dc37853aeefad0482f37c5c7f831c2ec82ed1f6d5b957e015cfffc78dd4ac1`.
+- Decision: next split a representative even and odd layer into attention and
+  FFN intervals. The structural match already prioritizes the shared prefill
+  attention path, then the even-only ratio-4 compressor/indexer work; it does
+  not justify tuning an isolated layer.
+
+Validation:
+
+- Optimized macOS release build.
+- 297 Rust tests pass.
+- `cargo fmt` and `git diff --check` pass.
+- Exact live `engine-profile` and independent normal-path `engine-measure`
+  controls both pass the full 128-token transcript.
 
 ### 2026-08-29 — Wide bootstrap raises the validated prefill ratio to 0.7139x
 

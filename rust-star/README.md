@@ -351,6 +351,15 @@ decode lead and 6.47% complete-generation lead; first-token wall time is 13.0%
 slower in this run. This exact development result is not the protocol's 256K
 headline claim.
 
+An explicitly ineligible synchronized per-layer diagnostic now attributes the
+remaining native prefill transformer interval. Across layers 2--42, Rust's even
+layers average 326.577 ms GPU and odd layers 251.904 ms; DwarfStar's independent
+split profile averages 283.103 and 223.180 ms respectively. The similar
+alternating ratios (1.296x Rust, 1.268x Dwarf) rule out a single pathological
+layer and prioritize shared prefill attention work, followed by the even-only
+ratio-4 compressor/indexer path. A normal-path control remains exact and paired
+eligible; the profiler's 41 command buffers and waits are diagnostic only.
+
 Project controls and benchmark contracts:
 
 - `RUST_STAR_MANUAL_TASKS.md` is the canonical ledger for work that needs the

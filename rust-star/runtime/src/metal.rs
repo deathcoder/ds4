@@ -4455,6 +4455,7 @@ pub struct EngineRunReport {
     pub prefill_tile_gpu_ms: f64,
     pub prefill_transformer_wall_ms: f64,
     pub prefill_transformer_gpu_ms: f64,
+    pub prefill_transformer_layer_gpu_ms: Option<Vec<f64>>,
     pub prefill_output_head_wall_ms: f64,
     pub prefill_output_head_gpu_ms: f64,
     pub prefill_handoff_wall_ms: f64,
@@ -4481,6 +4482,7 @@ pub struct EngineRunReport {
     pub selected_tokens_checksum: u64,
     pub transcript_match: bool,
     pub prefill_correctness_collection: bool,
+    pub prefill_layer_timing_collection: bool,
     pub generation_correctness_collection: bool,
     pub generation_layer_timing_collection: bool,
     pub generation_stage_counter_collection: bool,
@@ -5825,6 +5827,19 @@ pub fn write_engine_run_json<W: Write>(output: &mut W, report: &EngineRunReport)
             .abs()
             > 1.0e-3
         || report.generation_layer_timing_collection != report.gen_steady_layer_gpu_ms.is_some()
+        || report.prefill_layer_timing_collection
+            != report.prefill_transformer_layer_gpu_ms.is_some()
+        || report
+            .prefill_transformer_layer_gpu_ms
+            .as_ref()
+            .is_some_and(|values| {
+                values.len() != 41
+                    || values
+                        .iter()
+                        .any(|value| !value.is_finite() || *value <= 0.0)
+                    || (values.iter().sum::<f64>() - report.prefill_transformer_gpu_ms).abs()
+                        > 1.0e-3
+            })
         || report
             .gen_steady_layer_gpu_ms
             .as_ref()
@@ -5893,6 +5908,45 @@ pub fn write_engine_run_json<W: Write>(output: &mut W, report: &EngineRunReport)
             )
         },
     );
+    let prefill_transformer_layer_gpu_ms = report
+        .prefill_transformer_layer_gpu_ms
+        .as_ref()
+        .map_or_else(
+            || "null".to_owned(),
+            |values| {
+                format!(
+                    "[{}]",
+                    values
+                        .iter()
+                        .map(|value| format!("{value:.9}"))
+                        .collect::<Vec<_>>()
+                        .join(",")
+                )
+            },
+        );
+    let prefill_layer_profile = report
+        .prefill_transformer_layer_gpu_ms
+        .as_ref()
+        .map_or_else(
+            || "null".to_owned(),
+            |values| {
+                let layers = values
+                    .iter()
+                    .enumerate()
+                    .map(|(index, gpu_ms)| {
+                        format!(
+                            "{{\"layer\":{},\"gpu_ms\":{gpu_ms:.9},\"share\":{:.9}}}",
+                            index + 2,
+                            gpu_ms / report.prefill_transformer_gpu_ms,
+                        )
+                    })
+                    .collect::<Vec<_>>()
+                    .join(",");
+                format!(
+                    "{{\"method\":\"synchronized-per-layer-command-buffer-gpu-timestamps\",\"layers_start\":2,\"layers_end\":42,\"command_buffers\":41,\"host_waits\":41,\"profile_perturbed\":true,\"layers\":[{layers}]}}"
+                )
+            },
+        );
     let stage_profile = match (
         report.gen_first_stage_gpu_ms.as_ref(),
         report.gen_steady_stage_gpu_ms.as_ref(),
@@ -5919,10 +5973,13 @@ pub fn write_engine_run_json<W: Write>(output: &mut W, report: &EngineRunReport)
         _ => unreachable!("validated stage profiles are complete"),
     };
     let paired_protocol_eligible = !report.prefill_correctness_collection
+        && !report.prefill_layer_timing_collection
         && !report.generation_layer_timing_collection
         && !report.generation_stage_counter_collection;
     let paired_protocol_blocker = if report.prefill_correctness_collection {
         "\"native prefill still materializes and verifies diagnostic boundary tensors outside its GPU intervals\""
+    } else if report.prefill_layer_timing_collection {
+        "\"prefill profiling splits one native transformer command into 41 synchronized per-layer command buffers\""
     } else if report.generation_stage_counter_collection {
         "\"Metal stage counters split compute encoders and perturb generated-token dispatch families\""
     } else if report.generation_layer_timing_collection {
@@ -5932,7 +5989,7 @@ pub fn write_engine_run_json<W: Write>(output: &mut W, report: &EngineRunReport)
     };
     write!(
         output,
-        "{{\n  \"schema\": \"{ENGINE_RUN_SCHEMA}\",\n  \"engine\": \"rust-star\",\n  \"context\": {},\n  \"gen_tokens\": {},\n  \"metrics\": {{\"ctx_tokens\": {}, \"prefill_tokens\": {}, \"gen_tokens\": {}, \"gen_steady_tokens\": {}, \"prefill_tps\": {:.9}, \"prefill_ms\": {:.9}, \"gen_tps\": {:.9}, \"gen_ms\": {:.9}, \"gen_first_ms\": {:.9}, \"gen_steady_tps\": {:.9}, \"gen_steady_ms\": {:.9}}},\n  \"selection\": {{\"prefill_token\": {}, \"final_token\": {}, \"selected_tokens_checksum\": {}, \"oracle_transcript_match\": true}},\n  \"timing\": {{\"model_warm_bytes\": {}, \"model_warm_pages\": {}, \"model_warm_checksum\": {}, \"model_warm_ms\": {:.9}, \"model_view_bytes\": {}, \"model_view_warm_touches\": {}, \"model_view_count\": {}, \"model_residency_allocations\": {}, \"model_residency_queue_attached\": {}, \"model_view_warm_wall_ms\": {:.9}, \"model_view_warm_gpu_ms\": {:.9}, \"prefill_tile_wall_ms\": {:.9}, \"prefill_tile_gpu_ms\": {:.9}, \"prefill_transformer_wall_ms\": {:.9}, \"prefill_transformer_gpu_ms\": {:.9}, \"prefill_output_head_wall_ms\": {:.9}, \"prefill_output_head_gpu_ms\": {:.9}, \"prefill_handoff_wall_ms\": {:.9}, \"prefill_handoff_gpu_ms\": {:.9}, \"prefill_host_overhead_ms\": {:.9}, \"decoder_prepare_ms\": {:.9}, \"gen_first_transformer_wall_ms\": {:.9}, \"gen_first_transformer_gpu_ms\": {:.9}, \"gen_first_layer_gpu_ms\": [{}], \"gen_first_output_head_wall_ms\": {:.9}, \"gen_first_output_head_gpu_ms\": {:.9}, \"gen_steady_transformer_wall_ms\": {:.9}, \"gen_steady_transformer_gpu_ms\": {:.9}, \"gen_steady_layer_gpu_ms\": {}, \"gen_steady_output_head_wall_ms\": {:.9}, \"gen_steady_output_head_gpu_ms\": {:.9}, \"generation_command_buffers_per_token\": {}, \"generation_host_waits_per_token\": {}, \"generation_correctness_collection\": false, \"generation_layer_timing_collection\": {}, \"generation_stage_counter_collection\": {}, \"prefill_correctness_collection\": {}}},\n  \"stage_profile\": {},\n  \"paired_protocol_eligible\": {},\n  \"paired_protocol_blocker\": {}\n}}\n",
+        "{{\n  \"schema\": \"{ENGINE_RUN_SCHEMA}\",\n  \"engine\": \"rust-star\",\n  \"context\": {},\n  \"gen_tokens\": {},\n  \"metrics\": {{\"ctx_tokens\": {}, \"prefill_tokens\": {}, \"gen_tokens\": {}, \"gen_steady_tokens\": {}, \"prefill_tps\": {:.9}, \"prefill_ms\": {:.9}, \"gen_tps\": {:.9}, \"gen_ms\": {:.9}, \"gen_first_ms\": {:.9}, \"gen_steady_tps\": {:.9}, \"gen_steady_ms\": {:.9}}},\n  \"selection\": {{\"prefill_token\": {}, \"final_token\": {}, \"selected_tokens_checksum\": {}, \"oracle_transcript_match\": true}},\n  \"timing\": {{\"model_warm_bytes\": {}, \"model_warm_pages\": {}, \"model_warm_checksum\": {}, \"model_warm_ms\": {:.9}, \"model_view_bytes\": {}, \"model_view_warm_touches\": {}, \"model_view_count\": {}, \"model_residency_allocations\": {}, \"model_residency_queue_attached\": {}, \"model_view_warm_wall_ms\": {:.9}, \"model_view_warm_gpu_ms\": {:.9}, \"prefill_tile_wall_ms\": {:.9}, \"prefill_tile_gpu_ms\": {:.9}, \"prefill_transformer_wall_ms\": {:.9}, \"prefill_transformer_gpu_ms\": {:.9}, \"prefill_transformer_layer_gpu_ms\": {}, \"prefill_output_head_wall_ms\": {:.9}, \"prefill_output_head_gpu_ms\": {:.9}, \"prefill_handoff_wall_ms\": {:.9}, \"prefill_handoff_gpu_ms\": {:.9}, \"prefill_host_overhead_ms\": {:.9}, \"decoder_prepare_ms\": {:.9}, \"gen_first_transformer_wall_ms\": {:.9}, \"gen_first_transformer_gpu_ms\": {:.9}, \"gen_first_layer_gpu_ms\": [{}], \"gen_first_output_head_wall_ms\": {:.9}, \"gen_first_output_head_gpu_ms\": {:.9}, \"gen_steady_transformer_wall_ms\": {:.9}, \"gen_steady_transformer_gpu_ms\": {:.9}, \"gen_steady_layer_gpu_ms\": {}, \"gen_steady_output_head_wall_ms\": {:.9}, \"gen_steady_output_head_gpu_ms\": {:.9}, \"generation_command_buffers_per_token\": {}, \"generation_host_waits_per_token\": {}, \"generation_correctness_collection\": false, \"generation_layer_timing_collection\": {}, \"generation_stage_counter_collection\": {}, \"prefill_correctness_collection\": {}, \"prefill_layer_timing_collection\": {}}},\n  \"prefill_layer_profile\": {},\n  \"stage_profile\": {},\n  \"paired_protocol_eligible\": {},\n  \"paired_protocol_blocker\": {}\n}}\n",
         report.context,
         report.gen_tokens,
         report.context,
@@ -5964,6 +6021,7 @@ pub fn write_engine_run_json<W: Write>(output: &mut W, report: &EngineRunReport)
         report.prefill_tile_gpu_ms,
         report.prefill_transformer_wall_ms,
         report.prefill_transformer_gpu_ms,
+        prefill_transformer_layer_gpu_ms,
         report.prefill_output_head_wall_ms,
         report.prefill_output_head_gpu_ms,
         report.prefill_handoff_wall_ms,
@@ -5985,6 +6043,8 @@ pub fn write_engine_run_json<W: Write>(output: &mut W, report: &EngineRunReport)
         report.generation_layer_timing_collection,
         report.generation_stage_counter_collection,
         report.prefill_correctness_collection,
+        report.prefill_layer_timing_collection,
+        prefill_layer_profile,
         stage_profile,
         paired_protocol_eligible,
         paired_protocol_blocker,
@@ -19837,6 +19897,18 @@ mod imp {
             error: *mut c_char,
             error_bytes: usize,
         ) -> i32;
+        fn rust_star_metal_enable_prefill_layer_profiling(
+            context: *mut c_void,
+            error: *mut c_char,
+            error_bytes: usize,
+        ) -> i32;
+        fn rust_star_metal_copy_prefill_layer_gpu_times(
+            context: *mut c_void,
+            layer_count: u32,
+            gpu_ms: *mut f64,
+            error: *mut c_char,
+            error_bytes: usize,
+        ) -> i32;
         fn rust_star_metal_copy_chained_layer_gpu_times(
             context: *mut c_void,
             layer_count: u32,
@@ -21823,6 +21895,46 @@ mod imp {
                 )));
             }
             Ok(())
+        }
+
+        fn enable_prefill_layer_profiling(&self) -> Result<()> {
+            let mut error = [0 as c_char; ERROR_BYTES];
+            let enabled = unsafe {
+                rust_star_metal_enable_prefill_layer_profiling(
+                    self.0,
+                    error.as_mut_ptr(),
+                    error.len(),
+                )
+            };
+            if enabled == 0 {
+                return Err(Error::invalid(format!(
+                    "Metal prefill layer profiling setup failed: {}",
+                    error_text(&error)
+                )));
+            }
+            Ok(())
+        }
+
+        fn prefill_layer_gpu_times(&self) -> Result<Vec<f64>> {
+            const LAYER_COUNT: usize = 41;
+            let mut gpu_ms = vec![0.0; LAYER_COUNT];
+            let mut error = [0 as c_char; ERROR_BYTES];
+            let copied = unsafe {
+                rust_star_metal_copy_prefill_layer_gpu_times(
+                    self.0,
+                    LAYER_COUNT as u32,
+                    gpu_ms.as_mut_ptr(),
+                    error.as_mut_ptr(),
+                    error.len(),
+                )
+            };
+            if copied == 0 {
+                return Err(Error::invalid(format!(
+                    "Metal prefill layer timing failed: {}",
+                    error_text(&error)
+                )));
+            }
+            Ok(gpu_ms)
         }
 
         fn chained_layer_gpu_times(&self, layer_count: u32) -> Result<Vec<f64>> {
@@ -24197,12 +24309,13 @@ mod imp {
         })
     }
 
-    #[derive(Clone, Copy, Debug, Default)]
+    #[derive(Clone, Debug, Default)]
     struct NativePrefillTiming {
         tile_wall_ms: f64,
         tile_gpu_ms: f64,
         transformer_wall_ms: f64,
         transformer_gpu_ms: f64,
+        transformer_layer_gpu_ms: Option<Vec<f64>>,
         output_head_wall_ms: f64,
         output_head_gpu_ms: f64,
     }
@@ -24324,7 +24437,8 @@ mod imp {
     fn run_prefill_layers012_attention_loop_probe_with_context(
         model: &MappedModel,
     ) -> Result<(Context, PrefillLayers012AttentionLoopProbeReport)> {
-        let (context, report, _, _) = run_prefill_layers012_attention_loop_in_context(model, true)?;
+        let (context, report, _, _) =
+            run_prefill_layers012_attention_loop_in_context(model, true, false)?;
         Ok((
             context,
             report.ok_or_else(|| Error::invalid("diagnostic prefill omitted its report"))?,
@@ -24334,6 +24448,7 @@ mod imp {
     fn run_prefill_layers012_attention_loop_in_context(
         model: &MappedModel,
         collect_outputs: bool,
+        profile_layers: bool,
     ) -> Result<(
         Context,
         Option<PrefillLayers012AttentionLoopProbeReport>,
@@ -24341,6 +24456,9 @@ mod imp {
         NativePrefillTiming,
     )> {
         let context = Context::new()?;
+        if profile_layers {
+            context.enable_prefill_layer_profiling()?;
+        }
         let (compressor, mut timing) = run_prefill_layers012_compressor_loop_probe_in_context(
             model,
             &context,
@@ -31850,6 +31968,9 @@ mod imp {
                 run_top1_output_head(model, &context, &output_head)?;
             timing.transformer_wall_ms = raw.wall_ms;
             timing.transformer_gpu_ms = raw.gpu_ms;
+            if profile_layers {
+                timing.transformer_layer_gpu_ms = Some(context.prefill_layer_gpu_times()?);
+            }
             timing.output_head_wall_ms = output_head_started.elapsed().as_secs_f64() * 1000.0;
             timing.output_head_gpu_ms = output_head_gpu_ms;
             return Ok((context, None, selected_token, timing));
@@ -43572,7 +43693,11 @@ mod imp {
 
         let prefill_started = Instant::now();
         let (context, prefill_report, prefill_selected_token, prefill_timing) =
-            run_prefill_layers012_attention_loop_in_context(model, false)?;
+            run_prefill_layers012_attention_loop_in_context(
+                model,
+                false,
+                collect_steady_layer_times,
+            )?;
         if prefill_report.is_some() {
             return Err(Error::invalid(
                 "timing-only native prefill unexpectedly collected a diagnostic report",
@@ -43724,6 +43849,7 @@ mod imp {
             prefill_tile_gpu_ms: prefill_timing.tile_gpu_ms,
             prefill_transformer_wall_ms: prefill_timing.transformer_wall_ms,
             prefill_transformer_gpu_ms: prefill_timing.transformer_gpu_ms,
+            prefill_transformer_layer_gpu_ms: prefill_timing.transformer_layer_gpu_ms,
             prefill_output_head_wall_ms: prefill_timing.output_head_wall_ms,
             prefill_output_head_gpu_ms: prefill_timing.output_head_gpu_ms,
             prefill_handoff_wall_ms: prefill_handoff.wall_ms,
@@ -43752,6 +43878,7 @@ mod imp {
             selected_tokens_checksum: checksum_u32(&selected_tokens),
             transcript_match: true,
             prefill_correctness_collection: false,
+            prefill_layer_timing_collection: collect_steady_layer_times,
             generation_correctness_collection: false,
             generation_layer_timing_collection: collect_steady_layer_times,
             generation_stage_counter_collection: collect_steady_layer_times,
@@ -48122,6 +48249,7 @@ mod tests {
             prefill_tile_gpu_ms: 2800.0,
             prefill_transformer_wall_ms: 16000.0,
             prefill_transformer_gpu_ms: 15500.0,
+            prefill_transformer_layer_gpu_ms: None,
             prefill_output_head_wall_ms: 10.0,
             prefill_output_head_gpu_ms: 8.0,
             prefill_handoff_wall_ms: 50.0,
@@ -48148,6 +48276,7 @@ mod tests {
             selected_tokens_checksum: 7,
             transcript_match: true,
             prefill_correctness_collection: false,
+            prefill_layer_timing_collection: false,
             generation_correctness_collection: false,
             generation_layer_timing_collection: false,
             generation_stage_counter_collection: false,
@@ -48459,6 +48588,8 @@ mod tests {
         assert!(text.contains("\"model_residency_queue_attached\": true"));
         assert!(text.contains("\"prefill_tile_gpu_ms\": 2800.000000000"));
         assert!(text.contains("\"prefill_transformer_gpu_ms\": 15500.000000000"));
+        assert!(text.contains("\"prefill_transformer_layer_gpu_ms\": null"));
+        assert!(text.contains("\"prefill_layer_timing_collection\": false"));
         assert!(text.contains("\"prefill_host_overhead_ms\": 915.000000000"));
         assert!(text.contains("\"gen_first_transformer_gpu_ms\": 50.000000000"));
         assert!(text.contains("\"gen_first_layer_gpu_ms\": [1.162790698"));
@@ -48479,6 +48610,24 @@ mod tests {
         assert!(text.contains("\"generation_layer_timing_collection\": true"));
         assert!(text.contains("\"paired_protocol_eligible\": false"));
         assert!(text.contains("steady per-layer GPU timestamps are collected"));
+    }
+
+    #[test]
+    fn prefill_layer_profile_is_labeled_and_not_paired_eligible() {
+        let mut report = engine_run_report();
+        report.prefill_transformer_layer_gpu_ms = Some(vec![15500.0 / 41.0; 41]);
+        report.prefill_layer_timing_collection = true;
+        let mut output = Vec::new();
+        write_engine_run_json(&mut output, &report).unwrap();
+        let text = String::from_utf8(output).unwrap();
+        assert!(text.contains("\"prefill_layer_timing_collection\": true"));
+        assert!(
+            text.contains("\"method\":\"synchronized-per-layer-command-buffer-gpu-timestamps\"")
+        );
+        assert!(text.contains("\"layers_start\":2"));
+        assert!(text.contains("\"layer\":42"));
+        assert!(text.contains("41 synchronized per-layer command buffers"));
+        assert!(text.contains("\"paired_protocol_eligible\": false"));
     }
 
     #[test]

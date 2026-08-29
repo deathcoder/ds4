@@ -607,6 +607,18 @@ int rust_star_metal_enable_chained_stage_profiling(
     char *error,
     size_t error_bytes);
 
+int rust_star_metal_enable_prefill_layer_profiling(
+    void *context,
+    char *error,
+    size_t error_bytes);
+
+int rust_star_metal_copy_prefill_layer_gpu_times(
+    void *context,
+    uint32_t layer_count,
+    double *gpu_ms,
+    char *error,
+    size_t error_bytes);
+
 int rust_star_metal_copy_chained_layer_gpu_times(
     void *context,
     uint32_t layer_count,
