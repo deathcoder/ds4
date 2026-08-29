@@ -757,9 +757,28 @@ history; add a correction and update the current-state summary.
    closed-loop diagnostic commands as independently executed controls.
 5. Run the extended 2K--1M frontier capture when the Mac can be dedicated to a
    long benchmark; preserve any 512K/1M capacity failure as evidence.
-6. Run or approve the fork's GitHub Actions workflow and retain its URL.
+6. After the `deathcoder` account billing lock is resolved, manually run the
+   fork's GitHub Actions workflow and retain its URL.
 
 ## Entries
+
+### 2026-08-29 — Made the blocked GitHub Actions workflow manual-only
+
+- Reviewed all 134 published `Rust Star host contracts` runs through GitHub's
+  API. Both jobs in every run failed before executing a step; their check-run
+  annotations report that the owning account is locked over a billing issue.
+  This is an account-level launch failure, not evidence of a Rust, Python, or
+  Metal regression.
+- Confirmed `agent/rust-star-bootstrap` is unprotected and has no required
+  status checks.
+- Removed the automatic `push` and `pull_request` triggers while preserving
+  `workflow_dispatch` and both clean-host validation jobs. Future pushes will
+  no longer produce meaningless red runs; the recipe remains available for a
+  deliberate run after the account lock is resolved.
+- Updated manual task M-001 to record the blocker and recovery procedure.
+- No runtime build, model correctness test, or performance benchmark was run;
+  the change affects CI orchestration and project records only.
+- Ruby's YAML parser accepted the workflow and `git diff --check` passed.
 
 ### 2026-08-29 — Rejected 128-row bootstrap and added host setup attribution
 

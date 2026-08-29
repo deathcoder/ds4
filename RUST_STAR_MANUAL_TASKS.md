@@ -22,21 +22,22 @@ shared output should be reduced to the filename where possible.
 
 ## M-001 — Confirm GitHub Actions for the research branch
 
-Status: `READY`
+Status: `BLOCKED` on the `deathcoder` account billing lock
 
 Why manual:
 
-- The workflow is published, but no run was visible after the first branch
-  push. Fork Actions may need to be enabled or approved in the GitHub UI.
+- GitHub refuses to start either workflow job while the owning account is
+  locked over billing. The first 134 runs all failed before executing a step.
+- The workflow is manual-only until that account issue is resolved so pushes
+  and pull requests do not create false-red results.
 
 Procedure:
 
-1. Open the repository's **Actions** tab.
-2. If GitHub presents an enable/approve button for fork workflows, review and
-   enable Actions for `deathcoder/ds4`.
-3. Select **Rust Star host contracts**.
-4. Use **Run workflow**, choose branch `agent/rust-star-bootstrap`, and run it.
-5. Do not alter repository secrets; this workflow needs none.
+1. Resolve the billing lock on the `deathcoder` account.
+2. Open the repository's **Actions** tab and select
+   **Rust Star host contracts**.
+3. Use **Run workflow**, choose branch `agent/rust-star-bootstrap`, and run it.
+4. Do not alter repository secrets; this workflow needs none.
 
 Return evidence:
 

@@ -2,36 +2,6 @@ name: Rust Star host contracts
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - agent/rust-star-bootstrap
-    paths:
-      - .github/workflows/rust-star-host.yml
-      - rust-star/runtime/**
-      - rust-star/check_runtime.sh
-      - rust-star/artifact_lib.py
-      - rust-star/compare_logits.py
-      - rust-star/paired_benchmark_lib.py
-      - rust-star/dwarfstar_measurement_lib.py
-      - rust-star/measure_dwarfstar.py
-      - rust-star/paired_runner_lib.py
-      - rust-star/run_paired_benchmark.py
-      - rust-star/summarize_paired_benchmark.py
-      - rust-star/tests/**
-  pull_request:
-    paths:
-      - .github/workflows/rust-star-host.yml
-      - rust-star/runtime/**
-      - rust-star/check_runtime.sh
-      - rust-star/artifact_lib.py
-      - rust-star/compare_logits.py
-      - rust-star/paired_benchmark_lib.py
-      - rust-star/dwarfstar_measurement_lib.py
-      - rust-star/measure_dwarfstar.py
-      - rust-star/paired_runner_lib.py
-      - rust-star/run_paired_benchmark.py
-      - rust-star/summarize_paired_benchmark.py
-      - rust-star/tests/**
 
 permissions:
   contents: read
