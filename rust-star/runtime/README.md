@@ -904,8 +904,13 @@ The prefill interval follows the same native Metal schedule as the exact C0
 command, but does not decode diagnostic output fixtures, allocate host boundary
 tensors, or copy transformer boundaries to the host. It retains only the GPU
 state required by the decoder and transfers the final logits for lowest-ID
-argmax. The generation intervals include command encoding, synchronized
-transformer and output-head execution, CPU argmax, and token commitment. They
+argmax. Before that interval closes, all established no-copy model views are
+registered in a Metal residency set attached to the inference queue and receive
+a synchronized one-mebibyte-stride GPU touch. The raw timing record accounts
+for the view, allocation, and touch counts plus wall/GPU time; that cost remains
+inside `prefill_ms`. The generation intervals include command encoding,
+synchronized transformer and output-head execution, CPU argmax, and token
+commitment. They
 do not collect diagnostic tensors; the complete 128-token selection transcript
 is compared with the pinned oracle after timing. The raw producer is
 `paired_protocol_eligible: true` only when both collection paths are disabled.

@@ -110,6 +110,17 @@ typedef struct rust_star_metal_prefill_decode_handoff_result {
     double gpu_ms;
 } rust_star_metal_prefill_decode_handoff_result;
 
+typedef struct rust_star_metal_model_residency_result {
+    uint64_t view_bytes;
+    uint64_t warm_touches;
+    uint32_t view_count;
+    uint32_t residency_allocations;
+    uint32_t queue_attached;
+    uint32_t reserved;
+    double wall_ms;
+    double gpu_ms;
+} rust_star_metal_model_residency_result;
+
 typedef struct rust_star_metal_prefill_ffn_weights {
     uint64_t hc_fn_offset, hc_fn_bytes;
     uint64_t hc_scale_offset, hc_scale_bytes;
@@ -2191,6 +2202,12 @@ int rust_star_metal_select_attention_output_nsg(
     void *context,
     uint32_t low_simdgroups,
     uint32_t hc_simdgroups,
+    char *error,
+    size_t error_bytes);
+
+int rust_star_metal_prepare_model_residency(
+    void *context,
+    rust_star_metal_model_residency_result *result,
     char *error,
     size_t error_bytes);
 

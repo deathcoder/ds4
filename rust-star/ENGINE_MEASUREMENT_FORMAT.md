@@ -69,12 +69,22 @@ path reads back an eight-byte top-1 result instead of the complete logit row;
 the independent C0 controls retain full-logit readback and comparison.
 Correctness dumping and profiler capture must remain disabled in timed mode.
 
+Rust Star's prefill interval also includes its Metal model-residency setup. The
+runtime registers every existing no-copy model view in one residency set,
+attaches that set to the inference command queue, and performs a synchronized
+one-mebibyte-stride GPU touch over the views before decode. The raw run records
+the aggregate view bytes, touch and view counts, residency allocation count,
+queue attachment, and wall/GPU warm times. This work is charged to `prefill_ms`;
+it is not an unreported generation warmup.
+
 The Rust Star adapter accepts an engine run only when its raw timing metadata
 also states that prefill and generation correctness collection were disabled,
-the exact oracle transcript matched after timing, and the expected 44 command
-buffers plus two host waits were used per generated token. An engine may emit
-an ineligible raw record with a blocker for development, but the adapter must
-turn it into a failed measurement rather than forwarding its rates.
+the exact oracle transcript matched after timing, the model residency set was
+fully populated and attached, the coarse GPU touch completed, and the expected
+44 command buffers plus two host waits were used per generated token. An engine
+may emit an ineligible raw record with a blocker for development, but the
+adapter must turn it into a failed measurement rather than forwarding its
+rates.
 
 ## Failure measurement
 

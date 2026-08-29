@@ -4443,6 +4443,13 @@ pub struct EngineRunReport {
     pub model_warm_pages: u64,
     pub model_warm_checksum: u64,
     pub model_warm_ms: f64,
+    pub model_view_bytes: u64,
+    pub model_view_warm_touches: u64,
+    pub model_view_count: u32,
+    pub model_residency_allocations: u32,
+    pub model_residency_queue_attached: bool,
+    pub model_view_warm_wall_ms: f64,
+    pub model_view_warm_gpu_ms: f64,
     pub prefill_ms: f64,
     pub decoder_prepare_ms: f64,
     pub gen_ms: f64,
@@ -5755,6 +5762,15 @@ pub fn write_engine_run_json<W: Write>(output: &mut W, report: &EngineRunReport)
         || report.model_warm_pages == 0
         || !report.model_warm_ms.is_finite()
         || report.model_warm_ms <= 0.0
+        || report.model_view_bytes == 0
+        || report.model_view_warm_touches == 0
+        || report.model_view_count == 0
+        || report.model_residency_allocations != report.model_view_count
+        || !report.model_residency_queue_attached
+        || !report.model_view_warm_wall_ms.is_finite()
+        || report.model_view_warm_wall_ms <= 0.0
+        || !report.model_view_warm_gpu_ms.is_finite()
+        || report.model_view_warm_gpu_ms <= 0.0
         || !report.prefill_ms.is_finite()
         || report.prefill_ms <= 0.0
         || !report.decoder_prepare_ms.is_finite()
@@ -5893,7 +5909,7 @@ pub fn write_engine_run_json<W: Write>(output: &mut W, report: &EngineRunReport)
     };
     write!(
         output,
-        "{{\n  \"schema\": \"{ENGINE_RUN_SCHEMA}\",\n  \"engine\": \"rust-star\",\n  \"context\": {},\n  \"gen_tokens\": {},\n  \"metrics\": {{\"ctx_tokens\": {}, \"prefill_tokens\": {}, \"gen_tokens\": {}, \"gen_steady_tokens\": {}, \"prefill_tps\": {:.9}, \"prefill_ms\": {:.9}, \"gen_tps\": {:.9}, \"gen_ms\": {:.9}, \"gen_first_ms\": {:.9}, \"gen_steady_tps\": {:.9}, \"gen_steady_ms\": {:.9}}},\n  \"selection\": {{\"prefill_token\": {}, \"final_token\": {}, \"selected_tokens_checksum\": {}, \"oracle_transcript_match\": true}},\n  \"timing\": {{\"model_warm_bytes\": {}, \"model_warm_pages\": {}, \"model_warm_checksum\": {}, \"model_warm_ms\": {:.9}, \"decoder_prepare_ms\": {:.9}, \"gen_first_transformer_wall_ms\": {:.9}, \"gen_first_transformer_gpu_ms\": {:.9}, \"gen_first_layer_gpu_ms\": [{}], \"gen_first_output_head_wall_ms\": {:.9}, \"gen_first_output_head_gpu_ms\": {:.9}, \"gen_steady_transformer_wall_ms\": {:.9}, \"gen_steady_transformer_gpu_ms\": {:.9}, \"gen_steady_layer_gpu_ms\": {}, \"gen_steady_output_head_wall_ms\": {:.9}, \"gen_steady_output_head_gpu_ms\": {:.9}, \"generation_command_buffers_per_token\": {}, \"generation_host_waits_per_token\": {}, \"generation_correctness_collection\": false, \"generation_layer_timing_collection\": {}, \"generation_stage_counter_collection\": {}, \"prefill_correctness_collection\": {}}},\n  \"stage_profile\": {},\n  \"paired_protocol_eligible\": {},\n  \"paired_protocol_blocker\": {}\n}}\n",
+        "{{\n  \"schema\": \"{ENGINE_RUN_SCHEMA}\",\n  \"engine\": \"rust-star\",\n  \"context\": {},\n  \"gen_tokens\": {},\n  \"metrics\": {{\"ctx_tokens\": {}, \"prefill_tokens\": {}, \"gen_tokens\": {}, \"gen_steady_tokens\": {}, \"prefill_tps\": {:.9}, \"prefill_ms\": {:.9}, \"gen_tps\": {:.9}, \"gen_ms\": {:.9}, \"gen_first_ms\": {:.9}, \"gen_steady_tps\": {:.9}, \"gen_steady_ms\": {:.9}}},\n  \"selection\": {{\"prefill_token\": {}, \"final_token\": {}, \"selected_tokens_checksum\": {}, \"oracle_transcript_match\": true}},\n  \"timing\": {{\"model_warm_bytes\": {}, \"model_warm_pages\": {}, \"model_warm_checksum\": {}, \"model_warm_ms\": {:.9}, \"model_view_bytes\": {}, \"model_view_warm_touches\": {}, \"model_view_count\": {}, \"model_residency_allocations\": {}, \"model_residency_queue_attached\": {}, \"model_view_warm_wall_ms\": {:.9}, \"model_view_warm_gpu_ms\": {:.9}, \"decoder_prepare_ms\": {:.9}, \"gen_first_transformer_wall_ms\": {:.9}, \"gen_first_transformer_gpu_ms\": {:.9}, \"gen_first_layer_gpu_ms\": [{}], \"gen_first_output_head_wall_ms\": {:.9}, \"gen_first_output_head_gpu_ms\": {:.9}, \"gen_steady_transformer_wall_ms\": {:.9}, \"gen_steady_transformer_gpu_ms\": {:.9}, \"gen_steady_layer_gpu_ms\": {}, \"gen_steady_output_head_wall_ms\": {:.9}, \"gen_steady_output_head_gpu_ms\": {:.9}, \"generation_command_buffers_per_token\": {}, \"generation_host_waits_per_token\": {}, \"generation_correctness_collection\": false, \"generation_layer_timing_collection\": {}, \"generation_stage_counter_collection\": {}, \"prefill_correctness_collection\": {}}},\n  \"stage_profile\": {},\n  \"paired_protocol_eligible\": {},\n  \"paired_protocol_blocker\": {}\n}}\n",
         report.context,
         report.gen_tokens,
         report.context,
@@ -5914,6 +5930,13 @@ pub fn write_engine_run_json<W: Write>(output: &mut W, report: &EngineRunReport)
         report.model_warm_pages,
         report.model_warm_checksum,
         report.model_warm_ms,
+        report.model_view_bytes,
+        report.model_view_warm_touches,
+        report.model_view_count,
+        report.model_residency_allocations,
+        report.model_residency_queue_attached,
+        report.model_view_warm_wall_ms,
+        report.model_view_warm_gpu_ms,
         report.decoder_prepare_ms,
         report.gen_first_transformer_wall_ms,
         report.gen_first_transformer_gpu_ms,
@@ -18997,6 +19020,19 @@ mod imp {
     }
 
     #[repr(C)]
+    #[derive(Default)]
+    struct RawModelResidencyResult {
+        view_bytes: u64,
+        warm_touches: u64,
+        view_count: u32,
+        residency_allocations: u32,
+        queue_attached: u32,
+        reserved: u32,
+        wall_ms: f64,
+        gpu_ms: f64,
+    }
+
+    #[repr(C)]
     #[derive(Clone, Copy)]
     struct RawPrefillFfnWeights {
         hc_fn_offset: u64,
@@ -21130,6 +21166,12 @@ mod imp {
             error: *mut c_char,
             error_bytes: usize,
         ) -> i32;
+        fn rust_star_metal_prepare_model_residency(
+            context: *mut c_void,
+            result: *mut RawModelResidencyResult,
+            error: *mut c_char,
+            error_bytes: usize,
+        ) -> i32;
         fn rust_star_metal_copy_compressed_kv_row(
             context: *mut c_void,
             layer_index: u32,
@@ -21697,6 +21739,40 @@ mod imp {
                 )));
             }
             Ok(())
+        }
+
+        fn prepare_model_residency(&self) -> Result<RawModelResidencyResult> {
+            let mut raw = RawModelResidencyResult::default();
+            let mut error = [0 as c_char; ERROR_BYTES];
+            let prepared = unsafe {
+                rust_star_metal_prepare_model_residency(
+                    self.0,
+                    &mut raw,
+                    error.as_mut_ptr(),
+                    error.len(),
+                )
+            };
+            if prepared == 0 {
+                return Err(Error::invalid(format!(
+                    "Metal model residency preparation failed: {}",
+                    error_text(&error)
+                )));
+            }
+            if raw.view_bytes == 0
+                || raw.warm_touches == 0
+                || raw.view_count == 0
+                || raw.residency_allocations != raw.view_count
+                || raw.queue_attached != 1
+                || !raw.wall_ms.is_finite()
+                || raw.wall_ms <= 0.0
+                || !raw.gpu_ms.is_finite()
+                || raw.gpu_ms <= 0.0
+            {
+                return Err(Error::invalid(
+                    "Metal model residency preparation returned invalid metadata",
+                ));
+            }
+            Ok(raw)
         }
 
         fn enable_chained_stage_profiling(&self) -> Result<()> {
@@ -43390,6 +43466,10 @@ mod imp {
             .checked_add(gen_tokens)
             .ok_or_else(|| Error::invalid("measurement context capacity overflow"))?;
         context.adopt_prefill_decoder_state(decoder_capacity)?;
+        // Keep Metal VM validation and the coarse GPU view touch inside the
+        // declared prefill interval. This mirrors the pinned oracle's model
+        // residency policy without hiding a second warmup before generation.
+        let model_residency = context.prepare_model_residency()?;
         let prefill_ms = prefill_started.elapsed().as_secs_f64() * 1000.0;
 
         let decoder_prepare_started = Instant::now();
@@ -43504,6 +43584,13 @@ mod imp {
             model_warm_pages: model_warm.pages,
             model_warm_checksum: model_warm.checksum,
             model_warm_ms: model_warm.wall_ms,
+            model_view_bytes: model_residency.view_bytes,
+            model_view_warm_touches: model_residency.warm_touches,
+            model_view_count: model_residency.view_count,
+            model_residency_allocations: model_residency.residency_allocations,
+            model_residency_queue_attached: model_residency.queue_attached == 1,
+            model_view_warm_wall_ms: model_residency.wall_ms,
+            model_view_warm_gpu_ms: model_residency.gpu_ms,
             prefill_ms,
             decoder_prepare_ms,
             gen_ms,
@@ -47886,6 +47973,13 @@ mod tests {
             model_warm_pages: 5_310_059,
             model_warm_checksum: 42,
             model_warm_ms: 4000.0,
+            model_view_bytes: 87_500_000_000,
+            model_view_warm_touches: 85_000,
+            model_view_count: 1_221,
+            model_residency_allocations: 1_221,
+            model_residency_queue_attached: true,
+            model_view_warm_wall_ms: 25.0,
+            model_view_warm_gpu_ms: 20.0,
             prefill_ms: 20000.0,
             decoder_prepare_ms: 100.0,
             gen_ms: 7000.0,
@@ -48215,6 +48309,8 @@ mod tests {
         assert!(text.contains("\"generation_correctness_collection\": false"));
         assert!(text.contains("\"prefill_correctness_collection\": false"));
         assert!(text.contains("\"model_warm_ms\": 4000.000000000"));
+        assert!(text.contains("\"model_view_count\": 1221"));
+        assert!(text.contains("\"model_residency_queue_attached\": true"));
         assert!(text.contains("\"gen_first_transformer_gpu_ms\": 50.000000000"));
         assert!(text.contains("\"gen_first_layer_gpu_ms\": [1.162790698"));
         assert!(text.contains("\"gen_steady_layer_gpu_ms\": null"));

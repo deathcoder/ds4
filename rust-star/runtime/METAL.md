@@ -685,6 +685,22 @@ from input token 312. This closes native-prefill state ownership and the first
 production sparse frontier. The command synchronizes twice per position for
 correctness/timing collection and deliberately makes no throughput claim.
 
+## Model residency before measured decode
+
+The eligible `engine-measure` path keeps Metal VM preparation inside the
+declared prefill interval. After native prefill creates all exact no-copy model
+views, the runtime registers those allocations in one `MTLResidencySet`,
+commits residency, attaches the set to the inference command queue, and issues
+a synchronized one-mebibyte-stride GPU touch over every view. The raw record
+must report matching positive view/allocation counts, queue attachment, touch
+count, and wall/GPU warm times or the Rust adapter rejects it.
+
+This follows the pinned DwarfStar policy and prevents decode's first command
+from absorbing unified-memory validation and page residency. It does not hide
+warmup outside the benchmark: setup and the GPU touch are part of `prefill_ms`.
+The exact retained decoder controls remain unchanged and continue to validate
+all logits and model mappings independently.
+
 ## 2K sequential state frontier
 
 Schema: `rust-star-prefill-frontier-diagnostic-v1`.

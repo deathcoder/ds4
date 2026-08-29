@@ -44,6 +44,13 @@ def engine_run(*, eligible: bool = True) -> dict[str, object]:
         },
         "selection": {"oracle_transcript_match": True},
         "timing": {
+            "model_view_bytes": 86_370_050_944,
+            "model_view_warm_touches": 83_334,
+            "model_view_count": 1_136,
+            "model_residency_allocations": 1_136,
+            "model_residency_queue_attached": True,
+            "model_view_warm_wall_ms": 8.0,
+            "model_view_warm_gpu_ms": 7.0,
             "generation_command_buffers_per_token": 44,
             "generation_host_waits_per_token": 2,
             "generation_correctness_collection": False,
@@ -93,6 +100,24 @@ class RustStarMeasurementTests(unittest.TestCase):
             path = Path(temporary) / "engine-run.json"
             path.write_text(json.dumps(payload), encoding="utf-8")
             with self.assertRaisesRegex(MeasurementError, "prefill_correctness_collection"):
+                parse_engine_run(path, context=2048, gen_tokens=128)
+
+    def test_eligibility_requires_consistent_model_residency(self) -> None:
+        payload = engine_run()
+        payload["timing"]["model_residency_allocations"] = 1_135  # type: ignore[index]
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "engine-run.json"
+            path.write_text(json.dumps(payload), encoding="utf-8")
+            with self.assertRaisesRegex(MeasurementError, "allocation count"):
+                parse_engine_run(path, context=2048, gen_tokens=128)
+
+    def test_eligibility_requires_model_residency_queue_attachment(self) -> None:
+        payload = engine_run()
+        payload["timing"]["model_residency_queue_attached"] = False  # type: ignore[index]
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "engine-run.json"
+            path.write_text(json.dumps(payload), encoding="utf-8")
+            with self.assertRaisesRegex(MeasurementError, "queue attachment"):
                 parse_engine_run(path, context=2048, gen_tokens=128)
 
     def test_isolated_process_measurement_and_log_redaction(self) -> None:

@@ -337,6 +337,15 @@ median is a validated 2.56% steady-decode lead. Complete generation remains
 12.19x higher. This development result is not the protocol's 256K headline
 claim.
 
+A subsequent development candidate mirrors the oracle's Metal residency
+policy: existing no-copy model views are registered with the command queue and
+receive a coarse GPU touch inside the measured prefill interval. Two exact
+candidate runs reduced first-token latency to 53.511 and 49.586 ms; an adjacent
+immutable `7de9511` control still required 615.953 ms. The repeated candidate
+reached 24.073 tok/s steady and 24.036 tok/s complete generation. These are
+causal development checks, not a new paired headline; the formal five-pair
+comparison is the next gate.
+
 Project controls and benchmark contracts:
 
 - `RUST_STAR_MANUAL_TASKS.md` is the canonical ledger for work that needs the

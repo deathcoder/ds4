@@ -42,6 +42,13 @@ static NSString *const kProbeSource =
     @"    uint gid [[thread_position_in_grid]]) {\n"
     @"    values[gid] = values[gid] * 1664525u + 1013904223u;\n"
     @"}\n"
+    @"kernel void rust_star_touch_u8_stride(device const uchar *src [[buffer(0)]],\n"
+    @"    device uchar *out [[buffer(1)]], constant ulong &stride [[buffer(2)]],\n"
+    @"    constant ulong &bytes [[buffer(3)]], constant ulong &dst_offset [[buffer(4)]],\n"
+    @"    uint gid [[thread_position_in_grid]]) {\n"
+    @"    const ulong offset = min((ulong)gid * stride, bytes - 1ul);\n"
+    @"    out[dst_offset + gid] = src[offset];\n"
+    @"}\n"
     @"kernel void rust_star_argmax_f32(device const float *values [[buffer(0)]],\n"
     @"    device uint *result [[buffer(1)]], constant uint &count [[buffer(2)]],\n"
     @"    uint tid [[thread_index_in_threadgroup]],\n"
@@ -259,6 +266,7 @@ static NSString *const kQ8ProjectionSource =
 @property(nonatomic, strong) id<MTLCommandQueue> queue;
 @property(nonatomic, strong) id<MTLComputePipelineState> probePipeline;
 @property(nonatomic, strong) id<MTLComputePipelineState> argmaxPipeline;
+@property(nonatomic, strong) id<MTLComputePipelineState> modelTouchPipeline;
 @property(nonatomic, strong) id<MTLComputePipelineState> getRowsF16Pipeline;
 @property(nonatomic, strong) id<MTLComputePipelineState> q8ProjectionPipeline;
 @property(nonatomic, strong) id<MTLComputePipelineState> q8QbNr4Pipeline;
@@ -356,6 +364,8 @@ static NSString *const kQ8ProjectionSource =
 @property(nonatomic, strong) id<MTLComputePipelineState> routedBatchSumPipeline;
 @property(nonatomic, strong) id<MTLComputePipelineState> sharedSwigluBatchPipeline;
 @property(nonatomic, strong) NSMutableDictionary<NSString *, id<MTLBuffer>> *modelViewCache;
+@property(nonatomic, strong) id<MTLResidencySet> modelResidencySet API_AVAILABLE(macos(15.0));
+@property(nonatomic, assign) BOOL modelResidencyAttached;
 @property(nonatomic, strong) NSMutableDictionary<NSString *, id<MTLBuffer>> *activationBufferCache;
 @property(nonatomic, strong) NSMutableDictionary<NSNumber *, id<MTLCommandBuffer>> *chainedCommands;
 @property(nonatomic, strong) NSMutableDictionary<NSNumber *, NSNumber *> *chainedWallStarts;
@@ -900,14 +910,17 @@ int rust_star_metal_create(void **context_out, char *error, size_t error_bytes) 
         }
         id<MTLFunction> function = [library newFunctionWithName:@"rust_star_dispatch_probe"];
         id<MTLFunction> argmax_function = [library newFunctionWithName:@"rust_star_argmax_f32"];
-        if (!function || !argmax_function) {
-            return fail_with_message(error, error_bytes, @"probe or argmax kernel was not found in Metal library");
+        id<MTLFunction> touch_function = [library newFunctionWithName:@"rust_star_touch_u8_stride"];
+        if (!function || !argmax_function || !touch_function) {
+            return fail_with_message(error, error_bytes, @"probe, argmax, or model-touch kernel was not found in Metal library");
         }
         id<MTLComputePipelineState> pipeline =
             [device newComputePipelineStateWithFunction:function error:&compile_error];
         id<MTLComputePipelineState> argmax_pipeline =
             [device newComputePipelineStateWithFunction:argmax_function error:&compile_error];
-        if (!pipeline || !argmax_pipeline) {
+        id<MTLComputePipelineState> touch_pipeline =
+            [device newComputePipelineStateWithFunction:touch_function error:&compile_error];
+        if (!pipeline || !argmax_pipeline || !touch_pipeline) {
             return fail_with_message(error, error_bytes, compile_error.localizedDescription);
         }
         const double compile_end = monotonic_ms();
@@ -917,6 +930,7 @@ int rust_star_metal_create(void **context_out, char *error, size_t error_bytes) 
         context.queue = queue;
         context.probePipeline = pipeline;
         context.argmaxPipeline = argmax_pipeline;
+        context.modelTouchPipeline = touch_pipeline;
         context.useQkvPair = YES;
         context.useFlashReduceInverseRope = YES;
         context.modelViewCache = [NSMutableDictionary dictionary];
@@ -1711,6 +1725,103 @@ int rust_star_metal_prepare_decoder(
             ensure_q8_projection_pipeline(context, error, error_bytes) &&
             ensure_attention_output_pipelines(context, error, error_bytes) &&
             ensure_moe_output_pipelines(context, error, error_bytes);
+    }
+}
+
+int rust_star_metal_prepare_model_residency(
+    void *opaque_context,
+    rust_star_metal_model_residency_result *result,
+    char *error,
+    size_t error_bytes)
+{
+    if (!opaque_context || !result) {
+        return fail_with_message(error, error_bytes,
+            @"model residency preparation received invalid inputs");
+    }
+    @autoreleasepool {
+        RustStarMetalContext *context = (__bridge RustStarMetalContext *)opaque_context;
+        NSArray<id<MTLBuffer>> *views = context.modelViewCache.allValues;
+        if (views.count == 0u || !context.modelTouchPipeline) {
+            return fail_with_message(error, error_bytes,
+                @"model residency preparation requires mapped model views");
+        }
+        memset(result, 0, sizeof(*result));
+        const uint64_t stride = 1024ull*1024ull;
+        uint64_t view_bytes = 0u;
+        uint64_t touches = 0u;
+        for (id<MTLBuffer> view in views) {
+            if (view.length == 0u || view_bytes > UINT64_MAX-(uint64_t)view.length) {
+                return fail_with_message(error, error_bytes,
+                    @"mapped model view accounting overflowed");
+            }
+            const uint64_t count = ((uint64_t)view.length + stride - 1u)/stride;
+            if (touches > UINT64_MAX-count) {
+                return fail_with_message(error, error_bytes,
+                    @"model warmup touch count overflowed");
+            }
+            view_bytes += (uint64_t)view.length;
+            touches += count;
+        }
+        if (touches == 0u || touches > (uint64_t)NSUIntegerMax) {
+            return fail_with_message(error, error_bytes,
+                @"model warmup touch count is invalid");
+        }
+
+        if (@available(macOS 15.0, *)) {
+            MTLResidencySetDescriptor *descriptor = [MTLResidencySetDescriptor new];
+            descriptor.label = @"rust-star model views";
+            descriptor.initialCapacity = views.count;
+            NSError *residency_error = nil;
+            id<MTLResidencySet> residency =
+                [context.device newResidencySetWithDescriptor:descriptor error:&residency_error];
+            if (!residency) {
+                return fail_with_message(error, error_bytes,
+                    residency_error.localizedDescription ?: @"failed to create model residency set");
+            }
+            for (id<MTLBuffer> view in views) [residency addAllocation:view];
+            [residency commit];
+            [residency requestResidency];
+            if ([context.queue respondsToSelector:@selector(addResidencySet:)]) {
+                [context.queue addResidencySet:residency];
+                context.modelResidencyAttached = YES;
+            }
+            context.modelResidencySet = residency;
+            result->residency_allocations = (uint32_t)views.count;
+            result->queue_attached = context.modelResidencyAttached ? 1u : 0u;
+        }
+
+        id<MTLBuffer> output = [context.device
+            newBufferWithLength:(NSUInteger)touches options:MTLResourceStorageModeShared];
+        id<MTLCommandBuffer> command = [context.queue commandBuffer];
+        id<MTLComputeCommandEncoder> encoder = [command computeCommandEncoder];
+        if (!output || !command || !encoder) {
+            return fail_with_message(error, error_bytes,
+                @"model warmup could not allocate its Metal command");
+        }
+        [encoder setComputePipelineState:context.modelTouchPipeline];
+        uint64_t destination = 0u;
+        for (id<MTLBuffer> view in views) {
+            const uint64_t bytes = (uint64_t)view.length;
+            const uint64_t count = (bytes + stride - 1u)/stride;
+            [encoder setBuffer:view offset:0 atIndex:0];
+            [encoder setBuffer:output offset:0 atIndex:1];
+            [encoder setBytes:&stride length:sizeof(stride) atIndex:2];
+            [encoder setBytes:&bytes length:sizeof(bytes) atIndex:3];
+            [encoder setBytes:&destination length:sizeof(destination) atIndex:4];
+            [encoder dispatchThreadgroups:MTLSizeMake((NSUInteger)((count + 255u)/256u), 1, 1)
+                 threadsPerThreadgroup:MTLSizeMake(256, 1, 1)];
+            destination += count;
+        }
+        [encoder endEncoding];
+        const double started = monotonic_ms();
+        [command commit];
+        if (!command_succeeded(command, error, error_bytes)) return 0;
+        result->view_bytes = view_bytes;
+        result->warm_touches = touches;
+        result->view_count = (uint32_t)views.count;
+        result->wall_ms = monotonic_ms()-started;
+        result->gpu_ms = gpu_elapsed_ms(command);
+        return 1;
     }
 }
 
@@ -43646,6 +43757,16 @@ void rust_star_metal_destroy(void *opaque_context) {
     if (!opaque_context) return;
     @autoreleasepool {
         RustStarMetalContext *context = CFBridgingRelease(opaque_context);
+        if (@available(macOS 15.0, *)) {
+            if (context.modelResidencySet) {
+                if (context.modelResidencyAttached &&
+                    [context.queue respondsToSelector:@selector(removeResidencySet:)]) {
+                    [context.queue removeResidencySet:context.modelResidencySet];
+                }
+                [context.modelResidencySet endResidency];
+                [context.modelResidencySet removeAllAllocations];
+            }
+        }
         (void)context;
     }
 }

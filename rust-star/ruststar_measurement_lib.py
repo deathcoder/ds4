@@ -76,6 +76,21 @@ def parse_engine_run(path: Path, *, context: int, gen_tokens: int) -> dict[str, 
     for name, expected in timing_expectations.items():
         if timing.get(name) != expected:
             raise MeasurementError(f"Rust Star timing field {name} is inconsistent")
+    residency_integer_expectations = {
+        "model_view_bytes": timing.get("model_view_bytes"),
+        "model_view_warm_touches": timing.get("model_view_warm_touches"),
+        "model_view_count": timing.get("model_view_count"),
+        "model_residency_allocations": timing.get("model_residency_allocations"),
+    }
+    for name, value in residency_integer_expectations.items():
+        if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+            raise MeasurementError(f"Rust Star timing field {name} is inconsistent")
+    if timing.get("model_residency_allocations") != timing.get("model_view_count"):
+        raise MeasurementError("Rust Star model residency allocation count is inconsistent")
+    if timing.get("model_residency_queue_attached") is not True:
+        raise MeasurementError("Rust Star model residency queue attachment is inconsistent")
+    _positive_float(timing.get("model_view_warm_wall_ms"), "model_view_warm_wall_ms")
+    _positive_float(timing.get("model_view_warm_gpu_ms"), "model_view_warm_gpu_ms")
     if payload.get("paired_protocol_blocker") is not None:
         raise MeasurementError("eligible Rust Star engine run retains a protocol blocker")
     metrics = payload.get("metrics")
