@@ -153,17 +153,23 @@ history; add a correction and update the current-state summary.
   48.720167 ms and is effectively tied with DwarfStar at a 0.995386079x paired
   ratio. Prefill remains 34.07% behind at 0.659348296x. This is an exact 2K/128
   development result, not the protocol's 256K headline claim.
-  Passive prefill attribution now separates the 64-tile bootstrap, remaining
+  Passive prefill attribution now separates the bootstrap, remaining
   transformer, output head, handoff, residency, and residual host cost. The
-  timing-only bootstrap preserves 32-row arithmetic while queuing all 64 Metal
-  command buffers and synchronizing only at the tail; the exact 128-token
-  transcript remains eligible. Wider 64-row and full-2K tiles failed the
-  first-token oracle and were rejected. A fresh normalized candidate measured
-  126.983490539 prefill tok/s. Immutable commit `eae11df` then completed five
+  timing-only bootstrap queues Metal command buffers and synchronizes only at
+  the tail; the exact 128-token transcript remains eligible. Immutable commit
+  `eae11df` retained 64 exact 32-row tiles and completed five
   exact pairs without a failure, retry, or invalid attempt. Rust Star's paired
   prefill ratio improved from `2c6f80e`'s 0.659348296x to 0.673232187x, reducing
   the validated 2K gap from 34.07% to 32.68%. Steady decode remains 3.71%
-  faster than DwarfStar and complete generation remains 6.45% faster.
+  faster than DwarfStar and complete generation remains 6.45% faster. The
+  initial 64-row rejection was subsequently traced to fixed one-tile matrix
+  grids, a fixed four-group FlashAttention grid, and a 32-row grouped-output
+  routing allocation. Immutable checkpoint `cdb6377` makes those geometries
+  row-derived and uses 32 exact 64-row production tiles while retaining all
+  32-row diagnostics. A clean exact development run measured 132.726509564
+  prefill tok/s and 2,429.833625 ms bootstrap GPU time; this is not yet a new
+  paired result. A full-2K bootstrap remains rejected because the 128-row raw
+  cache append requires wrapping.
 - Implementation: dependency-free Rust host scaffold under `rust-star/runtime/`
   strictly parses GGUF v3 directories, validates the Flash resident-Q2
   shape/recipe, and writes candidate full-logit artifacts. A macOS-only
@@ -705,8 +711,8 @@ history; add a correction and update the current-state summary.
 
 ## Immediate Next Actions
 
-1. Attribute and reduce the remaining 34.07% prefill throughput deficit while
-   preserving the exact native-prefill handoff and pooled scratch lifetimes.
+1. Freeze `cdb6377` and run a fresh five-pair exact 2K/128 comparison before
+   replacing the published prefill ratio.
 2. Extend the eligible engine and exact transcript gate to the next context
    frontier before treating this narrow 2K result as representative.
 3. Preserve the exact 2K-to-position-4099 native handoff, complete retained
@@ -720,6 +726,48 @@ history; add a correction and update the current-state summary.
 6. Run or approve the fork's GitHub Actions workflow and retain its URL.
 
 ## Entries
+
+### 2026-08-29 — Exact 64-row bootstrap cuts its GPU interval by 29.7%
+
+- A DwarfStar split-profile control measured 10,921.115 ms of transformer
+  execution and only 99.724 ms of graph encoding. Its even ratio-4 attention
+  layers were approximately 181--187 ms, odd ratio-128 attention layers were
+  approximately 118--125 ms, and FFNs were approximately 96--104 ms across
+  both families. The remaining Rust prefill deficit is therefore GPU schedule
+  and kernel work, not graph-construction overhead.
+- Reopened the rejected 64-row Rust bootstrap as a correctness investigation.
+  The prior wide launch supplied 64 rows to its arguments but launched only one
+  32-row matrix tile, four 8-query FlashAttention groups, and a grouped-output
+  routing buffer sized for 32 rows. The full-2K experiment also overflowed the
+  128-row raw-cache append instead of wrapping it.
+- Made the F16/Q8 matrix X grids, FlashAttention query grids, grouped-output
+  routing offsets, allocation, and work capacity derive from `rows`. Production
+  now runs 32 64-row command buffers with one tail wait. Diagnostic commands
+  still run the original 64 exact 32-row tiles.
+- Temporary final-tail checksum tracing localized and then verified each seam.
+  After the fixes, token IDs, HC ingress, Q/KV, RoPE/cache, FlashAttention,
+  grouped output, FFN, layer-0/1 HC, layer-2 KV, and both layer-2 compressor
+  tails all matched the 32-row C0 artifacts by FP32 bit pattern. All tracing
+  code was removed before publication.
+- Published immutable code checkpoint
+  `cdb63779c45e3f4b0cbe45d29f29938bd53985b6` with tree
+  `1124229819dacb0061998194eb8abdfa7b62245c` and executable SHA-256
+  `14eed212b82a358aff88b726f96ba9a09798870edb1d31ddb8cea93e7332d28e`.
+- The clean eligible exact run matched the complete 128-token transcript and
+  measured 132.726509564 prefill tok/s. Bootstrap GPU time fell from the prior
+  normalized 3,457.269167 ms to 2,429.833625 ms, a 29.7% reduction; total
+  prefill throughput is 4.52% above the prior normalized 126.983490539 tok/s.
+  Steady decode remained 23.661023050 tok/s. Evidence SHA-256 is
+  `23a87c1f8ffdff3dc427f0b80a2f337236fbd10a523e80c5bd02736bce7f7a96`.
+  This is a single development run, not a paired claim.
+- The independent synchronized 64-by-32-row layer-2 compressor regression
+  passed every retained exact boundary. Report SHA-256 is
+  `42fd4f7d2733d738d98a3ad8a41d0dc74e03e83f49570dea57d56d845996dbf2`.
+- Validation: optimized macOS build, exact production 2K/128 engine run, exact
+  legacy 32-row compressor loop, all 296 Rust tests, all 73 Python tests,
+  `cargo fmt --check`, and `git diff --check`.
+- Next: run a new immutable five-pair comparison for `cdb6377`. The published
+  `eae11df` paired ratio remains authoritative until that completes.
 
 ### 2026-08-29 — Queued prefill improves the paired ratio, not enough to close the gap
 

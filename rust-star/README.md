@@ -338,7 +338,14 @@ lead. Complete generation measured 23.611303513 versus 22.18 tok/s, a
 1.013342227x paired ratio. Queuing the exact 64-by-32-row prefill schedule with
 one tail wait improved the prefill ratio from `2c6f80e`'s 0.659348296x to
 0.673232187x; the remaining prefill gap is 32.68%. This exact development
-result is not the protocol's 256K headline claim.
+result is not the protocol's 256K headline claim. The subsequent immutable
+`cdb6377` checkpoint widens only the timing-only bootstrap from 64 32-row
+command buffers to 32 64-row command buffers. It fixes the row-derived matrix,
+FlashAttention, and grouped-output launch geometry that invalidated the first
+wide-row experiment while retaining the exact 32-row diagnostic schedule. A
+clean exact development run measured 132.726509564 prefill tok/s and reduced
+bootstrap GPU time from 3,457.269167 to 2,429.833625 ms. This is promising
+single-run evidence, not a replacement for the published five-pair result.
 
 Project controls and benchmark contracts:
 
