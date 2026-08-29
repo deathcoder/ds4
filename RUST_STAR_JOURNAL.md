@@ -196,7 +196,13 @@ history; add a correction and update the current-state summary.
   28.61% validated gap. Steady decode is effectively tied/slightly ahead at
   1.001367x and complete generation is 1.014559x ahead. With the profiled Rust
   transformer now faster than Dwarf's earlier split total, the next target is
-  the 64-row bootstrap/residency interval before the transformer.
+  the 64-row bootstrap/residency interval before the transformer. A bounded
+  128-row bootstrap attempt matched the first five generated selections but
+  diverged at step 6, coincident with the first new ratio-4 compressor row, and
+  was fully reverted. Eligible runs now passively report context, bootstrap,
+  transformer, and output-head setup time inside the existing host-overhead
+  interval. Clean attribution repeats remain pending because a concurrent
+  Chromium build held system load near 50 during the first exact control.
 - Implementation: dependency-free Rust host scaffold under `rust-star/runtime/`
   strictly parses GGUF v3 directories, validates the Flash resident-Q2
   shape/recipe, and writes candidate full-logit artifacts. A macOS-only
@@ -754,6 +760,48 @@ history; add a correction and update the current-state summary.
 6. Run or approve the fork's GitHub Actions workflow and retain its URL.
 
 ## Entries
+
+### 2026-08-29 — Rejected 128-row bootstrap and added host setup attribution
+
+- Tried the smallest 128-row production bootstrap: widened only the accepted
+  tile validator/schedule and the two row-position stack fixtures. Aligned
+  128-row tiles fill the physical raw-KV ring contiguously from offset zero, so
+  no wrapped append was required for this bounded schedule.
+- The first exact 2K/128 process rejected the candidate at the transcript gate:
+  generated steps 1--5 matched, then step 6 selected token `716` instead of
+  `77448`. This aligns with the first newly emitted ratio-4 compressor row
+  after the prompt, so the experiment was not benchmarked or accepted. All
+  128-row source changes were reverted; production remains 32 command buffers
+  of 64 rows and diagnostics remain 64 synchronized 32-row tiles.
+- A same-timestamp apply/revert left Cargo's cached Objective-C archive stale
+  even though source had returned to 64 rows. The frozen `0cbffdf` executable
+  passed its exact 128-token control, proving the model and host were healthy.
+  Added `RUST_STAR_FORCE_NATIVE_REBUILD` as an explicit build-script
+  cachebuster, force-recompiled the shim, and restored exact production
+  execution. The rebuilt control selected prefill token `15342`, final token
+  `8954`, and checksum `17615242442502606640`.
+- Added passive eligible timing for Metal context creation, bootstrap
+  setup/encoding, transformer setup/encoding, and output-head preparation. The
+  adapter now requires every setup field to be nonnegative and finite and
+  rejects their sum if it exceeds the existing residual host-overhead interval.
+  Documentation now consistently describes the accepted 64-row schedule.
+- The first force-rebuilt attribution run was correctness-valid but not usable
+  as performance evidence: a separate Chromium `ninja` build drove load average
+  to approximately 50. It measured 106.959 prefill tok/s, including 7,200.575
+  ms bootstrap GPU time versus the established 2.29--2.48 seconds. Its passive
+  setup split was 170.003 ms context, 97.365 ms bootstrap, 59.670 ms
+  transformer, and 0.055 ms output head. Private output remains under
+  `rust-star/.work/prefill-host-attribution-02/`.
+- Validation: exact transcript control passed; 297 optimized Rust tests and 74
+  Python tests passed; Rust formatting, Python compilation, and
+  `git diff --check` passed.
+
+Next:
+
+- When the Chromium build is idle, collect three fresh exact attribution runs.
+  Use their median setup split to choose between context/pipeline caching,
+  bootstrap resource reuse, or transformer view/allocation reuse; do not infer
+  a performance change from the contaminated control.
 
 ### 2026-08-29 — NSG=4 closes 18.40 points of the validated prefill gap
 

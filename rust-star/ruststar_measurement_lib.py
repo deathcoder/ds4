@@ -116,6 +116,17 @@ def parse_engine_run(path: Path, *, context: int, gen_tokens: int) -> dict[str, 
     prefill_host_overhead_ms = _nonnegative_float(
         timing.get("prefill_host_overhead_ms"), "prefill_host_overhead_ms"
     )
+    prefill_setup_ms = sum(
+        _nonnegative_float(timing.get(name), name)
+        for name in (
+            "prefill_context_setup_ms",
+            "prefill_bootstrap_setup_ms",
+            "prefill_transformer_setup_ms",
+            "prefill_output_head_setup_ms",
+        )
+    )
+    if prefill_setup_ms > prefill_host_overhead_ms + 1.0e-3:
+        raise MeasurementError("Rust Star prefill setup attribution exceeds host overhead")
     if payload.get("paired_protocol_blocker") is not None:
         raise MeasurementError("eligible Rust Star engine run retains a protocol blocker")
     metrics = payload.get("metrics")

@@ -703,20 +703,23 @@ all logits and model mappings independently.
 
 ## Eligible prefill timing attribution and tile queuing
 
-The timing-only 2K path preserves the exact 64-command, 32-row bootstrap
-arithmetic but commits every command buffer to the same serial inference queue
-without an inter-tile host wait. The final tile synchronizes the batch; its GPU
-time is the span from the first command's GPU start to the final command's GPU
-end. Diagnostic collection continues to synchronize every tile before reading
-shared buffers. This removes 63 production waits without changing kernel row
-grouping, live-state ownership, or the C0 controls.
+The timing-only 2K path uses 32 exact 64-row bootstrap command buffers and
+commits them to the same serial inference queue without an inter-tile host
+wait. The final tile synchronizes the batch; its GPU time is the span from the
+first command's GPU start to the final command's GPU end. Diagnostic collection
+continues to use 64 independently synchronized 32-row tiles before reading
+shared buffers. Row-derived matrix, FlashAttention, and grouped-routing
+geometry preserve the C0 controls.
 
 `rust-star-engine-run-v1` attributes the complete prefill wall interval to that
 bootstrap span, the remaining transformer chain, output head, decoder-state
-handoff, model residency, and residual host overhead. The adapter rejects
-missing, nonfinite, GPU-over-wall, or non-summing attribution. Experimental
-64-row and full-2K bootstrap tiles failed the first-token oracle and were
-rejected; production remains at the proven 32-row numerical schedule.
+handoff, model residency, and residual host overhead. Passive setup timers
+further divide host work into context creation, bootstrap setup/encoding,
+transformer setup/encoding, and output-head preparation without changing the
+eligible command schedule. The adapter rejects missing, nonfinite,
+GPU-over-wall, non-summing, or setup-over-residual attribution. A 128-row
+bootstrap experiment diverged at generated step 6 and remains rejected;
+production stays at the proven 64-row schedule.
 
 ## 2K sequential state frontier
 

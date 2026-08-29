@@ -13,6 +13,9 @@ fn run(command: &mut Command, description: &str) {
 }
 
 fn main() {
+    // Allow correctness experiments that revert native source within one
+    // filesystem timestamp tick to invalidate Cargo's cached shim explicitly.
+    println!("cargo:rerun-if-env-changed=RUST_STAR_FORCE_NATIVE_REBUILD");
     println!("cargo:rerun-if-changed=src/metal_shim.h");
     println!("cargo:rerun-if-changed=src/metal_shim.m");
     println!("cargo:rerun-if-changed=src/attention_ingress.metal");

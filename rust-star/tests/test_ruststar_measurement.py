@@ -51,12 +51,16 @@ def engine_run(*, eligible: bool = True) -> dict[str, object]:
             "model_residency_queue_attached": True,
             "model_view_warm_wall_ms": 8.0,
             "model_view_warm_gpu_ms": 7.0,
+            "prefill_context_setup_ms": 100.0,
+            "prefill_bootstrap_setup_ms": 150.0,
             "prefill_tile_wall_ms": 3_000.0,
             "prefill_tile_gpu_ms": 2_900.0,
+            "prefill_transformer_setup_ms": 650.0,
             "prefill_transformer_wall_ms": 15_000.0,
             "prefill_transformer_gpu_ms": 14_900.0,
             "prefill_output_head_wall_ms": 20.0,
             "prefill_output_head_gpu_ms": 2.0,
+            "prefill_output_head_setup_ms": 15.0,
             "prefill_handoff_wall_ms": 5.0,
             "prefill_handoff_gpu_ms": 1.0,
             "prefill_host_overhead_ms": 1_967.0,
@@ -147,6 +151,15 @@ class RustStarMeasurementTests(unittest.TestCase):
             with self.assertRaisesRegex(MeasurementError, "attribution is inconsistent"):
                 parse_engine_run(path, context=2048, gen_tokens=128)
 
+    def test_eligibility_rejects_setup_above_host_overhead(self) -> None:
+        payload = engine_run()
+        payload["timing"]["prefill_transformer_setup_ms"] = 2_000.0  # type: ignore[index]
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "engine-run.json"
+            path.write_text(json.dumps(payload), encoding="utf-8")
+            with self.assertRaisesRegex(MeasurementError, "setup attribution"):
+                parse_engine_run(path, context=2048, gen_tokens=128)
+
     def test_eligibility_rejects_prefill_gpu_time_above_wall(self) -> None:
         payload = engine_run()
         payload["timing"]["prefill_tile_gpu_ms"] = 3_001.0  # type: ignore[index]
@@ -174,12 +187,16 @@ class RustStarMeasurementTests(unittest.TestCase):
             {
                 "model_view_warm_wall_ms": 0.0001,
                 "model_view_warm_gpu_ms": 0.00009,
+                "prefill_context_setup_ms": 0.00004,
+                "prefill_bootstrap_setup_ms": 0.00004,
                 "prefill_tile_wall_ms": 0.0002,
                 "prefill_tile_gpu_ms": 0.00018,
+                "prefill_transformer_setup_ms": 0.00004,
                 "prefill_transformer_wall_ms": 0.0003,
                 "prefill_transformer_gpu_ms": 0.00028,
                 "prefill_output_head_wall_ms": 0.0001,
                 "prefill_output_head_gpu_ms": 0.00009,
+                "prefill_output_head_setup_ms": 0.00003,
                 "prefill_handoff_wall_ms": 0.0001,
                 "prefill_handoff_gpu_ms": 0.00009,
                 "prefill_host_overhead_ms": 0.0002,
