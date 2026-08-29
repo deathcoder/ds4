@@ -356,18 +356,22 @@ remaining native prefill transformer interval. Across layers 2--42, Rust's even
 layers average 326.577 ms GPU and odd layers 251.904 ms; DwarfStar's independent
 split profile averages 283.103 and 223.180 ms respectively. The similar
 alternating ratios (1.296x Rust, 1.268x Dwarf) rule out a single pathological
-layer and prioritize shared prefill attention work, followed by the even-only
-ratio-4 compressor/indexer path. A normal-path control remains exact and paired
-eligible; the profiler's 44 command buffers and waits are diagnostic only.
+layer. Representative layers 4 and 5 are now split into attention/FFN and five
+attention-internal intervals. Three exact Rust profiles and three independent
+Dwarf profiles per layer isolate the main 512-wide FlashAttention dispatch as
+the only consistent deficit: median Rust time is 140.823 versus 108.419 ms in
+layer 4 and 71.147 versus 54.666 ms in layer 5, approximately 30% slower in
+both families. Rust's QKV/RoPE, compressor/staging, and output/HC medians are
+all at or ahead of Dwarf; Flash block preparation is only about 0.03 ms.
 
-The representative attention-to-FFN split makes that priority concrete. Two
-clean profiles put layer 4 attention 20.79--25.12% behind DwarfStar while its
-FFN is only 3.52--4.11% behind; attention explains 90.68--93.05% of the layer
-gap. Layer 5 attention is 21.48--25.73% behind while its FFN is 2.95--3.65%
-behind; attention explains 89.31--89.64% of the gap. A bounded attempt to
-remove production-only snapshot blits from those layers moved both timings in
-the wrong direction and was reverted. The next gate is a focused alternating
-attention harness, not a broad production edit.
+The two runtimes use the same Metal kernel source, function constants, dispatch
+grid, threadgroup memory, fast-math default, and shared scratch storage on this
+M1 Ultra. DwarfStar's private-scratch path is M5-only, so storage-mode changes
+are not supported by this evidence. A normal-path control from the profiled
+executable remains exact and paired eligible; the profiler's 52 command buffers
+and waits are diagnostic only. The next gate is a same-context NSG scheduling
+A/B for the two representative FlashAttention shapes, followed by a full exact
+engine run only if the isolated candidate wins.
 
 Project controls and benchmark contracts:
 

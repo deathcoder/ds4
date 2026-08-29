@@ -77,6 +77,13 @@ const ENGINE_STAGE_NAMES: [&str; 8] = [
     "routed_experts",
     "shared_expert_ffn_hc",
 ];
+const PREFILL_REPRESENTATIVE_ATTENTION_STAGE_NAMES: [&str; 5] = [
+    "qkv_rope",
+    "compressor_staging",
+    "flash_block",
+    "flash_attention",
+    "output_hc",
+];
 pub const RATIO128_COMPRESSOR_REPLAY_PROBE_SCHEMA: &str =
     "rust-star-ratio128-compressor-replay-probe-v1";
 pub const SPARSE_INDEXED_ATTENTION_PROBE_SCHEMA: &str =
@@ -4457,6 +4464,7 @@ pub struct EngineRunReport {
     pub prefill_transformer_gpu_ms: f64,
     pub prefill_transformer_layer_gpu_ms: Option<Vec<f64>>,
     pub prefill_representative_stage_gpu_ms: Option<Vec<f64>>,
+    pub prefill_representative_attention_stage_gpu_ms: Option<Vec<f64>>,
     pub prefill_output_head_wall_ms: f64,
     pub prefill_output_head_gpu_ms: f64,
     pub prefill_handoff_wall_ms: f64,
@@ -5830,7 +5838,10 @@ pub fn write_engine_run_json<W: Write>(output: &mut W, report: &EngineRunReport)
         || report.generation_layer_timing_collection != report.gen_steady_layer_gpu_ms.is_some()
         || report.prefill_layer_timing_collection
             != (report.prefill_transformer_layer_gpu_ms.is_some()
-                && report.prefill_representative_stage_gpu_ms.is_some())
+                && report.prefill_representative_stage_gpu_ms.is_some()
+                && report
+                    .prefill_representative_attention_stage_gpu_ms
+                    .is_some())
         || report
             .prefill_transformer_layer_gpu_ms
             .as_ref()
@@ -5856,6 +5867,22 @@ pub fn write_engine_run_json<W: Write>(output: &mut W, report: &EngineRunReport)
                         .is_none_or(|layers| {
                             (values[0] + values[1] - layers[2]).abs() > 1.0e-3
                                 || (values[2] + values[3] - layers[3]).abs() > 1.0e-3
+                        })
+            })
+        || report
+            .prefill_representative_attention_stage_gpu_ms
+            .as_ref()
+            .is_some_and(|values| {
+                values.len() != 10
+                    || values
+                        .iter()
+                        .any(|value| !value.is_finite() || *value <= 0.0)
+                    || report
+                        .prefill_representative_stage_gpu_ms
+                        .as_ref()
+                        .is_none_or(|stages| {
+                            (values[..5].iter().sum::<f64>() - stages[0]).abs() > 1.0e-3
+                                || (values[5..].iter().sum::<f64>() - stages[2]).abs() > 1.0e-3
                         })
             })
         || report
@@ -5954,6 +5981,22 @@ pub fn write_engine_run_json<W: Write>(output: &mut W, report: &EngineRunReport)
                 )
             },
         );
+    let prefill_representative_attention_stage_gpu_ms = report
+        .prefill_representative_attention_stage_gpu_ms
+        .as_ref()
+        .map_or_else(
+            || "null".to_owned(),
+            |values| {
+                format!(
+                    "[{}]",
+                    values
+                        .iter()
+                        .map(|value| format!("{value:.9}"))
+                        .collect::<Vec<_>>()
+                        .join(",")
+                )
+            },
+        );
     let representative_stage_profile = report
         .prefill_representative_stage_gpu_ms
         .as_ref()
@@ -5971,6 +6014,41 @@ pub fn write_engine_run_json<W: Write>(output: &mut W, report: &EngineRunReport)
                     values[3],
                     values[3] / (values[2] + values[3]),
                 )
+            },
+        );
+    let representative_attention_stage_profile = report
+        .prefill_representative_attention_stage_gpu_ms
+        .as_ref()
+        .map_or_else(
+            || "null".to_owned(),
+            |values| {
+                let representative_stages = report
+                    .prefill_representative_stage_gpu_ms
+                    .as_ref()
+                    .expect("validated representative stage profile");
+                values
+                    .iter()
+                    .enumerate()
+                    .map(|(index, gpu_ms)| {
+                        let layer = if index < 5 { 4 } else { 5 };
+                        let family = if index < 5 {
+                            "even-ratio4"
+                        } else {
+                            "odd-ratio128"
+                        };
+                        let attention_gpu_ms = if index < 5 {
+                            representative_stages[0]
+                        } else {
+                            representative_stages[2]
+                        };
+                        format!(
+                            "{{\"layer\":{layer},\"family\":\"{family}\",\"stage\":\"{}\",\"gpu_ms\":{gpu_ms:.9},\"attention_share\":{:.9}}}",
+                            PREFILL_REPRESENTATIVE_ATTENTION_STAGE_NAMES[index % 5],
+                            gpu_ms / attention_gpu_ms,
+                        )
+                    })
+                    .collect::<Vec<_>>()
+                    .join(",")
             },
         );
     let prefill_layer_profile = report
@@ -5992,7 +6070,7 @@ pub fn write_engine_run_json<W: Write>(output: &mut W, report: &EngineRunReport)
                     .collect::<Vec<_>>()
                     .join(",");
                 format!(
-                    "{{\"method\":\"synchronized-command-buffer-gpu-timestamps\",\"layers_start\":2,\"layers_end\":42,\"attributed_command_buffers\":43,\"total_command_buffers\":44,\"host_waits\":44,\"profile_perturbed\":true,\"representative_stages\":{representative_stage_profile},\"layers\":[{layers}]}}"
+                    "{{\"method\":\"synchronized-command-buffer-gpu-timestamps\",\"layers_start\":2,\"layers_end\":42,\"attributed_command_buffers\":51,\"total_command_buffers\":52,\"host_waits\":52,\"profile_perturbed\":true,\"representative_stages\":{representative_stage_profile},\"representative_attention_stages\":[{representative_attention_stage_profile}],\"layers\":[{layers}]}}"
                 )
             },
         );
@@ -6028,7 +6106,7 @@ pub fn write_engine_run_json<W: Write>(output: &mut W, report: &EngineRunReport)
     let paired_protocol_blocker = if report.prefill_correctness_collection {
         "\"native prefill still materializes and verifies diagnostic boundary tensors outside its GPU intervals\""
     } else if report.prefill_layer_timing_collection {
-        "\"prefill profiling splits one native transformer command into 44 synchronized diagnostic command buffers\""
+        "\"prefill profiling splits one native transformer command into 52 synchronized diagnostic command buffers\""
     } else if report.generation_stage_counter_collection {
         "\"Metal stage counters split compute encoders and perturb generated-token dispatch families\""
     } else if report.generation_layer_timing_collection {
@@ -6038,7 +6116,7 @@ pub fn write_engine_run_json<W: Write>(output: &mut W, report: &EngineRunReport)
     };
     write!(
         output,
-        "{{\n  \"schema\": \"{ENGINE_RUN_SCHEMA}\",\n  \"engine\": \"rust-star\",\n  \"context\": {},\n  \"gen_tokens\": {},\n  \"metrics\": {{\"ctx_tokens\": {}, \"prefill_tokens\": {}, \"gen_tokens\": {}, \"gen_steady_tokens\": {}, \"prefill_tps\": {:.9}, \"prefill_ms\": {:.9}, \"gen_tps\": {:.9}, \"gen_ms\": {:.9}, \"gen_first_ms\": {:.9}, \"gen_steady_tps\": {:.9}, \"gen_steady_ms\": {:.9}}},\n  \"selection\": {{\"prefill_token\": {}, \"final_token\": {}, \"selected_tokens_checksum\": {}, \"oracle_transcript_match\": true}},\n  \"timing\": {{\"model_warm_bytes\": {}, \"model_warm_pages\": {}, \"model_warm_checksum\": {}, \"model_warm_ms\": {:.9}, \"model_view_bytes\": {}, \"model_view_warm_touches\": {}, \"model_view_count\": {}, \"model_residency_allocations\": {}, \"model_residency_queue_attached\": {}, \"model_view_warm_wall_ms\": {:.9}, \"model_view_warm_gpu_ms\": {:.9}, \"prefill_tile_wall_ms\": {:.9}, \"prefill_tile_gpu_ms\": {:.9}, \"prefill_transformer_wall_ms\": {:.9}, \"prefill_transformer_gpu_ms\": {:.9}, \"prefill_transformer_layer_gpu_ms\": {}, \"prefill_representative_stage_gpu_ms\": {}, \"prefill_output_head_wall_ms\": {:.9}, \"prefill_output_head_gpu_ms\": {:.9}, \"prefill_handoff_wall_ms\": {:.9}, \"prefill_handoff_gpu_ms\": {:.9}, \"prefill_host_overhead_ms\": {:.9}, \"decoder_prepare_ms\": {:.9}, \"gen_first_transformer_wall_ms\": {:.9}, \"gen_first_transformer_gpu_ms\": {:.9}, \"gen_first_layer_gpu_ms\": [{}], \"gen_first_output_head_wall_ms\": {:.9}, \"gen_first_output_head_gpu_ms\": {:.9}, \"gen_steady_transformer_wall_ms\": {:.9}, \"gen_steady_transformer_gpu_ms\": {:.9}, \"gen_steady_layer_gpu_ms\": {}, \"gen_steady_output_head_wall_ms\": {:.9}, \"gen_steady_output_head_gpu_ms\": {:.9}, \"generation_command_buffers_per_token\": {}, \"generation_host_waits_per_token\": {}, \"generation_correctness_collection\": false, \"generation_layer_timing_collection\": {}, \"generation_stage_counter_collection\": {}, \"prefill_correctness_collection\": {}, \"prefill_layer_timing_collection\": {}}},\n  \"prefill_layer_profile\": {},\n  \"stage_profile\": {},\n  \"paired_protocol_eligible\": {},\n  \"paired_protocol_blocker\": {}\n}}\n",
+        "{{\n  \"schema\": \"{ENGINE_RUN_SCHEMA}\",\n  \"engine\": \"rust-star\",\n  \"context\": {},\n  \"gen_tokens\": {},\n  \"metrics\": {{\"ctx_tokens\": {}, \"prefill_tokens\": {}, \"gen_tokens\": {}, \"gen_steady_tokens\": {}, \"prefill_tps\": {:.9}, \"prefill_ms\": {:.9}, \"gen_tps\": {:.9}, \"gen_ms\": {:.9}, \"gen_first_ms\": {:.9}, \"gen_steady_tps\": {:.9}, \"gen_steady_ms\": {:.9}}},\n  \"selection\": {{\"prefill_token\": {}, \"final_token\": {}, \"selected_tokens_checksum\": {}, \"oracle_transcript_match\": true}},\n  \"timing\": {{\"model_warm_bytes\": {}, \"model_warm_pages\": {}, \"model_warm_checksum\": {}, \"model_warm_ms\": {:.9}, \"model_view_bytes\": {}, \"model_view_warm_touches\": {}, \"model_view_count\": {}, \"model_residency_allocations\": {}, \"model_residency_queue_attached\": {}, \"model_view_warm_wall_ms\": {:.9}, \"model_view_warm_gpu_ms\": {:.9}, \"prefill_tile_wall_ms\": {:.9}, \"prefill_tile_gpu_ms\": {:.9}, \"prefill_transformer_wall_ms\": {:.9}, \"prefill_transformer_gpu_ms\": {:.9}, \"prefill_transformer_layer_gpu_ms\": {}, \"prefill_representative_stage_gpu_ms\": {}, \"prefill_representative_attention_stage_gpu_ms\": {}, \"prefill_output_head_wall_ms\": {:.9}, \"prefill_output_head_gpu_ms\": {:.9}, \"prefill_handoff_wall_ms\": {:.9}, \"prefill_handoff_gpu_ms\": {:.9}, \"prefill_host_overhead_ms\": {:.9}, \"decoder_prepare_ms\": {:.9}, \"gen_first_transformer_wall_ms\": {:.9}, \"gen_first_transformer_gpu_ms\": {:.9}, \"gen_first_layer_gpu_ms\": [{}], \"gen_first_output_head_wall_ms\": {:.9}, \"gen_first_output_head_gpu_ms\": {:.9}, \"gen_steady_transformer_wall_ms\": {:.9}, \"gen_steady_transformer_gpu_ms\": {:.9}, \"gen_steady_layer_gpu_ms\": {}, \"gen_steady_output_head_wall_ms\": {:.9}, \"gen_steady_output_head_gpu_ms\": {:.9}, \"generation_command_buffers_per_token\": {}, \"generation_host_waits_per_token\": {}, \"generation_correctness_collection\": false, \"generation_layer_timing_collection\": {}, \"generation_stage_counter_collection\": {}, \"prefill_correctness_collection\": {}, \"prefill_layer_timing_collection\": {}}},\n  \"prefill_layer_profile\": {},\n  \"stage_profile\": {},\n  \"paired_protocol_eligible\": {},\n  \"paired_protocol_blocker\": {}\n}}\n",
         report.context,
         report.gen_tokens,
         report.context,
@@ -6072,6 +6150,7 @@ pub fn write_engine_run_json<W: Write>(output: &mut W, report: &EngineRunReport)
         report.prefill_transformer_gpu_ms,
         prefill_transformer_layer_gpu_ms,
         prefill_representative_stage_gpu_ms,
+        prefill_representative_attention_stage_gpu_ms,
         report.prefill_output_head_wall_ms,
         report.prefill_output_head_gpu_ms,
         report.prefill_handoff_wall_ms,
@@ -19966,6 +20045,13 @@ mod imp {
             error: *mut c_char,
             error_bytes: usize,
         ) -> i32;
+        fn rust_star_metal_copy_prefill_representative_attention_stage_gpu_times(
+            context: *mut c_void,
+            stage_count: u32,
+            gpu_ms: *mut f64,
+            error: *mut c_char,
+            error_bytes: usize,
+        ) -> i32;
         fn rust_star_metal_copy_chained_layer_gpu_times(
             context: *mut c_void,
             layer_count: u32,
@@ -22010,6 +22096,28 @@ mod imp {
             if copied == 0 {
                 return Err(Error::invalid(format!(
                     "Metal prefill representative stage timing failed: {}",
+                    error_text(&error)
+                )));
+            }
+            Ok(gpu_ms)
+        }
+
+        fn prefill_representative_attention_stage_gpu_times(&self) -> Result<Vec<f64>> {
+            const STAGE_COUNT: usize = 10;
+            let mut gpu_ms = vec![0.0; STAGE_COUNT];
+            let mut error = [0 as c_char; ERROR_BYTES];
+            let copied = unsafe {
+                rust_star_metal_copy_prefill_representative_attention_stage_gpu_times(
+                    self.0,
+                    STAGE_COUNT as u32,
+                    gpu_ms.as_mut_ptr(),
+                    error.as_mut_ptr(),
+                    error.len(),
+                )
+            };
+            if copied == 0 {
+                return Err(Error::invalid(format!(
+                    "Metal prefill representative attention stage timing failed: {}",
                     error_text(&error)
                 )));
             }
@@ -24396,6 +24504,7 @@ mod imp {
         transformer_gpu_ms: f64,
         transformer_layer_gpu_ms: Option<Vec<f64>>,
         representative_stage_gpu_ms: Option<Vec<f64>>,
+        representative_attention_stage_gpu_ms: Option<Vec<f64>>,
         output_head_wall_ms: f64,
         output_head_gpu_ms: f64,
     }
@@ -32052,6 +32161,8 @@ mod imp {
                 timing.transformer_layer_gpu_ms = Some(context.prefill_layer_gpu_times()?);
                 timing.representative_stage_gpu_ms =
                     Some(context.prefill_representative_stage_gpu_times()?);
+                timing.representative_attention_stage_gpu_ms =
+                    Some(context.prefill_representative_attention_stage_gpu_times()?);
             }
             timing.output_head_wall_ms = output_head_started.elapsed().as_secs_f64() * 1000.0;
             timing.output_head_gpu_ms = output_head_gpu_ms;
@@ -43933,6 +44044,8 @@ mod imp {
             prefill_transformer_gpu_ms: prefill_timing.transformer_gpu_ms,
             prefill_transformer_layer_gpu_ms: prefill_timing.transformer_layer_gpu_ms,
             prefill_representative_stage_gpu_ms: prefill_timing.representative_stage_gpu_ms,
+            prefill_representative_attention_stage_gpu_ms: prefill_timing
+                .representative_attention_stage_gpu_ms,
             prefill_output_head_wall_ms: prefill_timing.output_head_wall_ms,
             prefill_output_head_gpu_ms: prefill_timing.output_head_gpu_ms,
             prefill_handoff_wall_ms: prefill_handoff.wall_ms,
@@ -48334,6 +48447,7 @@ mod tests {
             prefill_transformer_gpu_ms: 15500.0,
             prefill_transformer_layer_gpu_ms: None,
             prefill_representative_stage_gpu_ms: None,
+            prefill_representative_attention_stage_gpu_ms: None,
             prefill_output_head_wall_ms: 10.0,
             prefill_output_head_gpu_ms: 8.0,
             prefill_handoff_wall_ms: 50.0,
@@ -48674,6 +48788,7 @@ mod tests {
         assert!(text.contains("\"prefill_transformer_gpu_ms\": 15500.000000000"));
         assert!(text.contains("\"prefill_transformer_layer_gpu_ms\": null"));
         assert!(text.contains("\"prefill_representative_stage_gpu_ms\": null"));
+        assert!(text.contains("\"prefill_representative_attention_stage_gpu_ms\": null"));
         assert!(text.contains("\"prefill_layer_timing_collection\": false"));
         assert!(text.contains("\"prefill_host_overhead_ms\": 915.000000000"));
         assert!(text.contains("\"gen_first_transformer_gpu_ms\": 50.000000000"));
@@ -48707,6 +48822,12 @@ mod tests {
             9000.0 / 41.0,
             6500.0 / 41.0,
         ]);
+        report.prefill_representative_attention_stage_gpu_ms = Some(
+            [10000.0 / 41.0 / 5.0, 9000.0 / 41.0 / 5.0]
+                .into_iter()
+                .flat_map(|value| [value; 5])
+                .collect(),
+        );
         report.prefill_layer_timing_collection = true;
         let mut output = Vec::new();
         write_engine_run_json(&mut output, &report).unwrap();
@@ -48718,7 +48839,12 @@ mod tests {
         assert!(text.contains("\"family\":\"even-ratio4\""));
         assert!(text.contains("\"family\":\"odd-ratio128\""));
         assert!(text.contains("\"stage\":\"attention\""));
-        assert!(text.contains("44 synchronized diagnostic command buffers"));
+        assert!(text.contains("\"stage\":\"qkv_rope\""));
+        assert!(text.contains("\"stage\":\"compressor_staging\""));
+        assert!(text.contains("\"stage\":\"flash_block\""));
+        assert!(text.contains("\"stage\":\"flash_attention\""));
+        assert!(text.contains("\"stage\":\"output_hc\""));
+        assert!(text.contains("52 synchronized diagnostic command buffers"));
         assert!(text.contains("\"paired_protocol_eligible\": false"));
     }
 

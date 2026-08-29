@@ -932,12 +932,15 @@ because its raw-cache append is not a valid unwrapped 2K store.
 its decode attribution, it splits the otherwise single layers-2-through-42
 prefill transformer command into synchronized per-layer command buffers and
 records each completed command buffer's Metal GPU interval. Representative
-even layer 4 and odd layer 5 receive one further attention-to-FFN split. The
-JSON report labels all 44 diagnostic command buffers and host waits, requires
-the 41 layer intervals to sum to the reported transformer GPU time, requires
-both representative stage pairs to sum to their layer totals, and blocks
-paired use. Normal `engine-measure` neither enables this state nor changes the
-production prefill command schedule.
+even layer 4 and odd layer 5 receive an attention-to-FFN split plus five
+attention-internal intervals: QKV/RoPE, compressor/staging, Flash block
+preparation, FlashAttention, and output/HC. The JSON report labels all 52
+diagnostic command buffers and host waits, requires the 41 layer intervals to
+sum to the reported transformer GPU time, requires each representative
+attention breakdown to sum to its attention interval and both attention/FFN
+pairs to sum to their layer totals, and blocks paired use. Normal
+`engine-measure` neither enables this state nor changes the production prefill
+command schedule.
 
 To validate the complete retained step at the same position:
 

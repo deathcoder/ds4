@@ -177,6 +177,14 @@ history; add a correction and update the current-state summary.
   251.904 ms (1.296x); DwarfStar's split profile averages 283.103 and 223.180
   ms respectively (1.268x). The remaining transformer deficit is distributed
   across the alternating attention families rather than one anomalous layer.
+  Representative layers 4 and 5 are now further split into QKV/RoPE,
+  compressor/staging, Flash block preparation, FlashAttention, and output/HC.
+  Three exact Rust profiles and three Dwarf profiles per layer put the median
+  main FlashAttention dispatch about 30% behind in both families while every
+  surrounding Rust stage is at or ahead of Dwarf. Kernel source, constants,
+  launch grid, threadgroup memory, fast-math defaults, and M1 shared-storage
+  policy match, so the next bounded experiment targets NSG scheduling rather
+  than buffer ownership or arithmetic changes.
 - Implementation: dependency-free Rust host scaffold under `rust-star/runtime/`
   strictly parses GGUF v3 directories, validates the Flash resident-Q2
   shape/recipe, and writes candidate full-logit artifacts. A macOS-only
@@ -718,9 +726,9 @@ history; add a correction and update the current-state summary.
 
 ## Immediate Next Actions
 
-1. Add a focused alternating A/B harness inside representative prefill
-   attention, separating QKV/RoPE, compressor, FlashAttention, and output/HC
-   work before changing the shared production path.
+1. Add a same-context alternating NSG scheduling A/B for the representative
+   ratio-4 and ratio-128 512-wide FlashAttention shapes. Require exact output
+   equivalence and a reproducible median GPU win before changing production.
 2. Extend the eligible engine and exact transcript gate to the next context
    frontier before treating this narrow 2K result as representative.
 3. Preserve the exact 2K-to-position-4099 native handoff, complete retained
@@ -734,6 +742,60 @@ history; add a correction and update the current-state summary.
 6. Run or approve the fork's GitHub Actions workflow and retain its URL.
 
 ## Entries
+
+### 2026-08-29 — Attention internals isolate the 512-wide Flash dispatch
+
+- Extended the paired-ineligible prefill profiler with five synchronized
+  attention intervals in representative even layer 4 and odd layer 5:
+  QKV/RoPE, compressor/staging, Flash block preparation, the main
+  FlashAttention dispatch, and output/HC. The report now validates ten positive
+  intervals, requires each five-stage sum to equal its attention interval, and
+  labels all 52 diagnostic command buffers and host waits.
+- Three exact Rust profiles selected prefill token 15342, final token 8954, and
+  the pinned 128-token transcript checksum `17615242442502606640`. Median layer
+  4 intervals were 16.657, 3.891, 0.031, 140.823, and 48.905 ms. Median layer 5
+  intervals were 16.729, 1.564, 0.027, 71.147, and 51.007 ms.
+- Repeated DwarfStar's independent layer-stage capture three times per layer.
+  Its median grouped layer-4 intervals were 18.781 ms QKV/RoPE, 18.040 ms
+  compressor/indexer, 108.419 ms attention, and 53.668 ms output/HC. Layer 5
+  measured 18.285, 3.770, 54.666, and 52.736 ms. Rust is therefore already
+  faster in every surrounding group, while its main FlashAttention dispatch is
+  29.89% slower in layer 4 and 30.15% slower in layer 5.
+- Source and runtime inspection ruled out the first buffer-mode hypothesis.
+  Both paths compile the same `kernel_flash_attn_ext_f16_dk512_dv512` source
+  with the same function constants, 256-by-head grid, 32-by-8 threadgroup,
+  28,672-byte threadgroup allocation, and default fast math. Both use shared
+  KV scratch on the M1 Ultra; DwarfStar enables private GPU-only scratch only
+  on M5.
+- Accepted Rust profile SHA-256 values are
+  `655036c88580cf34268db7058301131e26b241df1b1360fd8b6526f5f10c4fcd`,
+  `abdf50876a893a3518a9ed2c53af58d27f23283a1e704dc4ac6bbdc2ac6f95dd`,
+  and `42635cf17d4df9424af052ab85605ac09c92469edcb388965cf1e860c48fa42a`.
+  The final executable SHA-256 is
+  `d53bd748bd3904d5292d7c7bf5a5a33da2f254fa82d877844ace36828becfe2b`.
+  Dwarf measurement SHA-256 values are
+  `9d456de1872b812388c85df3a4d02dab200231e6df734ee716c227b5bcbeb86c`,
+  `474604408a5722aeb69f2e4cec135c9d02815f51c5d5c96ff304837ba6cbb0bd`,
+  and `5e3442e326e985970e2f6dfc7b5b511e6a3fef2e9c5f56612d7cd73419ef2bcf`
+  for layer 4, plus
+  `36bcf4cfd6ab55ff24f855dfdbdb2ea2abc385f893c80f7dabb4b25701196c8d`,
+  `a1b844197fc27e95fd7ab3f78bbbe8bc50d08c33f4bd6676d4a6ad4fca2150ac`,
+  and `f1363e5336eac84fee5ebb84a22820cbe6d73d97c7ba19ebd133f6e9f21ce71a`
+  for layer 5.
+- A final unprofiled control from the same executable remained exact and paired
+  eligible, emitted all three prefill profile arrays as `null`, and measured
+  138.083 prefill tok/s plus 24.029 steady decode tok/s. Raw SHA-256:
+  `af76275bd9fe8beb613e1412196525e347178bdcce84cf856248e5f6e14dbf04`.
+- Decision: do not change buffer storage or kernel math from this diagnostic.
+  Build a same-context NSG scheduling benchmark for both representative shapes;
+  promote a candidate only after exact output comparison and repeatable median
+  improvement.
+
+Validation:
+
+- Optimized macOS release build and exact live profile/control runs.
+- 297 Rust tests and 73 Python tests pass.
+- `cargo fmt -- --check` and `git diff --check` pass.
 
 ### 2026-08-29 — Representative layers localize the prefill deficit to attention
 

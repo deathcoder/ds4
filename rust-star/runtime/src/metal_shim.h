@@ -626,6 +626,13 @@ int rust_star_metal_copy_prefill_representative_stage_gpu_times(
     char *error,
     size_t error_bytes);
 
+int rust_star_metal_copy_prefill_representative_attention_stage_gpu_times(
+    void *context,
+    uint32_t stage_count,
+    double *gpu_ms,
+    char *error,
+    size_t error_bytes);
+
 int rust_star_metal_copy_chained_layer_gpu_times(
     void *context,
     uint32_t layer_count,
