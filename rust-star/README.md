@@ -342,10 +342,14 @@ result is not the protocol's 256K headline claim. The subsequent immutable
 `cdb6377` checkpoint widens only the timing-only bootstrap from 64 32-row
 command buffers to 32 64-row command buffers. It fixes the row-derived matrix,
 FlashAttention, and grouped-output launch geometry that invalidated the first
-wide-row experiment while retaining the exact 32-row diagnostic schedule. A
-clean exact development run measured 132.726509564 prefill tok/s and reduced
-bootstrap GPU time from 3,457.269167 to 2,429.833625 ms. This is promising
-single-run evidence, not a replacement for the published five-pair result.
+wide-row experiment while retaining the exact 32-row diagnostic schedule.
+`cdb6377` then completed five exact pairs without a failure, retry, or invalid
+attempt. Rust Star measured 133.070209951 prefill tok/s versus DwarfStar's
+186.35, for a 0.713851042x median pairwise ratio. The remaining prefill gap is
+28.61%, down 4.06 percentage points from `eae11df`. Rust retains a 3.87% steady
+decode lead and 6.47% complete-generation lead; first-token wall time is 13.0%
+slower in this run. This exact development result is not the protocol's 256K
+headline claim.
 
 Project controls and benchmark contracts:
 

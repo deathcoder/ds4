@@ -166,10 +166,12 @@ history; add a correction and update the current-state summary.
   grids, a fixed four-group FlashAttention grid, and a 32-row grouped-output
   routing allocation. Immutable checkpoint `cdb6377` makes those geometries
   row-derived and uses 32 exact 64-row production tiles while retaining all
-  32-row diagnostics. A clean exact development run measured 132.726509564
-  prefill tok/s and 2,429.833625 ms bootstrap GPU time; this is not yet a new
-  paired result. A full-2K bootstrap remains rejected because the 128-row raw
-  cache append requires wrapping.
+  32-row diagnostics. Immutable `cdb6377` completed five exact pairs without a
+  failure, retry, or invalid attempt. Rust Star measured 133.070209951 prefill
+  tok/s versus DwarfStar's 186.35; the median pairwise ratio is 0.713851042x
+  and the remaining gap is 28.61%. Rust retains a 3.87% steady-decode lead and
+  6.47% complete-generation lead. A full-2K bootstrap remains rejected because
+  the 128-row raw-cache append requires wrapping.
 - Implementation: dependency-free Rust host scaffold under `rust-star/runtime/`
   strictly parses GGUF v3 directories, validates the Flash resident-Q2
   shape/recipe, and writes candidate full-logit artifacts. A macOS-only
@@ -711,8 +713,9 @@ history; add a correction and update the current-state summary.
 
 ## Immediate Next Actions
 
-1. Freeze `cdb6377` and run a fresh five-pair exact 2K/128 comparison before
-   replacing the published prefill ratio.
+1. Add paired-ineligible per-layer attribution to the remaining prefill
+   transformer interval and compare it with DwarfStar's split profile before
+   changing more production kernels.
 2. Extend the eligible engine and exact transcript gate to the next context
    frontier before treating this narrow 2K result as representative.
 3. Preserve the exact 2K-to-position-4099 native handoff, complete retained
@@ -726,6 +729,34 @@ history; add a correction and update the current-state summary.
 6. Run or approve the fork's GitHub Actions workflow and retain its URL.
 
 ## Entries
+
+### 2026-08-29 — Wide bootstrap raises the validated prefill ratio to 0.7139x
+
+- Froze the `cdb6377` executable and ran the predeclared five-pair 2K/128 plan
+  with SHA-256
+  `0e8776c817da116d33601b12dcee27598135ea2b7c9e0bf06b26138725412212`.
+  Both fresh-process warmups and all five timed pairs passed. There were no
+  failures, retries, blocked final pairs, or retained invalid attempts.
+- Rust Star median prefill was 133.070209951 tok/s versus DwarfStar's 186.35.
+  The median within-pair ratio was 0.713851042x, leaving a 28.61% gap. Compared
+  with `eae11df`'s 0.673232187x ratio, the wide bootstrap improves the ratio
+  6.03% relatively and narrows the gap by 4.06 percentage points.
+- Rust Star retained both generation leads: 23.543315664 versus 22.72 tok/s
+  steady (1.038685191x, +3.87%) and 23.502293406 versus 22.13 tok/s complete
+  generation (1.064717406x, +6.47%). First-token wall time measured a
+  1.129910481x pairwise ratio, so Rust was 13.0% slower on that interval in
+  this comparison rather than tied.
+- Independent validation and aggregation reproduced the byte-identical
+  summary. Raw result SHA-256 is
+  `e596d1aae9e49ed329fb88c7df17c8be7312ff058098ebac0a2a55550ed818c4`;
+  summary SHA-256 is
+  `dd5620d419d609878c05d027b5327ae18dc35ed68ac650dec42c6b42cb1de6ce`.
+  Private evidence is under `rust-star/.work/paired-2k-128-cdb6377/` and remains
+  intentionally untracked.
+- Decision: accept 0.713851042x as the new validated 2K prefill ratio. The next
+  optimization target is the approximately 11.94-second Rust remaining-
+  transformer GPU interval versus DwarfStar's 10.92-second full transformer;
+  first add per-layer attribution so the comparison is structurally valid.
 
 ### 2026-08-29 — Exact 64-row bootstrap cuts its GPU interval by 29.7%
 
@@ -766,8 +797,8 @@ history; add a correction and update the current-state summary.
 - Validation: optimized macOS build, exact production 2K/128 engine run, exact
   legacy 32-row compressor loop, all 296 Rust tests, all 73 Python tests,
   `cargo fmt --check`, and `git diff --check`.
-- Next: run a new immutable five-pair comparison for `cdb6377`. The published
-  `eae11df` paired ratio remains authoritative until that completes.
+- Next: freeze the implementation and run a new immutable five-pair comparison
+  before replacing the published `eae11df` ratio.
 
 ### 2026-08-29 — Queued prefill improves the paired ratio, not enough to close the gap
 
