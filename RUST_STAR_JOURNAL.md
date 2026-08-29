@@ -185,6 +185,11 @@ history; add a correction and update the current-state summary.
   launch grid, threadgroup memory, fast-math defaults, and M1 shared-storage
   policy match, so the next bounded experiment targets NSG scheduling rather
   than buffer ownership or arithmetic changes.
+  That experiment is now accepted: the shared non-vector FlashAttention
+  specialization and all 43 matching launches use four rather than eight SIMD
+  groups. Three exact profiles cut the representative kernel medians by 63.4%
+  and 65.4%, and three eligible controls raised median prefill from 138.083 to
+  171.682 tok/s without changing the 128-token transcript or decode schedule.
 - Implementation: dependency-free Rust host scaffold under `rust-star/runtime/`
   strictly parses GGUF v3 directories, validates the Flash resident-Q2
   shape/recipe, and writes candidate full-logit artifacts. A macOS-only
@@ -726,9 +731,8 @@ history; add a correction and update the current-state summary.
 
 ## Immediate Next Actions
 
-1. Add a same-context alternating NSG scheduling A/B for the representative
-   ratio-4 and ratio-128 512-wide FlashAttention shapes. Require exact output
-   equivalence and a reproducible median GPU win before changing production.
+1. Freeze the accepted four-SIMD-group FlashAttention candidate and run a fresh
+   immutable five-pair 2K/128 comparison against pinned DwarfStar.
 2. Extend the eligible engine and exact transcript gate to the next context
    frontier before treating this narrow 2K result as representative.
 3. Preserve the exact 2K-to-position-4099 native handoff, complete retained
@@ -742,6 +746,48 @@ history; add a correction and update the current-state summary.
 6. Run or approve the fork's GitHub Actions workflow and retain its URL.
 
 ## Entries
+
+### 2026-08-29 — Four-SIMD-group FlashAttention cuts prefill by 24.3%
+
+- Changed the shared 512-wide non-vector FlashAttention specialization from
+  eight to four SIMD groups and bound all 43 matching dispatches to the same
+  named `kRustStarFlashNonvecNsg` constant. Unrelated compressor and
+  attention-output launch geometries are unchanged.
+- Three exact paired-ineligible profiles reproduced the complete oracle
+  transcript. The layer-4 Flash median fell from 140.823 to 51.532 ms, a 63.4%
+  reduction; layer 5 fell from 71.147 to 24.633 ms, a 65.4% reduction. The new
+  Rust medians are respectively 52.5% and 54.9% faster than DwarfStar's
+  independent 108.419 and 54.666 ms medians for the same representative
+  stages.
+- Profile SHA-256 values are
+  `5e290bb4609f2f2d8cacb95726f6c2aa638a49563786d7c1e1cc28b4241b81e7`,
+  `2b40959eae2cad5c872ff72e512feb65f23f1a348a6e36ecee4be8feadbca4e2`,
+  and `8e824adc6f71cda9bee04e94df38cb2dbaec9e78287c156677ae0f17e944e096`.
+- Three eligible exact candidate runs measured 172.234, 170.329, and 171.682
+  prefill tok/s. Their 171.682 median is 24.3% above the immediately preceding
+  NSG=8 control's 138.083 tok/s. Steady decode remained 23.790--23.942 tok/s.
+  Raw SHA-256 values are
+  `2732109c4c167e1b6df8adeb1f5355dad7cfbfab312f2df51d33d1decdbab6c4`,
+  `0e39c4ee1a97791865aeff5a140223f43bb11748fc6c64431f65a71f9521f9a3`,
+  and `9f4ac289b1367048affd58b5771e203811bbdf4a45e409edd80b84df941bf993`.
+- The finalized named-constant source compiled to executable SHA-256
+  `d453ba11c37fa0f9738b32491848a09953bbd8af51b3d413076c876db5c59a24`,
+  identical to the tested candidate binary. Its final exact eligible control
+  measured 165.365 prefill and 23.505 steady tok/s; normal profile arrays were
+  all `null`. Raw SHA-256:
+  `38332d61da94495825497310da5ec5f6caa6dc7c1b9fc1b5155fc8a7376c7379`.
+- Decision: accept NSG=4 for the M1 Ultra target. The improvement is large,
+  repeated, isolated to the established bottleneck, bit-exact end to end, and
+  reproduced in unprofiled eligible execution. Freeze an immutable commit and
+  run the standard five-pair comparison before updating the validated DwarfStar
+  gap.
+
+Validation:
+
+- Optimized macOS release build.
+- Three exact profiles and four exact eligible controls.
+- 297 Rust tests and 73 Python tests pass.
+- `cargo fmt -- --check` and `git diff --check` pass.
 
 ### 2026-08-29 — Attention internals isolate the 512-wide Flash dispatch
 

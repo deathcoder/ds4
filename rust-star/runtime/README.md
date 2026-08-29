@@ -942,6 +942,14 @@ pairs to sum to their layer totals, and blocks paired use. Normal
 `engine-measure` neither enables this state nor changes the production prefill
 command schedule.
 
+The production 512-wide non-vector FlashAttention specialization uses four
+SIMD groups per 32-thread-wide launch. The function constant and all 43 matching
+prefill/decode dispatches share `kRustStarFlashNonvecNsg`, preventing a pipeline
+and launch-geometry mismatch. Three exact M1 Ultra profiles reduced the median
+representative Flash intervals by 63.4% and 65.4% relative to the earlier
+eight-group geometry; three eligible 2K/128 controls improved median prefill
+from 138.083 to 171.682 tok/s.
+
 To validate the complete retained step at the same position:
 
 ```sh

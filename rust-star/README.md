@@ -364,14 +364,17 @@ layer 4 and 71.147 versus 54.666 ms in layer 5, approximately 30% slower in
 both families. Rust's QKV/RoPE, compressor/staging, and output/HC medians are
 all at or ahead of Dwarf; Flash block preparation is only about 0.03 ms.
 
-The two runtimes use the same Metal kernel source, function constants, dispatch
-grid, threadgroup memory, fast-math default, and shared scratch storage on this
-M1 Ultra. DwarfStar's private-scratch path is M5-only, so storage-mode changes
-are not supported by this evidence. A normal-path control from the profiled
-executable remains exact and paired eligible; the profiler's 52 command buffers
-and waits are diagnostic only. The next gate is a same-context NSG scheduling
-A/B for the two representative FlashAttention shapes, followed by a full exact
-engine run only if the isolated candidate wins.
+The two runtimes use the same Metal kernel source, grid, threadgroup memory,
+fast-math default, and shared scratch storage on this M1 Ultra. DwarfStar's
+private-scratch path is M5-only, so storage-mode changes are not supported by
+this evidence. Reducing the 512-wide non-vector pipeline and all 43 matching
+launches from eight to four SIMD groups preserved the exact transcript and cut
+the median representative Flash intervals by 63.4% and 65.4%. Three eligible
+runs measured 170.329--172.234 prefill tok/s, with a 171.682 median versus
+138.083 for the immediately preceding NSG=8 control, a 24.3% gain. A final
+control from the named production constant remained exact and paired eligible.
+The profiler's 52 command buffers and waits remain diagnostic only; the next
+gate is a fresh immutable five-pair comparison against DwarfStar.
 
 Project controls and benchmark contracts:
 

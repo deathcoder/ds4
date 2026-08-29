@@ -151,6 +151,7 @@ static NSString *const kGetRowsF16Source =
 // accidentally specialize the Metal functions and dispatch them differently.
 // Valid IQ2/Q2 decode candidates are 1, 2, and 4 SIMD groups.
 static const int16_t kRustStarRoutedNsg = 2;
+static const NSUInteger kRustStarFlashNonvecNsg = 4u;
 
 // Imported from DwarfStar metal/dense.metal. The fixed target uses DwarfStar's
 // default four simdgroups and two output rows per threadgroup. DwarfStar forces
@@ -1104,7 +1105,7 @@ static int ensure_attention_ingress_pipelines(
     id<MTLFunction> flashBlk = [library newFunctionWithName:@"kernel_flash_attn_ext_blk"
                                             constantValues:blkConstants error:&compile_error];
     int32_t headDim = 512, nsg = 1, nwg = 32;
-    int32_t nonvecNsg = 8;
+    int32_t nonvecNsg = (int32_t)kRustStarFlashNonvecNsg;
     MTLFunctionConstantValues *nonvecConstants = [MTLFunctionConstantValues new];
     [nonvecConstants setConstantValue:&enabled type:MTLDataTypeBool atIndex:300];
     [nonvecConstants setConstantValue:&enabled type:MTLDataTypeBool atIndex:301];
@@ -5390,7 +5391,7 @@ int rust_star_metal_run_prefill_layer0_boundary(
         [encoder setBuffer:attention_output_buffer offset:0 atIndex:8];
         [encoder setThreadgroupMemoryLength:28672u atIndex:0];
         [encoder dispatchThreadgroups:MTLSizeMake((rows+7u)/8u,n_head,1)
-             threadsPerThreadgroup:MTLSizeMake(32,8,1)];
+             threadsPerThreadgroup:MTLSizeMake(32,kRustStarFlashNonvecNsg,1)];
         [encoder endEncoding];
 
         blit = [command blitCommandEncoder];
@@ -5804,7 +5805,7 @@ int rust_star_metal_run_prefill_layer0_boundary(
             [encoder setBuffer:next_attention_output_buffer offset:0 atIndex:8];
             [encoder setThreadgroupMemoryLength:28672u atIndex:0];
             [encoder dispatchThreadgroups:MTLSizeMake((rows+7u)/8u,n_head,1)
-                 threadsPerThreadgroup:MTLSizeMake(32,8,1)];
+                 threadsPerThreadgroup:MTLSizeMake(32,kRustStarFlashNonvecNsg,1)];
             [encoder endEncoding];
 
             blit = [command blitCommandEncoder];
@@ -17536,7 +17537,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setBuffer:heads_buffer offset:0 atIndex:8];
         [encoder setThreadgroupMemoryLength:28672u atIndex:0];
         [encoder dispatchThreadgroups:MTLSizeMake(256,n_head,1)
-             threadsPerThreadgroup:MTLSizeMake(32,8,1)];
+             threadsPerThreadgroup:MTLSizeMake(32,kRustStarFlashNonvecNsg,1)];
 
         [encoder setComputePipelineState:context.ropeTailPipeline];
         [encoder setBytes:&inverse_args length:sizeof(inverse_args) atIndex:0];
@@ -17961,7 +17962,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setBuffer:heads_buffer offset:0 atIndex:8];
         [encoder setThreadgroupMemoryLength:28672u atIndex:0];
         [encoder dispatchThreadgroups:MTLSizeMake(256,n_head,1)
-             threadsPerThreadgroup:MTLSizeMake(32,8,1)];
+             threadsPerThreadgroup:MTLSizeMake(32,kRustStarFlashNonvecNsg,1)];
 
         [encoder endEncoding];
         id<MTLBlitCommandEncoder> layer3_attention_blit =
@@ -18435,7 +18436,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setBuffer:heads_buffer offset:0 atIndex:8];
         [encoder setThreadgroupMemoryLength:28672u atIndex:0];
         [encoder dispatchThreadgroups:MTLSizeMake(256,n_head,1)
-             threadsPerThreadgroup:MTLSizeMake(32,8,1)];
+             threadsPerThreadgroup:MTLSizeMake(32,kRustStarFlashNonvecNsg,1)];
         [encoder endEncoding];
 
         id<MTLBlitCommandEncoder> layer4_attention_blit =
@@ -18884,7 +18885,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setBuffer:heads_buffer offset:0 atIndex:8];
         [encoder setThreadgroupMemoryLength:28672u atIndex:0];
         [encoder dispatchThreadgroups:MTLSizeMake(256,n_head,1)
-             threadsPerThreadgroup:MTLSizeMake(32,8,1)];
+             threadsPerThreadgroup:MTLSizeMake(32,kRustStarFlashNonvecNsg,1)];
         [encoder endEncoding];
 
         id<MTLBlitCommandEncoder> layer5_attention_blit =
@@ -19360,7 +19361,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setBuffer:heads_buffer offset:0 atIndex:8];
         [encoder setThreadgroupMemoryLength:28672u atIndex:0];
         [encoder dispatchThreadgroups:MTLSizeMake(256,n_head,1)
-             threadsPerThreadgroup:MTLSizeMake(32,8,1)];
+             threadsPerThreadgroup:MTLSizeMake(32,kRustStarFlashNonvecNsg,1)];
         [encoder endEncoding];
 
         id<MTLBlitCommandEncoder> layer6_attention_blit =
@@ -19811,7 +19812,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setBuffer:heads_buffer offset:0 atIndex:8];
         [encoder setThreadgroupMemoryLength:28672u atIndex:0];
         [encoder dispatchThreadgroups:MTLSizeMake(256,n_head,1)
-             threadsPerThreadgroup:MTLSizeMake(32,8,1)];
+             threadsPerThreadgroup:MTLSizeMake(32,kRustStarFlashNonvecNsg,1)];
         [encoder endEncoding];
 
         id<MTLBlitCommandEncoder> layer7_attention_blit =
@@ -20293,7 +20294,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setBuffer:heads_buffer offset:0 atIndex:8];
         [encoder setThreadgroupMemoryLength:28672u atIndex:0];
         [encoder dispatchThreadgroups:MTLSizeMake(256,n_head,1)
-             threadsPerThreadgroup:MTLSizeMake(32,8,1)];
+             threadsPerThreadgroup:MTLSizeMake(32,kRustStarFlashNonvecNsg,1)];
         [encoder endEncoding];
 
         id<MTLBlitCommandEncoder> layer8_attention_blit =
@@ -20744,7 +20745,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setBuffer:heads_buffer offset:0 atIndex:8];
         [encoder setThreadgroupMemoryLength:28672u atIndex:0];
         [encoder dispatchThreadgroups:MTLSizeMake(256,n_head,1)
-             threadsPerThreadgroup:MTLSizeMake(32,8,1)];
+             threadsPerThreadgroup:MTLSizeMake(32,kRustStarFlashNonvecNsg,1)];
         [encoder endEncoding];
 
         id<MTLBlitCommandEncoder> layer9_attention_blit =
@@ -21226,7 +21227,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setBuffer:heads_buffer offset:0 atIndex:8];
         [encoder setThreadgroupMemoryLength:28672u atIndex:0];
         [encoder dispatchThreadgroups:MTLSizeMake(256,n_head,1)
-             threadsPerThreadgroup:MTLSizeMake(32,8,1)];
+             threadsPerThreadgroup:MTLSizeMake(32,kRustStarFlashNonvecNsg,1)];
         [encoder endEncoding];
 
         id<MTLBlitCommandEncoder> layer10_attention_blit =
@@ -21677,7 +21678,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setBuffer:heads_buffer offset:0 atIndex:8];
         [encoder setThreadgroupMemoryLength:28672u atIndex:0];
         [encoder dispatchThreadgroups:MTLSizeMake(256,n_head,1)
-             threadsPerThreadgroup:MTLSizeMake(32,8,1)];
+             threadsPerThreadgroup:MTLSizeMake(32,kRustStarFlashNonvecNsg,1)];
         [encoder endEncoding];
 
         id<MTLBlitCommandEncoder> layer11_attention_blit =
@@ -22159,7 +22160,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setBuffer:heads_buffer offset:0 atIndex:8];
         [encoder setThreadgroupMemoryLength:28672u atIndex:0];
         [encoder dispatchThreadgroups:MTLSizeMake(256,n_head,1)
-             threadsPerThreadgroup:MTLSizeMake(32,8,1)];
+             threadsPerThreadgroup:MTLSizeMake(32,kRustStarFlashNonvecNsg,1)];
         [encoder endEncoding];
 
         id<MTLBlitCommandEncoder> layer12_attention_blit =
@@ -22610,7 +22611,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setBuffer:heads_buffer offset:0 atIndex:8];
         [encoder setThreadgroupMemoryLength:28672u atIndex:0];
         [encoder dispatchThreadgroups:MTLSizeMake(256,n_head,1)
-             threadsPerThreadgroup:MTLSizeMake(32,8,1)];
+             threadsPerThreadgroup:MTLSizeMake(32,kRustStarFlashNonvecNsg,1)];
         [encoder endEncoding];
 
         id<MTLBlitCommandEncoder> layer13_attention_blit =
@@ -23092,7 +23093,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setBuffer:heads_buffer offset:0 atIndex:8];
         [encoder setThreadgroupMemoryLength:28672u atIndex:0];
         [encoder dispatchThreadgroups:MTLSizeMake(256,n_head,1)
-             threadsPerThreadgroup:MTLSizeMake(32,8,1)];
+             threadsPerThreadgroup:MTLSizeMake(32,kRustStarFlashNonvecNsg,1)];
         [encoder endEncoding];
 
         id<MTLBlitCommandEncoder> layer14_attention_blit =
@@ -23543,7 +23544,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setBuffer:heads_buffer offset:0 atIndex:8];
         [encoder setThreadgroupMemoryLength:28672u atIndex:0];
         [encoder dispatchThreadgroups:MTLSizeMake(256,n_head,1)
-             threadsPerThreadgroup:MTLSizeMake(32,8,1)];
+             threadsPerThreadgroup:MTLSizeMake(32,kRustStarFlashNonvecNsg,1)];
         [encoder endEncoding];
 
         id<MTLBlitCommandEncoder> layer15_attention_blit =
@@ -24025,7 +24026,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setBuffer:heads_buffer offset:0 atIndex:8];
         [encoder setThreadgroupMemoryLength:28672u atIndex:0];
         [encoder dispatchThreadgroups:MTLSizeMake(256,n_head,1)
-             threadsPerThreadgroup:MTLSizeMake(32,8,1)];
+             threadsPerThreadgroup:MTLSizeMake(32,kRustStarFlashNonvecNsg,1)];
         [encoder endEncoding];
 
         id<MTLBlitCommandEncoder> layer16_attention_blit =
@@ -24476,7 +24477,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setBuffer:heads_buffer offset:0 atIndex:8];
         [encoder setThreadgroupMemoryLength:28672u atIndex:0];
         [encoder dispatchThreadgroups:MTLSizeMake(256,n_head,1)
-             threadsPerThreadgroup:MTLSizeMake(32,8,1)];
+             threadsPerThreadgroup:MTLSizeMake(32,kRustStarFlashNonvecNsg,1)];
         [encoder endEncoding];
 
         id<MTLBlitCommandEncoder> layer17_attention_blit =
@@ -24958,7 +24959,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setBuffer:heads_buffer offset:0 atIndex:8];
         [encoder setThreadgroupMemoryLength:28672u atIndex:0];
         [encoder dispatchThreadgroups:MTLSizeMake(256,n_head,1)
-             threadsPerThreadgroup:MTLSizeMake(32,8,1)];
+             threadsPerThreadgroup:MTLSizeMake(32,kRustStarFlashNonvecNsg,1)];
         [encoder endEncoding];
 
         id<MTLBlitCommandEncoder> layer18_attention_blit =
@@ -25409,7 +25410,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setBuffer:heads_buffer offset:0 atIndex:8];
         [encoder setThreadgroupMemoryLength:28672u atIndex:0];
         [encoder dispatchThreadgroups:MTLSizeMake(256,n_head,1)
-             threadsPerThreadgroup:MTLSizeMake(32,8,1)];
+             threadsPerThreadgroup:MTLSizeMake(32,kRustStarFlashNonvecNsg,1)];
         [encoder endEncoding];
 
         id<MTLBlitCommandEncoder> layer19_attention_blit =
@@ -25891,7 +25892,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setBuffer:heads_buffer offset:0 atIndex:8];
         [encoder setThreadgroupMemoryLength:28672u atIndex:0];
         [encoder dispatchThreadgroups:MTLSizeMake(256,n_head,1)
-             threadsPerThreadgroup:MTLSizeMake(32,8,1)];
+             threadsPerThreadgroup:MTLSizeMake(32,kRustStarFlashNonvecNsg,1)];
         [encoder endEncoding];
 
         id<MTLBlitCommandEncoder> layer20_attention_blit =
@@ -26342,7 +26343,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setBuffer:heads_buffer offset:0 atIndex:8];
         [encoder setThreadgroupMemoryLength:28672u atIndex:0];
         [encoder dispatchThreadgroups:MTLSizeMake(256,n_head,1)
-             threadsPerThreadgroup:MTLSizeMake(32,8,1)];
+             threadsPerThreadgroup:MTLSizeMake(32,kRustStarFlashNonvecNsg,1)];
         [encoder endEncoding];
 
         id<MTLBlitCommandEncoder> layer21_attention_blit =
@@ -26824,7 +26825,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setBuffer:heads_buffer offset:0 atIndex:8];
         [encoder setThreadgroupMemoryLength:28672u atIndex:0];
         [encoder dispatchThreadgroups:MTLSizeMake(256,n_head,1)
-             threadsPerThreadgroup:MTLSizeMake(32,8,1)];
+             threadsPerThreadgroup:MTLSizeMake(32,kRustStarFlashNonvecNsg,1)];
         [encoder endEncoding];
 
         id<MTLBlitCommandEncoder> layer22_attention_blit =
@@ -27275,7 +27276,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setBuffer:heads_buffer offset:0 atIndex:8];
         [encoder setThreadgroupMemoryLength:28672u atIndex:0];
         [encoder dispatchThreadgroups:MTLSizeMake(256,n_head,1)
-             threadsPerThreadgroup:MTLSizeMake(32,8,1)];
+             threadsPerThreadgroup:MTLSizeMake(32,kRustStarFlashNonvecNsg,1)];
         [encoder endEncoding];
 
         id<MTLBlitCommandEncoder> layer23_attention_blit =
@@ -27757,7 +27758,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setBuffer:heads_buffer offset:0 atIndex:8];
         [encoder setThreadgroupMemoryLength:28672u atIndex:0];
         [encoder dispatchThreadgroups:MTLSizeMake(256,n_head,1)
-             threadsPerThreadgroup:MTLSizeMake(32,8,1)];
+             threadsPerThreadgroup:MTLSizeMake(32,kRustStarFlashNonvecNsg,1)];
         [encoder endEncoding];
 
         id<MTLBlitCommandEncoder> layer24_attention_blit =
@@ -28208,7 +28209,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setBuffer:heads_buffer offset:0 atIndex:8];
         [encoder setThreadgroupMemoryLength:28672u atIndex:0];
         [encoder dispatchThreadgroups:MTLSizeMake(256,n_head,1)
-             threadsPerThreadgroup:MTLSizeMake(32,8,1)];
+             threadsPerThreadgroup:MTLSizeMake(32,kRustStarFlashNonvecNsg,1)];
         [encoder endEncoding];
 
         id<MTLBlitCommandEncoder> layer25_attention_blit =
@@ -28690,7 +28691,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setBuffer:heads_buffer offset:0 atIndex:8];
         [encoder setThreadgroupMemoryLength:28672u atIndex:0];
         [encoder dispatchThreadgroups:MTLSizeMake(256,n_head,1)
-             threadsPerThreadgroup:MTLSizeMake(32,8,1)];
+             threadsPerThreadgroup:MTLSizeMake(32,kRustStarFlashNonvecNsg,1)];
         [encoder endEncoding];
 
         id<MTLBlitCommandEncoder> layer26_attention_blit =
@@ -29141,7 +29142,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setBuffer:heads_buffer offset:0 atIndex:8];
         [encoder setThreadgroupMemoryLength:28672u atIndex:0];
         [encoder dispatchThreadgroups:MTLSizeMake(256,n_head,1)
-             threadsPerThreadgroup:MTLSizeMake(32,8,1)];
+             threadsPerThreadgroup:MTLSizeMake(32,kRustStarFlashNonvecNsg,1)];
         [encoder endEncoding];
 
         id<MTLBlitCommandEncoder> layer27_attention_blit =
@@ -29623,7 +29624,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setBuffer:heads_buffer offset:0 atIndex:8];
         [encoder setThreadgroupMemoryLength:28672u atIndex:0];
         [encoder dispatchThreadgroups:MTLSizeMake(256,n_head,1)
-             threadsPerThreadgroup:MTLSizeMake(32,8,1)];
+             threadsPerThreadgroup:MTLSizeMake(32,kRustStarFlashNonvecNsg,1)];
         [encoder endEncoding];
 
         id<MTLBlitCommandEncoder> layer28_attention_blit =
@@ -30074,7 +30075,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setBuffer:heads_buffer offset:0 atIndex:8];
         [encoder setThreadgroupMemoryLength:28672u atIndex:0];
         [encoder dispatchThreadgroups:MTLSizeMake(256,n_head,1)
-             threadsPerThreadgroup:MTLSizeMake(32,8,1)];
+             threadsPerThreadgroup:MTLSizeMake(32,kRustStarFlashNonvecNsg,1)];
         [encoder endEncoding];
 
         id<MTLBlitCommandEncoder> layer29_attention_blit =
@@ -30556,7 +30557,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setBuffer:heads_buffer offset:0 atIndex:8];
         [encoder setThreadgroupMemoryLength:28672u atIndex:0];
         [encoder dispatchThreadgroups:MTLSizeMake(256,n_head,1)
-             threadsPerThreadgroup:MTLSizeMake(32,8,1)];
+             threadsPerThreadgroup:MTLSizeMake(32,kRustStarFlashNonvecNsg,1)];
         [encoder endEncoding];
 
         id<MTLBlitCommandEncoder> layer30_attention_blit =
@@ -31007,7 +31008,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setBuffer:heads_buffer offset:0 atIndex:8];
         [encoder setThreadgroupMemoryLength:28672u atIndex:0];
         [encoder dispatchThreadgroups:MTLSizeMake(256,n_head,1)
-             threadsPerThreadgroup:MTLSizeMake(32,8,1)];
+             threadsPerThreadgroup:MTLSizeMake(32,kRustStarFlashNonvecNsg,1)];
         [encoder endEncoding];
 
         id<MTLBlitCommandEncoder> layer31_attention_blit =
@@ -31489,7 +31490,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setBuffer:heads_buffer offset:0 atIndex:8];
         [encoder setThreadgroupMemoryLength:28672u atIndex:0];
         [encoder dispatchThreadgroups:MTLSizeMake(256,n_head,1)
-             threadsPerThreadgroup:MTLSizeMake(32,8,1)];
+             threadsPerThreadgroup:MTLSizeMake(32,kRustStarFlashNonvecNsg,1)];
         [encoder endEncoding];
 
         id<MTLBlitCommandEncoder> layer32_attention_blit =
@@ -31940,7 +31941,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setBuffer:heads_buffer offset:0 atIndex:8];
         [encoder setThreadgroupMemoryLength:28672u atIndex:0];
         [encoder dispatchThreadgroups:MTLSizeMake(256,n_head,1)
-             threadsPerThreadgroup:MTLSizeMake(32,8,1)];
+             threadsPerThreadgroup:MTLSizeMake(32,kRustStarFlashNonvecNsg,1)];
         [encoder endEncoding];
 
         id<MTLBlitCommandEncoder> layer33_attention_blit =
@@ -32422,7 +32423,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setBuffer:heads_buffer offset:0 atIndex:8];
         [encoder setThreadgroupMemoryLength:28672u atIndex:0];
         [encoder dispatchThreadgroups:MTLSizeMake(256,n_head,1)
-             threadsPerThreadgroup:MTLSizeMake(32,8,1)];
+             threadsPerThreadgroup:MTLSizeMake(32,kRustStarFlashNonvecNsg,1)];
         [encoder endEncoding];
 
         id<MTLBlitCommandEncoder> layer34_attention_blit =
@@ -32873,7 +32874,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setBuffer:heads_buffer offset:0 atIndex:8];
         [encoder setThreadgroupMemoryLength:28672u atIndex:0];
         [encoder dispatchThreadgroups:MTLSizeMake(256,n_head,1)
-             threadsPerThreadgroup:MTLSizeMake(32,8,1)];
+             threadsPerThreadgroup:MTLSizeMake(32,kRustStarFlashNonvecNsg,1)];
         [encoder endEncoding];
 
         id<MTLBlitCommandEncoder> layer35_attention_blit =
@@ -33355,7 +33356,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setBuffer:heads_buffer offset:0 atIndex:8];
         [encoder setThreadgroupMemoryLength:28672u atIndex:0];
         [encoder dispatchThreadgroups:MTLSizeMake(256,n_head,1)
-             threadsPerThreadgroup:MTLSizeMake(32,8,1)];
+             threadsPerThreadgroup:MTLSizeMake(32,kRustStarFlashNonvecNsg,1)];
         [encoder endEncoding];
 
         id<MTLBlitCommandEncoder> layer36_attention_blit =
@@ -33806,7 +33807,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setBuffer:heads_buffer offset:0 atIndex:8];
         [encoder setThreadgroupMemoryLength:28672u atIndex:0];
         [encoder dispatchThreadgroups:MTLSizeMake(256,n_head,1)
-             threadsPerThreadgroup:MTLSizeMake(32,8,1)];
+             threadsPerThreadgroup:MTLSizeMake(32,kRustStarFlashNonvecNsg,1)];
         [encoder endEncoding];
 
         id<MTLBlitCommandEncoder> layer37_attention_blit =
@@ -34288,7 +34289,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setBuffer:heads_buffer offset:0 atIndex:8];
         [encoder setThreadgroupMemoryLength:28672u atIndex:0];
         [encoder dispatchThreadgroups:MTLSizeMake(256,n_head,1)
-             threadsPerThreadgroup:MTLSizeMake(32,8,1)];
+             threadsPerThreadgroup:MTLSizeMake(32,kRustStarFlashNonvecNsg,1)];
         [encoder endEncoding];
 
         id<MTLBlitCommandEncoder> layer38_attention_blit =
@@ -34739,7 +34740,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setBuffer:heads_buffer offset:0 atIndex:8];
         [encoder setThreadgroupMemoryLength:28672u atIndex:0];
         [encoder dispatchThreadgroups:MTLSizeMake(256,n_head,1)
-             threadsPerThreadgroup:MTLSizeMake(32,8,1)];
+             threadsPerThreadgroup:MTLSizeMake(32,kRustStarFlashNonvecNsg,1)];
         [encoder endEncoding];
 
         id<MTLBlitCommandEncoder> layer39_attention_blit =
@@ -35221,7 +35222,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setBuffer:heads_buffer offset:0 atIndex:8];
         [encoder setThreadgroupMemoryLength:28672u atIndex:0];
         [encoder dispatchThreadgroups:MTLSizeMake(256,n_head,1)
-             threadsPerThreadgroup:MTLSizeMake(32,8,1)];
+             threadsPerThreadgroup:MTLSizeMake(32,kRustStarFlashNonvecNsg,1)];
         [encoder endEncoding];
 
         id<MTLBlitCommandEncoder> layer40_attention_blit =
@@ -35672,7 +35673,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setBuffer:heads_buffer offset:0 atIndex:8];
         [encoder setThreadgroupMemoryLength:28672u atIndex:0];
         [encoder dispatchThreadgroups:MTLSizeMake(256,n_head,1)
-             threadsPerThreadgroup:MTLSizeMake(32,8,1)];
+             threadsPerThreadgroup:MTLSizeMake(32,kRustStarFlashNonvecNsg,1)];
         [encoder endEncoding];
 
         id<MTLBlitCommandEncoder> layer41_attention_blit =
@@ -36154,7 +36155,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setBuffer:heads_buffer offset:0 atIndex:8];
         [encoder setThreadgroupMemoryLength:28672u atIndex:0];
         [encoder dispatchThreadgroups:MTLSizeMake(256,n_head,1)
-             threadsPerThreadgroup:MTLSizeMake(32,8,1)];
+             threadsPerThreadgroup:MTLSizeMake(32,kRustStarFlashNonvecNsg,1)];
         [encoder endEncoding];
 
         id<MTLBlitCommandEncoder> layer42_attention_blit =
