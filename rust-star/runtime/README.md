@@ -916,6 +916,16 @@ is compared with the pinned oracle after timing. The raw producer is
 `paired_protocol_eligible: true` only when both collection paths are disabled.
 Run it through `measure_ruststar.py` for normalized, checksummed evidence.
 
+Timing-only prefill keeps the exact 64-by-32-row arithmetic schedule but submits
+those bootstrap command buffers continuously to the serial inference queue and
+synchronizes once at the final tile. Queue order preserves live KV and
+compressor dependencies without 63 inter-tile host waits; diagnostic commands
+remain individually synchronized. The raw record separately reports aggregate
+bootstrap wall/GPU span, remaining-transformer wall/GPU time, output-head time,
+handoff time, residency time, and residual host overhead. Wider 64-row and
+2,048-row bootstrap experiments changed the first selected token and are not
+production options.
+
 To validate the complete retained step at the same position:
 
 ```sh

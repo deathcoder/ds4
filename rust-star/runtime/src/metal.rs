@@ -4451,6 +4451,15 @@ pub struct EngineRunReport {
     pub model_view_warm_wall_ms: f64,
     pub model_view_warm_gpu_ms: f64,
     pub prefill_ms: f64,
+    pub prefill_tile_wall_ms: f64,
+    pub prefill_tile_gpu_ms: f64,
+    pub prefill_transformer_wall_ms: f64,
+    pub prefill_transformer_gpu_ms: f64,
+    pub prefill_output_head_wall_ms: f64,
+    pub prefill_output_head_gpu_ms: f64,
+    pub prefill_handoff_wall_ms: f64,
+    pub prefill_handoff_gpu_ms: f64,
+    pub prefill_host_overhead_ms: f64,
     pub decoder_prepare_ms: f64,
     pub gen_ms: f64,
     pub gen_first_ms: f64,
@@ -5773,6 +5782,20 @@ pub fn write_engine_run_json<W: Write>(output: &mut W, report: &EngineRunReport)
         || report.model_view_warm_gpu_ms <= 0.0
         || !report.prefill_ms.is_finite()
         || report.prefill_ms <= 0.0
+        || ![
+            report.prefill_tile_wall_ms,
+            report.prefill_tile_gpu_ms,
+            report.prefill_transformer_wall_ms,
+            report.prefill_transformer_gpu_ms,
+            report.prefill_output_head_wall_ms,
+            report.prefill_output_head_gpu_ms,
+            report.prefill_handoff_wall_ms,
+            report.prefill_handoff_gpu_ms,
+        ]
+        .into_iter()
+        .all(|value| value.is_finite() && value > 0.0)
+        || !report.prefill_host_overhead_ms.is_finite()
+        || report.prefill_host_overhead_ms < 0.0
         || !report.decoder_prepare_ms.is_finite()
         || report.decoder_prepare_ms <= 0.0
         || !report.gen_ms.is_finite()
@@ -5909,7 +5932,7 @@ pub fn write_engine_run_json<W: Write>(output: &mut W, report: &EngineRunReport)
     };
     write!(
         output,
-        "{{\n  \"schema\": \"{ENGINE_RUN_SCHEMA}\",\n  \"engine\": \"rust-star\",\n  \"context\": {},\n  \"gen_tokens\": {},\n  \"metrics\": {{\"ctx_tokens\": {}, \"prefill_tokens\": {}, \"gen_tokens\": {}, \"gen_steady_tokens\": {}, \"prefill_tps\": {:.9}, \"prefill_ms\": {:.9}, \"gen_tps\": {:.9}, \"gen_ms\": {:.9}, \"gen_first_ms\": {:.9}, \"gen_steady_tps\": {:.9}, \"gen_steady_ms\": {:.9}}},\n  \"selection\": {{\"prefill_token\": {}, \"final_token\": {}, \"selected_tokens_checksum\": {}, \"oracle_transcript_match\": true}},\n  \"timing\": {{\"model_warm_bytes\": {}, \"model_warm_pages\": {}, \"model_warm_checksum\": {}, \"model_warm_ms\": {:.9}, \"model_view_bytes\": {}, \"model_view_warm_touches\": {}, \"model_view_count\": {}, \"model_residency_allocations\": {}, \"model_residency_queue_attached\": {}, \"model_view_warm_wall_ms\": {:.9}, \"model_view_warm_gpu_ms\": {:.9}, \"decoder_prepare_ms\": {:.9}, \"gen_first_transformer_wall_ms\": {:.9}, \"gen_first_transformer_gpu_ms\": {:.9}, \"gen_first_layer_gpu_ms\": [{}], \"gen_first_output_head_wall_ms\": {:.9}, \"gen_first_output_head_gpu_ms\": {:.9}, \"gen_steady_transformer_wall_ms\": {:.9}, \"gen_steady_transformer_gpu_ms\": {:.9}, \"gen_steady_layer_gpu_ms\": {}, \"gen_steady_output_head_wall_ms\": {:.9}, \"gen_steady_output_head_gpu_ms\": {:.9}, \"generation_command_buffers_per_token\": {}, \"generation_host_waits_per_token\": {}, \"generation_correctness_collection\": false, \"generation_layer_timing_collection\": {}, \"generation_stage_counter_collection\": {}, \"prefill_correctness_collection\": {}}},\n  \"stage_profile\": {},\n  \"paired_protocol_eligible\": {},\n  \"paired_protocol_blocker\": {}\n}}\n",
+        "{{\n  \"schema\": \"{ENGINE_RUN_SCHEMA}\",\n  \"engine\": \"rust-star\",\n  \"context\": {},\n  \"gen_tokens\": {},\n  \"metrics\": {{\"ctx_tokens\": {}, \"prefill_tokens\": {}, \"gen_tokens\": {}, \"gen_steady_tokens\": {}, \"prefill_tps\": {:.9}, \"prefill_ms\": {:.9}, \"gen_tps\": {:.9}, \"gen_ms\": {:.9}, \"gen_first_ms\": {:.9}, \"gen_steady_tps\": {:.9}, \"gen_steady_ms\": {:.9}}},\n  \"selection\": {{\"prefill_token\": {}, \"final_token\": {}, \"selected_tokens_checksum\": {}, \"oracle_transcript_match\": true}},\n  \"timing\": {{\"model_warm_bytes\": {}, \"model_warm_pages\": {}, \"model_warm_checksum\": {}, \"model_warm_ms\": {:.9}, \"model_view_bytes\": {}, \"model_view_warm_touches\": {}, \"model_view_count\": {}, \"model_residency_allocations\": {}, \"model_residency_queue_attached\": {}, \"model_view_warm_wall_ms\": {:.9}, \"model_view_warm_gpu_ms\": {:.9}, \"prefill_tile_wall_ms\": {:.9}, \"prefill_tile_gpu_ms\": {:.9}, \"prefill_transformer_wall_ms\": {:.9}, \"prefill_transformer_gpu_ms\": {:.9}, \"prefill_output_head_wall_ms\": {:.9}, \"prefill_output_head_gpu_ms\": {:.9}, \"prefill_handoff_wall_ms\": {:.9}, \"prefill_handoff_gpu_ms\": {:.9}, \"prefill_host_overhead_ms\": {:.9}, \"decoder_prepare_ms\": {:.9}, \"gen_first_transformer_wall_ms\": {:.9}, \"gen_first_transformer_gpu_ms\": {:.9}, \"gen_first_layer_gpu_ms\": [{}], \"gen_first_output_head_wall_ms\": {:.9}, \"gen_first_output_head_gpu_ms\": {:.9}, \"gen_steady_transformer_wall_ms\": {:.9}, \"gen_steady_transformer_gpu_ms\": {:.9}, \"gen_steady_layer_gpu_ms\": {}, \"gen_steady_output_head_wall_ms\": {:.9}, \"gen_steady_output_head_gpu_ms\": {:.9}, \"generation_command_buffers_per_token\": {}, \"generation_host_waits_per_token\": {}, \"generation_correctness_collection\": false, \"generation_layer_timing_collection\": {}, \"generation_stage_counter_collection\": {}, \"prefill_correctness_collection\": {}}},\n  \"stage_profile\": {},\n  \"paired_protocol_eligible\": {},\n  \"paired_protocol_blocker\": {}\n}}\n",
         report.context,
         report.gen_tokens,
         report.context,
@@ -5937,6 +5960,15 @@ pub fn write_engine_run_json<W: Write>(output: &mut W, report: &EngineRunReport)
         report.model_residency_queue_attached,
         report.model_view_warm_wall_ms,
         report.model_view_warm_gpu_ms,
+        report.prefill_tile_wall_ms,
+        report.prefill_tile_gpu_ms,
+        report.prefill_transformer_wall_ms,
+        report.prefill_transformer_gpu_ms,
+        report.prefill_output_head_wall_ms,
+        report.prefill_output_head_gpu_ms,
+        report.prefill_handoff_wall_ms,
+        report.prefill_handoff_gpu_ms,
+        report.prefill_host_overhead_ms,
         report.decoder_prepare_ms,
         report.gen_first_transformer_wall_ms,
         report.gen_first_transformer_gpu_ms,
@@ -23678,7 +23710,7 @@ mod imp {
                 )));
             }
         }
-        if raw.wall_ms == 0.0 {
+        if raw.wall_ms == 0.0 && (collect_outputs || final_tile || !include_layer2_compressors) {
             return Err(Error::invalid(
                 "Metal prefill layer-0 boundary returned a zero wall interval",
             ));
@@ -24121,11 +24153,24 @@ mod imp {
         })
     }
 
+    #[derive(Clone, Copy, Debug, Default)]
+    struct NativePrefillTiming {
+        tile_wall_ms: f64,
+        tile_gpu_ms: f64,
+        transformer_wall_ms: f64,
+        transformer_gpu_ms: f64,
+        output_head_wall_ms: f64,
+        output_head_gpu_ms: f64,
+    }
+
     fn run_prefill_layers012_compressor_loop_probe_in_context(
         model: &MappedModel,
         context: &Context,
         collect_outputs: bool,
-    ) -> Result<Option<PrefillLayers012CompressorLoopProbeReport>> {
+    ) -> Result<(
+        Option<PrefillLayers012CompressorLoopProbeReport>,
+        NativePrefillTiming,
+    )> {
         let mut tiles = Vec::with_capacity(64);
         let mut layer2_checksums = Vec::with_capacity(64);
         let mut layer2_compressor_checksums = Vec::with_capacity(64);
@@ -24182,19 +24227,28 @@ mod imp {
                 ));
             }
         }
+        let timing = NativePrefillTiming {
+            tile_wall_ms: tiles.iter().map(|tile| tile.wall_ms).sum(),
+            tile_gpu_ms: tiles.iter().map(|tile| tile.gpu_ms).sum(),
+            ..NativePrefillTiming::default()
+        };
         if !collect_outputs {
-            return Ok(None);
+            return Ok((None, timing));
         }
-        Ok(Some(PrefillLayers012CompressorLoopProbeReport {
-            tiles,
-            layer2_kvnorm_fixture_id: PREFILL_LAYER2_KVNORM_FIXTURE_ID,
-            layer2_kv_state_fixture_id: PREFILL_LAYER2_KV_STATE_FIXTURE_ID,
-            layer2_compressor_fixture_id: PREFILL_LAYER2_COMPRESSOR_FIXTURE_ID,
-            layer2_checksums,
-            layer2_compressor_checksums,
-            final_tile: final_tile
-                .ok_or_else(|| Error::invalid("layer-2 compressor loop omitted the final tile"))?,
-        }))
+        Ok((
+            Some(PrefillLayers012CompressorLoopProbeReport {
+                tiles,
+                layer2_kvnorm_fixture_id: PREFILL_LAYER2_KVNORM_FIXTURE_ID,
+                layer2_kv_state_fixture_id: PREFILL_LAYER2_KV_STATE_FIXTURE_ID,
+                layer2_compressor_fixture_id: PREFILL_LAYER2_COMPRESSOR_FIXTURE_ID,
+                layer2_checksums,
+                layer2_compressor_checksums,
+                final_tile: final_tile.ok_or_else(|| {
+                    Error::invalid("layer-2 compressor loop omitted the final tile")
+                })?,
+            }),
+            timing,
+        ))
     }
 
     pub fn run_prefill_layers012_compressor_loop_probe(
@@ -24202,6 +24256,7 @@ mod imp {
     ) -> Result<PrefillLayers012CompressorLoopProbeReport> {
         let context = Context::new()?;
         run_prefill_layers012_compressor_loop_probe_in_context(model, &context, true)?
+            .0
             .ok_or_else(|| Error::invalid("diagnostic compressor loop omitted its report"))
     }
 
@@ -24215,7 +24270,7 @@ mod imp {
     fn run_prefill_layers012_attention_loop_probe_with_context(
         model: &MappedModel,
     ) -> Result<(Context, PrefillLayers012AttentionLoopProbeReport)> {
-        let (context, report, _) = run_prefill_layers012_attention_loop_in_context(model, true)?;
+        let (context, report, _, _) = run_prefill_layers012_attention_loop_in_context(model, true)?;
         Ok((
             context,
             report.ok_or_else(|| Error::invalid("diagnostic prefill omitted its report"))?,
@@ -24229,9 +24284,10 @@ mod imp {
         Context,
         Option<PrefillLayers012AttentionLoopProbeReport>,
         u32,
+        NativePrefillTiming,
     )> {
         let context = Context::new()?;
-        let compressor = run_prefill_layers012_compressor_loop_probe_in_context(
+        let (compressor, mut timing) = run_prefill_layers012_compressor_loop_probe_in_context(
             model,
             &context,
             collect_outputs,
@@ -31735,8 +31791,14 @@ mod imp {
         }
         if !collect_outputs {
             let output_head = PreparedOutputHead::new(model)?;
-            let (selected_token, _) = run_top1_output_head(model, &context, &output_head)?;
-            return Ok((context, None, selected_token));
+            let output_head_started = Instant::now();
+            let (selected_token, output_head_gpu_ms) =
+                run_top1_output_head(model, &context, &output_head)?;
+            timing.transformer_wall_ms = raw.wall_ms;
+            timing.transformer_gpu_ms = raw.gpu_ms;
+            timing.output_head_wall_ms = output_head_started.elapsed().as_secs_f64() * 1000.0;
+            timing.output_head_gpu_ms = output_head_gpu_ms;
+            return Ok((context, None, selected_token, timing));
         }
         for (label, actual, expected) in [
             (
@@ -39083,6 +39145,10 @@ mod imp {
         let selected_token = output_head.selected_token;
         let compressor = compressor
             .ok_or_else(|| Error::invalid("diagnostic prefill omitted its compressor report"))?;
+        timing.transformer_wall_ms = raw.wall_ms;
+        timing.transformer_gpu_ms = raw.gpu_ms;
+        timing.output_head_wall_ms = output_head.wall_ms;
+        timing.output_head_gpu_ms = output_head.gpu_ms;
         Ok((
             context,
             Some(PrefillLayers012AttentionLoopProbeReport {
@@ -39736,6 +39802,7 @@ mod imp {
                 output_head,
             }),
             selected_token,
+            timing,
         ))
     }
 
@@ -43450,7 +43517,7 @@ mod imp {
         let model_warm = model.warm_tensor_pages()?;
 
         let prefill_started = Instant::now();
-        let (context, prefill_report, prefill_selected_token) =
+        let (context, prefill_report, prefill_selected_token, prefill_timing) =
             run_prefill_layers012_attention_loop_in_context(model, false)?;
         if prefill_report.is_some() {
             return Err(Error::invalid(
@@ -43458,19 +43525,26 @@ mod imp {
             ));
         }
         if prefill_selected_token != oracle_inputs[0] {
-            return Err(Error::invalid(
-                "native prefill selected a different measurement input token",
-            ));
+            return Err(Error::invalid(format!(
+                "native prefill selected a different measurement input token: actual={} expected={}",
+                prefill_selected_token, oracle_inputs[0]
+            )));
         }
         let decoder_capacity = context_tokens
             .checked_add(gen_tokens)
             .ok_or_else(|| Error::invalid("measurement context capacity overflow"))?;
-        context.adopt_prefill_decoder_state(decoder_capacity)?;
+        let prefill_handoff = context.adopt_prefill_decoder_state(decoder_capacity)?;
         // Keep Metal VM validation and the coarse GPU view touch inside the
         // declared prefill interval. This mirrors the pinned oracle's model
         // residency policy without hiding a second warmup before generation.
         let model_residency = context.prepare_model_residency()?;
         let prefill_ms = prefill_started.elapsed().as_secs_f64() * 1000.0;
+        let prefill_accounted_wall_ms = prefill_timing.tile_wall_ms
+            + prefill_timing.transformer_wall_ms
+            + prefill_timing.output_head_wall_ms
+            + prefill_handoff.wall_ms
+            + model_residency.wall_ms;
+        let prefill_host_overhead_ms = (prefill_ms - prefill_accounted_wall_ms).max(0.0);
 
         let decoder_prepare_started = Instant::now();
         let mut layers = (0..43)
@@ -43592,6 +43666,15 @@ mod imp {
             model_view_warm_wall_ms: model_residency.wall_ms,
             model_view_warm_gpu_ms: model_residency.gpu_ms,
             prefill_ms,
+            prefill_tile_wall_ms: prefill_timing.tile_wall_ms,
+            prefill_tile_gpu_ms: prefill_timing.tile_gpu_ms,
+            prefill_transformer_wall_ms: prefill_timing.transformer_wall_ms,
+            prefill_transformer_gpu_ms: prefill_timing.transformer_gpu_ms,
+            prefill_output_head_wall_ms: prefill_timing.output_head_wall_ms,
+            prefill_output_head_gpu_ms: prefill_timing.output_head_gpu_ms,
+            prefill_handoff_wall_ms: prefill_handoff.wall_ms,
+            prefill_handoff_gpu_ms: prefill_handoff.gpu_ms,
+            prefill_host_overhead_ms,
             decoder_prepare_ms,
             gen_ms,
             gen_first_ms,
@@ -47981,6 +48064,15 @@ mod tests {
             model_view_warm_wall_ms: 25.0,
             model_view_warm_gpu_ms: 20.0,
             prefill_ms: 20000.0,
+            prefill_tile_wall_ms: 3000.0,
+            prefill_tile_gpu_ms: 2800.0,
+            prefill_transformer_wall_ms: 16000.0,
+            prefill_transformer_gpu_ms: 15500.0,
+            prefill_output_head_wall_ms: 10.0,
+            prefill_output_head_gpu_ms: 8.0,
+            prefill_handoff_wall_ms: 50.0,
+            prefill_handoff_gpu_ms: 45.0,
+            prefill_host_overhead_ms: 915.0,
             decoder_prepare_ms: 100.0,
             gen_ms: 7000.0,
             gen_first_ms: 60.0,
@@ -48311,6 +48403,9 @@ mod tests {
         assert!(text.contains("\"model_warm_ms\": 4000.000000000"));
         assert!(text.contains("\"model_view_count\": 1221"));
         assert!(text.contains("\"model_residency_queue_attached\": true"));
+        assert!(text.contains("\"prefill_tile_gpu_ms\": 2800.000000000"));
+        assert!(text.contains("\"prefill_transformer_gpu_ms\": 15500.000000000"));
+        assert!(text.contains("\"prefill_host_overhead_ms\": 915.000000000"));
         assert!(text.contains("\"gen_first_transformer_gpu_ms\": 50.000000000"));
         assert!(text.contains("\"gen_first_layer_gpu_ms\": [1.162790698"));
         assert!(text.contains("\"gen_steady_layer_gpu_ms\": null"));

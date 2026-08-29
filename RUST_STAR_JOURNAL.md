@@ -153,6 +153,14 @@ history; add a correction and update the current-state summary.
   48.720167 ms and is effectively tied with DwarfStar at a 0.995386079x paired
   ratio. Prefill remains 34.07% behind at 0.659348296x. This is an exact 2K/128
   development result, not the protocol's 256K headline claim.
+  Passive prefill attribution now separates the 64-tile bootstrap, remaining
+  transformer, output head, handoff, residency, and residual host cost. The
+  timing-only bootstrap preserves 32-row arithmetic while queuing all 64 Metal
+  command buffers and synchronizing only at the tail; the exact 128-token
+  transcript remains eligible. Wider 64-row and full-2K tiles failed the
+  first-token oracle and were rejected. A fresh normalized candidate measured
+  126.983490539 prefill tok/s; a formal immutable paired comparison remains the
+  next performance gate.
 - Implementation: dependency-free Rust host scaffold under `rust-star/runtime/`
   strictly parses GGUF v3 directories, validates the Flash resident-Q2
   shape/recipe, and writes candidate full-logit artifacts. A macOS-only
@@ -709,6 +717,50 @@ history; add a correction and update the current-state summary.
 6. Run or approve the fork's GitHub Actions workflow and retain its URL.
 
 ## Entries
+
+### 2026-08-29 — Exact prefill attribution and queued 32-row bootstrap
+
+- Added passive eligible-run attribution for bootstrap tiles, remaining
+  transformer, output head, prefill-to-decode handoff, model residency, and
+  residual host overhead. No diagnostic tensors, extra Metal encoders, or
+  synchronization points are added.
+- Baseline attribution evidence
+  `rust-star/.work/prefill-attribution-01/engine-run.json` (SHA-256
+  `49425b0607c97e204c5222938dd84b45eff668e2c72f30d64489b7178e22205a`)
+  measured 126.291576234 prefill tok/s. Of 16,216.441833 ms total, the 64
+  bootstrap tiles used 3,473.159292 ms GPU, the remaining transformer used
+  11,334.500417 ms GPU, and residual host overhead was 1,154.636625 ms. The
+  deficit is therefore dominated by GPU kernel/schedule work, not Rust host
+  bookkeeping.
+- Generalized the production-only bootstrap experimentally. Both 64-row tiles
+  and one full 2,048-row tile failed the first selected-token oracle; the latter
+  selected token 16 instead of 15,342. Both were rejected, and all diagnostic
+  and production arithmetic remains at the proven 32-row width.
+- Kept the 64 exact 32-row command buffers but removed 63 inter-tile host waits.
+  The serial Metal queue carries live KV/compressor dependencies and the final
+  tile waits once. Diagnostic collection remains synchronized per tile. A raw
+  eligible run measured 133.684055612 prefill tok/s and matched the exact
+  128-token transcript; its JSON SHA-256 is
+  `dfbb3399f1b4334c90d25073c32b49dc72faf6296beb3da05bafce6da0499e68`.
+  This single run is not a paired performance claim.
+- Fresh-process normalized evidence at
+  `rust-star/.work/prefill-queued32-adapter-01/measurement.json` passed at
+  126.983490539 prefill tok/s. Measurement SHA-256 is
+  `c5c61201978b1fadc09c130da68639770b617b851aa207f64879b0b6a9af6771`;
+  its raw engine-run SHA-256 is
+  `b692b82cd59b3791a6ef2b09d00a4134bd020c73efc0e704a11993c94a31f0ae`.
+  The normalized raw attribution reports 3,457.269167 ms bootstrap GPU,
+  11,772.479042 ms remaining-transformer GPU, and 745.343792 ms residual host
+  overhead.
+- Hardened `measure_ruststar.py` parsing: all attribution fields are mandatory,
+  GPU time may not exceed stage wall time, host overhead must be nonnegative,
+  and wall components must sum to `prefill_ms` within 0.001 ms.
+- Validation: optimized macOS build passed; all 296 Rust tests and 73 Python
+  tests pass. The synchronized 64-tile layer-2 compressor C0 control also
+  passed; its private report SHA-256 is
+  `dc34b754f0823f02fd821533cbc4f1d5e87091ef7389bd929c4b3936d085e414`.
+  The next gate is an immutable five-pair exact 2K/128 comparison before
+  attributing any prefill gain to queueing rather than run variance.
 
 ### 2026-08-29 — Metal residency closes the first-token transition cliff
 

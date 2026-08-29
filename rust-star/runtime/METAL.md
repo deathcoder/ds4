@@ -701,6 +701,23 @@ warmup outside the benchmark: setup and the GPU touch are part of `prefill_ms`.
 The exact retained decoder controls remain unchanged and continue to validate
 all logits and model mappings independently.
 
+## Eligible prefill timing attribution and tile queuing
+
+The timing-only 2K path preserves the exact 64-command, 32-row bootstrap
+arithmetic but commits every command buffer to the same serial inference queue
+without an inter-tile host wait. The final tile synchronizes the batch; its GPU
+time is the span from the first command's GPU start to the final command's GPU
+end. Diagnostic collection continues to synchronize every tile before reading
+shared buffers. This removes 63 production waits without changing kernel row
+grouping, live-state ownership, or the C0 controls.
+
+`rust-star-engine-run-v1` attributes the complete prefill wall interval to that
+bootstrap span, the remaining transformer chain, output head, decoder-state
+handoff, model residency, and residual host overhead. The adapter rejects
+missing, nonfinite, GPU-over-wall, or non-summing attribution. Experimental
+64-row and full-2K bootstrap tiles failed the first-token oracle and were
+rejected; production remains at the proven 32-row numerical schedule.
+
 ## 2K sequential state frontier
 
 Schema: `rust-star-prefill-frontier-diagnostic-v1`.

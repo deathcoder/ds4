@@ -47,6 +47,15 @@ def _positive_float(value: Any, name: str) -> float:
     return number
 
 
+def _nonnegative_float(value: Any, name: str) -> float:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise MeasurementError(f"{name} must be numeric")
+    number = float(value)
+    if not math.isfinite(number) or number < 0.0:
+        raise MeasurementError(f"{name} must be nonnegative and finite")
+    return number
+
+
 def parse_engine_run(path: Path, *, context: int, gen_tokens: int) -> dict[str, Any]:
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
@@ -91,6 +100,22 @@ def parse_engine_run(path: Path, *, context: int, gen_tokens: int) -> dict[str, 
         raise MeasurementError("Rust Star model residency queue attachment is inconsistent")
     _positive_float(timing.get("model_view_warm_wall_ms"), "model_view_warm_wall_ms")
     _positive_float(timing.get("model_view_warm_gpu_ms"), "model_view_warm_gpu_ms")
+    prefill_stages: dict[str, tuple[float, float]] = {}
+    for stage in ("tile", "transformer", "output_head", "handoff"):
+        wall = _positive_float(
+            timing.get(f"prefill_{stage}_wall_ms"),
+            f"prefill_{stage}_wall_ms",
+        )
+        gpu = _positive_float(
+            timing.get(f"prefill_{stage}_gpu_ms"),
+            f"prefill_{stage}_gpu_ms",
+        )
+        if gpu > wall + 1.0e-6:
+            raise MeasurementError(f"Rust Star prefill {stage} GPU time exceeds wall time")
+        prefill_stages[stage] = (wall, gpu)
+    prefill_host_overhead_ms = _nonnegative_float(
+        timing.get("prefill_host_overhead_ms"), "prefill_host_overhead_ms"
+    )
     if payload.get("paired_protocol_blocker") is not None:
         raise MeasurementError("eligible Rust Star engine run retains a protocol blocker")
     metrics = payload.get("metrics")
@@ -117,6 +142,13 @@ def parse_engine_run(path: Path, *, context: int, gen_tokens: int) -> dict[str, 
         "gen_steady_ms",
     ):
         parsed[name] = _positive_float(metrics.get(name), name)
+    accounted_prefill_ms = (
+        _positive_float(timing.get("model_view_warm_wall_ms"), "model_view_warm_wall_ms")
+        + sum(wall for wall, _ in prefill_stages.values())
+        + prefill_host_overhead_ms
+    )
+    if abs(accounted_prefill_ms - parsed["prefill_ms"]) > 1.0e-3:
+        raise MeasurementError("Rust Star prefill timing attribution is inconsistent")
     tolerance = 1.0e-6
     if abs(parsed["prefill_tps"] - context * 1000.0 / parsed["prefill_ms"]) > tolerance:
         raise MeasurementError("Rust Star prefill rate and interval disagree")

@@ -51,6 +51,15 @@ def engine_run(*, eligible: bool = True) -> dict[str, object]:
             "model_residency_queue_attached": True,
             "model_view_warm_wall_ms": 8.0,
             "model_view_warm_gpu_ms": 7.0,
+            "prefill_tile_wall_ms": 3_000.0,
+            "prefill_tile_gpu_ms": 2_900.0,
+            "prefill_transformer_wall_ms": 15_000.0,
+            "prefill_transformer_gpu_ms": 14_900.0,
+            "prefill_output_head_wall_ms": 20.0,
+            "prefill_output_head_gpu_ms": 2.0,
+            "prefill_handoff_wall_ms": 5.0,
+            "prefill_handoff_gpu_ms": 1.0,
+            "prefill_host_overhead_ms": 1_967.0,
             "generation_command_buffers_per_token": 44,
             "generation_host_waits_per_token": 2,
             "generation_correctness_collection": False,
@@ -120,6 +129,33 @@ class RustStarMeasurementTests(unittest.TestCase):
             with self.assertRaisesRegex(MeasurementError, "queue attachment"):
                 parse_engine_run(path, context=2048, gen_tokens=128)
 
+    def test_eligibility_requires_complete_prefill_attribution(self) -> None:
+        payload = engine_run()
+        del payload["timing"]["prefill_transformer_gpu_ms"]  # type: ignore[index]
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "engine-run.json"
+            path.write_text(json.dumps(payload), encoding="utf-8")
+            with self.assertRaisesRegex(MeasurementError, "prefill_transformer_gpu_ms"):
+                parse_engine_run(path, context=2048, gen_tokens=128)
+
+    def test_eligibility_rejects_inconsistent_prefill_attribution(self) -> None:
+        payload = engine_run()
+        payload["timing"]["prefill_host_overhead_ms"] = 1_000.0  # type: ignore[index]
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "engine-run.json"
+            path.write_text(json.dumps(payload), encoding="utf-8")
+            with self.assertRaisesRegex(MeasurementError, "attribution is inconsistent"):
+                parse_engine_run(path, context=2048, gen_tokens=128)
+
+    def test_eligibility_rejects_prefill_gpu_time_above_wall(self) -> None:
+        payload = engine_run()
+        payload["timing"]["prefill_tile_gpu_ms"] = 3_001.0  # type: ignore[index]
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "engine-run.json"
+            path.write_text(json.dumps(payload), encoding="utf-8")
+            with self.assertRaisesRegex(MeasurementError, "GPU time exceeds wall time"):
+                parse_engine_run(path, context=2048, gen_tokens=128)
+
     def test_isolated_process_measurement_and_log_redaction(self) -> None:
         _, root = self.temporary_path()
         payload = engine_run()
@@ -132,6 +168,21 @@ class RustStarMeasurementTests(unittest.TestCase):
                 "gen_first_ms": 0.0005,
                 "gen_steady_tps": 254_000_000.0,
                 "gen_steady_ms": 0.0005,
+            }
+        )
+        payload["timing"].update(  # type: ignore[union-attr]
+            {
+                "model_view_warm_wall_ms": 0.0001,
+                "model_view_warm_gpu_ms": 0.00009,
+                "prefill_tile_wall_ms": 0.0002,
+                "prefill_tile_gpu_ms": 0.00018,
+                "prefill_transformer_wall_ms": 0.0003,
+                "prefill_transformer_gpu_ms": 0.00028,
+                "prefill_output_head_wall_ms": 0.0001,
+                "prefill_output_head_gpu_ms": 0.00009,
+                "prefill_handoff_wall_ms": 0.0001,
+                "prefill_handoff_gpu_ms": 0.00009,
+                "prefill_host_overhead_ms": 0.0002,
             }
         )
         (root / "payload.json").write_text(json.dumps(payload), encoding="utf-8")

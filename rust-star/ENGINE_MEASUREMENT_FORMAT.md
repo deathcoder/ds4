@@ -86,6 +86,14 @@ may emit an ineligible raw record with a blocker for development, but the
 adapter must turn it into a failed measurement rather than forwarding its
 rates.
 
+The raw record also attributes `prefill_ms` to the 32-row layers-0/1/2 tile
+chain, the remaining transformer chain, output head, prefill-to-decode handoff,
+model-view residency, and residual host overhead. Every wall/GPU stage must be
+positive and finite, GPU time may not exceed its corresponding wall interval,
+residual host overhead must be nonnegative, and all wall components must sum to
+`prefill_ms` within one microsecond. Missing or inconsistent attribution makes
+the adapter fail closed.
+
 ## Failure measurement
 
 An adapter should preserve local evidence, write `status: "failed"` with a

@@ -370,6 +370,8 @@ static NSString *const kQ8ProjectionSource =
 @property(nonatomic, strong) NSMutableDictionary<NSNumber *, id<MTLCommandBuffer>> *chainedCommands;
 @property(nonatomic, strong) NSMutableDictionary<NSNumber *, NSNumber *> *chainedWallStarts;
 @property(nonatomic, strong) NSMutableDictionary<NSNumber *, id<MTLCounterSampleBuffer>> *chainedStageSamples;
+@property(nonatomic, strong) NSMutableArray<id<MTLCommandBuffer>> *prefillBoundaryCommands;
+@property(nonatomic, assign) double prefillBoundaryWallStart;
 @property(nonatomic, strong) id<MTLBuffer> prefillLayer0FullKv;
 @property(nonatomic, strong) id<MTLBuffer> prefillLayer1FullKv;
 @property(nonatomic, strong) id<MTLBuffer> prefillLayer2FullKv;
@@ -3964,12 +3966,19 @@ int rust_star_metal_run_prefill_layer0_boundary(
         RustStarMetalContext *context = (__bridge RustStarMetalContext *)opaque_context;
         const BOOL retain_kv_state = kv_state_mode == 1u;
         const BOOL consume_kv_state = kv_state_mode == 2u;
+        const BOOL batch_production_tiles = !collect_outputs &&
+            continue_layer2_compressors && (retain_kv_state || consume_kv_state);
         if (kv_state_mode > 2u ||
             ((retain_kv_state || consume_kv_state) && !complete_layer1)) {
             return fail_with_message(error, error_bytes,
                 @"prefill live-KV state mode is invalid for this tile");
         }
         if (retain_kv_state) {
+            if (batch_production_tiles) {
+                context.prefillBoundaryCommands =
+                    [NSMutableArray arrayWithCapacity:64u];
+                context.prefillBoundaryWallStart = 0.0;
+            }
             context.prefillLayer0FullKv = nil;
             context.prefillLayer1FullKv = nil;
             context.prefillLayer2FullKv = nil;
@@ -3984,6 +3993,10 @@ int rust_star_metal_run_prefill_layer0_boundary(
             context.prefillLayer2IndexerStateKv = nil;
             context.prefillLayer2IndexerStateScore = nil;
             context.prefillKvRows = 0u;
+        }
+        if (batch_production_tiles && !context.prefillBoundaryCommands) {
+            return fail_with_message(error, error_bytes,
+                @"prefill production command batch is missing");
         }
         if (consume_kv_state &&
             (!context.prefillLayer0FullKv || !context.prefillLayer1FullKv ||
@@ -6100,10 +6113,36 @@ int rust_star_metal_run_prefill_layer0_boundary(
         }
 
         const double wall_start = monotonic_ms();
+        if (batch_production_tiles && retain_kv_state) {
+            context.prefillBoundaryWallStart = wall_start;
+        }
         [command commit];
-        if (!command_succeeded(command, error, error_bytes)) return 0;
-        const double wall_end = monotonic_ms();
-        if (continue_layer2_compressors) {
+        double reported_wall_ms = 0.0;
+        double reported_gpu_ms = 0.0;
+        if (batch_production_tiles) {
+            [context.prefillBoundaryCommands addObject:command];
+            if (position_start + rows == 2048u) {
+                if (!command_succeeded(command, error, error_bytes)) return 0;
+                for (id<MTLCommandBuffer> pending in context.prefillBoundaryCommands) {
+                    if (pending.status == MTLCommandBufferStatusError) {
+                        if (!command_succeeded(pending, error, error_bytes)) return 0;
+                    }
+                }
+                id<MTLCommandBuffer> first = context.prefillBoundaryCommands.firstObject;
+                id<MTLCommandBuffer> last = context.prefillBoundaryCommands.lastObject;
+                const double gpu_span = last.GPUEndTime-first.GPUStartTime;
+                reported_gpu_ms = gpu_span > 0.0 ? gpu_span*1000.0 : 0.0;
+                reported_wall_ms =
+                    monotonic_ms()-context.prefillBoundaryWallStart;
+                context.prefillBoundaryCommands = nil;
+                context.prefillBoundaryWallStart = 0.0;
+            }
+        } else {
+            if (!command_succeeded(command, error, error_bytes)) return 0;
+            reported_wall_ms = monotonic_ms()-wall_start;
+            reported_gpu_ms = gpu_elapsed_ms(command);
+        }
+        if (continue_layer2_compressors && !batch_production_tiles) {
             memset((uint8_t *)layer2_attn_state_kv_buffer.contents +
                        4u*attn_compressor_width*sizeof(float),
                    0, 4u*attn_compressor_width*sizeof(float));
@@ -6272,8 +6311,8 @@ int rust_star_metal_run_prefill_layer0_boundary(
         result->raw_cache_target_row = raw_cache_target_row;
         result->raw_cache_guard_rows = raw_cache_target_row;
         result->kv_state_mode = kv_state_mode;
-        result->wall_ms = wall_end-wall_start;
-        result->gpu_ms = gpu_elapsed_ms(command);
+        result->wall_ms = reported_wall_ms;
+        result->gpu_ms = reported_gpu_ms;
         return 1;
     }
 }
