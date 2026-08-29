@@ -63,6 +63,9 @@ def engine_run(*, eligible: bool = True) -> dict[str, object]:
             "prefill_output_head_setup_ms": 15.0,
             "prefill_handoff_wall_ms": 5.0,
             "prefill_handoff_gpu_ms": 1.0,
+            "prefill_handoff_host_ms": 500.0,
+            "model_residency_host_ms": 400.0,
+            "prefill_unattributed_host_ms": 152.0,
             "prefill_host_overhead_ms": 1_967.0,
             "generation_command_buffers_per_token": 44,
             "generation_host_waits_per_token": 2,
@@ -144,7 +147,7 @@ class RustStarMeasurementTests(unittest.TestCase):
 
     def test_eligibility_rejects_inconsistent_prefill_attribution(self) -> None:
         payload = engine_run()
-        payload["timing"]["prefill_host_overhead_ms"] = 1_000.0  # type: ignore[index]
+        payload["timing"]["prefill_host_overhead_ms"] = 2_000.0  # type: ignore[index]
         with tempfile.TemporaryDirectory() as temporary:
             path = Path(temporary) / "engine-run.json"
             path.write_text(json.dumps(payload), encoding="utf-8")
@@ -158,6 +161,15 @@ class RustStarMeasurementTests(unittest.TestCase):
             path = Path(temporary) / "engine-run.json"
             path.write_text(json.dumps(payload), encoding="utf-8")
             with self.assertRaisesRegex(MeasurementError, "setup attribution"):
+                parse_engine_run(path, context=2048, gen_tokens=128)
+
+    def test_eligibility_rejects_incomplete_host_attribution(self) -> None:
+        payload = engine_run()
+        payload["timing"]["prefill_unattributed_host_ms"] = 151.0  # type: ignore[index]
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "engine-run.json"
+            path.write_text(json.dumps(payload), encoding="utf-8")
+            with self.assertRaisesRegex(MeasurementError, "host attribution"):
                 parse_engine_run(path, context=2048, gen_tokens=128)
 
     def test_eligibility_rejects_prefill_gpu_time_above_wall(self) -> None:
@@ -199,6 +211,9 @@ class RustStarMeasurementTests(unittest.TestCase):
                 "prefill_output_head_setup_ms": 0.00003,
                 "prefill_handoff_wall_ms": 0.0001,
                 "prefill_handoff_gpu_ms": 0.00009,
+                "prefill_handoff_host_ms": 0.00001,
+                "model_residency_host_ms": 0.00001,
+                "prefill_unattributed_host_ms": 0.00003,
                 "prefill_host_overhead_ms": 0.0002,
             }
         )

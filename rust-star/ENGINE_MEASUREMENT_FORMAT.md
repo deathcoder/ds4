@@ -102,14 +102,15 @@ rates.
 
 The raw record also attributes `prefill_ms` to the 64-row layers-0/1/2 tile
 chain, the remaining transformer chain, output head, prefill-to-decode handoff,
-model-view residency, and residual host overhead. Four passive subfields split
-that residual into context creation, bootstrap setup/encoding, transformer
-setup/encoding, and output-head preparation. Their sum may not exceed the
-residual host interval. Every wall/GPU stage must be positive and finite, GPU
-time may not exceed its corresponding wall interval, residual host and setup
-times must be nonnegative, and all top-level wall components must sum to
-`prefill_ms` within one microsecond. Missing or inconsistent attribution makes
-the adapter fail closed.
+model-view residency, and residual host overhead. Passive subfields split that
+residual into context creation, bootstrap setup/encoding, transformer
+setup/encoding, output-head preparation, host work surrounding the decoder
+handoff, host work surrounding residency preparation, and a final unattributed
+remainder. These subfields must sum to the residual host interval. Every
+wall/GPU stage must be positive and finite, GPU time may not exceed its
+corresponding wall interval, residual host and setup times must be nonnegative,
+and all top-level wall components must sum to `prefill_ms` within one
+microsecond. Missing or inconsistent attribution makes the adapter fail closed.
 
 ## Failure measurement
 

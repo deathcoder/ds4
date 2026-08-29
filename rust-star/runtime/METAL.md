@@ -715,9 +715,11 @@ geometry preserve the C0 controls.
 bootstrap span, the remaining transformer chain, output head, decoder-state
 handoff, model residency, and residual host overhead. Passive setup timers
 further divide host work into context creation, bootstrap setup/encoding,
-transformer setup/encoding, and output-head preparation without changing the
-eligible command schedule. The adapter rejects missing, nonfinite,
-GPU-over-wall, non-summing, or setup-over-residual attribution. A 128-row
+transformer setup/encoding, output-head preparation, host work surrounding the
+decoder-state handoff, host work surrounding residency preparation, and a
+remaining unattributed interval without changing the eligible command
+schedule. The adapter rejects missing, nonfinite, GPU-over-wall, or non-summing
+attribution. A 128-row
 bootstrap experiment diverged at generated step 6 and remains rejected;
 production stays at the proven 64-row schedule.
 

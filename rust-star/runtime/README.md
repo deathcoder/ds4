@@ -925,8 +925,11 @@ compressor dependencies without 31 inter-tile host waits. Diagnostic commands
 retain their independently synchronized 64-by-32-row C0 schedule. The raw
 record separately reports aggregate bootstrap wall/GPU span,
 remaining-transformer wall/GPU time, output-head time, handoff time, residency
-time, and residual host overhead. A full 2,048-row bootstrap remains rejected
-because its raw-cache append is not a valid unwrapped 2K store.
+time, and residual host overhead. Passive timers further split host work around
+context/bootstrap/transformer/output setup, the decoder-state handoff, and
+model residency, leaving an explicit unattributed remainder. A full 2,048-row
+bootstrap remains rejected because its raw-cache append is not a valid
+unwrapped 2K store.
 
 `engine-profile` is an explicitly paired-ineligible diagnostic. In addition to
 its decode attribution, it splits the otherwise single layers-2-through-42

@@ -4473,6 +4473,9 @@ pub struct EngineRunReport {
     pub prefill_output_head_setup_ms: f64,
     pub prefill_handoff_wall_ms: f64,
     pub prefill_handoff_gpu_ms: f64,
+    pub prefill_handoff_host_ms: f64,
+    pub model_residency_host_ms: f64,
+    pub prefill_unattributed_host_ms: f64,
     pub prefill_host_overhead_ms: f64,
     pub decoder_prepare_ms: f64,
     pub gen_ms: f64,
@@ -5802,14 +5805,22 @@ pub fn write_engine_run_json<W: Write>(output: &mut W, report: &EngineRunReport)
             report.prefill_bootstrap_setup_ms,
             report.prefill_transformer_setup_ms,
             report.prefill_output_head_setup_ms,
+            report.prefill_handoff_host_ms,
+            report.model_residency_host_ms,
+            report.prefill_unattributed_host_ms,
         ]
         .into_iter()
         .all(|value| value.is_finite() && value >= 0.0)
-        || report.prefill_context_setup_ms
+        || (report.prefill_context_setup_ms
             + report.prefill_bootstrap_setup_ms
             + report.prefill_transformer_setup_ms
             + report.prefill_output_head_setup_ms
-            > report.prefill_host_overhead_ms + 1.0e-3
+            + report.prefill_handoff_host_ms
+            + report.model_residency_host_ms
+            + report.prefill_unattributed_host_ms
+            - report.prefill_host_overhead_ms)
+            .abs()
+            > 1.0e-3
         || ![
             report.prefill_tile_wall_ms,
             report.prefill_tile_gpu_ms,
@@ -6133,7 +6144,7 @@ pub fn write_engine_run_json<W: Write>(output: &mut W, report: &EngineRunReport)
     };
     write!(
         output,
-        "{{\n  \"schema\": \"{ENGINE_RUN_SCHEMA}\",\n  \"engine\": \"rust-star\",\n  \"context\": {},\n  \"gen_tokens\": {},\n  \"metrics\": {{\"ctx_tokens\": {}, \"prefill_tokens\": {}, \"gen_tokens\": {}, \"gen_steady_tokens\": {}, \"prefill_tps\": {:.9}, \"prefill_ms\": {:.9}, \"gen_tps\": {:.9}, \"gen_ms\": {:.9}, \"gen_first_ms\": {:.9}, \"gen_steady_tps\": {:.9}, \"gen_steady_ms\": {:.9}}},\n  \"selection\": {{\"prefill_token\": {}, \"final_token\": {}, \"selected_tokens_checksum\": {}, \"oracle_transcript_match\": true}},\n  \"timing\": {{\"model_warm_bytes\": {}, \"model_warm_pages\": {}, \"model_warm_checksum\": {}, \"model_warm_ms\": {:.9}, \"model_view_bytes\": {}, \"model_view_warm_touches\": {}, \"model_view_count\": {}, \"model_residency_allocations\": {}, \"model_residency_queue_attached\": {}, \"model_view_warm_wall_ms\": {:.9}, \"model_view_warm_gpu_ms\": {:.9}, \"prefill_context_setup_ms\": {:.9}, \"prefill_bootstrap_setup_ms\": {:.9}, \"prefill_tile_wall_ms\": {:.9}, \"prefill_tile_gpu_ms\": {:.9}, \"prefill_transformer_setup_ms\": {:.9}, \"prefill_transformer_wall_ms\": {:.9}, \"prefill_transformer_gpu_ms\": {:.9}, \"prefill_transformer_layer_gpu_ms\": {}, \"prefill_representative_stage_gpu_ms\": {}, \"prefill_representative_attention_stage_gpu_ms\": {}, \"prefill_output_head_setup_ms\": {:.9}, \"prefill_output_head_wall_ms\": {:.9}, \"prefill_output_head_gpu_ms\": {:.9}, \"prefill_handoff_wall_ms\": {:.9}, \"prefill_handoff_gpu_ms\": {:.9}, \"prefill_host_overhead_ms\": {:.9}, \"decoder_prepare_ms\": {:.9}, \"gen_first_transformer_wall_ms\": {:.9}, \"gen_first_transformer_gpu_ms\": {:.9}, \"gen_first_layer_gpu_ms\": [{}], \"gen_first_output_head_wall_ms\": {:.9}, \"gen_first_output_head_gpu_ms\": {:.9}, \"gen_steady_transformer_wall_ms\": {:.9}, \"gen_steady_transformer_gpu_ms\": {:.9}, \"gen_steady_layer_gpu_ms\": {}, \"gen_steady_output_head_wall_ms\": {:.9}, \"gen_steady_output_head_gpu_ms\": {:.9}, \"generation_command_buffers_per_token\": {}, \"generation_host_waits_per_token\": {}, \"generation_correctness_collection\": false, \"generation_layer_timing_collection\": {}, \"generation_stage_counter_collection\": {}, \"prefill_correctness_collection\": {}, \"prefill_layer_timing_collection\": {}}},\n  \"prefill_layer_profile\": {},\n  \"stage_profile\": {},\n  \"paired_protocol_eligible\": {},\n  \"paired_protocol_blocker\": {}\n}}\n",
+        "{{\n  \"schema\": \"{ENGINE_RUN_SCHEMA}\",\n  \"engine\": \"rust-star\",\n  \"context\": {},\n  \"gen_tokens\": {},\n  \"metrics\": {{\"ctx_tokens\": {}, \"prefill_tokens\": {}, \"gen_tokens\": {}, \"gen_steady_tokens\": {}, \"prefill_tps\": {:.9}, \"prefill_ms\": {:.9}, \"gen_tps\": {:.9}, \"gen_ms\": {:.9}, \"gen_first_ms\": {:.9}, \"gen_steady_tps\": {:.9}, \"gen_steady_ms\": {:.9}}},\n  \"selection\": {{\"prefill_token\": {}, \"final_token\": {}, \"selected_tokens_checksum\": {}, \"oracle_transcript_match\": true}},\n  \"timing\": {{\"model_warm_bytes\": {}, \"model_warm_pages\": {}, \"model_warm_checksum\": {}, \"model_warm_ms\": {:.9}, \"model_view_bytes\": {}, \"model_view_warm_touches\": {}, \"model_view_count\": {}, \"model_residency_allocations\": {}, \"model_residency_queue_attached\": {}, \"model_view_warm_wall_ms\": {:.9}, \"model_view_warm_gpu_ms\": {:.9}, \"model_residency_host_ms\": {:.9}, \"prefill_context_setup_ms\": {:.9}, \"prefill_bootstrap_setup_ms\": {:.9}, \"prefill_tile_wall_ms\": {:.9}, \"prefill_tile_gpu_ms\": {:.9}, \"prefill_transformer_setup_ms\": {:.9}, \"prefill_transformer_wall_ms\": {:.9}, \"prefill_transformer_gpu_ms\": {:.9}, \"prefill_transformer_layer_gpu_ms\": {}, \"prefill_representative_stage_gpu_ms\": {}, \"prefill_representative_attention_stage_gpu_ms\": {}, \"prefill_output_head_setup_ms\": {:.9}, \"prefill_output_head_wall_ms\": {:.9}, \"prefill_output_head_gpu_ms\": {:.9}, \"prefill_handoff_wall_ms\": {:.9}, \"prefill_handoff_gpu_ms\": {:.9}, \"prefill_handoff_host_ms\": {:.9}, \"prefill_unattributed_host_ms\": {:.9}, \"prefill_host_overhead_ms\": {:.9}, \"decoder_prepare_ms\": {:.9}, \"gen_first_transformer_wall_ms\": {:.9}, \"gen_first_transformer_gpu_ms\": {:.9}, \"gen_first_layer_gpu_ms\": [{}], \"gen_first_output_head_wall_ms\": {:.9}, \"gen_first_output_head_gpu_ms\": {:.9}, \"gen_steady_transformer_wall_ms\": {:.9}, \"gen_steady_transformer_gpu_ms\": {:.9}, \"gen_steady_layer_gpu_ms\": {}, \"gen_steady_output_head_wall_ms\": {:.9}, \"gen_steady_output_head_gpu_ms\": {:.9}, \"generation_command_buffers_per_token\": {}, \"generation_host_waits_per_token\": {}, \"generation_correctness_collection\": false, \"generation_layer_timing_collection\": {}, \"generation_stage_counter_collection\": {}, \"prefill_correctness_collection\": {}, \"prefill_layer_timing_collection\": {}}},\n  \"prefill_layer_profile\": {},\n  \"stage_profile\": {},\n  \"paired_protocol_eligible\": {},\n  \"paired_protocol_blocker\": {}\n}}\n",
         report.context,
         report.gen_tokens,
         report.context,
@@ -6161,6 +6172,7 @@ pub fn write_engine_run_json<W: Write>(output: &mut W, report: &EngineRunReport)
         report.model_residency_queue_attached,
         report.model_view_warm_wall_ms,
         report.model_view_warm_gpu_ms,
+        report.model_residency_host_ms,
         report.prefill_context_setup_ms,
         report.prefill_bootstrap_setup_ms,
         report.prefill_tile_wall_ms,
@@ -6176,6 +6188,8 @@ pub fn write_engine_run_json<W: Write>(output: &mut W, report: &EngineRunReport)
         report.prefill_output_head_gpu_ms,
         report.prefill_handoff_wall_ms,
         report.prefill_handoff_gpu_ms,
+        report.prefill_handoff_host_ms,
+        report.prefill_unattributed_host_ms,
         report.prefill_host_overhead_ms,
         report.decoder_prepare_ms,
         report.gen_first_transformer_wall_ms,
@@ -43943,11 +43957,19 @@ mod imp {
         let decoder_capacity = context_tokens
             .checked_add(gen_tokens)
             .ok_or_else(|| Error::invalid("measurement context capacity overflow"))?;
+        let prefill_handoff_started = Instant::now();
         let prefill_handoff = context.adopt_prefill_decoder_state(decoder_capacity)?;
+        let prefill_handoff_host_ms = (prefill_handoff_started.elapsed().as_secs_f64() * 1000.0
+            - prefill_handoff.wall_ms)
+            .max(0.0);
         // Keep Metal VM validation and the coarse GPU view touch inside the
         // declared prefill interval. This mirrors the pinned oracle's model
         // residency policy without hiding a second warmup before generation.
+        let model_residency_started = Instant::now();
         let model_residency = context.prepare_model_residency()?;
+        let model_residency_host_ms = (model_residency_started.elapsed().as_secs_f64() * 1000.0
+            - model_residency.wall_ms)
+            .max(0.0);
         let prefill_ms = prefill_started.elapsed().as_secs_f64() * 1000.0;
         let prefill_accounted_wall_ms = prefill_timing.tile_wall_ms
             + prefill_timing.transformer_wall_ms
@@ -43955,6 +43977,13 @@ mod imp {
             + prefill_handoff.wall_ms
             + model_residency.wall_ms;
         let prefill_host_overhead_ms = (prefill_ms - prefill_accounted_wall_ms).max(0.0);
+        let attributed_host_ms = prefill_timing.context_setup_ms
+            + prefill_timing.bootstrap_setup_ms
+            + prefill_timing.transformer_setup_ms
+            + prefill_timing.output_head_setup_ms
+            + prefill_handoff_host_ms
+            + model_residency_host_ms;
+        let prefill_unattributed_host_ms = (prefill_host_overhead_ms - attributed_host_ms).max(0.0);
 
         let decoder_prepare_started = Instant::now();
         let mut layers = (0..43)
@@ -44092,6 +44121,9 @@ mod imp {
             prefill_output_head_setup_ms: prefill_timing.output_head_setup_ms,
             prefill_handoff_wall_ms: prefill_handoff.wall_ms,
             prefill_handoff_gpu_ms: prefill_handoff.gpu_ms,
+            prefill_handoff_host_ms,
+            model_residency_host_ms,
+            prefill_unattributed_host_ms,
             prefill_host_overhead_ms,
             decoder_prepare_ms,
             gen_ms,
@@ -48498,6 +48530,9 @@ mod tests {
             prefill_output_head_setup_ms: 15.0,
             prefill_handoff_wall_ms: 50.0,
             prefill_handoff_gpu_ms: 45.0,
+            prefill_handoff_host_ms: 0.0,
+            model_residency_host_ms: 0.0,
+            prefill_unattributed_host_ms: 0.0,
             prefill_host_overhead_ms: 915.0,
             decoder_prepare_ms: 100.0,
             gen_ms: 7000.0,
@@ -48840,12 +48875,22 @@ mod tests {
         assert!(text.contains("\"prefill_representative_attention_stage_gpu_ms\": null"));
         assert!(text.contains("\"prefill_layer_timing_collection\": false"));
         assert!(text.contains("\"prefill_output_head_setup_ms\": 15.000000000"));
+        assert!(text.contains("\"model_residency_host_ms\": 0.000000000"));
+        assert!(text.contains("\"prefill_handoff_host_ms\": 0.000000000"));
+        assert!(text.contains("\"prefill_unattributed_host_ms\": 0.000000000"));
         assert!(text.contains("\"prefill_host_overhead_ms\": 915.000000000"));
         assert!(text.contains("\"gen_first_transformer_gpu_ms\": 50.000000000"));
         assert!(text.contains("\"gen_first_layer_gpu_ms\": [1.162790698"));
         assert!(text.contains("\"gen_steady_layer_gpu_ms\": null"));
         assert!(text.contains("\"generation_layer_timing_collection\": false"));
         assert!(text.contains("\"paired_protocol_eligible\": true"));
+    }
+
+    #[test]
+    fn engine_run_rejects_incomplete_host_attribution() {
+        let mut report = engine_run_report();
+        report.prefill_host_overhead_ms += 1.0;
+        assert!(write_engine_run_json(&mut Vec::new(), &report).is_err());
     }
 
     #[test]

@@ -201,8 +201,13 @@ history; add a correction and update the current-state summary.
   diverged at step 6, coincident with the first new ratio-4 compressor row, and
   was fully reverted. Eligible runs now passively report context, bootstrap,
   transformer, and output-head setup time inside the existing host-overhead
-  interval. Clean attribution repeats remain pending because a concurrent
-  Chromium build held system load near 50 during the first exact control.
+  interval. Three clean exact controls measured a 173.252 tok/s median and only
+  95.057 ms median across those four setup phases. Additional passive fields
+  then localized 751.101 of 884.340 ms host overhead to model-residency
+  preparation, with only 15.646 ms around the decoder-state handoff and 0.176
+  ms unattributed. Bulk residency insertion, overlapping residency preparation
+  with the transformer, and omitting the eager residency request were each
+  exact but did not reduce complete prefill; all three candidates were reverted.
 - Implementation: dependency-free Rust host scaffold under `rust-star/runtime/`
   strictly parses GGUF v3 directories, validates the Flash resident-Q2
   shape/recipe, and writes candidate full-logit artifacts. A macOS-only
@@ -744,9 +749,11 @@ history; add a correction and update the current-state summary.
 
 ## Immediate Next Actions
 
-1. Attribute and reduce the 64-row prefill bootstrap/residency interval. The
-   accepted NSG=4 transformer is now ahead in the synchronized split evidence;
-   preserve it unchanged while localizing the remaining 10.21% paired gap.
+1. Decide whether the measured approximately 0.75-second residency request can
+   be amortized by a genuinely retained engine lifecycle without excluding it
+   from first-load TTFT. Do not retry bulk insertion, transformer overlap, or
+   removal of the eager request; exact controls showed that Metal only moved or
+   serialized the same residency cost.
 2. Extend the eligible engine and exact transcript gate to the next context
    frontier before treating this narrow 2K result as representative.
 3. Preserve the exact 2K-to-position-4099 native handoff, complete retained
@@ -761,6 +768,55 @@ history; add a correction and update the current-state summary.
    fork's GitHub Actions workflow and retain its URL.
 
 ## Entries
+
+### 2026-08-29 — Localized prefill host time and rejected residency shortcuts
+
+- Collected three fresh exact eligible 2K/128 controls after the competing
+  Chromium build ended. Median Rust Star prefill was 173.252 tok/s, with a
+  172.402--174.332 range; median steady decode was 23.263 tok/s. Median setup
+  attribution was 48.246 ms context, 10.559 ms bootstrap, 36.228 ms
+  transformer, and 0.025 ms output head, totaling 95.057 ms or 0.80% of median
+  prefill. These phases are too small to justify pipeline or resource caching
+  as the next optimization.
+- The first attempted control used a stale release executable that omitted the
+  newly required setup fields. The engine preserved the exact transcript, but
+  the adapter failed closed. Force-rebuilding produced executable SHA-256
+  `4d23df4aa0c9adc4e9aa19ea00c4bfe1fc45e909bcad35c2599d65bc24e8eaf6`;
+  the rejected evidence remains under
+  `rust-star/.work/prefill-host-attribution-03/`.
+- Added passive `prefill_handoff_host_ms`, `model_residency_host_ms`, and
+  `prefill_unattributed_host_ms` fields. The Rust writer and Python adapter now
+  require every host subfield to be finite, nonnegative, and to sum exactly to
+  `prefill_host_overhead_ms` within one microsecond.
+- The first exact attribution run from executable SHA-256
+  `d3d196cb119c15e8d46a81e088231a891b8d63b42b6667a6a4b0a12f8631d971`
+  measured 751.101 ms of 884.340 ms host overhead in residency preparation,
+  15.646 ms around the decoder-state handoff, and only 0.176 ms unattributed.
+  Its transcript checksum was `17615242442502606640`; the adapter accepted all
+  1,136 model views, all 1,136 residency allocations, and queue attachment.
+- Rejected three exact residency experiments. Bulk `addAllocations:count:`
+  measured 794.046 ms residency host time versus 751.101 ms in the adjacent
+  scalar control. Preparing/requesting residency while the transformer ran
+  moved the cost into an 830.286 ms output-head stall. Omitting
+  `requestResidency` moved it into an 807.156 ms coarse-touch wall interval.
+  None improved complete prefill, and all Objective-C candidates were reverted.
+- The latter experiments ran while OBS/camera processes raised host load, so
+  their throughput values are not performance claims. Their stage-local stalls
+  are sufficient negative evidence because each moved the same approximately
+  0.8-second residency cost to the next dependent operation.
+- Validation: the complete 128-token oracle transcript passed in every live
+  candidate; 297 optimized Rust tests and all 75 Python tests passed; Rust
+  formatting, Python compilation, the new Rust under-attribution regression,
+  and `git diff --check` passed. The restored production source was rebuilt as
+  executable SHA-256
+  `6d88cdd3b73440cd63858d65aab51f12dedb35960628c076573eb8e080836b0f`.
+
+Next:
+
+- Treat residency as a lifecycle question rather than another launch tweak:
+  determine whether a retained engine can pay the cost once while still
+  reporting first-load TTFT honestly, then return to paired evidence under a
+  quiet host.
 
 ### 2026-08-29 — Made the blocked GitHub Actions workflow manual-only
 
