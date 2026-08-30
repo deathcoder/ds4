@@ -6,12 +6,11 @@
 #include "ds4.h"
 
 #include <errno.h>
+#include <limits.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-
-enum { PREFILL_TOKENS = 2048 };
 
 static int write_bytes(const char *path, const void *payload, size_t bytes) {
     FILE *fp = fopen(path, "wb");
@@ -36,34 +35,57 @@ static int write_logits(ds4_session *session, ds4_engine *engine,
 }
 
 int main(int argc, char **argv) {
-    if (argc != 8) {
+    if (argc != 8 && argc != 9) {
         fprintf(stderr,
                 "usage: %s MODEL PREFILL_TOKENS_U32 FINAL_POSITION "
-                "PREFILL_LAYER_PAYLOAD INPUT_TOKENS FIRST_LOGITS FINAL_LOGITS\n",
+                "PREFILL_LAYER_PAYLOAD INPUT_TOKENS FIRST_LOGITS FINAL_LOGITS "
+                "[PREFILL_LOGITS]\n"
+                "       use - for PREFILL_LAYER_PAYLOAD to omit it\n",
                 argv[0]);
         return 2;
     }
     char *end = NULL;
     const long final_position = strtol(argv[3], &end, 10);
-    if (!end || *end != '\0' || final_position < PREFILL_TOKENS ||
+    if (!end || *end != '\0' || final_position < 1 ||
         final_position > INT32_MAX - 1) {
         fprintf(stderr, "invalid final position\n");
         return 2;
     }
 
     FILE *token_file = fopen(argv[2], "rb");
-    uint32_t raw_tokens[PREFILL_TOKENS];
-    int prompt_tokens[PREFILL_TOKENS];
-    if (!token_file ||
-        fread(raw_tokens, sizeof(raw_tokens[0]), PREFILL_TOKENS, token_file) !=
-            PREFILL_TOKENS ||
-        fgetc(token_file) != EOF || fclose(token_file) != 0) {
-        fprintf(stderr, "cannot read the exact 2K token fixture\n");
+    if (!token_file || fseek(token_file, 0, SEEK_END) != 0) {
+        fprintf(stderr, "cannot inspect the prefill token fixture\n");
         return 1;
     }
-    for (size_t index = 0; index < PREFILL_TOKENS; index++) {
+    const long token_bytes = ftell(token_file);
+    if (token_bytes <= 0 || token_bytes % (long)sizeof(uint32_t) != 0 ||
+        fseek(token_file, 0, SEEK_SET) != 0) {
+        fprintf(stderr, "invalid prefill token fixture size\n");
+        fclose(token_file);
+        return 1;
+    }
+    const size_t prefill_tokens = (size_t)token_bytes / sizeof(uint32_t);
+    if (prefill_tokens > INT_MAX || (long)prefill_tokens > final_position) {
+        fprintf(stderr, "prefill token count exceeds the capture frontier\n");
+        fclose(token_file);
+        return 1;
+    }
+    uint32_t *raw_tokens = malloc(prefill_tokens * sizeof(*raw_tokens));
+    int *prompt_tokens = malloc(prefill_tokens * sizeof(*prompt_tokens));
+    if (!raw_tokens || !prompt_tokens ||
+        fread(raw_tokens, sizeof(*raw_tokens), prefill_tokens, token_file) !=
+            prefill_tokens ||
+        fgetc(token_file) != EOF || fclose(token_file) != 0) {
+        fprintf(stderr, "cannot read the exact prefill token fixture\n");
+        free(raw_tokens);
+        free(prompt_tokens);
+        return 1;
+    }
+    for (size_t index = 0; index < prefill_tokens; index++) {
         if (raw_tokens[index] > INT32_MAX) {
             fprintf(stderr, "invalid token at index %zu\n", index);
+            free(raw_tokens);
+            free(prompt_tokens);
             return 1;
         }
         prompt_tokens[index] = (int)raw_tokens[index];
@@ -84,39 +106,47 @@ int main(int argc, char **argv) {
     }
     ds4_tokens prompt = {
         .v = prompt_tokens,
-        .len = PREFILL_TOKENS,
-        .cap = PREFILL_TOKENS,
+        .len = (int)prefill_tokens,
+        .cap = (int)prefill_tokens,
     };
     char error[256] = "";
     if (ds4_session_sync(session, &prompt, error, sizeof(error)) != 0) {
         fprintf(stderr, "batched prefill failed: %s\n", error);
         return 1;
     }
+    free(raw_tokens);
+    free(prompt_tokens);
+    if (argc == 9 && write_logits(session, engine, argv[8])) return 1;
     const uint64_t payload_bytes =
         ds4_session_layer_payload_bytes(session, 0u, 42u);
-    FILE *payload = fopen(argv[4], "wb");
-    if (!payload ||
-        ds4_session_save_layer_payload(session, payload, 0u, 42u,
-                                       error, sizeof(error)) != 0 ||
-        fclose(payload) != 0) {
-        fprintf(stderr, "cannot write batched-prefill layer payload: %s\n", error);
-        return 1;
+    if (strcmp(argv[4], "-") != 0) {
+        FILE *payload = fopen(argv[4], "wb");
+        if (!payload ||
+            ds4_session_save_layer_payload(session, payload, 0u, 42u,
+                                           error, sizeof(error)) != 0 ||
+            fclose(payload) != 0) {
+            fprintf(stderr, "cannot write batched-prefill layer payload: %s\n",
+                    error);
+            return 1;
+        }
     }
 
     const size_t continuation_count =
-        (size_t)(final_position - PREFILL_TOKENS + 1);
+        (size_t)(final_position - (long)prefill_tokens + 1);
     uint32_t *input_tokens = malloc(continuation_count * sizeof(*input_tokens));
     if (!input_tokens) return 1;
     int selected = ds4_session_argmax(session);
-    for (long position = PREFILL_TOKENS; position <= final_position; position++) {
-        const size_t index = (size_t)(position - PREFILL_TOKENS);
+    for (long position = (long)prefill_tokens; position <= final_position;
+         position++) {
+        const size_t index = (size_t)(position - (long)prefill_tokens);
         input_tokens[index] = (uint32_t)selected;
         if (ds4_session_eval(session, selected, error, sizeof(error)) != 0) {
             fprintf(stderr, "decode failed at position %ld: %s\n", position, error);
             return 1;
         }
         selected = ds4_session_argmax(session);
-        if (position == PREFILL_TOKENS && write_logits(session, engine, argv[6])) {
+        if (position == (long)prefill_tokens &&
+            write_logits(session, engine, argv[6])) {
             return 1;
         }
         if ((position + 1) % 256 == 0 || position == final_position) {
@@ -130,9 +160,9 @@ int main(int argc, char **argv) {
         return 1;
     }
     fprintf(stderr,
-            "batched-prefill continuation captured: prefill=%d final_position=%ld "
+            "batched-prefill continuation captured: prefill=%zu final_position=%ld "
             "final_argmax=%d payload_bytes=%llu\n",
-            PREFILL_TOKENS, final_position, selected,
+            prefill_tokens, final_position, selected,
             (unsigned long long)payload_bytes);
 
     free(input_tokens);

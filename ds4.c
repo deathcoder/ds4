@@ -27728,6 +27728,12 @@ static bool metal_graph_encode_layer_attention_batch(
                     fprintf(stderr, "ds4: gpu layer %u attention compressor score projection failed\n", il);
                 }
             }
+            /* M1 can otherwise expose an intermittent long-prefill hazard
+             * between these projection writes and the compressor reads while
+             * both remain in one persistent compute encoder.  A new encoder
+             * is an in-command-buffer dependency boundary: it does not add a
+             * host wait or change the compressor arithmetic. */
+            if (ok) ok = ds4_gpu_flush_encoder() != 0;
         }
         if (ok) metal_graph_debug_dump_tensor("attn_comp_kv_raw",
                                               metal_graph_batch_comp_kv(g),
