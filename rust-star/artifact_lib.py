@@ -23,6 +23,13 @@ DIFFERENTIAL_FIXTURE_SCHEMA = "rust-star-differential-fixture-v1"
 ORACLE_ID = "oracle-v1"
 SOURCE_COMMIT = "b0309611041655f4e45671cfd9c9886aff161406"
 SOURCE_TREE = "20c11af22f90a0bdf25da860da5ef06de4064060"
+ORACLE_V2_ID = "oracle-v2"
+ORACLE_V2_SOURCE_COMMIT = "b81c099b1f7888358fcdc820e7e70566c04aafae"
+ORACLE_V2_SOURCE_TREE = "4b913890d4dc8a12872cf5462b41ce21f2007400"
+ORACLE_SOURCES = {
+    ORACLE_ID: (SOURCE_COMMIT, SOURCE_TREE),
+    ORACLE_V2_ID: (ORACLE_V2_SOURCE_COMMIT, ORACLE_V2_SOURCE_TREE),
+}
 SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 METADATA_KEYS = (
     "vocab",
@@ -472,8 +479,10 @@ def validate_oracle_bundle(root: Path, *, allow_partial: bool = False) -> dict[s
         raise ArtifactError("manifest.json must contain an object")
     if manifest.get("schema") != ORACLE_SCHEMA:
         raise ArtifactError(f"unexpected manifest schema: {manifest.get('schema')!r}")
-    if manifest.get("oracle_id") != ORACLE_ID:
-        raise ArtifactError(f"unexpected oracle id: {manifest.get('oracle_id')!r}")
+    oracle_id = manifest.get("oracle_id")
+    expected_source = ORACLE_SOURCES.get(oracle_id)
+    if expected_source is None:
+        raise ArtifactError(f"unexpected oracle id: {oracle_id!r}")
     complete = manifest.get("status") == "complete"
     if not complete and not allow_partial:
         raise ArtifactError(f"bundle is not complete: status={manifest.get('status')!r}")
@@ -481,8 +490,8 @@ def validate_oracle_bundle(root: Path, *, allow_partial: bool = False) -> dict[s
     source = manifest.get("source")
     if not isinstance(source, dict):
         raise ArtifactError("manifest source is missing")
-    if source.get("commit") != SOURCE_COMMIT or source.get("tree") != SOURCE_TREE:
-        raise ArtifactError("oracle source commit/tree does not match oracle-v1")
+    if (source.get("commit"), source.get("tree")) != expected_source:
+        raise ArtifactError(f"oracle source commit/tree does not match {oracle_id}")
 
     model = manifest.get("model")
     if not isinstance(model, dict) and complete:
@@ -507,6 +516,22 @@ def validate_oracle_bundle(root: Path, *, allow_partial: bool = False) -> dict[s
     contexts = configuration.get("contexts")
     if not isinstance(contexts, list) or not contexts or any(not isinstance(v, int) for v in contexts):
         raise ArtifactError("capture context list is invalid")
+    conformance_repetitions = configuration.get("conformance_repetitions", 1)
+    if (
+        isinstance(conformance_repetitions, bool)
+        or not isinstance(conformance_repetitions, int)
+        or conformance_repetitions < 1
+    ):
+        raise ArtifactError("conformance repetition count is invalid")
+    if oracle_id == ORACLE_V2_ID:
+        if not {2048, 32768}.issubset(contexts):
+            raise ArtifactError("oracle-v2 must cover the 2K and 32K contexts")
+        if not configuration.get("correctness_enabled"):
+            raise ArtifactError("oracle-v2 requires correctness evidence")
+        if not configuration.get("conformance_enabled"):
+            raise ArtifactError("oracle-v2 requires conformance evidence")
+        if conformance_repetitions < 2:
+            raise ArtifactError("oracle-v2 requires at least two conformance repetitions")
 
     for section_name, enabled_key in (
         ("correctness", "correctness_enabled"),
@@ -559,6 +584,19 @@ def validate_oracle_bundle(root: Path, *, allow_partial: bool = False) -> dict[s
         runs = conformance.get("runs")
         if not isinstance(runs, list) or {run.get("context") for run in runs} != set(contexts):
             raise ArtifactError("conformance contexts do not match capture configuration")
+        expected_run_keys = {
+            (context, repetition)
+            for context in contexts
+            for repetition in range(1, conformance_repetitions + 1)
+        }
+        run_keys = {
+            (run.get("context"), run.get("repetition", 1))
+            for run in runs
+            if isinstance(run, dict)
+        }
+        if len(runs) != len(expected_run_keys) or run_keys != expected_run_keys:
+            raise ArtifactError("conformance repetitions do not match capture configuration")
+        baselines: dict[int, LogitArtifact] = {}
         for run in runs:
             logits_descriptor = run.get("logits")
             if not isinstance(logits_descriptor, dict) or not isinstance(logits_descriptor.get("path"), str):
@@ -567,9 +605,17 @@ def validate_oracle_bundle(root: Path, *, allow_partial: bool = False) -> dict[s
             if logits.metadata["frontier_tokens"] != run.get("context"):
                 raise ArtifactError("conformance logit frontier does not match its run")
             if logits.metadata["quant_bits"] != 2:
-                raise ArtifactError("oracle-v1 conformance artifact is not routed Q2")
+                raise ArtifactError(f"{oracle_id} conformance artifact is not routed Q2")
             if logits.metadata["model"] != "model.gguf":
                 raise ArtifactError("oracle conformance artifact exposes an unexpected model path")
+            context = run["context"]
+            baseline = baselines.setdefault(context, logits)
+            if baseline.bits != logits.bits or any(
+                baseline.metadata[key] != logits.metadata[key] for key in METADATA_KEYS
+            ):
+                raise ArtifactError(
+                    f"conformance repetitions are not C0 exact at context {context}"
+                )
 
     performance = manifest.get("performance")
     if (
@@ -587,11 +633,12 @@ def validate_oracle_bundle(root: Path, *, allow_partial: bool = False) -> dict[s
     return {
         "schema": "rust-star-oracle-verification-v1",
         "valid": True,
-        "oracle_id": manifest["oracle_id"],
+        "oracle_id": oracle_id,
         "status": manifest.get("status"),
         "source_commit": source["commit"],
         "model_sha256": model.get("sha256") if isinstance(model, dict) else None,
         "contexts": contexts,
+        "conformance_repetitions": conformance_repetitions,
         "verified_artifacts": len(descriptors),
         "verified_bytes": sum(item["bytes"] for item in descriptors),
     }

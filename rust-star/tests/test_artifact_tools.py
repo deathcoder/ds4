@@ -16,6 +16,8 @@ sys.path.insert(0, str(RUST_STAR_DIR))
 
 from artifact_lib import (  # noqa: E402
     ArtifactError,
+    ORACLE_V2_SOURCE_COMMIT,
+    ORACLE_V2_SOURCE_TREE,
     SOURCE_COMMIT,
     SOURCE_TREE,
     compare_logit_artifacts,
@@ -155,6 +157,65 @@ class BundleValidationTests(unittest.TestCase):
         (bundle / "manifest.json").write_text(json.dumps(manifest) + "\n", encoding="utf-8")
         return bundle
 
+    def make_v2_bundle(self, root: Path) -> Path:
+        bundle = root / "oracle-v2-test"
+        bundle.mkdir()
+        runs: list[dict[str, object]] = []
+        for context in (2048, 32768):
+            for repetition in (1, 2):
+                relative = Path("conformance") / f"ctx_{context}" / f"run_{repetition}.json"
+                path = bundle / relative
+                path.parent.mkdir(parents=True, exist_ok=True)
+                write_logits(
+                    path,
+                    [0.0, 2.0, 1.0],
+                    prompt_tokens=context,
+                    frontier_tokens=context,
+                    ctx=context,
+                )
+                runs.append({
+                    "context": context,
+                    "repetition": repetition,
+                    "logits": {
+                        "path": str(relative),
+                        "bytes": path.stat().st_size,
+                        "sha256": sha256_file(path),
+                    },
+                })
+        manifest = {
+            "schema": "rust-star-oracle-manifest-v1",
+            "oracle_id": "oracle-v2",
+            "status": "complete",
+            "source": {
+                "commit": ORACLE_V2_SOURCE_COMMIT,
+                "tree": ORACLE_V2_SOURCE_TREE,
+            },
+            "capture_kit": {
+                "commit": "a" * 40,
+                "tree": "b" * 40,
+                "branch": "agent/rust-star-bootstrap",
+                "tracked_worktree": "clean",
+            },
+            "model": {
+                "filename": "model.gguf",
+                "bytes": 123,
+                "sha256": "c" * 64,
+                "absolute_path_recorded": False,
+            },
+            "configuration": {
+                "contexts": [2048, 32768],
+                "conformance_repetitions": 2,
+                "correctness_enabled": True,
+                "conformance_enabled": True,
+                "performance_enabled": False,
+            },
+            "correctness": {"status": "passed", "runs": []},
+            "conformance": {"status": "passed", "runs": runs},
+            "performance": {"status": "skipped", "runs": []},
+        }
+        (bundle / "manifest.json").write_text(json.dumps(manifest) + "\n", encoding="utf-8")
+        return bundle
+
     def test_directory_and_archive_validate(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
@@ -175,6 +236,43 @@ class BundleValidationTests(unittest.TestCase):
             bundle = self.make_bundle(Path(temporary))
             (bundle / "evidence.txt").write_text("tampered\n", encoding="utf-8")
             with self.assertRaisesRegex(ArtifactError, "integrity mismatch"):
+                validate_oracle_bundle(bundle)
+
+    def test_oracle_v2_repeated_conformance_validates(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            bundle = self.make_v2_bundle(Path(temporary))
+            report = validate_oracle_bundle(bundle)
+            self.assertEqual(report["oracle_id"], "oracle-v2")
+            self.assertEqual(report["conformance_repetitions"], 2)
+
+    def test_oracle_v2_conformance_drift_is_rejected(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            bundle = self.make_v2_bundle(Path(temporary))
+            manifest_path = bundle / "manifest.json"
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            run = manifest["conformance"]["runs"][-1]
+            path = bundle / run["logits"]["path"]
+            write_logits(
+                path,
+                [0.0, 2.0, 1.25],
+                prompt_tokens=32768,
+                frontier_tokens=32768,
+                ctx=32768,
+            )
+            run["logits"]["bytes"] = path.stat().st_size
+            run["logits"]["sha256"] = sha256_file(path)
+            manifest_path.write_text(json.dumps(manifest) + "\n", encoding="utf-8")
+            with self.assertRaisesRegex(ArtifactError, "not C0 exact at context 32768"):
+                validate_oracle_bundle(bundle)
+
+    def test_oracle_v2_requires_two_repetitions(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            bundle = self.make_v2_bundle(Path(temporary))
+            manifest_path = bundle / "manifest.json"
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            manifest["configuration"]["conformance_repetitions"] = 1
+            manifest_path.write_text(json.dumps(manifest) + "\n", encoding="utf-8")
+            with self.assertRaisesRegex(ArtifactError, "at least two"):
                 validate_oracle_bundle(bundle)
 
     def test_early_partial_manifest_is_accepted_only_when_requested(self) -> None:

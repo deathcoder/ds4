@@ -30,6 +30,7 @@ SOURCE_TREE = "20c11af22f90a0bdf25da860da5ef06de4064060"
 DEFAULT_CONTEXTS = (2048, 32768)
 FULL_CONTEXTS = (2048, 32768, 131072, 262144, 524288, 1000000)
 DEFAULT_REPETITIONS = 3
+DEFAULT_CONFORMANCE_REPETITIONS = 1
 DEFAULT_GEN_TOKENS = 128
 PROMPT_BYTES_PER_TARGET_TOKEN = 8
 PROMPT_SEPARATOR = b"\n\n"
@@ -536,6 +537,12 @@ def build_parser() -> argparse.ArgumentParser:
     group.add_argument("--contexts", type=parse_contexts, help="comma-separated context frontiers")
     group.add_argument("--full", action="store_true", help="use the 2K through 1M frontier set")
     parser.add_argument("--repetitions", type=int, default=DEFAULT_REPETITIONS)
+    parser.add_argument(
+        "--conformance-repetitions",
+        type=int,
+        default=DEFAULT_CONFORMANCE_REPETITIONS,
+        help="fresh-process full-logit captures per context",
+    )
     parser.add_argument("--gen-tokens", type=int, default=DEFAULT_GEN_TOKENS)
     parser.add_argument("--output", type=Path, help="empty result directory")
     parser.add_argument("--notes", default="", help="manual environment/thermal notes; included in the archive")
@@ -549,9 +556,18 @@ def build_parser() -> argparse.ArgumentParser:
 def validate_args(args: argparse.Namespace) -> tuple[int, ...]:
     if args.repetitions < 1:
         raise CaptureError("--repetitions must be at least 1")
+    if args.conformance_repetitions < 1:
+        raise CaptureError("--conformance-repetitions must be at least 1")
     if args.gen_tokens < 1:
         raise CaptureError("--gen-tokens must be at least 1")
     contexts = FULL_CONTEXTS if args.full else (args.contexts or DEFAULT_CONTEXTS)
+    if ORACLE_ID == "oracle-v2":
+        if args.skip_correctness or args.skip_conformance:
+            raise CaptureError("oracle-v2 requires correctness and conformance evidence")
+        if args.conformance_repetitions < 2:
+            raise CaptureError("oracle-v2 requires at least two conformance repetitions")
+        if not {2048, 32768}.issubset(contexts):
+            raise CaptureError("oracle-v2 must cover the 2K and 32K contexts")
     if not args.dry_run:
         if platform.system() != "Darwin" or platform.machine() not in {"arm64", "aarch64"}:
             raise CaptureError("oracle capture must run on Apple Silicon macOS; use --dry-run elsewhere")
@@ -569,6 +585,7 @@ def dry_run_plan(args: argparse.Namespace, contexts: tuple[int, ...]) -> int:
         "model": args.model.name,
         "contexts": contexts,
         "repetitions": args.repetitions,
+        "conformance_repetitions": args.conformance_repetitions,
         "gen_tokens": args.gen_tokens,
         "correctness": not args.skip_correctness,
         "conformance": not args.skip_conformance,
@@ -605,6 +622,7 @@ def capture(args: argparse.Namespace, contexts: tuple[int, ...]) -> int:
             "expected_quantization": "resident imatrix Q2",
             "contexts": list(contexts),
             "performance_repetitions": args.repetitions,
+            "conformance_repetitions": args.conformance_repetitions,
             "performance_gen_tokens": args.gen_tokens,
             "sampling": "greedy argmax excluding EOS (ds4-bench behavior)",
             "correctness_enabled": not args.skip_correctness,
@@ -634,7 +652,7 @@ def capture(args: argparse.Namespace, contexts: tuple[int, ...]) -> int:
         }
         atomic_json(manifest_path, manifest)
 
-        with tempfile.TemporaryDirectory(prefix="rust-star-oracle-v1-") as temporary:
+        with tempfile.TemporaryDirectory(prefix=f"rust-star-{ORACLE_ID}-") as temporary:
             temporary_root = Path(temporary)
             source_dir = temporary_root / "source"
             logs = output / "logs"
@@ -699,36 +717,57 @@ def capture(args: argparse.Namespace, contexts: tuple[int, ...]) -> int:
                     "runs": conformance_runs,
                 }
                 atomic_json(manifest_path, manifest)
-                for context in contexts:
-                    context_dir = output / "conformance" / f"ctx_{context:07d}"
-                    logits_dir = context_dir / "logits"
-                    logits_dir.mkdir(parents=True, exist_ok=True)
-                    csv_path = context_dir / "prefill.csv"
-                    command = benchmark_command(
-                        source_dir,
-                        context=context,
-                        gen_tokens=0,
-                        csv_path=csv_path,
-                        logits_dir=logits_dir,
-                    )
-                    result = run_logged(
-                        command,
-                        cwd=source_dir,
-                        log_path=logs / f"conformance_ctx_{context:07d}.log",
-                        display_command=sanitized_benchmark_command(command, source_dir, output),
-                    )
-                    logits_path = logits_dir / f"frontier_{context:06d}.logits.json"
-                    metadata = validate_logits(logits_path, context)
-                    row = read_single_csv_row(csv_path, context)
-                    conformance_runs.append({
-                        "context": context,
-                        "command": result,
-                        "metadata": metadata,
-                        "prefill_row": row,
-                        "logits": artifact(logits_path, output),
-                        "csv": artifact(csv_path, output),
-                    })
-                    atomic_json(manifest_path, manifest)
+                conformance_hashes: dict[int, str] = {}
+                for repetition in range(1, args.conformance_repetitions + 1):
+                    ordered_contexts = contexts if repetition % 2 else tuple(reversed(contexts))
+                    for context in ordered_contexts:
+                        context_dir = (
+                            output
+                            / "conformance"
+                            / f"ctx_{context:07d}"
+                            / f"run_{repetition:02d}"
+                        )
+                        logits_dir = context_dir / "logits"
+                        logits_dir.mkdir(parents=True, exist_ok=True)
+                        csv_path = context_dir / "prefill.csv"
+                        command = benchmark_command(
+                            source_dir,
+                            context=context,
+                            gen_tokens=0,
+                            csv_path=csv_path,
+                            logits_dir=logits_dir,
+                        )
+                        result = run_logged(
+                            command,
+                            cwd=source_dir,
+                            log_path=(
+                                logs
+                                / f"conformance_ctx_{context:07d}_run_{repetition:02d}.log"
+                            ),
+                            display_command=sanitized_benchmark_command(command, source_dir, output),
+                        )
+                        logits_path = logits_dir / f"frontier_{context:06d}.logits.json"
+                        metadata = validate_logits(logits_path, context)
+                        row = read_single_csv_row(csv_path, context)
+                        logits_artifact = artifact(logits_path, output)
+                        baseline_hash = conformance_hashes.setdefault(
+                            context, logits_artifact["sha256"]
+                        )
+                        if logits_artifact["sha256"] != baseline_hash:
+                            raise CaptureError(
+                                f"fresh-process conformance drift at context {context}: "
+                                f"expected {baseline_hash}, got {logits_artifact['sha256']}"
+                            )
+                        conformance_runs.append({
+                            "context": context,
+                            "repetition": repetition,
+                            "command": result,
+                            "metadata": metadata,
+                            "prefill_row": row,
+                            "logits": logits_artifact,
+                            "csv": artifact(csv_path, output),
+                        })
+                        atomic_json(manifest_path, manifest)
                 quant_bits = {run["metadata"].get("quant_bits") for run in conformance_runs}
                 if quant_bits != {2}:
                     observed = sorted(str(value) for value in quant_bits)
@@ -736,7 +775,16 @@ def capture(args: argparse.Namespace, contexts: tuple[int, ...]) -> int:
                 manifest["conformance"] = {
                     "status": "passed",
                     "encoding": "JSON decimal %.9g; finite FP32 values round-trip exactly",
-                    "coverage": "one post-prefill full-vocabulary tensor per selected context",
+                    "coverage": "repeated fresh-process post-prefill full-vocabulary tensors per selected context",
+                    "repeatability": [
+                        {
+                            "context": context,
+                            "repetitions": args.conformance_repetitions,
+                            "c0_exact": True,
+                            "logits_sha256": conformance_hashes[context],
+                        }
+                        for context in contexts
+                    ],
                     "runs": conformance_runs,
                 }
                 atomic_json(manifest_path, manifest)
@@ -845,7 +893,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             return dry_run_plan(args, contexts)
         return capture(args, contexts)
     except CaptureError as exc:
-        print(f"capture_oracle_v1.py: {exc}", file=sys.stderr)
+        print(f"{Path(sys.argv[0]).name}: {exc}", file=sys.stderr)
         return 1
 
 

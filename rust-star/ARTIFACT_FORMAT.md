@@ -53,10 +53,18 @@ Every descriptor with `path`, `bytes`, and `sha256` names a regular file inside
 the bundle. Paths must be relative and cannot escape the bundle. The archive's
 separate SHA-256 protects the manifest and unhashed diagnostic logs as well.
 
-`oracle-v1` is complete only when `manifest.status` is `complete` and every
+An oracle bundle is complete only when `manifest.status` is `complete` and every
 enabled correctness, conformance, and performance section has status `passed`.
 A partial bundle is useful for diagnosing a capacity failure but is not an
 accepted oracle.
+
+`oracle-v1` retains its historical one-capture-per-context contract. The
+replacement `oracle-v2` pins repaired producer commit `b81c099`, must cover 2K
+and 32K, and requires at least two fresh-process conformance captures per
+frontier. Every repeated full-logit tensor and required C0 metadata field must
+be bit-identical; the verifier rejects the bundle otherwise. Performance may
+remain a separate disabled section because oracle identity and benchmark
+eligibility are independent contracts.
 
 ## Full-logit JSON
 
