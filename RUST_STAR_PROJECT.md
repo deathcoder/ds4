@@ -36,7 +36,11 @@ and explain where time or bandwidth goes.
 The completed `oracle-v1` manifest pins the GGUF SHA-256
 `ca22ae2f838e14077c22bc1c1417b71b45b5e5a3687bd96c2ac6e17fdb6261c0`,
 macOS build, Xcode/Metal toolchain, compiler flags, runtime configuration, and
-2K/32K golden artifacts from the target Mac.
+2K/32K artifacts from the target Mac. A 2026-08-30 repeatability audit confirmed
+the 2K golden outputs but found that the historical single-run 32K logits are
+not bit-stable across fresh processes. The 32K artifact remains immutable
+historical evidence, but is quarantined as a C0 target until an explicitly
+versioned deterministic replacement is accepted.
 
 ## Deliberate Initial Non-Goals
 
@@ -127,6 +131,10 @@ requires:
 `oracle-v1` uses upstream commit
 `b0309611041655f4e45671cfd9c9886aff161406`; its remaining manifest fields and
 golden outputs were captured on the target machine on 2026-08-14.
+Its 2K outputs remain the active C0 contract. Its 32K outputs must not be used
+to claim C0 after the repeatability failure recorded in
+`RUST_STAR_JOURNAL.md`; advancing that frontier requires the normal immutable
+oracle-version procedure above.
 
 Conformance and performance are separate run modes:
 

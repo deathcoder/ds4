@@ -50,9 +50,13 @@ history; add a correction and update the current-state summary.
 - Local `main`: fast-forwarded to the same upstream commit.
 - Fork `origin/main`: synchronized to the same upstream commit through the
   GitHub app.
-- Oracle: `oracle-v1` is complete and independently verified. It binds source
-  `b030961`, model SHA-256 `ca22ae2f...6261c0`, the target toolchain, 2K/32K
-  full-vocabulary logits, correctness logs, and repeated performance evidence.
+- Oracle: `oracle-v1` binds source `b030961`, model SHA-256
+  `ca22ae2f...6261c0`, the target toolchain, 2K/32K full-vocabulary logits,
+  correctness logs, and repeated performance evidence. Its 2K tensors remain
+  reproducible and active for C0. A 2026-08-30 fresh-process audit found that
+  the historical single-run 32K tensor is not bit-stable, so that frontier is
+  quarantined as a C0 target pending an explicitly versioned deterministic
+  replacement; the original artifact remains immutable evidence.
 - Capture kit: `rust-star/capture_oracle_v1.py` prepares a privacy-filtered,
   checksummed result bundle from an isolated build of the pinned oracle source.
 - Differential tooling: the initial bundle/full-logit format is stable and has
@@ -760,8 +764,9 @@ history; add a correction and update the current-state summary.
 
 ## Immediate Next Actions
 
-1. Extend the eligible engine and exact transcript gate to the next context
-   frontier before treating this narrow 2K result as representative.
+1. Capture immutable checkpoint `b81c099`'s deterministic 32K outputs under a
+   new oracle version, and then extend Rust Star's exact frontier against that
+   version.
 2. Preserve the accepted retained lifecycle for the future long-lived engine:
    reset all request state, retain only immutable pipelines/model views and
    residency, fully charge first load, and keep retained timing paired-ineligible.
@@ -777,6 +782,66 @@ history; add a correction and update the current-state summary.
    fork's GitHub Actions workflow and retain its URL.
 
 ## Entries
+
+### 2026-08-30 — Quarantined the unstable 32K oracle and repaired its producer
+
+- Generalized `capture_prefill_decode_frontier.c` to derive the prompt length
+  from an exact little-endian U32 token file, optionally capture the direct
+  post-prefill logits, and omit the multi-hundred-megabyte layer payload when
+  it is not needed. Its original 2K invocation remains compatible.
+- Reconstructed the first 32,768 token IDs from the existing 419,509-token
+  capture. The first 2,048-token prefix is byte-identical to the pinned 2K
+  fixture. Two fresh 32K-to-32,896 runs had an identical 129-token greedy input
+  transcript but different first and final full-vocabulary logits. Two further
+  exact-capacity 32K runs captured the direct post-prefill row and differed in
+  129,278 of 129,280 FP32 logits with maximum absolute difference `0.383039`;
+  both still selected token 85166. The current OS, Xcode, compiler, model, and
+  pinned source identity match the original manifest, whose capture contained
+  only one 32K conformance repetition.
+- Localized the first serialized-state difference to 15 FP32 values in layer
+  17's ratio-128 compressed row 191, emitted at the end of the
+  positions-20,480--24,575 chunk. Independent repeated top-512 and indexer
+  score-builder probes were bit-identical. Diagnostic dumps immediately around
+  the layer-17 projection/compressor boundary made the raw KV projection, raw
+  score projection, compressed output, post-prefill logits, and next-step
+  logits bit-identical across fresh processes.
+- Added a minimal in-command-buffer dependency boundary after the compressor
+  KV/score projections. It ends only the retained compute encoder; it does not
+  submit, wait on the host, or change arithmetic. Four ordinary fresh-process
+  32K runs then matched exactly at post-prefill and next-step logits, selecting
+  token 85166. The repaired post-prefill SHA-256 is
+  `603430b4...09c547`, and the next-step SHA-256 is
+  `63478a55...2b5bb`. Their deterministic output differs from the historical
+  August 32K tensor, so the repair does not silently replace or retroactively
+  validate `oracle-v1`.
+- Froze the repaired producer at immutable commit `b81c099`. The generalized
+  original executable used for the ABBA control has SHA-256
+  `b817ed0a...f7df7`; the repaired executable has SHA-256
+  `8e5f7e29...fcfcf1`.
+- Re-ran the exact 2K boundary with the repair. Direct post-prefill logits and
+  first decode logits are byte-identical to the pinned fixtures, and the first
+  generated token remains 15342. The 2K C0 contract is unchanged.
+- Ran a host-contaminated ABBA wall-time characterization using two immutable
+  executables and identical 32K input/output work. The original measured
+  `185.05` and `185.23` seconds; the repair measured `187.69` and `182.90`
+  seconds. Their medians were `185.140` and `185.295` seconds respectively, a
+  `+0.084%` repaired/original delta. This is not headline performance evidence,
+  but it rules out an obvious regression at this gate. Both original outputs
+  differed from one another while both repaired outputs remained byte-exact.
+
+Decision:
+
+- Preserve the historical 32K artifact but quarantine it as a C0 target.
+  Retain the dependency repair as the deterministic candidate and require an
+  explicit oracle version before Rust Star uses the repaired 32K tensor for C0
+  claims. The bounded characterization found no material performance cost;
+  normal paired protocol evidence remains separate.
+
+Next:
+
+- Construct and verify the versioned replacement oracle metadata/artifacts from
+  immutable checkpoint `b81c099`, then extend Rust Star's exact context gate
+  against it.
 
 ### 2026-08-30 — Accepted retained lifecycle after three exact repetitions
 
