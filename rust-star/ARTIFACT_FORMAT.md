@@ -59,7 +59,7 @@ A partial bundle is useful for diagnosing a capacity failure but is not an
 accepted oracle.
 
 `oracle-v1` retains its historical one-capture-per-context contract. The
-replacement `oracle-v2` pins repaired producer commit `b81c099`, must cover 2K
+accepted `oracle-v2` pins repaired producer commit `b81c099`, must cover 2K
 and 32K, and requires at least two fresh-process conformance captures per
 frontier. Every repeated full-logit tensor and required C0 metadata field must
 be bit-identical; the verifier rejects the bundle otherwise. Performance may

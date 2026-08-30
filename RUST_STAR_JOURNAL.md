@@ -50,15 +50,16 @@ history; add a correction and update the current-state summary.
 - Local `main`: fast-forwarded to the same upstream commit.
 - Fork `origin/main`: synchronized to the same upstream commit through the
   GitHub app.
-- Oracle: `oracle-v1` binds source `b030961`, model SHA-256
-  `ca22ae2f...6261c0`, the target toolchain, 2K/32K full-vocabulary logits,
-  correctness logs, and repeated performance evidence. Its 2K tensors remain
-  reproducible and active for C0. A 2026-08-30 fresh-process audit found that
-  the historical single-run 32K tensor is not bit-stable, so that frontier is
-  quarantined as a C0 target pending an explicitly versioned deterministic
-  replacement; the original artifact remains immutable evidence.
-- Capture kit: `rust-star/capture_oracle_v1.py` prepares a privacy-filtered,
-  checksummed result bundle from an isolated build of the pinned oracle source.
+- Oracle: `oracle-v2` is the active 2K/32K C0 contract. It pins deterministic
+  repair `b81c099`, capture kit `855b2b8`, model SHA-256
+  `ca22ae2f...6261c0`, the target toolchain, and two bit-identical fresh-process
+  full-vocabulary captures per frontier. It preserves the `oracle-v1` 2K tensor
+  exactly. The historical `oracle-v1` 32K tensor remains quarantined and
+  immutable after its repeatability failure.
+- Capture kit: `rust-star/capture_oracle_v1.py` preserves the historical
+  capture path. `rust-star/capture_oracle_v2.py` prepares the deterministic
+  privacy-filtered bundle and requires repeated fresh-process C0 evidence; the
+  verifier accepts both immutable versions and rejects v2 repetition drift.
 - Differential tooling: the initial bundle/full-logit format is stable and has
   cross-platform verification, exact C0 comparison, and drift diagnostics. The
   `rust-star-differential-fixture-v1` envelope now covers kernel,
@@ -764,9 +765,9 @@ history; add a correction and update the current-state summary.
 
 ## Immediate Next Actions
 
-1. Capture immutable checkpoint `b81c099`'s deterministic 32K outputs under a
-   new oracle version, and then extend Rust Star's exact frontier against that
-   version.
+1. Extend Rust Star's eligible engine and exact transcript gate from 2K to the
+   accepted `oracle-v2` 32K frontier before treating the current narrow result
+   as representative.
 2. Preserve the accepted retained lifecycle for the future long-lived engine:
    reset all request state, retain only immutable pipelines/model views and
    residency, fully charge first load, and keep retained timing paired-ineligible.
@@ -782,6 +783,55 @@ history; add a correction and update the current-state summary.
    fork's GitHub Actions workflow and retain its URL.
 
 ## Entries
+
+### 2026-08-30 — Accepted repeatable oracle-v2 at 2K and 32K
+
+- Added the `oracle-v2` capture profile around immutable repaired producer
+  `b81c099b1f7888358fcdc820e7e70566c04aafae` / tree
+  `4b913890...07400`. The format retains the v1 manifest schema but v2 requires
+  correctness evidence, coverage at 2K and 32K, and at least two fresh-process
+  conformance repetitions per frontier. The capture fails immediately on a
+  repeated JSON tensor hash mismatch; the independent verifier compares every
+  FP32 bit and required C0 metadata field again.
+- Froze capture kit `855b2b8c4ef8dd9400f4783392fce1c7323bc01d` /
+  tree `1b65617c...3b716`. All 78 Python artifact/benchmark tests passed,
+  including deliberate v2 drift and missing-repetition rejection. The existing
+  `oracle-v1` archive independently continued to verify unchanged.
+- Captured privacy-filtered bundle
+  `rust-star/results/oracle-v2-20260830T091839Z.tar.gz` on the target M1 Ultra.
+  Archive SHA-256 is
+  `538332a60b82b264cbdde3c4ba07d8d307ae974627a0ab2550e84c1c52a4f2de`.
+  Independent archive verification passed with eight hashed artifacts and
+  6,325,632 verified bytes. Performance was intentionally disabled because the
+  host was noisy; correctness acceptance is independent of benchmark
+  eligibility.
+- Both 2K captures are byte-identical with JSON SHA-256
+  `2b3cdf9b...6ddb0`, argmax 15342, and the historical v1 2K tensor. Both 32K
+  captures are byte-identical with JSON SHA-256 `269f9529...58e12` and argmax
+  85166. Metal-kernel and official-logprob-vector correctness suites passed
+  inside the isolated source build.
+- Compared old and proposed oracle tensors explicitly. At 2K, all 129,280
+  logits and required metadata remain C0. At 32K, all 129,280 historical v1
+  logits differ from deterministic v2, with maximum absolute error
+  `1.00521278`, RMSE `0.16934920`, cosine similarity `0.99955505`, and
+  `KL(P||Q)=0.00359783`; argmax remains 85166, top-10 overlap is 9/10, and
+  top-50 overlap is 46/50. This is a numerical version boundary caused by the
+  repaired dependency hazard, not a behavioral token change.
+- The prior ABBA characterization measured a `+0.084%` repaired/original
+  median wall delta under the same noisy-host label, ruling out an obvious
+  speed regression without promoting it to benchmark evidence. Historical v1
+  measurements remain preserved under v1.
+
+Decision:
+
+- Advance `current-oracle` to `oracle-v2` for 2K and 32K. Preserve v1's exact
+  2K evidence and all historical performance results; keep only v1's unstable
+  32K tensor quarantined. Rust Star may now use the v2 32K tensor for C0 work.
+
+Next:
+
+- Extend the eligible Rust Star engine and closed-loop exactness gate to 32K
+  against `oracle-v2`, then measure that frontier only after it passes C0.
 
 ### 2026-08-30 — Quarantined the unstable 32K oracle and repaired its producer
 

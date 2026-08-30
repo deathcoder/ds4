@@ -27,8 +27,9 @@ and explain where time or bandwidth goes.
 - Platform: macOS and Metal on that machine only.
 - Model family/checkpoint: DeepSeek-V4-Flash-0731 only.
 - Initial model format: DwarfStar's imatrix Q2 GGUF for the 128 GB resident path.
-- Reference implementation: a versioned snapshot of upstream
-  `antirez/ds4`, not this fork.
+- Reference implementation: a versioned source snapshot rooted in upstream
+  `antirez/ds4`; any fork-only correctness repair requires an explicit oracle
+  version and may not silently track the working branch.
 - Primary workload: batch-one decode for an interactive coding agent.
 - Initial product surface: a minimal decoder and benchmark executable, not an
   HTTP server or complete agent framework.
@@ -39,8 +40,8 @@ macOS build, Xcode/Metal toolchain, compiler flags, runtime configuration, and
 2K/32K artifacts from the target Mac. A 2026-08-30 repeatability audit confirmed
 the 2K golden outputs but found that the historical single-run 32K logits are
 not bit-stable across fresh processes. The 32K artifact remains immutable
-historical evidence, but is quarantined as a C0 target until an explicitly
-versioned deterministic replacement is accepted.
+historical evidence and is quarantined as a C0 target. `oracle-v2` is the
+accepted deterministic replacement at 2K/32K and pins repair commit `b81c099`.
 
 ## Deliberate Initial Non-Goals
 
@@ -110,7 +111,7 @@ The oracle moves through explicit immutable versions rather than silently
 tracking upstream:
 
 ```text
-oracle-vN = upstream commit
+oracle-vN = immutable source commit
           + model artifact SHA-256
           + hardware identity
           + macOS and Metal/Xcode versions
@@ -119,7 +120,7 @@ oracle-vN = upstream commit
           + golden artifact schema/version
 ```
 
-`current-oracle` may advance after an upstream update is evaluated. Advancing it
+`current-oracle` may advance after a source update is evaluated. Advancing it
 requires:
 
 1. compare old and proposed oracle full logits on the conformance corpus;
@@ -131,10 +132,16 @@ requires:
 `oracle-v1` uses upstream commit
 `b0309611041655f4e45671cfd9c9886aff161406`; its remaining manifest fields and
 golden outputs were captured on the target machine on 2026-08-14.
-Its 2K outputs remain the active C0 contract. Its 32K outputs must not be used
-to claim C0 after the repeatability failure recorded in
-`RUST_STAR_JOURNAL.md`; advancing that frontier requires the normal immutable
-oracle-version procedure above.
+Its 2K outputs remain valid historical C0 evidence. Its 32K outputs must not be
+used to claim C0 after the repeatability failure recorded in
+`RUST_STAR_JOURNAL.md`.
+
+`oracle-v2` uses fork repair commit
+`b81c099b1f7888358fcdc820e7e70566c04aafae`. It preserves the v1 2K tensor
+exactly and replaces only the quarantined 32K contract. Its accepted target-Mac
+bundle requires two bit-identical fresh-process captures at both 2K and 32K;
+the capture and advancement decision are recorded in `RUST_STAR_JOURNAL.md`.
+`oracle-v2` is the current C0 oracle for those two frontiers.
 
 Conformance and performance are separate run modes:
 
