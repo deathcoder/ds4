@@ -27729,13 +27729,17 @@ static bool metal_graph_encode_layer_attention_batch(
                 }
             }
             /* M1 can otherwise expose an intermittent long-prefill hazard
-             * between these projection writes and the compressor reads.  An
-             * encoder-only boundary removed the common failure mode but did
-             * not eliminate a rarer recurrence in a longer 32K continuation
-             * audit. Commit the projection command buffer before encoding the
-             * compressor reads. Metal queue ordering supplies the GPU
-             * dependency without a host wait or an arithmetic change. */
-            if (ok) ok = ds4_gpu_flush_commands() != 0;
+             * between these projection writes and the compressor reads. An
+             * encoder boundary and then an asynchronous command-buffer split
+             * each reduced its frequency without eliminating it. Wait for the
+             * projection buffer here before encoding compressor reads; fresh-
+             * process 32K captures showed exact output stability with a small
+             * throughput cost. Reopen a batch immediately so the enclosing
+             * layer-major executor retains its command lifetime contract. */
+            if (ok) {
+                ok = ds4_gpu_end_commands() != 0 &&
+                     ds4_gpu_begin_commands() != 0;
+            }
         }
         if (ok) metal_graph_debug_dump_tensor("attn_comp_kv_raw",
                                               metal_graph_batch_comp_kv(g),

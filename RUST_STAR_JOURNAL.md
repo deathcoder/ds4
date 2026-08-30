@@ -18,6 +18,50 @@ Before changing code:
 Journal entries are reverse chronological. Do not edit old entries to change
 history; add a correction and update the current-state summary.
 
+## 2026-08-30 — Residual 32K producer race isolated and synchronized
+
+Objective:
+
+- Reject or accept the stronger long-context producer under the new four-run
+  `oracle-v3` contract, then isolate any remaining fresh-process drift.
+
+Evidence:
+
+- The first `oracle-v3` attempt correctly stopped at 32K repetition 2. Run 1
+  had JSON SHA-256 `11db1c711ccd235127115eb3a211d6c5c0a91ee3be092e7f718d30c4048fbcfa`;
+  run 2 had `269f9529f0e649d6e4f5ecd125ef7c4808f825e65bf9d503c512ef611c958e12`.
+  Their argmax and top-50 set matched, but 129,278 of 129,280 FP32 logits
+  differed (`max_abs=0.07219076`, `rmse=0.01476714`). The failed bundle is
+  preserved under ignored target-Mac results as negative evidence.
+- Zero-initializing every new Metal tensor and reusable scratch allocation did
+  not stabilize two fresh 32K processes. One output matched the accepted
+  numerical path and one differed much more (`rmse=0.22811150`), eliminating
+  unspecified initial allocation contents as a sufficient explanation.
+- Waiting for all submitted Metal work at every long-prefill compressor
+  projection-to-read boundary produced byte-identical full-vocabulary logits
+  in two fresh 32K processes. Both direct-prompt files had SHA-256
+  `0a75e5998b3b1b41e6fb3a5d86516fda1bace2fe7d02d0b6efd04c74b84e93c1`
+  and exactly matched the previously accepted tensor bytes.
+- The synchronized diagnostic measured 180.99 and 179.09 prefill tok/s versus
+  180.29 for the failed v3 run and 182.43--183.36 for the zero-initialization
+  diagnostic. This is a small cost, not a separate performance claim.
+
+Decision:
+
+- Promote the host-waited compressor dependency boundary to the normal M1
+  long-prefill path. An encoder boundary and an asynchronous command-buffer
+  split both reduced the race frequency but were insufficient.
+- Remove the broad allocation-zeroing diagnostic from the source. It changed
+  scheduling and outputs without resolving the race.
+- The failed v3 attempt is rejected. The synchronized source must be pinned as
+  a new immutable producer and pass all four fresh-process repetitions before
+  `oracle-v3` or any imported 32K Rust fixture is accepted.
+
+Next:
+
+- Validate and publish the synchronized source checkpoint, repin the v3
+  capture contract, and run its complete four-repeat 2K/32K acceptance set.
+
 ## Current State
 
 - Phase: target-Mac bootstrap, quick `oracle-v1`, no-copy model mapping, the
@@ -52,16 +96,18 @@ history; add a correction and update the current-state summary.
   GitHub app.
 - Oracle: the accepted `oracle-v2` artifacts remain the active 2K/32K C0 tensor
   contract, but producer commit `b81c099` is no longer considered reliably
-  reproducible. A post-acceptance 32K continuation audit found one rare drift
-  among three fresh processes after earlier successful repetitions. The
-  stronger command-buffer ordering candidate reproduces the accepted v2
-  tensors at 2K and 32K; it must receive a new versioned producer checkpoint
-  and repeated capture before the source contract advances. The historical
-  `oracle-v1` 32K tensor remains quarantined and immutable.
+  reproducible. The first four-repeat `oracle-v3` attempt rejected a rarer 32K
+  drift under the asynchronous command split. A host-waited compressor
+  projection-to-read boundary then produced exact accepted bytes in two fresh
+  32K processes with a small measured throughput cost. That source candidate
+  still requires an immutable checkpoint and the complete v3 acceptance run.
+  The historical `oracle-v1` 32K tensor remains quarantined and immutable.
 - Capture kit: `rust-star/capture_oracle_v1.py` preserves the historical
   capture path. `rust-star/capture_oracle_v2.py` prepares the deterministic
   privacy-filtered bundle and requires repeated fresh-process C0 evidence; the
   verifier accepts both immutable versions and rejects v2 repetition drift.
+  `rust-star/capture_oracle_v3.py` raises the producer gate to four exact fresh
+  processes at both frontiers and correctly rejected its first candidate.
 - Differential tooling: the initial bundle/full-logit format is stable and has
   cross-platform verification, exact C0 comparison, and drift diagnostics. The
   `rust-star-differential-fixture-v1` envelope now covers kernel,

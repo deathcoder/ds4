@@ -44,8 +44,11 @@ historical evidence and is quarantined as a C0 target. `oracle-v2` is the
 accepted replacement tensor at 2K/32K and pins repair commit `b81c099`. A later
 longer continuation audit found a rare residual fresh-process drift in that
 producer. The accepted tensor values remain the current C0 target, but the
-producer must be superseded by a versioned stronger dependency repair before
-new long-context fixtures or claims are admitted.
+producer must be superseded before new long-context fixtures or claims are
+admitted. An asynchronous command-buffer split also failed a four-repeat
+`oracle-v3` attempt. A host-waited compressor projection-to-read boundary is
+the current candidate after two byte-identical fresh-process 32K diagnostics;
+it is not an accepted oracle producer until the complete v3 gate passes.
 
 ## Deliberate Initial Non-Goals
 
@@ -150,6 +153,10 @@ post-acceptance continuation audit found that `b81c099` can still rarely drift
 while preserving the greedy transcript. New 32K evidence therefore requires a
 new immutable producer version with stronger command-buffer ordering and
 repeated verification; it may not silently extend the v2 producer contract.
+The first `oracle-v3` attempt rejected an asynchronous split after its first
+two 32K repetitions differed. The next producer candidate uses an explicit
+host wait at the compressor dependency boundary and must pass four exact fresh
+processes at both 2K and 32K.
 
 Conformance and performance are separate run modes:
 
