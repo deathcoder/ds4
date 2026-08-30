@@ -46,9 +46,9 @@ longer continuation audit found a rare residual fresh-process drift in that
 producer. The accepted tensor values remain the current C0 target, but the
 producer must be superseded before new long-context fixtures or claims are
 admitted. An asynchronous command-buffer split also failed a four-repeat
-`oracle-v3` attempt. A host-waited compressor projection-to-read boundary is
-the current candidate after two byte-identical fresh-process 32K diagnostics;
-it is not an accepted oracle producer until the complete v3 gate passes.
+`oracle-v3` attempt. The replacement host-waited compressor projection-to-read
+boundary passed four exact fresh processes at both 2K and 32K and now defines
+the accepted `oracle-v3` producer. V3 preserves the v2 tensor values exactly.
 
 ## Deliberate Initial Non-Goals
 
@@ -148,15 +148,16 @@ used to claim C0 after the repeatability failure recorded in
 exactly and replaces only the quarantined 32K contract. Its accepted target-Mac
 bundle requires two bit-identical fresh-process captures at both 2K and 32K;
 the capture and advancement decision are recorded in `RUST_STAR_JOURNAL.md`.
-`oracle-v2` remains the current C0 tensor oracle for those two frontiers. A
+`oracle-v2` remains immutable C0 evidence for those two frontiers. A
 post-acceptance continuation audit found that `b81c099` can still rarely drift
 while preserving the greedy transcript. New 32K evidence therefore requires a
 new immutable producer version with stronger command-buffer ordering and
 repeated verification; it may not silently extend the v2 producer contract.
 The first `oracle-v3` attempt rejected an asynchronous split after its first
-two 32K repetitions differed. The next producer candidate uses an explicit
-host wait at the compressor dependency boundary and must pass four exact fresh
-processes at both 2K and 32K.
+two 32K repetitions differed. Accepted `oracle-v3` uses producer commit
+`d35fb12d01d500b9cefcef24092c295687ceaf7e`, adds an explicit host wait at the
+compressor dependency boundary, and passed four exact fresh processes at both
+2K and 32K. It is the current oracle for new work at those frontiers.
 
 Conformance and performance are separate run modes:
 

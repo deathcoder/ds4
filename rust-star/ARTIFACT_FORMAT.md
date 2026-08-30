@@ -66,7 +66,7 @@ be bit-identical; the verifier rejects the bundle otherwise. Performance may
 remain a separate disabled section because oracle identity and benchmark
 eligibility are independent contracts.
 
-`oracle-v3` pins host-synchronized producer commit `d35fb12`, covers the same 2K
+The accepted `oracle-v3` pins host-synchronized producer commit `d35fb12`, covers the same 2K
 and 32K frontiers, and raises the minimum to four fresh-process conformance
 captures per frontier after a post-acceptance v2 audit exposed a rarer residual
 dependency hazard. It must preserve the accepted v2 tensors bit-for-bit before

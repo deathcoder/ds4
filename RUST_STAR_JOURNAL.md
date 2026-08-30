@@ -18,6 +18,48 @@ Before changing code:
 Journal entries are reverse chronological. Do not edit old entries to change
 history; add a correction and update the current-state summary.
 
+## 2026-08-30 — Accepted oracle-v3 and imported the 32K Rust frontier
+
+Objective:
+
+- Pin the host-synchronized producer, require four exact fresh processes at
+  both frontiers, and admit the resulting 32K tensor to Rust only after the
+  independent archive and C0 gates passed.
+
+Evidence:
+
+- Published producer commit `d35fb12d01d500b9cefcef24092c295687ceaf7e` /
+  tree `617415ee9f8ea7dc176d63dada1d5a7582063824` and capture-kit commit
+  `3f1ab49b16cefaebf5d4c55e5aa59b0c5a0c149e`.
+- Captured `rust-star/results/oracle-v3-20260830T111217Z.tar.gz`; archive
+  SHA-256 is `be77e20c42875f370169c777e2cb26d090fbb516826dc215aa33488d4b4e37bc`.
+  Independent verification passed 16 artifacts and 12,651,264 bytes.
+- All four 2K processes produced JSON SHA-256 `2b3cdf9b...6ddb0`; all four
+  32K processes produced `269f9529...58e12`. Both full 129,280-logit tensors
+  are C0-identical to the accepted v2 values. The 32K prefill observations were
+  178.78, 178.52, 178.19, and 177.88 tok/s; performance mode was intentionally
+  disabled, so these are conformance observations rather than a benchmark.
+- Imported the audited 32,768-token stream (SHA-256 `874c479e...02a0`) and
+  packed FP32 logits (SHA-256 `603430b4...c547`) as
+  `dwarfstar-oracle-v3-prefill-frontier-32768`. The differential verifier
+  passed 648,192 bytes, and the Rust loader enforces the token endpoints,
+  tensor shape, and selected token 85166.
+
+Decision:
+
+- Advance `current-oracle` from v2 to v3 for the unchanged 2K/32K C0 tensor
+  values. V2 remains immutable historical evidence, but its producer is not a
+  valid source for new long-context captures.
+- Allow differential fixtures to declare any explicitly pinned supported
+  oracle version; reject unknown IDs or mismatched commit/tree pairs.
+
+Next:
+
+- Generalize the native Rust prefill schedule from its fixed 2K lifecycle to
+  eight 4K chunks while retaining per-layer raw, compressed, indexer, and
+  recurrent compressor state across chunks, then compare its 32K logits to the
+  newly embedded v3 fixture.
+
 ## 2026-08-30 — Residual 32K producer race isolated and synchronized
 
 Objective:
@@ -94,20 +136,18 @@ Next:
 - Local `main`: fast-forwarded to the same upstream commit.
 - Fork `origin/main`: synchronized to the same upstream commit through the
   GitHub app.
-- Oracle: the accepted `oracle-v2` artifacts remain the active 2K/32K C0 tensor
-  contract, but producer commit `b81c099` is no longer considered reliably
-  reproducible. The first four-repeat `oracle-v3` attempt rejected a rarer 32K
-  drift under the asynchronous command split. A host-waited compressor
-  projection-to-read boundary then produced exact accepted bytes in two fresh
-  32K processes with a small measured throughput cost. That source candidate
-  still requires an immutable checkpoint and the complete v3 acceptance run.
-  The historical `oracle-v1` 32K tensor remains quarantined and immutable.
+- Oracle: `oracle-v3` is the active 2K/32K C0 contract. Its host-synchronized
+  producer passed four exact fresh processes at both frontiers and preserves
+  the accepted v2 tensors bit-for-bit. V2 remains immutable evidence, but its
+  producer is revoked for new long-context work after rare drift. The
+  historical `oracle-v1` 32K tensor remains quarantined and immutable.
 - Capture kit: `rust-star/capture_oracle_v1.py` preserves the historical
   capture path. `rust-star/capture_oracle_v2.py` prepares the deterministic
   privacy-filtered bundle and requires repeated fresh-process C0 evidence; the
   verifier accepts both immutable versions and rejects v2 repetition drift.
   `rust-star/capture_oracle_v3.py` raises the producer gate to four exact fresh
-  processes at both frontiers and correctly rejected its first candidate.
+  processes at both frontiers, correctly rejected its first candidate, and
+  accepted the host-synchronized `d35fb12` producer.
 - Differential tooling: the initial bundle/full-logit format is stable and has
   cross-platform verification, exact C0 comparison, and drift diagnostics. The
   `rust-star-differential-fixture-v1` envelope now covers kernel,
@@ -814,7 +854,7 @@ Next:
 ## Immediate Next Actions
 
 1. Extend Rust Star's eligible engine and exact transcript gate from 2K to the
-   accepted `oracle-v2` 32K frontier before treating the current narrow result
+   accepted `oracle-v3` 32K frontier before treating the current narrow result
    as representative.
 2. Preserve the accepted retained lifecycle for the future long-lived engine:
    reset all request state, retain only immutable pipelines/model views and

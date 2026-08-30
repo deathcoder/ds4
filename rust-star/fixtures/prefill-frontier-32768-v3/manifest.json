@@ -1,0 +1,77 @@
+{
+  "schema": "rust-star-differential-fixture-v1",
+  "fixture_id": "dwarfstar-oracle-v3-prefill-frontier-32768",
+  "captured_at_utc": "2026-08-30T11:28:52Z",
+  "oracle": {
+    "id": "oracle-v3",
+    "repository": "https://github.com/deathcoder/ds4.git",
+    "commit": "d35fb12d01d500b9cefcef24092c295687ceaf7e",
+    "tree": "617415ee9f8ea7dc176d63dada1d5a7582063824",
+    "capture_executable_sha256": "2454887fa68ff28e1e782fb69d0af91131949357b68c2e981221f3b7f2f26528",
+    "capture_kit_commit": "3f1ab49b16cefaebf5d4c55e5aa59b0c5a0c149e",
+    "archive_sha256": "be77e20c42875f370169c777e2cb26d090fbb516826dc215aa33488d4b4e37bc"
+  },
+  "model": {
+    "family": "DeepSeek-V4-Flash-0731",
+    "sha256": "ca22ae2f838e14077c22bc1c1417b71b45b5e5a3687bd96c2ac6e17fdb6261c0"
+  },
+  "capture": {
+    "backend": "metal",
+    "machine": "Apple M1 Ultra, 48 GPU cores, 128 GB unified memory",
+    "prompt": "first 32768 raw tokens of speed-bench/promessi_sposi.txt",
+    "prompt_sha256": "f53e0d80cb2d4492d24ebd63c7000c397b16ae70f9bf09b3763e5d8323ec209f",
+    "prompt_token_ids_sha256": "874c479e2cde7b231dfa4a963d5f1fbe9dd9e60c2842f869e2a117d4860902a0",
+    "prefill_tokens": 32768,
+    "fresh_process_captures": 4,
+    "fresh_process_bitwise_match": true,
+    "json_logits_sha256": "269f9529f0e649d6e4f5ecd125ef7c4808f825e65bf9d503c512ef611c958e12",
+    "performance_enabled": false
+  },
+  "scope": {
+    "kind": "decode-step",
+    "phase": "prefill",
+    "layer": 43,
+    "position": 32767
+  },
+  "operations": [
+    {
+      "name": "chunked-batched-prefill-frontier-full-logits",
+      "kernel": "complete-decoder",
+      "weights": [
+        "output.weight"
+      ]
+    }
+  ],
+  "selection": {
+    "method": "lowest-token-id-argmax",
+    "token_id": 85166
+  },
+  "tensors": [
+    {
+      "name": "prompt_token_ids",
+      "hook": "tokenizer",
+      "role": "input",
+      "dtype": "i32",
+      "shape": [
+        32768
+      ],
+      "encoding": "little-endian-signed-integer32",
+      "path": "token-ids.u32le.bin",
+      "bytes": 131072,
+      "sha256": "874c479e2cde7b231dfa4a963d5f1fbe9dd9e60c2842f869e2a117d4860902a0"
+    },
+    {
+      "name": "batch_prefill_logits",
+      "hook": "frontier_logits",
+      "role": "output",
+      "dtype": "f32",
+      "shape": [
+        129280
+      ],
+      "encoding": "little-endian-ieee754-binary32",
+      "path": "batch-prefill-logits.f32le.bin",
+      "bytes": 517120,
+      "sha256": "603430b4b4b47f14b520f1977770bc292d1d136488f254116eb214766609c547"
+    }
+  ]
+}

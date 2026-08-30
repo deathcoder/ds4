@@ -359,8 +359,12 @@ def validate_differential_fixture(root: Path) -> dict[str, Any]:
     oracle = manifest.get("oracle")
     if not isinstance(oracle, dict):
         raise ArtifactError("fixture oracle is missing")
-    if oracle.get("commit") != SOURCE_COMMIT or oracle.get("tree") != SOURCE_TREE:
-        raise ArtifactError("fixture oracle commit/tree does not match oracle-v1")
+    oracle_id = oracle.get("id")
+    expected_source = ORACLE_SOURCES.get(oracle_id)
+    if expected_source is None:
+        raise ArtifactError(f"fixture oracle id is unsupported: {oracle_id!r}")
+    if (oracle.get("commit"), oracle.get("tree")) != expected_source:
+        raise ArtifactError(f"fixture oracle commit/tree does not match {oracle_id}")
     executable_sha256 = oracle.get("capture_executable_sha256")
     if not isinstance(executable_sha256, str) or not SHA256_RE.fullmatch(executable_sha256):
         raise ArtifactError("fixture oracle capture executable SHA-256 is invalid")
@@ -472,6 +476,7 @@ def validate_differential_fixture(root: Path) -> dict[str, Any]:
         "valid": True,
         "schema": DIFFERENTIAL_FIXTURE_SCHEMA,
         "fixture_id": fixture_id,
+        "oracle_id": oracle_id,
         "scope": kind,
         "operations": len(operations),
         "tensors": len(tensors),
