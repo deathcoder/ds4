@@ -18,6 +18,51 @@ Before changing code:
 Journal entries are reverse chronological. Do not edit old entries to change
 history; add a correction and update the current-state summary.
 
+## 2026-08-30 — First native 4K long-prefill bootstrap chunk executed
+
+Objective:
+
+- Remove the fixed-2K working-extent assumption from the earliest native
+  prefill boundary and test the first real chunk of the accepted 32K stream.
+
+Changes and evidence:
+
+- Added an explicit `prefill_rows` field to the Rust/Objective-C layer-0
+  boundary ABI. Full-KV, attention-mask, compressor-cache, command-batch, and
+  terminal-tile geometry now derive from that value; all existing callers
+  continue to pass 2,048.
+- Added `long-prefill-bootstrap-probe` and schema
+  `rust-star-long-prefill-bootstrap-probe-v1`. The probe consumes the first
+  4,096 tokens of `dwarfstar-oracle-v3-prefill-frontier-32768` in 64 native
+  64-row tiles and truthfully labels the missing intermediate oracle: it makes
+  no 4K C0, complete-32K, or throughput claim.
+- The target-Mac run completed all 7,556 dispatches in 4,988.073 ms summed wall
+  and 4,935.518 ms summed Metal time. All 4,160 model ranges preserved their
+  mmap pointer. The context retained 4,096 layer-0/layer-1/layer-2 raw rows,
+  1,024 layer-2 attention-compressed rows, 1,024 indexer-compressed rows, and
+  the recurrent compressor tails. The ignored JSON evidence has SHA-256
+  `1afdcafa371a41af01460b836fbb48dc30ebf632960c7d48da3cfe556b19a80d`.
+- The independent complete 2K native model-prefill control then passed every
+  retained C0 boundary and all 129,280 logits, selecting token 15342. Its
+  terminal transformer schedule used 2,372 dispatches with 1,216/1,216 no-copy
+  views; the output head used 5/5.
+- `cargo check --all-targets`, all 302 Rust library tests, and all 81 Python
+  contract tests passed. No eligible benchmark was run.
+
+Decision:
+
+- Keep the explicit working extent and 4K bootstrap probe. This establishes
+  that the earliest raw/compressor allocations and command lifetime are no
+  longer bounded to 2K without weakening the exact 2K path.
+
+Next:
+
+- Parameterize the layer-2-through-42 transformer schedule for a 4K working
+  chunk, preserve the resulting per-layer raw/compressed/recurrent state, and
+  only then begin the second 4K chunk. The final eight-chunk output must match
+  the accepted oracle-v3 32K logits bit-for-bit before any long-context speed
+  claim.
+
 ## 2026-08-30 — Accepted oracle-v3 and imported the 32K Rust frontier
 
 Objective:

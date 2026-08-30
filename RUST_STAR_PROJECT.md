@@ -352,7 +352,11 @@ they describe whenever practical.
   Extend the same retained-state strategy across the remaining layers. The
   sequential 2K initializer still
   deliberately records its difference from the paired protocol's
-  batched-prefill oracle.
+  batched-prefill oracle. The bootstrap ABI now accepts an explicit working
+  extent, and a target-Mac probe completed the first 4,096 tokens of the
+  accepted 32K stream with all layers-0/1/2 raw and paired-compressor state
+  retained. This is a structural long-prefill gate without an intermediate C0
+  claim; carry that state through layers 2--42 and into the second chunk next.
 - Drive a complete decoder through the now-generalized sparse branch and emit
   the Rust Star engine-measurement contract. The diagnostic 513-row override,
   two fresh production-default 1,025-row isolated captures, and seeded retained

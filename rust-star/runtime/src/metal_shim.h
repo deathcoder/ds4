@@ -745,6 +745,7 @@ int rust_star_metal_run_prefill_layer0_boundary(
     uint32_t n_vocab,
     uint32_t rows,
     uint32_t position_start,
+    uint32_t prefill_rows,
     uint32_t kv_state_mode,
     const uint32_t *tokens,
     float *hc_collapsed,

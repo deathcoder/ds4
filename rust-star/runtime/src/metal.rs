@@ -27,6 +27,7 @@ pub const PREFILL_LAYERS012_KV_STATE_LOOP_PROBE_SCHEMA: &str =
     "rust-star-prefill-layers012-kv-state-loop-probe-v1";
 pub const PREFILL_LAYERS012_COMPRESSOR_LOOP_PROBE_SCHEMA: &str =
     "rust-star-prefill-layers012-compressor-loop-probe-v1";
+pub const LONG_PREFILL_BOOTSTRAP_PROBE_SCHEMA: &str = "rust-star-long-prefill-bootstrap-probe-v1";
 pub const PREFILL_LAYERS012_ATTENTION_LOOP_PROBE_SCHEMA: &str =
     "rust-star-prefill-layers012-attention-loop-probe-v2";
 pub const INGRESS_PROBE_SCHEMA: &str = "rust-star-layer0-attention-ingress-probe-v1";
@@ -3535,6 +3536,22 @@ pub struct PrefillLayers012CompressorLoopProbeReport {
     pub layer2_checksums: Vec<[u64; 3]>,
     pub layer2_compressor_checksums: Vec<[u64; 6]>,
     pub final_tile: PrefillLayers01CompleteBoundaryProbeReport,
+}
+
+#[derive(Clone, Debug)]
+pub struct LongPrefillBootstrapProbeReport {
+    pub fixture_id: &'static str,
+    pub frontier_tokens: u32,
+    pub chunk_start: u32,
+    pub chunk_tokens: u32,
+    pub tile_rows: u32,
+    pub tiles: u32,
+    pub dispatches: u32,
+    pub wrapped_model_ranges: u32,
+    pub pointer_matches: u32,
+    pub token_checksum: u64,
+    pub summed_wall_ms: f64,
+    pub summed_gpu_ms: f64,
 }
 
 #[derive(Clone, Debug)]
@@ -7402,6 +7419,57 @@ pub fn write_prefill_layers012_compressor_loop_probe_json<W: Write>(
         output,
         "  ],\n  \"timing\": {{\"summed_wall_ms\": {:.6}, \"summed_gpu_ms\": {:.6}}},\n  \"schedule\": {{\"dispatches_per_regular_tile\": 118, \"dispatches_final_tile\": 122, \"layer01_dispatches_per_tile\": 84, \"layer2_raw_kv_dispatches_per_tile\": 8, \"layer2_compressor_batch_projection_dispatches_per_tile\": 4, \"layer2_compressor_batch_dispatches_per_tile\": 22, \"layer2_compressor_tail_projection_dispatches_final_tile\": 4, \"wrapped_model_ranges_per_tile\": 65, \"projection_kernel\": \"kernel_mul_mm_f16_f32\", \"tail_projection_kernel\": \"kernel_mul_mv_ext_f16_f32_r1_4\", \"pool_kernel\": \"DwarfStar-equivalent fused 8-row softmax pool\", \"store_kernel\": \"kernel_dsv4_compressor_store_one\", \"ratio4_shift_kernel\": \"kernel_dsv4_ratio4_shift_f32\"}},\n  \"persistent_metal_context\": true,\n  \"command_buffers\": 64,\n  \"inter_tile_host_waits\": 63,\n  \"captured_kv_seed_rows\": 0,\n  \"retained_prefix_oracle_validation\": true,\n  \"all_layer2_compressed_rows_c0_bitwise_match\": true,\n  \"final_layer2_compressor_states_c0_bitwise_match\": true,\n  \"complete_layer2_raw_kv_state_claim\": true,\n  \"complete_layer2_paired_compressor_claim\": true,\n  \"complete_layer2_attention_claim\": false,\n  \"complete_layer2_ffn_claim\": false,\n  \"complete_layer2_prefill_claim\": false,\n  \"complete_model_prefill_claim\": false,\n  \"throughput_claim\": false\n}}\n",
         total_wall_ms, total_gpu_ms,
+    )?;
+    Ok(())
+}
+
+pub fn write_long_prefill_bootstrap_probe_json<W: Write>(
+    output: &mut W,
+    report: &LongPrefillBootstrapProbeReport,
+) -> Result<()> {
+    if report.fixture_id != PREFILL_FRONTIER_32768_FIXTURE_ID
+        || report.frontier_tokens != 32_768
+        || report.chunk_start != 0
+        || report.chunk_tokens != 4_096
+        || report.tile_rows != 64
+        || report.tiles != 64
+        || report.dispatches != 7_556
+        || report.wrapped_model_ranges != 4_160
+        || report.pointer_matches != report.wrapped_model_ranges
+        || !report.summed_wall_ms.is_finite()
+        || !report.summed_gpu_ms.is_finite()
+        || report.summed_wall_ms <= 0.0
+        || report.summed_gpu_ms < 0.0
+    {
+        return Err(Error::invalid(
+            "long-prefill bootstrap report has an unexpected frontier or schedule",
+        ));
+    }
+    write!(
+        output,
+        "{{\n  \"schema\": \"{LONG_PREFILL_BOOTSTRAP_PROBE_SCHEMA}\",\n  \"fixture\": "
+    )?;
+    crate::artifact::write_json_string(output, report.fixture_id)?;
+    write!(
+        output,
+        ",\n  \"frontier_tokens\": {},\n  \"chunk\": {{\"start\": {}, \"tokens\": {}, \"end\": {}}},\n  \"schedule\": {{\"tile_rows\": {}, \"tiles\": {}, \"dispatches\": {}, \"wrapped_model_ranges\": {}, \"pointer_matches\": {}}},\n  \"retained_state\": {{\"layer0_raw_rows\": {}, \"layer1_raw_rows\": {}, \"layer2_raw_rows\": {}, \"layer2_attention_compressed_rows\": {}, \"layer2_indexer_compressed_rows\": {}, \"compressor_recurrent_state_retained\": true}},\n  \"checksums\": {{\"chunk_token_ids\": {}}},\n  \"timing\": {{\"summed_wall_ms\": {:.6}, \"summed_gpu_ms\": {:.6}}},\n  \"accepted_oracle_token_stream\": true,\n  \"native_batch_schedule\": true,\n  \"first_long_prefill_chunk_executed\": true,\n  \"intermediate_tensor_c0_claim\": false,\n  \"complete_32k_prefill_claim\": false,\n  \"throughput_claim\": false\n}}\n",
+        report.frontier_tokens,
+        report.chunk_start,
+        report.chunk_tokens,
+        report.chunk_start + report.chunk_tokens - 1,
+        report.tile_rows,
+        report.tiles,
+        report.dispatches,
+        report.wrapped_model_ranges,
+        report.pointer_matches,
+        report.chunk_tokens,
+        report.chunk_tokens,
+        report.chunk_tokens,
+        report.chunk_tokens / 4,
+        report.chunk_tokens / 4,
+        report.token_checksum,
+        report.summed_wall_ms,
+        report.summed_gpu_ms,
     )?;
     Ok(())
 }
@@ -20334,6 +20402,7 @@ mod imp {
             n_vocab: u32,
             rows: u32,
             position_start: u32,
+            prefill_rows: u32,
             kv_state_mode: u32,
             tokens: *const u32,
             hc_collapsed: *mut f32,
@@ -23078,6 +23147,8 @@ mod imp {
         include_layer2_compressors: bool,
         collect_outputs: bool,
         rows: u32,
+        prefill_rows: u32,
+        token_source: Option<&[u32]>,
     ) -> Result<(
         PrefillLayer0BoundaryProbeReport,
         Option<[u64; 3]>,
@@ -23111,15 +23182,25 @@ mod imp {
         if rows != 32 && rows != 64 {
             return Err(Error::invalid("invalid prefill boundary tile width"));
         }
-        if position_start % rows != 0 || position_start + rows > 2048 {
+        if (prefill_rows != 2048 && prefill_rows != 4096)
+            || prefill_rows < rows
+            || prefill_rows % rows != 0
+            || position_start % rows != 0
+            || position_start + rows > prefill_rows
+        {
             return Err(Error::invalid("invalid prefill boundary tile position"));
+        }
+        if collect_outputs && prefill_rows != 2048 {
+            return Err(Error::invalid(
+                "diagnostic prefill boundary fixtures require the 2K frontier",
+            ));
         }
         if collect_outputs && rows != 32 {
             return Err(Error::invalid(
                 "diagnostic prefill boundary fixtures require 32-row tiles",
             ));
         }
-        let final_tile = position_start + rows == 2048;
+        let final_tile = position_start + rows == prefill_rows;
         let previous_fixture_tile = position_start == 1984;
         let live_kv_tile = kv_state_mode != 0 && !final_tile;
         if !final_tile && !(complete_layer1 && (previous_fixture_tile || live_kv_tile)) {
@@ -23171,10 +23252,21 @@ mod imp {
             (Vec::new(), Vec::new(), Vec::new())
         };
         if !collect_outputs || !final_tile {
-            let full_tokens = decode_u32_fixture(
-                PREFILL_FRONTIER_2048_TOKEN_IDS_BYTES,
-                "prefill frontier token IDs",
-            )?;
+            let owned_tokens;
+            let full_tokens = if let Some(tokens) = token_source {
+                tokens
+            } else {
+                owned_tokens = decode_u32_fixture(
+                    PREFILL_FRONTIER_2048_TOKEN_IDS_BYTES,
+                    "prefill frontier token IDs",
+                )?;
+                &owned_tokens
+            };
+            if full_tokens.len() < prefill_rows as usize {
+                return Err(Error::invalid(
+                    "prefill token source is shorter than the declared frontier",
+                ));
+            }
             tokens = full_tokens[position_start as usize..position_start as usize + rows as usize]
                 .to_vec();
         }
@@ -23482,7 +23574,7 @@ mod imp {
         let mut actual_kv_rope = vec![0.0_f32; expected_kv_rope.len()];
         let mut actual_kv_cur = vec![0.0_f32; expected_kv_cur.len()];
         let mut actual_raw_cache = vec![0.0_f32; 128 * 512];
-        let mut actual_full_kv = vec![0.0_f32; 2048 * 512];
+        let mut actual_full_kv = vec![0.0_f32; prefill_rows as usize * 512];
         let mut actual_attention_output = vec![0.0_f32; expected_attention_output.len()];
         let mut actual_attention_back = vec![0.0_f32; expected_attention_back.len()];
         let mut actual_attention_low = vec![0.0_f32; expected_attention_low.len()];
@@ -23688,6 +23780,7 @@ mod imp {
                 129280,
                 rows,
                 position_start,
+                prefill_rows,
                 kv_state_mode,
                 tokens.as_ptr(),
                 actual_collapsed.as_mut_ptr(),
@@ -24324,6 +24417,8 @@ mod imp {
             include_layer2_compressors,
             collect_outputs,
             32,
+            2048,
+            None,
         )
     }
 
@@ -24740,6 +24835,8 @@ mod imp {
                 true,
                 collect_outputs,
                 tile_rows as u32,
+                2048,
+                None,
             )?;
             if collect_outputs {
                 let layer1 = layer1.ok_or_else(|| {
@@ -24815,6 +24912,76 @@ mod imp {
         run_prefill_layers012_compressor_loop_probe_in_context(model, &context, true)?
             .0
             .ok_or_else(|| Error::invalid("diagnostic compressor loop omitted its report"))
+    }
+
+    pub fn run_long_prefill_bootstrap_probe(
+        model: &MappedModel,
+    ) -> Result<LongPrefillBootstrapProbeReport> {
+        const FRONTIER_ROWS: u32 = 32_768;
+        const CHUNK_ROWS: u32 = 4_096;
+        const TILE_ROWS: u32 = 64;
+        let (tokens, _) = prefill_frontier_32768_fixture()?;
+        if tokens.len() != FRONTIER_ROWS as usize {
+            return Err(Error::invalid(
+                "the accepted 32K frontier fixture has an unexpected token count",
+            ));
+        }
+        let context = Context::new()?;
+        let mut reports = Vec::with_capacity((CHUNK_ROWS / TILE_ROWS) as usize);
+        for position_start in (0..CHUNK_ROWS).step_by(TILE_ROWS as usize) {
+            let kv_state_mode = if position_start == 0 { 1 } else { 2 };
+            let (layer0, layer1, complete, layer2, compressors) = run_prefill_boundary_probe_rows(
+                model,
+                2,
+                position_start,
+                Some(&context),
+                kv_state_mode,
+                true,
+                true,
+                true,
+                false,
+                TILE_ROWS,
+                CHUNK_ROWS,
+                Some(&tokens),
+            )?;
+            if layer1.is_some() || complete.is_some() || layer2.is_some() || compressors.is_some() {
+                return Err(Error::invalid(
+                    "timing-only long-prefill bootstrap unexpectedly collected diagnostics",
+                ));
+            }
+            reports.push(layer0);
+        }
+        let tile_count = CHUNK_ROWS / TILE_ROWS;
+        for (index, report) in reports.iter().enumerate() {
+            let final_tile = index + 1 == tile_count as usize;
+            if report.position_start != index as u32 * TILE_ROWS
+                || report.rows != u64::from(TILE_ROWS)
+                || report.dispatches != if final_tile { 122 } else { 118 }
+                || report.wrapped_model_ranges != 65
+                || report.pointer_matches != 65
+            {
+                return Err(Error::invalid(
+                    "long-prefill bootstrap returned a noncontiguous tile or unexpected schedule",
+                ));
+            }
+        }
+        Ok(LongPrefillBootstrapProbeReport {
+            fixture_id: PREFILL_FRONTIER_32768_FIXTURE_ID,
+            frontier_tokens: FRONTIER_ROWS,
+            chunk_start: 0,
+            chunk_tokens: CHUNK_ROWS,
+            tile_rows: TILE_ROWS,
+            tiles: tile_count,
+            dispatches: reports.iter().map(|report| report.dispatches).sum(),
+            wrapped_model_ranges: reports
+                .iter()
+                .map(|report| report.wrapped_model_ranges)
+                .sum(),
+            pointer_matches: reports.iter().map(|report| report.pointer_matches).sum(),
+            token_checksum: checksum_u32(&tokens[..CHUNK_ROWS as usize]),
+            summed_wall_ms: reports.iter().map(|report| report.wall_ms).sum(),
+            summed_gpu_ms: reports.iter().map(|report| report.gpu_ms).sum(),
+        })
     }
 
     pub fn run_prefill_layers012_attention_loop_probe(
@@ -46201,6 +46368,16 @@ mod imp {
 mod imp {
     use super::*;
 
+    pub fn run_long_prefill_bootstrap_probe(
+        model: &MappedModel,
+    ) -> Result<LongPrefillBootstrapProbeReport> {
+        let _ = prefill_frontier_32768_fixture()?;
+        let _ = exact_tensor(model, "blk.2.attn_compressor_kv.weight", 1, &[4096, 1024])?;
+        Err(Error::invalid(
+            "the Metal long-prefill bootstrap probe is available only on macOS",
+        ))
+    }
+
     pub struct LayerExecutor<'a> {
         model: &'a MappedModel,
         next_layer: u32,
@@ -46863,8 +47040,9 @@ pub use imp::{
     run_ffn_router_probe, run_layer0_bench, run_layer0_probe, run_layers01234567_decode_probe,
     run_layers012345_decode_probe, run_layers0123_bench, run_layers0123_chained_probe,
     run_layers0123_decode_probe, run_layers0123_probe, run_layers012_chained_probe,
-    run_layers012_probe, run_layers01_probe, run_layers0_to_42_decode_probe, run_moe_output_probe,
-    run_position127_decoder_probe, run_prefill_decode_frontier_probe, run_prefill_frontier_probe,
+    run_layers012_probe, run_layers01_probe, run_layers0_to_42_decode_probe,
+    run_long_prefill_bootstrap_probe, run_moe_output_probe, run_position127_decoder_probe,
+    run_prefill_decode_frontier_probe, run_prefill_frontier_probe,
     run_prefill_layer0_boundary_probe, run_prefill_layers012_attention_loop_probe,
     run_prefill_layers012_compressor_loop_probe, run_prefill_layers012_kv_state_loop_probe,
     run_prefill_layers012_kvnorm_loop_probe, run_prefill_layers01_boundary_probe,
@@ -49701,6 +49879,35 @@ mod tests {
         assert!(text.contains("\"dispatches_final_tile\": 122"));
         assert!(text.contains("\"complete_layer2_paired_compressor_claim\": true"));
         assert!(text.contains("\"complete_layer2_attention_claim\": false"));
+    }
+
+    #[test]
+    fn writes_stable_long_prefill_bootstrap_probe_json() {
+        let report = LongPrefillBootstrapProbeReport {
+            fixture_id: PREFILL_FRONTIER_32768_FIXTURE_ID,
+            frontier_tokens: 32_768,
+            chunk_start: 0,
+            chunk_tokens: 4_096,
+            tile_rows: 64,
+            tiles: 64,
+            dispatches: 7_556,
+            wrapped_model_ranges: 4_160,
+            pointer_matches: 4_160,
+            token_checksum: 7,
+            summed_wall_ms: 2.0,
+            summed_gpu_ms: 1.0,
+        };
+        let mut output = Vec::new();
+        write_long_prefill_bootstrap_probe_json(&mut output, &report).unwrap();
+        let text = String::from_utf8(output).unwrap();
+        assert!(text.contains(&format!(
+            "\"schema\": \"{LONG_PREFILL_BOOTSTRAP_PROBE_SCHEMA}\""
+        )));
+        assert!(text.contains("\"tokens\": 4096"));
+        assert!(text.contains("\"layer2_attention_compressed_rows\": 1024"));
+        assert!(text.contains("\"first_long_prefill_chunk_executed\": true"));
+        assert!(text.contains("\"intermediate_tensor_c0_claim\": false"));
+        assert!(text.contains("\"complete_32k_prefill_claim\": false"));
     }
 
     #[test]

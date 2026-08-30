@@ -3985,6 +3985,7 @@ int rust_star_metal_run_prefill_layer0_boundary(
     uint32_t n_vocab,
     uint32_t rows,
     uint32_t position_start,
+    uint32_t prefill_rows,
     uint32_t kv_state_mode,
     const uint32_t *tokens,
     float *hc_collapsed,
@@ -4085,8 +4086,10 @@ int rust_star_metal_run_prefill_layer0_boundary(
             @"prefill complete layer-1 boundary received a null fixture/output pointer");
     }
     if (n_vocab != 129280u || (rows != 32u && rows != 64u) ||
+        (prefill_rows != 2048u && prefill_rows != 4096u) ||
+        prefill_rows < rows || prefill_rows % rows != 0u ||
         position_start % rows != 0u ||
-        position_start + rows > 2048u) {
+        position_start + rows > prefill_rows) {
         return fail_with_message(error, error_bytes,
             @"prefill layer-0 boundary dimensions are invalid");
     }
@@ -4104,8 +4107,8 @@ int rust_star_metal_run_prefill_layer0_boundary(
         }
         if (retain_kv_state) {
             if (batch_production_tiles) {
-                context.prefillBoundaryCommands =
-                    [NSMutableArray arrayWithCapacity:64u];
+                context.prefillBoundaryCommands = [NSMutableArray
+                    arrayWithCapacity:prefill_rows/rows];
                 context.prefillBoundaryWallStart = 0.0;
             }
             context.prefillLayer0FullKv = nil;
@@ -4293,14 +4296,14 @@ int rust_star_metal_run_prefill_layer0_boundary(
         enum {
             n_embd = 4096, n_hc = 4, hc_dim = 16384, mix_hc = 24,
             q_rank = 1024, kv_dim = 512, q_dim = 32768,
-            raw_cache_rows = 128, prefill_rows = 2048,
+            raw_cache_rows = 128,
             n_head = 64, attention_window = 128,
             n_expert = 256, n_used = 6, ffn_mid = 2048,
             compressor_ratio = 4, compressor_state_rows = 8,
-            compressor_rows = prefill_rows/compressor_ratio,
             attn_compressor_width = 1024, attn_compressor_head = 512,
             indexer_compressor_width = 256, indexer_compressor_head = 128,
         };
+        const uint32_t compressor_rows = prefill_rows/compressor_ratio;
         const uint32_t compressor_tile_rows = rows/compressor_ratio;
         const NSUInteger row_tiles = (rows+31u)/32u;
         const uint32_t raw_cache_target_row = position_start % raw_cache_rows;
@@ -6267,7 +6270,7 @@ int rust_star_metal_run_prefill_layer0_boundary(
         double reported_gpu_ms = 0.0;
         if (batch_production_tiles) {
             [context.prefillBoundaryCommands addObject:command];
-            if (position_start + rows == 2048u) {
+            if (position_start + rows == prefill_rows) {
                 if (!command_succeeded(command, error, error_bytes)) return 0;
                 for (id<MTLCommandBuffer> pending in context.prefillBoundaryCommands) {
                     if (pending.status == MTLCommandBufferStatusError) {
@@ -6447,7 +6450,7 @@ int rust_star_metal_run_prefill_layer0_boundary(
         result->kv_elements_per_row = kv_dim;
         result->q_elements_per_row = q_dim;
         result->dispatches = continue_layer2_compressors ?
-            (position_start + rows == 2048u ? 122u : 118u) :
+            (position_start + rows == prefill_rows ? 122u : 118u) :
             (continue_layer2_kv_state ? 92u : (continue_layer2 ? 90u :
             (complete_layer1 ? 84u : (continue_layer1 ? 47u : 43u))));
         result->wrapped_model_ranges = model_range_count;

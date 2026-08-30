@@ -685,6 +685,24 @@ from input token 312. This closes native-prefill state ownership and the first
 production sparse frontier. The command synchronizes twice per position for
 correctness/timing collection and deliberately makes no throughput claim.
 
+## First 4K long-prefill bootstrap chunk
+
+Schema: `rust-star-long-prefill-bootstrap-probe-v1`.
+
+`long-prefill-bootstrap-probe` makes the layers-0/1/2 bootstrap working extent
+explicit instead of encoding 2,048 in the C ABI and Metal allocations. It runs
+the first 4,096 tokens of the accepted oracle-v3 32K stream as 64 native
+64-row schedules in one context. The final tile retains 4,096 raw rows for
+layers 0, 1, and 2, 1,024 ratio-4 attention rows, 1,024 ratio-4 indexer rows,
+and both recurrent compressor tails. The target-Mac control preserved all
+4,160 mmap-backed model pointer identities across 7,556 dispatches.
+
+This is a lifecycle and capacity gate, not a correctness or performance result:
+the accepted fixture has only final 32K logits, so the intermediate 4K state is
+not labeled C0. The complete exact 2K prefill remains an independent regression
+control. The next boundary must carry the retained 4K state through layers
+2--42 and then preserve it while beginning the second 4K chunk.
+
 ## Model residency before measured decode
 
 The eligible `engine-measure` path keeps Metal VM preparation inside the
