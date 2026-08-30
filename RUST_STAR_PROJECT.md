@@ -41,7 +41,11 @@ macOS build, Xcode/Metal toolchain, compiler flags, runtime configuration, and
 the 2K golden outputs but found that the historical single-run 32K logits are
 not bit-stable across fresh processes. The 32K artifact remains immutable
 historical evidence and is quarantined as a C0 target. `oracle-v2` is the
-accepted deterministic replacement at 2K/32K and pins repair commit `b81c099`.
+accepted replacement tensor at 2K/32K and pins repair commit `b81c099`. A later
+longer continuation audit found a rare residual fresh-process drift in that
+producer. The accepted tensor values remain the current C0 target, but the
+producer must be superseded by a versioned stronger dependency repair before
+new long-context fixtures or claims are admitted.
 
 ## Deliberate Initial Non-Goals
 
@@ -141,7 +145,11 @@ used to claim C0 after the repeatability failure recorded in
 exactly and replaces only the quarantined 32K contract. Its accepted target-Mac
 bundle requires two bit-identical fresh-process captures at both 2K and 32K;
 the capture and advancement decision are recorded in `RUST_STAR_JOURNAL.md`.
-`oracle-v2` is the current C0 oracle for those two frontiers.
+`oracle-v2` remains the current C0 tensor oracle for those two frontiers. A
+post-acceptance continuation audit found that `b81c099` can still rarely drift
+while preserving the greedy transcript. New 32K evidence therefore requires a
+new immutable producer version with stronger command-buffer ordering and
+repeated verification; it may not silently extend the v2 producer contract.
 
 Conformance and performance are separate run modes:
 

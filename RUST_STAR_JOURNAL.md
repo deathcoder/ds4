@@ -50,12 +50,14 @@ history; add a correction and update the current-state summary.
 - Local `main`: fast-forwarded to the same upstream commit.
 - Fork `origin/main`: synchronized to the same upstream commit through the
   GitHub app.
-- Oracle: `oracle-v2` is the active 2K/32K C0 contract. It pins deterministic
-  repair `b81c099`, capture kit `855b2b8`, model SHA-256
-  `ca22ae2f...6261c0`, the target toolchain, and two bit-identical fresh-process
-  full-vocabulary captures per frontier. It preserves the `oracle-v1` 2K tensor
-  exactly. The historical `oracle-v1` 32K tensor remains quarantined and
-  immutable after its repeatability failure.
+- Oracle: the accepted `oracle-v2` artifacts remain the active 2K/32K C0 tensor
+  contract, but producer commit `b81c099` is no longer considered reliably
+  reproducible. A post-acceptance 32K continuation audit found one rare drift
+  among three fresh processes after earlier successful repetitions. The
+  stronger command-buffer ordering candidate reproduces the accepted v2
+  tensors at 2K and 32K; it must receive a new versioned producer checkpoint
+  and repeated capture before the source contract advances. The historical
+  `oracle-v1` 32K tensor remains quarantined and immutable.
 - Capture kit: `rust-star/capture_oracle_v1.py` preserves the historical
   capture path. `rust-star/capture_oracle_v2.py` prepares the deterministic
   privacy-filtered bundle and requires repeated fresh-process C0 evidence; the
@@ -783,6 +785,51 @@ history; add a correction and update the current-state summary.
    fork's GitHub Actions workflow and retain its URL.
 
 ## Entries
+
+### 2026-08-30 — Strengthened the residual 32K compressor dependency
+
+- Began the planned Rust Star 32K engine extension by capturing the missing
+  32K-to-32,896 closed-loop oracle. All eight audited helper captures agree
+  byte-for-byte on all 129 greedy input tokens with SHA-256
+  `a9422bb7...0ba9`, prefill token 85166, and final token 716.
+- The longer audit invalidated the stronger claim that producer `b81c099` was
+  fully repeatable. Of three new fresh processes, two reproduced accepted v2
+  post-prefill SHA-256 `603430b4...09c547`, first-step SHA-256
+  `63478a55...2b5bb`, and final-step SHA-256 `36d2c349...177b0`; one produced
+  different full tensors while preserving every selected token. At prefill it
+  differed in 129,219/129,280 logits, with maximum absolute error
+  `0.00280476` and RMSE `0.000501144`.
+- A layer-17-only command-buffer boundary was rejected: it produced another
+  distinct FP32 result even though the earlier forensic run first observed the
+  corrupted retained row at layer 17. This proves that the safe fix cannot be
+  scoped to the first visible divergence without additional dependency
+  evidence.
+- Strengthened every compressor projection-to-read edge from an encoder-only
+  boundary to an ordered command-buffer boundary. This adds no host wait and
+  changes no arithmetic. Two fresh 32K-to-32,896 runs from executable SHA-256
+  `6b99a58c...bee0b` are byte-identical for the full transcript and all three
+  captured logit tensors, and exactly reproduce the accepted v2 hashes above.
+  The same executable preserves the existing 2K batched-prefill and first-step
+  fixtures bit-for-bit.
+- The full model-backed `ds4_test` suite passed, including the 30,474-token
+  long-context path, official logprob vectors, local golden vectors, Metal
+  kernel exactness, tensor equivalence, and the SSD-streaming cache-pressure
+  repro. Optional streaming decode-prefill, MTP, and DSpark suites remained
+  explicitly skipped by their existing opt-in gates.
+
+Decision:
+
+- Keep the accepted v2 tensor values as the current C0 target, but revoke the
+  assumption that its pinned producer is reliably repeatable. Do not import the
+  drifting continuation logits or promote a Rust 32K result against an
+  unreproducible source. Preserve the bit-stable 129-token transcript as local
+  evidence until the stronger producer is versioned and accepted.
+
+Next:
+
+- Freeze the command-buffer repair, capture and independently verify a new
+  versioned 2K/32K oracle from that immutable checkpoint, then import the exact
+  32K continuation fixture and begin Rust Star's chunked-prefill boundary.
 
 ### 2026-08-30 — Accepted repeatable oracle-v2 at 2K and 32K
 
