@@ -361,6 +361,27 @@ applies at 1,025 rows. This command claims complete-model native batched
 prefill, exact output logits, and exact greedy selection. Sparse post-prompt
 integration and throughput remain outside its scope.
 
+To exercise the first 4K transformer chunk from the accepted 32K token stream:
+
+```sh
+rust-star/.work/runtime-target/release/rust-star \
+  long-prefill-transformer-probe \
+  /absolute/path/to/model.gguf \
+  --json rust-star/.work/runtime-target/long-prefill-transformer-4096.json
+```
+
+This timing-only command uses 64 64-row bootstrap tiles, then runs the ordinary
+layers-2-through-42 transformer and output head with prompt-derived buffer and
+attention extents. It requires 7,556 bootstrap dispatches with 4,160/4,160
+no-copy mappings and 2,372 transformer dispatches with 1,216/1,216 no-copy
+mappings. The retained context contains 4,096 raw rows per layer, 1,024 rows
+for each ratio-4 path, 32 rows for each ratio-128 path, and all compressor
+recurrent tails. The initial M1 Ultra run selected token 565 and wrote
+`rust-star-long-prefill-transformer-probe-v1` evidence. The accepted 32K token
+stream identifies the input only: this command does not claim intermediate C0,
+selected-token oracle equality, complete 32K prefill, or throughput. Continue
+to use `prefill-layers012-attention-loop-probe` as the exhaustive 2K C0 control.
+
 To run the connected layer-0 ingress gate:
 
 ```sh

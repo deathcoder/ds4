@@ -8,8 +8,8 @@ use rust_star_runtime::metal::{
     run_layers012345_decode_probe, run_layers0123_bench, run_layers0123_chained_probe,
     run_layers0123_decode_probe, run_layers0123_probe, run_layers012_chained_probe,
     run_layers012_probe, run_layers01_probe, run_layers0_to_42_decode_probe,
-    run_long_prefill_bootstrap_probe, run_moe_output_probe, run_position127_decoder_probe,
-    run_prefill_decode_frontier_probe, run_prefill_frontier_probe,
+    run_long_prefill_bootstrap_probe, run_long_prefill_transformer_probe, run_moe_output_probe,
+    run_position127_decoder_probe, run_prefill_decode_frontier_probe, run_prefill_frontier_probe,
     run_prefill_layer0_boundary_probe, run_prefill_layers012_attention_loop_probe,
     run_prefill_layers012_compressor_loop_probe, run_prefill_layers012_kv_state_loop_probe,
     run_prefill_layers012_kvnorm_loop_probe, run_prefill_layers01_boundary_probe,
@@ -32,9 +32,10 @@ use rust_star_runtime::metal::{
     write_layers0123_decode_probe_json, write_layers0123_probe_json,
     write_layers012_chained_probe_json, write_layers012_probe_json, write_layers01_probe_json,
     write_layers0_to_42_decode_probe_json, write_long_prefill_bootstrap_probe_json,
-    write_moe_output_probe_json, write_position127_decoder_probe_json,
-    write_prefill_decode_frontier_probe_json, write_prefill_frontier_probe_json,
-    write_prefill_layer0_boundary_probe_json, write_prefill_layers012_attention_loop_probe_json,
+    write_long_prefill_transformer_probe_json, write_moe_output_probe_json,
+    write_position127_decoder_probe_json, write_prefill_decode_frontier_probe_json,
+    write_prefill_frontier_probe_json, write_prefill_layer0_boundary_probe_json,
+    write_prefill_layers012_attention_loop_probe_json,
     write_prefill_layers012_compressor_loop_probe_json,
     write_prefill_layers012_kv_state_loop_probe_json,
     write_prefill_layers012_kvnorm_loop_probe_json, write_prefill_layers01_boundary_probe_json,
@@ -56,18 +57,18 @@ use rust_star_runtime::metal::{
     Layers0123BenchConfig, Layers0123BenchReport, Layers0123ChainedProbeReport,
     Layers0123DecodeProbeReport, Layers0123ProbeReport, Layers012ChainedProbeReport,
     Layers012ProbeReport, Layers01ProbeReport, Layers0To42DecodeProbeReport,
-    LongPrefillBootstrapProbeReport, MoeOutputProbeReport, Position127DecoderProbeReport,
-    PrefillDecodeFrontierProbeReport, PrefillFrontierProbeReport, PrefillLayer0BoundaryProbeReport,
-    PrefillLayers012AttentionLoopProbeReport, PrefillLayers012CompressorLoopProbeReport,
-    PrefillLayers012KvStateLoopProbeReport, PrefillLayers012KvnormLoopProbeReport,
-    PrefillLayers01BoundaryProbeReport, PrefillLayers01CompleteBoundaryProbeReport,
-    PrefillLayers01LiveKvChainProbeReport, PrefillLayers01LiveKvLoopProbeReport,
-    PrefillLayers01RowCoverageProbeReport, PrefillQ8BoundaryProbeReport,
-    PrefillQkvBoundaryProbeReport, ProbeConfig, ProjectionProbeReport, QHeadKvFusionBenchReport,
-    QHeadThreadsBenchReport, QbRowsBenchReport, QkvPairBenchReport,
-    Ratio128CompressorReplayProbeReport, RetainedDecoderStepProbeReport, RetainedEngineRunReport,
-    RetainedSparseBoundaryProbeReport, RopeKvStoreProbeReport, RoutedNsgBenchReport,
-    SparseIndexedAttentionProbeReport,
+    LongPrefillBootstrapProbeReport, LongPrefillTransformerProbeReport, MoeOutputProbeReport,
+    Position127DecoderProbeReport, PrefillDecodeFrontierProbeReport, PrefillFrontierProbeReport,
+    PrefillLayer0BoundaryProbeReport, PrefillLayers012AttentionLoopProbeReport,
+    PrefillLayers012CompressorLoopProbeReport, PrefillLayers012KvStateLoopProbeReport,
+    PrefillLayers012KvnormLoopProbeReport, PrefillLayers01BoundaryProbeReport,
+    PrefillLayers01CompleteBoundaryProbeReport, PrefillLayers01LiveKvChainProbeReport,
+    PrefillLayers01LiveKvLoopProbeReport, PrefillLayers01RowCoverageProbeReport,
+    PrefillQ8BoundaryProbeReport, PrefillQkvBoundaryProbeReport, ProbeConfig,
+    ProjectionProbeReport, QHeadKvFusionBenchReport, QHeadThreadsBenchReport, QbRowsBenchReport,
+    QkvPairBenchReport, Ratio128CompressorReplayProbeReport, RetainedDecoderStepProbeReport,
+    RetainedEngineRunReport, RetainedSparseBoundaryProbeReport, RopeKvStoreProbeReport,
+    RoutedNsgBenchReport, SparseIndexedAttentionProbeReport,
 };
 use rust_star_runtime::model::MappedModel;
 use rust_star_runtime::target::{validate_resident_q2, MODEL_LABEL};
@@ -143,6 +144,9 @@ fn run() -> Result<()> {
     }
     if command == "long-prefill-bootstrap-probe" {
         return run_long_prefill_bootstrap_probe_command(arguments.collect());
+    }
+    if command == "long-prefill-transformer-probe" {
+        return run_long_prefill_transformer_probe_command(arguments.collect());
     }
     if command == "prefill-layers012-attention-loop-probe" {
         return run_prefill_layers012_attention_loop_probe_command(arguments.collect());
@@ -3211,6 +3215,69 @@ fn run_long_prefill_bootstrap_probe_command(arguments: Vec<OsString>) -> Result<
     Ok(())
 }
 
+fn run_long_prefill_transformer_probe_command(arguments: Vec<OsString>) -> Result<()> {
+    if arguments.is_empty() {
+        return Err(Error::invalid(long_prefill_transformer_probe_usage()));
+    }
+    if matches!(arguments[0].to_str(), Some("--help") | Some("-h")) {
+        println!("{}", long_prefill_transformer_probe_usage());
+        return Ok(());
+    }
+    let model_path = PathBuf::from(&arguments[0]);
+    let mut json_path: Option<PathBuf> = None;
+    let mut arguments = arguments.into_iter().skip(1);
+    while let Some(argument) = arguments.next() {
+        match argument.to_str() {
+            Some("--json") => {
+                let value = arguments
+                    .next()
+                    .ok_or_else(|| Error::invalid("--json requires a path"))?;
+                if json_path.is_some() {
+                    return Err(Error::invalid("--json may be specified only once"));
+                }
+                json_path = Some(PathBuf::from(value));
+            }
+            Some("--help") | Some("-h") => {
+                println!("{}", long_prefill_transformer_probe_usage());
+                return Ok(());
+            }
+            _ => return Err(Error::invalid(long_prefill_transformer_probe_usage())),
+        }
+    }
+    let model = MappedModel::open(&model_path)?;
+    validate_resident_q2(model.gguf())?;
+    let report = run_long_prefill_transformer_probe(&model)?;
+    println!(
+        "native long-prefill transformer: accepted 32K token stream, first 4096-token chunk through layers 0-42"
+    );
+    println!(
+        "retained state: 4096 raw rows per layer, 1024 ratio-4 and 32 ratio-128 compressed rows per applicable layer"
+    );
+    println!(
+        "schedule: bootstrap {} dispatches and transformer {} dispatches; {}/{} transformer no-copy ranges; selected token {}",
+        report.bootstrap_dispatches,
+        report.transformer_dispatches,
+        report.transformer_wrapped_model_ranges,
+        report.transformer_wrapped_model_ranges,
+        report.selected_token,
+    );
+    println!(
+        "timing: bootstrap wall={:.3} ms gpu={:.3} ms; transformer wall={:.3} ms gpu={:.3} ms; output head wall={:.3} ms gpu={:.3} ms",
+        report.bootstrap_wall_ms,
+        report.bootstrap_gpu_ms,
+        report.transformer_wall_ms,
+        report.transformer_gpu_ms,
+        report.output_head_wall_ms,
+        report.output_head_gpu_ms,
+    );
+    println!("scope: complete native 4K transformer schedule and retained-state lifetime; no intermediate C0, selected-token oracle match, complete-32K, or throughput claim");
+    if let Some(path) = json_path {
+        write_long_prefill_transformer_probe_file(&path, &report)?;
+        println!("json: {}", path.display());
+    }
+    Ok(())
+}
+
 fn run_prefill_layers012_attention_loop_probe_command(arguments: Vec<OsString>) -> Result<()> {
     if arguments.is_empty() {
         return Err(Error::invalid(
@@ -3954,6 +4021,36 @@ fn write_long_prefill_bootstrap_probe_file(
     std::fs::rename(&temporary, path).map_err(|error| {
         Error::invalid(format!(
             "cannot install long-prefill bootstrap JSON {}: {error}",
+            path.display()
+        ))
+    })?;
+    Ok(())
+}
+
+fn write_long_prefill_transformer_probe_file(
+    path: &Path,
+    report: &LongPrefillTransformerProbeReport,
+) -> Result<()> {
+    let temporary = path.with_extension(format!(
+        "{}tmp",
+        path.extension()
+            .and_then(OsStr::to_str)
+            .map(|extension| format!("{extension}."))
+            .unwrap_or_default()
+    ));
+    let file = File::create(&temporary).map_err(|error| {
+        Error::invalid(format!(
+            "cannot create long-prefill transformer JSON {}: {error}",
+            temporary.display()
+        ))
+    })?;
+    let mut output = BufWriter::new(file);
+    write_long_prefill_transformer_probe_json(&mut output, report)?;
+    output.flush()?;
+    drop(output);
+    std::fs::rename(&temporary, path).map_err(|error| {
+        Error::invalid(format!(
+            "cannot install long-prefill transformer JSON {}: {error}",
             path.display()
         ))
     })?;
@@ -5117,7 +5214,7 @@ fn usage() -> &'static str {
 
 fn full_usage() -> String {
     format!(
-        "{}\n  rust-star long-prefill-bootstrap-probe MODEL.gguf [OPTIONS]\n  rust-star attention-output-nsg-bench MODEL.gguf [OPTIONS]\n  rust-star attention-rope-fusion-bench MODEL.gguf [OPTIONS]\n  rust-star qkv-pair-bench MODEL.gguf [OPTIONS]\n  rust-star qb-rows-bench MODEL.gguf [OPTIONS]\n  rust-star q-head-threads-bench [OPTIONS]\n  rust-star q-head-kv-fusion-bench [OPTIONS]\n  rust-star routed-nsg-bench MODEL.gguf [OPTIONS]\n  rust-star prefill-decode-frontier-probe MODEL.gguf [OPTIONS]\n  rust-star engine-measure MODEL.gguf --context N --gen-tokens N --json PATH\n  rust-star engine-profile MODEL.gguf --context N --gen-tokens N --json PATH\n  rust-star engine-retained-measure MODEL.gguf --context N --gen-tokens N --json PATH\n  rust-star retained-sparse-multimerge-probe MODEL.gguf [OPTIONS]\n  rust-star retained-decoder-step-probe MODEL.gguf [OPTIONS]",
+        "{}\n  rust-star long-prefill-bootstrap-probe MODEL.gguf [OPTIONS]\n  rust-star long-prefill-transformer-probe MODEL.gguf [OPTIONS]\n  rust-star attention-output-nsg-bench MODEL.gguf [OPTIONS]\n  rust-star attention-rope-fusion-bench MODEL.gguf [OPTIONS]\n  rust-star qkv-pair-bench MODEL.gguf [OPTIONS]\n  rust-star qb-rows-bench MODEL.gguf [OPTIONS]\n  rust-star q-head-threads-bench [OPTIONS]\n  rust-star q-head-kv-fusion-bench [OPTIONS]\n  rust-star routed-nsg-bench MODEL.gguf [OPTIONS]\n  rust-star prefill-decode-frontier-probe MODEL.gguf [OPTIONS]\n  rust-star engine-measure MODEL.gguf --context N --gen-tokens N --json PATH\n  rust-star engine-profile MODEL.gguf --context N --gen-tokens N --json PATH\n  rust-star engine-retained-measure MODEL.gguf --context N --gen-tokens N --json PATH\n  rust-star retained-sparse-multimerge-probe MODEL.gguf [OPTIONS]\n  rust-star retained-decoder-step-probe MODEL.gguf [OPTIONS]",
         usage()
     )
 }
@@ -5180,6 +5277,10 @@ fn prefill_layers012_compressor_loop_probe_usage() -> &'static str {
 
 fn long_prefill_bootstrap_probe_usage() -> &'static str {
     "usage: rust-star long-prefill-bootstrap-probe MODEL.gguf [--json PATH]\n\nRuns the first 4,096-token native chunk from the accepted oracle-v3 32K token stream through complete layers 0 and 1 plus layer 2 raw KV and paired ratio-4 compressors. It retains the chunk state needed by the next transformer/chunk milestone, but makes no intermediate C0, complete-32K, or throughput claim."
+}
+
+fn long_prefill_transformer_probe_usage() -> &'static str {
+    "usage: rust-star long-prefill-transformer-probe MODEL.gguf [--json PATH]\n\nRuns the first 4,096-token native chunk from the accepted oracle-v3 32K token stream through complete layers 0 through 42 and the output head. It verifies the expanded retained-state schedule and no-copy ownership, but makes no intermediate C0, selected-token oracle-match, complete-32K, or throughput claim."
 }
 
 fn prefill_layers012_attention_loop_probe_usage() -> &'static str {

@@ -316,6 +316,16 @@ five-dispatch output head to the retained final layer-42 row, preserving 5/5
 additional no-copy model mappings and matching all 129,280 repeated DwarfStar
 batched-prefill logits bit-for-bit. Lowest-ID argmax selects token 15342, so
 the complete native model schedule uses 2,377 dispatches and 1,221 mappings.
+The retained transformer is no longer limited to that 2K correctness frontier.
+The `long-prefill-transformer-probe` command consumes the first 4,096 tokens of
+the accepted oracle-v3 32K stream, executes layers 0--42 and the output head,
+and retains 4,096 raw rows per layer, 1,024 ratio-4 rows, and 32 ratio-128 rows.
+The first target-Mac run preserved all 1,216/1,216 no-copy transformer mappings
+across 2,372 dispatches and selected token 565. It measured 5,184.460 ms of
+bootstrap GPU time and 14,080.315 ms of transformer GPU time. This is a native
+4K schedule and lifetime checkpoint, not a C0 or throughput result; the
+separate full 2K regression still matched every retained boundary and all
+129,280 logits bit-for-bit and selected token 15342.
 Exactly 512 ratio-4 compressed rows for each even layer through layer 42 and
 16 ratio-128 rows for each odd layer through layer 41 remain dense at the
 prompt boundary. The

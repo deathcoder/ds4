@@ -7540,6 +7540,7 @@ int rust_star_metal_run_prefill_layer2_attention(
     float *layer42_router_weights_final_tile,
     float *layer42_routed_out_final_tile,
     float *layer42_shared_out_final_tile,
+    uint32_t prefill_rows,
     uint32_t collect_outputs,
     rust_star_metal_prefill_layer2_attention_result *result,
     char *error,
@@ -8115,29 +8116,35 @@ int rust_star_metal_run_prefill_layer2_attention(
     @autoreleasepool {
         RustStarMetalContext *context = (__bridge RustStarMetalContext *)opaque_context;
         enum {
-            rows = 2048, q_rank = 1024, q_dim = 32768,
+            q_rank = 1024, q_dim = 32768,
             n_head = 64, head_dim = 512,
-            raw_rows = 2048, compressed_rows = 512,
-            key_rows = raw_rows + compressed_rows,
             attention_window = 128, compressor_ratio = 4,
             output_rank = 1024, n_embd = 4096,
             layer3_compressor_ratio = 128,
-            layer3_compressed_rows = rows/layer3_compressor_ratio,
-            layer3_key_rows = raw_rows + layer3_compressed_rows,
-            layer3_attention_rows =
-                ((layer3_key_rows+63u)/64u)*64u,
             layer3_compressor_width = 512,
             layer4_attn_compressor_width = 1024,
             layer4_attn_compressor_head = 512,
             layer4_indexer_compressor_width = 256,
             layer4_indexer_compressor_head = 128,
         };
+        if (prefill_rows != 2048u && prefill_rows != 4096u) {
+            return fail_with_message(error, error_bytes,
+                @"prefill transformer requires 2K or 4K retained rows");
+        }
+        const uint32_t rows = prefill_rows;
+        const uint32_t raw_rows = rows;
+        const uint32_t compressed_rows = rows/compressor_ratio;
+        const uint32_t key_rows = raw_rows + compressed_rows;
+        const uint32_t layer3_compressed_rows = rows/layer3_compressor_ratio;
+        const uint32_t layer3_key_rows = raw_rows + layer3_compressed_rows;
+        const uint32_t layer3_attention_rows =
+            ((layer3_key_rows+63u)/64u)*64u;
         if (context.prefillKvRows != rows ||
             !context.prefillLayer2FullQNorm || !context.prefillLayer2FullKv ||
             !context.prefillLayer2AttnCompressed || !context.prefillLayer2InputHc ||
             !context.prefillLayer2AttnSplit) {
             return fail_with_message(error, error_bytes,
-                @"prefill layer-2 attention requires a complete retained 2K boundary");
+                @"prefill layer-2 attention requires the requested retained boundary");
         }
         if (weights->q_b_bytes !=
                 (uint64_t)q_dim*((uint64_t)q_rank/32u)*34u ||
@@ -42645,17 +42652,18 @@ int rust_star_metal_run_output_head(
                     @"output head could not find the retained decode layer-42 HC state");
             }
         } else if (context.prefillLayer42AfterFfnHc) {
-            const NSUInteger prefill_rows = 2048u;
+            const NSUInteger prefill_rows = context.prefillKvRows;
             const NSUInteger prefill_hc_bytes = prefill_rows*hc_dim*sizeof(float);
             input_hc = context.prefillLayer42AfterFfnHc;
-            if (input_hc.length != prefill_hc_bytes) {
+            if ((prefill_rows != 2048u && prefill_rows != 4096u) ||
+                input_hc.length != prefill_hc_bytes) {
                 return fail_with_message(error, error_bytes,
                     @"output head found an invalid retained prefill layer-42 HC state");
             }
             input_hc_offset = (prefill_rows-1u)*hc_dim*sizeof(float);
         } else {
             return fail_with_message(error, error_bytes,
-                @"output head requires a completed decode or 2K prefill layers-0-through-42 chain");
+                @"output head requires a completed decode or supported prefill layers-0-through-42 chain");
         }
 
         NSUInteger inner[5] = {0};
