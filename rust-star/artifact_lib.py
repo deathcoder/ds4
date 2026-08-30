@@ -26,9 +26,17 @@ SOURCE_TREE = "20c11af22f90a0bdf25da860da5ef06de4064060"
 ORACLE_V2_ID = "oracle-v2"
 ORACLE_V2_SOURCE_COMMIT = "b81c099b1f7888358fcdc820e7e70566c04aafae"
 ORACLE_V2_SOURCE_TREE = "4b913890d4dc8a12872cf5462b41ce21f2007400"
+ORACLE_V3_ID = "oracle-v3"
+ORACLE_V3_SOURCE_COMMIT = "1f8c45f120819afaa10dcd338f88a9dc2ce7b9eb"
+ORACLE_V3_SOURCE_TREE = "ad248db417c5b2fa58afb63db238d21a99920be8"
 ORACLE_SOURCES = {
     ORACLE_ID: (SOURCE_COMMIT, SOURCE_TREE),
     ORACLE_V2_ID: (ORACLE_V2_SOURCE_COMMIT, ORACLE_V2_SOURCE_TREE),
+    ORACLE_V3_ID: (ORACLE_V3_SOURCE_COMMIT, ORACLE_V3_SOURCE_TREE),
+}
+REPEATABLE_ORACLE_MIN_REPETITIONS = {
+    ORACLE_V2_ID: 2,
+    ORACLE_V3_ID: 4,
 }
 SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 METADATA_KEYS = (
@@ -523,15 +531,18 @@ def validate_oracle_bundle(root: Path, *, allow_partial: bool = False) -> dict[s
         or conformance_repetitions < 1
     ):
         raise ArtifactError("conformance repetition count is invalid")
-    if oracle_id == ORACLE_V2_ID:
+    minimum_repetitions = REPEATABLE_ORACLE_MIN_REPETITIONS.get(oracle_id)
+    if minimum_repetitions is not None:
         if not {2048, 32768}.issubset(contexts):
-            raise ArtifactError("oracle-v2 must cover the 2K and 32K contexts")
+            raise ArtifactError(f"{oracle_id} must cover the 2K and 32K contexts")
         if not configuration.get("correctness_enabled"):
-            raise ArtifactError("oracle-v2 requires correctness evidence")
+            raise ArtifactError(f"{oracle_id} requires correctness evidence")
         if not configuration.get("conformance_enabled"):
-            raise ArtifactError("oracle-v2 requires conformance evidence")
-        if conformance_repetitions < 2:
-            raise ArtifactError("oracle-v2 requires at least two conformance repetitions")
+            raise ArtifactError(f"{oracle_id} requires conformance evidence")
+        if conformance_repetitions < minimum_repetitions:
+            raise ArtifactError(
+                f"{oracle_id} requires at least {minimum_repetitions} conformance repetitions"
+            )
 
     for section_name, enabled_key in (
         ("correctness", "correctness_enabled"),

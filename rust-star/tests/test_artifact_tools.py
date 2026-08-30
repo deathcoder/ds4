@@ -18,6 +18,8 @@ from artifact_lib import (  # noqa: E402
     ArtifactError,
     ORACLE_V2_SOURCE_COMMIT,
     ORACLE_V2_SOURCE_TREE,
+    ORACLE_V3_SOURCE_COMMIT,
+    ORACLE_V3_SOURCE_TREE,
     SOURCE_COMMIT,
     SOURCE_TREE,
     compare_logit_artifacts,
@@ -157,12 +159,19 @@ class BundleValidationTests(unittest.TestCase):
         (bundle / "manifest.json").write_text(json.dumps(manifest) + "\n", encoding="utf-8")
         return bundle
 
-    def make_v2_bundle(self, root: Path) -> Path:
-        bundle = root / "oracle-v2-test"
+    def make_repeatable_bundle(
+        self,
+        root: Path,
+        oracle_id: str = "oracle-v2",
+        source_commit: str = ORACLE_V2_SOURCE_COMMIT,
+        source_tree: str = ORACLE_V2_SOURCE_TREE,
+        repetitions: int = 2,
+    ) -> Path:
+        bundle = root / f"{oracle_id}-test"
         bundle.mkdir()
         runs: list[dict[str, object]] = []
         for context in (2048, 32768):
-            for repetition in (1, 2):
+            for repetition in range(1, repetitions + 1):
                 relative = Path("conformance") / f"ctx_{context}" / f"run_{repetition}.json"
                 path = bundle / relative
                 path.parent.mkdir(parents=True, exist_ok=True)
@@ -184,11 +193,11 @@ class BundleValidationTests(unittest.TestCase):
                 })
         manifest = {
             "schema": "rust-star-oracle-manifest-v1",
-            "oracle_id": "oracle-v2",
+            "oracle_id": oracle_id,
             "status": "complete",
             "source": {
-                "commit": ORACLE_V2_SOURCE_COMMIT,
-                "tree": ORACLE_V2_SOURCE_TREE,
+                "commit": source_commit,
+                "tree": source_tree,
             },
             "capture_kit": {
                 "commit": "a" * 40,
@@ -204,7 +213,7 @@ class BundleValidationTests(unittest.TestCase):
             },
             "configuration": {
                 "contexts": [2048, 32768],
-                "conformance_repetitions": 2,
+                "conformance_repetitions": repetitions,
                 "correctness_enabled": True,
                 "conformance_enabled": True,
                 "performance_enabled": False,
@@ -215,6 +224,18 @@ class BundleValidationTests(unittest.TestCase):
         }
         (bundle / "manifest.json").write_text(json.dumps(manifest) + "\n", encoding="utf-8")
         return bundle
+
+    def make_v2_bundle(self, root: Path) -> Path:
+        return self.make_repeatable_bundle(root)
+
+    def make_v3_bundle(self, root: Path) -> Path:
+        return self.make_repeatable_bundle(
+            root,
+            oracle_id="oracle-v3",
+            source_commit=ORACLE_V3_SOURCE_COMMIT,
+            source_tree=ORACLE_V3_SOURCE_TREE,
+            repetitions=4,
+        )
 
     def test_directory_and_archive_validate(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
@@ -245,6 +266,25 @@ class BundleValidationTests(unittest.TestCase):
             self.assertEqual(report["oracle_id"], "oracle-v2")
             self.assertEqual(report["conformance_repetitions"], 2)
 
+    def test_oracle_v3_repeated_conformance_validates(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            bundle = self.make_v3_bundle(Path(temporary))
+            report = validate_oracle_bundle(bundle)
+            self.assertEqual(report["oracle_id"], "oracle-v3")
+            self.assertEqual(report["conformance_repetitions"], 4)
+
+    def test_oracle_v3_requires_four_repetitions(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            bundle = self.make_repeatable_bundle(
+                Path(temporary),
+                oracle_id="oracle-v3",
+                source_commit=ORACLE_V3_SOURCE_COMMIT,
+                source_tree=ORACLE_V3_SOURCE_TREE,
+                repetitions=3,
+            )
+            with self.assertRaisesRegex(ArtifactError, "at least 4"):
+                validate_oracle_bundle(bundle)
+
     def test_oracle_v2_conformance_drift_is_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             bundle = self.make_v2_bundle(Path(temporary))
@@ -272,7 +312,7 @@ class BundleValidationTests(unittest.TestCase):
             manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
             manifest["configuration"]["conformance_repetitions"] = 1
             manifest_path.write_text(json.dumps(manifest) + "\n", encoding="utf-8")
-            with self.assertRaisesRegex(ArtifactError, "at least two"):
+            with self.assertRaisesRegex(ArtifactError, "at least 2"):
                 validate_oracle_bundle(bundle)
 
     def test_early_partial_manifest_is_accepted_only_when_requested(self) -> None:

@@ -561,13 +561,19 @@ def validate_args(args: argparse.Namespace) -> tuple[int, ...]:
     if args.gen_tokens < 1:
         raise CaptureError("--gen-tokens must be at least 1")
     contexts = FULL_CONTEXTS if args.full else (args.contexts or DEFAULT_CONTEXTS)
-    if ORACLE_ID == "oracle-v2":
+    minimum_repetitions = {
+        "oracle-v2": 2,
+        "oracle-v3": 4,
+    }.get(ORACLE_ID)
+    if minimum_repetitions is not None:
         if args.skip_correctness or args.skip_conformance:
-            raise CaptureError("oracle-v2 requires correctness and conformance evidence")
-        if args.conformance_repetitions < 2:
-            raise CaptureError("oracle-v2 requires at least two conformance repetitions")
+            raise CaptureError(f"{ORACLE_ID} requires correctness and conformance evidence")
+        if args.conformance_repetitions < minimum_repetitions:
+            raise CaptureError(
+                f"{ORACLE_ID} requires at least {minimum_repetitions} conformance repetitions"
+            )
         if not {2048, 32768}.issubset(contexts):
-            raise CaptureError("oracle-v2 must cover the 2K and 32K contexts")
+            raise CaptureError(f"{ORACLE_ID} must cover the 2K and 32K contexts")
     if not args.dry_run:
         if platform.system() != "Darwin" or platform.machine() not in {"arm64", "aarch64"}:
             raise CaptureError("oracle capture must run on Apple Silicon macOS; use --dry-run elsewhere")
