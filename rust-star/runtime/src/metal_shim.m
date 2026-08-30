@@ -811,6 +811,7 @@ static NSString *const kQ8ProjectionSource =
 @property(nonatomic, strong) id<MTLBuffer> prefillLayer42AfterAttentionHc;
 @property(nonatomic, strong) id<MTLBuffer> prefillLayer42AfterFfnHc;
 @property(nonatomic, assign) uint32_t prefillKvRows;
+@property(nonatomic, assign) uint32_t prefillCapacityRows;
 @property(nonatomic, assign) double chainedWallEnd;
 @property(nonatomic, assign) BOOL chainedReady;
 @property(nonatomic, assign) uint32_t chainedFinalLayer;
@@ -2756,6 +2757,32 @@ static id<MTLBuffer> persistent_buffer(
     return buffer;
 }
 
+static id<MTLBuffer> grow_shared_buffer(
+    RustStarMetalContext *context,
+    id<MTLBuffer> buffer,
+    NSUInteger bytes,
+    NSString *label,
+    char *error,
+    size_t error_bytes)
+{
+    if (!buffer) {
+        fail_with_message(error, error_bytes,
+            [NSString stringWithFormat:@"missing retained %@ buffer", label]);
+        return nil;
+    }
+    if (buffer.length >= bytes) return buffer;
+    id<MTLBuffer> grown = [context.device newBufferWithLength:bytes
+        options:MTLResourceStorageModeShared];
+    if (!grown) {
+        fail_with_message(error, error_bytes,
+            [NSString stringWithFormat:@"failed to grow retained %@ buffer", label]);
+        return nil;
+    }
+    memcpy(grown.contents, buffer.contents, buffer.length);
+    memset((uint8_t *)grown.contents + buffer.length, 0, bytes - buffer.length);
+    return grown;
+}
+
 static BOOL prefill_buffer_is_decoder_state(const char *role)
 {
     return strcmp(role, "kv_norm_buffer") == 0 ||
@@ -4086,7 +4113,8 @@ int rust_star_metal_run_prefill_layer0_boundary(
             @"prefill complete layer-1 boundary received a null fixture/output pointer");
     }
     if (n_vocab != 129280u || (rows != 32u && rows != 64u) ||
-        (prefill_rows != 2048u && prefill_rows != 4096u) ||
+        (prefill_rows != 2048u && prefill_rows != 4096u &&
+         prefill_rows != 8192u) ||
         prefill_rows < rows || prefill_rows % rows != 0u ||
         position_start % rows != 0u ||
         position_start + rows > prefill_rows) {
@@ -4125,6 +4153,12 @@ int rust_star_metal_run_prefill_layer0_boundary(
             context.prefillLayer2IndexerStateKv = nil;
             context.prefillLayer2IndexerStateScore = nil;
             context.prefillKvRows = 0u;
+            context.prefillCapacityRows = prefill_rows;
+        } else if (batch_production_tiles && consume_kv_state &&
+                   !context.prefillBoundaryCommands) {
+            context.prefillBoundaryCommands = [NSMutableArray
+                arrayWithCapacity:(prefill_rows-position_start)/rows];
+            context.prefillBoundaryWallStart = 0.0;
         }
         if (batch_production_tiles && !context.prefillBoundaryCommands) {
             return fail_with_message(error, error_bytes,
@@ -4391,6 +4425,34 @@ int rust_star_metal_run_prefill_layer0_boundary(
             compressor_state_rows*attn_compressor_width*sizeof(float);
         const NSUInteger indexer_state_bytes =
             compressor_state_rows*indexer_compressor_width*sizeof(float);
+        if (consume_kv_state && context.prefillCapacityRows < prefill_rows) {
+#define RUST_STAR_GROW_PREFILL_BUFFER(property, bytes, label) do { \
+            id<MTLBuffer> grown = grow_shared_buffer( \
+                context, context.property, (bytes), (label), error, error_bytes); \
+            if (!grown) return 0; \
+            context.property = grown; \
+        } while (0)
+            RUST_STAR_GROW_PREFILL_BUFFER(prefillLayer0FullKv,
+                full_kv_bytes, @"layer-0 full KV");
+            RUST_STAR_GROW_PREFILL_BUFFER(prefillLayer1FullKv,
+                full_kv_bytes, @"layer-1 full KV");
+            RUST_STAR_GROW_PREFILL_BUFFER(prefillLayer2FullKv,
+                full_kv_bytes, @"layer-2 full KV");
+            RUST_STAR_GROW_PREFILL_BUFFER(prefillLayer2FullQNorm,
+                prefill_rows*q_rank*sizeof(float), @"layer-2 Q norm");
+            RUST_STAR_GROW_PREFILL_BUFFER(prefillLayer2InputHc,
+                prefill_rows*hc_dim*sizeof(float), @"layer-2 input HC");
+            RUST_STAR_GROW_PREFILL_BUFFER(prefillLayer2AttnSplit,
+                prefill_rows*mix_hc*sizeof(float), @"layer-2 attention split");
+            RUST_STAR_GROW_PREFILL_BUFFER(prefillLayer2Tokens,
+                prefill_rows*sizeof(uint32_t), @"layer-2 tokens");
+            RUST_STAR_GROW_PREFILL_BUFFER(prefillLayer2AttnCompressed,
+                attn_compressed_bytes, @"layer-2 attention compressed");
+            RUST_STAR_GROW_PREFILL_BUFFER(prefillLayer2IndexerCompressed,
+                indexer_compressed_bytes, @"layer-2 indexer compressed");
+#undef RUST_STAR_GROW_PREFILL_BUFFER
+            context.prefillCapacityRows = prefill_rows;
+        }
         id<MTLBuffer> token_buffer = [context.device newBufferWithBytes:tokens
             length:token_bytes options:MTLResourceStorageModeShared];
         id<MTLBuffer> embedding_buffer = [context.device newBufferWithLength:embedding_bytes
@@ -6262,7 +6324,7 @@ int rust_star_metal_run_prefill_layer0_boundary(
         }
 
         const double wall_start = monotonic_ms();
-        if (batch_production_tiles && retain_kv_state) {
+        if (batch_production_tiles && context.prefillBoundaryCommands.count == 0u) {
             context.prefillBoundaryWallStart = wall_start;
         }
         [command commit];

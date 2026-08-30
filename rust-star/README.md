@@ -335,6 +335,16 @@ SHA-256 `626454dd...3a1a`, and lowest-ID argmax selects token 77179. The
 benchmark evidence. `import_frontier8192_fixture.py` revalidates the producer,
 executable, model, prompt, token prefix, CSV rows, and all four tensors before
 reconstructing the fixture.
+The `long-prefill-continuation-bootstrap-probe` now keeps the completed first
+4K transformer in one Metal context and advances positions 4,096--8,191
+through complete layers 0 and 1 plus layer 2 raw KV and paired ratio-4
+compressors. The first target-Mac run completed 64 continuation tiles and
+7,556 dispatches, preserved all 4,160/4,160 no-copy mappings, and grew the
+retained state to 8,192 raw and 2,048 compressed rows without discarding the
+first-chunk prefix or recurrent compressor state. Continuation GPU time was
+5,124.933 ms. This is the retained second-chunk bootstrap gate only: layers
+2--42, production sparse attention, and exact 8K output logits remain the next
+milestone.
 Exactly 512 ratio-4 compressed rows for each even layer through layer 42 and
 16 ratio-128 rows for each odd layer through layer 41 remain dense at the
 prompt boundary. The

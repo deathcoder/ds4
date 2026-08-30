@@ -18,6 +18,52 @@ Before changing code:
 Journal entries are reverse chronological. Do not edit old entries to change
 history; add a correction and update the current-state summary.
 
+## 2026-08-30 — Retained 4K-to-8K bootstrap transition executed
+
+Objective:
+
+- Execute positions 4,096--8,191 as a true continuation of the completed first
+  4K transformer instead of resetting the Metal context or compressor state.
+
+Changes and evidence:
+
+- Generalized the native bootstrap boundary to an 8,192-row working extent and
+  added prefix-preserving growth for retained layer-0/1/2 raw KV, layer-2
+  inputs, Q norm, attention split, tokens, and paired compressed histories.
+  Fixed-size recurrent compressor state is preserved in place. A new batch
+  command lifetime starts at the second-chunk boundary while global positions
+  continue at 4,096.
+- Generalized the Rust tile loop to an aligned nonzero start and added
+  `long-prefill-continuation-bootstrap-probe` with schema
+  `rust-star-long-prefill-continuation-bootstrap-probe-v1`. The command first
+  completes the 4K transformer, then runs 64 64-row continuation tiles through
+  complete layers 0/1 plus layer-2 raw KV and paired ratio-4 compressors in the
+  same context.
+- The target-Mac run completed 7,556 continuation dispatches with
+  4,160/4,160 no-copy mappings. Retained state reached 8,192 raw rows and 2,048
+  layer-2 attention/indexer compressed rows. Continuation wall/GPU time was
+  5,135.963/5,124.933 ms. Ignored JSON evidence SHA-256 is
+  `3bb768bfd4ce6cb5d2c67fd0e218100788fdd335f9764b9265809f7cbc7bfbaa`.
+- The independent complete 2K control still matched every retained transformer
+  boundary and all 129,280 logits bit-for-bit, selecting token 15342. Its
+  ignored JSON evidence SHA-256 for this run is
+  `74b01678afda096a0c05b7ae16053416fd3020bef6751f01eca937c79cc47b78`.
+  Formatting, the all-target build, the optimized macOS build, 305 Rust tests,
+  and 82 Python tests passed.
+
+Decision:
+
+- Accept the retained second-chunk bootstrap as the ownership and capacity
+  checkpoint. It deliberately makes no complete-8K-transformer, output-logit
+  C0, or throughput claim.
+
+Next:
+
+- Extend positions 4,096--8,191 through layers 2--42, including the
+  production sparse ratio-4 branch after 1,024 compressed rows, then require
+  all 129,280 output logits to match
+  `dwarfstar-oracle-v3-prefill-frontier-8192` bit-for-bit.
+
 ## 2026-08-30 — Supplemental oracle-v3 8K frontier accepted
 
 Objective:

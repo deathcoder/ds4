@@ -28,6 +28,8 @@ pub const PREFILL_LAYERS012_KV_STATE_LOOP_PROBE_SCHEMA: &str =
 pub const PREFILL_LAYERS012_COMPRESSOR_LOOP_PROBE_SCHEMA: &str =
     "rust-star-prefill-layers012-compressor-loop-probe-v1";
 pub const LONG_PREFILL_BOOTSTRAP_PROBE_SCHEMA: &str = "rust-star-long-prefill-bootstrap-probe-v1";
+pub const LONG_PREFILL_CONTINUATION_BOOTSTRAP_PROBE_SCHEMA: &str =
+    "rust-star-long-prefill-continuation-bootstrap-probe-v1";
 pub const LONG_PREFILL_TRANSFORMER_PROBE_SCHEMA: &str =
     "rust-star-long-prefill-transformer-probe-v1";
 pub const PREFILL_LAYERS012_ATTENTION_LOOP_PROBE_SCHEMA: &str =
@@ -514,10 +516,8 @@ const PREFILL_FRONTIER_2048_BATCH_LOGITS_BYTES: &[u8] =
     include_bytes!("../../fixtures/prefill-frontier-2048-v1/batch-prefill-logits.f32le.bin");
 const PREFILL_FRONTIER_2048_DECODE_LOGITS_BYTES: &[u8] =
     include_bytes!("../../fixtures/prefill-frontier-2048-v1/decode-replay-logits.f32le.bin");
-#[cfg(test)]
 const PREFILL_FRONTIER_8192_TOKEN_IDS_BYTES: &[u8] =
     include_bytes!("../../fixtures/prefill-frontier-8192-v3/token-ids.u32le.bin");
-#[cfg(test)]
 const PREFILL_FRONTIER_8192_BATCH_LOGITS_BYTES: &[u8] =
     include_bytes!("../../fixtures/prefill-frontier-8192-v3/batch-prefill-logits.f32le.bin");
 const PREFILL_FRONTIER_32768_TOKEN_IDS_BYTES: &[u8] =
@@ -3551,6 +3551,24 @@ pub struct PrefillLayers012CompressorLoopProbeReport {
 pub struct LongPrefillBootstrapProbeReport {
     pub fixture_id: &'static str,
     pub frontier_tokens: u32,
+    pub chunk_start: u32,
+    pub chunk_tokens: u32,
+    pub tile_rows: u32,
+    pub tiles: u32,
+    pub dispatches: u32,
+    pub wrapped_model_ranges: u32,
+    pub pointer_matches: u32,
+    pub token_checksum: u64,
+    pub summed_wall_ms: f64,
+    pub summed_gpu_ms: f64,
+}
+
+#[derive(Clone, Debug)]
+pub struct LongPrefillContinuationBootstrapProbeReport {
+    pub fixture_id: &'static str,
+    pub frontier_tokens: u32,
+    pub first_chunk_tokens: u32,
+    pub first_chunk_selected_token: u32,
     pub chunk_start: u32,
     pub chunk_tokens: u32,
     pub tile_rows: u32,
@@ -7509,6 +7527,62 @@ pub fn write_long_prefill_bootstrap_probe_json<W: Write>(
     Ok(())
 }
 
+pub fn write_long_prefill_continuation_bootstrap_probe_json<W: Write>(
+    output: &mut W,
+    report: &LongPrefillContinuationBootstrapProbeReport,
+) -> Result<()> {
+    if report.fixture_id != PREFILL_FRONTIER_8192_FIXTURE_ID
+        || report.frontier_tokens != 8_192
+        || report.first_chunk_tokens != 4_096
+        || report.first_chunk_selected_token >= 129_280
+        || report.chunk_start != 4_096
+        || report.chunk_tokens != 4_096
+        || report.tile_rows != 64
+        || report.tiles != 64
+        || report.dispatches != 7_556
+        || report.wrapped_model_ranges != 4_160
+        || report.pointer_matches != report.wrapped_model_ranges
+        || !report.summed_wall_ms.is_finite()
+        || !report.summed_gpu_ms.is_finite()
+        || report.summed_wall_ms <= 0.0
+        || report.summed_gpu_ms < 0.0
+    {
+        return Err(Error::invalid(
+            "long-prefill continuation bootstrap report has an unexpected frontier or schedule",
+        ));
+    }
+    write!(
+        output,
+        "{{\n  \"schema\": \"{LONG_PREFILL_CONTINUATION_BOOTSTRAP_PROBE_SCHEMA}\",\n  \"fixture\": "
+    )?;
+    crate::artifact::write_json_string(output, report.fixture_id)?;
+    write!(
+        output,
+        ",\n  \"frontier_tokens\": {},\n  \"first_chunk\": {{\"start\": 0, \"tokens\": {}, \"end\": {}, \"complete_transformer_schedule\": true, \"selected_token\": {}}},\n  \"continuation_chunk\": {{\"start\": {}, \"tokens\": {}, \"end\": {}}},\n  \"schedule\": {{\"tile_rows\": {}, \"tiles\": {}, \"dispatches\": {}, \"wrapped_model_ranges\": {}, \"pointer_matches\": {}}},\n  \"retained_state\": {{\"layer0_raw_rows\": {}, \"layer1_raw_rows\": {}, \"layer2_raw_rows\": {}, \"layer2_attention_compressed_rows\": {}, \"layer2_indexer_compressed_rows\": {}, \"compressor_recurrent_state_retained\": true, \"capacity_growth_preserved_prefix\": true}},\n  \"checksums\": {{\"continuation_token_ids\": {}}},\n  \"timing\": {{\"continuation_summed_wall_ms\": {:.6}, \"continuation_summed_gpu_ms\": {:.6}}},\n  \"accepted_oracle_token_stream\": true,\n  \"native_batch_schedule\": true,\n  \"second_long_prefill_bootstrap_chunk_executed\": true,\n  \"complete_8k_transformer_claim\": false,\n  \"output_logits_c0_claim\": false,\n  \"throughput_claim\": false\n}}\n",
+        report.frontier_tokens,
+        report.first_chunk_tokens,
+        report.first_chunk_tokens - 1,
+        report.first_chunk_selected_token,
+        report.chunk_start,
+        report.chunk_tokens,
+        report.chunk_start + report.chunk_tokens - 1,
+        report.tile_rows,
+        report.tiles,
+        report.dispatches,
+        report.wrapped_model_ranges,
+        report.pointer_matches,
+        report.frontier_tokens,
+        report.frontier_tokens,
+        report.frontier_tokens,
+        report.frontier_tokens / 4,
+        report.frontier_tokens / 4,
+        report.token_checksum,
+        report.summed_wall_ms,
+        report.summed_gpu_ms,
+    )?;
+    Ok(())
+}
+
 pub fn write_long_prefill_transformer_probe_json<W: Write>(
     output: &mut W,
     report: &LongPrefillTransformerProbeReport,
@@ -10752,7 +10826,6 @@ fn prefill_frontier_32768_fixture() -> Result<(Vec<u32>, Vec<f32>)> {
     Ok((tokens, logits))
 }
 
-#[cfg(test)]
 fn prefill_frontier_8192_fixture() -> Result<(Vec<u32>, Vec<f32>)> {
     let tokens = decode_u32_fixture(
         PREFILL_FRONTIER_8192_TOKEN_IDS_BYTES,
@@ -23318,7 +23391,7 @@ mod imp {
         if rows != 32 && rows != 64 {
             return Err(Error::invalid("invalid prefill boundary tile width"));
         }
-        if (prefill_rows != 2048 && prefill_rows != 4096)
+        if (prefill_rows != 2048 && prefill_rows != 4096 && prefill_rows != 8192)
             || prefill_rows < rows
             || prefill_rows % rows != 0
             || position_start % rows != 0
@@ -24941,6 +25014,7 @@ mod imp {
         model: &MappedModel,
         context: &Context,
         collect_outputs: bool,
+        position_begin: u32,
         prefill_rows: u32,
         tokens: Option<&[u32]>,
     ) -> Result<(
@@ -24955,17 +25029,22 @@ mod imp {
         } else {
             PRODUCTION_TILE_ROWS
         };
-        if collect_outputs && (prefill_rows != 2048 || tokens.is_some()) {
+        if position_begin > prefill_rows || position_begin % tile_rows as u32 != 0 {
+            return Err(Error::invalid(
+                "prefill compressor loop has an invalid starting position",
+            ));
+        }
+        if collect_outputs && (position_begin != 0 || prefill_rows != 2048 || tokens.is_some()) {
             return Err(Error::invalid(
                 "diagnostic compressor output collection requires the 2K fixture",
             ));
         }
-        let tile_count = prefill_rows as usize / tile_rows;
+        let tile_count = (prefill_rows - position_begin) as usize / tile_rows;
         let mut tiles = Vec::with_capacity(tile_count);
         let mut layer2_checksums = Vec::with_capacity(tile_count);
         let mut layer2_compressor_checksums = Vec::with_capacity(tile_count);
         let mut final_tile = None;
-        for position_start in (0..prefill_rows).step_by(tile_rows) {
+        for position_start in (position_begin..prefill_rows).step_by(tile_rows) {
             let kv_state_mode = if position_start == 0 { 1 } else { 2 };
             let (layer0, layer1, complete, layer2, compressors) = run_prefill_boundary_probe_rows(
                 model,
@@ -25010,7 +25089,7 @@ mod imp {
         }
         for (index, tile) in tiles.iter().enumerate() {
             let expected_dispatches = if index + 1 == tile_count { 122 } else { 118 };
-            if tile.position_start != (index * tile_rows) as u32
+            if tile.position_start != position_begin + (index * tile_rows) as u32
                 || tile.rows != tile_rows as u64
                 || tile.dispatches != expected_dispatches
                 || tile.wrapped_model_ranges != 65
@@ -25052,9 +25131,11 @@ mod imp {
         model: &MappedModel,
     ) -> Result<PrefillLayers012CompressorLoopProbeReport> {
         let context = Context::new()?;
-        run_prefill_layers012_compressor_loop_probe_in_context(model, &context, true, 2048, None)?
-            .0
-            .ok_or_else(|| Error::invalid("diagnostic compressor loop omitted its report"))
+        run_prefill_layers012_compressor_loop_probe_in_context(
+            model, &context, true, 0, 2048, None,
+        )?
+        .0
+        .ok_or_else(|| Error::invalid("diagnostic compressor loop omitted its report"))
     }
 
     pub fn run_long_prefill_bootstrap_probe(
@@ -25184,6 +25265,63 @@ mod imp {
         })
     }
 
+    pub fn run_long_prefill_continuation_bootstrap_probe(
+        model: &MappedModel,
+    ) -> Result<LongPrefillContinuationBootstrapProbeReport> {
+        const FRONTIER_ROWS: u32 = 8_192;
+        const CHUNK_ROWS: u32 = 4_096;
+        const TILE_ROWS: u32 = 64;
+        let (tokens, _) = prefill_frontier_8192_fixture()?;
+        let context_started = Instant::now();
+        let context = Context::new()?;
+        let context_setup_ms = context_started.elapsed().as_secs_f64() * 1000.0;
+        let (context, diagnostic, first_chunk_selected_token, _) =
+            run_prefill_layers012_attention_loop_with_context(
+                model,
+                context,
+                context_setup_ms,
+                false,
+                false,
+                CHUNK_ROWS,
+                Some(&tokens),
+            )?;
+        if diagnostic.is_some() {
+            return Err(Error::invalid(
+                "timing-only first long-prefill chunk unexpectedly collected diagnostics",
+            ));
+        }
+        let (continuation, timing) = run_prefill_layers012_compressor_loop_probe_in_context(
+            model,
+            &context,
+            false,
+            CHUNK_ROWS,
+            FRONTIER_ROWS,
+            Some(&tokens),
+        )?;
+        drop(context);
+        if continuation.is_some() {
+            return Err(Error::invalid(
+                "timing-only long-prefill continuation unexpectedly collected diagnostics",
+            ));
+        }
+        Ok(LongPrefillContinuationBootstrapProbeReport {
+            fixture_id: PREFILL_FRONTIER_8192_FIXTURE_ID,
+            frontier_tokens: FRONTIER_ROWS,
+            first_chunk_tokens: CHUNK_ROWS,
+            first_chunk_selected_token,
+            chunk_start: CHUNK_ROWS,
+            chunk_tokens: CHUNK_ROWS,
+            tile_rows: TILE_ROWS,
+            tiles: CHUNK_ROWS / TILE_ROWS,
+            dispatches: 7_556,
+            wrapped_model_ranges: 4_160,
+            pointer_matches: 4_160,
+            token_checksum: checksum_u32(&tokens[CHUNK_ROWS as usize..]),
+            summed_wall_ms: timing.tile_wall_ms,
+            summed_gpu_ms: timing.tile_gpu_ms,
+        })
+    }
+
     pub fn run_prefill_layers012_attention_loop_probe(
         model: &MappedModel,
     ) -> Result<PrefillLayers012AttentionLoopProbeReport> {
@@ -25247,6 +25385,7 @@ mod imp {
             model,
             &context,
             collect_outputs,
+            0,
             prefill_rows,
             tokens,
         )?;
@@ -46577,6 +46716,16 @@ mod imp {
 mod imp {
     use super::*;
 
+    pub fn run_long_prefill_continuation_bootstrap_probe(
+        model: &MappedModel,
+    ) -> Result<LongPrefillContinuationBootstrapProbeReport> {
+        let _ = prefill_frontier_8192_fixture()?;
+        let _ = exact_tensor(model, "blk.2.attn_compressor_kv.weight", 1, &[4096, 1024])?;
+        Err(Error::invalid(
+            "the Metal long-prefill continuation bootstrap probe is available only on macOS",
+        ))
+    }
+
     pub fn run_long_prefill_bootstrap_probe(
         model: &MappedModel,
     ) -> Result<LongPrefillBootstrapProbeReport> {
@@ -47260,8 +47409,9 @@ pub use imp::{
     run_layers012345_decode_probe, run_layers0123_bench, run_layers0123_chained_probe,
     run_layers0123_decode_probe, run_layers0123_probe, run_layers012_chained_probe,
     run_layers012_probe, run_layers01_probe, run_layers0_to_42_decode_probe,
-    run_long_prefill_bootstrap_probe, run_long_prefill_transformer_probe, run_moe_output_probe,
-    run_position127_decoder_probe, run_prefill_decode_frontier_probe, run_prefill_frontier_probe,
+    run_long_prefill_bootstrap_probe, run_long_prefill_continuation_bootstrap_probe,
+    run_long_prefill_transformer_probe, run_moe_output_probe, run_position127_decoder_probe,
+    run_prefill_decode_frontier_probe, run_prefill_frontier_probe,
     run_prefill_layer0_boundary_probe, run_prefill_layers012_attention_loop_probe,
     run_prefill_layers012_compressor_loop_probe, run_prefill_layers012_kv_state_loop_probe,
     run_prefill_layers012_kvnorm_loop_probe, run_prefill_layers01_boundary_probe,
@@ -50127,6 +50277,38 @@ mod tests {
         assert!(text.contains("\"first_long_prefill_chunk_executed\": true"));
         assert!(text.contains("\"intermediate_tensor_c0_claim\": false"));
         assert!(text.contains("\"complete_32k_prefill_claim\": false"));
+    }
+
+    #[test]
+    fn writes_stable_long_prefill_continuation_bootstrap_probe_json() {
+        let report = LongPrefillContinuationBootstrapProbeReport {
+            fixture_id: PREFILL_FRONTIER_8192_FIXTURE_ID,
+            frontier_tokens: 8_192,
+            first_chunk_tokens: 4_096,
+            first_chunk_selected_token: 7,
+            chunk_start: 4_096,
+            chunk_tokens: 4_096,
+            tile_rows: 64,
+            tiles: 64,
+            dispatches: 7_556,
+            wrapped_model_ranges: 4_160,
+            pointer_matches: 4_160,
+            token_checksum: 11,
+            summed_wall_ms: 2.0,
+            summed_gpu_ms: 1.0,
+        };
+        let mut output = Vec::new();
+        write_long_prefill_continuation_bootstrap_probe_json(&mut output, &report).unwrap();
+        let text = String::from_utf8(output).unwrap();
+        assert!(text.contains(&format!(
+            "\"schema\": \"{LONG_PREFILL_CONTINUATION_BOOTSTRAP_PROBE_SCHEMA}\""
+        )));
+        assert!(text.contains("\"continuation_chunk\": {\"start\": 4096"));
+        assert!(text.contains("\"layer2_attention_compressed_rows\": 2048"));
+        assert!(text.contains("\"capacity_growth_preserved_prefix\": true"));
+        assert!(text.contains("\"second_long_prefill_bootstrap_chunk_executed\": true"));
+        assert!(text.contains("\"complete_8k_transformer_claim\": false"));
+        assert!(text.contains("\"output_logits_c0_claim\": false"));
     }
 
     #[test]

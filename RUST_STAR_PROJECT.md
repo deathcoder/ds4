@@ -353,10 +353,13 @@ they describe whenever practical.
   sequential 2K initializer still
   deliberately records its difference from the paired protocol's
   batched-prefill oracle. The bootstrap ABI now accepts an explicit working
-  extent, and a target-Mac probe completed the first 4,096 tokens of the
-  accepted 32K stream with all layers-0/1/2 raw and paired-compressor state
-  retained. This is a structural long-prefill gate without an intermediate C0
-  claim; carry that state through layers 2--42 and into the second chunk next.
+  extent. A target-Mac probe completed the first 4,096-token transformer, then
+  advanced positions 4,096--8,191 through layers 0/1 and the layer-2
+  paired-compressor boundary in the same context. The retained buffers grew to
+  8,192 raw rows and 2,048 compressed rows while preserving the prefix and
+  recurrent compressor state. This remains a structural second-chunk gate
+  without an 8K output C0 claim; extend the continuation through layers 2--42,
+  production sparse attention, and the output head next.
 - Drive a complete decoder through the now-generalized sparse branch and emit
   the Rust Star engine-measurement contract. The diagnostic 513-row override,
   two fresh production-default 1,025-row isolated captures, and seeded retained
