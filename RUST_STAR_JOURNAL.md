@@ -208,6 +208,17 @@ history; add a correction and update the current-state summary.
   ms unattributed. Bulk residency insertion, overlapping residency preparation
   with the transformer, and omitting the eager residency request were each
   exact but did not reduce complete prefill; all three candidates were reverted.
+  A separate retained-lifecycle diagnostic now answers the amortization
+  question without weakening the fresh-process contract. It runs two exact
+  2K/128 cycles in one process and one Metal context, fully charges first-load
+  page warming and residency, resets request-scoped activation/KV state, and
+  requires the second cycle to reuse the existing view cache and residency set.
+  Two corrected exact runs measured 172.518--174.154 tok/s first-load prefill
+  and 185.554--186.311 tok/s retained prefill while avoiding 11.426--13.428
+  seconds of host page touching and 567.920--640.124 ms of residency
+  request/touch work. All four transcripts matched. These same-process results
+  are explicitly paired-ineligible and establish the lifecycle mechanism, not
+  a replacement throughput claim.
 - Implementation: dependency-free Rust host scaffold under `rust-star/runtime/`
   strictly parses GGUF v3 directories, validates the Flash resident-Q2
   shape/recipe, and writes candidate full-logit artifacts. A macOS-only
@@ -749,11 +760,10 @@ history; add a correction and update the current-state summary.
 
 ## Immediate Next Actions
 
-1. Decide whether the measured approximately 0.75-second residency request can
-   be amortized by a genuinely retained engine lifecycle without excluding it
-   from first-load TTFT. Do not retry bulk insertion, transformer overlap, or
-   removal of the eager request; exact controls showed that Metal only moved or
-   serialized the same residency cost.
+1. Run a quiet-host retained-lifecycle control set and decide whether to expose
+   the proven request-state reset and retained context behind the future server
+   boundary. Keep first-load TTFT separate and fully charged; never feed the
+   same-process diagnostic into the paired adapter.
 2. Extend the eligible engine and exact transcript gate to the next context
    frontier before treating this narrow 2K result as representative.
 3. Preserve the exact 2K-to-position-4099 native handoff, complete retained
@@ -768,6 +778,57 @@ history; add a correction and update the current-state summary.
    fork's GitHub Actions workflow and retain its URL.
 
 ## Entries
+
+### 2026-08-30 — Proved an exact retained Metal engine lifecycle
+
+- Added `engine-retained-measure` and stable
+  `rust-star-retained-engine-run-v1` evidence. The command runs two exact
+  context-2048/generation-128 cycles in one process and one Metal context. The
+  first cycle fully charges model-page warming, context creation, residency-set
+  creation/request, and the coarse GPU view touch. The second retains immutable
+  pipelines, no-copy model views, and the attached residency set while
+  rebuilding the prompt and decoder state.
+- Made native residency preparation idempotent and explicit: a reused call
+  reports the same 1,136 views/allocations and queue attachment with zero
+  residency/touch GPU interval. Normal `engine-measure` rejects such reuse;
+  the retained schema requires it only on cycle two and is always marked
+  paired-ineligible.
+- The first live two-cycle attempt correctly failed closed on cycle two:
+  prefill selected token 8954 instead of oracle token 15342. The value was the
+  previous request's final token, exposing retained mutable activation state.
+  Added a narrow request reset that drops activation/KV/compressor buffers,
+  prefill properties, command chains, and profiler state while preserving the
+  context's immutable pipeline/model/residency ownership. The failed attempt
+  remains under `rust-star/.work/retained-engine-lifecycle-01/`.
+- Two corrected runs matched both complete 128-token oracle transcripts and
+  checksum `17615242442502606640`. The final current-source run under
+  `rust-star/.work/retained-engine-lifecycle-04/` measured a 23,296.775 ms
+  first-load prompt: 11,425.564 ms model-page warming plus 11,871.211 ms
+  prefill (172.518 tok/s). Retained prompt was 11,037.192 ms (185.554 tok/s),
+  a 1.075564x prefill ratio and 2.110752x prompt ratio. It avoided 640.124 ms
+  of residency host/touch work; generation remained effectively stable at
+  23.740 versus 24.046 tok/s. The preceding corrected run measured 186.311
+  retained prefill tok/s and the same exact transcript.
+- An adjacent final normal `engine-measure` control remained exact and
+  paired-eligible at 173.271 prefill tok/s and 23.734 steady decode tok/s. This
+  proves the new
+  diagnostic did not relax or redirect the fresh-process measurement path.
+- Spotlight's `mds_stores` was near 96% CPU during the first corrected evidence
+  run and subsided before the final repetition. These same-process timings are
+  not promoted as paired benchmark evidence; they are sufficient to establish
+  exact state reset, retained residency ownership, reproducibility, and honest
+  first-load/retained accounting.
+- Validation: 300 optimized Rust tests, all 75 Python tests, release build,
+  Rust formatting, JSON parsing, and `git diff --check` passed. The current
+  executable SHA-256 is
+  `930677c0c079b80648cd72e72ae5fa621359c579acf197ce78487b0bbc327371`.
+
+Next:
+
+- Repeat a small retained control set once Spotlight/indexing is quiet, then
+  decide whether the server lifecycle should adopt this reset boundary. The
+  next performance frontier remains longer-context eligibility; do not alter
+  the paired fresh-process contract.
 
 ### 2026-08-29 — Localized prefill host time and rejected residency shortcuts
 

@@ -1778,6 +1778,15 @@ int rust_star_metal_prepare_model_residency(
         }
 
         if (@available(macOS 15.0, *)) {
+            if (context.modelResidencySet && context.modelResidencyAttached) {
+                result->view_bytes = view_bytes;
+                result->warm_touches = touches;
+                result->view_count = (uint32_t)views.count;
+                result->residency_allocations = (uint32_t)views.count;
+                result->queue_attached = 1u;
+                result->reused = 1u;
+                return 1;
+            }
             MTLResidencySetDescriptor *descriptor = [MTLResidencySetDescriptor new];
             descriptor.label = @"rust-star model views";
             descriptor.initialCapacity = views.count;
@@ -42378,6 +42387,40 @@ static void release_prefill_layer_buffers(RustStarMetalContext *context)
         }
     }
     context.prefillKvRows = 0u;
+}
+
+int rust_star_metal_reset_request_state(
+    void *opaque_context,
+    char *error,
+    size_t error_bytes)
+{
+    if (!opaque_context) {
+        return fail_with_message(error, error_bytes,
+            @"request-state reset received a null context");
+    }
+    @autoreleasepool {
+        RustStarMetalContext *context = (__bridge RustStarMetalContext *)opaque_context;
+        if (context.activationBufferCache.count == 0u) {
+            return fail_with_message(error, error_bytes,
+                @"request-state reset found no completed request state");
+        }
+        release_prefill_layer_buffers(context);
+        [context.activationBufferCache removeAllObjects];
+        [context.chainedCommands removeAllObjects];
+        [context.chainedWallStarts removeAllObjects];
+        [context.chainedStageSamples removeAllObjects];
+        [context.prefillLayerGpuTimes removeAllObjects];
+        [context.prefillRepresentativeStageGpuTimes removeAllObjects];
+        [context.prefillRepresentativeAttentionStageGpuTimes removeAllObjects];
+        context.prefillBoundaryCommands = nil;
+        context.prefillBoundaryWallStart = 0.0;
+        context.chainedWallEnd = 0.0;
+        context.chainedReady = NO;
+        context.chainedFinalLayer = 0u;
+        context.chainedStageProfiling = NO;
+        context.prefillLayerProfiling = NO;
+        return 1;
+    }
 }
 
 int rust_star_metal_adopt_prefill_decoder_state(

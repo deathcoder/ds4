@@ -67,6 +67,7 @@ pub const COLD_PREFILL_DECODER_PROBE_SCHEMA: &str = "rust-star-cold-prefill-deco
 pub const PREFILL_FRONTIER_PROBE_SCHEMA: &str = "rust-star-prefill-frontier-diagnostic-v1";
 pub const PREFILL_DECODE_FRONTIER_PROBE_SCHEMA: &str = "rust-star-prefill-decode-frontier-probe-v1";
 pub const ENGINE_RUN_SCHEMA: &str = "rust-star-engine-run-v1";
+pub const RETAINED_ENGINE_RUN_SCHEMA: &str = "rust-star-retained-engine-run-v1";
 const ENGINE_STAGE_NAMES: [&str; 8] = [
     "attention_ingress_qkv",
     "rope_kv_compressors",
@@ -4507,6 +4508,14 @@ pub struct EngineRunReport {
 }
 
 #[derive(Clone, Debug)]
+pub struct RetainedEngineRunReport {
+    pub first_load: EngineRunReport,
+    pub retained: EngineRunReport,
+    pub first_model_residency_reused: bool,
+    pub retained_model_residency_reused: bool,
+}
+
+#[derive(Clone, Debug)]
 pub struct Ratio128CompressorLayerReport {
     pub layer: u32,
     pub fixture_id: &'static str,
@@ -6212,6 +6221,105 @@ pub fn write_engine_run_json<W: Write>(output: &mut W, report: &EngineRunReport)
         stage_profile,
         paired_protocol_eligible,
         paired_protocol_blocker,
+    )?;
+    Ok(())
+}
+
+pub fn write_retained_engine_run_json<W: Write>(
+    output: &mut W,
+    report: &RetainedEngineRunReport,
+) -> Result<()> {
+    // Reuse the paired writer's strict validation for the fully charged first
+    // cycle. Its bytes are deliberately discarded: this diagnostic has a
+    // separate schema and can never be consumed as a paired result.
+    write_engine_run_json(&mut Vec::new(), &report.first_load)?;
+    let first = &report.first_load;
+    let retained = &report.retained;
+    let retained_host_sum = retained.prefill_context_setup_ms
+        + retained.prefill_bootstrap_setup_ms
+        + retained.prefill_transformer_setup_ms
+        + retained.prefill_output_head_setup_ms
+        + retained.prefill_handoff_host_ms
+        + retained.model_residency_host_ms
+        + retained.prefill_unattributed_host_ms;
+    if report.first_model_residency_reused
+        || !report.retained_model_residency_reused
+        || retained.context != first.context
+        || retained.gen_tokens != first.gen_tokens
+        || retained.gen_steady_tokens != first.gen_steady_tokens
+        || retained.model_warm_bytes != first.model_warm_bytes
+        || retained.model_warm_pages != first.model_warm_pages
+        || retained.model_warm_checksum != first.model_warm_checksum
+        || retained.model_warm_ms != 0.0
+        || retained.model_view_bytes != first.model_view_bytes
+        || retained.model_view_warm_touches != first.model_view_warm_touches
+        || retained.model_view_count != first.model_view_count
+        || retained.model_residency_allocations != first.model_residency_allocations
+        || !retained.model_residency_queue_attached
+        || retained.model_view_warm_wall_ms != 0.0
+        || retained.model_view_warm_gpu_ms != 0.0
+        || retained.prefill_context_setup_ms != 0.0
+        || !retained.prefill_ms.is_finite()
+        || retained.prefill_ms <= 0.0
+        || !retained.gen_ms.is_finite()
+        || retained.gen_ms <= 0.0
+        || !retained.gen_first_ms.is_finite()
+        || retained.gen_first_ms <= 0.0
+        || !retained.gen_steady_ms.is_finite()
+        || retained.gen_steady_ms <= 0.0
+        || !retained.prefill_host_overhead_ms.is_finite()
+        || retained.prefill_host_overhead_ms < 0.0
+        || (retained_host_sum - retained.prefill_host_overhead_ms).abs() > 1.0e-3
+        || !retained.transcript_match
+        || retained.prefill_selected_token != first.prefill_selected_token
+        || retained.final_selected_token != first.final_selected_token
+        || retained.selected_tokens_checksum != first.selected_tokens_checksum
+        || retained.prefill_correctness_collection
+        || retained.prefill_layer_timing_collection
+        || retained.generation_correctness_collection
+        || retained.generation_layer_timing_collection
+        || retained.generation_stage_counter_collection
+        || retained.gen_first_layer_gpu_ms.len() != 43
+    {
+        return Err(Error::invalid(
+            "retained engine run is not an exact, unprofiled two-cycle lifecycle diagnostic",
+        ));
+    }
+    let first_prompt_ms = first.model_warm_ms + first.prefill_ms;
+    let retained_prompt_ms = retained.prefill_ms;
+    write!(
+        output,
+        "{{\n  \"schema\": \"{RETAINED_ENGINE_RUN_SCHEMA}\",\n  \"engine\": \"rust-star\",\n  \"context\": {},\n  \"gen_tokens\": {},\n  \"lifecycle\": {{\"cycles\": 2, \"same_process\": true, \"same_metal_context\": true, \"first_load_fully_charged\": true, \"request_state_reset_between_cycles\": true, \"model_warm_reused_on_retained_cycle\": true, \"model_residency_reused_on_retained_cycle\": true}},\n  \"first_load\": {{\"prompt_with_model_warm_ms\": {:.9}, \"model_warm_ms\": {:.9}, \"prefill_ms\": {:.9}, \"prefill_tps\": {:.9}, \"model_residency_host_ms\": {:.9}, \"model_view_warm_wall_ms\": {:.9}, \"model_view_warm_gpu_ms\": {:.9}, \"gen_ms\": {:.9}, \"gen_tps\": {:.9}, \"gen_first_ms\": {:.9}, \"gen_steady_ms\": {:.9}, \"gen_steady_tps\": {:.9}}},\n  \"retained\": {{\"prompt_with_model_warm_ms\": {:.9}, \"model_warm_ms\": 0.000000000, \"prefill_ms\": {:.9}, \"prefill_tps\": {:.9}, \"model_residency_host_ms\": {:.9}, \"model_view_warm_wall_ms\": 0.000000000, \"model_view_warm_gpu_ms\": 0.000000000, \"gen_ms\": {:.9}, \"gen_tps\": {:.9}, \"gen_first_ms\": {:.9}, \"gen_steady_ms\": {:.9}, \"gen_steady_tps\": {:.9}}},\n  \"comparison\": {{\"prompt_speedup\": {:.9}, \"prefill_speedup\": {:.9}, \"model_warm_ms_avoided\": {:.9}, \"model_residency_ms_avoided\": {:.9}}},\n  \"selection\": {{\"prefill_token\": {}, \"final_token\": {}, \"selected_tokens_checksum\": {}, \"both_oracle_transcripts_match\": true}},\n  \"paired_protocol_eligible\": false,\n  \"paired_protocol_blocker\": \"same-process retained lifecycle diagnostic; paired protocol requires a fresh process per measured sample\"\n}}\n",
+        first.context,
+        first.gen_tokens,
+        first_prompt_ms,
+        first.model_warm_ms,
+        first.prefill_ms,
+        f64::from(first.context) * 1000.0 / first.prefill_ms,
+        first.model_residency_host_ms,
+        first.model_view_warm_wall_ms,
+        first.model_view_warm_gpu_ms,
+        first.gen_ms,
+        f64::from(first.gen_tokens) * 1000.0 / first.gen_ms,
+        first.gen_first_ms,
+        first.gen_steady_ms,
+        f64::from(first.gen_steady_tokens) * 1000.0 / first.gen_steady_ms,
+        retained_prompt_ms,
+        retained.prefill_ms,
+        f64::from(retained.context) * 1000.0 / retained.prefill_ms,
+        retained.model_residency_host_ms,
+        retained.gen_ms,
+        f64::from(retained.gen_tokens) * 1000.0 / retained.gen_ms,
+        retained.gen_first_ms,
+        retained.gen_steady_ms,
+        f64::from(retained.gen_steady_tokens) * 1000.0 / retained.gen_steady_ms,
+        first_prompt_ms / retained_prompt_ms,
+        first.prefill_ms / retained.prefill_ms,
+        first.model_warm_ms,
+        first.model_residency_host_ms + first.model_view_warm_wall_ms,
+        first.prefill_selected_token,
+        first.final_selected_token,
+        first.selected_tokens_checksum,
     )?;
     Ok(())
 }
@@ -19283,7 +19391,7 @@ mod imp {
         view_count: u32,
         residency_allocations: u32,
         queue_attached: u32,
-        reserved: u32,
+        reused: u32,
         wall_ms: f64,
         gpu_ms: f64,
     }
@@ -21454,6 +21562,11 @@ mod imp {
             error: *mut c_char,
             error_bytes: usize,
         ) -> i32;
+        fn rust_star_metal_reset_request_state(
+            context: *mut c_void,
+            error: *mut c_char,
+            error_bytes: usize,
+        ) -> i32;
         fn rust_star_metal_copy_compressed_kv_row(
             context: *mut c_void,
             layer_index: u32,
@@ -22045,16 +22158,34 @@ mod imp {
                 || raw.view_count == 0
                 || raw.residency_allocations != raw.view_count
                 || raw.queue_attached != 1
+                || raw.reused > 1
                 || !raw.wall_ms.is_finite()
-                || raw.wall_ms <= 0.0
                 || !raw.gpu_ms.is_finite()
-                || raw.gpu_ms <= 0.0
+                || if raw.reused == 1 {
+                    raw.wall_ms != 0.0 || raw.gpu_ms != 0.0
+                } else {
+                    raw.wall_ms <= 0.0 || raw.gpu_ms <= 0.0
+                }
             {
                 return Err(Error::invalid(
                     "Metal model residency preparation returned invalid metadata",
                 ));
             }
             Ok(raw)
+        }
+
+        fn reset_request_state(&self) -> Result<()> {
+            let mut error = [0 as c_char; ERROR_BYTES];
+            let reset = unsafe {
+                rust_star_metal_reset_request_state(self.0, error.as_mut_ptr(), error.len())
+            };
+            if reset == 0 {
+                return Err(Error::invalid(format!(
+                    "Metal request-state reset failed: {}",
+                    error_text(&error)
+                )));
+            }
+            Ok(())
         }
 
         fn enable_chained_stage_profiling(&self) -> Result<()> {
@@ -24690,6 +24821,27 @@ mod imp {
         let context_started = Instant::now();
         let context = Context::new()?;
         let context_setup_ms = context_started.elapsed().as_secs_f64() * 1000.0;
+        run_prefill_layers012_attention_loop_with_context(
+            model,
+            context,
+            context_setup_ms,
+            collect_outputs,
+            profile_layers,
+        )
+    }
+
+    fn run_prefill_layers012_attention_loop_with_context(
+        model: &MappedModel,
+        context: Context,
+        context_setup_ms: f64,
+        collect_outputs: bool,
+        profile_layers: bool,
+    ) -> Result<(
+        Context,
+        Option<PrefillLayers012AttentionLoopProbeReport>,
+        u32,
+        NativePrefillTiming,
+    )> {
         if profile_layers {
             context.enable_prefill_layer_profiling()?;
         }
@@ -43882,6 +44034,47 @@ mod imp {
         run_engine_measurement_impl(model, context_tokens, gen_tokens, true)
     }
 
+    pub fn run_retained_engine_measurement(
+        model: &MappedModel,
+        context_tokens: u32,
+        gen_tokens: u32,
+    ) -> Result<RetainedEngineRunReport> {
+        validate_engine_measurement_shape(context_tokens, gen_tokens)?;
+        let model_warm = model.warm_tensor_pages()?;
+        let (context, first_load, first_residency_reused) = run_engine_measurement_cycle(
+            model,
+            context_tokens,
+            gen_tokens,
+            false,
+            None,
+            model_warm,
+        )?;
+        context.reset_request_state()?;
+        let retained_warm = crate::model::ModelWarmReport {
+            wall_ms: 0.0,
+            ..model_warm
+        };
+        let (_, retained, retained_residency_reused) = run_engine_measurement_cycle(
+            model,
+            context_tokens,
+            gen_tokens,
+            false,
+            Some(context),
+            retained_warm,
+        )?;
+        if first_residency_reused || !retained_residency_reused {
+            return Err(Error::invalid(
+                "retained engine lifecycle did not establish then reuse model residency",
+            ));
+        }
+        Ok(RetainedEngineRunReport {
+            first_load,
+            retained,
+            first_model_residency_reused: first_residency_reused,
+            retained_model_residency_reused: retained_residency_reused,
+        })
+    }
+
     fn scale_layer_stage_ticks(timestamps: &[u64], transformer_gpu_ms: f64) -> Result<Vec<f64>> {
         const SAMPLES_PER_LAYER: usize = ENGINE_STAGE_NAMES.len() * 2;
         if timestamps.len() != 43 * SAMPLES_PER_LAYER
@@ -43921,11 +44114,41 @@ mod imp {
         gen_tokens: u32,
         collect_steady_layer_times: bool,
     ) -> Result<EngineRunReport> {
+        validate_engine_measurement_shape(context_tokens, gen_tokens)?;
+        let model_warm = model.warm_tensor_pages()?;
+        let (_, report, residency_reused) = run_engine_measurement_cycle(
+            model,
+            context_tokens,
+            gen_tokens,
+            collect_steady_layer_times,
+            None,
+            model_warm,
+        )?;
+        if residency_reused {
+            return Err(Error::invalid(
+                "fresh engine measurement unexpectedly reused model residency",
+            ));
+        }
+        Ok(report)
+    }
+
+    fn validate_engine_measurement_shape(context_tokens: u32, gen_tokens: u32) -> Result<()> {
         if context_tokens != 2048 || gen_tokens != 128 {
             return Err(Error::invalid(
                 "the initial Rust Star engine measurement supports exactly context=2048 and gen_tokens=128",
             ));
         }
+        Ok(())
+    }
+
+    fn run_engine_measurement_cycle(
+        model: &MappedModel,
+        context_tokens: u32,
+        gen_tokens: u32,
+        collect_steady_layer_times: bool,
+        retained_context: Option<Context>,
+        model_warm: crate::model::ModelWarmReport,
+    ) -> Result<(Context, EngineRunReport, bool)> {
         let (oracle_inputs, _, _) = prefill_decode_frontier_4099_fixture()?;
         let required_inputs = gen_tokens as usize + 1;
         if oracle_inputs.len() < required_inputs {
@@ -43933,16 +44156,22 @@ mod imp {
                 "the post-prefill oracle transcript is shorter than the requested measurement",
             ));
         }
-
-        let model_warm = model.warm_tensor_pages()?;
-
         let prefill_started = Instant::now();
         let (context, prefill_report, prefill_selected_token, prefill_timing) =
-            run_prefill_layers012_attention_loop_in_context(
-                model,
-                false,
-                collect_steady_layer_times,
-            )?;
+            match retained_context {
+                Some(context) => run_prefill_layers012_attention_loop_with_context(
+                    model,
+                    context,
+                    0.0,
+                    false,
+                    collect_steady_layer_times,
+                )?,
+                None => run_prefill_layers012_attention_loop_in_context(
+                    model,
+                    false,
+                    collect_steady_layer_times,
+                )?,
+            };
         if prefill_report.is_some() {
             return Err(Error::invalid(
                 "timing-only native prefill unexpectedly collected a diagnostic report",
@@ -44089,7 +44318,7 @@ mod imp {
         let gen_first_ms = step_ms[0];
         let gen_steady_ms = step_ms[1..].iter().sum::<f64>();
         let gen_ms = gen_first_ms + gen_steady_ms;
-        Ok(EngineRunReport {
+        let report = EngineRunReport {
             context: context_tokens,
             gen_tokens,
             gen_steady_tokens: gen_tokens - 1,
@@ -44154,7 +44383,8 @@ mod imp {
             generation_stage_counter_collection: collect_steady_layer_times,
             generation_command_buffers_per_token: 44,
             generation_host_waits_per_token: 2,
-        })
+        };
+        Ok((context, report, model_residency.reused == 1))
     }
 
     fn run_position_advancing_probe(
@@ -46081,6 +46311,18 @@ mod imp {
         ))
     }
 
+    pub fn run_retained_engine_measurement(
+        model: &MappedModel,
+        _context_tokens: u32,
+        _gen_tokens: u32,
+    ) -> Result<RetainedEngineRunReport> {
+        let _ = prefill_decode_frontier_4099_fixture()?;
+        let _ = exact_tensor(model, "output.weight", 8, &[4096, 129280])?;
+        Err(Error::invalid(
+            "the Rust Star retained engine measurement is available only on macOS",
+        ))
+    }
+
     pub fn run_prefill_decode_frontier_probe(
         model: &MappedModel,
     ) -> Result<PrefillDecodeFrontierProbeReport> {
@@ -46604,9 +46846,10 @@ pub use imp::{
     run_prefill_q8_boundary_probe, run_prefill_qkv_boundary_probe, run_probe,
     run_q8_projection_probe, run_q_head_kv_fusion_bench, run_q_head_threads_bench,
     run_qb_rows_bench, run_qkv_pair_bench, run_ratio128_compressor_replay_probe,
-    run_retained_decoder_step_probe, run_retained_sparse_boundary_probe,
-    run_retained_sparse_multimerge_probe, run_rope_kv_store_probe, run_routed_nsg_bench,
-    run_sparse_indexed_attention_probe, LayerExecutor,
+    run_retained_decoder_step_probe, run_retained_engine_measurement,
+    run_retained_sparse_boundary_probe, run_retained_sparse_multimerge_probe,
+    run_rope_kv_store_probe, run_routed_nsg_bench, run_sparse_indexed_attention_probe,
+    LayerExecutor,
 };
 
 #[cfg(test)]
@@ -48884,6 +49127,45 @@ mod tests {
         assert!(text.contains("\"gen_steady_layer_gpu_ms\": null"));
         assert!(text.contains("\"generation_layer_timing_collection\": false"));
         assert!(text.contains("\"paired_protocol_eligible\": true"));
+    }
+
+    fn retained_engine_run_report() -> RetainedEngineRunReport {
+        let first_load = engine_run_report();
+        let mut retained = first_load.clone();
+        retained.model_warm_ms = 0.0;
+        retained.model_view_warm_wall_ms = 0.0;
+        retained.model_view_warm_gpu_ms = 0.0;
+        retained.prefill_context_setup_ms = 0.0;
+        retained.prefill_ms = 19_875.0;
+        retained.prefill_host_overhead_ms = 815.0;
+        RetainedEngineRunReport {
+            first_load,
+            retained,
+            first_model_residency_reused: false,
+            retained_model_residency_reused: true,
+        }
+    }
+
+    #[test]
+    fn writes_stable_retained_engine_run_json() {
+        let mut output = Vec::new();
+        write_retained_engine_run_json(&mut output, &retained_engine_run_report()).unwrap();
+        let text = String::from_utf8(output).unwrap();
+        assert!(text.contains(&format!("\"schema\": \"{RETAINED_ENGINE_RUN_SCHEMA}\"")));
+        assert!(text.contains("\"same_metal_context\": true"));
+        assert!(text.contains("\"first_load_fully_charged\": true"));
+        assert!(text.contains("\"request_state_reset_between_cycles\": true"));
+        assert!(text.contains("\"model_residency_reused_on_retained_cycle\": true"));
+        assert!(text.contains("\"model_warm_ms\": 0.000000000"));
+        assert!(text.contains("\"both_oracle_transcripts_match\": true"));
+        assert!(text.contains("\"paired_protocol_eligible\": false"));
+    }
+
+    #[test]
+    fn retained_engine_run_rejects_missing_residency_reuse() {
+        let mut report = retained_engine_run_report();
+        report.retained_model_residency_reused = false;
+        assert!(write_retained_engine_run_json(&mut Vec::new(), &report).is_err());
     }
 
     #[test]

@@ -17,19 +17,20 @@ use rust_star_runtime::metal::{
     run_prefill_q8_boundary_probe, run_prefill_qkv_boundary_probe, run_probe,
     run_q8_projection_probe, run_q_head_kv_fusion_bench, run_q_head_threads_bench,
     run_qb_rows_bench, run_qkv_pair_bench, run_ratio128_compressor_replay_probe,
-    run_retained_decoder_step_probe, run_retained_sparse_boundary_probe,
-    run_retained_sparse_multimerge_probe, run_rope_kv_store_probe, run_routed_nsg_bench,
-    run_sparse_indexed_attention_probe, write_attention_output_nsg_bench_json,
-    write_attention_output_probe_json, write_attention_read_probe_json,
-    write_attention_rope_fusion_bench_json, write_attention_setup_probe_json,
-    write_closed_loop_decoder_probe_json, write_cold_prefill_decoder_probe_json,
-    write_decoder_output_probe_json, write_embedding_probe_json, write_engine_run_json,
-    write_ffn_router_probe_json, write_ingress_probe_json, write_layer0_bench_json,
-    write_layer0_probe_json, write_layers01234567_decode_probe_json,
-    write_layers012345_decode_probe_json, write_layers0123_bench_json,
-    write_layers0123_chained_probe_json, write_layers0123_decode_probe_json,
-    write_layers0123_probe_json, write_layers012_chained_probe_json, write_layers012_probe_json,
-    write_layers01_probe_json, write_layers0_to_42_decode_probe_json, write_moe_output_probe_json,
+    run_retained_decoder_step_probe, run_retained_engine_measurement,
+    run_retained_sparse_boundary_probe, run_retained_sparse_multimerge_probe,
+    run_rope_kv_store_probe, run_routed_nsg_bench, run_sparse_indexed_attention_probe,
+    write_attention_output_nsg_bench_json, write_attention_output_probe_json,
+    write_attention_read_probe_json, write_attention_rope_fusion_bench_json,
+    write_attention_setup_probe_json, write_closed_loop_decoder_probe_json,
+    write_cold_prefill_decoder_probe_json, write_decoder_output_probe_json,
+    write_embedding_probe_json, write_engine_run_json, write_ffn_router_probe_json,
+    write_ingress_probe_json, write_layer0_bench_json, write_layer0_probe_json,
+    write_layers01234567_decode_probe_json, write_layers012345_decode_probe_json,
+    write_layers0123_bench_json, write_layers0123_chained_probe_json,
+    write_layers0123_decode_probe_json, write_layers0123_probe_json,
+    write_layers012_chained_probe_json, write_layers012_probe_json, write_layers01_probe_json,
+    write_layers0_to_42_decode_probe_json, write_moe_output_probe_json,
     write_position127_decoder_probe_json, write_prefill_decode_frontier_probe_json,
     write_prefill_frontier_probe_json, write_prefill_layer0_boundary_probe_json,
     write_prefill_layers012_attention_loop_probe_json,
@@ -43,28 +44,28 @@ use rust_star_runtime::metal::{
     write_projection_probe_json, write_q_head_kv_fusion_bench_json,
     write_q_head_threads_bench_json, write_qb_rows_bench_json, write_qkv_pair_bench_json,
     write_ratio128_compressor_replay_probe_json, write_retained_decoder_step_probe_json,
-    write_retained_sparse_boundary_probe_json, write_retained_sparse_multimerge_probe_json,
-    write_rope_kv_store_probe_json, write_routed_nsg_bench_json,
-    write_sparse_indexed_attention_probe_json, AttentionOutputNsgBenchReport,
-    AttentionOutputProbeReport, AttentionReadProbeReport, AttentionRopeFusionBenchReport,
-    AttentionSetupProbeReport, ClosedLoopDecoderProbeReport, ColdPrefillDecoderProbeReport,
-    DecoderOutputProbeReport, EmbeddingProbeReport, EngineRunReport, FfnRouterProbeReport,
-    IngressProbeReport, Layer0BenchConfig, Layer0BenchReport, Layer0ProbeReport,
-    Layers01234567DecodeProbeReport, Layers012345DecodeProbeReport, Layers0123BenchConfig,
-    Layers0123BenchReport, Layers0123ChainedProbeReport, Layers0123DecodeProbeReport,
-    Layers0123ProbeReport, Layers012ChainedProbeReport, Layers012ProbeReport, Layers01ProbeReport,
-    Layers0To42DecodeProbeReport, MoeOutputProbeReport, Position127DecoderProbeReport,
-    PrefillDecodeFrontierProbeReport, PrefillFrontierProbeReport, PrefillLayer0BoundaryProbeReport,
-    PrefillLayers012AttentionLoopProbeReport, PrefillLayers012CompressorLoopProbeReport,
-    PrefillLayers012KvStateLoopProbeReport, PrefillLayers012KvnormLoopProbeReport,
-    PrefillLayers01BoundaryProbeReport, PrefillLayers01CompleteBoundaryProbeReport,
-    PrefillLayers01LiveKvChainProbeReport, PrefillLayers01LiveKvLoopProbeReport,
-    PrefillLayers01RowCoverageProbeReport, PrefillQ8BoundaryProbeReport,
-    PrefillQkvBoundaryProbeReport, ProbeConfig, ProjectionProbeReport, QHeadKvFusionBenchReport,
-    QHeadThreadsBenchReport, QbRowsBenchReport, QkvPairBenchReport,
-    Ratio128CompressorReplayProbeReport, RetainedDecoderStepProbeReport,
-    RetainedSparseBoundaryProbeReport, RopeKvStoreProbeReport, RoutedNsgBenchReport,
-    SparseIndexedAttentionProbeReport,
+    write_retained_engine_run_json, write_retained_sparse_boundary_probe_json,
+    write_retained_sparse_multimerge_probe_json, write_rope_kv_store_probe_json,
+    write_routed_nsg_bench_json, write_sparse_indexed_attention_probe_json,
+    AttentionOutputNsgBenchReport, AttentionOutputProbeReport, AttentionReadProbeReport,
+    AttentionRopeFusionBenchReport, AttentionSetupProbeReport, ClosedLoopDecoderProbeReport,
+    ColdPrefillDecoderProbeReport, DecoderOutputProbeReport, EmbeddingProbeReport, EngineRunReport,
+    FfnRouterProbeReport, IngressProbeReport, Layer0BenchConfig, Layer0BenchReport,
+    Layer0ProbeReport, Layers01234567DecodeProbeReport, Layers012345DecodeProbeReport,
+    Layers0123BenchConfig, Layers0123BenchReport, Layers0123ChainedProbeReport,
+    Layers0123DecodeProbeReport, Layers0123ProbeReport, Layers012ChainedProbeReport,
+    Layers012ProbeReport, Layers01ProbeReport, Layers0To42DecodeProbeReport, MoeOutputProbeReport,
+    Position127DecoderProbeReport, PrefillDecodeFrontierProbeReport, PrefillFrontierProbeReport,
+    PrefillLayer0BoundaryProbeReport, PrefillLayers012AttentionLoopProbeReport,
+    PrefillLayers012CompressorLoopProbeReport, PrefillLayers012KvStateLoopProbeReport,
+    PrefillLayers012KvnormLoopProbeReport, PrefillLayers01BoundaryProbeReport,
+    PrefillLayers01CompleteBoundaryProbeReport, PrefillLayers01LiveKvChainProbeReport,
+    PrefillLayers01LiveKvLoopProbeReport, PrefillLayers01RowCoverageProbeReport,
+    PrefillQ8BoundaryProbeReport, PrefillQkvBoundaryProbeReport, ProbeConfig,
+    ProjectionProbeReport, QHeadKvFusionBenchReport, QHeadThreadsBenchReport, QbRowsBenchReport,
+    QkvPairBenchReport, Ratio128CompressorReplayProbeReport, RetainedDecoderStepProbeReport,
+    RetainedEngineRunReport, RetainedSparseBoundaryProbeReport, RopeKvStoreProbeReport,
+    RoutedNsgBenchReport, SparseIndexedAttentionProbeReport,
 };
 use rust_star_runtime::model::MappedModel;
 use rust_star_runtime::target::{validate_resident_q2, MODEL_LABEL};
@@ -242,6 +243,9 @@ fn run() -> Result<()> {
     }
     if command == "engine-profile" {
         return run_engine_measurement_command(arguments.collect(), true);
+    }
+    if command == "engine-retained-measure" {
+        return run_retained_engine_measurement_command(arguments.collect());
     }
     if command == "ratio128-compressor-replay-probe" {
         return run_ratio128_compressor_replay_probe_command(arguments.collect());
@@ -786,18 +790,15 @@ fn run_prefill_decode_frontier_probe_command(arguments: Vec<OsString>) -> Result
     Ok(())
 }
 
-fn run_engine_measurement_command(arguments: Vec<OsString>, profile_layers: bool) -> Result<()> {
-    let usage = if profile_layers {
-        engine_profile_usage()
-    } else {
-        engine_measurement_usage()
-    };
+fn parse_engine_measurement_arguments(
+    arguments: Vec<OsString>,
+    usage: &'static str,
+) -> Result<Option<(PathBuf, u32, u32, PathBuf)>> {
     if arguments.is_empty() {
         return Err(Error::invalid(usage));
     }
     if matches!(arguments[0].to_str(), Some("--help") | Some("-h")) {
-        println!("{usage}");
-        return Ok(());
+        return Ok(None);
     }
     let model_path = PathBuf::from(&arguments[0]);
     let mut context_tokens = None;
@@ -818,8 +819,7 @@ fn run_engine_measurement_command(arguments: Vec<OsString>, profile_layers: bool
                 continue;
             }
             Some("--help") | Some("-h") => {
-                println!("{usage}");
-                return Ok(());
+                return Ok(None);
             }
             _ => return Err(Error::invalid(usage)),
         };
@@ -841,6 +841,21 @@ fn run_engine_measurement_command(arguments: Vec<OsString>, profile_layers: bool
     let context_tokens = context_tokens.ok_or_else(|| Error::invalid("--context is required"))?;
     let gen_tokens = gen_tokens.ok_or_else(|| Error::invalid("--gen-tokens is required"))?;
     let json_path = json_path.ok_or_else(|| Error::invalid("--json is required"))?;
+    Ok(Some((model_path, context_tokens, gen_tokens, json_path)))
+}
+
+fn run_engine_measurement_command(arguments: Vec<OsString>, profile_layers: bool) -> Result<()> {
+    let usage = if profile_layers {
+        engine_profile_usage()
+    } else {
+        engine_measurement_usage()
+    };
+    let Some((model_path, context_tokens, gen_tokens, json_path)) =
+        parse_engine_measurement_arguments(arguments, usage)?
+    else {
+        println!("{usage}");
+        return Ok(());
+    };
 
     let model = MappedModel::open(&model_path)?;
     validate_resident_q2(model.gguf())?;
@@ -872,6 +887,36 @@ fn run_engine_measurement_command(arguments: Vec<OsString>, profile_layers: bool
             "eligible"
         }
     );
+    println!("json: {}", json_path.display());
+    Ok(())
+}
+
+fn run_retained_engine_measurement_command(arguments: Vec<OsString>) -> Result<()> {
+    let usage = retained_engine_measurement_usage();
+    let Some((model_path, context_tokens, gen_tokens, json_path)) =
+        parse_engine_measurement_arguments(arguments, usage)?
+    else {
+        println!("{usage}");
+        return Ok(());
+    };
+
+    let model = MappedModel::open(&model_path)?;
+    validate_resident_q2(model.gguf())?;
+    let report = run_retained_engine_measurement(&model, context_tokens, gen_tokens)?;
+    write_retained_engine_run_file(&json_path, &report)?;
+    let first_prompt_ms = report.first_load.model_warm_ms + report.first_load.prefill_ms;
+    println!(
+        "Rust Star retained lifecycle: first-load prompt {:.3} ms, retained prompt {:.3} ms ({:.3}x)",
+        first_prompt_ms,
+        report.retained.prefill_ms,
+        first_prompt_ms / report.retained.prefill_ms,
+    );
+    println!(
+        "retained prefill: {:.3} tok/s; generation: {:.3} tok/s; both 128-token transcripts exact",
+        f64::from(report.retained.context) * 1000.0 / report.retained.prefill_ms,
+        f64::from(report.retained.gen_tokens) * 1000.0 / report.retained.gen_ms,
+    );
+    println!("paired protocol: ineligible same-process lifecycle diagnostic");
     println!("json: {}", json_path.display());
     Ok(())
 }
@@ -4487,6 +4532,33 @@ fn write_engine_run_file(path: &Path, report: &EngineRunReport) -> Result<()> {
     Ok(())
 }
 
+fn write_retained_engine_run_file(path: &Path, report: &RetainedEngineRunReport) -> Result<()> {
+    let temporary = path.with_extension(format!(
+        "{}tmp",
+        path.extension()
+            .and_then(OsStr::to_str)
+            .map(|extension| format!("{extension}."))
+            .unwrap_or_default()
+    ));
+    let file = File::create(&temporary).map_err(|error| {
+        Error::invalid(format!(
+            "cannot create Rust Star retained engine-run JSON {}: {error}",
+            temporary.display()
+        ))
+    })?;
+    let mut output = BufWriter::new(file);
+    write_retained_engine_run_json(&mut output, report)?;
+    output.flush()?;
+    drop(output);
+    std::fs::rename(&temporary, path).map_err(|error| {
+        Error::invalid(format!(
+            "cannot install Rust Star retained engine-run JSON {}: {error}",
+            path.display()
+        ))
+    })?;
+    Ok(())
+}
+
 fn write_ratio128_compressor_replay_probe_file(
     path: &Path,
     report: &Ratio128CompressorReplayProbeReport,
@@ -4957,7 +5029,7 @@ fn usage() -> &'static str {
 
 fn full_usage() -> String {
     format!(
-        "{}\n  rust-star attention-output-nsg-bench MODEL.gguf [OPTIONS]\n  rust-star attention-rope-fusion-bench MODEL.gguf [OPTIONS]\n  rust-star qkv-pair-bench MODEL.gguf [OPTIONS]\n  rust-star qb-rows-bench MODEL.gguf [OPTIONS]\n  rust-star q-head-threads-bench [OPTIONS]\n  rust-star q-head-kv-fusion-bench [OPTIONS]\n  rust-star routed-nsg-bench MODEL.gguf [OPTIONS]\n  rust-star prefill-decode-frontier-probe MODEL.gguf [OPTIONS]\n  rust-star engine-measure MODEL.gguf --context N --gen-tokens N --json PATH\n  rust-star engine-profile MODEL.gguf --context N --gen-tokens N --json PATH\n  rust-star retained-sparse-multimerge-probe MODEL.gguf [OPTIONS]\n  rust-star retained-decoder-step-probe MODEL.gguf [OPTIONS]",
+        "{}\n  rust-star attention-output-nsg-bench MODEL.gguf [OPTIONS]\n  rust-star attention-rope-fusion-bench MODEL.gguf [OPTIONS]\n  rust-star qkv-pair-bench MODEL.gguf [OPTIONS]\n  rust-star qb-rows-bench MODEL.gguf [OPTIONS]\n  rust-star q-head-threads-bench [OPTIONS]\n  rust-star q-head-kv-fusion-bench [OPTIONS]\n  rust-star routed-nsg-bench MODEL.gguf [OPTIONS]\n  rust-star prefill-decode-frontier-probe MODEL.gguf [OPTIONS]\n  rust-star engine-measure MODEL.gguf --context N --gen-tokens N --json PATH\n  rust-star engine-profile MODEL.gguf --context N --gen-tokens N --json PATH\n  rust-star engine-retained-measure MODEL.gguf --context N --gen-tokens N --json PATH\n  rust-star retained-sparse-multimerge-probe MODEL.gguf [OPTIONS]\n  rust-star retained-decoder-step-probe MODEL.gguf [OPTIONS]",
         usage()
     )
 }
@@ -5156,6 +5228,10 @@ fn engine_measurement_usage() -> &'static str {
 
 fn engine_profile_usage() -> &'static str {
     "usage: rust-star engine-profile MODEL.gguf --context 2048 --gen-tokens 128 --json PATH\n\nRuns the exact engine workload while splitting native prefill layers 2 through 42 into synchronized per-layer command buffers. Representative even layer 4 and odd layer 5 are additionally separated into attention/FFN and attention-internal QKV/RoPE, compressor/staging, Flash block preparation, FlashAttention, and output/HC intervals. It also collects every completed decode layer command buffer's GPU timestamps and decode Metal compute-stage counters across eight dispatch families. The selected-token transcript remains exact, but this perturbing mode is deliberately ineligible for paired claims."
+}
+
+fn retained_engine_measurement_usage() -> &'static str {
+    "usage: rust-star engine-retained-measure MODEL.gguf --context 2048 --gen-tokens 128 --json PATH\n\nRuns two exact 2K/128 engine cycles in one process and one Metal context. The first cycle fully charges model-page warming, context creation, and model residency. The second cycle reuses the established model mapping, Metal context, view cache, and residency set. Both transcripts must match the oracle. This lifecycle diagnostic is deliberately ineligible for the fresh-process paired protocol."
 }
 
 fn ratio128_compressor_replay_probe_usage() -> &'static str {

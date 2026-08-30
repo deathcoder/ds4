@@ -116,7 +116,7 @@ typedef struct rust_star_metal_model_residency_result {
     uint32_t view_count;
     uint32_t residency_allocations;
     uint32_t queue_attached;
-    uint32_t reserved;
+    uint32_t reused;
     double wall_ms;
     double gpu_ms;
 } rust_star_metal_model_residency_result;
@@ -2234,6 +2234,11 @@ int rust_star_metal_select_attention_output_nsg(
 int rust_star_metal_prepare_model_residency(
     void *context,
     rust_star_metal_model_residency_result *result,
+    char *error,
+    size_t error_bytes);
+
+int rust_star_metal_reset_request_state(
+    void *context,
     char *error,
     size_t error_bytes);
 

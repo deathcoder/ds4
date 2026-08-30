@@ -381,6 +381,15 @@ generation is 1.014559x ahead. The profiler's 52 command buffers and waits
 remain diagnostic only; the next target is the pre-transformer bootstrap and
 residency interval, not transformer attention.
 
+The runtime also exposes `engine-retained-measure` to test that residency as an
+honest lifecycle boundary. It runs a fully charged first 2K/128 cycle and a
+second exact cycle in the same process and Metal context, requires the second
+cycle to reset request-scoped activations and caches while reusing the existing
+residency set, and reports the two prompt costs separately. This diagnostic is
+never paired-eligible; normal `engine-measure`
+continues to require fresh residency so first-load cost cannot disappear from
+the benchmark contract.
+
 Project controls and benchmark contracts:
 
 - `RUST_STAR_MANUAL_TASKS.md` is the canonical ledger for work that needs the

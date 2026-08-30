@@ -91,6 +91,20 @@ the aggregate view bytes, touch and view counts, residency allocation count,
 queue attachment, and wall/GPU warm times. This work is charged to `prefill_ms`;
 it is not an unreported generation warmup.
 
+`engine-retained-measure` is a separate lifecycle diagnostic with schema
+`rust-star-retained-engine-run-v1`. It executes two exact 2K/128 cycles in one
+process and one Metal context. The first cycle pays and reports model-page
+warming, context creation, residency-set construction/request, and the coarse
+GPU touch. The second cycle reuses the model mapping, context, view cache, and
+already attached residency set, while rebuilding prompt and decoder state. Its
+record reports first-load and retained prompt costs separately and requires
+both 128-token transcripts to match the oracle. It is always marked paired
+ineligible: the paired protocol continues to require one fresh process per
+sample, and its `engine-measure` path rejects unexpected residency reuse.
+Between cycles the runtime discards all request-scoped activation, KV-cache,
+compressor, profiler, and command-chain state; immutable pipelines, no-copy
+model views, and the attached residency set remain owned by the context.
+
 The Rust Star adapter accepts an engine run only when its raw timing metadata
 also states that prefill and generation correctness collection were disabled,
 the exact oracle transcript matched after timing, the model residency set was
