@@ -239,6 +239,16 @@ These ideas need profiles. Tokenization, IPC, and parsing may be negligible next
 to decode, while prefix/KV reuse may materially reduce repeated prefill. The
 project must measure rather than assume which layer matters.
 
+The future long-lived engine boundary will retain immutable Metal pipelines,
+no-copy model views, and the queue-attached residency set across requests. A
+request reset must discard activation buffers, KV/compressor state, command
+chains, and profiling state before the next prompt. First-load measurements
+must still charge model-page warming and residency establishment; retained
+request measurements must be reported separately and can never substitute for
+the fresh-process paired protocol. This lifecycle is accepted because repeated
+2K/128 controls reproduce the exact oracle transcript after reset, not because
+same-process timing is eligible as a headline result.
+
 ## Speculative Decoding Boundary
 
 Speculative decoding is not on the initial critical path. A separate agent has

@@ -760,12 +760,11 @@ history; add a correction and update the current-state summary.
 
 ## Immediate Next Actions
 
-1. Run a quiet-host retained-lifecycle control set and decide whether to expose
-   the proven request-state reset and retained context behind the future server
-   boundary. Keep first-load TTFT separate and fully charged; never feed the
-   same-process diagnostic into the paired adapter.
-2. Extend the eligible engine and exact transcript gate to the next context
+1. Extend the eligible engine and exact transcript gate to the next context
    frontier before treating this narrow 2K result as representative.
+2. Preserve the accepted retained lifecycle for the future long-lived engine:
+   reset all request state, retain only immutable pipelines/model views and
+   residency, fully charge first load, and keep retained timing paired-ineligible.
 3. Preserve the exact 2K-to-position-4099 native handoff, complete retained
    position-8195 decoder step, isolated
    513/1,025-row probes, and retained-state row-1,025/2,049 controls as
@@ -778,6 +777,48 @@ history; add a correction and update the current-state summary.
    fork's GitHub Actions workflow and retain its URL.
 
 ## Entries
+
+### 2026-08-30 — Accepted retained lifecycle after three exact repetitions
+
+- Froze commit `cb3555e`, executable SHA-256
+  `930677c0c079b80648cd72e72ae5fa621359c579acf197ce78487b0bbc327371`,
+  context 2,048, generation 128, and three repetitions before execution. Each
+  repetition ran the fully charged first cycle and reset retained cycle in one
+  process/context and wrote independent
+  `rust-star-retained-engine-run-v1` evidence under
+  `rust-star/.work/retained-engine-control-cb3555e/`.
+- The intended quiet-host gate was not met: macOS `mediaanalysisd` remained at
+  approximately 100--160% CPU before, during, and after the set. The process
+  was sampled but not suspended. All repetitions are therefore labeled
+  host-contaminated lifecycle characterization, never paired benchmark evidence.
+- All six complete 128-token transcripts matched checksum
+  `17615242442502606640`. Every record required request-state reset, fresh
+  residency on cycle one, reused residency on cycle two, and
+  `paired_protocol_eligible: false`.
+- First-cycle prefill measured 174.114, 175.188, and 175.632 tok/s. Retained
+  prefill measured 186.695, 187.463, and 187.541 tok/s, for a 187.463 median,
+  0.45% full range, and 1.070068x median within-run ratio. Median complete
+  first-cycle-to-retained prompt ratio was 2.195006x. Median avoided host page
+  warm was 12,289.730 ms and median avoided residency request/touch work was
+  566.659 ms. Retained generation measured 23.376--23.616 tok/s.
+- Accepted the lifecycle architecture for a future long-lived engine based on
+  exact reset/reuse correctness and repeated low-variance behavior. Immutable
+  pipelines, no-copy model views, and the attached residency set may survive a
+  request; activation, KV/compressor, command-chain, and profiler state may not.
+  First-load costs remain fully charged and separately reported. This decision
+  does not promote the same-process timings or change the paired protocol.
+- Evidence SHA-256 values: repetition 1
+  `290fd5802d7e6d0fb7c0d18d7f3f979ef6e8621ca902d5a95b5efb2f80f41b3e`,
+  repetition 2
+  `4f135fdd9ba125de6be0078b7e7d500dc2cd1d599f3d77f0682fac16c4652452`,
+  and repetition 3
+  `432e2a523f155bdd105ce17d955de00e84468b7cfee1bd6d4442858495319060`.
+
+Next:
+
+- Return to the next exact context frontier. A later quiet-host retained set is
+  useful for cleaner characterization but is no longer a correctness or
+  architectural blocker.
 
 ### 2026-08-30 — Proved an exact retained Metal engine lifecycle
 
