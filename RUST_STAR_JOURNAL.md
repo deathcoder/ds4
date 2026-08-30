@@ -18,6 +18,94 @@ Before changing code:
 Journal entries are reverse chronological. Do not edit old entries to change
 history; add a correction and update the current-state summary.
 
+## 2026-08-30 — Supplemental oracle-v3 8K frontier accepted
+
+Objective:
+
+- Establish an exact intermediate target for the first retained long-prefill
+  continuation instead of debugging only against the terminal 32K tensor.
+
+Changes and evidence:
+
+- Rebuilt `ds4-bench` from accepted host-synchronized producer commit
+  `d35fb12d01d500b9cefcef24092c295687ceaf7e` / tree
+  `617415ee9f8ea7dc176d63dada1d5a7582063824` in an ignored detached worktree.
+  The capture executable SHA-256 is `8e37f40c...83bf3`; the model and prompt
+  retain their accepted SHA-256 identities.
+- Ran four sequential fresh-process Metal captures at exactly 8,192 tokens.
+  Every complete JSON tensor is byte-identical with SHA-256
+  `791ee1ea8129889e3adaf4ce6e042156b85323e46df32581e4df275055848f94`.
+  The packed FP32 logits SHA-256 is
+  `626454dd1d12717abe29c9fe7d4140bcb265046bf8253bc46ea02575a9c53a1a`,
+  and lowest-ID argmax selects token 77179.
+- Imported `dwarfstar-oracle-v3-prefill-frontier-8192` with the exact first
+  8,192-token prefix of the accepted 32K stream. The importer rehashes the
+  producer, executable, full model, prompt, token prefix, four JSON tensors,
+  and four CSV records before writing the fixture. Rust and Python loaders
+  enforce its shape, token endpoints, and selection.
+- The four observed prefill rates were 180.60, 181.06, 177.54, and 176.44
+  tok/s. They are labeled conformance observations only: this capture was not a
+  paired benchmark and makes no Rust Star performance claim.
+
+Decision:
+
+- Accept the 8K tensor as supplemental oracle-v3 C0 evidence from the same
+  immutable producer, without changing the canonical 2K/32K acceptance set.
+  Use it as the mandatory output gate for positions 4,096--8,191.
+
+Next:
+
+- Implement an explicit retained second-chunk boundary with global RoPE,
+  raw-window rollover, compressor append/state rebuild, and production sparse
+  ratio-4 attention, then require all 129,280 output logits to match this 8K
+  fixture bit-for-bit.
+
+## 2026-08-30 — First native 4K transformer chunk completed through logits
+
+Objective:
+
+- Extend the accepted 4K bootstrap chunk through every remaining transformer
+  layer and the output head without weakening the exact 2K regression.
+
+Changes and evidence:
+
+- Parameterized the layer-2-through-42 native batch schedule and output head
+  with an explicit 2,048/4,096-row working extent. The first 4,096 tokens of
+  the accepted oracle-v3 32K stream now execute layers 0--42 in order and
+  retain every layer's raw, compressed, indexer, and recurrent compressor
+  state for continuation.
+- Added `long-prefill-transformer-probe` and schema
+  `rust-star-long-prefill-transformer-probe-v1`. The target-Mac run completed
+  7,556 bootstrap dispatches with 4,160/4,160 no-copy mappings, then 2,372
+  transformer dispatches with 1,216/1,216 no-copy mappings. It retained 4,096
+  raw rows, 1,024 ratio-4 rows, and 32 ratio-128 rows per applicable layer.
+- The 4K output head selected token 565. No intermediate DwarfStar frontier
+  was available, so the report explicitly makes no C0 or oracle-match claim.
+  Bootstrap wall/GPU time was 5,615.892/5,184.460 ms, transformer wall/GPU
+  time was 14,227.714/14,080.315 ms, and output-head wall/GPU time was
+  207.622/2.454 ms. Ignored JSON evidence SHA-256 is
+  `e39b67e0198f852b5ba8ab2bdc77a407342b80e5b69dfebb3792346cddb9f315`.
+- The independent 2K control still matched all retained layer boundaries and
+  129,280 logits bit-for-bit and selected token 15342. Its ignored JSON
+  evidence SHA-256 is
+  `6fc5b3096e9ff399690faf08f96f3db7d75d93dfcea33048ce7ce32098d0dd17`.
+- The complete target-Mac gate passed formatting, 303 Rust tests, the release
+  macOS build, all 81 Python tests, Metal smoke, every differential fixture,
+  and the cross-language artifact roundtrip. Published commit `44fdafa`.
+
+Decision:
+
+- Keep the complete first-chunk schedule as the long-context baseline. Do not
+  treat a second isolated 4K batch as continuation: chunk two must append to
+  retained compressed state, use global RoPE positions, roll the raw window,
+  and cross the production sparse ratio-4 threshold.
+
+Next:
+
+- Pin an exact 8K frontier from the accepted synchronized oracle-v3 producer,
+  then implement positions 4,096--8,191 as an explicit retained continuation
+  and compare its complete logits to that frontier.
+
 ## 2026-08-30 — First native 4K long-prefill bootstrap chunk executed
 
 Objective:

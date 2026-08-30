@@ -1,0 +1,104 @@
+{
+  "schema": "rust-star-differential-fixture-v1",
+  "fixture_id": "dwarfstar-oracle-v3-prefill-frontier-8192",
+  "captured_at_utc": "2026-08-30T14:29:46Z",
+  "oracle": {
+    "id": "oracle-v3",
+    "repository": "https://github.com/deathcoder/ds4.git",
+    "commit": "d35fb12d01d500b9cefcef24092c295687ceaf7e",
+    "tree": "617415ee9f8ea7dc176d63dada1d5a7582063824",
+    "capture_executable_sha256": "8e37f40cef769e34ef82a202d202a42b267322437ab8100c1303cc6aa8583bf3",
+    "relationship": "supplemental 8K frontier from the accepted synchronized producer"
+  },
+  "model": {
+    "family": "DeepSeek-V4-Flash-0731",
+    "sha256": "ca22ae2f838e14077c22bc1c1417b71b45b5e5a3687bd96c2ac6e17fdb6261c0"
+  },
+  "capture": {
+    "backend": "metal",
+    "machine": "Apple M1 Ultra, 48 GPU cores, 128 GB unified memory",
+    "prompt": "first 8192 raw tokens of speed-bench/promessi_sposi.txt",
+    "prompt_sha256": "f53e0d80cb2d4492d24ebd63c7000c397b16ae70f9bf09b3763e5d8323ec209f",
+    "prompt_token_ids_sha256": "0a1625377cb917e0a62c328909f01c68c4fe6256a3af37f213a071af170b7e17",
+    "prefill_tokens": 8192,
+    "prefill_chunk_tokens": 4096,
+    "fresh_process_captures": 4,
+    "fresh_process_bitwise_match": true,
+    "json_logits_sha256": "791ee1ea8129889e3adaf4ce6e042156b85323e46df32581e4df275055848f94",
+    "observations": [
+      {
+        "repetition": 1,
+        "json_logits_sha256": "791ee1ea8129889e3adaf4ce6e042156b85323e46df32581e4df275055848f94",
+        "csv_sha256": "3852c83361520705c1d18bd3e346047da00c5de55e40580eb8524b46eeeea09b",
+        "prefill_tokens_per_second": 180.6
+      },
+      {
+        "repetition": 2,
+        "json_logits_sha256": "791ee1ea8129889e3adaf4ce6e042156b85323e46df32581e4df275055848f94",
+        "csv_sha256": "84a9442df9a2006aaf68a7b220ee7ddd59bf45c6b2cd23b0eb4f807c07565e92",
+        "prefill_tokens_per_second": 181.06
+      },
+      {
+        "repetition": 3,
+        "json_logits_sha256": "791ee1ea8129889e3adaf4ce6e042156b85323e46df32581e4df275055848f94",
+        "csv_sha256": "68d095e82d4389822edb57bfec27cddbbfb7847fe206c68e131ce776edff888a",
+        "prefill_tokens_per_second": 177.54
+      },
+      {
+        "repetition": 4,
+        "json_logits_sha256": "791ee1ea8129889e3adaf4ce6e042156b85323e46df32581e4df275055848f94",
+        "csv_sha256": "2fcbf246b6f6166df46c700166cf4c693ee29183ab1fce66ac6b12107a631669",
+        "prefill_tokens_per_second": 176.44
+      }
+    ],
+    "performance_enabled": false,
+    "timing_classification": "conformance observations; not paired benchmark evidence"
+  },
+  "scope": {
+    "kind": "decode-step",
+    "phase": "prefill",
+    "layer": 43,
+    "position": 8191
+  },
+  "operations": [
+    {
+      "name": "chunked-batched-prefill-frontier-full-logits",
+      "kernel": "complete-decoder",
+      "weights": [
+        "output.weight"
+      ]
+    }
+  ],
+  "selection": {
+    "method": "lowest-token-id-argmax",
+    "token_id": 77179
+  },
+  "tensors": [
+    {
+      "name": "prompt_token_ids",
+      "hook": "tokenizer",
+      "role": "input",
+      "dtype": "i32",
+      "shape": [
+        8192
+      ],
+      "encoding": "little-endian-signed-integer32",
+      "path": "token-ids.u32le.bin",
+      "bytes": 32768,
+      "sha256": "0a1625377cb917e0a62c328909f01c68c4fe6256a3af37f213a071af170b7e17"
+    },
+    {
+      "name": "batch_prefill_logits",
+      "hook": "frontier_logits",
+      "role": "output",
+      "dtype": "f32",
+      "shape": [
+        129280
+      ],
+      "encoding": "little-endian-ieee754-binary32",
+      "path": "batch-prefill-logits.f32le.bin",
+      "bytes": 517120,
+      "sha256": "626454dd1d12717abe29c9fe7d4140bcb265046bf8253bc46ea02575a9c53a1a"
+    }
+  ]
+}

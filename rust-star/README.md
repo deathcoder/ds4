@@ -326,6 +326,15 @@ bootstrap GPU time and 14,080.315 ms of transformer GPU time. This is a native
 4K schedule and lifetime checkpoint, not a C0 or throughput result; the
 separate full 2K regression still matched every retained boundary and all
 129,280 logits bit-for-bit and selected token 15342.
+An intermediate 8K C0 target is now pinned as
+`dwarfstar-oracle-v3-prefill-frontier-8192`. It was captured from the accepted
+host-synchronized `d35fb12` producer in four fresh processes; all four complete
+JSON logit tensors have SHA-256 `791ee1ea...8f94`, the packed FP32 tensor has
+SHA-256 `626454dd...3a1a`, and lowest-ID argmax selects token 77179. The
+176.44--181.06 tok/s observations are conformance-only and are not paired
+benchmark evidence. `import_frontier8192_fixture.py` revalidates the producer,
+executable, model, prompt, token prefix, CSV rows, and all four tensors before
+reconstructing the fixture.
 Exactly 512 ratio-4 compressed rows for each even layer through layer 42 and
 16 ratio-128 rows for each odd layer through layer 41 remain dense at the
 prompt boundary. The

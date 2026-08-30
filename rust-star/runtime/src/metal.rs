@@ -451,6 +451,7 @@ pub const LAYER5_POS127_COMPRESSOR_FIXTURE_ID: &str =
 pub const POSITION127_DECODER_FIXTURE_ID: &str = "dwarfstar-oracle-v1-decoder-frontier-pos127";
 pub const COLD_PREFILL_FIXTURE_ID: &str = "dwarfstar-oracle-v1-cold-prefill-pos0";
 pub const PREFILL_FRONTIER_2048_FIXTURE_ID: &str = "dwarfstar-oracle-v1-prefill-frontier-2048";
+pub const PREFILL_FRONTIER_8192_FIXTURE_ID: &str = "dwarfstar-oracle-v3-prefill-frontier-8192";
 pub const PREFILL_FRONTIER_32768_FIXTURE_ID: &str = "dwarfstar-oracle-v3-prefill-frontier-32768";
 pub const PREFILL_DECODE_FRONTIER_4099_FIXTURE_ID: &str =
     "dwarfstar-oracle-v1-prefill-decode-frontier-4099";
@@ -513,6 +514,12 @@ const PREFILL_FRONTIER_2048_BATCH_LOGITS_BYTES: &[u8] =
     include_bytes!("../../fixtures/prefill-frontier-2048-v1/batch-prefill-logits.f32le.bin");
 const PREFILL_FRONTIER_2048_DECODE_LOGITS_BYTES: &[u8] =
     include_bytes!("../../fixtures/prefill-frontier-2048-v1/decode-replay-logits.f32le.bin");
+#[cfg(test)]
+const PREFILL_FRONTIER_8192_TOKEN_IDS_BYTES: &[u8] =
+    include_bytes!("../../fixtures/prefill-frontier-8192-v3/token-ids.u32le.bin");
+#[cfg(test)]
+const PREFILL_FRONTIER_8192_BATCH_LOGITS_BYTES: &[u8] =
+    include_bytes!("../../fixtures/prefill-frontier-8192-v3/batch-prefill-logits.f32le.bin");
 const PREFILL_FRONTIER_32768_TOKEN_IDS_BYTES: &[u8] =
     include_bytes!("../../fixtures/prefill-frontier-32768-v3/token-ids.u32le.bin");
 const PREFILL_FRONTIER_32768_BATCH_LOGITS_BYTES: &[u8] =
@@ -10740,6 +10747,29 @@ fn prefill_frontier_32768_fixture() -> Result<(Vec<u32>, Vec<f32>)> {
     {
         return Err(Error::invalid(
             "32K prefill fixture shape, token boundary, or selection is invalid",
+        ));
+    }
+    Ok((tokens, logits))
+}
+
+#[cfg(test)]
+fn prefill_frontier_8192_fixture() -> Result<(Vec<u32>, Vec<f32>)> {
+    let tokens = decode_u32_fixture(
+        PREFILL_FRONTIER_8192_TOKEN_IDS_BYTES,
+        "8K prefill token IDs",
+    )?;
+    let logits = decode_f32_fixture(
+        PREFILL_FRONTIER_8192_BATCH_LOGITS_BYTES,
+        "8K batched-prefill frontier logits",
+    )?;
+    if tokens.len() != 8_192
+        || tokens.first() != Some(&36662)
+        || tokens.last() != Some(&612)
+        || logits.len() != 129_280
+        || lowest_id_argmax(&logits)? != 77_179
+    {
+        return Err(Error::invalid(
+            "8K prefill fixture shape, token boundary, or selection is invalid",
         ));
     }
     Ok((tokens, logits))
@@ -53742,6 +53772,16 @@ mod tests {
         assert_eq!(tokens.last(), Some(&14));
         assert_eq!(logits.len(), 129_280);
         assert_eq!(lowest_id_argmax(&logits).unwrap(), 85_166);
+    }
+
+    #[test]
+    fn prefill_frontier_8192_fixture_has_target_shape_and_selection() {
+        let (tokens, logits) = prefill_frontier_8192_fixture().unwrap();
+        assert_eq!(tokens.len(), 8_192);
+        assert_eq!(tokens.first(), Some(&36662));
+        assert_eq!(tokens.last(), Some(&612));
+        assert_eq!(logits.len(), 129_280);
+        assert_eq!(lowest_id_argmax(&logits).unwrap(), 77_179);
     }
 
     #[test]

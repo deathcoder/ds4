@@ -382,6 +382,13 @@ stream identifies the input only: this command does not claim intermediate C0,
 selected-token oracle equality, complete 32K prefill, or throughput. Continue
 to use `prefill-layers012-attention-loop-probe` as the exhaustive 2K C0 control.
 
+The next continuation gate is the supplemental
+`dwarfstar-oracle-v3-prefill-frontier-8192` fixture. Four fresh processes from
+the same accepted synchronized producer agree byte-for-byte on its complete
+129,280-logit tensor and select token 77179. The fixture is a C0 target for the
+second 4K chunk; its recorded prefill observations are explicitly not benchmark
+evidence.
+
 To run the connected layer-0 ingress gate:
 
 ```sh
