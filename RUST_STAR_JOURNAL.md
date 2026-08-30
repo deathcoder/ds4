@@ -18,6 +18,51 @@ Before changing code:
 Journal entries are reverse chronological. Do not edit old entries to change
 history; add a correction and update the current-state summary.
 
+## 2026-08-30 — Sequential 4K-to-8K continuation shortcut rejected
+
+Objective:
+
+- Determine whether the already exact retained decoder schedule could execute
+  the second 4K prompt segment while preserving the pinned batched 8K result.
+
+Changes and evidence:
+
+- Generalized the prefill-to-decoder handoff from a fixed 2K source to completed
+  2K or 4K prefill state. The 4K handoff copied the last 128 raw rows plus
+  1,024 ratio-4 rows, 32 ratio-128 rows, and every recurrent compressor state
+  for all 43 layers using the existing 229-blit ownership contract.
+- Added `long-prefill-sequential-continuation-probe` and schema
+  `rust-star-long-prefill-sequential-continuation-probe-v1`. It completes the
+  first 4K native transformer, adopts that state, then supplies the accepted
+  prompt tokens at positions 4,096--8,191 through global RoPE, rolling raw
+  caches, recurrent compressors, and production sparse ratio-4 attention.
+- The full target-Mac diagnostic completed without a Metal or ownership error
+  and crossed the first sparse boundary at position 4,099. Its terminal
+  selected token was 77179, equal to the oracle, but all 129,280 logits differed
+  bit-for-bit. The first mismatch was index 0 and maximum absolute error was
+  10.662007332. Continuation wall/GPU time was
+  196,711.436/185,012.119 ms. Ignored JSON evidence SHA-256 is
+  `25b0b4d98785a79d5050019019e575dd9cccfe5c74fc496892f1a3108d69365c`.
+- The independent complete 2K control remains C0 exact through all logits and
+  selects token 15342. Its ignored JSON evidence SHA-256 for this run is
+  `6b6508e1f39beb3a59ba8f06b4b5dba8b429fcb796079343a48aca321fcd2fee`.
+  Formatting, the all-target build, optimized macOS build, 306 Rust tests, and
+  82 Python tests passed.
+
+Decision:
+
+- Reject sequential decoder execution as the second prompt chunk. Equal argmax
+  is not C0, every logit differs, and the 196.7-second wall time is not a viable
+  prefill path. Preserve this as negative architectural evidence rather than
+  weakening the 8K oracle gate.
+
+Next:
+
+- Build a native-batched positions-4,096--8,191 transformer path that appends
+  per-layer raw/compressed state, uses global positions and the production
+  sparse ratio-4 branch, and reuses batch projection/FFN numerics. Require all
+  129,280 terminal logits to match the pinned 8K oracle bit-for-bit.
+
 ## 2026-08-30 — Retained 4K-to-8K bootstrap transition executed
 
 Objective:

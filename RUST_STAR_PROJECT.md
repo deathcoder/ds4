@@ -359,7 +359,11 @@ they describe whenever practical.
   8,192 raw rows and 2,048 compressed rows while preserving the prefix and
   recurrent compressor state. This remains a structural second-chunk gate
   without an 8K output C0 claim; extend the continuation through layers 2--42,
-  production sparse attention, and the output head next.
+  production sparse attention, and the output head next. A complete retained
+  sequential experiment has now ruled out decoder execution as a shortcut: it
+  selected the same terminal token but differed in all 129,280 logits. The
+  second chunk must preserve batched projection, compressor, attention, and FFN
+  numerics to satisfy C0.
 - Drive a complete decoder through the now-generalized sparse branch and emit
   the Rust Star engine-measurement contract. The diagnostic 513-row override,
   two fresh production-default 1,025-row isolated captures, and seeded retained

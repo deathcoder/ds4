@@ -345,6 +345,17 @@ first-chunk prefix or recurrent compressor state. Continuation GPU time was
 5,124.933 ms. This is the retained second-chunk bootstrap gate only: layers
 2--42, production sparse attention, and exact 8K output logits remain the next
 milestone.
+The first complete second-half experiment deliberately tested whether the
+proven retained decoder schedule could serve as a correctness-preserving
+shortcut. `long-prefill-sequential-continuation-probe` now generalizes the
+prefill-to-decoder handoff to 4K, copies all 43 layers into rolling/raw and
+compressed decoder state, and feeds the pinned prompt tokens through positions
+4,096--8,191. It crosses the production sparse boundary at position 4,099 and
+selects the same terminal token 77179, but all 129,280 logit bit patterns differ
+from the batched 8K oracle; the maximum absolute error is 10.662007332. The
+196.711-second continuation is therefore rejected for both C0 and performance.
+The next implementation must preserve native batch kernels across the second
+chunk; matching only the greedy token is insufficient.
 Exactly 512 ratio-4 compressed rows for each even layer through layer 42 and
 16 ratio-128 rows for each odd layer through layer 41 remain dense at the
 prompt boundary. The

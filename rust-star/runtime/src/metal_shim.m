@@ -42503,21 +42503,22 @@ int rust_star_metal_adopt_prefill_decoder_state(
     size_t error_bytes)
 {
     const uint32_t layers = 43u;
-    const uint32_t prefill_rows = 2048u;
     const uint32_t raw_rows = 128u;
-    const uint32_t ratio4_rows = prefill_rows/4u;
-    const uint32_t ratio128_rows = prefill_rows/128u;
     const NSUInteger kv_row_bytes = 512u*sizeof(float);
-    if (!opaque_context || !result || decoder_context_capacity <= prefill_rows) {
+    if (!opaque_context || !result) {
         return fail_with_message(error, error_bytes,
             @"prefill-to-decode handoff received invalid inputs");
     }
     @autoreleasepool {
         RustStarMetalContext *context = (__bridge RustStarMetalContext *)opaque_context;
-        if (context.prefillKvRows != prefill_rows ||
+        const uint32_t prefill_rows = context.prefillKvRows;
+        const uint32_t ratio4_rows = prefill_rows/4u;
+        const uint32_t ratio128_rows = prefill_rows/128u;
+        if ((prefill_rows != 2048u && prefill_rows != 4096u) ||
+            decoder_context_capacity <= prefill_rows ||
             !context.prefillLayer42AfterFfnHc) {
             return fail_with_message(error, error_bytes,
-                @"prefill-to-decode handoff requires an exact completed 2K prefill");
+                @"prefill-to-decode handoff requires a completed 2K or 4K prefill");
         }
         memset(result, 0, sizeof(*result));
         id<MTLCommandBuffer> command = [context.queue commandBuffer];

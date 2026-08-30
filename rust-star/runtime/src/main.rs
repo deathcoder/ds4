@@ -9,31 +9,32 @@ use rust_star_runtime::metal::{
     run_layers0123_decode_probe, run_layers0123_probe, run_layers012_chained_probe,
     run_layers012_probe, run_layers01_probe, run_layers0_to_42_decode_probe,
     run_long_prefill_bootstrap_probe, run_long_prefill_continuation_bootstrap_probe,
-    run_long_prefill_transformer_probe, run_moe_output_probe, run_position127_decoder_probe,
-    run_prefill_decode_frontier_probe, run_prefill_frontier_probe,
-    run_prefill_layer0_boundary_probe, run_prefill_layers012_attention_loop_probe,
-    run_prefill_layers012_compressor_loop_probe, run_prefill_layers012_kv_state_loop_probe,
-    run_prefill_layers012_kvnorm_loop_probe, run_prefill_layers01_boundary_probe,
-    run_prefill_layers01_complete_boundary_probe, run_prefill_layers01_live_kv_chain_probe,
-    run_prefill_layers01_live_kv_loop_probe, run_prefill_layers01_row_coverage_probe,
-    run_prefill_q8_boundary_probe, run_prefill_qkv_boundary_probe, run_probe,
-    run_q8_projection_probe, run_q_head_kv_fusion_bench, run_q_head_threads_bench,
-    run_qb_rows_bench, run_qkv_pair_bench, run_ratio128_compressor_replay_probe,
-    run_retained_decoder_step_probe, run_retained_engine_measurement,
-    run_retained_sparse_boundary_probe, run_retained_sparse_multimerge_probe,
-    run_rope_kv_store_probe, run_routed_nsg_bench, run_sparse_indexed_attention_probe,
-    write_attention_output_nsg_bench_json, write_attention_output_probe_json,
-    write_attention_read_probe_json, write_attention_rope_fusion_bench_json,
-    write_attention_setup_probe_json, write_closed_loop_decoder_probe_json,
-    write_cold_prefill_decoder_probe_json, write_decoder_output_probe_json,
-    write_embedding_probe_json, write_engine_run_json, write_ffn_router_probe_json,
-    write_ingress_probe_json, write_layer0_bench_json, write_layer0_probe_json,
-    write_layers01234567_decode_probe_json, write_layers012345_decode_probe_json,
-    write_layers0123_bench_json, write_layers0123_chained_probe_json,
-    write_layers0123_decode_probe_json, write_layers0123_probe_json,
-    write_layers012_chained_probe_json, write_layers012_probe_json, write_layers01_probe_json,
-    write_layers0_to_42_decode_probe_json, write_long_prefill_bootstrap_probe_json,
-    write_long_prefill_continuation_bootstrap_probe_json,
+    run_long_prefill_sequential_continuation_probe, run_long_prefill_transformer_probe,
+    run_moe_output_probe, run_position127_decoder_probe, run_prefill_decode_frontier_probe,
+    run_prefill_frontier_probe, run_prefill_layer0_boundary_probe,
+    run_prefill_layers012_attention_loop_probe, run_prefill_layers012_compressor_loop_probe,
+    run_prefill_layers012_kv_state_loop_probe, run_prefill_layers012_kvnorm_loop_probe,
+    run_prefill_layers01_boundary_probe, run_prefill_layers01_complete_boundary_probe,
+    run_prefill_layers01_live_kv_chain_probe, run_prefill_layers01_live_kv_loop_probe,
+    run_prefill_layers01_row_coverage_probe, run_prefill_q8_boundary_probe,
+    run_prefill_qkv_boundary_probe, run_probe, run_q8_projection_probe, run_q_head_kv_fusion_bench,
+    run_q_head_threads_bench, run_qb_rows_bench, run_qkv_pair_bench,
+    run_ratio128_compressor_replay_probe, run_retained_decoder_step_probe,
+    run_retained_engine_measurement, run_retained_sparse_boundary_probe,
+    run_retained_sparse_multimerge_probe, run_rope_kv_store_probe, run_routed_nsg_bench,
+    run_sparse_indexed_attention_probe, write_attention_output_nsg_bench_json,
+    write_attention_output_probe_json, write_attention_read_probe_json,
+    write_attention_rope_fusion_bench_json, write_attention_setup_probe_json,
+    write_closed_loop_decoder_probe_json, write_cold_prefill_decoder_probe_json,
+    write_decoder_output_probe_json, write_embedding_probe_json, write_engine_run_json,
+    write_ffn_router_probe_json, write_ingress_probe_json, write_layer0_bench_json,
+    write_layer0_probe_json, write_layers01234567_decode_probe_json,
+    write_layers012345_decode_probe_json, write_layers0123_bench_json,
+    write_layers0123_chained_probe_json, write_layers0123_decode_probe_json,
+    write_layers0123_probe_json, write_layers012_chained_probe_json, write_layers012_probe_json,
+    write_layers01_probe_json, write_layers0_to_42_decode_probe_json,
+    write_long_prefill_bootstrap_probe_json, write_long_prefill_continuation_bootstrap_probe_json,
+    write_long_prefill_sequential_continuation_probe_json,
     write_long_prefill_transformer_probe_json, write_moe_output_probe_json,
     write_position127_decoder_probe_json, write_prefill_decode_frontier_probe_json,
     write_prefill_frontier_probe_json, write_prefill_layer0_boundary_probe_json,
@@ -60,8 +61,9 @@ use rust_star_runtime::metal::{
     Layers0123DecodeProbeReport, Layers0123ProbeReport, Layers012ChainedProbeReport,
     Layers012ProbeReport, Layers01ProbeReport, Layers0To42DecodeProbeReport,
     LongPrefillBootstrapProbeReport, LongPrefillContinuationBootstrapProbeReport,
-    LongPrefillTransformerProbeReport, MoeOutputProbeReport, Position127DecoderProbeReport,
-    PrefillDecodeFrontierProbeReport, PrefillFrontierProbeReport, PrefillLayer0BoundaryProbeReport,
+    LongPrefillSequentialContinuationProbeReport, LongPrefillTransformerProbeReport,
+    MoeOutputProbeReport, Position127DecoderProbeReport, PrefillDecodeFrontierProbeReport,
+    PrefillFrontierProbeReport, PrefillLayer0BoundaryProbeReport,
     PrefillLayers012AttentionLoopProbeReport, PrefillLayers012CompressorLoopProbeReport,
     PrefillLayers012KvStateLoopProbeReport, PrefillLayers012KvnormLoopProbeReport,
     PrefillLayers01BoundaryProbeReport, PrefillLayers01CompleteBoundaryProbeReport,
@@ -150,6 +152,9 @@ fn run() -> Result<()> {
     }
     if command == "long-prefill-continuation-bootstrap-probe" {
         return run_long_prefill_continuation_bootstrap_probe_command(arguments.collect());
+    }
+    if command == "long-prefill-sequential-continuation-probe" {
+        return run_long_prefill_sequential_continuation_probe_command(arguments.collect());
     }
     if command == "long-prefill-transformer-probe" {
         return run_long_prefill_transformer_probe_command(arguments.collect());
@@ -3284,6 +3289,78 @@ fn run_long_prefill_continuation_bootstrap_probe_command(arguments: Vec<OsString
     Ok(())
 }
 
+fn run_long_prefill_sequential_continuation_probe_command(arguments: Vec<OsString>) -> Result<()> {
+    if arguments.is_empty() {
+        return Err(Error::invalid(
+            long_prefill_sequential_continuation_probe_usage(),
+        ));
+    }
+    if matches!(arguments[0].to_str(), Some("--help") | Some("-h")) {
+        println!("{}", long_prefill_sequential_continuation_probe_usage());
+        return Ok(());
+    }
+    let model_path = PathBuf::from(&arguments[0]);
+    let mut json_path: Option<PathBuf> = None;
+    let mut arguments = arguments.into_iter().skip(1);
+    while let Some(argument) = arguments.next() {
+        match argument.to_str() {
+            Some("--json") => {
+                let value = arguments
+                    .next()
+                    .ok_or_else(|| Error::invalid("--json requires a path"))?;
+                if json_path.is_some() {
+                    return Err(Error::invalid("--json may be specified only once"));
+                }
+                json_path = Some(PathBuf::from(value));
+            }
+            Some("--help") | Some("-h") => {
+                println!("{}", long_prefill_sequential_continuation_probe_usage());
+                return Ok(());
+            }
+            _ => {
+                return Err(Error::invalid(
+                    long_prefill_sequential_continuation_probe_usage(),
+                ));
+            }
+        }
+    }
+    let model = MappedModel::open(&model_path)?;
+    validate_resident_q2(model.gguf())?;
+    let report = run_long_prefill_sequential_continuation_probe(&model)?;
+    println!(
+        "native 8K semantic continuation: complete 4K prefill plus {} retained sequential positions through all 43 layers",
+        report.continuation_tokens
+    );
+    println!(
+        "handoff: {} layers, {} ratio-4 rows, {} ratio-128 rows, {} blit copies",
+        report.handoff.layers,
+        report.handoff.ratio4_rows_per_layer,
+        report.handoff.ratio128_rows_per_layer,
+        report.handoff.blit_copies,
+    );
+    println!(
+        "oracle divergence: {}/{} logits mismatch, first index {}, max abs error {:.9}; selected token {} versus oracle {}",
+        report.logit_mismatches,
+        report.exact_logit_checks,
+        report.first_mismatch_index,
+        report.max_abs_error,
+        report.selected_token,
+        report.oracle_selected_token,
+    );
+    println!(
+        "timing: continuation wall={:.3} ms gpu={:.3} ms; output-head gpu={:.3} ms",
+        report.continuation_wall_ms, report.continuation_gpu_ms, report.output_head_gpu_ms,
+    );
+    println!(
+        "decision: sequential continuation is rejected; exact 8K requires a native-batched second chunk and this run makes no correctness or throughput claim"
+    );
+    if let Some(path) = json_path {
+        write_long_prefill_sequential_continuation_probe_file(&path, &report)?;
+        println!("json: {}", path.display());
+    }
+    Ok(())
+}
+
 fn run_long_prefill_transformer_probe_command(arguments: Vec<OsString>) -> Result<()> {
     if arguments.is_empty() {
         return Err(Error::invalid(long_prefill_transformer_probe_usage()));
@@ -4120,6 +4197,36 @@ fn write_long_prefill_continuation_bootstrap_probe_file(
     std::fs::rename(&temporary, path).map_err(|error| {
         Error::invalid(format!(
             "cannot install long-prefill continuation bootstrap JSON {}: {error}",
+            path.display()
+        ))
+    })?;
+    Ok(())
+}
+
+fn write_long_prefill_sequential_continuation_probe_file(
+    path: &Path,
+    report: &LongPrefillSequentialContinuationProbeReport,
+) -> Result<()> {
+    let temporary = path.with_extension(format!(
+        "{}tmp",
+        path.extension()
+            .and_then(OsStr::to_str)
+            .map(|extension| format!("{extension}."))
+            .unwrap_or_default()
+    ));
+    let file = File::create(&temporary).map_err(|error| {
+        Error::invalid(format!(
+            "cannot create long-prefill sequential continuation JSON {}: {error}",
+            temporary.display()
+        ))
+    })?;
+    let mut output = BufWriter::new(file);
+    write_long_prefill_sequential_continuation_probe_json(&mut output, report)?;
+    output.flush()?;
+    drop(output);
+    std::fs::rename(&temporary, path).map_err(|error| {
+        Error::invalid(format!(
+            "cannot install long-prefill sequential continuation JSON {}: {error}",
             path.display()
         ))
     })?;
@@ -5313,7 +5420,7 @@ fn usage() -> &'static str {
 
 fn full_usage() -> String {
     format!(
-        "{}\n  rust-star long-prefill-bootstrap-probe MODEL.gguf [OPTIONS]\n  rust-star long-prefill-continuation-bootstrap-probe MODEL.gguf [OPTIONS]\n  rust-star long-prefill-transformer-probe MODEL.gguf [OPTIONS]\n  rust-star attention-output-nsg-bench MODEL.gguf [OPTIONS]\n  rust-star attention-rope-fusion-bench MODEL.gguf [OPTIONS]\n  rust-star qkv-pair-bench MODEL.gguf [OPTIONS]\n  rust-star qb-rows-bench MODEL.gguf [OPTIONS]\n  rust-star q-head-threads-bench [OPTIONS]\n  rust-star q-head-kv-fusion-bench [OPTIONS]\n  rust-star routed-nsg-bench MODEL.gguf [OPTIONS]\n  rust-star prefill-decode-frontier-probe MODEL.gguf [OPTIONS]\n  rust-star engine-measure MODEL.gguf --context N --gen-tokens N --json PATH\n  rust-star engine-profile MODEL.gguf --context N --gen-tokens N --json PATH\n  rust-star engine-retained-measure MODEL.gguf --context N --gen-tokens N --json PATH\n  rust-star retained-sparse-multimerge-probe MODEL.gguf [OPTIONS]\n  rust-star retained-decoder-step-probe MODEL.gguf [OPTIONS]",
+        "{}\n  rust-star long-prefill-bootstrap-probe MODEL.gguf [OPTIONS]\n  rust-star long-prefill-continuation-bootstrap-probe MODEL.gguf [OPTIONS]\n  rust-star long-prefill-sequential-continuation-probe MODEL.gguf [OPTIONS]\n  rust-star long-prefill-transformer-probe MODEL.gguf [OPTIONS]\n  rust-star attention-output-nsg-bench MODEL.gguf [OPTIONS]\n  rust-star attention-rope-fusion-bench MODEL.gguf [OPTIONS]\n  rust-star qkv-pair-bench MODEL.gguf [OPTIONS]\n  rust-star qb-rows-bench MODEL.gguf [OPTIONS]\n  rust-star q-head-threads-bench [OPTIONS]\n  rust-star q-head-kv-fusion-bench [OPTIONS]\n  rust-star routed-nsg-bench MODEL.gguf [OPTIONS]\n  rust-star prefill-decode-frontier-probe MODEL.gguf [OPTIONS]\n  rust-star engine-measure MODEL.gguf --context N --gen-tokens N --json PATH\n  rust-star engine-profile MODEL.gguf --context N --gen-tokens N --json PATH\n  rust-star engine-retained-measure MODEL.gguf --context N --gen-tokens N --json PATH\n  rust-star retained-sparse-multimerge-probe MODEL.gguf [OPTIONS]\n  rust-star retained-decoder-step-probe MODEL.gguf [OPTIONS]",
         usage()
     )
 }
@@ -5380,6 +5487,10 @@ fn long_prefill_bootstrap_probe_usage() -> &'static str {
 
 fn long_prefill_continuation_bootstrap_probe_usage() -> &'static str {
     "usage: rust-star long-prefill-continuation-bootstrap-probe MODEL.gguf [--json PATH]\n\nRuns the first 4,096-token chunk through the complete native transformer, then advances positions 4,096--8,191 through complete layers 0 and 1 plus layer 2 raw KV and paired ratio-4 compressors in the same retained Metal context. It verifies global positions, prefix-preserving capacity growth, and recurrent compressor ownership, but makes no complete-8K-transformer, output-logit C0, or throughput claim."
+}
+
+fn long_prefill_sequential_continuation_probe_usage() -> &'static str {
+    "usage: rust-star long-prefill-sequential-continuation-probe MODEL.gguf [--json PATH]\n\nRuns the first 4,096 tokens through the complete native batched transformer, adopts all 43 retained layer states into the decoder representation, and executes prompt positions 4,096--8,191 sequentially through global RoPE, rolling raw caches, recurrent compressors, production sparse ratio-4 attention, and the output head. It measures the terminal divergence from the pinned batched 8K oracle to decide whether sequential execution is a valid shortcut. This is a diagnostic, not a correctness or throughput claim."
 }
 
 fn long_prefill_transformer_probe_usage() -> &'static str {

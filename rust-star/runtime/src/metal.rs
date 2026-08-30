@@ -30,6 +30,8 @@ pub const PREFILL_LAYERS012_COMPRESSOR_LOOP_PROBE_SCHEMA: &str =
 pub const LONG_PREFILL_BOOTSTRAP_PROBE_SCHEMA: &str = "rust-star-long-prefill-bootstrap-probe-v1";
 pub const LONG_PREFILL_CONTINUATION_BOOTSTRAP_PROBE_SCHEMA: &str =
     "rust-star-long-prefill-continuation-bootstrap-probe-v1";
+pub const LONG_PREFILL_SEQUENTIAL_CONTINUATION_PROBE_SCHEMA: &str =
+    "rust-star-long-prefill-sequential-continuation-probe-v1";
 pub const LONG_PREFILL_TRANSFORMER_PROBE_SCHEMA: &str =
     "rust-star-long-prefill-transformer-probe-v1";
 pub const PREFILL_LAYERS012_ATTENTION_LOOP_PROBE_SCHEMA: &str =
@@ -3579,6 +3581,31 @@ pub struct LongPrefillContinuationBootstrapProbeReport {
     pub token_checksum: u64,
     pub summed_wall_ms: f64,
     pub summed_gpu_ms: f64,
+}
+
+#[derive(Clone, Debug)]
+pub struct LongPrefillSequentialContinuationProbeReport {
+    pub fixture_id: &'static str,
+    pub frontier_tokens: u32,
+    pub first_chunk_tokens: u32,
+    pub first_chunk_selected_token: u32,
+    pub continuation_start: u32,
+    pub continuation_tokens: u32,
+    pub sparse_transition_position: u32,
+    pub handoff: PrefillDecodeHandoffReport,
+    pub selected_token: u32,
+    pub oracle_selected_token: u32,
+    pub exact_logit_checks: u32,
+    pub logit_mismatches: u32,
+    pub first_mismatch_index: u32,
+    pub max_abs_error: f32,
+    pub token_checksum: u64,
+    pub logits_checksum: u64,
+    pub first_chunk_wall_ms: f64,
+    pub first_chunk_gpu_ms: f64,
+    pub continuation_wall_ms: f64,
+    pub continuation_gpu_ms: f64,
+    pub output_head_gpu_ms: f64,
 }
 
 #[derive(Clone, Debug)]
@@ -7579,6 +7606,93 @@ pub fn write_long_prefill_continuation_bootstrap_probe_json<W: Write>(
         report.token_checksum,
         report.summed_wall_ms,
         report.summed_gpu_ms,
+    )?;
+    Ok(())
+}
+
+pub fn write_long_prefill_sequential_continuation_probe_json<W: Write>(
+    output: &mut W,
+    report: &LongPrefillSequentialContinuationProbeReport,
+) -> Result<()> {
+    let timings = [
+        report.first_chunk_wall_ms,
+        report.first_chunk_gpu_ms,
+        report.handoff.wall_ms,
+        report.handoff.gpu_ms,
+        report.continuation_wall_ms,
+        report.continuation_gpu_ms,
+        report.output_head_gpu_ms,
+    ];
+    if report.fixture_id != PREFILL_FRONTIER_8192_FIXTURE_ID
+        || report.frontier_tokens != 8_192
+        || report.first_chunk_tokens != 4_096
+        || report.first_chunk_selected_token != 565
+        || report.continuation_start != 4_096
+        || report.continuation_tokens != 4_096
+        || report.sparse_transition_position != 4_099
+        || report.handoff.layers != 43
+        || report.handoff.raw_rows_per_layer != 128
+        || report.handoff.ratio4_rows_per_layer != 1_024
+        || report.handoff.ratio128_rows_per_layer != 32
+        || report.handoff.blit_copies != 229
+        || report.handoff.command_buffers != 1
+        || report.handoff.host_waits != 1
+        || report.selected_token >= 129_280
+        || report.oracle_selected_token != 77_179
+        || report.exact_logit_checks != 129_280
+        || report.logit_mismatches == 0
+        || report.logit_mismatches > report.exact_logit_checks
+        || report.first_mismatch_index >= report.exact_logit_checks
+        || !report.max_abs_error.is_finite()
+        || report.max_abs_error <= 0.0
+        || timings
+            .iter()
+            .any(|value| !value.is_finite() || *value < 0.0)
+        || report.first_chunk_wall_ms <= 0.0
+        || report.handoff.wall_ms <= 0.0
+        || report.continuation_wall_ms <= 0.0
+    {
+        return Err(Error::invalid(
+            "long-prefill sequential continuation report has an unexpected frontier or result",
+        ));
+    }
+    write!(
+        output,
+        "{{\n  \"schema\": \"{LONG_PREFILL_SEQUENTIAL_CONTINUATION_PROBE_SCHEMA}\",\n  \"fixture\": "
+    )?;
+    crate::artifact::write_json_string(output, report.fixture_id)?;
+    write!(
+        output,
+        ",\n  \"frontier_tokens\": {},\n  \"first_chunk\": {{\"start\": 0, \"tokens\": {}, \"complete_native_transformer\": true, \"selected_token\": {}}},\n  \"continuation\": {{\"start\": {}, \"tokens\": {}, \"end\": {}, \"execution\": \"retained-sequential-diagnostic\", \"layers\": 43, \"sparse_transition_position\": {}}},\n  \"handoff\": {{\"layers\": {}, \"raw_rows_per_layer\": {}, \"ratio4_rows_per_layer\": {}, \"ratio128_rows_per_layer\": {}, \"blit_copies\": {}, \"command_buffers\": {}, \"host_waits\": {}, \"wall_ms\": {:.6}, \"gpu_ms\": {:.6}}},\n  \"output\": {{\"selected_token\": {}, \"oracle_selected_token\": {}, \"checked_logits\": {}, \"mismatches\": {}, \"first_mismatch_index\": {}, \"max_abs_error\": {:.9}, \"logits_checksum\": {}}},\n  \"checksums\": {{\"continuation_token_ids\": {}}},\n  \"timing\": {{\"first_chunk_wall_ms\": {:.6}, \"first_chunk_gpu_ms\": {:.6}, \"continuation_wall_ms\": {:.6}, \"continuation_gpu_ms\": {:.6}, \"output_head_gpu_ms\": {:.6}}},\n  \"accepted_oracle_token_stream\": true,\n  \"global_positions\": true,\n  \"rolling_raw_cache\": true,\n  \"recurrent_compressor_state\": true,\n  \"production_sparse_ratio4_attention\": true,\n  \"output_logits_c0_bitwise_match\": false,\n  \"sequential_continuation_rejected\": true,\n  \"native_batched_second_chunk_required\": true,\n  \"complete_8k_correctness_claim\": false,\n  \"throughput_claim\": false\n}}\n",
+        report.frontier_tokens,
+        report.first_chunk_tokens,
+        report.first_chunk_selected_token,
+        report.continuation_start,
+        report.continuation_tokens,
+        report.continuation_start + report.continuation_tokens - 1,
+        report.sparse_transition_position,
+        report.handoff.layers,
+        report.handoff.raw_rows_per_layer,
+        report.handoff.ratio4_rows_per_layer,
+        report.handoff.ratio128_rows_per_layer,
+        report.handoff.blit_copies,
+        report.handoff.command_buffers,
+        report.handoff.host_waits,
+        report.handoff.wall_ms,
+        report.handoff.gpu_ms,
+        report.selected_token,
+        report.oracle_selected_token,
+        report.exact_logit_checks,
+        report.logit_mismatches,
+        report.first_mismatch_index,
+        report.max_abs_error,
+        report.logits_checksum,
+        report.token_checksum,
+        report.first_chunk_wall_ms,
+        report.first_chunk_gpu_ms,
+        report.continuation_wall_ms,
+        report.continuation_gpu_ms,
+        report.output_head_gpu_ms,
     )?;
     Ok(())
 }
@@ -22652,6 +22766,7 @@ mod imp {
 
         fn adopt_prefill_decoder_state(
             &self,
+            prefill_rows: u32,
             context_capacity: u32,
         ) -> Result<PrefillDecodeHandoffReport> {
             let mut raw = RawPrefillDecodeHandoffResult::default();
@@ -22671,10 +22786,11 @@ mod imp {
                     error_text(&error)
                 )));
             }
-            if raw.layers != 43
+            if (prefill_rows != 2_048 && prefill_rows != 4_096)
+                || raw.layers != 43
                 || raw.raw_rows_per_layer != 128
-                || raw.ratio4_rows_per_layer != 512
-                || raw.ratio128_rows_per_layer != 16
+                || raw.ratio4_rows_per_layer != prefill_rows / 4
+                || raw.ratio128_rows_per_layer != prefill_rows / 128
                 || raw.blit_copies != 229
                 || raw.command_buffers != 1
                 || raw.host_waits != 1
@@ -25319,6 +25435,115 @@ mod imp {
             token_checksum: checksum_u32(&tokens[CHUNK_ROWS as usize..]),
             summed_wall_ms: timing.tile_wall_ms,
             summed_gpu_ms: timing.tile_gpu_ms,
+        })
+    }
+
+    pub fn run_long_prefill_sequential_continuation_probe(
+        model: &MappedModel,
+    ) -> Result<LongPrefillSequentialContinuationProbeReport> {
+        const FRONTIER_ROWS: u32 = 8_192;
+        const FIRST_CHUNK_ROWS: u32 = 4_096;
+        let (tokens, expected_logits) = prefill_frontier_8192_fixture()?;
+        let context_started = Instant::now();
+        let context = Context::new()?;
+        let context_setup_ms = context_started.elapsed().as_secs_f64() * 1000.0;
+        let (context, diagnostic, first_chunk_selected_token, timing) =
+            run_prefill_layers012_attention_loop_with_context(
+                model,
+                context,
+                context_setup_ms,
+                false,
+                false,
+                FIRST_CHUNK_ROWS,
+                Some(&tokens),
+            )?;
+        if diagnostic.is_some() || first_chunk_selected_token != 565 {
+            return Err(Error::invalid(
+                "the first 4K transformer did not reproduce its retained continuation boundary",
+            ));
+        }
+        let handoff = context.adopt_prefill_decoder_state(FIRST_CHUNK_ROWS, FRONTIER_ROWS)?;
+        let mut layers = (0..43)
+            .map(|layer_index| {
+                PreparedLayerExecution::new_cold_with_capacity(model, layer_index, FRONTIER_ROWS)
+            })
+            .collect::<Result<Vec<_>>>()?;
+        for layer in &mut layers {
+            layer.validate_expected = false;
+            layer.collect_outputs = false;
+        }
+        let mut output_head = PreparedOutputHead::new(model)?;
+        context.prepare_decoder()?;
+
+        let continuation_started = Instant::now();
+        let mut continuation_gpu_ms = 0.0;
+        for (offset, input_token) in tokens[FIRST_CHUNK_ROWS as usize..]
+            .iter()
+            .copied()
+            .enumerate()
+        {
+            let position = FIRST_CHUNK_ROWS + offset as u32;
+            submit_prepared_layers(model, &context, &mut layers, input_token, position)?;
+            continuation_gpu_ms += run_prepared_layer_iterations(
+                model,
+                &context,
+                &mut layers[0],
+                input_token,
+                position,
+                0,
+                1,
+                COMMAND_CHAINED_TIMING,
+                42,
+            )?
+            .report
+            .gpu_ms;
+        }
+        let continuation_wall_ms = continuation_started.elapsed().as_secs_f64() * 1000.0;
+        let (selected_token, output_head_gpu_ms) =
+            run_sampling_output_head(model, &context, &mut output_head)?;
+        let mut logit_mismatches = 0_u32;
+        let mut first_mismatch_index = None;
+        let mut max_abs_error = 0.0_f32;
+        for (index, (actual, expected)) in
+            output_head.logits.iter().zip(&expected_logits).enumerate()
+        {
+            if actual.to_bits() != expected.to_bits() {
+                logit_mismatches += 1;
+                first_mismatch_index.get_or_insert(index as u32);
+            }
+            max_abs_error = max_abs_error.max((actual - expected).abs());
+        }
+        let first_mismatch_index = first_mismatch_index.ok_or_else(|| {
+            Error::invalid(
+                "sequential continuation unexpectedly matched the batched 8K oracle; promote it to the exact gate",
+            )
+        })?;
+        Ok(LongPrefillSequentialContinuationProbeReport {
+            fixture_id: PREFILL_FRONTIER_8192_FIXTURE_ID,
+            frontier_tokens: FRONTIER_ROWS,
+            first_chunk_tokens: FIRST_CHUNK_ROWS,
+            first_chunk_selected_token,
+            continuation_start: FIRST_CHUNK_ROWS,
+            continuation_tokens: FRONTIER_ROWS - FIRST_CHUNK_ROWS,
+            sparse_transition_position: 4_099,
+            handoff,
+            selected_token,
+            oracle_selected_token: 77_179,
+            exact_logit_checks: expected_logits.len() as u32,
+            logit_mismatches,
+            first_mismatch_index,
+            max_abs_error,
+            token_checksum: checksum_u32(&tokens[FIRST_CHUNK_ROWS as usize..]),
+            logits_checksum: checksum_f32(&output_head.logits),
+            first_chunk_wall_ms: timing.tile_wall_ms
+                + timing.transformer_wall_ms
+                + timing.output_head_wall_ms,
+            first_chunk_gpu_ms: timing.tile_gpu_ms
+                + timing.transformer_gpu_ms
+                + timing.output_head_gpu_ms,
+            continuation_wall_ms,
+            continuation_gpu_ms,
+            output_head_gpu_ms,
         })
     }
 
@@ -44437,7 +44662,7 @@ mod imp {
                 "native batched prefill did not select the oracle continuation token",
             ));
         }
-        let handoff = context.adopt_prefill_decoder_state(CONTEXT_CAPACITY)?;
+        let handoff = context.adopt_prefill_decoder_state(2_048, CONTEXT_CAPACITY)?;
         let mut layers = (0..43)
             .map(|layer_index| {
                 PreparedLayerExecution::new_cold_with_capacity(model, layer_index, CONTEXT_CAPACITY)
@@ -44729,7 +44954,8 @@ mod imp {
             .checked_add(gen_tokens)
             .ok_or_else(|| Error::invalid("measurement context capacity overflow"))?;
         let prefill_handoff_started = Instant::now();
-        let prefill_handoff = context.adopt_prefill_decoder_state(decoder_capacity)?;
+        let prefill_handoff =
+            context.adopt_prefill_decoder_state(context_tokens, decoder_capacity)?;
         let prefill_handoff_host_ms = (prefill_handoff_started.elapsed().as_secs_f64() * 1000.0
             - prefill_handoff.wall_ms)
             .max(0.0);
@@ -46716,6 +46942,16 @@ mod imp {
 mod imp {
     use super::*;
 
+    pub fn run_long_prefill_sequential_continuation_probe(
+        model: &MappedModel,
+    ) -> Result<LongPrefillSequentialContinuationProbeReport> {
+        let _ = prefill_frontier_8192_fixture()?;
+        let _ = exact_tensor(model, "blk.42.attn_q_b.weight", 8, &[32768, 1024])?;
+        Err(Error::invalid(
+            "the Metal long-prefill sequential continuation probe is available only on macOS",
+        ))
+    }
+
     pub fn run_long_prefill_continuation_bootstrap_probe(
         model: &MappedModel,
     ) -> Result<LongPrefillContinuationBootstrapProbeReport> {
@@ -47410,20 +47646,20 @@ pub use imp::{
     run_layers0123_decode_probe, run_layers0123_probe, run_layers012_chained_probe,
     run_layers012_probe, run_layers01_probe, run_layers0_to_42_decode_probe,
     run_long_prefill_bootstrap_probe, run_long_prefill_continuation_bootstrap_probe,
-    run_long_prefill_transformer_probe, run_moe_output_probe, run_position127_decoder_probe,
-    run_prefill_decode_frontier_probe, run_prefill_frontier_probe,
-    run_prefill_layer0_boundary_probe, run_prefill_layers012_attention_loop_probe,
-    run_prefill_layers012_compressor_loop_probe, run_prefill_layers012_kv_state_loop_probe,
-    run_prefill_layers012_kvnorm_loop_probe, run_prefill_layers01_boundary_probe,
-    run_prefill_layers01_complete_boundary_probe, run_prefill_layers01_live_kv_chain_probe,
-    run_prefill_layers01_live_kv_loop_probe, run_prefill_layers01_row_coverage_probe,
-    run_prefill_q8_boundary_probe, run_prefill_qkv_boundary_probe, run_probe,
-    run_q8_projection_probe, run_q_head_kv_fusion_bench, run_q_head_threads_bench,
-    run_qb_rows_bench, run_qkv_pair_bench, run_ratio128_compressor_replay_probe,
-    run_retained_decoder_step_probe, run_retained_engine_measurement,
-    run_retained_sparse_boundary_probe, run_retained_sparse_multimerge_probe,
-    run_rope_kv_store_probe, run_routed_nsg_bench, run_sparse_indexed_attention_probe,
-    LayerExecutor,
+    run_long_prefill_sequential_continuation_probe, run_long_prefill_transformer_probe,
+    run_moe_output_probe, run_position127_decoder_probe, run_prefill_decode_frontier_probe,
+    run_prefill_frontier_probe, run_prefill_layer0_boundary_probe,
+    run_prefill_layers012_attention_loop_probe, run_prefill_layers012_compressor_loop_probe,
+    run_prefill_layers012_kv_state_loop_probe, run_prefill_layers012_kvnorm_loop_probe,
+    run_prefill_layers01_boundary_probe, run_prefill_layers01_complete_boundary_probe,
+    run_prefill_layers01_live_kv_chain_probe, run_prefill_layers01_live_kv_loop_probe,
+    run_prefill_layers01_row_coverage_probe, run_prefill_q8_boundary_probe,
+    run_prefill_qkv_boundary_probe, run_probe, run_q8_projection_probe, run_q_head_kv_fusion_bench,
+    run_q_head_threads_bench, run_qb_rows_bench, run_qkv_pair_bench,
+    run_ratio128_compressor_replay_probe, run_retained_decoder_step_probe,
+    run_retained_engine_measurement, run_retained_sparse_boundary_probe,
+    run_retained_sparse_multimerge_probe, run_rope_kv_store_probe, run_routed_nsg_bench,
+    run_sparse_indexed_attention_probe, LayerExecutor,
 };
 
 #[cfg(test)]
@@ -50309,6 +50545,53 @@ mod tests {
         assert!(text.contains("\"second_long_prefill_bootstrap_chunk_executed\": true"));
         assert!(text.contains("\"complete_8k_transformer_claim\": false"));
         assert!(text.contains("\"output_logits_c0_claim\": false"));
+    }
+
+    #[test]
+    fn writes_stable_long_prefill_sequential_continuation_probe_json() {
+        let report = LongPrefillSequentialContinuationProbeReport {
+            fixture_id: PREFILL_FRONTIER_8192_FIXTURE_ID,
+            frontier_tokens: 8_192,
+            first_chunk_tokens: 4_096,
+            first_chunk_selected_token: 565,
+            continuation_start: 4_096,
+            continuation_tokens: 4_096,
+            sparse_transition_position: 4_099,
+            handoff: PrefillDecodeHandoffReport {
+                layers: 43,
+                raw_rows_per_layer: 128,
+                ratio4_rows_per_layer: 1_024,
+                ratio128_rows_per_layer: 32,
+                blit_copies: 229,
+                command_buffers: 1,
+                host_waits: 1,
+                wall_ms: 1.0,
+                gpu_ms: 0.5,
+            },
+            selected_token: 7,
+            oracle_selected_token: 77_179,
+            exact_logit_checks: 129_280,
+            logit_mismatches: 100,
+            first_mismatch_index: 0,
+            max_abs_error: 0.25,
+            token_checksum: 7,
+            logits_checksum: 11,
+            first_chunk_wall_ms: 3.0,
+            first_chunk_gpu_ms: 2.0,
+            continuation_wall_ms: 5.0,
+            continuation_gpu_ms: 4.0,
+            output_head_gpu_ms: 1.0,
+        };
+        let mut output = Vec::new();
+        write_long_prefill_sequential_continuation_probe_json(&mut output, &report).unwrap();
+        let text = String::from_utf8(output).unwrap();
+        assert!(text.contains(&format!(
+            "\"schema\": \"{LONG_PREFILL_SEQUENTIAL_CONTINUATION_PROBE_SCHEMA}\""
+        )));
+        assert!(text.contains("\"sparse_transition_position\": 4099"));
+        assert!(text.contains("\"output_logits_c0_bitwise_match\": false"));
+        assert!(text.contains("\"sequential_continuation_rejected\": true"));
+        assert!(text.contains("\"native_batched_second_chunk_required\": true"));
     }
 
     #[test]
