@@ -8,8 +8,8 @@ import capture_oracle_v1 as capture
 
 capture.ORACLE_ID = "oracle-v3"
 capture.SOURCE_REPOSITORY = "https://github.com/deathcoder/ds4.git"
-capture.SOURCE_COMMIT = "1f8c45f120819afaa10dcd338f88a9dc2ce7b9eb"
-capture.SOURCE_TREE = "ad248db417c5b2fa58afb63db238d21a99920be8"
+capture.SOURCE_COMMIT = "d35fb12d01d500b9cefcef24092c295687ceaf7e"
+capture.SOURCE_TREE = "617415ee9f8ea7dc176d63dada1d5a7582063824"
 capture.DEFAULT_CONFORMANCE_REPETITIONS = 4
 
 
