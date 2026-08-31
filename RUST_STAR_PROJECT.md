@@ -366,9 +366,16 @@ they describe whenever practical.
   mappings. The final layer-2 HC allocation now directly feeds ten native
   layer-3 ingress/QKV dispatches for the same tile without a host activation
   upload. Nine layer-3 boundaries through rotated Q/KV and finalized KV are C0
-  exact with 9/9 no-copy mappings. Complete layer 3 through its ratio-128
-  compressor state, dense mixed attention, and FFN, then extend the connected
-  schedule across the remaining tiles, layers 4--42, and the output head.
+  exact with 9/9 no-copy mappings. A pinned pre-4,096 layer-3 history snapshot
+  now seeds only the final 128 raw KV rows and 32 ratio-128 compressed KV rows.
+  From that boundary, 76 native dispatches preserve 28/28 no-copy mappings and
+  reproduce 17 ratio-128 state, dense mixed-attention, inverse-RoPE,
+  attention-output, biased routed/shared-FFN, and final-HC outputs bit-for-bit
+  for positions 4,096--4,127. The retained histories produced by the native
+  first-4K transformer are not exact, so an unseeded complete layer-3 tile is
+  explicitly unclaimed. Repair the first-4K layer-3 raw and compressed
+  histories to eliminate both seeds, then extend the connected schedule across
+  the remaining tiles, layers 4--42, and the output head.
   A complete retained
   sequential experiment has now ruled out decoder execution as a shortcut: it
   selected the same terminal token but differed in all 129,280 logits. The

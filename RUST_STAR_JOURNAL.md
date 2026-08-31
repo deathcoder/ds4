@@ -18,6 +18,44 @@ Before changing code:
 Journal entries are reverse chronological. Do not edit old entries to change
 history; add a correction and update the current-state summary.
 
+## 2026-08-31 — Cache-seeded complete layer-3 continuation tile
+
+Objective:
+
+- Complete positions 4,096--4,127 through native layer-3 ratio-128 attention
+  and FFN while preserving the live layer-2-to-layer-3 handoff.
+
+Changes and evidence:
+
+- Captured the complete layer-3 ratio-128 state, two exact attention-history
+  extents, and 15 downstream tensors twice in fresh accepted-oracle-v3
+  processes. All 19 retained tensors are bit-identical across repetitions.
+- Kept the live, exact layer-2 final HC to layer-3 ingress/QKV path. Only the
+  pre-4,096 layer-3 attention history is fixture-seeded: 128 raw KV rows and 32
+  ratio-128 compressed KV rows.
+- Added native ratio-128 state updates, dense mixed FlashAttention, inverse
+  RoPE, attention projection, biased top-k routing, routed/shared experts, and
+  final HC. The connected layer-3 tile matches all 17 state and downstream
+  outputs bit-for-bit over 76 dispatches with 28/28 no-copy model mappings.
+- Direct comparison showed that the native first-4K retained layer-3 histories
+  are not yet exact. The first raw-KV mismatch was `0x3e6ffffe` versus
+  `0x3d700000`; the first compressed-KV mismatch was `0x3cfffffe` versus
+  `0x3c800000`.
+- After the fixture and repeated-capture identities were pinned and validated,
+  removed only the reproducible raw capture directories, reclaiming about
+  4.25 GiB. The accepted oracle/model workspace remains intact.
+
+Decision:
+
+- Claim a complete layer-3 continuation tile only from the pinned pre-4,096
+  history boundary. Do not claim an unseeded layer-3 tile, complete 8K
+  transformer, output-logit equality, or throughput.
+
+Next:
+
+- Diagnose and repair the first-4K layer-3 raw and compressed attention
+  histories, eliminate both fixture seeds, and rerun this exact tile gate.
+
 ## 2026-08-31 — First complete native second-chunk layer-2 tile proven
 
 Objective:

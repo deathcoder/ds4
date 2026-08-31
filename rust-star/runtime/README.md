@@ -400,12 +400,18 @@ rust-star/.work/runtime-target/release/rust-star \
 
 The command completes the first 4K transformer, appends positions
 4,096--8,191 through layers 0/1 and the paired layer-2 compressors, and checks
-the true position-4,099 sparse-attention boundary. It then starts from a
-repeated oracle KQV-back tile at positions 4,096--4,127 and requires 13 native
-batch outputs through the layer-2 final HC update to match bit-for-bit over 26
-dispatches and 14/14 no-copy mappings. This oracle-seeded tail is not a
-complete-layer result; complete 8K transformer, output-logit, and throughput
-claims remain false.
+the true position-4,099 sparse-attention boundary. The first 32-row layer-2
+tile is fully live and exact through its final HC update. That retained Metal
+buffer feeds exact layer-3 ingress and QKV. A pinned oracle-v3 snapshot seeds
+only the pre-4,096 layer-3 attention history: the final 128 raw KV rows and 32
+ratio-128 compressed KV rows. From that boundary, the native executor advances
+the ratio-128 state, runs dense mixed attention, inverse RoPE, attention output,
+biased routed/shared FFN, and final HC bit-for-bit for positions
+4,096--4,127. The connected layer-3 tile uses 76 dispatches, preserves 28/28
+no-copy mappings, and checks 17 state and downstream outputs. The native first
+4K layer-3 history is not yet exact, so this is a cache-seeded complete-tile
+claim, not an unseeded layer-3, complete 8K transformer, output-logit, or
+throughput claim.
 
 To run the connected layer-0 ingress gate:
 

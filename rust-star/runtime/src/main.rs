@@ -3289,14 +3289,15 @@ fn run_long_prefill_continuation_bootstrap_probe_command(arguments: Vec<OsString
         report.layer2_tail_wrapped_model_ranges,
     );
     println!(
-        "layer-3 evidence: the live layer-2 final-HC Metal buffer feeds positions 4096..4127 through {} native ingress/QKV dispatches; {} boundaries are C0 exact with {}/{} no-copy mappings",
+        "layer-3 evidence: live layer-2 final HC feeds positions 4096..4127 through {} ingress/QKV dispatches; a pinned pre-4096 layer-3 attention cache then feeds the complete native tile ({} total dispatches, {} exact outputs, {}/{} no-copy mappings)",
         report.layer3_ingress_dispatches,
-        report.layer3_ingress_exact_outputs,
-        report.layer3_ingress_wrapped_model_ranges,
-        report.layer3_ingress_wrapped_model_ranges,
+        report.layer3_complete_dispatches,
+        report.layer3_complete_exact_outputs,
+        report.layer3_complete_wrapped_model_ranges,
+        report.layer3_complete_wrapped_model_ranges,
     );
     println!(
-        "scope: retained 4K-to-8K bootstrap, one complete 32-row layer-2 tile, and the connected layer-3 ingress/QKV tile; no complete layer-3 tile, complete 8K transformer, output-logit C0, or throughput claim"
+        "scope: retained 4K-to-8K bootstrap plus complete 32-row layer-2 and cache-seeded layer-3 tiles; the unseeded layer-3 history, complete 8K transformer, output-logit C0, and throughput remain unclaimed"
     );
     if let Some(path) = json_path {
         write_long_prefill_continuation_bootstrap_probe_file(&path, &report)?;
@@ -5502,7 +5503,7 @@ fn long_prefill_bootstrap_probe_usage() -> &'static str {
 }
 
 fn long_prefill_continuation_bootstrap_probe_usage() -> &'static str {
-    "usage: rust-star long-prefill-continuation-bootstrap-probe MODEL.gguf [--json PATH]\n\nRuns the first 4,096-token chunk through the complete native transformer, then advances positions 4,096--8,191 through complete layers 0 and 1 plus layer 2 raw KV and paired ratio-4 compressors in the same retained Metal context. It verifies the isolated sparse-attention transition at position 4,099, then executes the production multirow indexer, streaming top-512, indexed attention, inverse RoPE, attention output, FFN, and final HC for positions 4,096--4,127 without an oracle-seeded execution boundary. The live final-HC allocation directly feeds layer 3 through its exact ingress, Q/KV projections, learned norms, RoPE, and KV finalization. This claims one complete native layer-2 tile and a connected layer-3 ingress/QKV tile, but not a complete layer-3 tile, the complete 8K transformer, output-logit C0, or throughput."
+    "usage: rust-star long-prefill-continuation-bootstrap-probe MODEL.gguf [--json PATH]\n\nRuns the first 4,096-token chunk through the complete native transformer, then advances positions 4,096--8,191 through complete layers 0 and 1 plus layer 2 raw KV and paired ratio-4 compressors in the same retained Metal context. It verifies the isolated sparse-attention transition at position 4,099 and completes positions 4,096--4,127 through layer 2 without an oracle-seeded boundary. The live layer-2 final-HC allocation then feeds layer 3 ingress/QKV, ratio-128 state, dense mixed attention, inverse RoPE, attention output, FFN, and final HC. Layer 3 uses the pinned oracle-v3 pre-4,096 raw/compressed attention frontier because the unvalidated native 4K transformer does not yet retain that history exactly. This claims complete native layer-2 and cache-seeded layer-3 tiles, but not an unseeded complete layer-3 tile, the complete 8K transformer, output-logit C0, or throughput."
 }
 
 fn long_prefill_sequential_continuation_probe_usage() -> &'static str {

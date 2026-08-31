@@ -2056,6 +2056,7 @@ int rust_star_metal_run_prefill_layer2_continuation_tail(
     const void *model_mapping,
     uint64_t model_bytes,
     const rust_star_metal_prefill_layer_weights *weights,
+    uint32_t layer_index,
     float *attention_low,
     float *attention_output,
     float *after_attention_hc,
@@ -2089,6 +2090,25 @@ int rust_star_metal_run_prefill_layer3_continuation_ingress(
     float *q_current,
     float *kv_rope,
     float *kv_current,
+    rust_star_metal_sparse_indexed_result *result,
+    char *error,
+    size_t error_bytes);
+
+/* Advances the live layer-3 ratio-128 recurrent state and executes dense
+ * mixed attention over retained raw and compressed KV. */
+int rust_star_metal_run_prefill_layer3_continuation_attention(
+    void *context,
+    const void *model_mapping,
+    uint64_t model_bytes,
+    const rust_star_metal_prefill_compressor_weights *compressor,
+    uint64_t sinks_offset,
+    uint64_t sinks_bytes,
+    float *state_kv,
+    int32_t *state_score_bits,
+    const float *history_kv_seed,
+    const float *compressed_kv_seed,
+    float *kqv_out,
+    float *kqv_back,
     rust_star_metal_sparse_indexed_result *result,
     char *error,
     size_t error_bytes);

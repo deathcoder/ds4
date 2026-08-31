@@ -122,9 +122,49 @@ PREFILL_LAYER2_CONTINUATION_TAIL_FIXTURE = (
 PREFILL_LAYER3_CONTINUATION_INGRESS_FIXTURE = (
     RUST_STAR_DIR / "fixtures" / "prefill-layer3-continuation-ingress-4096-v1"
 )
+PREFILL_LAYER3_CONTINUATION_TAIL_FIXTURE = (
+    RUST_STAR_DIR / "fixtures" / "prefill-layer3-continuation-tail-4096-v1"
+)
 
 
 class KernelFixtureTests(unittest.TestCase):
+    def test_prefill_layer3_continuation_tail_fixture_manifest_and_payloads(self) -> None:
+        manifest = json.loads(
+            (PREFILL_LAYER3_CONTINUATION_TAIL_FIXTURE / "manifest.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        report = validate_differential_fixture(
+            PREFILL_LAYER3_CONTINUATION_TAIL_FIXTURE
+        )
+        self.assertEqual(
+            report["fixture_id"],
+            "dwarfstar-oracle-v3-prefill-layer3-continuation-tail-4096",
+        )
+        self.assertEqual(report["scope"], "layer-segment")
+        self.assertEqual(report["operations"], 9)
+        self.assertEqual(report["tensors"], 19)
+        self.assertEqual(report["verified_bytes"], 18_744_832)
+        self.assertEqual(manifest["scope"]["captured_position_range"], [4096, 4127])
+        self.assertTrue(manifest["capture"]["fresh_process_bitwise_match"])
+        self.assertTrue(manifest["claims"]["live_layer3_qkv_input"])
+        self.assertTrue(manifest["claims"]["oracle_seeded_attention_history"])
+        self.assertFalse(manifest["claims"]["unseeded_attention_history"])
+        self.assertTrue(
+            manifest["claims"][
+                "complete_layer3_tile_from_pinned_attention_history"
+            ]
+        )
+        self.assertFalse(
+            manifest["claims"][
+                "complete_layer3_tile_without_seeded_attention_history"
+            ]
+        )
+        self.assertEqual(
+            [tensor["role"] for tensor in manifest["tensors"]].count("input"),
+            2,
+        )
+
     def test_prefill_layer3_continuation_ingress_fixture_manifest_and_payloads(self) -> None:
         manifest = json.loads(
             (PREFILL_LAYER3_CONTINUATION_INGRESS_FIXTURE / "manifest.json").read_text(
