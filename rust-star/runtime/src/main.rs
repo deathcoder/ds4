@@ -3307,7 +3307,20 @@ fn run_long_prefill_continuation_bootstrap_probe_command(arguments: Vec<OsString
         report.second_layer2_wrapped_model_ranges + report.second_layer3_wrapped_model_ranges,
     );
     println!(
-        "scope: retained 4K-to-8K bootstrap plus two consecutive complete unseeded 32-row layer-2/layer-3 tiles; the complete 8K transformer, output-logit C0, and throughput remain unclaimed"
+        "layer-2/layer-3 loop: positions 4096..8191 executed in {} retained 32-row tiles ({} exact C0 anchors, {} structurally executed unverified tiles, {} ratio-128 emissions, {} dispatches, {}/{} no-copy mappings; final HC/state checksums={}/{}/{})",
+        report.layer23_loop_tiles,
+        report.layer23_loop_c0_anchor_tiles,
+        report.layer23_loop_tiles - report.layer23_loop_c0_anchor_tiles,
+        report.layer23_loop_ratio128_emitted_rows,
+        report.layer23_loop_dispatches,
+        report.layer23_loop_pointer_matches,
+        report.layer23_loop_wrapped_model_ranges,
+        report.layer23_loop_final_hc_checksum,
+        report.layer23_loop_final_state_kv_checksum,
+        report.layer23_loop_final_state_score_checksum,
+    );
+    println!(
+        "scope: complete retained second-chunk execution for layers 2/3, with exact C0 evidence limited to the first two tiles; layers 4..42, complete 8K transformer output, output-logit C0, and throughput remain unclaimed"
     );
     if let Some(path) = json_path {
         write_long_prefill_continuation_bootstrap_probe_file(&path, &report)?;
@@ -5513,7 +5526,7 @@ fn long_prefill_bootstrap_probe_usage() -> &'static str {
 }
 
 fn long_prefill_continuation_bootstrap_probe_usage() -> &'static str {
-    "usage: rust-star long-prefill-continuation-bootstrap-probe MODEL.gguf [--json PATH]\n\nRuns the first 4,096-token chunk through the complete native transformer, then advances positions 4,096--8,191 through complete layers 0 and 1 plus layer 2 raw KV and paired ratio-4 compressors in the same retained Metal context. It verifies the isolated sparse-attention transition at position 4,099 and completes positions 4,096--4,127 through layer 2 without an oracle-seeded boundary. The live layer-2 final-HC allocation and native retained layer-3 raw/compressed attention histories then feed layer 3 ingress/QKV, ratio-128 state, dense mixed attention, inverse RoPE, attention output, FFN, and final HC. This claims complete unseeded native layer-2 and layer-3 tiles, but not the complete 8K transformer, output-logit C0, or throughput."
+    "usage: rust-star long-prefill-continuation-bootstrap-probe MODEL.gguf [--json PATH]\n\nRuns the first 4,096-token chunk through the complete native transformer, then advances positions 4,096--8,191 through complete layers 0 and 1 plus layer 2 raw KV and paired ratio-4 compressors in the same retained Metal context. It verifies the isolated sparse-attention transition at position 4,099 and the first two complete 32-row layer-2/layer-3 tiles against exact fixtures. The same retained context structurally executes all 128 layer-2/layer-3 continuation tiles, including every ratio-128 emission; tiles after the first two are not C0-validated. This does not claim the complete 8K transformer, output-logit C0, throughput, or a speedup."
 }
 
 fn long_prefill_sequential_continuation_probe_usage() -> &'static str {

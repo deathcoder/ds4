@@ -2119,7 +2119,8 @@ int rust_star_metal_run_prefill_layer3_continuation_ingress(
     size_t error_bytes);
 
 /* Advances the live layer-3 ratio-128 recurrent state and executes dense
- * mixed attention over retained raw and compressed KV. */
+ * mixed attention over retained raw and compressed KV. The expected-history
+ * pointers are an optional paired C0 check; pass both or neither. */
 int rust_star_metal_run_prefill_layer3_continuation_attention(
     void *context,
     const void *model_mapping,

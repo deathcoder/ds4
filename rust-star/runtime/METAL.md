@@ -705,7 +705,7 @@ control. The next boundary must carry the retained 4K state through layers
 
 ## Retained 4K-to-8K layer-2 and layer-3 continuation boundary
 
-Schema: `rust-star-long-prefill-continuation-bootstrap-probe-v9`.
+Schema: `rust-star-long-prefill-continuation-bootstrap-probe-v10`.
 
 `long-prefill-continuation-bootstrap-probe` completes the first 4K transformer,
 then preserves that context while 64 native 64-row tiles append positions
@@ -732,15 +732,22 @@ no-copy model mappings. The artifact claims complete unseeded native layer-2
 and layer-3 tiles while keeping complete-8K, output-logit, and throughput claims
 false.
 
-The v9 gate continues the same live context through positions 4,128--4,159.
+The exact gate continues the same live context through positions 4,128--4,159.
 Layer 2 reuses the retained 4K Q batch and keeps the 4,352-row physical raw
 ring's logical origin stable while advancing the causal span. Layer 3 grows its
 retained KV allocation once, appends the first tile on the GPU, and stages the
 same 4,288-key padded Flash geometry used by DwarfStar's 4K continuation batch;
 future rows are masked workspace, while every visible row comes from native
 retained state. The second tile matches 42 outputs across complete layers 2/3,
-112 dispatches, and 45/45 no-copy mappings. The next boundary extends this
-batched schedule through the remaining second-chunk tiles and layers 4--42.
+112 dispatches, and 45/45 no-copy mappings.
+
+The v10 schedule then advances the same allocations through every remaining
+32-row layer-2/layer-3 tile up to position 8,191. The M1 Ultra run completed
+all 128 tiles, emitted all 32 new ratio-128 compressed rows, executed 14,560
+dispatches, and preserved 5,760/5,760 no-copy mappings. The first two tiles
+remain the only C0 anchors; the later 126 tiles are structural retained-state
+evidence and are explicitly not labeled bit-exact. Layers 4--42, the output
+head, complete-8K logits, throughput, and a speedup remain unclaimed.
 
 ## Model residency before measured decode
 

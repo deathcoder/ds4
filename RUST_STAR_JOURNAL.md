@@ -18,6 +18,52 @@ Before changing code:
 Journal entries are reverse chronological. Do not edit old entries to change
 history; add a correction and update the current-state summary.
 
+## 2026-08-31 — Complete retained layer-2/layer-3 second-chunk loop
+
+Objective:
+
+- Carry the proven positions-4,096--4,159 boundary through every remaining
+  32-row layer-2/layer-3 tile in the second 4K chunk without overstating C0.
+
+Changes and evidence:
+
+- Generalized the layer-3 continuation attention boundary through tile start
+  8,160. The retained full-KV allocation now holds 8,192 rows, and the
+  ratio-128 compressed allocation holds all 64 first-8K rows while preserving
+  its first-chunk prefix.
+- Each tile advances the recurrent compressor state row by row and emits on
+  the production 128-token cadence. Expected-history inputs are now an
+  optional paired diagnostic: the first two exact anchors still validate their
+  captured raw/compressed histories, while later tiles consume only native
+  retained state.
+- Two fresh optimized M1 Ultra integrations completed positions 4,096--8,191
+  through layers 2 and 3 in 128 retained tiles. Both observed all 32
+  second-chunk ratio-128 emissions, 14,560 dispatches, and 5,760/5,760 no-copy
+  mappings. Their final layer-3 HC, compressor-KV state, and
+  compressor-score-state checksums were identical at respectively
+  `12338792942122668793`,
+  `11261122877073481448`, and `8521713610302668492`.
+- Evolved the report to
+  `rust-star-long-prefill-continuation-bootstrap-probe-v10`. It records two C0
+  anchor tiles and 126 structurally executed unverified tiles, with explicit
+  false claims for complete layer-2/layer-3 C0, the complete 8K transformer,
+  output-logit C0, and throughput.
+- The live probe retained its existing exact first-two-tile checks. All 307
+  Rust tests, all 86 Python tests, the optimized build, formatting, JSON
+  validation, and diff checks passed.
+
+Decision:
+
+- Claim complete native retained-state execution of the second 4K chunk for
+  layers 2 and 3. Do not claim C0 beyond the first two tiles, complete 8K
+  transformer execution, output-logit equality, throughput, or a speedup.
+
+Next:
+
+- Generalize the same retained batch boundary through layers 4--42, initially
+  using the existing per-layer exact fixtures as anchors, then connect the
+  output head and compare all 129,280 8K logits.
+
 ## 2026-08-31 — Second consecutive unseeded layer-3 continuation tile
 
 Objective:

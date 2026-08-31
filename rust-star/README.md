@@ -380,9 +380,14 @@ layout reproduce another 16 complete layer-2 outputs and 26 complete layer-3
 outputs bit-for-bit. The second tile uses 36+76 dispatches and preserves
 45/45 no-copy model mappings; no first-tile replay or oracle activation upload
 is present. The compact repeated-oracle fixture retains 44 tensors and about
-37 MiB instead of the 9 GiB diagnostic captures. Extending the native second
-chunk through the remaining tiles and layers 4--42, then matching the 8K
-output logits, remains open.
+37 MiB instead of the 9 GiB diagnostic captures. The retained executor now
+continues that schedule through all 128 layer-2/layer-3 tiles ending at position
+8,191. The M1 Ultra integration covered 32 ratio-128 emissions, 14,560
+dispatches, and 5,760/5,760 no-copy mappings. The first two tiles remain the
+only exact C0 anchors; the later 126 tiles are conservatively reported as
+structural retained-state execution. Extending the live chain through layers
+4--42 and the output head, then matching the 8K logits, remains open. No
+throughput or speedup claim is attached to this gate.
 The first complete second-half experiment deliberately tested whether the
 proven retained decoder schedule could serve as a correctness-preserving
 shortcut. `long-prefill-sequential-continuation-probe` now generalizes the

@@ -409,14 +409,18 @@ runs dense mixed attention, inverse RoPE, attention output, biased
 routed/shared FFN, and final HC bit-for-bit for positions 4,096--4,127. The
 connected layer-3 tile uses 76 dispatches, preserves 28/28 no-copy mappings,
 and checks 17 state and downstream outputs. The report schema is
-`rust-star-long-prefill-continuation-bootstrap-probe-v9`. The same retained
+`rust-star-long-prefill-continuation-bootstrap-probe-v10`. The same retained
 context then continues positions 4,128--4,159 through another exact complete
 layer-2/layer-3 pair. The second layer-2 tile reuses the native Q batch and
 position-aware raw ring; layer 3 consumes the first tile's GPU-appended KV and
 the 4,288-key production Flash geometry. Its 42 exact outputs use 112
-dispatches and 45/45 no-copy mappings. The report claims two consecutive
-unseeded complete layer-3 tiles, but not the complete 8K transformer,
-output-logit C0, or throughput.
+dispatches and 45/45 no-copy mappings. It then keeps the same allocations live
+while executing all 128 layer-2/layer-3 tiles through position 8,191. The M1
+Ultra gate covered all 32 ratio-128 emissions, 14,560 dispatches, and
+5,760/5,760 no-copy mappings. Only the first two tiles are C0 anchors; the
+remaining 126 are explicitly structural evidence. The report does not claim
+layers 4--42, the complete 8K transformer, output-logit C0, throughput, or a
+speedup.
 
 The repair has two parts. At 4K, layer 2 has 1,024 ratio-4 compressed rows and
 must use DwarfStar's indexed top-512 path rather than dense mixed attention.

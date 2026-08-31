@@ -29,7 +29,7 @@ pub const PREFILL_LAYERS012_COMPRESSOR_LOOP_PROBE_SCHEMA: &str =
     "rust-star-prefill-layers012-compressor-loop-probe-v1";
 pub const LONG_PREFILL_BOOTSTRAP_PROBE_SCHEMA: &str = "rust-star-long-prefill-bootstrap-probe-v1";
 pub const LONG_PREFILL_CONTINUATION_BOOTSTRAP_PROBE_SCHEMA: &str =
-    "rust-star-long-prefill-continuation-bootstrap-probe-v9";
+    "rust-star-long-prefill-continuation-bootstrap-probe-v10";
 pub const LONG_PREFILL_SEQUENTIAL_CONTINUATION_PROBE_SCHEMA: &str =
     "rust-star-long-prefill-sequential-continuation-probe-v1";
 pub const LONG_PREFILL_TRANSFORMER_PROBE_SCHEMA: &str =
@@ -3718,6 +3718,15 @@ pub struct LongPrefillContinuationBootstrapProbeReport {
     pub second_layer3_dispatches: u32,
     pub second_layer3_wrapped_model_ranges: u32,
     pub second_layer3_exact_outputs: u32,
+    pub layer23_loop_tiles: u32,
+    pub layer23_loop_c0_anchor_tiles: u32,
+    pub layer23_loop_ratio128_emitted_rows: u32,
+    pub layer23_loop_dispatches: u32,
+    pub layer23_loop_wrapped_model_ranges: u32,
+    pub layer23_loop_pointer_matches: u32,
+    pub layer23_loop_final_hc_checksum: u64,
+    pub layer23_loop_final_state_kv_checksum: u64,
+    pub layer23_loop_final_state_score_checksum: u64,
 }
 
 #[derive(Clone, Debug)]
@@ -7738,6 +7747,15 @@ pub fn write_long_prefill_continuation_bootstrap_probe_json<W: Write>(
         || report.second_layer3_dispatches != 76
         || report.second_layer3_wrapped_model_ranges != 28
         || report.second_layer3_exact_outputs != 26
+        || report.layer23_loop_tiles != 128
+        || report.layer23_loop_c0_anchor_tiles != 2
+        || report.layer23_loop_ratio128_emitted_rows != 32
+        || report.layer23_loop_dispatches != 14_560
+        || report.layer23_loop_wrapped_model_ranges != 5_760
+        || report.layer23_loop_pointer_matches != report.layer23_loop_wrapped_model_ranges
+        || report.layer23_loop_final_hc_checksum == 0
+        || report.layer23_loop_final_state_kv_checksum == 0
+        || report.layer23_loop_final_state_score_checksum == 0
         || !report.sparse_transition.wall_ms.is_finite()
         || !report.sparse_transition.gpu_ms.is_finite()
         || report.sparse_transition.wall_ms <= 0.0
@@ -7825,7 +7843,7 @@ pub fn write_long_prefill_continuation_bootstrap_probe_json<W: Write>(
     crate::artifact::write_json_string(output, report.second_tile_fixture_id)?;
     write!(
         output,
-        ", \"start\": {}, \"end\": {}, \"rows\": {}, \"native_retained_history\": true, \"layer2\": {{\"dispatches\": {}, \"wrapped_model_ranges\": {}, \"pointer_matches\": {}, \"exact_outputs\": {}, \"complete_tile_c0_bitwise_match\": true}}, \"layer3\": {{\"dispatches\": {}, \"wrapped_model_ranges\": {}, \"pointer_matches\": {}, \"exact_outputs\": {}, \"complete_tile_c0_bitwise_match\": true}}, \"consecutive_complete_layer3_tiles\": 2}},\n  \"checksums\": {{\"continuation_token_ids\": {}}},\n  \"timing\": {{\"continuation_summed_wall_ms\": {:.6}, \"continuation_summed_gpu_ms\": {:.6}}},\n  \"accepted_oracle_token_stream\": true,\n  \"native_batch_schedule\": true,\n  \"second_long_prefill_bootstrap_chunk_executed\": true,\n  \"layer2_sparse_transition_c0_claim\": true,\n  \"layer2_native_complete_tile_c0_claim\": true,\n  \"live_layer2_to_layer3_handoff_c0_claim\": true,\n  \"unseeded_layer3_native_complete_tile_claim\": true,\n  \"two_consecutive_unseeded_layer3_tiles_claim\": true,\n  \"complete_8k_transformer_claim\": false,\n  \"output_logits_c0_claim\": false,\n  \"throughput_claim\": false\n}}\n",
+        ", \"start\": {}, \"end\": {}, \"rows\": {}, \"native_retained_history\": true, \"layer2\": {{\"dispatches\": {}, \"wrapped_model_ranges\": {}, \"pointer_matches\": {}, \"exact_outputs\": {}, \"complete_tile_c0_bitwise_match\": true}}, \"layer3\": {{\"dispatches\": {}, \"wrapped_model_ranges\": {}, \"pointer_matches\": {}, \"exact_outputs\": {}, \"complete_tile_c0_bitwise_match\": true}}, \"consecutive_complete_layer3_tiles\": 2}},\n  \"layer23_continuation_loop\": {{\"start\": 4096, \"end\": 8191, \"tile_rows\": 32, \"tiles\": {}, \"c0_anchor_tiles\": {}, \"structurally_executed_unverified_tiles\": {}, \"ratio128_emitted_rows\": {}, \"dispatches\": {}, \"wrapped_model_ranges\": {}, \"pointer_matches\": {}, \"final_checksums\": {{\"layer3_hc\": {}, \"layer3_compressor_state_kv\": {}, \"layer3_compressor_state_score\": {}}}, \"persistent_context\": true, \"native_retained_state\": true, \"all_tiles_c0_claim\": false}},\n  \"checksums\": {{\"continuation_token_ids\": {}}},\n  \"timing\": {{\"continuation_summed_wall_ms\": {:.6}, \"continuation_summed_gpu_ms\": {:.6}}},\n  \"accepted_oracle_token_stream\": true,\n  \"native_batch_schedule\": true,\n  \"second_long_prefill_bootstrap_chunk_executed\": true,\n  \"layer2_sparse_transition_c0_claim\": true,\n  \"layer2_native_complete_tile_c0_claim\": true,\n  \"live_layer2_to_layer3_handoff_c0_claim\": true,\n  \"unseeded_layer3_native_complete_tile_claim\": true,\n  \"two_consecutive_unseeded_layer3_tiles_claim\": true,\n  \"complete_layer23_second_chunk_execution_claim\": true,\n  \"complete_layer23_second_chunk_c0_claim\": false,\n  \"complete_8k_transformer_claim\": false,\n  \"output_logits_c0_claim\": false,\n  \"throughput_claim\": false\n}}\n",
         report.second_tile_start,
         report.second_tile_start + report.second_tile_rows - 1,
         report.second_tile_rows,
@@ -7837,6 +7855,16 @@ pub fn write_long_prefill_continuation_bootstrap_probe_json<W: Write>(
         report.second_layer3_wrapped_model_ranges,
         report.second_layer3_wrapped_model_ranges,
         report.second_layer3_exact_outputs,
+        report.layer23_loop_tiles,
+        report.layer23_loop_c0_anchor_tiles,
+        report.layer23_loop_tiles - report.layer23_loop_c0_anchor_tiles,
+        report.layer23_loop_ratio128_emitted_rows,
+        report.layer23_loop_dispatches,
+        report.layer23_loop_wrapped_model_ranges,
+        report.layer23_loop_pointer_matches,
+        report.layer23_loop_final_hc_checksum,
+        report.layer23_loop_final_state_kv_checksum,
+        report.layer23_loop_final_state_score_checksum,
         report.token_checksum,
         report.summed_wall_ms,
         report.summed_gpu_ms,
@@ -20743,6 +20771,21 @@ mod imp {
         gpu_ms: f64,
     }
 
+    #[derive(Default)]
+    struct RawLayer23ContinuationLoopResult {
+        tiles: u32,
+        c0_anchor_tiles: u32,
+        ratio128_emitted_rows: u32,
+        dispatches: u32,
+        wrapped_model_ranges: u32,
+        pointer_matches: u32,
+        final_hc_checksum: u64,
+        final_state_kv_checksum: u64,
+        final_state_score_checksum: u64,
+        wall_ms: f64,
+        gpu_ms: f64,
+    }
+
     #[repr(C)]
     struct RawLayer0Extension {
         hc_ffn_fn_offset: u64,
@@ -25830,7 +25873,7 @@ mod imp {
             FRONTIER_ROWS,
             Some(&tokens),
         )?;
-        let (sparse_transition, layer3_complete, second_layer2, second_layer3) =
+        let (sparse_transition, layer3_complete, second_layer2, second_layer3, layer23_loop) =
             run_prefill_layer2_sparse_transition_probe(model, &context)?;
         drop(context);
         if continuation.is_some() {
@@ -25877,6 +25920,15 @@ mod imp {
             second_layer3_dispatches: second_layer3.dispatches,
             second_layer3_wrapped_model_ranges: second_layer3.wrapped_model_ranges,
             second_layer3_exact_outputs: 26,
+            layer23_loop_tiles: layer23_loop.tiles,
+            layer23_loop_c0_anchor_tiles: layer23_loop.c0_anchor_tiles,
+            layer23_loop_ratio128_emitted_rows: layer23_loop.ratio128_emitted_rows,
+            layer23_loop_dispatches: layer23_loop.dispatches,
+            layer23_loop_wrapped_model_ranges: layer23_loop.wrapped_model_ranges,
+            layer23_loop_pointer_matches: layer23_loop.pointer_matches,
+            layer23_loop_final_hc_checksum: layer23_loop.final_hc_checksum,
+            layer23_loop_final_state_kv_checksum: layer23_loop.final_state_kv_checksum,
+            layer23_loop_final_state_score_checksum: layer23_loop.final_state_score_checksum,
         })
     }
 
@@ -41800,6 +41852,7 @@ mod imp {
         RawSparseIndexedResult,
         RawSparseIndexedResult,
         RawSparseIndexedResult,
+        RawLayer23ContinuationLoopResult,
     )> {
         let q_b = exact_tensor(model, "blk.2.attn_q_b.weight", 8, &[1024, 32768])?;
         let q_weight = exact_tensor(model, "blk.2.indexer.attn_q_b.weight", 1, &[1024, 8192])?;
@@ -43704,6 +43757,230 @@ mod imp {
                 "Metal second prefill layer-3 continuation tile metadata is invalid",
             ));
         }
+        let mut layer23_loop = RawLayer23ContinuationLoopResult {
+            tiles: 2,
+            c0_anchor_tiles: 2,
+            ratio128_emitted_rows: 0,
+            dispatches: raw.dispatches - 17
+                + layer3_raw.dispatches
+                + second_layer2_raw.dispatches
+                + second_layer3_raw.dispatches,
+            wrapped_model_ranges: raw.wrapped_model_ranges - 4
+                + layer3_raw.wrapped_model_ranges
+                + second_layer2_raw.wrapped_model_ranges
+                + second_layer3_raw.wrapped_model_ranges,
+            pointer_matches: raw.pointer_matches - 4
+                + layer3_raw.pointer_matches
+                + second_layer2_raw.pointer_matches
+                + second_layer3_raw.pointer_matches,
+            wall_ms: raw.wall_ms
+                + layer3_raw.wall_ms
+                + second_layer2_raw.wall_ms
+                + second_layer3_raw.wall_ms,
+            gpu_ms: raw.gpu_ms
+                + layer3_raw.gpu_ms
+                + second_layer2_raw.gpu_ms
+                + second_layer3_raw.gpu_ms,
+            ..RawLayer23ContinuationLoopResult::default()
+        };
+        for tile_start in (4160_u32..=8160_u32).step_by(32) {
+            let mut tile_layer2 = RawSparseIndexedResult::default();
+            let mut tile_layer3 = RawSparseIndexedResult::default();
+            let layer2_sparse_succeeded = unsafe {
+                rust_star_metal_run_prefill_layer2_continuation_sparse_tile(
+                    context.0,
+                    model.mapping_pointer(),
+                    model.bytes(),
+                    q_weight.absolute_offset,
+                    q_weight.bytes,
+                    indexer_weight.absolute_offset,
+                    indexer_weight.bytes,
+                    sinks.absolute_offset,
+                    sinks.bytes,
+                    tile_start,
+                    actual_second_l2_scores.as_mut_ptr(),
+                    actual_second_l2_topk.as_mut_ptr(),
+                    actual_second_l2_kqv_back.as_mut_ptr(),
+                    &mut tile_layer2,
+                    error.as_mut_ptr(),
+                    error.len(),
+                )
+            };
+            if layer2_sparse_succeeded == 0 {
+                return Err(Error::invalid(format!(
+                    "Metal prefill layer-2 continuation loop sparse tile {tile_start} failed: {}",
+                    error_text(&error)
+                )));
+            }
+            let layer2_tail_succeeded = unsafe {
+                rust_star_metal_run_prefill_layer2_continuation_tail(
+                    context.0,
+                    model.mapping_pointer(),
+                    model.bytes(),
+                    &tail_weights,
+                    2,
+                    tile_start,
+                    actual_second_l2_attention_low.as_mut_ptr(),
+                    actual_second_l2_attention_output.as_mut_ptr(),
+                    actual_second_l2_after_attention_hc.as_mut_ptr(),
+                    actual_second_l2_ffn_current.as_mut_ptr(),
+                    actual_second_l2_ffn_norm.as_mut_ptr(),
+                    actual_second_l2_router_logits.as_mut_ptr(),
+                    actual_second_l2_router_probs.as_mut_ptr(),
+                    actual_second_l2_router_selected.as_mut_ptr(),
+                    actual_second_l2_router_weights.as_mut_ptr(),
+                    actual_second_l2_routed_mid.as_mut_ptr(),
+                    actual_second_l2_routed_output.as_mut_ptr(),
+                    actual_second_l2_shared_output.as_mut_ptr(),
+                    actual_second_l2_after_ffn_hc.as_mut_ptr(),
+                    &mut tile_layer2,
+                    error.as_mut_ptr(),
+                    error.len(),
+                )
+            };
+            if layer2_tail_succeeded == 0 {
+                return Err(Error::invalid(format!(
+                    "Metal prefill layer-2 continuation loop tail {tile_start} failed: {}",
+                    error_text(&error)
+                )));
+            }
+            let layer3_ingress_succeeded = unsafe {
+                rust_star_metal_run_prefill_layer3_continuation_ingress(
+                    context.0,
+                    model.mapping_pointer(),
+                    model.bytes(),
+                    &layer3_weights,
+                    tile_start,
+                    actual_second_l3_hc_attn_pre.as_mut_ptr(),
+                    actual_second_l3_attn_norm.as_mut_ptr(),
+                    actual_second_l3_q_lora.as_mut_ptr(),
+                    actual_second_l3_q_lora_norm.as_mut_ptr(),
+                    actual_second_l3_kv_raw.as_mut_ptr(),
+                    actual_second_l3_kv_norm.as_mut_ptr(),
+                    actual_second_l3_q_current.as_mut_ptr(),
+                    actual_second_l3_kv_rope.as_mut_ptr(),
+                    actual_second_l3_kv_current.as_mut_ptr(),
+                    &mut tile_layer3,
+                    error.as_mut_ptr(),
+                    error.len(),
+                )
+            };
+            if layer3_ingress_succeeded == 0 {
+                return Err(Error::invalid(format!(
+                    "Metal prefill layer-3 continuation loop ingress {tile_start} failed: {}",
+                    error_text(&error)
+                )));
+            }
+            let layer3_attention_succeeded = unsafe {
+                rust_star_metal_run_prefill_layer3_continuation_attention(
+                    context.0,
+                    model.mapping_pointer(),
+                    model.bytes(),
+                    &layer3_compressor,
+                    layer3_sinks.absolute_offset,
+                    layer3_sinks.bytes,
+                    tile_start,
+                    actual_second_l3_state_kv.as_mut_ptr(),
+                    actual_second_l3_state_score.as_mut_ptr(),
+                    std::ptr::null(),
+                    std::ptr::null(),
+                    actual_second_l3_kqv_out.as_mut_ptr(),
+                    actual_second_l3_kqv_back.as_mut_ptr(),
+                    &mut tile_layer3,
+                    error.as_mut_ptr(),
+                    error.len(),
+                )
+            };
+            if layer3_attention_succeeded == 0 {
+                return Err(Error::invalid(format!(
+                    "Metal prefill layer-3 continuation loop attention {tile_start} failed: {}",
+                    error_text(&error)
+                )));
+            }
+            let layer3_tail_succeeded = unsafe {
+                rust_star_metal_run_prefill_layer2_continuation_tail(
+                    context.0,
+                    model.mapping_pointer(),
+                    model.bytes(),
+                    &layer3_weights,
+                    3,
+                    tile_start,
+                    actual_second_l3_attention_low.as_mut_ptr(),
+                    actual_second_l3_attention_output.as_mut_ptr(),
+                    actual_second_l3_after_attention_hc.as_mut_ptr(),
+                    actual_second_l3_ffn_current.as_mut_ptr(),
+                    actual_second_l3_ffn_norm.as_mut_ptr(),
+                    actual_second_l3_router_logits.as_mut_ptr(),
+                    actual_second_l3_router_probs.as_mut_ptr(),
+                    actual_second_l3_router_selected.as_mut_ptr(),
+                    actual_second_l3_router_weights.as_mut_ptr(),
+                    actual_second_l3_routed_mid.as_mut_ptr(),
+                    actual_second_l3_routed_output.as_mut_ptr(),
+                    actual_second_l3_shared_output.as_mut_ptr(),
+                    actual_second_l3_after_ffn_hc.as_mut_ptr(),
+                    &mut tile_layer3,
+                    error.as_mut_ptr(),
+                    error.len(),
+                )
+            };
+            if layer3_tail_succeeded == 0 {
+                return Err(Error::invalid(format!(
+                    "Metal prefill layer-3 continuation loop tail {tile_start} failed: {}",
+                    error_text(&error)
+                )));
+            }
+            let emitted_row = u32::from((tile_start + 32) % 128 == 0);
+            let expected_layer3_dispatches = 76 + 7 * emitted_row;
+            if tile_layer2.dispatches != 36
+                || tile_layer2.wrapped_model_ranges != 17
+                || tile_layer2.pointer_matches != 17
+                || !tile_layer2.wall_ms.is_finite()
+                || tile_layer2.wall_ms <= 0.0
+                || !tile_layer2.gpu_ms.is_finite()
+                || tile_layer2.gpu_ms <= 0.0
+                || tile_layer3.dispatches != expected_layer3_dispatches
+                || tile_layer3.wrapped_model_ranges != 28
+                || tile_layer3.pointer_matches != 28
+                || !tile_layer3.wall_ms.is_finite()
+                || tile_layer3.wall_ms <= 0.0
+                || !tile_layer3.gpu_ms.is_finite()
+                || tile_layer3.gpu_ms <= 0.0
+            {
+                return Err(Error::invalid(format!(
+                    "Metal layer-2/layer-3 continuation loop tile {tile_start} metadata is invalid"
+                )));
+            }
+            layer23_loop.tiles += 1;
+            layer23_loop.ratio128_emitted_rows += emitted_row;
+            layer23_loop.dispatches += tile_layer2.dispatches + tile_layer3.dispatches;
+            layer23_loop.wrapped_model_ranges +=
+                tile_layer2.wrapped_model_ranges + tile_layer3.wrapped_model_ranges;
+            layer23_loop.pointer_matches +=
+                tile_layer2.pointer_matches + tile_layer3.pointer_matches;
+            layer23_loop.wall_ms += tile_layer2.wall_ms + tile_layer3.wall_ms;
+            layer23_loop.gpu_ms += tile_layer2.gpu_ms + tile_layer3.gpu_ms;
+        }
+        layer23_loop.final_hc_checksum = checksum_f32(&actual_second_l3_after_ffn_hc);
+        layer23_loop.final_state_kv_checksum = checksum_f32(&actual_second_l3_state_kv);
+        layer23_loop.final_state_score_checksum = checksum_i32(&actual_second_l3_state_score);
+        if layer23_loop.tiles != 128
+            || layer23_loop.c0_anchor_tiles != 2
+            || layer23_loop.ratio128_emitted_rows != 32
+            || layer23_loop.dispatches != 14_560
+            || layer23_loop.wrapped_model_ranges != 5_760
+            || layer23_loop.pointer_matches != 5_760
+            || layer23_loop.final_hc_checksum == 0
+            || layer23_loop.final_state_kv_checksum == 0
+            || layer23_loop.final_state_score_checksum == 0
+            || !layer23_loop.wall_ms.is_finite()
+            || layer23_loop.wall_ms <= 0.0
+            || !layer23_loop.gpu_ms.is_finite()
+            || layer23_loop.gpu_ms <= 0.0
+        {
+            return Err(Error::invalid(
+                "Metal complete layer-2/layer-3 continuation loop metadata is invalid",
+            ));
+        }
         Ok((
             SparseIndexedAttentionProbeReport {
                 fixture_id: PREFILL_LAYER2_SPARSE_TRANSITION_FIXTURE_ID,
@@ -43730,6 +44007,7 @@ mod imp {
             layer3_raw,
             second_layer2_raw,
             second_layer3_raw,
+            layer23_loop,
         ))
     }
 
@@ -53135,6 +53413,15 @@ mod tests {
             second_layer3_dispatches: 76,
             second_layer3_wrapped_model_ranges: 28,
             second_layer3_exact_outputs: 26,
+            layer23_loop_tiles: 128,
+            layer23_loop_c0_anchor_tiles: 2,
+            layer23_loop_ratio128_emitted_rows: 32,
+            layer23_loop_dispatches: 14_560,
+            layer23_loop_wrapped_model_ranges: 5_760,
+            layer23_loop_pointer_matches: 5_760,
+            layer23_loop_final_hc_checksum: 12,
+            layer23_loop_final_state_kv_checksum: 13,
+            layer23_loop_final_state_score_checksum: 14,
         };
         let mut output = Vec::new();
         write_long_prefill_continuation_bootstrap_probe_json(&mut output, &report).unwrap();
@@ -53158,6 +53445,12 @@ mod tests {
         assert!(text.contains("\"start\": 4128, \"end\": 4159"));
         assert!(text.contains("\"consecutive_complete_layer3_tiles\": 2"));
         assert!(text.contains("\"two_consecutive_unseeded_layer3_tiles_claim\": true"));
+        assert!(text.contains("\"layer23_continuation_loop\": {\"start\": 4096"));
+        assert!(text.contains("\"tiles\": 128, \"c0_anchor_tiles\": 2"));
+        assert!(text.contains("\"structurally_executed_unverified_tiles\": 126"));
+        assert!(text.contains("\"ratio128_emitted_rows\": 32"));
+        assert!(text.contains("\"complete_layer23_second_chunk_execution_claim\": true"));
+        assert!(text.contains("\"complete_layer23_second_chunk_c0_claim\": false"));
         assert!(text.contains("\"layer2_sparse_transition_c0_claim\": true"));
         assert!(text.contains("\"selection_kernel\": \"kernel_topk_stream512\""));
         assert!(text.contains("\"input_boundary\": \"native_multirow_sparse_kqv_back\""));

@@ -46243,7 +46243,8 @@ int rust_star_metal_run_prefill_layer3_continuation_attention(
     if (!opaque_context || !model_mapping || !compressor || !state_kv ||
         tile_start < 4096u || tile_start > 8160u ||
         (tile_start-4096u)%rows != 0u ||
-        !state_score_bits || !expected_history_kv || !expected_compressed_kv ||
+        !state_score_bits ||
+        ((!expected_history_kv) != (!expected_compressed_kv)) ||
         !kqv_out || !kqv_back || !result) {
         return fail_with_message(error, error_bytes,
             @"prefill layer-3 continuation attention received a null input");
@@ -46273,6 +46274,7 @@ int rust_star_metal_run_prefill_layer3_continuation_attention(
         const NSUInteger current_bytes = (NSUInteger)rows*row_bytes;
         const NSUInteger compressed_bytes =
             (NSUInteger)retained_compressed_rows*row_bytes;
+        const NSUInteger compressed_capacity_bytes = 64u*row_bytes;
         const NSUInteger q_bytes = (NSUInteger)rows*q_dim*sizeof(float);
         const NSUInteger full_capacity_bytes = 8192u*row_bytes;
         if (context.prefillLayer3FullKv &&
@@ -46288,6 +46290,21 @@ int rust_star_metal_run_prefill_layer3_continuation_attention(
                    context.prefillLayer3FullKv.contents,
                    context.prefillLayer3FullKv.length);
             context.prefillLayer3FullKv = grown_full_kv;
+        }
+        if (context.prefillLayer3AttnCompressed &&
+            context.prefillLayer3AttnCompressed.length <
+                compressed_capacity_bytes) {
+            id<MTLBuffer> grown_compressed = [context.device
+                newBufferWithLength:compressed_capacity_bytes
+                options:MTLResourceStorageModeShared];
+            if (!grown_compressed) {
+                return fail_with_message(error, error_bytes,
+                    @"failed to grow retained layer-3 compressed-KV capacity");
+            }
+            memcpy(grown_compressed.contents,
+                   context.prefillLayer3AttnCompressed.contents,
+                   context.prefillLayer3AttnCompressed.length);
+            context.prefillLayer3AttnCompressed = grown_compressed;
         }
         if (context.prefillKvRows != 8192u ||
             !context.prefillLayer3ContinuationNorm ||
@@ -46347,6 +46364,12 @@ int rust_star_metal_run_prefill_layer3_continuation_attention(
             projected_bytes);
         RUST_STAR_NEW_L3_CONTINUATION_ATTN_BUFFER(projected_score_buffer,
             projected_bytes);
+        RUST_STAR_NEW_L3_CONTINUATION_ATTN_BUFFER(packed_kv_buffer,
+            (NSUInteger)ratio*head_dim*sizeof(float));
+        RUST_STAR_NEW_L3_CONTINUATION_ATTN_BUFFER(packed_score_buffer,
+            (NSUInteger)ratio*head_dim*sizeof(float));
+        RUST_STAR_NEW_L3_CONTINUATION_ATTN_BUFFER(softmax_buffer,
+            (NSUInteger)ratio*head_dim*sizeof(float));
         RUST_STAR_NEW_L3_CONTINUATION_ATTN_BUFFER(staged_kv_buffer, staged_bytes);
         RUST_STAR_NEW_L3_CONTINUATION_ATTN_BUFFER(mask_buffer, mask_bytes);
         RUST_STAR_NEW_L3_CONTINUATION_ATTN_BUFFER(block_buffer, block_bytes);
@@ -46357,6 +46380,7 @@ int rust_star_metal_run_prefill_layer3_continuation_attention(
             rows*sizeof(int32_t));
 #undef RUST_STAR_NEW_L3_CONTINUATION_ATTN_BUFFER
         if (!projected_kv_buffer || !projected_score_buffer ||
+            !packed_kv_buffer || !packed_score_buffer || !softmax_buffer ||
             !staged_kv_buffer || !mask_buffer || !block_buffer || !pad_buffer ||
             !heads_buffer || !kqv_out_buffer || !position_buffer) {
             return fail_with_message(error, error_bytes,
@@ -46450,8 +46474,13 @@ int rust_star_metal_run_prefill_layer3_continuation_attention(
         RUST_STAR_ENCODE_L3_CONTINUATION_PROJECTION(2, projected_score_buffer);
 #undef RUST_STAR_ENCODE_L3_CONTINUATION_PROJECTION
 
+        uint32_t emitted_rows = 0u;
         for (uint32_t row = 0; row < rows; row++) {
             const NSUInteger offset = (NSUInteger)row*row_bytes;
+            const uint32_t position = tile_start+row;
+            const BOOL emit = (position+1u)%ratio == 0u;
+            const NSUInteger output_offset = emit
+                ? (NSUInteger)((position+1u)/ratio-1u)*row_bytes : 0u;
             if (!encode_projected_compressor_step(
                     context, encoder,
                     projected_kv_buffer, offset,
@@ -46460,12 +46489,14 @@ int rust_star_metal_run_prefill_layer3_continuation_attention(
                     model_buffers[3], inner[3],
                     context.prefillLayer3AttnStateKv,
                     context.prefillLayer3AttnStateScore,
-                    nil, nil, nil, nil, 0,
+                    packed_kv_buffer, packed_score_buffer, softmax_buffer,
+                    context.prefillLayer3AttnCompressed, output_offset,
                     width, head_dim, ratio,
-                    tile_start+row, NO, NO)) {
+                    position, emit, NO)) {
                 return fail_with_message(error, error_bytes,
                     @"failed to advance layer-3 continuation ratio-128 state");
             }
+            emitted_rows += emit ? 1u : 0u;
         }
 
 #define RUST_STAR_ENCODE_L3_CONTINUATION_COPY(input, input_offset, output_offset, elements) do { \
@@ -46487,7 +46518,7 @@ int rust_star_metal_run_prefill_layer3_continuation_attention(
         RUST_STAR_ENCODE_L3_CONTINUATION_COPY(
             context.prefillLayer3AttnCompressed, 0,
             (NSUInteger)raw_rows*staged_row_bytes,
-            retained_compressed_rows*width);
+            staged_compressed_rows*width);
 #undef RUST_STAR_ENCODE_L3_CONTINUATION_COPY
 
         [encoder setComputePipelineState:context.flashBlkPipeline];
@@ -46542,7 +46573,9 @@ int rust_star_metal_run_prefill_layer3_continuation_attention(
         const __fp16 *staged_half = staged_kv_buffer.contents;
         const NSUInteger history_validation_offset =
             (NSUInteger)(history_rows-validated_history_rows)*width;
-        for (uint32_t index = 0; index < validated_history_rows*width; index++) {
+        for (uint32_t index = 0;
+             expected_history_kv && index < validated_history_rows*width;
+             index++) {
             const __fp16 expected_half = (__fp16)expected_history_kv[index];
             uint16_t actual_bits = 0u;
             uint16_t expected_bits = 0u;
@@ -46558,7 +46591,8 @@ int rust_star_metal_run_prefill_layer3_continuation_attention(
         }
         const NSUInteger compressed_offset = (NSUInteger)raw_rows*width;
         for (uint32_t index = 0;
-             index < retained_compressed_rows*width; index++) {
+             expected_compressed_kv &&
+                 index < retained_compressed_rows*width; index++) {
             const __fp16 expected_half = (__fp16)expected_compressed_kv[index];
             uint16_t actual_bits = 0u;
             uint16_t expected_bits = 0u;
@@ -46578,7 +46612,7 @@ int rust_star_metal_run_prefill_layer3_continuation_attention(
         memcpy(kqv_out, kqv_out_buffer.contents, q_bytes);
         memcpy(kqv_back, heads_buffer.contents, q_bytes);
         context.prefillLayer3ContinuationHeads = heads_buffer;
-        result->dispatches += 40u;
+        result->dispatches += 40u+7u*emitted_rows;
         result->wrapped_model_ranges += 5u;
         for (uint32_t index = 0; index < 5u; index++) {
             if (matches[index]) result->pointer_matches++;

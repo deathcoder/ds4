@@ -383,8 +383,12 @@ they describe whenever practical.
   recurrent-state, attention, FFN, and final-HC outputs over 76 dispatches and
   28/28 mappings. The layer-2 raw-ring origin and layer-3 production Flash key
   geometry are position-aware, and the first layer-3 tile appends its finalized
-  KV directly into retained history. Extend the connected unseeded schedule
-  across the remaining tiles, layers 4--42, and the output head.
+  KV directly into retained history. The same context now executes all 128
+  layer-2/layer-3 continuation tiles through position 8,191, including all 32
+  ratio-128 emissions, over 14,560 dispatches with 5,760/5,760 no-copy model
+  mappings. The first two tiles are exact C0 anchors; the later 126 are
+  structural execution evidence only. Extend this retained chain through
+  layers 4--42 and the output head, then match the complete 8K logits.
   A complete retained
   sequential experiment has now ruled out decoder execution as a shortcut: it
   selected the same terminal token but differed in all 129,280 logits. The
