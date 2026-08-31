@@ -18,6 +18,75 @@ Before changing code:
 Journal entries are reverse chronological. Do not edit old entries to change
 history; add a correction and update the current-state summary.
 
+## 2026-08-31 — First native-batched 8K sparse transition reached C0
+
+Objective:
+
+- Locate the first exact divergence in the retained 4K-to-8K bootstrap and
+  prove layer 2's position-4,099 sparse attention with the same geometry as the
+  oracle's second 4,096-token prefill chunk.
+
+Changes and evidence:
+
+- Added independently repeated oracle-v3 transition fixtures for layer-0
+  attention, KV, FFN/router, and HC boundaries; layer-1/layer-2 attention
+  ingress; and layer-2 attention-compressed row 1,024. Corrected the upstream
+  `hc_attn_pre` hook interpretation: it captures the collapsed 4,096-wide
+  attention input, not the 16,384-wide HC state.
+- Generalized the layer-0/layer-1 FlashAttention block grid from the old fixed
+  2K extent to the active prefill rows and query rows. Every retained
+  layer-0 boundary, the direct/retained layer-1 HC handoff, layer-1/layer-2
+  attention ingress, and layer-2 Q setup then matched bit-for-bit.
+- Found a real ratio-4 compressor boundary bug. The batch encoder treated
+  absolute position 2,048 as the final prefill tile even inside a grown 4K/8K
+  retained buffer, replaying the four-row tail projection early and corrupting
+  compressed row 512 onward. Final-tile detection now derives from retained
+  output capacity. The first 1,024 attention/indexer rows and newly emitted
+  attention row 1,024 match their independent oracle captures exactly after
+  the required attention-cache FP16 storage roundtrip.
+- Rejected an FP16 roundtrip on raw KV as a no-op and preserved the existing
+  one-token sparse decode path. Its position-4,099 12-split control remains C0
+  exact with 11 dispatches.
+- Identified the remaining four-ULP KQV mismatch as a geometry error in the
+  diagnostic, not a tolerance problem. DwarfStar uses a 4,096-token prefill
+  kernel with a 4,352-row physical raw ring, a 4,224-row logical batch span,
+  raw start 3,968, 2,048 compressed capacity, chronological top-k sorting, and
+  the dual-head prefill attention pipeline. The old diagnostic instead used a
+  one-token 12-split decode reduction over 128 raw and 1,025 compressed rows.
+- Added an oracle-matched row-4,099 replay that reconstructs the final raw ring,
+  preserves the batch's `n_tokens`/`pos0` metadata, sorts the selected rows by
+  cache index, and dispatches
+  `kernel_dsv4_indexed_mixed_attention_heads16_dual`. KQV output and inverse
+  RoPE now match the second-chunk oracle capture bit-for-bit without weakening
+  C0. The report records the physical ring/span/capacity and single-dispatch
+  prefill schedule separately from the decode control.
+
+Validation:
+
+- The full target-Mac `long-prefill-continuation-bootstrap-probe` passed the
+  new sparse-transition C0 gate, completed all 64 continuation tiles and 7,556
+  bootstrap dispatches, and preserved 4,160/4,160 no-copy model ranges.
+  Continuation wall/GPU time was 4,697.736/4,685.322 ms. Ignored JSON evidence
+  SHA-256 is
+  `218a9ca7a2c60b3b7422815bc8450bb73f65a8d2863f79ab6c014452a2c2e63a`.
+- The standalone one-token sparse control passed after the raw-KV experiment
+  was reverted.
+- Formatting, the optimized macOS build, all 306 Rust tests, all 82 Python
+  tests, JSON parsing, and `git diff --check` passed.
+
+Decision:
+
+- Accept position 4,099 as the first exact native-batched sparse checkpoint.
+  Keep the decoder and prefill attention schedules distinct in diagnostics and
+  metadata; equal inputs do not make their online-softmax reductions
+  interchangeable under C0.
+
+Next:
+
+- Extend the retained second chunk through layer 2's attention output and FFN,
+  then generalize the exact batched sparse schedule across layers 3--42 and
+  require all 129,280 terminal 8K logits to match oracle-v3 bit-for-bit.
+
 ## 2026-08-30 — Sequential 4K-to-8K continuation shortcut rejected
 
 Objective:

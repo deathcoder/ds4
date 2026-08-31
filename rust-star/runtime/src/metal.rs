@@ -29,7 +29,7 @@ pub const PREFILL_LAYERS012_COMPRESSOR_LOOP_PROBE_SCHEMA: &str =
     "rust-star-prefill-layers012-compressor-loop-probe-v1";
 pub const LONG_PREFILL_BOOTSTRAP_PROBE_SCHEMA: &str = "rust-star-long-prefill-bootstrap-probe-v1";
 pub const LONG_PREFILL_CONTINUATION_BOOTSTRAP_PROBE_SCHEMA: &str =
-    "rust-star-long-prefill-continuation-bootstrap-probe-v1";
+    "rust-star-long-prefill-continuation-bootstrap-probe-v2";
 pub const LONG_PREFILL_SEQUENTIAL_CONTINUATION_PROBE_SCHEMA: &str =
     "rust-star-long-prefill-sequential-continuation-probe-v1";
 pub const LONG_PREFILL_TRANSFORMER_PROBE_SCHEMA: &str =
@@ -103,6 +103,8 @@ pub const SPARSE_INDEXED_ATTENTION_FIXTURE_ID: &str =
     "dwarfstar-oracle-v1-layer2-pos2051-sparse-indexed-attention";
 pub const SPARSE_INDEXED_ATTENTION_DEFAULT_FIXTURE_ID: &str =
     "dwarfstar-oracle-v1-layer2-pos4099-sparse-indexed-attention";
+pub const PREFILL_LAYER2_SPARSE_TRANSITION_FIXTURE_ID: &str =
+    "dwarfstar-oracle-v3-prefill-layer2-pos4099-sparse-transition";
 pub const RETAINED_SPARSE_BOUNDARY_FIXTURE_ID: &str =
     "dwarfstar-oracle-v1-retained-layer2-pos4099-sparse";
 pub const RETAINED_SPARSE_MULTIMERGE_FIXTURE_ID: &str =
@@ -591,6 +593,70 @@ const SPARSE_DEFAULT_KQV_OUT_BYTES: &[u8] =
     include_bytes!("../../fixtures/sparse-indexed-attention-pos4099-v1/kqv-out.f32le.bin");
 const SPARSE_DEFAULT_KQV_BACK_BYTES: &[u8] =
     include_bytes!("../../fixtures/sparse-indexed-attention-pos4099-v1/kqv-back.f32le.bin");
+const PREFILL_LAYER2_SPARSE_TRANSITION_Q_LORA_NORM_BYTES: &[u8] = include_bytes!(
+    "../../fixtures/prefill-layer2-sparse-transition-pos4099-v1/q-lora-norm.f32le.bin"
+);
+const PREFILL_LAYER2_SPARSE_TRANSITION_ATTN_CURRENT_BYTES: &[u8] = include_bytes!(
+    "../../fixtures/prefill-layer2-sparse-transition-pos4099-v1/attention-current.f32le.bin"
+);
+const PREFILL_LAYER2_SPARSE_TRANSITION_LAYER1_ATTN_CURRENT_BYTES: &[u8] = include_bytes!(
+    "../../fixtures/prefill-layer2-sparse-transition-pos4099-v1/layer1-attention-current.f32le.bin"
+);
+const PREFILL_LAYER2_SPARSE_TRANSITION_ATTN_NORM_BYTES: &[u8] = include_bytes!(
+    "../../fixtures/prefill-layer2-sparse-transition-pos4099-v1/attn-norm.f32le.bin"
+);
+const PREFILL_LAYER2_SPARSE_TRANSITION_Q_CURRENT_BYTES: &[u8] = include_bytes!(
+    "../../fixtures/prefill-layer2-sparse-transition-pos4099-v1/q-current.f32le.bin"
+);
+const PREFILL_LAYER2_SPARSE_TRANSITION_KQV_OUT_BYTES: &[u8] =
+    include_bytes!("../../fixtures/prefill-layer2-sparse-transition-pos4099-v1/kqv-out.f32le.bin");
+const PREFILL_LAYER2_SPARSE_TRANSITION_KQV_BACK_BYTES: &[u8] =
+    include_bytes!("../../fixtures/prefill-layer2-sparse-transition-pos4099-v1/kqv-back.f32le.bin");
+const PREFILL_LAYER0_TRANSITION_ATTN_NORM_BYTES: &[u8] =
+    include_bytes!("../../fixtures/prefill-layer0-transition-pos4099-v1/attn-norm.f32le.bin");
+const PREFILL_LAYER0_TRANSITION_Q_LORA_NORM_BYTES: &[u8] =
+    include_bytes!("../../fixtures/prefill-layer0-transition-pos4099-v1/q-lora-norm.f32le.bin");
+const PREFILL_LAYER0_TRANSITION_Q_CURRENT_BYTES: &[u8] =
+    include_bytes!("../../fixtures/prefill-layer0-transition-pos4099-v1/q-current.f32le.bin");
+const PREFILL_LAYER0_TRANSITION_KQV_BACK_BYTES: &[u8] =
+    include_bytes!("../../fixtures/prefill-layer0-transition-pos4099-v1/kqv-back.f32le.bin");
+const PREFILL_LAYER0_TRANSITION_AFTER_ATTN_HC_BYTES: &[u8] = include_bytes!(
+    "../../fixtures/prefill-layer0-transition-pos4099-v1/after-attention-hc.f32le.bin"
+);
+const PREFILL_LAYER0_TRANSITION_FFN_NORM_BYTES: &[u8] =
+    include_bytes!("../../fixtures/prefill-layer0-transition-pos4099-v1/ffn-norm.f32le.bin");
+const PREFILL_LAYER0_FFN_TRANSITION_ROUTER_LOGITS_BYTES: &[u8] = include_bytes!(
+    "../../fixtures/prefill-layer0-ffn-transition-pos4099-v1/router-logits.f32le.bin"
+);
+const PREFILL_LAYER0_FFN_TRANSITION_ROUTER_PROBS_BYTES: &[u8] = include_bytes!(
+    "../../fixtures/prefill-layer0-ffn-transition-pos4099-v1/router-probs.f32le.bin"
+);
+const PREFILL_LAYER0_FFN_TRANSITION_ROUTER_SELECTED_BYTES: &[u8] = include_bytes!(
+    "../../fixtures/prefill-layer0-ffn-transition-pos4099-v1/router-selected.i32le.bin"
+);
+const PREFILL_LAYER0_FFN_TRANSITION_ROUTER_WEIGHTS_BYTES: &[u8] = include_bytes!(
+    "../../fixtures/prefill-layer0-ffn-transition-pos4099-v1/router-weights.f32le.bin"
+);
+const PREFILL_LAYER0_FFN_TRANSITION_ROUTED_OUT_BYTES: &[u8] =
+    include_bytes!("../../fixtures/prefill-layer0-ffn-transition-pos4099-v1/routed-out.f32le.bin");
+const PREFILL_LAYER0_FFN_TRANSITION_SHARED_OUT_BYTES: &[u8] =
+    include_bytes!("../../fixtures/prefill-layer0-ffn-transition-pos4099-v1/shared-out.f32le.bin");
+const PREFILL_LAYER0_KV_TRANSITION_RAW_BYTES: &[u8] =
+    include_bytes!("../../fixtures/prefill-layer0-kv-transition-pos4099-v1/kv-raw.f32le.bin");
+const PREFILL_LAYER0_KV_TRANSITION_NORM_BYTES: &[u8] =
+    include_bytes!("../../fixtures/prefill-layer0-kv-transition-pos4099-v1/kv-norm.f32le.bin");
+const PREFILL_LAYER0_KV_TRANSITION_ROPE_BYTES: &[u8] =
+    include_bytes!("../../fixtures/prefill-layer0-kv-transition-pos4099-v1/kv-rope.f32le.bin");
+const PREFILL_LAYER0_KV_TRANSITION_CURRENT_BYTES: &[u8] =
+    include_bytes!("../../fixtures/prefill-layer0-kv-transition-pos4099-v1/kv-current.f32le.bin");
+const PREFILL_LAYER0_FFN_HC_SPLIT_TRANSITION_BYTES: &[u8] = include_bytes!(
+    "../../fixtures/prefill-layer0-hc-split-transition-pos4099-v1/ffn-hc-split.f32le.bin"
+);
+const PREFILL_LAYER0_TRANSITION_AFTER_FFN_HC_BYTES: &[u8] =
+    include_bytes!("../../fixtures/prefill-layer0-transition-pos4099-v1/after-ffn-hc.f32le.bin");
+const PREFILL_LAYER2_ATTN_COMPRESSED_TRANSITION_ROW1024_BYTES: &[u8] = include_bytes!(
+    "../../fixtures/prefill-layer2-attention-compressed-transition-pos4099-v1/attention-compressed-row1024.f32le.bin"
+);
 const RETAINED_SPARSE_INPUT_HC_BYTES: &[u8] =
     include_bytes!("../../fixtures/retained-sparse-layer2-pos4099-v1/retained-input-hc.f32le.bin");
 const RETAINED_SPARSE_RAW_PRIOR_BYTES: &[u8] =
@@ -3581,6 +3647,7 @@ pub struct LongPrefillContinuationBootstrapProbeReport {
     pub token_checksum: u64,
     pub summed_wall_ms: f64,
     pub summed_gpu_ms: f64,
+    pub sparse_transition: SparseIndexedAttentionProbeReport,
 }
 
 #[derive(Clone, Debug)]
@@ -7569,6 +7636,19 @@ pub fn write_long_prefill_continuation_bootstrap_probe_json<W: Write>(
         || report.dispatches != 7_556
         || report.wrapped_model_ranges != 4_160
         || report.pointer_matches != report.wrapped_model_ranges
+        || report.sparse_transition.fixture_id != PREFILL_LAYER2_SPARSE_TRANSITION_FIXTURE_ID
+        || report.sparse_transition.position != 4_099
+        || report.sparse_transition.compressed_rows != 1_025
+        || report.sparse_transition.raw_rows != 128
+        || report.sparse_transition.top_k != 512
+        || report.sparse_transition.dispatches != 17
+        || report.sparse_transition.wrapped_model_ranges != 4
+        || report.sparse_transition.pointer_matches != 4
+        || report.sparse_transition.split_count != 1
+        || !report.sparse_transition.wall_ms.is_finite()
+        || !report.sparse_transition.gpu_ms.is_finite()
+        || report.sparse_transition.wall_ms <= 0.0
+        || report.sparse_transition.gpu_ms <= 0.0
         || !report.summed_wall_ms.is_finite()
         || !report.summed_gpu_ms.is_finite()
         || report.summed_wall_ms <= 0.0
@@ -7585,7 +7665,7 @@ pub fn write_long_prefill_continuation_bootstrap_probe_json<W: Write>(
     crate::artifact::write_json_string(output, report.fixture_id)?;
     write!(
         output,
-        ",\n  \"frontier_tokens\": {},\n  \"first_chunk\": {{\"start\": 0, \"tokens\": {}, \"end\": {}, \"complete_transformer_schedule\": true, \"selected_token\": {}}},\n  \"continuation_chunk\": {{\"start\": {}, \"tokens\": {}, \"end\": {}}},\n  \"schedule\": {{\"tile_rows\": {}, \"tiles\": {}, \"dispatches\": {}, \"wrapped_model_ranges\": {}, \"pointer_matches\": {}}},\n  \"retained_state\": {{\"layer0_raw_rows\": {}, \"layer1_raw_rows\": {}, \"layer2_raw_rows\": {}, \"layer2_attention_compressed_rows\": {}, \"layer2_indexer_compressed_rows\": {}, \"compressor_recurrent_state_retained\": true, \"capacity_growth_preserved_prefix\": true}},\n  \"checksums\": {{\"continuation_token_ids\": {}}},\n  \"timing\": {{\"continuation_summed_wall_ms\": {:.6}, \"continuation_summed_gpu_ms\": {:.6}}},\n  \"accepted_oracle_token_stream\": true,\n  \"native_batch_schedule\": true,\n  \"second_long_prefill_bootstrap_chunk_executed\": true,\n  \"complete_8k_transformer_claim\": false,\n  \"output_logits_c0_claim\": false,\n  \"throughput_claim\": false\n}}\n",
+        ",\n  \"frontier_tokens\": {},\n  \"first_chunk\": {{\"start\": 0, \"tokens\": {}, \"end\": {}, \"complete_transformer_schedule\": true, \"selected_token\": {}}},\n  \"continuation_chunk\": {{\"start\": {}, \"tokens\": {}, \"end\": {}}},\n  \"schedule\": {{\"tile_rows\": {}, \"tiles\": {}, \"dispatches\": {}, \"wrapped_model_ranges\": {}, \"pointer_matches\": {}}},\n  \"retained_state\": {{\"layer0_raw_rows\": {}, \"layer1_raw_rows\": {}, \"layer2_raw_rows\": {}, \"layer2_attention_compressed_rows\": {}, \"layer2_indexer_compressed_rows\": {}, \"compressor_recurrent_state_retained\": true, \"capacity_growth_preserved_prefix\": true}},\n  \"sparse_transition\": {{\"position\": {}, \"compressed_rows\": {}, \"raw_rows\": {}, \"top_k\": {}, \"dispatches\": {}, \"wrapped_model_ranges\": {}, \"pointer_matches\": {}, \"split_count\": {}, \"q_b_batch_rows\": 4096, \"raw_ring_capacity\": 4352, \"raw_batch_span\": 4224, \"compressed_capacity\": 2048, \"topk_order_kernel\": \"kernel_dsv4_sort_i32_rows_asc\", \"attention_kernel\": \"kernel_dsv4_indexed_mixed_attention_heads16_dual\", \"q_b_batch_c0_bitwise_match\": true, \"production_sparse_c0_bitwise_match\": true, \"checksums\": {{\"indexer_q\": {}, \"indexer_weights\": {}, \"indexer_scores\": {}, \"indexer_topk\": {}, \"kqv_out\": {}, \"kqv_back\": {}}}, \"wall_ms\": {:.6}, \"gpu_ms\": {:.6}}},\n  \"checksums\": {{\"continuation_token_ids\": {}}},\n  \"timing\": {{\"continuation_summed_wall_ms\": {:.6}, \"continuation_summed_gpu_ms\": {:.6}}},\n  \"accepted_oracle_token_stream\": true,\n  \"native_batch_schedule\": true,\n  \"second_long_prefill_bootstrap_chunk_executed\": true,\n  \"layer2_sparse_transition_c0_claim\": true,\n  \"complete_8k_transformer_claim\": false,\n  \"output_logits_c0_claim\": false,\n  \"throughput_claim\": false\n}}\n",
         report.frontier_tokens,
         report.first_chunk_tokens,
         report.first_chunk_tokens - 1,
@@ -7603,6 +7683,22 @@ pub fn write_long_prefill_continuation_bootstrap_probe_json<W: Write>(
         report.frontier_tokens,
         report.frontier_tokens / 4,
         report.frontier_tokens / 4,
+        report.sparse_transition.position,
+        report.sparse_transition.compressed_rows,
+        report.sparse_transition.raw_rows,
+        report.sparse_transition.top_k,
+        report.sparse_transition.dispatches,
+        report.sparse_transition.wrapped_model_ranges,
+        report.sparse_transition.pointer_matches,
+        report.sparse_transition.split_count,
+        report.sparse_transition.indexer_q_checksum,
+        report.sparse_transition.indexer_weights_checksum,
+        report.sparse_transition.indexer_scores_checksum,
+        report.sparse_transition.indexer_topk_checksum,
+        report.sparse_transition.kqv_out_checksum,
+        report.sparse_transition.kqv_back_checksum,
+        report.sparse_transition.wall_ms,
+        report.sparse_transition.gpu_ms,
         report.token_checksum,
         report.summed_wall_ms,
         report.summed_gpu_ms,
@@ -22114,6 +22210,66 @@ mod imp {
             error: *mut c_char,
             error_bytes: usize,
         ) -> i32;
+        fn rust_star_metal_run_prefill_layer2_sparse_transition(
+            context: *mut c_void,
+            model_mapping: *const c_void,
+            model_bytes: u64,
+            q_b_offset: u64,
+            q_b_bytes: u64,
+            indexer_q_offset: u64,
+            indexer_q_bytes: u64,
+            indexer_weight_offset: u64,
+            indexer_weight_bytes: u64,
+            sinks_offset: u64,
+            sinks_bytes: u64,
+            layer0_attn_norm: *mut f32,
+            layer0_q_lora_norm: *mut f32,
+            layer0_q_current: *mut f32,
+            layer0_kqv_back: *mut f32,
+            layer0_after_attention_hc: *mut f32,
+            layer0_ffn_norm: *mut f32,
+            layer0_router_logits: *mut f32,
+            layer0_router_probs: *mut f32,
+            layer0_router_selected: *mut i32,
+            layer0_router_weights: *mut f32,
+            layer0_routed_out: *mut f32,
+            layer0_shared_out: *mut f32,
+            layer1_input_hc: *mut f32,
+            input_hc: *mut f32,
+            q_lora_norm: *mut f32,
+            attn_norm: *mut f32,
+            q_current: *mut f32,
+            indexer_q: *mut f32,
+            indexer_weights: *mut f32,
+            indexer_scores: *mut f32,
+            indexer_topk: *mut i32,
+            kqv_out: *mut f32,
+            kqv_back: *mut f32,
+            result: *mut RawSparseIndexedResult,
+            error: *mut c_char,
+            error_bytes: usize,
+        ) -> i32;
+        fn rust_star_metal_copy_prefill_layer0_kv_transition(
+            context: *mut c_void,
+            kv_raw: *mut f32,
+            kv_norm: *mut f32,
+            kv_rope: *mut f32,
+            kv_current: *mut f32,
+            ffn_split: *mut f32,
+            after_ffn_hc: *mut f32,
+            layer1_attn_current: *mut f32,
+            layer2_attn_current: *mut f32,
+            error: *mut c_char,
+            error_bytes: usize,
+        ) -> i32;
+        fn rust_star_metal_copy_prefill_layer2_compressed_prefix(
+            context: *mut c_void,
+            attention_compressed: *mut f32,
+            indexer_compressed: *mut f32,
+            attention_compressed_row1024: *mut f32,
+            error: *mut c_char,
+            error_bytes: usize,
+        ) -> i32;
         fn rust_star_metal_seed_retained_sparse_layer2_position4099(
             context: *mut c_void,
             input_hc: *const f32,
@@ -25414,6 +25570,7 @@ mod imp {
             FRONTIER_ROWS,
             Some(&tokens),
         )?;
+        let sparse_transition = run_prefill_layer2_sparse_transition_probe(model, &context)?;
         drop(context);
         if continuation.is_some() {
             return Err(Error::invalid(
@@ -25435,6 +25592,7 @@ mod imp {
             token_checksum: checksum_u32(&tokens[CHUNK_ROWS as usize..]),
             summed_wall_ms: timing.tile_wall_ms,
             summed_gpu_ms: timing.tile_gpu_ms,
+            sparse_transition,
         })
     }
 
@@ -41342,6 +41500,483 @@ mod imp {
         })
     }
 
+    fn run_prefill_layer2_sparse_transition_probe(
+        model: &MappedModel,
+        context: &Context,
+    ) -> Result<SparseIndexedAttentionProbeReport> {
+        let q_b = exact_tensor(model, "blk.2.attn_q_b.weight", 8, &[1024, 32768])?;
+        let q_weight = exact_tensor(model, "blk.2.indexer.attn_q_b.weight", 1, &[1024, 8192])?;
+        let indexer_weight = exact_tensor(model, "blk.2.indexer.proj.weight", 1, &[4096, 64])?;
+        let sinks = exact_tensor(model, "blk.2.attn_sinks.weight", 0, &[64])?;
+        let expected_q_current = decode_f32_fixture(
+            PREFILL_LAYER2_SPARSE_TRANSITION_Q_CURRENT_BYTES,
+            "sparse transition Q current",
+        )?;
+        let expected_attn_current = decode_f32_fixture(
+            PREFILL_LAYER2_SPARSE_TRANSITION_ATTN_CURRENT_BYTES,
+            "sparse transition attention current",
+        )?;
+        let expected_layer1_attn_current = decode_f32_fixture(
+            PREFILL_LAYER2_SPARSE_TRANSITION_LAYER1_ATTN_CURRENT_BYTES,
+            "sparse transition layer-1 attention current",
+        )?;
+        let expected_layer0_attn_norm = decode_f32_fixture(
+            PREFILL_LAYER0_TRANSITION_ATTN_NORM_BYTES,
+            "layer-0 transition attention norm",
+        )?;
+        let expected_layer0_q_lora_norm = decode_f32_fixture(
+            PREFILL_LAYER0_TRANSITION_Q_LORA_NORM_BYTES,
+            "layer-0 transition Q-Lora norm",
+        )?;
+        let expected_layer0_q_current = decode_f32_fixture(
+            PREFILL_LAYER0_TRANSITION_Q_CURRENT_BYTES,
+            "layer-0 transition Q current",
+        )?;
+        let expected_layer0_kqv_back = decode_f32_fixture(
+            PREFILL_LAYER0_TRANSITION_KQV_BACK_BYTES,
+            "layer-0 transition KQV back",
+        )?;
+        let expected_layer0_kv_raw = decode_f32_fixture(
+            PREFILL_LAYER0_KV_TRANSITION_RAW_BYTES,
+            "layer-0 transition KV raw",
+        )?;
+        let expected_layer0_kv_norm = decode_f32_fixture(
+            PREFILL_LAYER0_KV_TRANSITION_NORM_BYTES,
+            "layer-0 transition KV norm",
+        )?;
+        let expected_layer0_kv_rope = decode_f32_fixture(
+            PREFILL_LAYER0_KV_TRANSITION_ROPE_BYTES,
+            "layer-0 transition KV RoPE",
+        )?;
+        let expected_layer0_kv_current = decode_f32_fixture(
+            PREFILL_LAYER0_KV_TRANSITION_CURRENT_BYTES,
+            "layer-0 transition KV current",
+        )?;
+        let expected_layer0_ffn_split = decode_f32_fixture(
+            PREFILL_LAYER0_FFN_HC_SPLIT_TRANSITION_BYTES,
+            "layer-0 transition FFN HC split",
+        )?;
+        let expected_layer0_after_ffn_hc = decode_f32_fixture(
+            PREFILL_LAYER0_TRANSITION_AFTER_FFN_HC_BYTES,
+            "layer-0 transition after-FFN HC",
+        )?;
+        let expected_attention_compressed_prefix = decode_f32_fixture(
+            RETAINED_SPARSE_ATTN_COMP_PRIOR_BYTES,
+            "layer-2 transition attention compressed prefix",
+        )?;
+        let expected_indexer_compressed_prefix = decode_f32_fixture(
+            RETAINED_SPARSE_INDEX_COMP_PRIOR_BYTES,
+            "layer-2 transition indexer compressed prefix",
+        )?;
+        let expected_attention_compressed_row1024 = decode_f32_fixture(
+            PREFILL_LAYER2_ATTN_COMPRESSED_TRANSITION_ROW1024_BYTES,
+            "layer-2 transition attention compressed row 1024",
+        )?;
+        let expected_layer0_after_attn_hc = decode_f32_fixture(
+            PREFILL_LAYER0_TRANSITION_AFTER_ATTN_HC_BYTES,
+            "layer-0 transition after-attention HC",
+        )?;
+        let expected_layer0_ffn_norm = decode_f32_fixture(
+            PREFILL_LAYER0_TRANSITION_FFN_NORM_BYTES,
+            "layer-0 transition FFN norm",
+        )?;
+        let expected_layer0_router_logits = decode_f32_fixture(
+            PREFILL_LAYER0_FFN_TRANSITION_ROUTER_LOGITS_BYTES,
+            "layer-0 transition router logits",
+        )?;
+        let expected_layer0_router_probs = decode_f32_fixture(
+            PREFILL_LAYER0_FFN_TRANSITION_ROUTER_PROBS_BYTES,
+            "layer-0 transition router probabilities",
+        )?;
+        let expected_layer0_router_selected = decode_i32_fixture(
+            PREFILL_LAYER0_FFN_TRANSITION_ROUTER_SELECTED_BYTES,
+            "layer-0 transition selected experts",
+        )?;
+        let expected_layer0_router_weights = decode_f32_fixture(
+            PREFILL_LAYER0_FFN_TRANSITION_ROUTER_WEIGHTS_BYTES,
+            "layer-0 transition router weights",
+        )?;
+        let expected_layer0_routed_out = decode_f32_fixture(
+            PREFILL_LAYER0_FFN_TRANSITION_ROUTED_OUT_BYTES,
+            "layer-0 transition routed output",
+        )?;
+        let expected_layer0_shared_out = decode_f32_fixture(
+            PREFILL_LAYER0_FFN_TRANSITION_SHARED_OUT_BYTES,
+            "layer-0 transition shared output",
+        )?;
+        let expected_q_lora_norm = decode_f32_fixture(
+            PREFILL_LAYER2_SPARSE_TRANSITION_Q_LORA_NORM_BYTES,
+            "sparse transition Q-Lora norm",
+        )?;
+        let expected_attn_norm = decode_f32_fixture(
+            PREFILL_LAYER2_SPARSE_TRANSITION_ATTN_NORM_BYTES,
+            "sparse transition attention norm",
+        )?;
+        let expected_out = decode_f32_fixture(
+            PREFILL_LAYER2_SPARSE_TRANSITION_KQV_OUT_BYTES,
+            "sparse transition KQV output",
+        )?;
+        let expected_back = decode_f32_fixture(
+            PREFILL_LAYER2_SPARSE_TRANSITION_KQV_BACK_BYTES,
+            "sparse transition KQV back",
+        )?;
+        let mut actual_layer0_attn_norm = vec![0.0_f32; expected_layer0_attn_norm.len()];
+        let mut actual_layer0_q_lora_norm = vec![0.0_f32; expected_layer0_q_lora_norm.len()];
+        let mut actual_layer0_q_current = vec![0.0_f32; expected_layer0_q_current.len()];
+        let mut actual_layer0_kqv_back = vec![0.0_f32; expected_layer0_kqv_back.len()];
+        let mut actual_layer0_kv_raw = vec![0.0_f32; expected_layer0_kv_raw.len()];
+        let mut actual_layer0_kv_norm = vec![0.0_f32; expected_layer0_kv_norm.len()];
+        let mut actual_layer0_kv_rope = vec![0.0_f32; expected_layer0_kv_rope.len()];
+        let mut actual_layer0_kv_current = vec![0.0_f32; expected_layer0_kv_current.len()];
+        let mut actual_layer0_ffn_split = vec![0.0_f32; expected_layer0_ffn_split.len()];
+        let mut actual_layer0_after_ffn_hc = vec![0.0_f32; expected_layer0_after_ffn_hc.len()];
+        let mut actual_layer0_after_attn_hc = vec![0.0_f32; expected_layer0_after_attn_hc.len()];
+        let mut actual_layer0_ffn_norm = vec![0.0_f32; expected_layer0_ffn_norm.len()];
+        let mut actual_layer0_router_logits = vec![0.0_f32; expected_layer0_router_logits.len()];
+        let mut actual_layer0_router_probs = vec![0.0_f32; expected_layer0_router_probs.len()];
+        let mut actual_layer0_router_selected = vec![0_i32; expected_layer0_router_selected.len()];
+        let mut actual_layer0_router_weights = vec![0.0_f32; expected_layer0_router_weights.len()];
+        let mut actual_layer0_routed_out = vec![0.0_f32; expected_layer0_routed_out.len()];
+        let mut actual_layer0_shared_out = vec![0.0_f32; expected_layer0_shared_out.len()];
+        let mut actual_layer1_input_hc = vec![0.0_f32; expected_layer0_after_ffn_hc.len()];
+        let mut actual_input_hc = vec![0.0_f32; 4 * 4096];
+        let mut actual_layer1_attn_current = vec![0.0_f32; expected_layer1_attn_current.len()];
+        let mut actual_attn_current = vec![0.0_f32; expected_attn_current.len()];
+        let mut actual_attention_compressed_prefix =
+            vec![0.0_f32; expected_attention_compressed_prefix.len()];
+        let mut actual_indexer_compressed_prefix =
+            vec![0.0_f32; expected_indexer_compressed_prefix.len()];
+        let mut actual_attention_compressed_row1024 =
+            vec![0.0_f32; expected_attention_compressed_row1024.len()];
+        let mut actual_q_lora_norm = vec![0.0_f32; expected_q_lora_norm.len()];
+        let mut actual_attn_norm = vec![0.0_f32; expected_attn_norm.len()];
+        let mut actual_q_current = vec![0.0_f32; expected_q_current.len()];
+        let mut actual_q = vec![0.0_f32; 64 * 128];
+        let mut actual_weights = vec![0.0_f32; 64];
+        let mut actual_scores = vec![0.0_f32; 1025];
+        let mut actual_topk = vec![0_i32; 512];
+        let mut actual_out = vec![0.0_f32; expected_out.len()];
+        let mut actual_back = vec![0.0_f32; expected_back.len()];
+        let mut raw = RawSparseIndexedResult::default();
+        let mut error = [0 as c_char; ERROR_BYTES];
+        let succeeded = unsafe {
+            rust_star_metal_run_prefill_layer2_sparse_transition(
+                context.0,
+                model.mapping_pointer(),
+                model.bytes(),
+                q_b.absolute_offset,
+                q_b.bytes,
+                q_weight.absolute_offset,
+                q_weight.bytes,
+                indexer_weight.absolute_offset,
+                indexer_weight.bytes,
+                sinks.absolute_offset,
+                sinks.bytes,
+                actual_layer0_attn_norm.as_mut_ptr(),
+                actual_layer0_q_lora_norm.as_mut_ptr(),
+                actual_layer0_q_current.as_mut_ptr(),
+                actual_layer0_kqv_back.as_mut_ptr(),
+                actual_layer0_after_attn_hc.as_mut_ptr(),
+                actual_layer0_ffn_norm.as_mut_ptr(),
+                actual_layer0_router_logits.as_mut_ptr(),
+                actual_layer0_router_probs.as_mut_ptr(),
+                actual_layer0_router_selected.as_mut_ptr(),
+                actual_layer0_router_weights.as_mut_ptr(),
+                actual_layer0_routed_out.as_mut_ptr(),
+                actual_layer0_shared_out.as_mut_ptr(),
+                actual_layer1_input_hc.as_mut_ptr(),
+                actual_input_hc.as_mut_ptr(),
+                actual_q_lora_norm.as_mut_ptr(),
+                actual_attn_norm.as_mut_ptr(),
+                actual_q_current.as_mut_ptr(),
+                actual_q.as_mut_ptr(),
+                actual_weights.as_mut_ptr(),
+                actual_scores.as_mut_ptr(),
+                actual_topk.as_mut_ptr(),
+                actual_out.as_mut_ptr(),
+                actual_back.as_mut_ptr(),
+                &mut raw,
+                error.as_mut_ptr(),
+                error.len(),
+            )
+        };
+        if succeeded == 0 {
+            return Err(Error::invalid(format!(
+                "Metal prefill layer-2 sparse transition failed: {}",
+                error_text(&error)
+            )));
+        }
+        let copied_kv = unsafe {
+            rust_star_metal_copy_prefill_layer0_kv_transition(
+                context.0,
+                actual_layer0_kv_raw.as_mut_ptr(),
+                actual_layer0_kv_norm.as_mut_ptr(),
+                actual_layer0_kv_rope.as_mut_ptr(),
+                actual_layer0_kv_current.as_mut_ptr(),
+                actual_layer0_ffn_split.as_mut_ptr(),
+                actual_layer0_after_ffn_hc.as_mut_ptr(),
+                actual_layer1_attn_current.as_mut_ptr(),
+                actual_attn_current.as_mut_ptr(),
+                error.as_mut_ptr(),
+                error.len(),
+            )
+        };
+        if copied_kv == 0 {
+            return Err(Error::invalid(format!(
+                "Metal prefill layer-0 KV transition copy failed: {}",
+                error_text(&error)
+            )));
+        }
+        let copied_compressed_prefix = unsafe {
+            rust_star_metal_copy_prefill_layer2_compressed_prefix(
+                context.0,
+                actual_attention_compressed_prefix.as_mut_ptr(),
+                actual_indexer_compressed_prefix.as_mut_ptr(),
+                actual_attention_compressed_row1024.as_mut_ptr(),
+                error.as_mut_ptr(),
+                error.len(),
+            )
+        };
+        if copied_compressed_prefix == 0 {
+            return Err(Error::invalid(format!(
+                "Metal prefill layer-2 compressed-prefix copy failed: {}",
+                error_text(&error)
+            )));
+        }
+        let actual_attention_compressed_prefix_f16: Vec<f32> = actual_attention_compressed_prefix
+            .iter()
+            .copied()
+            .map(f16_round_f32)
+            .collect();
+        let exact = |actual: &[f32], expected: &[f32]| {
+            actual
+                .iter()
+                .zip(expected)
+                .all(|(actual, expected)| actual.to_bits() == expected.to_bits())
+        };
+        let downstream_status = format!(
+            "after_attn={} ffn_norm={} router_logits={} router_probs={} router_weights={} routed_out={} shared_out={} ffn_split={} direct_after_ffn={} retained_after_ffn={} layer1_attn_current={} layer2_attn_current={} attention_compressed_prefix={} indexer_compressed_prefix={} attention_compressed_row1024={}",
+            exact(&actual_layer0_after_attn_hc, &expected_layer0_after_attn_hc),
+            exact(&actual_layer0_ffn_norm, &expected_layer0_ffn_norm),
+            exact(&actual_layer0_router_logits, &expected_layer0_router_logits),
+            exact(&actual_layer0_router_probs, &expected_layer0_router_probs),
+            exact(&actual_layer0_router_weights, &expected_layer0_router_weights),
+            exact(&actual_layer0_routed_out, &expected_layer0_routed_out),
+            exact(&actual_layer0_shared_out, &expected_layer0_shared_out),
+            exact(&actual_layer0_ffn_split, &expected_layer0_ffn_split),
+            exact(
+                &actual_layer0_after_ffn_hc,
+                &expected_layer0_after_ffn_hc
+            ),
+            exact(&actual_layer1_input_hc, &expected_layer0_after_ffn_hc),
+            exact(&actual_layer1_attn_current, &expected_layer1_attn_current),
+            exact(&actual_attn_current, &expected_attn_current),
+            exact(
+                &actual_attention_compressed_prefix_f16,
+                &expected_attention_compressed_prefix
+            ),
+            exact(
+                &actual_indexer_compressed_prefix,
+                &expected_indexer_compressed_prefix
+            ),
+            exact(
+                &actual_attention_compressed_row1024,
+                &expected_attention_compressed_row1024
+            ),
+        );
+        for (label, actual, expected) in [
+            (
+                "layer-0 attention norm",
+                &actual_layer0_attn_norm[..],
+                &expected_layer0_attn_norm[..],
+            ),
+            (
+                "layer-0 Q-Lora norm",
+                &actual_layer0_q_lora_norm[..],
+                &expected_layer0_q_lora_norm[..],
+            ),
+            (
+                "layer-0 Q current",
+                &actual_layer0_q_current[..],
+                &expected_layer0_q_current[..],
+            ),
+            (
+                "layer-0 KV raw",
+                &actual_layer0_kv_raw[..],
+                &expected_layer0_kv_raw[..],
+            ),
+            (
+                "layer-0 KV norm",
+                &actual_layer0_kv_norm[..],
+                &expected_layer0_kv_norm[..],
+            ),
+            (
+                "layer-0 KV RoPE",
+                &actual_layer0_kv_rope[..],
+                &expected_layer0_kv_rope[..],
+            ),
+            (
+                "layer-0 KV current",
+                &actual_layer0_kv_current[..],
+                &expected_layer0_kv_current[..],
+            ),
+            (
+                "layer-0 KQV back",
+                &actual_layer0_kqv_back[..],
+                &expected_layer0_kqv_back[..],
+            ),
+            (
+                "layer-0 after-attention HC",
+                &actual_layer0_after_attn_hc[..],
+                &expected_layer0_after_attn_hc[..],
+            ),
+            (
+                "layer-0 FFN norm",
+                &actual_layer0_ffn_norm[..],
+                &expected_layer0_ffn_norm[..],
+            ),
+            (
+                "layer-0 router logits",
+                &actual_layer0_router_logits[..],
+                &expected_layer0_router_logits[..],
+            ),
+            (
+                "layer-0 router probabilities",
+                &actual_layer0_router_probs[..],
+                &expected_layer0_router_probs[..],
+            ),
+            (
+                "layer-0 router weights",
+                &actual_layer0_router_weights[..],
+                &expected_layer0_router_weights[..],
+            ),
+            (
+                "layer-0 routed output",
+                &actual_layer0_routed_out[..],
+                &expected_layer0_routed_out[..],
+            ),
+            (
+                "layer-0 shared output",
+                &actual_layer0_shared_out[..],
+                &expected_layer0_shared_out[..],
+            ),
+            (
+                "layer-0 FFN HC split",
+                &actual_layer0_ffn_split[..],
+                &expected_layer0_ffn_split[..],
+            ),
+            (
+                "layer-0 direct after-FFN HC",
+                &actual_layer0_after_ffn_hc[..],
+                &expected_layer0_after_ffn_hc[..],
+            ),
+            (
+                "layer-1 input HC",
+                &actual_layer1_input_hc[..],
+                &expected_layer0_after_ffn_hc[..],
+            ),
+            (
+                "layer-1 attention current",
+                &actual_layer1_attn_current[..],
+                &expected_layer1_attn_current[..],
+            ),
+            (
+                "layer-2 attention current",
+                &actual_attn_current[..],
+                &expected_attn_current[..],
+            ),
+            (
+                "layer-2 attention compressed prefix",
+                &actual_attention_compressed_prefix_f16[..],
+                &expected_attention_compressed_prefix[..],
+            ),
+            (
+                "layer-2 indexer compressed prefix",
+                &actual_indexer_compressed_prefix[..],
+                &expected_indexer_compressed_prefix[..],
+            ),
+            (
+                "layer-2 attention compressed row 1024",
+                &actual_attention_compressed_row1024[..],
+                &expected_attention_compressed_row1024[..],
+            ),
+            (
+                "Q-Lora norm",
+                &actual_q_lora_norm[..],
+                &expected_q_lora_norm[..],
+            ),
+            (
+                "attention norm",
+                &actual_attn_norm[..],
+                &expected_attn_norm[..],
+            ),
+            ("Q current", &actual_q_current[..], &expected_q_current[..]),
+            ("KQV output", &actual_out[..], &expected_out[..]),
+            ("KQV back", &actual_back[..], &expected_back[..]),
+        ] {
+            if let Some((index, (actual, expected))) = actual
+                .iter()
+                .zip(expected)
+                .enumerate()
+                .find(|(_, (actual, expected))| actual.to_bits() != expected.to_bits())
+            {
+                return Err(Error::invalid(format!(
+                    "prefill layer-2 sparse transition {label} C0 mismatch at {index}: actual={:#010x} expected={:#010x}; {downstream_status}",
+                    actual.to_bits(), expected.to_bits(),
+                )));
+            }
+        }
+        if let Some((index, (actual, expected))) = actual_layer0_router_selected
+            .iter()
+            .zip(&expected_layer0_router_selected)
+            .enumerate()
+            .find(|(_, (actual, expected))| actual != expected)
+        {
+            return Err(Error::invalid(format!(
+                "prefill layer-2 sparse transition layer-0 selected experts C0 mismatch at {index}: actual={actual} expected={expected}"
+            )));
+        }
+        if raw.position != 4099
+            || raw.compressed_rows != 1025
+            || raw.raw_rows != 128
+            || raw.top_k != 512
+            || raw.dispatches != 17
+            || raw.wrapped_model_ranges != 4
+            || raw.pointer_matches != 4
+            || raw.split_count != 1
+            || !raw.wall_ms.is_finite()
+            || raw.wall_ms <= 0.0
+            || !raw.gpu_ms.is_finite()
+            || raw.gpu_ms <= 0.0
+        {
+            return Err(Error::invalid(
+                "Metal prefill layer-2 sparse transition metadata is invalid",
+            ));
+        }
+        Ok(SparseIndexedAttentionProbeReport {
+            fixture_id: PREFILL_LAYER2_SPARSE_TRANSITION_FIXTURE_ID,
+            position: raw.position,
+            compressed_rows: raw.compressed_rows,
+            raw_rows: raw.raw_rows,
+            top_k: raw.top_k,
+            diagnostic_threshold_override: 0,
+            pinned_default_threshold: 1024,
+            first_default_sparse_rows: 1025,
+            dispatches: raw.dispatches,
+            wrapped_model_ranges: raw.wrapped_model_ranges,
+            pointer_matches: raw.pointer_matches,
+            split_count: raw.split_count,
+            wall_ms: raw.wall_ms,
+            gpu_ms: raw.gpu_ms,
+            indexer_q_checksum: checksum_f32(&actual_q),
+            indexer_weights_checksum: checksum_f32(&actual_weights),
+            indexer_scores_checksum: checksum_f32(&actual_scores),
+            indexer_topk_checksum: checksum_i32(&actual_topk),
+            kqv_out_checksum: checksum_f32(&actual_out),
+            kqv_back_checksum: checksum_f32(&actual_back),
+        })
+    }
+
     pub fn run_sparse_indexed_attention_probe(
         model: &MappedModel,
     ) -> Result<SparseIndexedAttentionProbeReport> {
@@ -50532,6 +51167,28 @@ mod tests {
             token_checksum: 11,
             summed_wall_ms: 2.0,
             summed_gpu_ms: 1.0,
+            sparse_transition: SparseIndexedAttentionProbeReport {
+                fixture_id: PREFILL_LAYER2_SPARSE_TRANSITION_FIXTURE_ID,
+                position: 4099,
+                compressed_rows: 1025,
+                raw_rows: 128,
+                top_k: 512,
+                diagnostic_threshold_override: 0,
+                pinned_default_threshold: 1024,
+                first_default_sparse_rows: 1025,
+                dispatches: 17,
+                wrapped_model_ranges: 4,
+                pointer_matches: 4,
+                split_count: 1,
+                wall_ms: 1.0,
+                gpu_ms: 0.5,
+                indexer_q_checksum: 1,
+                indexer_weights_checksum: 2,
+                indexer_scores_checksum: 3,
+                indexer_topk_checksum: 4,
+                kqv_out_checksum: 5,
+                kqv_back_checksum: 6,
+            },
         };
         let mut output = Vec::new();
         write_long_prefill_continuation_bootstrap_probe_json(&mut output, &report).unwrap();
@@ -50543,6 +51200,10 @@ mod tests {
         assert!(text.contains("\"layer2_attention_compressed_rows\": 2048"));
         assert!(text.contains("\"capacity_growth_preserved_prefix\": true"));
         assert!(text.contains("\"second_long_prefill_bootstrap_chunk_executed\": true"));
+        assert!(text.contains("\"q_b_batch_c0_bitwise_match\": true"));
+        assert!(text.contains("\"raw_ring_capacity\": 4352"));
+        assert!(text.contains("kernel_dsv4_indexed_mixed_attention_heads16_dual"));
+        assert!(text.contains("\"layer2_sparse_transition_c0_claim\": true"));
         assert!(text.contains("\"complete_8k_transformer_claim\": false"));
         assert!(text.contains("\"output_logits_c0_claim\": false"));
     }

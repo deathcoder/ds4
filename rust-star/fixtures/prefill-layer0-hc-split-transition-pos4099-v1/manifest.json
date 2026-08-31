@@ -1,0 +1,63 @@
+{
+  "schema": "rust-star-differential-fixture-v1",
+  "fixture_id": "dwarfstar-oracle-v3-prefill-layer0-pos4099-ffn-hc-split",
+  "captured_at_utc": "2026-08-31T00:15:00Z",
+  "oracle": {
+    "id": "oracle-v3-dump-only-patch",
+    "repository": "https://github.com/antirez/ds4.git",
+    "commit": "d35fb12d01d500b9cefcef24092c295687ceaf7e",
+    "tree": "617415ee9f8ea7dc176d63dada1d5a7582063824",
+    "base_capture_executable_sha256": "8e37f40cef769e34ef82a202d202a42b267322437ab8100c1303cc6aa8583bf3",
+    "dump_patch_executable_sha256": "e85a366af188a4a61d1c0b6d6f12447371ff3a3b9f8e6327e75d8aeb2dc17866",
+    "dump_patch_scope": "Adds one debug-dump call after the existing FFN HC split; arithmetic is unchanged."
+  },
+  "model": {
+    "family": "DeepSeek-V4-Flash-0731",
+    "sha256": "ca22ae2f838e14077c22bc1c1417b71b45b5e5a3687bd96c2ac6e17fdb6261c0"
+  },
+  "capture": {
+    "backend": "metal",
+    "machine": "Apple M1 Ultra, 48 GPU cores, 128 GB unified memory",
+    "prompt": "speed-bench/promessi_sposi.txt",
+    "prompt_sha256": "f53e0d80cb2d4492d24ebd63c7000c397b16ae70f9bf09b3763e5d8323ec209f",
+    "prefill_tokens": 8192,
+    "prefill_chunk": 4096,
+    "chunk_start": 4096,
+    "captured_position": 4099,
+    "fresh_process_captures": 2,
+    "fresh_process_bitwise_match": true,
+    "full_batch_sha256": "11b02d4b513e512bf25ea1279c03191a92fcdfafb7d2a6d42c452cb794d1dbbc",
+    "environment": {
+      "DS4_METAL_GRAPH_DUMP_LAYER": "0",
+      "DS4_METAL_GRAPH_DUMP_POS": "4096",
+      "DS4_METAL_GRAPH_DUMP_NAME": "hc_ffn_split"
+    }
+  },
+  "scope": {
+    "kind": "layer-segment",
+    "phase": "prefill",
+    "layer": 0,
+    "position": 4099,
+    "chunk_row": 3
+  },
+  "claims": {
+    "complete_layer_boundary": false,
+    "complete_transformer": false,
+    "output_logits": false,
+    "throughput": false
+  },
+  "tensors": [
+    {
+      "name": "hc_ffn_split",
+      "role": "intermediate",
+      "dtype": "f32",
+      "shape": [
+        24
+      ],
+      "encoding": "little-endian-ieee754-binary32",
+      "path": "ffn-hc-split.f32le.bin",
+      "bytes": 96,
+      "sha256": "ee39cbf8394a404d117382b7f9096f382b36d4251d50823b4d2c3401511223a5"
+    }
+  ]
+}

@@ -343,8 +343,14 @@ compressors. The first target-Mac run completed 64 continuation tiles and
 retained state to 8,192 raw and 2,048 compressed rows without discarding the
 first-chunk prefix or recurrent compressor state. Continuation GPU time was
 5,124.933 ms. This is the retained second-chunk bootstrap gate only: layers
-2--42, production sparse attention, and exact 8K output logits remain the next
-milestone.
+2--42 and exact 8K output logits remain the next milestone. The bootstrap now
+also proves the first layer-2 sparse transition at position 4,099 against an
+independently repeated oracle-v3 batch capture. Its diagnostic reconstructs
+DwarfStar's 4,352-row raw ring, 4,224-row batch span, 2,048-row compressed
+capacity, chronological top-k order, and dual-head prefill attention dispatch.
+The complete input chain, compressor prefix through row 1,024, KQV output, and
+inverse RoPE output are bit-identical; the one-token 12-split decode probe
+remains a separate C0 control rather than standing in for prefill geometry.
 The first complete second-half experiment deliberately tested whether the
 proven retained decoder schedule could serve as a correctness-preserving
 shortcut. `long-prefill-sequential-continuation-probe` now generalizes the

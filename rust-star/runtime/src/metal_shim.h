@@ -2005,6 +2005,69 @@ int rust_star_metal_run_sparse_indexed_attention(
     char *error,
     size_t error_bytes);
 
+/* Executes the first production sparse row from the retained 4K-to-8K
+ * bootstrap. Q-B and head normalization/RoPE remain one 4K batch; only the
+ * causally row-dependent sparse attention is isolated at position 4099. */
+int rust_star_metal_run_prefill_layer2_sparse_transition(
+    void *context,
+    const void *model_mapping,
+    uint64_t model_bytes,
+    uint64_t q_b_offset,
+    uint64_t q_b_bytes,
+    uint64_t indexer_q_offset,
+    uint64_t indexer_q_bytes,
+    uint64_t indexer_weight_offset,
+    uint64_t indexer_weight_bytes,
+    uint64_t sinks_offset,
+    uint64_t sinks_bytes,
+    float *layer0_attn_norm,
+    float *layer0_q_lora_norm,
+    float *layer0_q_current,
+    float *layer0_kqv_back,
+    float *layer0_after_attention_hc,
+    float *layer0_ffn_norm,
+    float *layer0_router_logits,
+    float *layer0_router_probs,
+    int32_t *layer0_router_selected,
+    float *layer0_router_weights,
+    float *layer0_routed_out,
+    float *layer0_shared_out,
+    float *layer1_input_hc,
+    float *input_hc,
+    float *q_lora_norm,
+    float *attn_norm,
+    float *q_current,
+    float *indexer_q,
+    float *indexer_weights,
+    float *indexer_scores,
+    int32_t *indexer_topk,
+    float *kqv_out,
+    float *kqv_back,
+    rust_star_metal_sparse_indexed_result *result,
+    char *error,
+    size_t error_bytes);
+
+int rust_star_metal_copy_prefill_layer0_kv_transition(
+    void *context,
+    float *kv_raw,
+    float *kv_norm,
+    float *kv_rope,
+    float *kv_current,
+    float *ffn_split,
+    float *after_ffn_hc,
+    float *layer1_attn_current,
+    float *layer2_attn_current,
+    char *error,
+    size_t error_bytes);
+
+int rust_star_metal_copy_prefill_layer2_compressed_prefix(
+    void *context,
+    float *attention_compressed,
+    float *indexer_compressed,
+    float *attention_compressed_row1024,
+    char *error,
+    size_t error_bytes);
+
 int rust_star_metal_run_output_head(
     void *context,
     const void *model_mapping,
