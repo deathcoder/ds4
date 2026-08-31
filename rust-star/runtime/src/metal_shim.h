@@ -2047,6 +2047,32 @@ int rust_star_metal_run_prefill_layer2_sparse_transition(
     char *error,
     size_t error_bytes);
 
+/* Executes the production 32-row attention-output and FFN tail from an exact
+ * second-chunk KQV-back tile. This isolates native batch arithmetic downstream
+ * of the still-incomplete multirow sparse-attention scheduler. */
+int rust_star_metal_run_prefill_layer2_continuation_tail(
+    void *context,
+    const void *model_mapping,
+    uint64_t model_bytes,
+    const rust_star_metal_prefill_layer_weights *weights,
+    const float *kqv_back_tile,
+    float *attention_low,
+    float *attention_output,
+    float *after_attention_hc,
+    float *ffn_current,
+    float *ffn_norm,
+    float *router_logits,
+    float *router_probs,
+    int32_t *router_selected,
+    float *router_weights,
+    float *routed_mid,
+    float *routed_output,
+    float *shared_output,
+    float *after_ffn_hc,
+    rust_star_metal_sparse_indexed_result *result,
+    char *error,
+    size_t error_bytes);
+
 int rust_star_metal_copy_prefill_layer0_kv_transition(
     void *context,
     float *kv_raw,

@@ -703,6 +703,30 @@ not labeled C0. The complete exact 2K prefill remains an independent regression
 control. The next boundary must carry the retained 4K state through layers
 2--42 and then preserve it while beginning the second 4K chunk.
 
+## Retained 4K-to-8K layer-2 continuation boundary
+
+Schema: `rust-star-long-prefill-continuation-bootstrap-probe-v3`.
+
+`long-prefill-continuation-bootstrap-probe` completes the first 4K transformer,
+then preserves that context while 64 native 64-row tiles append positions
+4,096--8,191 through layers 0/1 and the paired layer-2 compressors. The M1
+Ultra control retains 8,192 raw rows and 2,048 attention/indexer compressed
+rows across 7,556 dispatches and 4,160/4,160 no-copy mappings.
+
+The diagnostic then proves two deliberately separate layer-2 boundaries. The
+real position-4,099 prefill sparse transition reconstructs DwarfStar's
+4,352-row physical ring, 4,224-row batch span, chronological top-k ordering,
+and dual-head mixed-attention dispatch. A second 26-dispatch schedule consumes
+an independently repeated oracle KQV-back tile for positions 4,096--4,127 and
+matches 13 downstream tensors through attention output, both HC updates, the
+token-hash router, routed/shared experts, and final HC with 14/14 mappings.
+
+The second schedule proves the native batch tail only. Because its KQV-back
+input is captured rather than produced by a multirow sparse scheduler, the
+artifact keeps `complete_layer_claim`, complete-8K, output-logit, and
+throughput claims false. The next boundary must connect native multirow sparse
+attention directly to this exact tail and retain its final HC for layer 3.
+
 ## Model residency before measured decode
 
 The eligible `engine-measure` path keeps Metal VM preparation inside the

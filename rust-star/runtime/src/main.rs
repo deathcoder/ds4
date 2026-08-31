@@ -3280,6 +3280,15 @@ fn run_long_prefill_continuation_bootstrap_probe_command(arguments: Vec<OsString
         report.summed_gpu_ms,
     );
     println!(
+        "layer-2 evidence: position 4099 native sparse attention C0; oracle-seeded positions {}..{} downstream tail C0 across {} outputs, {} dispatches, and {}/{} no-copy mappings",
+        report.layer2_tail_start,
+        report.layer2_tail_start + report.layer2_tail_rows - 1,
+        report.layer2_tail_exact_outputs,
+        report.layer2_tail_dispatches,
+        report.layer2_tail_wrapped_model_ranges,
+        report.layer2_tail_wrapped_model_ranges,
+    );
+    println!(
         "scope: retained 4K-to-8K bootstrap transition only; no complete 8K transformer, output-logit C0, or throughput claim"
     );
     if let Some(path) = json_path {
@@ -5486,7 +5495,7 @@ fn long_prefill_bootstrap_probe_usage() -> &'static str {
 }
 
 fn long_prefill_continuation_bootstrap_probe_usage() -> &'static str {
-    "usage: rust-star long-prefill-continuation-bootstrap-probe MODEL.gguf [--json PATH]\n\nRuns the first 4,096-token chunk through the complete native transformer, then advances positions 4,096--8,191 through complete layers 0 and 1 plus layer 2 raw KV and paired ratio-4 compressors in the same retained Metal context. It verifies global positions, prefix-preserving capacity growth, and recurrent compressor ownership, but makes no complete-8K-transformer, output-logit C0, or throughput claim."
+    "usage: rust-star long-prefill-continuation-bootstrap-probe MODEL.gguf [--json PATH]\n\nRuns the first 4,096-token chunk through the complete native transformer, then advances positions 4,096--8,191 through complete layers 0 and 1 plus layer 2 raw KV and paired ratio-4 compressors in the same retained Metal context. It verifies the true native sparse-attention transition at position 4,099 and, from an independently repeated oracle KQV-back input, the first 32-row layer-2 output/FFN/final-HC tail. The oracle-seeded tail is not a complete-layer claim. The command makes no complete-8K-transformer, output-logit C0, or throughput claim."
 }
 
 fn long_prefill_sequential_continuation_probe_usage() -> &'static str {

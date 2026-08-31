@@ -389,6 +389,24 @@ the same accepted synchronized producer agree byte-for-byte on its complete
 second 4K chunk; its recorded prefill observations are explicitly not benchmark
 evidence.
 
+To exercise the retained second chunk and its first exact layer-2 tail:
+
+```sh
+rust-star/.work/runtime-target/release/rust-star \
+  long-prefill-continuation-bootstrap-probe \
+  /absolute/path/to/model.gguf \
+  --json rust-star/.work/runtime-target/long-prefill-continuation-8192.json
+```
+
+The command completes the first 4K transformer, appends positions
+4,096--8,191 through layers 0/1 and the paired layer-2 compressors, and checks
+the true position-4,099 sparse-attention boundary. It then starts from a
+repeated oracle KQV-back tile at positions 4,096--4,127 and requires 13 native
+batch outputs through the layer-2 final HC update to match bit-for-bit over 26
+dispatches and 14/14 no-copy mappings. This oracle-seeded tail is not a
+complete-layer result; complete 8K transformer, output-logit, and throughput
+claims remain false.
+
 To run the connected layer-0 ingress gate:
 
 ```sh

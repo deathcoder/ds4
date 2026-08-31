@@ -358,8 +358,13 @@ they describe whenever practical.
   paired-compressor boundary in the same context. The retained buffers grew to
   8,192 raw rows and 2,048 compressed rows while preserving the prefix and
   recurrent compressor state. This remains a structural second-chunk gate
-  without an 8K output C0 claim; extend the continuation through layers 2--42,
-  production sparse attention, and the output head next. A complete retained
+  without an 8K output C0 claim. The first 32-row layer-2 downstream tile at
+  positions 4,096--4,127 is now exact through attention output, router,
+  routed/shared experts, and final HC over 26 dispatches and 14/14 mappings.
+  Its input is a repeated oracle KQV-back capture, so it is deliberately not a
+  complete-layer claim. Generate that tile's KQV-back with the native multirow
+  sparse scheduler, then extend the connected continuation through the rest of
+  layer 2, layers 3--42, and the output head. A complete retained
   sequential experiment has now ruled out decoder execution as a shortcut: it
   selected the same terminal token but differed in all 129,280 logits. The
   second chunk must preserve batched projection, compressor, attention, and FFN

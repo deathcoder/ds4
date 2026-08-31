@@ -18,6 +18,61 @@ Before changing code:
 Journal entries are reverse chronological. Do not edit old entries to change
 history; add a correction and update the current-state summary.
 
+## 2026-08-31 — First native-batched continuation tail proven
+
+Objective:
+
+- Move beyond the one-row layer-2 sparse boundary and validate the production
+  batch output/FFN/final-HC schedule over a real tile from the second 4K chunk.
+
+Changes and evidence:
+
+- Captured every layer-2 tensor downstream of KQV-back for positions
+  4,096--8,191 twice in fresh accepted oracle-v3 processes. All full 4,096-row
+  tensors repeated bit-for-bit. The importer pins their complete identities
+  while retaining only the first 32 rows, producing a 13 MiB fixture with one
+  input and 13 exact outputs.
+- Added a 26-dispatch native Metal tail over positions 4,096--4,127. It wraps
+  14 mmap-backed model ranges and executes the grouped attention output,
+  attention HC update, FFN HC ingress/norm, token-hash router, routed experts,
+  shared expert, and final HC update. All 13 FP32/I32 outputs match the repeated
+  DwarfStar capture by bit pattern.
+- Kept the proof boundary explicit: the 32-row tail consumes captured oracle
+  KQV-back, so it proves the downstream batch schedule but not complete layer-2
+  execution. The independent native position-4,099 sparse-attention replay
+  remains exact. Schema
+  `rust-star-long-prefill-continuation-bootstrap-probe-v3` reports the two
+  claims separately and preserves false complete-layer, complete-8K,
+  output-logit, and throughput claims.
+- The runtime loads this large fixture at execution time. Embedding it in the
+  Rust object exceeded Mach-O's 4 GiB string-table limit once combined with the
+  existing fixture corpus, so no new binary-size dependency was accepted.
+
+Validation:
+
+- The M1 Ultra continuation probe completed all 7,556 bootstrap dispatches
+  with 4,160/4,160 mappings in 4,677.923/4,664.606 ms wall/GPU. The combined
+  layer-2 diagnostic used 43 dispatches and 18/18 mappings: 17/4 for the true
+  sparse transition and 26/14 for the oracle-seeded downstream tail.
+- Ignored JSON evidence SHA-256 is
+  `cf57e2dd7ad374d0d4dd0fb6e1bc81f741b24cc783fcb1f770b6968384057ea2`.
+- The optimized macOS build, all 306 Rust tests, all 83 Python tests, fixture
+  payload validation, clean importer regeneration, JSON parsing, formatting,
+  and `git diff --check` passed.
+
+Decision:
+
+- Accept the 32-row downstream batch tail as C0 while refusing to call it a
+  complete layer. This removes output projection, router, expert, and HC
+  numerics as unknowns at the second-chunk boundary.
+
+Next:
+
+- Generate the first 32 rows' KQV-back natively with the real multirow sparse
+  attention scheduler, feed it directly into the proven tail, and retain the
+  resulting final HC as live layer-3 input. Then generalize that connected
+  schedule through the remaining layer-2 tiles and layers 3--42.
+
 ## 2026-08-31 — First sparse layer-2 boundary proven through FFN
 
 Objective:
