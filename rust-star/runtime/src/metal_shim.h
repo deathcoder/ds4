@@ -2051,6 +2051,26 @@ int rust_star_metal_run_prefill_layer2_sparse_transition(
     char *error,
     size_t error_bytes);
 
+/* Reuses the retained 4K layer-2 continuation Q batch for one additional
+ * aligned 32-row production sparse-attention tile. */
+int rust_star_metal_run_prefill_layer2_continuation_sparse_tile(
+    void *context,
+    const void *model_mapping,
+    uint64_t model_bytes,
+    uint64_t indexer_q_offset,
+    uint64_t indexer_q_bytes,
+    uint64_t indexer_weight_offset,
+    uint64_t indexer_weight_bytes,
+    uint64_t sinks_offset,
+    uint64_t sinks_bytes,
+    uint32_t tile_start,
+    float *indexer_scores,
+    int32_t *indexer_topk,
+    float *kqv_back,
+    rust_star_metal_sparse_indexed_result *result,
+    char *error,
+    size_t error_bytes);
+
 /* Continues directly from the retained native 32-row sparse KQV-back buffer
  * through the production attention-output and FFN tail. */
 int rust_star_metal_run_prefill_layer2_continuation_tail(
@@ -2059,6 +2079,7 @@ int rust_star_metal_run_prefill_layer2_continuation_tail(
     uint64_t model_bytes,
     const rust_star_metal_prefill_layer_weights *weights,
     uint32_t layer_index,
+    uint32_t tile_start,
     float *attention_low,
     float *attention_output,
     float *after_attention_hc,
@@ -2083,6 +2104,7 @@ int rust_star_metal_run_prefill_layer3_continuation_ingress(
     const void *model_mapping,
     uint64_t model_bytes,
     const rust_star_metal_prefill_layer_weights *weights,
+    uint32_t tile_start,
     float *hc_attn_pre,
     float *attn_norm,
     float *q_lora,
@@ -2105,6 +2127,7 @@ int rust_star_metal_run_prefill_layer3_continuation_attention(
     const rust_star_metal_prefill_compressor_weights *compressor,
     uint64_t sinks_offset,
     uint64_t sinks_bytes,
+    uint32_t tile_start,
     float *state_kv,
     int32_t *state_score_bits,
     const float *expected_history_kv,

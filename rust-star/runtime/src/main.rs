@@ -3297,7 +3297,17 @@ fn run_long_prefill_continuation_bootstrap_probe_command(arguments: Vec<OsString
         report.layer3_complete_wrapped_model_ranges,
     );
     println!(
-        "scope: retained 4K-to-8K bootstrap plus complete unseeded 32-row layer-2 and layer-3 tiles; the complete 8K transformer, output-logit C0, and throughput remain unclaimed"
+        "second-tile evidence: the same live context continues positions {}..{} through exact complete layer-2 and layer-3 tiles ({} exact outputs, {}+{} dispatches, {}/{} no-copy mappings)",
+        report.second_tile_start,
+        report.second_tile_start + report.second_tile_rows - 1,
+        report.second_layer2_exact_outputs + report.second_layer3_exact_outputs,
+        report.second_layer2_dispatches,
+        report.second_layer3_dispatches,
+        report.second_layer2_wrapped_model_ranges + report.second_layer3_wrapped_model_ranges,
+        report.second_layer2_wrapped_model_ranges + report.second_layer3_wrapped_model_ranges,
+    );
+    println!(
+        "scope: retained 4K-to-8K bootstrap plus two consecutive complete unseeded 32-row layer-2/layer-3 tiles; the complete 8K transformer, output-logit C0, and throughput remain unclaimed"
     );
     if let Some(path) = json_path {
         write_long_prefill_continuation_bootstrap_probe_file(&path, &report)?;

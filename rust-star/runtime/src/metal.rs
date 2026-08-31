@@ -29,7 +29,7 @@ pub const PREFILL_LAYERS012_COMPRESSOR_LOOP_PROBE_SCHEMA: &str =
     "rust-star-prefill-layers012-compressor-loop-probe-v1";
 pub const LONG_PREFILL_BOOTSTRAP_PROBE_SCHEMA: &str = "rust-star-long-prefill-bootstrap-probe-v1";
 pub const LONG_PREFILL_CONTINUATION_BOOTSTRAP_PROBE_SCHEMA: &str =
-    "rust-star-long-prefill-continuation-bootstrap-probe-v8";
+    "rust-star-long-prefill-continuation-bootstrap-probe-v9";
 pub const LONG_PREFILL_SEQUENTIAL_CONTINUATION_PROBE_SCHEMA: &str =
     "rust-star-long-prefill-sequential-continuation-probe-v1";
 pub const LONG_PREFILL_TRANSFORMER_PROBE_SCHEMA: &str =
@@ -624,6 +624,10 @@ const PREFILL_LAYER3_CONTINUATION_TAIL_FIXTURE_DIR: &str =
     "prefill-layer3-continuation-tail-4096-v1";
 const PREFILL_LAYER3_CONTINUATION_TAIL_FIXTURE_ID: &str =
     "dwarfstar-oracle-v3-prefill-layer3-continuation-tail-4096";
+const PREFILL_LAYER23_CONTINUATION_SECOND_TILE_FIXTURE_DIR: &str =
+    "prefill-layer23-continuation-second-tile-4128-v1";
+const PREFILL_LAYER23_CONTINUATION_SECOND_TILE_FIXTURE_ID: &str =
+    "dwarfstar-oracle-v3-prefill-layer23-continuation-second-tile-4128";
 const PREFILL_LAYER0_TRANSITION_ATTN_NORM_BYTES: &[u8] =
     include_bytes!("../../fixtures/prefill-layer0-transition-pos4099-v1/attn-norm.f32le.bin");
 const PREFILL_LAYER0_TRANSITION_Q_LORA_NORM_BYTES: &[u8] =
@@ -3705,6 +3709,15 @@ pub struct LongPrefillContinuationBootstrapProbeReport {
     pub layer3_complete_dispatches: u32,
     pub layer3_complete_wrapped_model_ranges: u32,
     pub layer3_complete_exact_outputs: u32,
+    pub second_tile_fixture_id: &'static str,
+    pub second_tile_start: u32,
+    pub second_tile_rows: u32,
+    pub second_layer2_dispatches: u32,
+    pub second_layer2_wrapped_model_ranges: u32,
+    pub second_layer2_exact_outputs: u32,
+    pub second_layer3_dispatches: u32,
+    pub second_layer3_wrapped_model_ranges: u32,
+    pub second_layer3_exact_outputs: u32,
 }
 
 #[derive(Clone, Debug)]
@@ -7699,8 +7712,8 @@ pub fn write_long_prefill_continuation_bootstrap_probe_json<W: Write>(
         || report.sparse_transition.raw_rows != 128
         || report.sparse_transition.top_k != 512
         || report.sparse_transition.dispatches != 53
-        || report.sparse_transition.wrapped_model_ranges != 18
-        || report.sparse_transition.pointer_matches != 18
+        || report.sparse_transition.wrapped_model_ranges != 21
+        || report.sparse_transition.pointer_matches != 21
         || report.sparse_transition.split_count != 1
         || report.layer2_tail_fixture_id != PREFILL_LAYER2_CONTINUATION_TAIL_FIXTURE_ID
         || report.layer2_tail_start != 4_096
@@ -7716,6 +7729,15 @@ pub fn write_long_prefill_continuation_bootstrap_probe_json<W: Write>(
         || report.layer3_complete_dispatches != 76
         || report.layer3_complete_wrapped_model_ranges != 28
         || report.layer3_complete_exact_outputs != 17
+        || report.second_tile_fixture_id != PREFILL_LAYER23_CONTINUATION_SECOND_TILE_FIXTURE_ID
+        || report.second_tile_start != 4_128
+        || report.second_tile_rows != 32
+        || report.second_layer2_dispatches != 36
+        || report.second_layer2_wrapped_model_ranges != 17
+        || report.second_layer2_exact_outputs != 16
+        || report.second_layer3_dispatches != 76
+        || report.second_layer3_wrapped_model_ranges != 28
+        || report.second_layer3_exact_outputs != 26
         || !report.sparse_transition.wall_ms.is_finite()
         || !report.sparse_transition.gpu_ms.is_finite()
         || report.sparse_transition.wall_ms <= 0.0
@@ -7794,11 +7816,27 @@ pub fn write_long_prefill_continuation_bootstrap_probe_json<W: Write>(
     crate::artifact::write_json_string(output, report.layer3_complete_fixture_id)?;
     write!(
         output,
-        ", \"input_boundary\": \"live_layer3_qkv_plus_native_retained_pre4096_attention_history\", \"start\": 4096, \"rows\": 32, \"ratio128_emitted_rows\": 0, \"ratio128_state_rows\": 32, \"attention_history_raw_rows\": 128, \"attention_history_compressed_rows\": 32, \"attention_history_oracle_seeded\": false, \"native_retained_attention_history\": true, \"dispatches\": {}, \"wrapped_model_ranges\": {}, \"pointer_matches\": {}, \"exact_outputs\": {}, \"compressor_state_c0_bitwise_match\": true, \"dense_mixed_attention_c0_bitwise_match\": true, \"ffn_c0_bitwise_match\": true, \"final_hc_c0_bitwise_match\": true, \"unseeded_complete_layer3_tile_claim\": true}},\n  \"checksums\": {{\"continuation_token_ids\": {}}},\n  \"timing\": {{\"continuation_summed_wall_ms\": {:.6}, \"continuation_summed_gpu_ms\": {:.6}}},\n  \"accepted_oracle_token_stream\": true,\n  \"native_batch_schedule\": true,\n  \"second_long_prefill_bootstrap_chunk_executed\": true,\n  \"layer2_sparse_transition_c0_claim\": true,\n  \"layer2_native_complete_tile_c0_claim\": true,\n  \"live_layer2_to_layer3_handoff_c0_claim\": true,\n  \"unseeded_layer3_native_complete_tile_claim\": true,\n  \"complete_8k_transformer_claim\": false,\n  \"output_logits_c0_claim\": false,\n  \"throughput_claim\": false\n}}\n",
+        ", \"input_boundary\": \"live_layer3_qkv_plus_native_retained_pre4096_attention_history\", \"start\": 4096, \"rows\": 32, \"ratio128_emitted_rows\": 0, \"ratio128_state_rows\": 32, \"attention_history_raw_rows\": 128, \"attention_history_compressed_rows\": 32, \"attention_history_oracle_seeded\": false, \"native_retained_attention_history\": true, \"dispatches\": {}, \"wrapped_model_ranges\": {}, \"pointer_matches\": {}, \"exact_outputs\": {}, \"compressor_state_c0_bitwise_match\": true, \"dense_mixed_attention_c0_bitwise_match\": true, \"ffn_c0_bitwise_match\": true, \"final_hc_c0_bitwise_match\": true, \"unseeded_complete_layer3_tile_claim\": true}},\n  \"second_consecutive_tile\": {{\"fixture\": ",
         report.layer3_complete_dispatches,
         report.layer3_complete_wrapped_model_ranges,
         report.layer3_complete_wrapped_model_ranges,
         report.layer3_complete_exact_outputs,
+    )?;
+    crate::artifact::write_json_string(output, report.second_tile_fixture_id)?;
+    write!(
+        output,
+        ", \"start\": {}, \"end\": {}, \"rows\": {}, \"native_retained_history\": true, \"layer2\": {{\"dispatches\": {}, \"wrapped_model_ranges\": {}, \"pointer_matches\": {}, \"exact_outputs\": {}, \"complete_tile_c0_bitwise_match\": true}}, \"layer3\": {{\"dispatches\": {}, \"wrapped_model_ranges\": {}, \"pointer_matches\": {}, \"exact_outputs\": {}, \"complete_tile_c0_bitwise_match\": true}}, \"consecutive_complete_layer3_tiles\": 2}},\n  \"checksums\": {{\"continuation_token_ids\": {}}},\n  \"timing\": {{\"continuation_summed_wall_ms\": {:.6}, \"continuation_summed_gpu_ms\": {:.6}}},\n  \"accepted_oracle_token_stream\": true,\n  \"native_batch_schedule\": true,\n  \"second_long_prefill_bootstrap_chunk_executed\": true,\n  \"layer2_sparse_transition_c0_claim\": true,\n  \"layer2_native_complete_tile_c0_claim\": true,\n  \"live_layer2_to_layer3_handoff_c0_claim\": true,\n  \"unseeded_layer3_native_complete_tile_claim\": true,\n  \"two_consecutive_unseeded_layer3_tiles_claim\": true,\n  \"complete_8k_transformer_claim\": false,\n  \"output_logits_c0_claim\": false,\n  \"throughput_claim\": false\n}}\n",
+        report.second_tile_start,
+        report.second_tile_start + report.second_tile_rows - 1,
+        report.second_tile_rows,
+        report.second_layer2_dispatches,
+        report.second_layer2_wrapped_model_ranges,
+        report.second_layer2_wrapped_model_ranges,
+        report.second_layer2_exact_outputs,
+        report.second_layer3_dispatches,
+        report.second_layer3_wrapped_model_ranges,
+        report.second_layer3_wrapped_model_ranges,
+        report.second_layer3_exact_outputs,
         report.token_checksum,
         report.summed_wall_ms,
         report.summed_gpu_ms,
@@ -11036,6 +11074,15 @@ fn read_prefill_layer3_continuation_tail_fixture(file: &str) -> Result<Vec<u8>> 
         std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("../fixtures")
             .join(PREFILL_LAYER3_CONTINUATION_TAIL_FIXTURE_DIR)
+            .join(file),
+    )?)
+}
+
+fn read_prefill_layer23_continuation_second_tile_fixture(file: &str) -> Result<Vec<u8>> {
+    Ok(std::fs::read(
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../fixtures")
+            .join(PREFILL_LAYER23_CONTINUATION_SECOND_TILE_FIXTURE_DIR)
             .join(file),
     )?)
 }
@@ -22389,6 +22436,7 @@ mod imp {
             model_bytes: u64,
             weights: *const RawPrefillLayerWeights,
             layer_index: u32,
+            tile_start: u32,
             attention_low: *mut f32,
             attention_output: *mut f32,
             after_attention_hc: *mut f32,
@@ -22406,11 +22454,30 @@ mod imp {
             error: *mut c_char,
             error_bytes: usize,
         ) -> i32;
+        fn rust_star_metal_run_prefill_layer2_continuation_sparse_tile(
+            context: *mut c_void,
+            model_mapping: *const c_void,
+            model_bytes: u64,
+            indexer_q_offset: u64,
+            indexer_q_bytes: u64,
+            indexer_weight_offset: u64,
+            indexer_weight_bytes: u64,
+            sinks_offset: u64,
+            sinks_bytes: u64,
+            tile_start: u32,
+            indexer_scores: *mut f32,
+            indexer_topk: *mut i32,
+            kqv_back: *mut f32,
+            result: *mut RawSparseIndexedResult,
+            error: *mut c_char,
+            error_bytes: usize,
+        ) -> i32;
         fn rust_star_metal_run_prefill_layer3_continuation_ingress(
             context: *mut c_void,
             model_mapping: *const c_void,
             model_bytes: u64,
             weights: *const RawPrefillLayerWeights,
+            tile_start: u32,
             hc_attn_pre: *mut f32,
             attn_norm: *mut f32,
             q_lora: *mut f32,
@@ -22431,6 +22498,7 @@ mod imp {
             compressor: *const RawPrefillCompressorWeights,
             sinks_offset: u64,
             sinks_bytes: u64,
+            tile_start: u32,
             state_kv: *mut f32,
             state_score_bits: *mut i32,
             expected_history_kv: *const f32,
@@ -25762,7 +25830,7 @@ mod imp {
             FRONTIER_ROWS,
             Some(&tokens),
         )?;
-        let (sparse_transition, layer3_complete) =
+        let (sparse_transition, layer3_complete, second_layer2, second_layer3) =
             run_prefill_layer2_sparse_transition_probe(model, &context)?;
         drop(context);
         if continuation.is_some() {
@@ -25800,6 +25868,15 @@ mod imp {
             layer3_complete_dispatches: layer3_complete.dispatches,
             layer3_complete_wrapped_model_ranges: layer3_complete.wrapped_model_ranges,
             layer3_complete_exact_outputs: 17,
+            second_tile_fixture_id: PREFILL_LAYER23_CONTINUATION_SECOND_TILE_FIXTURE_ID,
+            second_tile_start: 4_128,
+            second_tile_rows: 32,
+            second_layer2_dispatches: second_layer2.dispatches,
+            second_layer2_wrapped_model_ranges: second_layer2.wrapped_model_ranges,
+            second_layer2_exact_outputs: 16,
+            second_layer3_dispatches: second_layer3.dispatches,
+            second_layer3_wrapped_model_ranges: second_layer3.wrapped_model_ranges,
+            second_layer3_exact_outputs: 26,
         })
     }
 
@@ -41718,7 +41795,12 @@ mod imp {
     fn run_prefill_layer2_sparse_transition_probe(
         model: &MappedModel,
         context: &Context,
-    ) -> Result<(SparseIndexedAttentionProbeReport, RawSparseIndexedResult)> {
+    ) -> Result<(
+        SparseIndexedAttentionProbeReport,
+        RawSparseIndexedResult,
+        RawSparseIndexedResult,
+        RawSparseIndexedResult,
+    )> {
         let q_b = exact_tensor(model, "blk.2.attn_q_b.weight", 8, &[1024, 32768])?;
         let q_weight = exact_tensor(model, "blk.2.indexer.attn_q_b.weight", 1, &[1024, 8192])?;
         let indexer_weight = exact_tensor(model, "blk.2.indexer.proj.weight", 1, &[4096, 64])?;
@@ -42190,6 +42272,193 @@ mod imp {
             &read_layer3_tail("ffn-hc-post-first-tile.f32le.bin")?,
             "layer-3 continuation final HC",
         )?;
+        let read_second = |file| read_prefill_layer23_continuation_second_tile_fixture(file);
+        macro_rules! second_f32 {
+            ($file:literal, $label:literal) => {
+                decode_f32_fixture(&read_second($file)?, $label)?
+            };
+        }
+        macro_rules! second_i32 {
+            ($file:literal, $label:literal) => {
+                decode_i32_fixture(&read_second($file)?, $label)?
+            };
+        }
+        let expected_second_l2_scores = second_i32!(
+            "layer2-indexer-scores-tile2-bits.i32le.bin",
+            "second-tile layer-2 indexer scores"
+        );
+        let expected_second_l2_topk = second_i32!(
+            "layer2-indexer-topk-tile2.i32le.bin",
+            "second-tile layer-2 indexer top-k"
+        );
+        let expected_second_l2_kqv_back = second_f32!(
+            "layer2-kqv-back-tile2.f32le.bin",
+            "second-tile layer-2 KQV back"
+        );
+        let expected_second_l2_attention_low = second_f32!(
+            "layer2-attention-low-tile2.f32le.bin",
+            "second-tile layer-2 attention low"
+        );
+        let expected_second_l2_attention_output = second_f32!(
+            "layer2-attention-output-tile2.f32le.bin",
+            "second-tile layer-2 attention output"
+        );
+        let expected_second_l2_after_attention_hc = second_f32!(
+            "layer2-attention-hc-post-tile2.f32le.bin",
+            "second-tile layer-2 attention HC"
+        );
+        let expected_second_l2_ffn_current = second_f32!(
+            "layer2-ffn-current-tile2.f32le.bin",
+            "second-tile layer-2 FFN current"
+        );
+        let expected_second_l2_ffn_norm = second_f32!(
+            "layer2-ffn-norm-tile2.f32le.bin",
+            "second-tile layer-2 FFN norm"
+        );
+        let expected_second_l2_router_logits = second_f32!(
+            "layer2-router-logits-tile2.f32le.bin",
+            "second-tile layer-2 router logits"
+        );
+        let expected_second_l2_router_probs = second_f32!(
+            "layer2-router-probs-tile2.f32le.bin",
+            "second-tile layer-2 router probabilities"
+        );
+        let expected_second_l2_router_selected = second_i32!(
+            "layer2-router-selected-tile2.i32le.bin",
+            "second-tile layer-2 selected experts"
+        );
+        let expected_second_l2_router_weights = second_f32!(
+            "layer2-router-weights-tile2.f32le.bin",
+            "second-tile layer-2 router weights"
+        );
+        let expected_second_l2_routed_mid = second_f32!(
+            "layer2-routed-mid-tile2.f32le.bin",
+            "second-tile layer-2 routed mid"
+        );
+        let expected_second_l2_routed_output = second_f32!(
+            "layer2-routed-output-tile2.f32le.bin",
+            "second-tile layer-2 routed output"
+        );
+        let expected_second_l2_shared_output = second_f32!(
+            "layer2-shared-output-tile2.f32le.bin",
+            "second-tile layer-2 shared output"
+        );
+        let expected_second_l2_after_ffn_hc = second_f32!(
+            "layer2-ffn-hc-post-tile2.f32le.bin",
+            "second-tile layer-2 final HC"
+        );
+        let expected_second_l3_hc_attn_pre = second_f32!(
+            "layer3-hc-attn-pre-tile2.f32le.bin",
+            "second-tile layer-3 HC ingress"
+        );
+        let expected_second_l3_attn_norm = second_f32!(
+            "layer3-attn-norm-tile2.f32le.bin",
+            "second-tile layer-3 attention norm"
+        );
+        let expected_second_l3_q_lora = second_f32!(
+            "layer3-q-lora-tile2.f32le.bin",
+            "second-tile layer-3 Q-Lora"
+        );
+        let expected_second_l3_q_lora_norm = second_f32!(
+            "layer3-q-lora-norm-tile2.f32le.bin",
+            "second-tile layer-3 Q-Lora norm"
+        );
+        let expected_second_l3_kv_raw = second_f32!(
+            "layer3-kv-raw-tile2.f32le.bin",
+            "second-tile layer-3 KV raw"
+        );
+        let expected_second_l3_kv_norm = second_f32!(
+            "layer3-kv-norm-tile2.f32le.bin",
+            "second-tile layer-3 KV norm"
+        );
+        let expected_second_l3_q_current = second_f32!(
+            "layer3-q-current-tile2.f32le.bin",
+            "second-tile layer-3 Q current"
+        );
+        let expected_second_l3_kv_rope = second_f32!(
+            "layer3-kv-rope-tile2.f32le.bin",
+            "second-tile layer-3 KV RoPE"
+        );
+        let expected_second_l3_kv_current = second_f32!(
+            "layer3-kv-current-tile2.f32le.bin",
+            "second-tile layer-3 KV current"
+        );
+        let expected_second_l3_history_kv = second_f32!(
+            "layer3-history-raw-before-tile2.f32le.bin",
+            "second-tile layer-3 raw history"
+        );
+        let expected_second_l3_compressed_kv = second_f32!(
+            "layer3-history-compressed-before-tile2.f32le.bin",
+            "second-tile layer-3 compressed history"
+        );
+        let expected_second_l3_state_kv = second_f32!(
+            "layer3-attention-state-kv-after-tile2.f32le.bin",
+            "second-tile layer-3 compressor KV state"
+        );
+        let expected_second_l3_state_score = second_i32!(
+            "layer3-attention-state-score-after-tile2.i32le.bin",
+            "second-tile layer-3 compressor score state"
+        );
+        let expected_second_l3_kqv_out = second_f32!(
+            "layer3-kqv-out-tile2.f32le.bin",
+            "second-tile layer-3 KQV output"
+        );
+        let expected_second_l3_kqv_back = second_f32!(
+            "layer3-kqv-back-tile2.f32le.bin",
+            "second-tile layer-3 KQV back"
+        );
+        let expected_second_l3_attention_low = second_f32!(
+            "layer3-attention-low-tile2.f32le.bin",
+            "second-tile layer-3 attention low"
+        );
+        let expected_second_l3_attention_output = second_f32!(
+            "layer3-attention-output-tile2.f32le.bin",
+            "second-tile layer-3 attention output"
+        );
+        let expected_second_l3_after_attention_hc = second_f32!(
+            "layer3-attention-hc-post-tile2.f32le.bin",
+            "second-tile layer-3 attention HC"
+        );
+        let expected_second_l3_ffn_current = second_f32!(
+            "layer3-ffn-current-tile2.f32le.bin",
+            "second-tile layer-3 FFN current"
+        );
+        let expected_second_l3_ffn_norm = second_f32!(
+            "layer3-ffn-norm-tile2.f32le.bin",
+            "second-tile layer-3 FFN norm"
+        );
+        let expected_second_l3_router_logits = second_f32!(
+            "layer3-router-logits-tile2.f32le.bin",
+            "second-tile layer-3 router logits"
+        );
+        let expected_second_l3_router_probs = second_f32!(
+            "layer3-router-probs-tile2.f32le.bin",
+            "second-tile layer-3 router probabilities"
+        );
+        let expected_second_l3_router_selected = second_i32!(
+            "layer3-router-selected-tile2.i32le.bin",
+            "second-tile layer-3 selected experts"
+        );
+        let expected_second_l3_router_weights = second_f32!(
+            "layer3-router-weights-tile2.f32le.bin",
+            "second-tile layer-3 router weights"
+        );
+        let expected_second_l3_routed_mid = second_f32!(
+            "layer3-routed-mid-tile2.f32le.bin",
+            "second-tile layer-3 routed mid"
+        );
+        let expected_second_l3_routed_output = second_f32!(
+            "layer3-routed-output-tile2.f32le.bin",
+            "second-tile layer-3 routed output"
+        );
+        let expected_second_l3_shared_output = second_f32!(
+            "layer3-shared-output-tile2.f32le.bin",
+            "second-tile layer-3 shared output"
+        );
+        let expected_second_l3_after_ffn_hc = second_f32!(
+            "layer3-ffn-hc-post-tile2.f32le.bin",
+            "second-tile layer-3 final HC"
+        );
         let mut actual_layer0_attn_norm = vec![0.0_f32; expected_layer0_attn_norm.len()];
         let mut actual_layer0_q_lora_norm = vec![0.0_f32; expected_layer0_q_lora_norm.len()];
         let mut actual_layer0_q_current = vec![0.0_f32; expected_layer0_q_current.len()];
@@ -42272,8 +42541,72 @@ mod imp {
         let mut actual_layer3_routed_output = vec![0.0_f32; expected_layer3_routed_output.len()];
         let mut actual_layer3_shared_output = vec![0.0_f32; expected_layer3_shared_output.len()];
         let mut actual_layer3_after_ffn_hc = vec![0.0_f32; expected_layer3_after_ffn_hc.len()];
+        let mut actual_second_l2_scores = vec![0.0_f32; expected_second_l2_scores.len()];
+        let mut actual_second_l2_topk = vec![0_i32; expected_second_l2_topk.len()];
+        let mut actual_second_l2_kqv_back = vec![0.0_f32; expected_second_l2_kqv_back.len()];
+        let mut actual_second_l2_attention_low =
+            vec![0.0_f32; expected_second_l2_attention_low.len()];
+        let mut actual_second_l2_attention_output =
+            vec![0.0_f32; expected_second_l2_attention_output.len()];
+        let mut actual_second_l2_after_attention_hc =
+            vec![0.0_f32; expected_second_l2_after_attention_hc.len()];
+        let mut actual_second_l2_ffn_current = vec![0.0_f32; expected_second_l2_ffn_current.len()];
+        let mut actual_second_l2_ffn_norm = vec![0.0_f32; expected_second_l2_ffn_norm.len()];
+        let mut actual_second_l2_router_logits =
+            vec![0.0_f32; expected_second_l2_router_logits.len()];
+        let mut actual_second_l2_router_probs =
+            vec![0.0_f32; expected_second_l2_router_probs.len()];
+        let mut actual_second_l2_router_selected =
+            vec![0_i32; expected_second_l2_router_selected.len()];
+        let mut actual_second_l2_router_weights =
+            vec![0.0_f32; expected_second_l2_router_weights.len()];
+        let mut actual_second_l2_routed_mid = vec![0.0_f32; expected_second_l2_routed_mid.len()];
+        let mut actual_second_l2_routed_output =
+            vec![0.0_f32; expected_second_l2_routed_output.len()];
+        let mut actual_second_l2_shared_output =
+            vec![0.0_f32; expected_second_l2_shared_output.len()];
+        let mut actual_second_l2_after_ffn_hc =
+            vec![0.0_f32; expected_second_l2_after_ffn_hc.len()];
+        let mut actual_second_l3_hc_attn_pre = vec![0.0_f32; expected_second_l3_hc_attn_pre.len()];
+        let mut actual_second_l3_attn_norm = vec![0.0_f32; expected_second_l3_attn_norm.len()];
+        let mut actual_second_l3_q_lora = vec![0.0_f32; expected_second_l3_q_lora.len()];
+        let mut actual_second_l3_q_lora_norm = vec![0.0_f32; expected_second_l3_q_lora_norm.len()];
+        let mut actual_second_l3_kv_raw = vec![0.0_f32; expected_second_l3_kv_raw.len()];
+        let mut actual_second_l3_kv_norm = vec![0.0_f32; expected_second_l3_kv_norm.len()];
+        let mut actual_second_l3_q_current = vec![0.0_f32; expected_second_l3_q_current.len()];
+        let mut actual_second_l3_kv_rope = vec![0.0_f32; expected_second_l3_kv_rope.len()];
+        let mut actual_second_l3_kv_current = vec![0.0_f32; expected_second_l3_kv_current.len()];
+        let mut actual_second_l3_state_kv = vec![0.0_f32; expected_second_l3_state_kv.len()];
+        let mut actual_second_l3_state_score = vec![0_i32; expected_second_l3_state_score.len()];
+        let mut actual_second_l3_kqv_out = vec![0.0_f32; expected_second_l3_kqv_out.len()];
+        let mut actual_second_l3_kqv_back = vec![0.0_f32; expected_second_l3_kqv_back.len()];
+        let mut actual_second_l3_attention_low =
+            vec![0.0_f32; expected_second_l3_attention_low.len()];
+        let mut actual_second_l3_attention_output =
+            vec![0.0_f32; expected_second_l3_attention_output.len()];
+        let mut actual_second_l3_after_attention_hc =
+            vec![0.0_f32; expected_second_l3_after_attention_hc.len()];
+        let mut actual_second_l3_ffn_current = vec![0.0_f32; expected_second_l3_ffn_current.len()];
+        let mut actual_second_l3_ffn_norm = vec![0.0_f32; expected_second_l3_ffn_norm.len()];
+        let mut actual_second_l3_router_logits =
+            vec![0.0_f32; expected_second_l3_router_logits.len()];
+        let mut actual_second_l3_router_probs =
+            vec![0.0_f32; expected_second_l3_router_probs.len()];
+        let mut actual_second_l3_router_selected =
+            vec![0_i32; expected_second_l3_router_selected.len()];
+        let mut actual_second_l3_router_weights =
+            vec![0.0_f32; expected_second_l3_router_weights.len()];
+        let mut actual_second_l3_routed_mid = vec![0.0_f32; expected_second_l3_routed_mid.len()];
+        let mut actual_second_l3_routed_output =
+            vec![0.0_f32; expected_second_l3_routed_output.len()];
+        let mut actual_second_l3_shared_output =
+            vec![0.0_f32; expected_second_l3_shared_output.len()];
+        let mut actual_second_l3_after_ffn_hc =
+            vec![0.0_f32; expected_second_l3_after_ffn_hc.len()];
         let mut raw = RawSparseIndexedResult::default();
         let mut layer3_raw = RawSparseIndexedResult::default();
+        let mut second_layer2_raw = RawSparseIndexedResult::default();
+        let mut second_layer3_raw = RawSparseIndexedResult::default();
         let mut error = [0 as c_char; ERROR_BYTES];
         let succeeded = unsafe {
             rust_star_metal_run_prefill_layer2_sparse_transition(
@@ -42332,6 +42665,7 @@ mod imp {
                 model.bytes(),
                 &tail_weights,
                 2,
+                4096,
                 actual_tail_attention_low.as_mut_ptr(),
                 actual_tail_attention_output.as_mut_ptr(),
                 actual_tail_after_attention_hc.as_mut_ptr(),
@@ -42362,6 +42696,7 @@ mod imp {
                 model.mapping_pointer(),
                 model.bytes(),
                 &layer3_weights,
+                4096,
                 actual_layer3_hc_attn_pre.as_mut_ptr(),
                 actual_layer3_attn_norm.as_mut_ptr(),
                 actual_layer3_q_lora.as_mut_ptr(),
@@ -42390,6 +42725,7 @@ mod imp {
                 &layer3_compressor,
                 layer3_sinks.absolute_offset,
                 layer3_sinks.bytes,
+                4096,
                 actual_layer3_state_kv.as_mut_ptr(),
                 actual_layer3_state_score.as_mut_ptr(),
                 expected_layer3_history_kv.as_ptr(),
@@ -42414,6 +42750,7 @@ mod imp {
                 model.bytes(),
                 &layer3_weights,
                 3,
+                4096,
                 actual_layer3_attention_low.as_mut_ptr(),
                 actual_layer3_attention_output.as_mut_ptr(),
                 actual_layer3_after_attention_hc.as_mut_ptr(),
@@ -42435,6 +42772,149 @@ mod imp {
         if layer3_tail_succeeded == 0 {
             return Err(Error::invalid(format!(
                 "Metal prefill layer-3 continuation tail failed: {}",
+                error_text(&error)
+            )));
+        }
+        let second_layer2_sparse_succeeded = unsafe {
+            rust_star_metal_run_prefill_layer2_continuation_sparse_tile(
+                context.0,
+                model.mapping_pointer(),
+                model.bytes(),
+                q_weight.absolute_offset,
+                q_weight.bytes,
+                indexer_weight.absolute_offset,
+                indexer_weight.bytes,
+                sinks.absolute_offset,
+                sinks.bytes,
+                4128,
+                actual_second_l2_scores.as_mut_ptr(),
+                actual_second_l2_topk.as_mut_ptr(),
+                actual_second_l2_kqv_back.as_mut_ptr(),
+                &mut second_layer2_raw,
+                error.as_mut_ptr(),
+                error.len(),
+            )
+        };
+        if second_layer2_sparse_succeeded == 0 {
+            return Err(Error::invalid(format!(
+                "Metal second prefill layer-2 sparse tile failed: {}",
+                error_text(&error)
+            )));
+        }
+        let second_layer2_tail_succeeded = unsafe {
+            rust_star_metal_run_prefill_layer2_continuation_tail(
+                context.0,
+                model.mapping_pointer(),
+                model.bytes(),
+                &tail_weights,
+                2,
+                4128,
+                actual_second_l2_attention_low.as_mut_ptr(),
+                actual_second_l2_attention_output.as_mut_ptr(),
+                actual_second_l2_after_attention_hc.as_mut_ptr(),
+                actual_second_l2_ffn_current.as_mut_ptr(),
+                actual_second_l2_ffn_norm.as_mut_ptr(),
+                actual_second_l2_router_logits.as_mut_ptr(),
+                actual_second_l2_router_probs.as_mut_ptr(),
+                actual_second_l2_router_selected.as_mut_ptr(),
+                actual_second_l2_router_weights.as_mut_ptr(),
+                actual_second_l2_routed_mid.as_mut_ptr(),
+                actual_second_l2_routed_output.as_mut_ptr(),
+                actual_second_l2_shared_output.as_mut_ptr(),
+                actual_second_l2_after_ffn_hc.as_mut_ptr(),
+                &mut second_layer2_raw,
+                error.as_mut_ptr(),
+                error.len(),
+            )
+        };
+        if second_layer2_tail_succeeded == 0 {
+            return Err(Error::invalid(format!(
+                "Metal second prefill layer-2 continuation tail failed: {}",
+                error_text(&error)
+            )));
+        }
+        let second_layer3_ingress_succeeded = unsafe {
+            rust_star_metal_run_prefill_layer3_continuation_ingress(
+                context.0,
+                model.mapping_pointer(),
+                model.bytes(),
+                &layer3_weights,
+                4128,
+                actual_second_l3_hc_attn_pre.as_mut_ptr(),
+                actual_second_l3_attn_norm.as_mut_ptr(),
+                actual_second_l3_q_lora.as_mut_ptr(),
+                actual_second_l3_q_lora_norm.as_mut_ptr(),
+                actual_second_l3_kv_raw.as_mut_ptr(),
+                actual_second_l3_kv_norm.as_mut_ptr(),
+                actual_second_l3_q_current.as_mut_ptr(),
+                actual_second_l3_kv_rope.as_mut_ptr(),
+                actual_second_l3_kv_current.as_mut_ptr(),
+                &mut second_layer3_raw,
+                error.as_mut_ptr(),
+                error.len(),
+            )
+        };
+        if second_layer3_ingress_succeeded == 0 {
+            return Err(Error::invalid(format!(
+                "Metal second prefill layer-3 continuation ingress failed: {}",
+                error_text(&error)
+            )));
+        }
+        let second_layer3_attention_succeeded = unsafe {
+            rust_star_metal_run_prefill_layer3_continuation_attention(
+                context.0,
+                model.mapping_pointer(),
+                model.bytes(),
+                &layer3_compressor,
+                layer3_sinks.absolute_offset,
+                layer3_sinks.bytes,
+                4128,
+                actual_second_l3_state_kv.as_mut_ptr(),
+                actual_second_l3_state_score.as_mut_ptr(),
+                expected_second_l3_history_kv.as_ptr(),
+                expected_second_l3_compressed_kv.as_ptr(),
+                actual_second_l3_kqv_out.as_mut_ptr(),
+                actual_second_l3_kqv_back.as_mut_ptr(),
+                &mut second_layer3_raw,
+                error.as_mut_ptr(),
+                error.len(),
+            )
+        };
+        if second_layer3_attention_succeeded == 0 {
+            return Err(Error::invalid(format!(
+                "Metal second prefill layer-3 continuation attention failed: {}",
+                error_text(&error)
+            )));
+        }
+        let second_layer3_tail_succeeded = unsafe {
+            rust_star_metal_run_prefill_layer2_continuation_tail(
+                context.0,
+                model.mapping_pointer(),
+                model.bytes(),
+                &layer3_weights,
+                3,
+                4128,
+                actual_second_l3_attention_low.as_mut_ptr(),
+                actual_second_l3_attention_output.as_mut_ptr(),
+                actual_second_l3_after_attention_hc.as_mut_ptr(),
+                actual_second_l3_ffn_current.as_mut_ptr(),
+                actual_second_l3_ffn_norm.as_mut_ptr(),
+                actual_second_l3_router_logits.as_mut_ptr(),
+                actual_second_l3_router_probs.as_mut_ptr(),
+                actual_second_l3_router_selected.as_mut_ptr(),
+                actual_second_l3_router_weights.as_mut_ptr(),
+                actual_second_l3_routed_mid.as_mut_ptr(),
+                actual_second_l3_routed_output.as_mut_ptr(),
+                actual_second_l3_shared_output.as_mut_ptr(),
+                actual_second_l3_after_ffn_hc.as_mut_ptr(),
+                &mut second_layer3_raw,
+                error.as_mut_ptr(),
+                error.len(),
+            )
+        };
+        if second_layer3_tail_succeeded == 0 {
+            return Err(Error::invalid(format!(
+                "Metal second prefill layer-3 continuation tail failed: {}",
                 error_text(&error)
             )));
         }
@@ -42912,13 +43392,272 @@ mod imp {
                 "prefill layer-3 continuation selected experts C0 mismatch at {index}: actual={actual} expected={expected}"
             )));
         }
+        let check_second_f32 = |label: &str, actual: &[f32], expected: &[f32]| -> Result<()> {
+            if actual.len() != expected.len() {
+                return Err(Error::invalid(format!(
+                    "second continuation tile {label} length mismatch: actual={} expected={}",
+                    actual.len(),
+                    expected.len()
+                )));
+            }
+            if let Some((index, (actual, expected))) = actual
+                .iter()
+                .zip(expected)
+                .enumerate()
+                .find(|(_, (actual, expected))| actual.to_bits() != expected.to_bits())
+            {
+                return Err(Error::invalid(format!(
+                    "second continuation tile {label} C0 mismatch at {index}: actual={:#010x} expected={:#010x}",
+                    actual.to_bits(), expected.to_bits()
+                )));
+            }
+            Ok(())
+        };
+        let check_second_i32 = |label: &str, actual: &[i32], expected: &[i32]| -> Result<()> {
+            if actual.len() != expected.len() {
+                return Err(Error::invalid(format!(
+                    "second continuation tile {label} length mismatch: actual={} expected={}",
+                    actual.len(),
+                    expected.len()
+                )));
+            }
+            if let Some((index, (actual, expected))) = actual
+                .iter()
+                .zip(expected)
+                .enumerate()
+                .find(|(_, (actual, expected))| actual != expected)
+            {
+                return Err(Error::invalid(format!(
+                    "second continuation tile {label} C0 mismatch at {index}: actual={actual:#010x} expected={expected:#010x}"
+                )));
+            }
+            Ok(())
+        };
+        let actual_second_l2_score_bits = actual_second_l2_scores
+            .iter()
+            .map(|value| value.to_bits() as i32)
+            .collect::<Vec<_>>();
+        check_second_i32(
+            "layer-2 indexer scores",
+            &actual_second_l2_score_bits,
+            &expected_second_l2_scores,
+        )?;
+        check_second_i32(
+            "layer-2 indexer top-k",
+            &actual_second_l2_topk,
+            &expected_second_l2_topk,
+        )?;
+        check_second_i32(
+            "layer-2 selected experts",
+            &actual_second_l2_router_selected,
+            &expected_second_l2_router_selected,
+        )?;
+        for (label, actual, expected) in [
+            (
+                "layer-2 KQV back",
+                actual_second_l2_kqv_back.as_slice(),
+                expected_second_l2_kqv_back.as_slice(),
+            ),
+            (
+                "layer-2 attention low",
+                actual_second_l2_attention_low.as_slice(),
+                expected_second_l2_attention_low.as_slice(),
+            ),
+            (
+                "layer-2 attention output",
+                actual_second_l2_attention_output.as_slice(),
+                expected_second_l2_attention_output.as_slice(),
+            ),
+            (
+                "layer-2 attention HC",
+                actual_second_l2_after_attention_hc.as_slice(),
+                expected_second_l2_after_attention_hc.as_slice(),
+            ),
+            (
+                "layer-2 FFN current",
+                actual_second_l2_ffn_current.as_slice(),
+                expected_second_l2_ffn_current.as_slice(),
+            ),
+            (
+                "layer-2 FFN norm",
+                actual_second_l2_ffn_norm.as_slice(),
+                expected_second_l2_ffn_norm.as_slice(),
+            ),
+            (
+                "layer-2 router logits",
+                actual_second_l2_router_logits.as_slice(),
+                expected_second_l2_router_logits.as_slice(),
+            ),
+            (
+                "layer-2 router probabilities",
+                actual_second_l2_router_probs.as_slice(),
+                expected_second_l2_router_probs.as_slice(),
+            ),
+            (
+                "layer-2 router weights",
+                actual_second_l2_router_weights.as_slice(),
+                expected_second_l2_router_weights.as_slice(),
+            ),
+            (
+                "layer-2 routed mid",
+                actual_second_l2_routed_mid.as_slice(),
+                expected_second_l2_routed_mid.as_slice(),
+            ),
+            (
+                "layer-2 routed output",
+                actual_second_l2_routed_output.as_slice(),
+                expected_second_l2_routed_output.as_slice(),
+            ),
+            (
+                "layer-2 shared output",
+                actual_second_l2_shared_output.as_slice(),
+                expected_second_l2_shared_output.as_slice(),
+            ),
+            (
+                "layer-2 final HC",
+                actual_second_l2_after_ffn_hc.as_slice(),
+                expected_second_l2_after_ffn_hc.as_slice(),
+            ),
+            (
+                "layer-3 HC ingress",
+                actual_second_l3_hc_attn_pre.as_slice(),
+                expected_second_l3_hc_attn_pre.as_slice(),
+            ),
+            (
+                "layer-3 attention norm",
+                actual_second_l3_attn_norm.as_slice(),
+                expected_second_l3_attn_norm.as_slice(),
+            ),
+            (
+                "layer-3 Q-Lora",
+                actual_second_l3_q_lora.as_slice(),
+                expected_second_l3_q_lora.as_slice(),
+            ),
+            (
+                "layer-3 Q-Lora norm",
+                actual_second_l3_q_lora_norm.as_slice(),
+                expected_second_l3_q_lora_norm.as_slice(),
+            ),
+            (
+                "layer-3 KV raw",
+                actual_second_l3_kv_raw.as_slice(),
+                expected_second_l3_kv_raw.as_slice(),
+            ),
+            (
+                "layer-3 KV norm",
+                actual_second_l3_kv_norm.as_slice(),
+                expected_second_l3_kv_norm.as_slice(),
+            ),
+            (
+                "layer-3 Q current",
+                actual_second_l3_q_current.as_slice(),
+                expected_second_l3_q_current.as_slice(),
+            ),
+            (
+                "layer-3 KV RoPE",
+                actual_second_l3_kv_rope.as_slice(),
+                expected_second_l3_kv_rope.as_slice(),
+            ),
+            (
+                "layer-3 KV current",
+                actual_second_l3_kv_current.as_slice(),
+                expected_second_l3_kv_current.as_slice(),
+            ),
+            (
+                "layer-3 compressor KV state",
+                actual_second_l3_state_kv.as_slice(),
+                expected_second_l3_state_kv.as_slice(),
+            ),
+            (
+                "layer-3 KQV output",
+                actual_second_l3_kqv_out.as_slice(),
+                expected_second_l3_kqv_out.as_slice(),
+            ),
+            (
+                "layer-3 KQV back",
+                actual_second_l3_kqv_back.as_slice(),
+                expected_second_l3_kqv_back.as_slice(),
+            ),
+            (
+                "layer-3 attention low",
+                actual_second_l3_attention_low.as_slice(),
+                expected_second_l3_attention_low.as_slice(),
+            ),
+            (
+                "layer-3 attention output",
+                actual_second_l3_attention_output.as_slice(),
+                expected_second_l3_attention_output.as_slice(),
+            ),
+            (
+                "layer-3 attention HC",
+                actual_second_l3_after_attention_hc.as_slice(),
+                expected_second_l3_after_attention_hc.as_slice(),
+            ),
+            (
+                "layer-3 FFN current",
+                actual_second_l3_ffn_current.as_slice(),
+                expected_second_l3_ffn_current.as_slice(),
+            ),
+            (
+                "layer-3 FFN norm",
+                actual_second_l3_ffn_norm.as_slice(),
+                expected_second_l3_ffn_norm.as_slice(),
+            ),
+            (
+                "layer-3 router logits",
+                actual_second_l3_router_logits.as_slice(),
+                expected_second_l3_router_logits.as_slice(),
+            ),
+            (
+                "layer-3 router probabilities",
+                actual_second_l3_router_probs.as_slice(),
+                expected_second_l3_router_probs.as_slice(),
+            ),
+            (
+                "layer-3 router weights",
+                actual_second_l3_router_weights.as_slice(),
+                expected_second_l3_router_weights.as_slice(),
+            ),
+            (
+                "layer-3 routed mid",
+                actual_second_l3_routed_mid.as_slice(),
+                expected_second_l3_routed_mid.as_slice(),
+            ),
+            (
+                "layer-3 routed output",
+                actual_second_l3_routed_output.as_slice(),
+                expected_second_l3_routed_output.as_slice(),
+            ),
+            (
+                "layer-3 shared output",
+                actual_second_l3_shared_output.as_slice(),
+                expected_second_l3_shared_output.as_slice(),
+            ),
+            (
+                "layer-3 final HC",
+                actual_second_l3_after_ffn_hc.as_slice(),
+                expected_second_l3_after_ffn_hc.as_slice(),
+            ),
+        ] {
+            check_second_f32(label, actual, expected)?;
+        }
+        check_second_i32(
+            "layer-3 compressor score state",
+            &actual_second_l3_state_score,
+            &expected_second_l3_state_score,
+        )?;
+        check_second_i32(
+            "layer-3 selected experts",
+            &actual_second_l3_router_selected,
+            &expected_second_l3_router_selected,
+        )?;
         if raw.position != 4099
             || raw.compressed_rows != 1025
             || raw.raw_rows != 128
             || raw.top_k != 512
             || raw.dispatches != 53
-            || raw.wrapped_model_ranges != 18
-            || raw.pointer_matches != 18
+            || raw.wrapped_model_ranges != 21
+            || raw.pointer_matches != 21
             || raw.split_count != 1
             || !raw.wall_ms.is_finite()
             || raw.wall_ms <= 0.0
@@ -42939,6 +43678,30 @@ mod imp {
         {
             return Err(Error::invalid(
                 "Metal prefill layer-3 continuation complete-tile metadata is invalid",
+            ));
+        }
+        if second_layer2_raw.dispatches != 36
+            || second_layer2_raw.wrapped_model_ranges != 17
+            || second_layer2_raw.pointer_matches != 17
+            || !second_layer2_raw.wall_ms.is_finite()
+            || second_layer2_raw.wall_ms <= 0.0
+            || !second_layer2_raw.gpu_ms.is_finite()
+            || second_layer2_raw.gpu_ms <= 0.0
+        {
+            return Err(Error::invalid(
+                "Metal second prefill layer-2 continuation tile metadata is invalid",
+            ));
+        }
+        if second_layer3_raw.dispatches != 76
+            || second_layer3_raw.wrapped_model_ranges != 28
+            || second_layer3_raw.pointer_matches != 28
+            || !second_layer3_raw.wall_ms.is_finite()
+            || second_layer3_raw.wall_ms <= 0.0
+            || !second_layer3_raw.gpu_ms.is_finite()
+            || second_layer3_raw.gpu_ms <= 0.0
+        {
+            return Err(Error::invalid(
+                "Metal second prefill layer-3 continuation tile metadata is invalid",
             ));
         }
         Ok((
@@ -42965,6 +43728,8 @@ mod imp {
                 kqv_back_checksum: checksum_f32(&actual_back),
             },
             layer3_raw,
+            second_layer2_raw,
+            second_layer3_raw,
         ))
     }
 
@@ -52017,6 +52782,30 @@ mod tests {
     }
 
     #[test]
+    fn prefill_layer23_second_tile_fixture_has_target_shapes() {
+        let manifest =
+            read_prefill_layer23_continuation_second_tile_fixture("manifest.json").unwrap();
+        let manifest = String::from_utf8(manifest).unwrap();
+        assert!(manifest.contains(PREFILL_LAYER23_CONTINUATION_SECOND_TILE_FIXTURE_ID));
+        assert_eq!(
+            read_prefill_layer23_continuation_second_tile_fixture(
+                "layer2-indexer-scores-tile2-bits.i32le.bin"
+            )
+            .unwrap()
+            .len(),
+            32 * 2048 * 4
+        );
+        assert_eq!(
+            read_prefill_layer23_continuation_second_tile_fixture(
+                "layer3-ffn-hc-post-tile2.f32le.bin"
+            )
+            .unwrap()
+            .len(),
+            32 * 16384 * 4
+        );
+    }
+
+    #[test]
     fn writes_stable_embedding_probe_json() {
         let mut output = Vec::new();
         write_embedding_probe_json(&mut output, &embedding_report()).unwrap();
@@ -52311,8 +53100,8 @@ mod tests {
                 pinned_default_threshold: 1024,
                 first_default_sparse_rows: 1025,
                 dispatches: 53,
-                wrapped_model_ranges: 18,
-                pointer_matches: 18,
+                wrapped_model_ranges: 21,
+                pointer_matches: 21,
                 split_count: 1,
                 wall_ms: 1.0,
                 gpu_ms: 0.5,
@@ -52337,6 +53126,15 @@ mod tests {
             layer3_complete_dispatches: 76,
             layer3_complete_wrapped_model_ranges: 28,
             layer3_complete_exact_outputs: 17,
+            second_tile_fixture_id: PREFILL_LAYER23_CONTINUATION_SECOND_TILE_FIXTURE_ID,
+            second_tile_start: 4_128,
+            second_tile_rows: 32,
+            second_layer2_dispatches: 36,
+            second_layer2_wrapped_model_ranges: 17,
+            second_layer2_exact_outputs: 16,
+            second_layer3_dispatches: 76,
+            second_layer3_wrapped_model_ranges: 28,
+            second_layer3_exact_outputs: 26,
         };
         let mut output = Vec::new();
         write_long_prefill_continuation_bootstrap_probe_json(&mut output, &report).unwrap();
@@ -52356,6 +53154,10 @@ mod tests {
         assert!(text.contains("\"attention_history_oracle_seeded\": false"));
         assert!(text.contains("\"native_retained_attention_history\": true"));
         assert!(text.contains("\"unseeded_layer3_native_complete_tile_claim\": true"));
+        assert!(text.contains("\"second_consecutive_tile\": {\"fixture\":"));
+        assert!(text.contains("\"start\": 4128, \"end\": 4159"));
+        assert!(text.contains("\"consecutive_complete_layer3_tiles\": 2"));
+        assert!(text.contains("\"two_consecutive_unseeded_layer3_tiles_claim\": true"));
         assert!(text.contains("\"layer2_sparse_transition_c0_claim\": true"));
         assert!(text.contains("\"selection_kernel\": \"kernel_topk_stream512\""));
         assert!(text.contains("\"input_boundary\": \"native_multirow_sparse_kqv_back\""));

@@ -18,6 +18,58 @@ Before changing code:
 Journal entries are reverse chronological. Do not edit old entries to change
 history; add a correction and update the current-state summary.
 
+## 2026-08-31 — Second consecutive unseeded layer-3 continuation tile
+
+Objective:
+
+- Continue the exact positions-4,096--4,127 layer-2/layer-3 path through the
+  next 32 rows in the same live Metal context, with no first-tile replay or
+  oracle activation upload.
+
+Changes and evidence:
+
+- Captured full production-geometry layer-2 and layer-3 outputs twice in fresh
+  accepted-oracle-v3 processes. All repeated payloads were byte-identical.
+  Imported only positions 4,128--4,159, their exact prior layer-3 history, and
+  the ratio-128 state after 64 continuation rows into
+  `dwarfstar-oracle-v3-prefill-layer23-continuation-second-tile-4128`.
+- Generalized the layer-2 sparse tile, downstream tail, layer-3 ingress, and
+  layer-3 attention ABIs around an aligned tile start. Layer 2 retains its 4K Q
+  batch; layer 3 grows its retained KV capacity once and appends finalized live
+  tiles on the GPU for the next invocation.
+- The consecutive gate exposed two first-tile-only assumptions. Layer-2 sparse
+  attention now advances its logical raw span without shifting the 4,352-row
+  ring origin. Layer-3 attention now reproduces DwarfStar's 4,288-key padded
+  4K-batch Flash geometry while all unavailable future rows remain masked.
+- The optimized M1 Ultra run passes bit-for-bit through both complete tiles.
+  The second layer-2 tile matches 16 outputs over 36 dispatches and 17/17
+  no-copy mappings. The connected second layer-3 tile matches 26 ingress,
+  recurrent-state, attention, FFN, and final-HC outputs over 76 dispatches and
+  28/28 mappings. Combined second-tile evidence is 42 exact outputs, 112
+  dispatches, and 45/45 mappings.
+- Evolved the report to
+  `rust-star-long-prefill-continuation-bootstrap-probe-v9`, including explicit
+  second-consecutive-tile and two-unseeded-layer-3-tile claims. The clean probe
+  recorded 4,542.477/4,527.168 ms summed continuation wall/GPU time; this is
+  diagnostic evidence, not a paired performance result.
+- The compact 44-tensor fixture verifies at 38,538,240 bytes. All 307 Rust
+  tests, all 86 Python tests, importer compilation, formatting, and the live
+  optimized integration pass succeeded.
+- Deleted only the reproducible raw capture directory and its accidental empty
+  nested counterpart after validation, reclaiming 9.1 GiB. The 37 MiB compact
+  fixture and v9 JSON evidence remain.
+
+Decision:
+
+- Claim two consecutive complete unseeded native layer-2/layer-3 continuation
+  tiles. Do not claim the complete 8K transformer, output-logit equality,
+  throughput, or a speedup.
+
+Next:
+
+- Generalize the retained schedule across the remaining second-chunk tiles,
+  then extend the exact live chain through layers 4--42 and the output head.
+
 ## 2026-08-31 — Unseeded complete layer-3 continuation tile
 
 Objective:

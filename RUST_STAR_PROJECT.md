@@ -376,8 +376,15 @@ they describe whenever practical.
   inverse-RoPE, attention-output, biased routed/shared-FFN, and final-HC outputs
   bit-for-bit for positions 4,096--4,127. No layer-3 attention history is
   copied from the oracle; the fixture is used only as an expected-value C0
-  control. Extend the connected unseeded schedule across the remaining tiles,
-  layers 4--42, and the output head.
+  control. The same live context now continues through positions
+  4,128--4,159 without replaying the first tile or uploading an activation.
+  Its second complete layer-2 tile matches 16 outputs over 36 dispatches and
+  17/17 no-copy mappings; the connected layer-3 tile matches 26 ingress,
+  recurrent-state, attention, FFN, and final-HC outputs over 76 dispatches and
+  28/28 mappings. The layer-2 raw-ring origin and layer-3 production Flash key
+  geometry are position-aware, and the first layer-3 tile appends its finalized
+  KV directly into retained history. Extend the connected unseeded schedule
+  across the remaining tiles, layers 4--42, and the output head.
   A complete retained
   sequential experiment has now ruled out decoder execution as a shortcut: it
   selected the same terminal token but differed in all 129,280 logits. The

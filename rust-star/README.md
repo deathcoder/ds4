@@ -373,8 +373,16 @@ native transformer retains the exact final 128 raw and 32 ratio-128 compressed
 layer-3 history rows. The oracle arrays are expected-value checks only; they
 are never copied into execution state. The resulting 76-dispatch layer-3 tail
 matches 17 state and downstream outputs bit-for-bit with 28/28 no-copy model
-mappings. Extending the native second chunk through the remaining tiles and
-layers 4--42, then matching the 8K output logits, remains open.
+mappings. The same live context now executes the next consecutive tile at
+positions 4,128--4,159. The retained 4K layer-2 Q batch, position-aware raw-ring
+origin, first-tile layer-3 KV append, and production-sized 4,288-key Flash
+layout reproduce another 16 complete layer-2 outputs and 26 complete layer-3
+outputs bit-for-bit. The second tile uses 36+76 dispatches and preserves
+45/45 no-copy model mappings; no first-tile replay or oracle activation upload
+is present. The compact repeated-oracle fixture retains 44 tensors and about
+37 MiB instead of the 9 GiB diagnostic captures. Extending the native second
+chunk through the remaining tiles and layers 4--42, then matching the 8K
+output logits, remains open.
 The first complete second-half experiment deliberately tested whether the
 proven retained decoder schedule could serve as a correctness-preserving
 shortcut. `long-prefill-sequential-continuation-probe` now generalizes the

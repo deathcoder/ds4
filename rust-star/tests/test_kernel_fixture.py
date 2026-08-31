@@ -125,9 +125,41 @@ PREFILL_LAYER3_CONTINUATION_INGRESS_FIXTURE = (
 PREFILL_LAYER3_CONTINUATION_TAIL_FIXTURE = (
     RUST_STAR_DIR / "fixtures" / "prefill-layer3-continuation-tail-4096-v1"
 )
+PREFILL_LAYER23_CONTINUATION_SECOND_TILE_FIXTURE = (
+    RUST_STAR_DIR
+    / "fixtures"
+    / "prefill-layer23-continuation-second-tile-4128-v1"
+)
 
 
 class KernelFixtureTests(unittest.TestCase):
+    def test_prefill_layer23_second_tile_fixture_manifest_and_payloads(self) -> None:
+        manifest = json.loads(
+            (
+                PREFILL_LAYER23_CONTINUATION_SECOND_TILE_FIXTURE / "manifest.json"
+            ).read_text(encoding="utf-8")
+        )
+        report = validate_differential_fixture(
+            PREFILL_LAYER23_CONTINUATION_SECOND_TILE_FIXTURE
+        )
+        self.assertEqual(
+            report["fixture_id"],
+            "dwarfstar-oracle-v3-prefill-layer23-continuation-second-tile-4128",
+        )
+        self.assertEqual(report["scope"], "layer-segment")
+        self.assertEqual(report["operations"], 3)
+        self.assertEqual(report["tensors"], 44)
+        self.assertEqual(report["verified_bytes"], 38_538_240)
+        self.assertEqual(manifest["scope"]["layers"], [2, 3])
+        self.assertEqual(manifest["scope"]["captured_position_range"], [4128, 4159])
+        self.assertEqual(manifest["capture"]["production_prefill_tokens"], 8192)
+        self.assertTrue(manifest["capture"]["fresh_process_bitwise_match"])
+        self.assertTrue(manifest["claims"]["repeated_production_geometry"])
+        self.assertTrue(manifest["claims"]["second_consecutive_layer2_tile"])
+        self.assertTrue(manifest["claims"]["second_consecutive_layer3_tile"])
+        self.assertTrue(manifest["claims"]["native_retained_history_target"])
+        self.assertFalse(manifest["claims"]["complete_8k_transformer"])
+
     def test_prefill_layer3_continuation_tail_fixture_manifest_and_payloads(self) -> None:
         manifest = json.loads(
             (PREFILL_LAYER3_CONTINUATION_TAIL_FIXTURE / "manifest.json").read_text(
