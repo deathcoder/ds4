@@ -703,9 +703,9 @@ not labeled C0. The complete exact 2K prefill remains an independent regression
 control. The next boundary must carry the retained 4K state through layers
 2--42 and then preserve it while beginning the second 4K chunk.
 
-## Retained 4K-to-8K layer-2 continuation boundary
+## Retained 4K-to-8K layer-2 and layer-3 continuation boundary
 
-Schema: `rust-star-long-prefill-continuation-bootstrap-probe-v3`.
+Schema: `rust-star-long-prefill-continuation-bootstrap-probe-v8`.
 
 `long-prefill-continuation-bootstrap-probe` completes the first 4K transformer,
 then preserves that context while 64 native 64-row tiles append positions
@@ -713,19 +713,25 @@ then preserves that context while 64 native 64-row tiles append positions
 Ultra control retains 8,192 raw rows and 2,048 attention/indexer compressed
 rows across 7,556 dispatches and 4,160/4,160 no-copy mappings.
 
-The diagnostic then proves two deliberately separate layer-2 boundaries. The
-real position-4,099 prefill sparse transition reconstructs DwarfStar's
-4,352-row physical ring, 4,224-row batch span, chronological top-k ordering,
-and dual-head mixed-attention dispatch. A second 26-dispatch schedule consumes
-an independently repeated oracle KQV-back tile for positions 4,096--4,127 and
-matches 13 downstream tensors through attention output, both HC updates, the
-token-hash router, routed/shared experts, and final HC with 14/14 mappings.
+At 4K, layer 2 has 1,024 ratio-4 compressed rows, so the first-chunk transformer
+uses the production indexed top-512 path. The path projects and rotates indexer
+queries, computes QAT and indexer weights, scores and selects the streaming
+top-512, restores chronological order, stages the selected compressed rows as
+F16, and runs indexed attention. The 2K control still uses dense mixed
+attention at exactly 512 compressed rows. The decomposed router kernels also
+cover the full 4,096-row batch; a former 2,048-row ceiling had silently skipped
+the second half of every first-chunk FFN.
 
-The second schedule proves the native batch tail only. Because its KQV-back
-input is captured rather than produced by a multirow sparse scheduler, the
-artifact keeps `complete_layer_claim`, complete-8K, output-logit, and
-throughput claims false. The next boundary must connect native multirow sparse
-attention directly to this exact tail and retain its final HC for layer 3.
+Those repairs make the native first-chunk layer-3 attention history exact. The
+live layer-2 final HC feeds layer-3 ingress/QKV, while the retained final 128 raw
+KV rows and 32 ratio-128 compressed KV rows feed its attention directly. No
+oracle history is copied into Metal state; the pinned arrays are read-only
+expected-value controls. Positions 4,096--4,127 then match all 17 compressor,
+attention, FFN, and final-HC outputs bit-for-bit over 76 dispatches with 28/28
+no-copy model mappings. The artifact claims complete unseeded native layer-2
+and layer-3 tiles while keeping complete-8K, output-logit, and throughput claims
+false. The next boundary extends this batched schedule through the remaining
+second-chunk tiles and layers 4--42.
 
 ## Model residency before measured decode
 

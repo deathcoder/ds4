@@ -176,6 +176,8 @@ typedef struct rust_star_metal_prefill_compressor_weights {
 
 typedef struct rust_star_metal_prefill_layer2_attention_weights {
     uint64_t q_b_offset, q_b_bytes;
+    uint64_t indexer_q_offset, indexer_q_bytes;
+    uint64_t indexer_weight_offset, indexer_weight_bytes;
     uint64_t attn_sinks_offset, attn_sinks_bytes;
     uint64_t attn_output_a_offset, attn_output_a_bytes;
     uint64_t attn_output_b_offset, attn_output_b_bytes;
@@ -2105,8 +2107,8 @@ int rust_star_metal_run_prefill_layer3_continuation_attention(
     uint64_t sinks_bytes,
     float *state_kv,
     int32_t *state_score_bits,
-    const float *history_kv_seed,
-    const float *compressed_kv_seed,
+    const float *expected_history_kv,
+    const float *expected_compressed_kv,
     float *kqv_out,
     float *kqv_back,
     rust_star_metal_sparse_indexed_result *result,

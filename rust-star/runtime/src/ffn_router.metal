@@ -99,7 +99,10 @@ kernel void kernel_dsv4_router_weights_one(
 // Exact decomposed M1 batch-router schedule. DwarfStar's generic batch path
 // stores each stage separately; keeping these as individual kernels preserves
 // the same FP32 rounding boundaries before routed-expert execution.
-constant uint rust_star_router_max_batch_rows = 2048u;
+// The long-prefill bootstrap processes one aligned 4K chunk. Keep every
+// decomposed router stage live across the full chunk rather than silently
+// leaving rows 2048..4095 untouched.
+constant uint rust_star_router_max_batch_rows = 4096u;
 
 kernel void rust_star_router_softplus_batch(
         device const float *src,

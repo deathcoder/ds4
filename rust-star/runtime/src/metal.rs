@@ -29,7 +29,7 @@ pub const PREFILL_LAYERS012_COMPRESSOR_LOOP_PROBE_SCHEMA: &str =
     "rust-star-prefill-layers012-compressor-loop-probe-v1";
 pub const LONG_PREFILL_BOOTSTRAP_PROBE_SCHEMA: &str = "rust-star-long-prefill-bootstrap-probe-v1";
 pub const LONG_PREFILL_CONTINUATION_BOOTSTRAP_PROBE_SCHEMA: &str =
-    "rust-star-long-prefill-continuation-bootstrap-probe-v7";
+    "rust-star-long-prefill-continuation-bootstrap-probe-v8";
 pub const LONG_PREFILL_SEQUENTIAL_CONTINUATION_PROBE_SCHEMA: &str =
     "rust-star-long-prefill-sequential-continuation-probe-v1";
 pub const LONG_PREFILL_TRANSFORMER_PROBE_SCHEMA: &str =
@@ -7794,7 +7794,7 @@ pub fn write_long_prefill_continuation_bootstrap_probe_json<W: Write>(
     crate::artifact::write_json_string(output, report.layer3_complete_fixture_id)?;
     write!(
         output,
-        ", \"input_boundary\": \"live_layer3_qkv_plus_oracle_v3_pre4096_attention_cache\", \"start\": 4096, \"rows\": 32, \"ratio128_emitted_rows\": 0, \"ratio128_state_rows\": 32, \"attention_history_raw_rows\": 128, \"attention_history_compressed_rows\": 32, \"attention_history_oracle_seeded\": true, \"dispatches\": {}, \"wrapped_model_ranges\": {}, \"pointer_matches\": {}, \"exact_outputs\": {}, \"compressor_state_c0_bitwise_match\": true, \"dense_mixed_attention_c0_bitwise_match\": true, \"ffn_c0_bitwise_match\": true, \"final_hc_c0_bitwise_match\": true, \"complete_layer3_tile_from_pinned_cache_claim\": true, \"unseeded_complete_layer3_tile_claim\": false}},\n  \"checksums\": {{\"continuation_token_ids\": {}}},\n  \"timing\": {{\"continuation_summed_wall_ms\": {:.6}, \"continuation_summed_gpu_ms\": {:.6}}},\n  \"accepted_oracle_token_stream\": true,\n  \"native_batch_schedule\": true,\n  \"second_long_prefill_bootstrap_chunk_executed\": true,\n  \"layer2_sparse_transition_c0_claim\": true,\n  \"layer2_native_complete_tile_c0_claim\": true,\n  \"live_layer2_to_layer3_handoff_c0_claim\": true,\n  \"layer3_native_complete_tile_from_pinned_cache_c0_claim\": true,\n  \"unseeded_layer3_native_complete_tile_claim\": false,\n  \"complete_8k_transformer_claim\": false,\n  \"output_logits_c0_claim\": false,\n  \"throughput_claim\": false\n}}\n",
+        ", \"input_boundary\": \"live_layer3_qkv_plus_native_retained_pre4096_attention_history\", \"start\": 4096, \"rows\": 32, \"ratio128_emitted_rows\": 0, \"ratio128_state_rows\": 32, \"attention_history_raw_rows\": 128, \"attention_history_compressed_rows\": 32, \"attention_history_oracle_seeded\": false, \"native_retained_attention_history\": true, \"dispatches\": {}, \"wrapped_model_ranges\": {}, \"pointer_matches\": {}, \"exact_outputs\": {}, \"compressor_state_c0_bitwise_match\": true, \"dense_mixed_attention_c0_bitwise_match\": true, \"ffn_c0_bitwise_match\": true, \"final_hc_c0_bitwise_match\": true, \"unseeded_complete_layer3_tile_claim\": true}},\n  \"checksums\": {{\"continuation_token_ids\": {}}},\n  \"timing\": {{\"continuation_summed_wall_ms\": {:.6}, \"continuation_summed_gpu_ms\": {:.6}}},\n  \"accepted_oracle_token_stream\": true,\n  \"native_batch_schedule\": true,\n  \"second_long_prefill_bootstrap_chunk_executed\": true,\n  \"layer2_sparse_transition_c0_claim\": true,\n  \"layer2_native_complete_tile_c0_claim\": true,\n  \"live_layer2_to_layer3_handoff_c0_claim\": true,\n  \"unseeded_layer3_native_complete_tile_claim\": true,\n  \"complete_8k_transformer_claim\": false,\n  \"output_logits_c0_claim\": false,\n  \"throughput_claim\": false\n}}\n",
         report.layer3_complete_dispatches,
         report.layer3_complete_wrapped_model_ranges,
         report.layer3_complete_wrapped_model_ranges,
@@ -20136,6 +20136,10 @@ mod imp {
     struct RawPrefillLayer2AttentionWeights {
         q_b_offset: u64,
         q_b_bytes: u64,
+        indexer_q_offset: u64,
+        indexer_q_bytes: u64,
+        indexer_weight_offset: u64,
+        indexer_weight_bytes: u64,
         attn_sinks_offset: u64,
         attn_sinks_bytes: u64,
         attn_output_a_offset: u64,
@@ -22429,8 +22433,8 @@ mod imp {
             sinks_bytes: u64,
             state_kv: *mut f32,
             state_score_bits: *mut i32,
-            history_kv_seed: *const f32,
-            compressed_kv_seed: *const f32,
+            expected_history_kv: *const f32,
+            expected_compressed_kv: *const f32,
             kqv_out: *mut f32,
             kqv_back: *mut f32,
             result: *mut RawSparseIndexedResult,
@@ -26279,6 +26283,8 @@ mod imp {
         let expected_layer42_complete =
             diagnostic_fixture!(prefill_layer42_complete_final_tile_fixture());
         let q_b = exact_tensor(model, "blk.2.attn_q_b.weight", 8, &[1024, 32768])?;
+        let indexer_q = exact_tensor(model, "blk.2.indexer.attn_q_b.weight", 1, &[1024, 8192])?;
+        let indexer_weight = exact_tensor(model, "blk.2.indexer.proj.weight", 1, &[4096, 64])?;
         let sinks = exact_tensor(model, "blk.2.attn_sinks.weight", 0, &[64])?;
         let output_a = exact_tensor(model, "blk.2.attn_output_a.weight", 8, &[4096, 8192])?;
         let output_b = exact_tensor(model, "blk.2.attn_output_b.weight", 8, &[8192, 4096])?;
@@ -28287,6 +28293,10 @@ mod imp {
         let weights = RawPrefillLayer2AttentionWeights {
             q_b_offset: q_b.absolute_offset,
             q_b_bytes: q_b.bytes,
+            indexer_q_offset: indexer_q.absolute_offset,
+            indexer_q_bytes: indexer_q.bytes,
+            indexer_weight_offset: indexer_weight.absolute_offset,
+            indexer_weight_bytes: indexer_weight.bytes,
             attn_sinks_offset: sinks.absolute_offset,
             attn_sinks_bytes: sinks.bytes,
             attn_output_a_offset: output_a.absolute_offset,
@@ -33459,13 +33469,15 @@ mod imp {
                 error_text(&error)
             )));
         }
+        let expected_dispatches = if prefill_rows == 4096 { 2377 } else { 2372 };
+        let expected_model_ranges = if prefill_rows == 4096 { 1218 } else { 1216 };
         if raw.rows != prefill_rows
             || raw.raw_kv_rows != prefill_rows
             || raw.compressed_kv_rows != prefill_rows / 4
             || raw.layer3_compressed_kv_rows != prefill_rows / 128
-            || raw.dispatches != 2372
-            || raw.wrapped_model_ranges != 1216
-            || raw.pointer_matches != 1216
+            || raw.dispatches != expected_dispatches
+            || raw.wrapped_model_ranges != expected_model_ranges
+            || raw.pointer_matches != expected_model_ranges
             || !raw.wall_ms.is_finite()
             || raw.wall_ms <= 0.0
             || !raw.gpu_ms.is_finite()
@@ -52341,9 +52353,9 @@ mod tests {
         assert!(text.contains("kernel_dsv4_indexed_mixed_attention_heads8"));
         assert!(text.contains("\"live_layer2_to_layer3_handoff_c0_claim\": true"));
         assert!(text.contains("\"complete_layer3_ingress_qkv_tile_claim\": true"));
-        assert!(text.contains("\"attention_history_oracle_seeded\": true"));
-        assert!(text.contains("\"layer3_native_complete_tile_from_pinned_cache_c0_claim\": true"));
-        assert!(text.contains("\"unseeded_layer3_native_complete_tile_claim\": false"));
+        assert!(text.contains("\"attention_history_oracle_seeded\": false"));
+        assert!(text.contains("\"native_retained_attention_history\": true"));
+        assert!(text.contains("\"unseeded_layer3_native_complete_tile_claim\": true"));
         assert!(text.contains("\"layer2_sparse_transition_c0_claim\": true"));
         assert!(text.contains("\"selection_kernel\": \"kernel_topk_stream512\""));
         assert!(text.contains("\"input_boundary\": \"native_multirow_sparse_kqv_back\""));

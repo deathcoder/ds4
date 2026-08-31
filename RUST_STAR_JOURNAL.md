@@ -18,6 +18,53 @@ Before changing code:
 Journal entries are reverse chronological. Do not edit old entries to change
 history; add a correction and update the current-state summary.
 
+## 2026-08-31 — Unseeded complete layer-3 continuation tile
+
+Objective:
+
+- Eliminate the two pre-4,096 layer-3 attention-history seeds and rerun the
+  existing complete positions-4,096--4,127 layer-3 gate.
+
+Changes and evidence:
+
+- Traced the first native raw/compressed history mismatch back through the 4K
+  first-chunk transformer. Layer 2 had 1,024 ratio-4 compressed rows at that
+  extent, but still ran dense mixed attention; it now executes DwarfStar's
+  indexed top-512 schedule while the exact 2K/512-row control remains dense.
+- Added the two layer-2 indexer model ranges and nine sparse dispatches needed
+  for the 4K schedule. The 4K transformer now reports 2,377 dispatches and
+  1,218/1,218 no-copy mappings.
+- Found and removed a separate 2,048-row ceiling in every decomposed batch
+  router stage. The long-prefill router now covers all 4,096 rows instead of
+  silently leaving the second half untouched.
+- Removed the history copies from the continuation ABI. The pinned raw128 and
+  compressed32 arrays remain read-only expected-value checks against the
+  native retained half bits; they are not execution inputs.
+- The M1 Ultra probe passed with 4,160/4,160 bootstrap mappings and 7,556
+  continuation dispatches. Positions 4,096--4,127 are exact through the
+  complete layer-2 and layer-3 tiles; layer 3 matches 17 retained and
+  downstream outputs over 76 dispatches with 28/28 no-copy mappings. The clean
+  optimized rerun completed in 4,717.845/4,692.537 ms summed wall/GPU time.
+- Evolved the report to
+  `rust-star-long-prefill-continuation-bootstrap-probe-v8`, with explicit
+  native-retained-history and unseeded-complete-layer-3 claims.
+- The clean release build, all 306 Rust tests, all 85 Python tests, formatting,
+  JSON scope inspection, and diff checks passed. No paired performance
+  benchmark was run, so this evidence carries no throughput or speedup claim.
+- Deleted only the reproducible layer-3 boundary diagnostic captures after the
+  clean pass, reclaiming 3.0 GiB. The accepted oracle/model workspace and v8
+  report remain intact.
+
+Decision:
+
+- Claim an unseeded complete native layer-3 continuation tile. Do not claim the
+  complete 8K transformer, output-logit equality, throughput, or a speedup.
+
+Next:
+
+- Extend the same native batched second-chunk schedule across the remaining
+  tiles, then layers 4--42 and the output head, preserving C0 at each boundary.
+
 ## 2026-08-31 — Cache-seeded complete layer-3 continuation tile
 
 Objective:

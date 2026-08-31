@@ -366,8 +366,15 @@ this tile. That final HC allocation now remains on-device and directly feeds a
 All nine captured boundaries—collapsed HC, attention norm, Q-Lora, learned
 Q/KV norms, rotated Q/KV, and finalized KV—are bit-identical, and all 9/9
 model ranges remain no-copy. There is no host activation upload between the
-layers. The next gate is layer 3's ratio-128 state update, dense mixed
-attention, and FFN tail; the complete layer-3 tile and 8K logits remain open.
+layers. The complete layer-3 tile is now unseeded as well: the first-4K layer-2
+schedule switches to indexed top-512 attention once its ratio-4 history reaches
+1,024 rows, and the router covers the entire 4,096-row batch. Consequently the
+native transformer retains the exact final 128 raw and 32 ratio-128 compressed
+layer-3 history rows. The oracle arrays are expected-value checks only; they
+are never copied into execution state. The resulting 76-dispatch layer-3 tail
+matches 17 state and downstream outputs bit-for-bit with 28/28 no-copy model
+mappings. Extending the native second chunk through the remaining tiles and
+layers 4--42, then matching the 8K output logits, remains open.
 The first complete second-half experiment deliberately tested whether the
 proven retained decoder schedule could serve as a correctness-preserving
 shortcut. `long-prefill-sequential-continuation-probe` now generalizes the

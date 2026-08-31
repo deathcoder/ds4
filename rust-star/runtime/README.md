@@ -402,16 +402,22 @@ The command completes the first 4K transformer, appends positions
 4,096--8,191 through layers 0/1 and the paired layer-2 compressors, and checks
 the true position-4,099 sparse-attention boundary. The first 32-row layer-2
 tile is fully live and exact through its final HC update. That retained Metal
-buffer feeds exact layer-3 ingress and QKV. A pinned oracle-v3 snapshot seeds
-only the pre-4,096 layer-3 attention history: the final 128 raw KV rows and 32
-ratio-128 compressed KV rows. From that boundary, the native executor advances
-the ratio-128 state, runs dense mixed attention, inverse RoPE, attention output,
-biased routed/shared FFN, and final HC bit-for-bit for positions
-4,096--4,127. The connected layer-3 tile uses 76 dispatches, preserves 28/28
-no-copy mappings, and checks 17 state and downstream outputs. The native first
-4K layer-3 history is not yet exact, so this is a cache-seeded complete-tile
-claim, not an unseeded layer-3, complete 8K transformer, output-logit, or
-throughput claim.
+buffer feeds exact layer-3 ingress and QKV. The native first-4K transformer now
+retains the exact pre-4,096 layer-3 attention history: the final 128 raw KV rows
+and 32 ratio-128 compressed KV rows. The executor advances that live state,
+runs dense mixed attention, inverse RoPE, attention output, biased
+routed/shared FFN, and final HC bit-for-bit for positions 4,096--4,127. The
+connected layer-3 tile uses 76 dispatches, preserves 28/28 no-copy mappings,
+and checks 17 state and downstream outputs. The report schema is
+`rust-star-long-prefill-continuation-bootstrap-probe-v8`; it claims an unseeded
+complete layer-3 tile, but not the complete 8K transformer, output-logit C0, or
+throughput.
+
+The repair has two parts. At 4K, layer 2 has 1,024 ratio-4 compressed rows and
+must use DwarfStar's indexed top-512 path rather than dense mixed attention.
+The decomposed router kernels must also cover all 4,096 batch rows; their old
+2,048-row ceiling silently left the second half of every first-chunk FFN
+untouched. The 2K regression remains on the dense 512-row path.
 
 To run the connected layer-0 ingress gate:
 
