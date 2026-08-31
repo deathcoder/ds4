@@ -361,8 +361,13 @@ bit-for-bit. The live KQV-back buffer then feeds 26 production batch dispatches
 that reproduce all 13 downstream outputs through the grouped attention
 projection, token-hash router, routed/shared experts, and final HC state with
 14/14 no-copy model mappings. There is no oracle-seeded execution boundary in
-this tile. The next gate is to retain its final HC as live layer-3 input and
-extend the connected batch schedule through the rest of the second chunk.
+this tile. That final HC allocation now remains on-device and directly feeds a
+10-dispatch layer-3 continuation ingress/QKV schedule for the same positions.
+All nine captured boundaries—collapsed HC, attention norm, Q-Lora, learned
+Q/KV norms, rotated Q/KV, and finalized KV—are bit-identical, and all 9/9
+model ranges remain no-copy. There is no host activation upload between the
+layers. The next gate is layer 3's ratio-128 state update, dense mixed
+attention, and FFN tail; the complete layer-3 tile and 8K logits remain open.
 The first complete second-half experiment deliberately tested whether the
 proven retained decoder schedule could serve as a correctness-preserving
 shortcut. `long-prefill-sequential-continuation-probe` now generalizes the

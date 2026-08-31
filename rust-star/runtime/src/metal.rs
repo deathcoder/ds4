@@ -29,7 +29,7 @@ pub const PREFILL_LAYERS012_COMPRESSOR_LOOP_PROBE_SCHEMA: &str =
     "rust-star-prefill-layers012-compressor-loop-probe-v1";
 pub const LONG_PREFILL_BOOTSTRAP_PROBE_SCHEMA: &str = "rust-star-long-prefill-bootstrap-probe-v1";
 pub const LONG_PREFILL_CONTINUATION_BOOTSTRAP_PROBE_SCHEMA: &str =
-    "rust-star-long-prefill-continuation-bootstrap-probe-v4";
+    "rust-star-long-prefill-continuation-bootstrap-probe-v5";
 pub const LONG_PREFILL_SEQUENTIAL_CONTINUATION_PROBE_SCHEMA: &str =
     "rust-star-long-prefill-sequential-continuation-probe-v1";
 pub const LONG_PREFILL_TRANSFORMER_PROBE_SCHEMA: &str =
@@ -616,6 +616,10 @@ const PREFILL_LAYER2_CONTINUATION_TAIL_FIXTURE_DIR: &str =
     "prefill-layer2-continuation-tail-4096-v1";
 const PREFILL_LAYER2_CONTINUATION_TAIL_FIXTURE_ID: &str =
     "dwarfstar-oracle-v3-prefill-layer2-continuation-tail-4096";
+const PREFILL_LAYER3_CONTINUATION_INGRESS_FIXTURE_DIR: &str =
+    "prefill-layer3-continuation-ingress-4096-v1";
+const PREFILL_LAYER3_CONTINUATION_INGRESS_FIXTURE_ID: &str =
+    "dwarfstar-oracle-v3-prefill-layer3-continuation-ingress-4096";
 const PREFILL_LAYER0_TRANSITION_ATTN_NORM_BYTES: &[u8] =
     include_bytes!("../../fixtures/prefill-layer0-transition-pos4099-v1/attn-norm.f32le.bin");
 const PREFILL_LAYER0_TRANSITION_Q_LORA_NORM_BYTES: &[u8] =
@@ -3689,6 +3693,10 @@ pub struct LongPrefillContinuationBootstrapProbeReport {
     pub layer2_tail_dispatches: u32,
     pub layer2_tail_wrapped_model_ranges: u32,
     pub layer2_tail_exact_outputs: u32,
+    pub layer3_ingress_fixture_id: &'static str,
+    pub layer3_ingress_dispatches: u32,
+    pub layer3_ingress_wrapped_model_ranges: u32,
+    pub layer3_ingress_exact_outputs: u32,
 }
 
 #[derive(Clone, Debug)]
@@ -7692,6 +7700,10 @@ pub fn write_long_prefill_continuation_bootstrap_probe_json<W: Write>(
         || report.layer2_tail_dispatches != 26
         || report.layer2_tail_wrapped_model_ranges != 14
         || report.layer2_tail_exact_outputs != 13
+        || report.layer3_ingress_fixture_id != PREFILL_LAYER3_CONTINUATION_INGRESS_FIXTURE_ID
+        || report.layer3_ingress_dispatches != 10
+        || report.layer3_ingress_wrapped_model_ranges != 9
+        || report.layer3_ingress_exact_outputs != 9
         || !report.sparse_transition.wall_ms.is_finite()
         || !report.sparse_transition.gpu_ms.is_finite()
         || report.sparse_transition.wall_ms <= 0.0
@@ -7750,13 +7762,22 @@ pub fn write_long_prefill_continuation_bootstrap_probe_json<W: Write>(
     crate::artifact::write_json_string(output, report.layer2_tail_fixture_id)?;
     write!(
         output,
-        ", \"input_boundary\": \"native_multirow_sparse_kqv_back\", \"start\": {}, \"rows\": {}, \"dispatches\": {}, \"wrapped_model_ranges\": {}, \"pointer_matches\": {}, \"native_sparse_exact_outputs\": 3, \"downstream_exact_outputs\": {}, \"attention_output_c0_bitwise_match\": true, \"ffn_c0_bitwise_match\": true, \"final_hc_c0_bitwise_match\": true, \"complete_layer_tile_claim\": true}},\n  \"checksums\": {{\"continuation_token_ids\": {}}},\n  \"timing\": {{\"continuation_summed_wall_ms\": {:.6}, \"continuation_summed_gpu_ms\": {:.6}}},\n  \"accepted_oracle_token_stream\": true,\n  \"native_batch_schedule\": true,\n  \"second_long_prefill_bootstrap_chunk_executed\": true,\n  \"layer2_sparse_transition_c0_claim\": true,\n  \"layer2_native_complete_tile_c0_claim\": true,\n  \"complete_8k_transformer_claim\": false,\n  \"output_logits_c0_claim\": false,\n  \"throughput_claim\": false\n}}\n",
+        ", \"input_boundary\": \"native_multirow_sparse_kqv_back\", \"start\": {}, \"rows\": {}, \"dispatches\": {}, \"wrapped_model_ranges\": {}, \"pointer_matches\": {}, \"native_sparse_exact_outputs\": 3, \"downstream_exact_outputs\": {}, \"attention_output_c0_bitwise_match\": true, \"ffn_c0_bitwise_match\": true, \"final_hc_c0_bitwise_match\": true, \"complete_layer_tile_claim\": true}},\n  \"layer3_continuation_ingress\": {{\"fixture\": ",
         report.layer2_tail_start,
         report.layer2_tail_rows,
         report.layer2_tail_dispatches,
         report.layer2_tail_wrapped_model_ranges,
         report.layer2_tail_wrapped_model_ranges,
         report.layer2_tail_exact_outputs,
+    )?;
+    crate::artifact::write_json_string(output, report.layer3_ingress_fixture_id)?;
+    write!(
+        output,
+        ", \"input_boundary\": \"live_layer2_final_hc_metal_buffer\", \"start\": 4096, \"rows\": 32, \"dispatches\": {}, \"wrapped_model_ranges\": {}, \"pointer_matches\": {}, \"exact_outputs\": {}, \"qkv_c0_bitwise_match\": true, \"complete_layer3_ingress_qkv_tile_claim\": true, \"complete_layer3_tile_claim\": false}},\n  \"checksums\": {{\"continuation_token_ids\": {}}},\n  \"timing\": {{\"continuation_summed_wall_ms\": {:.6}, \"continuation_summed_gpu_ms\": {:.6}}},\n  \"accepted_oracle_token_stream\": true,\n  \"native_batch_schedule\": true,\n  \"second_long_prefill_bootstrap_chunk_executed\": true,\n  \"layer2_sparse_transition_c0_claim\": true,\n  \"layer2_native_complete_tile_c0_claim\": true,\n  \"live_layer2_to_layer3_handoff_c0_claim\": true,\n  \"complete_8k_transformer_claim\": false,\n  \"output_logits_c0_claim\": false,\n  \"throughput_claim\": false\n}}\n",
+        report.layer3_ingress_dispatches,
+        report.layer3_ingress_wrapped_model_ranges,
+        report.layer3_ingress_wrapped_model_ranges,
+        report.layer3_ingress_exact_outputs,
         report.token_checksum,
         report.summed_wall_ms,
         report.summed_gpu_ms,
@@ -10976,6 +10997,15 @@ fn read_prefill_layer2_continuation_tail_fixture(file: &str) -> Result<Vec<u8>> 
         std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("../fixtures")
             .join(PREFILL_LAYER2_CONTINUATION_TAIL_FIXTURE_DIR)
+            .join(file),
+    )?)
+}
+
+fn read_prefill_layer3_continuation_ingress_fixture(file: &str) -> Result<Vec<u8>> {
+    Ok(std::fs::read(
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../fixtures")
+            .join(PREFILL_LAYER3_CONTINUATION_INGRESS_FIXTURE_DIR)
             .join(file),
     )?)
 }
@@ -22341,6 +22371,24 @@ mod imp {
             error: *mut c_char,
             error_bytes: usize,
         ) -> i32;
+        fn rust_star_metal_run_prefill_layer3_continuation_ingress(
+            context: *mut c_void,
+            model_mapping: *const c_void,
+            model_bytes: u64,
+            weights: *const RawPrefillLayerWeights,
+            hc_attn_pre: *mut f32,
+            attn_norm: *mut f32,
+            q_lora: *mut f32,
+            q_lora_norm: *mut f32,
+            kv_raw: *mut f32,
+            kv_norm: *mut f32,
+            q_current: *mut f32,
+            kv_rope: *mut f32,
+            kv_current: *mut f32,
+            result: *mut RawSparseIndexedResult,
+            error: *mut c_char,
+            error_bytes: usize,
+        ) -> i32;
         fn rust_star_metal_copy_prefill_layer0_kv_transition(
             context: *mut c_void,
             kv_raw: *mut f32,
@@ -25662,7 +25710,8 @@ mod imp {
             FRONTIER_ROWS,
             Some(&tokens),
         )?;
-        let sparse_transition = run_prefill_layer2_sparse_transition_probe(model, &context)?;
+        let (sparse_transition, layer3_ingress) =
+            run_prefill_layer2_sparse_transition_probe(model, &context)?;
         drop(context);
         if continuation.is_some() {
             return Err(Error::invalid(
@@ -25691,6 +25740,10 @@ mod imp {
             layer2_tail_dispatches: 26,
             layer2_tail_wrapped_model_ranges: 14,
             layer2_tail_exact_outputs: 13,
+            layer3_ingress_fixture_id: PREFILL_LAYER3_CONTINUATION_INGRESS_FIXTURE_ID,
+            layer3_ingress_dispatches: layer3_ingress.dispatches,
+            layer3_ingress_wrapped_model_ranges: layer3_ingress.wrapped_model_ranges,
+            layer3_ingress_exact_outputs: 9,
         })
     }
 
@@ -41601,7 +41654,7 @@ mod imp {
     fn run_prefill_layer2_sparse_transition_probe(
         model: &MappedModel,
         context: &Context,
-    ) -> Result<SparseIndexedAttentionProbeReport> {
+    ) -> Result<(SparseIndexedAttentionProbeReport, RawSparseIndexedResult)> {
         let q_b = exact_tensor(model, "blk.2.attn_q_b.weight", 8, &[1024, 32768])?;
         let q_weight = exact_tensor(model, "blk.2.indexer.attn_q_b.weight", 1, &[1024, 8192])?;
         let indexer_weight = exact_tensor(model, "blk.2.indexer.proj.weight", 1, &[4096, 64])?;
@@ -41622,6 +41675,15 @@ mod imp {
         let shared_gate = exact_tensor(model, "blk.2.ffn_gate_shexp.weight", 8, &[4096, 2048])?;
         let shared_up = exact_tensor(model, "blk.2.ffn_up_shexp.weight", 8, &[4096, 2048])?;
         let shared_down = exact_tensor(model, "blk.2.ffn_down_shexp.weight", 8, &[2048, 4096])?;
+        let layer3_hc_fn = exact_tensor(model, "blk.3.hc_attn_fn.weight", 1, &[16384, 24])?;
+        let layer3_hc_scale = exact_tensor(model, "blk.3.hc_attn_scale.weight", 0, &[3])?;
+        let layer3_hc_base = exact_tensor(model, "blk.3.hc_attn_base.weight", 0, &[24])?;
+        let layer3_norm = exact_tensor(model, "blk.3.attn_norm.weight", 0, &[4096])?;
+        let layer3_q_a = exact_tensor(model, "blk.3.attn_q_a.weight", 8, &[4096, 1024])?;
+        let layer3_q_a_norm = exact_tensor(model, "blk.3.attn_q_a_norm.weight", 0, &[1024])?;
+        let layer3_kv = exact_tensor(model, "blk.3.attn_kv.weight", 8, &[4096, 512])?;
+        let layer3_kv_norm = exact_tensor(model, "blk.3.attn_kv_a_norm.weight", 0, &[512])?;
+        let layer3_q_b = exact_tensor(model, "blk.3.attn_q_b.weight", 8, &[1024, 32768])?;
         let tail_weights = RawPrefillLayerWeights {
             ingress: RawPrefillAttentionIngressWeights {
                 hc_fn_offset: 0,
@@ -41674,6 +41736,60 @@ mod imp {
                 shared_up_bytes: shared_up.bytes,
                 shared_down_offset: shared_down.absolute_offset,
                 shared_down_bytes: shared_down.bytes,
+            },
+        };
+        let layer3_weights = RawPrefillLayerWeights {
+            ingress: RawPrefillAttentionIngressWeights {
+                hc_fn_offset: layer3_hc_fn.absolute_offset,
+                hc_fn_bytes: layer3_hc_fn.bytes,
+                hc_scale_offset: layer3_hc_scale.absolute_offset,
+                hc_scale_bytes: layer3_hc_scale.bytes,
+                hc_base_offset: layer3_hc_base.absolute_offset,
+                hc_base_bytes: layer3_hc_base.bytes,
+                norm_offset: layer3_norm.absolute_offset,
+                norm_bytes: layer3_norm.bytes,
+                q_a_offset: layer3_q_a.absolute_offset,
+                q_a_bytes: layer3_q_a.bytes,
+            },
+            q_a_norm_offset: layer3_q_a_norm.absolute_offset,
+            q_a_norm_bytes: layer3_q_a_norm.bytes,
+            kv_offset: layer3_kv.absolute_offset,
+            kv_bytes: layer3_kv.bytes,
+            kv_norm_offset: layer3_kv_norm.absolute_offset,
+            kv_norm_bytes: layer3_kv_norm.bytes,
+            q_b_offset: layer3_q_b.absolute_offset,
+            q_b_bytes: layer3_q_b.bytes,
+            attn_sinks_offset: 0,
+            attn_sinks_bytes: 0,
+            attn_output_a_offset: 0,
+            attn_output_a_bytes: 0,
+            attn_output_b_offset: 0,
+            attn_output_b_bytes: 0,
+            ffn: RawPrefillFfnWeights {
+                hc_fn_offset: 0,
+                hc_fn_bytes: 0,
+                hc_scale_offset: 0,
+                hc_scale_bytes: 0,
+                hc_base_offset: 0,
+                hc_base_bytes: 0,
+                norm_offset: 0,
+                norm_bytes: 0,
+                router_gate_offset: 0,
+                router_gate_bytes: 0,
+                router_hash_offset: 0,
+                router_hash_bytes: 0,
+                routed_gate_offset: 0,
+                routed_gate_bytes: 0,
+                routed_up_offset: 0,
+                routed_up_bytes: 0,
+                routed_down_offset: 0,
+                routed_down_bytes: 0,
+                shared_gate_offset: 0,
+                shared_gate_bytes: 0,
+                shared_up_offset: 0,
+                shared_up_bytes: 0,
+                shared_down_offset: 0,
+                shared_down_bytes: 0,
             },
         };
         let expected_q_current = decode_f32_fixture(
@@ -41857,6 +41973,43 @@ mod imp {
             &read_tail("ffn-hc-post-first-tile.f32le.bin")?,
             "continuation final-HC tile",
         )?;
+        let read_layer3 = |file| read_prefill_layer3_continuation_ingress_fixture(file);
+        let expected_layer3_hc_attn_pre = decode_f32_fixture(
+            &read_layer3("hc-attn-pre-first-tile.f32le.bin")?,
+            "layer-3 continuation HC ingress",
+        )?;
+        let expected_layer3_attn_norm = decode_f32_fixture(
+            &read_layer3("attn-norm-first-tile.f32le.bin")?,
+            "layer-3 continuation attention norm",
+        )?;
+        let expected_layer3_q_lora = decode_f32_fixture(
+            &read_layer3("q-lora-first-tile.f32le.bin")?,
+            "layer-3 continuation Q-Lora",
+        )?;
+        let expected_layer3_q_lora_norm = decode_f32_fixture(
+            &read_layer3("q-lora-norm-first-tile.f32le.bin")?,
+            "layer-3 continuation Q-Lora norm",
+        )?;
+        let expected_layer3_kv_raw = decode_f32_fixture(
+            &read_layer3("kv-raw-first-tile.f32le.bin")?,
+            "layer-3 continuation KV raw",
+        )?;
+        let expected_layer3_kv_norm = decode_f32_fixture(
+            &read_layer3("kv-norm-first-tile.f32le.bin")?,
+            "layer-3 continuation KV norm",
+        )?;
+        let expected_layer3_q_current = decode_f32_fixture(
+            &read_layer3("q-current-first-tile.f32le.bin")?,
+            "layer-3 continuation Q current",
+        )?;
+        let expected_layer3_kv_rope = decode_f32_fixture(
+            &read_layer3("kv-rope-first-tile.f32le.bin")?,
+            "layer-3 continuation KV RoPE",
+        )?;
+        let expected_layer3_kv_current = decode_f32_fixture(
+            &read_layer3("kv-current-first-tile.f32le.bin")?,
+            "layer-3 continuation KV current",
+        )?;
         let mut actual_layer0_attn_norm = vec![0.0_f32; expected_layer0_attn_norm.len()];
         let mut actual_layer0_q_lora_norm = vec![0.0_f32; expected_layer0_q_lora_norm.len()];
         let mut actual_layer0_q_current = vec![0.0_f32; expected_layer0_q_current.len()];
@@ -41911,7 +42064,17 @@ mod imp {
         let mut actual_tail_routed_output = vec![0.0_f32; expected_tail_routed_output.len()];
         let mut actual_tail_shared_output = vec![0.0_f32; expected_tail_shared_output.len()];
         let mut actual_tail_after_ffn_hc = vec![0.0_f32; expected_tail_after_ffn_hc.len()];
+        let mut actual_layer3_hc_attn_pre = vec![0.0_f32; expected_layer3_hc_attn_pre.len()];
+        let mut actual_layer3_attn_norm = vec![0.0_f32; expected_layer3_attn_norm.len()];
+        let mut actual_layer3_q_lora = vec![0.0_f32; expected_layer3_q_lora.len()];
+        let mut actual_layer3_q_lora_norm = vec![0.0_f32; expected_layer3_q_lora_norm.len()];
+        let mut actual_layer3_kv_raw = vec![0.0_f32; expected_layer3_kv_raw.len()];
+        let mut actual_layer3_kv_norm = vec![0.0_f32; expected_layer3_kv_norm.len()];
+        let mut actual_layer3_q_current = vec![0.0_f32; expected_layer3_q_current.len()];
+        let mut actual_layer3_kv_rope = vec![0.0_f32; expected_layer3_kv_rope.len()];
+        let mut actual_layer3_kv_current = vec![0.0_f32; expected_layer3_kv_current.len()];
         let mut raw = RawSparseIndexedResult::default();
+        let mut layer3_raw = RawSparseIndexedResult::default();
         let mut error = [0 as c_char; ERROR_BYTES];
         let succeeded = unsafe {
             rust_star_metal_run_prefill_layer2_sparse_transition(
@@ -41990,6 +42153,32 @@ mod imp {
         if tail_succeeded == 0 {
             return Err(Error::invalid(format!(
                 "Metal prefill layer-2 continuation tail failed: {}",
+                error_text(&error)
+            )));
+        }
+        let layer3_succeeded = unsafe {
+            rust_star_metal_run_prefill_layer3_continuation_ingress(
+                context.0,
+                model.mapping_pointer(),
+                model.bytes(),
+                &layer3_weights,
+                actual_layer3_hc_attn_pre.as_mut_ptr(),
+                actual_layer3_attn_norm.as_mut_ptr(),
+                actual_layer3_q_lora.as_mut_ptr(),
+                actual_layer3_q_lora_norm.as_mut_ptr(),
+                actual_layer3_kv_raw.as_mut_ptr(),
+                actual_layer3_kv_norm.as_mut_ptr(),
+                actual_layer3_q_current.as_mut_ptr(),
+                actual_layer3_kv_rope.as_mut_ptr(),
+                actual_layer3_kv_current.as_mut_ptr(),
+                &mut layer3_raw,
+                error.as_mut_ptr(),
+                error.len(),
+            )
+        };
+        if layer3_succeeded == 0 {
+            return Err(Error::invalid(format!(
+                "Metal prefill layer-3 continuation ingress failed: {}",
                 error_text(&error)
             )));
         }
@@ -42304,6 +42493,51 @@ mod imp {
                 actual_tail_after_ffn_hc.as_slice(),
                 expected_tail_after_ffn_hc.as_slice(),
             ),
+            (
+                "layer-3 continuation HC ingress",
+                actual_layer3_hc_attn_pre.as_slice(),
+                expected_layer3_hc_attn_pre.as_slice(),
+            ),
+            (
+                "layer-3 continuation attention norm",
+                actual_layer3_attn_norm.as_slice(),
+                expected_layer3_attn_norm.as_slice(),
+            ),
+            (
+                "layer-3 continuation Q-Lora",
+                actual_layer3_q_lora.as_slice(),
+                expected_layer3_q_lora.as_slice(),
+            ),
+            (
+                "layer-3 continuation Q-Lora norm",
+                actual_layer3_q_lora_norm.as_slice(),
+                expected_layer3_q_lora_norm.as_slice(),
+            ),
+            (
+                "layer-3 continuation KV raw",
+                actual_layer3_kv_raw.as_slice(),
+                expected_layer3_kv_raw.as_slice(),
+            ),
+            (
+                "layer-3 continuation KV norm",
+                actual_layer3_kv_norm.as_slice(),
+                expected_layer3_kv_norm.as_slice(),
+            ),
+            (
+                "layer-3 continuation Q current",
+                actual_layer3_q_current.as_slice(),
+                expected_layer3_q_current.as_slice(),
+            ),
+            (
+                "layer-3 continuation KV RoPE",
+                actual_layer3_kv_rope.as_slice(),
+                expected_layer3_kv_rope.as_slice(),
+            ),
+            (
+                "layer-3 continuation KV current",
+                actual_layer3_kv_current.as_slice(),
+                expected_layer3_kv_current.as_slice(),
+            ),
         ] {
             if let Some((index, (actual, expected))) = actual
                 .iter()
@@ -42344,28 +42578,43 @@ mod imp {
                 "Metal prefill layer-2 sparse transition metadata is invalid",
             ));
         }
-        Ok(SparseIndexedAttentionProbeReport {
-            fixture_id: PREFILL_LAYER2_SPARSE_TRANSITION_FIXTURE_ID,
-            position: raw.position,
-            compressed_rows: raw.compressed_rows,
-            raw_rows: raw.raw_rows,
-            top_k: raw.top_k,
-            diagnostic_threshold_override: 0,
-            pinned_default_threshold: 1024,
-            first_default_sparse_rows: 1025,
-            dispatches: raw.dispatches,
-            wrapped_model_ranges: raw.wrapped_model_ranges,
-            pointer_matches: raw.pointer_matches,
-            split_count: raw.split_count,
-            wall_ms: raw.wall_ms,
-            gpu_ms: raw.gpu_ms,
-            indexer_q_checksum: checksum_f32(&actual_q),
-            indexer_weights_checksum: checksum_f32(&actual_weights),
-            indexer_scores_checksum: checksum_f32(&actual_scores),
-            indexer_topk_checksum: checksum_i32(&actual_topk),
-            kqv_out_checksum: checksum_f32(&actual_out),
-            kqv_back_checksum: checksum_f32(&actual_back),
-        })
+        if layer3_raw.dispatches != 10
+            || layer3_raw.wrapped_model_ranges != 9
+            || layer3_raw.pointer_matches != 9
+            || !layer3_raw.wall_ms.is_finite()
+            || layer3_raw.wall_ms <= 0.0
+            || !layer3_raw.gpu_ms.is_finite()
+            || layer3_raw.gpu_ms <= 0.0
+        {
+            return Err(Error::invalid(
+                "Metal prefill layer-3 continuation ingress metadata is invalid",
+            ));
+        }
+        Ok((
+            SparseIndexedAttentionProbeReport {
+                fixture_id: PREFILL_LAYER2_SPARSE_TRANSITION_FIXTURE_ID,
+                position: raw.position,
+                compressed_rows: raw.compressed_rows,
+                raw_rows: raw.raw_rows,
+                top_k: raw.top_k,
+                diagnostic_threshold_override: 0,
+                pinned_default_threshold: 1024,
+                first_default_sparse_rows: 1025,
+                dispatches: raw.dispatches,
+                wrapped_model_ranges: raw.wrapped_model_ranges,
+                pointer_matches: raw.pointer_matches,
+                split_count: raw.split_count,
+                wall_ms: raw.wall_ms,
+                gpu_ms: raw.gpu_ms,
+                indexer_q_checksum: checksum_f32(&actual_q),
+                indexer_weights_checksum: checksum_f32(&actual_weights),
+                indexer_scores_checksum: checksum_f32(&actual_scores),
+                indexer_topk_checksum: checksum_i32(&actual_topk),
+                kqv_out_checksum: checksum_f32(&actual_out),
+                kqv_back_checksum: checksum_f32(&actual_back),
+            },
+            layer3_raw,
+        ))
     }
 
     pub fn run_sparse_indexed_attention_probe(
@@ -51729,6 +51978,10 @@ mod tests {
             layer2_tail_dispatches: 26,
             layer2_tail_wrapped_model_ranges: 14,
             layer2_tail_exact_outputs: 13,
+            layer3_ingress_fixture_id: PREFILL_LAYER3_CONTINUATION_INGRESS_FIXTURE_ID,
+            layer3_ingress_dispatches: 10,
+            layer3_ingress_wrapped_model_ranges: 9,
+            layer3_ingress_exact_outputs: 9,
         };
         let mut output = Vec::new();
         write_long_prefill_continuation_bootstrap_probe_json(&mut output, &report).unwrap();
@@ -51743,6 +51996,8 @@ mod tests {
         assert!(text.contains("\"q_b_batch_c0_bitwise_match\": true"));
         assert!(text.contains("\"raw_ring_capacity\": 4352"));
         assert!(text.contains("kernel_dsv4_indexed_mixed_attention_heads8"));
+        assert!(text.contains("\"live_layer2_to_layer3_handoff_c0_claim\": true"));
+        assert!(text.contains("\"complete_layer3_ingress_qkv_tile_claim\": true"));
         assert!(text.contains("\"layer2_sparse_transition_c0_claim\": true"));
         assert!(text.contains("\"selection_kernel\": \"kernel_topk_stream512\""));
         assert!(text.contains("\"input_boundary\": \"native_multirow_sparse_kqv_back\""));

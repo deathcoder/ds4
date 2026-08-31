@@ -119,9 +119,35 @@ PREFILL_LAYER3_COMPRESSOR_FIXTURE = (
 PREFILL_LAYER2_CONTINUATION_TAIL_FIXTURE = (
     RUST_STAR_DIR / "fixtures" / "prefill-layer2-continuation-tail-4096-v1"
 )
+PREFILL_LAYER3_CONTINUATION_INGRESS_FIXTURE = (
+    RUST_STAR_DIR / "fixtures" / "prefill-layer3-continuation-ingress-4096-v1"
+)
 
 
 class KernelFixtureTests(unittest.TestCase):
+    def test_prefill_layer3_continuation_ingress_fixture_manifest_and_payloads(self) -> None:
+        manifest = json.loads(
+            (PREFILL_LAYER3_CONTINUATION_INGRESS_FIXTURE / "manifest.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        report = validate_differential_fixture(
+            PREFILL_LAYER3_CONTINUATION_INGRESS_FIXTURE
+        )
+        self.assertEqual(
+            report["fixture_id"],
+            "dwarfstar-oracle-v3-prefill-layer3-continuation-ingress-4096",
+        )
+        self.assertEqual(report["scope"], "layer-segment")
+        self.assertEqual(report["operations"], 6)
+        self.assertEqual(report["tensors"], 9)
+        self.assertEqual(report["verified_bytes"], 5_767_168)
+        self.assertEqual(manifest["scope"]["captured_position_range"], [4096, 4127])
+        self.assertTrue(manifest["capture"]["fresh_process_bitwise_match"])
+        self.assertTrue(manifest["claims"]["live_layer2_hc_input"])
+        self.assertTrue(manifest["claims"]["complete_layer3_ingress_qkv_tile"])
+        self.assertFalse(manifest["claims"]["complete_layer3_tile"])
+
     def test_prefill_layer2_continuation_tail_fixture_manifest_and_payloads(self) -> None:
         manifest = json.loads(
             (PREFILL_LAYER2_CONTINUATION_TAIL_FIXTURE / "manifest.json").read_text(

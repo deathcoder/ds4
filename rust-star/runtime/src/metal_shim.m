@@ -411,6 +411,13 @@ static NSString *const kQ8ProjectionSource =
 @property(nonatomic, strong) id<MTLBuffer> prefillLayer2IndexerStateKv;
 @property(nonatomic, strong) id<MTLBuffer> prefillLayer2IndexerStateScore;
 @property(nonatomic, strong) id<MTLBuffer> prefillLayer2ContinuationHeads;
+@property(nonatomic, strong) id<MTLBuffer> prefillLayer2ContinuationAfterFfnHc;
+@property(nonatomic, strong) id<MTLBuffer> prefillLayer3ContinuationInputHc;
+@property(nonatomic, strong) id<MTLBuffer> prefillLayer3ContinuationSplit;
+@property(nonatomic, strong) id<MTLBuffer> prefillLayer3ContinuationCurrent;
+@property(nonatomic, strong) id<MTLBuffer> prefillLayer3ContinuationNorm;
+@property(nonatomic, strong) id<MTLBuffer> prefillLayer3ContinuationQ;
+@property(nonatomic, strong) id<MTLBuffer> prefillLayer3ContinuationKv;
 @property(nonatomic, strong) id<MTLBuffer> prefillLayer3FullQ;
 @property(nonatomic, strong) id<MTLBuffer> prefillLayer3FullKv;
 @property(nonatomic, strong) id<MTLBuffer> prefillLayer3InputHc;
@@ -45488,9 +45495,361 @@ int rust_star_metal_run_prefill_layer2_continuation_tail(
         memcpy(routed_output, routed_out_buffer.contents, output_bytes);
         memcpy(shared_output, shared_out_buffer.contents, output_bytes);
         memcpy(after_ffn_hc, after_ffn_hc_buffer.contents, hc_bytes);
+        context.prefillLayer2ContinuationAfterFfnHc = after_ffn_hc_buffer;
         result->dispatches += 26u;
         result->wrapped_model_ranges += 14u;
         for (uint32_t index = 0; index < 14u; index++) {
+            if (matches[index]) result->pointer_matches++;
+        }
+        result->wall_ms += monotonic_ms()-wall_start;
+        result->gpu_ms += gpu_elapsed_ms(command);
+        return 1;
+    }
+}
+
+int rust_star_metal_run_prefill_layer3_continuation_ingress(
+    void *opaque_context,
+    const void *model_mapping,
+    uint64_t model_bytes,
+    const rust_star_metal_prefill_layer_weights *weights,
+    float *hc_attn_pre,
+    float *attn_norm,
+    float *q_lora,
+    float *q_lora_norm,
+    float *kv_raw,
+    float *kv_norm,
+    float *q_current,
+    float *kv_rope,
+    float *kv_current,
+    rust_star_metal_sparse_indexed_result *result,
+    char *error,
+    size_t error_bytes)
+{
+    enum {
+        continuation_start = 4096,
+        rows = 32,
+        n_embd = 4096,
+        hc_dim = 16384,
+        mix_hc = 24,
+        q_rank = 1024,
+        kv_dim = 512,
+        q_dim = 32768,
+        n_head = 64,
+        head_dim = 512,
+    };
+    if (!opaque_context || !model_mapping || !weights || !hc_attn_pre ||
+        !attn_norm || !q_lora || !q_lora_norm || !kv_raw || !kv_norm ||
+        !q_current || !kv_rope || !kv_current || !result) {
+        return fail_with_message(error, error_bytes,
+            @"prefill layer-3 continuation ingress received a null input");
+    }
+
+    @autoreleasepool {
+        RustStarMetalContext *context = (__bridge RustStarMetalContext *)opaque_context;
+        id<MTLBuffer> input_hc = context.prefillLayer2ContinuationAfterFfnHc;
+        const NSUInteger hc_bytes = (NSUInteger)rows*hc_dim*sizeof(float);
+        const NSUInteger current_bytes = (NSUInteger)rows*n_embd*sizeof(float);
+        const NSUInteger mix_bytes = (NSUInteger)rows*mix_hc*sizeof(float);
+        const NSUInteger q_rank_bytes = (NSUInteger)rows*q_rank*sizeof(float);
+        const NSUInteger kv_bytes = (NSUInteger)rows*kv_dim*sizeof(float);
+        const NSUInteger q_bytes = (NSUInteger)rows*q_dim*sizeof(float);
+        if (context.prefillKvRows != 8192u || !input_hc ||
+            input_hc.length < hc_bytes) {
+            return fail_with_message(error, error_bytes,
+                @"prefill layer-3 continuation ingress requires the live layer-2 tile");
+        }
+        if (weights->ingress.hc_fn_bytes !=
+                (uint64_t)hc_dim*mix_hc*sizeof(uint16_t) ||
+            weights->ingress.hc_scale_bytes != 3u*sizeof(float) ||
+            weights->ingress.hc_base_bytes != mix_hc*sizeof(float) ||
+            weights->ingress.norm_bytes != n_embd*sizeof(float) ||
+            weights->ingress.q_a_bytes !=
+                (uint64_t)q_rank*(n_embd/32u)*34u ||
+            weights->q_a_norm_bytes != q_rank*sizeof(float) ||
+            weights->kv_bytes != (uint64_t)kv_dim*(n_embd/32u)*34u ||
+            weights->kv_norm_bytes != kv_dim*sizeof(float) ||
+            weights->q_b_bytes != (uint64_t)q_dim*(q_rank/32u)*34u) {
+            return fail_with_message(error, error_bytes,
+                @"prefill layer-3 continuation ingress tensor shapes are invalid");
+        }
+        if (!ensure_attention_ingress_pipelines(context, error, error_bytes)) return 0;
+
+        uint64_t offsets[9] = {
+            weights->ingress.hc_fn_offset, weights->ingress.hc_scale_offset,
+            weights->ingress.hc_base_offset, weights->ingress.norm_offset,
+            weights->ingress.q_a_offset, weights->q_a_norm_offset,
+            weights->kv_offset, weights->kv_norm_offset, weights->q_b_offset,
+        };
+        uint64_t sizes[9] = {
+            weights->ingress.hc_fn_bytes, weights->ingress.hc_scale_bytes,
+            weights->ingress.hc_base_bytes, weights->ingress.norm_bytes,
+            weights->ingress.q_a_bytes, weights->q_a_norm_bytes,
+            weights->kv_bytes, weights->kv_norm_bytes, weights->q_b_bytes,
+        };
+        id<MTLBuffer> model_buffers[9] = { nil };
+        NSUInteger inner[9] = { 0 };
+        BOOL matches[9] = { NO };
+        for (uint32_t index = 0; index < 9u; index++) {
+            model_buffers[index] = wrap_model_range(
+                context, model_mapping, model_bytes, offsets[index], sizes[index],
+                &inner[index], &matches[index], error, error_bytes);
+            if (!model_buffers[index]) return 0;
+        }
+
+#define RUST_STAR_NEW_L3_CONTINUATION_BUFFER(name, bytes) \
+        id<MTLBuffer> name = [context.device newBufferWithLength:(bytes) \
+            options:MTLResourceStorageModeShared]
+        RUST_STAR_NEW_L3_CONTINUATION_BUFFER(flat_hc_buffer, hc_bytes);
+        RUST_STAR_NEW_L3_CONTINUATION_BUFFER(mix_buffer, mix_bytes);
+        RUST_STAR_NEW_L3_CONTINUATION_BUFFER(split_buffer, mix_bytes);
+        RUST_STAR_NEW_L3_CONTINUATION_BUFFER(current_buffer, current_bytes);
+        RUST_STAR_NEW_L3_CONTINUATION_BUFFER(norm_buffer, current_bytes);
+        RUST_STAR_NEW_L3_CONTINUATION_BUFFER(q_lora_buffer, q_rank_bytes);
+        RUST_STAR_NEW_L3_CONTINUATION_BUFFER(q_norm_buffer, q_rank_bytes);
+        RUST_STAR_NEW_L3_CONTINUATION_BUFFER(kv_buffer, kv_bytes);
+        RUST_STAR_NEW_L3_CONTINUATION_BUFFER(kv_raw_snapshot_buffer, kv_bytes);
+        RUST_STAR_NEW_L3_CONTINUATION_BUFFER(kv_norm_snapshot_buffer, kv_bytes);
+        RUST_STAR_NEW_L3_CONTINUATION_BUFFER(kv_rope_snapshot_buffer, kv_bytes);
+        RUST_STAR_NEW_L3_CONTINUATION_BUFFER(q_buffer, q_bytes);
+        RUST_STAR_NEW_L3_CONTINUATION_BUFFER(position_buffer, rows*sizeof(int32_t));
+#undef RUST_STAR_NEW_L3_CONTINUATION_BUFFER
+        if (!flat_hc_buffer || !mix_buffer || !split_buffer || !current_buffer ||
+            !norm_buffer || !q_lora_buffer || !q_norm_buffer || !kv_buffer ||
+            !kv_raw_snapshot_buffer || !kv_norm_snapshot_buffer ||
+            !kv_rope_snapshot_buffer || !q_buffer || !position_buffer) {
+            return fail_with_message(error, error_bytes,
+                @"failed to allocate prefill layer-3 continuation ingress buffers");
+        }
+        int32_t *positions = position_buffer.contents;
+        for (uint32_t row = 0; row < rows; row++) {
+            positions[row] = continuation_start+(int32_t)row;
+        }
+
+        rust_star_norm_args hc_norm_args = {
+            .ne00=hc_dim, .ne00_t=n_embd,
+            .nb1=hc_dim*sizeof(float), .nb2=hc_bytes, .nb3=hc_bytes,
+            .eps=1.0e-6f,
+            .nef1={rows,1,1}, .nef2={1,1,1}, .nef3={1,1,1},
+            .nbf1={hc_dim*sizeof(float),hc_dim*sizeof(float),hc_dim*sizeof(float)},
+            .nbf2={hc_bytes,hc_dim*sizeof(float),hc_dim*sizeof(float)},
+            .nbf3={hc_bytes,hc_dim*sizeof(float),hc_dim*sizeof(float)},
+        };
+        rust_star_q8_mm_args hc_mm_args = {
+            .ne00=hc_dim, .ne02=1, .nb01=hc_dim*sizeof(uint16_t),
+            .nb02=(uint64_t)hc_dim*mix_hc*sizeof(uint16_t),
+            .nb03=(uint64_t)hc_dim*mix_hc*sizeof(uint16_t), .ne12=1,
+            .nb10=sizeof(float), .nb11=hc_dim*sizeof(float),
+            .nb12=hc_bytes, .nb13=hc_bytes,
+            .ne0=mix_hc, .ne1=rows, .r2=1, .r3=1,
+        };
+        rust_star_hc_ingress_args ingress_args = {
+            .n_embd=n_embd, .n_hc=4, .sinkhorn_iters=20,
+            .n_rows=rows, .mix_hc=mix_hc,
+            .nb_mix1=mix_hc*sizeof(float), .nb_split1=mix_hc*sizeof(float),
+            .nb_x0=sizeof(float), .nb_x1=n_embd*sizeof(float),
+            .nb_x2=hc_dim*sizeof(float),
+            .nb0=sizeof(float), .nb1=n_embd*sizeof(float),
+            .nb_norm1=n_embd*sizeof(float), .eps=1.0e-6f, .norm_eps=1.0e-6f,
+        };
+#define RUST_STAR_L3_CONTINUATION_Q8_ARGS(in_width, out_width, weight_bytes) \
+        (rust_star_q8_mm_args){ \
+            .ne00=(in_width), .ne02=1, \
+            .nb01=(uint64_t)((in_width)/32u)*34u, \
+            .nb02=(weight_bytes), .nb03=(weight_bytes), .ne12=1, \
+            .nb10=sizeof(float), .nb11=(uint64_t)(in_width)*sizeof(float), \
+            .nb12=(uint64_t)(in_width)*rows*sizeof(float), \
+            .nb13=(uint64_t)(in_width)*rows*sizeof(float), \
+            .ne0=(out_width), .ne1=rows, .r2=1, .r3=1 \
+        }
+        rust_star_q8_mm_args q_a_args = RUST_STAR_L3_CONTINUATION_Q8_ARGS(
+            n_embd, q_rank, weights->ingress.q_a_bytes);
+        rust_star_q8_mm_args kv_args = RUST_STAR_L3_CONTINUATION_Q8_ARGS(
+            n_embd, kv_dim, weights->kv_bytes);
+        rust_star_q8_mm_args q_b_args = RUST_STAR_L3_CONTINUATION_Q8_ARGS(
+            q_rank, q_dim, weights->q_b_bytes);
+#undef RUST_STAR_L3_CONTINUATION_Q8_ARGS
+        rust_star_qkv_norm_args qkv_norm_args = {
+            .q_n=q_rank, .q_n4=q_rank/4, .kv_n=kv_dim, .kv_n4=kv_dim/4,
+            .q_row_stride=q_rank*sizeof(float),
+            .kv_row_stride=kv_dim*sizeof(float), .eps=1.0e-6f,
+        };
+        const float freq_scale = 1.0f/16.0f;
+        const float attn_factor = 1.0f/(1.0f+0.1f*logf(16.0f));
+        rust_star_head_norm_rope_args q_rope_args = {
+            .n_head=n_head, .head_dim=head_dim, .head_dim4=head_dim/4,
+            .n_dims=64, .n_ctx_orig=65536, .pos0=continuation_start, .inverse=0,
+            .eps=1.0e-6f, .freq_base=160000.0f, .freq_scale=freq_scale,
+            .ext_factor=1.0f, .attn_factor=attn_factor,
+            .beta_fast=32.0f, .beta_slow=1.0f,
+        };
+        rust_star_rope_tail_args kv_rope_args = {
+            .ne00=kv_dim, .ne01=1, .ne02=rows, .ne03=1,
+            .nb00=sizeof(float), .nb01=kv_dim*sizeof(float),
+            .nb02=kv_dim*sizeof(float), .nb03=kv_bytes,
+            .nb0=sizeof(float), .nb1=kv_dim*sizeof(float),
+            .nb2=kv_dim*sizeof(float), .nb3=kv_bytes,
+            .n_dims=64, .mode=0, .n_ctx_orig=65536, .inverse=0,
+            .freq_base=160000.0f, .freq_scale=freq_scale,
+            .ext_factor=1.0f, .attn_factor=attn_factor,
+            .beta_fast=32.0f, .beta_slow=1.0f, .src2=false,
+        };
+        rust_star_fp8_quantize_args kv_fp8_args = {
+            .ne00=kv_dim, .ne01=1, .ne02=rows, .ne03=1,
+            .nb00=sizeof(float), .nb01=kv_dim*sizeof(float),
+            .nb02=kv_dim*sizeof(float), .nb03=kv_bytes,
+            .nb0=sizeof(float), .nb1=kv_dim*sizeof(float),
+            .nb2=kv_dim*sizeof(float), .nb3=kv_bytes, .n_rot=64,
+        };
+
+        id<MTLCommandBuffer> command = [context.queue commandBuffer];
+        id<MTLComputeCommandEncoder> encoder = [command computeCommandEncoder];
+        if (!command || !encoder) return fail_with_message(error, error_bytes,
+            @"failed to create prefill layer-3 continuation ingress command");
+        [encoder setComputePipelineState:context.rmsNormF32Pipeline];
+        [encoder setBytes:&hc_norm_args length:sizeof(hc_norm_args) atIndex:0];
+        [encoder setBuffer:input_hc offset:0 atIndex:1];
+        [encoder setBuffer:input_hc offset:0 atIndex:2];
+        [encoder setBuffer:input_hc offset:0 atIndex:3];
+        [encoder setBuffer:flat_hc_buffer offset:0 atIndex:4];
+        [encoder setThreadgroupMemoryLength:32u*sizeof(float) atIndex:0];
+        [encoder dispatchThreadgroups:MTLSizeMake(rows,1,1)
+             threadsPerThreadgroup:MTLSizeMake(1024,1,1)];
+
+        [encoder setComputePipelineState:context.f16PrefillPipeline];
+        [encoder setBytes:&hc_mm_args length:sizeof(hc_mm_args) atIndex:0];
+        [encoder setBuffer:model_buffers[0] offset:inner[0] atIndex:1];
+        [encoder setBuffer:flat_hc_buffer offset:0 atIndex:2];
+        [encoder setBuffer:mix_buffer offset:0 atIndex:3];
+        [encoder setThreadgroupMemoryLength:8192u atIndex:0];
+        [encoder dispatchThreadgroups:MTLSizeMake(1,1,1)
+             threadsPerThreadgroup:MTLSizeMake(128,1,1)];
+
+        [encoder setComputePipelineState:context.hcIngressPipeline];
+        [encoder setBytes:&ingress_args length:sizeof(ingress_args) atIndex:0];
+        [encoder setBuffer:mix_buffer offset:0 atIndex:1];
+        [encoder setBuffer:model_buffers[1] offset:inner[1] atIndex:2];
+        [encoder setBuffer:model_buffers[2] offset:inner[2] atIndex:3];
+        [encoder setBuffer:input_hc offset:0 atIndex:4];
+        [encoder setBuffer:split_buffer offset:0 atIndex:5];
+        [encoder setBuffer:current_buffer offset:0 atIndex:6];
+        [encoder setBuffer:model_buffers[3] offset:inner[3] atIndex:7];
+        [encoder setBuffer:norm_buffer offset:0 atIndex:8];
+        [encoder setThreadgroupMemoryLength:(n_embd+4u+32u)*sizeof(float) atIndex:0];
+        [encoder dispatchThreadgroups:MTLSizeMake(rows,1,1)
+             threadsPerThreadgroup:MTLSizeMake(1024,1,1)];
+
+#define RUST_STAR_ENCODE_L3_CONTINUATION_Q8(args, index, input, output, width) do { \
+        [encoder setComputePipelineState:context.q8PrefillPipeline]; \
+        [encoder setBytes:&(args) length:sizeof(args) atIndex:0]; \
+        [encoder setBuffer:model_buffers[(index)] offset:inner[(index)] atIndex:1]; \
+        [encoder setBuffer:(input) offset:0 atIndex:2]; \
+        [encoder setBuffer:(output) offset:0 atIndex:3]; \
+        [encoder setThreadgroupMemoryLength:6144u atIndex:0]; \
+        [encoder dispatchThreadgroups:MTLSizeMake(1,(width)/64u,1) \
+             threadsPerThreadgroup:MTLSizeMake(128,1,1)]; \
+    } while (0)
+        RUST_STAR_ENCODE_L3_CONTINUATION_Q8(q_a_args, 4, norm_buffer,
+            q_lora_buffer, q_rank);
+        RUST_STAR_ENCODE_L3_CONTINUATION_Q8(kv_args, 6, norm_buffer,
+            kv_buffer, kv_dim);
+#undef RUST_STAR_ENCODE_L3_CONTINUATION_Q8
+        [encoder endEncoding];
+
+        id<MTLBlitCommandEncoder> blit = [command blitCommandEncoder];
+        if (!blit) return fail_with_message(error, error_bytes,
+            @"failed to snapshot layer-3 continuation raw KV");
+        [blit copyFromBuffer:kv_buffer sourceOffset:0
+                    toBuffer:kv_raw_snapshot_buffer destinationOffset:0 size:kv_bytes];
+        [blit endEncoding];
+
+        encoder = [command computeCommandEncoder];
+        if (!encoder) return fail_with_message(error, error_bytes,
+            @"failed to resume layer-3 continuation Q/KV encoder");
+
+        [encoder setComputePipelineState:context.qkvNormPipeline];
+        [encoder setBytes:&qkv_norm_args length:sizeof(qkv_norm_args) atIndex:0];
+        [encoder setBuffer:q_lora_buffer offset:0 atIndex:1];
+        [encoder setBuffer:model_buffers[5] offset:inner[5] atIndex:2];
+        [encoder setBuffer:q_norm_buffer offset:0 atIndex:3];
+        [encoder setBuffer:kv_buffer offset:0 atIndex:4];
+        [encoder setBuffer:model_buffers[7] offset:inner[7] atIndex:5];
+        [encoder setBuffer:kv_buffer offset:0 atIndex:6];
+        [encoder setThreadgroupMemoryLength:32u*sizeof(float) atIndex:0];
+        [encoder dispatchThreadgroups:MTLSizeMake(rows,2,1)
+             threadsPerThreadgroup:MTLSizeMake(256,1,1)];
+
+        [encoder setComputePipelineState:context.q8PrefillPipeline];
+        [encoder setBytes:&q_b_args length:sizeof(q_b_args) atIndex:0];
+        [encoder setBuffer:model_buffers[8] offset:inner[8] atIndex:1];
+        [encoder setBuffer:q_norm_buffer offset:0 atIndex:2];
+        [encoder setBuffer:q_buffer offset:0 atIndex:3];
+        [encoder setThreadgroupMemoryLength:6144u atIndex:0];
+        [encoder dispatchThreadgroups:MTLSizeMake(1,q_dim/64u,1)
+             threadsPerThreadgroup:MTLSizeMake(128,1,1)];
+        [encoder endEncoding];
+
+        blit = [command blitCommandEncoder];
+        if (!blit) return fail_with_message(error, error_bytes,
+            @"failed to snapshot layer-3 continuation KV norm");
+        [blit copyFromBuffer:kv_buffer sourceOffset:0
+                    toBuffer:kv_norm_snapshot_buffer destinationOffset:0 size:kv_bytes];
+        [blit endEncoding];
+
+        encoder = [command computeCommandEncoder];
+        [encoder setComputePipelineState:context.headNormRopePipeline];
+        [encoder setBytes:&q_rope_args length:sizeof(q_rope_args) atIndex:0];
+        [encoder setBuffer:q_buffer offset:0 atIndex:1];
+        [encoder setThreadgroupMemoryLength:32u*sizeof(float) atIndex:0];
+        [encoder dispatchThreadgroups:MTLSizeMake(n_head,rows,1)
+             threadsPerThreadgroup:MTLSizeMake(256,1,1)];
+        [encoder setComputePipelineState:context.ropeTailPipeline];
+        [encoder setBytes:&kv_rope_args length:sizeof(kv_rope_args) atIndex:0];
+        [encoder setBuffer:kv_buffer offset:0 atIndex:1];
+        [encoder setBuffer:position_buffer offset:0 atIndex:2];
+        [encoder setBuffer:kv_buffer offset:0 atIndex:3];
+        [encoder setBuffer:kv_buffer offset:0 atIndex:4];
+        [encoder dispatchThreadgroups:MTLSizeMake(1,rows,1)
+             threadsPerThreadgroup:MTLSizeMake(256,1,1)];
+        [encoder endEncoding];
+
+        blit = [command blitCommandEncoder];
+        if (!blit) return fail_with_message(error, error_bytes,
+            @"failed to snapshot layer-3 continuation KV RoPE");
+        [blit copyFromBuffer:kv_buffer sourceOffset:0
+                    toBuffer:kv_rope_snapshot_buffer destinationOffset:0 size:kv_bytes];
+        [blit endEncoding];
+
+        encoder = [command computeCommandEncoder];
+        [encoder setComputePipelineState:context.compressorFp8Pipeline];
+        [encoder setBytes:&kv_fp8_args length:sizeof(kv_fp8_args) atIndex:0];
+        [encoder setBuffer:kv_buffer offset:0 atIndex:1];
+        [encoder setBuffer:kv_buffer offset:0 atIndex:2];
+        [encoder setThreadgroupMemoryLength:64u*sizeof(float) atIndex:0];
+        [encoder dispatchThreadgroups:MTLSizeMake(rows,1,1)
+             threadsPerThreadgroup:MTLSizeMake(64,1,1)];
+        [encoder endEncoding];
+
+        const double wall_start = monotonic_ms();
+        [command commit];
+        if (!command_succeeded(command, error, error_bytes)) return 0;
+        memcpy(hc_attn_pre, current_buffer.contents, current_bytes);
+        memcpy(attn_norm, norm_buffer.contents, current_bytes);
+        memcpy(q_lora, q_lora_buffer.contents, q_rank_bytes);
+        memcpy(q_lora_norm, q_norm_buffer.contents, q_rank_bytes);
+        memcpy(kv_raw, kv_raw_snapshot_buffer.contents, kv_bytes);
+        memcpy(kv_norm, kv_norm_snapshot_buffer.contents, kv_bytes);
+        memcpy(q_current, q_buffer.contents, q_bytes);
+        memcpy(kv_rope, kv_rope_snapshot_buffer.contents, kv_bytes);
+        memcpy(kv_current, kv_buffer.contents, kv_bytes);
+        context.prefillLayer3ContinuationInputHc = input_hc;
+        context.prefillLayer3ContinuationSplit = split_buffer;
+        context.prefillLayer3ContinuationCurrent = current_buffer;
+        context.prefillLayer3ContinuationNorm = norm_buffer;
+        context.prefillLayer3ContinuationQ = q_buffer;
+        context.prefillLayer3ContinuationKv = kv_buffer;
+        result->dispatches += 10u;
+        result->wrapped_model_ranges += 9u;
+        for (uint32_t index = 0; index < 9u; index++) {
             if (matches[index]) result->pointer_matches++;
         }
         result->wall_ms += monotonic_ms()-wall_start;

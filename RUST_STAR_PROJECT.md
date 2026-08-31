@@ -363,8 +363,12 @@ they describe whenever practical.
   reproduce the repeated indexer scores, streaming top-512 selections, and
   inverse-RoPE KQV-back, then hand the live buffer to 26 exact attention-output,
   router, routed/shared-expert, and final-HC dispatches with 14/14 downstream
-  mappings. Retain that final HC as live layer-3 input, then extend the same
-  connected schedule across the remaining layer-2 tiles, layers 3--42, and the output head.
+  mappings. The final layer-2 HC allocation now directly feeds ten native
+  layer-3 ingress/QKV dispatches for the same tile without a host activation
+  upload. Nine layer-3 boundaries through rotated Q/KV and finalized KV are C0
+  exact with 9/9 no-copy mappings. Complete layer 3 through its ratio-128
+  compressor state, dense mixed attention, and FFN, then extend the connected
+  schedule across the remaining tiles, layers 4--42, and the output head.
   A complete retained
   sequential experiment has now ruled out decoder execution as a shortcut: it
   selected the same terminal token but differed in all 129,280 logits. The

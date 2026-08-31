@@ -2073,6 +2073,26 @@ int rust_star_metal_run_prefill_layer2_continuation_tail(
     char *error,
     size_t error_bytes);
 
+/* Consumes the live layer-2 final-HC tile and executes layer 3 through its
+ * native Q/KV finalization boundary without an oracle activation handoff. */
+int rust_star_metal_run_prefill_layer3_continuation_ingress(
+    void *context,
+    const void *model_mapping,
+    uint64_t model_bytes,
+    const rust_star_metal_prefill_layer_weights *weights,
+    float *hc_attn_pre,
+    float *attn_norm,
+    float *q_lora,
+    float *q_lora_norm,
+    float *kv_raw,
+    float *kv_norm,
+    float *q_current,
+    float *kv_rope,
+    float *kv_current,
+    rust_star_metal_sparse_indexed_result *result,
+    char *error,
+    size_t error_bytes);
+
 int rust_star_metal_copy_prefill_layer0_kv_transition(
     void *context,
     float *kv_raw,
