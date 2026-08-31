@@ -2005,9 +2005,8 @@ int rust_star_metal_run_sparse_indexed_attention(
     char *error,
     size_t error_bytes);
 
-/* Executes the first production sparse row from the retained 4K-to-8K
- * bootstrap. Q-B and head normalization/RoPE remain one 4K batch; only the
- * causally row-dependent sparse attention is isolated at position 4099. */
+/* Executes both the isolated position-4099 sparse control and the first real
+ * 32-row production sparse tile from the retained 4K-to-8K bootstrap. */
 int rust_star_metal_run_prefill_layer2_sparse_transition(
     void *context,
     const void *model_mapping,
@@ -2043,19 +2042,20 @@ int rust_star_metal_run_prefill_layer2_sparse_transition(
     int32_t *indexer_topk,
     float *kqv_out,
     float *kqv_back,
+    float *tile_indexer_scores,
+    int32_t *tile_indexer_topk,
+    float *tile_kqv_back,
     rust_star_metal_sparse_indexed_result *result,
     char *error,
     size_t error_bytes);
 
-/* Executes the production 32-row attention-output and FFN tail from an exact
- * second-chunk KQV-back tile. This isolates native batch arithmetic downstream
- * of the still-incomplete multirow sparse-attention scheduler. */
+/* Continues directly from the retained native 32-row sparse KQV-back buffer
+ * through the production attention-output and FFN tail. */
 int rust_star_metal_run_prefill_layer2_continuation_tail(
     void *context,
     const void *model_mapping,
     uint64_t model_bytes,
     const rust_star_metal_prefill_layer_weights *weights,
-    const float *kqv_back_tile,
     float *attention_low,
     float *attention_output,
     float *after_attention_hc,

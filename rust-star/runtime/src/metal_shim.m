@@ -284,8 +284,10 @@ static NSString *const kQ8ProjectionSource =
 @property(nonatomic, strong) id<MTLLibrary> attentionIngressLibrary;
 @property(nonatomic, strong) id<MTLLibrary> sparseIndexedLibrary;
 @property(nonatomic, strong) id<MTLComputePipelineState> indexerScorePipeline;
+@property(nonatomic, strong) id<MTLComputePipelineState> indexerScoreBatchPipeline;
 @property(nonatomic, strong) id<MTLComputePipelineState> indexerTopkPipeline;
 @property(nonatomic, strong) id<MTLComputePipelineState> indexerTopkMergePipeline;
+@property(nonatomic, strong) id<MTLComputePipelineState> indexerTopkStream512Pipeline;
 @property(nonatomic, strong) id<MTLComputePipelineState> indexedTopkSortPipeline;
 @property(nonatomic, strong) id<MTLComputePipelineState> indexedAttentionPrefillPipeline;
 @property(nonatomic, strong) id<MTLComputePipelineState> indexedAttentionPrefillDualPipeline;
@@ -408,6 +410,7 @@ static NSString *const kQ8ProjectionSource =
 @property(nonatomic, strong) id<MTLBuffer> prefillLayer2IndexerCompressed;
 @property(nonatomic, strong) id<MTLBuffer> prefillLayer2IndexerStateKv;
 @property(nonatomic, strong) id<MTLBuffer> prefillLayer2IndexerStateScore;
+@property(nonatomic, strong) id<MTLBuffer> prefillLayer2ContinuationHeads;
 @property(nonatomic, strong) id<MTLBuffer> prefillLayer3FullQ;
 @property(nonatomic, strong) id<MTLBuffer> prefillLayer3FullKv;
 @property(nonatomic, strong) id<MTLBuffer> prefillLayer3InputHc;
@@ -1376,10 +1379,14 @@ static int ensure_sparse_indexed_pipelines(
     if (!library) return fail_with_message(error, error_bytes, compile_error.localizedDescription);
     id<MTLFunction> score =
         [library newFunctionWithName:@"kernel_dsv4_indexer_score_one_direct"];
+    id<MTLFunction> score_batch =
+        [library newFunctionWithName:@"kernel_dsv4_indexer_scores_tiled"];
     id<MTLFunction> topk =
         [library newFunctionWithName:@"kernel_argsort_f32_i32_desc"];
     id<MTLFunction> topk_merge =
         [library newFunctionWithName:@"kernel_argsort_merge_f32_i32_desc"];
+    id<MTLFunction> topk_stream512 =
+        [library newFunctionWithName:@"kernel_topk_stream512"];
     id<MTLFunction> topk_sort =
         [library newFunctionWithName:@"kernel_dsv4_sort_i32_rows_asc"];
     id<MTLFunction> prefill =
@@ -1390,17 +1397,22 @@ static int ensure_sparse_indexed_pipelines(
         [library newFunctionWithName:@"kernel_dsv4_indexed_mixed_attention_heads8_split"];
     id<MTLFunction> reduce =
         [library newFunctionWithName:@"kernel_dsv4_indexed_mixed_attention_heads8_split_reduce"];
-    if (!score || !topk || !topk_merge || !topk_sort || !prefill ||
+    if (!score || !score_batch || !topk || !topk_merge || !topk_stream512 ||
+        !topk_sort || !prefill ||
         !prefill_dual || !split || !reduce) {
         return fail_with_message(error, error_bytes,
             compile_error ? compile_error.localizedDescription : @"sparse indexed-attention kernel was not found");
     }
     context.indexerScorePipeline =
         [context.device newComputePipelineStateWithFunction:score error:&compile_error];
+    context.indexerScoreBatchPipeline =
+        [context.device newComputePipelineStateWithFunction:score_batch error:&compile_error];
     context.indexerTopkPipeline =
         [context.device newComputePipelineStateWithFunction:topk error:&compile_error];
     context.indexerTopkMergePipeline =
         [context.device newComputePipelineStateWithFunction:topk_merge error:&compile_error];
+    context.indexerTopkStream512Pipeline =
+        [context.device newComputePipelineStateWithFunction:topk_stream512 error:&compile_error];
     context.indexedTopkSortPipeline =
         [context.device newComputePipelineStateWithFunction:topk_sort error:&compile_error];
     context.indexedAttentionPrefillPipeline =
@@ -1411,8 +1423,9 @@ static int ensure_sparse_indexed_pipelines(
         [context.device newComputePipelineStateWithFunction:split error:&compile_error];
     context.indexedAttentionReducePipeline =
         [context.device newComputePipelineStateWithFunction:reduce error:&compile_error];
-    if (!context.indexerScorePipeline || !context.indexerTopkPipeline ||
-        !context.indexerTopkMergePipeline || !context.indexedTopkSortPipeline ||
+    if (!context.indexerScorePipeline || !context.indexerScoreBatchPipeline ||
+        !context.indexerTopkPipeline || !context.indexerTopkMergePipeline ||
+        !context.indexerTopkStream512Pipeline || !context.indexedTopkSortPipeline ||
         !context.indexedAttentionPrefillPipeline ||
         !context.indexedAttentionPrefillDualPipeline ||
         !context.indexedAttentionSplitPipeline || !context.indexedAttentionReducePipeline) {
@@ -44545,12 +44558,336 @@ static int rust_star_metal_run_prefill_indexed_attention_transition(
     return 1;
 }
 
+/* Executes the real first 32 rows of the second prefill chunk.  Unlike the
+ * one-row control above, this mirrors DwarfStar's production M1 prefill
+ * choices: aligned F16 projections, tiled indexer scores, streaming top-512,
+ * chronological selection ordering, and 8-head indexed attention. */
+static int rust_star_metal_run_prefill_layer2_indexed_tile(
+    RustStarMetalContext *context,
+    const void *model_mapping,
+    uint64_t model_bytes,
+    uint64_t indexer_q_offset,
+    uint64_t indexer_q_bytes,
+    uint64_t indexer_weight_offset,
+    uint64_t indexer_weight_bytes,
+    uint64_t sinks_offset,
+    uint64_t sinks_bytes,
+    id<MTLBuffer> q_batch,
+    float *scores,
+    int32_t *topk,
+    float *kqv_back,
+    rust_star_metal_sparse_indexed_result *result,
+    char *error,
+    size_t error_bytes)
+{
+    enum {
+        batch_tokens = 4096,
+        tile_rows = 32,
+        position_start = 4096,
+        raw_capacity = 4352,
+        raw_span = 4224,
+        raw_start = 3968,
+        compressed_capacity = 2048,
+        top_k = 512,
+        attention_heads = 64,
+        attention_width = 512,
+        indexer_width = 128,
+        q_rank = 1024,
+        n_embd = 4096,
+    };
+    if (!ensure_attention_ingress_pipelines(context, error, error_bytes) ||
+        !ensure_sparse_indexed_pipelines(context, error, error_bytes) ||
+        !ensure_moe_output_pipelines(context, error, error_bytes)) return 0;
+    if (!q_batch || !scores || !topk || !kqv_back ||
+        q_batch.length < (NSUInteger)batch_tokens*attention_heads*
+            attention_width*sizeof(float) ||
+        context.prefillLayer2FullKv.length < 8192u*attention_width*sizeof(float) ||
+        context.prefillLayer2AttnCompressed.length <
+            (NSUInteger)compressed_capacity*attention_width*sizeof(float) ||
+        context.prefillLayer2IndexerCompressed.length <
+            (NSUInteger)compressed_capacity*indexer_width*sizeof(float)) {
+        return fail_with_message(error, error_bytes,
+            @"prefill layer-2 indexed tile retained buffers are undersized");
+    }
+
+    NSUInteger inner[3] = {0,0,0};
+    BOOL matches[3] = {NO,NO,NO};
+    id<MTLBuffer> q_weights = wrap_model_range(
+        context, model_mapping, model_bytes, indexer_q_offset, indexer_q_bytes,
+        &inner[0], &matches[0], error, error_bytes);
+    id<MTLBuffer> weight_weights = wrap_model_range(
+        context, model_mapping, model_bytes, indexer_weight_offset,
+        indexer_weight_bytes, &inner[1], &matches[1], error, error_bytes);
+    id<MTLBuffer> sinks_buffer = wrap_model_range(
+        context, model_mapping, model_bytes, sinks_offset, sinks_bytes,
+        &inner[2], &matches[2], error, error_bytes);
+    if (!q_weights || !weight_weights || !sinks_buffer) return 0;
+
+    const NSUInteger q_row_bytes =
+        attention_heads*attention_width*sizeof(float);
+    const NSUInteger indexer_q_row_bytes =
+        attention_heads*indexer_width*sizeof(float);
+    const NSUInteger weight_row_bytes = attention_heads*sizeof(float);
+    const NSUInteger score_row_bytes = compressed_capacity*sizeof(float);
+    const NSUInteger topk_row_bytes = top_k*sizeof(int32_t);
+    const NSUInteger kv_row_bytes = attention_width*sizeof(float);
+    const NSUInteger raw_bytes = raw_capacity*kv_row_bytes;
+    const NSUInteger comp_f16_bytes =
+        compressed_capacity*attention_width*sizeof(uint16_t);
+
+#define RS_NEW_INDEXED_TILE_BUFFER(name, bytes) \
+    id<MTLBuffer> name = [context.device newBufferWithLength:(bytes) \
+        options:MTLResourceStorageModeShared]
+    RS_NEW_INDEXED_TILE_BUFFER(indexer_q_buffer, tile_rows*indexer_q_row_bytes);
+    RS_NEW_INDEXED_TILE_BUFFER(indexer_weight_buffer, tile_rows*weight_row_bytes);
+    RS_NEW_INDEXED_TILE_BUFFER(score_buffer, tile_rows*score_row_bytes);
+    RS_NEW_INDEXED_TILE_BUFFER(topk_buffer, tile_rows*topk_row_bytes);
+    RS_NEW_INDEXED_TILE_BUFFER(sorted_buffer, tile_rows*topk_row_bytes);
+    RS_NEW_INDEXED_TILE_BUFFER(raw_ring, raw_bytes);
+    RS_NEW_INDEXED_TILE_BUFFER(comp_f16, comp_f16_bytes);
+    RS_NEW_INDEXED_TILE_BUFFER(heads_buffer, tile_rows*q_row_bytes);
+    RS_NEW_INDEXED_TILE_BUFFER(position_buffer, tile_rows*sizeof(int32_t));
+#undef RS_NEW_INDEXED_TILE_BUFFER
+    if (!indexer_q_buffer || !indexer_weight_buffer || !score_buffer ||
+        !topk_buffer || !sorted_buffer || !raw_ring || !comp_f16 ||
+        !heads_buffer || !position_buffer) {
+        return fail_with_message(error, error_bytes,
+            @"failed to allocate prefill layer-2 indexed tile buffers");
+    }
+
+    /* State after the complete second chunk has been stored in the physical
+     * 4352-row ring.  Causal bounds in the production kernels preserve the
+     * per-query view for positions 4096..4127. */
+    memcpy(raw_ring.contents,
+        (const uint8_t *)context.prefillLayer2FullKv.contents+
+            4352u*kv_row_bytes,
+        3840u*kv_row_bytes);
+    memcpy((uint8_t *)raw_ring.contents+3840u*kv_row_bytes,
+        (const uint8_t *)context.prefillLayer2FullKv.contents+
+            3840u*kv_row_bytes,
+        512u*kv_row_bytes);
+    for (uint32_t row = 0; row < tile_rows; row++) {
+        ((int32_t *)position_buffer.contents)[row] =
+            (int32_t)(position_start+row);
+    }
+
+    rust_star_q8_mm_args q_projection = {
+        .ne00=q_rank, .ne02=1,
+        .nb01=q_rank*sizeof(uint16_t),
+        .nb02=indexer_q_bytes, .nb03=indexer_q_bytes,
+        .ne12=1, .nb10=sizeof(float),
+        .nb11=q_rank*sizeof(float),
+        .nb12=(uint64_t)tile_rows*q_rank*sizeof(float),
+        .nb13=(uint64_t)tile_rows*q_rank*sizeof(float),
+        .ne0=attention_heads*indexer_width, .ne1=tile_rows, .r2=1, .r3=1,
+    };
+    rust_star_q8_mm_args weight_projection = {
+        .ne00=n_embd, .ne02=1,
+        .nb01=n_embd*sizeof(uint16_t),
+        .nb02=indexer_weight_bytes, .nb03=indexer_weight_bytes,
+        .ne12=1, .nb10=sizeof(float),
+        .nb11=n_embd*sizeof(float),
+        .nb12=(uint64_t)tile_rows*n_embd*sizeof(float),
+        .nb13=(uint64_t)tile_rows*n_embd*sizeof(float),
+        .ne0=attention_heads, .ne1=tile_rows, .r2=1, .r3=1,
+    };
+    rust_star_rope_tail_args indexer_rope = {
+        .ne00=indexer_width, .ne01=attention_heads,
+        .ne02=tile_rows, .ne03=1,
+        .nb00=sizeof(float), .nb01=indexer_width*sizeof(float),
+        .nb02=indexer_q_row_bytes,
+        .nb03=(uint64_t)tile_rows*indexer_q_row_bytes,
+        .nb0=sizeof(float), .nb1=indexer_width*sizeof(float),
+        .nb2=indexer_q_row_bytes,
+        .nb3=(uint64_t)tile_rows*indexer_q_row_bytes,
+        .n_dims=64, .mode=0, .n_ctx_orig=65536, .inverse=0,
+        .freq_base=160000.0f, .freq_scale=1.0f/16.0f,
+        .ext_factor=1.0f,
+        .attn_factor=1.0f/(1.0f+0.1f*logf(16.0f)),
+        .beta_fast=32.0f, .beta_slow=1.0f, .src2=false,
+    };
+    rust_star_indexer_qat_args qat = {
+        .n_rows=tile_rows*attention_heads, .head_dim=indexer_width,
+        .row_stride=indexer_width*sizeof(float),
+    };
+    rust_star_indexer_score_args score_args = {
+        .n_comp=compressed_capacity, .n_tokens=tile_rows,
+        .n_head=attention_heads, .head_dim=indexer_width,
+        .pos0=position_start, .ratio=4,
+        .q_token_stride=indexer_q_row_bytes,
+        .q_head_stride=indexer_width*sizeof(float),
+        .weights_token_stride=weight_row_bytes,
+        .index_row_stride=indexer_width*sizeof(float),
+        .score_token_stride=score_row_bytes,
+        .scale=1.0f/sqrtf(8192.0f),
+    };
+    rust_star_argsort_args topk_args = {
+        .ne00=compressed_capacity, .ne01=tile_rows, .ne02=1, .ne03=1,
+        .nb00=sizeof(float), .nb01=score_row_bytes,
+        .nb02=(uint64_t)tile_rows*score_row_bytes,
+        .nb03=(uint64_t)tile_rows*score_row_bytes,
+        .ne0=top_k, .ne1=tile_rows, .ne2=1, .ne3=1, .top_k=top_k,
+    };
+    rust_star_topk_mask_args sort_args = {
+        .ne00=top_k, .ne01=tile_rows,
+        .nb00=sizeof(int32_t), .nb01=topk_row_bytes,
+        .ne0=top_k, .ne1=tile_rows,
+        .nb0=sizeof(int32_t), .nb1=topk_row_bytes,
+    };
+    rust_star_indexed_attention_args attention_args = {
+        .n_tokens=batch_tokens, .n_head=attention_heads,
+        .n_raw=raw_span, .raw_cap=raw_capacity, .raw_start=raw_start,
+        .n_comp=compressed_capacity, .top_k=top_k,
+        .pos0=position_start, .window=128, .ratio=4,
+        .comp_kv_f16=1, .n_splits=1,
+        .q_token_stride=q_row_bytes,
+        .q_head_stride=attention_width*sizeof(float),
+        .raw_row_stride=kv_row_bytes,
+        .comp_row_stride=attention_width*sizeof(uint16_t),
+        .topk_token_stride=topk_row_bytes,
+        .dst_token_stride=q_row_bytes,
+        .dst_head_stride=attention_width*sizeof(float),
+        .scale=1.0f/sqrtf(512.0f),
+    };
+    rust_star_rope_tail_args inverse_rope = {
+        .ne00=attention_width, .ne01=attention_heads,
+        .ne02=tile_rows, .ne03=1,
+        .nb00=sizeof(float), .nb01=attention_width*sizeof(float),
+        .nb02=q_row_bytes, .nb03=(uint64_t)tile_rows*q_row_bytes,
+        .nb0=sizeof(float), .nb1=attention_width*sizeof(float),
+        .nb2=q_row_bytes, .nb3=(uint64_t)tile_rows*q_row_bytes,
+        .n_dims=64, .mode=0, .n_ctx_orig=65536, .inverse=1,
+        .freq_base=160000.0f, .freq_scale=1.0f/16.0f,
+        .ext_factor=1.0f,
+        .attn_factor=1.0f/(1.0f+0.1f*logf(16.0f)),
+        .beta_fast=32.0f, .beta_slow=1.0f, .src2=false,
+    };
+
+    id<MTLCommandBuffer> command = [context.queue commandBuffer];
+    id<MTLComputeCommandEncoder> encoder = [command computeCommandEncoder];
+    if (!command || !encoder) return fail_with_message(error, error_bytes,
+        @"failed to create prefill layer-2 indexed tile encoder");
+
+    [encoder setComputePipelineState:context.f16AlignedPrefillPipeline];
+    [encoder setBytes:&q_projection length:sizeof(q_projection) atIndex:0];
+    [encoder setBuffer:q_weights offset:inner[0] atIndex:1];
+    [encoder setBuffer:context.prefillLayer2FullQNorm
+                offset:(NSUInteger)position_start*q_rank*sizeof(float) atIndex:2];
+    [encoder setBuffer:indexer_q_buffer offset:0 atIndex:3];
+    [encoder setThreadgroupMemoryLength:6144u atIndex:0];
+    [encoder dispatchThreadgroups:MTLSizeMake(1,128,1)
+         threadsPerThreadgroup:MTLSizeMake(128,1,1)];
+
+    [encoder setComputePipelineState:context.ropeTailPipeline];
+    [encoder setBytes:&indexer_rope length:sizeof(indexer_rope) atIndex:0];
+    [encoder setBuffer:indexer_q_buffer offset:0 atIndex:1];
+    [encoder setBuffer:position_buffer offset:0 atIndex:2];
+    [encoder setBuffer:indexer_q_buffer offset:0 atIndex:3];
+    [encoder setBuffer:indexer_q_buffer offset:0 atIndex:4];
+    [encoder dispatchThreadgroups:MTLSizeMake(attention_heads,tile_rows,1)
+         threadsPerThreadgroup:MTLSizeMake(128,1,1)];
+
+    [encoder setComputePipelineState:context.indexerQatPipeline];
+    [encoder setBytes:&qat length:sizeof(qat) atIndex:0];
+    [encoder setBuffer:indexer_q_buffer offset:0 atIndex:1];
+    [encoder setThreadgroupMemoryLength:256u*sizeof(float) atIndex:0];
+    [encoder dispatchThreadgroups:MTLSizeMake(tile_rows*attention_heads,1,1)
+         threadsPerThreadgroup:MTLSizeMake(128,1,1)];
+
+    [encoder setComputePipelineState:context.f16AlignedPrefillPipeline];
+    [encoder setBytes:&weight_projection length:sizeof(weight_projection) atIndex:0];
+    [encoder setBuffer:weight_weights offset:inner[1] atIndex:1];
+    [encoder setBuffer:context.prefillLayer2FullAttnNorm
+                offset:(NSUInteger)position_start*n_embd*sizeof(float) atIndex:2];
+    [encoder setBuffer:indexer_weight_buffer offset:0 atIndex:3];
+    [encoder setThreadgroupMemoryLength:6144u atIndex:0];
+    [encoder dispatchThreadgroups:MTLSizeMake(1,1,1)
+         threadsPerThreadgroup:MTLSizeMake(128,1,1)];
+
+    [encoder setComputePipelineState:context.indexerScoreBatchPipeline];
+    [encoder setBytes:&score_args length:sizeof(score_args) atIndex:0];
+    [encoder setBuffer:indexer_q_buffer offset:0 atIndex:1];
+    [encoder setBuffer:indexer_weight_buffer offset:0 atIndex:2];
+    [encoder setBuffer:context.prefillLayer2IndexerCompressed offset:0 atIndex:3];
+    [encoder setBuffer:score_buffer offset:0 atIndex:4];
+    [encoder setThreadgroupMemoryLength:
+        (8u*128u+32u*128u)*sizeof(uint16_t)+8u*32u*sizeof(float)
+                                    atIndex:0];
+    [encoder dispatchThreadgroups:MTLSizeMake(64,4,1)
+         threadsPerThreadgroup:MTLSizeMake(32,4,1)];
+
+    [encoder setComputePipelineState:context.indexerTopkStream512Pipeline];
+    [encoder setBytes:&topk_args length:sizeof(topk_args) atIndex:0];
+    [encoder setBuffer:score_buffer offset:0 atIndex:1];
+    [encoder setBuffer:topk_buffer offset:0 atIndex:2];
+    [encoder dispatchThreadgroups:MTLSizeMake(tile_rows,1,1)
+         threadsPerThreadgroup:MTLSizeMake(256,1,1)];
+
+    [encoder setComputePipelineState:context.indexedTopkSortPipeline];
+    [encoder setBytes:&sort_args length:sizeof(sort_args) atIndex:0];
+    [encoder setBuffer:topk_buffer offset:0 atIndex:1];
+    [encoder setBuffer:sorted_buffer offset:0 atIndex:2];
+    [encoder setThreadgroupMemoryLength:topk_row_bytes atIndex:0];
+    [encoder dispatchThreadgroups:MTLSizeMake(tile_rows,1,1)
+         threadsPerThreadgroup:MTLSizeMake(top_k,1,1)];
+
+    uint32_t comp_elements = compressed_capacity*attention_width;
+    [encoder setComputePipelineState:context.cpyF32F16Pipeline];
+    [encoder setBytes:&comp_elements length:sizeof(comp_elements) atIndex:0];
+    [encoder setBuffer:context.prefillLayer2AttnCompressed offset:0 atIndex:1];
+    [encoder setBuffer:comp_f16 offset:0 atIndex:2];
+    [encoder dispatchThreadgroups:MTLSizeMake((comp_elements+1023u)/1024u,1,1)
+         threadsPerThreadgroup:MTLSizeMake(256,1,1)];
+
+    [encoder setComputePipelineState:context.indexedAttentionPrefillPipeline];
+    [encoder setBytes:&attention_args length:sizeof(attention_args) atIndex:0];
+    [encoder setBuffer:q_batch offset:0 atIndex:1];
+    [encoder setBuffer:raw_ring offset:0 atIndex:2];
+    [encoder setBuffer:comp_f16 offset:0 atIndex:3];
+    [encoder setBuffer:sorted_buffer offset:0 atIndex:4];
+    [encoder setBuffer:sinks_buffer offset:inner[2] atIndex:5];
+    [encoder setBuffer:heads_buffer offset:0 atIndex:6];
+    [encoder setThreadgroupMemoryLength:128u*4u*sizeof(uint16_t) atIndex:0];
+    [encoder dispatchThreadgroups:MTLSizeMake(tile_rows,8,1)
+         threadsPerThreadgroup:MTLSizeMake(32,8,1)];
+
+    [encoder setComputePipelineState:context.ropeTailPipeline];
+    [encoder setBytes:&inverse_rope length:sizeof(inverse_rope) atIndex:0];
+    [encoder setBuffer:heads_buffer offset:0 atIndex:1];
+    [encoder setBuffer:position_buffer offset:0 atIndex:2];
+    [encoder setBuffer:heads_buffer offset:0 atIndex:3];
+    [encoder setBuffer:heads_buffer offset:0 atIndex:4];
+    [encoder dispatchThreadgroups:MTLSizeMake(attention_heads,tile_rows,1)
+         threadsPerThreadgroup:MTLSizeMake(256,1,1)];
+    [encoder endEncoding];
+
+    const double wall_start = monotonic_ms();
+    [command commit];
+    if (!command_succeeded(command, error, error_bytes)) return 0;
+    const float diagnostic_q0 = ((const float *)indexer_q_buffer.contents)[0];
+    const float diagnostic_w0 = ((const float *)indexer_weight_buffer.contents)[0];
+    const float diagnostic_score0 = ((const float *)score_buffer.contents)[0];
+    if (diagnostic_score0 == 0.0f) {
+        return fail_with_message(error, error_bytes,
+            [NSString stringWithFormat:
+                @"prefill layer-2 indexed tile produced a zero first score (q0=%a w0=%a)",
+                diagnostic_q0, diagnostic_w0]);
+    }
+    memcpy(scores, score_buffer.contents, tile_rows*score_row_bytes);
+    memcpy(topk, topk_buffer.contents, tile_rows*topk_row_bytes);
+    memcpy(kqv_back, heads_buffer.contents, tile_rows*q_row_bytes);
+    context.prefillLayer2ContinuationHeads = heads_buffer;
+    result->dispatches += 10u;
+    result->wall_ms += monotonic_ms()-wall_start;
+    result->gpu_ms += gpu_elapsed_ms(command);
+    return 1;
+}
+
 int rust_star_metal_run_prefill_layer2_continuation_tail(
     void *opaque_context,
     const void *model_mapping,
     uint64_t model_bytes,
     const rust_star_metal_prefill_layer_weights *weights,
-    const float *kqv_back_tile,
     float *attention_low,
     float *attention_output,
     float *after_attention_hc,
@@ -44579,7 +44916,7 @@ int rust_star_metal_run_prefill_layer2_continuation_tail(
         used_experts = 6,
         mix_hc = 24,
     };
-    if (!opaque_context || !model_mapping || !weights || !kqv_back_tile ||
+    if (!opaque_context || !model_mapping || !weights ||
         !attention_low || !attention_output || !after_attention_hc ||
         !ffn_current || !ffn_norm || !router_logits || !router_probs ||
         !router_selected || !router_weights || !routed_mid ||
@@ -44590,6 +44927,7 @@ int rust_star_metal_run_prefill_layer2_continuation_tail(
 
     @autoreleasepool {
         RustStarMetalContext *context = (__bridge RustStarMetalContext *)opaque_context;
+        id<MTLBuffer> heads_buffer = context.prefillLayer2ContinuationHeads;
         const NSUInteger hc_row_bytes = 4u*n_embd*sizeof(float);
         const NSUInteger input_hc_offset =
             (NSUInteger)continuation_start*hc_row_bytes;
@@ -44603,7 +44941,8 @@ int rust_star_metal_run_prefill_layer2_continuation_tail(
             !context.prefillLayer2AttnSplit ||
             context.prefillLayer2AttnSplit.length <
                 split_offset+rows*mix_hc*sizeof(float) ||
-            !context.prefillLayer2Tokens ||
+            !context.prefillLayer2Tokens || !heads_buffer ||
+            heads_buffer.length < (NSUInteger)rows*q_dim*sizeof(float) ||
             context.prefillLayer2Tokens.length < token_offset+rows*sizeof(uint32_t)) {
             return fail_with_message(error, error_bytes,
                 @"prefill layer-2 continuation tail requires the retained 8K bootstrap");
@@ -44666,7 +45005,6 @@ int rust_star_metal_run_prefill_layer2_continuation_tail(
             if (!model_buffers[index]) return 0;
         }
 
-        const NSUInteger heads_bytes = (NSUInteger)rows*q_dim*sizeof(float);
         const NSUInteger attention_low_bytes =
             (NSUInteger)rows*8u*output_rank*sizeof(float);
         const NSUInteger output_bytes = (NSUInteger)rows*n_embd*sizeof(float);
@@ -44703,8 +45041,6 @@ int rust_star_metal_run_prefill_layer2_continuation_tail(
 #define RUST_STAR_NEW_CONTINUATION_TAIL_BUFFER(name, bytes) \
         id<MTLBuffer> name = [context.device newBufferWithLength:(bytes) \
             options:MTLResourceStorageModeShared]
-        id<MTLBuffer> heads_buffer = [context.device newBufferWithBytes:kqv_back_tile
-            length:heads_bytes options:MTLResourceStorageModeShared];
         RUST_STAR_NEW_CONTINUATION_TAIL_BUFFER(group_ids_buffer, group_ids_bytes);
         RUST_STAR_NEW_CONTINUATION_TAIL_BUFFER(group_map_buffer, group_map_bytes);
         RUST_STAR_NEW_CONTINUATION_TAIL_BUFFER(attention_low_buffer, attention_low_bytes);
@@ -45198,6 +45534,9 @@ int rust_star_metal_run_prefill_layer2_sparse_transition(
     int32_t *indexer_topk,
     float *kqv_out,
     float *kqv_back,
+    float *tile_indexer_scores,
+    int32_t *tile_indexer_topk,
+    float *tile_kqv_back,
     rust_star_metal_sparse_indexed_result *result,
     char *error,
     size_t error_bytes)
@@ -45224,7 +45563,8 @@ int rust_star_metal_run_prefill_layer2_sparse_transition(
         !q_lora_norm || !attn_norm ||
         !q_current || !indexer_q ||
         !indexer_weights || !indexer_scores || !indexer_topk || !kqv_out ||
-        !kqv_back || !result) {
+        !kqv_back || !tile_indexer_scores || !tile_indexer_topk ||
+        !tile_kqv_back || !result) {
         return fail_with_message(error, error_bytes,
             @"prefill layer-2 sparse transition received a null input");
     }
@@ -45352,6 +45692,14 @@ int rust_star_metal_run_prefill_layer2_sparse_transition(
                 context, q_batch, transition_sinks, transition_sinks_inner,
                 indexer_topk, kqv_out, kqv_back, &sparse_result,
                 error, error_bytes)) return 0;
+
+        if (!rust_star_metal_run_prefill_layer2_indexed_tile(
+                context, model_mapping, model_bytes,
+                indexer_q_offset, indexer_q_bytes,
+                indexer_weight_offset, indexer_weight_bytes,
+                sinks_offset, sinks_bytes, q_batch,
+                tile_indexer_scores, tile_indexer_topk, tile_kqv_back,
+                &sparse_result, error, error_bytes)) return 0;
 
         const uint8_t *diagnostics =
             context.prefillLayer0TransitionDiagnostics.contents;

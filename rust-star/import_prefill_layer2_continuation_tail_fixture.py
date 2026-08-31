@@ -17,7 +17,14 @@ CAPTURE_EXECUTABLE_SHA256 = (
     "8e37f40cef769e34ef82a202d202a42b267322437ab8100c1303cc6aa8583bf3"
 )
 TENSORS = {
-    "kqv_back": ("kqv-back-first-tile.f32le.bin", 32_768, "input", "f32"),
+    "indexer_scores": (
+        "indexer-scores-first-tile-bits.i32le.bin",
+        2_048,
+        "intermediate",
+        "i32",
+    ),
+    "indexer_topk": ("indexer-topk-first-tile.i32le.bin", 512, "intermediate", "i32"),
+    "kqv_back": ("kqv-back-first-tile.f32le.bin", 32_768, "intermediate", "f32"),
     "attn_low": ("attention-low-first-tile.f32le.bin", 8_192, "intermediate", "f32"),
     "attn_out": ("attention-output-first-tile.f32le.bin", 4_096, "intermediate", "f32"),
     "hc_attn_post": ("attention-hc-post-first-tile.f32le.bin", 16_384, "intermediate", "f32"),
@@ -33,6 +40,8 @@ TENSORS = {
     "hc_ffn_post": ("ffn-hc-post-first-tile.f32le.bin", 16_384, "output", "f32"),
 }
 FULL_CAPTURE_SHA256 = {
+    "indexer_scores": "f8e44be5ac093a6257fc9dafb08f04e9555560dcbda17e083b819adf111f1808",
+    "indexer_topk": "8449e42c7e4dd74be4f23becb3edbc7151886e85e5d5a0492ebdb249acfcc60f",
     "kqv_back": "372140699ec97a8734cdf14572d88caf62063a3098ba1da43875190365816eba",
     "attn_low": "1c25067bc70440c748b16bb88d8ab194e68a2c39568c3899a9f2048c9a363035",
     "attn_out": "bba8a9e4d5d83f89896b4c4686c4a7d08f6c228a12b88e2f1160cc41fea2a327",
@@ -55,6 +64,10 @@ def sha256(payload: bytes) -> str:
 
 
 def capture_path(root: Path, name: str) -> Path:
+    if name == "indexer_scores":
+        return root / "oracle_indexer_scores-2_pos4096.bin"
+    if name == "indexer_topk":
+        return root / "oracle_indexer_topk-2_pos4096.i32"
     if name == "kqv_back":
         return root / "transition_kqv_back-2_pos4096.bin"
     return root / f"oracle_{name}-2_pos4096.{'i32' if name == 'ffn_moe_topk' else 'bin'}"
@@ -81,6 +94,8 @@ def main() -> int:
     parser.add_argument("--low-second", type=Path, required=True)
     parser.add_argument("--tail-first", type=Path, required=True)
     parser.add_argument("--tail-second", type=Path, required=True)
+    parser.add_argument("--indexed-first", type=Path, required=True)
+    parser.add_argument("--indexed-second", type=Path, required=True)
     parser.add_argument(
         "--fixtures-root",
         type=Path,
@@ -92,6 +107,8 @@ def main() -> int:
         raise SystemExit(f"output already exists: {output}")
 
     roots = {
+        "indexer_scores": (args.indexed_first, args.indexed_second),
+        "indexer_topk": (args.indexed_first, args.indexed_second),
         "kqv_back": (args.transition_first, args.transition_second),
         "attn_low": (args.low_first, args.low_second),
     }
@@ -101,23 +118,24 @@ def main() -> int:
         first, second = roots.get(name, (args.tail_first, args.tail_second))
         payload = checked_repeated(name, first, second, width)
         (output / filename).write_bytes(payload)
-        tensors.append(
-            {
-                "name": name,
-                "hook": name,
-                "role": role,
-                "dtype": dtype,
-                "shape": [TILE_ROWS, width],
-                "encoding": (
-                    "little-endian-signed-integer32"
-                    if dtype == "i32"
-                    else "little-endian-ieee754-binary32"
-                ),
-                "path": filename,
-                "bytes": len(payload),
-                "sha256": sha256(payload),
-            }
-        )
+        descriptor = {
+            "name": name,
+            "hook": name,
+            "role": role,
+            "dtype": dtype,
+            "shape": [TILE_ROWS, width],
+            "encoding": (
+                "little-endian-signed-integer32"
+                if dtype == "i32"
+                else "little-endian-ieee754-binary32"
+            ),
+            "path": filename,
+            "bytes": len(payload),
+            "sha256": sha256(payload),
+        }
+        if name == "indexer_scores":
+            descriptor["value_semantics"] = "ieee754-binary32-bit-pattern"
+        tensors.append(descriptor)
 
     manifest = {
         "schema": "rust-star-differential-fixture-v1",
@@ -150,6 +168,10 @@ def main() -> int:
                 "a57596781d68386f6e2a1b48d3d75995ed8b2686470c345e7458566cb87a7b0c",
                 "8ef3853bbd1d6237663f1b91f438b2723a120ed5e57b1b143361ef83c709a3ea",
             ],
+            "indexed_csv_sha256": [
+                "75feca8911c7a629477bf15ea225f24d6269ca3d44256ce1f40d022a943e5194",
+                "89aaeb9ca93808fc8221a332b6c80f5dc78938874a73b043e9a721682f1d0b56",
+            ],
             "full_batch_sha256": FULL_CAPTURE_SHA256,
             "environment": {
                 "DS4_METAL_GRAPH_DUMP_LAYER": "2",
@@ -171,9 +193,16 @@ def main() -> int:
         },
         "operations": [
             {
-                "name": "oracle-kqv-back-input",
-                "kernel": "captured boundary after indexed mixed attention plus inverse RoPE",
+                "name": "indexer-score",
+                "kernel": "kernel_dsv4_indexer_scores_tiled",
             },
+            {"name": "indexer-top-k", "kernel": "kernel_topk_stream512"},
+            {"name": "top-k-order", "kernel": "kernel_dsv4_sort_i32_rows_asc"},
+            {
+                "name": "indexed-attention",
+                "kernel": "kernel_dsv4_indexed_mixed_attention_heads8",
+            },
+            {"name": "inverse-rope", "kernel": "kernel_dsv4_rope_tail_f32"},
             {"name": "attention-output-projection", "kernel": "grouped Q8_0 low plus Q8_0 output"},
             {"name": "attention-hc-post", "kernel": "kernel_dsv4_hc_expand4"},
             {"name": "token-hash-router", "kernel": "batch softplus/sqrt/hash/gather/normalize"},
@@ -183,9 +212,10 @@ def main() -> int:
         ],
         "claims": {
             "native_batch_schedule": True,
-            "oracle_seeded_kqv_back_input": True,
+            "oracle_seeded_kqv_back_input": False,
+            "native_multirow_sparse_kqv_back": True,
             "complete_downstream_tail_tile": True,
-            "complete_layer_tile": False,
+            "complete_layer_tile": True,
             "complete_layer": False,
             "output_logits": False,
             "throughput": False,

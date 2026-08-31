@@ -29,7 +29,7 @@ pub const PREFILL_LAYERS012_COMPRESSOR_LOOP_PROBE_SCHEMA: &str =
     "rust-star-prefill-layers012-compressor-loop-probe-v1";
 pub const LONG_PREFILL_BOOTSTRAP_PROBE_SCHEMA: &str = "rust-star-long-prefill-bootstrap-probe-v1";
 pub const LONG_PREFILL_CONTINUATION_BOOTSTRAP_PROBE_SCHEMA: &str =
-    "rust-star-long-prefill-continuation-bootstrap-probe-v3";
+    "rust-star-long-prefill-continuation-bootstrap-probe-v4";
 pub const LONG_PREFILL_SEQUENTIAL_CONTINUATION_PROBE_SCHEMA: &str =
     "rust-star-long-prefill-sequential-continuation-probe-v1";
 pub const LONG_PREFILL_TRANSFORMER_PROBE_SCHEMA: &str =
@@ -7682,7 +7682,7 @@ pub fn write_long_prefill_continuation_bootstrap_probe_json<W: Write>(
         || report.sparse_transition.compressed_rows != 1_025
         || report.sparse_transition.raw_rows != 128
         || report.sparse_transition.top_k != 512
-        || report.sparse_transition.dispatches != 43
+        || report.sparse_transition.dispatches != 53
         || report.sparse_transition.wrapped_model_ranges != 18
         || report.sparse_transition.pointer_matches != 18
         || report.sparse_transition.split_count != 1
@@ -7712,7 +7712,7 @@ pub fn write_long_prefill_continuation_bootstrap_probe_json<W: Write>(
     crate::artifact::write_json_string(output, report.fixture_id)?;
     write!(
         output,
-        ",\n  \"frontier_tokens\": {},\n  \"first_chunk\": {{\"start\": 0, \"tokens\": {}, \"end\": {}, \"complete_transformer_schedule\": true, \"selected_token\": {}}},\n  \"continuation_chunk\": {{\"start\": {}, \"tokens\": {}, \"end\": {}}},\n  \"schedule\": {{\"tile_rows\": {}, \"tiles\": {}, \"dispatches\": {}, \"wrapped_model_ranges\": {}, \"pointer_matches\": {}}},\n  \"retained_state\": {{\"layer0_raw_rows\": {}, \"layer1_raw_rows\": {}, \"layer2_raw_rows\": {}, \"layer2_attention_compressed_rows\": {}, \"layer2_indexer_compressed_rows\": {}, \"compressor_recurrent_state_retained\": true, \"capacity_growth_preserved_prefix\": true}},\n  \"sparse_transition\": {{\"position\": {}, \"compressed_rows\": {}, \"raw_rows\": {}, \"top_k\": {}, \"combined_dispatches\": {}, \"combined_wrapped_model_ranges\": {}, \"combined_pointer_matches\": {}, \"sparse_attention_dispatches\": 17, \"sparse_attention_wrapped_model_ranges\": 4, \"split_count\": {}, \"q_b_batch_rows\": 4096, \"raw_ring_capacity\": 4352, \"raw_batch_span\": 4224, \"compressed_capacity\": 2048, \"topk_order_kernel\": \"kernel_dsv4_sort_i32_rows_asc\", \"attention_kernel\": \"kernel_dsv4_indexed_mixed_attention_heads16_dual\", \"q_b_batch_c0_bitwise_match\": true, \"production_sparse_c0_bitwise_match\": true, \"checksums\": {{\"indexer_q\": {}, \"indexer_weights\": {}, \"indexer_scores\": {}, \"indexer_topk\": {}, \"kqv_out\": {}, \"kqv_back\": {}}}, \"wall_ms\": {:.6}, \"gpu_ms\": {:.6}}},\n  \"layer2_continuation_tail\": {{\"fixture\": ",
+        ",\n  \"frontier_tokens\": {},\n  \"first_chunk\": {{\"start\": 0, \"tokens\": {}, \"end\": {}, \"complete_transformer_schedule\": true, \"selected_token\": {}}},\n  \"continuation_chunk\": {{\"start\": {}, \"tokens\": {}, \"end\": {}}},\n  \"schedule\": {{\"tile_rows\": {}, \"tiles\": {}, \"dispatches\": {}, \"wrapped_model_ranges\": {}, \"pointer_matches\": {}}},\n  \"retained_state\": {{\"layer0_raw_rows\": {}, \"layer1_raw_rows\": {}, \"layer2_raw_rows\": {}, \"layer2_attention_compressed_rows\": {}, \"layer2_indexer_compressed_rows\": {}, \"compressor_recurrent_state_retained\": true, \"capacity_growth_preserved_prefix\": true}},\n  \"sparse_transition\": {{\"position\": {}, \"compressed_rows\": {}, \"raw_rows\": {}, \"top_k\": {}, \"combined_dispatches\": {}, \"combined_wrapped_model_ranges\": {}, \"combined_pointer_matches\": {}, \"isolated_sparse_dispatches\": 17, \"native_tile_dispatches\": 10, \"native_sparse_dispatches\": 27, \"sparse_attention_wrapped_model_ranges\": 4, \"split_count\": {}, \"q_b_batch_rows\": 4096, \"tile_rows\": 32, \"raw_ring_capacity\": 4352, \"raw_batch_span\": 4224, \"compressed_capacity\": 2048, \"score_kernel\": \"kernel_dsv4_indexer_scores_tiled\", \"selection_kernel\": \"kernel_topk_stream512\", \"topk_order_kernel\": \"kernel_dsv4_sort_i32_rows_asc\", \"attention_kernel\": \"kernel_dsv4_indexed_mixed_attention_heads8\", \"q_b_batch_c0_bitwise_match\": true, \"multirow_indexer_c0_bitwise_match\": true, \"multirow_kqv_back_c0_bitwise_match\": true, \"production_sparse_c0_bitwise_match\": true, \"checksums\": {{\"indexer_q\": {}, \"indexer_weights\": {}, \"indexer_scores\": {}, \"indexer_topk\": {}, \"kqv_out\": {}, \"kqv_back\": {}}}, \"wall_ms\": {:.6}, \"gpu_ms\": {:.6}}},\n  \"layer2_continuation_tail\": {{\"fixture\": ",
         report.frontier_tokens,
         report.first_chunk_tokens,
         report.first_chunk_tokens - 1,
@@ -7750,7 +7750,7 @@ pub fn write_long_prefill_continuation_bootstrap_probe_json<W: Write>(
     crate::artifact::write_json_string(output, report.layer2_tail_fixture_id)?;
     write!(
         output,
-        ", \"input_boundary\": \"oracle_kqv_back_first_tile\", \"start\": {}, \"rows\": {}, \"dispatches\": {}, \"wrapped_model_ranges\": {}, \"pointer_matches\": {}, \"exact_outputs\": {}, \"attention_output_c0_bitwise_match\": true, \"ffn_c0_bitwise_match\": true, \"final_hc_c0_bitwise_match\": true, \"complete_layer_claim\": false}},\n  \"checksums\": {{\"continuation_token_ids\": {}}},\n  \"timing\": {{\"continuation_summed_wall_ms\": {:.6}, \"continuation_summed_gpu_ms\": {:.6}}},\n  \"accepted_oracle_token_stream\": true,\n  \"native_batch_schedule\": true,\n  \"second_long_prefill_bootstrap_chunk_executed\": true,\n  \"layer2_sparse_transition_c0_claim\": true,\n  \"layer2_oracle_seeded_tail_c0_claim\": true,\n  \"complete_8k_transformer_claim\": false,\n  \"output_logits_c0_claim\": false,\n  \"throughput_claim\": false\n}}\n",
+        ", \"input_boundary\": \"native_multirow_sparse_kqv_back\", \"start\": {}, \"rows\": {}, \"dispatches\": {}, \"wrapped_model_ranges\": {}, \"pointer_matches\": {}, \"native_sparse_exact_outputs\": 3, \"downstream_exact_outputs\": {}, \"attention_output_c0_bitwise_match\": true, \"ffn_c0_bitwise_match\": true, \"final_hc_c0_bitwise_match\": true, \"complete_layer_tile_claim\": true}},\n  \"checksums\": {{\"continuation_token_ids\": {}}},\n  \"timing\": {{\"continuation_summed_wall_ms\": {:.6}, \"continuation_summed_gpu_ms\": {:.6}}},\n  \"accepted_oracle_token_stream\": true,\n  \"native_batch_schedule\": true,\n  \"second_long_prefill_bootstrap_chunk_executed\": true,\n  \"layer2_sparse_transition_c0_claim\": true,\n  \"layer2_native_complete_tile_c0_claim\": true,\n  \"complete_8k_transformer_claim\": false,\n  \"output_logits_c0_claim\": false,\n  \"throughput_claim\": false\n}}\n",
         report.layer2_tail_start,
         report.layer2_tail_rows,
         report.layer2_tail_dispatches,
@@ -22312,6 +22312,9 @@ mod imp {
             indexer_topk: *mut i32,
             kqv_out: *mut f32,
             kqv_back: *mut f32,
+            tile_indexer_scores: *mut f32,
+            tile_indexer_topk: *mut i32,
+            tile_kqv_back: *mut f32,
             result: *mut RawSparseIndexedResult,
             error: *mut c_char,
             error_bytes: usize,
@@ -22321,7 +22324,6 @@ mod imp {
             model_mapping: *const c_void,
             model_bytes: u64,
             weights: *const RawPrefillLayerWeights,
-            kqv_back_tile: *const f32,
             attention_low: *mut f32,
             attention_output: *mut f32,
             after_attention_hc: *mut f32,
@@ -41787,6 +41789,18 @@ mod imp {
             "sparse transition KQV back",
         )?;
         let read_tail = |file| read_prefill_layer2_continuation_tail_fixture(file);
+        let expected_tile_indexer_score_bits = decode_i32_fixture(
+            &read_tail("indexer-scores-first-tile-bits.i32le.bin")?,
+            "continuation indexer-score tile",
+        )?;
+        let expected_tile_indexer_scores = expected_tile_indexer_score_bits
+            .iter()
+            .map(|bits| f32::from_bits(*bits as u32))
+            .collect::<Vec<_>>();
+        let expected_tile_indexer_topk = decode_i32_fixture(
+            &read_tail("indexer-topk-first-tile.i32le.bin")?,
+            "continuation indexer-top-k tile",
+        )?;
         let expected_tail_kqv_back = decode_f32_fixture(
             &read_tail("kqv-back-first-tile.f32le.bin")?,
             "continuation KQV-back tile",
@@ -41880,6 +41894,9 @@ mod imp {
         let mut actual_topk = vec![0_i32; 512];
         let mut actual_out = vec![0.0_f32; expected_out.len()];
         let mut actual_back = vec![0.0_f32; expected_back.len()];
+        let mut actual_tile_indexer_scores = vec![0.0_f32; expected_tile_indexer_scores.len()];
+        let mut actual_tile_indexer_topk = vec![0_i32; expected_tile_indexer_topk.len()];
+        let mut actual_tile_kqv_back = vec![0.0_f32; expected_tail_kqv_back.len()];
         let mut actual_tail_attention_low = vec![0.0_f32; expected_tail_attention_low.len()];
         let mut actual_tail_attention_output = vec![0.0_f32; expected_tail_attention_output.len()];
         let mut actual_tail_after_attention_hc =
@@ -41932,6 +41949,9 @@ mod imp {
                 actual_topk.as_mut_ptr(),
                 actual_out.as_mut_ptr(),
                 actual_back.as_mut_ptr(),
+                actual_tile_indexer_scores.as_mut_ptr(),
+                actual_tile_indexer_topk.as_mut_ptr(),
+                actual_tile_kqv_back.as_mut_ptr(),
                 &mut raw,
                 error.as_mut_ptr(),
                 error.len(),
@@ -41949,7 +41969,6 @@ mod imp {
                 model.mapping_pointer(),
                 model.bytes(),
                 &tail_weights,
-                expected_tail_kqv_back.as_ptr(),
                 actual_tail_attention_low.as_mut_ptr(),
                 actual_tail_attention_output.as_mut_ptr(),
                 actual_tail_after_attention_hc.as_mut_ptr(),
@@ -42181,6 +42200,16 @@ mod imp {
             ("Q current", &actual_q_current[..], &expected_q_current[..]),
             ("KQV output", &actual_out[..], &expected_out[..]),
             ("KQV back", &actual_back[..], &expected_back[..]),
+            (
+                "32-row indexer scores",
+                &actual_tile_indexer_scores[..],
+                &expected_tile_indexer_scores[..],
+            ),
+            (
+                "32-row KQV back",
+                &actual_tile_kqv_back[..],
+                &expected_tail_kqv_back[..],
+            ),
         ] {
             if let Some((index, (actual, expected))) = actual
                 .iter()
@@ -42202,6 +42231,16 @@ mod imp {
         {
             return Err(Error::invalid(format!(
                 "prefill layer-2 sparse transition layer-0 selected experts C0 mismatch at {index}: actual={actual} expected={expected}"
+            )));
+        }
+        if let Some((index, (actual, expected))) = actual_tile_indexer_topk
+            .iter()
+            .zip(&expected_tile_indexer_topk)
+            .enumerate()
+            .find(|(_, (actual, expected))| actual != expected)
+        {
+            return Err(Error::invalid(format!(
+                "prefill layer-2 32-row indexer top-k C0 mismatch at {index}: actual={actual} expected={expected}"
             )));
         }
         for (label, actual, expected) in [
@@ -42292,7 +42331,7 @@ mod imp {
             || raw.compressed_rows != 1025
             || raw.raw_rows != 128
             || raw.top_k != 512
-            || raw.dispatches != 43
+            || raw.dispatches != 53
             || raw.wrapped_model_ranges != 18
             || raw.pointer_matches != 18
             || raw.split_count != 1
@@ -51671,7 +51710,7 @@ mod tests {
                 diagnostic_threshold_override: 0,
                 pinned_default_threshold: 1024,
                 first_default_sparse_rows: 1025,
-                dispatches: 43,
+                dispatches: 53,
                 wrapped_model_ranges: 18,
                 pointer_matches: 18,
                 split_count: 1,
@@ -51703,11 +51742,12 @@ mod tests {
         assert!(text.contains("\"second_long_prefill_bootstrap_chunk_executed\": true"));
         assert!(text.contains("\"q_b_batch_c0_bitwise_match\": true"));
         assert!(text.contains("\"raw_ring_capacity\": 4352"));
-        assert!(text.contains("kernel_dsv4_indexed_mixed_attention_heads16_dual"));
+        assert!(text.contains("kernel_dsv4_indexed_mixed_attention_heads8"));
         assert!(text.contains("\"layer2_sparse_transition_c0_claim\": true"));
-        assert!(text.contains("\"input_boundary\": \"oracle_kqv_back_first_tile\""));
-        assert!(text.contains("\"exact_outputs\": 13"));
-        assert!(text.contains("\"layer2_oracle_seeded_tail_c0_claim\": true"));
+        assert!(text.contains("\"selection_kernel\": \"kernel_topk_stream512\""));
+        assert!(text.contains("\"input_boundary\": \"native_multirow_sparse_kqv_back\""));
+        assert!(text.contains("\"downstream_exact_outputs\": 13"));
+        assert!(text.contains("\"layer2_native_complete_tile_c0_claim\": true"));
         assert!(text.contains("\"complete_8k_transformer_claim\": false"));
         assert!(text.contains("\"output_logits_c0_claim\": false"));
     }

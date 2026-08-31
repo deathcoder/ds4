@@ -136,13 +136,15 @@ class KernelFixtureTests(unittest.TestCase):
             "dwarfstar-oracle-v3-prefill-layer2-continuation-tail-4096",
         )
         self.assertEqual(report["scope"], "layer-segment")
-        self.assertEqual(report["operations"], 7)
-        self.assertEqual(report["tensors"], 14)
-        self.assertEqual(report["verified_bytes"], 13_698_560)
+        self.assertEqual(report["operations"], 11)
+        self.assertEqual(report["tensors"], 16)
+        self.assertEqual(report["verified_bytes"], 14_026_240)
         self.assertEqual(manifest["scope"]["captured_position_range"], [4096, 4127])
         self.assertTrue(manifest["capture"]["fresh_process_bitwise_match"])
         self.assertTrue(manifest["claims"]["complete_downstream_tail_tile"])
-        self.assertFalse(manifest["claims"]["complete_layer_tile"])
+        self.assertFalse(manifest["claims"]["oracle_seeded_kqv_back_input"])
+        self.assertTrue(manifest["claims"]["native_multirow_sparse_kqv_back"])
+        self.assertTrue(manifest["claims"]["complete_layer_tile"])
 
     def test_retained_decoder_step_fixture_manifest_and_payloads(self) -> None:
         report = validate_differential_fixture(RETAINED_DECODER_STEP_FIXTURE)

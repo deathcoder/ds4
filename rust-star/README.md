@@ -348,18 +348,21 @@ first-chunk prefix or recurrent compressor state. Continuation GPU time was
 also proves the first layer-2 sparse transition at position 4,099 against an
 independently repeated oracle-v3 batch capture. Its diagnostic reconstructs
 DwarfStar's 4,352-row raw ring, 4,224-row batch span, 2,048-row compressed
-capacity, chronological top-k order, and dual-head prefill attention dispatch.
+capacity, chronological top-k order, and M1 eight-head prefill attention dispatch.
 The complete input chain, compressor prefix through row 1,024, KQV output, and
 inverse RoPE output are bit-identical; the one-token 12-split decode probe
 remains a separate C0 control rather than standing in for prefill geometry.
-The same command now also validates the first 32-row continuation tail at
-positions 4,096--4,127. Starting from a separately repeated oracle KQV-back
-tile, 26 production batch dispatches reproduce all 13 captured outputs through
-the grouped attention projection, token-hash router, routed/shared experts,
-and final layer-2 HC state with 14/14 no-copy model mappings. Because sparse
-attention for those 32 rows is still oracle-seeded, this is a downstream-tail
-claim rather than a complete-layer claim. The next gate is to generate that
-KQV-back tile natively and hand the resulting live HC to layer 3.
+The same command now also validates one complete 32-row layer-2 continuation
+tile at positions 4,096--4,127. Ten native sparse dispatches use the M1
+production schedule—aligned F16 indexer projections, tiled scores, streaming
+top-512, chronological ordering, eight-head mixed attention, and inverse
+RoPE—and reproduce the repeated score, selection, and KQV-back captures
+bit-for-bit. The live KQV-back buffer then feeds 26 production batch dispatches
+that reproduce all 13 downstream outputs through the grouped attention
+projection, token-hash router, routed/shared experts, and final HC state with
+14/14 no-copy model mappings. There is no oracle-seeded execution boundary in
+this tile. The next gate is to retain its final HC as live layer-3 input and
+extend the connected batch schedule through the rest of the second chunk.
 The first complete second-half experiment deliberately tested whether the
 proven retained decoder schedule could serve as a correctness-preserving
 shortcut. `long-prefill-sequential-continuation-probe` now generalizes the

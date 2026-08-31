@@ -18,6 +18,61 @@ Before changing code:
 Journal entries are reverse chronological. Do not edit old entries to change
 history; add a correction and update the current-state summary.
 
+## 2026-08-31 — First complete native second-chunk layer-2 tile proven
+
+Objective:
+
+- Remove the oracle KQV-back execution boundary from positions 4,096--4,127
+  and connect the production multirow sparse scheduler directly to the already
+  exact attention-output/FFN tail.
+
+Changes and evidence:
+
+- Captured full 4,096-row layer-2 indexer-score and streaming top-512 tensors
+  twice from the pinned accepted oracle-v3 executable. Both repetitions were
+  bit-identical. The fixture retains only the first 32 rows (320 KiB) while
+  pinning the full 32 MiB score and 8 MiB selection identities by SHA-256.
+- Added the ten-dispatch M1 production sparse tile: aligned F16 indexer Q and
+  weight projections, batched RoPE/QAT, tiled scores, streaming top-512,
+  chronological ordering, F16 compressed-cache staging, eight-head indexed
+  attention, and inverse RoPE. The first 32 score rows, selected rows, and
+  KQV-back rows all match DwarfStar bit-for-bit.
+- Retained the native KQV-back Metal buffer and passed it directly into the
+  existing 26-dispatch attention-output/FFN tail. All 13 downstream tensors
+  remain exact through the final layer-2 HC state. The C ABI no longer accepts
+  an oracle KQV-back input for this path.
+- Corrected the initial TensorOps assumption after inspecting DwarfStar's
+  device gate: pre-M5 machines deliberately use aligned F16, tiled score, and
+  eight-head attention kernels. A transient NAX experiment was rejected after
+  its first score differed from the M1 oracle.
+- Evolved the report to
+  `rust-star-long-prefill-continuation-bootstrap-probe-v4`. It records 53
+  combined diagnostic dispatches, the native live-buffer boundary, and a true
+  complete-layer-tile claim while preserving false complete-8K, output-logit,
+  and throughput claims.
+
+Validation:
+
+- The M1 Ultra continuation probe completed 7,556 bootstrap dispatches with
+  4,160/4,160 mappings in 4,684.330/4,670.532 ms summed wall/GPU time. The
+  connected layer-2 diagnostic used 53 dispatches and 18/18 mappings.
+- Ignored JSON evidence SHA-256 is
+  `c1270a5e228fd8d028dc84bfe3e22c5faab780de123c5230cc81da3edac3579e`.
+- The optimized macOS build, all 306 Rust tests, all 83 Python tests, clean
+  fixture regeneration, formatting, and `git diff --check` passed.
+
+Decision:
+
+- Accept positions 4,096--4,127 as the first complete native layer-2 tile of
+  the second chunk. This closes the multirow sparse-attention correctness gap
+  for the representative tile without expanding the claim to all 8K tokens.
+
+Next:
+
+- Retain the final layer-2 HC tile as live layer-3 input and prove the same
+  positions through layer 3, then generalize the connected continuation across
+  the remaining second-chunk tiles and later layers.
+
 ## 2026-08-31 — First native-batched continuation tail proven
 
 Objective:

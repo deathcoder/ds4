@@ -29,7 +29,13 @@
       "a57596781d68386f6e2a1b48d3d75995ed8b2686470c345e7458566cb87a7b0c",
       "8ef3853bbd1d6237663f1b91f438b2723a120ed5e57b1b143361ef83c709a3ea"
     ],
+    "indexed_csv_sha256": [
+      "75feca8911c7a629477bf15ea225f24d6269ca3d44256ce1f40d022a943e5194",
+      "89aaeb9ca93808fc8221a332b6c80f5dc78938874a73b043e9a721682f1d0b56"
+    ],
     "full_batch_sha256": {
+      "indexer_scores": "f8e44be5ac093a6257fc9dafb08f04e9555560dcbda17e083b819adf111f1808",
+      "indexer_topk": "8449e42c7e4dd74be4f23becb3edbc7151886e85e5d5a0492ebdb249acfcc60f",
       "kqv_back": "372140699ec97a8734cdf14572d88caf62063a3098ba1da43875190365816eba",
       "attn_low": "1c25067bc70440c748b16bb88d8ab194e68a2c39568c3899a9f2048c9a363035",
       "attn_out": "bba8a9e4d5d83f89896b4c4686c4a7d08f6c228a12b88e2f1160cc41fea2a327",
@@ -49,6 +55,8 @@
       "DS4_METAL_GRAPH_DUMP_LAYER": "2",
       "DS4_METAL_GRAPH_DUMP_POS": "4096",
       "DS4_METAL_GRAPH_DUMP_NAME": [
+        "indexer_scores",
+        "indexer_topk",
         "kqv_back",
         "attn_low",
         "attn_out",
@@ -80,8 +88,24 @@
   },
   "operations": [
     {
-      "name": "oracle-kqv-back-input",
-      "kernel": "captured boundary after indexed mixed attention plus inverse RoPE"
+      "name": "indexer-score",
+      "kernel": "kernel_dsv4_indexer_scores_tiled"
+    },
+    {
+      "name": "indexer-top-k",
+      "kernel": "kernel_topk_stream512"
+    },
+    {
+      "name": "top-k-order",
+      "kernel": "kernel_dsv4_sort_i32_rows_asc"
+    },
+    {
+      "name": "indexed-attention",
+      "kernel": "kernel_dsv4_indexed_mixed_attention_heads8"
+    },
+    {
+      "name": "inverse-rope",
+      "kernel": "kernel_dsv4_rope_tail_f32"
     },
     {
       "name": "attention-output-projection",
@@ -110,18 +134,48 @@
   ],
   "claims": {
     "native_batch_schedule": true,
-    "oracle_seeded_kqv_back_input": true,
+    "oracle_seeded_kqv_back_input": false,
+    "native_multirow_sparse_kqv_back": true,
     "complete_downstream_tail_tile": true,
-    "complete_layer_tile": false,
+    "complete_layer_tile": true,
     "complete_layer": false,
     "output_logits": false,
     "throughput": false
   },
   "tensors": [
     {
+      "name": "indexer_scores",
+      "hook": "indexer_scores",
+      "role": "intermediate",
+      "dtype": "i32",
+      "shape": [
+        32,
+        2048
+      ],
+      "encoding": "little-endian-signed-integer32",
+      "path": "indexer-scores-first-tile-bits.i32le.bin",
+      "bytes": 262144,
+      "sha256": "5b3d75042efedbcfcfd2b3342453a71165489455582ecd038f0ffebbcfa15282",
+      "value_semantics": "ieee754-binary32-bit-pattern"
+    },
+    {
+      "name": "indexer_topk",
+      "hook": "indexer_topk",
+      "role": "intermediate",
+      "dtype": "i32",
+      "shape": [
+        32,
+        512
+      ],
+      "encoding": "little-endian-signed-integer32",
+      "path": "indexer-topk-first-tile.i32le.bin",
+      "bytes": 65536,
+      "sha256": "ffa1c6d760c9da01c50fbf0a1aeddd649717dd086ebacf8236a622faa981bd55"
+    },
+    {
       "name": "kqv_back",
       "hook": "kqv_back",
-      "role": "input",
+      "role": "intermediate",
       "dtype": "f32",
       "shape": [
         32,
