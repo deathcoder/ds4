@@ -21,6 +21,7 @@
     "prefill_tokens": 4096,
     "decode_steps": 4,
     "captured_position": 4099,
+    "input_token": 7129,
     "fresh_process_captures": 2,
     "fresh_process_bitwise_match": true,
     "temporary_seed_hooks_removed_after_capture": true
@@ -281,6 +282,7 @@
   "claims": {
     "retained_layer_execution": true,
     "default_threshold_boundary": true,
+    "complete_layer": true,
     "complete_decoder": false,
     "output_logits": false,
     "throughput": false

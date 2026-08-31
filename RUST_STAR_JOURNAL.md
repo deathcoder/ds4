@@ -18,6 +18,56 @@ Before changing code:
 Journal entries are reverse chronological. Do not edit old entries to change
 history; add a correction and update the current-state summary.
 
+## 2026-08-31 — First sparse layer-2 boundary proven through FFN
+
+Objective:
+
+- Close layer 2 at the first production sparse boundary through its
+  token-dependent FFN and final HC state before extending the native-batched
+  second chunk across later layers.
+
+Changes and evidence:
+
+- Reused the two retained position-4,099 oracle captures already stored in the
+  workspace. Every downstream payload is independently bitwise repeated,
+  including attention output/HC, FFN HC ingress, router logits/probabilities,
+  selected experts, routed/shared expert outputs, and final HC.
+- Extended `retained-sparse-boundary-probe` from 16 attention-side checks to 30
+  exact tensors through final layer HC. The six captured experts uniquely map
+  to input token 7,129 in `blk.2.ffn_gate_tid2eid.weight`; the previous
+  placeholder token 0 had hidden the token-hash FFN boundary.
+- Corrected stale dispatch metadata after the already-landed fused execution
+  path: the retained layer uses 51 base dispatches plus one per top-k merge.
+  Position 4,099 therefore uses 52 dispatches, not 54. Position 8,195 uses 53
+  layer-2 dispatches; its layer-0/layer-1 predecessors use 27/25, for 105 total
+  rather than the obsolete 113.
+- Promoted the position-4,099 report to `complete_layer_claim=true` while
+  preserving false claims for preceding layers, complete decoder, logits, and
+  throughput. Updated fixture provenance, CLI help, JSON invariants, and the
+  runtime documentation.
+
+Validation:
+
+- The real M1 Ultra `retained-sparse-boundary-probe` passed all 30 tensor checks
+  with 35/35 no-copy model mappings and 52 dispatches.
+- The adjacent `retained-sparse-multimerge-probe` passed all 44 tensor checks
+  with 85/85 mappings and 105 total dispatches, confirming the accounting
+  correction did not regress the repeated-merge control.
+- The optimized macOS build, all 306 Rust tests, all 82 Python tests, both JSON
+  evidence parses, formatting, and `git diff --check` passed.
+
+Decision:
+
+- Accept the complete retained layer-2 sparse boundary as C0. The result proves
+  the downstream output/FFN seam but remains a one-token retained control; it
+  does not substitute for native-batched second-chunk execution.
+
+Next:
+
+- Batch the sparse attention/output/FFN schedule over the second 4K chunk,
+  retain layer-2 final HC for layer 3, and then generalize the exact schedule
+  through layers 3--42 before checking all 129,280 terminal 8K logits.
+
 ## 2026-08-31 — First native-batched 8K sparse transition reached C0
 
 Objective:

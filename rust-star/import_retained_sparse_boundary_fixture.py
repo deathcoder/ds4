@@ -258,6 +258,7 @@ def main() -> int:
             "prefill_tokens": 4096,
             "decode_steps": 4,
             "captured_position": POSITION,
+            "input_token": 7129,
             "fresh_process_captures": 2,
             "fresh_process_bitwise_match": True,
             "temporary_seed_hooks_removed_after_capture": True,
@@ -283,6 +284,7 @@ def main() -> int:
         "claims": {
             "retained_layer_execution": True,
             "default_threshold_boundary": True,
+            "complete_layer": True,
             "complete_decoder": False,
             "output_logits": False,
             "throughput": False,

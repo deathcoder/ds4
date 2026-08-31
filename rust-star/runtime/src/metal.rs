@@ -710,6 +710,37 @@ const RETAINED_SPARSE_ATTN_OUT_BYTES: &[u8] =
     include_bytes!("../../fixtures/retained-sparse-layer2-pos4099-v1/attn-out.f32le.bin");
 const RETAINED_SPARSE_HC_ATTN_POST_BYTES: &[u8] =
     include_bytes!("../../fixtures/retained-sparse-layer2-pos4099-v1/hc-attn-post.f32le.bin");
+const RETAINED_SPARSE_HC_FFN_PRE_MIXES_BYTES: &[u8] =
+    include_bytes!("../../fixtures/retained-sparse-layer2-pos4099-v1/hc-ffn-pre-mixes.f32le.bin");
+const RETAINED_SPARSE_HC_FFN_PRE_WEIGHTS_BYTES: &[u8] =
+    include_bytes!("../../fixtures/retained-sparse-layer2-pos4099-v1/hc-ffn-pre-weights.f32le.bin");
+const RETAINED_SPARSE_HC_FFN_PRE_POST_WEIGHTS_BYTES: &[u8] = include_bytes!(
+    "../../fixtures/retained-sparse-layer2-pos4099-v1/hc-ffn-pre-post-weights.f32le.bin"
+);
+const RETAINED_SPARSE_HC_FFN_PRE_COMB_BYTES: &[u8] =
+    include_bytes!("../../fixtures/retained-sparse-layer2-pos4099-v1/hc-ffn-pre-comb.f32le.bin");
+const RETAINED_SPARSE_HC_FFN_PRE_BYTES: &[u8] =
+    include_bytes!("../../fixtures/retained-sparse-layer2-pos4099-v1/hc-ffn-pre.f32le.bin");
+const RETAINED_SPARSE_FFN_NORM_BYTES: &[u8] =
+    include_bytes!("../../fixtures/retained-sparse-layer2-pos4099-v1/ffn-norm.f32le.bin");
+const RETAINED_SPARSE_FFN_MOE_LOGITS_BYTES: &[u8] =
+    include_bytes!("../../fixtures/retained-sparse-layer2-pos4099-v1/ffn-moe-logits.f32le.bin");
+const RETAINED_SPARSE_FFN_MOE_PROBS_BYTES: &[u8] =
+    include_bytes!("../../fixtures/retained-sparse-layer2-pos4099-v1/ffn-moe-probs.f32le.bin");
+const RETAINED_SPARSE_FFN_MOE_TOPK_BYTES: &[u8] =
+    include_bytes!("../../fixtures/retained-sparse-layer2-pos4099-v1/ffn-moe-topk.i32le.bin");
+const RETAINED_SPARSE_FFN_MOE_WEIGHTS_SCALED_BYTES: &[u8] = include_bytes!(
+    "../../fixtures/retained-sparse-layer2-pos4099-v1/ffn-moe-weights-scaled.f32le.bin"
+);
+const RETAINED_SPARSE_FFN_MOE_WEIGHTED_SWIGLU_BYTES: &[u8] = include_bytes!(
+    "../../fixtures/retained-sparse-layer2-pos4099-v1/ffn-moe-weighted-swiglu.f32le.bin"
+);
+const RETAINED_SPARSE_FFN_MOE_OUT_BYTES: &[u8] =
+    include_bytes!("../../fixtures/retained-sparse-layer2-pos4099-v1/ffn-moe-out.f32le.bin");
+const RETAINED_SPARSE_FFN_SHEXP_BYTES: &[u8] =
+    include_bytes!("../../fixtures/retained-sparse-layer2-pos4099-v1/ffn-shexp.f32le.bin");
+const RETAINED_SPARSE_HC_FFN_POST_BYTES: &[u8] =
+    include_bytes!("../../fixtures/retained-sparse-layer2-pos4099-v1/hc-ffn-post.f32le.bin");
 const RETAINED_MULTIMERGE_INPUT_HC_BYTES: &[u8] =
     include_bytes!("../../fixtures/retained-sparse-layer2-pos8195-v1/retained-input-hc.f32le.bin");
 const RETAINED_MULTIMERGE_RAW_PRIOR_BYTES: &[u8] =
@@ -6602,7 +6633,7 @@ pub fn write_retained_sparse_boundary_probe_json<W: Write>(
     report: &RetainedSparseBoundaryProbeReport,
 ) -> Result<()> {
     if report.fixture_id != RETAINED_SPARSE_BOUNDARY_FIXTURE_ID
-        || report.token != 0
+        || report.token != 7129
         || report.layer != 2
         || report.position != 4099
         || report.raw_rows != 128
@@ -6613,13 +6644,13 @@ pub fn write_retained_sparse_boundary_probe_json<W: Write>(
         || report.sort_blocks != 2
         || report.merge_passes != 1
         || report.topk_work_width != 513
-        || report.dispatches != 54
+        || report.dispatches != 52
         || report.wrapped_model_ranges != 35
         || report.pointer_matches != 35
-        || report.exact_tensor_checks != 16
+        || report.exact_tensor_checks != 30
         || report.executed_predecessor_layers != 0
         || report.seeded_predecessor_raw_rows_per_layer != 0
-        || report.total_dispatches != 54
+        || report.total_dispatches != 52
         || report.total_wrapped_model_ranges != 35
         || report.total_pointer_matches != 35
     {
@@ -6629,7 +6660,7 @@ pub fn write_retained_sparse_boundary_probe_json<W: Write>(
     }
     write!(
         output,
-        "{{\n  \"schema\": \"{RETAINED_SPARSE_BOUNDARY_PROBE_SCHEMA}\",\n  \"classification\": \"retained-state-c0-control\",\n  \"fixture\": \"{}\",\n  \"token\": {},\n  \"boundary\": {{\"layer\": {}, \"position\": {}, \"raw_rows\": {}, \"compressed_rows\": {}, \"top_k\": {}}},\n  \"seed\": {{\"incoming_hc\": true, \"raw_rows\": {}, \"compressed_rows\": {}, \"recurrent_attention_state\": true, \"recurrent_indexer_state\": true}},\n  \"schedule\": {{\"dispatches\": {}, \"sort_blocks\": {}, \"merge_passes\": {}, \"topk_work_width\": {}, \"two_block_topk_merge\": true, \"same_step_compressed_row_commit\": true, \"indexed_attention_splits\": 12}},\n  \"mapping\": {{\"wrapped_model_ranges\": {}, \"pointer_matches\": {}}},\n  \"timing\": {{\"wall_ms\": {:.6}, \"gpu_ms\": {:.6}}},\n  \"checksums\": {{\"q_current\": {}, \"compressed_kv\": {}, \"compressed_indexer\": {}, \"indexer_scores\": {}, \"indexer_topk\": {}, \"kqv_out\": {}, \"kqv_back\": {}, \"attention_hc\": {}, \"selected_experts\": {}, \"final_hc\": {}}},\n  \"exact_tensor_checks\": {},\n  \"c0_bitwise_match\": true,\n  \"retained_layer_execution_claim\": true,\n  \"preceding_layers_execution_claim\": false,\n  \"complete_decoder_claim\": false,\n  \"output_logits_claim\": false,\n  \"complete_layer_claim\": false,\n  \"throughput_claim\": false\n}}\n",
+        "{{\n  \"schema\": \"{RETAINED_SPARSE_BOUNDARY_PROBE_SCHEMA}\",\n  \"classification\": \"retained-state-c0-control\",\n  \"fixture\": \"{}\",\n  \"token\": {},\n  \"boundary\": {{\"layer\": {}, \"position\": {}, \"raw_rows\": {}, \"compressed_rows\": {}, \"top_k\": {}}},\n  \"seed\": {{\"incoming_hc\": true, \"raw_rows\": {}, \"compressed_rows\": {}, \"recurrent_attention_state\": true, \"recurrent_indexer_state\": true}},\n  \"schedule\": {{\"dispatches\": {}, \"sort_blocks\": {}, \"merge_passes\": {}, \"topk_work_width\": {}, \"two_block_topk_merge\": true, \"same_step_compressed_row_commit\": true, \"indexed_attention_splits\": 12}},\n  \"mapping\": {{\"wrapped_model_ranges\": {}, \"pointer_matches\": {}}},\n  \"timing\": {{\"wall_ms\": {:.6}, \"gpu_ms\": {:.6}}},\n  \"checksums\": {{\"q_current\": {}, \"compressed_kv\": {}, \"compressed_indexer\": {}, \"indexer_scores\": {}, \"indexer_topk\": {}, \"kqv_out\": {}, \"kqv_back\": {}, \"attention_hc\": {}, \"selected_experts\": {}, \"final_hc\": {}}},\n  \"exact_tensor_checks\": {},\n  \"c0_bitwise_match\": true,\n  \"retained_layer_execution_claim\": true,\n  \"preceding_layers_execution_claim\": false,\n  \"complete_decoder_claim\": false,\n  \"output_logits_claim\": false,\n  \"complete_layer_claim\": true,\n  \"throughput_claim\": false\n}}\n",
         report.fixture_id,
         report.token,
         report.layer,
@@ -6678,13 +6709,13 @@ pub fn write_retained_sparse_multimerge_probe_json<W: Write>(
         || report.sort_blocks != 3
         || report.merge_passes != 2
         || report.topk_work_width != 1025
-        || report.dispatches != 55
+        || report.dispatches != 53
         || report.wrapped_model_ranges != 35
         || report.pointer_matches != 35
         || report.exact_tensor_checks != 44
         || report.executed_predecessor_layers != 2
         || report.seeded_predecessor_raw_rows_per_layer != 127
-        || report.total_dispatches != 113
+        || report.total_dispatches != 105
         || report.total_wrapped_model_ranges != 85
         || report.total_pointer_matches != 85
     {
@@ -41989,13 +42020,13 @@ mod imp {
         multimerge: bool,
     ) -> Result<RetainedSparseBoundaryProbeReport> {
         let position = if multimerge { 8195 } else { 4099 };
-        let token = if multimerge { 381 } else { 0 };
+        let token = if multimerge { 381 } else { 7129 };
         let context_capacity = position + 1;
         let compressed_rows = if multimerge { 2049 } else { 1025 };
         let seeded_compressed_rows = compressed_rows - 1;
         let (sort_blocks, merge_passes, topk_work_width) =
             retained_sparse_topk_schedule(compressed_rows);
-        let expected_dispatches = 53 + merge_passes;
+        let expected_dispatches = 51 + merge_passes;
         let (
             fixture_id,
             input_hc_bytes,
@@ -42429,6 +42460,140 @@ mod imp {
                 indexer_topk[mismatch], expected_indexer_topk[mismatch]
             )));
         }
+        if !multimerge {
+            let expected_ffn_mixes = decode_f32_fixture(
+                RETAINED_SPARSE_HC_FFN_PRE_MIXES_BYTES,
+                "retained FFN HC pre mixes",
+            )?;
+            let expected_ffn_weights = decode_f32_fixture(
+                RETAINED_SPARSE_HC_FFN_PRE_WEIGHTS_BYTES,
+                "retained FFN HC pre weights",
+            )?;
+            let expected_ffn_post_weights = decode_f32_fixture(
+                RETAINED_SPARSE_HC_FFN_PRE_POST_WEIGHTS_BYTES,
+                "retained FFN HC pre post-weights",
+            )?;
+            let expected_ffn_comb = decode_f32_fixture(
+                RETAINED_SPARSE_HC_FFN_PRE_COMB_BYTES,
+                "retained FFN HC pre combination",
+            )?;
+            let expected_ffn_pre =
+                decode_f32_fixture(RETAINED_SPARSE_HC_FFN_PRE_BYTES, "retained FFN HC pre")?;
+            let expected_ffn_norm =
+                decode_f32_fixture(RETAINED_SPARSE_FFN_NORM_BYTES, "retained FFN norm")?;
+            let expected_router_logits = decode_f32_fixture(
+                RETAINED_SPARSE_FFN_MOE_LOGITS_BYTES,
+                "retained FFN router logits",
+            )?;
+            let expected_router_probs = decode_f32_fixture(
+                RETAINED_SPARSE_FFN_MOE_PROBS_BYTES,
+                "retained FFN router probabilities",
+            )?;
+            let expected_selected = decode_i32_fixture(
+                RETAINED_SPARSE_FFN_MOE_TOPK_BYTES,
+                "retained FFN selected experts",
+            )?;
+            let expected_router_weights = decode_f32_fixture(
+                RETAINED_SPARSE_FFN_MOE_WEIGHTS_SCALED_BYTES,
+                "retained FFN scaled router weights",
+            )?;
+            let expected_routed_mid = decode_f32_fixture(
+                RETAINED_SPARSE_FFN_MOE_WEIGHTED_SWIGLU_BYTES,
+                "retained FFN weighted SwiGLU",
+            )?;
+            let expected_routed_out = decode_f32_fixture(
+                RETAINED_SPARSE_FFN_MOE_OUT_BYTES,
+                "retained FFN routed output",
+            )?;
+            let expected_shared_out = decode_f32_fixture(
+                RETAINED_SPARSE_FFN_SHEXP_BYTES,
+                "retained FFN shared-expert output",
+            )?;
+            let expected_final_hc =
+                decode_f32_fixture(RETAINED_SPARSE_HC_FFN_POST_BYTES, "retained final layer HC")?;
+
+            for (label, actual, expected) in [
+                (
+                    "FFN HC pre mixes",
+                    prepared.ffn_mixes.as_slice(),
+                    expected_ffn_mixes.as_slice(),
+                ),
+                (
+                    "FFN HC pre weights",
+                    &prepared.ffn_split[0..4],
+                    expected_ffn_weights.as_slice(),
+                ),
+                (
+                    "FFN HC pre post-weights",
+                    &prepared.ffn_split[4..8],
+                    expected_ffn_post_weights.as_slice(),
+                ),
+                (
+                    "FFN HC pre combination",
+                    &prepared.ffn_split[8..24],
+                    expected_ffn_comb.as_slice(),
+                ),
+                (
+                    "FFN HC pre",
+                    prepared.ffn_cur.as_slice(),
+                    expected_ffn_pre.as_slice(),
+                ),
+                (
+                    "FFN norm",
+                    prepared.ffn_norm.as_slice(),
+                    expected_ffn_norm.as_slice(),
+                ),
+                (
+                    "FFN router logits",
+                    prepared.router_logits.as_slice(),
+                    expected_router_logits.as_slice(),
+                ),
+                (
+                    "FFN router probabilities",
+                    prepared.router_probs.as_slice(),
+                    expected_router_probs.as_slice(),
+                ),
+                (
+                    "FFN scaled router weights",
+                    prepared.router_weights.as_slice(),
+                    expected_router_weights.as_slice(),
+                ),
+                (
+                    "FFN weighted SwiGLU",
+                    prepared.routed_mid.as_slice(),
+                    expected_routed_mid.as_slice(),
+                ),
+                (
+                    "FFN routed output",
+                    prepared.routed_out.as_slice(),
+                    expected_routed_out.as_slice(),
+                ),
+                (
+                    "FFN shared-expert output",
+                    prepared.shared_out.as_slice(),
+                    expected_shared_out.as_slice(),
+                ),
+                (
+                    "final layer HC",
+                    prepared.after_ffn_hc.as_slice(),
+                    expected_final_hc.as_slice(),
+                ),
+            ] {
+                check_f32(label, actual, expected)?;
+            }
+            if prepared.selected != expected_selected {
+                let mismatch = prepared
+                    .selected
+                    .iter()
+                    .zip(&expected_selected)
+                    .position(|(actual, expected)| actual != expected)
+                    .unwrap_or(0);
+                return Err(Error::invalid(format!(
+                    "retained sparse-boundary FFN selected-expert mismatch at {mismatch}: actual={} expected={}",
+                    prepared.selected[mismatch], expected_selected[mismatch]
+                )));
+            }
+        }
         if multimerge {
             if predecessor_layers.len() != 2 || predecessor_reports.len() != 2 {
                 return Err(Error::invalid(
@@ -42695,21 +42860,30 @@ mod imp {
             || execution.report.wrapped_model_ranges != 35
             || execution.report.pointer_matches != 35
         {
-            return Err(Error::invalid(
-                "retained sparse-boundary execution metadata is invalid",
-            ));
+            return Err(Error::invalid(format!(
+                "retained sparse-boundary execution metadata is invalid: dispatches={} expected={expected_dispatches} wrapped_model_ranges={} pointer_matches={}",
+                execution.report.dispatches,
+                execution.report.wrapped_model_ranges,
+                execution.report.pointer_matches,
+            )));
         }
         if multimerge
-            && (predecessor_reports[0].dispatches != 29
-                || predecessor_reports[1].dispatches != 27
+            && (predecessor_reports[0].dispatches != 27
+                || predecessor_reports[1].dispatches != 25
                 || predecessor_reports[0].wrapped_model_ranges != 25
                 || predecessor_reports[1].wrapped_model_ranges != 25
                 || predecessor_reports[0].pointer_matches != 25
                 || predecessor_reports[1].pointer_matches != 25)
         {
-            return Err(Error::invalid(
-                "retained sparse-boundary predecessor metadata is invalid",
-            ));
+            return Err(Error::invalid(format!(
+                "retained sparse-boundary predecessor metadata is invalid: layer0 dispatches={} ranges={} matches={}; layer1 dispatches={} ranges={} matches={}",
+                predecessor_reports[0].dispatches,
+                predecessor_reports[0].wrapped_model_ranges,
+                predecessor_reports[0].pointer_matches,
+                predecessor_reports[1].dispatches,
+                predecessor_reports[1].wrapped_model_ranges,
+                predecessor_reports[1].pointer_matches,
+            )));
         }
         let predecessor_dispatches = predecessor_reports
             .iter()
@@ -42755,7 +42929,7 @@ mod imp {
             pointer_matches: execution.report.pointer_matches,
             wall_ms: execution.report.wall_ms,
             gpu_ms: execution.report.gpu_ms,
-            exact_tensor_checks: if multimerge { 44 } else { 16 },
+            exact_tensor_checks: if multimerge { 44 } else { 30 },
             executed_predecessor_layers: predecessor_layers.len() as u32,
             seeded_predecessor_raw_rows_per_layer: if multimerge { 127 } else { 0 },
             total_dispatches: predecessor_dispatches + execution.report.dispatches,
@@ -54990,6 +55164,23 @@ mod tests {
         assert_eq!(RETAINED_SPARSE_ATTN_LOW_BYTES.len(), 8_192 * 4);
         assert_eq!(RETAINED_SPARSE_ATTN_OUT_BYTES.len(), 4_096 * 4);
         assert_eq!(RETAINED_SPARSE_HC_ATTN_POST_BYTES.len(), 16_384 * 4);
+        assert_eq!(RETAINED_SPARSE_HC_FFN_PRE_MIXES_BYTES.len(), 24 * 4);
+        assert_eq!(RETAINED_SPARSE_HC_FFN_PRE_WEIGHTS_BYTES.len(), 4 * 4);
+        assert_eq!(RETAINED_SPARSE_HC_FFN_PRE_POST_WEIGHTS_BYTES.len(), 4 * 4);
+        assert_eq!(RETAINED_SPARSE_HC_FFN_PRE_COMB_BYTES.len(), 16 * 4);
+        assert_eq!(RETAINED_SPARSE_HC_FFN_PRE_BYTES.len(), 4_096 * 4);
+        assert_eq!(RETAINED_SPARSE_FFN_NORM_BYTES.len(), 4_096 * 4);
+        assert_eq!(RETAINED_SPARSE_FFN_MOE_LOGITS_BYTES.len(), 256 * 4);
+        assert_eq!(RETAINED_SPARSE_FFN_MOE_PROBS_BYTES.len(), 256 * 4);
+        assert_eq!(RETAINED_SPARSE_FFN_MOE_TOPK_BYTES.len(), 6 * 4);
+        assert_eq!(RETAINED_SPARSE_FFN_MOE_WEIGHTS_SCALED_BYTES.len(), 6 * 4);
+        assert_eq!(
+            RETAINED_SPARSE_FFN_MOE_WEIGHTED_SWIGLU_BYTES.len(),
+            6 * 2_048 * 4
+        );
+        assert_eq!(RETAINED_SPARSE_FFN_MOE_OUT_BYTES.len(), 4_096 * 4);
+        assert_eq!(RETAINED_SPARSE_FFN_SHEXP_BYTES.len(), 4_096 * 4);
+        assert_eq!(RETAINED_SPARSE_HC_FFN_POST_BYTES.len(), 16_384 * 4);
     }
 
     #[test]
@@ -55124,7 +55315,7 @@ mod tests {
     fn writes_stable_retained_sparse_boundary_probe_json() {
         let report = RetainedSparseBoundaryProbeReport {
             fixture_id: RETAINED_SPARSE_BOUNDARY_FIXTURE_ID,
-            token: 0,
+            token: 7129,
             layer: 2,
             position: 4099,
             raw_rows: 128,
@@ -55135,15 +55326,15 @@ mod tests {
             sort_blocks: 2,
             merge_passes: 1,
             topk_work_width: 513,
-            dispatches: 54,
+            dispatches: 52,
             wrapped_model_ranges: 35,
             pointer_matches: 35,
             wall_ms: 1.0,
             gpu_ms: 0.5,
-            exact_tensor_checks: 16,
+            exact_tensor_checks: 30,
             executed_predecessor_layers: 0,
             seeded_predecessor_raw_rows_per_layer: 0,
-            total_dispatches: 54,
+            total_dispatches: 52,
             total_wrapped_model_ranges: 35,
             total_pointer_matches: 35,
             q_current_checksum: 1,
@@ -55167,7 +55358,8 @@ mod tests {
         assert!(text.contains("\"schema\": \"rust-star-retained-sparse-boundary-v1\""));
         assert!(text.contains("\"two_block_topk_merge\": true"));
         assert!(text.contains("\"retained_layer_execution_claim\": true"));
-        assert!(text.contains("\"complete_layer_claim\": false"));
+        assert!(text.contains("\"exact_tensor_checks\": 30"));
+        assert!(text.contains("\"complete_layer_claim\": true"));
         assert!(text.contains("\"complete_decoder_claim\": false"));
         assert!(text.contains("\"throughput_claim\": false"));
     }
@@ -55187,7 +55379,7 @@ mod tests {
             sort_blocks: 3,
             merge_passes: 2,
             topk_work_width: 1025,
-            dispatches: 55,
+            dispatches: 53,
             wrapped_model_ranges: 35,
             pointer_matches: 35,
             wall_ms: 1.0,
@@ -55195,7 +55387,7 @@ mod tests {
             exact_tensor_checks: 44,
             executed_predecessor_layers: 2,
             seeded_predecessor_raw_rows_per_layer: 127,
-            total_dispatches: 113,
+            total_dispatches: 105,
             total_wrapped_model_ranges: 85,
             total_pointer_matches: 85,
             q_current_checksum: 1,
@@ -55224,7 +55416,7 @@ mod tests {
         assert!(text.contains("\"token\": 381"));
         assert!(text.contains("\"exact_tensor_checks\": 44"));
         assert!(text.contains("\"predecessor_layers\": 2"));
-        assert!(text.contains("\"total_dispatches\": 113"));
+        assert!(text.contains("\"total_dispatches\": 105"));
         assert!(text.contains("\"complete_layer_claim\": true"));
         assert!(text.contains("\"preceding_layers_execution_claim\": true"));
         assert!(text.contains("\"preceding_layer_history_seeded_claim\": true"));

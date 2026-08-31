@@ -1091,7 +1091,7 @@ fn run_retained_sparse_boundary_probe_command(arguments: Vec<OsString>) -> Resul
         "mapping: {}/{} mmap-backed model ranges preserve pointer identity; {} dispatches",
         report.pointer_matches, report.wrapped_model_ranges, report.dispatches,
     );
-    println!("claims: retained-layer=true complete-layer=false complete-decoder=false logits=false throughput=false");
+    println!("claims: retained-layer=true complete-layer=true complete-decoder=false logits=false throughput=false");
     if let Some(path) = json_path {
         write_retained_sparse_boundary_probe_file(&path, &report)?;
         println!("json: {}", path.display());
@@ -5650,7 +5650,7 @@ fn sparse_indexed_attention_probe_usage() -> &'static str {
 }
 
 fn retained_sparse_boundary_probe_usage() -> &'static str {
-    "usage: rust-star retained-sparse-boundary-probe MODEL.gguf [--json PATH]\n\nSeeds the independently repeated incoming layer-2 HC, 127 raw rows, 1,024 compressed rows, and recurrent compressor state, then executes the production retained layer path at position 4099. It requires the emitted row 1,025 and every sparse-attention boundary through HC post to match DwarfStar bit-for-bit. FFN, complete-decoder, logits, and throughput claims remain false."
+    "usage: rust-star retained-sparse-boundary-probe MODEL.gguf [--json PATH]\n\nSeeds the independently repeated incoming layer-2 HC, 127 raw rows, 1,024 compressed rows, and recurrent compressor state, then executes the complete production retained layer path at position 4099. It requires the emitted row 1,025, every sparse-attention boundary, the FFN, and final HC output to match DwarfStar bit-for-bit. Complete-decoder, logits, and throughput claims remain false."
 }
 
 fn retained_sparse_multimerge_probe_usage() -> &'static str {

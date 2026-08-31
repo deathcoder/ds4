@@ -77,10 +77,11 @@ compare all 129,280 logits, so the C0 boundary is unchanged.
 
 A separate retained-state control now seeds the exact layer-2 state immediately
 before position 4099 and executes the production retained schedule through its
-1,025th compressed row. It matches 16 sparse-boundary tensors bit-for-bit over
-54 dispatches with 35/35 no-copy mappings. This closes the first retained sparse
-boundary, but not preceding-layer execution, the token-dependent FFN, a
-complete decoder, output logits, or throughput.
+1,025th compressed row using the recovered oracle input token 7129. It matches
+30 tensors bit-for-bit over 52 dispatches with 35/35 no-copy mappings, including
+the token-hash router, routed/shared experts, and final HC state. This closes
+the complete retained layer at the first sparse boundary, but not
+preceding-layer execution, a complete decoder, output logits, or throughput.
 
 The retained sparse scheduler now uses a context-capacity-sized ping-pong
 workspace and derives its active sort/merge schedule from visible compressed
@@ -89,7 +90,7 @@ histories for layers 0-2 plus layer 2's compressed/recurrent state, but no
 incoming HC. It executes layers 0, 1, and 2 normally for token 381, commits
 compressed row 2,049, and runs three initial sort blocks plus two merge passes.
 All 44 checked boundaries match, including both predecessor cache writes and HC
-handoffs, over 113 dispatches with 85/85 no-copy mappings. This proves live
+handoffs, over 105 dispatches with 85/85 no-copy mappings. This proves live
 preceding-layer execution and the complete retained sparse layer, while still
 leaving the prior cache histories seeded. A complete decoder, output logits,
 and throughput remain unclaimed.

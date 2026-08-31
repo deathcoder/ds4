@@ -779,12 +779,14 @@ selection consumed by attention.
 `retained-sparse-boundary-probe` seeds the exact persistent layer-2 keys just
 before position 4099: incoming HC, 127 logical raw-ring rows, 1,024 rows in each
 compressed cache, and the attention/indexer recurrent states. It then uses the
-general retained 54-dispatch schedule to append compressed row 1,025 and checks
-16 produced or persisted tensors by bit pattern with 35/35 no-copy model views.
+general retained 52-dispatch schedule to append compressed row 1,025 and checks
+general retained 52-dispatch schedule to append compressed row 1,025 and checks
+30 produced or persisted tensors by bit pattern with 35/35 no-copy model views.
 Two empty, queue-ordered predecessor command buffers establish the declared
-layer-2 chain tail without claiming that captured layers 0 and 1 executed. The
-control ends its claim at the attention HC post because its placeholder token
-is not the DwarfStar FFN oracle.
+layer-2 chain tail without claiming that captured layers 0 and 1 executed.
+Oracle input token 7129 is recovered uniquely from the captured six-expert
+router row, so the control now includes the token-dependent FFN and final HC and
+claims the complete retained layer.
 
 `retained-sparse-multimerge-probe` applies the same ownership boundary at layer
 2 position 8195. It imports the prior 127 raw-cache rows for layers 0-2 and
@@ -793,8 +795,8 @@ is deliberately not seeded. Layers 0 and 1 execute normally for token 381 and
 their live HC handoff feeds layer 2, which appends row 2,049, sorts three blocks,
 and performs two merges over a 1,025-index active work width. Two fresh
 DwarfStar processes independently validate both predecessor cache histories and
-HC checkpoints. All 44 checked boundaries match by bit pattern across 113 total
-dispatches and 85/85 no-copy model views; the layer-2 portion remains 55
+HC checkpoints. All 44 checked boundaries match by bit pattern across 105 total
+dispatches and 85/85 no-copy model views; the layer-2 portion remains 53
 dispatches and 35/35 views. The claim now includes execution of preceding layers
 0 and 1 and the complete retained layer 2. Their prior cache histories remain
 seeded, so this is not a complete-decoder, logits, or throughput claim.
