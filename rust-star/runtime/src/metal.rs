@@ -29,7 +29,7 @@ pub const PREFILL_LAYERS012_COMPRESSOR_LOOP_PROBE_SCHEMA: &str =
     "rust-star-prefill-layers012-compressor-loop-probe-v1";
 pub const LONG_PREFILL_BOOTSTRAP_PROBE_SCHEMA: &str = "rust-star-long-prefill-bootstrap-probe-v1";
 pub const LONG_PREFILL_CONTINUATION_BOOTSTRAP_PROBE_SCHEMA: &str =
-    "rust-star-long-prefill-continuation-bootstrap-probe-v10";
+    "rust-star-long-prefill-continuation-bootstrap-probe-v11";
 pub const LONG_PREFILL_SEQUENTIAL_CONTINUATION_PROBE_SCHEMA: &str =
     "rust-star-long-prefill-sequential-continuation-probe-v1";
 pub const LONG_PREFILL_TRANSFORMER_PROBE_SCHEMA: &str =
@@ -150,6 +150,142 @@ pub const PREFILL_LAYER4_ATTENTION_FIXTURE_ID: &str =
     "dwarfstar-oracle-v1-prefill-layer4-attention-2048";
 pub const PREFILL_LAYER4_COMPLETE_FIXTURE_ID: &str =
     "dwarfstar-oracle-v1-prefill-layer4-complete-2048";
+const PREFILL_LAYER3_CONTINUATION_FULL_HC_CHECKSUM: u64 = 0xec10_3c95_0cbd_3fd9;
+const PREFILL_LAYER3_CONTINUATION_TILED_HC_CHECKSUM: u64 = 0xaaa6_bb5c_c7e9_a513;
+const PREFILL_LAYER3_CONTINUATION_HC_MISMATCH_STARTS: [usize; 14] = [
+    4_096, 7_296, 7_360, 7_392, 7_424, 7_552, 7_616, 7_648, 7_712, 7_776, 7_840, 8_000, 8_064,
+    8_096,
+];
+const PREFILL_LAYER3_CONTINUATION_HC_TILE_CHECKSUMS: [u64; 128] = [
+    18195418415222822559,
+    4592109497415136108,
+    17682157422451405654,
+    12317575133800515137,
+    15766323877598833787,
+    2537514029245857277,
+    18113238475617359819,
+    6492865760746818244,
+    7948584597397821161,
+    8958745047532399314,
+    13136417337169416501,
+    7213950411288670488,
+    10876355096202057835,
+    17621174419007987768,
+    6534909448105970929,
+    3515204656696496356,
+    2083479738945458317,
+    13029335433776803075,
+    10345750303399743329,
+    11509247140116124988,
+    5303648420326097994,
+    13018729550081603776,
+    7784585900286222067,
+    6891654229696689844,
+    9526396254230948788,
+    11528707719319855286,
+    16683232543358855881,
+    15129537022493674241,
+    2550403847007801942,
+    2483089729290069880,
+    16122777848262430777,
+    4388153073073495127,
+    4585230727977247893,
+    3040097367783884634,
+    12704835446672907765,
+    13112352158273422521,
+    9815250423371872552,
+    7470264702417038384,
+    11618411564909847550,
+    9282940619539864667,
+    17274272779385976833,
+    9741251494324104792,
+    16785539905390430678,
+    18300273385923272797,
+    15247081262970840769,
+    12873903981613661029,
+    1730445566013550586,
+    5495039306768719038,
+    813916969203331843,
+    6264736744884940967,
+    2280360658416763840,
+    2320831731653945756,
+    5290083147844224014,
+    4093175287822365758,
+    5713726482591022774,
+    5296561094419048790,
+    4753679458505151079,
+    6581961050564494558,
+    8237618997791231904,
+    14987129639192369296,
+    15178832420177970667,
+    15139725585765356006,
+    12408381000310273326,
+    8804549370075398661,
+    16817293275565130240,
+    824836136695520717,
+    12471912722807062594,
+    464189018398044902,
+    2800245917303543077,
+    13971157514472498873,
+    16698349826639628351,
+    16804568715509737210,
+    12262255075204731239,
+    10349282614138697093,
+    10380751188212026523,
+    7933308265580523819,
+    7356826590103440130,
+    6826194795079785827,
+    4621027093284732336,
+    6572472673178465417,
+    14327887363734011199,
+    15649309794840007423,
+    10643080380584186128,
+    9661169042485613478,
+    17132490894151205678,
+    14881605792046673284,
+    328059674474470535,
+    11586166706333450942,
+    1024557175617906292,
+    10188970230609933349,
+    12618580622431191836,
+    322873310391081233,
+    17569746344653730113,
+    2537972527208995154,
+    17228994881793141743,
+    392972584358218824,
+    10351580276473103473,
+    14287494885778940814,
+    4797213190132829579,
+    8269996576318526589,
+    11069242917358607155,
+    14268200816846820308,
+    14885603493716907995,
+    6409501169385151328,
+    3272290971738045573,
+    16874323444994590125,
+    901034206693362920,
+    16569105939973768299,
+    6947671970155138688,
+    7893047111599543252,
+    5993863925998070880,
+    8637321436628885723,
+    2584888597885041414,
+    8635746322213375190,
+    17253433621633784667,
+    12323640698828567035,
+    161775844113066057,
+    13680326633478792215,
+    15537182403712473409,
+    2807813704031222894,
+    2074176151411251640,
+    2877060806361208225,
+    12239261680026970345,
+    11403127552462738113,
+    12597573276657518470,
+    17291980211963764895,
+    12912556756347103504,
+    12338792942122668793,
+];
 pub const PREFILL_LAYER5_QKV_FIXTURE_ID: &str = "dwarfstar-oracle-v1-prefill-layer5-qkv-2048";
 pub const PREFILL_LAYER5_COMPRESSOR_FIXTURE_ID: &str =
     "dwarfstar-oracle-v1-prefill-layer5-compressor-2048";
@@ -3727,6 +3863,8 @@ pub struct LongPrefillContinuationBootstrapProbeReport {
     pub layer23_loop_final_hc_checksum: u64,
     pub layer23_loop_final_state_kv_checksum: u64,
     pub layer23_loop_final_state_score_checksum: u64,
+    pub layer23_loop_full_layer3_hc_checksum: u64,
+    pub layer23_loop_production_hc_matching_tiles: u32,
 }
 
 #[derive(Clone, Debug)]
@@ -7756,6 +7894,9 @@ pub fn write_long_prefill_continuation_bootstrap_probe_json<W: Write>(
         || report.layer23_loop_final_hc_checksum == 0
         || report.layer23_loop_final_state_kv_checksum == 0
         || report.layer23_loop_final_state_score_checksum == 0
+        || report.layer23_loop_full_layer3_hc_checksum
+            != PREFILL_LAYER3_CONTINUATION_TILED_HC_CHECKSUM
+        || report.layer23_loop_production_hc_matching_tiles != 114
         || !report.sparse_transition.wall_ms.is_finite()
         || !report.sparse_transition.gpu_ms.is_finite()
         || report.sparse_transition.wall_ms <= 0.0
@@ -7843,7 +7984,7 @@ pub fn write_long_prefill_continuation_bootstrap_probe_json<W: Write>(
     crate::artifact::write_json_string(output, report.second_tile_fixture_id)?;
     write!(
         output,
-        ", \"start\": {}, \"end\": {}, \"rows\": {}, \"native_retained_history\": true, \"layer2\": {{\"dispatches\": {}, \"wrapped_model_ranges\": {}, \"pointer_matches\": {}, \"exact_outputs\": {}, \"complete_tile_c0_bitwise_match\": true}}, \"layer3\": {{\"dispatches\": {}, \"wrapped_model_ranges\": {}, \"pointer_matches\": {}, \"exact_outputs\": {}, \"complete_tile_c0_bitwise_match\": true}}, \"consecutive_complete_layer3_tiles\": 2}},\n  \"layer23_continuation_loop\": {{\"start\": 4096, \"end\": 8191, \"tile_rows\": 32, \"tiles\": {}, \"c0_anchor_tiles\": {}, \"structurally_executed_unverified_tiles\": {}, \"ratio128_emitted_rows\": {}, \"dispatches\": {}, \"wrapped_model_ranges\": {}, \"pointer_matches\": {}, \"final_checksums\": {{\"layer3_hc\": {}, \"layer3_compressor_state_kv\": {}, \"layer3_compressor_state_score\": {}}}, \"persistent_context\": true, \"native_retained_state\": true, \"all_tiles_c0_claim\": false}},\n  \"checksums\": {{\"continuation_token_ids\": {}}},\n  \"timing\": {{\"continuation_summed_wall_ms\": {:.6}, \"continuation_summed_gpu_ms\": {:.6}}},\n  \"accepted_oracle_token_stream\": true,\n  \"native_batch_schedule\": true,\n  \"second_long_prefill_bootstrap_chunk_executed\": true,\n  \"layer2_sparse_transition_c0_claim\": true,\n  \"layer2_native_complete_tile_c0_claim\": true,\n  \"live_layer2_to_layer3_handoff_c0_claim\": true,\n  \"unseeded_layer3_native_complete_tile_claim\": true,\n  \"two_consecutive_unseeded_layer3_tiles_claim\": true,\n  \"complete_layer23_second_chunk_execution_claim\": true,\n  \"complete_layer23_second_chunk_c0_claim\": false,\n  \"complete_8k_transformer_claim\": false,\n  \"output_logits_c0_claim\": false,\n  \"throughput_claim\": false\n}}\n",
+        ", \"start\": {}, \"end\": {}, \"rows\": {}, \"native_retained_history\": true, \"layer2\": {{\"dispatches\": {}, \"wrapped_model_ranges\": {}, \"pointer_matches\": {}, \"exact_outputs\": {}, \"complete_tile_c0_bitwise_match\": true}}, \"layer3\": {{\"dispatches\": {}, \"wrapped_model_ranges\": {}, \"pointer_matches\": {}, \"exact_outputs\": {}, \"complete_tile_c0_bitwise_match\": true}}, \"consecutive_complete_layer3_tiles\": 2}},\n  \"layer23_continuation_loop\": {{\"start\": 4096, \"end\": 8191, \"tile_rows\": 32, \"tiles\": {}, \"c0_anchor_tiles\": {}, \"structurally_executed_unverified_tiles\": {}, \"ratio128_emitted_rows\": {}, \"dispatches\": {}, \"wrapped_model_ranges\": {}, \"pointer_matches\": {}, \"final_checksums\": {{\"layer3_hc\": {}, \"layer3_compressor_state_kv\": {}, \"layer3_compressor_state_score\": {}, \"full_layer3_hc\": {}}}, \"full_layer3_hc_rows\": 4096, \"production_geometry_oracle_checksum\": {}, \"production_geometry_matching_tiles\": {}, \"production_geometry_mismatching_tile_starts\": [4096, 7296, 7360, 7392, 7424, 7552, 7616, 7648, 7712, 7776, 7840, 8000, 8064, 8096], \"full_layer3_hc_checksum_match\": false, \"persistent_context\": true, \"native_retained_state\": true, \"all_tiles_c0_claim\": false}},\n  \"checksums\": {{\"continuation_token_ids\": {}}},\n  \"timing\": {{\"continuation_summed_wall_ms\": {:.6}, \"continuation_summed_gpu_ms\": {:.6}}},\n  \"accepted_oracle_token_stream\": true,\n  \"native_batch_schedule\": true,\n  \"second_long_prefill_bootstrap_chunk_executed\": true,\n  \"layer2_sparse_transition_c0_claim\": true,\n  \"layer2_native_complete_tile_c0_claim\": true,\n  \"live_layer2_to_layer3_handoff_c0_claim\": true,\n  \"unseeded_layer3_native_complete_tile_claim\": true,\n  \"two_consecutive_unseeded_layer3_tiles_claim\": true,\n  \"complete_layer23_second_chunk_execution_claim\": true,\n  \"complete_layer23_second_chunk_c0_claim\": false,\n  \"complete_layer3_second_chunk_output_checksum_claim\": false,\n  \"complete_8k_transformer_claim\": false,\n  \"output_logits_c0_claim\": false,\n  \"throughput_claim\": false\n}}\n",
         report.second_tile_start,
         report.second_tile_start + report.second_tile_rows - 1,
         report.second_tile_rows,
@@ -7865,6 +8006,9 @@ pub fn write_long_prefill_continuation_bootstrap_probe_json<W: Write>(
         report.layer23_loop_final_hc_checksum,
         report.layer23_loop_final_state_kv_checksum,
         report.layer23_loop_final_state_score_checksum,
+        report.layer23_loop_full_layer3_hc_checksum,
+        PREFILL_LAYER3_CONTINUATION_FULL_HC_CHECKSUM,
+        report.layer23_loop_production_hc_matching_tiles,
         report.token_checksum,
         report.summed_wall_ms,
         report.summed_gpu_ms,
@@ -20782,6 +20926,8 @@ mod imp {
         final_hc_checksum: u64,
         final_state_kv_checksum: u64,
         final_state_score_checksum: u64,
+        full_layer3_hc_checksum: u64,
+        production_hc_matching_tiles: u32,
         wall_ms: f64,
         gpu_ms: f64,
     }
@@ -22549,6 +22695,14 @@ mod imp {
             kqv_out: *mut f32,
             kqv_back: *mut f32,
             result: *mut RawSparseIndexedResult,
+            error: *mut c_char,
+            error_bytes: usize,
+        ) -> i32;
+        fn rust_star_metal_checksum_prefill_layer3_continuation_hc(
+            context: *mut c_void,
+            checksum: *mut u64,
+            tile_checksums: *mut u64,
+            tile_checksum_capacity: usize,
             error: *mut c_char,
             error_bytes: usize,
         ) -> i32;
@@ -25929,6 +26083,8 @@ mod imp {
             layer23_loop_final_hc_checksum: layer23_loop.final_hc_checksum,
             layer23_loop_final_state_kv_checksum: layer23_loop.final_state_kv_checksum,
             layer23_loop_final_state_score_checksum: layer23_loop.final_state_score_checksum,
+            layer23_loop_full_layer3_hc_checksum: layer23_loop.full_layer3_hc_checksum,
+            layer23_loop_production_hc_matching_tiles: layer23_loop.production_hc_matching_tiles,
         })
     }
 
@@ -43960,9 +44116,44 @@ mod imp {
             layer23_loop.wall_ms += tile_layer2.wall_ms + tile_layer3.wall_ms;
             layer23_loop.gpu_ms += tile_layer2.gpu_ms + tile_layer3.gpu_ms;
         }
+        let mut full_layer3_hc_tile_checksums = [0_u64; 128];
+        let full_hc_succeeded = unsafe {
+            rust_star_metal_checksum_prefill_layer3_continuation_hc(
+                context.0,
+                &mut layer23_loop.full_layer3_hc_checksum,
+                full_layer3_hc_tile_checksums.as_mut_ptr(),
+                full_layer3_hc_tile_checksums.len(),
+                error.as_mut_ptr(),
+                error.len(),
+            )
+        };
+        if full_hc_succeeded == 0 {
+            return Err(Error::invalid(format!(
+                "Metal complete layer-3 continuation HC checksum failed: {}",
+                error_text(&error)
+            )));
+        }
         layer23_loop.final_hc_checksum = checksum_f32(&actual_second_l3_after_ffn_hc);
         layer23_loop.final_state_kv_checksum = checksum_f32(&actual_second_l3_state_kv);
         layer23_loop.final_state_score_checksum = checksum_i32(&actual_second_l3_state_score);
+        let full_layer3_hc_tile_mismatches = full_layer3_hc_tile_checksums
+            .iter()
+            .zip(PREFILL_LAYER3_CONTINUATION_HC_TILE_CHECKSUMS.iter())
+            .enumerate()
+            .filter(|(_, (actual, expected))| actual != expected)
+            .map(|(index, (actual, expected))| (index, *actual, *expected))
+            .collect::<Vec<_>>();
+        let (first_tile_mismatch, first_tile_actual, first_tile_expected) =
+            full_layer3_hc_tile_mismatches
+                .first()
+                .copied()
+                .unwrap_or((usize::MAX, 0, 0));
+        let full_layer3_hc_mismatch_positions = full_layer3_hc_tile_mismatches
+            .iter()
+            .map(|(index, _, _)| 4_096 + 32 * index)
+            .collect::<Vec<_>>();
+        layer23_loop.production_hc_matching_tiles =
+            128 - full_layer3_hc_tile_mismatches.len() as u32;
         if layer23_loop.tiles != 128
             || layer23_loop.c0_anchor_tiles != 2
             || layer23_loop.ratio128_emitted_rows != 32
@@ -43972,14 +44163,38 @@ mod imp {
             || layer23_loop.final_hc_checksum == 0
             || layer23_loop.final_state_kv_checksum == 0
             || layer23_loop.final_state_score_checksum == 0
+            || layer23_loop.full_layer3_hc_checksum != PREFILL_LAYER3_CONTINUATION_TILED_HC_CHECKSUM
+            || layer23_loop.production_hc_matching_tiles != 114
+            || full_layer3_hc_mismatch_positions != PREFILL_LAYER3_CONTINUATION_HC_MISMATCH_STARTS
             || !layer23_loop.wall_ms.is_finite()
             || layer23_loop.wall_ms <= 0.0
             || !layer23_loop.gpu_ms.is_finite()
             || layer23_loop.gpu_ms <= 0.0
         {
-            return Err(Error::invalid(
-                "Metal complete layer-2/layer-3 continuation loop metadata is invalid",
-            ));
+            return Err(Error::invalid(format!(
+                "Metal complete layer-2/layer-3 continuation loop metadata is invalid: tiles={}, anchors={}, ratio128_rows={}, dispatches={}, mappings={}/{}, final_checksums={}/{}/{}, full_layer3_hc_checksum={} (expected tiled {} and production {}), tile_checksum_mismatches={} at {:?}, first_tile_mismatch={} actual={} expected={}, retained_tile_checksums=[{},{},{},...,{}]",
+                layer23_loop.tiles,
+                layer23_loop.c0_anchor_tiles,
+                layer23_loop.ratio128_emitted_rows,
+                layer23_loop.dispatches,
+                layer23_loop.pointer_matches,
+                layer23_loop.wrapped_model_ranges,
+                layer23_loop.final_hc_checksum,
+                layer23_loop.final_state_kv_checksum,
+                layer23_loop.final_state_score_checksum,
+                layer23_loop.full_layer3_hc_checksum,
+                PREFILL_LAYER3_CONTINUATION_TILED_HC_CHECKSUM,
+                PREFILL_LAYER3_CONTINUATION_FULL_HC_CHECKSUM,
+                full_layer3_hc_tile_mismatches.len(),
+                full_layer3_hc_mismatch_positions,
+                first_tile_mismatch,
+                first_tile_actual,
+                first_tile_expected,
+                full_layer3_hc_tile_checksums[0],
+                full_layer3_hc_tile_checksums[1],
+                full_layer3_hc_tile_checksums[2],
+                full_layer3_hc_tile_checksums[127],
+            )));
         }
         Ok((
             SparseIndexedAttentionProbeReport {
@@ -53422,6 +53637,8 @@ mod tests {
             layer23_loop_final_hc_checksum: 12,
             layer23_loop_final_state_kv_checksum: 13,
             layer23_loop_final_state_score_checksum: 14,
+            layer23_loop_full_layer3_hc_checksum: PREFILL_LAYER3_CONTINUATION_TILED_HC_CHECKSUM,
+            layer23_loop_production_hc_matching_tiles: 114,
         };
         let mut output = Vec::new();
         write_long_prefill_continuation_bootstrap_probe_json(&mut output, &report).unwrap();
@@ -53451,6 +53668,17 @@ mod tests {
         assert!(text.contains("\"ratio128_emitted_rows\": 32"));
         assert!(text.contains("\"complete_layer23_second_chunk_execution_claim\": true"));
         assert!(text.contains("\"complete_layer23_second_chunk_c0_claim\": false"));
+        assert!(text.contains(&format!(
+            "\"full_layer3_hc\": {}",
+            PREFILL_LAYER3_CONTINUATION_TILED_HC_CHECKSUM
+        )));
+        assert!(text.contains(&format!(
+            "\"production_geometry_oracle_checksum\": {}",
+            PREFILL_LAYER3_CONTINUATION_FULL_HC_CHECKSUM
+        )));
+        assert!(text.contains("\"production_geometry_matching_tiles\": 114"));
+        assert!(text.contains("\"full_layer3_hc_checksum_match\": false"));
+        assert!(text.contains("\"complete_layer3_second_chunk_output_checksum_claim\": false"));
         assert!(text.contains("\"layer2_sparse_transition_c0_claim\": true"));
         assert!(text.contains("\"selection_kernel\": \"kernel_topk_stream512\""));
         assert!(text.contains("\"input_boundary\": \"native_multirow_sparse_kqv_back\""));

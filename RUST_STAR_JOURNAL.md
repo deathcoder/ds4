@@ -18,6 +18,61 @@ Before changing code:
 Journal entries are reverse chronological. Do not edit old entries to change
 history; add a correction and update the current-state summary.
 
+## 2026-08-31 — Tiled layer-3 output rejected as production-batch boundary
+
+Objective:
+
+- Retain the complete 4,096-row layer-3 second-chunk output and determine
+  whether the proven 32-row continuation loop can feed layer 4 exactly.
+
+Changes and evidence:
+
+- Added one 256 MiB shared Metal buffer that receives every layer-3 final-HC
+  tile by GPU blit. The checksum ABI reads that retained allocation only after
+  all 128 synchronized continuation tiles have completed and returns one full
+  FNV plus 128 independent tile FNVs.
+- Captured the full production-geometry layer-3 output twice in fresh DwarfStar
+  processes. Both 268,435,456-byte tensors have SHA-256
+  `09b31ad2a23ef6805ab62c9cbd353caf280546770e432760f14252e400c42cca`
+  and FNV `17010162403439886297`.
+- The optimized M1 Ultra Rust run retained all 4,096 by 16,384 FP32 values and
+  reproducibly produced FNV `12296721839747081491`. Exactly 114/128 tile
+  checksums match the production tensor. Mismatches start at positions 4096,
+  7296, 7360, 7392, 7424, 7552, 7616, 7648, 7712, 7776, 7840, 8000, 8064,
+  and 8096.
+- The terminal tile and compressor states retain their previous exact
+  checksums. The first tile still matches its accepted 32-row-geometry fixture
+  but differs from the first tile of the production 4,096-row tensor. This
+  proves that the discrepancy is batch geometry, not a failed retention copy.
+- A separate repeated layer-4 capture exposed the same rule earlier in its
+  ratio-4 compressor: the first eight production-batch compressed rows differ
+  from a 32-row continuation-state capture. The incomplete layer-4 fixture
+  generated before that distinction was discovered was moved to Trash and is
+  not part of the repository.
+- Evolved the report to
+  `rust-star-long-prefill-continuation-bootstrap-probe-v11`. It records the
+  tiled and production checksums, matching-tile count, all mismatch starts,
+  and an explicit false
+  `complete_layer3_second_chunk_output_checksum_claim`.
+
+Validation:
+
+- Debug and optimized M1 Ultra live probes both completed all 14,560 layer-2/
+  layer-3 dispatches with 5,760/5,760 no-copy mappings and reported the same
+  checksum comparison.
+- Optimized macOS build, `cargo fmt --check`, and `cargo check --all-targets`.
+- All 307 Rust tests and all 86 Python artifact/adapter/runner tests.
+- The optimized JSON report SHA-256 is
+  `4785db7b77b1ec58cdbcc58b31c72f960ad620134751ac2724c4aec4edfe446a`
+  under `rust-star/.work/layer3-tiled-vs-production-8192-release.json`.
+
+Decision and next step:
+
+- Keep the tiled loop as retained-state and structural evidence, but reject it
+  as the exact input boundary for layer 4. Implement layer 3 over the complete
+  production-size 4,096-row second chunk, require the full oracle checksum,
+  then feed that live Metal allocation into a production-size layer-4 batch.
+
 ## 2026-08-31 — Complete retained layer-2/layer-3 second-chunk loop
 
 Objective:

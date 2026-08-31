@@ -422,6 +422,7 @@ static NSString *const kQ8ProjectionSource =
 @property(nonatomic, strong) id<MTLBuffer> prefillLayer3ContinuationKv;
 @property(nonatomic, strong) id<MTLBuffer> prefillLayer3ContinuationHeads;
 @property(nonatomic, strong) id<MTLBuffer> prefillLayer3ContinuationAfterFfnHc;
+@property(nonatomic, strong) id<MTLBuffer> prefillLayer3ContinuationFullAfterFfnHc;
 @property(nonatomic, strong) id<MTLBuffer> prefillLayer3FullQ;
 @property(nonatomic, strong) id<MTLBuffer> prefillLayer3FullKv;
 @property(nonatomic, strong) id<MTLBuffer> prefillLayer3InputHc;
@@ -45414,6 +45415,11 @@ int rust_star_metal_run_prefill_layer2_continuation_tail(
         RUST_STAR_NEW_CONTINUATION_TAIL_BUFFER(shared_out_buffer, output_bytes);
         RUST_STAR_NEW_CONTINUATION_TAIL_BUFFER(after_ffn_hc_buffer, hc_bytes);
 #undef RUST_STAR_NEW_CONTINUATION_TAIL_BUFFER
+        if (layer3 && !context.prefillLayer3ContinuationFullAfterFfnHc) {
+            context.prefillLayer3ContinuationFullAfterFfnHc = [context.device
+                newBufferWithLength:(NSUInteger)4096u*4u*n_embd*sizeof(float)
+                options:MTLResourceStorageModeShared];
+        }
         if (!heads_buffer || !group_ids_buffer || !group_map_buffer ||
             !attention_low_buffer || !output_buffer ||
             !after_attention_hc_buffer || !ffn_flat_hc_buffer ||
@@ -45424,7 +45430,8 @@ int rust_star_metal_run_prefill_layer2_continuation_tail(
             !routed_mid_buffer || !routed_mid_f32_buffer ||
             !routed_experts_buffer || !routed_out_buffer ||
             !shared_gate_buffer || !shared_up_buffer || !shared_mid_buffer ||
-            !shared_out_buffer || !after_ffn_hc_buffer) {
+            !shared_out_buffer || !after_ffn_hc_buffer ||
+            (layer3 && !context.prefillLayer3ContinuationFullAfterFfnHc)) {
             return fail_with_message(error, error_bytes,
                 @"failed to allocate prefill layer-2 continuation tail buffers");
         }
@@ -45826,6 +45833,17 @@ int rust_star_metal_run_prefill_layer2_continuation_tail(
              threadsPerThreadgroup:MTLSizeMake(256,1,1)];
         [encoder endEncoding];
 
+        if (layer3) {
+            id<MTLBlitCommandEncoder> retained_blit = [command blitCommandEncoder];
+            if (!retained_blit) return fail_with_message(error, error_bytes,
+                @"failed to retain the full layer-3 continuation HC output");
+            [retained_blit copyFromBuffer:after_ffn_hc_buffer sourceOffset:0
+                                 toBuffer:context.prefillLayer3ContinuationFullAfterFfnHc
+                        destinationOffset:(NSUInteger)(tile_start-4096u)*hc_row_bytes
+                                    size:hc_bytes];
+            [retained_blit endEncoding];
+        }
+
         const double wall_start = monotonic_ms();
         [command commit];
         if (!command_succeeded(command, error, error_bytes)) return 0;
@@ -45854,6 +45872,49 @@ int rust_star_metal_run_prefill_layer2_continuation_tail(
         }
         result->wall_ms += monotonic_ms()-wall_start;
         result->gpu_ms += gpu_elapsed_ms(command);
+        return 1;
+    }
+}
+
+int rust_star_metal_checksum_prefill_layer3_continuation_hc(
+    void *opaque_context,
+    uint64_t *checksum,
+    uint64_t *tile_checksums,
+    size_t tile_checksum_capacity,
+    char *error,
+    size_t error_bytes)
+{
+    enum { rows = 4096, tile_rows = 32, tiles = rows/tile_rows, hc_width = 4*4096 };
+    if (!opaque_context || !checksum || !tile_checksums || tile_checksum_capacity < tiles) {
+        return fail_with_message(error, error_bytes,
+            @"layer-3 continuation HC checksum received an invalid output");
+    }
+    @autoreleasepool {
+        RustStarMetalContext *context = (__bridge RustStarMetalContext *)opaque_context;
+        const NSUInteger elements = (NSUInteger)rows*hc_width;
+        const NSUInteger bytes = elements*sizeof(float);
+        if (!context.prefillLayer3ContinuationFullAfterFfnHc ||
+            context.prefillLayer3ContinuationFullAfterFfnHc.length < bytes) {
+            return fail_with_message(error, error_bytes,
+                @"complete layer-3 continuation HC is unavailable");
+        }
+        const uint32_t *bits = context.prefillLayer3ContinuationFullAfterFfnHc.contents;
+        uint64_t value = 0xcbf29ce484222325ull;
+        for (NSUInteger index = 0; index < elements; index++) {
+            value ^= bits[index];
+            value *= 0x100000001b3ull;
+        }
+        const NSUInteger tile_elements = (NSUInteger)tile_rows*hc_width;
+        for (NSUInteger tile = 0; tile < tiles; tile++) {
+            uint64_t tile_value = 0xcbf29ce484222325ull;
+            const NSUInteger start = tile*tile_elements;
+            for (NSUInteger index = 0; index < tile_elements; index++) {
+                tile_value ^= bits[start+index];
+                tile_value *= 0x100000001b3ull;
+            }
+            tile_checksums[tile] = tile_value;
+        }
+        *checksum = value;
         return 1;
     }
 }

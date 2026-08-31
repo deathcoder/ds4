@@ -418,9 +418,15 @@ dispatches and 45/45 no-copy mappings. It then keeps the same allocations live
 while executing all 128 layer-2/layer-3 tiles through position 8,191. The M1
 Ultra gate covered all 32 ratio-128 emissions, 14,560 dispatches, and
 5,760/5,760 no-copy mappings. Only the first two tiles are C0 anchors; the
-remaining 126 are explicitly structural evidence. The report does not claim
-layers 4--42, the complete 8K transformer, output-logit C0, throughput, or a
-speedup.
+remaining 126 are explicitly structural evidence. Version 11 retains the full
+4,096-by-16,384 layer-3 output in one shared Metal buffer and emits both the
+aggregate checksum and 128 tile checksums. It reproducibly matches 114/128
+tiles from the repeated production-batch oracle; the full tiled checksum is
+`12296721839747081491`, versus production `17010162403439886297`. The 14
+reported mismatch positions make the batch-geometry limitation explicit and
+gate the next step on a production-size layer-3 schedule. The report does not
+claim layers 4--42, the complete 8K transformer, output-logit C0, throughput,
+or a speedup.
 
 The repair has two parts. At 4K, layer 2 has 1,024 ratio-4 compressed rows and
 must use DwarfStar's indexed top-512 path rather than dense mixed attention.

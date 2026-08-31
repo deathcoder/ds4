@@ -749,6 +749,18 @@ remain the only C0 anchors; the later 126 tiles are structural retained-state
 evidence and are explicitly not labeled bit-exact. Layers 4--42, the output
 head, complete-8K logits, throughput, and a speedup remain unclaimed.
 
+Version 11 adds a 256 MiB shared retention buffer for every layer-3 final-HC
+tile and computes one aggregate FNV checksum plus 128 independent tile
+checksums after the loop. The repeated production-geometry oracle tensor has
+SHA-256 `09b31ad2...cca` and FNV `17010162403439886297`; the tiled native run
+has FNV `12296721839747081491`. Exactly 114 tile checksums match. The 14
+mismatching starts are 4096, 7296, 7360, 7392, 7424, 7552, 7616, 7648, 7712,
+7776, 7840, 8000, 8064, and 8096. The terminal HC and recurrent-state
+checksums remain unchanged, so this is a batch-geometry distinction rather
+than a failed retained-state loop. The runtime reports the mismatch and makes
+`complete_layer3_second_chunk_output_checksum_claim` false. A production-size
+layer-3 batch is required before its output can become the exact layer-4 input.
+
 ## Model residency before measured decode
 
 The eligible `engine-measure` path keeps Metal VM preparation inside the

@@ -387,8 +387,13 @@ they describe whenever practical.
   layer-2/layer-3 continuation tiles through position 8,191, including all 32
   ratio-128 emissions, over 14,560 dispatches with 5,760/5,760 no-copy model
   mappings. The first two tiles are exact C0 anchors; the later 126 are
-  structural execution evidence only. Extend this retained chain through
-  layers 4--42 and the output head, then match the complete 8K logits.
+  structural execution evidence only. Full-output retention now compares all
+  128 layer-3 tile checksums with a repeated production-geometry oracle:
+  114 match and 14 differ, while the terminal HC and recurrent states remain
+  stable. The per-tile schedule therefore cannot serve as the exact layer-4
+  input boundary. Execute layer 3 in one production-size 4,096-row batch,
+  validate its full checksum, then extend that batch chain through layers
+  4--42 and the output head and match the complete 8K logits.
   A complete retained
   sequential experiment has now ruled out decoder execution as a shortcut: it
   selected the same terminal token but differed in all 129,280 logits. The

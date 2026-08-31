@@ -2097,6 +2097,16 @@ int rust_star_metal_run_prefill_layer2_continuation_tail(
     char *error,
     size_t error_bytes);
 
+/* Checksums the complete GPU-retained positions-4096--8191 layer-3 final HC
+ * tensor after all 128 continuation tiles have executed. */
+int rust_star_metal_checksum_prefill_layer3_continuation_hc(
+    void *context,
+    uint64_t *checksum,
+    uint64_t *tile_checksums,
+    size_t tile_checksum_capacity,
+    char *error,
+    size_t error_bytes);
+
 /* Consumes the live layer-2 final-HC tile and executes layer 3 through its
  * native Q/KV finalization boundary without an oracle activation handoff. */
 int rust_star_metal_run_prefill_layer3_continuation_ingress(
