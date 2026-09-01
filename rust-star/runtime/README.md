@@ -409,7 +409,7 @@ runs dense mixed attention, inverse RoPE, attention output, biased
 routed/shared FFN, and final HC bit-for-bit for positions 4,096--4,127. The
 connected layer-3 tile uses 76 dispatches, preserves 28/28 no-copy mappings,
 and checks 17 state and downstream outputs. The report schema is
-`rust-star-long-prefill-continuation-bootstrap-probe-v16`. The same retained
+`rust-star-long-prefill-continuation-bootstrap-probe-v17`. The same retained
 context then continues positions 4,128--4,159 through another exact complete
 layer-2/layer-3 pair. The second layer-2 tile reuses the native Q batch and
 position-aware raw ring; layer 3 consumes the first tile's GPU-appended KV and
@@ -433,6 +433,15 @@ first-4K prefix and refreshes ratio-4 state from the last four normalized tokens
 with the same small-batch arithmetic as DwarfStar. The production-size layer-4
 continuation ingress matches HC, norm, Q, KV, both complete compressed caches,
 and all four recurrent states over 40 dispatches with 17/17 no-copy mappings.
+Version 17 completes that first-4K layer-4 prefix instead of treating only its
+ingress and compressors as evidence. On the M1 Ultra it follows DwarfStar's
+legacy aligned-F16 route: tiled 4,096-by-1,024 indexer scores, the device-sized
+top-512 selection, chronological sorting, F16 cache staging, heads8 indexed
+attention, inverse RoPE, attention output, and the routed/shared FFN. Its five
+sparse-boundary checksums match over 10 dispatches and 3/3 mappings; the full
+tail reaches the exact post-attention and post-FFN HC checksums over 36 combined
+dispatches and 17/17 mappings. The retained exact final HC is now a valid input
+for rebuilding the layer-5 prefix.
 The report records the 10/10 boundary, then executes all 128 layer-4
 continuation tiles through indexed top-512 attention, inverse RoPE, grouped
 attention output, biased routed/shared experts, and the final HC update. All
@@ -443,9 +452,10 @@ through all 128 layer-5 continuation ingress/QKV tiles. The nine aggregate
 HC/norm/Q/KV/RoPE checksums match two independent DwarfStar captures. An
 aligned 4,096-row ratio-128 compressor appends the exact 32 continuation rows,
 for 1,287 dispatches and 1,156/1,156 no-copy mappings in total. The retained
-layer-5 prefix Q/KV/compressed history is not exact, so layer-5 attention and
-FFN remain gated; the report explicitly claims only continuation ingress/QKV
-and compression. It does not claim complete layer 5, layers 6--42, the
+layer-5 prefix Q/KV/compressed history has not yet been rebuilt from the newly
+exact layer-4 prefix, so layer-5 attention and FFN remain gated; the report
+explicitly claims only continuation ingress/QKV and compression. It does not
+claim complete layer 5, layers 6--42, the
 complete 8K transformer, output-logit C0, throughput, or a speedup.
 
 The repair has two parts. At 4K, layer 2 has 1,024 ratio-4 compressed rows and

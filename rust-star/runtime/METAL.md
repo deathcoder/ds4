@@ -705,7 +705,7 @@ control. The next boundary must carry the retained 4K state through layers
 
 ## Retained 4K-to-8K layer-2 through layer-5 continuation boundary
 
-Schema: `rust-star-long-prefill-continuation-bootstrap-probe-v16`.
+Schema: `rust-star-long-prefill-continuation-bootstrap-probe-v17`.
 
 `long-prefill-continuation-bootstrap-probe` completes the first 4K transformer,
 then preserves that context while 64 native 64-row tiles append positions
@@ -793,9 +793,16 @@ byte-identical fresh-process oracle captures over 1,287 dispatches and
 1,156/1,156 no-copy mappings. The pre-4,096 layer-5 Q/KV/compressed history
 retained by the current first-chunk path is not exact, so the artifact does not
 claim layer-5 attention or FFN. Complete layer 5, layers 6--42, the complete 8K
-transformer, logits, throughput, and a speedup remain unclaimed. The next
-correctness prerequisite is an exact native layer-4 prefix output feeding an
-exact layer-5 prefix rebuild.
+transformer, logits, throughput, and a speedup remain unclaimed. Version 17
+closes the prerequisite immediately upstream: the exact layer-4 prefix ingress
+and compressor state now feed DwarfStar's M1 legacy sparse route over the full
+4,096 rows. The tiled 4,096-by-1,024 indexer scores, device-sized top-512,
+chronological sort, F16 selected-cache staging, heads8 attention, inverse RoPE,
+attention output, and FFN match five sparse-boundary checksums plus the exact
+post-attention and post-FFN HC checksums. Sparse attention takes 10 dispatches
+with 3/3 no-copy mappings; the complete tail totals 36 dispatches and 17/17
+mappings. The next correctness prerequisite is rebuilding the layer-5 prefix
+Q/KV and 32-row ratio-128 compressed history from that exact HC.
 
 ## Model residency before measured decode
 

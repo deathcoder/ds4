@@ -446,6 +446,7 @@ static NSString *const kQ8ProjectionSource =
 @property(nonatomic, strong) id<MTLBuffer> prefillLayer4FullNorm;
 @property(nonatomic, strong) id<MTLBuffer> prefillLayer4ContinuationNorm;
 @property(nonatomic, strong) id<MTLBuffer> prefillLayer4ContinuationHeads;
+@property(nonatomic, strong) id<MTLBuffer> prefillLayer4PrefixHeads;
 @property(nonatomic, strong) id<MTLBuffer> prefillLayer4ContinuationFullAfterFfnHc;
 @property(nonatomic, strong) id<MTLBuffer> prefillLayer4InputHc;
 @property(nonatomic, strong) id<MTLBuffer> prefillLayer4AttnSplit;
@@ -45354,6 +45355,391 @@ int rust_star_metal_run_prefill_layer2_continuation_sparse_tile(
     }
 }
 
+/* Executes the first-chunk layer-4 sparse attention at DwarfStar's production
+ * 4096-row M1 geometry: aligned projections, tiled scores, general
+ * 1024-to-512 argsort/merge, and 8-head attention. Substituting continuation
+ * tiles or Metal-4-only kernels changes the result. */
+int rust_star_metal_run_prefill_layer4_prefix_sparse_batch(
+    void *opaque_context,
+    const void *model_mapping,
+    uint64_t model_bytes,
+    uint64_t indexer_q_offset,
+    uint64_t indexer_q_bytes,
+    uint64_t indexer_weight_offset,
+    uint64_t indexer_weight_bytes,
+    uint64_t sinks_offset,
+    uint64_t sinks_bytes,
+    uint64_t *checksums,
+    size_t checksum_capacity,
+    rust_star_metal_sparse_indexed_result *result,
+    char *error,
+    size_t error_bytes)
+{
+    enum {
+        rows = 4096,
+        n_embd = 4096,
+        q_rank = 1024,
+        n_head = 64,
+        indexer_width = 128,
+        head_dim = 512,
+        q_dim = n_head*head_dim,
+        n_comp = 1024,
+        top_k = 512,
+        raw_capacity = 4352,
+        checksum_count = 5,
+    };
+    if (!opaque_context || !model_mapping || !checksums ||
+        checksum_capacity < checksum_count || !result ||
+        indexer_q_bytes != (uint64_t)q_rank*n_head*indexer_width*sizeof(uint16_t) ||
+        indexer_weight_bytes != (uint64_t)n_embd*n_head*sizeof(uint16_t) ||
+        sinks_bytes != n_head*sizeof(float)) {
+        return fail_with_message(error, error_bytes,
+            @"prefill layer-4 prefix sparse batch received an invalid input");
+    }
+
+    @autoreleasepool {
+        RustStarMetalContext *context = (__bridge RustStarMetalContext *)opaque_context;
+        if (!ensure_attention_ingress_pipelines(context, error, error_bytes) ||
+            !ensure_sparse_indexed_pipelines(context, error, error_bytes)) return 0;
+        const NSUInteger q_row_bytes = q_dim*sizeof(float);
+        const NSUInteger indexer_q_row_bytes = n_head*indexer_width*sizeof(float);
+        const NSUInteger weight_row_bytes = n_head*sizeof(float);
+        const NSUInteger score_row_bytes = n_comp*sizeof(float);
+        const NSUInteger topk_row_bytes = top_k*sizeof(int32_t);
+        const NSUInteger kv_row_bytes = head_dim*sizeof(float);
+        const NSUInteger q_bytes = (NSUInteger)rows*q_row_bytes;
+        const NSUInteger indexer_q_out_bytes =
+            (NSUInteger)rows*indexer_q_row_bytes;
+        const NSUInteger indexer_weight_out_bytes =
+            (NSUInteger)rows*weight_row_bytes;
+        const NSUInteger score_bytes = (NSUInteger)rows*score_row_bytes;
+        const NSUInteger topk_bytes = (NSUInteger)rows*topk_row_bytes;
+        const NSUInteger comp_f16_bytes =
+            (NSUInteger)n_comp*head_dim*sizeof(uint16_t);
+        NSUInteger sort_threads =
+            context.indexerTopkPipeline.maxTotalThreadsPerThreadgroup;
+        if (sort_threads == 0u) sort_threads = 256u;
+        NSUInteger nth = 1u;
+        while (nth < n_comp && 2u*nth <= sort_threads) nth *= 2u;
+        const uint32_t sort_blocks =
+            (uint32_t)((n_comp+nth-1u)/nth);
+        const uint32_t block_top_k = (uint32_t)(top_k < nth ? top_k : nth);
+        uint32_t topk_work_width = top_k;
+        if (sort_blocks > 1u) {
+            const uint32_t last_block =
+                n_comp-(sort_blocks-1u)*(uint32_t)nth;
+            topk_work_width = (sort_blocks-1u)*block_top_k+
+                (last_block < block_top_k ? last_block : block_top_k);
+        }
+        const BOOL topk_one_pass = sort_blocks <= 1u;
+        const NSUInteger topk_scratch_row_bytes =
+            (NSUInteger)topk_work_width*sizeof(int32_t);
+        if (!context.prefillLayer4FullQ ||
+            context.prefillLayer4FullQ.length < q_bytes ||
+            !context.prefillLayer4FullQNorm ||
+            context.prefillLayer4FullQNorm.length < (NSUInteger)rows*q_rank*sizeof(float) ||
+            !context.prefillLayer4FullNorm ||
+            context.prefillLayer4FullNorm.length < (NSUInteger)rows*n_embd*sizeof(float) ||
+            !context.prefillLayer4FullKv ||
+            context.prefillLayer4FullKv.length < (NSUInteger)raw_capacity*kv_row_bytes ||
+            !context.prefillLayer4AttnCompressed ||
+            context.prefillLayer4AttnCompressed.length <
+                (NSUInteger)n_comp*head_dim*sizeof(float) ||
+            !context.prefillLayer4IndexerCompressed ||
+            context.prefillLayer4IndexerCompressed.length <
+                (NSUInteger)n_comp*indexer_width*sizeof(float)) {
+            return fail_with_message(error, error_bytes,
+                @"prefill layer-4 prefix sparse state is unavailable");
+        }
+
+        NSUInteger inner[3] = {0,0,0};
+        BOOL matches[3] = {NO,NO,NO};
+        id<MTLBuffer> q_weights = wrap_model_range(
+            context, model_mapping, model_bytes, indexer_q_offset,
+            indexer_q_bytes, &inner[0], &matches[0], error, error_bytes);
+        id<MTLBuffer> weight_weights = wrap_model_range(
+            context, model_mapping, model_bytes, indexer_weight_offset,
+            indexer_weight_bytes, &inner[1], &matches[1], error, error_bytes);
+        id<MTLBuffer> sinks = wrap_model_range(
+            context, model_mapping, model_bytes, sinks_offset, sinks_bytes,
+            &inner[2], &matches[2], error, error_bytes);
+        if (!q_weights || !weight_weights || !sinks) return 0;
+
+#define RUST_STAR_NEW_L4_PREFIX_BUFFER(name, bytes) \
+        id<MTLBuffer> name = [context.device newBufferWithLength:(bytes) \
+            options:MTLResourceStorageModeShared]
+        RUST_STAR_NEW_L4_PREFIX_BUFFER(indexer_q_buffer, indexer_q_out_bytes);
+        RUST_STAR_NEW_L4_PREFIX_BUFFER(indexer_weight_buffer,
+            indexer_weight_out_bytes);
+        RUST_STAR_NEW_L4_PREFIX_BUFFER(score_buffer, score_bytes);
+        RUST_STAR_NEW_L4_PREFIX_BUFFER(topk_buffer, topk_bytes);
+        RUST_STAR_NEW_L4_PREFIX_BUFFER(sorted_buffer, topk_bytes);
+        RUST_STAR_NEW_L4_PREFIX_BUFFER(topk_scratch,
+            2u*topk_scratch_row_bytes*rows);
+        RUST_STAR_NEW_L4_PREFIX_BUFFER(comp_f16, comp_f16_bytes);
+        RUST_STAR_NEW_L4_PREFIX_BUFFER(heads_buffer, q_bytes);
+        RUST_STAR_NEW_L4_PREFIX_BUFFER(position_buffer, rows*sizeof(int32_t));
+#undef RUST_STAR_NEW_L4_PREFIX_BUFFER
+        if (!indexer_q_buffer || !indexer_weight_buffer || !score_buffer ||
+            !topk_buffer || !sorted_buffer || !topk_scratch || !comp_f16 ||
+            !heads_buffer || !position_buffer) {
+            return fail_with_message(error, error_bytes,
+                @"failed to allocate layer-4 prefix sparse buffers");
+        }
+        for (uint32_t row = 0; row < rows; row++) {
+            ((int32_t *)position_buffer.contents)[row] = (int32_t)row;
+        }
+
+        rust_star_q8_mm_args q_projection = {
+            .ne00=q_rank, .ne02=1,
+            .nb01=q_rank*sizeof(uint16_t),
+            .nb02=indexer_q_bytes, .nb03=indexer_q_bytes,
+            .ne12=1, .nb10=sizeof(float),
+            .nb11=q_rank*sizeof(float),
+            .nb12=(uint64_t)rows*q_rank*sizeof(float),
+            .nb13=(uint64_t)rows*q_rank*sizeof(float),
+            .ne0=n_head*indexer_width, .ne1=rows, .r2=1, .r3=1,
+        };
+        rust_star_q8_mm_args weight_projection = {
+            .ne00=n_embd, .ne02=1,
+            .nb01=n_embd*sizeof(uint16_t),
+            .nb02=indexer_weight_bytes, .nb03=indexer_weight_bytes,
+            .ne12=1, .nb10=sizeof(float),
+            .nb11=n_embd*sizeof(float),
+            .nb12=(uint64_t)rows*n_embd*sizeof(float),
+            .nb13=(uint64_t)rows*n_embd*sizeof(float),
+            .ne0=n_head, .ne1=rows, .r2=1, .r3=1,
+        };
+        const float freq_scale = 1.0f/16.0f;
+        const float attn_factor = 1.0f/(1.0f+0.1f*logf(16.0f));
+        rust_star_rope_tail_args indexer_rope = {
+            .ne00=indexer_width, .ne01=n_head, .ne02=rows, .ne03=1,
+            .nb00=sizeof(float), .nb01=indexer_width*sizeof(float),
+            .nb02=indexer_q_row_bytes,
+            .nb03=(uint64_t)rows*indexer_q_row_bytes,
+            .nb0=sizeof(float), .nb1=indexer_width*sizeof(float),
+            .nb2=indexer_q_row_bytes,
+            .nb3=(uint64_t)rows*indexer_q_row_bytes,
+            .n_dims=64, .mode=0, .n_ctx_orig=65536, .inverse=0,
+            .freq_base=160000.0f, .freq_scale=freq_scale,
+            .ext_factor=1.0f, .attn_factor=attn_factor,
+            .beta_fast=32.0f, .beta_slow=1.0f, .src2=false,
+        };
+        rust_star_indexer_qat_args qat = {
+            .n_rows=rows*n_head, .head_dim=indexer_width,
+            .row_stride=indexer_width*sizeof(float),
+        };
+        rust_star_indexer_score_args score_args = {
+            .n_comp=n_comp, .n_tokens=rows,
+            .n_head=n_head, .head_dim=indexer_width,
+            .pos0=0, .ratio=4,
+            .q_token_stride=indexer_q_row_bytes,
+            .q_head_stride=indexer_width*sizeof(float),
+            .weights_token_stride=weight_row_bytes,
+            .index_row_stride=indexer_width*sizeof(float),
+            .score_token_stride=score_row_bytes,
+            .scale=1.0f/sqrtf(8192.0f),
+        };
+        rust_star_argsort_args topk_args = {
+            .ne00=n_comp, .ne01=rows, .ne02=1, .ne03=1,
+            .nb00=sizeof(float), .nb01=score_row_bytes,
+            .nb02=score_bytes, .nb03=score_bytes,
+            .ne0=(int32_t)topk_work_width, .ne1=rows, .ne2=1, .ne3=1,
+            .top_k=(int32_t)block_top_k,
+        };
+        rust_star_topk_mask_args chronological_args = {
+            .ne00=top_k, .ne01=rows,
+            .nb00=sizeof(int32_t), .nb01=topk_row_bytes,
+            .ne0=top_k, .ne1=rows,
+            .nb0=sizeof(int32_t), .nb1=topk_row_bytes,
+        };
+        rust_star_indexed_attention_args attention_args = {
+            .n_tokens=rows, .n_head=n_head,
+            .n_raw=rows, .raw_cap=raw_capacity, .raw_start=0,
+            .n_comp=n_comp, .top_k=top_k,
+            .pos0=0, .window=128, .ratio=4,
+            .comp_kv_f16=1, .n_splits=1,
+            .q_token_stride=q_row_bytes,
+            .q_head_stride=head_dim*sizeof(float),
+            .raw_row_stride=kv_row_bytes,
+            .comp_row_stride=head_dim*sizeof(uint16_t),
+            .topk_token_stride=topk_row_bytes,
+            .dst_token_stride=q_row_bytes,
+            .dst_head_stride=head_dim*sizeof(float),
+            .scale=1.0f/sqrtf(512.0f),
+        };
+        rust_star_rope_tail_args inverse_rope = {
+            .ne00=head_dim, .ne01=n_head, .ne02=rows, .ne03=1,
+            .nb00=sizeof(float), .nb01=head_dim*sizeof(float),
+            .nb02=q_row_bytes, .nb03=q_bytes,
+            .nb0=sizeof(float), .nb1=head_dim*sizeof(float),
+            .nb2=q_row_bytes, .nb3=q_bytes,
+            .n_dims=64, .mode=0, .n_ctx_orig=65536, .inverse=1,
+            .freq_base=160000.0f, .freq_scale=freq_scale,
+            .ext_factor=1.0f, .attn_factor=attn_factor,
+            .beta_fast=32.0f, .beta_slow=1.0f, .src2=false,
+        };
+
+        id<MTLCommandBuffer> command = [context.queue commandBuffer];
+        id<MTLComputeCommandEncoder> encoder = [command computeCommandEncoder];
+        if (!command || !encoder) return fail_with_message(error, error_bytes,
+            @"failed to create layer-4 prefix sparse command");
+
+        [encoder setComputePipelineState:context.f16AlignedPrefillPipeline];
+        [encoder setBytes:&q_projection length:sizeof(q_projection) atIndex:0];
+        [encoder setBuffer:q_weights offset:inner[0] atIndex:1];
+        [encoder setBuffer:context.prefillLayer4FullQNorm offset:0 atIndex:2];
+        [encoder setBuffer:indexer_q_buffer offset:0 atIndex:3];
+        [encoder setThreadgroupMemoryLength:6144u atIndex:0];
+        [encoder dispatchThreadgroups:MTLSizeMake(rows/32u,
+            (n_head*indexer_width)/64u,1)
+             threadsPerThreadgroup:MTLSizeMake(128,1,1)];
+
+        [encoder setComputePipelineState:context.ropeTailPipeline];
+        [encoder setBytes:&indexer_rope length:sizeof(indexer_rope) atIndex:0];
+        [encoder setBuffer:indexer_q_buffer offset:0 atIndex:1];
+        [encoder setBuffer:position_buffer offset:0 atIndex:2];
+        [encoder setBuffer:indexer_q_buffer offset:0 atIndex:3];
+        [encoder setBuffer:indexer_q_buffer offset:0 atIndex:4];
+        [encoder dispatchThreadgroups:MTLSizeMake(n_head,rows,1)
+             threadsPerThreadgroup:MTLSizeMake(128,1,1)];
+
+        [encoder setComputePipelineState:context.indexerQatPipeline];
+        [encoder setBytes:&qat length:sizeof(qat) atIndex:0];
+        [encoder setBuffer:indexer_q_buffer offset:0 atIndex:1];
+        [encoder setThreadgroupMemoryLength:256u*sizeof(float) atIndex:0];
+        [encoder dispatchThreadgroups:MTLSizeMake(rows*n_head,1,1)
+             threadsPerThreadgroup:MTLSizeMake(128,1,1)];
+
+        [encoder setComputePipelineState:context.f16AlignedPrefillPipeline];
+        [encoder setBytes:&weight_projection length:sizeof(weight_projection) atIndex:0];
+        [encoder setBuffer:weight_weights offset:inner[1] atIndex:1];
+        [encoder setBuffer:context.prefillLayer4FullNorm offset:0 atIndex:2];
+        [encoder setBuffer:indexer_weight_buffer offset:0 atIndex:3];
+        [encoder setThreadgroupMemoryLength:6144u atIndex:0];
+        [encoder dispatchThreadgroups:MTLSizeMake(rows/32u,1,1)
+             threadsPerThreadgroup:MTLSizeMake(128,1,1)];
+
+        [encoder setComputePipelineState:context.indexerScoreBatchPipeline];
+        [encoder setBytes:&score_args length:sizeof(score_args) atIndex:0];
+        [encoder setBuffer:indexer_q_buffer offset:0 atIndex:1];
+        [encoder setBuffer:indexer_weight_buffer offset:0 atIndex:2];
+        [encoder setBuffer:context.prefillLayer4IndexerCompressed offset:0 atIndex:3];
+        [encoder setBuffer:score_buffer offset:0 atIndex:4];
+        [encoder setThreadgroupMemoryLength:
+            (8u*128u+32u*128u)*sizeof(uint16_t)+8u*32u*sizeof(float)
+                                    atIndex:0];
+        [encoder dispatchThreadgroups:MTLSizeMake(n_comp/32u,rows/8u,1)
+             threadsPerThreadgroup:MTLSizeMake(32,4,1)];
+
+        [encoder setComputePipelineState:context.indexerTopkPipeline];
+        [encoder setBytes:&topk_args length:sizeof(topk_args) atIndex:0];
+        [encoder setBuffer:score_buffer offset:0 atIndex:1];
+        [encoder setBuffer:topk_one_pass ? topk_buffer : topk_scratch
+                     offset:0 atIndex:2];
+        [encoder setThreadgroupMemoryLength:
+            ((nth*(sizeof(int32_t)+sizeof(float))+15u)&~15u) atIndex:0];
+        [encoder dispatchThreadgroups:MTLSizeMake(sort_blocks*rows,1,1)
+             threadsPerThreadgroup:MTLSizeMake(nth,1,1)];
+
+        NSUInteger merge_cur = 0u;
+        NSUInteger merge_next = topk_scratch_row_bytes*rows;
+        uint32_t merge_dispatches = 0u;
+        for (uint32_t len = block_top_k; len < topk_work_width; len *= 2u) {
+            const uint32_t groups =
+                (topk_work_width+2u*len-1u)/(2u*len);
+            const BOOL final_merge = groups == 1u;
+            rust_star_argsort_merge_args merge_args = {
+                .ne00=n_comp, .ne01=rows, .ne02=1, .ne03=1,
+                .nb00=sizeof(float), .nb01=score_row_bytes,
+                .nb02=score_bytes, .nb03=score_bytes,
+                .ne0=(int32_t)topk_work_width, .ne1=rows, .ne2=1, .ne3=1,
+                .top_k=final_merge ? top_k : (int32_t)topk_work_width,
+                .len=(int32_t)len,
+            };
+            [encoder setComputePipelineState:context.indexerTopkMergePipeline];
+            [encoder setBytes:&merge_args length:sizeof(merge_args) atIndex:0];
+            [encoder setBuffer:score_buffer offset:0 atIndex:1];
+            [encoder setBuffer:topk_scratch offset:merge_cur atIndex:2];
+            [encoder setBuffer:final_merge ? topk_buffer : topk_scratch
+                         offset:final_merge ? 0u : merge_next atIndex:3];
+            [encoder dispatchThreadgroups:MTLSizeMake(groups*rows,1,1)
+                 threadsPerThreadgroup:MTLSizeMake(len < 512u ? len : 512u,1,1)];
+            const NSUInteger swap = merge_cur;
+            merge_cur = merge_next;
+            merge_next = swap;
+            merge_dispatches++;
+        }
+
+        [encoder setComputePipelineState:context.indexedTopkSortPipeline];
+        [encoder setBytes:&chronological_args length:sizeof(chronological_args) atIndex:0];
+        [encoder setBuffer:topk_buffer offset:0 atIndex:1];
+        [encoder setBuffer:sorted_buffer offset:0 atIndex:2];
+        [encoder setThreadgroupMemoryLength:topk_row_bytes atIndex:0];
+        [encoder dispatchThreadgroups:MTLSizeMake(rows,1,1)
+             threadsPerThreadgroup:MTLSizeMake(top_k,1,1)];
+
+        uint32_t comp_elements = n_comp*head_dim;
+        [encoder setComputePipelineState:context.cpyF32F16Pipeline];
+        [encoder setBytes:&comp_elements length:sizeof(comp_elements) atIndex:0];
+        [encoder setBuffer:context.prefillLayer4AttnCompressed offset:0 atIndex:1];
+        [encoder setBuffer:comp_f16 offset:0 atIndex:2];
+        [encoder dispatchThreadgroups:MTLSizeMake((comp_elements+1023u)/1024u,1,1)
+             threadsPerThreadgroup:MTLSizeMake(256,1,1)];
+
+        [encoder setComputePipelineState:context.indexedAttentionPrefillPipeline];
+        [encoder setBytes:&attention_args length:sizeof(attention_args) atIndex:0];
+        [encoder setBuffer:context.prefillLayer4FullQ offset:0 atIndex:1];
+        [encoder setBuffer:context.prefillLayer4FullKv offset:0 atIndex:2];
+        [encoder setBuffer:comp_f16 offset:0 atIndex:3];
+        [encoder setBuffer:sorted_buffer offset:0 atIndex:4];
+        [encoder setBuffer:sinks offset:inner[2] atIndex:5];
+        [encoder setBuffer:heads_buffer offset:0 atIndex:6];
+        [encoder setThreadgroupMemoryLength:128u*4u*sizeof(uint16_t) atIndex:0];
+        [encoder dispatchThreadgroups:MTLSizeMake(rows,n_head/8u,1)
+             threadsPerThreadgroup:MTLSizeMake(32,8,1)];
+
+        [encoder setComputePipelineState:context.ropeTailPipeline];
+        [encoder setBytes:&inverse_rope length:sizeof(inverse_rope) atIndex:0];
+        [encoder setBuffer:heads_buffer offset:0 atIndex:1];
+        [encoder setBuffer:position_buffer offset:0 atIndex:2];
+        [encoder setBuffer:heads_buffer offset:0 atIndex:3];
+        [encoder setBuffer:heads_buffer offset:0 atIndex:4];
+        [encoder dispatchThreadgroups:MTLSizeMake(n_head,rows,1)
+             threadsPerThreadgroup:MTLSizeMake(256,1,1)];
+        [encoder endEncoding];
+
+        const double wall_start = monotonic_ms();
+        [command commit];
+        if (!command_succeeded(command, error, error_bytes)) return 0;
+        checksums[0] = fnv1a_u32_words(indexer_q_buffer.contents,
+            indexer_q_out_bytes/sizeof(uint32_t));
+        checksums[1] = fnv1a_u32_words(indexer_weight_buffer.contents,
+            indexer_weight_out_bytes/sizeof(uint32_t));
+        checksums[2] = fnv1a_u32_words(score_buffer.contents,
+            score_bytes/sizeof(uint32_t));
+        checksums[3] = fnv1a_u32_words(topk_buffer.contents,
+            topk_bytes/sizeof(uint32_t));
+        checksums[4] = fnv1a_u32_words(heads_buffer.contents,
+            q_bytes/sizeof(uint32_t));
+        context.prefillLayer4PrefixHeads = heads_buffer;
+        memset(result, 0, sizeof(*result));
+        result->position = 0u;
+        result->compressed_rows = n_comp;
+        result->raw_rows = rows;
+        result->top_k = top_k;
+        result->dispatches = 10u+merge_dispatches;
+        result->wrapped_model_ranges = 3u;
+        for (uint32_t index = 0; index < 3u; index++) {
+            if (matches[index]) result->pointer_matches++;
+        }
+        result->split_count = 1u;
+        result->wall_ms = monotonic_ms()-wall_start;
+        result->gpu_ms = gpu_elapsed_ms(command);
+        return 1;
+    }
+}
+
 int rust_star_metal_run_prefill_layer4_continuation_sparse_tile(
     void *opaque_context,
     const void *model_mapping,
@@ -45440,8 +45826,12 @@ int rust_star_metal_run_prefill_layer2_continuation_tail(
         mix_hc = 24,
     };
     const uint32_t rows = batch_rows;
-    const BOOL production_batch = layer_index == 3u && tile_start == 4096u &&
-        rows == 4096u;
+    const BOOL production_layer3_batch =
+        layer_index == 3u && tile_start == 4096u && rows == 4096u;
+    const BOOL production_layer4_prefix =
+        layer_index == 4u && tile_start == 0u && rows == 4096u;
+    const BOOL production_batch =
+        production_layer3_batch || production_layer4_prefix;
     const BOOL diagnostic_tile = rows == 32u;
     if (!opaque_context || !model_mapping || !weights ||
         (layer_index != 2u && layer_index != 3u && layer_index != 4u) ||
@@ -45462,11 +45852,12 @@ int rust_star_metal_run_prefill_layer2_continuation_tail(
         RustStarMetalContext *context = (__bridge RustStarMetalContext *)opaque_context;
         const BOOL layer3 = layer_index == 3u;
         const BOOL layer4 = layer_index == 4u;
-        id<MTLBuffer> heads_buffer = layer4
+        id<MTLBuffer> heads_buffer = production_layer4_prefix
+            ? context.prefillLayer4PrefixHeads : layer4
             ? context.prefillLayer4ContinuationHeads : layer3
             ? context.prefillLayer3ContinuationHeads
             : context.prefillLayer2ContinuationHeads;
-        const BOOL full_layer3_batch = production_batch;
+        const BOOL full_layer3_batch = production_layer3_batch;
         id<MTLBuffer> input_hc = layer4
             ? context.prefillLayer4InputHc : full_layer3_batch
             ? context.prefillLayer2ContinuationFullAfterFfnHc : layer3
@@ -45624,7 +46015,8 @@ int rust_star_metal_run_prefill_layer2_continuation_tail(
         RUST_STAR_NEW_CONTINUATION_TAIL_BUFFER(shared_out_buffer, output_bytes);
         RUST_STAR_NEW_CONTINUATION_TAIL_BUFFER(after_ffn_hc_buffer, hc_bytes);
 #undef RUST_STAR_NEW_CONTINUATION_TAIL_BUFFER
-        id<MTLBuffer> full_after_ffn_hc_buffer = layer4
+        id<MTLBuffer> full_after_ffn_hc_buffer = production_layer4_prefix
+            ? context.prefillLayer4AfterFfnHc : layer4
             ? context.prefillLayer4ContinuationFullAfterFfnHc : layer3
             ? context.prefillLayer3ContinuationFullAfterFfnHc
             : context.prefillLayer2ContinuationFullAfterFfnHc;
@@ -45632,7 +46024,9 @@ int rust_star_metal_run_prefill_layer2_continuation_tail(
             full_after_ffn_hc_buffer = [context.device
                 newBufferWithLength:(NSUInteger)4096u*4u*n_embd*sizeof(float)
                 options:MTLResourceStorageModeShared];
-            if (layer4) {
+            if (production_layer4_prefix) {
+                context.prefillLayer4AfterFfnHc = full_after_ffn_hc_buffer;
+            } else if (layer4) {
                 context.prefillLayer4ContinuationFullAfterFfnHc =
                     full_after_ffn_hc_buffer;
             } else if (layer3) {
@@ -46061,7 +46455,8 @@ int rust_star_metal_run_prefill_layer2_continuation_tail(
             @"failed to retain the full layer-2/layer-3 continuation HC output");
         [retained_blit copyFromBuffer:after_ffn_hc_buffer sourceOffset:0
                              toBuffer:full_after_ffn_hc_buffer
-                    destinationOffset:(NSUInteger)(tile_start-4096u)*hc_row_bytes
+                    destinationOffset:production_layer4_prefix ? 0u :
+                        (NSUInteger)(tile_start-4096u)*hc_row_bytes
                                 size:hc_bytes];
         [retained_blit endEncoding];
 
@@ -46083,7 +46478,10 @@ int rust_star_metal_run_prefill_layer2_continuation_tail(
             memcpy(shared_output, shared_out_buffer.contents, output_bytes);
             memcpy(after_ffn_hc, after_ffn_hc_buffer.contents, hc_bytes);
         }
-        if (layer3) {
+        if (production_layer4_prefix) {
+            context.prefillLayer4AfterAttentionHc = after_attention_hc_buffer;
+            context.prefillLayer4AfterFfnHc = full_after_ffn_hc_buffer;
+        } else if (layer3) {
             context.prefillLayer3ContinuationAfterFfnHc = after_ffn_hc_buffer;
         } else if (!layer4) {
             context.prefillLayer2ContinuationAfterFfnHc = after_ffn_hc_buffer;
@@ -46154,6 +46552,37 @@ int rust_star_metal_checksum_prefill_layer4_continuation_hc(
             context.prefillLayer4ContinuationFullAfterFfnHc.contents, words);
         context.prefillLayer4AfterFfnHc =
             context.prefillLayer4ContinuationFullAfterFfnHc;
+        return 1;
+    }
+}
+
+int rust_star_metal_checksum_prefill_layer4_prefix_hc(
+    void *opaque_context,
+    uint64_t *checksums,
+    size_t checksum_capacity,
+    char *error,
+    size_t error_bytes)
+{
+    enum { rows = 4096, hc_width = 4*4096, checksum_count = 2 };
+    if (!opaque_context || !checksums || checksum_capacity < checksum_count) {
+        return fail_with_message(error, error_bytes,
+            @"layer-4 prefix HC checksum received an invalid output");
+    }
+    @autoreleasepool {
+        RustStarMetalContext *context = (__bridge RustStarMetalContext *)opaque_context;
+        const NSUInteger words = (NSUInteger)rows*hc_width;
+        const NSUInteger bytes = words*sizeof(uint32_t);
+        if (!context.prefillLayer4AfterAttentionHc ||
+            context.prefillLayer4AfterAttentionHc.length < bytes ||
+            !context.prefillLayer4AfterFfnHc ||
+            context.prefillLayer4AfterFfnHc.length < bytes) {
+            return fail_with_message(error, error_bytes,
+                @"complete layer-4 prefix HC state is unavailable");
+        }
+        checksums[0] = fnv1a_u32_words(
+            context.prefillLayer4AfterAttentionHc.contents, words);
+        checksums[1] = fnv1a_u32_words(
+            context.prefillLayer4AfterFfnHc.contents, words);
         return 1;
     }
 }

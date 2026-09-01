@@ -28083,6 +28083,12 @@ static bool metal_graph_encode_layer_attention_batch(
             if (ok) ok = ds4_gpu_dsv4_indexer_qat_tensor(metal_graph_batch_indexer_q(g),
                                                           n_tokens * DS4_N_INDEXER_HEAD,
                                                           DS4_N_INDEXER_HEAD_DIM) != 0;
+            if (ok) metal_graph_debug_dump_tensor("indexer_q",
+                                                  metal_graph_batch_indexer_q(g),
+                                                  (uint64_t)n_tokens * DS4_N_INDEXER_HEAD *
+                                                      DS4_N_INDEXER_HEAD_DIM,
+                                                  il,
+                                                  pos0);
             if (ok) ok = ds4_gpu_matmul_f16_tensor(metal_graph_batch_indexer_weights(g),
                                                      model->map,
                                                      model->size,
@@ -28091,6 +28097,11 @@ static bool metal_graph_encode_layer_attention_batch(
                                                      DS4_N_INDEXER_HEAD,
                                                      metal_graph_batch_attn_norm(g),
                                                      n_tokens) != 0;
+            if (ok) metal_graph_debug_dump_tensor("indexer_weights",
+                                                  metal_graph_batch_indexer_weights(g),
+                                                  (uint64_t)n_tokens * DS4_N_INDEXER_HEAD,
+                                                  il,
+                                                  pos0);
             if (zero_prefix) {
                 if (ok && n_comp > g->layer_comp_cap[il]) {
                     fprintf(stderr, "ds4: Metal layer-major indexer cache capacity exceeded at layer %u\n", il);

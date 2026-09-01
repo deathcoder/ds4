@@ -3331,13 +3331,22 @@ fn run_long_prefill_continuation_bootstrap_probe_command(arguments: Vec<OsString
         report.layer3_production_hc_matching_tiles,
     );
     println!(
-        "layer-4 production boundary: prefix rebuilt with {} dispatches and {}/{} no-copy mappings; continuation ingress, QKV, both 1024-row compressed caches, and all recurrent states match 10/10 checksums over {} dispatches and {}/{} mappings",
+        "layer-4 production boundary: prefix ingress/compressors rebuilt with {} dispatches and {}/{} no-copy mappings; continuation ingress, QKV, both 1024-row compressed caches, and all recurrent states match 10/10 checksums over {} dispatches and {}/{} mappings",
         report.layer4_prefix_rebuild_dispatches,
         report.layer4_prefix_rebuild_pointer_matches,
         report.layer4_prefix_rebuild_wrapped_model_ranges,
         report.layer4_continuation_boundary_dispatches,
         report.layer4_continuation_boundary_pointer_matches,
         report.layer4_continuation_boundary_wrapped_model_ranges,
+    );
+    println!(
+        "layer-4 complete prefix: exact 4096-row sparse indexed attention uses {} dispatches and {}/{} no-copy mappings; attention plus FFN completes in {} combined dispatches and {}/{} mappings, with exact post-attention and post-FFN HC checksums",
+        report.layer4_prefix_sparse_dispatches,
+        report.layer4_prefix_sparse_pointer_matches,
+        report.layer4_prefix_sparse_wrapped_model_ranges,
+        report.layer4_prefix_complete_dispatches,
+        report.layer4_prefix_complete_pointer_matches,
+        report.layer4_prefix_complete_wrapped_model_ranges,
     );
     println!(
         "layer-4 complete continuation: {} sparse-indexed 32-row tiles use {} dispatches and {}/{} no-copy mappings; all 16 attention/FFN checksums and the retained final HC match the 8K oracle",
@@ -5561,7 +5570,7 @@ fn long_prefill_bootstrap_probe_usage() -> &'static str {
 }
 
 fn long_prefill_continuation_bootstrap_probe_usage() -> &'static str {
-    "usage: rust-star long-prefill-continuation-bootstrap-probe MODEL.gguf [--json PATH]\n\nRuns the first 4,096-token chunk through the complete native transformer, then advances positions 4,096--8,191 in the same retained Metal context. It verifies the layer-2 sparse transition, complete layers 2 and 3, the complete layer-4 continuation, and layer-5 continuation ingress/QKV plus ratio-128 compression against the repeated production oracle. This diagnostic does not claim layer-5 attention/FFN, layers 6--42, the complete 8K transformer output, output-logit C0, throughput, or a speedup."
+    "usage: rust-star long-prefill-continuation-bootstrap-probe MODEL.gguf [--json PATH]\n\nRuns the first 4,096-token chunk through the complete native transformer, then advances positions 4,096--8,191 in the same retained Metal context. It verifies the layer-2 sparse transition, complete layers 2 and 3, the complete layer-4 prefix and continuation, and layer-5 continuation ingress/QKV plus ratio-128 compression against the repeated production oracle. This diagnostic does not claim layer-5 attention/FFN, layers 6--42, the complete 8K transformer output, output-logit C0, throughput, or a speedup."
 }
 
 fn long_prefill_sequential_continuation_probe_usage() -> &'static str {

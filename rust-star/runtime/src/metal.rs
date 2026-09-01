@@ -29,7 +29,7 @@ pub const PREFILL_LAYERS012_COMPRESSOR_LOOP_PROBE_SCHEMA: &str =
     "rust-star-prefill-layers012-compressor-loop-probe-v1";
 pub const LONG_PREFILL_BOOTSTRAP_PROBE_SCHEMA: &str = "rust-star-long-prefill-bootstrap-probe-v1";
 pub const LONG_PREFILL_CONTINUATION_BOOTSTRAP_PROBE_SCHEMA: &str =
-    "rust-star-long-prefill-continuation-bootstrap-probe-v16";
+    "rust-star-long-prefill-continuation-bootstrap-probe-v17";
 pub const LONG_PREFILL_SEQUENTIAL_CONTINUATION_PROBE_SCHEMA: &str =
     "rust-star-long-prefill-sequential-continuation-probe-v1";
 pub const LONG_PREFILL_TRANSFORMER_PROBE_SCHEMA: &str =
@@ -194,6 +194,15 @@ const PREFILL_LAYER4_CONTINUATION_COMPLETE_CHECKSUMS: [u64; 16] = [
     0xfa2f_fcec_44cf_c48b,
 ];
 const PREFILL_LAYER4_CONTINUATION_FULL_HC_CHECKSUM: u64 = 0xfa2f_fcec_44cf_c48b;
+const PREFILL_LAYER4_PREFIX_SPARSE_CHECKSUMS: [u64; 5] = [
+    0x6b31_e6d9_1f62_2325,
+    0x5ae5_4c9b_c26e_5f5f,
+    0xc636_aaaf_5dd4_9280,
+    0x4f7c_457d_46ac_d903,
+    0x91cb_116b_14d2_db5f,
+];
+const PREFILL_LAYER4_PREFIX_AFTER_ATTENTION_HC_CHECKSUM: u64 = 0xcc1c_7a93_6941_4e6e;
+const PREFILL_LAYER4_PREFIX_AFTER_FFN_HC_CHECKSUM: u64 = 0x275a_e949_590b_7d57;
 const PREFILL_LAYER5_CONTINUATION_INGRESS_CHECKSUMS: [u64; 9] = [
     0x053c_21ea_4926_a68d,
     0x9bd7_2d04_e0fb_9873,
@@ -3930,6 +3939,14 @@ pub struct LongPrefillContinuationBootstrapProbeReport {
     pub layer4_prefix_rebuild_wrapped_model_ranges: u32,
     pub layer4_prefix_rebuild_pointer_matches: u32,
     pub layer4_prefix_rebuild_checksums: [u64; 10],
+    pub layer4_prefix_sparse_dispatches: u32,
+    pub layer4_prefix_sparse_wrapped_model_ranges: u32,
+    pub layer4_prefix_sparse_pointer_matches: u32,
+    pub layer4_prefix_sparse_checksums: [u64; 5],
+    pub layer4_prefix_complete_dispatches: u32,
+    pub layer4_prefix_complete_wrapped_model_ranges: u32,
+    pub layer4_prefix_complete_pointer_matches: u32,
+    pub layer4_prefix_complete_hc_checksums: [u64; 2],
     pub layer4_continuation_boundary_dispatches: u32,
     pub layer4_continuation_boundary_wrapped_model_ranges: u32,
     pub layer4_continuation_boundary_pointer_matches: u32,
@@ -7919,7 +7936,7 @@ pub fn write_long_prefill_bootstrap_probe_json<W: Write>(
     Ok(())
 }
 
-pub fn write_long_prefill_continuation_bootstrap_probe_json<W: Write>(
+fn write_long_prefill_continuation_bootstrap_probe_json_payload<W: Write>(
     output: &mut W,
     report: &LongPrefillContinuationBootstrapProbeReport,
 ) -> Result<()> {
@@ -8001,6 +8018,20 @@ pub fn write_long_prefill_continuation_bootstrap_probe_json<W: Write>(
             .layer4_prefix_rebuild_checksums
             .iter()
             .any(|checksum| *checksum == 0)
+        || report.layer4_prefix_sparse_dispatches != 10
+        || report.layer4_prefix_sparse_wrapped_model_ranges != 3
+        || report.layer4_prefix_sparse_pointer_matches
+            != report.layer4_prefix_sparse_wrapped_model_ranges
+        || report.layer4_prefix_sparse_checksums != PREFILL_LAYER4_PREFIX_SPARSE_CHECKSUMS
+        || report.layer4_prefix_complete_dispatches != 36
+        || report.layer4_prefix_complete_wrapped_model_ranges != 17
+        || report.layer4_prefix_complete_pointer_matches
+            != report.layer4_prefix_complete_wrapped_model_ranges
+        || report.layer4_prefix_complete_hc_checksums
+            != [
+                PREFILL_LAYER4_PREFIX_AFTER_ATTENTION_HC_CHECKSUM,
+                PREFILL_LAYER4_PREFIX_AFTER_FFN_HC_CHECKSUM,
+            ]
         || report.layer4_continuation_boundary_dispatches != 40
         || report.layer4_continuation_boundary_wrapped_model_ranges != 17
         || report.layer4_continuation_boundary_pointer_matches
@@ -8187,6 +8218,49 @@ pub fn write_long_prefill_continuation_bootstrap_probe_json<W: Write>(
         report.summed_wall_ms,
         report.summed_gpu_ms,
     )?;
+    Ok(())
+}
+
+pub fn write_long_prefill_continuation_bootstrap_probe_json<W: Write>(
+    output: &mut W,
+    report: &LongPrefillContinuationBootstrapProbeReport,
+) -> Result<()> {
+    let mut payload = Vec::new();
+    write_long_prefill_continuation_bootstrap_probe_json_payload(&mut payload, report)?;
+    let rendered = String::from_utf8(payload).map_err(|error| {
+        Error::invalid(format!(
+            "long-prefill continuation bootstrap JSON was not UTF-8: {error}"
+        ))
+    })?;
+    let boundary = "  \"layer4_continuation_boundary\": ";
+    let insertion = format!(
+        "  \"layer4_prefix_complete\": {{\"start\": 0, \"rows\": 4096, \"sparse_attention\": {{\"dispatches\": {}, \"wrapped_model_ranges\": {}, \"pointer_matches\": {}, \"kernels\": [\"kernel_dsv4_indexer_scores_tiled\", \"kernel_topk_stream512\", \"kernel_dsv4_sort_i32_rows_asc\", \"kernel_dsv4_indexed_mixed_attention_heads8\"], \"checksums\": {:?}, \"c0_bitwise_match\": true}}, \"attention_ffn_tail\": {{\"combined_dispatches\": {}, \"combined_wrapped_model_ranges\": {}, \"combined_pointer_matches\": {}, \"hc_after_attention_checksum\": {}, \"hc_after_ffn_checksum\": {}, \"c0_bitwise_match\": true}}, \"complete_prefix_c0_claim\": true}},\n",
+        report.layer4_prefix_sparse_dispatches,
+        report.layer4_prefix_sparse_wrapped_model_ranges,
+        report.layer4_prefix_sparse_pointer_matches,
+        report.layer4_prefix_sparse_checksums,
+        report.layer4_prefix_complete_dispatches,
+        report.layer4_prefix_complete_wrapped_model_ranges,
+        report.layer4_prefix_complete_pointer_matches,
+        report.layer4_prefix_complete_hc_checksums[0],
+        report.layer4_prefix_complete_hc_checksums[1],
+    );
+    if !rendered.contains(boundary) {
+        return Err(Error::invalid(
+            "long-prefill continuation bootstrap JSON lost the layer-4 boundary",
+        ));
+    }
+    let rendered = rendered.replacen(boundary, &(insertion + boundary), 1);
+    let continuation_claim = "  \"complete_layer4_continuation_boundary_c0_claim\": true,";
+    let prefix_claim =
+        "  \"complete_layer4_prefix_c0_claim\": true,\n  \"complete_layer4_continuation_boundary_c0_claim\": true,";
+    if !rendered.contains(continuation_claim) {
+        return Err(Error::invalid(
+            "long-prefill continuation bootstrap JSON lost the layer-4 claim",
+        ));
+    }
+    let rendered = rendered.replacen(continuation_claim, prefix_claim, 1);
+    output.write_all(rendered.as_bytes())?;
     Ok(())
 }
 
@@ -21129,6 +21203,14 @@ mod imp {
         layer4_prefix_rebuild_wrapped_model_ranges: u32,
         layer4_prefix_rebuild_pointer_matches: u32,
         layer4_prefix_rebuild_checksums: [u64; 10],
+        layer4_prefix_sparse_dispatches: u32,
+        layer4_prefix_sparse_wrapped_model_ranges: u32,
+        layer4_prefix_sparse_pointer_matches: u32,
+        layer4_prefix_sparse_checksums: [u64; 5],
+        layer4_prefix_complete_dispatches: u32,
+        layer4_prefix_complete_wrapped_model_ranges: u32,
+        layer4_prefix_complete_pointer_matches: u32,
+        layer4_prefix_complete_hc_checksums: [u64; 2],
         layer4_boundary_dispatches: u32,
         layer4_boundary_wrapped_model_ranges: u32,
         layer4_boundary_pointer_matches: u32,
@@ -22897,6 +22979,22 @@ mod imp {
             error: *mut c_char,
             error_bytes: usize,
         ) -> i32;
+        fn rust_star_metal_run_prefill_layer4_prefix_sparse_batch(
+            context: *mut c_void,
+            model_mapping: *const c_void,
+            model_bytes: u64,
+            indexer_q_offset: u64,
+            indexer_q_bytes: u64,
+            indexer_weight_offset: u64,
+            indexer_weight_bytes: u64,
+            sinks_offset: u64,
+            sinks_bytes: u64,
+            checksums: *mut u64,
+            checksum_capacity: usize,
+            result: *mut RawSparseIndexedResult,
+            error: *mut c_char,
+            error_bytes: usize,
+        ) -> i32;
         fn rust_star_metal_run_prefill_layer3_continuation_ingress(
             context: *mut c_void,
             model_mapping: *const c_void,
@@ -23000,6 +23098,13 @@ mod imp {
         fn rust_star_metal_checksum_prefill_layer4_continuation_hc(
             context: *mut c_void,
             checksum: *mut u64,
+            error: *mut c_char,
+            error_bytes: usize,
+        ) -> i32;
+        fn rust_star_metal_checksum_prefill_layer4_prefix_hc(
+            context: *mut c_void,
+            checksums: *mut u64,
+            checksum_capacity: usize,
             error: *mut c_char,
             error_bytes: usize,
         ) -> i32;
@@ -26404,6 +26509,17 @@ mod imp {
             layer4_prefix_rebuild_pointer_matches: layer23_loop
                 .layer4_prefix_rebuild_pointer_matches,
             layer4_prefix_rebuild_checksums: layer23_loop.layer4_prefix_rebuild_checksums,
+            layer4_prefix_sparse_dispatches: layer23_loop.layer4_prefix_sparse_dispatches,
+            layer4_prefix_sparse_wrapped_model_ranges: layer23_loop
+                .layer4_prefix_sparse_wrapped_model_ranges,
+            layer4_prefix_sparse_pointer_matches: layer23_loop.layer4_prefix_sparse_pointer_matches,
+            layer4_prefix_sparse_checksums: layer23_loop.layer4_prefix_sparse_checksums,
+            layer4_prefix_complete_dispatches: layer23_loop.layer4_prefix_complete_dispatches,
+            layer4_prefix_complete_wrapped_model_ranges: layer23_loop
+                .layer4_prefix_complete_wrapped_model_ranges,
+            layer4_prefix_complete_pointer_matches: layer23_loop
+                .layer4_prefix_complete_pointer_matches,
+            layer4_prefix_complete_hc_checksums: layer23_loop.layer4_prefix_complete_hc_checksums,
             layer4_continuation_boundary_dispatches: layer23_loop.layer4_boundary_dispatches,
             layer4_continuation_boundary_wrapped_model_ranges: layer23_loop
                 .layer4_boundary_wrapped_model_ranges,
@@ -44924,6 +45040,125 @@ mod imp {
             layer4_prefix_raw.wrapped_model_ranges;
         layer23_loop.layer4_prefix_rebuild_pointer_matches = layer4_prefix_raw.pointer_matches;
         layer23_loop.layer4_prefix_rebuild_checksums = layer4_prefix_checksums;
+        let mut layer4_prefix_sparse_checksums = [0_u64; 5];
+        let mut layer4_prefix_sparse_raw = RawSparseIndexedResult::default();
+        let layer4_prefix_sparse_succeeded = unsafe {
+            rust_star_metal_run_prefill_layer4_prefix_sparse_batch(
+                context.0,
+                model.mapping_pointer(),
+                model.bytes(),
+                layer4_indexer_q.absolute_offset,
+                layer4_indexer_q.bytes,
+                layer4_indexer_weight.absolute_offset,
+                layer4_indexer_weight.bytes,
+                layer4_sinks.absolute_offset,
+                layer4_sinks.bytes,
+                layer4_prefix_sparse_checksums.as_mut_ptr(),
+                layer4_prefix_sparse_checksums.len(),
+                &mut layer4_prefix_sparse_raw,
+                error.as_mut_ptr(),
+                error.len(),
+            )
+        };
+        if layer4_prefix_sparse_succeeded == 0 {
+            return Err(Error::invalid(format!(
+                "Metal production-batch layer-4 prefix sparse attention failed: {}",
+                error_text(&error)
+            )));
+        }
+        if layer4_prefix_sparse_raw.dispatches != 10
+            || layer4_prefix_sparse_raw.wrapped_model_ranges != 3
+            || layer4_prefix_sparse_raw.pointer_matches != 3
+            || layer4_prefix_sparse_checksums != PREFILL_LAYER4_PREFIX_SPARSE_CHECKSUMS
+        {
+            return Err(Error::invalid(format!(
+                "Metal production-batch layer-4 prefix sparse attention is invalid: dispatches={}, mappings={}/{}, checksums={:?} expected={:?}",
+                layer4_prefix_sparse_raw.dispatches,
+                layer4_prefix_sparse_raw.pointer_matches,
+                layer4_prefix_sparse_raw.wrapped_model_ranges,
+                layer4_prefix_sparse_checksums,
+                PREFILL_LAYER4_PREFIX_SPARSE_CHECKSUMS,
+            )));
+        }
+        layer23_loop.layer4_prefix_sparse_dispatches = layer4_prefix_sparse_raw.dispatches;
+        layer23_loop.layer4_prefix_sparse_wrapped_model_ranges =
+            layer4_prefix_sparse_raw.wrapped_model_ranges;
+        layer23_loop.layer4_prefix_sparse_pointer_matches =
+            layer4_prefix_sparse_raw.pointer_matches;
+        layer23_loop.layer4_prefix_sparse_checksums = layer4_prefix_sparse_checksums;
+        let layer4_prefix_tail_succeeded = unsafe {
+            rust_star_metal_run_prefill_layer2_continuation_tail(
+                context.0,
+                model.mapping_pointer(),
+                model.bytes(),
+                &layer4_weights,
+                4,
+                0,
+                4_096,
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                &mut layer4_prefix_sparse_raw,
+                error.as_mut_ptr(),
+                error.len(),
+            )
+        };
+        if layer4_prefix_tail_succeeded == 0 {
+            return Err(Error::invalid(format!(
+                "Metal production-batch layer-4 prefix attention/FFN tail failed: {}",
+                error_text(&error)
+            )));
+        }
+        let mut layer4_prefix_hc_checksums = [0_u64; 2];
+        let layer4_prefix_checksum_succeeded = unsafe {
+            rust_star_metal_checksum_prefill_layer4_prefix_hc(
+                context.0,
+                layer4_prefix_hc_checksums.as_mut_ptr(),
+                layer4_prefix_hc_checksums.len(),
+                error.as_mut_ptr(),
+                error.len(),
+            )
+        };
+        if layer4_prefix_checksum_succeeded == 0 {
+            return Err(Error::invalid(format!(
+                "Metal production-batch layer-4 prefix HC checksum failed: {}",
+                error_text(&error)
+            )));
+        }
+        let expected_layer4_prefix_hc_checksums = [
+            PREFILL_LAYER4_PREFIX_AFTER_ATTENTION_HC_CHECKSUM,
+            PREFILL_LAYER4_PREFIX_AFTER_FFN_HC_CHECKSUM,
+        ];
+        if layer4_prefix_sparse_raw.dispatches != 36
+            || layer4_prefix_sparse_raw.wrapped_model_ranges != 17
+            || layer4_prefix_sparse_raw.pointer_matches != 17
+            || layer4_prefix_hc_checksums != expected_layer4_prefix_hc_checksums
+        {
+            return Err(Error::invalid(format!(
+                "Metal production-batch layer-4 prefix tail is invalid: dispatches={}, mappings={}/{}, HC checksums={:?} expected={:?}",
+                layer4_prefix_sparse_raw.dispatches,
+                layer4_prefix_sparse_raw.pointer_matches,
+                layer4_prefix_sparse_raw.wrapped_model_ranges,
+                layer4_prefix_hc_checksums,
+                expected_layer4_prefix_hc_checksums,
+            )));
+        }
+        layer23_loop.layer4_prefix_complete_dispatches = layer4_prefix_sparse_raw.dispatches;
+        layer23_loop.layer4_prefix_complete_wrapped_model_ranges =
+            layer4_prefix_sparse_raw.wrapped_model_ranges;
+        layer23_loop.layer4_prefix_complete_pointer_matches =
+            layer4_prefix_sparse_raw.pointer_matches;
+        layer23_loop.layer4_prefix_complete_hc_checksums = layer4_prefix_hc_checksums;
         let mut layer4_boundary_raw = RawSparseIndexedResult::default();
         let layer4_boundary_succeeded = unsafe {
             rust_star_metal_run_prefill_layer4_continuation_boundary(
@@ -54717,6 +54952,17 @@ mod tests {
             layer4_prefix_rebuild_wrapped_model_ranges: 17,
             layer4_prefix_rebuild_pointer_matches: 17,
             layer4_prefix_rebuild_checksums: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+            layer4_prefix_sparse_dispatches: 10,
+            layer4_prefix_sparse_wrapped_model_ranges: 3,
+            layer4_prefix_sparse_pointer_matches: 3,
+            layer4_prefix_sparse_checksums: PREFILL_LAYER4_PREFIX_SPARSE_CHECKSUMS,
+            layer4_prefix_complete_dispatches: 36,
+            layer4_prefix_complete_wrapped_model_ranges: 17,
+            layer4_prefix_complete_pointer_matches: 17,
+            layer4_prefix_complete_hc_checksums: [
+                PREFILL_LAYER4_PREFIX_AFTER_ATTENTION_HC_CHECKSUM,
+                PREFILL_LAYER4_PREFIX_AFTER_FFN_HC_CHECKSUM,
+            ],
             layer4_continuation_boundary_dispatches: 40,
             layer4_continuation_boundary_wrapped_model_ranges: 17,
             layer4_continuation_boundary_pointer_matches: 17,
@@ -54784,6 +55030,10 @@ mod tests {
         assert!(text.contains("\"complete_layer3_second_chunk_output_checksum_claim\": true"));
         assert!(text.contains("\"layer3_prefix_boundary\": {\"checksums\":"));
         assert!(text.contains("\"layer4_prefix_rebuild\": {\"start\": 0"));
+        assert!(text.contains("\"layer4_prefix_complete\": {\"start\": 0"));
+        assert!(text.contains("\"complete_prefix_c0_claim\": true"));
+        assert!(text.contains("kernel_dsv4_indexer_scores_tiled"));
+        assert!(text.contains("\"complete_layer4_prefix_c0_claim\": true"));
         assert!(text.contains("\"matching_production_checksums\": 10"));
         assert!(text.contains("\"compressed_cache_checksum_match\": true"));
         assert!(text.contains("\"complete_layer4_continuation_boundary_c0_claim\": true"));
