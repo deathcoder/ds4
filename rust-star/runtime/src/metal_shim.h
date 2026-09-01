@@ -2208,6 +2208,30 @@ int rust_star_metal_run_prefill_layer3_continuation_batch_attention(
     char *error,
     size_t error_bytes);
 
+/* Rebinds the generic retained ratio-128 continuation slot to layer 5 after
+ * the complete layer-4 second chunk has been produced. */
+int rust_star_metal_begin_prefill_layer5_continuation(
+    void *context,
+    char *error,
+    size_t error_bytes);
+
+/* Makes one 32-row layer-4 continuation HC tile available to the generic
+ * ratio-128 ingress path while preserving its global 4096-based position. */
+int rust_star_metal_prepare_prefill_layer5_continuation_tile(
+    void *context,
+    uint32_t tile_start,
+    char *error,
+    size_t error_bytes);
+
+/* Checksums the layer-5 continuation compressed KV and republishes the
+ * expanded Q/KV/compressed state as the retained layer-5 boundary. */
+int rust_star_metal_finish_prefill_layer5_continuation(
+    void *context,
+    uint64_t *checksums,
+    size_t checksum_capacity,
+    char *error,
+    size_t error_bytes);
+
 /* Consumes one retained production-batch layer-3 HC chunk and executes the
  * full 4096-row layer-4 ingress/QKV plus paired ratio-4 compressor boundary.
  * Position start must be 0 or 4096.

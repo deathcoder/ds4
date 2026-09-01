@@ -703,9 +703,9 @@ not labeled C0. The complete exact 2K prefill remains an independent regression
 control. The next boundary must carry the retained 4K state through layers
 2--42 and then preserve it while beginning the second 4K chunk.
 
-## Retained 4K-to-8K layer-2 through layer-4 continuation boundary
+## Retained 4K-to-8K layer-2 through layer-5 continuation boundary
 
-Schema: `rust-star-long-prefill-continuation-bootstrap-probe-v15`.
+Schema: `rust-star-long-prefill-continuation-bootstrap-probe-v16`.
 
 `long-prefill-continuation-bootstrap-probe` completes the first 4K transformer,
 then preserves that context while 64 native 64-row tiles append positions
@@ -785,8 +785,17 @@ attention. The existing grouped attention-output and biased routed/shared FFN
 schedule consumes each live KQV-back tile and retains the complete final HC.
 Sixteen aggregate attention/FFN checksums plus the final-HC checksum match the
 production capture over 4,608 dispatches and 2,176/2,176 no-copy mappings.
-The artifact claims complete layer-4 continuation, but not layers 5--42, the
-complete 8K transformer, logits, throughput, or a speedup.
+The artifact claims complete layer-4 continuation. Version 16 binds that exact
+final HC directly into layer 5 and executes all 128 continuation ingress/QKV
+tiles plus DwarfStar's aligned 4,096-row ratio-128 compressor. Nine aggregate
+ingress hashes and the 32-row compressed-continuation hash match two
+byte-identical fresh-process oracle captures over 1,287 dispatches and
+1,156/1,156 no-copy mappings. The pre-4,096 layer-5 Q/KV/compressed history
+retained by the current first-chunk path is not exact, so the artifact does not
+claim layer-5 attention or FFN. Complete layer 5, layers 6--42, the complete 8K
+transformer, logits, throughput, and a speedup remain unclaimed. The next
+correctness prerequisite is an exact native layer-4 prefix output feeding an
+exact layer-5 prefix rebuild.
 
 ## Model residency before measured decode
 

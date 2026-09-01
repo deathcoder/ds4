@@ -46315,6 +46315,7 @@ int rust_star_metal_run_prefill_layer3_continuation_ingress(
         const NSUInteger kv_bytes = (NSUInteger)rows*kv_dim*sizeof(float);
         const NSUInteger q_bytes = (NSUInteger)rows*q_dim*sizeof(float);
         const NSUInteger full_q_bytes = (NSUInteger)8192u*q_dim*sizeof(float);
+        const NSUInteger full_kv_bytes = (NSUInteger)8192u*kv_dim*sizeof(float);
         const NSUInteger full_split_bytes =
             (NSUInteger)8192u*mix_hc*sizeof(float);
         const NSUInteger full_norm_bytes =
@@ -46329,6 +46330,17 @@ int rust_star_metal_run_prefill_layer3_continuation_ingress(
             memcpy(grown_full_q.contents, context.prefillLayer3FullQ.contents,
                    context.prefillLayer3FullQ.length);
             context.prefillLayer3FullQ = grown_full_q;
+        }
+        if (context.prefillLayer3FullKv &&
+            context.prefillLayer3FullKv.length < full_kv_bytes) {
+            id<MTLBuffer> grown_full_kv = [context.device
+                newBufferWithLength:full_kv_bytes
+                options:MTLResourceStorageModeShared];
+            if (!grown_full_kv) return fail_with_message(error, error_bytes,
+                @"failed to grow retained layer-3 KV capacity");
+            memcpy(grown_full_kv.contents, context.prefillLayer3FullKv.contents,
+                   context.prefillLayer3FullKv.length);
+            context.prefillLayer3FullKv = grown_full_kv;
         }
         if (context.prefillLayer3AttnSplit &&
             context.prefillLayer3AttnSplit.length < full_split_bytes) {
@@ -46350,6 +46362,8 @@ int rust_star_metal_run_prefill_layer3_continuation_ingress(
         if (context.prefillKvRows != 8192u || !input_hc ||
             input_hc.length < hc_bytes || !context.prefillLayer3FullQ ||
             context.prefillLayer3FullQ.length < full_q_bytes ||
+            !context.prefillLayer3FullKv ||
+            context.prefillLayer3FullKv.length < full_kv_bytes ||
             !context.prefillLayer3AttnSplit ||
             context.prefillLayer3AttnSplit.length < full_split_bytes ||
             !context.prefillLayer3ContinuationFullNorm ||
@@ -46635,6 +46649,10 @@ int rust_star_metal_run_prefill_layer3_continuation_ingress(
                     toBuffer:context.prefillLayer3FullQ
            destinationOffset:(NSUInteger)tile_start*q_dim*sizeof(float)
                        size:q_bytes];
+        [blit copyFromBuffer:kv_buffer sourceOffset:0
+                    toBuffer:context.prefillLayer3FullKv
+           destinationOffset:(NSUInteger)tile_start*kv_dim*sizeof(float)
+                       size:kv_bytes];
         [blit copyFromBuffer:split_buffer sourceOffset:0
                     toBuffer:context.prefillLayer3AttnSplit
            destinationOffset:(NSUInteger)tile_start*mix_hc*sizeof(float)
@@ -47122,6 +47140,19 @@ int rust_star_metal_run_prefill_layer3_continuation_batch_compressor(
         const NSUInteger compressed_row_bytes = width*sizeof(float);
         const NSUInteger compressed_bytes =
             (NSUInteger)compressed_rows*compressed_row_bytes;
+        if (context.prefillLayer3AttnCompressed &&
+            context.prefillLayer3AttnCompressed.length <
+                (NSUInteger)64u*compressed_row_bytes) {
+            id<MTLBuffer> grown_compressed = [context.device
+                newBufferWithLength:(NSUInteger)64u*compressed_row_bytes
+                options:MTLResourceStorageModeShared];
+            if (!grown_compressed) return fail_with_message(error, error_bytes,
+                @"failed to grow retained layer-3 compressed KV capacity");
+            memcpy(grown_compressed.contents,
+                   context.prefillLayer3AttnCompressed.contents,
+                   context.prefillLayer3AttnCompressed.length);
+            context.prefillLayer3AttnCompressed = grown_compressed;
+        }
         if (!context.prefillLayer3ContinuationFullNorm ||
             context.prefillLayer3ContinuationFullNorm.length < norm_bytes ||
             !context.prefillLayer3AttnCompressed ||
@@ -47432,6 +47463,150 @@ int rust_star_metal_run_prefill_layer3_continuation_batch_attention(
         result->pointer_matches += sinks_match ? 1u : 0u;
         result->wall_ms += monotonic_ms()-wall_start;
         result->gpu_ms += gpu_elapsed_ms(command);
+        return 1;
+    }
+}
+
+int rust_star_metal_begin_prefill_layer5_continuation(
+    void *opaque_context,
+    char *error,
+    size_t error_bytes)
+{
+    enum {
+        prefix_rows = 4096,
+        n_embd = 4096,
+        hc_dim = 16384,
+        mix_hc = 24,
+        q_dim = 32768,
+        kv_dim = 512,
+        compressed_rows = 32,
+        state_rows = 128,
+    };
+    if (!opaque_context) {
+        return fail_with_message(error, error_bytes,
+            @"layer-5 continuation binding received a null context");
+    }
+    @autoreleasepool {
+        RustStarMetalContext *context = (__bridge RustStarMetalContext *)opaque_context;
+        if (context.prefillKvRows != 8192u ||
+            !context.prefillLayer4ContinuationFullAfterFfnHc ||
+            context.prefillLayer4ContinuationFullAfterFfnHc.length <
+                (NSUInteger)prefix_rows*hc_dim*sizeof(float) ||
+            !context.prefillLayer5FullQ ||
+            context.prefillLayer5FullQ.length <
+                (NSUInteger)prefix_rows*q_dim*sizeof(float) ||
+            !context.prefillLayer5FullKv ||
+            context.prefillLayer5FullKv.length <
+                (NSUInteger)prefix_rows*kv_dim*sizeof(float) ||
+            !context.prefillLayer5AttnSplit ||
+            context.prefillLayer5AttnSplit.length <
+                (NSUInteger)prefix_rows*mix_hc*sizeof(float) ||
+            !context.prefillLayer5AttnCompressed ||
+            context.prefillLayer5AttnCompressed.length <
+                (NSUInteger)compressed_rows*kv_dim*sizeof(float) ||
+            !context.prefillLayer5AttnStateKv ||
+            context.prefillLayer5AttnStateKv.length <
+                (NSUInteger)state_rows*kv_dim*sizeof(float) ||
+            !context.prefillLayer5AttnStateScore ||
+            context.prefillLayer5AttnStateScore.length <
+                (NSUInteger)state_rows*kv_dim*sizeof(float)) {
+            return fail_with_message(error, error_bytes,
+                @"layer-5 continuation requires the retained 4K prefix and complete layer-4 continuation");
+        }
+        /* The layer-3 implementation is the generic dense ratio-128 path.
+         * Layer 5 has identical Q/KV/compressor geometry, so publish its
+         * retained buffers through that slot instead of duplicating kernels. */
+        context.prefillLayer3FullQ = context.prefillLayer5FullQ;
+        context.prefillLayer3FullKv = context.prefillLayer5FullKv;
+        context.prefillLayer3InputHc = context.prefillLayer5InputHc;
+        context.prefillLayer3AttnSplit = context.prefillLayer5AttnSplit;
+        context.prefillLayer3AttnCompressed = context.prefillLayer5AttnCompressed;
+        context.prefillLayer3AttnStateKv = context.prefillLayer5AttnStateKv;
+        context.prefillLayer3AttnStateScore = context.prefillLayer5AttnStateScore;
+        context.prefillLayer3AfterAttentionHc =
+            context.prefillLayer5AfterAttentionHc;
+        context.prefillLayer3AfterFfnHc = context.prefillLayer5AfterFfnHc;
+        context.prefillLayer3ContinuationFullNorm = nil;
+        context.prefillLayer3ContinuationFullAfterFfnHc = nil;
+        context.prefillLayer2ContinuationFullAfterFfnHc =
+            context.prefillLayer4ContinuationFullAfterFfnHc;
+        return 1;
+    }
+}
+
+int rust_star_metal_prepare_prefill_layer5_continuation_tile(
+    void *opaque_context,
+    uint32_t tile_start,
+    char *error,
+    size_t error_bytes)
+{
+    enum { rows = 32, continuation_start = 4096, hc_dim = 16384 };
+    if (!opaque_context || tile_start < continuation_start ||
+        tile_start > 8160u || tile_start%rows != 0u) {
+        return fail_with_message(error, error_bytes,
+            @"layer-5 continuation tile position is invalid");
+    }
+    @autoreleasepool {
+        RustStarMetalContext *context = (__bridge RustStarMetalContext *)opaque_context;
+        const NSUInteger bytes = (NSUInteger)rows*hc_dim*sizeof(float);
+        id<MTLBuffer> source = context.prefillLayer4ContinuationFullAfterFfnHc;
+        const uint32_t source_row = tile_start-continuation_start;
+        const NSUInteger offset =
+            (NSUInteger)source_row*hc_dim*sizeof(float);
+        if (!source || source.length < offset+bytes) {
+            return fail_with_message(error, error_bytes,
+                @"complete layer-4 continuation HC is unavailable");
+        }
+        id<MTLBuffer> tile = [context.device
+            newBufferWithBytes:(const uint8_t *)
+                source.contents+offset
+            length:bytes
+            options:MTLResourceStorageModeShared];
+        if (!tile) return fail_with_message(error, error_bytes,
+            @"failed to stage a layer-5 continuation input tile");
+        context.prefillLayer2ContinuationAfterFfnHc = tile;
+        return 1;
+    }
+}
+
+int rust_star_metal_finish_prefill_layer5_continuation(
+    void *opaque_context,
+    uint64_t *checksums,
+    size_t checksum_capacity,
+    char *error,
+    size_t error_bytes)
+{
+    enum {
+        kv_dim = 512,
+        compressed_offset_rows = 32,
+        compressed_rows = 32,
+        checksum_count = 1,
+    };
+    if (!opaque_context || !checksums || checksum_capacity < checksum_count) {
+        return fail_with_message(error, error_bytes,
+            @"layer-5 continuation checksum output is invalid");
+    }
+    @autoreleasepool {
+        RustStarMetalContext *context = (__bridge RustStarMetalContext *)opaque_context;
+        const NSUInteger compressed_words =
+            (NSUInteger)compressed_rows*kv_dim;
+        if (!context.prefillLayer3AttnCompressed ||
+            context.prefillLayer3AttnCompressed.length <
+                (NSUInteger)(compressed_offset_rows+compressed_rows)*kv_dim*sizeof(uint32_t)) {
+            return fail_with_message(error, error_bytes,
+                @"complete layer-5 continuation state is unavailable");
+        }
+        checksums[0] = fnv1a_u32_words(
+            (const uint8_t *)context.prefillLayer3AttnCompressed.contents+
+                (NSUInteger)compressed_offset_rows*kv_dim*sizeof(uint32_t),
+            compressed_words);
+
+        context.prefillLayer5FullQ = context.prefillLayer3FullQ;
+        context.prefillLayer5FullKv = context.prefillLayer3FullKv;
+        context.prefillLayer5AttnSplit = context.prefillLayer3AttnSplit;
+        context.prefillLayer5AttnCompressed = context.prefillLayer3AttnCompressed;
+        context.prefillLayer5AttnStateKv = context.prefillLayer3AttnStateKv;
+        context.prefillLayer5AttnStateScore = context.prefillLayer3AttnStateScore;
         return 1;
     }
 }

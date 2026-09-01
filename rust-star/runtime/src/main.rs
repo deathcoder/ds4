@@ -3347,7 +3347,15 @@ fn run_long_prefill_continuation_bootstrap_probe_command(arguments: Vec<OsString
         report.layer4_continuation_wrapped_model_ranges,
     );
     println!(
-        "scope: complete retained layers 2, 3, and 4 match the second 4K chunk oracle. Layers 5..42, complete 8K transformer output, output-logit C0, and throughput remain unclaimed"
+        "layer-5 continuation boundary: {} exact 32-row ingress/QKV tiles plus the aligned ratio-128 compressor use {} dispatches and {}/{} no-copy mappings; all 9 ingress checksums and compressed checksum={} match the 8K oracle",
+        report.layer5_continuation_tiles,
+        report.layer5_continuation_dispatches,
+        report.layer5_continuation_pointer_matches,
+        report.layer5_continuation_wrapped_model_ranges,
+        report.layer5_continuation_compressed_checksum,
+    );
+    println!(
+        "scope: complete retained layers 2, 3, and 4 match the second 4K chunk oracle; layer 5 is exact through ingress/QKV and ratio-128 compression. Layer-5 attention/FFN, layers 6..42, complete 8K transformer output, output-logit C0, and throughput remain unclaimed"
     );
     if let Some(path) = json_path {
         write_long_prefill_continuation_bootstrap_probe_file(&path, &report)?;
@@ -5553,7 +5561,7 @@ fn long_prefill_bootstrap_probe_usage() -> &'static str {
 }
 
 fn long_prefill_continuation_bootstrap_probe_usage() -> &'static str {
-    "usage: rust-star long-prefill-continuation-bootstrap-probe MODEL.gguf [--json PATH]\n\nRuns the first 4,096-token chunk through the complete native transformer, then advances positions 4,096--8,191 in the same retained Metal context. It verifies the layer-2 sparse transition, complete layers 2 and 3, and the full layer-4 ingress/QKV, paired ratio-4 compressors, sparse indexed top-512 attention, biased routed/shared FFN, and final HC against the repeated production oracle. This diagnostic does not claim layers 5--42, the complete 8K transformer output, output-logit C0, throughput, or a speedup."
+    "usage: rust-star long-prefill-continuation-bootstrap-probe MODEL.gguf [--json PATH]\n\nRuns the first 4,096-token chunk through the complete native transformer, then advances positions 4,096--8,191 in the same retained Metal context. It verifies the layer-2 sparse transition, complete layers 2 and 3, the complete layer-4 continuation, and layer-5 continuation ingress/QKV plus ratio-128 compression against the repeated production oracle. This diagnostic does not claim layer-5 attention/FFN, layers 6--42, the complete 8K transformer output, output-logit C0, throughput, or a speedup."
 }
 
 fn long_prefill_sequential_continuation_probe_usage() -> &'static str {
