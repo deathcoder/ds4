@@ -29,7 +29,7 @@ pub const PREFILL_LAYERS012_COMPRESSOR_LOOP_PROBE_SCHEMA: &str =
     "rust-star-prefill-layers012-compressor-loop-probe-v1";
 pub const LONG_PREFILL_BOOTSTRAP_PROBE_SCHEMA: &str = "rust-star-long-prefill-bootstrap-probe-v1";
 pub const LONG_PREFILL_CONTINUATION_BOOTSTRAP_PROBE_SCHEMA: &str =
-    "rust-star-long-prefill-continuation-bootstrap-probe-v17";
+    "rust-star-long-prefill-continuation-bootstrap-probe-v18";
 pub const LONG_PREFILL_SEQUENTIAL_CONTINUATION_PROBE_SCHEMA: &str =
     "rust-star-long-prefill-sequential-continuation-probe-v1";
 pub const LONG_PREFILL_TRANSFORMER_PROBE_SCHEMA: &str =
@@ -203,6 +203,16 @@ const PREFILL_LAYER4_PREFIX_SPARSE_CHECKSUMS: [u64; 5] = [
 ];
 const PREFILL_LAYER4_PREFIX_AFTER_ATTENTION_HC_CHECKSUM: u64 = 0xcc1c_7a93_6941_4e6e;
 const PREFILL_LAYER4_PREFIX_AFTER_FFN_HC_CHECKSUM: u64 = 0x275a_e949_590b_7d57;
+const PREFILL_LAYER5_PREFIX_BOUNDARY_CHECKSUMS: [u64; 3] = [
+    0x191c_95d9_1a9d_a7a1,
+    0xb5c2_f697_ec4a_f1fd,
+    0x7c2c_829e_e416_5b79,
+];
+const PREFILL_LAYER5_PREFIX_TAIL_CHECKSUMS: [u64; 3] = [
+    0xe05e_1132_32fe_a8ad,
+    0xe97d_166c_a24a_b6c0,
+    0x8f4a_265e_0db0_64be,
+];
 const PREFILL_LAYER5_CONTINUATION_INGRESS_CHECKSUMS: [u64; 9] = [
     0x053c_21ea_4926_a68d,
     0x9bd7_2d04_e0fb_9873,
@@ -3947,6 +3957,14 @@ pub struct LongPrefillContinuationBootstrapProbeReport {
     pub layer4_prefix_complete_wrapped_model_ranges: u32,
     pub layer4_prefix_complete_pointer_matches: u32,
     pub layer4_prefix_complete_hc_checksums: [u64; 2],
+    pub layer5_prefix_boundary_dispatches: u32,
+    pub layer5_prefix_boundary_wrapped_model_ranges: u32,
+    pub layer5_prefix_boundary_pointer_matches: u32,
+    pub layer5_prefix_boundary_checksums: [u64; 3],
+    pub layer5_prefix_complete_dispatches: u32,
+    pub layer5_prefix_complete_wrapped_model_ranges: u32,
+    pub layer5_prefix_complete_pointer_matches: u32,
+    pub layer5_prefix_tail_checksums: [u64; 3],
     pub layer4_continuation_boundary_dispatches: u32,
     pub layer4_continuation_boundary_wrapped_model_ranges: u32,
     pub layer4_continuation_boundary_pointer_matches: u32,
@@ -8032,6 +8050,16 @@ fn write_long_prefill_continuation_bootstrap_probe_json_payload<W: Write>(
                 PREFILL_LAYER4_PREFIX_AFTER_ATTENTION_HC_CHECKSUM,
                 PREFILL_LAYER4_PREFIX_AFTER_FFN_HC_CHECKSUM,
             ]
+        || report.layer5_prefix_boundary_dispatches != 17
+        || report.layer5_prefix_boundary_wrapped_model_ranges != 13
+        || report.layer5_prefix_boundary_pointer_matches
+            != report.layer5_prefix_boundary_wrapped_model_ranges
+        || report.layer5_prefix_boundary_checksums != PREFILL_LAYER5_PREFIX_BOUNDARY_CHECKSUMS
+        || report.layer5_prefix_complete_dispatches != 49
+        || report.layer5_prefix_complete_wrapped_model_ranges != 28
+        || report.layer5_prefix_complete_pointer_matches
+            != report.layer5_prefix_complete_wrapped_model_ranges
+        || report.layer5_prefix_tail_checksums != PREFILL_LAYER5_PREFIX_TAIL_CHECKSUMS
         || report.layer4_continuation_boundary_dispatches != 40
         || report.layer4_continuation_boundary_wrapped_model_ranges != 17
         || report.layer4_continuation_boundary_pointer_matches
@@ -8251,6 +8279,28 @@ pub fn write_long_prefill_continuation_bootstrap_probe_json<W: Write>(
         ));
     }
     let rendered = rendered.replacen(boundary, &(insertion + boundary), 1);
+    let layer5_boundary = "  \"layer5_continuation_boundary\": ";
+    let layer5_insertion = format!(
+        "  \"layer5_prefix_complete\": {{\"start\": 0, \"rows\": 4096, \"ingress_qkv_compressor\": {{\"dispatches\": {}, \"wrapped_model_ranges\": {}, \"pointer_matches\": {}, \"q_current_checksum\": {}, \"kv_current_checksum\": {}, \"attention_compressed_checksum\": {}, \"c0_bitwise_match\": true}}, \"attention_ffn_tail\": {{\"combined_dispatches\": {}, \"combined_wrapped_model_ranges\": {}, \"combined_pointer_matches\": {}, \"kqv_back_checksum\": {}, \"hc_after_attention_checksum\": {}, \"hc_after_ffn_checksum\": {}, \"flash_attention_kernel\": \"kernel_flash_attn_ext_f16_dk512_dv512_nsg8_kvpad\", \"c0_bitwise_match\": true}}, \"complete_prefix_c0_claim\": true}},\n",
+        report.layer5_prefix_boundary_dispatches,
+        report.layer5_prefix_boundary_wrapped_model_ranges,
+        report.layer5_prefix_boundary_pointer_matches,
+        report.layer5_prefix_boundary_checksums[0],
+        report.layer5_prefix_boundary_checksums[1],
+        report.layer5_prefix_boundary_checksums[2],
+        report.layer5_prefix_complete_dispatches,
+        report.layer5_prefix_complete_wrapped_model_ranges,
+        report.layer5_prefix_complete_pointer_matches,
+        report.layer5_prefix_tail_checksums[0],
+        report.layer5_prefix_tail_checksums[1],
+        report.layer5_prefix_tail_checksums[2],
+    );
+    if !rendered.contains(layer5_boundary) {
+        return Err(Error::invalid(
+            "long-prefill continuation bootstrap JSON lost the layer-5 boundary",
+        ));
+    }
+    let rendered = rendered.replacen(layer5_boundary, &(layer5_insertion + layer5_boundary), 1);
     let continuation_claim = "  \"complete_layer4_continuation_boundary_c0_claim\": true,";
     let prefix_claim =
         "  \"complete_layer4_prefix_c0_claim\": true,\n  \"complete_layer4_continuation_boundary_c0_claim\": true,";
@@ -8260,6 +8310,14 @@ pub fn write_long_prefill_continuation_bootstrap_probe_json<W: Write>(
         ));
     }
     let rendered = rendered.replacen(continuation_claim, prefix_claim, 1);
+    let layer5_ingress_claim = "  \"layer5_continuation_ingress_compressor_c0_claim\": true,";
+    let layer5_prefix_claim = "  \"complete_layer5_prefix_c0_claim\": true,\n  \"layer5_continuation_ingress_compressor_c0_claim\": true,";
+    if !rendered.contains(layer5_ingress_claim) {
+        return Err(Error::invalid(
+            "long-prefill continuation bootstrap JSON lost the layer-5 ingress claim",
+        ));
+    }
+    let rendered = rendered.replacen(layer5_ingress_claim, layer5_prefix_claim, 1);
     output.write_all(rendered.as_bytes())?;
     Ok(())
 }
@@ -21211,6 +21269,14 @@ mod imp {
         layer4_prefix_complete_wrapped_model_ranges: u32,
         layer4_prefix_complete_pointer_matches: u32,
         layer4_prefix_complete_hc_checksums: [u64; 2],
+        layer5_prefix_boundary_dispatches: u32,
+        layer5_prefix_boundary_wrapped_model_ranges: u32,
+        layer5_prefix_boundary_pointer_matches: u32,
+        layer5_prefix_boundary_checksums: [u64; 3],
+        layer5_prefix_complete_dispatches: u32,
+        layer5_prefix_complete_wrapped_model_ranges: u32,
+        layer5_prefix_complete_pointer_matches: u32,
+        layer5_prefix_tail_checksums: [u64; 3],
         layer4_boundary_dispatches: u32,
         layer4_boundary_wrapped_model_ranges: u32,
         layer4_boundary_pointer_matches: u32,
@@ -23038,6 +23104,7 @@ mod imp {
             model_bytes: u64,
             sinks_offset: u64,
             sinks_bytes: u64,
+            position_start: u32,
             result: *mut RawSparseIndexedResult,
             error: *mut c_char,
             error_bytes: usize,
@@ -23047,7 +23114,31 @@ mod imp {
             model_mapping: *const c_void,
             model_bytes: u64,
             compressor: *const RawPrefillCompressorWeights,
+            position_start: u32,
             result: *mut RawSparseIndexedResult,
+            error: *mut c_char,
+            error_bytes: usize,
+        ) -> i32;
+        fn rust_star_metal_run_prefill_layer5_prefix_ingress(
+            context: *mut c_void,
+            model_mapping: *const c_void,
+            model_bytes: u64,
+            weights: *const RawPrefillLayerWeights,
+            result: *mut RawSparseIndexedResult,
+            error: *mut c_char,
+            error_bytes: usize,
+        ) -> i32;
+        fn rust_star_metal_checksum_prefill_layer5_prefix(
+            context: *mut c_void,
+            checksums: *mut u64,
+            checksum_capacity: usize,
+            error: *mut c_char,
+            error_bytes: usize,
+        ) -> i32;
+        fn rust_star_metal_checksum_prefill_layer5_prefix_tail(
+            context: *mut c_void,
+            checksums: *mut u64,
+            checksum_capacity: usize,
             error: *mut c_char,
             error_bytes: usize,
         ) -> i32;
@@ -26520,6 +26611,18 @@ mod imp {
             layer4_prefix_complete_pointer_matches: layer23_loop
                 .layer4_prefix_complete_pointer_matches,
             layer4_prefix_complete_hc_checksums: layer23_loop.layer4_prefix_complete_hc_checksums,
+            layer5_prefix_boundary_dispatches: layer23_loop.layer5_prefix_boundary_dispatches,
+            layer5_prefix_boundary_wrapped_model_ranges: layer23_loop
+                .layer5_prefix_boundary_wrapped_model_ranges,
+            layer5_prefix_boundary_pointer_matches: layer23_loop
+                .layer5_prefix_boundary_pointer_matches,
+            layer5_prefix_boundary_checksums: layer23_loop.layer5_prefix_boundary_checksums,
+            layer5_prefix_complete_dispatches: layer23_loop.layer5_prefix_complete_dispatches,
+            layer5_prefix_complete_wrapped_model_ranges: layer23_loop
+                .layer5_prefix_complete_wrapped_model_ranges,
+            layer5_prefix_complete_pointer_matches: layer23_loop
+                .layer5_prefix_complete_pointer_matches,
+            layer5_prefix_tail_checksums: layer23_loop.layer5_prefix_tail_checksums,
             layer4_continuation_boundary_dispatches: layer23_loop.layer4_boundary_dispatches,
             layer4_continuation_boundary_wrapped_model_ranges: layer23_loop
                 .layer4_boundary_wrapped_model_ranges,
@@ -42594,6 +42697,26 @@ mod imp {
             exact_tensor(model, "blk.5.attn_compressor_gate.weight", 1, &[4096, 512])?;
         let layer5_attn_compressor_norm =
             exact_tensor(model, "blk.5.attn_compressor_norm.weight", 0, &[512])?;
+        let layer5_sinks = exact_tensor(model, "blk.5.attn_sinks.weight", 0, &[64])?;
+        let layer5_output_a = exact_tensor(model, "blk.5.attn_output_a.weight", 8, &[4096, 8192])?;
+        let layer5_output_b = exact_tensor(model, "blk.5.attn_output_b.weight", 8, &[8192, 4096])?;
+        let layer5_ffn_hc_fn = exact_tensor(model, "blk.5.hc_ffn_fn.weight", 1, &[16384, 24])?;
+        let layer5_ffn_hc_scale = exact_tensor(model, "blk.5.hc_ffn_scale.weight", 0, &[3])?;
+        let layer5_ffn_hc_base = exact_tensor(model, "blk.5.hc_ffn_base.weight", 0, &[24])?;
+        let layer5_ffn_norm = exact_tensor(model, "blk.5.ffn_norm.weight", 0, &[4096])?;
+        let layer5_router_gate = exact_tensor(model, "blk.5.ffn_gate_inp.weight", 1, &[4096, 256])?;
+        let layer5_router_bias = exact_tensor(model, "blk.5.exp_probs_b.bias", 0, &[256])?;
+        let layer5_routed_gate =
+            exact_tensor(model, "blk.5.ffn_gate_exps.weight", 16, &[4096, 2048, 256])?;
+        let layer5_routed_up =
+            exact_tensor(model, "blk.5.ffn_up_exps.weight", 16, &[4096, 2048, 256])?;
+        let layer5_routed_down =
+            exact_tensor(model, "blk.5.ffn_down_exps.weight", 10, &[2048, 4096, 256])?;
+        let layer5_shared_gate =
+            exact_tensor(model, "blk.5.ffn_gate_shexp.weight", 8, &[4096, 2048])?;
+        let layer5_shared_up = exact_tensor(model, "blk.5.ffn_up_shexp.weight", 8, &[4096, 2048])?;
+        let layer5_shared_down =
+            exact_tensor(model, "blk.5.ffn_down_shexp.weight", 8, &[2048, 4096])?;
         let tail_weights = RawPrefillLayerWeights {
             ingress: RawPrefillAttentionIngressWeights {
                 hc_fn_offset: 0,
@@ -42806,13 +42929,38 @@ mod imp {
             kv_norm_bytes: layer5_kv_norm.bytes,
             q_b_offset: layer5_q_b.absolute_offset,
             q_b_bytes: layer5_q_b.bytes,
-            attn_sinks_offset: 0,
-            attn_sinks_bytes: 0,
-            attn_output_a_offset: 0,
-            attn_output_a_bytes: 0,
-            attn_output_b_offset: 0,
-            attn_output_b_bytes: 0,
-            ffn: RawPrefillFfnWeights::default(),
+            attn_sinks_offset: layer5_sinks.absolute_offset,
+            attn_sinks_bytes: layer5_sinks.bytes,
+            attn_output_a_offset: layer5_output_a.absolute_offset,
+            attn_output_a_bytes: layer5_output_a.bytes,
+            attn_output_b_offset: layer5_output_b.absolute_offset,
+            attn_output_b_bytes: layer5_output_b.bytes,
+            ffn: RawPrefillFfnWeights {
+                hc_fn_offset: layer5_ffn_hc_fn.absolute_offset,
+                hc_fn_bytes: layer5_ffn_hc_fn.bytes,
+                hc_scale_offset: layer5_ffn_hc_scale.absolute_offset,
+                hc_scale_bytes: layer5_ffn_hc_scale.bytes,
+                hc_base_offset: layer5_ffn_hc_base.absolute_offset,
+                hc_base_bytes: layer5_ffn_hc_base.bytes,
+                norm_offset: layer5_ffn_norm.absolute_offset,
+                norm_bytes: layer5_ffn_norm.bytes,
+                router_gate_offset: layer5_router_gate.absolute_offset,
+                router_gate_bytes: layer5_router_gate.bytes,
+                router_hash_offset: layer5_router_bias.absolute_offset,
+                router_hash_bytes: layer5_router_bias.bytes,
+                routed_gate_offset: layer5_routed_gate.absolute_offset,
+                routed_gate_bytes: layer5_routed_gate.bytes,
+                routed_up_offset: layer5_routed_up.absolute_offset,
+                routed_up_bytes: layer5_routed_up.bytes,
+                routed_down_offset: layer5_routed_down.absolute_offset,
+                routed_down_bytes: layer5_routed_down.bytes,
+                shared_gate_offset: layer5_shared_gate.absolute_offset,
+                shared_gate_bytes: layer5_shared_gate.bytes,
+                shared_up_offset: layer5_shared_up.absolute_offset,
+                shared_up_bytes: layer5_shared_up.bytes,
+                shared_down_offset: layer5_shared_down.absolute_offset,
+                shared_down_bytes: layer5_shared_down.bytes,
+            },
         };
         let layer5_compressor = RawPrefillCompressorWeights {
             attn_ape_offset: layer5_attn_ape.absolute_offset,
@@ -44889,6 +45037,7 @@ mod imp {
                 model.mapping_pointer(),
                 model.bytes(),
                 &layer3_compressor,
+                4_096,
                 &mut production_batch_raw,
                 error.as_mut_ptr(),
                 error.len(),
@@ -44907,6 +45056,7 @@ mod imp {
                 model.bytes(),
                 layer3_sinks.absolute_offset,
                 layer3_sinks.bytes,
+                4_096,
                 &mut production_batch_raw,
                 error.as_mut_ptr(),
                 error.len(),
@@ -45159,6 +45309,164 @@ mod imp {
         layer23_loop.layer4_prefix_complete_pointer_matches =
             layer4_prefix_sparse_raw.pointer_matches;
         layer23_loop.layer4_prefix_complete_hc_checksums = layer4_prefix_hc_checksums;
+        let mut layer5_prefix_raw = RawSparseIndexedResult::default();
+        let layer5_prefix_ingress_succeeded = unsafe {
+            rust_star_metal_run_prefill_layer5_prefix_ingress(
+                context.0,
+                model.mapping_pointer(),
+                model.bytes(),
+                &layer5_weights,
+                &mut layer5_prefix_raw,
+                error.as_mut_ptr(),
+                error.len(),
+            )
+        };
+        if layer5_prefix_ingress_succeeded == 0 {
+            return Err(Error::invalid(format!(
+                "Metal production-batch layer-5 prefix ingress failed: {}",
+                error_text(&error)
+            )));
+        }
+        let layer5_prefix_compressor_succeeded = unsafe {
+            rust_star_metal_run_prefill_layer3_continuation_batch_compressor(
+                context.0,
+                model.mapping_pointer(),
+                model.bytes(),
+                &layer5_compressor,
+                0,
+                &mut layer5_prefix_raw,
+                error.as_mut_ptr(),
+                error.len(),
+            )
+        };
+        if layer5_prefix_compressor_succeeded == 0 {
+            return Err(Error::invalid(format!(
+                "Metal production-batch layer-5 prefix compressor failed: {}",
+                error_text(&error)
+            )));
+        }
+        let mut layer5_prefix_checksums = [0_u64; 3];
+        let layer5_prefix_checksum_succeeded = unsafe {
+            rust_star_metal_checksum_prefill_layer5_prefix(
+                context.0,
+                layer5_prefix_checksums.as_mut_ptr(),
+                layer5_prefix_checksums.len(),
+                error.as_mut_ptr(),
+                error.len(),
+            )
+        };
+        if layer5_prefix_checksum_succeeded == 0 {
+            return Err(Error::invalid(format!(
+                "Metal production-batch layer-5 prefix checksum failed: {}",
+                error_text(&error)
+            )));
+        }
+        if layer5_prefix_raw.dispatches != 17
+            || layer5_prefix_raw.wrapped_model_ranges != 13
+            || layer5_prefix_raw.pointer_matches != 13
+            || layer5_prefix_checksums != PREFILL_LAYER5_PREFIX_BOUNDARY_CHECKSUMS
+        {
+            return Err(Error::invalid(format!(
+                "Metal production-batch layer-5 prefix boundary is invalid: dispatches={}, mappings={}/{}, checksums={:?} expected={:?}",
+                layer5_prefix_raw.dispatches,
+                layer5_prefix_raw.pointer_matches,
+                layer5_prefix_raw.wrapped_model_ranges,
+                layer5_prefix_checksums,
+                PREFILL_LAYER5_PREFIX_BOUNDARY_CHECKSUMS,
+            )));
+        }
+        layer23_loop.layer5_prefix_boundary_dispatches = layer5_prefix_raw.dispatches;
+        layer23_loop.layer5_prefix_boundary_wrapped_model_ranges =
+            layer5_prefix_raw.wrapped_model_ranges;
+        layer23_loop.layer5_prefix_boundary_pointer_matches = layer5_prefix_raw.pointer_matches;
+        layer23_loop.layer5_prefix_boundary_checksums = layer5_prefix_checksums;
+        let layer5_prefix_attention_succeeded = unsafe {
+            rust_star_metal_run_prefill_layer3_continuation_batch_attention(
+                context.0,
+                model.mapping_pointer(),
+                model.bytes(),
+                layer5_sinks.absolute_offset,
+                layer5_sinks.bytes,
+                0,
+                &mut layer5_prefix_raw,
+                error.as_mut_ptr(),
+                error.len(),
+            )
+        };
+        if layer5_prefix_attention_succeeded == 0 {
+            return Err(Error::invalid(format!(
+                "Metal production-batch layer-5 prefix attention failed: {}",
+                error_text(&error)
+            )));
+        }
+        let layer5_prefix_tail_succeeded = unsafe {
+            rust_star_metal_run_prefill_layer2_continuation_tail(
+                context.0,
+                model.mapping_pointer(),
+                model.bytes(),
+                &layer5_weights,
+                5,
+                0,
+                4_096,
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                &mut layer5_prefix_raw,
+                error.as_mut_ptr(),
+                error.len(),
+            )
+        };
+        if layer5_prefix_tail_succeeded == 0 {
+            return Err(Error::invalid(format!(
+                "Metal production-batch layer-5 prefix attention/FFN tail failed: {}",
+                error_text(&error)
+            )));
+        }
+        let mut layer5_prefix_tail_checksums = [0_u64; 3];
+        let layer5_prefix_tail_checksum_succeeded = unsafe {
+            rust_star_metal_checksum_prefill_layer5_prefix_tail(
+                context.0,
+                layer5_prefix_tail_checksums.as_mut_ptr(),
+                layer5_prefix_tail_checksums.len(),
+                error.as_mut_ptr(),
+                error.len(),
+            )
+        };
+        if layer5_prefix_tail_checksum_succeeded == 0 {
+            return Err(Error::invalid(format!(
+                "Metal production-batch layer-5 prefix tail checksum failed: {}",
+                error_text(&error)
+            )));
+        }
+        if layer5_prefix_raw.dispatches != 49
+            || layer5_prefix_raw.wrapped_model_ranges != 28
+            || layer5_prefix_raw.pointer_matches != 28
+            || layer5_prefix_tail_checksums != PREFILL_LAYER5_PREFIX_TAIL_CHECKSUMS
+        {
+            return Err(Error::invalid(format!(
+                "Metal complete layer-5 prefix is invalid: dispatches={}, mappings={}/{}, checksums={:?} expected={:?}",
+                layer5_prefix_raw.dispatches,
+                layer5_prefix_raw.pointer_matches,
+                layer5_prefix_raw.wrapped_model_ranges,
+                layer5_prefix_tail_checksums,
+                PREFILL_LAYER5_PREFIX_TAIL_CHECKSUMS,
+            )));
+        }
+        layer23_loop.layer5_prefix_complete_dispatches = layer5_prefix_raw.dispatches;
+        layer23_loop.layer5_prefix_complete_wrapped_model_ranges =
+            layer5_prefix_raw.wrapped_model_ranges;
+        layer23_loop.layer5_prefix_complete_pointer_matches = layer5_prefix_raw.pointer_matches;
+        layer23_loop.layer5_prefix_tail_checksums = layer5_prefix_tail_checksums;
         let mut layer4_boundary_raw = RawSparseIndexedResult::default();
         let layer4_boundary_succeeded = unsafe {
             rust_star_metal_run_prefill_layer4_continuation_boundary(
@@ -45445,6 +45753,7 @@ mod imp {
                 model.mapping_pointer(),
                 model.bytes(),
                 &layer5_compressor,
+                4_096,
                 &mut layer5_production,
                 error.as_mut_ptr(),
                 error.len(),
@@ -54963,6 +55272,14 @@ mod tests {
                 PREFILL_LAYER4_PREFIX_AFTER_ATTENTION_HC_CHECKSUM,
                 PREFILL_LAYER4_PREFIX_AFTER_FFN_HC_CHECKSUM,
             ],
+            layer5_prefix_boundary_dispatches: 17,
+            layer5_prefix_boundary_wrapped_model_ranges: 13,
+            layer5_prefix_boundary_pointer_matches: 13,
+            layer5_prefix_boundary_checksums: PREFILL_LAYER5_PREFIX_BOUNDARY_CHECKSUMS,
+            layer5_prefix_complete_dispatches: 49,
+            layer5_prefix_complete_wrapped_model_ranges: 28,
+            layer5_prefix_complete_pointer_matches: 28,
+            layer5_prefix_tail_checksums: PREFILL_LAYER5_PREFIX_TAIL_CHECKSUMS,
             layer4_continuation_boundary_dispatches: 40,
             layer4_continuation_boundary_wrapped_model_ranges: 17,
             layer4_continuation_boundary_pointer_matches: 17,
@@ -55039,6 +55356,11 @@ mod tests {
         assert!(text.contains("\"complete_layer4_continuation_boundary_c0_claim\": true"));
         assert!(text.contains("\"complete_layer4_second_chunk_c0_claim\": true"));
         assert!(text.contains("\"complete_layer4_prefill_claim\": true"));
+        assert!(text.contains("\"layer5_prefix_complete\": {\"start\": 0"));
+        assert!(text.contains("\"ingress_qkv_compressor\": {\"dispatches\": 17"));
+        assert!(text.contains("\"attention_ffn_tail\": {\"combined_dispatches\": 49"));
+        assert!(text.contains("kernel_flash_attn_ext_f16_dk512_dv512_nsg8_kvpad"));
+        assert!(text.contains("\"complete_layer5_prefix_c0_claim\": true"));
         assert!(text.contains("\"layer5_continuation_boundary\": {\"start\": 4096"));
         assert!(text.contains("\"ratio128_compressor_c0_bitwise_match\": true"));
         assert!(text.contains("\"attention_c0_claim\": false"));

@@ -705,7 +705,7 @@ control. The next boundary must carry the retained 4K state through layers
 
 ## Retained 4K-to-8K layer-2 through layer-5 continuation boundary
 
-Schema: `rust-star-long-prefill-continuation-bootstrap-probe-v17`.
+Schema: `rust-star-long-prefill-continuation-bootstrap-probe-v18`.
 
 `long-prefill-continuation-bootstrap-probe` completes the first 4K transformer,
 then preserves that context while 64 native 64-row tiles append positions
@@ -802,7 +802,15 @@ attention output, and FFN match five sparse-boundary checksums plus the exact
 post-attention and post-FFN HC checksums. Sparse attention takes 10 dispatches
 with 3/3 no-copy mappings; the complete tail totals 36 dispatches and 17/17
 mappings. The next correctness prerequisite is rebuilding the layer-5 prefix
-Q/KV and 32-row ratio-128 compressed history from that exact HC.
+Q/KV and 32-row ratio-128 compressed history from that exact HC. Version 18
+closes that prerequisite: the 4,096-row layer-5 Q and KV tensors plus the
+32-row compressed history match the oracle over 17 dispatches and 13/13
+no-copy mappings. Prefix attention uses DwarfStar's 4,128-key padded Nsg8
+Flash geometry, then inverse RoPE, grouped attention output, biased
+routed/shared FFN, and final HC. KQV-back and both downstream HC checksums are
+bit-identical over 49 combined dispatches and 28/28 mappings. The retained
+layer-5 prefix is therefore a valid exact history for the still-open second
+4K layer-5 attention/FFN gate.
 
 ## Model residency before measured decode
 

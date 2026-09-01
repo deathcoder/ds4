@@ -2212,14 +2212,42 @@ int rust_star_metal_run_prefill_layer3_continuation_attention(
     char *error,
     size_t error_bytes);
 
-/* Rebuilds positions 4096--8191 layer-3 ratio-128 compressed KV with the
- * production aligned 4096-row prefill schedule. */
+/* Rebuilds one aligned 4096-row ratio-128 compressed-KV batch at prefix or
+ * continuation position. */
 int rust_star_metal_run_prefill_layer3_continuation_batch_compressor(
     void *context,
     const void *model_mapping,
     uint64_t model_bytes,
     const rust_star_metal_prefill_compressor_weights *compressor,
+    uint32_t position_start,
     rust_star_metal_sparse_indexed_result *result,
+    char *error,
+    size_t error_bytes);
+
+/* Rebuilds the exact production 4096-row layer-5 prefix ingress and Q/KV from
+ * the retained exact layer-4 prefix HC. */
+int rust_star_metal_run_prefill_layer5_prefix_ingress(
+    void *context,
+    const void *model_mapping,
+    uint64_t model_bytes,
+    const rust_star_metal_prefill_layer_weights *weights,
+    rust_star_metal_sparse_indexed_result *result,
+    char *error,
+    size_t error_bytes);
+
+/* Checksums the retained layer-5 prefix Q, finalized KV, and compressed KV. */
+int rust_star_metal_checksum_prefill_layer5_prefix(
+    void *context,
+    uint64_t *checksums,
+    size_t checksum_capacity,
+    char *error,
+    size_t error_bytes);
+
+/* Checksums layer-5 prefix KQV-back and post-attention/post-FFN HC. */
+int rust_star_metal_checksum_prefill_layer5_prefix_tail(
+    void *context,
+    uint64_t *checksums,
+    size_t checksum_capacity,
     char *error,
     size_t error_bytes);
 
@@ -2231,6 +2259,7 @@ int rust_star_metal_run_prefill_layer3_continuation_batch_attention(
     uint64_t model_bytes,
     uint64_t sinks_offset,
     uint64_t sinks_bytes,
+    uint32_t position_start,
     rust_star_metal_sparse_indexed_result *result,
     char *error,
     size_t error_bytes);

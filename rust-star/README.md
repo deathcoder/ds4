@@ -344,7 +344,9 @@ compressors. The first target-Mac run completed 64 continuation tiles and
 retained state to 8,192 raw and 2,048 compressed rows without discarding the
 first-chunk prefix or recurrent compressor state. Continuation GPU time was
 5,124.933 ms. This retained bootstrap now continues through exact complete
-layers 2--4; layers 5--42 and exact 8K output logits remain the next milestone. The bootstrap now
+layers 2--4 and an exact complete layer-5 prefix; layer-5 continuation
+attention/FFN, layers 6--42, and exact 8K output logits remain the next
+milestone. The bootstrap now
 also proves the first layer-2 sparse transition at position 4,099 against an
 independently repeated oracle-v3 batch capture. Its diagnostic reconstructs
 DwarfStar's 4,352-row raw ring, 4,224-row batch span, 2,048-row compressed
@@ -404,10 +406,13 @@ Its ratio-4 refresh uses DwarfStar's small-batch final-four-token projection
 and direct rows-0--3 state setter. The 4,096-row layer-4
 ingress/QKV/paired-compressor schedule uses 40 dispatches with 17/17 no-copy
 mappings and matches all ten boundary checksums, including both complete
-1,024-row compressed caches and all four recurrent states. Extending the exact
-chain through layer-4 attention and FFN, then layers 5--42 and the output head,
-remains open. No throughput or speedup claim is attached to this diagnostic
-gate.
+1,024-row compressed caches and all four recurrent states. Schemas v15--v17
+extend that exact chain through the complete layer-4 continuation and prefix.
+Schema v18 then rebuilds and completes the exact 4,096-row layer-5 prefix:
+Q/KV/compression use 17 dispatches and 13/13 mappings, while padded Nsg8 Flash
+attention plus FFN finish in 49 combined dispatches and 28/28 mappings. The
+second-chunk layer-5 attention/FFN, layers 6--42, and output head remain open.
+No throughput or speedup claim is attached to this diagnostic gate.
 The first complete second-half experiment deliberately tested whether the
 proven retained decoder schedule could serve as a correctness-preserving
 shortcut. `long-prefill-sequential-continuation-probe` now generalizes the
