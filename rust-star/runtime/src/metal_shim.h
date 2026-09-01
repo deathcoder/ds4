@@ -2071,6 +2071,26 @@ int rust_star_metal_run_prefill_layer2_continuation_sparse_tile(
     char *error,
     size_t error_bytes);
 
+/* Executes one aligned 32-row sparse-attention tile over the retained 8K
+ * layer-4 Q/KV and ratio-4 attention/indexer compressor state. */
+int rust_star_metal_run_prefill_layer4_continuation_sparse_tile(
+    void *context,
+    const void *model_mapping,
+    uint64_t model_bytes,
+    uint64_t indexer_q_offset,
+    uint64_t indexer_q_bytes,
+    uint64_t indexer_weight_offset,
+    uint64_t indexer_weight_bytes,
+    uint64_t sinks_offset,
+    uint64_t sinks_bytes,
+    uint32_t tile_start,
+    float *indexer_scores,
+    int32_t *indexer_topk,
+    float *kqv_back,
+    rust_star_metal_sparse_indexed_result *result,
+    char *error,
+    size_t error_bytes);
+
 /* Continues directly from the retained native 32-row sparse KQV-back buffer
  * through the production attention-output and FFN tail. */
 int rust_star_metal_run_prefill_layer2_continuation_tail(
@@ -2101,6 +2121,13 @@ int rust_star_metal_run_prefill_layer2_continuation_tail(
 /* Checksums the complete GPU-retained positions-4096--8191 layer-2 final HC
  * tensor after all 128 continuation tiles have executed. */
 int rust_star_metal_checksum_prefill_layer2_continuation_hc(
+    void *context,
+    uint64_t *checksum,
+    char *error,
+    size_t error_bytes);
+
+/* Checksums the complete GPU-retained positions-4096--8191 layer-4 final HC. */
+int rust_star_metal_checksum_prefill_layer4_continuation_hc(
     void *context,
     uint64_t *checksum,
     char *error,

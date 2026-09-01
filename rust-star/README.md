@@ -343,8 +343,8 @@ compressors. The first target-Mac run completed 64 continuation tiles and
 7,556 dispatches, preserved all 4,160/4,160 no-copy mappings, and grew the
 retained state to 8,192 raw and 2,048 compressed rows without discarding the
 first-chunk prefix or recurrent compressor state. Continuation GPU time was
-5,124.933 ms. This is the retained second-chunk bootstrap gate only: layers
-2--42 and exact 8K output logits remain the next milestone. The bootstrap now
+5,124.933 ms. This retained bootstrap now continues through exact complete
+layers 2--4; layers 5--42 and exact 8K output logits remain the next milestone. The bootstrap now
 also proves the first layer-2 sparse transition at position 4,099 against an
 independently repeated oracle-v3 batch capture. Its diagnostic reconstructs
 DwarfStar's 4,352-row raw ring, 4,224-row batch span, 2,048-row compressed
