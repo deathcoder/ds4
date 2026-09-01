@@ -3307,7 +3307,7 @@ fn run_long_prefill_continuation_bootstrap_probe_command(arguments: Vec<OsString
         report.second_layer2_wrapped_model_ranges + report.second_layer3_wrapped_model_ranges,
     );
     println!(
-        "layer-2/layer-3 loop: positions 4096..8191 executed in {} retained 32-row tiles ({} exact C0 anchors, {} structurally executed tiles, {} ratio-128 emissions, {} dispatches, {}/{} no-copy mappings; final HC/state checksums={}/{}/{}; tiled layer-3 output checksum={}; {}/128 tile checksums match production geometry)",
+        "layer-2/layer-3 loop: positions 4096..8191 executed in {} retained 32-row tiles ({} exact C0 anchors, {} structurally executed tiles, {} ratio-128 emissions, {} dispatches, {}/{} no-copy mappings; final HC/state checksums={}/{}/{}; full layer-2 checksum={}; tiled layer-3 checksum={}; {}/128 layer-3 tile checksums match production geometry)",
         report.layer23_loop_tiles,
         report.layer23_loop_c0_anchor_tiles,
         report.layer23_loop_tiles - report.layer23_loop_c0_anchor_tiles,
@@ -3318,11 +3318,20 @@ fn run_long_prefill_continuation_bootstrap_probe_command(arguments: Vec<OsString
         report.layer23_loop_final_hc_checksum,
         report.layer23_loop_final_state_kv_checksum,
         report.layer23_loop_final_state_score_checksum,
+        report.layer23_loop_full_layer2_hc_checksum,
         report.layer23_loop_full_layer3_hc_checksum,
         report.layer23_loop_production_hc_matching_tiles,
     );
     println!(
-        "scope: complete retained tiled second-chunk execution for layers 2/3; 14 layer-3 tiles differ from production-batch geometry, so a production-size layer-3 batch is required before layer 4; layers 4..42, complete 8K transformer output, output-logit C0, and throughput remain unclaimed"
+        "layer-3 production batch: aligned ratio-128 compressor, attention, and FFN replay use {} dispatches and {}/{} no-copy mappings; full checksum={} with {}/128 production tile matches",
+        report.layer3_production_batch_dispatches,
+        report.layer3_production_batch_pointer_matches,
+        report.layer3_production_batch_wrapped_model_ranges,
+        report.layer3_production_full_hc_checksum,
+        report.layer3_production_hc_matching_tiles,
+    );
+    println!(
+        "scope: complete retained layer-2 and production-batch layer-3 outputs match the 8K oracle; layer 4 is the next continuation boundary, while layers 4..42, complete 8K transformer output, output-logit C0, and throughput remain unclaimed"
     );
     if let Some(path) = json_path {
         write_long_prefill_continuation_bootstrap_probe_file(&path, &report)?;
@@ -5528,7 +5537,7 @@ fn long_prefill_bootstrap_probe_usage() -> &'static str {
 }
 
 fn long_prefill_continuation_bootstrap_probe_usage() -> &'static str {
-    "usage: rust-star long-prefill-continuation-bootstrap-probe MODEL.gguf [--json PATH]\n\nRuns the first 4,096-token chunk through the complete native transformer, then advances positions 4,096--8,191 through complete layers 0 and 1 plus layer 2 raw KV and paired ratio-4 compressors in the same retained Metal context. It verifies the isolated sparse-attention transition at position 4,099 and the first two complete 32-row layer-2/layer-3 tiles against exact tiled fixtures. The same retained context executes and checksums all 128 layer-2/layer-3 continuation tiles, including every ratio-128 emission, and reports the known 114/128 tile agreement with the repeated production-geometry layer-3 oracle. The 14 mismatches prove that a production-size layer-3 batch is required. This does not claim the complete 8K transformer, output-logit C0, throughput, or a speedup."
+    "usage: rust-star long-prefill-continuation-bootstrap-probe MODEL.gguf [--json PATH]\n\nRuns the first 4,096-token chunk through the complete native transformer, then advances positions 4,096--8,191 through complete layers 0 and 1 plus layer 2 raw KV and paired ratio-4 compressors in the same retained Metal context. It verifies the isolated sparse-attention transition at position 4,099 and the first two complete 32-row layer-2/layer-3 tiles against exact tiled fixtures. The retained context executes all 128 layer-2/layer-3 diagnostic tiles, then replays layer 3 with the production-aligned 4,096-row ratio-128 compressor, attention, and FFN schedule. The complete layer-2 and layer-3 outputs match the repeated production oracle. This does not claim layers 4--42, the complete 8K transformer, output-logit C0, throughput, or a speedup."
 }
 
 fn long_prefill_sequential_continuation_probe_usage() -> &'static str {

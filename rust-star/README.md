@@ -385,7 +385,7 @@ continues that schedule through all 128 layer-2/layer-3 tiles ending at position
 8,191. The M1 Ultra integration covered 32 ratio-128 emissions, 14,560
 dispatches, and 5,760/5,760 no-copy mappings. The first two tiles remain the
 only exact C0 anchors; the later 126 tiles are conservatively reported as
-structural retained-state execution. Schema v11 now also retains and checksums
+structural retained-state execution. Schema v11 also retains and checksums
 the complete 4,096-row layer-3 HC output. Two fresh production-geometry oracle
 captures were byte-identical (SHA-256
 `09b31ad2a23ef6805ab62c9cbd353caf280546770e432760f14252e400c42cca`).
@@ -393,11 +393,14 @@ The tiled Rust schedule is deterministic at checksum
 `12296721839747081491`, but only 114/128 tile checksums match that production
 batch. The 14 mismatches start at positions 4096, 7296, 7360, 7392, 7424,
 7552, 7616, 7648, 7712, 7776, 7840, 8000, 8064, and 8096. This rejects a
-per-tile layer-3 output as the exact layer-4 input boundary: the next schedule
-must execute layer 3 with the production 4,096-row batch geometry. Extending
-that exact batch chain through layers 4--42 and the output head, then matching
-the 8K logits, remains open. No throughput or speedup claim is attached to
-this gate.
+per-tile layer-3 output as the exact layer-4 input boundary. Schema v12 now
+retains the complete second-chunk layer-3 norm/Q/KV state and replays the
+production-aligned 4,096-row ratio-128 compressor, attention, and FFN schedule.
+The replay uses 38 dispatches and 19/19 no-copy mappings; all 128 tile checksums
+match and the full HC checksum is exactly `17010162403439886297`. Layer 4 is
+therefore the next exact continuation boundary. Extending that chain through
+layers 4--42 and the output head, then matching the 8K logits, remains open. No
+throughput or speedup claim is attached to this gate.
 The first complete second-half experiment deliberately tested whether the
 proven retained decoder schedule could serve as a correctness-preserving
 shortcut. `long-prefill-sequential-continuation-probe` now generalizes the

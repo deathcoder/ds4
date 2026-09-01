@@ -2080,6 +2080,7 @@ int rust_star_metal_run_prefill_layer2_continuation_tail(
     const rust_star_metal_prefill_layer_weights *weights,
     uint32_t layer_index,
     uint32_t tile_start,
+    uint32_t batch_rows,
     float *attention_low,
     float *attention_output,
     float *after_attention_hc,
@@ -2094,6 +2095,14 @@ int rust_star_metal_run_prefill_layer2_continuation_tail(
     float *shared_output,
     float *after_ffn_hc,
     rust_star_metal_sparse_indexed_result *result,
+    char *error,
+    size_t error_bytes);
+
+/* Checksums the complete GPU-retained positions-4096--8191 layer-2 final HC
+ * tensor after all 128 continuation tiles have executed. */
+int rust_star_metal_checksum_prefill_layer2_continuation_hc(
+    void *context,
+    uint64_t *checksum,
     char *error,
     size_t error_bytes);
 
@@ -2145,6 +2154,29 @@ int rust_star_metal_run_prefill_layer3_continuation_attention(
     const float *expected_compressed_kv,
     float *kqv_out,
     float *kqv_back,
+    rust_star_metal_sparse_indexed_result *result,
+    char *error,
+    size_t error_bytes);
+
+/* Rebuilds positions 4096--8191 layer-3 ratio-128 compressed KV with the
+ * production aligned 4096-row prefill schedule. */
+int rust_star_metal_run_prefill_layer3_continuation_batch_compressor(
+    void *context,
+    const void *model_mapping,
+    uint64_t model_bytes,
+    const rust_star_metal_prefill_compressor_weights *compressor,
+    rust_star_metal_sparse_indexed_result *result,
+    char *error,
+    size_t error_bytes);
+
+/* Replays positions 4096--8191 layer-3 attention at the production 4096-row
+ * query geometry after the tiled pass has retained complete Q/KV state. */
+int rust_star_metal_run_prefill_layer3_continuation_batch_attention(
+    void *context,
+    const void *model_mapping,
+    uint64_t model_bytes,
+    uint64_t sinks_offset,
+    uint64_t sinks_bytes,
     rust_star_metal_sparse_indexed_result *result,
     char *error,
     size_t error_bytes);

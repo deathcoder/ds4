@@ -705,7 +705,7 @@ control. The next boundary must carry the retained 4K state through layers
 
 ## Retained 4K-to-8K layer-2 and layer-3 continuation boundary
 
-Schema: `rust-star-long-prefill-continuation-bootstrap-probe-v10`.
+Schema: `rust-star-long-prefill-continuation-bootstrap-probe-v12`.
 
 `long-prefill-continuation-bootstrap-probe` completes the first 4K transformer,
 then preserves that context while 64 native 64-row tiles append positions
@@ -741,7 +741,7 @@ future rows are masked workspace, while every visible row comes from native
 retained state. The second tile matches 42 outputs across complete layers 2/3,
 112 dispatches, and 45/45 no-copy mappings.
 
-The v10 schedule then advances the same allocations through every remaining
+The tiled diagnostic schedule then advances the same allocations through every remaining
 32-row layer-2/layer-3 tile up to position 8,191. The M1 Ultra run completed
 all 128 tiles, emitted all 32 new ratio-128 compressed rows, executed 14,560
 dispatches, and preserved 5,760/5,760 no-copy mappings. The first two tiles
@@ -758,8 +758,16 @@ mismatching starts are 4096, 7296, 7360, 7392, 7424, 7552, 7616, 7648, 7712,
 7776, 7840, 8000, 8064, and 8096. The terminal HC and recurrent-state
 checksums remain unchanged, so this is a batch-geometry distinction rather
 than a failed retained-state loop. The runtime reports the mismatch and makes
-`complete_layer3_second_chunk_output_checksum_claim` false. A production-size
-layer-3 batch is required before its output can become the exact layer-4 input.
+`complete_layer3_second_chunk_output_checksum_claim` false for that diagnostic.
+
+Version 12 retains every second-chunk layer-3 attention norm and Q row alongside
+the full KV cache. After the diagnostic loop it replays DwarfStar's aligned
+4,096-row ratio-128 compressor pool, overwrites compressed rows 32--63, and
+executes production-size attention and FFN. The replay uses 38 dispatches,
+preserves 19/19 no-copy model mappings, matches all 128 oracle tile checksums,
+and produces the exact full FNV `17010162403439886297`. The artifact therefore
+sets `complete_layer3_second_chunk_output_checksum_claim` true, and its retained
+HC is the exact input boundary for layer 4.
 
 ## Model residency before measured decode
 

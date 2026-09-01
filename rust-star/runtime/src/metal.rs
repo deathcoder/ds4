@@ -29,7 +29,7 @@ pub const PREFILL_LAYERS012_COMPRESSOR_LOOP_PROBE_SCHEMA: &str =
     "rust-star-prefill-layers012-compressor-loop-probe-v1";
 pub const LONG_PREFILL_BOOTSTRAP_PROBE_SCHEMA: &str = "rust-star-long-prefill-bootstrap-probe-v1";
 pub const LONG_PREFILL_CONTINUATION_BOOTSTRAP_PROBE_SCHEMA: &str =
-    "rust-star-long-prefill-continuation-bootstrap-probe-v11";
+    "rust-star-long-prefill-continuation-bootstrap-probe-v12";
 pub const LONG_PREFILL_SEQUENTIAL_CONTINUATION_PROBE_SCHEMA: &str =
     "rust-star-long-prefill-sequential-continuation-probe-v1";
 pub const LONG_PREFILL_TRANSFORMER_PROBE_SCHEMA: &str =
@@ -151,6 +151,7 @@ pub const PREFILL_LAYER4_ATTENTION_FIXTURE_ID: &str =
 pub const PREFILL_LAYER4_COMPLETE_FIXTURE_ID: &str =
     "dwarfstar-oracle-v1-prefill-layer4-complete-2048";
 const PREFILL_LAYER3_CONTINUATION_FULL_HC_CHECKSUM: u64 = 0xec10_3c95_0cbd_3fd9;
+const PREFILL_LAYER2_CONTINUATION_FULL_HC_CHECKSUM: u64 = 0x98fa_5f3d_30b3_eeb0;
 const PREFILL_LAYER3_CONTINUATION_TILED_HC_CHECKSUM: u64 = 0xaaa6_bb5c_c7e9_a513;
 const PREFILL_LAYER3_CONTINUATION_HC_MISMATCH_STARTS: [usize; 14] = [
     4_096, 7_296, 7_360, 7_392, 7_424, 7_552, 7_616, 7_648, 7_712, 7_776, 7_840, 8_000, 8_064,
@@ -3863,8 +3864,14 @@ pub struct LongPrefillContinuationBootstrapProbeReport {
     pub layer23_loop_final_hc_checksum: u64,
     pub layer23_loop_final_state_kv_checksum: u64,
     pub layer23_loop_final_state_score_checksum: u64,
+    pub layer23_loop_full_layer2_hc_checksum: u64,
     pub layer23_loop_full_layer3_hc_checksum: u64,
     pub layer23_loop_production_hc_matching_tiles: u32,
+    pub layer3_production_batch_dispatches: u32,
+    pub layer3_production_batch_wrapped_model_ranges: u32,
+    pub layer3_production_batch_pointer_matches: u32,
+    pub layer3_production_full_hc_checksum: u64,
+    pub layer3_production_hc_matching_tiles: u32,
 }
 
 #[derive(Clone, Debug)]
@@ -7894,9 +7901,17 @@ pub fn write_long_prefill_continuation_bootstrap_probe_json<W: Write>(
         || report.layer23_loop_final_hc_checksum == 0
         || report.layer23_loop_final_state_kv_checksum == 0
         || report.layer23_loop_final_state_score_checksum == 0
+        || report.layer23_loop_full_layer2_hc_checksum
+            != PREFILL_LAYER2_CONTINUATION_FULL_HC_CHECKSUM
         || report.layer23_loop_full_layer3_hc_checksum
             != PREFILL_LAYER3_CONTINUATION_TILED_HC_CHECKSUM
         || report.layer23_loop_production_hc_matching_tiles != 114
+        || report.layer3_production_batch_dispatches != 38
+        || report.layer3_production_batch_wrapped_model_ranges != 19
+        || report.layer3_production_batch_pointer_matches
+            != report.layer3_production_batch_wrapped_model_ranges
+        || report.layer3_production_full_hc_checksum != PREFILL_LAYER3_CONTINUATION_FULL_HC_CHECKSUM
+        || report.layer3_production_hc_matching_tiles != 128
         || !report.sparse_transition.wall_ms.is_finite()
         || !report.sparse_transition.gpu_ms.is_finite()
         || report.sparse_transition.wall_ms <= 0.0
@@ -7984,7 +7999,7 @@ pub fn write_long_prefill_continuation_bootstrap_probe_json<W: Write>(
     crate::artifact::write_json_string(output, report.second_tile_fixture_id)?;
     write!(
         output,
-        ", \"start\": {}, \"end\": {}, \"rows\": {}, \"native_retained_history\": true, \"layer2\": {{\"dispatches\": {}, \"wrapped_model_ranges\": {}, \"pointer_matches\": {}, \"exact_outputs\": {}, \"complete_tile_c0_bitwise_match\": true}}, \"layer3\": {{\"dispatches\": {}, \"wrapped_model_ranges\": {}, \"pointer_matches\": {}, \"exact_outputs\": {}, \"complete_tile_c0_bitwise_match\": true}}, \"consecutive_complete_layer3_tiles\": 2}},\n  \"layer23_continuation_loop\": {{\"start\": 4096, \"end\": 8191, \"tile_rows\": 32, \"tiles\": {}, \"c0_anchor_tiles\": {}, \"structurally_executed_unverified_tiles\": {}, \"ratio128_emitted_rows\": {}, \"dispatches\": {}, \"wrapped_model_ranges\": {}, \"pointer_matches\": {}, \"final_checksums\": {{\"layer3_hc\": {}, \"layer3_compressor_state_kv\": {}, \"layer3_compressor_state_score\": {}, \"full_layer3_hc\": {}}}, \"full_layer3_hc_rows\": 4096, \"production_geometry_oracle_checksum\": {}, \"production_geometry_matching_tiles\": {}, \"production_geometry_mismatching_tile_starts\": [4096, 7296, 7360, 7392, 7424, 7552, 7616, 7648, 7712, 7776, 7840, 8000, 8064, 8096], \"full_layer3_hc_checksum_match\": false, \"persistent_context\": true, \"native_retained_state\": true, \"all_tiles_c0_claim\": false}},\n  \"checksums\": {{\"continuation_token_ids\": {}}},\n  \"timing\": {{\"continuation_summed_wall_ms\": {:.6}, \"continuation_summed_gpu_ms\": {:.6}}},\n  \"accepted_oracle_token_stream\": true,\n  \"native_batch_schedule\": true,\n  \"second_long_prefill_bootstrap_chunk_executed\": true,\n  \"layer2_sparse_transition_c0_claim\": true,\n  \"layer2_native_complete_tile_c0_claim\": true,\n  \"live_layer2_to_layer3_handoff_c0_claim\": true,\n  \"unseeded_layer3_native_complete_tile_claim\": true,\n  \"two_consecutive_unseeded_layer3_tiles_claim\": true,\n  \"complete_layer23_second_chunk_execution_claim\": true,\n  \"complete_layer23_second_chunk_c0_claim\": false,\n  \"complete_layer3_second_chunk_output_checksum_claim\": false,\n  \"complete_8k_transformer_claim\": false,\n  \"output_logits_c0_claim\": false,\n  \"throughput_claim\": false\n}}\n",
+        ", \"start\": {}, \"end\": {}, \"rows\": {}, \"native_retained_history\": true, \"layer2\": {{\"dispatches\": {}, \"wrapped_model_ranges\": {}, \"pointer_matches\": {}, \"exact_outputs\": {}, \"complete_tile_c0_bitwise_match\": true}}, \"layer3\": {{\"dispatches\": {}, \"wrapped_model_ranges\": {}, \"pointer_matches\": {}, \"exact_outputs\": {}, \"complete_tile_c0_bitwise_match\": true}}, \"consecutive_complete_layer3_tiles\": 2}},\n  \"layer23_continuation_loop\": {{\"start\": 4096, \"end\": 8191, \"tile_rows\": 32, \"tiles\": {}, \"c0_anchor_tiles\": {}, \"structurally_executed_unverified_tiles\": {}, \"ratio128_emitted_rows\": {}, \"dispatches\": {}, \"wrapped_model_ranges\": {}, \"pointer_matches\": {}, \"final_checksums\": {{\"layer3_hc\": {}, \"layer3_compressor_state_kv\": {}, \"layer3_compressor_state_score\": {}, \"full_layer2_hc\": {}, \"tiled_full_layer3_hc\": {}, \"production_full_layer3_hc\": {}}}, \"full_layer2_hc_rows\": 4096, \"full_layer2_hc_checksum_match\": true, \"full_layer3_hc_rows\": 4096, \"tiled_diagnostic\": {{\"matching_tiles\": {}, \"mismatching_tile_starts\": [4096, 7296, 7360, 7392, 7424, 7552, 7616, 7648, 7712, 7776, 7840, 8000, 8064, 8096], \"checksum_match\": false}}, \"production_batch\": {{\"rows\": 4096, \"ratio128_compressor_schedule\": \"aligned_batch_pool\", \"dispatches\": {}, \"wrapped_model_ranges\": {}, \"pointer_matches\": {}, \"matching_tiles\": {}, \"checksum_match\": true}}, \"full_layer3_hc_checksum_match\": true, \"persistent_context\": true, \"native_retained_state\": true, \"all_tiles_c0_claim\": true}},\n  \"checksums\": {{\"continuation_token_ids\": {}}},\n  \"timing\": {{\"continuation_summed_wall_ms\": {:.6}, \"continuation_summed_gpu_ms\": {:.6}}},\n  \"accepted_oracle_token_stream\": true,\n  \"native_batch_schedule\": true,\n  \"second_long_prefill_bootstrap_chunk_executed\": true,\n  \"layer2_sparse_transition_c0_claim\": true,\n  \"layer2_native_complete_tile_c0_claim\": true,\n  \"complete_layer2_second_chunk_output_checksum_claim\": true,\n  \"live_layer2_to_layer3_handoff_c0_claim\": true,\n  \"unseeded_layer3_native_complete_tile_claim\": true,\n  \"two_consecutive_unseeded_layer3_tiles_claim\": true,\n  \"complete_layer23_second_chunk_execution_claim\": true,\n  \"complete_layer23_second_chunk_c0_claim\": true,\n  \"complete_layer3_second_chunk_output_checksum_claim\": true,\n  \"complete_8k_transformer_claim\": false,\n  \"output_logits_c0_claim\": false,\n  \"throughput_claim\": false\n}}\n",
         report.second_tile_start,
         report.second_tile_start + report.second_tile_rows - 1,
         report.second_tile_rows,
@@ -8006,9 +8021,14 @@ pub fn write_long_prefill_continuation_bootstrap_probe_json<W: Write>(
         report.layer23_loop_final_hc_checksum,
         report.layer23_loop_final_state_kv_checksum,
         report.layer23_loop_final_state_score_checksum,
+        report.layer23_loop_full_layer2_hc_checksum,
         report.layer23_loop_full_layer3_hc_checksum,
-        PREFILL_LAYER3_CONTINUATION_FULL_HC_CHECKSUM,
+        report.layer3_production_full_hc_checksum,
         report.layer23_loop_production_hc_matching_tiles,
+        report.layer3_production_batch_dispatches,
+        report.layer3_production_batch_wrapped_model_ranges,
+        report.layer3_production_batch_pointer_matches,
+        report.layer3_production_hc_matching_tiles,
         report.token_checksum,
         report.summed_wall_ms,
         report.summed_gpu_ms,
@@ -20926,8 +20946,14 @@ mod imp {
         final_hc_checksum: u64,
         final_state_kv_checksum: u64,
         final_state_score_checksum: u64,
+        full_layer2_hc_checksum: u64,
         full_layer3_hc_checksum: u64,
         production_hc_matching_tiles: u32,
+        production_batch_dispatches: u32,
+        production_batch_wrapped_model_ranges: u32,
+        production_batch_pointer_matches: u32,
+        production_full_hc_checksum: u64,
+        production_batch_hc_matching_tiles: u32,
         wall_ms: f64,
         gpu_ms: f64,
     }
@@ -22626,6 +22652,7 @@ mod imp {
             weights: *const RawPrefillLayerWeights,
             layer_index: u32,
             tile_start: u32,
+            batch_rows: u32,
             attention_low: *mut f32,
             attention_output: *mut f32,
             after_attention_hc: *mut f32,
@@ -22695,6 +22722,31 @@ mod imp {
             kqv_out: *mut f32,
             kqv_back: *mut f32,
             result: *mut RawSparseIndexedResult,
+            error: *mut c_char,
+            error_bytes: usize,
+        ) -> i32;
+        fn rust_star_metal_run_prefill_layer3_continuation_batch_attention(
+            context: *mut c_void,
+            model_mapping: *const c_void,
+            model_bytes: u64,
+            sinks_offset: u64,
+            sinks_bytes: u64,
+            result: *mut RawSparseIndexedResult,
+            error: *mut c_char,
+            error_bytes: usize,
+        ) -> i32;
+        fn rust_star_metal_run_prefill_layer3_continuation_batch_compressor(
+            context: *mut c_void,
+            model_mapping: *const c_void,
+            model_bytes: u64,
+            compressor: *const RawPrefillCompressorWeights,
+            result: *mut RawSparseIndexedResult,
+            error: *mut c_char,
+            error_bytes: usize,
+        ) -> i32;
+        fn rust_star_metal_checksum_prefill_layer2_continuation_hc(
+            context: *mut c_void,
+            checksum: *mut u64,
             error: *mut c_char,
             error_bytes: usize,
         ) -> i32;
@@ -26083,8 +26135,15 @@ mod imp {
             layer23_loop_final_hc_checksum: layer23_loop.final_hc_checksum,
             layer23_loop_final_state_kv_checksum: layer23_loop.final_state_kv_checksum,
             layer23_loop_final_state_score_checksum: layer23_loop.final_state_score_checksum,
+            layer23_loop_full_layer2_hc_checksum: layer23_loop.full_layer2_hc_checksum,
             layer23_loop_full_layer3_hc_checksum: layer23_loop.full_layer3_hc_checksum,
             layer23_loop_production_hc_matching_tiles: layer23_loop.production_hc_matching_tiles,
+            layer3_production_batch_dispatches: layer23_loop.production_batch_dispatches,
+            layer3_production_batch_wrapped_model_ranges: layer23_loop
+                .production_batch_wrapped_model_ranges,
+            layer3_production_batch_pointer_matches: layer23_loop.production_batch_pointer_matches,
+            layer3_production_full_hc_checksum: layer23_loop.production_full_hc_checksum,
+            layer3_production_hc_matching_tiles: layer23_loop.production_batch_hc_matching_tiles,
         })
     }
 
@@ -42875,6 +42934,7 @@ mod imp {
                 &tail_weights,
                 2,
                 4096,
+                32,
                 actual_tail_attention_low.as_mut_ptr(),
                 actual_tail_attention_output.as_mut_ptr(),
                 actual_tail_after_attention_hc.as_mut_ptr(),
@@ -42960,6 +43020,7 @@ mod imp {
                 &layer3_weights,
                 3,
                 4096,
+                32,
                 actual_layer3_attention_low.as_mut_ptr(),
                 actual_layer3_attention_output.as_mut_ptr(),
                 actual_layer3_after_attention_hc.as_mut_ptr(),
@@ -43018,6 +43079,7 @@ mod imp {
                 &tail_weights,
                 2,
                 4128,
+                32,
                 actual_second_l2_attention_low.as_mut_ptr(),
                 actual_second_l2_attention_output.as_mut_ptr(),
                 actual_second_l2_after_attention_hc.as_mut_ptr(),
@@ -43103,6 +43165,7 @@ mod imp {
                 &layer3_weights,
                 3,
                 4128,
+                32,
                 actual_second_l3_attention_low.as_mut_ptr(),
                 actual_second_l3_attention_output.as_mut_ptr(),
                 actual_second_l3_after_attention_hc.as_mut_ptr(),
@@ -43976,6 +44039,7 @@ mod imp {
                     &tail_weights,
                     2,
                     tile_start,
+                    32,
                     actual_second_l2_attention_low.as_mut_ptr(),
                     actual_second_l2_attention_output.as_mut_ptr(),
                     actual_second_l2_after_attention_hc.as_mut_ptr(),
@@ -44061,6 +44125,7 @@ mod imp {
                     &layer3_weights,
                     3,
                     tile_start,
+                    32,
                     actual_second_l3_attention_low.as_mut_ptr(),
                     actual_second_l3_attention_output.as_mut_ptr(),
                     actual_second_l3_after_attention_hc.as_mut_ptr(),
@@ -44116,6 +44181,20 @@ mod imp {
             layer23_loop.wall_ms += tile_layer2.wall_ms + tile_layer3.wall_ms;
             layer23_loop.gpu_ms += tile_layer2.gpu_ms + tile_layer3.gpu_ms;
         }
+        let full_layer2_hc_succeeded = unsafe {
+            rust_star_metal_checksum_prefill_layer2_continuation_hc(
+                context.0,
+                &mut layer23_loop.full_layer2_hc_checksum,
+                error.as_mut_ptr(),
+                error.len(),
+            )
+        };
+        if full_layer2_hc_succeeded == 0 {
+            return Err(Error::invalid(format!(
+                "Metal complete layer-2 continuation HC checksum failed: {}",
+                error_text(&error)
+            )));
+        }
         let mut full_layer3_hc_tile_checksums = [0_u64; 128];
         let full_hc_succeeded = unsafe {
             rust_star_metal_checksum_prefill_layer3_continuation_hc(
@@ -44163,6 +44242,7 @@ mod imp {
             || layer23_loop.final_hc_checksum == 0
             || layer23_loop.final_state_kv_checksum == 0
             || layer23_loop.final_state_score_checksum == 0
+            || layer23_loop.full_layer2_hc_checksum != PREFILL_LAYER2_CONTINUATION_FULL_HC_CHECKSUM
             || layer23_loop.full_layer3_hc_checksum != PREFILL_LAYER3_CONTINUATION_TILED_HC_CHECKSUM
             || layer23_loop.production_hc_matching_tiles != 114
             || full_layer3_hc_mismatch_positions != PREFILL_LAYER3_CONTINUATION_HC_MISMATCH_STARTS
@@ -44172,7 +44252,7 @@ mod imp {
             || layer23_loop.gpu_ms <= 0.0
         {
             return Err(Error::invalid(format!(
-                "Metal complete layer-2/layer-3 continuation loop metadata is invalid: tiles={}, anchors={}, ratio128_rows={}, dispatches={}, mappings={}/{}, final_checksums={}/{}/{}, full_layer3_hc_checksum={} (expected tiled {} and production {}), tile_checksum_mismatches={} at {:?}, first_tile_mismatch={} actual={} expected={}, retained_tile_checksums=[{},{},{},...,{}]",
+                "Metal complete layer-2/layer-3 continuation loop metadata is invalid: tiles={}, anchors={}, ratio128_rows={}, dispatches={}, mappings={}/{}, final_checksums={}/{}/{}, full_layer2_hc_checksum={} (expected {}), full_layer3_hc_checksum={} (expected tiled {} and production {}), tile_checksum_mismatches={} at {:?}, first_tile_mismatch={} actual={} expected={}, retained_tile_checksums=[{},{},{},...,{}]",
                 layer23_loop.tiles,
                 layer23_loop.c0_anchor_tiles,
                 layer23_loop.ratio128_emitted_rows,
@@ -44182,6 +44262,8 @@ mod imp {
                 layer23_loop.final_hc_checksum,
                 layer23_loop.final_state_kv_checksum,
                 layer23_loop.final_state_score_checksum,
+                layer23_loop.full_layer2_hc_checksum,
+                PREFILL_LAYER2_CONTINUATION_FULL_HC_CHECKSUM,
                 layer23_loop.full_layer3_hc_checksum,
                 PREFILL_LAYER3_CONTINUATION_TILED_HC_CHECKSUM,
                 PREFILL_LAYER3_CONTINUATION_FULL_HC_CHECKSUM,
@@ -44194,6 +44276,121 @@ mod imp {
                 full_layer3_hc_tile_checksums[1],
                 full_layer3_hc_tile_checksums[2],
                 full_layer3_hc_tile_checksums[127],
+            )));
+        }
+        let mut production_batch_raw = RawSparseIndexedResult::default();
+        let production_compressor_succeeded = unsafe {
+            rust_star_metal_run_prefill_layer3_continuation_batch_compressor(
+                context.0,
+                model.mapping_pointer(),
+                model.bytes(),
+                &layer3_compressor,
+                &mut production_batch_raw,
+                error.as_mut_ptr(),
+                error.len(),
+            )
+        };
+        if production_compressor_succeeded == 0 {
+            return Err(Error::invalid(format!(
+                "Metal production-batch layer-3 continuation compressor failed: {}",
+                error_text(&error)
+            )));
+        }
+        let production_attention_succeeded = unsafe {
+            rust_star_metal_run_prefill_layer3_continuation_batch_attention(
+                context.0,
+                model.mapping_pointer(),
+                model.bytes(),
+                layer3_sinks.absolute_offset,
+                layer3_sinks.bytes,
+                &mut production_batch_raw,
+                error.as_mut_ptr(),
+                error.len(),
+            )
+        };
+        if production_attention_succeeded == 0 {
+            return Err(Error::invalid(format!(
+                "Metal production-batch layer-3 continuation attention failed: {}",
+                error_text(&error)
+            )));
+        }
+        let production_tail_succeeded = unsafe {
+            rust_star_metal_run_prefill_layer2_continuation_tail(
+                context.0,
+                model.mapping_pointer(),
+                model.bytes(),
+                &layer3_weights,
+                3,
+                4_096,
+                4_096,
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                &mut production_batch_raw,
+                error.as_mut_ptr(),
+                error.len(),
+            )
+        };
+        if production_tail_succeeded == 0 {
+            return Err(Error::invalid(format!(
+                "Metal production-batch layer-3 continuation tail failed: {}",
+                error_text(&error)
+            )));
+        }
+        let production_hc_succeeded = unsafe {
+            rust_star_metal_checksum_prefill_layer3_continuation_hc(
+                context.0,
+                &mut layer23_loop.production_full_hc_checksum,
+                full_layer3_hc_tile_checksums.as_mut_ptr(),
+                full_layer3_hc_tile_checksums.len(),
+                error.as_mut_ptr(),
+                error.len(),
+            )
+        };
+        if production_hc_succeeded == 0 {
+            return Err(Error::invalid(format!(
+                "Metal production-batch layer-3 continuation HC checksum failed: {}",
+                error_text(&error)
+            )));
+        }
+        layer23_loop.production_batch_dispatches = production_batch_raw.dispatches;
+        layer23_loop.production_batch_wrapped_model_ranges =
+            production_batch_raw.wrapped_model_ranges;
+        layer23_loop.production_batch_pointer_matches = production_batch_raw.pointer_matches;
+        layer23_loop.production_batch_hc_matching_tiles = full_layer3_hc_tile_checksums
+            .iter()
+            .zip(PREFILL_LAYER3_CONTINUATION_HC_TILE_CHECKSUMS.iter())
+            .filter(|(actual, expected)| actual == expected)
+            .count() as u32;
+        if layer23_loop.production_batch_dispatches != 38
+            || layer23_loop.production_batch_wrapped_model_ranges != 19
+            || layer23_loop.production_batch_pointer_matches != 19
+            || layer23_loop.production_full_hc_checksum
+                != PREFILL_LAYER3_CONTINUATION_FULL_HC_CHECKSUM
+            || layer23_loop.production_batch_hc_matching_tiles != 128
+            || !production_batch_raw.wall_ms.is_finite()
+            || production_batch_raw.wall_ms <= 0.0
+            || !production_batch_raw.gpu_ms.is_finite()
+            || production_batch_raw.gpu_ms <= 0.0
+        {
+            return Err(Error::invalid(format!(
+                "Metal production-batch layer-3 continuation is invalid: dispatches={}, mappings={}/{}, checksum={} (expected {}), matching_tiles={}/128",
+                layer23_loop.production_batch_dispatches,
+                layer23_loop.production_batch_pointer_matches,
+                layer23_loop.production_batch_wrapped_model_ranges,
+                layer23_loop.production_full_hc_checksum,
+                PREFILL_LAYER3_CONTINUATION_FULL_HC_CHECKSUM,
+                layer23_loop.production_batch_hc_matching_tiles,
             )));
         }
         Ok((
@@ -53637,8 +53834,14 @@ mod tests {
             layer23_loop_final_hc_checksum: 12,
             layer23_loop_final_state_kv_checksum: 13,
             layer23_loop_final_state_score_checksum: 14,
+            layer23_loop_full_layer2_hc_checksum: PREFILL_LAYER2_CONTINUATION_FULL_HC_CHECKSUM,
             layer23_loop_full_layer3_hc_checksum: PREFILL_LAYER3_CONTINUATION_TILED_HC_CHECKSUM,
             layer23_loop_production_hc_matching_tiles: 114,
+            layer3_production_batch_dispatches: 38,
+            layer3_production_batch_wrapped_model_ranges: 19,
+            layer3_production_batch_pointer_matches: 19,
+            layer3_production_full_hc_checksum: PREFILL_LAYER3_CONTINUATION_FULL_HC_CHECKSUM,
+            layer3_production_hc_matching_tiles: 128,
         };
         let mut output = Vec::new();
         write_long_prefill_continuation_bootstrap_probe_json(&mut output, &report).unwrap();
@@ -53667,18 +53870,27 @@ mod tests {
         assert!(text.contains("\"structurally_executed_unverified_tiles\": 126"));
         assert!(text.contains("\"ratio128_emitted_rows\": 32"));
         assert!(text.contains("\"complete_layer23_second_chunk_execution_claim\": true"));
-        assert!(text.contains("\"complete_layer23_second_chunk_c0_claim\": false"));
+        assert!(text.contains("\"complete_layer23_second_chunk_c0_claim\": true"));
         assert!(text.contains(&format!(
-            "\"full_layer3_hc\": {}",
+            "\"full_layer2_hc\": {}",
+            PREFILL_LAYER2_CONTINUATION_FULL_HC_CHECKSUM
+        )));
+        assert!(text.contains("\"full_layer2_hc_checksum_match\": true"));
+        assert!(text.contains("\"complete_layer2_second_chunk_output_checksum_claim\": true"));
+        assert!(text.contains(&format!(
+            "\"tiled_full_layer3_hc\": {}",
             PREFILL_LAYER3_CONTINUATION_TILED_HC_CHECKSUM
         )));
         assert!(text.contains(&format!(
-            "\"production_geometry_oracle_checksum\": {}",
+            "\"production_full_layer3_hc\": {}",
             PREFILL_LAYER3_CONTINUATION_FULL_HC_CHECKSUM
         )));
-        assert!(text.contains("\"production_geometry_matching_tiles\": 114"));
-        assert!(text.contains("\"full_layer3_hc_checksum_match\": false"));
-        assert!(text.contains("\"complete_layer3_second_chunk_output_checksum_claim\": false"));
+        assert!(text.contains("\"tiled_diagnostic\": {\"matching_tiles\": 114"));
+        assert!(text.contains("\"ratio128_compressor_schedule\": \"aligned_batch_pool\""));
+        assert!(text.contains("\"matching_tiles\": 128, \"checksum_match\": true"));
+        assert!(text.contains("\"full_layer3_hc_checksum_match\": true"));
+        assert!(text.contains("\"complete_layer3_second_chunk_output_checksum_claim\": true"));
+        assert!(text.contains("\"complete_layer23_second_chunk_c0_claim\": true"));
         assert!(text.contains("\"layer2_sparse_transition_c0_claim\": true"));
         assert!(text.contains("\"selection_kernel\": \"kernel_topk_stream512\""));
         assert!(text.contains("\"input_boundary\": \"native_multirow_sparse_kqv_back\""));
