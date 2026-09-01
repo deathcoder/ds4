@@ -391,9 +391,15 @@ they describe whenever practical.
   128 layer-3 tile checksums with a repeated production-geometry oracle:
   114 match and 14 differ, while the terminal HC and recurrent states remain
   stable. The per-tile schedule therefore cannot serve as the exact layer-4
-  input boundary. Execute layer 3 in one production-size 4,096-row batch,
-  validate its full checksum, then extend that batch chain through layers
-  4--42 and the output head and match the complete 8K logits.
+  input boundary. A production-size layer-3 replay now matches all 128 tiles
+  and full checksum `17010162403439886297`. Its live second-chunk output feeds
+  a 40-dispatch layer-4 ingress/QKV/compressor diagnostic with 17/17 no-copy
+  mappings. Eight of ten aggregate checksums match; only the first compressed
+  row in each ratio-4 cache differs, while rows 1--1,023 and all recurrent
+  states are exact. The mismatch traces to the pre-4,096 layer-4 normalized
+  activation. Replay the first 4K layer-3 production batch, repair that retained
+  prefix, then extend the exact chain through layers 4--42 and the output head
+  and match the complete 8K logits.
   A complete retained
   sequential experiment has now ruled out decoder execution as a shortcut: it
   selected the same terminal token but differed in all 129,280 logits. The

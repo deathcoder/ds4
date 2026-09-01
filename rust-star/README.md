@@ -398,9 +398,15 @@ retains the complete second-chunk layer-3 norm/Q/KV state and replays the
 production-aligned 4,096-row ratio-128 compressor, attention, and FFN schedule.
 The replay uses 38 dispatches and 19/19 no-copy mappings; all 128 tile checksums
 match and the full HC checksum is exactly `17010162403439886297`. Layer 4 is
-therefore the next exact continuation boundary. Extending that chain through
-layers 4--42 and the output head, then matching the 8K logits, remains open. No
-throughput or speedup claim is attached to this gate.
+therefore the next continuation boundary. Schema v13 executes its full
+4,096-row ingress/QKV/paired-compressor schedule over 40 dispatches with 17/17
+no-copy mappings. Eight of ten boundary checksums are exact. The only failures
+are the first attention/indexer compressed rows; the other 1,023 rows in each
+cache and all final recurrent states are bit-exact. The mismatch traces to the
+pre-4,096 layer-4 normalized activation, so the next repair is the first-chunk
+production layer-3-to-layer-4 handoff. Extending the exact chain through layers
+4--42 and the output head, then matching the 8K logits, remains open. No
+throughput or speedup claim is attached to this diagnostic gate.
 The first complete second-half experiment deliberately tested whether the
 proven retained decoder schedule could serve as a correctness-preserving
 shortcut. `long-prefill-sequential-continuation-probe` now generalizes the

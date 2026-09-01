@@ -18,6 +18,56 @@ Before changing code:
 Journal entries are reverse chronological. Do not edit old entries to change
 history; add a correction and update the current-state summary.
 
+## 2026-09-01 — Layer-4 continuation isolates stale first-chunk state
+
+Objective:
+
+- Feed the exact production-batch layer-3 second chunk into layer 4 and locate
+  the first remaining 8K mismatch.
+
+Changes and evidence:
+
+- Added a production-size 4,096-row layer-4 ingress/QKV/paired-compressor
+  boundary with 40 Metal dispatches and 17/17 no-copy model mappings.
+- Captured the complete layer-4 continuation boundary twice from DwarfStar;
+  both runs were byte-identical. Rust matches HC ingress, learned norm, Q,
+  finalized KV, and all four final recurrent-state tensors: 8/10 aggregate
+  checksums are exact.
+- Both compressed-cache tensors differ only in row zero. Rows 1--1,023 are
+  bit-for-bit exact for both the 512-wide attention cache and 128-wide indexer
+  cache. Row zero is the only replay row that consumes pre-4,096 compressor
+  state.
+- A fresh DwarfStar prefix-state capture and Rust readback confirmed that the
+  first halves of all four retained layer-4 ratio-4 state tensors differ,
+  while their unused second halves agree. Rebuilding the state with the exact
+  small-batch tail projection did not repair it.
+- A final-32-row comparison then located the upstream boundary: Rust's
+  pre-4,096 layer-4 normalized activation differs in every value from the
+  production oracle. The exact second-chunk layer-3 output and layer-4 ingress
+  are not at fault; the remaining dependency is the first-chunk production
+  layer-3-to-layer-4 handoff.
+- Evolved the report to
+  `rust-star-long-prefill-continuation-bootstrap-probe-v13`. It records the ten
+  layer-4 checksums, the stable 8/10 match, 1,023 state-independent exact rows
+  per cache, and explicit false complete-layer-4/complete-8K claims.
+- Debug and optimized M1 Ultra runs reproduced the same layer-4 correctness
+  fields. The release artifact SHA-256 is
+  `374111be71efabdbb8a8cfa6d69443c43be6d30d41957041795b65d9ac1c713b`.
+- Validation passed 307 Rust tests, 86 Python tests, formatting, the optimized
+  build, the Metal ownership/dispatch probe, and the Rust-writer/Python-reader
+  C0 artifact contract. The repository-wide fixture loop remains blocked by
+  the pre-existing `prefill-layer0-ffn-transition-pos4099-v1` manifest, whose
+  `operations` array has been absent since commit `94485d4`.
+
+Decision and next step:
+
+- Keep this as a diagnostic checkpoint. Do not seed prefix tensors from the
+  oracle and do not claim a complete layer-4 continuation boundary.
+- Replay the first 4K layer-3 production batch from the retained exact layer-2
+  output, retain its exact layer-4 prefix norm/Q/KV/compressor state, then rerun
+  this boundary. After row zero matches, continue through layer-4 attention
+  and FFN.
+
 ## 2026-08-31 — Tiled layer-3 output rejected as production-batch boundary
 
 Objective:

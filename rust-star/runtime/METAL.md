@@ -705,7 +705,7 @@ control. The next boundary must carry the retained 4K state through layers
 
 ## Retained 4K-to-8K layer-2 and layer-3 continuation boundary
 
-Schema: `rust-star-long-prefill-continuation-bootstrap-probe-v12`.
+Schema: `rust-star-long-prefill-continuation-bootstrap-probe-v13`.
 
 `long-prefill-continuation-bootstrap-probe` completes the first 4K transformer,
 then preserves that context while 64 native 64-row tiles append positions
@@ -768,6 +768,18 @@ preserves 19/19 no-copy model mappings, matches all 128 oracle tile checksums,
 and produces the exact full FNV `17010162403439886297`. The artifact therefore
 sets `complete_layer3_second_chunk_output_checksum_claim` true, and its retained
 HC is the exact input boundary for layer 4.
+
+Version 13 executes the next production-size layer-4 ingress, QKV, and paired
+ratio-4 compressors. It uses 40 dispatches and preserves 17/17 no-copy model
+mappings. HC ingress, learned norm, Q, finalized KV, and all four final
+compressor-state checksums match the repeated production oracle. In each
+compressed cache, rows 1--1,023 are also bit-exact; only row zero differs.
+That row alone consumes retained pre-4,096 compressor state. A direct prefix
+comparison traces the mismatch further upstream to the first-chunk layer-4
+normalized activation, so the artifact records 8/10 matching aggregate
+checksums and keeps the complete layer-4 C0 claim false. The required repair is
+a production-batch first-4K layer-3-to-layer-4 handoff, not a change to the
+second-chunk layer-4 kernels.
 
 ## Model residency before measured decode
 
