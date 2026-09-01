@@ -119,7 +119,8 @@ kernel void kernel_rms_norm_fuse_impl(
     threadgroup_barrier(mem_flags::mem_threadgroup);
     if (tiisg == 0) shmem_f32[sgitg] = sumf;
     threadgroup_barrier(mem_flags::mem_threadgroup);
-    sumf = simd_sum(shmem_f32[tiisg]);
+    sumf = shmem_f32[tiisg];
+    sumf = simd_sum(sumf);
     const float mean = sumf/args.ne00;
     const float scale = 1.0f/sqrt(mean + args.eps);
     device T * y = (device T *)(dst + i03*args.nb3 + i02*args.nb2 + i01*args.nb1);
@@ -418,6 +419,45 @@ struct rust_star_compressor_pack_batch_args {
     uint replay;
     uint n_threads;
 };
+
+struct rust_star_compressor_state_reset_args {
+    uint elements;
+};
+
+// DwarfStar rebuilds the recurrent ratio-4 state after batched prefill. Rows
+// 0--3 are populated separately from small-batch prompt-tail projections;
+// rows 4--7 remain empty for the next four-token compression window.
+kernel void rust_star_compressor_state_reset_ratio4(
+        constant rust_star_compressor_state_reset_args & args,
+        device float * state_kv,
+        device float * state_score,
+        uint gid [[thread_position_in_grid]]) {
+    if (gid >= args.elements) return;
+    state_kv[gid] = 0.0f;
+    state_score[gid] = -INFINITY;
+}
+
+struct rust_star_compressor_state_set_tail4_args {
+    uint width;
+    uint pos0;
+};
+
+kernel void rust_star_compressor_state_set_tail4(
+        constant rust_star_compressor_state_set_tail4_args & args,
+        device const float * kv,
+        device const float * score,
+        device const half * ape,
+        device float * state_kv,
+        device float * state_score,
+        uint gid [[thread_position_in_grid]]) {
+    const ulong total = 4ul*args.width;
+    if ((ulong)gid >= total) return;
+    const uint row = gid/args.width;
+    const uint col = gid-row*args.width;
+    const uint ape_row = (args.pos0+row)%4u;
+    state_kv[gid] = kv[gid];
+    state_score[gid] = score[gid] + float(ape[(ulong)ape_row*args.width+col]);
+}
 
 kernel void rust_star_compressor_pack_ratio4_batch(
         constant rust_star_compressor_pack_batch_args & args,

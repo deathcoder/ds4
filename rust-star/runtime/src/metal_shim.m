@@ -306,6 +306,8 @@ static NSString *const kQ8ProjectionSource =
 @property(nonatomic, strong) id<MTLComputePipelineState> compressorSumRowsPipeline;
 @property(nonatomic, strong) id<MTLComputePipelineState> compressorScoreBatchPipeline;
 @property(nonatomic, strong) id<MTLComputePipelineState> compressorPackBatchPipeline;
+@property(nonatomic, strong) id<MTLComputePipelineState> compressorStateResetPipeline;
+@property(nonatomic, strong) id<MTLComputePipelineState> compressorStateSetTail4Pipeline;
 @property(nonatomic, strong) id<MTLComputePipelineState> compressorPoolBatchPipeline;
 @property(nonatomic, strong) id<MTLComputePipelineState> compressorPoolStridedPipeline;
 @property(nonatomic, strong) id<MTLComputePipelineState> compressorNormPipeline;
@@ -323,9 +325,11 @@ static NSString *const kQ8ProjectionSource =
 @property(nonatomic, strong) id<MTLComputePipelineState> cpyF32F16Pipeline;
 @property(nonatomic, strong) id<MTLComputePipelineState> cpyF16F32Pipeline;
 @property(nonatomic, strong) id<MTLComputePipelineState> flashPadPipeline;
+@property(nonatomic, strong) id<MTLComputePipelineState> flashPad64Pipeline;
 @property(nonatomic, strong) id<MTLComputePipelineState> flashBlkPipeline;
 @property(nonatomic, strong) id<MTLComputePipelineState> flashNonvecPipeline;
 @property(nonatomic, strong) id<MTLComputePipelineState> flashNonvecNsg8Pipeline;
+@property(nonatomic, strong) id<MTLComputePipelineState> flashNonvecNsg8KvpadPipeline;
 @property(nonatomic, strong) id<MTLComputePipelineState> flashVecPipeline;
 @property(nonatomic, strong) id<MTLComputePipelineState> flashReducePipeline;
 @property(nonatomic, strong) id<MTLComputePipelineState> flashReduceInverseRopePipeline;
@@ -429,6 +433,8 @@ static NSString *const kQ8ProjectionSource =
 @property(nonatomic, strong) id<MTLBuffer> prefillLayer3FullKv;
 @property(nonatomic, strong) id<MTLBuffer> prefillLayer3InputHc;
 @property(nonatomic, strong) id<MTLBuffer> prefillLayer3AttnSplit;
+@property(nonatomic, strong) id<MTLBuffer> prefillLayer3Current;
+@property(nonatomic, strong) id<MTLBuffer> prefillLayer3Norm;
 @property(nonatomic, strong) id<MTLBuffer> prefillLayer3AttnCompressed;
 @property(nonatomic, strong) id<MTLBuffer> prefillLayer3AttnStateKv;
 @property(nonatomic, strong) id<MTLBuffer> prefillLayer3AttnStateScore;
@@ -1170,6 +1176,12 @@ static int ensure_attention_ingress_pipelines(
     id<MTLFunction> flashPad = [library newFunctionWithName:@"kernel_flash_attn_ext_pad"
                                             constantValues:padConstants error:&compile_error];
     int32_t nqptg = 8, nonvecNcpsg = 64;
+    MTLFunctionConstantValues *pad64Constants = [MTLFunctionConstantValues new];
+    [pad64Constants setConstantValue:&enabled type:MTLDataTypeBool atIndex:100];
+    [pad64Constants setConstantValue:&nonvecNcpsg type:MTLDataTypeInt atIndex:125];
+    id<MTLFunction> flashPad64 =
+        [library newFunctionWithName:@"kernel_flash_attn_ext_pad"
+                       constantValues:pad64Constants error:&compile_error];
     MTLFunctionConstantValues *blkConstants = [MTLFunctionConstantValues new];
     [blkConstants setConstantValue:&nqptg type:MTLDataTypeInt atIndex:224];
     [blkConstants setConstantValue:&nonvecNcpsg type:MTLDataTypeInt atIndex:225];
@@ -1205,6 +1217,20 @@ static int ensure_attention_ingress_pipelines(
     id<MTLFunction> flashNonvecNsg8 =
         [library newFunctionWithName:@"kernel_flash_attn_ext_f16_dk512_dv512"
                       constantValues:continuationConstants error:&compile_error];
+    MTLFunctionConstantValues *continuationKvpadConstants =
+        [MTLFunctionConstantValues new];
+    [continuationKvpadConstants setConstantValue:&enabled type:MTLDataTypeBool atIndex:300];
+    [continuationKvpadConstants setConstantValue:&enabled type:MTLDataTypeBool atIndex:301];
+    [continuationKvpadConstants setConstantValue:&disabled type:MTLDataTypeBool atIndex:302];
+    [continuationKvpadConstants setConstantValue:&disabled type:MTLDataTypeBool atIndex:303];
+    [continuationKvpadConstants setConstantValue:&enabled type:MTLDataTypeBool atIndex:304];
+    [continuationKvpadConstants setConstantValue:&disabled type:MTLDataTypeBool atIndex:310];
+    [continuationKvpadConstants setConstantValue:&headDim type:MTLDataTypeInt atIndex:320];
+    [continuationKvpadConstants setConstantValue:&headDim type:MTLDataTypeInt atIndex:321];
+    [continuationKvpadConstants setConstantValue:&continuationNsg type:MTLDataTypeInt atIndex:322];
+    id<MTLFunction> flashNonvecNsg8Kvpad =
+        [library newFunctionWithName:@"kernel_flash_attn_ext_f16_dk512_dv512"
+                      constantValues:continuationKvpadConstants error:&compile_error];
     MTLFunctionConstantValues *vecConstants = [MTLFunctionConstantValues new];
     [vecConstants setConstantValue:&enabled type:MTLDataTypeBool atIndex:400];
     [vecConstants setConstantValue:&enabled type:MTLDataTypeBool atIndex:401];
@@ -1258,6 +1284,10 @@ static int ensure_attention_ingress_pipelines(
         [library newFunctionWithName:@"rust_star_compressor_score_ape_f16_batch"];
     id<MTLFunction> compressorPackBatch =
         [library newFunctionWithName:@"rust_star_compressor_pack_ratio4_batch"];
+    id<MTLFunction> compressorStateReset =
+        [library newFunctionWithName:@"rust_star_compressor_state_reset_ratio4"];
+    id<MTLFunction> compressorStateSetTail4 =
+        [library newFunctionWithName:@"rust_star_compressor_state_set_tail4"];
     id<MTLFunction> compressorPoolBatch =
         [library newFunctionWithName:@"rust_star_compressor_softmax_pool_batch"];
     id<MTLFunction> compressorPoolStrided =
@@ -1272,7 +1302,8 @@ static int ensure_attention_ingress_pipelines(
         !flashReduceInverseRope ||
         !projection || !compressorPair || !compressorStore || !compressorPack ||
         !compressorSoftmax || !compressorMul || !compressorSumRows ||
-        !compressorScoreBatch || !compressorPackBatch || !compressorPoolBatch ||
+        !compressorScoreBatch || !compressorPackBatch || !compressorStateReset ||
+        !compressorStateSetTail4 || !compressorPoolBatch ||
         !compressorPoolStrided ||
         !compressorNorm || !compressorShift || !compressorFp8 || !indexerQat ||
         !routerProbability || !routerFinalize || !routerWeights ||
@@ -1298,6 +1329,12 @@ static int ensure_attention_ingress_pipelines(
     context.compressorPackBatchPipeline =
         [context.device newComputePipelineStateWithFunction:compressorPackBatch
                                                        error:&compile_error];
+    context.compressorStateResetPipeline =
+        [context.device newComputePipelineStateWithFunction:compressorStateReset
+                                                       error:&compile_error];
+    context.compressorStateSetTail4Pipeline =
+        [context.device newComputePipelineStateWithFunction:compressorStateSetTail4
+                                                       error:&compile_error];
     context.compressorPoolBatchPipeline =
         [context.device newComputePipelineStateWithFunction:compressorPoolBatch
                                                        error:&compile_error];
@@ -1320,10 +1357,15 @@ static int ensure_attention_ingress_pipelines(
     context.cpyF32F16Pipeline = [context.device newComputePipelineStateWithFunction:cpyF32F16 error:&compile_error];
     context.cpyF16F32Pipeline = [context.device newComputePipelineStateWithFunction:cpyF16F32 error:&compile_error];
     context.flashPadPipeline = [context.device newComputePipelineStateWithFunction:flashPad error:&compile_error];
+    context.flashPad64Pipeline =
+        [context.device newComputePipelineStateWithFunction:flashPad64 error:&compile_error];
     context.flashBlkPipeline = [context.device newComputePipelineStateWithFunction:flashBlk error:&compile_error];
     context.flashNonvecPipeline = [context.device newComputePipelineStateWithFunction:flashNonvec error:&compile_error];
     context.flashNonvecNsg8Pipeline =
         [context.device newComputePipelineStateWithFunction:flashNonvecNsg8
+                                                       error:&compile_error];
+    context.flashNonvecNsg8KvpadPipeline =
+        [context.device newComputePipelineStateWithFunction:flashNonvecNsg8Kvpad
                                                        error:&compile_error];
     context.flashVecPipeline = [context.device newComputePipelineStateWithFunction:flashVec error:&compile_error];
     context.flashReducePipeline = [context.device newComputePipelineStateWithFunction:flashReduce error:&compile_error];
@@ -1347,6 +1389,8 @@ static int ensure_attention_ingress_pipelines(
         !context.compressorSumRowsPipeline ||
         !context.compressorScoreBatchPipeline ||
         !context.compressorPackBatchPipeline ||
+        !context.compressorStateResetPipeline ||
+        !context.compressorStateSetTail4Pipeline ||
         !context.compressorPoolBatchPipeline ||
         !context.compressorPoolStridedPipeline || !context.compressorNormPipeline ||
         !context.compressorShiftPipeline || !context.compressorFp8Pipeline ||
@@ -1355,8 +1399,10 @@ static int ensure_attention_ingress_pipelines(
         !context.headNormKvRopePipeline ||
         !context.ropeTailPipeline || !context.kvStorePipeline ||
         !context.cpyF32F16Pipeline || !context.cpyF16F32Pipeline ||
-        !context.flashPadPipeline || !context.flashBlkPipeline ||
-        !context.flashNonvecPipeline || !context.flashNonvecNsg8Pipeline ||
+        !context.flashPadPipeline || !context.flashPad64Pipeline ||
+        !context.flashBlkPipeline || !context.flashNonvecPipeline ||
+        !context.flashNonvecNsg8Pipeline ||
+        !context.flashNonvecNsg8KvpadPipeline ||
         !context.flashVecPipeline ||
         !context.flashReducePipeline || !context.flashReduceInverseRopePipeline ||
         !context.routerProbabilityPipeline || !context.routerFinalizePipeline ||
@@ -2932,12 +2978,18 @@ static id<MTLBuffer> prefill_layer_buffer(
     const BOOL is_layer_buffer = layer_end && layer_end != name + 5u &&
         *layer_end == '_' && layer >= 3u && layer <= 42u;
     const char *role = is_layer_buffer ? layer_end + 1u : name;
+    const BOOL retain_layer3_prefix = layer == 3u &&
+        (strcmp(role, "cur_buffer") == 0 ||
+         strcmp(role, "norm_buffer") == 0 ||
+         strcmp(role, "q_cur_buffer") == 0 ||
+         strcmp(role, "after_attention_hc_buffer") == 0 ||
+         strcmp(role, "after_ffn_hc_buffer") == 0);
     /* Production prefill encodes layers serially into one command buffer, so
      * same-role transient scratch is dead before the following layer reuses it.
      * The final HC is the sole cross-layer transient and therefore ping-pongs;
      * persistent decoder state stays layer-scoped. Diagnostic collection keeps
      * distinct buffers because it reads every retained layer boundary. */
-    if (!collect_outputs && is_layer_buffer &&
+    if (!collect_outputs && is_layer_buffer && !retain_layer3_prefix &&
         !prefill_buffer_is_decoder_state(role)) {
         const unsigned long slot = strcmp(role, "after_ffn_hc_buffer") == 0
             ? layer % 2u : 0u;
@@ -3217,7 +3269,8 @@ static int encode_projected_compressor_batch_ratio4(
     uint32_t head_dim,
     uint32_t position_start,
     uint32_t rows,
-    BOOL indexer)
+    BOOL indexer,
+    BOOL rebuild_prefill_state)
 {
     const uint32_t ratio = 4u;
     const uint32_t n_comp = rows/ratio;
@@ -3325,9 +3378,6 @@ static int encode_projected_compressor_batch_ratio4(
              threadsPerThreadgroup:MTLSizeMake(64,1,1)];
     }
 
-    const NSUInteger retained_compressed_rows = output.length/row_bytes;
-    const BOOL final_prefill_tile = position_start != 0u &&
-        position_start + rows == retained_compressed_rows*ratio;
     rust_star_mul_mv_ext_args tail_projection = {
         .ne00=4096, .ne01=(int32_t)width, .ne02=1,
         .nb00=sizeof(uint16_t), .nb01=4096ull*sizeof(uint16_t),
@@ -3339,6 +3389,9 @@ static int encode_projected_compressor_batch_ratio4(
         .nb13=4096ull*ratio*sizeof(float),
         .ne0=(int32_t)width, .ne1=ratio, .r2=1, .r3=1,
     };
+    const NSUInteger retained_compressed_rows = output.length/row_bytes;
+    const BOOL final_rolling_tile = position_start != 0u &&
+        position_start + rows == retained_compressed_rows*ratio;
 #define RUST_STAR_ENCODE_TAIL_PROJECTION(weight, weight_offset, output) do { \
         [encoder setComputePipelineState:context.f16Tail4Pipeline]; \
         [encoder setBytes:&tail_projection length:sizeof(tail_projection) atIndex:0]; \
@@ -3348,38 +3401,59 @@ static int encode_projected_compressor_batch_ratio4(
         [encoder dispatchThreadgroups:MTLSizeMake((width+7u)/8u,1,1) \
              threadsPerThreadgroup:MTLSizeMake(32,2,1)]; \
     } while (0)
-    if (final_prefill_tile) {
+    if (rebuild_prefill_state || final_rolling_tile) {
         RUST_STAR_ENCODE_TAIL_PROJECTION(kv_weight, kv_weight_offset, projected_kv);
         RUST_STAR_ENCODE_TAIL_PROJECTION(gate_weight, gate_weight_offset, projected_score);
     }
 #undef RUST_STAR_ENCODE_TAIL_PROJECTION
 
-    for (uint32_t row = 0; row < ratio; row++) {
-        const uint32_t projected_row =
-            final_prefill_tile ? row : rows-ratio+row;
-        rust_star_compressor_store_args store = {
-            .width=width, .ratio=ratio,
-            .pos=position_start+rows-ratio+row, .ape_type=1,
+    if (rebuild_prefill_state) {
+        struct { uint32_t elements; } reset = { .elements=8u*width };
+        [encoder setComputePipelineState:context.compressorStateResetPipeline];
+        [encoder setBytes:&reset length:sizeof(reset) atIndex:0];
+        [encoder setBuffer:state_kv offset:0 atIndex:1];
+        [encoder setBuffer:state_score offset:0 atIndex:2];
+        [encoder dispatchThreads:MTLSizeMake(8u*width,1,1)
+              threadsPerThreadgroup:MTLSizeMake(256,1,1)];
+        struct { uint32_t width, pos0; } set_tail = {
+            .width=width, .pos0=position_start+rows-ratio,
         };
-        [encoder setComputePipelineState:context.compressorStorePipeline];
-        [encoder setBytes:&store length:sizeof(store) atIndex:0];
-        [encoder setBuffer:projected_kv
-                    offset:(NSUInteger)projected_row*width*sizeof(float) atIndex:1];
-        [encoder setBuffer:projected_score
-                    offset:(NSUInteger)projected_row*width*sizeof(float) atIndex:2];
+        [encoder setComputePipelineState:context.compressorStateSetTail4Pipeline];
+        [encoder setBytes:&set_tail length:sizeof(set_tail) atIndex:0];
+        [encoder setBuffer:projected_kv offset:0 atIndex:1];
+        [encoder setBuffer:projected_score offset:0 atIndex:2];
         [encoder setBuffer:ape offset:ape_offset atIndex:3];
         [encoder setBuffer:state_kv offset:0 atIndex:4];
         [encoder setBuffer:state_score offset:0 atIndex:5];
-        [encoder dispatchThreadgroups:MTLSizeMake((width+255u)/256u,1,1)
-             threadsPerThreadgroup:MTLSizeMake(256,1,1)];
+        [encoder dispatchThreads:MTLSizeMake(4u*width,1,1)
+              threadsPerThreadgroup:MTLSizeMake(256,1,1)];
+    } else {
+        for (uint32_t row = 0; row < ratio; row++) {
+            const uint32_t projected_row = final_rolling_tile ? row : rows-ratio+row;
+            rust_star_compressor_store_args store = {
+                .width=width, .ratio=ratio,
+                .pos=position_start+rows-ratio+row, .ape_type=1,
+            };
+            [encoder setComputePipelineState:context.compressorStorePipeline];
+            [encoder setBytes:&store length:sizeof(store) atIndex:0];
+            [encoder setBuffer:projected_kv
+                        offset:(NSUInteger)projected_row*width*sizeof(float) atIndex:1];
+            [encoder setBuffer:projected_score
+                        offset:(NSUInteger)projected_row*width*sizeof(float) atIndex:2];
+            [encoder setBuffer:ape offset:ape_offset atIndex:3];
+            [encoder setBuffer:state_kv offset:0 atIndex:4];
+            [encoder setBuffer:state_score offset:0 atIndex:5];
+            [encoder dispatchThreadgroups:MTLSizeMake((width+255u)/256u,1,1)
+                 threadsPerThreadgroup:MTLSizeMake(256,1,1)];
+        }
+        rust_star_ratio4_shift_args shift = { .width=width };
+        [encoder setComputePipelineState:context.compressorShiftPipeline];
+        [encoder setBytes:&shift length:sizeof(shift) atIndex:0];
+        [encoder setBuffer:state_kv offset:0 atIndex:1];
+        [encoder setBuffer:state_score offset:0 atIndex:2];
+        [encoder dispatchThreads:MTLSizeMake(4u*width,1,1)
+              threadsPerThreadgroup:MTLSizeMake(256,1,1)];
     }
-    rust_star_ratio4_shift_args shift = { .width=width };
-    [encoder setComputePipelineState:context.compressorShiftPipeline];
-    [encoder setBytes:&shift length:sizeof(shift) atIndex:0];
-    [encoder setBuffer:state_kv offset:0 atIndex:1];
-    [encoder setBuffer:state_score offset:0 atIndex:2];
-    [encoder dispatchThreads:MTLSizeMake(4u*width,1,1)
-          threadsPerThreadgroup:MTLSizeMake(256,1,1)];
     return 1;
 }
 
@@ -6390,7 +6464,7 @@ int rust_star_metal_run_prefill_layer0_boundary(
                         attn_compressed_prefix_bytes,
                         compressed_position_buffer,
                         attn_compressor_width, attn_compressor_head,
-                        position_start, rows, NO) ||
+                        position_start, rows, NO, NO) ||
                     !encode_projected_compressor_batch_ratio4(
                         context, encoder,
                         layer2_norm_buffer,
@@ -6410,7 +6484,7 @@ int rust_star_metal_run_prefill_layer0_boundary(
                         indexer_compressed_prefix_bytes,
                         compressed_position_buffer,
                         indexer_compressor_width, indexer_compressor_head,
-                        position_start, rows, YES)) {
+                        position_start, rows, YES, NO)) {
                     return fail_with_message(error, error_bytes,
                         @"failed to encode prefill layer-2 compressor batches");
                 }
@@ -12845,9 +12919,12 @@ int rust_star_metal_run_prefill_layer2_attention(
         const NSUInteger mask_bytes =
             (NSUInteger)rows*key_rows*sizeof(uint16_t);
         const NSUInteger layer3_staged_kv_bytes =
-            (NSUInteger)layer3_attention_rows*head_dim*sizeof(uint16_t);
+            (NSUInteger)layer3_key_rows*head_dim*sizeof(uint16_t);
         const NSUInteger layer3_mask_bytes =
-            (NSUInteger)rows*layer3_attention_rows*sizeof(uint16_t);
+            (NSUInteger)rows*layer3_key_rows*sizeof(uint16_t);
+        const NSUInteger layer3_pad_bytes = 64u*(
+            2u*(NSUInteger)head_dim*sizeof(uint16_t) +
+            (NSUInteger)rows*sizeof(uint16_t));
         const NSUInteger block_bytes =
             (NSUInteger)key_blocks*query_blocks;
         const NSUInteger attention_low_bytes =
@@ -12869,7 +12946,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         RUST_STAR_NEW_L2_ATTN_BUFFER(staged_kv_buffer, staged_kv_bytes);
         RUST_STAR_NEW_L2_ATTN_BUFFER(mask_buffer, mask_bytes);
         RUST_STAR_NEW_L2_ATTN_BUFFER(block_buffer, block_bytes);
-        RUST_STAR_NEW_L2_ATTN_BUFFER(pad_buffer, 1u);
+        RUST_STAR_NEW_L2_ATTN_BUFFER(pad_buffer, layer3_pad_bytes);
         RUST_STAR_NEW_L2_ATTN_BUFFER(heads_buffer, q_bytes);
         RUST_STAR_NEW_L2_ATTN_BUFFER(attention_low_buffer, attention_low_bytes);
         RUST_STAR_NEW_L2_ATTN_BUFFER(output_buffer, output_bytes);
@@ -16673,7 +16750,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         uint16_t *layer3_mask = layer3_mask_buffer.contents;
         for (uint32_t query = 0; query < rows; query++) {
             uint16_t *mask_row =
-                layer3_mask + (NSUInteger)query*layer3_attention_rows;
+                layer3_mask + (NSUInteger)query*layer3_key_rows;
             for (uint32_t key = 0; key < raw_rows; key++) {
                 const BOOL visible =
                     key <= query && query-key < attention_window;
@@ -16684,10 +16761,6 @@ int rust_star_metal_run_prefill_layer2_attention(
             for (uint32_t key = 0; key < layer3_compressed_rows; key++) {
                 mask_row[raw_rows+key] =
                     key < visible_compressed ? 0u : 0xfc00u;
-            }
-            for (uint32_t key = layer3_key_rows;
-                 key < layer3_attention_rows; key++) {
-                mask_row[key] = 0xfc00u;
             }
         }
         int32_t *positions = position_buffer.contents;
@@ -17757,18 +17830,28 @@ int rust_star_metal_run_prefill_layer2_attention(
             .nb2=512u*sizeof(float), .nb3=(uint64_t)rows*512u*sizeof(float),
             .n_rot=64,
         };
+        rust_star_flash_pad_args layer3_pad_args = {
+            .ne11=(int32_t)layer3_key_rows, .ne_12_2=1, .ne_12_3=1,
+            .nb11=(uint64_t)head_dim*sizeof(uint16_t),
+            .nb12=layer3_staged_kv_bytes, .nb13=layer3_staged_kv_bytes,
+            .nb21=(uint64_t)head_dim*sizeof(uint16_t),
+            .nb22=layer3_staged_kv_bytes, .nb23=layer3_staged_kv_bytes,
+            .ne31=(int32_t)rows, .ne32=1, .ne33=1,
+            .nb31=(uint64_t)layer3_key_rows*sizeof(uint16_t),
+            .nb32=layer3_mask_bytes, .nb33=layer3_mask_bytes,
+        };
         rust_star_flash_blk_args layer3_block_args = block_args;
-        layer3_block_args.ne30 = layer3_attention_rows;
-        layer3_block_args.nb31 = layer3_attention_rows*sizeof(uint16_t);
+        layer3_block_args.ne30 = layer3_key_rows;
+        layer3_block_args.nb31 = layer3_key_rows*sizeof(uint16_t);
         layer3_block_args.nb32 = layer3_mask_bytes;
         layer3_block_args.nb33 = layer3_mask_bytes;
         rust_star_flash_vec_args layer3_attention_args = attention_args;
-        layer3_attention_args.ne11 = layer3_attention_rows;
+        layer3_attention_args.ne11 = layer3_key_rows;
         layer3_attention_args.nb12 = layer3_staged_kv_bytes;
         layer3_attention_args.nb13 = layer3_staged_kv_bytes;
         layer3_attention_args.nb22 = layer3_staged_kv_bytes;
         layer3_attention_args.nb23 = layer3_staged_kv_bytes;
-        layer3_attention_args.nb31 = layer3_attention_rows*sizeof(uint16_t);
+        layer3_attention_args.nb31 = layer3_key_rows*sizeof(uint16_t);
         layer3_attention_args.nb32 = layer3_mask_bytes;
         layer3_attention_args.nb33 = layer3_mask_bytes;
         rust_star_q8_mm_id_args layer3_low_args = low_args;
@@ -18519,16 +18602,26 @@ int rust_star_metal_run_prefill_layer2_attention(
                 (layer3_compressed_elements+1023u)/1024u,1,1)
              threadsPerThreadgroup:MTLSizeMake(256,1,1)];
 
+        [encoder setComputePipelineState:context.flashPad64Pipeline];
+        [encoder setBytes:&layer3_pad_args
+                   length:sizeof(layer3_pad_args) atIndex:0];
+        [encoder setBuffer:staged_kv_buffer offset:0 atIndex:1];
+        [encoder setBuffer:staged_kv_buffer offset:0 atIndex:2];
+        [encoder setBuffer:layer3_mask_buffer offset:0 atIndex:3];
+        [encoder setBuffer:pad_buffer offset:0 atIndex:4];
+        [encoder dispatchThreadgroups:MTLSizeMake(64,1,1)
+             threadsPerThreadgroup:MTLSizeMake(32,1,1)];
+
         [encoder setComputePipelineState:context.flashBlkPipeline];
         [encoder setBytes:&layer3_block_args
                    length:sizeof(layer3_block_args) atIndex:0];
         [encoder setBuffer:layer3_mask_buffer offset:0 atIndex:1];
         [encoder setBuffer:block_buffer offset:0 atIndex:2];
         [encoder dispatchThreadgroups:MTLSizeMake(
-                layer3_attention_rows/64u,256,1)
+                layer3_attention_rows/64u,query_blocks,1)
              threadsPerThreadgroup:MTLSizeMake(32,1,1)];
 
-        [encoder setComputePipelineState:context.flashNonvecPipeline];
+        [encoder setComputePipelineState:context.flashNonvecNsg8KvpadPipeline];
         [encoder setBytes:&layer3_attention_args
                    length:sizeof(layer3_attention_args) atIndex:0];
         [encoder setBuffer:layer3_q_cur_buffer offset:0 atIndex:1];
@@ -18540,8 +18633,8 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setBuffer:block_buffer offset:0 atIndex:7];
         [encoder setBuffer:heads_buffer offset:0 atIndex:8];
         [encoder setThreadgroupMemoryLength:28672u atIndex:0];
-        [encoder dispatchThreadgroups:MTLSizeMake(256,n_head,1)
-             threadsPerThreadgroup:MTLSizeMake(32,kRustStarFlashNonvecNsg,1)];
+        [encoder dispatchThreadgroups:MTLSizeMake(query_blocks,n_head,1)
+             threadsPerThreadgroup:MTLSizeMake(32,8,1)];
 
         [encoder endEncoding];
         id<MTLBlitCommandEncoder> layer3_attention_blit =
@@ -18957,7 +19050,7 @@ int rust_star_metal_run_prefill_layer2_attention(
                 layer4_attn_compressed_buffer, 0,
                 layer4_compressed_position_buffer,
                 layer4_attn_compressor_width,
-                layer4_attn_compressor_head, 0u, rows, NO) ||
+                layer4_attn_compressor_head, 0u, rows, NO, NO) ||
             !encode_projected_compressor_batch_ratio4(
                 context, encoder,
                 layer4_norm_buffer, layer4_tail_activation_offset,
@@ -18973,7 +19066,7 @@ int rust_star_metal_run_prefill_layer2_attention(
                 layer4_indexer_compressed_buffer, 0,
                 layer4_compressed_position_buffer,
                 layer4_indexer_compressor_width,
-                layer4_indexer_compressor_head, 0u, rows, YES)) {
+                layer4_indexer_compressor_head, 0u, rows, YES, NO)) {
             return fail_with_message(error, error_bytes,
                 @"failed to encode prefill layer-4 paired compressors");
         }
@@ -19000,7 +19093,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setBytes:&block_args length:sizeof(block_args) atIndex:0];
         [encoder setBuffer:mask_buffer offset:0 atIndex:1];
         [encoder setBuffer:block_buffer offset:0 atIndex:2];
-        [encoder dispatchThreadgroups:MTLSizeMake(key_rows/64u,256,1)
+        [encoder dispatchThreadgroups:MTLSizeMake(key_rows/64u,query_blocks,1)
              threadsPerThreadgroup:MTLSizeMake(32,1,1)];
         RUST_STAR_PREFILL_REPRESENTATIVE_COMPUTE_BOUNDARY();
         [encoder setComputePipelineState:context.flashNonvecPipeline];
@@ -19014,7 +19107,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setBuffer:block_buffer offset:0 atIndex:7];
         [encoder setBuffer:heads_buffer offset:0 atIndex:8];
         [encoder setThreadgroupMemoryLength:28672u atIndex:0];
-        [encoder dispatchThreadgroups:MTLSizeMake(256,n_head,1)
+        [encoder dispatchThreadgroups:MTLSizeMake(query_blocks,n_head,1)
              threadsPerThreadgroup:MTLSizeMake(32,kRustStarFlashNonvecNsg,1)];
         [encoder endEncoding];
 
@@ -19447,7 +19540,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setBuffer:layer3_mask_buffer offset:0 atIndex:1];
         [encoder setBuffer:block_buffer offset:0 atIndex:2];
         [encoder dispatchThreadgroups:MTLSizeMake(
-                layer3_attention_rows/64u,256,1)
+                layer3_attention_rows/64u,query_blocks,1)
              threadsPerThreadgroup:MTLSizeMake(32,1,1)];
         RUST_STAR_PREFILL_REPRESENTATIVE_COMPUTE_BOUNDARY();
 
@@ -19463,7 +19556,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setBuffer:block_buffer offset:0 atIndex:7];
         [encoder setBuffer:heads_buffer offset:0 atIndex:8];
         [encoder setThreadgroupMemoryLength:28672u atIndex:0];
-        [encoder dispatchThreadgroups:MTLSizeMake(256,n_head,1)
+        [encoder dispatchThreadgroups:MTLSizeMake(query_blocks,n_head,1)
              threadsPerThreadgroup:MTLSizeMake(32,kRustStarFlashNonvecNsg,1)];
         [encoder endEncoding];
 
@@ -19885,7 +19978,7 @@ int rust_star_metal_run_prefill_layer2_attention(
                 layer6_attn_compressed_buffer, 0,
                 layer6_compressed_position_buffer,
                 layer4_attn_compressor_width,
-                layer4_attn_compressor_head, 0u, rows, NO) ||
+                layer4_attn_compressor_head, 0u, rows, NO, NO) ||
             !encode_projected_compressor_batch_ratio4(
                 context, encoder,
                 layer6_norm_buffer, layer6_tail_activation_offset,
@@ -19901,7 +19994,7 @@ int rust_star_metal_run_prefill_layer2_attention(
                 layer6_indexer_compressed_buffer, 0,
                 layer6_compressed_position_buffer,
                 layer4_indexer_compressor_width,
-                layer4_indexer_compressor_head, 0u, rows, YES)) {
+                layer4_indexer_compressor_head, 0u, rows, YES, NO)) {
             return fail_with_message(error, error_bytes,
                 @"failed to encode prefill layer-6 paired compressors");
         }
@@ -19926,7 +20019,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setBytes:&block_args length:sizeof(block_args) atIndex:0];
         [encoder setBuffer:mask_buffer offset:0 atIndex:1];
         [encoder setBuffer:block_buffer offset:0 atIndex:2];
-        [encoder dispatchThreadgroups:MTLSizeMake(key_rows/64u,256,1)
+        [encoder dispatchThreadgroups:MTLSizeMake(key_rows/64u,query_blocks,1)
              threadsPerThreadgroup:MTLSizeMake(32,1,1)];
         [encoder setComputePipelineState:context.flashNonvecPipeline];
         [encoder setBytes:&attention_args length:sizeof(attention_args) atIndex:0];
@@ -19939,7 +20032,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setBuffer:block_buffer offset:0 atIndex:7];
         [encoder setBuffer:heads_buffer offset:0 atIndex:8];
         [encoder setThreadgroupMemoryLength:28672u atIndex:0];
-        [encoder dispatchThreadgroups:MTLSizeMake(256,n_head,1)
+        [encoder dispatchThreadgroups:MTLSizeMake(query_blocks,n_head,1)
              threadsPerThreadgroup:MTLSizeMake(32,kRustStarFlashNonvecNsg,1)];
         [encoder endEncoding];
 
@@ -20375,7 +20468,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setBuffer:layer3_mask_buffer offset:0 atIndex:1];
         [encoder setBuffer:block_buffer offset:0 atIndex:2];
         [encoder dispatchThreadgroups:MTLSizeMake(
-                layer3_attention_rows/64u,256,1)
+                layer3_attention_rows/64u,query_blocks,1)
              threadsPerThreadgroup:MTLSizeMake(32,1,1)];
 
         [encoder setComputePipelineState:context.flashNonvecPipeline];
@@ -20390,7 +20483,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setBuffer:block_buffer offset:0 atIndex:7];
         [encoder setBuffer:heads_buffer offset:0 atIndex:8];
         [encoder setThreadgroupMemoryLength:28672u atIndex:0];
-        [encoder dispatchThreadgroups:MTLSizeMake(256,n_head,1)
+        [encoder dispatchThreadgroups:MTLSizeMake(query_blocks,n_head,1)
              threadsPerThreadgroup:MTLSizeMake(32,kRustStarFlashNonvecNsg,1)];
         [encoder endEncoding];
 
@@ -20818,7 +20911,7 @@ int rust_star_metal_run_prefill_layer2_attention(
                 layer8_attn_compressed_buffer, 0,
                 layer8_compressed_position_buffer,
                 layer4_attn_compressor_width,
-                layer4_attn_compressor_head, 0u, rows, NO) ||
+                layer4_attn_compressor_head, 0u, rows, NO, NO) ||
             !encode_projected_compressor_batch_ratio4(
                 context, encoder,
                 layer8_norm_buffer, layer8_tail_activation_offset,
@@ -20834,7 +20927,7 @@ int rust_star_metal_run_prefill_layer2_attention(
                 layer8_indexer_compressed_buffer, 0,
                 layer8_compressed_position_buffer,
                 layer4_indexer_compressor_width,
-                layer4_indexer_compressor_head, 0u, rows, YES)) {
+                layer4_indexer_compressor_head, 0u, rows, YES, NO)) {
             return fail_with_message(error, error_bytes,
                 @"failed to encode prefill layer-8 paired compressors");
         }
@@ -20859,7 +20952,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setBytes:&block_args length:sizeof(block_args) atIndex:0];
         [encoder setBuffer:mask_buffer offset:0 atIndex:1];
         [encoder setBuffer:block_buffer offset:0 atIndex:2];
-        [encoder dispatchThreadgroups:MTLSizeMake(key_rows/64u,256,1)
+        [encoder dispatchThreadgroups:MTLSizeMake(key_rows/64u,query_blocks,1)
              threadsPerThreadgroup:MTLSizeMake(32,1,1)];
         [encoder setComputePipelineState:context.flashNonvecPipeline];
         [encoder setBytes:&attention_args length:sizeof(attention_args) atIndex:0];
@@ -20872,7 +20965,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setBuffer:block_buffer offset:0 atIndex:7];
         [encoder setBuffer:heads_buffer offset:0 atIndex:8];
         [encoder setThreadgroupMemoryLength:28672u atIndex:0];
-        [encoder dispatchThreadgroups:MTLSizeMake(256,n_head,1)
+        [encoder dispatchThreadgroups:MTLSizeMake(query_blocks,n_head,1)
              threadsPerThreadgroup:MTLSizeMake(32,kRustStarFlashNonvecNsg,1)];
         [encoder endEncoding];
 
@@ -21308,7 +21401,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setBuffer:layer3_mask_buffer offset:0 atIndex:1];
         [encoder setBuffer:block_buffer offset:0 atIndex:2];
         [encoder dispatchThreadgroups:MTLSizeMake(
-                layer3_attention_rows/64u,256,1)
+                layer3_attention_rows/64u,query_blocks,1)
              threadsPerThreadgroup:MTLSizeMake(32,1,1)];
 
         [encoder setComputePipelineState:context.flashNonvecPipeline];
@@ -21323,7 +21416,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setBuffer:block_buffer offset:0 atIndex:7];
         [encoder setBuffer:heads_buffer offset:0 atIndex:8];
         [encoder setThreadgroupMemoryLength:28672u atIndex:0];
-        [encoder dispatchThreadgroups:MTLSizeMake(256,n_head,1)
+        [encoder dispatchThreadgroups:MTLSizeMake(query_blocks,n_head,1)
              threadsPerThreadgroup:MTLSizeMake(32,kRustStarFlashNonvecNsg,1)];
         [encoder endEncoding];
 
@@ -21751,7 +21844,7 @@ int rust_star_metal_run_prefill_layer2_attention(
                 layer10_attn_compressed_buffer, 0,
                 layer10_compressed_position_buffer,
                 layer4_attn_compressor_width,
-                layer4_attn_compressor_head, 0u, rows, NO) ||
+                layer4_attn_compressor_head, 0u, rows, NO, NO) ||
             !encode_projected_compressor_batch_ratio4(
                 context, encoder,
                 layer10_norm_buffer, layer10_tail_activation_offset,
@@ -21767,7 +21860,7 @@ int rust_star_metal_run_prefill_layer2_attention(
                 layer10_indexer_compressed_buffer, 0,
                 layer10_compressed_position_buffer,
                 layer4_indexer_compressor_width,
-                layer4_indexer_compressor_head, 0u, rows, YES)) {
+                layer4_indexer_compressor_head, 0u, rows, YES, NO)) {
             return fail_with_message(error, error_bytes,
                 @"failed to encode prefill layer-10 paired compressors");
         }
@@ -21792,7 +21885,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setBytes:&block_args length:sizeof(block_args) atIndex:0];
         [encoder setBuffer:mask_buffer offset:0 atIndex:1];
         [encoder setBuffer:block_buffer offset:0 atIndex:2];
-        [encoder dispatchThreadgroups:MTLSizeMake(key_rows/64u,256,1)
+        [encoder dispatchThreadgroups:MTLSizeMake(key_rows/64u,query_blocks,1)
              threadsPerThreadgroup:MTLSizeMake(32,1,1)];
         [encoder setComputePipelineState:context.flashNonvecPipeline];
         [encoder setBytes:&attention_args length:sizeof(attention_args) atIndex:0];
@@ -21805,7 +21898,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setBuffer:block_buffer offset:0 atIndex:7];
         [encoder setBuffer:heads_buffer offset:0 atIndex:8];
         [encoder setThreadgroupMemoryLength:28672u atIndex:0];
-        [encoder dispatchThreadgroups:MTLSizeMake(256,n_head,1)
+        [encoder dispatchThreadgroups:MTLSizeMake(query_blocks,n_head,1)
              threadsPerThreadgroup:MTLSizeMake(32,kRustStarFlashNonvecNsg,1)];
         [encoder endEncoding];
 
@@ -22241,7 +22334,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setBuffer:layer3_mask_buffer offset:0 atIndex:1];
         [encoder setBuffer:block_buffer offset:0 atIndex:2];
         [encoder dispatchThreadgroups:MTLSizeMake(
-                layer3_attention_rows/64u,256,1)
+                layer3_attention_rows/64u,query_blocks,1)
              threadsPerThreadgroup:MTLSizeMake(32,1,1)];
 
         [encoder setComputePipelineState:context.flashNonvecPipeline];
@@ -22256,7 +22349,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setBuffer:block_buffer offset:0 atIndex:7];
         [encoder setBuffer:heads_buffer offset:0 atIndex:8];
         [encoder setThreadgroupMemoryLength:28672u atIndex:0];
-        [encoder dispatchThreadgroups:MTLSizeMake(256,n_head,1)
+        [encoder dispatchThreadgroups:MTLSizeMake(query_blocks,n_head,1)
              threadsPerThreadgroup:MTLSizeMake(32,kRustStarFlashNonvecNsg,1)];
         [encoder endEncoding];
 
@@ -22684,7 +22777,7 @@ int rust_star_metal_run_prefill_layer2_attention(
                 layer12_attn_compressed_buffer, 0,
                 layer12_compressed_position_buffer,
                 layer4_attn_compressor_width,
-                layer4_attn_compressor_head, 0u, rows, NO) ||
+                layer4_attn_compressor_head, 0u, rows, NO, NO) ||
             !encode_projected_compressor_batch_ratio4(
                 context, encoder,
                 layer12_norm_buffer, layer12_tail_activation_offset,
@@ -22700,7 +22793,7 @@ int rust_star_metal_run_prefill_layer2_attention(
                 layer12_indexer_compressed_buffer, 0,
                 layer12_compressed_position_buffer,
                 layer4_indexer_compressor_width,
-                layer4_indexer_compressor_head, 0u, rows, YES)) {
+                layer4_indexer_compressor_head, 0u, rows, YES, NO)) {
             return fail_with_message(error, error_bytes,
                 @"failed to encode prefill layer-12 paired compressors");
         }
@@ -22725,7 +22818,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setBytes:&block_args length:sizeof(block_args) atIndex:0];
         [encoder setBuffer:mask_buffer offset:0 atIndex:1];
         [encoder setBuffer:block_buffer offset:0 atIndex:2];
-        [encoder dispatchThreadgroups:MTLSizeMake(key_rows/64u,256,1)
+        [encoder dispatchThreadgroups:MTLSizeMake(key_rows/64u,query_blocks,1)
              threadsPerThreadgroup:MTLSizeMake(32,1,1)];
         [encoder setComputePipelineState:context.flashNonvecPipeline];
         [encoder setBytes:&attention_args length:sizeof(attention_args) atIndex:0];
@@ -22738,7 +22831,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setBuffer:block_buffer offset:0 atIndex:7];
         [encoder setBuffer:heads_buffer offset:0 atIndex:8];
         [encoder setThreadgroupMemoryLength:28672u atIndex:0];
-        [encoder dispatchThreadgroups:MTLSizeMake(256,n_head,1)
+        [encoder dispatchThreadgroups:MTLSizeMake(query_blocks,n_head,1)
              threadsPerThreadgroup:MTLSizeMake(32,kRustStarFlashNonvecNsg,1)];
         [encoder endEncoding];
 
@@ -23174,7 +23267,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setBuffer:layer3_mask_buffer offset:0 atIndex:1];
         [encoder setBuffer:block_buffer offset:0 atIndex:2];
         [encoder dispatchThreadgroups:MTLSizeMake(
-                layer3_attention_rows/64u,256,1)
+                layer3_attention_rows/64u,query_blocks,1)
              threadsPerThreadgroup:MTLSizeMake(32,1,1)];
 
         [encoder setComputePipelineState:context.flashNonvecPipeline];
@@ -23189,7 +23282,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setBuffer:block_buffer offset:0 atIndex:7];
         [encoder setBuffer:heads_buffer offset:0 atIndex:8];
         [encoder setThreadgroupMemoryLength:28672u atIndex:0];
-        [encoder dispatchThreadgroups:MTLSizeMake(256,n_head,1)
+        [encoder dispatchThreadgroups:MTLSizeMake(query_blocks,n_head,1)
              threadsPerThreadgroup:MTLSizeMake(32,kRustStarFlashNonvecNsg,1)];
         [encoder endEncoding];
 
@@ -23617,7 +23710,7 @@ int rust_star_metal_run_prefill_layer2_attention(
                 layer14_attn_compressed_buffer, 0,
                 layer14_compressed_position_buffer,
                 layer4_attn_compressor_width,
-                layer4_attn_compressor_head, 0u, rows, NO) ||
+                layer4_attn_compressor_head, 0u, rows, NO, NO) ||
             !encode_projected_compressor_batch_ratio4(
                 context, encoder,
                 layer14_norm_buffer, layer14_tail_activation_offset,
@@ -23633,7 +23726,7 @@ int rust_star_metal_run_prefill_layer2_attention(
                 layer14_indexer_compressed_buffer, 0,
                 layer14_compressed_position_buffer,
                 layer4_indexer_compressor_width,
-                layer4_indexer_compressor_head, 0u, rows, YES)) {
+                layer4_indexer_compressor_head, 0u, rows, YES, NO)) {
             return fail_with_message(error, error_bytes,
                 @"failed to encode prefill layer-14 paired compressors");
         }
@@ -23658,7 +23751,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setBytes:&block_args length:sizeof(block_args) atIndex:0];
         [encoder setBuffer:mask_buffer offset:0 atIndex:1];
         [encoder setBuffer:block_buffer offset:0 atIndex:2];
-        [encoder dispatchThreadgroups:MTLSizeMake(key_rows/64u,256,1)
+        [encoder dispatchThreadgroups:MTLSizeMake(key_rows/64u,query_blocks,1)
              threadsPerThreadgroup:MTLSizeMake(32,1,1)];
         [encoder setComputePipelineState:context.flashNonvecPipeline];
         [encoder setBytes:&attention_args length:sizeof(attention_args) atIndex:0];
@@ -23671,7 +23764,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setBuffer:block_buffer offset:0 atIndex:7];
         [encoder setBuffer:heads_buffer offset:0 atIndex:8];
         [encoder setThreadgroupMemoryLength:28672u atIndex:0];
-        [encoder dispatchThreadgroups:MTLSizeMake(256,n_head,1)
+        [encoder dispatchThreadgroups:MTLSizeMake(query_blocks,n_head,1)
              threadsPerThreadgroup:MTLSizeMake(32,kRustStarFlashNonvecNsg,1)];
         [encoder endEncoding];
 
@@ -24107,7 +24200,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setBuffer:layer3_mask_buffer offset:0 atIndex:1];
         [encoder setBuffer:block_buffer offset:0 atIndex:2];
         [encoder dispatchThreadgroups:MTLSizeMake(
-                layer3_attention_rows/64u,256,1)
+                layer3_attention_rows/64u,query_blocks,1)
              threadsPerThreadgroup:MTLSizeMake(32,1,1)];
 
         [encoder setComputePipelineState:context.flashNonvecPipeline];
@@ -24122,7 +24215,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setBuffer:block_buffer offset:0 atIndex:7];
         [encoder setBuffer:heads_buffer offset:0 atIndex:8];
         [encoder setThreadgroupMemoryLength:28672u atIndex:0];
-        [encoder dispatchThreadgroups:MTLSizeMake(256,n_head,1)
+        [encoder dispatchThreadgroups:MTLSizeMake(query_blocks,n_head,1)
              threadsPerThreadgroup:MTLSizeMake(32,kRustStarFlashNonvecNsg,1)];
         [encoder endEncoding];
 
@@ -24550,7 +24643,7 @@ int rust_star_metal_run_prefill_layer2_attention(
                 layer16_attn_compressed_buffer, 0,
                 layer16_compressed_position_buffer,
                 layer4_attn_compressor_width,
-                layer4_attn_compressor_head, 0u, rows, NO) ||
+                layer4_attn_compressor_head, 0u, rows, NO, NO) ||
             !encode_projected_compressor_batch_ratio4(
                 context, encoder,
                 layer16_norm_buffer, layer16_tail_activation_offset,
@@ -24566,7 +24659,7 @@ int rust_star_metal_run_prefill_layer2_attention(
                 layer16_indexer_compressed_buffer, 0,
                 layer16_compressed_position_buffer,
                 layer4_indexer_compressor_width,
-                layer4_indexer_compressor_head, 0u, rows, YES)) {
+                layer4_indexer_compressor_head, 0u, rows, YES, NO)) {
             return fail_with_message(error, error_bytes,
                 @"failed to encode prefill layer-16 paired compressors");
         }
@@ -24591,7 +24684,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setBytes:&block_args length:sizeof(block_args) atIndex:0];
         [encoder setBuffer:mask_buffer offset:0 atIndex:1];
         [encoder setBuffer:block_buffer offset:0 atIndex:2];
-        [encoder dispatchThreadgroups:MTLSizeMake(key_rows/64u,256,1)
+        [encoder dispatchThreadgroups:MTLSizeMake(key_rows/64u,query_blocks,1)
              threadsPerThreadgroup:MTLSizeMake(32,1,1)];
         [encoder setComputePipelineState:context.flashNonvecPipeline];
         [encoder setBytes:&attention_args length:sizeof(attention_args) atIndex:0];
@@ -24604,7 +24697,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setBuffer:block_buffer offset:0 atIndex:7];
         [encoder setBuffer:heads_buffer offset:0 atIndex:8];
         [encoder setThreadgroupMemoryLength:28672u atIndex:0];
-        [encoder dispatchThreadgroups:MTLSizeMake(256,n_head,1)
+        [encoder dispatchThreadgroups:MTLSizeMake(query_blocks,n_head,1)
              threadsPerThreadgroup:MTLSizeMake(32,kRustStarFlashNonvecNsg,1)];
         [encoder endEncoding];
 
@@ -25040,7 +25133,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setBuffer:layer3_mask_buffer offset:0 atIndex:1];
         [encoder setBuffer:block_buffer offset:0 atIndex:2];
         [encoder dispatchThreadgroups:MTLSizeMake(
-                layer3_attention_rows/64u,256,1)
+                layer3_attention_rows/64u,query_blocks,1)
              threadsPerThreadgroup:MTLSizeMake(32,1,1)];
 
         [encoder setComputePipelineState:context.flashNonvecPipeline];
@@ -25055,7 +25148,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setBuffer:block_buffer offset:0 atIndex:7];
         [encoder setBuffer:heads_buffer offset:0 atIndex:8];
         [encoder setThreadgroupMemoryLength:28672u atIndex:0];
-        [encoder dispatchThreadgroups:MTLSizeMake(256,n_head,1)
+        [encoder dispatchThreadgroups:MTLSizeMake(query_blocks,n_head,1)
              threadsPerThreadgroup:MTLSizeMake(32,kRustStarFlashNonvecNsg,1)];
         [encoder endEncoding];
 
@@ -25483,7 +25576,7 @@ int rust_star_metal_run_prefill_layer2_attention(
                 layer18_attn_compressed_buffer, 0,
                 layer18_compressed_position_buffer,
                 layer4_attn_compressor_width,
-                layer4_attn_compressor_head, 0u, rows, NO) ||
+                layer4_attn_compressor_head, 0u, rows, NO, NO) ||
             !encode_projected_compressor_batch_ratio4(
                 context, encoder,
                 layer18_norm_buffer, layer18_tail_activation_offset,
@@ -25499,7 +25592,7 @@ int rust_star_metal_run_prefill_layer2_attention(
                 layer18_indexer_compressed_buffer, 0,
                 layer18_compressed_position_buffer,
                 layer4_indexer_compressor_width,
-                layer4_indexer_compressor_head, 0u, rows, YES)) {
+                layer4_indexer_compressor_head, 0u, rows, YES, NO)) {
             return fail_with_message(error, error_bytes,
                 @"failed to encode prefill layer-18 paired compressors");
         }
@@ -25524,7 +25617,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setBytes:&block_args length:sizeof(block_args) atIndex:0];
         [encoder setBuffer:mask_buffer offset:0 atIndex:1];
         [encoder setBuffer:block_buffer offset:0 atIndex:2];
-        [encoder dispatchThreadgroups:MTLSizeMake(key_rows/64u,256,1)
+        [encoder dispatchThreadgroups:MTLSizeMake(key_rows/64u,query_blocks,1)
              threadsPerThreadgroup:MTLSizeMake(32,1,1)];
         [encoder setComputePipelineState:context.flashNonvecPipeline];
         [encoder setBytes:&attention_args length:sizeof(attention_args) atIndex:0];
@@ -25537,7 +25630,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setBuffer:block_buffer offset:0 atIndex:7];
         [encoder setBuffer:heads_buffer offset:0 atIndex:8];
         [encoder setThreadgroupMemoryLength:28672u atIndex:0];
-        [encoder dispatchThreadgroups:MTLSizeMake(256,n_head,1)
+        [encoder dispatchThreadgroups:MTLSizeMake(query_blocks,n_head,1)
              threadsPerThreadgroup:MTLSizeMake(32,kRustStarFlashNonvecNsg,1)];
         [encoder endEncoding];
 
@@ -25973,7 +26066,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setBuffer:layer3_mask_buffer offset:0 atIndex:1];
         [encoder setBuffer:block_buffer offset:0 atIndex:2];
         [encoder dispatchThreadgroups:MTLSizeMake(
-                layer3_attention_rows/64u,256,1)
+                layer3_attention_rows/64u,query_blocks,1)
              threadsPerThreadgroup:MTLSizeMake(32,1,1)];
 
         [encoder setComputePipelineState:context.flashNonvecPipeline];
@@ -25988,7 +26081,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setBuffer:block_buffer offset:0 atIndex:7];
         [encoder setBuffer:heads_buffer offset:0 atIndex:8];
         [encoder setThreadgroupMemoryLength:28672u atIndex:0];
-        [encoder dispatchThreadgroups:MTLSizeMake(256,n_head,1)
+        [encoder dispatchThreadgroups:MTLSizeMake(query_blocks,n_head,1)
              threadsPerThreadgroup:MTLSizeMake(32,kRustStarFlashNonvecNsg,1)];
         [encoder endEncoding];
 
@@ -26416,7 +26509,7 @@ int rust_star_metal_run_prefill_layer2_attention(
                 layer20_attn_compressed_buffer, 0,
                 layer20_compressed_position_buffer,
                 layer4_attn_compressor_width,
-                layer4_attn_compressor_head, 0u, rows, NO) ||
+                layer4_attn_compressor_head, 0u, rows, NO, NO) ||
             !encode_projected_compressor_batch_ratio4(
                 context, encoder,
                 layer20_norm_buffer, layer20_tail_activation_offset,
@@ -26432,7 +26525,7 @@ int rust_star_metal_run_prefill_layer2_attention(
                 layer20_indexer_compressed_buffer, 0,
                 layer20_compressed_position_buffer,
                 layer4_indexer_compressor_width,
-                layer4_indexer_compressor_head, 0u, rows, YES)) {
+                layer4_indexer_compressor_head, 0u, rows, YES, NO)) {
             return fail_with_message(error, error_bytes,
                 @"failed to encode prefill layer-18 paired compressors");
         }
@@ -26457,7 +26550,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setBytes:&block_args length:sizeof(block_args) atIndex:0];
         [encoder setBuffer:mask_buffer offset:0 atIndex:1];
         [encoder setBuffer:block_buffer offset:0 atIndex:2];
-        [encoder dispatchThreadgroups:MTLSizeMake(key_rows/64u,256,1)
+        [encoder dispatchThreadgroups:MTLSizeMake(key_rows/64u,query_blocks,1)
              threadsPerThreadgroup:MTLSizeMake(32,1,1)];
         [encoder setComputePipelineState:context.flashNonvecPipeline];
         [encoder setBytes:&attention_args length:sizeof(attention_args) atIndex:0];
@@ -26470,7 +26563,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setBuffer:block_buffer offset:0 atIndex:7];
         [encoder setBuffer:heads_buffer offset:0 atIndex:8];
         [encoder setThreadgroupMemoryLength:28672u atIndex:0];
-        [encoder dispatchThreadgroups:MTLSizeMake(256,n_head,1)
+        [encoder dispatchThreadgroups:MTLSizeMake(query_blocks,n_head,1)
              threadsPerThreadgroup:MTLSizeMake(32,kRustStarFlashNonvecNsg,1)];
         [encoder endEncoding];
 
@@ -26906,7 +26999,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setBuffer:layer3_mask_buffer offset:0 atIndex:1];
         [encoder setBuffer:block_buffer offset:0 atIndex:2];
         [encoder dispatchThreadgroups:MTLSizeMake(
-                layer3_attention_rows/64u,256,1)
+                layer3_attention_rows/64u,query_blocks,1)
              threadsPerThreadgroup:MTLSizeMake(32,1,1)];
 
         [encoder setComputePipelineState:context.flashNonvecPipeline];
@@ -26921,7 +27014,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setBuffer:block_buffer offset:0 atIndex:7];
         [encoder setBuffer:heads_buffer offset:0 atIndex:8];
         [encoder setThreadgroupMemoryLength:28672u atIndex:0];
-        [encoder dispatchThreadgroups:MTLSizeMake(256,n_head,1)
+        [encoder dispatchThreadgroups:MTLSizeMake(query_blocks,n_head,1)
              threadsPerThreadgroup:MTLSizeMake(32,kRustStarFlashNonvecNsg,1)];
         [encoder endEncoding];
 
@@ -27349,7 +27442,7 @@ int rust_star_metal_run_prefill_layer2_attention(
                 layer22_attn_compressed_buffer, 0,
                 layer22_compressed_position_buffer,
                 layer4_attn_compressor_width,
-                layer4_attn_compressor_head, 0u, rows, NO) ||
+                layer4_attn_compressor_head, 0u, rows, NO, NO) ||
             !encode_projected_compressor_batch_ratio4(
                 context, encoder,
                 layer22_norm_buffer, layer22_tail_activation_offset,
@@ -27365,7 +27458,7 @@ int rust_star_metal_run_prefill_layer2_attention(
                 layer22_indexer_compressed_buffer, 0,
                 layer22_compressed_position_buffer,
                 layer4_indexer_compressor_width,
-                layer4_indexer_compressor_head, 0u, rows, YES)) {
+                layer4_indexer_compressor_head, 0u, rows, YES, NO)) {
             return fail_with_message(error, error_bytes,
                 @"failed to encode prefill layer-22 paired compressors");
         }
@@ -27390,7 +27483,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setBytes:&block_args length:sizeof(block_args) atIndex:0];
         [encoder setBuffer:mask_buffer offset:0 atIndex:1];
         [encoder setBuffer:block_buffer offset:0 atIndex:2];
-        [encoder dispatchThreadgroups:MTLSizeMake(key_rows/64u,256,1)
+        [encoder dispatchThreadgroups:MTLSizeMake(key_rows/64u,query_blocks,1)
              threadsPerThreadgroup:MTLSizeMake(32,1,1)];
         [encoder setComputePipelineState:context.flashNonvecPipeline];
         [encoder setBytes:&attention_args length:sizeof(attention_args) atIndex:0];
@@ -27403,7 +27496,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setBuffer:block_buffer offset:0 atIndex:7];
         [encoder setBuffer:heads_buffer offset:0 atIndex:8];
         [encoder setThreadgroupMemoryLength:28672u atIndex:0];
-        [encoder dispatchThreadgroups:MTLSizeMake(256,n_head,1)
+        [encoder dispatchThreadgroups:MTLSizeMake(query_blocks,n_head,1)
              threadsPerThreadgroup:MTLSizeMake(32,kRustStarFlashNonvecNsg,1)];
         [encoder endEncoding];
 
@@ -27839,7 +27932,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setBuffer:layer3_mask_buffer offset:0 atIndex:1];
         [encoder setBuffer:block_buffer offset:0 atIndex:2];
         [encoder dispatchThreadgroups:MTLSizeMake(
-                layer3_attention_rows/64u,256,1)
+                layer3_attention_rows/64u,query_blocks,1)
              threadsPerThreadgroup:MTLSizeMake(32,1,1)];
 
         [encoder setComputePipelineState:context.flashNonvecPipeline];
@@ -27854,7 +27947,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setBuffer:block_buffer offset:0 atIndex:7];
         [encoder setBuffer:heads_buffer offset:0 atIndex:8];
         [encoder setThreadgroupMemoryLength:28672u atIndex:0];
-        [encoder dispatchThreadgroups:MTLSizeMake(256,n_head,1)
+        [encoder dispatchThreadgroups:MTLSizeMake(query_blocks,n_head,1)
              threadsPerThreadgroup:MTLSizeMake(32,kRustStarFlashNonvecNsg,1)];
         [encoder endEncoding];
 
@@ -28282,7 +28375,7 @@ int rust_star_metal_run_prefill_layer2_attention(
                 layer24_attn_compressed_buffer, 0,
                 layer24_compressed_position_buffer,
                 layer4_attn_compressor_width,
-                layer4_attn_compressor_head, 0u, rows, NO) ||
+                layer4_attn_compressor_head, 0u, rows, NO, NO) ||
             !encode_projected_compressor_batch_ratio4(
                 context, encoder,
                 layer24_norm_buffer, layer24_tail_activation_offset,
@@ -28298,7 +28391,7 @@ int rust_star_metal_run_prefill_layer2_attention(
                 layer24_indexer_compressed_buffer, 0,
                 layer24_compressed_position_buffer,
                 layer4_indexer_compressor_width,
-                layer4_indexer_compressor_head, 0u, rows, YES)) {
+                layer4_indexer_compressor_head, 0u, rows, YES, NO)) {
             return fail_with_message(error, error_bytes,
                 @"failed to encode prefill layer-24 paired compressors");
         }
@@ -28323,7 +28416,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setBytes:&block_args length:sizeof(block_args) atIndex:0];
         [encoder setBuffer:mask_buffer offset:0 atIndex:1];
         [encoder setBuffer:block_buffer offset:0 atIndex:2];
-        [encoder dispatchThreadgroups:MTLSizeMake(key_rows/64u,256,1)
+        [encoder dispatchThreadgroups:MTLSizeMake(key_rows/64u,query_blocks,1)
              threadsPerThreadgroup:MTLSizeMake(32,1,1)];
         [encoder setComputePipelineState:context.flashNonvecPipeline];
         [encoder setBytes:&attention_args length:sizeof(attention_args) atIndex:0];
@@ -28336,7 +28429,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setBuffer:block_buffer offset:0 atIndex:7];
         [encoder setBuffer:heads_buffer offset:0 atIndex:8];
         [encoder setThreadgroupMemoryLength:28672u atIndex:0];
-        [encoder dispatchThreadgroups:MTLSizeMake(256,n_head,1)
+        [encoder dispatchThreadgroups:MTLSizeMake(query_blocks,n_head,1)
              threadsPerThreadgroup:MTLSizeMake(32,kRustStarFlashNonvecNsg,1)];
         [encoder endEncoding];
 
@@ -28772,7 +28865,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setBuffer:layer3_mask_buffer offset:0 atIndex:1];
         [encoder setBuffer:block_buffer offset:0 atIndex:2];
         [encoder dispatchThreadgroups:MTLSizeMake(
-                layer3_attention_rows/64u,256,1)
+                layer3_attention_rows/64u,query_blocks,1)
              threadsPerThreadgroup:MTLSizeMake(32,1,1)];
 
         [encoder setComputePipelineState:context.flashNonvecPipeline];
@@ -28787,7 +28880,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setBuffer:block_buffer offset:0 atIndex:7];
         [encoder setBuffer:heads_buffer offset:0 atIndex:8];
         [encoder setThreadgroupMemoryLength:28672u atIndex:0];
-        [encoder dispatchThreadgroups:MTLSizeMake(256,n_head,1)
+        [encoder dispatchThreadgroups:MTLSizeMake(query_blocks,n_head,1)
              threadsPerThreadgroup:MTLSizeMake(32,kRustStarFlashNonvecNsg,1)];
         [encoder endEncoding];
 
@@ -29215,7 +29308,7 @@ int rust_star_metal_run_prefill_layer2_attention(
                 layer26_attn_compressed_buffer, 0,
                 layer26_compressed_position_buffer,
                 layer4_attn_compressor_width,
-                layer4_attn_compressor_head, 0u, rows, NO) ||
+                layer4_attn_compressor_head, 0u, rows, NO, NO) ||
             !encode_projected_compressor_batch_ratio4(
                 context, encoder,
                 layer26_norm_buffer, layer26_tail_activation_offset,
@@ -29231,7 +29324,7 @@ int rust_star_metal_run_prefill_layer2_attention(
                 layer26_indexer_compressed_buffer, 0,
                 layer26_compressed_position_buffer,
                 layer4_indexer_compressor_width,
-                layer4_indexer_compressor_head, 0u, rows, YES)) {
+                layer4_indexer_compressor_head, 0u, rows, YES, NO)) {
             return fail_with_message(error, error_bytes,
                 @"failed to encode prefill layer-26 paired compressors");
         }
@@ -29256,7 +29349,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setBytes:&block_args length:sizeof(block_args) atIndex:0];
         [encoder setBuffer:mask_buffer offset:0 atIndex:1];
         [encoder setBuffer:block_buffer offset:0 atIndex:2];
-        [encoder dispatchThreadgroups:MTLSizeMake(key_rows/64u,256,1)
+        [encoder dispatchThreadgroups:MTLSizeMake(key_rows/64u,query_blocks,1)
              threadsPerThreadgroup:MTLSizeMake(32,1,1)];
         [encoder setComputePipelineState:context.flashNonvecPipeline];
         [encoder setBytes:&attention_args length:sizeof(attention_args) atIndex:0];
@@ -29269,7 +29362,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setBuffer:block_buffer offset:0 atIndex:7];
         [encoder setBuffer:heads_buffer offset:0 atIndex:8];
         [encoder setThreadgroupMemoryLength:28672u atIndex:0];
-        [encoder dispatchThreadgroups:MTLSizeMake(256,n_head,1)
+        [encoder dispatchThreadgroups:MTLSizeMake(query_blocks,n_head,1)
              threadsPerThreadgroup:MTLSizeMake(32,kRustStarFlashNonvecNsg,1)];
         [encoder endEncoding];
 
@@ -29705,7 +29798,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setBuffer:layer3_mask_buffer offset:0 atIndex:1];
         [encoder setBuffer:block_buffer offset:0 atIndex:2];
         [encoder dispatchThreadgroups:MTLSizeMake(
-                layer3_attention_rows/64u,256,1)
+                layer3_attention_rows/64u,query_blocks,1)
              threadsPerThreadgroup:MTLSizeMake(32,1,1)];
 
         [encoder setComputePipelineState:context.flashNonvecPipeline];
@@ -29720,7 +29813,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setBuffer:block_buffer offset:0 atIndex:7];
         [encoder setBuffer:heads_buffer offset:0 atIndex:8];
         [encoder setThreadgroupMemoryLength:28672u atIndex:0];
-        [encoder dispatchThreadgroups:MTLSizeMake(256,n_head,1)
+        [encoder dispatchThreadgroups:MTLSizeMake(query_blocks,n_head,1)
              threadsPerThreadgroup:MTLSizeMake(32,kRustStarFlashNonvecNsg,1)];
         [encoder endEncoding];
 
@@ -30148,7 +30241,7 @@ int rust_star_metal_run_prefill_layer2_attention(
                 layer28_attn_compressed_buffer, 0,
                 layer28_compressed_position_buffer,
                 layer4_attn_compressor_width,
-                layer4_attn_compressor_head, 0u, rows, NO) ||
+                layer4_attn_compressor_head, 0u, rows, NO, NO) ||
             !encode_projected_compressor_batch_ratio4(
                 context, encoder,
                 layer28_norm_buffer, layer28_tail_activation_offset,
@@ -30164,7 +30257,7 @@ int rust_star_metal_run_prefill_layer2_attention(
                 layer28_indexer_compressed_buffer, 0,
                 layer28_compressed_position_buffer,
                 layer4_indexer_compressor_width,
-                layer4_indexer_compressor_head, 0u, rows, YES)) {
+                layer4_indexer_compressor_head, 0u, rows, YES, NO)) {
             return fail_with_message(error, error_bytes,
                 @"failed to encode prefill layer-28 paired compressors");
         }
@@ -30189,7 +30282,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setBytes:&block_args length:sizeof(block_args) atIndex:0];
         [encoder setBuffer:mask_buffer offset:0 atIndex:1];
         [encoder setBuffer:block_buffer offset:0 atIndex:2];
-        [encoder dispatchThreadgroups:MTLSizeMake(key_rows/64u,256,1)
+        [encoder dispatchThreadgroups:MTLSizeMake(key_rows/64u,query_blocks,1)
              threadsPerThreadgroup:MTLSizeMake(32,1,1)];
         [encoder setComputePipelineState:context.flashNonvecPipeline];
         [encoder setBytes:&attention_args length:sizeof(attention_args) atIndex:0];
@@ -30202,7 +30295,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setBuffer:block_buffer offset:0 atIndex:7];
         [encoder setBuffer:heads_buffer offset:0 atIndex:8];
         [encoder setThreadgroupMemoryLength:28672u atIndex:0];
-        [encoder dispatchThreadgroups:MTLSizeMake(256,n_head,1)
+        [encoder dispatchThreadgroups:MTLSizeMake(query_blocks,n_head,1)
              threadsPerThreadgroup:MTLSizeMake(32,kRustStarFlashNonvecNsg,1)];
         [encoder endEncoding];
 
@@ -30638,7 +30731,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setBuffer:layer3_mask_buffer offset:0 atIndex:1];
         [encoder setBuffer:block_buffer offset:0 atIndex:2];
         [encoder dispatchThreadgroups:MTLSizeMake(
-                layer3_attention_rows/64u,256,1)
+                layer3_attention_rows/64u,query_blocks,1)
              threadsPerThreadgroup:MTLSizeMake(32,1,1)];
 
         [encoder setComputePipelineState:context.flashNonvecPipeline];
@@ -30653,7 +30746,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setBuffer:block_buffer offset:0 atIndex:7];
         [encoder setBuffer:heads_buffer offset:0 atIndex:8];
         [encoder setThreadgroupMemoryLength:28672u atIndex:0];
-        [encoder dispatchThreadgroups:MTLSizeMake(256,n_head,1)
+        [encoder dispatchThreadgroups:MTLSizeMake(query_blocks,n_head,1)
              threadsPerThreadgroup:MTLSizeMake(32,kRustStarFlashNonvecNsg,1)];
         [encoder endEncoding];
 
@@ -31081,7 +31174,7 @@ int rust_star_metal_run_prefill_layer2_attention(
                 layer30_attn_compressed_buffer, 0,
                 layer30_compressed_position_buffer,
                 layer4_attn_compressor_width,
-                layer4_attn_compressor_head, 0u, rows, NO) ||
+                layer4_attn_compressor_head, 0u, rows, NO, NO) ||
             !encode_projected_compressor_batch_ratio4(
                 context, encoder,
                 layer30_norm_buffer, layer30_tail_activation_offset,
@@ -31097,7 +31190,7 @@ int rust_star_metal_run_prefill_layer2_attention(
                 layer30_indexer_compressed_buffer, 0,
                 layer30_compressed_position_buffer,
                 layer4_indexer_compressor_width,
-                layer4_indexer_compressor_head, 0u, rows, YES)) {
+                layer4_indexer_compressor_head, 0u, rows, YES, NO)) {
             return fail_with_message(error, error_bytes,
                 @"failed to encode prefill layer-30 paired compressors");
         }
@@ -31122,7 +31215,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setBytes:&block_args length:sizeof(block_args) atIndex:0];
         [encoder setBuffer:mask_buffer offset:0 atIndex:1];
         [encoder setBuffer:block_buffer offset:0 atIndex:2];
-        [encoder dispatchThreadgroups:MTLSizeMake(key_rows/64u,256,1)
+        [encoder dispatchThreadgroups:MTLSizeMake(key_rows/64u,query_blocks,1)
              threadsPerThreadgroup:MTLSizeMake(32,1,1)];
         [encoder setComputePipelineState:context.flashNonvecPipeline];
         [encoder setBytes:&attention_args length:sizeof(attention_args) atIndex:0];
@@ -31135,7 +31228,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setBuffer:block_buffer offset:0 atIndex:7];
         [encoder setBuffer:heads_buffer offset:0 atIndex:8];
         [encoder setThreadgroupMemoryLength:28672u atIndex:0];
-        [encoder dispatchThreadgroups:MTLSizeMake(256,n_head,1)
+        [encoder dispatchThreadgroups:MTLSizeMake(query_blocks,n_head,1)
              threadsPerThreadgroup:MTLSizeMake(32,kRustStarFlashNonvecNsg,1)];
         [encoder endEncoding];
 
@@ -31571,7 +31664,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setBuffer:layer3_mask_buffer offset:0 atIndex:1];
         [encoder setBuffer:block_buffer offset:0 atIndex:2];
         [encoder dispatchThreadgroups:MTLSizeMake(
-                layer3_attention_rows/64u,256,1)
+                layer3_attention_rows/64u,query_blocks,1)
              threadsPerThreadgroup:MTLSizeMake(32,1,1)];
 
         [encoder setComputePipelineState:context.flashNonvecPipeline];
@@ -31586,7 +31679,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setBuffer:block_buffer offset:0 atIndex:7];
         [encoder setBuffer:heads_buffer offset:0 atIndex:8];
         [encoder setThreadgroupMemoryLength:28672u atIndex:0];
-        [encoder dispatchThreadgroups:MTLSizeMake(256,n_head,1)
+        [encoder dispatchThreadgroups:MTLSizeMake(query_blocks,n_head,1)
              threadsPerThreadgroup:MTLSizeMake(32,kRustStarFlashNonvecNsg,1)];
         [encoder endEncoding];
 
@@ -32014,7 +32107,7 @@ int rust_star_metal_run_prefill_layer2_attention(
                 layer32_attn_compressed_buffer, 0,
                 layer32_compressed_position_buffer,
                 layer4_attn_compressor_width,
-                layer4_attn_compressor_head, 0u, rows, NO) ||
+                layer4_attn_compressor_head, 0u, rows, NO, NO) ||
             !encode_projected_compressor_batch_ratio4(
                 context, encoder,
                 layer32_norm_buffer, layer32_tail_activation_offset,
@@ -32030,7 +32123,7 @@ int rust_star_metal_run_prefill_layer2_attention(
                 layer32_indexer_compressed_buffer, 0,
                 layer32_compressed_position_buffer,
                 layer4_indexer_compressor_width,
-                layer4_indexer_compressor_head, 0u, rows, YES)) {
+                layer4_indexer_compressor_head, 0u, rows, YES, NO)) {
             return fail_with_message(error, error_bytes,
                 @"failed to encode prefill layer-32 paired compressors");
         }
@@ -32055,7 +32148,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setBytes:&block_args length:sizeof(block_args) atIndex:0];
         [encoder setBuffer:mask_buffer offset:0 atIndex:1];
         [encoder setBuffer:block_buffer offset:0 atIndex:2];
-        [encoder dispatchThreadgroups:MTLSizeMake(key_rows/64u,256,1)
+        [encoder dispatchThreadgroups:MTLSizeMake(key_rows/64u,query_blocks,1)
              threadsPerThreadgroup:MTLSizeMake(32,1,1)];
         [encoder setComputePipelineState:context.flashNonvecPipeline];
         [encoder setBytes:&attention_args length:sizeof(attention_args) atIndex:0];
@@ -32068,7 +32161,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setBuffer:block_buffer offset:0 atIndex:7];
         [encoder setBuffer:heads_buffer offset:0 atIndex:8];
         [encoder setThreadgroupMemoryLength:28672u atIndex:0];
-        [encoder dispatchThreadgroups:MTLSizeMake(256,n_head,1)
+        [encoder dispatchThreadgroups:MTLSizeMake(query_blocks,n_head,1)
              threadsPerThreadgroup:MTLSizeMake(32,kRustStarFlashNonvecNsg,1)];
         [encoder endEncoding];
 
@@ -32504,7 +32597,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setBuffer:layer3_mask_buffer offset:0 atIndex:1];
         [encoder setBuffer:block_buffer offset:0 atIndex:2];
         [encoder dispatchThreadgroups:MTLSizeMake(
-                layer3_attention_rows/64u,256,1)
+                layer3_attention_rows/64u,query_blocks,1)
              threadsPerThreadgroup:MTLSizeMake(32,1,1)];
 
         [encoder setComputePipelineState:context.flashNonvecPipeline];
@@ -32519,7 +32612,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setBuffer:block_buffer offset:0 atIndex:7];
         [encoder setBuffer:heads_buffer offset:0 atIndex:8];
         [encoder setThreadgroupMemoryLength:28672u atIndex:0];
-        [encoder dispatchThreadgroups:MTLSizeMake(256,n_head,1)
+        [encoder dispatchThreadgroups:MTLSizeMake(query_blocks,n_head,1)
              threadsPerThreadgroup:MTLSizeMake(32,kRustStarFlashNonvecNsg,1)];
         [encoder endEncoding];
 
@@ -32947,7 +33040,7 @@ int rust_star_metal_run_prefill_layer2_attention(
                 layer34_attn_compressed_buffer, 0,
                 layer34_compressed_position_buffer,
                 layer4_attn_compressor_width,
-                layer4_attn_compressor_head, 0u, rows, NO) ||
+                layer4_attn_compressor_head, 0u, rows, NO, NO) ||
             !encode_projected_compressor_batch_ratio4(
                 context, encoder,
                 layer34_norm_buffer, layer34_tail_activation_offset,
@@ -32963,7 +33056,7 @@ int rust_star_metal_run_prefill_layer2_attention(
                 layer34_indexer_compressed_buffer, 0,
                 layer34_compressed_position_buffer,
                 layer4_indexer_compressor_width,
-                layer4_indexer_compressor_head, 0u, rows, YES)) {
+                layer4_indexer_compressor_head, 0u, rows, YES, NO)) {
             return fail_with_message(error, error_bytes,
                 @"failed to encode prefill layer-34 paired compressors");
         }
@@ -32988,7 +33081,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setBytes:&block_args length:sizeof(block_args) atIndex:0];
         [encoder setBuffer:mask_buffer offset:0 atIndex:1];
         [encoder setBuffer:block_buffer offset:0 atIndex:2];
-        [encoder dispatchThreadgroups:MTLSizeMake(key_rows/64u,256,1)
+        [encoder dispatchThreadgroups:MTLSizeMake(key_rows/64u,query_blocks,1)
              threadsPerThreadgroup:MTLSizeMake(32,1,1)];
         [encoder setComputePipelineState:context.flashNonvecPipeline];
         [encoder setBytes:&attention_args length:sizeof(attention_args) atIndex:0];
@@ -33001,7 +33094,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setBuffer:block_buffer offset:0 atIndex:7];
         [encoder setBuffer:heads_buffer offset:0 atIndex:8];
         [encoder setThreadgroupMemoryLength:28672u atIndex:0];
-        [encoder dispatchThreadgroups:MTLSizeMake(256,n_head,1)
+        [encoder dispatchThreadgroups:MTLSizeMake(query_blocks,n_head,1)
              threadsPerThreadgroup:MTLSizeMake(32,kRustStarFlashNonvecNsg,1)];
         [encoder endEncoding];
 
@@ -33437,7 +33530,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setBuffer:layer3_mask_buffer offset:0 atIndex:1];
         [encoder setBuffer:block_buffer offset:0 atIndex:2];
         [encoder dispatchThreadgroups:MTLSizeMake(
-                layer3_attention_rows/64u,256,1)
+                layer3_attention_rows/64u,query_blocks,1)
              threadsPerThreadgroup:MTLSizeMake(32,1,1)];
 
         [encoder setComputePipelineState:context.flashNonvecPipeline];
@@ -33452,7 +33545,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setBuffer:block_buffer offset:0 atIndex:7];
         [encoder setBuffer:heads_buffer offset:0 atIndex:8];
         [encoder setThreadgroupMemoryLength:28672u atIndex:0];
-        [encoder dispatchThreadgroups:MTLSizeMake(256,n_head,1)
+        [encoder dispatchThreadgroups:MTLSizeMake(query_blocks,n_head,1)
              threadsPerThreadgroup:MTLSizeMake(32,kRustStarFlashNonvecNsg,1)];
         [encoder endEncoding];
 
@@ -33880,7 +33973,7 @@ int rust_star_metal_run_prefill_layer2_attention(
                 layer36_attn_compressed_buffer, 0,
                 layer36_compressed_position_buffer,
                 layer4_attn_compressor_width,
-                layer4_attn_compressor_head, 0u, rows, NO) ||
+                layer4_attn_compressor_head, 0u, rows, NO, NO) ||
             !encode_projected_compressor_batch_ratio4(
                 context, encoder,
                 layer36_norm_buffer, layer36_tail_activation_offset,
@@ -33896,7 +33989,7 @@ int rust_star_metal_run_prefill_layer2_attention(
                 layer36_indexer_compressed_buffer, 0,
                 layer36_compressed_position_buffer,
                 layer4_indexer_compressor_width,
-                layer4_indexer_compressor_head, 0u, rows, YES)) {
+                layer4_indexer_compressor_head, 0u, rows, YES, NO)) {
             return fail_with_message(error, error_bytes,
                 @"failed to encode prefill layer-36 paired compressors");
         }
@@ -33921,7 +34014,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setBytes:&block_args length:sizeof(block_args) atIndex:0];
         [encoder setBuffer:mask_buffer offset:0 atIndex:1];
         [encoder setBuffer:block_buffer offset:0 atIndex:2];
-        [encoder dispatchThreadgroups:MTLSizeMake(key_rows/64u,256,1)
+        [encoder dispatchThreadgroups:MTLSizeMake(key_rows/64u,query_blocks,1)
              threadsPerThreadgroup:MTLSizeMake(32,1,1)];
         [encoder setComputePipelineState:context.flashNonvecPipeline];
         [encoder setBytes:&attention_args length:sizeof(attention_args) atIndex:0];
@@ -33934,7 +34027,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setBuffer:block_buffer offset:0 atIndex:7];
         [encoder setBuffer:heads_buffer offset:0 atIndex:8];
         [encoder setThreadgroupMemoryLength:28672u atIndex:0];
-        [encoder dispatchThreadgroups:MTLSizeMake(256,n_head,1)
+        [encoder dispatchThreadgroups:MTLSizeMake(query_blocks,n_head,1)
              threadsPerThreadgroup:MTLSizeMake(32,kRustStarFlashNonvecNsg,1)];
         [encoder endEncoding];
 
@@ -34370,7 +34463,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setBuffer:layer3_mask_buffer offset:0 atIndex:1];
         [encoder setBuffer:block_buffer offset:0 atIndex:2];
         [encoder dispatchThreadgroups:MTLSizeMake(
-                layer3_attention_rows/64u,256,1)
+                layer3_attention_rows/64u,query_blocks,1)
              threadsPerThreadgroup:MTLSizeMake(32,1,1)];
 
         [encoder setComputePipelineState:context.flashNonvecPipeline];
@@ -34385,7 +34478,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setBuffer:block_buffer offset:0 atIndex:7];
         [encoder setBuffer:heads_buffer offset:0 atIndex:8];
         [encoder setThreadgroupMemoryLength:28672u atIndex:0];
-        [encoder dispatchThreadgroups:MTLSizeMake(256,n_head,1)
+        [encoder dispatchThreadgroups:MTLSizeMake(query_blocks,n_head,1)
              threadsPerThreadgroup:MTLSizeMake(32,kRustStarFlashNonvecNsg,1)];
         [encoder endEncoding];
 
@@ -34813,7 +34906,7 @@ int rust_star_metal_run_prefill_layer2_attention(
                 layer38_attn_compressed_buffer, 0,
                 layer38_compressed_position_buffer,
                 layer4_attn_compressor_width,
-                layer4_attn_compressor_head, 0u, rows, NO) ||
+                layer4_attn_compressor_head, 0u, rows, NO, NO) ||
             !encode_projected_compressor_batch_ratio4(
                 context, encoder,
                 layer38_norm_buffer, layer38_tail_activation_offset,
@@ -34829,7 +34922,7 @@ int rust_star_metal_run_prefill_layer2_attention(
                 layer38_indexer_compressed_buffer, 0,
                 layer38_compressed_position_buffer,
                 layer4_indexer_compressor_width,
-                layer4_indexer_compressor_head, 0u, rows, YES)) {
+                layer4_indexer_compressor_head, 0u, rows, YES, NO)) {
             return fail_with_message(error, error_bytes,
                 @"failed to encode prefill layer-38 paired compressors");
         }
@@ -34854,7 +34947,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setBytes:&block_args length:sizeof(block_args) atIndex:0];
         [encoder setBuffer:mask_buffer offset:0 atIndex:1];
         [encoder setBuffer:block_buffer offset:0 atIndex:2];
-        [encoder dispatchThreadgroups:MTLSizeMake(key_rows/64u,256,1)
+        [encoder dispatchThreadgroups:MTLSizeMake(key_rows/64u,query_blocks,1)
              threadsPerThreadgroup:MTLSizeMake(32,1,1)];
         [encoder setComputePipelineState:context.flashNonvecPipeline];
         [encoder setBytes:&attention_args length:sizeof(attention_args) atIndex:0];
@@ -34867,7 +34960,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setBuffer:block_buffer offset:0 atIndex:7];
         [encoder setBuffer:heads_buffer offset:0 atIndex:8];
         [encoder setThreadgroupMemoryLength:28672u atIndex:0];
-        [encoder dispatchThreadgroups:MTLSizeMake(256,n_head,1)
+        [encoder dispatchThreadgroups:MTLSizeMake(query_blocks,n_head,1)
              threadsPerThreadgroup:MTLSizeMake(32,kRustStarFlashNonvecNsg,1)];
         [encoder endEncoding];
 
@@ -35303,7 +35396,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setBuffer:layer3_mask_buffer offset:0 atIndex:1];
         [encoder setBuffer:block_buffer offset:0 atIndex:2];
         [encoder dispatchThreadgroups:MTLSizeMake(
-                layer3_attention_rows/64u,256,1)
+                layer3_attention_rows/64u,query_blocks,1)
              threadsPerThreadgroup:MTLSizeMake(32,1,1)];
 
         [encoder setComputePipelineState:context.flashNonvecPipeline];
@@ -35318,7 +35411,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setBuffer:block_buffer offset:0 atIndex:7];
         [encoder setBuffer:heads_buffer offset:0 atIndex:8];
         [encoder setThreadgroupMemoryLength:28672u atIndex:0];
-        [encoder dispatchThreadgroups:MTLSizeMake(256,n_head,1)
+        [encoder dispatchThreadgroups:MTLSizeMake(query_blocks,n_head,1)
              threadsPerThreadgroup:MTLSizeMake(32,kRustStarFlashNonvecNsg,1)];
         [encoder endEncoding];
 
@@ -35746,7 +35839,7 @@ int rust_star_metal_run_prefill_layer2_attention(
                 layer40_attn_compressed_buffer, 0,
                 layer40_compressed_position_buffer,
                 layer4_attn_compressor_width,
-                layer4_attn_compressor_head, 0u, rows, NO) ||
+                layer4_attn_compressor_head, 0u, rows, NO, NO) ||
             !encode_projected_compressor_batch_ratio4(
                 context, encoder,
                 layer40_norm_buffer, layer40_tail_activation_offset,
@@ -35762,7 +35855,7 @@ int rust_star_metal_run_prefill_layer2_attention(
                 layer40_indexer_compressed_buffer, 0,
                 layer40_compressed_position_buffer,
                 layer4_indexer_compressor_width,
-                layer4_indexer_compressor_head, 0u, rows, YES)) {
+                layer4_indexer_compressor_head, 0u, rows, YES, NO)) {
             return fail_with_message(error, error_bytes,
                 @"failed to encode prefill layer-38 paired compressors");
         }
@@ -35787,7 +35880,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setBytes:&block_args length:sizeof(block_args) atIndex:0];
         [encoder setBuffer:mask_buffer offset:0 atIndex:1];
         [encoder setBuffer:block_buffer offset:0 atIndex:2];
-        [encoder dispatchThreadgroups:MTLSizeMake(key_rows/64u,256,1)
+        [encoder dispatchThreadgroups:MTLSizeMake(key_rows/64u,query_blocks,1)
              threadsPerThreadgroup:MTLSizeMake(32,1,1)];
         [encoder setComputePipelineState:context.flashNonvecPipeline];
         [encoder setBytes:&attention_args length:sizeof(attention_args) atIndex:0];
@@ -35800,7 +35893,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setBuffer:block_buffer offset:0 atIndex:7];
         [encoder setBuffer:heads_buffer offset:0 atIndex:8];
         [encoder setThreadgroupMemoryLength:28672u atIndex:0];
-        [encoder dispatchThreadgroups:MTLSizeMake(256,n_head,1)
+        [encoder dispatchThreadgroups:MTLSizeMake(query_blocks,n_head,1)
              threadsPerThreadgroup:MTLSizeMake(32,kRustStarFlashNonvecNsg,1)];
         [encoder endEncoding];
 
@@ -36236,7 +36329,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setBuffer:layer3_mask_buffer offset:0 atIndex:1];
         [encoder setBuffer:block_buffer offset:0 atIndex:2];
         [encoder dispatchThreadgroups:MTLSizeMake(
-                layer3_attention_rows/64u,256,1)
+                layer3_attention_rows/64u,query_blocks,1)
              threadsPerThreadgroup:MTLSizeMake(32,1,1)];
 
         [encoder setComputePipelineState:context.flashNonvecPipeline];
@@ -36251,7 +36344,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setBuffer:block_buffer offset:0 atIndex:7];
         [encoder setBuffer:heads_buffer offset:0 atIndex:8];
         [encoder setThreadgroupMemoryLength:28672u atIndex:0];
-        [encoder dispatchThreadgroups:MTLSizeMake(256,n_head,1)
+        [encoder dispatchThreadgroups:MTLSizeMake(query_blocks,n_head,1)
              threadsPerThreadgroup:MTLSizeMake(32,kRustStarFlashNonvecNsg,1)];
         [encoder endEncoding];
 
@@ -36679,7 +36772,7 @@ int rust_star_metal_run_prefill_layer2_attention(
                 layer42_attn_compressed_buffer, 0,
                 layer42_compressed_position_buffer,
                 layer4_attn_compressor_width,
-                layer4_attn_compressor_head, 0u, rows, NO) ||
+                layer4_attn_compressor_head, 0u, rows, NO, NO) ||
             !encode_projected_compressor_batch_ratio4(
                 context, encoder,
                 layer42_norm_buffer, layer42_tail_activation_offset,
@@ -36695,7 +36788,7 @@ int rust_star_metal_run_prefill_layer2_attention(
                 layer42_indexer_compressed_buffer, 0,
                 layer42_compressed_position_buffer,
                 layer4_indexer_compressor_width,
-                layer4_indexer_compressor_head, 0u, rows, YES)) {
+                layer4_indexer_compressor_head, 0u, rows, YES, NO)) {
             return fail_with_message(error, error_bytes,
                 @"failed to encode prefill layer-42 paired compressors");
         }
@@ -36720,7 +36813,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setBytes:&block_args length:sizeof(block_args) atIndex:0];
         [encoder setBuffer:mask_buffer offset:0 atIndex:1];
         [encoder setBuffer:block_buffer offset:0 atIndex:2];
-        [encoder dispatchThreadgroups:MTLSizeMake(key_rows/64u,256,1)
+        [encoder dispatchThreadgroups:MTLSizeMake(key_rows/64u,query_blocks,1)
              threadsPerThreadgroup:MTLSizeMake(32,1,1)];
         [encoder setComputePipelineState:context.flashNonvecPipeline];
         [encoder setBytes:&attention_args length:sizeof(attention_args) atIndex:0];
@@ -36733,7 +36826,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setBuffer:block_buffer offset:0 atIndex:7];
         [encoder setBuffer:heads_buffer offset:0 atIndex:8];
         [encoder setThreadgroupMemoryLength:28672u atIndex:0];
-        [encoder dispatchThreadgroups:MTLSizeMake(256,n_head,1)
+        [encoder dispatchThreadgroups:MTLSizeMake(query_blocks,n_head,1)
              threadsPerThreadgroup:MTLSizeMake(32,kRustStarFlashNonvecNsg,1)];
         [encoder endEncoding];
 
@@ -40352,6 +40445,8 @@ int rust_star_metal_run_prefill_layer2_attention(
         context.prefillLayer3FullKv = layer3_kv_norm_buffer;
         context.prefillLayer3InputHc = after_ffn_hc_buffer;
         context.prefillLayer3AttnSplit = layer3_split_buffer;
+        context.prefillLayer3Current = layer3_cur_buffer;
+        context.prefillLayer3Norm = layer3_norm_buffer;
         context.prefillLayer3AttnCompressed = layer3_attn_compressed_buffer;
         context.prefillLayer3AttnStateKv = layer3_attn_state_kv_buffer;
         context.prefillLayer3AttnStateScore = layer3_attn_state_score_buffer;
@@ -45988,6 +46083,71 @@ int rust_star_metal_checksum_prefill_layer3_continuation_hc(
     }
 }
 
+int rust_star_metal_checksum_prefill_layer3_prefix_boundary(
+    void *opaque_context,
+    uint64_t *checksums,
+    size_t checksum_capacity,
+    char *error,
+    size_t error_bytes)
+{
+    enum {
+        rows = 4096, n_embd = 4096, hc_width = 4*4096,
+        q_width = 32768, kv_width = 512, compressed_rows = 32,
+        checksum_count = 8,
+    };
+    if (!opaque_context || !checksums || checksum_capacity < checksum_count) {
+        return fail_with_message(error, error_bytes,
+            @"layer-3 prefix boundary checksum received an invalid output");
+    }
+    @autoreleasepool {
+        RustStarMetalContext *context = (__bridge RustStarMetalContext *)opaque_context;
+        const NSUInteger hc_words = (NSUInteger)rows*hc_width;
+        const NSUInteger current_words = (NSUInteger)rows*n_embd;
+        const NSUInteger q_words = (NSUInteger)rows*q_width;
+        const NSUInteger kv_words = (NSUInteger)rows*kv_width;
+        const NSUInteger compressed_words =
+            (NSUInteger)compressed_rows*kv_width;
+        if (!context.prefillLayer3InputHc ||
+            context.prefillLayer3InputHc.length < hc_words*sizeof(uint32_t) ||
+            !context.prefillLayer3Current ||
+            context.prefillLayer3Current.length < current_words*sizeof(uint32_t) ||
+            !context.prefillLayer3Norm ||
+            context.prefillLayer3Norm.length < current_words*sizeof(uint32_t) ||
+            !context.prefillLayer3FullQ ||
+            context.prefillLayer3FullQ.length < q_words*sizeof(uint32_t) ||
+            !context.prefillLayer3FullKv ||
+            context.prefillLayer3FullKv.length < kv_words*sizeof(uint32_t) ||
+            !context.prefillLayer3AttnCompressed ||
+            context.prefillLayer3AttnCompressed.length <
+                compressed_words*sizeof(uint32_t) ||
+            !context.prefillLayer3AfterAttentionHc ||
+            context.prefillLayer3AfterAttentionHc.length <
+                hc_words*sizeof(uint32_t) ||
+            !context.prefillLayer3AfterFfnHc ||
+            context.prefillLayer3AfterFfnHc.length < hc_words*sizeof(uint32_t)) {
+            return fail_with_message(error, error_bytes,
+                @"complete layer-3 prefix boundary is unavailable");
+        }
+        checksums[0] = fnv1a_u32_words(
+            context.prefillLayer3InputHc.contents, hc_words);
+        checksums[1] = fnv1a_u32_words(
+            context.prefillLayer3Current.contents, current_words);
+        checksums[2] = fnv1a_u32_words(
+            context.prefillLayer3Norm.contents, current_words);
+        checksums[3] = fnv1a_u32_words(
+            context.prefillLayer3FullQ.contents, q_words);
+        checksums[4] = fnv1a_u32_words(
+            context.prefillLayer3FullKv.contents, kv_words);
+        checksums[5] = fnv1a_u32_words(
+            context.prefillLayer3AttnCompressed.contents, compressed_words);
+        checksums[6] = fnv1a_u32_words(
+            context.prefillLayer3AfterAttentionHc.contents, hc_words);
+        checksums[7] = fnv1a_u32_words(
+            context.prefillLayer3AfterFfnHc.contents, hc_words);
+        return 1;
+    }
+}
+
 int rust_star_metal_run_prefill_layer3_continuation_ingress(
     void *opaque_context,
     const void *model_mapping,
@@ -47164,6 +47324,7 @@ int rust_star_metal_run_prefill_layer4_continuation_boundary(
     uint64_t model_bytes,
     const rust_star_metal_prefill_layer_weights *weights,
     const rust_star_metal_prefill_compressor_weights *compressor,
+    uint32_t position_start,
     uint64_t *checksums,
     size_t checksum_capacity,
     rust_star_metal_sparse_indexed_result *result,
@@ -47172,7 +47333,6 @@ int rust_star_metal_run_prefill_layer4_continuation_boundary(
 {
     enum {
         rows = 4096,
-        position_start = 4096,
         n_embd = 4096,
         hc_dim = 16384,
         mix_hc = 24,
@@ -47190,6 +47350,7 @@ int rust_star_metal_run_prefill_layer4_continuation_boundary(
         checksum_count = 10,
     };
     if (!opaque_context || !model_mapping || !weights || !compressor ||
+        (position_start != 0u && position_start != 4096u) ||
         !checksums || checksum_capacity < checksum_count || !result) {
         return fail_with_message(error, error_bytes,
             @"prefill layer-4 continuation boundary received an invalid input");
@@ -47248,8 +47409,9 @@ int rust_star_metal_run_prefill_layer4_continuation_boundary(
             (NSUInteger)2048u*indexer_compressed_row_bytes;
         const NSUInteger attn_state_bytes = 8u*attn_width*sizeof(float);
         const NSUInteger indexer_state_bytes = 8u*indexer_width*sizeof(float);
-        id<MTLBuffer> input_hc =
-            context.prefillLayer3ContinuationFullAfterFfnHc;
+        id<MTLBuffer> input_hc = position_start == 0u
+            ? context.prefillLayer3AfterFfnHc
+            : context.prefillLayer3ContinuationFullAfterFfnHc;
         if (context.prefillKvRows != 8192u || !input_hc ||
             input_hc.length < hc_bytes || !context.prefillLayer4FullQ ||
             !context.prefillLayer4FullKv || !context.prefillLayer4InputHc ||
@@ -47607,9 +47769,9 @@ int rust_star_metal_run_prefill_layer4_continuation_boundary(
                 context.prefillLayer4AttnStateKv,
                 context.prefillLayer4AttnStateScore,
                 context.prefillLayer4AttnCompressed,
-                (NSUInteger)1024u*attn_compressed_row_bytes,
+                (NSUInteger)(position_start/ratio)*attn_compressed_row_bytes,
                 compressed_position_buffer,
-                attn_width, attn_head, position_start, rows, NO) ||
+                attn_width, attn_head, position_start, rows, NO, YES) ||
             !encode_projected_compressor_batch_ratio4(
                 context, encoder,
                 norm_buffer, tail_activation_offset,
@@ -47621,9 +47783,9 @@ int rust_star_metal_run_prefill_layer4_continuation_boundary(
                 context.prefillLayer4IndexerStateKv,
                 context.prefillLayer4IndexerStateScore,
                 context.prefillLayer4IndexerCompressed,
-                (NSUInteger)1024u*indexer_compressed_row_bytes,
+                (NSUInteger)(position_start/ratio)*indexer_compressed_row_bytes,
                 compressed_position_buffer,
-                indexer_width, indexer_head, position_start, rows, YES)) {
+                indexer_width, indexer_head, position_start, rows, YES, YES)) {
             return fail_with_message(error, error_bytes,
                 @"failed to encode layer-4 continuation paired compressors");
         }
@@ -47663,7 +47825,7 @@ int rust_star_metal_run_prefill_layer4_continuation_boundary(
             kv_bytes/sizeof(uint32_t));
         checksums[4] = fnv1a_u32_words(
             (const uint8_t *)context.prefillLayer4AttnCompressed.contents+
-                (NSUInteger)1024u*attn_compressed_row_bytes,
+                (NSUInteger)(position_start/ratio)*attn_compressed_row_bytes,
             (NSUInteger)compressed_rows*attn_head);
         checksums[5] = fnv1a_u32_words(
             context.prefillLayer4AttnStateKv.contents,
@@ -47673,7 +47835,7 @@ int rust_star_metal_run_prefill_layer4_continuation_boundary(
             attn_state_bytes/sizeof(uint32_t));
         checksums[7] = fnv1a_u32_words(
             (const uint8_t *)context.prefillLayer4IndexerCompressed.contents+
-                (NSUInteger)1024u*indexer_compressed_row_bytes,
+                (NSUInteger)(position_start/ratio)*indexer_compressed_row_bytes,
             (NSUInteger)compressed_rows*indexer_head);
         checksums[8] = fnv1a_u32_words(
             context.prefillLayer4IndexerStateKv.contents,

@@ -2181,8 +2181,9 @@ int rust_star_metal_run_prefill_layer3_continuation_batch_attention(
     char *error,
     size_t error_bytes);
 
-/* Consumes the exact retained production-batch layer-3 HC and executes the
+/* Consumes one retained production-batch layer-3 HC chunk and executes the
  * full 4096-row layer-4 ingress/QKV plus paired ratio-4 compressor boundary.
+ * Position start must be 0 or 4096.
  * The ten checksums cover HC ingress, norm, Q/KV, and both compressor outputs
  * and recurrent states in that order. */
 int rust_star_metal_run_prefill_layer4_continuation_boundary(
@@ -2191,9 +2192,19 @@ int rust_star_metal_run_prefill_layer4_continuation_boundary(
     uint64_t model_bytes,
     const rust_star_metal_prefill_layer_weights *weights,
     const rust_star_metal_prefill_compressor_weights *compressor,
+    uint32_t position_start,
     uint64_t *checksums,
     size_t checksum_capacity,
     rust_star_metal_sparse_indexed_result *result,
+    char *error,
+    size_t error_bytes);
+
+/* Checksums the complete first-chunk layer-2 input HC, layer-3 ingress,
+ * Q/KV/compressor, attention-HC, and FFN-HC boundaries in that order. */
+int rust_star_metal_checksum_prefill_layer3_prefix_boundary(
+    void *context,
+    uint64_t *checksums,
+    size_t checksum_capacity,
     char *error,
     size_t error_bytes);
 

@@ -18,6 +18,51 @@ Before changing code:
 Journal entries are reverse chronological. Do not edit old entries to change
 history; add a correction and update the current-state summary.
 
+## 2026-09-01 — Exact layer-4 4K-to-8K compressor boundary
+
+Objective:
+
+- Repair the retained first-chunk dependency and make the production-size
+  layer-4 continuation boundary bit-exact.
+
+Changes and evidence:
+
+- Found a transient-buffer ownership alias: with output collection disabled,
+  layers 3--42 reused same-role buffers and overwrote the layer-3 prefix before
+  continuation. The runtime now retains only the five layer-3 prefix buffers
+  required by the handoff, adding about 1.15 GiB rather than retaining every
+  intermediate tensor.
+- Matched DwarfStar's 4K FlashAttention geometry. Layer 3 now keeps the real
+  4,128-key extent, uses the 64-column KV-pad path and `has_kvpad` nsg8 kernel,
+  and dispatches all 512 query blocks. Forty generated layer-3--42 launches no
+  longer hard-code the 2K-only 256-block grid. The full layer-3 attention,
+  inverse RoPE, output projection, attention HC, and FFN HC boundaries are
+  exact.
+- Reordered the retained workflow so the exact 4,096-row layer-3 continuation
+  is completed before rebuilding layer 4's first 4K prefix. The prefix rebuild
+  then remains live while positions 4,096--8,191 execute.
+- Reproduced DwarfStar's ratio-4 post-prefill refresh at the production layer-4
+  boundary: project the final four normalized tokens with the small-batch
+  kernel, clear the eight-row recurrent state, and set rows 0--3 directly with
+  score-plus-APE without a decode-style shift. Existing 32-row rolling
+  diagnostics retain their previously validated update path.
+- The M1 Ultra live gate now matches all ten layer-4 continuation checksums:
+  HC ingress, norm, Q, KV, both complete 1,024-row compressed caches, and all
+  four recurrent-state tensors. Both prefix and continuation schedules use 40
+  dispatches and 17/17 no-copy model mappings.
+- Evolved the artifact to
+  `rust-star-long-prefill-continuation-bootstrap-probe-v14`. It records the
+  compact eight-checksum layer-3 prefix gate, the layer-4 prefix rebuild, the
+  10/10 continuation boundary, and a true complete-boundary C0 claim. It still
+  keeps complete layer-4, complete-8K, output-logit, throughput, and speedup
+  claims false.
+
+Decision and next step:
+
+- Treat the layer-4 ingress/QKV/paired-compressor continuation boundary as
+  complete. Extend the exact second-chunk schedule through layer-4 mixed
+  attention, attention HC, FFN, and final HC before advancing to layer 5.
+
 ## 2026-09-01 — Layer-4 continuation isolates stale first-chunk state
 
 Objective:

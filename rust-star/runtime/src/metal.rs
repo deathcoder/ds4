@@ -29,7 +29,7 @@ pub const PREFILL_LAYERS012_COMPRESSOR_LOOP_PROBE_SCHEMA: &str =
     "rust-star-prefill-layers012-compressor-loop-probe-v1";
 pub const LONG_PREFILL_BOOTSTRAP_PROBE_SCHEMA: &str = "rust-star-long-prefill-bootstrap-probe-v1";
 pub const LONG_PREFILL_CONTINUATION_BOOTSTRAP_PROBE_SCHEMA: &str =
-    "rust-star-long-prefill-continuation-bootstrap-probe-v13";
+    "rust-star-long-prefill-continuation-bootstrap-probe-v14";
 pub const LONG_PREFILL_SEQUENTIAL_CONTINUATION_PROBE_SCHEMA: &str =
     "rust-star-long-prefill-sequential-continuation-probe-v1";
 pub const LONG_PREFILL_TRANSFORMER_PROBE_SCHEMA: &str =
@@ -153,6 +153,16 @@ pub const PREFILL_LAYER4_COMPLETE_FIXTURE_ID: &str =
 const PREFILL_LAYER3_CONTINUATION_FULL_HC_CHECKSUM: u64 = 0xec10_3c95_0cbd_3fd9;
 const PREFILL_LAYER2_CONTINUATION_FULL_HC_CHECKSUM: u64 = 0x98fa_5f3d_30b3_eeb0;
 const PREFILL_LAYER3_CONTINUATION_TILED_HC_CHECKSUM: u64 = 0xaaa6_bb5c_c7e9_a513;
+const PREFILL_LAYER3_PREFIX_BOUNDARY_CHECKSUMS: [u64; 8] = [
+    6_264_416_700_296_867_668,
+    7_027_301_027_877_806_711,
+    9_330_012_365_053_869_304,
+    15_721_889_882_801_109_505,
+    1_812_312_153_901_644_622,
+    16_210_927_330_342_989_851,
+    5_125_096_099_637_226_032,
+    7_209_785_768_800_408_937,
+];
 const PREFILL_LAYER4_CONTINUATION_BOUNDARY_CHECKSUMS: [u64; 10] = [
     0x5f8b_a1d3_d298_de08,
     0x3b62_e158_64f5_4772,
@@ -162,18 +172,6 @@ const PREFILL_LAYER4_CONTINUATION_BOUNDARY_CHECKSUMS: [u64; 10] = [
     0xa5b2_6aa2_36de_295d,
     0x2327_89b5_c6e4_7f08,
     0x7c96_fcd0_a90a_2325,
-    0xa575_33dd_02ae_9c79,
-    0xf4c8_f482_2cce_7547,
-];
-const PREFILL_LAYER4_CONTINUATION_DIAGNOSTIC_CHECKSUMS: [u64; 10] = [
-    0x5f8b_a1d3_d298_de08,
-    0x3b62_e158_64f5_4772,
-    0x12d8_cd6d_26f6_9bdf,
-    0xf390_3e5b_4b0e_abec,
-    0x9129_cec8_0325_7ef3,
-    0xa5b2_6aa2_36de_295d,
-    0x2327_89b5_c6e4_7f08,
-    0x08bb_e1b0_674a_2325,
     0xa575_33dd_02ae_9c79,
     0xf4c8_f482_2cce_7547,
 ];
@@ -3896,6 +3894,11 @@ pub struct LongPrefillContinuationBootstrapProbeReport {
     pub layer3_production_batch_pointer_matches: u32,
     pub layer3_production_full_hc_checksum: u64,
     pub layer3_production_hc_matching_tiles: u32,
+    pub layer3_prefix_boundary_checksums: [u64; 8],
+    pub layer4_prefix_rebuild_dispatches: u32,
+    pub layer4_prefix_rebuild_wrapped_model_ranges: u32,
+    pub layer4_prefix_rebuild_pointer_matches: u32,
+    pub layer4_prefix_rebuild_checksums: [u64; 10],
     pub layer4_continuation_boundary_dispatches: u32,
     pub layer4_continuation_boundary_wrapped_model_ranges: u32,
     pub layer4_continuation_boundary_pointer_matches: u32,
@@ -7946,13 +7949,22 @@ pub fn write_long_prefill_continuation_bootstrap_probe_json<W: Write>(
             != report.layer3_production_batch_wrapped_model_ranges
         || report.layer3_production_full_hc_checksum != PREFILL_LAYER3_CONTINUATION_FULL_HC_CHECKSUM
         || report.layer3_production_hc_matching_tiles != 128
+        || report.layer3_prefix_boundary_checksums != PREFILL_LAYER3_PREFIX_BOUNDARY_CHECKSUMS
+        || report.layer4_prefix_rebuild_dispatches != 40
+        || report.layer4_prefix_rebuild_wrapped_model_ranges != 17
+        || report.layer4_prefix_rebuild_pointer_matches
+            != report.layer4_prefix_rebuild_wrapped_model_ranges
+        || report
+            .layer4_prefix_rebuild_checksums
+            .iter()
+            .any(|checksum| *checksum == 0)
         || report.layer4_continuation_boundary_dispatches != 40
         || report.layer4_continuation_boundary_wrapped_model_ranges != 17
         || report.layer4_continuation_boundary_pointer_matches
             != report.layer4_continuation_boundary_wrapped_model_ranges
         || report.layer4_continuation_boundary_checksums
-            != PREFILL_LAYER4_CONTINUATION_DIAGNOSTIC_CHECKSUMS
-        || layer4_matching_checksums != 8
+            != PREFILL_LAYER4_CONTINUATION_BOUNDARY_CHECKSUMS
+        || layer4_matching_checksums != 10
         || !report.sparse_transition.wall_ms.is_finite()
         || !report.sparse_transition.gpu_ms.is_finite()
         || report.sparse_transition.wall_ms <= 0.0
@@ -8040,7 +8052,7 @@ pub fn write_long_prefill_continuation_bootstrap_probe_json<W: Write>(
     crate::artifact::write_json_string(output, report.second_tile_fixture_id)?;
     write!(
         output,
-        ", \"start\": {}, \"end\": {}, \"rows\": {}, \"native_retained_history\": true, \"layer2\": {{\"dispatches\": {}, \"wrapped_model_ranges\": {}, \"pointer_matches\": {}, \"exact_outputs\": {}, \"complete_tile_c0_bitwise_match\": true}}, \"layer3\": {{\"dispatches\": {}, \"wrapped_model_ranges\": {}, \"pointer_matches\": {}, \"exact_outputs\": {}, \"complete_tile_c0_bitwise_match\": true}}, \"consecutive_complete_layer3_tiles\": 2}},\n  \"layer23_continuation_loop\": {{\"start\": 4096, \"end\": 8191, \"tile_rows\": 32, \"tiles\": {}, \"c0_anchor_tiles\": {}, \"structurally_executed_unverified_tiles\": {}, \"ratio128_emitted_rows\": {}, \"dispatches\": {}, \"wrapped_model_ranges\": {}, \"pointer_matches\": {}, \"final_checksums\": {{\"layer3_hc\": {}, \"layer3_compressor_state_kv\": {}, \"layer3_compressor_state_score\": {}, \"full_layer2_hc\": {}, \"tiled_full_layer3_hc\": {}, \"production_full_layer3_hc\": {}}}, \"full_layer2_hc_rows\": 4096, \"full_layer2_hc_checksum_match\": true, \"full_layer3_hc_rows\": 4096, \"tiled_diagnostic\": {{\"matching_tiles\": {}, \"mismatching_tile_starts\": [4096, 7296, 7360, 7392, 7424, 7552, 7616, 7648, 7712, 7776, 7840, 8000, 8064, 8096], \"checksum_match\": false}}, \"production_batch\": {{\"rows\": 4096, \"ratio128_compressor_schedule\": \"aligned_batch_pool\", \"dispatches\": {}, \"wrapped_model_ranges\": {}, \"pointer_matches\": {}, \"matching_tiles\": {}, \"checksum_match\": true}}, \"full_layer3_hc_checksum_match\": true, \"persistent_context\": true, \"native_retained_state\": true, \"all_tiles_c0_claim\": true}},\n  \"layer4_continuation_boundary\": {{\"start\": 4096, \"rows\": 4096, \"dispatches\": {}, \"wrapped_model_ranges\": {}, \"pointer_matches\": {}, \"checksums\": {{\"hc_attn_pre\": {}, \"attn_norm\": {}, \"q_current\": {}, \"kv_current\": {}, \"attention_compressed\": {}, \"attention_state_kv\": {}, \"attention_state_score\": {}, \"indexer_compressed\": {}, \"indexer_state_kv\": {}, \"indexer_state_score\": {}}}, \"matching_production_checksums\": {}, \"ingress_qkv_c0_bitwise_match\": true, \"compressor_recurrent_state_c0_bitwise_match\": true, \"state_independent_compressed_rows_per_cache\": 1023, \"prefix_dependent_first_compressed_row_match\": false, \"compressed_cache_checksum_match\": false, \"complete_boundary_c0_claim\": false}},\n  \"checksums\": {{\"continuation_token_ids\": {}}},\n  \"timing\": {{\"continuation_summed_wall_ms\": {:.6}, \"continuation_summed_gpu_ms\": {:.6}}},\n  \"accepted_oracle_token_stream\": true,\n  \"native_batch_schedule\": true,\n  \"second_long_prefill_bootstrap_chunk_executed\": true,\n  \"layer2_sparse_transition_c0_claim\": true,\n  \"layer2_native_complete_tile_c0_claim\": true,\n  \"complete_layer2_second_chunk_output_checksum_claim\": true,\n  \"live_layer2_to_layer3_handoff_c0_claim\": true,\n  \"unseeded_layer3_native_complete_tile_claim\": true,\n  \"two_consecutive_unseeded_layer3_tiles_claim\": true,\n  \"complete_layer23_second_chunk_execution_claim\": true,\n  \"complete_layer23_second_chunk_c0_claim\": true,\n  \"complete_layer3_second_chunk_output_checksum_claim\": true,\n  \"complete_layer4_continuation_boundary_c0_claim\": false,\n  \"complete_8k_transformer_claim\": false,\n  \"output_logits_c0_claim\": false,\n  \"throughput_claim\": false\n}}\n",
+        ", \"start\": {}, \"end\": {}, \"rows\": {}, \"native_retained_history\": true, \"layer2\": {{\"dispatches\": {}, \"wrapped_model_ranges\": {}, \"pointer_matches\": {}, \"exact_outputs\": {}, \"complete_tile_c0_bitwise_match\": true}}, \"layer3\": {{\"dispatches\": {}, \"wrapped_model_ranges\": {}, \"pointer_matches\": {}, \"exact_outputs\": {}, \"complete_tile_c0_bitwise_match\": true}}, \"consecutive_complete_layer3_tiles\": 2}},\n  \"layer23_continuation_loop\": {{\"start\": 4096, \"end\": 8191, \"tile_rows\": 32, \"tiles\": {}, \"c0_anchor_tiles\": {}, \"structurally_executed_unverified_tiles\": {}, \"ratio128_emitted_rows\": {}, \"dispatches\": {}, \"wrapped_model_ranges\": {}, \"pointer_matches\": {}, \"final_checksums\": {{\"layer3_hc\": {}, \"layer3_compressor_state_kv\": {}, \"layer3_compressor_state_score\": {}, \"full_layer2_hc\": {}, \"tiled_full_layer3_hc\": {}, \"production_full_layer3_hc\": {}}}, \"full_layer2_hc_rows\": 4096, \"full_layer2_hc_checksum_match\": true, \"full_layer3_hc_rows\": 4096, \"tiled_diagnostic\": {{\"matching_tiles\": {}, \"mismatching_tile_starts\": [4096, 7296, 7360, 7392, 7424, 7552, 7616, 7648, 7712, 7776, 7840, 8000, 8064, 8096], \"checksum_match\": false}}, \"production_batch\": {{\"rows\": 4096, \"ratio128_compressor_schedule\": \"aligned_batch_pool\", \"dispatches\": {}, \"wrapped_model_ranges\": {}, \"pointer_matches\": {}, \"matching_tiles\": {}, \"checksum_match\": true}}, \"full_layer3_hc_checksum_match\": true, \"persistent_context\": true, \"native_retained_state\": true, \"all_tiles_c0_claim\": true}},\n  \"layer3_prefix_boundary\": {{\"checksums\": [{}, {}, {}, {}, {}, {}, {}, {}], \"c0_bitwise_match\": true}},\n  \"layer4_prefix_rebuild\": {{\"start\": 0, \"rows\": 4096, \"dispatches\": {}, \"wrapped_model_ranges\": {}, \"pointer_matches\": {}, \"checksums\": [{}, {}, {}, {}, {}, {}, {}, {}, {}, {}], \"retained_for_continuation\": true}},\n  \"layer4_continuation_boundary\": {{\"start\": 4096, \"rows\": 4096, \"dispatches\": {}, \"wrapped_model_ranges\": {}, \"pointer_matches\": {}, \"checksums\": {{\"hc_attn_pre\": {}, \"attn_norm\": {}, \"q_current\": {}, \"kv_current\": {}, \"attention_compressed\": {}, \"attention_state_kv\": {}, \"attention_state_score\": {}, \"indexer_compressed\": {}, \"indexer_state_kv\": {}, \"indexer_state_score\": {}}}, \"matching_production_checksums\": {}, \"ingress_qkv_c0_bitwise_match\": true, \"compressor_recurrent_state_c0_bitwise_match\": true, \"compressed_rows_per_cache\": 1024, \"compressed_cache_checksum_match\": true, \"complete_boundary_c0_claim\": true}},\n  \"checksums\": {{\"continuation_token_ids\": {}}},\n  \"timing\": {{\"continuation_summed_wall_ms\": {:.6}, \"continuation_summed_gpu_ms\": {:.6}}},\n  \"accepted_oracle_token_stream\": true,\n  \"native_batch_schedule\": true,\n  \"second_long_prefill_bootstrap_chunk_executed\": true,\n  \"layer2_sparse_transition_c0_claim\": true,\n  \"layer2_native_complete_tile_c0_claim\": true,\n  \"complete_layer2_second_chunk_output_checksum_claim\": true,\n  \"live_layer2_to_layer3_handoff_c0_claim\": true,\n  \"unseeded_layer3_native_complete_tile_claim\": true,\n  \"two_consecutive_unseeded_layer3_tiles_claim\": true,\n  \"complete_layer23_second_chunk_execution_claim\": true,\n  \"complete_layer23_second_chunk_c0_claim\": true,\n  \"complete_layer3_second_chunk_output_checksum_claim\": true,\n  \"complete_layer4_continuation_boundary_c0_claim\": true,\n  \"complete_8k_transformer_claim\": false,\n  \"output_logits_c0_claim\": false,\n  \"throughput_claim\": false\n}}\n",
         report.second_tile_start,
         report.second_tile_start + report.second_tile_rows - 1,
         report.second_tile_rows,
@@ -8070,6 +8082,27 @@ pub fn write_long_prefill_continuation_bootstrap_probe_json<W: Write>(
         report.layer3_production_batch_wrapped_model_ranges,
         report.layer3_production_batch_pointer_matches,
         report.layer3_production_hc_matching_tiles,
+        report.layer3_prefix_boundary_checksums[0],
+        report.layer3_prefix_boundary_checksums[1],
+        report.layer3_prefix_boundary_checksums[2],
+        report.layer3_prefix_boundary_checksums[3],
+        report.layer3_prefix_boundary_checksums[4],
+        report.layer3_prefix_boundary_checksums[5],
+        report.layer3_prefix_boundary_checksums[6],
+        report.layer3_prefix_boundary_checksums[7],
+        report.layer4_prefix_rebuild_dispatches,
+        report.layer4_prefix_rebuild_wrapped_model_ranges,
+        report.layer4_prefix_rebuild_pointer_matches,
+        report.layer4_prefix_rebuild_checksums[0],
+        report.layer4_prefix_rebuild_checksums[1],
+        report.layer4_prefix_rebuild_checksums[2],
+        report.layer4_prefix_rebuild_checksums[3],
+        report.layer4_prefix_rebuild_checksums[4],
+        report.layer4_prefix_rebuild_checksums[5],
+        report.layer4_prefix_rebuild_checksums[6],
+        report.layer4_prefix_rebuild_checksums[7],
+        report.layer4_prefix_rebuild_checksums[8],
+        report.layer4_prefix_rebuild_checksums[9],
         report.layer4_continuation_boundary_dispatches,
         report.layer4_continuation_boundary_wrapped_model_ranges,
         report.layer4_continuation_boundary_pointer_matches,
@@ -21009,6 +21042,11 @@ mod imp {
         production_batch_pointer_matches: u32,
         production_full_hc_checksum: u64,
         production_batch_hc_matching_tiles: u32,
+        layer3_prefix_boundary_checksums: [u64; 8],
+        layer4_prefix_rebuild_dispatches: u32,
+        layer4_prefix_rebuild_wrapped_model_ranges: u32,
+        layer4_prefix_rebuild_pointer_matches: u32,
+        layer4_prefix_rebuild_checksums: [u64; 10],
         layer4_boundary_dispatches: u32,
         layer4_boundary_wrapped_model_ranges: u32,
         layer4_boundary_pointer_matches: u32,
@@ -22809,9 +22847,17 @@ mod imp {
             model_bytes: u64,
             weights: *const RawPrefillLayerWeights,
             compressor: *const RawPrefillCompressorWeights,
+            position_start: u32,
             checksums: *mut u64,
             checksum_capacity: usize,
             result: *mut RawSparseIndexedResult,
+            error: *mut c_char,
+            error_bytes: usize,
+        ) -> i32;
+        fn rust_star_metal_checksum_prefill_layer3_prefix_boundary(
+            context: *mut c_void,
+            checksums: *mut u64,
+            checksum_capacity: usize,
             error: *mut c_char,
             error_bytes: usize,
         ) -> i32;
@@ -26215,6 +26261,13 @@ mod imp {
             layer3_production_batch_pointer_matches: layer23_loop.production_batch_pointer_matches,
             layer3_production_full_hc_checksum: layer23_loop.production_full_hc_checksum,
             layer3_production_hc_matching_tiles: layer23_loop.production_batch_hc_matching_tiles,
+            layer3_prefix_boundary_checksums: layer23_loop.layer3_prefix_boundary_checksums,
+            layer4_prefix_rebuild_dispatches: layer23_loop.layer4_prefix_rebuild_dispatches,
+            layer4_prefix_rebuild_wrapped_model_ranges: layer23_loop
+                .layer4_prefix_rebuild_wrapped_model_ranges,
+            layer4_prefix_rebuild_pointer_matches: layer23_loop
+                .layer4_prefix_rebuild_pointer_matches,
+            layer4_prefix_rebuild_checksums: layer23_loop.layer4_prefix_rebuild_checksums,
             layer4_continuation_boundary_dispatches: layer23_loop.layer4_boundary_dispatches,
             layer4_continuation_boundary_wrapped_model_ranges: layer23_loop
                 .layer4_boundary_wrapped_model_ranges,
@@ -44431,6 +44484,30 @@ mod imp {
                 full_layer3_hc_tile_checksums[127],
             )));
         }
+        let mut prefix_boundary_checksums = [0u64; 8];
+        let prefix_checksum_succeeded = unsafe {
+            rust_star_metal_checksum_prefill_layer3_prefix_boundary(
+                context.0,
+                prefix_boundary_checksums.as_mut_ptr(),
+                prefix_boundary_checksums.len(),
+                error.as_mut_ptr(),
+                error.len(),
+            )
+        };
+        if prefix_checksum_succeeded == 0 {
+            return Err(Error::invalid(format!(
+                "Metal retained layer-3 prefix checksum failed: {}",
+                error_text(&error)
+            )));
+        }
+        if prefix_boundary_checksums != PREFILL_LAYER3_PREFIX_BOUNDARY_CHECKSUMS {
+            return Err(Error::invalid(format!(
+                "Metal retained layer-3 prefix boundary checksum mismatch: actual={:?}, expected={:?}",
+                prefix_boundary_checksums,
+                PREFILL_LAYER3_PREFIX_BOUNDARY_CHECKSUMS,
+            )));
+        }
+        layer23_loop.layer3_prefix_boundary_checksums = prefix_boundary_checksums;
         let mut production_batch_raw = RawSparseIndexedResult::default();
         let production_compressor_succeeded = unsafe {
             rust_star_metal_run_prefill_layer3_continuation_batch_compressor(
@@ -44546,6 +44623,49 @@ mod imp {
                 layer23_loop.production_batch_hc_matching_tiles,
             )));
         }
+        let mut layer4_prefix_checksums = [0u64; 10];
+        let mut layer4_prefix_raw = RawSparseIndexedResult::default();
+        let layer4_prefix_succeeded = unsafe {
+            rust_star_metal_run_prefill_layer4_continuation_boundary(
+                context.0,
+                model.mapping_pointer(),
+                model.bytes(),
+                &layer4_weights,
+                &layer4_compressor,
+                0,
+                layer4_prefix_checksums.as_mut_ptr(),
+                layer4_prefix_checksums.len(),
+                &mut layer4_prefix_raw,
+                error.as_mut_ptr(),
+                error.len(),
+            )
+        };
+        if layer4_prefix_succeeded == 0 {
+            return Err(Error::invalid(format!(
+                "Metal production-batch layer-4 prefix rebuild failed: {}",
+                error_text(&error)
+            )));
+        }
+        if layer4_prefix_raw.dispatches != 40
+            || layer4_prefix_raw.wrapped_model_ranges != 17
+            || layer4_prefix_raw.pointer_matches != 17
+            || layer4_prefix_checksums
+                .iter()
+                .any(|checksum| *checksum == 0)
+        {
+            return Err(Error::invalid(format!(
+                "Metal production-batch layer-4 prefix rebuild is invalid: dispatches={}, mappings={}/{}, checksums={:?}",
+                layer4_prefix_raw.dispatches,
+                layer4_prefix_raw.pointer_matches,
+                layer4_prefix_raw.wrapped_model_ranges,
+                layer4_prefix_checksums,
+            )));
+        }
+        layer23_loop.layer4_prefix_rebuild_dispatches = layer4_prefix_raw.dispatches;
+        layer23_loop.layer4_prefix_rebuild_wrapped_model_ranges =
+            layer4_prefix_raw.wrapped_model_ranges;
+        layer23_loop.layer4_prefix_rebuild_pointer_matches = layer4_prefix_raw.pointer_matches;
+        layer23_loop.layer4_prefix_rebuild_checksums = layer4_prefix_checksums;
         let mut layer4_boundary_raw = RawSparseIndexedResult::default();
         let layer4_boundary_succeeded = unsafe {
             rust_star_metal_run_prefill_layer4_continuation_boundary(
@@ -44554,6 +44674,7 @@ mod imp {
                 model.bytes(),
                 &layer4_weights,
                 &layer4_compressor,
+                4_096,
                 layer23_loop.layer4_boundary_checksums.as_mut_ptr(),
                 layer23_loop.layer4_boundary_checksums.len(),
                 &mut layer4_boundary_raw,
@@ -44575,19 +44696,19 @@ mod imp {
             || layer23_loop.layer4_boundary_wrapped_model_ranges != 17
             || layer23_loop.layer4_boundary_pointer_matches != 17
             || layer23_loop.layer4_boundary_checksums
-                != PREFILL_LAYER4_CONTINUATION_DIAGNOSTIC_CHECKSUMS
+                != PREFILL_LAYER4_CONTINUATION_BOUNDARY_CHECKSUMS
             || !layer4_boundary_raw.wall_ms.is_finite()
             || layer4_boundary_raw.wall_ms <= 0.0
             || !layer4_boundary_raw.gpu_ms.is_finite()
             || layer4_boundary_raw.gpu_ms <= 0.0
         {
             return Err(Error::invalid(format!(
-                "Metal diagnostic layer-4 continuation boundary is invalid: dispatches={}, mappings={}/{}, checksums={:?} expected_diagnostic={:?}",
+                "Metal production-batch layer-4 continuation boundary is invalid: dispatches={}, mappings={}/{}, checksums={:?} expected={:?}",
                 layer23_loop.layer4_boundary_dispatches,
                 layer23_loop.layer4_boundary_pointer_matches,
                 layer23_loop.layer4_boundary_wrapped_model_ranges,
                 layer23_loop.layer4_boundary_checksums,
-                PREFILL_LAYER4_CONTINUATION_DIAGNOSTIC_CHECKSUMS,
+                PREFILL_LAYER4_CONTINUATION_BOUNDARY_CHECKSUMS,
             )));
         }
         Ok((
@@ -54039,11 +54160,15 @@ mod tests {
             layer3_production_batch_pointer_matches: 19,
             layer3_production_full_hc_checksum: PREFILL_LAYER3_CONTINUATION_FULL_HC_CHECKSUM,
             layer3_production_hc_matching_tiles: 128,
+            layer3_prefix_boundary_checksums: PREFILL_LAYER3_PREFIX_BOUNDARY_CHECKSUMS,
+            layer4_prefix_rebuild_dispatches: 40,
+            layer4_prefix_rebuild_wrapped_model_ranges: 17,
+            layer4_prefix_rebuild_pointer_matches: 17,
+            layer4_prefix_rebuild_checksums: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
             layer4_continuation_boundary_dispatches: 40,
             layer4_continuation_boundary_wrapped_model_ranges: 17,
             layer4_continuation_boundary_pointer_matches: 17,
-            layer4_continuation_boundary_checksums:
-                PREFILL_LAYER4_CONTINUATION_DIAGNOSTIC_CHECKSUMS,
+            layer4_continuation_boundary_checksums: PREFILL_LAYER4_CONTINUATION_BOUNDARY_CHECKSUMS,
         };
         let mut output = Vec::new();
         write_long_prefill_continuation_bootstrap_probe_json(&mut output, &report).unwrap();
@@ -54092,9 +54217,11 @@ mod tests {
         assert!(text.contains("\"matching_tiles\": 128, \"checksum_match\": true"));
         assert!(text.contains("\"full_layer3_hc_checksum_match\": true"));
         assert!(text.contains("\"complete_layer3_second_chunk_output_checksum_claim\": true"));
-        assert!(text.contains("\"matching_production_checksums\": 8"));
-        assert!(text.contains("\"prefix_dependent_first_compressed_row_match\": false"));
-        assert!(text.contains("\"complete_layer4_continuation_boundary_c0_claim\": false"));
+        assert!(text.contains("\"layer3_prefix_boundary\": {\"checksums\":"));
+        assert!(text.contains("\"layer4_prefix_rebuild\": {\"start\": 0"));
+        assert!(text.contains("\"matching_production_checksums\": 10"));
+        assert!(text.contains("\"compressed_cache_checksum_match\": true"));
+        assert!(text.contains("\"complete_layer4_continuation_boundary_c0_claim\": true"));
         assert!(text.contains("\"complete_layer23_second_chunk_c0_claim\": true"));
         assert!(text.contains("\"layer2_sparse_transition_c0_claim\": true"));
         assert!(text.contains("\"selection_kernel\": \"kernel_topk_stream512\""));
