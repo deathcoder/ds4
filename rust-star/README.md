@@ -344,8 +344,7 @@ compressors. The first target-Mac run completed 64 continuation tiles and
 retained state to 8,192 raw and 2,048 compressed rows without discarding the
 first-chunk prefix or recurrent compressor state. Continuation GPU time was
 5,124.933 ms. This retained bootstrap now continues through exact complete
-layers 2--4 and an exact complete layer-5 prefix; layer-5 continuation
-attention/FFN, layers 6--42, and exact 8K output logits remain the next
+layers 2--5 exactly; layers 6--42 and exact 8K output logits remain the next
 milestone. The bootstrap now
 also proves the first layer-2 sparse transition at position 4,099 against an
 independently repeated oracle-v3 batch capture. Its diagnostic reconstructs
@@ -411,7 +410,9 @@ extend that exact chain through the complete layer-4 continuation and prefix.
 Schema v18 then rebuilds and completes the exact 4,096-row layer-5 prefix:
 Q/KV/compression use 17 dispatches and 13/13 mappings, while padded Nsg8 Flash
 attention plus FFN finish in 49 combined dispatches and 28/28 mappings. The
-second-chunk layer-5 attention/FFN, layers 6--42, and output head remain open.
+v19 production continuation tail uses the exact 4,288-key Flash geometry and
+finishes attention/FFN in 38 dispatches with 19/19 mappings; KQV-back and both
+HC hashes match two independent captures. Layers 6--42 and the output head remain open.
 No throughput or speedup claim is attached to this diagnostic gate.
 The first complete second-half experiment deliberately tested whether the
 proven retained decoder schedule could serve as a correctness-preserving

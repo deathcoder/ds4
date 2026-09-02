@@ -2288,6 +2288,15 @@ int rust_star_metal_finish_prefill_layer5_continuation(
     char *error,
     size_t error_bytes);
 
+/* Checksums the complete production-batch layer-5 continuation KQV-back and
+ * post-attention/post-FFN HC boundaries. */
+int rust_star_metal_checksum_prefill_layer5_continuation_tail(
+    void *context,
+    uint64_t *checksums,
+    size_t checksum_capacity,
+    char *error,
+    size_t error_bytes);
+
 /* Consumes one retained production-batch layer-3 HC chunk and executes the
  * full 4096-row layer-4 ingress/QKV plus paired ratio-4 compressor boundary.
  * Position start must be 0 or 4096.

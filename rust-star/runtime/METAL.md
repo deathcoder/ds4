@@ -705,7 +705,7 @@ control. The next boundary must carry the retained 4K state through layers
 
 ## Retained 4K-to-8K layer-2 through layer-5 continuation boundary
 
-Schema: `rust-star-long-prefill-continuation-bootstrap-probe-v18`.
+Schema: `rust-star-long-prefill-continuation-bootstrap-probe-v19`.
 
 `long-prefill-continuation-bootstrap-probe` completes the first 4K transformer,
 then preserves that context while 64 native 64-row tiles append positions
@@ -810,7 +810,12 @@ Flash geometry, then inverse RoPE, grouped attention output, biased
 routed/shared FFN, and final HC. KQV-back and both downstream HC checksums are
 bit-identical over 49 combined dispatches and 28/28 mappings. The retained
 layer-5 prefix is therefore a valid exact history for the still-open second
-4K layer-5 attention/FFN gate.
+4K layer-5 attention/FFN gate. Version 19 closes that gate with the 4,288-key
+production Flash schedule, inverse RoPE, grouped attention output, and biased
+routed/shared FFN. The production tail uses 38 dispatches and 19/19 no-copy
+mappings. Its KQV-back, post-attention HC, and post-FFN HC hashes match two
+independent captures, so complete layer 5 is now claimed. Layer 6 is the next
+exact retained boundary.
 
 ## Model residency before measured decode
 

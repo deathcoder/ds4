@@ -3362,7 +3362,7 @@ fn run_long_prefill_continuation_bootstrap_probe_command(arguments: Vec<OsString
         report.layer5_prefix_complete_wrapped_model_ranges,
     );
     println!(
-        "layer-5 continuation boundary: {} exact 32-row ingress/QKV tiles plus the aligned ratio-128 compressor use {} dispatches and {}/{} no-copy mappings; all 9 ingress checksums and compressed checksum={} match the 8K oracle",
+        "layer-5 complete continuation: {} exact 32-row ingress/QKV tiles plus the production compressor, Flash attention, and FFN use {} dispatches and {}/{} no-copy mappings; all 9 ingress checksums, compressed checksum={}, and 3 attention/FFN tail checksums match the 8K oracle",
         report.layer5_continuation_tiles,
         report.layer5_continuation_dispatches,
         report.layer5_continuation_pointer_matches,
@@ -3370,7 +3370,7 @@ fn run_long_prefill_continuation_bootstrap_probe_command(arguments: Vec<OsString
         report.layer5_continuation_compressed_checksum,
     );
     println!(
-        "scope: complete retained layers 2, 3, and 4 match the second 4K chunk oracle; the layer-5 prefix is complete and exact, while its continuation is exact through ingress/QKV and ratio-128 compression. Layer-5 continuation attention/FFN, layers 6..42, complete 8K transformer output, output-logit C0, and throughput remain unclaimed"
+        "scope: complete retained layers 2, 3, 4, and 5 match the second 4K chunk oracle. Layers 6..42, complete 8K transformer output, output-logit C0, and throughput remain unclaimed"
     );
     if let Some(path) = json_path {
         write_long_prefill_continuation_bootstrap_probe_file(&path, &report)?;

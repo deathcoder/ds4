@@ -467,6 +467,8 @@ static NSString *const kQ8ProjectionSource =
 @property(nonatomic, strong) id<MTLBuffer> prefillLayer5AttnStateScore;
 @property(nonatomic, strong) id<MTLBuffer> prefillLayer5AfterAttentionHc;
 @property(nonatomic, strong) id<MTLBuffer> prefillLayer5AfterFfnHc;
+@property(nonatomic, strong) id<MTLBuffer> prefillLayer5ContinuationAfterAttentionHc;
+@property(nonatomic, strong) id<MTLBuffer> prefillLayer5ContinuationFullAfterFfnHc;
 @property(nonatomic, strong) id<MTLBuffer> prefillLayer6FullQ;
 @property(nonatomic, strong) id<MTLBuffer> prefillLayer6FullKv;
 @property(nonatomic, strong) id<MTLBuffer> prefillLayer6InputHc;
@@ -45832,9 +45834,11 @@ int rust_star_metal_run_prefill_layer2_continuation_tail(
         layer_index == 4u && tile_start == 0u && rows == 4096u;
     const BOOL production_layer5_prefix =
         layer_index == 5u && tile_start == 0u && rows == 4096u;
+    const BOOL production_layer5_batch =
+        layer_index == 5u && tile_start == 4096u && rows == 4096u;
     const BOOL production_batch =
         production_layer3_batch || production_layer4_prefix ||
-        production_layer5_prefix;
+        production_layer5_prefix || production_layer5_batch;
     const BOOL diagnostic_tile = rows == 32u;
     if (!opaque_context || !model_mapping || !weights ||
         (layer_index != 2u && layer_index != 3u && layer_index != 4u &&
@@ -45857,14 +45861,16 @@ int rust_star_metal_run_prefill_layer2_continuation_tail(
         const BOOL layer3 = layer_index == 3u;
         const BOOL layer4 = layer_index == 4u;
         const BOOL layer5 = layer_index == 5u;
-        id<MTLBuffer> heads_buffer = production_layer5_prefix
+        id<MTLBuffer> heads_buffer = production_layer5_prefix ||
+            production_layer5_batch
             ? context.prefillLayer3ContinuationHeads : production_layer4_prefix
             ? context.prefillLayer4PrefixHeads : layer4
             ? context.prefillLayer4ContinuationHeads : layer3
             ? context.prefillLayer3ContinuationHeads
             : context.prefillLayer2ContinuationHeads;
         const BOOL full_layer3_batch = production_layer3_batch;
-        id<MTLBuffer> input_hc = layer5
+        id<MTLBuffer> input_hc = production_layer5_batch
+            ? context.prefillLayer4ContinuationFullAfterFfnHc : layer5
             ? context.prefillLayer5InputHc : layer4
             ? context.prefillLayer4InputHc : full_layer3_batch
             ? context.prefillLayer2ContinuationFullAfterFfnHc : layer3
@@ -45886,8 +45892,9 @@ int rust_star_metal_run_prefill_layer2_continuation_tail(
             ? (NSUInteger)tile_start*hc_row_bytes : full_layer3_batch
             ? (NSUInteger)continuation_row*hc_row_bytes
             : layer3 ? 0u : (NSUInteger)tile_start*hc_row_bytes;
-        const NSUInteger split_offset = layer5
-            ? 0u : layer4
+        const NSUInteger split_offset = production_layer5_prefix
+            ? 0u : layer5
+            ? (NSUInteger)tile_start*mix_hc*sizeof(float) : layer4
             ? (NSUInteger)tile_start*mix_hc*sizeof(float) : full_layer3_batch
             ? (NSUInteger)tile_start*mix_hc*sizeof(float)
             : layer3 ? 0u : (NSUInteger)tile_start*mix_hc*sizeof(float);
@@ -46026,7 +46033,9 @@ int rust_star_metal_run_prefill_layer2_continuation_tail(
         RUST_STAR_NEW_CONTINUATION_TAIL_BUFFER(shared_out_buffer, output_bytes);
         RUST_STAR_NEW_CONTINUATION_TAIL_BUFFER(after_ffn_hc_buffer, hc_bytes);
 #undef RUST_STAR_NEW_CONTINUATION_TAIL_BUFFER
-        id<MTLBuffer> full_after_ffn_hc_buffer = production_layer5_prefix
+        id<MTLBuffer> full_after_ffn_hc_buffer = production_layer5_batch
+            ? context.prefillLayer5ContinuationFullAfterFfnHc
+            : production_layer5_prefix
             ? context.prefillLayer5AfterFfnHc : production_layer4_prefix
             ? context.prefillLayer4AfterFfnHc : layer4
             ? context.prefillLayer4ContinuationFullAfterFfnHc : layer3
@@ -46036,7 +46045,10 @@ int rust_star_metal_run_prefill_layer2_continuation_tail(
             full_after_ffn_hc_buffer = [context.device
                 newBufferWithLength:(NSUInteger)4096u*4u*n_embd*sizeof(float)
                 options:MTLResourceStorageModeShared];
-            if (production_layer5_prefix) {
+            if (production_layer5_batch) {
+                context.prefillLayer5ContinuationFullAfterFfnHc =
+                    full_after_ffn_hc_buffer;
+            } else if (production_layer5_prefix) {
                 context.prefillLayer5AfterFfnHc = full_after_ffn_hc_buffer;
             } else if (production_layer4_prefix) {
                 context.prefillLayer4AfterFfnHc = full_after_ffn_hc_buffer;
@@ -46493,7 +46505,12 @@ int rust_star_metal_run_prefill_layer2_continuation_tail(
             memcpy(shared_output, shared_out_buffer.contents, output_bytes);
             memcpy(after_ffn_hc, after_ffn_hc_buffer.contents, hc_bytes);
         }
-        if (production_layer5_prefix) {
+        if (production_layer5_batch) {
+            context.prefillLayer5ContinuationAfterAttentionHc =
+                after_attention_hc_buffer;
+            context.prefillLayer5ContinuationFullAfterFfnHc =
+                full_after_ffn_hc_buffer;
+        } else if (production_layer5_prefix) {
             context.prefillLayer5AfterAttentionHc = after_attention_hc_buffer;
             context.prefillLayer5AfterFfnHc = full_after_ffn_hc_buffer;
         } else if (production_layer4_prefix) {
@@ -48484,6 +48501,51 @@ int rust_star_metal_finish_prefill_layer5_continuation(
         context.prefillLayer5AttnCompressed = context.prefillLayer3AttnCompressed;
         context.prefillLayer5AttnStateKv = context.prefillLayer3AttnStateKv;
         context.prefillLayer5AttnStateScore = context.prefillLayer3AttnStateScore;
+        return 1;
+    }
+}
+
+int rust_star_metal_checksum_prefill_layer5_continuation_tail(
+    void *opaque_context,
+    uint64_t *checksums,
+    size_t checksum_capacity,
+    char *error,
+    size_t error_bytes)
+{
+    enum {
+        rows = 4096,
+        q_dim = 32768,
+        hc_dim = 16384,
+        checksum_count = 3,
+    };
+    if (!opaque_context || !checksums || checksum_capacity < checksum_count) {
+        return fail_with_message(error, error_bytes,
+            @"layer-5 continuation tail checksum output is invalid");
+    }
+    @autoreleasepool {
+        RustStarMetalContext *context = (__bridge RustStarMetalContext *)opaque_context;
+        const NSUInteger q_words = (NSUInteger)rows*q_dim;
+        const NSUInteger hc_words = (NSUInteger)rows*hc_dim;
+        if (!context.prefillLayer3ContinuationHeads ||
+            context.prefillLayer3ContinuationHeads.length <
+                q_words*sizeof(uint32_t) ||
+            !context.prefillLayer5ContinuationAfterAttentionHc ||
+            context.prefillLayer5ContinuationAfterAttentionHc.length <
+                hc_words*sizeof(uint32_t) ||
+            !context.prefillLayer5ContinuationFullAfterFfnHc ||
+            context.prefillLayer5ContinuationFullAfterFfnHc.length <
+                hc_words*sizeof(uint32_t)) {
+            return fail_with_message(error, error_bytes,
+                @"complete layer-5 continuation tail is unavailable");
+        }
+        checksums[0] = fnv1a_u32_words(
+            context.prefillLayer3ContinuationHeads.contents, q_words);
+        checksums[1] = fnv1a_u32_words(
+            context.prefillLayer5ContinuationAfterAttentionHc.contents,
+            hc_words);
+        checksums[2] = fnv1a_u32_words(
+            context.prefillLayer5ContinuationFullAfterFfnHc.contents,
+            hc_words);
         return 1;
     }
 }
