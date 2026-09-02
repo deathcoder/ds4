@@ -461,6 +461,7 @@ static NSString *const kQ8ProjectionSource =
 @property(nonatomic, strong) id<MTLBuffer> prefillLayer5FullQ;
 @property(nonatomic, strong) id<MTLBuffer> prefillLayer5FullKv;
 @property(nonatomic, strong) id<MTLBuffer> prefillLayer5InputHc;
+@property(nonatomic, strong) id<MTLBuffer> prefillLayer5HcAttnPre;
 @property(nonatomic, strong) id<MTLBuffer> prefillLayer5AttnSplit;
 @property(nonatomic, strong) id<MTLBuffer> prefillLayer5AttnCompressed;
 @property(nonatomic, strong) id<MTLBuffer> prefillLayer5AttnStateKv;
@@ -481,6 +482,7 @@ static NSString *const kQ8ProjectionSource =
 @property(nonatomic, strong) id<MTLBuffer> prefillLayer6IndexerStateScore;
 @property(nonatomic, strong) id<MTLBuffer> prefillLayer6AfterAttentionHc;
 @property(nonatomic, strong) id<MTLBuffer> prefillLayer6AfterFfnHc;
+@property(nonatomic, strong) id<MTLBuffer> prefillLayer6PrefixAfterFfnHc;
 @property(nonatomic, strong) id<MTLBuffer> prefillLayer7FullQ;
 @property(nonatomic, strong) id<MTLBuffer> prefillLayer7FullKv;
 @property(nonatomic, strong) id<MTLBuffer> prefillLayer7InputHc;
@@ -490,6 +492,7 @@ static NSString *const kQ8ProjectionSource =
 @property(nonatomic, strong) id<MTLBuffer> prefillLayer7AttnStateScore;
 @property(nonatomic, strong) id<MTLBuffer> prefillLayer7AfterAttentionHc;
 @property(nonatomic, strong) id<MTLBuffer> prefillLayer7AfterFfnHc;
+@property(nonatomic, strong) id<MTLBuffer> prefillLayer7PrefixAfterFfnHc;
 @property(nonatomic, strong) id<MTLBuffer> prefillLayer8FullQ;
 @property(nonatomic, strong) id<MTLBuffer> prefillLayer8FullKv;
 @property(nonatomic, strong) id<MTLBuffer> prefillLayer8InputHc;
@@ -47852,6 +47855,7 @@ int rust_star_metal_run_prefill_layer5_prefix_ingress(
         context.prefillLayer5FullQ = q_buffer;
         context.prefillLayer5FullKv = kv_buffer;
         context.prefillLayer5InputHc = input_hc;
+        context.prefillLayer5HcAttnPre = current_buffer;
         context.prefillLayer5AttnSplit = split_buffer;
         context.prefillLayer5AttnCompressed = compressed_buffer;
         context.prefillLayer5AfterAttentionHc = nil;
@@ -48603,6 +48607,30 @@ int rust_star_metal_begin_prefill_layer6_rebuild(
     }
 }
 
+int rust_star_metal_retain_prefill_layer6_prefix_hc(
+    void *opaque_context,
+    char *error,
+    size_t error_bytes)
+{
+    enum { rows = 4096, hc_dim = 16384 };
+    if (!opaque_context) {
+        return fail_with_message(error, error_bytes,
+            @"layer-6 prefix retention received a null context");
+    }
+    @autoreleasepool {
+        RustStarMetalContext *context = (__bridge RustStarMetalContext *)opaque_context;
+        const NSUInteger bytes = (NSUInteger)rows*hc_dim*sizeof(float);
+        if (!context.prefillLayer4AfterFfnHc ||
+            context.prefillLayer4AfterFfnHc.length < bytes) {
+            return fail_with_message(error, error_bytes,
+                @"complete layer-6 prefix HC is unavailable");
+        }
+        context.prefillLayer6PrefixAfterFfnHc =
+            context.prefillLayer4AfterFfnHc;
+        return 1;
+    }
+}
+
 int rust_star_metal_finish_prefill_layer6_rebuild(
     void *opaque_context,
     char *error,
@@ -48641,6 +48669,210 @@ int rust_star_metal_finish_prefill_layer6_rebuild(
         context.prefillLayer6AfterAttentionHc =
             context.prefillLayer4AfterAttentionHc;
         context.prefillLayer6AfterFfnHc = context.prefillLayer4AfterFfnHc;
+        return 1;
+    }
+}
+
+int rust_star_metal_begin_prefill_layer7_prefix_rebuild(
+    void *opaque_context,
+    char *error,
+    size_t error_bytes)
+{
+    enum { rows = 4096, hc_dim = 16384 };
+    if (!opaque_context) {
+        return fail_with_message(error, error_bytes,
+            @"layer-7 prefix binding received a null context");
+    }
+    @autoreleasepool {
+        RustStarMetalContext *context = (__bridge RustStarMetalContext *)opaque_context;
+        const NSUInteger bytes = (NSUInteger)rows*hc_dim*sizeof(float);
+        if (!context.prefillLayer6PrefixAfterFfnHc ||
+            context.prefillLayer6PrefixAfterFfnHc.length < bytes ||
+            !context.prefillLayer7AttnStateKv ||
+            !context.prefillLayer7AttnStateScore) {
+            return fail_with_message(error, error_bytes,
+                @"layer-7 prefix requires exact layer-6 prefix HC and retained compressor state");
+        }
+        context.prefillLayer4AfterFfnHc =
+            context.prefillLayer6PrefixAfterFfnHc;
+        context.prefillLayer5AttnStateKv = context.prefillLayer7AttnStateKv;
+        context.prefillLayer5AttnStateScore =
+            context.prefillLayer7AttnStateScore;
+        context.prefillLayer3ContinuationHeads = nil;
+        context.prefillLayer5AfterAttentionHc = nil;
+        context.prefillLayer5AfterFfnHc = nil;
+        return 1;
+    }
+}
+
+int rust_star_metal_checksum_prefill_layer7_prefix_boundary(
+    void *opaque_context,
+    uint64_t *checksums,
+    size_t checksum_capacity,
+    char *error,
+    size_t error_bytes)
+{
+    enum {
+        rows = 4096,
+        n_embd = 4096,
+        q_dim = 32768,
+        kv_dim = 512,
+        compressed_rows = 32,
+        checksum_count = 5,
+    };
+    if (!opaque_context || !checksums || checksum_capacity < checksum_count) {
+        return fail_with_message(error, error_bytes,
+            @"layer-7 prefix checksum received an invalid output");
+    }
+    @autoreleasepool {
+        RustStarMetalContext *context = (__bridge RustStarMetalContext *)opaque_context;
+        const NSUInteger current_words = (NSUInteger)rows*n_embd;
+        const NSUInteger norm_words = (NSUInteger)rows*n_embd;
+        const NSUInteger q_words = (NSUInteger)rows*q_dim;
+        const NSUInteger kv_words = (NSUInteger)rows*kv_dim;
+        const NSUInteger compressed_words =
+            (NSUInteger)compressed_rows*kv_dim;
+        if (!context.prefillLayer5HcAttnPre ||
+            context.prefillLayer5HcAttnPre.length <
+                current_words*sizeof(uint32_t) ||
+            !context.prefillLayer3ContinuationFullNorm ||
+            context.prefillLayer3ContinuationFullNorm.length <
+                norm_words*sizeof(uint32_t) ||
+            !context.prefillLayer5FullQ ||
+            context.prefillLayer5FullQ.length < q_words*sizeof(uint32_t) ||
+            !context.prefillLayer5FullKv ||
+            context.prefillLayer5FullKv.length < kv_words*sizeof(uint32_t) ||
+            !context.prefillLayer5AttnCompressed ||
+            context.prefillLayer5AttnCompressed.length <
+                compressed_words*sizeof(uint32_t)) {
+            return fail_with_message(error, error_bytes,
+                @"complete layer-7 prefix boundary is unavailable");
+        }
+        checksums[0] = fnv1a_u32_words(
+            context.prefillLayer5HcAttnPre.contents, current_words);
+        checksums[1] = fnv1a_u32_words(
+            context.prefillLayer3ContinuationFullNorm.contents, norm_words);
+        checksums[2] = fnv1a_u32_words(
+            context.prefillLayer5FullQ.contents, q_words);
+        checksums[3] = fnv1a_u32_words(
+            context.prefillLayer5FullKv.contents, kv_words);
+        checksums[4] = fnv1a_u32_words(
+            context.prefillLayer5AttnCompressed.contents, compressed_words);
+        return 1;
+    }
+}
+
+int rust_star_metal_begin_prefill_layer7_continuation(
+    void *opaque_context,
+    char *error,
+    size_t error_bytes)
+{
+    enum {
+        rows = 4096,
+        hc_dim = 16384,
+        mix_hc = 24,
+        q_dim = 32768,
+        kv_dim = 512,
+        compressed_rows = 32,
+        state_rows = 128,
+    };
+    if (!opaque_context) {
+        return fail_with_message(error, error_bytes,
+            @"layer-7 continuation binding received a null context");
+    }
+    @autoreleasepool {
+        RustStarMetalContext *context = (__bridge RustStarMetalContext *)opaque_context;
+        if (!context.prefillLayer6AfterFfnHc ||
+            context.prefillLayer6AfterFfnHc.length <
+                (NSUInteger)rows*hc_dim*sizeof(float) ||
+            !context.prefillLayer5FullQ ||
+            context.prefillLayer5FullQ.length <
+                (NSUInteger)rows*q_dim*sizeof(float) ||
+            !context.prefillLayer5FullKv ||
+            context.prefillLayer5FullKv.length <
+                (NSUInteger)rows*kv_dim*sizeof(float) ||
+            !context.prefillLayer5AttnSplit ||
+            context.prefillLayer5AttnSplit.length <
+                (NSUInteger)rows*mix_hc*sizeof(float) ||
+            !context.prefillLayer5AttnCompressed ||
+            context.prefillLayer5AttnCompressed.length <
+                (NSUInteger)compressed_rows*kv_dim*sizeof(float) ||
+            !context.prefillLayer5AttnStateKv ||
+            context.prefillLayer5AttnStateKv.length <
+                (NSUInteger)state_rows*kv_dim*sizeof(float) ||
+            !context.prefillLayer5AttnStateScore ||
+            context.prefillLayer5AttnStateScore.length <
+                (NSUInteger)state_rows*kv_dim*sizeof(float) ||
+            !context.prefillLayer5AfterFfnHc) {
+            return fail_with_message(error, error_bytes,
+                @"layer-7 continuation requires complete prefix state and exact layer-6 continuation HC");
+        }
+        context.prefillLayer7PrefixAfterFfnHc =
+            context.prefillLayer5AfterFfnHc;
+        context.prefillLayer7FullQ = context.prefillLayer5FullQ;
+        context.prefillLayer7FullKv = context.prefillLayer5FullKv;
+        context.prefillLayer7InputHc = context.prefillLayer5InputHc;
+        context.prefillLayer7AttnSplit = context.prefillLayer5AttnSplit;
+        context.prefillLayer7AttnCompressed =
+            context.prefillLayer5AttnCompressed;
+        context.prefillLayer7AttnStateKv = context.prefillLayer5AttnStateKv;
+        context.prefillLayer7AttnStateScore =
+            context.prefillLayer5AttnStateScore;
+        context.prefillLayer7AfterAttentionHc =
+            context.prefillLayer5AfterAttentionHc;
+
+        context.prefillLayer4ContinuationFullAfterFfnHc =
+            context.prefillLayer6AfterFfnHc;
+        context.prefillLayer3FullQ = context.prefillLayer7FullQ;
+        context.prefillLayer3FullKv = context.prefillLayer7FullKv;
+        context.prefillLayer3InputHc = context.prefillLayer7InputHc;
+        context.prefillLayer3AttnSplit = context.prefillLayer7AttnSplit;
+        context.prefillLayer3AttnCompressed =
+            context.prefillLayer7AttnCompressed;
+        context.prefillLayer3AttnStateKv = context.prefillLayer7AttnStateKv;
+        context.prefillLayer3AttnStateScore =
+            context.prefillLayer7AttnStateScore;
+        context.prefillLayer3ContinuationFullNorm = nil;
+        context.prefillLayer3ContinuationFullAfterFfnHc = nil;
+        context.prefillLayer5ContinuationAfterAttentionHc = nil;
+        context.prefillLayer5ContinuationFullAfterFfnHc = nil;
+        return 1;
+    }
+}
+
+int rust_star_metal_finish_prefill_layer7_rebuild(
+    void *opaque_context,
+    char *error,
+    size_t error_bytes)
+{
+    if (!opaque_context) {
+        return fail_with_message(error, error_bytes,
+            @"layer-7 rebuild finalization received a null context");
+    }
+    @autoreleasepool {
+        RustStarMetalContext *context = (__bridge RustStarMetalContext *)opaque_context;
+        if (!context.prefillLayer5FullQ || !context.prefillLayer5FullKv ||
+            !context.prefillLayer5AttnSplit ||
+            !context.prefillLayer5AttnCompressed ||
+            !context.prefillLayer5AttnStateKv ||
+            !context.prefillLayer5AttnStateScore ||
+            !context.prefillLayer5ContinuationAfterAttentionHc ||
+            !context.prefillLayer5ContinuationFullAfterFfnHc) {
+            return fail_with_message(error, error_bytes,
+                @"generic odd-layer executor did not retain layer-7 state");
+        }
+        context.prefillLayer7FullQ = context.prefillLayer5FullQ;
+        context.prefillLayer7FullKv = context.prefillLayer5FullKv;
+        context.prefillLayer7AttnSplit = context.prefillLayer5AttnSplit;
+        context.prefillLayer7AttnCompressed =
+            context.prefillLayer5AttnCompressed;
+        context.prefillLayer7AttnStateKv = context.prefillLayer5AttnStateKv;
+        context.prefillLayer7AttnStateScore =
+            context.prefillLayer5AttnStateScore;
+        context.prefillLayer7AfterAttentionHc =
+            context.prefillLayer5ContinuationAfterAttentionHc;
+        context.prefillLayer7AfterFfnHc =
+            context.prefillLayer5ContinuationFullAfterFfnHc;
         return 1;
     }
 }

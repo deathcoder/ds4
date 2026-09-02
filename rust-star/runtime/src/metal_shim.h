@@ -2304,8 +2304,43 @@ int rust_star_metal_begin_prefill_layer6_rebuild(
     char *error,
     size_t error_bytes);
 
+/* Preserves the exact layer-6 prefix HC before the generic even-layer slot is
+ * reused for its continuation. */
+int rust_star_metal_retain_prefill_layer6_prefix_hc(
+    void *context,
+    char *error,
+    size_t error_bytes);
+
 /* Retains buffers grown by the generic even-layer executor as layer-6 state. */
 int rust_star_metal_finish_prefill_layer6_rebuild(
+    void *context,
+    char *error,
+    size_t error_bytes);
+
+/* Publishes the exact layer-6 prefix HC and retained layer-7 compressor state
+ * through the generic odd-layer ratio-128 executor. */
+int rust_star_metal_begin_prefill_layer7_prefix_rebuild(
+    void *context,
+    char *error,
+    size_t error_bytes);
+
+/* Checks layer-7 prefix HC ingress, norm, Q, KV, and compressed KV. */
+int rust_star_metal_checksum_prefill_layer7_prefix_boundary(
+    void *context,
+    uint64_t *checksums,
+    size_t checksum_capacity,
+    char *error,
+    size_t error_bytes);
+
+/* Preserves the exact layer-7 prefix and binds its continuation to exact
+ * retained layer-6 continuation HC. */
+int rust_star_metal_begin_prefill_layer7_continuation(
+    void *context,
+    char *error,
+    size_t error_bytes);
+
+/* Retains buffers grown by the generic odd-layer executor as layer-7 state. */
+int rust_star_metal_finish_prefill_layer7_rebuild(
     void *context,
     char *error,
     size_t error_bytes);

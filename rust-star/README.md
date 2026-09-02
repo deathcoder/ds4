@@ -418,7 +418,12 @@ paired ratio-4 compressors. Each half uses 40 dispatches and 17/17 no-copy
 mappings; all 20 boundary hashes match the repeated DwarfStar capture. Schema
 v21 completes the prefix and all 128 continuation sparse-attention/FFN tiles.
 All six full KQV-back, post-attention HC, and post-FFN HC hashes match; complete
-layer 6 is now claimed. Layers 7--42 and the output head remain open.
+layer 6 is now claimed. Schema v22 preserves its exact prefix and continuation
+HC independently, then completes layer 7 through ratio-128 ingress/QKV,
+compression, padded Flash attention, and FFN. Its prefix uses 49 dispatches and
+28/28 mappings; its 128-tile continuation plus production tail uses 1,318
+dispatches and 1,171/1,171 mappings. All 16 captured hashes match, so complete
+retained layer 7 is now claimed. Layers 8--42 and the output head remain open.
 No throughput or speedup claim is attached to this diagnostic gate.
 The first complete second-half experiment deliberately tested whether the
 proven retained decoder schedule could serve as a correctness-preserving
