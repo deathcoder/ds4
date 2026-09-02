@@ -2365,6 +2365,26 @@ int rust_star_metal_finish_prefill_layer8_rebuild(
     char *error,
     size_t error_bytes);
 
+/* Publishes exact layer-8 prefix HC and retained layer-9 compressor state
+ * through the generic odd-layer ratio-128 executor. */
+int rust_star_metal_begin_prefill_layer9_prefix_rebuild(
+    void *context,
+    char *error,
+    size_t error_bytes);
+
+/* Preserves exact layer-9 prefix state and binds its continuation to exact
+ * retained layer-8 continuation HC. */
+int rust_star_metal_begin_prefill_layer9_continuation(
+    void *context,
+    char *error,
+    size_t error_bytes);
+
+/* Retains buffers grown by the generic odd-layer executor as layer-9 state. */
+int rust_star_metal_finish_prefill_layer9_rebuild(
+    void *context,
+    char *error,
+    size_t error_bytes);
+
 /* Consumes one retained production-batch layer-3 HC chunk and executes the
  * full 4096-row layer-4 ingress/QKV plus paired ratio-4 compressor boundary.
  * Position start must be 0 or 4096.
