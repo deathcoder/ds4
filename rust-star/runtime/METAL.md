@@ -703,9 +703,9 @@ not labeled C0. The complete exact 2K prefill remains an independent regression
 control. The next boundary must carry the retained 4K state through layers
 2--42 and then preserve it while beginning the second 4K chunk.
 
-## Retained 4K-to-8K layer-2 through layer-6 compressor boundary
+## Retained 4K-to-8K layer-2 through complete layer 6
 
-Schema: `rust-star-long-prefill-continuation-bootstrap-probe-v20`.
+Schema: `rust-star-long-prefill-continuation-bootstrap-probe-v21`.
 
 `long-prefill-continuation-bootstrap-probe` completes the first 4K transformer,
 then preserves that context while 64 native 64-row tiles append positions
@@ -821,6 +821,12 @@ continuation HC buffers into the generic even-layer executor and rebuilds both
 compression, and all recurrent compressor state. Each half uses 40 dispatches,
 preserves 17/17 no-copy model mappings, and matches ten repeated-oracle hashes.
 Layer-6 sparse attention and FFN remain the next correctness gate.
+Version 21 closes that gate. The exact prefix uses the production indexed
+top-512 path and full attention/FFN tail over 36 dispatches with 17/17 no-copy
+mappings. The continuation executes all 128 retained 32-row tiles over 4,608
+dispatches with 2,176/2,176 mappings. Aggregate KQV-back, post-attention HC,
+and post-FFN HC hashes match the repeated oracle for both halves, so complete
+layer 6 is claimed and layer 7 becomes the next retained boundary.
 
 ## Model residency before measured decode
 

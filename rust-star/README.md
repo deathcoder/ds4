@@ -415,8 +415,10 @@ finishes attention/FFN in 38 dispatches with 19/19 mappings; KQV-back and both
 HC hashes match two independent captures. Schema v20 then consumes the exact
 layer-5 HC and rebuilds both 4K halves of layer 6 through ingress, QKV, and its
 paired ratio-4 compressors. Each half uses 40 dispatches and 17/17 no-copy
-mappings; all 20 boundary hashes match the repeated DwarfStar capture. Layer
-6 sparse attention/FFN, layers 7--42, and the output head remain open.
+mappings; all 20 boundary hashes match the repeated DwarfStar capture. Schema
+v21 completes the prefix and all 128 continuation sparse-attention/FFN tiles.
+All six full KQV-back, post-attention HC, and post-FFN HC hashes match; complete
+layer 6 is now claimed. Layers 7--42 and the output head remain open.
 No throughput or speedup claim is attached to this diagnostic gate.
 The first complete second-half experiment deliberately tested whether the
 proven retained decoder schedule could serve as a correctness-preserving

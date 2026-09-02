@@ -3379,7 +3379,17 @@ fn run_long_prefill_continuation_bootstrap_probe_command(arguments: Vec<OsString
         report.layer6_continuation_boundary_wrapped_model_ranges,
     );
     println!(
-        "scope: complete retained layers 2, 3, 4, and 5 match the second 4K chunk oracle. Layer 6 is exact through ingress/QKV and paired ratio-4 compressors; its sparse attention and FFN, layers 7..42, complete 8K transformer output, output-logit C0, and throughput remain unclaimed"
+        "layer-6 complete prefix and continuation: prefix sparse attention/FFN uses {} dispatches and {}/{} no-copy mappings; {} continuation tiles use {} dispatches and {}/{} mappings; all 6 KQV-back/post-attention/post-FFN hashes match the 8K oracle",
+        report.layer6_prefix_complete_dispatches,
+        report.layer6_prefix_complete_pointer_matches,
+        report.layer6_prefix_complete_wrapped_model_ranges,
+        report.layer6_continuation_tiles,
+        report.layer6_continuation_dispatches,
+        report.layer6_continuation_pointer_matches,
+        report.layer6_continuation_wrapped_model_ranges,
+    );
+    println!(
+        "scope: complete retained layers 2 through 6 match the second 4K chunk oracle. Layers 7..42, complete 8K transformer output, output-logit C0, and throughput remain unclaimed"
     );
     if let Some(path) = json_path {
         write_long_prefill_continuation_bootstrap_probe_file(&path, &report)?;
