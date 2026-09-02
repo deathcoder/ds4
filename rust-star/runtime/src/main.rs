@@ -3370,7 +3370,16 @@ fn run_long_prefill_continuation_bootstrap_probe_command(arguments: Vec<OsString
         report.layer5_continuation_compressed_checksum,
     );
     println!(
-        "scope: complete retained layers 2, 3, 4, and 5 match the second 4K chunk oracle. Layers 6..42, complete 8K transformer output, output-logit C0, and throughput remain unclaimed"
+        "layer-6 exact boundary: prefix and continuation ingress, QKV, both ratio-4 compressed caches, and all recurrent states match 20/20 oracle checksums over {}+{} dispatches and {}/{}+{}/{} no-copy mappings",
+        report.layer6_prefix_boundary_dispatches,
+        report.layer6_continuation_boundary_dispatches,
+        report.layer6_prefix_boundary_pointer_matches,
+        report.layer6_prefix_boundary_wrapped_model_ranges,
+        report.layer6_continuation_boundary_pointer_matches,
+        report.layer6_continuation_boundary_wrapped_model_ranges,
+    );
+    println!(
+        "scope: complete retained layers 2, 3, 4, and 5 match the second 4K chunk oracle. Layer 6 is exact through ingress/QKV and paired ratio-4 compressors; its sparse attention and FFN, layers 7..42, complete 8K transformer output, output-logit C0, and throughput remain unclaimed"
     );
     if let Some(path) = json_path {
         write_long_prefill_continuation_bootstrap_probe_file(&path, &report)?;

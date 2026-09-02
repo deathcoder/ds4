@@ -2297,6 +2297,19 @@ int rust_star_metal_checksum_prefill_layer5_continuation_tail(
     char *error,
     size_t error_bytes);
 
+/* Publishes layer-6 state through the proven even-layer ratio-4 executor and
+ * binds its prefix/continuation inputs to exact retained layer-5 HC. */
+int rust_star_metal_begin_prefill_layer6_rebuild(
+    void *context,
+    char *error,
+    size_t error_bytes);
+
+/* Retains buffers grown by the generic even-layer executor as layer-6 state. */
+int rust_star_metal_finish_prefill_layer6_rebuild(
+    void *context,
+    char *error,
+    size_t error_bytes);
+
 /* Consumes one retained production-batch layer-3 HC chunk and executes the
  * full 4096-row layer-4 ingress/QKV plus paired ratio-4 compressor boundary.
  * Position start must be 0 or 4096.

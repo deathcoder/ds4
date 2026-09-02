@@ -703,9 +703,9 @@ not labeled C0. The complete exact 2K prefill remains an independent regression
 control. The next boundary must carry the retained 4K state through layers
 2--42 and then preserve it while beginning the second 4K chunk.
 
-## Retained 4K-to-8K layer-2 through layer-5 continuation boundary
+## Retained 4K-to-8K layer-2 through layer-6 compressor boundary
 
-Schema: `rust-star-long-prefill-continuation-bootstrap-probe-v19`.
+Schema: `rust-star-long-prefill-continuation-bootstrap-probe-v20`.
 
 `long-prefill-continuation-bootstrap-probe` completes the first 4K transformer,
 then preserves that context while 64 native 64-row tiles append positions
@@ -815,7 +815,12 @@ production Flash schedule, inverse RoPE, grouped attention output, and biased
 routed/shared FFN. The production tail uses 38 dispatches and 19/19 no-copy
 mappings. Its KQV-back, post-attention HC, and post-FFN HC hashes match two
 independent captures, so complete layer 5 is now claimed. Layer 6 is the next
-exact retained boundary.
+exact retained boundary. Version 20 binds the complete layer-5 prefix and
+continuation HC buffers into the generic even-layer executor and rebuilds both
+4,096-row halves of layer 6 through ingress, QKV, attention/indexer ratio-4
+compression, and all recurrent compressor state. Each half uses 40 dispatches,
+preserves 17/17 no-copy model mappings, and matches ten repeated-oracle hashes.
+Layer-6 sparse attention and FFN remain the next correctness gate.
 
 ## Model residency before measured decode
 

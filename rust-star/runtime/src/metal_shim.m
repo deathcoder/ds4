@@ -48550,6 +48550,101 @@ int rust_star_metal_checksum_prefill_layer5_continuation_tail(
     }
 }
 
+int rust_star_metal_begin_prefill_layer6_rebuild(
+    void *opaque_context,
+    char *error,
+    size_t error_bytes)
+{
+    if (!opaque_context) {
+        return fail_with_message(error, error_bytes,
+            @"layer-6 rebuild binding received a null context");
+    }
+    @autoreleasepool {
+        RustStarMetalContext *context = (__bridge RustStarMetalContext *)opaque_context;
+        if (context.prefillKvRows != 8192u ||
+            !context.prefillLayer5AfterFfnHc ||
+            !context.prefillLayer5ContinuationFullAfterFfnHc ||
+            !context.prefillLayer6FullQ || !context.prefillLayer6FullKv ||
+            !context.prefillLayer6InputHc || !context.prefillLayer6AttnSplit ||
+            !context.prefillLayer6AttnCompressed ||
+            !context.prefillLayer6AttnStateKv ||
+            !context.prefillLayer6AttnStateScore ||
+            !context.prefillLayer6IndexerCompressed ||
+            !context.prefillLayer6IndexerStateKv ||
+            !context.prefillLayer6IndexerStateScore) {
+            return fail_with_message(error, error_bytes,
+                @"layer-6 rebuild requires complete retained layer-5 HC and prefix state");
+        }
+        context.prefillLayer3AfterFfnHc = context.prefillLayer5AfterFfnHc;
+        context.prefillLayer3ContinuationFullAfterFfnHc =
+            context.prefillLayer5ContinuationFullAfterFfnHc;
+        context.prefillLayer4FullQ = context.prefillLayer6FullQ;
+        context.prefillLayer4FullKv = context.prefillLayer6FullKv;
+        context.prefillLayer4InputHc = context.prefillLayer6InputHc;
+        context.prefillLayer4AttnSplit = context.prefillLayer6AttnSplit;
+        context.prefillLayer4AttnCompressed = context.prefillLayer6AttnCompressed;
+        context.prefillLayer4AttnStateKv = context.prefillLayer6AttnStateKv;
+        context.prefillLayer4AttnStateScore = context.prefillLayer6AttnStateScore;
+        context.prefillLayer4IndexerCompressed =
+            context.prefillLayer6IndexerCompressed;
+        context.prefillLayer4IndexerStateKv =
+            context.prefillLayer6IndexerStateKv;
+        context.prefillLayer4IndexerStateScore =
+            context.prefillLayer6IndexerStateScore;
+        context.prefillLayer4FullQNorm = nil;
+        context.prefillLayer4FullNorm = nil;
+        context.prefillLayer4ContinuationNorm = nil;
+        context.prefillLayer4PrefixHeads = nil;
+        context.prefillLayer4ContinuationHeads = nil;
+        context.prefillLayer4AfterAttentionHc = nil;
+        context.prefillLayer4AfterFfnHc = nil;
+        context.prefillLayer4ContinuationFullAfterFfnHc = nil;
+        return 1;
+    }
+}
+
+int rust_star_metal_finish_prefill_layer6_rebuild(
+    void *opaque_context,
+    char *error,
+    size_t error_bytes)
+{
+    if (!opaque_context) {
+        return fail_with_message(error, error_bytes,
+            @"layer-6 rebuild finalization received a null context");
+    }
+    @autoreleasepool {
+        RustStarMetalContext *context = (__bridge RustStarMetalContext *)opaque_context;
+        if (!context.prefillLayer4FullQ || !context.prefillLayer4FullKv ||
+            !context.prefillLayer4InputHc || !context.prefillLayer4AttnSplit ||
+            !context.prefillLayer4AttnCompressed ||
+            !context.prefillLayer4AttnStateKv ||
+            !context.prefillLayer4AttnStateScore ||
+            !context.prefillLayer4IndexerCompressed ||
+            !context.prefillLayer4IndexerStateKv ||
+            !context.prefillLayer4IndexerStateScore) {
+            return fail_with_message(error, error_bytes,
+                @"generic even-layer executor did not retain layer-6 state");
+        }
+        context.prefillLayer6FullQ = context.prefillLayer4FullQ;
+        context.prefillLayer6FullKv = context.prefillLayer4FullKv;
+        context.prefillLayer6InputHc = context.prefillLayer4InputHc;
+        context.prefillLayer6AttnSplit = context.prefillLayer4AttnSplit;
+        context.prefillLayer6AttnCompressed = context.prefillLayer4AttnCompressed;
+        context.prefillLayer6AttnStateKv = context.prefillLayer4AttnStateKv;
+        context.prefillLayer6AttnStateScore = context.prefillLayer4AttnStateScore;
+        context.prefillLayer6IndexerCompressed =
+            context.prefillLayer4IndexerCompressed;
+        context.prefillLayer6IndexerStateKv =
+            context.prefillLayer4IndexerStateKv;
+        context.prefillLayer6IndexerStateScore =
+            context.prefillLayer4IndexerStateScore;
+        context.prefillLayer6AfterAttentionHc =
+            context.prefillLayer4AfterAttentionHc;
+        context.prefillLayer6AfterFfnHc = context.prefillLayer4AfterFfnHc;
+        return 1;
+    }
+}
+
 int rust_star_metal_run_prefill_layer4_continuation_boundary(
     void *opaque_context,
     const void *model_mapping,

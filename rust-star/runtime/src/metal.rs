@@ -29,7 +29,7 @@ pub const PREFILL_LAYERS012_COMPRESSOR_LOOP_PROBE_SCHEMA: &str =
     "rust-star-prefill-layers012-compressor-loop-probe-v1";
 pub const LONG_PREFILL_BOOTSTRAP_PROBE_SCHEMA: &str = "rust-star-long-prefill-bootstrap-probe-v1";
 pub const LONG_PREFILL_CONTINUATION_BOOTSTRAP_PROBE_SCHEMA: &str =
-    "rust-star-long-prefill-continuation-bootstrap-probe-v19";
+    "rust-star-long-prefill-continuation-bootstrap-probe-v20";
 pub const LONG_PREFILL_SEQUENTIAL_CONTINUATION_PROBE_SCHEMA: &str =
     "rust-star-long-prefill-sequential-continuation-probe-v1";
 pub const LONG_PREFILL_TRANSFORMER_PROBE_SCHEMA: &str =
@@ -217,6 +217,30 @@ const PREFILL_LAYER5_CONTINUATION_TAIL_CHECKSUMS: [u64; 3] = [
     0x8916_8250_c4c0_530a,
     0x0603_eae7_6c96_995c,
     0x07af_ef99_1992_25f2,
+];
+const PREFILL_LAYER6_PREFIX_BOUNDARY_CHECKSUMS: [u64; 10] = [
+    0x5403_ef07_2696_a8ea,
+    0x1e91_9d6d_337c_0ac8,
+    0xade1_11a3_eaab_199c,
+    0x3c31_6dfb_cff3_2a6c,
+    0x2917_0bd8_ed56_fcc4,
+    0x2aed_90a7_82cc_3cb1,
+    0x3777_a864_2b5d_1bc2,
+    0x366c_b456_52f5_dcdb,
+    0x1c3f_92ee_9f3f_9115,
+    0x9409_6f3c_9df3_1b4a,
+];
+const PREFILL_LAYER6_CONTINUATION_BOUNDARY_CHECKSUMS: [u64; 10] = [
+    0xad77_c9c6_4cc1_6ad0,
+    0x2e09_c119_f2c0_65e8,
+    0xec51_8955_71ee_2d5e,
+    0x6585_f26d_8277_442f,
+    0xf7b4_40d4_94f4_eba3,
+    0xb2e3_0bcc_e9dc_0619,
+    0x8fe6_5ae2_4530_502e,
+    0x99bd_7d57_8fb5_dcdb,
+    0xb679_93a5_3216_488f,
+    0xa16b_f2af_3479_fc12,
 ];
 const PREFILL_LAYER5_CONTINUATION_INGRESS_CHECKSUMS: [u64; 9] = [
     0x053c_21ea_4926_a68d,
@@ -3990,6 +4014,14 @@ pub struct LongPrefillContinuationBootstrapProbeReport {
     pub layer5_continuation_complete_wrapped_model_ranges: u32,
     pub layer5_continuation_complete_pointer_matches: u32,
     pub layer5_continuation_tail_checksums: [u64; 3],
+    pub layer6_prefix_boundary_dispatches: u32,
+    pub layer6_prefix_boundary_wrapped_model_ranges: u32,
+    pub layer6_prefix_boundary_pointer_matches: u32,
+    pub layer6_prefix_boundary_checksums: [u64; 10],
+    pub layer6_continuation_boundary_dispatches: u32,
+    pub layer6_continuation_boundary_wrapped_model_ranges: u32,
+    pub layer6_continuation_boundary_pointer_matches: u32,
+    pub layer6_continuation_boundary_checksums: [u64; 10],
 }
 
 #[derive(Clone, Debug)]
@@ -8098,6 +8130,17 @@ fn write_long_prefill_continuation_bootstrap_probe_json_payload<W: Write>(
         || report.layer5_continuation_complete_pointer_matches
             != report.layer5_continuation_complete_wrapped_model_ranges
         || report.layer5_continuation_tail_checksums != PREFILL_LAYER5_CONTINUATION_TAIL_CHECKSUMS
+        || report.layer6_prefix_boundary_dispatches != 40
+        || report.layer6_prefix_boundary_wrapped_model_ranges != 17
+        || report.layer6_prefix_boundary_pointer_matches
+            != report.layer6_prefix_boundary_wrapped_model_ranges
+        || report.layer6_prefix_boundary_checksums != PREFILL_LAYER6_PREFIX_BOUNDARY_CHECKSUMS
+        || report.layer6_continuation_boundary_dispatches != 40
+        || report.layer6_continuation_boundary_wrapped_model_ranges != 17
+        || report.layer6_continuation_boundary_pointer_matches
+            != report.layer6_continuation_boundary_wrapped_model_ranges
+        || report.layer6_continuation_boundary_checksums
+            != PREFILL_LAYER6_CONTINUATION_BOUNDARY_CHECKSUMS
         || !report.sparse_transition.wall_ms.is_finite()
         || !report.sparse_transition.gpu_ms.is_finite()
         || report.sparse_transition.wall_ms <= 0.0
@@ -8370,6 +8413,35 @@ pub fn write_long_prefill_continuation_bootstrap_probe_json<W: Write>(
         ));
     }
     let rendered = rendered.replacen(incomplete_layer5_prefill, complete_layer5_prefill, 1);
+    let layer6_insertion = format!(
+        "  \"layer6_boundaries\": {{\"prefix\": {{\"start\": 0, \"rows\": 4096, \"dispatches\": {}, \"wrapped_model_ranges\": {}, \"pointer_matches\": {}, \"checksums\": {:?}, \"c0_bitwise_match\": true}}, \"continuation\": {{\"start\": 4096, \"rows\": 4096, \"dispatches\": {}, \"wrapped_model_ranges\": {}, \"pointer_matches\": {}, \"checksums\": {:?}, \"c0_bitwise_match\": true}}, \"boundary\": \"ingress_qkv_paired_ratio4_compressors\", \"sparse_attention_c0_claim\": false, \"ffn_c0_claim\": false, \"complete_layer6_claim\": false}},\n",
+        report.layer6_prefix_boundary_dispatches,
+        report.layer6_prefix_boundary_wrapped_model_ranges,
+        report.layer6_prefix_boundary_pointer_matches,
+        report.layer6_prefix_boundary_checksums,
+        report.layer6_continuation_boundary_dispatches,
+        report.layer6_continuation_boundary_wrapped_model_ranges,
+        report.layer6_continuation_boundary_pointer_matches,
+        report.layer6_continuation_boundary_checksums,
+    );
+    if !rendered.contains(checksums_boundary) {
+        return Err(Error::invalid(
+            "long-prefill continuation bootstrap JSON lost the layer-6 insertion boundary",
+        ));
+    }
+    let rendered = rendered.replacen(
+        checksums_boundary,
+        &(layer6_insertion + checksums_boundary),
+        1,
+    );
+    let complete_layer5_claim = "  \"complete_layer5_prefill_claim\": true,";
+    let layer6_claim = "  \"complete_layer5_prefill_claim\": true,\n  \"layer6_ingress_qkv_paired_compressors_c0_claim\": true,\n  \"complete_layer6_prefill_claim\": false,";
+    if !rendered.contains(complete_layer5_claim) {
+        return Err(Error::invalid(
+            "long-prefill continuation bootstrap JSON lost the complete layer-5 claim",
+        ));
+    }
+    let rendered = rendered.replacen(complete_layer5_claim, layer6_claim, 1);
     output.write_all(rendered.as_bytes())?;
     Ok(())
 }
@@ -21349,6 +21421,14 @@ mod imp {
         layer5_continuation_complete_wrapped_model_ranges: u32,
         layer5_continuation_complete_pointer_matches: u32,
         layer5_continuation_tail_checksums: [u64; 3],
+        layer6_prefix_boundary_dispatches: u32,
+        layer6_prefix_boundary_wrapped_model_ranges: u32,
+        layer6_prefix_boundary_pointer_matches: u32,
+        layer6_prefix_boundary_checksums: [u64; 10],
+        layer6_continuation_boundary_dispatches: u32,
+        layer6_continuation_boundary_wrapped_model_ranges: u32,
+        layer6_continuation_boundary_pointer_matches: u32,
+        layer6_continuation_boundary_checksums: [u64; 10],
         wall_ms: f64,
         gpu_ms: f64,
     }
@@ -23220,6 +23300,16 @@ mod imp {
             context: *mut c_void,
             checksums: *mut u64,
             checksum_capacity: usize,
+            error: *mut c_char,
+            error_bytes: usize,
+        ) -> i32;
+        fn rust_star_metal_begin_prefill_layer6_rebuild(
+            context: *mut c_void,
+            error: *mut c_char,
+            error_bytes: usize,
+        ) -> i32;
+        fn rust_star_metal_finish_prefill_layer6_rebuild(
+            context: *mut c_void,
             error: *mut c_char,
             error_bytes: usize,
         ) -> i32;
@@ -26715,6 +26805,20 @@ mod imp {
             layer5_continuation_complete_pointer_matches: layer23_loop
                 .layer5_continuation_complete_pointer_matches,
             layer5_continuation_tail_checksums: layer23_loop.layer5_continuation_tail_checksums,
+            layer6_prefix_boundary_dispatches: layer23_loop.layer6_prefix_boundary_dispatches,
+            layer6_prefix_boundary_wrapped_model_ranges: layer23_loop
+                .layer6_prefix_boundary_wrapped_model_ranges,
+            layer6_prefix_boundary_pointer_matches: layer23_loop
+                .layer6_prefix_boundary_pointer_matches,
+            layer6_prefix_boundary_checksums: layer23_loop.layer6_prefix_boundary_checksums,
+            layer6_continuation_boundary_dispatches: layer23_loop
+                .layer6_continuation_boundary_dispatches,
+            layer6_continuation_boundary_wrapped_model_ranges: layer23_loop
+                .layer6_continuation_boundary_wrapped_model_ranges,
+            layer6_continuation_boundary_pointer_matches: layer23_loop
+                .layer6_continuation_boundary_pointer_matches,
+            layer6_continuation_boundary_checksums: layer23_loop
+                .layer6_continuation_boundary_checksums,
         })
     }
 
@@ -42787,6 +42891,35 @@ mod imp {
         let layer5_shared_up = exact_tensor(model, "blk.5.ffn_up_shexp.weight", 8, &[4096, 2048])?;
         let layer5_shared_down =
             exact_tensor(model, "blk.5.ffn_down_shexp.weight", 8, &[2048, 4096])?;
+        let layer6_hc_fn = exact_tensor(model, "blk.6.hc_attn_fn.weight", 1, &[16384, 24])?;
+        let layer6_hc_scale = exact_tensor(model, "blk.6.hc_attn_scale.weight", 0, &[3])?;
+        let layer6_hc_base = exact_tensor(model, "blk.6.hc_attn_base.weight", 0, &[24])?;
+        let layer6_norm = exact_tensor(model, "blk.6.attn_norm.weight", 0, &[4096])?;
+        let layer6_q_a = exact_tensor(model, "blk.6.attn_q_a.weight", 8, &[4096, 1024])?;
+        let layer6_q_a_norm = exact_tensor(model, "blk.6.attn_q_a_norm.weight", 0, &[1024])?;
+        let layer6_kv = exact_tensor(model, "blk.6.attn_kv.weight", 8, &[4096, 512])?;
+        let layer6_kv_norm = exact_tensor(model, "blk.6.attn_kv_a_norm.weight", 0, &[512])?;
+        let layer6_q_b = exact_tensor(model, "blk.6.attn_q_b.weight", 8, &[1024, 32768])?;
+        let layer6_attn_ape =
+            exact_tensor(model, "blk.6.attn_compressor_ape.weight", 1, &[1024, 4])?;
+        let layer6_attn_kv =
+            exact_tensor(model, "blk.6.attn_compressor_kv.weight", 1, &[4096, 1024])?;
+        let layer6_attn_gate =
+            exact_tensor(model, "blk.6.attn_compressor_gate.weight", 1, &[4096, 1024])?;
+        let layer6_attn_compressor_norm =
+            exact_tensor(model, "blk.6.attn_compressor_norm.weight", 0, &[512])?;
+        let layer6_indexer_ape =
+            exact_tensor(model, "blk.6.indexer_compressor_ape.weight", 1, &[256, 4])?;
+        let layer6_indexer_kv =
+            exact_tensor(model, "blk.6.indexer_compressor_kv.weight", 1, &[4096, 256])?;
+        let layer6_indexer_gate = exact_tensor(
+            model,
+            "blk.6.indexer_compressor_gate.weight",
+            1,
+            &[4096, 256],
+        )?;
+        let layer6_indexer_compressor_norm =
+            exact_tensor(model, "blk.6.indexer_compressor_norm.weight", 0, &[128])?;
         let tail_weights = RawPrefillLayerWeights {
             ingress: RawPrefillAttentionIngressWeights {
                 hc_fn_offset: 0,
@@ -43042,6 +43175,53 @@ mod imp {
             attn_norm_offset: layer5_attn_compressor_norm.absolute_offset,
             attn_norm_bytes: layer5_attn_compressor_norm.bytes,
             ..RawPrefillCompressorWeights::default()
+        };
+        let layer6_weights = RawPrefillLayerWeights {
+            ingress: RawPrefillAttentionIngressWeights {
+                hc_fn_offset: layer6_hc_fn.absolute_offset,
+                hc_fn_bytes: layer6_hc_fn.bytes,
+                hc_scale_offset: layer6_hc_scale.absolute_offset,
+                hc_scale_bytes: layer6_hc_scale.bytes,
+                hc_base_offset: layer6_hc_base.absolute_offset,
+                hc_base_bytes: layer6_hc_base.bytes,
+                norm_offset: layer6_norm.absolute_offset,
+                norm_bytes: layer6_norm.bytes,
+                q_a_offset: layer6_q_a.absolute_offset,
+                q_a_bytes: layer6_q_a.bytes,
+            },
+            q_a_norm_offset: layer6_q_a_norm.absolute_offset,
+            q_a_norm_bytes: layer6_q_a_norm.bytes,
+            kv_offset: layer6_kv.absolute_offset,
+            kv_bytes: layer6_kv.bytes,
+            kv_norm_offset: layer6_kv_norm.absolute_offset,
+            kv_norm_bytes: layer6_kv_norm.bytes,
+            q_b_offset: layer6_q_b.absolute_offset,
+            q_b_bytes: layer6_q_b.bytes,
+            attn_sinks_offset: 0,
+            attn_sinks_bytes: 0,
+            attn_output_a_offset: 0,
+            attn_output_a_bytes: 0,
+            attn_output_b_offset: 0,
+            attn_output_b_bytes: 0,
+            ffn: RawPrefillFfnWeights::default(),
+        };
+        let layer6_compressor = RawPrefillCompressorWeights {
+            attn_ape_offset: layer6_attn_ape.absolute_offset,
+            attn_ape_bytes: layer6_attn_ape.bytes,
+            attn_kv_offset: layer6_attn_kv.absolute_offset,
+            attn_kv_bytes: layer6_attn_kv.bytes,
+            attn_gate_offset: layer6_attn_gate.absolute_offset,
+            attn_gate_bytes: layer6_attn_gate.bytes,
+            attn_norm_offset: layer6_attn_compressor_norm.absolute_offset,
+            attn_norm_bytes: layer6_attn_compressor_norm.bytes,
+            indexer_ape_offset: layer6_indexer_ape.absolute_offset,
+            indexer_ape_bytes: layer6_indexer_ape.bytes,
+            indexer_kv_offset: layer6_indexer_kv.absolute_offset,
+            indexer_kv_bytes: layer6_indexer_kv.bytes,
+            indexer_gate_offset: layer6_indexer_gate.absolute_offset,
+            indexer_gate_bytes: layer6_indexer_gate.bytes,
+            indexer_norm_offset: layer6_indexer_compressor_norm.absolute_offset,
+            indexer_norm_bytes: layer6_indexer_compressor_norm.bytes,
         };
         let expected_q_current = decode_f32_fixture(
             PREFILL_LAYER2_SPARSE_TRANSITION_Q_CURRENT_BYTES,
@@ -45965,6 +46145,123 @@ mod imp {
                 PREFILL_LAYER5_CONTINUATION_COMPRESSED_CHECKSUM,
             )));
         }
+        let layer6_begin_succeeded = unsafe {
+            rust_star_metal_begin_prefill_layer6_rebuild(context.0, error.as_mut_ptr(), error.len())
+        };
+        if layer6_begin_succeeded == 0 {
+            return Err(Error::invalid(format!(
+                "Metal layer-6 rebuild binding failed: {}",
+                error_text(&error)
+            )));
+        }
+        let mut layer6_prefix_raw = RawSparseIndexedResult::default();
+        let layer6_prefix_succeeded = unsafe {
+            rust_star_metal_run_prefill_layer4_continuation_boundary(
+                context.0,
+                model.mapping_pointer(),
+                model.bytes(),
+                &layer6_weights,
+                &layer6_compressor,
+                0,
+                layer23_loop.layer6_prefix_boundary_checksums.as_mut_ptr(),
+                layer23_loop.layer6_prefix_boundary_checksums.len(),
+                &mut layer6_prefix_raw,
+                error.as_mut_ptr(),
+                error.len(),
+            )
+        };
+        if layer6_prefix_succeeded == 0 {
+            return Err(Error::invalid(format!(
+                "Metal production-batch layer-6 prefix boundary failed: {}",
+                error_text(&error)
+            )));
+        }
+        layer23_loop.layer6_prefix_boundary_dispatches = layer6_prefix_raw.dispatches;
+        layer23_loop.layer6_prefix_boundary_wrapped_model_ranges =
+            layer6_prefix_raw.wrapped_model_ranges;
+        layer23_loop.layer6_prefix_boundary_pointer_matches = layer6_prefix_raw.pointer_matches;
+        if layer6_prefix_raw.dispatches != 40
+            || layer6_prefix_raw.wrapped_model_ranges != 17
+            || layer6_prefix_raw.pointer_matches != 17
+            || layer23_loop.layer6_prefix_boundary_checksums
+                != PREFILL_LAYER6_PREFIX_BOUNDARY_CHECKSUMS
+            || !layer6_prefix_raw.wall_ms.is_finite()
+            || layer6_prefix_raw.wall_ms <= 0.0
+            || !layer6_prefix_raw.gpu_ms.is_finite()
+            || layer6_prefix_raw.gpu_ms <= 0.0
+        {
+            return Err(Error::invalid(format!(
+                "Metal production-batch layer-6 prefix boundary is invalid: dispatches={}, mappings={}/{}, checksums={:?} expected={:?}",
+                layer6_prefix_raw.dispatches,
+                layer6_prefix_raw.pointer_matches,
+                layer6_prefix_raw.wrapped_model_ranges,
+                layer23_loop.layer6_prefix_boundary_checksums,
+                PREFILL_LAYER6_PREFIX_BOUNDARY_CHECKSUMS,
+            )));
+        }
+        let mut layer6_continuation_raw = RawSparseIndexedResult::default();
+        let layer6_continuation_succeeded = unsafe {
+            rust_star_metal_run_prefill_layer4_continuation_boundary(
+                context.0,
+                model.mapping_pointer(),
+                model.bytes(),
+                &layer6_weights,
+                &layer6_compressor,
+                4_096,
+                layer23_loop
+                    .layer6_continuation_boundary_checksums
+                    .as_mut_ptr(),
+                layer23_loop.layer6_continuation_boundary_checksums.len(),
+                &mut layer6_continuation_raw,
+                error.as_mut_ptr(),
+                error.len(),
+            )
+        };
+        if layer6_continuation_succeeded == 0 {
+            return Err(Error::invalid(format!(
+                "Metal production-batch layer-6 continuation boundary failed: {}",
+                error_text(&error)
+            )));
+        }
+        layer23_loop.layer6_continuation_boundary_dispatches = layer6_continuation_raw.dispatches;
+        layer23_loop.layer6_continuation_boundary_wrapped_model_ranges =
+            layer6_continuation_raw.wrapped_model_ranges;
+        layer23_loop.layer6_continuation_boundary_pointer_matches =
+            layer6_continuation_raw.pointer_matches;
+        if layer6_continuation_raw.dispatches != 40
+            || layer6_continuation_raw.wrapped_model_ranges != 17
+            || layer6_continuation_raw.pointer_matches != 17
+            || layer23_loop.layer6_continuation_boundary_checksums
+                != PREFILL_LAYER6_CONTINUATION_BOUNDARY_CHECKSUMS
+            || !layer6_continuation_raw.wall_ms.is_finite()
+            || layer6_continuation_raw.wall_ms <= 0.0
+            || !layer6_continuation_raw.gpu_ms.is_finite()
+            || layer6_continuation_raw.gpu_ms <= 0.0
+        {
+            return Err(Error::invalid(format!(
+                "Metal production-batch layer-6 continuation boundary is invalid: dispatches={}, mappings={}/{}, checksums={:?} expected={:?}",
+                layer6_continuation_raw.dispatches,
+                layer6_continuation_raw.pointer_matches,
+                layer6_continuation_raw.wrapped_model_ranges,
+                layer23_loop.layer6_continuation_boundary_checksums,
+                PREFILL_LAYER6_CONTINUATION_BOUNDARY_CHECKSUMS,
+            )));
+        }
+        let layer6_finish_succeeded = unsafe {
+            rust_star_metal_finish_prefill_layer6_rebuild(
+                context.0,
+                error.as_mut_ptr(),
+                error.len(),
+            )
+        };
+        if layer6_finish_succeeded == 0 {
+            return Err(Error::invalid(format!(
+                "Metal layer-6 rebuild finalization failed: {}",
+                error_text(&error)
+            )));
+        }
+        layer23_loop.wall_ms += layer6_prefix_raw.wall_ms + layer6_continuation_raw.wall_ms;
+        layer23_loop.gpu_ms += layer6_prefix_raw.gpu_ms + layer6_continuation_raw.gpu_ms;
         Ok((
             SparseIndexedAttentionProbeReport {
                 fixture_id: PREFILL_LAYER2_SPARSE_TRANSITION_FIXTURE_ID,
@@ -55459,6 +55756,14 @@ mod tests {
             layer5_continuation_complete_wrapped_model_ranges: 19,
             layer5_continuation_complete_pointer_matches: 19,
             layer5_continuation_tail_checksums: PREFILL_LAYER5_CONTINUATION_TAIL_CHECKSUMS,
+            layer6_prefix_boundary_dispatches: 40,
+            layer6_prefix_boundary_wrapped_model_ranges: 17,
+            layer6_prefix_boundary_pointer_matches: 17,
+            layer6_prefix_boundary_checksums: PREFILL_LAYER6_PREFIX_BOUNDARY_CHECKSUMS,
+            layer6_continuation_boundary_dispatches: 40,
+            layer6_continuation_boundary_wrapped_model_ranges: 17,
+            layer6_continuation_boundary_pointer_matches: 17,
+            layer6_continuation_boundary_checksums: PREFILL_LAYER6_CONTINUATION_BOUNDARY_CHECKSUMS,
         };
         let mut output = Vec::new();
         write_long_prefill_continuation_bootstrap_probe_json(&mut output, &report).unwrap();
@@ -55531,6 +55836,11 @@ mod tests {
         assert!(text.contains("\"complete_layer5_continuation_c0_claim\": true"));
         assert!(text.contains("\"layer5_continuation_ingress_compressor_c0_claim\": true"));
         assert!(text.contains("\"complete_layer5_prefill_claim\": true"));
+        assert!(text.contains("\"layer6_boundaries\": {\"prefix\": {\"start\": 0"));
+        assert!(text.contains("\"continuation\": {\"start\": 4096"));
+        assert!(text.contains("\"boundary\": \"ingress_qkv_paired_ratio4_compressors\""));
+        assert!(text.contains("\"layer6_ingress_qkv_paired_compressors_c0_claim\": true"));
+        assert!(text.contains("\"complete_layer6_prefill_claim\": false"));
         assert!(text.contains("\"complete_layer23_second_chunk_c0_claim\": true"));
         assert!(text.contains("\"layer2_sparse_transition_c0_claim\": true"));
         assert!(text.contains("\"selection_kernel\": \"kernel_topk_stream512\""));
