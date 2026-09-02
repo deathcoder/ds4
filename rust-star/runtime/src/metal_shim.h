@@ -2425,6 +2425,26 @@ int rust_star_metal_finish_prefill_layer11_rebuild(
     char *error,
     size_t error_bytes);
 
+/* Publishes exact retained layer-11 HC and layer-12 compressor state through
+ * the generic even-layer ratio-4 executor. */
+int rust_star_metal_begin_prefill_layer12_rebuild(
+    void *context,
+    char *error,
+    size_t error_bytes);
+
+/* Preserves exact layer-12 prefix HC before the generic even-layer slot is
+ * reused for its continuation. */
+int rust_star_metal_retain_prefill_layer12_prefix_hc(
+    void *context,
+    char *error,
+    size_t error_bytes);
+
+/* Retains buffers grown by the generic even-layer executor as layer-12 state. */
+int rust_star_metal_finish_prefill_layer12_rebuild(
+    void *context,
+    char *error,
+    size_t error_bytes);
+
 /* Consumes one retained production-batch layer-3 HC chunk and executes the
  * full 4096-row layer-4 ingress/QKV plus paired ratio-4 compressor boundary.
  * Position start must be 0 or 4096.

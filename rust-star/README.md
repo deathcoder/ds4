@@ -442,8 +442,13 @@ preserves those exact prefix and continuation HCs and completes layer 11 through
 ratio-128 ingress/QKV, compression, padded Flash attention, and FFN. Its
 49-dispatch prefix preserves 28/28 mappings; its 128 continuation tiles plus
 production tail use 1,318 dispatches and 1,171/1,171 mappings. All 16 boundary
-and tail hashes match, so complete retained layer 11 is now claimed. Layers
-12--42 and the output head remain open.
+and tail hashes match, so complete retained layer 11 is now claimed. Schema
+v27 binds those exact HCs into layer 12's ratio-4 ingress/QKV, paired
+compressors, indexed attention, and FFN. Its prefix and continuation
+boundaries each use 40 dispatches and preserve 17/17 mappings; the 36-dispatch
+prefix tail and all 128 continuation tiles match six more hashes over
+2,176/2,176 continuation mappings. Complete retained layer 12 is now claimed.
+Layers 13--42 and the output head remain open.
 No throughput or speedup claim is attached to this diagnostic gate.
 The first complete second-half experiment deliberately tested whether the
 proven retained decoder schedule could serve as a correctness-preserving

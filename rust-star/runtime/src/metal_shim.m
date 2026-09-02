@@ -551,6 +551,7 @@ static NSString *const kQ8ProjectionSource =
 @property(nonatomic, strong) id<MTLBuffer> prefillLayer12IndexerStateScore;
 @property(nonatomic, strong) id<MTLBuffer> prefillLayer12AfterAttentionHc;
 @property(nonatomic, strong) id<MTLBuffer> prefillLayer12AfterFfnHc;
+@property(nonatomic, strong) id<MTLBuffer> prefillLayer12PrefixAfterFfnHc;
 @property(nonatomic, strong) id<MTLBuffer> prefillLayer13FullQ;
 @property(nonatomic, strong) id<MTLBuffer> prefillLayer13FullKv;
 @property(nonatomic, strong) id<MTLBuffer> prefillLayer13InputHc;
@@ -49415,6 +49416,128 @@ int rust_star_metal_finish_prefill_layer11_rebuild(
             context.prefillLayer5ContinuationAfterAttentionHc;
         context.prefillLayer11AfterFfnHc =
             context.prefillLayer5ContinuationFullAfterFfnHc;
+        return 1;
+    }
+}
+
+int rust_star_metal_begin_prefill_layer12_rebuild(
+    void *opaque_context,
+    char *error,
+    size_t error_bytes)
+{
+    if (!opaque_context) {
+        return fail_with_message(error, error_bytes,
+            @"layer-12 rebuild binding received a null context");
+    }
+    @autoreleasepool {
+        RustStarMetalContext *context = (__bridge RustStarMetalContext *)opaque_context;
+        if (context.prefillKvRows != 8192u ||
+            !context.prefillLayer11PrefixAfterFfnHc ||
+            !context.prefillLayer11AfterFfnHc ||
+            !context.prefillLayer12FullQ || !context.prefillLayer12FullKv ||
+            !context.prefillLayer12InputHc || !context.prefillLayer12AttnSplit ||
+            !context.prefillLayer12AttnCompressed ||
+            !context.prefillLayer12AttnStateKv ||
+            !context.prefillLayer12AttnStateScore ||
+            !context.prefillLayer12IndexerCompressed ||
+            !context.prefillLayer12IndexerStateKv ||
+            !context.prefillLayer12IndexerStateScore) {
+            return fail_with_message(error, error_bytes,
+                @"layer-12 rebuild requires complete retained layer-11 HC and prefix state");
+        }
+        context.prefillLayer3AfterFfnHc =
+            context.prefillLayer11PrefixAfterFfnHc;
+        context.prefillLayer3ContinuationFullAfterFfnHc =
+            context.prefillLayer11AfterFfnHc;
+        context.prefillLayer4FullQ = context.prefillLayer12FullQ;
+        context.prefillLayer4FullKv = context.prefillLayer12FullKv;
+        context.prefillLayer4InputHc = context.prefillLayer12InputHc;
+        context.prefillLayer4AttnSplit = context.prefillLayer12AttnSplit;
+        context.prefillLayer4AttnCompressed = context.prefillLayer12AttnCompressed;
+        context.prefillLayer4AttnStateKv = context.prefillLayer12AttnStateKv;
+        context.prefillLayer4AttnStateScore = context.prefillLayer12AttnStateScore;
+        context.prefillLayer4IndexerCompressed =
+            context.prefillLayer12IndexerCompressed;
+        context.prefillLayer4IndexerStateKv =
+            context.prefillLayer12IndexerStateKv;
+        context.prefillLayer4IndexerStateScore =
+            context.prefillLayer12IndexerStateScore;
+        context.prefillLayer4FullQNorm = nil;
+        context.prefillLayer4FullNorm = nil;
+        context.prefillLayer4ContinuationNorm = nil;
+        context.prefillLayer4PrefixHeads = nil;
+        context.prefillLayer4ContinuationHeads = nil;
+        context.prefillLayer4AfterAttentionHc = nil;
+        context.prefillLayer4AfterFfnHc = nil;
+        context.prefillLayer4ContinuationFullAfterFfnHc = nil;
+        return 1;
+    }
+}
+
+int rust_star_metal_retain_prefill_layer12_prefix_hc(
+    void *opaque_context,
+    char *error,
+    size_t error_bytes)
+{
+    enum { rows = 4096, hc_dim = 16384 };
+    if (!opaque_context) {
+        return fail_with_message(error, error_bytes,
+            @"layer-12 prefix retention received a null context");
+    }
+    @autoreleasepool {
+        RustStarMetalContext *context = (__bridge RustStarMetalContext *)opaque_context;
+        const NSUInteger bytes = (NSUInteger)rows*hc_dim*sizeof(float);
+        if (!context.prefillLayer4AfterFfnHc ||
+            context.prefillLayer4AfterFfnHc.length < bytes) {
+            return fail_with_message(error, error_bytes,
+                @"complete layer-12 prefix HC is unavailable");
+        }
+        context.prefillLayer12PrefixAfterFfnHc =
+            context.prefillLayer4AfterFfnHc;
+        return 1;
+    }
+}
+
+int rust_star_metal_finish_prefill_layer12_rebuild(
+    void *opaque_context,
+    char *error,
+    size_t error_bytes)
+{
+    if (!opaque_context) {
+        return fail_with_message(error, error_bytes,
+            @"layer-12 rebuild finalization received a null context");
+    }
+    @autoreleasepool {
+        RustStarMetalContext *context = (__bridge RustStarMetalContext *)opaque_context;
+        if (!context.prefillLayer4FullQ || !context.prefillLayer4FullKv ||
+            !context.prefillLayer4InputHc || !context.prefillLayer4AttnSplit ||
+            !context.prefillLayer4AttnCompressed ||
+            !context.prefillLayer4AttnStateKv ||
+            !context.prefillLayer4AttnStateScore ||
+            !context.prefillLayer4IndexerCompressed ||
+            !context.prefillLayer4IndexerStateKv ||
+            !context.prefillLayer4IndexerStateScore ||
+            !context.prefillLayer4AfterAttentionHc ||
+            !context.prefillLayer4AfterFfnHc) {
+            return fail_with_message(error, error_bytes,
+                @"generic even-layer executor did not retain layer-12 state");
+        }
+        context.prefillLayer12FullQ = context.prefillLayer4FullQ;
+        context.prefillLayer12FullKv = context.prefillLayer4FullKv;
+        context.prefillLayer12InputHc = context.prefillLayer4InputHc;
+        context.prefillLayer12AttnSplit = context.prefillLayer4AttnSplit;
+        context.prefillLayer12AttnCompressed = context.prefillLayer4AttnCompressed;
+        context.prefillLayer12AttnStateKv = context.prefillLayer4AttnStateKv;
+        context.prefillLayer12AttnStateScore = context.prefillLayer4AttnStateScore;
+        context.prefillLayer12IndexerCompressed =
+            context.prefillLayer4IndexerCompressed;
+        context.prefillLayer12IndexerStateKv =
+            context.prefillLayer4IndexerStateKv;
+        context.prefillLayer12IndexerStateScore =
+            context.prefillLayer4IndexerStateScore;
+        context.prefillLayer12AfterAttentionHc =
+            context.prefillLayer4AfterAttentionHc;
+        context.prefillLayer12AfterFfnHc = context.prefillLayer4AfterFfnHc;
         return 1;
     }
 }

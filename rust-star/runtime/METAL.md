@@ -703,9 +703,9 @@ not labeled C0. The complete exact 2K prefill remains an independent regression
 control. The next boundary must carry the retained 4K state through layers
 2--42 and then preserve it while beginning the second 4K chunk.
 
-## Retained 4K-to-8K layer-2 through complete layer 11
+## Retained 4K-to-8K layer-2 through complete layer 12
 
-Schema: `rust-star-long-prefill-continuation-bootstrap-probe-v26`.
+Schema: `rust-star-long-prefill-continuation-bootstrap-probe-v27`.
 
 `long-prefill-continuation-bootstrap-probe` completes the first 4K transformer,
 then preserves that context while 64 native 64-row tiles append positions
@@ -854,7 +854,12 @@ The exact prefix uses 49 dispatches and 28/28 no-copy mappings. Its 128
 continuation ingress/QKV tiles, production compressor, padded Flash attention,
 and FFN use 1,318 dispatches and 1,171/1,171 mappings. All 16 boundary and tail
 hashes match the repeated DwarfStar oracle, so complete retained layer 11 is
-claimed and layer 12 becomes the next boundary.
+claimed. Version 27 feeds those exact HCs through layer 12's even ratio-4 path.
+Both paired-compressor boundaries match all 20 hashes over 40 dispatches and
+17/17 no-copy mappings each. The prefix tail uses 36 dispatches and 17/17
+mappings; all 128 continuation sparse-attention/FFN tiles use 4,608 dispatches
+and 2,176/2,176 mappings. All six tail hashes match, so complete retained layer
+12 is claimed and layer 13 becomes the next boundary.
 
 ## Model residency before measured decode
 
