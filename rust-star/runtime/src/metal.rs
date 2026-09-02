@@ -29,7 +29,7 @@ pub const PREFILL_LAYERS012_COMPRESSOR_LOOP_PROBE_SCHEMA: &str =
     "rust-star-prefill-layers012-compressor-loop-probe-v1";
 pub const LONG_PREFILL_BOOTSTRAP_PROBE_SCHEMA: &str = "rust-star-long-prefill-bootstrap-probe-v1";
 pub const LONG_PREFILL_CONTINUATION_BOOTSTRAP_PROBE_SCHEMA: &str =
-    "rust-star-long-prefill-continuation-bootstrap-probe-v25";
+    "rust-star-long-prefill-continuation-bootstrap-probe-v26";
 pub const LONG_PREFILL_SEQUENTIAL_CONTINUATION_PROBE_SCHEMA: &str =
     "rust-star-long-prefill-sequential-continuation-probe-v1";
 pub const LONG_PREFILL_TRANSFORMER_PROBE_SCHEMA: &str =
@@ -367,6 +367,30 @@ const PREFILL_LAYER10_CONTINUATION_TAIL_CHECKSUMS: [u64; 3] = [
     0xeb5b_69a8_b29f_85bc,
     0xd946_5aa2_0200_1679,
     0x6217_0d1a_d1f8_1684,
+];
+const PREFILL_LAYER11_PREFIX_BOUNDARY_CHECKSUMS: [u64; 5] = [
+    0x4565_f1b8_c9f5_6045,
+    0x8aeb_b7d2_0e31_b866,
+    0x3c1b_04f7_bd89_be44,
+    0x5d44_55b3_6b62_a5e1,
+    0x7c13_5a17_cfce_5510,
+];
+const PREFILL_LAYER11_PREFIX_TAIL_CHECKSUMS: [u64; 3] = [
+    0xd7a0_bf5e_5c2a_37c3,
+    0xd2f2_2480_9e03_d71c,
+    0x8e18_2755_3d13_7f0c,
+];
+const PREFILL_LAYER11_CONTINUATION_INGRESS_CHECKSUMS: [u64; 4] = [
+    0xaa23_88cf_02fa_58fb,
+    0xf4d2_b057_a87c_c61c,
+    0x3dbb_3cf4_286c_d795,
+    0x3a97_f534_9224_ac39,
+];
+const PREFILL_LAYER11_CONTINUATION_COMPRESSED_CHECKSUM: u64 = 0xb132_95b3_9ebe_6f70;
+const PREFILL_LAYER11_CONTINUATION_TAIL_CHECKSUMS: [u64; 3] = [
+    0x843f_1ba7_2707_add4,
+    0x060b_0c66_e0aa_3f20,
+    0x5a73_3c74_d754_eb62,
 ];
 const PREFILL_LAYER5_CONTINUATION_INGRESS_CHECKSUMS: [u64; 9] = [
     0x053c_21ea_4926_a68d,
@@ -4227,6 +4251,24 @@ pub struct LongPrefillContinuationBootstrapProbeReport {
     pub layer10_continuation_wrapped_model_ranges: u32,
     pub layer10_continuation_pointer_matches: u32,
     pub layer10_continuation_tail_checksums: [u64; 3],
+    pub layer11_prefix_boundary_dispatches: u32,
+    pub layer11_prefix_boundary_wrapped_model_ranges: u32,
+    pub layer11_prefix_boundary_pointer_matches: u32,
+    pub layer11_prefix_boundary_checksums: [u64; 5],
+    pub layer11_prefix_complete_dispatches: u32,
+    pub layer11_prefix_complete_wrapped_model_ranges: u32,
+    pub layer11_prefix_complete_pointer_matches: u32,
+    pub layer11_prefix_tail_checksums: [u64; 3],
+    pub layer11_continuation_tiles: u32,
+    pub layer11_continuation_dispatches: u32,
+    pub layer11_continuation_wrapped_model_ranges: u32,
+    pub layer11_continuation_pointer_matches: u32,
+    pub layer11_continuation_ingress_checksums: [u64; 4],
+    pub layer11_continuation_compressed_checksum: u64,
+    pub layer11_continuation_complete_dispatches: u32,
+    pub layer11_continuation_complete_wrapped_model_ranges: u32,
+    pub layer11_continuation_complete_pointer_matches: u32,
+    pub layer11_continuation_tail_checksums: [u64; 3],
 }
 
 #[derive(Clone, Debug)]
@@ -8449,6 +8491,30 @@ fn write_long_prefill_continuation_bootstrap_probe_json_payload<W: Write>(
         || report.layer10_continuation_pointer_matches
             != report.layer10_continuation_wrapped_model_ranges
         || report.layer10_continuation_tail_checksums != PREFILL_LAYER10_CONTINUATION_TAIL_CHECKSUMS
+        || report.layer11_prefix_boundary_dispatches != 17
+        || report.layer11_prefix_boundary_wrapped_model_ranges != 13
+        || report.layer11_prefix_boundary_pointer_matches
+            != report.layer11_prefix_boundary_wrapped_model_ranges
+        || report.layer11_prefix_boundary_checksums != PREFILL_LAYER11_PREFIX_BOUNDARY_CHECKSUMS
+        || report.layer11_prefix_complete_dispatches != 49
+        || report.layer11_prefix_complete_wrapped_model_ranges != 28
+        || report.layer11_prefix_complete_pointer_matches
+            != report.layer11_prefix_complete_wrapped_model_ranges
+        || report.layer11_prefix_tail_checksums != PREFILL_LAYER11_PREFIX_TAIL_CHECKSUMS
+        || report.layer11_continuation_tiles != 128
+        || report.layer11_continuation_dispatches != 1_318
+        || report.layer11_continuation_wrapped_model_ranges != 1_171
+        || report.layer11_continuation_pointer_matches
+            != report.layer11_continuation_wrapped_model_ranges
+        || report.layer11_continuation_ingress_checksums
+            != PREFILL_LAYER11_CONTINUATION_INGRESS_CHECKSUMS
+        || report.layer11_continuation_compressed_checksum
+            != PREFILL_LAYER11_CONTINUATION_COMPRESSED_CHECKSUM
+        || report.layer11_continuation_complete_dispatches != 38
+        || report.layer11_continuation_complete_wrapped_model_ranges != 19
+        || report.layer11_continuation_complete_pointer_matches
+            != report.layer11_continuation_complete_wrapped_model_ranges
+        || report.layer11_continuation_tail_checksums != PREFILL_LAYER11_CONTINUATION_TAIL_CHECKSUMS
         || !report.sparse_transition.wall_ms.is_finite()
         || !report.sparse_transition.gpu_ms.is_finite()
         || report.sparse_transition.wall_ms <= 0.0
@@ -8873,6 +8939,37 @@ pub fn write_long_prefill_continuation_bootstrap_probe_json<W: Write>(
         &(layer10_insertion + checksums_boundary),
         1,
     );
+    let layer11_insertion = format!(
+        "  \"layer11_prefix_complete\": {{\"start\": 0, \"rows\": 4096, \"ingress_qkv_compressor\": {{\"dispatches\": {}, \"wrapped_model_ranges\": {}, \"pointer_matches\": {}, \"checksums\": {:?}, \"c0_bitwise_match\": true}}, \"attention_ffn_tail\": {{\"combined_dispatches\": {}, \"combined_wrapped_model_ranges\": {}, \"combined_pointer_matches\": {}, \"tail_checksums\": {:?}, \"flash_attention_kernel\": \"kernel_flash_attn_ext_f16_dk512_dv512_nsg8_kvpad\", \"c0_bitwise_match\": true}}, \"complete_prefix_c0_claim\": true}},\n  \"layer11_continuation_complete\": {{\"start\": 4096, \"rows\": 4096, \"tile_rows\": 32, \"tiles\": {}, \"combined_dispatches\": {}, \"combined_wrapped_model_ranges\": {}, \"combined_pointer_matches\": {}, \"ingress_checksums\": {:?}, \"compressed_checksum\": {}, \"production_tail\": {{\"dispatches\": {}, \"wrapped_model_ranges\": {}, \"pointer_matches\": {}, \"tail_checksums\": {:?}, \"c0_bitwise_match\": true}}, \"complete_continuation_c0_claim\": true}},\n",
+        report.layer11_prefix_boundary_dispatches,
+        report.layer11_prefix_boundary_wrapped_model_ranges,
+        report.layer11_prefix_boundary_pointer_matches,
+        report.layer11_prefix_boundary_checksums,
+        report.layer11_prefix_complete_dispatches,
+        report.layer11_prefix_complete_wrapped_model_ranges,
+        report.layer11_prefix_complete_pointer_matches,
+        report.layer11_prefix_tail_checksums,
+        report.layer11_continuation_tiles,
+        report.layer11_continuation_dispatches,
+        report.layer11_continuation_wrapped_model_ranges,
+        report.layer11_continuation_pointer_matches,
+        report.layer11_continuation_ingress_checksums,
+        report.layer11_continuation_compressed_checksum,
+        report.layer11_continuation_complete_dispatches,
+        report.layer11_continuation_complete_wrapped_model_ranges,
+        report.layer11_continuation_complete_pointer_matches,
+        report.layer11_continuation_tail_checksums,
+    );
+    if !rendered.contains(checksums_boundary) {
+        return Err(Error::invalid(
+            "long-prefill continuation bootstrap JSON lost the layer-11 insertion boundary",
+        ));
+    }
+    let rendered = rendered.replacen(
+        checksums_boundary,
+        &(layer11_insertion + checksums_boundary),
+        1,
+    );
     let complete_layer5_claim = "  \"complete_layer5_prefill_claim\": true,";
     let layer6_claim = "  \"complete_layer5_prefill_claim\": true,\n  \"layer6_ingress_qkv_paired_compressors_c0_claim\": true,\n  \"complete_layer6_prefix_c0_claim\": true,\n  \"complete_layer6_continuation_c0_claim\": true,\n  \"complete_layer6_prefill_claim\": true,";
     if !rendered.contains(complete_layer5_claim) {
@@ -8913,6 +9010,14 @@ pub fn write_long_prefill_continuation_bootstrap_probe_json<W: Write>(
         ));
     }
     let rendered = rendered.replacen(complete_layer9_claim, layer10_claim, 1);
+    let complete_layer10_claim = "  \"complete_layer10_prefill_claim\": true,";
+    let layer11_claim = "  \"complete_layer10_prefill_claim\": true,\n  \"complete_layer11_prefix_c0_claim\": true,\n  \"complete_layer11_continuation_c0_claim\": true,\n  \"complete_layer11_prefill_claim\": true,";
+    if !rendered.contains(complete_layer10_claim) {
+        return Err(Error::invalid(
+            "long-prefill continuation bootstrap JSON lost the complete layer-10 claim",
+        ));
+    }
+    let rendered = rendered.replacen(complete_layer10_claim, layer11_claim, 1);
     output.write_all(rendered.as_bytes())?;
     Ok(())
 }
@@ -21979,6 +22084,24 @@ mod imp {
         layer10_continuation_wrapped_model_ranges: u32,
         layer10_continuation_pointer_matches: u32,
         layer10_continuation_tail_checksums: [u64; 3],
+        layer11_prefix_boundary_dispatches: u32,
+        layer11_prefix_boundary_wrapped_model_ranges: u32,
+        layer11_prefix_boundary_pointer_matches: u32,
+        layer11_prefix_boundary_checksums: [u64; 5],
+        layer11_prefix_complete_dispatches: u32,
+        layer11_prefix_complete_wrapped_model_ranges: u32,
+        layer11_prefix_complete_pointer_matches: u32,
+        layer11_prefix_tail_checksums: [u64; 3],
+        layer11_continuation_tiles: u32,
+        layer11_continuation_dispatches: u32,
+        layer11_continuation_wrapped_model_ranges: u32,
+        layer11_continuation_pointer_matches: u32,
+        layer11_continuation_ingress_checksums: [u64; 4],
+        layer11_continuation_compressed_checksum: u64,
+        layer11_continuation_complete_dispatches: u32,
+        layer11_continuation_complete_wrapped_model_ranges: u32,
+        layer11_continuation_complete_pointer_matches: u32,
+        layer11_continuation_tail_checksums: [u64; 3],
         wall_ms: f64,
         gpu_ms: f64,
     }
@@ -23931,6 +24054,21 @@ mod imp {
             error_bytes: usize,
         ) -> i32;
         fn rust_star_metal_finish_prefill_layer10_rebuild(
+            context: *mut c_void,
+            error: *mut c_char,
+            error_bytes: usize,
+        ) -> i32;
+        fn rust_star_metal_begin_prefill_layer11_prefix_rebuild(
+            context: *mut c_void,
+            error: *mut c_char,
+            error_bytes: usize,
+        ) -> i32;
+        fn rust_star_metal_begin_prefill_layer11_continuation(
+            context: *mut c_void,
+            error: *mut c_char,
+            error_bytes: usize,
+        ) -> i32;
+        fn rust_star_metal_finish_prefill_layer11_rebuild(
             context: *mut c_void,
             error: *mut c_char,
             error_bytes: usize,
@@ -27561,6 +27699,34 @@ mod imp {
                 .layer10_continuation_wrapped_model_ranges,
             layer10_continuation_pointer_matches: layer23_loop.layer10_continuation_pointer_matches,
             layer10_continuation_tail_checksums: layer23_loop.layer10_continuation_tail_checksums,
+            layer11_prefix_boundary_dispatches: layer23_loop.layer11_prefix_boundary_dispatches,
+            layer11_prefix_boundary_wrapped_model_ranges: layer23_loop
+                .layer11_prefix_boundary_wrapped_model_ranges,
+            layer11_prefix_boundary_pointer_matches: layer23_loop
+                .layer11_prefix_boundary_pointer_matches,
+            layer11_prefix_boundary_checksums: layer23_loop.layer11_prefix_boundary_checksums,
+            layer11_prefix_complete_dispatches: layer23_loop.layer11_prefix_complete_dispatches,
+            layer11_prefix_complete_wrapped_model_ranges: layer23_loop
+                .layer11_prefix_complete_wrapped_model_ranges,
+            layer11_prefix_complete_pointer_matches: layer23_loop
+                .layer11_prefix_complete_pointer_matches,
+            layer11_prefix_tail_checksums: layer23_loop.layer11_prefix_tail_checksums,
+            layer11_continuation_tiles: layer23_loop.layer11_continuation_tiles,
+            layer11_continuation_dispatches: layer23_loop.layer11_continuation_dispatches,
+            layer11_continuation_wrapped_model_ranges: layer23_loop
+                .layer11_continuation_wrapped_model_ranges,
+            layer11_continuation_pointer_matches: layer23_loop.layer11_continuation_pointer_matches,
+            layer11_continuation_ingress_checksums: layer23_loop
+                .layer11_continuation_ingress_checksums,
+            layer11_continuation_compressed_checksum: layer23_loop
+                .layer11_continuation_compressed_checksum,
+            layer11_continuation_complete_dispatches: layer23_loop
+                .layer11_continuation_complete_dispatches,
+            layer11_continuation_complete_wrapped_model_ranges: layer23_loop
+                .layer11_continuation_complete_wrapped_model_ranges,
+            layer11_continuation_complete_pointer_matches: layer23_loop
+                .layer11_continuation_complete_pointer_matches,
+            layer11_continuation_tail_checksums: layer23_loop.layer11_continuation_tail_checksums,
         })
     }
 
@@ -43878,6 +44044,47 @@ mod imp {
             exact_tensor(model, "blk.10.ffn_up_shexp.weight", 8, &[4096, 2048])?;
         let layer10_shared_down =
             exact_tensor(model, "blk.10.ffn_down_shexp.weight", 8, &[2048, 4096])?;
+        let layer11_hc_fn = exact_tensor(model, "blk.11.hc_attn_fn.weight", 1, &[16384, 24])?;
+        let layer11_hc_scale = exact_tensor(model, "blk.11.hc_attn_scale.weight", 0, &[3])?;
+        let layer11_hc_base = exact_tensor(model, "blk.11.hc_attn_base.weight", 0, &[24])?;
+        let layer11_norm = exact_tensor(model, "blk.11.attn_norm.weight", 0, &[4096])?;
+        let layer11_q_a = exact_tensor(model, "blk.11.attn_q_a.weight", 8, &[4096, 1024])?;
+        let layer11_q_a_norm = exact_tensor(model, "blk.11.attn_q_a_norm.weight", 0, &[1024])?;
+        let layer11_kv = exact_tensor(model, "blk.11.attn_kv.weight", 8, &[4096, 512])?;
+        let layer11_kv_norm = exact_tensor(model, "blk.11.attn_kv_a_norm.weight", 0, &[512])?;
+        let layer11_q_b = exact_tensor(model, "blk.11.attn_q_b.weight", 8, &[1024, 32768])?;
+        let layer11_attn_ape =
+            exact_tensor(model, "blk.11.attn_compressor_ape.weight", 1, &[512, 128])?;
+        let layer11_attn_kv =
+            exact_tensor(model, "blk.11.attn_compressor_kv.weight", 1, &[4096, 512])?;
+        let layer11_attn_gate =
+            exact_tensor(model, "blk.11.attn_compressor_gate.weight", 1, &[4096, 512])?;
+        let layer11_attn_compressor_norm =
+            exact_tensor(model, "blk.11.attn_compressor_norm.weight", 0, &[512])?;
+        let layer11_sinks = exact_tensor(model, "blk.11.attn_sinks.weight", 0, &[64])?;
+        let layer11_output_a =
+            exact_tensor(model, "blk.11.attn_output_a.weight", 8, &[4096, 8192])?;
+        let layer11_output_b =
+            exact_tensor(model, "blk.11.attn_output_b.weight", 8, &[8192, 4096])?;
+        let layer11_ffn_hc_fn = exact_tensor(model, "blk.11.hc_ffn_fn.weight", 1, &[16384, 24])?;
+        let layer11_ffn_hc_scale = exact_tensor(model, "blk.11.hc_ffn_scale.weight", 0, &[3])?;
+        let layer11_ffn_hc_base = exact_tensor(model, "blk.11.hc_ffn_base.weight", 0, &[24])?;
+        let layer11_ffn_norm = exact_tensor(model, "blk.11.ffn_norm.weight", 0, &[4096])?;
+        let layer11_router_gate =
+            exact_tensor(model, "blk.11.ffn_gate_inp.weight", 1, &[4096, 256])?;
+        let layer11_router_bias = exact_tensor(model, "blk.11.exp_probs_b.bias", 0, &[256])?;
+        let layer11_routed_gate =
+            exact_tensor(model, "blk.11.ffn_gate_exps.weight", 16, &[4096, 2048, 256])?;
+        let layer11_routed_up =
+            exact_tensor(model, "blk.11.ffn_up_exps.weight", 16, &[4096, 2048, 256])?;
+        let layer11_routed_down =
+            exact_tensor(model, "blk.11.ffn_down_exps.weight", 10, &[2048, 4096, 256])?;
+        let layer11_shared_gate =
+            exact_tensor(model, "blk.11.ffn_gate_shexp.weight", 8, &[4096, 2048])?;
+        let layer11_shared_up =
+            exact_tensor(model, "blk.11.ffn_up_shexp.weight", 8, &[4096, 2048])?;
+        let layer11_shared_down =
+            exact_tensor(model, "blk.11.ffn_down_shexp.weight", 8, &[2048, 4096])?;
         let tail_weights = RawPrefillLayerWeights {
             ingress: RawPrefillAttentionIngressWeights {
                 hc_fn_offset: 0,
@@ -44479,6 +44686,71 @@ mod imp {
             indexer_gate_bytes: layer10_indexer_gate.bytes,
             indexer_norm_offset: layer10_indexer_compressor_norm.absolute_offset,
             indexer_norm_bytes: layer10_indexer_compressor_norm.bytes,
+        };
+        let layer11_weights = RawPrefillLayerWeights {
+            ingress: RawPrefillAttentionIngressWeights {
+                hc_fn_offset: layer11_hc_fn.absolute_offset,
+                hc_fn_bytes: layer11_hc_fn.bytes,
+                hc_scale_offset: layer11_hc_scale.absolute_offset,
+                hc_scale_bytes: layer11_hc_scale.bytes,
+                hc_base_offset: layer11_hc_base.absolute_offset,
+                hc_base_bytes: layer11_hc_base.bytes,
+                norm_offset: layer11_norm.absolute_offset,
+                norm_bytes: layer11_norm.bytes,
+                q_a_offset: layer11_q_a.absolute_offset,
+                q_a_bytes: layer11_q_a.bytes,
+            },
+            q_a_norm_offset: layer11_q_a_norm.absolute_offset,
+            q_a_norm_bytes: layer11_q_a_norm.bytes,
+            kv_offset: layer11_kv.absolute_offset,
+            kv_bytes: layer11_kv.bytes,
+            kv_norm_offset: layer11_kv_norm.absolute_offset,
+            kv_norm_bytes: layer11_kv_norm.bytes,
+            q_b_offset: layer11_q_b.absolute_offset,
+            q_b_bytes: layer11_q_b.bytes,
+            attn_sinks_offset: layer11_sinks.absolute_offset,
+            attn_sinks_bytes: layer11_sinks.bytes,
+            attn_output_a_offset: layer11_output_a.absolute_offset,
+            attn_output_a_bytes: layer11_output_a.bytes,
+            attn_output_b_offset: layer11_output_b.absolute_offset,
+            attn_output_b_bytes: layer11_output_b.bytes,
+            ffn: RawPrefillFfnWeights {
+                hc_fn_offset: layer11_ffn_hc_fn.absolute_offset,
+                hc_fn_bytes: layer11_ffn_hc_fn.bytes,
+                hc_scale_offset: layer11_ffn_hc_scale.absolute_offset,
+                hc_scale_bytes: layer11_ffn_hc_scale.bytes,
+                hc_base_offset: layer11_ffn_hc_base.absolute_offset,
+                hc_base_bytes: layer11_ffn_hc_base.bytes,
+                norm_offset: layer11_ffn_norm.absolute_offset,
+                norm_bytes: layer11_ffn_norm.bytes,
+                router_gate_offset: layer11_router_gate.absolute_offset,
+                router_gate_bytes: layer11_router_gate.bytes,
+                router_hash_offset: layer11_router_bias.absolute_offset,
+                router_hash_bytes: layer11_router_bias.bytes,
+                routed_gate_offset: layer11_routed_gate.absolute_offset,
+                routed_gate_bytes: layer11_routed_gate.bytes,
+                routed_up_offset: layer11_routed_up.absolute_offset,
+                routed_up_bytes: layer11_routed_up.bytes,
+                routed_down_offset: layer11_routed_down.absolute_offset,
+                routed_down_bytes: layer11_routed_down.bytes,
+                shared_gate_offset: layer11_shared_gate.absolute_offset,
+                shared_gate_bytes: layer11_shared_gate.bytes,
+                shared_up_offset: layer11_shared_up.absolute_offset,
+                shared_up_bytes: layer11_shared_up.bytes,
+                shared_down_offset: layer11_shared_down.absolute_offset,
+                shared_down_bytes: layer11_shared_down.bytes,
+            },
+        };
+        let layer11_compressor = RawPrefillCompressorWeights {
+            attn_ape_offset: layer11_attn_ape.absolute_offset,
+            attn_ape_bytes: layer11_attn_ape.bytes,
+            attn_kv_offset: layer11_attn_kv.absolute_offset,
+            attn_kv_bytes: layer11_attn_kv.bytes,
+            attn_gate_offset: layer11_attn_gate.absolute_offset,
+            attn_gate_bytes: layer11_attn_gate.bytes,
+            attn_norm_offset: layer11_attn_compressor_norm.absolute_offset,
+            attn_norm_bytes: layer11_attn_compressor_norm.bytes,
+            ..RawPrefillCompressorWeights::default()
         };
         let expected_q_current = decode_f32_fixture(
             PREFILL_LAYER2_SPARSE_TRANSITION_Q_CURRENT_BYTES,
@@ -49228,6 +49500,407 @@ mod imp {
                 error_text(&error)
             )));
         }
+        let layer11_prefix_begin_succeeded = unsafe {
+            rust_star_metal_begin_prefill_layer11_prefix_rebuild(
+                context.0,
+                error.as_mut_ptr(),
+                error.len(),
+            )
+        };
+        if layer11_prefix_begin_succeeded == 0 {
+            return Err(Error::invalid(format!(
+                "Metal layer-11 prefix binding failed: {}",
+                error_text(&error)
+            )));
+        }
+        let mut layer11_prefix_raw = RawSparseIndexedResult::default();
+        let layer11_prefix_ingress_succeeded = unsafe {
+            rust_star_metal_run_prefill_layer5_prefix_ingress(
+                context.0,
+                model.mapping_pointer(),
+                model.bytes(),
+                &layer11_weights,
+                &mut layer11_prefix_raw,
+                error.as_mut_ptr(),
+                error.len(),
+            )
+        };
+        if layer11_prefix_ingress_succeeded == 0 {
+            return Err(Error::invalid(format!(
+                "Metal production-batch layer-11 prefix ingress failed: {}",
+                error_text(&error)
+            )));
+        }
+        let layer11_prefix_compressor_succeeded = unsafe {
+            rust_star_metal_run_prefill_layer3_continuation_batch_compressor(
+                context.0,
+                model.mapping_pointer(),
+                model.bytes(),
+                &layer11_compressor,
+                0,
+                &mut layer11_prefix_raw,
+                error.as_mut_ptr(),
+                error.len(),
+            )
+        };
+        if layer11_prefix_compressor_succeeded == 0 {
+            return Err(Error::invalid(format!(
+                "Metal production-batch layer-11 prefix compressor failed: {}",
+                error_text(&error)
+            )));
+        }
+        let layer11_prefix_checksum_succeeded = unsafe {
+            rust_star_metal_checksum_prefill_layer7_prefix_boundary(
+                context.0,
+                layer23_loop.layer11_prefix_boundary_checksums.as_mut_ptr(),
+                layer23_loop.layer11_prefix_boundary_checksums.len(),
+                error.as_mut_ptr(),
+                error.len(),
+            )
+        };
+        if layer11_prefix_checksum_succeeded == 0 {
+            return Err(Error::invalid(format!(
+                "Metal production-batch layer-11 prefix checksum failed: {}",
+                error_text(&error)
+            )));
+        }
+        if layer11_prefix_raw.dispatches != 17
+            || layer11_prefix_raw.wrapped_model_ranges != 13
+            || layer11_prefix_raw.pointer_matches != 13
+            || layer23_loop.layer11_prefix_boundary_checksums
+                != PREFILL_LAYER11_PREFIX_BOUNDARY_CHECKSUMS
+        {
+            return Err(Error::invalid(format!(
+                "Metal production-batch layer-11 prefix boundary is invalid: dispatches={}, mappings={}/{}, checksums={:?} expected={:?}",
+                layer11_prefix_raw.dispatches,
+                layer11_prefix_raw.pointer_matches,
+                layer11_prefix_raw.wrapped_model_ranges,
+                layer23_loop.layer11_prefix_boundary_checksums,
+                PREFILL_LAYER11_PREFIX_BOUNDARY_CHECKSUMS,
+            )));
+        }
+        layer23_loop.layer11_prefix_boundary_dispatches = layer11_prefix_raw.dispatches;
+        layer23_loop.layer11_prefix_boundary_wrapped_model_ranges =
+            layer11_prefix_raw.wrapped_model_ranges;
+        layer23_loop.layer11_prefix_boundary_pointer_matches = layer11_prefix_raw.pointer_matches;
+        let layer11_prefix_attention_succeeded = unsafe {
+            rust_star_metal_run_prefill_layer3_continuation_batch_attention(
+                context.0,
+                model.mapping_pointer(),
+                model.bytes(),
+                layer11_sinks.absolute_offset,
+                layer11_sinks.bytes,
+                0,
+                &mut layer11_prefix_raw,
+                error.as_mut_ptr(),
+                error.len(),
+            )
+        };
+        if layer11_prefix_attention_succeeded == 0 {
+            return Err(Error::invalid(format!(
+                "Metal production-batch layer-11 prefix attention failed: {}",
+                error_text(&error)
+            )));
+        }
+        let layer11_prefix_tail_succeeded = unsafe {
+            rust_star_metal_run_prefill_layer2_continuation_tail(
+                context.0,
+                model.mapping_pointer(),
+                model.bytes(),
+                &layer11_weights,
+                5,
+                0,
+                4_096,
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                &mut layer11_prefix_raw,
+                error.as_mut_ptr(),
+                error.len(),
+            )
+        };
+        if layer11_prefix_tail_succeeded == 0 {
+            return Err(Error::invalid(format!(
+                "Metal production-batch layer-11 prefix attention/FFN tail failed: {}",
+                error_text(&error)
+            )));
+        }
+        let layer11_prefix_tail_checksum_succeeded = unsafe {
+            rust_star_metal_checksum_prefill_layer5_prefix_tail(
+                context.0,
+                layer23_loop.layer11_prefix_tail_checksums.as_mut_ptr(),
+                layer23_loop.layer11_prefix_tail_checksums.len(),
+                error.as_mut_ptr(),
+                error.len(),
+            )
+        };
+        if layer11_prefix_tail_checksum_succeeded == 0 {
+            return Err(Error::invalid(format!(
+                "Metal production-batch layer-11 prefix tail checksum failed: {}",
+                error_text(&error)
+            )));
+        }
+        if layer11_prefix_raw.dispatches != 49
+            || layer11_prefix_raw.wrapped_model_ranges != 28
+            || layer11_prefix_raw.pointer_matches != 28
+            || layer23_loop.layer11_prefix_tail_checksums != PREFILL_LAYER11_PREFIX_TAIL_CHECKSUMS
+        {
+            return Err(Error::invalid(format!(
+                "Metal complete layer-11 prefix is invalid: dispatches={}, mappings={}/{}, checksums={:?} expected={:?}",
+                layer11_prefix_raw.dispatches,
+                layer11_prefix_raw.pointer_matches,
+                layer11_prefix_raw.wrapped_model_ranges,
+                layer23_loop.layer11_prefix_tail_checksums,
+                PREFILL_LAYER11_PREFIX_TAIL_CHECKSUMS,
+            )));
+        }
+        layer23_loop.layer11_prefix_complete_dispatches = layer11_prefix_raw.dispatches;
+        layer23_loop.layer11_prefix_complete_wrapped_model_ranges =
+            layer11_prefix_raw.wrapped_model_ranges;
+        layer23_loop.layer11_prefix_complete_pointer_matches = layer11_prefix_raw.pointer_matches;
+
+        let layer11_continuation_begin_succeeded = unsafe {
+            rust_star_metal_begin_prefill_layer11_continuation(
+                context.0,
+                error.as_mut_ptr(),
+                error.len(),
+            )
+        };
+        if layer11_continuation_begin_succeeded == 0 {
+            return Err(Error::invalid(format!(
+                "Metal layer-11 continuation binding failed: {}",
+                error_text(&error)
+            )));
+        }
+        layer23_loop.layer11_continuation_ingress_checksums = [0xcbf2_9ce4_8422_2325_u64; 4];
+        for tile_start in (4_096_u32..=8_160_u32).step_by(32) {
+            let prepared = unsafe {
+                rust_star_metal_prepare_prefill_layer5_continuation_tile(
+                    context.0,
+                    tile_start,
+                    error.as_mut_ptr(),
+                    error.len(),
+                )
+            };
+            if prepared == 0 {
+                return Err(Error::invalid(format!(
+                    "Metal layer-11 continuation tile {tile_start} staging failed: {}",
+                    error_text(&error)
+                )));
+            }
+            let mut tile = RawSparseIndexedResult::default();
+            let ingress_succeeded = unsafe {
+                rust_star_metal_run_prefill_layer3_continuation_ingress(
+                    context.0,
+                    model.mapping_pointer(),
+                    model.bytes(),
+                    &layer11_weights,
+                    tile_start,
+                    layer5_hc_attn_pre.as_mut_ptr(),
+                    layer5_attn_norm.as_mut_ptr(),
+                    layer5_q_lora.as_mut_ptr(),
+                    layer5_q_lora_norm.as_mut_ptr(),
+                    layer5_kv_raw.as_mut_ptr(),
+                    layer5_kv_norm.as_mut_ptr(),
+                    layer5_q_current.as_mut_ptr(),
+                    layer5_kv_rope.as_mut_ptr(),
+                    layer5_kv_current.as_mut_ptr(),
+                    &mut tile,
+                    error.as_mut_ptr(),
+                    error.len(),
+                )
+            };
+            if ingress_succeeded == 0 {
+                return Err(Error::invalid(format!(
+                    "Metal layer-11 continuation ingress tile {tile_start} failed: {}",
+                    error_text(&error)
+                )));
+            }
+            let checksums = &mut layer23_loop.layer11_continuation_ingress_checksums;
+            checksums[0] = extend_checksum_f32(checksums[0], &layer5_hc_attn_pre);
+            checksums[1] = extend_checksum_f32(checksums[1], &layer5_attn_norm);
+            checksums[2] = extend_checksum_f32(checksums[2], &layer5_q_current);
+            checksums[3] = extend_checksum_f32(checksums[3], &layer5_kv_current);
+            layer23_loop.layer11_continuation_tiles += 1;
+            layer23_loop.layer11_continuation_dispatches += tile.dispatches;
+            layer23_loop.layer11_continuation_wrapped_model_ranges += tile.wrapped_model_ranges;
+            layer23_loop.layer11_continuation_pointer_matches += tile.pointer_matches;
+            layer23_loop.wall_ms += tile.wall_ms;
+            layer23_loop.gpu_ms += tile.gpu_ms;
+        }
+        let mut layer11_production = RawSparseIndexedResult::default();
+        let layer11_compressor_succeeded = unsafe {
+            rust_star_metal_run_prefill_layer3_continuation_batch_compressor(
+                context.0,
+                model.mapping_pointer(),
+                model.bytes(),
+                &layer11_compressor,
+                4_096,
+                &mut layer11_production,
+                error.as_mut_ptr(),
+                error.len(),
+            )
+        };
+        if layer11_compressor_succeeded == 0 {
+            return Err(Error::invalid(format!(
+                "Metal production-batch layer-11 compressor failed: {}",
+                error_text(&error)
+            )));
+        }
+        let layer11_compressor_finish_succeeded = unsafe {
+            rust_star_metal_finish_prefill_layer5_continuation(
+                context.0,
+                &mut layer23_loop.layer11_continuation_compressed_checksum,
+                1,
+                error.as_mut_ptr(),
+                error.len(),
+            )
+        };
+        if layer11_compressor_finish_succeeded == 0 {
+            return Err(Error::invalid(format!(
+                "Metal complete layer-11 continuation checksum failed: {}",
+                error_text(&error)
+            )));
+        }
+        let layer11_attention_succeeded = unsafe {
+            rust_star_metal_run_prefill_layer3_continuation_batch_attention(
+                context.0,
+                model.mapping_pointer(),
+                model.bytes(),
+                layer11_sinks.absolute_offset,
+                layer11_sinks.bytes,
+                4_096,
+                &mut layer11_production,
+                error.as_mut_ptr(),
+                error.len(),
+            )
+        };
+        if layer11_attention_succeeded == 0 {
+            return Err(Error::invalid(format!(
+                "Metal production-batch layer-11 continuation attention failed: {}",
+                error_text(&error)
+            )));
+        }
+        let layer11_tail_succeeded = unsafe {
+            rust_star_metal_run_prefill_layer2_continuation_tail(
+                context.0,
+                model.mapping_pointer(),
+                model.bytes(),
+                &layer11_weights,
+                5,
+                4_096,
+                4_096,
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                &mut layer11_production,
+                error.as_mut_ptr(),
+                error.len(),
+            )
+        };
+        if layer11_tail_succeeded == 0 {
+            return Err(Error::invalid(format!(
+                "Metal production-batch layer-11 continuation attention/FFN tail failed: {}",
+                error_text(&error)
+            )));
+        }
+        let layer11_tail_checksum_succeeded = unsafe {
+            rust_star_metal_checksum_prefill_layer5_continuation_tail(
+                context.0,
+                layer23_loop
+                    .layer11_continuation_tail_checksums
+                    .as_mut_ptr(),
+                layer23_loop.layer11_continuation_tail_checksums.len(),
+                error.as_mut_ptr(),
+                error.len(),
+            )
+        };
+        if layer11_tail_checksum_succeeded == 0 {
+            return Err(Error::invalid(format!(
+                "Metal production-batch layer-11 continuation tail checksum failed: {}",
+                error_text(&error)
+            )));
+        }
+        if layer11_production.dispatches != 38
+            || layer11_production.wrapped_model_ranges != 19
+            || layer11_production.pointer_matches != 19
+            || layer23_loop.layer11_continuation_tail_checksums
+                != PREFILL_LAYER11_CONTINUATION_TAIL_CHECKSUMS
+        {
+            return Err(Error::invalid(format!(
+                "Metal complete layer-11 continuation is invalid: dispatches={}, mappings={}/{}, checksums={:?} expected={:?}",
+                layer11_production.dispatches,
+                layer11_production.pointer_matches,
+                layer11_production.wrapped_model_ranges,
+                layer23_loop.layer11_continuation_tail_checksums,
+                PREFILL_LAYER11_CONTINUATION_TAIL_CHECKSUMS,
+            )));
+        }
+        layer23_loop.layer11_continuation_complete_dispatches = layer11_production.dispatches;
+        layer23_loop.layer11_continuation_complete_wrapped_model_ranges =
+            layer11_production.wrapped_model_ranges;
+        layer23_loop.layer11_continuation_complete_pointer_matches =
+            layer11_production.pointer_matches;
+        layer23_loop.layer11_continuation_dispatches += layer11_production.dispatches;
+        layer23_loop.layer11_continuation_wrapped_model_ranges +=
+            layer11_production.wrapped_model_ranges;
+        layer23_loop.layer11_continuation_pointer_matches += layer11_production.pointer_matches;
+        layer23_loop.wall_ms += layer11_production.wall_ms;
+        layer23_loop.gpu_ms += layer11_production.gpu_ms;
+        if layer23_loop.layer11_continuation_tiles != 128
+            || layer23_loop.layer11_continuation_dispatches != 1_318
+            || layer23_loop.layer11_continuation_wrapped_model_ranges != 1_171
+            || layer23_loop.layer11_continuation_pointer_matches != 1_171
+            || layer23_loop.layer11_continuation_ingress_checksums
+                != PREFILL_LAYER11_CONTINUATION_INGRESS_CHECKSUMS
+            || layer23_loop.layer11_continuation_compressed_checksum
+                != PREFILL_LAYER11_CONTINUATION_COMPRESSED_CHECKSUM
+        {
+            return Err(Error::invalid(format!(
+                "Metal layer-11 continuation boundary is invalid: tiles={}, dispatches={}, mappings={}/{}, ingress={:?} expected={:?}, compressed={} expected={}",
+                layer23_loop.layer11_continuation_tiles,
+                layer23_loop.layer11_continuation_dispatches,
+                layer23_loop.layer11_continuation_pointer_matches,
+                layer23_loop.layer11_continuation_wrapped_model_ranges,
+                layer23_loop.layer11_continuation_ingress_checksums,
+                PREFILL_LAYER11_CONTINUATION_INGRESS_CHECKSUMS,
+                layer23_loop.layer11_continuation_compressed_checksum,
+                PREFILL_LAYER11_CONTINUATION_COMPRESSED_CHECKSUM,
+            )));
+        }
+        let layer11_finish_succeeded = unsafe {
+            rust_star_metal_finish_prefill_layer11_rebuild(
+                context.0,
+                error.as_mut_ptr(),
+                error.len(),
+            )
+        };
+        if layer11_finish_succeeded == 0 {
+            return Err(Error::invalid(format!(
+                "Metal layer-11 rebuild finalization failed: {}",
+                error_text(&error)
+            )));
+        }
         layer23_loop.wall_ms += layer6_prefix_raw.wall_ms
             + layer6_prefix_complete_raw.wall_ms
             + layer6_continuation_raw.wall_ms
@@ -49238,7 +49911,8 @@ mod imp {
             + layer9_prefix_raw.wall_ms
             + layer10_prefix_raw.wall_ms
             + layer10_prefix_complete_raw.wall_ms
-            + layer10_continuation_raw.wall_ms;
+            + layer10_continuation_raw.wall_ms
+            + layer11_prefix_raw.wall_ms;
         layer23_loop.gpu_ms += layer6_prefix_raw.gpu_ms
             + layer6_prefix_complete_raw.gpu_ms
             + layer6_continuation_raw.gpu_ms
@@ -49249,7 +49923,8 @@ mod imp {
             + layer9_prefix_raw.gpu_ms
             + layer10_prefix_raw.gpu_ms
             + layer10_prefix_complete_raw.gpu_ms
-            + layer10_continuation_raw.gpu_ms;
+            + layer10_continuation_raw.gpu_ms
+            + layer11_prefix_raw.gpu_ms;
         Ok((
             SparseIndexedAttentionProbeReport {
                 fixture_id: PREFILL_LAYER2_SPARSE_TRANSITION_FIXTURE_ID,
@@ -58834,6 +59509,25 @@ mod tests {
             layer10_continuation_wrapped_model_ranges: 2_176,
             layer10_continuation_pointer_matches: 2_176,
             layer10_continuation_tail_checksums: PREFILL_LAYER10_CONTINUATION_TAIL_CHECKSUMS,
+            layer11_prefix_boundary_dispatches: 17,
+            layer11_prefix_boundary_wrapped_model_ranges: 13,
+            layer11_prefix_boundary_pointer_matches: 13,
+            layer11_prefix_boundary_checksums: PREFILL_LAYER11_PREFIX_BOUNDARY_CHECKSUMS,
+            layer11_prefix_complete_dispatches: 49,
+            layer11_prefix_complete_wrapped_model_ranges: 28,
+            layer11_prefix_complete_pointer_matches: 28,
+            layer11_prefix_tail_checksums: PREFILL_LAYER11_PREFIX_TAIL_CHECKSUMS,
+            layer11_continuation_tiles: 128,
+            layer11_continuation_dispatches: 1_318,
+            layer11_continuation_wrapped_model_ranges: 1_171,
+            layer11_continuation_pointer_matches: 1_171,
+            layer11_continuation_ingress_checksums: PREFILL_LAYER11_CONTINUATION_INGRESS_CHECKSUMS,
+            layer11_continuation_compressed_checksum:
+                PREFILL_LAYER11_CONTINUATION_COMPRESSED_CHECKSUM,
+            layer11_continuation_complete_dispatches: 38,
+            layer11_continuation_complete_wrapped_model_ranges: 19,
+            layer11_continuation_complete_pointer_matches: 19,
+            layer11_continuation_tail_checksums: PREFILL_LAYER11_CONTINUATION_TAIL_CHECKSUMS,
         };
         let mut output = Vec::new();
         write_long_prefill_continuation_bootstrap_probe_json(&mut output, &report).unwrap();
@@ -58948,6 +59642,14 @@ mod tests {
         assert!(text.contains("\"complete_layer10_prefix_c0_claim\": true"));
         assert!(text.contains("\"complete_layer10_continuation_c0_claim\": true"));
         assert!(text.contains("\"complete_layer10_prefill_claim\": true"));
+        assert!(text.contains("\"layer11_prefix_complete\": {\"start\": 0"));
+        assert!(text.contains("\"ingress_qkv_compressor\": {\"dispatches\": 17"));
+        assert!(text.contains("\"layer11_continuation_complete\": {\"start\": 4096"));
+        assert!(text.contains("\"combined_dispatches\": 1318"));
+        assert!(text.contains("\"production_tail\": {\"dispatches\": 38"));
+        assert!(text.contains("\"complete_layer11_prefix_c0_claim\": true"));
+        assert!(text.contains("\"complete_layer11_continuation_c0_claim\": true"));
+        assert!(text.contains("\"complete_layer11_prefill_claim\": true"));
         assert!(text.contains("\"complete_layer23_second_chunk_c0_claim\": true"));
         assert!(text.contains("\"layer2_sparse_transition_c0_claim\": true"));
         assert!(text.contains("\"selection_kernel\": \"kernel_topk_stream512\""));

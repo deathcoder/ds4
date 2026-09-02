@@ -409,7 +409,7 @@ runs dense mixed attention, inverse RoPE, attention output, biased
 routed/shared FFN, and final HC bit-for-bit for positions 4,096--4,127. The
 connected layer-3 tile uses 76 dispatches, preserves 28/28 no-copy mappings,
 and checks 17 state and downstream outputs. The report schema is
-`rust-star-long-prefill-continuation-bootstrap-probe-v25`. The same retained
+`rust-star-long-prefill-continuation-bootstrap-probe-v26`. The same retained
 context then continues positions 4,128--4,159 through another exact complete
 layer-2/layer-3 pair. The second layer-2 tile reuses the native Q batch and
 position-aware raw ring; layer 3 consumes the first tile's GPU-appended KV and
@@ -495,9 +495,14 @@ repeated oracle. The report therefore claims complete retained layers 2 through
 ratio-4 path. Both ingress/QKV/paired-compressor boundaries use 40 dispatches
 and 17/17 mappings and match all 20 hashes. The 36-dispatch prefix tail and all
 128 continuation sparse-attention/FFN tiles match six more hashes over
-2,176/2,176 continuation mappings. The report therefore claims complete
-retained layers 2 through 10, but not layers 11--42, the complete 8K
-transformer, output-logit C0, throughput, or a speedup.
+2,176/2,176 continuation mappings. Version 26 preserves those exact prefix and
+continuation HC buffers and executes layer 11 through ratio-128 ingress/QKV,
+compression, padded Flash attention, and FFN. Its 49-dispatch prefix preserves
+28/28 mappings; its 128 continuation tiles plus production tail use 1,318
+dispatches and 1,171/1,171 mappings. All 16 boundary and tail hashes match the
+repeated oracle. The report therefore claims complete retained layers 2 through
+11, but not layers 12--42, the complete 8K transformer, output-logit C0,
+throughput, or a speedup.
 
 The repair has two parts. At 4K, layer 2 has 1,024 ratio-4 compressed rows and
 must use DwarfStar's indexed top-512 path rather than dense mixed attention.
