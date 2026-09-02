@@ -29,7 +29,7 @@ pub const PREFILL_LAYERS012_COMPRESSOR_LOOP_PROBE_SCHEMA: &str =
     "rust-star-prefill-layers012-compressor-loop-probe-v1";
 pub const LONG_PREFILL_BOOTSTRAP_PROBE_SCHEMA: &str = "rust-star-long-prefill-bootstrap-probe-v1";
 pub const LONG_PREFILL_CONTINUATION_BOOTSTRAP_PROBE_SCHEMA: &str =
-    "rust-star-long-prefill-continuation-bootstrap-probe-v22";
+    "rust-star-long-prefill-continuation-bootstrap-probe-v23";
 pub const LONG_PREFILL_SEQUENTIAL_CONTINUATION_PROBE_SCHEMA: &str =
     "rust-star-long-prefill-sequential-continuation-probe-v1";
 pub const LONG_PREFILL_TRANSFORMER_PROBE_SCHEMA: &str =
@@ -275,6 +275,40 @@ const PREFILL_LAYER7_CONTINUATION_TAIL_CHECKSUMS: [u64; 3] = [
     0xb9ce_7162_07e1_4336,
     0x7029_b73d_3f3d_68d1,
     0x279a_17d6_6c87_09b7,
+];
+const PREFILL_LAYER8_PREFIX_BOUNDARY_CHECKSUMS: [u64; 10] = [
+    0xfff4_e1e8_026f_77c6,
+    0x8c0a_f40e_6c2d_0482,
+    0xd707_2dae_6ae2_5858,
+    0xb2a3_bc60_3b96_f8be,
+    0xff15_0ecf_cb45_8bb0,
+    0x0ee7_6d00_f8d1_12f3,
+    0x0b26_4a2a_e9f7_0751,
+    0x0c99_7f0e_230a_2325,
+    0xb5e7_c66f_d5b1_43f7,
+    0x034f_d4b8_4524_ade1,
+];
+const PREFILL_LAYER8_CONTINUATION_BOUNDARY_CHECKSUMS: [u64; 10] = [
+    0x2165_09a4_c45e_cc2d,
+    0x8735_810f_6a91_f86c,
+    0xddb5_f091_34c3_ca07,
+    0xf37d_43f8_dfed_c02c,
+    0xef06_0ff4_a678_c339,
+    0x42ed_ec20_9ed6_0535,
+    0x3adc_f0bd_078a_381b,
+    0x7b43_d3d3_47ca_2325,
+    0xf2de_0110_b8b0_cc7c,
+    0x6e29_a8e4_caa2_a955,
+];
+const PREFILL_LAYER8_PREFIX_TAIL_CHECKSUMS: [u64; 3] = [
+    0x2356_e995_71e9_950e,
+    0xbfe3_1c89_4e28_b696,
+    0x0431_150c_c6f9_e4cf,
+];
+const PREFILL_LAYER8_CONTINUATION_TAIL_CHECKSUMS: [u64; 3] = [
+    0x5af7_c610_e7f9_9be9,
+    0x19a1_e3ad_a331_2574,
+    0x61ed_a03e_3636_1369,
 ];
 const PREFILL_LAYER5_CONTINUATION_INGRESS_CHECKSUMS: [u64; 9] = [
     0x053c_21ea_4926_a68d,
@@ -4083,6 +4117,23 @@ pub struct LongPrefillContinuationBootstrapProbeReport {
     pub layer7_continuation_complete_wrapped_model_ranges: u32,
     pub layer7_continuation_complete_pointer_matches: u32,
     pub layer7_continuation_tail_checksums: [u64; 3],
+    pub layer8_prefix_boundary_dispatches: u32,
+    pub layer8_prefix_boundary_wrapped_model_ranges: u32,
+    pub layer8_prefix_boundary_pointer_matches: u32,
+    pub layer8_prefix_boundary_checksums: [u64; 10],
+    pub layer8_continuation_boundary_dispatches: u32,
+    pub layer8_continuation_boundary_wrapped_model_ranges: u32,
+    pub layer8_continuation_boundary_pointer_matches: u32,
+    pub layer8_continuation_boundary_checksums: [u64; 10],
+    pub layer8_prefix_complete_dispatches: u32,
+    pub layer8_prefix_complete_wrapped_model_ranges: u32,
+    pub layer8_prefix_complete_pointer_matches: u32,
+    pub layer8_prefix_tail_checksums: [u64; 3],
+    pub layer8_continuation_tiles: u32,
+    pub layer8_continuation_dispatches: u32,
+    pub layer8_continuation_wrapped_model_ranges: u32,
+    pub layer8_continuation_pointer_matches: u32,
+    pub layer8_continuation_tail_checksums: [u64; 3],
 }
 
 #[derive(Clone, Debug)]
@@ -8237,6 +8288,28 @@ fn write_long_prefill_continuation_bootstrap_probe_json_payload<W: Write>(
         || report.layer7_continuation_complete_pointer_matches
             != report.layer7_continuation_complete_wrapped_model_ranges
         || report.layer7_continuation_tail_checksums != PREFILL_LAYER7_CONTINUATION_TAIL_CHECKSUMS
+        || report.layer8_prefix_boundary_dispatches != 40
+        || report.layer8_prefix_boundary_wrapped_model_ranges != 17
+        || report.layer8_prefix_boundary_pointer_matches
+            != report.layer8_prefix_boundary_wrapped_model_ranges
+        || report.layer8_prefix_boundary_checksums != PREFILL_LAYER8_PREFIX_BOUNDARY_CHECKSUMS
+        || report.layer8_continuation_boundary_dispatches != 40
+        || report.layer8_continuation_boundary_wrapped_model_ranges != 17
+        || report.layer8_continuation_boundary_pointer_matches
+            != report.layer8_continuation_boundary_wrapped_model_ranges
+        || report.layer8_continuation_boundary_checksums
+            != PREFILL_LAYER8_CONTINUATION_BOUNDARY_CHECKSUMS
+        || report.layer8_prefix_complete_dispatches != 36
+        || report.layer8_prefix_complete_wrapped_model_ranges != 17
+        || report.layer8_prefix_complete_pointer_matches
+            != report.layer8_prefix_complete_wrapped_model_ranges
+        || report.layer8_prefix_tail_checksums != PREFILL_LAYER8_PREFIX_TAIL_CHECKSUMS
+        || report.layer8_continuation_tiles != 128
+        || report.layer8_continuation_dispatches != 4_608
+        || report.layer8_continuation_wrapped_model_ranges != 2_176
+        || report.layer8_continuation_pointer_matches
+            != report.layer8_continuation_wrapped_model_ranges
+        || report.layer8_continuation_tail_checksums != PREFILL_LAYER8_CONTINUATION_TAIL_CHECKSUMS
         || !report.sparse_transition.wall_ms.is_finite()
         || !report.sparse_transition.gpu_ms.is_finite()
         || report.sparse_transition.wall_ms <= 0.0
@@ -8570,6 +8643,36 @@ pub fn write_long_prefill_continuation_bootstrap_probe_json<W: Write>(
         &(layer7_insertion + checksums_boundary),
         1,
     );
+    let layer8_insertion = format!(
+        "  \"layer8_boundaries\": {{\"prefix\": {{\"start\": 0, \"rows\": 4096, \"dispatches\": {}, \"wrapped_model_ranges\": {}, \"pointer_matches\": {}, \"checksums\": {:?}, \"c0_bitwise_match\": true}}, \"continuation\": {{\"start\": 4096, \"rows\": 4096, \"dispatches\": {}, \"wrapped_model_ranges\": {}, \"pointer_matches\": {}, \"checksums\": {:?}, \"c0_bitwise_match\": true}}, \"boundary\": \"ingress_qkv_paired_ratio4_compressors\"}},\n  \"layer8_prefix_complete\": {{\"start\": 0, \"rows\": 4096, \"combined_dispatches\": {}, \"wrapped_model_ranges\": {}, \"pointer_matches\": {}, \"tail_checksums\": {:?}, \"sparse_attention_c0_claim\": true, \"ffn_c0_claim\": true, \"complete_prefix_c0_claim\": true}},\n  \"layer8_continuation_complete\": {{\"start\": 4096, \"rows\": 4096, \"tile_rows\": 32, \"tiles\": {}, \"dispatches\": {}, \"wrapped_model_ranges\": {}, \"pointer_matches\": {}, \"tail_checksums\": {:?}, \"sparse_attention_c0_claim\": true, \"ffn_c0_claim\": true, \"complete_continuation_c0_claim\": true}},\n",
+        report.layer8_prefix_boundary_dispatches,
+        report.layer8_prefix_boundary_wrapped_model_ranges,
+        report.layer8_prefix_boundary_pointer_matches,
+        report.layer8_prefix_boundary_checksums,
+        report.layer8_continuation_boundary_dispatches,
+        report.layer8_continuation_boundary_wrapped_model_ranges,
+        report.layer8_continuation_boundary_pointer_matches,
+        report.layer8_continuation_boundary_checksums,
+        report.layer8_prefix_complete_dispatches,
+        report.layer8_prefix_complete_wrapped_model_ranges,
+        report.layer8_prefix_complete_pointer_matches,
+        report.layer8_prefix_tail_checksums,
+        report.layer8_continuation_tiles,
+        report.layer8_continuation_dispatches,
+        report.layer8_continuation_wrapped_model_ranges,
+        report.layer8_continuation_pointer_matches,
+        report.layer8_continuation_tail_checksums,
+    );
+    if !rendered.contains(checksums_boundary) {
+        return Err(Error::invalid(
+            "long-prefill continuation bootstrap JSON lost the layer-8 insertion boundary",
+        ));
+    }
+    let rendered = rendered.replacen(
+        checksums_boundary,
+        &(layer8_insertion + checksums_boundary),
+        1,
+    );
     let complete_layer5_claim = "  \"complete_layer5_prefill_claim\": true,";
     let layer6_claim = "  \"complete_layer5_prefill_claim\": true,\n  \"layer6_ingress_qkv_paired_compressors_c0_claim\": true,\n  \"complete_layer6_prefix_c0_claim\": true,\n  \"complete_layer6_continuation_c0_claim\": true,\n  \"complete_layer6_prefill_claim\": true,";
     if !rendered.contains(complete_layer5_claim) {
@@ -8586,6 +8689,14 @@ pub fn write_long_prefill_continuation_bootstrap_probe_json<W: Write>(
         ));
     }
     let rendered = rendered.replacen(complete_layer6_claim, layer7_claim, 1);
+    let complete_layer7_claim = "  \"complete_layer7_prefill_claim\": true,";
+    let layer8_claim = "  \"complete_layer7_prefill_claim\": true,\n  \"layer8_ingress_qkv_paired_compressors_c0_claim\": true,\n  \"complete_layer8_prefix_c0_claim\": true,\n  \"complete_layer8_continuation_c0_claim\": true,\n  \"complete_layer8_prefill_claim\": true,";
+    if !rendered.contains(complete_layer7_claim) {
+        return Err(Error::invalid(
+            "long-prefill continuation bootstrap JSON lost the complete layer-7 claim",
+        ));
+    }
+    let rendered = rendered.replacen(complete_layer7_claim, layer8_claim, 1);
     output.write_all(rendered.as_bytes())?;
     Ok(())
 }
@@ -21600,6 +21711,23 @@ mod imp {
         layer7_continuation_complete_wrapped_model_ranges: u32,
         layer7_continuation_complete_pointer_matches: u32,
         layer7_continuation_tail_checksums: [u64; 3],
+        layer8_prefix_boundary_dispatches: u32,
+        layer8_prefix_boundary_wrapped_model_ranges: u32,
+        layer8_prefix_boundary_pointer_matches: u32,
+        layer8_prefix_boundary_checksums: [u64; 10],
+        layer8_continuation_boundary_dispatches: u32,
+        layer8_continuation_boundary_wrapped_model_ranges: u32,
+        layer8_continuation_boundary_pointer_matches: u32,
+        layer8_continuation_boundary_checksums: [u64; 10],
+        layer8_prefix_complete_dispatches: u32,
+        layer8_prefix_complete_wrapped_model_ranges: u32,
+        layer8_prefix_complete_pointer_matches: u32,
+        layer8_prefix_tail_checksums: [u64; 3],
+        layer8_continuation_tiles: u32,
+        layer8_continuation_dispatches: u32,
+        layer8_continuation_wrapped_model_ranges: u32,
+        layer8_continuation_pointer_matches: u32,
+        layer8_continuation_tail_checksums: [u64; 3],
         wall_ms: f64,
         gpu_ms: f64,
     }
@@ -23507,6 +23635,21 @@ mod imp {
             error_bytes: usize,
         ) -> i32;
         fn rust_star_metal_finish_prefill_layer7_rebuild(
+            context: *mut c_void,
+            error: *mut c_char,
+            error_bytes: usize,
+        ) -> i32;
+        fn rust_star_metal_begin_prefill_layer8_rebuild(
+            context: *mut c_void,
+            error: *mut c_char,
+            error_bytes: usize,
+        ) -> i32;
+        fn rust_star_metal_retain_prefill_layer8_prefix_hc(
+            context: *mut c_void,
+            error: *mut c_char,
+            error_bytes: usize,
+        ) -> i32;
+        fn rust_star_metal_finish_prefill_layer8_rebuild(
             context: *mut c_void,
             error: *mut c_char,
             error_bytes: usize,
@@ -27057,6 +27200,32 @@ mod imp {
             layer7_continuation_complete_pointer_matches: layer23_loop
                 .layer7_continuation_complete_pointer_matches,
             layer7_continuation_tail_checksums: layer23_loop.layer7_continuation_tail_checksums,
+            layer8_prefix_boundary_dispatches: layer23_loop.layer8_prefix_boundary_dispatches,
+            layer8_prefix_boundary_wrapped_model_ranges: layer23_loop
+                .layer8_prefix_boundary_wrapped_model_ranges,
+            layer8_prefix_boundary_pointer_matches: layer23_loop
+                .layer8_prefix_boundary_pointer_matches,
+            layer8_prefix_boundary_checksums: layer23_loop.layer8_prefix_boundary_checksums,
+            layer8_continuation_boundary_dispatches: layer23_loop
+                .layer8_continuation_boundary_dispatches,
+            layer8_continuation_boundary_wrapped_model_ranges: layer23_loop
+                .layer8_continuation_boundary_wrapped_model_ranges,
+            layer8_continuation_boundary_pointer_matches: layer23_loop
+                .layer8_continuation_boundary_pointer_matches,
+            layer8_continuation_boundary_checksums: layer23_loop
+                .layer8_continuation_boundary_checksums,
+            layer8_prefix_complete_dispatches: layer23_loop.layer8_prefix_complete_dispatches,
+            layer8_prefix_complete_wrapped_model_ranges: layer23_loop
+                .layer8_prefix_complete_wrapped_model_ranges,
+            layer8_prefix_complete_pointer_matches: layer23_loop
+                .layer8_prefix_complete_pointer_matches,
+            layer8_prefix_tail_checksums: layer23_loop.layer8_prefix_tail_checksums,
+            layer8_continuation_tiles: layer23_loop.layer8_continuation_tiles,
+            layer8_continuation_dispatches: layer23_loop.layer8_continuation_dispatches,
+            layer8_continuation_wrapped_model_ranges: layer23_loop
+                .layer8_continuation_wrapped_model_ranges,
+            layer8_continuation_pointer_matches: layer23_loop.layer8_continuation_pointer_matches,
+            layer8_continuation_tail_checksums: layer23_loop.layer8_continuation_tail_checksums,
         })
     }
 
@@ -43219,6 +43388,59 @@ mod imp {
         let layer7_shared_up = exact_tensor(model, "blk.7.ffn_up_shexp.weight", 8, &[4096, 2048])?;
         let layer7_shared_down =
             exact_tensor(model, "blk.7.ffn_down_shexp.weight", 8, &[2048, 4096])?;
+        let layer8_hc_fn = exact_tensor(model, "blk.8.hc_attn_fn.weight", 1, &[16384, 24])?;
+        let layer8_hc_scale = exact_tensor(model, "blk.8.hc_attn_scale.weight", 0, &[3])?;
+        let layer8_hc_base = exact_tensor(model, "blk.8.hc_attn_base.weight", 0, &[24])?;
+        let layer8_norm = exact_tensor(model, "blk.8.attn_norm.weight", 0, &[4096])?;
+        let layer8_q_a = exact_tensor(model, "blk.8.attn_q_a.weight", 8, &[4096, 1024])?;
+        let layer8_q_a_norm = exact_tensor(model, "blk.8.attn_q_a_norm.weight", 0, &[1024])?;
+        let layer8_kv = exact_tensor(model, "blk.8.attn_kv.weight", 8, &[4096, 512])?;
+        let layer8_kv_norm = exact_tensor(model, "blk.8.attn_kv_a_norm.weight", 0, &[512])?;
+        let layer8_q_b = exact_tensor(model, "blk.8.attn_q_b.weight", 8, &[1024, 32768])?;
+        let layer8_attn_ape =
+            exact_tensor(model, "blk.8.attn_compressor_ape.weight", 1, &[1024, 4])?;
+        let layer8_attn_kv =
+            exact_tensor(model, "blk.8.attn_compressor_kv.weight", 1, &[4096, 1024])?;
+        let layer8_attn_gate =
+            exact_tensor(model, "blk.8.attn_compressor_gate.weight", 1, &[4096, 1024])?;
+        let layer8_attn_compressor_norm =
+            exact_tensor(model, "blk.8.attn_compressor_norm.weight", 0, &[512])?;
+        let layer8_indexer_ape =
+            exact_tensor(model, "blk.8.indexer_compressor_ape.weight", 1, &[256, 4])?;
+        let layer8_indexer_kv =
+            exact_tensor(model, "blk.8.indexer_compressor_kv.weight", 1, &[4096, 256])?;
+        let layer8_indexer_gate = exact_tensor(
+            model,
+            "blk.8.indexer_compressor_gate.weight",
+            1,
+            &[4096, 256],
+        )?;
+        let layer8_indexer_compressor_norm =
+            exact_tensor(model, "blk.8.indexer_compressor_norm.weight", 0, &[128])?;
+        let layer8_indexer_q =
+            exact_tensor(model, "blk.8.indexer.attn_q_b.weight", 1, &[1024, 8192])?;
+        let layer8_indexer_weight =
+            exact_tensor(model, "blk.8.indexer.proj.weight", 1, &[4096, 64])?;
+        let layer8_sinks = exact_tensor(model, "blk.8.attn_sinks.weight", 0, &[64])?;
+        let layer8_output_a = exact_tensor(model, "blk.8.attn_output_a.weight", 8, &[4096, 8192])?;
+        let layer8_output_b = exact_tensor(model, "blk.8.attn_output_b.weight", 8, &[8192, 4096])?;
+        let layer8_ffn_hc_fn = exact_tensor(model, "blk.8.hc_ffn_fn.weight", 1, &[16384, 24])?;
+        let layer8_ffn_hc_scale = exact_tensor(model, "blk.8.hc_ffn_scale.weight", 0, &[3])?;
+        let layer8_ffn_hc_base = exact_tensor(model, "blk.8.hc_ffn_base.weight", 0, &[24])?;
+        let layer8_ffn_norm = exact_tensor(model, "blk.8.ffn_norm.weight", 0, &[4096])?;
+        let layer8_router_gate = exact_tensor(model, "blk.8.ffn_gate_inp.weight", 1, &[4096, 256])?;
+        let layer8_router_bias = exact_tensor(model, "blk.8.exp_probs_b.bias", 0, &[256])?;
+        let layer8_routed_gate =
+            exact_tensor(model, "blk.8.ffn_gate_exps.weight", 16, &[4096, 2048, 256])?;
+        let layer8_routed_up =
+            exact_tensor(model, "blk.8.ffn_up_exps.weight", 16, &[4096, 2048, 256])?;
+        let layer8_routed_down =
+            exact_tensor(model, "blk.8.ffn_down_exps.weight", 10, &[2048, 4096, 256])?;
+        let layer8_shared_gate =
+            exact_tensor(model, "blk.8.ffn_gate_shexp.weight", 8, &[4096, 2048])?;
+        let layer8_shared_up = exact_tensor(model, "blk.8.ffn_up_shexp.weight", 8, &[4096, 2048])?;
+        let layer8_shared_down =
+            exact_tensor(model, "blk.8.ffn_down_shexp.weight", 8, &[2048, 4096])?;
         let tail_weights = RawPrefillLayerWeights {
             ingress: RawPrefillAttentionIngressWeights {
                 hc_fn_offset: 0,
@@ -43611,6 +43833,78 @@ mod imp {
             attn_norm_offset: layer7_attn_compressor_norm.absolute_offset,
             attn_norm_bytes: layer7_attn_compressor_norm.bytes,
             ..RawPrefillCompressorWeights::default()
+        };
+        let layer8_weights = RawPrefillLayerWeights {
+            ingress: RawPrefillAttentionIngressWeights {
+                hc_fn_offset: layer8_hc_fn.absolute_offset,
+                hc_fn_bytes: layer8_hc_fn.bytes,
+                hc_scale_offset: layer8_hc_scale.absolute_offset,
+                hc_scale_bytes: layer8_hc_scale.bytes,
+                hc_base_offset: layer8_hc_base.absolute_offset,
+                hc_base_bytes: layer8_hc_base.bytes,
+                norm_offset: layer8_norm.absolute_offset,
+                norm_bytes: layer8_norm.bytes,
+                q_a_offset: layer8_q_a.absolute_offset,
+                q_a_bytes: layer8_q_a.bytes,
+            },
+            q_a_norm_offset: layer8_q_a_norm.absolute_offset,
+            q_a_norm_bytes: layer8_q_a_norm.bytes,
+            kv_offset: layer8_kv.absolute_offset,
+            kv_bytes: layer8_kv.bytes,
+            kv_norm_offset: layer8_kv_norm.absolute_offset,
+            kv_norm_bytes: layer8_kv_norm.bytes,
+            q_b_offset: layer8_q_b.absolute_offset,
+            q_b_bytes: layer8_q_b.bytes,
+            attn_sinks_offset: layer8_sinks.absolute_offset,
+            attn_sinks_bytes: layer8_sinks.bytes,
+            attn_output_a_offset: layer8_output_a.absolute_offset,
+            attn_output_a_bytes: layer8_output_a.bytes,
+            attn_output_b_offset: layer8_output_b.absolute_offset,
+            attn_output_b_bytes: layer8_output_b.bytes,
+            ffn: RawPrefillFfnWeights {
+                hc_fn_offset: layer8_ffn_hc_fn.absolute_offset,
+                hc_fn_bytes: layer8_ffn_hc_fn.bytes,
+                hc_scale_offset: layer8_ffn_hc_scale.absolute_offset,
+                hc_scale_bytes: layer8_ffn_hc_scale.bytes,
+                hc_base_offset: layer8_ffn_hc_base.absolute_offset,
+                hc_base_bytes: layer8_ffn_hc_base.bytes,
+                norm_offset: layer8_ffn_norm.absolute_offset,
+                norm_bytes: layer8_ffn_norm.bytes,
+                router_gate_offset: layer8_router_gate.absolute_offset,
+                router_gate_bytes: layer8_router_gate.bytes,
+                router_hash_offset: layer8_router_bias.absolute_offset,
+                router_hash_bytes: layer8_router_bias.bytes,
+                routed_gate_offset: layer8_routed_gate.absolute_offset,
+                routed_gate_bytes: layer8_routed_gate.bytes,
+                routed_up_offset: layer8_routed_up.absolute_offset,
+                routed_up_bytes: layer8_routed_up.bytes,
+                routed_down_offset: layer8_routed_down.absolute_offset,
+                routed_down_bytes: layer8_routed_down.bytes,
+                shared_gate_offset: layer8_shared_gate.absolute_offset,
+                shared_gate_bytes: layer8_shared_gate.bytes,
+                shared_up_offset: layer8_shared_up.absolute_offset,
+                shared_up_bytes: layer8_shared_up.bytes,
+                shared_down_offset: layer8_shared_down.absolute_offset,
+                shared_down_bytes: layer8_shared_down.bytes,
+            },
+        };
+        let layer8_compressor = RawPrefillCompressorWeights {
+            attn_ape_offset: layer8_attn_ape.absolute_offset,
+            attn_ape_bytes: layer8_attn_ape.bytes,
+            attn_kv_offset: layer8_attn_kv.absolute_offset,
+            attn_kv_bytes: layer8_attn_kv.bytes,
+            attn_gate_offset: layer8_attn_gate.absolute_offset,
+            attn_gate_bytes: layer8_attn_gate.bytes,
+            attn_norm_offset: layer8_attn_compressor_norm.absolute_offset,
+            attn_norm_bytes: layer8_attn_compressor_norm.bytes,
+            indexer_ape_offset: layer8_indexer_ape.absolute_offset,
+            indexer_ape_bytes: layer8_indexer_ape.bytes,
+            indexer_kv_offset: layer8_indexer_kv.absolute_offset,
+            indexer_kv_bytes: layer8_indexer_kv.bytes,
+            indexer_gate_offset: layer8_indexer_gate.absolute_offset,
+            indexer_gate_bytes: layer8_indexer_gate.bytes,
+            indexer_norm_offset: layer8_indexer_compressor_norm.absolute_offset,
+            indexer_norm_bytes: layer8_indexer_compressor_norm.bytes,
         };
         let expected_q_current = decode_f32_fixture(
             PREFILL_LAYER2_SPARSE_TRANSITION_Q_CURRENT_BYTES,
@@ -47282,14 +47576,357 @@ mod imp {
                 error_text(&error)
             )));
         }
+        let layer8_begin_succeeded = unsafe {
+            rust_star_metal_begin_prefill_layer8_rebuild(context.0, error.as_mut_ptr(), error.len())
+        };
+        if layer8_begin_succeeded == 0 {
+            return Err(Error::invalid(format!(
+                "Metal layer-8 rebuild binding failed: {}",
+                error_text(&error)
+            )));
+        }
+        let mut layer8_prefix_raw = RawSparseIndexedResult::default();
+        let layer8_prefix_succeeded = unsafe {
+            rust_star_metal_run_prefill_layer4_continuation_boundary(
+                context.0,
+                model.mapping_pointer(),
+                model.bytes(),
+                &layer8_weights,
+                &layer8_compressor,
+                0,
+                layer23_loop.layer8_prefix_boundary_checksums.as_mut_ptr(),
+                layer23_loop.layer8_prefix_boundary_checksums.len(),
+                &mut layer8_prefix_raw,
+                error.as_mut_ptr(),
+                error.len(),
+            )
+        };
+        if layer8_prefix_succeeded == 0 {
+            return Err(Error::invalid(format!(
+                "Metal production-batch layer-8 prefix boundary failed: {}",
+                error_text(&error)
+            )));
+        }
+        layer23_loop.layer8_prefix_boundary_dispatches = layer8_prefix_raw.dispatches;
+        layer23_loop.layer8_prefix_boundary_wrapped_model_ranges =
+            layer8_prefix_raw.wrapped_model_ranges;
+        layer23_loop.layer8_prefix_boundary_pointer_matches = layer8_prefix_raw.pointer_matches;
+        if layer8_prefix_raw.dispatches != 40
+            || layer8_prefix_raw.wrapped_model_ranges != 17
+            || layer8_prefix_raw.pointer_matches != 17
+            || layer23_loop.layer8_prefix_boundary_checksums
+                != PREFILL_LAYER8_PREFIX_BOUNDARY_CHECKSUMS
+        {
+            return Err(Error::invalid(format!(
+                "Metal production-batch layer-8 prefix boundary is invalid: dispatches={}, mappings={}/{}, checksums={:?} expected={:?}",
+                layer8_prefix_raw.dispatches,
+                layer8_prefix_raw.pointer_matches,
+                layer8_prefix_raw.wrapped_model_ranges,
+                layer23_loop.layer8_prefix_boundary_checksums,
+                PREFILL_LAYER8_PREFIX_BOUNDARY_CHECKSUMS,
+            )));
+        }
+        let mut layer8_prefix_sparse_checksums = [0_u64; 5];
+        let mut layer8_prefix_complete_raw = RawSparseIndexedResult::default();
+        let layer8_prefix_sparse_succeeded = unsafe {
+            rust_star_metal_run_prefill_layer4_prefix_sparse_batch(
+                context.0,
+                model.mapping_pointer(),
+                model.bytes(),
+                layer8_indexer_q.absolute_offset,
+                layer8_indexer_q.bytes,
+                layer8_indexer_weight.absolute_offset,
+                layer8_indexer_weight.bytes,
+                layer8_sinks.absolute_offset,
+                layer8_sinks.bytes,
+                layer8_prefix_sparse_checksums.as_mut_ptr(),
+                layer8_prefix_sparse_checksums.len(),
+                &mut layer8_prefix_complete_raw,
+                error.as_mut_ptr(),
+                error.len(),
+            )
+        };
+        if layer8_prefix_sparse_succeeded == 0 {
+            return Err(Error::invalid(format!(
+                "Metal production-batch layer-8 prefix sparse attention failed: {}",
+                error_text(&error)
+            )));
+        }
+        let layer8_prefix_tail_succeeded = unsafe {
+            rust_star_metal_run_prefill_layer2_continuation_tail(
+                context.0,
+                model.mapping_pointer(),
+                model.bytes(),
+                &layer8_weights,
+                4,
+                0,
+                4_096,
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                &mut layer8_prefix_complete_raw,
+                error.as_mut_ptr(),
+                error.len(),
+            )
+        };
+        if layer8_prefix_tail_succeeded == 0 {
+            return Err(Error::invalid(format!(
+                "Metal production-batch layer-8 prefix attention/FFN tail failed: {}",
+                error_text(&error)
+            )));
+        }
+        let mut layer8_prefix_hc_checksums = [0_u64; 2];
+        let layer8_prefix_hc_succeeded = unsafe {
+            rust_star_metal_checksum_prefill_layer4_prefix_hc(
+                context.0,
+                layer8_prefix_hc_checksums.as_mut_ptr(),
+                layer8_prefix_hc_checksums.len(),
+                error.as_mut_ptr(),
+                error.len(),
+            )
+        };
+        if layer8_prefix_hc_succeeded == 0 {
+            return Err(Error::invalid(format!(
+                "Metal production-batch layer-8 prefix HC checksum failed: {}",
+                error_text(&error)
+            )));
+        }
+        let layer8_prefix_tail_checksums = [
+            layer8_prefix_sparse_checksums[4],
+            layer8_prefix_hc_checksums[0],
+            layer8_prefix_hc_checksums[1],
+        ];
+        if layer8_prefix_complete_raw.dispatches != 36
+            || layer8_prefix_complete_raw.wrapped_model_ranges != 17
+            || layer8_prefix_complete_raw.pointer_matches != 17
+            || layer8_prefix_tail_checksums != PREFILL_LAYER8_PREFIX_TAIL_CHECKSUMS
+        {
+            return Err(Error::invalid(format!(
+                "Metal complete layer-8 prefix is invalid: dispatches={}, mappings={}/{}, checksums={:?} expected={:?}",
+                layer8_prefix_complete_raw.dispatches,
+                layer8_prefix_complete_raw.pointer_matches,
+                layer8_prefix_complete_raw.wrapped_model_ranges,
+                layer8_prefix_tail_checksums,
+                PREFILL_LAYER8_PREFIX_TAIL_CHECKSUMS,
+            )));
+        }
+        layer23_loop.layer8_prefix_complete_dispatches = layer8_prefix_complete_raw.dispatches;
+        layer23_loop.layer8_prefix_complete_wrapped_model_ranges =
+            layer8_prefix_complete_raw.wrapped_model_ranges;
+        layer23_loop.layer8_prefix_complete_pointer_matches =
+            layer8_prefix_complete_raw.pointer_matches;
+        layer23_loop.layer8_prefix_tail_checksums = layer8_prefix_tail_checksums;
+        let layer8_prefix_retain_succeeded = unsafe {
+            rust_star_metal_retain_prefill_layer8_prefix_hc(
+                context.0,
+                error.as_mut_ptr(),
+                error.len(),
+            )
+        };
+        if layer8_prefix_retain_succeeded == 0 {
+            return Err(Error::invalid(format!(
+                "Metal complete layer-8 prefix retention failed: {}",
+                error_text(&error)
+            )));
+        }
+        let mut layer8_continuation_raw = RawSparseIndexedResult::default();
+        let layer8_continuation_succeeded = unsafe {
+            rust_star_metal_run_prefill_layer4_continuation_boundary(
+                context.0,
+                model.mapping_pointer(),
+                model.bytes(),
+                &layer8_weights,
+                &layer8_compressor,
+                4_096,
+                layer23_loop
+                    .layer8_continuation_boundary_checksums
+                    .as_mut_ptr(),
+                layer23_loop.layer8_continuation_boundary_checksums.len(),
+                &mut layer8_continuation_raw,
+                error.as_mut_ptr(),
+                error.len(),
+            )
+        };
+        if layer8_continuation_succeeded == 0 {
+            return Err(Error::invalid(format!(
+                "Metal production-batch layer-8 continuation boundary failed: {}",
+                error_text(&error)
+            )));
+        }
+        layer23_loop.layer8_continuation_boundary_dispatches = layer8_continuation_raw.dispatches;
+        layer23_loop.layer8_continuation_boundary_wrapped_model_ranges =
+            layer8_continuation_raw.wrapped_model_ranges;
+        layer23_loop.layer8_continuation_boundary_pointer_matches =
+            layer8_continuation_raw.pointer_matches;
+        if layer8_continuation_raw.dispatches != 40
+            || layer8_continuation_raw.wrapped_model_ranges != 17
+            || layer8_continuation_raw.pointer_matches != 17
+            || layer23_loop.layer8_continuation_boundary_checksums
+                != PREFILL_LAYER8_CONTINUATION_BOUNDARY_CHECKSUMS
+        {
+            return Err(Error::invalid(format!(
+                "Metal production-batch layer-8 continuation boundary is invalid: dispatches={}, mappings={}/{}, checksums={:?} expected={:?}",
+                layer8_continuation_raw.dispatches,
+                layer8_continuation_raw.pointer_matches,
+                layer8_continuation_raw.wrapped_model_ranges,
+                layer23_loop.layer8_continuation_boundary_checksums,
+                PREFILL_LAYER8_CONTINUATION_BOUNDARY_CHECKSUMS,
+            )));
+        }
+        layer23_loop.layer8_continuation_tail_checksums = [0xcbf2_9ce4_8422_2325_u64; 3];
+        for tile_start in (4_096_u32..=8_160_u32).step_by(32) {
+            let mut tile = RawSparseIndexedResult::default();
+            let layer8_sparse_succeeded = unsafe {
+                rust_star_metal_run_prefill_layer4_continuation_sparse_tile(
+                    context.0,
+                    model.mapping_pointer(),
+                    model.bytes(),
+                    layer8_indexer_q.absolute_offset,
+                    layer8_indexer_q.bytes,
+                    layer8_indexer_weight.absolute_offset,
+                    layer8_indexer_weight.bytes,
+                    layer8_sinks.absolute_offset,
+                    layer8_sinks.bytes,
+                    tile_start,
+                    layer4_indexer_scores.as_mut_ptr(),
+                    layer4_indexer_topk.as_mut_ptr(),
+                    layer4_kqv_back.as_mut_ptr(),
+                    &mut tile,
+                    error.as_mut_ptr(),
+                    error.len(),
+                )
+            };
+            if layer8_sparse_succeeded == 0 {
+                return Err(Error::invalid(format!(
+                    "Metal layer-8 continuation sparse tile {tile_start} failed: {}",
+                    error_text(&error)
+                )));
+            }
+            let layer8_tail_succeeded = unsafe {
+                rust_star_metal_run_prefill_layer2_continuation_tail(
+                    context.0,
+                    model.mapping_pointer(),
+                    model.bytes(),
+                    &layer8_weights,
+                    4,
+                    tile_start,
+                    32,
+                    layer4_attention_low.as_mut_ptr(),
+                    layer4_attention_output.as_mut_ptr(),
+                    layer4_after_attention_hc.as_mut_ptr(),
+                    layer4_ffn_current.as_mut_ptr(),
+                    layer4_ffn_norm.as_mut_ptr(),
+                    layer4_router_logits.as_mut_ptr(),
+                    layer4_router_probs.as_mut_ptr(),
+                    layer4_router_selected.as_mut_ptr(),
+                    layer4_router_weights.as_mut_ptr(),
+                    layer4_routed_mid.as_mut_ptr(),
+                    layer4_routed_output.as_mut_ptr(),
+                    layer4_shared_output.as_mut_ptr(),
+                    layer4_after_ffn_hc.as_mut_ptr(),
+                    &mut tile,
+                    error.as_mut_ptr(),
+                    error.len(),
+                )
+            };
+            if layer8_tail_succeeded == 0 {
+                return Err(Error::invalid(format!(
+                    "Metal layer-8 continuation tail {tile_start} failed: {}",
+                    error_text(&error)
+                )));
+            }
+            if tile.dispatches != 36
+                || tile.wrapped_model_ranges != 17
+                || tile.pointer_matches != 17
+            {
+                return Err(Error::invalid(format!(
+                    "Metal layer-8 continuation tile {tile_start} metadata is invalid: dispatches={}, mappings={}/{}",
+                    tile.dispatches, tile.pointer_matches, tile.wrapped_model_ranges,
+                )));
+            }
+            let checksums = &mut layer23_loop.layer8_continuation_tail_checksums;
+            checksums[0] = extend_checksum_f32(checksums[0], &layer4_kqv_back);
+            checksums[1] = extend_checksum_f32(checksums[1], &layer4_after_attention_hc);
+            checksums[2] = extend_checksum_f32(checksums[2], &layer4_after_ffn_hc);
+            layer23_loop.layer8_continuation_tiles += 1;
+            layer23_loop.layer8_continuation_dispatches += tile.dispatches;
+            layer23_loop.layer8_continuation_wrapped_model_ranges += tile.wrapped_model_ranges;
+            layer23_loop.layer8_continuation_pointer_matches += tile.pointer_matches;
+            layer23_loop.wall_ms += tile.wall_ms;
+            layer23_loop.gpu_ms += tile.gpu_ms;
+        }
+        let mut layer8_continuation_full_hc_checksum = 0_u64;
+        let layer8_continuation_hc_succeeded = unsafe {
+            rust_star_metal_checksum_prefill_layer4_continuation_hc(
+                context.0,
+                &mut layer8_continuation_full_hc_checksum,
+                error.as_mut_ptr(),
+                error.len(),
+            )
+        };
+        if layer8_continuation_hc_succeeded == 0 {
+            return Err(Error::invalid(format!(
+                "Metal complete layer-8 continuation HC checksum failed: {}",
+                error_text(&error)
+            )));
+        }
+        if layer23_loop.layer8_continuation_tiles != 128
+            || layer23_loop.layer8_continuation_dispatches != 4_608
+            || layer23_loop.layer8_continuation_wrapped_model_ranges != 2_176
+            || layer23_loop.layer8_continuation_pointer_matches != 2_176
+            || layer23_loop.layer8_continuation_tail_checksums
+                != PREFILL_LAYER8_CONTINUATION_TAIL_CHECKSUMS
+            || layer8_continuation_full_hc_checksum != PREFILL_LAYER8_CONTINUATION_TAIL_CHECKSUMS[2]
+        {
+            return Err(Error::invalid(format!(
+                "Metal complete layer-8 continuation is invalid: tiles={}, dispatches={}, mappings={}/{}, checksums={:?} expected={:?}, full_hc={} expected={}",
+                layer23_loop.layer8_continuation_tiles,
+                layer23_loop.layer8_continuation_dispatches,
+                layer23_loop.layer8_continuation_pointer_matches,
+                layer23_loop.layer8_continuation_wrapped_model_ranges,
+                layer23_loop.layer8_continuation_tail_checksums,
+                PREFILL_LAYER8_CONTINUATION_TAIL_CHECKSUMS,
+                layer8_continuation_full_hc_checksum,
+                PREFILL_LAYER8_CONTINUATION_TAIL_CHECKSUMS[2],
+            )));
+        }
+        let layer8_finish_succeeded = unsafe {
+            rust_star_metal_finish_prefill_layer8_rebuild(
+                context.0,
+                error.as_mut_ptr(),
+                error.len(),
+            )
+        };
+        if layer8_finish_succeeded == 0 {
+            return Err(Error::invalid(format!(
+                "Metal layer-8 rebuild finalization failed: {}",
+                error_text(&error)
+            )));
+        }
         layer23_loop.wall_ms += layer6_prefix_raw.wall_ms
             + layer6_prefix_complete_raw.wall_ms
             + layer6_continuation_raw.wall_ms
-            + layer7_prefix_raw.wall_ms;
+            + layer7_prefix_raw.wall_ms
+            + layer8_prefix_raw.wall_ms
+            + layer8_prefix_complete_raw.wall_ms
+            + layer8_continuation_raw.wall_ms;
         layer23_loop.gpu_ms += layer6_prefix_raw.gpu_ms
             + layer6_prefix_complete_raw.gpu_ms
             + layer6_continuation_raw.gpu_ms
-            + layer7_prefix_raw.gpu_ms;
+            + layer7_prefix_raw.gpu_ms
+            + layer8_prefix_raw.gpu_ms
+            + layer8_prefix_complete_raw.gpu_ms
+            + layer8_continuation_raw.gpu_ms;
         Ok((
             SparseIndexedAttentionProbeReport {
                 fixture_id: PREFILL_LAYER2_SPARSE_TRANSITION_FIXTURE_ID,
@@ -56820,6 +57457,23 @@ mod tests {
             layer7_continuation_complete_wrapped_model_ranges: 19,
             layer7_continuation_complete_pointer_matches: 19,
             layer7_continuation_tail_checksums: PREFILL_LAYER7_CONTINUATION_TAIL_CHECKSUMS,
+            layer8_prefix_boundary_dispatches: 40,
+            layer8_prefix_boundary_wrapped_model_ranges: 17,
+            layer8_prefix_boundary_pointer_matches: 17,
+            layer8_prefix_boundary_checksums: PREFILL_LAYER8_PREFIX_BOUNDARY_CHECKSUMS,
+            layer8_continuation_boundary_dispatches: 40,
+            layer8_continuation_boundary_wrapped_model_ranges: 17,
+            layer8_continuation_boundary_pointer_matches: 17,
+            layer8_continuation_boundary_checksums: PREFILL_LAYER8_CONTINUATION_BOUNDARY_CHECKSUMS,
+            layer8_prefix_complete_dispatches: 36,
+            layer8_prefix_complete_wrapped_model_ranges: 17,
+            layer8_prefix_complete_pointer_matches: 17,
+            layer8_prefix_tail_checksums: PREFILL_LAYER8_PREFIX_TAIL_CHECKSUMS,
+            layer8_continuation_tiles: 128,
+            layer8_continuation_dispatches: 4_608,
+            layer8_continuation_wrapped_model_ranges: 2_176,
+            layer8_continuation_pointer_matches: 2_176,
+            layer8_continuation_tail_checksums: PREFILL_LAYER8_CONTINUATION_TAIL_CHECKSUMS,
         };
         let mut output = Vec::new();
         write_long_prefill_continuation_bootstrap_probe_json(&mut output, &report).unwrap();
@@ -56910,6 +57564,14 @@ mod tests {
         assert!(text.contains("\"complete_layer7_prefix_c0_claim\": true"));
         assert!(text.contains("\"complete_layer7_continuation_c0_claim\": true"));
         assert!(text.contains("\"complete_layer7_prefill_claim\": true"));
+        assert!(text.contains("\"layer8_boundaries\": {\"prefix\": {\"start\": 0"));
+        assert!(text.contains("\"layer8_prefix_complete\": {\"start\": 0"));
+        assert!(text.contains("\"layer8_continuation_complete\": {\"start\": 4096"));
+        assert!(text.contains("\"tiles\": 128, \"dispatches\": 4608"));
+        assert!(text.contains("\"layer8_ingress_qkv_paired_compressors_c0_claim\": true"));
+        assert!(text.contains("\"complete_layer8_prefix_c0_claim\": true"));
+        assert!(text.contains("\"complete_layer8_continuation_c0_claim\": true"));
+        assert!(text.contains("\"complete_layer8_prefill_claim\": true"));
         assert!(text.contains("\"complete_layer23_second_chunk_c0_claim\": true"));
         assert!(text.contains("\"layer2_sparse_transition_c0_claim\": true"));
         assert!(text.contains("\"selection_kernel\": \"kernel_topk_stream512\""));

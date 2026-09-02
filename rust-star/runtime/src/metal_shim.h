@@ -2345,6 +2345,26 @@ int rust_star_metal_finish_prefill_layer7_rebuild(
     char *error,
     size_t error_bytes);
 
+/* Publishes exact layer-7 prefix/continuation HC and retained layer-8 state
+ * through the generic even-layer ratio-4 executor. */
+int rust_star_metal_begin_prefill_layer8_rebuild(
+    void *context,
+    char *error,
+    size_t error_bytes);
+
+/* Preserves exact layer-8 prefix HC before the generic even-layer slot is
+ * reused for its continuation. */
+int rust_star_metal_retain_prefill_layer8_prefix_hc(
+    void *context,
+    char *error,
+    size_t error_bytes);
+
+/* Retains buffers grown by the generic even-layer executor as layer-8 state. */
+int rust_star_metal_finish_prefill_layer8_rebuild(
+    void *context,
+    char *error,
+    size_t error_bytes);
+
 /* Consumes one retained production-batch layer-3 HC chunk and executes the
  * full 4096-row layer-4 ingress/QKV plus paired ratio-4 compressor boundary.
  * Position start must be 0 or 4096.
