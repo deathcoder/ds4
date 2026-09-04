@@ -703,9 +703,9 @@ not labeled C0. The complete exact 2K prefill remains an independent regression
 control. The next boundary must carry the retained 4K state through layers
 2--42 and then preserve it while beginning the second 4K chunk.
 
-## Retained 4K-to-8K layer-2 through complete layer 12
+## Retained 4K-to-8K layer-2 through complete layer 13
 
-Schema: `rust-star-long-prefill-continuation-bootstrap-probe-v27`.
+Schema: `rust-star-long-prefill-continuation-bootstrap-probe-v28`.
 
 `long-prefill-continuation-bootstrap-probe` completes the first 4K transformer,
 then preserves that context while 64 native 64-row tiles append positions
@@ -859,7 +859,24 @@ Both paired-compressor boundaries match all 20 hashes over 40 dispatches and
 17/17 no-copy mappings each. The prefix tail uses 36 dispatches and 17/17
 mappings; all 128 continuation sparse-attention/FFN tiles use 4,608 dispatches
 and 2,176/2,176 mappings. All six tail hashes match, so complete retained layer
-12 is claimed and layer 13 becomes the next boundary.
+12 is claimed. Version 28 binds the exact layer-12 prefix and continuation HC
+into the same odd-layer executor used by layer 11, with layer-13 model views.
+The prefix matches five ingress/QKV/compressor and three attention/FFN hashes
+over 49 dispatches and 28/28 mappings. Its 128 continuation ingress/QKV tiles
+and production compressor/attention/FFN tail match eight more hashes over
+1,318 dispatches and 1,171/1,171 mappings. Complete retained layer 13 is claimed;
+layer 14 is next. The new prefix HC remains strongly owned for that handoff and
+is covered by the existing request-state buffer release.
+
+The compact provenance record at
+`../fixtures/prefill-layer13-continuation-8192-v3/checksums.json` binds the
+accepted executable, model, prompt, and two fresh captures of all 20 layer-13
+payloads. The 16 runtime hashes cover ingress, Q, KV, compressed KV, inverse
+RoPE attention, attention HC, and FFN HC for both chunks. The four captured
+recurrent-state payloads are repeatability evidence, not additional Rust checks.
+Dump-enabled final logits drift after the pinned layer-13 boundaries, while a
+separate uninstrumented run matches the accepted 8K logits exactly. Those
+dump-enabled logits must not be used as replacement C0 targets.
 
 ## Model residency before measured decode
 

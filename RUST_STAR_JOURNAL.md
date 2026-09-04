@@ -18,6 +18,169 @@ Before changing code:
 Journal entries are reverse chronological. Do not edit old entries to change
 history; add a correction and update the current-state summary.
 
+## 2026-09-04 — Exact complete layer-13 retained continuation
+
+Objective:
+
+- Extend the layer-12 checkpoint at `008e6f8` on
+  `agent/rust-star-bootstrap` through complete layer 13 for both the native
+  first 4K prefix and the retained positions-4,096--8,191 continuation.
+
+Changes and evidence:
+
+- Bound layer 12's live prefix and continuation HC allocations to the existing
+  odd-layer executor using layer-13 model views. Preserved native batch
+  arithmetic, GPU-owned compressor/cache history, and a strongly retained
+  layer-13 prefix HC for the layer-14 handoff. No oracle activation is uploaded
+  into execution state and no production arithmetic kernel was changed.
+- Captured layer 13 twice with the accepted oracle-v3 executable. All 20
+  payload pairs (3,507,617,792 bytes per capture) are byte-identical. The
+  committed `rust-star/fixtures/prefill-layer13-continuation-8192-v3/checksums.json`
+  binds their hashes, model, prompt, executable, and capture configuration.
+- The optimized M1 Ultra integration matches all 16 checked boundary/tail
+  hashes. Prefix ingress/QKV/compression uses 17 dispatches and 13/13 mappings;
+  complete prefix attention/FFN totals 49 dispatches and 28/28 mappings. The
+  continuation runs 128 ingress/QKV tiles followed by production compression,
+  Flash attention, and FFN: 1,318 dispatches and 1,171/1,171 mappings total.
+  All earlier retained layer gates remain exact in the same run.
+- Report schema is now `rust-star-long-prefill-continuation-bootstrap-probe-v28`.
+  Complete layer-13 prefix/continuation claims are true; complete 8K transformer,
+  output-logit C0, throughput, and speedup claims remain false.
+- The dump-enabled oracle runs drift in their downstream final logits despite
+  identical layer-13 tensors. Those logits are rejected as C0 targets. A
+  separate uninstrumented process exactly reproduces the accepted 8K JSON
+  SHA-256 `791ee1ea8129889e3adaf4ce6e042156b85323e46df32581e4df275055848f94`.
+  The four recurrent-state capture payloads are repeatability evidence; they
+  are not counted among the 16 Rust boundary checks.
+
+Validation:
+
+- `cargo fmt --manifest-path rust-star/runtime/Cargo.toml --check`, all-target
+  checking, the optimized build, all 307 Rust tests, and all 86 Python tests pass.
+  The report test rejects seven independent alterations to layer-13 hashes,
+  tile completion, or model-pointer accounting before writing any C0 result.
+- A fresh full-model SHA-256 matches the accepted imatrix-Q2 target.
+- Live command, with `MODEL` set to the target GGUF outside the repository:
+  `rust-star/.work/runtime-target/release/rust-star long-prefill-continuation-bootstrap-probe "$MODEL" --json rust-star/.work/layer13-continuation-v28/rust-layer13-release.json`.
+  The report SHA-256 is
+  `91d7615a992e2a9ef6a1655869516aa36d413331beafeb8681714ff69369f9ef`.
+- The independent complete-model 2K regression failed before layer 13, at
+  layer-4 attention recurrent KV element 0: actual `0x3c87158e`, expected
+  `0x3c8751ce`. Its source path was not changed by this implementation.
+  A second fresh process fails with the identical element and bit patterns.
+  An isolated release build exported from base commit `008e6f8` passes build
+  validation; all 40 exported source files match that commit exactly. Its 2K
+  run fails at the same element with identical actual/expected bits, confirming
+  that this failure predates the layer-13 change. Preserve
+  `rust-star/.work/layer13-continuation-v28/{rust-2k-regression,rust-2k-repeat,baseline-2k}.log`.
+  The broader 2K live gate is not green. No eligible benchmark was run.
+
+Decision and next step:
+
+- Accept the complete retained layer-13 boundary as the validated bounded
+  checkpoint. Repair the pre-existing layer-4 recurrent-state mismatch in the
+  standalone 2K control before extending further; do not weaken its comparator
+  or replace the expected fixture to make it pass.
+- The next new transformer boundary is layer 14's paired ratio-4
+  prefix/continuation, sparse attention, and FFN from live layer-13 HCs. Require
+  complete 8K logits only after layers 14--42 and the output head are complete.
+- Updated the current checkpoint, immediate actions, runtime documentation,
+  project Open Items, and the standing journal instruction together. Keep this
+  journal in the same local commit as the implementation; no remote push was
+  performed.
+
+## 2026-09-04 — Layer-13 retained continuation implementation and capture in progress
+
+Objective:
+
+- Extend the v27 layer-12 checkpoint through layer 13's exact ratio-128
+  prefix and 4K-to-8K continuation using live retained HC and compressor state.
+
+Progress and pending validation:
+
+- Added layer-13 bindings around the existing odd-layer executor, plus explicit
+  report fields and schedule checks. No new arithmetic kernel is introduced.
+  Compilation and fresh oracle capture are in progress; layer 13 is not yet
+  accepted as C0. Expected checksums must come from repeated oracle captures.
+- The ignored oracle worktree's `ds4-bench` has later diagnostic changes and
+  fails the accepted executable hash check. Use its preserved
+  `ds4-bench.accepted-oracle-v3`, SHA-256
+  `8e37f40cef769e34ef82a202d202a42b267322437ab8100c1303cc6aa8583bf3`.
+  The diagnostic worktree and executable were left unchanged.
+- Capture attempt `rust-star/.work/layer13-continuation-v28/a` produced tensors
+  but failed to write final logits because the output directory was absent.
+  It remains preserved as failed setup evidence. Corrected captures `a2` and
+  `b2` run sequentially with the pinned executable, canonical prompt, 8,192
+  tokens, 4,096-token prefill chunks, and zero generated tokens.
+- Both corrected captures completed. All 20 layer-13 tensor pairs are
+  byte-identical; the runtime gates use 16 ingress/compressor/attention/FFN
+  checksums. Provenance is retained in
+  `rust-star/fixtures/prefill-layer13-continuation-8192-v3/checksums.json`.
+- Dump-enabled final 8K logits differ between those captures and from the
+  accepted fixture. They are explicitly not accepted as new C0 targets.
+  A separate uninstrumented fresh process reproduces the accepted JSON SHA-256
+  `791ee1ea8129889e3adaf4ce6e042156b85323e46df32581e4df275055848f94`.
+  Thus the bounded repeated layer-13 evidence remains usable, but downstream
+  dump-induced drift must not be mistaken for complete-8K correctness.
+- Fixed an initial model-weight binding placement error caught by compilation;
+  the corrected all-target check passes. The optimized build, all 307 Rust
+  tests (including rejection of seven altered/partial layer-13 reports), and
+  all 86 Python tests pass. The integrated target-Mac Rust gate is running;
+  layer-13 acceptance is still pending. A fresh full read of the model matches
+  the pinned SHA-256 `ca22ae2f838e14077c22bc1c1417b71b45b5e5a3687bd96c2ac6e17fdb6261c0`.
+  No benchmark or speedup claim is attached.
+
+## 2026-09-04 — Reconciled journal with the committed layer-12 checkpoint
+
+Objective:
+
+- Restore an accurate resume point and preserve the user's instruction to keep
+  this journal current as implementation and validation advance.
+
+Repository and evidence inspected:
+
+- Worktree: `/Users/deathcodevision/dev/ds4-rust-star-bootstrap`.
+- Branch: `agent/rust-star-bootstrap`; HEAD: `008e6f83c471fbced8d9f761df8a4227a3d12cef`
+  (2026-09-02, `Complete exact layer-12 continuation`). Local HEAD matches the
+  locally stored `fork/agent/rust-star-bootstrap` tracking ref; no fetch or
+  remote publication was performed during this review.
+- The September 1 journal entry stopped at the layer-4 compressor boundary.
+  Subsequent commits completed layer 4 (`2dbb627`), layer 5 (`09c4460`),
+  layer 6 (`de8d67b`), layer 7 (`05a79c7`), layer 8 (`5029512`), layer 9
+  (`ca20acc`), layer 10 (`3eb82c0`), layer 11 (`aaee512`), and layer 12
+  (`008e6f8`). Prefix repairs and intermediate compressor gates are retained
+  in Git history; the old journal entries remain unchanged.
+- Cross-checked `rust-star/README.md`, `rust-star/runtime/README.md`,
+  `rust-star/runtime/METAL.md`, and the runtime's v27 report implementation.
+  They agree that the retained 4K-to-8K chain now reaches complete layer 12.
+- The committed layer-12 evidence records 20 exact ingress/QKV/paired-compressor
+  hashes across its prefix and continuation boundaries (40 dispatches and
+  17/17 no-copy mappings each). Its prefix tail uses 36 dispatches; 128
+  continuation sparse-attention/FFN tiles use 4,608 dispatches and 2,176/2,176
+  mappings, with all six tail hashes matching the repeated oracle.
+- These are previously recorded correctness results, not fresh measurements
+  from this session. No model execution, Rust test suite, or benchmark was run.
+  Documentation edits were checked with `git diff --check` and assertions
+  covering the resume point, next actions, and ongoing journal rule.
+- Existing untracked capture/check logs and `rust-star/runtime/.work/` were
+  left intact. The separate DSpark checkout is not this worktree.
+
+Decision and next step:
+
+- Use schema `rust-star-long-prefill-continuation-bootstrap-probe-v27` and
+  complete layer 12 as the committed starting point. Complete 8K transformer,
+  output-logit C0, throughput, and speedup claims remain unestablished.
+- Next implement layer 13's ratio-128 prefix and second-chunk continuation from
+  layer 12's live GPU HC buffers, then verify compressor state, attention,
+  FFN, and final HC against independently repeated oracle-v3 captures. Preserve
+  native batch arithmetic and do not seed execution state from oracle tensors.
+- Continue through layers 14--42 and the output head only as each boundary
+  passes. Require all 129,280 logits to match the accepted supplemental 8K
+  fixture before broadening to 32K or attaching a long-context performance claim.
+- Keep the journal's current checkpoint and immediate actions synchronized
+  after every meaningful implementation or validation step, including failures,
+  and before handoff or compaction. Include the journal with related commits.
+
 ## 2026-09-01 — Exact layer-4 4K-to-8K compressor boundary
 
 Objective:
@@ -892,6 +1055,36 @@ Next:
 
 ## Current State
 
+### Current resume checkpoint (updated 2026-09-04)
+
+- Work in `/Users/deathcodevision/dev/ds4-rust-star-bootstrap` on
+  `agent/rust-star-bootstrap`. The layer-13 work extends base commit `008e6f8`;
+  consult `git log -1` for the committed checkpoint containing this entry.
+- The retained native 4K-to-8K continuation is complete through layer 13 under
+  report schema v28. Layer 14 is the next implementation boundary; layers
+  14--42 and the output head remain open for this continuation.
+- Immediate regression priority: the standalone 2K control currently fails at
+  layer-4 attention recurrent KV element 0 (`0x3c87158e` versus `0x3c8751ce`).
+  Two current runs and an unchanged `008e6f8` release build fail identically.
+  This predates layer 13; repair it before extending the transformer further.
+- Preserve the existing 2K prefill/decode controls and their historical evidence.
+  Their full-model coverage does not establish complete 8K coverage.
+- Active producer: oracle-v3 `d35fb12d01d500b9cefcef24092c295687ceaf7e`.
+  The supplemental `dwarfstar-oracle-v3-prefill-frontier-8192` fixture is the
+  final 8K output gate; the accepted 32K frontier follows it.
+- The September 4 live v28 integration revalidated the retained chain through
+  layer 13. The two new captures repeat all layer-13 tensors exactly; their
+  downstream instrumented logits drift and are not accepted targets. A separate
+  uninstrumented oracle run reproduces the accepted 8K logits exactly.
+  No 8K throughput or speedup claim is established.
+- This checkpoint supersedes older frontier descriptions in the accumulated
+  summary below. The project charter's Open Items now points to this checkpoint;
+  older descriptions must not be used to restart already completed work.
+- Current remotes are `fork` = `deathcoder/ds4` and `origin` = `antirez/ds4`.
+  Earlier references below to `origin` as the personal fork are historical.
+
+### Accumulated implementation and measurement evidence
+
 - Phase: target-Mac bootstrap, quick `oracle-v1`, no-copy model mapping, the
   canonical differential-fixture envelope, complete layer 0, steady-state
   layer-0 execution, the first four-layer scheduler boundary, the minimum
@@ -1639,22 +1832,34 @@ Next:
 
 ## Immediate Next Actions
 
-1. Extend Rust Star's eligible engine and exact transcript gate from 2K to the
-   accepted `oracle-v3` 32K frontier before treating the current narrow result
-   as representative.
-2. Preserve the accepted retained lifecycle for the future long-lived engine:
-   reset all request state, retain only immutable pipelines/model views and
-   residency, fully charge first load, and keep retained timing paired-ineligible.
-3. Preserve the exact 2K-to-position-4099 native handoff, complete retained
-   position-8195 decoder step, isolated
-   513/1,025-row probes, and retained-state row-1,025/2,049 controls as
-   independent sparse regressions.
-4. Preserve the four-, six-, eight-, 43-layer, explicit decoder-output, and
-   closed-loop diagnostic commands as independently executed controls.
-5. Run the extended 2K--1M frontier capture when the Mac can be dedicated to a
-   long benchmark; preserve any 512K/1M capacity failure as evidence.
-6. After the `deathcoder` account billing lock is resolved, manually run the
-   fork's GitHub Actions workflow and retain its URL.
+1. Diagnose and repair the pre-existing standalone 2K layer-4 attention
+   recurrent-KV mismatch reproduced on both the layer-13 candidate and base
+   `008e6f8`. Preserve the failing logs and exact fixture; locate the first
+   differing operation rather than weakening C0. Rerun the 2K control and the
+   accepted layer-13 gate after any shared-path repair.
+2. Extend `long-prefill-continuation-bootstrap-probe` from the exact v28
+   layer-13 checkpoint through complete layer 14. Carry live prefix and
+   continuation HC into its paired ratio-4 compressors, sparse attention, FFN,
+   and final HC; require independently repeated oracle-v3 evidence for each new
+   boundary and do not adopt drifted dump-enabled final logits as new targets.
+3. Continue the exact retained chain through layers 15--42 and the output head.
+   Require every one of the 129,280 logits to match the supplemental oracle-v3
+   8K fixture. Preserve production batch geometry and GPU-owned history.
+4. After complete 8K C0, extend native prefill, the exact transcript gate, and
+   eligible engine measurement to the accepted oracle-v3 32K frontier.
+   Keep correctness diagnostics separate from performance claims.
+5. Preserve the exact 2K native-prefill/decode handoff, position-8195 retained
+   decoder step, sparse controls, shorter layer/decoder controls, and accepted
+   retained lifecycle as regressions relevant to each change. Never run multiple
+   huge model processes concurrently.
+6. Update the current checkpoint and add a dated journal entry after every
+   meaningful implementation or validation step, including failures and pending
+   checks, and before handoff or compaction. Commit journal updates with the
+   implementation they describe whenever practical.
+7. Later, run extended context captures with the accepted producer when the Mac
+   can be dedicated to them; preserve capacity failures. After the account
+   billing lock is resolved, run the manual GitHub Actions workflow and retain
+   its URL. Neither item replaces the immediate layer-13 correctness work.
 
 ## Entries
 

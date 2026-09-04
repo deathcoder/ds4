@@ -2425,6 +2425,26 @@ int rust_star_metal_finish_prefill_layer11_rebuild(
     char *error,
     size_t error_bytes);
 
+/* Publishes exact layer-12 prefix HC and retained layer-13 compressor state
+ * through the generic odd-layer ratio-128 executor. */
+int rust_star_metal_begin_prefill_layer13_prefix_rebuild(
+    void *context,
+    char *error,
+    size_t error_bytes);
+
+/* Preserves exact layer-13 prefix state and binds its continuation to exact
+ * retained layer-12 continuation HC. */
+int rust_star_metal_begin_prefill_layer13_continuation(
+    void *context,
+    char *error,
+    size_t error_bytes);
+
+/* Retains buffers grown by the generic odd-layer executor as layer-13 state. */
+int rust_star_metal_finish_prefill_layer13_rebuild(
+    void *context,
+    char *error,
+    size_t error_bytes);
+
 /* Publishes exact retained layer-11 HC and layer-12 compressor state through
  * the generic even-layer ratio-4 executor. */
 int rust_star_metal_begin_prefill_layer12_rebuild(

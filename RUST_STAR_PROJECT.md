@@ -335,92 +335,20 @@ they describe whenever practical.
 
 ## Open Items
 
-- Broaden native batched prefill beyond the exact complete layers-0/1 loop and
-  layer-2 paired-compressor boundary. The persistent executor runs all 64 aligned
-  32-row schedules from an empty KV seed over positions 0--2047. Before every
-  continuation, both accumulated layer-0/layer-1 prefixes match the oracle;
-  every live layer-1 post-FFN tile then feeds layer 2 through HC ingress, Q-A/KV
-  projection, fused learned norm, YaRN-scaled compressed-attention RoPE, and
-  E4M3FN finalization. All full-2K layer-2 `KVnorm`, `KVrope`, and `KVcur`
-  values are C0 exact, one persistent raw-KV allocation is prefix-validated
-  before every append, and the same empty-seed loop produces all 512 exact
-  ratio-4 attention and indexer compressed rows plus their exact final recurrent
-  states. Every compressor tile preserves 65 mmap pointers and uses 118
-  dispatches, with a 122-dispatch final tail refresh. One terminal 32-dispatch
-  batch now completes layer 2 through mixed raw/compressed attention, both HC
-  updates, token-hash routing, routed/shared experts, and the final 2K HC state.
-  Extend the same retained-state strategy across the remaining layers. The
-  sequential 2K initializer still
-  deliberately records its difference from the paired protocol's
-  batched-prefill oracle. The bootstrap ABI now accepts an explicit working
-  extent. A target-Mac probe completed the first 4,096-token transformer, then
-  advanced positions 4,096--8,191 through layers 0/1 and the layer-2
-  paired-compressor boundary in the same context. The retained buffers grew to
-  8,192 raw rows and 2,048 compressed rows while preserving the prefix and
-  recurrent compressor state. This remains a structural second-chunk gate
-  without an 8K output C0 claim. The first 32-row layer-2 tile at positions
-  4,096--4,127 is now complete and C0 exact: ten native M1 sparse dispatches
-  reproduce the repeated indexer scores, streaming top-512 selections, and
-  inverse-RoPE KQV-back, then hand the live buffer to 26 exact attention-output,
-  router, routed/shared-expert, and final-HC dispatches with 14/14 downstream
-  mappings. The final layer-2 HC allocation now directly feeds ten native
-  layer-3 ingress/QKV dispatches for the same tile without a host activation
-  upload. Nine layer-3 boundaries through rotated Q/KV and finalized KV are C0
-  exact with 9/9 no-copy mappings. The native first-4K transformer now also
-  retains the exact final 128 raw KV rows and 32 ratio-128 compressed KV rows
-  needed by layer 3. At 4K, layer 2 correctly switches from dense attention to
-  the indexed top-512 path over its 1,024 compressed rows, and every decomposed
-  router stage covers all 4,096 rows instead of stopping at 2,048. From the
-  retained history boundary, 76 native dispatches preserve 28/28 no-copy
-  mappings and reproduce 17 ratio-128 state, dense mixed-attention,
-  inverse-RoPE, attention-output, biased routed/shared-FFN, and final-HC outputs
-  bit-for-bit for positions 4,096--4,127. No layer-3 attention history is
-  copied from the oracle; the fixture is used only as an expected-value C0
-  control. The same live context now continues through positions
-  4,128--4,159 without replaying the first tile or uploading an activation.
-  Its second complete layer-2 tile matches 16 outputs over 36 dispatches and
-  17/17 no-copy mappings; the connected layer-3 tile matches 26 ingress,
-  recurrent-state, attention, FFN, and final-HC outputs over 76 dispatches and
-  28/28 mappings. The layer-2 raw-ring origin and layer-3 production Flash key
-  geometry are position-aware, and the first layer-3 tile appends its finalized
-  KV directly into retained history. The same context now executes all 128
-  layer-2/layer-3 continuation tiles through position 8,191, including all 32
-  ratio-128 emissions, over 14,560 dispatches with 5,760/5,760 no-copy model
-  mappings. The first two tiles are exact C0 anchors; the later 126 are
-  structural execution evidence only. Full-output retention now compares all
-  128 layer-3 tile checksums with a repeated production-geometry oracle:
-  114 match and 14 differ, while the terminal HC and recurrent states remain
-  stable. The per-tile schedule therefore cannot serve as the exact layer-4
-  input boundary. A production-size layer-3 replay now matches all 128 tiles
-  and full checksum `17010162403439886297`. Its live second-chunk output feeds
-  a 40-dispatch layer-4 ingress/QKV/compressor boundary with 17/17 no-copy
-  mappings. The runtime now rebuilds the first-4K layer-4 prefix after the exact
-  layer-3 production replay and refreshes ratio-4 recurrent state from the final
-  four normalized tokens with DwarfStar's small-batch arithmetic. All ten
-  aggregate checksums match: both complete 1,024-row compressed caches and all
-  recurrent states are exact. Extend this exact chain through layer-4 mixed
-  attention and FFN, then layers 5--42 and the output head, and match the
-  complete 8K logits.
-  A complete retained
-  sequential experiment has now ruled out decoder execution as a shortcut: it
-  selected the same terminal token but differed in all 129,280 logits. The
-  second chunk must preserve batched projection, compressor, attention, and FFN
-  numerics to satisfy C0.
-- Drive a complete decoder through the now-generalized sparse branch and emit
-  the Rust Star engine-measurement contract. The diagnostic 513-row override,
-  two fresh production-default 1,025-row isolated captures, and seeded retained
-  layer-2 executions at rows 1,025 and 2,049 are C0 exact. The latter uses a
-  capacity-stable ping-pong workspace, three initial sort blocks, and two merge
-  passes; it matches 16 tensors through attention HC post over 55 dispatches
-  with 35/35 model pointer identities. Both retained controls deliberately make
-  no token-dependent complete-layer or preceding-layer claim.
-- Execute `rust-star/BENCHMARK_PROTOCOL.md` and capture the initial paired
-  DwarfStar numbers; the v1 protocol itself is now defined.
-- Implement the Rust Star side of `rust-star/ENGINE_MEASUREMENT_FORMAT.md` once
-  the decoder can run; the checkpointed paired orchestrator and DwarfStar side
-  are implemented.
-- Preserve the exact 128-token, 43-layer-plus-output-head diagnostic and every
-  shorter correctness command as independent controls while adding eligible
-  benchmark state initialization.
+Current implementation boundaries, evidence, and immediate actions are maintained
+in `RUST_STAR_JOURNAL.md`. As of 2026-09-04, the retained 4K-to-8K native chain
+is exact through layer 13; layer 14 is next. The complete 2K prefill/decode and
+paired development results are established controls, not pending scaffolds.
+
+- First repair the standalone 2K layer-4 recurrent-state check, which fails
+  identically on the layer-13 candidate and unchanged base `008e6f8`. Preserve
+  the exact fixture and the newly validated layer-13 control during the repair.
+- Complete retained native prefill through layers 14--42 and the output head,
+  require full-logit C0 at the supplemental 8K oracle frontier, then broaden
+  the eligible engine and exact transcript gate to 32K and later contexts.
+- Preserve production batch arithmetic, GPU-owned history, exact shorter
+  controls, and the accepted retained-engine lifecycle during that work.
+- Run paired measurements at broader frontiers under the benchmark protocol;
+  existing 2K development gains do not establish the 256K headline result.
 - Reproduce the Q2 versus Q2/Q4 throughput observation under controlled runs.
 - Define the first coding-agent workload corpus before agent co-design claims.

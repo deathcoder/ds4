@@ -29,7 +29,7 @@ pub const PREFILL_LAYERS012_COMPRESSOR_LOOP_PROBE_SCHEMA: &str =
     "rust-star-prefill-layers012-compressor-loop-probe-v1";
 pub const LONG_PREFILL_BOOTSTRAP_PROBE_SCHEMA: &str = "rust-star-long-prefill-bootstrap-probe-v1";
 pub const LONG_PREFILL_CONTINUATION_BOOTSTRAP_PROBE_SCHEMA: &str =
-    "rust-star-long-prefill-continuation-bootstrap-probe-v27";
+    "rust-star-long-prefill-continuation-bootstrap-probe-v28";
 pub const LONG_PREFILL_SEQUENTIAL_CONTINUATION_PROBE_SCHEMA: &str =
     "rust-star-long-prefill-sequential-continuation-probe-v1";
 pub const LONG_PREFILL_TRANSFORMER_PROBE_SCHEMA: &str =
@@ -391,6 +391,32 @@ const PREFILL_LAYER11_CONTINUATION_TAIL_CHECKSUMS: [u64; 3] = [
     0x843f_1ba7_2707_add4,
     0x060b_0c66_e0aa_3f20,
     0x5a73_3c74_d754_eb62,
+];
+// Pinned to two fresh accepted-v3 captures; provenance and payload hashes are
+// in fixtures/prefill-layer13-continuation-8192-v3/checksums.json.
+const PREFILL_LAYER13_PREFIX_BOUNDARY_CHECKSUMS: [u64; 5] = [
+    0x8466_e2af_a240_7373,
+    0xd1e1_a208_4677_4079,
+    0xdc45_4c8b_4d27_b78f,
+    0x8bc9_0c60_8386_52c4,
+    0x0e53_c8a8_b820_9e9f,
+];
+const PREFILL_LAYER13_PREFIX_TAIL_CHECKSUMS: [u64; 3] = [
+    0xcd23_b723_6988_c8a6,
+    0x6324_ee98_e325_ae8d,
+    0xc36f_00fb_7c9f_9592,
+];
+const PREFILL_LAYER13_CONTINUATION_INGRESS_CHECKSUMS: [u64; 4] = [
+    0x2c8e_7f60_4a0d_3136,
+    0xdd8f_c577_1e83_d0f4,
+    0x4ae6_8e34_6110_16f9,
+    0x29a8_f49a_dbb1_63ee,
+];
+const PREFILL_LAYER13_CONTINUATION_COMPRESSED_CHECKSUM: u64 = 0x147c_ae7f_d5c5_a54b;
+const PREFILL_LAYER13_CONTINUATION_TAIL_CHECKSUMS: [u64; 3] = [
+    0xca21_f27e_9836_765a,
+    0xd716_b667_0523_86a7,
+    0x1f37_c186_e782_94ca,
 ];
 const PREFILL_LAYER12_PREFIX_BOUNDARY_CHECKSUMS: [u64; 10] = [
     0xa945_c4b8_c4cd_d9ea,
@@ -4303,6 +4329,24 @@ pub struct LongPrefillContinuationBootstrapProbeReport {
     pub layer11_continuation_complete_wrapped_model_ranges: u32,
     pub layer11_continuation_complete_pointer_matches: u32,
     pub layer11_continuation_tail_checksums: [u64; 3],
+    pub layer13_prefix_boundary_dispatches: u32,
+    pub layer13_prefix_boundary_wrapped_model_ranges: u32,
+    pub layer13_prefix_boundary_pointer_matches: u32,
+    pub layer13_prefix_boundary_checksums: [u64; 5],
+    pub layer13_prefix_complete_dispatches: u32,
+    pub layer13_prefix_complete_wrapped_model_ranges: u32,
+    pub layer13_prefix_complete_pointer_matches: u32,
+    pub layer13_prefix_tail_checksums: [u64; 3],
+    pub layer13_continuation_tiles: u32,
+    pub layer13_continuation_dispatches: u32,
+    pub layer13_continuation_wrapped_model_ranges: u32,
+    pub layer13_continuation_pointer_matches: u32,
+    pub layer13_continuation_ingress_checksums: [u64; 4],
+    pub layer13_continuation_compressed_checksum: u64,
+    pub layer13_continuation_complete_dispatches: u32,
+    pub layer13_continuation_complete_wrapped_model_ranges: u32,
+    pub layer13_continuation_complete_pointer_matches: u32,
+    pub layer13_continuation_tail_checksums: [u64; 3],
     pub layer12_prefix_boundary_dispatches: u32,
     pub layer12_prefix_boundary_wrapped_model_ranges: u32,
     pub layer12_prefix_boundary_pointer_matches: u32,
@@ -8566,6 +8610,30 @@ fn write_long_prefill_continuation_bootstrap_probe_json_payload<W: Write>(
         || report.layer11_continuation_complete_pointer_matches
             != report.layer11_continuation_complete_wrapped_model_ranges
         || report.layer11_continuation_tail_checksums != PREFILL_LAYER11_CONTINUATION_TAIL_CHECKSUMS
+        || report.layer13_prefix_boundary_dispatches != 17
+        || report.layer13_prefix_boundary_wrapped_model_ranges != 13
+        || report.layer13_prefix_boundary_pointer_matches
+            != report.layer13_prefix_boundary_wrapped_model_ranges
+        || report.layer13_prefix_boundary_checksums != PREFILL_LAYER13_PREFIX_BOUNDARY_CHECKSUMS
+        || report.layer13_prefix_complete_dispatches != 49
+        || report.layer13_prefix_complete_wrapped_model_ranges != 28
+        || report.layer13_prefix_complete_pointer_matches
+            != report.layer13_prefix_complete_wrapped_model_ranges
+        || report.layer13_prefix_tail_checksums != PREFILL_LAYER13_PREFIX_TAIL_CHECKSUMS
+        || report.layer13_continuation_tiles != 128
+        || report.layer13_continuation_dispatches != 1_318
+        || report.layer13_continuation_wrapped_model_ranges != 1_171
+        || report.layer13_continuation_pointer_matches
+            != report.layer13_continuation_wrapped_model_ranges
+        || report.layer13_continuation_ingress_checksums
+            != PREFILL_LAYER13_CONTINUATION_INGRESS_CHECKSUMS
+        || report.layer13_continuation_compressed_checksum
+            != PREFILL_LAYER13_CONTINUATION_COMPRESSED_CHECKSUM
+        || report.layer13_continuation_complete_dispatches != 38
+        || report.layer13_continuation_complete_wrapped_model_ranges != 19
+        || report.layer13_continuation_complete_pointer_matches
+            != report.layer13_continuation_complete_wrapped_model_ranges
+        || report.layer13_continuation_tail_checksums != PREFILL_LAYER13_CONTINUATION_TAIL_CHECKSUMS
         || report.layer12_prefix_boundary_dispatches != 40
         || report.layer12_prefix_boundary_wrapped_model_ranges != 17
         || report.layer12_prefix_boundary_pointer_matches
@@ -9043,6 +9111,37 @@ pub fn write_long_prefill_continuation_bootstrap_probe_json<W: Write>(
         &(layer11_insertion + checksums_boundary),
         1,
     );
+    let layer13_insertion = format!(
+        "  \"layer13_prefix_complete\": {{\"start\": 0, \"rows\": 4096, \"ingress_qkv_compressor\": {{\"dispatches\": {}, \"wrapped_model_ranges\": {}, \"pointer_matches\": {}, \"checksums\": {:?}, \"c0_bitwise_match\": true}}, \"attention_ffn_tail\": {{\"combined_dispatches\": {}, \"combined_wrapped_model_ranges\": {}, \"combined_pointer_matches\": {}, \"tail_checksums\": {:?}, \"flash_attention_kernel\": \"kernel_flash_attn_ext_f16_dk512_dv512_nsg8_kvpad\", \"c0_bitwise_match\": true}}, \"complete_prefix_c0_claim\": true}},\n  \"layer13_continuation_complete\": {{\"start\": 4096, \"rows\": 4096, \"tile_rows\": 32, \"tiles\": {}, \"combined_dispatches\": {}, \"combined_wrapped_model_ranges\": {}, \"combined_pointer_matches\": {}, \"ingress_checksums\": {:?}, \"compressed_checksum\": {}, \"production_tail\": {{\"dispatches\": {}, \"wrapped_model_ranges\": {}, \"pointer_matches\": {}, \"tail_checksums\": {:?}, \"c0_bitwise_match\": true}}, \"complete_continuation_c0_claim\": true}},\n",
+        report.layer13_prefix_boundary_dispatches,
+        report.layer13_prefix_boundary_wrapped_model_ranges,
+        report.layer13_prefix_boundary_pointer_matches,
+        report.layer13_prefix_boundary_checksums,
+        report.layer13_prefix_complete_dispatches,
+        report.layer13_prefix_complete_wrapped_model_ranges,
+        report.layer13_prefix_complete_pointer_matches,
+        report.layer13_prefix_tail_checksums,
+        report.layer13_continuation_tiles,
+        report.layer13_continuation_dispatches,
+        report.layer13_continuation_wrapped_model_ranges,
+        report.layer13_continuation_pointer_matches,
+        report.layer13_continuation_ingress_checksums,
+        report.layer13_continuation_compressed_checksum,
+        report.layer13_continuation_complete_dispatches,
+        report.layer13_continuation_complete_wrapped_model_ranges,
+        report.layer13_continuation_complete_pointer_matches,
+        report.layer13_continuation_tail_checksums,
+    );
+    if !rendered.contains(checksums_boundary) {
+        return Err(Error::invalid(
+            "long-prefill continuation bootstrap JSON lost the layer-13 insertion boundary",
+        ));
+    }
+    let rendered = rendered.replacen(
+        checksums_boundary,
+        &(layer13_insertion + checksums_boundary),
+        1,
+    );
     let layer12_insertion = format!(
         "  \"layer12_boundaries\": {{\"prefix\": {{\"start\": 0, \"rows\": 4096, \"dispatches\": {}, \"wrapped_model_ranges\": {}, \"pointer_matches\": {}, \"checksums\": {:?}, \"c0_bitwise_match\": true}}, \"continuation\": {{\"start\": 4096, \"rows\": 4096, \"dispatches\": {}, \"wrapped_model_ranges\": {}, \"pointer_matches\": {}, \"checksums\": {:?}, \"c0_bitwise_match\": true}}, \"boundary\": \"ingress_qkv_paired_ratio4_compressors\"}},\n  \"layer12_prefix_complete\": {{\"start\": 0, \"rows\": 4096, \"combined_dispatches\": {}, \"wrapped_model_ranges\": {}, \"pointer_matches\": {}, \"tail_checksums\": {:?}, \"sparse_attention_c0_claim\": true, \"ffn_c0_claim\": true, \"complete_prefix_c0_claim\": true}},\n  \"layer12_continuation_complete\": {{\"start\": 4096, \"rows\": 4096, \"tile_rows\": 32, \"tiles\": {}, \"dispatches\": {}, \"wrapped_model_ranges\": {}, \"pointer_matches\": {}, \"tail_checksums\": {:?}, \"sparse_attention_c0_claim\": true, \"ffn_c0_claim\": true, \"complete_continuation_c0_claim\": true}},\n",
         report.layer12_prefix_boundary_dispatches,
@@ -9129,6 +9228,14 @@ pub fn write_long_prefill_continuation_bootstrap_probe_json<W: Write>(
         ));
     }
     let rendered = rendered.replacen(complete_layer11_claim, layer12_claim, 1);
+    let complete_layer12_claim = "  \"complete_layer12_prefill_claim\": true,";
+    let layer13_claim = "  \"complete_layer12_prefill_claim\": true,\n  \"complete_layer13_prefix_c0_claim\": true,\n  \"complete_layer13_continuation_c0_claim\": true,\n  \"complete_layer13_prefill_claim\": true,";
+    if !rendered.contains(complete_layer12_claim) {
+        return Err(Error::invalid(
+            "long-prefill continuation bootstrap JSON lost the complete layer-12 claim",
+        ));
+    }
+    let rendered = rendered.replacen(complete_layer12_claim, layer13_claim, 1);
     output.write_all(rendered.as_bytes())?;
     Ok(())
 }
@@ -22213,6 +22320,24 @@ mod imp {
         layer11_continuation_complete_wrapped_model_ranges: u32,
         layer11_continuation_complete_pointer_matches: u32,
         layer11_continuation_tail_checksums: [u64; 3],
+        layer13_prefix_boundary_dispatches: u32,
+        layer13_prefix_boundary_wrapped_model_ranges: u32,
+        layer13_prefix_boundary_pointer_matches: u32,
+        layer13_prefix_boundary_checksums: [u64; 5],
+        layer13_prefix_complete_dispatches: u32,
+        layer13_prefix_complete_wrapped_model_ranges: u32,
+        layer13_prefix_complete_pointer_matches: u32,
+        layer13_prefix_tail_checksums: [u64; 3],
+        layer13_continuation_tiles: u32,
+        layer13_continuation_dispatches: u32,
+        layer13_continuation_wrapped_model_ranges: u32,
+        layer13_continuation_pointer_matches: u32,
+        layer13_continuation_ingress_checksums: [u64; 4],
+        layer13_continuation_compressed_checksum: u64,
+        layer13_continuation_complete_dispatches: u32,
+        layer13_continuation_complete_wrapped_model_ranges: u32,
+        layer13_continuation_complete_pointer_matches: u32,
+        layer13_continuation_tail_checksums: [u64; 3],
         layer12_prefix_boundary_dispatches: u32,
         layer12_prefix_boundary_wrapped_model_ranges: u32,
         layer12_prefix_boundary_pointer_matches: u32,
@@ -24197,6 +24322,21 @@ mod imp {
             error_bytes: usize,
         ) -> i32;
         fn rust_star_metal_finish_prefill_layer11_rebuild(
+            context: *mut c_void,
+            error: *mut c_char,
+            error_bytes: usize,
+        ) -> i32;
+        fn rust_star_metal_begin_prefill_layer13_prefix_rebuild(
+            context: *mut c_void,
+            error: *mut c_char,
+            error_bytes: usize,
+        ) -> i32;
+        fn rust_star_metal_begin_prefill_layer13_continuation(
+            context: *mut c_void,
+            error: *mut c_char,
+            error_bytes: usize,
+        ) -> i32;
+        fn rust_star_metal_finish_prefill_layer13_rebuild(
             context: *mut c_void,
             error: *mut c_char,
             error_bytes: usize,
@@ -27870,6 +28010,34 @@ mod imp {
             layer11_continuation_complete_pointer_matches: layer23_loop
                 .layer11_continuation_complete_pointer_matches,
             layer11_continuation_tail_checksums: layer23_loop.layer11_continuation_tail_checksums,
+            layer13_prefix_boundary_dispatches: layer23_loop.layer13_prefix_boundary_dispatches,
+            layer13_prefix_boundary_wrapped_model_ranges: layer23_loop
+                .layer13_prefix_boundary_wrapped_model_ranges,
+            layer13_prefix_boundary_pointer_matches: layer23_loop
+                .layer13_prefix_boundary_pointer_matches,
+            layer13_prefix_boundary_checksums: layer23_loop.layer13_prefix_boundary_checksums,
+            layer13_prefix_complete_dispatches: layer23_loop.layer13_prefix_complete_dispatches,
+            layer13_prefix_complete_wrapped_model_ranges: layer23_loop
+                .layer13_prefix_complete_wrapped_model_ranges,
+            layer13_prefix_complete_pointer_matches: layer23_loop
+                .layer13_prefix_complete_pointer_matches,
+            layer13_prefix_tail_checksums: layer23_loop.layer13_prefix_tail_checksums,
+            layer13_continuation_tiles: layer23_loop.layer13_continuation_tiles,
+            layer13_continuation_dispatches: layer23_loop.layer13_continuation_dispatches,
+            layer13_continuation_wrapped_model_ranges: layer23_loop
+                .layer13_continuation_wrapped_model_ranges,
+            layer13_continuation_pointer_matches: layer23_loop.layer13_continuation_pointer_matches,
+            layer13_continuation_ingress_checksums: layer23_loop
+                .layer13_continuation_ingress_checksums,
+            layer13_continuation_compressed_checksum: layer23_loop
+                .layer13_continuation_compressed_checksum,
+            layer13_continuation_complete_dispatches: layer23_loop
+                .layer13_continuation_complete_dispatches,
+            layer13_continuation_complete_wrapped_model_ranges: layer23_loop
+                .layer13_continuation_complete_wrapped_model_ranges,
+            layer13_continuation_complete_pointer_matches: layer23_loop
+                .layer13_continuation_complete_pointer_matches,
+            layer13_continuation_tail_checksums: layer23_loop.layer13_continuation_tail_checksums,
             layer12_prefix_boundary_dispatches: layer23_loop.layer12_prefix_boundary_dispatches,
             layer12_prefix_boundary_wrapped_model_ranges: layer23_loop
                 .layer12_prefix_boundary_wrapped_model_ranges,
@@ -44254,6 +44422,47 @@ mod imp {
             exact_tensor(model, "blk.11.ffn_up_shexp.weight", 8, &[4096, 2048])?;
         let layer11_shared_down =
             exact_tensor(model, "blk.11.ffn_down_shexp.weight", 8, &[2048, 4096])?;
+        let layer13_hc_fn = exact_tensor(model, "blk.13.hc_attn_fn.weight", 1, &[16384, 24])?;
+        let layer13_hc_scale = exact_tensor(model, "blk.13.hc_attn_scale.weight", 0, &[3])?;
+        let layer13_hc_base = exact_tensor(model, "blk.13.hc_attn_base.weight", 0, &[24])?;
+        let layer13_norm = exact_tensor(model, "blk.13.attn_norm.weight", 0, &[4096])?;
+        let layer13_q_a = exact_tensor(model, "blk.13.attn_q_a.weight", 8, &[4096, 1024])?;
+        let layer13_q_a_norm = exact_tensor(model, "blk.13.attn_q_a_norm.weight", 0, &[1024])?;
+        let layer13_kv = exact_tensor(model, "blk.13.attn_kv.weight", 8, &[4096, 512])?;
+        let layer13_kv_norm = exact_tensor(model, "blk.13.attn_kv_a_norm.weight", 0, &[512])?;
+        let layer13_q_b = exact_tensor(model, "blk.13.attn_q_b.weight", 8, &[1024, 32768])?;
+        let layer13_attn_ape =
+            exact_tensor(model, "blk.13.attn_compressor_ape.weight", 1, &[512, 128])?;
+        let layer13_attn_kv =
+            exact_tensor(model, "blk.13.attn_compressor_kv.weight", 1, &[4096, 512])?;
+        let layer13_attn_gate =
+            exact_tensor(model, "blk.13.attn_compressor_gate.weight", 1, &[4096, 512])?;
+        let layer13_attn_compressor_norm =
+            exact_tensor(model, "blk.13.attn_compressor_norm.weight", 0, &[512])?;
+        let layer13_sinks = exact_tensor(model, "blk.13.attn_sinks.weight", 0, &[64])?;
+        let layer13_output_a =
+            exact_tensor(model, "blk.13.attn_output_a.weight", 8, &[4096, 8192])?;
+        let layer13_output_b =
+            exact_tensor(model, "blk.13.attn_output_b.weight", 8, &[8192, 4096])?;
+        let layer13_ffn_hc_fn = exact_tensor(model, "blk.13.hc_ffn_fn.weight", 1, &[16384, 24])?;
+        let layer13_ffn_hc_scale = exact_tensor(model, "blk.13.hc_ffn_scale.weight", 0, &[3])?;
+        let layer13_ffn_hc_base = exact_tensor(model, "blk.13.hc_ffn_base.weight", 0, &[24])?;
+        let layer13_ffn_norm = exact_tensor(model, "blk.13.ffn_norm.weight", 0, &[4096])?;
+        let layer13_router_gate =
+            exact_tensor(model, "blk.13.ffn_gate_inp.weight", 1, &[4096, 256])?;
+        let layer13_router_bias = exact_tensor(model, "blk.13.exp_probs_b.bias", 0, &[256])?;
+        let layer13_routed_gate =
+            exact_tensor(model, "blk.13.ffn_gate_exps.weight", 16, &[4096, 2048, 256])?;
+        let layer13_routed_up =
+            exact_tensor(model, "blk.13.ffn_up_exps.weight", 16, &[4096, 2048, 256])?;
+        let layer13_routed_down =
+            exact_tensor(model, "blk.13.ffn_down_exps.weight", 10, &[2048, 4096, 256])?;
+        let layer13_shared_gate =
+            exact_tensor(model, "blk.13.ffn_gate_shexp.weight", 8, &[4096, 2048])?;
+        let layer13_shared_up =
+            exact_tensor(model, "blk.13.ffn_up_shexp.weight", 8, &[4096, 2048])?;
+        let layer13_shared_down =
+            exact_tensor(model, "blk.13.ffn_down_shexp.weight", 8, &[2048, 4096])?;
         let layer12_hc_fn = exact_tensor(model, "blk.12.hc_attn_fn.weight", 1, &[16384, 24])?;
         let layer12_hc_scale = exact_tensor(model, "blk.12.hc_attn_scale.weight", 0, &[3])?;
         let layer12_hc_base = exact_tensor(model, "blk.12.hc_attn_base.weight", 0, &[24])?;
@@ -44984,6 +45193,71 @@ mod imp {
             attn_gate_bytes: layer11_attn_gate.bytes,
             attn_norm_offset: layer11_attn_compressor_norm.absolute_offset,
             attn_norm_bytes: layer11_attn_compressor_norm.bytes,
+            ..RawPrefillCompressorWeights::default()
+        };
+        let layer13_weights = RawPrefillLayerWeights {
+            ingress: RawPrefillAttentionIngressWeights {
+                hc_fn_offset: layer13_hc_fn.absolute_offset,
+                hc_fn_bytes: layer13_hc_fn.bytes,
+                hc_scale_offset: layer13_hc_scale.absolute_offset,
+                hc_scale_bytes: layer13_hc_scale.bytes,
+                hc_base_offset: layer13_hc_base.absolute_offset,
+                hc_base_bytes: layer13_hc_base.bytes,
+                norm_offset: layer13_norm.absolute_offset,
+                norm_bytes: layer13_norm.bytes,
+                q_a_offset: layer13_q_a.absolute_offset,
+                q_a_bytes: layer13_q_a.bytes,
+            },
+            q_a_norm_offset: layer13_q_a_norm.absolute_offset,
+            q_a_norm_bytes: layer13_q_a_norm.bytes,
+            kv_offset: layer13_kv.absolute_offset,
+            kv_bytes: layer13_kv.bytes,
+            kv_norm_offset: layer13_kv_norm.absolute_offset,
+            kv_norm_bytes: layer13_kv_norm.bytes,
+            q_b_offset: layer13_q_b.absolute_offset,
+            q_b_bytes: layer13_q_b.bytes,
+            attn_sinks_offset: layer13_sinks.absolute_offset,
+            attn_sinks_bytes: layer13_sinks.bytes,
+            attn_output_a_offset: layer13_output_a.absolute_offset,
+            attn_output_a_bytes: layer13_output_a.bytes,
+            attn_output_b_offset: layer13_output_b.absolute_offset,
+            attn_output_b_bytes: layer13_output_b.bytes,
+            ffn: RawPrefillFfnWeights {
+                hc_fn_offset: layer13_ffn_hc_fn.absolute_offset,
+                hc_fn_bytes: layer13_ffn_hc_fn.bytes,
+                hc_scale_offset: layer13_ffn_hc_scale.absolute_offset,
+                hc_scale_bytes: layer13_ffn_hc_scale.bytes,
+                hc_base_offset: layer13_ffn_hc_base.absolute_offset,
+                hc_base_bytes: layer13_ffn_hc_base.bytes,
+                norm_offset: layer13_ffn_norm.absolute_offset,
+                norm_bytes: layer13_ffn_norm.bytes,
+                router_gate_offset: layer13_router_gate.absolute_offset,
+                router_gate_bytes: layer13_router_gate.bytes,
+                router_hash_offset: layer13_router_bias.absolute_offset,
+                router_hash_bytes: layer13_router_bias.bytes,
+                routed_gate_offset: layer13_routed_gate.absolute_offset,
+                routed_gate_bytes: layer13_routed_gate.bytes,
+                routed_up_offset: layer13_routed_up.absolute_offset,
+                routed_up_bytes: layer13_routed_up.bytes,
+                routed_down_offset: layer13_routed_down.absolute_offset,
+                routed_down_bytes: layer13_routed_down.bytes,
+                shared_gate_offset: layer13_shared_gate.absolute_offset,
+                shared_gate_bytes: layer13_shared_gate.bytes,
+                shared_up_offset: layer13_shared_up.absolute_offset,
+                shared_up_bytes: layer13_shared_up.bytes,
+                shared_down_offset: layer13_shared_down.absolute_offset,
+                shared_down_bytes: layer13_shared_down.bytes,
+            },
+        };
+        let layer13_compressor = RawPrefillCompressorWeights {
+            attn_ape_offset: layer13_attn_ape.absolute_offset,
+            attn_ape_bytes: layer13_attn_ape.bytes,
+            attn_kv_offset: layer13_attn_kv.absolute_offset,
+            attn_kv_bytes: layer13_attn_kv.bytes,
+            attn_gate_offset: layer13_attn_gate.absolute_offset,
+            attn_gate_bytes: layer13_attn_gate.bytes,
+            attn_norm_offset: layer13_attn_compressor_norm.absolute_offset,
+            attn_norm_bytes: layer13_attn_compressor_norm.bytes,
             ..RawPrefillCompressorWeights::default()
         };
         let layer12_weights = RawPrefillLayerWeights {
@@ -50549,6 +50823,407 @@ mod imp {
                 error_text(&error)
             )));
         }
+        let layer13_prefix_begin_succeeded = unsafe {
+            rust_star_metal_begin_prefill_layer13_prefix_rebuild(
+                context.0,
+                error.as_mut_ptr(),
+                error.len(),
+            )
+        };
+        if layer13_prefix_begin_succeeded == 0 {
+            return Err(Error::invalid(format!(
+                "Metal layer-13 prefix binding failed: {}",
+                error_text(&error)
+            )));
+        }
+        let mut layer13_prefix_raw = RawSparseIndexedResult::default();
+        let layer13_prefix_ingress_succeeded = unsafe {
+            rust_star_metal_run_prefill_layer5_prefix_ingress(
+                context.0,
+                model.mapping_pointer(),
+                model.bytes(),
+                &layer13_weights,
+                &mut layer13_prefix_raw,
+                error.as_mut_ptr(),
+                error.len(),
+            )
+        };
+        if layer13_prefix_ingress_succeeded == 0 {
+            return Err(Error::invalid(format!(
+                "Metal production-batch layer-13 prefix ingress failed: {}",
+                error_text(&error)
+            )));
+        }
+        let layer13_prefix_compressor_succeeded = unsafe {
+            rust_star_metal_run_prefill_layer3_continuation_batch_compressor(
+                context.0,
+                model.mapping_pointer(),
+                model.bytes(),
+                &layer13_compressor,
+                0,
+                &mut layer13_prefix_raw,
+                error.as_mut_ptr(),
+                error.len(),
+            )
+        };
+        if layer13_prefix_compressor_succeeded == 0 {
+            return Err(Error::invalid(format!(
+                "Metal production-batch layer-13 prefix compressor failed: {}",
+                error_text(&error)
+            )));
+        }
+        let layer13_prefix_checksum_succeeded = unsafe {
+            rust_star_metal_checksum_prefill_layer7_prefix_boundary(
+                context.0,
+                layer23_loop.layer13_prefix_boundary_checksums.as_mut_ptr(),
+                layer23_loop.layer13_prefix_boundary_checksums.len(),
+                error.as_mut_ptr(),
+                error.len(),
+            )
+        };
+        if layer13_prefix_checksum_succeeded == 0 {
+            return Err(Error::invalid(format!(
+                "Metal production-batch layer-13 prefix checksum failed: {}",
+                error_text(&error)
+            )));
+        }
+        if layer13_prefix_raw.dispatches != 17
+            || layer13_prefix_raw.wrapped_model_ranges != 13
+            || layer13_prefix_raw.pointer_matches != 13
+            || layer23_loop.layer13_prefix_boundary_checksums
+                != PREFILL_LAYER13_PREFIX_BOUNDARY_CHECKSUMS
+        {
+            return Err(Error::invalid(format!(
+                "Metal production-batch layer-13 prefix boundary is invalid: dispatches={}, mappings={}/{}, checksums={:?} expected={:?}",
+                layer13_prefix_raw.dispatches,
+                layer13_prefix_raw.pointer_matches,
+                layer13_prefix_raw.wrapped_model_ranges,
+                layer23_loop.layer13_prefix_boundary_checksums,
+                PREFILL_LAYER13_PREFIX_BOUNDARY_CHECKSUMS,
+            )));
+        }
+        layer23_loop.layer13_prefix_boundary_dispatches = layer13_prefix_raw.dispatches;
+        layer23_loop.layer13_prefix_boundary_wrapped_model_ranges =
+            layer13_prefix_raw.wrapped_model_ranges;
+        layer23_loop.layer13_prefix_boundary_pointer_matches = layer13_prefix_raw.pointer_matches;
+        let layer13_prefix_attention_succeeded = unsafe {
+            rust_star_metal_run_prefill_layer3_continuation_batch_attention(
+                context.0,
+                model.mapping_pointer(),
+                model.bytes(),
+                layer13_sinks.absolute_offset,
+                layer13_sinks.bytes,
+                0,
+                &mut layer13_prefix_raw,
+                error.as_mut_ptr(),
+                error.len(),
+            )
+        };
+        if layer13_prefix_attention_succeeded == 0 {
+            return Err(Error::invalid(format!(
+                "Metal production-batch layer-13 prefix attention failed: {}",
+                error_text(&error)
+            )));
+        }
+        let layer13_prefix_tail_succeeded = unsafe {
+            rust_star_metal_run_prefill_layer2_continuation_tail(
+                context.0,
+                model.mapping_pointer(),
+                model.bytes(),
+                &layer13_weights,
+                5,
+                0,
+                4_096,
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                &mut layer13_prefix_raw,
+                error.as_mut_ptr(),
+                error.len(),
+            )
+        };
+        if layer13_prefix_tail_succeeded == 0 {
+            return Err(Error::invalid(format!(
+                "Metal production-batch layer-13 prefix attention/FFN tail failed: {}",
+                error_text(&error)
+            )));
+        }
+        let layer13_prefix_tail_checksum_succeeded = unsafe {
+            rust_star_metal_checksum_prefill_layer5_prefix_tail(
+                context.0,
+                layer23_loop.layer13_prefix_tail_checksums.as_mut_ptr(),
+                layer23_loop.layer13_prefix_tail_checksums.len(),
+                error.as_mut_ptr(),
+                error.len(),
+            )
+        };
+        if layer13_prefix_tail_checksum_succeeded == 0 {
+            return Err(Error::invalid(format!(
+                "Metal production-batch layer-13 prefix tail checksum failed: {}",
+                error_text(&error)
+            )));
+        }
+        if layer13_prefix_raw.dispatches != 49
+            || layer13_prefix_raw.wrapped_model_ranges != 28
+            || layer13_prefix_raw.pointer_matches != 28
+            || layer23_loop.layer13_prefix_tail_checksums != PREFILL_LAYER13_PREFIX_TAIL_CHECKSUMS
+        {
+            return Err(Error::invalid(format!(
+                "Metal complete layer-13 prefix is invalid: dispatches={}, mappings={}/{}, checksums={:?} expected={:?}",
+                layer13_prefix_raw.dispatches,
+                layer13_prefix_raw.pointer_matches,
+                layer13_prefix_raw.wrapped_model_ranges,
+                layer23_loop.layer13_prefix_tail_checksums,
+                PREFILL_LAYER13_PREFIX_TAIL_CHECKSUMS,
+            )));
+        }
+        layer23_loop.layer13_prefix_complete_dispatches = layer13_prefix_raw.dispatches;
+        layer23_loop.layer13_prefix_complete_wrapped_model_ranges =
+            layer13_prefix_raw.wrapped_model_ranges;
+        layer23_loop.layer13_prefix_complete_pointer_matches = layer13_prefix_raw.pointer_matches;
+
+        let layer13_continuation_begin_succeeded = unsafe {
+            rust_star_metal_begin_prefill_layer13_continuation(
+                context.0,
+                error.as_mut_ptr(),
+                error.len(),
+            )
+        };
+        if layer13_continuation_begin_succeeded == 0 {
+            return Err(Error::invalid(format!(
+                "Metal layer-13 continuation binding failed: {}",
+                error_text(&error)
+            )));
+        }
+        layer23_loop.layer13_continuation_ingress_checksums = [0xcbf2_9ce4_8422_2325_u64; 4];
+        for tile_start in (4_096_u32..=8_160_u32).step_by(32) {
+            let prepared = unsafe {
+                rust_star_metal_prepare_prefill_layer5_continuation_tile(
+                    context.0,
+                    tile_start,
+                    error.as_mut_ptr(),
+                    error.len(),
+                )
+            };
+            if prepared == 0 {
+                return Err(Error::invalid(format!(
+                    "Metal layer-13 continuation tile {tile_start} staging failed: {}",
+                    error_text(&error)
+                )));
+            }
+            let mut tile = RawSparseIndexedResult::default();
+            let ingress_succeeded = unsafe {
+                rust_star_metal_run_prefill_layer3_continuation_ingress(
+                    context.0,
+                    model.mapping_pointer(),
+                    model.bytes(),
+                    &layer13_weights,
+                    tile_start,
+                    layer5_hc_attn_pre.as_mut_ptr(),
+                    layer5_attn_norm.as_mut_ptr(),
+                    layer5_q_lora.as_mut_ptr(),
+                    layer5_q_lora_norm.as_mut_ptr(),
+                    layer5_kv_raw.as_mut_ptr(),
+                    layer5_kv_norm.as_mut_ptr(),
+                    layer5_q_current.as_mut_ptr(),
+                    layer5_kv_rope.as_mut_ptr(),
+                    layer5_kv_current.as_mut_ptr(),
+                    &mut tile,
+                    error.as_mut_ptr(),
+                    error.len(),
+                )
+            };
+            if ingress_succeeded == 0 {
+                return Err(Error::invalid(format!(
+                    "Metal layer-13 continuation ingress tile {tile_start} failed: {}",
+                    error_text(&error)
+                )));
+            }
+            let checksums = &mut layer23_loop.layer13_continuation_ingress_checksums;
+            checksums[0] = extend_checksum_f32(checksums[0], &layer5_hc_attn_pre);
+            checksums[1] = extend_checksum_f32(checksums[1], &layer5_attn_norm);
+            checksums[2] = extend_checksum_f32(checksums[2], &layer5_q_current);
+            checksums[3] = extend_checksum_f32(checksums[3], &layer5_kv_current);
+            layer23_loop.layer13_continuation_tiles += 1;
+            layer23_loop.layer13_continuation_dispatches += tile.dispatches;
+            layer23_loop.layer13_continuation_wrapped_model_ranges += tile.wrapped_model_ranges;
+            layer23_loop.layer13_continuation_pointer_matches += tile.pointer_matches;
+            layer23_loop.wall_ms += tile.wall_ms;
+            layer23_loop.gpu_ms += tile.gpu_ms;
+        }
+        let mut layer13_production = RawSparseIndexedResult::default();
+        let layer13_compressor_succeeded = unsafe {
+            rust_star_metal_run_prefill_layer3_continuation_batch_compressor(
+                context.0,
+                model.mapping_pointer(),
+                model.bytes(),
+                &layer13_compressor,
+                4_096,
+                &mut layer13_production,
+                error.as_mut_ptr(),
+                error.len(),
+            )
+        };
+        if layer13_compressor_succeeded == 0 {
+            return Err(Error::invalid(format!(
+                "Metal production-batch layer-13 compressor failed: {}",
+                error_text(&error)
+            )));
+        }
+        let layer13_compressor_finish_succeeded = unsafe {
+            rust_star_metal_finish_prefill_layer5_continuation(
+                context.0,
+                &mut layer23_loop.layer13_continuation_compressed_checksum,
+                1,
+                error.as_mut_ptr(),
+                error.len(),
+            )
+        };
+        if layer13_compressor_finish_succeeded == 0 {
+            return Err(Error::invalid(format!(
+                "Metal complete layer-13 continuation checksum failed: {}",
+                error_text(&error)
+            )));
+        }
+        let layer13_attention_succeeded = unsafe {
+            rust_star_metal_run_prefill_layer3_continuation_batch_attention(
+                context.0,
+                model.mapping_pointer(),
+                model.bytes(),
+                layer13_sinks.absolute_offset,
+                layer13_sinks.bytes,
+                4_096,
+                &mut layer13_production,
+                error.as_mut_ptr(),
+                error.len(),
+            )
+        };
+        if layer13_attention_succeeded == 0 {
+            return Err(Error::invalid(format!(
+                "Metal production-batch layer-13 continuation attention failed: {}",
+                error_text(&error)
+            )));
+        }
+        let layer13_tail_succeeded = unsafe {
+            rust_star_metal_run_prefill_layer2_continuation_tail(
+                context.0,
+                model.mapping_pointer(),
+                model.bytes(),
+                &layer13_weights,
+                5,
+                4_096,
+                4_096,
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                &mut layer13_production,
+                error.as_mut_ptr(),
+                error.len(),
+            )
+        };
+        if layer13_tail_succeeded == 0 {
+            return Err(Error::invalid(format!(
+                "Metal production-batch layer-13 continuation attention/FFN tail failed: {}",
+                error_text(&error)
+            )));
+        }
+        let layer13_tail_checksum_succeeded = unsafe {
+            rust_star_metal_checksum_prefill_layer5_continuation_tail(
+                context.0,
+                layer23_loop
+                    .layer13_continuation_tail_checksums
+                    .as_mut_ptr(),
+                layer23_loop.layer13_continuation_tail_checksums.len(),
+                error.as_mut_ptr(),
+                error.len(),
+            )
+        };
+        if layer13_tail_checksum_succeeded == 0 {
+            return Err(Error::invalid(format!(
+                "Metal production-batch layer-13 continuation tail checksum failed: {}",
+                error_text(&error)
+            )));
+        }
+        if layer13_production.dispatches != 38
+            || layer13_production.wrapped_model_ranges != 19
+            || layer13_production.pointer_matches != 19
+            || layer23_loop.layer13_continuation_tail_checksums
+                != PREFILL_LAYER13_CONTINUATION_TAIL_CHECKSUMS
+        {
+            return Err(Error::invalid(format!(
+                "Metal complete layer-13 continuation is invalid: dispatches={}, mappings={}/{}, checksums={:?} expected={:?}",
+                layer13_production.dispatches,
+                layer13_production.pointer_matches,
+                layer13_production.wrapped_model_ranges,
+                layer23_loop.layer13_continuation_tail_checksums,
+                PREFILL_LAYER13_CONTINUATION_TAIL_CHECKSUMS,
+            )));
+        }
+        layer23_loop.layer13_continuation_complete_dispatches = layer13_production.dispatches;
+        layer23_loop.layer13_continuation_complete_wrapped_model_ranges =
+            layer13_production.wrapped_model_ranges;
+        layer23_loop.layer13_continuation_complete_pointer_matches =
+            layer13_production.pointer_matches;
+        layer23_loop.layer13_continuation_dispatches += layer13_production.dispatches;
+        layer23_loop.layer13_continuation_wrapped_model_ranges +=
+            layer13_production.wrapped_model_ranges;
+        layer23_loop.layer13_continuation_pointer_matches += layer13_production.pointer_matches;
+        layer23_loop.wall_ms += layer13_production.wall_ms;
+        layer23_loop.gpu_ms += layer13_production.gpu_ms;
+        if layer23_loop.layer13_continuation_tiles != 128
+            || layer23_loop.layer13_continuation_dispatches != 1_318
+            || layer23_loop.layer13_continuation_wrapped_model_ranges != 1_171
+            || layer23_loop.layer13_continuation_pointer_matches != 1_171
+            || layer23_loop.layer13_continuation_ingress_checksums
+                != PREFILL_LAYER13_CONTINUATION_INGRESS_CHECKSUMS
+            || layer23_loop.layer13_continuation_compressed_checksum
+                != PREFILL_LAYER13_CONTINUATION_COMPRESSED_CHECKSUM
+        {
+            return Err(Error::invalid(format!(
+                "Metal layer-13 continuation boundary is invalid: tiles={}, dispatches={}, mappings={}/{}, ingress={:?} expected={:?}, compressed={} expected={}",
+                layer23_loop.layer13_continuation_tiles,
+                layer23_loop.layer13_continuation_dispatches,
+                layer23_loop.layer13_continuation_pointer_matches,
+                layer23_loop.layer13_continuation_wrapped_model_ranges,
+                layer23_loop.layer13_continuation_ingress_checksums,
+                PREFILL_LAYER13_CONTINUATION_INGRESS_CHECKSUMS,
+                layer23_loop.layer13_continuation_compressed_checksum,
+                PREFILL_LAYER13_CONTINUATION_COMPRESSED_CHECKSUM,
+            )));
+        }
+        let layer13_finish_succeeded = unsafe {
+            rust_star_metal_finish_prefill_layer13_rebuild(
+                context.0,
+                error.as_mut_ptr(),
+                error.len(),
+            )
+        };
+        if layer13_finish_succeeded == 0 {
+            return Err(Error::invalid(format!(
+                "Metal layer-13 rebuild finalization failed: {}",
+                error_text(&error)
+            )));
+        }
         layer23_loop.wall_ms += layer6_prefix_raw.wall_ms
             + layer6_prefix_complete_raw.wall_ms
             + layer6_continuation_raw.wall_ms
@@ -50563,7 +51238,8 @@ mod imp {
             + layer11_prefix_raw.wall_ms
             + layer12_prefix_raw.wall_ms
             + layer12_prefix_complete_raw.wall_ms
-            + layer12_continuation_raw.wall_ms;
+            + layer12_continuation_raw.wall_ms
+            + layer13_prefix_raw.wall_ms;
         layer23_loop.gpu_ms += layer6_prefix_raw.gpu_ms
             + layer6_prefix_complete_raw.gpu_ms
             + layer6_continuation_raw.gpu_ms
@@ -50578,7 +51254,8 @@ mod imp {
             + layer11_prefix_raw.gpu_ms
             + layer12_prefix_raw.gpu_ms
             + layer12_prefix_complete_raw.gpu_ms
-            + layer12_continuation_raw.gpu_ms;
+            + layer12_continuation_raw.gpu_ms
+            + layer13_prefix_raw.gpu_ms;
         Ok((
             SparseIndexedAttentionProbeReport {
                 fixture_id: PREFILL_LAYER2_SPARSE_TRANSITION_FIXTURE_ID,
@@ -60182,6 +60859,25 @@ mod tests {
             layer11_continuation_complete_wrapped_model_ranges: 19,
             layer11_continuation_complete_pointer_matches: 19,
             layer11_continuation_tail_checksums: PREFILL_LAYER11_CONTINUATION_TAIL_CHECKSUMS,
+            layer13_prefix_boundary_dispatches: 17,
+            layer13_prefix_boundary_wrapped_model_ranges: 13,
+            layer13_prefix_boundary_pointer_matches: 13,
+            layer13_prefix_boundary_checksums: PREFILL_LAYER13_PREFIX_BOUNDARY_CHECKSUMS,
+            layer13_prefix_complete_dispatches: 49,
+            layer13_prefix_complete_wrapped_model_ranges: 28,
+            layer13_prefix_complete_pointer_matches: 28,
+            layer13_prefix_tail_checksums: PREFILL_LAYER13_PREFIX_TAIL_CHECKSUMS,
+            layer13_continuation_tiles: 128,
+            layer13_continuation_dispatches: 1_318,
+            layer13_continuation_wrapped_model_ranges: 1_171,
+            layer13_continuation_pointer_matches: 1_171,
+            layer13_continuation_ingress_checksums: PREFILL_LAYER13_CONTINUATION_INGRESS_CHECKSUMS,
+            layer13_continuation_compressed_checksum:
+                PREFILL_LAYER13_CONTINUATION_COMPRESSED_CHECKSUM,
+            layer13_continuation_complete_dispatches: 38,
+            layer13_continuation_complete_wrapped_model_ranges: 19,
+            layer13_continuation_complete_pointer_matches: 19,
+            layer13_continuation_tail_checksums: PREFILL_LAYER13_CONTINUATION_TAIL_CHECKSUMS,
             layer12_prefix_boundary_dispatches: 40,
             layer12_prefix_boundary_wrapped_model_ranges: 17,
             layer12_prefix_boundary_pointer_matches: 17,
@@ -60337,6 +61033,29 @@ mod tests {
         assert!(text.contains("\"layer2_native_complete_tile_c0_claim\": true"));
         assert!(text.contains("\"complete_8k_transformer_claim\": false"));
         assert!(text.contains("\"output_logits_c0_claim\": false"));
+
+        assert!(text.contains("\"layer13_prefix_complete\": {\"start\": 0"));
+        assert!(text.contains("\"layer13_continuation_complete\": {\"start\": 4096"));
+        assert!(text.contains("\"complete_layer13_prefill_claim\": true"));
+        // A partial or altered layer-13 result must never serialize a C0 claim.
+        for boundary in 0..7 {
+            let mut invalid = report.clone();
+            match boundary {
+                0 => invalid.layer13_prefix_boundary_checksums[0] ^= 1,
+                1 => invalid.layer13_prefix_tail_checksums[2] ^= 1,
+                2 => invalid.layer13_continuation_ingress_checksums[0] ^= 1,
+                3 => invalid.layer13_continuation_compressed_checksum ^= 1,
+                4 => invalid.layer13_continuation_tail_checksums[2] ^= 1,
+                5 => invalid.layer13_continuation_tiles -= 1,
+                _ => invalid.layer13_continuation_pointer_matches -= 1,
+            }
+            let mut rejected = Vec::new();
+            assert!(
+                write_long_prefill_continuation_bootstrap_probe_json(&mut rejected, &invalid)
+                    .is_err()
+            );
+            assert!(rejected.is_empty());
+        }
     }
 
     #[test]

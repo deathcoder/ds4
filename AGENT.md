@@ -7,6 +7,12 @@ Before working on a `rust-star` branch, read `RUST_STAR_PROJECT.md` and
 decisions. The journal is the authority for current state, evidence, blockers,
 and next actions. Update the journal after every meaningful work session and
 before handing work off or allowing context compaction.
+Keep the journal's current resume checkpoint and immediate next actions in sync
+with every meaningful implementation or validation step, including failures and
+pending checks. Include the journal update with the related implementation
+commit whenever practical; do not leave completed layers documented only in
+commit messages or runtime READMEs. This is an explicit user instruction,
+reaffirmed on 2026-09-04.
 
 `ds4.c` is a DeepSeek V4 Flash specific inference engine. It is not a generic
 GGUF runner. The goal is a small, readable, high-performance C codebase with

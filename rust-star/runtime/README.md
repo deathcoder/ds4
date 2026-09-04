@@ -409,7 +409,7 @@ runs dense mixed attention, inverse RoPE, attention output, biased
 routed/shared FFN, and final HC bit-for-bit for positions 4,096--4,127. The
 connected layer-3 tile uses 76 dispatches, preserves 28/28 no-copy mappings,
 and checks 17 state and downstream outputs. The report schema is
-`rust-star-long-prefill-continuation-bootstrap-probe-v27`. The same retained
+`rust-star-long-prefill-continuation-bootstrap-probe-v28`. The same retained
 context then continues positions 4,128--4,159 through another exact complete
 layer-2/layer-3 pair. The second layer-2 tile reuses the native Q batch and
 position-aware raw ring; layer 3 consumes the first tile's GPU-appended KV and
@@ -504,9 +504,27 @@ repeated oracle. Version 27 binds the exact layer-11 prefix and continuation HCs
 into layer 12's ratio-4 path. Both ingress/QKV/paired-compressor boundaries use
 40 dispatches and 17/17 mappings and match all 20 hashes. The 36-dispatch
 prefix tail and all 128 continuation sparse-attention/FFN tiles match six more
-hashes over 2,176/2,176 continuation mappings. The report therefore claims
-complete retained layers 2 through 12, but not layers 13--42, the complete 8K
-transformer, output-logit C0, throughput, or a speedup.
+hashes over 2,176/2,176 continuation mappings. Version 28 carries both live
+layer-12 HCs through layer 13's ratio-128 prefix and second-chunk continuation.
+The prefix uses 49 dispatches and 28/28 mappings; 128 continuation ingress/QKV
+tiles plus the production compressor, Flash attention, and FFN use 1,318
+dispatches and 1,171/1,171 mappings. All 16 boundary/tail hashes match two fresh
+oracle captures. The report therefore claims complete retained layers 2 through
+13, but not layers 14--42, the complete 8K transformer, output-logit C0,
+throughput, or a speedup.
+
+Layer-13 capture provenance is retained in
+`../fixtures/prefill-layer13-continuation-8192-v3/checksums.json` (relative to
+this directory). All 20 captured tensor pairs repeat exactly. Their instrumented
+final logits diverge and are not accepted targets; a separate uninstrumented
+run reproduces the accepted full 8K oracle exactly. Only the bounded layer-13
+checksums are used by this diagnostic gate.
+
+The September 4 regression check found a pre-existing failure in the standalone
+2K control: layer-4 recurrent KV element 0 differs from its fixture. Two current
+runs and an isolated release build of base `008e6f8` fail identically. The
+layer-13 gate passes, but the broader 2K live gate is not green; see the journal
+for the repair priority before extending to layer 14.
 
 The repair has two parts. At 4K, layer 2 has 1,024 ratio-4 compressed rows and
 must use DwarfStar's indexed top-512 path rather than dense mixed attention.
