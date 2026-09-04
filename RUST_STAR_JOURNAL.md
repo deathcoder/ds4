@@ -18,6 +18,40 @@ Before changing code:
 Journal entries are reverse chronological. Do not edit old entries to change
 history; add a correction and update the current-state summary.
 
+## 2026-09-04 — Reclaimed rebuildable Cargo output
+
+Objective:
+
+- Respond to the user's low-disk-space cleanup request while preserving model,
+  source, correctness evidence, and the executables needed for the layer-4 repair.
+
+Actions and verification:
+
+- Confirmed no Cargo, rustc, Rust Star, or DwarfStar model process was active.
+- Removed the ignored `rust-star/runtime/target` tree and
+  `rust-star/.work/runtime-target/debug` tree.
+- Removed compiler intermediates, dependency archives, and Cargo metadata from
+  `rust-star/.work/runtime-target/release` and
+  `rust-star/.work/layer13-continuation-v28/baseline-target/release`, retaining
+  each directory's tested `rust-star` executable at its original path.
+- All removed paths were checked against Git ignore rules before deletion.
+  No model, tracked source, fixture, raw capture, log, oracle executable,
+  benchmark result, or worktree was removed. This also preserves both current
+  and unchanged-baseline evidence for the pending 2K layer-4 investigation.
+- Observed available space increased from 32,594,882,560 to 117,438,021,632
+  bytes: about 79.0 GiB reclaimed, with about 109.4 GiB available afterward.
+  `df -h` reports usage reduced from 99% to 94%.
+- Both retained release executables successfully run `--help` after cleanup.
+  No model inference or benchmark was needed for this cache-only operation.
+- The exact removed-path inventory and space readings are retained locally in
+  `rust-star/.work/disk-cleanup-20260904.json`.
+
+Next:
+
+- Resume the pre-existing layer-4 recurrent-state mismatch investigation. The
+  existing candidate and baseline executables remain directly runnable; Cargo
+  will regenerate compiler intermediates on the next build.
+
 ## 2026-09-04 — Exact complete layer-13 retained continuation
 
 Objective:
@@ -1056,6 +1090,10 @@ Next:
 ## Current State
 
 ### Current resume checkpoint (updated 2026-09-04)
+
+- Disk cleanup reclaimed about 79 GiB of rebuildable Cargo output. Both tested
+  release executables, all oracle/capture evidence, and source remain available;
+  compiler intermediates will be regenerated on the next Cargo build.
 
 - Work in `/Users/deathcodevision/dev/ds4-rust-star-bootstrap` on
   `agent/rust-star-bootstrap`. The layer-13 work extends base commit `008e6f8`;
