@@ -18,6 +18,44 @@ Before changing code:
 Journal entries are reverse chronological. Do not edit old entries to change
 history; add a correction and update the current-state summary.
 
+## 2026-09-05 — Exact complete layer-14 retained continuation
+
+- Extending `2e0ab3b` through complete layer 14 using the validated layer-12
+  ratio-4 executor bound to retained layer-13 HC. New report fields, scheduling
+  checks, and rejection tests are being added for v29.
+- Two accepted-oracle-v3 fresh captures dumping both chunks match all 13
+  prefix tensors but differ on all 13 continuation tensors, including ingress.
+  These continuation captures are rejected as C0 targets. A second experiment
+  restricts dumping to position 4096 to isolate first-chunk instrumentation.
+- Local evidence: `rust-star/.work/layer14-continuation-v29/`; capture producer,
+  model, prompt, and 4096-row geometry retain the existing pinned contract.
+  Continuation-only captures c/d now match all 13 tensors exactly. Together
+  with the 13 matching a/b prefix tensors, all 26 targets are independently
+  repeatable and installed in the v29 constants. Compact provenance is tracked
+  at `rust-star/fixtures/prefill-layer14-continuation-8192-v3/checksums.json`.
+  Release build passed. Integrated `layer14.json` passes schema v29: all 26
+  hashes match, with 40+40 boundary dispatches, 36 prefix-tail dispatches, and
+  128 continuation tiles / 4608 tail dispatches. All model mappings match.
+  The 2K full-logit regression also passes. All 307 Rust tests (release profile),
+  86 Python tests, formatting, and diff whitespace checks pass. New negative
+  report checks reject altered hashes, partial tiles, and lost pointer matches.
+- Live probes ran sequential fresh processes on the pinned Q2 model and target
+  Metal device, clearing inherited `DS4_`/`RUST_STAR_` overrides. Commands:
+  `long-prefill-continuation-bootstrap-probe` and
+  `prefill-layers012-attention-loop-probe`, each with `--json` in the evidence
+  directory. No kernels or arithmetic variants were added.
+- Report SHA-256: v29 `be4e4cc9bb4c42fd5888c52933d7efc36a9b155c93f6e89a488d46c6452ef72f`;
+  2K `91c587e1837ea46333fb1f59a4e447b3d1d4c0f530bc51ff8efce05016ccce9a`.
+- Instrumented runs a/c match the accepted 8K logits; b/d differ in all 129,280
+  logits. The repeatable layer-14 targets remain bounded evidence; downstream
+  instrumented logits are not replacement targets or a Rust 8K C0 claim.
+- Removed only ignored extra test-profile artifacts after validation, reclaiming
+  10.46 GiB; 41.38 GiB was available afterward. Production executable, normal
+  build cache, raw captures (including rejected a/b continuation), and all logs
+  remain available. Inventory: `test-cache-cleanup.json` in the evidence folder.
+- Complete retained layer 14 is now exact. No complete 8K logits or benchmark
+  claim. Next: proceed to layer 15.
+
 ## 2026-09-05 — Restored exact standalone 2K regression control
 
 - Traced the layer-4 failure to the shared ratio-4 helper's final-tile guard.
@@ -1135,23 +1173,28 @@ Next:
 
 ### Current resume checkpoint (updated 2026-09-05)
 
+- The integrated v29 gate now passes complete layer 14 against all 26 new
+  oracle targets (prefix a/b, continuation-only c/d). Release build and 86 Python
+  tests pass; the 2K full-logit regression and all 307 Rust tests also pass.
+  Layer 15 is next.
+
 - Disk cleanup reclaimed about 79 GiB of rebuildable Cargo output. Both tested
   release executables, all oracle/capture evidence, and source remain available;
   compiler intermediates will be regenerated on the next Cargo build.
 
 - Work in `/Users/deathcodevision/dev/ds4-rust-star-bootstrap` on
-  `agent/rust-star-bootstrap`. The layer-13 work extends base commit `008e6f8`;
+  `agent/rust-star-bootstrap`. The layer-14 work extends base commit `2e0ab3b`;
   consult `git log -1` for the committed checkpoint containing this entry.
-- The retained native 4K-to-8K continuation is complete through layer 13 under
-  report schema v28. Layer 14 is the next implementation boundary; layers
-  14--42 and the output head remain open for this continuation.
+- The retained native 4K-to-8K continuation is complete through layer 14 under
+  report schema v29. Layer 15 is the next implementation boundary; layers
+  15--42 and the output head remain open for this continuation.
 - The September 5 repair clears the standalone 2K regression: full logits and
   every retained transformer boundary pass unchanged C0 fixtures. It restores
   the ratio-4 small-batch tail projection and applies consistent ratio-128
   partial-block padding/kernel selection through all later odd layers.
 - The same candidate passes the integrated layer-13 retained continuation gate.
-  Layer 14 is now the next implementation priority. All 307 Rust host tests
-  and 86 Python tests pass.
+  Layer 15 is now the next implementation priority. All 307 Rust tests and
+  86 Python tests pass.
 - Preserve the existing 2K prefill/decode controls and their historical evidence.
   Their full-model coverage does not establish complete 8K coverage.
 - Active producer: oracle-v3 `d35fb12d01d500b9cefcef24092c295687ceaf7e`.
@@ -1917,12 +1960,12 @@ Next:
 
 ## Immediate Next Actions
 
-1. Extend `long-prefill-continuation-bootstrap-probe` from the exact v28
-   layer-13 checkpoint through complete layer 14. Carry live prefix and
-   continuation HC into its paired ratio-4 compressors, sparse attention, FFN,
+1. Extend `long-prefill-continuation-bootstrap-probe` from the exact v29
+   layer-14 checkpoint through complete layer 15. Carry live prefix and
+   continuation HC into its ratio-128 compressor, Flash attention, FFN,
    and final HC; require independently repeated oracle-v3 evidence for each new
    boundary and do not adopt drifted dump-enabled final logits as new targets.
-2. Continue the exact retained chain through layers 15--42 and the output head.
+2. Continue the exact retained chain through layers 16--42 and the output head.
    Require every one of the 129,280 logits to match the supplemental oracle-v3
    8K fixture. Preserve production batch geometry and GPU-owned history.
 3. After complete 8K C0, extend native prefill, the exact transcript gate, and

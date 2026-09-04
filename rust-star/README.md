@@ -452,7 +452,12 @@ Schema v28 feeds both live layer-12 HCs through complete layer 13's ratio-128
 path. Its 49-dispatch prefix preserves 28/28 mappings; its 128 continuation
 tiles and production tail use 1,318 dispatches and 1,171/1,171 mappings. All
 16 ingress/compressor/attention/FFN hashes match two fresh oracle captures.
-Layers 14--42 and the output head remain open.
+Schema v29 binds those exact HCs into layer 14's paired ratio-4 compressors,
+sparse attention, and FFN. All 26 prefix/continuation hashes match independently
+repeated oracle targets. Each compressor boundary uses 40 dispatches and 17/17
+no-copy mappings; the prefix tail uses 36 dispatches, and 128 continuation tiles
+use 4,608 dispatches and 2,176/2,176 mappings. Layers 15--42 and the output head
+remain open.
 No throughput or speedup claim is attached to this diagnostic gate.
 The first complete second-half experiment deliberately tested whether the
 proven retained decoder schedule could serve as a correctness-preserving

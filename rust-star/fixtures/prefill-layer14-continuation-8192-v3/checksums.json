@@ -1,0 +1,302 @@
+{
+  "schema": "rust-star-layer14-continuation-oracle-v1",
+  "oracle_commit": "d35fb12d01d500b9cefcef24092c295687ceaf7e",
+  "oracle_executable_sha256": "8e37f40cef769e34ef82a202d202a42b267322437ab8100c1303cc6aa8583bf3",
+  "model_sha256": "ca22ae2f838e14077c22bc1c1417b71b45b5e5a3687bd96c2ac6e17fdb6261c0",
+  "prompt_sha256": "f53e0d80cb2d4492d24ebd63c7000c397b16ae70f9bf09b3763e5d8323ec209f",
+  "context_tokens": 8192,
+  "prefill_chunk": 4096,
+  "gen_tokens": 0,
+  "layer": 14,
+  "fresh_process_repetitions_per_boundary": 2,
+  "full_8k_logits_c0_claim": false,
+  "capture_note": "Prefix uses matching a/b captures. Continuation uses c/d with DUMP_POS=4096; a/b continuation drifted and is rejected.",
+  "payloads": [
+    {
+      "file": "oracle_KVcompress-14_pos0.bin",
+      "bytes": 2097152,
+      "sha256": "9aee000dd52a48a86b5b364a6b11a0f71986c3a3020ff58872d0d75e59a0495a",
+      "fnv1a_u32": "d4c6c44b5f22acb9",
+      "repetitions": [
+        "a",
+        "b"
+      ]
+    },
+    {
+      "file": "oracle_KVcur-14_pos0.bin",
+      "bytes": 8388608,
+      "sha256": "76ce84367785ac7eb2786bae6fcea00bf64170a84a48b4c29fc994773c47f8f9",
+      "fnv1a_u32": "2398dd8fa26b213c",
+      "repetitions": [
+        "a",
+        "b"
+      ]
+    },
+    {
+      "file": "oracle_Qcur-14_pos0.bin",
+      "bytes": 536870912,
+      "sha256": "1b3a3f22a48cdeea6397f14710169fa5f054b349f46e7eadbad039212a040424",
+      "fnv1a_u32": "ee27e900c1020a5c",
+      "repetitions": [
+        "a",
+        "b"
+      ]
+    },
+    {
+      "file": "oracle_attn_norm-14_pos0.bin",
+      "bytes": 67108864,
+      "sha256": "41e08107a138b5a43d24355e04dae746ffed8d2252f7bbfebe404343197f4838",
+      "fnv1a_u32": "ce17d0b4c40dd462",
+      "repetitions": [
+        "a",
+        "b"
+      ]
+    },
+    {
+      "file": "oracle_attn_state_kv-14_pos0.bin",
+      "bytes": 32768,
+      "sha256": "94c275d3f18c8cae111f423c8b8da4e8b3f304da016ffa1a7352a6903028ab5c",
+      "fnv1a_u32": "7c5f9a48cc166fe0",
+      "repetitions": [
+        "a",
+        "b"
+      ]
+    },
+    {
+      "file": "oracle_attn_state_score-14_pos0.bin",
+      "bytes": 32768,
+      "sha256": "ec7ba1df4a7d866cd6cdb9e308f0579cc67a00d82edcb8e772ebcf3da7cfac07",
+      "fnv1a_u32": "e614860d6a31677a",
+      "repetitions": [
+        "a",
+        "b"
+      ]
+    },
+    {
+      "file": "oracle_hc_attn_post-14_pos0.bin",
+      "bytes": 268435456,
+      "sha256": "18633075a10628f82584e38be5b986a15497f7d1b3aca5f416d182aa32c47292",
+      "fnv1a_u32": "01e4a720e3455797",
+      "repetitions": [
+        "a",
+        "b"
+      ]
+    },
+    {
+      "file": "oracle_hc_attn_pre-14_pos0.bin",
+      "bytes": 67108864,
+      "sha256": "8321c8f066bdfd4b599b88aaf17a56871ce9dad10121e7f4d231b5fec993386b",
+      "fnv1a_u32": "baa9a116f5e3e60a",
+      "repetitions": [
+        "a",
+        "b"
+      ]
+    },
+    {
+      "file": "oracle_hc_ffn_post-14_pos0.bin",
+      "bytes": 268435456,
+      "sha256": "2dcec781d936d1157612675d23ea04ac6de4c3ca14af1371f754cff1e585e8f5",
+      "fnv1a_u32": "7e357680983aa11b",
+      "repetitions": [
+        "a",
+        "b"
+      ]
+    },
+    {
+      "file": "oracle_indexer_KVcompress-14_pos0.bin",
+      "bytes": 524288,
+      "sha256": "7859fcf5f512e4b68f6d711a8a47026b67a89966692777b3c21661e7f1a958a0",
+      "fnv1a_u32": "76b5698f20f5dcdb",
+      "repetitions": [
+        "a",
+        "b"
+      ]
+    },
+    {
+      "file": "oracle_indexer_state_kv-14_pos0.bin",
+      "bytes": 8192,
+      "sha256": "95e7b07606c52c18710c2587791529f44ddd5a5e241876597644eba7550dd568",
+      "fnv1a_u32": "0987e56c823f11a1",
+      "repetitions": [
+        "a",
+        "b"
+      ]
+    },
+    {
+      "file": "oracle_indexer_state_score-14_pos0.bin",
+      "bytes": 8192,
+      "sha256": "96914c8e1e15db5f923dfec39a8db108dfc2484b2ec231711e4fc550d3c0386d",
+      "fnv1a_u32": "b8a353368ada7e5a",
+      "repetitions": [
+        "a",
+        "b"
+      ]
+    },
+    {
+      "file": "oracle_kqv_back-14_pos0.bin",
+      "bytes": 536870912,
+      "sha256": "17e945d66314bbd3a5d62d5ebc38ac7fd01a9df30557aef6567a9cec99603189",
+      "fnv1a_u32": "b192d407875fe3e6",
+      "repetitions": [
+        "a",
+        "b"
+      ]
+    },
+    {
+      "file": "oracle_KVcompress-14_pos4096.bin",
+      "bytes": 2097152,
+      "sha256": "c88172336910e776629a01f6f0a3582c76deab07b9afebaa6394c2dbba6c1599",
+      "fnv1a_u32": "444ed12bd0d54145",
+      "repetitions": [
+        "c",
+        "d"
+      ]
+    },
+    {
+      "file": "oracle_KVcur-14_pos4096.bin",
+      "bytes": 8388608,
+      "sha256": "8ee95d3451f9865dc6f625f58155841a1159c5dc0ac1596b0373b63c79adfc50",
+      "fnv1a_u32": "2ed3fbf5a99c20d7",
+      "repetitions": [
+        "c",
+        "d"
+      ]
+    },
+    {
+      "file": "oracle_Qcur-14_pos4096.bin",
+      "bytes": 536870912,
+      "sha256": "c194525100efc2f9ceaccaaf57ae9b866fa346d689425e85dc7d4bc5cb11d1b8",
+      "fnv1a_u32": "ea75b9cd7b2be7e3",
+      "repetitions": [
+        "c",
+        "d"
+      ]
+    },
+    {
+      "file": "oracle_attn_norm-14_pos4096.bin",
+      "bytes": 67108864,
+      "sha256": "bbce19ed8858405adf41cf9b0c6c45743febdb693763485b12a76638bf1d0fec",
+      "fnv1a_u32": "956674380c4d0acb",
+      "repetitions": [
+        "c",
+        "d"
+      ]
+    },
+    {
+      "file": "oracle_attn_state_kv-14_pos4096.bin",
+      "bytes": 32768,
+      "sha256": "9bdaf7fd8290f2ba56d82b785811a762b87bc98080297e15b2ae148693e21433",
+      "fnv1a_u32": "a50f1fb5c9d18a18",
+      "repetitions": [
+        "c",
+        "d"
+      ]
+    },
+    {
+      "file": "oracle_attn_state_score-14_pos4096.bin",
+      "bytes": 32768,
+      "sha256": "28e17f1d8a109cb495a4158b8d8ebde89689b72b8f7208faa270c25c182a6c18",
+      "fnv1a_u32": "c190e5260dbc6f5e",
+      "repetitions": [
+        "c",
+        "d"
+      ]
+    },
+    {
+      "file": "oracle_hc_attn_post-14_pos4096.bin",
+      "bytes": 268435456,
+      "sha256": "f340a496f8295213139056f803f571e75a9b2d103cb6be002425adbf124fe3cf",
+      "fnv1a_u32": "01671f64e19d6fac",
+      "repetitions": [
+        "c",
+        "d"
+      ]
+    },
+    {
+      "file": "oracle_hc_attn_pre-14_pos4096.bin",
+      "bytes": 67108864,
+      "sha256": "0eb3133bf50087524e51a19fdf8a60a053c386133b22759a17ccdfc1c273b356",
+      "fnv1a_u32": "24c7161b0e085342",
+      "repetitions": [
+        "c",
+        "d"
+      ]
+    },
+    {
+      "file": "oracle_hc_ffn_post-14_pos4096.bin",
+      "bytes": 268435456,
+      "sha256": "e76238fb267e656116fe8186ee7fd3de70213d83facc176742121a5f00e5ddd5",
+      "fnv1a_u32": "cd444d82fc475284",
+      "repetitions": [
+        "c",
+        "d"
+      ]
+    },
+    {
+      "file": "oracle_indexer_KVcompress-14_pos4096.bin",
+      "bytes": 524288,
+      "sha256": "68e25be3b922260aa067c896f3462d36df1280f1dbcf1b6f2bd1a9c906ce9e55",
+      "fnv1a_u32": "d62f0b0f1235dcdb",
+      "repetitions": [
+        "c",
+        "d"
+      ]
+    },
+    {
+      "file": "oracle_indexer_state_kv-14_pos4096.bin",
+      "bytes": 8192,
+      "sha256": "595365674b6e41a9e44ad12e29f3e2b34e45202fddcad8d43e7c5d5859980942",
+      "fnv1a_u32": "8bfbd82423e1ea13",
+      "repetitions": [
+        "c",
+        "d"
+      ]
+    },
+    {
+      "file": "oracle_indexer_state_score-14_pos4096.bin",
+      "bytes": 8192,
+      "sha256": "2f42a8176d7e52732ffc8cc5c76b923880fa5eb6fb77c30125e7d5003cff4797",
+      "fnv1a_u32": "07f3513e7776b7ca",
+      "repetitions": [
+        "c",
+        "d"
+      ]
+    },
+    {
+      "file": "oracle_kqv_back-14_pos4096.bin",
+      "bytes": 536870912,
+      "sha256": "05db2178d068f9fd179c40cd10309026148c0ddc4e898a191a614769557e540f",
+      "fnv1a_u32": "58f6f811cc3f611c",
+      "repetitions": [
+        "c",
+        "d"
+      ]
+    }
+  ],
+  "instrumented_logits": [
+    {
+      "run": "a",
+      "sha256": "07fa0262f04f7b449c28345060fdab2bdc73b546ac3bb7252842c6bd896ce438",
+      "mismatching_logits": 0,
+      "argmax": 77179
+    },
+    {
+      "run": "b",
+      "sha256": "18809cb947f2661b5dc117d84c0c376a6dd594a04fd4d395b25b4eec38da11d6",
+      "mismatching_logits": 129280,
+      "argmax": 77179
+    },
+    {
+      "run": "c",
+      "sha256": "07fa0262f04f7b449c28345060fdab2bdc73b546ac3bb7252842c6bd896ce438",
+      "mismatching_logits": 0,
+      "argmax": 77179
+    },
+    {
+      "run": "d",
+      "sha256": "041dcde151402a4af21838140cb8248e6b3ab71143ff9b9dca903268837eb2db",
+      "mismatching_logits": 129280,
+      "argmax": 77179
+    }
+  ]
+}

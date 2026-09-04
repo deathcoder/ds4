@@ -3502,7 +3502,12 @@ fn run_long_prefill_continuation_bootstrap_probe_command(arguments: Vec<OsString
         report.layer13_continuation_compressed_checksum,
     );
     println!(
-        "scope: complete retained layers 2 through 13 match the second 4K chunk oracle. Layers 14..42, complete 8K transformer output, output-logit C0, and throughput remain unclaimed"
+        "layer-14 complete prefix and continuation: exact paired compressors, sparse attention, and FFN; prefix boundary/tail dispatches={}/{}, continuation tiles={}, dispatches={}; all 26 oracle hashes match",
+        report.layer14_prefix_boundary_dispatches, report.layer14_prefix_complete_dispatches,
+        report.layer14_continuation_tiles, report.layer14_continuation_dispatches,
+    );
+    println!(
+        "scope: complete retained layers 2 through 14 match the second 4K chunk oracle. Layers 15..42, complete 8K transformer output, output-logit C0, and throughput remain unclaimed"
     );
     if let Some(path) = json_path {
         write_long_prefill_continuation_bootstrap_probe_file(&path, &report)?;
@@ -5708,7 +5713,7 @@ fn long_prefill_bootstrap_probe_usage() -> &'static str {
 }
 
 fn long_prefill_continuation_bootstrap_probe_usage() -> &'static str {
-    "usage: rust-star long-prefill-continuation-bootstrap-probe MODEL.gguf [--json PATH]\n\nRuns the first 4,096-token chunk through the complete native transformer, then advances positions 4,096--8,191 in the same retained Metal context. It verifies the layer-2 sparse transition and complete retained layers 2 through 13 against the repeated production oracle. This diagnostic does not claim layers 14--42, the complete 8K transformer output, output-logit C0, throughput, or a speedup."
+    "usage: rust-star long-prefill-continuation-bootstrap-probe MODEL.gguf [--json PATH]\n\nRuns the first 4,096-token chunk through the complete native transformer, then advances positions 4,096--8,191 in the same retained Metal context. It verifies the layer-2 sparse transition and complete retained layers 2 through 14 against the repeated production oracle. This diagnostic does not claim layers 15--42, the complete 8K transformer output, output-logit C0, throughput, or a speedup."
 }
 
 fn long_prefill_sequential_continuation_probe_usage() -> &'static str {
