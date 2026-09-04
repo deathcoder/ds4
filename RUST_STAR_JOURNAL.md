@@ -18,6 +18,50 @@ Before changing code:
 Journal entries are reverse chronological. Do not edit old entries to change
 history; add a correction and update the current-state summary.
 
+## 2026-09-05 — Restored exact standalone 2K regression control
+
+- Traced the layer-4 failure to the shared ratio-4 helper's final-tile guard.
+  Commit `94485d4` added `position_start != 0`, excluding full single-batch
+  prefixes from the small-batch tail projection previously used at 2K.
+- The pinned oracle explicitly reprojects the final four normalized rows with
+  the small-batch kernel to preserve recurrent-state accumulation order.
+- Removed the start-position exclusion while retaining the end-of-buffer
+  boundary test. Intermediate rolling tiles and explicit production-state
+  rebuilds retain their existing scheduling.
+- First release build passed. The 2K live run now passes layer 4 and stops at
+  layer-5 KQV row 0 (`0x3e5e3921` versus `0xbc4ceaff`); retained in `2k.log`.
+  This exposed a second shared-path inconsistency: `29d9521` switched the
+  ratio-128 mask/strides to real key rows but updated only layer 3's padding
+  and kernel. Layers 5--41 still used the non-padding kernel.
+- Applied the validated layer-3 partial-block padding and eight-SIMD-group
+  kernel setup to every subsequent ratio-128 layer. Each layer refreshes the
+  padding after staging its own KV. Added 19 padding dispatches to the report.
+- Second release build passed, but its run stopped at the host schedule guard:
+  the added 19 padding dispatches also require updating the Rust report
+  expectations. Updated the matching schedule contracts and report tests.
+  Tensor validation did not execute in that run (`2k-fixed.log`).
+- Third release build passed. `2k-final.json` / `2k-final.log` now pass the
+  complete native 2K model, every retained transformer C0 boundary, full logits,
+  and greedy selection (token 15342). All 1,216 transformer mappings remain
+  no-copy. The integrated `layer13.json` / `layer13.log` also passes v28,
+  preserving the complete retained chain through layer 13.
+- Validation passed: release build; `cargo fmt --check`; 307 Rust tests via
+  `cargo test --release` with `CARGO_INCREMENTAL=0`; 86 Python tests; and
+  `git diff --check`. Both model probes used the pinned Q2 model on Metal with
+  inherited `DS4_` / `RUST_STAR_` overrides removed, sequential fresh processes.
+  Commands: `prefill-layers012-attention-loop-probe` and
+  `long-prefill-continuation-bootstrap-probe` with `--json` report paths.
+- Report SHA-256: 2K `101249213ddb5ca987d47c543b934277e00769465474446b0acae8102ef7d117`;
+  layer 13 `56beeae726e28414cf1720bf39caf2ba277281d426b48cbe6aff8b9406f7f98d`.
+- Removed only the ignored extra test-profile library, test executable, and
+  their Cargo metadata after tests passed. Retained the production executable,
+  normal release build cache, all fixtures and logs. Reclaimed another 10.45 GiB
+  of test output; available space was 76.49 GiB afterward. Exact inventory:
+  `rust-star/.work/layer4-state-repair/test-cache-cleanup.json`.
+- Next: implement complete layer 14 from the validated v28 checkpoint.
+  Evidence is being recorded in `rust-star/.work/layer4-state-repair/`.
+  No fixture or comparator was changed; no benchmark was run.
+
 ## 2026-09-04 — Reclaimed rebuildable Cargo output
 
 Objective:
@@ -1089,7 +1133,7 @@ Next:
 
 ## Current State
 
-### Current resume checkpoint (updated 2026-09-04)
+### Current resume checkpoint (updated 2026-09-05)
 
 - Disk cleanup reclaimed about 79 GiB of rebuildable Cargo output. Both tested
   release executables, all oracle/capture evidence, and source remain available;
@@ -1101,10 +1145,13 @@ Next:
 - The retained native 4K-to-8K continuation is complete through layer 13 under
   report schema v28. Layer 14 is the next implementation boundary; layers
   14--42 and the output head remain open for this continuation.
-- Immediate regression priority: the standalone 2K control currently fails at
-  layer-4 attention recurrent KV element 0 (`0x3c87158e` versus `0x3c8751ce`).
-  Two current runs and an unchanged `008e6f8` release build fail identically.
-  This predates layer 13; repair it before extending the transformer further.
+- The September 5 repair clears the standalone 2K regression: full logits and
+  every retained transformer boundary pass unchanged C0 fixtures. It restores
+  the ratio-4 small-batch tail projection and applies consistent ratio-128
+  partial-block padding/kernel selection through all later odd layers.
+- The same candidate passes the integrated layer-13 retained continuation gate.
+  Layer 14 is now the next implementation priority. All 307 Rust host tests
+  and 86 Python tests pass.
 - Preserve the existing 2K prefill/decode controls and their historical evidence.
   Their full-model coverage does not establish complete 8K coverage.
 - Active producer: oracle-v3 `d35fb12d01d500b9cefcef24092c295687ceaf7e`.
@@ -1870,27 +1917,22 @@ Next:
 
 ## Immediate Next Actions
 
-1. Diagnose and repair the pre-existing standalone 2K layer-4 attention
-   recurrent-KV mismatch reproduced on both the layer-13 candidate and base
-   `008e6f8`. Preserve the failing logs and exact fixture; locate the first
-   differing operation rather than weakening C0. Rerun the 2K control and the
-   accepted layer-13 gate after any shared-path repair.
-2. Extend `long-prefill-continuation-bootstrap-probe` from the exact v28
+1. Extend `long-prefill-continuation-bootstrap-probe` from the exact v28
    layer-13 checkpoint through complete layer 14. Carry live prefix and
    continuation HC into its paired ratio-4 compressors, sparse attention, FFN,
    and final HC; require independently repeated oracle-v3 evidence for each new
    boundary and do not adopt drifted dump-enabled final logits as new targets.
-3. Continue the exact retained chain through layers 15--42 and the output head.
+2. Continue the exact retained chain through layers 15--42 and the output head.
    Require every one of the 129,280 logits to match the supplemental oracle-v3
    8K fixture. Preserve production batch geometry and GPU-owned history.
-4. After complete 8K C0, extend native prefill, the exact transcript gate, and
+3. After complete 8K C0, extend native prefill, the exact transcript gate, and
    eligible engine measurement to the accepted oracle-v3 32K frontier.
    Keep correctness diagnostics separate from performance claims.
-5. Preserve the exact 2K native-prefill/decode handoff, position-8195 retained
+4. Preserve the exact 2K native-prefill/decode handoff, position-8195 retained
    decoder step, sparse controls, shorter layer/decoder controls, and accepted
    retained lifecycle as regressions relevant to each change. Never run multiple
    huge model processes concurrently.
-6. Update the current checkpoint and add a dated journal entry after every
+5. Update the current checkpoint and add a dated journal entry after every
    meaningful implementation or validation step, including failures and pending
    checks, and before handoff or compaction. Commit journal updates with the
    implementation they describe whenever practical.

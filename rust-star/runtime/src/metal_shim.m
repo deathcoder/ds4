@@ -3406,7 +3406,9 @@ static int encode_projected_compressor_batch_ratio4(
         .ne0=(int32_t)width, .ne1=ratio, .r2=1, .r3=1,
     };
     const NSUInteger retained_compressed_rows = output.length/row_bytes;
-    const BOOL final_rolling_tile = position_start != 0u &&
+    /* A complete prefix also needs the oracle's four-row projection order.
+     * Testing position_start excluded single-batch prefills from this refresh. */
+    const BOOL final_prefill_tile =
         position_start + rows == retained_compressed_rows*ratio;
 #define RUST_STAR_ENCODE_TAIL_PROJECTION(weight, weight_offset, output) do { \
         [encoder setComputePipelineState:context.f16Tail4Pipeline]; \
@@ -3417,7 +3419,7 @@ static int encode_projected_compressor_batch_ratio4(
         [encoder dispatchThreadgroups:MTLSizeMake((width+7u)/8u,1,1) \
              threadsPerThreadgroup:MTLSizeMake(32,2,1)]; \
     } while (0)
-    if (rebuild_prefill_state || final_rolling_tile) {
+    if (rebuild_prefill_state || final_prefill_tile) {
         RUST_STAR_ENCODE_TAIL_PROJECTION(kv_weight, kv_weight_offset, projected_kv);
         RUST_STAR_ENCODE_TAIL_PROJECTION(gate_weight, gate_weight_offset, projected_score);
     }
@@ -3445,7 +3447,7 @@ static int encode_projected_compressor_batch_ratio4(
               threadsPerThreadgroup:MTLSizeMake(256,1,1)];
     } else {
         for (uint32_t row = 0; row < ratio; row++) {
-            const uint32_t projected_row = final_rolling_tile ? row : rows-ratio+row;
+            const uint32_t projected_row = final_prefill_tile ? row : rows-ratio+row;
             rust_star_compressor_store_args store = {
                 .width=width, .ratio=ratio,
                 .pos=position_start+rows-ratio+row, .ape_type=1,
@@ -19550,6 +19552,16 @@ int rust_star_metal_run_prefill_layer2_attention(
              threadsPerThreadgroup:MTLSizeMake(256,1,1)];
         RUST_STAR_PREFILL_REPRESENTATIVE_COMPUTE_BOUNDARY();
 
+        /* Each ratio-128 layer stages new KV, so refresh its partial key block. */
+        [encoder setComputePipelineState:context.flashPad64Pipeline];
+        [encoder setBytes:&layer3_pad_args length:sizeof(layer3_pad_args) atIndex:0];
+        [encoder setBuffer:staged_kv_buffer offset:0 atIndex:1];
+        [encoder setBuffer:staged_kv_buffer offset:0 atIndex:2];
+        [encoder setBuffer:layer3_mask_buffer offset:0 atIndex:3];
+        [encoder setBuffer:pad_buffer offset:0 atIndex:4];
+        [encoder dispatchThreadgroups:MTLSizeMake(64,1,1)
+             threadsPerThreadgroup:MTLSizeMake(32,1,1)];
+
         [encoder setComputePipelineState:context.flashBlkPipeline];
         [encoder setBytes:&layer3_block_args
                    length:sizeof(layer3_block_args) atIndex:0];
@@ -19560,7 +19572,7 @@ int rust_star_metal_run_prefill_layer2_attention(
              threadsPerThreadgroup:MTLSizeMake(32,1,1)];
         RUST_STAR_PREFILL_REPRESENTATIVE_COMPUTE_BOUNDARY();
 
-        [encoder setComputePipelineState:context.flashNonvecPipeline];
+        [encoder setComputePipelineState:context.flashNonvecNsg8KvpadPipeline];
         [encoder setBytes:&layer3_attention_args
                    length:sizeof(layer3_attention_args) atIndex:0];
         [encoder setBuffer:layer5_q_cur_buffer offset:0 atIndex:1];
@@ -19573,7 +19585,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setBuffer:heads_buffer offset:0 atIndex:8];
         [encoder setThreadgroupMemoryLength:28672u atIndex:0];
         [encoder dispatchThreadgroups:MTLSizeMake(query_blocks,n_head,1)
-             threadsPerThreadgroup:MTLSizeMake(32,kRustStarFlashNonvecNsg,1)];
+             threadsPerThreadgroup:MTLSizeMake(32,8,1)];
         [encoder endEncoding];
 
         id<MTLBlitCommandEncoder> layer5_attention_blit =
@@ -20478,6 +20490,16 @@ int rust_star_metal_run_prefill_layer2_attention(
                 (layer7_compressed_elements+1023u)/1024u,1,1)
              threadsPerThreadgroup:MTLSizeMake(256,1,1)];
 
+        /* Each ratio-128 layer stages new KV, so refresh its partial key block. */
+        [encoder setComputePipelineState:context.flashPad64Pipeline];
+        [encoder setBytes:&layer3_pad_args length:sizeof(layer3_pad_args) atIndex:0];
+        [encoder setBuffer:staged_kv_buffer offset:0 atIndex:1];
+        [encoder setBuffer:staged_kv_buffer offset:0 atIndex:2];
+        [encoder setBuffer:layer3_mask_buffer offset:0 atIndex:3];
+        [encoder setBuffer:pad_buffer offset:0 atIndex:4];
+        [encoder dispatchThreadgroups:MTLSizeMake(64,1,1)
+             threadsPerThreadgroup:MTLSizeMake(32,1,1)];
+
         [encoder setComputePipelineState:context.flashBlkPipeline];
         [encoder setBytes:&layer3_block_args
                    length:sizeof(layer3_block_args) atIndex:0];
@@ -20487,7 +20509,7 @@ int rust_star_metal_run_prefill_layer2_attention(
                 layer3_attention_rows/64u,query_blocks,1)
              threadsPerThreadgroup:MTLSizeMake(32,1,1)];
 
-        [encoder setComputePipelineState:context.flashNonvecPipeline];
+        [encoder setComputePipelineState:context.flashNonvecNsg8KvpadPipeline];
         [encoder setBytes:&layer3_attention_args
                    length:sizeof(layer3_attention_args) atIndex:0];
         [encoder setBuffer:layer7_q_cur_buffer offset:0 atIndex:1];
@@ -20500,7 +20522,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setBuffer:heads_buffer offset:0 atIndex:8];
         [encoder setThreadgroupMemoryLength:28672u atIndex:0];
         [encoder dispatchThreadgroups:MTLSizeMake(query_blocks,n_head,1)
-             threadsPerThreadgroup:MTLSizeMake(32,kRustStarFlashNonvecNsg,1)];
+             threadsPerThreadgroup:MTLSizeMake(32,8,1)];
         [encoder endEncoding];
 
         id<MTLBlitCommandEncoder> layer7_attention_blit =
@@ -21411,6 +21433,16 @@ int rust_star_metal_run_prefill_layer2_attention(
                 (layer9_compressed_elements+1023u)/1024u,1,1)
              threadsPerThreadgroup:MTLSizeMake(256,1,1)];
 
+        /* Each ratio-128 layer stages new KV, so refresh its partial key block. */
+        [encoder setComputePipelineState:context.flashPad64Pipeline];
+        [encoder setBytes:&layer3_pad_args length:sizeof(layer3_pad_args) atIndex:0];
+        [encoder setBuffer:staged_kv_buffer offset:0 atIndex:1];
+        [encoder setBuffer:staged_kv_buffer offset:0 atIndex:2];
+        [encoder setBuffer:layer3_mask_buffer offset:0 atIndex:3];
+        [encoder setBuffer:pad_buffer offset:0 atIndex:4];
+        [encoder dispatchThreadgroups:MTLSizeMake(64,1,1)
+             threadsPerThreadgroup:MTLSizeMake(32,1,1)];
+
         [encoder setComputePipelineState:context.flashBlkPipeline];
         [encoder setBytes:&layer3_block_args
                    length:sizeof(layer3_block_args) atIndex:0];
@@ -21420,7 +21452,7 @@ int rust_star_metal_run_prefill_layer2_attention(
                 layer3_attention_rows/64u,query_blocks,1)
              threadsPerThreadgroup:MTLSizeMake(32,1,1)];
 
-        [encoder setComputePipelineState:context.flashNonvecPipeline];
+        [encoder setComputePipelineState:context.flashNonvecNsg8KvpadPipeline];
         [encoder setBytes:&layer3_attention_args
                    length:sizeof(layer3_attention_args) atIndex:0];
         [encoder setBuffer:layer9_q_cur_buffer offset:0 atIndex:1];
@@ -21433,7 +21465,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setBuffer:heads_buffer offset:0 atIndex:8];
         [encoder setThreadgroupMemoryLength:28672u atIndex:0];
         [encoder dispatchThreadgroups:MTLSizeMake(query_blocks,n_head,1)
-             threadsPerThreadgroup:MTLSizeMake(32,kRustStarFlashNonvecNsg,1)];
+             threadsPerThreadgroup:MTLSizeMake(32,8,1)];
         [encoder endEncoding];
 
         id<MTLBlitCommandEncoder> layer9_attention_blit =
@@ -22344,6 +22376,16 @@ int rust_star_metal_run_prefill_layer2_attention(
                 (layer11_compressed_elements+1023u)/1024u,1,1)
              threadsPerThreadgroup:MTLSizeMake(256,1,1)];
 
+        /* Each ratio-128 layer stages new KV, so refresh its partial key block. */
+        [encoder setComputePipelineState:context.flashPad64Pipeline];
+        [encoder setBytes:&layer3_pad_args length:sizeof(layer3_pad_args) atIndex:0];
+        [encoder setBuffer:staged_kv_buffer offset:0 atIndex:1];
+        [encoder setBuffer:staged_kv_buffer offset:0 atIndex:2];
+        [encoder setBuffer:layer3_mask_buffer offset:0 atIndex:3];
+        [encoder setBuffer:pad_buffer offset:0 atIndex:4];
+        [encoder dispatchThreadgroups:MTLSizeMake(64,1,1)
+             threadsPerThreadgroup:MTLSizeMake(32,1,1)];
+
         [encoder setComputePipelineState:context.flashBlkPipeline];
         [encoder setBytes:&layer3_block_args
                    length:sizeof(layer3_block_args) atIndex:0];
@@ -22353,7 +22395,7 @@ int rust_star_metal_run_prefill_layer2_attention(
                 layer3_attention_rows/64u,query_blocks,1)
              threadsPerThreadgroup:MTLSizeMake(32,1,1)];
 
-        [encoder setComputePipelineState:context.flashNonvecPipeline];
+        [encoder setComputePipelineState:context.flashNonvecNsg8KvpadPipeline];
         [encoder setBytes:&layer3_attention_args
                    length:sizeof(layer3_attention_args) atIndex:0];
         [encoder setBuffer:layer11_q_cur_buffer offset:0 atIndex:1];
@@ -22366,7 +22408,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setBuffer:heads_buffer offset:0 atIndex:8];
         [encoder setThreadgroupMemoryLength:28672u atIndex:0];
         [encoder dispatchThreadgroups:MTLSizeMake(query_blocks,n_head,1)
-             threadsPerThreadgroup:MTLSizeMake(32,kRustStarFlashNonvecNsg,1)];
+             threadsPerThreadgroup:MTLSizeMake(32,8,1)];
         [encoder endEncoding];
 
         id<MTLBlitCommandEncoder> layer11_attention_blit =
@@ -23277,6 +23319,16 @@ int rust_star_metal_run_prefill_layer2_attention(
                 (layer13_compressed_elements+1023u)/1024u,1,1)
              threadsPerThreadgroup:MTLSizeMake(256,1,1)];
 
+        /* Each ratio-128 layer stages new KV, so refresh its partial key block. */
+        [encoder setComputePipelineState:context.flashPad64Pipeline];
+        [encoder setBytes:&layer3_pad_args length:sizeof(layer3_pad_args) atIndex:0];
+        [encoder setBuffer:staged_kv_buffer offset:0 atIndex:1];
+        [encoder setBuffer:staged_kv_buffer offset:0 atIndex:2];
+        [encoder setBuffer:layer3_mask_buffer offset:0 atIndex:3];
+        [encoder setBuffer:pad_buffer offset:0 atIndex:4];
+        [encoder dispatchThreadgroups:MTLSizeMake(64,1,1)
+             threadsPerThreadgroup:MTLSizeMake(32,1,1)];
+
         [encoder setComputePipelineState:context.flashBlkPipeline];
         [encoder setBytes:&layer3_block_args
                    length:sizeof(layer3_block_args) atIndex:0];
@@ -23286,7 +23338,7 @@ int rust_star_metal_run_prefill_layer2_attention(
                 layer3_attention_rows/64u,query_blocks,1)
              threadsPerThreadgroup:MTLSizeMake(32,1,1)];
 
-        [encoder setComputePipelineState:context.flashNonvecPipeline];
+        [encoder setComputePipelineState:context.flashNonvecNsg8KvpadPipeline];
         [encoder setBytes:&layer3_attention_args
                    length:sizeof(layer3_attention_args) atIndex:0];
         [encoder setBuffer:layer13_q_cur_buffer offset:0 atIndex:1];
@@ -23299,7 +23351,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setBuffer:heads_buffer offset:0 atIndex:8];
         [encoder setThreadgroupMemoryLength:28672u atIndex:0];
         [encoder dispatchThreadgroups:MTLSizeMake(query_blocks,n_head,1)
-             threadsPerThreadgroup:MTLSizeMake(32,kRustStarFlashNonvecNsg,1)];
+             threadsPerThreadgroup:MTLSizeMake(32,8,1)];
         [encoder endEncoding];
 
         id<MTLBlitCommandEncoder> layer13_attention_blit =
@@ -24210,6 +24262,16 @@ int rust_star_metal_run_prefill_layer2_attention(
                 (layer15_compressed_elements+1023u)/1024u,1,1)
              threadsPerThreadgroup:MTLSizeMake(256,1,1)];
 
+        /* Each ratio-128 layer stages new KV, so refresh its partial key block. */
+        [encoder setComputePipelineState:context.flashPad64Pipeline];
+        [encoder setBytes:&layer3_pad_args length:sizeof(layer3_pad_args) atIndex:0];
+        [encoder setBuffer:staged_kv_buffer offset:0 atIndex:1];
+        [encoder setBuffer:staged_kv_buffer offset:0 atIndex:2];
+        [encoder setBuffer:layer3_mask_buffer offset:0 atIndex:3];
+        [encoder setBuffer:pad_buffer offset:0 atIndex:4];
+        [encoder dispatchThreadgroups:MTLSizeMake(64,1,1)
+             threadsPerThreadgroup:MTLSizeMake(32,1,1)];
+
         [encoder setComputePipelineState:context.flashBlkPipeline];
         [encoder setBytes:&layer3_block_args
                    length:sizeof(layer3_block_args) atIndex:0];
@@ -24219,7 +24281,7 @@ int rust_star_metal_run_prefill_layer2_attention(
                 layer3_attention_rows/64u,query_blocks,1)
              threadsPerThreadgroup:MTLSizeMake(32,1,1)];
 
-        [encoder setComputePipelineState:context.flashNonvecPipeline];
+        [encoder setComputePipelineState:context.flashNonvecNsg8KvpadPipeline];
         [encoder setBytes:&layer3_attention_args
                    length:sizeof(layer3_attention_args) atIndex:0];
         [encoder setBuffer:layer15_q_cur_buffer offset:0 atIndex:1];
@@ -24232,7 +24294,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setBuffer:heads_buffer offset:0 atIndex:8];
         [encoder setThreadgroupMemoryLength:28672u atIndex:0];
         [encoder dispatchThreadgroups:MTLSizeMake(query_blocks,n_head,1)
-             threadsPerThreadgroup:MTLSizeMake(32,kRustStarFlashNonvecNsg,1)];
+             threadsPerThreadgroup:MTLSizeMake(32,8,1)];
         [encoder endEncoding];
 
         id<MTLBlitCommandEncoder> layer15_attention_blit =
@@ -25143,6 +25205,16 @@ int rust_star_metal_run_prefill_layer2_attention(
                 (layer17_compressed_elements+1023u)/1024u,1,1)
              threadsPerThreadgroup:MTLSizeMake(256,1,1)];
 
+        /* Each ratio-128 layer stages new KV, so refresh its partial key block. */
+        [encoder setComputePipelineState:context.flashPad64Pipeline];
+        [encoder setBytes:&layer3_pad_args length:sizeof(layer3_pad_args) atIndex:0];
+        [encoder setBuffer:staged_kv_buffer offset:0 atIndex:1];
+        [encoder setBuffer:staged_kv_buffer offset:0 atIndex:2];
+        [encoder setBuffer:layer3_mask_buffer offset:0 atIndex:3];
+        [encoder setBuffer:pad_buffer offset:0 atIndex:4];
+        [encoder dispatchThreadgroups:MTLSizeMake(64,1,1)
+             threadsPerThreadgroup:MTLSizeMake(32,1,1)];
+
         [encoder setComputePipelineState:context.flashBlkPipeline];
         [encoder setBytes:&layer3_block_args
                    length:sizeof(layer3_block_args) atIndex:0];
@@ -25152,7 +25224,7 @@ int rust_star_metal_run_prefill_layer2_attention(
                 layer3_attention_rows/64u,query_blocks,1)
              threadsPerThreadgroup:MTLSizeMake(32,1,1)];
 
-        [encoder setComputePipelineState:context.flashNonvecPipeline];
+        [encoder setComputePipelineState:context.flashNonvecNsg8KvpadPipeline];
         [encoder setBytes:&layer3_attention_args
                    length:sizeof(layer3_attention_args) atIndex:0];
         [encoder setBuffer:layer17_q_cur_buffer offset:0 atIndex:1];
@@ -25165,7 +25237,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setBuffer:heads_buffer offset:0 atIndex:8];
         [encoder setThreadgroupMemoryLength:28672u atIndex:0];
         [encoder dispatchThreadgroups:MTLSizeMake(query_blocks,n_head,1)
-             threadsPerThreadgroup:MTLSizeMake(32,kRustStarFlashNonvecNsg,1)];
+             threadsPerThreadgroup:MTLSizeMake(32,8,1)];
         [encoder endEncoding];
 
         id<MTLBlitCommandEncoder> layer17_attention_blit =
@@ -26076,6 +26148,16 @@ int rust_star_metal_run_prefill_layer2_attention(
                 (layer19_compressed_elements+1023u)/1024u,1,1)
              threadsPerThreadgroup:MTLSizeMake(256,1,1)];
 
+        /* Each ratio-128 layer stages new KV, so refresh its partial key block. */
+        [encoder setComputePipelineState:context.flashPad64Pipeline];
+        [encoder setBytes:&layer3_pad_args length:sizeof(layer3_pad_args) atIndex:0];
+        [encoder setBuffer:staged_kv_buffer offset:0 atIndex:1];
+        [encoder setBuffer:staged_kv_buffer offset:0 atIndex:2];
+        [encoder setBuffer:layer3_mask_buffer offset:0 atIndex:3];
+        [encoder setBuffer:pad_buffer offset:0 atIndex:4];
+        [encoder dispatchThreadgroups:MTLSizeMake(64,1,1)
+             threadsPerThreadgroup:MTLSizeMake(32,1,1)];
+
         [encoder setComputePipelineState:context.flashBlkPipeline];
         [encoder setBytes:&layer3_block_args
                    length:sizeof(layer3_block_args) atIndex:0];
@@ -26085,7 +26167,7 @@ int rust_star_metal_run_prefill_layer2_attention(
                 layer3_attention_rows/64u,query_blocks,1)
              threadsPerThreadgroup:MTLSizeMake(32,1,1)];
 
-        [encoder setComputePipelineState:context.flashNonvecPipeline];
+        [encoder setComputePipelineState:context.flashNonvecNsg8KvpadPipeline];
         [encoder setBytes:&layer3_attention_args
                    length:sizeof(layer3_attention_args) atIndex:0];
         [encoder setBuffer:layer19_q_cur_buffer offset:0 atIndex:1];
@@ -26098,7 +26180,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setBuffer:heads_buffer offset:0 atIndex:8];
         [encoder setThreadgroupMemoryLength:28672u atIndex:0];
         [encoder dispatchThreadgroups:MTLSizeMake(query_blocks,n_head,1)
-             threadsPerThreadgroup:MTLSizeMake(32,kRustStarFlashNonvecNsg,1)];
+             threadsPerThreadgroup:MTLSizeMake(32,8,1)];
         [encoder endEncoding];
 
         id<MTLBlitCommandEncoder> layer19_attention_blit =
@@ -27009,6 +27091,16 @@ int rust_star_metal_run_prefill_layer2_attention(
                 (layer21_compressed_elements+1023u)/1024u,1,1)
              threadsPerThreadgroup:MTLSizeMake(256,1,1)];
 
+        /* Each ratio-128 layer stages new KV, so refresh its partial key block. */
+        [encoder setComputePipelineState:context.flashPad64Pipeline];
+        [encoder setBytes:&layer3_pad_args length:sizeof(layer3_pad_args) atIndex:0];
+        [encoder setBuffer:staged_kv_buffer offset:0 atIndex:1];
+        [encoder setBuffer:staged_kv_buffer offset:0 atIndex:2];
+        [encoder setBuffer:layer3_mask_buffer offset:0 atIndex:3];
+        [encoder setBuffer:pad_buffer offset:0 atIndex:4];
+        [encoder dispatchThreadgroups:MTLSizeMake(64,1,1)
+             threadsPerThreadgroup:MTLSizeMake(32,1,1)];
+
         [encoder setComputePipelineState:context.flashBlkPipeline];
         [encoder setBytes:&layer3_block_args
                    length:sizeof(layer3_block_args) atIndex:0];
@@ -27018,7 +27110,7 @@ int rust_star_metal_run_prefill_layer2_attention(
                 layer3_attention_rows/64u,query_blocks,1)
              threadsPerThreadgroup:MTLSizeMake(32,1,1)];
 
-        [encoder setComputePipelineState:context.flashNonvecPipeline];
+        [encoder setComputePipelineState:context.flashNonvecNsg8KvpadPipeline];
         [encoder setBytes:&layer3_attention_args
                    length:sizeof(layer3_attention_args) atIndex:0];
         [encoder setBuffer:layer21_q_cur_buffer offset:0 atIndex:1];
@@ -27031,7 +27123,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setBuffer:heads_buffer offset:0 atIndex:8];
         [encoder setThreadgroupMemoryLength:28672u atIndex:0];
         [encoder dispatchThreadgroups:MTLSizeMake(query_blocks,n_head,1)
-             threadsPerThreadgroup:MTLSizeMake(32,kRustStarFlashNonvecNsg,1)];
+             threadsPerThreadgroup:MTLSizeMake(32,8,1)];
         [encoder endEncoding];
 
         id<MTLBlitCommandEncoder> layer21_attention_blit =
@@ -27942,6 +28034,16 @@ int rust_star_metal_run_prefill_layer2_attention(
                 (layer23_compressed_elements+1023u)/1024u,1,1)
              threadsPerThreadgroup:MTLSizeMake(256,1,1)];
 
+        /* Each ratio-128 layer stages new KV, so refresh its partial key block. */
+        [encoder setComputePipelineState:context.flashPad64Pipeline];
+        [encoder setBytes:&layer3_pad_args length:sizeof(layer3_pad_args) atIndex:0];
+        [encoder setBuffer:staged_kv_buffer offset:0 atIndex:1];
+        [encoder setBuffer:staged_kv_buffer offset:0 atIndex:2];
+        [encoder setBuffer:layer3_mask_buffer offset:0 atIndex:3];
+        [encoder setBuffer:pad_buffer offset:0 atIndex:4];
+        [encoder dispatchThreadgroups:MTLSizeMake(64,1,1)
+             threadsPerThreadgroup:MTLSizeMake(32,1,1)];
+
         [encoder setComputePipelineState:context.flashBlkPipeline];
         [encoder setBytes:&layer3_block_args
                    length:sizeof(layer3_block_args) atIndex:0];
@@ -27951,7 +28053,7 @@ int rust_star_metal_run_prefill_layer2_attention(
                 layer3_attention_rows/64u,query_blocks,1)
              threadsPerThreadgroup:MTLSizeMake(32,1,1)];
 
-        [encoder setComputePipelineState:context.flashNonvecPipeline];
+        [encoder setComputePipelineState:context.flashNonvecNsg8KvpadPipeline];
         [encoder setBytes:&layer3_attention_args
                    length:sizeof(layer3_attention_args) atIndex:0];
         [encoder setBuffer:layer23_q_cur_buffer offset:0 atIndex:1];
@@ -27964,7 +28066,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setBuffer:heads_buffer offset:0 atIndex:8];
         [encoder setThreadgroupMemoryLength:28672u atIndex:0];
         [encoder dispatchThreadgroups:MTLSizeMake(query_blocks,n_head,1)
-             threadsPerThreadgroup:MTLSizeMake(32,kRustStarFlashNonvecNsg,1)];
+             threadsPerThreadgroup:MTLSizeMake(32,8,1)];
         [encoder endEncoding];
 
         id<MTLBlitCommandEncoder> layer23_attention_blit =
@@ -28875,6 +28977,16 @@ int rust_star_metal_run_prefill_layer2_attention(
                 (layer25_compressed_elements+1023u)/1024u,1,1)
              threadsPerThreadgroup:MTLSizeMake(256,1,1)];
 
+        /* Each ratio-128 layer stages new KV, so refresh its partial key block. */
+        [encoder setComputePipelineState:context.flashPad64Pipeline];
+        [encoder setBytes:&layer3_pad_args length:sizeof(layer3_pad_args) atIndex:0];
+        [encoder setBuffer:staged_kv_buffer offset:0 atIndex:1];
+        [encoder setBuffer:staged_kv_buffer offset:0 atIndex:2];
+        [encoder setBuffer:layer3_mask_buffer offset:0 atIndex:3];
+        [encoder setBuffer:pad_buffer offset:0 atIndex:4];
+        [encoder dispatchThreadgroups:MTLSizeMake(64,1,1)
+             threadsPerThreadgroup:MTLSizeMake(32,1,1)];
+
         [encoder setComputePipelineState:context.flashBlkPipeline];
         [encoder setBytes:&layer3_block_args
                    length:sizeof(layer3_block_args) atIndex:0];
@@ -28884,7 +28996,7 @@ int rust_star_metal_run_prefill_layer2_attention(
                 layer3_attention_rows/64u,query_blocks,1)
              threadsPerThreadgroup:MTLSizeMake(32,1,1)];
 
-        [encoder setComputePipelineState:context.flashNonvecPipeline];
+        [encoder setComputePipelineState:context.flashNonvecNsg8KvpadPipeline];
         [encoder setBytes:&layer3_attention_args
                    length:sizeof(layer3_attention_args) atIndex:0];
         [encoder setBuffer:layer25_q_cur_buffer offset:0 atIndex:1];
@@ -28897,7 +29009,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setBuffer:heads_buffer offset:0 atIndex:8];
         [encoder setThreadgroupMemoryLength:28672u atIndex:0];
         [encoder dispatchThreadgroups:MTLSizeMake(query_blocks,n_head,1)
-             threadsPerThreadgroup:MTLSizeMake(32,kRustStarFlashNonvecNsg,1)];
+             threadsPerThreadgroup:MTLSizeMake(32,8,1)];
         [encoder endEncoding];
 
         id<MTLBlitCommandEncoder> layer25_attention_blit =
@@ -29808,6 +29920,16 @@ int rust_star_metal_run_prefill_layer2_attention(
                 (layer27_compressed_elements+1023u)/1024u,1,1)
              threadsPerThreadgroup:MTLSizeMake(256,1,1)];
 
+        /* Each ratio-128 layer stages new KV, so refresh its partial key block. */
+        [encoder setComputePipelineState:context.flashPad64Pipeline];
+        [encoder setBytes:&layer3_pad_args length:sizeof(layer3_pad_args) atIndex:0];
+        [encoder setBuffer:staged_kv_buffer offset:0 atIndex:1];
+        [encoder setBuffer:staged_kv_buffer offset:0 atIndex:2];
+        [encoder setBuffer:layer3_mask_buffer offset:0 atIndex:3];
+        [encoder setBuffer:pad_buffer offset:0 atIndex:4];
+        [encoder dispatchThreadgroups:MTLSizeMake(64,1,1)
+             threadsPerThreadgroup:MTLSizeMake(32,1,1)];
+
         [encoder setComputePipelineState:context.flashBlkPipeline];
         [encoder setBytes:&layer3_block_args
                    length:sizeof(layer3_block_args) atIndex:0];
@@ -29817,7 +29939,7 @@ int rust_star_metal_run_prefill_layer2_attention(
                 layer3_attention_rows/64u,query_blocks,1)
              threadsPerThreadgroup:MTLSizeMake(32,1,1)];
 
-        [encoder setComputePipelineState:context.flashNonvecPipeline];
+        [encoder setComputePipelineState:context.flashNonvecNsg8KvpadPipeline];
         [encoder setBytes:&layer3_attention_args
                    length:sizeof(layer3_attention_args) atIndex:0];
         [encoder setBuffer:layer27_q_cur_buffer offset:0 atIndex:1];
@@ -29830,7 +29952,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setBuffer:heads_buffer offset:0 atIndex:8];
         [encoder setThreadgroupMemoryLength:28672u atIndex:0];
         [encoder dispatchThreadgroups:MTLSizeMake(query_blocks,n_head,1)
-             threadsPerThreadgroup:MTLSizeMake(32,kRustStarFlashNonvecNsg,1)];
+             threadsPerThreadgroup:MTLSizeMake(32,8,1)];
         [encoder endEncoding];
 
         id<MTLBlitCommandEncoder> layer27_attention_blit =
@@ -30741,6 +30863,16 @@ int rust_star_metal_run_prefill_layer2_attention(
                 (layer29_compressed_elements+1023u)/1024u,1,1)
              threadsPerThreadgroup:MTLSizeMake(256,1,1)];
 
+        /* Each ratio-128 layer stages new KV, so refresh its partial key block. */
+        [encoder setComputePipelineState:context.flashPad64Pipeline];
+        [encoder setBytes:&layer3_pad_args length:sizeof(layer3_pad_args) atIndex:0];
+        [encoder setBuffer:staged_kv_buffer offset:0 atIndex:1];
+        [encoder setBuffer:staged_kv_buffer offset:0 atIndex:2];
+        [encoder setBuffer:layer3_mask_buffer offset:0 atIndex:3];
+        [encoder setBuffer:pad_buffer offset:0 atIndex:4];
+        [encoder dispatchThreadgroups:MTLSizeMake(64,1,1)
+             threadsPerThreadgroup:MTLSizeMake(32,1,1)];
+
         [encoder setComputePipelineState:context.flashBlkPipeline];
         [encoder setBytes:&layer3_block_args
                    length:sizeof(layer3_block_args) atIndex:0];
@@ -30750,7 +30882,7 @@ int rust_star_metal_run_prefill_layer2_attention(
                 layer3_attention_rows/64u,query_blocks,1)
              threadsPerThreadgroup:MTLSizeMake(32,1,1)];
 
-        [encoder setComputePipelineState:context.flashNonvecPipeline];
+        [encoder setComputePipelineState:context.flashNonvecNsg8KvpadPipeline];
         [encoder setBytes:&layer3_attention_args
                    length:sizeof(layer3_attention_args) atIndex:0];
         [encoder setBuffer:layer29_q_cur_buffer offset:0 atIndex:1];
@@ -30763,7 +30895,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setBuffer:heads_buffer offset:0 atIndex:8];
         [encoder setThreadgroupMemoryLength:28672u atIndex:0];
         [encoder dispatchThreadgroups:MTLSizeMake(query_blocks,n_head,1)
-             threadsPerThreadgroup:MTLSizeMake(32,kRustStarFlashNonvecNsg,1)];
+             threadsPerThreadgroup:MTLSizeMake(32,8,1)];
         [encoder endEncoding];
 
         id<MTLBlitCommandEncoder> layer29_attention_blit =
@@ -31674,6 +31806,16 @@ int rust_star_metal_run_prefill_layer2_attention(
                 (layer31_compressed_elements+1023u)/1024u,1,1)
              threadsPerThreadgroup:MTLSizeMake(256,1,1)];
 
+        /* Each ratio-128 layer stages new KV, so refresh its partial key block. */
+        [encoder setComputePipelineState:context.flashPad64Pipeline];
+        [encoder setBytes:&layer3_pad_args length:sizeof(layer3_pad_args) atIndex:0];
+        [encoder setBuffer:staged_kv_buffer offset:0 atIndex:1];
+        [encoder setBuffer:staged_kv_buffer offset:0 atIndex:2];
+        [encoder setBuffer:layer3_mask_buffer offset:0 atIndex:3];
+        [encoder setBuffer:pad_buffer offset:0 atIndex:4];
+        [encoder dispatchThreadgroups:MTLSizeMake(64,1,1)
+             threadsPerThreadgroup:MTLSizeMake(32,1,1)];
+
         [encoder setComputePipelineState:context.flashBlkPipeline];
         [encoder setBytes:&layer3_block_args
                    length:sizeof(layer3_block_args) atIndex:0];
@@ -31683,7 +31825,7 @@ int rust_star_metal_run_prefill_layer2_attention(
                 layer3_attention_rows/64u,query_blocks,1)
              threadsPerThreadgroup:MTLSizeMake(32,1,1)];
 
-        [encoder setComputePipelineState:context.flashNonvecPipeline];
+        [encoder setComputePipelineState:context.flashNonvecNsg8KvpadPipeline];
         [encoder setBytes:&layer3_attention_args
                    length:sizeof(layer3_attention_args) atIndex:0];
         [encoder setBuffer:layer31_q_cur_buffer offset:0 atIndex:1];
@@ -31696,7 +31838,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setBuffer:heads_buffer offset:0 atIndex:8];
         [encoder setThreadgroupMemoryLength:28672u atIndex:0];
         [encoder dispatchThreadgroups:MTLSizeMake(query_blocks,n_head,1)
-             threadsPerThreadgroup:MTLSizeMake(32,kRustStarFlashNonvecNsg,1)];
+             threadsPerThreadgroup:MTLSizeMake(32,8,1)];
         [encoder endEncoding];
 
         id<MTLBlitCommandEncoder> layer31_attention_blit =
@@ -32607,6 +32749,16 @@ int rust_star_metal_run_prefill_layer2_attention(
                 (layer33_compressed_elements+1023u)/1024u,1,1)
              threadsPerThreadgroup:MTLSizeMake(256,1,1)];
 
+        /* Each ratio-128 layer stages new KV, so refresh its partial key block. */
+        [encoder setComputePipelineState:context.flashPad64Pipeline];
+        [encoder setBytes:&layer3_pad_args length:sizeof(layer3_pad_args) atIndex:0];
+        [encoder setBuffer:staged_kv_buffer offset:0 atIndex:1];
+        [encoder setBuffer:staged_kv_buffer offset:0 atIndex:2];
+        [encoder setBuffer:layer3_mask_buffer offset:0 atIndex:3];
+        [encoder setBuffer:pad_buffer offset:0 atIndex:4];
+        [encoder dispatchThreadgroups:MTLSizeMake(64,1,1)
+             threadsPerThreadgroup:MTLSizeMake(32,1,1)];
+
         [encoder setComputePipelineState:context.flashBlkPipeline];
         [encoder setBytes:&layer3_block_args
                    length:sizeof(layer3_block_args) atIndex:0];
@@ -32616,7 +32768,7 @@ int rust_star_metal_run_prefill_layer2_attention(
                 layer3_attention_rows/64u,query_blocks,1)
              threadsPerThreadgroup:MTLSizeMake(32,1,1)];
 
-        [encoder setComputePipelineState:context.flashNonvecPipeline];
+        [encoder setComputePipelineState:context.flashNonvecNsg8KvpadPipeline];
         [encoder setBytes:&layer3_attention_args
                    length:sizeof(layer3_attention_args) atIndex:0];
         [encoder setBuffer:layer33_q_cur_buffer offset:0 atIndex:1];
@@ -32629,7 +32781,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setBuffer:heads_buffer offset:0 atIndex:8];
         [encoder setThreadgroupMemoryLength:28672u atIndex:0];
         [encoder dispatchThreadgroups:MTLSizeMake(query_blocks,n_head,1)
-             threadsPerThreadgroup:MTLSizeMake(32,kRustStarFlashNonvecNsg,1)];
+             threadsPerThreadgroup:MTLSizeMake(32,8,1)];
         [encoder endEncoding];
 
         id<MTLBlitCommandEncoder> layer33_attention_blit =
@@ -33540,6 +33692,16 @@ int rust_star_metal_run_prefill_layer2_attention(
                 (layer35_compressed_elements+1023u)/1024u,1,1)
              threadsPerThreadgroup:MTLSizeMake(256,1,1)];
 
+        /* Each ratio-128 layer stages new KV, so refresh its partial key block. */
+        [encoder setComputePipelineState:context.flashPad64Pipeline];
+        [encoder setBytes:&layer3_pad_args length:sizeof(layer3_pad_args) atIndex:0];
+        [encoder setBuffer:staged_kv_buffer offset:0 atIndex:1];
+        [encoder setBuffer:staged_kv_buffer offset:0 atIndex:2];
+        [encoder setBuffer:layer3_mask_buffer offset:0 atIndex:3];
+        [encoder setBuffer:pad_buffer offset:0 atIndex:4];
+        [encoder dispatchThreadgroups:MTLSizeMake(64,1,1)
+             threadsPerThreadgroup:MTLSizeMake(32,1,1)];
+
         [encoder setComputePipelineState:context.flashBlkPipeline];
         [encoder setBytes:&layer3_block_args
                    length:sizeof(layer3_block_args) atIndex:0];
@@ -33549,7 +33711,7 @@ int rust_star_metal_run_prefill_layer2_attention(
                 layer3_attention_rows/64u,query_blocks,1)
              threadsPerThreadgroup:MTLSizeMake(32,1,1)];
 
-        [encoder setComputePipelineState:context.flashNonvecPipeline];
+        [encoder setComputePipelineState:context.flashNonvecNsg8KvpadPipeline];
         [encoder setBytes:&layer3_attention_args
                    length:sizeof(layer3_attention_args) atIndex:0];
         [encoder setBuffer:layer35_q_cur_buffer offset:0 atIndex:1];
@@ -33562,7 +33724,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setBuffer:heads_buffer offset:0 atIndex:8];
         [encoder setThreadgroupMemoryLength:28672u atIndex:0];
         [encoder dispatchThreadgroups:MTLSizeMake(query_blocks,n_head,1)
-             threadsPerThreadgroup:MTLSizeMake(32,kRustStarFlashNonvecNsg,1)];
+             threadsPerThreadgroup:MTLSizeMake(32,8,1)];
         [encoder endEncoding];
 
         id<MTLBlitCommandEncoder> layer35_attention_blit =
@@ -34473,6 +34635,16 @@ int rust_star_metal_run_prefill_layer2_attention(
                 (layer37_compressed_elements+1023u)/1024u,1,1)
              threadsPerThreadgroup:MTLSizeMake(256,1,1)];
 
+        /* Each ratio-128 layer stages new KV, so refresh its partial key block. */
+        [encoder setComputePipelineState:context.flashPad64Pipeline];
+        [encoder setBytes:&layer3_pad_args length:sizeof(layer3_pad_args) atIndex:0];
+        [encoder setBuffer:staged_kv_buffer offset:0 atIndex:1];
+        [encoder setBuffer:staged_kv_buffer offset:0 atIndex:2];
+        [encoder setBuffer:layer3_mask_buffer offset:0 atIndex:3];
+        [encoder setBuffer:pad_buffer offset:0 atIndex:4];
+        [encoder dispatchThreadgroups:MTLSizeMake(64,1,1)
+             threadsPerThreadgroup:MTLSizeMake(32,1,1)];
+
         [encoder setComputePipelineState:context.flashBlkPipeline];
         [encoder setBytes:&layer3_block_args
                    length:sizeof(layer3_block_args) atIndex:0];
@@ -34482,7 +34654,7 @@ int rust_star_metal_run_prefill_layer2_attention(
                 layer3_attention_rows/64u,query_blocks,1)
              threadsPerThreadgroup:MTLSizeMake(32,1,1)];
 
-        [encoder setComputePipelineState:context.flashNonvecPipeline];
+        [encoder setComputePipelineState:context.flashNonvecNsg8KvpadPipeline];
         [encoder setBytes:&layer3_attention_args
                    length:sizeof(layer3_attention_args) atIndex:0];
         [encoder setBuffer:layer37_q_cur_buffer offset:0 atIndex:1];
@@ -34495,7 +34667,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setBuffer:heads_buffer offset:0 atIndex:8];
         [encoder setThreadgroupMemoryLength:28672u atIndex:0];
         [encoder dispatchThreadgroups:MTLSizeMake(query_blocks,n_head,1)
-             threadsPerThreadgroup:MTLSizeMake(32,kRustStarFlashNonvecNsg,1)];
+             threadsPerThreadgroup:MTLSizeMake(32,8,1)];
         [encoder endEncoding];
 
         id<MTLBlitCommandEncoder> layer37_attention_blit =
@@ -35406,6 +35578,16 @@ int rust_star_metal_run_prefill_layer2_attention(
                 (layer39_compressed_elements+1023u)/1024u,1,1)
              threadsPerThreadgroup:MTLSizeMake(256,1,1)];
 
+        /* Each ratio-128 layer stages new KV, so refresh its partial key block. */
+        [encoder setComputePipelineState:context.flashPad64Pipeline];
+        [encoder setBytes:&layer3_pad_args length:sizeof(layer3_pad_args) atIndex:0];
+        [encoder setBuffer:staged_kv_buffer offset:0 atIndex:1];
+        [encoder setBuffer:staged_kv_buffer offset:0 atIndex:2];
+        [encoder setBuffer:layer3_mask_buffer offset:0 atIndex:3];
+        [encoder setBuffer:pad_buffer offset:0 atIndex:4];
+        [encoder dispatchThreadgroups:MTLSizeMake(64,1,1)
+             threadsPerThreadgroup:MTLSizeMake(32,1,1)];
+
         [encoder setComputePipelineState:context.flashBlkPipeline];
         [encoder setBytes:&layer3_block_args
                    length:sizeof(layer3_block_args) atIndex:0];
@@ -35415,7 +35597,7 @@ int rust_star_metal_run_prefill_layer2_attention(
                 layer3_attention_rows/64u,query_blocks,1)
              threadsPerThreadgroup:MTLSizeMake(32,1,1)];
 
-        [encoder setComputePipelineState:context.flashNonvecPipeline];
+        [encoder setComputePipelineState:context.flashNonvecNsg8KvpadPipeline];
         [encoder setBytes:&layer3_attention_args
                    length:sizeof(layer3_attention_args) atIndex:0];
         [encoder setBuffer:layer39_q_cur_buffer offset:0 atIndex:1];
@@ -35428,7 +35610,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setBuffer:heads_buffer offset:0 atIndex:8];
         [encoder setThreadgroupMemoryLength:28672u atIndex:0];
         [encoder dispatchThreadgroups:MTLSizeMake(query_blocks,n_head,1)
-             threadsPerThreadgroup:MTLSizeMake(32,kRustStarFlashNonvecNsg,1)];
+             threadsPerThreadgroup:MTLSizeMake(32,8,1)];
         [encoder endEncoding];
 
         id<MTLBlitCommandEncoder> layer39_attention_blit =
@@ -36339,6 +36521,16 @@ int rust_star_metal_run_prefill_layer2_attention(
                 (layer41_compressed_elements+1023u)/1024u,1,1)
              threadsPerThreadgroup:MTLSizeMake(256,1,1)];
 
+        /* Each ratio-128 layer stages new KV, so refresh its partial key block. */
+        [encoder setComputePipelineState:context.flashPad64Pipeline];
+        [encoder setBytes:&layer3_pad_args length:sizeof(layer3_pad_args) atIndex:0];
+        [encoder setBuffer:staged_kv_buffer offset:0 atIndex:1];
+        [encoder setBuffer:staged_kv_buffer offset:0 atIndex:2];
+        [encoder setBuffer:layer3_mask_buffer offset:0 atIndex:3];
+        [encoder setBuffer:pad_buffer offset:0 atIndex:4];
+        [encoder dispatchThreadgroups:MTLSizeMake(64,1,1)
+             threadsPerThreadgroup:MTLSizeMake(32,1,1)];
+
         [encoder setComputePipelineState:context.flashBlkPipeline];
         [encoder setBytes:&layer3_block_args
                    length:sizeof(layer3_block_args) atIndex:0];
@@ -36348,7 +36540,7 @@ int rust_star_metal_run_prefill_layer2_attention(
                 layer3_attention_rows/64u,query_blocks,1)
              threadsPerThreadgroup:MTLSizeMake(32,1,1)];
 
-        [encoder setComputePipelineState:context.flashNonvecPipeline];
+        [encoder setComputePipelineState:context.flashNonvecNsg8KvpadPipeline];
         [encoder setBytes:&layer3_attention_args
                    length:sizeof(layer3_attention_args) atIndex:0];
         [encoder setBuffer:layer41_q_cur_buffer offset:0 atIndex:1];
@@ -36361,7 +36553,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setBuffer:heads_buffer offset:0 atIndex:8];
         [encoder setThreadgroupMemoryLength:28672u atIndex:0];
         [encoder dispatchThreadgroups:MTLSizeMake(query_blocks,n_head,1)
-             threadsPerThreadgroup:MTLSizeMake(32,kRustStarFlashNonvecNsg,1)];
+             threadsPerThreadgroup:MTLSizeMake(32,8,1)];
         [encoder endEncoding];
 
         id<MTLBlitCommandEncoder> layer41_attention_blit =
@@ -40447,7 +40639,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         result->rows = rows;
         result->raw_kv_rows = raw_rows;
         result->compressed_kv_rows = compressed_rows;
-        result->dispatches = rows == 4096u ? 2377u : 2372u;
+        result->dispatches = rows == 4096u ? 2396u : 2391u;
         result->wrapped_model_ranges = rows == 4096u ? 1218u : 1216u;
         result->pointer_matches = pointer_matches;
         result->layer3_compressed_kv_rows = layer3_compressed_rows;

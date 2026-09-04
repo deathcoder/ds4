@@ -6578,7 +6578,7 @@ pub fn write_prefill_decode_frontier_probe_json<W: Write>(
     if report.fixture_id != PREFILL_DECODE_FRONTIER_4099_FIXTURE_ID
         || report.prefill_fixture_id != PREFILL_FRONTIER_2048_FIXTURE_ID
         || report.prefill_tokens != 2048
-        || report.prefill_dispatches != 2377
+        || report.prefill_dispatches != 2396
         || report.prefill_model_mappings != 1221
         || report.handoff.layers != 43
         || report.handoff.raw_rows_per_layer != 128
@@ -9737,7 +9737,7 @@ pub fn write_prefill_layers012_attention_loop_probe_json<W: Write>(
         || report.layer42_compressor_fixture_id != PREFILL_LAYER42_COMPRESSOR_FIXTURE_ID
         || report.layer42_attention_fixture_id != PREFILL_LAYER42_ATTENTION_FIXTURE_ID
         || report.layer42_complete_fixture_id != PREFILL_LAYER42_COMPLETE_FIXTURE_ID
-        || report.dispatches != 2372
+        || report.dispatches != 2391
         || report.wrapped_model_ranges != 1216
         || report.pointer_matches != 1216
         || report.output_checksum != checksum_f32(&expected)
@@ -12192,8 +12192,8 @@ pub fn write_prefill_layers012_attention_loop_probe_json<W: Write>(
             "\"output_boundary\": \"full_logits\"",
         )
         .replace(
-            "\"terminal_dispatches\": 2372",
-            "\"terminal_dispatches\": 2372, \"output_head_dispatches\": 5, \"complete_model_dispatches\": 2377",
+            "\"terminal_dispatches\": 2391",
+            "\"terminal_dispatches\": 2391, \"output_head_dispatches\": 5, \"complete_model_dispatches\": 2396",
         )
         .replace(
             "\"wrapped_terminal_model_ranges\": 1216",
@@ -35733,7 +35733,7 @@ mod imp {
                 error_text(&error)
             )));
         }
-        let expected_dispatches = if prefill_rows == 4096 { 2377 } else { 2372 };
+        let expected_dispatches = if prefill_rows == 4096 { 2396 } else { 2391 };
         let expected_model_ranges = if prefill_rows == 4096 { 1218 } else { 1216 };
         if raw.rows != prefill_rows
             || raw.raw_kv_rows != prefill_rows
@@ -43107,7 +43107,7 @@ mod imp {
             || raw.raw_kv_rows != 2048
             || raw.compressed_kv_rows != 512
             || raw.layer3_compressed_kv_rows != 16
-            || raw.dispatches != 2372
+            || raw.dispatches != 2391
             || raw.wrapped_model_ranges != 1216
             || raw.pointer_matches != 1216
         {
@@ -58213,7 +58213,7 @@ mod tests {
             layer42_compressor_fixture_id: PREFILL_LAYER42_COMPRESSOR_FIXTURE_ID,
             layer42_attention_fixture_id: PREFILL_LAYER42_ATTENTION_FIXTURE_ID,
             layer42_complete_fixture_id: PREFILL_LAYER42_COMPLETE_FIXTURE_ID,
-            dispatches: 2372,
+            dispatches: 2391,
             wrapped_model_ranges: 1216,
             pointer_matches: 1216,
             wall_ms: 196.0,
@@ -59597,7 +59597,7 @@ mod tests {
             fixture_id: PREFILL_DECODE_FRONTIER_4099_FIXTURE_ID,
             prefill_fixture_id: PREFILL_FRONTIER_2048_FIXTURE_ID,
             prefill_tokens: 2048,
-            prefill_dispatches: 2377,
+            prefill_dispatches: 2396,
             prefill_model_mappings: 1221,
             prefill_transformer_wall_ms: 1000.0,
             prefill_transformer_gpu_ms: 900.0,
@@ -61158,7 +61158,7 @@ mod tests {
         )));
         assert!(text.contains("\"compressed_kv_rows\": 512"));
         assert!(text.contains("\"sparse_indexer_topk\": false"));
-        assert!(text.contains("\"terminal_dispatches\": 2372"));
+        assert!(text.contains("\"terminal_dispatches\": 2391"));
         assert!(text.contains("\"wrapped_terminal_model_ranges\": 1216"));
         assert!(text.contains("\"layer3_compressor_ratio\": 128"));
         assert!(text.contains("\"layer3_compressed_rows\": 16"));
@@ -61695,7 +61695,7 @@ mod tests {
         assert!(text.contains("\"layer42_ffn_hc_post_c0_bitwise_match\": true"));
         assert!(text.contains("\"complete_layer42_prefill_claim\": true"));
         assert!(text.contains("\"output_head_dispatches\": 5"));
-        assert!(text.contains("\"complete_model_dispatches\": 2377"));
+        assert!(text.contains("\"complete_model_dispatches\": 2396"));
         assert!(text.contains("\"output_head_model_ranges\": 5"));
         assert!(text.contains("\"complete_model_ranges\": 1221"));
         assert!(text.contains(&format!(

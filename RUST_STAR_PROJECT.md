@@ -336,13 +336,12 @@ they describe whenever practical.
 ## Open Items
 
 Current implementation boundaries, evidence, and immediate actions are maintained
-in `RUST_STAR_JOURNAL.md`. As of 2026-09-04, the retained 4K-to-8K native chain
+in `RUST_STAR_JOURNAL.md`. As of 2026-09-05, the retained 4K-to-8K native chain
 is exact through layer 13; layer 14 is next. The complete 2K prefill/decode and
 paired development results are established controls, not pending scaffolds.
 
-- First repair the standalone 2K layer-4 recurrent-state check, which fails
-  identically on the layer-13 candidate and unchanged base `008e6f8`. Preserve
-  the exact fixture and the newly validated layer-13 control during the repair.
+- The September 5 shared-scheduler repair restores the exact standalone 2K
+  control and preserves the validated layer-13 retained continuation gate.
 - Complete retained native prefill through layers 14--42 and the output head,
   require full-logit C0 at the supplemental 8K oracle frontier, then broaden
   the eligible engine and exact transcript gate to 32K and later contexts.
