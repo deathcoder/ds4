@@ -86,6 +86,11 @@ def parse_dwarfstar_csv(path: Path, *, context: int, gen_tokens: int) -> dict[st
     missing = [field for field in (*INTEGER_FIELDS, *FLOAT_FIELDS) if field not in row]
     if missing:
         raise MeasurementError(f"DwarfStar CSV is missing fields: {', '.join(missing)}")
+    if row.get("sampling_in_interval") != "1":
+        raise MeasurementError(
+            "DwarfStar CSV lacks sampling-inclusive timing; legacy steady timers "
+            "exclude argmax and cannot satisfy the paired protocol"
+        )
 
     parsed: dict[str, Any] = {
         field: _nonnegative_int(row[field], field) for field in INTEGER_FIELDS

@@ -18,6 +18,70 @@ Before changing code:
 Journal entries are reverse chronological. Do not edit old entries to change
 history; add a correction and update the current-state summary.
 
+## 2026-09-06 — Sampling-inclusive oracle validated twice
+
+- Repaired oracle passes independent runs a and b: all 129 full FP32 rows
+  and selected tokens match the unchanged accepted fixtures exactly.
+- Both benchmark builds and all 88 Python tests pass. Committing the
+  benchmark-only correction before freezing the replacement paired plan.
+- Next: complete both warm-ups, all five alternating pairs, independent
+  audit, and separate profile; publish the measured development baseline.
+
+## 2026-09-06 — Paired32K timer-contract defect found and repair underway
+
+- Source audit found that accepted `ds4-bench` places per-token timers after
+  argmax. Its `gen_steady_tps` excludes sampling while Rust Star includes it,
+  violating the written paired protocol. Earlier steady-decode comparisons
+  using this driver are historical legacy-timer evidence, not evidence of the
+  required sampling-inclusive primary metric; preserve their numbers unchanged.
+- Stopped plan `65015ab5...047dd3` during the candidate half of pair 1.
+  Both warm-ups and the completed oracle half remain intact; the partial state
+  remains running and will not be resumed or retried. `rejected-plan.json`
+  records the protocol defect and deliberate termination. This was not an
+  engine/C0 failure or a result-dependent exclusion.
+- Repair aligns each generation step as eval + next-token argmax/commit;
+  initial selection is charged to prefill. CSV declares sampling inclusion
+  and uses higher precision. The adapter rejects legacy timing CSVs.
+- Added a deterministic C mock-clock test exercising the actual benchmark
+  loop, including zero-generation behavior and closed-loop token feedback.
+  It passes. One adapter test exposed error-validation ordering; retained
+  the original missing-field check before the new sampling marker guard.
+- Building a separate benchmark executable from exact oracle-v3 inference
+  sources, overlaying only the benchmark driver. Original accepted executable
+  and all inference sources remain unchanged. New full-output conformance,
+  all Python tests, and a fresh predeclared plan follow before any timed run.
+  Work: `rust-star/.work/paired-32k-128-7406473-sampling/`.
+- Corrected oracle release build passes. All 88 Python tests pass, including
+  deterministic timing/feedback and legacy-marker rejection. The first of two
+  fresh complete 32K/128 full-output conformance runs is underway.
+- Repaired oracle conformance a PASSES all 129 full-logit rows and every
+  selection. Independent repeat b is running. All 54 non-driver source files
+  match the pinned oracle-v3 tree exactly.
+
+## 2026-09-06 — Controlled paired32K baseline milestone started
+
+- User authorized choosing a meaningful next milestone and completing it.
+  Scope: freeze the accepted `7406473f` candidate and oracle-v3, complete
+  five predeclared alternating 32K/128 pairs plus both warm-ups, independently
+  validate/aggregate all evidence, then profile and identify the next measured
+  optimization. No speedup threshold and no early stop for favorable results.
+- Preserve all failures; engine/correctness/capacity failures block the schedule
+  rather than being retried to fill the table. One large model process at a time.
+- Preparing private plan, correctness binding, executable/kernel snapshots,
+  fresh model/prompt hashes, and privacy-filtered before/after host records.
+  Evidence: `rust-star/.work/paired-32k-128-7406473/`.
+- Model and prompt freshly rehashed and exact; candidate and accepted oracle
+  executables frozen with pinned oracle Metal sources. Plan SHA-256:
+  `65015ab5fb2ad9b03895b55de82bd999267e542fa9955a16325287ecb4047dd3`.
+  Source `7406473f`; five 32K/128 pairs in AB/BA/AB/BA/AB order, one warm-up
+  per engine. Oracle warm-up is running. Scoped runtime overrides are removed;
+  thermal/swap/load observations are retained every 45 seconds. A separate
+  32K profile starts only after successful paired-block completion.
+- Oracle warm-up passes; candidate warm-up is running. No timed pair has
+  completed yet, and no thermal/performance warning has been recorded.
+- Both full-length warm-ups pass, including the exact candidate transcript.
+  Timed pair 1/5 is running in AB order. No retries or invalid attempts.
+
 ## 2026-09-06 — Native 32K extension complete through the output head and decode
 
 - Completed the requested end-to-end stage on `agent/rust-star-bootstrap`,
@@ -1477,6 +1541,12 @@ Next:
 
 ### Current resume checkpoint (updated 2026-09-06)
 
+- Active milestone: sampling-inclusive paired32K baseline and bottleneck profile.
+  Original plan was rejected after discovering that the oracle steady timer
+  excludes argmax. Its partial attempt is preserved and must not be resumed.
+  Benchmark-only repair, strict adapter guard and mock-clock test are added;
+  corrected oracle build, full-output conformance and fresh five-pair plan are
+  next. Work: `rust-star/.work/paired-32k-128-7406473-sampling/`.
 - Completed native32K end to end: all 43 layers, output head, and 128 greedy
   decode steps. Diagnostic and output-only runs each match every immutable
   prefill and decode FP32 word, final token 14. Do not restart this layer work.
@@ -2273,6 +2343,11 @@ Next:
   future authorized remote writes from this environment.
 
 ## Immediate Next Actions
+
+- Current authorized milestone: validate the corrected sampling-inclusive
+  oracle benchmark, freeze a new plan, complete all five pairs and the separate
+  profile, independently audit results, and record the next measured action.
+  The legacy-timer plan is rejected and must not be resumed.
 
 1. The full native32K stage is complete, including both full-output C0 modes,
    fresh/retained engines and shorter controls. Do not redo completed layers.

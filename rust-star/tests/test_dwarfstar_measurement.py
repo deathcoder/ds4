@@ -18,7 +18,7 @@ from dwarfstar_measurement_lib import (  # noqa: E402
 
 CSV_HEADER = (
     "ctx_tokens,prefill_tokens,prefill_tps,gen_tokens,gen_tps,"
-    "gen_first_ms,gen_steady_tokens,gen_steady_tps,kvcache_bytes\n"
+    "gen_first_ms,gen_steady_tokens,gen_steady_tps,kvcache_bytes,sampling_in_interval\n"
 )
 
 
@@ -32,7 +32,7 @@ class DwarfStarMeasurementTests(unittest.TestCase):
         _, root = self.temporary_path()
         csv_path = root / "result.csv"
         csv_path.write_text(
-            CSV_HEADER + "2048,2048,4096.0,128,16.0,50.0,127,16.1,0\n",
+            CSV_HEADER + "2048,2048,4096.0,128,16.0,50.0,127,16.1,0,1\n",
             encoding="utf-8",
         )
         metrics = parse_dwarfstar_csv(csv_path, context=2048, gen_tokens=128)
@@ -40,11 +40,22 @@ class DwarfStarMeasurementTests(unittest.TestCase):
         self.assertEqual(metrics["prefill_ms"], 500.0)
         self.assertEqual(metrics["gen_ms"], 8000.0)
 
+    def test_csv_rejects_legacy_sampling_exclusion(self) -> None:
+        _, root = self.temporary_path()
+        csv_path = root / "legacy.csv"
+        csv_path.write_text(
+            CSV_HEADER.replace(",sampling_in_interval", "")
+            + "2048,2048,4096.0,128,16.0,50.0,127,16.1,0\n",
+            encoding="utf-8",
+        )
+        with self.assertRaisesRegex(MeasurementError, "sampling-inclusive"):
+            parse_dwarfstar_csv(csv_path, context=2048, gen_tokens=128)
+
     def test_csv_rejects_partial_generation(self) -> None:
         _, root = self.temporary_path()
         csv_path = root / "result.csv"
         csv_path.write_text(
-            CSV_HEADER + "2048,2048,4096.0,127,16.0,50.0,126,16.1,0\n",
+            CSV_HEADER + "2048,2048,4096.0,127,16.0,50.0,126,16.1,0,1\n",
             encoding="utf-8",
         )
         with self.assertRaisesRegex(MeasurementError, "generated 127 tokens"):
@@ -65,9 +76,9 @@ gen_tokens = int(args[args.index("--gen-tokens") + 1])
 print("model=" + args[args.index("-m") + 1])
 csv_path.write_text(
     "ctx_tokens,prefill_tokens,prefill_tps,gen_tokens,gen_tps,gen_first_ms,"
-    "gen_steady_tokens,gen_steady_tps,kvcache_bytes\\n"
+    "gen_steady_tokens,gen_steady_tps,kvcache_bytes,sampling_in_interval\\n"
     f"{context},{context},1000000000,{gen_tokens},1000000000,0.001,"
-    f"{gen_tokens - 1},1000000000,0\\n",
+    f"{gen_tokens - 1},1000000000,0,1\\n",
     encoding="utf-8",
 )
 """,

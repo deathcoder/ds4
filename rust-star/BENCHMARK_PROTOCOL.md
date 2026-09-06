@@ -51,6 +51,14 @@ first generated token, including model execution and sampling. Also report:
 The headline is not draft-token speed, accepted-proposal speed, raw GPU kernel
 speed, or tokens produced before rollback.
 
+Implementation check (2026-09-06): legacy DwarfStar per-token timers started
+after argmax and did not implement this sampling-inclusive contract. New paired
+measurements must use the corrected driver and its `sampling_in_interval=1`
+CSV marker. Initial selection belongs to prefill; each generation step includes
+evaluation plus selection/commit of its resulting token. This corrects an
+implementation defect without changing the protocol's metric definition.
+Legacy results remain immutable and must retain their timing limitation.
+
 ### Secondary: low-concurrency throughput
 
 Concurrency 2--4 is a separate workload for future agentic use. It must report

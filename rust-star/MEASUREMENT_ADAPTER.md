@@ -10,9 +10,32 @@ boundaries for the paired runner. Each invocation launches exactly one fresh
 engine process for one context frontier and writes a self-contained evidence
 directory.
 
-It deliberately does not orchestrate A/B ordering or retries yet. Keeping the
-single-engine adapter separate lets the paired runner eventually invoke the
-pinned DwarfStar oracle and Rust Star through equivalent process boundaries.
+The adapters do not orchestrate A/B ordering or retries. The paired runner
+invokes them through equivalent fresh-process boundaries.
+
+## Sampling-inclusive oracle timing
+
+The DwarfStar CSV must declare `sampling_in_interval=1`. The corrected driver
+charges the initial argmax to prefill, then measures each decode evaluation
+through selection and commitment of its output token. First/steady timing and
+complete generation therefore include sampling, as required by the protocol.
+Legacy `ds4-bench` steady timers excluded argmax and are rejected by this adapter;
+retain old results as historical measurements under their original semantics.
+
+Build the accepted oracle-v3 inference sources with only this benchmark driver
+overlaid:
+
+```sh
+python3 rust-star/build_benchmark_oracle.py \
+  --output rust-star/.work/sampling-inclusive-oracle
+```
+
+The builder records original/overlaid source hashes and the executable hash.
+Pin that provenance alongside the oracle-v3 inference commit and the benchmark
+source commit in the paired plan. It never replaces the accepted oracle binary.
+Before timing a new driver, `--dump-frontier-logits-dir` can capture prefill and
+every decoded full-logit row for exact comparison; these diagnostic runs are
+not performance samples. Normal adapter commands never enable dumping.
 
 ## Usage
 
@@ -57,7 +80,8 @@ python3 rust-star/measure_ruststar.py \
   --output /path/to/results/rust-star-ctx-2048-run-01
 ```
 
-The native producer executes its 2K prefill without decoding diagnostic output
+The native producer supports the validated 2K and 32K frontiers. It runs
+prefill without decoding diagnostic output
 fixtures, allocating host boundary tensors, or copying transformer boundaries
 to the host. It then times a 128-token loop without generation tensor
 collection and checks the selected-token transcript afterward. The independent
