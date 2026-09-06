@@ -18,6 +18,155 @@ Before changing code:
 Journal entries are reverse chronological. Do not edit old entries to change
 history; add a correction and update the current-state summary.
 
+## 2026-09-06 — 32K paired baseline milestone complete
+
+- Completed both warmups, all five first-attempt AB/BA/AB/BA/AB pairs, and
+  the separate 32K/128 profile. Zero invalid samples in the repaired plan.
+  Independent audit rehashes all twelve measurement bundles, verifies frozen
+  binaries/transcripts, recomputes all distributions/ratios, regenerates the
+  official summary byte-for-byte, and validates profile stage shares.
+- Durable report: `rust-star/reports/32k-baseline-cbb078bb/README.md`.
+  Portable verifier passes all 149 evidence artifacts (excluding its manifest).
+  Exported oracle-v4 acceptance independently verifies all 16 artifacts.
+  Original private plan and one test log have explicitly recorded portable
+  renderings; raw measurements and oracle artifacts retain original bytes.
+- Steady decode medians: Rust 19.574 ± 0.144 MAD versus reference
+  19.454 ± 0.076 tokens/s. Paired median ratio 1.00616, range
+  0.98766–1.02341: near parity, no robust speed advantage established.
+- Prefill medians: 813.107 versus 187.890 s, a 4.33x Rust latency gap.
+  Peak process medians: 91.645 versus 80.893 GiB. Transformer setup median
+  94.357 s and transformer GPU median 568.313 s warrant finer prefill
+  attribution; overlapping interval medians must not be summed.
+- Separate decode profile: routed experts 21.79%, attention cache/routing
+  18.64%, QKV ingress 16.21% of transformer GPU time. Profile is perturbed
+  and excluded from speed samples. At 32K it does not profile prefill stages.
+- All 140 timed-block host observations show no recorded thermal/performance
+  warnings. Desktop background applications remained open and are recorded.
+- Next milestone: instrument 32K prefill per chunk/stage across all 43 layers,
+  separate setup/encoding/waits/GPU work, implement the largest measured
+  C0-safe improvement, then repeat this protocol. Resource reuse is a
+  hypothesis for setup savings, not an established optimization result.
+- Native layer work and this development baseline are complete; 256K primary
+  headline, broader context support and agent co-design remain future work.
+
+## 2026-09-06 — Five repaired pairs complete; profile running
+
+- Both warmups and all five AB/BA/AB/BA/AB pairs pass on first attempts;
+  zero invalid samples. Runner exited paired measurement with status 0 and
+  started the separate 32K/128 candidate profile.
+- Initial completed summary (independent audit still pending): steady decode
+  median Rust 19.5739 versus reference 19.4540 tokens/s; median paired ratio
+  1.00616, range 0.98766–1.02341. This is near parity, not a robust speed win.
+- Median prefill Rust 813.107 s versus reference 187.890 s: a substantial
+  4.33x latency gap. Candidate transformer setup median is 94.357 s;
+  transformer GPU median 568.313 s. These aggregate timings do not identify
+  an individual prefill kernel. Peak process medians: 91.645 / 80.893 GiB.
+- Finish the profile, independently audit all artifacts/statistics, and export
+  the durable report before marking the milestone complete.
+
+## 2026-09-06 — Four repaired timed pairs pass
+
+- Pairs 1–4 pass on first attempts in AB/BA/AB/BA order. Final pair 5 (AB)
+  is running reference-first. No invalid attempts; isolated profile follows.
+
+## 2026-09-06 — Three repaired timed pairs pass
+
+- Pairs 1–3 pass on first attempts in AB/BA/AB order. Pair 4 (BA) is running
+  candidate-first. No invalid attempts so far; pair 5 and profile follow.
+
+## 2026-09-06 — Two repaired timed pairs pass
+
+- Pairs 1 (AB) and 2 (BA) pass on first attempts. Pair 3 (AB) is running.
+  No invalid attempt so far; finish all five pairs and separate profile.
+
+## 2026-09-06 — First repaired timed pair passes
+
+- Pair 1 (AB) passes on both engines, first attempt. Pair 2 (BA) is running
+  with candidate first. Warmups remain passed; no invalid attempt so far.
+- Complete the predeclared five pairs and isolated profile before statistics
+  or comparative claims. Evidence remains under `paired-32k-128-cbb078bb-topk`.
+
+## 2026-09-06 — Both repaired benchmark warmups pass
+
+- Reference and candidate fresh-process warmups pass under frozen plan
+  `c251b3c8...ab5f80`. Timed pair 1 (AB) has started; no completed pair yet.
+- Work remains `rust-star/.work/paired-32k-128-cbb078bb-topk/`. Continue all
+  five pairs and separate profile without rebuilding or changing the plan.
+
+## 2026-09-06 — Correctness accepted; repaired five-pair schedule started
+
+- All four fresh candidate 32K/128 full-output runs and 2K/8K controls pass.
+  Two independent reference 129-row traces pass, in addition to oracle-v4's
+  four fresh captures at each 2K/32K frontier and official correctness tests.
+- Candidate `cbb078bb79871169f6a1dd367f96c141969e917e`, executable SHA-256
+  `0baadfd5c4e24633817a1d2f9073e4cff0bb0fe91905e77298f7e9a0b34ee663`.
+  Oracle-v4 `df99eba7f722f8170dc2960b8b4666f73818a5ba`, executable SHA-256
+  `e9d9595c37aded826edd3a4c16b49ff854a4da285996dab4486063a1ca57abda`.
+- New frozen plan SHA-256:
+  `c251b3c894ce9efeed12cdc9f083bd0329d195fdee6d46dc5a7bfcbb59ab5f80`.
+  Work: `rust-star/.work/paired-32k-128-cbb078bb-topk/`.
+- Runner started: one warmup per engine, five AB/BA/AB/BA/AB pairs, then a
+  separate candidate profile. No builds or heavy tests during timed work.
+  Host power/thermal/swap/load observations are retained. One model at a time.
+- Sampling metadata accurately distinguishes Rust's global lowest-ID argmax
+  from the reference's EOS exclusion: complete immutable logit traces prove
+  the same non-EOS selections for this fixed 128-step workload only.
+- Old rejected schedules remain untouched. No completed valid pair or speed
+  claim exists yet. Finish the schedule, independently audit, export durable
+  evidence and report, then identify the next optimization from the profile.
+
+## 2026-09-06 — All four repaired 32K candidate repetitions pass
+
+- Output-only a/b and internal c/d all pass every one of the 129 full-logit
+  rows and production GPU selections. Both internal runs pass established
+  checkpoints through 24K; later diagnostic hashes are not promoted targets.
+- `topk-d` completed in 852.631 seconds. The sequential queue is checking
+  2K/8K regressions before preparing the new five-pair plan.
+
+## 2026-09-06 — First repaired internal-checkpoint repetition passes
+
+- `topk-c` passes established internal checkpoints through 24K and all 129
+  complete output rows with production GPU selection in 850.371 seconds.
+- Later internal hashes remain diagnostic, not promoted targets. Fresh d is
+  running; shorter controls and the frozen paired schedule remain pending.
+
+## 2026-09-06 — Both repaired output-only repetitions pass
+
+- Fresh `topk-a` and `topk-b` both pass every prefill/decode FP32 word and
+  production GPU selection for the complete 32K/128 workload.
+- Internal-checkpoint c/d and 2K/8K controls remain. The queue has started c.
+  No paired timings have been admitted yet.
+
+## 2026-09-06 — Repaired Rust candidate first full gate passes
+
+- `topk-a` passes all 129 full-logit rows and production GPU selections in
+  820.534 seconds. Candidate remains the frozen `cbb078bb` executable.
+- Fresh output-only b is running; internal c/d and 2K/8K controls follow.
+  Evidence: `topk-a.json`, `topk-a.log`, and `topk-validation.json` in the
+  current work directory. Timed paired measurements have not started.
+
+## 2026-09-06 — Frozen oracle-v4 complete decode conformance passes
+
+- The separately frozen benchmark executable passes two fresh 32K/128 runs:
+  every FP32 word in all 129 rows and every greedy selection matches the
+  unchanged immutable fixtures. Evidence: `conformance-v4.json` and the two
+  per-run verification files in `paired-32k-128-7406473-sampling/`.
+- Candidate validation is running sequentially: output-only a/b, internal
+  c/d, then 2K/8K controls. The queue stops on any failure. No timed baseline
+  starts until all six pass; old rejected schedules remain preserved.
+
+## 2026-09-06 — Oracle-v4 repeatability and unchanged targets accepted
+
+- Official Metal kernels and logprob vectors pass. Four fresh conformance
+  captures at each of 2K/32K pass; independent bundle validation verifies
+  all 16 artifacts. Every FP32 word equals the existing immutable target.
+- Oracle-v4 is explicitly pinned to `df99eba7` / tree `14ffb83c`. The shared
+  streaming top-k race is repaired; no target tensor was replaced or relaxed.
+- Evidence: `oracle-v4-acceptance/`, `oracle-v4-verification.json`, and
+  `oracle-v4-target-equivalence.json` under the current work directory.
+- The separately frozen benchmark executable is now checking two complete
+  129-row 32K/128 traces. Four fresh Rust gates and 2K/8K controls follow.
+
 ## 2026-09-06 — Streaming top-k count race reproduced and repaired
 
 - Projection-wait experiment failed at 12K layer 14 in synchronized run c:
@@ -41,6 +190,16 @@ history; add a correction and update the current-state summary.
   benchmark driver. V4 is not accepted until its full correctness gates pass.
 - Immutable target tensors remain unchanged. Rebuilds and fresh candidate /
   reference conformance follow; no paired comparison is currently valid.
+
+- Repair/tooling checkpoint `45ed501a`, followed by merge `cbb078bb` to
+  retain the pinned oracle-v4 producer in branch ancestry. Rust candidate
+  SHA-256 `0baadfd5c4e24633817a1d2f9073e4cff0bb0fe91905e77298f7e9a0b34ee663`.
+  Full source hashes are in `topk-barrier-build.json`.
+- All 91 Python tests and 309 Rust tests pass; both release builds pass.
+  Oracle-v4 official Metal/logprob correctness tests pass. Four 2K/32K
+  conformance repetitions are running. `run-topk-validation.py` will verify
+  the bundle and unchanged targets, then run two complete reference decode
+  traces, four fresh Rust 32K gates, and 2K/8K controls, stopping on failure.
 
 ## 2026-09-06 — Testing oracle-v3 compressor synchronization in Rust
 
@@ -1652,33 +1811,25 @@ Next:
 
 ### Current resume checkpoint (updated 2026-09-06)
 
-- Active milestone: restore stable C0 after the paired baseline exposed an
-  intermittent prefill failure, then complete the controlled baseline.
-  Streaming top-k count race now has a reproducing adversarial GPU test and
-  a barrier repair. The insufficient projection-wait experiment was reverted.
-  Explicit candidate oracle-v4 is pinned as `df99eba7`; acceptance is pending.
-  Top-k candidate build and v4 support are underway. Old paired plans and all
-  failed diagnostics remain preserved and must not be resumed.
-  Work: `rust-star/.work/paired-32k-128-7406473-sampling/`.
-- Completed native32K end to end: all 43 layers, output head, and 128 greedy
-  decode steps. Diagnostic and output-only runs each match every immutable
-  prefill and decode FP32 word, final token 14. Do not restart this layer work.
-- Fresh32K normalized engine and retained32K two-cycle reset/reuse validation
-  pass. Final standalone2K and legacy8K full-output regressions pass. Final
-  release build 14, 309 Rust tests, 86 Python tests, fixture verification,
-  formatting/whitespace and CLI checks all pass. The only changes after the
-  live-tested build 13 are CLI help and a comment; inference is unchanged.
-- The uninstrumented oracle repeats the immutable 32K prefill and every FP32
-  word of the 128-step decode trace. Its canonical imported fixture verifies.
-  Internal HC checkpoints through 24K pass; instrumented 28K/32K captures remain
-  unverified and cannot replace the mandatory complete full-output gate.
-- Long-prefill autorelease lifetimes are fixed. Observed system swap stayed
-  about 2.5–3.3 GiB during fixed runs; another 7.02 GiB of rebuildable test
-  artifacts was removed after validation. About 149 GiB disk space remains.
-- Evidence/work: `rust-star/.work/native-32k-v31/`, consolidated in
-  `final-verification.json`. Next work is a pinned paired32K comparison and
-  profiling; single-run engine timings do not establish a comparative speedup
-  or the 256K headline result.
+- Completed milestone: repaired, independently audited five-pair 32K/128
+  development baseline and separate profile. Report and portable verifier:
+  `rust-star/reports/32k-baseline-cbb078bb/`.
+  Candidate `cbb078bb`; accepted oracle-v4 `df99eba7`; plan `c251b3c8...ab5f80`.
+  All warmups/pairs pass first attempt. Decode is near parity (19.574 versus
+  19.454 tokens/s); Rust prefill is 4.33x slower (813.107 versus 187.890 s).
+  Next: finer prefill attribution, then a measured C0-safe optimization.
+- Streaming top-k count race is repaired with an adversarial GPU regression.
+  The insufficient projection-wait experiment was reverted. Original output
+  targets remain immutable. Four fresh full-output 32K runs, 2K/8K controls,
+  309 Rust / 91 Python tests, reference acceptance and two full decode traces
+  pass. Earlier retained32K reset/reuse validation remains established.
+- Native32K is complete through all 43 layers, output head and 128 greedy
+  decode steps. Do not restart completed layer work. Internal HC checkpoints
+  through 24K are accepted; later internal hashes remain diagnostic only.
+- Full local evidence: `rust-star/.work/paired-32k-128-cbb078bb-topk/`.
+  Rejected plans and repair experiments are preserved under
+  `rust-star/.work/paired-32k-128-7406473/` and its `-sampling` sibling.
+  Never resume rejected plans. The final model queue has completed.
 - Work in `/Users/deathcodevision/dev/ds4-rust-star-bootstrap` on
   `agent/rust-star-bootstrap`, extending `8e63d80`. Remotes: `fork` =
   `deathcoder/ds4`, `origin` = `antirez/ds4`.
@@ -2457,27 +2608,25 @@ Next:
 
 ## Immediate Next Actions
 
-- Current authorized milestone: localize and repair the candidate C0 failure
-  discovered by corrected plan `871c8762...f82ab`, then repeat correctness
-  gates before a new five-pair plan and profile. The failed plan is preserved.
-  The legacy-timer plan is rejected and must not be resumed.
+- The authorized 32K baseline milestone is complete. Report:
+  `rust-star/reports/32k-baseline-cbb078bb/README.md`.
 
-1. The full native32K stage is complete, including both full-output C0 modes,
-   fresh/retained engines and shorter controls. Do not redo completed layers.
-2. Next, freeze the accepted executable/source and a predeclared paired32K
-   plan under the benchmark protocol. Establish a paired baseline before
-   attributing speedups; profile the measured prefill/decode costs before
-   optimizing. Preserve all invalid attempts and capacity evidence.
-3. Preserve exact 2K/8K controls, the 32K immutable full-output trace, GPU-owned
-   history, request reset/reuse, and tied-score bitonic router ordering. Later
-   internal snapshots remain unverified; they cannot replace C0 full logits.
-4. Broader native contexts and oracle captures come after that measured 32K
-   baseline. Use oracle-v3 for new captures, run one large model process at a
-   time, and keep disk use bounded. No 256K headline result is established.
-5. Update this journal's checkpoint and evidence with each meaningful step,
-   including failures, and include it with implementation commits.
-6. GitHub Actions remains dependent on resolving the account billing lock;
-   secure remote access remains deferred in the manual task ledger.
+1. Next milestone: profile native32K prefill per chunk/stage through all 43
+   layers, separating setup, encoding/waits and GPU work. Select and implement
+   the largest measured C0-safe improvement, then repeat the five-pair plan.
+   The measured 94.357 s setup cost suggests resource reuse as one hypothesis;
+   568.313 s transformer GPU time needs finer attribution before kernel claims.
+2. Preserve the exact 2K/8K controls, complete 32K immutable output trace,
+   production GPU selection, GPU-owned history, reset/reuse lifecycle and
+   tied-score router ordering. Do not redo completed native layer coverage.
+3. Use accepted oracle-v4 for new captures. Preserve original fixture producer
+   identities and every failed attempt; never resume either rejected plan.
+4. Broader native contexts and the 256K primary headline remain future work.
+   Run one large model process at a time and keep disk use bounded.
+5. Update this journal with each meaningful step, including failures, and
+   include it with implementation commits.
+6. GitHub Actions remains dependent on the account billing lock; secure remote
+   access remains deferred in the manual task ledger.
 
 ## Entries
 

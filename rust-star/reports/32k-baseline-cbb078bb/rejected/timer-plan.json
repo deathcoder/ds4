@@ -1,0 +1,11 @@
+{
+  "status": "rejected-protocol-mismatch",
+  "at_utc": "2026-09-06T11:54:17.954591+00:00",
+  "reason": "Pinned ds4-bench starts per-token timers after argmax, excluding sampling from gen_first_ms and gen_steady_tps, unlike candidate and written protocol. Stop original plan; preserve partial pair and warmups; no retry under this plan.",
+  "stopped_pids": [
+    62557,
+    62560,
+    65565,
+    65566
+  ]
+}

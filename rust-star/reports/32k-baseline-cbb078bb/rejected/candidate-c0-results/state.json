@@ -1,0 +1,109 @@
+{
+  "attempts": [
+    {
+      "attempt": 1,
+      "completed_at_utc": "2026-09-06T12:48:51Z",
+      "context": 32768,
+      "engines": {
+        "candidate": {
+          "adapter_returncode": 1,
+          "error": "adapter process failed; inspect its local evidence directory",
+          "output": "measurements/ctx-0032768/rep-01/attempt-01/candidate",
+          "status": "failed",
+          "timed_out": false
+        },
+        "oracle": {
+          "adapter_returncode": 0,
+          "measurement_sha256": "c64408a6a9a9929d8571885cac501e755a967e02ec35487a6ddff127c26ce764",
+          "metrics": {
+            "ctx_tokens": 32768,
+            "gen_first_ms": 61.676,
+            "gen_ms": 7325.563999829517,
+            "gen_steady_ms": 7263.492000017078,
+            "gen_steady_tokens": 127,
+            "gen_steady_tps": 17.48470295,
+            "gen_tokens": 128,
+            "gen_tps": 17.473057365,
+            "kvcache_bytes": null,
+            "prefill_ms": 210834.69700030502,
+            "prefill_tokens": 32768,
+            "prefill_tps": 155.420338617,
+            "process_overhead_ms": 17599.277082865454,
+            "process_peak_bytes": 86859399168,
+            "process_wall_ms": 235759.538083
+          },
+          "output": "measurements/ctx-0032768/rep-01/attempt-01/oracle",
+          "status": "passed",
+          "timed_out": false
+        }
+      },
+      "order": "AB",
+      "repetition": 1,
+      "started_at_utc": "2026-09-06T12:31:19Z",
+      "status": "failed"
+    }
+  ],
+  "created_at_utc": "2026-09-06T12:13:57Z",
+  "phase": "blocked_pair",
+  "plan_sha256": "871c87620e28eecfcc7badc9ce905d911819c49adf19f0d2ef7ef99fbc3f82ab",
+  "protocol": "rust-star-paired-benchmark-v1",
+  "schema": "rust-star-paired-state-v1",
+  "superseded_outputs": [],
+  "updated_at_utc": "2026-09-06T12:48:51Z",
+  "warmups": {
+    "candidate": [
+      {
+        "adapter_returncode": 0,
+        "attempt": 1,
+        "measurement_sha256": "cf689b8d38e99c801da94001f9c0372d06f7c7279bb9c4335a58eb1128f1f732",
+        "metrics": {
+          "ctx_tokens": 32768,
+          "gen_first_ms": 73.318708,
+          "gen_ms": 7237.23417,
+          "gen_steady_ms": 7163.915462,
+          "gen_steady_tokens": 127,
+          "gen_steady_tps": 17.727735716,
+          "gen_tokens": 128,
+          "gen_tps": 17.68631455,
+          "kvcache_bytes": null,
+          "prefill_ms": 796571.707375,
+          "prefill_tokens": 32768,
+          "prefill_tps": 41.136284024,
+          "process_overhead_ms": 35105.47358000006,
+          "process_peak_bytes": 95744376832,
+          "process_wall_ms": 838914.415125
+        },
+        "output": "warmups/candidate-01",
+        "status": "passed",
+        "timed_out": false
+      }
+    ],
+    "oracle": [
+      {
+        "adapter_returncode": 0,
+        "attempt": 1,
+        "measurement_sha256": "8628ac42f51c92ee68c14b0ad07bd593cedf14c0434ecc74f61d52d573bd79a7",
+        "metrics": {
+          "ctx_tokens": 32768,
+          "gen_first_ms": 56.743,
+          "gen_ms": 6420.288999881536,
+          "gen_steady_ms": 6363.432000036228,
+          "gen_steady_tokens": 127,
+          "gen_steady_tps": 19.957783787,
+          "gen_tokens": 128,
+          "gen_tps": 19.936797238,
+          "kvcache_bytes": null,
+          "prefill_ms": 181098.81600042482,
+          "prefill_tokens": 32768,
+          "prefill_tps": 180.939890849,
+          "process_overhead_ms": 15856.25637469365,
+          "process_peak_bytes": 86858727424,
+          "process_wall_ms": 203375.361375
+        },
+        "output": "warmups/oracle-01",
+        "status": "passed",
+        "timed_out": false
+      }
+    ]
+  }
+}

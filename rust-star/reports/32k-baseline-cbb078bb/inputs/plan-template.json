@@ -1,0 +1,148 @@
+{
+  "schema": "rust-star-paired-plan-v1",
+  "protocol": "rust-star-paired-benchmark-v1",
+  "correctness_class": "C0",
+  "host_manifest_sha256": "4a0d55648e91ed99a6cba2159974c61150b7a4524a7d819cda4e990cde6eba5a",
+  "correctness_manifest_sha256": "378dd8c65565ca60caa21810ced94eafacea6b37e462356d7df3bd575c1e60a2",
+  "configuration": {
+    "contexts": [
+      32768
+    ],
+    "repetitions": 5,
+    "gen_tokens": 128,
+    "sampling": "fixed 128-step lowest-ID greedy transcript; reference excludes EOS, and every reference full-logit argmax equals the same non-EOS transcript",
+    "primary_metric": "gen_steady_tps"
+  },
+  "oracle": {
+    "identity": {
+      "source_commit": "df99eba7f722f8170dc2960b8b4666f73818a5ba",
+      "source_tree": "14ffb83c44382662fb02a4fe50d713dd55827726",
+      "executable_sha256": "e9d9595c37aded826edd3a4c16b49ff854a4da285996dab4486063a1ca57abda",
+      "model_sha256": "ca22ae2f838e14077c22bc1c1417b71b45b5e5a3687bd96c2ac6e17fdb6261c0",
+      "prompt_sha256": "f53e0d80cb2d4492d24ebd63c7000c397b16ae70f9bf09b3763e5d8323ec209f",
+      "backend": "metal",
+      "build_configuration": {
+        "command": [
+          "python3",
+          "rust-star/build_benchmark_oracle.py",
+          "--oracle-version",
+          "oracle-v4",
+          "--output",
+          "$ORACLE_BUILD",
+          "--jobs",
+          "4"
+        ],
+        "cflags": "-O3 -ffast-math -g -mcpu=native -Wall -Wextra -std=c99",
+        "objcflags": "-O3 -ffast-math -g -mcpu=native -Wall -Wextra -fobjc-arc",
+        "compiler": "Apple clang 21.0.0 (clang-2100.1.1.101)",
+        "benchmark_driver_commit": "df99eba7f722f8170dc2960b8b4666f73818a5ba",
+        "benchmark_driver_sha256": "106da338b4fcb2dd6642b550bf5bc1e61183a3f452ad20ae0f4dfbb41537d4aa",
+        "build_provenance_sha256": "f7393f632528708b2e4f01dcad1cbb7e35653cd5e987197fe838e50d12b19daa",
+        "builder": "rust-star/build_benchmark_oracle.py",
+        "source_overlay": "none in content; benchmark driver equals pinned oracle-v4 source"
+      },
+      "runtime_configuration": {
+        "backend_flag": "--metal",
+        "warm_weights": true,
+        "frontier_mode": "single exact context",
+        "correctness_instrumentation": false,
+        "sampling": "greedy argmax excluding EOS",
+        "oracle_version": "oracle-v4",
+        "prefill_chunk_tokens": 4096,
+        "compressor_dependency": "accepted host-waited projection-to-read boundary",
+        "sampling_in_interval": true,
+        "initial_selection_charged_to_prefill": true,
+        "decode_step": "eval plus resulting-token argmax and commitment",
+        "csv_timing_precision_digits": 9,
+        "streaming_topk_count_snapshot_barrier": true
+      }
+    },
+    "working_directory": "$ORACLE_BUILD",
+    "timeout_seconds": 3600,
+    "adapter_command": [
+      "python3",
+      "$REPO/rust-star/measure_dwarfstar.py",
+      "--executable",
+      "$REPO/rust-star/.work/paired-32k-128-cbb078bb-topk/bin/oracle/ds4-bench",
+      "--model",
+      "$MODEL",
+      "--prompt",
+      "$REPO/speed-bench/promessi_sposi.txt",
+      "--context",
+      "{context}",
+      "--gen-tokens",
+      "{gen_tokens}",
+      "--output",
+      "{output}",
+      "--timeout-seconds",
+      "3500"
+    ]
+  },
+  "candidate": {
+    "identity": {
+      "source_commit": "cbb078bb79871169f6a1dd367f96c141969e917e",
+      "source_tree": "7097f7cb3b22f167340deba42ee4120bfaa65fed",
+      "executable_sha256": "0baadfd5c4e24633817a1d2f9073e4cff0bb0fe91905e77298f7e9a0b34ee663",
+      "model_sha256": "ca22ae2f838e14077c22bc1c1417b71b45b5e5a3687bd96c2ac6e17fdb6261c0",
+      "prompt_sha256": "f53e0d80cb2d4492d24ebd63c7000c397b16ae70f9bf09b3763e5d8323ec209f",
+      "backend": "metal",
+      "build_configuration": {
+        "command": [
+          "cargo",
+          "build",
+          "--manifest-path",
+          "rust-star/runtime/Cargo.toml",
+          "--release"
+        ],
+        "profile": {
+          "codegen_units": 1,
+          "lto": "thin",
+          "panic": "abort"
+        },
+        "rustc": "1.91.1 (ed61e7d7e 2025-11-07)",
+        "cargo": "1.91.1 (ea2d97820 2025-10-10)",
+        "rustflags": [],
+        "validated_build_sha256": "2618d79166799431a9887edf8e61393c7fba5fc9942861f52118de26fa634bf7"
+      },
+      "runtime_configuration": {
+        "command": "engine-measure",
+        "native_batched_prefill": true,
+        "prefill_correctness_collection": false,
+        "generation_correctness_collection": false,
+        "generation_command_buffers_per_token": 44,
+        "generation_host_waits_per_token": 2,
+        "model_warm_policy": "CPU POSIX_MADV_WILLNEED plus one volatile byte touch per tensor-data page before internal timers; Metal residency-set registration and one-mebibyte-stride GPU view touch inside prefill_ms before decode",
+        "model_residency_required": true,
+        "model_residency_queue_attached": true,
+        "transcript_validation": "after each timed step; first failure rejects run",
+        "sampling_logits_readback": false,
+        "sampling_result_readback_bytes": 8,
+        "sampling": "lowest-ID greedy argmax; full C0 trace establishes identical non-EOS selections to the reference",
+        "prefill_context_tokens": 32768,
+        "prefill_chunk_tokens": 4096,
+        "exact_prefix_rebuild": true,
+        "decode_steps": 128,
+        "streaming_topk_count_snapshot_barrier": true,
+        "failure_collection": "completed logit readback only after failed token comparison; successful steps keep GPU selection readback"
+      }
+    },
+    "working_directory": "$CANDIDATE_BUILD",
+    "timeout_seconds": 3600,
+    "adapter_command": [
+      "python3",
+      "$REPO/rust-star/measure_ruststar.py",
+      "--executable",
+      "$REPO/rust-star/.work/paired-32k-128-cbb078bb-topk/bin/candidate/rust-star",
+      "--model",
+      "$MODEL",
+      "--context",
+      "{context}",
+      "--gen-tokens",
+      "{gen_tokens}",
+      "--output",
+      "{output}",
+      "--timeout-seconds",
+      "3500"
+    ]
+  }
+}

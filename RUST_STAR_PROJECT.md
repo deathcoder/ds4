@@ -49,6 +49,15 @@ admitted. An asynchronous command-buffer split also failed a four-repeat
 `oracle-v3` attempt. The replacement host-waited compressor projection-to-read
 boundary passed four exact fresh processes at both 2K and 32K and now defines
 the accepted `oracle-v3` producer. V3 preserves the v2 tensor values exactly.
+A later paired-run audit exposed a shared streaming top-k race: faster SIMD
+groups could advance the count before slower groups sampled it. An adversarial
+GPU scheduling test reproduces the error; a count-snapshot barrier fixes it.
+The explicit `oracle-v4` source is `df99eba7f722f8170dc2960b8b4666f73818a5ba`
+(tree `14ffb83c44382662fb02a4fe50d713dd55827726`). It passes official correctness
+checks and four fresh captures at both 2K and 32K, preserving every immutable
+FP32 target word. Use v4 for new captures; v3 and earlier producers remain
+historical. Existing fixture identities are not retroactively changed.
+
 
 ## Deliberate Initial Non-Goals
 
@@ -343,7 +352,10 @@ match all 129,280 immutable prefill logits and all 16,547,840 FP32 words over
 continuation remain established controls.
 
 - Fresh and retained 32K engine validation and final 2K/8K regressions pass.
-  The next measured frontier is a pinned paired32K development comparison.
+  The independently audited five-pair 32K/128 baseline is complete:
+  `rust-star/reports/32k-baseline-cbb078bb/README.md`. Decode is near parity
+  (19.574 versus 19.454 tokens/s); Rust prefill is 4.33x slower. The next
+  measured milestone is finer prefill attribution and a C0-safe optimization.
 - Internal HC targets repeat through 24K. Instrumented 28K/32K captures are
   explicitly unverified; they do not replace the mandatory full-output C0 gate.
 - Preserve production batch arithmetic, GPU-owned history, exact shorter

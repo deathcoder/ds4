@@ -1,0 +1,15 @@
+{
+  "schema": "rust-star-report-portability-v1",
+  "derived_files": {
+    "inputs/plan-template.json": {
+      "source": "private frozen plan",
+      "original_sha256": "c251b3c894ce9efeed12cdc9f083bd0329d195fdee6d46dc5a7bfcbb59ab5f80",
+      "transformation": "local paths replaced with documented placeholders"
+    },
+    "correctness/rust-tests-topk-portable.log": {
+      "source": "rust-tests-topk.log",
+      "original_sha256": "1998792f27f2da358b6f4d882c58a1d660a1bba1d5c1c82003ac628831457f8f",
+      "transformation": "absolute repository prefix replaced with $REPO; trailing blank lines normalized"
+    }
+  }
+}

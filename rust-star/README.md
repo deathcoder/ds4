@@ -1,7 +1,15 @@
 # Rust Star Oracle Capture
 
-This directory contains the reproducible capture kit for `oracle-v1`. Run it on
-the target M1 Ultra before implementing or benchmarking the Rust runtime.
+This directory contains versioned oracle capture tools. Use
+`capture_oracle_v4.py` for new captures on the target M1 Ultra. V4 repairs a
+streaming top-k count race and includes sampling in benchmark timers; four
+fresh 2K/32K captures preserve all immutable target words. Earlier capture
+wrappers remain for historical reproduction. Current runtime validation and
+benchmark status are maintained in `../RUST_STAR_JOURNAL.md`.
+The completed [32K/128 baseline report](reports/32k-baseline-cbb078bb/README.md)
+records five valid pairs, exact correctness gates, the separate profile, and
+portable evidence verification. Decode is near parity; prefill is the next
+measured optimization target.
 
 The capture does not need network access, GitHub credentials, SSH keys, or any
 other secret. It records only an allowlist of hardware and toolchain fields; it

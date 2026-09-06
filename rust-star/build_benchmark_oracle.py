@@ -22,7 +22,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output", required=True, type=Path)
     parser.add_argument("--jobs", type=int, default=4)
-    parser.add_argument("--oracle-version", choices=["oracle-v3", "oracle-v4"], default="oracle-v3")
+    parser.add_argument("--oracle-version", choices=["oracle-v3", "oracle-v4"], default="oracle-v4")
     args = parser.parse_args()
     source_ref = ORACLE_SOURCES[args.oracle_version][0]
     if args.jobs < 1:

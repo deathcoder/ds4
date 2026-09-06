@@ -1,0 +1,729 @@
+{
+  "build": {
+    "command": [
+      "make",
+      "-j",
+      "16",
+      "ds4-bench",
+      "ds4_test"
+    ],
+    "cwd": ".",
+    "elapsed_seconds": 11.86,
+    "executables": {
+      "ds4-bench": {
+        "bytes": 1933368,
+        "sha256": "de98815eb07cbc736745cf433bbe418f370d3d37dfff0bd5d92d19feae73c96d"
+      },
+      "ds4_test": {
+        "bytes": 2606872,
+        "sha256": "152f155441ef9b9f4cbd5047d7b98b36a2158760f9f74e5ef7f48c78945598ec"
+      }
+    },
+    "exit_code": 0,
+    "log": "logs/build.log"
+  },
+  "capture_kit": {
+    "branch": "agent/rust-star-bootstrap",
+    "commit": "cbb078bb79871169f6a1dd367f96c141969e917e",
+    "tracked_worktree": "clean",
+    "tree": "7097f7cb3b22f167340deba42ee4120bfaa65fed"
+  },
+  "completed_at_utc": "2026-09-06T14:40:29Z",
+  "configuration": {
+    "backend": "metal",
+    "conformance_enabled": true,
+    "conformance_repetitions": 4,
+    "conformance_scope": "full FP32 logits immediately after prefill at each selected frontier",
+    "contexts": [
+      2048,
+      32768
+    ],
+    "correctness_enabled": true,
+    "expected_quantization": "resident imatrix Q2",
+    "model_family": "DeepSeek-V4-Flash-0731",
+    "performance_enabled": false,
+    "performance_gen_tokens": 128,
+    "performance_instrumentation": "frontier-logit dumping disabled",
+    "performance_repetitions": 3,
+    "sampling": "greedy argmax excluding EOS (ds4-bench behavior)"
+  },
+  "conformance": {
+    "coverage": "repeated fresh-process post-prefill full-vocabulary tensors per selected context",
+    "encoding": "JSON decimal %.9g; finite FP32 values round-trip exactly",
+    "repeatability": [
+      {
+        "c0_exact": true,
+        "context": 2048,
+        "logits_sha256": "2b3cdf9bd9181edaeb4a43a09be381bebc3ed2c8c4de1f5872b13ae38c86ddb0",
+        "repetitions": 4
+      },
+      {
+        "c0_exact": true,
+        "context": 32768,
+        "logits_sha256": "269f9529f0e649d6e4f5ecd125ef7c4808f825e65bf9d503c512ef611c958e12",
+        "repetitions": 4
+      }
+    ],
+    "runs": [
+      {
+        "command": {
+          "command": [
+            "$ORACLE_SOURCE/ds4-bench",
+            "--metal",
+            "-m",
+            "model.gguf",
+            "--prompt-file",
+            "rust_star_oracle_prompt.txt",
+            "--ctx-start",
+            "2048",
+            "--ctx-max",
+            "2048",
+            "--gen-tokens",
+            "0",
+            "--warm-weights",
+            "--csv",
+            "$RESULTS/conformance/ctx_0002048/run_01/prefill.csv",
+            "--dump-frontier-logits-dir",
+            "$RESULTS/conformance/ctx_0002048/run_01/logits"
+          ],
+          "cwd": ".",
+          "elapsed_seconds": 25.862,
+          "exit_code": 0,
+          "log": "logs/conformance_ctx_0002048_run_01.log"
+        },
+        "context": 2048,
+        "csv": {
+          "bytes": 206,
+          "path": "conformance/ctx_0002048/run_01/prefill.csv",
+          "sha256": "93dd71e533fda4dfe6dc0ad3022013f6465eee2d2eec56a4005583709c7de616"
+        },
+        "logits": {
+          "bytes": 1588108,
+          "path": "conformance/ctx_0002048/run_01/logits/frontier_002048.logits.json",
+          "sha256": "2b3cdf9bd9181edaeb4a43a09be381bebc3ed2c8c4de1f5872b13ae38c86ddb0"
+        },
+        "metadata": {
+          "argmax_id": 15342,
+          "argmax_logit": 27.5899944,
+          "backend": "metal",
+          "quality": false,
+          "quant_bits": 2,
+          "vocab": 129280
+        },
+        "prefill_row": {
+          "ctx_tokens": 2048,
+          "gen_first_ms": 0.0,
+          "gen_steady_tokens": 0,
+          "gen_steady_tps": 0.0,
+          "gen_tokens": 0,
+          "gen_tps": 0.0,
+          "kvcache_bytes": 0,
+          "prefill_tokens": 2048,
+          "prefill_tps": 193.976297195,
+          "sampling_in_interval": 1.0
+        },
+        "repetition": 1
+      },
+      {
+        "command": {
+          "command": [
+            "$ORACLE_SOURCE/ds4-bench",
+            "--metal",
+            "-m",
+            "model.gguf",
+            "--prompt-file",
+            "rust_star_oracle_prompt.txt",
+            "--ctx-start",
+            "32768",
+            "--ctx-max",
+            "32768",
+            "--gen-tokens",
+            "0",
+            "--warm-weights",
+            "--csv",
+            "$RESULTS/conformance/ctx_0032768/run_01/prefill.csv",
+            "--dump-frontier-logits-dir",
+            "$RESULTS/conformance/ctx_0032768/run_01/logits"
+          ],
+          "cwd": ".",
+          "elapsed_seconds": 195.062,
+          "exit_code": 0,
+          "log": "logs/conformance_ctx_0032768_run_01.log"
+        },
+        "context": 32768,
+        "csv": {
+          "bytes": 208,
+          "path": "conformance/ctx_0032768/run_01/prefill.csv",
+          "sha256": "89d4bc8247834996d658dce4a4b3ce628395d827e6cbeca44ca65653d6a7f402"
+        },
+        "logits": {
+          "bytes": 1574394,
+          "path": "conformance/ctx_0032768/run_01/logits/frontier_032768.logits.json",
+          "sha256": "269f9529f0e649d6e4f5ecd125ef7c4808f825e65bf9d503c512ef611c958e12"
+        },
+        "metadata": {
+          "argmax_id": 85166,
+          "argmax_logit": 27.4666557,
+          "backend": "metal",
+          "quality": false,
+          "quant_bits": 2,
+          "vocab": 129280
+        },
+        "prefill_row": {
+          "ctx_tokens": 32768,
+          "gen_first_ms": 0.0,
+          "gen_steady_tokens": 0,
+          "gen_steady_tps": 0.0,
+          "gen_tokens": 0,
+          "gen_tps": 0.0,
+          "kvcache_bytes": 0,
+          "prefill_tokens": 32768,
+          "prefill_tps": 182.392885787,
+          "sampling_in_interval": 1.0
+        },
+        "repetition": 1
+      },
+      {
+        "command": {
+          "command": [
+            "$ORACLE_SOURCE/ds4-bench",
+            "--metal",
+            "-m",
+            "model.gguf",
+            "--prompt-file",
+            "rust_star_oracle_prompt.txt",
+            "--ctx-start",
+            "32768",
+            "--ctx-max",
+            "32768",
+            "--gen-tokens",
+            "0",
+            "--warm-weights",
+            "--csv",
+            "$RESULTS/conformance/ctx_0032768/run_02/prefill.csv",
+            "--dump-frontier-logits-dir",
+            "$RESULTS/conformance/ctx_0032768/run_02/logits"
+          ],
+          "cwd": ".",
+          "elapsed_seconds": 194.915,
+          "exit_code": 0,
+          "log": "logs/conformance_ctx_0032768_run_02.log"
+        },
+        "context": 32768,
+        "csv": {
+          "bytes": 208,
+          "path": "conformance/ctx_0032768/run_02/prefill.csv",
+          "sha256": "37925e085163360c20586a906dc0f69e715e87b684cad0c77d297c345a1fb230"
+        },
+        "logits": {
+          "bytes": 1574394,
+          "path": "conformance/ctx_0032768/run_02/logits/frontier_032768.logits.json",
+          "sha256": "269f9529f0e649d6e4f5ecd125ef7c4808f825e65bf9d503c512ef611c958e12"
+        },
+        "metadata": {
+          "argmax_id": 85166,
+          "argmax_logit": 27.4666557,
+          "backend": "metal",
+          "quality": false,
+          "quant_bits": 2,
+          "vocab": 129280
+        },
+        "prefill_row": {
+          "ctx_tokens": 32768,
+          "gen_first_ms": 0.0,
+          "gen_steady_tokens": 0,
+          "gen_steady_tps": 0.0,
+          "gen_tokens": 0,
+          "gen_tps": 0.0,
+          "kvcache_bytes": 0,
+          "prefill_tokens": 32768,
+          "prefill_tps": 182.305499843,
+          "sampling_in_interval": 1.0
+        },
+        "repetition": 2
+      },
+      {
+        "command": {
+          "command": [
+            "$ORACLE_SOURCE/ds4-bench",
+            "--metal",
+            "-m",
+            "model.gguf",
+            "--prompt-file",
+            "rust_star_oracle_prompt.txt",
+            "--ctx-start",
+            "2048",
+            "--ctx-max",
+            "2048",
+            "--gen-tokens",
+            "0",
+            "--warm-weights",
+            "--csv",
+            "$RESULTS/conformance/ctx_0002048/run_02/prefill.csv",
+            "--dump-frontier-logits-dir",
+            "$RESULTS/conformance/ctx_0002048/run_02/logits"
+          ],
+          "cwd": ".",
+          "elapsed_seconds": 25.974,
+          "exit_code": 0,
+          "log": "logs/conformance_ctx_0002048_run_02.log"
+        },
+        "context": 2048,
+        "csv": {
+          "bytes": 206,
+          "path": "conformance/ctx_0002048/run_02/prefill.csv",
+          "sha256": "7590707ce15fd73793b84d764ee7a674bb22b30faac8740aa50afae49b22dfc2"
+        },
+        "logits": {
+          "bytes": 1588108,
+          "path": "conformance/ctx_0002048/run_02/logits/frontier_002048.logits.json",
+          "sha256": "2b3cdf9bd9181edaeb4a43a09be381bebc3ed2c8c4de1f5872b13ae38c86ddb0"
+        },
+        "metadata": {
+          "argmax_id": 15342,
+          "argmax_logit": 27.5899944,
+          "backend": "metal",
+          "quality": false,
+          "quant_bits": 2,
+          "vocab": 129280
+        },
+        "prefill_row": {
+          "ctx_tokens": 2048,
+          "gen_first_ms": 0.0,
+          "gen_steady_tokens": 0,
+          "gen_steady_tps": 0.0,
+          "gen_tokens": 0,
+          "gen_tps": 0.0,
+          "kvcache_bytes": 0,
+          "prefill_tokens": 2048,
+          "prefill_tps": 192.169090784,
+          "sampling_in_interval": 1.0
+        },
+        "repetition": 2
+      },
+      {
+        "command": {
+          "command": [
+            "$ORACLE_SOURCE/ds4-bench",
+            "--metal",
+            "-m",
+            "model.gguf",
+            "--prompt-file",
+            "rust_star_oracle_prompt.txt",
+            "--ctx-start",
+            "2048",
+            "--ctx-max",
+            "2048",
+            "--gen-tokens",
+            "0",
+            "--warm-weights",
+            "--csv",
+            "$RESULTS/conformance/ctx_0002048/run_03/prefill.csv",
+            "--dump-frontier-logits-dir",
+            "$RESULTS/conformance/ctx_0002048/run_03/logits"
+          ],
+          "cwd": ".",
+          "elapsed_seconds": 25.903,
+          "exit_code": 0,
+          "log": "logs/conformance_ctx_0002048_run_03.log"
+        },
+        "context": 2048,
+        "csv": {
+          "bytes": 206,
+          "path": "conformance/ctx_0002048/run_03/prefill.csv",
+          "sha256": "85168ed8d7410ff90d70f23b3bf7fbc72ad2c6264a0e104562421b050ac91400"
+        },
+        "logits": {
+          "bytes": 1588108,
+          "path": "conformance/ctx_0002048/run_03/logits/frontier_002048.logits.json",
+          "sha256": "2b3cdf9bd9181edaeb4a43a09be381bebc3ed2c8c4de1f5872b13ae38c86ddb0"
+        },
+        "metadata": {
+          "argmax_id": 15342,
+          "argmax_logit": 27.5899944,
+          "backend": "metal",
+          "quality": false,
+          "quant_bits": 2,
+          "vocab": 129280
+        },
+        "prefill_row": {
+          "ctx_tokens": 2048,
+          "gen_first_ms": 0.0,
+          "gen_steady_tokens": 0,
+          "gen_steady_tps": 0.0,
+          "gen_tokens": 0,
+          "gen_tps": 0.0,
+          "kvcache_bytes": 0,
+          "prefill_tokens": 2048,
+          "prefill_tps": 194.083872474,
+          "sampling_in_interval": 1.0
+        },
+        "repetition": 3
+      },
+      {
+        "command": {
+          "command": [
+            "$ORACLE_SOURCE/ds4-bench",
+            "--metal",
+            "-m",
+            "model.gguf",
+            "--prompt-file",
+            "rust_star_oracle_prompt.txt",
+            "--ctx-start",
+            "32768",
+            "--ctx-max",
+            "32768",
+            "--gen-tokens",
+            "0",
+            "--warm-weights",
+            "--csv",
+            "$RESULTS/conformance/ctx_0032768/run_03/prefill.csv",
+            "--dump-frontier-logits-dir",
+            "$RESULTS/conformance/ctx_0032768/run_03/logits"
+          ],
+          "cwd": ".",
+          "elapsed_seconds": 194.503,
+          "exit_code": 0,
+          "log": "logs/conformance_ctx_0032768_run_03.log"
+        },
+        "context": 32768,
+        "csv": {
+          "bytes": 208,
+          "path": "conformance/ctx_0032768/run_03/prefill.csv",
+          "sha256": "970c048123f20965d01770e9b39306af81665b877acffe26903f68548be55e03"
+        },
+        "logits": {
+          "bytes": 1574394,
+          "path": "conformance/ctx_0032768/run_03/logits/frontier_032768.logits.json",
+          "sha256": "269f9529f0e649d6e4f5ecd125ef7c4808f825e65bf9d503c512ef611c958e12"
+        },
+        "metadata": {
+          "argmax_id": 85166,
+          "argmax_logit": 27.4666557,
+          "backend": "metal",
+          "quality": false,
+          "quant_bits": 2,
+          "vocab": 129280
+        },
+        "prefill_row": {
+          "ctx_tokens": 32768,
+          "gen_first_ms": 0.0,
+          "gen_steady_tokens": 0,
+          "gen_steady_tps": 0.0,
+          "gen_tokens": 0,
+          "gen_tps": 0.0,
+          "kvcache_bytes": 0,
+          "prefill_tokens": 32768,
+          "prefill_tps": 182.927462746,
+          "sampling_in_interval": 1.0
+        },
+        "repetition": 3
+      },
+      {
+        "command": {
+          "command": [
+            "$ORACLE_SOURCE/ds4-bench",
+            "--metal",
+            "-m",
+            "model.gguf",
+            "--prompt-file",
+            "rust_star_oracle_prompt.txt",
+            "--ctx-start",
+            "32768",
+            "--ctx-max",
+            "32768",
+            "--gen-tokens",
+            "0",
+            "--warm-weights",
+            "--csv",
+            "$RESULTS/conformance/ctx_0032768/run_04/prefill.csv",
+            "--dump-frontier-logits-dir",
+            "$RESULTS/conformance/ctx_0032768/run_04/logits"
+          ],
+          "cwd": ".",
+          "elapsed_seconds": 194.738,
+          "exit_code": 0,
+          "log": "logs/conformance_ctx_0032768_run_04.log"
+        },
+        "context": 32768,
+        "csv": {
+          "bytes": 208,
+          "path": "conformance/ctx_0032768/run_04/prefill.csv",
+          "sha256": "21505810415d4c6d7298003351e2444704f2a45208307c6e3d389ef53e7f4c8e"
+        },
+        "logits": {
+          "bytes": 1574394,
+          "path": "conformance/ctx_0032768/run_04/logits/frontier_032768.logits.json",
+          "sha256": "269f9529f0e649d6e4f5ecd125ef7c4808f825e65bf9d503c512ef611c958e12"
+        },
+        "metadata": {
+          "argmax_id": 85166,
+          "argmax_logit": 27.4666557,
+          "backend": "metal",
+          "quality": false,
+          "quant_bits": 2,
+          "vocab": 129280
+        },
+        "prefill_row": {
+          "ctx_tokens": 32768,
+          "gen_first_ms": 0.0,
+          "gen_steady_tokens": 0,
+          "gen_steady_tps": 0.0,
+          "gen_tokens": 0,
+          "gen_tps": 0.0,
+          "kvcache_bytes": 0,
+          "prefill_tokens": 32768,
+          "prefill_tps": 182.674650677,
+          "sampling_in_interval": 1.0
+        },
+        "repetition": 4
+      },
+      {
+        "command": {
+          "command": [
+            "$ORACLE_SOURCE/ds4-bench",
+            "--metal",
+            "-m",
+            "model.gguf",
+            "--prompt-file",
+            "rust_star_oracle_prompt.txt",
+            "--ctx-start",
+            "2048",
+            "--ctx-max",
+            "2048",
+            "--gen-tokens",
+            "0",
+            "--warm-weights",
+            "--csv",
+            "$RESULTS/conformance/ctx_0002048/run_04/prefill.csv",
+            "--dump-frontier-logits-dir",
+            "$RESULTS/conformance/ctx_0002048/run_04/logits"
+          ],
+          "cwd": ".",
+          "elapsed_seconds": 25.973,
+          "exit_code": 0,
+          "log": "logs/conformance_ctx_0002048_run_04.log"
+        },
+        "context": 2048,
+        "csv": {
+          "bytes": 206,
+          "path": "conformance/ctx_0002048/run_04/prefill.csv",
+          "sha256": "1f30c7447de7e3841192787545723a578af27297eafb38aa7637372eb3b1a8c4"
+        },
+        "logits": {
+          "bytes": 1588108,
+          "path": "conformance/ctx_0002048/run_04/logits/frontier_002048.logits.json",
+          "sha256": "2b3cdf9bd9181edaeb4a43a09be381bebc3ed2c8c4de1f5872b13ae38c86ddb0"
+        },
+        "metadata": {
+          "argmax_id": 15342,
+          "argmax_logit": 27.5899944,
+          "backend": "metal",
+          "quality": false,
+          "quant_bits": 2,
+          "vocab": 129280
+        },
+        "prefill_row": {
+          "ctx_tokens": 2048,
+          "gen_first_ms": 0.0,
+          "gen_steady_tokens": 0,
+          "gen_steady_tps": 0.0,
+          "gen_tokens": 0,
+          "gen_tps": 0.0,
+          "kvcache_bytes": 0,
+          "prefill_tokens": 2048,
+          "prefill_tps": 191.912877551,
+          "sampling_in_interval": 1.0
+        },
+        "repetition": 4
+      }
+    ],
+    "status": "passed"
+  },
+  "correctness": {
+    "runs": [
+      {
+        "command": [
+          "./ds4_test",
+          "--metal-kernels"
+        ],
+        "cwd": ".",
+        "elapsed_seconds": 2.895,
+        "exit_code": 0,
+        "log": "logs/correctness_metal-kernels.log",
+        "name": "metal-kernels"
+      },
+      {
+        "command": [
+          "./ds4_test",
+          "--logprob-vectors"
+        ],
+        "cwd": ".",
+        "elapsed_seconds": 41.353,
+        "exit_code": 0,
+        "log": "logs/correctness_official-logprob-vectors.log",
+        "name": "official-logprob-vectors"
+      }
+    ],
+    "status": "passed"
+  },
+  "environment_allowlist": {},
+  "host": {
+    "commands": {
+      "clang": {
+        "command": [
+          "xcrun",
+          "clang",
+          "--version"
+        ],
+        "exit_code": 0,
+        "output": "Apple clang version 21.0.0 (clang-2100.1.1.101)\nTarget: arm64-apple-darwin25.5.0\nThread model: posix\nInstalledDir: /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin"
+      },
+      "make": {
+        "command": [
+          "make",
+          "--version"
+        ],
+        "exit_code": 0,
+        "output": "GNU Make 3.81\nCopyright (C) 2006  Free Software Foundation, Inc.\nThis is free software; see the source for copying conditions.\nThere is NO warranty; not even for MERCHANTABILITY or FITNESS FOR A\nPARTICULAR PURPOSE.\n\nThis program built for i386-apple-darwin11.3.0"
+      },
+      "metal_path": {
+        "command": [
+          "xcrun",
+          "-f",
+          "metal"
+        ],
+        "exit_code": 0,
+        "output": "/var/run/com.apple.security.cryptexd/mnt/com.apple.MobileAsset.MetalToolchain-v17.6.42.0.vMIxTi/Metal.xctoolchain/usr/bin/metal"
+      },
+      "pmset_custom": {
+        "command": [
+          "pmset",
+          "-g",
+          "custom"
+        ],
+        "exit_code": 0,
+        "output": "AC Power:\n Sleep On Power Button 1\n autorestartatconnect 0\n standby              0\n powernap             1\n ttyskeepawake        1\n womp                 1\n displaysleep         10\n networkoversleep     0\n sleep                1\n autorestart          0\n tcpkeepalive         1\n disksleep            10"
+      },
+      "pmset_thermal": {
+        "command": [
+          "pmset",
+          "-g",
+          "therm"
+        ],
+        "exit_code": 0,
+        "output": "Note: No thermal warning level has been recorded\nNote: No performance warning level has been recorded\nNote: No CPU power status has been recorded"
+      },
+      "uname": {
+        "command": [
+          "uname",
+          "-srm"
+        ],
+        "exit_code": 0,
+        "output": "Darwin 25.5.0 arm64"
+      },
+      "uptime": {
+        "command": [
+          "uptime"
+        ],
+        "exit_code": 0,
+        "output": "16:23  up  9:25, 4 users, load averages: 3.97 4.02 4.05"
+      },
+      "xcodebuild": {
+        "command": [
+          "xcodebuild",
+          "-version"
+        ],
+        "exit_code": 0,
+        "output": "Xcode 26.5\nBuild version 17F42"
+      }
+    },
+    "machine": "arm64",
+    "macos": {
+      "BuildVersion": "25F84",
+      "ProductName": "macOS",
+      "ProductVersion": "26.5.2"
+    },
+    "platform": "macOS-26.5.2-arm64-arm-64bit",
+    "python": "3.9.6",
+    "sysctl_allowlist": {
+      "hw.logicalcpu": "20",
+      "hw.memsize": "137438953472",
+      "hw.ncpu": "20",
+      "hw.physicalcpu": "20",
+      "kern.osrelease": "25.5.0",
+      "kern.osversion": "25F84",
+      "machdep.cpu.brand_string": "Apple M1 Ultra",
+      "vm.loadavg": "{ 3.97 4.02 4.05 }"
+    },
+    "system_profiler_filtered": {
+      "displays": [
+        {
+          "_name": "Apple M1 Ultra",
+          "sppci_bus": "spdisplays_builtin",
+          "sppci_cores": "48",
+          "sppci_model": "Apple M1 Ultra"
+        }
+      ],
+      "hardware": [
+        {
+          "chip_type": "Apple M1 Ultra",
+          "machine_model": "Mac13,2",
+          "machine_name": "Mac Studio",
+          "number_processors": "proc 20:16:4:0",
+          "physical_memory": "128 GB"
+        }
+      ]
+    }
+  },
+  "host_after": {
+    "captured_at_utc": "2026-09-06T14:40:29Z",
+    "pmset_thermal": {
+      "command": [
+        "pmset",
+        "-g",
+        "therm"
+      ],
+      "exit_code": 0,
+      "output": "Note: No thermal warning level has been recorded\nNote: No performance warning level has been recorded\nNote: No CPU power status has been recorded"
+    },
+    "uptime": {
+      "command": [
+        "uptime"
+      ],
+      "exit_code": 0,
+      "output": "16:40  up  9:42, 4 users, load averages: 3.07 3.25 3.54"
+    }
+  },
+  "model": {
+    "absolute_path_recorded": false,
+    "bytes": 86720111488,
+    "filename": "DeepSeek-V4-Flash-IQ2XXS-w2Q2K-AProjQ8-SExpQ8-OutQ8-chat-v2-imatrix-0731.gguf",
+    "sha256": "ca22ae2f838e14077c22bc1c1417b71b45b5e5a3687bd96c2ac6e17fdb6261c0"
+  },
+  "notes": "Explicit streaming top-k count barrier repair; unchanged target tensors must remain exact. Performance captured separately.",
+  "oracle_id": "oracle-v4",
+  "performance": {
+    "runs": [],
+    "status": "skipped"
+  },
+  "prompt": {
+    "base_bytes": 1329139,
+    "base_path": "speed-bench/promessi_sposi.txt",
+    "base_sha256": "f53e0d80cb2d4492d24ebd63c7000c397b16ae70f9bf09b3763e5d8323ec209f",
+    "expanded_bytes": 1329139,
+    "expanded_sha256": "f53e0d80cb2d4492d24ebd63c7000c397b16ae70f9bf09b3763e5d8323ec209f",
+    "expansion": "base bytes repeated with two newline bytes between copies",
+    "repeats": 1,
+    "runtime_path": "rust_star_oracle_prompt.txt"
+  },
+  "schema": "rust-star-oracle-manifest-v1",
+  "source": {
+    "commit": "df99eba7f722f8170dc2960b8b4666f73818a5ba",
+    "export_log": "logs/source_export.log",
+    "repository": "https://github.com/deathcoder/ds4.git",
+    "tree": "14ffb83c44382662fb02a4fe50d713dd55827726"
+  },
+  "started_at_utc": "2026-09-06T14:23:45Z",
+  "status": "complete"
+}

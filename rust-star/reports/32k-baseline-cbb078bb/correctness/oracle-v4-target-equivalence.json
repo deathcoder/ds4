@@ -1,0 +1,54 @@
+{
+  "passed": true,
+  "runs": [
+    {
+      "context": 2048,
+      "repetition": 1,
+      "exact": true,
+      "fp32_sha256": "7b5e851884bbb0aa8c2a249c8497af0feccb267cbd0a40e0a4a5aee584ecbfaf"
+    },
+    {
+      "context": 32768,
+      "repetition": 1,
+      "exact": true,
+      "fp32_sha256": "603430b4b4b47f14b520f1977770bc292d1d136488f254116eb214766609c547"
+    },
+    {
+      "context": 32768,
+      "repetition": 2,
+      "exact": true,
+      "fp32_sha256": "603430b4b4b47f14b520f1977770bc292d1d136488f254116eb214766609c547"
+    },
+    {
+      "context": 2048,
+      "repetition": 2,
+      "exact": true,
+      "fp32_sha256": "7b5e851884bbb0aa8c2a249c8497af0feccb267cbd0a40e0a4a5aee584ecbfaf"
+    },
+    {
+      "context": 2048,
+      "repetition": 3,
+      "exact": true,
+      "fp32_sha256": "7b5e851884bbb0aa8c2a249c8497af0feccb267cbd0a40e0a4a5aee584ecbfaf"
+    },
+    {
+      "context": 32768,
+      "repetition": 3,
+      "exact": true,
+      "fp32_sha256": "603430b4b4b47f14b520f1977770bc292d1d136488f254116eb214766609c547"
+    },
+    {
+      "context": 32768,
+      "repetition": 4,
+      "exact": true,
+      "fp32_sha256": "603430b4b4b47f14b520f1977770bc292d1d136488f254116eb214766609c547"
+    },
+    {
+      "context": 2048,
+      "repetition": 4,
+      "exact": true,
+      "fp32_sha256": "7b5e851884bbb0aa8c2a249c8497af0feccb267cbd0a40e0a4a5aee584ecbfaf"
+    }
+  ],
+  "immutable_targets_changed": false
+}

@@ -1,0 +1,34 @@
+{
+  "artifacts": {
+    "stderr": {
+      "bytes": 95,
+      "path": "stderr.log",
+      "sha256": "a3e0eb0f2c6aa14f11377ec2f4b6c59bee6c5510f9e2d013320e4ed4f49a1322"
+    },
+    "stdout": {
+      "bytes": 0,
+      "path": "stdout.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  },
+  "command": [
+    "$ENGINE",
+    "engine-measure",
+    "$MODEL",
+    "--context",
+    "32768",
+    "--gen-tokens",
+    "128",
+    "--json",
+    "$TEMP/engine-run.json"
+  ],
+  "context": 32768,
+  "engine": "rust-star",
+  "gen_tokens": 128,
+  "process_peak_bytes": 97420083200,
+  "process_wall_ms": 815748.20375,
+  "returncode": 1,
+  "schema": "rust-star-engine-measurement-v1",
+  "status": "failed",
+  "timed_out": false
+}

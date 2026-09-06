@@ -1179,7 +1179,10 @@ creation time. It still rebuilds request-local KV state.
 
 Fresh32K normalized measurement and both retained32K reset/reuse cycles passed
 on 2026-09-06, alongside final 2K/8K regressions. These establish the engine
-frontier and lifecycle; a paired32K speed comparison remains future work.
+frontier and lifecycle. The repaired five-pair 32K/128 baseline now passes:
+[report](../reports/32k-baseline-cbb078bb/README.md). Steady decode is near
+parity (19.574 versus 19.454 tokens/s); Rust prefill is 4.33x slower. The next
+milestone is finer prefill attribution and a measured C0-safe improvement.
 
 At 32K, `engine-profile` currently collects decode layer/stage counters only;
 it does not claim the 2K-specific prefill layer/stage breakdown below. These

@@ -1,0 +1,13 @@
+{
+  "candidate_commit": "cbb078bb79871169f6a1dd367f96c141969e917e",
+  "candidate_tree": "7097f7cb3b22f167340deba42ee4120bfaa65fed",
+  "executable_sha256": "0baadfd5c4e24633817a1d2f9073e4cff0bb0fe91905e77298f7e9a0b34ee663",
+  "sources_sha256": {
+    "metal/argsort.metal": "bbf82a71ffe501cfb820149dac0db9fedcc211851d73de9f02a64f1b3dca71d0",
+    "rust-star/runtime/src/metal_shim.m": "4d9c08f5e40b298b803981f629948a909141c1a282f75e476999186caeb9fd73",
+    "rust-star/runtime/src/metal_shim.h": "7000fbfe80e13f07ac95a2a7cfb9b1e5284a5774c3ebc2ac95bfffab6a2f3caf",
+    "rust-star/runtime/src/metal.rs": "524eb040d132486991b70ebc9ef8d78a69cefba2834e88b7e0ce227b0e15bc69",
+    "rust-star/runtime/src/long_prefill.rs": "49e821a96b38c3f1d86363c18480526b4b05205c28f810ee6794425e8289eade"
+  },
+  "repair": "streaming top-k count snapshot barrier; projection-wait experiment reverted"
+}

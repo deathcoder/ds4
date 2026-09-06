@@ -1,0 +1,20 @@
+[
+  {
+    "name": "synchronized-a",
+    "exit": 0,
+    "seconds": 833.5390989780426,
+    "finished_utc": "2026-09-06T13:47:17.322198+00:00"
+  },
+  {
+    "name": "synchronized-b",
+    "exit": 0,
+    "seconds": 810.9255678653717,
+    "finished_utc": "2026-09-06T14:00:48.249275+00:00"
+  },
+  {
+    "name": "synchronized-c",
+    "exit": 1,
+    "seconds": 220.32511687278748,
+    "finished_utc": "2026-09-06T14:04:28.575196+00:00"
+  }
+]

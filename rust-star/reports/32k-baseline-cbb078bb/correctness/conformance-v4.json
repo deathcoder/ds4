@@ -1,0 +1,10 @@
+{
+  "passed": true,
+  "fresh_processes": 2,
+  "full_fp32_rows_per_run": 129,
+  "prefill_tokens": 32768,
+  "decode_steps": 128,
+  "selected_tokens_exact": true,
+  "diagnostic_timing_ineligible": true,
+  "executable_sha256": "e9d9595c37aded826edd3a4c16b49ff854a4da285996dab4486063a1ca57abda"
+}

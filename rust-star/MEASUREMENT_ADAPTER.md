@@ -22,17 +22,19 @@ complete generation therefore include sampling, as required by the protocol.
 Legacy `ds4-bench` steady timers excluded argmax and are rejected by this adapter;
 retain old results as historical measurements under their original semantics.
 
-Build the accepted oracle-v3 inference sources with only this benchmark driver
-overlaid:
+Build the accepted oracle-v4 source, which pins both the top-k synchronization
+repair and the corrected benchmark driver:
 
 ```sh
 python3 rust-star/build_benchmark_oracle.py \
+  --oracle-version oracle-v4 \
   --output rust-star/.work/sampling-inclusive-oracle
 ```
 
 The builder records original/overlaid source hashes and the executable hash.
-Pin that provenance alongside the oracle-v3 inference commit and the benchmark
-source commit in the paired plan. It never replaces the accepted oracle binary.
+Pin that provenance and the oracle-v4 source commit in the paired plan. The
+default is v4; `--oracle-version oracle-v3` remains an explicit historical
+reproduction option. The builder never replaces an existing oracle binary.
 Before timing a new driver, `--dump-frontier-logits-dir` can capture prefill and
 every decoded full-logit row for exact comparison; these diagnostic runs are
 not performance samples. Normal adapter commands never enable dumping.
