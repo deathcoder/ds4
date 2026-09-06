@@ -468,24 +468,6 @@ fn run_prefill_chunk_layer(
         let mut scores = vec![0.0; 32 * ((start + 4096) / 4) as usize];
         let mut topk = vec![0; 32 * 512];
         let mut heads = vec![0.0; 32 * 32768];
-        let mut tail: Vec<Vec<f32>> = [
-            8192,
-            4096,
-            16384,
-            4096,
-            4096,
-            256,
-            256,
-            6,
-            6 * 2048,
-            4096,
-            4096,
-            16384,
-        ]
-        .iter()
-        .map(|width| vec![0.0; 32 * width])
-        .collect();
-        let mut selected = vec![0; 32 * 6];
         profile.record(
             start,
             layer,
@@ -495,6 +477,11 @@ fn run_prefill_chunk_layer(
             (0.0, 0.0),
             (0.0, 0.0),
         );
+        checked!(rust_star_metal_begin_long_prefill_even_attention(
+            context.0,
+            error.as_mut_ptr(),
+            error.len()
+        ));
         for position in (start..start + 4096).step_by(32) {
             let mut tile = RawSparseIndexedResult::default();
             let sparse = if layer == 2 {
@@ -530,51 +517,54 @@ fn run_prefill_chunk_layer(
                 (0.0, 0.0),
                 (tile.wall_ms, tile.gpu_ms),
             );
-            let stage_start = profile.start();
-            let before = (tile.wall_ms, tile.gpu_ms);
-            checked!(rust_star_metal_run_prefill_layer2_continuation_tail(
-                context.0,
-                model.mapping_pointer(),
-                model.bytes(),
-                &prepared.weights,
-                if layer == 2 { 2 } else { 4 },
-                position,
-                32,
-                prefill_output_ptr(&mut tail[0], collect_checks),
-                prefill_output_ptr(&mut tail[1], collect_checks),
-                prefill_output_ptr(&mut tail[2], collect_checks),
-                prefill_output_ptr(&mut tail[3], collect_checks),
-                prefill_output_ptr(&mut tail[4], collect_checks),
-                prefill_output_ptr(&mut tail[5], collect_checks),
-                prefill_output_ptr(&mut tail[6], collect_checks),
-                prefill_output_ptr(&mut selected, collect_checks),
-                prefill_output_ptr(&mut tail[7], collect_checks),
-                prefill_output_ptr(&mut tail[8], collect_checks),
-                prefill_output_ptr(&mut tail[9], collect_checks),
-                prefill_output_ptr(&mut tail[10], collect_checks),
-                prefill_output_ptr(&mut tail[11], collect_checks),
-                &mut tile,
-                error.as_mut_ptr(),
-                error.len()
-            ));
-            profile.record(
-                start,
-                layer,
-                layer,
-                "tail",
-                stage_start,
-                before,
-                (tile.wall_ms, tile.gpu_ms),
-            );
-            if tile.dispatches != 36
-                || tile.wrapped_model_ranges != 17
-                || tile.pointer_matches != 17
+            if tile.dispatches != 10 || tile.wrapped_model_ranges != 3 || tile.pointer_matches != 3
             {
-                return Err(Error::invalid("even chunk attention/FFN schedule mismatch"));
+                return Err(Error::invalid("even chunk attention schedule mismatch"));
             }
             raw.wall_ms += tile.wall_ms;
             raw.gpu_ms += tile.gpu_ms;
         }
+        let stage_start = profile.start();
+        let mut tail = RawSparseIndexedResult::default();
+        checked!(rust_star_metal_run_prefill_layer2_continuation_tail(
+            context.0,
+            model.mapping_pointer(),
+            model.bytes(),
+            &prepared.weights,
+            if layer == 2 { 2 } else { 4 },
+            start,
+            4096,
+            std::ptr::null_mut(),
+            std::ptr::null_mut(),
+            std::ptr::null_mut(),
+            std::ptr::null_mut(),
+            std::ptr::null_mut(),
+            std::ptr::null_mut(),
+            std::ptr::null_mut(),
+            std::ptr::null_mut(),
+            std::ptr::null_mut(),
+            std::ptr::null_mut(),
+            std::ptr::null_mut(),
+            std::ptr::null_mut(),
+            std::ptr::null_mut(),
+            &mut tail,
+            error.as_mut_ptr(),
+            error.len()
+        ));
+        profile.record(
+            start,
+            layer,
+            layer,
+            "tail",
+            stage_start,
+            (0.0, 0.0),
+            (tail.wall_ms, tail.gpu_ms),
+        );
+        if tail.dispatches != 26 || tail.wrapped_model_ranges != 14 || tail.pointer_matches != 14 {
+            return Err(Error::invalid("even chunk batched tail schedule mismatch"));
+        }
+        raw.wall_ms += tail.wall_ms;
+        raw.gpu_ms += tail.gpu_ms;
     }
     Ok((raw.wall_ms, raw.gpu_ms))
 }

@@ -2490,6 +2490,7 @@ int rust_star_metal_finish_prefill_layer14_rebuild(
 int rust_star_metal_begin_long_prefill_prefix(void *, uint64_t *, char *, size_t);
 int rust_star_metal_bind_long_prefill_prefix(void *, uint32_t, char *, size_t);
 int rust_star_metal_finish_long_prefill_prefix(void *, uint32_t, uint64_t *, char *, size_t);
+int rust_star_metal_begin_long_prefill_even_attention(void *context, char *error, size_t error_bytes);
 int rust_star_metal_begin_long_prefill_chunk(void *context, uint32_t chunk_start, char *error, size_t error_bytes);
 int rust_star_metal_bind_long_prefill_layer(void *context, uint32_t layer, char *error, size_t error_bytes);
 int rust_star_metal_finish_long_prefill_layer(void *context, uint32_t layer, uint64_t *checksum, char *error, size_t error_bytes);

@@ -24710,6 +24710,11 @@ mod imp {
             error: *mut c_char,
             error_bytes: usize,
         ) -> i32;
+        fn rust_star_metal_begin_long_prefill_even_attention(
+            context: *mut c_void,
+            error: *mut c_char,
+            error_bytes: usize,
+        ) -> i32;
         fn rust_star_metal_begin_long_prefill_chunk(
             context: *mut c_void,
             chunk_start: u32,

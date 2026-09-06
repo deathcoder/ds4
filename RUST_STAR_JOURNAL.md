@@ -18,6 +18,44 @@ Before changing code:
 Journal entries are reverse chronological. Do not edit old entries to change
 history; add a correction and update the current-state summary.
 
+## 2026-09-06 — Batched-tail candidate built; correctness queue ready
+
+- The new candidate builds and all 310 Rust tests pass. An initial compile
+  caught a guard parameter-name typo; corrected, with the failed log retained.
+- Predeclared live gates: 12K internal checkpoints for early localization,
+  fresh 32K output-only and internal/full-output runs, 2K/8K controls, then
+  retained32K two-cycle reset/reuse. Stop on any failure and preserve evidence.
+- Freeze the candidate and start `validate-batch.py`; no paired measurement
+  or performance claim until these gates pass.
+
+## 2026-09-06 — Profile verified; batching the dominant even-layer tail
+
+- Before-profile passes its exact transcript, all continuation-layer coverage,
+  nonnegative stage counters and aggregate GPU/wall reconciliation: 1,483 rows.
+- Even tails: 294.625 s GPU / 345.976 s host across 18,816 calls. Odd batched
+  tails: 40.337 s GPU across 140 calls. Even attention: 73.932 s GPU; odd
+  ingress: 61.540 s. Binding is only 3.875 s host, rejecting the hypothesis
+  that binding itself explains the aggregate 94 s setup cost.
+- Selected optimization: retain even-layer attention heads inside each existing
+  tile command, then run the unchanged tail kernels once per 4K chunk (147
+  calls). No shared Metal kernel or oracle change. Guards require consecutive
+  tiles and all 4K rows before tail execution. The reusable buffer participates
+  in existing prefill ownership/reset cleanup.
+- Implementation is unvalidated. Build/tests, early internal C0 localization,
+  repeated complete 32K outputs, 2K/8K and retained controls follow. Keep any
+  failed attempt; do not claim a gain before the new paired schedule.
+
+## 2026-09-06 — Unoptimized 32K stage profile running
+
+- Frozen profile commit `3c77afe8325b1a28fbb0fb4fe05e2ec96c81d78f`, binary
+  SHA-256 `27b0d00db42967bc8417595ae0529d2e52f712d15e737d24eb809df8d8da4365`.
+- `profile-before-rust-star engine-profile ... --context 32768 --gen-tokens 128`
+  is running as the only model process. Outputs: `profile-before.json/.log`
+  and `profile-before-process.json` in the milestone work directory.
+- `analyze-profile.py` verifies exact transcript, all-layer coverage and stage
+  sum reconciliation before any optimization decision. Do not start another
+  model process or treat the instrumented timings as paired samples.
+
 ## 2026-09-06 — Native32K stage profiler ready
 
 - Added profile-only chunk/layer stage rows using existing command GPU/wall
@@ -1837,7 +1875,9 @@ Next:
 
 - Active milestone: native32K prefill attribution and measured optimization.
   Work: `rust-star/.work/prefill-milestone-fe73defe/`. Profile tooling first;
-  profiler builds and 310 tests pass; live profile next, no optimization selected yet.
+  profiler `3c77afe8` passes live interval/coverage checks. Even FFN tails
+  dominate (294.625 s GPU); 4K tail batching builds and passes 310 tests.
+  Live 12K/32K/2K/8K/retained validation is next.
 - Prior completed milestone: repaired, independently audited five-pair 32K/128
   development baseline and separate profile. Report and portable verifier:
   `rust-star/reports/32k-baseline-cbb078bb/`.

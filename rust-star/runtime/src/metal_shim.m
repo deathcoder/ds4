@@ -418,6 +418,9 @@ static NSString *const kQ8ProjectionSource =
 @property(nonatomic, strong) id<MTLBuffer> prefillLayer2IndexerStateScore;
 @property(nonatomic, strong) id<MTLBuffer> prefillLayer2ContinuationQ;
 @property(nonatomic, strong) id<MTLBuffer> prefillLayer2ContinuationHeads;
+// One chunk of inverse-RoPE attention heads, reused across even executor layers.
+@property(nonatomic, strong) id<MTLBuffer> prefillLayerEvenBatchHeads;
+@property(nonatomic, strong) NSNumber *prefillLayerEvenBatchRows;
 @property(nonatomic, strong) id<MTLBuffer> prefillLayer2ContinuationAfterFfnHc;
 @property(nonatomic, strong) id<MTLBuffer> prefillLayer2ContinuationFullAfterFfnHc;
 @property(nonatomic, strong) id<MTLBuffer> prefillLayer3ContinuationInputHc;
@@ -45543,6 +45546,22 @@ static int rust_star_metal_run_prefill_layer2_indexed_tile(
          threadsPerThreadgroup:MTLSizeMake(256,1,1)];
     [encoder endEncoding];
 
+    // Retain completed per-token arithmetic in the same command. The FFN tail
+    // consumes the whole chunk only after every tile has filled its own rows.
+    const BOOL retain_batch = context.prefillLayerEvenBatchRows != nil;
+    const uint32_t retained_rows = context.prefillLayerEvenBatchRows.unsignedIntValue;
+    if (retain_batch) {
+        if (retained_rows > 4096u-tile_rows || position_start != chunk_start+retained_rows ||
+            context.prefillLayerEvenBatchHeads.length != 4096ull*q_row_bytes)
+            return fail_with_message(error, error_bytes, @"nonconsecutive long-prefill attention tile");
+        id<MTLBlitCommandEncoder> retain = [command blitCommandEncoder];
+        if (!retain) return fail_with_message(error, error_bytes, @"cannot retain long-prefill attention tile");
+        [retain copyFromBuffer:heads_buffer sourceOffset:0
+                     toBuffer:context.prefillLayerEvenBatchHeads
+            destinationOffset:(NSUInteger)retained_rows*q_row_bytes size:tile_rows*q_row_bytes];
+        [retain endEncoding];
+    }
+
     const double wall_start = monotonic_ms();
     [command commit];
     if (!command_succeeded(command, error, error_bytes)) return 0;
@@ -45558,6 +45577,7 @@ static int rust_star_metal_run_prefill_layer2_indexed_tile(
     if (scores) memcpy(scores, score_buffer.contents, tile_rows*score_row_bytes);
     if (topk) memcpy(topk, topk_buffer.contents, tile_rows*topk_row_bytes);
     if (kqv_back) memcpy(kqv_back, heads_buffer.contents, tile_rows*q_row_bytes);
+    if (retain_batch) context.prefillLayerEvenBatchRows = @(retained_rows+tile_rows);
     if (heads_out) *heads_out = heads_buffer;
     result->dispatches += 10u;
     result->wrapped_model_ranges += 3u;
@@ -46056,6 +46076,26 @@ int rust_star_metal_run_prefill_layer4_continuation_sparse_tile(
     }
 }
 
+int rust_star_metal_begin_long_prefill_even_attention(
+    void *opaque_context, char *error, size_t error_bytes)
+{
+    @autoreleasepool {
+        if (!opaque_context) return fail_with_message(error, error_bytes, @"null long-prefill context");
+        RustStarMetalContext *context = (__bridge RustStarMetalContext *)opaque_context;
+        if (!context.prefillLayerChunkStart || context.prefillLayerEvenBatchRows ||
+            context.prefillKvRows != context.prefillLayerChunkStart.unsignedIntValue+4096u)
+            return fail_with_message(error, error_bytes, @"long-prefill attention batch is not ready");
+        const NSUInteger bytes = 4096ull*32768u*sizeof(float);
+        if (!context.prefillLayerEvenBatchHeads)
+            context.prefillLayerEvenBatchHeads = [context.device newBufferWithLength:bytes
+                options:MTLResourceStorageModeShared];
+        if (context.prefillLayerEvenBatchHeads.length != bytes)
+            return fail_with_message(error, error_bytes, @"cannot allocate long-prefill attention batch");
+        context.prefillLayerEvenBatchRows = @0;
+        return 1;
+    }
+}
+
 int rust_star_metal_run_prefill_layer2_continuation_tail(
     void *opaque_context,
     const void *model_mapping,
@@ -46101,9 +46141,11 @@ int rust_star_metal_run_prefill_layer2_continuation_tail(
         layer_index == 5u && tile_start == 0u && rows == 4096u;
     const BOOL production_layer5_batch =
         layer_index == 5u && tile_start != 0u && tile_start == chunk_start && rows == 4096u;
+    const BOOL production_even_batch = (layer_index == 2u || layer_index == 4u) &&
+        tile_start != 0u && tile_start == chunk_start && rows == 4096u;
     const BOOL production_batch =
         production_layer3_batch || production_layer4_prefix ||
-        production_layer5_prefix || production_layer5_batch;
+        production_layer5_prefix || production_layer5_batch || production_even_batch;
     const BOOL diagnostic_tile = rows == 32u;
     if (!opaque_context || !model_mapping || !weights ||
         (layer_index != 2u && layer_index != 3u && layer_index != 4u &&
@@ -46122,7 +46164,10 @@ int rust_star_metal_run_prefill_layer2_continuation_tail(
         const BOOL layer3 = layer_index == 3u;
         const BOOL layer4 = layer_index == 4u;
         const BOOL layer5 = layer_index == 5u;
-        id<MTLBuffer> heads_buffer = production_layer5_prefix ||
+        if (production_even_batch && context.prefillLayerEvenBatchRows.unsignedIntValue != 4096u)
+            return fail_with_message(error, error_bytes, @"long-prefill tail requires all attention rows");
+        id<MTLBuffer> heads_buffer = production_even_batch
+            ? context.prefillLayerEvenBatchHeads : production_layer5_prefix ||
             production_layer5_batch
             ? context.prefillLayer3ContinuationHeads : production_layer4_prefix
             ? context.prefillLayer4PrefixHeads : layer4
@@ -46787,6 +46832,7 @@ int rust_star_metal_run_prefill_layer2_continuation_tail(
         for (uint32_t index = 0; index < 14u; index++) {
             if (matches[index]) result->pointer_matches++;
         }
+        if (production_even_batch) context.prefillLayerEvenBatchRows = nil;
         result->wall_ms += monotonic_ms()-wall_start;
         result->gpu_ms += gpu_elapsed_ms(command);
         if (production_layer3_batch && !context.prefillLayerChunkStart)
