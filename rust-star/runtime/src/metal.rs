@@ -29,7 +29,7 @@ pub const PREFILL_LAYERS012_COMPRESSOR_LOOP_PROBE_SCHEMA: &str =
     "rust-star-prefill-layers012-compressor-loop-probe-v1";
 pub const LONG_PREFILL_BOOTSTRAP_PROBE_SCHEMA: &str = "rust-star-long-prefill-bootstrap-probe-v1";
 pub const LONG_PREFILL_CONTINUATION_BOOTSTRAP_PROBE_SCHEMA: &str =
-    "rust-star-long-prefill-continuation-bootstrap-probe-v29";
+    "rust-star-long-prefill-continuation-bootstrap-probe-v30";
 pub const LONG_PREFILL_SEQUENTIAL_CONTINUATION_PROBE_SCHEMA: &str =
     "rust-star-long-prefill-sequential-continuation-probe-v1";
 pub const LONG_PREFILL_TRANSFORMER_PROBE_SCHEMA: &str =
@@ -4161,6 +4161,28 @@ pub struct LongPrefillBootstrapProbeReport {
 }
 
 #[derive(Clone, Debug)]
+pub struct RemainingPrefillLayerReport {
+    pub layer: u32,
+    pub prefix_boundary: Vec<u64>,
+    pub continuation_boundary: Vec<u64>,
+    pub prefix_tail: [u64; 3],
+    pub continuation_tail: [u64; 3],
+    pub dispatches: u64,
+    pub model_mappings: u64,
+    pub pointer_matches: u64,
+}
+
+#[derive(Clone, Debug)]
+pub struct RemainingPrefillOutputReport {
+    pub checked_logits: u32,
+    pub logits_checksum: u64,
+    pub selected_token: u32,
+}
+
+// Immutable oracle targets, installed only after independent captures agree.
+include!("remaining_prefill_checksums.rs");
+
+#[derive(Clone, Debug)]
 pub struct LongPrefillContinuationBootstrapProbeReport {
     pub fixture_id: &'static str,
     pub frontier_tokens: u32,
@@ -4415,6 +4437,8 @@ pub struct LongPrefillContinuationBootstrapProbeReport {
     pub layer14_continuation_wrapped_model_ranges: u32,
     pub layer14_continuation_pointer_matches: u32,
     pub layer14_continuation_tail_checksums: [u64; 3],
+    pub remaining_layers: Vec<RemainingPrefillLayerReport>,
+    pub remaining_output: Option<RemainingPrefillOutputReport>,
 }
 
 #[derive(Clone, Debug)]
@@ -8742,6 +8766,53 @@ fn write_long_prefill_continuation_bootstrap_probe_json_payload<W: Write>(
             "long-prefill continuation bootstrap report has an unexpected frontier or schedule",
         ));
     }
+    if report.remaining_layers.len() != REMAINING_PREFILL_CHECKSUMS.len() {
+        return Err(Error::invalid(
+            "remaining-layer report coverage differs from pinned targets",
+        ));
+    }
+    for (index, (actual, &(layer, prefix, continuation, prefix_tail, continuation_tail))) in report
+        .remaining_layers
+        .iter()
+        .zip(REMAINING_PREFILL_CHECKSUMS)
+        .enumerate()
+    {
+        let (dispatches, mappings) = if layer % 2 == 1 {
+            (1367, 1199)
+        } else {
+            (4724, 2227)
+        };
+        if layer != 15 + index as u32
+            || layer > 42
+            || actual.layer != layer
+            || actual.prefix_boundary != prefix
+            || actual.continuation_boundary != continuation
+            || actual.prefix_tail != prefix_tail
+            || actual.continuation_tail != continuation_tail
+            || actual.dispatches != dispatches
+            || actual.model_mappings != mappings
+            || actual.pointer_matches != mappings
+        {
+            return Err(Error::invalid(format!(
+                "remaining layer {layer} report failed its exact contract"
+            )));
+        }
+    }
+    let complete = report.remaining_layers.last().map(|r| r.layer) == Some(42);
+    if complete != report.remaining_output.is_some() {
+        return Err(Error::invalid("8K output requires all remaining layers"));
+    }
+    if let Some(head) = &report.remaining_output {
+        let (_, expected) = prefill_frontier_8192_fixture()?;
+        if head.checked_logits as usize != expected.len()
+            || head.logits_checksum != checksum_f32(&expected)
+            || head.selected_token != 77179
+        {
+            return Err(Error::invalid(
+                "8K output report differs from pinned full logits",
+            ));
+        }
+    }
     write!(
         output,
         "{{\n  \"schema\": \"{LONG_PREFILL_CONTINUATION_BOOTSTRAP_PROBE_SCHEMA}\",\n  \"fixture\": "
@@ -9347,6 +9418,34 @@ pub fn write_long_prefill_continuation_bootstrap_probe_json<W: Write>(
         ));
     }
     let rendered = rendered.replacen(complete_layer13_claim, layer14_claim, 1);
+    let mut remaining_json = String::from("  \"remaining_layers\": [");
+    for (index, layer) in report.remaining_layers.iter().enumerate() {
+        if index != 0 {
+            remaining_json.push(',');
+        }
+        remaining_json.push_str(&format!("{{\"layer\": {}, \"prefix_boundary\": {:?}, \"continuation_boundary\": {:?}, \"prefix_tail\": {:?}, \"continuation_tail\": {:?}, \"dispatches\": {}, \"model_mappings\": {}, \"pointer_matches\": {}, \"complete_c0_claim\": true}}", layer.layer, layer.prefix_boundary, layer.continuation_boundary, layer.prefix_tail, layer.continuation_tail, layer.dispatches, layer.model_mappings, layer.pointer_matches));
+    }
+    remaining_json.push_str("],\n");
+    let rendered = rendered.replacen(
+        checksums_boundary,
+        &(remaining_json + checksums_boundary),
+        1,
+    );
+    let rendered = if let Some(head) = &report.remaining_output {
+        let insertion = format!("  \"remaining_output\": {{\"checked_logits\": {}, \"logits_checksum\": {}, \"selected_token\": {}, \"c0_bitwise_match\": true}},\n", head.checked_logits, head.logits_checksum, head.selected_token);
+        rendered
+            .replacen(checksums_boundary, &(insertion + checksums_boundary), 1)
+            .replace(
+                "\"output_logits_c0_claim\": false",
+                "\"output_logits_c0_claim\": true",
+            )
+            .replace(
+                "\"complete_8k_transformer_claim\": false",
+                "\"complete_8k_transformer_claim\": true",
+            )
+    } else {
+        rendered
+    };
     output.write_all(rendered.as_bytes())?;
     Ok(())
 }
@@ -24454,6 +24553,48 @@ mod imp {
             error: *mut c_char,
             error_bytes: usize,
         ) -> i32;
+        fn rust_star_metal_release_remaining_prefill_transients(
+            context: *mut c_void,
+            completed_layer: u32,
+            error: *mut c_char,
+            error_bytes: usize,
+        ) -> i32;
+        fn rust_star_metal_begin_prefill_remaining_odd_prefix_rebuild(
+            context: *mut c_void,
+            layer: u32,
+            error: *mut c_char,
+            error_bytes: usize,
+        ) -> i32;
+        fn rust_star_metal_begin_prefill_remaining_odd_continuation(
+            context: *mut c_void,
+            layer: u32,
+            error: *mut c_char,
+            error_bytes: usize,
+        ) -> i32;
+        fn rust_star_metal_finish_prefill_remaining_odd_rebuild(
+            context: *mut c_void,
+            layer: u32,
+            error: *mut c_char,
+            error_bytes: usize,
+        ) -> i32;
+        fn rust_star_metal_begin_prefill_remaining_even_rebuild(
+            context: *mut c_void,
+            layer: u32,
+            error: *mut c_char,
+            error_bytes: usize,
+        ) -> i32;
+        fn rust_star_metal_retain_prefill_remaining_even_prefix_hc(
+            context: *mut c_void,
+            layer: u32,
+            error: *mut c_char,
+            error_bytes: usize,
+        ) -> i32;
+        fn rust_star_metal_finish_prefill_remaining_even_rebuild(
+            context: *mut c_void,
+            layer: u32,
+            error: *mut c_char,
+            error_bytes: usize,
+        ) -> i32;
         fn rust_star_metal_begin_prefill_layer13_prefix_rebuild(
             context: *mut c_void,
             error: *mut c_char,
@@ -24632,6 +24773,8 @@ mod imp {
         ) -> i32;
         fn rust_star_metal_destroy(context: *mut c_void);
     }
+
+    include!("remaining_prefill.rs");
 
     struct Context(*mut c_void);
 
@@ -27869,6 +28012,12 @@ mod imp {
         )?;
         let (sparse_transition, layer3_complete, second_layer2, second_layer3, layer23_loop) =
             run_prefill_layer2_sparse_transition_probe(model, &context)?;
+        let remaining_layers = run_remaining_prefill_layers(model, &context)?;
+        let remaining_output = if remaining_layers.last().map(|r| r.layer) == Some(42) {
+            Some(run_remaining_prefill_output(model, &context)?)
+        } else {
+            None
+        };
         drop(context);
         if continuation.is_some() {
             return Err(Error::invalid(
@@ -27876,6 +28025,8 @@ mod imp {
             ));
         }
         Ok(LongPrefillContinuationBootstrapProbeReport {
+            remaining_layers,
+            remaining_output,
             fixture_id: PREFILL_FRONTIER_8192_FIXTURE_ID,
             frontier_tokens: FRONTIER_ROWS,
             first_chunk_tokens: CHUNK_ROWS,
@@ -61283,6 +61434,37 @@ mod tests {
     #[test]
     fn writes_stable_long_prefill_continuation_bootstrap_probe_json() {
         let report = LongPrefillContinuationBootstrapProbeReport {
+            remaining_output: if REMAINING_PREFILL_CHECKSUMS.last().map(|r| r.0) == Some(42) {
+                Some(RemainingPrefillOutputReport {
+                    checked_logits: 129280,
+                    logits_checksum: checksum_f32(&prefill_frontier_8192_fixture().unwrap().1),
+                    selected_token: 77179,
+                })
+            } else {
+                None
+            },
+            remaining_layers: REMAINING_PREFILL_CHECKSUMS
+                .iter()
+                .map(
+                    |&(layer, prefix, continuation, prefix_tail, continuation_tail)| {
+                        let (dispatches, mappings) = if layer % 2 == 1 {
+                            (1367, 1199)
+                        } else {
+                            (4724, 2227)
+                        };
+                        RemainingPrefillLayerReport {
+                            layer,
+                            prefix_boundary: prefix.to_vec(),
+                            continuation_boundary: continuation.to_vec(),
+                            prefix_tail,
+                            continuation_tail,
+                            dispatches,
+                            model_mappings: mappings,
+                            pointer_matches: mappings,
+                        }
+                    },
+                )
+                .collect(),
             fixture_id: PREFILL_FRONTIER_8192_FIXTURE_ID,
             frontier_tokens: 8_192,
             first_chunk_tokens: 4_096,
@@ -61703,8 +61885,14 @@ mod tests {
         assert!(text.contains("\"input_boundary\": \"native_multirow_sparse_kqv_back\""));
         assert!(text.contains("\"downstream_exact_outputs\": 13"));
         assert!(text.contains("\"layer2_native_complete_tile_c0_claim\": true"));
-        assert!(text.contains("\"complete_8k_transformer_claim\": false"));
-        assert!(text.contains("\"output_logits_c0_claim\": false"));
+        assert!(text.contains(&format!(
+            "\"complete_8k_transformer_claim\": {}",
+            report.remaining_output.is_some()
+        )));
+        assert!(text.contains(&format!(
+            "\"output_logits_c0_claim\": {}",
+            report.remaining_output.is_some()
+        )));
 
         assert!(text.contains("\"layer13_prefix_complete\": {\"start\": 0"));
         assert!(text.contains("\"layer13_continuation_complete\": {\"start\": 4096"));
@@ -61726,6 +61914,34 @@ mod tests {
             );
             assert!(rejected.is_empty());
         }
+        if !report.remaining_layers.is_empty() {
+            let mut invalid = report.clone();
+            invalid.remaining_layers.last_mut().unwrap().prefix_boundary[0] ^= 1;
+            let mut rejected = Vec::new();
+            assert!(
+                write_long_prefill_continuation_bootstrap_probe_json(&mut rejected, &invalid)
+                    .is_err()
+            );
+            assert!(rejected.is_empty());
+            let mut invalid = report.clone();
+            invalid.remaining_layers.pop();
+            assert!(
+                write_long_prefill_continuation_bootstrap_probe_json(&mut rejected, &invalid)
+                    .is_err()
+            );
+            assert!(rejected.is_empty());
+        }
+        let mut invalid = report.clone();
+        invalid.remaining_output = Some(RemainingPrefillOutputReport {
+            checked_logits: 1,
+            logits_checksum: 0,
+            selected_token: 0,
+        });
+        let mut rejected = Vec::new();
+        assert!(
+            write_long_prefill_continuation_bootstrap_probe_json(&mut rejected, &invalid).is_err()
+        );
+        assert!(rejected.is_empty());
         // A partial or altered layer-13 result must never serialize a C0 claim.
         for boundary in 0..7 {
             let mut invalid = report.clone();

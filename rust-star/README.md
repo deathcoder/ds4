@@ -456,8 +456,14 @@ Schema v29 binds those exact HCs into layer 14's paired ratio-4 compressors,
 sparse attention, and FFN. All 26 prefix/continuation hashes match independently
 repeated oracle targets. Each compressor boundary uses 40 dispatches and 17/17
 no-copy mappings; the prefix tail uses 36 dispatches, and 128 continuation tiles
-use 4,608 dispatches and 2,176/2,176 mappings. Layers 15--42 and the output head
-remain open.
+use 4,608 dispatches and 2,176/2,176 mappings. Schema v30 completes layers
+15--42 using shared odd/even drivers and compares every one of the 129,280
+final FP32 logits to the unchanged pinned 8K oracle. All match bit for bit;
+greedy selection is token 77179. All 43 transformer layers and the output head
+are now complete at this retained 8K frontier. The layer-26 gate also exposed
+and fixed tied expert-score ordering: batched routing now uses the oracle's
+bitonic permutation. Compact per-layer evidence is tracked in
+`fixtures/prefill-layer15-continuation-8192-v3/checksums.json` through layer 42.
 No throughput or speedup claim is attached to this diagnostic gate.
 The first complete second-half experiment deliberately tested whether the
 proven retained decoder schedule could serve as a correctness-preserving

@@ -336,15 +336,16 @@ they describe whenever practical.
 ## Open Items
 
 Current implementation boundaries, evidence, and immediate actions are maintained
-in `RUST_STAR_JOURNAL.md`. As of 2026-09-05, the retained 4K-to-8K native chain
-is exact through layer 14; layer 15 is next. The complete 2K prefill/decode and
+in `RUST_STAR_JOURNAL.md`. As of 2026-09-06, the retained 4K-to-8K native chain
+is exact through all 43 layers and the output head: all 129,280 final FP32
+logits match the pinned 8K oracle. The complete 2K prefill/decode and
 paired development results are established controls, not pending scaffolds.
 
 - The September 5 shared-scheduler repair restores the exact standalone 2K
   control and preserves the validated retained continuation gate.
-- Complete retained native prefill through layers 15--42 and the output head,
-  require full-logit C0 at the supplemental 8K oracle frontier, then broaden
-  the eligible engine and exact transcript gate to 32K and later contexts.
+- The supplemental 8K full-logit C0 gate is complete under report schema v30.
+  Broaden native prefill, the eligible engine, and the exact transcript gate
+  to the accepted 32K frontier and later contexts.
 - Preserve production batch arithmetic, GPU-owned history, exact shorter
   controls, and the accepted retained-engine lifecycle during that work.
 - Run paired measurements at broader frontiers under the benchmark protocol;

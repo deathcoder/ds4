@@ -703,9 +703,9 @@ not labeled C0. The complete exact 2K prefill remains an independent regression
 control. The next boundary must carry the retained 4K state through layers
 2--42 and then preserve it while beginning the second 4K chunk.
 
-## Retained 4K-to-8K layer-2 through complete layer 14
+## Retained 4K-to-8K complete transformer and output head
 
-Schema: `rust-star-long-prefill-continuation-bootstrap-probe-v29`.
+Schema: `rust-star-long-prefill-continuation-bootstrap-probe-v30`.
 
 `long-prefill-continuation-bootstrap-probe` completes the first 4K transformer,
 then preserves that context while 64 native 64-row tiles append positions
@@ -891,7 +891,37 @@ variants are added.
 use c/d with dumping restricted to position 4096. The a/b continuation drifted
 at ingress and was rejected. All captures use the accepted oracle-v3 executable;
 downstream instrumented logits are recorded but are not replacement targets.
-Layer 15 is next; complete 8K logits and performance remain unclaimed.
+Version 30 completes the remaining layers and exact full 8K logits as described
+below. Performance remains unclaimed.
+
+## Remaining retained layers and router tie ordering
+
+The shared `remaining_prefill.rs` driver binds layers 15--42 into the validated
+odd/even executor slots, preserving their production batch geometry and kernel
+order. `remaining_prefill_checksums.rs` contains the pinned boundary targets.
+Odd layers check 16 boundary/tail hashes with 1,367 dispatches and 1,199/1,199
+no-copy mappings; even layers check 26 with 4,724 dispatches and 2,227/2,227
+mappings. Consumed HC/Q activations are released after their successor finishes;
+KV and compressor history remain GPU-owned. One prefix-HC handoff is retained.
+
+The layer-26 prefix exposed a pre-existing router tie-order difference. At row
+547, experts 60 and 218 tie for sixth place. Stable insertion sorting chooses
+60, but the accepted oracle's descending bitonic permutation chooses 218.
+All FFN input/norm, logits/probabilities, and shared-expert outputs match; only
+that row's routed and final HC outputs differ. Batched top-6 routing now uses
+the oracle's 256-element bitonic network with one 256-thread group per row.
+All 41 batched router call sites use that launch geometry. This preserves
+unbiased weight normalization and the existing dispatch-count contracts.
+
+The output head accepts a retained 8,192-token frontier only after layer 42 is
+complete. It reads row 4,095 from the second chunk's resident HC buffer and
+compares every one of 129,280 FP32 logit words with the unchanged supplemental
+8K fixture. A successful schema-v30 report requires all remaining layers,
+exact hashes/schedules/no-copy mappings, and that full-word comparison before
+claiming complete 8K transformer/output C0. This diagnostic is not a throughput
+measurement; its legacy timing fields cover the bootstrap schedule, not the
+full chain. The complete live gate passes all layers and all 129,280 logits
+(selected token 77179). Repeat/regression evidence is recorded in the journal.
 
 ## Model residency before measured decode
 

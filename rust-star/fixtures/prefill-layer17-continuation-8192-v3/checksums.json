@@ -1,0 +1,219 @@
+{
+  "schema": "rust-star-remaining-layer-oracle-v1",
+  "layer": 17,
+  "oracle_commit": "d35fb12d01d500b9cefcef24092c295687ceaf7e",
+  "oracle_executable_sha256": "8e37f40cef769e34ef82a202d202a42b267322437ab8100c1303cc6aa8583bf3",
+  "model_sha256": "ca22ae2f838e14077c22bc1c1417b71b45b5e5a3687bd96c2ac6e17fdb6261c0",
+  "prompt_sha256": "f53e0d80cb2d4492d24ebd63c7000c397b16ae70f9bf09b3763e5d8323ec209f",
+  "context_tokens": 8192,
+  "prefill_chunk": 4096,
+  "gen_tokens": 0,
+  "fresh_process_repetitions_per_boundary": 2,
+  "dump_positions": [
+    0,
+    4096
+  ],
+  "full_8k_logits_c0_claim": false,
+  "payloads": [
+    {
+      "file": "oracle_KVcompress-17_pos0.bin",
+      "bytes": 65536,
+      "sha256": "cfaf72e2c8f82c33c7c5535d430de31e1ba8dbcafb7edd054645a7541e2bbfa9",
+      "fnv1a_u32": "cf1d94f288fafb13",
+      "runs": [
+        "prefix-a",
+        "prefix-b"
+      ]
+    },
+    {
+      "file": "oracle_KVcur-17_pos0.bin",
+      "bytes": 8388608,
+      "sha256": "9d202a285c44af5e2fcab60bb90a0ec0ba0e997ceaa7e33c7fdc793cc9705f7f",
+      "fnv1a_u32": "0ee58a0a6937497f",
+      "runs": [
+        "prefix-a",
+        "prefix-b"
+      ]
+    },
+    {
+      "file": "oracle_Qcur-17_pos0.bin",
+      "bytes": 536870912,
+      "sha256": "1e8685f0451a74c89ed34d84de5165fb17d0c111f91920cc3defb768c5c9d6fe",
+      "fnv1a_u32": "70afd523005388c9",
+      "runs": [
+        "prefix-a",
+        "prefix-b"
+      ]
+    },
+    {
+      "file": "oracle_attn_norm-17_pos0.bin",
+      "bytes": 67108864,
+      "sha256": "fc7f0ddd5a0d6ae586c8ebfb0799c182633cc1261fd290cf931e47c011e74b96",
+      "fnv1a_u32": "4b048accae0f6002",
+      "runs": [
+        "prefix-a",
+        "prefix-b"
+      ]
+    },
+    {
+      "file": "oracle_attn_state_kv-17_pos0.bin",
+      "bytes": 262144,
+      "sha256": "8a39d2abd3999ab73c34db2476849cddf303ce389b35826850f9a700589b4a90",
+      "fnv1a_u32": "eb05052ea5b62325",
+      "runs": [
+        "prefix-a",
+        "prefix-b"
+      ]
+    },
+    {
+      "file": "oracle_attn_state_score-17_pos0.bin",
+      "bytes": 262144,
+      "sha256": "6470bc26e7cc29bf2cc0672d57eb7062150933581c52927d2a4f7be0f5ed0778",
+      "fnv1a_u32": "5512b2ce2eb62325",
+      "runs": [
+        "prefix-a",
+        "prefix-b"
+      ]
+    },
+    {
+      "file": "oracle_hc_attn_post-17_pos0.bin",
+      "bytes": 268435456,
+      "sha256": "977d9b9d13c0cad31e382b0bd068e2ee88b847008a69e287ae0bf79cb98d5383",
+      "fnv1a_u32": "4c93df9b9139137f",
+      "runs": [
+        "prefix-a",
+        "prefix-b"
+      ]
+    },
+    {
+      "file": "oracle_hc_attn_pre-17_pos0.bin",
+      "bytes": 67108864,
+      "sha256": "14ed708e23bf9c2b7c8e859df53c92abe1846cf42cf0c892b390211e7a8c92a4",
+      "fnv1a_u32": "369113f122a933ea",
+      "runs": [
+        "prefix-a",
+        "prefix-b"
+      ]
+    },
+    {
+      "file": "oracle_hc_ffn_post-17_pos0.bin",
+      "bytes": 268435456,
+      "sha256": "eea6aac497654eda643a977ea194651e3a9a765421e84e8b85cab111787596f2",
+      "fnv1a_u32": "80b3911f01484726",
+      "runs": [
+        "prefix-a",
+        "prefix-b"
+      ]
+    },
+    {
+      "file": "oracle_kqv_back-17_pos0.bin",
+      "bytes": 536870912,
+      "sha256": "c97e69780f39236cde18222baefc092e91423ad69b5382842016d4640d06ca65",
+      "fnv1a_u32": "c16e1b43e891ea10",
+      "runs": [
+        "prefix-a",
+        "prefix-b"
+      ]
+    },
+    {
+      "file": "oracle_KVcompress-17_pos4096.bin",
+      "bytes": 65536,
+      "sha256": "55e8e5941662749f46ec1d38b57a52029a2f510eb1fd36aaa95896463759a37b",
+      "fnv1a_u32": "e5a44b8930560403",
+      "runs": [
+        "continuation-a",
+        "continuation-b"
+      ]
+    },
+    {
+      "file": "oracle_KVcur-17_pos4096.bin",
+      "bytes": 8388608,
+      "sha256": "3bae67dd7eef7a7c3fc2529b82d4b3bd9e346d2bbff98e2adc0f5ca8bd09fe05",
+      "fnv1a_u32": "6b8a493f51bb3dcb",
+      "runs": [
+        "continuation-a",
+        "continuation-b"
+      ]
+    },
+    {
+      "file": "oracle_Qcur-17_pos4096.bin",
+      "bytes": 536870912,
+      "sha256": "5a2addfb6a7864293455039052a18799a4a60e903916514d5dd82d5e14364570",
+      "fnv1a_u32": "8cc85eca2315a3e8",
+      "runs": [
+        "continuation-a",
+        "continuation-b"
+      ]
+    },
+    {
+      "file": "oracle_attn_norm-17_pos4096.bin",
+      "bytes": 67108864,
+      "sha256": "8149949eeff6cb57d0030d8f7573009dca50e360c9a1d70d41460e95b4dca841",
+      "fnv1a_u32": "2cddd89d78a63ffb",
+      "runs": [
+        "continuation-a",
+        "continuation-b"
+      ]
+    },
+    {
+      "file": "oracle_attn_state_kv-17_pos4096.bin",
+      "bytes": 262144,
+      "sha256": "8a39d2abd3999ab73c34db2476849cddf303ce389b35826850f9a700589b4a90",
+      "fnv1a_u32": "eb05052ea5b62325",
+      "runs": [
+        "continuation-a",
+        "continuation-b"
+      ]
+    },
+    {
+      "file": "oracle_attn_state_score-17_pos4096.bin",
+      "bytes": 262144,
+      "sha256": "6470bc26e7cc29bf2cc0672d57eb7062150933581c52927d2a4f7be0f5ed0778",
+      "fnv1a_u32": "5512b2ce2eb62325",
+      "runs": [
+        "continuation-a",
+        "continuation-b"
+      ]
+    },
+    {
+      "file": "oracle_hc_attn_post-17_pos4096.bin",
+      "bytes": 268435456,
+      "sha256": "01cd2a9dd97201013228e4fdb2a76cff2e94edad0806d28041976ca22f946444",
+      "fnv1a_u32": "4a82a290a4d559cd",
+      "runs": [
+        "continuation-a",
+        "continuation-b"
+      ]
+    },
+    {
+      "file": "oracle_hc_attn_pre-17_pos4096.bin",
+      "bytes": 67108864,
+      "sha256": "9fadc5a4b22e15bd377002667b9903d0ed8c6ab46b9fd862e4472f9a9e464865",
+      "fnv1a_u32": "24c89038c2ed8479",
+      "runs": [
+        "continuation-a",
+        "continuation-b"
+      ]
+    },
+    {
+      "file": "oracle_hc_ffn_post-17_pos4096.bin",
+      "bytes": 268435456,
+      "sha256": "00cd48dc5466056918b8ee45ff226569f48f6f6b0e7180b476a6ccb857774527",
+      "fnv1a_u32": "ea17d869acbba788",
+      "runs": [
+        "continuation-a",
+        "continuation-b"
+      ]
+    },
+    {
+      "file": "oracle_kqv_back-17_pos4096.bin",
+      "bytes": 536870912,
+      "sha256": "249d9c7fb0d88817cd995e4363ce12857013bcea6f216b9898d3fb19f60da10f",
+      "fnv1a_u32": "ad5f6de68151bea0",
+      "runs": [
+        "continuation-a",
+        "continuation-b"
+      ]
+    }
+  ]
+}

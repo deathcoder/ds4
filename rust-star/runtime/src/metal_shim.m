@@ -575,6 +575,8 @@ static NSString *const kQ8ProjectionSource =
 @property(nonatomic, strong) id<MTLBuffer> prefillLayer14AfterAttentionHc;
 @property(nonatomic, strong) id<MTLBuffer> prefillLayer14AfterFfnHc;
 @property(nonatomic, strong) id<MTLBuffer> prefillLayer14PrefixAfterFfnHc;
+@property(nonatomic, strong) NSMutableDictionary<NSNumber *, id<MTLBuffer>> *prefillLayerRemainingPrefixHc;
+@property(nonatomic, strong) NSNumber *prefillLayerRemainingCompleted;
 @property(nonatomic, strong) id<MTLBuffer> prefillLayer15FullQ;
 @property(nonatomic, strong) id<MTLBuffer> prefillLayer15FullKv;
 @property(nonatomic, strong) id<MTLBuffer> prefillLayer15InputHc;
@@ -18782,7 +18784,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setBuffer:layer3_router_probs_buffer offset:0 atIndex:0];
         [encoder setBuffer:model_buffers[37] offset:inner[37] atIndex:1];
         [encoder setBuffer:layer3_router_selected_buffer offset:0 atIndex:2];
-        [encoder dispatchThreads:MTLSizeMake(rows,1,1)
+        [encoder dispatchThreadgroups:MTLSizeMake(rows,1,1)
              threadsPerThreadgroup:MTLSizeMake(256,1,1)];
         [encoder setComputePipelineState:context.routerGatherWeightsBatchPipeline];
         [encoder setBuffer:layer3_router_probs_buffer offset:0 atIndex:0];
@@ -19259,7 +19261,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setBuffer:layer4_router_probs_buffer offset:0 atIndex:0];
         [encoder setBuffer:model_buffers[69] offset:inner[69] atIndex:1];
         [encoder setBuffer:layer4_router_selected_buffer offset:0 atIndex:2];
-        [encoder dispatchThreads:MTLSizeMake(rows,1,1)
+        [encoder dispatchThreadgroups:MTLSizeMake(rows,1,1)
              threadsPerThreadgroup:MTLSizeMake(256,1,1)];
         [encoder setComputePipelineState:context.routerGatherWeightsBatchPipeline];
         [encoder setBuffer:layer4_router_probs_buffer offset:0 atIndex:0];
@@ -19728,7 +19730,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setBuffer:layer5_router_probs_buffer offset:0 atIndex:0];
         [encoder setBuffer:model_buffers[97] offset:inner[97] atIndex:1];
         [encoder setBuffer:layer5_router_selected_buffer offset:0 atIndex:2];
-        [encoder dispatchThreads:MTLSizeMake(rows,1,1)
+        [encoder dispatchThreadgroups:MTLSizeMake(rows,1,1)
              threadsPerThreadgroup:MTLSizeMake(256,1,1)];
         [encoder setComputePipelineState:context.routerGatherWeightsBatchPipeline];
         [encoder setBuffer:layer5_router_probs_buffer offset:0 atIndex:0];
@@ -20200,7 +20202,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setBuffer:layer6_router_probs_buffer offset:0 atIndex:0];
         [encoder setBuffer:model_buffers[129] offset:inner[129] atIndex:1];
         [encoder setBuffer:layer6_router_selected_buffer offset:0 atIndex:2];
-        [encoder dispatchThreads:MTLSizeMake(rows,1,1)
+        [encoder dispatchThreadgroups:MTLSizeMake(rows,1,1)
              threadsPerThreadgroup:MTLSizeMake(256,1,1)];
         [encoder setComputePipelineState:context.routerGatherWeightsBatchPipeline];
         [encoder setBuffer:layer6_router_probs_buffer offset:0 atIndex:0];
@@ -20671,7 +20673,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setBuffer:layer7_router_probs_buffer offset:0 atIndex:0];
         [encoder setBuffer:model_buffers[157] offset:inner[157] atIndex:1];
         [encoder setBuffer:layer7_router_selected_buffer offset:0 atIndex:2];
-        [encoder dispatchThreads:MTLSizeMake(rows,1,1)
+        [encoder dispatchThreadgroups:MTLSizeMake(rows,1,1)
              threadsPerThreadgroup:MTLSizeMake(256,1,1)];
         [encoder setComputePipelineState:context.routerGatherWeightsBatchPipeline];
         [encoder setBuffer:layer7_router_probs_buffer offset:0 atIndex:0];
@@ -21143,7 +21145,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setBuffer:layer8_router_probs_buffer offset:0 atIndex:0];
         [encoder setBuffer:model_buffers[189] offset:inner[189] atIndex:1];
         [encoder setBuffer:layer8_router_selected_buffer offset:0 atIndex:2];
-        [encoder dispatchThreads:MTLSizeMake(rows,1,1)
+        [encoder dispatchThreadgroups:MTLSizeMake(rows,1,1)
              threadsPerThreadgroup:MTLSizeMake(256,1,1)];
         [encoder setComputePipelineState:context.routerGatherWeightsBatchPipeline];
         [encoder setBuffer:layer8_router_probs_buffer offset:0 atIndex:0];
@@ -21614,7 +21616,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setBuffer:layer9_router_probs_buffer offset:0 atIndex:0];
         [encoder setBuffer:model_buffers[217] offset:inner[217] atIndex:1];
         [encoder setBuffer:layer9_router_selected_buffer offset:0 atIndex:2];
-        [encoder dispatchThreads:MTLSizeMake(rows,1,1)
+        [encoder dispatchThreadgroups:MTLSizeMake(rows,1,1)
              threadsPerThreadgroup:MTLSizeMake(256,1,1)];
         [encoder setComputePipelineState:context.routerGatherWeightsBatchPipeline];
         [encoder setBuffer:layer9_router_probs_buffer offset:0 atIndex:0];
@@ -22086,7 +22088,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setBuffer:layer10_router_probs_buffer offset:0 atIndex:0];
         [encoder setBuffer:model_buffers[249] offset:inner[249] atIndex:1];
         [encoder setBuffer:layer10_router_selected_buffer offset:0 atIndex:2];
-        [encoder dispatchThreads:MTLSizeMake(rows,1,1)
+        [encoder dispatchThreadgroups:MTLSizeMake(rows,1,1)
              threadsPerThreadgroup:MTLSizeMake(256,1,1)];
         [encoder setComputePipelineState:context.routerGatherWeightsBatchPipeline];
         [encoder setBuffer:layer10_router_probs_buffer offset:0 atIndex:0];
@@ -22557,7 +22559,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setBuffer:layer11_router_probs_buffer offset:0 atIndex:0];
         [encoder setBuffer:model_buffers[277] offset:inner[277] atIndex:1];
         [encoder setBuffer:layer11_router_selected_buffer offset:0 atIndex:2];
-        [encoder dispatchThreads:MTLSizeMake(rows,1,1)
+        [encoder dispatchThreadgroups:MTLSizeMake(rows,1,1)
              threadsPerThreadgroup:MTLSizeMake(256,1,1)];
         [encoder setComputePipelineState:context.routerGatherWeightsBatchPipeline];
         [encoder setBuffer:layer11_router_probs_buffer offset:0 atIndex:0];
@@ -23029,7 +23031,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setBuffer:layer12_router_probs_buffer offset:0 atIndex:0];
         [encoder setBuffer:model_buffers[309] offset:inner[309] atIndex:1];
         [encoder setBuffer:layer12_router_selected_buffer offset:0 atIndex:2];
-        [encoder dispatchThreads:MTLSizeMake(rows,1,1)
+        [encoder dispatchThreadgroups:MTLSizeMake(rows,1,1)
              threadsPerThreadgroup:MTLSizeMake(256,1,1)];
         [encoder setComputePipelineState:context.routerGatherWeightsBatchPipeline];
         [encoder setBuffer:layer12_router_probs_buffer offset:0 atIndex:0];
@@ -23500,7 +23502,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setBuffer:layer13_router_probs_buffer offset:0 atIndex:0];
         [encoder setBuffer:model_buffers[337] offset:inner[337] atIndex:1];
         [encoder setBuffer:layer13_router_selected_buffer offset:0 atIndex:2];
-        [encoder dispatchThreads:MTLSizeMake(rows,1,1)
+        [encoder dispatchThreadgroups:MTLSizeMake(rows,1,1)
              threadsPerThreadgroup:MTLSizeMake(256,1,1)];
         [encoder setComputePipelineState:context.routerGatherWeightsBatchPipeline];
         [encoder setBuffer:layer13_router_probs_buffer offset:0 atIndex:0];
@@ -23972,7 +23974,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setBuffer:layer14_router_probs_buffer offset:0 atIndex:0];
         [encoder setBuffer:model_buffers[369] offset:inner[369] atIndex:1];
         [encoder setBuffer:layer14_router_selected_buffer offset:0 atIndex:2];
-        [encoder dispatchThreads:MTLSizeMake(rows,1,1)
+        [encoder dispatchThreadgroups:MTLSizeMake(rows,1,1)
              threadsPerThreadgroup:MTLSizeMake(256,1,1)];
         [encoder setComputePipelineState:context.routerGatherWeightsBatchPipeline];
         [encoder setBuffer:layer14_router_probs_buffer offset:0 atIndex:0];
@@ -24443,7 +24445,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setBuffer:layer15_router_probs_buffer offset:0 atIndex:0];
         [encoder setBuffer:model_buffers[397] offset:inner[397] atIndex:1];
         [encoder setBuffer:layer15_router_selected_buffer offset:0 atIndex:2];
-        [encoder dispatchThreads:MTLSizeMake(rows,1,1)
+        [encoder dispatchThreadgroups:MTLSizeMake(rows,1,1)
              threadsPerThreadgroup:MTLSizeMake(256,1,1)];
         [encoder setComputePipelineState:context.routerGatherWeightsBatchPipeline];
         [encoder setBuffer:layer15_router_probs_buffer offset:0 atIndex:0];
@@ -24915,7 +24917,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setBuffer:layer16_router_probs_buffer offset:0 atIndex:0];
         [encoder setBuffer:model_buffers[429] offset:inner[429] atIndex:1];
         [encoder setBuffer:layer16_router_selected_buffer offset:0 atIndex:2];
-        [encoder dispatchThreads:MTLSizeMake(rows,1,1)
+        [encoder dispatchThreadgroups:MTLSizeMake(rows,1,1)
              threadsPerThreadgroup:MTLSizeMake(256,1,1)];
         [encoder setComputePipelineState:context.routerGatherWeightsBatchPipeline];
         [encoder setBuffer:layer16_router_probs_buffer offset:0 atIndex:0];
@@ -25386,7 +25388,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setBuffer:layer17_router_probs_buffer offset:0 atIndex:0];
         [encoder setBuffer:model_buffers[457] offset:inner[457] atIndex:1];
         [encoder setBuffer:layer17_router_selected_buffer offset:0 atIndex:2];
-        [encoder dispatchThreads:MTLSizeMake(rows,1,1)
+        [encoder dispatchThreadgroups:MTLSizeMake(rows,1,1)
              threadsPerThreadgroup:MTLSizeMake(256,1,1)];
         [encoder setComputePipelineState:context.routerGatherWeightsBatchPipeline];
         [encoder setBuffer:layer17_router_probs_buffer offset:0 atIndex:0];
@@ -25858,7 +25860,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setBuffer:layer18_router_probs_buffer offset:0 atIndex:0];
         [encoder setBuffer:model_buffers[489] offset:inner[489] atIndex:1];
         [encoder setBuffer:layer18_router_selected_buffer offset:0 atIndex:2];
-        [encoder dispatchThreads:MTLSizeMake(rows,1,1)
+        [encoder dispatchThreadgroups:MTLSizeMake(rows,1,1)
              threadsPerThreadgroup:MTLSizeMake(256,1,1)];
         [encoder setComputePipelineState:context.routerGatherWeightsBatchPipeline];
         [encoder setBuffer:layer18_router_probs_buffer offset:0 atIndex:0];
@@ -26329,7 +26331,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setBuffer:layer19_router_probs_buffer offset:0 atIndex:0];
         [encoder setBuffer:model_buffers[517] offset:inner[517] atIndex:1];
         [encoder setBuffer:layer19_router_selected_buffer offset:0 atIndex:2];
-        [encoder dispatchThreads:MTLSizeMake(rows,1,1)
+        [encoder dispatchThreadgroups:MTLSizeMake(rows,1,1)
              threadsPerThreadgroup:MTLSizeMake(256,1,1)];
         [encoder setComputePipelineState:context.routerGatherWeightsBatchPipeline];
         [encoder setBuffer:layer19_router_probs_buffer offset:0 atIndex:0];
@@ -26801,7 +26803,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setBuffer:layer20_router_probs_buffer offset:0 atIndex:0];
         [encoder setBuffer:model_buffers[549] offset:inner[549] atIndex:1];
         [encoder setBuffer:layer20_router_selected_buffer offset:0 atIndex:2];
-        [encoder dispatchThreads:MTLSizeMake(rows,1,1)
+        [encoder dispatchThreadgroups:MTLSizeMake(rows,1,1)
              threadsPerThreadgroup:MTLSizeMake(256,1,1)];
         [encoder setComputePipelineState:context.routerGatherWeightsBatchPipeline];
         [encoder setBuffer:layer20_router_probs_buffer offset:0 atIndex:0];
@@ -27272,7 +27274,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setBuffer:layer21_router_probs_buffer offset:0 atIndex:0];
         [encoder setBuffer:model_buffers[577] offset:inner[577] atIndex:1];
         [encoder setBuffer:layer21_router_selected_buffer offset:0 atIndex:2];
-        [encoder dispatchThreads:MTLSizeMake(rows,1,1)
+        [encoder dispatchThreadgroups:MTLSizeMake(rows,1,1)
              threadsPerThreadgroup:MTLSizeMake(256,1,1)];
         [encoder setComputePipelineState:context.routerGatherWeightsBatchPipeline];
         [encoder setBuffer:layer21_router_probs_buffer offset:0 atIndex:0];
@@ -27744,7 +27746,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setBuffer:layer22_router_probs_buffer offset:0 atIndex:0];
         [encoder setBuffer:model_buffers[609] offset:inner[609] atIndex:1];
         [encoder setBuffer:layer22_router_selected_buffer offset:0 atIndex:2];
-        [encoder dispatchThreads:MTLSizeMake(rows,1,1)
+        [encoder dispatchThreadgroups:MTLSizeMake(rows,1,1)
              threadsPerThreadgroup:MTLSizeMake(256,1,1)];
         [encoder setComputePipelineState:context.routerGatherWeightsBatchPipeline];
         [encoder setBuffer:layer22_router_probs_buffer offset:0 atIndex:0];
@@ -28215,7 +28217,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setBuffer:layer23_router_probs_buffer offset:0 atIndex:0];
         [encoder setBuffer:model_buffers[637] offset:inner[637] atIndex:1];
         [encoder setBuffer:layer23_router_selected_buffer offset:0 atIndex:2];
-        [encoder dispatchThreads:MTLSizeMake(rows,1,1)
+        [encoder dispatchThreadgroups:MTLSizeMake(rows,1,1)
              threadsPerThreadgroup:MTLSizeMake(256,1,1)];
         [encoder setComputePipelineState:context.routerGatherWeightsBatchPipeline];
         [encoder setBuffer:layer23_router_probs_buffer offset:0 atIndex:0];
@@ -28687,7 +28689,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setBuffer:layer24_router_probs_buffer offset:0 atIndex:0];
         [encoder setBuffer:model_buffers[669] offset:inner[669] atIndex:1];
         [encoder setBuffer:layer24_router_selected_buffer offset:0 atIndex:2];
-        [encoder dispatchThreads:MTLSizeMake(rows,1,1)
+        [encoder dispatchThreadgroups:MTLSizeMake(rows,1,1)
              threadsPerThreadgroup:MTLSizeMake(256,1,1)];
         [encoder setComputePipelineState:context.routerGatherWeightsBatchPipeline];
         [encoder setBuffer:layer24_router_probs_buffer offset:0 atIndex:0];
@@ -29158,7 +29160,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setBuffer:layer25_router_probs_buffer offset:0 atIndex:0];
         [encoder setBuffer:model_buffers[697] offset:inner[697] atIndex:1];
         [encoder setBuffer:layer25_router_selected_buffer offset:0 atIndex:2];
-        [encoder dispatchThreads:MTLSizeMake(rows,1,1)
+        [encoder dispatchThreadgroups:MTLSizeMake(rows,1,1)
              threadsPerThreadgroup:MTLSizeMake(256,1,1)];
         [encoder setComputePipelineState:context.routerGatherWeightsBatchPipeline];
         [encoder setBuffer:layer25_router_probs_buffer offset:0 atIndex:0];
@@ -29630,7 +29632,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setBuffer:layer26_router_probs_buffer offset:0 atIndex:0];
         [encoder setBuffer:model_buffers[729] offset:inner[729] atIndex:1];
         [encoder setBuffer:layer26_router_selected_buffer offset:0 atIndex:2];
-        [encoder dispatchThreads:MTLSizeMake(rows,1,1)
+        [encoder dispatchThreadgroups:MTLSizeMake(rows,1,1)
              threadsPerThreadgroup:MTLSizeMake(256,1,1)];
         [encoder setComputePipelineState:context.routerGatherWeightsBatchPipeline];
         [encoder setBuffer:layer26_router_probs_buffer offset:0 atIndex:0];
@@ -30101,7 +30103,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setBuffer:layer27_router_probs_buffer offset:0 atIndex:0];
         [encoder setBuffer:model_buffers[757] offset:inner[757] atIndex:1];
         [encoder setBuffer:layer27_router_selected_buffer offset:0 atIndex:2];
-        [encoder dispatchThreads:MTLSizeMake(rows,1,1)
+        [encoder dispatchThreadgroups:MTLSizeMake(rows,1,1)
              threadsPerThreadgroup:MTLSizeMake(256,1,1)];
         [encoder setComputePipelineState:context.routerGatherWeightsBatchPipeline];
         [encoder setBuffer:layer27_router_probs_buffer offset:0 atIndex:0];
@@ -30573,7 +30575,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setBuffer:layer28_router_probs_buffer offset:0 atIndex:0];
         [encoder setBuffer:model_buffers[789] offset:inner[789] atIndex:1];
         [encoder setBuffer:layer28_router_selected_buffer offset:0 atIndex:2];
-        [encoder dispatchThreads:MTLSizeMake(rows,1,1)
+        [encoder dispatchThreadgroups:MTLSizeMake(rows,1,1)
              threadsPerThreadgroup:MTLSizeMake(256,1,1)];
         [encoder setComputePipelineState:context.routerGatherWeightsBatchPipeline];
         [encoder setBuffer:layer28_router_probs_buffer offset:0 atIndex:0];
@@ -31044,7 +31046,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setBuffer:layer29_router_probs_buffer offset:0 atIndex:0];
         [encoder setBuffer:model_buffers[817] offset:inner[817] atIndex:1];
         [encoder setBuffer:layer29_router_selected_buffer offset:0 atIndex:2];
-        [encoder dispatchThreads:MTLSizeMake(rows,1,1)
+        [encoder dispatchThreadgroups:MTLSizeMake(rows,1,1)
              threadsPerThreadgroup:MTLSizeMake(256,1,1)];
         [encoder setComputePipelineState:context.routerGatherWeightsBatchPipeline];
         [encoder setBuffer:layer29_router_probs_buffer offset:0 atIndex:0];
@@ -31516,7 +31518,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setBuffer:layer30_router_probs_buffer offset:0 atIndex:0];
         [encoder setBuffer:model_buffers[849] offset:inner[849] atIndex:1];
         [encoder setBuffer:layer30_router_selected_buffer offset:0 atIndex:2];
-        [encoder dispatchThreads:MTLSizeMake(rows,1,1)
+        [encoder dispatchThreadgroups:MTLSizeMake(rows,1,1)
              threadsPerThreadgroup:MTLSizeMake(256,1,1)];
         [encoder setComputePipelineState:context.routerGatherWeightsBatchPipeline];
         [encoder setBuffer:layer30_router_probs_buffer offset:0 atIndex:0];
@@ -31987,7 +31989,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setBuffer:layer31_router_probs_buffer offset:0 atIndex:0];
         [encoder setBuffer:model_buffers[877] offset:inner[877] atIndex:1];
         [encoder setBuffer:layer31_router_selected_buffer offset:0 atIndex:2];
-        [encoder dispatchThreads:MTLSizeMake(rows,1,1)
+        [encoder dispatchThreadgroups:MTLSizeMake(rows,1,1)
              threadsPerThreadgroup:MTLSizeMake(256,1,1)];
         [encoder setComputePipelineState:context.routerGatherWeightsBatchPipeline];
         [encoder setBuffer:layer31_router_probs_buffer offset:0 atIndex:0];
@@ -32459,7 +32461,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setBuffer:layer32_router_probs_buffer offset:0 atIndex:0];
         [encoder setBuffer:model_buffers[909] offset:inner[909] atIndex:1];
         [encoder setBuffer:layer32_router_selected_buffer offset:0 atIndex:2];
-        [encoder dispatchThreads:MTLSizeMake(rows,1,1)
+        [encoder dispatchThreadgroups:MTLSizeMake(rows,1,1)
              threadsPerThreadgroup:MTLSizeMake(256,1,1)];
         [encoder setComputePipelineState:context.routerGatherWeightsBatchPipeline];
         [encoder setBuffer:layer32_router_probs_buffer offset:0 atIndex:0];
@@ -32930,7 +32932,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setBuffer:layer33_router_probs_buffer offset:0 atIndex:0];
         [encoder setBuffer:model_buffers[937] offset:inner[937] atIndex:1];
         [encoder setBuffer:layer33_router_selected_buffer offset:0 atIndex:2];
-        [encoder dispatchThreads:MTLSizeMake(rows,1,1)
+        [encoder dispatchThreadgroups:MTLSizeMake(rows,1,1)
              threadsPerThreadgroup:MTLSizeMake(256,1,1)];
         [encoder setComputePipelineState:context.routerGatherWeightsBatchPipeline];
         [encoder setBuffer:layer33_router_probs_buffer offset:0 atIndex:0];
@@ -33402,7 +33404,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setBuffer:layer34_router_probs_buffer offset:0 atIndex:0];
         [encoder setBuffer:model_buffers[969] offset:inner[969] atIndex:1];
         [encoder setBuffer:layer34_router_selected_buffer offset:0 atIndex:2];
-        [encoder dispatchThreads:MTLSizeMake(rows,1,1)
+        [encoder dispatchThreadgroups:MTLSizeMake(rows,1,1)
              threadsPerThreadgroup:MTLSizeMake(256,1,1)];
         [encoder setComputePipelineState:context.routerGatherWeightsBatchPipeline];
         [encoder setBuffer:layer34_router_probs_buffer offset:0 atIndex:0];
@@ -33873,7 +33875,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setBuffer:layer35_router_probs_buffer offset:0 atIndex:0];
         [encoder setBuffer:model_buffers[997] offset:inner[997] atIndex:1];
         [encoder setBuffer:layer35_router_selected_buffer offset:0 atIndex:2];
-        [encoder dispatchThreads:MTLSizeMake(rows,1,1)
+        [encoder dispatchThreadgroups:MTLSizeMake(rows,1,1)
              threadsPerThreadgroup:MTLSizeMake(256,1,1)];
         [encoder setComputePipelineState:context.routerGatherWeightsBatchPipeline];
         [encoder setBuffer:layer35_router_probs_buffer offset:0 atIndex:0];
@@ -34345,7 +34347,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setBuffer:layer36_router_probs_buffer offset:0 atIndex:0];
         [encoder setBuffer:model_buffers[1029] offset:inner[1029] atIndex:1];
         [encoder setBuffer:layer36_router_selected_buffer offset:0 atIndex:2];
-        [encoder dispatchThreads:MTLSizeMake(rows,1,1)
+        [encoder dispatchThreadgroups:MTLSizeMake(rows,1,1)
              threadsPerThreadgroup:MTLSizeMake(256,1,1)];
         [encoder setComputePipelineState:context.routerGatherWeightsBatchPipeline];
         [encoder setBuffer:layer36_router_probs_buffer offset:0 atIndex:0];
@@ -34816,7 +34818,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setBuffer:layer37_router_probs_buffer offset:0 atIndex:0];
         [encoder setBuffer:model_buffers[1057] offset:inner[1057] atIndex:1];
         [encoder setBuffer:layer37_router_selected_buffer offset:0 atIndex:2];
-        [encoder dispatchThreads:MTLSizeMake(rows,1,1)
+        [encoder dispatchThreadgroups:MTLSizeMake(rows,1,1)
              threadsPerThreadgroup:MTLSizeMake(256,1,1)];
         [encoder setComputePipelineState:context.routerGatherWeightsBatchPipeline];
         [encoder setBuffer:layer37_router_probs_buffer offset:0 atIndex:0];
@@ -35288,7 +35290,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setBuffer:layer38_router_probs_buffer offset:0 atIndex:0];
         [encoder setBuffer:model_buffers[1089] offset:inner[1089] atIndex:1];
         [encoder setBuffer:layer38_router_selected_buffer offset:0 atIndex:2];
-        [encoder dispatchThreads:MTLSizeMake(rows,1,1)
+        [encoder dispatchThreadgroups:MTLSizeMake(rows,1,1)
              threadsPerThreadgroup:MTLSizeMake(256,1,1)];
         [encoder setComputePipelineState:context.routerGatherWeightsBatchPipeline];
         [encoder setBuffer:layer38_router_probs_buffer offset:0 atIndex:0];
@@ -35759,7 +35761,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setBuffer:layer39_router_probs_buffer offset:0 atIndex:0];
         [encoder setBuffer:model_buffers[1117] offset:inner[1117] atIndex:1];
         [encoder setBuffer:layer39_router_selected_buffer offset:0 atIndex:2];
-        [encoder dispatchThreads:MTLSizeMake(rows,1,1)
+        [encoder dispatchThreadgroups:MTLSizeMake(rows,1,1)
              threadsPerThreadgroup:MTLSizeMake(256,1,1)];
         [encoder setComputePipelineState:context.routerGatherWeightsBatchPipeline];
         [encoder setBuffer:layer39_router_probs_buffer offset:0 atIndex:0];
@@ -36231,7 +36233,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setBuffer:layer40_router_probs_buffer offset:0 atIndex:0];
         [encoder setBuffer:model_buffers[1149] offset:inner[1149] atIndex:1];
         [encoder setBuffer:layer40_router_selected_buffer offset:0 atIndex:2];
-        [encoder dispatchThreads:MTLSizeMake(rows,1,1)
+        [encoder dispatchThreadgroups:MTLSizeMake(rows,1,1)
              threadsPerThreadgroup:MTLSizeMake(256,1,1)];
         [encoder setComputePipelineState:context.routerGatherWeightsBatchPipeline];
         [encoder setBuffer:layer40_router_probs_buffer offset:0 atIndex:0];
@@ -36702,7 +36704,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setBuffer:layer41_router_probs_buffer offset:0 atIndex:0];
         [encoder setBuffer:model_buffers[1177] offset:inner[1177] atIndex:1];
         [encoder setBuffer:layer41_router_selected_buffer offset:0 atIndex:2];
-        [encoder dispatchThreads:MTLSizeMake(rows,1,1)
+        [encoder dispatchThreadgroups:MTLSizeMake(rows,1,1)
              threadsPerThreadgroup:MTLSizeMake(256,1,1)];
         [encoder setComputePipelineState:context.routerGatherWeightsBatchPipeline];
         [encoder setBuffer:layer41_router_probs_buffer offset:0 atIndex:0];
@@ -37174,7 +37176,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setBuffer:layer42_router_probs_buffer offset:0 atIndex:0];
         [encoder setBuffer:model_buffers[1209] offset:inner[1209] atIndex:1];
         [encoder setBuffer:layer42_router_selected_buffer offset:0 atIndex:2];
-        [encoder dispatchThreads:MTLSizeMake(rows,1,1)
+        [encoder dispatchThreadgroups:MTLSizeMake(rows,1,1)
              threadsPerThreadgroup:MTLSizeMake(256,1,1)];
         [encoder setComputePipelineState:context.routerGatherWeightsBatchPipeline];
         [encoder setBuffer:layer42_router_probs_buffer offset:0 atIndex:0];
@@ -43520,14 +43522,19 @@ int rust_star_metal_run_output_head(
             }
         } else if (context.prefillLayer42AfterFfnHc) {
             const NSUInteger prefill_rows = context.prefillKvRows;
-            const NSUInteger prefill_hc_bytes = prefill_rows*hc_dim*sizeof(float);
+            /* The completed second chunk retains its 4096 HC rows, while
+             * prefillKvRows records the global 8192-token frontier. */
+            const BOOL complete_second_chunk = prefill_rows == 8192u &&
+                context.prefillLayerRemainingCompleted.unsignedIntValue == 42u;
+            const NSUInteger resident_rows = complete_second_chunk ? 4096u : prefill_rows;
+            const NSUInteger prefill_hc_bytes = resident_rows*hc_dim*sizeof(float);
             input_hc = context.prefillLayer42AfterFfnHc;
-            if ((prefill_rows != 2048u && prefill_rows != 4096u) ||
+            if ((!complete_second_chunk && prefill_rows != 2048u && prefill_rows != 4096u) ||
                 input_hc.length != prefill_hc_bytes) {
                 return fail_with_message(error, error_bytes,
                     @"output head found an invalid retained prefill layer-42 HC state");
             }
-            input_hc_offset = (prefill_rows-1u)*hc_dim*sizeof(float);
+            input_hc_offset = (resident_rows-1u)*hc_dim*sizeof(float);
         } else {
             return fail_with_message(error, error_bytes,
                 @"output head requires a completed decode or supported prefill layers-0-through-42 chain");
@@ -46549,7 +46556,7 @@ int rust_star_metal_run_prefill_layer2_continuation_tail(
             [encoder setBuffer:router_probs_buffer offset:0 atIndex:0];
             [encoder setBuffer:model_buffers[7] offset:inner[7] atIndex:1];
             [encoder setBuffer:router_selected_buffer offset:0 atIndex:2];
-            [encoder dispatchThreads:MTLSizeMake(rows,1,1)
+            [encoder dispatchThreadgroups:MTLSizeMake(rows,1,1)
                  threadsPerThreadgroup:MTLSizeMake(256,1,1)];
         } else {
             [encoder setComputePipelineState:context.routerHashRowsBatchPipeline];
@@ -50001,6 +50008,328 @@ int rust_star_metal_finish_prefill_layer13_rebuild(
             context.prefillLayer5ContinuationAfterAttentionHc;
         context.prefillLayer13AfterFfnHc =
             context.prefillLayer5ContinuationFullAfterFfnHc;
+        return 1;
+    }
+}
+
+/* Remaining layers use the same validated odd/even slots. Layer-scoped
+ * state stays strongly owned; only the prefix HC handoff needs a new slot. */
+static id<MTLBuffer> remaining_layer_buffer(RustStarMetalContext *context,
+                                          uint32_t layer, NSString *role)
+{
+    if (layer >= 15u && [role isEqualToString:@"PrefixAfterFfnHc"])
+        return context.prefillLayerRemainingPrefixHc[@(layer)];
+    return [context valueForKey:[NSString stringWithFormat:@"prefillLayer%u%@", layer, role]];
+}
+
+static void set_remaining_layer_buffer(RustStarMetalContext *context,
+                                      uint32_t layer, NSString *role,
+                                      id<MTLBuffer> buffer)
+{
+    if (layer >= 15u && [role isEqualToString:@"PrefixAfterFfnHc"]) {
+        if (!context.prefillLayerRemainingPrefixHc)
+            context.prefillLayerRemainingPrefixHc = [NSMutableDictionary new];
+        if (buffer) {
+            /* The preceding prefix has been consumed before this handoff.
+             * Retain only the next layer's input, not a second full HC history. */
+            [context.prefillLayerRemainingPrefixHc removeAllObjects];
+            context.prefillLayerRemainingPrefixHc[@(layer)] = buffer;
+        } else {
+            [context.prefillLayerRemainingPrefixHc removeObjectForKey:@(layer)];
+        }
+    } else {
+        [context setValue:buffer forKey:[NSString stringWithFormat:@"prefillLayer%u%@", layer, role]];
+    }
+}
+
+/* Completed layers no longer need queries or HC intermediates. Keep KV and
+ * compressor history; slots 3--5 remain the active generic execution slots. */
+int rust_star_metal_release_remaining_prefill_transients(
+    void *opaque_context, uint32_t completed_layer, char *error, size_t error_bytes)
+{
+    if (!opaque_context || completed_layer < 14u || completed_layer > 42u)
+        return fail_with_message(error, error_bytes, @"invalid completed prefill layer");
+    @autoreleasepool {
+        RustStarMetalContext *context = (__bridge RustStarMetalContext *)opaque_context;
+        /* Older HC/Q activations have been consumed. Keep the current HC
+         * handoff and every layer's KV/compressor history for continuation. */
+        for (uint32_t layer = 6u; layer < completed_layer; layer++) {
+            for (NSString *role in @[@"FullQ", @"FullQNorm", @"FullNorm",
+                    @"InputHc", @"AttnSplit", @"AfterAttentionHc", @"AfterFfnHc",
+                    @"PrefixAfterFfnHc"]) {
+                if (layer >= 15u && [role isEqualToString:@"PrefixAfterFfnHc"]) {
+                    [context.prefillLayerRemainingPrefixHc removeObjectForKey:@(layer)];
+                } else {
+                    NSString *key = [NSString stringWithFormat:@"prefillLayer%u%@", layer, role];
+                    if ([context respondsToSelector:NSSelectorFromString(key)])
+                        [context setValue:nil forKey:key];
+                }
+            }
+        }
+        return 1;
+    }
+}
+
+int rust_star_metal_begin_prefill_remaining_odd_prefix_rebuild(
+    void *opaque_context,
+    uint32_t layer,
+    char *error,
+    size_t error_bytes)
+{
+    enum { rows = 4096, hc_dim = 16384 };
+    if (!opaque_context || layer < 15u || layer > 42u || layer%2u != 1u) {
+        return fail_with_message(error, error_bytes,
+            @"remaining layer prefix binding received a null context");
+    }
+    @autoreleasepool {
+        RustStarMetalContext *context = (__bridge RustStarMetalContext *)opaque_context;
+        const NSUInteger bytes = (NSUInteger)rows*hc_dim*sizeof(float);
+        if (!remaining_layer_buffer(context, layer-1u, @"PrefixAfterFfnHc") ||
+            remaining_layer_buffer(context, layer-1u, @"PrefixAfterFfnHc").length < bytes ||
+            !remaining_layer_buffer(context, layer, @"AttnStateKv") ||
+            !remaining_layer_buffer(context, layer, @"AttnStateScore")) {
+            return fail_with_message(error, error_bytes,
+                @"remaining layer prefix requires exact preceding layer prefix HC and retained compressor state");
+        }
+        context.prefillLayer4AfterFfnHc =
+            remaining_layer_buffer(context, layer-1u, @"PrefixAfterFfnHc");
+        context.prefillLayer5AttnStateKv = remaining_layer_buffer(context, layer, @"AttnStateKv");
+        context.prefillLayer5AttnStateScore =
+            remaining_layer_buffer(context, layer, @"AttnStateScore");
+        context.prefillLayer3ContinuationHeads = nil;
+        context.prefillLayer5AfterAttentionHc = nil;
+        context.prefillLayer5AfterFfnHc = nil;
+        return 1;
+    }
+}
+
+int rust_star_metal_begin_prefill_remaining_odd_continuation(
+    void *opaque_context,
+    uint32_t layer,
+    char *error,
+    size_t error_bytes)
+{
+    enum {
+        rows = 4096,
+        hc_dim = 16384,
+        mix_hc = 24,
+        q_dim = 32768,
+        kv_dim = 512,
+        compressed_rows = 32,
+        state_rows = 128,
+    };
+    if (!opaque_context || layer < 15u || layer > 42u || layer%2u != 1u) {
+        return fail_with_message(error, error_bytes,
+            @"remaining layer continuation binding received a null context");
+    }
+    @autoreleasepool {
+        RustStarMetalContext *context = (__bridge RustStarMetalContext *)opaque_context;
+        if (!remaining_layer_buffer(context, layer-1u, @"AfterFfnHc") ||
+            remaining_layer_buffer(context, layer-1u, @"AfterFfnHc").length <
+                (NSUInteger)rows*hc_dim*sizeof(float) ||
+            !context.prefillLayer5FullQ ||
+            context.prefillLayer5FullQ.length <
+                (NSUInteger)rows*q_dim*sizeof(float) ||
+            !context.prefillLayer5FullKv ||
+            context.prefillLayer5FullKv.length <
+                (NSUInteger)rows*kv_dim*sizeof(float) ||
+            !context.prefillLayer5AttnSplit ||
+            context.prefillLayer5AttnSplit.length <
+                (NSUInteger)rows*mix_hc*sizeof(float) ||
+            !context.prefillLayer5AttnCompressed ||
+            context.prefillLayer5AttnCompressed.length <
+                (NSUInteger)compressed_rows*kv_dim*sizeof(float) ||
+            !context.prefillLayer5AttnStateKv ||
+            context.prefillLayer5AttnStateKv.length <
+                (NSUInteger)state_rows*kv_dim*sizeof(float) ||
+            !context.prefillLayer5AttnStateScore ||
+            context.prefillLayer5AttnStateScore.length <
+                (NSUInteger)state_rows*kv_dim*sizeof(float) ||
+            !context.prefillLayer5AfterFfnHc) {
+            return fail_with_message(error, error_bytes,
+                @"remaining layer continuation requires complete prefix state and exact preceding layer continuation HC");
+        }
+        set_remaining_layer_buffer(context, layer, @"PrefixAfterFfnHc", context.prefillLayer5AfterFfnHc);
+        set_remaining_layer_buffer(context, layer, @"FullQ", context.prefillLayer5FullQ);
+        set_remaining_layer_buffer(context, layer, @"FullKv", context.prefillLayer5FullKv);
+        set_remaining_layer_buffer(context, layer, @"InputHc", context.prefillLayer5InputHc);
+        set_remaining_layer_buffer(context, layer, @"AttnSplit", context.prefillLayer5AttnSplit);
+        set_remaining_layer_buffer(context, layer, @"AttnCompressed", context.prefillLayer5AttnCompressed);
+        set_remaining_layer_buffer(context, layer, @"AttnStateKv", context.prefillLayer5AttnStateKv);
+        set_remaining_layer_buffer(context, layer, @"AttnStateScore", context.prefillLayer5AttnStateScore);
+        set_remaining_layer_buffer(context, layer, @"AfterAttentionHc", context.prefillLayer5AfterAttentionHc);
+
+        context.prefillLayer4ContinuationFullAfterFfnHc =
+            remaining_layer_buffer(context, layer-1u, @"AfterFfnHc");
+        context.prefillLayer3FullQ = remaining_layer_buffer(context, layer, @"FullQ");
+        context.prefillLayer3FullKv = remaining_layer_buffer(context, layer, @"FullKv");
+        context.prefillLayer3InputHc = remaining_layer_buffer(context, layer, @"InputHc");
+        context.prefillLayer3AttnSplit = remaining_layer_buffer(context, layer, @"AttnSplit");
+        context.prefillLayer3AttnCompressed =
+            remaining_layer_buffer(context, layer, @"AttnCompressed");
+        context.prefillLayer3AttnStateKv = remaining_layer_buffer(context, layer, @"AttnStateKv");
+        context.prefillLayer3AttnStateScore =
+            remaining_layer_buffer(context, layer, @"AttnStateScore");
+        context.prefillLayer3ContinuationFullNorm = nil;
+        context.prefillLayer3ContinuationFullAfterFfnHc = nil;
+        context.prefillLayer5ContinuationAfterAttentionHc = nil;
+        context.prefillLayer5ContinuationFullAfterFfnHc = nil;
+        return 1;
+    }
+}
+
+int rust_star_metal_finish_prefill_remaining_odd_rebuild(
+    void *opaque_context,
+    uint32_t layer,
+    char *error,
+    size_t error_bytes)
+{
+    if (!opaque_context || layer < 15u || layer > 42u || layer%2u != 1u) {
+        return fail_with_message(error, error_bytes,
+            @"remaining layer rebuild finalization received a null context");
+    }
+    @autoreleasepool {
+        RustStarMetalContext *context = (__bridge RustStarMetalContext *)opaque_context;
+        if (!context.prefillLayer5FullQ || !context.prefillLayer5FullKv ||
+            !context.prefillLayer5AttnSplit ||
+            !context.prefillLayer5AttnCompressed ||
+            !context.prefillLayer5AttnStateKv ||
+            !context.prefillLayer5AttnStateScore ||
+            !context.prefillLayer5ContinuationAfterAttentionHc ||
+            !context.prefillLayer5ContinuationFullAfterFfnHc) {
+            return fail_with_message(error, error_bytes,
+                @"generic odd-layer executor did not retain remaining layer state");
+        }
+        set_remaining_layer_buffer(context, layer, @"FullQ", context.prefillLayer5FullQ);
+        set_remaining_layer_buffer(context, layer, @"FullKv", context.prefillLayer5FullKv);
+        set_remaining_layer_buffer(context, layer, @"AttnSplit", context.prefillLayer5AttnSplit);
+        set_remaining_layer_buffer(context, layer, @"AttnCompressed", context.prefillLayer5AttnCompressed);
+        set_remaining_layer_buffer(context, layer, @"AttnStateKv", context.prefillLayer5AttnStateKv);
+        set_remaining_layer_buffer(context, layer, @"AttnStateScore", context.prefillLayer5AttnStateScore);
+        set_remaining_layer_buffer(context, layer, @"AfterAttentionHc", context.prefillLayer5ContinuationAfterAttentionHc);
+        set_remaining_layer_buffer(context, layer, @"AfterFfnHc", context.prefillLayer5ContinuationFullAfterFfnHc);
+        context.prefillLayerRemainingCompleted = @(layer);
+        return 1;
+    }
+}
+
+int rust_star_metal_begin_prefill_remaining_even_rebuild(
+    void *opaque_context,
+    uint32_t layer,
+    char *error,
+    size_t error_bytes)
+{
+    if (!opaque_context || layer < 15u || layer > 42u || layer%2u != 0u) {
+        return fail_with_message(error, error_bytes,
+            @"remaining layer rebuild binding received a null context");
+    }
+    @autoreleasepool {
+        RustStarMetalContext *context = (__bridge RustStarMetalContext *)opaque_context;
+        if (context.prefillKvRows != 8192u ||
+            !remaining_layer_buffer(context, layer-1u, @"PrefixAfterFfnHc") ||
+            !remaining_layer_buffer(context, layer-1u, @"AfterFfnHc") ||
+            !remaining_layer_buffer(context, layer, @"FullQ") || !remaining_layer_buffer(context, layer, @"FullKv") ||
+            !remaining_layer_buffer(context, layer, @"InputHc") || !remaining_layer_buffer(context, layer, @"AttnSplit") ||
+            !remaining_layer_buffer(context, layer, @"AttnCompressed") ||
+            !remaining_layer_buffer(context, layer, @"AttnStateKv") ||
+            !remaining_layer_buffer(context, layer, @"AttnStateScore") ||
+            !remaining_layer_buffer(context, layer, @"IndexerCompressed") ||
+            !remaining_layer_buffer(context, layer, @"IndexerStateKv") ||
+            !remaining_layer_buffer(context, layer, @"IndexerStateScore")) {
+            return fail_with_message(error, error_bytes,
+                @"remaining layer rebuild requires complete retained preceding layer HC and prefix state");
+        }
+        context.prefillLayer3AfterFfnHc =
+            remaining_layer_buffer(context, layer-1u, @"PrefixAfterFfnHc");
+        context.prefillLayer3ContinuationFullAfterFfnHc =
+            remaining_layer_buffer(context, layer-1u, @"AfterFfnHc");
+        context.prefillLayer4FullQ = remaining_layer_buffer(context, layer, @"FullQ");
+        context.prefillLayer4FullKv = remaining_layer_buffer(context, layer, @"FullKv");
+        context.prefillLayer4InputHc = remaining_layer_buffer(context, layer, @"InputHc");
+        context.prefillLayer4AttnSplit = remaining_layer_buffer(context, layer, @"AttnSplit");
+        context.prefillLayer4AttnCompressed = remaining_layer_buffer(context, layer, @"AttnCompressed");
+        context.prefillLayer4AttnStateKv = remaining_layer_buffer(context, layer, @"AttnStateKv");
+        context.prefillLayer4AttnStateScore = remaining_layer_buffer(context, layer, @"AttnStateScore");
+        context.prefillLayer4IndexerCompressed =
+            remaining_layer_buffer(context, layer, @"IndexerCompressed");
+        context.prefillLayer4IndexerStateKv =
+            remaining_layer_buffer(context, layer, @"IndexerStateKv");
+        context.prefillLayer4IndexerStateScore =
+            remaining_layer_buffer(context, layer, @"IndexerStateScore");
+        context.prefillLayer4FullQNorm = nil;
+        context.prefillLayer4FullNorm = nil;
+        context.prefillLayer4ContinuationNorm = nil;
+        context.prefillLayer4PrefixHeads = nil;
+        context.prefillLayer4ContinuationHeads = nil;
+        context.prefillLayer4AfterAttentionHc = nil;
+        context.prefillLayer4AfterFfnHc = nil;
+        context.prefillLayer4ContinuationFullAfterFfnHc = nil;
+        return 1;
+    }
+}
+
+int rust_star_metal_retain_prefill_remaining_even_prefix_hc(
+    void *opaque_context,
+    uint32_t layer,
+    char *error,
+    size_t error_bytes)
+{
+    enum { rows = 4096, hc_dim = 16384 };
+    if (!opaque_context || layer < 15u || layer > 42u || layer%2u != 0u) {
+        return fail_with_message(error, error_bytes,
+            @"remaining layer prefix retention received a null context");
+    }
+    @autoreleasepool {
+        RustStarMetalContext *context = (__bridge RustStarMetalContext *)opaque_context;
+        const NSUInteger bytes = (NSUInteger)rows*hc_dim*sizeof(float);
+        if (!context.prefillLayer4AfterFfnHc ||
+            context.prefillLayer4AfterFfnHc.length < bytes) {
+            return fail_with_message(error, error_bytes,
+                @"complete remaining layer prefix HC is unavailable");
+        }
+        set_remaining_layer_buffer(context, layer, @"PrefixAfterFfnHc", context.prefillLayer4AfterFfnHc);
+        return 1;
+    }
+}
+
+int rust_star_metal_finish_prefill_remaining_even_rebuild(
+    void *opaque_context,
+    uint32_t layer,
+    char *error,
+    size_t error_bytes)
+{
+    if (!opaque_context || layer < 15u || layer > 42u || layer%2u != 0u) {
+        return fail_with_message(error, error_bytes,
+            @"remaining layer rebuild finalization received a null context");
+    }
+    @autoreleasepool {
+        RustStarMetalContext *context = (__bridge RustStarMetalContext *)opaque_context;
+        if (!context.prefillLayer4FullQ || !context.prefillLayer4FullKv ||
+            !context.prefillLayer4InputHc || !context.prefillLayer4AttnSplit ||
+            !context.prefillLayer4AttnCompressed ||
+            !context.prefillLayer4AttnStateKv ||
+            !context.prefillLayer4AttnStateScore ||
+            !context.prefillLayer4IndexerCompressed ||
+            !context.prefillLayer4IndexerStateKv ||
+            !context.prefillLayer4IndexerStateScore ||
+            !context.prefillLayer4AfterAttentionHc ||
+            !context.prefillLayer4AfterFfnHc) {
+            return fail_with_message(error, error_bytes,
+                @"generic even-layer executor did not retain remaining layer state");
+        }
+        set_remaining_layer_buffer(context, layer, @"FullQ", context.prefillLayer4FullQ);
+        set_remaining_layer_buffer(context, layer, @"FullKv", context.prefillLayer4FullKv);
+        set_remaining_layer_buffer(context, layer, @"InputHc", context.prefillLayer4InputHc);
+        set_remaining_layer_buffer(context, layer, @"AttnSplit", context.prefillLayer4AttnSplit);
+        set_remaining_layer_buffer(context, layer, @"AttnCompressed", context.prefillLayer4AttnCompressed);
+        set_remaining_layer_buffer(context, layer, @"AttnStateKv", context.prefillLayer4AttnStateKv);
+        set_remaining_layer_buffer(context, layer, @"AttnStateScore", context.prefillLayer4AttnStateScore);
+        set_remaining_layer_buffer(context, layer, @"IndexerCompressed", context.prefillLayer4IndexerCompressed);
+        set_remaining_layer_buffer(context, layer, @"IndexerStateKv", context.prefillLayer4IndexerStateKv);
+        set_remaining_layer_buffer(context, layer, @"IndexerStateScore", context.prefillLayer4IndexerStateScore);
+        set_remaining_layer_buffer(context, layer, @"AfterAttentionHc", context.prefillLayer4AfterAttentionHc);
+        set_remaining_layer_buffer(context, layer, @"AfterFfnHc", context.prefillLayer4AfterFfnHc);
+        context.prefillLayerRemainingCompleted = @(layer);
         return 1;
     }
 }

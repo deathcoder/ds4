@@ -133,30 +133,37 @@ kernel void rust_star_router_hash_rows_batch(
     }
 }
 
+// Match the oracle's descending bitonic permutation, including equal scores.
+// Stable insertion order can select a different sixth expert on a score tie.
 kernel void rust_star_router_topk_rows_batch(
         device const float *probs,
         device const float *bias,
         device int *selected,
-        uint row [[thread_position_in_grid]]) {
+        uint row [[threadgroup_position_in_grid]],
+        uint col [[thread_position_in_threadgroup]]) {
     if (row >= rust_star_router_max_batch_rows) return;
-    int top[6] = {-1, -1, -1, -1, -1, -1};
-    device const float *row_probs = probs + row*256u;
-    for (uint expert = 0; expert < 256u; expert++) {
-        const float score = row_probs[expert] + bias[expert];
-        for (uint slot = 0; slot < 6u; slot++) {
-            if (top[slot] < 0 ||
-                score > row_probs[(uint)top[slot]] + bias[(uint)top[slot]]) {
-                for (uint move = 5u; move > slot; move--) {
-                    top[move] = top[move - 1u];
+    threadgroup int indices[256];
+    threadgroup float scores[256];
+    indices[col] = (int)col;
+    scores[col] = probs[row*256u + col] + bias[col];
+    threadgroup_barrier(mem_flags::mem_threadgroup);
+    for (uint k = 2u; k <= 256u; k *= 2u) {
+        for (uint j = k/2u; j > 0u; j /= 2u) {
+            const uint other = col ^ j;
+            if (other > col) {
+                const bool swap = (col & k) == 0u
+                    ? scores[indices[col]] < scores[indices[other]]
+                    : scores[indices[col]] > scores[indices[other]];
+                if (swap) {
+                    const int prior = indices[col];
+                    indices[col] = indices[other];
+                    indices[other] = prior;
                 }
-                top[slot] = (int)expert;
-                break;
             }
+            threadgroup_barrier(mem_flags::mem_threadgroup);
         }
     }
-    for (uint slot = 0; slot < 6u; slot++) {
-        selected[row*6u + slot] = top[slot];
-    }
+    if (col < 6u) selected[row*6u + col] = indices[col];
 }
 
 kernel void rust_star_router_gather_weights_batch(

@@ -1,0 +1,248 @@
+{
+  "schema": "rust-star-remaining-layer-oracle-v1",
+  "layer": 33,
+  "oracle_commit": "d35fb12d01d500b9cefcef24092c295687ceaf7e",
+  "oracle_executable_sha256": "8e37f40cef769e34ef82a202d202a42b267322437ab8100c1303cc6aa8583bf3",
+  "model_sha256": "ca22ae2f838e14077c22bc1c1417b71b45b5e5a3687bd96c2ac6e17fdb6261c0",
+  "prompt_sha256": "f53e0d80cb2d4492d24ebd63c7000c397b16ae70f9bf09b3763e5d8323ec209f",
+  "context_tokens": 8192,
+  "prefill_chunk": 4096,
+  "gen_tokens": 0,
+  "fresh_process_repetitions_per_boundary": 2,
+  "dump_scope": "all layers, one chunk position per run",
+  "dump_positions": [
+    0,
+    4096
+  ],
+  "full_8k_logits_c0_claim": false,
+  "capture_date": "2026-09-06",
+  "raw_payload_policy": "Temporary raw payloads compacted; both independent hashes, sizes, logs, and isolated-control comparisons retained.",
+  "instrumented_logits": [
+    {
+      "run": "prefix-a",
+      "sha256": "783323dfa94d7f51b0bb79cf52a56c68ca06da5caa567b2ac1ec11c3b702dfcc",
+      "mismatching_logits": 0,
+      "argmax": 77179
+    },
+    {
+      "run": "prefix-b",
+      "sha256": "783323dfa94d7f51b0bb79cf52a56c68ca06da5caa567b2ac1ec11c3b702dfcc",
+      "mismatching_logits": 0,
+      "argmax": 77179
+    },
+    {
+      "run": "continuation-a",
+      "sha256": "783323dfa94d7f51b0bb79cf52a56c68ca06da5caa567b2ac1ec11c3b702dfcc",
+      "mismatching_logits": 0,
+      "argmax": 77179
+    },
+    {
+      "run": "continuation-b",
+      "sha256": "783323dfa94d7f51b0bb79cf52a56c68ca06da5caa567b2ac1ec11c3b702dfcc",
+      "mismatching_logits": 0,
+      "argmax": 77179
+    }
+  ],
+  "payloads": [
+    {
+      "file": "oracle_KVcompress-33_pos0.bin",
+      "bytes": 65536,
+      "sha256": "3cde75ff04432a8e14942549f64acbe02c50950cb1971011b18e10aa380dcf9f",
+      "fnv1a_u32": "34e585235f3eb609",
+      "runs": [
+        "all-layers/prefix-a",
+        "all-layers/prefix-b"
+      ]
+    },
+    {
+      "file": "oracle_KVcur-33_pos0.bin",
+      "bytes": 8388608,
+      "sha256": "6fff929e066515f32ad8f486a9a1d8c1098e72c2fb950a176537966cb01d9e3e",
+      "fnv1a_u32": "0942f5ed91f582f8",
+      "runs": [
+        "all-layers/prefix-a",
+        "all-layers/prefix-b"
+      ]
+    },
+    {
+      "file": "oracle_Qcur-33_pos0.bin",
+      "bytes": 536870912,
+      "sha256": "40708379108c3a474a94959ad4a09fc8ccf44378091e5b1d450cc62b12f238ee",
+      "fnv1a_u32": "b7bc5b6876f47522",
+      "runs": [
+        "all-layers/prefix-a",
+        "all-layers/prefix-b"
+      ]
+    },
+    {
+      "file": "oracle_attn_norm-33_pos0.bin",
+      "bytes": 67108864,
+      "sha256": "68ca83a76928b2c9d543f1538fc6dca4ac0c90dde4c9da79df01ef5eac1b4ad6",
+      "fnv1a_u32": "4b66158228c848e0",
+      "runs": [
+        "all-layers/prefix-a",
+        "all-layers/prefix-b"
+      ]
+    },
+    {
+      "file": "oracle_attn_state_kv-33_pos0.bin",
+      "bytes": 262144,
+      "sha256": "8a39d2abd3999ab73c34db2476849cddf303ce389b35826850f9a700589b4a90",
+      "fnv1a_u32": "eb05052ea5b62325",
+      "runs": [
+        "all-layers/prefix-a",
+        "all-layers/prefix-b"
+      ]
+    },
+    {
+      "file": "oracle_attn_state_score-33_pos0.bin",
+      "bytes": 262144,
+      "sha256": "6470bc26e7cc29bf2cc0672d57eb7062150933581c52927d2a4f7be0f5ed0778",
+      "fnv1a_u32": "5512b2ce2eb62325",
+      "runs": [
+        "all-layers/prefix-a",
+        "all-layers/prefix-b"
+      ]
+    },
+    {
+      "file": "oracle_hc_attn_post-33_pos0.bin",
+      "bytes": 268435456,
+      "sha256": "af106034bb489ea7c3bdf30a4c7d40aea9ee8d03dd2d11fdaa00b5ec5a262909",
+      "fnv1a_u32": "bad7b0930edcf780",
+      "runs": [
+        "all-layers/prefix-a",
+        "all-layers/prefix-b"
+      ]
+    },
+    {
+      "file": "oracle_hc_attn_pre-33_pos0.bin",
+      "bytes": 67108864,
+      "sha256": "f99c80c0418ed3dd6191048080cfbc7a6a8cc9bae74385252bf8161953fa7396",
+      "fnv1a_u32": "52c99d32fd003686",
+      "runs": [
+        "all-layers/prefix-a",
+        "all-layers/prefix-b"
+      ]
+    },
+    {
+      "file": "oracle_hc_ffn_post-33_pos0.bin",
+      "bytes": 268435456,
+      "sha256": "bdd311d7a7463f80d9c2cac5130c9fe1aeec73456081049fb499703350e094ed",
+      "fnv1a_u32": "dfbd10d1af3569e1",
+      "runs": [
+        "all-layers/prefix-a",
+        "all-layers/prefix-b"
+      ]
+    },
+    {
+      "file": "oracle_kqv_back-33_pos0.bin",
+      "bytes": 536870912,
+      "sha256": "3eafbd3e4bdba02c2531b1f83f10db683ae35c8dfadeab56173784d8a5aeff38",
+      "fnv1a_u32": "3b0a0d408e617483",
+      "runs": [
+        "all-layers/prefix-a",
+        "all-layers/prefix-b"
+      ]
+    },
+    {
+      "file": "oracle_KVcompress-33_pos4096.bin",
+      "bytes": 65536,
+      "sha256": "d32f782b70a7f75631acaae446be9374019eeeea6ef82f9421fa5dcfa51fa522",
+      "fnv1a_u32": "d1e70fe2273d67b1",
+      "runs": [
+        "all-layers/continuation-a",
+        "all-layers/continuation-b"
+      ]
+    },
+    {
+      "file": "oracle_KVcur-33_pos4096.bin",
+      "bytes": 8388608,
+      "sha256": "dd93b80be2463baef1a87bb73c605e5ddc37aa37cfaedd521baf0953102eebe4",
+      "fnv1a_u32": "e261bd2895f9508e",
+      "runs": [
+        "all-layers/continuation-a",
+        "all-layers/continuation-b"
+      ]
+    },
+    {
+      "file": "oracle_Qcur-33_pos4096.bin",
+      "bytes": 536870912,
+      "sha256": "0d3b2331201cfbfaebacff0e81eace2f601b34a0f0bd5d550a702c43e57594c8",
+      "fnv1a_u32": "4287455bbc88332b",
+      "runs": [
+        "all-layers/continuation-a",
+        "all-layers/continuation-b"
+      ]
+    },
+    {
+      "file": "oracle_attn_norm-33_pos4096.bin",
+      "bytes": 67108864,
+      "sha256": "dd5e28062baca84496c647b90abd6cb632bda533a58fff1dcb7042dab7cee04c",
+      "fnv1a_u32": "a827efe43d8bb7b3",
+      "runs": [
+        "all-layers/continuation-a",
+        "all-layers/continuation-b"
+      ]
+    },
+    {
+      "file": "oracle_attn_state_kv-33_pos4096.bin",
+      "bytes": 262144,
+      "sha256": "8a39d2abd3999ab73c34db2476849cddf303ce389b35826850f9a700589b4a90",
+      "fnv1a_u32": "eb05052ea5b62325",
+      "runs": [
+        "all-layers/continuation-a",
+        "all-layers/continuation-b"
+      ]
+    },
+    {
+      "file": "oracle_attn_state_score-33_pos4096.bin",
+      "bytes": 262144,
+      "sha256": "6470bc26e7cc29bf2cc0672d57eb7062150933581c52927d2a4f7be0f5ed0778",
+      "fnv1a_u32": "5512b2ce2eb62325",
+      "runs": [
+        "all-layers/continuation-a",
+        "all-layers/continuation-b"
+      ]
+    },
+    {
+      "file": "oracle_hc_attn_post-33_pos4096.bin",
+      "bytes": 268435456,
+      "sha256": "dd62ac20cf9a58c890530b3b689e6b0ef72196123a55617e8f91c8797e699499",
+      "fnv1a_u32": "d5dc27d6053003c4",
+      "runs": [
+        "all-layers/continuation-a",
+        "all-layers/continuation-b"
+      ]
+    },
+    {
+      "file": "oracle_hc_attn_pre-33_pos4096.bin",
+      "bytes": 67108864,
+      "sha256": "e4bc469dcad49c2662b3bb52c7b7d822b683c699cf048a030df1071972bebccb",
+      "fnv1a_u32": "ccd9be54cb1c7711",
+      "runs": [
+        "all-layers/continuation-a",
+        "all-layers/continuation-b"
+      ]
+    },
+    {
+      "file": "oracle_hc_ffn_post-33_pos4096.bin",
+      "bytes": 268435456,
+      "sha256": "47ab9a3c9b4a894de45801c763b4ef458098de76158dd7b934a53f8d7a499f95",
+      "fnv1a_u32": "dadfb5870ccc97da",
+      "runs": [
+        "all-layers/continuation-a",
+        "all-layers/continuation-b"
+      ]
+    },
+    {
+      "file": "oracle_kqv_back-33_pos4096.bin",
+      "bytes": 536870912,
+      "sha256": "5772bac1532ea3ea5e08c4ddd7f7da013bdcf7e704fa05e93b01d1187a23ba57",
+      "fnv1a_u32": "a623873c534739d4",
+      "runs": [
+        "all-layers/continuation-a",
+        "all-layers/continuation-b"
+      ]
+    }
+  ]
+}

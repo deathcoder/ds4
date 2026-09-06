@@ -2485,6 +2485,24 @@ int rust_star_metal_finish_prefill_layer14_rebuild(
     char *error,
     size_t error_bytes);
 
+/* Bind layers 15--42 into the validated odd/even executor slots, preserving
+ * live KV/compressor history while releasing consumed activation buffers. */
+int rust_star_metal_release_remaining_prefill_transients(
+    void *context, uint32_t completed_layer, char *error, size_t error_bytes);
+
+int rust_star_metal_begin_prefill_remaining_odd_prefix_rebuild(
+    void *context, uint32_t layer, char *error, size_t error_bytes);
+int rust_star_metal_begin_prefill_remaining_odd_continuation(
+    void *context, uint32_t layer, char *error, size_t error_bytes);
+int rust_star_metal_finish_prefill_remaining_odd_rebuild(
+    void *context, uint32_t layer, char *error, size_t error_bytes);
+int rust_star_metal_begin_prefill_remaining_even_rebuild(
+    void *context, uint32_t layer, char *error, size_t error_bytes);
+int rust_star_metal_retain_prefill_remaining_even_prefix_hc(
+    void *context, uint32_t layer, char *error, size_t error_bytes);
+int rust_star_metal_finish_prefill_remaining_even_rebuild(
+    void *context, uint32_t layer, char *error, size_t error_bytes);
+
 /* Consumes one retained production-batch layer-3 HC chunk and executes the
  * full 4096-row layer-4 ingress/QKV plus paired ratio-4 compressor boundary.
  * Position start must be 0 or 4096.

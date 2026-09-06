@@ -3506,9 +3506,18 @@ fn run_long_prefill_continuation_bootstrap_probe_command(arguments: Vec<OsString
         report.layer14_prefix_boundary_dispatches, report.layer14_prefix_complete_dispatches,
         report.layer14_continuation_tiles, report.layer14_continuation_dispatches,
     );
-    println!(
-        "scope: complete retained layers 2 through 14 match the second 4K chunk oracle. Layers 15..42, complete 8K transformer output, output-logit C0, and throughput remain unclaimed"
-    );
+    for layer in &report.remaining_layers {
+        println!("layer-{} complete prefix and continuation: exact, {} dispatches, {}/{} no-copy mappings", layer.layer, layer.dispatches, layer.pointer_matches, layer.model_mappings);
+    }
+    let final_layer = report
+        .remaining_layers
+        .last()
+        .map_or(14, |layer| layer.layer);
+    if let Some(head) = &report.remaining_output {
+        println!("complete native 8K prefill: all {} FP32 logits match the pinned oracle; selected token {}. Throughput remains unclaimed", head.checked_logits, head.selected_token);
+    } else {
+        println!("scope: complete retained layers 2 through {} match the second 4K chunk oracle. Complete 8K output-logit C0 and throughput remain unclaimed", final_layer);
+    }
     if let Some(path) = json_path {
         write_long_prefill_continuation_bootstrap_probe_file(&path, &report)?;
         println!("json: {}", path.display());
@@ -5713,7 +5722,7 @@ fn long_prefill_bootstrap_probe_usage() -> &'static str {
 }
 
 fn long_prefill_continuation_bootstrap_probe_usage() -> &'static str {
-    "usage: rust-star long-prefill-continuation-bootstrap-probe MODEL.gguf [--json PATH]\n\nRuns the first 4,096-token chunk through the complete native transformer, then advances positions 4,096--8,191 in the same retained Metal context. It verifies the layer-2 sparse transition and complete retained layers 2 through 14 against the repeated production oracle. This diagnostic does not claim layers 15--42, the complete 8K transformer output, output-logit C0, throughput, or a speedup."
+    "usage: rust-star long-prefill-continuation-bootstrap-probe MODEL.gguf [--json PATH]\n\nRuns the first 4,096-token chunk through the complete native transformer, then advances positions 4,096--8,191 in the same retained Metal context. It verifies the layer-2 sparse transition, all remaining retained layers through 42, and every one of the 129,280 final FP32 logits against the pinned 8K oracle. This diagnostic does not establish throughput or a speedup."
 }
 
 fn long_prefill_sequential_continuation_probe_usage() -> &'static str {

@@ -18,6 +18,100 @@ Before changing code:
 Journal entries are reverse chronological. Do not edit old entries to change
 history; add a correction and update the current-state summary.
 
+## 2026-09-06 — Complete remaining layers requested
+
+- User explicitly asked to continue through every remaining layer. Active goal:
+  layers 15--42 plus exact full 8K output logits, preserving the 2K gate.
+- Starting checkpoint `d8ebff8`, branch `agent/rust-star-bootstrap`; about
+  171 GiB available. Layer-15 prefix and continuation oracle captures are
+  running as four sequential fresh processes with one dump position per run.
+- Preparing shared odd/even remaining-layer drivers, retaining the existing
+  validated arithmetic rather than duplicating a full per-layer scheduler.
+- Layer 15's 20 independent payload pairs match. Its compact provenance and
+  checksums are installed; layer-16 captures are running. Added shared odd/even
+  Rust executors and dynamic layer binding helpers, plus per-layer report
+  contracts. Initial build found host serializer placement and constant-pattern
+  naming errors; corrected them, and the second release build passes.
+  The live layer-15 gate passes (`gate15.json`): 1367 dispatches and 1199/1199
+  mappings. Layer 16's 26 payload pairs also match; its target set is installed
+  and the release build is running.
+  Added a bounded prefix-HC handoff slot so later layers do not accumulate
+  another full prefix-HC history.
+- Layer-16 release build and live gate pass (`gate16.json`): 4724 dispatches,
+  2227/2227 mappings. All 307 host tests pass with the new report/output rules.
+  Layer 17's 20 and layer 18's 26 capture pairs match; targets 15--18 are
+  installed and the layer-18 release build is running. A whole-chunk prefix
+  capture pilot is running with all-layer dumps and independent repetitions.
+  It must match all existing isolated 15--18 controls before adoption. This
+  pilot keeps SHA-256/FNV/size metadata for both runs, removes first-run
+  temporary payloads after hashing, and removes second-run payloads only after
+  exact repetition and isolated-control agreement to keep disk use bounded.
+  Added guarded 8K
+  output-head support (only after completed layer 42) and full 129280-word
+  comparison to the pinned existing 8K fixture. These final-head additions
+  await host tests and a complete live chain; no full 8K claim yet.
+- Whole-chunk prefix pilot passes all 487 repeated payloads and all isolated
+  layer-15--18 controls. Temporary raw payloads were compacted only after their
+  hashes were persisted (second repetition only after exact verification).
+  The layer-18 build passed. Running gate18, then the 2K control, then the
+  whole-chunk continuation pilot sequentially; stop the sequence on failure.
+- Layer-18 live gate and the complete 2K regression pass. Whole-chunk
+  continuation capture also passes all 487 repeated payloads and isolated
+  controls. All four broad capture runs match all 129,280 accepted output
+  logits. Installed compact targets through layer 42; release build passes.
+  Added consumed activation-buffer release while preserving KV/compressor
+  state. The first complete layer-42/output-head live gate is running.
+- First complete gate passes layers 15--25, then rejects layer-26 prefix final
+  HC (actual `14066919688155987687`, expected `14659157045767518558`). KQV and after-attention HC match. A fresh unchanged
+  repeat is running to distinguish deterministic arithmetic from state drift.
+  Final Rust tests: all 307 pass; Python tests: all 86 pass.
+- Unchanged repeat fails at the identical layer-26 prefix hash. Isolated FFN
+  oracle capture reproduces the accepted final HC. Oracle scores at row 547
+  tie experts 60/218 for sixth place: stable insertion chooses 60; the pinned
+  descending bitonic network chooses 218. Rust intermediate capture is running.
+  Replaced batched router insertion sorting with the same bitonic permutation
+  and changed its 41 call sites to one 256-thread group per row. Rebuilding;
+  the 2K control must pass again because it shares this router.
+- Diagnostic comparison confirms the routing cause: all FFN input/norm,
+  logits/probabilities, and shared-expert tensors match exactly. Only row 547
+  differs: six normalized routing weights, 4096 routed output words, and
+  16384 final HC words. Evidence: `layer26-ffn-comparison.json` and
+  `layer26-routing-ties.json`. Temporary dump code was removed.
+  Fixed-router release build passes. Running `gate42-fixed`, then `2k-final`,
+  then a fresh full repeat sequentially, stopping on any failure. Re-running
+  host tests after the router change. No oracle targets changed.
+- The repaired live gate now passes layers 26 and 27; continuing through 42.
+- `gate42-fixed.json` passes the complete retained 8K chain and output head:
+  all 129,280 FP32 words match the unchanged oracle; selected token 77179.
+  All 28 new layers match their pinned targets and schedule/mapping contracts.
+  All 307 Rust tests and 86 Python tests pass after the router repair.
+  Final 2K control also passes every boundary and full logits (token 15342).
+  The fresh complete repeat is running.
+- Fresh `gate42-fixed-repeat.json` also passes every layer and all 129,280
+  logits. Reports are identical after excluding wall/GPU timing fields.
+  Final release build, 307 Rust tests, 86 Python tests, formatting, and diff
+  whitespace checks pass. New report guards reject altered layer hashes,
+  missing layer coverage, and invalid output claims.
+- Final report SHA-256:
+  - `gate42-fixed.json`: `0cdf187f5fe25e49df6fee8b5790ca66abc67ce3b24bd4c296738052f9623f7b`.
+  - `gate42-fixed-repeat.json`: `ffecafc456f3b74d35371e0e73a480075db21a83c62e5c63a3744ab252253fda`.
+  - `2k-final.json`: `8ed58b6164a3a6e2f8b376669858b20d7cb64a24e224770f9d9b92befcd91885`.
+- Post-validation cleanup reverified and removed only exact duplicate raw
+  layer-15/16 b captures (6.54 GiB) and ignored extra test-profile artifacts
+  (10.47 GiB). Original a captures, all logs/hash metadata, pinned oracle,
+  model, source, and production executable remain. Available disk: about
+  154 GiB. Inventories: `duplicate-capture-cleanup.json` and
+  `test-cache-cleanup.json`; broad capture compaction is recorded separately.
+- All requested remaining layers and the output head are complete. Next:
+  extend native prefill and the exact transcript/eligible engine gate to the
+  accepted 32K frontier. No throughput or speedup claim was made.
+- Evidence/work scripts: `rust-star/.work/remaining-layers-v30/`.
+  All layers and the output head pass, including the fresh repeat and 2K
+  regression. Included with the related implementation commit; consult
+  `git log -1` for that checkpoint.
+- Dion Labs packaged-release policy is acknowledged. Current remotes remain
+  `deathcoder/ds4` and `antirez/ds4`; this is the Rust Star research branch.
+
 ## 2026-09-05 — Exact complete layer-14 retained continuation
 
 - Extending `2e0ab3b` through complete layer 14 using the validated layer-12
@@ -1171,45 +1265,36 @@ Next:
 
 ## Current State
 
-### Current resume checkpoint (updated 2026-09-05)
-
-- The integrated v29 gate now passes complete layer 14 against all 26 new
-  oracle targets (prefix a/b, continuation-only c/d). Release build and 86 Python
-  tests pass; the 2K full-logit regression and all 307 Rust tests also pass.
-  Layer 15 is next.
-
-- Disk cleanup reclaimed about 79 GiB of rebuildable Cargo output. Both tested
-  release executables, all oracle/capture evidence, and source remain available;
-  compiler intermediates will be regenerated on the next Cargo build.
+### Current resume checkpoint (updated 2026-09-06)
 
 - Work in `/Users/deathcodevision/dev/ds4-rust-star-bootstrap` on
-  `agent/rust-star-bootstrap`. The layer-14 work extends base commit `2e0ab3b`;
-  consult `git log -1` for the committed checkpoint containing this entry.
-- The retained native 4K-to-8K continuation is complete through layer 14 under
-  report schema v29. Layer 15 is the next implementation boundary; layers
-  15--42 and the output head remain open for this continuation.
-- The September 5 repair clears the standalone 2K regression: full logits and
-  every retained transformer boundary pass unchanged C0 fixtures. It restores
-  the ratio-4 small-batch tail projection and applies consistent ratio-128
-  partial-block padding/kernel selection through all later odd layers.
-- The same candidate passes the integrated layer-13 retained continuation gate.
-  Layer 15 is now the next implementation priority. All 307 Rust tests and
-  86 Python tests pass.
-- Preserve the existing 2K prefill/decode controls and their historical evidence.
-  Their full-model coverage does not establish complete 8K coverage.
+  `agent/rust-star-bootstrap`, extending `d8ebff8`. Remotes: `fork` =
+  `deathcoder/ds4`, `origin` = `antirez/ds4`.
+- Complete retained 8K chain and output head pass under schema v30:
+  all 129,280 FP32 words match the pinned oracle; selected token 77179.
+  The final 2K regression passes all retained boundaries and full logits
+  (token 15342). A fresh complete 8K repeat also passes; reports match except
+  timings.
+- The layer-26 prefix exposed tied router-score ordering. Exact input and
+  probability tensors isolated the failure to row 547's sixth expert. The
+  shared batched router now follows the oracle's bitonic permutation. The
+  repaired full gate and 2K control pass without changing any oracle target.
+- Targets 15--42 and release build are complete. Both whole-chunk capture
+  phases repeat all 487 payloads across two fresh processes and match isolated
+  15--18 controls. All four runs match the unchanged accepted full 8K logits.
+  Consumed activation buffers are released; KV/compressor history stays live.
+- Final Python tests: 86 pass; formatting/whitespace pass. Final Rust tests:
+  all 307 pass with all 28 remaining targets and transient release.
+  Evidence: `rust-star/.work/remaining-layers-v30/`.
 - Active producer: oracle-v3 `d35fb12d01d500b9cefcef24092c295687ceaf7e`.
-  The supplemental `dwarfstar-oracle-v3-prefill-frontier-8192` fixture is the
-  final 8K output gate; the accepted 32K frontier follows it.
-- The September 4 live v28 integration revalidated the retained chain through
-  layer 13. The two new captures repeat all layer-13 tensors exactly; their
-  downstream instrumented logits drift and are not accepted targets. A separate
-  uninstrumented oracle run reproduces the accepted 8K logits exactly.
-  No 8K throughput or speedup claim is established.
-- This checkpoint supersedes older frontier descriptions in the accumulated
-  summary below. The project charter's Open Items now points to this checkpoint;
-  older descriptions must not be used to restart already completed work.
-- Current remotes are `fork` = `deathcoder/ds4` and `origin` = `antirez/ds4`.
-  Earlier references below to `origin` as the personal fork are historical.
+  `dwarfstar-oracle-v3-prefill-frontier-8192` is the full-logit target;
+  the accepted 32K frontier follows it. The pinned model SHA was reverified.
+- Preserve the standalone 2K scheduler repair, shorter decode controls, and
+  retained-engine lifecycle. Only one large inference process may run at once.
+- Whole-chunk temporary raw captures were compacted with both runs' hashes,
+  sizes, and logs retained; about 154 GiB remains available after duplicate
+  and test-output cleanup. No throughput or speedup claim accompanies the gates.
+- This checkpoint supersedes older frontiers in the accumulated history below.
 
 ### Accumulated implementation and measurement evidence
 
@@ -1960,29 +2045,22 @@ Next:
 
 ## Immediate Next Actions
 
-1. Extend `long-prefill-continuation-bootstrap-probe` from the exact v29
-   layer-14 checkpoint through complete layer 15. Carry live prefix and
-   continuation HC into its ratio-128 compressor, Flash attention, FFN,
-   and final HC; require independently repeated oracle-v3 evidence for each new
-   boundary and do not adopt drifted dump-enabled final logits as new targets.
-2. Continue the exact retained chain through layers 16--42 and the output head.
-   Require every one of the 129,280 logits to match the supplemental oracle-v3
-   8K fixture. Preserve production batch geometry and GPU-owned history.
-3. After complete 8K C0, extend native prefill, the exact transcript gate, and
-   eligible engine measurement to the accepted oracle-v3 32K frontier.
-   Keep correctness diagnostics separate from performance claims.
-4. Preserve the exact 2K native-prefill/decode handoff, position-8195 retained
-   decoder step, sparse controls, shorter layer/decoder controls, and accepted
-   retained lifecycle as regressions relevant to each change. Never run multiple
-   huge model processes concurrently.
-5. Update the current checkpoint and add a dated journal entry after every
-   meaningful implementation or validation step, including failures and pending
-   checks, and before handoff or compaction. Commit journal updates with the
-   implementation they describe whenever practical.
-7. Later, run extended context captures with the accepted producer when the Mac
-   can be dedicated to them; preserve capacity failures. After the account
-   billing lock is resolved, run the manual GitHub Actions workflow and retain
-   its URL. Neither item replaces the immediate layer-13 correctness work.
+1. Complete 8K C0 is established: all 43 layers and the output head pass twice
+   in fresh processes; the final 2K control and host checks pass. Do not restart
+   the completed layers 15--42 work.
+2. Extend native prefill, the exact transcript gate, and eligible engine
+   measurement to the accepted oracle-v3 32K frontier. Preserve production
+   arithmetic, GPU-owned history, and the tied-score bitonic router ordering.
+3. Preserve the exact 2K prefill/decode handoff, position-8195 retained decoder
+   step, sparse controls, shorter controls, and accepted retained lifecycle as
+   regressions relevant to each change. Run only one large model process.
+4. Keep correctness diagnostics separate from paired performance measurement;
+   full 8K C0 does not establish long-context throughput or the 256K headline.
+5. Update the journal checkpoint and dated evidence after every meaningful
+   step, including failures, and include it in implementation commits.
+6. Later, perform extended-context captures when the Mac can be dedicated to
+   them, preserving capacity failures. The manual GitHub Actions workflow
+   remains dependent on resolving the account billing lock.
 
 ## Entries
 
