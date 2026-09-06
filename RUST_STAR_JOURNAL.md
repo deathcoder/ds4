@@ -18,6 +18,30 @@ Before changing code:
 Journal entries are reverse chronological. Do not edit old entries to change
 history; add a correction and update the current-state summary.
 
+## 2026-09-06 — Native32K stage profiler ready
+
+- Added profile-only chunk/layer stage rows using existing command GPU/wall
+  counters and host timers. Continuations separate binding, ingress/compression,
+  attention and tail; shared bootstrap ranges and prefix layers are explicit.
+  No extra GPU waits or arithmetic changes. Profile presence alone blocks
+  paired eligibility; the new regression test passes (310 Rust tests total).
+- Release build passes. Freeze this profiling executable and run the unchanged
+  32K/128 workload before selecting an optimization. Live profile pending.
+- Removed 10.55 GiB of duplicate products generated in an older cache path;
+  older entries and frozen evidence were preserved. Builds now use the existing
+  `rust-star/.work/runtime-target` cache explicitly.
+
+## 2026-09-06 — Prefill optimization milestone started
+
+- User authorized completion end to end. Starting from `fe73defe` on the
+  existing Rust Star worktree, with accepted oracle-v4 and immutable targets.
+- First add profile-only chunk/layer stage attribution for the native32K
+  scheduler, keeping production timers and arithmetic unchanged. Investigate
+  even-layer 32-token attention/FFN tails versus odd-layer 4K batched tails.
+- Work: `rust-star/.work/prefill-milestone-fe73defe/`. Profile before selecting
+  an optimization; validate full logits, shorter controls and retained lifecycle,
+  then freeze and complete a fresh five-pair comparison and report.
+
 ## 2026-09-06 — 32K paired baseline milestone complete
 
 - Completed both warmups, all five first-attempt AB/BA/AB/BA/AB pairs, and
@@ -1811,7 +1835,10 @@ Next:
 
 ### Current resume checkpoint (updated 2026-09-06)
 
-- Completed milestone: repaired, independently audited five-pair 32K/128
+- Active milestone: native32K prefill attribution and measured optimization.
+  Work: `rust-star/.work/prefill-milestone-fe73defe/`. Profile tooling first;
+  profiler builds and 310 tests pass; live profile next, no optimization selected yet.
+- Prior completed milestone: repaired, independently audited five-pair 32K/128
   development baseline and separate profile. Report and portable verifier:
   `rust-star/reports/32k-baseline-cbb078bb/`.
   Candidate `cbb078bb`; accepted oracle-v4 `df99eba7`; plan `c251b3c8...ab5f80`.
@@ -2608,7 +2635,9 @@ Next:
 
 ## Immediate Next Actions
 
-- The authorized 32K baseline milestone is complete. Report:
+- Active authorized work: complete the prefill profiling/optimization milestone,
+  including exact gates, a new five-pair comparison, report and journal.
+  The prior 32K baseline is complete. Report:
   `rust-star/reports/32k-baseline-cbb078bb/README.md`.
 
 1. Next milestone: profile native32K prefill per chunk/stage through all 43

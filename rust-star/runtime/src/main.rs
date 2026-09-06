@@ -5925,7 +5925,7 @@ fn engine_measurement_usage() -> &'static str {
 }
 
 fn engine_profile_usage() -> &'static str {
-    "usage: rust-star engine-profile MODEL.gguf --context N --gen-tokens 128 --json PATH\n\nRuns the exact engine workload. At 32K only decode profiling is collected. At 2K this splits native prefill layers 2 through 42 into synchronized per-layer command buffers. Representative even layer 4 and odd layer 5 are additionally separated into attention/FFN and attention-internal QKV/RoPE, compressor/staging, Flash block preparation, FlashAttention, and output/HC intervals. It also collects every completed decode layer command buffer's GPU timestamps and decode Metal compute-stage counters across eight dispatch families. The selected-token transcript remains exact, but this perturbing mode is deliberately ineligible for paired claims."
+    "usage: rust-star engine-profile MODEL.gguf --context N --gen-tokens 128 --json PATH\n\nRuns the exact engine workload. At 32K it also records native prefill chunk/layer stages using existing command completions; shared bootstrap work is labeled by layer range. At 2K this splits native prefill layers 2 through 42 into synchronized per-layer command buffers. Representative even layer 4 and odd layer 5 are additionally separated into attention/FFN and attention-internal QKV/RoPE, compressor/staging, Flash block preparation, FlashAttention, and output/HC intervals. It also collects every completed decode layer command buffer's GPU timestamps and decode Metal compute-stage counters across eight dispatch families. The selected-token transcript remains exact, but this perturbing mode is deliberately ineligible for paired claims."
 }
 
 fn retained_engine_measurement_usage() -> &'static str {

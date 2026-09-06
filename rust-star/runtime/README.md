@@ -1184,9 +1184,12 @@ frontier and lifecycle. The repaired five-pair 32K/128 baseline now passes:
 parity (19.574 versus 19.454 tokens/s); Rust prefill is 4.33x slower. The next
 milestone is finer prefill attribution and a measured C0-safe improvement.
 
-At 32K, `engine-profile` currently collects decode layer/stage counters only;
-it does not claim the 2K-specific prefill layer/stage breakdown below. These
-profiled runs remain paired-ineligible.
+At 32K, `engine-profile` also records `long_prefill_profile` rows for native
+prefill stages: host elapsed time, existing command wall time, GPU time and
+call counts by chunk/layer. Shared bootstrap work is labeled by layer range;
+continuation layers separate ingress/compressor/attention/tail where available.
+This adds no GPU waits. It does not claim the 2K-specific breakdown below,
+and any long-prefill profile makes the report paired-ineligible.
 
 `engine-profile` is an explicitly paired-ineligible diagnostic. In addition to
 its decode attribution, it splits the otherwise single layers-2-through-42

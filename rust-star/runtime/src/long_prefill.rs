@@ -1,3 +1,71 @@
+// Stage totals observe existing completed command buffers; they add no GPU waits.
+// Bootstrap ranges are explicit because their shared scheduler spans several layers.
+struct LongPrefillStage {
+    chunk: u32,
+    first: u32,
+    last: u32,
+    stage: &'static str,
+    calls: u32,
+    elapsed: f64,
+    wall: f64,
+    gpu: f64,
+}
+
+#[derive(Default)]
+struct LongPrefillProfile {
+    enabled: bool,
+    rows: Vec<LongPrefillStage>,
+}
+impl LongPrefillProfile {
+    fn start(&self) -> Option<Instant> {
+        self.enabled.then(Instant::now)
+    }
+    fn record(
+        &mut self,
+        chunk: u32,
+        first: u32,
+        last: u32,
+        stage: &'static str,
+        start: Option<Instant>,
+        before: (f64, f64),
+        after: (f64, f64),
+    ) {
+        if let Some(start) = start {
+            let elapsed = start.elapsed().as_secs_f64() * 1000.0;
+            let wall = after.0 - before.0;
+            let gpu = after.1 - before.1;
+            if let Some(row) = self.rows.iter_mut().rev().find(|r| {
+                r.chunk == chunk && r.first == first && r.last == last && r.stage == stage
+            }) {
+                row.calls += 1;
+                row.elapsed += elapsed;
+                row.wall += wall;
+                row.gpu += gpu;
+            } else {
+                self.rows.push(LongPrefillStage {
+                    chunk,
+                    first,
+                    last,
+                    stage,
+                    calls: 1,
+                    elapsed,
+                    wall,
+                    gpu,
+                });
+            }
+        }
+    }
+    fn json(self) -> Option<String> {
+        if !self.enabled {
+            return None;
+        }
+        let rows = self.rows.iter().map(|r| format!(
+            "{{\"chunk_start\":{},\"first_layer\":{},\"last_layer\":{},\"stage\":\"{}\",\"calls\":{},\"host_elapsed_ms\":{:.9},\"command_wall_ms\":{:.9},\"gpu_ms\":{:.9}}}",
+            r.chunk,r.first,r.last,r.stage,r.calls,r.elapsed,r.wall,r.gpu)).collect::<Vec<_>>().join(",");
+        Some(format!("{{\"method\":\"existing-command-completion-and-host-stage-timers\",\"paired_ineligible\":true,\"rows\":[{rows}]}}"))
+    }
+}
+
 fn prefill_output_ptr<T>(output: &mut [T], collect: bool) -> *mut T {
     if collect {
         output.as_mut_ptr()
@@ -181,6 +249,7 @@ fn run_prefill_chunk_layer(
     start: u32,
     prepared: &PreparedPrefillChunkLayer,
     collect_checks: bool,
+    profile: &mut LongPrefillProfile,
 ) -> Result<(f64, f64)> {
     let mut error = [0 as c_char; ERROR_BYTES];
     macro_rules! checked {
@@ -194,6 +263,7 @@ fn run_prefill_chunk_layer(
         }};
     }
     let mut raw = RawSparseIndexedResult::default();
+    let bind_start = profile.start();
     if layer >= 3 {
         checked!(rust_star_metal_bind_long_prefill_layer(
             context.0,
@@ -202,6 +272,16 @@ fn run_prefill_chunk_layer(
             error.len()
         ));
     }
+    profile.record(
+        start,
+        layer,
+        layer,
+        "bind",
+        bind_start,
+        (0.0, 0.0),
+        (0.0, 0.0),
+    );
+    let stage_start = profile.start();
     if layer % 2 == 1 {
         let mut inputs: Vec<Vec<f32>> = [4096, 4096, 1024, 1024, 512, 512, 32768, 512, 512]
             .iter()
@@ -234,6 +314,17 @@ fn run_prefill_chunk_layer(
                 error.len()
             ));
         }
+        profile.record(
+            start,
+            layer,
+            layer,
+            "ingress",
+            stage_start,
+            (0.0, 0.0),
+            (raw.wall_ms, raw.gpu_ms),
+        );
+        let stage_start = profile.start();
+        let before = (raw.wall_ms, raw.gpu_ms);
         checked!(
             rust_star_metal_run_prefill_layer3_continuation_batch_compressor(
                 context.0,
@@ -254,6 +345,17 @@ fn run_prefill_chunk_layer(
             error.as_mut_ptr(),
             error.len()
         ));
+        profile.record(
+            start,
+            layer,
+            layer,
+            "compressor",
+            stage_start,
+            before,
+            (raw.wall_ms, raw.gpu_ms),
+        );
+        let stage_start = profile.start();
+        let before = (raw.wall_ms, raw.gpu_ms);
         checked!(
             rust_star_metal_run_prefill_layer3_continuation_batch_attention(
                 context.0,
@@ -267,6 +369,17 @@ fn run_prefill_chunk_layer(
                 error.len()
             )
         );
+        profile.record(
+            start,
+            layer,
+            layer,
+            "attention",
+            stage_start,
+            before,
+            (raw.wall_ms, raw.gpu_ms),
+        );
+        let stage_start = profile.start();
+        let before = (raw.wall_ms, raw.gpu_ms);
         checked!(rust_star_metal_run_prefill_layer2_continuation_tail(
             context.0,
             model.mapping_pointer(),
@@ -292,6 +405,15 @@ fn run_prefill_chunk_layer(
             error.as_mut_ptr(),
             error.len()
         ));
+        profile.record(
+            start,
+            layer,
+            layer,
+            "tail",
+            stage_start,
+            before,
+            (raw.wall_ms, raw.gpu_ms),
+        );
         let padding_dispatch = u32::from((4224 + (start + 4096) / 128) % 64 != 0);
         if raw.dispatches != 1318 + padding_dispatch
             || raw.wrapped_model_ranges != 1171
@@ -333,6 +455,16 @@ fn run_prefill_chunk_layer(
                 return Err(Error::invalid("even chunk compressor schedule mismatch"));
             }
         }
+        profile.record(
+            start,
+            layer,
+            layer,
+            "boundary",
+            stage_start,
+            (0.0, 0.0),
+            (raw.wall_ms, raw.gpu_ms),
+        );
+        let scratch_start = profile.start();
         let mut scores = vec![0.0; 32 * ((start + 4096) / 4) as usize];
         let mut topk = vec![0; 32 * 512];
         let mut heads = vec![0.0; 32 * 32768];
@@ -354,6 +486,15 @@ fn run_prefill_chunk_layer(
         .map(|width| vec![0.0; 32 * width])
         .collect();
         let mut selected = vec![0; 32 * 6];
+        profile.record(
+            start,
+            layer,
+            layer,
+            "host_scratch",
+            scratch_start,
+            (0.0, 0.0),
+            (0.0, 0.0),
+        );
         for position in (start..start + 4096).step_by(32) {
             let mut tile = RawSparseIndexedResult::default();
             let sparse = if layer == 2 {
@@ -361,6 +502,7 @@ fn run_prefill_chunk_layer(
             } else {
                 rust_star_metal_run_prefill_layer4_continuation_sparse_tile
             };
+            let stage_start = profile.start();
             checked!(sparse(
                 context.0,
                 model.mapping_pointer(),
@@ -379,6 +521,17 @@ fn run_prefill_chunk_layer(
                 error.as_mut_ptr(),
                 error.len()
             ));
+            profile.record(
+                start,
+                layer,
+                layer,
+                "attention",
+                stage_start,
+                (0.0, 0.0),
+                (tile.wall_ms, tile.gpu_ms),
+            );
+            let stage_start = profile.start();
+            let before = (tile.wall_ms, tile.gpu_ms);
             checked!(rust_star_metal_run_prefill_layer2_continuation_tail(
                 context.0,
                 model.mapping_pointer(),
@@ -404,6 +557,15 @@ fn run_prefill_chunk_layer(
                 error.as_mut_ptr(),
                 error.len()
             ));
+            profile.record(
+                start,
+                layer,
+                layer,
+                "tail",
+                stage_start,
+                before,
+                (tile.wall_ms, tile.gpu_ms),
+            );
             if tile.dispatches != 36
                 || tile.wrapped_model_ranges != 17
                 || tile.pointer_matches != 17
@@ -422,6 +584,7 @@ fn rebuild_long_prefill_prefix(
     context: &Context,
     prepared: &[PreparedPrefillChunkLayer],
     collect_checks: bool,
+    profile: &mut LongPrefillProfile,
 ) -> Result<(f64, f64)> {
     let mut error = [0 as c_char; ERROR_BYTES];
     macro_rules! checked {
@@ -441,6 +604,7 @@ fn rebuild_long_prefill_prefix(
     ));
     for layer in 0..43 {
         if layer >= 3 {
+            let stage_start = profile.start();
             let p = &prepared[layer as usize - 2];
             checked!(rust_star_metal_bind_long_prefill_prefix(
                 context.0,
@@ -554,6 +718,15 @@ fn rebuild_long_prefill_prefix(
                 error.as_mut_ptr(),
                 error.len()
             ));
+            profile.record(
+                0,
+                layer,
+                layer,
+                "prefix_layer",
+                stage_start,
+                (0.0, 0.0),
+                (preceding.0 + raw.wall_ms, preceding.1 + raw.gpu_ms),
+            );
             total.0 += preceding.0 + raw.wall_ms;
             total.1 += preceding.1 + raw.gpu_ms;
         }
@@ -577,6 +750,7 @@ fn run_long_prefill_with_context(
     retained_context: Option<Context>,
     collect_checks: bool,
     validate_outputs: bool,
+    collect_profile: bool,
 ) -> Result<(Context, LongPrefillChunkProbeReport, NativePrefillTiming)> {
     if frontier < 12288 || frontier > 32768 || frontier % 4096 != 0 {
         return Err(Error::invalid(
@@ -599,6 +773,11 @@ fn run_long_prefill_with_context(
             (context, started.elapsed().as_secs_f64() * 1000.0)
         }
     };
+    let mut profile = LongPrefillProfile {
+        enabled: collect_profile,
+        ..Default::default()
+    };
+    let stage_start = profile.start();
     let (context, diagnostic, _, mut timing) = run_prefill_layers012_attention_loop_with_context(
         model,
         context,
@@ -608,6 +787,18 @@ fn run_long_prefill_with_context(
         4096,
         Some(&tokens),
     )?;
+    profile.record(
+        0,
+        0,
+        42,
+        "initial_bootstrap",
+        stage_start,
+        (0.0, 0.0),
+        (
+            timing.tile_wall_ms + timing.transformer_wall_ms,
+            timing.tile_gpu_ms + timing.transformer_gpu_ms,
+        ),
+    );
     if diagnostic.is_some() {
         return Err(Error::invalid(
             "long-prefill prefix unexpectedly collected diagnostics",
@@ -620,7 +811,8 @@ fn run_long_prefill_with_context(
     let prepared = (2..43)
         .map(|layer| PreparedPrefillChunkLayer::new(model, layer))
         .collect::<Result<Vec<_>>>()?;
-    let prefix = rebuild_long_prefill_prefix(model, &context, &prepared, collect_checks)?;
+    let prefix =
+        rebuild_long_prefill_prefix(model, &context, &prepared, collect_checks, &mut profile)?;
     timing.transformer_wall_ms += prefix.0;
     timing.transformer_gpu_ms += prefix.1;
     timing.transformer_setup_ms +=
@@ -651,6 +843,7 @@ fn run_long_prefill_with_context(
         {
             return Err(Error::invalid(error_text(&error)));
         }
+        let stage_start = profile.start();
         let (_, bootstrap_timing) = run_prefill_layers012_compressor_loop_probe_in_context(
             model,
             &context,
@@ -659,6 +852,15 @@ fn run_long_prefill_with_context(
             end,
             Some(&tokens[..end as usize]),
         )?;
+        profile.record(
+            start,
+            0,
+            2,
+            "bootstrap_ingress",
+            stage_start,
+            (0.0, 0.0),
+            (bootstrap_timing.tile_wall_ms, bootstrap_timing.tile_gpu_ms),
+        );
         timing.bootstrap_setup_ms += bootstrap_timing.bootstrap_setup_ms;
         timing.tile_wall_ms += bootstrap_timing.tile_wall_ms;
         timing.tile_gpu_ms += bootstrap_timing.tile_gpu_ms;
@@ -673,6 +875,7 @@ fn run_long_prefill_with_context(
                     start,
                     &prepared[layer as usize - 2],
                     collect_checks,
+                    &mut profile,
                 )?;
                 timing.transformer_wall_ms += layer_timing.0;
                 timing.transformer_gpu_ms += layer_timing.1;
@@ -761,6 +964,7 @@ fn run_long_prefill_with_context(
         } else {
             (0, 0, 0)
         };
+    timing.long_prefill_profile = profile.json();
     Ok((
         context,
         LongPrefillChunkProbeReport {
@@ -786,7 +990,7 @@ pub fn run_long_prefill_chunk_probe(
     model: &MappedModel,
     frontier: u32,
 ) -> Result<LongPrefillChunkProbeReport> {
-    Ok(run_long_prefill_with_context(model, frontier, None, true, true)?.1)
+    Ok(run_long_prefill_with_context(model, frontier, None, true, true, false)?.1)
 }
 
 fn run_long_prefill_decode(
@@ -854,5 +1058,5 @@ fn run_long_prefill_decode(
 // This gate exercises the timing path's prefill without internal readbacks,
 // then verifies every output word before making any measurement claim.
 pub fn run_long_prefill_output_probe(model: &MappedModel) -> Result<LongPrefillChunkProbeReport> {
-    Ok(run_long_prefill_with_context(model, 32768, None, false, true)?.1)
+    Ok(run_long_prefill_with_context(model, 32768, None, false, true, false)?.1)
 }

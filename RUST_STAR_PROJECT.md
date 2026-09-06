@@ -166,7 +166,7 @@ The first `oracle-v3` attempt rejected an asynchronous split after its first
 two 32K repetitions differed. Accepted `oracle-v3` uses producer commit
 `d35fb12d01d500b9cefcef24092c295687ceaf7e`, adds an explicit host wait at the
 compressor dependency boundary, and passed four exact fresh processes at both
-2K and 32K. It is the current oracle for new work at those frontiers.
+2K and 32K. Oracle-v4 supersedes that producer for new work, as recorded above.
 
 Conformance and performance are separate run modes:
 

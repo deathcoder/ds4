@@ -5507,6 +5507,7 @@ pub struct EngineRunReport {
     pub prefill_transformer_setup_ms: f64,
     pub prefill_transformer_wall_ms: f64,
     pub prefill_transformer_gpu_ms: f64,
+    pub long_prefill_profile: Option<String>,
     pub prefill_transformer_layer_gpu_ms: Option<Vec<f64>>,
     pub prefill_representative_stage_gpu_ms: Option<Vec<f64>>,
     pub prefill_representative_attention_stage_gpu_ms: Option<Vec<f64>>,
@@ -7195,11 +7196,14 @@ pub fn write_engine_run_json<W: Write>(output: &mut W, report: &EngineRunReport)
         (None, None) => "null".to_owned(),
         _ => unreachable!("validated stage profiles are complete"),
     };
-    let paired_protocol_eligible = !report.prefill_correctness_collection
+    let paired_protocol_eligible = report.long_prefill_profile.is_none()
+        && !report.prefill_correctness_collection
         && !report.prefill_layer_timing_collection
         && !report.generation_layer_timing_collection
         && !report.generation_stage_counter_collection;
-    let paired_protocol_blocker = if report.prefill_correctness_collection {
+    let paired_protocol_blocker = if report.long_prefill_profile.is_some() {
+        "\"native long-prefill stage timer collection\""
+    } else if report.prefill_correctness_collection {
         "\"native prefill still materializes and verifies diagnostic boundary tensors outside its GPU intervals\""
     } else if report.prefill_layer_timing_collection {
         "\"prefill profiling splits one native transformer command into 52 synchronized diagnostic command buffers\""
@@ -7212,7 +7216,7 @@ pub fn write_engine_run_json<W: Write>(output: &mut W, report: &EngineRunReport)
     };
     write!(
         output,
-        "{{\n  \"schema\": \"{ENGINE_RUN_SCHEMA}\",\n  \"engine\": \"rust-star\",\n  \"context\": {},\n  \"gen_tokens\": {},\n  \"metrics\": {{\"ctx_tokens\": {}, \"prefill_tokens\": {}, \"gen_tokens\": {}, \"gen_steady_tokens\": {}, \"prefill_tps\": {:.9}, \"prefill_ms\": {:.9}, \"gen_tps\": {:.9}, \"gen_ms\": {:.9}, \"gen_first_ms\": {:.9}, \"gen_steady_tps\": {:.9}, \"gen_steady_ms\": {:.9}}},\n  \"selection\": {{\"prefill_token\": {}, \"final_token\": {}, \"selected_tokens_checksum\": {}, \"oracle_transcript_match\": true}},\n  \"timing\": {{\"model_warm_bytes\": {}, \"model_warm_pages\": {}, \"model_warm_checksum\": {}, \"model_warm_ms\": {:.9}, \"model_view_bytes\": {}, \"model_view_warm_touches\": {}, \"model_view_count\": {}, \"model_residency_allocations\": {}, \"model_residency_queue_attached\": {}, \"model_view_warm_wall_ms\": {:.9}, \"model_view_warm_gpu_ms\": {:.9}, \"model_residency_host_ms\": {:.9}, \"prefill_context_setup_ms\": {:.9}, \"prefill_bootstrap_setup_ms\": {:.9}, \"prefill_tile_wall_ms\": {:.9}, \"prefill_tile_gpu_ms\": {:.9}, \"prefill_transformer_setup_ms\": {:.9}, \"prefill_transformer_wall_ms\": {:.9}, \"prefill_transformer_gpu_ms\": {:.9}, \"prefill_transformer_layer_gpu_ms\": {}, \"prefill_representative_stage_gpu_ms\": {}, \"prefill_representative_attention_stage_gpu_ms\": {}, \"prefill_output_head_setup_ms\": {:.9}, \"prefill_output_head_wall_ms\": {:.9}, \"prefill_output_head_gpu_ms\": {:.9}, \"prefill_handoff_wall_ms\": {:.9}, \"prefill_handoff_gpu_ms\": {:.9}, \"prefill_handoff_host_ms\": {:.9}, \"prefill_unattributed_host_ms\": {:.9}, \"prefill_host_overhead_ms\": {:.9}, \"decoder_prepare_ms\": {:.9}, \"gen_first_transformer_wall_ms\": {:.9}, \"gen_first_transformer_gpu_ms\": {:.9}, \"gen_first_layer_gpu_ms\": [{}], \"gen_first_output_head_wall_ms\": {:.9}, \"gen_first_output_head_gpu_ms\": {:.9}, \"gen_steady_transformer_wall_ms\": {:.9}, \"gen_steady_transformer_gpu_ms\": {:.9}, \"gen_steady_layer_gpu_ms\": {}, \"gen_steady_output_head_wall_ms\": {:.9}, \"gen_steady_output_head_gpu_ms\": {:.9}, \"generation_command_buffers_per_token\": {}, \"generation_host_waits_per_token\": {}, \"generation_correctness_collection\": false, \"generation_layer_timing_collection\": {}, \"generation_stage_counter_collection\": {}, \"prefill_correctness_collection\": {}, \"prefill_layer_timing_collection\": {}}},\n  \"prefill_layer_profile\": {},\n  \"stage_profile\": {},\n  \"paired_protocol_eligible\": {},\n  \"paired_protocol_blocker\": {}\n}}\n",
+        "{{\n  \"schema\": \"{ENGINE_RUN_SCHEMA}\",\n  \"engine\": \"rust-star\",\n  \"context\": {},\n  \"gen_tokens\": {},\n  \"metrics\": {{\"ctx_tokens\": {}, \"prefill_tokens\": {}, \"gen_tokens\": {}, \"gen_steady_tokens\": {}, \"prefill_tps\": {:.9}, \"prefill_ms\": {:.9}, \"gen_tps\": {:.9}, \"gen_ms\": {:.9}, \"gen_first_ms\": {:.9}, \"gen_steady_tps\": {:.9}, \"gen_steady_ms\": {:.9}}},\n  \"selection\": {{\"prefill_token\": {}, \"final_token\": {}, \"selected_tokens_checksum\": {}, \"oracle_transcript_match\": true}},\n  \"timing\": {{\"model_warm_bytes\": {}, \"model_warm_pages\": {}, \"model_warm_checksum\": {}, \"model_warm_ms\": {:.9}, \"model_view_bytes\": {}, \"model_view_warm_touches\": {}, \"model_view_count\": {}, \"model_residency_allocations\": {}, \"model_residency_queue_attached\": {}, \"model_view_warm_wall_ms\": {:.9}, \"model_view_warm_gpu_ms\": {:.9}, \"model_residency_host_ms\": {:.9}, \"prefill_context_setup_ms\": {:.9}, \"prefill_bootstrap_setup_ms\": {:.9}, \"prefill_tile_wall_ms\": {:.9}, \"prefill_tile_gpu_ms\": {:.9}, \"prefill_transformer_setup_ms\": {:.9}, \"prefill_transformer_wall_ms\": {:.9}, \"prefill_transformer_gpu_ms\": {:.9}, \"prefill_transformer_layer_gpu_ms\": {}, \"prefill_representative_stage_gpu_ms\": {}, \"prefill_representative_attention_stage_gpu_ms\": {}, \"prefill_output_head_setup_ms\": {:.9}, \"prefill_output_head_wall_ms\": {:.9}, \"prefill_output_head_gpu_ms\": {:.9}, \"prefill_handoff_wall_ms\": {:.9}, \"prefill_handoff_gpu_ms\": {:.9}, \"prefill_handoff_host_ms\": {:.9}, \"prefill_unattributed_host_ms\": {:.9}, \"prefill_host_overhead_ms\": {:.9}, \"decoder_prepare_ms\": {:.9}, \"gen_first_transformer_wall_ms\": {:.9}, \"gen_first_transformer_gpu_ms\": {:.9}, \"gen_first_layer_gpu_ms\": [{}], \"gen_first_output_head_wall_ms\": {:.9}, \"gen_first_output_head_gpu_ms\": {:.9}, \"gen_steady_transformer_wall_ms\": {:.9}, \"gen_steady_transformer_gpu_ms\": {:.9}, \"gen_steady_layer_gpu_ms\": {}, \"gen_steady_output_head_wall_ms\": {:.9}, \"gen_steady_output_head_gpu_ms\": {:.9}, \"generation_command_buffers_per_token\": {}, \"generation_host_waits_per_token\": {}, \"generation_correctness_collection\": false, \"generation_layer_timing_collection\": {}, \"generation_stage_counter_collection\": {}, \"prefill_correctness_collection\": {}, \"prefill_layer_timing_collection\": {}}},\n  \"prefill_layer_profile\": {},\n  \"long_prefill_profile\": {},\n  \"stage_profile\": {},\n  \"paired_protocol_eligible\": {},\n  \"paired_protocol_blocker\": {}\n}}\n",
         report.context,
         report.gen_tokens,
         report.context,
@@ -7277,6 +7281,7 @@ pub fn write_engine_run_json<W: Write>(output: &mut W, report: &EngineRunReport)
         report.prefill_correctness_collection,
         report.prefill_layer_timing_collection,
         prefill_layer_profile,
+        report.long_prefill_profile.as_deref().unwrap_or("null"),
         stage_profile,
         paired_protocol_eligible,
         paired_protocol_blocker,
@@ -27897,6 +27902,7 @@ mod imp {
         transformer_setup_ms: f64,
         transformer_wall_ms: f64,
         transformer_gpu_ms: f64,
+        long_prefill_profile: Option<String>,
         transformer_layer_gpu_ms: Option<Vec<f64>>,
         representative_stage_gpu_ms: Option<Vec<f64>>,
         representative_attention_stage_gpu_ms: Option<Vec<f64>>,
@@ -56133,6 +56139,7 @@ mod imp {
                     retained_context,
                     false,
                     false,
+                    collect_steady_layer_times,
                 )?;
                 (context, None, report.selected_token, timing)
             } else {
@@ -56333,6 +56340,7 @@ mod imp {
             prefill_transformer_setup_ms: prefill_timing.transformer_setup_ms,
             prefill_transformer_wall_ms: prefill_timing.transformer_wall_ms,
             prefill_transformer_gpu_ms: prefill_timing.transformer_gpu_ms,
+            long_prefill_profile: prefill_timing.long_prefill_profile,
             prefill_transformer_layer_gpu_ms: prefill_timing.transformer_layer_gpu_ms,
             prefill_representative_stage_gpu_ms: prefill_timing.representative_stage_gpu_ms,
             prefill_representative_attention_stage_gpu_ms: prefill_timing
@@ -60860,6 +60868,7 @@ mod tests {
             prefill_transformer_setup_ms: 650.0,
             prefill_transformer_wall_ms: 16000.0,
             prefill_transformer_gpu_ms: 15500.0,
+            long_prefill_profile: None,
             prefill_transformer_layer_gpu_ms: None,
             prefill_representative_stage_gpu_ms: None,
             prefill_representative_attention_stage_gpu_ms: None,
@@ -61338,6 +61347,18 @@ mod tests {
         assert!(text.contains("\"stage\":\"flash_attention\""));
         assert!(text.contains("\"stage\":\"output_hc\""));
         assert!(text.contains("52 synchronized diagnostic command buffers"));
+        assert!(text.contains("\"paired_protocol_eligible\": false"));
+    }
+
+    #[test]
+    fn long_prefill_profile_alone_blocks_paired_eligibility() {
+        let mut report = engine_run_report();
+        report.long_prefill_profile = Some("{\"rows\":[]}".to_owned());
+        let mut output = Vec::new();
+        write_engine_run_json(&mut output, &report).unwrap();
+        let text = String::from_utf8(output).unwrap();
+        assert!(text.contains("\"long_prefill_profile\": {\"rows\":[]}"));
+        assert!(text.contains("native long-prefill stage timer collection"));
         assert!(text.contains("\"paired_protocol_eligible\": false"));
     }
 
