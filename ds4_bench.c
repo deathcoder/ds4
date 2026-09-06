@@ -668,7 +668,7 @@ int main(int argc, char **argv) {
             return 1;
         }
     }
-    fprintf(out, "ctx_tokens,prefill_tokens,prefill_tps,gen_tokens,gen_tps,gen_first_ms,gen_steady_tokens,gen_steady_tps,kvcache_bytes\n");
+    fprintf(out, "ctx_tokens,prefill_tokens,prefill_tps,gen_tokens,gen_tps,gen_first_ms,gen_steady_tokens,gen_steady_tps,kvcache_bytes,sampling_in_interval\n");
     fflush(out);
 
     const int eos = ds4_token_eos(engine);
@@ -690,6 +690,15 @@ int main(int argc, char **argv) {
         const double prefill_t0 = bench_now_sec();
         if (ds4_session_sync(session, &prefix, err, sizeof(err)) != 0) {
             fprintf(stderr, "ds4-bench: prefill to %d failed: %s\n", frontier, err);
+            rc = 1;
+            break;
+        }
+        /* Charge the first selection to prefill, then measure each decode
+         * evaluation together with selection/commit of its resulting token. */
+        int next_token = cfg.gen_tokens > 0
+            ? ds4_session_argmax_excluding(session, eos) : -1;
+        if (cfg.gen_tokens > 0 && next_token < 0) {
+            fprintf(stderr, "ds4-bench: failed to select the prefill token\n");
             rc = 1;
             break;
         }
@@ -743,7 +752,7 @@ int main(int argc, char **argv) {
                 rc = 1;
                 break;
             }
-            const int token = ds4_session_argmax_excluding(session, eos);
+            const int token = next_token;
             if (token < 0) {
                 fprintf(stderr, "ds4-bench: failed to choose non-EOS token at frontier %d\n", frontier);
                 rc = 1;
@@ -755,11 +764,24 @@ int main(int argc, char **argv) {
                 rc = 1;
                 break;
             }
+            next_token = ds4_session_argmax_excluding(session, eos);
+            if (next_token < 0) {
+                fprintf(stderr, "ds4-bench: failed to select the decoded token\n");
+                rc = 1;
+                break;
+            }
             const double token_t1 = bench_now_sec();
             if (i == 0) gen_first_sec = token_t1 - token_t0;
             else gen_steady_sec += token_t1 - token_t0;
-            if (gen_token_buf) gen_token_buf[gen_token_count++] = token;
+            if (gen_token_buf) gen_token_buf[gen_token_count++] = next_token;
             gen_done++;
+            /* Conformance only. The paired adapter never enables dumping. */
+            if (cfg.dump_frontier_logits_dir &&
+                write_frontier_logits_json(&cfg, engine, session,
+                                           frontier + i + 1, frontier + i) != 0) {
+                rc = 1;
+                break;
+            }
         }
         const double gen_t1 = bench_now_sec();
         if (cfg.show_output && gen_token_buf && gen_token_count > 0) {
@@ -797,7 +819,7 @@ int main(int argc, char **argv) {
         const double gen_sec = gen_t1 - gen_t0;
         const int gen_steady_tokens = gen_done > 1 ? gen_done - 1 : 0;
         fprintf(out,
-                "%d,%d,%.2f,%d,%.2f,%.3f,%d,%.2f,%llu\n",
+                "%d,%d,%.9f,%d,%.9f,%.9f,%d,%.9f,%llu,1\n",
                 frontier,
                 prefill_tokens,
                 prefill_sec > 0.0 ? (double)prefill_tokens / prefill_sec : 0.0,

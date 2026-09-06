@@ -321,6 +321,10 @@ kernel void kernel_topk_stream512(
         threadgroup_barrier(mem_flags::mem_threadgroup);
 
         const uint used = atomic_load_explicit(&count, memory_order_relaxed);
+        // Every SIMD group must snapshot count before any group advances to
+        // the next batch and increments it. The insertion barrier above does
+        // not protect these reads from the next iteration's atomic writes.
+        threadgroup_barrier(mem_flags::mem_threadgroup);
         if (used > stream_cap - ntg) {
             for (uint j = used + tid; j < stream_cap; j += ntg) keys[j] = 0u;
             threadgroup_barrier(mem_flags::mem_threadgroup);
