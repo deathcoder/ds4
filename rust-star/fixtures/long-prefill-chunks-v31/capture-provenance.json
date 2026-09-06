@@ -1,0 +1,65 @@
+{
+  "schema": "rust-star-long-prefill-chunk-targets-v1",
+  "producer_commit": "d35fb12d01d500b9cefcef24092c295687ceaf7e",
+  "producer_tree": "617415ee9f8ea7dc176d63dada1d5a7582063824",
+  "executable_sha256": "8e37f40cef769e34ef82a202d202a42b267322437ab8100c1303cc6aa8583bf3",
+  "model_sha256": "ca22ae2f838e14077c22bc1c1417b71b45b5e5a3687bd96c2ac6e17fdb6261c0",
+  "prompt_sha256": "f53e0d80cb2d4492d24ebd63c7000c397b16ae70f9bf09b3763e5d8323ec209f",
+  "chunk_tokens": 4096,
+  "layers": 43,
+  "hc_width": 16384,
+  "payload_dtype": "f32le",
+  "repetitions": 2,
+  "accepted_frontiers": [
+    12288,
+    16384,
+    20480,
+    24576
+  ],
+  "command": [
+    "ds4-bench.accepted-oracle-v3",
+    "--metal",
+    "--model",
+    "MODEL",
+    "--prompt-file",
+    "speed-bench/promessi_sposi.txt",
+    "--ctx-start",
+    "FRONTIER",
+    "--ctx-max",
+    "FRONTIER",
+    "--gen-tokens",
+    "0",
+    "--prefill-chunk",
+    "4096",
+    "--dump-frontier-logits-dir",
+    "OUTPUT/logits"
+  ],
+  "environment": {
+    "DS4_METAL_GRAPH_DUMP_PREFIX": "OUTPUT/oracle",
+    "DS4_METAL_GRAPH_DUMP_POS": "FRONTIER - 4096",
+    "DS4_METAL_GRAPH_DUMP_NAME": "hc_ffn_post"
+  },
+  "validation": "Each accepted frontier has identical size/SHA256/FNV across two independent processes for all 43 HC payloads; frontier logits JSON also repeats exactly. Raw temporary payloads compacted after validation.",
+  "rejected_frontiers": {
+    "28672": "Independent captures first differ at layer 15, propagating through layer 42 and frontier logits; not an accepted target."
+  },
+  "inventories": {
+    "frontier-12288-a.json": "313c30c5c500deac8557f0ea59e9888c20251c0e45239e704778796386083f37",
+    "frontier-12288-b.json": "313c30c5c500deac8557f0ea59e9888c20251c0e45239e704778796386083f37",
+    "frontier-16384-a.json": "6b6be9dfbbcf21531e2eaeed473108da444dd41058b2daa59ce7d670b1c6d308",
+    "frontier-16384-b.json": "6b6be9dfbbcf21531e2eaeed473108da444dd41058b2daa59ce7d670b1c6d308",
+    "frontier-20480-a.json": "6015f7335b34d0451ab2f0b9a86695911d5188d969d9edc538b21bbd070ef4bd",
+    "frontier-20480-b.json": "6015f7335b34d0451ab2f0b9a86695911d5188d969d9edc538b21bbd070ef4bd",
+    "frontier-24576-a.json": "0b102e815f7f6c94a2f93434ac8697bd0974a26e19f14ee12da9ab3f04bfd56d",
+    "frontier-24576-b.json": "0b102e815f7f6c94a2f93434ac8697bd0974a26e19f14ee12da9ab3f04bfd56d"
+  },
+  "unverified_frontiers": [
+    28672,
+    32768
+  ],
+  "full_output_reference": [
+    "prefill-frontier-32768-v3",
+    "prefill-decode-32768-v3"
+  ],
+  "validation_contract": "Internal HC targets are required only for repeated captures. Later HC snapshots are diagnostic, never a claimed C0 match. The immutable full prefill logits and complete repeated 128-step logits remain mandatory for end-to-end 32K C0."
+}

@@ -4180,6 +4180,87 @@ pub struct RemainingPrefillOutputReport {
 }
 
 // Immutable oracle targets, installed only after independent captures agree.
+#[derive(Clone, Debug)]
+pub struct LongPrefillChunkProbeReport {
+    pub frontier: u32,
+    pub internal_hc_collection: bool,
+    pub chunks: Vec<(u32, [u64; 43])>,
+    pub checked_decode_steps: u32,
+    pub decode_logits_checksum: u64,
+    pub decode_tokens_checksum: u64,
+    pub selected_token: u32,
+    pub checked_logits: u32,
+    pub logits_checksum: u64,
+}
+include!("long_prefill_checksums.rs");
+
+pub fn write_long_prefill_chunk_probe_json<W: Write>(
+    output: &mut W,
+    report: &LongPrefillChunkProbeReport,
+) -> Result<()> {
+    if report.frontier < 12288
+        || report.frontier > 32768
+        || report.frontier % 4096 != 0
+        || (report.internal_hc_collection
+            && report.chunks.len() != ((report.frontier - 8192) / 4096) as usize)
+        || (!report.internal_hc_collection
+            && (report.frontier != 32768 || !report.chunks.is_empty()))
+    {
+        return Err(Error::invalid("incomplete long-prefill chunk report"));
+    }
+    for (index, (end, actual)) in report.chunks.iter().enumerate() {
+        let expected = LONG_PREFILL_CHUNK_CHECKSUMS.iter().find(|(n, _)| n == end);
+        if *end != 12288 + index as u32 * 4096
+            || expected.is_some_and(|(_, expected)| expected != actual)
+            || (expected.is_none() && *end < 28672)
+        {
+            return Err(Error::invalid(
+                "long-prefill chunk report differs from pinned layer outputs",
+            ));
+        }
+    }
+    let complete = report.frontier == 32768;
+    if complete {
+        let (_, expected) = prefill_frontier_32768_fixture()?;
+        if report.checked_logits != 129280
+            || report.logits_checksum != checksum_f32(&expected)
+            || report.selected_token != 85166
+        {
+            return Err(Error::invalid("32K full-logit report differs from oracle"));
+        }
+        let (tokens, logits) = prefill_decode_32768_fixture()?;
+        if report.checked_decode_steps != 128
+            || report.decode_logits_checksum != checksum_f32(&logits)
+            || report.decode_tokens_checksum != checksum_u32(&tokens[1..])
+        {
+            return Err(Error::invalid("32K full decode report differs from oracle"));
+        }
+    } else if report.checked_logits != 0
+        || report.checked_decode_steps != 0
+        || report.decode_logits_checksum != 0
+        || report.decode_tokens_checksum != 0
+    {
+        return Err(Error::invalid(
+            "partial frontier cannot claim 32K logits or decode",
+        ));
+    }
+    write!(output,"{{\n  \"schema\": \"rust-star-long-prefill-chunk-probe-v1\",\n  \"frontier_tokens\": {},\n  \"internal_hc_collection\": {},\n  \"chunks\": [",report.frontier,report.internal_hc_collection)?;
+    for (index, (end, hashes)) in report.chunks.iter().enumerate() {
+        if index > 0 {
+            write!(output, ",")?;
+        }
+        write!(
+            output,
+            "{{\"end\":{},\"layers\":43,\"hc_checksums\":{:?},\"hc_checked_layers\":{},\"hc_c0_match\":{}}}",
+            end, hashes,
+            if LONG_PREFILL_CHUNK_CHECKSUMS.iter().any(|(n,_)| n == end) {43} else {0},
+            if LONG_PREFILL_CHUNK_CHECKSUMS.iter().any(|(n,_)| n == end) {"true"} else {"null"}
+        )?;
+    }
+    writeln!(output,"],\n  \"checked_decode_steps\": {},\n  \"decode_logits_checksum\": {},\n  \"decode_tokens_checksum\": {},\n  \"checked_logits\": {},\n  \"logits_checksum\": {},\n  \"selected_token\": {},\n  \"complete_32k_c0_claim\": {},\n  \"throughput_claim\": false\n}}",report.checked_decode_steps,report.decode_logits_checksum,report.decode_tokens_checksum,report.checked_logits,report.logits_checksum,report.selected_token,complete)?;
+    Ok(())
+}
+
 include!("remaining_prefill_checksums.rs");
 
 #[derive(Clone, Debug)]
@@ -6751,7 +6832,7 @@ pub fn write_prefill_decode_frontier_probe_json<W: Write>(
 }
 
 pub fn write_engine_run_json<W: Write>(output: &mut W, report: &EngineRunReport) -> Result<()> {
-    if report.context != 2048
+    if !matches!(report.context, 2048 | 32768)
         || report.gen_tokens != 128
         || report.gen_steady_tokens != 127
         || report.model_warm_bytes == 0
@@ -6918,7 +6999,12 @@ pub fn write_engine_run_json<W: Write>(output: &mut W, report: &EngineRunReport)
                         > 1.0e-3
             })
         || (report.gen_first_ms + report.gen_steady_ms - report.gen_ms).abs() > 1.0e-6
-        || report.prefill_selected_token != 15342
+        || report.prefill_selected_token
+            != if report.context == 32768 {
+                85166
+            } else {
+                15342
+            }
         || !report.transcript_match
         || report.generation_correctness_collection
         || report.generation_command_buffers_per_token != 44
@@ -6927,6 +7013,19 @@ pub fn write_engine_run_json<W: Write>(output: &mut W, report: &EngineRunReport)
         return Err(Error::invalid(
             "Rust Star engine run has inconsistent measurement metadata",
         ));
+    }
+    if report.context == 32768 {
+        let tokens = decode_u32_fixture(
+            include_bytes!("../../fixtures/prefill-decode-32768-v3/token-ids.u32le.bin"),
+            "32K engine transcript",
+        )?;
+        if report.final_selected_token != 14
+            || report.selected_tokens_checksum != checksum_u32(&tokens[1..])
+        {
+            return Err(Error::invalid(
+                "32K engine transcript differs from the pinned oracle",
+            ));
+        }
     }
     let prefill_tps = f64::from(report.context) * 1000.0 / report.prefill_ms;
     let gen_tps = f64::from(report.gen_tokens) * 1000.0 / report.gen_ms;
@@ -12808,6 +12907,32 @@ fn prefill_frontier_2048_fixture() -> Result<(Vec<u32>, Vec<f32>, Vec<f32>)> {
         ));
     }
     Ok((tokens, batch_logits, decode_logits))
+}
+
+fn prefill_decode_32768_fixture() -> Result<(Vec<u32>, Vec<f32>)> {
+    let tokens = decode_u32_fixture(
+        include_bytes!("../../fixtures/prefill-decode-32768-v3/token-ids.u32le.bin"),
+        "32K decode token transcript",
+    )?;
+    let logits = decode_f32_fixture(
+        include_bytes!("../../fixtures/prefill-decode-32768-v3/decode-logits.f32le.bin"),
+        "32K full decode logits",
+    )?;
+    if tokens.len() != 129
+        || tokens[0] != 85166
+        || tokens[128] != 14
+        || logits.len() != 128 * 129280
+    {
+        return Err(Error::invalid("invalid 32K decode fixture geometry"));
+    }
+    for (step, row) in logits.chunks_exact(129280).enumerate() {
+        if lowest_id_argmax(row)? != tokens[step + 1] {
+            return Err(Error::invalid(
+                "32K decode fixture transcript differs from full logits",
+            ));
+        }
+    }
+    Ok((tokens, logits))
 }
 
 fn prefill_frontier_32768_fixture() -> Result<(Vec<u32>, Vec<f32>)> {
@@ -24553,6 +24678,54 @@ mod imp {
             error: *mut c_char,
             error_bytes: usize,
         ) -> i32;
+        fn rust_star_metal_begin_long_prefill_prefix(
+            context: *mut c_void,
+            checksums: *mut u64,
+            error: *mut c_char,
+            error_bytes: usize,
+        ) -> i32;
+        fn rust_star_metal_bind_long_prefill_prefix(
+            context: *mut c_void,
+            layer: u32,
+            error: *mut c_char,
+            error_bytes: usize,
+        ) -> i32;
+        fn rust_star_metal_finish_long_prefill_prefix(
+            context: *mut c_void,
+            layer: u32,
+            checksum: *mut u64,
+            error: *mut c_char,
+            error_bytes: usize,
+        ) -> i32;
+        fn rust_star_metal_begin_long_prefill_chunk(
+            context: *mut c_void,
+            chunk_start: u32,
+            error: *mut c_char,
+            error_bytes: usize,
+        ) -> i32;
+        fn rust_star_metal_bind_long_prefill_layer(
+            context: *mut c_void,
+            layer: u32,
+            error: *mut c_char,
+            error_bytes: usize,
+        ) -> i32;
+        fn rust_star_metal_finish_long_prefill_layer(
+            context: *mut c_void,
+            layer: u32,
+            checksum: *mut u64,
+            error: *mut c_char,
+            error_bytes: usize,
+        ) -> i32;
+        fn rust_star_metal_prepare_long_prefill_layer2_q(
+            context: *mut c_void,
+            model_mapping: *const c_void,
+            model_bytes: u64,
+            q_b_offset: u64,
+            q_b_bytes: u64,
+            result: *mut RawSparseIndexedResult,
+            error: *mut c_char,
+            error_bytes: usize,
+        ) -> i32;
         fn rust_star_metal_release_remaining_prefill_transients(
             context: *mut c_void,
             completed_layer: u32,
@@ -24775,6 +24948,7 @@ mod imp {
     }
 
     include!("remaining_prefill.rs");
+    include!("long_prefill.rs");
 
     struct Context(*mut c_void);
 
@@ -25382,7 +25556,7 @@ mod imp {
                     error_text(&error)
                 )));
             }
-            if (prefill_rows != 2_048 && prefill_rows != 4_096)
+            if !matches!(prefill_rows, 2_048 | 4_096 | 32_768)
                 || raw.layers != 43
                 || raw.raw_rows_per_layer != 128
                 || raw.ratio4_rows_per_layer != prefill_rows / 4
@@ -26103,7 +26277,8 @@ mod imp {
         if rows != 32 && rows != 64 {
             return Err(Error::invalid("invalid prefill boundary tile width"));
         }
-        if (prefill_rows != 2048 && prefill_rows != 4096 && prefill_rows != 8192)
+        if (prefill_rows != 2048
+            && (prefill_rows < 4096 || prefill_rows > 32768 || prefill_rows % 4096 != 0))
             || prefill_rows < rows
             || prefill_rows % rows != 0
             || position_start % rows != 0
@@ -27980,6 +28155,12 @@ mod imp {
     pub fn run_long_prefill_continuation_bootstrap_probe(
         model: &MappedModel,
     ) -> Result<LongPrefillContinuationBootstrapProbeReport> {
+        Ok(run_complete_8k_in_context(model)?.1)
+    }
+
+    fn run_complete_8k_in_context(
+        model: &MappedModel,
+    ) -> Result<(Context, LongPrefillContinuationBootstrapProbeReport)> {
         const FRONTIER_ROWS: u32 = 8_192;
         const CHUNK_ROWS: u32 = 4_096;
         const TILE_ROWS: u32 = 64;
@@ -28018,13 +28199,12 @@ mod imp {
         } else {
             None
         };
-        drop(context);
         if continuation.is_some() {
             return Err(Error::invalid(
                 "timing-only long-prefill continuation unexpectedly collected diagnostics",
             ));
         }
-        Ok(LongPrefillContinuationBootstrapProbeReport {
+        let report = LongPrefillContinuationBootstrapProbeReport {
             remaining_layers,
             remaining_output,
             fixture_id: PREFILL_FRONTIER_8192_FIXTURE_ID,
@@ -28384,7 +28564,8 @@ mod imp {
                 .layer14_continuation_wrapped_model_ranges,
             layer14_continuation_pointer_matches: layer23_loop.layer14_continuation_pointer_matches,
             layer14_continuation_tail_checksums: layer23_loop.layer14_continuation_tail_checksums,
-        })
+        };
+        Ok((context, report))
     }
 
     pub fn run_long_prefill_sequential_continuation_probe(
@@ -55790,9 +55971,9 @@ mod imp {
     }
 
     fn validate_engine_measurement_shape(context_tokens: u32, gen_tokens: u32) -> Result<()> {
-        if context_tokens != 2048 || gen_tokens != 128 {
+        if !matches!(context_tokens, 2048 | 32768) || gen_tokens != 128 {
             return Err(Error::invalid(
-                "the initial Rust Star engine measurement supports exactly context=2048 and gen_tokens=128",
+                "Rust Star engine measurement supports context=2048 or 32768 and gen_tokens=128",
             ));
         }
         Ok(())
@@ -55806,7 +55987,14 @@ mod imp {
         retained_context: Option<Context>,
         model_warm: crate::model::ModelWarmReport,
     ) -> Result<(Context, EngineRunReport, bool)> {
-        let (oracle_inputs, _, _) = prefill_decode_frontier_4099_fixture()?;
+        let oracle_inputs = if context_tokens == 32768 {
+            decode_u32_fixture(
+                include_bytes!("../../fixtures/prefill-decode-32768-v3/token-ids.u32le.bin"),
+                "32K engine transcript",
+            )?
+        } else {
+            prefill_decode_frontier_4099_fixture()?.0
+        };
         let required_inputs = gen_tokens as usize + 1;
         if oracle_inputs.len() < required_inputs {
             return Err(Error::invalid(
@@ -55815,21 +56003,32 @@ mod imp {
         }
         let prefill_started = Instant::now();
         let (context, prefill_report, prefill_selected_token, prefill_timing) =
-            match retained_context {
-                Some(context) => run_prefill_layers012_attention_loop_with_context(
+            if context_tokens == 32768 {
+                let (context, report, timing) = run_long_prefill_with_context(
                     model,
-                    context,
-                    0.0,
+                    context_tokens,
+                    retained_context,
                     false,
-                    collect_steady_layer_times,
-                    2048,
-                    None,
-                )?,
-                None => run_prefill_layers012_attention_loop_in_context(
-                    model,
                     false,
-                    collect_steady_layer_times,
-                )?,
+                )?;
+                (context, None, report.selected_token, timing)
+            } else {
+                match retained_context {
+                    Some(context) => run_prefill_layers012_attention_loop_with_context(
+                        model,
+                        context,
+                        0.0,
+                        false,
+                        collect_steady_layer_times,
+                        2048,
+                        None,
+                    )?,
+                    None => run_prefill_layers012_attention_loop_in_context(
+                        model,
+                        false,
+                        collect_steady_layer_times,
+                    )?,
+                }
             };
         if prefill_report.is_some() {
             return Err(Error::invalid(
@@ -56037,7 +56236,7 @@ mod imp {
             selected_tokens_checksum: checksum_u32(&selected_tokens),
             transcript_match: true,
             prefill_correctness_collection: false,
-            prefill_layer_timing_collection: collect_steady_layer_times,
+            prefill_layer_timing_collection: collect_steady_layer_times && context_tokens == 2048,
             generation_correctness_collection: false,
             generation_layer_timing_collection: collect_steady_layer_times,
             generation_stage_counter_collection: collect_steady_layer_times,
@@ -57833,6 +58032,20 @@ mod imp {
 #[cfg(not(target_os = "macos"))]
 mod imp {
     use super::*;
+    pub fn run_long_prefill_chunk_probe(
+        _model: &MappedModel,
+        _frontier: u32,
+    ) -> Result<LongPrefillChunkProbeReport> {
+        Err(Error::invalid("long prefill requires macOS Metal"))
+    }
+
+    pub fn run_long_prefill_output_probe(
+        _model: &MappedModel,
+    ) -> Result<LongPrefillChunkProbeReport> {
+        Err(Error::invalid(
+            "long-prefill output probe requires macOS Metal",
+        ))
+    }
 
     pub fn run_long_prefill_sequential_continuation_probe(
         model: &MappedModel,
@@ -58537,7 +58750,8 @@ pub use imp::{
     run_layers012345_decode_probe, run_layers0123_bench, run_layers0123_chained_probe,
     run_layers0123_decode_probe, run_layers0123_probe, run_layers012_chained_probe,
     run_layers012_probe, run_layers01_probe, run_layers0_to_42_decode_probe,
-    run_long_prefill_bootstrap_probe, run_long_prefill_continuation_bootstrap_probe,
+    run_long_prefill_bootstrap_probe, run_long_prefill_chunk_probe,
+    run_long_prefill_continuation_bootstrap_probe, run_long_prefill_output_probe,
     run_long_prefill_sequential_continuation_probe, run_long_prefill_transformer_probe,
     run_moe_output_probe, run_position127_decoder_probe, run_prefill_decode_frontier_probe,
     run_prefill_frontier_probe, run_prefill_layer0_boundary_probe,
@@ -58556,6 +58770,52 @@ pub use imp::{
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn long_prefill_report_rejects_missing_reordered_and_changed_layers() {
+        let mut report = super::LongPrefillChunkProbeReport {
+            frontier: 16384,
+            internal_hc_collection: true,
+            chunks: super::LONG_PREFILL_CHUNK_CHECKSUMS[..2].to_vec(),
+            checked_decode_steps: 0,
+            decode_logits_checksum: 0,
+            decode_tokens_checksum: 0,
+            selected_token: 0,
+            checked_logits: 0,
+            logits_checksum: 0,
+        };
+        let accepted = |report: &super::LongPrefillChunkProbeReport| {
+            super::write_long_prefill_chunk_probe_json(&mut Vec::new(), report).is_ok()
+        };
+        assert!(accepted(&report));
+        report.chunks.swap(0, 1);
+        assert!(!accepted(&report));
+        report.chunks.swap(0, 1);
+        report.chunks[1].1[42] ^= 1;
+        assert!(!accepted(&report));
+        report.chunks[1].1[42] ^= 1;
+        report.checked_logits = 129280;
+        assert!(!accepted(&report));
+        report.checked_logits = 0;
+        report.chunks.pop();
+        assert!(!accepted(&report));
+        report.frontier = 12289;
+        assert!(!accepted(&report));
+        report.frontier = 28672;
+        report.chunks = super::LONG_PREFILL_CHUNK_CHECKSUMS.to_vec();
+        report.chunks.push((28672, [0; 43]));
+        let mut output = Vec::new();
+        super::write_long_prefill_chunk_probe_json(&mut output, &report).unwrap();
+        let text = String::from_utf8(output).unwrap();
+        assert!(text.contains("\"hc_checked_layers\":0,\"hc_c0_match\":null"));
+        assert!(text.contains("\"complete_32k_c0_claim\": false"));
+        report.frontier = 32768;
+        report.chunks.push((32768, [0; 43]));
+        report.checked_logits = 129280;
+        report.selected_token = 85166;
+        report.logits_checksum =
+            super::checksum_f32(&super::prefill_frontier_32768_fixture().unwrap().1);
+        assert!(!accepted(&report)); // Full prefill alone cannot claim the decode gate.
+    }
     use super::*;
 
     const POSITION2_FIXTURE_IDS: [&str; 8] = [
@@ -60796,6 +61056,27 @@ mod tests {
         assert!(text.contains("\"production_sparse_ratio4_claim\": true"));
         assert!(text.contains("\"output_logits_c0_bitwise_match\": true"));
         assert!(text.contains("\"throughput_claim\": false"));
+    }
+
+    #[test]
+    fn engine_32k_report_requires_the_full_pinned_transcript() {
+        let (tokens, logits) = prefill_decode_32768_fixture().unwrap();
+        assert_eq!(logits.len(), 128 * 129280);
+        let mut report = engine_run_report();
+        report.context = 32768;
+        report.prefill_selected_token = tokens[0];
+        report.final_selected_token = tokens[128];
+        report.selected_tokens_checksum = checksum_u32(&tokens[1..]);
+        let mut output = Vec::new();
+        write_engine_run_json(&mut output, &report).unwrap();
+        assert!(String::from_utf8(output)
+            .unwrap()
+            .contains("\"paired_protocol_eligible\": true"));
+        report.selected_tokens_checksum ^= 1;
+        assert!(write_engine_run_json(&mut Vec::new(), &report).is_err());
+        report.selected_tokens_checksum ^= 1;
+        report.prefill_selected_token = 15342;
+        assert!(write_engine_run_json(&mut Vec::new(), &report).is_err());
     }
 
     #[test]

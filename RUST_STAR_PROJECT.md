@@ -336,19 +336,20 @@ they describe whenever practical.
 ## Open Items
 
 Current implementation boundaries, evidence, and immediate actions are maintained
-in `RUST_STAR_JOURNAL.md`. As of 2026-09-06, the retained 4K-to-8K native chain
-is exact through all 43 layers and the output head: all 129,280 final FP32
-logits match the pinned 8K oracle. The complete 2K prefill/decode and
-paired development results are established controls, not pending scaffolds.
+in `RUST_STAR_JOURNAL.md`. As of 2026-09-06, native 32K prefill is exact through
+all 43 layers and the output head. Both diagnostic and output-only executions
+match all 129,280 immutable prefill logits and all 16,547,840 FP32 words over
+128 subsequent greedy decode steps. The complete 2K prefill/decode and 8K
+continuation remain established controls.
 
-- The September 5 shared-scheduler repair restores the exact standalone 2K
-  control and preserves the validated retained continuation gate.
-- The supplemental 8K full-logit C0 gate is complete under report schema v30.
-  Broaden native prefill, the eligible engine, and the exact transcript gate
-  to the accepted 32K frontier and later contexts.
+- Fresh and retained 32K engine validation and final 2K/8K regressions pass.
+  The next measured frontier is a pinned paired32K development comparison.
+- Internal HC targets repeat through 24K. Instrumented 28K/32K captures are
+  explicitly unverified; they do not replace the mandatory full-output C0 gate.
 - Preserve production batch arithmetic, GPU-owned history, exact shorter
-  controls, and the accepted retained-engine lifecycle during that work.
+  controls, and the accepted retained-engine lifecycle at later frontiers.
 - Run paired measurements at broader frontiers under the benchmark protocol;
-  existing 2K development gains do not establish the 256K headline result.
+  neither completed 32K correctness nor existing 2K development gains establish
+  the 256K headline result.
 - Reproduce the Q2 versus Q2/Q4 throughput observation under controlled runs.
 - Define the first coding-agent workload corpus before agent co-design claims.

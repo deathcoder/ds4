@@ -153,13 +153,15 @@ Status: `READY`
 Procedure:
 
 ```sh
-python3 rust-star/capture_oracle_v1.py \
+python3 rust-star/capture_oracle_v3.py \
   --model /absolute/path/to/DeepSeek-V4-Flash-0731-Q2-imatrix.gguf \
   --full \
   --repetitions 5
 ```
 
-This covers 2K, 32K, 128K, 256K, 512K, and 1M. Close memory-heavy applications
+Use the accepted oracle-v3 producer for new captures; oracle-v1 long-context
+results are quarantined historical evidence. This covers 2K, 32K, 128K, 256K,
+512K, and 1M. Close memory-heavy applications
 first. A 512K/1M capacity failure is evidence to preserve, not a reason to hide
 or retry it until it happens to pass.
 
@@ -170,22 +172,19 @@ Return evidence:
 
 ## M-005 — Execute the first paired DwarfStar/Rust Star run
 
-Status: `BLOCKED` only on timing-only native prefill. The Rust Star development
-producer and fresh-process adapter now exist, but the adapter correctly rejects
-the raw record while prefill diagnostic collection remains enabled. Native M1
-batched prefill now completes all 43 layers and full
-logits from empty state. One GPU-only handoff adopts every raw ring, compressed
-history, and recurrent state into the ordinary decoder representation. The
-continuous exact path then matches all 2,052 greedy positions through 4099,
-including complete logits and all 21 even layers' first production-default
-1,025-row sparse ratio-4 step. The separate seeded position-4099/8195 controls
-and sequential 2K diagnostic remain independent regressions; they are no
-longer blockers for end-to-end correctness.
+Status: `DONE` (2026-08-27; ledger corrected 2026-09-06)
 
-The first observed 2K/128 development run reached the timed generation loop,
-but sampling showed a 66.9 GB peak caused by the retained prefill correctness
-fixtures and outputs. It ended without installing the atomic engine-run JSON,
-so it is failure evidence and not a benchmark attempt eligible for retry rules.
+The timing-only producer and normalized adapter passed the first predeclared
+five-pair 2K/128 comparison with both warm-ups, alternating run order, and no
+failures or retries. Its immutable plan SHA-256 is
+`4eeee3a90e830ccfc446e6762a8ad55a34c1792b3d484b2ef6f702f5665b81da`.
+Independent aggregation reproduced the summary. Evidence remains in
+`rust-star/.work/paired-2k-128-983d5f3/` and the corresponding journal entry.
+Later 2K optimization comparisons are recorded in the journal; they do not
+establish broader-context performance. The earlier memory-heavy failed
+bring-up remains historical failure evidence there.
+
+The procedure below remains the template for future paired frontiers.
 
 Prerequisites:
 
@@ -237,4 +236,4 @@ remote access merely to save a manual benchmark run.
 
 ## Completed Tasks
 
-None yet.
+M-002, M-003, and M-005 are complete; their evidence is retained above.

@@ -1,0 +1,217 @@
+{
+  "oracle_hc_ffn_post-0_pos8192.bin": {
+    "bytes": 268435456,
+    "sha256": "55556c335f33e66ce564fe6e37bace758ab64c844a1cbd4112b094f04349fbb5",
+    "fnv1a_u32": "7eedf3e786bffdff"
+  },
+  "oracle_hc_ffn_post-10_pos8192.bin": {
+    "bytes": 268435456,
+    "sha256": "bc586bc5456232880f45b99228ca7b5e76e771a9a73eaf4c33ba846a34d8c7d9",
+    "fnv1a_u32": "628d62d32c67a567"
+  },
+  "oracle_hc_ffn_post-11_pos8192.bin": {
+    "bytes": 268435456,
+    "sha256": "185f49832619b501a466d4bd25766a139bbc4be01badc4f4f286c153489d3eb4",
+    "fnv1a_u32": "496910742e8fbc99"
+  },
+  "oracle_hc_ffn_post-12_pos8192.bin": {
+    "bytes": 268435456,
+    "sha256": "652e6a5eddcc67782ac2a50da86eae7c9e2ec03be30a20fbf819a0209d568ad6",
+    "fnv1a_u32": "3489005f7045b515"
+  },
+  "oracle_hc_ffn_post-13_pos8192.bin": {
+    "bytes": 268435456,
+    "sha256": "096630fe6980308b96efaa73b91b1f57fff27b2b05fa72a9b835dffa67232bd6",
+    "fnv1a_u32": "bfe09679c160704e"
+  },
+  "oracle_hc_ffn_post-14_pos8192.bin": {
+    "bytes": 268435456,
+    "sha256": "90b2b7b36a1abc9021561b0028aaf26589172235eac9fff985eb1e5f9eb53752",
+    "fnv1a_u32": "08b9db35dec40f27"
+  },
+  "oracle_hc_ffn_post-15_pos8192.bin": {
+    "bytes": 268435456,
+    "sha256": "57255149b10230d363aa9b3521b3cbf800a14c739c74dfd3992abdbbd5eda232",
+    "fnv1a_u32": "846c06d6611b73ef"
+  },
+  "oracle_hc_ffn_post-16_pos8192.bin": {
+    "bytes": 268435456,
+    "sha256": "4517421b86b8c3b0aa720eaae60eb2265f53f9f794aebf8a710acb3d689bdd18",
+    "fnv1a_u32": "4090ff034a393373"
+  },
+  "oracle_hc_ffn_post-17_pos8192.bin": {
+    "bytes": 268435456,
+    "sha256": "6bb67f3a044a6745e1799757f1a19f1e843c2515023100de4d8ba9fb5493f0b1",
+    "fnv1a_u32": "f0cf36b58a7bc6e7"
+  },
+  "oracle_hc_ffn_post-18_pos8192.bin": {
+    "bytes": 268435456,
+    "sha256": "249440a24c6e5386274326803b2f475f9734647c68facd0f91b680e63268e8c5",
+    "fnv1a_u32": "543386ae19f65fa2"
+  },
+  "oracle_hc_ffn_post-19_pos8192.bin": {
+    "bytes": 268435456,
+    "sha256": "ba0f4771dcb63e1bc7109dff2f28fd8db3c77de92f08515813c7e34549e57b43",
+    "fnv1a_u32": "f84c978a01edb685"
+  },
+  "oracle_hc_ffn_post-1_pos8192.bin": {
+    "bytes": 268435456,
+    "sha256": "567c82f313a7d3278d337b2aca393f3f05e3e119bd789b74a926db51f79e3879",
+    "fnv1a_u32": "337df5e8e488d82c"
+  },
+  "oracle_hc_ffn_post-20_pos8192.bin": {
+    "bytes": 268435456,
+    "sha256": "8c812a5e58e96533dcb458e63536d0a3d92a890c08dc51fc35e8cb9ea6446573",
+    "fnv1a_u32": "a760e5857124836c"
+  },
+  "oracle_hc_ffn_post-21_pos8192.bin": {
+    "bytes": 268435456,
+    "sha256": "70c70959d9d5df15443b1abec6485faa76fbd81c784bc29c748c1d53beb94210",
+    "fnv1a_u32": "f5896ececb1d24fb"
+  },
+  "oracle_hc_ffn_post-22_pos8192.bin": {
+    "bytes": 268435456,
+    "sha256": "8a47dad661fd4ed44ecb0d432b8297aba87cfe6c35ae44e6432fb5664b09aef9",
+    "fnv1a_u32": "0cecab29239b1e60"
+  },
+  "oracle_hc_ffn_post-23_pos8192.bin": {
+    "bytes": 268435456,
+    "sha256": "db0df817860ae4dd457d3fb69262d0359ae36f1dcb9ef51e80cbc8c36d3809d2",
+    "fnv1a_u32": "683b304355d1852a"
+  },
+  "oracle_hc_ffn_post-24_pos8192.bin": {
+    "bytes": 268435456,
+    "sha256": "3bacb7241e4d4daa6e62205fcc23d996dda6a4f30ed12bcb17719ac968ff9ae3",
+    "fnv1a_u32": "369a0161f0c81efc"
+  },
+  "oracle_hc_ffn_post-25_pos8192.bin": {
+    "bytes": 268435456,
+    "sha256": "dd1dd778a55d7ed0da4d2188b1d029f55265dea418ec26dee7fd7bde0327252c",
+    "fnv1a_u32": "6b115d70519f22e9"
+  },
+  "oracle_hc_ffn_post-26_pos8192.bin": {
+    "bytes": 268435456,
+    "sha256": "b01f3a296ed140032705f6ab264147b1d897f32bd84eea94c635bb68ff320883",
+    "fnv1a_u32": "1c7051c37a826f73"
+  },
+  "oracle_hc_ffn_post-27_pos8192.bin": {
+    "bytes": 268435456,
+    "sha256": "975dbe789f597ff512eddcfc0c7db28295de5fa1b7abb29a761710e658432e09",
+    "fnv1a_u32": "a53f4e49b7730e6e"
+  },
+  "oracle_hc_ffn_post-28_pos8192.bin": {
+    "bytes": 268435456,
+    "sha256": "fc36d73af8a818909b619732093ca5780be7169897f9b883e2ed531d11d6509d",
+    "fnv1a_u32": "9f56b511a682692a"
+  },
+  "oracle_hc_ffn_post-29_pos8192.bin": {
+    "bytes": 268435456,
+    "sha256": "58b9d7136476670b80c8e603822d54ebd3bd8defd1b6b41e0dd8274aa29abf10",
+    "fnv1a_u32": "a6aa48ad5b97c6e3"
+  },
+  "oracle_hc_ffn_post-2_pos8192.bin": {
+    "bytes": 268435456,
+    "sha256": "1c88883d3b4a3a281628dd254956a61f324e0cd40010d4e8ae73fc2a6f545ed7",
+    "fnv1a_u32": "b34f5ee0eb5b4970"
+  },
+  "oracle_hc_ffn_post-30_pos8192.bin": {
+    "bytes": 268435456,
+    "sha256": "bc261859a23e510f06840b3f68f4c3be63edd7d7635dc3cc54542b2b3558a3ee",
+    "fnv1a_u32": "00920bb99195a521"
+  },
+  "oracle_hc_ffn_post-31_pos8192.bin": {
+    "bytes": 268435456,
+    "sha256": "f38be9cdf512e328132f93618fd56b9ec56025ef76de224e54ac4787e5d68606",
+    "fnv1a_u32": "a49f397e9ba06aae"
+  },
+  "oracle_hc_ffn_post-32_pos8192.bin": {
+    "bytes": 268435456,
+    "sha256": "516663974b9be33b870a58e10dd00b135202f0c5ec50e26d3d64f2fd045e6b61",
+    "fnv1a_u32": "dfcfa39904c781e9"
+  },
+  "oracle_hc_ffn_post-33_pos8192.bin": {
+    "bytes": 268435456,
+    "sha256": "caccb6ddd5883e879bbee90baa78a6221ef8ee32d3ec76381b12fa1f1fcfbcaa",
+    "fnv1a_u32": "6a6fe4a820f2f2fc"
+  },
+  "oracle_hc_ffn_post-34_pos8192.bin": {
+    "bytes": 268435456,
+    "sha256": "eebbeee20b6cc5c5b131475c84f0f7b37948887e65af9b9ad5b819f51ee59b7c",
+    "fnv1a_u32": "aa5b3d4c12b51dea"
+  },
+  "oracle_hc_ffn_post-35_pos8192.bin": {
+    "bytes": 268435456,
+    "sha256": "75e00f3ff6f910de3c9bffff7123de5578072c6e63c2f627798007efcf288c11",
+    "fnv1a_u32": "4bfefabb01118983"
+  },
+  "oracle_hc_ffn_post-36_pos8192.bin": {
+    "bytes": 268435456,
+    "sha256": "a04a77212e24bea32177229dd131f70c07e729e57c40ae4c109b87c854df72de",
+    "fnv1a_u32": "2c4cdcfde93ddfbd"
+  },
+  "oracle_hc_ffn_post-37_pos8192.bin": {
+    "bytes": 268435456,
+    "sha256": "b8127a8b526f6aabb1e00baf8ba447db1b83c72bb2b82f89ab025d4a9bb02563",
+    "fnv1a_u32": "cfa3683c6d6a9f9d"
+  },
+  "oracle_hc_ffn_post-38_pos8192.bin": {
+    "bytes": 268435456,
+    "sha256": "308e23f35254407878f0aa1f2dceca661899be1d40fc1c14ecd068163918883e",
+    "fnv1a_u32": "5caa56d9c7ca5696"
+  },
+  "oracle_hc_ffn_post-39_pos8192.bin": {
+    "bytes": 268435456,
+    "sha256": "346d4b4c0cba0548bb7583d07df7e05f75ebf8948b18651d3569cb3260f07396",
+    "fnv1a_u32": "21c950a24b43bb84"
+  },
+  "oracle_hc_ffn_post-3_pos8192.bin": {
+    "bytes": 268435456,
+    "sha256": "5cb87fcccdf6c71d0077149ff7e488d8a397a80ba9fcca564754065fcaadcb86",
+    "fnv1a_u32": "d47ce3fc903d1e25"
+  },
+  "oracle_hc_ffn_post-40_pos8192.bin": {
+    "bytes": 268435456,
+    "sha256": "e15e28d6988a442c9a98a87d996a1dfe50714bedf597486b7aeb82fce620ab88",
+    "fnv1a_u32": "9f4785ab8362bc35"
+  },
+  "oracle_hc_ffn_post-41_pos8192.bin": {
+    "bytes": 268435456,
+    "sha256": "a29e68c7bca39c530cd6d6c546b0a86b6670217c1a39568e355e687c5a77f8a8",
+    "fnv1a_u32": "5f5aeacd339b1388"
+  },
+  "oracle_hc_ffn_post-42_pos8192.bin": {
+    "bytes": 268435456,
+    "sha256": "cd65a360d08b79fb4fb1196532fa3beb9a86496a6507cbebd3ef61d293221b66",
+    "fnv1a_u32": "d2ee8a344724b784"
+  },
+  "oracle_hc_ffn_post-4_pos8192.bin": {
+    "bytes": 268435456,
+    "sha256": "e0007e744e0431c4adb4b50dfc703c686e4021fff82d0289e74c463a4cb927fb",
+    "fnv1a_u32": "f7a9a5a721e2fb35"
+  },
+  "oracle_hc_ffn_post-5_pos8192.bin": {
+    "bytes": 268435456,
+    "sha256": "543e57b08aea2ef182be1aebd973ea896d03c5e060aad371200f911b712026d1",
+    "fnv1a_u32": "6faa9410c6d14794"
+  },
+  "oracle_hc_ffn_post-6_pos8192.bin": {
+    "bytes": 268435456,
+    "sha256": "22747d4488c2f4ffa29a8b0a0482c44d5adfd59018f105a90e58f5394fcc9100",
+    "fnv1a_u32": "8229481bf6ebed0a"
+  },
+  "oracle_hc_ffn_post-7_pos8192.bin": {
+    "bytes": 268435456,
+    "sha256": "21ea2b9b7bb209820c75ff224767a105a87af6feb9b3369fe3f3960657ec2185",
+    "fnv1a_u32": "ae54557db63ef6ef"
+  },
+  "oracle_hc_ffn_post-8_pos8192.bin": {
+    "bytes": 268435456,
+    "sha256": "635db53e677a0f84fe3d95fd20dd7b9db83ddb43e7d1ef72ee37e536a193840d",
+    "fnv1a_u32": "45ac54999bc4feb0"
+  },
+  "oracle_hc_ffn_post-9_pos8192.bin": {
+    "bytes": 268435456,
+    "sha256": "36265df9eb9c463b0f033be98b50485a24ed49399feeb581ee342e4068b90247",
+    "fnv1a_u32": "5852877cff84d14e"
+  }
+}

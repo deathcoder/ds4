@@ -2487,6 +2487,14 @@ int rust_star_metal_finish_prefill_layer14_rebuild(
 
 /* Bind layers 15--42 into the validated odd/even executor slots, preserving
  * live KV/compressor history while releasing consumed activation buffers. */
+int rust_star_metal_begin_long_prefill_prefix(void *, uint64_t *, char *, size_t);
+int rust_star_metal_bind_long_prefill_prefix(void *, uint32_t, char *, size_t);
+int rust_star_metal_finish_long_prefill_prefix(void *, uint32_t, uint64_t *, char *, size_t);
+int rust_star_metal_begin_long_prefill_chunk(void *context, uint32_t chunk_start, char *error, size_t error_bytes);
+int rust_star_metal_bind_long_prefill_layer(void *context, uint32_t layer, char *error, size_t error_bytes);
+int rust_star_metal_finish_long_prefill_layer(void *context, uint32_t layer, uint64_t *checksum, char *error, size_t error_bytes);
+int rust_star_metal_prepare_long_prefill_layer2_q(void *context, const void *model_mapping, uint64_t model_bytes, uint64_t q_b_offset, uint64_t q_b_bytes, rust_star_metal_sparse_indexed_result *result, char *error, size_t error_bytes);
+
 int rust_star_metal_release_remaining_prefill_transients(
     void *context, uint32_t completed_layer, char *error, size_t error_bytes);
 

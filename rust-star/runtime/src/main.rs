@@ -147,6 +147,57 @@ fn run() -> Result<()> {
     if command == "prefill-layers012-compressor-loop-probe" {
         return run_prefill_layers012_compressor_loop_probe_command(arguments.collect());
     }
+    if command == "long-prefill-chunk-probe" {
+        let mut args = arguments;
+        let model_path = args
+            .next()
+            .ok_or_else(|| Error::invalid(long_prefill_chunk_probe_usage()))?;
+        if matches!(model_path.to_str(), Some("--help") | Some("-h")) {
+            println!("{}", long_prefill_chunk_probe_usage());
+            return Ok(());
+        }
+        let mut frontier = 32768;
+        let mut output_only = false;
+        let mut output = None;
+        while let Some(flag) = args.next() {
+            match flag.to_str() {
+                Some("--output-only") => output_only = true,
+                Some("--context") => {
+                    frontier = args
+                        .next()
+                        .and_then(|s| s.to_str().and_then(|s| s.parse::<u32>().ok()))
+                        .ok_or_else(|| Error::invalid("invalid context"))?
+                }
+                Some("--json") => {
+                    output = Some(
+                        args.next()
+                            .ok_or_else(|| Error::invalid("missing JSON path"))?,
+                    )
+                }
+                _ => {
+                    return Err(Error::invalid(
+                        "expected --context, --json, or --output-only",
+                    ))
+                }
+            }
+        }
+        let model = MappedModel::open(Path::new(&model_path))?;
+        validate_resident_q2(model.gguf())?;
+        let report = if output_only {
+            if frontier != 32768 {
+                return Err(Error::invalid("--output-only requires context 32768"));
+            }
+            rust_star_runtime::metal::run_long_prefill_output_probe(&model)?
+        } else {
+            rust_star_runtime::metal::run_long_prefill_chunk_probe(&model, frontier)?
+        };
+        if let Some(path) = output {
+            let mut file = File::create(path)?;
+            rust_star_runtime::metal::write_long_prefill_chunk_probe_json(&mut file, &report)?;
+        }
+        println!("native prefill through {} tokens: all 43 layers executed, {} prefill logits and {} full-logit decode steps checked, selected token {}",report.frontier,report.checked_logits,report.checked_decode_steps,report.selected_token);
+        return Ok(());
+    }
     if command == "long-prefill-bootstrap-probe" {
         return run_long_prefill_bootstrap_probe_command(arguments.collect());
     }
@@ -5656,7 +5707,7 @@ fn usage() -> &'static str {
 
 fn full_usage() -> String {
     format!(
-        "{}\n  rust-star long-prefill-bootstrap-probe MODEL.gguf [OPTIONS]\n  rust-star long-prefill-continuation-bootstrap-probe MODEL.gguf [OPTIONS]\n  rust-star long-prefill-sequential-continuation-probe MODEL.gguf [OPTIONS]\n  rust-star long-prefill-transformer-probe MODEL.gguf [OPTIONS]\n  rust-star attention-output-nsg-bench MODEL.gguf [OPTIONS]\n  rust-star attention-rope-fusion-bench MODEL.gguf [OPTIONS]\n  rust-star qkv-pair-bench MODEL.gguf [OPTIONS]\n  rust-star qb-rows-bench MODEL.gguf [OPTIONS]\n  rust-star q-head-threads-bench [OPTIONS]\n  rust-star q-head-kv-fusion-bench [OPTIONS]\n  rust-star routed-nsg-bench MODEL.gguf [OPTIONS]\n  rust-star prefill-decode-frontier-probe MODEL.gguf [OPTIONS]\n  rust-star engine-measure MODEL.gguf --context N --gen-tokens N --json PATH\n  rust-star engine-profile MODEL.gguf --context N --gen-tokens N --json PATH\n  rust-star engine-retained-measure MODEL.gguf --context N --gen-tokens N --json PATH\n  rust-star retained-sparse-multimerge-probe MODEL.gguf [OPTIONS]\n  rust-star retained-decoder-step-probe MODEL.gguf [OPTIONS]",
+        "{}\n  rust-star long-prefill-chunk-probe MODEL.gguf [--context N] [--output-only] [--json PATH]\n  rust-star long-prefill-bootstrap-probe MODEL.gguf [OPTIONS]\n  rust-star long-prefill-continuation-bootstrap-probe MODEL.gguf [OPTIONS]\n  rust-star long-prefill-sequential-continuation-probe MODEL.gguf [OPTIONS]\n  rust-star long-prefill-transformer-probe MODEL.gguf [OPTIONS]\n  rust-star attention-output-nsg-bench MODEL.gguf [OPTIONS]\n  rust-star attention-rope-fusion-bench MODEL.gguf [OPTIONS]\n  rust-star qkv-pair-bench MODEL.gguf [OPTIONS]\n  rust-star qb-rows-bench MODEL.gguf [OPTIONS]\n  rust-star q-head-threads-bench [OPTIONS]\n  rust-star q-head-kv-fusion-bench [OPTIONS]\n  rust-star routed-nsg-bench MODEL.gguf [OPTIONS]\n  rust-star prefill-decode-frontier-probe MODEL.gguf [OPTIONS]\n  rust-star engine-measure MODEL.gguf --context N --gen-tokens N --json PATH\n  rust-star engine-profile MODEL.gguf --context N --gen-tokens N --json PATH\n  rust-star engine-retained-measure MODEL.gguf --context N --gen-tokens N --json PATH\n  rust-star retained-sparse-multimerge-probe MODEL.gguf [OPTIONS]\n  rust-star retained-decoder-step-probe MODEL.gguf [OPTIONS]",
         usage()
     )
 }
@@ -5865,16 +5916,20 @@ fn prefill_decode_frontier_probe_usage() -> &'static str {
     "usage: rust-star prefill-decode-frontier-probe MODEL.gguf [--json PATH]\n\nRuns exact native 2K batched prefill and full logits, adopts its retained raw, compressed, and recurrent state entirely on the GPU, then greedily decodes positions 2048--4099. The complete input transcript, immediate handoff logits, and first production-default 1,025-row sparse ratio-4 boundary logits must match repeated DwarfStar captures bit-for-bit. This synchronizes for correctness and is not a throughput claim."
 }
 
+fn long_prefill_chunk_probe_usage() -> &'static str {
+    "usage: rust-star long-prefill-chunk-probe MODEL.gguf [--context N] [--output-only] [--json PATH]\n\nRuns all 43 layers through a 4096-token frontier from 12288 through 32768 (default). Complete 32K correctness requires every immutable prefill logit and all 128 full decode rows. --output-only requires 32768 and disables internal HC readbacks while preserving full-output validation. Partial frontiers are diagnostic only."
+}
+
 fn engine_measurement_usage() -> &'static str {
-    "usage: rust-star engine-measure MODEL.gguf --context 2048 --gen-tokens 128 --json PATH\n\nRuns the exact native 2K prefill and a timed 128-token closed loop. Prefill and generation execute without diagnostic tensor collection. Command encoding, synchronized execution, GPU lowest-ID argmax, its eight-byte selection readback, and token commitment are included in their declared intervals. The selected-token transcript is validated after timing, and the raw record is eligible for the paired adapter only when both collection paths remain disabled."
+    "usage: rust-star engine-measure MODEL.gguf --context N --gen-tokens 128 --json PATH\n\nRuns exact native 2K or 32K prefill and a timed 128-token closed loop. Prefill and generation execute without diagnostic tensor collection. Command encoding, synchronized execution, GPU lowest-ID argmax, its eight-byte selection readback, and token commitment are included in their declared intervals. The selected-token transcript is validated after timing, and the raw record is eligible for the paired adapter only when both collection paths remain disabled."
 }
 
 fn engine_profile_usage() -> &'static str {
-    "usage: rust-star engine-profile MODEL.gguf --context 2048 --gen-tokens 128 --json PATH\n\nRuns the exact engine workload while splitting native prefill layers 2 through 42 into synchronized per-layer command buffers. Representative even layer 4 and odd layer 5 are additionally separated into attention/FFN and attention-internal QKV/RoPE, compressor/staging, Flash block preparation, FlashAttention, and output/HC intervals. It also collects every completed decode layer command buffer's GPU timestamps and decode Metal compute-stage counters across eight dispatch families. The selected-token transcript remains exact, but this perturbing mode is deliberately ineligible for paired claims."
+    "usage: rust-star engine-profile MODEL.gguf --context N --gen-tokens 128 --json PATH\n\nRuns the exact engine workload. At 32K only decode profiling is collected. At 2K this splits native prefill layers 2 through 42 into synchronized per-layer command buffers. Representative even layer 4 and odd layer 5 are additionally separated into attention/FFN and attention-internal QKV/RoPE, compressor/staging, Flash block preparation, FlashAttention, and output/HC intervals. It also collects every completed decode layer command buffer's GPU timestamps and decode Metal compute-stage counters across eight dispatch families. The selected-token transcript remains exact, but this perturbing mode is deliberately ineligible for paired claims."
 }
 
 fn retained_engine_measurement_usage() -> &'static str {
-    "usage: rust-star engine-retained-measure MODEL.gguf --context 2048 --gen-tokens 128 --json PATH\n\nRuns two exact 2K/128 engine cycles in one process and one Metal context. The first cycle fully charges model-page warming, context creation, and model residency. The second cycle reuses the established model mapping, Metal context, view cache, and residency set. Both transcripts must match the oracle. This lifecycle diagnostic is deliberately ineligible for the fresh-process paired protocol."
+    "usage: rust-star engine-retained-measure MODEL.gguf --context N --gen-tokens 128 --json PATH\n\nRuns two exact 2K/128 or 32K/128 engine cycles in one process and one Metal context. The first cycle fully charges model-page warming, context creation, and model residency. The second cycle reuses the established model mapping, Metal context, view cache, and residency set. Both transcripts must match the oracle. This lifecycle diagnostic is deliberately ineligible for the fresh-process paired protocol."
 }
 
 fn ratio128_compressor_replay_probe_usage() -> &'static str {

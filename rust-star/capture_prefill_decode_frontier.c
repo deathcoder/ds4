@@ -145,6 +145,13 @@ int main(int argc, char **argv) {
             return 1;
         }
         selected = ds4_session_argmax(session);
+        const char *step_dir = getenv("RUST_STAR_ORACLE_STEP_LOGITS_DIR");
+        if (step_dir) {
+            char step_path[4096];
+            int n = snprintf(step_path, sizeof(step_path), "%s/step_%03zu.f32le.bin", step_dir, index);
+            if (n < 0 || n >= (int)sizeof(step_path) || write_logits(session, engine, step_path)) return 1;
+        }
+
         if (position == (long)prefill_tokens &&
             write_logits(session, engine, argv[6])) {
             return 1;

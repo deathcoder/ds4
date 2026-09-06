@@ -1072,3 +1072,27 @@ the post-measurement C0 result.
 The replay always executes token 201 at decode position 1 and restores the
 pinned cache inputs. It is an execution/scheduler microbenchmark, not a decoder
 loop or token-throughput result.
+
+## Native continuation through 32K
+
+`long_prefill.rs` prepares model spans once, rebuilds the exact 4K prefix,
+and advances seven 4096-token chunks through all 43 layers. Absolute positions
+index raw/compressed history; chunk-local HC storage stays bounded to 4096 rows.
+The Objective-C context retains per-layer KV/compressor dictionaries while
+odd/even executor slots are rebound. Each new C entry point drains a local
+autorelease pool so obsolete history dictionaries do not accumulate across
+chunks.
+
+Ratio-4 prefix attention uses the established full-batch sparse schedule and
+a 4352-row padded raw allocation. Later chunks use the retained 4352-row ring
+and dynamic compressed/indexer capacities. Odd-layer Flash attention derives
+padding from the actual raw-plus-compressed extent. Model dimensions and
+reduction arithmetic remain fixed; chunk geometry alone changes.
+
+The 32K decoder handoff requires completed layer 42 and all 43 owned histories.
+It blits the last 128 raw rows plus compressed/recurrent state into decoder
+buffers, then releases prefill allocations. The C0 gate compares all 129280
+prefill words and all 16547840 words over 128 greedy decode steps. Internal
+28K/32K HC snapshots remain explicitly unverified because oracle diagnostic
+instrumentation perturbed some captures; all immutable output targets remain
+mandatory. Timing-only execution omits optional tensor/checksum readbacks.

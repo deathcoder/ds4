@@ -1,0 +1,96 @@
+{
+  "schema": "rust-star-differential-fixture-v1",
+  "fixture_id": "dwarfstar-oracle-v3-prefill-decode-32768",
+  "captured_at_utc": "2026-09-06T08:11:12.888911Z",
+  "oracle": {
+    "id": "oracle-v3",
+    "repository": "https://github.com/deathcoder/ds4.git",
+    "commit": "d35fb12d01d500b9cefcef24092c295687ceaf7e",
+    "tree": "617415ee9f8ea7dc176d63dada1d5a7582063824",
+    "capture_executable_sha256": "335e7b7a76e522adb082ff67ebba21653007306d4d5cea13100730ebb3162000"
+  },
+  "model": {
+    "family": "DeepSeek-V4-Flash-0731",
+    "sha256": "ca22ae2f838e14077c22bc1c1417b71b45b5e5a3687bd96c2ac6e17fdb6261c0"
+  },
+  "capture": {
+    "backend": "metal",
+    "machine": "Apple M1 Ultra, 48 GPU cores, 128 GB unified memory",
+    "construction": "Exact pinned 32768-token batched prefill followed by 128 greedy ds4_session_eval calls; every full FP32 output row is retained.",
+    "fresh_process_captures": 2,
+    "fresh_process_bitwise_match": true,
+    "helper": "rust-star/capture_prefill_decode_frontier.c",
+    "helper_sha256": "b1fde7cbde1a5c2f4b502b6e947a4ac419cc3c30394dedaf56c043b13abecb53",
+    "command": [
+      "capture-prefill-decode-frontier",
+      "MODEL",
+      "prefill-frontier-32768-v3/token-ids.u32le.bin",
+      "32895",
+      "-",
+      "input.u32le.bin",
+      "first.f32le.bin",
+      "final.f32le.bin",
+      "prefill.f32le.bin"
+    ],
+    "environment": {
+      "RUST_STAR_ORACLE_STEP_LOGITS_DIR": "EXISTING_STEP_DIRECTORY"
+    },
+    "prefill_logits_sha256": "603430b4b4b47f14b520f1977770bc292d1d136488f254116eb214766609c547",
+    "step_rows_concatenated_in_position_order": true,
+    "performance_enabled": false
+  },
+  "scope": {
+    "kind": "decode-step",
+    "phase": "decode",
+    "position": 32895,
+    "prefill_tokens": 32768,
+    "position_start": 32768,
+    "position_end": 32895,
+    "evaluated_positions": 128
+  },
+  "operations": [
+    {
+      "name": "exact_batched_prefill",
+      "kernel": "ds4_session_sync"
+    },
+    {
+      "name": "greedy_decode_positions_32768_32895",
+      "kernel": "ds4_session_eval"
+    }
+  ],
+  "selection": {
+    "method": "lowest-token-id-argmax",
+    "prefill_selected_token": 85166,
+    "first_decode_selected_token": 14,
+    "final_decode_selected_token": 14
+  },
+  "tensors": [
+    {
+      "name": "greedy_token_transcript",
+      "hook": "closed_loop_transcript",
+      "role": "output",
+      "dtype": "i32",
+      "shape": [
+        129
+      ],
+      "encoding": "little-endian-signed-integer32",
+      "path": "token-ids.u32le.bin",
+      "bytes": 516,
+      "sha256": "a9422bb7bfa451df807eb62b26d4b49a9293843c2df21a6757ade1255b970ba9"
+    },
+    {
+      "name": "decode_logits",
+      "hook": "session_decode_logits",
+      "role": "output",
+      "dtype": "f32",
+      "shape": [
+        128,
+        129280
+      ],
+      "encoding": "little-endian-ieee754-binary32",
+      "path": "decode-logits.f32le.bin",
+      "bytes": 66191360,
+      "sha256": "b9c65789e40b4339a87cf6086121c229581798944fc0c5e6aba83be52bf74acb"
+    }
+  ]
+}

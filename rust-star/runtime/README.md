@@ -1,8 +1,8 @@
-# Rust Star host-runtime scaffold
+# Rust Star native runtime
 
-This crate is the smallest executable boundary for the new engine. It is
-model-specific by design and currently contains the complete thirty-dispatch
-layer-0 decode path in one Metal command buffer, not a decoder.
+This model-specific runtime executes the 43-layer Metal transformer, output
+head, and greedy decoder. The commands below distinguish correctness gates,
+intermediate diagnostics, and eligible engine measurements.
 
 Implemented contracts:
 
@@ -360,6 +360,38 @@ remains dense through 1,024 rows; sparse top-k first
 applies at 1,025 rows. This command claims complete-model native batched
 prefill, exact output logits, and exact greedy selection. Sparse post-prompt
 integration and throughput remain outside its scope.
+
+The end-to-end native 32K gate runs all seven continuation chunks after an
+exact rebuilt 4K prefix, then hands the GPU-owned layer histories to the decoder:
+
+```sh
+rust-star/.work/runtime-target/release/rust-star long-prefill-chunk-probe \
+  /absolute/path/to/model.gguf --context 32768 \
+  --json rust-star/.work/native-32k.json
+```
+
+Success requires every one of the 129,280 immutable prefill logits and every
+FP32 word in all 128 subsequent decode rows to match oracle-v3. Tokens feed
+back from the runtime's own selections. The diagnostic also checks every
+repeated HC target in the 4K prefix and 8K–24K chunks. Instrumented oracle
+captures beyond 24K did not repeat reliably; their HC values are reported with
+`hc_checked_layers: 0` and `hc_c0_match: null`. They do not replace or relax the
+mandatory full-output gate.
+
+`--output-only` executes the timing path's prefill without internal tensor
+readbacks, then applies the same full-output gate. Its report sets
+`internal_hc_collection: false`. Partial frontiers from 12K through 28K are
+available for diagnosis and cannot claim complete 32K correctness.
+
+The 2026-09-06 diagnostic and output-only runs both pass this complete gate:
+all 43 layers execute, all 128 decode rows match bit for bit, and the final
+selected token is 14. Evidence and current engine validation status are recorded
+in `RUST_STAR_JOURNAL.md`.
+
+The generic path rebuilds the prefix with the established sparse ratio-4 and
+odd-layer Flash/production-FFN schedules. It retains history by actual layer
+while reusing executor slots. The older monolithic 4K command below remains
+an intermediate diagnostic and is not a replacement for this prefix gate.
 
 To exercise the first 4K transformer chunk from the accepted 32K token stream:
 
@@ -1119,7 +1151,7 @@ is compared with the pinned oracle after timing. The raw producer is
 `paired_protocol_eligible: true` only when both collection paths are disabled.
 Run it through `measure_ruststar.py` for normalized, checksummed evidence.
 
-Timing-only prefill uses 32 64-row bootstrap command buffers, submits them
+At 2K, timing-only prefill uses 32 64-row bootstrap command buffers, submits them
 continuously to the serial inference queue, and synchronizes once at the final
 tile. Matrix and FlashAttention grids plus grouped-output routing storage are
 derived from the row count; this corrects the fixed-32 launch geometry that
@@ -1133,6 +1165,23 @@ context/bootstrap/transformer/output setup, the decoder-state handoff, and
 model residency, leaving an explicit unattributed remainder. A full 2,048-row
 bootstrap remains rejected because its raw-cache append is not a valid
 unwrapped 2K store.
+
+`--context 32768 --gen-tokens 128` selects the native long-prefill path for
+`engine-measure` and `engine-retained-measure`. Establish C0 with both the
+normal and `--output-only` long-prefill gates before interpreting measurements.
+The 32K path includes prefix rebuilding, history growth, command execution,
+and setup in its declared prefill interval. It omits correctness-tensor
+collection and output-fixture decoding during timed prefill. Its retained
+cycle reuses the Metal context/model residency and records zero context
+creation time. It still rebuilds request-local KV state.
+
+Fresh32K normalized measurement and both retained32K reset/reuse cycles passed
+on 2026-09-06, alongside final 2K/8K regressions. These establish the engine
+frontier and lifecycle; a paired32K speed comparison remains future work.
+
+At 32K, `engine-profile` currently collects decode layer/stage counters only;
+it does not claim the 2K-specific prefill layer/stage breakdown below. These
+profiled runs remain paired-ineligible.
 
 `engine-profile` is an explicitly paired-ineligible diagnostic. In addition to
 its decode attribution, it splits the otherwise single layers-2-through-42

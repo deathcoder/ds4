@@ -1,0 +1,217 @@
+{
+  "oracle_hc_ffn_post-0_pos20480.bin": {
+    "bytes": 268435456,
+    "sha256": "9afdcd76edaa4b3c824d914b7d7f48f00f48c296034ddc1dec7efbb9b7d03944",
+    "fnv1a_u32": "d296cde167994bb6"
+  },
+  "oracle_hc_ffn_post-10_pos20480.bin": {
+    "bytes": 268435456,
+    "sha256": "6e95dc8ea6ded0253fb8667f2d021c83e4607a6b11890d6f533c767eb9e9c681",
+    "fnv1a_u32": "cc91103879b361c0"
+  },
+  "oracle_hc_ffn_post-11_pos20480.bin": {
+    "bytes": 268435456,
+    "sha256": "f3b45634fe0894231c420b4e94430a976276a44176e9d04bab38ead8d68a1f95",
+    "fnv1a_u32": "d583946f9caef7b8"
+  },
+  "oracle_hc_ffn_post-12_pos20480.bin": {
+    "bytes": 268435456,
+    "sha256": "4f764719fb657d75e994b5b797759189369048b6d69ffa15b48416c7ddc45f6b",
+    "fnv1a_u32": "4cfb5375a80befe8"
+  },
+  "oracle_hc_ffn_post-13_pos20480.bin": {
+    "bytes": 268435456,
+    "sha256": "9f30b4d6db4e7b90c814743df4fcab1da6fd06bfa0e0bf04f612d7f7a9acdcdc",
+    "fnv1a_u32": "249d29bae3060587"
+  },
+  "oracle_hc_ffn_post-14_pos20480.bin": {
+    "bytes": 268435456,
+    "sha256": "0e7f021f7d5a0abf13532d61947e9bac6c4b176753940b3568ca9ff4de47df43",
+    "fnv1a_u32": "93a97fa46f7eb4b5"
+  },
+  "oracle_hc_ffn_post-15_pos20480.bin": {
+    "bytes": 268435456,
+    "sha256": "49b91d4854afaddc54c2a2f2689f44b391e8e177c698342772a889dee8302226",
+    "fnv1a_u32": "d429e91be65d423d"
+  },
+  "oracle_hc_ffn_post-16_pos20480.bin": {
+    "bytes": 268435456,
+    "sha256": "b570790ae40483233254b899d7842674aa6da18db5ca0f3788d3130fee42e988",
+    "fnv1a_u32": "e26d3e40db4eb5da"
+  },
+  "oracle_hc_ffn_post-17_pos20480.bin": {
+    "bytes": 268435456,
+    "sha256": "742dad3bfa46d25d16d2dcaa0dce501e345d592afef10fa78c0307ad07bf59d1",
+    "fnv1a_u32": "d8b6a2dfc233a56b"
+  },
+  "oracle_hc_ffn_post-18_pos20480.bin": {
+    "bytes": 268435456,
+    "sha256": "3dae3a77d40220a535b82f87d6d938f38cbb0c2c7453d123266fda0b6e610705",
+    "fnv1a_u32": "5382178126e60adf"
+  },
+  "oracle_hc_ffn_post-19_pos20480.bin": {
+    "bytes": 268435456,
+    "sha256": "d520f7694bcf0908b9b36770954c157c401c2600337f931ec82d55e49c5cb962",
+    "fnv1a_u32": "fe580eb4d6443f57"
+  },
+  "oracle_hc_ffn_post-1_pos20480.bin": {
+    "bytes": 268435456,
+    "sha256": "f9e156abe3544fdb7830ee8f3a8954e313d969270ea276c98b4c483f8e3966ee",
+    "fnv1a_u32": "372bcd8ee123fbbc"
+  },
+  "oracle_hc_ffn_post-20_pos20480.bin": {
+    "bytes": 268435456,
+    "sha256": "e37cc0b88327518bcd63121f7aa13b70eb90b52d37969865d36c491c07d0eda2",
+    "fnv1a_u32": "04331beb9b02cbbd"
+  },
+  "oracle_hc_ffn_post-21_pos20480.bin": {
+    "bytes": 268435456,
+    "sha256": "c11329117e5187ff7cf2c1937b7e8b2e33720b99ca44dcdc85b5fdd30a3205ba",
+    "fnv1a_u32": "be8d164f657ef190"
+  },
+  "oracle_hc_ffn_post-22_pos20480.bin": {
+    "bytes": 268435456,
+    "sha256": "8775f2bc74eb862f9726a398a60f1fa4e3db00f552ac67c759d472bcc4c07d73",
+    "fnv1a_u32": "193d501b7fa53cc4"
+  },
+  "oracle_hc_ffn_post-23_pos20480.bin": {
+    "bytes": 268435456,
+    "sha256": "7ce3e0adea18bda5f3ea7b9c08d7b76676d9b731ad8fe9687a8ee6e79c1da78d",
+    "fnv1a_u32": "f618f887745228cd"
+  },
+  "oracle_hc_ffn_post-24_pos20480.bin": {
+    "bytes": 268435456,
+    "sha256": "d75333e02755b4d8a051a1bc351354c2f12a4b985a791d121e1a9fbdd2e90363",
+    "fnv1a_u32": "355ea7add279e990"
+  },
+  "oracle_hc_ffn_post-25_pos20480.bin": {
+    "bytes": 268435456,
+    "sha256": "56efc9ec3eeab0ff982871175a802b41ac62541c65719caea320be65369d0c38",
+    "fnv1a_u32": "1c0aa3cdaeb17637"
+  },
+  "oracle_hc_ffn_post-26_pos20480.bin": {
+    "bytes": 268435456,
+    "sha256": "d0b126afd287212935d4689973e1aa4c2fa75dfc1755d28c609111113d081cde",
+    "fnv1a_u32": "aed6907be90ca576"
+  },
+  "oracle_hc_ffn_post-27_pos20480.bin": {
+    "bytes": 268435456,
+    "sha256": "c62fc8940794a87a3d2aa230100ae54fbb9f39acf438781640a616b1545ceb52",
+    "fnv1a_u32": "d33ef55e3a0a3445"
+  },
+  "oracle_hc_ffn_post-28_pos20480.bin": {
+    "bytes": 268435456,
+    "sha256": "f8b3916e2cd989584fd52b49dc6672ffadd3c9557b86828ee4b5698a8bc49393",
+    "fnv1a_u32": "36a44adb64bcb9fe"
+  },
+  "oracle_hc_ffn_post-29_pos20480.bin": {
+    "bytes": 268435456,
+    "sha256": "1a905ac76519521301a269cea1b6486e19983043556c46d6af9b109133d53216",
+    "fnv1a_u32": "cf282e2e9bedad3b"
+  },
+  "oracle_hc_ffn_post-2_pos20480.bin": {
+    "bytes": 268435456,
+    "sha256": "cb7b6130992d1b31f9a6d9879eb9d577d8675e1bcf93b42d397a1616aa5ffd8a",
+    "fnv1a_u32": "99de0c014e3f3e15"
+  },
+  "oracle_hc_ffn_post-30_pos20480.bin": {
+    "bytes": 268435456,
+    "sha256": "fa4aca0b46dfe713b5a661fafacef641d075c2877d9dcca28ec8ce6094fb1c34",
+    "fnv1a_u32": "f1b9ddbd7ef926f0"
+  },
+  "oracle_hc_ffn_post-31_pos20480.bin": {
+    "bytes": 268435456,
+    "sha256": "1c8747f4edd26d36fa5b5fa43f2f44b77e00569bdc4ecf60baf0395d81b561c6",
+    "fnv1a_u32": "0df0cadbef2a3d38"
+  },
+  "oracle_hc_ffn_post-32_pos20480.bin": {
+    "bytes": 268435456,
+    "sha256": "ca0bab4014219df38f29570f8284d12fb19333931df286e314fe71b0667af408",
+    "fnv1a_u32": "0d687d2485267ef6"
+  },
+  "oracle_hc_ffn_post-33_pos20480.bin": {
+    "bytes": 268435456,
+    "sha256": "22f3ba84bb6660e957b9f69743205ff41269e5bed5cf15177f2667b4fd17295e",
+    "fnv1a_u32": "91c4283dc2a86979"
+  },
+  "oracle_hc_ffn_post-34_pos20480.bin": {
+    "bytes": 268435456,
+    "sha256": "3c4bef5dd38306bba451071f629739a09c2cd71dba9749c78103b4b8d2001632",
+    "fnv1a_u32": "757dcafbba98efed"
+  },
+  "oracle_hc_ffn_post-35_pos20480.bin": {
+    "bytes": 268435456,
+    "sha256": "b0158941933911f40787ce44906b183a0f9bc7077bf8d53b9ef61a62b5f34313",
+    "fnv1a_u32": "87cb760abf970783"
+  },
+  "oracle_hc_ffn_post-36_pos20480.bin": {
+    "bytes": 268435456,
+    "sha256": "b2ab35094d27fd5f18d2d3b9e4734c25d80aaee945662464419afa1775d57623",
+    "fnv1a_u32": "15f81bb535aadd2a"
+  },
+  "oracle_hc_ffn_post-37_pos20480.bin": {
+    "bytes": 268435456,
+    "sha256": "977e288e5716c68a3f557fa6e69e74b7c40f9c5aaafaabaef2c785e75f347c1e",
+    "fnv1a_u32": "07783f1cfb46287f"
+  },
+  "oracle_hc_ffn_post-38_pos20480.bin": {
+    "bytes": 268435456,
+    "sha256": "edcf48371199321dfadacbcaa03490bb4def47407549e09b072e0022057ed356",
+    "fnv1a_u32": "e82377c43d64a5e8"
+  },
+  "oracle_hc_ffn_post-39_pos20480.bin": {
+    "bytes": 268435456,
+    "sha256": "7111914149a4ef3561b23c0a43525484421ab4d05cca33cea8dfa80b80750e9b",
+    "fnv1a_u32": "7d43e43a8e579efe"
+  },
+  "oracle_hc_ffn_post-3_pos20480.bin": {
+    "bytes": 268435456,
+    "sha256": "245492a754404fcd73f6493994e3d2bfee3d093b278b914109b205d892b8b2a4",
+    "fnv1a_u32": "f64a072615ca12d6"
+  },
+  "oracle_hc_ffn_post-40_pos20480.bin": {
+    "bytes": 268435456,
+    "sha256": "2a9b22cd8fc33267a1056a64e8eb1014bdeb460d8151321a66ef076206a7e3a9",
+    "fnv1a_u32": "92fcb62d494e6898"
+  },
+  "oracle_hc_ffn_post-41_pos20480.bin": {
+    "bytes": 268435456,
+    "sha256": "a84232e284937bd52c41febb8e175e49c809017450b50ec51f9f3cd00ed7262f",
+    "fnv1a_u32": "7da9fb2be20eb9d1"
+  },
+  "oracle_hc_ffn_post-42_pos20480.bin": {
+    "bytes": 268435456,
+    "sha256": "4c8dfb30eb9c1f8d17015f7865a6ee3f930ea8097a483849e54296878c2c8d95",
+    "fnv1a_u32": "16c4cd426b2241d3"
+  },
+  "oracle_hc_ffn_post-4_pos20480.bin": {
+    "bytes": 268435456,
+    "sha256": "5a39775b2efd5b68a0ac9a840bd8550922ba711f03adfc9edfcd388296ba3659",
+    "fnv1a_u32": "979bde728dcf4f56"
+  },
+  "oracle_hc_ffn_post-5_pos20480.bin": {
+    "bytes": 268435456,
+    "sha256": "815c9d666a34a517e7499949ebce3f8e1c604020aad5998b1da9917b87abb6ec",
+    "fnv1a_u32": "22d39d1c5ad3f2f7"
+  },
+  "oracle_hc_ffn_post-6_pos20480.bin": {
+    "bytes": 268435456,
+    "sha256": "6a3c78aaa694d4ff502097d03b1c8ae460f912cf8b34c6c28d3fe0d9da575f3f",
+    "fnv1a_u32": "4fb3e9564869b204"
+  },
+  "oracle_hc_ffn_post-7_pos20480.bin": {
+    "bytes": 268435456,
+    "sha256": "efcd25883ddb7f2552f731db6f85935081b0b8552e59d7d3146f170e88225722",
+    "fnv1a_u32": "d7a74ba27008ff84"
+  },
+  "oracle_hc_ffn_post-8_pos20480.bin": {
+    "bytes": 268435456,
+    "sha256": "fb3df3b9ef98df12cac0d30eeafa49f332644e1b28770c27df033c940e7b85ff",
+    "fnv1a_u32": "4e887ce40e604630"
+  },
+  "oracle_hc_ffn_post-9_pos20480.bin": {
+    "bytes": 268435456,
+    "sha256": "c3c7773c5837706fb555d0a8e1d651146777917ed289a1092b6085a8446f8dc4",
+    "fnv1a_u32": "c7b92f17101297d1"
+  }
+}

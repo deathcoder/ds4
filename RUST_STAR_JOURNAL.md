@@ -18,6 +18,216 @@ Before changing code:
 Journal entries are reverse chronological. Do not edit old entries to change
 history; add a correction and update the current-state summary.
 
+## 2026-09-06 — Native 32K extension complete through the output head and decode
+
+- Completed the requested end-to-end stage on `agent/rust-star-bootstrap`,
+  extending `8e63d80e`. Native prefill executes all 43 layers through 32,768
+  tokens, then adopts all layer histories on the GPU and greedily decodes
+  128 positions (32768–32895).
+- Two complete C0 runs pass: the diagnostic and production output-only paths
+  each match all 129,280 immutable prefill logits and all 16,547,840 subsequent
+  FP32 decode words. Every selected token matches; prefill 85166, final 14.
+  Independent fresh oracle-v3 captures repeat the entire new decode fixture.
+- Repeated internal HC checkpoints pass through 24K. The 28K/32K internal
+  snapshots remain explicitly unverified (`hc_checked_layers:0`, null match),
+  despite matching their preserved singleton captures. Full-output C0 remains
+  mandatory and unchanged; no tolerance or oracle target was relaxed.
+- Fresh32K normalized engine validation passes with correctness collection
+  disabled and an exact transcript. Single-run prefill: 41.232422 tok/s;
+  complete generation: 17.832623 tok/s; steady decode: 17.851319 tok/s.
+  This is bring-up evidence, not a paired or headline speedup claim.
+- Retained32K passes both exact 128-token cycles after request reset in one
+  Metal context. Model mapping/residency are reused, request KV state is rebuilt,
+  and context creation is correctly charged only once. Retained prefill:
+  43.712198 tok/s; generation: 19.175227 tok/s. This lifecycle report remains
+  explicitly paired-ineligible.
+- Final live 2K and legacy8K regressions pass all established boundaries and
+  all 129,280 output words; selected tokens 15342 and 77179 respectively.
+- Final release build 14, all 309 Rust tests, all 86 Python tests, canonical
+  decode-fixture verification, formatting, whitespace, four CLI help checks,
+  and the cross-artifact audit pass. Build 14 differs from the live-tested
+  build 13 only in CLI help and a source comment; inference is unchanged.
+- Scoped autorelease pools prevent replaced long-prefill histories from
+  accumulating. System swap stayed about 2.5–3.3 GiB through fixed output-only,
+  fresh, and retained runs, versus about 89 GiB at the old diagnostic's exit.
+  The normalized fresh process peak was 97,419,493,376 bytes. Reclaimed another
+  7,534,338,048 allocated bytes (7.02 GiB) by removing ignored debug/test
+  artifacts after the final tests. About 149 GiB disk space is now available;
+  model, release executable, accepted fixtures and failure evidence are retained.
+- Evidence: `rust-star/.work/native-32k-v31/final-verification.json` binds the
+  source files, reports, tests, and executable hashes. Main reports are
+  `native32k-a.json`, `native32k-output-only.json`,
+  `engine32k/measurement.json`, `engine32k/engine-run.json`, `retained32k.json`,
+  `2k-final.json`, and `8k-final.json` in that directory.
+  Live-tested build-13 SHA-256:
+  `a95d9effeba6914748a28ea82fb73c3e0187ad2f78fac2be7fc5f19341173228`.
+  Final build-14 SHA-256:
+  `8d9b607331fa4dce37caeff0a8ef7d2b9c3cc8f9285eb0590f347cca4a6aa84d`.
+- Reproduce full-output correctness with `long-prefill-chunk-probe MODEL`
+  and `long-prefill-chunk-probe MODEL --output-only`; both default to 32K.
+  The engine and retained commands accept `--context 32768 --gen-tokens 128`.
+  The accepted model/oracle hashes remain pinned in the fixture manifests.
+- This implementation, imported fixtures, and synchronized journal/charter/docs
+  form one local checkpoint. No push was performed. Next: an immutable paired
+  32K development comparison and profiling, followed by broader contexts under
+  the same C0 contract. There is no 128K/256K/1M correctness or speedup claim.
+
+## 2026-09-06 — End-to-end native 32K extension requested
+
+- User explicitly requested the next stage end to end through the last layer.
+  Starting from `8e63d80` on `agent/rust-star-bootstrap`; the complete retained
+  8K chain/output and 2K regression are established controls.
+- Objective: native 32K prefill through all 43 layers and the output head,
+  exact full-logit and decode-transcript validation against oracle-v3, and
+  integration of the accepted frontier into the eligible engine.
+- Inspection found the current continuation helpers fixed to positions
+  4096--8191. Generalize chunk geometry and retained per-layer state, preserving
+  the validated 8K path as a regression. Reuse the exact completed 8K context
+  to advance later 4096-token chunks; do not import oracle activation state.
+- Implemented dynamic chunk extents in bootstrap, paired ratio-4 compression,
+  indexed attention, odd-layer ingress/compression/Flash attention, and HC tail
+  scheduling. Added per-layer history ownership across reused executor slots,
+  a generic Rust chunk driver, and a strict report for repeated layer outputs.
+  The first build reached Rust and found four FFI return aliases missing from
+  scope; changed them to the existing i32 convention. Rebuilding next.
+- Independent captures now repeat all 43 layer HC outputs at 12K, 16K, and
+  20K; 24K captures are running. Capture scripts keep compact hashes and logs
+  while removing new temporary raw payloads after hashing/comparison.
+- Corrected Rust boundary admission for later 4096-token frontiers. Release
+  build 2 passes. Paired oracle layer-output checkpoints now pass through
+  24K; 28K is running. Prepared an isolated source-identical oracle-v3 helper
+  that will capture every full FP32 decode-logit row after 32K, alongside the
+  token transcript. Its first build lacked a generated include from the
+  source extraction; restored the pinned include and the build/link pass.
+- Oracle repetition failed at 28K: layers 0--14 match, layers 15--42
+  and frontier logits differ between independent runs. Preserved the second
+  raw capture and both hash inventories; no 28K target accepted. All earlier
+  12K--24K frontier logits also repeat exactly. The first native 12K gate is
+  running while the oracle divergence is investigated.
+- Native 12K gate passes: retained full 8K control plus all 43 new chunk
+  HC outputs match exactly (`native12k-a.json`), selected token 8131. Build 3
+  passes with guarded 32K decoder-history adoption and report rejection tests.
+  Focused independent 28K layer-15 stage captures are now running to localize
+  the oracle divergence. Imported compact accepted 12K--24K inventories.
+- All 308 host tests pass. Build 4 passes with uniform continuation from
+  the complete 4K prefix, preserving all repeated 8K HC targets and full
+  logits as an internal control. This removes the redundant legacy diagnostic
+  bootstrap from the new path; its live validation is next in the model queue.
+  Focused 28K capture c matches original a at layer 15, but neither original
+  full-logit result. Initial a/b layer-15 drift affects all 4096 rows
+  (65,417,635 FP32 words, maximum absolute difference 0.29110569).
+- Uniform 4K-to-8K attempt failed at layer 5 (`native24k-a.log`): the
+  older monolithic 4K path was explicitly not a complete C0 prefix control.
+  Added a checked per-layer prefix rebuild using the established ratio-4
+  sparse and odd Flash/production-FFN schedules; build 5 passes, live test
+  pending. Original retained-8K-to-12K pass remains valid.
+- Both uninstrumented 32K oracle transcript captures repeat exactly: pinned
+  prefill logits plus all 16,547,840 FP32 decode words across 128 steps, and
+  every greedy selection (final token 14). Imported the full fixture. Added
+  native full-row decode validation and guarded per-layer history adoption;
+  pending live verification.
+- Existing graph dumps synchronize/restart command batches. Prepared isolated
+  diagnostic-only GPU snapshot hooks that retain HC via blits and read it
+  after prefill finishes, preserving inference batch submission. Deferred
+  32K/28K paired captures are running; 32K must match the immutable logits.
+- Deferred run a preserves immutable 32K logits; deferred run b first differs
+  at layer 19 and fails that terminal anchor. Both remain recorded; no
+  unanchored long target accepted. Further snapshots must pass the immutable
+  full 32K terminal logits and agree across two independent captures.
+- Prefix rebuild test passes layers 0--3, then rejects the layer-4 raw-KV
+  capacity: its sparse kernel requires 4,352 padded rows, not 4,096. Corrected
+  the allocation. Added timing-only execution with optional diagnostic
+  readbacks, complete command GPU/wall accumulation, and 32K engine/retained
+  dispatch using the pinned token transcript. Build 7/live checks pending.
+- Compacted redundant failed new captures, reclaiming 19.30 GiB while
+  retaining SHA inventories, first divergent HC pair, and final HC evidence.
+- Stopped instrumented retries after further terminal failures. The actual C0
+  contract remains unchanged: exact immutable 32K full logits and every word
+  of the independently repeated 128-step decode trace. Internal HC checks
+  remain mandatory where repeated targets exist (prefix, 8K, 12K--24K);
+  28K/32K snapshots are diagnostic only and explicitly report zero checked
+  HC layers/null HC match. They cannot substitute for the full-output gate.
+  No target or tolerance was changed. The corrected uniform 24K gate is
+  running (`native24k-c.log`). This avoids blocking end-to-end validation
+  on the separate instability introduced by oracle instrumentation.
+- Uniform prefix all 43 layers, full 8K logits, and all 43 layers of the
+  12K chunk pass in the corrected `native24k-c` run. Stopped the redundant
+  partial-frontier run after that control (it had begun 16K) and started
+  the full 32K gate (`native32k-a`, release build 8). All 86 Python tests
+  pass; the new 66,191,876-byte decode fixture verifies its canonical envelope.
+- Added `--output-only` for a second end-to-end C0 run using the exact timing
+  path without internal tensor readbacks. Its report explicitly disables
+  internal-HC claims while still requiring all immutable prefill and decode
+  output words. The timed engine itself collects neither diagnostic trace.
+  Build 9 is running; full native 32K, production repeat, and engine validation
+  are still pending.
+- Full native run now passes all 43 HC targets through 20K and is checking
+  24K. Builds 9 and 10 pass. Added autorelease pools to new C ABI entry points
+  so replaced history dictionaries release promptly, and kept retained
+  context setup at zero because no context is created on that cycle. These
+  lifetime/accounting changes will be covered by the output-only repeat and
+  retained engine run.
+- Full native run passes every repeated internal checkpoint through 24K:
+  all 43 layers in the prefix and each validated chunk. It is entering the
+  final two chunks, whose internal HC values are diagnostic; immutable
+  prefill/decode output checks follow. Build 11 includes zero retained-context
+  setup accounting and avoids output-fixture decoding in timed prefill.
+- The old-build full diagnostic continues through 28K; swap reached about
+  40 GiB despite earlier free-memory summaries. Recorded the actual swap/disk
+  observation. The repeat must use the autorelease-pool fix and verify bounded
+  lifetime behavior; do not use this old-build diagnostic for performance.
+- First full native 32K C0 gate PASSES (`native32k-a.json`): all 129,280
+  immutable prefill words (selected token 85166), all 16,547,840 decoder
+  words over positions 32768--32895, and every greedy selection (final token
+  14). All repeated HC checkpoints through 24K passed en route. Both later
+  diagnostic HC arrays also agree with their singleton oracle captures,
+  but those internal captures remain explicitly unaccepted as repeated targets.
+- The old build accumulated severe swap by exit (about 89 GiB used at the
+  immediate observation). Do not benchmark that build. Build 11 passes and
+  contains scoped autorelease pools plus output-only production C0 validation;
+  run that repeat before fresh/retained engine measurements.
+- Build 12 passes with explicit native first-token feedback into the full
+  decode gate. The output-only repeat has passed prefill through 24K; swap
+  remains about 3.1 GiB with scoped autorelease pools (versus the old build
+  accumulating tens of GiB). All 309 final Rust tests and 86 Python tests pass.
+- Output-only production C0 repeat PASSES (`native32k-output-only.json`):
+  all immutable prefill and 128 decode rows match the first native report,
+  internal collection disabled, final token 14. Swap stayed approximately
+  3.1 GiB through completion. Build 13 passes (32K CLI help included); all
+  309 build-12 host tests pass. Starting sequential fresh32K, retained32K,
+  2K and legacy8K validation with this final executable.
+- Synchronized the charter's supported correctness frontier and runtime docs.
+  Corrected stale manual-ledger M-005 to the documented August 27 completion;
+  future extended captures now name oracle-v3 rather than the quarantined v1.
+- Fresh final-build 32K/128 engine and normalized adapter PASS
+  (`engine32k/engine-run.json`, `measurement.json`). Diagnostic collections
+  are disabled; `paired_protocol_eligible:true`; all selected tokens match,
+  final 14, checksum 11977321378026793466. This single bring-up measurement
+  records 794714.414 ms prefill (41.232422 tok/s), 17.832623 complete-generation
+  tok/s, 17.851319 steady tok/s, and 63.535709 ms first decode. Model warm-up
+  was 13509.666 ms; process peak was 97,419,493,376 bytes. No comparative or
+  headline speedup claim. Retained two-cycle validation is now running.
+- Final review added the new command's standalone `--help` and clarified
+  its context placeholder plus one source comment. This CLI/comment-only
+  change awaits build 14 after the measurement queue; inference is unchanged
+  from the successful build-13 fresh run. Retained validation is still active.
+- Retained32K two-cycle lifecycle PASSES (`retained32k.json`): both
+  128-token oracle transcripts exact, final 14, model/Metal context/residency
+  reused after request reset. First-load prompt including warming: 815544.401
+  ms; retained prompt: 749630.569 ms (1.087928x). Retained prefill 43.712 tok/s,
+  generation 19.175 tok/s. This is explicitly paired-ineligible lifecycle
+  evidence. System swap stayed about 2.5 GiB throughout. 2K/8K controls are
+  running; building CLI-only revision 14 and preserving build-13 executable SHA.
+- Final standalone2K regression PASSES (`2k-final.json`): all retained
+  transformer boundaries and 129,280 full logits exact, selected 15342.
+  Legacy8K is the last live model validation running in the queue. The
+  validated build-13 executable SHA-256 is
+  `a95d9effeba6914748a28ea82fb73c3e0187ad2f78fac2be7fc5f19341173228`.
+- Work/evidence: `rust-star/.work/native-32k-v31/`. Final live engine
+  validation is pending. Keep only one large model process active, bound
+  temporary capture disk use, and continue through all layers without a
+  per-layer approval request.
+
 ## 2026-09-06 — Complete remaining layers requested
 
 - User explicitly asked to continue through every remaining layer. Active goal:
@@ -1267,8 +1477,27 @@ Next:
 
 ### Current resume checkpoint (updated 2026-09-06)
 
+- Completed native32K end to end: all 43 layers, output head, and 128 greedy
+  decode steps. Diagnostic and output-only runs each match every immutable
+  prefill and decode FP32 word, final token 14. Do not restart this layer work.
+- Fresh32K normalized engine and retained32K two-cycle reset/reuse validation
+  pass. Final standalone2K and legacy8K full-output regressions pass. Final
+  release build 14, 309 Rust tests, 86 Python tests, fixture verification,
+  formatting/whitespace and CLI checks all pass. The only changes after the
+  live-tested build 13 are CLI help and a comment; inference is unchanged.
+- The uninstrumented oracle repeats the immutable 32K prefill and every FP32
+  word of the 128-step decode trace. Its canonical imported fixture verifies.
+  Internal HC checkpoints through 24K pass; instrumented 28K/32K captures remain
+  unverified and cannot replace the mandatory complete full-output gate.
+- Long-prefill autorelease lifetimes are fixed. Observed system swap stayed
+  about 2.5–3.3 GiB during fixed runs; another 7.02 GiB of rebuildable test
+  artifacts was removed after validation. About 149 GiB disk space remains.
+- Evidence/work: `rust-star/.work/native-32k-v31/`, consolidated in
+  `final-verification.json`. Next work is a pinned paired32K comparison and
+  profiling; single-run engine timings do not establish a comparative speedup
+  or the 256K headline result.
 - Work in `/Users/deathcodevision/dev/ds4-rust-star-bootstrap` on
-  `agent/rust-star-bootstrap`, extending `d8ebff8`. Remotes: `fork` =
+  `agent/rust-star-bootstrap`, extending `8e63d80`. Remotes: `fork` =
   `deathcoder/ds4`, `origin` = `antirez/ds4`.
 - Complete retained 8K chain and output head pass under schema v30:
   all 129,280 FP32 words match the pinned oracle; selected token 77179.
@@ -2038,29 +2267,29 @@ Next:
   secure-access decision with exact evidence requirements.
 - Parallel research: DSpark remains separate on
   `origin/codex/dspark-observability-0` and is not on this phase's critical path.
-- Publication: the connected GitHub app is installed on both `deathcoder` and
-  `dion-labs`. Remote branch `agent/rust-star-bootstrap` is published and the
-  validated checkpoints are pushed. Prefer the app for future remote writes
-  from this environment.
+- Publication: the branch has published history, but this checkout already
+  had five local commits at task start. This task adds a local implementation
+  checkpoint; no push was performed. Prefer the connected GitHub app for
+  future authorized remote writes from this environment.
 
 ## Immediate Next Actions
 
-1. Complete 8K C0 is established: all 43 layers and the output head pass twice
-   in fresh processes; the final 2K control and host checks pass. Do not restart
-   the completed layers 15--42 work.
-2. Extend native prefill, the exact transcript gate, and eligible engine
-   measurement to the accepted oracle-v3 32K frontier. Preserve production
-   arithmetic, GPU-owned history, and the tied-score bitonic router ordering.
-3. Preserve the exact 2K prefill/decode handoff, position-8195 retained decoder
-   step, sparse controls, shorter controls, and accepted retained lifecycle as
-   regressions relevant to each change. Run only one large model process.
-4. Keep correctness diagnostics separate from paired performance measurement;
-   full 8K C0 does not establish long-context throughput or the 256K headline.
-5. Update the journal checkpoint and dated evidence after every meaningful
-   step, including failures, and include it in implementation commits.
-6. Later, perform extended-context captures when the Mac can be dedicated to
-   them, preserving capacity failures. The manual GitHub Actions workflow
-   remains dependent on resolving the account billing lock.
+1. The full native32K stage is complete, including both full-output C0 modes,
+   fresh/retained engines and shorter controls. Do not redo completed layers.
+2. Next, freeze the accepted executable/source and a predeclared paired32K
+   plan under the benchmark protocol. Establish a paired baseline before
+   attributing speedups; profile the measured prefill/decode costs before
+   optimizing. Preserve all invalid attempts and capacity evidence.
+3. Preserve exact 2K/8K controls, the 32K immutable full-output trace, GPU-owned
+   history, request reset/reuse, and tied-score bitonic router ordering. Later
+   internal snapshots remain unverified; they cannot replace C0 full logits.
+4. Broader native contexts and oracle captures come after that measured 32K
+   baseline. Use oracle-v3 for new captures, run one large model process at a
+   time, and keep disk use bounded. No 256K headline result is established.
+5. Update this journal's checkpoint and evidence with each meaningful step,
+   including failures, and include it with implementation commits.
+6. GitHub Actions remains dependent on resolving the account billing lock;
+   secure remote access remains deferred in the manual task ledger.
 
 ## Entries
 
