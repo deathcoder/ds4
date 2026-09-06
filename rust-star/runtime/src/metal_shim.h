@@ -2559,6 +2559,11 @@ int rust_star_metal_copy_prefill_layer2_compressed_prefix(
     char *error,
     size_t error_bytes);
 
+/* Failure diagnostics only. Caller must have completed the output-head wait. */
+int rust_star_metal_copy_completed_output_logits(
+    void *context, float *logits, uint32_t count,
+    char *error, size_t error_bytes);
+
 int rust_star_metal_run_output_head(
     void *context,
     const void *model_mapping,
@@ -2579,7 +2584,7 @@ int rust_star_metal_run_output_head(
     float *norm,
     float *logits,
     uint32_t *selected_token,
-    /* 0: full logits, 1: full logits plus intermediates, 2: GPU top-1 only. */
+    /* 0: logits, 1: intermediates, 2: top-1, 3: checked top-1 plus logits. */
     uint32_t output_mode,
     rust_star_metal_ingress_probe_result *result,
     char *error,

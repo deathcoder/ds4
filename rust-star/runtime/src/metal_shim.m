@@ -33,6 +33,7 @@ enum {
     RUST_STAR_OUTPUT_LOGITS = 0,
     RUST_STAR_OUTPUT_INTERMEDIATES = 1,
     RUST_STAR_OUTPUT_TOP1 = 2,
+    RUST_STAR_OUTPUT_CHECKED_TOP1 = 3,
 };
 
 static NSString *const kProbeSource =
@@ -43495,6 +43496,20 @@ int rust_star_metal_adopt_prefill_decoder_state(
     }
 }
 
+int rust_star_metal_copy_completed_output_logits(
+    void *opaque_context, float *logits, uint32_t count,
+    char *error, size_t error_bytes)
+{
+    if (!opaque_context || !logits || count != 129280u)
+        return fail_with_message(error, error_bytes, @"invalid completed-logit copy");
+    RustStarMetalContext *context = (__bridge RustStarMetalContext *)opaque_context;
+    id<MTLBuffer> buffer = context.activationBufferCache[@"output_logits"];
+    if (!buffer || buffer.length != (NSUInteger)count*sizeof(float))
+        return fail_with_message(error, error_bytes, @"completed logits unavailable");
+    memcpy(logits, buffer.contents, buffer.length);
+    return 1;
+}
+
 int rust_star_metal_run_output_head(
     void *opaque_context,
     const void *model_mapping,
@@ -43526,10 +43541,12 @@ int rust_star_metal_run_output_head(
     const uint32_t n_vocab = 129280u;
     const uint64_t output_row_bytes = (uint64_t)(n_embd/32u)*34u;
     const BOOL collect_intermediates = output_mode == RUST_STAR_OUTPUT_INTERMEDIATES;
-    const BOOL select_top1 = output_mode == RUST_STAR_OUTPUT_TOP1;
+    const BOOL checked_top1 = output_mode == RUST_STAR_OUTPUT_CHECKED_TOP1;
+    const BOOL select_top1 = output_mode == RUST_STAR_OUTPUT_TOP1 || checked_top1;
     if (!opaque_context || !model_mapping || !result ||
-        output_mode > RUST_STAR_OUTPUT_TOP1 ||
-        (select_top1 ? (!selected_token || logits) : (!logits || selected_token)) ||
+        output_mode > RUST_STAR_OUTPUT_CHECKED_TOP1 ||
+        (checked_top1 ? (!selected_token || !logits) :
+            (select_top1 ? (!selected_token || logits) : (!logits || selected_token))) ||
         (collect_intermediates && (!hc_pre || !hc_weights || !hc || !norm))) {
         return fail_with_message(error, error_bytes, @"output head received invalid inputs");
     }
@@ -43746,7 +43763,8 @@ int rust_star_metal_run_output_head(
                     @"output-head logits contain a non-finite value");
             }
             *selected_token = top1[0];
-        } else {
+        }
+        if (!select_top1 || checked_top1) {
             memcpy(logits, logits_buffer.contents, n_vocab*sizeof(float));
         }
         memset(result, 0, sizeof(*result));

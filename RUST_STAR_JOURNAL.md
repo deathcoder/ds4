@@ -18,6 +18,117 @@ Before changing code:
 Journal entries are reverse chronological. Do not edit old entries to change
 history; add a correction and update the current-state summary.
 
+## 2026-09-06 — Streaming top-k count race reproduced and repaired
+
+- Projection-wait experiment failed at 12K layer 14 in synchronized run c:
+  HC actual `0x9b11372e4070eb8f`, expected `0x08b9db35dec40f27`.
+  Queue stopped; d and shorter controls did not run. The insufficient
+  projection-wait changes have been removed; all evidence is preserved.
+- Found an intra-kernel race in `kernel_topk_stream512`: after insertion's
+  barrier, faster SIMD groups can increment the next batch's count before
+  slower groups snapshot the current count and decide whether to compact.
+- Standalone unmodified kernel passes 2,000 normal repetitions, but a legal
+  test-only SIMD scheduling delay reproduces wrong top-k indices immediately:
+  repetition 0, row 0, rank 9, actual 1132 versus expected 1191.
+- Added a barrier after every thread snapshots count. Same adversarial test
+  passes all 2,000 repetitions / 64,000 rows / 32,768,000 selected indices.
+  Regression tests independently CPU-sort scores across 1025, 3072, 8192,
+  and 8224 columns with normal and uneven progress. All pass.
+- The kernel is shared by the reference. Pinned explicit candidate oracle-v4
+  source `df99eba7f722f8170dc2960b8b4666f73818a5ba`, tree
+  `14ffb83c44382662fb02a4fe50d713dd55827726`, on local `codex/oracle-v4`.
+  It differs from v3 only in the streaming barrier and sampling-inclusive
+  benchmark driver. V4 is not accepted until its full correctness gates pass.
+- Immutable target tensors remain unchanged. Rebuilds and fresh candidate /
+  reference conformance follow; no paired comparison is currently valid.
+
+## 2026-09-06 — Testing oracle-v3 compressor synchronization in Rust
+
+- Source audit found that Rust's shared odd/even long-prefill compressor
+  helpers lacked oracle-v3's completed projection-to-consumer boundary.
+  Reference commit `d35fb12d` documents an M1 intermittent hazard that survived
+  encoder-only and asynchronous command splits. This is a repair hypothesis,
+  not yet proof of the Rust failure's exact origin.
+- Added a host-waited projection boundary to those shared helpers, preserving
+  arithmetic and counting both command buffers in wall/GPU timing totals.
+  Building the synchronized candidate while the preserved unsynchronized
+  internal-checkpoint diagnostic continues.
+- Failure-capture build and all 309 Rust tests pass. The first enhanced gate
+  already reproduced a full-prefill logit mismatch before decode; original
+  paired schedule remains blocked and must not be resumed.
+
+- Synchronized release build and all 309 Rust tests pass. Frozen diagnostic
+  binary: `compressor-wait-rust-star`, with exact source/binary hashes in
+  `compressor-wait-build.json`. Four fresh 32K gates (output-only a/b, internal
+  c/d), then 2K and 8K controls, are queued after the current unsynchronized
+  localization process. Queue stops on the first failure.
+
+- Unsynchronized internal-checkpoint run passes all full outputs and GPU
+  selection. Its established checks through 24K pass; later diagnostic hashes
+  agree with the prior passing capture. This does not clear the observed
+  intermittent failure. Synchronized output-only run a is now running.
+
+- Synchronized output-only run a PASSES all 129 full-logit rows and GPU
+  selections. Fresh run b is active; c/d and 2K/8K remain. One success does
+  not establish restored stability after the intermittent negative evidence.
+
+- Synchronized output-only run b also PASSES all full outputs and GPU
+  selections. Internal-checkpoint run c is active; d and 2K/8K remain.
+
+## 2026-09-06 — Intermittent prefill logit divergence reproduced
+
+- Enhanced checked-top1 gate a fails at the completed 32K prefill, before
+  decode: logit 0 actual `0xc11edc6b`, expected `0xc11e1889`. GPU argmax
+  agreed with the same actual logits. This reproduces upstream numerical
+  divergence; the original token failure cannot be dismissed as selection only.
+- Starting an internal-checkpoint diagnostic to localize the earliest divergent
+  chunk/layer. Existing passing captures remain historical evidence, not proof
+  of stable current correctness. Benchmark remains blocked.
+- Added failure-only completed-logit inspection to the engine so another
+  token failure reports CPU argmax and reference-word differences without
+  recomputing the failing row. Passing runs retain the small GPU readback.
+
+## 2026-09-06 — Corrected paired baseline blocked by candidate C0 failure
+
+- Corrected plan `871c8762...f82ab` stopped at timed pair 1: candidate
+  transcript mismatch at generation step 9, actual 1337 versus expected 7487.
+  Exit 1, no timeout; process wall 815.748 seconds, peak 97,420,083,200 bytes.
+- Both warm-ups passed and the timed oracle half passed. Those successes
+  do not override this failure. Zero valid pairs; no comparative baseline
+  or speedup claim can be made. Failed artifacts remain intact.
+- No thermal/performance warning was recorded; system swap stayed near 2 GiB.
+  Treat this as an engine correctness defect, not an external-event retry.
+- Started a separate full-output diagnostic with the unchanged candidate to
+  localize prefill versus decode divergence. Do not resume the failed plan.
+  Correctness reliability now gates completion of the baseline milestone.
+
+- Independent GPU argmax fixture stress passes all 12,800 selections
+  (100 repetitions of 128 immutable full-logit rows). This does not test
+  live producer dependencies or clear the failed engine run.
+- Existing full-output gate used CPU selection. Added diagnostic checked-top1
+  mode to execute production GPU selection and compare it against the same
+  completed logits before applying immutable full-output C0 checks. Timed
+  engine inference remains unchanged; enhanced diagnostic build is underway.
+
+- The unchanged candidate passes the separate full-output diagnostic: all
+  129 rows exact. This does not clear intermittent/timing-path failure.
+- Enhanced checked-top1 release build and all 309 Rust tests pass. First live
+  enhanced 32K gate is running (`checked-top1-a.log`); no inference fix or
+  restored benchmark eligibility is claimed.
+
+## 2026-09-06 — Corrected paired plan frozen
+
+- Timing repair committed as `53dc0dba`. Replacement plan SHA-256:
+  `871c87620e28eecfcc7badc9ce905d911819c49adf19f0d2ef7ef99fbc3f82ab`.
+- Candidate remains the accepted `7406473f` binary. Reference uses exact
+  oracle-v3 inference plus the validated, pinned benchmark-driver repair.
+- Starting both warm-ups and five fresh alternating 32K/128 pairs, followed
+  by a separate profile. Evidence is in
+  `rust-star/.work/paired-32k-128-7406473-sampling/`.
+
+- Both corrected full-length warm-ups pass, including the exact Rust Star
+  transcript. Timed pair 1/5 is running; no invalid attempts or retries.
+
 ## 2026-09-06 — Sampling-inclusive oracle validated twice
 
 - Repaired oracle passes independent runs a and b: all 129 full FP32 rows
@@ -1541,12 +1652,14 @@ Next:
 
 ### Current resume checkpoint (updated 2026-09-06)
 
-- Active milestone: sampling-inclusive paired32K baseline and bottleneck profile.
-  Original plan was rejected after discovering that the oracle steady timer
-  excludes argmax. Its partial attempt is preserved and must not be resumed.
-  Benchmark-only repair, strict adapter guard and mock-clock test are added;
-  corrected oracle build, full-output conformance and fresh five-pair plan are
-  next. Work: `rust-star/.work/paired-32k-128-7406473-sampling/`.
+- Active milestone: restore stable C0 after the paired baseline exposed an
+  intermittent prefill failure, then complete the controlled baseline.
+  Streaming top-k count race now has a reproducing adversarial GPU test and
+  a barrier repair. The insufficient projection-wait experiment was reverted.
+  Explicit candidate oracle-v4 is pinned as `df99eba7`; acceptance is pending.
+  Top-k candidate build and v4 support are underway. Old paired plans and all
+  failed diagnostics remain preserved and must not be resumed.
+  Work: `rust-star/.work/paired-32k-128-7406473-sampling/`.
 - Completed native32K end to end: all 43 layers, output head, and 128 greedy
   decode steps. Diagnostic and output-only runs each match every immutable
   prefill and decode FP32 word, final token 14. Do not restart this layer work.
@@ -2344,9 +2457,9 @@ Next:
 
 ## Immediate Next Actions
 
-- Current authorized milestone: validate the corrected sampling-inclusive
-  oracle benchmark, freeze a new plan, complete all five pairs and the separate
-  profile, independently audit results, and record the next measured action.
+- Current authorized milestone: localize and repair the candidate C0 failure
+  discovered by corrected plan `871c8762...f82ab`, then repeat correctness
+  gates before a new five-pair plan and profile. The failed plan is preserved.
   The legacy-timer plan is rejected and must not be resumed.
 
 1. The full native32K stage is complete, including both full-output C0 modes,

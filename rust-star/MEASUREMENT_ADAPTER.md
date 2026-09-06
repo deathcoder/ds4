@@ -84,7 +84,10 @@ The native producer supports the validated 2K and 32K frontiers. It runs
 prefill without decoding diagnostic output
 fixtures, allocating host boundary tensors, or copying transformer boundaries
 to the host. It then times a 128-token loop without generation tensor
-collection and checks the selected-token transcript afterward. The independent
-C0 prefill command remains the mandatory regression gate. The adapter accepts
+collection and checks each selection after its timed interval. A failed
+selection triggers a readback of the same completed logits for failure details;
+failed runs cannot produce an eligible measurement. Passing runs keep the
+eight-byte GPU selection readback. The independent full-output C0 command
+checks production GPU argmax against the same logits and remains mandatory. The adapter accepts
 the raw record only when both collection flags are false, the transcript is
 exact, and the declared generation schedule matches the protocol.

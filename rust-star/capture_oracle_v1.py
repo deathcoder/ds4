@@ -564,6 +564,7 @@ def validate_args(args: argparse.Namespace) -> tuple[int, ...]:
     minimum_repetitions = {
         "oracle-v2": 2,
         "oracle-v3": 4,
+        "oracle-v4": 4,
     }.get(ORACLE_ID)
     if minimum_repetitions is not None:
         if args.skip_correctness or args.skip_conformance:

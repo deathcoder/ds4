@@ -733,7 +733,7 @@ fn run_long_prefill_with_context(
     timing.output_head_setup_ms += head_started.elapsed().as_secs_f64() * 1000.0;
     let head_started = Instant::now();
     let (selected_token, gpu_ms) = if validate_outputs {
-        run_sampling_output_head(model, &context, &mut head)?
+        run_checked_top1_output_head(model, &context, &mut head)?
     } else {
         run_top1_output_head(model, &context, &head)?
     };
@@ -828,7 +828,7 @@ fn run_long_prefill_decode(
             COMMAND_CHAINED_TIMING,
             42,
         )?;
-        let (token, _) = run_sampling_output_head(model, context, &mut head)?;
+        let (token, _) = run_checked_top1_output_head(model, context, &mut head)?;
         let row = &expected[step as usize * 129280..(step as usize + 1) * 129280];
         if head.logits.len() != row.len() {
             return Err(Error::invalid("32K decode vocabulary length differs"));

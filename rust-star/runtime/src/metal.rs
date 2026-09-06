@@ -21685,6 +21685,7 @@ mod imp {
     const OUTPUT_MODE_LOGITS: u32 = 0;
     const OUTPUT_MODE_INTERMEDIATES: u32 = 1;
     const OUTPUT_MODE_TOP1: u32 = 2;
+    const OUTPUT_MODE_CHECKED_TOP1: u32 = 3;
 
     #[repr(C)]
     struct RawProbeResult {
@@ -24182,6 +24183,13 @@ mod imp {
             q_cur: *mut f32,
             kv_cur: *mut f32,
             result: *mut RawQHeadResult,
+            error: *mut c_char,
+            error_bytes: usize,
+        ) -> i32;
+        fn rust_star_metal_copy_completed_output_logits(
+            context: *mut c_void,
+            logits: *mut f32,
+            count: u32,
             error: *mut c_char,
             error_bytes: usize,
         ) -> i32;
@@ -55570,6 +55578,121 @@ mod imp {
         Ok((lowest_id_argmax(&prepared.logits)?, raw.gpu_ms))
     }
 
+    // Diagnostic mode executes production GPU selection, then checks its exact
+    // completed logits. The extra readback is never used by engine-measure.
+    fn run_checked_top1_output_head(
+        model: &MappedModel,
+        context: &Context,
+        prepared: &mut PreparedOutputHead,
+    ) -> Result<(u32, f64)> {
+        let mut selected_token = u32::MAX;
+        let mut raw = RawIngressProbeResult::default();
+        let mut error = [0 as c_char; ERROR_BYTES];
+        let succeeded = unsafe {
+            rust_star_metal_run_output_head(
+                context.0,
+                model.mapping_pointer(),
+                model.bytes(),
+                prepared.hc_fn.absolute_offset,
+                prepared.hc_fn.bytes,
+                prepared.hc_scale.absolute_offset,
+                prepared.hc_scale.bytes,
+                prepared.hc_base.absolute_offset,
+                prepared.hc_base.bytes,
+                prepared.output_norm.absolute_offset,
+                prepared.output_norm.bytes,
+                prepared.output.absolute_offset,
+                prepared.output.bytes,
+                ptr::null_mut(),
+                ptr::null_mut(),
+                ptr::null_mut(),
+                ptr::null_mut(),
+                prepared.logits.as_mut_ptr(),
+                &mut selected_token,
+                OUTPUT_MODE_CHECKED_TOP1,
+                &mut raw,
+                error.as_mut_ptr(),
+                error.len(),
+            )
+        };
+        if succeeded == 0 {
+            return Err(Error::invalid(format!(
+                "Metal sampling output head failed: {}",
+                error_text(&error)
+            )));
+        }
+        if raw.model_bytes != model.bytes()
+            || raw.wrapped_model_ranges != 5
+            || raw.pointer_matches != 5
+            || !raw.wall_ms.is_finite()
+            || raw.wall_ms <= 0.0
+            || !raw.gpu_ms.is_finite()
+            || raw.gpu_ms < 0.0
+        {
+            return Err(Error::invalid(
+                "Metal sampling output head returned invalid ownership or timing metadata",
+            ));
+        }
+        let cpu_token = lowest_id_argmax(&prepared.logits)?;
+        if selected_token != cpu_token {
+            return Err(Error::invalid(format!(
+                "GPU token selection differs from the same completed logits: gpu={selected_token} cpu={cpu_token}"
+            )));
+        }
+        Ok((selected_token, raw.gpu_ms))
+    }
+
+    // Read only on a failed transcript, after the output head has synchronized.
+    // Preserve the actual failing row rather than recomputing it.
+    fn completed_output_failure_details(
+        context: &Context,
+        context_tokens: u32,
+        step: u32,
+    ) -> Result<String> {
+        let mut logits = vec![0.0; 129280];
+        let mut error = [0 as c_char; ERROR_BYTES];
+        let copied = unsafe {
+            rust_star_metal_copy_completed_output_logits(
+                context.0,
+                logits.as_mut_ptr(),
+                logits.len() as u32,
+                error.as_mut_ptr(),
+                error.len(),
+            )
+        };
+        if copied == 0 {
+            return Err(Error::invalid(error_text(&error)));
+        }
+        let cpu_token = lowest_id_argmax(&logits)?;
+        let mut details = format!(
+            "cpu_argmax={cpu_token} actual_logits_checksum={:#018x}",
+            checksum_f32(&logits)
+        );
+        if context_tokens == 32768 {
+            let (_, expected) = prefill_decode_32768_fixture()?;
+            let row = &expected[step as usize * 129280..(step as usize + 1) * 129280];
+            let differences = logits
+                .iter()
+                .zip(row)
+                .filter(|(a, b)| a.to_bits() != b.to_bits())
+                .count();
+            details.push_str(&format!(" differing_fp32_words={differences}"));
+            if let Some((index, (actual, expected))) = logits
+                .iter()
+                .zip(row)
+                .enumerate()
+                .find(|(_, (a, b))| a.to_bits() != b.to_bits())
+            {
+                details.push_str(&format!(
+                    " first_difference={index} actual_bits={:#010x} expected_bits={:#010x}",
+                    actual.to_bits(),
+                    expected.to_bits()
+                ));
+            }
+        }
+        Ok(details)
+    }
+
     fn run_top1_output_head(
         model: &MappedModel,
         context: &Context,
@@ -56130,6 +56253,16 @@ mod imp {
             selected_tokens.push(selected_token);
             input_token = selected_token;
             step_ms.push(started.elapsed().as_secs_f64() * 1000.0);
+            // Failure-only readback occurs after this step's measured interval.
+            // Successful runs still collect only the eight-byte GPU selection.
+            if selected_token != oracle_inputs[step as usize + 1] {
+                let details = completed_output_failure_details(&context, context_tokens, step)
+                    .unwrap_or_else(|error| format!("failure_diagnostic_error={error}"));
+                return Err(Error::invalid(format!(
+                    "timed engine transcript mismatch after generation step {}: actual={} expected={} {details}",
+                    step + 1, selected_token, oracle_inputs[step as usize + 1]
+                )));
+            }
             if step == 0 || collect_steady_layer_times {
                 let layer_gpu_ms = context.chained_layer_gpu_times(43)?;
                 let stage_gpu_ms = if collect_steady_layer_times {
