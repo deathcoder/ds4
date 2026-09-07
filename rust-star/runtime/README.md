@@ -1187,7 +1187,8 @@ five complete pairs: median Rust prefill 521.130 s versus 184.333 s reference,
 down 35.91% from the [earlier baseline](../reports/32k-baseline-cbb078bb/README.md).
 Decode remains near parity (19.752 / 19.595 tokens/s). A host restart required
 a complete final-pair rerun, with interrupted evidence retained. Even-layer
-attention is now the largest measured stage and the next optimization target.
+attention is now the largest measured stage. The next recommended milestone
+is an upstream/oracle refresh and fresh baseline before further local tuning.
 
 At 32K, `engine-profile` also records `long_prefill_profile` rows for native
 prefill stages: host elapsed time, existing command wall time, GPU time and

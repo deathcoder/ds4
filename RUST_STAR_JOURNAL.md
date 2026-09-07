@@ -18,6 +18,30 @@ Before changing code:
 Journal entries are reverse chronological. Do not edit old entries to change
 history; add a correction and update the current-state summary.
 
+## 2026-09-07 — Upstream refresh assessment supersedes attention tuning
+
+- User questioned optimizing before integrating upstream correctness/performance
+  improvements. Fetched origin/main; reviewed pinned tip
+  `c0a6119f363ef82125877142f13fb3fe491cba14` (241 upstream-side commits absent
+  from oracle-v4 ancestry). No implementation merge, build or new model run.
+- Relevant changes: 0658dac8 fixes inverse-RoPE fusion state and device-memory
+  fencing; 023614ea removes non-reproducible streaming top512; e6a6ab51 ports
+  exact decode compounds to M1–M4 (reported measurements are M3, not our M1);
+  8cbdd762 batches compressor position-table expansion; 85a4f0e strengthens
+  complete score/frontier validation. Many other gains target GLM, MXFP4,
+  M5, ROCm, TP or SSD and are not direct resident M1/Q2 gains.
+- Rust currently requires kernel_topk_stream512 during pipeline setup, so a
+  wholesale shared-kernel replacement is incompatible without a coordinated
+  wrapper port. Benchmark driver also differs; preserve sampling/timing fixes.
+- Recommended next milestone: pin upstream in an isolated oracle worktree,
+  audit which fork-only repairs remain necessary, establish repeatable oracle-v5
+  at 2K/32K plus full128-step logits, port relevant changes with Rust C0 and
+  lifecycle controls, then freeze a fresh paired baseline. Explain any changed
+  logits before accepting a new version; never overwrite historical fixtures.
+- Preserve v4 and completed reports. Attention optimization is deferred until
+  the refreshed baseline/profile establishes that it is still the priority.
+  This records an assessed recommendation, not a completed oracle upgrade.
+
 ## 2026-09-07 — Prefill optimization milestone complete
 
 - Profiled all native32K continuation layers/stages, identified the dominant
@@ -2015,6 +2039,10 @@ Next:
 
 ### Current resume checkpoint (updated 2026-09-07)
 
+- Next priority recommendation after upstream review: controlled upstream/oracle
+  refresh before more attention tuning. Pin c0a6119f in an isolated reference
+  worktree, validate oracle-v5 and port applicable M1/Q2 changes, then rebaseline.
+  Assessment complete; integration and v5 acceptance have not started.
 - Completed milestone: measured native32K prefill tail batching, candidate
   `dd0d26c5`, unchanged accepted oracle-v4 `df99eba7`. Durable report:
   `rust-star/reports/32k-prefill-dd0d26c5/README.md`; 106-artifact portable
@@ -2028,7 +2056,7 @@ Next:
   compares pre-/post-restart observations. Do not describe as uninterrupted.
 - Profiled even-tail GPU time falls 294.625 to 43.453 s; next bottleneck is
   even attention (77.645 GPU / 124.838 host s, 18,816 calls). Investigate
-  batching/command costs next, with exact validation and a new frozen plan.
+  batching/command costs only after the upstream refresh and new profile.
 - All 310 Rust and 91 Python tests, two fresh full32K C0 modes, internal12K,
   2K/8K controls and two retained32K reset/reuse cycles pass. Native32K is
   complete through all 43 layers, output head and 128 greedy steps. Do not
@@ -2808,10 +2836,13 @@ Next:
 - The authorized prefill optimization milestone is complete. Report and
   verifier: `rust-star/reports/32k-prefill-dd0d26c5/`.
 
-1. Next milestone: investigate native32K even-layer attention, now the largest
-   measured stage (77.645 s GPU / 124.838 s host, 18,816 calls). Attribute
-   batching, encoding/waits and allocation costs before choosing a change;
-   validate a C0-safe improvement with a fresh frozen five-pair comparison.
+1. Recommended next milestone: controlled upstream refresh at pinned c0a6119f.
+   Establish an isolated, explicitly versioned oracle-v5; audit upstream versus
+   fork-only correctness and benchmark timing fixes. Validate repeated complete
+   outputs and explain drift before accepting new targets. Port applicable
+   resident M1/Q2 improvements to Rust, preserve existing batching, run full C0
+   and lifecycle gates, then freeze a new paired baseline and separate profile.
+   Reassess even-layer attention after that baseline. Integration not started.
 2. Preserve exact 2K/8K controls, complete32K immutable output trace, GPU
    selection, GPU-owned history, reset/reuse and tied-score router ordering.
    Internal HC acceptance remains through24K. Do not redo completed layers.

@@ -357,8 +357,10 @@ continuation remain established controls.
   falls 813.107 to 521.130 s (35.91% less latency across campaigns), versus
   reference 184.333 s. Decode remains near parity (19.752 / 19.595 tokens/s).
   A host restart interrupted the last pair; complete-pair rerun and original
-  evidence are disclosed. Next: even-layer attention, the largest remaining
-  measured stage, under the same exactness and paired-measurement protocol.
+  evidence are disclosed. Upstream review now prioritizes a controlled oracle-v5
+  refresh and applicable M1/Q2 ports before further attention tuning. Pin the
+  upstream snapshot, explain output changes, preserve historical targets and
+  establish a fresh baseline before selecting the next local optimization.
 - Internal HC targets repeat through 24K. Instrumented 28K/32K captures are
   explicitly unverified; they do not replace the mandatory full-output C0 gate.
 - Preserve production batch arithmetic, GPU-owned history, exact shorter
