@@ -2292,6 +2292,11 @@ Next:
 
 ### Current resume checkpoint (updated 2026-09-07)
 
+- Latest candidate64f90380 is rebuilding with v5 internal and selector targets.
+  Prior8aa4d13d passes both full32K modes and all HC checkpoints; detailed8K
+  exposed two stale selector-ordering targets, both reproduced by direct
+  repeated v5 captures and versioned explicitly. Run8K first, then all six
+  final-candidate gates. No paired timing has started.
 - Active upstream-refresh milestone: pinned c0a6119f with oracle-v5 ccbd16d.
   Reference official gates, four2K/32K repetitions,8K control, tokenizer proof
   and two full129-row traces pass. Rust selector port passes full32K C0.
