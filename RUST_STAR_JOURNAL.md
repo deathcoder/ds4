@@ -18,6 +18,15 @@ Before changing code:
 Journal entries are reverse chronological. Do not edit old entries to change
 history; add a correction and update the current-state summary.
 
+## 2026-09-07 — Whole-chunk ingress passes native 12K
+
+- Corrected candidate ecf529a9 passes 310 Rust tests, release build and every
+  accepted internal state across all 43 layers through native 12K.
+- The 8K legacy control is running. 2K, both full 32K output modes, retained
+  lifecycle and fresh paired/profile measurements remain pending.
+- Initial metadata failure remains preserved; no numerical mismatch or target
+  change has occurred. Frozen build identity is in ingress work/batch-build.json.
+
 ## 2026-09-07 — Ingress metadata assertion corrected; attempt retained
 
 - First native 12K attempt stopped at layer 3's stale schedule assertion:
@@ -2555,8 +2564,8 @@ Next:
 
 - Active milestone: whole-chunk odd-layer ingress, preserving kernel arithmetic
   and removing native input staging copies. 310 Rust tests and release build pass;
-  first 12K attempt stopped on stale schedule metadata (retained); corrected
-  rebuild, all live gates and measurements pending in `rust-star/.work/ingress-milestone-12fb9314/`.
+  corrected ecf529a9 build and native 12K gate pass; legacy 8K running,
+  remaining live gates and measurements pending. Initial metadata failure retained in `rust-star/.work/ingress-milestone-12fb9314/`.
 
 - Authorized even-layer attention milestone is complete. Native continuation
   attention executes whole 4K chunks with unchanged kernel arithmetic and no
