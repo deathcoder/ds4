@@ -18,6 +18,14 @@ Before changing code:
 Journal entries are reverse chronological. Do not edit old entries to change
 history; add a correction and update the current-state summary.
 
+## 2026-09-07 — Frozen cc032078 full output-only gate passes
+
+- All prefill and128-step decode logits match v5 exactly on the final frozen
+  candidate. Detailed8K,12K and2K already pass. Diagnostic32K is running;
+  retained two-cycle gate follows, then frozen paired-plan preparation.
+- No source changes since the frozen candidate; all earlier diagnostic fixture
+  and metadata failures remain retained. No paired timing has started.
+
 ## 2026-09-07 — Final candidate shorter controls all pass
 
 - Frozencc032078 passes detailed8K through all43 layers/full output,12K
@@ -2329,8 +2337,8 @@ Next:
 ### Current resume checkpoint (updated 2026-09-07)
 
 - Latest candidatecc032078 builds and passes310 tests; detailed8K-first
-  validation passes detailed8K,12K and2K; full32K output-only is active,
-  then diagnostic32K and retained lifecycle gates.
+  validation passes detailed8K,12K and2K; full32K output-only passes; diagnostic32K is active,
+  then retained lifecycle and paired measurements.
   Prior8aa4d13d passes both full32K modes and all HC checkpoints; detailed8K
   exposed two stale selector-ordering targets, both reproduced by direct
   repeated v5 captures and versioned explicitly. Run8K first, then all six
