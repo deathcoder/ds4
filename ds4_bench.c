@@ -779,7 +779,7 @@ int main(int argc, char **argv) {
             return 1;
         }
     }
-    fprintf(out, "ctx_tokens,prefill_tokens,prefill_tps,gen_tokens,gen_tps,gen_first_ms,gen_steady_tokens,gen_steady_tps,kvcache_bytes\n");
+    fprintf(out, "ctx_tokens,prefill_tokens,prefill_tps,gen_tokens,gen_tps,gen_first_ms,gen_steady_tokens,gen_steady_tps,kvcache_bytes,sampling_in_interval\n");
     fflush(out);
 
     const int eos = ds4_token_eos(engine);
@@ -828,6 +828,16 @@ int main(int argc, char **argv) {
 #endif
         if (prefill_rc != 0) {
             fprintf(stderr, "ds4-bench: prefill to %d failed: %s\n", frontier, err);
+            rc = 1;
+            break;
+        }
+        /* The fixed greedy benchmark charges initial selection to prefill;
+         * each subsequent interval evaluates then selects/commits its output. */
+        const bool sampling_in_interval = !speculative && !cfg.teacher_forced_decode;
+        int next_token = cfg.gen_tokens > 0 && sampling_in_interval
+            ? ds4_session_argmax_excluding(session, eos) : -1;
+        if (cfg.gen_tokens > 0 && sampling_in_interval && next_token < 0) {
+            fprintf(stderr, "ds4-bench: initial non-EOS selection failed\n");
             rc = 1;
             break;
         }
@@ -903,6 +913,7 @@ int main(int argc, char **argv) {
             }
             const int token = cfg.teacher_forced_decode
                 ? prompt.v[frontier + gen_done]
+                : sampling_in_interval ? next_token
                 : ds4_session_argmax_excluding(session, eos);
             if (token < 0) {
                 fprintf(stderr, "ds4-bench: failed to choose non-EOS token at frontier %d\n", frontier);
@@ -963,7 +974,15 @@ int main(int argc, char **argv) {
                 (void)cudaProfilerStop();
             }
 #endif
-            const double token_t1 = bench_now_sec();
+            if (sampling_in_interval) {
+                next_token = ds4_session_argmax_excluding(session, eos);
+                if (next_token < 0) {
+                    fprintf(stderr, "ds4-bench: next non-EOS selection failed\n");
+                    rc = 1;
+                    break;
+                }
+                toks[0] = next_token;
+            }
             int cycle_tokens = 0;
             for (int j = 0; j < ntok && gen_done < cfg.gen_tokens; j++) {
                 if (toks[j] == eos) {
@@ -974,11 +993,20 @@ int main(int argc, char **argv) {
                 gen_done++;
                 cycle_tokens++;
             }
+            const double token_t1 = bench_now_sec();
             if (gen_first_tokens == 0) {
                 gen_first_sec = token_t1 - token_t0;
                 gen_first_tokens = cycle_tokens;
             } else {
                 gen_steady_sec += token_t1 - token_t0;
+            }
+            /* Full-vector diagnostics stay outside per-step timers. Such runs
+             * are never admitted by the paired measurement adapter. */
+            if (cfg.dump_frontier_logits_dir &&
+                write_frontier_logits_json(&cfg, engine, session,
+                                           frontier + gen_done, frontier) != 0) {
+                rc = 1;
+                break;
             }
         }
         const double gen_t1 = bench_now_sec();
@@ -1018,7 +1046,7 @@ int main(int argc, char **argv) {
         const int gen_steady_tokens = gen_done > gen_first_tokens ?
             gen_done - gen_first_tokens : 0;
         fprintf(out,
-                "%d,%d,%.2f,%d,%.2f,%.3f,%d,%.2f,%llu\n",
+                "%d,%d,%.9f,%d,%.9f,%.3f,%d,%.9f,%llu,%d\n",
                 frontier,
                 prefill_tokens,
                 prefill_sec > 0.0 ? (double)prefill_tokens / prefill_sec : 0.0,
@@ -1027,7 +1055,8 @@ int main(int argc, char **argv) {
                 gen_first_sec * 1000.0,
                 gen_steady_tokens,
                 gen_steady_sec > 0.0 ? (double)gen_steady_tokens / gen_steady_sec : 0.0,
-                (unsigned long long)(have_snapshot ? snap.len : 0));
+                (unsigned long long)(have_snapshot ? snap.len : 0),
+                sampling_in_interval ? 1 : 0);
         fflush(out);
 
         previous = frontier;

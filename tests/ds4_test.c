@@ -1296,12 +1296,22 @@ static void test_metal_f16_compressor_pair_state_store_exact_case(
                         10000.0f, 1.0f, 0.0f, 1.0f, 32.0f, 1.0f,
                         1.0e-6f, false, test_decode_pack, false) != 0);
 
-        TEST_ASSERT(ds4_gpu_matmul_f16_pair_compressor_store_tensor(
+        const bool store_fusion_available =
+            ds4_gpu_device_is_m3_or_m5_apple_silicon() != 0;
+        const int store_fused = ds4_gpu_matmul_f16_pair_compressor_store_tensor(
                         fused_kv, fused_score,
                         fused_state_kv, fused_state_score,
                         model_raw, model_bytes, 0, score_weight_offset,
                         ape_offset, ape_type, in_dim, width, x,
-                        ratio, pos) == 1);
+                        ratio, pos);
+        TEST_ASSERT(store_fused == (store_fusion_available ? 1 : 0));
+        /* Unsupported hardware must decline the optional fusion. Exercise the
+         * production fallback and still compare every projection/state word. */
+        if (store_fused == 0) {
+            TEST_ASSERT(ds4_gpu_matmul_f16_pair_tensor(
+                            fused_kv, fused_score, model_raw, model_bytes,
+                            0, score_weight_offset, in_dim, width, x, 1) != 0);
+        }
         if (test_decode_pack) {
             TEST_ASSERT(unsetenv(decode_pack_disable_env) == 0);
             TEST_ASSERT(unsetenv(exact_reduction_disable_env) == 0);
@@ -1314,7 +1324,7 @@ static void test_metal_f16_compressor_pair_state_store_exact_case(
                         ape_offset, ape_type, norm_offset, 0,
                         head_dim, ratio, pos, 0, 0, 0,
                         10000.0f, 1.0f, 0.0f, 1.0f, 32.0f, 1.0f,
-                        1.0e-6f, true, test_decode_pack, false) != 0);
+                        1.0e-6f, store_fused == 1, test_decode_pack, false) != 0);
 
         TEST_ASSERT(ds4_gpu_tensor_read(
                         ref_kv, 0, ref_kv_host, out_bytes) != 0);
@@ -2817,6 +2827,8 @@ static void test_metal_contiguous_f32_f16_roundtrip_exact(void) {
 
 #if defined(__APPLE__)
 static void test_metal_gathered_kv_stage_exact(void) {
+    const bool fusion_available =
+        ds4_gpu_device_is_m3_or_m5_apple_silicon() != 0;
     const uint32_t head_dim = 512;
     const uint32_t raw_cap = 7;
     const uint32_t n_raw = 5;
@@ -2929,9 +2941,16 @@ static void test_metal_gathered_kv_stage_exact(void) {
 
             ds4_gpu_set_quality(false);
             TEST_ASSERT(setenv(envs[0], "1", 1) == 0);
-            TEST_ASSERT(ds4_gpu_flash_kv_stage_f16_tensor(
+            const int required = ds4_gpu_flash_kv_stage_f16_tensor(
                             fused, raw, raw_cap, raw_starts[ci], n_raw,
-                            comp, 1, n_comp, head_dim) != 0);
+                            comp, 1, n_comp, head_dim);
+            TEST_ASSERT(required == (fusion_available ? 1 : 0));
+            if (!fusion_available) {
+                TEST_ASSERT(unsetenv(envs[0]) == 0);
+                TEST_ASSERT(ds4_gpu_flash_kv_stage_f16_tensor(
+                                fused, raw, raw_cap, raw_starts[ci], n_raw,
+                                comp, 1, n_comp, head_dim) != 0);
+            }
 
             TEST_ASSERT(ds4_gpu_tensor_read(
                             ref_base, 0, ref_host, dst_base_bytes) != 0);

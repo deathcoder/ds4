@@ -2781,6 +2781,11 @@ int ds4_gpu_device_is_pre_m5_apple_silicon(void) {
             g_metal_device_name[8] == ' ');
 }
 
+int ds4_gpu_device_is_m3_or_m5_apple_silicon(void) {
+    return ds4_gpu_device_name_contains("M3") ||
+           ds4_gpu_device_name_contains("M5");
+}
+
 int ds4_gpu_device_is_m5_apple_silicon(void) {
     return strncmp(g_metal_device_name, "Apple M5", 8) == 0 &&
            (g_metal_device_name[8] == '\0' ||
@@ -21045,8 +21050,7 @@ int ds4_gpu_matmul_f16_pair_compressor_store_tensor(
         uint32_t                pos) {
     if (!g_initialized && !ds4_gpu_init()) return -1;
     if ((g_quality_mode ||
-         (!ds4_gpu_device_name_contains("M3") &&
-          !ds4_gpu_device_name_contains("M5"))) ||
+         !ds4_gpu_device_is_m3_or_m5_apple_silicon()) ||
         getenv("DS4_METAL_DISABLE_COMPRESSOR_PAIR_PROJ") != NULL ||
         getenv("DS4_METAL_DISABLE_COMPRESSOR_STORE_ONE") != NULL) {
         return 0;
@@ -27228,8 +27232,7 @@ static int ds4_gpu_encode_flash_kv_stage_f16(
         supported_shape && valid_grid && !g_quality_mode &&
         getenv("DS4_METAL_DISABLE_GATHERED_KV_STAGE") == NULL &&
         g_flash_kv_stage_f16_pipeline != nil &&
-        (ds4_gpu_device_name_contains("M3") ||
-         ds4_gpu_device_name_contains("M5"));
+        ds4_gpu_device_is_m3_or_m5_apple_silicon();
     const bool component_disabled = eligible &&
         (ds4_gpu_env_bool("DS4_METAL_DISABLE_CONTIG_F32_F16_COPY") > 0 ||
          ds4_gpu_env_bool("DS4_METAL_DISABLE_CONTIG_F16_F16_COPY") > 0);
