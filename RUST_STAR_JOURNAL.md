@@ -18,6 +18,13 @@ Before changing code:
 Journal entries are reverse chronological. Do not edit old entries to change
 history; add a correction and update the current-state summary.
 
+## 2026-09-07 — Both ingress campaign warmups pass
+
+- Oracle and candidate warmups both pass with the expected transcript.
+  Pair 1 (AB) is running under frozen plan ec570b76. No invalid attempt.
+- Candidate, oracle and plan remain unchanged; five pairs, isolated profile,
+  audit and final docs/report remain pending.
+
 ## 2026-09-07 — Ingress paired plan frozen; warmups started
 
 - Five alternating AB/BA/AB/BA/AB pairs, one warmup per engine, then a separate
@@ -2604,7 +2611,7 @@ Next:
   and removing native input staging copies. 310 Rust tests and release build pass;
   corrected ecf529a9 build and 12K/8K/2K gates pass; full 32K output-only
   and diagnostic gates and retained lifecycle pass. Frozen paired campaign
-  warmups running; five pairs/profile pending; initial
+  both warmups pass; pair 1 running, five-pair result/profile pending; initial
   metadata failure retained in `rust-star/.work/ingress-milestone-12fb9314/`.
 
 - Authorized even-layer attention milestone is complete. Native continuation
