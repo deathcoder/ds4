@@ -18,6 +18,13 @@ Before changing code:
 Journal entries are reverse chronological. Do not edit old entries to change
 history; add a correction and update the current-state summary.
 
+## 2026-09-07 — Native tail shorter controls pass
+
+- Native 12K, detailed legacy 8K and 2K controls pass for 89e32745.
+  The legacy 8K run matches all 129,280 logits and its original schedule.
+- Full 32K output-only gate is running; diagnostic 32K, retained lifecycle,
+  paired campaign and isolated profile remain pending. No failed attempt.
+
 ## 2026-09-07 — Native tail passes exact 12K states
 
 - Candidate 89e32745 passes all accepted native internal states through 12K,
@@ -2697,7 +2704,8 @@ Next:
 
 - Active milestone: native tail scratch reuse, direct retained HC output and
   removal of unused FP32 diagnostic conversion. 310 tests/release build pass;
-  native 12K passes, legacy 8K running; remaining gates and paired/profile pending in `rust-star/.work/tail-milestone-2d8b8405/`.
+  12K/8K/2K pass; full 32K output-only running; diagnostic/lifecycle and
+  paired/profile pending in `rust-star/.work/tail-milestone-2d8b8405/`.
 
 - Authorized odd-layer ingress milestone is complete. Native continuation
   ingress executes whole 4K chunks with unchanged kernel arithmetic and no
