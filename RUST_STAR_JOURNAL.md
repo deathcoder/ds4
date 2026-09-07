@@ -18,6 +18,18 @@ Before changing code:
 Journal entries are reverse chronological. Do not edit old entries to change
 history; add a correction and update the current-state summary.
 
+## 2026-09-07 — New32K logits attributed exactly to selector change
+
+- V4 control with ONLY streaming-selector dispatch removed produces
+  `fb827b1c...d4753b`, matching all129,280 FP32 words from pristine upstream.
+  This isolates the new32K tensor to deterministic argsort/merge selection,
+  not unexplained arithmetic changes across the upstream history. Old repaired
+  streaming selector and new argsort have different selection policies; do not
+  retroactively call v4 fixtures v5 or relax bit-exact comparisons.
+- `selector-attribution.json` binds control/new tensors; all source/build logs
+  are retained. Control8K is running. Next final-source v5 acceptance captures
+  and full128-step traces, versioned fixtures, and live Rust full-output gates.
+
 ## 2026-09-07 — V5 candidate pinned; Rust selector tests pass
 
 - Oracle candidate source `ccbd16d36895ef9fe8edf7f793014988ff1ab7f4`, tree
