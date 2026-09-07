@@ -18,6 +18,15 @@ Before changing code:
 Journal entries are reverse chronological. Do not edit old entries to change
 history; add a correction and update the current-state summary.
 
+## 2026-09-07 — Attention candidate built; native C0 validation running
+
+- Candidate `1eb20ddbfa29b893dca8865494e0b442e39e92e4` passes 310 Rust tests and release build.
+  Executable SHA `a13b8d518c3715ed35f54deecb7845d0dfd3f075545527970c1b69bed1eeb908`.
+- Work/evidence: `rust-star/.work/attention-milestone-502bb6b6/`.
+  The 12K native internal-state gate is running first, followed by detailed
+  8K, 2K, both full 32K modes and retained two-cycle validation. Five paired
+  measurements and separate profile remain gated on all six live checks.
+
 ## 2026-09-07 — Even-layer attention batching milestone starts
 
 - Authorized follow-up: optimize the v5 profile's largest GPU stage group while
@@ -2436,8 +2445,9 @@ Next:
 ### Current resume checkpoint (updated 2026-09-07)
 
 - Active milestone: native even-layer attention batching from 32 to 4096 rows,
-  same kernel arithmetic and direct tail-input output. Build/full validation
-  pending; do not treat the implementation as accepted until all gates pass.
+  same kernel arithmetic and direct tail-input output. Build and 310 Rust
+  tests pass; 12K-first live validation is running. Work/evidence lives at
+  `rust-star/.work/attention-milestone-502bb6b6/`. Acceptance and timing pending.
 
 - Default v5 exporter smoke build passes with all pinned third-party headers
   and license. All 72 exported files match the reference tree; final Python
