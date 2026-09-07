@@ -8885,7 +8885,7 @@ fn write_long_prefill_continuation_bootstrap_probe_json_payload<W: Write>(
         let (dispatches, mappings) = if layer % 2 == 1 {
             (1367, 1199)
         } else {
-            (4724, 2227)
+            (4852, 2227)
         };
         if layer != 15 + index as u32
             || layer > 42
@@ -61896,7 +61896,7 @@ mod tests {
                         let (dispatches, mappings) = if layer % 2 == 1 {
                             (1367, 1199)
                         } else {
-                            (4724, 2227)
+                            (4852, 2227)
                         };
                         RemainingPrefillLayerReport {
                             layer,

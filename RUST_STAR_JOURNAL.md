@@ -18,6 +18,18 @@ Before changing code:
 Journal entries are reverse chronological. Do not edit old entries to change
 history; add a correction and update the current-state summary.
 
+## 2026-09-07 — Remaining-layer diagnostic merge accounting corrected
+
+- Detailed8K candidate passes the new second-tile/full-layer4 selectors and
+  reaches layer16, then metadata rejects37 actual dispatches against36 expected.
+  The separate `remaining_prefill.rs` legacy8K driver retained stale counts.
+- Corrected all such remaining-layer counters:37 per tile,4736 per continuation
+  and4852 aggregate per even layer. Prefix36 stays unchanged. Existing report
+  contract and its synthetic fixture now agree with the actual merge dispatch.
+  No arithmetic, shader or golden tensor changes in this step.
+- Original6aaa1192 attempt retained under `old-dispatch-attempt-6aaa1192/`.
+  Rebuild and detailed8K-first full validation queue resumes before timing.
+
 ## 2026-09-07 — Full continuation selector checksum versioned
 
 - Detailed8K passed the new second-tile selector then stopped on layer4's
@@ -2292,7 +2304,8 @@ Next:
 
 ### Current resume checkpoint (updated 2026-09-07)
 
-- Latest candidate64f90380 is rebuilding with v5 internal and selector targets.
+- Latest candidate is rebuilding after correcting legacy remaining-layer
+  diagnostic dispatch counts. All reference v5 targets are validated.
   Prior8aa4d13d passes both full32K modes and all HC checkpoints; detailed8K
   exposed two stale selector-ordering targets, both reproduced by direct
   repeated v5 captures and versioned explicitly. Run8K first, then all six

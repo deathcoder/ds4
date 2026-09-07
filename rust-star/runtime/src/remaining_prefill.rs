@@ -1255,7 +1255,7 @@ fn run_remaining_even(
                 error_text(&error)
             )));
         }
-        if tile.dispatches != 36 || tile.wrapped_model_ranges != 17 || tile.pointer_matches != 17 {
+        if tile.dispatches != 37 || tile.wrapped_model_ranges != 17 || tile.pointer_matches != 17 {
             return Err(Error::invalid(format!(
                     "Metal even-layer continuation tile {tile_start} metadata is invalid: dispatches={}, mappings={}/{}",
                     tile.dispatches, tile.pointer_matches, tile.wrapped_model_ranges,
@@ -1288,7 +1288,7 @@ fn run_remaining_even(
         )));
     }
     if layer23_loop.layer14_continuation_tiles != 128
-        || layer23_loop.layer14_continuation_dispatches != 4_608
+        || layer23_loop.layer14_continuation_dispatches != 4_736
         || layer23_loop.layer14_continuation_wrapped_model_ranges != 2_176
         || layer23_loop.layer14_continuation_pointer_matches != 2_176
         || layer23_loop.layer14_continuation_tail_checksums
