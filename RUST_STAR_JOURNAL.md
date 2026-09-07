@@ -18,6 +18,23 @@ Before changing code:
 Journal entries are reverse chronological. Do not edit old entries to change
 history; add a correction and update the current-state summary.
 
+## 2026-09-08 — Read-only follow-up audit during paired run
+
+- Oracle half of timed pair 1 passed; Rust half is running. Runtime remains frozen.
+- Report generator now discloses changed profile instrumentation: current native
+  tails use nine counter-sampled encoders, while the older aggregate profile did
+  not. Their GPU-time difference cannot isolate the dense-output code change.
+- Bootstrap draft review adds explicit profile coverage requirements: initial
+  layers 0..2 followed by prefix layers 3..42. Existing continuation checks alone
+  do not verify that prefix coverage. Draft remains unapplied.
+- Broader-context preflight found end-position-sized transient allocations in
+  bind_long_prefill_layer. One FullQ buffer is 4 GiB at 32K, 16 GiB at 128K,
+  32 GiB at 256K and 128 GiB at 1M. These are source allocation calculations,
+  not observed residency or total capacity. Audit device limits and absolute
+  offsets before extending guards; chunk-bounded transient storage is a likely
+  prerequisite. Details remain in broader-context-preflight.md in the active
+  dense-output evidence directory. No broader-context model process was run.
+
 ## 2026-09-08 — Dense-Q8 warmups pass; timed pairs running
 
 - Both fresh-process warmups passed. The frozen five-pair campaign has entered
