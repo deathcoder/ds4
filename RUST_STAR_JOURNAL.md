@@ -18,6 +18,15 @@ Before changing code:
 Journal entries are reverse chronological. Do not edit old entries to change
 history; add a correction and update the current-state summary.
 
+## 2026-09-07 — Final candidate output-only full C0 passes
+
+- Candidate8aa4d13d fresh32K output-only run passes every prefill and128-step
+  decode FP32 comparison. Diagnostic32K is now running against independently
+  repeated v5 HC targets, followed by2K/8K and retained lifecycle controls.
+- Rust/cargo versions and empty Rustflags rechecked against the frozen build
+  configuration; `toolchain-verification.json` records exact matches.
+- Measurements remain gated on the remaining live checks.
+
 ## 2026-09-07 — Final v5 checkpoint candidate frozen and validating
 
 - Candidate `8aa4d13db803f96494d2c66988f12e81887228ca` passes310 Rust tests and release build.
@@ -2242,7 +2251,8 @@ Next:
   Historical16K layer34 mismatch reproduced directly by v5; two full HC
   inventories at each12K/16K/20K/24K now accepted as separate v5 targets.
   Candidate8aa4d13d builds and passes310 tests; fresh12K passes and the
-  new full32K output-only run is active, followed by remaining live gates.
+  new full32K output-only run passes; diagnostic32K is active, then
+  shorter controls and retained lifecycle gates.
   Paired baseline and portable report remain pending. Evidence and sequential
   scripts: `rust-star/.work/upstream-refresh-1190237b/`.
 - Completed milestone: measured native32K prefill tail batching, candidate
