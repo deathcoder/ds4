@@ -18,6 +18,14 @@ Before changing code:
 Journal entries are reverse chronological. Do not edit old entries to change
 history; add a correction and update the current-state summary.
 
+## 2026-09-07 — Batched attention passes complete 32K output C0
+
+- Frozen 1eb20ddb matches all 129,280 prefill logits and all 128 complete decode
+  outputs against unchanged oracle-v5. Selected prefill token 85166 and complete
+  transcript remain exact; no fixture or arithmetic change was needed.
+- Diagnostic 32K is running next, followed by retained two-cycle reset/reuse.
+  Shorter controls and 310 tests already pass. No paired timing has started.
+
 ## 2026-09-07 — Attention batching shorter controls pass
 
 - Frozen 1eb20ddb passes 12K internal states, detailed 8K including all 129,280
@@ -2461,7 +2469,8 @@ Next:
 
 - Active milestone: native even-layer attention batching from 32 to 4096 rows,
   same kernel arithmetic and direct tail-input output. Build and 310 Rust
-  tests and all shorter controls pass; full 32K validation is running. Work/evidence lives at
+  tests, shorter controls and full 32K output-only C0 pass. Diagnostic 32K
+  and retained lifecycle remain before measurement. Work/evidence lives at
   `rust-star/.work/attention-milestone-502bb6b6/`. Acceptance and timing pending.
 
 - Default v5 exporter smoke build passes with all pinned third-party headers
