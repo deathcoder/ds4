@@ -22874,6 +22874,12 @@ mod imp {
             error: *mut c_char,
             error_bytes: usize,
         ) -> i32;
+        fn rust_star_metal_enable_prefill_tail_profiling(
+            context: *mut c_void, error: *mut c_char, error_bytes: usize,
+        ) -> i32;
+        fn rust_star_metal_copy_prefill_tail_ticks(
+            context: *mut c_void, ticks: *mut u64, error: *mut c_char, error_bytes: usize,
+        ) -> i32;
         fn rust_star_metal_copy_chained_layer_stage_ticks(
             context: *mut c_void,
             layer_count: u32,
@@ -58194,6 +58200,12 @@ mod imp {
         Err(Error::invalid("long prefill requires macOS Metal"))
     }
 
+    pub fn run_long_prefill_profile_probe(
+        _model: &MappedModel,
+    ) -> Result<(LongPrefillChunkProbeReport, String)> {
+        Err(Error::invalid("long-prefill profile probe requires macOS Metal"))
+    }
+
     pub fn run_long_prefill_output_probe(
         _model: &MappedModel,
     ) -> Result<LongPrefillChunkProbeReport> {
@@ -58906,7 +58918,7 @@ pub use imp::{
     run_layers0123_decode_probe, run_layers0123_probe, run_layers012_chained_probe,
     run_layers012_probe, run_layers01_probe, run_layers0_to_42_decode_probe,
     run_long_prefill_bootstrap_probe, run_long_prefill_chunk_probe,
-    run_long_prefill_continuation_bootstrap_probe, run_long_prefill_output_probe,
+    run_long_prefill_continuation_bootstrap_probe, run_long_prefill_output_probe, run_long_prefill_profile_probe,
     run_long_prefill_sequential_continuation_probe, run_long_prefill_transformer_probe,
     run_moe_output_probe, run_position127_decoder_probe, run_prefill_decode_frontier_probe,
     run_prefill_frontier_probe, run_prefill_layer0_boundary_probe,

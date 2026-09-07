@@ -18,6 +18,24 @@ Before changing code:
 Journal entries are reverse chronological. Do not edit old entries to change
 history; add a correction and update the current-state summary.
 
+## 2026-09-07 — Native tail component profiling in progress
+
+- User authorized continuous next-milestone work until completion or usage exhaustion.
+- Adding nine profile-only compute encoder intervals to the native tail: attention
+  output, FFN ingress, router, routed map, routed gate/up, routed down, routed sum,
+  shared expert, final HC. Normal inference retains its single encoder/25 dispatches.
+- Per-call timestamp shares are attributed to the completed tail command GPU
+  duration; component rows are separate from parent totals to prevent double counting.
+  Raw ticks and explicit perturbation/scaling metadata remain in the evidence.
+- Added an output-only C0 probe profile option so instrumented execution must
+  match all 32K prefill and 128 decode tensors, not only the token transcript.
+- Initial development build saw a mixed source snapshot while the new CLI/API
+  was being added and failed with an unresolved export; log preserved as tests.log.
+  A fresh build against the complete source is running (tests-final.log). No live
+  run or frozen candidate used that failed development build.
+- Build/tests and live validation pending. Baseline fd72c897/89e32745 remains
+  the accepted measured implementation. Work: rust-star/.work/tail-components-fd72c897/.
+
 ## 2026-09-07 — Native tail scratch/output milestone complete
 
 - Native tails reuse 22 command-local buffers, released before decode/reset.
@@ -2798,6 +2816,9 @@ Next:
 
 ### Current resume checkpoint (updated 2026-09-07)
 
+- Active next milestone: native tail component profiling. Implementation added;
+  tests/build and full-output profiled/unprofiled validation pending. See newest entry.
+
 - Authorized native tail scratch/output milestone is complete. Whole-chunk
   tails reuse 22 temporary buffers, write directly to retained HC output and
   omit unused FP32 routed-mid conversion (25 dispatches instead of 26).
@@ -3573,7 +3594,9 @@ Next:
 
 ## Immediate Next Actions
 
-1. Native tail milestone is complete. Review `rust-star/reports/32k-tail-89e32745/README.md`.
+1. Complete native-tail component profile build, exact output validation and
+   component accounting audit; then select the next optimization from evidence.
+   Previous native tail milestone is complete. Review `rust-star/reports/32k-tail-89e32745/README.md`.
    Inspect component costs within `even/tail` before selecting the next exact
    optimization. Preserve v5 C0 and lifecycle, and measure memory alongside speed.
 2. Keep oracle-v5 and historical fixtures/reports immutable. Internal targets

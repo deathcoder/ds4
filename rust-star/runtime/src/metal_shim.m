@@ -385,6 +385,8 @@ static NSString *const kQ8ProjectionSource =
 @property(nonatomic, strong) NSMutableArray<NSNumber *> *prefillRepresentativeStageGpuTimes;
 @property(nonatomic, strong) NSMutableArray<NSNumber *> *prefillRepresentativeAttentionStageGpuTimes;
 @property(nonatomic, assign) BOOL prefillLayerProfiling;
+@property(nonatomic, strong) id<MTLCounterSampleBuffer> prefillLayerTailSamples;
+@property(nonatomic, strong) id<MTLCommandBuffer> prefillLayerTailCommand;
 @property(nonatomic, strong) NSMutableArray<id<MTLCommandBuffer>> *prefillBoundaryCommands;
 @property(nonatomic, assign) double prefillBoundaryWallStart;
 @property(nonatomic, strong) id<MTLBuffer> prefillLayer0FullKv;
@@ -2072,6 +2074,79 @@ int rust_star_metal_enable_chained_stage_profiling(
             context.chainedStageSamples[@(layer)] = samples;
         }
         context.chainedStageProfiling = YES;
+        return 1;
+    }
+}
+
+int rust_star_metal_enable_prefill_tail_profiling(
+    void *opaque_context,
+    char *error,
+    size_t error_bytes)
+{
+    if (!opaque_context) {
+        return fail_with_message(error, error_bytes,
+            @"stage profiling received a null context");
+    }
+    @autoreleasepool {
+        RustStarMetalContext *context = (__bridge RustStarMetalContext *)opaque_context;
+        if (![context.device supportsCounterSampling:MTLCounterSamplingPointAtStageBoundary]) {
+            return fail_with_message(error, error_bytes,
+                @"Metal device does not support compute-stage counter sampling");
+        }
+        id<MTLCounterSet> timestamp_set = nil;
+        for (id<MTLCounterSet> counter_set in context.device.counterSets) {
+            if ([counter_set.name isEqualToString:MTLCommonCounterSetTimestamp]) {
+                timestamp_set = counter_set;
+                break;
+            }
+        }
+        if (!timestamp_set) {
+            return fail_with_message(error, error_bytes,
+                @"Metal device does not expose the timestamp counter set");
+        }
+        context.prefillLayerTailCommand = nil;
+        MTLCounterSampleBufferDescriptor *descriptor =
+            [MTLCounterSampleBufferDescriptor new];
+        descriptor.counterSet = timestamp_set;
+        descriptor.storageMode = MTLStorageModeShared;
+        descriptor.sampleCount = 18u;
+        descriptor.label = @"rust-star native prefill tail timestamps";
+        NSError *sample_error = nil;
+        id<MTLCounterSampleBuffer> samples =
+            [context.device newCounterSampleBufferWithDescriptor:descriptor
+                                                           error:&sample_error];
+        if (!samples) {
+            return fail_with_message(error, error_bytes,
+                sample_error.localizedDescription ?: @"failed to create timestamp sample buffer");
+        }
+        context.prefillLayerTailSamples = samples;
+        return 1;
+    }
+}
+
+int rust_star_metal_copy_prefill_tail_ticks(
+    void *opaque_context, uint64_t *ticks, char *error, size_t error_bytes)
+{
+    if (!opaque_context || !ticks)
+        return fail_with_message(error, error_bytes, @"invalid tail timing output");
+    @autoreleasepool {
+        RustStarMetalContext *context = (__bridge RustStarMetalContext *)opaque_context;
+        if (!context.prefillLayerTailSamples || !context.prefillLayerTailCommand ||
+            context.prefillLayerTailCommand.status != MTLCommandBufferStatusCompleted)
+            return fail_with_message(error, error_bytes, @"tail timing requires a completed native tail");
+        NSData *resolved = [context.prefillLayerTailSamples resolveCounterRange:NSMakeRange(0,18u)];
+        if (!resolved || resolved.length < 18u*sizeof(MTLCounterResultTimestamp))
+            return fail_with_message(error, error_bytes, @"failed to resolve tail timestamps");
+        const MTLCounterResultTimestamp *values = resolved.bytes;
+        for (NSUInteger i = 0; i < 18u; i++) {
+            uint64_t value = values[i].timestamp;
+            if (value == MTLCounterErrorValue ||
+                (i && value <= values[i-1u].timestamp))
+                return fail_with_message(error, error_bytes, @"invalid tail timestamps");
+            ticks[i] = value;
+        }
+        /* Each completed call is consumed once before the next layer reuses samples. */
+        context.prefillLayerTailCommand = nil;
         return 1;
     }
 }
@@ -46631,7 +46706,9 @@ int rust_star_metal_run_prefill_layer2_continuation_tail(
         ffn_hc_post_args.has_add = 1;
 
         id<MTLCommandBuffer> command = [context.queue commandBuffer];
-        id<MTLComputeCommandEncoder> encoder = [command computeCommandEncoder];
+        id<MTLCounterSampleBuffer> tail_samples = native_chunk ? context.prefillLayerTailSamples : nil;
+        context.prefillLayerTailCommand = nil;
+        id<MTLComputeCommandEncoder> encoder = stage_compute_encoder(command, tail_samples, 0u);
         if (!command || !encoder) return fail_with_message(error, error_bytes,
             @"failed to create prefill layer-2 continuation tail command");
 
@@ -46679,6 +46756,11 @@ int rust_star_metal_run_prefill_layer2_continuation_tail(
         [encoder dispatchThreadgroups:MTLSizeMake((rows*n_embd+255u)/256u,1,1)
              threadsPerThreadgroup:MTLSizeMake(256,1,1)];
 
+        if (tail_samples) {
+            [encoder endEncoding];
+            encoder = stage_compute_encoder(command, tail_samples, 1u);
+            if (!encoder) return fail_with_message(error, error_bytes, @"failed to create tail profile encoder");
+        }
         [encoder setComputePipelineState:context.rmsNormF32Pipeline];
         [encoder setBytes:&ffn_hc_norm_args length:sizeof(ffn_hc_norm_args) atIndex:0];
         [encoder setBuffer:after_attention_hc_buffer offset:0 atIndex:1];
@@ -46712,6 +46794,11 @@ int rust_star_metal_run_prefill_layer2_continuation_tail(
         [encoder dispatchThreadgroups:MTLSizeMake(rows,1,1)
              threadsPerThreadgroup:MTLSizeMake(1024,1,1)];
 
+        if (tail_samples) {
+            [encoder endEncoding];
+            encoder = stage_compute_encoder(command, tail_samples, 2u);
+            if (!encoder) return fail_with_message(error, error_bytes, @"failed to create tail profile encoder");
+        }
         [encoder setComputePipelineState:context.f16PrefillPipeline];
         [encoder setBytes:&router_args length:sizeof(router_args) atIndex:0];
         [encoder setBuffer:model_buffers[6] offset:inner[6] atIndex:1];
@@ -46777,6 +46864,11 @@ int rust_star_metal_run_prefill_layer2_continuation_tail(
         [encoder dispatchThreads:MTLSizeMake(rows*used_experts,1,1)
              threadsPerThreadgroup:MTLSizeMake(192,1,1)];
 
+        if (tail_samples) {
+            [encoder endEncoding];
+            encoder = stage_compute_encoder(command, tail_samples, 3u);
+            if (!encoder) return fail_with_message(error, error_bytes, @"failed to create tail profile encoder");
+        }
         [encoder setComputePipelineState:context.routedBatchMapPipeline];
         [encoder setBytes:&routed_map_args length:sizeof(routed_map_args) atIndex:0];
         [encoder setBuffer:router_selected_buffer offset:0 atIndex:1];
@@ -46787,6 +46879,11 @@ int rust_star_metal_run_prefill_layer2_continuation_tail(
         [encoder dispatchThreadgroups:MTLSizeMake(1,1,1)
              threadsPerThreadgroup:MTLSizeMake(256,1,1)];
 
+        if (tail_samples) {
+            [encoder endEncoding];
+            encoder = stage_compute_encoder(command, tail_samples, 4u);
+            if (!encoder) return fail_with_message(error, error_bytes, @"failed to create tail profile encoder");
+        }
         [encoder setComputePipelineState:context.routedBatchPairSwigluPipeline];
         [encoder setBytes:&routed_gate_args length:sizeof(routed_gate_args) atIndex:0];
         [encoder setBytes:&routed_activation_args length:sizeof(routed_activation_args) atIndex:1];
@@ -46802,6 +46899,11 @@ int rust_star_metal_run_prefill_layer2_continuation_tail(
         [encoder dispatchThreadgroups:MTLSizeMake(routed_map_work_cap,32,1)
              threadsPerThreadgroup:MTLSizeMake(128,1,1)];
 
+        if (tail_samples) {
+            [encoder endEncoding];
+            encoder = stage_compute_encoder(command, tail_samples, 5u);
+            if (!encoder) return fail_with_message(error, error_bytes, @"failed to create tail profile encoder");
+        }
         [encoder setComputePipelineState:context.routedBatchDownPipeline];
         [encoder setBytes:&routed_down_args length:sizeof(routed_down_args) atIndex:0];
         [encoder setBuffer:model_buffers[10] offset:inner[10] atIndex:1];
@@ -46813,6 +46915,11 @@ int rust_star_metal_run_prefill_layer2_continuation_tail(
         [encoder setThreadgroupMemoryLength:8192u atIndex:0];
         [encoder dispatchThreadgroups:MTLSizeMake(routed_map_work_cap,64,1)
              threadsPerThreadgroup:MTLSizeMake(128,1,1)];
+        if (tail_samples) {
+            [encoder endEncoding];
+            encoder = stage_compute_encoder(command, tail_samples, 6u);
+            if (!encoder) return fail_with_message(error, error_bytes, @"failed to create tail profile encoder");
+        }
         [encoder setComputePipelineState:context.routedBatchSumPipeline];
         [encoder setBytes:&routed_sum_args length:sizeof(routed_sum_args) atIndex:0];
         [encoder setBuffer:routed_experts_buffer offset:0 atIndex:1];
@@ -46830,6 +46937,11 @@ int rust_star_metal_run_prefill_layer2_continuation_tail(
         [encoder dispatchThreadgroups:MTLSizeMake(rows/32u,(width)/64u,1) \
              threadsPerThreadgroup:MTLSizeMake(128,1,1)]; \
     } while (0)
+        if (tail_samples) {
+            [encoder endEncoding];
+            encoder = stage_compute_encoder(command, tail_samples, 7u);
+            if (!encoder) return fail_with_message(error, error_bytes, @"failed to create tail profile encoder");
+        }
         RUST_STAR_ENCODE_CONTINUATION_SHARED(shared_gate_args, 11,
             ffn_norm_buffer, shared_gate_buffer, routed_width);
         RUST_STAR_ENCODE_CONTINUATION_SHARED(shared_up_args, 12,
@@ -46845,6 +46957,11 @@ int rust_star_metal_run_prefill_layer2_continuation_tail(
             shared_mid_buffer, shared_out_buffer, n_embd);
 #undef RUST_STAR_ENCODE_CONTINUATION_SHARED
 
+        if (tail_samples) {
+            [encoder endEncoding];
+            encoder = stage_compute_encoder(command, tail_samples, 8u);
+            if (!encoder) return fail_with_message(error, error_bytes, @"failed to create tail profile encoder");
+        }
         [encoder setComputePipelineState:context.hcExpand4Pipeline];
         [encoder setBytes:&ffn_hc_post_args length:sizeof(ffn_hc_post_args) atIndex:0];
         [encoder setBuffer:routed_out_buffer offset:0 atIndex:1];
@@ -46884,6 +47001,7 @@ int rust_star_metal_run_prefill_layer2_continuation_tail(
         const double wall_start = monotonic_ms();
         [command commit];
         if (!command_succeeded(command, error, error_bytes)) return 0;
+        if (tail_samples) context.prefillLayerTailCommand = command;
         if (diagnostic_tile) {
             if (attention_low) memcpy(attention_low, attention_low_buffer.contents, attention_low_bytes);
             if (attention_output) memcpy(attention_output, output_buffer.contents, output_bytes);

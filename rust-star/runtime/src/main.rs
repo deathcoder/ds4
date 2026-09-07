@@ -158,10 +158,14 @@ fn run() -> Result<()> {
         }
         let mut frontier = 32768;
         let mut output_only = false;
+        let mut profile_output = None;
         let mut output = None;
         while let Some(flag) = args.next() {
             match flag.to_str() {
                 Some("--output-only") => output_only = true,
+                Some("--profile-json") => {
+                    profile_output = Some(args.next().ok_or_else(|| Error::invalid("missing profile JSON path"))?);
+                }
                 Some("--context") => {
                     frontier = args
                         .next()
@@ -176,10 +180,16 @@ fn run() -> Result<()> {
                 }
                 _ => {
                     return Err(Error::invalid(
-                        "expected --context, --json, or --output-only",
+                        "expected --context, --json, --output-only, or --profile-json",
                     ))
                 }
             }
+        }
+        if profile_output.is_some() && (!output_only || frontier != 32768) {
+            return Err(Error::invalid("--profile-json requires --output-only and context 32768"));
+        }
+        if profile_output.is_some() && profile_output == output {
+            return Err(Error::invalid("profile and conformance JSON paths must differ"));
         }
         let model = MappedModel::open(Path::new(&model_path))?;
         validate_resident_q2(model.gguf())?;
@@ -187,7 +197,13 @@ fn run() -> Result<()> {
             if frontier != 32768 {
                 return Err(Error::invalid("--output-only requires context 32768"));
             }
-            rust_star_runtime::metal::run_long_prefill_output_probe(&model)?
+            if let Some(path) = profile_output {
+                let (report, profile) = rust_star_runtime::metal::run_long_prefill_profile_probe(&model)?;
+                std::fs::write(path, format!("{profile}\n"))?;
+                report
+            } else {
+                rust_star_runtime::metal::run_long_prefill_output_probe(&model)?
+            }
         } else {
             rust_star_runtime::metal::run_long_prefill_chunk_probe(&model, frontier)?
         };
@@ -5707,7 +5723,7 @@ fn usage() -> &'static str {
 
 fn full_usage() -> String {
     format!(
-        "{}\n  rust-star long-prefill-chunk-probe MODEL.gguf [--context N] [--output-only] [--json PATH]\n  rust-star long-prefill-bootstrap-probe MODEL.gguf [OPTIONS]\n  rust-star long-prefill-continuation-bootstrap-probe MODEL.gguf [OPTIONS]\n  rust-star long-prefill-sequential-continuation-probe MODEL.gguf [OPTIONS]\n  rust-star long-prefill-transformer-probe MODEL.gguf [OPTIONS]\n  rust-star attention-output-nsg-bench MODEL.gguf [OPTIONS]\n  rust-star attention-rope-fusion-bench MODEL.gguf [OPTIONS]\n  rust-star qkv-pair-bench MODEL.gguf [OPTIONS]\n  rust-star qb-rows-bench MODEL.gguf [OPTIONS]\n  rust-star q-head-threads-bench [OPTIONS]\n  rust-star q-head-kv-fusion-bench [OPTIONS]\n  rust-star routed-nsg-bench MODEL.gguf [OPTIONS]\n  rust-star prefill-decode-frontier-probe MODEL.gguf [OPTIONS]\n  rust-star engine-measure MODEL.gguf --context N --gen-tokens N --json PATH\n  rust-star engine-profile MODEL.gguf --context N --gen-tokens N --json PATH\n  rust-star engine-retained-measure MODEL.gguf --context N --gen-tokens N --json PATH\n  rust-star retained-sparse-multimerge-probe MODEL.gguf [OPTIONS]\n  rust-star retained-decoder-step-probe MODEL.gguf [OPTIONS]",
+        "{}\n  rust-star long-prefill-chunk-probe MODEL.gguf [--context N] [--output-only] [--json PATH] [--profile-json PATH]\n  rust-star long-prefill-bootstrap-probe MODEL.gguf [OPTIONS]\n  rust-star long-prefill-continuation-bootstrap-probe MODEL.gguf [OPTIONS]\n  rust-star long-prefill-sequential-continuation-probe MODEL.gguf [OPTIONS]\n  rust-star long-prefill-transformer-probe MODEL.gguf [OPTIONS]\n  rust-star attention-output-nsg-bench MODEL.gguf [OPTIONS]\n  rust-star attention-rope-fusion-bench MODEL.gguf [OPTIONS]\n  rust-star qkv-pair-bench MODEL.gguf [OPTIONS]\n  rust-star qb-rows-bench MODEL.gguf [OPTIONS]\n  rust-star q-head-threads-bench [OPTIONS]\n  rust-star q-head-kv-fusion-bench [OPTIONS]\n  rust-star routed-nsg-bench MODEL.gguf [OPTIONS]\n  rust-star prefill-decode-frontier-probe MODEL.gguf [OPTIONS]\n  rust-star engine-measure MODEL.gguf --context N --gen-tokens N --json PATH\n  rust-star engine-profile MODEL.gguf --context N --gen-tokens N --json PATH\n  rust-star engine-retained-measure MODEL.gguf --context N --gen-tokens N --json PATH\n  rust-star retained-sparse-multimerge-probe MODEL.gguf [OPTIONS]\n  rust-star retained-decoder-step-probe MODEL.gguf [OPTIONS]",
         usage()
     )
 }
@@ -5917,7 +5933,7 @@ fn prefill_decode_frontier_probe_usage() -> &'static str {
 }
 
 fn long_prefill_chunk_probe_usage() -> &'static str {
-    "usage: rust-star long-prefill-chunk-probe MODEL.gguf [--context N] [--output-only] [--json PATH]\n\nRuns all 43 layers through a 4096-token frontier from 12288 through 32768 (default). Complete 32K correctness requires every immutable prefill logit and all 128 full decode rows. --output-only requires 32768 and disables internal HC readbacks while preserving full-output validation. Partial frontiers are diagnostic only."
+    "usage: rust-star long-prefill-chunk-probe MODEL.gguf [--context N] [--output-only] [--json PATH] [--profile-json PATH]\n\nRuns all 43 layers through a 4096-token frontier from 12288 through 32768 (default). Complete 32K correctness requires every immutable prefill logit and all 128 full decode rows. --output-only requires 32768 and disables internal HC readbacks while preserving full-output validation. Partial frontiers are diagnostic only."
 }
 
 fn engine_measurement_usage() -> &'static str {
@@ -5925,7 +5941,7 @@ fn engine_measurement_usage() -> &'static str {
 }
 
 fn engine_profile_usage() -> &'static str {
-    "usage: rust-star engine-profile MODEL.gguf --context N --gen-tokens 128 --json PATH\n\nRuns the exact engine workload. At 32K it also records native prefill chunk/layer stages using existing command completions; shared bootstrap work is labeled by layer range. At 2K this splits native prefill layers 2 through 42 into synchronized per-layer command buffers. Representative even layer 4 and odd layer 5 are additionally separated into attention/FFN and attention-internal QKV/RoPE, compressor/staging, Flash block preparation, FlashAttention, and output/HC intervals. It also collects every completed decode layer command buffer's GPU timestamps and decode Metal compute-stage counters across eight dispatch families. The selected-token transcript remains exact, but this perturbing mode is deliberately ineligible for paired claims."
+    "usage: rust-star engine-profile MODEL.gguf --context N --gen-tokens 128 --json PATH\n\nRuns the exact engine workload. At 32K it also records native prefill chunk/layer stages using existing command completions and splits native tails into nine compute encoders for timestamp-counter component attribution; shared bootstrap work is labeled by layer range. At 2K this splits native prefill layers 2 through 42 into synchronized per-layer command buffers. Representative even layer 4 and odd layer 5 are additionally separated into attention/FFN and attention-internal QKV/RoPE, compressor/staging, Flash block preparation, FlashAttention, and output/HC intervals. It also collects every completed decode layer command buffer's GPU timestamps and decode Metal compute-stage counters across eight dispatch families. The selected-token transcript remains exact, but this perturbing mode is deliberately ineligible for paired claims."
 }
 
 fn retained_engine_measurement_usage() -> &'static str {
