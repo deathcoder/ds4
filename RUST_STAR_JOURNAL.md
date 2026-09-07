@@ -18,6 +18,15 @@ Before changing code:
 Journal entries are reverse chronological. Do not edit old entries to change
 history; add a correction and update the current-state summary.
 
+## 2026-09-07 — Native tail measurement plan frozen
+
+- Five alternating AB/BA/AB/BA/AB pairs, one warmup per engine, then a separate
+  profile. Plan SHA `d27a9f5e56d6c804f62c10173a9a4e324498eba52d40227709b7d23cf15efe2f`.
+- Campaign: `rust-star/.work/paired-32k-128-89e32745-tail/`.
+  Model/prompt freshly rehashed; candidate/oracle binaries frozen. No builds
+  or runtime edits during measurement. Host load/thermal/memory recorded.
+- All correctness gates passed. Warmups running; pairs/profile/audit pending.
+
 ## 2026-09-07 — All native tail correctness/lifecycle gates pass
 
 - Candidate 89e32745 passes all six gates on attempt 1: native 12K, legacy 8K,
@@ -2725,8 +2734,8 @@ Next:
 
 - Active milestone: native tail scratch reuse, direct retained HC output and
   removal of unused FP32 diagnostic conversion. 310 tests/release build pass;
-  all six gates pass on attempt 1; frozen paired-plan preparation running;
-  timed campaign/profile and audit pending in `rust-star/.work/tail-milestone-2d8b8405/`.
+  all six gates pass on attempt 1; paired plan frozen, warmups running;
+  five pairs/profile and audit pending in `rust-star/.work/tail-milestone-2d8b8405/`.
 
 - Authorized odd-layer ingress milestone is complete. Native continuation
   ingress executes whole 4K chunks with unchanged kernel arithmetic and no
