@@ -18,6 +18,14 @@ Before changing code:
 Journal entries are reverse chronological. Do not edit old entries to change
 history; add a correction and update the current-state summary.
 
+## 2026-09-07 — Batched attention passes 12K internal C0
+
+- Frozen attention candidate 1eb20ddb passes the 12K native internal-state
+  gate through all 43 layers. This checks the independently accepted internal
+  targets, not a complete 12K full-output claim. No fixture changes required.
+- Detailed 8K regression is running, then 2K, both full 32K modes and retained
+  reset/reuse. Timing remains gated on the remaining live checks.
+
 ## 2026-09-07 — Attention candidate built; native C0 validation running
 
 - Candidate `1eb20ddbfa29b893dca8865494e0b442e39e92e4` passes 310 Rust tests and release build.
@@ -2446,7 +2454,7 @@ Next:
 
 - Active milestone: native even-layer attention batching from 32 to 4096 rows,
   same kernel arithmetic and direct tail-input output. Build and 310 Rust
-  tests pass; 12K-first live validation is running. Work/evidence lives at
+  tests and 12K internal validation pass; detailed 8K is running. Work/evidence lives at
   `rust-star/.work/attention-milestone-502bb6b6/`. Acceptance and timing pending.
 
 - Default v5 exporter smoke build passes with all pinned third-party headers
