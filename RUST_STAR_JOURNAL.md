@@ -18,6 +18,22 @@ Before changing code:
 Journal entries are reverse chronological. Do not edit old entries to change
 history; add a correction and update the current-state summary.
 
+## 2026-09-07 — Even-layer attention batching milestone starts
+
+- Authorized follow-up: optimize the v5 profile's largest GPU stage group while
+  preserving exact outputs and lifecycle. Baseline is cc032078 / report
+  `rust-star/reports/32k-upstream-v5-cc032078/`: 423.152 s prefill,
+  20.484 tokens/s steady decode, 92.300 GiB peak process memory.
+- Native continuation attention now dispatches all 4096 query rows together,
+  retaining the original projection/score/attention reduction geometry. This
+  amortizes scratch allocation, raw-ring reconstruction and F16 KV conversion;
+  heads write directly into the existing 512 MiB tail-input buffer.
+- The separate 32-row diagnostic controls remain available. No oracle, shader,
+  arithmetic, decoder, SSD or distributed path changes. Candidate validation
+  and performance remain pending; no speedup claim yet.
+- Required closure: full C0 and shorter controls, retained reset/reuse, five
+  fresh paired runs, isolated profile, audited report and journal update.
+
 ## 2026-09-07 — Final packaging and regression checks pass
 
 - Default oracle-v5 builder now includes pinned third-party image-decoder
@@ -2419,6 +2435,10 @@ Next:
 
 ### Current resume checkpoint (updated 2026-09-07)
 
+- Active milestone: native even-layer attention batching from 32 to 4096 rows,
+  same kernel arithmetic and direct tail-input output. Build/full validation
+  pending; do not treat the implementation as accepted until all gates pass.
+
 - Default v5 exporter smoke build passes with all pinned third-party headers
   and license. All 72 exported files match the reference tree; final Python
   suite passes 93 tests. Measured binaries remain unchanged.
@@ -3196,7 +3216,8 @@ Next:
 
 ## Immediate Next Actions
 
-1. The upstream-refresh milestone is complete. Review `rust-star/reports/32k-upstream-v5-cc032078/README.md`.
+1. Active: complete even-layer attention batching, all correctness/lifecycle
+   gates and a fresh paired/profile report. The upstream refresh is complete. Review `rust-star/reports/32k-upstream-v5-cc032078/README.md`.
    Next meaningful local milestone: optimize the measured `even/attention` cost,
    preserving exact v5 outputs and the retained-engine lifecycle, then use a
    fresh paired campaign to measure the change. Do not repeat completed layers.

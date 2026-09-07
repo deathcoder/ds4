@@ -153,14 +153,14 @@ Status: `READY`
 Procedure:
 
 ```sh
-python3 rust-star/capture_oracle_v4.py \
+python3 rust-star/capture_oracle_v5.py \
   --model /absolute/path/to/DeepSeek-V4-Flash-0731-Q2-imatrix.gguf \
   --full \
   --repetitions 5
 ```
 
-Use the accepted oracle-v4 producer for new captures. Earlier producers are
-historical; v4 fixes the streaming top-k count race without changing targets. This covers 2K, 32K, 128K, 256K,
+Use the accepted oracle-v5 producer for new captures. Earlier producers and
+their fixture identities remain historical; v5 targets are explicitly versioned. This covers 2K, 32K, 128K, 256K,
 512K, and 1M. Close memory-heavy applications
 first. A 512K/1M capacity failure is evidence to preserve, not a reason to hide
 or retry it until it happens to pass.

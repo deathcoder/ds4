@@ -465,9 +465,9 @@ fn run_prefill_chunk_layer(
             (raw.wall_ms, raw.gpu_ms),
         );
         let scratch_start = profile.start();
-        let mut scores = vec![0.0; 32 * ((start + 4096) / 4) as usize];
-        let mut topk = vec![0; 32 * 512];
-        let mut heads = vec![0.0; 32 * 32768];
+        let mut scores = vec![0.0; 4096 * ((start + 4096) / 4) as usize];
+        let mut topk = vec![0; 4096 * 512];
+        let mut heads = vec![0.0; 4096 * 32768];
         profile.record(
             start,
             layer,
@@ -482,7 +482,7 @@ fn run_prefill_chunk_layer(
             error.as_mut_ptr(),
             error.len()
         ));
-        for position in (start..start + 4096).step_by(32) {
+        for position in (start..start + 4096).step_by(4096) {
             let mut tile = RawSparseIndexedResult::default();
             let sparse = if layer == 2 {
                 rust_star_metal_run_prefill_layer2_continuation_sparse_tile
