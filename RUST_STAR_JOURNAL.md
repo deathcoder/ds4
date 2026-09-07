@@ -18,6 +18,19 @@ Before changing code:
 Journal entries are reverse chronological. Do not edit old entries to change
 history; add a correction and update the current-state summary.
 
+## 2026-09-08 — First dense-Q8 timed pair passes; report clarity improved
+
+- Pair 1 passed on attempt 1. Pair 2 (reverse order) has passed its Rust half;
+  the oracle half is running. Do not infer retention from these partial results.
+- Report export now writes an explicit assessment-pending README immediately
+  after cloning baseline evidence. A failed renderer can no longer leave the
+  old baseline narrative appearing to describe the new candidate.
+- Report rendering now includes median/MAD/min/max for prefill and steady decode
+  directly in the README. Review both metrics and host conditions before deciding
+  retention, even if the prefill-only improvement predicate passes.
+- All modifications during the timed block are journal/report/preflight helpers;
+  the runtime and frozen binaries remain unchanged.
+
 ## 2026-09-08 — Read-only follow-up audit during paired run
 
 - Oracle half of timed pair 1 passed; Rust half is running. Runtime remains frozen.
