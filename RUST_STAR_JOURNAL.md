@@ -18,6 +18,15 @@ Before changing code:
 Journal entries are reverse chronological. Do not edit old entries to change
 history; add a correction and update the current-state summary.
 
+## 2026-09-07 — Direct v5 capture reproduces differing16K checkpoint
+
+- First pinned-v5 full HC capture at16K reproduces Rust layer34 exactly:
+  `3e1a2b79f656939a`. This establishes that the old internal target is stale
+  for v5 at that layer, not a Rust mismatch against the new reference.
+- Independent second16K capture is running, then paired20K/24K/12K captures.
+  No checkpoint replacement until all full inventories repeat. The earlier
+  failed diagnostic run and full-output pass remain preserved.
+
 ## 2026-09-07 — Historical16K internal target mismatch; timing blocked
 
 - Fresh diagnostic32K candidate stops at chunk12288 (16K frontier), layer34:
@@ -3017,7 +3026,9 @@ Next:
    and lifecycle gates, then freeze a new paired baseline and separate profile.
    Reassess even-layer attention after that baseline. Candidate builds/tests
    pass; final-source acceptance and two full129-row captures pass. New v5
-   fixtures imported; Rust live C0/lifecycle validation is next.
+   fixtures imported; Rust full-output C0 passes. Historical16K layer34 HC
+   differs, and direct v5 capture reproduces Rust. Finish repeated HC captures,
+   version accepted checkpoints, rebuild and repeat all live gates before timing.
 2. Preserve exact 2K/8K controls, complete32K immutable output trace, GPU
    selection, GPU-owned history, reset/reuse and tied-score router ordering.
    Internal HC acceptance remains through24K. Do not redo completed layers.
