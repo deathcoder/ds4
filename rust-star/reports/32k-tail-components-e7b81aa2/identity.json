@@ -1,0 +1,11 @@
+{
+  "baseline_commit": "fd72c897",
+  "candidate_commit": "e7b81aa2e468f8fa8fd7b173d7c22fb3a51be46d",
+  "executable_sha256": "a0ef134f35bc5b32df616951edba1b69ac4025c2fafe6642840b9699a1b2e75e",
+  "oracle_source": "ccbd16d36895ef9fe8edf7f793014988ff1ab7f4",
+  "oracle_executable_sha256": "a4056d7297bd0a6de8e46fac294e7913d9bc8c96465e5d68f1b6ef6471e49aa0",
+  "model_sha256": "ca22ae2f838e14077c22bc1c1417b71b45b5e5a3687bd96c2ac6e17fdb6261c0",
+  "model_identity_note": "Same resident model used by the accepted tail baseline; not freshly rehashed for this diagnostic-only milestone.",
+  "paired_performance_claim": false,
+  "tests_passed": 312
+}

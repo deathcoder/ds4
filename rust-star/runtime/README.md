@@ -1281,3 +1281,13 @@ all four layers against the pinned DwarfStar fixtures.
 This is a fixed token-201, position-1 steady-state replay. It isolates the
 current four-layer execution/scheduler cost but does not advance a decoder,
 sample tokens, or establish end-to-end token throughput.
+
+### Native tail component diagnostics
+
+`long-prefill-chunk-probe MODEL --context 32768 --output-only --json gate.json
+--profile-json components.json` validates the complete output tensors while
+recording nine native-tail component intervals. The JSON paths must differ.
+The 32K `engine-profile` command also includes these counters. Component rows
+partition parent GPU intervals; they are perturbed diagnostic estimates, never
+additional time or paired performance evidence. Audited evidence is in
+[the component report](../reports/32k-tail-components-e7b81aa2/README.md).

@@ -18,6 +18,32 @@ Before changing code:
 Journal entries are reverse chronological. Do not edit old entries to change
 history; add a correction and update the current-state summary.
 
+## 2026-09-07 — Tail component profiling milestone complete
+
+- Candidate e7b81aa2 passes 312 Rust tests and both profiled/normal complete
+  32K output-only C0 gates: every prefill word and all 128 full decode rows.
+- Independent audit verifies 287 tails / 2,583 component intervals, monotonic
+  raw timestamps, complete coverage and per-call attribution conservation.
+  Portable report: rust-star/reports/32k-tail-components-e7b81aa2/README.md;
+  all 16 artifacts verify. No throughput claim; previous paired report unchanged.
+- Attributed native-tail GPU totals: attention output 36.173 s (36.75%), routed
+  gate/up 34.285 s (34.83%), routed down 19.267 s (19.57%). Routed map is only
+  0.332 s (0.34%), so it is not a meaningful optimization target now.
+- Next candidate: use the existing dense Q8 kernel for eight aligned output-low
+  groups with direct strided stores, avoiding grouped-map/scatter overhead while
+  preserving MMA order. Exactness and speed remain hypotheses until gated/measured.
+- User's continuous-work authorization remains active; continue into that milestone.
+
+## 2026-09-07 — Tail component profile candidate built; live C0 running
+
+- Frozen implementation e7b81aa2e468f8fa8fd7b173d7c22fb3a51be46d; executable SHA
+  a0ef134f35bc5b32df616951edba1b69ac4025c2fafe6642840b9699a1b2e75e.
+- 312 Rust tests and release build pass. Profiled 32K output-only C0 gate is
+  running, followed automatically by the normal 32K output-only gate.
+- No throughput claim is made for this instrumentation milestone. Component
+  coverage, raw timestamp ordering, per-call attribution and both full-output
+  checks remain pending. Source stays unchanged during live runs.
+
 ## 2026-09-07 — Native tail component profiling in progress
 
 - User authorized continuous next-milestone work until completion or usage exhaustion.
@@ -2816,9 +2842,11 @@ Next:
 
 ### Current resume checkpoint (updated 2026-09-07)
 
-- Active next milestone: native tail component profiling. Implementation added;
-  tests/build and full-output profiled/unprofiled validation pending. See newest entry.
-
+- Tail component profiling is complete: e7b81aa2, 312 tests, both full-output
+  gates and all 2,583 component rows verified. Report:
+  rust-star/reports/32k-tail-components-e7b81aa2/README.md (16 verified artifacts).
+  Attention output is the largest component; next candidate is direct dense-Q8
+  output-low group stores. No optimization/performance claim for profiling itself.
 - Authorized native tail scratch/output milestone is complete. Whole-chunk
   tails reuse 22 temporary buffers, write directly to retained HC output and
   omit unused FP32 routed-mid conversion (25 dispatches instead of 26).
@@ -3594,11 +3622,10 @@ Next:
 
 ## Immediate Next Actions
 
-1. Complete native-tail component profile build, exact output validation and
-   component accounting audit; then select the next optimization from evidence.
-   Previous native tail milestone is complete. Review `rust-star/reports/32k-tail-89e32745/README.md`.
-   Inspect component costs within `even/tail` before selecting the next exact
-   optimization. Preserve v5 C0 and lifecycle, and measure memory alongside speed.
+1. Test direct dense-Q8 native output-low group projection, guided by the audited
+   component profile. Preserve arithmetic/legacy controls, run all six C0/lifecycle
+   gates, and retain only with measured performance evidence. Profiling report:
+   rust-star/reports/32k-tail-components-e7b81aa2/README.md.
 2. Keep oracle-v5 and historical fixtures/reports immutable. Internal targets
    are accepted through 24K; full 32K prefill/128-decode C0 remains mandatory.
 3. Broader contexts, 256K headline work and the coding-agent corpus remain future.

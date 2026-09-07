@@ -356,7 +356,9 @@ The current native-tail report is `rust-star/reports/32k-tail-89e32745/README.md
 Rust/reference median prefill 362.284/212.376 s; steady decode 17.064/17.039 tokens/s. Observed Rust peak memory is 91.613 GiB.
 Native tails reuse scratch, write retained HC directly and omit an unused
 conversion with exact v5 outputs. Largest GPU stage group: `even/tail`;
-inspect its component costs next. Host load and swap qualify cross-session
+the component audit now identifies attention output projection as the largest
+internal component (36.75%). See `rust-star/reports/32k-tail-components-e7b81aa2/README.md`.
+Test direct dense-Q8 group output stores next. Host load and swap qualify cross-session
 speed and memory comparisons. Oracle-v5 and historical evidence are unchanged.
 
 Current implementation boundaries, evidence, and immediate actions are maintained
