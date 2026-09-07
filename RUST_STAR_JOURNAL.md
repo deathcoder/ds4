@@ -18,6 +18,22 @@ Before changing code:
 Journal entries are reverse chronological. Do not edit old entries to change
 history; add a correction and update the current-state summary.
 
+## 2026-09-07 — Upstream refresh milestone authorized and started
+
+- User authorized end-to-end completion. Milestone: pinned upstream oracle-v5
+  acceptance, applicable resident M1/Q2 Rust ports, full C0/lifecycle gates,
+  fresh five-pair baseline and separate profile, durable report and journal.
+- Work: `rust-star/.work/upstream-refresh-1190237b/`. Isolated oracle worktree
+  `rust-star/.work/oracle-v5-source/`, branch `codex/oracle-v5`, starts from
+  upstream c0a6119f. Build pristine upstream first, then check repeatable full
+  outputs before deciding whether v4's host-wait repair remains necessary.
+- Preserve all old targets and failed attempts. No automatic target replacement
+  or unmeasured speed claim. Audit sampling-inclusive benchmark timing, which
+  upstream's current driver does not yet satisfy for our paired contract.
+- Rust port scope is the resident M1/Q2 path and reference compatibility;
+  unrelated GLM/MXFP4/M5/TP/ROCm/SSD features remain outside this milestone.
+  One large model process at a time; no heavy builds during timed measurements.
+
 ## 2026-09-07 — Upstream refresh assessment supersedes attention tuning
 
 - User questioned optimizing before integrating upstream correctness/performance
@@ -2039,10 +2055,11 @@ Next:
 
 ### Current resume checkpoint (updated 2026-09-07)
 
-- Next priority recommendation after upstream review: controlled upstream/oracle
+- Active authorized milestone after upstream review: controlled upstream/oracle
   refresh before more attention tuning. Pin c0a6119f in an isolated reference
   worktree, validate oracle-v5 and port applicable M1/Q2 changes, then rebaseline.
-  Assessment complete; integration and v5 acceptance have not started.
+  Upstream build is running in `rust-star/.work/oracle-v5-source/`; evidence
+  goes in `rust-star/.work/upstream-refresh-1190237b/`. Acceptance pending.
 - Completed milestone: measured native32K prefill tail batching, candidate
   `dd0d26c5`, unchanged accepted oracle-v4 `df99eba7`. Durable report:
   `rust-star/reports/32k-prefill-dd0d26c5/README.md`; 106-artifact portable
@@ -2836,13 +2853,13 @@ Next:
 - The authorized prefill optimization milestone is complete. Report and
   verifier: `rust-star/reports/32k-prefill-dd0d26c5/`.
 
-1. Recommended next milestone: controlled upstream refresh at pinned c0a6119f.
+1. Active authorized milestone: controlled upstream refresh at pinned c0a6119f.
    Establish an isolated, explicitly versioned oracle-v5; audit upstream versus
    fork-only correctness and benchmark timing fixes. Validate repeated complete
    outputs and explain drift before accepting new targets. Port applicable
    resident M1/Q2 improvements to Rust, preserve existing batching, run full C0
    and lifecycle gates, then freeze a new paired baseline and separate profile.
-   Reassess even-layer attention after that baseline. Integration not started.
+   Reassess even-layer attention after that baseline. Upstream build started.
 2. Preserve exact 2K/8K controls, complete32K immutable output trace, GPU
    selection, GPU-owned history, reset/reuse and tied-score router ordering.
    Internal HC acceptance remains through24K. Do not redo completed layers.
