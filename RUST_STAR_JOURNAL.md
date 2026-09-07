@@ -18,6 +18,14 @@ Before changing code:
 Journal entries are reverse chronological. Do not edit old entries to change
 history; add a correction and update the current-state summary.
 
+## 2026-09-07 — Complete v5 diagnostic candidate built
+
+- Candidate `cc032078748ad4c450717b1cfd4e734fd57cf9e6` passes310 Rust tests and release build.
+  Executable SHA `e87354b9f0ed3e2f30ac1b3584d7f03a255bbb715664dc452e29953b205bd706`.
+- Full v5 output, HC and selector targets are independently validated. Remaining
+  legacy8K merge counts are corrected; detailed8K-first six-gate queue is active.
+  All prior stopped attempts remain preserved. No paired timing yet.
+
 ## 2026-09-07 — Remaining-layer diagnostic merge accounting corrected
 
 - Detailed8K candidate passes the new second-tile/full-layer4 selectors and
@@ -2304,8 +2312,8 @@ Next:
 
 ### Current resume checkpoint (updated 2026-09-07)
 
-- Latest candidate is rebuilding after correcting legacy remaining-layer
-  diagnostic dispatch counts. All reference v5 targets are validated.
+- Latest candidatecc032078 builds and passes310 tests; detailed8K-first
+  validation is running with corrected remaining-layer dispatch counts.
   Prior8aa4d13d passes both full32K modes and all HC checkpoints; detailed8K
   exposed two stale selector-ordering targets, both reproduced by direct
   repeated v5 captures and versioned explicitly. Run8K first, then all six
