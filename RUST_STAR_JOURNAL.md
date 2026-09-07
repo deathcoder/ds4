@@ -18,6 +18,18 @@ Before changing code:
 Journal entries are reverse chronological. Do not edit old entries to change
 history; add a correction and update the current-state summary.
 
+## 2026-09-07 — Repeated v5 internal targets accepted through24K
+
+- Two fresh pinned-reference captures at each12K/16K/20K/24K agree for all43
+  complete4096-row HC tensors and full frontier logits.16K layer34 exactly
+  reproduces Rust;12K remains identical to historical targets. Separate new
+  `long-prefill-chunks-v5` inventories and provenance preserve old v3 files.
+- Runtime later-chunk expected checksums now come from those independently
+  captured v5 tensors. No arithmetic or selection code changes in this step.
+- Original9a519a36 successful full-output run and stopped historical-HC run
+  archived under `old-hc-attempt-9a519a36/` in refresh W. Rebuild and complete
+  six-gate queue will run again against the new frozen candidate before timing.
+
 ## 2026-09-07 — Direct v5 capture reproduces differing16K checkpoint
 
 - First pinned-v5 full HC capture at16K reproduces Rust layer34 exactly:
@@ -2213,18 +2225,14 @@ Next:
 
 ### Current resume checkpoint (updated 2026-09-07)
 
-- Active authorized milestone after upstream review: controlled upstream/oracle
-  refresh before more attention tuning. Pin c0a6119f in an isolated reference
-  worktree, validate oracle-v5 and port applicable M1/Q2 changes, then rebaseline.
-  Candidate ccbd16d (tree a0a33f4) and Rust selector port 549c0478 build.
-  Official M1 kernel/logprob gates pass; Rust tests pass310/310. Pristine
-  upstream repeats four times at2K/32K; selector-only V4 control exactly
-  explains new32K logits.8K control is unchanged. Final pinned-source oracle
-  acceptance passes all eight captures and bundle verification; two full traces
-  and new v5 fixtures also pass. Rust candidate9a519a36 passes310 tests and
-  release build; live12K and full32K output-only controls pass, diagnostic32K stopped on historical16K layer34 HC mismatch.
-  Direct repeated oracle-v5 HC captures are running before any target revision;
-  short controls/lifecycle and paired baseline remain pending. Evidence: `rust-star/.work/upstream-refresh-1190237b/`.
+- Active upstream-refresh milestone: pinned c0a6119f with oracle-v5 ccbd16d.
+  Reference official gates, four2K/32K repetitions,8K control, tokenizer proof
+  and two full129-row traces pass. Rust selector port passes full32K C0.
+  Historical16K layer34 mismatch reproduced directly by v5; two full HC
+  inventories at each12K/16K/20K/24K now accepted as separate v5 targets.
+  Rebuilding candidate with these targets, then repeating all six live gates.
+  Paired baseline and portable report remain pending. Evidence and sequential
+  scripts: `rust-star/.work/upstream-refresh-1190237b/`.
 - Completed milestone: measured native32K prefill tail batching, candidate
   `dd0d26c5`, unchanged accepted oracle-v4 `df99eba7`. Durable report:
   `rust-star/reports/32k-prefill-dd0d26c5/README.md`; 106-artifact portable
@@ -3027,8 +3035,8 @@ Next:
    Reassess even-layer attention after that baseline. Candidate builds/tests
    pass; final-source acceptance and two full129-row captures pass. New v5
    fixtures imported; Rust full-output C0 passes. Historical16K layer34 HC
-   differs, and direct v5 capture reproduces Rust. Finish repeated HC captures,
-   version accepted checkpoints, rebuild and repeat all live gates before timing.
+   differs, and repeated direct v5 captures reproduce Rust. New internal v5
+   targets through24K accepted; rebuild and repeat all live gates before timing.
 2. Preserve exact 2K/8K controls, complete32K immutable output trace, GPU
    selection, GPU-owned history, reset/reuse and tied-score router ordering.
    Internal HC acceptance remains through24K. Do not redo completed layers.
