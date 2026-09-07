@@ -22,6 +22,8 @@ from artifact_lib import (  # noqa: E402
     ORACLE_V3_SOURCE_TREE,
     ORACLE_V4_SOURCE_COMMIT,
     ORACLE_V4_SOURCE_TREE,
+    ORACLE_V5_SOURCE_COMMIT,
+    ORACLE_V5_SOURCE_TREE,
     SOURCE_COMMIT,
     SOURCE_TREE,
     compare_logit_artifacts,
@@ -291,6 +293,25 @@ class BundleValidationTests(unittest.TestCase):
                 Path(temporary), oracle_id="oracle-v4",
                 source_commit=ORACLE_V4_SOURCE_COMMIT,
                 source_tree=ORACLE_V4_SOURCE_TREE, repetitions=3)
+            with self.assertRaisesRegex(ArtifactError, "at least 4"):
+                validate_oracle_bundle(bundle)
+
+    def test_oracle_v5_repeated_conformance_validates(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            bundle = self.make_repeatable_bundle(
+                Path(temporary), oracle_id="oracle-v5",
+                source_commit=ORACLE_V5_SOURCE_COMMIT,
+                source_tree=ORACLE_V5_SOURCE_TREE, repetitions=4)
+            report = validate_oracle_bundle(bundle)
+            self.assertEqual(report["oracle_id"], "oracle-v5")
+            self.assertEqual(report["conformance_repetitions"], 4)
+
+    def test_oracle_v5_requires_four_repetitions(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            bundle = self.make_repeatable_bundle(
+                Path(temporary), oracle_id="oracle-v5",
+                source_commit=ORACLE_V5_SOURCE_COMMIT,
+                source_tree=ORACLE_V5_SOURCE_TREE, repetitions=3)
             with self.assertRaisesRegex(ArtifactError, "at least 4"):
                 validate_oracle_bundle(bundle)
 

@@ -18,6 +18,19 @@ Before changing code:
 Journal entries are reverse chronological. Do not edit old entries to change
 history; add a correction and update the current-state summary.
 
+## 2026-09-07 — Final-source capture and v5 acceptance guard tests
+
+- Final-source oracle-v5 capture is running (four repetitions per2K/32K).
+  Queue `finish-oracle.py` verifies the completed bundle, then validates raw
+  tokenization and two full129-row traces before importing new v5 fixtures.
+  It stops on any failed check and retains raw JSON and binary trace evidence.
+- Existing Python suite passes91 tests. Two new artifact tests verify v5
+  acceptance and rejection of only three repetitions; artifact suite18/18.
+- Scoped source audit records that Rust already uses layer-local inverse-RoPE
+  fusion state and separate KV-store dispatches, avoiding upstream's two
+  affected mechanisms. M3/M5-only fusions stay outside M1 port scope.
+  Evidence: `upstream-port-scope.json`. No new performance claim yet.
+
 ## 2026-09-07 — New32K logits attributed exactly to selector change
 
 - V4 control with ONLY streaming-selector dispatch removed produces
