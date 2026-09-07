@@ -18,6 +18,22 @@ Before changing code:
 Journal entries are reverse chronological. Do not edit old entries to change
 history; add a correction and update the current-state summary.
 
+## 2026-09-07 — Versioned v5 second-tile selector ordering
+
+- Candidate8aa4d13d passed both complete32K C0 modes and2K, then detailed8K
+  probe stopped on historical second-tile indexer top-k slot1930 (643 vs161).
+  Two direct v5 captures reproduce Rust. All input score words are unchanged;
+  only four index slots swap equally scored keys, and every row selects the
+  identical key set. This is selector tie ordering, not an output mismatch.
+- Separate `prefill-indexer-selector-4128-v5` target replaces only that expected
+  index list. Other tile fixtures retain their original producer labels; JSON
+  now explicitly identifies the separate selector fixture. Scores preserve
+  causal negative-infinity masks as i32 bit patterns, as in the old schema.
+- Raw capture succeeded; collector initially expected.bin instead of upstream
+  .i32 and was corrected without rerunning that completed process. Logs kept.
+- Original8aa4d13d attempt archived under `old-selector-attempt-8aa4d13d/`.
+  Rebuild; run detailed8K first, then all remaining gates before measurements.
+
 ## 2026-09-07 — Both final-candidate32K full-output gates pass
 
 - Candidate8aa4d13d passes fresh output-only and diagnostic32K/128 gates:
@@ -2268,8 +2284,9 @@ Next:
   Historical16K layer34 mismatch reproduced directly by v5; two full HC
   inventories at each12K/16K/20K/24K now accepted as separate v5 targets.
   Candidate8aa4d13d builds and passes310 tests; fresh12K passes and the
-  both new full32K modes pass; shorter controls and retained lifecycle
-  gates are running next.
+  both new full32K modes and2K pass. Detailed8K revealed stale selector
+  tie-order fixture; two direct v5 captures validate its separate replacement.
+  Rebuild and run8K first, then full remaining gates; timing remains pending.
   Paired baseline and portable report remain pending. Evidence and sequential
   scripts: `rust-star/.work/upstream-refresh-1190237b/`.
 - Completed milestone: measured native32K prefill tail batching, candidate
