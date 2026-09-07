@@ -18,6 +18,18 @@ Before changing code:
 Journal entries are reverse chronological. Do not edit old entries to change
 history; add a correction and update the current-state summary.
 
+## 2026-09-07 — Final oracle-v5 repeated frontier acceptance passes
+
+- Final pinned source ccbd16d passes official correctness and four identical
+  fresh captures at both2K/32K. Portable oracle bundle verifier passes16
+  artifacts. Archive SHA77243250cedc5296747528b6f8c81b4e98bd796294dac38965f6c4cd1817039e.
+- Benchmark executable for full trace/new pairs SHA
+  a4056d7297bd0a6de8e46fac294e7913d9bc8c96465e5d68f1b6ef6471e49aa0.
+  Build provenance records pinned source hashes and no inference overlay.
+- V5 raw tokenizer matches all32,768 historical prompt IDs.8K final-source
+  control and then two129-row traces are running sequentially. Milestone
+  remains incomplete until versioned fixtures, Rust gates, baseline/report.
+
 ## 2026-09-07 — Final-source capture and v5 acceptance guard tests
 
 - Final-source oracle-v5 capture is running (four repetitions per2K/32K).
@@ -2137,7 +2149,8 @@ Next:
   Official M1 kernel/logprob gates pass; Rust tests pass310/310. Pristine
   upstream repeats four times at2K/32K; selector-only V4 control exactly
   explains new32K logits.8K control is unchanged. Final pinned-source oracle
-  acceptance is running; full traces, versioned targets, live Rust gates and
+  acceptance passes all eight captures and bundle verification; full traces,
+  versioned targets, live Rust gates and
   paired baseline remain pending. Evidence: `rust-star/.work/upstream-refresh-1190237b/`.
 - Completed milestone: measured native32K prefill tail batching, candidate
   `dd0d26c5`, unchanged accepted oracle-v4 `df99eba7`. Durable report:
@@ -2939,7 +2952,7 @@ Next:
    resident M1/Q2 improvements to Rust, preserve existing batching, run full C0
    and lifecycle gates, then freeze a new paired baseline and separate profile.
    Reassess even-layer attention after that baseline. Candidate builds/tests
-   pass; final-source acceptance running, then two full129-row captures.
+   pass; final-source acceptance passes, two full129-row captures queued.
 2. Preserve exact 2K/8K controls, complete32K immutable output trace, GPU
    selection, GPU-owned history, reset/reuse and tied-score router ordering.
    Internal HC acceptance remains through24K. Do not redo completed layers.
