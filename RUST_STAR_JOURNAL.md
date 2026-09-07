@@ -18,6 +18,14 @@ Before changing code:
 Journal entries are reverse chronological. Do not edit old entries to change
 history; add a correction and update the current-state summary.
 
+## 2026-09-07 — Complete detailed8K gate passes after fixture/accounting refresh
+
+- Candidatecc032078 detailed8K probe exits0: all43 layers and all129,280
+  output logits match, selected77179. Versioned second-tile and full-layer4
+  selector checks pass; remaining even layers report4852 dispatches correctly.
+- Queue continues12K,2K,both full32K modes and retained two-cycle validation.
+  Reference v5 producer/fixtures remain unchanged; no paired timing yet.
+
 ## 2026-09-07 — Complete v5 diagnostic candidate built
 
 - Candidate `cc032078748ad4c450717b1cfd4e734fd57cf9e6` passes310 Rust tests and release build.
@@ -2313,7 +2321,7 @@ Next:
 ### Current resume checkpoint (updated 2026-09-07)
 
 - Latest candidatecc032078 builds and passes310 tests; detailed8K-first
-  validation is running with corrected remaining-layer dispatch counts.
+  validation passes detailed8K completely;12K/2K/full32K/retained gates follow.
   Prior8aa4d13d passes both full32K modes and all HC checkpoints; detailed8K
   exposed two stale selector-ordering targets, both reproduced by direct
   repeated v5 captures and versioned explicitly. Run8K first, then all six
