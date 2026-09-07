@@ -18,6 +18,17 @@ Before changing code:
 Journal entries are reverse chronological. Do not edit old entries to change
 history; add a correction and update the current-state summary.
 
+## 2026-09-07 — Ingress metadata assertion corrected; attempt retained
+
+- First native 12K attempt stopped at layer 3's stale schedule assertion:
+  actual 48 dispatches / 28 model views matched one ingress batch, while the
+  assertion still expected 1318 / 1171 for 128 batches. HC comparison had not
+  yet run for that layer; no numerical correctness claim is made for this attempt.
+- Corrected metadata by subtracting 127 × 10 dispatches and 127 × 9 bindings.
+  Original executable, build, logs and failed validation record remain in
+  `rust-star/.work/ingress-milestone-12fb9314/metadata-attempt-05447277/`.
+- Rebuild and all six gates must pass before any paired plan is created.
+
 ## 2026-09-07 — Ingress candidate build and tests pass
 
 - Candidate `054472775f705e8744fbed16e2bdce4ed5fc9a8c` passes all 310 Rust tests and release build.
@@ -2544,7 +2555,8 @@ Next:
 
 - Active milestone: whole-chunk odd-layer ingress, preserving kernel arithmetic
   and removing native input staging copies. 310 Rust tests and release build pass;
-  native 12K gate running, remaining live gates and measurements pending in `rust-star/.work/ingress-milestone-12fb9314/`.
+  first 12K attempt stopped on stale schedule metadata (retained); corrected
+  rebuild, all live gates and measurements pending in `rust-star/.work/ingress-milestone-12fb9314/`.
 
 - Authorized even-layer attention milestone is complete. Native continuation
   attention executes whole 4K chunks with unchanged kernel arithmetic and no

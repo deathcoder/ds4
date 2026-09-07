@@ -415,9 +415,10 @@ fn run_prefill_chunk_layer(
             (raw.wall_ms, raw.gpu_ms),
         );
         let padding_dispatch = u32::from((4224 + (start + 4096) / 128) % 64 != 0);
-        if raw.dispatches != 1318 + padding_dispatch
-            || raw.wrapped_model_ranges != 1171
-            || raw.pointer_matches != 1171
+        // One ingress call contributes 10 dispatches and nine model views.
+        if raw.dispatches != 48 + padding_dispatch
+            || raw.wrapped_model_ranges != 28
+            || raw.pointer_matches != 28
         {
             return Err(Error::invalid(format!(
                 "chunk {start} odd layer {layer} schedule mismatch: {}/{}/{}",
