@@ -18,6 +18,25 @@ Before changing code:
 Journal entries are reverse chronological. Do not edit old entries to change
 history; add a correction and update the current-state summary.
 
+## 2026-09-08 — Three dense-Q8 pairs pass; variance remains material
+
+- Three complete pairs pass on attempt 1; pair 4 is running. Rust prefill times
+  are 351.974, 332.585 and 424.092 s, versus reference 207.320, 176.897 and
+  177.746 s. These are partial observations, not a final median or retention
+  decision. Preserve the slower third pair; do not rerun it for a favorable result.
+- Prepared render-non-improvement.py in the active work directory. Use only if
+  the positive renderer's existing two-part improvement predicate fails. It
+  asserts that failure, preserves all metrics and labels the report explicitly
+  as criterion-not-met. It does not change runtime or weaken the predicate.
+  Hashing, verification, runtime disposition and current docs still follow.
+- The bootstrap draft's 36 non-selector dispatches were independently counted
+  across both Metal dispatch APIs, the 4096-row branch and expanded shared macro.
+  Actual selector helper dispatches remain additional. Proof: bootstrap-dispatch-review.json.
+- git apply --check passed for the unapplied draft. Temporary Rust copies passed
+  rustfmt parsing/formatting (about six seconds of host CPU work during pair 3);
+  no build or live validation was run, and frozen runtime source is unchanged.
+  Keep this incidental host activity with the other background-load qualifications.
+
 ## 2026-09-08 — First dense-Q8 timed pair passes; report clarity improved
 
 - Pair 1 passed on attempt 1. Pair 2 (reverse order) has passed its Rust half;
