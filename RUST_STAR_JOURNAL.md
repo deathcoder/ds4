@@ -18,6 +18,16 @@ Before changing code:
 Journal entries are reverse chronological. Do not edit old entries to change
 history; add a correction and update the current-state summary.
 
+## 2026-09-07 — Frozen candidate completes both 32K C0 modes
+
+- Final candidate `cc032078` passes output-only and diagnostic 32K gates:
+  all prefill logits and all 128 full-logit decode steps match oracle-v5.
+  Accepted internal HC targets through 24K also match. Shorter controls pass.
+- The retained two-cycle lifecycle gate is running. Five paired measurements
+  and the isolated profile remain pending; no timed pair has started.
+- Paired-plan preparation now refreshes the benchmark-driver commit alongside
+  oracle source/executable identity, avoiding inherited v4 freeze metadata.
+
 ## 2026-09-07 — Frozen cc032078 full output-only gate passes
 
 - All prefill and128-step decode logits match v5 exactly on the final frozen
@@ -2335,6 +2345,10 @@ Next:
 ## Current State
 
 ### Current resume checkpoint (updated 2026-09-07)
+
+- Latest validation: frozen `cc032078` passes both full 32K C0 modes and
+  detailed 8K/12K/2K controls. Retained two-cycle validation is running;
+  five paired runs, isolated profile and final audited report remain pending.
 
 - Latest candidatecc032078 builds and passes310 tests; detailed8K-first
   validation passes detailed8K,12K and2K; full32K output-only passes; diagnostic32K is active,
