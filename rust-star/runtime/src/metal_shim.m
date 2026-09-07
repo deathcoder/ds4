@@ -288,7 +288,6 @@ static NSString *const kQ8ProjectionSource =
 @property(nonatomic, strong) id<MTLComputePipelineState> indexerScoreBatchPipeline;
 @property(nonatomic, strong) id<MTLComputePipelineState> indexerTopkPipeline;
 @property(nonatomic, strong) id<MTLComputePipelineState> indexerTopkMergePipeline;
-@property(nonatomic, strong) id<MTLComputePipelineState> indexerTopkStream512Pipeline;
 @property(nonatomic, strong) id<MTLComputePipelineState> indexedTopkSortPipeline;
 @property(nonatomic, strong) id<MTLComputePipelineState> indexedAttentionPrefillPipeline;
 @property(nonatomic, strong) id<MTLComputePipelineState> indexedAttentionPrefillDualPipeline;
@@ -1502,8 +1501,6 @@ static int ensure_sparse_indexed_pipelines(
         [library newFunctionWithName:@"kernel_argsort_f32_i32_desc"];
     id<MTLFunction> topk_merge =
         [library newFunctionWithName:@"kernel_argsort_merge_f32_i32_desc"];
-    id<MTLFunction> topk_stream512 =
-        [library newFunctionWithName:@"kernel_topk_stream512"];
     id<MTLFunction> topk_sort =
         [library newFunctionWithName:@"kernel_dsv4_sort_i32_rows_asc"];
     id<MTLFunction> prefill =
@@ -1514,7 +1511,7 @@ static int ensure_sparse_indexed_pipelines(
         [library newFunctionWithName:@"kernel_dsv4_indexed_mixed_attention_heads8_split"];
     id<MTLFunction> reduce =
         [library newFunctionWithName:@"kernel_dsv4_indexed_mixed_attention_heads8_split_reduce"];
-    if (!score || !score_batch || !topk || !topk_merge || !topk_stream512 ||
+    if (!score || !score_batch || !topk || !topk_merge ||
         !topk_sort || !prefill ||
         !prefill_dual || !split || !reduce) {
         return fail_with_message(error, error_bytes,
@@ -1528,8 +1525,6 @@ static int ensure_sparse_indexed_pipelines(
         [context.device newComputePipelineStateWithFunction:topk error:&compile_error];
     context.indexerTopkMergePipeline =
         [context.device newComputePipelineStateWithFunction:topk_merge error:&compile_error];
-    context.indexerTopkStream512Pipeline =
-        [context.device newComputePipelineStateWithFunction:topk_stream512 error:&compile_error];
     context.indexedTopkSortPipeline =
         [context.device newComputePipelineStateWithFunction:topk_sort error:&compile_error];
     context.indexedAttentionPrefillPipeline =
@@ -1542,7 +1537,7 @@ static int ensure_sparse_indexed_pipelines(
         [context.device newComputePipelineStateWithFunction:reduce error:&compile_error];
     if (!context.indexerScorePipeline || !context.indexerScoreBatchPipeline ||
         !context.indexerTopkPipeline || !context.indexerTopkMergePipeline ||
-        !context.indexerTopkStream512Pipeline || !context.indexedTopkSortPipeline ||
+        !context.indexedTopkSortPipeline ||
         !context.indexedAttentionPrefillPipeline ||
         !context.indexedAttentionPrefillDualPipeline ||
         !context.indexedAttentionSplitPipeline || !context.indexedAttentionReducePipeline) {
@@ -2766,6 +2761,79 @@ typedef struct rust_star_argsort_merge_args {
     uint64_t nb00, nb01, nb02, nb03;
     int32_t ne0, ne1, ne2, ne3, top_k, len;
 } rust_star_argsort_merge_args;
+
+/* Port of upstream c0a6119f's deterministic block sort/merge selector.
+ * Preserve its tied-score permutation; callers sort selected indices into
+ * chronological order before attention. The command retains scratch buffers. */
+static uint32_t encode_indexer_topk(
+    RustStarMetalContext *context, id<MTLComputeCommandEncoder> encoder,
+    id<MTLBuffer> scores, id<MTLBuffer> selected,
+    rust_star_argsort_args args, char *error, size_t error_bytes)
+{
+    const uint32_t columns = (uint32_t)args.ne00;
+    const uint32_t rows = (uint32_t)args.ne01;
+    const uint32_t top_k = (uint32_t)args.top_k;
+    if (columns == 0 || rows == 0 || top_k == 0 || top_k > columns ||
+        scores.length < (NSUInteger)columns*rows*sizeof(float) ||
+        selected.length < (NSUInteger)top_k*rows*sizeof(int32_t)) {
+        fail_with_message(error, error_bytes, @"invalid deterministic top-k buffers");
+        return 0;
+    }
+    NSUInteger limit = context.indexerTopkPipeline.maxTotalThreadsPerThreadgroup;
+    if (!limit) limit = 256;
+    uint32_t threads = 1;
+    while (threads < columns && threads*2u <= limit) threads *= 2u;
+    const uint32_t blocks = (columns+threads-1u)/threads;
+    const uint32_t block_top_k = MIN(top_k, threads);
+    const uint32_t last = columns-(blocks-1u)*threads;
+    const uint32_t work_width = blocks == 1u ? top_k :
+        (blocks-1u)*block_top_k+MIN(last,block_top_k);
+    const NSUInteger scratch_half = (NSUInteger)work_width*rows*sizeof(int32_t);
+    id<MTLBuffer> scratch = blocks == 1u ? nil :
+        [context.device newBufferWithLength:2u*scratch_half
+                                  options:MTLResourceStorageModeShared];
+    if (blocks > 1u && !scratch) {
+        fail_with_message(error, error_bytes, @"failed to allocate deterministic top-k scratch");
+        return 0;
+    }
+    args.ne0 = work_width;
+    args.top_k = block_top_k;
+    [encoder setComputePipelineState:context.indexerTopkPipeline];
+    [encoder setBytes:&args length:sizeof(args) atIndex:0];
+    [encoder setBuffer:scores offset:0 atIndex:1];
+    [encoder setBuffer:blocks == 1u ? selected : scratch offset:0 atIndex:2];
+    [encoder setThreadgroupMemoryLength:threads*(sizeof(int32_t)+sizeof(float)) atIndex:0];
+    [encoder dispatchThreadgroups:MTLSizeMake((NSUInteger)blocks*rows,1,1)
+         threadsPerThreadgroup:MTLSizeMake(threads,1,1)];
+    uint32_t dispatches = 1;
+    NSUInteger current = 0, next = scratch_half;
+    for (uint32_t length = block_top_k; length < work_width; length *= 2u) {
+        const uint32_t merges = (work_width+2u*length-1u)/(2u*length);
+        NSUInteger merge_threads = context.indexerTopkMergePipeline.maxTotalThreadsPerThreadgroup;
+        if (!merge_threads || merge_threads > 512u) merge_threads = 512u;
+        merge_threads = MIN(merge_threads,length);
+        rust_star_argsort_merge_args merge = {
+            .ne00=columns, .ne01=rows, .ne02=1, .ne03=1,
+            .nb00=sizeof(float), .nb01=(uint64_t)columns*sizeof(float),
+            .nb02=(uint64_t)columns*rows*sizeof(float),
+            .nb03=(uint64_t)columns*rows*sizeof(float),
+            .ne0=work_width, .ne1=rows, .ne2=1, .ne3=1,
+            .top_k=merges == 1u ? top_k : work_width, .len=length,
+        };
+        [encoder setComputePipelineState:context.indexerTopkMergePipeline];
+        [encoder setBytes:&merge length:sizeof(merge) atIndex:0];
+        [encoder setBuffer:scores offset:0 atIndex:1];
+        [encoder setBuffer:scratch offset:current atIndex:2];
+        [encoder setBuffer:merges == 1u ? selected : scratch
+                   offset:merges == 1u ? 0 : next atIndex:3];
+        [encoder dispatchThreadgroups:MTLSizeMake((NSUInteger)merges*rows,1,1)
+             threadsPerThreadgroup:MTLSizeMake(merge_threads,1,1)];
+        NSUInteger swap = current; current = next; next = swap;
+        dispatches++;
+    }
+    return dispatches;
+}
+
 
 typedef struct rust_star_topk_mask_args {
     int64_t ne00, ne01;
@@ -18147,13 +18215,12 @@ int rust_star_metal_run_prefill_layer2_attention(
                      (compressed_rows+31u)/32u,(rows+7u)/8u,1)
                  threadsPerThreadgroup:MTLSizeMake(32,4,1)];
 
-            [encoder setComputePipelineState:context.indexerTopkStream512Pipeline];
-            [encoder setBytes:&layer2_topk_args
-                        length:sizeof(layer2_topk_args) atIndex:0];
-            [encoder setBuffer:layer2_indexer_score_buffer offset:0 atIndex:1];
-            [encoder setBuffer:layer2_indexer_topk_buffer offset:0 atIndex:2];
-            [encoder dispatchThreadgroups:MTLSizeMake(rows,1,1)
-                 threadsPerThreadgroup:MTLSizeMake(256,1,1)];
+            if (!encode_indexer_topk(context, encoder,
+                    layer2_indexer_score_buffer, layer2_indexer_topk_buffer,
+                    layer2_topk_args, error, error_bytes)) {
+                [encoder endEncoding];
+                return 0;
+            }
 
             [encoder setComputePipelineState:context.indexedTopkSortPipeline];
             [encoder setBytes:&layer2_sort_args
@@ -45225,7 +45292,7 @@ static int rust_star_metal_run_prefill_indexed_attention_transition(
 
 /* Executes one aligned 32-row tile of the second prefill chunk. Unlike the
  * one-row control above, this mirrors DwarfStar's production M1 prefill
- * choices: aligned F16 projections, tiled indexer scores, streaming top-512,
+ * choices: aligned F16 projections, tiled indexer scores, deterministic top-512,
  * chronological selection ordering, and 8-head indexed attention. */
 static int rust_star_metal_run_prefill_layer2_indexed_tile(
     RustStarMetalContext *context,
@@ -45501,12 +45568,12 @@ static int rust_star_metal_run_prefill_layer2_indexed_tile(
     [encoder dispatchThreadgroups:MTLSizeMake((compressed_capacity+31u)/32u,4,1)
          threadsPerThreadgroup:MTLSizeMake(32,4,1)];
 
-    [encoder setComputePipelineState:context.indexerTopkStream512Pipeline];
-    [encoder setBytes:&topk_args length:sizeof(topk_args) atIndex:0];
-    [encoder setBuffer:score_buffer offset:0 atIndex:1];
-    [encoder setBuffer:topk_buffer offset:0 atIndex:2];
-    [encoder dispatchThreadgroups:MTLSizeMake(tile_rows,1,1)
-         threadsPerThreadgroup:MTLSizeMake(256,1,1)];
+    const uint32_t topk_dispatches = encode_indexer_topk(context, encoder,
+        score_buffer, topk_buffer, topk_args, error, error_bytes);
+    if (!topk_dispatches) {
+        [encoder endEncoding];
+        return 0;
+    }
 
     [encoder setComputePipelineState:context.indexedTopkSortPipeline];
     [encoder setBytes:&sort_args length:sizeof(sort_args) atIndex:0];
@@ -45579,7 +45646,7 @@ static int rust_star_metal_run_prefill_layer2_indexed_tile(
     if (kqv_back) memcpy(kqv_back, heads_buffer.contents, tile_rows*q_row_bytes);
     if (retain_batch) context.prefillLayerEvenBatchRows = @(retained_rows+tile_rows);
     if (heads_out) *heads_out = heads_buffer;
-    result->dispatches += 10u;
+    result->dispatches += 9u+topk_dispatches;
     result->wrapped_model_ranges += 3u;
     for (uint32_t index = 0; index < 3u; index++) {
         if (matches[index]) result->pointer_matches++;

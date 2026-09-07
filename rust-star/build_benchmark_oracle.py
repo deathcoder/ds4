@@ -22,7 +22,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output", required=True, type=Path)
     parser.add_argument("--jobs", type=int, default=4)
-    parser.add_argument("--oracle-version", choices=["oracle-v3", "oracle-v4"], default="oracle-v4")
+    parser.add_argument("--oracle-version", choices=["oracle-v3", "oracle-v4", "oracle-v5"], default="oracle-v4")
     args = parser.parse_args()
     source_ref = ORACLE_SOURCES[args.oracle_version][0]
     if args.jobs < 1:
@@ -44,7 +44,8 @@ def main() -> None:
                 raise ValueError("unsafe member in pinned source archive")
         tar.extractall(output)
     original_driver_sha = sha256(output / "ds4_bench.c")
-    shutil.copyfile(root / "ds4_bench.c", output / "ds4_bench.c")
+    if args.oracle_version != "oracle-v5":
+        shutil.copyfile(root / "ds4_bench.c", output / "ds4_bench.c")
     # No inference source is taken from the evolving research checkout.
     subprocess.run(["make", "-j", str(args.jobs), "ds4-bench"], cwd=output, check=True)
     provenance = {
@@ -53,7 +54,7 @@ def main() -> None:
         "inference_source_commit": source_ref,
         "inference_source_tree": subprocess.check_output(
             ["git", "rev-parse", source_ref + "^{tree}"], cwd=root, text=True).strip(),
-        "benchmark_source_base_commit": subprocess.check_output(
+        "benchmark_source_base_commit": source_ref if args.oracle_version == "oracle-v5" else subprocess.check_output(
             ["git", "rev-parse", "HEAD"], cwd=root, text=True).strip(),
         "original_benchmark_sha256": original_driver_sha,
         "benchmark_sha256": sha256(output / "ds4_bench.c"),

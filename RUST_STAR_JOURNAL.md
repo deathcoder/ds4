@@ -18,6 +18,56 @@ Before changing code:
 Journal entries are reverse chronological. Do not edit old entries to change
 history; add a correction and update the current-state summary.
 
+## 2026-09-07 — V5 candidate pinned; Rust selector tests pass
+
+- Oracle candidate source `ccbd16d36895ef9fe8edf7f793014988ff1ab7f4`, tree
+  `a0a33f4a00c3c78cd40350785485203e7c6b0b1d`, based on pinned c0a6119f.
+  Changes are sampling-inclusive driver/full-step dumps and hardware-aware
+  official tests with unchanged production admission. No old host-wait overlay.
+- Registered candidate v5 capture/build identities; registration is not oracle
+  acceptance. Final repeated capture/full-trace validation remains required.
+- Rust now uses exact upstream argsort kernel source privately, avoiding any
+  mutation to old DwarfStar shared kernels. Both streaming selector call sites
+  use upstream block-sort/merge scheduling with accurate merge dispatch counts.
+  Batched even-layer tails remain intact. Corrected Rust suite passes310/310;
+  final release build is finishing. Live output acceptance still pending.
+- Selector-only V4 control32K is still running. Complete attribution before
+  replacing target versions; preserve old fixtures and reports indefinitely.
+
+## 2026-09-07 — Upstream repeatability and repaired official gates pass
+
+- Four fresh pristine upstream captures at each 2K/32K match within context.
+  2K preserves v4 SHA 7b5e8518...bfaf.32K SHA is
+  `fb827b1c1ebc44933c35cd7d6e724c279dfb90035c9dbd209c49e893b3d4753b`,
+  differing from v4 in 129,276/129,280 words despite the same selected85166.
+  Not yet an accepted replacement: explain the semantic delta first.
+- Corrected M1-aware kernel suite and official logprob-vectors both PASS.
+  Optional M3/M5 kernels remain disabled on M1; fallbacks retain full checks.
+  Deterministic sampling/feedback timing harness also passes zero/three steps.
+- V4 control built with ONLY streaming-selector dispatch removed. Running
+  32K/8K captures to isolate whether argsort/merge explains new logits.
+- Rust deterministic-selector port builds. Initial unit run309/310: one stale
+  report-count string, corrected with merge dispatch accounting. Rebuild/tests
+  running. No live Rust acceptance or new paired timing yet.
+
+## 2026-09-07 — Upstream M1 test admission mismatch localized
+
+- Pristine upstream builds. Official --metal-kernels exits 1 with 29 assertions:
+  tests require compressor-store and gathered-KV fusions whose production
+  guards deliberately admit only M3/M5. No model capture had run at failure.
+  Original log/build/hash records retained; no acceptance claimed.
+- Oracle worktree test repair shares the existing M3/M5 hardware predicate,
+  asserts optional fusion refusal on M1, then exercises production fallback
+  and retains complete projection/state/KV output and guard-byte checks.
+  Runtime admission is unchanged; rebuilding test binary only while the
+  original frozen benchmark captures run. Corrected suite still pending.
+- First pristine upstream 2K capture matches all v4 FP32 logits exactly.
+  First32K then four alternating repeats/context are running. No host-wait
+  patch has been carried forward. Full model hash freshly verified.
+- Compressor APE table batching already exists in Rust as one score+APE fused
+  kernel. Do not duplicate upstream's weaker copy-then-add sequence. M3/M5-only
+  fusion guards are not an M1 speed claim despite broader historical titles.
+
 ## 2026-09-07 — Upstream refresh milestone authorized and started
 
 - User authorized end-to-end completion. Milestone: pinned upstream oracle-v5

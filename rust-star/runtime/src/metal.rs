@@ -8542,7 +8542,7 @@ fn write_long_prefill_continuation_bootstrap_probe_json_payload<W: Write>(
         || report.sparse_transition.compressed_rows != 1_025
         || report.sparse_transition.raw_rows != 128
         || report.sparse_transition.top_k != 512
-        || report.sparse_transition.dispatches != 53
+        || report.sparse_transition.dispatches != 54
         || report.sparse_transition.wrapped_model_ranges != 21
         || report.sparse_transition.pointer_matches != 21
         || report.sparse_transition.split_count != 1
@@ -8563,7 +8563,7 @@ fn write_long_prefill_continuation_bootstrap_probe_json_payload<W: Write>(
         || report.second_tile_fixture_id != PREFILL_LAYER23_CONTINUATION_SECOND_TILE_FIXTURE_ID
         || report.second_tile_start != 4_128
         || report.second_tile_rows != 32
-        || report.second_layer2_dispatches != 36
+        || report.second_layer2_dispatches != 37
         || report.second_layer2_wrapped_model_ranges != 17
         || report.second_layer2_exact_outputs != 16
         || report.second_layer3_dispatches != 76
@@ -8572,7 +8572,7 @@ fn write_long_prefill_continuation_bootstrap_probe_json_payload<W: Write>(
         || report.layer23_loop_tiles != 128
         || report.layer23_loop_c0_anchor_tiles != 2
         || report.layer23_loop_ratio128_emitted_rows != 32
-        || report.layer23_loop_dispatches != 14_560
+        || report.layer23_loop_dispatches != 14_688
         || report.layer23_loop_wrapped_model_ranges != 5_760
         || report.layer23_loop_pointer_matches != report.layer23_loop_wrapped_model_ranges
         || report.layer23_loop_final_hc_checksum == 0
@@ -8630,7 +8630,7 @@ fn write_long_prefill_continuation_bootstrap_probe_json_payload<W: Write>(
             != PREFILL_LAYER4_CONTINUATION_BOUNDARY_CHECKSUMS
         || layer4_matching_checksums != 10
         || report.layer4_continuation_tiles != 128
-        || report.layer4_continuation_dispatches != 4_608
+        || report.layer4_continuation_dispatches != 4_736
         || report.layer4_continuation_wrapped_model_ranges != 2_176
         || report.layer4_continuation_pointer_matches
             != report.layer4_continuation_wrapped_model_ranges
@@ -8668,7 +8668,7 @@ fn write_long_prefill_continuation_bootstrap_probe_json_payload<W: Write>(
             != report.layer6_prefix_complete_wrapped_model_ranges
         || report.layer6_prefix_tail_checksums != PREFILL_LAYER6_PREFIX_TAIL_CHECKSUMS
         || report.layer6_continuation_tiles != 128
-        || report.layer6_continuation_dispatches != 4_608
+        || report.layer6_continuation_dispatches != 4_736
         || report.layer6_continuation_wrapped_model_ranges != 2_176
         || report.layer6_continuation_pointer_matches
             != report.layer6_continuation_wrapped_model_ranges
@@ -8714,7 +8714,7 @@ fn write_long_prefill_continuation_bootstrap_probe_json_payload<W: Write>(
             != report.layer8_prefix_complete_wrapped_model_ranges
         || report.layer8_prefix_tail_checksums != PREFILL_LAYER8_PREFIX_TAIL_CHECKSUMS
         || report.layer8_continuation_tiles != 128
-        || report.layer8_continuation_dispatches != 4_608
+        || report.layer8_continuation_dispatches != 4_736
         || report.layer8_continuation_wrapped_model_ranges != 2_176
         || report.layer8_continuation_pointer_matches
             != report.layer8_continuation_wrapped_model_ranges
@@ -8760,7 +8760,7 @@ fn write_long_prefill_continuation_bootstrap_probe_json_payload<W: Write>(
             != report.layer10_prefix_complete_wrapped_model_ranges
         || report.layer10_prefix_tail_checksums != PREFILL_LAYER10_PREFIX_TAIL_CHECKSUMS
         || report.layer10_continuation_tiles != 128
-        || report.layer10_continuation_dispatches != 4_608
+        || report.layer10_continuation_dispatches != 4_736
         || report.layer10_continuation_wrapped_model_ranges != 2_176
         || report.layer10_continuation_pointer_matches
             != report.layer10_continuation_wrapped_model_ranges
@@ -8830,7 +8830,7 @@ fn write_long_prefill_continuation_bootstrap_probe_json_payload<W: Write>(
             != report.layer12_prefix_complete_wrapped_model_ranges
         || report.layer12_prefix_tail_checksums != PREFILL_LAYER12_PREFIX_TAIL_CHECKSUMS
         || report.layer12_continuation_tiles != 128
-        || report.layer12_continuation_dispatches != 4_608
+        || report.layer12_continuation_dispatches != 4_736
         || report.layer12_continuation_wrapped_model_ranges != 2_176
         || report.layer12_continuation_pointer_matches
             != report.layer12_continuation_wrapped_model_ranges
@@ -8852,7 +8852,7 @@ fn write_long_prefill_continuation_bootstrap_probe_json_payload<W: Write>(
             != report.layer14_prefix_complete_wrapped_model_ranges
         || report.layer14_prefix_tail_checksums != PREFILL_LAYER14_PREFIX_TAIL_CHECKSUMS
         || report.layer14_continuation_tiles != 128
-        || report.layer14_continuation_dispatches != 4_608
+        || report.layer14_continuation_dispatches != 4_736
         || report.layer14_continuation_wrapped_model_ranges != 2_176
         || report.layer14_continuation_pointer_matches
             != report.layer14_continuation_wrapped_model_ranges
@@ -8924,7 +8924,7 @@ fn write_long_prefill_continuation_bootstrap_probe_json_payload<W: Write>(
     crate::artifact::write_json_string(output, report.fixture_id)?;
     write!(
         output,
-        ",\n  \"frontier_tokens\": {},\n  \"first_chunk\": {{\"start\": 0, \"tokens\": {}, \"end\": {}, \"complete_transformer_schedule\": true, \"selected_token\": {}}},\n  \"continuation_chunk\": {{\"start\": {}, \"tokens\": {}, \"end\": {}}},\n  \"schedule\": {{\"tile_rows\": {}, \"tiles\": {}, \"dispatches\": {}, \"wrapped_model_ranges\": {}, \"pointer_matches\": {}}},\n  \"retained_state\": {{\"layer0_raw_rows\": {}, \"layer1_raw_rows\": {}, \"layer2_raw_rows\": {}, \"layer2_attention_compressed_rows\": {}, \"layer2_indexer_compressed_rows\": {}, \"compressor_recurrent_state_retained\": true, \"capacity_growth_preserved_prefix\": true}},\n  \"sparse_transition\": {{\"position\": {}, \"compressed_rows\": {}, \"raw_rows\": {}, \"top_k\": {}, \"combined_dispatches\": {}, \"combined_wrapped_model_ranges\": {}, \"combined_pointer_matches\": {}, \"isolated_sparse_dispatches\": 17, \"native_tile_dispatches\": 10, \"native_sparse_dispatches\": 27, \"sparse_attention_wrapped_model_ranges\": 4, \"split_count\": {}, \"q_b_batch_rows\": 4096, \"tile_rows\": 32, \"raw_ring_capacity\": 4352, \"raw_batch_span\": 4224, \"compressed_capacity\": 2048, \"score_kernel\": \"kernel_dsv4_indexer_scores_tiled\", \"selection_kernel\": \"kernel_topk_stream512\", \"topk_order_kernel\": \"kernel_dsv4_sort_i32_rows_asc\", \"attention_kernel\": \"kernel_dsv4_indexed_mixed_attention_heads8\", \"q_b_batch_c0_bitwise_match\": true, \"multirow_indexer_c0_bitwise_match\": true, \"multirow_kqv_back_c0_bitwise_match\": true, \"production_sparse_c0_bitwise_match\": true, \"checksums\": {{\"indexer_q\": {}, \"indexer_weights\": {}, \"indexer_scores\": {}, \"indexer_topk\": {}, \"kqv_out\": {}, \"kqv_back\": {}}}, \"wall_ms\": {:.6}, \"gpu_ms\": {:.6}}},\n  \"layer2_continuation_tail\": {{\"fixture\": ",
+        ",\n  \"frontier_tokens\": {},\n  \"first_chunk\": {{\"start\": 0, \"tokens\": {}, \"end\": {}, \"complete_transformer_schedule\": true, \"selected_token\": {}}},\n  \"continuation_chunk\": {{\"start\": {}, \"tokens\": {}, \"end\": {}}},\n  \"schedule\": {{\"tile_rows\": {}, \"tiles\": {}, \"dispatches\": {}, \"wrapped_model_ranges\": {}, \"pointer_matches\": {}}},\n  \"retained_state\": {{\"layer0_raw_rows\": {}, \"layer1_raw_rows\": {}, \"layer2_raw_rows\": {}, \"layer2_attention_compressed_rows\": {}, \"layer2_indexer_compressed_rows\": {}, \"compressor_recurrent_state_retained\": true, \"capacity_growth_preserved_prefix\": true}},\n  \"sparse_transition\": {{\"position\": {}, \"compressed_rows\": {}, \"raw_rows\": {}, \"top_k\": {}, \"combined_dispatches\": {}, \"combined_wrapped_model_ranges\": {}, \"combined_pointer_matches\": {}, \"isolated_sparse_dispatches\": 17, \"native_tile_dispatches\": 11, \"native_sparse_dispatches\": 28, \"sparse_attention_wrapped_model_ranges\": 4, \"split_count\": {}, \"q_b_batch_rows\": 4096, \"tile_rows\": 32, \"raw_ring_capacity\": 4352, \"raw_batch_span\": 4224, \"compressed_capacity\": 2048, \"score_kernel\": \"kernel_dsv4_indexer_scores_tiled\", \"selection_kernel\": \"kernel_argsort_f32_i32_desc+kernel_argsort_merge_f32_i32_desc\", \"topk_order_kernel\": \"kernel_dsv4_sort_i32_rows_asc\", \"attention_kernel\": \"kernel_dsv4_indexed_mixed_attention_heads8\", \"q_b_batch_c0_bitwise_match\": true, \"multirow_indexer_c0_bitwise_match\": true, \"multirow_kqv_back_c0_bitwise_match\": true, \"production_sparse_c0_bitwise_match\": true, \"checksums\": {{\"indexer_q\": {}, \"indexer_weights\": {}, \"indexer_scores\": {}, \"indexer_topk\": {}, \"kqv_out\": {}, \"kqv_back\": {}}}, \"wall_ms\": {:.6}, \"gpu_ms\": {:.6}}},\n  \"layer2_continuation_tail\": {{\"fixture\": ",
         report.frontier_tokens,
         report.first_chunk_tokens,
         report.first_chunk_tokens - 1,
@@ -9082,7 +9082,7 @@ pub fn write_long_prefill_continuation_bootstrap_probe_json<W: Write>(
     })?;
     let boundary = "  \"layer4_continuation_boundary\": ";
     let insertion = format!(
-        "  \"layer4_prefix_complete\": {{\"start\": 0, \"rows\": 4096, \"sparse_attention\": {{\"dispatches\": {}, \"wrapped_model_ranges\": {}, \"pointer_matches\": {}, \"kernels\": [\"kernel_dsv4_indexer_scores_tiled\", \"kernel_topk_stream512\", \"kernel_dsv4_sort_i32_rows_asc\", \"kernel_dsv4_indexed_mixed_attention_heads8\"], \"checksums\": {:?}, \"c0_bitwise_match\": true}}, \"attention_ffn_tail\": {{\"combined_dispatches\": {}, \"combined_wrapped_model_ranges\": {}, \"combined_pointer_matches\": {}, \"hc_after_attention_checksum\": {}, \"hc_after_ffn_checksum\": {}, \"c0_bitwise_match\": true}}, \"complete_prefix_c0_claim\": true}},\n",
+        "  \"layer4_prefix_complete\": {{\"start\": 0, \"rows\": 4096, \"sparse_attention\": {{\"dispatches\": {}, \"wrapped_model_ranges\": {}, \"pointer_matches\": {}, \"kernels\": [\"kernel_dsv4_indexer_scores_tiled\", \"kernel_argsort_f32_i32_desc+kernel_argsort_merge_f32_i32_desc\", \"kernel_dsv4_sort_i32_rows_asc\", \"kernel_dsv4_indexed_mixed_attention_heads8\"], \"checksums\": {:?}, \"c0_bitwise_match\": true}}, \"attention_ffn_tail\": {{\"combined_dispatches\": {}, \"combined_wrapped_model_ranges\": {}, \"combined_pointer_matches\": {}, \"hc_after_attention_checksum\": {}, \"hc_after_ffn_checksum\": {}, \"c0_bitwise_match\": true}}, \"complete_prefix_c0_claim\": true}},\n",
         report.layer4_prefix_sparse_dispatches,
         report.layer4_prefix_sparse_wrapped_model_ranges,
         report.layer4_prefix_sparse_pointer_matches,
@@ -47671,7 +47671,7 @@ mod imp {
             || raw.compressed_rows != 1025
             || raw.raw_rows != 128
             || raw.top_k != 512
-            || raw.dispatches != 53
+            || raw.dispatches != 54
             || raw.wrapped_model_ranges != 21
             || raw.pointer_matches != 21
             || raw.split_count != 1
@@ -47696,7 +47696,7 @@ mod imp {
                 "Metal prefill layer-3 continuation complete-tile metadata is invalid",
             ));
         }
-        if second_layer2_raw.dispatches != 36
+        if second_layer2_raw.dispatches != 37
             || second_layer2_raw.wrapped_model_ranges != 17
             || second_layer2_raw.pointer_matches != 17
             || !second_layer2_raw.wall_ms.is_finite()
@@ -47896,7 +47896,7 @@ mod imp {
             }
             let emitted_row = u32::from((tile_start + 32) % 128 == 0);
             let expected_layer3_dispatches = 76 + 7 * emitted_row;
-            if tile_layer2.dispatches != 36
+            if tile_layer2.dispatches != 37
                 || tile_layer2.wrapped_model_ranges != 17
                 || tile_layer2.pointer_matches != 17
                 || !tile_layer2.wall_ms.is_finite()
@@ -47980,7 +47980,7 @@ mod imp {
         if layer23_loop.tiles != 128
             || layer23_loop.c0_anchor_tiles != 2
             || layer23_loop.ratio128_emitted_rows != 32
-            || layer23_loop.dispatches != 14_560
+            || layer23_loop.dispatches != 14_688
             || layer23_loop.wrapped_model_ranges != 5_760
             || layer23_loop.pointer_matches != 5_760
             || layer23_loop.final_hc_checksum == 0
@@ -48606,7 +48606,7 @@ mod imp {
                     error_text(&error)
                 )));
             }
-            if tile.dispatches != 36
+            if tile.dispatches != 37
                 || tile.wrapped_model_ranges != 17
                 || tile.pointer_matches != 17
                 || !tile.wall_ms.is_finite()
@@ -48658,7 +48658,7 @@ mod imp {
             )));
         }
         if layer23_loop.layer4_continuation_tiles != 128
-            || layer23_loop.layer4_continuation_dispatches != 4_608
+            || layer23_loop.layer4_continuation_dispatches != 4_736
             || layer23_loop.layer4_continuation_wrapped_model_ranges != 2_176
             || layer23_loop.layer4_continuation_pointer_matches != 2_176
             || layer23_loop.layer4_continuation_checksums
@@ -49188,7 +49188,7 @@ mod imp {
                     error_text(&error)
                 )));
             }
-            if tile.dispatches != 36
+            if tile.dispatches != 37
                 || tile.wrapped_model_ranges != 17
                 || tile.pointer_matches != 17
                 || !tile.wall_ms.is_finite()
@@ -49228,7 +49228,7 @@ mod imp {
             )));
         }
         if layer23_loop.layer6_continuation_tiles != 128
-            || layer23_loop.layer6_continuation_dispatches != 4_608
+            || layer23_loop.layer6_continuation_dispatches != 4_736
             || layer23_loop.layer6_continuation_wrapped_model_ranges != 2_176
             || layer23_loop.layer6_continuation_pointer_matches != 2_176
             || layer23_loop.layer6_continuation_tail_checksums
@@ -49928,7 +49928,7 @@ mod imp {
                     error_text(&error)
                 )));
             }
-            if tile.dispatches != 36
+            if tile.dispatches != 37
                 || tile.wrapped_model_ranges != 17
                 || tile.pointer_matches != 17
             {
@@ -49964,7 +49964,7 @@ mod imp {
             )));
         }
         if layer23_loop.layer8_continuation_tiles != 128
-            || layer23_loop.layer8_continuation_dispatches != 4_608
+            || layer23_loop.layer8_continuation_dispatches != 4_736
             || layer23_loop.layer8_continuation_wrapped_model_ranges != 2_176
             || layer23_loop.layer8_continuation_pointer_matches != 2_176
             || layer23_loop.layer8_continuation_tail_checksums
@@ -50668,7 +50668,7 @@ mod imp {
                     error_text(&error)
                 )));
             }
-            if tile.dispatches != 36
+            if tile.dispatches != 37
                 || tile.wrapped_model_ranges != 17
                 || tile.pointer_matches != 17
             {
@@ -50704,7 +50704,7 @@ mod imp {
             )));
         }
         if layer23_loop.layer10_continuation_tiles != 128
-            || layer23_loop.layer10_continuation_dispatches != 4_608
+            || layer23_loop.layer10_continuation_dispatches != 4_736
             || layer23_loop.layer10_continuation_wrapped_model_ranges != 2_176
             || layer23_loop.layer10_continuation_pointer_matches != 2_176
             || layer23_loop.layer10_continuation_tail_checksums
@@ -51411,7 +51411,7 @@ mod imp {
                     error_text(&error)
                 )));
             }
-            if tile.dispatches != 36
+            if tile.dispatches != 37
                 || tile.wrapped_model_ranges != 17
                 || tile.pointer_matches != 17
             {
@@ -51447,7 +51447,7 @@ mod imp {
             )));
         }
         if layer23_loop.layer12_continuation_tiles != 128
-            || layer23_loop.layer12_continuation_dispatches != 4_608
+            || layer23_loop.layer12_continuation_dispatches != 4_736
             || layer23_loop.layer12_continuation_wrapped_model_ranges != 2_176
             || layer23_loop.layer12_continuation_pointer_matches != 2_176
             || layer23_loop.layer12_continuation_tail_checksums
@@ -52154,7 +52154,7 @@ mod imp {
                     error_text(&error)
                 )));
             }
-            if tile.dispatches != 36
+            if tile.dispatches != 37
                 || tile.wrapped_model_ranges != 17
                 || tile.pointer_matches != 17
             {
@@ -52190,7 +52190,7 @@ mod imp {
             )));
         }
         if layer23_loop.layer14_continuation_tiles != 128
-            || layer23_loop.layer14_continuation_dispatches != 4_608
+            || layer23_loop.layer14_continuation_dispatches != 4_736
             || layer23_loop.layer14_continuation_wrapped_model_ranges != 2_176
             || layer23_loop.layer14_continuation_pointer_matches != 2_176
             || layer23_loop.layer14_continuation_tail_checksums
@@ -61928,7 +61928,7 @@ mod tests {
                 diagnostic_threshold_override: 0,
                 pinned_default_threshold: 1024,
                 first_default_sparse_rows: 1025,
-                dispatches: 53,
+                dispatches: 54,
                 wrapped_model_ranges: 21,
                 pointer_matches: 21,
                 split_count: 1,
@@ -61958,7 +61958,7 @@ mod tests {
             second_tile_fixture_id: PREFILL_LAYER23_CONTINUATION_SECOND_TILE_FIXTURE_ID,
             second_tile_start: 4_128,
             second_tile_rows: 32,
-            second_layer2_dispatches: 36,
+            second_layer2_dispatches: 37,
             second_layer2_wrapped_model_ranges: 17,
             second_layer2_exact_outputs: 16,
             second_layer3_dispatches: 76,
@@ -61967,7 +61967,7 @@ mod tests {
             layer23_loop_tiles: 128,
             layer23_loop_c0_anchor_tiles: 2,
             layer23_loop_ratio128_emitted_rows: 32,
-            layer23_loop_dispatches: 14_560,
+            layer23_loop_dispatches: 14_688,
             layer23_loop_wrapped_model_ranges: 5_760,
             layer23_loop_pointer_matches: 5_760,
             layer23_loop_final_hc_checksum: 12,
@@ -62010,7 +62010,7 @@ mod tests {
             layer4_continuation_boundary_pointer_matches: 17,
             layer4_continuation_boundary_checksums: PREFILL_LAYER4_CONTINUATION_BOUNDARY_CHECKSUMS,
             layer4_continuation_tiles: 128,
-            layer4_continuation_dispatches: 4_608,
+            layer4_continuation_dispatches: 4_736,
             layer4_continuation_wrapped_model_ranges: 2_176,
             layer4_continuation_pointer_matches: 2_176,
             layer4_continuation_checksums: PREFILL_LAYER4_CONTINUATION_COMPLETE_CHECKSUMS,
@@ -62039,7 +62039,7 @@ mod tests {
             layer6_prefix_complete_pointer_matches: 17,
             layer6_prefix_tail_checksums: PREFILL_LAYER6_PREFIX_TAIL_CHECKSUMS,
             layer6_continuation_tiles: 128,
-            layer6_continuation_dispatches: 4_608,
+            layer6_continuation_dispatches: 4_736,
             layer6_continuation_wrapped_model_ranges: 2_176,
             layer6_continuation_pointer_matches: 2_176,
             layer6_continuation_tail_checksums: PREFILL_LAYER6_CONTINUATION_TAIL_CHECKSUMS,
@@ -62075,7 +62075,7 @@ mod tests {
             layer8_prefix_complete_pointer_matches: 17,
             layer8_prefix_tail_checksums: PREFILL_LAYER8_PREFIX_TAIL_CHECKSUMS,
             layer8_continuation_tiles: 128,
-            layer8_continuation_dispatches: 4_608,
+            layer8_continuation_dispatches: 4_736,
             layer8_continuation_wrapped_model_ranges: 2_176,
             layer8_continuation_pointer_matches: 2_176,
             layer8_continuation_tail_checksums: PREFILL_LAYER8_CONTINUATION_TAIL_CHECKSUMS,
@@ -62112,7 +62112,7 @@ mod tests {
             layer10_prefix_complete_pointer_matches: 17,
             layer10_prefix_tail_checksums: PREFILL_LAYER10_PREFIX_TAIL_CHECKSUMS,
             layer10_continuation_tiles: 128,
-            layer10_continuation_dispatches: 4_608,
+            layer10_continuation_dispatches: 4_736,
             layer10_continuation_wrapped_model_ranges: 2_176,
             layer10_continuation_pointer_matches: 2_176,
             layer10_continuation_tail_checksums: PREFILL_LAYER10_CONTINUATION_TAIL_CHECKSUMS,
@@ -62168,7 +62168,7 @@ mod tests {
             layer12_prefix_complete_pointer_matches: 17,
             layer12_prefix_tail_checksums: PREFILL_LAYER12_PREFIX_TAIL_CHECKSUMS,
             layer12_continuation_tiles: 128,
-            layer12_continuation_dispatches: 4_608,
+            layer12_continuation_dispatches: 4_736,
             layer12_continuation_wrapped_model_ranges: 2_176,
             layer12_continuation_pointer_matches: 2_176,
             layer12_continuation_tail_checksums: PREFILL_LAYER12_CONTINUATION_TAIL_CHECKSUMS,
@@ -62186,7 +62186,7 @@ mod tests {
             layer14_prefix_complete_pointer_matches: 17,
             layer14_prefix_tail_checksums: PREFILL_LAYER14_PREFIX_TAIL_CHECKSUMS,
             layer14_continuation_tiles: 128,
-            layer14_continuation_dispatches: 4_608,
+            layer14_continuation_dispatches: 4_736,
             layer14_continuation_wrapped_model_ranges: 2_176,
             layer14_continuation_pointer_matches: 2_176,
             layer14_continuation_tail_checksums: PREFILL_LAYER14_CONTINUATION_TAIL_CHECKSUMS,
@@ -62268,7 +62268,7 @@ mod tests {
         assert!(text.contains("\"layer6_ingress_qkv_paired_compressors_c0_claim\": true"));
         assert!(text.contains("\"layer6_prefix_complete\": {\"start\": 0"));
         assert!(text.contains("\"layer6_continuation_complete\": {\"start\": 4096"));
-        assert!(text.contains("\"tiles\": 128, \"dispatches\": 4608"));
+        assert!(text.contains("\"tiles\": 128, \"dispatches\": 4736"));
         assert!(text.contains("\"complete_layer6_prefix_c0_claim\": true"));
         assert!(text.contains("\"complete_layer6_continuation_c0_claim\": true"));
         assert!(text.contains("\"complete_layer6_prefill_claim\": true"));
@@ -62283,7 +62283,7 @@ mod tests {
         assert!(text.contains("\"layer8_boundaries\": {\"prefix\": {\"start\": 0"));
         assert!(text.contains("\"layer8_prefix_complete\": {\"start\": 0"));
         assert!(text.contains("\"layer8_continuation_complete\": {\"start\": 4096"));
-        assert!(text.contains("\"tiles\": 128, \"dispatches\": 4608"));
+        assert!(text.contains("\"tiles\": 128, \"dispatches\": 4736"));
         assert!(text.contains("\"layer8_ingress_qkv_paired_compressors_c0_claim\": true"));
         assert!(text.contains("\"complete_layer8_prefix_c0_claim\": true"));
         assert!(text.contains("\"complete_layer8_continuation_c0_claim\": true"));
@@ -62299,7 +62299,7 @@ mod tests {
         assert!(text.contains("\"layer10_boundaries\": {\"prefix\": {\"start\": 0"));
         assert!(text.contains("\"layer10_prefix_complete\": {\"start\": 0"));
         assert!(text.contains("\"layer10_continuation_complete\": {\"start\": 4096"));
-        assert!(text.contains("\"tiles\": 128, \"dispatches\": 4608"));
+        assert!(text.contains("\"tiles\": 128, \"dispatches\": 4736"));
         assert!(text.contains("\"layer10_ingress_qkv_paired_compressors_c0_claim\": true"));
         assert!(text.contains("\"complete_layer10_prefix_c0_claim\": true"));
         assert!(text.contains("\"complete_layer10_continuation_c0_claim\": true"));
@@ -62321,7 +62321,7 @@ mod tests {
         assert!(text.contains("\"complete_layer12_prefill_claim\": true"));
         assert!(text.contains("\"complete_layer23_second_chunk_c0_claim\": true"));
         assert!(text.contains("\"layer2_sparse_transition_c0_claim\": true"));
-        assert!(text.contains("\"selection_kernel\": \"kernel_topk_stream512\""));
+        assert!(text.contains("\"selection_kernel\": \"kernel_argsort_f32_i32_desc+kernel_argsort_merge_f32_i32_desc\""));
         assert!(text.contains("\"input_boundary\": \"native_multirow_sparse_kqv_back\""));
         assert!(text.contains("\"downstream_exact_outputs\": 13"));
         assert!(text.contains("\"layer2_native_complete_tile_c0_claim\": true"));

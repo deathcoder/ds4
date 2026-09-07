@@ -517,7 +517,11 @@ fn run_prefill_chunk_layer(
                 (0.0, 0.0),
                 (tile.wall_ms, tile.gpu_ms),
             );
-            if tile.dispatches != 10 || tile.wrapped_model_ranges != 3 || tile.pointer_matches != 3
+            // 1024-column sorted blocks retain 512 entries; each merge doubles
+            // their width until the final 512-index selection is produced.
+            let blocks = ((start + 4096) / 4).div_ceil(1024);
+            let merges = blocks.next_power_of_two().trailing_zeros();
+            if tile.dispatches != 10 + merges || tile.wrapped_model_ranges != 3 || tile.pointer_matches != 3
             {
                 return Err(Error::invalid("even chunk attention schedule mismatch"));
             }
