@@ -18,6 +18,22 @@ Before changing code:
 Journal entries are reverse chronological. Do not edit old entries to change
 history; add a correction and update the current-state summary.
 
+## 2026-09-07 — Historical16K internal target mismatch; timing blocked
+
+- Fresh diagnostic32K candidate stops at chunk12288 (16K frontier), layer34:
+  actual HC `3e1a2b79f656939a`, old v3 target `c0d6d32c463abad0`.
+  All earlier checks pass. Full v5 output-only32K/128 gate already passes;
+  do not waive this internal mismatch or infer a new target from Rust alone.
+- Validation and downstream measurement queue stopped. Original failure/logs
+  remain in W. Running `capture-hc-v5.py`: two fresh pinned-v5 captures each
+  at16K,20K,24K,12K, full43-layer4096-row HC tensors plus output logits.
+  First16K capture must reproduce Rust's differing layer34 checksum before
+  target replacement; all paired inventories must match exactly. Large success
+  payloads compact only after full SHA/FNV inventories; failed payloads retained.
+- Next: if repeatable, version HC inventories separately and update only the
+  explicitly versioned runtime table; preserve v3 fixtures and failure. Rebuild
+  and repeat the complete six-gate candidate queue before any timing.
+
 ## 2026-09-07 — Fresh Rust v5 full-output C0 gate passes
 
 - Frozen9a519a36 output-only32K run exits0: all129,280 prefill logits and
@@ -2197,9 +2213,9 @@ Next:
   explains new32K logits.8K control is unchanged. Final pinned-source oracle
   acceptance passes all eight captures and bundle verification; two full traces
   and new v5 fixtures also pass. Rust candidate9a519a36 passes310 tests and
-  release build; live12K and full32K output-only controls pass, diagnostic32K is running,
-  then short controls/lifecycle
-  and paired baseline remain pending. Evidence: `rust-star/.work/upstream-refresh-1190237b/`.
+  release build; live12K and full32K output-only controls pass, diagnostic32K stopped on historical16K layer34 HC mismatch.
+  Direct repeated oracle-v5 HC captures are running before any target revision;
+  short controls/lifecycle and paired baseline remain pending. Evidence: `rust-star/.work/upstream-refresh-1190237b/`.
 - Completed milestone: measured native32K prefill tail batching, candidate
   `dd0d26c5`, unchanged accepted oracle-v4 `df99eba7`. Durable report:
   `rust-star/reports/32k-prefill-dd0d26c5/README.md`; 106-artifact portable
