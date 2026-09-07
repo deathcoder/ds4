@@ -18,6 +18,19 @@ Before changing code:
 Journal entries are reverse chronological. Do not edit old entries to change
 history; add a correction and update the current-state summary.
 
+## 2026-09-07 — Native tail scratch and output milestone started
+
+- Baseline: ingress candidate ecf529a9/report 2d8b8405. Largest profile group
+  even/tail is 49.919 GPU / 66.497 host seconds; odd tails share the executor.
+- Native 4K tails now reuse command-local scratch via the existing transient
+  buffer cache, released at prefill-to-decode handoff/reset. Retained HC buffers
+  remain separate. Native final HC writes directly to its retained destination.
+- The unused native routed-mid FP32 diagnostic conversion/allocation is removed;
+  32-row and legacy prefix controls retain their old outputs and schedule.
+  Native tail dispatch count changes 26 → 25; no model arithmetic changes.
+- Build, six live gates and fresh paired/profile audit are pending. Evidence:
+  `rust-star/.work/tail-milestone-2d8b8405/`. Oracle-v5 and fixtures unchanged.
+
 ## 2026-09-07 — Odd-layer ingress batching milestone complete
 
 - Native odd-layer ingress now processes 4096 query rows per call with
@@ -2668,6 +2681,10 @@ Next:
 
 ### Current resume checkpoint (updated 2026-09-07)
 
+- Active milestone: native tail scratch reuse, direct retained HC output and
+  removal of unused FP32 diagnostic conversion. Build, all six gates and
+  fresh paired/profile report pending in `rust-star/.work/tail-milestone-2d8b8405/`.
+
 - Authorized odd-layer ingress milestone is complete. Native continuation
   ingress executes whole 4K chunks with unchanged kernel arithmetic and no
   per-tile input staging copy. Legacy controls retain their 32-row path.
@@ -3444,7 +3461,8 @@ Next:
 
 ## Immediate Next Actions
 
-1. Ingress batching milestone is complete. Review `rust-star/reports/32k-ingress-ecf529a9/README.md`.
+1. Active: validate native tail scratch/output optimization through all gates
+   and fresh paired/profile evidence. Ingress batching milestone is complete. Review `rust-star/reports/32k-ingress-ecf529a9/README.md`.
    Next measured target: `even/tail`. Preserve exact v5 outputs, retained-engine
    lifecycle and track memory, then validate any change in a fresh paired run.
 2. Use oracle-v5 for new captures. Preserve historical fixture identities,

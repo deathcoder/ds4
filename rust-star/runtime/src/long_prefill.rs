@@ -416,7 +416,7 @@ fn run_prefill_chunk_layer(
         );
         let padding_dispatch = u32::from((4224 + (start + 4096) / 128) % 64 != 0);
         // One ingress call contributes 10 dispatches and nine model views.
-        if raw.dispatches != 48 + padding_dispatch
+        if raw.dispatches != 47 + padding_dispatch
             || raw.wrapped_model_ranges != 28
             || raw.pointer_matches != 28
         {
@@ -565,7 +565,7 @@ fn run_prefill_chunk_layer(
             (0.0, 0.0),
             (tail.wall_ms, tail.gpu_ms),
         );
-        if tail.dispatches != 26 || tail.wrapped_model_ranges != 14 || tail.pointer_matches != 14 {
+        if tail.dispatches != 25 || tail.wrapped_model_ranges != 14 || tail.pointer_matches != 14 {
             return Err(Error::invalid("even chunk batched tail schedule mismatch"));
         }
         raw.wall_ms += tail.wall_ms;
