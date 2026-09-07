@@ -47125,8 +47125,11 @@ int rust_star_metal_run_prefill_layer3_continuation_ingress(
 {
     const uint32_t chunk_start = prefill_chunk_start(opaque_context);
     const uint32_t chunk_end = chunk_start + 4096u;
+    RustStarMetalContext *owner = (__bridge RustStarMetalContext *)opaque_context;
+    /* Native chunks batch independent rows; legacy probes retain 32-row tiles.
+     * The projection kernels still reduce each row in their original order. */
+    const uint32_t rows = owner.prefillLayerChunkStart ? 4096u : 32u;
     enum {
-        rows = 32,
         n_embd = 4096,
         hc_dim = 16384,
         mix_hc = 24,
@@ -47137,7 +47140,7 @@ int rust_star_metal_run_prefill_layer3_continuation_ingress(
         head_dim = 512,
     };
     if (!opaque_context || !model_mapping || !weights ||
-        tile_start < chunk_start || tile_start > chunk_end-32u ||
+        tile_start < chunk_start || tile_start > chunk_end-rows ||
         (tile_start-chunk_start)%rows != 0u ||
         !result) {
         return fail_with_message(error, error_bytes,
@@ -47373,7 +47376,7 @@ int rust_star_metal_run_prefill_layer3_continuation_ingress(
         [encoder setBuffer:flat_hc_buffer offset:0 atIndex:2];
         [encoder setBuffer:mix_buffer offset:0 atIndex:3];
         [encoder setThreadgroupMemoryLength:8192u atIndex:0];
-        [encoder dispatchThreadgroups:MTLSizeMake(1,1,1)
+        [encoder dispatchThreadgroups:MTLSizeMake(rows/32u,1,1)
              threadsPerThreadgroup:MTLSizeMake(128,1,1)];
 
         [encoder setComputePipelineState:context.hcIngressPipeline];
@@ -47397,7 +47400,7 @@ int rust_star_metal_run_prefill_layer3_continuation_ingress(
         [encoder setBuffer:(input) offset:0 atIndex:2]; \
         [encoder setBuffer:(output) offset:0 atIndex:3]; \
         [encoder setThreadgroupMemoryLength:6144u atIndex:0]; \
-        [encoder dispatchThreadgroups:MTLSizeMake(1,(width)/64u,1) \
+        [encoder dispatchThreadgroups:MTLSizeMake(rows/32u,(width)/64u,1) \
              threadsPerThreadgroup:MTLSizeMake(128,1,1)]; \
     } while (0)
         RUST_STAR_ENCODE_L3_CONTINUATION_Q8(q_a_args, 4, norm_buffer,
@@ -47436,7 +47439,7 @@ int rust_star_metal_run_prefill_layer3_continuation_ingress(
         [encoder setBuffer:q_norm_buffer offset:0 atIndex:2];
         [encoder setBuffer:q_buffer offset:0 atIndex:3];
         [encoder setThreadgroupMemoryLength:6144u atIndex:0];
-        [encoder dispatchThreadgroups:MTLSizeMake(1,q_dim/64u,1)
+        [encoder dispatchThreadgroups:MTLSizeMake(rows/32u,q_dim/64u,1)
              threadsPerThreadgroup:MTLSizeMake(128,1,1)];
         [encoder endEncoding];
 
@@ -48815,7 +48818,9 @@ int rust_star_metal_prepare_prefill_layer5_continuation_tile(
     size_t error_bytes)
 {
     const uint32_t continuation_start = prefill_chunk_start(opaque_context);
-    enum { rows = 32, hc_dim = 16384 };
+    RustStarMetalContext *owner = (__bridge RustStarMetalContext *)opaque_context;
+    const uint32_t rows = owner.prefillLayerChunkStart ? 4096u : 32u;
+    enum { hc_dim = 16384 };
     if (!opaque_context || tile_start < continuation_start ||
         tile_start > continuation_start+4096u-rows || tile_start%rows != 0u) {
         return fail_with_message(error, error_bytes,
@@ -48831,6 +48836,11 @@ int rust_star_metal_prepare_prefill_layer5_continuation_tile(
         if (!source || source.length < offset+bytes) {
             return fail_with_message(error, error_bytes,
                 @"complete layer-4 continuation HC is unavailable");
+        }
+        /* Native ingress reads its immutable predecessor directly. */
+        if (rows == 4096u) {
+            context.prefillLayer2ContinuationAfterFfnHc = source;
+            return 1;
         }
         id<MTLBuffer> tile = [context.device
             newBufferWithBytes:(const uint8_t *)

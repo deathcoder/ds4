@@ -285,9 +285,9 @@ fn run_prefill_chunk_layer(
     if layer % 2 == 1 {
         let mut inputs: Vec<Vec<f32>> = [4096, 4096, 1024, 1024, 512, 512, 32768, 512, 512]
             .iter()
-            .map(|width| vec![0.0; 32 * width])
+            .map(|width| vec![0.0; 4096 * width])
             .collect();
-        for position in (start..start + 4096).step_by(32) {
+        for position in (start..start + 4096).step_by(4096) {
             checked!(rust_star_metal_prepare_prefill_layer5_continuation_tile(
                 context.0,
                 position,

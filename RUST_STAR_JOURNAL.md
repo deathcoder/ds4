@@ -18,6 +18,17 @@ Before changing code:
 Journal entries are reverse chronological. Do not edit old entries to change
 history; add a correction and update the current-state summary.
 
+## 2026-09-07 — Odd-layer ingress batching milestone started
+
+- Baseline is the completed attention candidate 1eb20ddb/report 12fb9314.
+  Its separate profile identifies odd/ingress at 54.263 GPU / 81.355 host seconds.
+- Native ingress now stages the immutable predecessor HC by reference and
+  batches 4096 independent rows per call. Projection threadgroups retain their
+  original 32-row arithmetic; legacy diagnostic calls remain 32 rows.
+- Oracle-v5 and fixtures are unchanged. Build, six live correctness/lifecycle
+  gates, five fresh paired runs, separate profile and audited report are pending.
+  Evidence: `rust-star/.work/ingress-milestone-12fb9314/`.
+
 ## 2026-09-07 — Even-layer attention batching milestone complete
 
 - Native continuation attention now processes 4096 query rows per call with
@@ -2523,6 +2534,10 @@ Next:
 
 ### Current resume checkpoint (updated 2026-09-07)
 
+- Active milestone: whole-chunk odd-layer ingress, preserving kernel arithmetic
+  and removing native input staging copies. Implementation prepared; build,
+  live gates and fresh measurements pending in `rust-star/.work/ingress-milestone-12fb9314/`.
+
 - Authorized even-layer attention milestone is complete. Native continuation
   attention executes whole 4K chunks with unchanged kernel arithmetic and no
   per-tile heads copy. Both native selector sites share this implementation.
@@ -3296,7 +3311,8 @@ Next:
 
 ## Immediate Next Actions
 
-1. Attention batching milestone is complete. Review `rust-star/reports/32k-attention-1eb20ddb/README.md`.
+1. Active: complete odd-layer ingress batching, all live gates and audited fresh
+   paired/profile evidence. Attention batching milestone is complete. Review `rust-star/reports/32k-attention-1eb20ddb/README.md`.
    Next measured target: `odd/ingress`. Preserve exact v5 outputs, retained-engine
    lifecycle and track memory, then validate any change in a fresh paired run.
 2. Use oracle-v5 for new captures. Preserve historical fixture identities,
