@@ -18,6 +18,11 @@ Before changing code:
 Journal entries are reverse chronological. Do not edit old entries to change
 history; add a correction and update the current-state summary.
 
+## 2026-09-07 — Four ingress benchmark pairs pass
+
+- Pairs 1–4 pass on attempt 1. Final pair 5 (AB) is running; both warmups passed.
+  No invalid attempt/retry. Isolated profile, audit and final report pending.
+
 ## 2026-09-07 — Three ingress benchmark pairs pass
 
 - Pairs 1–3 pass on attempt 1; pair 4 (BA) is running. Both warmups passed.
@@ -2626,7 +2631,7 @@ Next:
   and removing native input staging copies. 310 Rust tests and release build pass;
   corrected ecf529a9 build and 12K/8K/2K gates pass; full 32K output-only
   and diagnostic gates and retained lifecycle pass. Frozen paired campaign
-  both warmups and pairs 1–3 pass; pair 4 running, final result/profile pending; initial
+  both warmups and pairs 1–4 pass; pair 5 running, final result/profile pending; initial
   metadata failure retained in `rust-star/.work/ingress-milestone-12fb9314/`.
 
 - Authorized even-layer attention milestone is complete. Native continuation
