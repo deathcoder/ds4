@@ -18,6 +18,18 @@ Before changing code:
 Journal entries are reverse chronological. Do not edit old entries to change
 history; add a correction and update the current-state summary.
 
+## 2026-09-07 — Native tail paired results and host conditions recorded
+
+- Five-pair Rust/reference prefill medians: 362.284/212.376 seconds; steady
+  decode 17.064/17.039 tokens/s. Independent audit still pending.
+- Prior ingress campaign: 371.601/206.136 seconds. Rust absolute prefill falls
+  about 2.51% while reference rises about 3.03%; cross-session attribution is
+  limited by background load. All five pairs remain retained.
+- Observed Rust peak process memory is 91.613 GiB (prior 92.250 GiB), with
+  2794.69 MiB host swap used after pairs. This is not proof of reduced total
+  allocation requirements. No thermal/performance warning was reported.
+- Separate profile is running; final audited report and docs remain pending.
+
 ## 2026-09-07 — All five native tail pairs pass; profile running
 
 - All five alternating pairs and both warmups pass on attempt 1. No rejected
