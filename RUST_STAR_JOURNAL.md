@@ -18,6 +18,15 @@ Before changing code:
 Journal entries are reverse chronological. Do not edit old entries to change
 history; add a correction and update the current-state summary.
 
+## 2026-09-07 — Five refreshed baseline pairs pass; profile running
+
+- Both warmups and all five alternating pairs passed on attempt 1. No timed
+  sample was rejected or retried. Isolated 32K profile is running.
+- Preliminary complete summary: Rust/reference median prefill 423.152/172.875 s;
+  steady decode 20.484/19.507 tokens/s. Independent audit remains pending.
+- Final report rendering uses raw paired latency ratios and the audit's memory
+  distributions; these metrics are not fields of the standard summary schema.
+
 ## 2026-09-07 — All final gates pass; frozen paired campaign starts
 
 - Candidate `cc032078` passes all six live gates, including both full 32K C0
@@ -2370,8 +2379,8 @@ Next:
   Runtime uses deterministic argsort/merge and keeps batched even-layer tails.
 - Frozen plan SHA `915d68eda1ebf4f619f3767a2003af7baa01a21d616612dc283e221ddf94e8cc`.
   Campaign `rust-star/.work/paired-32k-128-cc032078-v5/` has passed both warmups
-  and pairs 1–4; final pair 5 is running oracle-first. Five pairs and isolated profile
-  remain the complete measurement scope.
+  and all five pairs on attempt 1. The isolated profile is running; independent
+  audit and report export follow.
   No builds or heavy tests during the timed block; one model process at a time.
 - Coordinator `rust-star/.work/upstream-refresh-1190237b/finish-milestone.py`
   continues measurement, profile, audit and report export. Final documentation
@@ -3133,8 +3142,8 @@ Next:
 ## Immediate Next Actions
 
 1. Finish the active upstream-refresh milestone: the frozen v5 campaign has
-   four valid pairs and final pair 5 is running. Complete all five pairs, the isolated
-   profile, independent audit and portable report, then update current docs and
+   five valid pairs; the isolated profile is running. Complete the profile,
+   independent audit and portable report, then update current docs and
    commit. All reference, Rust full C0 and lifecycle gates already pass.
 2. Preserve 2K/8K controls, the complete 32K output trace, GPU selection/history
    and reset/reuse. Internal HC acceptance remains through 24K. Do not repeat
