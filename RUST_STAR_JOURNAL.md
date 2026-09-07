@@ -18,6 +18,14 @@ Before changing code:
 Journal entries are reverse chronological. Do not edit old entries to change
 history; add a correction and update the current-state summary.
 
+## 2026-09-07 — Both final-candidate32K full-output gates pass
+
+- Candidate8aa4d13d passes fresh output-only and diagnostic32K/128 gates:
+  all129,280 prefill and16,547,840 decode FP32 words match v5 exactly.
+  Diagnostic mode also matches every accepted internal target through24K.
+-2K then8K controls and retained two-cycle32K validation remain in the queue.
+  Paired baseline has not started; all measurements still gated on lifecycle.
+
 ## 2026-09-07 — New v5 internal checkpoints all match Rust
 
 - Fresh diagnostic candidate8aa4d13d passes every accepted internal checkpoint
@@ -2260,8 +2268,8 @@ Next:
   Historical16K layer34 mismatch reproduced directly by v5; two full HC
   inventories at each12K/16K/20K/24K now accepted as separate v5 targets.
   Candidate8aa4d13d builds and passes310 tests; fresh12K passes and the
-  new full32K output-only run passes; diagnostic32K is active, then
-  shorter controls and retained lifecycle gates.
+  both new full32K modes pass; shorter controls and retained lifecycle
+  gates are running next.
   Paired baseline and portable report remain pending. Evidence and sequential
   scripts: `rust-star/.work/upstream-refresh-1190237b/`.
 - Completed milestone: measured native32K prefill tail batching, candidate
