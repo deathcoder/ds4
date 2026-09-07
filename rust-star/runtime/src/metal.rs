@@ -177,7 +177,8 @@ const PREFILL_LAYER4_CONTINUATION_BOUNDARY_CHECKSUMS: [u64; 10] = [
 ];
 const PREFILL_LAYER4_CONTINUATION_COMPLETE_CHECKSUMS: [u64; 16] = [
     0x1694_467d_eb31_c7b2,
-    0x5021_ec7e_896a_f81a,
+    // Full selector output from repeated oracle-v5 8K captures.
+    0xc579_e626_1fe3_045a,
     0x43a8_6361_0260_4836,
     0x9063_f043_df71_9efa,
     0x1ce5_34bd_d852_0a88,
@@ -9084,7 +9085,8 @@ pub fn write_long_prefill_continuation_bootstrap_probe_json<W: Write>(
     })?;
     let boundary = "  \"layer4_continuation_boundary\": ";
     let insertion = format!(
-        "  \"layer4_prefix_complete\": {{\"start\": 0, \"rows\": 4096, \"sparse_attention\": {{\"dispatches\": {}, \"wrapped_model_ranges\": {}, \"pointer_matches\": {}, \"kernels\": [\"kernel_dsv4_indexer_scores_tiled\", \"kernel_argsort_f32_i32_desc+kernel_argsort_merge_f32_i32_desc\", \"kernel_dsv4_sort_i32_rows_asc\", \"kernel_dsv4_indexed_mixed_attention_heads8\"], \"checksums\": {:?}, \"c0_bitwise_match\": true}}, \"attention_ffn_tail\": {{\"combined_dispatches\": {}, \"combined_wrapped_model_ranges\": {}, \"combined_pointer_matches\": {}, \"hc_after_attention_checksum\": {}, \"hc_after_ffn_checksum\": {}, \"c0_bitwise_match\": true}}, \"complete_prefix_c0_claim\": true}},\n",
+        "  \"continuation_selector_inventory\": {{\"fixture\": \"prefill-indexer-selectors-8192-v5\", \"layer4_topk_checksum\": {}}},\n  \"layer4_prefix_complete\": {{\"start\": 0, \"rows\": 4096, \"sparse_attention\": {{\"dispatches\": {}, \"wrapped_model_ranges\": {}, \"pointer_matches\": {}, \"kernels\": [\"kernel_dsv4_indexer_scores_tiled\", \"kernel_argsort_f32_i32_desc+kernel_argsort_merge_f32_i32_desc\", \"kernel_dsv4_sort_i32_rows_asc\", \"kernel_dsv4_indexed_mixed_attention_heads8\"], \"checksums\": {:?}, \"c0_bitwise_match\": true}}, \"attention_ffn_tail\": {{\"combined_dispatches\": {}, \"combined_wrapped_model_ranges\": {}, \"combined_pointer_matches\": {}, \"hc_after_attention_checksum\": {}, \"hc_after_ffn_checksum\": {}, \"c0_bitwise_match\": true}}, \"complete_prefix_c0_claim\": true}},\n",
+        report.layer4_continuation_checksums[1],
         report.layer4_prefix_sparse_dispatches,
         report.layer4_prefix_sparse_wrapped_model_ranges,
         report.layer4_prefix_sparse_pointer_matches,

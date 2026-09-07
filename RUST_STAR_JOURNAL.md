@@ -18,6 +18,20 @@ Before changing code:
 Journal entries are reverse chronological. Do not edit old entries to change
 history; add a correction and update the current-state summary.
 
+## 2026-09-07 — Full continuation selector checksum versioned
+
+- Detailed8K passed the new second-tile selector then stopped on layer4's
+  historical full-selector checksum. The other15 checksums, including full
+  layer HC, match. Two fresh all-even-layer v5 captures reproduce Rust's
+  layer4 selector checksum `c579e6261fe3045a` with identical full inventories.
+- Separate `prefill-indexer-selectors-8192-v5` records all21 even-layer score
+  and selector inventories and retains the full layer4 selector tensor.
+  Only the stale layer4 selector expected checksum changes; JSON exposes its
+  versioned inventory and actual checksum. All other tensor checks remain.
+- Original053c5593 stopped attempt archived under
+  `old-full-selector-attempt-053c5593/`. Rebuild and detailed8K-first validation
+  queue will run before full32K, shorter and retained controls and timing.
+
 ## 2026-09-07 — Versioned v5 second-tile selector ordering
 
 - Candidate8aa4d13d passed both complete32K C0 modes and2K, then detailed8K
