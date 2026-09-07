@@ -1,0 +1,368 @@
+{
+  "candidate": {
+    "backend": "metal",
+    "build_configuration": {
+      "cargo": "1.91.1 (ea2d97820 2025-10-10)",
+      "command": [
+        "cargo",
+        "build",
+        "--manifest-path",
+        "rust-star/runtime/Cargo.toml",
+        "--release"
+      ],
+      "profile": {
+        "codegen_units": 1,
+        "lto": "thin",
+        "panic": "abort"
+      },
+      "rustc": "1.91.1 (ed61e7d7e 2025-11-07)",
+      "rustflags": [],
+      "validated_build_sha256": "5af598e82d9ed89c684039716d047b6091e3bad5d611f6d85ca73d24f66029a1"
+    },
+    "executable_sha256": "7f14080aea91a3631bb85b8c55dd8f02031e983ab2b74cc1618235a0262a74a4",
+    "model_sha256": "ca22ae2f838e14077c22bc1c1417b71b45b5e5a3687bd96c2ac6e17fdb6261c0",
+    "prompt_sha256": "f53e0d80cb2d4492d24ebd63c7000c397b16ae70f9bf09b3763e5d8323ec209f",
+    "runtime_configuration": {
+      "command": "engine-measure",
+      "decode_steps": 128,
+      "even_prefill_attention_retention": "complete chunk written directly to existing tail-input buffer",
+      "even_prefill_attention_tile_rows": 4096,
+      "even_prefill_tail_rows": 4096,
+      "exact_prefix_rebuild": true,
+      "failure_collection": "completed logit readback only after failed token comparison; successful steps keep GPU selection readback",
+      "generation_command_buffers_per_token": 44,
+      "generation_correctness_collection": false,
+      "generation_host_waits_per_token": 2,
+      "indexer_selector": "upstream deterministic block argsort and merge",
+      "model_residency_queue_attached": true,
+      "model_residency_required": true,
+      "model_warm_policy": "CPU POSIX_MADV_WILLNEED plus one volatile byte touch per tensor-data page before internal timers; Metal residency-set registration and one-mebibyte-stride GPU view touch inside prefill_ms before decode",
+      "native_batched_prefill": true,
+      "native_tail_direct_hc_output": true,
+      "native_tail_dispatches": 25,
+      "native_tail_routed_mid_f32_conversion": false,
+      "native_tail_scratch_reuse": true,
+      "odd_prefill_ingress_input": "immutable predecessor buffer alias",
+      "odd_prefill_ingress_rows": 4096,
+      "prefill_chunk_tokens": 4096,
+      "prefill_context_tokens": 32768,
+      "prefill_correctness_collection": false,
+      "prefill_stage_profile_collection": false,
+      "sampling": "lowest-ID greedy argmax; full C0 trace establishes identical non-EOS selections to the reference",
+      "sampling_logits_readback": false,
+      "sampling_result_readback_bytes": 8,
+      "transcript_validation": "after each timed step; first failure rejects run"
+    },
+    "source_commit": "89e3274568745fe5311d16478ccf35f016958a08",
+    "source_tree": "00ea44c5fd9157114c5751f925750b0979ee01f9"
+  },
+  "configuration": {
+    "contexts": [
+      32768
+    ],
+    "gen_tokens": 128,
+    "primary_metric": "gen_steady_tps",
+    "repetitions": 5,
+    "sampling": "fixed 128-step lowest-ID greedy transcript; reference excludes EOS, and every reference full-logit argmax equals the same non-EOS transcript"
+  },
+  "correctness_class": "C0",
+  "correctness_manifest_sha256": "86cb1bf1ba512d729595bd073320acc4caf7164e0a2f1029e44ab5a3e25d4a3c",
+  "host_manifest_sha256": "94fd1f8743e0586c0a5327bdd44dd75d5f6343a2bf09d953c5d82f51dfb0b50c",
+  "oracle": {
+    "backend": "metal",
+    "build_configuration": {
+      "benchmark_driver_commit": "ccbd16d36895ef9fe8edf7f793014988ff1ab7f4",
+      "benchmark_driver_sha256": "2a337c05b220392f15bd1a2b42cc90a13a1786f575c026308f58c48589c54100",
+      "build_provenance_sha256": "feb7815c03c199ed9eeea974f27c42c21bc8a7db02e4d68ec32a98068d15163f",
+      "builder": "make in clean pinned oracle-v5 worktree",
+      "cflags": "-O3 -ffast-math -g -mcpu=native -Wall -Wextra -std=c99",
+      "command": [
+        "make",
+        "-j4",
+        "ds4-bench"
+      ],
+      "compiler": "Apple clang 21.0.0 (clang-2100.1.1.101)",
+      "objcflags": "-O3 -ffast-math -g -mcpu=native -Wall -Wextra -fobjc-arc",
+      "source_overlay": "none"
+    },
+    "executable_sha256": "a4056d7297bd0a6de8e46fac294e7913d9bc8c96465e5d68f1b6ef6471e49aa0",
+    "model_sha256": "ca22ae2f838e14077c22bc1c1417b71b45b5e5a3687bd96c2ac6e17fdb6261c0",
+    "prompt_sha256": "f53e0d80cb2d4492d24ebd63c7000c397b16ae70f9bf09b3763e5d8323ec209f",
+    "runtime_configuration": {
+      "backend_flag": "--metal",
+      "compressor_dependency": "pinned current upstream ordering",
+      "correctness_instrumentation": false,
+      "csv_timing_precision_digits": 9,
+      "decode_step": "eval plus resulting-token argmax and commitment",
+      "frontier_mode": "single exact context",
+      "indexer_selector": "deterministic block argsort and merge",
+      "initial_selection_charged_to_prefill": true,
+      "oracle_version": "oracle-v5",
+      "prefill_chunk_tokens": 4096,
+      "sampling": "greedy argmax excluding EOS",
+      "sampling_in_interval": true,
+      "warm_weights": true
+    },
+    "source_commit": "ccbd16d36895ef9fe8edf7f793014988ff1ab7f4",
+    "source_tree": "a0a33f4a00c3c78cd40350785485203e7c6b0b1d"
+  },
+  "pairs": [
+    {
+      "attempt": 1,
+      "candidate": {
+        "ctx_tokens": 32768,
+        "gen_first_ms": 68.113,
+        "gen_ms": 7439.905955,
+        "gen_steady_ms": 7371.792955,
+        "gen_steady_tokens": 127,
+        "gen_steady_tps": 17.227830566,
+        "gen_tokens": 128,
+        "gen_tps": 17.204518548,
+        "kvcache_bytes": null,
+        "prefill_ms": 361131.060459,
+        "prefill_tokens": 32768,
+        "prefill_tps": 90.737141132,
+        "process_overhead_ms": 22787.759918999996,
+        "process_peak_bytes": 98368815104,
+        "process_wall_ms": 391358.726333
+      },
+      "context": 32768,
+      "evidence": {
+        "candidate": {
+          "measurement_sha256": "410444e983e07c791a2f06bc7c9f6b635776a9e8594d6119225b3e71058b74f1",
+          "output": "measurements/ctx-0032768/rep-01/attempt-01/candidate"
+        },
+        "oracle": {
+          "measurement_sha256": "748172d94c8aed8abfaa5aae41fb2a57ee5ed8770f873519efc6eff0acac295f",
+          "output": "measurements/ctx-0032768/rep-01/attempt-01/oracle"
+        }
+      },
+      "oracle": {
+        "ctx_tokens": 32768,
+        "gen_first_ms": 62.505,
+        "gen_ms": 7516.5230001103,
+        "gen_steady_ms": 7453.580000096412,
+        "gen_steady_tokens": 127,
+        "gen_steady_tps": 17.038792097,
+        "gen_tokens": 128,
+        "gen_tps": 17.029150313,
+        "kvcache_bytes": null,
+        "prefill_ms": 212376.0399997636,
+        "prefill_tokens": 32768,
+        "prefill_tps": 154.292358027,
+        "process_overhead_ms": 14679.23025012609,
+        "process_peak_bytes": 86860677120,
+        "process_wall_ms": 234571.79325
+      },
+      "order": "AB",
+      "repetition": 1,
+      "valid": true
+    },
+    {
+      "attempt": 1,
+      "candidate": {
+        "ctx_tokens": 32768,
+        "gen_first_ms": 73.178,
+        "gen_ms": 7445.238086,
+        "gen_steady_ms": 7372.060086,
+        "gen_steady_tokens": 127,
+        "gen_steady_tps": 17.227206306,
+        "gen_tokens": 128,
+        "gen_tps": 17.192197015,
+        "kvcache_bytes": null,
+        "prefill_ms": 362284.382042,
+        "prefill_tokens": 32768,
+        "prefill_tps": 90.448282135,
+        "process_overhead_ms": 22771.370454999993,
+        "process_peak_bytes": 98368667648,
+        "process_wall_ms": 392500.990583
+      },
+      "context": 32768,
+      "evidence": {
+        "candidate": {
+          "measurement_sha256": "a8b4e98465e10d761ef48d2f19ee64fdd8e331d8a5d7a1d7f37df56e312afdf0",
+          "output": "measurements/ctx-0032768/rep-02/attempt-01/candidate"
+        },
+        "oracle": {
+          "measurement_sha256": "d73eac28ebf78fae7c51d331a1eb4bed41b0e5e0d72c79357fe3e0bda64ba0a3",
+          "output": "measurements/ctx-0032768/rep-02/attempt-01/oracle"
+        }
+      },
+      "oracle": {
+        "ctx_tokens": 32768,
+        "gen_first_ms": 60.559,
+        "gen_ms": 7415.111000125541,
+        "gen_steady_ms": 7354.2269999596065,
+        "gen_steady_tokens": 127,
+        "gen_steady_tps": 17.268980139,
+        "gen_tokens": 128,
+        "gen_tps": 17.262047729,
+        "kvcache_bytes": null,
+        "prefill_ms": 213088.05700045906,
+        "prefill_tokens": 32768,
+        "prefill_tps": 153.776802235,
+        "process_overhead_ms": 14611.91416641539,
+        "process_peak_bytes": 86860005376,
+        "process_wall_ms": 235115.082167
+      },
+      "order": "BA",
+      "repetition": 2,
+      "valid": true
+    },
+    {
+      "attempt": 1,
+      "candidate": {
+        "ctx_tokens": 32768,
+        "gen_first_ms": 62.988708,
+        "gen_ms": 7505.587584,
+        "gen_steady_ms": 7442.598876,
+        "gen_steady_tokens": 127,
+        "gen_steady_tps": 17.063931849,
+        "gen_tokens": 128,
+        "gen_tps": 17.053961275,
+        "kvcache_bytes": null,
+        "prefill_ms": 371311.436041,
+        "prefill_tokens": 32768,
+        "prefill_tps": 88.24936918,
+        "process_overhead_ms": 22502.818041999963,
+        "process_peak_bytes": 96580861952,
+        "process_wall_ms": 401319.841667
+      },
+      "context": 32768,
+      "evidence": {
+        "candidate": {
+          "measurement_sha256": "510ce7386ac1a6abaee12c3dc335f68a3fb0804350c7b5a09fc2210131050e69",
+          "output": "measurements/ctx-0032768/rep-03/attempt-01/candidate"
+        },
+        "oracle": {
+          "measurement_sha256": "7f1d60f94ebadcf4a5f91109d34dd5c7ceb428f8b4c5ef81c0332c008c598371",
+          "output": "measurements/ctx-0032768/rep-03/attempt-01/oracle"
+        }
+      },
+      "oracle": {
+        "ctx_tokens": 32768,
+        "gen_first_ms": 59.877,
+        "gen_ms": 7409.374000195787,
+        "gen_steady_ms": 7349.437000056222,
+        "gen_steady_tokens": 127,
+        "gen_steady_tps": 17.280235207,
+        "gen_tokens": 128,
+        "gen_tps": 17.27541355,
+        "kvcache_bytes": null,
+        "prefill_ms": 212897.6510006611,
+        "prefill_tokens": 32768,
+        "prefill_tps": 153.91433323,
+        "process_overhead_ms": 14742.179291143117,
+        "process_peak_bytes": 86862053376,
+        "process_wall_ms": 235049.204292
+      },
+      "order": "AB",
+      "repetition": 3,
+      "valid": true
+    },
+    {
+      "attempt": 1,
+      "candidate": {
+        "ctx_tokens": 32768,
+        "gen_first_ms": 67.553666,
+        "gen_ms": 7548.12671,
+        "gen_steady_ms": 7480.573044,
+        "gen_steady_tokens": 127,
+        "gen_steady_tps": 16.977308991,
+        "gen_tokens": 128,
+        "gen_tps": 16.95784993,
+        "kvcache_bytes": null,
+        "prefill_ms": 362121.739541,
+        "prefill_tokens": 32768,
+        "prefill_tps": 90.488905862,
+        "process_overhead_ms": 22415.234414999995,
+        "process_peak_bytes": 98368471040,
+        "process_wall_ms": 392085.100666
+      },
+      "context": 32768,
+      "evidence": {
+        "candidate": {
+          "measurement_sha256": "661d76b2bb372d64b1a31584ae5bc591d8e0c20d6db1fb40e46f81c98ce4ed63",
+          "output": "measurements/ctx-0032768/rep-04/attempt-01/candidate"
+        },
+        "oracle": {
+          "measurement_sha256": "f516d2db1038190f3810c72845273f9474a7b26f6331ca6058868c52d0359dc1",
+          "output": "measurements/ctx-0032768/rep-04/attempt-01/oracle"
+        }
+      },
+      "oracle": {
+        "ctx_tokens": 32768,
+        "gen_first_ms": 58.607,
+        "gen_ms": 7577.002999883832,
+        "gen_steady_ms": 7518.023000196181,
+        "gen_steady_tokens": 127,
+        "gen_steady_tps": 16.892738955,
+        "gen_tokens": 128,
+        "gen_tps": 16.893222822,
+        "kvcache_bytes": null,
+        "prefill_ms": 209816.81999965748,
+        "prefill_tokens": 32768,
+        "prefill_tps": 156.17432387,
+        "process_overhead_ms": 14390.053125458693,
+        "process_peak_bytes": 86860152832,
+        "process_wall_ms": 231783.876125
+      },
+      "order": "BA",
+      "repetition": 4,
+      "valid": true
+    },
+    {
+      "attempt": 1,
+      "candidate": {
+        "ctx_tokens": 32768,
+        "gen_first_ms": 68.977917,
+        "gen_ms": 7656.55912,
+        "gen_steady_ms": 7587.581203,
+        "gen_steady_tokens": 127,
+        "gen_steady_tps": 16.737876881,
+        "gen_tokens": 128,
+        "gen_tps": 16.717692372,
+        "kvcache_bytes": null,
+        "prefill_ms": 376400.733125,
+        "prefill_tokens": 32768,
+        "prefill_tps": 87.056153499,
+        "process_overhead_ms": 22392.384087999984,
+        "process_peak_bytes": 98287550464,
+        "process_wall_ms": 406449.676333
+      },
+      "context": 32768,
+      "evidence": {
+        "candidate": {
+          "measurement_sha256": "fc5f69e65683fbf7fe0f8564e9babc8f1e15f68dccb39ccad94eb9e6f1b97b02",
+          "output": "measurements/ctx-0032768/rep-05/attempt-01/candidate"
+        },
+        "oracle": {
+          "measurement_sha256": "1f05bf5c5516d76b18c4970077f27414c9f8932391e360cc3ed343c958618281",
+          "output": "measurements/ctx-0032768/rep-05/attempt-01/oracle"
+        }
+      },
+      "oracle": {
+        "ctx_tokens": 32768,
+        "gen_first_ms": 60.158,
+        "gen_ms": 7569.3779999540275,
+        "gen_steady_ms": 7509.10199982493,
+        "gen_steady_tokens": 127,
+        "gen_steady_tps": 16.91280795,
+        "gen_tokens": 128,
+        "gen_tps": 16.910240181,
+        "kvcache_bytes": null,
+        "prefill_ms": 210228.40200001263,
+        "prefill_tokens": 32768,
+        "prefill_tps": 155.86856813,
+        "process_overhead_ms": 14615.952542033352,
+        "process_peak_bytes": 86859825152,
+        "process_wall_ms": 232413.732542
+      },
+      "order": "AB",
+      "repetition": 5,
+      "valid": true
+    }
+  ],
+  "protocol": "rust-star-paired-benchmark-v1",
+  "schema": "rust-star-paired-raw-v1"
+}

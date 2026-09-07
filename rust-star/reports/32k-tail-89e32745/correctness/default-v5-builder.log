@@ -1,0 +1,14 @@
+cc -O3 -ffast-math -g -mcpu=native -Wall -Wextra -std=c99 -c -o ds4_bench.o ds4_bench.c
+cc -O3 -ffast-math -g -mcpu=native -Wall -Wextra -std=c99 -c -o ds4_help.o ds4_help.c
+cc -O3 -ffast-math -g -mcpu=native -Wall -Wextra -std=c99 -c -o ds4_gpu_args.o ds4_gpu_args.c
+cc -O3 -ffast-math -g -mcpu=native -Wall -Wextra -std=c99 -c -o ds4.o ds4.c
+make: *** No rule to make target `third_party/iris/jpeg.h', needed by `ds4_image.o'.  Stop.
+make: *** Waiting for unfinished jobs....
+Traceback (most recent call last):
+  File "$REPO/rust-star/build_benchmark_oracle.py", line 71, in <module>
+    main()
+  File "$REPO/rust-star/build_benchmark_oracle.py", line 50, in main
+    subprocess.run(["make", "-j", str(args.jobs), "ds4-bench"], cwd=output, check=True)
+  File "/Applications/Xcode.app/Contents/Developer/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/subprocess.py", line 528, in run
+    raise CalledProcessError(retcode, process.args,
+subprocess.CalledProcessError: Command '['make', '-j', '4', 'ds4-bench']' returned non-zero exit status 2.

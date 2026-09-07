@@ -1177,19 +1177,17 @@ collection and output-fixture decoding during timed prefill. Its retained
 cycle reuses the Metal context/model residency and records zero context
 creation time. It still rebuilds request-local KV state.
 
-Native odd-layer continuation ingress now executes all 4096 independent rows
-in one call, preserving the original kernel reduction geometry. Input state
-aliases its immutable predecessor, removing 128 tile staging copies. Existing
-whole-chunk even-layer attention batching remains in place. The separate
-32-row controls remain intact.
-All v5 full-output, shorter-context and retained reset/reuse gates pass.
+Native tails now reuse 22 command-local scratch buffers across layers and
+chunks, write retained HC directly and omit unused routed-mid FP32 conversion.
+The transient cache clears at prefill-to-decode handoff and request reset.
+Retained HC buffers remain separately owned. Existing whole-chunk ingress and
+attention batching stay in place; legacy diagnostic paths remain unchanged.
 
-The audited [ingress-batching report](../reports/32k-ingress-ecf529a9/README.md)
-records five pairs: Rust/reference median prefill 371.601/206.136 s; steady decode 17.264/17.075 tokens/s. Peak Rust process memory is 92.250 GiB.
-Ingress API calls fall from 17,920 to 140; the largest current GPU stage group is
-`even/tail`. Cross-campaign speed and memory comparisons are limited by
-different background load and swap; see the report for the complete evidence.
-Historical reports and fixtures remain unchanged.
+The [native-tail report](../reports/32k-tail-89e32745/README.md) records all six live
+C0/lifecycle gates, five pairs and the independent evidence audit.
+Rust/reference median prefill 362.284/212.376 s; steady decode 17.064/17.039 tokens/s. Observed Rust peak memory is 91.613 GiB.
+Host-load/swap differences limit cross-session attribution. The largest GPU
+stage group is `even/tail`; inspect its component costs before optimizing further.
 
 At 32K, `engine-profile` also records `long_prefill_profile` rows for native
 prefill stages: host elapsed time, existing command wall time, GPU time and

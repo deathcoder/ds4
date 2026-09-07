@@ -1,0 +1,60 @@
+{
+  "schema": "rust-star-paired-independent-audit-v1",
+  "passed": true,
+  "pairs": 5,
+  "invalid_attempts": 0,
+  "all_measurement_artifacts_rehashed": true,
+  "warmups_verified": 2,
+  "profile_stage_shares_verified": true,
+  "all_candidate_transcripts_exact": true,
+  "independent_statistics_match": true,
+  "official_summary_byte_identical": true,
+  "plan_sha256": "2ca644b554465dc38d16655872f3f28de184c60003c89e1044e60c0f90df6ed7",
+  "raw_sha256": "be622e45ad02cc8fc614ef95714bd5545842c16645f0a09271ecad8459620bc8",
+  "summary_sha256": "5dd159bcd2ecb090897f424b4bcf44a67283d60982c76b0f596b19673c16a42e",
+  "profile_sha256": "99156a36695be93ffea1e793f7e7cd6d9c1d171201f989920f524fd360e3efaf",
+  "host_observations": 84,
+  "unusual_thermal_observations": [],
+  "memory_distributions": {
+    "oracle": {
+      "count": 5,
+      "median": 80.89520263671875,
+      "mad": 0.0008392333984375,
+      "min": 80.89378356933594,
+      "max": 80.89604187011719
+    },
+    "candidate": {
+      "count": 5,
+      "median": 93.22938537597656,
+      "mad": 0.0003204345703125,
+      "min": 91.548095703125,
+      "max": 93.22970581054688
+    }
+  },
+  "prefill_wall_distributions": {
+    "oracle": {
+      "count": 5,
+      "median": 177.72283499956865,
+      "mad": 0.6135989997421234,
+      "min": 177.10923599982652,
+      "max": 208.79893599981784
+    },
+    "candidate": {
+      "count": 5,
+      "median": 373.84320758300004,
+      "mad": 1.4029152080000244,
+      "min": 372.440292375,
+      "max": 419.287241916
+    }
+  },
+  "prefill_timing_medians": {
+    "prefill_transformer_gpu_ms": 253844.633542052,
+    "prefill_transformer_wall_ms": 311320.07800027,
+    "prefill_transformer_setup_ms": 21619.38666073,
+    "prefill_tile_gpu_ms": 36553.212458341,
+    "prefill_tile_wall_ms": 36679.914999992,
+    "prefill_host_overhead_ms": 25539.93220774,
+    "prefill_unattributed_host_ms": 358.752921
+  },
+  "claim_scope": "C0 32K/128 development baseline; not the 256K primary headline"
+}

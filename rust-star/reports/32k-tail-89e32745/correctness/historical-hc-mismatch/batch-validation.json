@@ -1,0 +1,20 @@
+[
+  {
+    "name": "batch-12k",
+    "exit": 0,
+    "seconds": 223.2762908935547,
+    "finished_utc": "2026-09-07T07:35:27.024272+00:00"
+  },
+  {
+    "name": "batch-32k-output",
+    "exit": 0,
+    "seconds": 528.7299289703369,
+    "finished_utc": "2026-09-07T07:44:15.755573+00:00"
+  },
+  {
+    "name": "batch-32k-internal",
+    "exit": 1,
+    "seconds": 257.1734471321106,
+    "finished_utc": "2026-09-07T07:48:32.930077+00:00"
+  }
+]

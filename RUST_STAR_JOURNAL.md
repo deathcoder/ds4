@@ -18,6 +18,27 @@ Before changing code:
 Journal entries are reverse chronological. Do not edit old entries to change
 history; add a correction and update the current-state summary.
 
+## 2026-09-07 — Native tail scratch/output milestone complete
+
+- Native tails reuse 22 command-local buffers, released before decode/reset.
+  Retained HC output is written directly, avoiding a 256 MiB copy per tail.
+  The unused 192 MiB FP32 routed-mid destination/conversion is removed.
+  Kernel arithmetic, v5 targets and legacy diagnostic paths are unchanged.
+- Candidate `89e3274568745fe5311d16478ccf35f016958a08` passes 310 Rust tests, all six live
+  C0/regression/lifecycle gates, five valid pairs and the separate profile.
+  Standalone audited report: `rust-star/reports/32k-tail-89e32745/README.md`.
+- Rust/reference median prefill 362.284/212.376 s; steady decode 17.064/17.039 tokens/s.
+  Observed Rust peak process memory 91.613 GiB. Absolute prefill change
+  versus the prior ingress campaign: -2.51%; host-load and swap
+  observations qualify cross-session speed and memory attribution.
+- Even-tail host elapsed time falls 66.497 → 59.400 s; odd-tail host time
+  falls 63.637 → 56.772 s. GPU tail time does not improve in this profile.
+  The candidate is retained with improved paired prefill and exact validation;
+  precise isolated speedup attribution remains limited by host conditions.
+- All 210 report artifacts pass standalone verification. Current largest GPU
+  stage group is `even/tail`; inspect its components before optimizing again.
+  Broader context work remains future.
+
 ## 2026-09-07 — Native tail paired results and host conditions recorded
 
 - Five-pair Rust/reference prefill medians: 362.284/212.376 seconds; steady
@@ -2777,37 +2798,31 @@ Next:
 
 ### Current resume checkpoint (updated 2026-09-07)
 
-- Active milestone: native tail scratch reuse, direct retained HC output and
-  removal of unused FP32 diagnostic conversion. 310 tests/release build pass;
-  all six gates, both warmups and all five pairs pass; separate profile running;
-  audit/report pending in `rust-star/.work/tail-milestone-2d8b8405/`.
-
-- Authorized odd-layer ingress milestone is complete. Native continuation
-  ingress executes whole 4K chunks with unchanged kernel arithmetic and no
-  per-tile input staging copy. Legacy controls retain their 32-row path.
-- Current candidate `ecf529a9743baac5e7c182a8c14dfb34d3276984`;
-  executable SHA `adf11352e40be3b006ce3ade1e31bdee687fe81464a83afaed5f17a1e7e67120`.
-  Oracle-v5 source ccbd16d/tree a0a33f4 remains unchanged; executable SHA
+- Authorized native tail scratch/output milestone is complete. Whole-chunk
+  tails reuse 22 temporary buffers, write directly to retained HC output and
+  omit unused FP32 routed-mid conversion (25 dispatches instead of 26).
+  Retained HC remains separately owned; cache clears at decode handoff/reset.
+- Candidate `89e3274568745fe5311d16478ccf35f016958a08`;
+  executable SHA `7f14080aea91a3631bb85b8c55dd8f02031e983ab2b74cc1618235a0262a74a4`.
+  Oracle-v5 source ccbd16d remains unchanged; executable SHA
   `a4056d7297bd0a6de8e46fac294e7913d9bc8c96465e5d68f1b6ef6471e49aa0`.
-- All six live gates pass: native 12K internal states, detailed 8K, 2K, both
-  complete 32K prefill/128-decode modes and retained two-cycle reset/reuse.
-  310 Rust tests pass; unchanged Python toolkit retains 93-test evidence.
-- Audited report `rust-star/reports/32k-ingress-ecf529a9/README.md`; standalone `verify.py` needs no model.
-  Five valid alternating pairs, two warmups, isolated complete profile.
-  Rust/reference median prefill 371.601/206.136 s; steady decode 17.264/17.075 tokens/s. Rust peak memory 92.250 GiB.
-- Absolute paired prefill improves 0.60%; the reference slows 15.99%. OBS/video
-  activity and about 1.8 GiB host swap limit cross-session speed and memory
-  attribution. Ingress profile GPU time falls 54.263 → 22.709 seconds.
-- The initial stale metadata assertion failure is retained in the report; no
-  fixture or arithmetic changed. All final gates and the 207-artifact audit pass.
-- Ingress API calls: 17,920 → 140. Largest current GPU stage group: `even/tail`.
-  Next local milestone should target that measured cost while preserving v5
-  C0, retained lifecycle and tracking memory. No completed layers need repeating.
-- Frozen plan SHA `ec570b76290ba2b994c25bf62956844230d6fa37ce0e482ed1c09e58c7db2f64`.
-  Work: `rust-star/.work/ingress-milestone-12fb9314/`. Prior v5 baseline and v4 reports remain
-  immutable, including their original host observations and failed attempts.
-- Internal HC acceptance ends at 24K; full 32K outputs remain mandatory.
-  Broader contexts, 256K headline measurements and agent co-design are future.
+- 310 Rust tests and all six live gates pass: native 12K, detailed 8K, 2K,
+  complete 32K output-only/diagnostic and two retained reset/reuse cycles.
+  Unchanged Python toolkit retains its 93-test reference acceptance evidence.
+- Five alternating pairs and both warmups pass on attempt 1; separate profile
+  and independent audit pass. Report: `rust-star/reports/32k-tail-89e32745/README.md`.
+  Rust/reference median prefill 362.284/212.376 s; steady decode 17.064/17.039 tokens/s. Observed Rust peak memory 91.613 GiB.
+- Absolute paired prefill is 2.51% lower; the reference is 3.03% slower.
+  OBS/video activity and 3098.88 → 2794.69 MiB host swap limit cross-session
+  speed and memory attribution. Even-tail host time falls 66.497 → 59.400 s;
+  GPU time rises slightly. All 210 report artifacts verify independently.
+  No fixture, arithmetic or oracle change.
+- Largest GPU group: `even/tail`. Inspect its internal costs before the next
+  optimization; do not repeat completed scheduling changes.
+- Frozen plan SHA `d27a9f5e56d6c804f62c10173a9a4e324498eba52d40227709b7d23cf15efe2f`.
+  Evidence: `rust-star/.work/tail-milestone-2d8b8405/`. All prior reports/failures stay immutable.
+- Internal HC targets remain accepted through 24K; full 32K output gates are
+  mandatory. Broader contexts, 256K headline and agent co-design remain future.
 
 ### Accumulated implementation and measurement evidence
 
@@ -3558,16 +3573,14 @@ Next:
 
 ## Immediate Next Actions
 
-1. Active: validate native tail scratch/output optimization through all gates
-   and fresh paired/profile evidence. Ingress batching milestone is complete. Review `rust-star/reports/32k-ingress-ecf529a9/README.md`.
-   Next measured target: `even/tail`. Preserve exact v5 outputs, retained-engine
-   lifecycle and track memory, then validate any change in a fresh paired run.
-2. Use oracle-v5 for new captures. Preserve historical fixture identities,
-   reports and failed attempts. Internal HC targets are accepted through 24K;
-   complete 32K prefill and 128-step decode C0 checks remain mandatory.
+1. Native tail milestone is complete. Review `rust-star/reports/32k-tail-89e32745/README.md`.
+   Inspect component costs within `even/tail` before selecting the next exact
+   optimization. Preserve v5 C0 and lifecycle, and measure memory alongside speed.
+2. Keep oracle-v5 and historical fixtures/reports immutable. Internal targets
+   are accepted through 24K; full 32K prefill/128-decode C0 remains mandatory.
 3. Broader contexts, 256K headline work and the coding-agent corpus remain future.
-4. Run one large model process at a time, bound disk use, keep this journal
-   updated and never resume rejected benchmark plans.
+4. Run one large model process at a time, bound disk use and keep this journal
+   current. Never resume a rejected benchmark plan.
 5. GitHub Actions billing and secure remote access remain in the manual ledger.
 
 ## Entries

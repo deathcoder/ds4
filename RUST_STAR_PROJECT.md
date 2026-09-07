@@ -352,14 +352,12 @@ they describe whenever practical.
 
 ## Open Items
 
-The current ingress-batching baseline is `rust-star/reports/32k-ingress-ecf529a9/README.md`:
-Rust/reference median prefill 371.601/206.136 s; steady decode 17.264/17.075 tokens/s. Rust peak process memory is 92.250 GiB.
-Native odd-layer ingress runs once per 4K chunk with exact v5 outputs.
-The largest profiled GPU stage group is `even/tail`; target that cost next.
-Paired absolute prefill is 0.60% lower; host load and swap differ from the
-previous campaign, limiting speed and memory attribution. The report records
-the ingress profile reduction and all host observations.
-Oracle-v5 remains current. Earlier reports remain historical.
+The current native-tail report is `rust-star/reports/32k-tail-89e32745/README.md`.
+Rust/reference median prefill 362.284/212.376 s; steady decode 17.064/17.039 tokens/s. Observed Rust peak memory is 91.613 GiB.
+Native tails reuse scratch, write retained HC directly and omit an unused
+conversion with exact v5 outputs. Largest GPU stage group: `even/tail`;
+inspect its component costs next. Host load and swap qualify cross-session
+speed and memory comparisons. Oracle-v5 and historical evidence are unchanged.
 
 Current implementation boundaries, evidence, and immediate actions are maintained
 in `RUST_STAR_JOURNAL.md`. As of 2026-09-07, native 32K prefill is exact through

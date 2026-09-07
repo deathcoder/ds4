@@ -7,11 +7,10 @@ tests. Four 2K/32K repeats, 8K equivalence and two complete 128-step traces pass
 Changed 32K and internal targets have new versions; historical fixtures remain
 immutable. Current status is maintained in `../RUST_STAR_JOURNAL.md`.
 
-The [current ingress-batching report](reports/32k-ingress-ecf529a9/README.md)
-includes five pairs, full C0/lifecycle validation, a separate profile and a
-standalone evidence verifier. Rust/reference median prefill 371.601/206.136 s; steady decode 17.264/17.075 tokens/s. The previous
-[upstream-refresh baseline](reports/32k-upstream-v5-cc032078/README.md) remains
-immutable evidence of oracle-v5 acceptance.
+The [current native-tail report](reports/32k-tail-89e32745/README.md) includes
+five pairs, full C0/lifecycle validation, a separate profile and a standalone
+verifier. Rust/reference median prefill 362.284/212.376 s; steady decode 17.064/17.039 tokens/s. Read the report's host-condition limits when comparing
+campaigns. Earlier reports remain immutable evidence.
 
 The capture does not need network access, GitHub credentials, SSH keys, or any
 other secret. It records only an allowlist of hardware and toolchain fields; it

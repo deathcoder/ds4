@@ -1,0 +1,16 @@
+{
+  "upstream_commit": "c0a6119f363ef82125877142f13fb3fe491cba14",
+  "oracle_candidate_commit": "ccbd16d36895ef9fe8edf7f793014988ff1ab7f4",
+  "target": "M1 Ultra resident Q2, 2K/8K controls and 32K plus128 greedy steps",
+  "decisions": [
+    {"change": "deterministic indexer argsort and merge", "action": "ported to both Rust prefill selector sites, including merge dispatch accounting", "kernel_sha256": "0c868f5cbf751f889bb73aa5ac8599ff2b4359d9ed9aabd035043550256df790"},
+    {"change": "inverse-RoPE armed-state repair in0658dac8", "action": "covered by full upstream reference; Rust already uses a per-layer local fused_dense_inverse_rope boolean excluding sparse indexed attention, with no process-global consumed flag"},
+    {"change": "device-memory fence in kernel_dsv4_kv_rope_fp8_store_f32", "action": "covered by full upstream reference; that fused kernel is absent from Rust pipeline bindings, which use separate RoPE and KV-store dispatches"},
+    {"change": "compressor APE position table batching", "action": "Rust already fuses score and APE in one dispatch; retain existing implementation"},
+    {"change": "paired compressor-store and gathered-KV fusions", "action": "current upstream production guards admit M3/M5 only; preserve M1 fallbacks, repair official tests to check refusal plus full fallback output"},
+    {"change": "GLM, MXFP4, M5 tensor, CUDA/ROCm, distributed and SSD changes", "action": "present in pinned reference source but outside fixed resident M1/Q2 Rust port scope"},
+    {"change": "benchmark selection timing", "action": "oracle-v5 source commits sampling-inclusive plain greedy timing and deterministic unit harness; other decode modes explicitly marked ineligible"}
+  ],
+  "performance_claim": false,
+  "acceptance": "pending full trace, Rust C0/lifecycle and fresh paired baseline"
+}

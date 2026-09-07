@@ -1,0 +1,160 @@
+diff --git a/rust-star/runtime/src/long_prefill.rs b/rust-star/runtime/src/long_prefill.rs
+index 7a435ad7..2a7debb9 100644
+--- a/rust-star/runtime/src/long_prefill.rs
++++ b/rust-star/runtime/src/long_prefill.rs
+@@ -416,7 +416,7 @@ fn run_prefill_chunk_layer(
+         );
+         let padding_dispatch = u32::from((4224 + (start + 4096) / 128) % 64 != 0);
+         // One ingress call contributes 10 dispatches and nine model views.
+-        if raw.dispatches != 48 + padding_dispatch
++        if raw.dispatches != 47 + padding_dispatch
+             || raw.wrapped_model_ranges != 28
+             || raw.pointer_matches != 28
+         {
+@@ -565,7 +565,7 @@ fn run_prefill_chunk_layer(
+             (0.0, 0.0),
+             (tail.wall_ms, tail.gpu_ms),
+         );
+-        if tail.dispatches != 26 || tail.wrapped_model_ranges != 14 || tail.pointer_matches != 14 {
++        if tail.dispatches != 25 || tail.wrapped_model_ranges != 14 || tail.pointer_matches != 14 {
+             return Err(Error::invalid("even chunk batched tail schedule mismatch"));
+         }
+         raw.wall_ms += tail.wall_ms;
+diff --git a/rust-star/runtime/src/metal_shim.m b/rust-star/runtime/src/metal_shim.m
+index 3d2fbcb0..a574ab5e 100644
+--- a/rust-star/runtime/src/metal_shim.m
++++ b/rust-star/runtime/src/metal_shim.m
+@@ -46225,6 +46225,8 @@ int rust_star_metal_run_prefill_layer2_continuation_tail(
+ 
+     @autoreleasepool {
+         RustStarMetalContext *context = (__bridge RustStarMetalContext *)opaque_context;
++        const BOOL native_chunk = context.prefillLayerChunkStart && production_batch;
++        const BOOL copy_routed_mid = !native_chunk;
+         const BOOL layer3 = layer_index == 3u;
+         const BOOL layer4 = layer_index == 4u;
+         const BOOL layer5 = layer_index == 5u;
+@@ -46372,14 +46374,22 @@ int rust_star_metal_run_prefill_layer2_continuation_tail(
+         const NSUInteger routed_map_work_cap =
+             ((NSUInteger)rows*used_experts+31u*routed_experts+31u)/32u;
+ 
++        /* These scratch buffers are consumed entirely by the completed tail
++         * command. Reuse them across native layers/chunks; the existing
++         * prefill_transient_ ownership boundary releases them before decode.
++         * Retained HC outputs are allocated separately and never pooled. */
+ #define RUST_STAR_NEW_CONTINUATION_TAIL_BUFFER(name, bytes) \
+-        id<MTLBuffer> name = [context.device newBufferWithLength:(bytes) \
+-            options:MTLResourceStorageModeShared]
++        id<MTLBuffer> name = native_chunk \
++            ? persistent_buffer(context, @"prefill_transient_tail_" #name, \
++                (bytes), error, error_bytes) \
++            : [context.device newBufferWithLength:(bytes) \
++                options:MTLResourceStorageModeShared]
+         RUST_STAR_NEW_CONTINUATION_TAIL_BUFFER(group_ids_buffer, group_ids_bytes);
+         RUST_STAR_NEW_CONTINUATION_TAIL_BUFFER(group_map_buffer, group_map_bytes);
+         RUST_STAR_NEW_CONTINUATION_TAIL_BUFFER(attention_low_buffer, attention_low_bytes);
+         RUST_STAR_NEW_CONTINUATION_TAIL_BUFFER(output_buffer, output_bytes);
+-        RUST_STAR_NEW_CONTINUATION_TAIL_BUFFER(after_attention_hc_buffer, hc_bytes);
++        id<MTLBuffer> after_attention_hc_buffer = [context.device
++            newBufferWithLength:hc_bytes options:MTLResourceStorageModeShared];
+         RUST_STAR_NEW_CONTINUATION_TAIL_BUFFER(ffn_flat_hc_buffer, hc_bytes);
+         RUST_STAR_NEW_CONTINUATION_TAIL_BUFFER(ffn_mix_buffer, mix_bytes);
+         RUST_STAR_NEW_CONTINUATION_TAIL_BUFFER(ffn_split_buffer, mix_bytes);
+@@ -46394,14 +46404,16 @@ int rust_star_metal_run_prefill_layer2_continuation_tail(
+         RUST_STAR_NEW_CONTINUATION_TAIL_BUFFER(routed_map_buffer,
+             routed_map_work_offset+8u+routed_map_work_cap*8u);
+         RUST_STAR_NEW_CONTINUATION_TAIL_BUFFER(routed_mid_buffer, routed_mid_f16_bytes);
+-        RUST_STAR_NEW_CONTINUATION_TAIL_BUFFER(routed_mid_f32_buffer, routed_mid_f32_bytes);
++        id<MTLBuffer> routed_mid_f32_buffer = copy_routed_mid ? [context.device
++            newBufferWithLength:routed_mid_f32_bytes options:MTLResourceStorageModeShared] : nil;
+         RUST_STAR_NEW_CONTINUATION_TAIL_BUFFER(routed_experts_buffer, routed_experts_bytes);
+         RUST_STAR_NEW_CONTINUATION_TAIL_BUFFER(routed_out_buffer, output_bytes);
+         RUST_STAR_NEW_CONTINUATION_TAIL_BUFFER(shared_gate_buffer, ffn_mid_bytes);
+         RUST_STAR_NEW_CONTINUATION_TAIL_BUFFER(shared_up_buffer, ffn_mid_bytes);
+         RUST_STAR_NEW_CONTINUATION_TAIL_BUFFER(shared_mid_buffer, ffn_mid_bytes);
+         RUST_STAR_NEW_CONTINUATION_TAIL_BUFFER(shared_out_buffer, output_bytes);
+-        RUST_STAR_NEW_CONTINUATION_TAIL_BUFFER(after_ffn_hc_buffer, hc_bytes);
++        id<MTLBuffer> after_ffn_hc_buffer = native_chunk ? nil : [context.device
++            newBufferWithLength:hc_bytes options:MTLResourceStorageModeShared];
+ #undef RUST_STAR_NEW_CONTINUATION_TAIL_BUFFER
+         id<MTLBuffer> full_after_ffn_hc_buffer = production_layer5_batch
+             ? context.prefillLayer5ContinuationFullAfterFfnHc
+@@ -46433,6 +46445,13 @@ int rust_star_metal_run_prefill_layer2_continuation_tail(
+                     full_after_ffn_hc_buffer;
+             }
+         }
++        /* A native tail produces the entire retained chunk. Write it once;
++         * tile diagnostics still assemble their full output with a blit. */
++        if (native_chunk) {
++            if (full_after_ffn_hc_buffer.length != hc_bytes)
++                return fail_with_message(error, error_bytes, @"native tail HC capacity mismatch");
++            after_ffn_hc_buffer = full_after_ffn_hc_buffer;
++        }
+         if (!heads_buffer || !group_ids_buffer || !group_map_buffer ||
+             !attention_low_buffer || !output_buffer ||
+             !after_attention_hc_buffer || !ffn_flat_hc_buffer ||
+@@ -46440,7 +46459,7 @@ int rust_star_metal_run_prefill_layer2_continuation_tail(
+             !ffn_norm_buffer || !router_logits_buffer || !router_probs_buffer ||
+             !router_selected_buffer || !router_weights_buffer ||
+             !router_weight_sums_buffer || !routed_map_buffer ||
+-            !routed_mid_buffer || !routed_mid_f32_buffer ||
++            !routed_mid_buffer || (copy_routed_mid && !routed_mid_f32_buffer) ||
+             !routed_experts_buffer || !routed_out_buffer ||
+             !shared_gate_buffer || !shared_up_buffer || !shared_mid_buffer ||
+             !shared_out_buffer || !after_ffn_hc_buffer ||
+@@ -46837,25 +46856,30 @@ int rust_star_metal_run_prefill_layer2_continuation_tail(
+         [encoder dispatchThreadgroups:MTLSizeMake((rows*n_embd+255u)/256u,1,1)
+              threadsPerThreadgroup:MTLSizeMake(256,1,1)];
+ 
+-        uint32_t routed_mid_elements = rows*used_experts*routed_width;
+-        [encoder setComputePipelineState:context.cpyF16F32Pipeline];
+-        [encoder setBytes:&routed_mid_elements length:sizeof(routed_mid_elements) atIndex:0];
+-        [encoder setBuffer:routed_mid_buffer offset:0 atIndex:1];
+-        [encoder setBuffer:routed_mid_f32_buffer offset:0 atIndex:2];
+-        [encoder dispatchThreadgroups:MTLSizeMake((routed_mid_elements+1023u)/1024u,1,1)
+-             threadsPerThreadgroup:MTLSizeMake(256,1,1)];
++        if (copy_routed_mid) {
++            uint32_t routed_mid_elements = rows*used_experts*routed_width;
++            [encoder setComputePipelineState:context.cpyF16F32Pipeline];
++            [encoder setBytes:&routed_mid_elements length:sizeof(routed_mid_elements) atIndex:0];
++            [encoder setBuffer:routed_mid_buffer offset:0 atIndex:1];
++            [encoder setBuffer:routed_mid_f32_buffer offset:0 atIndex:2];
++            [encoder dispatchThreadgroups:MTLSizeMake((routed_mid_elements+1023u)/1024u,1,1)
++                 threadsPerThreadgroup:MTLSizeMake(256,1,1)];
++        }
+         [encoder endEncoding];
+ 
+-        id<MTLBlitCommandEncoder> retained_blit = [command blitCommandEncoder];
+-        if (!retained_blit) return fail_with_message(error, error_bytes,
+-            @"failed to retain the full layer-2/layer-3 continuation HC output");
+-        [retained_blit copyFromBuffer:after_ffn_hc_buffer sourceOffset:0
+-                             toBuffer:full_after_ffn_hc_buffer
+-                    destinationOffset:production_layer4_prefix ||
+-                        production_layer5_prefix ? 0u :
+-                        (NSUInteger)(tile_start-chunk_start)*hc_row_bytes
+-                                size:hc_bytes];
+-        [retained_blit endEncoding];
++        if (!native_chunk) {
++            id<MTLBlitCommandEncoder> retained_blit = [command blitCommandEncoder];
++            if (!retained_blit) return fail_with_message(error, error_bytes,
++                @"failed to retain the full layer-2/layer-3 continuation HC output");
++            [retained_blit copyFromBuffer:after_ffn_hc_buffer sourceOffset:0
++                                 toBuffer:full_after_ffn_hc_buffer
++                        destinationOffset:production_layer4_prefix ||
++                            production_layer5_prefix ? 0u :
++                            (NSUInteger)(tile_start-chunk_start)*hc_row_bytes
++                                    size:hc_bytes];
++            [retained_blit endEncoding];
++
++        }
+ 
+         const double wall_start = monotonic_ms();
+         [command commit];
+@@ -46891,7 +46915,7 @@ int rust_star_metal_run_prefill_layer2_continuation_tail(
+         } else if (!layer4) {
+             context.prefillLayer2ContinuationAfterFfnHc = after_ffn_hc_buffer;
+         }
+-        result->dispatches += 26u;
++        result->dispatches += copy_routed_mid ? 26u : 25u;
+         result->wrapped_model_ranges += 14u;
+         for (uint32_t index = 0; index < 14u; index++) {
+             if (matches[index]) result->pointer_matches++;

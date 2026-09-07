@@ -1,0 +1,13 @@
+{
+  "schema": "rust-star-retained-engine-run-v1",
+  "engine": "rust-star",
+  "context": 32768,
+  "gen_tokens": 128,
+  "lifecycle": {"cycles": 2, "same_process": true, "same_metal_context": true, "first_load_fully_charged": true, "request_state_reset_between_cycles": true, "model_warm_reused_on_retained_cycle": true, "model_residency_reused_on_retained_cycle": true},
+  "first_load": {"prompt_with_model_warm_ms": 384982.167416000, "model_warm_ms": 12794.315583000, "prefill_ms": 372187.851833000, "prefill_tps": 88.041562449, "model_residency_host_ms": 1399.110082997, "model_view_warm_wall_ms": 23.413000003, "model_view_warm_gpu_ms": 8.690499999, "gen_ms": 7520.639586000, "gen_tps": 17.019829037, "gen_first_ms": 73.586125000, "gen_steady_ms": 7447.053461000, "gen_steady_tps": 17.053724760},
+  "retained": {"prompt_with_model_warm_ms": 373337.693375000, "model_warm_ms": 0.000000000, "prefill_ms": 373337.693375000, "prefill_tps": 87.770403529, "model_residency_host_ms": 0.155334000, "model_view_warm_wall_ms": 0.000000000, "model_view_warm_gpu_ms": 0.000000000, "gen_ms": 7535.677338000, "gen_tps": 16.985865272, "gen_first_ms": 84.314291000, "gen_steady_ms": 7451.363047000, "gen_steady_tps": 17.043861532},
+  "comparison": {"prompt_speedup": 1.031190191, "prefill_speedup": 0.996920103, "model_warm_ms_avoided": 12794.315583000, "model_residency_ms_avoided": 1422.523083000},
+  "selection": {"prefill_token": 85166, "final_token": 14, "selected_tokens_checksum": 11977321378026793466, "both_oracle_transcripts_match": true},
+  "paired_protocol_eligible": false,
+  "paired_protocol_blocker": "same-process retained lifecycle diagnostic; paired protocol requires a fresh process per measured sample"
+}

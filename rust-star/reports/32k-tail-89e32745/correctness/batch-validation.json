@@ -1,0 +1,38 @@
+[
+  {
+    "name": "batch-12k",
+    "exit": 0,
+    "seconds": 192.89737391471863,
+    "finished_utc": "2026-09-07T19:35:42.781091+00:00"
+  },
+  {
+    "name": "batch-8k",
+    "exit": 0,
+    "seconds": 231.98978090286255,
+    "finished_utc": "2026-09-07T19:39:34.772889+00:00"
+  },
+  {
+    "name": "batch-2k",
+    "exit": 0,
+    "seconds": 69.37756896018982,
+    "finished_utc": "2026-09-07T19:40:44.152517+00:00"
+  },
+  {
+    "name": "batch-32k-output",
+    "exit": 0,
+    "seconds": 397.2276120185852,
+    "finished_utc": "2026-09-07T19:47:21.382162+00:00"
+  },
+  {
+    "name": "batch-32k-internal",
+    "exit": 0,
+    "seconds": 494.20770502090454,
+    "finished_utc": "2026-09-07T19:55:35.591672+00:00"
+  },
+  {
+    "name": "batch-retained",
+    "exit": 0,
+    "seconds": 783.1268627643585,
+    "finished_utc": "2026-09-07T20:08:38.720036+00:00"
+  }
+]
