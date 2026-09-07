@@ -18,6 +18,13 @@ Before changing code:
 Journal entries are reverse chronological. Do not edit old entries to change
 history; add a correction and update the current-state summary.
 
+## 2026-09-07 — Native tail full 32K output gate passes
+
+- Candidate 89e32745 matches every 32K prefill logit and all 128 full decode
+  tensors (selected prefill 85166, final decode token 14).
+- Diagnostic 32K is running; retained lifecycle and fresh paired/profile
+  evidence remain pending. All completed gates pass on first attempt.
+
 ## 2026-09-07 — Native tail shorter controls pass
 
 - Native 12K, detailed legacy 8K and 2K controls pass for 89e32745.
@@ -2704,8 +2711,8 @@ Next:
 
 - Active milestone: native tail scratch reuse, direct retained HC output and
   removal of unused FP32 diagnostic conversion. 310 tests/release build pass;
-  12K/8K/2K pass; full 32K output-only running; diagnostic/lifecycle and
-  paired/profile pending in `rust-star/.work/tail-milestone-2d8b8405/`.
+  12K/8K/2K and full 32K output-only pass; diagnostic 32K running;
+  lifecycle and paired/profile pending in `rust-star/.work/tail-milestone-2d8b8405/`.
 
 - Authorized odd-layer ingress milestone is complete. Native continuation
   ingress executes whole 4K chunks with unchanged kernel arithmetic and no
