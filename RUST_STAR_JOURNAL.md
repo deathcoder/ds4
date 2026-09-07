@@ -18,6 +18,14 @@ Before changing code:
 Journal entries are reverse chronological. Do not edit old entries to change
 history; add a correction and update the current-state summary.
 
+## 2026-09-07 — Both attention candidate 32K C0 modes pass
+
+- Frozen 1eb20ddb passes output-only and diagnostic 32K prefill plus all 128
+  complete decode outputs against v5. All accepted internal HC targets through
+  24K match. Shorter controls and 310 Rust tests already pass.
+- Retained two-cycle reset/reuse is running. No candidate or fixture changes
+  since the freeze. Paired plan preparation remains gated on lifecycle success.
+
 ## 2026-09-07 — Batched attention passes complete 32K output C0
 
 - Frozen 1eb20ddb matches all 129,280 prefill logits and all 128 complete decode
@@ -2469,8 +2477,8 @@ Next:
 
 - Active milestone: native even-layer attention batching from 32 to 4096 rows,
   same kernel arithmetic and direct tail-input output. Build and 310 Rust
-  tests, shorter controls and full 32K output-only C0 pass. Diagnostic 32K
-  and retained lifecycle remain before measurement. Work/evidence lives at
+  tests, shorter controls and both full 32K C0 modes pass. Retained
+  lifecycle is running before measurement. Work/evidence lives at
   `rust-star/.work/attention-milestone-502bb6b6/`. Acceptance and timing pending.
 
 - Default v5 exporter smoke build passes with all pinned third-party headers
