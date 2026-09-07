@@ -18,6 +18,15 @@ Before changing code:
 Journal entries are reverse chronological. Do not edit old entries to change
 history; add a correction and update the current-state summary.
 
+## 2026-09-07 — Attention candidate gates complete; paired campaign starts
+
+- Frozen 1eb20ddb passes all six live gates including both retained reset/reuse
+  cycles. Both complete 32K output modes and all accepted internal states pass.
+- Model and prompt rehashed. Frozen plan SHA `2ca644b554465dc38d16655872f3f28de184c60003c89e1044e60c0f90df6ed7`.
+  Campaign: `rust-star/.work/paired-32k-128-1eb20ddb-attention/`.
+- Warmups started; five alternating pairs and one separate profile follow.
+  No builds or heavy tests during the timed block. Audit/report/docs remain.
+
 ## 2026-09-07 — Both attention candidate 32K C0 modes pass
 
 - Frozen 1eb20ddb passes output-only and diagnostic 32K prefill plus all 128
@@ -2477,8 +2486,9 @@ Next:
 
 - Active milestone: native even-layer attention batching from 32 to 4096 rows,
   same kernel arithmetic and direct tail-input output. Build and 310 Rust
-  tests, shorter controls and both full 32K C0 modes pass. Retained
-  lifecycle is running before measurement. Work/evidence lives at
+  tests and all six live gates pass. Frozen paired campaign is running
+  warmups, then five pairs and isolated profile. Plan SHA
+  `2ca644b554465dc38d16655872f3f28de184c60003c89e1044e60c0f90df6ed7`. Work/evidence lives at
   `rust-star/.work/attention-milestone-502bb6b6/`. Acceptance and timing pending.
 
 - Default v5 exporter smoke build passes with all pinned third-party headers
