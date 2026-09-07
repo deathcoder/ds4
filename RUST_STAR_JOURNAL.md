@@ -18,6 +18,25 @@ Before changing code:
 Journal entries are reverse chronological. Do not edit old entries to change
 history; add a correction and update the current-state summary.
 
+## 2026-09-08 — Dense-Q8 warmups pass; timed pairs running
+
+- Both fresh-process warmups passed. The frozen five-pair campaign has entered
+  its timed phase; no source edits or builds are running alongside measurements.
+- The measurement helper will finish the separate profile and audits. A single
+  finish-report.py watcher then exports, renders, hashes and verifies the report.
+  Both helpers live in rust-star/.work/dense-output-milestone-9c1d5009/.
+  Inspect report-status.json and finish-report.log before manually running any
+  export step, to avoid racing the watcher or overwriting a partial report.
+- Automatic report generation deliberately stops if its improvement predicate
+  fails. Preserve all evidence and assess/reject the candidate honestly; do not
+  relax criteria or rerun measurements to seek a favorable result. Final review,
+  retention decision, current docs and commit remain manual even after verification.
+- The unapplied bootstrap draft remains the next hypothesis. Review confirms
+  prefix setup consumes completed layers 0..2 HC and resets later-layer prefix
+  state; exact live gates still must prove that the early return is sufficient.
+- The project remains active. Continue until completion or actual usage exhaustion;
+  no usage-reset credit has been authorized. Check running helpers before resuming.
+
 ## 2026-09-08 — Direct dense-Q8 seven gates pass; paired plan frozen
 
 - All seven checks pass on attempt 1, including profiled full 32K prefill/128-decode
@@ -3737,10 +3756,12 @@ Next:
 
 ## Immediate Next Actions
 
-1. Test direct dense-Q8 native output-low group projection, guided by the audited
-   component profile. Preserve arithmetic/legacy controls, run all six C0/lifecycle
-   gates, and retain only with measured performance evidence. Profiling report:
-   rust-star/reports/32k-tail-components-e7b81aa2/README.md.
+1. Finish frozen paired campaign c046b3e8 for candidate 92ca3ef3, then its separate
+   profile and independent audit. All seven correctness/lifecycle checks already
+   pass; do not rerun them without a new reason. Assess measured benefit, produce
+   and verify the report, and explicitly retain or reject the candidate.
+   After resolving it, review the unapplied initial-bootstrap scope draft in
+   rust-star/.work/dense-output-milestone-9c1d5009/ before the next implementation.
 2. Keep oracle-v5 and historical fixtures/reports immutable. Internal targets
    are accepted through 24K; full 32K prefill/128-decode C0 remains mandatory.
 3. Broader contexts, 256K headline work and the coding-agent corpus remain future.
