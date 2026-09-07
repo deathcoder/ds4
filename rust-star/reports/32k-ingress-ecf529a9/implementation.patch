@@ -1,0 +1,122 @@
+diff --git a/rust-star/runtime/src/long_prefill.rs b/rust-star/runtime/src/long_prefill.rs
+index 786732d2..7a435ad7 100644
+--- a/rust-star/runtime/src/long_prefill.rs
++++ b/rust-star/runtime/src/long_prefill.rs
+@@ -285,9 +285,9 @@ fn run_prefill_chunk_layer(
+     if layer % 2 == 1 {
+         let mut inputs: Vec<Vec<f32>> = [4096, 4096, 1024, 1024, 512, 512, 32768, 512, 512]
+             .iter()
+-            .map(|width| vec![0.0; 32 * width])
++            .map(|width| vec![0.0; 4096 * width])
+             .collect();
+-        for position in (start..start + 4096).step_by(32) {
++        for position in (start..start + 4096).step_by(4096) {
+             checked!(rust_star_metal_prepare_prefill_layer5_continuation_tile(
+                 context.0,
+                 position,
+@@ -415,9 +415,10 @@ fn run_prefill_chunk_layer(
+             (raw.wall_ms, raw.gpu_ms),
+         );
+         let padding_dispatch = u32::from((4224 + (start + 4096) / 128) % 64 != 0);
+-        if raw.dispatches != 1318 + padding_dispatch
+-            || raw.wrapped_model_ranges != 1171
+-            || raw.pointer_matches != 1171
++        // One ingress call contributes 10 dispatches and nine model views.
++        if raw.dispatches != 48 + padding_dispatch
++            || raw.wrapped_model_ranges != 28
++            || raw.pointer_matches != 28
+         {
+             return Err(Error::invalid(format!(
+                 "chunk {start} odd layer {layer} schedule mismatch: {}/{}/{}",
+diff --git a/rust-star/runtime/src/metal.rs b/rust-star/runtime/src/metal.rs
+index facd5270..5943bfe8 100644
+--- a/rust-star/runtime/src/metal.rs
++++ b/rust-star/runtime/src/metal.rs
+@@ -8991,7 +8991,10 @@ fn write_long_prefill_continuation_bootstrap_probe_json_payload<W: Write>(
+     )?;
+     crate::artifact::write_json_string(output, report.second_tile_fixture_id)?;
+     write!(output, ", \"selector_fixture\": ")?;
+-    crate::artifact::write_json_string(output, "dwarfstar-oracle-v5-prefill-indexer-selector-4128")?;
++    crate::artifact::write_json_string(
++        output,
++        "dwarfstar-oracle-v5-prefill-indexer-selector-4128",
++    )?;
+     write!(
+         output,
+         ", \"start\": {}, \"end\": {}, \"rows\": {}, \"native_retained_history\": true, \"layer2\": {{\"dispatches\": {}, \"wrapped_model_ranges\": {}, \"pointer_matches\": {}, \"exact_outputs\": {}, \"complete_tile_c0_bitwise_match\": true}}, \"layer3\": {{\"dispatches\": {}, \"wrapped_model_ranges\": {}, \"pointer_matches\": {}, \"exact_outputs\": {}, \"complete_tile_c0_bitwise_match\": true}}, \"consecutive_complete_layer3_tiles\": 2}},\n  \"layer23_continuation_loop\": {{\"start\": 4096, \"end\": 8191, \"tile_rows\": 32, \"tiles\": {}, \"c0_anchor_tiles\": {}, \"structurally_executed_unverified_tiles\": {}, \"ratio128_emitted_rows\": {}, \"dispatches\": {}, \"wrapped_model_ranges\": {}, \"pointer_matches\": {}, \"final_checksums\": {{\"layer3_hc\": {}, \"layer3_compressor_state_kv\": {}, \"layer3_compressor_state_score\": {}, \"full_layer2_hc\": {}, \"tiled_full_layer3_hc\": {}, \"production_full_layer3_hc\": {}}}, \"full_layer2_hc_rows\": 4096, \"full_layer2_hc_checksum_match\": true, \"full_layer3_hc_rows\": 4096, \"tiled_diagnostic\": {{\"matching_tiles\": {}, \"mismatching_tile_starts\": [4096, 7296, 7360, 7392, 7424, 7552, 7616, 7648, 7712, 7776, 7840, 8000, 8064, 8096], \"checksum_match\": false}}, \"production_batch\": {{\"rows\": 4096, \"ratio128_compressor_schedule\": \"aligned_batch_pool\", \"dispatches\": {}, \"wrapped_model_ranges\": {}, \"pointer_matches\": {}, \"matching_tiles\": {}, \"checksum_match\": true}}, \"full_layer3_hc_checksum_match\": true, \"persistent_context\": true, \"native_retained_state\": true, \"all_tiles_c0_claim\": true}},\n  \"layer3_prefix_boundary\": {{\"checksums\": [{}, {}, {}, {}, {}, {}, {}, {}], \"c0_bitwise_match\": true}},\n  \"layer4_prefix_rebuild\": {{\"start\": 0, \"rows\": 4096, \"dispatches\": {}, \"wrapped_model_ranges\": {}, \"pointer_matches\": {}, \"checksums\": [{}, {}, {}, {}, {}, {}, {}, {}, {}, {}], \"retained_for_continuation\": true}},\n  \"layer4_continuation_boundary\": {{\"start\": 4096, \"rows\": 4096, \"dispatches\": {}, \"wrapped_model_ranges\": {}, \"pointer_matches\": {}, \"checksums\": {{\"hc_attn_pre\": {}, \"attn_norm\": {}, \"q_current\": {}, \"kv_current\": {}, \"attention_compressed\": {}, \"attention_state_kv\": {}, \"attention_state_score\": {}, \"indexer_compressed\": {}, \"indexer_state_kv\": {}, \"indexer_state_score\": {}}}, \"matching_production_checksums\": {}, \"ingress_qkv_c0_bitwise_match\": true, \"compressor_recurrent_state_c0_bitwise_match\": true, \"compressed_rows_per_cache\": 1024, \"compressed_cache_checksum_match\": true, \"complete_boundary_c0_claim\": true}},\n  \"layer5_continuation_boundary\": {{\"start\": 4096, \"rows\": 4096, \"tile_rows\": 32, \"tiles\": {}, \"dispatches\": {}, \"wrapped_model_ranges\": {}, \"pointer_matches\": {}, \"ingress_checksums\": {:?}, \"attention_compressed_checksum\": {}, \"attention_compressed_rows\": 32, \"ingress_qkv_c0_bitwise_match\": true, \"ratio128_compressor_c0_bitwise_match\": true, \"attention_c0_claim\": false, \"ffn_c0_claim\": false, \"complete_layer5_claim\": false}},\n  \"checksums\": {{\"continuation_token_ids\": {}}},\n  \"timing\": {{\"continuation_summed_wall_ms\": {:.6}, \"continuation_summed_gpu_ms\": {:.6}}},\n  \"accepted_oracle_token_stream\": true,\n  \"native_batch_schedule\": true,\n  \"second_long_prefill_bootstrap_chunk_executed\": true,\n  \"layer2_sparse_transition_c0_claim\": true,\n  \"layer2_native_complete_tile_c0_claim\": true,\n  \"complete_layer2_second_chunk_output_checksum_claim\": true,\n  \"live_layer2_to_layer3_handoff_c0_claim\": true,\n  \"unseeded_layer3_native_complete_tile_claim\": true,\n  \"two_consecutive_unseeded_layer3_tiles_claim\": true,\n  \"complete_layer23_second_chunk_execution_claim\": true,\n  \"complete_layer23_second_chunk_c0_claim\": true,\n  \"complete_layer3_second_chunk_output_checksum_claim\": true,\n  \"complete_layer4_continuation_boundary_c0_claim\": true,\n  \"complete_layer4_second_chunk_c0_claim\": true,\n  \"complete_layer4_prefill_claim\": true,\n  \"layer5_continuation_ingress_compressor_c0_claim\": true,\n  \"complete_layer5_prefill_claim\": false,\n  \"complete_8k_transformer_claim\": false,\n  \"output_logits_c0_claim\": false,\n  \"throughput_claim\": false\n}}\n",
+diff --git a/rust-star/runtime/src/metal_shim.m b/rust-star/runtime/src/metal_shim.m
+index 15c866fe..3d2fbcb0 100644
+--- a/rust-star/runtime/src/metal_shim.m
++++ b/rust-star/runtime/src/metal_shim.m
+@@ -47125,8 +47125,11 @@ int rust_star_metal_run_prefill_layer3_continuation_ingress(
+ {
+     const uint32_t chunk_start = prefill_chunk_start(opaque_context);
+     const uint32_t chunk_end = chunk_start + 4096u;
++    RustStarMetalContext *owner = (__bridge RustStarMetalContext *)opaque_context;
++    /* Native chunks batch independent rows; legacy probes retain 32-row tiles.
++     * The projection kernels still reduce each row in their original order. */
++    const uint32_t rows = owner.prefillLayerChunkStart ? 4096u : 32u;
+     enum {
+-        rows = 32,
+         n_embd = 4096,
+         hc_dim = 16384,
+         mix_hc = 24,
+@@ -47137,7 +47140,7 @@ int rust_star_metal_run_prefill_layer3_continuation_ingress(
+         head_dim = 512,
+     };
+     if (!opaque_context || !model_mapping || !weights ||
+-        tile_start < chunk_start || tile_start > chunk_end-32u ||
++        tile_start < chunk_start || tile_start > chunk_end-rows ||
+         (tile_start-chunk_start)%rows != 0u ||
+         !result) {
+         return fail_with_message(error, error_bytes,
+@@ -47373,7 +47376,7 @@ int rust_star_metal_run_prefill_layer3_continuation_ingress(
+         [encoder setBuffer:flat_hc_buffer offset:0 atIndex:2];
+         [encoder setBuffer:mix_buffer offset:0 atIndex:3];
+         [encoder setThreadgroupMemoryLength:8192u atIndex:0];
+-        [encoder dispatchThreadgroups:MTLSizeMake(1,1,1)
++        [encoder dispatchThreadgroups:MTLSizeMake(rows/32u,1,1)
+              threadsPerThreadgroup:MTLSizeMake(128,1,1)];
+ 
+         [encoder setComputePipelineState:context.hcIngressPipeline];
+@@ -47397,7 +47400,7 @@ int rust_star_metal_run_prefill_layer3_continuation_ingress(
+         [encoder setBuffer:(input) offset:0 atIndex:2]; \
+         [encoder setBuffer:(output) offset:0 atIndex:3]; \
+         [encoder setThreadgroupMemoryLength:6144u atIndex:0]; \
+-        [encoder dispatchThreadgroups:MTLSizeMake(1,(width)/64u,1) \
++        [encoder dispatchThreadgroups:MTLSizeMake(rows/32u,(width)/64u,1) \
+              threadsPerThreadgroup:MTLSizeMake(128,1,1)]; \
+     } while (0)
+         RUST_STAR_ENCODE_L3_CONTINUATION_Q8(q_a_args, 4, norm_buffer,
+@@ -47436,7 +47439,7 @@ int rust_star_metal_run_prefill_layer3_continuation_ingress(
+         [encoder setBuffer:q_norm_buffer offset:0 atIndex:2];
+         [encoder setBuffer:q_buffer offset:0 atIndex:3];
+         [encoder setThreadgroupMemoryLength:6144u atIndex:0];
+-        [encoder dispatchThreadgroups:MTLSizeMake(1,q_dim/64u,1)
++        [encoder dispatchThreadgroups:MTLSizeMake(rows/32u,q_dim/64u,1)
+              threadsPerThreadgroup:MTLSizeMake(128,1,1)];
+         [encoder endEncoding];
+ 
+@@ -48815,7 +48818,9 @@ int rust_star_metal_prepare_prefill_layer5_continuation_tile(
+     size_t error_bytes)
+ {
+     const uint32_t continuation_start = prefill_chunk_start(opaque_context);
+-    enum { rows = 32, hc_dim = 16384 };
++    RustStarMetalContext *owner = (__bridge RustStarMetalContext *)opaque_context;
++    const uint32_t rows = owner.prefillLayerChunkStart ? 4096u : 32u;
++    enum { hc_dim = 16384 };
+     if (!opaque_context || tile_start < continuation_start ||
+         tile_start > continuation_start+4096u-rows || tile_start%rows != 0u) {
+         return fail_with_message(error, error_bytes,
+@@ -48832,6 +48837,11 @@ int rust_star_metal_prepare_prefill_layer5_continuation_tile(
+             return fail_with_message(error, error_bytes,
+                 @"complete layer-4 continuation HC is unavailable");
+         }
++        /* Native ingress reads its immutable predecessor directly. */
++        if (rows == 4096u) {
++            context.prefillLayer2ContinuationAfterFfnHc = source;
++            return 1;
++        }
+         id<MTLBuffer> tile = [context.device
+             newBufferWithBytes:(const uint8_t *)
+                 source.contents+offset

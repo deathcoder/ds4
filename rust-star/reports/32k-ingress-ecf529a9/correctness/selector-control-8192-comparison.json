@@ -1,0 +1,19 @@
+{
+  "same_as_v3": true,
+  "sha256": "626454dd1d12717abe29c9fe7d4140bcb265046bf8253bc46ea02575a9c53a1a",
+  "keys": [
+    "source",
+    "model",
+    "backend",
+    "quality",
+    "quant_bits",
+    "prompt_tokens",
+    "frontier_tokens",
+    "prefill_tokens",
+    "ctx",
+    "vocab",
+    "argmax_id",
+    "argmax_logit",
+    "logits"
+  ]
+}

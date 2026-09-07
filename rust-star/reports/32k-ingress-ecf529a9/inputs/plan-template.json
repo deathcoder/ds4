@@ -1,0 +1,149 @@
+{
+  "schema": "rust-star-paired-plan-v1",
+  "protocol": "rust-star-paired-benchmark-v1",
+  "correctness_class": "C0",
+  "host_manifest_sha256": "d5ee1d7e504c93548a659d10ca2b594ffc0c3e3cab7b356a66155d78d2db92b2",
+  "correctness_manifest_sha256": "5333684f8c33febb583a8a6417cd0be91a3072949223456c5feba83cf84eb578",
+  "configuration": {
+    "contexts": [
+      32768
+    ],
+    "repetitions": 5,
+    "gen_tokens": 128,
+    "sampling": "fixed 128-step lowest-ID greedy transcript; reference excludes EOS, and every reference full-logit argmax equals the same non-EOS transcript",
+    "primary_metric": "gen_steady_tps"
+  },
+  "oracle": {
+    "identity": {
+      "source_commit": "ccbd16d36895ef9fe8edf7f793014988ff1ab7f4",
+      "source_tree": "a0a33f4a00c3c78cd40350785485203e7c6b0b1d",
+      "executable_sha256": "a4056d7297bd0a6de8e46fac294e7913d9bc8c96465e5d68f1b6ef6471e49aa0",
+      "model_sha256": "ca22ae2f838e14077c22bc1c1417b71b45b5e5a3687bd96c2ac6e17fdb6261c0",
+      "prompt_sha256": "f53e0d80cb2d4492d24ebd63c7000c397b16ae70f9bf09b3763e5d8323ec209f",
+      "backend": "metal",
+      "build_configuration": {
+        "command": [
+          "make",
+          "-j4",
+          "ds4-bench"
+        ],
+        "cflags": "-O3 -ffast-math -g -mcpu=native -Wall -Wextra -std=c99",
+        "objcflags": "-O3 -ffast-math -g -mcpu=native -Wall -Wextra -fobjc-arc",
+        "compiler": "Apple clang 21.0.0 (clang-2100.1.1.101)",
+        "benchmark_driver_commit": "ccbd16d36895ef9fe8edf7f793014988ff1ab7f4",
+        "benchmark_driver_sha256": "2a337c05b220392f15bd1a2b42cc90a13a1786f575c026308f58c48589c54100",
+        "build_provenance_sha256": "feb7815c03c199ed9eeea974f27c42c21bc8a7db02e4d68ec32a98068d15163f",
+        "builder": "make in clean pinned oracle-v5 worktree",
+        "source_overlay": "none"
+      },
+      "runtime_configuration": {
+        "backend_flag": "--metal",
+        "warm_weights": true,
+        "frontier_mode": "single exact context",
+        "correctness_instrumentation": false,
+        "sampling": "greedy argmax excluding EOS",
+        "oracle_version": "oracle-v5",
+        "prefill_chunk_tokens": 4096,
+        "compressor_dependency": "pinned current upstream ordering",
+        "sampling_in_interval": true,
+        "initial_selection_charged_to_prefill": true,
+        "decode_step": "eval plus resulting-token argmax and commitment",
+        "csv_timing_precision_digits": 9,
+        "indexer_selector": "deterministic block argsort and merge"
+      }
+    },
+    "working_directory": "$ORACLE_BUILD",
+    "timeout_seconds": 3600,
+    "adapter_command": [
+      "python3",
+      "$REPO/rust-star/measure_dwarfstar.py",
+      "--executable",
+      "$REPO/rust-star/.work/paired-32k-128-ecf529a9-ingress/bin/oracle/ds4-bench",
+      "--model",
+      "$MODEL",
+      "--prompt",
+      "$REPO/speed-bench/promessi_sposi.txt",
+      "--context",
+      "{context}",
+      "--gen-tokens",
+      "{gen_tokens}",
+      "--output",
+      "{output}",
+      "--timeout-seconds",
+      "3500"
+    ]
+  },
+  "candidate": {
+    "identity": {
+      "source_commit": "ecf529a9743baac5e7c182a8c14dfb34d3276984",
+      "source_tree": "c84b6321d387c48e6534b5fff73a85e67d357280",
+      "executable_sha256": "adf11352e40be3b006ce3ade1e31bdee687fe81464a83afaed5f17a1e7e67120",
+      "model_sha256": "ca22ae2f838e14077c22bc1c1417b71b45b5e5a3687bd96c2ac6e17fdb6261c0",
+      "prompt_sha256": "f53e0d80cb2d4492d24ebd63c7000c397b16ae70f9bf09b3763e5d8323ec209f",
+      "backend": "metal",
+      "build_configuration": {
+        "command": [
+          "cargo",
+          "build",
+          "--manifest-path",
+          "rust-star/runtime/Cargo.toml",
+          "--release"
+        ],
+        "profile": {
+          "codegen_units": 1,
+          "lto": "thin",
+          "panic": "abort"
+        },
+        "rustc": "1.91.1 (ed61e7d7e 2025-11-07)",
+        "cargo": "1.91.1 (ea2d97820 2025-10-10)",
+        "rustflags": [],
+        "validated_build_sha256": "3e585548ed1053feffa7615eca72363d1ee8b260fba6645768b0ce545a5713fe"
+      },
+      "runtime_configuration": {
+        "command": "engine-measure",
+        "native_batched_prefill": true,
+        "prefill_correctness_collection": false,
+        "generation_correctness_collection": false,
+        "generation_command_buffers_per_token": 44,
+        "generation_host_waits_per_token": 2,
+        "model_warm_policy": "CPU POSIX_MADV_WILLNEED plus one volatile byte touch per tensor-data page before internal timers; Metal residency-set registration and one-mebibyte-stride GPU view touch inside prefill_ms before decode",
+        "model_residency_required": true,
+        "model_residency_queue_attached": true,
+        "transcript_validation": "after each timed step; first failure rejects run",
+        "sampling_logits_readback": false,
+        "sampling_result_readback_bytes": 8,
+        "sampling": "lowest-ID greedy argmax; full C0 trace establishes identical non-EOS selections to the reference",
+        "prefill_context_tokens": 32768,
+        "prefill_chunk_tokens": 4096,
+        "exact_prefix_rebuild": true,
+        "decode_steps": 128,
+        "failure_collection": "completed logit readback only after failed token comparison; successful steps keep GPU selection readback",
+        "even_prefill_tail_rows": 4096,
+        "even_prefill_attention_tile_rows": 4096,
+        "even_prefill_attention_retention": "complete chunk written directly to existing tail-input buffer",
+        "prefill_stage_profile_collection": false,
+        "indexer_selector": "upstream deterministic block argsort and merge",
+        "odd_prefill_ingress_rows": 4096,
+        "odd_prefill_ingress_input": "immutable predecessor buffer alias"
+      }
+    },
+    "working_directory": "$CANDIDATE_BUILD",
+    "timeout_seconds": 3600,
+    "adapter_command": [
+      "python3",
+      "$REPO/rust-star/measure_ruststar.py",
+      "--executable",
+      "$REPO/rust-star/.work/paired-32k-128-ecf529a9-ingress/bin/candidate/rust-star",
+      "--model",
+      "$MODEL",
+      "--context",
+      "{context}",
+      "--gen-tokens",
+      "{gen_tokens}",
+      "--output",
+      "{output}",
+      "--timeout-seconds",
+      "3500"
+    ]
+  }
+}

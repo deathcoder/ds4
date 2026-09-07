@@ -7,9 +7,9 @@ tests. Four 2K/32K repeats, 8K equivalence and two complete 128-step traces pass
 Changed 32K and internal targets have new versions; historical fixtures remain
 immutable. Current status is maintained in `../RUST_STAR_JOURNAL.md`.
 
-The [current attention-batching report](reports/32k-attention-1eb20ddb/README.md)
+The [current ingress-batching report](reports/32k-ingress-ecf529a9/README.md)
 includes five pairs, full C0/lifecycle validation, a separate profile and a
-standalone evidence verifier. Rust/reference median prefill 373.843/177.723 s; steady decode 19.933/19.386 tokens/s. The previous
+standalone evidence verifier. Rust/reference median prefill 371.601/206.136 s; steady decode 17.264/17.075 tokens/s. The previous
 [upstream-refresh baseline](reports/32k-upstream-v5-cc032078/README.md) remains
 immutable evidence of oracle-v5 acceptance.
 

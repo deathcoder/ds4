@@ -18,6 +18,27 @@ Before changing code:
 Journal entries are reverse chronological. Do not edit old entries to change
 history; add a correction and update the current-state summary.
 
+## 2026-09-07 — Odd-layer ingress batching milestone complete
+
+- Native odd-layer ingress now processes 4096 query rows per call with
+  unchanged kernel reduction geometry and direct predecessor input.
+  Ingress API calls fall from 17,920 to 140. No oracle/fixture/arithmetic change.
+- Candidate `ecf529a9743baac5e7c182a8c14dfb34d3276984` passes 310 Rust tests,
+  all six live C0/regression/lifecycle gates, five valid alternating pairs and
+  the isolated complete profile. Reference remains pinned oracle-v5 ccbd16d.
+- Rust/reference median prefill 371.601/206.136 s; steady decode 17.264/17.075 tokens/s.
+  Peak Rust process memory: 92.250 GiB. Full distributions, old-baseline
+  comparison, host observations and standalone verification: `rust-star/reports/32k-ingress-ecf529a9/`.
+- Odd-layer ingress profile: 22.709 GPU seconds,
+  29.797 host seconds, 140 stage calls. Largest current
+  GPU stage group: `even/tail`. Target that measured cost next.
+- Ingress GPU/host time falls from 54.263/81.355 to 22.709/29.797 seconds.
+  The optimization is retained with exact outputs and improved paired latency
+  ratio. Absolute paired prefill improves only 0.60%; OBS/video load and about
+  1.8 GiB host swap limit isolated speedup and memory attribution.
+- All historical reports and fixtures remain immutable. This is a 32K/128
+  development result; broader contexts and 256K headline work remain future.
+
 ## 2026-09-07 — Ingress paired measurements and host conditions recorded
 
 - Five-pair Rust/reference median prefill: 371.601/206.136 seconds; steady
@@ -2647,33 +2668,29 @@ Next:
 
 ### Current resume checkpoint (updated 2026-09-07)
 
-- Active milestone: whole-chunk odd-layer ingress, preserving kernel arithmetic
-  and removing native input staging copies. 310 Rust tests and release build pass;
-  corrected ecf529a9 build and 12K/8K/2K gates pass; full 32K output-only
-  and diagnostic gates and retained lifecycle pass. Frozen paired campaign
-  both warmups and all five pairs pass; profile running, audit/report pending; initial
-  metadata failure retained in `rust-star/.work/ingress-milestone-12fb9314/`.
-
-- Authorized even-layer attention milestone is complete. Native continuation
-  attention executes whole 4K chunks with unchanged kernel arithmetic and no
-  per-tile heads copy. Both native selector sites share this implementation.
-- Current candidate `1eb20ddbfa29b893dca8865494e0b442e39e92e4`;
-  executable SHA `a13b8d518c3715ed35f54deecb7845d0dfd3f075545527970c1b69bed1eeb908`.
+- Authorized odd-layer ingress milestone is complete. Native continuation
+  ingress executes whole 4K chunks with unchanged kernel arithmetic and no
+  per-tile input staging copy. Legacy controls retain their 32-row path.
+- Current candidate `ecf529a9743baac5e7c182a8c14dfb34d3276984`;
+  executable SHA `adf11352e40be3b006ce3ade1e31bdee687fe81464a83afaed5f17a1e7e67120`.
   Oracle-v5 source ccbd16d/tree a0a33f4 remains unchanged; executable SHA
   `a4056d7297bd0a6de8e46fac294e7913d9bc8c96465e5d68f1b6ef6471e49aa0`.
 - All six live gates pass: native 12K internal states, detailed 8K, 2K, both
   complete 32K prefill/128-decode modes and retained two-cycle reset/reuse.
   310 Rust tests pass; unchanged Python toolkit retains 93-test evidence.
-- Audited report `rust-star/reports/32k-attention-1eb20ddb/README.md`; standalone `verify.py` needs no model.
+- Audited report `rust-star/reports/32k-ingress-ecf529a9/README.md`; standalone `verify.py` needs no model.
   Five valid alternating pairs, two warmups, isolated complete profile.
-  Rust/reference median prefill 373.843/177.723 s; steady decode 19.933/19.386 tokens/s. Rust peak memory 93.229 GiB.
-- Later OBS/video activity varied host load. Per-pair results and observations
-  are retained; comparisons are descriptive, with memory tracked explicitly.
-- Attention calls: 18,816 → 147. Largest current GPU stage group: `odd/ingress`.
+  Rust/reference median prefill 371.601/206.136 s; steady decode 17.264/17.075 tokens/s. Rust peak memory 92.250 GiB.
+- Absolute paired prefill improves 0.60%; the reference slows 15.99%. OBS/video
+  activity and about 1.8 GiB host swap limit cross-session speed and memory
+  attribution. Ingress profile GPU time falls 54.263 → 22.709 seconds.
+- The initial stale metadata assertion failure is retained in the report; no
+  fixture or arithmetic changed. All final gates and the 207-artifact audit pass.
+- Ingress API calls: 17,920 → 140. Largest current GPU stage group: `even/tail`.
   Next local milestone should target that measured cost while preserving v5
   C0, retained lifecycle and tracking memory. No completed layers need repeating.
-- Frozen plan SHA `2ca644b554465dc38d16655872f3f28de184c60003c89e1044e60c0f90df6ed7`.
-  Work: `rust-star/.work/attention-milestone-502bb6b6/`. Prior v5 baseline and v4 reports remain
+- Frozen plan SHA `ec570b76290ba2b994c25bf62956844230d6fa37ce0e482ed1c09e58c7db2f64`.
+  Work: `rust-star/.work/ingress-milestone-12fb9314/`. Prior v5 baseline and v4 reports remain
   immutable, including their original host observations and failed attempts.
 - Internal HC acceptance ends at 24K; full 32K outputs remain mandatory.
   Broader contexts, 256K headline measurements and agent co-design are future.
@@ -3427,9 +3444,8 @@ Next:
 
 ## Immediate Next Actions
 
-1. Active: complete odd-layer ingress batching, all live gates and audited fresh
-   paired/profile evidence. Attention batching milestone is complete. Review `rust-star/reports/32k-attention-1eb20ddb/README.md`.
-   Next measured target: `odd/ingress`. Preserve exact v5 outputs, retained-engine
+1. Ingress batching milestone is complete. Review `rust-star/reports/32k-ingress-ecf529a9/README.md`.
+   Next measured target: `even/tail`. Preserve exact v5 outputs, retained-engine
    lifecycle and track memory, then validate any change in a fresh paired run.
 2. Use oracle-v5 for new captures. Preserve historical fixture identities,
    reports and failed attempts. Internal HC targets are accepted through 24K;

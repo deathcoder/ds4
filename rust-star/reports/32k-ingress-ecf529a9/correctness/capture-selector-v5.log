@@ -1,0 +1,11 @@
+START selector a
+Traceback (most recent call last):
+  File "$REPO/rust-star/.work/upstream-refresh-1190237b/capture-selector-v5.py", line 9, in <module>
+    scores=(d/'oracle_indexer_scores-2_pos4096.bin').read_bytes();indices=(d/'oracle_indexer_topk-2_pos4096.bin').read_bytes();assert len(scores)==4096*2048*4 and len(indices)==4096*512*4
+  File "/Applications/Xcode.app/Contents/Developer/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/pathlib.py", line 1249, in read_bytes
+    with self.open(mode='rb') as f:
+  File "/Applications/Xcode.app/Contents/Developer/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/pathlib.py", line 1242, in open
+    return io.open(self, mode, buffering, encoding, errors, newline,
+  File "/Applications/Xcode.app/Contents/Developer/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/pathlib.py", line 1110, in _opener
+    return self._accessor.open(self, flags, mode)
+FileNotFoundError: [Errno 2] No such file or directory: '$REPO/rust-star/.work/upstream-refresh-1190237b/selector-v5-a/oracle_indexer_topk-2_pos4096.bin'

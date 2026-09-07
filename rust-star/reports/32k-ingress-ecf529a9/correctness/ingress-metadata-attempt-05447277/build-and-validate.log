@@ -1,0 +1,10 @@
+START batch-tests-fixed
+START batch-release
+START batch-12k
+END batch-12k 1
+Traceback (most recent call last):
+  File "$REPO/rust-star/.work/ingress-milestone-12fb9314/build-and-validate.py", line 11, in <module>
+    subprocess.run(['python3','-u',str(w/'validate-batch.py')],cwd=root,check=True)
+  File "/Applications/Xcode.app/Contents/Developer/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/subprocess.py", line 528, in run
+    raise CalledProcessError(retcode, process.args,
+subprocess.CalledProcessError: Command '['python3', '-u', '$REPO/rust-star/.work/ingress-milestone-12fb9314/validate-batch.py']' returned non-zero exit status 1.
