@@ -18,6 +18,15 @@ Before changing code:
 Journal entries are reverse chronological. Do not edit old entries to change
 history; add a correction and update the current-state summary.
 
+## 2026-09-07 — Ingress paired plan frozen; warmups started
+
+- Five alternating AB/BA/AB/BA/AB pairs, one warmup per engine, then a separate
+  profile. Plan SHA `ec570b76290ba2b994c25bf62956844230d6fa37ce0e482ed1c09e58c7db2f64`.
+- Work: `rust-star/.work/paired-32k-128-ecf529a9-ingress/`.
+  Model and prompt freshly rehashed; candidate and oracle binaries frozen.
+- All six gates and 310 Rust tests pass. Runtime edits/builds stop for the
+  paired block. Host load, thermal state and memory are captured throughout.
+
 ## 2026-09-07 — All ingress correctness and lifecycle gates pass
 
 - Candidate ecf529a9 passes all six gates, including both full 32K modes and
@@ -2594,8 +2603,8 @@ Next:
 - Active milestone: whole-chunk odd-layer ingress, preserving kernel arithmetic
   and removing native input staging copies. 310 Rust tests and release build pass;
   corrected ecf529a9 build and 12K/8K/2K gates pass; full 32K output-only
-  and diagnostic gates and retained lifecycle pass. Frozen-plan preparation
-  running; measurements pending; initial
+  and diagnostic gates and retained lifecycle pass. Frozen paired campaign
+  warmups running; five pairs/profile pending; initial
   metadata failure retained in `rust-star/.work/ingress-milestone-12fb9314/`.
 
 - Authorized even-layer attention milestone is complete. Native continuation
