@@ -18,6 +18,14 @@ Before changing code:
 Journal entries are reverse chronological. Do not edit old entries to change
 history; add a correction and update the current-state summary.
 
+## 2026-09-07 — Ingress candidate build and tests pass
+
+- Candidate `054472775f705e8744fbed16e2bdce4ed5fc9a8c` passes all 310 Rust tests and release build.
+  Frozen executable SHA `f803f68cf78bfde5115c13b1ec72b4d33831a7ab8130ec0d3773aec91e56aafb`.
+- Also fixed the pre-existing formatter-only wrap of the v5 selector label.
+  No oracle, kernel arithmetic or fixture changes. Native 12K validation is
+  running; remaining controls, full-output/lifecycle gates and timings pending.
+
 ## 2026-09-07 — Odd-layer ingress batching milestone started
 
 - Baseline is the completed attention candidate 1eb20ddb/report 12fb9314.
@@ -2535,8 +2543,8 @@ Next:
 ### Current resume checkpoint (updated 2026-09-07)
 
 - Active milestone: whole-chunk odd-layer ingress, preserving kernel arithmetic
-  and removing native input staging copies. Implementation prepared; build,
-  live gates and fresh measurements pending in `rust-star/.work/ingress-milestone-12fb9314/`.
+  and removing native input staging copies. 310 Rust tests and release build pass;
+  native 12K gate running, remaining live gates and measurements pending in `rust-star/.work/ingress-milestone-12fb9314/`.
 
 - Authorized even-layer attention milestone is complete. Native continuation
   attention executes whole 4K chunks with unchanged kernel arithmetic and no
