@@ -18,6 +18,15 @@ Before changing code:
 Journal entries are reverse chronological. Do not edit old entries to change
 history; add a correction and update the current-state summary.
 
+## 2026-09-07 — New v5 internal checkpoints all match Rust
+
+- Fresh diagnostic candidate8aa4d13d passes every accepted internal checkpoint
+  through24K, including the previously stopped16K layer34 and all changed
+  later layers. This validates the new independently repeated targets in Rust.
+- Diagnostic32K final chunk/output/128-step comparison is running.28K/32K
+  internal hashes remain diagnostic-only; no unsupported internal C0 claim.
+  Remaining shorter and retained gates still precede the paired baseline.
+
 ## 2026-09-07 — Final candidate output-only full C0 passes
 
 - Candidate8aa4d13d fresh32K output-only run passes every prefill and128-step
