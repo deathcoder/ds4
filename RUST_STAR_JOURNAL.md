@@ -2356,73 +2356,31 @@ Next:
 
 ### Current resume checkpoint (updated 2026-09-07)
 
-- Latest state: all six final candidate gates pass, including retained reuse.
-  Frozen v5 campaign is running warmups then five pairs and isolated profile.
-  Plan SHA `915d68eda1ebf4f619f3767a2003af7baa01a21d616612dc283e221ddf94e8cc`.
-  Final audit, report and documentation remain pending.
-
-- Latest validation: frozen `cc032078` passes both full 32K C0 modes and
-  detailed 8K/12K/2K controls. Retained two-cycle validation is running;
-  five paired runs, isolated profile and final audited report remain pending.
-
-- Latest candidatecc032078 builds and passes310 tests; detailed8K-first
-  validation passes detailed8K,12K and2K; full32K output-only passes; diagnostic32K is active,
-  then retained lifecycle and paired measurements.
-  Prior8aa4d13d passes both full32K modes and all HC checkpoints; detailed8K
-  exposed two stale selector-ordering targets, both reproduced by direct
-  repeated v5 captures and versioned explicitly. Run8K first, then all six
-  final-candidate gates. No paired timing has started.
-- Active upstream-refresh milestone: pinned c0a6119f with oracle-v5 ccbd16d.
-  Reference official gates, four2K/32K repetitions,8K control, tokenizer proof
-  and two full129-row traces pass. Rust selector port passes full32K C0.
-  Historical16K layer34 mismatch reproduced directly by v5; two full HC
-  inventories at each12K/16K/20K/24K now accepted as separate v5 targets.
-  Candidate8aa4d13d builds and passes310 tests; fresh12K passes and the
-  both new full32K modes and2K pass. Detailed8K revealed stale selector
-  tie-order fixture; two direct v5 captures validate its separate replacement.
-  Rebuild and run8K first, then full remaining gates; timing remains pending.
-  Paired baseline and portable report remain pending. Evidence and sequential
-  scripts: `rust-star/.work/upstream-refresh-1190237b/`.
-- Completed milestone: measured native32K prefill tail batching, candidate
-  `dd0d26c5`, unchanged accepted oracle-v4 `df99eba7`. Durable report:
-  `rust-star/reports/32k-prefill-dd0d26c5/README.md`; 106-artifact portable
-  verifier passes. No model process remains active after final validation.
-- Median prefill 521.130 s (previous Rust 813.107 s), 35.91% less latency;
-  reference 184.333 s, leaving a 2.827x gap. Reference-normalized improvement
-  1.521x. Decode remains near parity: 19.752 / 19.595 tokens/s. Median peak
-  process memory 87.585 / 80.893 GiB. These are 32K development results.
-- Five valid pairs and two warmups pass. Host restart interrupted pair 5;
-  attempt retained and complete pair rerun under protocol. Report explicitly
-  compares pre-/post-restart observations. Do not describe as uninterrupted.
-- Profiled even-tail GPU time falls 294.625 to 43.453 s; next bottleneck is
-  even attention (77.645 GPU / 124.838 host s, 18,816 calls). Investigate
-  batching/command costs only after the upstream refresh and new profile.
-- All 310 Rust and 91 Python tests, two fresh full32K C0 modes, internal12K,
-  2K/8K controls and two retained32K reset/reuse cycles pass. Native32K is
-  complete through all 43 layers, output head and 128 greedy steps. Do not
-  restart completed layer work. Internal HC is accepted through 24K only;
-  later internal hashes are diagnostic, never substitutes for full logits.
-- Candidate executable SHA-256:
-  `5d05eb14b3288f2233095e869a8f422dc9630f71484f7580ea482f3772e74b56`.
-  Frozen plan `a446a6be765efa8198aec8b6111803b2b998dd3f98926b3ffd6341dae69859db`.
-  Work: `rust-star/.work/paired-32k-128-dd0d26c5-batch/` and
-  `rust-star/.work/prefill-milestone-fe73defe/`.
-- Prior audited baseline: `rust-star/reports/32k-baseline-cbb078bb/`.
-  Streaming top-k count race remains repaired with adversarial GPU coverage;
-  original targets and failed projection-wait experiment remain preserved.
-  Never resume rejected `paired-32k-128-7406473` or its `-sampling` sibling.
-- Work in `/Users/deathcodevision/dev/ds4-rust-star-bootstrap` on
-  `agent/rust-star-bootstrap`. Remotes: `fork` = `deathcoder/ds4`,
-  `origin` = `antirez/ds4`. No push performed. Research crate is publish=false;
-  current repository is not a Dion Labs packaged-release project.
-- Use accepted oracle-v4 for new evidence; preserve historical v1/v3 fixture
-  producer labels. Preserve GPU-owned histories, tied-score router ordering,
-  shorter controls and reset/reuse. One large model process at a time.
-- Reclaimed 10.55 GiB of duplicate build products this milestone; about
-  131 GiB was available before host restart. Preserve frozen evidence and
-  use `rust-star/.work/runtime-target` explicitly for future builds.
-- Broader native contexts, the 256K headline and coding-agent co-design remain
-  future work. This checkpoint supersedes older accumulated frontiers below.
+- Authorized milestone: complete the pinned upstream refresh, oracle-v5,
+  applicable resident M1/Q2 port, full validation and fresh paired baseline.
+- Accepted reference source `ccbd16d36895ef9fe8edf7f793014988ff1ab7f4`,
+  tree `a0a33f4a00c3c78cd40350785485203e7c6b0b1d`, upstream `c0a6119f`.
+  Four 2K/32K repeats, two complete 129-row traces, tokenizer and 8K controls
+  pass. Internal HC targets are independently repeated through 24K.
+- Final Rust candidate `cc032078748ad4c450717b1cfd4e734fd57cf9e6` passes
+  310 Rust and 93 Python tests and all six live gates: detailed 8K, 12K, 2K,
+  output-only 32K, diagnostic 32K, and retained two-cycle reset/reuse.
+- Candidate SHA `e87354b9f0ed3e2f30ac1b3584d7f03a255bbb715664dc452e29953b205bd706`;
+  oracle SHA `a4056d7297bd0a6de8e46fac294e7913d9bc8c96465e5d68f1b6ef6471e49aa0`.
+  Runtime uses deterministic argsort/merge and keeps batched even-layer tails.
+- Frozen plan SHA `915d68eda1ebf4f619f3767a2003af7baa01a21d616612dc283e221ddf94e8cc`.
+  Campaign `rust-star/.work/paired-32k-128-cc032078-v5/` is in warmups
+  (oracle passed, Rust active), then five alternating pairs and isolated profile.
+  No builds or heavy tests during the timed block; one model process at a time.
+- Coordinator `rust-star/.work/upstream-refresh-1190237b/finish-milestone.py`
+  continues measurement, profile, audit and report export. Final documentation
+  updates, report review and commit remain after its completion marker.
+- All stale HC/selector/dispatch diagnostic attempts are retained with their
+  independent reference evidence. Historical fixtures and reports are immutable.
+  28K/32K internal HC is diagnostic-only; full output C0 remains mandatory.
+- This is a 32K development baseline. Broader contexts, 256K headline workload
+  and coding-agent co-design remain future work. Previous optimized v4 report:
+  `rust-star/reports/32k-prefill-dd0d26c5/` (host restart disclosed).
 
 ### Accumulated implementation and measurement evidence
 
