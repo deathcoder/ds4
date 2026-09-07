@@ -18,6 +18,21 @@ Before changing code:
 Journal entries are reverse chronological. Do not edit old entries to change
 history; add a correction and update the current-state summary.
 
+## 2026-09-07 — V5 full decode repeatability and versioned fixtures pass
+
+- Two fresh128-step runs match all129 full FP32 output rows exactly.
+  All rows are finite; global argmax equals EOS-excluding selection throughout.
+  The complete129-token transcript is unchanged from v4. Decode logits differ
+  in16,547,704 of16,547,840 FP32 words, with the selector-only prefill change
+  already isolated. This is an explicit target revision, not a tolerance change.
+- Final-source8K capture matches historical fixture exactly. Tokenizer proof
+  matches all32,768 input IDs; EOS ID1 validated from pinned tokenizer.
+- New immutable fixtures `prefill-frontier-32768-v5` and
+  `prefill-decode-32768-v5` preserve all historical files. Rust embeds/fixture
+  identity now select v5; fresh Rust build, C0 and lifecycle checks follow.
+- Evidence: `conformance-v5.json`, both full row inventories/binary traces,
+  `v4-v5-trace-comparison.json`, `tokenization-v5.json` in refresh workdir.
+
 ## 2026-09-07 — Final oracle-v5 repeated frontier acceptance passes
 
 - Final pinned source ccbd16d passes official correctness and four identical
@@ -2149,9 +2164,8 @@ Next:
   Official M1 kernel/logprob gates pass; Rust tests pass310/310. Pristine
   upstream repeats four times at2K/32K; selector-only V4 control exactly
   explains new32K logits.8K control is unchanged. Final pinned-source oracle
-  acceptance passes all eight captures and bundle verification; full traces,
-  versioned targets, live Rust gates and
-  paired baseline remain pending. Evidence: `rust-star/.work/upstream-refresh-1190237b/`.
+  acceptance passes all eight captures and bundle verification; two full traces
+  and new v5 fixtures also pass. Rust live gates and paired baseline remain pending. Evidence: `rust-star/.work/upstream-refresh-1190237b/`.
 - Completed milestone: measured native32K prefill tail batching, candidate
   `dd0d26c5`, unchanged accepted oracle-v4 `df99eba7`. Durable report:
   `rust-star/reports/32k-prefill-dd0d26c5/README.md`; 106-artifact portable
@@ -2952,7 +2966,8 @@ Next:
    resident M1/Q2 improvements to Rust, preserve existing batching, run full C0
    and lifecycle gates, then freeze a new paired baseline and separate profile.
    Reassess even-layer attention after that baseline. Candidate builds/tests
-   pass; final-source acceptance passes, two full129-row captures queued.
+   pass; final-source acceptance and two full129-row captures pass. New v5
+   fixtures imported; Rust live C0/lifecycle validation is next.
 2. Preserve exact 2K/8K controls, complete32K immutable output trace, GPU
    selection, GPU-owned history, reset/reuse and tied-score router ordering.
    Internal HC acceptance remains through24K. Do not redo completed layers.

@@ -940,7 +940,7 @@ pub const POSITION127_DECODER_FIXTURE_ID: &str = "dwarfstar-oracle-v1-decoder-fr
 pub const COLD_PREFILL_FIXTURE_ID: &str = "dwarfstar-oracle-v1-cold-prefill-pos0";
 pub const PREFILL_FRONTIER_2048_FIXTURE_ID: &str = "dwarfstar-oracle-v1-prefill-frontier-2048";
 pub const PREFILL_FRONTIER_8192_FIXTURE_ID: &str = "dwarfstar-oracle-v3-prefill-frontier-8192";
-pub const PREFILL_FRONTIER_32768_FIXTURE_ID: &str = "dwarfstar-oracle-v3-prefill-frontier-32768";
+pub const PREFILL_FRONTIER_32768_FIXTURE_ID: &str = "dwarfstar-oracle-v5-prefill-frontier-32768";
 pub const PREFILL_DECODE_FRONTIER_4099_FIXTURE_ID: &str =
     "dwarfstar-oracle-v1-prefill-decode-frontier-4099";
 pub const DEFAULT_ELEMENTS: u64 = 4096;
@@ -1007,9 +1007,9 @@ const PREFILL_FRONTIER_8192_TOKEN_IDS_BYTES: &[u8] =
 const PREFILL_FRONTIER_8192_BATCH_LOGITS_BYTES: &[u8] =
     include_bytes!("../../fixtures/prefill-frontier-8192-v3/batch-prefill-logits.f32le.bin");
 const PREFILL_FRONTIER_32768_TOKEN_IDS_BYTES: &[u8] =
-    include_bytes!("../../fixtures/prefill-frontier-32768-v3/token-ids.u32le.bin");
+    include_bytes!("../../fixtures/prefill-frontier-32768-v5/token-ids.u32le.bin");
 const PREFILL_FRONTIER_32768_BATCH_LOGITS_BYTES: &[u8] =
-    include_bytes!("../../fixtures/prefill-frontier-32768-v3/batch-prefill-logits.f32le.bin");
+    include_bytes!("../../fixtures/prefill-frontier-32768-v5/batch-prefill-logits.f32le.bin");
 const PREFILL_DECODE_4099_INPUT_TOKENS_BYTES: &[u8] =
     include_bytes!("../../fixtures/prefill-decode-frontier-4099-v1/input-tokens.u32le.bin");
 const PREFILL_DECODE_2048_LOGITS_BYTES: &[u8] =
@@ -7017,7 +7017,7 @@ pub fn write_engine_run_json<W: Write>(output: &mut W, report: &EngineRunReport)
     }
     if report.context == 32768 {
         let tokens = decode_u32_fixture(
-            include_bytes!("../../fixtures/prefill-decode-32768-v3/token-ids.u32le.bin"),
+            include_bytes!("../../fixtures/prefill-decode-32768-v5/token-ids.u32le.bin"),
             "32K engine transcript",
         )?;
         if report.final_selected_token != 14
@@ -12916,11 +12916,11 @@ fn prefill_frontier_2048_fixture() -> Result<(Vec<u32>, Vec<f32>, Vec<f32>)> {
 
 fn prefill_decode_32768_fixture() -> Result<(Vec<u32>, Vec<f32>)> {
     let tokens = decode_u32_fixture(
-        include_bytes!("../../fixtures/prefill-decode-32768-v3/token-ids.u32le.bin"),
+        include_bytes!("../../fixtures/prefill-decode-32768-v5/token-ids.u32le.bin"),
         "32K decode token transcript",
     )?;
     let logits = decode_f32_fixture(
-        include_bytes!("../../fixtures/prefill-decode-32768-v3/decode-logits.f32le.bin"),
+        include_bytes!("../../fixtures/prefill-decode-32768-v5/decode-logits.f32le.bin"),
         "32K full decode logits",
     )?;
     if tokens.len() != 129
@@ -56123,7 +56123,7 @@ mod imp {
     ) -> Result<(Context, EngineRunReport, bool)> {
         let oracle_inputs = if context_tokens == 32768 {
             decode_u32_fixture(
-                include_bytes!("../../fixtures/prefill-decode-32768-v3/token-ids.u32le.bin"),
+                include_bytes!("../../fixtures/prefill-decode-32768-v5/token-ids.u32le.bin"),
                 "32K engine transcript",
             )?
         } else {
