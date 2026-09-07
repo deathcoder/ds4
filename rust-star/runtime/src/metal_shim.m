@@ -46459,8 +46459,10 @@ int rust_star_metal_run_prefill_layer2_continuation_tail(
                 (bytes), error, error_bytes) \
             : [context.device newBufferWithLength:(bytes) \
                 options:MTLResourceStorageModeShared]
-        RUST_STAR_NEW_CONTINUATION_TAIL_BUFFER(group_ids_buffer, group_ids_bytes);
-        RUST_STAR_NEW_CONTINUATION_TAIL_BUFFER(group_map_buffer, group_map_bytes);
+        id<MTLBuffer> group_ids_buffer = native_chunk ? nil : [context.device
+            newBufferWithLength:group_ids_bytes options:MTLResourceStorageModeShared];
+        id<MTLBuffer> group_map_buffer = native_chunk ? nil : [context.device
+            newBufferWithLength:group_map_bytes options:MTLResourceStorageModeShared];
         RUST_STAR_NEW_CONTINUATION_TAIL_BUFFER(attention_low_buffer, attention_low_bytes);
         RUST_STAR_NEW_CONTINUATION_TAIL_BUFFER(output_buffer, output_bytes);
         id<MTLBuffer> after_attention_hc_buffer = [context.device
@@ -46527,7 +46529,7 @@ int rust_star_metal_run_prefill_layer2_continuation_tail(
                 return fail_with_message(error, error_bytes, @"native tail HC capacity mismatch");
             after_ffn_hc_buffer = full_after_ffn_hc_buffer;
         }
-        if (!heads_buffer || !group_ids_buffer || !group_map_buffer ||
+        if (!heads_buffer || (!native_chunk && (!group_ids_buffer || !group_map_buffer)) ||
             !attention_low_buffer || !output_buffer ||
             !after_attention_hc_buffer || !ffn_flat_hc_buffer ||
             !ffn_mix_buffer || !ffn_split_buffer || !ffn_cur_buffer ||
@@ -46543,7 +46545,7 @@ int rust_star_metal_run_prefill_layer2_continuation_tail(
                 @"failed to allocate prefill layer-2 continuation tail buffers");
         }
         int32_t *group_ids = group_ids_buffer.contents;
-        for (uint32_t row = 0; row < rows; row++) {
+        for (uint32_t row = 0; !native_chunk && row < rows; row++) {
             for (uint32_t group = 0; group < 8u; group++) {
                 group_ids[(NSUInteger)row*8u+group] = (int32_t)group;
             }
@@ -46564,6 +46566,21 @@ int rust_star_metal_run_prefill_layer2_continuation_tail(
             .nb13=(uint64_t)rows*8u*n_embd*sizeof(float),
             .ne20=8, .ne21=rows, .ne0=output_rank, .ne1=8,
             .r2=1, .r3=1,
+        };
+        /* The dense kernel's ne0 is the destination row pitch. Dispatch only
+         * the aligned 1024-column group, while storing into 8192-column rows.
+         * Group offsets give the same token-major layout as the map/scatter
+         * kernel, with identical 64x32x32 MMA order and direct FP32 stores. */
+        rust_star_q8_mm_args native_low_args = {
+            .ne00=n_embd, .ne02=1,
+            .nb01=(n_embd/32u)*34u,
+            .nb02=(uint64_t)output_rank*((n_embd/32u)*34u),
+            .nb03=weights->attn_output_a_bytes,
+            .ne12=1, .nb10=sizeof(float),
+            .nb11=8u*n_embd*sizeof(float),
+            .nb12=(uint64_t)rows*8u*n_embd*sizeof(float),
+            .nb13=(uint64_t)rows*8u*n_embd*sizeof(float),
+            .ne0=8u*output_rank, .ne1=rows, .r2=1, .r3=1,
         };
         rust_star_q8_mm_args output_args = {
             .ne00=8u*output_rank, .ne02=1,
@@ -46712,27 +46729,43 @@ int rust_star_metal_run_prefill_layer2_continuation_tail(
         if (!command || !encoder) return fail_with_message(error, error_bytes,
             @"failed to create prefill layer-2 continuation tail command");
 
-        [encoder setComputePipelineState:context.attentionOutputBatchMapPipeline];
-        [encoder setBytes:&map_args length:sizeof(map_args) atIndex:0];
-        [encoder setBuffer:group_ids_buffer offset:0 atIndex:1];
-        [encoder setBuffer:group_map_buffer offset:0 atIndex:2];
-        [encoder setBuffer:group_map_buffer offset:tpe_bytes atIndex:3];
-        [encoder setBuffer:group_map_buffer offset:work_offset atIndex:4];
-        [encoder setThreadgroupMemoryLength:128u atIndex:0];
-        [encoder dispatchThreadgroups:MTLSizeMake(1,1,1)
-             threadsPerThreadgroup:MTLSizeMake(8,1,1)];
+        if (native_chunk) {
+            for (uint32_t group = 0; group < 8u; group++) {
+                [encoder setComputePipelineState:context.q8PrefillPipeline];
+                [encoder setBytes:&native_low_args length:sizeof(native_low_args) atIndex:0];
+                [encoder setBuffer:model_buffers[0]
+                    offset:inner[0]+group*native_low_args.nb02 atIndex:1];
+                [encoder setBuffer:heads_buffer
+                    offset:heads_offset+(NSUInteger)group*n_embd*sizeof(float) atIndex:2];
+                [encoder setBuffer:attention_low_buffer
+                    offset:(NSUInteger)group*output_rank*sizeof(float) atIndex:3];
+                [encoder setThreadgroupMemoryLength:6144u atIndex:0];
+                [encoder dispatchThreadgroups:MTLSizeMake(rows/32u,output_rank/64u,1)
+                    threadsPerThreadgroup:MTLSizeMake(128,1,1)];
+            }
+        } else {
+            [encoder setComputePipelineState:context.attentionOutputBatchMapPipeline];
+            [encoder setBytes:&map_args length:sizeof(map_args) atIndex:0];
+            [encoder setBuffer:group_ids_buffer offset:0 atIndex:1];
+            [encoder setBuffer:group_map_buffer offset:0 atIndex:2];
+            [encoder setBuffer:group_map_buffer offset:tpe_bytes atIndex:3];
+            [encoder setBuffer:group_map_buffer offset:work_offset atIndex:4];
+            [encoder setThreadgroupMemoryLength:128u atIndex:0];
+            [encoder dispatchThreadgroups:MTLSizeMake(1,1,1)
+                 threadsPerThreadgroup:MTLSizeMake(8,1,1)];
 
-        [encoder setComputePipelineState:context.attentionOutputBatchLowPipeline];
-        [encoder setBytes:&low_args length:sizeof(low_args) atIndex:0];
-        [encoder setBuffer:model_buffers[0] offset:inner[0] atIndex:1];
-        [encoder setBuffer:heads_buffer offset:heads_offset atIndex:2];
-        [encoder setBuffer:group_map_buffer offset:0 atIndex:3];
-        [encoder setBuffer:group_map_buffer offset:tpe_bytes atIndex:4];
-        [encoder setBuffer:attention_low_buffer offset:0 atIndex:5];
-        [encoder setBuffer:group_map_buffer offset:work_offset atIndex:6];
-        [encoder setThreadgroupMemoryLength:8192u atIndex:0];
-        [encoder dispatchThreadgroups:MTLSizeMake(work_cap,output_rank/64u,1)
-             threadsPerThreadgroup:MTLSizeMake(128,1,1)];
+            [encoder setComputePipelineState:context.attentionOutputBatchLowPipeline];
+            [encoder setBytes:&low_args length:sizeof(low_args) atIndex:0];
+            [encoder setBuffer:model_buffers[0] offset:inner[0] atIndex:1];
+            [encoder setBuffer:heads_buffer offset:heads_offset atIndex:2];
+            [encoder setBuffer:group_map_buffer offset:0 atIndex:3];
+            [encoder setBuffer:group_map_buffer offset:tpe_bytes atIndex:4];
+            [encoder setBuffer:attention_low_buffer offset:0 atIndex:5];
+            [encoder setBuffer:group_map_buffer offset:work_offset atIndex:6];
+            [encoder setThreadgroupMemoryLength:8192u atIndex:0];
+            [encoder dispatchThreadgroups:MTLSizeMake(work_cap,output_rank/64u,1)
+                 threadsPerThreadgroup:MTLSizeMake(128,1,1)];
+        }
 
         [encoder setComputePipelineState:context.q8PrefillPipeline];
         [encoder setBytes:&output_args length:sizeof(output_args) atIndex:0];
@@ -47033,7 +47066,7 @@ int rust_star_metal_run_prefill_layer2_continuation_tail(
         } else if (!layer4) {
             context.prefillLayer2ContinuationAfterFfnHc = after_ffn_hc_buffer;
         }
-        result->dispatches += copy_routed_mid ? 26u : 25u;
+        result->dispatches += native_chunk ? 31u : 26u;
         result->wrapped_model_ranges += 14u;
         for (uint32_t index = 0; index < 14u; index++) {
             if (matches[index]) result->pointer_matches++;

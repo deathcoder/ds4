@@ -609,6 +609,12 @@ int rust_star_metal_enable_chained_stage_profiling(
     char *error,
     size_t error_bytes);
 
+/* Diagnostic native-tail counters; consumed once per completed tail call. */
+int rust_star_metal_enable_prefill_tail_profiling(
+    void *opaque_context, char *error, size_t error_bytes);
+int rust_star_metal_copy_prefill_tail_ticks(
+    void *opaque_context, uint64_t *ticks, char *error, size_t error_bytes);
+
 int rust_star_metal_enable_prefill_layer_profiling(
     void *context,
     char *error,

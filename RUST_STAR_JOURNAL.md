@@ -18,6 +18,21 @@ Before changing code:
 Journal entries are reverse chronological. Do not edit old entries to change
 history; add a correction and update the current-state summary.
 
+## 2026-09-07 — Direct dense-Q8 output projection candidate implemented
+
+- Native output-low projection now uses eight aligned dense-Q8 dispatches with
+  physical output row pitch 8192 and 1024 dispatched columns per group. Input,
+  weight and output group offsets preserve token-major layout and MMA ordering.
+  Actual bit equality remains subject to live gates.
+- Omits the native grouped map, host ID fill and two scratch buffers. Native
+  tails now use 20 scratch buffers and 31 dispatches; odd schedule53+padding.
+  Legacy paths retain original map/scatter kernels and 26-dispatch tails.
+- No Metal kernel source, oracle, quantization or production backend change.
+  Added matching C header declarations for the previously validated profile API.
+- Tests/build and all six exact/lifecycle gates pending. Evidence directory:
+  rust-star/.work/dense-output-milestone-9c1d5009/.
+  Candidate is not accepted as a speed improvement until measured.
+
 ## 2026-09-07 — Tail component profiling milestone complete
 
 - Candidate e7b81aa2 passes 312 Rust tests and both profiled/normal complete
@@ -2842,6 +2857,9 @@ Next:
 
 ### Current resume checkpoint (updated 2026-09-07)
 
+- Active candidate: direct dense-Q8 native output-low groups, implemented with
+  tests/build and six live gates pending; measurement follows only if exact.
+  Work: rust-star/.work/dense-output-milestone-9c1d5009/.
 - Tail component profiling is complete: e7b81aa2, 312 tests, both full-output
   gates and all 2,583 component rows verified. Report:
   rust-star/reports/32k-tail-components-e7b81aa2/README.md (16 verified artifacts).
