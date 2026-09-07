@@ -18,6 +18,16 @@ Before changing code:
 Journal entries are reverse chronological. Do not edit old entries to change
 history; add a correction and update the current-state summary.
 
+## 2026-09-07 — All final gates pass; frozen paired campaign starts
+
+- Candidate `cc032078` passes all six live gates, including both full 32K C0
+  modes and both retained reset/reuse cycles. Both retained transcripts match.
+- Model and prompt hashes rechecked. Final plan SHA:
+  `915d68eda1ebf4f619f3767a2003af7baa01a21d616612dc283e221ddf94e8cc`.
+  Campaign: `rust-star/.work/paired-32k-128-cc032078-v5/`.
+- Warmups started; five alternating pairs and the isolated profile are queued.
+  No builds or heavy checks during measurements. Final audit/report/docs remain.
+
 ## 2026-09-07 — Frozen candidate completes both 32K C0 modes
 
 - Final candidate `cc032078` passes output-only and diagnostic 32K gates:
@@ -2345,6 +2355,11 @@ Next:
 ## Current State
 
 ### Current resume checkpoint (updated 2026-09-07)
+
+- Latest state: all six final candidate gates pass, including retained reuse.
+  Frozen v5 campaign is running warmups then five pairs and isolated profile.
+  Plan SHA `915d68eda1ebf4f619f3767a2003af7baa01a21d616612dc283e221ddf94e8cc`.
+  Final audit, report and documentation remain pending.
 
 - Latest validation: frozen `cc032078` passes both full 32K C0 modes and
   detailed 8K/12K/2K controls. Retained two-cycle validation is running;
