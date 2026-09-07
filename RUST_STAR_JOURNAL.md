@@ -18,6 +18,13 @@ Before changing code:
 Journal entries are reverse chronological. Do not edit old entries to change
 history; add a correction and update the current-state summary.
 
+## 2026-09-07 — Native tail candidate build and tests pass
+
+- Candidate `89e3274568745fe5311d16478ccf35f016958a08` passes 310 Rust tests and release build.
+  Executable SHA `7f14080aea91a3631bb85b8c55dd8f02031e983ab2b74cc1618235a0262a74a4`.
+- Native 12K gate is running; remaining live gates and paired/profile evidence
+  pending. No arithmetic, oracle or fixture changes.
+
 ## 2026-09-07 — Native tail scratch and output milestone started
 
 - Baseline: ingress candidate ecf529a9/report 2d8b8405. Largest profile group
@@ -2682,8 +2689,8 @@ Next:
 ### Current resume checkpoint (updated 2026-09-07)
 
 - Active milestone: native tail scratch reuse, direct retained HC output and
-  removal of unused FP32 diagnostic conversion. Build, all six gates and
-  fresh paired/profile report pending in `rust-star/.work/tail-milestone-2d8b8405/`.
+  removal of unused FP32 diagnostic conversion. 310 tests/release build pass;
+  native 12K running, remaining gates and paired/profile report pending in `rust-star/.work/tail-milestone-2d8b8405/`.
 
 - Authorized odd-layer ingress milestone is complete. Native continuation
   ingress executes whole 4K chunks with unchanged kernel arithmetic and no
