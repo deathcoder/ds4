@@ -18,6 +18,12 @@ Before changing code:
 Journal entries are reverse chronological. Do not edit old entries to change
 history; add a correction and update the current-state summary.
 
+## 2026-09-07 — Native tail warmups pass; pair 1 running
+
+- Both warmups pass with the expected transcript. Pair 1 (AB) is running
+  under frozen plan d27a9f5e. No failed attempt or retry.
+- Five-pair statistics, isolated profile and final audit/report pending.
+
 ## 2026-09-07 — Native tail measurement plan frozen
 
 - Five alternating AB/BA/AB/BA/AB pairs, one warmup per engine, then a separate
@@ -2734,8 +2740,8 @@ Next:
 
 - Active milestone: native tail scratch reuse, direct retained HC output and
   removal of unused FP32 diagnostic conversion. 310 tests/release build pass;
-  all six gates pass on attempt 1; paired plan frozen, warmups running;
-  five pairs/profile and audit pending in `rust-star/.work/tail-milestone-2d8b8405/`.
+  all six gates and both warmups pass; pair 1 running under frozen plan;
+  full paired result/profile and audit pending in `rust-star/.work/tail-milestone-2d8b8405/`.
 
 - Authorized odd-layer ingress milestone is complete. Native continuation
   ingress executes whole 4K chunks with unchanged kernel arithmetic and no
