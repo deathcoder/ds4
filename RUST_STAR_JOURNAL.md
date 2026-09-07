@@ -18,6 +18,43 @@ Before changing code:
 Journal entries are reverse chronological. Do not edit old entries to change
 history; add a correction and update the current-state summary.
 
+## 2026-09-08 — Direct dense-Q8 shorter controls all pass
+
+- Native 12K internal states, detailed legacy 8K and complete 2K prefill controls
+  all pass on attempt 1. The 2K selected token remains 15342.
+- Full 32K output-only gate is running; complete internal-mode 32K, retained
+  lifecycle and profiled full-output checks remain queued. No failed live attempt.
+- Tests/build: 312 passing tests, frozen runtime 92ca3ef3. No performance result yet.
+
+## 2026-09-08 — Direct dense-Q8 legacy 8K control passes
+
+- Native 12K and detailed legacy 8K gates both pass on attempt 1. The 8K control
+  matches all 129,280 FP32 logits and its pinned selector inventory (token 77179).
+- 2K running; both complete 32K modes, retained lifecycle and profiled full-output
+  gate remain. No source/oracle change, no live failure and no speed claim.
+
+## 2026-09-08 — Direct dense-Q8 native 12K gate passes
+
+- Candidate 92ca3ef3 matches all 43 accepted internal HC states through the 8K
+  and 12K continuation chunks. This 12K gate does not compare a full output tensor.
+- Legacy8K is running; 2K, both full32K modes, retained lifecycle and profiled
+  full-output validation remain queued. 312 tests/build passed; no failed live
+  attempt. Frozen candidate and all oracle targets remain unchanged.
+
+## 2026-09-07 — Direct dense-Q8 candidate built; seven gates running
+
+- Frozen candidate 92ca3ef3ee21ea076852d7ecbda415a15acb270a; executable SHA
+  f2a0679725b9c21e0946561d42920b1afa82f05208aa66426268b7ecfef13ea9. All 312 Rust tests and release build pass.
+- Native 12K gate running. Sequential queue then checks legacy 8K, 2K, complete
+  32K output-only/internal modes, two retained reset/reuse cycles, and a complete
+  profiled 32K output gate with component accounting audit (seven checks total).
+- On complete success only, finish-measurements.py rehashes model/prompt, freezes
+  five alternating pairs plus two warmups, runs a separate profile and independent
+  audit. It stops on any failure. Report/retention decision and final docs remain
+  manual follow-through after measurement; no speed claim yet.
+- Background sessions: build-and-validate 70107; finish-measurements 18973.
+  Runtime stays frozen. Update only journal/helper evidence during live execution.
+
 ## 2026-09-07 — Direct dense-Q8 output projection candidate implemented
 
 - Native output-low projection now uses eight aligned dense-Q8 dispatches with
@@ -2855,10 +2892,11 @@ Next:
 
 ## Current State
 
-### Current resume checkpoint (updated 2026-09-07)
+### Current resume checkpoint (updated 2026-09-08)
 
 - Active candidate: direct dense-Q8 native output-low groups, implemented with
-  tests/build and six live gates pending; measurement follows only if exact.
+  312 tests/build pass; native 12K/legacy 8K/2K pass; full 32K output gate running, three more queued; measurement
+  follows only if exact. Frozen candidate92ca3ef3; helpers preserve failed attempts.
   Work: rust-star/.work/dense-output-milestone-9c1d5009/.
 - Tail component profiling is complete: e7b81aa2, 312 tests, both full-output
   gates and all 2,583 component rows verified. Report:
