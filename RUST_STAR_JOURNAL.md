@@ -3132,28 +3132,19 @@ Next:
 
 ## Immediate Next Actions
 
-- The authorized prefill optimization milestone is complete. Report and
-  verifier: `rust-star/reports/32k-prefill-dd0d26c5/`.
-
-1. Active authorized milestone: controlled upstream refresh at pinned c0a6119f.
-   Establish an isolated, explicitly versioned oracle-v5; audit upstream versus
-   fork-only correctness and benchmark timing fixes. Validate repeated complete
-   outputs and explain drift before accepting new targets. Port applicable
-   resident M1/Q2 improvements to Rust, preserve existing batching, run full C0
-   and lifecycle gates, then freeze a new paired baseline and separate profile.
-   Reassess even-layer attention after that baseline. Candidate builds/tests
-   pass; final-source acceptance and two full129-row captures pass. New v5
-   fixtures imported; Rust full-output C0 passes. Historical16K layer34 HC
-   differs, and repeated direct v5 captures reproduce Rust. New internal v5
-   targets through24K accepted; rebuild and repeat all live gates before timing.
-2. Preserve exact 2K/8K controls, complete32K immutable output trace, GPU
-   selection, GPU-owned history, reset/reuse and tied-score router ordering.
-   Internal HC acceptance remains through24K. Do not redo completed layers.
-3. Use accepted oracle-v4 for new captures. Preserve original fixture producer
+1. Finish the active upstream-refresh milestone: the frozen v5 campaign has
+   three valid pairs and pair 4 is running. Complete all five pairs, the isolated
+   profile, independent audit and portable report, then update current docs and
+   commit. All reference, Rust full C0 and lifecycle gates already pass.
+2. Preserve 2K/8K controls, the complete 32K output trace, GPU selection/history
+   and reset/reuse. Internal HC acceptance remains through 24K. Do not repeat
+   completed implementation layers or alter the frozen candidate during timing.
+3. Use accepted oracle-v5 for new captures. Preserve historical fixture producer
    identities and all failed/interrupted attempts. Never resume rejected plans.
-4. Broader native contexts and the 256K primary headline remain future work.
-   Run one large model process at a time and keep disk use bounded.
-5. Update the journal at each meaningful step and commit it with the work.
+4. Select the next optimization from the refreshed profile. Broader contexts,
+   the 256K primary headline and coding-agent co-design remain future work.
+5. Run one large model process at a time, keep disk use bounded, and update the
+   journal at each meaningful step. No builds or heavy tests during timed pairs.
 6. GitHub Actions billing lock and deferred secure remote access remain in
    the manual task ledger.
 
