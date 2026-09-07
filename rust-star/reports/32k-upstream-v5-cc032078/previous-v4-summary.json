@@ -1,0 +1,273 @@
+{
+  "candidate": {
+    "backend": "metal",
+    "build_configuration": {
+      "cargo": "1.91.1 (ea2d97820 2025-10-10)",
+      "command": [
+        "cargo",
+        "build",
+        "--manifest-path",
+        "rust-star/runtime/Cargo.toml",
+        "--release"
+      ],
+      "profile": {
+        "codegen_units": 1,
+        "lto": "thin",
+        "panic": "abort"
+      },
+      "rustc": "1.91.1 (ed61e7d7e 2025-11-07)",
+      "rustflags": [],
+      "validated_build_sha256": "006545b2863e5ed6a2d95451f328b84ec4e3f8e44b01528066d404359996b47b"
+    },
+    "executable_sha256": "5d05eb14b3288f2233095e869a8f422dc9630f71484f7580ea482f3772e74b56",
+    "model_sha256": "ca22ae2f838e14077c22bc1c1417b71b45b5e5a3687bd96c2ac6e17fdb6261c0",
+    "prompt_sha256": "f53e0d80cb2d4492d24ebd63c7000c397b16ae70f9bf09b3763e5d8323ec209f",
+    "runtime_configuration": {
+      "command": "engine-measure",
+      "decode_steps": 128,
+      "even_prefill_attention_retention": "GPU blit in each existing attention command; consecutive complete chunk required",
+      "even_prefill_attention_tile_rows": 32,
+      "even_prefill_tail_rows": 4096,
+      "exact_prefix_rebuild": true,
+      "failure_collection": "completed logit readback only after failed token comparison; successful steps keep GPU selection readback",
+      "generation_command_buffers_per_token": 44,
+      "generation_correctness_collection": false,
+      "generation_host_waits_per_token": 2,
+      "model_residency_queue_attached": true,
+      "model_residency_required": true,
+      "model_warm_policy": "CPU POSIX_MADV_WILLNEED plus one volatile byte touch per tensor-data page before internal timers; Metal residency-set registration and one-mebibyte-stride GPU view touch inside prefill_ms before decode",
+      "native_batched_prefill": true,
+      "prefill_chunk_tokens": 4096,
+      "prefill_context_tokens": 32768,
+      "prefill_correctness_collection": false,
+      "prefill_stage_profile_collection": false,
+      "sampling": "lowest-ID greedy argmax; full C0 trace establishes identical non-EOS selections to the reference",
+      "sampling_logits_readback": false,
+      "sampling_result_readback_bytes": 8,
+      "streaming_topk_count_snapshot_barrier": true,
+      "transcript_validation": "after each timed step; first failure rejects run"
+    },
+    "source_commit": "dd0d26c5424acd3e8b27606771c46ed3c71e715a",
+    "source_tree": "16f3655b30085e145c02efe105a765894a2145e4"
+  },
+  "configuration": {
+    "contexts": [
+      32768
+    ],
+    "gen_tokens": 128,
+    "primary_metric": "gen_steady_tps",
+    "repetitions": 5,
+    "sampling": "fixed 128-step lowest-ID greedy transcript; reference excludes EOS, and every reference full-logit argmax equals the same non-EOS transcript"
+  },
+  "contexts": [
+    {
+      "candidate": {
+        "gen_first_ms": {
+          "count": 5,
+          "mad": 2.1616670000000013,
+          "max": 64.7675,
+          "median": 61.029875,
+          "min": 58.588917
+        },
+        "gen_ms": {
+          "count": 5,
+          "mad": 62.74774999999954,
+          "max": 6602.34187,
+          "median": 6490.887417,
+          "min": 6327.404293
+        },
+        "gen_steady_ms": {
+          "count": 5,
+          "mad": 64.90941699999985,
+          "max": 6537.57437,
+          "median": 6429.857542,
+          "min": 6268.815376
+        },
+        "gen_steady_tps": {
+          "count": 5,
+          "mad": 0.20142585299999993,
+          "max": 20.259011054,
+          "median": 19.751604008,
+          "min": 19.426165243
+        },
+        "gen_tps": {
+          "count": 5,
+          "mad": 0.19249468699999994,
+          "max": 20.229464417,
+          "median": 19.719953802,
+          "min": 19.387060307
+        },
+        "prefill_ms": {
+          "count": 5,
+          "mad": 21750.61837499996,
+          "max": 582623.585708,
+          "median": 521130.149917,
+          "min": 499379.531542
+        },
+        "prefill_tps": {
+          "count": 5,
+          "mad": 2.738700909000002,
+          "max": 65.617427088,
+          "median": 62.878726179,
+          "min": 56.242144678
+        },
+        "process_wall_ms": {
+          "count": 5,
+          "mad": 24240.65875000006,
+          "max": 611357.937625,
+          "median": 549959.103292,
+          "min": 525718.444542
+        }
+      },
+      "candidate_over_oracle": {
+        "gen_first_ms": {
+          "count": 5,
+          "mad": 0.05229446597611298,
+          "max": 1.077216710562165,
+          "median": 1.0181997530823004,
+          "min": 0.9295658414065303
+        },
+        "gen_steady_tps": {
+          "count": 5,
+          "mad": 0.006219909564531112,
+          "max": 1.0534299710071136,
+          "median": 1.0036805133919815,
+          "min": 0.9665790952189527
+        },
+        "gen_tps": {
+          "count": 5,
+          "mad": 0.0071454397689851845,
+          "max": 1.0532868916319853,
+          "median": 1.0044139080828047,
+          "min": 0.9663119555425526
+        },
+        "prefill_tps": {
+          "count": 5,
+          "mad": 0.014857220449381536,
+          "max": 0.36618946447830203,
+          "median": 0.3513322440289205,
+          "min": 0.326463534376441
+        }
+      },
+      "context": 32768,
+      "invalid_pairs": [
+        {
+          "attempt": 1,
+          "order": "AB",
+          "reason": "Execution session disappeared across continuation; prior session id is unknown, no model or runner process remains, and final candidate has no completed measurement. Complete pair rerun under external-interruption protocol; no performance-based exclusion.",
+          "repetition": 5
+        }
+      ],
+      "oracle": {
+        "gen_first_ms": {
+          "count": 5,
+          "mad": 0.7179999999999964,
+          "max": 69.675,
+          "median": 60.657,
+          "min": 55.055
+        },
+        "gen_ms": {
+          "count": 5,
+          "mad": 122.84199987533157,
+          "max": 6664.572000017775,
+          "median": 6541.730000142444,
+          "min": 6301.618000134288
+        },
+        "gen_steady_ms": {
+          "count": 5,
+          "mad": 122.3819997408309,
+          "max": 6603.757999899428,
+          "median": 6481.376000158597,
+          "min": 6246.035999974933
+        },
+        "gen_steady_tps": {
+          "count": 5,
+          "mad": 0.3631306440000017,
+          "max": 20.332895936,
+          "median": 19.594604602,
+          "min": 19.231473958
+        },
+        "gen_tps": {
+          "count": 5,
+          "mad": 0.36065500899999847,
+          "max": 20.312243617,
+          "median": 19.566689545,
+          "min": 19.206034536
+        },
+        "prefill_ms": {
+          "count": 5,
+          "mad": 5872.396000129578,
+          "max": 190471.63599945884,
+          "median": 184332.95899999255,
+          "min": 178260.50199955254
+        },
+        "prefill_tps": {
+          "count": 5,
+          "mad": 5.488321382999999,
+          "max": 183.820866835,
+          "median": 177.765279621,
+          "min": 172.036113556
+        },
+        "process_wall_ms": {
+          "count": 5,
+          "mad": 5707.68054099998,
+          "max": 226119.773958,
+          "median": 211460.22275,
+          "min": 203892.26275
+        }
+      },
+      "predeclared_pairs": 5,
+      "valid_pairs": 5
+    }
+  ],
+  "correctness_class": "C0",
+  "correctness_manifest_sha256": "83c623c92b5ea0115285f7653831d8a8228b2d60fe4f85c7c127520c61e0e127",
+  "headline_eligible": true,
+  "host_manifest_sha256": "f92e1143f9d0117cef1e0aa265f147afc6c3910fd018e2913280d4f18930511a",
+  "oracle": {
+    "backend": "metal",
+    "build_configuration": {
+      "benchmark_driver_commit": "df99eba7f722f8170dc2960b8b4666f73818a5ba",
+      "benchmark_driver_sha256": "106da338b4fcb2dd6642b550bf5bc1e61183a3f452ad20ae0f4dfbb41537d4aa",
+      "build_provenance_sha256": "f7393f632528708b2e4f01dcad1cbb7e35653cd5e987197fe838e50d12b19daa",
+      "builder": "rust-star/build_benchmark_oracle.py",
+      "cflags": "-O3 -ffast-math -g -mcpu=native -Wall -Wextra -std=c99",
+      "command": [
+        "python3",
+        "rust-star/build_benchmark_oracle.py",
+        "--oracle-version",
+        "oracle-v4",
+        "--output",
+        "$ORACLE_BUILD",
+        "--jobs",
+        "4"
+      ],
+      "compiler": "Apple clang 21.0.0 (clang-2100.1.1.101)",
+      "objcflags": "-O3 -ffast-math -g -mcpu=native -Wall -Wextra -fobjc-arc",
+      "source_overlay": "none in content; benchmark driver equals pinned oracle-v4 source"
+    },
+    "executable_sha256": "e9d9595c37aded826edd3a4c16b49ff854a4da285996dab4486063a1ca57abda",
+    "model_sha256": "ca22ae2f838e14077c22bc1c1417b71b45b5e5a3687bd96c2ac6e17fdb6261c0",
+    "prompt_sha256": "f53e0d80cb2d4492d24ebd63c7000c397b16ae70f9bf09b3763e5d8323ec209f",
+    "runtime_configuration": {
+      "backend_flag": "--metal",
+      "compressor_dependency": "accepted host-waited projection-to-read boundary",
+      "correctness_instrumentation": false,
+      "csv_timing_precision_digits": 9,
+      "decode_step": "eval plus resulting-token argmax and commitment",
+      "frontier_mode": "single exact context",
+      "initial_selection_charged_to_prefill": true,
+      "oracle_version": "oracle-v4",
+      "prefill_chunk_tokens": 4096,
+      "sampling": "greedy argmax excluding EOS",
+      "sampling_in_interval": true,
+      "streaming_topk_count_snapshot_barrier": true,
+      "warm_weights": true
+    },
+    "source_commit": "df99eba7f722f8170dc2960b8b4666f73818a5ba",
+    "source_tree": "14ffb83c44382662fb02a4fe50d713dd55827726"
+  },
+  "protocol": "rust-star-paired-benchmark-v1",
+  "schema": "rust-star-paired-summary-v1",
+  "source_path": "paired-raw.json"
+}

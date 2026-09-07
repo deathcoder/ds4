@@ -22,7 +22,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output", required=True, type=Path)
     parser.add_argument("--jobs", type=int, default=4)
-    parser.add_argument("--oracle-version", choices=["oracle-v3", "oracle-v4", "oracle-v5"], default="oracle-v4")
+    parser.add_argument("--oracle-version", choices=["oracle-v3", "oracle-v4", "oracle-v5"], default="oracle-v5")
     args = parser.parse_args()
     source_ref = ORACLE_SOURCES[args.oracle_version][0]
     if args.jobs < 1:
@@ -35,7 +35,7 @@ def main() -> None:
     names = subprocess.check_output(
         ["git", "ls-tree", "-r", "--name-only", source_ref], cwd=root, text=True
     ).splitlines()
-    sources = [name for name in names if name == "Makefile" or name.startswith("metal/")
+    sources = [name for name in names if name == "Makefile" or name.startswith(("metal/", "third_party/"))
                or ("/" not in name and Path(name).suffix in {".c", ".h", ".m", ".inc"})]
     archive = subprocess.check_output(["git", "archive", source_ref, "--", *sources], cwd=root)
     with tarfile.open(fileobj=io.BytesIO(archive)) as tar:

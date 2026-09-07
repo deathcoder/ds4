@@ -55,8 +55,15 @@ GPU scheduling test reproduces the error; a count-snapshot barrier fixes it.
 The explicit `oracle-v4` source is `df99eba7f722f8170dc2960b8b4666f73818a5ba`
 (tree `14ffb83c44382662fb02a4fe50d713dd55827726`). It passes official correctness
 checks and four fresh captures at both 2K and 32K, preserving every immutable
-FP32 target word. Use v4 for new captures; v3 and earlier producers remain
-historical. Existing fixture identities are not retroactively changed.
+FP32 target word. V4 remains historical evidence. Oracle-v5 supersedes it for
+new captures:
+source `ccbd16d36895ef9fe8edf7f793014988ff1ab7f4`, tree
+`a0a33f4a00c3c78cd40350785485203e7c6b0b1d`, based on upstream c0a6119f.
+It passes official gates, four repeated 2K/32K captures, 8K equivalence and two
+full 129-row traces. Deterministic argsort/merge explains the changed 32K prefill
+target; generated token IDs stay identical. Independently repeated internal
+HC targets through 24K are explicitly versioned too. Existing fixture producer
+identities and historical results are never retroactively changed.
 
 
 ## Deliberate Initial Non-Goals
@@ -166,7 +173,8 @@ The first `oracle-v3` attempt rejected an asynchronous split after its first
 two 32K repetitions differed. Accepted `oracle-v3` uses producer commit
 `d35fb12d01d500b9cefcef24092c295687ceaf7e`, adds an explicit host wait at the
 compressor dependency boundary, and passed four exact fresh processes at both
-2K and 32K. Oracle-v4 supersedes that producer for new work, as recorded above.
+2K and 32K. Oracle-v4 subsequently superseded that producer; oracle-v5 is now
+current, as recorded above.
 
 Conformance and performance are separate run modes:
 
@@ -344,6 +352,13 @@ they describe whenever practical.
 
 ## Open Items
 
+The completed upstream-refresh baseline is
+`rust-star/reports/32k-upstream-v5-cc032078/README.md`: median Rust/reference
+prefill 423.152/172.875 s; steady decode 20.484/19.507 tokens/s. Rust peak
+process memory is 92.300 GiB, up from the previous campaign’s 87.585 GiB.
+Its largest profiled GPU stage group is `even/attention`; target that cost next.
+Oracle-v5 is current; the previous v4 optimization remains historical evidence.
+
 Current implementation boundaries, evidence, and immediate actions are maintained
 in `RUST_STAR_JOURNAL.md`. As of 2026-09-07, native 32K prefill is exact through
 all 43 layers and the output head. Both diagnostic and output-only executions
@@ -357,10 +372,9 @@ continuation remain established controls.
   falls 813.107 to 521.130 s (35.91% less latency across campaigns), versus
   reference 184.333 s. Decode remains near parity (19.752 / 19.595 tokens/s).
   A host restart interrupted the last pair; complete-pair rerun and original
-  evidence are disclosed. Upstream review now prioritizes a controlled oracle-v5
-  refresh and applicable M1/Q2 ports before further attention tuning. Pin the
-  upstream snapshot, explain output changes, preserve historical targets and
-  establish a fresh baseline before selecting the next local optimization.
+  evidence are disclosed. The subsequent oracle-v5 refresh is complete, as
+  recorded above. Preserve
+  this historical optimization report and use the new baseline for further work.
 - Internal HC targets repeat through 24K. Instrumented 28K/32K captures are
   explicitly unverified; they do not replace the mandatory full-output C0 gate.
 - Preserve production batch arithmetic, GPU-owned history, exact shorter

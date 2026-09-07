@@ -1,0 +1,135 @@
+{
+  "passed": true,
+  "source_commit": "ccbd16d36895ef9fe8edf7f793014988ff1ab7f4",
+  "executable_sha256": "a4056d7297bd0a6de8e46fac294e7913d9bc8c96465e5d68f1b6ef6471e49aa0",
+  "hash_tool_sha256": "ffd7c053dc1f47f4650ba88f96393bb548361f31828d9efd3e99d69e8beeecb1",
+  "hash_tool_source_sha256": "3c3d11efa5bcd7f19a42721f2de5e452490dde6fe79c22656ed9b86994b2657b",
+  "contexts": [
+    12288,
+    16384,
+    20480,
+    24576
+  ],
+  "fresh_repetitions_per_context": 2,
+  "layers_per_context": 43,
+  "scope": "complete4096-row hc_ffn_post tensors; full frontier outputs also repeated",
+  "records": [
+    {
+      "frontier": 16384,
+      "repeat": "a",
+      "full_hc_layers": 43,
+      "full_hc_bytes_per_layer": 268435456,
+      "hashes_sha256": "b7b434054442c8ce61cf9d9c101e8ddf27ee8a3c57d11dad7eab6e7302983ad3",
+      "logits_sha256": "058360a4e54c48bf9acb5c68340ff9ddd2511b72d4d3c6c2343a0fb55a5317d6",
+      "finished_utc": "2026-09-07T07:52:49.126804+00:00"
+    },
+    {
+      "frontier": 16384,
+      "repeat": "b",
+      "full_hc_layers": 43,
+      "full_hc_bytes_per_layer": 268435456,
+      "hashes_sha256": "b7b434054442c8ce61cf9d9c101e8ddf27ee8a3c57d11dad7eab6e7302983ad3",
+      "logits_sha256": "058360a4e54c48bf9acb5c68340ff9ddd2511b72d4d3c6c2343a0fb55a5317d6",
+      "finished_utc": "2026-09-07T07:54:25.339933+00:00"
+    },
+    {
+      "frontier": 20480,
+      "repeat": "a",
+      "full_hc_layers": 43,
+      "full_hc_bytes_per_layer": 268435456,
+      "hashes_sha256": "eaa40d6f122c4fb4180043013b793d539424a958fc5d49851901532debfcee9d",
+      "logits_sha256": "a24644376af4a2ac269f03809e0c419ba1b6a4c30860db6bfa3ffefcabb4a89a",
+      "finished_utc": "2026-09-07T07:56:24.117129+00:00"
+    },
+    {
+      "frontier": 20480,
+      "repeat": "b",
+      "full_hc_layers": 43,
+      "full_hc_bytes_per_layer": 268435456,
+      "hashes_sha256": "eaa40d6f122c4fb4180043013b793d539424a958fc5d49851901532debfcee9d",
+      "logits_sha256": "a24644376af4a2ac269f03809e0c419ba1b6a4c30860db6bfa3ffefcabb4a89a",
+      "finished_utc": "2026-09-07T07:58:23.279094+00:00"
+    },
+    {
+      "frontier": 24576,
+      "repeat": "a",
+      "full_hc_layers": 43,
+      "full_hc_bytes_per_layer": 268435456,
+      "hashes_sha256": "2a72e92cc6b1734013ee6cc0dcaefa08ca5a08279a30564fc2e8d6a37786971c",
+      "logits_sha256": "d395b3943989e8c6ebf68fc2411794734a0fe94646ac1bf1f3cd26088e7bcfa4",
+      "finished_utc": "2026-09-07T08:00:44.760036+00:00"
+    },
+    {
+      "frontier": 24576,
+      "repeat": "b",
+      "full_hc_layers": 43,
+      "full_hc_bytes_per_layer": 268435456,
+      "hashes_sha256": "2a72e92cc6b1734013ee6cc0dcaefa08ca5a08279a30564fc2e8d6a37786971c",
+      "logits_sha256": "d395b3943989e8c6ebf68fc2411794734a0fe94646ac1bf1f3cd26088e7bcfa4",
+      "finished_utc": "2026-09-07T08:03:06.006873+00:00"
+    },
+    {
+      "frontier": 12288,
+      "repeat": "a",
+      "full_hc_layers": 43,
+      "full_hc_bytes_per_layer": 268435456,
+      "hashes_sha256": "313c30c5c500deac8557f0ea59e9888c20251c0e45239e704778796386083f37",
+      "logits_sha256": "3b872f3007b75da493e09481bf17666cbd093df8ce3bb4dc0a50a049316c43eb",
+      "finished_utc": "2026-09-07T08:04:20.251376+00:00"
+    },
+    {
+      "frontier": 12288,
+      "repeat": "b",
+      "full_hc_layers": 43,
+      "full_hc_bytes_per_layer": 268435456,
+      "hashes_sha256": "313c30c5c500deac8557f0ea59e9888c20251c0e45239e704778796386083f37",
+      "logits_sha256": "3b872f3007b75da493e09481bf17666cbd093df8ce3bb4dc0a50a049316c43eb",
+      "finished_utc": "2026-09-07T08:05:34.379802+00:00"
+    }
+  ],
+  "historical_changed_layers": {
+    "12288": [],
+    "16384": [
+      34,
+      35,
+      36,
+      37,
+      38,
+      39,
+      40,
+      41,
+      42
+    ],
+    "20480": [
+      35,
+      36,
+      37,
+      38,
+      39,
+      40,
+      41,
+      42
+    ],
+    "24576": [
+      35,
+      36,
+      37,
+      38,
+      39,
+      40,
+      41,
+      42
+    ]
+  },
+  "configuration": {
+    "backend": "metal",
+    "prefill_chunk": 4096,
+    "gen_tokens": 0,
+    "prompt": "speed-bench/promessi_sposi.txt",
+    "dump_name": "hc_ffn_post",
+    "dump_position": "frontier-4096",
+    "all_layers": true,
+    "performance_enabled": false
+  },
+  "payload_retention": "Full tensors compacted after SHA256/FNV inventories; both independent inventories and full frontier logits retained in private capture evidence."
+}

@@ -1,0 +1,22 @@
+{
+  "at_utc": "2026-09-07T10:45:07.821229+00:00",
+  "thermal": "Note: No thermal warning level has been recorded\nNote: No performance warning level has been recorded\nNote: No CPU power status has been recorded",
+  "thermal_exit": 0,
+  "swap": "vm.swapusage: total = 1024.00M  used = 25.25M  free = 998.75M  (encrypted)",
+  "swap_exit": 0,
+  "uptime": "12:45  up  5:09, 4 users, load averages: 2.59 2.42 2.45",
+  "uptime_exit": 0,
+  "power_configuration": "AC Power:\n Sleep On Power Button 1\n autorestartatconnect 0\n standby              0\n powernap             1\n ttyskeepawake        1\n womp                 1\n displaysleep         10\n networkoversleep     0\n sleep                1\n autorestart          0\n tcpkeepalive         1\n disksleep            10",
+  "displays": [
+    {
+      "chip": "Apple M1 Ultra",
+      "cores": "48",
+      "screens": [
+        {
+          "resolution": "2560 x 1440 @ 60.00Hz",
+          "online": "spdisplays_yes"
+        }
+      ]
+    }
+  ]
+}

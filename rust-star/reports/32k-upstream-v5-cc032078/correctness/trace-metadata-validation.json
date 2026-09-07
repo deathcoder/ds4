@@ -1,0 +1,1 @@
+{"passed": true, "rows": 258, "backend": "metal", "quant_bits": 2, "vocab": 129280, "frontier_start": 32768, "frontier_end": 32896}

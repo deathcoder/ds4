@@ -1,15 +1,16 @@
 # Rust Star Oracle Capture
 
 This directory contains versioned oracle capture tools. Use
-`capture_oracle_v4.py` for new captures on the target M1 Ultra. V4 repairs a
-streaming top-k count race and includes sampling in benchmark timers; four
-fresh 2K/32K captures preserve all immutable target words. Earlier capture
-wrappers remain for historical reproduction. Current runtime validation and
-benchmark status are maintained in `../RUST_STAR_JOURNAL.md`.
-The completed [32K/128 baseline report](reports/32k-baseline-cbb078bb/README.md)
-records five valid pairs, exact correctness gates, the separate profile, and
-portable evidence verification. Decode is near parity; prefill is the next
-measured optimization target.
+`capture_oracle_v5.py` for new captures on the target M1 Ultra. V5 pins upstream
+c0a6119f with sampling-inclusive benchmark timing and hardware-aware official
+tests. Four 2K/32K repeats, 8K equivalence and two complete 128-step traces pass.
+Changed 32K and internal targets have new versions; historical fixtures remain
+immutable. Current status is maintained in `../RUST_STAR_JOURNAL.md`.
+
+The [upstream-refresh baseline report](reports/32k-upstream-v5-cc032078/README.md) includes
+five pairs, the complete C0/lifecycle gates, an isolated profile and a standalone
+verifier with the full v5 output tensors. Median Rust/reference prefill is
+423.152/172.875 s; steady decode is 20.484/19.507 tokens/s.
 
 The capture does not need network access, GitHub credentials, SSH keys, or any
 other secret. It records only an allowlist of hardware and toolchain fields; it
@@ -575,23 +576,19 @@ Project controls and benchmark contracts:
 
 ## Quick capture
 
-Clone the published research branch on the Mac Studio, then run:
+From this research checkout on the target Mac Studio, run:
 
 ```sh
-git clone --branch agent/rust-star-bootstrap \
-  https://github.com/deathcoder/ds4.git rust-star-ds4
-cd rust-star-ds4
-
-python3 rust-star/capture_oracle_v1.py \
+python3 rust-star/capture_oracle_v5.py \
   --model /absolute/path/to/DeepSeek-V4-Flash-0731-Q2-imatrix.gguf
 ```
 
 The default capture uses 2K and 32K context frontiers with three timed
-repetitions each. It:
+repetitions each and four independent conformance repetitions per frontier. It:
 
 1. hashes the complete model;
 2. records a privacy-filtered hardware, macOS, and toolchain manifest;
-3. exports and builds an isolated copy of pinned upstream commit `b030961`;
+3. exports and builds an isolated copy of pinned oracle-v5 commit `ccbd16d` (upstream `c0a6119f`);
 4. runs the existing Metal-kernel and official logprob-vector correctness gates;
 5. captures full FP32 frontier logits in separate, untimed conformance runs;
 6. runs repeated batch-one DwarfStar benchmarks; and
@@ -605,8 +602,8 @@ logit artifacts.
 At completion the script prints paths similar to:
 
 ```text
-Results: rust-star/results/oracle-v1-YYYYMMDDTHHMMSSZ
-Archive: rust-star/results/oracle-v1-YYYYMMDDTHHMMSSZ.tar.gz
+Results: rust-star/results/oracle-v5-YYYYMMDDTHHMMSSZ
+Archive: rust-star/results/oracle-v5-YYYYMMDDTHHMMSSZ.tar.gz
 SHA-256: ...
 ```
 
@@ -617,7 +614,7 @@ You can verify the completed archive before sending it:
 
 ```sh
 python3 rust-star/verify_oracle_bundle.py \
-  rust-star/results/oracle-v1-TIMESTAMP.tar.gz
+  rust-star/results/oracle-v5-TIMESTAMP.tar.gz
 ```
 
 The verifier automatically uses the sibling `.sha256` file. See
@@ -629,7 +626,7 @@ After the quick capture succeeds, run the extended frontier set with five
 repetitions:
 
 ```sh
-python3 rust-star/capture_oracle_v1.py \
+python3 rust-star/capture_oracle_v5.py \
   --model /absolute/path/to/model.gguf \
   --full \
   --repetitions 5
@@ -642,7 +639,7 @@ first and close other memory-heavy applications before the extended capture.
 For a custom subset:
 
 ```sh
-python3 rust-star/capture_oracle_v1.py \
+python3 rust-star/capture_oracle_v5.py \
   --model /absolute/path/to/model.gguf \
   --contexts 2048,32768,131072,262144 \
   --repetitions 5 \
@@ -659,7 +656,7 @@ Useful options:
 - `--dry-run`: print the plan without hashing, building, or running the model.
 
 Skipping a section is recorded in the manifest and does not produce a complete
-`oracle-v1` capture.
+`oracle-v5` capture.
 
 ## Artifact semantics
 

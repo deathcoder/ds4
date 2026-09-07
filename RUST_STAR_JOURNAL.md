@@ -18,6 +18,60 @@ Before changing code:
 Journal entries are reverse chronological. Do not edit old entries to change
 history; add a correction and update the current-state summary.
 
+## 2026-09-07 — Final packaging and regression checks pass
+
+- Default oracle-v5 builder now includes pinned third-party image-decoder
+  headers and license. Fresh build passes; all 72 exported files match the
+  pinned source tree, including all 69 files inventoried for the measured
+  reference. Measured executables are unchanged. Failed and corrected build
+  logs, provenance and exporter are included in the report.
+- Final full Python suite passes 93 tests. Report verification additionally
+  checks builder provenance, dependencies and these final regression results.
+- Upstream-refresh milestone is complete. Final standalone verification passes
+  all 193 artifacts; current docs and capture commands use oracle-v5.
+
+## 2026-09-07 — Final default-builder packaging check
+
+- All measurements, profile and the 187-artifact standalone report audit pass.
+  A final default-v5 builder smoke check found its source exporter omitted
+  upstream's new `third_party/iris` image-decoder headers. Measured reference
+  came from the complete pinned tree, so numerical and timing evidence is
+  unaffected. Failed log retained under refresh W `default-v5-builder.log`.
+- Export pinned `third_party/` dependencies with the existing native sources;
+  validate a fresh default build before closing the milestone. No runtime or
+  oracle source changes; no new model run is required for this packaging fix.
+
+## 2026-09-07 — Upstream refresh and oracle-v5 baseline milestone complete
+
+- Completed pinned upstream c0a6119f refresh, oracle-v5 ccbd16d acceptance,
+  applicable resident M1/Q2 deterministic-selector port, complete correctness
+  and retained lifecycle gates, five fresh paired measurements and separate
+  profile. Durable report and standalone tensor/evidence verifier: `rust-star/reports/32k-upstream-v5-cc032078/`.
+- Median Rust/reference prefill 423.152/172.875 s; steady decode
+  20.484/19.507 tokens/s. Full distributions and paired ratios are in the report. These
+  remain 32K development results, not the 256K primary workload.
+- Four repeated 2K/32K reference frontiers, final 8K control, exact tokenizer,
+  two full 129-row traces and two full HC inventories at each 12K–24K pass.
+  New 32K prefill target is exactly reproduced by the selector-only v4 control;
+  all 129 selected IDs remain unchanged. All historical targets are preserved.
+- The initial Rust diagnostic stopped on historical 16K layer 34 HC. Direct v5
+  captures reproduced Rust, establishing separately versioned internal targets.
+  A separate 8K selector fixture also versions four equal-score index swaps
+  proven by two direct v5 captures; score inputs and selected sets are unchanged.
+  All stopped attempts and successful full-output runs remain in evidence.
+- Final Rust candidate `cc032078748ad4c450717b1cfd4e734fd57cf9e6` passes 310 Rust and 93 Python
+  tests, both fresh full 32K modes, 12K internal/2K/8K controls and two retained
+  cycles. Both full-output gates match v5 exactly. Internal HC
+  acceptance stays through 24K; later internals are not claimed as oracle-exact.
+- Peak Rust memory is 92.300 GiB versus 87.585 GiB in the previous campaign;
+  the reference is 80.893 GiB. Track this tradeoff in the next optimization.
+- Candidate SHA `e87354b9f0ed3e2f30ac1b3584d7f03a255bbb715664dc452e29953b205bd706`;
+  reference SHA `a4056d7297bd0a6de8e46fac294e7913d9bc8c96465e5d68f1b6ef6471e49aa0`;
+  original plan SHA `915d68eda1ebf4f619f3767a2003af7baa01a21d616612dc283e221ddf94e8cc`.
+- Profile's largest GPU stage group: `even/attention`. Next local milestone should
+  reduce that measured cost while preserving full v5 outputs and lifecycle.
+  No additional optimization or broader-context performance claim is included.
+
 ## 2026-09-07 — Five refreshed baseline pairs pass; profile running
 
 - Both warmups and all five alternating pairs passed on attempt 1. No timed
@@ -2365,32 +2419,33 @@ Next:
 
 ### Current resume checkpoint (updated 2026-09-07)
 
-- Authorized milestone: complete the pinned upstream refresh, oracle-v5,
-  applicable resident M1/Q2 port, full validation and fresh paired baseline.
-- Accepted reference source `ccbd16d36895ef9fe8edf7f793014988ff1ab7f4`,
-  tree `a0a33f4a00c3c78cd40350785485203e7c6b0b1d`, upstream `c0a6119f`.
-  Four 2K/32K repeats, two complete 129-row traces, tokenizer and 8K controls
-  pass. Internal HC targets are independently repeated through 24K.
-- Final Rust candidate `cc032078748ad4c450717b1cfd4e734fd57cf9e6` passes
-  310 Rust and 93 Python tests and all six live gates: detailed 8K, 12K, 2K,
-  output-only 32K, diagnostic 32K, and retained two-cycle reset/reuse.
-- Candidate SHA `e87354b9f0ed3e2f30ac1b3584d7f03a255bbb715664dc452e29953b205bd706`;
-  oracle SHA `a4056d7297bd0a6de8e46fac294e7913d9bc8c96465e5d68f1b6ef6471e49aa0`.
-  Runtime uses deterministic argsort/merge and keeps batched even-layer tails.
-- Frozen plan SHA `915d68eda1ebf4f619f3767a2003af7baa01a21d616612dc283e221ddf94e8cc`.
-  Campaign `rust-star/.work/paired-32k-128-cc032078-v5/` has passed both warmups
-  and all five pairs on attempt 1. The isolated profile is running; independent
-  audit and report export follow.
-  No builds or heavy tests during the timed block; one model process at a time.
-- Coordinator `rust-star/.work/upstream-refresh-1190237b/finish-milestone.py`
-  continues measurement, profile, audit and report export. Final documentation
-  updates, report review and commit remain after its completion marker.
-- All stale HC/selector/dispatch diagnostic attempts are retained with their
-  independent reference evidence. Historical fixtures and reports are immutable.
-  28K/32K internal HC is diagnostic-only; full output C0 remains mandatory.
-- This is a 32K development baseline. Broader contexts, 256K headline workload
-  and coding-agent co-design remain future work. Previous optimized v4 report:
-  `rust-star/reports/32k-prefill-dd0d26c5/` (host restart disclosed).
+- Default v5 exporter smoke build passes with all pinned third-party headers
+  and license. All 72 exported files match the reference tree; final Python
+  suite passes 93 tests. Measured binaries remain unchanged.
+
+- Authorized upstream-refresh milestone is complete. Accepted oracle-v5 source
+  ccbd16d/tree a0a33f4 is pinned to upstream c0a6119f. Rust candidate
+  `cc032078748ad4c450717b1cfd4e734fd57cf9e6` uses deterministic argsort/merge and retains
+  batched even-layer tails. No pending layer implementation or validation gate.
+- Audited report: `rust-star/reports/32k-upstream-v5-cc032078/README.md`; run its `verify.py` without the model.
+  Five valid alternating pairs, two warmups and one separate complete profile.
+  Median Rust/reference prefill 423.152/172.875 s; steady decode 20.484/19.507 tokens/s.
+- Reference: four 2K/32K repeats, 8K control, tokenizer identity, two full 129-row
+  traces and two full HC inventories per 12K/16K/20K/24K. Rust: 310/93 tests,
+  both 32K full-logit modes, 12K/2K/8K controls and retained two-cycle lifecycle.
+- Explicit v5 fixtures replace current 32K and later internal targets; v3/v4
+  fixtures and reports remain immutable. Initial stale 16K checkpoint failure
+  is retained and directly attributed to reference-version drift, not waived.
+- Rust peak process memory is 92.300 GiB (previous campaign: 87.585 GiB);
+  reference: 80.893 GiB. Track peak memory alongside performance.
+- Largest profiled GPU stage group: `even/attention`. Use this fresh baseline for
+  the next optimization. Broader contexts and 256K headline work remain future.
+- Frozen candidate SHA `e87354b9f0ed3e2f30ac1b3584d7f03a255bbb715664dc452e29953b205bd706`;
+  oracle SHA `a4056d7297bd0a6de8e46fac294e7913d9bc8c96465e5d68f1b6ef6471e49aa0`;
+  plan SHA `915d68eda1ebf4f619f3767a2003af7baa01a21d616612dc283e221ddf94e8cc`. Work: `rust-star/.work/upstream-refresh-1190237b/`.
+- Prior optimized v4 report remains `rust-star/reports/32k-prefill-dd0d26c5/`;
+  its host-restart disclosure and earlier baseline remain unchanged. Cross-
+  campaign comparisons are descriptive, not isolated causal speedup claims.
 
 ### Accumulated implementation and measurement evidence
 
@@ -3141,21 +3196,19 @@ Next:
 
 ## Immediate Next Actions
 
-1. Finish the active upstream-refresh milestone: the frozen v5 campaign has
-   five valid pairs; the isolated profile is running. Complete the profile,
-   independent audit and portable report, then update current docs and
-   commit. All reference, Rust full C0 and lifecycle gates already pass.
-2. Preserve 2K/8K controls, the complete 32K output trace, GPU selection/history
-   and reset/reuse. Internal HC acceptance remains through 24K. Do not repeat
-   completed implementation layers or alter the frozen candidate during timing.
-3. Use accepted oracle-v5 for new captures. Preserve historical fixture producer
-   identities and all failed/interrupted attempts. Never resume rejected plans.
-4. Select the next optimization from the refreshed profile. Broader contexts,
-   the 256K primary headline and coding-agent co-design remain future work.
-5. Run one large model process at a time, keep disk use bounded, and update the
-   journal at each meaningful step. No builds or heavy tests during timed pairs.
-6. GitHub Actions billing lock and deferred secure remote access remain in
-   the manual task ledger.
+1. The upstream-refresh milestone is complete. Review `rust-star/reports/32k-upstream-v5-cc032078/README.md`.
+   Next meaningful local milestone: optimize the measured `even/attention` cost,
+   preserving exact v5 outputs and the retained-engine lifecycle, then use a
+   fresh paired campaign to measure the change. Do not repeat completed layers.
+2. Use oracle-v5 for new captures. Preserve all historical fixture identities,
+   old benchmark reports and failed attempts. Current internal HC acceptance
+   ends at 24K; full 32K prefill and 128-step output checks remain mandatory.
+3. Broader native contexts and the 256K primary headline remain future work.
+   Define the coding-agent workload corpus before agent co-design claims.
+4. Run one large model process at a time, keep disk use bounded, and update this
+   journal at each meaningful step. Never resume a rejected benchmark plan.
+5. GitHub Actions billing lock and deferred secure remote access remain in the
+   manual task ledger.
 
 ## Entries
 

@@ -1,0 +1,96 @@
+{
+  "schema": "rust-star-differential-fixture-v1",
+  "fixture_id": "dwarfstar-oracle-v5-prefill-indexer-selector-4128",
+  "captured_at_utc": "2026-09-07T08:37:01.128166+00:00",
+  "oracle": {
+    "id": "oracle-v5",
+    "repository": "https://github.com/deathcoder/ds4.git",
+    "commit": "ccbd16d36895ef9fe8edf7f793014988ff1ab7f4",
+    "tree": "a0a33f4a00c3c78cd40350785485203e7c6b0b1d",
+    "capture_executable_sha256": "a4056d7297bd0a6de8e46fac294e7913d9bc8c96465e5d68f1b6ef6471e49aa0"
+  },
+  "model": {
+    "family": "DeepSeek-V4-Flash-0731",
+    "sha256": "ca22ae2f838e14077c22bc1c1417b71b45b5e5a3687bd96c2ac6e17fdb6261c0"
+  },
+  "capture": {
+    "passed": true,
+    "source_commit": "ccbd16d36895ef9fe8edf7f793014988ff1ab7f4",
+    "executable_sha256": "a4056d7297bd0a6de8e46fac294e7913d9bc8c96465e5d68f1b6ef6471e49aa0",
+    "fresh_repetitions": 2,
+    "production_prefill_tokens": 8192,
+    "prefill_chunk": 4096,
+    "layer": 2,
+    "position_range": [
+      4128,
+      4159
+    ],
+    "score_inputs_match_historical_fixture": true,
+    "rows": [
+      {
+        "scores_sha256": "38d9d04a96ba5bd8be94ce82b91a6927a7a7c0a53553e6efcdd7d8a35b1b90c9",
+        "topk_sha256": "3f8b6f18a2eb87c56fa49f29a24c1ceb4647642129d079926a17963cab7dacc7",
+        "full_scores_sha256": "f8e44be5ac093a6257fc9dafb08f04e9555560dcbda17e083b819adf111f1808",
+        "full_topk_sha256": "13aa630f991af332b1c54608cd2e4275a5643bcfc79878cb28f59db0ba7f09fb"
+      },
+      {
+        "scores_sha256": "38d9d04a96ba5bd8be94ce82b91a6927a7a7c0a53553e6efcdd7d8a35b1b90c9",
+        "topk_sha256": "3f8b6f18a2eb87c56fa49f29a24c1ceb4647642129d079926a17963cab7dacc7",
+        "full_scores_sha256": "f8e44be5ac093a6257fc9dafb08f04e9555560dcbda17e083b819adf111f1808",
+        "full_topk_sha256": "13aa630f991af332b1c54608cd2e4275a5643bcfc79878cb28f59db0ba7f09fb"
+      }
+    ],
+    "captured_at_utc": "2026-09-07T08:37:01.128166+00:00",
+    "backend": "metal",
+    "machine": "Apple M1 Ultra,48 GPU cores,128 GB unified memory",
+    "performance_enabled": false
+  },
+  "scope": {
+    "kind": "layer-segment",
+    "phase": "prefill",
+    "layer": 2,
+    "position": 4159,
+    "captured_position_range": [
+      4128,
+      4159
+    ],
+    "tile_rows": 32
+  },
+  "operations": [
+    {
+      "name": "deterministic_indexer_selection",
+      "kernel": "kernel_argsort_f32_i32_desc+kernel_argsort_merge_f32_i32_desc"
+    }
+  ],
+  "tensors": [
+    {
+      "name": "scores-tile",
+      "hook": "indexer_scores",
+      "role": "input",
+      "dtype": "i32",
+      "shape": [
+        32,
+        2048
+      ],
+      "encoding": "little-endian-signed-integer32",
+      "path": "scores-tile-bits.i32le.bin",
+      "bytes": 262144,
+      "sha256": "38d9d04a96ba5bd8be94ce82b91a6927a7a7c0a53553e6efcdd7d8a35b1b90c9",
+      "value_semantics": "ieee754-binary32-bit-pattern; causal masking includes negative infinity"
+    },
+    {
+      "name": "topk-tile",
+      "hook": "indexer_topk",
+      "role": "output",
+      "dtype": "i32",
+      "shape": [
+        32,
+        512
+      ],
+      "encoding": "little-endian-signed-integer32",
+      "path": "topk-tile.i32le.bin",
+      "bytes": 65536,
+      "sha256": "3f8b6f18a2eb87c56fa49f29a24c1ceb4647642129d079926a17963cab7dacc7"
+    }
+  ]
+}

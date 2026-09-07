@@ -1177,18 +1177,18 @@ collection and output-fixture decoding during timed prefill. Its retained
 cycle reuses the Metal context/model residency and records zero context
 creation time. It still rebuilds request-local KV state.
 
-Fresh32K normalized measurement, both retained32K reset/reuse cycles and
-full 2K/8K controls pass. Native32K even-layer tails now run once per 4K
-chunk after retaining the existing 32-token attention tiles. All full-output
-C0 gates pass; arithmetic kernels and oracle-v4 remain unchanged.
+Oracle-v5 refresh is complete. Native 32K even-layer tails still run once per 4K
+chunk after the 32-token attention tiles. Both selector sites now use upstream
+argsort/merge; full 32K prefill and 128 decode steps match the new v5 targets
+exactly. Independently repeated v5 internal checkpoints are accepted through
+24K, with 2K/8K controls and both retained reset/reuse cycles passing.
 
-The audited [prefill report](../reports/32k-prefill-dd0d26c5/README.md) records
-five complete pairs: median Rust prefill 521.130 s versus 184.333 s reference,
-down 35.91% from the [earlier baseline](../reports/32k-baseline-cbb078bb/README.md).
-Decode remains near parity (19.752 / 19.595 tokens/s). A host restart required
-a complete final-pair rerun, with interrupted evidence retained. Even-layer
-attention is now the largest measured stage. The next recommended milestone
-is an upstream/oracle refresh and fresh baseline before further local tuning.
+The audited [v5 baseline](../reports/32k-upstream-v5-cc032078/README.md) records five pairs:
+median Rust/reference prefill 423.152/172.875 s; steady decode 20.484/19.507
+tokens/s. Rust peak process memory is 92.300 GiB. Its separate profile
+identifies `even/attention` as the largest GPU
+stage group. Use this baseline for the next optimization; historical v4 reports
+and the stale diagnostic-target failures remain preserved.
 
 At 32K, `engine-profile` also records `long_prefill_profile` rows for native
 prefill stages: host elapsed time, existing command wall time, GPU time and

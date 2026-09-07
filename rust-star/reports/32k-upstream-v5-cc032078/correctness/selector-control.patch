@@ -1,0 +1,39 @@
+--- v4/ds4_metal.m
++++ selector-control/ds4_metal.m
+@@ -16650,35 +16650,7 @@
+             fprintf(stderr, "ds4: Metal graph indexer top-k received undersized buffers\n");
+             return 0;
+         }
+-        if (top_k == 512u && n_comp > 1024u && n_tokens >= 32u) {
+-            ds4_gpu_kargs_argsort args = {
+-                .ne00 = (int32_t)n_comp,
+-                .ne01 = (int32_t)n_tokens,
+-                .ne02 = 1,
+-                .ne03 = 1,
+-                .nb00 = sizeof(float),
+-                .nb01 = (uint64_t)n_comp * sizeof(float),
+-                .nb02 = (uint64_t)n_comp * n_tokens * sizeof(float),
+-                .nb03 = (uint64_t)n_comp * n_tokens * sizeof(float),
+-                .ne0 = (int32_t)top_k,
+-                .ne1 = (int32_t)n_tokens,
+-                .ne2 = 1,
+-                .ne3 = 1,
+-                .top_k = (int32_t)top_k,
+-            };
+-            int owned = 0;
+-            id<MTLCommandBuffer> cb = ds4_gpu_command_buffer(&owned);
+-            if (!cb) return 0;
+-            id<MTLComputeCommandEncoder> enc = ds4_gpu_compute_encoder(cb);
+-            [enc setComputePipelineState:g_topk_stream512_pipeline];
+-            [enc setBytes:&args length:sizeof(args) atIndex:0];
+-            [enc setBuffer:scorebuf offset:ds4_gpu_tensor_offset(scores) atIndex:1];
+-            [enc setBuffer:selbuf offset:ds4_gpu_tensor_offset(selected) atIndex:2];
+-            [enc dispatchThreadgroups:MTLSizeMake(n_tokens, 1, 1)
+-                 threadsPerThreadgroup:MTLSizeMake(256, 1, 1)];
+-            ds4_gpu_end_compute_encoder(cb, enc);
+-            return ds4_gpu_finish_command_buffer(cb, owned, "indexer streaming top-k");
+-        }
++
+         NSUInteger max_threads = g_argsort_f32_i32_desc_pipeline.maxTotalThreadsPerThreadgroup;
+         if (max_threads == 0) max_threads = 256;
+         int32_t nth = 1;

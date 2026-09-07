@@ -1,0 +1,14 @@
+{
+  "plan_sha256": "915d68eda1ebf4f619f3767a2003af7baa01a21d616612dc283e221ddf94e8cc",
+  "source_commit": "cc032078748ad4c450717b1cfd4e734fd57cf9e6",
+  "model_size": 86720111488,
+  "model_mtime_ns": 1785574798142694474,
+  "model_sha256": "ca22ae2f838e14077c22bc1c1417b71b45b5e5a3687bd96c2ac6e17fdb6261c0",
+  "prompt_sha256": "f53e0d80cb2d4492d24ebd63c7000c397b16ae70f9bf09b3763e5d8323ec209f",
+  "candidate_sha256": "e87354b9f0ed3e2f30ac1b3584d7f03a255bbb715664dc452e29953b205bd706",
+  "oracle_sha256": "a4056d7297bd0a6de8e46fac294e7913d9bc8c96465e5d68f1b6ef6471e49aa0",
+  "benchmark_driver_commit": "ccbd16d36895ef9fe8edf7f793014988ff1ab7f4",
+  "candidate_commit": "cc032078748ad4c450717b1cfd4e734fd57cf9e6",
+  "oracle_commit": "ccbd16d36895ef9fe8edf7f793014988ff1ab7f4",
+  "baseline_plan_sha256": "c251b3c894ce9efeed12cdc9f083bd0329d195fdee6d46dc5a7bfcbb59ab5f80"
+}

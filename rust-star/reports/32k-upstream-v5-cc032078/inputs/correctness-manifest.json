@@ -1,0 +1,71 @@
+{
+  "schema": "rust-star-correctness-manifest-v1",
+  "correctness_class": "C0",
+  "candidate_commit": "cc032078748ad4c450717b1cfd4e734fd57cf9e6",
+  "candidate_executable_sha256": "e87354b9f0ed3e2f30ac1b3584d7f03a255bbb715664dc452e29953b205bd706",
+  "oracle_commit": "ccbd16d36895ef9fe8edf7f793014988ff1ab7f4",
+  "oracle_executable_sha256": "a4056d7297bd0a6de8e46fac294e7913d9bc8c96465e5d68f1b6ef6471e49aa0",
+  "context": 32768,
+  "gen_tokens": 128,
+  "fresh_candidate_full_output_runs": {
+    "batch-32k-output": {
+      "sha256": "ea7a152709d145948fd5710ac1b93212dc93d5a1a2c633e09f9ef31ab1ddd1f1",
+      "full_output_c0": true,
+      "production_gpu_selection_checked": true
+    },
+    "batch-32k-internal": {
+      "sha256": "d1770f72878b3df4eec0275f9af28c207509340c6d77be83d660c857f1542ce9",
+      "full_output_c0": true,
+      "production_gpu_selection_checked": true
+    }
+  },
+  "candidate_build": {
+    "commit": "cc032078748ad4c450717b1cfd4e734fd57cf9e6",
+    "tree": "aa65cf31caee8ff97cbaa17c471e942bd3b72dac",
+    "executable_sha256": "e87354b9f0ed3e2f30ac1b3584d7f03a255bbb715664dc452e29953b205bd706",
+    "sources": {
+      "rust-star/runtime/Cargo.lock": "516cbf27fb072b7f98950ddbb6a3e562641069cf3c4ce12a57410c91cb74481f",
+      "rust-star/runtime/Cargo.toml": "af6d16ca5cf8c14d514043e1136165441d5134cd0f96b251d366a6cb37519c59",
+      "rust-star/runtime/METAL.md": "975d07197a5c6ec837967b97aa002dfebe48c3327b1c9c724c207d9c1b9320f8",
+      "rust-star/runtime/README.md": "7e95c0598d670b669c8b7347245a89a1e8fea8803c76a11a255d75cf3f9ef1f4",
+      "rust-star/runtime/build.rs": "8929d09fb8817b49607a21b5b61fc3c7991e009694999b60b107710d92dae5c2",
+      "rust-star/runtime/examples/write_logit_fixture.rs": "ad498209e52812f37a1fe9fa1790603ff46a0eeebf548015f85a9c7cccab5d0b",
+      "rust-star/runtime/src/artifact.rs": "f8c502ef7b47dbea7787f3a21bba5661da4accc33d4a44bb06db19f9f0cac9ea",
+      "rust-star/runtime/src/attention_ingress.metal": "76a70b1eb6510f897293c9cdc7257d58a69d3a3cb372a0175af24eb8820187f7",
+      "rust-star/runtime/src/attention_output.metal": "92999a85674740404a174c74755d8c4307697e477ca7755063054fe7fc5c0451",
+      "rust-star/runtime/src/ffn_router.metal": "9ccae569e372358381ca18860c2cc039d69aa2b82b1e0601bef78ccef4d43d69",
+      "rust-star/runtime/src/gguf.rs": "234566f4d37368739764841b4dd1b509be9aa3330c3b20025b6436001f71a31c",
+      "rust-star/runtime/src/indexer_argsort.metal": "0c868f5cbf751f889bb73aa5ac8599ff2b4359d9ed9aabd035043550256df790",
+      "rust-star/runtime/src/lib.rs": "b59d7c681493e0bcf0513459274c46ec14c23eb6aabcf656e0a3dd82c2b9ae80",
+      "rust-star/runtime/src/long_prefill.rs": "fae1a13d287dca1e91400168767de529f97dc53f24fe81ddb99cc89ff3e93404",
+      "rust-star/runtime/src/long_prefill_checksums.rs": "a59d695baadd9848ee70dae4510981b2166e6b6f6d5f7e1bb1de5c9749cc3422",
+      "rust-star/runtime/src/main.rs": "d02737636afdb064f847f068a3cb923984e0b1c30d1301918342c072d126dc6d",
+      "rust-star/runtime/src/metal.rs": "19cd8a07fa9b7c1177bb22d66af0f6f621064c4c8d1ced0c937f9eb6a7e33ca6",
+      "rust-star/runtime/src/metal_shim.h": "d0ffd3d1f814edf141b9dd041799d9bec86f512b4321e9b49e8a49f31de03dde",
+      "rust-star/runtime/src/metal_shim.m": "c4ffe45bc02ba69260760b34d090dd468bca780bf16a716303d84b8ade63db71",
+      "rust-star/runtime/src/model.rs": "b5c9f42b1f56461e40474e9819fdd5bfee359ebdeaa121dbe9c33081bf090541",
+      "rust-star/runtime/src/moe_output_prefix.metal": "fd071235d773bfa72a870df223fac3fdb5ce128e51ac5bd10a3abb503184aa03",
+      "rust-star/runtime/src/q8_projection_pair.metal": "347811e00c5e5e52eea1451dfdbc809aa455b4e2a76134f604f5386d0ab40a52",
+      "rust-star/runtime/src/remaining_prefill.rs": "58ff784715cc21a841105cbb3c6449c4d0d2912c43e6aee72b33b803c1b709a6",
+      "rust-star/runtime/src/remaining_prefill_checksums.rs": "9cc602acd4b1d3b930c106b096617661154f23a9e247c0efc15fe09148214edf",
+      "rust-star/runtime/src/sparse_indexed_prefix.metal": "5fa4a992c13a676aa3a3285bb453865c5c16a227fec34a2c9622eae0cf989f28",
+      "rust-star/runtime/src/target.rs": "7dc081b489827feda6dfcab64d5a015d4b7332d4457c06d8904fcf83dbdd87b1"
+    }
+  },
+  "shorter_controls": {
+    "batch-12k": "ad0eb458ea8b6129b012f08a33940b94ede71a28371d605beb50bc86360b1020",
+    "batch-2k": "5fdd44f83a528ffb585c0731da9c3cfc1879d7ef569ed66614ead31701360d35",
+    "batch-8k": "3be7aebc33dee2d80b9ea2438b6139529bc6cce40eb57ec554211dcfcc75c8cc"
+  },
+  "retained_two_cycle_control_sha256": "db5e9c62f8f3dfc332d5fb7381d0cc92cf000e2a7c508e822cfc4abcc76b9724",
+  "rust_tests_passed": 310,
+  "python_tests_passed": 93,
+  "reference_acceptance_manifest_sha256": "1b9b66dd3f5050eebc4c53ed50308b68fa136710c5d97e66d5b2db663129a4e2",
+  "reference_unchanged": false,
+  "reference_evidence": "oracle-v5-acceptance plus two full129-row traces",
+  "reference_trace_sha256": "55a3862cb8287f1b2b7b2fcef9653872b9ab6af0e556e85e5b8e59f9d07cbb10",
+  "internal_hc_accepted_through_tokens": 24576,
+  "later_internal_hc_claim": false,
+  "failure_policy": "stop on first invalid attempt; retain all evidence; no favorable retries",
+  "model_rehashed_before_plan": true
+}
