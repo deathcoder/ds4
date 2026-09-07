@@ -18,6 +18,62 @@ Before changing code:
 Journal entries are reverse chronological. Do not edit old entries to change
 history; add a correction and update the current-state summary.
 
+## 2026-09-08 — Direct dense-Q8 seven gates pass; paired plan frozen
+
+- All seven checks pass on attempt 1, including profiled full 32K prefill/128-decode
+  C0 and independent accounting of all 287 tails / 2,583 component intervals.
+- Frozen paired directory: rust-star/.work/paired-32k-128-92ca3ef3-dense-output/.
+  Plan SHA c046b3e84019aca1e25e8254930743c04f1d250111b17ef779ff6929baf15590.
+  Model/prompt freshly rehashed; oracle executable and copied Metal sources match
+  the pinned manifest. Two warmups, then five AB/BA/AB/BA/AB pairs; no retries.
+- Warmups running. A separate engine profile and independent audit follow pairs.
+  No runtime edits or builds during the block. Retention/report/docs remain pending.
+- Diagnostic component totals: attention output 35.248 s versus 36.173 s in the prior
+  component gate; other major components are similar. This small diagnostic
+  change is not a throughput result. The paired campaign determines the decision.
+- Prepared but DID NOT APPLY proposed-bootstrap-scope.patch and its generator
+  draft-bootstrap-scope.py in the active work directory. Review/apply only after
+  this candidate's measurements, report and retention decision are complete.
+  It scopes the temporary bootstrap to layers 0..2, retains truthful partial-state
+  metadata/optional selection, and preserves the accepted later prefix rebuild.
+
+## 2026-09-08 — All six standard direct dense-Q8 gates pass
+
+- Native 12K, legacy 8K, 2K, both full 32K modes and retained two-cycle reset/reuse
+  pass on attempt 1. The retained test verifies both 128-token transcripts; its
+  same-process timing is deliberately ineligible for paired performance claims.
+- The seventh check, profiled 32K full-output C0 plus component attribution, is
+  running. Only after it passes will the helper freeze and start five paired runs.
+- Paired preparation now rehashes the copied oracle Metal sources against the
+  pinned build manifest as well as checking its executable, model and prompt hashes.
+- No source change or failed live run. Candidate 92ca3ef3 is still unmeasured.
+
+## 2026-09-08 — Direct dense-Q8 internal 32K gate passes; lifecycle running
+
+- Both complete 32K modes now pass every prefill word and all 128 decode tensors.
+  Accepted internal HC targets through 24K match; later HC values remain diagnostic.
+- Five gates pass on attempt 1. Retained two-cycle reset/reuse is running; the
+  profiled full-output gate follows. Runtime 92ca3ef3 remains frozen.
+- Read-only next-step audit suggests the initial monolithic 4K execution performs
+  layers 3..42 and an output head before the correct prefix rebuild recomputes those
+  layers. The rebuild entry requires only completed layers 0..2. Before optimizing,
+  audit ownership/state dependencies and preserve the correct prefix rebuild.
+  Notes: prefix-bootstrap-preflight.md in the active evidence directory.
+- A future 128K oracle dry-run plan was also validated, without starting a model
+  process. It requires 2K/32K controls and four fresh captures per frontier; it
+  covers post-prefill logits only, so separate full-decode trace evidence is needed.
+  Neither future item changes the currently running milestone or source.
+
+## 2026-09-08 — Direct dense-Q8 complete 32K output gate passes
+
+- Candidate 92ca3ef3 matches all 129,280 prefill words and all 16,547,840 FP32
+  decode words over 128 steps against oracle-v5. Prefill checksum 2996662110144943749;
+  decode checksum 1716816788919264169; selected-token checksum 11977321378026793466.
+- All three shorter controls pass too. Internal-mode 32K is running, followed by
+  retained two-cycle reset/reuse and profiled full-output C0. No failed attempt.
+- Performance still unmeasured; keep the frozen source and pending seven-gate
+  runner/measurement plan intact. Work remains active under continuous authorization.
+
 ## 2026-09-08 — Direct dense-Q8 shorter controls all pass
 
 - Native 12K internal states, detailed legacy 8K and complete 2K prefill controls
@@ -2894,10 +2950,13 @@ Next:
 
 ### Current resume checkpoint (updated 2026-09-08)
 
-- Active candidate: direct dense-Q8 native output-low groups, implemented with
-  312 tests/build pass; native 12K/legacy 8K/2K pass; full 32K output gate running, three more queued; measurement
-  follows only if exact. Frozen candidate92ca3ef3; helpers preserve failed attempts.
-  Work: rust-star/.work/dense-output-milestone-9c1d5009/.
+- Active candidate: direct dense-Q8 native output-low groups. Frozen 92ca3ef3,
+  executable f2a0679725b9c21e0946561d42920b1afa82f05208aa66426268b7ecfef13ea9.
+  312 tests/build and all seven live gates pass on attempt 1. Paired plan c046b3e8
+  is frozen; warmups running, five pairs plus separate profile/audit follow.
+  No runtime edits/builds during measurements. Retention/report/docs pending.
+  Work: rust-star/.work/dense-output-milestone-9c1d5009/; paired directory above.
+  An unapplied next-bootstrap draft exists there; resolve this milestone first.
 - Tail component profiling is complete: e7b81aa2, 312 tests, both full-output
   gates and all 2,583 component rows verified. Report:
   rust-star/reports/32k-tail-components-e7b81aa2/README.md (16 verified artifacts).
