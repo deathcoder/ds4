@@ -18,6 +18,13 @@ Before changing code:
 Journal entries are reverse chronological. Do not edit old entries to change
 history; add a correction and update the current-state summary.
 
+## 2026-09-07 — Ingress shorter controls pass; full 32K started
+
+- Native 12K, detailed 8K (all 129,280 logits, selected token 77179) and 2K
+  controls pass for ecf529a9. No changed tensor targets or tolerance.
+- Full 32K output-only validation is running, then diagnostic 32K and two
+  retained-engine reset/reuse cycles. Timed campaign remains gated on all six.
+
 ## 2026-09-07 — Whole-chunk ingress passes native 12K
 
 - Corrected candidate ecf529a9 passes 310 Rust tests, release build and every
@@ -2564,8 +2571,9 @@ Next:
 
 - Active milestone: whole-chunk odd-layer ingress, preserving kernel arithmetic
   and removing native input staging copies. 310 Rust tests and release build pass;
-  corrected ecf529a9 build and native 12K gate pass; legacy 8K running,
-  remaining live gates and measurements pending. Initial metadata failure retained in `rust-star/.work/ingress-milestone-12fb9314/`.
+  corrected ecf529a9 build and 12K/8K/2K gates pass; full 32K output-only
+  gate running. Diagnostic 32K, lifecycle and measurements pending; initial
+  metadata failure retained in `rust-star/.work/ingress-milestone-12fb9314/`.
 
 - Authorized even-layer attention milestone is complete. Native continuation
   attention executes whole 4K chunks with unchanged kernel arithmetic and no
