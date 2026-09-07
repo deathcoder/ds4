@@ -18,6 +18,14 @@ Before changing code:
 Journal entries are reverse chronological. Do not edit old entries to change
 history; add a correction and update the current-state summary.
 
+## 2026-09-07 — All ingress correctness and lifecycle gates pass
+
+- Candidate ecf529a9 passes all six gates, including both full 32K modes and
+  two retained reset/reuse cycles. 310 Rust tests pass; v5 targets unchanged.
+- Model/prompt hashes are being revalidated before the fresh five-pair plan.
+  Timings and isolated profile remain pending. Initial metadata failure is
+  retained separately and will be included in the audited report.
+
 ## 2026-09-07 — Both complete 32K ingress gates pass
 
 - Output-only and diagnostic 32K runs both match all prefill logits and all
@@ -2586,7 +2594,8 @@ Next:
 - Active milestone: whole-chunk odd-layer ingress, preserving kernel arithmetic
   and removing native input staging copies. 310 Rust tests and release build pass;
   corrected ecf529a9 build and 12K/8K/2K gates pass; full 32K output-only
-  and diagnostic gates pass. Retained lifecycle running; measurements pending; initial
+  and diagnostic gates and retained lifecycle pass. Frozen-plan preparation
+  running; measurements pending; initial
   metadata failure retained in `rust-star/.work/ingress-milestone-12fb9314/`.
 
 - Authorized even-layer attention milestone is complete. Native continuation
