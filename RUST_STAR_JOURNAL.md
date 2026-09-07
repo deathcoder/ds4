@@ -2120,8 +2120,12 @@ Next:
 - Active authorized milestone after upstream review: controlled upstream/oracle
   refresh before more attention tuning. Pin c0a6119f in an isolated reference
   worktree, validate oracle-v5 and port applicable M1/Q2 changes, then rebaseline.
-  Upstream build is running in `rust-star/.work/oracle-v5-source/`; evidence
-  goes in `rust-star/.work/upstream-refresh-1190237b/`. Acceptance pending.
+  Candidate ccbd16d (tree a0a33f4) and Rust selector port 549c0478 build.
+  Official M1 kernel/logprob gates pass; Rust tests pass310/310. Pristine
+  upstream repeats four times at2K/32K; selector-only V4 control exactly
+  explains new32K logits.8K control is unchanged. Final pinned-source oracle
+  acceptance is running; full traces, versioned targets, live Rust gates and
+  paired baseline remain pending. Evidence: `rust-star/.work/upstream-refresh-1190237b/`.
 - Completed milestone: measured native32K prefill tail batching, candidate
   `dd0d26c5`, unchanged accepted oracle-v4 `df99eba7`. Durable report:
   `rust-star/reports/32k-prefill-dd0d26c5/README.md`; 106-artifact portable
@@ -2921,7 +2925,8 @@ Next:
    outputs and explain drift before accepting new targets. Port applicable
    resident M1/Q2 improvements to Rust, preserve existing batching, run full C0
    and lifecycle gates, then freeze a new paired baseline and separate profile.
-   Reassess even-layer attention after that baseline. Upstream build started.
+   Reassess even-layer attention after that baseline. Candidate builds/tests
+   pass; final-source acceptance running, then two full129-row captures.
 2. Preserve exact 2K/8K controls, complete32K immutable output trace, GPU
    selection, GPU-owned history, reset/reuse and tied-score router ordering.
    Internal HC acceptance remains through24K. Do not redo completed layers.
