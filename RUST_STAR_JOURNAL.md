@@ -18,6 +18,16 @@ Before changing code:
 Journal entries are reverse chronological. Do not edit old entries to change
 history; add a correction and update the current-state summary.
 
+## 2026-09-07 — Rust12K internal control passes on v5 selector
+
+- Frozen candidate9a519a36 passes the12K control: all43 layers, including
+  historical prefix/8K/12K HC checks. Process exits0 (223.276s diagnostic).
+- Full32K output-only C0 gate is running, then diagnostic32K,2K/8K and retained
+  two-cycle checks. No paired run has started and no new speed claim is made.
+- Prepared fail-closed paired-plan/export/standalone-verifier scripts in W.
+  Full new v5 tensor fixtures will be included in the portable report so every
+  FP32 row and both repeated reference inventories can be audited offline.
+
 ## 2026-09-07 — Rust v5 candidate built; live gates started
 
 - Candidate `9a519a36a4e7670c6d67ea3b283df876b6999558` builds and passes310 Rust tests.
@@ -2177,7 +2187,8 @@ Next:
   explains new32K logits.8K control is unchanged. Final pinned-source oracle
   acceptance passes all eight captures and bundle verification; two full traces
   and new v5 fixtures also pass. Rust candidate9a519a36 passes310 tests and
-  release build; live12K gate running, then full32K/short controls/lifecycle
+  release build; live12K control passes, full32K output-only is running,
+  then diagnostic32K/short controls/lifecycle
   and paired baseline remain pending. Evidence: `rust-star/.work/upstream-refresh-1190237b/`.
 - Completed milestone: measured native32K prefill tail batching, candidate
   `dd0d26c5`, unchanged accepted oracle-v4 `df99eba7`. Durable report:
