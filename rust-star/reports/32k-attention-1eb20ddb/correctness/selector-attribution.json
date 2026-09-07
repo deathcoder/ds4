@@ -1,0 +1,7 @@
+{
+  "matches_upstream_v5": true,
+  "differing_words": 0,
+  "control_sha256": "fb827b1c1ebc44933c35cd7d6e724c279dfb90035c9dbd209c49e893b3d4753b",
+  "upstream_sha256": "fb827b1c1ebc44933c35cd7d6e724c279dfb90035c9dbd209c49e893b3d4753b",
+  "scope": "V4 plus only removal of streaming topk branch vs pristine upstream at32K"
+}

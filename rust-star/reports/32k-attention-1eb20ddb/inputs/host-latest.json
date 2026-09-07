@@ -1,0 +1,9 @@
+{
+  "at_utc": "2026-09-07T16:50:37.276204+00:00",
+  "thermal": "Note: No thermal warning level has been recorded\nNote: No performance warning level has been recorded\nNote: No CPU power status has been recorded",
+  "thermal_exit": 0,
+  "swap": "vm.swapusage: total = 1024.00M  used = 19.94M  free = 1004.06M  (encrypted)",
+  "swap_exit": 0,
+  "uptime": "18:50  up 11:15, 4 users, load averages: 5.42 5.24 4.89",
+  "uptime_exit": 0
+}

@@ -7,10 +7,11 @@ tests. Four 2K/32K repeats, 8K equivalence and two complete 128-step traces pass
 Changed 32K and internal targets have new versions; historical fixtures remain
 immutable. Current status is maintained in `../RUST_STAR_JOURNAL.md`.
 
-The [upstream-refresh baseline report](reports/32k-upstream-v5-cc032078/README.md) includes
-five pairs, the complete C0/lifecycle gates, an isolated profile and a standalone
-verifier with the full v5 output tensors. Median Rust/reference prefill is
-423.152/172.875 s; steady decode is 20.484/19.507 tokens/s.
+The [current attention-batching report](reports/32k-attention-1eb20ddb/README.md)
+includes five pairs, full C0/lifecycle validation, a separate profile and a
+standalone evidence verifier. Rust/reference median prefill 373.843/177.723 s; steady decode 19.933/19.386 tokens/s. The previous
+[upstream-refresh baseline](reports/32k-upstream-v5-cc032078/README.md) remains
+immutable evidence of oracle-v5 acceptance.
 
 The capture does not need network access, GitHub credentials, SSH keys, or any
 other secret. It records only an allowlist of hardware and toolchain fields; it

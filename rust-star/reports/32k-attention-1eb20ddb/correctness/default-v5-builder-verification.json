@@ -1,0 +1,15 @@
+{
+  "passed": true,
+  "default_oracle_id": "oracle-v5",
+  "source_commit": "ccbd16d36895ef9fe8edf7f793014988ff1ab7f4",
+  "all_exported_sources_match_pinned_tree": true,
+  "source_files": 72,
+  "all_measured_reference_sources_match": true,
+  "measured_reference_source_files": 69,
+  "third_party_headers_and_license_included": true,
+  "build_exit": 0,
+  "builder_sha256": "8eedac0636e88a54f5b1a35f6047fb794ecd07765cd97fe092eedef5b11ddfd9",
+  "build_provenance_sha256": "371e4eaf537b7eae022efa55acc70a58ca3471c848bcba15d14eccd35794fa88",
+  "executable_sha256": "f21bff6fc8df63a38cb7d2d156617a7b79a7d84c1a2e5a3bdacae870033f346e",
+  "scope": "exporter packaging verification; measured reference executable unchanged; build path can change debug executable hash"
+}

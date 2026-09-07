@@ -1,0 +1,14 @@
+$ ./ds4_test --logprob-vectors
+logprob-vectors:
+ds4: Metal device Apple M1 Ultra, 128.00 GiB RAM
+ds4: drift-patch flags hc_stable=on norm_unify=on kv_raw_f32=off rope_exp2_log2=off math_safe=off tensor_matmul=off
+ds4: Metal model views created in 3.527 ms, residency requested in 750.871 ms, warmup 3.521 ms (mapped 82697.67 MiB from offset 5.09 MiB)
+ds4: Metal mapped mmaped model as 2 overlapping shared buffers
+ds4: metal backend initialized for graph diagnostics
+ds4-test: vector short_italian_fact
+ds4-test: vector short_code_completion
+ds4-test: vector short_reasoning_plain
+ds4-test: vector long_memory_archive
+ds4-test: vector long_code_audit
+logprob-vectors: OK
+ds4 tests: ok

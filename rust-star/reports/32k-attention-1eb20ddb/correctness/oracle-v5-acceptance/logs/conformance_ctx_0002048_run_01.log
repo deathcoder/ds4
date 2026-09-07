@@ -1,0 +1,12 @@
+$ $ORACLE_SOURCE/ds4-bench --metal -m model.gguf --prompt-file rust_star_oracle_prompt.txt --ctx-start 2048 --ctx-max 2048 --gen-tokens 0 --warm-weights --csv $RESULTS/conformance/ctx_0002048/run_01/prefill.csv --dump-frontier-logits-dir $RESULTS/conformance/ctx_0002048/run_01/logits
+ds4: warming mapped tensor pages: 80.76 GiB
+ds4: warmed tensor pages in 10.949s (checksum=651677871)
+ds4: Metal device Apple M1 Ultra, 128.00 GiB RAM
+ds4: Metal 4 tensor API disabled for pre-M5/pre-A19 devices
+ds4: drift-patch flags hc_stable=on norm_unify=on kv_raw_f32=off rope_exp2_log2=off math_safe=off tensor_matmul=off
+ds4: Metal model views created in 3.543 ms, residency requested in 750.500 ms, warmup 3.041 ms (mapped 82697.67 MiB from offset 5.09 MiB)
+ds4: Metal mapped mmaped model as 2 overlapping shared buffers
+ds4: metal backend initialized for graph diagnostics
+ds4: memory: KV 0.20 GiB (raw 0.19 + compressed 0.02) + buffers 0.01 GiB + resident model 80.76 GiB = 80.97 GiB planned
+ds4: memory detail: ctx=2049 prefill_cap=2049 raw_kv_rows=2304 compressed_kv_rows=514 backend=metal
+ds4-bench: context buffers 218.70 MiB (ctx=2049, backend=metal, prefill_chunk=2049, raw_kv_rows=2304, compressed_kv_rows=514)

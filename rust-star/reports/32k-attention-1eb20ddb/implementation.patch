@@ -1,0 +1,126 @@
+diff --git a/rust-star/runtime/src/long_prefill.rs b/rust-star/runtime/src/long_prefill.rs
+index 932d1070..786732d2 100644
+--- a/rust-star/runtime/src/long_prefill.rs
++++ b/rust-star/runtime/src/long_prefill.rs
+@@ -465,9 +465,9 @@ fn run_prefill_chunk_layer(
+             (raw.wall_ms, raw.gpu_ms),
+         );
+         let scratch_start = profile.start();
+-        let mut scores = vec![0.0; 32 * ((start + 4096) / 4) as usize];
+-        let mut topk = vec![0; 32 * 512];
+-        let mut heads = vec![0.0; 32 * 32768];
++        let mut scores = vec![0.0; 4096 * ((start + 4096) / 4) as usize];
++        let mut topk = vec![0; 4096 * 512];
++        let mut heads = vec![0.0; 4096 * 32768];
+         profile.record(
+             start,
+             layer,
+@@ -482,7 +482,7 @@ fn run_prefill_chunk_layer(
+             error.as_mut_ptr(),
+             error.len()
+         ));
+-        for position in (start..start + 4096).step_by(32) {
++        for position in (start..start + 4096).step_by(4096) {
+             let mut tile = RawSparseIndexedResult::default();
+             let sparse = if layer == 2 {
+                 rust_star_metal_run_prefill_layer2_continuation_sparse_tile
+diff --git a/rust-star/runtime/src/metal_shim.m b/rust-star/runtime/src/metal_shim.m
+index 0ed5ecaa..15c866fe 100644
+--- a/rust-star/runtime/src/metal_shim.m
++++ b/rust-star/runtime/src/metal_shim.m
+@@ -45290,8 +45290,8 @@ static int rust_star_metal_run_prefill_indexed_attention_transition(
+     return 1;
+ }
+ 
+-/* Executes one aligned 32-row tile of the second prefill chunk. Unlike the
+- * one-row control above, this mirrors DwarfStar's production M1 prefill
++/* Executes an aligned continuation batch (32 rows for isolated controls,
++ * 4096 rows for the native chunk). Both retain DwarfStar's production M1 prefill
+  * choices: aligned F16 projections, tiled indexer scores, deterministic top-512,
+  * chronological selection ordering, and 8-head indexed attention. */
+ static int rust_star_metal_run_prefill_layer2_indexed_tile(
+@@ -45324,7 +45324,6 @@ static int rust_star_metal_run_prefill_layer2_indexed_tile(
+ {
+     enum {
+         batch_tokens = 4096,
+-        tile_rows = 32,
+         raw_capacity = 4352,
+         top_k = 512,
+         attention_heads = 64,
+@@ -45333,6 +45332,11 @@ static int rust_star_metal_run_prefill_layer2_indexed_tile(
+         q_rank = 1024,
+         n_embd = 4096,
+     };
++    // Each kernel keeps its original reduction/tile geometry. Batching query
++    // rows amortizes bindings, scratch allocation, raw-ring reconstruction and
++    // compressed-KV conversion across the complete native chunk.
++    const BOOL retain_batch = context.prefillLayerEvenBatchRows != nil;
++    const uint32_t tile_rows = retain_batch ? batch_tokens : 32u;
+     const uint32_t chunk_start = prefill_chunk_start((__bridge void *)context);
+     const uint32_t chunk_end = chunk_start+batch_tokens;
+     const uint32_t raw_start = chunk_start-128u;
+@@ -45399,7 +45403,9 @@ static int rust_star_metal_run_prefill_layer2_indexed_tile(
+     RS_NEW_INDEXED_TILE_BUFFER(sorted_buffer, tile_rows*topk_row_bytes);
+     RS_NEW_INDEXED_TILE_BUFFER(raw_ring, raw_bytes);
+     RS_NEW_INDEXED_TILE_BUFFER(comp_f16, comp_f16_bytes);
+-    RS_NEW_INDEXED_TILE_BUFFER(heads_buffer, tile_rows*q_row_bytes);
++    id<MTLBuffer> heads_buffer = retain_batch ? context.prefillLayerEvenBatchHeads :
++        [context.device newBufferWithLength:tile_rows*q_row_bytes
++            options:MTLResourceStorageModeShared];
+     RS_NEW_INDEXED_TILE_BUFFER(position_buffer, tile_rows*sizeof(int32_t));
+ #undef RS_NEW_INDEXED_TILE_BUFFER
+     if (!indexer_q_buffer || !indexer_weight_buffer || !score_buffer ||
+@@ -45526,7 +45532,7 @@ static int rust_star_metal_run_prefill_layer2_indexed_tile(
+                atIndex:2];
+     [encoder setBuffer:indexer_q_buffer offset:0 atIndex:3];
+     [encoder setThreadgroupMemoryLength:6144u atIndex:0];
+-    [encoder dispatchThreadgroups:MTLSizeMake(1,128,1)
++    [encoder dispatchThreadgroups:MTLSizeMake(tile_rows/32u,128,1)
+          threadsPerThreadgroup:MTLSizeMake(128,1,1)];
+ 
+     [encoder setComputePipelineState:context.ropeTailPipeline];
+@@ -45553,7 +45559,7 @@ static int rust_star_metal_run_prefill_layer2_indexed_tile(
+                atIndex:2];
+     [encoder setBuffer:indexer_weight_buffer offset:0 atIndex:3];
+     [encoder setThreadgroupMemoryLength:6144u atIndex:0];
+-    [encoder dispatchThreadgroups:MTLSizeMake(1,1,1)
++    [encoder dispatchThreadgroups:MTLSizeMake(tile_rows/32u,1,1)
+          threadsPerThreadgroup:MTLSizeMake(128,1,1)];
+ 
+     [encoder setComputePipelineState:context.indexerScoreBatchPipeline];
+@@ -45565,7 +45571,7 @@ static int rust_star_metal_run_prefill_layer2_indexed_tile(
+     [encoder setThreadgroupMemoryLength:
+         (8u*128u+32u*128u)*sizeof(uint16_t)+8u*32u*sizeof(float)
+                                     atIndex:0];
+-    [encoder dispatchThreadgroups:MTLSizeMake((compressed_capacity+31u)/32u,4,1)
++    [encoder dispatchThreadgroups:MTLSizeMake((compressed_capacity+31u)/32u,tile_rows/8u,1)
+          threadsPerThreadgroup:MTLSizeMake(32,4,1)];
+ 
+     const uint32_t topk_dispatches = encode_indexer_topk(context, encoder,
+@@ -45613,21 +45619,12 @@ static int rust_star_metal_run_prefill_layer2_indexed_tile(
+          threadsPerThreadgroup:MTLSizeMake(256,1,1)];
+     [encoder endEncoding];
+ 
+-    // Retain completed per-token arithmetic in the same command. The FFN tail
+-    // consumes the whole chunk only after every tile has filled its own rows.
+-    const BOOL retain_batch = context.prefillLayerEvenBatchRows != nil;
++    // Native attention writes the complete tail input directly; no per-tile
++    // snapshot blits or duplicate heads allocation are needed.
+     const uint32_t retained_rows = context.prefillLayerEvenBatchRows.unsignedIntValue;
+-    if (retain_batch) {
+-        if (retained_rows > 4096u-tile_rows || position_start != chunk_start+retained_rows ||
+-            context.prefillLayerEvenBatchHeads.length != 4096ull*q_row_bytes)
+-            return fail_with_message(error, error_bytes, @"nonconsecutive long-prefill attention tile");
+-        id<MTLBlitCommandEncoder> retain = [command blitCommandEncoder];
+-        if (!retain) return fail_with_message(error, error_bytes, @"cannot retain long-prefill attention tile");
+-        [retain copyFromBuffer:heads_buffer sourceOffset:0
+-                     toBuffer:context.prefillLayerEvenBatchHeads
+-            destinationOffset:(NSUInteger)retained_rows*q_row_bytes size:tile_rows*q_row_bytes];
+-        [retain endEncoding];
+-    }
++    if (retain_batch && (retained_rows != 0u || position_start != chunk_start ||
++        heads_buffer.length != 4096ull*q_row_bytes))
++        return fail_with_message(error, error_bytes, @"invalid long-prefill attention batch");
+ 
+     const double wall_start = monotonic_ms();
+     [command commit];

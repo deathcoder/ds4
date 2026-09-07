@@ -1177,18 +1177,16 @@ collection and output-fixture decoding during timed prefill. Its retained
 cycle reuses the Metal context/model residency and records zero context
 creation time. It still rebuilds request-local KV state.
 
-Oracle-v5 refresh is complete. Native 32K even-layer tails still run once per 4K
-chunk after the 32-token attention tiles. Both selector sites now use upstream
-argsort/merge; full 32K prefill and 128 decode steps match the new v5 targets
-exactly. Independently repeated v5 internal checkpoints are accepted through
-24K, with 2K/8K controls and both retained reset/reuse cycles passing.
+Native even-layer continuation attention now executes all 4096 query rows in
+one call, preserving the original kernel reduction geometry. Raw-ring setup
+and compressed-KV conversion run once per chunk, and attention writes directly
+to the existing tail-input buffer. The separate 32-row controls remain intact.
+All v5 full-output, shorter-context and retained reset/reuse gates pass.
 
-The audited [v5 baseline](../reports/32k-upstream-v5-cc032078/README.md) records five pairs:
-median Rust/reference prefill 423.152/172.875 s; steady decode 20.484/19.507
-tokens/s. Rust peak process memory is 92.300 GiB. Its separate profile
-identifies `even/attention` as the largest GPU
-stage group. Use this baseline for the next optimization; historical v4 reports
-and the stale diagnostic-target failures remain preserved.
+The audited [attention-batching report](../reports/32k-attention-1eb20ddb/README.md)
+records five pairs: Rust/reference median prefill 373.843/177.723 s; steady decode 19.933/19.386 tokens/s. Peak Rust process memory is 93.229 GiB.
+Attention calls fall from 18,816 to 147; the largest current GPU stage group is
+`odd/ingress`. Historical reports and fixtures remain unchanged.
 
 At 32K, `engine-profile` also records `long_prefill_profile` rows for native
 prefill stages: host elapsed time, existing command wall time, GPU time and

@@ -1,0 +1,147 @@
+{
+  "schema": "rust-star-paired-plan-v1",
+  "protocol": "rust-star-paired-benchmark-v1",
+  "correctness_class": "C0",
+  "host_manifest_sha256": "90f8dd12c0f024111b96d59134c7fd89341e3118e0cbd030179e9f1fdd531f18",
+  "correctness_manifest_sha256": "bdc46267102f1cb538f4c79fdb8ccb8b86a59bc2006470f928eaae2be00f97fd",
+  "configuration": {
+    "contexts": [
+      32768
+    ],
+    "repetitions": 5,
+    "gen_tokens": 128,
+    "sampling": "fixed 128-step lowest-ID greedy transcript; reference excludes EOS, and every reference full-logit argmax equals the same non-EOS transcript",
+    "primary_metric": "gen_steady_tps"
+  },
+  "oracle": {
+    "identity": {
+      "source_commit": "ccbd16d36895ef9fe8edf7f793014988ff1ab7f4",
+      "source_tree": "a0a33f4a00c3c78cd40350785485203e7c6b0b1d",
+      "executable_sha256": "a4056d7297bd0a6de8e46fac294e7913d9bc8c96465e5d68f1b6ef6471e49aa0",
+      "model_sha256": "ca22ae2f838e14077c22bc1c1417b71b45b5e5a3687bd96c2ac6e17fdb6261c0",
+      "prompt_sha256": "f53e0d80cb2d4492d24ebd63c7000c397b16ae70f9bf09b3763e5d8323ec209f",
+      "backend": "metal",
+      "build_configuration": {
+        "command": [
+          "make",
+          "-j4",
+          "ds4-bench"
+        ],
+        "cflags": "-O3 -ffast-math -g -mcpu=native -Wall -Wextra -std=c99",
+        "objcflags": "-O3 -ffast-math -g -mcpu=native -Wall -Wextra -fobjc-arc",
+        "compiler": "Apple clang 21.0.0 (clang-2100.1.1.101)",
+        "benchmark_driver_commit": "ccbd16d36895ef9fe8edf7f793014988ff1ab7f4",
+        "benchmark_driver_sha256": "2a337c05b220392f15bd1a2b42cc90a13a1786f575c026308f58c48589c54100",
+        "build_provenance_sha256": "feb7815c03c199ed9eeea974f27c42c21bc8a7db02e4d68ec32a98068d15163f",
+        "builder": "make in clean pinned oracle-v5 worktree",
+        "source_overlay": "none"
+      },
+      "runtime_configuration": {
+        "backend_flag": "--metal",
+        "warm_weights": true,
+        "frontier_mode": "single exact context",
+        "correctness_instrumentation": false,
+        "sampling": "greedy argmax excluding EOS",
+        "oracle_version": "oracle-v5",
+        "prefill_chunk_tokens": 4096,
+        "compressor_dependency": "pinned current upstream ordering",
+        "sampling_in_interval": true,
+        "initial_selection_charged_to_prefill": true,
+        "decode_step": "eval plus resulting-token argmax and commitment",
+        "csv_timing_precision_digits": 9,
+        "indexer_selector": "deterministic block argsort and merge"
+      }
+    },
+    "working_directory": "$ORACLE_BUILD",
+    "timeout_seconds": 3600,
+    "adapter_command": [
+      "python3",
+      "$REPO/rust-star/measure_dwarfstar.py",
+      "--executable",
+      "$REPO/rust-star/.work/paired-32k-128-1eb20ddb-attention/bin/oracle/ds4-bench",
+      "--model",
+      "$MODEL",
+      "--prompt",
+      "$REPO/speed-bench/promessi_sposi.txt",
+      "--context",
+      "{context}",
+      "--gen-tokens",
+      "{gen_tokens}",
+      "--output",
+      "{output}",
+      "--timeout-seconds",
+      "3500"
+    ]
+  },
+  "candidate": {
+    "identity": {
+      "source_commit": "1eb20ddbfa29b893dca8865494e0b442e39e92e4",
+      "source_tree": "df4e1919a0dda58dc01a885e3eba040773f5e8e2",
+      "executable_sha256": "a13b8d518c3715ed35f54deecb7845d0dfd3f075545527970c1b69bed1eeb908",
+      "model_sha256": "ca22ae2f838e14077c22bc1c1417b71b45b5e5a3687bd96c2ac6e17fdb6261c0",
+      "prompt_sha256": "f53e0d80cb2d4492d24ebd63c7000c397b16ae70f9bf09b3763e5d8323ec209f",
+      "backend": "metal",
+      "build_configuration": {
+        "command": [
+          "cargo",
+          "build",
+          "--manifest-path",
+          "rust-star/runtime/Cargo.toml",
+          "--release"
+        ],
+        "profile": {
+          "codegen_units": 1,
+          "lto": "thin",
+          "panic": "abort"
+        },
+        "rustc": "1.91.1 (ed61e7d7e 2025-11-07)",
+        "cargo": "1.91.1 (ea2d97820 2025-10-10)",
+        "rustflags": [],
+        "validated_build_sha256": "35452cdae3a4faec00ca17515afd0f85477e13d49914dfa0fbe46e46449d5a06"
+      },
+      "runtime_configuration": {
+        "command": "engine-measure",
+        "native_batched_prefill": true,
+        "prefill_correctness_collection": false,
+        "generation_correctness_collection": false,
+        "generation_command_buffers_per_token": 44,
+        "generation_host_waits_per_token": 2,
+        "model_warm_policy": "CPU POSIX_MADV_WILLNEED plus one volatile byte touch per tensor-data page before internal timers; Metal residency-set registration and one-mebibyte-stride GPU view touch inside prefill_ms before decode",
+        "model_residency_required": true,
+        "model_residency_queue_attached": true,
+        "transcript_validation": "after each timed step; first failure rejects run",
+        "sampling_logits_readback": false,
+        "sampling_result_readback_bytes": 8,
+        "sampling": "lowest-ID greedy argmax; full C0 trace establishes identical non-EOS selections to the reference",
+        "prefill_context_tokens": 32768,
+        "prefill_chunk_tokens": 4096,
+        "exact_prefix_rebuild": true,
+        "decode_steps": 128,
+        "failure_collection": "completed logit readback only after failed token comparison; successful steps keep GPU selection readback",
+        "even_prefill_tail_rows": 4096,
+        "even_prefill_attention_tile_rows": 4096,
+        "even_prefill_attention_retention": "complete chunk written directly to existing tail-input buffer",
+        "prefill_stage_profile_collection": false,
+        "indexer_selector": "upstream deterministic block argsort and merge"
+      }
+    },
+    "working_directory": "$CANDIDATE_BUILD",
+    "timeout_seconds": 3600,
+    "adapter_command": [
+      "python3",
+      "$REPO/rust-star/measure_ruststar.py",
+      "--executable",
+      "$REPO/rust-star/.work/paired-32k-128-1eb20ddb-attention/bin/candidate/rust-star",
+      "--model",
+      "$MODEL",
+      "--context",
+      "{context}",
+      "--gen-tokens",
+      "{gen_tokens}",
+      "--output",
+      "{output}",
+      "--timeout-seconds",
+      "3500"
+    ]
+  }
+}

@@ -1,0 +1,37 @@
+{
+  "schema": "rust-star-report-portability-v1",
+  "derived_files": {
+    "correctness/trace-a.json": {
+      "original_sha256": "a076c582f485b0cb8d47c34e988ab39e33b2c1ecb9899ee97a4e6add7895869e",
+      "transformation": "private repository/model paths replaced with placeholders"
+    },
+    "correctness/trace-b.json": {
+      "original_sha256": "d5fee48ab9f91d06cd746000251bce5883676c296ef579265ce143919015b9c3",
+      "transformation": "private repository/model paths replaced with placeholders"
+    },
+    "correctness/capture-selector-v5.log": {
+      "original_sha256": "8060b08d6bf8f4714fc22fa7177f7b7e0ab8e4e3c159bfcb7c6908f70d3cb1fb",
+      "transformation": "private repository/model paths replaced with placeholders"
+    },
+    "correctness/default-v5-builder.log": {
+      "original_sha256": "8fad8809ea0f5b7d4939ce915736fb2d366ec61bcb50ab3c61ff7e3f97b9fcc1",
+      "transformation": "private repository paths replaced with placeholders"
+    },
+    "correctness/default-v5-builder-fixed.log": {
+      "original_sha256": "ce6c9c5deaac9da8af960d07190ff12687862b2b82c2a4b709bb1f80ccfdf317",
+      "transformation": "private repository paths replaced with placeholders"
+    },
+    "inputs/plan-template.json": {
+      "original_sha256": "2ca644b554465dc38d16655872f3f28de184c60003c89e1044e60c0f90df6ed7",
+      "transformation": "local paths replaced with placeholders"
+    },
+    "correctness/batch-tests-fixed.log": {
+      "original_sha256": "d320ef7d07fac9968edc783be6840945e506d98bb3edcbffd1133c8204e54186",
+      "transformation": "private repository/model paths replaced with placeholders"
+    }
+  },
+  "historical_report": "../32k-prefill-dd0d26c5/",
+  "reference_acceptance": "correctness/oracle-v5-acceptance/",
+  "baseline_report": "../32k-upstream-v5-cc032078/",
+  "reference_evidence_reused_without_change": true
+}

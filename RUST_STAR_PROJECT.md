@@ -352,12 +352,11 @@ they describe whenever practical.
 
 ## Open Items
 
-The completed upstream-refresh baseline is
-`rust-star/reports/32k-upstream-v5-cc032078/README.md`: median Rust/reference
-prefill 423.152/172.875 s; steady decode 20.484/19.507 tokens/s. Rust peak
-process memory is 92.300 GiB, up from the previous campaign’s 87.585 GiB.
-Its largest profiled GPU stage group is `even/attention`; target that cost next.
-Oracle-v5 is current; the previous v4 optimization remains historical evidence.
+The current attention-batching baseline is `rust-star/reports/32k-attention-1eb20ddb/README.md`:
+Rust/reference median prefill 373.843/177.723 s; steady decode 19.933/19.386 tokens/s. Rust peak process memory is 93.229 GiB.
+Native continuation attention runs once per 4K chunk with exact v5 outputs.
+The largest profiled GPU stage group is `odd/ingress`; target that cost next.
+Oracle-v5 remains current. The upstream-refresh and v4 reports are historical.
 
 Current implementation boundaries, evidence, and immediate actions are maintained
 in `RUST_STAR_JOURNAL.md`. As of 2026-09-07, native 32K prefill is exact through

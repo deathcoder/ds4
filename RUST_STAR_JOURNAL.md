@@ -18,6 +18,25 @@ Before changing code:
 Journal entries are reverse chronological. Do not edit old entries to change
 history; add a correction and update the current-state summary.
 
+## 2026-09-07 — Even-layer attention batching milestone complete
+
+- Native continuation attention now processes 4096 query rows per call with
+  unchanged kernel reduction geometry and direct output to the tail buffer.
+  Attention calls fall from 18,816 to 147. No oracle/fixture/arithmetic change.
+- Candidate `1eb20ddbfa29b893dca8865494e0b442e39e92e4` passes 310 Rust tests,
+  all six live C0/regression/lifecycle gates, five valid alternating pairs and
+  the isolated complete profile. Reference remains pinned oracle-v5 ccbd16d.
+- Rust/reference median prefill 373.843/177.723 s; steady decode 19.933/19.386 tokens/s.
+  Peak Rust process memory: 93.229 GiB. Full distributions, old-baseline
+  comparison, host observations and standalone verification: `rust-star/reports/32k-attention-1eb20ddb/`.
+- Even-layer attention profile: 41.339 GPU seconds,
+  45.620 host seconds, 147 calls. Largest current
+  GPU stage group: `odd/ingress`. Target that measured cost next.
+- Later OBS/video activity changed background load. All pairs are retained;
+  exact isolated speedup attribution is not claimed. Memory remains a tradeoff.
+- All historical reports and fixtures remain immutable. This is a 32K/128
+  development result; broader contexts and 256K headline work remain future.
+
 ## 2026-09-07 — Five attention pairs pass; isolated profile running
 
 - All five alternating pairs and both warmups pass on attempt 1. No rejected
@@ -2504,41 +2523,29 @@ Next:
 
 ### Current resume checkpoint (updated 2026-09-07)
 
-- Active milestone: native even-layer attention batching from 32 to 4096 rows,
-  same kernel arithmetic and direct tail-input output. Build and 310 Rust
-  tests and all six live gates pass. Both warmups pass; the frozen campaign
-  has passed all five pairs on attempt 1; the isolated profile is running.
-  Independent audit and final report/docs remain. Plan SHA
-  `2ca644b554465dc38d16655872f3f28de184c60003c89e1044e60c0f90df6ed7`. Work/evidence lives at
-  `rust-star/.work/attention-milestone-502bb6b6/`. Acceptance and timing pending.
-
-- Default v5 exporter smoke build passes with all pinned third-party headers
-  and license. All 72 exported files match the reference tree; final Python
-  suite passes 93 tests. Measured binaries remain unchanged.
-
-- Authorized upstream-refresh milestone is complete. Accepted oracle-v5 source
-  ccbd16d/tree a0a33f4 is pinned to upstream c0a6119f. Rust candidate
-  `cc032078748ad4c450717b1cfd4e734fd57cf9e6` uses deterministic argsort/merge and retains
-  batched even-layer tails. No pending layer implementation or validation gate.
-- Audited report: `rust-star/reports/32k-upstream-v5-cc032078/README.md`; run its `verify.py` without the model.
-  Five valid alternating pairs, two warmups and one separate complete profile.
-  Median Rust/reference prefill 423.152/172.875 s; steady decode 20.484/19.507 tokens/s.
-- Reference: four 2K/32K repeats, 8K control, tokenizer identity, two full 129-row
-  traces and two full HC inventories per 12K/16K/20K/24K. Rust: 310/93 tests,
-  both 32K full-logit modes, 12K/2K/8K controls and retained two-cycle lifecycle.
-- Explicit v5 fixtures replace current 32K and later internal targets; v3/v4
-  fixtures and reports remain immutable. Initial stale 16K checkpoint failure
-  is retained and directly attributed to reference-version drift, not waived.
-- Rust peak process memory is 92.300 GiB (previous campaign: 87.585 GiB);
-  reference: 80.893 GiB. Track peak memory alongside performance.
-- Largest profiled GPU stage group: `even/attention`. Use this fresh baseline for
-  the next optimization. Broader contexts and 256K headline work remain future.
-- Frozen candidate SHA `e87354b9f0ed3e2f30ac1b3584d7f03a255bbb715664dc452e29953b205bd706`;
-  oracle SHA `a4056d7297bd0a6de8e46fac294e7913d9bc8c96465e5d68f1b6ef6471e49aa0`;
-  plan SHA `915d68eda1ebf4f619f3767a2003af7baa01a21d616612dc283e221ddf94e8cc`. Work: `rust-star/.work/upstream-refresh-1190237b/`.
-- Prior optimized v4 report remains `rust-star/reports/32k-prefill-dd0d26c5/`;
-  its host-restart disclosure and earlier baseline remain unchanged. Cross-
-  campaign comparisons are descriptive, not isolated causal speedup claims.
+- Authorized even-layer attention milestone is complete. Native continuation
+  attention executes whole 4K chunks with unchanged kernel arithmetic and no
+  per-tile heads copy. Both native selector sites share this implementation.
+- Current candidate `1eb20ddbfa29b893dca8865494e0b442e39e92e4`;
+  executable SHA `a13b8d518c3715ed35f54deecb7845d0dfd3f075545527970c1b69bed1eeb908`.
+  Oracle-v5 source ccbd16d/tree a0a33f4 remains unchanged; executable SHA
+  `a4056d7297bd0a6de8e46fac294e7913d9bc8c96465e5d68f1b6ef6471e49aa0`.
+- All six live gates pass: native 12K internal states, detailed 8K, 2K, both
+  complete 32K prefill/128-decode modes and retained two-cycle reset/reuse.
+  310 Rust tests pass; unchanged Python toolkit retains 93-test evidence.
+- Audited report `rust-star/reports/32k-attention-1eb20ddb/README.md`; standalone `verify.py` needs no model.
+  Five valid alternating pairs, two warmups, isolated complete profile.
+  Rust/reference median prefill 373.843/177.723 s; steady decode 19.933/19.386 tokens/s. Rust peak memory 93.229 GiB.
+- Later OBS/video activity varied host load. Per-pair results and observations
+  are retained; comparisons are descriptive, with memory tracked explicitly.
+- Attention calls: 18,816 → 147. Largest current GPU stage group: `odd/ingress`.
+  Next local milestone should target that measured cost while preserving v5
+  C0, retained lifecycle and tracking memory. No completed layers need repeating.
+- Frozen plan SHA `2ca644b554465dc38d16655872f3f28de184c60003c89e1044e60c0f90df6ed7`.
+  Work: `rust-star/.work/attention-milestone-502bb6b6/`. Prior v5 baseline and v4 reports remain
+  immutable, including their original host observations and failed attempts.
+- Internal HC acceptance ends at 24K; full 32K outputs remain mandatory.
+  Broader contexts, 256K headline measurements and agent co-design are future.
 
 ### Accumulated implementation and measurement evidence
 
@@ -3289,20 +3296,16 @@ Next:
 
 ## Immediate Next Actions
 
-1. Active: complete even-layer attention batching, all correctness/lifecycle
-   gates and a fresh paired/profile report. The upstream refresh is complete. Review `rust-star/reports/32k-upstream-v5-cc032078/README.md`.
-   Next meaningful local milestone: optimize the measured `even/attention` cost,
-   preserving exact v5 outputs and the retained-engine lifecycle, then use a
-   fresh paired campaign to measure the change. Do not repeat completed layers.
-2. Use oracle-v5 for new captures. Preserve all historical fixture identities,
-   old benchmark reports and failed attempts. Current internal HC acceptance
-   ends at 24K; full 32K prefill and 128-step output checks remain mandatory.
-3. Broader native contexts and the 256K primary headline remain future work.
-   Define the coding-agent workload corpus before agent co-design claims.
-4. Run one large model process at a time, keep disk use bounded, and update this
-   journal at each meaningful step. Never resume a rejected benchmark plan.
-5. GitHub Actions billing lock and deferred secure remote access remain in the
-   manual task ledger.
+1. Attention batching milestone is complete. Review `rust-star/reports/32k-attention-1eb20ddb/README.md`.
+   Next measured target: `odd/ingress`. Preserve exact v5 outputs, retained-engine
+   lifecycle and track memory, then validate any change in a fresh paired run.
+2. Use oracle-v5 for new captures. Preserve historical fixture identities,
+   reports and failed attempts. Internal HC targets are accepted through 24K;
+   complete 32K prefill and 128-step decode C0 checks remain mandatory.
+3. Broader contexts, 256K headline work and the coding-agent corpus remain future.
+4. Run one large model process at a time, bound disk use, keep this journal
+   updated and never resume rejected benchmark plans.
+5. GitHub Actions billing and secure remote access remain in the manual ledger.
 
 ## Entries
 
