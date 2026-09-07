@@ -2369,8 +2369,9 @@ Next:
   oracle SHA `a4056d7297bd0a6de8e46fac294e7913d9bc8c96465e5d68f1b6ef6471e49aa0`.
   Runtime uses deterministic argsort/merge and keeps batched even-layer tails.
 - Frozen plan SHA `915d68eda1ebf4f619f3767a2003af7baa01a21d616612dc283e221ddf94e8cc`.
-  Campaign `rust-star/.work/paired-32k-128-cc032078-v5/` is in warmups
-  (oracle passed, Rust active), then five alternating pairs and isolated profile.
+  Campaign `rust-star/.work/paired-32k-128-cc032078-v5/` has passed both warmups
+  and pair 1; pair 2 is running in reverse order. Five pairs and isolated profile
+  remain the complete measurement scope.
   No builds or heavy tests during the timed block; one model process at a time.
 - Coordinator `rust-star/.work/upstream-refresh-1190237b/finish-milestone.py`
   continues measurement, profile, audit and report export. Final documentation
