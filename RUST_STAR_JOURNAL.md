@@ -18,6 +18,11 @@ Before changing code:
 Journal entries are reverse chronological. Do not edit old entries to change
 history; add a correction and update the current-state summary.
 
+## 2026-09-07 — Two native tail pairs pass
+
+- Pairs 1 (AB) and 2 (BA) pass on attempt 1; pair 3 (AB) running.
+  No invalid attempt/retry. Final statistics/profile/audit remain pending.
+
 ## 2026-09-07 — First native tail pair passes
 
 - Pair 1 (AB) passes on attempt 1. Pair 2 (BA) is running; both warmups passed.
@@ -2745,7 +2750,7 @@ Next:
 
 - Active milestone: native tail scratch reuse, direct retained HC output and
   removal of unused FP32 diagnostic conversion. 310 tests/release build pass;
-  all six gates, both warmups and pair 1 pass; pair 2 running under frozen plan;
+  all six gates, both warmups and pairs 1–2 pass; pair 3 running;
   full paired result/profile and audit pending in `rust-star/.work/tail-milestone-2d8b8405/`.
 
 - Authorized odd-layer ingress milestone is complete. Native continuation
