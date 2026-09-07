@@ -18,6 +18,13 @@ Before changing code:
 Journal entries are reverse chronological. Do not edit old entries to change
 history; add a correction and update the current-state summary.
 
+## 2026-09-07 — Attention batching shorter controls pass
+
+- Frozen 1eb20ddb passes 12K internal states, detailed 8K including all 129,280
+  output logits, and the 2K regression control. No oracle or fixture change.
+- Full 32K output-only validation is running, followed by diagnostic 32K and
+  retained two-cycle reset/reuse. Paired measurement remains pending.
+
 ## 2026-09-07 — Batched attention passes 12K internal C0
 
 - Frozen attention candidate 1eb20ddb passes the 12K native internal-state
@@ -2454,7 +2461,7 @@ Next:
 
 - Active milestone: native even-layer attention batching from 32 to 4096 rows,
   same kernel arithmetic and direct tail-input output. Build and 310 Rust
-  tests and 12K internal validation pass; detailed 8K is running. Work/evidence lives at
+  tests and all shorter controls pass; full 32K validation is running. Work/evidence lives at
   `rust-star/.work/attention-milestone-502bb6b6/`. Acceptance and timing pending.
 
 - Default v5 exporter smoke build passes with all pinned third-party headers
