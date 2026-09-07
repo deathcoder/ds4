@@ -18,6 +18,14 @@ Before changing code:
 Journal entries are reverse chronological. Do not edit old entries to change
 history; add a correction and update the current-state summary.
 
+## 2026-09-07 — Final candidate shorter controls all pass
+
+- Frozencc032078 passes detailed8K through all43 layers/full output,12K
+  internal control and2K complete prefill/output control. Full32K output-only
+  then diagnostic mode and retained two-cycle validation are running next.
+- No runtime changes after this frozen build. Pending timing uses the same
+  candidate once the remaining gates pass; reference remains pinned v5.
+
 ## 2026-09-07 — Complete detailed8K gate passes after fixture/accounting refresh
 
 - Candidatecc032078 detailed8K probe exits0: all43 layers and all129,280
@@ -2321,7 +2329,8 @@ Next:
 ### Current resume checkpoint (updated 2026-09-07)
 
 - Latest candidatecc032078 builds and passes310 tests; detailed8K-first
-  validation passes detailed8K completely;12K/2K/full32K/retained gates follow.
+  validation passes detailed8K,12K and2K; full32K output-only is active,
+  then diagnostic32K and retained lifecycle gates.
   Prior8aa4d13d passes both full32K modes and all HC checkpoints; detailed8K
   exposed two stale selector-ordering targets, both reproduced by direct
   repeated v5 captures and versioned explicitly. Run8K first, then all six
