@@ -1,0 +1,341 @@
+{
+  "attempts": [
+    {
+      "attempt": 1,
+      "completed_at_utc": "2026-09-06T20:41:21Z",
+      "context": 32768,
+      "engines": {
+        "candidate": {
+          "adapter_returncode": 0,
+          "measurement_sha256": "5d31f6e92ecc8375034df56d6fec769d0abf3c4ea4ec14239f7c2042b936cb38",
+          "metrics": {
+            "ctx_tokens": 32768,
+            "gen_first_ms": 59.306166,
+            "gen_ms": 6521.308118,
+            "gen_steady_ms": 6462.001952,
+            "gen_steady_tokens": 127,
+            "gen_steady_tps": 19.653352157,
+            "gen_tokens": 128,
+            "gen_tps": 19.627963851,
+            "kvcache_bytes": null,
+            "prefill_ms": 521130.149917,
+            "prefill_tokens": 32768,
+            "prefill_tps": 62.878726179,
+            "process_overhead_ms": 22307.64525700004,
+            "process_peak_bytes": 95842484224,
+            "process_wall_ms": 549959.103292
+          },
+          "output": "measurements/ctx-0032768/rep-01/attempt-01/candidate",
+          "status": "passed",
+          "timed_out": false
+        },
+        "oracle": {
+          "adapter_returncode": 0,
+          "measurement_sha256": "99d7c07f966191d0751d3295510ee2520e46074b5d1336700079703d7bd1f865",
+          "metrics": {
+            "ctx_tokens": 32768,
+            "gen_first_ms": 55.055,
+            "gen_ms": 6301.618000134288,
+            "gen_steady_ms": 6246.035999974933,
+            "gen_steady_tokens": 127,
+            "gen_steady_tps": 20.332895936,
+            "gen_tokens": 128,
+            "gen_tps": 20.312243617,
+            "kvcache_bytes": null,
+            "prefill_ms": 183089.82500005787,
+            "prefill_tokens": 32768,
+            "prefill_tps": 178.972261293,
+            "process_overhead_ms": 14500.819749807837,
+            "process_peak_bytes": 86857973760,
+            "process_wall_ms": 203892.26275
+          },
+          "output": "measurements/ctx-0032768/rep-01/attempt-01/oracle",
+          "status": "passed",
+          "timed_out": false
+        }
+      },
+      "order": "AB",
+      "repetition": 1,
+      "started_at_utc": "2026-09-06T20:28:47Z",
+      "status": "passed"
+    },
+    {
+      "attempt": 1,
+      "completed_at_utc": "2026-09-06T20:54:01Z",
+      "context": 32768,
+      "engines": {
+        "candidate": {
+          "adapter_returncode": 0,
+          "measurement_sha256": "40e25b92ca4b6c507a7580d48f61b207a3d474be1b0a902c0a570936f6f007b6",
+          "metrics": {
+            "ctx_tokens": 32768,
+            "gen_first_ms": 64.7675,
+            "gen_ms": 6602.34187,
+            "gen_steady_ms": 6537.57437,
+            "gen_steady_tokens": 127,
+            "gen_steady_tps": 19.426165243,
+            "gen_tokens": 128,
+            "gen_tps": 19.387060307,
+            "kvcache_bytes": null,
+            "prefill_ms": 520145.046417,
+            "prefill_tokens": 32768,
+            "prefill_tps": 62.997812294,
+            "process_overhead_ms": 22131.806629000002,
+            "process_peak_bytes": 96656736256,
+            "process_wall_ms": 548879.194916
+          },
+          "output": "measurements/ctx-0032768/rep-02/attempt-01/candidate",
+          "status": "passed",
+          "timed_out": false
+        },
+        "oracle": {
+          "adapter_returncode": 0,
+          "measurement_sha256": "600278b73ab8a5732c4b905cfe736b58814f2165d7603ffe08eb4d5073a60f64",
+          "metrics": {
+            "ctx_tokens": 32768,
+            "gen_first_ms": 69.675,
+            "gen_ms": 6631.484000087348,
+            "gen_steady_ms": 6561.636000018743,
+            "gen_steady_tokens": 127,
+            "gen_steady_tps": 19.354929167,
+            "gen_tokens": 128,
+            "gen_tps": 19.301863655,
+            "kvcache_bytes": null,
+            "prefill_ms": 190471.63599945884,
+            "prefill_tokens": 32768,
+            "prefill_tps": 172.036113556,
+            "process_overhead_ms": 14384.905875453802,
+            "process_peak_bytes": 86857285632,
+            "process_wall_ms": 211488.025875
+          },
+          "output": "measurements/ctx-0032768/rep-02/attempt-01/oracle",
+          "status": "passed",
+          "timed_out": false
+        }
+      },
+      "order": "BA",
+      "repetition": 2,
+      "started_at_utc": "2026-09-06T20:41:21Z",
+      "status": "passed"
+    },
+    {
+      "attempt": 1,
+      "completed_at_utc": "2026-09-06T21:07:44Z",
+      "context": 32768,
+      "engines": {
+        "candidate": {
+          "adapter_returncode": 0,
+          "measurement_sha256": "5acd517702b361f59347e5da9f2cb9498230117799818ba2671914a1a23ddbc4",
+          "metrics": {
+            "ctx_tokens": 32768,
+            "gen_first_ms": 58.588917,
+            "gen_ms": 6327.404293,
+            "gen_steady_ms": 6268.815376,
+            "gen_steady_tokens": 127,
+            "gen_steady_tps": 20.259011054,
+            "gen_tokens": 128,
+            "gen_tps": 20.229464417,
+            "kvcache_bytes": null,
+            "prefill_ms": 582623.585708,
+            "prefill_tokens": 32768,
+            "prefill_tps": 56.242144678,
+            "process_overhead_ms": 22406.947624000022,
+            "process_peak_bytes": 91936686080,
+            "process_wall_ms": 611357.937625
+          },
+          "output": "measurements/ctx-0032768/rep-03/attempt-01/candidate",
+          "status": "passed",
+          "timed_out": false
+        },
+        "oracle": {
+          "adapter_returncode": 0,
+          "measurement_sha256": "b01bc9c51d421c8396f94faedd00bca060d46dd4ba0a46192c792d2ff73e0a1d",
+          "metrics": {
+            "ctx_tokens": 32768,
+            "gen_first_ms": 60.657,
+            "gen_ms": 6664.572000017775,
+            "gen_steady_ms": 6603.757999899428,
+            "gen_steady_tokens": 127,
+            "gen_steady_tps": 19.231473958,
+            "gen_tokens": 128,
+            "gen_tps": 19.206034536,
+            "kvcache_bytes": null,
+            "prefill_ms": 190205.35500012213,
+            "prefill_tokens": 32768,
+            "prefill_tps": 172.276958238,
+            "process_overhead_ms": 14590.29574986008,
+            "process_peak_bytes": 86858268672,
+            "process_wall_ms": 211460.22275
+          },
+          "output": "measurements/ctx-0032768/rep-03/attempt-01/oracle",
+          "status": "passed",
+          "timed_out": false
+        }
+      },
+      "order": "AB",
+      "repetition": 3,
+      "started_at_utc": "2026-09-06T20:54:01Z",
+      "status": "passed"
+    },
+    {
+      "attempt": 1,
+      "completed_at_utc": "2026-09-06T21:20:58Z",
+      "context": 32768,
+      "engines": {
+        "candidate": {
+          "adapter_returncode": 0,
+          "measurement_sha256": "b2c791106e1173f7991b905606adf6e295d22d166936ba7e72a724cb820cae19",
+          "metrics": {
+            "ctx_tokens": 32768,
+            "gen_first_ms": 61.029875,
+            "gen_ms": 6490.887417,
+            "gen_steady_ms": 6429.857542,
+            "gen_steady_tokens": 127,
+            "gen_steady_tps": 19.751604008,
+            "gen_tokens": 128,
+            "gen_tps": 19.719953802,
+            "kvcache_bytes": null,
+            "prefill_ms": 558654.71275,
+            "prefill_tokens": 32768,
+            "prefill_tps": 58.655193006,
+            "process_overhead_ms": 22149.361750000062,
+            "process_peak_bytes": 94043701248,
+            "process_wall_ms": 587294.961917
+          },
+          "output": "measurements/ctx-0032768/rep-04/attempt-01/candidate",
+          "status": "passed",
+          "timed_out": false
+        },
+        "oracle": {
+          "adapter_returncode": 0,
+          "measurement_sha256": "773c9b53f42b5fa50ad154934e2f0986a52151386a201bcbba4625e3f7430654",
+          "metrics": {
+            "ctx_tokens": 32768,
+            "gen_first_ms": 59.939,
+            "gen_ms": 6541.730000142444,
+            "gen_steady_ms": 6481.376000158597,
+            "gen_steady_tokens": 127,
+            "gen_steady_tps": 19.594604602,
+            "gen_tokens": 128,
+            "gen_tps": 19.566689545,
+            "kvcache_bytes": null,
+            "prefill_ms": 184332.95899999255,
+            "prefill_tokens": 32768,
+            "prefill_tps": 177.765279621,
+            "process_overhead_ms": 14877.85320886501,
+            "process_peak_bytes": 86857728000,
+            "process_wall_ms": 205752.542209
+          },
+          "output": "measurements/ctx-0032768/rep-04/attempt-01/oracle",
+          "status": "passed",
+          "timed_out": false
+        }
+      },
+      "order": "BA",
+      "repetition": 4,
+      "started_at_utc": "2026-09-06T21:07:44Z",
+      "status": "passed"
+    },
+    {
+      "attempt": 1,
+      "context": 32768,
+      "engines": {
+        "candidate": {
+          "output": "measurements/ctx-0032768/rep-05/attempt-01/candidate",
+          "status": "running"
+        },
+        "oracle": {
+          "adapter_returncode": 0,
+          "measurement_sha256": "36792c6cbb9facb4cb7b221b4202c98b0d89ecacf2dee1265b302e0a69b83006",
+          "metrics": {
+            "ctx_tokens": 32768,
+            "gen_first_ms": 56.771,
+            "gen_ms": 6590.027999882924,
+            "gen_steady_ms": 6533.138000099973,
+            "gen_steady_tokens": 127,
+            "gen_steady_tps": 19.439356707,
+            "gen_tokens": 128,
+            "gen_tps": 19.423286214,
+            "kvcache_bytes": null,
+            "prefill_ms": 185436.9799998527,
+            "prefill_tokens": 32768,
+            "prefill_tps": 176.706932997,
+            "process_overhead_ms": 15130.942834264377,
+            "process_peak_bytes": 86857678848,
+            "process_wall_ms": 207157.950834
+          },
+          "output": "measurements/ctx-0032768/rep-05/attempt-01/oracle",
+          "status": "passed",
+          "timed_out": false
+        }
+      },
+      "order": "AB",
+      "repetition": 5,
+      "started_at_utc": "2026-09-06T21:20:58Z",
+      "status": "running"
+    }
+  ],
+  "created_at_utc": "2026-09-06T20:15:37Z",
+  "phase": "timed",
+  "plan_sha256": "a446a6be765efa8198aec8b6111803b2b998dd3f98926b3ffd6341dae69859db",
+  "protocol": "rust-star-paired-benchmark-v1",
+  "schema": "rust-star-paired-state-v1",
+  "superseded_outputs": [],
+  "updated_at_utc": "2026-09-06T21:24:25Z",
+  "warmups": {
+    "candidate": [
+      {
+        "adapter_returncode": 0,
+        "attempt": 1,
+        "measurement_sha256": "fd028ab43c61829d92c6e31987c1f832aa2f3a24062de044e7ca589c69578acd",
+        "metrics": {
+          "ctx_tokens": 32768,
+          "gen_first_ms": 62.407708,
+          "gen_ms": 6454.745665,
+          "gen_steady_ms": 6392.337957,
+          "gen_steady_tokens": 127,
+          "gen_steady_tps": 19.867535298,
+          "gen_tokens": 128,
+          "gen_tps": 19.830370807,
+          "kvcache_bytes": null,
+          "prefill_ms": 539114.487625,
+          "prefill_tokens": 32768,
+          "prefill_tps": 60.781152709,
+          "process_overhead_ms": 34354.57396,
+          "process_peak_bytes": 94121558016,
+          "process_wall_ms": 579923.80725
+        },
+        "output": "warmups/candidate-01",
+        "status": "passed",
+        "timed_out": false
+      }
+    ],
+    "oracle": [
+      {
+        "adapter_returncode": 0,
+        "attempt": 1,
+        "measurement_sha256": "33dc227ceef8c28fd924c8b00ac62916679945ae249e1b8385bbd2976550b034",
+        "metrics": {
+          "ctx_tokens": 32768,
+          "gen_first_ms": 55.023,
+          "gen_ms": 6422.495999990339,
+          "gen_steady_ms": 6367.30399992835,
+          "gen_steady_tokens": 127,
+          "gen_steady_tps": 19.945647326,
+          "gen_tokens": 128,
+          "gen_tps": 19.929946239,
+          "kvcache_bytes": null,
+          "prefill_ms": 186482.10000007405,
+          "prefill_tokens": 32768,
+          "prefill_tps": 175.716596928,
+          "process_overhead_ms": 16902.476624935614,
+          "process_peak_bytes": 86863806464,
+          "process_wall_ms": 209807.072625
+        },
+        "output": "warmups/oracle-01",
+        "status": "passed",
+        "timed_out": false
+      }
+    ]
+  }
+}

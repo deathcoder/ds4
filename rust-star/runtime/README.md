@@ -1177,12 +1177,17 @@ collection and output-fixture decoding during timed prefill. Its retained
 cycle reuses the Metal context/model residency and records zero context
 creation time. It still rebuilds request-local KV state.
 
-Fresh32K normalized measurement and both retained32K reset/reuse cycles passed
-on 2026-09-06, alongside final 2K/8K regressions. These establish the engine
-frontier and lifecycle. The repaired five-pair 32K/128 baseline now passes:
-[report](../reports/32k-baseline-cbb078bb/README.md). Steady decode is near
-parity (19.574 versus 19.454 tokens/s); Rust prefill is 4.33x slower. The next
-milestone is finer prefill attribution and a measured C0-safe improvement.
+Fresh32K normalized measurement, both retained32K reset/reuse cycles and
+full 2K/8K controls pass. Native32K even-layer tails now run once per 4K
+chunk after retaining the existing 32-token attention tiles. All full-output
+C0 gates pass; arithmetic kernels and oracle-v4 remain unchanged.
+
+The audited [prefill report](../reports/32k-prefill-dd0d26c5/README.md) records
+five complete pairs: median Rust prefill 521.130 s versus 184.333 s reference,
+down 35.91% from the [earlier baseline](../reports/32k-baseline-cbb078bb/README.md).
+Decode remains near parity (19.752 / 19.595 tokens/s). A host restart required
+a complete final-pair rerun, with interrupted evidence retained. Even-layer
+attention is now the largest measured stage and the next optimization target.
 
 At 32K, `engine-profile` also records `long_prefill_profile` rows for native
 prefill stages: host elapsed time, existing command wall time, GPU time and

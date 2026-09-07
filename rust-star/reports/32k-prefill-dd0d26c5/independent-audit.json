@@ -1,0 +1,61 @@
+{
+  "schema": "rust-star-paired-independent-audit-v1",
+  "passed": true,
+  "pairs": 5,
+  "invalid_attempts": 1,
+  "external_interruption_retained": true,
+  "all_measurement_artifacts_rehashed": true,
+  "warmups_verified": 2,
+  "profile_stage_shares_verified": true,
+  "all_candidate_transcripts_exact": true,
+  "independent_statistics_match": true,
+  "official_summary_byte_identical": true,
+  "plan_sha256": "a446a6be765efa8198aec8b6111803b2b998dd3f98926b3ffd6341dae69859db",
+  "raw_sha256": "1ef94b248eec67489fc1ef8d1fd8f3f39fa03ad0b245d27baf72a03fdd7b4e69",
+  "summary_sha256": "2241238ffb11b9c89c1e9bc96cc8d630fdbcbac10bed324c9740c78eaaa4439c",
+  "profile_sha256": "2983ed1a875b7976c0b76efef29743687cd5a7fa8a8744ebaef41ffc08916951",
+  "host_observations": 116,
+  "unusual_thermal_observations": [],
+  "memory_distributions": {
+    "oracle": {
+      "count": 5,
+      "median": 80.89273071289062,
+      "mad": 0.0001678466796875,
+      "min": 80.89215087890625,
+      "max": 80.89306640625
+    },
+    "candidate": {
+      "count": 5,
+      "median": 87.58502197265625,
+      "mad": 1.6752471923828125,
+      "min": 85.62271118164062,
+      "max": 90.01860046386719
+    }
+  },
+  "prefill_wall_distributions": {
+    "oracle": {
+      "count": 5,
+      "median": 184.33295899999254,
+      "mad": 5.872396000129584,
+      "min": 178.26050199955253,
+      "max": 190.47163599945884
+    },
+    "candidate": {
+      "count": 5,
+      "median": 521.1301499169999,
+      "mad": 21.75061837499993,
+      "min": 499.379531542,
+      "max": 582.623585708
+    }
+  },
+  "prefill_timing_medians": {
+    "prefill_transformer_gpu_ms": 328041.810625175,
+    "prefill_transformer_wall_ms": 417404.046000011,
+    "prefill_transformer_setup_ms": 57408.370625101,
+    "prefill_tile_gpu_ms": 38367.004375003,
+    "prefill_tile_wall_ms": 38618.077,
+    "prefill_host_overhead_ms": 67475.921332993,
+    "prefill_unattributed_host_ms": 530.619665
+  },
+  "claim_scope": "C0 32K/128 development baseline; not the 256K primary headline"
+}

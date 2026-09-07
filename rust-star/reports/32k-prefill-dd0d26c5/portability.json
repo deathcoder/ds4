@@ -1,0 +1,14 @@
+{
+  "schema": "rust-star-report-portability-v1",
+  "derived_files": {
+    "inputs/plan-template.json": {
+      "original_sha256": "a446a6be765efa8198aec8b6111803b2b998dd3f98926b3ffd6341dae69859db",
+      "transformation": "local paths replaced with placeholders"
+    },
+    "correctness/rust-tests-portable.log": {
+      "original_sha256": "d48be126c2ed1c1c6d00a5cbbac35acd76ad4e21d505b50e9779d2b497ef0daa",
+      "transformation": "repository prefix replaced with $REPO; trailing blank lines normalized"
+    }
+  },
+  "reference_acceptance": "../32k-baseline-cbb078bb/correctness/oracle-v4-acceptance/"
+}

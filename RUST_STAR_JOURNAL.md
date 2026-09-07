@@ -18,6 +18,148 @@ Before changing code:
 Journal entries are reverse chronological. Do not edit old entries to change
 history; add a correction and update the current-state summary.
 
+## 2026-09-07 — Prefill optimization milestone complete
+
+- Profiled all native32K continuation layers/stages, identified the dominant
+  even-layer tail, and replaced 18,816 32-row tail calls with 147 4K calls.
+  Arithmetic kernels and accepted oracle-v4 are unchanged. Source candidate
+  `dd0d26c5424acd3e8b27606771c46ed3c71e715a`; executable SHA-256
+  `5d05eb14b3288f2233095e869a8f422dc9630f71484f7580ea482f3772e74b56`.
+- All live gates pass: internal12K, two complete32K full-logit/GPU-selection
+  modes, exact 2K/8K, two retained32K reset/reuse cycles, 310 Rust tests and
+  91 Python tests. Internal HC acceptance still ends at 24K.
+- Completed five valid AB/BA/AB/BA/AB pairs and both warmups. Confirmed host
+  restart interrupted pair 5 attempt 1; retained it and reran both engines
+  under the external-interruption protocol. No performance-based exclusion.
+- Independently audited median prefill: Rust 521.130 ± 21.751 MAD s versus
+  reference 184.333 ± 5.872 s. Prior Rust median 813.107 s: 35.91% latency
+  reduction / 1.560x throughput across campaigns; reference-normalized gain
+  1.521x. Remaining latency gap 2.827x. First four paired throughput ratios
+  median 0.34065; post-restart pair 0.35696; all-five median 0.35133.
+- Steady decode: 19.752 ± 0.201 versus 19.595 ± 0.363 tokens/s, paired median
+  1.00368 (range 0.96658–1.05343): near parity, no robust decode gain.
+  Median peak process memory 87.585 versus 80.893 GiB; prior Rust 91.645 GiB.
+- Separate before/after profiles reconcile 1,483 rows each. Even-tail GPU
+  time falls 294.625 to 43.453 s. Largest remaining stage: even attention,
+  77.645 s GPU / 124.838 s host over 18,816 calls. Profiles are excluded
+  from speed samples; grouped bootstrap coverage is explicit.
+- Durable report: `rust-star/reports/32k-prefill-dd0d26c5/README.md`.
+  Portable verifier passes all 106 artifacts, 12 accepted measurement bundles,
+  the interrupted pair's completed reference bundle, exact transcripts, both
+  profile reconciliations and independent statistics. 116 host observations
+  contain zero recorded thermal/performance warnings; restart caveat retained.
+- Next milestone: investigate even-layer attention batching and command/setup
+  costs, preserve C0 and lifecycle gates, then repeat the paired protocol.
+  This completes the authorized milestone, not the 256K project headline.
+  Journal, charter and runtime docs updated. No push or packaged release.
+
+## 2026-09-07 — Five optimized pairs complete; after profile running
+
+- All five complete pairs accepted. Pair 5 attempt 1 remains invalid due to
+  confirmed host restart; both engines passed the complete replacement pair.
+- Preliminary medians before independent audit: Rust prefill 521.130 s versus
+  oracle 184.333 s, down from previous Rust 813.107 s. Steady decode 19.752
+  versus 19.595 tokens/s; paired ratio 1.00368 remains near parity. Peak
+  process medians 87.585 / 80.893 GiB. Candidate prefill MAD 21.751 s.
+- Isolated after profile running. Reconcile stages, audit all evidence including
+  interrupted pair, export portable report and finalize current-state docs.
+
+## 2026-09-07 — Host restart confirmed; final candidate rerun active
+
+- Resumed host observation shows uptime 8 minutes versus over 16 hours before
+  interruption, with swap reset to zero. Host restart explains the lost
+  sessions; restart trigger is unavailable. Evidence added to interruption
+  record and preserved host-resumed-observation.json.
+- Rerun reference passes. Final candidate is running, followed by isolated
+  profile. Report must disclose the cross-restart campaign and host drift.
+
+## 2026-09-07 — Final pair externally interrupted; complete pair rerun
+
+- On continuation, execution session 56086 no longer exists and no runner or
+  model process remains. Pairs 1–4 passed; pair 5 candidate is left running
+  in state with no completed measurement. Termination cause is unavailable.
+- Preserved `interrupted-state.json` and `interruption.json` in campaign work.
+  Per BENCHMARK_PROTOCOL.md external-interruption rule, invalidate attempt 1
+  of pair 5 and rerun BOTH engines with the same frozen plan. No result was
+  excluded for speed. This is an explicit correction to the initial no-retry
+  expectation; report the interruption and both attempts in final evidence.
+- Final pair rerun, isolated profile, audit and export remain to complete.
+
+## 2026-09-06 — Four optimized timed pairs pass
+
+- Pairs 1–4 pass on first attempts in AB/BA/AB/BA order. Final pair 5
+  is running reference-first. Zero invalid attempts. Separate after profile
+  starts automatically after the timed block; audit and export remain pending.
+
+## 2026-09-06 — Three optimized timed pairs pass
+
+- Pairs 1–3 pass on first attempts in AB/BA/AB order. Pair 4 is running
+  candidate-first. No invalid samples. Remaining: pairs 4–5, after profile,
+  independent audit, portable report and final journal checkpoint.
+
+## 2026-09-06 — Two optimized timed pairs pass
+
+- Pairs 1–2 pass on first attempts in AB/BA order. Pair 3 is running
+  reference-first. No invalid attempts. Finish remaining pairs and profile.
+
+## 2026-09-06 — First optimized timed pair passes
+
+- Both warmups and pair 1 (AB) pass on first attempts. Pair 2 (BA) is
+  running candidate-first. No invalid samples. Complete all five pairs and
+  isolated after profile before auditing comparative statistics.
+
+## 2026-09-06 — Optimized five-pair campaign started
+
+- All 310 Rust and 91 Python tests pass. Full model/prompt hashes freshly
+  verified against baseline pins. Candidate dd0d26c5 and oracle-v4 unchanged.
+- Frozen plan SHA-256:
+  `a446a6be765efa8198aec8b6111803b2b998dd3f98926b3ffd6341dae69859db`.
+- Work: `rust-star/.work/paired-32k-128-dd0d26c5-batch/`. Runner and host/load
+  observer active; one model process at a time, no builds during measurements.
+  Finish both warmups, all five AB/BA/AB/BA/AB pairs, isolated after profile,
+  independent audit and durable export. Stop on invalid attempts; no retries.
+
+## 2026-09-06 — Batched-tail live correctness and lifecycle complete
+
+- All six frozen-candidate gates pass: internal12K, two full32K C0 modes,
+  exact 2K/8K, and two retained32K/128 requests with exact transcripts.
+- Final harness tests are running. Next freshly hash inputs, freeze the new
+  five-pair plan against unchanged oracle-v4, finish all pairs and a separate
+  after profile, then audit/export the report. No paired speed claim yet.
+
+## 2026-09-06 — Batched-tail shorter controls pass; retained run active
+
+- 2K and complete legacy8K controls pass, including every full output logit.
+- Retained32K two-cycle reset/reuse is running as the only model process.
+  Two fresh full32K C0 modes and internal12K already passed. Candidate/source
+  remain frozen; paired measurements have not started.
+
+## 2026-09-06 — Both batched-tail full32K C0 modes pass
+
+- Fresh output-only and internal32K runs both pass all 129 full-logit rows,
+  GPU selections and the immutable 128-step transcript. Internal checkpoints
+  through 24K pass; later hashes remain diagnostic only.
+- 2K/8K regressions and retained32K two-cycle reset/reuse are now queued/running.
+  After these pass, run Python checks, rehash model/prompt, freeze the new
+  five-pair plan, and collect the post-optimization profile after timed pairs.
+
+## 2026-09-06 — First batched-tail full32K C0 gate passes
+
+- `batch-32k-output` passes all 129 full-logit rows and production GPU
+  selections, final token 14. Process duration 493.406 s is diagnostic only,
+  not a paired speed claim. Earlier internal12K passed in 214.636 s.
+- Fresh `batch-32k-internal` is running; 2K/8K and retained32K two-cycle
+  validation follow. Candidate remains frozen as `dd0d26c5`.
+
+## 2026-09-06 — Batched-tail 12K internal gate passes
+
+- Frozen candidate `dd0d26c5424acd3e8b27606771c46ed3c71e715a`, executable
+  SHA-256 `5d05eb14b3288f2233095e869a8f422dc9630f71484f7580ea482f3772e74b56`.
+- All 43 layers match established internal targets through the 12K frontier.
+  This early localization gate does not claim a full-output target at 12K.
+- `batch-32k-output` is running; full internal32K, 2K/8K and retained32K
+  follow sequentially. Queue stops on failure. No paired timings admitted.
+
 ## 2026-09-06 — Batched-tail candidate built; correctness queue ready
 
 - The new candidate builds and all 310 Rust tests pass. An initial compile
@@ -1871,60 +2013,48 @@ Next:
 
 ## Current State
 
-### Current resume checkpoint (updated 2026-09-06)
+### Current resume checkpoint (updated 2026-09-07)
 
-- Active milestone: native32K prefill attribution and measured optimization.
-  Work: `rust-star/.work/prefill-milestone-fe73defe/`. Profile tooling first;
-  profiler `3c77afe8` passes live interval/coverage checks. Even FFN tails
-  dominate (294.625 s GPU); 4K tail batching builds and passes 310 tests.
-  Live 12K/32K/2K/8K/retained validation is next.
-- Prior completed milestone: repaired, independently audited five-pair 32K/128
-  development baseline and separate profile. Report and portable verifier:
-  `rust-star/reports/32k-baseline-cbb078bb/`.
-  Candidate `cbb078bb`; accepted oracle-v4 `df99eba7`; plan `c251b3c8...ab5f80`.
-  All warmups/pairs pass first attempt. Decode is near parity (19.574 versus
-  19.454 tokens/s); Rust prefill is 4.33x slower (813.107 versus 187.890 s).
-  Next: finer prefill attribution, then a measured C0-safe optimization.
-- Streaming top-k count race is repaired with an adversarial GPU regression.
-  The insufficient projection-wait experiment was reverted. Original output
-  targets remain immutable. Four fresh full-output 32K runs, 2K/8K controls,
-  309 Rust / 91 Python tests, reference acceptance and two full decode traces
-  pass. Earlier retained32K reset/reuse validation remains established.
-- Native32K is complete through all 43 layers, output head and 128 greedy
-  decode steps. Do not restart completed layer work. Internal HC checkpoints
-  through 24K are accepted; later internal hashes remain diagnostic only.
-- Full local evidence: `rust-star/.work/paired-32k-128-cbb078bb-topk/`.
-  Rejected plans and repair experiments are preserved under
-  `rust-star/.work/paired-32k-128-7406473/` and its `-sampling` sibling.
-  Never resume rejected plans. The final model queue has completed.
+- Completed milestone: measured native32K prefill tail batching, candidate
+  `dd0d26c5`, unchanged accepted oracle-v4 `df99eba7`. Durable report:
+  `rust-star/reports/32k-prefill-dd0d26c5/README.md`; 106-artifact portable
+  verifier passes. No model process remains active after final validation.
+- Median prefill 521.130 s (previous Rust 813.107 s), 35.91% less latency;
+  reference 184.333 s, leaving a 2.827x gap. Reference-normalized improvement
+  1.521x. Decode remains near parity: 19.752 / 19.595 tokens/s. Median peak
+  process memory 87.585 / 80.893 GiB. These are 32K development results.
+- Five valid pairs and two warmups pass. Host restart interrupted pair 5;
+  attempt retained and complete pair rerun under protocol. Report explicitly
+  compares pre-/post-restart observations. Do not describe as uninterrupted.
+- Profiled even-tail GPU time falls 294.625 to 43.453 s; next bottleneck is
+  even attention (77.645 GPU / 124.838 host s, 18,816 calls). Investigate
+  batching/command costs next, with exact validation and a new frozen plan.
+- All 310 Rust and 91 Python tests, two fresh full32K C0 modes, internal12K,
+  2K/8K controls and two retained32K reset/reuse cycles pass. Native32K is
+  complete through all 43 layers, output head and 128 greedy steps. Do not
+  restart completed layer work. Internal HC is accepted through 24K only;
+  later internal hashes are diagnostic, never substitutes for full logits.
+- Candidate executable SHA-256:
+  `5d05eb14b3288f2233095e869a8f422dc9630f71484f7580ea482f3772e74b56`.
+  Frozen plan `a446a6be765efa8198aec8b6111803b2b998dd3f98926b3ffd6341dae69859db`.
+  Work: `rust-star/.work/paired-32k-128-dd0d26c5-batch/` and
+  `rust-star/.work/prefill-milestone-fe73defe/`.
+- Prior audited baseline: `rust-star/reports/32k-baseline-cbb078bb/`.
+  Streaming top-k count race remains repaired with adversarial GPU coverage;
+  original targets and failed projection-wait experiment remain preserved.
+  Never resume rejected `paired-32k-128-7406473` or its `-sampling` sibling.
 - Work in `/Users/deathcodevision/dev/ds4-rust-star-bootstrap` on
-  `agent/rust-star-bootstrap`, extending `8e63d80`. Remotes: `fork` =
-  `deathcoder/ds4`, `origin` = `antirez/ds4`.
-- Complete retained 8K chain and output head pass under schema v30:
-  all 129,280 FP32 words match the pinned oracle; selected token 77179.
-  The final 2K regression passes all retained boundaries and full logits
-  (token 15342). A fresh complete 8K repeat also passes; reports match except
-  timings.
-- The layer-26 prefix exposed tied router-score ordering. Exact input and
-  probability tensors isolated the failure to row 547's sixth expert. The
-  shared batched router now follows the oracle's bitonic permutation. The
-  repaired full gate and 2K control pass without changing any oracle target.
-- Targets 15--42 and release build are complete. Both whole-chunk capture
-  phases repeat all 487 payloads across two fresh processes and match isolated
-  15--18 controls. All four runs match the unchanged accepted full 8K logits.
-  Consumed activation buffers are released; KV/compressor history stays live.
-- Final Python tests: 86 pass; formatting/whitespace pass. Final Rust tests:
-  all 307 pass with all 28 remaining targets and transient release.
-  Evidence: `rust-star/.work/remaining-layers-v30/`.
-- Active producer: oracle-v3 `d35fb12d01d500b9cefcef24092c295687ceaf7e`.
-  `dwarfstar-oracle-v3-prefill-frontier-8192` is the full-logit target;
-  the accepted 32K frontier follows it. The pinned model SHA was reverified.
-- Preserve the standalone 2K scheduler repair, shorter decode controls, and
-  retained-engine lifecycle. Only one large inference process may run at once.
-- Whole-chunk temporary raw captures were compacted with both runs' hashes,
-  sizes, and logs retained; about 154 GiB remains available after duplicate
-  and test-output cleanup. No throughput or speedup claim accompanies the gates.
-- This checkpoint supersedes older frontiers in the accumulated history below.
+  `agent/rust-star-bootstrap`. Remotes: `fork` = `deathcoder/ds4`,
+  `origin` = `antirez/ds4`. No push performed. Research crate is publish=false;
+  current repository is not a Dion Labs packaged-release project.
+- Use accepted oracle-v4 for new evidence; preserve historical v1/v3 fixture
+  producer labels. Preserve GPU-owned histories, tied-score router ordering,
+  shorter controls and reset/reuse. One large model process at a time.
+- Reclaimed 10.55 GiB of duplicate build products this milestone; about
+  131 GiB was available before host restart. Preserve frozen evidence and
+  use `rust-star/.work/runtime-target` explicitly for future builds.
+- Broader native contexts, the 256K headline and coding-agent co-design remain
+  future work. This checkpoint supersedes older accumulated frontiers below.
 
 ### Accumulated implementation and measurement evidence
 
@@ -2675,27 +2805,23 @@ Next:
 
 ## Immediate Next Actions
 
-- Active authorized work: complete the prefill profiling/optimization milestone,
-  including exact gates, a new five-pair comparison, report and journal.
-  The prior 32K baseline is complete. Report:
-  `rust-star/reports/32k-baseline-cbb078bb/README.md`.
+- The authorized prefill optimization milestone is complete. Report and
+  verifier: `rust-star/reports/32k-prefill-dd0d26c5/`.
 
-1. Next milestone: profile native32K prefill per chunk/stage through all 43
-   layers, separating setup, encoding/waits and GPU work. Select and implement
-   the largest measured C0-safe improvement, then repeat the five-pair plan.
-   The measured 94.357 s setup cost suggests resource reuse as one hypothesis;
-   568.313 s transformer GPU time needs finer attribution before kernel claims.
-2. Preserve the exact 2K/8K controls, complete 32K immutable output trace,
-   production GPU selection, GPU-owned history, reset/reuse lifecycle and
-   tied-score router ordering. Do not redo completed native layer coverage.
+1. Next milestone: investigate native32K even-layer attention, now the largest
+   measured stage (77.645 s GPU / 124.838 s host, 18,816 calls). Attribute
+   batching, encoding/waits and allocation costs before choosing a change;
+   validate a C0-safe improvement with a fresh frozen five-pair comparison.
+2. Preserve exact 2K/8K controls, complete32K immutable output trace, GPU
+   selection, GPU-owned history, reset/reuse and tied-score router ordering.
+   Internal HC acceptance remains through24K. Do not redo completed layers.
 3. Use accepted oracle-v4 for new captures. Preserve original fixture producer
-   identities and every failed attempt; never resume either rejected plan.
+   identities and all failed/interrupted attempts. Never resume rejected plans.
 4. Broader native contexts and the 256K primary headline remain future work.
    Run one large model process at a time and keep disk use bounded.
-5. Update this journal with each meaningful step, including failures, and
-   include it with implementation commits.
-6. GitHub Actions remains dependent on the account billing lock; secure remote
-   access remains deferred in the manual task ledger.
+5. Update the journal at each meaningful step and commit it with the work.
+6. GitHub Actions billing lock and deferred secure remote access remain in
+   the manual task ledger.
 
 ## Entries
 

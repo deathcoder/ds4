@@ -1,0 +1,4 @@
+Rust Star eligible measurement: prefill 56.242 tok/s, generation 20.229 tok/s, steady 20.259 tok/s
+correctness: exact 128-token oracle transcript; prefill and generation collection disabled
+paired protocol: eligible
+json: $TEMP/engine-run.json

@@ -1,0 +1,8 @@
+{
+  "completed_at_utc": "2026-09-06T20:19:07Z",
+  "engine": "oracle",
+  "returncode": 0,
+  "schema": "rust-star-adapter-process-v1",
+  "start_failed": false,
+  "timed_out": false
+}

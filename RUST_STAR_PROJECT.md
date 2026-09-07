@@ -345,17 +345,20 @@ they describe whenever practical.
 ## Open Items
 
 Current implementation boundaries, evidence, and immediate actions are maintained
-in `RUST_STAR_JOURNAL.md`. As of 2026-09-06, native 32K prefill is exact through
+in `RUST_STAR_JOURNAL.md`. As of 2026-09-07, native 32K prefill is exact through
 all 43 layers and the output head. Both diagnostic and output-only executions
 match all 129,280 immutable prefill logits and all 16,547,840 FP32 words over
 128 subsequent greedy decode steps. The complete 2K prefill/decode and 8K
 continuation remain established controls.
 
-- Fresh and retained 32K engine validation and final 2K/8K regressions pass.
-  The independently audited five-pair 32K/128 baseline is complete:
-  `rust-star/reports/32k-baseline-cbb078bb/README.md`. Decode is near parity
-  (19.574 versus 19.454 tokens/s); Rust prefill is 4.33x slower. The next
-  measured milestone is finer prefill attribution and a C0-safe optimization.
+- Fresh and retained32K validation, full-logit gates, 2K/8K controls and
+  measured prefill tail batching are complete. Audited five-pair report:
+  `rust-star/reports/32k-prefill-dd0d26c5/README.md`. Median Rust prefill
+  falls 813.107 to 521.130 s (35.91% less latency across campaigns), versus
+  reference 184.333 s. Decode remains near parity (19.752 / 19.595 tokens/s).
+  A host restart interrupted the last pair; complete-pair rerun and original
+  evidence are disclosed. Next: even-layer attention, the largest remaining
+  measured stage, under the same exactness and paired-measurement protocol.
 - Internal HC targets repeat through 24K. Instrumented 28K/32K captures are
   explicitly unverified; they do not replace the mandatory full-output C0 gate.
 - Preserve production batch arithmetic, GPU-owned history, exact shorter

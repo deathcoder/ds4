@@ -1,0 +1,12 @@
+{
+  "commit": "dd0d26c5424acd3e8b27606771c46ed3c71e715a",
+  "tree": "16f3655b30085e145c02efe105a765894a2145e4",
+  "executable_sha256": "5d05eb14b3288f2233095e869a8f422dc9630f71484f7580ea482f3772e74b56",
+  "sources": {
+    "rust-star/runtime/src/long_prefill.rs": "012ac855daca44575eb0a581fe3a9a6c692009de350ad03d7e1827324407d2cd",
+    "rust-star/runtime/src/metal.rs": "9178b37175bf458641ccdfe4afbdae8215a3d5ea8668b94418b3055c6a85ffd1",
+    "rust-star/runtime/src/metal_shim.m": "00775c9c0a6acd77b72db2630d98d1b28eb897e12074b10744a3f6d800abcb72",
+    "rust-star/runtime/src/metal_shim.h": "d0ffd3d1f814edf141b9dd041799d9bec86f512b4321e9b49e8a49f31de03dde",
+    "rust-star/runtime/src/main.rs": "d02737636afdb064f847f068a3cb923984e0b1c30d1301918342c072d126dc6d"
+  }
+}

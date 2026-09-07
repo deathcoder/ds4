@@ -1,0 +1,10 @@
+{
+  "detected_at_utc": "2026-09-07T05:39:52.108972+00:00",
+  "reason": "Execution session disappeared across continuation; prior session id is unknown, no model or runner process remains, and final candidate has no completed measurement. Complete pair rerun under external-interruption protocol; no performance-based exclusion.",
+  "interrupted_state_sha256": "6cdd2a8b68806e54f87f39a7cd454931d3b612fdb194cc4b1fd8ee3c6e76ecd2",
+  "pair": 5,
+  "attempt": 1,
+  "completed_pairs": 4,
+  "root_cause": "Host restart confirmed by uptime reset; trigger unavailable",
+  "host_restart_evidence": "Before interruption uptime exceeded 16 hours; resumed observation reports uptime 8 minutes with swap reset to zero, confirming host restart across the session gap."
+}

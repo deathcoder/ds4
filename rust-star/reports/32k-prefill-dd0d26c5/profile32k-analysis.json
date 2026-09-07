@@ -1,0 +1,87 @@
+{
+  "passed": true,
+  "profile_sha256": "2983ed1a875b7976c0b76efef29743687cd5a7fa8a8744ebaef41ffc08916951",
+  "rows": 1483,
+  "coverage": "all 43 layers in each continuation chunk, shared bootstrap ranges explicit",
+  "group_totals": {
+    "prefix/initial_bootstrap": {
+      "calls": 1,
+      "host_elapsed_ms": 24291.436625,
+      "command_wall_ms": 24216.432,
+      "gpu_ms": 24050.387458333
+    },
+    "prefix/prefix_layer": {
+      "calls": 40,
+      "host_elapsed_ms": 24887.419831999992,
+      "command_wall_ms": 23506.0,
+      "gpu_ms": 17656.902125003
+    },
+    "bootstrap/bootstrap_ingress": {
+      "calls": 7,
+      "host_elapsed_ms": 36030.291334,
+      "command_wall_ms": 32313.755999999998,
+      "gpu_ms": 32186.748666667
+    },
+    "even/bind": {
+      "calls": 147,
+      "host_elapsed_ms": 3711.5854620000005,
+      "command_wall_ms": 0.0,
+      "gpu_ms": 0.0
+    },
+    "even/boundary": {
+      "calls": 147,
+      "host_elapsed_ms": 30406.03479900001,
+      "command_wall_ms": 28725.424,
+      "gpu_ms": 22437.900291665006
+    },
+    "even/host_scratch": {
+      "calls": 147,
+      "host_elapsed_ms": 9.90212999999999,
+      "command_wall_ms": 0.0,
+      "gpu_ms": 0.0
+    },
+    "even/attention": {
+      "calls": 18816,
+      "host_elapsed_ms": 124838.41459799993,
+      "command_wall_ms": 97497.53600000397,
+      "gpu_ms": 77645.253874998
+    },
+    "even/tail": {
+      "calls": 147,
+      "host_elapsed_ms": 58462.160452000004,
+      "command_wall_ms": 58308.987,
+      "gpu_ms": 43453.20683333401
+    },
+    "odd/bind": {
+      "calls": 140,
+      "host_elapsed_ms": 806.9714960000002,
+      "command_wall_ms": 0.0,
+      "gpu_ms": 0.0
+    },
+    "odd/ingress": {
+      "calls": 140,
+      "host_elapsed_ms": 78886.93029399999,
+      "command_wall_ms": 66956.00999998799,
+      "gpu_ms": 55070.25941667899
+    },
+    "odd/compressor": {
+      "calls": 140,
+      "host_elapsed_ms": 4610.287205000001,
+      "command_wall_ms": 1088.8050000000003,
+      "gpu_ms": 745.117416666
+    },
+    "odd/attention": {
+      "calls": 140,
+      "host_elapsed_ms": 27278.480464000004,
+      "command_wall_ms": 26303.334000000003,
+      "gpu_ms": 23474.027958334013
+    },
+    "odd/tail": {
+      "calls": 140,
+      "host_elapsed_ms": 55059.52686800003,
+      "command_wall_ms": 54873.11099999996,
+      "gpu_ms": 40745.554499999984
+    }
+  },
+  "prefill_ms": 473290.0115
+}
