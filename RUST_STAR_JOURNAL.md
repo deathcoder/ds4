@@ -18,6 +18,13 @@ Before changing code:
 Journal entries are reverse chronological. Do not edit old entries to change
 history; add a correction and update the current-state summary.
 
+## 2026-09-07 — All native tail correctness/lifecycle gates pass
+
+- Candidate 89e32745 passes all six gates on attempt 1: native 12K, legacy 8K,
+  2K, both full 32K modes and retained two-cycle reset/reuse. 310 tests pass.
+- Model/prompt rehash and frozen paired-plan preparation follow. Timed pairs,
+  separate profile and independent report audit remain pending.
+
 ## 2026-09-07 — Both native tail 32K modes pass
 
 - Both output-only and diagnostic 32K runs match every prefill logit and all
@@ -2718,8 +2725,8 @@ Next:
 
 - Active milestone: native tail scratch reuse, direct retained HC output and
   removal of unused FP32 diagnostic conversion. 310 tests/release build pass;
-  12K/8K/2K and both full 32K modes pass; retained lifecycle running;
-  paired/profile pending in `rust-star/.work/tail-milestone-2d8b8405/`.
+  all six gates pass on attempt 1; frozen paired-plan preparation running;
+  timed campaign/profile and audit pending in `rust-star/.work/tail-milestone-2d8b8405/`.
 
 - Authorized odd-layer ingress milestone is complete. Native continuation
   ingress executes whole 4K chunks with unchanged kernel arithmetic and no
