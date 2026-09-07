@@ -18,6 +18,17 @@ Before changing code:
 Journal entries are reverse chronological. Do not edit old entries to change
 history; add a correction and update the current-state summary.
 
+## 2026-09-07 — Final v5 checkpoint candidate frozen and validating
+
+- Candidate `8aa4d13db803f96494d2c66988f12e81887228ca` passes310 Rust tests and release build.
+  Executable SHA `3c86bce02479c9ae11d2284c3c0470976468609247dda8928fa63caece5609d0`.
+  Inference implementation is unchanged from the previously exact v5 candidate;
+  the only runtime source delta is independently captured diagnostic targets.
+- New full six-gate queue is running. Wrapper `refresh-hc-and-resume.py`
+  proceeds to frozen-plan preparation and five paired runs/profile only after
+  all gates pass. Portable export/verifier then runs; final docs/commit remain.
+- Original stopped attempt remains under `old-hc-attempt-9a519a36/`.
+
 ## 2026-09-07 — Repeated v5 internal targets accepted through24K
 
 - Two fresh pinned-reference captures at each12K/16K/20K/24K agree for all43
@@ -2230,7 +2241,7 @@ Next:
   and two full129-row traces pass. Rust selector port passes full32K C0.
   Historical16K layer34 mismatch reproduced directly by v5; two full HC
   inventories at each12K/16K/20K/24K now accepted as separate v5 targets.
-  Rebuilding candidate with these targets, then repeating all six live gates.
+  Candidate8aa4d13d builds and passes310 tests; repeating all six live gates.
   Paired baseline and portable report remain pending. Evidence and sequential
   scripts: `rust-star/.work/upstream-refresh-1190237b/`.
 - Completed milestone: measured native32K prefill tail batching, candidate
