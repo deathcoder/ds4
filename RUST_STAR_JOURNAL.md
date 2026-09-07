@@ -18,6 +18,16 @@ Before changing code:
 Journal entries are reverse chronological. Do not edit old entries to change
 history; add a correction and update the current-state summary.
 
+## 2026-09-07 — Fresh Rust v5 full-output C0 gate passes
+
+- Frozen9a519a36 output-only32K run exits0: all129,280 prefill logits and
+  all16,547,840 FP32 words over128 decode steps match the new v5 fixtures
+  exactly. Selected85166 and the entire historical token transcript persist.
+- This validates the coordinated selector port end to end against v5, without
+  intermediate correctness collection in the prefill path. Fresh diagnostic
+  32K mode is now running, followed by2K/8K and retained lifecycle controls.
+- Paired baseline remains pending all gates; diagnostic timings are ineligible.
+
 ## 2026-09-07 — Rust12K internal control passes on v5 selector
 
 - Frozen candidate9a519a36 passes the12K control: all43 layers, including
@@ -2187,8 +2197,8 @@ Next:
   explains new32K logits.8K control is unchanged. Final pinned-source oracle
   acceptance passes all eight captures and bundle verification; two full traces
   and new v5 fixtures also pass. Rust candidate9a519a36 passes310 tests and
-  release build; live12K control passes, full32K output-only is running,
-  then diagnostic32K/short controls/lifecycle
+  release build; live12K and full32K output-only controls pass, diagnostic32K is running,
+  then short controls/lifecycle
   and paired baseline remain pending. Evidence: `rust-star/.work/upstream-refresh-1190237b/`.
 - Completed milestone: measured native32K prefill tail batching, candidate
   `dd0d26c5`, unchanged accepted oracle-v4 `df99eba7`. Durable report:
