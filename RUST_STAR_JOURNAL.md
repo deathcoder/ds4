@@ -2370,7 +2370,7 @@ Next:
   Runtime uses deterministic argsort/merge and keeps batched even-layer tails.
 - Frozen plan SHA `915d68eda1ebf4f619f3767a2003af7baa01a21d616612dc283e221ddf94e8cc`.
   Campaign `rust-star/.work/paired-32k-128-cc032078-v5/` has passed both warmups
-  and pairs 1–3; pair 4 is running Rust-first. Five pairs and isolated profile
+  and pairs 1–4; final pair 5 is running oracle-first. Five pairs and isolated profile
   remain the complete measurement scope.
   No builds or heavy tests during the timed block; one model process at a time.
 - Coordinator `rust-star/.work/upstream-refresh-1190237b/finish-milestone.py`
@@ -3133,7 +3133,7 @@ Next:
 ## Immediate Next Actions
 
 1. Finish the active upstream-refresh milestone: the frozen v5 campaign has
-   three valid pairs and pair 4 is running. Complete all five pairs, the isolated
+   four valid pairs and final pair 5 is running. Complete all five pairs, the isolated
    profile, independent audit and portable report, then update current docs and
    commit. All reference, Rust full C0 and lifecycle gates already pass.
 2. Preserve 2K/8K controls, the complete 32K output trace, GPU selection/history
