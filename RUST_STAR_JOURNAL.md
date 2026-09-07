@@ -2370,7 +2370,7 @@ Next:
   Runtime uses deterministic argsort/merge and keeps batched even-layer tails.
 - Frozen plan SHA `915d68eda1ebf4f619f3767a2003af7baa01a21d616612dc283e221ddf94e8cc`.
   Campaign `rust-star/.work/paired-32k-128-cc032078-v5/` has passed both warmups
-  and pairs 1–2; pair 3 is running oracle-first. Five pairs and isolated profile
+  and pairs 1–3; pair 4 is running Rust-first. Five pairs and isolated profile
   remain the complete measurement scope.
   No builds or heavy tests during the timed block; one model process at a time.
 - Coordinator `rust-star/.work/upstream-refresh-1190237b/finish-milestone.py`
