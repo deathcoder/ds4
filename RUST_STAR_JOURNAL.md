@@ -2486,8 +2486,8 @@ Next:
 
 - Active milestone: native even-layer attention batching from 32 to 4096 rows,
   same kernel arithmetic and direct tail-input output. Build and 310 Rust
-  tests and all six live gates pass. Frozen paired campaign is running
-  warmups, then five pairs and isolated profile. Plan SHA
+  tests and all six live gates pass. Both warmups pass; the frozen campaign
+  is running pair 1 of 5, followed by the isolated profile. Plan SHA
   `2ca644b554465dc38d16655872f3f28de184c60003c89e1044e60c0f90df6ed7`. Work/evidence lives at
   `rust-star/.work/attention-milestone-502bb6b6/`. Acceptance and timing pending.
 
