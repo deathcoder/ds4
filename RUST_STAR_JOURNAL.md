@@ -18,6 +18,17 @@ Before changing code:
 Journal entries are reverse chronological. Do not edit old entries to change
 history; add a correction and update the current-state summary.
 
+## 2026-09-07 — Five attention pairs pass; isolated profile running
+
+- All five alternating pairs and both warmups pass on attempt 1. No rejected
+  samples or retries. The separate 32K profile is running; audit remains pending.
+- Complete runner summary: Rust/reference median prefill 373.843/177.723 s;
+  steady decode 19.933/19.386 tokens/s. Previous Rust median prefill was
+  423.152 s. Background-load variation, including later OBS/video activity,
+  limits attribution of an exact isolated speedup; all samples are retained.
+- Candidate, oracle and targets remain unchanged. Final report/docs/commit
+  follow the completed profile and independent audit.
+
 ## 2026-09-07 — Four attention pairs pass; background-load change recorded
 
 - Both warmups and pairs 1–4 pass on attempt 1. Final pair 5 is running.
@@ -2496,8 +2507,8 @@ Next:
 - Active milestone: native even-layer attention batching from 32 to 4096 rows,
   same kernel arithmetic and direct tail-input output. Build and 310 Rust
   tests and all six live gates pass. Both warmups pass; the frozen campaign
-  has passed pairs 1–4; final pair 5 is running oracle-first. Isolated profile follows
-  all five pairs. Plan SHA
+  has passed all five pairs on attempt 1; the isolated profile is running.
+  Independent audit and final report/docs remain. Plan SHA
   `2ca644b554465dc38d16655872f3f28de184c60003c89e1044e60c0f90df6ed7`. Work/evidence lives at
   `rust-star/.work/attention-milestone-502bb6b6/`. Acceptance and timing pending.
 
