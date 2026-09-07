@@ -18,6 +18,19 @@ Before changing code:
 Journal entries are reverse chronological. Do not edit old entries to change
 history; add a correction and update the current-state summary.
 
+## 2026-09-07 — Ingress paired measurements and host conditions recorded
+
+- Five-pair Rust/reference median prefill: 371.601/206.136 seconds; steady
+  decode 17.264/17.075 tokens/s. Independent audit is still pending.
+- Previous attention baseline was 373.843/177.723 seconds. Rust absolute
+  latency is only slightly lower while reference latency rises substantially;
+  cross-session ratios are descriptive, not isolated causal speedup claims.
+- OBS/camera/video activity appears throughout this campaign. Host swap starts
+  at 1823.19 MiB used and ends at 1791.19 MiB; no thermal/performance warnings
+  reported. Observed Rust peak resident memory 92.250 GiB does not establish
+  reduced allocation requirements under these different host conditions.
+- Separate profile is running; final audit/report/docs pending.
+
 ## 2026-09-07 — All five ingress pairs pass; profile running
 
 - All five alternating pairs and both warmups pass on attempt 1. No rejected
