@@ -2241,7 +2241,8 @@ Next:
   and two full129-row traces pass. Rust selector port passes full32K C0.
   Historical16K layer34 mismatch reproduced directly by v5; two full HC
   inventories at each12K/16K/20K/24K now accepted as separate v5 targets.
-  Candidate8aa4d13d builds and passes310 tests; repeating all six live gates.
+  Candidate8aa4d13d builds and passes310 tests; fresh12K passes and the
+  new full32K output-only run is active, followed by remaining live gates.
   Paired baseline and portable report remain pending. Evidence and sequential
   scripts: `rust-star/.work/upstream-refresh-1190237b/`.
 - Completed milestone: measured native32K prefill tail batching, candidate
