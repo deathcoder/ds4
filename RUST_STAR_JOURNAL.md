@@ -18,6 +18,17 @@ Before changing code:
 Journal entries are reverse chronological. Do not edit old entries to change
 history; add a correction and update the current-state summary.
 
+## 2026-09-07 — Rust v5 candidate built; live gates started
+
+- Candidate `9a519a36a4e7670c6d67ea3b283df876b6999558` builds and passes310 Rust tests.
+  Executable SHA `e512f5e4711622a5fc9b08ddbe2a4580624bf5bbfb4593d646a77fad5962be12`.
+  Python suite93/93; both new differential fixture validators pass.
+- V5 source ancestry retained via explicit ours merge, preserving the research
+  runtime and historical root sources. Reference benchmark remains ccbd16d.
+- Sequential live queue starts12K internal, then32K output-only and diagnostic,
+  2K/8K controls, then two32K retained reset/reuse cycles. Stop on first failure;
+  no paired timing before all gates pass. Logs and build hashes in refresh W.
+
 ## 2026-09-07 — V5 full decode repeatability and versioned fixtures pass
 
 - Two fresh128-step runs match all129 full FP32 output rows exactly.
@@ -2165,7 +2176,9 @@ Next:
   upstream repeats four times at2K/32K; selector-only V4 control exactly
   explains new32K logits.8K control is unchanged. Final pinned-source oracle
   acceptance passes all eight captures and bundle verification; two full traces
-  and new v5 fixtures also pass. Rust live gates and paired baseline remain pending. Evidence: `rust-star/.work/upstream-refresh-1190237b/`.
+  and new v5 fixtures also pass. Rust candidate9a519a36 passes310 tests and
+  release build; live12K gate running, then full32K/short controls/lifecycle
+  and paired baseline remain pending. Evidence: `rust-star/.work/upstream-refresh-1190237b/`.
 - Completed milestone: measured native32K prefill tail batching, candidate
   `dd0d26c5`, unchanged accepted oracle-v4 `df99eba7`. Durable report:
   `rust-star/reports/32k-prefill-dd0d26c5/README.md`; 106-artifact portable
