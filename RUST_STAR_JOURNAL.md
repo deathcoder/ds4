@@ -18,6 +18,13 @@ Before changing code:
 Journal entries are reverse chronological. Do not edit old entries to change
 history; add a correction and update the current-state summary.
 
+## 2026-09-07 — Native tail passes exact 12K states
+
+- Candidate 89e32745 passes all accepted native internal states through 12K,
+  across all 43 layers. Legacy detailed 8K control is running.
+- Full 32K outputs, retained reset/reuse and fresh timings remain pending.
+  No candidate failure, fixture update or tolerance has been introduced.
+
 ## 2026-09-07 — Native tail candidate build and tests pass
 
 - Candidate `89e3274568745fe5311d16478ccf35f016958a08` passes 310 Rust tests and release build.
@@ -2690,7 +2697,7 @@ Next:
 
 - Active milestone: native tail scratch reuse, direct retained HC output and
   removal of unused FP32 diagnostic conversion. 310 tests/release build pass;
-  native 12K running, remaining gates and paired/profile report pending in `rust-star/.work/tail-milestone-2d8b8405/`.
+  native 12K passes, legacy 8K running; remaining gates and paired/profile pending in `rust-star/.work/tail-milestone-2d8b8405/`.
 
 - Authorized odd-layer ingress milestone is complete. Native continuation
   ingress executes whole 4K chunks with unchanged kernel arithmetic and no
