@@ -18,6 +18,17 @@ Before changing code:
 Journal entries are reverse chronological. Do not edit old entries to change
 history; add a correction and update the current-state summary.
 
+## 2026-09-08 — Corrected writer candidate passes fresh full 128K C0
+
+- Corrected candidate ef37e566, executable SHA-256
+  50f59a30144d106564d776a8b7a966d06a3d3b3dbe6c6bc3bf30ad69c81fa752,
+  passes 317 Rust tests/build and the unchanged 94 Python tests. Full 128K C0
+  repeats exactly: every prefill word and all 128 decode rows match.
+- New retained 128K execution is running, followed by four shorter/profile/
+  lifecycle controls. Work: rust-star/.work/measure128-writer-fix/.
+  The initial writer-admission failure and its red regression test remain in
+  rejected/. No timed pair has started. Runtime source remains frozen.
+
 ## 2026-09-08 — Retained 128K report rejected by old writer guards
 
 - Preserve failed 5f3b9672 attempt in measure128-43bf0dfa/: full 128K C0 passed;
@@ -3589,7 +3600,8 @@ Next:
   on stale context/token guards; the error is reproduced by a host regression.
   Corrected ef37e566 passes 317 Rust tests, 94 unchanged Python tests and build.
   Work: rust-star/.work/measure128-writer-fix/. Input hashes pass and full 128K
-  C0 is running again; all six live gates precede the five-pair campaign. Earlier failed evidence
+  C0 now passes again; corrected retained 128K is active. All six live gates
+  precede the five-pair campaign. Earlier failed evidence
   is retained in measure128-43bf0dfa/ and copied under the new work's rejected/.
   No paired measurements have started; stop after final evidence/docs acceptance.
 
