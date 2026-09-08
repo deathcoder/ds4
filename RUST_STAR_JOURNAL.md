@@ -18,6 +18,22 @@ Before changing code:
 Journal entries are reverse chronological. Do not edit old entries to change
 history; add a correction and update the current-state summary.
 
+## 2026-09-08 — Five bootstrap pairs complete; isolated profile running
+
+- Both warmups and all five alternating pairs pass with no retries or invalid
+  attempts. Candidate prefill improves in all five pairs. Median paired latency
+  ratio is 0.918349 (8.165% lower); candidate/baseline median prefill is
+  273.573/298.948s. Median absolute deviations are 0.379/3.034s.
+- Steady decode medians are 20.557/20.384 tokens/s; paired median ratio 1.005162.
+  Four pairs are slightly faster; the fifth is 2.0% slower. First-step paired
+  median ratio is 1.021207, with raw medians 57.479/53.608ms. Review all of this
+  in the retention decision; do not call every decode measure improved.
+- Candidate observed peak is 93.281GiB; baseline maximum is 92.892GiB. Shared
+  setup allocations remain, and this milestone makes no memory-reduction claim.
+- The separate engine-profile run is active. After it ends, the guarded runner
+  independently audits measurements and profile accounting, then stops for
+  report/retention/docs. No runtime edit before that run finishes.
+
 ## 2026-09-08 — Two valid bootstrap pairs; decision still pending
 
 - Both warmups and the first two alternating pairs pass on attempt 1. Pair 1
