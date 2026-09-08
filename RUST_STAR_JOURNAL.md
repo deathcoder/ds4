@@ -18,6 +18,22 @@ Before changing code:
 Journal entries are reverse chronological. Do not edit old entries to change
 history; add a correction and update the current-state summary.
 
+## 2026-09-08 — Memory-efficient prefill milestone authorized and started
+
+- User authorized the recommended milestone. Start from 291eb611 on
+  agent/rust-star-bootstrap; freeze the accepted 912fae1e executable before
+  building changes. Work: rust-star/.work/memory-prefill-291eb611/.
+- Scope: eliminate unnecessary initial bootstrap allocations, bound temporary
+  continuation storage to the active chunk with correct relative indexing,
+  preserve shorter/full-32K/lifecycle C0, measure memory and paired performance,
+  and produce an evidence-based 128K capacity preflight. Do not claim full 128K
+  C0 from capacity calculations or relax current frontier guards without evidence.
+- Require lower observed memory with no material paired performance regression;
+  preserve all attempts and compare against frozen accepted Rust. Oracle-v5 and
+  historical evidence stay unchanged. One model/GPU workload at a time.
+- Current work is source/lifetime audit. No candidate code or new model run yet.
+  Keep journal current and stop after this milestone's evidence/report.
+
 ## 2026-09-08 — Next-step recommendation; no new milestone started
 
 - User asked for the next step. Recommend memory-efficient prefill and 128K
@@ -3288,7 +3304,8 @@ Next:
   First-step latency and observed peak memory rose slightly; tradeoffs recorded.
   Report: rust-star/reports/32k-bootstrap-912fae1e/README.md (403 verified artifacts).
   Oracle-v5 remains the C0 target; latest Rust-versus-DwarfStar result is unchanged.
-  STOP after this milestone. No benchmark/model workload remains running.
+  This baseline is complete. The next memory-efficient prefill milestone is
+  now authorized; its source/lifetime audit is active.
 - Dense-Q8 candidate 92ca3ef3 is rejected and reverted after seven passing live
   gates and five valid pairs. Paired prefill ratio 2.01485 versus baseline 1.72589;
   Rust/reference medians 351.974/176.897 s. One host-interrupted pair is preserved
@@ -4085,8 +4102,9 @@ Next:
 
 ## Immediate Next Actions
 
-1. STOP: the scoped-bootstrap/counter milestone is complete, accepted and fully
-   documented. Await user direction; do not start a new benchmark automatically.
+1. Complete the authorized memory-efficient prefill milestone: allocation/index
+   audit, bounded scratch/bootstrap setup, exact controls, measured memory and
+   paired performance, 128K capacity preflight, final report/journal; then stop.
 2. For the next authorized milestone, use the fresh profile to choose between
    removing remaining shared-bootstrap setup and further native-tail work.
    Attention output and routed gate/up remain largest; do not revive rejected
