@@ -18,6 +18,17 @@ Before changing code:
 Journal entries are reverse chronological. Do not edit old entries to change
 history; add a correction and update the current-state summary.
 
+## 2026-09-08 — Two valid bootstrap pairs; decision still pending
+
+- Both warmups and the first two alternating pairs pass on attempt 1. Pair 1
+  candidate/baseline prefill is 273.194/294.871s; pair 2 is 271.753/295.914s.
+  Steady decode is 20.632/20.482 and 20.557/20.342 tokens/s respectively.
+  These are preliminary observations, not the final five-pair acceptance result.
+- Pair 3 is running. No source/build changes or other model workload introduced.
+  Thermal observations report no warnings; light desktop background activity
+  is preserved in the host/load logs. Continue through all five pairs, the
+  isolated profile and portable audit/report, then make the retention decision.
+
 ## 2026-09-08 — All bootstrap gates pass; frozen Rust-to-Rust pairs begin
 
 - Candidate 912fae1e passes all seven live gates: 12K internal, detailed 8K,
