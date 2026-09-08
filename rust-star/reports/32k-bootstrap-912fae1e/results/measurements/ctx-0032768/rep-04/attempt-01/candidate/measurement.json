@@ -1,0 +1,56 @@
+{
+  "artifacts": {
+    "engine_run": {
+      "bytes": 3260,
+      "path": "engine-run.json",
+      "sha256": "f808408056d04634880779f8dc4e40b35b34a06142541356df8e840727a67da6"
+    },
+    "stderr": {
+      "bytes": 0,
+      "path": "stderr.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "stdout": {
+      "bytes": 245,
+      "path": "stdout.log",
+      "sha256": "e8fc6d935cf06b6b365e1ad0f644256db630b7ba70d645d9be38db26b6b94ceb"
+    }
+  },
+  "command": [
+    "$ENGINE",
+    "engine-measure",
+    "$MODEL",
+    "--context",
+    "32768",
+    "--gen-tokens",
+    "128",
+    "--json",
+    "$TEMP/engine-run.json"
+  ],
+  "context": 32768,
+  "engine": "rust-star",
+  "gen_tokens": 128,
+  "metrics": {
+    "ctx_tokens": 32768,
+    "gen_first_ms": 54.789792,
+    "gen_ms": 6210.688002,
+    "gen_steady_ms": 6155.89821,
+    "gen_steady_tokens": 127,
+    "gen_steady_tps": 20.630620531,
+    "gen_tokens": 128,
+    "gen_tps": 20.609632936,
+    "kvcache_bytes": null,
+    "prefill_ms": 273572.7995,
+    "prefill_tokens": 32768,
+    "prefill_tps": 119.777989844,
+    "process_overhead_ms": 20538.268831000005,
+    "process_peak_bytes": 100160077824,
+    "process_wall_ms": 300321.756333
+  },
+  "process_peak_bytes": 100160077824,
+  "process_wall_ms": 300321.756333,
+  "returncode": 0,
+  "schema": "rust-star-engine-measurement-v1",
+  "status": "passed",
+  "timed_out": false
+}

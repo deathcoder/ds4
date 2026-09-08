@@ -1,0 +1,20 @@
+{
+  "source_commit": "912fae1ebbd641fd8edaf4e9f6b26249737775b0",
+  "source_sha256": "fb238be47ee05a6807e0d4d40b8805a0aad7940a182fd1e51445b6a251fcc626",
+  "executable_sha256": "a9d0fedb016cb90f151171539cc70d667ba9409452d1d3a79494108c55549ff9",
+  "output_sha256": "63841c69278aad2103d8925a0a4b6bd7c6688fa490b74766ce3eebce8259f2ec",
+  "compiler": "Apple clang version 21.0.0 (clang-2100.1.1.101)\nTarget: arm64-apple-darwin25.5.0\nThread model: posix\nInstalledDir: /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin\n",
+  "build_command": [
+    "clang",
+    "-fobjc-arc",
+    "-O2",
+    "-framework",
+    "Foundation",
+    "-framework",
+    "Metal",
+    "tail_counter_probe.m",
+    "-o",
+    "tail-counter-probe-final"
+  ],
+  "utc": "2026-09-08T07:47:26.795774+00:00"
+}

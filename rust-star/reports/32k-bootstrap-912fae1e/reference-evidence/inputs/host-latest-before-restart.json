@@ -1,0 +1,9 @@
+{
+  "at_utc": "2026-09-07T23:34:38.264106+00:00",
+  "thermal": "Error:Failed to get thermal warning level with error code 0xe00002bc\nError: Failed to get performance warning level with error code 0xe00002bc\nError: No CPU power status with error code 0xe00002bc",
+  "thermal_exit": 0,
+  "swap": "vm.swapusage: total = 1024.00M  used = 2.38M  free = 1021.62M  (encrypted)",
+  "swap_exit": 0,
+  "uptime": "1:34  up 17:59, 0 users, load averages: 3.35 7.46 12.85",
+  "uptime_exit": 0
+}

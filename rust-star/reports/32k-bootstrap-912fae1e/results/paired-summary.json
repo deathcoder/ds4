@@ -1,0 +1,294 @@
+{
+  "candidate": {
+    "backend": "metal",
+    "build_configuration": {
+      "cargo": "1.91.1 (ea2d97820 2025-10-10)",
+      "command": [
+        "cargo",
+        "build",
+        "--manifest-path",
+        "rust-star/runtime/Cargo.toml",
+        "--release"
+      ],
+      "profile": {
+        "codegen_units": 1,
+        "lto": "thin",
+        "panic": "abort"
+      },
+      "rustc": "1.91.1 (ed61e7d7e 2025-11-07)",
+      "rustflags": [],
+      "validated_build_sha256": "13fcf43bbdf8910f0066ee248df8664fc008f93a770a11228177f94057510d52"
+    },
+    "executable_sha256": "adea36df8200ae6c99f4b549faebcf90fd01f9da34207dc0add562180cf713c4",
+    "model_sha256": "ca22ae2f838e14077c22bc1c1417b71b45b5e5a3687bd96c2ac6e17fdb6261c0",
+    "prompt_sha256": "f53e0d80cb2d4492d24ebd63c7000c397b16ae70f9bf09b3763e5d8323ec209f",
+    "runtime_configuration": {
+      "command": "engine-measure",
+      "comparison_role": "optimized Rust",
+      "decode_steps": 128,
+      "even_prefill_attention_retention": "complete chunk written directly to existing tail-input buffer",
+      "even_prefill_attention_tile_rows": 4096,
+      "even_prefill_tail_rows": 4096,
+      "exact_prefix_rebuild": true,
+      "failure_collection": "completed logit readback only after failed token comparison; successful steps keep GPU selection readback",
+      "generation_command_buffers_per_token": 44,
+      "generation_correctness_collection": false,
+      "generation_host_waits_per_token": 2,
+      "indexer_selector": "upstream deterministic block argsort and merge",
+      "initial_bootstrap_last_completed_layer": 2,
+      "initial_bootstrap_output_head": false,
+      "model_residency_queue_attached": true,
+      "model_residency_required": true,
+      "model_warm_policy": "CPU POSIX_MADV_WILLNEED plus one volatile byte touch per tensor-data page before internal timers; Metal residency-set registration and one-mebibyte-stride GPU view touch inside prefill_ms before decode",
+      "native_batched_prefill": true,
+      "native_tail_direct_hc_output": true,
+      "native_tail_dispatches": 25,
+      "native_tail_routed_mid_f32_conversion": false,
+      "native_tail_scratch_buffers": 22,
+      "native_tail_scratch_reuse": true,
+      "odd_prefill_ingress_input": "immutable predecessor buffer alias",
+      "odd_prefill_ingress_rows": 4096,
+      "prefill_chunk_tokens": 4096,
+      "prefill_context_tokens": 32768,
+      "prefill_correctness_collection": false,
+      "prefill_stage_profile_collection": false,
+      "sampling": "lowest-ID greedy argmax; full C0 trace establishes identical non-EOS selections to the reference",
+      "sampling_logits_readback": false,
+      "sampling_result_readback_bytes": 8,
+      "transcript_validation": "after each timed step; first failure rejects run"
+    },
+    "source_commit": "912fae1ebbd641fd8edaf4e9f6b26249737775b0",
+    "source_tree": "8cb3b90da6fc288137efa13d1ef6eb4d84e671c2"
+  },
+  "configuration": {
+    "contexts": [
+      32768
+    ],
+    "gen_tokens": 128,
+    "primary_metric": "gen_steady_tps",
+    "repetitions": 5,
+    "sampling": "fixed 128-step lowest-ID greedy transcript; reference excludes EOS, and every reference full-logit argmax equals the same non-EOS transcript"
+  },
+  "contexts": [
+    {
+      "candidate": {
+        "gen_first_ms": {
+          "count": 5,
+          "mad": 2.6887490000000014,
+          "max": 60.284458,
+          "median": 57.478541,
+          "min": 52.787917
+        },
+        "gen_ms": {
+          "count": 5,
+          "mad": 20.098869999999806,
+          "max": 6420.914246,
+          "median": 6230.786872,
+          "min": 6210.688002
+        },
+        "gen_steady_ms": {
+          "count": 5,
+          "mad": 22.529370999999628,
+          "max": 6360.629788,
+          "median": 6177.998955,
+          "min": 6155.469584
+        },
+        "gen_steady_tps": {
+          "count": 5,
+          "mad": 0.07523913100000001,
+          "max": 20.632057111,
+          "median": 20.55681798,
+          "min": 19.966576303
+        },
+        "gen_tps": {
+          "count": 5,
+          "mad": 0.06648122300000026,
+          "max": 20.609632936,
+          "median": 20.543151713,
+          "min": 19.934855863
+        },
+        "prefill_ms": {
+          "count": 5,
+          "mad": 378.58029200002784,
+          "max": 285215.607375,
+          "median": 273572.7995,
+          "min": 271752.598292
+        },
+        "prefill_tps": {
+          "count": 5,
+          "mad": 0.16598296399999413,
+          "max": 120.580263835,
+          "median": 119.777989844,
+          "min": 114.888523463
+        },
+        "process_wall_ms": {
+          "count": 5,
+          "mad": 490.90954100003,
+          "max": 312518.242208,
+          "median": 300321.756333,
+          "min": 298397.278916
+        }
+      },
+      "candidate_over_oracle": {
+        "gen_first_ms": {
+          "count": 5,
+          "mad": 0.036497331183122816,
+          "max": 1.1193354256416026,
+          "median": 1.0212072182153362,
+          "min": 0.9847098870322134
+        },
+        "gen_steady_tps": {
+          "count": 5,
+          "mad": 0.0028244076001784357,
+          "max": 1.0105760988912535,
+          "median": 1.0051618038246275,
+          "min": 0.9800140800045416
+        },
+        "gen_tps": {
+          "count": 5,
+          "mad": 0.0037325715625253775,
+          "max": 1.0106180480197573,
+          "median": 1.0050567327131488,
+          "min": 0.980006748434747
+        },
+        "prefill_tps": {
+          "count": 5,
+          "mad": 0.005993505913690855,
+          "max": 1.0949040176543254,
+          "median": 1.0889105117406346,
+          "min": 1.0638026551453514
+        }
+      },
+      "context": 32768,
+      "invalid_pairs": [],
+      "oracle": {
+        "gen_first_ms": {
+          "count": 5,
+          "mad": 0.812459000000004,
+          "max": 59.032542,
+          "median": 53.607583,
+          "min": 52.129667
+        },
+        "gen_ms": {
+          "count": 5,
+          "mad": 14.373243000000002,
+          "max": 6296.945666,
+          "median": 6282.572423,
+          "min": 6242.093791
+        },
+        "gen_steady_ms": {
+          "count": 5,
+          "mad": 12.89532699999927,
+          "max": 6243.338083,
+          "median": 6230.442756,
+          "min": 6187.673749
+        },
+        "gen_steady_tps": {
+          "count": 5,
+          "mad": 0.042101765999998264,
+          "max": 20.524676179,
+          "median": 20.383784102,
+          "min": 20.341682336
+        },
+        "gen_tps": {
+          "count": 5,
+          "mad": 0.04650474700000018,
+          "max": 20.505939879,
+          "median": 20.37382005,
+          "min": 20.327315303
+        },
+        "prefill_ms": {
+          "count": 5,
+          "mad": 3033.8918750000303,
+          "max": 303413.120416,
+          "median": 298948.15275,
+          "min": 294870.980375
+        },
+        "prefill_tps": {
+          "count": 5,
+          "mad": 1.1237980250000135,
+          "max": 111.126567824,
+          "median": 109.610980026,
+          "min": 107.997966453
+        },
+        "process_wall_ms": {
+          "count": 5,
+          "mad": 2947.8997910000035,
+          "max": 330167.348375,
+          "median": 325549.255,
+          "min": 321455.708167
+        }
+      },
+      "predeclared_pairs": 5,
+      "valid_pairs": 5
+    }
+  ],
+  "correctness_class": "C0",
+  "correctness_manifest_sha256": "7ab522525f34f014e40c076dd92403db72410ff776a874efac42ee91bd7b6629",
+  "headline_eligible": true,
+  "host_manifest_sha256": "1e2133225d574ccbce2a115cd61c1b6d93602950d82797af88e76dcfa08f8aab",
+  "oracle": {
+    "backend": "metal",
+    "build_configuration": {
+      "cargo": "1.91.1 (ea2d97820 2025-10-10)",
+      "command": [
+        "cargo",
+        "build",
+        "--manifest-path",
+        "rust-star/runtime/Cargo.toml",
+        "--release"
+      ],
+      "profile": {
+        "codegen_units": 1,
+        "lto": "thin",
+        "panic": "abort"
+      },
+      "rustc": "1.91.1 (ed61e7d7e 2025-11-07)",
+      "rustflags": [],
+      "validated_build_sha256": "c7fe2fad98e2b99ae85010ea439621d36fd13e3c8ad4d2ba13c4902329e6f585"
+    },
+    "executable_sha256": "a0ef134f35bc5b32df616951edba1b69ac4025c2fafe6642840b9699a1b2e75e",
+    "model_sha256": "ca22ae2f838e14077c22bc1c1417b71b45b5e5a3687bd96c2ac6e17fdb6261c0",
+    "prompt_sha256": "f53e0d80cb2d4492d24ebd63c7000c397b16ae70f9bf09b3763e5d8323ec209f",
+    "runtime_configuration": {
+      "command": "engine-measure",
+      "comparison_role": "accepted Rust baseline (not the C0 oracle)",
+      "decode_steps": 128,
+      "even_prefill_attention_retention": "complete chunk written directly to existing tail-input buffer",
+      "even_prefill_attention_tile_rows": 4096,
+      "even_prefill_tail_rows": 4096,
+      "exact_prefix_rebuild": true,
+      "failure_collection": "completed logit readback only after failed token comparison; successful steps keep GPU selection readback",
+      "generation_command_buffers_per_token": 44,
+      "generation_correctness_collection": false,
+      "generation_host_waits_per_token": 2,
+      "indexer_selector": "upstream deterministic block argsort and merge",
+      "initial_bootstrap_last_completed_layer": 42,
+      "initial_bootstrap_output_head": true,
+      "model_residency_queue_attached": true,
+      "model_residency_required": true,
+      "model_warm_policy": "CPU POSIX_MADV_WILLNEED plus one volatile byte touch per tensor-data page before internal timers; Metal residency-set registration and one-mebibyte-stride GPU view touch inside prefill_ms before decode",
+      "native_batched_prefill": true,
+      "native_tail_direct_hc_output": true,
+      "native_tail_dispatches": 25,
+      "native_tail_routed_mid_f32_conversion": false,
+      "native_tail_scratch_buffers": 22,
+      "native_tail_scratch_reuse": true,
+      "odd_prefill_ingress_input": "immutable predecessor buffer alias",
+      "odd_prefill_ingress_rows": 4096,
+      "prefill_chunk_tokens": 4096,
+      "prefill_context_tokens": 32768,
+      "prefill_correctness_collection": false,
+      "prefill_stage_profile_collection": false,
+      "sampling": "lowest-ID greedy argmax; full C0 trace establishes identical non-EOS selections to the reference",
+      "sampling_logits_readback": false,
+      "sampling_result_readback_bytes": 8,
+      "transcript_validation": "after each timed step; first failure rejects run"
+    },
+    "source_commit": "945658616f1396c3a1edfc9990296eb102967e95",
+    "source_tree": "0b41fcc7c60a06b1253722739913f109acea0b2a"
+  },
+  "protocol": "rust-star-paired-benchmark-v1",
+  "schema": "rust-star-paired-summary-v1",
+  "source_path": "paired-raw.json"
+}

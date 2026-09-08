@@ -1,0 +1,61 @@
+{
+  "recorded_at_utc": "2026-09-08T05:33:41.331051+00:00",
+  "boot_time": "kern.boottime: { sec = 1788845003, usec = 27795 } Tue Sep  8 07:23:23 2026",
+  "uptime": "7:33  up 10 mins, 4 users, load averages: 5.65 14.35 10.12",
+  "interrupted_state_sha256": "0eb306b7733e83d3549ea97345a0eda30fe84f79e7d3e5fd4e6bd1ae1be49708",
+  "last_host_observation": {
+    "at_utc": "2026-09-07T23:34:38.264106+00:00",
+    "thermal": "Error:Failed to get thermal warning level with error code 0xe00002bc\nError: Failed to get performance warning level with error code 0xe00002bc\nError: No CPU power status with error code 0xe00002bc",
+    "thermal_exit": 0,
+    "swap": "vm.swapusage: total = 1024.00M  used = 2.38M  free = 1021.62M  (encrypted)",
+    "swap_exit": 0,
+    "uptime": "1:34  up 17:59, 0 users, load averages: 3.35 7.46 12.85",
+    "uptime_exit": 0,
+    "checkpoint": {
+      "last_pair": [
+        {
+          "engines": {
+            "candidate": "passed",
+            "oracle": "running"
+          },
+          "order": "BA",
+          "repetition": 4,
+          "status": "running"
+        }
+      ],
+      "phase": "timed",
+      "warmups": {
+        "candidate": [
+          "passed"
+        ],
+        "oracle": [
+          "passed"
+        ]
+      }
+    }
+  },
+  "last_load_observation": {
+    "at_utc": "2026-09-07T23:33:58.508403+00:00",
+    "cpu_processes": [
+      {
+        "process": "logioptionsplus_updater",
+        "cpu_percent": 45.0
+      },
+      {
+        "process": "WindowServer",
+        "cpu_percent": 16.2
+      },
+      {
+        "process": "Browser Helper (Renderer)",
+        "cpu_percent": 12.9
+      },
+      {
+        "process": "Arc",
+        "cpu_percent": 10.0
+      }
+    ]
+  },
+  "confirmed_no_benchmark_processes": true,
+  "candidate_and_oracle_binaries_rehashed": true,
+  "reason": "Host shutdown/restart interrupted pair 4 attempt 1 during its oracle half. No runner, adapter or model process survives; complete pair 4 must be rerun under the existing explicit external-event retry protocol. Preserve pairs 1\u20133 and all original attempt 1 evidence."
+}

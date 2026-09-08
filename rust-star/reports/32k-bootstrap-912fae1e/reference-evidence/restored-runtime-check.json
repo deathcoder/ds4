@@ -1,0 +1,14 @@
+{
+  "status": "passed",
+  "source_restored_from": "9c1d5009df4585738cf7a67c84d0cf99c8e9aa04",
+  "exactly_restored_files": {
+    "rust-star/runtime/src/metal_shim.m": "28154279eab4906121032328b9199b6e67c7c415589205f960ec8dd31f6e0676",
+    "rust-star/runtime/src/long_prefill.rs": "b2623b05e7767c005ddbd47de022f4b7eb2d279b5313098b01618188cba53faa"
+  },
+  "header_sha256": "276ba278161c8eda058826bccade4c239749bcc6fcff723e9d07de49e914ab60",
+  "retained_header_change": "Matching declarations for the existing optional component-profiler C APIs.",
+  "rust_tests_passed": 312,
+  "release_build_passed": true,
+  "rebuilt_executable_sha256": "a0ef134f35bc5b32df616951edba1b69ac4025c2fafe6642840b9699a1b2e75e",
+  "validation_scope": "Exact source restoration to the previously full-C0-gated implementation, plus fresh Rust tests/release build. No new speed claim or additional live gate after reversion."
+}

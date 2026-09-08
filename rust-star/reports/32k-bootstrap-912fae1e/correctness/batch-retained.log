@@ -1,0 +1,4 @@
+Rust Star retained lifecycle: first-load prompt 301105.791 ms, retained prompt 285141.910 ms (1.056x)
+retained prefill: 114.918 tok/s; generation: 19.761 tok/s; both 128-token transcripts exact
+paired protocol: ineligible same-process lifecycle diagnostic
+json: /Users/deathcodevision/dev/ds4-rust-star-bootstrap/rust-star/.work/counter-bootstrap-94565861/batch-retained.json

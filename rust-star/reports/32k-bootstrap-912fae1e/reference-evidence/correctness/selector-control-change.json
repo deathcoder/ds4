@@ -1,0 +1,6 @@
+{
+  "base_commit": "df99eba7f722f8170dc2960b8b4666f73818a5ba",
+  "change": "Remove only streaming selector dispatch branch; use existing deterministic argsort/merge. Keep v4 host synchronization and all arithmetic kernels.",
+  "base_ds4_metal_sha256": "b035272d67862f337e201c0af9c62c07f1c727926b31e08b528c2dd3410f8b02",
+  "control_ds4_metal_sha256": "f0132e76ba9ddf2f4aee8b88153b0d0e0eac0576a0fc487a918a49bd5aa41229"
+}

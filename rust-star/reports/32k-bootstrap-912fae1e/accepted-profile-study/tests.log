@@ -1,0 +1,15 @@
+   Compiling rust-star-runtime v0.1.0 (<worktree>/rust-star/runtime)
+error[E0425]: cannot find function `run_long_prefill_profile_probe` in module `rust_star_runtime::metal`
+   --> src/main.rs:201:67
+    |
+201 |                   let (report, profile) = rust_star_runtime::metal::run_long_prefill_profile_probe(&model)?;
+    |                                                                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ help: a function with a similar name exists: `run_long_prefill_chunk_probe`
+    |
+   --> <worktree>/rust-star/runtime/src/long_prefill.rs:1017:1
+   ::: <worktree>/rust-star/runtime/src/long_prefill.rs:1020:40
+    |
+    = note: similarly named function `run_long_prefill_chunk_probe` defined here
+
+For more information about this error, try `rustc --explain E0425`.
+error: could not compile `rust-star-runtime` (bin "rust-star" test) due to 1 previous error
+warning: build failed, waiting for other jobs to finish...

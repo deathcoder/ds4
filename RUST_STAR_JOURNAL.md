@@ -18,6 +18,46 @@ Before changing code:
 Journal entries are reverse chronological. Do not edit old entries to change
 history; add a correction and update the current-state summary.
 
+## 2026-09-08 — Scoped bootstrap milestone complete and retained
+
+- Retain candidate 912fae1e: initial long-prefill bootstrap now completes only
+  layers 0..2, preserves layer-2 HC and then uses the unchanged exact rebuild
+  for layers 3..42. Discarded later-layer execution/output-head work is omitted.
+  Shared setup allocations and 1,218 wrapped views remain. No kernel arithmetic,
+  fixture, or oracle-v5 change. Complete 2K/legacy callers preserve their contract.
+- All 312 Rust tests, release build and seven live gates pass. Three 32K
+  full-output gates check all 129,280 prefill and 16,547,840 decode words exactly;
+  internal accepted checkpoints end at 24K. Reset/reuse checks both transcripts.
+- All five alternating Rust-to-Rust pairs and both warmups pass on attempt 1.
+  Median paired prefill latency is 0.918349x accepted Rust (8.165% lower), with
+  improvement in all five pairs (6.0–8.7%). Candidate/baseline medians are
+  273.573/298.948s, MAD 0.379/3.034s. Steady decode is 20.557/20.384 tokens/s,
+  paired ratio 1.005162; four pairs improve and one is 2.0% slower.
+- Accept the documented tradeoffs: first-step paired median is 1.021207x,
+  raw medians 57.479/53.608ms; candidate observed peak 93.281GiB versus baseline
+  maximum 92.892GiB. No memory reduction or new Rust-versus-DwarfStar claim.
+  The generic oracle role is frozen accepted Rust 94565861, while oracle-v5
+  remains the independent unchanged C0 reference.
+- Separate post-paired profile passes: 1,483 parent rows, 2,583 valid component
+  intervals, exact transcript and complete accounting. Initial bootstrap GPU
+  span is 5.129s; native tails account for 87.132s. Largest components are
+  attention output 32.957s, routed gate/up 30.155s and routed down 16.493s.
+  These are perturbed diagnostics, not additional paired performance samples.
+- Better counter-failure diagnostics are retained: chunk/layer, failing sample,
+  component/boundary/reason and all 18 raw ticks, plus explicit sentinel rejection.
+  Final-source probe passes 256 commands without wrong GPU outputs or timestamp
+  anomalies. Current profile successes do not explain the earlier rare failure
+  or guarantee unattended capture completion; validity was not relaxed.
+- Portable report: rust-star/reports/32k-bootstrap-912fae1e/README.md. All 403
+  artifacts verify without model/Metal/Git, including nested immutable reference
+  and accepted-baseline evidence, frozen candidate sources, both-role measurement
+  audits, full-word C0, profile/probe accounting and host-summary recomputation.
+  Host logs retain transient desktop/update load; no thermal warnings were
+  recorded and swap use stayed 13.94–15.12MiB during paired observations.
+- Runtime implementation still matches the tested frozen source exactly; later
+  edits are documentation/evidence only. About 94GiB disk space remains. No push
+  or new publication. Stop at this completed milestone; await user direction.
+
 ## 2026-09-08 — Five bootstrap pairs complete; isolated profile running
 
 - Both warmups and all five alternating pairs pass with no retries or invalid
@@ -3225,30 +3265,35 @@ Next:
 
 ### Current resume checkpoint (updated 2026-09-08)
 
-- Active milestone: diagnosable counter failures and scoped initial bootstrap.
-  Candidate 912fae1e passes 312 tests/build, all seven live gates and both
-  component/probe audits. Frozen paired work is now running in
-  rust-star/.work/paired-rust-bootstrap-912fae1e/ against accepted Rust 94565861.
-  Oracle-v5 remains the separate C0 target; no performance decision yet.
-  User authorized this next milestone after the prior stop. Finish it and stop.
+- Bootstrap/counter milestone COMPLETE and retained. Candidate 912fae1e passes
+  312 tests/build, seven live gates, two profile audits and the independent probe.
+  Five valid Rust-to-Rust pairs: 8.165% lower median paired prefill latency,
+  all five faster; steady decode essentially unchanged overall (+0.516% paired).
+  First-step latency and observed peak memory rose slightly; tradeoffs recorded.
+  Report: rust-star/reports/32k-bootstrap-912fae1e/README.md (403 verified artifacts).
+  Oracle-v5 remains the C0 target; latest Rust-versus-DwarfStar result is unchanged.
+  STOP after this milestone. No benchmark/model workload remains running.
 - Dense-Q8 candidate 92ca3ef3 is rejected and reverted after seven passing live
   gates and five valid pairs. Paired prefill ratio 2.01485 versus baseline 1.72589;
   Rust/reference medians 351.974/176.897 s. One host-interrupted pair is preserved
   and was rerun whole under the documented recovery rule. Negative report:
   rust-star/reports/32k-dense-output-92ca3ef3/README.md.
-- The separate post-paired profile failed with invalid tail timestamps and no
-  artifact. No retry or validity relaxation. Optional profiler needs better
-  rejected-sample diagnostics; successful earlier captures remain distinct evidence.
+- The earlier dense-output post-paired profile failed with invalid timestamps.
+  Its raw values were not captured, so the cause remains unknown. Diagnostics
+  now preserve all values/context and reject sentinels; two current profiles
+  pass, with strict validity and all historical failures preserved.
 - Tail component profiler e7b81aa2 remains: 312 tests, normal/profiled full-output
   gates and 2,583 component rows audited. Report:
   rust-star/reports/32k-tail-components-e7b81aa2/README.md (16 artifacts).
   Attention output was the largest attributed component (36.75%). No throughput
-  claim for profiling itself. Reverted execution matches 9c1d5009; matching C
-  header declarations remain. Fresh restored tests/build pass; all 232 negative-report
-  artifacts verify. This milestone is closed.
-- User restored milestone stopping on 2026-09-08. The negative experiment and
-  burn recap are complete. A new bootstrap/counter milestone is now authorized
-  and implemented; stop after its evidence and retention decision are complete.
+  claim for profiling itself. The prior restored execution matched 9c1d5009;
+  all 232 negative-report artifacts still verify. Scoped bootstrap 912fae1e is
+  now the accepted execution path. The component-profiler milestone is closed.
+- User restored milestone stopping on 2026-09-08. The burn recap and the
+  subsequent bootstrap/counter milestone are complete. Wait for the next user
+  instruction before starting another milestone.
+### Latest accepted Rust-versus-DwarfStar comparison (historical native tail study)
+
 - Authorized native tail scratch/output milestone is complete. Whole-chunk
   tails reuse 22 temporary buffers, write directly to retained HC output and
   omit unused FP32 routed-mid conversion (25 dispatches instead of 26).
@@ -3268,8 +3313,8 @@ Next:
   speed and memory attribution. Even-tail host time falls 66.497 → 59.400 s;
   GPU time rises slightly. All 210 report artifacts verify independently.
   No fixture, arithmetic or oracle change.
-- Largest GPU group: `even/tail`. Inspect its internal costs before the next
-  optimization; do not repeat completed scheduling changes.
+- The historical largest GPU group was `even/tail`. Its component costs are
+  now measured by the component-profiler and scoped-bootstrap reports above.
 - Frozen plan SHA `d27a9f5e56d6c804f62c10173a9a4e324498eba52d40227709b7d23cf15efe2f`.
   Evidence: `rust-star/.work/tail-milestone-2d8b8405/`. All prior reports/failures stay immutable.
 - Internal HC targets remain accepted through 24K; full 32K output gates are
@@ -4024,16 +4069,19 @@ Next:
 
 ## Immediate Next Actions
 
-1. Complete the active bootstrap/counter-diagnostic milestone: seven live gates,
-   audited profile coverage, direct paired comparison against accepted Rust,
-   report/retention decision and final journal/docs. Diagnose actual failures
-   without relaxing C0 or discarding attempts. Stop after this milestone.
-2. Keep oracle-v5 and historical fixtures/reports immutable. Internal targets
-   are accepted through 24K; full 32K prefill/128-decode C0 remains mandatory.
-3. Broader contexts, 256K headline work and the coding-agent corpus remain future.
-4. Run one large model process at a time, bound disk use and keep this journal
-   current. Never resume a rejected benchmark plan.
-5. GitHub Actions billing and secure remote access remain in the manual ledger.
+1. STOP: the scoped-bootstrap/counter milestone is complete, accepted and fully
+   documented. Await user direction; do not start a new benchmark automatically.
+2. For the next authorized milestone, use the fresh profile to choose between
+   removing remaining shared-bootstrap setup and further native-tail work.
+   Attention output and routed gate/up remain largest; do not revive rejected
+   dense-Q8 execution without a new hypothesis and independently measured benefit.
+3. Keep oracle-v5 and historical evidence immutable. Full 32K prefill/128-decode
+   C0 remains mandatory; accepted internal targets end at 24K. Rust-to-Rust
+   improvements do not update the Rust-versus-DwarfStar performance baseline.
+4. Broader contexts, 256K headline work and the coding-agent corpus remain future.
+   Resolve absolute-context scratch allocation before assuming larger contexts fit.
+5. Run one model workload at a time, bound disk use and keep this journal current.
+   GitHub Actions billing and secure remote access remain in the manual ledger.
 
 ## Entries
 

@@ -217,6 +217,12 @@ single run. At minimum record median, dispersion, number of repetitions, and
 the exact commit/oracle/configuration. Correctness instrumentation must be off
 for headline performance runs.
 
+Optimization studies may pair a candidate with frozen accepted Rust to isolate
+a development change. Label both roles explicitly, retain the separate versioned
+C0 oracle, and bind acceptance criteria before measuring. A generic runner's
+`oracle` slot does not make a Rust comparator the correctness oracle. Such a
+study does not update the Rust-versus-DwarfStar throughput baseline.
+
 Suggested context frontiers are 2K, 32K, 128K, 256K, 512K, and 1M tokens. The
 common operating target is 256K, while correct operation up to the model's 1M
 limit is desirable when memory permits. There is no separate semantic

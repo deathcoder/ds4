@@ -1,0 +1,81 @@
+{
+  "passed": true,
+  "native_tail_calls": 287,
+  "component_rows": 2583,
+  "normal_and_profiled_full_output_c0": true,
+  "paired_eligible": false,
+  "summary": {
+    "even/attention_output": {
+      "calls": 147,
+      "attributed_gpu_ms": 16583.428371603
+    },
+    "odd/attention_output": {
+      "calls": 140,
+      "attributed_gpu_ms": 15803.182272041999
+    },
+    "even/routed_gate_up": {
+      "calls": 147,
+      "attributed_gpu_ms": 15586.287845818
+    },
+    "odd/routed_gate_up": {
+      "calls": 140,
+      "attributed_gpu_ms": 14872.840065027007
+    },
+    "even/routed_down": {
+      "calls": 147,
+      "attributed_gpu_ms": 8530.257982321995
+    },
+    "odd/routed_down": {
+      "calls": 140,
+      "attributed_gpu_ms": 8078.149065973
+    },
+    "even/shared_expert": {
+      "calls": 147,
+      "attributed_gpu_ms": 2538.7396696110004
+    },
+    "odd/shared_expert": {
+      "calls": 140,
+      "attributed_gpu_ms": 2414.823243465001
+    },
+    "even/final_hc": {
+      "calls": 147,
+      "attributed_gpu_ms": 570.509189558
+    },
+    "odd/final_hc": {
+      "calls": 140,
+      "attributed_gpu_ms": 539.061580835
+    },
+    "even/ffn_ingress": {
+      "calls": 147,
+      "attributed_gpu_ms": 351.3659950359999
+    },
+    "odd/ffn_ingress": {
+      "calls": 140,
+      "attributed_gpu_ms": 333.68117333000015
+    },
+    "even/routed_map": {
+      "calls": 147,
+      "attributed_gpu_ms": 165.27090536899996
+    },
+    "odd/routed_map": {
+      "calls": 140,
+      "attributed_gpu_ms": 157.45626417999998
+    },
+    "even/router": {
+      "calls": 147,
+      "attributed_gpu_ms": 132.49640111000002
+    },
+    "odd/router": {
+      "calls": 140,
+      "attributed_gpu_ms": 128.92600404899994
+    },
+    "even/routed_sum": {
+      "calls": 147,
+      "attributed_gpu_ms": 101.845264609
+    },
+    "odd/routed_sum": {
+      "calls": 140,
+      "attributed_gpu_ms": 95.80178942600001
+    }
+  }
+}

@@ -1,0 +1,76 @@
+{
+  "schema": "rust-star-correctness-manifest-v1",
+  "correctness_class": "C0",
+  "comparison": "optimized Rust versus accepted Rust; paired oracle slot is a comparator label only",
+  "c0_oracle_source": "ccbd16d36895ef9fe8edf7f793014988ff1ab7f4",
+  "c0_oracle_executable_sha256": "a4056d7297bd0a6de8e46fac294e7913d9bc8c96465e5d68f1b6ef6471e49aa0",
+  "candidate_build": {
+    "commit": "912fae1ebbd641fd8edaf4e9f6b26249737775b0",
+    "tree": "8cb3b90da6fc288137efa13d1ef6eb4d84e671c2",
+    "executable_sha256": "adea36df8200ae6c99f4b549faebcf90fd01f9da34207dc0add562180cf713c4",
+    "sources": {
+      "rust-star/runtime/Cargo.lock": "516cbf27fb072b7f98950ddbb6a3e562641069cf3c4ce12a57410c91cb74481f",
+      "rust-star/runtime/Cargo.toml": "af6d16ca5cf8c14d514043e1136165441d5134cd0f96b251d366a6cb37519c59",
+      "rust-star/runtime/METAL.md": "975d07197a5c6ec837967b97aa002dfebe48c3327b1c9c724c207d9c1b9320f8",
+      "rust-star/runtime/README.md": "6f2f390f7128c53c464997aaf019e5a24734ab8cfe7878ab3201740a10b32fb5",
+      "rust-star/runtime/build.rs": "8929d09fb8817b49607a21b5b61fc3c7991e009694999b60b107710d92dae5c2",
+      "rust-star/runtime/examples/write_logit_fixture.rs": "ad498209e52812f37a1fe9fa1790603ff46a0eeebf548015f85a9c7cccab5d0b",
+      "rust-star/runtime/src/artifact.rs": "f8c502ef7b47dbea7787f3a21bba5661da4accc33d4a44bb06db19f9f0cac9ea",
+      "rust-star/runtime/src/attention_ingress.metal": "76a70b1eb6510f897293c9cdc7257d58a69d3a3cb372a0175af24eb8820187f7",
+      "rust-star/runtime/src/attention_output.metal": "92999a85674740404a174c74755d8c4307697e477ca7755063054fe7fc5c0451",
+      "rust-star/runtime/src/ffn_router.metal": "9ccae569e372358381ca18860c2cc039d69aa2b82b1e0601bef78ccef4d43d69",
+      "rust-star/runtime/src/gguf.rs": "234566f4d37368739764841b4dd1b509be9aa3330c3b20025b6436001f71a31c",
+      "rust-star/runtime/src/indexer_argsort.metal": "0c868f5cbf751f889bb73aa5ac8599ff2b4359d9ed9aabd035043550256df790",
+      "rust-star/runtime/src/lib.rs": "b59d7c681493e0bcf0513459274c46ec14c23eb6aabcf656e0a3dd82c2b9ae80",
+      "rust-star/runtime/src/long_prefill.rs": "d3c721e3efca7a4c5684e03bf63b895d9a05987d41f8ca5da27c708e65ef0424",
+      "rust-star/runtime/src/long_prefill_checksums.rs": "a59d695baadd9848ee70dae4510981b2166e6b6f6d5f7e1bb1de5c9749cc3422",
+      "rust-star/runtime/src/main.rs": "2bb995d45ee095ac11d10e44f16c469d2e13b631e358f522660472258d3c6354",
+      "rust-star/runtime/src/metal.rs": "cd69fcea4bafd834202d43ff2d162c29fc8d873145f03e9acd40c0d0f3df5651",
+      "rust-star/runtime/src/metal_shim.h": "21c00ec960735ee0cafe6a4d73570cc89d4896c1e66709a217e89ba6179d1dcb",
+      "rust-star/runtime/src/metal_shim.m": "894ae78341fe8b4f30ce3f915345c1e5217bb7ef51d374602f2daf044ae1accd",
+      "rust-star/runtime/src/model.rs": "b5c9f42b1f56461e40474e9819fdd5bfee359ebdeaa121dbe9c33081bf090541",
+      "rust-star/runtime/src/moe_output_prefix.metal": "fd071235d773bfa72a870df223fac3fdb5ce128e51ac5bd10a3abb503184aa03",
+      "rust-star/runtime/src/q8_projection_pair.metal": "347811e00c5e5e52eea1451dfdbc809aa455b4e2a76134f604f5386d0ab40a52",
+      "rust-star/runtime/src/remaining_prefill.rs": "58ff784715cc21a841105cbb3c6449c4d0d2912c43e6aee72b33b803c1b709a6",
+      "rust-star/runtime/src/remaining_prefill_checksums.rs": "9cc602acd4b1d3b930c106b096617661154f23a9e247c0efc15fe09148214edf",
+      "rust-star/runtime/src/sparse_indexed_prefix.metal": "5fa4a992c13a676aa3a3285bb453865c5c16a227fec34a2c9622eae0cf989f28",
+      "rust-star/runtime/src/target.rs": "7dc081b489827feda6dfcab64d5a015d4b7332d4457c06d8904fcf83dbdd87b1"
+    }
+  },
+  "accepted_build": {
+    "source_commit": "94565861",
+    "executable_sha256": "a0ef134f35bc5b32df616951edba1b69ac4025c2fafe6642840b9699a1b2e75e",
+    "restoration_evidence": "rust-star/reports/32k-dense-output-92ca3ef3/restored-runtime-check.json",
+    "comparison_role": "accepted Rust baseline; C0 oracle remains oracle-v5"
+  },
+  "candidate_gates": {
+    "batch-12k": "ad0eb458ea8b6129b012f08a33940b94ede71a28371d605beb50bc86360b1020",
+    "batch-8k": "a2ac47d50c4a29f5a77e68900a83d06e2a20c0267f4e2587df8e94e2f51a2515",
+    "batch-2k": "f2b2f182a6f3f3c763ad3178cc7e25caa8771e428df305a53ce21747b6d90120",
+    "batch-32k-output": "ea7a152709d145948fd5710ac1b93212dc93d5a1a2c633e09f9ef31ab1ddd1f1",
+    "batch-32k-internal": "d1770f72878b3df4eec0275f9af28c207509340c6d77be83d660c857f1542ce9",
+    "batch-retained": "4db5e33b6f73afb5a5256dd0c36f817998df571f272829e3f3eceb6aa8375238",
+    "batch-32k-profiled": "ea7a152709d145948fd5710ac1b93212dc93d5a1a2c633e09f9ef31ab1ddd1f1"
+  },
+  "candidate_profile_audit_sha256": "4c47477ca8d24b036a919f29c88691c91e0d82d1aca200fe494d2584f297642f",
+  "accepted_restoration_proof_sha256": "18374ae4feb10d13f8d7b2030165c3123b722143214b07671d21dd403e13d7fb",
+  "rust_tests_passed": 312,
+  "model_rehashed": true,
+  "internal_hc_accepted_through_tokens": 24576,
+  "full_32k_prefill_and_128_decode_words_required": true,
+  "measurement_tools_sha256": {
+    "run_paired_benchmark.py": "f244c63ec619a7ff5ef24960db225062feb2f658bce2e8c2cdc6a41f6ab63b00",
+    "paired_runner_lib.py": "741862f38111b57d65863e68ecf9043beb9f9de58c1dcd8e7a65b90c09b04e7a",
+    "paired_benchmark_lib.py": "c0cdde4e01f0639e23eed5595f6a3d29e25c8fe8f0315f72c239c3c6833da4e9",
+    "measure_ruststar.py": "88344abcf4457a310b3cb68dfc3e96f71c7b06c3c2e416582a15c5e6f3ff9b86",
+    "ruststar_measurement_lib.py": "902f671cf16554917ae3040204f98e4a8eb7bddfd6017f169577aefd9cfd7af4",
+    "dwarfstar_measurement_lib.py": "2cc745e2dce7d5959af0fc2418e152483d600231b65e716077d674a7a23ad517"
+  },
+  "optimization_acceptance": {
+    "prefill": "Require lower median paired candidate/baseline latency and improvement in at least four of five pairs. Report all per-pair ratios and dispersion.",
+    "decode": "Report paired throughput/first-step distributions; do not accept a clear material decode regression masked by prefill improvement.",
+    "failures": "Stop on failure; preserve all attempts; no retries to obtain favorable results.",
+    "profile": "Separate diagnostic run after timed block. Raw invalid-counter values must be preserved, not accepted as valid timing.",
+    "claim_scope": "32K/128 Rust-to-Rust development improvement; no updated Rust-versus-DwarfStar throughput claim."
+  }
+}

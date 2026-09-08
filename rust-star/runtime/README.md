@@ -1292,10 +1292,25 @@ partition parent GPU intervals; they are perturbed diagnostic estimates, never
 additional time or paired performance evidence. Audited evidence is in
 [the component report](../reports/32k-tail-components-e7b81aa2/README.md).
 
-A later post-paired capture failed closed with `invalid tail timestamps` and
-produced no profile artifact. That historical run did not log its rejected raw values. New failures report
-all 18 raw hexadecimal ticks, the failing sample/component and chunk/layer
-context; the original cause remains unresolved. The successful full-C0 component
-captures remain valid evidence; do not assume every unattended profile will
-complete. See [the preserved failure](../reports/32k-dense-output-92ca3ef3/README.md).
-Improve failure diagnostics before changing timestamp-validity checks.
+A historical post-paired capture failed closed with `invalid tail timestamps`
+and produced no profile artifact. That run did not log its rejected raw values.
+New failures report all 18 raw hexadecimal ticks, the failing sample/component,
+boundary/reason and chunk/layer context. Rust also rejects the Metal error
+sentinel before attribution. Validity remains strict; the original cause is
+unresolved. See [the preserved failure](../reports/32k-dense-output-92ca3ef3/README.md).
+
+The [scoped-bootstrap study](../reports/32k-bootstrap-912fae1e/README.md) passes
+all seven live gates, including profiled full-output C0, and a separate
+post-paired profile. Its independent counter probe also passes 256 commands
+without timestamp anomalies or wrong GPU outputs. These successful captures
+remain distinct evidence; they do not guarantee every unattended profile will
+complete.
+
+Initial long-prefill bootstrap now stops after layers 0–2, retaining layer-2 HC
+for the established exact prefix rebuild of layers 3–42. It omits the discarded
+later-layer execution and output head. Shared setup allocations and all 1,218
+wrapped views still occur. Five pairs against accepted Rust show an 8.165%
+median paired prefill-latency reduction, with all five pairs faster. This is a
+32K/128 Rust-to-Rust result; it does not update Rust-versus-DwarfStar throughput.
+Steady decode is essentially unchanged overall; first-step latency and observed
+peak memory rose slightly. The report preserves those tradeoffs and all evidence.

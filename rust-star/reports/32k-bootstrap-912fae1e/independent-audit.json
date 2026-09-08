@@ -1,0 +1,77 @@
+{
+  "passed": true,
+  "comparison": "optimized Rust versus accepted Rust (generic oracle slot); not a new Rust-versus-DwarfStar result",
+  "valid_pairs": 5,
+  "invalid_attempts": 0,
+  "warmups": 2,
+  "raw_sha256": "e5e9f9cec4c7b2536d774212c658052d22625bff0e483423ed41d73d6997133b",
+  "summary_sha256": "94ea3f344df37762edee692019d0db86a1653aba19eb68faa5ef6ed55417955b",
+  "paired_prefill_latency_ratio": {
+    "count": 5,
+    "median": 0.9183491106121231,
+    "mad": 0.005027044128766089,
+    "min": 0.913322066483357,
+    "max": 0.9400239745201198
+  },
+  "prefill_improved_pairs": 5,
+  "prefill_acceptance_passed": true,
+  "paired_decode_throughput_ratio": {
+    "count": 5,
+    "median": 1.0051618038246275,
+    "mad": 0.0028244076001784357,
+    "min": 0.9800140800045416,
+    "max": 1.0105760988912535
+  },
+  "pairs": [
+    {
+      "repetition": 1,
+      "order": "AB",
+      "candidate_prefill_s": 273.194219208,
+      "baseline_prefill_s": 294.870980375,
+      "prefill_ratio": 0.926487302550313,
+      "candidate_decode_tps": 20.632057111,
+      "baseline_decode_tps": 20.482265013,
+      "decode_ratio": 1.007313258465552
+    },
+    {
+      "repetition": 2,
+      "order": "BA",
+      "candidate_prefill_s": 271.752598292,
+      "baseline_prefill_s": 295.91426087499997,
+      "prefill_ratio": 0.9183491106121231,
+      "candidate_decode_tps": 20.55681798,
+      "baseline_decode_tps": 20.341682336,
+      "decode_ratio": 1.0105760988912535
+    },
+    {
+      "repetition": 3,
+      "order": "AB",
+      "candidate_prefill_s": 273.607914833,
+      "baseline_prefill_s": 298.94815275,
+      "prefill_ratio": 0.9152353420354091,
+      "candidate_decode_tps": 20.431429082,
+      "baseline_decode_tps": 20.383784102,
+      "decode_ratio": 1.002337396224449
+    },
+    {
+      "repetition": 4,
+      "order": "BA",
+      "candidate_prefill_s": 273.57279950000003,
+      "baseline_prefill_s": 299.53595729200003,
+      "prefill_ratio": 0.913322066483357,
+      "candidate_decode_tps": 20.630620531,
+      "baseline_decode_tps": 20.524676179,
+      "decode_ratio": 1.0051618038246275
+    },
+    {
+      "repetition": 5,
+      "order": "AB",
+      "candidate_prefill_s": 285.21560737500005,
+      "baseline_prefill_s": 303.413120416,
+      "prefill_ratio": 0.9400239745201198,
+      "candidate_decode_tps": 19.966576303,
+      "baseline_decode_tps": 20.373764735,
+      "decode_ratio": 0.9800140800045416
+    }
+  ]
+}

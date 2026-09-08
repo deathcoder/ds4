@@ -1,0 +1,59 @@
+{
+  "host_samples": 85,
+  "load_samples": 93,
+  "all_thermal_reads_passed": true,
+  "all_report_no_thermal_warnings": true,
+  "swap_used_mib_min": 13.94,
+  "swap_used_mib_max": 15.12,
+  "sampled_cpu_percent_max_by_process": {
+    "WindowServer": 100.4,
+    "rust-star": 100.0,
+    "softwareupdated": 96.8,
+    "Boxie": 94.7,
+    "duetexpertd": 83.4,
+    "Codex (Renderer)": 60.8,
+    "Codex (Service)": 44.3,
+    "logioptionsplus_updater": 41.3,
+    "logioptionsplus_agent": 30.3,
+    "cloudd": 30.1,
+    "Discord Helper (Renderer)": 23.8,
+    "mds_stores": 21.2,
+    "ChatGPT": 20.6,
+    "codex": 18.7,
+    "mdworker_shared": 18.0,
+    "trustd": 17.4,
+    "runningboardd": 15.1,
+    "launchd": 12.2,
+    "PerfPowerServices": 11.5,
+    "Python": 10.7,
+    "node_repl": 10.2,
+    "(lsof)": 10.2,
+    "syspolicyd": 9.5,
+    "Discord": 9.4,
+    "ContinuityCaptureAgent": 9.3,
+    "Finder": 8.8,
+    "accountsd": 7.8,
+    "nsurlsessiond": 7.6,
+    "ContextStoreAgent": 6.6,
+    "AddressBookManager": 6.5,
+    "com.apple.WebKit.GPU": 6.5,
+    "tccd": 6.2,
+    "node": 6.1,
+    "DeskMux": 5.9,
+    "backgroundtaskmanagementd": 5.9,
+    "(ps)": 5.5,
+    "contactsd": 5.3,
+    "com.apple.WebKit.WebContent": 5.0,
+    "com.apple.AppleUserHIDDrivers": 5.0
+  },
+  "observed_process_peak_gib": {
+    "candidate": {
+      "median": 93.28117370605469,
+      "max": 93.28134155273438
+    },
+    "oracle": {
+      "median": 92.74397277832031,
+      "max": 92.89230346679688
+    }
+  }
+}

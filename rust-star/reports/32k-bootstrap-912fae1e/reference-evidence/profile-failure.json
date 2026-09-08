@@ -1,0 +1,10 @@
+{
+  "status": "failed",
+  "exit_code": 1,
+  "message": "rust-star: invalid tail timestamps",
+  "profile_artifact_written": false,
+  "candidate_commit": "92ca3ef3ee21ea076852d7ecbda415a15acb270a",
+  "log_sha256": "ea7b51b488653f63a8c81dffb1ca7c2cff6edc077909f124759aa3008fd9f471",
+  "scope": "Post-paired engine-profile attempt only; earlier exact-gated component profile remains separate evidence.",
+  "diagnosis": "Getter rejects MTLCounterErrorValue or any non-increasing adjacent timestamp. Raw rejected values were not logged, so the exact failure condition is unknown. Validation has not been relaxed and the profile was not retried."
+}

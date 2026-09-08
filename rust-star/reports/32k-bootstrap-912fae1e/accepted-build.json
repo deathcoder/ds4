@@ -1,0 +1,6 @@
+{
+  "source_commit": "94565861",
+  "executable_sha256": "a0ef134f35bc5b32df616951edba1b69ac4025c2fafe6642840b9699a1b2e75e",
+  "restoration_evidence": "rust-star/reports/32k-dense-output-92ca3ef3/restored-runtime-check.json",
+  "comparison_role": "accepted Rust baseline; C0 oracle remains oracle-v5"
+}

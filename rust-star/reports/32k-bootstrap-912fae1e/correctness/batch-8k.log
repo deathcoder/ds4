@@ -1,0 +1,88 @@
+rust-star: complete retained layer 15 exact
+rust-star: complete retained layer 16 exact
+rust-star: complete retained layer 17 exact
+rust-star: complete retained layer 18 exact
+rust-star: complete retained layer 19 exact
+rust-star: complete retained layer 20 exact
+rust-star: complete retained layer 21 exact
+rust-star: complete retained layer 22 exact
+rust-star: complete retained layer 23 exact
+rust-star: complete retained layer 24 exact
+rust-star: complete retained layer 25 exact
+rust-star: complete retained layer 26 exact
+rust-star: complete retained layer 27 exact
+rust-star: complete retained layer 28 exact
+rust-star: complete retained layer 29 exact
+rust-star: complete retained layer 30 exact
+rust-star: complete retained layer 31 exact
+rust-star: complete retained layer 32 exact
+rust-star: complete retained layer 33 exact
+rust-star: complete retained layer 34 exact
+rust-star: complete retained layer 35 exact
+rust-star: complete retained layer 36 exact
+rust-star: complete retained layer 37 exact
+rust-star: complete retained layer 38 exact
+rust-star: complete retained layer 39 exact
+rust-star: complete retained layer 40 exact
+rust-star: complete retained layer 41 exact
+rust-star: complete retained layer 42 exact
+native long-prefill continuation bootstrap: complete first 4096-token transformer, then positions 4096..8191 in 64 x 64-row tiles
+retained state: 8192 raw rows for layers 0/1/2, 2048 layer-2 attention/indexer compressed rows, recurrent compressor tails preserved
+mapping: 4160/4160 no-copy model ranges; 7556 continuation dispatches; summed wall=4717.539 ms gpu=4700.871 ms
+layer-2 evidence: position 4099 isolated sparse control C0; positions 4096..4127 complete native layer tile C0 across 3 sparse and 13 downstream outputs, 10+26 dispatches, and 14/14 no-copy mappings
+layer-3 evidence: live layer-2 final HC and native retained pre-4096 attention history feed positions 4096..4127 through the complete native tile (10 ingress/QKV dispatches, 76 total dispatches, 17 exact outputs, 28/28 no-copy mappings)
+second-tile evidence: the same live context continues positions 4128..4159 through exact complete layer-2 and layer-3 tiles (42 exact outputs, 37+76 dispatches, 45/45 no-copy mappings)
+layer-2/layer-3 loop: positions 4096..8191 executed in 128 retained 32-row tiles (2 exact C0 anchors, 126 structurally executed tiles, 32 ratio-128 emissions, 14688 dispatches, 5760/5760 no-copy mappings; final HC/state checksums=12338792942122668793/11261122877073481448/8521713610302668492; full layer-2 checksum=11023227754357452464; tiled layer-3 checksum=12296721839747081491; 114/128 layer-3 tile checksums match production geometry)
+layer-3 production batch: aligned ratio-128 compressor, attention, and FFN replay use 38 dispatches and 19/19 no-copy mappings; full checksum=17010162403439886297 with 128/128 production tile matches
+layer-4 production boundary: prefix ingress/compressors rebuilt with 40 dispatches and 17/17 no-copy mappings; continuation ingress, QKV, both 1024-row compressed caches, and all recurrent states match 10/10 checksums over 40 dispatches and 17/17 mappings
+layer-4 complete prefix: exact 4096-row sparse indexed attention uses 10 dispatches and 3/3 no-copy mappings; attention plus FFN completes in 36 combined dispatches and 17/17 mappings, with exact post-attention and post-FFN HC checksums
+layer-4 complete continuation: 128 sparse-indexed 32-row tiles use 4736 dispatches and 2176/2176 no-copy mappings; all 16 attention/FFN checksums and the retained final HC match the 8K oracle
+layer-5 complete prefix: exact 4096-row ingress, QKV, ratio-128 compression, padded Flash attention, and FFN use 49 dispatches and 28/28 no-copy mappings; all 6 boundary/tail checksums match the 4K oracle
+layer-5 complete continuation: 128 exact 32-row ingress/QKV tiles plus the production compressor, Flash attention, and FFN use 1318 dispatches and 1171/1171 no-copy mappings; all 9 ingress checksums, compressed checksum=14445684775547474685, and 3 attention/FFN tail checksums match the 8K oracle
+layer-6 exact boundary: prefix and continuation ingress, QKV, both ratio-4 compressed caches, and all recurrent states match 20/20 oracle checksums over 40+40 dispatches and 17/17+17/17 no-copy mappings
+layer-6 complete prefix and continuation: prefix sparse attention/FFN uses 36 dispatches and 17/17 no-copy mappings; 128 continuation tiles use 4736 dispatches and 2176/2176 mappings; all 6 KQV-back/post-attention/post-FFN hashes match the 8K oracle
+layer-7 complete prefix: exact 4096-row ingress, QKV, ratio-128 compression, padded Flash attention, and FFN use 49 dispatches and 28/28 no-copy mappings; all 8 boundary/tail hashes match the 4K oracle
+layer-7 complete continuation: 128 exact 32-row ingress/QKV tiles plus the production compressor, Flash attention, and FFN use 1318 dispatches and 1171/1171 no-copy mappings; all 4 ingress hashes, compressed hash=8461032194011059482, and 3 attention/FFN tail hashes match the 8K oracle
+layer-8 exact boundary: prefix and continuation ingress, QKV, both ratio-4 compressed caches, and all recurrent states match 20/20 oracle hashes over 40+40 dispatches and 17/17+17/17 no-copy mappings
+layer-8 complete prefix and continuation: prefix sparse attention/FFN uses 36 dispatches and 17/17 no-copy mappings; 128 continuation tiles use 4736 dispatches and 2176/2176 mappings; all 6 KQV-back/post-attention/post-FFN hashes match the 8K oracle
+layer-9 complete prefix: exact 4096-row ingress, QKV, ratio-128 compression, padded Flash attention, and FFN use 49 dispatches and 28/28 no-copy mappings; all 8 boundary/tail hashes match the 4K oracle
+layer-9 complete continuation: 128 exact 32-row ingress/QKV tiles plus the production compressor, Flash attention, and FFN use 1318 dispatches and 1171/1171 no-copy mappings; all 4 ingress hashes, compressed hash=5699066136885992815, and 3 attention/FFN tail hashes match the 8K oracle
+layer-10 exact boundary: prefix and continuation ingress, QKV, both ratio-4 compressed caches, and all recurrent states match 20/20 oracle hashes over 40+40 dispatches and 17/17+17/17 no-copy mappings
+layer-10 complete prefix and continuation: prefix sparse attention/FFN uses 36 dispatches and 17/17 no-copy mappings; 128 continuation tiles use 4736 dispatches and 2176/2176 mappings; all 6 KQV-back/post-attention/post-FFN hashes match the 8K oracle
+layer-11 complete prefix: exact 4096-row ingress, QKV, ratio-128 compression, padded Flash attention, and FFN use 49 dispatches and 28/28 no-copy mappings; all 8 boundary/tail hashes match the 4K oracle
+layer-11 complete continuation: 128 exact 32-row ingress/QKV tiles plus the production compressor, Flash attention, and FFN use 1318 dispatches and 1171/1171 no-copy mappings; all 4 ingress hashes, compressed hash=12768432492243742576, and 3 attention/FFN tail hashes match the 8K oracle
+layer-12 exact boundary: prefix and continuation ingress, QKV, both ratio-4 compressed caches, and all recurrent states match 20/20 oracle hashes over 40+40 dispatches and 17/17+17/17 no-copy mappings
+layer-12 complete prefix and continuation: prefix sparse attention/FFN uses 36 dispatches and 17/17 no-copy mappings; 128 continuation tiles use 4736 dispatches and 2176/2176 mappings; all 6 KQV-back/post-attention/post-FFN hashes match the 8K oracle
+layer-13 complete prefix: exact 4096-row ingress, QKV, ratio-128 compression, padded Flash attention, and FFN use 49 dispatches and 28/28 no-copy mappings; all 8 boundary/tail hashes match the 4K oracle
+layer-13 complete continuation: 128 exact 32-row ingress/QKV tiles plus the production compressor, Flash attention, and FFN use 1318 dispatches and 1171/1171 no-copy mappings; all 4 ingress hashes, compressed hash=1476246641941259595, and 3 attention/FFN tail hashes match the 8K oracle
+layer-14 complete prefix and continuation: exact paired compressors, sparse attention, and FFN; prefix boundary/tail dispatches=40/36, continuation tiles=128, dispatches=4736; all 26 oracle hashes match
+layer-15 complete prefix and continuation: exact, 1367 dispatches, 1199/1199 no-copy mappings
+layer-16 complete prefix and continuation: exact, 4852 dispatches, 2227/2227 no-copy mappings
+layer-17 complete prefix and continuation: exact, 1367 dispatches, 1199/1199 no-copy mappings
+layer-18 complete prefix and continuation: exact, 4852 dispatches, 2227/2227 no-copy mappings
+layer-19 complete prefix and continuation: exact, 1367 dispatches, 1199/1199 no-copy mappings
+layer-20 complete prefix and continuation: exact, 4852 dispatches, 2227/2227 no-copy mappings
+layer-21 complete prefix and continuation: exact, 1367 dispatches, 1199/1199 no-copy mappings
+layer-22 complete prefix and continuation: exact, 4852 dispatches, 2227/2227 no-copy mappings
+layer-23 complete prefix and continuation: exact, 1367 dispatches, 1199/1199 no-copy mappings
+layer-24 complete prefix and continuation: exact, 4852 dispatches, 2227/2227 no-copy mappings
+layer-25 complete prefix and continuation: exact, 1367 dispatches, 1199/1199 no-copy mappings
+layer-26 complete prefix and continuation: exact, 4852 dispatches, 2227/2227 no-copy mappings
+layer-27 complete prefix and continuation: exact, 1367 dispatches, 1199/1199 no-copy mappings
+layer-28 complete prefix and continuation: exact, 4852 dispatches, 2227/2227 no-copy mappings
+layer-29 complete prefix and continuation: exact, 1367 dispatches, 1199/1199 no-copy mappings
+layer-30 complete prefix and continuation: exact, 4852 dispatches, 2227/2227 no-copy mappings
+layer-31 complete prefix and continuation: exact, 1367 dispatches, 1199/1199 no-copy mappings
+layer-32 complete prefix and continuation: exact, 4852 dispatches, 2227/2227 no-copy mappings
+layer-33 complete prefix and continuation: exact, 1367 dispatches, 1199/1199 no-copy mappings
+layer-34 complete prefix and continuation: exact, 4852 dispatches, 2227/2227 no-copy mappings
+layer-35 complete prefix and continuation: exact, 1367 dispatches, 1199/1199 no-copy mappings
+layer-36 complete prefix and continuation: exact, 4852 dispatches, 2227/2227 no-copy mappings
+layer-37 complete prefix and continuation: exact, 1367 dispatches, 1199/1199 no-copy mappings
+layer-38 complete prefix and continuation: exact, 4852 dispatches, 2227/2227 no-copy mappings
+layer-39 complete prefix and continuation: exact, 1367 dispatches, 1199/1199 no-copy mappings
+layer-40 complete prefix and continuation: exact, 4852 dispatches, 2227/2227 no-copy mappings
+layer-41 complete prefix and continuation: exact, 1367 dispatches, 1199/1199 no-copy mappings
+layer-42 complete prefix and continuation: exact, 4852 dispatches, 2227/2227 no-copy mappings
+complete native 8K prefill: all 129280 FP32 logits match the pinned oracle; selected token 77179. Throughput remains unclaimed
+json: /Users/deathcodevision/dev/ds4-rust-star-bootstrap/rust-star/.work/counter-bootstrap-94565861/batch-8k.json

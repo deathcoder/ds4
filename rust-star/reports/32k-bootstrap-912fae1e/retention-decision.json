@@ -1,0 +1,12 @@
+{
+  "bootstrap_retained": true,
+  "reason": "Prefill latency improved in all five pairs by 6.0\u20138.7%, with an 8.165% median paired reduction. Steady decode had a +0.516% median paired change (four pairs faster, one 2.0% slower), so there is no clear material steady-decode regression. First-step latency has a small, variable increase: the paired median is +2.121%, with observed candidate/baseline medians of 57.479/53.608ms. This tradeoff is accepted alongside the repeatable prefill improvement; no memory reduction is claimed.",
+  "prefill_acceptance_passed": true,
+  "counter_diagnostics_retained": true,
+  "oracle_v5_unchanged": true,
+  "comparison": "Rust-to-Rust; generic oracle slot is accepted Rust baseline",
+  "independent_audit_sha256": "b3457ca517cc7dfad88eca79f528adc893da9ee717a2be590cdc1be9b303f51b",
+  "paired_plan_sha256": "911c914fe2bcbed7cd8764b3746ca8ec85fd0bd455034db1dde6040d2aed9517",
+  "reviewed_utc": "2026-09-08T08:58:45.862670+00:00",
+  "stop_after_milestone": true
+}

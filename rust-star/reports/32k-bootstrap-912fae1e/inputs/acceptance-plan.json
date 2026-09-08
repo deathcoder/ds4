@@ -1,0 +1,7 @@
+{
+  "prefill": "Require lower median paired candidate/baseline latency and improvement in at least four of five pairs. Report all per-pair ratios and dispersion.",
+  "decode": "Report paired throughput/first-step distributions; do not accept a clear material decode regression masked by prefill improvement.",
+  "failures": "Stop on failure; preserve all attempts; no retries to obtain favorable results.",
+  "profile": "Separate diagnostic run after timed block. Raw invalid-counter values must be preserved, not accepted as valid timing.",
+  "claim_scope": "32K/128 Rust-to-Rust development improvement; no updated Rust-versus-DwarfStar throughput claim."
+}
