@@ -18,6 +18,21 @@ Before changing code:
 Journal entries are reverse chronological. Do not edit old entries to change
 history; add a correction and update the current-state summary.
 
+## 2026-09-08 — Scoped bootstrap passes first complete 32K output gate
+
+- 12K internal, detailed 8K and complete 2K controls pass. The first normal
+  32K output-only gate passes all 129,280 prefill words and all 128 decode rows,
+  preserving oracle-v5 checksums and the complete selected-token transcript.
+- The internal-state 32K gate is running; retained lifecycle and profiled C0
+  follow. Source and frozen executable remain unchanged during live validation.
+- Prepared independent Rust-to-Rust measurement audit, strict component/coverage
+  audits and a guarded sequential follow-through runner. It starts only after
+  all seven gates pass, reruns the final-source standalone counter probe, then
+  freezes a new plan and runs both warmups/five pairs plus a separate profile.
+- Baseline Rust binary equals the accepted e7b81aa2 binary exactly. Keep the
+  generic runner oracle role explicitly labelled as Rust; C0 oracle-v5 is
+  unchanged and remains separate. No throughput or retention decision yet.
+
 ## 2026-09-08 — Bootstrap candidate built; direct Rust comparison planned
 
 - Frozen candidate 912fae1ebbd641fd8edaf4e9f6b26249737775b0, tree
@@ -3161,7 +3176,8 @@ Next:
 ### Current resume checkpoint (updated 2026-09-08)
 
 - Active milestone: diagnosable counter failures and scoped initial bootstrap.
-  Candidate 912fae1e passes 312 tests/build; seven live gates are running from
+  Candidate 912fae1e passes 312 tests/build and the 12K/8K/2K live controls;
+  the remaining full-output/lifecycle/profile gates are running from
   rust-star/.work/counter-bootstrap-94565861/. Then perform a clearly labelled
   same-session Rust-to-Rust paired comparison; oracle-v5 remains the C0 target.
   User authorized this next milestone after the prior stop. Finish it and stop.
@@ -3180,9 +3196,9 @@ Next:
   claim for profiling itself. Reverted execution matches 9c1d5009; matching C
   header declarations remain. Fresh restored tests/build pass; all 232 negative-report
   artifacts verify. This milestone is closed.
-- User restored milestone stopping on 2026-09-08: STOP after this negative
-  experiment is documented and committed, and recap the burn period. Follow-up
-  bootstrap drafts/guarded validation helpers remain unapplied in .work/.
+- User restored milestone stopping on 2026-09-08. The negative experiment and
+  burn recap are complete. A new bootstrap/counter milestone is now authorized
+  and implemented; stop after its evidence and retention decision are complete.
 - Authorized native tail scratch/output milestone is complete. Whole-chunk
   tails reuse 22 temporary buffers, write directly to retained HC output and
   omit unused FP32 routed-mid conversion (25 dispatches instead of 26).
