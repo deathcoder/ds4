@@ -26,7 +26,7 @@ Lower ratios favor the candidate except throughput, where higher is faster. Peak
 | 4 | BA | 83.851 | 91.431 | 239.875 | 284.733 | 0.99024 |
 | 5 | AB | 83.850 | 92.431 | 238.014 | 277.836 | 1.00240 |
 
-Prefill dispersion (median absolute deviation; range): candidate 0.686s; 238.014–241.389s. oracle 4.438s; 277.836–294.277s. 
+Prefill dispersion (median absolute deviation; range): candidate 0.686s; 238.014–241.389s. oracle 4.438s; 277.836–294.277s.
 
 The allocation probe passed with 14.837GiB allocated and GPU-filled simultaneously. The device reports a 80.640GiB maximum individual buffer and 107.520GiB recommended working set. Modeled history increases by 9.322GiB between 32K and 128K. Adding that increase to the measured candidate maximum gives a **planning estimate of 93.173GiB**, not a bound or a verified 128K working set.
 
