@@ -383,7 +383,7 @@ repeatable 128K oracle capture, larger-context schedule/adoption audits, and
 incremental frontier gates culminating in full 128K prefill plus 128 full-logit
 decode steps with memory monitoring. Candidate 0eb484ea is frozen; 314 tests
 and the release build pass, with repeatable 64K/96K oracle references accepted.
-Full 128K captures and native acceptance are pending. Attention
+Both full 128K oracle traces also match exactly; native acceptance is pending. Attention
 output and routed gate/up remain available for subsequent performance work.
 
 Current implementation boundaries, evidence, and immediate actions are maintained

@@ -18,6 +18,20 @@ Before changing code:
 Journal entries are reverse chronological. Do not edit old entries to change
 history; add a correction and update the current-state summary.
 
+## 2026-09-08 — Repeated full 128K oracle traces accepted; native gates next
+
+- All six unchanged oracle-v5 captures pass: paired full prefill at 64K/96K
+  and paired 128K prefill plus 128 full-logit decode rows. The two 128K traces
+  are byte-identical (16,677,120 FP32 words each), selected prefill token 1110,
+  final selected token 2945; every row is finite and no row selects EOS.
+- 128K full-trace SHA-256:
+  794631eda78dc137db2bb5eb540308c7d51b1efffb86fd2988a508a40e5443b1.
+  Capture acceptance and raw evidence: rust-star/.work/frontier128-35f69741/.
+- Frozen candidate 0eb484ea (314 tests/build) now enters the eleven-check
+  sequential native validation queue: established 32K output, 64K/96K output,
+  two full 128K runs, then remaining shorter/lifecycle/profile controls.
+  No native larger-frontier claim until these checks pass. No capture retries.
+
 ## 2026-09-08 — 64K and 96K oracle prefill references repeat exactly
 
 - Two fresh unchanged oracle-v5 processes match every prefill word at 64K
@@ -3445,9 +3459,10 @@ Next:
   work. Candidate 0eb484ea adds a separate external-reference checker and
   extends native boundary/output/adoption guards, preserving the built-in 32K
   benchmark contract. 314 tests and release build pass. Repeated 64K/96K
-  oracle prefill references are accepted; two full 128K captures are underway in rust-star/.work/frontier128-35f69741/.
-  Native 64K/96K and two 128K/128 full-logit gates plus seven old controls wait
-  until repeated references are accepted. No larger-context C0 claim yet.
+  oracle prefill references and both full 128K/128 traces are accepted in
+  rust-star/.work/frontier128-35f69741/. Native 64K/96K and two 128K/128
+  full-logit gates plus seven old controls are now queued/running sequentially.
+  No native larger-context C0 claim yet.
 
 - Memory-prefill milestone COMPLETE and retained at de6d2c11. 312 tests/build,
   seven live gates, five valid pairs/two warmups and both profile audits pass.
