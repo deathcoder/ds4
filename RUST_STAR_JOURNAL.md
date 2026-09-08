@@ -18,6 +18,25 @@ Before changing code:
 Journal entries are reverse chronological. Do not edit old entries to change
 history; add a correction and update the current-state summary.
 
+## 2026-09-08 — All memory gates and allocation preflight pass; paired study frozen
+
+- All seven de6d2c11 gates pass, with 287 native tails / 2,583 valid component
+  intervals audited. Standalone 128K modeled allocation/fill probe passes:
+  15,931,240,960 requested bytes (14.837GiB), largest buffer 536,870,912 bytes,
+  972,540 page/end-byte checks. This excludes model residency/other scratch and
+  is not full 128K inference or an aggregate runtime memory bound.
+- Live M1 Ultra reports maxBufferLength 86,586,540,032 and recommended working
+  set 115,448,725,504 bytes. Full histories remain context-sized; 32K guards stay.
+- Model and prompt rehashed successfully. Frozen comparison work:
+  rust-star/.work/paired-rust-memory-de6d2c11/.
+  Candidate exe 3206f15e2523f577b1f00fe62d0faa068c90152c6168d16882f9414d1053fe0d;
+  accepted 912fae1e exe adea36df8200ae6c99f4b549faebcf90fd01f9da34207dc0add562180cf713c4.
+  Plan SHA-256 7588f507bc3e39202c254c27050375bde5362974cb481885212d95e902e04fbb;
+  acceptance SHA-256 5256849bda0e9bd14a65a6a2f700454c8930dddb0a98280502e9bb98ad860c82.
+- Two warmups/five alternating pairs then separate profile are active, managed
+  by memory-prefill-final/follow-through.py. Stop on failure and preserve every
+  attempt. No measured improvement claim yet. Finish analysis/report and stop.
+
 ## 2026-09-08 — Memory candidate passes output, internal and lifecycle controls
 
 - Frozen de6d2c11 passes 312 tests/build, 12K internal, legacy 8K, complete 2K,
@@ -3350,9 +3369,9 @@ Next:
   Oracle-v5 remains the C0 target; latest Rust-versus-DwarfStar result is unchanged.
   This baseline is complete. The next memory-efficient prefill milestone is
   now active: combined candidate de6d2c11 passed 312 tests/build and its
-  native 12K internal gate. Remaining live gates run sequentially in
-  rust-star/.work/memory-prefill-final/, followed by allocation preflight and
-  five frozen Rust-to-Rust pairs if every gate passes. Source remains frozen.
+  all seven live gates and the modeled 128K allocation preflight.
+  Five frozen Rust-to-Rust pairs are active in paired-rust-memory-de6d2c11/.
+  Source remains frozen; analysis/report and the milestone decision are pending.
 - Dense-Q8 candidate 92ca3ef3 is rejected and reverted after seven passing live
   gates and five valid pairs. Paired prefill ratio 2.01485 versus baseline 1.72589;
   Rust/reference medians 351.974/176.897 s. One host-interrupted pair is preserved
