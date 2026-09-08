@@ -1293,8 +1293,9 @@ additional time or paired performance evidence. Audited evidence is in
 [the component report](../reports/32k-tail-components-e7b81aa2/README.md).
 
 A later post-paired capture failed closed with `invalid tail timestamps` and
-produced no profile artifact. Its rejected raw values were not logged, so the
-specific counter failure remains unresolved. The successful full-C0 component
+produced no profile artifact. That historical run did not log its rejected raw values. New failures report
+all 18 raw hexadecimal ticks, the failing sample/component and chunk/layer
+context; the original cause remains unresolved. The successful full-C0 component
 captures remain valid evidence; do not assume every unattended profile will
 complete. See [the preserved failure](../reports/32k-dense-output-92ca3ef3/README.md).
 Improve failure diagnostics before changing timestamp-validity checks.

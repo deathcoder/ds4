@@ -22408,6 +22408,8 @@ mod imp {
         layer3_compressed_kv_rows: u32,
         wall_ms: f64,
         gpu_ms: f64,
+        last_completed_layer: u32,
+        indexer_dispatches: u32,
     }
 
     #[repr(C)]
@@ -22875,10 +22877,15 @@ mod imp {
             error_bytes: usize,
         ) -> i32;
         fn rust_star_metal_enable_prefill_tail_profiling(
-            context: *mut c_void, error: *mut c_char, error_bytes: usize,
+            context: *mut c_void,
+            error: *mut c_char,
+            error_bytes: usize,
         ) -> i32;
         fn rust_star_metal_copy_prefill_tail_ticks(
-            context: *mut c_void, ticks: *mut u64, error: *mut c_char, error_bytes: usize,
+            context: *mut c_void,
+            ticks: *mut u64,
+            error: *mut c_char,
+            error_bytes: usize,
         ) -> i32;
         fn rust_star_metal_copy_chained_layer_stage_ticks(
             context: *mut c_void,
@@ -24100,6 +24107,7 @@ mod imp {
             layer42_shared_out_final_tile: *mut f32,
             prefill_rows: u32,
             collect_outputs: u32,
+            last_layer: u32,
             result: *mut RawPrefillLayer2AttentionResult,
             error: *mut c_char,
             error_bytes: usize,
@@ -28751,6 +28759,13 @@ mod imp {
         )
     }
 
+    #[derive(Clone, Copy, PartialEq, Eq)]
+    #[repr(u32)]
+    enum NativePrefillScope {
+        Bootstrap012 = 2,
+        Complete = 42,
+    }
+
     fn run_prefill_layers012_attention_loop_with_context(
         model: &MappedModel,
         context: Context,
@@ -28765,6 +28780,67 @@ mod imp {
         u32,
         NativePrefillTiming,
     )> {
+        let (context, report, selected, timing) = run_prefill_layers012_attention_loop_with_scope(
+            model,
+            context,
+            context_setup_ms,
+            collect_outputs,
+            profile_layers,
+            prefill_rows,
+            tokens,
+            NativePrefillScope::Complete,
+        )?;
+        Ok((
+            context,
+            report,
+            selected.ok_or_else(|| Error::invalid("complete prefill omitted selection"))?,
+            timing,
+        ))
+    }
+
+    fn run_long_prefill_initial_bootstrap(
+        model: &MappedModel,
+        context: Context,
+        context_setup_ms: f64,
+        tokens: &[u32],
+    ) -> Result<(Context, NativePrefillTiming)> {
+        let (context, report, selected, timing) = run_prefill_layers012_attention_loop_with_scope(
+            model,
+            context,
+            context_setup_ms,
+            false,
+            false,
+            4096,
+            Some(tokens),
+            NativePrefillScope::Bootstrap012,
+        )?;
+        if report.is_some() || selected.is_some() {
+            return Err(Error::invalid(
+                "partial bootstrap unexpectedly produced a model output",
+            ));
+        }
+        Ok((context, timing))
+    }
+
+    fn run_prefill_layers012_attention_loop_with_scope(
+        model: &MappedModel,
+        context: Context,
+        context_setup_ms: f64,
+        collect_outputs: bool,
+        profile_layers: bool,
+        prefill_rows: u32,
+        tokens: Option<&[u32]>,
+        scope: NativePrefillScope,
+    ) -> Result<(
+        Context,
+        Option<PrefillLayers012AttentionLoopProbeReport>,
+        Option<u32>,
+        NativePrefillTiming,
+    )> {
+        let bootstrap = scope == NativePrefillScope::Bootstrap012;
+        if bootstrap && (prefill_rows != 4096 || collect_outputs || profile_layers) {
+            return Err(Error::invalid("invalid initial bootstrap scope"));
+        }
         if profile_layers {
             context.enable_prefill_layer_profiling()?;
         }
@@ -36255,6 +36331,7 @@ mod imp {
                 actual_layer42_shared_out.as_mut_ptr(),
                 prefill_rows,
                 u32::from(collect_outputs),
+                scope as u32,
                 &mut raw,
                 error.as_mut_ptr(),
                 error.len(),
@@ -36266,12 +36343,26 @@ mod imp {
                 error_text(&error)
             )));
         }
-        let expected_dispatches = if prefill_rows == 4096 { 2396 } else { 2391 };
+        let expected_dispatches = if bootstrap {
+            36 + raw.indexer_dispatches
+        } else if prefill_rows == 4096 {
+            2396
+        } else {
+            2391
+        };
+        let valid_indexer_count = if prefill_rows == 4096 {
+            // One block sort plus at most ten merges for 1024 input columns.
+            (1..=11).contains(&raw.indexer_dispatches)
+        } else {
+            raw.indexer_dispatches == 0
+        };
         let expected_model_ranges = if prefill_rows == 4096 { 1218 } else { 1216 };
         if raw.rows != prefill_rows
             || raw.raw_kv_rows != prefill_rows
             || raw.compressed_kv_rows != prefill_rows / 4
-            || raw.layer3_compressed_kv_rows != prefill_rows / 128
+            || raw.last_completed_layer != scope as u32
+            || !valid_indexer_count
+            || raw.layer3_compressed_kv_rows != if bootstrap { 0 } else { prefill_rows / 128 }
             || raw.dispatches != expected_dispatches
             || raw.wrapped_model_ranges != expected_model_ranges
             || raw.pointer_matches != expected_model_ranges
@@ -36286,6 +36377,11 @@ mod imp {
         }
         timing.transformer_setup_ms =
             (transformer_started.elapsed().as_secs_f64() * 1000.0 - raw.wall_ms).max(0.0);
+        if bootstrap {
+            timing.transformer_wall_ms = raw.wall_ms;
+            timing.transformer_gpu_ms = raw.gpu_ms;
+            return Ok((context, None, None, timing));
+        }
         if !collect_outputs {
             let output_head_setup_started = Instant::now();
             let output_head = PreparedOutputHead::new(model)?;
@@ -36305,7 +36401,7 @@ mod imp {
             }
             timing.output_head_wall_ms = output_head_started.elapsed().as_secs_f64() * 1000.0;
             timing.output_head_gpu_ms = output_head_gpu_ms;
-            return Ok((context, None, selected_token, timing));
+            return Ok((context, None, Some(selected_token), timing));
         }
         for (label, actual, expected) in [
             (
@@ -44308,7 +44404,7 @@ mod imp {
                 layer42_after_ffn_hc_checksum: checksum_f32(&actual_layer42_after_ffn_hc),
                 output_head,
             }),
-            selected_token,
+            Some(selected_token),
             timing,
         ))
     }
@@ -58203,7 +58299,9 @@ mod imp {
     pub fn run_long_prefill_profile_probe(
         _model: &MappedModel,
     ) -> Result<(LongPrefillChunkProbeReport, String)> {
-        Err(Error::invalid("long-prefill profile probe requires macOS Metal"))
+        Err(Error::invalid(
+            "long-prefill profile probe requires macOS Metal",
+        ))
     }
 
     pub fn run_long_prefill_output_probe(
@@ -58918,21 +59016,22 @@ pub use imp::{
     run_layers0123_decode_probe, run_layers0123_probe, run_layers012_chained_probe,
     run_layers012_probe, run_layers01_probe, run_layers0_to_42_decode_probe,
     run_long_prefill_bootstrap_probe, run_long_prefill_chunk_probe,
-    run_long_prefill_continuation_bootstrap_probe, run_long_prefill_output_probe, run_long_prefill_profile_probe,
-    run_long_prefill_sequential_continuation_probe, run_long_prefill_transformer_probe,
-    run_moe_output_probe, run_position127_decoder_probe, run_prefill_decode_frontier_probe,
-    run_prefill_frontier_probe, run_prefill_layer0_boundary_probe,
-    run_prefill_layers012_attention_loop_probe, run_prefill_layers012_compressor_loop_probe,
-    run_prefill_layers012_kv_state_loop_probe, run_prefill_layers012_kvnorm_loop_probe,
-    run_prefill_layers01_boundary_probe, run_prefill_layers01_complete_boundary_probe,
-    run_prefill_layers01_live_kv_chain_probe, run_prefill_layers01_live_kv_loop_probe,
-    run_prefill_layers01_row_coverage_probe, run_prefill_q8_boundary_probe,
-    run_prefill_qkv_boundary_probe, run_probe, run_q8_projection_probe, run_q_head_kv_fusion_bench,
-    run_q_head_threads_bench, run_qb_rows_bench, run_qkv_pair_bench,
-    run_ratio128_compressor_replay_probe, run_retained_decoder_step_probe,
-    run_retained_engine_measurement, run_retained_sparse_boundary_probe,
-    run_retained_sparse_multimerge_probe, run_rope_kv_store_probe, run_routed_nsg_bench,
-    run_sparse_indexed_attention_probe, LayerExecutor,
+    run_long_prefill_continuation_bootstrap_probe, run_long_prefill_output_probe,
+    run_long_prefill_profile_probe, run_long_prefill_sequential_continuation_probe,
+    run_long_prefill_transformer_probe, run_moe_output_probe, run_position127_decoder_probe,
+    run_prefill_decode_frontier_probe, run_prefill_frontier_probe,
+    run_prefill_layer0_boundary_probe, run_prefill_layers012_attention_loop_probe,
+    run_prefill_layers012_compressor_loop_probe, run_prefill_layers012_kv_state_loop_probe,
+    run_prefill_layers012_kvnorm_loop_probe, run_prefill_layers01_boundary_probe,
+    run_prefill_layers01_complete_boundary_probe, run_prefill_layers01_live_kv_chain_probe,
+    run_prefill_layers01_live_kv_loop_probe, run_prefill_layers01_row_coverage_probe,
+    run_prefill_q8_boundary_probe, run_prefill_qkv_boundary_probe, run_probe,
+    run_q8_projection_probe, run_q_head_kv_fusion_bench, run_q_head_threads_bench,
+    run_qb_rows_bench, run_qkv_pair_bench, run_ratio128_compressor_replay_probe,
+    run_retained_decoder_step_probe, run_retained_engine_measurement,
+    run_retained_sparse_boundary_probe, run_retained_sparse_multimerge_probe,
+    run_rope_kv_store_probe, run_routed_nsg_bench, run_sparse_indexed_attention_probe,
+    LayerExecutor,
 };
 
 #[cfg(test)]

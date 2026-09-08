@@ -475,6 +475,8 @@ typedef struct rust_star_metal_prefill_layer2_attention_result {
     uint32_t layer3_compressed_kv_rows;
     double wall_ms;
     double gpu_ms;
+    uint32_t last_completed_layer;
+    uint32_t indexer_dispatches;
 } rust_star_metal_prefill_layer2_attention_result;
 
 typedef struct rust_star_metal_prefill_layer_outputs {
@@ -1889,6 +1891,7 @@ int rust_star_metal_run_prefill_layer2_attention(
     float *layer42_shared_out_final_tile,
     uint32_t prefill_rows,
     uint32_t collect_outputs,
+    uint32_t last_layer,
     rust_star_metal_prefill_layer2_attention_result *result,
     char *error,
     size_t error_bytes);

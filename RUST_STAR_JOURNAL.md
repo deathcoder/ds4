@@ -18,6 +18,41 @@ Before changing code:
 Journal entries are reverse chronological. Do not edit old entries to change
 history; add a correction and update the current-state summary.
 
+## 2026-09-08 — Scoped bootstrap and rejected-counter diagnostics implemented
+
+- Independent Metal probe: 256 commands, nine dependent encoders each, four
+  workloads and a reused 18-sample buffer. All GPU outputs match; no counter
+  errors, zero/backward spans, touching/overlapping boundaries occurred. This
+  does not reproduce or explain the earlier large-model capture failure.
+- Preserved strict validity. Rejected native samples now log all 18 raw ticks,
+  failing index/component/boundary and reason; Rust adds chunk/layer context.
+  Rust validation also rejects the Metal error sentinel, including a final
+  sentinel that would otherwise pass a monotonicity-only check. Failure tests
+  verify rejection before attribution and diagnostic values/context.
+- Applied/reviewed layers-0..2 bootstrap scope: early return retains layer 2 HC,
+  skips discarded layers 3..42 and output head, and reports actual scope/selector
+  dispatch counts. Full 2K/legacy callers retain their complete contract. The
+  accepted later-layer prefix rebuild stays in place; shared setup allocations
+  and all 1218 wrapped views still occur and are reported honestly.
+- Initial-bootstrap profile span is now 0..2; dedicated audit requires prefix
+  layers 3..42 exactly once. Build and all seven live gates are next. Candidate
+  is not yet accepted as correct or faster. No oracle or kernel arithmetic change.
+
+## 2026-09-08 — New authorized milestone: diagnosable profiling and scoped bootstrap
+
+- User authorized a meaningful next milestone, allowing a larger scope. Bundle
+  rejected-counter diagnostics with the layers-0..2 initial bootstrap experiment;
+  stop after this milestone's evidence, retention decision and report are complete.
+- First capture all rejected raw counter values and chunk/layer context without
+  relaxing validity. Use a small independent dependent-dispatch Metal probe to
+  investigate timestamp ordering separately from the large model. Preserve failures.
+- Then review/apply the prepared bootstrap scope while retaining the exact later
+  prefix rebuild. Require controls, full 32K prefill/128-decode C0, lifecycle,
+  profiled C0 and frozen paired measurement before retaining a performance change.
+- Start from restored 94565861 on agent/rust-star-bootstrap. Oracle-v5 and all
+  historical reports stay pinned. Work: rust-star/.work/counter-bootstrap-94565861/.
+  One model process at a time; no agent delegation or new external publication.
+
 ## 2026-09-08 — Dense-output experiment closed and reverted; stop for recap
 
 - Completed the declared five valid 32K/128 pairs, retaining the documented

@@ -2138,15 +2138,24 @@ int rust_star_metal_copy_prefill_tail_ticks(
         if (!resolved || resolved.length < 18u*sizeof(MTLCounterResultTimestamp))
             return fail_with_message(error, error_bytes, @"failed to resolve tail timestamps");
         const MTLCounterResultTimestamp *values = resolved.bytes;
+        /* Preserve the whole packet even when one sample is rejected. */
+        for (NSUInteger i = 0; i < 18u; i++) ticks[i] = values[i].timestamp;
+        context.prefillLayerTailCommand = nil;
         for (NSUInteger i = 0; i < 18u; i++) {
             uint64_t value = values[i].timestamp;
             if (value == MTLCounterErrorValue ||
-                (i && value <= values[i-1u].timestamp))
-                return fail_with_message(error, error_bytes, @"invalid tail timestamps");
-            ticks[i] = value;
+                (i && value <= values[i-1u].timestamp)) {
+                NSMutableString *message = [NSMutableString stringWithFormat:
+                    @"invalid tail timestamps: sample=%lu component=%lu boundary=%@ reason=%@ raw_ticks=[",
+                    (unsigned long)i, (unsigned long)(i/2u), i%2u ? @"end" : @"start",
+                    value == MTLCounterErrorValue ? @"counter-error" : @"non-increasing"];
+                for (NSUInteger j = 0; j < 18u; j++)
+                    [message appendFormat:@"%@%016llx", j ? @"," : @"",
+                        (unsigned long long)ticks[j]];
+                [message appendString:@"]"];
+                return fail_with_message(error, error_bytes, message);
+            }
         }
-        /* Each completed call is consumed once before the next layer reuses samples. */
-        context.prefillLayerTailCommand = nil;
         return 1;
     }
 }
@@ -8097,10 +8106,14 @@ int rust_star_metal_run_prefill_layer2_attention(
     float *layer42_shared_out_final_tile,
     uint32_t prefill_rows,
     uint32_t collect_outputs,
+    uint32_t last_layer,
     rust_star_metal_prefill_layer2_attention_result *result,
     char *error,
     size_t error_bytes)
 {
+    if ((last_layer != 2u && last_layer != 42u) ||
+        (last_layer == 2u && (prefill_rows != 4096u || collect_outputs)))
+        return fail_with_message(error, error_bytes, @"invalid native prefill completion scope");
     if (!opaque_context || !model_mapping || !weights || !result ||
         (collect_outputs && (!attention_output ||
         !after_attention_hc || !after_ffn_hc || !ffn_cur_final_tile ||
@@ -18145,6 +18158,10 @@ int rust_star_metal_run_prefill_layer2_attention(
         if (!command || !encoder) return fail_with_message(error, error_bytes,
             @"failed to create prefill layer-2 attention command");
         const BOOL prefill_layer_profiling = context.prefillLayerProfiling;
+        if (last_layer == 2u && prefill_layer_profiling) {
+            [encoder endEncoding];
+            return fail_with_message(error, error_bytes, @"bootstrap scope uses outer stage profiling");
+        }
         const double prefill_profile_wall_start = monotonic_ms();
         double prefill_profile_gpu_ms = 0.0;
         double prefill_profile_current_layer_gpu_ms = 0.0;
@@ -18233,6 +18250,7 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder dispatchThreadgroups:MTLSizeMake(n_head,rows,1)
              threadsPerThreadgroup:MTLSizeMake(128,1,1)];
 
+        uint32_t layer2_indexer_dispatches = 0u;
         uint32_t compressed_elements = compressed_rows*head_dim;
         if (rows == 4096u) {
             [encoder setComputePipelineState:context.f16AlignedPrefillPipeline];
@@ -18290,9 +18308,10 @@ int rust_star_metal_run_prefill_layer2_attention(
                      (compressed_rows+31u)/32u,(rows+7u)/8u,1)
                  threadsPerThreadgroup:MTLSizeMake(32,4,1)];
 
-            if (!encode_indexer_topk(context, encoder,
-                    layer2_indexer_score_buffer, layer2_indexer_topk_buffer,
-                    layer2_topk_args, error, error_bytes)) {
+            layer2_indexer_dispatches = encode_indexer_topk(context, encoder,
+                layer2_indexer_score_buffer, layer2_indexer_topk_buffer,
+                layer2_topk_args, error, error_bytes);
+            if (!layer2_indexer_dispatches) {
                 [encoder endEncoding];
                 return 0;
             }
@@ -18591,6 +18610,34 @@ int rust_star_metal_run_prefill_layer2_attention(
         [encoder setBuffer:after_ffn_hc_buffer offset:0 atIndex:6];
         [encoder dispatchThreadgroups:MTLSizeMake((rows*n_embd+255u)/256u,1,1)
              threadsPerThreadgroup:MTLSizeMake(256,1,1)];
+
+        /* Long prefill rebuilds layers 3--42 with its accepted prefix schedule.
+         * Retain only the completed layer-2 HC here; no partial output head is run. */
+        if (last_layer == 2u) {
+            [encoder endEncoding];
+            const double bootstrap_wall_start = monotonic_ms();
+            [command commit];
+            if (!command_succeeded(command, error, error_bytes)) return 0;
+            context.prefillLayer3InputHc = after_ffn_hc_buffer;
+            uint32_t pointer_matches = 0u;
+            for (uint32_t index = 0; index < 1216u; index++)
+                pointer_matches += matches[index] ? 1u : 0u;
+            pointer_matches += layer2_indexer_matches[0] ? 1u : 0u;
+            pointer_matches += layer2_indexer_matches[1] ? 1u : 0u;
+            result->rows = rows;
+            result->raw_kv_rows = raw_rows;
+            result->compressed_kv_rows = compressed_rows;
+            result->dispatches = 36u + layer2_indexer_dispatches;
+            /* Later-layer views are still wrapped by the shared setup above. */
+            result->wrapped_model_ranges = 1218u;
+            result->pointer_matches = pointer_matches;
+            result->layer3_compressed_kv_rows = 0u;
+            result->wall_ms = monotonic_ms()-bootstrap_wall_start;
+            result->gpu_ms = gpu_elapsed_ms(command);
+            result->last_completed_layer = 2u;
+            result->indexer_dispatches = layer2_indexer_dispatches;
+            return 1;
+        }
 
         RUST_STAR_PREFILL_LAYER_BOUNDARY(1u);
         [encoder setComputePipelineState:context.rmsNormF32Pipeline];
@@ -40792,6 +40839,8 @@ int rust_star_metal_run_prefill_layer2_attention(
         result->raw_kv_rows = raw_rows;
         result->compressed_kv_rows = compressed_rows;
         result->dispatches = rows == 4096u ? 2396u : 2391u;
+        result->last_completed_layer = 42u;
+        result->indexer_dispatches = layer2_indexer_dispatches;
         result->wrapped_model_ranges = rows == 4096u ? 1218u : 1216u;
         result->pointer_matches = pointer_matches;
         result->layer3_compressed_kv_rows = layer3_compressed_rows;

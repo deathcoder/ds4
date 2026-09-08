@@ -56,26 +56,64 @@ impl LongPrefillProfile {
             }
         }
     }
-    fn record_tail(&mut self, context: &Context, chunk: u32, layer: u32, gpu_ms: f64) -> Result<()> {
-        if !self.enabled { return Ok(()); }
+    fn record_tail(
+        &mut self,
+        context: &Context,
+        chunk: u32,
+        layer: u32,
+        gpu_ms: f64,
+    ) -> Result<()> {
+        if !self.enabled {
+            return Ok(());
+        }
         let mut ticks = [0u64; 18];
         let mut error = [0 as c_char; ERROR_BYTES];
-        if unsafe { rust_star_metal_copy_prefill_tail_ticks(
-            context.0, ticks.as_mut_ptr(), error.as_mut_ptr(), error.len()) } == 0 {
-            return Err(Error::invalid(error_text(&error)));
+        if unsafe {
+            rust_star_metal_copy_prefill_tail_ticks(
+                context.0,
+                ticks.as_mut_ptr(),
+                error.as_mut_ptr(),
+                error.len(),
+            )
+        } == 0
+        {
+            return Err(Error::invalid(format!(
+                "tail profile chunk={chunk} layer={layer}: {}",
+                error_text(&error)
+            )));
         }
         self.record_tail_ticks(chunk, layer, gpu_ms, &ticks)
     }
-    fn record_tail_ticks(&mut self, chunk: u32, layer: u32, gpu_ms: f64, ticks: &[u64;18]) -> Result<()> {
-        if ticks.windows(2).any(|pair| pair[1] <= pair[0]) {
-            return Err(Error::invalid("non-monotonic tail timestamps"));
+    fn record_tail_ticks(
+        &mut self,
+        chunk: u32,
+        layer: u32,
+        gpu_ms: f64,
+        ticks: &[u64; 18],
+    ) -> Result<()> {
+        if ticks.contains(&u64::MAX) || ticks.windows(2).any(|pair| pair[1] <= pair[0]) {
+            return Err(Error::invalid(format!(
+                "invalid tail timestamps chunk={chunk} layer={layer}: {ticks:x?}"
+            )));
         }
-        let names = ["attention_output", "ffn_ingress", "router", "routed_map",
-            "routed_gate_up", "routed_down", "routed_sum", "shared_expert", "final_hc"];
+        let names = [
+            "attention_output",
+            "ffn_ingress",
+            "router",
+            "routed_map",
+            "routed_gate_up",
+            "routed_down",
+            "routed_sum",
+            "shared_expert",
+            "final_hc",
+        ];
         if !gpu_ms.is_finite() || gpu_ms <= 0.0 {
             return Err(Error::invalid("invalid tail command GPU duration"));
         }
-        let spans = ticks.chunks_exact(2).map(|p| p[1] - p[0]).collect::<Vec<_>>();
+        let spans = ticks
+            .chunks_exact(2)
+            .map(|p| p[1] - p[0])
+            .collect::<Vec<_>>();
         let total = spans.iter().map(|x| u128::from(*x)).sum::<u128>() as f64;
         for (i, name) in names.iter().enumerate() {
             self.tail_components.push(format!(
@@ -553,7 +591,9 @@ fn run_prefill_chunk_layer(
             // their width until the final 512-index selection is produced.
             let blocks = ((start + 4096) / 4).div_ceil(1024);
             let merges = blocks.next_power_of_two().trailing_zeros();
-            if tile.dispatches != 10 + merges || tile.wrapped_model_ranges != 3 || tile.pointer_matches != 3
+            if tile.dispatches != 10 + merges
+                || tile.wrapped_model_ranges != 3
+                || tile.pointer_matches != 3
             {
                 return Err(Error::invalid("even chunk attention schedule mismatch"));
             }
@@ -805,19 +845,12 @@ fn run_long_prefill_with_context(
         ..Default::default()
     };
     let stage_start = profile.start();
-    let (context, diagnostic, _, mut timing) = run_prefill_layers012_attention_loop_with_context(
-        model,
-        context,
-        context_ms,
-        false,
-        false,
-        4096,
-        Some(&tokens),
-    )?;
+    let (context, mut timing) =
+        run_long_prefill_initial_bootstrap(model, context, context_ms, &tokens)?;
     profile.record(
         0,
         0,
-        42,
+        2,
         "initial_bootstrap",
         stage_start,
         (0.0, 0.0),
@@ -826,11 +859,6 @@ fn run_long_prefill_with_context(
             timing.tile_gpu_ms + timing.transformer_gpu_ms,
         ),
     );
-    if diagnostic.is_some() {
-        return Err(Error::invalid(
-            "long-prefill prefix unexpectedly collected diagnostics",
-        ));
-    }
     if collect_checks {
         eprintln!("rust-star: native 4096-token bootstrap ready for exact prefix rebuild");
     }
@@ -849,8 +877,14 @@ fn run_long_prefill_with_context(
     }
     if collect_profile {
         let mut error = [0 as c_char; ERROR_BYTES];
-        if unsafe { rust_star_metal_enable_prefill_tail_profiling(
-            context.0, error.as_mut_ptr(), error.len()) } == 0 {
+        if unsafe {
+            rust_star_metal_enable_prefill_tail_profiling(
+                context.0,
+                error.as_mut_ptr(),
+                error.len(),
+            )
+        } == 0
+        {
             return Err(Error::invalid(error_text(&error)));
         }
     }
@@ -1096,9 +1130,12 @@ pub fn run_long_prefill_output_probe(model: &MappedModel) -> Result<LongPrefillC
 }
 
 // Encoder-split diagnostics must satisfy the same complete output gate.
-pub fn run_long_prefill_profile_probe(model: &MappedModel) -> Result<(LongPrefillChunkProbeReport, String)> {
+pub fn run_long_prefill_profile_probe(
+    model: &MappedModel,
+) -> Result<(LongPrefillChunkProbeReport, String)> {
     let (_, report, timing) = run_long_prefill_with_context(model, 32768, None, false, true, true)?;
-    let profile = timing.long_prefill_profile
+    let profile = timing
+        .long_prefill_profile
         .ok_or_else(|| Error::invalid("missing long-prefill profile"))?;
     Ok((report, profile))
 }
@@ -1109,12 +1146,18 @@ mod tail_profile_tests {
 
     #[test]
     fn attributes_each_tail_component_without_adding_parent_rows() {
-        let mut profile = LongPrefillProfile { enabled: true, ..Default::default() };
+        let mut profile = LongPrefillProfile {
+            enabled: true,
+            ..Default::default()
+        };
         let ticks = std::array::from_fn(|i| 100 + i as u64 * 10);
         profile.record_tail_ticks(4096, 2, 90.0, &ticks).unwrap();
         assert_eq!(profile.tail_components.len(), 9);
         assert!(profile.rows.is_empty());
-        assert!(profile.tail_components.iter().all(|s| s.contains("\"attributed_gpu_ms\":10.000000000")));
+        assert!(profile
+            .tail_components
+            .iter()
+            .all(|s| s.contains("\"attributed_gpu_ms\":10.000000000")));
         let json = profile.json().unwrap();
         assert!(json.contains("\"profile_perturbed\":true"));
         assert!(json.contains("\"paired_ineligible\":true"));
@@ -1126,13 +1169,20 @@ mod tail_profile_tests {
         let mut profile = LongPrefillProfile::default();
         let ticks = std::array::from_fn(|i| i as u64 + 1);
         for duration in [0.0, -1.0, f64::NAN, f64::INFINITY] {
-            assert!(profile.record_tail_ticks(4096, 2, duration, &ticks).is_err());
+            assert!(profile
+                .record_tail_ticks(4096, 2, duration, &ticks)
+                .is_err());
         }
         let mut bad = ticks;
         bad[5] = bad[4];
         assert!(profile.record_tail_ticks(4096, 2, 90.0, &bad).is_err());
         bad[5] = 0;
         assert!(profile.record_tail_ticks(4096, 2, 90.0, &bad).is_err());
+        bad = ticks;
+        bad[17] = u64::MAX;
+        let error = profile.record_tail_ticks(4096, 2, 90.0, &bad).unwrap_err();
+        assert!(error.to_string().contains("chunk=4096 layer=2"));
+        assert!(error.to_string().contains("ffffffffffffffff"));
         assert!(profile.tail_components.is_empty());
         assert!(profile.json().is_none());
     }
