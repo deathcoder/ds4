@@ -18,6 +18,16 @@ Before changing code:
 Journal entries are reverse chronological. Do not edit old entries to change
 history; add a correction and update the current-state summary.
 
+## 2026-09-08 — Four timed 128K pairs pass; final pair active
+
+- Pair 4 BA passes on its first attempt: Rust/oracle prefill
+  1,380.256/1,030.604s and steady decode 15.170/15.618 tokens/s. Every native
+  transcript remains exact. Four pairs and both warm-ups pass without retries.
+- Final pair 5 AB is active. Closeout is queued after its completion: independent
+  statistics/artifact and source/tool hash audit, final model/oracle verification,
+  observer shutdown and report draft. Portable packaging/verifier, final prose
+  review, journal/charter/contracts and final commit remain required.
+
 ## 2026-09-08 — Three timed 128K pairs pass; final two remain
 
 - Pair 3 AB passes on its first attempt: Rust/oracle prefill
