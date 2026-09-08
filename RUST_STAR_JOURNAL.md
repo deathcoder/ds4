@@ -18,6 +18,17 @@ Before changing code:
 Journal entries are reverse chronological. Do not edit old entries to change
 history; add a correction and update the current-state summary.
 
+## 2026-09-08 — Native 64K full-output check passes
+
+- Frozen candidate 0eb484ea preserves complete 32K/128 output C0 and matches
+  every one of the 129,280 new 64K prefill words (selected token 39).
+  The sequential queue has advanced to native 96K, followed by two 128K/128
+  checks and remaining established controls. No failures or retries so far.
+- Diagnostic RSS differs from the prior warmed engine benchmark: these probes
+  do not call warm_tensor_pages. Preserve macOS RSS and peak-footprint values
+  separately, but do not interpret them as total Metal/model residency or a
+  new memory reduction. The final report must retain this comparability caveat.
+
 ## 2026-09-08 — Repeated full 128K oracle traces accepted; native gates next
 
 - All six unchanged oracle-v5 captures pass: paired full prefill at 64K/96K
@@ -3461,8 +3472,8 @@ Next:
   benchmark contract. 314 tests and release build pass. Repeated 64K/96K
   oracle prefill references and both full 128K/128 traces are accepted in
   rust-star/.work/frontier128-35f69741/. Native 64K/96K and two 128K/128
-  full-logit gates plus seven old controls are now queued/running sequentially.
-  No native larger-context C0 claim yet.
+  full-logit gates plus seven old controls run sequentially. Established 32K/128
+  and new 64K prefill C0 pass; 96K is running and full 128K remains pending.
 
 - Memory-prefill milestone COMPLETE and retained at de6d2c11. 312 tests/build,
   seven live gates, five valid pairs/two warmups and both profile audits pass.
