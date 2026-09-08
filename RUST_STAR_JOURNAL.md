@@ -18,6 +18,21 @@ Before changing code:
 Journal entries are reverse chronological. Do not edit old entries to change
 history; add a correction and update the current-state summary.
 
+## 2026-09-08 — Memory scope candidate implemented; validation next
+
+- Partial bootstrap wraps only 16 execution weights plus two indexer weights,
+  and skips allocations/initialization for discarded layers 3..42. Full/legacy
+  callers keep all buffers and metadata. Rust validates the new 18-view contract.
+- Native odd/even continuation slots allocate 4096-row Q, normalized inputs,
+  HC and split activations. Producer blits, sparse/Flash consumers and tail
+  offsets now use the matching chunk base; KV/compressed histories keep absolute
+  addressing. Legacy 8K paths remain at base zero.
+- Execution-only long prefill no longer allocates unused diagnostic host vectors.
+  No kernel arithmetic, fixture, frontier guard or oracle changes. Candidate
+  must pass tests/build and all seven live gates before any measurement claim.
+- Build and sequential validation are prepared in memory-prefill-291eb611/.
+  Source freezes during the gates. Capacity audit and measured acceptance remain.
+
 ## 2026-09-08 — Memory-efficient prefill milestone authorized and started
 
 - User authorized the recommended milestone. Start from 291eb611 on

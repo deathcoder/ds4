@@ -36356,7 +36356,13 @@ mod imp {
         } else {
             raw.indexer_dispatches == 0
         };
-        let expected_model_ranges = if prefill_rows == 4096 { 1218 } else { 1216 };
+        let expected_model_ranges = if bootstrap {
+            18
+        } else if prefill_rows == 4096 {
+            1218
+        } else {
+            1216
+        };
         if raw.rows != prefill_rows
             || raw.raw_kv_rows != prefill_rows
             || raw.compressed_kv_rows != prefill_rows / 4
