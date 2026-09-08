@@ -18,6 +18,15 @@ Before changing code:
 Journal entries are reverse chronological. Do not edit old entries to change
 history; add a correction and update the current-state summary.
 
+## 2026-09-08 — Nine native checks pass; lifecycle and profile remain
+
+- Both 128K/128 native repetitions, 64K/96K prefill, complete 32K output,
+  12K, legacy 8K, 2K and internal 32K controls pass. Accepted internal targets
+  remain through 24K; later HC diagnostics do not gain a new correctness claim.
+- Retained-engine two-cycle validation is running, followed by the final
+  profiled 32K control. Then component audit, final input hashes and portable
+  report/docs close the milestone. No capture/native failures or retries.
+
 ## 2026-09-08 — Both fresh native 128K/128 runs pass exactly
 
 - Both independent native processes match the repeated oracle-v5 reference:
@@ -3504,7 +3513,8 @@ Next:
   rust-star/.work/frontier128-35f69741/. Native 64K/96K and two 128K/128
   full-logit gates plus seven old controls run sequentially. Established 32K/128
   and new 64K/96K prefill C0 pass; BOTH full native 128K/128 runs pass exactly.
-  Remaining old controls are running; final input/report/docs audits pending.
+  Nine native checks pass; retained-engine and profiled 32K remain running/queued.
+  Final input/report/docs audits are pending.
 
 - Memory-prefill milestone COMPLETE and retained at de6d2c11. 312 tests/build,
   seven live gates, five valid pairs/two warmups and both profile audits pass.
