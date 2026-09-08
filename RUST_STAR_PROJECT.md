@@ -358,23 +358,31 @@ they describe whenever practical.
 
 ## Open Items
 
-The current native-tail report is `rust-star/reports/32k-tail-89e32745/README.md`.
-Rust/reference median prefill 362.284/212.376 s; steady decode 17.064/17.039 tokens/s. Observed Rust peak memory is 91.613 GiB.
-Native tails reuse scratch, write retained HC directly and omit an unused
-conversion with exact v5 outputs. Largest GPU stage group: `even/tail`;
-the component audit now identifies attention output projection as the largest
-internal component (36.75%). See `rust-star/reports/32k-tail-components-e7b81aa2/README.md`.
-The direct dense-Q8 experiment was exact but did not meet the measured benefit
-criterion and was reverted. Its negative report is
-`rust-star/reports/32k-dense-output-92ca3ef3/README.md` (including a documented
-host-restart recovery and a failed post-paired timestamp capture). Improve
-invalid-counter diagnostics before relying on unattended component profiling.
-A layers-0..2-only initial bootstrap is the next performance hypothesis; its
-later prefix rebuild must remain. Drafts are unapplied. Host load and swap
-qualify cross-session comparisons; oracle-v5 and historical evidence stay pinned.
+The scoped-bootstrap milestone is complete and retained. Report:
+`rust-star/reports/32k-bootstrap-912fae1e/README.md` (403 verified artifacts).
+Five pairs against accepted Rust show an 8.165% median paired prefill-latency
+reduction, with all five pairs faster. Steady decode is essentially unchanged;
+first-step latency and observed peak memory rose slightly. This does not update
+the latest accepted Rust-versus-DwarfStar comparison in
+`rust-star/reports/32k-tail-89e32745/README.md`.
+
+Initial bootstrap ends after layers 0..2, followed by the established exact
+prefix rebuild of layers 3..42. Shared setup allocations remain. Counter errors
+now preserve raw samples and execution context; both current profiles and the
+independent probe pass. The earlier rare counter failure remains unexplained.
+The rejected dense-Q8 experiment remains immutable negative evidence in
+`rust-star/reports/32k-dense-output-92ca3ef3/README.md`.
+
+Recommended next milestone, not yet started: bound temporary prefill storage to
+the active chunk and complete bootstrap allocation specialization. Preserve
+all exact 32K/128 and shorter/lifecycle gates, measure peak memory and paired
+latency against the accepted Rust build, then establish 128K capacity readiness.
+A capacity preflight is separate from a repeated 128K oracle capture and full
+128K C0 acceptance. Attention output and routed gate/up remain major measured
+kernel costs, available for subsequent performance work.
 
 Current implementation boundaries, evidence, and immediate actions are maintained
-in `RUST_STAR_JOURNAL.md`. As of 2026-09-07, native 32K prefill is exact through
+in `RUST_STAR_JOURNAL.md`. As of 2026-09-08, native 32K prefill is exact through
 all 43 layers and the output head. Both diagnostic and output-only executions
 match all 129,280 immutable prefill logits and all 16,547,840 FP32 words over
 128 subsequent greedy decode steps. The complete 2K prefill/decode and 8K

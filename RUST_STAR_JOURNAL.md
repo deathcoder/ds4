@@ -18,6 +18,22 @@ Before changing code:
 Journal entries are reverse chronological. Do not edit old entries to change
 history; add a correction and update the current-state summary.
 
+## 2026-09-08 — Next-step recommendation; no new milestone started
+
+- User asked for the next step. Recommend memory-efficient prefill and 128K
+  readiness: remove unnecessary shared bootstrap allocations, audit lifetimes
+  and make transient query storage depend on the active chunk where valid.
+- The earlier source audit found a FullQ allocation of 4GiB at 32K and 16GiB
+  at 128K; these are allocation calculations, not measured total memory. Address
+  absolute indexing and device limits before shrinking buffers or raising guards.
+- Proposed acceptance: preserve exact 32K/128 and shorter/lifecycle controls,
+  demonstrate measured memory improvement without material paired latency/decode
+  regression, and produce an evidence-based 128K capacity preflight. Repeated
+  128K oracle capture/full C0 remains a separate acceptance step.
+- Corrected stale charter Open Items that still described the completed scoped
+  bootstrap and diagnostic work as pending. Runtime and benchmarks unchanged.
+  Recommendation only: await user authorization before starting implementation.
+
 ## 2026-09-08 — Scoped bootstrap milestone complete and retained
 
 - Retain candidate 912fae1e: initial long-prefill bootstrap now completes only
