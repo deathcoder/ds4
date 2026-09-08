@@ -18,6 +18,18 @@ Before changing code:
 Journal entries are reverse chronological. Do not edit old entries to change
 history; add a correction and update the current-state summary.
 
+## 2026-09-08 — First complete native 128K/128 C0 run passes
+
+- Frozen candidate 0eb484ea matches all 129,280 prefill words and all
+  16,547,840 decode words over 128 steps at 131,072 prompt tokens, with exact
+  greedy selections throughout. This includes state adoption and sparse-history
+  growth beyond the prompt frontier. Native 64K/96K and old 32K/128 also pass.
+- A second fresh full native 128K run is underway, then six remaining old
+  shorter/lifecycle/profile controls. The milestone remains active until repeat,
+  regressions, portable evidence, final input verification and docs pass.
+- No failed captures/native checks or retries. Diagnostic process RSS remains
+  distinct from warmed benchmark model residency; do not claim a memory gain.
+
 ## 2026-09-08 — Native 96K full-output check passes; 128K starts
 
 - Native 96K prefill matches all 129,280 oracle-v5 FP32 words exactly,
@@ -3481,7 +3493,8 @@ Next:
   oracle prefill references and both full 128K/128 traces are accepted in
   rust-star/.work/frontier128-35f69741/. Native 64K/96K and two 128K/128
   full-logit gates plus seven old controls run sequentially. Established 32K/128
-  and new 64K/96K prefill C0 pass; first full 128K/128 check is running.
+  and new 64K/96K prefill C0 pass; first full 128K/128 C0 passes and second
+  fresh native run is underway. Remaining old controls and final report pending.
 
 - Memory-prefill milestone COMPLETE and retained at de6d2c11. 312 tests/build,
   seven live gates, five valid pairs/two warmups and both profile audits pass.
