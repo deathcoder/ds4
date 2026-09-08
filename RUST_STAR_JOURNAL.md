@@ -18,6 +18,21 @@ Before changing code:
 Journal entries are reverse chronological. Do not edit old entries to change
 history; add a correction and update the current-state summary.
 
+## 2026-09-08 — Memory candidate passes output, internal and lifecycle controls
+
+- Frozen de6d2c11 passes 312 tests/build, 12K internal, legacy 8K, complete 2K,
+  full 32K output and internal gates, and both retained lifecycle transcripts.
+  Full-output controls match every prefill logit and all 128 decode-logit rows;
+  accepted internal HC remains through 24K only. No failures or retries so far.
+- Final profiled 32K gate is running. On success, the sequential workflow audits
+  all component intervals, runs the standalone 128K modeled allocation/fill
+  preflight, rehashes model/prompt, freezes five AB/BA Rust-to-Rust pairs plus
+  two warmups, then runs an independent profile. One GPU workload at a time.
+- Predeclared acceptance requires lower median RSS and four/five lower-RSS pairs,
+  median paired prefill latency <=1.03 and steady decode throughput >=0.97.
+  No performance or total-memory claim until the comparison completes. Current
+  frontier guards remain 32K; capacity is distinct from 128K inference C0.
+
 ## 2026-09-08 — Allocation tranche passed; bootstrap transient scope completed
 
 - Candidate 8b511b5f passed 312 release tests/build and the native 12K internal
