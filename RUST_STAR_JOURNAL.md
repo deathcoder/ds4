@@ -18,6 +18,21 @@ Before changing code:
 Journal entries are reverse chronological. Do not edit old entries to change
 history; add a correction and update the current-state summary.
 
+## 2026-09-08 — Recovered pair passes; dense-output retention criterion cannot pass
+
+- Pair 4 attempt 2 passes; pair 5's oracle half passes and Rust half is running.
+  No additional retry. Original interrupted pair remains intact.
+- Completed valid Rust/reference prefill ratios: 1.69773, 1.88010, 2.38594,
+  2.14752. Three already exceed the accepted baseline's 1.72589 median ratio,
+  so the final five-pair median cannot meet the normalized improvement criterion.
+- Finish the declared final pair, separate profile and audited negative report,
+  then revert only the dense-output implementation. Keep the exact-gated
+  component profiler and matching header declarations. This is failure to
+  demonstrate benefit under the measured conditions, not isolated causal proof
+  that the kernel change caused all observed variation.
+- Final checks/docs/commit and the burn recap remain pending. Do not start the
+  prepared bootstrap milestone; user requested stopping after this milestone.
+
 ## 2026-09-08 — Host restart interrupted pair 4; explicit recovery underway
 
 - Correction to the preceding status: saved running state survived, but no
