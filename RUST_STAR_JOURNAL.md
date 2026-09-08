@@ -18,6 +18,23 @@ Before changing code:
 Journal entries are reverse chronological. Do not edit old entries to change
 history; add a correction and update the current-state summary.
 
+## 2026-09-08 — External frontier checker implemented; oracle capture active
+
+- Added validated external prompt/selection/logit vectors and a separate
+  long-prefill-reference-probe command. It checks every FP32 word and labels
+  oracle provenance as externally verified, not implicitly trusted by runtime.
+  The 128K reference requires all 129 rows; malformed/non-finite/incorrect
+  greedy vectors are rejected before model execution. Initial 314 tests pass.
+- Generalized native boundary/output/complete-state guards through 128K and
+  parameterized decode adoption/positions. Existing benchmark/built-in C0
+  entry points remain 32K. External prompts must extend the pinned 32K prefix.
+- Audited dynamic sparse merge depth, score allocation and 4K transient offsets;
+  retained histories remain absolute. Corrected an additional Rust boundary
+  guard found during review. Freeze/rebuild this final candidate before gates.
+- Unchanged oracle-v5 capture sequence is active, starting with two 64K
+  prefill captures. Host thermal/swap observations are recorded. No native
+  larger-context correctness claim until repeated oracle and runtime checks pass.
+
 ## 2026-09-08 — 128K correctness milestone authorized and started
 
 - User authorized the next milestone. Start at 35f69741 on the existing

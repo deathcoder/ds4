@@ -25595,7 +25595,7 @@ mod imp {
                     error_text(&error)
                 )));
             }
-            if !matches!(prefill_rows, 2_048 | 4_096 | 32_768)
+            if !(matches!(prefill_rows, 2_048 | 4_096) || ((32_768..=131_072).contains(&prefill_rows) && prefill_rows % 4096 == 0))
                 || raw.layers != 43
                 || raw.raw_rows_per_layer != 128
                 || raw.ratio4_rows_per_layer != prefill_rows / 4
@@ -26317,7 +26317,7 @@ mod imp {
             return Err(Error::invalid("invalid prefill boundary tile width"));
         }
         if (prefill_rows != 2048
-            && (prefill_rows < 4096 || prefill_rows > 32768 || prefill_rows % 4096 != 0))
+            && (prefill_rows < 4096 || prefill_rows > 131072 || prefill_rows % 4096 != 0))
             || prefill_rows < rows
             || prefill_rows % rows != 0
             || position_start % rows != 0
@@ -58294,6 +58294,11 @@ mod imp {
 
 #[cfg(not(target_os = "macos"))]
 mod imp {
+    pub fn run_long_prefill_reference_probe(_model: &crate::model::MappedModel,
+        _reference: &crate::frontier_reference::FrontierReference) -> crate::Result<super::LongPrefillChunkProbeReport> {
+        Err(crate::Error::invalid("external frontier comparison requires macOS Metal"))
+    }
+
     use super::*;
     pub fn run_long_prefill_chunk_probe(
         _model: &MappedModel,
@@ -59021,7 +59026,7 @@ pub use imp::{
     run_layers012345_decode_probe, run_layers0123_bench, run_layers0123_chained_probe,
     run_layers0123_decode_probe, run_layers0123_probe, run_layers012_chained_probe,
     run_layers012_probe, run_layers01_probe, run_layers0_to_42_decode_probe,
-    run_long_prefill_bootstrap_probe, run_long_prefill_chunk_probe,
+    run_long_prefill_bootstrap_probe, run_long_prefill_chunk_probe, run_long_prefill_reference_probe,
     run_long_prefill_continuation_bootstrap_probe, run_long_prefill_output_probe,
     run_long_prefill_profile_probe, run_long_prefill_sequential_continuation_probe,
     run_long_prefill_transformer_probe, run_moe_output_probe, run_position127_decoder_probe,

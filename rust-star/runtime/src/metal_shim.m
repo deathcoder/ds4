@@ -4492,7 +4492,7 @@ int rust_star_metal_run_prefill_layer0_boundary(
     }
     if (n_vocab != 129280u || (rows != 32u && rows != 64u) ||
         (prefill_rows != 2048u && (prefill_rows < 4096u ||
-         prefill_rows > 32768u || prefill_rows%4096u != 0u)) ||
+         prefill_rows > 131072u || prefill_rows%4096u != 0u)) ||
         prefill_rows < rows || prefill_rows % rows != 0u ||
         position_start % rows != 0u ||
         position_start + rows > prefill_rows) {
@@ -43565,15 +43565,16 @@ int rust_star_metal_adopt_prefill_decoder_state(
         const uint32_t prefill_rows = context.prefillKvRows;
         const uint32_t ratio4_rows = prefill_rows/4u;
         const uint32_t ratio128_rows = prefill_rows/128u;
-        const BOOL complete_long_prefill = prefill_rows == 32768u &&
-            context.prefillLayerChunkStart.unsignedIntValue == 28672u &&
+        const BOOL complete_long_prefill = prefill_rows >= 32768u && prefill_rows <= 131072u &&
+            prefill_rows%4096u == 0u &&
+            context.prefillLayerChunkStart.unsignedIntValue == prefill_rows-4096u &&
             context.prefillLayerRemainingCompleted.unsignedIntValue == 42u &&
             context.prefillLayerChunkStates.count == layers;
         if ((prefill_rows != 2048u && prefill_rows != 4096u && !complete_long_prefill) ||
             decoder_context_capacity <= prefill_rows ||
             !context.prefillLayer42AfterFfnHc) {
             return fail_with_message(error, error_bytes,
-                @"prefill-to-decode handoff requires a completed 2K, 4K, or 32K prefill");
+                @"prefill-to-decode handoff requires a completed 2K, 4K, or aligned 32K--128K prefill");
         }
         memset(result, 0, sizeof(*result));
         id<MTLCommandBuffer> command = [context.queue commandBuffer];
@@ -43788,9 +43789,9 @@ int rust_star_metal_run_output_head(
         } else if (context.prefillLayer42AfterFfnHc) {
             const NSUInteger prefill_rows = context.prefillKvRows;
             /* A completed continuation retains only its 4096 HC rows;
-             * prefillKvRows records the global frontier through 32K. */
+             * prefillKvRows records the global frontier through 128K. */
             const BOOL complete_second_chunk = prefill_rows >= 8192u &&
-                prefill_rows <= 32768u && prefill_rows%4096u == 0u &&
+                prefill_rows <= 131072u && prefill_rows%4096u == 0u &&
                 context.prefillLayerRemainingCompleted.unsignedIntValue == 42u;
             const NSUInteger resident_rows = complete_second_chunk ? 4096u : prefill_rows;
             const NSUInteger prefill_hc_bytes = resident_rows*hc_dim*sizeof(float);
@@ -51689,7 +51690,7 @@ int rust_star_metal_begin_long_prefill_chunk(void *opaque_context,
     uint32_t chunk_start, char *error, size_t error_bytes)
 {
     @autoreleasepool {
-        if (!opaque_context || chunk_start < 4096u || chunk_start >= 32768u || chunk_start%4096u)
+        if (!opaque_context || chunk_start < 4096u || chunk_start >= 131072u || chunk_start%4096u)
             return fail_with_message(error, error_bytes, @"invalid long-prefill chunk start");
         RustStarMetalContext *context = (__bridge RustStarMetalContext *)opaque_context;
         if (context.prefillKvRows != chunk_start ||

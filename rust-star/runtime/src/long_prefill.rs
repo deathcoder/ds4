@@ -837,12 +837,47 @@ fn run_long_prefill_with_context(
     validate_outputs: bool,
     collect_profile: bool,
 ) -> Result<(Context, LongPrefillChunkProbeReport, NativePrefillTiming)> {
-    if frontier < 12288 || frontier > 32768 || frontier % 4096 != 0 {
+    run_long_prefill_with_reference(
+        model,
+        frontier,
+        retained_context,
+        collect_checks,
+        validate_outputs,
+        collect_profile,
+        None,
+    )
+}
+
+fn run_long_prefill_with_reference(
+    model: &MappedModel,
+    frontier: u32,
+    retained_context: Option<Context>,
+    collect_checks: bool,
+    validate_outputs: bool,
+    collect_profile: bool,
+    reference: Option<&crate::frontier_reference::FrontierReference>,
+) -> Result<(Context, LongPrefillChunkProbeReport, NativePrefillTiming)> {
+    if frontier < 12288
+        || frontier > if reference.is_some() { 131072 } else { 32768 }
+        || frontier % 4096 != 0
+    {
         return Err(Error::invalid(
             "long prefill requires a 4096-token frontier from 12288 through 32768",
         ));
     }
-    let (tokens, expected_logits) = if validate_outputs {
+    let (tokens, expected_logits) = if let Some(reference) = reference {
+        let prefix =
+            decode_u32_fixture(PREFILL_FRONTIER_32768_TOKEN_IDS_BYTES, "32K prompt tokens")?;
+        if reference.frontier() != frontier || reference.tokens[..32768] != prefix {
+            return Err(Error::invalid(
+                "external reference must extend the pinned 32K prompt",
+            ));
+        }
+        (
+            reference.tokens.clone(),
+            reference.logits[..129280].to_vec(),
+        )
+    } else if validate_outputs {
         prefill_frontier_32768_fixture()?
     } else {
         (
@@ -1029,14 +1064,14 @@ fn run_long_prefill_with_context(
     timing.output_head_wall_ms += head_started.elapsed().as_secs_f64() * 1000.0;
     timing.output_head_gpu_ms += gpu_ms;
     let mut checked_logits = 0;
-    if frontier == 32768 && validate_outputs {
+    if (frontier == 32768 || reference.is_some()) && validate_outputs {
         if head.logits.len() != expected_logits.len() {
-            return Err(Error::invalid("32K vocabulary length mismatch"));
+            return Err(Error::invalid("prefill vocabulary length mismatch"));
         }
         for (index, (actual, expected)) in head.logits.iter().zip(&expected_logits).enumerate() {
             if actual.to_bits() != expected.to_bits() {
                 return Err(Error::invalid(format!(
-                    "32K full-logit C0 mismatch at {index}: actual={:#010x} expected={:#010x}",
+                    "prefill full-logit mismatch at {index}: actual={:#010x} expected={:#010x}",
                     actual.to_bits(),
                     expected.to_bits()
                 )));
@@ -1044,9 +1079,31 @@ fn run_long_prefill_with_context(
         }
         checked_logits = expected_logits.len() as u32;
     }
+    if let Some(reference) = reference {
+        if selected_token != reference.selected[0] {
+            return Err(Error::invalid(
+                "prefill selected token differs from external reference",
+            ));
+        }
+    }
     let (checked_decode_steps, decode_logits_checksum, decode_tokens_checksum) =
-        if frontier == 32768 && validate_outputs {
-            run_long_prefill_decode(model, &context, selected_token)?
+        if (frontier == 32768 || reference.is_some()) && validate_outputs {
+            if let Some(reference) = reference {
+                if reference.selected.len() == 1 {
+                    (0, 0, 0)
+                } else {
+                    run_long_prefill_decode_reference(
+                        model,
+                        &context,
+                        selected_token,
+                        frontier,
+                        &reference.selected,
+                        &reference.logits[129280..],
+                    )?
+                }
+            } else {
+                run_long_prefill_decode(model, &context, selected_token)?
+            }
         } else {
             (0, 0, 0)
         };
@@ -1085,15 +1142,26 @@ fn run_long_prefill_decode(
     first_token: u32,
 ) -> Result<(u32, u64, u64)> {
     let (tokens, expected) = prefill_decode_32768_fixture()?;
+    run_long_prefill_decode_reference(model, context, first_token, 32768, &tokens, &expected)
+}
+
+fn run_long_prefill_decode_reference(
+    model: &MappedModel,
+    context: &Context,
+    first_token: u32,
+    frontier: u32,
+    tokens: &[u32],
+    expected: &[f32],
+) -> Result<(u32, u64, u64)> {
     if first_token != tokens[0] {
         return Err(Error::invalid(
-            "native 32K prefill selection differs from the decode reference",
+            "native prefill selection differs from the decode reference",
         ));
     }
-    context.adopt_prefill_decoder_state(32768, 32896)?;
+    context.adopt_prefill_decoder_state(frontier, frontier + 128)?;
     context.prepare_model_residency()?;
     let mut layers = (0..43)
-        .map(|layer| PreparedLayerExecution::new_cold_with_capacity(model, layer, 32896))
+        .map(|layer| PreparedLayerExecution::new_cold_with_capacity(model, layer, frontier + 128))
         .collect::<Result<Vec<_>>>()?;
     for layer in &mut layers {
         layer.validate_expected = false;
@@ -1105,7 +1173,7 @@ fn run_long_prefill_decode(
     let mut actual_logits = Vec::with_capacity(expected.len());
     let mut selected = Vec::with_capacity(128);
     for step in 0..128 {
-        let position = 32768 + step;
+        let position = frontier + step;
         submit_prepared_layers(model, context, &mut layers, input, position)?;
         run_prepared_layer_iterations(
             model,
@@ -1121,16 +1189,16 @@ fn run_long_prefill_decode(
         let (token, _) = run_checked_top1_output_head(model, context, &mut head)?;
         let row = &expected[step as usize * 129280..(step as usize + 1) * 129280];
         if head.logits.len() != row.len() {
-            return Err(Error::invalid("32K decode vocabulary length differs"));
+            return Err(Error::invalid("frontier decode vocabulary length differs"));
         }
         for (index, (actual, expected)) in head.logits.iter().zip(row).enumerate() {
             if actual.to_bits() != expected.to_bits() {
-                return Err(Error::invalid(format!("32K decode position {position} logit {index} differs: actual={:#010x} expected={:#010x}",actual.to_bits(),expected.to_bits())));
+                return Err(Error::invalid(format!("frontier decode position {position} logit {index} differs: actual={:#010x} expected={:#010x}",actual.to_bits(),expected.to_bits())));
             }
         }
         if token != tokens[step as usize + 1] {
             return Err(Error::invalid(format!(
-                "32K decode token differs at position {position}"
+                "frontier decode token differs at position {position}"
             )));
         }
         actual_logits.extend_from_slice(&head.logits);
@@ -1204,4 +1272,22 @@ mod tail_profile_tests {
         assert!(profile.tail_components.is_empty());
         assert!(profile.json().is_none());
     }
+}
+
+/// Compare all output words with explicitly supplied vectors. The evidence
+/// runner must authenticate their oracle/model provenance separately.
+pub fn run_long_prefill_reference_probe(
+    model: &MappedModel,
+    reference: &crate::frontier_reference::FrontierReference,
+) -> Result<LongPrefillChunkProbeReport> {
+    Ok(run_long_prefill_with_reference(
+        model,
+        reference.frontier(),
+        None,
+        false,
+        true,
+        false,
+        Some(reference),
+    )?
+    .1)
 }

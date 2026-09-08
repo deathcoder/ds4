@@ -147,6 +147,26 @@ fn run() -> Result<()> {
     if command == "prefill-layers012-compressor-loop-probe" {
         return run_prefill_layers012_compressor_loop_probe_command(arguments.collect());
     }
+    if command == "long-prefill-reference-probe" {
+        let args: Vec<_> = arguments.collect();
+        if args.len() == 1 && matches!(args[0].to_str(), Some("--help") | Some("-h")) {
+            println!("usage: rust-star long-prefill-reference-probe MODEL.gguf TOKENS.u32le SELECTED.u32le LOGITS.f32le REPORT.json\nCompares every output word with external reference vectors through 128K. Oracle provenance must be verified separately; this is not a throughput command.");
+            return Ok(());
+        }
+        if args.len() != 5 { return Err(Error::invalid("expected model, prompt tokens, selected tokens, full logits and report paths")); }
+        if Path::new(&args[4]).exists() { return Err(Error::invalid("reference report already exists")); }
+        let reference = rust_star_runtime::frontier_reference::FrontierReference::from_bytes(
+            &std::fs::read(&args[1])?, &std::fs::read(&args[2])?, &std::fs::read(&args[3])?)?;
+        let model = MappedModel::open(Path::new(&args[0]))?;
+        validate_resident_q2(model.gguf())?;
+        let report = rust_star_runtime::metal::run_long_prefill_reference_probe(&model, &reference)?;
+        let mut file = std::fs::OpenOptions::new().write(true).create_new(true).open(&args[4])?;
+        writeln!(file, "{{\"schema\":\"rust-star-external-frontier-check-v1\",\"frontier_tokens\":{},\"checked_logits\":{},\"checked_decode_steps\":{},\"prefill_logits_checksum\":{},\"decode_logits_checksum\":{},\"decode_tokens_checksum\":{},\"selected_token\":{},\"external_reference_match\":true,\"oracle_provenance_verified_by_runtime\":false,\"throughput_claim\":false}}",
+            report.frontier,report.checked_logits,report.checked_decode_steps,report.logits_checksum,
+            report.decode_logits_checksum,report.decode_tokens_checksum,report.selected_token)?;
+        println!("external frontier {}: all {} prefill logits and {} full decode rows exact",report.frontier,report.checked_logits,report.checked_decode_steps);
+        return Ok(());
+    }
     if command == "long-prefill-chunk-probe" {
         let mut args = arguments;
         let model_path = args
