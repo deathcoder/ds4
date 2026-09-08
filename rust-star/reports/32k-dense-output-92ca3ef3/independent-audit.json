@@ -1,0 +1,94 @@
+{
+  "schema": "rust-star-paired-independent-audit-v1",
+  "passed": true,
+  "pairs": 5,
+  "invalid_attempts": 1,
+  "all_measurement_artifacts_rehashed": true,
+  "warmups_verified": 2,
+  "profile_stage_shares_verified": false,
+  "profile_status": "failed",
+  "profile_failure_sha256": "33fc8fd93e63b14a9ef34ceb0ef0f3446249773dae2e04fd3efd946ca6b9e563",
+  "all_candidate_transcripts_exact": true,
+  "independent_statistics_match": true,
+  "official_summary_byte_identical": true,
+  "plan_sha256": "c046b3e84019aca1e25e8254930743c04f1d250111b17ef779ff6929baf15590",
+  "raw_sha256": "3b76128f0ebfb9125231922a962d12df30b416fcbf0c58a956eb4f417e541590",
+  "summary_sha256": "56fda3c80d7633c4e22b069c275daf43803f2ded5bab211046901fec967f576b",
+  "profile_sha256": null,
+  "host_observations": 102,
+  "unusual_thermal_observations": [
+    {
+      "at_utc": "2026-09-07T23:34:38.264106+00:00",
+      "thermal": "Error:Failed to get thermal warning level with error code 0xe00002bc\nError: Failed to get performance warning level with error code 0xe00002bc\nError: No CPU power status with error code 0xe00002bc",
+      "thermal_exit": 0,
+      "swap": "vm.swapusage: total = 1024.00M  used = 2.38M  free = 1021.62M  (encrypted)",
+      "swap_exit": 0,
+      "uptime": "1:34  up 17:59, 0 users, load averages: 3.35 7.46 12.85",
+      "uptime_exit": 0,
+      "checkpoint": {
+        "last_pair": [
+          {
+            "engines": {
+              "candidate": "passed",
+              "oracle": "running"
+            },
+            "order": "BA",
+            "repetition": 4,
+            "status": "running"
+          }
+        ],
+        "phase": "timed",
+        "warmups": {
+          "candidate": [
+            "passed"
+          ],
+          "oracle": [
+            "passed"
+          ]
+        }
+      }
+    }
+  ],
+  "memory_distributions": {
+    "oracle": {
+      "count": 5,
+      "median": 80.89366149902344,
+      "mad": 0.00042724609375,
+      "min": 80.89312744140625,
+      "max": 80.89460754394531
+    },
+    "candidate": {
+      "count": 5,
+      "median": 91.48277282714844,
+      "mad": 0.487640380859375,
+      "min": 84.39332580566406,
+      "max": 91.97041320800781
+    }
+  },
+  "prefill_wall_distributions": {
+    "oracle": {
+      "count": 5,
+      "median": 176.8973219995659,
+      "mad": 2.764891999106794,
+      "min": 172.08783800002135,
+      "max": 207.32007900000698
+    },
+    "candidate": {
+      "count": 5,
+      "median": 351.97390437499996,
+      "mad": 19.38871904199999,
+      "min": 332.58518533299997,
+      "max": 424.09185295799995
+    }
+  },
+  "prefill_timing_medians": {
+    "prefill_transformer_gpu_ms": 252444.408333332,
+    "prefill_transformer_wall_ms": 290599.423999883,
+    "prefill_transformer_setup_ms": 17881.426043001,
+    "prefill_tile_gpu_ms": 37079.077708324,
+    "prefill_tile_wall_ms": 37314.192,
+    "prefill_host_overhead_ms": 27456.401375001,
+    "prefill_unattributed_host_ms": 367.559697
+  },
+  "claim_scope": "C0 32K/128 development baseline; not the 256K primary headline"
+}

@@ -1,0 +1,5 @@
+{
+  "different_index_slots": 4,
+  "same_selected_set_every_row": true,
+  "every_changed_slot_has_equal_score": true
+}

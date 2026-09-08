@@ -18,6 +18,38 @@ Before changing code:
 Journal entries are reverse chronological. Do not edit old entries to change
 history; add a correction and update the current-state summary.
 
+## 2026-09-08 — Dense-output experiment closed and reverted; stop for recap
+
+- Completed the declared five valid 32K/128 pairs, retaining the documented
+  interrupted pair 4 attempt and its complete-pair recovery. Independent audit
+  rehashes measurements, warmups, interrupted artifacts and reproduces statistics.
+- Rust/reference median prefill: 351.974/176.897 s. Median paired latency ratio:
+  2.01485 versus the accepted baseline 1.72589. Absolute Rust time fell, but the
+  reference improved more; the measured benefit criterion failed. Median steady
+  decode: 20.170/19.821 tokens/s, paired ratio 1.01664. Host variation and the
+  restart prevent isolated causal attribution; no new speed baseline is accepted.
+- The separate post-paired profile exited 1 with invalid tail timestamps and
+  produced no artifact. It was not retried. The getter rejects error-valued or
+  non-increasing samples, but rejected values were not logged; exact cause is
+  unresolved. This optional-profiler limitation is documented, not hidden or
+  addressed by relaxing validity. Earlier profiled full-output C0 remains separate.
+- Dense-output execution changes are reverted. metal_shim.m and long_prefill.rs
+  exactly match 9c1d5009; matching profiling C header declarations remain. Fresh
+  312 Rust tests and release build pass. Source hashes, restoration patch, rebuilt
+  binary hash and logs are preserved. No additional live gate is claimed for the
+  reversion; it restores the previously full-C0-gated implementation exactly.
+- Negative report: rust-star/reports/32k-dense-output-92ca3ef3/README.md.
+  All 232 artifacts verify standalone, including failed-profile evidence and the
+  earlier successful 2,583-row profiled C0 gate. Historical reports remain unchanged.
+- Burn recap: completed exact-gated nine-component profiling (largest component:
+  attention output, 36.75%); tested and rejected dense output; prepared but did
+  not apply a layers-0..2 bootstrap draft and guarded validation helpers; identified
+  absolute-position transient allocations that block naive broader-context growth.
+  The earlier native-tail scratch milestone predates the burn and is not counted.
+- User restored milestone-by-milestone work. STOP here after the final commit and
+  recap. Proposed next work is better invalid-counter diagnostics, then the
+  reviewed bootstrap experiment. No follow-up model run or implementation starts.
+
 ## 2026-09-08 — Recovered pair passes; dense-output retention criterion cannot pass
 
 - Pair 4 attempt 2 passes; pair 5's oracle half passes and Rust half is running.
@@ -3073,19 +3105,24 @@ Next:
 
 ### Current resume checkpoint (updated 2026-09-08)
 
-- Active candidate: direct dense-Q8 native output-low groups. Frozen 92ca3ef3,
-  executable f2a0679725b9c21e0946561d42920b1afa82f05208aa66426268b7ecfef13ea9.
-  312 tests/build and all seven live gates pass on attempt 1. Paired plan c046b3e8
-  is frozen; three pairs pass. Host restart interrupted pair 4; whole-pair
-  attempt 2 recovery is running, followed by pair 5/profile/audit.
-  No runtime edits/builds during measurements. Retention/report/docs pending.
-  Work: rust-star/.work/dense-output-milestone-9c1d5009/; paired directory above.
-  An unapplied next-bootstrap draft exists there; resolve this milestone first.
-- Tail component profiling is complete: e7b81aa2, 312 tests, both full-output
-  gates and all 2,583 component rows verified. Report:
-  rust-star/reports/32k-tail-components-e7b81aa2/README.md (16 verified artifacts).
-  Attention output is the largest component; next candidate is direct dense-Q8
-  output-low group stores. No optimization/performance claim for profiling itself.
+- Dense-Q8 candidate 92ca3ef3 is rejected and reverted after seven passing live
+  gates and five valid pairs. Paired prefill ratio 2.01485 versus baseline 1.72589;
+  Rust/reference medians 351.974/176.897 s. One host-interrupted pair is preserved
+  and was rerun whole under the documented recovery rule. Negative report:
+  rust-star/reports/32k-dense-output-92ca3ef3/README.md.
+- The separate post-paired profile failed with invalid tail timestamps and no
+  artifact. No retry or validity relaxation. Optional profiler needs better
+  rejected-sample diagnostics; successful earlier captures remain distinct evidence.
+- Tail component profiler e7b81aa2 remains: 312 tests, normal/profiled full-output
+  gates and 2,583 component rows audited. Report:
+  rust-star/reports/32k-tail-components-e7b81aa2/README.md (16 artifacts).
+  Attention output was the largest attributed component (36.75%). No throughput
+  claim for profiling itself. Reverted execution matches 9c1d5009; matching C
+  header declarations remain. Fresh restored tests/build pass; all 232 negative-report
+  artifacts verify. This milestone is closed.
+- User restored milestone stopping on 2026-09-08: STOP after this negative
+  experiment is documented and committed, and recap the burn period. Follow-up
+  bootstrap drafts/guarded validation helpers remain unapplied in .work/.
 - Authorized native tail scratch/output milestone is complete. Whole-chunk
   tails reuse 22 temporary buffers, write directly to retained HC output and
   omit unused FP32 routed-mid conversion (25 dispatches instead of 26).
@@ -3861,13 +3898,11 @@ Next:
 
 ## Immediate Next Actions
 
-1. Finish frozen paired campaign c046b3e8 for candidate 92ca3ef3, then its separate
-   profile and independent audit. All seven correctness/lifecycle checks already
-   pass; do not rerun them without a new reason. Assess measured benefit, produce
-   and verify the report, and explicitly retain or reject the candidate.
-   After resolving it, STOP and recap work since the continuous request.
-   User restored milestone-by-milestone mode on 2026-09-08. The unapplied bootstrap
-   draft remains a proposed next milestone; do not start it in this session.
+1. This milestone is complete. STOP and recap the burn period; do not start
+   a new milestone in this session.
+   Proposed next work: improve invalid-counter diagnostics; then review and
+   validate the unapplied layers-0..2 bootstrap draft while retaining the exact
+   later prefix rebuild. User controls the next milestone start.
 2. Keep oracle-v5 and historical fixtures/reports immutable. Internal targets
    are accepted through 24K; full 32K prefill/128-decode C0 remains mandatory.
 3. Broader contexts, 256K headline work and the coding-agent corpus remain future.

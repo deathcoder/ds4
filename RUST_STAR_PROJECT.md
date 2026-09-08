@@ -358,8 +358,14 @@ Native tails reuse scratch, write retained HC directly and omit an unused
 conversion with exact v5 outputs. Largest GPU stage group: `even/tail`;
 the component audit now identifies attention output projection as the largest
 internal component (36.75%). See `rust-star/reports/32k-tail-components-e7b81aa2/README.md`.
-Test direct dense-Q8 group output stores next. Host load and swap qualify cross-session
-speed and memory comparisons. Oracle-v5 and historical evidence are unchanged.
+The direct dense-Q8 experiment was exact but did not meet the measured benefit
+criterion and was reverted. Its negative report is
+`rust-star/reports/32k-dense-output-92ca3ef3/README.md` (including a documented
+host-restart recovery and a failed post-paired timestamp capture). Improve
+invalid-counter diagnostics before relying on unattended component profiling.
+A layers-0..2-only initial bootstrap is the next performance hypothesis; its
+later prefix rebuild must remain. Drafts are unapplied. Host load and swap
+qualify cross-session comparisons; oracle-v5 and historical evidence stay pinned.
 
 Current implementation boundaries, evidence, and immediate actions are maintained
 in `RUST_STAR_JOURNAL.md`. As of 2026-09-07, native 32K prefill is exact through

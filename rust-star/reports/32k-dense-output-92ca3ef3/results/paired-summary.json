@@ -1,0 +1,276 @@
+{
+  "candidate": {
+    "backend": "metal",
+    "build_configuration": {
+      "cargo": "1.91.1 (ea2d97820 2025-10-10)",
+      "command": [
+        "cargo",
+        "build",
+        "--manifest-path",
+        "rust-star/runtime/Cargo.toml",
+        "--release"
+      ],
+      "profile": {
+        "codegen_units": 1,
+        "lto": "thin",
+        "panic": "abort"
+      },
+      "rustc": "1.91.1 (ed61e7d7e 2025-11-07)",
+      "rustflags": [],
+      "validated_build_sha256": "2141ed4be17e027a80b195a191d35073c9ad0e1ce71c904752d0dc3818072cd5"
+    },
+    "executable_sha256": "f2a0679725b9c21e0946561d42920b1afa82f05208aa66426268b7ecfef13ea9",
+    "model_sha256": "ca22ae2f838e14077c22bc1c1417b71b45b5e5a3687bd96c2ac6e17fdb6261c0",
+    "prompt_sha256": "f53e0d80cb2d4492d24ebd63c7000c397b16ae70f9bf09b3763e5d8323ec209f",
+    "runtime_configuration": {
+      "command": "engine-measure",
+      "decode_steps": 128,
+      "even_prefill_attention_retention": "complete chunk written directly to existing tail-input buffer",
+      "even_prefill_attention_tile_rows": 4096,
+      "even_prefill_tail_rows": 4096,
+      "exact_prefix_rebuild": true,
+      "failure_collection": "completed logit readback only after failed token comparison; successful steps keep GPU selection readback",
+      "generation_command_buffers_per_token": 44,
+      "generation_correctness_collection": false,
+      "generation_host_waits_per_token": 2,
+      "indexer_selector": "upstream deterministic block argsort and merge",
+      "model_residency_queue_attached": true,
+      "model_residency_required": true,
+      "model_warm_policy": "CPU POSIX_MADV_WILLNEED plus one volatile byte touch per tensor-data page before internal timers; Metal residency-set registration and one-mebibyte-stride GPU view touch inside prefill_ms before decode",
+      "native_batched_prefill": true,
+      "native_output_low_projection": "eight aligned dense Q8 groups with direct strided stores",
+      "native_tail_direct_hc_output": true,
+      "native_tail_dispatches": 31,
+      "native_tail_routed_mid_f32_conversion": false,
+      "native_tail_scratch_buffers": 20,
+      "native_tail_scratch_reuse": true,
+      "odd_prefill_ingress_input": "immutable predecessor buffer alias",
+      "odd_prefill_ingress_rows": 4096,
+      "prefill_chunk_tokens": 4096,
+      "prefill_context_tokens": 32768,
+      "prefill_correctness_collection": false,
+      "prefill_stage_profile_collection": false,
+      "sampling": "lowest-ID greedy argmax; full C0 trace establishes identical non-EOS selections to the reference",
+      "sampling_logits_readback": false,
+      "sampling_result_readback_bytes": 8,
+      "transcript_validation": "after each timed step; first failure rejects run"
+    },
+    "source_commit": "92ca3ef3ee21ea076852d7ecbda415a15acb270a",
+    "source_tree": "10255435f8f310d077185b56d7bf5c6385535540"
+  },
+  "configuration": {
+    "contexts": [
+      32768
+    ],
+    "gen_tokens": 128,
+    "primary_metric": "gen_steady_tps",
+    "repetitions": 5,
+    "sampling": "fixed 128-step lowest-ID greedy transcript; reference excludes EOS, and every reference full-logit argmax equals the same non-EOS transcript"
+  },
+  "contexts": [
+    {
+      "candidate": {
+        "gen_first_ms": {
+          "count": 5,
+          "mad": 4.818708999999998,
+          "max": 361.838958,
+          "median": 58.152375,
+          "min": 53.333666
+        },
+        "gen_ms": {
+          "count": 5,
+          "mad": 243.14366699999937,
+          "max": 7615.723206,
+          "median": 6379.410494,
+          "min": 6136.266827
+        },
+        "gen_steady_ms": {
+          "count": 5,
+          "mad": 119.80971199999931,
+          "max": 7548.202247,
+          "median": 6296.536915,
+          "min": 6082.933161
+        },
+        "gen_steady_tps": {
+          "count": 5,
+          "mad": 0.3912330819999994,
+          "max": 20.878085726,
+          "median": 20.169817427,
+          "min": 16.825198351
+        },
+        "gen_tps": {
+          "count": 5,
+          "mad": 0.7950384769999985,
+          "max": 20.859588347,
+          "median": 20.06454987,
+          "min": 16.807333531
+        },
+        "prefill_ms": {
+          "count": 5,
+          "mad": 19388.71904200001,
+          "max": 424091.852958,
+          "median": 351973.904375,
+          "min": 332585.185333
+        },
+        "prefill_tps": {
+          "count": 5,
+          "mad": 5.427323220999995,
+          "max": 98.525134146,
+          "median": 93.097810925,
+          "min": 77.266280339
+        },
+        "process_wall_ms": {
+          "count": 5,
+          "mad": 20887.70966699999,
+          "max": 452226.201084,
+          "median": 382210.652083,
+          "min": 361322.942416
+        }
+      },
+      "candidate_over_oracle": {
+        "gen_first_ms": {
+          "count": 5,
+          "mad": 0.03131767947599107,
+          "max": 7.1422162172831705,
+          "median": 1.079695042703305,
+          "min": 1.048377363227314
+        },
+        "gen_steady_tps": {
+          "count": 5,
+          "mad": 0.006672376016815251,
+          "max": 1.0533168507066244,
+          "median": 1.016635961673446,
+          "min": 0.9515471055084201
+        },
+        "gen_tps": {
+          "count": 5,
+          "mad": 0.036157461955730996,
+          "max": 1.0522984384687175,
+          "median": 1.0161409765129865,
+          "min": 0.9510181507508956
+        },
+        "prefill_tps": {
+          "count": 5,
+          "mad": 0.035571353060120214,
+          "max": 0.5890211644195165,
+          "median": 0.49631440072636007,
+          "min": 0.41912131949985
+        }
+      },
+      "context": 32768,
+      "invalid_pairs": [
+        {
+          "attempt": 1,
+          "order": "BA",
+          "reason": "Host shutdown/restart interrupted pair 4 attempt 1 during oracle half; boot and stopped-process evidence preserved in inputs/restart-interruption.json. Rerun the complete pair under documented external-event recovery; preserve every original attempt.",
+          "repetition": 4
+        }
+      ],
+      "oracle": {
+        "gen_first_ms": {
+          "count": 5,
+          "mad": 1.911999999999999,
+          "max": 59.696,
+          "median": 51.783,
+          "min": 49.871
+        },
+        "gen_ms": {
+          "count": 5,
+          "mad": 47.45799993063338,
+          "max": 7242.690999829997,
+          "median": 6457.1840001515375,
+          "min": 6331.58999995464
+        },
+        "gen_steady_ms": {
+          "count": 5,
+          "mad": 47.98300016160465,
+          "max": 7182.469999968047,
+          "median": 6407.256000158705,
+          "min": 6279.482999957239
+        },
+        "gen_steady_tps": {
+          "count": 5,
+          "mad": 0.14955866300000054,
+          "max": 20.224594923,
+          "median": 19.821277626,
+          "min": 17.6819395
+        },
+        "gen_tps": {
+          "count": 5,
+          "mad": 0.1458694790000017,
+          "max": 20.216091061,
+          "median": 19.822882544,
+          "min": 17.672989225
+        },
+        "prefill_ms": {
+          "count": 5,
+          "mad": 2764.891999106796,
+          "max": 207320.07900000698,
+          "median": 176897.3219995659,
+          "min": 172087.83800002135
+        },
+        "prefill_tps": {
+          "count": 5,
+          "mad": 2.9412178149999875,
+          "max": 190.414385937,
+          "median": 185.237400033,
+          "min": 158.05512017
+        },
+        "process_wall_ms": {
+          "count": 5,
+          "mad": 4526.540750000015,
+          "max": 229226.921667,
+          "median": 196883.441625,
+          "min": 190312.961959
+        }
+      },
+      "predeclared_pairs": 5,
+      "valid_pairs": 5
+    }
+  ],
+  "correctness_class": "C0",
+  "correctness_manifest_sha256": "707b169889c944aa6d6be78d6408889c514e8e0eea1f9189ee3ac6fd33edb420",
+  "headline_eligible": true,
+  "host_manifest_sha256": "63683fd1cee1abf85911322d8046f223dcef5aef6da6c63aa593a18fe7bd3f13",
+  "oracle": {
+    "backend": "metal",
+    "build_configuration": {
+      "benchmark_driver_commit": "ccbd16d36895ef9fe8edf7f793014988ff1ab7f4",
+      "benchmark_driver_sha256": "2a337c05b220392f15bd1a2b42cc90a13a1786f575c026308f58c48589c54100",
+      "build_provenance_sha256": "feb7815c03c199ed9eeea974f27c42c21bc8a7db02e4d68ec32a98068d15163f",
+      "builder": "make in clean pinned oracle-v5 worktree",
+      "cflags": "-O3 -ffast-math -g -mcpu=native -Wall -Wextra -std=c99",
+      "command": [
+        "make",
+        "-j4",
+        "ds4-bench"
+      ],
+      "compiler": "Apple clang 21.0.0 (clang-2100.1.1.101)",
+      "objcflags": "-O3 -ffast-math -g -mcpu=native -Wall -Wextra -fobjc-arc",
+      "source_overlay": "none"
+    },
+    "executable_sha256": "a4056d7297bd0a6de8e46fac294e7913d9bc8c96465e5d68f1b6ef6471e49aa0",
+    "model_sha256": "ca22ae2f838e14077c22bc1c1417b71b45b5e5a3687bd96c2ac6e17fdb6261c0",
+    "prompt_sha256": "f53e0d80cb2d4492d24ebd63c7000c397b16ae70f9bf09b3763e5d8323ec209f",
+    "runtime_configuration": {
+      "backend_flag": "--metal",
+      "compressor_dependency": "pinned current upstream ordering",
+      "correctness_instrumentation": false,
+      "csv_timing_precision_digits": 9,
+      "decode_step": "eval plus resulting-token argmax and commitment",
+      "frontier_mode": "single exact context",
+      "indexer_selector": "deterministic block argsort and merge",
+      "initial_selection_charged_to_prefill": true,
+      "oracle_version": "oracle-v5",
+      "prefill_chunk_tokens": 4096,
+      "sampling": "greedy argmax excluding EOS",
+      "sampling_in_interval": true,
+      "warm_weights": true
+    },
+    "source_commit": "ccbd16d36895ef9fe8edf7f793014988ff1ab7f4",
+    "source_tree": "a0a33f4a00c3c78cd40350785485203e7c6b0b1d"
+  },
+  "protocol": "rust-star-paired-benchmark-v1",
+  "schema": "rust-star-paired-summary-v1",
+  "source_path": "paired-raw.json"
+}

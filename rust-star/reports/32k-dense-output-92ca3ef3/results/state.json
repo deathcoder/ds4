@@ -1,0 +1,407 @@
+{
+  "attempts": [
+    {
+      "attempt": 1,
+      "completed_at_utc": "2026-09-07T23:01:30Z",
+      "context": 32768,
+      "engines": {
+        "candidate": {
+          "adapter_returncode": 0,
+          "measurement_sha256": "244c4a04373af0940c9dcd09f35d503daf6abfa799fd8f053ca325f7c9d91e55",
+          "metrics": {
+            "ctx_tokens": 32768,
+            "gen_first_ms": 67.520959,
+            "gen_ms": 7615.723206,
+            "gen_steady_ms": 7548.202247,
+            "gen_steady_tokens": 127,
+            "gen_steady_tps": 16.825198351,
+            "gen_tokens": 128,
+            "gen_tps": 16.807333531,
+            "kvcache_bytes": null,
+            "prefill_ms": 351973.904375,
+            "prefill_tokens": 32768,
+            "prefill_tps": 93.097810925,
+            "process_overhead_ms": 22621.02450200001,
+            "process_peak_bytes": 98365505536,
+            "process_wall_ms": 382210.652083
+          },
+          "output": "measurements/ctx-0032768/rep-01/attempt-01/candidate",
+          "status": "passed",
+          "timed_out": false
+        },
+        "oracle": {
+          "adapter_returncode": 0,
+          "measurement_sha256": "0544a0585e99c542af37a66821f3fcf4ffd158ff238fc4560a6cc88dcb7ce8e3",
+          "metrics": {
+            "ctx_tokens": 32768,
+            "gen_first_ms": 59.696,
+            "gen_ms": 7242.690999829997,
+            "gen_steady_ms": 7182.469999968047,
+            "gen_steady_tokens": 127,
+            "gen_steady_tps": 17.6819395,
+            "gen_tokens": 128,
+            "gen_tps": 17.672989225,
+            "kvcache_bytes": null,
+            "prefill_ms": 207320.07900000698,
+            "prefill_tokens": 32768,
+            "prefill_tps": 158.05512017,
+            "process_overhead_ms": 14664.151667163009,
+            "process_peak_bytes": 86859923456,
+            "process_wall_ms": 229226.921667
+          },
+          "output": "measurements/ctx-0032768/rep-01/attempt-01/oracle",
+          "status": "passed",
+          "timed_out": false
+        }
+      },
+      "order": "AB",
+      "repetition": 1,
+      "started_at_utc": "2026-09-07T22:51:18Z",
+      "status": "passed"
+    },
+    {
+      "attempt": 1,
+      "completed_at_utc": "2026-09-07T23:10:48Z",
+      "context": 32768,
+      "engines": {
+        "candidate": {
+          "adapter_returncode": 0,
+          "measurement_sha256": "d4e52a71c479264032cb1fb2754af6cab0d88f4ce8a5f3fddaf017edde89e0a7",
+          "metrics": {
+            "ctx_tokens": 32768,
+            "gen_first_ms": 58.152375,
+            "gen_ms": 6379.410494,
+            "gen_steady_ms": 6321.258119,
+            "gen_steady_tokens": 127,
+            "gen_steady_tps": 20.090937217,
+            "gen_tokens": 128,
+            "gen_tps": 20.06454987,
+            "kvcache_bytes": null,
+            "prefill_ms": 332585.185333,
+            "prefill_tokens": 32768,
+            "prefill_tps": 98.525134146,
+            "process_overhead_ms": 22358.346589000033,
+            "process_peak_bytes": 98752479232,
+            "process_wall_ms": 361322.942416
+          },
+          "output": "measurements/ctx-0032768/rep-02/attempt-01/candidate",
+          "status": "passed",
+          "timed_out": false
+        },
+        "oracle": {
+          "adapter_returncode": 0,
+          "measurement_sha256": "5fa8e85e67d5b493478ec4eaf6b49eafb38955aeefb0a972586a2933feed16ba",
+          "metrics": {
+            "ctx_tokens": 32768,
+            "gen_first_ms": 53.86,
+            "gen_ms": 6504.642000082171,
+            "gen_steady_ms": 6450.183000051556,
+            "gen_steady_tokens": 127,
+            "gen_steady_tps": 19.689363852,
+            "gen_tokens": 128,
+            "gen_tps": 19.678254391,
+            "kvcache_bytes": null,
+            "prefill_ms": 176897.3219995659,
+            "prefill_tokens": 32768,
+            "prefill_tps": 185.237400033,
+            "process_overhead_ms": 13481.477625351934,
+            "process_peak_bytes": 86858530816,
+            "process_wall_ms": 196883.441625
+          },
+          "output": "measurements/ctx-0032768/rep-02/attempt-01/oracle",
+          "status": "passed",
+          "timed_out": false
+        }
+      },
+      "order": "BA",
+      "repetition": 2,
+      "started_at_utc": "2026-09-07T23:01:30Z",
+      "status": "passed"
+    },
+    {
+      "attempt": 1,
+      "completed_at_utc": "2026-09-07T23:21:38Z",
+      "context": 32768,
+      "engines": {
+        "candidate": {
+          "adapter_returncode": 0,
+          "measurement_sha256": "6fa21aa9dce7e1e6e742b6be7d58dfc38524d72dbd05f292036fbd7a6d06790a",
+          "metrics": {
+            "ctx_tokens": 32768,
+            "gen_first_ms": 361.838958,
+            "gen_ms": 6658.375873,
+            "gen_steady_ms": 6296.536915,
+            "gen_steady_tokens": 127,
+            "gen_steady_tps": 20.169817427,
+            "gen_tokens": 128,
+            "gen_tps": 19.223907217,
+            "kvcache_bytes": null,
+            "prefill_ms": 424091.852958,
+            "prefill_tokens": 32768,
+            "prefill_tps": 77.266280339,
+            "process_overhead_ms": 21475.972253000025,
+            "process_peak_bytes": 98228879360,
+            "process_wall_ms": 452226.201084
+          },
+          "output": "measurements/ctx-0032768/rep-03/attempt-01/candidate",
+          "status": "passed",
+          "timed_out": false
+        },
+        "oracle": {
+          "adapter_returncode": 0,
+          "measurement_sha256": "a26a7d3cf4c9ca86eee4efc36d00155d7993a95ce9c24f6ef823c7a6a96676ef",
+          "metrics": {
+            "ctx_tokens": 32768,
+            "gen_first_ms": 50.662,
+            "gen_ms": 6410.015000064584,
+            "gen_steady_ms": 6359.272999997101,
+            "gen_steady_tokens": 127,
+            "gen_steady_tps": 19.970836289,
+            "gen_tokens": 128,
+            "gen_tps": 19.968752023,
+            "kvcache_bytes": null,
+            "prefill_ms": 177745.93700014043,
+            "prefill_tokens": 32768,
+            "prefill_tps": 184.353018432,
+            "process_overhead_ms": 13377.384374794998,
+            "process_peak_bytes": 86859366400,
+            "process_wall_ms": 197533.336375
+          },
+          "output": "measurements/ctx-0032768/rep-03/attempt-01/oracle",
+          "status": "passed",
+          "timed_out": false
+        }
+      },
+      "order": "AB",
+      "repetition": 3,
+      "started_at_utc": "2026-09-07T23:10:48Z",
+      "status": "passed"
+    },
+    {
+      "attempt": 1,
+      "context": 32768,
+      "engines": {
+        "candidate": {
+          "adapter_returncode": 0,
+          "measurement_sha256": "1ff1d51fc0ea199bff3fa8061ed26fd7417023b5d42c304732ec49c7d8d8aeb5",
+          "metrics": {
+            "ctx_tokens": 32768,
+            "gen_first_ms": 59.922792,
+            "gen_ms": 6147.423872,
+            "gen_steady_ms": 6087.50108,
+            "gen_steady_tokens": 127,
+            "gen_steady_tps": 20.862419297,
+            "gen_tokens": 128,
+            "gen_tps": 20.821729991,
+            "kvcache_bytes": null,
+            "prefill_ms": 538624.605334,
+            "prefill_tokens": 32768,
+            "prefill_tps": 60.83643353,
+            "process_overhead_ms": 35156.824127000014,
+            "process_peak_bytes": 87883923456,
+            "process_wall_ms": 579928.853333
+          },
+          "output": "measurements/ctx-0032768/rep-04/attempt-01/candidate",
+          "status": "passed",
+          "timed_out": false
+        },
+        "oracle": {
+          "output": "measurements/ctx-0032768/rep-04/attempt-01/oracle",
+          "status": "running"
+        }
+      },
+      "invalid_reason": "Host shutdown/restart interrupted pair 4 attempt 1 during oracle half; boot and stopped-process evidence preserved in inputs/restart-interruption.json. Rerun the complete pair under documented external-event recovery; preserve every original attempt.",
+      "invalidated_at_utc": "2026-09-08T05:33:41Z",
+      "order": "BA",
+      "repetition": 4,
+      "started_at_utc": "2026-09-07T23:21:38Z",
+      "status": "invalid"
+    },
+    {
+      "attempt": 2,
+      "completed_at_utc": "2026-09-08T05:44:02Z",
+      "context": 32768,
+      "engines": {
+        "candidate": {
+          "adapter_returncode": 0,
+          "measurement_sha256": "a7a0ae666f5925da32debf69d7d96c1d57da24aabf7c2eb90a0ae0e40317735b",
+          "metrics": {
+            "ctx_tokens": 32768,
+            "gen_first_ms": 54.288125,
+            "gen_ms": 6231.015328,
+            "gen_steady_ms": 6176.727203,
+            "gen_steady_tokens": 127,
+            "gen_steady_tps": 20.561050509,
+            "gen_tokens": 128,
+            "gen_tps": 20.542398512,
+            "kvcache_bytes": null,
+            "prefill_ms": 373952.376417,
+            "prefill_tokens": 32768,
+            "prefill_tps": 87.626131204,
+            "process_overhead_ms": 48675.65129699995,
+            "process_peak_bytes": 90616643584,
+            "process_wall_ms": 428859.043042
+          },
+          "output": "measurements/ctx-0032768/rep-04/attempt-02/candidate",
+          "status": "passed",
+          "timed_out": false
+        },
+        "oracle": {
+          "adapter_returncode": 0,
+          "measurement_sha256": "dddaa7951000f043337676e45a704dcd0b15c79081c64e1f471caf4a79729840",
+          "metrics": {
+            "ctx_tokens": 32768,
+            "gen_first_ms": 51.783,
+            "gen_ms": 6331.58999995464,
+            "gen_steady_ms": 6279.482999957239,
+            "gen_steady_tokens": 127,
+            "gen_steady_tps": 20.224594923,
+            "gen_tokens": 128,
+            "gen_tps": 20.216091061,
+            "kvcache_bytes": null,
+            "prefill_ms": 174132.4300004591,
+            "prefill_tokens": 32768,
+            "prefill_tps": 188.178617848,
+            "process_overhead_ms": 11892.880874586246,
+            "process_peak_bytes": 86858334208,
+            "process_wall_ms": 192356.900875
+          },
+          "output": "measurements/ctx-0032768/rep-04/attempt-02/oracle",
+          "status": "passed",
+          "timed_out": false
+        }
+      },
+      "order": "BA",
+      "repetition": 4,
+      "started_at_utc": "2026-09-08T05:33:41Z",
+      "status": "passed"
+    },
+    {
+      "attempt": 1,
+      "completed_at_utc": "2026-09-08T05:53:31Z",
+      "context": 32768,
+      "engines": {
+        "candidate": {
+          "adapter_returncode": 0,
+          "measurement_sha256": "6cc13dd4acbb18dad4784c889e6fa2270d9415c9fb4221e2343ede6b9efefdda",
+          "metrics": {
+            "ctx_tokens": 32768,
+            "gen_first_ms": 53.333666,
+            "gen_ms": 6136.266827,
+            "gen_steady_ms": 6082.933161,
+            "gen_steady_tokens": 127,
+            "gen_steady_tps": 20.878085726,
+            "gen_tokens": 128,
+            "gen_tps": 20.859588347,
+            "kvcache_bytes": null,
+            "prefill_ms": 346731.50275,
+            "prefill_tokens": 32768,
+            "prefill_tps": 94.505401846,
+            "process_overhead_ms": 19362.55567300001,
+            "process_peak_bytes": 95200821248,
+            "process_wall_ms": 372230.32525
+          },
+          "output": "measurements/ctx-0032768/rep-05/attempt-01/candidate",
+          "status": "passed",
+          "timed_out": false
+        },
+        "oracle": {
+          "adapter_returncode": 0,
+          "measurement_sha256": "89697a27bffd3dce87267f7121711bb2a5d22d62d07a17e1d4cc6aca8c213b4f",
+          "metrics": {
+            "ctx_tokens": 32768,
+            "gen_first_ms": 49.871,
+            "gen_ms": 6457.1840001515375,
+            "gen_steady_ms": 6407.256000158705,
+            "gen_steady_tokens": 127,
+            "gen_steady_tps": 19.821277626,
+            "gen_tokens": 128,
+            "gen_tps": 19.822882544,
+            "kvcache_bytes": null,
+            "prefill_ms": 172087.83800002135,
+            "prefill_tokens": 32768,
+            "prefill_tps": 190.414385937,
+            "process_overhead_ms": 11767.939958827119,
+            "process_peak_bytes": 86858907648,
+            "process_wall_ms": 190312.961959
+          },
+          "output": "measurements/ctx-0032768/rep-05/attempt-01/oracle",
+          "status": "passed",
+          "timed_out": false
+        }
+      },
+      "order": "AB",
+      "repetition": 5,
+      "started_at_utc": "2026-09-08T05:44:08Z",
+      "status": "passed"
+    }
+  ],
+  "completed_at_utc": "2026-09-08T05:53:31Z",
+  "created_at_utc": "2026-09-07T22:40:34Z",
+  "outputs": {
+    "raw": "paired-raw.json",
+    "summary": "paired-summary.json"
+  },
+  "phase": "complete",
+  "plan_sha256": "c046b3e84019aca1e25e8254930743c04f1d250111b17ef779ff6929baf15590",
+  "protocol": "rust-star-paired-benchmark-v1",
+  "schema": "rust-star-paired-state-v1",
+  "superseded_outputs": [],
+  "updated_at_utc": "2026-09-08T05:53:31Z",
+  "warmups": {
+    "candidate": [
+      {
+        "adapter_returncode": 0,
+        "attempt": 1,
+        "measurement_sha256": "a6029334cafb93096e5202d74372d9da1f8703e67d6e480b625aa6c2054e4d39",
+        "metrics": {
+          "ctx_tokens": 32768,
+          "gen_first_ms": 73.0755,
+          "gen_ms": 7450.602458,
+          "gen_steady_ms": 7377.526958,
+          "gen_steady_tokens": 127,
+          "gen_steady_tps": 17.214440655,
+          "gen_tokens": 128,
+          "gen_tps": 17.179818776,
+          "kvcache_bytes": null,
+          "prefill_ms": 365795.99975,
+          "prefill_tokens": 32768,
+          "prefill_tps": 89.579984533,
+          "process_overhead_ms": 35550.953292,
+          "process_peak_bytes": 98361081856,
+          "process_wall_ms": 408797.5555
+        },
+        "output": "warmups/candidate-01",
+        "status": "passed",
+        "timed_out": false
+      }
+    ],
+    "oracle": [
+      {
+        "adapter_returncode": 0,
+        "attempt": 1,
+        "measurement_sha256": "4665cbc78ea7182f0f9811a2fb38a1666af719341b107bd118b27a34ff414967",
+        "metrics": {
+          "ctx_tokens": 32768,
+          "gen_first_ms": 60.123,
+          "gen_ms": 7366.536999850314,
+          "gen_steady_ms": 7306.328000118368,
+          "gen_steady_tokens": 127,
+          "gen_steady_tps": 17.382192532,
+          "gen_tokens": 128,
+          "gen_tps": 17.375871458,
+          "kvcache_bytes": null,
+          "prefill_ms": 210265.72500009,
+          "prefill_tokens": 32768,
+          "prefill_tps": 155.840900841,
+          "process_overhead_ms": 17663.847125059678,
+          "process_peak_bytes": 86865838080,
+          "process_wall_ms": 235296.109125
+        },
+        "output": "warmups/oracle-01",
+        "status": "passed",
+        "timed_out": false
+      }
+    ]
+  }
+}
