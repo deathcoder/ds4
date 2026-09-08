@@ -18,6 +18,23 @@ Before changing code:
 Journal entries are reverse chronological. Do not edit old entries to change
 history; add a correction and update the current-state summary.
 
+## 2026-09-08 — User ends continuous mode; finish this milestone and stop
+
+- User reports the usage limit was reached and has reset. Return to stopping
+  after each milestone: finish the current dense-output campaign, audited report,
+  retention decision and documentation, then stop and recap the burn period.
+- Do not start the bootstrap implementation or broader-context milestone now.
+  Prepared follow-up files remain unapplied in the dense-output work directory
+  and rust-star/.work/bootstrap-scope-milestone-prepared/. The latter preserves
+  all seven live gates and adds explicit initial/prefix profile coverage, guarded
+  on a verified dense-output report and recorded retention decision.
+- Burn began after native-tail scratch/output milestone fd72c897: its completion
+  predates the continuous request. Burn-period delivered work is the exact-gated
+  component profiler, the current dense-output experiment and follow-up preflight.
+  Distinguish accepted changes, negative findings and draft-only work in the recap.
+- At this checkpoint three full pairs pass and pair 4's oracle half is running.
+  Runtime remains frozen; final pair/profile/audit/report/decision are pending.
+
 ## 2026-09-08 — Three dense-Q8 pairs pass; variance remains material
 
 - Three complete pairs pass on attempt 1; pair 4 is running. Rust prefill times
@@ -3021,7 +3038,7 @@ Next:
 - Active candidate: direct dense-Q8 native output-low groups. Frozen 92ca3ef3,
   executable f2a0679725b9c21e0946561d42920b1afa82f05208aa66426268b7ecfef13ea9.
   312 tests/build and all seven live gates pass on attempt 1. Paired plan c046b3e8
-  is frozen; warmups running, five pairs plus separate profile/audit follow.
+  is frozen; three pairs pass and pair 4 is running. Final pair/profile/audit follow.
   No runtime edits/builds during measurements. Retention/report/docs pending.
   Work: rust-star/.work/dense-output-milestone-9c1d5009/; paired directory above.
   An unapplied next-bootstrap draft exists there; resolve this milestone first.
@@ -3809,8 +3826,9 @@ Next:
    profile and independent audit. All seven correctness/lifecycle checks already
    pass; do not rerun them without a new reason. Assess measured benefit, produce
    and verify the report, and explicitly retain or reject the candidate.
-   After resolving it, review the unapplied initial-bootstrap scope draft in
-   rust-star/.work/dense-output-milestone-9c1d5009/ before the next implementation.
+   After resolving it, STOP and recap work since the continuous request.
+   User restored milestone-by-milestone mode on 2026-09-08. The unapplied bootstrap
+   draft remains a proposed next milestone; do not start it in this session.
 2. Keep oracle-v5 and historical fixtures/reports immutable. Internal targets
    are accepted through 24K; full 32K prefill/128-decode C0 remains mandatory.
 3. Broader contexts, 256K headline work and the coding-agent corpus remain future.
