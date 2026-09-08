@@ -3561,7 +3561,8 @@ Next:
 - ACTIVE: authorized 128K measurement/retained-engine milestone at 43bf0dfa.
   Candidate 5f3b9672 passes 315 Rust tests, 94 Python tests and release build.
   Work: rust-star/.work/measure128-43bf0dfa/. Frozen live validation is queued
-  after model/oracle/input rehash; paired measurements wait for gate acceptance.
+  after passing model/oracle/input rehash; the full 128K C0 run is active.
+  Paired measurements wait for gate and lifecycle-audit acceptance.
 
 - 128K correctness milestone COMPLETE and retained at candidate 0eb484ea.
   314 tests/build, six repeated oracle captures and all eleven native checks

@@ -387,9 +387,11 @@ or RoPE training constants changed.
 The prior 14.837GiB allocation preflight and 93.173GiB planning estimate remain
 historical capacity evidence, not bounds. Diagnostic RSS omits engine page
 warming and does not establish total model/Metal residency or a new memory
-reduction. No larger-context throughput claim is made. The next proposed
-milestone is 128K measurement/retained-engine protocol and pinned paired
-performance/memory validation; it is not started. Attention output and routed
+reduction. No larger-context throughput claim is made by that correctness report.
+The subsequent 128K measurement/retained-engine milestone is now authorized
+and active: candidate 5f3b9672 passes 315 Rust tests, 94 Python tests and build;
+live full C0/lifecycle/shorter controls precede five pinned paired measurements.
+No new timing claim until that evidence passes. Attention output and routed
 gate/up remain available for subsequent performance work.
 
 Current implementation boundaries, evidence, and immediate actions are maintained
