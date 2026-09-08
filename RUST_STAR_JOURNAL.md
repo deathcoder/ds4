@@ -18,6 +18,16 @@ Before changing code:
 Journal entries are reverse chronological. Do not edit old entries to change
 history; add a correction and update the current-state summary.
 
+## 2026-09-08 — Three timed 128K pairs pass; final two remain
+
+- Pair 3 AB passes on its first attempt: Rust/oracle prefill
+  1,524.108/1,135.044s and steady decode 14.187/14.590 tokens/s. All three
+  native timed transcripts match exactly; no failed or retried measurement.
+- Pair 4 BA is active. The first three pairs consistently show higher native
+  prefill latency and lower steady decode, but final five-pair distributions,
+  artifact/input verification and report/docs are still required. Preserve the
+  negative characterization without selecting favorable samples.
+
 ## 2026-09-08 — Two timed 128K pairs pass; pair 3 starts
 
 - AB and BA pairs both pass on first attempts. Pair 2 Rust/oracle prefill
