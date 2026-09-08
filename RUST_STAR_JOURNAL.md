@@ -3444,11 +3444,10 @@ Next:
 - ACTIVE milestone: 128K correctness, authorized after the completed memory
   work. Candidate 0eb484ea adds a separate external-reference checker and
   extends native boundary/output/adoption guards, preserving the built-in 32K
-  benchmark contract. 314 tests pass; frozen release build and six unchanged
-  oracle-v5 captures are underway in rust-star/.work/frontier128-35f69741/.
+  benchmark contract. 314 tests and release build pass. Repeated 64K/96K
+  oracle prefill references are accepted; two full 128K captures are underway in rust-star/.work/frontier128-35f69741/.
   Native 64K/96K and two 128K/128 full-logit gates plus seven old controls wait
   until repeated references are accepted. No larger-context C0 claim yet.
-
 
 - Memory-prefill milestone COMPLETE and retained at de6d2c11. 312 tests/build,
   seven live gates, five valid pairs/two warmups and both profile audits pass.
@@ -3457,9 +3456,8 @@ Next:
   decode −0.31%, first-step latency +2.43%. Partial bootstrap wraps 18 views;
   native activation scratch uses 4K rows. KV/compressed history remains absolute.
 - 128K modeled allocation/fill preflight passes 14.837GiB. Planning estimate
-  93.173GiB is not a full memory bound/inference proof; frontier guards remain
-  32K. Next proposal is repeated 128K oracle capture and incremental/full C0
-  with memory monitoring. Not started. No active workload; stop at this milestone.
+  93.173GiB remains a planning estimate, not an inference proof. The active
+  milestone above must establish 128K C0 before any larger-frontier claim.
 - Earlier bootstrap/counter milestone 912fae1e remains accepted history:
   rust-star/reports/32k-bootstrap-912fae1e/README.md (403 artifacts), 8.165% paired
   prefill improvement then. Oracle-v5 remains the correctness target; the latest
@@ -4263,7 +4261,7 @@ Next:
 1. Complete the now-authorized 128K correctness milestone: repeated oracle
    captures, native frontier/decode checks, old controls, memory evidence and
    portable report/docs. Stop after that milestone; no usage-burning mode.
-2. Recommended next milestone: pin repeated 128K tokenization/oracle outputs,
+2. Current milestone acceptance: pin repeated 128K tokenization/oracle outputs,
    audit larger-context sparse schedules/offsets and decoder-state adoption,
    then advance incremental frontier gates through full 128K prefill and 128
    full-logit decode steps under memory monitoring. Capacity alone is not C0.

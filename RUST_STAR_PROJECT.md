@@ -378,10 +378,12 @@ previous bootstrap and rejected dense-Q8 reports as historical evidence.
 The 128K modeled allocation/GPU-fill preflight passed for 14.837GiB of histories
 and selected scratch. A measured-32K-plus-history-growth estimate is 93.173GiB,
 but excludes some context-dependent overhead and is not a bound or full 128K
-inference proof. Runtime guards remain 32K. The next proposed milestone is
+inference proof. Built-in benchmark commands remain 32K. The active milestone is
 repeatable 128K oracle capture, larger-context schedule/adoption audits, and
 incremental frontier gates culminating in full 128K prefill plus 128 full-logit
-decode steps with memory monitoring. That milestone is not started. Attention
+decode steps with memory monitoring. Candidate 0eb484ea is frozen; 314 tests
+and the release build pass, with repeatable 64K/96K oracle references accepted.
+Full 128K captures and native acceptance are pending. Attention
 output and routed gate/up remain available for subsequent performance work.
 
 Current implementation boundaries, evidence, and immediate actions are maintained
