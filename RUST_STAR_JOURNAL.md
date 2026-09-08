@@ -18,6 +18,19 @@ Before changing code:
 Journal entries are reverse chronological. Do not edit old entries to change
 history; add a correction and update the current-state summary.
 
+## 2026-09-08 — Corrected retained 128K lifecycle passes
+
+- ef37e566 completes both 128K/128 transcripts and serializes the lifecycle
+  report successfully. Both cycles select prefill token 1110, final token 2945,
+  transcript checksum 1079188149413743454. Request state resets; model mapping,
+  context, views and residency are reused as required. Peak process RSS 94.571GiB.
+- Diagnostic first-load prompt including warming: 1,386.939s; retained prompt:
+  1,377.238s. Page warming 11.627s and residency work are avoided on reuse, but
+  prefill dominates. These are single same-process diagnostics, not paired rates.
+- Full 128K C0 and retained 128K now pass. Four remaining 32K/2K/lifecycle/
+  profile controls are running, then the lifecycle audit and five paired runs.
+  The earlier writer failure remains preserved; no paired measurements yet.
+
 ## 2026-09-08 — Corrected writer candidate passes fresh full 128K C0
 
 - Corrected candidate ef37e566, executable SHA-256
@@ -3600,8 +3613,8 @@ Next:
   on stale context/token guards; the error is reproduced by a host regression.
   Corrected ef37e566 passes 317 Rust tests, 94 unchanged Python tests and build.
   Work: rust-star/.work/measure128-writer-fix/. Input hashes pass and full 128K
-  C0 now passes again; corrected retained 128K is active. All six live gates
-  precede the five-pair campaign. Earlier failed evidence
+  C0 and corrected retained 128K now pass. Four remaining shorter/profile/
+  lifecycle gates and their audit precede the five-pair campaign. Earlier failed evidence
   is retained in measure128-43bf0dfa/ and copied under the new work's rejected/.
   No paired measurements have started; stop after final evidence/docs acceptance.
 
