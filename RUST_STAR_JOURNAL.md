@@ -18,6 +18,20 @@ Before changing code:
 Journal entries are reverse chronological. Do not edit old entries to change
 history; add a correction and update the current-state summary.
 
+## 2026-09-08 — 128K correctness milestone authorized and started
+
+- User authorized the next milestone. Start at 35f69741 on the existing
+  agent/rust-star-bootstrap worktree. Work: rust-star/.work/frontier128-35f69741/.
+- Pin the unchanged oracle-v5/model/prompt, capture two fresh identical prefill
+  references at 64K and 96K and two full 128K/128-step traces. Preserve attempts.
+- Audit chunk schedules, sparse sorting and decoder adoption before extending
+  native execution. Validate each frontier against full logits, then full 128K
+  decode and all established shorter/32K/lifecycle controls. Monitor memory.
+- A diagnostic external-reference entry point may support new evidence without
+  silently broadening the existing 32K benchmark claim. No performance claim
+  or oracle changes are part of this milestone. Finish portable evidence/docs,
+  keep the journal current, and stop after completion. One GPU workload at a time.
+
 ## 2026-09-08 — Memory-efficient prefill milestone COMPLETE and retained
 
 - Candidate de6d2c11: 312 tests/build; seven live controls including three full
