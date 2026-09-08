@@ -18,6 +18,29 @@ Before changing code:
 Journal entries are reverse chronological. Do not edit old entries to change
 history; add a correction and update the current-state summary.
 
+## 2026-09-08 — Host restart interrupted pair 4; explicit recovery underway
+
+- Correction to the preceding status: saved running state survived, but no
+  benchmark/helper processes survived the host restart. Current boot time is
+  2026-09-08 05:23:23 UTC; final pre-interruption host observation is
+  2026-09-07 23:34:38 UTC and records shutdown-related thermal-query errors.
+- Preserved inputs/restart-interruption.json, state-before-restart-recovery.json
+  and original logs in the frozen paired directory. Both executables rehashed.
+- Used the documented paired-runner retry operation for pair 4 only, with the
+  explicit host-shutdown/restart reason. It reruns the entire BA pair as attempt 2.
+  Original candidate half (538.625 s prefill) and missing oracle half remain
+  preserved; this is not a selective rerun of an unfavorable completed pair.
+- Retry command is currently running. recovery-run-milestone.py waits for its
+  paused/passed state, then runs pair 5, the separate profile, audits and report.
+  Work log: dense-output-milestone-9c1d5009/recovery-run.log. Original finisher
+  processes are dead and must not be restarted concurrently. Load observation resumed.
+- Updated audits to require exactly this one invalid attempt and the expected
+  [1,1,1,2,1] final attempt sequence, verifying preserved interrupted artifacts.
+  Report now discloses cross-restart measurements; no first-attempt-only claim.
+  Fixed a report-export substitution that otherwise retained the old 25-dispatch
+  check instead of the candidate's 31-dispatch contract. Runtime is unchanged.
+- Stop after this milestone and provide the requested burn-period recap.
+
 ## 2026-09-08 — User ends continuous mode; finish this milestone and stop
 
 - User reports the usage limit was reached and has reset. Return to stopping
@@ -3038,7 +3061,8 @@ Next:
 - Active candidate: direct dense-Q8 native output-low groups. Frozen 92ca3ef3,
   executable f2a0679725b9c21e0946561d42920b1afa82f05208aa66426268b7ecfef13ea9.
   312 tests/build and all seven live gates pass on attempt 1. Paired plan c046b3e8
-  is frozen; three pairs pass and pair 4 is running. Final pair/profile/audit follow.
+  is frozen; three pairs pass. Host restart interrupted pair 4; whole-pair
+  attempt 2 recovery is running, followed by pair 5/profile/audit.
   No runtime edits/builds during measurements. Retention/report/docs pending.
   Work: rust-star/.work/dense-output-milestone-9c1d5009/; paired directory above.
   An unapplied next-bootstrap draft exists there; resolve this milestone first.
