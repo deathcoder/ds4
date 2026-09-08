@@ -18,6 +18,19 @@ Before changing code:
 Journal entries are reverse chronological. Do not edit old entries to change
 history; add a correction and update the current-state summary.
 
+## 2026-09-08 — Both 128K warm-ups pass; first timed pair running
+
+- Oracle and ef37e566 fresh-process warm-ups pass on their first attempts.
+  Native exact transcript and collection-disabled eligibility pass. Warm-ups
+  remain excluded from all five-pair distributions. Process wall times are
+  1,109.361s oracle and 1,512.092s Rust; these are not paired results.
+- Timed AB pair 1 started at 18:27 UTC. The fixed five-pair campaign continues
+  serially with no retries; all results will be audited before interpretation.
+  Host observations still record no thermal/performance warnings, swap 42.19MiB.
+- close-evidence.py waits for campaign completion, then independently audits
+  pairs, rehashes final model/oracle inputs, stops the observer and renders the
+  report draft. Packaging, final review, documentation and commit remain required.
+
 ## 2026-09-08 — All six gates pass; 128K paired campaign frozen
 
 - Corrected candidate ef37e566 passes all six live gates and strict lifecycle
