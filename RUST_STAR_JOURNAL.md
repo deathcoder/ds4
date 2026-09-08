@@ -3430,6 +3430,15 @@ Next:
 
 ### Current resume checkpoint (updated 2026-09-08)
 
+- ACTIVE milestone: 128K correctness, authorized after the completed memory
+  work. Candidate 0eb484ea adds a separate external-reference checker and
+  extends native boundary/output/adoption guards, preserving the built-in 32K
+  benchmark contract. 314 tests pass; frozen release build and six unchanged
+  oracle-v5 captures are underway in rust-star/.work/frontier128-35f69741/.
+  Native 64K/96K and two 128K/128 full-logit gates plus seven old controls wait
+  until repeated references are accepted. No larger-context C0 claim yet.
+
+
 - Memory-prefill milestone COMPLETE and retained at de6d2c11. 312 tests/build,
   seven live gates, five valid pairs/two warmups and both profile audits pass.
   Report rust-star/reports/32k-memory-de6d2c11/README.md (181 verified artifacts).
@@ -4240,8 +4249,9 @@ Next:
 
 ## Immediate Next Actions
 
-1. Current memory milestone is complete. Stop and let the user choose the next
-   milestone; do not resume the former usage-burning mode.
+1. Complete the now-authorized 128K correctness milestone: repeated oracle
+   captures, native frontier/decode checks, old controls, memory evidence and
+   portable report/docs. Stop after that milestone; no usage-burning mode.
 2. Recommended next milestone: pin repeated 128K tokenization/oracle outputs,
    audit larger-context sparse schedules/offsets and decoder-state adoption,
    then advance incremental frontier gates through full 128K prefill and 128
