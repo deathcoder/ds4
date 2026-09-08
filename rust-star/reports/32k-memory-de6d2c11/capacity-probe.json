@@ -1,0 +1,489 @@
+{
+  "buffers" : [
+    {
+      "bytes" : 268435456,
+      "role" : "layer0.FullKv"
+    },
+    {
+      "bytes" : 268435456,
+      "role" : "layer1.FullKv"
+    },
+    {
+      "bytes" : 268435456,
+      "role" : "layer2.FullKv"
+    },
+    {
+      "bytes" : 67110912,
+      "role" : "layer2.AttnCompressed"
+    },
+    {
+      "bytes" : 16777728,
+      "role" : "layer2.IndexerCompressed"
+    },
+    {
+      "bytes" : 268435456,
+      "role" : "layer3.FullKv"
+    },
+    {
+      "bytes" : 2099200,
+      "role" : "layer3.AttnCompressed"
+    },
+    {
+      "bytes" : 268435456,
+      "role" : "layer4.FullKv"
+    },
+    {
+      "bytes" : 67110912,
+      "role" : "layer4.AttnCompressed"
+    },
+    {
+      "bytes" : 16777728,
+      "role" : "layer4.IndexerCompressed"
+    },
+    {
+      "bytes" : 268435456,
+      "role" : "layer5.FullKv"
+    },
+    {
+      "bytes" : 2099200,
+      "role" : "layer5.AttnCompressed"
+    },
+    {
+      "bytes" : 268435456,
+      "role" : "layer6.FullKv"
+    },
+    {
+      "bytes" : 67110912,
+      "role" : "layer6.AttnCompressed"
+    },
+    {
+      "bytes" : 16777728,
+      "role" : "layer6.IndexerCompressed"
+    },
+    {
+      "bytes" : 268435456,
+      "role" : "layer7.FullKv"
+    },
+    {
+      "bytes" : 2099200,
+      "role" : "layer7.AttnCompressed"
+    },
+    {
+      "bytes" : 268435456,
+      "role" : "layer8.FullKv"
+    },
+    {
+      "bytes" : 67110912,
+      "role" : "layer8.AttnCompressed"
+    },
+    {
+      "bytes" : 16777728,
+      "role" : "layer8.IndexerCompressed"
+    },
+    {
+      "bytes" : 268435456,
+      "role" : "layer9.FullKv"
+    },
+    {
+      "bytes" : 2099200,
+      "role" : "layer9.AttnCompressed"
+    },
+    {
+      "bytes" : 268435456,
+      "role" : "layer10.FullKv"
+    },
+    {
+      "bytes" : 67110912,
+      "role" : "layer10.AttnCompressed"
+    },
+    {
+      "bytes" : 16777728,
+      "role" : "layer10.IndexerCompressed"
+    },
+    {
+      "bytes" : 268435456,
+      "role" : "layer11.FullKv"
+    },
+    {
+      "bytes" : 2099200,
+      "role" : "layer11.AttnCompressed"
+    },
+    {
+      "bytes" : 268435456,
+      "role" : "layer12.FullKv"
+    },
+    {
+      "bytes" : 67110912,
+      "role" : "layer12.AttnCompressed"
+    },
+    {
+      "bytes" : 16777728,
+      "role" : "layer12.IndexerCompressed"
+    },
+    {
+      "bytes" : 268435456,
+      "role" : "layer13.FullKv"
+    },
+    {
+      "bytes" : 2099200,
+      "role" : "layer13.AttnCompressed"
+    },
+    {
+      "bytes" : 268435456,
+      "role" : "layer14.FullKv"
+    },
+    {
+      "bytes" : 67110912,
+      "role" : "layer14.AttnCompressed"
+    },
+    {
+      "bytes" : 16777728,
+      "role" : "layer14.IndexerCompressed"
+    },
+    {
+      "bytes" : 268435456,
+      "role" : "layer15.FullKv"
+    },
+    {
+      "bytes" : 2099200,
+      "role" : "layer15.AttnCompressed"
+    },
+    {
+      "bytes" : 268435456,
+      "role" : "layer16.FullKv"
+    },
+    {
+      "bytes" : 67110912,
+      "role" : "layer16.AttnCompressed"
+    },
+    {
+      "bytes" : 16777728,
+      "role" : "layer16.IndexerCompressed"
+    },
+    {
+      "bytes" : 268435456,
+      "role" : "layer17.FullKv"
+    },
+    {
+      "bytes" : 2099200,
+      "role" : "layer17.AttnCompressed"
+    },
+    {
+      "bytes" : 268435456,
+      "role" : "layer18.FullKv"
+    },
+    {
+      "bytes" : 67110912,
+      "role" : "layer18.AttnCompressed"
+    },
+    {
+      "bytes" : 16777728,
+      "role" : "layer18.IndexerCompressed"
+    },
+    {
+      "bytes" : 268435456,
+      "role" : "layer19.FullKv"
+    },
+    {
+      "bytes" : 2099200,
+      "role" : "layer19.AttnCompressed"
+    },
+    {
+      "bytes" : 268435456,
+      "role" : "layer20.FullKv"
+    },
+    {
+      "bytes" : 67110912,
+      "role" : "layer20.AttnCompressed"
+    },
+    {
+      "bytes" : 16777728,
+      "role" : "layer20.IndexerCompressed"
+    },
+    {
+      "bytes" : 268435456,
+      "role" : "layer21.FullKv"
+    },
+    {
+      "bytes" : 2099200,
+      "role" : "layer21.AttnCompressed"
+    },
+    {
+      "bytes" : 268435456,
+      "role" : "layer22.FullKv"
+    },
+    {
+      "bytes" : 67110912,
+      "role" : "layer22.AttnCompressed"
+    },
+    {
+      "bytes" : 16777728,
+      "role" : "layer22.IndexerCompressed"
+    },
+    {
+      "bytes" : 268435456,
+      "role" : "layer23.FullKv"
+    },
+    {
+      "bytes" : 2099200,
+      "role" : "layer23.AttnCompressed"
+    },
+    {
+      "bytes" : 268435456,
+      "role" : "layer24.FullKv"
+    },
+    {
+      "bytes" : 67110912,
+      "role" : "layer24.AttnCompressed"
+    },
+    {
+      "bytes" : 16777728,
+      "role" : "layer24.IndexerCompressed"
+    },
+    {
+      "bytes" : 268435456,
+      "role" : "layer25.FullKv"
+    },
+    {
+      "bytes" : 2099200,
+      "role" : "layer25.AttnCompressed"
+    },
+    {
+      "bytes" : 268435456,
+      "role" : "layer26.FullKv"
+    },
+    {
+      "bytes" : 67110912,
+      "role" : "layer26.AttnCompressed"
+    },
+    {
+      "bytes" : 16777728,
+      "role" : "layer26.IndexerCompressed"
+    },
+    {
+      "bytes" : 268435456,
+      "role" : "layer27.FullKv"
+    },
+    {
+      "bytes" : 2099200,
+      "role" : "layer27.AttnCompressed"
+    },
+    {
+      "bytes" : 268435456,
+      "role" : "layer28.FullKv"
+    },
+    {
+      "bytes" : 67110912,
+      "role" : "layer28.AttnCompressed"
+    },
+    {
+      "bytes" : 16777728,
+      "role" : "layer28.IndexerCompressed"
+    },
+    {
+      "bytes" : 268435456,
+      "role" : "layer29.FullKv"
+    },
+    {
+      "bytes" : 2099200,
+      "role" : "layer29.AttnCompressed"
+    },
+    {
+      "bytes" : 268435456,
+      "role" : "layer30.FullKv"
+    },
+    {
+      "bytes" : 67110912,
+      "role" : "layer30.AttnCompressed"
+    },
+    {
+      "bytes" : 16777728,
+      "role" : "layer30.IndexerCompressed"
+    },
+    {
+      "bytes" : 268435456,
+      "role" : "layer31.FullKv"
+    },
+    {
+      "bytes" : 2099200,
+      "role" : "layer31.AttnCompressed"
+    },
+    {
+      "bytes" : 268435456,
+      "role" : "layer32.FullKv"
+    },
+    {
+      "bytes" : 67110912,
+      "role" : "layer32.AttnCompressed"
+    },
+    {
+      "bytes" : 16777728,
+      "role" : "layer32.IndexerCompressed"
+    },
+    {
+      "bytes" : 268435456,
+      "role" : "layer33.FullKv"
+    },
+    {
+      "bytes" : 2099200,
+      "role" : "layer33.AttnCompressed"
+    },
+    {
+      "bytes" : 268435456,
+      "role" : "layer34.FullKv"
+    },
+    {
+      "bytes" : 67110912,
+      "role" : "layer34.AttnCompressed"
+    },
+    {
+      "bytes" : 16777728,
+      "role" : "layer34.IndexerCompressed"
+    },
+    {
+      "bytes" : 268435456,
+      "role" : "layer35.FullKv"
+    },
+    {
+      "bytes" : 2099200,
+      "role" : "layer35.AttnCompressed"
+    },
+    {
+      "bytes" : 268435456,
+      "role" : "layer36.FullKv"
+    },
+    {
+      "bytes" : 67110912,
+      "role" : "layer36.AttnCompressed"
+    },
+    {
+      "bytes" : 16777728,
+      "role" : "layer36.IndexerCompressed"
+    },
+    {
+      "bytes" : 268435456,
+      "role" : "layer37.FullKv"
+    },
+    {
+      "bytes" : 2099200,
+      "role" : "layer37.AttnCompressed"
+    },
+    {
+      "bytes" : 268435456,
+      "role" : "layer38.FullKv"
+    },
+    {
+      "bytes" : 67110912,
+      "role" : "layer38.AttnCompressed"
+    },
+    {
+      "bytes" : 16777728,
+      "role" : "layer38.IndexerCompressed"
+    },
+    {
+      "bytes" : 268435456,
+      "role" : "layer39.FullKv"
+    },
+    {
+      "bytes" : 2099200,
+      "role" : "layer39.AttnCompressed"
+    },
+    {
+      "bytes" : 268435456,
+      "role" : "layer40.FullKv"
+    },
+    {
+      "bytes" : 67110912,
+      "role" : "layer40.AttnCompressed"
+    },
+    {
+      "bytes" : 16777728,
+      "role" : "layer40.IndexerCompressed"
+    },
+    {
+      "bytes" : 268435456,
+      "role" : "layer41.FullKv"
+    },
+    {
+      "bytes" : 2099200,
+      "role" : "layer41.AttnCompressed"
+    },
+    {
+      "bytes" : 268435456,
+      "role" : "layer42.FullKv"
+    },
+    {
+      "bytes" : 67110912,
+      "role" : "layer42.AttnCompressed"
+    },
+    {
+      "bytes" : 16777728,
+      "role" : "layer42.IndexerCompressed"
+    },
+    {
+      "bytes" : 393216,
+      "role" : "even.AttnSplit"
+    },
+    {
+      "bytes" : 67108864,
+      "role" : "even.FullNorm"
+    },
+    {
+      "bytes" : 536870912,
+      "role" : "even.FullQ"
+    },
+    {
+      "bytes" : 16777216,
+      "role" : "even.FullQNorm"
+    },
+    {
+      "bytes" : 268435456,
+      "role" : "even.InputHc"
+    },
+    {
+      "bytes" : 268435456,
+      "role" : "layer1.InputHc"
+    },
+    {
+      "bytes" : 393216,
+      "role" : "layer2.AttnSplit"
+    },
+    {
+      "bytes" : 536870912,
+      "role" : "layer2.ContinuationQ"
+    },
+    {
+      "bytes" : 67108864,
+      "role" : "layer2.FullAttnNorm"
+    },
+    {
+      "bytes" : 16777216,
+      "role" : "layer2.FullQNorm"
+    },
+    {
+      "bytes" : 268435456,
+      "role" : "layer2.InputHc"
+    },
+    {
+      "bytes" : 393216,
+      "role" : "odd.AttnSplit"
+    },
+    {
+      "bytes" : 536870912,
+      "role" : "odd.FullQ"
+    }
+  ],
+  "checked_page_and_end_bytes" : 972540,
+  "chunk_rows" : 4096,
+  "context_tokens" : 131072,
+  "current_allocated_size" : 15932555264,
+  "device" : "Apple M1 Ultra",
+  "largest_requested_bytes" : 536870912,
+  "max_buffer_length" : 86586540032,
+  "passed" : true,
+  "physical_memory_bytes" : 137438953472,
+  "recommended_max_working_set_size" : 115448725504,
+  "schema" : "rust-star-128k-allocation-preflight-v1",
+  "scope" : "Simultaneous modeled history and selected chunk transients; excludes model, other scratch and inference correctness",
+  "total_requested_bytes" : 15931240960
+}

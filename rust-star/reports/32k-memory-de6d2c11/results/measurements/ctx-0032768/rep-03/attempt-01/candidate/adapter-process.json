@@ -1,0 +1,8 @@
+{
+  "completed_at_utc": "2026-09-08T10:53:13Z",
+  "engine": "candidate",
+  "returncode": 0,
+  "schema": "rust-star-adapter-process-v1",
+  "start_failed": false,
+  "timed_out": false
+}

@@ -1,0 +1,99 @@
+{
+  "passed": true,
+  "tail_component_rows": 2583,
+  "tail_component_attributed_gpu_ms": {
+    "attention_output": 29429.00588319601,
+    "ffn_ingress": 669.7877516560004,
+    "router": 255.73273764000004,
+    "routed_map": 322.079121384,
+    "routed_gate_up": 28213.099475824984,
+    "routed_down": 15976.117685773988,
+    "routed_sum": 184.97540726299974,
+    "shared_expert": 4766.917716797997,
+    "final_hc": 1062.671887126
+  },
+  "profile_sha256": "56dcf4e0603f90b55fcd4f0365795903779d66e48094833ab9e0f1e7d4f3f75f",
+  "rows": 1483,
+  "coverage": "all 43 layers in each continuation chunk, shared bootstrap ranges explicit",
+  "group_totals": {
+    "prefix/initial_bootstrap": {
+      "calls": 1,
+      "host_elapsed_ms": 5097.064666,
+      "command_wall_ms": 5058.621000003,
+      "gpu_ms": 4884.281625
+    },
+    "prefix/prefix_layer": {
+      "calls": 40,
+      "host_elapsed_ms": 22445.376211000003,
+      "command_wall_ms": 21070.811999993006,
+      "gpu_ms": 17128.530791663
+    },
+    "bootstrap/bootstrap_ingress": {
+      "calls": 7,
+      "host_elapsed_ms": 31481.667085,
+      "command_wall_ms": 31325.490000005997,
+      "gpu_ms": 31185.777624992996
+    },
+    "even/bind": {
+      "calls": 147,
+      "host_elapsed_ms": 242.071631,
+      "command_wall_ms": 0.0,
+      "gpu_ms": 0.0
+    },
+    "even/boundary": {
+      "calls": 147,
+      "host_elapsed_ms": 12830.930754999996,
+      "command_wall_ms": 11923.52700001,
+      "gpu_ms": 5770.780708355999
+    },
+    "even/host_scratch": {
+      "calls": 147,
+      "host_elapsed_ms": 0.019335000000000012,
+      "command_wall_ms": 0.0,
+      "gpu_ms": 0.0
+    },
+    "even/attention": {
+      "calls": 147,
+      "host_elapsed_ms": 37240.018627999976,
+      "command_wall_ms": 36980.45099999502,
+      "gpu_ms": 34828.468249985
+    },
+    "even/tail": {
+      "calls": 147,
+      "host_elapsed_ms": 43708.13262500001,
+      "command_wall_ms": 43465.33700000002,
+      "gpu_ms": 41446.98716664398
+    },
+    "odd/bind": {
+      "calls": 140,
+      "host_elapsed_ms": 283.4895859999998,
+      "command_wall_ms": 0.0,
+      "gpu_ms": 0.0
+    },
+    "odd/ingress": {
+      "calls": 140,
+      "host_elapsed_ms": 10248.648293000002,
+      "command_wall_ms": 9403.484000039003,
+      "gpu_ms": 6358.0622083260005
+    },
+    "odd/compressor": {
+      "calls": 140,
+      "host_elapsed_ms": 1019.4933399999995,
+      "command_wall_ms": 966.8320000139994,
+      "gpu_ms": 403.90962498900006
+    },
+    "odd/attention": {
+      "calls": 140,
+      "host_elapsed_ms": 24429.492540000003,
+      "command_wall_ms": 23718.60199999299,
+      "gpu_ms": 20888.892958366006
+    },
+    "odd/tail": {
+      "calls": 140,
+      "host_elapsed_ms": 41062.394376,
+      "command_wall_ms": 41026.66800000099,
+      "gpu_ms": 39433.40049999501
+    }
+  },
+  "prefill_ms": 231515.885333
+}

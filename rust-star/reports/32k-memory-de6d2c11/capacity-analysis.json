@@ -1,0 +1,63 @@
+{
+  "schema": "rust-star-128k-capacity-analysis-v1",
+  "full_128k_inference_verified": false,
+  "device": "Apple M1 Ultra",
+  "max_buffer_length": 86586540032,
+  "recommended_max_working_set_size": 115448725504,
+  "model_file_bytes": 86720111488,
+  "selected_allocation_probe_bytes": 15931240960,
+  "history_budgets": [
+    {
+      "tokens": 32768,
+      "history_bytes": {
+        "FullKv": 2885681152,
+        "AttnCompressed": 362891264,
+        "IndexerCompressed": 88091136
+      },
+      "total_history_bytes": 3336663552,
+      "odd_attention_mask_bytes": 36700160,
+      "even_indexer_scores_per_32_row_tile_bytes": 1048576
+    },
+    {
+      "tokens": 131072,
+      "history_bytes": {
+        "FullKv": 11542724608,
+        "AttnCompressed": 1451313152,
+        "IndexerCompressed": 352332288
+      },
+      "total_history_bytes": 13346370048,
+      "odd_attention_mask_bytes": 42991616,
+      "even_indexer_scores_per_32_row_tile_bytes": 4194304
+    }
+  ],
+  "incremental_history_bytes_32k_to_128k": 10009706496,
+  "measured_candidate_32k_max_process_peak_bytes": 90033848320,
+  "planning_estimate_32k_peak_plus_history_delta_bytes": 100043554816,
+  "planning_estimate_is_upper_bound": false,
+  "limitations": [
+    "The planning estimate is not a full runtime memory bound or a 128K residency proof.",
+    "It does not model all scratch lifetimes, allocator/driver overhead, grow-buffer overlap, Metal model-view alignment or decode handoff duplication.",
+    "The allocation probe excludes model residency and other runtime scratch; GPU fills all requested buffers and checks each 16K page plus final byte.",
+    "Full KV history remains context-sized for all 43 layers.",
+    "Current Rust/C entry guards and frozen prompt/oracle fixtures still stop at 32K."
+  ],
+  "next_acceptance": [
+    "Capture repeatable 128K oracle outputs and tokenization before enabling the frontier.",
+    "Audit all new-context schedules, sparse selector sizes, buffer offsets and retained decode adoption.",
+    "Run incremental frontier C0 controls followed by complete 128K prefill and 128 full-logit decode checks with live memory monitoring."
+  ],
+  "bounded_transient_examples": [
+    {
+      "role": "FullQ per continuation slot",
+      "old_32k_bytes": 4294967296,
+      "old_128k_bytes": 17179869184,
+      "new_bytes": 536870912
+    },
+    {
+      "role": "InputHc per bounded bootstrap/even slot",
+      "old_32k_bytes": 2147483648,
+      "old_128k_bytes": 8589934592,
+      "new_bytes": 268435456
+    }
+  ]
+}

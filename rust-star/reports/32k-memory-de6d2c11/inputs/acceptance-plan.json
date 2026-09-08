@@ -1,0 +1,8 @@
+{
+  "prefill": "Require median paired candidate/baseline latency <= 1.03. Report every pair and dispersion; no favorable retries.",
+  "memory": "Require lower median peak RSS and lower RSS in at least four of five pairs. Report all ratios and absolute GiB.",
+  "decode": "Require median paired steady decode throughput >= 0.97; report first-step latency and every pair.",
+  "failures": "Stop on failure; preserve all attempts; no retries to obtain favorable results.",
+  "profile": "Separate diagnostic run after timed block. Raw invalid-counter values must be preserved, not accepted as valid timing.",
+  "claim_scope": "32K/128 Rust-to-Rust development improvement; no updated Rust-versus-DwarfStar throughput claim."
+}

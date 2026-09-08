@@ -18,6 +18,33 @@ Before changing code:
 Journal entries are reverse chronological. Do not edit old entries to change
 history; add a correction and update the current-state summary.
 
+## 2026-09-08 — Memory-efficient prefill milestone COMPLETE and retained
+
+- Candidate de6d2c11: 312 tests/build; seven live controls including three full
+  32K/128-step full-logit gates; retained two-cycle transcripts; two passing profiles and
+  strict component audits. Preliminary 8b511b5f evidence remains separately.
+- Five valid AB/BA pairs plus two warmups, no invalid attempts/retries. Median
+  paired RSS ratio .91546827 (8.453% lower), median saving 7.742GiB; raw median
+  candidate/baseline peaks 83.850/91.593GiB. All five pairs use less memory.
+- Median paired prefill ratio .84245722 (15.754% lower), all five faster;
+  raw medians 239.875/285.279s, MAD .686/4.438s. Steady decode paired ratio
+  .99694819 (−.305%), raw medians 20.278/20.285 tok/s. First-step paired ratio
+  1.02429546 (+2.43%), raw medians 56.582/55.126ms; retain this small tradeoff.
+- 128K modeled allocation/fill probe passes 14.837GiB, excluding model/other
+  scratch. Live recommended working set 107.520GiB; largest-buffer limit
+  80.640GiB. History-growth delta 9.322GiB; measured 32K peak plus that delta
+  gives 93.173GiB planning estimate, explicitly not a bound or 128K C0 proof.
+- Portable report: rust-star/reports/32k-memory-de6d2c11/README.md, 181 artifacts
+  independently verified without model/Metal. Includes frozen source/inputs,
+  both-role raw measurements, oracle word/HC targets, phase-1 evidence, host
+  observations, allocation probe/provenance, audits and retention decision.
+- Host: 79 periodic thermal samples, all reads/no-warning checks pass; swap
+  34.81–35.06MiB. 86 load samples include interactive CPU bursts, so no isolated
+  laboratory claim. Model/prompt/oracle-v5/historical reports unchanged.
+- Runtime README, charter and current checkpoint updated. Capacity probe kept
+  at rust-star/diagnostics/prefill_capacity_probe.m. No model/GPU work remains.
+  Stop here per milestone mode; next 128K correctness milestone is not started.
+
 ## 2026-09-08 — Memory comparison checkpoint: three valid pairs
 
 - Both warmups and the first three pairs passed transcript checks; pair 4 is
@@ -3372,18 +3399,20 @@ Next:
 
 ### Current resume checkpoint (updated 2026-09-08)
 
-- Bootstrap/counter milestone COMPLETE and retained. Candidate 912fae1e passes
-  312 tests/build, seven live gates, two profile audits and the independent probe.
-  Five valid Rust-to-Rust pairs: 8.165% lower median paired prefill latency,
-  all five faster; steady decode essentially unchanged overall (+0.516% paired).
-  First-step latency and observed peak memory rose slightly; tradeoffs recorded.
-  Report: rust-star/reports/32k-bootstrap-912fae1e/README.md (403 verified artifacts).
-  Oracle-v5 remains the C0 target; latest Rust-versus-DwarfStar result is unchanged.
-  This baseline is complete. The next memory-efficient prefill milestone is
-  now active: combined candidate de6d2c11 passed 312 tests/build and its
-  all seven live gates and the modeled 128K allocation preflight.
-  Five frozen Rust-to-Rust pairs are active in paired-rust-memory-de6d2c11/.
-  Source remains frozen; analysis/report and the milestone decision are pending.
+- Memory-prefill milestone COMPLETE and retained at de6d2c11. 312 tests/build,
+  seven live gates, five valid pairs/two warmups and both profile audits pass.
+  Report rust-star/reports/32k-memory-de6d2c11/README.md (181 verified artifacts).
+  Median paired peak RSS −8.45% (7.74GiB saved); prefill latency −15.75%; steady
+  decode −0.31%, first-step latency +2.43%. Partial bootstrap wraps 18 views;
+  native activation scratch uses 4K rows. KV/compressed history remains absolute.
+- 128K modeled allocation/fill preflight passes 14.837GiB. Planning estimate
+  93.173GiB is not a full memory bound/inference proof; frontier guards remain
+  32K. Next proposal is repeated 128K oracle capture and incremental/full C0
+  with memory monitoring. Not started. No active workload; stop at this milestone.
+- Earlier bootstrap/counter milestone 912fae1e remains accepted history:
+  rust-star/reports/32k-bootstrap-912fae1e/README.md (403 artifacts), 8.165% paired
+  prefill improvement then. Oracle-v5 remains the correctness target; the latest
+  Rust-versus-DwarfStar throughput result is unchanged by Rust-to-Rust studies.
 - Dense-Q8 candidate 92ca3ef3 is rejected and reverted after seven passing live
   gates and five valid pairs. Paired prefill ratio 2.01485 versus baseline 1.72589;
   Rust/reference medians 351.974/176.897 s. One host-interrupted pair is preserved
@@ -4180,18 +4209,18 @@ Next:
 
 ## Immediate Next Actions
 
-1. Complete the authorized memory-efficient prefill milestone: allocation/index
-   audit, bounded scratch/bootstrap setup, exact controls, measured memory and
-   paired performance, 128K capacity preflight, final report/journal; then stop.
-2. For the next authorized milestone, use the fresh profile to choose between
-   removing remaining shared-bootstrap setup and further native-tail work.
-   Attention output and routed gate/up remain largest; do not revive rejected
-   dense-Q8 execution without a new hypothesis and independently measured benefit.
-3. Keep oracle-v5 and historical evidence immutable. Full 32K prefill/128-decode
-   C0 remains mandatory; accepted internal targets end at 24K. Rust-to-Rust
-   improvements do not update the Rust-versus-DwarfStar performance baseline.
-4. Broader contexts, 256K headline work and the coding-agent corpus remain future.
-   Resolve absolute-context scratch allocation before assuming larger contexts fit.
+1. Current memory milestone is complete. Stop and let the user choose the next
+   milestone; do not resume the former usage-burning mode.
+2. Recommended next milestone: pin repeated 128K tokenization/oracle outputs,
+   audit larger-context sparse schedules/offsets and decoder-state adoption,
+   then advance incremental frontier gates through full 128K prefill and 128
+   full-logit decode steps under memory monitoring. Capacity alone is not C0.
+3. Keep oracle-v5 and historical evidence immutable. Full 32K/128 C0 remains
+   mandatory; accepted internal HC targets end at 24K. Rust-to-Rust improvements
+   do not update the Rust-versus-DwarfStar performance baseline.
+4. 256K headline work and the coding-agent corpus remain future. Full KV history
+   still scales with context; consider bounded raw history if capacity requires it.
+   Do not revive rejected dense-Q8 execution without a new measured hypothesis.
 5. Run one model workload at a time, bound disk use and keep this journal current.
    GitHub Actions billing and secure remote access remain in the manual ledger.
 

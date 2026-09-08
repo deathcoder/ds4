@@ -358,29 +358,31 @@ they describe whenever practical.
 
 ## Open Items
 
-The scoped-bootstrap milestone is complete and retained. Report:
-`rust-star/reports/32k-bootstrap-912fae1e/README.md` (403 verified artifacts).
-Five pairs against accepted Rust show an 8.165% median paired prefill-latency
-reduction, with all five pairs faster. Steady decode is essentially unchanged;
-first-step latency and observed peak memory rose slightly. This does not update
-the latest accepted Rust-versus-DwarfStar comparison in
+The memory-efficient prefill milestone is complete and retained. Report:
+`rust-star/reports/32k-memory-de6d2c11/README.md` (181 verified artifacts).
+Candidate de6d2c11 passes 312 tests/build, seven live gates and two profile audits.
+Five valid pairs against 912fae1e show 8.45% lower median paired peak RSS
+(7.74GiB saved) and 15.75% lower prefill latency; all five improve both.
+Steady decode is essentially unchanged (−0.31% paired). First-step latency
+rises 2.43% on the paired median, a recorded tradeoff. This does not update
+the latest Rust-versus-DwarfStar comparison in
 `rust-star/reports/32k-tail-89e32745/README.md`.
 
-Initial bootstrap ends after layers 0..2, followed by the established exact
-prefix rebuild of layers 3..42. Shared setup allocations remain. Counter errors
-now preserve raw samples and execution context; both current profiles and the
-independent probe pass. The earlier rare counter failure remains unexplained.
-The rejected dense-Q8 experiment remains immutable negative evidence in
-`rust-star/reports/32k-dense-output-92ca3ef3/README.md`.
+Partial bootstrap executes layers 0..2, wraps 18 model views and omits discarded
+later-layer setup; the exact prefix rebuild still covers layers 3..42. Native
+Q, HC, normalized inputs and split activations use chunk-local 4K storage.
+KV/compressed histories and tokens keep absolute addressing. Counter validity
+remains strict; the historical rare failure is still unexplained. Preserve the
+previous bootstrap and rejected dense-Q8 reports as historical evidence.
 
-Active authorized milestone: bound temporary prefill storage to the active
-chunk and complete bootstrap allocation specialization. Candidate de6d2c11 is
-implemented and undergoing the final gates; acceptance is still pending. Preserve
-all exact 32K/128 and shorter/lifecycle gates, measure peak memory and paired
-latency against the accepted Rust build, then establish 128K capacity readiness.
-A capacity preflight is separate from a repeated 128K oracle capture and full
-128K C0 acceptance. Attention output and routed gate/up remain major measured
-kernel costs, available for subsequent performance work.
+The 128K modeled allocation/GPU-fill preflight passed for 14.837GiB of histories
+and selected scratch. A measured-32K-plus-history-growth estimate is 93.173GiB,
+but excludes some context-dependent overhead and is not a bound or full 128K
+inference proof. Runtime guards remain 32K. The next proposed milestone is
+repeatable 128K oracle capture, larger-context schedule/adoption audits, and
+incremental frontier gates culminating in full 128K prefill plus 128 full-logit
+decode steps with memory monitoring. That milestone is not started. Attention
+output and routed gate/up remain available for subsequent performance work.
 
 Current implementation boundaries, evidence, and immediate actions are maintained
 in `RUST_STAR_JOURNAL.md`. As of 2026-09-08, native 32K prefill is exact through

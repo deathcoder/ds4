@@ -1,0 +1,6 @@
+{
+  "source_commit": "291eb6119a1a0433961878ecfba75bdad4ecc98f",
+  "implementation_commit": "912fae1ebbd641fd8edaf4e9f6b26249737775b0",
+  "executable_sha256": "adea36df8200ae6c99f4b549faebcf90fd01f9da34207dc0add562180cf713c4",
+  "reference_report": "rust-star/reports/32k-bootstrap-912fae1e/README.md"
+}

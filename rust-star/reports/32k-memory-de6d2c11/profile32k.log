@@ -1,0 +1,4 @@
+Rust Star layer profile: prefill 141.537 tok/s, generation 17.706 tok/s, steady 17.712 tok/s
+correctness: exact 128-token oracle transcript; prefill and generation collection disabled
+paired protocol: ineligible diagnostic
+json: /Users/deathcodevision/dev/ds4-rust-star-bootstrap/rust-star/.work/paired-rust-memory-de6d2c11/profile32k.json

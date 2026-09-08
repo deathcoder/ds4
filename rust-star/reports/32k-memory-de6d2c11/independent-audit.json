@@ -1,0 +1,87 @@
+{
+  "passed": true,
+  "comparison": "optimized Rust versus accepted Rust (generic oracle slot); not a new Rust-versus-DwarfStar result",
+  "valid_pairs": 5,
+  "invalid_attempts": 0,
+  "warmups": 2,
+  "raw_sha256": "20730d910602eea7c8597d6d596b28e3a8d8ab432067d1fffe9ce7043568ce79",
+  "summary_sha256": "23ea54861fb23edf23e5a6db93c6a0cdbc59faf5a564c79a06585f63eb109d1f",
+  "paired_prefill_latency_ratio": {
+    "count": 5,
+    "median": 0.8424572178528933,
+    "mad": 0.014213830589787979,
+    "min": 0.8202782843460689,
+    "max": 0.8566710484426813
+  },
+  "prefill_improved_pairs": 5,
+  "prefill_acceptance_passed": true,
+  "paired_decode_throughput_ratio": {
+    "count": 5,
+    "median": 0.9969481940691403,
+    "mad": 0.006704027059367901,
+    "min": 0.9882393426120452,
+    "max": 1.033532970016454
+  },
+  "pairs": [
+    {
+      "repetition": 1,
+      "order": "AB",
+      "candidate_prefill_s": 239.74111891700002,
+      "baseline_prefill_s": 289.717348625,
+      "prefill_ratio": 0.8275000446290586,
+      "candidate_decode_tps": 20.209844085,
+      "baseline_decode_tps": 20.271709408,
+      "decode_ratio": 0.9969481940691403
+    },
+    {
+      "repetition": 2,
+      "order": "BA",
+      "candidate_prefill_s": 240.561045167,
+      "baseline_prefill_s": 285.279244792,
+      "prefill_ratio": 0.8432476233677481,
+      "candidate_decode_tps": 20.146216861,
+      "baseline_decode_tps": 20.385969261,
+      "decode_ratio": 0.9882393426120452
+    },
+    {
+      "repetition": 3,
+      "order": "AB",
+      "candidate_prefill_s": 241.389053292,
+      "baseline_prefill_s": 294.27702512499997,
+      "prefill_ratio": 0.8202782843460689,
+      "candidate_decode_tps": 20.466055771,
+      "baseline_decode_tps": 19.802034734,
+      "decode_ratio": 1.033532970016454
+    },
+    {
+      "repetition": 4,
+      "order": "BA",
+      "candidate_prefill_s": 239.87544304099998,
+      "baseline_prefill_s": 284.73308549999996,
+      "prefill_ratio": 0.8424572178528933,
+      "candidate_decode_tps": 20.277811912,
+      "baseline_decode_tps": 20.477587839,
+      "decode_ratio": 0.9902441670097724
+    },
+    {
+      "repetition": 5,
+      "order": "AB",
+      "candidate_prefill_s": 238.01387087499998,
+      "baseline_prefill_s": 277.83578224999997,
+      "prefill_ratio": 0.8566710484426813,
+      "candidate_decode_tps": 20.333532109,
+      "baseline_decode_tps": 20.284769957,
+      "decode_ratio": 1.0024038799603527
+    }
+  ],
+  "paired_peak_rss_ratio": {
+    "count": 5,
+    "median": 0.9154682713019836,
+    "mad": 0.00057720613424872,
+    "min": 0.9071671774621567,
+    "max": 0.9170921634875747
+  },
+  "memory_acceptance_passed": true,
+  "decode_acceptance_passed": true,
+  "milestone_acceptance_passed": true
+}

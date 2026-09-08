@@ -1,0 +1,178 @@
+{
+  "schema": "rust-star-paired-plan-v1",
+  "protocol": "rust-star-paired-benchmark-v1",
+  "correctness_class": "C0",
+  "host_manifest_sha256": "988e77e3129ef8be29f5df2c04ebe81c97be6b5a8e0f473d55324f04f23f6020",
+  "correctness_manifest_sha256": "8044acbe9eae9269f7de56b7d40bf1263a9c20cbfc2607286d0c32097025e204",
+  "configuration": {
+    "contexts": [
+      32768
+    ],
+    "repetitions": 5,
+    "gen_tokens": 128,
+    "sampling": "fixed 128-step lowest-ID greedy transcript; reference excludes EOS, and every reference full-logit argmax equals the same non-EOS transcript",
+    "primary_metric": "gen_steady_tps"
+  },
+  "oracle": {
+    "identity": {
+      "source_commit": "912fae1ebbd641fd8edaf4e9f6b26249737775b0",
+      "source_tree": "8cb3b90da6fc288137efa13d1ef6eb4d84e671c2",
+      "executable_sha256": "adea36df8200ae6c99f4b549faebcf90fd01f9da34207dc0add562180cf713c4",
+      "model_sha256": "ca22ae2f838e14077c22bc1c1417b71b45b5e5a3687bd96c2ac6e17fdb6261c0",
+      "prompt_sha256": "f53e0d80cb2d4492d24ebd63c7000c397b16ae70f9bf09b3763e5d8323ec209f",
+      "backend": "metal",
+      "build_configuration": {
+        "command": [
+          "cargo",
+          "build",
+          "--manifest-path",
+          "rust-star/runtime/Cargo.toml",
+          "--release"
+        ],
+        "profile": {
+          "codegen_units": 1,
+          "lto": "thin",
+          "panic": "abort"
+        },
+        "rustc": "1.91.1 (ed61e7d7e 2025-11-07)",
+        "cargo": "1.91.1 (ea2d97820 2025-10-10)",
+        "rustflags": [],
+        "validated_build_sha256": "52554da2f9e01c350020b5214e067184884155bfed1fe0ff31cb4aef8c1207da"
+      },
+      "runtime_configuration": {
+        "command": "engine-measure",
+        "native_batched_prefill": true,
+        "prefill_correctness_collection": false,
+        "generation_correctness_collection": false,
+        "generation_command_buffers_per_token": 44,
+        "generation_host_waits_per_token": 2,
+        "model_warm_policy": "CPU POSIX_MADV_WILLNEED plus one volatile byte touch per tensor-data page before internal timers; Metal residency-set registration and one-mebibyte-stride GPU view touch inside prefill_ms before decode",
+        "model_residency_required": true,
+        "model_residency_queue_attached": true,
+        "transcript_validation": "after each timed step; first failure rejects run",
+        "sampling_logits_readback": false,
+        "sampling_result_readback_bytes": 8,
+        "sampling": "lowest-ID greedy argmax; full C0 trace establishes identical non-EOS selections to the reference",
+        "prefill_context_tokens": 32768,
+        "prefill_chunk_tokens": 4096,
+        "exact_prefix_rebuild": true,
+        "decode_steps": 128,
+        "failure_collection": "completed logit readback only after failed token comparison; successful steps keep GPU selection readback",
+        "even_prefill_tail_rows": 4096,
+        "even_prefill_attention_tile_rows": 4096,
+        "even_prefill_attention_retention": "complete chunk written directly to existing tail-input buffer",
+        "prefill_stage_profile_collection": false,
+        "indexer_selector": "upstream deterministic block argsort and merge",
+        "odd_prefill_ingress_rows": 4096,
+        "odd_prefill_ingress_input": "immutable predecessor buffer alias",
+        "native_tail_scratch_reuse": true,
+        "native_tail_direct_hc_output": true,
+        "native_tail_routed_mid_f32_conversion": false,
+        "native_tail_dispatches": 25,
+        "comparison_role": "accepted Rust baseline (not the C0 oracle)",
+        "initial_bootstrap_last_completed_layer": 2,
+        "initial_bootstrap_output_head": false,
+        "native_tail_scratch_buffers": 22
+      }
+    },
+    "working_directory": "/Users/deathcodevision/dev/ds4-rust-star-bootstrap/rust-star/.work/paired-rust-memory-de6d2c11/bin/oracle",
+    "timeout_seconds": 3600,
+    "adapter_command": [
+      "python3",
+      "/Users/deathcodevision/dev/ds4-rust-star-bootstrap/rust-star/measure_ruststar.py",
+      "--executable",
+      "/Users/deathcodevision/dev/ds4-rust-star-bootstrap/rust-star/.work/paired-rust-memory-de6d2c11/bin/oracle/rust-star",
+      "--model",
+      "/Users/deathcodevision/dev/ds4/gguf/DeepSeek-V4-Flash-IQ2XXS-w2Q2K-AProjQ8-SExpQ8-OutQ8-chat-v2-imatrix-0731.gguf",
+      "--context",
+      "{context}",
+      "--gen-tokens",
+      "{gen_tokens}",
+      "--output",
+      "{output}",
+      "--timeout-seconds",
+      "3500"
+    ]
+  },
+  "candidate": {
+    "identity": {
+      "source_commit": "de6d2c11b509a3e91391d842341bce262f4bf7f5",
+      "source_tree": "1b01288c3f6397f7e8dc814a69de5a149ce68de2",
+      "executable_sha256": "3206f15e2523f577b1f00fe62d0faa068c90152c6168d16882f9414d1053fe0d",
+      "model_sha256": "ca22ae2f838e14077c22bc1c1417b71b45b5e5a3687bd96c2ac6e17fdb6261c0",
+      "prompt_sha256": "f53e0d80cb2d4492d24ebd63c7000c397b16ae70f9bf09b3763e5d8323ec209f",
+      "backend": "metal",
+      "build_configuration": {
+        "command": [
+          "cargo",
+          "build",
+          "--manifest-path",
+          "rust-star/runtime/Cargo.toml",
+          "--release"
+        ],
+        "profile": {
+          "codegen_units": 1,
+          "lto": "thin",
+          "panic": "abort"
+        },
+        "rustc": "1.91.1 (ed61e7d7e 2025-11-07)",
+        "cargo": "1.91.1 (ea2d97820 2025-10-10)",
+        "rustflags": [],
+        "validated_build_sha256": "866d8bda956d1e3814a210f2742df37ed0c3b4c2a6b83d4bc0269cb206f3c337"
+      },
+      "runtime_configuration": {
+        "command": "engine-measure",
+        "native_batched_prefill": true,
+        "prefill_correctness_collection": false,
+        "generation_correctness_collection": false,
+        "generation_command_buffers_per_token": 44,
+        "generation_host_waits_per_token": 2,
+        "model_warm_policy": "CPU POSIX_MADV_WILLNEED plus one volatile byte touch per tensor-data page before internal timers; Metal residency-set registration and one-mebibyte-stride GPU view touch inside prefill_ms before decode",
+        "model_residency_required": true,
+        "model_residency_queue_attached": true,
+        "transcript_validation": "after each timed step; first failure rejects run",
+        "sampling_logits_readback": false,
+        "sampling_result_readback_bytes": 8,
+        "sampling": "lowest-ID greedy argmax; full C0 trace establishes identical non-EOS selections to the reference",
+        "prefill_context_tokens": 32768,
+        "prefill_chunk_tokens": 4096,
+        "exact_prefix_rebuild": true,
+        "decode_steps": 128,
+        "failure_collection": "completed logit readback only after failed token comparison; successful steps keep GPU selection readback",
+        "even_prefill_tail_rows": 4096,
+        "even_prefill_attention_tile_rows": 4096,
+        "even_prefill_attention_retention": "complete chunk written directly to existing tail-input buffer",
+        "prefill_stage_profile_collection": false,
+        "indexer_selector": "upstream deterministic block argsort and merge",
+        "odd_prefill_ingress_rows": 4096,
+        "odd_prefill_ingress_input": "immutable predecessor buffer alias",
+        "native_tail_scratch_reuse": true,
+        "native_tail_direct_hc_output": true,
+        "native_tail_routed_mid_f32_conversion": false,
+        "native_tail_dispatches": 25,
+        "comparison_role": "optimized Rust",
+        "initial_bootstrap_last_completed_layer": 2,
+        "initial_bootstrap_output_head": false,
+        "native_tail_scratch_buffers": 22
+      }
+    },
+    "working_directory": "/Users/deathcodevision/dev/ds4-rust-star-bootstrap/rust-star/.work/paired-rust-memory-de6d2c11/bin/candidate",
+    "timeout_seconds": 3600,
+    "adapter_command": [
+      "python3",
+      "/Users/deathcodevision/dev/ds4-rust-star-bootstrap/rust-star/measure_ruststar.py",
+      "--executable",
+      "/Users/deathcodevision/dev/ds4-rust-star-bootstrap/rust-star/.work/paired-rust-memory-de6d2c11/bin/candidate/rust-star",
+      "--model",
+      "/Users/deathcodevision/dev/ds4/gguf/DeepSeek-V4-Flash-IQ2XXS-w2Q2K-AProjQ8-SExpQ8-OutQ8-chat-v2-imatrix-0731.gguf",
+      "--context",
+      "{context}",
+      "--gen-tokens",
+      "{gen_tokens}",
+      "--output",
+      "{output}",
+      "--timeout-seconds",
+      "3500"
+    ]
+  }
+}

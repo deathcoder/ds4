@@ -1,0 +1,14 @@
+{
+  "model_size": 86720111488,
+  "model_mtime_ns": 1785574798142694474,
+  "model_sha256": "ca22ae2f838e14077c22bc1c1417b71b45b5e5a3687bd96c2ac6e17fdb6261c0",
+  "prompt_sha256": "f53e0d80cb2d4492d24ebd63c7000c397b16ae70f9bf09b3763e5d8323ec209f",
+  "acceptance_plan_sha256": "5256849bda0e9bd14a65a6a2f700454c8930dddb0a98280502e9bb98ad860c82",
+  "plan_sha256": "7588f507bc3e39202c254c27050375bde5362974cb481885212d95e902e04fbb",
+  "candidate_commit": "de6d2c11b509a3e91391d842341bce262f4bf7f5",
+  "candidate_sha256": "3206f15e2523f577b1f00fe62d0faa068c90152c6168d16882f9414d1053fe0d",
+  "oracle_commit": "912fae1ebbd641fd8edaf4e9f6b26249737775b0",
+  "oracle_sha256": "adea36df8200ae6c99f4b549faebcf90fd01f9da34207dc0add562180cf713c4",
+  "comparison": "Rust-to-Rust optimization study; C0 oracle-v5 is separate",
+  "c0_oracle_source": "ccbd16d36895ef9fe8edf7f793014988ff1ab7f4"
+}

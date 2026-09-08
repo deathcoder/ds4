@@ -1306,11 +1306,31 @@ without timestamp anomalies or wrong GPU outputs. These successful captures
 remain distinct evidence; they do not guarantee every unattended profile will
 complete.
 
-Initial long-prefill bootstrap now stops after layers 0–2, retaining layer-2 HC
-for the established exact prefix rebuild of layers 3–42. It omits the discarded
-later-layer execution and output head. Shared setup allocations and all 1,218
-wrapped views still occur. Five pairs against accepted Rust show an 8.165%
-median paired prefill-latency reduction, with all five pairs faster. This is a
-32K/128 Rust-to-Rust result; it does not update Rust-versus-DwarfStar throughput.
-Steady decode is essentially unchanged overall; first-step latency and observed
-peak memory rose slightly. The report preserves those tradeoffs and all evidence.
+Initial long-prefill bootstrap stops after layers 0–2, retaining layer-2 HC
+for the established exact prefix rebuild of layers 3–42. The earlier scoped
+bootstrap omitted discarded execution and the output head; its historical
+8.165% paired latency improvement and small memory/first-step tradeoffs remain
+in the report above.
+
+The [memory-prefill study](../reports/32k-memory-de6d2c11/README.md) completes
+allocation specialization: partial bootstrap wraps 18 model views and omits
+later-layer setup. Native Q, HC, normalized inputs and split storage use 4K
+rows with matching chunk-relative producer/consumer offsets. Full KV,
+compressed histories and tokens retain absolute addressing. Normal execution
+also omits unused host diagnostic vectors; legacy layouts remain unchanged.
+
+Candidate de6d2c11 passes 312 tests, seven live gates and both profile audits.
+Five valid pairs against 912fae1e reduce median paired peak RSS by 8.45%
+(7.74GiB median saving) and prefill latency by 15.75%, with all five improving.
+Raw medians: 83.850/91.593GiB RSS and 239.875/285.279s prefill. Steady decode
+is essentially unchanged (−0.31% paired); first-step latency rises 2.43%
+(56.582/55.126ms raw medians). This is Rust-to-Rust evidence, not an updated
+Rust-versus-DwarfStar throughput claim.
+
+The standalone [capacity probe](../diagnostics/prefill_capacity_probe.m)
+allocates and GPU-fills 14.837GiB of modeled 128K histories and selected chunk
+transients. It excludes model residency and other scratch. The report records
+live Metal limits and a 93.173GiB planning estimate based on measured 32K peak
+plus history growth; this is not a memory bound or verified 128K inference.
+Current frontier guards remain 32K. Repeated 128K oracle capture, larger-context
+schedule/adoption audits and full prefill/128-step C0 are the next acceptance.

@@ -1,0 +1,10 @@
+{
+  "memory_changes_retained": true,
+  "reason": "Peak process RSS is lower in the predeclared paired comparison, while prefill and steady decode meet their non-regression thresholds.",
+  "milestone_acceptance_passed": true,
+  "oracle_v5_unchanged": true,
+  "independent_audit_sha256": "9a7ea9cd20d93cae59e5ead0c60b3aca43d06a285cff6459dcb538878b92db11",
+  "paired_plan_sha256": "7588f507bc3e39202c254c27050375bde5362974cb481885212d95e902e04fbb",
+  "reviewed_utc": "2026-09-08T11:17:40.915957+00:00",
+  "stop_after_milestone": true
+}

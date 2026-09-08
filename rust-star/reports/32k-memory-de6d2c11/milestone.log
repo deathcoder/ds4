@@ -1,0 +1,16 @@
+starting
+{"last_pair": [], "phase": "warmup", "warmups": {"candidate": [], "oracle": []}}
+{"last_pair": [], "phase": "warmup", "warmups": {"candidate": [], "oracle": ["passed"]}}
+{"last_pair": [{"engines": {"oracle": "running"}, "order": "AB", "repetition": 1, "status": "running"}], "phase": "timed", "warmups": {"candidate": ["passed"], "oracle": ["passed"]}}
+{"last_pair": [{"engines": {"candidate": "running", "oracle": "passed"}, "order": "AB", "repetition": 1, "status": "running"}], "phase": "timed", "warmups": {"candidate": ["passed"], "oracle": ["passed"]}}
+{"last_pair": [{"engines": {"candidate": "running"}, "order": "BA", "repetition": 2, "status": "running"}], "phase": "timed", "warmups": {"candidate": ["passed"], "oracle": ["passed"]}}
+{"last_pair": [{"engines": {"candidate": "passed", "oracle": "running"}, "order": "BA", "repetition": 2, "status": "running"}], "phase": "timed", "warmups": {"candidate": ["passed"], "oracle": ["passed"]}}
+{"last_pair": [{"engines": {"oracle": "running"}, "order": "AB", "repetition": 3, "status": "running"}], "phase": "timed", "warmups": {"candidate": ["passed"], "oracle": ["passed"]}}
+{"last_pair": [{"engines": {"candidate": "running", "oracle": "passed"}, "order": "AB", "repetition": 3, "status": "running"}], "phase": "timed", "warmups": {"candidate": ["passed"], "oracle": ["passed"]}}
+{"last_pair": [{"engines": {"candidate": "running"}, "order": "BA", "repetition": 4, "status": "running"}], "phase": "timed", "warmups": {"candidate": ["passed"], "oracle": ["passed"]}}
+{"last_pair": [{"engines": {"candidate": "passed", "oracle": "running"}, "order": "BA", "repetition": 4, "status": "running"}], "phase": "timed", "warmups": {"candidate": ["passed"], "oracle": ["passed"]}}
+{"last_pair": [{"engines": {"oracle": "running"}, "order": "AB", "repetition": 5, "status": "running"}], "phase": "timed", "warmups": {"candidate": ["passed"], "oracle": ["passed"]}}
+{"last_pair": [{"engines": {"candidate": "running", "oracle": "passed"}, "order": "AB", "repetition": 5, "status": "running"}], "phase": "timed", "warmups": {"candidate": ["passed"], "oracle": ["passed"]}}
+PAIRED RUN EXIT 0 {"last_pair": [{"engines": {"candidate": "passed", "oracle": "passed"}, "order": "AB", "repetition": 5, "status": "passed"}], "phase": "complete", "warmups": {"candidate": ["passed"], "oracle": ["passed"]}}
+START isolated 32K profile after paired block
+PROFILE EXIT 0

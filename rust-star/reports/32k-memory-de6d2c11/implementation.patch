@@ -1,0 +1,499 @@
+diff --git a/rust-star/runtime/README.md b/rust-star/runtime/README.md
+index 2a1b67b2..d2370fc2 100644
+--- a/rust-star/runtime/README.md
++++ b/rust-star/runtime/README.md
+@@ -1292,10 +1292,25 @@ partition parent GPU intervals; they are perturbed diagnostic estimates, never
+ additional time or paired performance evidence. Audited evidence is in
+ [the component report](../reports/32k-tail-components-e7b81aa2/README.md).
+ 
+-A later post-paired capture failed closed with `invalid tail timestamps` and
+-produced no profile artifact. That historical run did not log its rejected raw values. New failures report
+-all 18 raw hexadecimal ticks, the failing sample/component and chunk/layer
+-context; the original cause remains unresolved. The successful full-C0 component
+-captures remain valid evidence; do not assume every unattended profile will
+-complete. See [the preserved failure](../reports/32k-dense-output-92ca3ef3/README.md).
+-Improve failure diagnostics before changing timestamp-validity checks.
++A historical post-paired capture failed closed with `invalid tail timestamps`
++and produced no profile artifact. That run did not log its rejected raw values.
++New failures report all 18 raw hexadecimal ticks, the failing sample/component,
++boundary/reason and chunk/layer context. Rust also rejects the Metal error
++sentinel before attribution. Validity remains strict; the original cause is
++unresolved. See [the preserved failure](../reports/32k-dense-output-92ca3ef3/README.md).
++
++The [scoped-bootstrap study](../reports/32k-bootstrap-912fae1e/README.md) passes
++all seven live gates, including profiled full-output C0, and a separate
++post-paired profile. Its independent counter probe also passes 256 commands
++without timestamp anomalies or wrong GPU outputs. These successful captures
++remain distinct evidence; they do not guarantee every unattended profile will
++complete.
++
++Initial long-prefill bootstrap now stops after layers 0–2, retaining layer-2 HC
++for the established exact prefix rebuild of layers 3–42. It omits the discarded
++later-layer execution and output head. Shared setup allocations and all 1,218
++wrapped views still occur. Five pairs against accepted Rust show an 8.165%
++median paired prefill-latency reduction, with all five pairs faster. This is a
++32K/128 Rust-to-Rust result; it does not update Rust-versus-DwarfStar throughput.
++Steady decode is essentially unchanged overall; first-step latency and observed
++peak memory rose slightly. The report preserves those tradeoffs and all evidence.
+diff --git a/rust-star/runtime/src/long_prefill.rs b/rust-star/runtime/src/long_prefill.rs
+index 4568966e..fdeb668c 100644
+--- a/rust-star/runtime/src/long_prefill.rs
++++ b/rust-star/runtime/src/long_prefill.rs
+@@ -353,7 +353,13 @@ fn run_prefill_chunk_layer(
+     if layer % 2 == 1 {
+         let mut inputs: Vec<Vec<f32>> = [4096, 4096, 1024, 1024, 512, 512, 32768, 512, 512]
+             .iter()
+-            .map(|width| vec![0.0; 4096 * width])
++            .map(|width| {
++                if collect_checks {
++                    vec![0.0; 4096 * width]
++                } else {
++                    Vec::new()
++                }
++            })
+             .collect();
+         for position in (start..start + 4096).step_by(4096) {
+             checked!(rust_star_metal_prepare_prefill_layer5_continuation_tile(
+@@ -535,9 +541,21 @@ fn run_prefill_chunk_layer(
+             (raw.wall_ms, raw.gpu_ms),
+         );
+         let scratch_start = profile.start();
+-        let mut scores = vec![0.0; 4096 * ((start + 4096) / 4) as usize];
+-        let mut topk = vec![0; 4096 * 512];
+-        let mut heads = vec![0.0; 4096 * 32768];
++        let mut scores = if collect_checks {
++            vec![0.0; 4096 * ((start + 4096) / 4) as usize]
++        } else {
++            Vec::new()
++        };
++        let mut topk = if collect_checks {
++            vec![0; 4096 * 512]
++        } else {
++            Vec::new()
++        };
++        let mut heads = if collect_checks {
++            vec![0.0; 4096 * 32768]
++        } else {
++            Vec::new()
++        };
+         profile.record(
+             start,
+             layer,
+diff --git a/rust-star/runtime/src/metal.rs b/rust-star/runtime/src/metal.rs
+index d064488c..f60d817f 100644
+--- a/rust-star/runtime/src/metal.rs
++++ b/rust-star/runtime/src/metal.rs
+@@ -36356,7 +36356,13 @@ mod imp {
+         } else {
+             raw.indexer_dispatches == 0
+         };
+-        let expected_model_ranges = if prefill_rows == 4096 { 1218 } else { 1216 };
++        let expected_model_ranges = if bootstrap {
++            18
++        } else if prefill_rows == 4096 {
++            1218
++        } else {
++            1216
++        };
+         if raw.rows != prefill_rows
+             || raw.raw_kv_rows != prefill_rows
+             || raw.compressed_kv_rows != prefill_rows / 4
+diff --git a/rust-star/runtime/src/metal_shim.m b/rust-star/runtime/src/metal_shim.m
+index 3d7153f0..ee865e6b 100644
+--- a/rust-star/runtime/src/metal_shim.m
++++ b/rust-star/runtime/src/metal_shim.m
+@@ -4732,6 +4732,17 @@ int rust_star_metal_run_prefill_layer0_boundary(
+             attn_compressor_width = 1024, attn_compressor_head = 512,
+             indexer_compressor_width = 256, indexer_compressor_head = 128,
+         };
++        // Native continuation retains history only for KV/compressor state.
++        // HC and normalized inputs are consumed within the current 4K chunk.
++        const NSUInteger bootstrap_base = context.prefillLayerChunkStart
++            ? context.prefillLayerChunkStart.unsignedIntValue : 0u;
++        const NSUInteger bootstrap_rows = context.prefillLayerChunkStart
++            ? 4096u : prefill_rows;
++        if (position_start < bootstrap_base ||
++            (NSUInteger)position_start-bootstrap_base+rows > bootstrap_rows)
++            return fail_with_message(error, error_bytes,
++                @"bootstrap transient rows exceed the active chunk");
++        const NSUInteger bootstrap_row = (NSUInteger)position_start-bootstrap_base;
+         const uint32_t compressor_rows = prefill_rows/compressor_ratio;
+         const uint32_t compressor_tile_rows = rows/compressor_ratio;
+         const NSUInteger row_tiles = (rows+31u)/32u;
+@@ -4836,17 +4847,17 @@ int rust_star_metal_run_prefill_layer0_boundary(
+             RUST_STAR_GROW_PREFILL_BUFFER(prefillLayer1FullKv,
+                 full_kv_bytes, @"layer-1 full KV");
+             RUST_STAR_GROW_PREFILL_BUFFER(prefillLayer1InputHc,
+-                prefill_rows*hc_dim*sizeof(float), @"layer-1 input HC");
++                bootstrap_rows*hc_dim*sizeof(float), @"layer-1 input HC");
+             RUST_STAR_GROW_PREFILL_BUFFER(prefillLayer2FullKv,
+                 full_kv_bytes, @"layer-2 full KV");
+             RUST_STAR_GROW_PREFILL_BUFFER(prefillLayer2FullQNorm,
+-                prefill_rows*q_rank*sizeof(float), @"layer-2 Q norm");
++                bootstrap_rows*q_rank*sizeof(float), @"layer-2 Q norm");
+             RUST_STAR_GROW_PREFILL_BUFFER(prefillLayer2FullAttnNorm,
+-                prefill_rows*n_embd*sizeof(float), @"layer-2 attention norm");
++                bootstrap_rows*n_embd*sizeof(float), @"layer-2 attention norm");
+             RUST_STAR_GROW_PREFILL_BUFFER(prefillLayer2InputHc,
+-                prefill_rows*hc_dim*sizeof(float), @"layer-2 input HC");
++                bootstrap_rows*hc_dim*sizeof(float), @"layer-2 input HC");
+             RUST_STAR_GROW_PREFILL_BUFFER(prefillLayer2AttnSplit,
+-                prefill_rows*mix_hc*sizeof(float), @"layer-2 attention split");
++                bootstrap_rows*mix_hc*sizeof(float), @"layer-2 attention split");
+             RUST_STAR_GROW_PREFILL_BUFFER(prefillLayer2Tokens,
+                 prefill_rows*sizeof(uint32_t), @"layer-2 tokens");
+             RUST_STAR_GROW_PREFILL_BUFFER(prefillLayer2AttnCompressed,
+@@ -5062,7 +5073,7 @@ int rust_star_metal_run_prefill_layer0_boundary(
+             } else {
+                 RUST_STAR_NEW_L1_BUFFER(next_full_kv_buffer, full_kv_bytes);
+                 RUST_STAR_NEW_L1_BUFFER(layer1_input_hc_buffer,
+-                    prefill_rows*hc_dim*sizeof(float));
++                    bootstrap_rows*hc_dim*sizeof(float));
+             }
+             RUST_STAR_NEW_L1_BUFFER(next_full_kv_half_buffer,
+                 prefill_rows*kv_dim*sizeof(uint16_t));
+@@ -5112,13 +5123,13 @@ int rust_star_metal_run_prefill_layer0_boundary(
+                 } else {
+                     RUST_STAR_NEW_L2_BUFFER(layer2_full_kv_buffer, full_kv_bytes);
+                     RUST_STAR_NEW_L2_BUFFER(layer2_full_q_norm_buffer,
+-                        prefill_rows*q_rank*sizeof(float));
++                        bootstrap_rows*q_rank*sizeof(float));
+                     RUST_STAR_NEW_L2_BUFFER(layer2_full_attn_norm_buffer,
+-                        prefill_rows*n_embd*sizeof(float));
++                        bootstrap_rows*n_embd*sizeof(float));
+                     RUST_STAR_NEW_L2_BUFFER(layer2_input_hc_buffer,
+-                        prefill_rows*hc_dim*sizeof(float));
++                        bootstrap_rows*hc_dim*sizeof(float));
+                     RUST_STAR_NEW_L2_BUFFER(layer2_attn_split_buffer,
+-                        prefill_rows*mix_hc*sizeof(float));
++                        bootstrap_rows*mix_hc*sizeof(float));
+                     RUST_STAR_NEW_L2_BUFFER(layer2_tokens_buffer,
+                         prefill_rows*sizeof(uint32_t));
+                 }
+@@ -6722,19 +6733,19 @@ int rust_star_metal_run_prefill_layer0_boundary(
+                    destinationOffset:full_kv_prefix_bytes size:kv_bytes];
+                 [blit copyFromBuffer:layer2_q_norm_buffer sourceOffset:0
+                             toBuffer:layer2_full_q_norm_buffer
+-                   destinationOffset:(NSUInteger)position_start*q_rank*sizeof(float)
++                   destinationOffset:bootstrap_row*q_rank*sizeof(float)
+                                 size:q_rank_bytes];
+                 [blit copyFromBuffer:layer2_norm_buffer sourceOffset:0
+                             toBuffer:layer2_full_attn_norm_buffer
+-                   destinationOffset:(NSUInteger)position_start*n_embd*sizeof(float)
++                   destinationOffset:bootstrap_row*n_embd*sizeof(float)
+                                 size:attn_bytes];
+                 [blit copyFromBuffer:after_ffn_hc_buffer sourceOffset:0
+                             toBuffer:layer1_input_hc_buffer
+-                   destinationOffset:(NSUInteger)position_start*hc_dim*sizeof(float)
++                   destinationOffset:bootstrap_row*hc_dim*sizeof(float)
+                                 size:hc_bytes];
+                 [blit copyFromBuffer:next_after_ffn_hc_buffer sourceOffset:0
+                             toBuffer:layer2_input_hc_buffer
+-                   destinationOffset:(NSUInteger)position_start*hc_dim*sizeof(float)
++                   destinationOffset:bootstrap_row*hc_dim*sizeof(float)
+                                 size:hc_bytes];
+                 if (transition_diagnostics_buffer) {
+ #define RUST_STAR_COPY_TRANSITION_ROW(source, source_offset, destination_offset, bytes) \
+@@ -6806,7 +6817,7 @@ int rust_star_metal_run_prefill_layer0_boundary(
+                 }
+                 [blit copyFromBuffer:layer2_split_buffer sourceOffset:0
+                             toBuffer:layer2_attn_split_buffer
+-                   destinationOffset:(NSUInteger)position_start*mix_hc*sizeof(float)
++                   destinationOffset:bootstrap_row*mix_hc*sizeof(float)
+                                 size:mix_bytes];
+                 [blit copyFromBuffer:token_buffer sourceOffset:0
+                             toBuffer:layer2_tokens_buffer
+@@ -13073,7 +13084,8 @@ int rust_star_metal_run_prefill_layer2_attention(
+         id<MTLBuffer> model_buffers[1216] = { nil };
+         NSUInteger inner[1216] = { 0 };
+         BOOL matches[1216] = { NO };
+-        for (uint32_t index = 0; index < 1216u; index++) {
++        const uint32_t model_range_count = last_layer == 2u ? 16u : 1216u;
++        for (uint32_t index = 0; index < model_range_count; index++) {
+             model_buffers[index] = wrap_model_range(
+                 context, model_mapping, model_bytes, offsets[index], sizes[index],
+                 &inner[index], &matches[index], error, error_bytes);
+@@ -13124,8 +13136,9 @@ int rust_star_metal_run_prefill_layer2_attention(
+         const NSUInteger group_map_bytes = work_offset + 8u + work_cap*8u;
+ 
+ #define RUST_STAR_NEW_L2_ATTN_BUFFER(name, bytes) \
+-        id<MTLBuffer> name = prefill_layer_buffer( \
+-            context, #name, (bytes), collect_outputs, error, error_bytes)
++        id<MTLBuffer> name = (last_layer == 2u && strncmp(#name, "layer", 5u) == 0) \
++            ? nil : prefill_layer_buffer( \
++                context, #name, (bytes), collect_outputs, error, error_bytes)
+         RUST_STAR_NEW_L2_ATTN_BUFFER(q_buffer, q_bytes);
+         RUST_STAR_NEW_L2_ATTN_BUFFER(staged_kv_buffer, staged_kv_bytes);
+         RUST_STAR_NEW_L2_ATTN_BUFFER(mask_buffer, mask_bytes);
+@@ -15869,7 +15882,8 @@ int rust_star_metal_run_prefill_layer2_attention(
+             !router_weight_sums_buffer || !routed_map_buffer ||
+             !routed_mid_buffer || !routed_experts_buffer || !routed_out_buffer ||
+             !shared_gate_buffer || !shared_up_buffer || !shared_mid_buffer ||
+-            !shared_out_buffer || !after_ffn_hc_buffer || !layer3_flat_hc_buffer ||
++            !shared_out_buffer || !after_ffn_hc_buffer ||
++            (last_layer == 42u && (!layer3_flat_hc_buffer ||
+             !layer3_mix_buffer || !layer3_split_buffer || !layer3_cur_buffer ||
+             !layer3_norm_buffer || !layer3_q_lora_buffer ||
+             !layer3_q_norm_buffer || !layer3_kv_raw_buffer ||
+@@ -16912,7 +16926,7 @@ int rust_star_metal_run_prefill_layer2_attention(
+             !layer42_router_probs_buffer || !layer42_router_selected_buffer ||
+             !layer42_router_weights_buffer ||
+             !layer42_router_weight_sums_buffer || !layer42_routed_out_buffer ||
+-            !layer42_shared_out_buffer || !layer42_after_ffn_hc_buffer
++            !layer42_shared_out_buffer || !layer42_after_ffn_hc_buffer))
+ ) {
+             return fail_with_message(error, error_bytes,
+                 @"failed to allocate prefill layer-2 attention buffers");
+@@ -16931,6 +16945,7 @@ int rust_star_metal_run_prefill_layer2_attention(
+                     key < visible_compressed ? 0u : 0xfc00u;
+             }
+         }
++        if (last_layer == 42u) {
+         uint16_t *layer3_mask = layer3_mask_buffer.contents;
+         for (uint32_t query = 0; query < rows; query++) {
+             uint16_t *mask_row =
+@@ -16947,6 +16962,7 @@ int rust_star_metal_run_prefill_layer2_attention(
+                     key < visible_compressed ? 0u : 0xfc00u;
+             }
+         }
++        }
+         int32_t *positions = position_buffer.contents;
+         int32_t *group_ids = group_ids_buffer.contents;
+         for (uint32_t row = 0; row < rows; row++) {
+@@ -16955,6 +16971,7 @@ int rust_star_metal_run_prefill_layer2_attention(
+                 group_ids[(NSUInteger)row*8u+group] = (int32_t)group;
+             }
+         }
++        if (last_layer == 42u) {
+         int32_t *layer3_compressed_positions =
+             layer3_compressed_position_buffer.contents;
+         for (uint32_t row = 0; row < layer3_compressed_rows; row++) {
+@@ -17641,6 +17658,8 @@ int rust_star_metal_run_prefill_layer2_attention(
+             layer23_state_score_bits[index] = 0xff800000u;
+         }
+ 
++        }
++
+         rust_star_q8_mm_args q_b_args = {
+             .ne00=q_rank, .ne02=1,
+             .nb01=(q_rank/32u)*34u,
+@@ -18620,7 +18639,7 @@ int rust_star_metal_run_prefill_layer2_attention(
+             if (!command_succeeded(command, error, error_bytes)) return 0;
+             context.prefillLayer3InputHc = after_ffn_hc_buffer;
+             uint32_t pointer_matches = 0u;
+-            for (uint32_t index = 0; index < 1216u; index++)
++            for (uint32_t index = 0; index < model_range_count; index++)
+                 pointer_matches += matches[index] ? 1u : 0u;
+             pointer_matches += layer2_indexer_matches[0] ? 1u : 0u;
+             pointer_matches += layer2_indexer_matches[1] ? 1u : 0u;
+@@ -18628,8 +18647,8 @@ int rust_star_metal_run_prefill_layer2_attention(
+             result->raw_kv_rows = raw_rows;
+             result->compressed_kv_rows = compressed_rows;
+             result->dispatches = 36u + layer2_indexer_dispatches;
+-            /* Later-layer views are still wrapped by the shared setup above. */
+-            result->wrapped_model_ranges = 1218u;
++            /* Only layer-2 execution weights and its two indexer weights are wrapped. */
++            result->wrapped_model_ranges = model_range_count + 2u;
+             result->pointer_matches = pointer_matches;
+             result->layer3_compressed_kv_rows = 0u;
+             result->wall_ms = monotonic_ms()-bootstrap_wall_start;
+@@ -45814,8 +45833,10 @@ int rust_star_metal_run_prefill_layer2_continuation_sparse_tile(
+             sinks_offset, sinks_bytes, tile_start,
+             context.prefillLayer2ContinuationQ,
+             prefill_chunk_start(opaque_context),
+-            context.prefillLayer2FullQNorm, 0u,
+-            context.prefillLayer2FullAttnNorm, 0u,
++            context.prefillLayer2FullQNorm,
++            context.prefillLayerChunkStart ? prefill_chunk_start(opaque_context) : 0u,
++            context.prefillLayer2FullAttnNorm,
++            context.prefillLayerChunkStart ? prefill_chunk_start(opaque_context) : 0u,
+             context.prefillLayer2FullKv,
+             context.prefillLayer2AttnCompressed,
+             context.prefillLayer2IndexerCompressed,
+@@ -46246,14 +46267,16 @@ int rust_star_metal_run_prefill_layer4_continuation_sparse_tile(
+         }
+         memset(result, 0, sizeof(*result));
+         id<MTLBuffer> heads = nil;
++        const uint32_t transient_base = context.prefillLayerChunkStart
++            ? prefill_chunk_start(opaque_context) : 0u;
+         const int succeeded = rust_star_metal_run_prefill_layer2_indexed_tile(
+             context, model_mapping, model_bytes,
+             indexer_q_offset, indexer_q_bytes,
+             indexer_weight_offset, indexer_weight_bytes,
+             sinks_offset, sinks_bytes, tile_start,
+-            context.prefillLayer4FullQ, 0u,
+-            context.prefillLayer4FullQNorm, 0u,
+-            context.prefillLayer4FullNorm, 0u,
++            context.prefillLayer4FullQ, transient_base,
++            context.prefillLayer4FullQNorm, transient_base,
++            context.prefillLayer4FullNorm, transient_base,
+             context.prefillLayer4FullKv,
+             context.prefillLayer4AttnCompressed,
+             context.prefillLayer4IndexerCompressed,
+@@ -46383,17 +46406,19 @@ int rust_star_metal_run_prefill_layer2_continuation_tail(
+             production_layer5_prefix ? 0u : tile_start-chunk_start;
+         const NSUInteger heads_offset = full_layer3_batch
+             ? (NSUInteger)continuation_row*q_dim*sizeof(float) : 0u;
++        const NSUInteger transient_row = native_chunk && layer_index >= 2u
++            ? tile_start-chunk_start : tile_start;
+         const NSUInteger input_hc_offset = layer5
+             ? 0u : layer4
+-            ? (NSUInteger)tile_start*hc_row_bytes : full_layer3_batch
++            ? transient_row*hc_row_bytes : full_layer3_batch
+             ? (NSUInteger)continuation_row*hc_row_bytes
+-            : layer3 ? 0u : (NSUInteger)tile_start*hc_row_bytes;
++            : layer3 ? 0u : transient_row*hc_row_bytes;
+         const NSUInteger split_offset = production_layer5_prefix
+             ? 0u : layer5
+-            ? (NSUInteger)tile_start*mix_hc*sizeof(float) : layer4
+-            ? (NSUInteger)tile_start*mix_hc*sizeof(float) : full_layer3_batch
+-            ? (NSUInteger)tile_start*mix_hc*sizeof(float)
+-            : layer3 ? 0u : (NSUInteger)tile_start*mix_hc*sizeof(float);
++            ? transient_row*mix_hc*sizeof(float) : layer4
++            ? transient_row*mix_hc*sizeof(float) : full_layer3_batch
++            ? transient_row*mix_hc*sizeof(float)
++            : layer3 ? 0u : transient_row*mix_hc*sizeof(float);
+         const NSUInteger token_offset =
+             (NSUInteger)tile_start*sizeof(uint32_t);
+         if (context.prefillKvRows != chunk_end ||
+@@ -47347,10 +47372,11 @@ int rust_star_metal_run_prefill_layer3_continuation_ingress(
+         const NSUInteger q_rank_bytes = (NSUInteger)rows*q_rank*sizeof(float);
+         const NSUInteger kv_bytes = (NSUInteger)rows*kv_dim*sizeof(float);
+         const NSUInteger q_bytes = (NSUInteger)rows*q_dim*sizeof(float);
+-        const NSUInteger full_q_bytes = (NSUInteger)chunk_end*q_dim*sizeof(float);
++        const uint32_t transient_base = context.prefillLayerChunkStart ? chunk_start : 0u;
++        const NSUInteger full_q_bytes = (NSUInteger)(chunk_end-transient_base)*q_dim*sizeof(float);
+         const NSUInteger full_kv_bytes = (NSUInteger)chunk_end*kv_dim*sizeof(float);
+         const NSUInteger full_split_bytes =
+-            (NSUInteger)chunk_end*mix_hc*sizeof(float);
++            (NSUInteger)(chunk_end-transient_base)*mix_hc*sizeof(float);
+         const NSUInteger full_norm_bytes =
+             (NSUInteger)4096u*n_embd*sizeof(float);
+         if (context.prefillLayer3FullQ &&
+@@ -47680,7 +47706,7 @@ int rust_star_metal_run_prefill_layer3_continuation_ingress(
+             @"failed to retain full layer-3 continuation Q/split");
+         [blit copyFromBuffer:q_buffer sourceOffset:0
+                     toBuffer:context.prefillLayer3FullQ
+-           destinationOffset:(NSUInteger)tile_start*q_dim*sizeof(float)
++           destinationOffset:(NSUInteger)(tile_start-transient_base)*q_dim*sizeof(float)
+                        size:q_bytes];
+         [blit copyFromBuffer:kv_buffer sourceOffset:0
+                     toBuffer:context.prefillLayer3FullKv
+@@ -47688,7 +47714,7 @@ int rust_star_metal_run_prefill_layer3_continuation_ingress(
+                        size:kv_bytes];
+         [blit copyFromBuffer:split_buffer sourceOffset:0
+                     toBuffer:context.prefillLayer3AttnSplit
+-           destinationOffset:(NSUInteger)tile_start*mix_hc*sizeof(float)
++           destinationOffset:(NSUInteger)(tile_start-transient_base)*mix_hc*sizeof(float)
+                        size:mix_bytes];
+         [blit copyFromBuffer:norm_buffer sourceOffset:0
+                     toBuffer:context.prefillLayer3ContinuationFullNorm
+@@ -48743,8 +48769,11 @@ int rust_star_metal_run_prefill_layer3_continuation_batch_attention(
+             ? (NSUInteger)n_head*(2u*width*sizeof(uint16_t)+
+                 (NSUInteger)rows*sizeof(uint16_t))
+             : 1u;
++        const uint32_t transient_base = context.prefillLayerChunkStart ? chunk_start : 0u;
++        if (first_position < transient_base)
++            return fail_with_message(error, error_bytes, @"query position precedes its chunk storage");
+         const NSUInteger full_q_bytes =
+-            (NSUInteger)(first_position+rows)*q_dim*sizeof(float);
++            (NSUInteger)(first_position-transient_base+rows)*q_dim*sizeof(float);
+         const NSUInteger full_kv_bytes =
+             (NSUInteger)(raw_start+raw_rows)*row_bytes;
+         const NSUInteger compressed_bytes =
+@@ -48899,7 +48928,7 @@ int rust_star_metal_run_prefill_layer3_continuation_batch_attention(
+             : context.flashNonvecNsg8Pipeline];
+         [encoder setBytes:&attention_args length:sizeof(attention_args) atIndex:0];
+         [encoder setBuffer:context.prefillLayer3FullQ
+-                     offset:(NSUInteger)first_position*q_dim*sizeof(float)
++                     offset:(NSUInteger)(first_position-transient_base)*q_dim*sizeof(float)
+                     atIndex:1];
+         [encoder setBuffer:staged_kv_buffer offset:0 atIndex:2];
+         [encoder setBuffer:staged_kv_buffer offset:0 atIndex:3];
+@@ -50785,15 +50814,17 @@ int rust_star_metal_run_prefill_layer4_continuation_boundary(
+         const NSUInteger q_rank_bytes = (NSUInteger)rows*q_rank*sizeof(float);
+         const NSUInteger kv_bytes = (NSUInteger)rows*kv_dim*sizeof(float);
+         const NSUInteger q_bytes = (NSUInteger)rows*q_dim*sizeof(float);
+-        const NSUInteger full_hc_bytes = (NSUInteger)chunk_end*hc_dim*sizeof(float);
++        const uint32_t transient_base = context.prefillLayerChunkStart ? position_start : 0u;
++        const NSUInteger transient_rows = chunk_end-transient_base;
++        const NSUInteger full_hc_bytes = transient_rows*hc_dim*sizeof(float);
+         const NSUInteger full_split_bytes =
+-            (NSUInteger)chunk_end*mix_hc*sizeof(float);
+-        const NSUInteger full_q_bytes = (NSUInteger)chunk_end*q_dim*sizeof(float);
++            transient_rows*mix_hc*sizeof(float);
++        const NSUInteger full_q_bytes = transient_rows*q_dim*sizeof(float);
+         const NSUInteger full_q_norm_bytes =
+-            (NSUInteger)chunk_end*q_rank*sizeof(float);
++            transient_rows*q_rank*sizeof(float);
+         const NSUInteger full_kv_bytes = (NSUInteger)chunk_end*kv_dim*sizeof(float);
+         const NSUInteger full_norm_bytes =
+-            (NSUInteger)chunk_end*n_embd*sizeof(float);
++            transient_rows*n_embd*sizeof(float);
+         const NSUInteger attn_projection_bytes =
+             (NSUInteger)rows*attn_width*sizeof(float);
+         const NSUInteger indexer_projection_bytes =
+@@ -51207,19 +51238,19 @@ int rust_star_metal_run_prefill_layer4_continuation_boundary(
+             @"failed to retain layer-4 continuation boundary");
+         [blit copyFromBuffer:input_hc sourceOffset:0
+                     toBuffer:context.prefillLayer4InputHc
+-           destinationOffset:(NSUInteger)position_start*hc_dim*sizeof(float)
++           destinationOffset:(NSUInteger)(position_start-transient_base)*hc_dim*sizeof(float)
+                        size:hc_bytes];
+         [blit copyFromBuffer:split_buffer sourceOffset:0
+                     toBuffer:context.prefillLayer4AttnSplit
+-           destinationOffset:(NSUInteger)position_start*mix_hc*sizeof(float)
++           destinationOffset:(NSUInteger)(position_start-transient_base)*mix_hc*sizeof(float)
+                        size:mix_bytes];
+         [blit copyFromBuffer:q_buffer sourceOffset:0
+                     toBuffer:context.prefillLayer4FullQ
+-           destinationOffset:(NSUInteger)position_start*q_dim*sizeof(float)
++           destinationOffset:(NSUInteger)(position_start-transient_base)*q_dim*sizeof(float)
+                        size:q_bytes];
+         [blit copyFromBuffer:q_norm_buffer sourceOffset:0
+                     toBuffer:context.prefillLayer4FullQNorm
+-           destinationOffset:(NSUInteger)position_start*q_rank*sizeof(float)
++           destinationOffset:(NSUInteger)(position_start-transient_base)*q_rank*sizeof(float)
+                        size:q_rank_bytes];
+         [blit copyFromBuffer:kv_buffer sourceOffset:0
+                     toBuffer:context.prefillLayer4FullKv
+@@ -51227,7 +51258,7 @@ int rust_star_metal_run_prefill_layer4_continuation_boundary(
+                        size:kv_bytes];
+         [blit copyFromBuffer:norm_buffer sourceOffset:0
+                     toBuffer:context.prefillLayer4FullNorm
+-           destinationOffset:(NSUInteger)position_start*n_embd*sizeof(float)
++           destinationOffset:(NSUInteger)(position_start-transient_base)*n_embd*sizeof(float)
+                        size:output_bytes];
+         [blit endEncoding];
+ 
+@@ -51707,7 +51738,9 @@ int rust_star_metal_bind_long_prefill_layer(void *opaque_context,
+             NSString *key = [NSString stringWithFormat:@"prefillLayer%u%@", slot, role];
+             [context setValue:state[role] forKey:key];
+         }
+-        const NSUInteger end = prefill_chunk_start(opaque_context)+4096u;
++        /* Query, normalized input and HC/split are chunk-local activations.
++         * FullKv/compressed/state buffers above retain absolute history. */
++        const NSUInteger end = 4096u;
+         NSDictionary *widths = slot == 3u ? @{@"FullQ":@32768, @"AttnSplit":@24}
+             : @{@"FullQ":@32768, @"FullQNorm":@1024, @"FullNorm":@4096, @"InputHc":@16384, @"AttnSplit":@24};
+         for (NSString *role in widths) {
+@@ -51744,7 +51777,8 @@ int rust_star_metal_finish_long_prefill_layer(void *opaque_context,
+         const NSUInteger hc_bytes = 4096ull*16384u*sizeof(float);
+         if (layer < 2u) {
+             id<MTLBuffer> hc = layer == 0u ? context.prefillLayer1InputHc : context.prefillLayer2InputHc;
+-            NSUInteger offset = (NSUInteger)prefill_chunk_start(opaque_context)*16384u*sizeof(float);
++            NSUInteger offset = context.prefillLayerChunkStart ? 0u
++                : (NSUInteger)prefill_chunk_start(opaque_context)*16384u*sizeof(float);
+             if (!hc || hc.length < offset+hc_bytes)
+                 return fail_with_message(error, error_bytes, @"bootstrap HC history is incomplete");
+             if (checksum) *checksum = fnv1a_u32_words((const uint8_t *)hc.contents+offset, hc_bytes/sizeof(float));
+@@ -51823,7 +51857,8 @@ int rust_star_metal_prepare_long_prefill_layer2_q(void *opaque_context,
+             [encoder setBytes:&q_b_args length:sizeof(q_b_args) atIndex:0];
+             [encoder setBuffer:q_b_weights offset:q_b_inner atIndex:1];
+             [encoder setBuffer:context.prefillLayer2FullQNorm
+-                        offset:(NSUInteger)continuation_start*q_rank*sizeof(float)
++                        offset:context.prefillLayerChunkStart ? 0u
++                            : (NSUInteger)continuation_start*q_rank*sizeof(float)
+                        atIndex:2];
+             [encoder setBuffer:q_batch offset:0 atIndex:3];
+             [encoder setThreadgroupMemoryLength:6144u atIndex:0];
