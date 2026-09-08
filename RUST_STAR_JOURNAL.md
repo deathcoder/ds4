@@ -18,6 +18,15 @@ Before changing code:
 Journal entries are reverse chronological. Do not edit old entries to change
 history; add a correction and update the current-state summary.
 
+## 2026-09-08 — First timed 128K pair passes; reverse order begins
+
+- AB pair 1 passes on its first attempt, with exact native transcript and
+  eligible measurement metadata. Rust/oracle prefill 1,494.551/1,079.569s;
+  steady decode 14.578/15.639 tokens/s. These are preliminary single-pair
+  observations, not the accepted five-pair summary or an optimization claim.
+- Pair 2 BA started at 19:10:50 UTC. Four pairs remain; preserve every result,
+  keep source/input pins frozen and finish independent audits/report/docs.
+
 ## 2026-09-08 — Both 128K warm-ups pass; first timed pair running
 
 - Oracle and ef37e566 fresh-process warm-ups pass on their first attempts.
