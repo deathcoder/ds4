@@ -18,6 +18,18 @@ Before changing code:
 Journal entries are reverse chronological. Do not edit old entries to change
 history; add a correction and update the current-state summary.
 
+## 2026-09-08 — Memory comparison checkpoint: three valid pairs
+
+- Both warmups and the first three pairs passed transcript checks; pair 4 is
+  active. No retries or invalid attempts. Preliminary RSS savings are 7.742,
+  7.750 and 7.685GiB; paired prefill ratios .82750 / .84325 / .82028, steady
+  decode ratios .99695 / .98824 / 1.03353. These are partial results, not the
+  final acceptance decision. Complete five pairs and the separate profile.
+- Runtime and frozen input/acceptance manifests remain unchanged. Report tools
+  are prepared in memory-prefill-final/. After measurement, independently audit,
+  calculate the bounded-scope capacity estimate, record host conditions, render
+  and verify portable evidence, update current documentation, commit and stop.
+
 ## 2026-09-08 — All memory gates and allocation preflight pass; paired study frozen
 
 - All seven de6d2c11 gates pass, with 287 native tails / 2,583 valid component
