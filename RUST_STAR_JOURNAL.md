@@ -18,6 +18,26 @@ Before changing code:
 Journal entries are reverse chronological. Do not edit old entries to change
 history; add a correction and update the current-state summary.
 
+## 2026-09-08 — Bootstrap candidate built; direct Rust comparison planned
+
+- Frozen candidate 912fae1ebbd641fd8edaf4e9f6b26249737775b0, tree
+  8cb3b90da6fc288137efa13d1ef6eb4d84e671c2, executable SHA
+  adea36df8200ae6c99f4b549faebcf90fd01f9da34207dc0add562180cf713c4.
+  All 312 Rust tests and release build pass. Native 12K live control is running;
+  exact prefix rebuild has passed through layer 37 at this checkpoint.
+- Frozen/hash-checked the accepted restored Rust executable before candidate
+  build replaced the target path. accepted-build.json records its provenance.
+- For a more controlled optimization decision, run five alternating paired
+  comparisons against that accepted Rust runtime in the same session, with two
+  warmups and all attempts retained. The runner's generic oracle slot will hold
+  the accepted Rust comparator, explicitly labelled; oracle-v5 remains the
+  separate unchanged full-output correctness reference. Do not present this
+  study as a new Rust-versus-DwarfStar measurement.
+- Predeclare lower median paired prefill latency and improvement in at least
+  four of five pairs; review decode distributions for a material regression.
+  Full C0/lifecycle/profile gates precede the paired block. No runtime edits or
+  builds during measurements. Stop after this milestone's report and decision.
+
 ## 2026-09-08 — Scoped bootstrap and rejected-counter diagnostics implemented
 
 - Independent Metal probe: 256 commands, nine dependent encoders each, four
@@ -3140,6 +3160,11 @@ Next:
 
 ### Current resume checkpoint (updated 2026-09-08)
 
+- Active milestone: diagnosable counter failures and scoped initial bootstrap.
+  Candidate 912fae1e passes 312 tests/build; seven live gates are running from
+  rust-star/.work/counter-bootstrap-94565861/. Then perform a clearly labelled
+  same-session Rust-to-Rust paired comparison; oracle-v5 remains the C0 target.
+  User authorized this next milestone after the prior stop. Finish it and stop.
 - Dense-Q8 candidate 92ca3ef3 is rejected and reverted after seven passing live
   gates and five valid pairs. Paired prefill ratio 2.01485 versus baseline 1.72589;
   Rust/reference medians 351.974/176.897 s. One host-interrupted pair is preserved
@@ -3933,11 +3958,10 @@ Next:
 
 ## Immediate Next Actions
 
-1. This milestone is complete. STOP and recap the burn period; do not start
-   a new milestone in this session.
-   Proposed next work: improve invalid-counter diagnostics; then review and
-   validate the unapplied layers-0..2 bootstrap draft while retaining the exact
-   later prefix rebuild. User controls the next milestone start.
+1. Complete the active bootstrap/counter-diagnostic milestone: seven live gates,
+   audited profile coverage, direct paired comparison against accepted Rust,
+   report/retention decision and final journal/docs. Diagnose actual failures
+   without relaxing C0 or discarding attempts. Stop after this milestone.
 2. Keep oracle-v5 and historical fixtures/reports immutable. Internal targets
    are accepted through 24K; full 32K prefill/128-decode C0 remains mandatory.
 3. Broader contexts, 256K headline work and the coding-agent corpus remain future.
