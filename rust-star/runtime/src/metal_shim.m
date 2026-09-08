@@ -4732,6 +4732,17 @@ int rust_star_metal_run_prefill_layer0_boundary(
             attn_compressor_width = 1024, attn_compressor_head = 512,
             indexer_compressor_width = 256, indexer_compressor_head = 128,
         };
+        // Native continuation retains history only for KV/compressor state.
+        // HC and normalized inputs are consumed within the current 4K chunk.
+        const NSUInteger bootstrap_base = context.prefillLayerChunkStart
+            ? context.prefillLayerChunkStart.unsignedIntValue : 0u;
+        const NSUInteger bootstrap_rows = context.prefillLayerChunkStart
+            ? 4096u : prefill_rows;
+        if (position_start < bootstrap_base ||
+            (NSUInteger)position_start-bootstrap_base+rows > bootstrap_rows)
+            return fail_with_message(error, error_bytes,
+                @"bootstrap transient rows exceed the active chunk");
+        const NSUInteger bootstrap_row = (NSUInteger)position_start-bootstrap_base;
         const uint32_t compressor_rows = prefill_rows/compressor_ratio;
         const uint32_t compressor_tile_rows = rows/compressor_ratio;
         const NSUInteger row_tiles = (rows+31u)/32u;
@@ -4836,17 +4847,17 @@ int rust_star_metal_run_prefill_layer0_boundary(
             RUST_STAR_GROW_PREFILL_BUFFER(prefillLayer1FullKv,
                 full_kv_bytes, @"layer-1 full KV");
             RUST_STAR_GROW_PREFILL_BUFFER(prefillLayer1InputHc,
-                prefill_rows*hc_dim*sizeof(float), @"layer-1 input HC");
+                bootstrap_rows*hc_dim*sizeof(float), @"layer-1 input HC");
             RUST_STAR_GROW_PREFILL_BUFFER(prefillLayer2FullKv,
                 full_kv_bytes, @"layer-2 full KV");
             RUST_STAR_GROW_PREFILL_BUFFER(prefillLayer2FullQNorm,
-                prefill_rows*q_rank*sizeof(float), @"layer-2 Q norm");
+                bootstrap_rows*q_rank*sizeof(float), @"layer-2 Q norm");
             RUST_STAR_GROW_PREFILL_BUFFER(prefillLayer2FullAttnNorm,
-                prefill_rows*n_embd*sizeof(float), @"layer-2 attention norm");
+                bootstrap_rows*n_embd*sizeof(float), @"layer-2 attention norm");
             RUST_STAR_GROW_PREFILL_BUFFER(prefillLayer2InputHc,
-                prefill_rows*hc_dim*sizeof(float), @"layer-2 input HC");
+                bootstrap_rows*hc_dim*sizeof(float), @"layer-2 input HC");
             RUST_STAR_GROW_PREFILL_BUFFER(prefillLayer2AttnSplit,
-                prefill_rows*mix_hc*sizeof(float), @"layer-2 attention split");
+                bootstrap_rows*mix_hc*sizeof(float), @"layer-2 attention split");
             RUST_STAR_GROW_PREFILL_BUFFER(prefillLayer2Tokens,
                 prefill_rows*sizeof(uint32_t), @"layer-2 tokens");
             RUST_STAR_GROW_PREFILL_BUFFER(prefillLayer2AttnCompressed,
@@ -5062,7 +5073,7 @@ int rust_star_metal_run_prefill_layer0_boundary(
             } else {
                 RUST_STAR_NEW_L1_BUFFER(next_full_kv_buffer, full_kv_bytes);
                 RUST_STAR_NEW_L1_BUFFER(layer1_input_hc_buffer,
-                    prefill_rows*hc_dim*sizeof(float));
+                    bootstrap_rows*hc_dim*sizeof(float));
             }
             RUST_STAR_NEW_L1_BUFFER(next_full_kv_half_buffer,
                 prefill_rows*kv_dim*sizeof(uint16_t));
@@ -5112,13 +5123,13 @@ int rust_star_metal_run_prefill_layer0_boundary(
                 } else {
                     RUST_STAR_NEW_L2_BUFFER(layer2_full_kv_buffer, full_kv_bytes);
                     RUST_STAR_NEW_L2_BUFFER(layer2_full_q_norm_buffer,
-                        prefill_rows*q_rank*sizeof(float));
+                        bootstrap_rows*q_rank*sizeof(float));
                     RUST_STAR_NEW_L2_BUFFER(layer2_full_attn_norm_buffer,
-                        prefill_rows*n_embd*sizeof(float));
+                        bootstrap_rows*n_embd*sizeof(float));
                     RUST_STAR_NEW_L2_BUFFER(layer2_input_hc_buffer,
-                        prefill_rows*hc_dim*sizeof(float));
+                        bootstrap_rows*hc_dim*sizeof(float));
                     RUST_STAR_NEW_L2_BUFFER(layer2_attn_split_buffer,
-                        prefill_rows*mix_hc*sizeof(float));
+                        bootstrap_rows*mix_hc*sizeof(float));
                     RUST_STAR_NEW_L2_BUFFER(layer2_tokens_buffer,
                         prefill_rows*sizeof(uint32_t));
                 }
@@ -6722,19 +6733,19 @@ int rust_star_metal_run_prefill_layer0_boundary(
                    destinationOffset:full_kv_prefix_bytes size:kv_bytes];
                 [blit copyFromBuffer:layer2_q_norm_buffer sourceOffset:0
                             toBuffer:layer2_full_q_norm_buffer
-                   destinationOffset:(NSUInteger)position_start*q_rank*sizeof(float)
+                   destinationOffset:bootstrap_row*q_rank*sizeof(float)
                                 size:q_rank_bytes];
                 [blit copyFromBuffer:layer2_norm_buffer sourceOffset:0
                             toBuffer:layer2_full_attn_norm_buffer
-                   destinationOffset:(NSUInteger)position_start*n_embd*sizeof(float)
+                   destinationOffset:bootstrap_row*n_embd*sizeof(float)
                                 size:attn_bytes];
                 [blit copyFromBuffer:after_ffn_hc_buffer sourceOffset:0
                             toBuffer:layer1_input_hc_buffer
-                   destinationOffset:(NSUInteger)position_start*hc_dim*sizeof(float)
+                   destinationOffset:bootstrap_row*hc_dim*sizeof(float)
                                 size:hc_bytes];
                 [blit copyFromBuffer:next_after_ffn_hc_buffer sourceOffset:0
                             toBuffer:layer2_input_hc_buffer
-                   destinationOffset:(NSUInteger)position_start*hc_dim*sizeof(float)
+                   destinationOffset:bootstrap_row*hc_dim*sizeof(float)
                                 size:hc_bytes];
                 if (transition_diagnostics_buffer) {
 #define RUST_STAR_COPY_TRANSITION_ROW(source, source_offset, destination_offset, bytes) \
@@ -6806,7 +6817,7 @@ int rust_star_metal_run_prefill_layer0_boundary(
                 }
                 [blit copyFromBuffer:layer2_split_buffer sourceOffset:0
                             toBuffer:layer2_attn_split_buffer
-                   destinationOffset:(NSUInteger)position_start*mix_hc*sizeof(float)
+                   destinationOffset:bootstrap_row*mix_hc*sizeof(float)
                                 size:mix_bytes];
                 [blit copyFromBuffer:token_buffer sourceOffset:0
                             toBuffer:layer2_tokens_buffer
@@ -45822,8 +45833,10 @@ int rust_star_metal_run_prefill_layer2_continuation_sparse_tile(
             sinks_offset, sinks_bytes, tile_start,
             context.prefillLayer2ContinuationQ,
             prefill_chunk_start(opaque_context),
-            context.prefillLayer2FullQNorm, 0u,
-            context.prefillLayer2FullAttnNorm, 0u,
+            context.prefillLayer2FullQNorm,
+            context.prefillLayerChunkStart ? prefill_chunk_start(opaque_context) : 0u,
+            context.prefillLayer2FullAttnNorm,
+            context.prefillLayerChunkStart ? prefill_chunk_start(opaque_context) : 0u,
             context.prefillLayer2FullKv,
             context.prefillLayer2AttnCompressed,
             context.prefillLayer2IndexerCompressed,
@@ -46393,13 +46406,13 @@ int rust_star_metal_run_prefill_layer2_continuation_tail(
             production_layer5_prefix ? 0u : tile_start-chunk_start;
         const NSUInteger heads_offset = full_layer3_batch
             ? (NSUInteger)continuation_row*q_dim*sizeof(float) : 0u;
-        const NSUInteger transient_row = native_chunk && layer_index >= 3u
+        const NSUInteger transient_row = native_chunk && layer_index >= 2u
             ? tile_start-chunk_start : tile_start;
         const NSUInteger input_hc_offset = layer5
             ? 0u : layer4
             ? transient_row*hc_row_bytes : full_layer3_batch
             ? (NSUInteger)continuation_row*hc_row_bytes
-            : layer3 ? 0u : (NSUInteger)tile_start*hc_row_bytes;
+            : layer3 ? 0u : transient_row*hc_row_bytes;
         const NSUInteger split_offset = production_layer5_prefix
             ? 0u : layer5
             ? transient_row*mix_hc*sizeof(float) : layer4
@@ -51764,7 +51777,8 @@ int rust_star_metal_finish_long_prefill_layer(void *opaque_context,
         const NSUInteger hc_bytes = 4096ull*16384u*sizeof(float);
         if (layer < 2u) {
             id<MTLBuffer> hc = layer == 0u ? context.prefillLayer1InputHc : context.prefillLayer2InputHc;
-            NSUInteger offset = (NSUInteger)prefill_chunk_start(opaque_context)*16384u*sizeof(float);
+            NSUInteger offset = context.prefillLayerChunkStart ? 0u
+                : (NSUInteger)prefill_chunk_start(opaque_context)*16384u*sizeof(float);
             if (!hc || hc.length < offset+hc_bytes)
                 return fail_with_message(error, error_bytes, @"bootstrap HC history is incomplete");
             if (checksum) *checksum = fnv1a_u32_words((const uint8_t *)hc.contents+offset, hc_bytes/sizeof(float));
@@ -51843,7 +51857,8 @@ int rust_star_metal_prepare_long_prefill_layer2_q(void *opaque_context,
             [encoder setBytes:&q_b_args length:sizeof(q_b_args) atIndex:0];
             [encoder setBuffer:q_b_weights offset:q_b_inner atIndex:1];
             [encoder setBuffer:context.prefillLayer2FullQNorm
-                        offset:(NSUInteger)continuation_start*q_rank*sizeof(float)
+                        offset:context.prefillLayerChunkStart ? 0u
+                            : (NSUInteger)continuation_start*q_rank*sizeof(float)
                        atIndex:2];
             [encoder setBuffer:q_batch offset:0 atIndex:3];
             [encoder setThreadgroupMemoryLength:6144u atIndex:0];

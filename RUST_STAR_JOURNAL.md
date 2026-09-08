@@ -18,6 +18,20 @@ Before changing code:
 Journal entries are reverse chronological. Do not edit old entries to change
 history; add a correction and update the current-state summary.
 
+## 2026-09-08 — Allocation tranche passed; bootstrap transient scope completed
+
+- Candidate 8b511b5f passed 312 release tests/build and the native 12K internal
+  allocation/offset control (154.772s). Evidence remains in memory-prefill-291eb611/;
+  this preliminary gate is not full 32K acceptance.
+- Extended the same chunk-relative contract to bootstrap layer-1/2 HC, layer-2
+  Q normalization, attention normalization and split buffers. Updated producer
+  offsets, Q/sparse/tail consumers and layer HC checksums together. KV, compressed
+  state and token histories retain absolute addressing; legacy controls retain
+  their original layout. Native bootstrap rejects rows outside its active chunk.
+- Freeze the combined candidate for all seven correctness/lifecycle/profile gates
+  in memory-prefill-final/. Measured memory/performance and 128K capacity preflight
+  are still outstanding; no memory or speed result is claimed yet.
+
 ## 2026-09-08 — Memory scope candidate implemented; validation next
 
 - Partial bootstrap wraps only 16 execution weights plus two indexer weights,
