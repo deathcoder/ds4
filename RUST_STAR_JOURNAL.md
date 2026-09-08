@@ -18,6 +18,29 @@ Before changing code:
 Journal entries are reverse chronological. Do not edit old entries to change
 history; add a correction and update the current-state summary.
 
+## 2026-09-08 — All bootstrap gates pass; frozen Rust-to-Rust pairs begin
+
+- Candidate 912fae1e passes all seven live gates: 12K internal, detailed 8K,
+  complete 2K, 32K normal output, 32K internal/full output, two retained cycles,
+  and 32K profiled full output. All 129,280 prefill and 16,547,840 decode words
+  match oracle-v5 on each full-output gate. Internal targets remain accepted
+  only through 24K; retained cycles establish transcript/reset correctness.
+- Profile audit passes: 1,483 parent rows, 287 native tails and 2,583 ordered,
+  valid component intervals. Initial scope is 0..2 exactly once; prefix layers
+  3..42 appear exactly once. The initial-bootstrap diagnostic GPU span is 5.151s;
+  do not turn this instrumented phase observation into a throughput claim.
+- Final-source independent counter probe: 256 commands, zero wrong GPU words,
+  counter errors, zero/backward spans, or touching/overlapping boundaries.
+  Source/build/output hashes are in counter-probe-final-provenance.json. The
+  earlier failure remains unexplained; strict validity is unchanged.
+- Model and prompt were rehashed; both frozen executable identities verified.
+  The declared acceptance criteria and measurement-tool hashes are bound into
+  the correctness manifest and plan. Work:
+  rust-star/.work/paired-rust-bootstrap-912fae1e/. The generic oracle slot is
+  accepted Rust 94565861, not the unchanged C0 oracle-v5. Both warmups and five
+  AB/BA pairs run sequentially, then one isolated profile. No runtime edits,
+  builds, or other model workloads during this block. Preserve every attempt.
+
 ## 2026-09-08 — Scoped bootstrap passes first complete 32K output gate
 
 - 12K internal, detailed 8K and complete 2K controls pass. The first normal
@@ -3176,10 +3199,10 @@ Next:
 ### Current resume checkpoint (updated 2026-09-08)
 
 - Active milestone: diagnosable counter failures and scoped initial bootstrap.
-  Candidate 912fae1e passes 312 tests/build and the 12K/8K/2K live controls;
-  the remaining full-output/lifecycle/profile gates are running from
-  rust-star/.work/counter-bootstrap-94565861/. Then perform a clearly labelled
-  same-session Rust-to-Rust paired comparison; oracle-v5 remains the C0 target.
+  Candidate 912fae1e passes 312 tests/build, all seven live gates and both
+  component/probe audits. Frozen paired work is now running in
+  rust-star/.work/paired-rust-bootstrap-912fae1e/ against accepted Rust 94565861.
+  Oracle-v5 remains the separate C0 target; no performance decision yet.
   User authorized this next milestone after the prior stop. Finish it and stop.
 - Dense-Q8 candidate 92ca3ef3 is rejected and reverted after seven passing live
   gates and five valid pairs. Paired prefill ratio 2.01485 versus baseline 1.72589;
