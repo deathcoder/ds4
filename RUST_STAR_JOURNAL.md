@@ -3627,10 +3627,11 @@ Next:
   on stale context/token guards; the error is reproduced by a host regression.
   Corrected ef37e566 passes 317 Rust tests, 94 unchanged Python tests and build.
   Work: rust-star/.work/measure128-writer-fix/. Input hashes pass and full 128K
-  C0 and corrected retained 128K now pass. Four remaining shorter/profile/
-  lifecycle gates and their audit precede the five-pair campaign. Earlier failed evidence
-  is retained in measure128-43bf0dfa/ and copied under the new work's rejected/.
-  No paired measurements have started; stop after final evidence/docs acceptance.
+  C0, retained 128K and all four shorter/profile/lifecycle gates pass, as does
+  the strict audit. Frozen five-pair campaign paired-128k-ef37e566 is running
+  after rehashing inputs; one warm-up per engine precedes timed AB/BA pairs.
+  Earlier failed evidence is copied under the new work's rejected/. Stop after
+  all five pairs, final evidence audit and documentation acceptance.
 
 - 128K correctness milestone COMPLETE and retained at candidate 0eb484ea.
   314 tests/build, six repeated oracle captures and all eleven native checks
