@@ -3334,7 +3334,10 @@ Next:
   Report: rust-star/reports/32k-bootstrap-912fae1e/README.md (403 verified artifacts).
   Oracle-v5 remains the C0 target; latest Rust-versus-DwarfStar result is unchanged.
   This baseline is complete. The next memory-efficient prefill milestone is
-  now authorized; its source/lifetime audit is active.
+  now active: combined candidate de6d2c11 passed 312 tests/build and its
+  native 12K internal gate. Remaining live gates run sequentially in
+  rust-star/.work/memory-prefill-final/, followed by allocation preflight and
+  five frozen Rust-to-Rust pairs if every gate passes. Source remains frozen.
 - Dense-Q8 candidate 92ca3ef3 is rejected and reverted after seven passing live
   gates and five valid pairs. Paired prefill ratio 2.01485 versus baseline 1.72589;
   Rust/reference medians 351.974/176.897 s. One host-interrupted pair is preserved

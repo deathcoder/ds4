@@ -373,8 +373,9 @@ independent probe pass. The earlier rare counter failure remains unexplained.
 The rejected dense-Q8 experiment remains immutable negative evidence in
 `rust-star/reports/32k-dense-output-92ca3ef3/README.md`.
 
-Recommended next milestone, not yet started: bound temporary prefill storage to
-the active chunk and complete bootstrap allocation specialization. Preserve
+Active authorized milestone: bound temporary prefill storage to the active
+chunk and complete bootstrap allocation specialization. Candidate de6d2c11 is
+implemented and undergoing the final gates; acceptance is still pending. Preserve
 all exact 32K/128 and shorter/lifecycle gates, measure peak memory and paired
 latency against the accepted Rust build, then establish 128K capacity readiness.
 A capacity preflight is separate from a repeated 128K oracle capture and full
