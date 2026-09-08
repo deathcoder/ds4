@@ -2,8 +2,8 @@
   "schema": "rust-star-artifact-hashes-v1",
   "artifacts": {
     "README.md": {
-      "sha256": "f2281a6bc58a4e4666c89c203e2d505dbaeac2cf8ec633b0d48f6973fec6b1cb",
-      "bytes": 6778
+      "sha256": "906a2f42e238c0344fd8a055e645b7fdfe049dbcc9119c4005bd4bbecafde3ee",
+      "bytes": 6777
     },
     "accepted-build.json": {
       "sha256": "c7fe2fad98e2b99ae85010ea439621d36fd13e3c8ad4d2ba13c4902329e6f585",

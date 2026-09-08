@@ -20,7 +20,7 @@ Prefill ratios below 1 are faster; decode throughput ratios above 1 are faster.
 | 4 | BA | 273.573 | 299.536 | 0.91332 | 1.00516 |
 | 5 | AB | 285.216 | 303.413 | 0.94002 | 0.98001 |
 
-Prefill dispersion (median absolute deviation; minimum–maximum): candidate 0.379s; 271.753–285.216s. baseline 3.034s; 294.871–303.413s. 
+Prefill dispersion (median absolute deviation; minimum–maximum): candidate 0.379s; 271.753–285.216s. baseline 3.034s; 294.871–303.413s.
 
 The separate post-paired profile passed transcript validation and interval accounting: 1,483 parent rows and 2,583 component rows. Its initial-bootstrap GPU span was 5.129s. These are diagnostic measurements, separate from the timed pairs.
 
