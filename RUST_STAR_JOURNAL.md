@@ -18,6 +18,20 @@ Before changing code:
 Journal entries are reverse chronological. Do not edit old entries to change
 history; add a correction and update the current-state summary.
 
+## 2026-09-08 — All six gates pass; 128K paired campaign frozen
+
+- Corrected candidate ef37e566 passes all six live gates and strict lifecycle
+  audit: full 128K C0, retained 128K, 32K output, 2K output, retained 32K,
+  and profiled 32K. Component audit accepts 287 tails / 2,583 intervals.
+- Reverified model, prompt, oracle binary/source and frozen candidate sources.
+  Five alternating fresh-process pairs plus one warm-up per engine started at
+  17:43 UTC. Plan SHA-256:
+  a9b8630fc3be1f1c6dde16cef79b6bc54598337fd231e36b0be5863b4dcfc1e8.
+  Work: rust-star/.work/paired-128k-ef37e566/.
+- Runtime and measurement tools remain frozen. No paired result yet; preserve
+  every attempt and the earlier rejected writer run. Final evidence audit,
+  portable report and documentation remain required before completion.
+
 ## 2026-09-08 — Corrected retained 128K lifecycle passes
 
 - ef37e566 completes both 128K/128 transcripts and serializes the lifecycle
