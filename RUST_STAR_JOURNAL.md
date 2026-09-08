@@ -18,6 +18,17 @@ Before changing code:
 Journal entries are reverse chronological. Do not edit old entries to change
 history; add a correction and update the current-state summary.
 
+## 2026-09-08 — Measurement candidate passes complete fresh 128K C0
+
+- Frozen 5f3b9672 passes every 128K prefill word and all 128 full-logit decode
+  rows against the unchanged repeated oracle-v5 reference. JSON/checksums match
+  the prior accepted native result exactly. No failures or retries.
+- Timed retained 128K two-cycle execution is active. Remaining 32K output,
+  2K, retained 32K and profiled 32K controls follow, then a strict lifecycle
+  audit and the predeclared five-pair fresh-process comparison with two warm-ups.
+- Work/queue/evidence: rust-star/.work/measure128-43bf0dfa/. Keep runtime source
+  frozen through the campaign. No paired result or retained 128K claim yet.
+
 ## 2026-09-08 — Timed 128K path implemented; frozen build next
 
 - Imported verified prompt/selection-only fixture measurement-131072-v5 from
@@ -3561,8 +3572,9 @@ Next:
 - ACTIVE: authorized 128K measurement/retained-engine milestone at 43bf0dfa.
   Candidate 5f3b9672 passes 315 Rust tests, 94 Python tests and release build.
   Work: rust-star/.work/measure128-43bf0dfa/. Frozen live validation is queued
-  after passing model/oracle/input rehash; the full 128K C0 run is active.
-  Paired measurements wait for gate and lifecycle-audit acceptance.
+  after passing model/oracle/input rehash. Full 128K C0 now passes; retained
+  128K two-cycle measurement is active, then shorter controls. Paired
+  measurements wait for gate and lifecycle-audit acceptance.
 
 - 128K correctness milestone COMPLETE and retained at candidate 0eb484ea.
   314 tests/build, six repeated oracle captures and all eleven native checks
