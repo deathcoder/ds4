@@ -18,6 +18,21 @@ Before changing code:
 Journal entries are reverse chronological. Do not edit old entries to change
 history; add a correction and update the current-state summary.
 
+## 2026-09-08 — 128K measurement and retained-engine milestone started
+
+- User authorized the next milestone at 43bf0dfa on agent/rust-star-bootstrap.
+  Work: rust-star/.work/measure128-43bf0dfa/. Preserve prior correctness evidence.
+- Import the verified 128K prompt/129-selection transcript with explicit
+  provenance; extend fresh and retained timed execution without output capture.
+  Preserve diagnostic guards, timing/sampling/residency contracts and oracle-v5.
+- Acceptance: host tests/build, fresh 128K full-logit C0, timed fresh/retained
+  128K transcript and reset/residency checks, shorter 2K/32K regressions, then
+  five alternating fresh-process 128K pairs with one warm-up per engine.
+  Record warmed memory, first-step/prefill/decode distributions and host state.
+- No required speedup; negative results remain valid characterization. Freeze
+  candidate/inputs before timing, stop on failures and preserve every attempt.
+  Finish portable evidence/docs and stop at this milestone; no quota burning.
+
 ## 2026-09-08 — 128K correctness milestone COMPLETE and retained
 
 - Candidate 0eb484ea: 314 tests and release build pass. All six fresh unchanged
@@ -3531,6 +3546,10 @@ Next:
 
 ### Current resume checkpoint (updated 2026-09-08)
 
+- ACTIVE: authorized 128K measurement/retained-engine milestone at 43bf0dfa.
+  Scope and acceptance are in the newest journal entry. Implementation begins
+  in rust-star/.work/measure128-43bf0dfa/; no new timings or candidate yet.
+
 - 128K correctness milestone COMPLETE and retained at candidate 0eb484ea.
   314 tests/build, six repeated oracle captures and all eleven native checks
   pass, including two full 128K/128 C0 runs. Profile audit 287 tails/2,583 rows;
@@ -4353,10 +4372,10 @@ Next:
 
 ## Immediate Next Actions
 
-1. Stop: the authorized 128K correctness milestone is complete. Full evidence
-   and scope are in rust-star/reports/128k-c0-0eb484ea/README.md. No active runs
-   or required follow-up remain for this milestone; no usage-burning mode.
-2. Proposed next milestone, not started: extend measurement and retained-engine
+1. Complete the authorized 128K measurement/retained-engine milestone, following
+   the newest entry: frozen candidate, full C0/regressions, retained validation,
+   five pinned pairs, portable report/docs. Stop afterward; no usage burning.
+2. Extend measurement and retained-engine
    protocol to 128K, validate lifecycle reuse at that frontier, then compare
    performance and warmed memory against the pinned oracle with a paired plan.
 3. Keep oracle-v5 and historical evidence immutable. Full 32K/128 C0 remains
