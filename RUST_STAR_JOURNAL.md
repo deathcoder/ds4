@@ -18,6 +18,17 @@ Before changing code:
 Journal entries are reverse chronological. Do not edit old entries to change
 history; add a correction and update the current-state summary.
 
+## 2026-09-08 — Two timed 128K pairs pass; pair 3 starts
+
+- AB and BA pairs both pass on first attempts. Pair 2 Rust/oracle prefill
+  1,536.733/1,133.219s; steady decode 14.190/14.602 tokens/s. All native
+  timed transcripts remain exact. These are interim results; three pairs remain.
+- Pair 3 AB is active. Current host observations report no thermal/performance
+  warnings and stable swap 42.19MiB. No retries, source or plan changes.
+- Passive timing in pair 1 assigns about 86% of native prefill wall time to the
+  remaining transformer chain. A future 128K profile should identify its dominant
+  stages before selecting an optimization; no next milestone is started.
+
 ## 2026-09-08 — First timed 128K pair passes; reverse order begins
 
 - AB pair 1 passes on its first attempt, with exact native transcript and
