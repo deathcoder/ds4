@@ -93,6 +93,22 @@ class RustStarMeasurementTests(unittest.TestCase):
         self.assertIsNone(metrics["kvcache_bytes"])
         self.assertAlmostEqual(metrics["gen_steady_tps"], 127_000 / 6940)
 
+    def test_128k_run_preserves_context_and_rejects_profile_collection(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "engine-run.json"
+            run = engine_run()
+            run["context"] = 131072
+            run["metrics"].update(ctx_tokens=131072, prefill_tokens=131072,
+                                  prefill_tps=131072 * 1000 / 20000)
+            path.write_text(json.dumps(run))
+            self.assertEqual(parse_engine_run(path, context=131072, gen_tokens=128)["ctx_tokens"], 131072)
+            with self.assertRaises(MeasurementError):
+                parse_engine_run(path, context=32768, gen_tokens=128)
+            run["timing"]["prefill_correctness_collection"] = True
+            path.write_text(json.dumps(run))
+            with self.assertRaises(MeasurementError):
+                parse_engine_run(path, context=131072, gen_tokens=128)
+
     def test_ineligible_engine_run_is_rejected_with_blocker(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             path = Path(temporary) / "engine-run.json"

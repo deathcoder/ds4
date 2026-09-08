@@ -857,8 +857,14 @@ fn run_long_prefill_with_reference(
     collect_profile: bool,
     reference: Option<&crate::frontier_reference::FrontierReference>,
 ) -> Result<(Context, LongPrefillChunkProbeReport, NativePrefillTiming)> {
+    // Only the pinned 128K timing path bypasses the built-in diagnostic limit.
+    let extended_measurement = frontier == 131072 && !collect_checks && !validate_outputs;
     if frontier < 12288
-        || frontier > if reference.is_some() { 131072 } else { 32768 }
+        || frontier > if reference.is_some() || extended_measurement {
+            131072
+        } else {
+            32768
+        }
         || frontier % 4096 != 0
     {
         return Err(Error::invalid(
@@ -876,6 +882,14 @@ fn run_long_prefill_with_reference(
         (
             reference.tokens.clone(),
             reference.logits[..129280].to_vec(),
+        )
+    } else if extended_measurement {
+        (
+            decode_u32_fixture(
+                include_bytes!("../../fixtures/measurement-131072-v5/prompt.u32le.bin"),
+                "128K measurement prompt",
+            )?,
+            Vec::new(),
         )
     } else if validate_outputs {
         prefill_frontier_32768_fixture()?

@@ -70,6 +70,27 @@ impl FrontierReference {
 mod tests {
     use super::*;
     #[test]
+    fn measurement_128k_fixture_extends_exact_32k_prefix() {
+        let prompt = include_bytes!("../../fixtures/measurement-131072-v5/prompt.u32le.bin");
+        let selected = include_bytes!("../../fixtures/measurement-131072-v5/selected.u32le.bin");
+        assert_eq!(prompt.len(), 131072 * 4);
+        assert_eq!(
+            &prompt[..32768 * 4],
+            include_bytes!("../../fixtures/prefill-frontier-32768-v5/token-ids.u32le.bin")
+        );
+        assert_eq!(selected.len(), 129 * 4);
+        assert_eq!(u32::from_le_bytes(selected[..4].try_into().unwrap()), 1110);
+        assert_eq!(
+            u32::from_le_bytes(selected[128 * 4..].try_into().unwrap()),
+            2945
+        );
+        assert!(prompt
+            .chunks_exact(4)
+            .chain(selected.chunks_exact(4))
+            .all(|v| u32::from_le_bytes(v.try_into().unwrap()) < 129280));
+    }
+
+    #[test]
     fn rejects_invalid_frontier_and_partial_words() {
         assert!(FrontierReference::from_bytes(&[0], &[], &[]).is_err());
         for n in [0, 32767, 32769, 131073] {

@@ -18,6 +18,18 @@ Before changing code:
 Journal entries are reverse chronological. Do not edit old entries to change
 history; add a correction and update the current-state summary.
 
+## 2026-09-08 — Timed 128K path implemented; frozen build next
+
+- Imported verified prompt/selection-only fixture measurement-131072-v5 from
+  the prior repeated C0 report, with hashes/provenance. Timed native prefill now
+  accepts exactly 128K in addition to 2K/32K; diagnostic limits stay explicit.
+  Fresh/retained engine cycles use the pinned 129-selection transcript.
+- No Metal arithmetic changes. Sampling, timers, residency charge/reset and
+  collection-disabled eligibility remain unchanged. Added portable fixture
+  coverage and a 128K adapter acceptance/rejection test; all 13 adapter tests pass.
+- Format pass also normalizes existing formatting in recently touched Rust
+  regions. Freeze and build before native gates. No new live/model timing yet.
+
 ## 2026-09-08 — 128K measurement and retained-engine milestone started
 
 - User authorized the next milestone at 43bf0dfa on agent/rust-star-bootstrap.

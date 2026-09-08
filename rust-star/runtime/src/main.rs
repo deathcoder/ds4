@@ -153,18 +153,34 @@ fn run() -> Result<()> {
             println!("usage: rust-star long-prefill-reference-probe MODEL.gguf TOKENS.u32le SELECTED.u32le LOGITS.f32le REPORT.json\nCompares every output word with external reference vectors through 128K. Oracle provenance must be verified separately; this is not a throughput command.");
             return Ok(());
         }
-        if args.len() != 5 { return Err(Error::invalid("expected model, prompt tokens, selected tokens, full logits and report paths")); }
-        if Path::new(&args[4]).exists() { return Err(Error::invalid("reference report already exists")); }
+        if args.len() != 5 {
+            return Err(Error::invalid(
+                "expected model, prompt tokens, selected tokens, full logits and report paths",
+            ));
+        }
+        if Path::new(&args[4]).exists() {
+            return Err(Error::invalid("reference report already exists"));
+        }
         let reference = rust_star_runtime::frontier_reference::FrontierReference::from_bytes(
-            &std::fs::read(&args[1])?, &std::fs::read(&args[2])?, &std::fs::read(&args[3])?)?;
+            &std::fs::read(&args[1])?,
+            &std::fs::read(&args[2])?,
+            &std::fs::read(&args[3])?,
+        )?;
         let model = MappedModel::open(Path::new(&args[0]))?;
         validate_resident_q2(model.gguf())?;
-        let report = rust_star_runtime::metal::run_long_prefill_reference_probe(&model, &reference)?;
-        let mut file = std::fs::OpenOptions::new().write(true).create_new(true).open(&args[4])?;
+        let report =
+            rust_star_runtime::metal::run_long_prefill_reference_probe(&model, &reference)?;
+        let mut file = std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&args[4])?;
         writeln!(file, "{{\"schema\":\"rust-star-external-frontier-check-v1\",\"frontier_tokens\":{},\"checked_logits\":{},\"checked_decode_steps\":{},\"prefill_logits_checksum\":{},\"decode_logits_checksum\":{},\"decode_tokens_checksum\":{},\"selected_token\":{},\"external_reference_match\":true,\"oracle_provenance_verified_by_runtime\":false,\"throughput_claim\":false}}",
             report.frontier,report.checked_logits,report.checked_decode_steps,report.logits_checksum,
             report.decode_logits_checksum,report.decode_tokens_checksum,report.selected_token)?;
-        println!("external frontier {}: all {} prefill logits and {} full decode rows exact",report.frontier,report.checked_logits,report.checked_decode_steps);
+        println!(
+            "external frontier {}: all {} prefill logits and {} full decode rows exact",
+            report.frontier, report.checked_logits, report.checked_decode_steps
+        );
         return Ok(());
     }
     if command == "long-prefill-chunk-probe" {
@@ -184,7 +200,10 @@ fn run() -> Result<()> {
             match flag.to_str() {
                 Some("--output-only") => output_only = true,
                 Some("--profile-json") => {
-                    profile_output = Some(args.next().ok_or_else(|| Error::invalid("missing profile JSON path"))?);
+                    profile_output = Some(
+                        args.next()
+                            .ok_or_else(|| Error::invalid("missing profile JSON path"))?,
+                    );
                 }
                 Some("--context") => {
                     frontier = args
@@ -206,10 +225,14 @@ fn run() -> Result<()> {
             }
         }
         if profile_output.is_some() && (!output_only || frontier != 32768) {
-            return Err(Error::invalid("--profile-json requires --output-only and context 32768"));
+            return Err(Error::invalid(
+                "--profile-json requires --output-only and context 32768",
+            ));
         }
         if profile_output.is_some() && profile_output == output {
-            return Err(Error::invalid("profile and conformance JSON paths must differ"));
+            return Err(Error::invalid(
+                "profile and conformance JSON paths must differ",
+            ));
         }
         let model = MappedModel::open(Path::new(&model_path))?;
         validate_resident_q2(model.gguf())?;
@@ -218,7 +241,8 @@ fn run() -> Result<()> {
                 return Err(Error::invalid("--output-only requires context 32768"));
             }
             if let Some(path) = profile_output {
-                let (report, profile) = rust_star_runtime::metal::run_long_prefill_profile_probe(&model)?;
+                let (report, profile) =
+                    rust_star_runtime::metal::run_long_prefill_profile_probe(&model)?;
                 std::fs::write(path, format!("{profile}\n"))?;
                 report
             } else {
@@ -5957,15 +5981,15 @@ fn long_prefill_chunk_probe_usage() -> &'static str {
 }
 
 fn engine_measurement_usage() -> &'static str {
-    "usage: rust-star engine-measure MODEL.gguf --context N --gen-tokens 128 --json PATH\n\nRuns exact native 2K or 32K prefill and a timed 128-token closed loop. Prefill and generation execute without diagnostic tensor collection. Command encoding, synchronized execution, GPU lowest-ID argmax, its eight-byte selection readback, and token commitment are included in their declared intervals. The selected-token transcript is validated after timing, and the raw record is eligible for the paired adapter only when both collection paths remain disabled."
+    "usage: rust-star engine-measure MODEL.gguf --context N --gen-tokens 128 --json PATH\n\nRuns exact native 2K, 32K or 128K prefill and a timed 128-token closed loop. Prefill and generation execute without diagnostic tensor collection. Command encoding, synchronized execution, GPU lowest-ID argmax, its eight-byte selection readback, and token commitment are included in their declared intervals. The selected-token transcript is validated after timing, and the raw record is eligible for the paired adapter only when both collection paths remain disabled."
 }
 
 fn engine_profile_usage() -> &'static str {
-    "usage: rust-star engine-profile MODEL.gguf --context N --gen-tokens 128 --json PATH\n\nRuns the exact engine workload. At 32K it also records native prefill chunk/layer stages using existing command completions and splits native tails into nine compute encoders for timestamp-counter component attribution; shared bootstrap work is labeled by layer range. At 2K this splits native prefill layers 2 through 42 into synchronized per-layer command buffers. Representative even layer 4 and odd layer 5 are additionally separated into attention/FFN and attention-internal QKV/RoPE, compressor/staging, Flash block preparation, FlashAttention, and output/HC intervals. It also collects every completed decode layer command buffer's GPU timestamps and decode Metal compute-stage counters across eight dispatch families. The selected-token transcript remains exact, but this perturbing mode is deliberately ineligible for paired claims."
+    "usage: rust-star engine-profile MODEL.gguf --context N --gen-tokens 128 --json PATH\n\nRuns the exact engine workload. At 32K and 128K it also records native prefill chunk/layer stages using existing command completions and splits native tails into nine compute encoders for timestamp-counter component attribution; shared bootstrap work is labeled by layer range. At 2K this splits native prefill layers 2 through 42 into synchronized per-layer command buffers. Representative even layer 4 and odd layer 5 are additionally separated into attention/FFN and attention-internal QKV/RoPE, compressor/staging, Flash block preparation, FlashAttention, and output/HC intervals. It also collects every completed decode layer command buffer's GPU timestamps and decode Metal compute-stage counters across eight dispatch families. The selected-token transcript remains exact, but this perturbing mode is deliberately ineligible for paired claims."
 }
 
 fn retained_engine_measurement_usage() -> &'static str {
-    "usage: rust-star engine-retained-measure MODEL.gguf --context N --gen-tokens 128 --json PATH\n\nRuns two exact 2K/128 or 32K/128 engine cycles in one process and one Metal context. The first cycle fully charges model-page warming, context creation, and model residency. The second cycle reuses the established model mapping, Metal context, view cache, and residency set. Both transcripts must match the oracle. This lifecycle diagnostic is deliberately ineligible for the fresh-process paired protocol."
+    "usage: rust-star engine-retained-measure MODEL.gguf --context N --gen-tokens 128 --json PATH\n\nRuns two exact 2K/128, 32K/128 or 128K/128 engine cycles in one process and one Metal context. The first cycle fully charges model-page warming, context creation, and model residency. The second cycle reuses the established model mapping, Metal context, view cache, and residency set. Both transcripts must match the oracle. This lifecycle diagnostic is deliberately ineligible for the fresh-process paired protocol."
 }
 
 fn ratio128_compressor_replay_probe_usage() -> &'static str {

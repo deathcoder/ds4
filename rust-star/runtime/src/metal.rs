@@ -25595,7 +25595,8 @@ mod imp {
                     error_text(&error)
                 )));
             }
-            if !(matches!(prefill_rows, 2_048 | 4_096) || ((32_768..=131_072).contains(&prefill_rows) && prefill_rows % 4096 == 0))
+            if !(matches!(prefill_rows, 2_048 | 4_096)
+                || ((32_768..=131_072).contains(&prefill_rows) && prefill_rows % 4096 == 0))
                 || raw.layers != 43
                 || raw.raw_rows_per_layer != 128
                 || raw.ratio4_rows_per_layer != prefill_rows / 4
@@ -56222,9 +56223,9 @@ mod imp {
     }
 
     fn validate_engine_measurement_shape(context_tokens: u32, gen_tokens: u32) -> Result<()> {
-        if !matches!(context_tokens, 2048 | 32768) || gen_tokens != 128 {
+        if !matches!(context_tokens, 2048 | 32768 | 131072) || gen_tokens != 128 {
             return Err(Error::invalid(
-                "Rust Star engine measurement supports context=2048 or 32768 and gen_tokens=128",
+                "Rust Star engine measurement supports context=2048, 32768 or 131072 and gen_tokens=128",
             ));
         }
         Ok(())
@@ -56238,7 +56239,12 @@ mod imp {
         retained_context: Option<Context>,
         model_warm: crate::model::ModelWarmReport,
     ) -> Result<(Context, EngineRunReport, bool)> {
-        let oracle_inputs = if context_tokens == 32768 {
+        let oracle_inputs = if context_tokens == 131072 {
+            decode_u32_fixture(
+                include_bytes!("../../fixtures/measurement-131072-v5/selected.u32le.bin"),
+                "128K engine transcript",
+            )?
+        } else if context_tokens == 32768 {
             decode_u32_fixture(
                 include_bytes!("../../fixtures/prefill-decode-32768-v5/token-ids.u32le.bin"),
                 "32K engine transcript",
@@ -56254,7 +56260,7 @@ mod imp {
         }
         let prefill_started = Instant::now();
         let (context, prefill_report, prefill_selected_token, prefill_timing) =
-            if context_tokens == 32768 {
+            if matches!(context_tokens, 32768 | 131072) {
                 let (context, report, timing) = run_long_prefill_with_context(
                     model,
                     context_tokens,
@@ -58294,9 +58300,13 @@ mod imp {
 
 #[cfg(not(target_os = "macos"))]
 mod imp {
-    pub fn run_long_prefill_reference_probe(_model: &crate::model::MappedModel,
-        _reference: &crate::frontier_reference::FrontierReference) -> crate::Result<super::LongPrefillChunkProbeReport> {
-        Err(crate::Error::invalid("external frontier comparison requires macOS Metal"))
+    pub fn run_long_prefill_reference_probe(
+        _model: &crate::model::MappedModel,
+        _reference: &crate::frontier_reference::FrontierReference,
+    ) -> crate::Result<super::LongPrefillChunkProbeReport> {
+        Err(crate::Error::invalid(
+            "external frontier comparison requires macOS Metal",
+        ))
     }
 
     use super::*;
@@ -59026,23 +59036,23 @@ pub use imp::{
     run_layers012345_decode_probe, run_layers0123_bench, run_layers0123_chained_probe,
     run_layers0123_decode_probe, run_layers0123_probe, run_layers012_chained_probe,
     run_layers012_probe, run_layers01_probe, run_layers0_to_42_decode_probe,
-    run_long_prefill_bootstrap_probe, run_long_prefill_chunk_probe, run_long_prefill_reference_probe,
+    run_long_prefill_bootstrap_probe, run_long_prefill_chunk_probe,
     run_long_prefill_continuation_bootstrap_probe, run_long_prefill_output_probe,
-    run_long_prefill_profile_probe, run_long_prefill_sequential_continuation_probe,
-    run_long_prefill_transformer_probe, run_moe_output_probe, run_position127_decoder_probe,
-    run_prefill_decode_frontier_probe, run_prefill_frontier_probe,
-    run_prefill_layer0_boundary_probe, run_prefill_layers012_attention_loop_probe,
-    run_prefill_layers012_compressor_loop_probe, run_prefill_layers012_kv_state_loop_probe,
-    run_prefill_layers012_kvnorm_loop_probe, run_prefill_layers01_boundary_probe,
-    run_prefill_layers01_complete_boundary_probe, run_prefill_layers01_live_kv_chain_probe,
-    run_prefill_layers01_live_kv_loop_probe, run_prefill_layers01_row_coverage_probe,
-    run_prefill_q8_boundary_probe, run_prefill_qkv_boundary_probe, run_probe,
-    run_q8_projection_probe, run_q_head_kv_fusion_bench, run_q_head_threads_bench,
-    run_qb_rows_bench, run_qkv_pair_bench, run_ratio128_compressor_replay_probe,
-    run_retained_decoder_step_probe, run_retained_engine_measurement,
-    run_retained_sparse_boundary_probe, run_retained_sparse_multimerge_probe,
-    run_rope_kv_store_probe, run_routed_nsg_bench, run_sparse_indexed_attention_probe,
-    LayerExecutor,
+    run_long_prefill_profile_probe, run_long_prefill_reference_probe,
+    run_long_prefill_sequential_continuation_probe, run_long_prefill_transformer_probe,
+    run_moe_output_probe, run_position127_decoder_probe, run_prefill_decode_frontier_probe,
+    run_prefill_frontier_probe, run_prefill_layer0_boundary_probe,
+    run_prefill_layers012_attention_loop_probe, run_prefill_layers012_compressor_loop_probe,
+    run_prefill_layers012_kv_state_loop_probe, run_prefill_layers012_kvnorm_loop_probe,
+    run_prefill_layers01_boundary_probe, run_prefill_layers01_complete_boundary_probe,
+    run_prefill_layers01_live_kv_chain_probe, run_prefill_layers01_live_kv_loop_probe,
+    run_prefill_layers01_row_coverage_probe, run_prefill_q8_boundary_probe,
+    run_prefill_qkv_boundary_probe, run_probe, run_q8_projection_probe, run_q_head_kv_fusion_bench,
+    run_q_head_threads_bench, run_qb_rows_bench, run_qkv_pair_bench,
+    run_ratio128_compressor_replay_probe, run_retained_decoder_step_probe,
+    run_retained_engine_measurement, run_retained_sparse_boundary_probe,
+    run_retained_sparse_multimerge_probe, run_rope_kv_store_probe, run_routed_nsg_bench,
+    run_sparse_indexed_attention_probe, LayerExecutor,
 };
 
 #[cfg(test)]
