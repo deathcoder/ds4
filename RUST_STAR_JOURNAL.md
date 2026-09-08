@@ -18,6 +18,14 @@ Before changing code:
 Journal entries are reverse chronological. Do not edit old entries to change
 history; add a correction and update the current-state summary.
 
+## 2026-09-08 — Native 96K full-output check passes; 128K starts
+
+- Native 96K prefill matches all 129,280 oracle-v5 FP32 words exactly,
+  selected token 918. Established 32K/128 and native 64K also pass.
+- The first native 128K prefill plus 128 full-logit decode steps is running;
+  a second fresh identical native run and remaining old controls follow.
+  Candidate/source/input pins remain unchanged, with no failed attempts.
+
 ## 2026-09-08 — Native 64K full-output check passes
 
 - Frozen candidate 0eb484ea preserves complete 32K/128 output C0 and matches
@@ -3473,7 +3481,7 @@ Next:
   oracle prefill references and both full 128K/128 traces are accepted in
   rust-star/.work/frontier128-35f69741/. Native 64K/96K and two 128K/128
   full-logit gates plus seven old controls run sequentially. Established 32K/128
-  and new 64K prefill C0 pass; 96K is running and full 128K remains pending.
+  and new 64K/96K prefill C0 pass; first full 128K/128 check is running.
 
 - Memory-prefill milestone COMPLETE and retained at de6d2c11. 312 tests/build,
   seven live gates, five valid pairs/two warmups and both profile audits pass.
