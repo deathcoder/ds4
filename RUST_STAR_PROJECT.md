@@ -389,9 +389,11 @@ historical capacity evidence, not bounds. Diagnostic RSS omits engine page
 warming and does not establish total model/Metal residency or a new memory
 reduction. No larger-context throughput claim is made by that correctness report.
 The subsequent 128K measurement/retained-engine milestone is now authorized
-and active: candidate 5f3b9672 passes 315 Rust tests, 94 Python tests and build;
-live full C0/lifecycle/shorter controls precede five pinned paired measurements.
-No new timing claim until that evidence passes. Attention output and routed
+and active. Candidate 5f3b9672 passes full 128K C0 but retained serialization
+found stale 2K/32K writer guards. Corrected ef37e566 adds strict 128K report
+validation and fresh/retained writer regressions; build and live gates precede
+five pinned paired measurements. The failed attempt is preserved. No new timing
+claim until final evidence passes. Attention output and routed
 gate/up remain available for subsequent performance work.
 
 Current implementation boundaries, evidence, and immediate actions are maintained

@@ -3584,12 +3584,13 @@ Next:
 
 ### Current resume checkpoint (updated 2026-09-08)
 
-- ACTIVE: authorized 128K measurement/retained-engine milestone at 43bf0dfa.
-  Candidate 5f3b9672 passes 315 Rust tests, 94 Python tests and release build.
-  Work: rust-star/.work/measure128-43bf0dfa/. Frozen live validation is queued
-  after passing model/oracle/input rehash. Full 128K C0 now passes; retained
-  128K report serialization failed on old 2K/32K guards. Fix/tests are active;
-  original evidence is preserved and no paired measurements have started.
+- ACTIVE: authorized 128K measurement/retained-engine milestone. Earlier
+  candidate 5f3b9672 passed full 128K C0 but failed retained report serialization
+  on stale context/token guards; the error is reproduced by a host regression.
+  Corrected candidate ef37e566 is building in rust-star/.work/measure128-writer-fix/.
+  All live gates will rerun before the five-pair campaign. Earlier failed evidence
+  is retained in measure128-43bf0dfa/ and copied under the new work's rejected/.
+  No paired measurements have started; stop after final evidence/docs acceptance.
 
 - 128K correctness milestone COMPLETE and retained at candidate 0eb484ea.
   314 tests/build, six repeated oracle captures and all eleven native checks
