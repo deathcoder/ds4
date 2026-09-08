@@ -18,6 +18,17 @@ Before changing code:
 Journal entries are reverse chronological. Do not edit old entries to change
 history; add a correction and update the current-state summary.
 
+## 2026-09-08 — 64K and 96K oracle prefill references repeat exactly
+
+- Two fresh unchanged oracle-v5 processes match every prefill word at 64K
+  (selected 39) and 96K (selected 918). Both references extend the pinned
+  32K corpus tokens. Capture logs/raw vectors remain in frontier128-35f69741/.
+- Frozen candidate 0eb484ea passes 314 tests/build. Executable SHA-256:
+  85081aa01de6d305db92557fb94335694e3bdbdf2dbbe4e8e1ca5e9f038205fc.
+- Next in the active sequential capture plan: two 128K prefill + 128-decode
+  full-logit traces. Native checks wait for complete oracle repeatability.
+  No larger-frontier native C0 or throughput claim yet. No failed captures.
+
 ## 2026-09-08 — External frontier checker implemented; oracle capture active
 
 - Added validated external prompt/selection/logit vectors and a separate
