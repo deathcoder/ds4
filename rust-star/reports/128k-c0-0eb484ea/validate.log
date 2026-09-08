@@ -1,0 +1,23 @@
+START batch-32k-output
+PASS batch-32k-output peak GiB 3.111053466796875
+START native-65536-a
+PASS native-65536-a peak GiB 6.6564483642578125
+START native-98304-a
+PASS native-98304-a peak GiB 10.209487915039062
+START native-131072-a
+PASS native-131072-a peak GiB 13.879547119140625
+START native-131072-b
+PASS native-131072-b peak GiB 13.877761840820312
+START batch-12k
+PASS batch-12k peak GiB 5.7074432373046875
+START batch-8k
+PASS batch-8k peak GiB 13.80322265625
+START batch-2k
+PASS batch-2k peak GiB 25.530258178710938
+START batch-32k-internal
+PASS batch-32k-internal peak GiB 8.09490966796875
+START batch-retained
+PASS batch-retained peak GiB 83.91893005371094
+START batch-32k-profiled
+PASS batch-32k-profiled peak GiB 3.1156158447265625
+ALL NATIVE CHECKS PASS

@@ -1,0 +1,422 @@
+diff --git a/rust-star/runtime/src/frontier_reference.rs b/rust-star/runtime/src/frontier_reference.rs
+new file mode 100644
+index 00000000..3fc9741c
+--- /dev/null
++++ b/rust-star/runtime/src/frontier_reference.rs
+@@ -0,0 +1,91 @@
++//! Validated external vectors for diagnostic frontier comparison.
++//! Authenticating their oracle/model provenance belongs to the evidence runner.
++use crate::{Error, Result};
++
++pub struct FrontierReference {
++    pub(crate) tokens: Vec<u32>,
++    pub(crate) selected: Vec<u32>,
++    pub(crate) logits: Vec<f32>,
++}
++impl FrontierReference {
++    pub fn from_bytes(tokens: &[u8], selected: &[u8], logits: &[u8]) -> Result<Self> {
++        fn words(bytes: &[u8]) -> Result<Vec<u32>> {
++            if bytes.len() % 4 != 0 {
++                return Err(Error::invalid("reference has a partial 32-bit word"));
++            }
++            Ok(bytes
++                .chunks_exact(4)
++                .map(|b| u32::from_le_bytes(b.try_into().unwrap()))
++                .collect())
++        }
++        let tokens = words(tokens)?;
++        let selected = words(selected)?;
++        let n = tokens.len();
++        if !(32768..=131072).contains(&n) || n % 4096 != 0 {
++            return Err(Error::invalid(
++                "external frontier must be aligned 32K through 128K",
++            ));
++        }
++        if !matches!(selected.len(), 1 | 129) || (n == 131072 && selected.len() != 129) {
++            return Err(Error::invalid(
++                "reference requires one prefill row or 129 full rows; 128K requires 129",
++            ));
++        }
++        if tokens.iter().chain(&selected).any(|&t| t >= 129280) {
++            return Err(Error::invalid("reference token is outside the vocabulary"));
++        }
++        if logits.len() != selected.len() * 129280 * 4 {
++            return Err(Error::invalid(
++                "reference logit extent differs from its transcript",
++            ));
++        }
++        let logits: Vec<f32> = words(logits)?.into_iter().map(f32::from_bits).collect();
++        for (row, &token) in logits.chunks_exact(129280).zip(&selected) {
++            if row.iter().any(|v| !v.is_finite()) {
++                return Err(Error::invalid("reference contains non-finite logits"));
++            }
++            let mut best = 0;
++            for i in 1..row.len() {
++                if row[i] > row[best] {
++                    best = i;
++                }
++            }
++            if best as u32 != token {
++                return Err(Error::invalid(
++                    "reference transcript differs from greedy logits",
++                ));
++            }
++        }
++        Ok(Self {
++            tokens,
++            selected,
++            logits,
++        })
++    }
++    pub fn frontier(&self) -> u32 {
++        self.tokens.len() as u32
++    }
++}
++#[cfg(test)]
++mod tests {
++    use super::*;
++    #[test]
++    fn rejects_invalid_frontier_and_partial_words() {
++        assert!(FrontierReference::from_bytes(&[0], &[], &[]).is_err());
++        for n in [0, 32767, 32769, 131073] {
++            assert!(FrontierReference::from_bytes(&vec![0; n * 4], &[0; 4], &[]).is_err());
++        }
++    }
++    #[test]
++    fn checks_full_rows_greedy_selection_and_finiteness() {
++        let tokens = vec![0; 32768 * 4];
++        let mut logits = vec![0; 129280 * 4];
++        assert!(FrontierReference::from_bytes(&tokens, &[0; 4], &logits).is_ok());
++        assert!(FrontierReference::from_bytes(&tokens, &1u32.to_le_bytes(), &logits).is_err());
++        logits[4..8].copy_from_slice(&1f32.to_le_bytes());
++        assert!(FrontierReference::from_bytes(&tokens, &1u32.to_le_bytes(), &logits).is_ok());
++        logits[4..8].copy_from_slice(&f32::NAN.to_le_bytes());
++        assert!(FrontierReference::from_bytes(&tokens, &1u32.to_le_bytes(), &logits).is_err());
++        assert!(FrontierReference::from_bytes(&vec![0; 131072 * 4], &[0; 4], &logits).is_err());
++    }
++}
+diff --git a/rust-star/runtime/src/lib.rs b/rust-star/runtime/src/lib.rs
+index 8121b307..0bc944c5 100644
+--- a/rust-star/runtime/src/lib.rs
++++ b/rust-star/runtime/src/lib.rs
+@@ -51,3 +51,5 @@ impl From<io::Error> for Error {
+ }
+ 
+ pub type Result<T> = std::result::Result<T, Error>;
++
++pub mod frontier_reference;
+diff --git a/rust-star/runtime/src/long_prefill.rs b/rust-star/runtime/src/long_prefill.rs
+index fdeb668c..233f7d78 100644
+--- a/rust-star/runtime/src/long_prefill.rs
++++ b/rust-star/runtime/src/long_prefill.rs
+@@ -837,12 +837,47 @@ fn run_long_prefill_with_context(
+     validate_outputs: bool,
+     collect_profile: bool,
+ ) -> Result<(Context, LongPrefillChunkProbeReport, NativePrefillTiming)> {
+-    if frontier < 12288 || frontier > 32768 || frontier % 4096 != 0 {
++    run_long_prefill_with_reference(
++        model,
++        frontier,
++        retained_context,
++        collect_checks,
++        validate_outputs,
++        collect_profile,
++        None,
++    )
++}
++
++fn run_long_prefill_with_reference(
++    model: &MappedModel,
++    frontier: u32,
++    retained_context: Option<Context>,
++    collect_checks: bool,
++    validate_outputs: bool,
++    collect_profile: bool,
++    reference: Option<&crate::frontier_reference::FrontierReference>,
++) -> Result<(Context, LongPrefillChunkProbeReport, NativePrefillTiming)> {
++    if frontier < 12288
++        || frontier > if reference.is_some() { 131072 } else { 32768 }
++        || frontier % 4096 != 0
++    {
+         return Err(Error::invalid(
+             "long prefill requires a 4096-token frontier from 12288 through 32768",
+         ));
+     }
+-    let (tokens, expected_logits) = if validate_outputs {
++    let (tokens, expected_logits) = if let Some(reference) = reference {
++        let prefix =
++            decode_u32_fixture(PREFILL_FRONTIER_32768_TOKEN_IDS_BYTES, "32K prompt tokens")?;
++        if reference.frontier() != frontier || reference.tokens[..32768] != prefix {
++            return Err(Error::invalid(
++                "external reference must extend the pinned 32K prompt",
++            ));
++        }
++        (
++            reference.tokens.clone(),
++            reference.logits[..129280].to_vec(),
++        )
++    } else if validate_outputs {
+         prefill_frontier_32768_fixture()?
+     } else {
+         (
+@@ -1029,14 +1064,14 @@ fn run_long_prefill_with_context(
+     timing.output_head_wall_ms += head_started.elapsed().as_secs_f64() * 1000.0;
+     timing.output_head_gpu_ms += gpu_ms;
+     let mut checked_logits = 0;
+-    if frontier == 32768 && validate_outputs {
++    if (frontier == 32768 || reference.is_some()) && validate_outputs {
+         if head.logits.len() != expected_logits.len() {
+-            return Err(Error::invalid("32K vocabulary length mismatch"));
++            return Err(Error::invalid("prefill vocabulary length mismatch"));
+         }
+         for (index, (actual, expected)) in head.logits.iter().zip(&expected_logits).enumerate() {
+             if actual.to_bits() != expected.to_bits() {
+                 return Err(Error::invalid(format!(
+-                    "32K full-logit C0 mismatch at {index}: actual={:#010x} expected={:#010x}",
++                    "prefill full-logit mismatch at {index}: actual={:#010x} expected={:#010x}",
+                     actual.to_bits(),
+                     expected.to_bits()
+                 )));
+@@ -1044,9 +1079,31 @@ fn run_long_prefill_with_context(
+         }
+         checked_logits = expected_logits.len() as u32;
+     }
++    if let Some(reference) = reference {
++        if selected_token != reference.selected[0] {
++            return Err(Error::invalid(
++                "prefill selected token differs from external reference",
++            ));
++        }
++    }
+     let (checked_decode_steps, decode_logits_checksum, decode_tokens_checksum) =
+-        if frontier == 32768 && validate_outputs {
+-            run_long_prefill_decode(model, &context, selected_token)?
++        if (frontier == 32768 || reference.is_some()) && validate_outputs {
++            if let Some(reference) = reference {
++                if reference.selected.len() == 1 {
++                    (0, 0, 0)
++                } else {
++                    run_long_prefill_decode_reference(
++                        model,
++                        &context,
++                        selected_token,
++                        frontier,
++                        &reference.selected,
++                        &reference.logits[129280..],
++                    )?
++                }
++            } else {
++                run_long_prefill_decode(model, &context, selected_token)?
++            }
+         } else {
+             (0, 0, 0)
+         };
+@@ -1085,15 +1142,26 @@ fn run_long_prefill_decode(
+     first_token: u32,
+ ) -> Result<(u32, u64, u64)> {
+     let (tokens, expected) = prefill_decode_32768_fixture()?;
++    run_long_prefill_decode_reference(model, context, first_token, 32768, &tokens, &expected)
++}
++
++fn run_long_prefill_decode_reference(
++    model: &MappedModel,
++    context: &Context,
++    first_token: u32,
++    frontier: u32,
++    tokens: &[u32],
++    expected: &[f32],
++) -> Result<(u32, u64, u64)> {
+     if first_token != tokens[0] {
+         return Err(Error::invalid(
+-            "native 32K prefill selection differs from the decode reference",
++            "native prefill selection differs from the decode reference",
+         ));
+     }
+-    context.adopt_prefill_decoder_state(32768, 32896)?;
++    context.adopt_prefill_decoder_state(frontier, frontier + 128)?;
+     context.prepare_model_residency()?;
+     let mut layers = (0..43)
+-        .map(|layer| PreparedLayerExecution::new_cold_with_capacity(model, layer, 32896))
++        .map(|layer| PreparedLayerExecution::new_cold_with_capacity(model, layer, frontier + 128))
+         .collect::<Result<Vec<_>>>()?;
+     for layer in &mut layers {
+         layer.validate_expected = false;
+@@ -1105,7 +1173,7 @@ fn run_long_prefill_decode(
+     let mut actual_logits = Vec::with_capacity(expected.len());
+     let mut selected = Vec::with_capacity(128);
+     for step in 0..128 {
+-        let position = 32768 + step;
++        let position = frontier + step;
+         submit_prepared_layers(model, context, &mut layers, input, position)?;
+         run_prepared_layer_iterations(
+             model,
+@@ -1121,16 +1189,16 @@ fn run_long_prefill_decode(
+         let (token, _) = run_checked_top1_output_head(model, context, &mut head)?;
+         let row = &expected[step as usize * 129280..(step as usize + 1) * 129280];
+         if head.logits.len() != row.len() {
+-            return Err(Error::invalid("32K decode vocabulary length differs"));
++            return Err(Error::invalid("frontier decode vocabulary length differs"));
+         }
+         for (index, (actual, expected)) in head.logits.iter().zip(row).enumerate() {
+             if actual.to_bits() != expected.to_bits() {
+-                return Err(Error::invalid(format!("32K decode position {position} logit {index} differs: actual={:#010x} expected={:#010x}",actual.to_bits(),expected.to_bits())));
++                return Err(Error::invalid(format!("frontier decode position {position} logit {index} differs: actual={:#010x} expected={:#010x}",actual.to_bits(),expected.to_bits())));
+             }
+         }
+         if token != tokens[step as usize + 1] {
+             return Err(Error::invalid(format!(
+-                "32K decode token differs at position {position}"
++                "frontier decode token differs at position {position}"
+             )));
+         }
+         actual_logits.extend_from_slice(&head.logits);
+@@ -1205,3 +1273,21 @@ mod tail_profile_tests {
+         assert!(profile.json().is_none());
+     }
+ }
++
++/// Compare all output words with explicitly supplied vectors. The evidence
++/// runner must authenticate their oracle/model provenance separately.
++pub fn run_long_prefill_reference_probe(
++    model: &MappedModel,
++    reference: &crate::frontier_reference::FrontierReference,
++) -> Result<LongPrefillChunkProbeReport> {
++    Ok(run_long_prefill_with_reference(
++        model,
++        reference.frontier(),
++        None,
++        false,
++        true,
++        false,
++        Some(reference),
++    )?
++    .1)
++}
+diff --git a/rust-star/runtime/src/main.rs b/rust-star/runtime/src/main.rs
+index 034a12e2..966830d5 100644
+--- a/rust-star/runtime/src/main.rs
++++ b/rust-star/runtime/src/main.rs
+@@ -147,6 +147,26 @@ fn run() -> Result<()> {
+     if command == "prefill-layers012-compressor-loop-probe" {
+         return run_prefill_layers012_compressor_loop_probe_command(arguments.collect());
+     }
++    if command == "long-prefill-reference-probe" {
++        let args: Vec<_> = arguments.collect();
++        if args.len() == 1 && matches!(args[0].to_str(), Some("--help") | Some("-h")) {
++            println!("usage: rust-star long-prefill-reference-probe MODEL.gguf TOKENS.u32le SELECTED.u32le LOGITS.f32le REPORT.json\nCompares every output word with external reference vectors through 128K. Oracle provenance must be verified separately; this is not a throughput command.");
++            return Ok(());
++        }
++        if args.len() != 5 { return Err(Error::invalid("expected model, prompt tokens, selected tokens, full logits and report paths")); }
++        if Path::new(&args[4]).exists() { return Err(Error::invalid("reference report already exists")); }
++        let reference = rust_star_runtime::frontier_reference::FrontierReference::from_bytes(
++            &std::fs::read(&args[1])?, &std::fs::read(&args[2])?, &std::fs::read(&args[3])?)?;
++        let model = MappedModel::open(Path::new(&args[0]))?;
++        validate_resident_q2(model.gguf())?;
++        let report = rust_star_runtime::metal::run_long_prefill_reference_probe(&model, &reference)?;
++        let mut file = std::fs::OpenOptions::new().write(true).create_new(true).open(&args[4])?;
++        writeln!(file, "{{\"schema\":\"rust-star-external-frontier-check-v1\",\"frontier_tokens\":{},\"checked_logits\":{},\"checked_decode_steps\":{},\"prefill_logits_checksum\":{},\"decode_logits_checksum\":{},\"decode_tokens_checksum\":{},\"selected_token\":{},\"external_reference_match\":true,\"oracle_provenance_verified_by_runtime\":false,\"throughput_claim\":false}}",
++            report.frontier,report.checked_logits,report.checked_decode_steps,report.logits_checksum,
++            report.decode_logits_checksum,report.decode_tokens_checksum,report.selected_token)?;
++        println!("external frontier {}: all {} prefill logits and {} full decode rows exact",report.frontier,report.checked_logits,report.checked_decode_steps);
++        return Ok(());
++    }
+     if command == "long-prefill-chunk-probe" {
+         let mut args = arguments;
+         let model_path = args
+diff --git a/rust-star/runtime/src/metal.rs b/rust-star/runtime/src/metal.rs
+index f60d817f..8b349bfb 100644
+--- a/rust-star/runtime/src/metal.rs
++++ b/rust-star/runtime/src/metal.rs
+@@ -25595,7 +25595,7 @@ mod imp {
+                     error_text(&error)
+                 )));
+             }
+-            if !matches!(prefill_rows, 2_048 | 4_096 | 32_768)
++            if !(matches!(prefill_rows, 2_048 | 4_096) || ((32_768..=131_072).contains(&prefill_rows) && prefill_rows % 4096 == 0))
+                 || raw.layers != 43
+                 || raw.raw_rows_per_layer != 128
+                 || raw.ratio4_rows_per_layer != prefill_rows / 4
+@@ -26317,7 +26317,7 @@ mod imp {
+             return Err(Error::invalid("invalid prefill boundary tile width"));
+         }
+         if (prefill_rows != 2048
+-            && (prefill_rows < 4096 || prefill_rows > 32768 || prefill_rows % 4096 != 0))
++            && (prefill_rows < 4096 || prefill_rows > 131072 || prefill_rows % 4096 != 0))
+             || prefill_rows < rows
+             || prefill_rows % rows != 0
+             || position_start % rows != 0
+@@ -58294,6 +58294,11 @@ mod imp {
+ 
+ #[cfg(not(target_os = "macos"))]
+ mod imp {
++    pub fn run_long_prefill_reference_probe(_model: &crate::model::MappedModel,
++        _reference: &crate::frontier_reference::FrontierReference) -> crate::Result<super::LongPrefillChunkProbeReport> {
++        Err(crate::Error::invalid("external frontier comparison requires macOS Metal"))
++    }
++
+     use super::*;
+     pub fn run_long_prefill_chunk_probe(
+         _model: &MappedModel,
+@@ -59021,7 +59026,7 @@ pub use imp::{
+     run_layers012345_decode_probe, run_layers0123_bench, run_layers0123_chained_probe,
+     run_layers0123_decode_probe, run_layers0123_probe, run_layers012_chained_probe,
+     run_layers012_probe, run_layers01_probe, run_layers0_to_42_decode_probe,
+-    run_long_prefill_bootstrap_probe, run_long_prefill_chunk_probe,
++    run_long_prefill_bootstrap_probe, run_long_prefill_chunk_probe, run_long_prefill_reference_probe,
+     run_long_prefill_continuation_bootstrap_probe, run_long_prefill_output_probe,
+     run_long_prefill_profile_probe, run_long_prefill_sequential_continuation_probe,
+     run_long_prefill_transformer_probe, run_moe_output_probe, run_position127_decoder_probe,
+diff --git a/rust-star/runtime/src/metal_shim.m b/rust-star/runtime/src/metal_shim.m
+index ee865e6b..5baf03a3 100644
+--- a/rust-star/runtime/src/metal_shim.m
++++ b/rust-star/runtime/src/metal_shim.m
+@@ -4492,7 +4492,7 @@ int rust_star_metal_run_prefill_layer0_boundary(
+     }
+     if (n_vocab != 129280u || (rows != 32u && rows != 64u) ||
+         (prefill_rows != 2048u && (prefill_rows < 4096u ||
+-         prefill_rows > 32768u || prefill_rows%4096u != 0u)) ||
++         prefill_rows > 131072u || prefill_rows%4096u != 0u)) ||
+         prefill_rows < rows || prefill_rows % rows != 0u ||
+         position_start % rows != 0u ||
+         position_start + rows > prefill_rows) {
+@@ -43565,15 +43565,16 @@ int rust_star_metal_adopt_prefill_decoder_state(
+         const uint32_t prefill_rows = context.prefillKvRows;
+         const uint32_t ratio4_rows = prefill_rows/4u;
+         const uint32_t ratio128_rows = prefill_rows/128u;
+-        const BOOL complete_long_prefill = prefill_rows == 32768u &&
+-            context.prefillLayerChunkStart.unsignedIntValue == 28672u &&
++        const BOOL complete_long_prefill = prefill_rows >= 32768u && prefill_rows <= 131072u &&
++            prefill_rows%4096u == 0u &&
++            context.prefillLayerChunkStart.unsignedIntValue == prefill_rows-4096u &&
+             context.prefillLayerRemainingCompleted.unsignedIntValue == 42u &&
+             context.prefillLayerChunkStates.count == layers;
+         if ((prefill_rows != 2048u && prefill_rows != 4096u && !complete_long_prefill) ||
+             decoder_context_capacity <= prefill_rows ||
+             !context.prefillLayer42AfterFfnHc) {
+             return fail_with_message(error, error_bytes,
+-                @"prefill-to-decode handoff requires a completed 2K, 4K, or 32K prefill");
++                @"prefill-to-decode handoff requires a completed 2K, 4K, or aligned 32K--128K prefill");
+         }
+         memset(result, 0, sizeof(*result));
+         id<MTLCommandBuffer> command = [context.queue commandBuffer];
+@@ -43788,9 +43789,9 @@ int rust_star_metal_run_output_head(
+         } else if (context.prefillLayer42AfterFfnHc) {
+             const NSUInteger prefill_rows = context.prefillKvRows;
+             /* A completed continuation retains only its 4096 HC rows;
+-             * prefillKvRows records the global frontier through 32K. */
++             * prefillKvRows records the global frontier through 128K. */
+             const BOOL complete_second_chunk = prefill_rows >= 8192u &&
+-                prefill_rows <= 32768u && prefill_rows%4096u == 0u &&
++                prefill_rows <= 131072u && prefill_rows%4096u == 0u &&
+                 context.prefillLayerRemainingCompleted.unsignedIntValue == 42u;
+             const NSUInteger resident_rows = complete_second_chunk ? 4096u : prefill_rows;
+             const NSUInteger prefill_hc_bytes = resident_rows*hc_dim*sizeof(float);
+@@ -51689,7 +51690,7 @@ int rust_star_metal_begin_long_prefill_chunk(void *opaque_context,
+     uint32_t chunk_start, char *error, size_t error_bytes)
+ {
+     @autoreleasepool {
+-        if (!opaque_context || chunk_start < 4096u || chunk_start >= 32768u || chunk_start%4096u)
++        if (!opaque_context || chunk_start < 4096u || chunk_start >= 131072u || chunk_start%4096u)
+             return fail_with_message(error, error_bytes, @"invalid long-prefill chunk start");
+         RustStarMetalContext *context = (__bridge RustStarMetalContext *)opaque_context;
+         if (context.prefillKvRows != chunk_start ||

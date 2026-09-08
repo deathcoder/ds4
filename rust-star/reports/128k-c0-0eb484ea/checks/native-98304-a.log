@@ -1,0 +1,43 @@
+rust-star: output-only gate completed the native 4K prefix
+rust-star: output-only gate completed native prefill through 8192 tokens
+rust-star: output-only gate completed native prefill through 12288 tokens
+rust-star: output-only gate completed native prefill through 16384 tokens
+rust-star: output-only gate completed native prefill through 20480 tokens
+rust-star: output-only gate completed native prefill through 24576 tokens
+rust-star: output-only gate completed native prefill through 28672 tokens
+rust-star: output-only gate completed native prefill through 32768 tokens
+rust-star: output-only gate completed native prefill through 36864 tokens
+rust-star: output-only gate completed native prefill through 40960 tokens
+rust-star: output-only gate completed native prefill through 45056 tokens
+rust-star: output-only gate completed native prefill through 49152 tokens
+rust-star: output-only gate completed native prefill through 53248 tokens
+rust-star: output-only gate completed native prefill through 57344 tokens
+rust-star: output-only gate completed native prefill through 61440 tokens
+rust-star: output-only gate completed native prefill through 65536 tokens
+rust-star: output-only gate completed native prefill through 69632 tokens
+rust-star: output-only gate completed native prefill through 73728 tokens
+rust-star: output-only gate completed native prefill through 77824 tokens
+rust-star: output-only gate completed native prefill through 81920 tokens
+rust-star: output-only gate completed native prefill through 86016 tokens
+rust-star: output-only gate completed native prefill through 90112 tokens
+rust-star: output-only gate completed native prefill through 94208 tokens
+rust-star: output-only gate completed native prefill through 98304 tokens
+external frontier 98304: all 129280 prefill logits and 0 full decode rows exact
+      893.28 real         8.69 user       173.85 sys
+         10962354176  maximum resident set size
+                   0  average shared memory size
+                   0  average unshared data size
+                   0  average unshared stack size
+            10677384  page reclaims
+                   0  page faults
+                   0  swaps
+                   0  block input operations
+                   0  block output operations
+                   0  messages sent
+                   0  messages received
+                   0  signals received
+                  37  voluntary context switches
+               85932  involuntary context switches
+       1472090356774  instructions retired
+        545595315692  cycles elapsed
+         19169393280  peak memory footprint

@@ -1,0 +1,1 @@
+{"schema":"rust-star-external-frontier-check-v1","frontier_tokens":65536,"checked_logits":129280,"checked_decode_steps":0,"prefill_logits_checksum":12612209672653372637,"decode_logits_checksum":0,"decode_tokens_checksum":0,"selected_token":39,"external_reference_match":true,"oracle_provenance_verified_by_runtime":false,"throughput_claim":false}

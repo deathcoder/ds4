@@ -1,0 +1,202 @@
+[
+  {
+    "name": "batch-32k-output",
+    "exit": 0,
+    "seconds": 267.684867143631,
+    "peak_rss_bytes": 3340468224,
+    "finished_utc": "2026-09-08T13:05:55.378342+00:00",
+    "command": [
+      "/usr/bin/time",
+      "-l",
+      "/Users/deathcodevision/dev/ds4-rust-star-bootstrap/rust-star/.work/frontier128-35f69741/candidate-rust-star",
+      "long-prefill-chunk-probe",
+      "/Users/deathcodevision/dev/ds4/gguf/DeepSeek-V4-Flash-IQ2XXS-w2Q2K-AProjQ8-SExpQ8-OutQ8-chat-v2-imatrix-0731.gguf",
+      "--context",
+      "32768",
+      "--output-only",
+      "--json",
+      "/Users/deathcodevision/dev/ds4-rust-star-bootstrap/rust-star/.work/frontier128-35f69741/checks/batch-32k-output.json"
+    ]
+  },
+  {
+    "name": "native-65536-a",
+    "exit": 0,
+    "seconds": 543.0488369464874,
+    "peak_rss_bytes": 7147307008,
+    "finished_utc": "2026-09-08T13:14:58.427859+00:00",
+    "command": [
+      "/usr/bin/time",
+      "-l",
+      "/Users/deathcodevision/dev/ds4-rust-star-bootstrap/rust-star/.work/frontier128-35f69741/candidate-rust-star",
+      "long-prefill-reference-probe",
+      "/Users/deathcodevision/dev/ds4/gguf/DeepSeek-V4-Flash-IQ2XXS-w2Q2K-AProjQ8-SExpQ8-OutQ8-chat-v2-imatrix-0731.gguf",
+      "/Users/deathcodevision/dev/ds4-rust-star-bootstrap/rust-star/.work/frontier128-35f69741/reference-65536/prompt.u32le.bin",
+      "/Users/deathcodevision/dev/ds4-rust-star-bootstrap/rust-star/.work/frontier128-35f69741/reference-65536/selected.u32le.bin",
+      "/Users/deathcodevision/dev/ds4-rust-star-bootstrap/rust-star/.work/frontier128-35f69741/reference-65536/logits.f32le.bin",
+      "/Users/deathcodevision/dev/ds4-rust-star-bootstrap/rust-star/.work/frontier128-35f69741/checks/native-65536-a.json"
+    ]
+  },
+  {
+    "name": "native-98304-a",
+    "exit": 0,
+    "seconds": 893.2921559810638,
+    "peak_rss_bytes": 10962354176,
+    "finished_utc": "2026-09-08T13:29:51.720618+00:00",
+    "command": [
+      "/usr/bin/time",
+      "-l",
+      "/Users/deathcodevision/dev/ds4-rust-star-bootstrap/rust-star/.work/frontier128-35f69741/candidate-rust-star",
+      "long-prefill-reference-probe",
+      "/Users/deathcodevision/dev/ds4/gguf/DeepSeek-V4-Flash-IQ2XXS-w2Q2K-AProjQ8-SExpQ8-OutQ8-chat-v2-imatrix-0731.gguf",
+      "/Users/deathcodevision/dev/ds4-rust-star-bootstrap/rust-star/.work/frontier128-35f69741/reference-98304/prompt.u32le.bin",
+      "/Users/deathcodevision/dev/ds4-rust-star-bootstrap/rust-star/.work/frontier128-35f69741/reference-98304/selected.u32le.bin",
+      "/Users/deathcodevision/dev/ds4-rust-star-bootstrap/rust-star/.work/frontier128-35f69741/reference-98304/logits.f32le.bin",
+      "/Users/deathcodevision/dev/ds4-rust-star-bootstrap/rust-star/.work/frontier128-35f69741/checks/native-98304-a.json"
+    ]
+  },
+  {
+    "name": "native-131072-a",
+    "exit": 0,
+    "seconds": 1309.1696157455444,
+    "peak_rss_bytes": 14903050240,
+    "finished_utc": "2026-09-08T13:51:40.890997+00:00",
+    "command": [
+      "/usr/bin/time",
+      "-l",
+      "/Users/deathcodevision/dev/ds4-rust-star-bootstrap/rust-star/.work/frontier128-35f69741/candidate-rust-star",
+      "long-prefill-reference-probe",
+      "/Users/deathcodevision/dev/ds4/gguf/DeepSeek-V4-Flash-IQ2XXS-w2Q2K-AProjQ8-SExpQ8-OutQ8-chat-v2-imatrix-0731.gguf",
+      "/Users/deathcodevision/dev/ds4-rust-star-bootstrap/rust-star/.work/frontier128-35f69741/reference-131072/prompt.u32le.bin",
+      "/Users/deathcodevision/dev/ds4-rust-star-bootstrap/rust-star/.work/frontier128-35f69741/reference-131072/selected.u32le.bin",
+      "/Users/deathcodevision/dev/ds4-rust-star-bootstrap/rust-star/.work/frontier128-35f69741/reference-131072/logits.f32le.bin",
+      "/Users/deathcodevision/dev/ds4-rust-star-bootstrap/rust-star/.work/frontier128-35f69741/checks/native-131072-a.json"
+    ]
+  },
+  {
+    "name": "native-131072-b",
+    "exit": 0,
+    "seconds": 1305.4926509857178,
+    "peak_rss_bytes": 14901133312,
+    "finished_utc": "2026-09-08T14:13:26.384391+00:00",
+    "command": [
+      "/usr/bin/time",
+      "-l",
+      "/Users/deathcodevision/dev/ds4-rust-star-bootstrap/rust-star/.work/frontier128-35f69741/candidate-rust-star",
+      "long-prefill-reference-probe",
+      "/Users/deathcodevision/dev/ds4/gguf/DeepSeek-V4-Flash-IQ2XXS-w2Q2K-AProjQ8-SExpQ8-OutQ8-chat-v2-imatrix-0731.gguf",
+      "/Users/deathcodevision/dev/ds4-rust-star-bootstrap/rust-star/.work/frontier128-35f69741/reference-131072/prompt.u32le.bin",
+      "/Users/deathcodevision/dev/ds4-rust-star-bootstrap/rust-star/.work/frontier128-35f69741/reference-131072/selected.u32le.bin",
+      "/Users/deathcodevision/dev/ds4-rust-star-bootstrap/rust-star/.work/frontier128-35f69741/reference-131072/logits.f32le.bin",
+      "/Users/deathcodevision/dev/ds4-rust-star-bootstrap/rust-star/.work/frontier128-35f69741/checks/native-131072-b.json"
+    ]
+  },
+  {
+    "name": "batch-12k",
+    "exit": 0,
+    "seconds": 131.30655694007874,
+    "peak_rss_bytes": 6128320512,
+    "finished_utc": "2026-09-08T14:15:37.691477+00:00",
+    "command": [
+      "/usr/bin/time",
+      "-l",
+      "/Users/deathcodevision/dev/ds4-rust-star-bootstrap/rust-star/.work/frontier128-35f69741/candidate-rust-star",
+      "long-prefill-chunk-probe",
+      "/Users/deathcodevision/dev/ds4/gguf/DeepSeek-V4-Flash-IQ2XXS-w2Q2K-AProjQ8-SExpQ8-OutQ8-chat-v2-imatrix-0731.gguf",
+      "--context",
+      "12288",
+      "--json",
+      "/Users/deathcodevision/dev/ds4-rust-star-bootstrap/rust-star/.work/frontier128-35f69741/checks/batch-12k.json"
+    ]
+  },
+  {
+    "name": "batch-8k",
+    "exit": 0,
+    "seconds": 198.2632918357849,
+    "peak_rss_bytes": 14821097472,
+    "finished_utc": "2026-09-08T14:18:55.955227+00:00",
+    "command": [
+      "/usr/bin/time",
+      "-l",
+      "/Users/deathcodevision/dev/ds4-rust-star-bootstrap/rust-star/.work/frontier128-35f69741/candidate-rust-star",
+      "long-prefill-continuation-bootstrap-probe",
+      "/Users/deathcodevision/dev/ds4/gguf/DeepSeek-V4-Flash-IQ2XXS-w2Q2K-AProjQ8-SExpQ8-OutQ8-chat-v2-imatrix-0731.gguf",
+      "--json",
+      "/Users/deathcodevision/dev/ds4-rust-star-bootstrap/rust-star/.work/frontier128-35f69741/checks/batch-8k.json"
+    ]
+  },
+  {
+    "name": "batch-2k",
+    "exit": 0,
+    "seconds": 61.528565883636475,
+    "peak_rss_bytes": 27412905984,
+    "finished_utc": "2026-09-08T14:19:57.484952+00:00",
+    "command": [
+      "/usr/bin/time",
+      "-l",
+      "/Users/deathcodevision/dev/ds4-rust-star-bootstrap/rust-star/.work/frontier128-35f69741/candidate-rust-star",
+      "prefill-layers012-attention-loop-probe",
+      "/Users/deathcodevision/dev/ds4/gguf/DeepSeek-V4-Flash-IQ2XXS-w2Q2K-AProjQ8-SExpQ8-OutQ8-chat-v2-imatrix-0731.gguf",
+      "--json",
+      "/Users/deathcodevision/dev/ds4-rust-star-bootstrap/rust-star/.work/frontier128-35f69741/checks/batch-2k.json"
+    ]
+  },
+  {
+    "name": "batch-32k-internal",
+    "exit": 0,
+    "seconds": 366.4760708808899,
+    "peak_rss_bytes": 8691843072,
+    "finished_utc": "2026-09-08T14:26:03.962053+00:00",
+    "command": [
+      "/usr/bin/time",
+      "-l",
+      "/Users/deathcodevision/dev/ds4-rust-star-bootstrap/rust-star/.work/frontier128-35f69741/candidate-rust-star",
+      "long-prefill-chunk-probe",
+      "/Users/deathcodevision/dev/ds4/gguf/DeepSeek-V4-Flash-IQ2XXS-w2Q2K-AProjQ8-SExpQ8-OutQ8-chat-v2-imatrix-0731.gguf",
+      "--context",
+      "32768",
+      "--json",
+      "/Users/deathcodevision/dev/ds4-rust-star-bootstrap/rust-star/.work/frontier128-35f69741/checks/batch-32k-internal.json"
+    ]
+  },
+  {
+    "name": "batch-retained",
+    "exit": 0,
+    "seconds": 497.5326910018921,
+    "peak_rss_bytes": 90107265024,
+    "finished_utc": "2026-09-08T14:34:21.495339+00:00",
+    "command": [
+      "/usr/bin/time",
+      "-l",
+      "/Users/deathcodevision/dev/ds4-rust-star-bootstrap/rust-star/.work/frontier128-35f69741/candidate-rust-star",
+      "engine-retained-measure",
+      "/Users/deathcodevision/dev/ds4/gguf/DeepSeek-V4-Flash-IQ2XXS-w2Q2K-AProjQ8-SExpQ8-OutQ8-chat-v2-imatrix-0731.gguf",
+      "--context",
+      "32768",
+      "--gen-tokens",
+      "128",
+      "--json",
+      "/Users/deathcodevision/dev/ds4-rust-star-bootstrap/rust-star/.work/frontier128-35f69741/checks/batch-retained.json"
+    ]
+  },
+  {
+    "name": "batch-32k-profiled",
+    "exit": 0,
+    "seconds": 245.0046100616455,
+    "peak_rss_bytes": 3345367040,
+    "finished_utc": "2026-09-08T14:38:26.500468+00:00",
+    "command": [
+      "/usr/bin/time",
+      "-l",
+      "/Users/deathcodevision/dev/ds4-rust-star-bootstrap/rust-star/.work/frontier128-35f69741/candidate-rust-star",
+      "long-prefill-chunk-probe",
+      "/Users/deathcodevision/dev/ds4/gguf/DeepSeek-V4-Flash-IQ2XXS-w2Q2K-AProjQ8-SExpQ8-OutQ8-chat-v2-imatrix-0731.gguf",
+      "--context",
+      "32768",
+      "--output-only",
+      "--profile-json",
+      "/Users/deathcodevision/dev/ds4-rust-star-bootstrap/rust-star/.work/frontier128-35f69741/checks/components.json",
+      "--json",
+      "/Users/deathcodevision/dev/ds4-rust-star-bootstrap/rust-star/.work/frontier128-35f69741/checks/batch-32k-profiled.json"
+    ]
+  }
+]

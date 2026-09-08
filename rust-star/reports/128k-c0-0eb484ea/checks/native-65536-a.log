@@ -1,0 +1,35 @@
+rust-star: output-only gate completed the native 4K prefix
+rust-star: output-only gate completed native prefill through 8192 tokens
+rust-star: output-only gate completed native prefill through 12288 tokens
+rust-star: output-only gate completed native prefill through 16384 tokens
+rust-star: output-only gate completed native prefill through 20480 tokens
+rust-star: output-only gate completed native prefill through 24576 tokens
+rust-star: output-only gate completed native prefill through 28672 tokens
+rust-star: output-only gate completed native prefill through 32768 tokens
+rust-star: output-only gate completed native prefill through 36864 tokens
+rust-star: output-only gate completed native prefill through 40960 tokens
+rust-star: output-only gate completed native prefill through 45056 tokens
+rust-star: output-only gate completed native prefill through 49152 tokens
+rust-star: output-only gate completed native prefill through 53248 tokens
+rust-star: output-only gate completed native prefill through 57344 tokens
+rust-star: output-only gate completed native prefill through 61440 tokens
+rust-star: output-only gate completed native prefill through 65536 tokens
+external frontier 65536: all 129280 prefill logits and 0 full decode rows exact
+      543.04 real         5.02 user       115.45 sys
+          7147307008  maximum resident set size
+                   0  average shared memory size
+                   0  average unshared data size
+                   0  average unshared stack size
+             5661322  page reclaims
+                   0  page faults
+                   0  swaps
+                   0  block input operations
+                   0  block output operations
+                   0  messages sent
+                   0  messages received
+                   0  signals received
+                   6  voluntary context switches
+               57790  involuntary context switches
+        948285803241  instructions retired
+        356116041849  cycles elapsed
+         15452691848  peak memory footprint

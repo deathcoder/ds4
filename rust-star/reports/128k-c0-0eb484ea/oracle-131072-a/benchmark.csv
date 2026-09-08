@@ -1,0 +1,2 @@
+ctx_tokens,prefill_tokens,prefill_tps,gen_tokens,gen_tps,gen_first_ms,gen_steady_tokens,gen_steady_tps,kvcache_bytes,sampling_in_interval
+131072,131072,129.767663558,128,11.165732089,63.963,127,16.014478097,0,1

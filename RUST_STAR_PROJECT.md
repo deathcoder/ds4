@@ -375,24 +375,29 @@ KV/compressed histories and tokens keep absolute addressing. Counter validity
 remains strict; the historical rare failure is still unexplained. Preserve the
 previous bootstrap and rejected dense-Q8 reports as historical evidence.
 
-The 128K modeled allocation/GPU-fill preflight passed for 14.837GiB of histories
-and selected scratch. A measured-32K-plus-history-growth estimate is 93.173GiB,
-but excludes some context-dependent overhead and is not a bound or full 128K
-inference proof. Built-in benchmark commands remain 32K. The active milestone is
-repeatable 128K oracle capture, larger-context schedule/adoption audits, and
-incremental frontier gates culminating in full 128K prefill plus 128 full-logit
-decode steps with memory monitoring. Candidate 0eb484ea is frozen; 314 tests
-and the release build pass, with repeatable 64K/96K oracle references accepted.
-Both full 128K oracle traces and both full native 128K/128 runs match exactly.
-Remaining old controls and final report verification are pending. Attention
-output and routed gate/up remain available for subsequent performance work.
+The 128K correctness milestone is complete at candidate 0eb484ea. Report:
+`rust-star/reports/128k-c0-0eb484ea/README.md` (117 verified artifacts). All six
+oracle captures and eleven native/regression checks pass; both native 128K
+processes match full prefill plus 128 decode steps exactly. 314 tests/build,
+287-tail/2,583-interval profile audit and final input hashes pass. Internal HC
+targets still end at 24K. Built-in measurement commands remain 32K; the separate
+external-reference diagnostic supports the new frontier. No kernel arithmetic
+or RoPE training constants changed.
+
+The prior 14.837GiB allocation preflight and 93.173GiB planning estimate remain
+historical capacity evidence, not bounds. Diagnostic RSS omits engine page
+warming and does not establish total model/Metal residency or a new memory
+reduction. No larger-context throughput claim is made. The next proposed
+milestone is 128K measurement/retained-engine protocol and pinned paired
+performance/memory validation; it is not started. Attention output and routed
+gate/up remain available for subsequent performance work.
 
 Current implementation boundaries, evidence, and immediate actions are maintained
-in `RUST_STAR_JOURNAL.md`. As of 2026-09-08, native 32K prefill is exact through
-all 43 layers and the output head. Both diagnostic and output-only executions
-match all 129,280 immutable prefill logits and all 16,547,840 FP32 words over
-128 subsequent greedy decode steps. The complete 2K prefill/decode and 8K
-continuation remain established controls.
+in `RUST_STAR_JOURNAL.md`. As of 2026-09-08, native prefill through all 43 layers
+and the output head is C0 exact at 128K, with 128 exact full-logit decode steps
+in two fresh runs. The established 32K diagnostic/output-only results remain
+exact against their immutable fixtures; complete 2K prefill/decode and legacy
+8K continuation remain passing controls.
 
 - Fresh and retained32K validation, full-logit gates, 2K/8K controls and
   measured prefill tail batching are complete. Audited five-pair report:

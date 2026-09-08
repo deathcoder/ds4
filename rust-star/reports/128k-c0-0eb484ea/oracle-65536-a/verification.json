@@ -1,0 +1,12 @@
+{
+  "rows": 1,
+  "words": 129280,
+  "row_sha256": [
+    "f785a567330b39edf7fd4f5f5c5cc0f2ebbb5b178d7b5bebe18dcca0852b243d"
+  ],
+  "selected_tokens": [
+    39
+  ],
+  "all_logits_sha256": "f785a567330b39edf7fd4f5f5c5cc0f2ebbb5b178d7b5bebe18dcca0852b243d",
+  "paired_eligible": false
+}

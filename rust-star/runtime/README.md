@@ -1332,5 +1332,32 @@ allocates and GPU-fills 14.837GiB of modeled 128K histories and selected chunk
 transients. It excludes model residency and other scratch. The report records
 live Metal limits and a 93.173GiB planning estimate based on measured 32K peak
 plus history growth; this is not a memory bound or verified 128K inference.
-Current frontier guards remain 32K. Repeated 128K oracle capture, larger-context
-schedule/adoption audits and full prefill/128-step C0 are the next acceptance.
+The subsequent [128K correctness report](../reports/128k-c0-0eb484ea/README.md)
+validates full native prefill and 128 decode steps in two fresh processes at
+131,072 prompt tokens. Both match two unchanged oracle-v5 captures bit-for-bit:
+129,280 prefill words and 16,547,840 decode words per run. Full 64K/96K prefill
+checks, 314 Rust tests and all seven shorter/32K/lifecycle/profile controls pass.
+Internal HC targets retain their accepted scope through 24K.
+
+A separate diagnostic command accepts explicit external vectors:
+
+```sh
+cargo run --release -- long-prefill-reference-probe MODEL.gguf \
+  TOKENS.u32le.bin SELECTED.u32le.bin LOGITS.f32le.bin REPORT.json
+```
+
+Prompt length must be a 4K multiple from 32K through 128K and extend the pinned
+32K corpus tokens. Each logit row contains 129,280 little-endian FP32 words;
+selected IDs are little-endian u32. Supply one prefill row or 129 rows covering
+prefill and 128 decode steps; 128K requires all 129. The checker rejects invalid
+token IDs, malformed lengths, non-finite logits and inconsistent greedy choices.
+The output path must not exist. Oracle/model provenance is authenticated by the
+report's evidence runner, not by this runtime input parser.
+
+Native boundary, output and adoption guards now allow the larger diagnostic
+frontier; existing built-in fixture and engine measurement commands retain their
+32K contract. No kernel arithmetic or RoPE training constant changed. Diagnostic
+RSS excludes the benchmark's CPU page-warming policy and is not comparable with
+warmed engine RSS or a total Metal/model residency bound. This correctness
+milestone makes no new throughput or memory-reduction claim. The next milestone
+is 128K measurement and retained-engine protocol support with paired benchmarks.

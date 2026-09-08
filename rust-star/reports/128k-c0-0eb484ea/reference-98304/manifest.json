@@ -1,0 +1,24 @@
+{
+  "schema": "rust-star-external-frontier-reference-v1",
+  "frontier": 98304,
+  "decode_steps": 0,
+  "vocabulary": 129280,
+  "repeat_processes": 2,
+  "oracle_source": "ccbd16d36895ef9fe8edf7f793014988ff1ab7f4",
+  "model_sha256": "ca22ae2f838e14077c22bc1c1417b71b45b5e5a3687bd96c2ac6e17fdb6261c0",
+  "prompt_text_sha256": "f53e0d80cb2d4492d24ebd63c7000c397b16ae70f9bf09b3763e5d8323ec209f",
+  "artifacts": {
+    "selected.u32le.bin": {
+      "sha256": "716e27d696a07cc34ad30d0958255463a7431504ade9f5073004d4e79e24d7bd",
+      "bytes": 4
+    },
+    "prompt.u32le.bin": {
+      "sha256": "016e42612fc20ab654822bf8864f229d22270278c335166c177d3aad10db3392",
+      "bytes": 393216
+    },
+    "logits.f32le.bin": {
+      "sha256": "ad55f6707d0be338cb13296873e69818ca155169eb6a6efbe8502433f792c6a7",
+      "bytes": 517120
+    }
+  }
+}

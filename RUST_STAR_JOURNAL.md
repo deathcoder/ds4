@@ -18,6 +18,32 @@ Before changing code:
 Journal entries are reverse chronological. Do not edit old entries to change
 history; add a correction and update the current-state summary.
 
+## 2026-09-08 — 128K correctness milestone COMPLETE and retained
+
+- Candidate 0eb484ea: 314 tests and release build pass. All six fresh unchanged
+  oracle-v5 captures pass: paired full prefill at 64K/96K and paired full
+  128K prefill plus 128 decode traces. Both fresh native 128K runs match all
+  129,280 prefill words and 16,547,840 decode words with exact selections.
+- Eleven native/regression checks pass without failures/retries: 64K/96K
+  prefill, two full 128K runs and all seven established shorter/32K/lifecycle/
+  profile controls. Profile audit: 287 native tails, 2,583 valid intervals.
+  Final model/prompt/oracle source/binary hashes match their original pins.
+- Portable report: rust-star/reports/128k-c0-0eb484ea/README.md, 117 verified
+  artifacts plus hash manifest. Raw exact reference vectors, capture/check logs,
+  source snapshot, tests/build, component audit and 222 host samples are retained.
+  No recorded thermal/performance warnings; observed swap 27.06–35.94MiB.
+- The separate external-reference checker extends diagnostic execution through
+  128K; existing built-in/measurement contracts remain 32K. No arithmetic or
+  RoPE training constant changed. Internal HC acceptance still ends at 24K.
+- Native 128K diagnostic RSS 13.880/13.878GiB and macOS peak footprint
+  21.910/21.891GiB exclude warmed engine comparability and are not total model/
+  Metal memory bounds. The retained 32K control reaches 83.919GiB warmed RSS.
+  No new throughput or memory-reduction claim; prior performance reports stand.
+- Stop at this completed milestone. Proposed next milestone: admit 128K into
+  measurement and retained-engine protocol, then run pinned paired performance
+  and memory validation. It has not been started. 256K and coding-agent corpus
+  remain future work; do not resume quota-burning mode.
+
 ## 2026-09-08 — Nine native checks pass; lifecycle and profile remain
 
 - Both 128K/128 native repetitions, 64K/96K prefill, complete 32K output,
@@ -3505,16 +3531,18 @@ Next:
 
 ### Current resume checkpoint (updated 2026-09-08)
 
-- ACTIVE milestone: 128K correctness, authorized after the completed memory
-  work. Candidate 0eb484ea adds a separate external-reference checker and
-  extends native boundary/output/adoption guards, preserving the built-in 32K
-  benchmark contract. 314 tests and release build pass. Repeated 64K/96K
-  oracle prefill references and both full 128K/128 traces are accepted in
-  rust-star/.work/frontier128-35f69741/. Native 64K/96K and two 128K/128
-  full-logit gates plus seven old controls run sequentially. Established 32K/128
-  and new 64K/96K prefill C0 pass; BOTH full native 128K/128 runs pass exactly.
-  Nine native checks pass; retained-engine and profiled 32K remain running/queued.
-  Final input/report/docs audits are pending.
+- 128K correctness milestone COMPLETE and retained at candidate 0eb484ea.
+  314 tests/build, six repeated oracle captures and all eleven native checks
+  pass, including two full 128K/128 C0 runs. Profile audit 287 tails/2,583 rows;
+  final input pins match. Report rust-star/reports/128k-c0-0eb484ea/README.md
+  contains 117 verified artifacts. All requested work is complete; stopped.
+- Separate external-reference diagnostic execution now reaches 128K. Built-in
+  fixtures/measurement commands retain 32K; internal HC targets retain 24K.
+  No new throughput or total-memory claim. Diagnostic RSS omits benchmark
+  page warming and must not be compared with prior warmed RSS measurements.
+- Proposed next milestone (not started): 128K measurement/retained-engine
+  protocol and pinned paired performance/memory comparison. Wait for user
+  authorization of the next milestone, with no quota-burning mode.
 
 - Memory-prefill milestone COMPLETE and retained at de6d2c11. 312 tests/build,
   seven live gates, five valid pairs/two warmups and both profile audits pass.
@@ -3523,8 +3551,8 @@ Next:
   decode −0.31%, first-step latency +2.43%. Partial bootstrap wraps 18 views;
   native activation scratch uses 4K rows. KV/compressed history remains absolute.
 - 128K modeled allocation/fill preflight passes 14.837GiB. Planning estimate
-  93.173GiB remains a planning estimate, not an inference proof. The active
-  milestone above must establish 128K C0 before any larger-frontier claim.
+  93.173GiB remains a historical planning estimate, not a bound. The subsequent
+  completed milestone above independently establishes scoped full 128K C0.
 - Earlier bootstrap/counter milestone 912fae1e remains accepted history:
   rust-star/reports/32k-bootstrap-912fae1e/README.md (403 artifacts), 8.165% paired
   prefill improvement then. Oracle-v5 remains the correctness target; the latest
@@ -4325,13 +4353,12 @@ Next:
 
 ## Immediate Next Actions
 
-1. Complete the now-authorized 128K correctness milestone: repeated oracle
-   captures, native frontier/decode checks, old controls, memory evidence and
-   portable report/docs. Stop after that milestone; no usage-burning mode.
-2. Current milestone acceptance: pin repeated 128K tokenization/oracle outputs,
-   audit larger-context sparse schedules/offsets and decoder-state adoption,
-   then advance incremental frontier gates through full 128K prefill and 128
-   full-logit decode steps under memory monitoring. Capacity alone is not C0.
+1. Stop: the authorized 128K correctness milestone is complete. Full evidence
+   and scope are in rust-star/reports/128k-c0-0eb484ea/README.md. No active runs
+   or required follow-up remain for this milestone; no usage-burning mode.
+2. Proposed next milestone, not started: extend measurement and retained-engine
+   protocol to 128K, validate lifecycle reuse at that frontier, then compare
+   performance and warmed memory against the pinned oracle with a paired plan.
 3. Keep oracle-v5 and historical evidence immutable. Full 32K/128 C0 remains
    mandatory; accepted internal HC targets end at 24K. Rust-to-Rust improvements
    do not update the Rust-versus-DwarfStar performance baseline.

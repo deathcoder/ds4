@@ -1,0 +1,22 @@
+Rust Star retained lifecycle: first-load prompt 246824.510 ms, retained prompt 228640.180 ms (1.080x)
+retained prefill: 143.317 tok/s; generation: 20.258 tok/s; both 128-token transcripts exact
+paired protocol: ineligible same-process lifecycle diagnostic
+json: /Users/deathcodevision/dev/ds4-rust-star-bootstrap/rust-star/.work/frontier128-35f69741/checks/batch-retained.json
+      497.46 real         8.36 user       107.54 sys
+         90107265024  maximum resident set size
+                   0  average shared memory size
+                   0  average unshared data size
+                   0  average unshared stack size
+            10140502  page reclaims
+                   0  page faults
+                   0  swaps
+                   0  block input operations
+                   0  block output operations
+                   0  messages sent
+                   0  messages received
+                   0  signals received
+                   1  voluntary context switches
+               94435  involuntary context switches
+        902966624010  instructions retired
+        342526036803  cycles elapsed
+         12099798944  peak memory footprint
