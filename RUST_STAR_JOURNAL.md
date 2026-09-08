@@ -3587,8 +3587,9 @@ Next:
 - ACTIVE: authorized 128K measurement/retained-engine milestone. Earlier
   candidate 5f3b9672 passed full 128K C0 but failed retained report serialization
   on stale context/token guards; the error is reproduced by a host regression.
-  Corrected candidate ef37e566 is building in rust-star/.work/measure128-writer-fix/.
-  All live gates will rerun before the five-pair campaign. Earlier failed evidence
+  Corrected ef37e566 passes 317 Rust tests, 94 unchanged Python tests and build.
+  Work: rust-star/.work/measure128-writer-fix/. Input hashes pass and full 128K
+  C0 is running again; all six live gates precede the five-pair campaign. Earlier failed evidence
   is retained in measure128-43bf0dfa/ and copied under the new work's rejected/.
   No paired measurements have started; stop after final evidence/docs acceptance.
 
