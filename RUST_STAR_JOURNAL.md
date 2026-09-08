@@ -3559,8 +3559,9 @@ Next:
 ### Current resume checkpoint (updated 2026-09-08)
 
 - ACTIVE: authorized 128K measurement/retained-engine milestone at 43bf0dfa.
-  Scope and acceptance are in the newest journal entry. Implementation begins
-  in rust-star/.work/measure128-43bf0dfa/; no new timings or candidate yet.
+  Candidate 5f3b9672 passes 315 Rust tests, 94 Python tests and release build.
+  Work: rust-star/.work/measure128-43bf0dfa/. Frozen live validation is queued
+  after model/oracle/input rehash; paired measurements wait for gate acceptance.
 
 - 128K correctness milestone COMPLETE and retained at candidate 0eb484ea.
   314 tests/build, six repeated oracle captures and all eleven native checks
@@ -3571,9 +3572,8 @@ Next:
   fixtures/measurement commands retain 32K; internal HC targets retain 24K.
   No new throughput or total-memory claim. Diagnostic RSS omits benchmark
   page warming and must not be compared with prior warmed RSS measurements.
-- Proposed next milestone (not started): 128K measurement/retained-engine
-  protocol and pinned paired performance/memory comparison. Wait for user
-  authorization of the next milestone, with no quota-burning mode.
+- The subsequent measurement/retained-engine milestone is now authorized and
+  active as recorded above. Keep the prior correctness report immutable.
 
 - Memory-prefill milestone COMPLETE and retained at de6d2c11. 312 tests/build,
   seven live gates, five valid pairs/two warmups and both profile audits pass.
