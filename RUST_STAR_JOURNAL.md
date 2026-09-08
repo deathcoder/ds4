@@ -18,6 +18,21 @@ Before changing code:
 Journal entries are reverse chronological. Do not edit old entries to change
 history; add a correction and update the current-state summary.
 
+## 2026-09-08 — Retained 128K report rejected by old writer guards
+
+- Preserve failed 5f3b9672 attempt in measure128-43bf0dfa/: full 128K C0 passed;
+  retained run exited 1 after 2,763s with "inconsistent measurement metadata".
+  No paired processes were started. Validation and campaign stopped immediately.
+- Cause found in write_engine_run_json: context allowlist remains 2K/32K and
+  prefill-token validation assumes those frontiers. The retained writer invokes
+  that validator after both execution cycles return. This is report admission,
+  not a recorded full-logit/transcript mismatch; timings were not serialized.
+- The new fresh 128K writer test reproduced exactly the same metadata rejection
+  without the model. Extended context, prefill-token and full-transcript checks
+  in serialization, with fresh/retained regression tests. Freeze a corrected
+  candidate and rerun all live acceptance.
+  Keep this failed attempt distinct from the new candidate; no favorable retries.
+
 ## 2026-09-08 — Measurement candidate passes complete fresh 128K C0
 
 - Frozen 5f3b9672 passes every 128K prefill word and all 128 full-logit decode
@@ -3573,8 +3588,8 @@ Next:
   Candidate 5f3b9672 passes 315 Rust tests, 94 Python tests and release build.
   Work: rust-star/.work/measure128-43bf0dfa/. Frozen live validation is queued
   after passing model/oracle/input rehash. Full 128K C0 now passes; retained
-  128K two-cycle measurement is active, then shorter controls. Paired
-  measurements wait for gate and lifecycle-audit acceptance.
+  128K report serialization failed on old 2K/32K guards. Fix/tests are active;
+  original evidence is preserved and no paired measurements have started.
 
 - 128K correctness milestone COMPLETE and retained at candidate 0eb484ea.
   314 tests/build, six repeated oracle captures and all eleven native checks
