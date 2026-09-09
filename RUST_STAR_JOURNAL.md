@@ -20,6 +20,26 @@ history; add a correction and update the current-state summary.
 
 ## 2026-09-09 — 128K profiling and focused optimization milestone started
 
+- Baseline engine-profile rejected at chunk 57,344/layer 41 after 562.51s:
+  shared-expert start precedes routed-sum end. Raw 18-word packet and exit 1 are
+  preserved in baseline-profile.log/status.json; no valid profile was emitted.
+  A standalone nine-pass Metal probe reproduces non-increasing packets in
+  100/100 independent-pass runs and 0/100 fenced runs. This supports legitimate
+  independent-pass overlap, not permission to weaken timestamp validation.
+- Add diagnostic-only fences between the nine tail profile encoders. Preserve
+  strict monotonicity and mark serialization as MTLFence in the profile JSON.
+  Normal inference still uses its original single encoder. The external-profile
+  CLI extension passed 317 host tests; 317 release tests with fences also pass.
+  Full model/prompt/oracle/reference hashes pass fresh preflight at 07:35 UTC.
+  Release binary build and five CLI help/path/flag rejection checks pass.
+  Freeze the diagnostic source/binary, then run live 128K profiled full-C0.
+  Frozen ef37e566 stays the
+  normal timed baseline; use the corrected diagnostic binary for attribution.
+- While the baseline profile runs, extend the external-reference diagnostic with
+  optional `--profile-json PATH` so the instrumented 128K prefill can be checked
+  against every immutable output word. This only enables the existing diagnostic
+  counters; no inference optimization has been selected. Build and live checks
+  are pending. Preserve both the normal full-C0 gate and this profiled gate.
 - User authorized the proposed next milestone from 9b4d7d0d. Work remains on
   agent/rust-star-bootstrap. Work directory: rust-star/.work/profile128-9b4d7d0d/.
 - Start with the frozen accepted ef37e566 executable and pinned 128K transcript.
@@ -3727,13 +3747,18 @@ Next:
   ef37e566 baseline profile runs first; strict counter/transcript audit precedes
   choosing a change. Work: rust-star/.work/profile128-9b4d7d0d/. Follow the newest
   entry through C0, paired validation and portable report. No change selected yet.
+  External-reference optional prefill profiling is implemented but unvalidated;
+  its first 317 host tests pass. Baseline profile failed on independent-pass
+  overlap; the standalone fenced control, 317 release tests and fresh input
+  hashes pass. Release build and five CLI checks also pass. Freeze the diagnostic
+  binary, then run full 128K profiled C0 and component auditing.
 
 - COMPLETE: 128K measurement/retained-engine milestone, candidate ef37e566.
   317 Rust / 94 Python tests, six live gates, five valid pairs and two warm-ups;
   portable report has 167 verified artifacts. See the newest completion entry
   and rust-star/reports/128k-measure-ef37e566/README.md for measured latency,
   throughput and warmed memory. Independent audits and final pins pass.
-  Earlier writer rejection is preserved. STOP; no next milestone is active.
+  Earlier writer rejection is preserved. Its follow-up milestone is active above.
 
 - 128K correctness milestone COMPLETE and retained at candidate 0eb484ea.
   314 tests/build, six repeated oracle captures and all eleven native checks
@@ -4562,6 +4587,8 @@ Next:
 2. Audit the baseline 128K profile, select a focused optimization, preserve full
    C0 and lifecycle controls, and evaluate frozen candidates with five paired
    measurements. Preserve rejected attempts; finish evidence/docs and stop.
+   First validate the optional external-reference profile output so instrumented
+   128K prefill has full-output C0 coverage as well as transcript checks.
 3. Keep oracle-v5 and historical evidence immutable. Full 32K/128 C0 remains
    mandatory; accepted internal HC targets end at 24K. The new 128K comparison
    adds a frontier and does not rewrite historical 32K performance results.

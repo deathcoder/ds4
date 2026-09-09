@@ -130,7 +130,7 @@ impl LongPrefillProfile {
             "{{\"chunk_start\":{},\"first_layer\":{},\"last_layer\":{},\"stage\":\"{}\",\"calls\":{},\"host_elapsed_ms\":{:.9},\"command_wall_ms\":{:.9},\"gpu_ms\":{:.9}}}",
             r.chunk,r.first,r.last,r.stage,r.calls,r.elapsed,r.wall,r.gpu)).collect::<Vec<_>>().join(",");
         let components = self.tail_components.join(",");
-        Some(format!("{{\"method\":\"existing-command-completion-and-host-stage-timers\",\"paired_ineligible\":true,\"rows\":[{rows}],\"tail_components\":{{\"method\":\"metal-compute-stage-boundary-timestamp-counters\",\"profile_perturbed\":true,\"encoder_splitting\":true,\"scaling\":\"counter shares scaled to each completed tail command GPU interval; do not add to parent rows\",\"rows\":[{components}]}}}}"))
+        Some(format!("{{\"method\":\"existing-command-completion-and-host-stage-timers\",\"paired_ineligible\":true,\"rows\":[{rows}],\"tail_components\":{{\"method\":\"metal-compute-stage-boundary-timestamp-counters\",\"profile_perturbed\":true,\"encoder_splitting\":true,\"encoder_serialization\":\"MTLFence\",\"scaling\":\"counter shares scaled to each completed tail command GPU interval; do not add to parent rows\",\"rows\":[{components}]}}}}"))
     }
 }
 
@@ -1293,15 +1293,16 @@ mod tail_profile_tests {
 pub fn run_long_prefill_reference_probe(
     model: &MappedModel,
     reference: &crate::frontier_reference::FrontierReference,
-) -> Result<LongPrefillChunkProbeReport> {
-    Ok(run_long_prefill_with_reference(
+    collect_profile: bool,
+) -> Result<(LongPrefillChunkProbeReport, Option<String>)> {
+    let (_, report, timing) = run_long_prefill_with_reference(
         model,
         reference.frontier(),
         None,
         false,
         true,
-        false,
+        collect_profile,
         Some(reference),
-    )?
-    .1)
+    )?;
+    Ok((report, timing.long_prefill_profile))
 }

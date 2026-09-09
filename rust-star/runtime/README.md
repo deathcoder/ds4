@@ -1355,6 +1355,14 @@ token IDs, malformed lengths, non-finite logits and inconsistent greedy choices.
 The output path must not exist. Oracle/model provenance is authenticated by the
 report's evidence runner, not by this runtime input parser.
 
+Append `--profile-json PROFILE.json` to collect perturbing prefill counters while
+checking the same complete output tensors. Both output paths must be new and
+distinct. The profile is emitted only after output validation succeeds and is
+ineligible for paired throughput claims. Tail component encoders use fences to
+prevent independent routed/shared expert passes from overlapping; their scaled
+shares describe this perturbed schedule. Live 128K validation of this extension
+is pending in the current profiling milestone.
+
 Native boundary, output and adoption guards now allow the larger diagnostic
 frontier; built-in diagnostic fixtures retain their earlier contract. The
 subsequent measurement milestone also admits the pinned 128K prompt and complete

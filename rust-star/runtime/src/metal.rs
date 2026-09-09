@@ -58305,7 +58305,8 @@ mod imp {
     pub fn run_long_prefill_reference_probe(
         _model: &crate::model::MappedModel,
         _reference: &crate::frontier_reference::FrontierReference,
-    ) -> crate::Result<super::LongPrefillChunkProbeReport> {
+        _collect_profile: bool,
+    ) -> crate::Result<(super::LongPrefillChunkProbeReport, Option<String>)> {
         Err(crate::Error::invalid(
             "external frontier comparison requires macOS Metal",
         ))

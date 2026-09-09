@@ -150,16 +150,24 @@ fn run() -> Result<()> {
     if command == "long-prefill-reference-probe" {
         let args: Vec<_> = arguments.collect();
         if args.len() == 1 && matches!(args[0].to_str(), Some("--help") | Some("-h")) {
-            println!("usage: rust-star long-prefill-reference-probe MODEL.gguf TOKENS.u32le SELECTED.u32le LOGITS.f32le REPORT.json\nCompares every output word with external reference vectors through 128K. Oracle provenance must be verified separately; this is not a throughput command.");
+            println!("usage: rust-star long-prefill-reference-probe MODEL.gguf TOKENS.u32le SELECTED.u32le LOGITS.f32le REPORT.json [--profile-json PATH]\nCompares every output word with external reference vectors through 128K. Optional prefill profiling must pass the same full-output check. Oracle provenance must be verified separately; this is not a throughput command.");
             return Ok(());
         }
-        if args.len() != 5 {
+        if args.len() != 5 && !(args.len() == 7 && args[5] == "--profile-json") {
             return Err(Error::invalid(
-                "expected model, prompt tokens, selected tokens, full logits and report paths",
+                "expected model, prompt tokens, selected tokens, full logits and report paths, optionally --profile-json PATH",
             ));
         }
         if Path::new(&args[4]).exists() {
             return Err(Error::invalid("reference report already exists"));
+        }
+        let profile_path = args.get(6);
+        if let Some(path) = profile_path {
+            if path == &args[4] || Path::new(path).exists() {
+                return Err(Error::invalid(
+                    "profile path must be new and differ from the reference report",
+                ));
+            }
         }
         let reference = rust_star_runtime::frontier_reference::FrontierReference::from_bytes(
             &std::fs::read(&args[1])?,
@@ -168,8 +176,19 @@ fn run() -> Result<()> {
         )?;
         let model = MappedModel::open(Path::new(&args[0]))?;
         validate_resident_q2(model.gguf())?;
-        let report =
-            rust_star_runtime::metal::run_long_prefill_reference_probe(&model, &reference)?;
+        let (report, profile) = rust_star_runtime::metal::run_long_prefill_reference_probe(
+            &model,
+            &reference,
+            profile_path.is_some(),
+        )?;
+        if let Some(path) = profile_path {
+            let profile = profile.ok_or_else(|| Error::invalid("missing long-prefill profile"))?;
+            let mut file = std::fs::OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .open(path)?;
+            writeln!(file, "{profile}")?;
+        }
         let mut file = std::fs::OpenOptions::new()
             .write(true)
             .create_new(true)

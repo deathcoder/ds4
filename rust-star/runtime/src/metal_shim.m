@@ -969,6 +969,23 @@ static id<MTLComputeCommandEncoder> stage_compute_encoder(
     return [command computeCommandEncoderWithDescriptor:descriptor];
 }
 
+/* The component attribution assumes disjoint intervals. Independent shared and
+ * routed expert passes may overlap even across compute encoders, so only this
+ * perturbing diagnostic orders their boundaries with a fence. */
+static id<MTLComputeCommandEncoder> next_tail_profile_encoder(
+    id<MTLComputeCommandEncoder> previous,
+    id<MTLCommandBuffer> command,
+    id<MTLCounterSampleBuffer> samples,
+    id<MTLFence> fence,
+    NSUInteger stage)
+{
+    [previous updateFence:fence];
+    [previous endEncoding];
+    id<MTLComputeCommandEncoder> encoder = stage_compute_encoder(command, samples, stage);
+    [encoder waitForFence:fence];
+    return encoder;
+}
+
 static int encode_probe(
     RustStarMetalContext *context,
     id<MTLCommandBuffer> command,
@@ -46782,6 +46799,9 @@ int rust_star_metal_run_prefill_layer2_continuation_tail(
 
         id<MTLCommandBuffer> command = [context.queue commandBuffer];
         id<MTLCounterSampleBuffer> tail_samples = native_chunk ? context.prefillLayerTailSamples : nil;
+        id<MTLFence> tail_fence = tail_samples ? [context.device newFence] : nil;
+        if (tail_samples && !tail_fence) return fail_with_message(error, error_bytes,
+            @"failed to create tail profile fence");
         context.prefillLayerTailCommand = nil;
         id<MTLComputeCommandEncoder> encoder = stage_compute_encoder(command, tail_samples, 0u);
         if (!command || !encoder) return fail_with_message(error, error_bytes,
@@ -46832,8 +46852,7 @@ int rust_star_metal_run_prefill_layer2_continuation_tail(
              threadsPerThreadgroup:MTLSizeMake(256,1,1)];
 
         if (tail_samples) {
-            [encoder endEncoding];
-            encoder = stage_compute_encoder(command, tail_samples, 1u);
+            encoder = next_tail_profile_encoder(encoder, command, tail_samples, tail_fence, 1u);
             if (!encoder) return fail_with_message(error, error_bytes, @"failed to create tail profile encoder");
         }
         [encoder setComputePipelineState:context.rmsNormF32Pipeline];
@@ -46870,8 +46889,7 @@ int rust_star_metal_run_prefill_layer2_continuation_tail(
              threadsPerThreadgroup:MTLSizeMake(1024,1,1)];
 
         if (tail_samples) {
-            [encoder endEncoding];
-            encoder = stage_compute_encoder(command, tail_samples, 2u);
+            encoder = next_tail_profile_encoder(encoder, command, tail_samples, tail_fence, 2u);
             if (!encoder) return fail_with_message(error, error_bytes, @"failed to create tail profile encoder");
         }
         [encoder setComputePipelineState:context.f16PrefillPipeline];
@@ -46940,8 +46958,7 @@ int rust_star_metal_run_prefill_layer2_continuation_tail(
              threadsPerThreadgroup:MTLSizeMake(192,1,1)];
 
         if (tail_samples) {
-            [encoder endEncoding];
-            encoder = stage_compute_encoder(command, tail_samples, 3u);
+            encoder = next_tail_profile_encoder(encoder, command, tail_samples, tail_fence, 3u);
             if (!encoder) return fail_with_message(error, error_bytes, @"failed to create tail profile encoder");
         }
         [encoder setComputePipelineState:context.routedBatchMapPipeline];
@@ -46955,8 +46972,7 @@ int rust_star_metal_run_prefill_layer2_continuation_tail(
              threadsPerThreadgroup:MTLSizeMake(256,1,1)];
 
         if (tail_samples) {
-            [encoder endEncoding];
-            encoder = stage_compute_encoder(command, tail_samples, 4u);
+            encoder = next_tail_profile_encoder(encoder, command, tail_samples, tail_fence, 4u);
             if (!encoder) return fail_with_message(error, error_bytes, @"failed to create tail profile encoder");
         }
         [encoder setComputePipelineState:context.routedBatchPairSwigluPipeline];
@@ -46975,8 +46991,7 @@ int rust_star_metal_run_prefill_layer2_continuation_tail(
              threadsPerThreadgroup:MTLSizeMake(128,1,1)];
 
         if (tail_samples) {
-            [encoder endEncoding];
-            encoder = stage_compute_encoder(command, tail_samples, 5u);
+            encoder = next_tail_profile_encoder(encoder, command, tail_samples, tail_fence, 5u);
             if (!encoder) return fail_with_message(error, error_bytes, @"failed to create tail profile encoder");
         }
         [encoder setComputePipelineState:context.routedBatchDownPipeline];
@@ -46991,8 +47006,7 @@ int rust_star_metal_run_prefill_layer2_continuation_tail(
         [encoder dispatchThreadgroups:MTLSizeMake(routed_map_work_cap,64,1)
              threadsPerThreadgroup:MTLSizeMake(128,1,1)];
         if (tail_samples) {
-            [encoder endEncoding];
-            encoder = stage_compute_encoder(command, tail_samples, 6u);
+            encoder = next_tail_profile_encoder(encoder, command, tail_samples, tail_fence, 6u);
             if (!encoder) return fail_with_message(error, error_bytes, @"failed to create tail profile encoder");
         }
         [encoder setComputePipelineState:context.routedBatchSumPipeline];
@@ -47013,8 +47027,7 @@ int rust_star_metal_run_prefill_layer2_continuation_tail(
              threadsPerThreadgroup:MTLSizeMake(128,1,1)]; \
     } while (0)
         if (tail_samples) {
-            [encoder endEncoding];
-            encoder = stage_compute_encoder(command, tail_samples, 7u);
+            encoder = next_tail_profile_encoder(encoder, command, tail_samples, tail_fence, 7u);
             if (!encoder) return fail_with_message(error, error_bytes, @"failed to create tail profile encoder");
         }
         RUST_STAR_ENCODE_CONTINUATION_SHARED(shared_gate_args, 11,
@@ -47033,8 +47046,7 @@ int rust_star_metal_run_prefill_layer2_continuation_tail(
 #undef RUST_STAR_ENCODE_CONTINUATION_SHARED
 
         if (tail_samples) {
-            [encoder endEncoding];
-            encoder = stage_compute_encoder(command, tail_samples, 8u);
+            encoder = next_tail_profile_encoder(encoder, command, tail_samples, tail_fence, 8u);
             if (!encoder) return fail_with_message(error, error_bytes, @"failed to create tail profile encoder");
         }
         [encoder setComputePipelineState:context.hcExpand4Pipeline];
