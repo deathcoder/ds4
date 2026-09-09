@@ -36,6 +36,7 @@ fn main() {
     println!("cargo:rerun-if-changed=../../metal/dsv4_hc.metal");
     println!("cargo:rerun-if-changed=../../metal/dsv4_misc.metal");
     println!("cargo:rerun-if-changed=src/indexer_argsort.metal");
+    println!("cargo:rerun-if-changed=src/indexer_scores.metal");
     if env::var("CARGO_CFG_TARGET_OS").as_deref() != Ok("macos") {
         return;
     }
@@ -93,6 +94,7 @@ fn main() {
             manifest.join("src/sparse_indexed_prefix.metal"),
             manifest.join("../../metal/dsv4_misc.metal"),
             manifest.join("src/indexer_argsort.metal"),
+            manifest.join("src/indexer_scores.metal"),
         ],
         &output.join("sparse_indexed_source.inc"),
         "kSparseIndexedSource",

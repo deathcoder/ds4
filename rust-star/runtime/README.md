@@ -1300,6 +1300,12 @@ boundary/reason and chunk/layer context. Rust also rejects the Metal error
 sentinel before attribution. Validity remains strict; the original cause is
 unresolved. See [the preserved failure](../reports/32k-dense-output-92ca3ef3/README.md).
 
+A later 128K packet captured independent shared/routed expert passes overlapping.
+A nine-pass control reproduced overlap in 100/100 runs, while a fenced control
+reported 100/100 ordered packets. Diagnostic tail encoders now use fences and
+retain the strict timestamp guard. This does not identify the unlogged historical
+failure. Normal inference keeps its single encoder.
+
 The [scoped-bootstrap study](../reports/32k-bootstrap-912fae1e/README.md) passes
 all seven live gates, including profiled full-output C0, and a separate
 post-paired profile. Its independent counter probe also passes 256 commands
@@ -1360,8 +1366,16 @@ checking the same complete output tensors. Both output paths must be new and
 distinct. The profile is emitted only after output validation succeeds and is
 ineligible for paired throughput claims. Tail component encoders use fences to
 prevent independent routed/shared expert passes from overlapping; their scaled
-shares describe this perturbed schedule. Live 128K validation of this extension
-is pending in the current profiling milestone.
+shares describe this perturbed schedule. Diagnostic `ec5db25e` passes every 128K
+prefill word and all 128 decode rows, plus the audit of 1,271 tail packets and
+11,439 intervals. This validates prefill profiling, not decoder-stage counters.
+
+The current indexer-score candidate stages eight queries against 64 compressed
+columns with 256 threads and 20KiB of shared memory. It preserves half conversion,
+each 8x8 dot product and FP32 accumulation over heads while reducing repeated Q
+staging. All 167,815,044 synthetic score words match the original 32-column
+kernel. Isolated timing gains are preliminary; full-model gates and paired
+engine measurements are pending in the current milestone.
 
 Native boundary, output and adoption guards now allow the larger diagnostic
 frontier; built-in diagnostic fixtures retain their earlier contract. The

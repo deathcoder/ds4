@@ -402,7 +402,12 @@ pinned transcript; fresh full-logit C0 is separate. Retained validation covers
 two cycles with request-state reset and shared model/context/residency, not
 arbitrary-prompt serving. The next milestone is now authorized and active: profile the 128K
 remaining-transformer chain, validate counters, and evaluate a focused
-optimization with C0 controls and frozen paired measurements. Live profile acceptance remains 32K, with internal HC through 24K.
+optimization with C0 controls and frozen paired measurements. Diagnostic
+ec5db25e now passes full-output 128K prefill profiling with 1,271 strictly ordered
+tail packets after adding diagnostic-only fences between independent passes.
+This does not establish 128K decoder-stage profiling. Internal HC remains
+accepted through 24K. A wider indexer-score tile is under evaluation; isolated
+kernel gains do not establish engine throughput gains.
 
 Current implementation boundaries, evidence, and immediate actions are maintained
 in `RUST_STAR_JOURNAL.md`. As of 2026-09-08, native prefill through all 43 layers

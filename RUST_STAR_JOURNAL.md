@@ -20,6 +20,32 @@ history; add a correction and update the current-state summary.
 
 ## 2026-09-09 — 128K profiling and focused optimization milestone started
 
+- Fenced diagnostic ec5db25e completed at 08:02 UTC: all 129,280 prefill
+  logits and all 128 full decode rows match oracle-v5 exactly. The independent
+  audit passes all 1,271 tails / 11,439 intervals. Counter-span coverage is
+  99.793–99.943% (median 99.896%), with no rejected packet. This establishes
+  full-output 128K prefill profiling, not 128K decoder-stage profiling.
+- Observed prefill GPU stage total is 1186.370s: attention 581.775s (49.04%),
+  tail 376.485s (31.73%), bootstrap ingress 148.347s. Even-layer attention is
+  383.761s; its per-chunk total grows from 3.255s to 21.496s. These are separate
+  perturbed diagnostic measurements, not eligible engine throughput results.
+- Select the 64-column indexer-score tile hypothesis from this attention
+  attribution. Seven isolated shapes match all 167,815,044 score words and
+  causal masks. Seven alternating pairs at each large shape give median GPU
+  latency ratios 0.660566 (32K shape) and 0.619380 (128K shape), all 14 improved.
+  Source/word-count/statistics audit passes; raw pairs and the prebound hypothesis
+  are preserved in profile128-9b4d7d0d/score-tile-*. No engine speedup is claimed.
+- Integrate only that score tiling change: new Rust-owned indexer_scores.metal,
+  64 columns / 256 threads / 20KiB shared staging, same 8x8 dot and head order.
+  One host geometry helper covers all three prefix/continuation call sites.
+  All 317 release tests and 94 Python tests pass; fresh input hashes pass at
+  08:09 UTC. Release executable build also passes. Freeze this candidate and
+  run ten live gates before the five engine pairs. The prebound acceptance plan
+  requires lower median paired prefill latency with at least four faster pairs,
+  steady throughput ratio >=0.97 and peak-RSS ratio <=1.03; report every first
+  step and all dispersion. No favorable retries. See optimization-acceptance.json.
+  New optimization work directory:
+  rust-star/.work/score64-ec5db25e/. Frozen timed baseline remains ef37e566.
 - Baseline engine-profile rejected at chunk 57,344/layer 41 after 562.51s:
   shared-expert start precedes routed-sum end. Raw 18-word packet and exit 1 are
   preserved in baseline-profile.log/status.json; no valid profile was emitted.
@@ -35,6 +61,10 @@ history; add a correction and update the current-state summary.
   Freeze the diagnostic source/binary, then run live 128K profiled full-C0.
   Frozen ef37e566 stays the
   normal timed baseline; use the corrected diagnostic binary for attribution.
+- Diagnostic ec5db25e is frozen (binary SHA-256
+  f6b0c5424792cb5008e34d6588c7ca27da9b3b1031930ad45557d0e1aa7cdc01).
+  Its full 128K profiled external-reference run and strict component audit now
+  pass, as recorded above. Both raw failed and successful attempts are retained.
 - While the baseline profile runs, extend the external-reference diagnostic with
   optional `--profile-json PATH` so the instrumented 128K prefill can be checked
   against every immutable output word. This only enables the existing diagnostic
@@ -3746,12 +3776,17 @@ Next:
 - ACTIVE: authorized 128K profiling and focused optimization milestone. Frozen
   ef37e566 baseline profile runs first; strict counter/transcript audit precedes
   choosing a change. Work: rust-star/.work/profile128-9b4d7d0d/. Follow the newest
-  entry through C0, paired validation and portable report. No change selected yet.
+  entry through C0, paired validation and portable report. The 64-column score
+  tile is selected and integrated after exact synthetic controls and 14 isolated
+  pairs. 317 release tests, 94 Python tests, fresh hashes and release build pass;
+  freeze the candidate, then ten full-model/shorter/profile/lifecycle gates and
+  five engine pairs remain. Acceptance is prebound in optimization-acceptance.json.
   External-reference optional prefill profiling is implemented but unvalidated;
   its first 317 host tests pass. Baseline profile failed on independent-pass
   overlap; the standalone fenced control, 317 release tests and fresh input
-  hashes pass. Release build and five CLI checks also pass. Freeze the diagnostic
-  binary, then run full 128K profiled C0 and component auditing.
+  hashes pass. Release build and five CLI checks also pass. Frozen diagnostic
+  ec5db25e passes full 128K profiled C0 and component auditing. Continue in
+  rust-star/.work/score64-ec5db25e/ for the score-tile candidate.
 
 - COMPLETE: 128K measurement/retained-engine milestone, candidate ef37e566.
   317 Rust / 94 Python tests, six live gates, five valid pairs and two warm-ups;
@@ -4584,11 +4619,11 @@ Next:
 
 1. Complete the authorized 128K profiling/optimization milestone, following the
    newest entry and current work directory. Do not resume quota-burning mode.
-2. Audit the baseline 128K profile, select a focused optimization, preserve full
-   C0 and lifecycle controls, and evaluate frozen candidates with five paired
-   measurements. Preserve rejected attempts; finish evidence/docs and stop.
-   First validate the optional external-reference profile output so instrumented
-   128K prefill has full-output C0 coverage as well as transcript checks.
+2. Build/test the integrated 64-column score tile, freeze it, and require fresh
+   full C0 plus shorter/lifecycle/profile controls. Then evaluate against frozen
+   ef37e566 with five paired measurements and a prebound acceptance plan.
+   Preserve rejected attempts; finish evidence/docs and stop. The diagnostic
+   128K profile and synthetic score controls already pass.
 3. Keep oracle-v5 and historical evidence immutable. Full 32K/128 C0 remains
    mandatory; accepted internal HC targets end at 24K. The new 128K comparison
    adds a frontier and does not rewrite historical 32K performance results.

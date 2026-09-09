@@ -986,6 +986,22 @@ static id<MTLComputeCommandEncoder> next_tail_profile_encoder(
     return encoder;
 }
 
+/* Match indexer_scores.metal: eight queries share Q staging across 64 columns.
+ * Each SIMD group still computes the same 8x8 dot, with unchanged depth/head
+ * accumulation order. Centralize geometry for prefix and continuation batches. */
+static void dispatch_prefill_indexer_scores(
+    id<MTLComputeCommandEncoder> encoder, uint32_t compressed_rows, uint32_t query_rows)
+{
+    enum { query_tile = 8, column_tile = 64, depth = 128 };
+    [encoder setThreadgroupMemoryLength:
+        (query_tile*depth+column_tile*depth)*sizeof(uint16_t)+
+            query_tile*column_tile*sizeof(float) atIndex:0];
+    [encoder dispatchThreadgroups:MTLSizeMake(
+        (compressed_rows+column_tile-1u)/column_tile,
+        (query_rows+query_tile-1u)/query_tile,1)
+        threadsPerThreadgroup:MTLSizeMake(32,column_tile/8,1)];
+}
+
 static int encode_probe(
     RustStarMetalContext *context,
     id<MTLCommandBuffer> command,
@@ -1515,7 +1531,7 @@ static int ensure_sparse_indexed_pipelines(
     id<MTLFunction> score =
         [library newFunctionWithName:@"kernel_dsv4_indexer_score_one_direct"];
     id<MTLFunction> score_batch =
-        [library newFunctionWithName:@"kernel_dsv4_indexer_scores_tiled"];
+        [library newFunctionWithName:@"rust_star_indexer_scores_tiled64"];
     id<MTLFunction> topk =
         [library newFunctionWithName:@"kernel_argsort_f32_i32_desc"];
     id<MTLFunction> topk_merge =
@@ -18337,12 +18353,7 @@ int rust_star_metal_run_prefill_layer2_attention(
             [encoder setBuffer:context.prefillLayer2IndexerCompressed
                          offset:0 atIndex:3];
             [encoder setBuffer:layer2_indexer_score_buffer offset:0 atIndex:4];
-            [encoder setThreadgroupMemoryLength:
-                (8u*128u+32u*128u)*sizeof(uint16_t)+8u*32u*sizeof(float)
-                                        atIndex:0];
-            [encoder dispatchThreadgroups:MTLSizeMake(
-                     (compressed_rows+31u)/32u,(rows+7u)/8u,1)
-                 threadsPerThreadgroup:MTLSizeMake(32,4,1)];
+            dispatch_prefill_indexer_scores(encoder, compressed_rows, rows);
 
             layer2_indexer_dispatches = encode_indexer_topk(context, encoder,
                 layer2_indexer_score_buffer, layer2_indexer_topk_buffer,
@@ -45729,11 +45740,7 @@ static int rust_star_metal_run_prefill_layer2_indexed_tile(
     [encoder setBuffer:indexer_weight_buffer offset:0 atIndex:2];
     [encoder setBuffer:indexer_compressed_buffer offset:0 atIndex:3];
     [encoder setBuffer:score_buffer offset:0 atIndex:4];
-    [encoder setThreadgroupMemoryLength:
-        (8u*128u+32u*128u)*sizeof(uint16_t)+8u*32u*sizeof(float)
-                                    atIndex:0];
-    [encoder dispatchThreadgroups:MTLSizeMake((compressed_capacity+31u)/32u,tile_rows/8u,1)
-         threadsPerThreadgroup:MTLSizeMake(32,4,1)];
+    dispatch_prefill_indexer_scores(encoder, compressed_capacity, tile_rows);
 
     const uint32_t topk_dispatches = encode_indexer_topk(context, encoder,
         score_buffer, topk_buffer, topk_args, error, error_bytes);
@@ -46136,11 +46143,7 @@ int rust_star_metal_run_prefill_layer4_prefix_sparse_batch(
         [encoder setBuffer:indexer_weight_buffer offset:0 atIndex:2];
         [encoder setBuffer:context.prefillLayer4IndexerCompressed offset:0 atIndex:3];
         [encoder setBuffer:score_buffer offset:0 atIndex:4];
-        [encoder setThreadgroupMemoryLength:
-            (8u*128u+32u*128u)*sizeof(uint16_t)+8u*32u*sizeof(float)
-                                    atIndex:0];
-        [encoder dispatchThreadgroups:MTLSizeMake(n_comp/32u,rows/8u,1)
-             threadsPerThreadgroup:MTLSizeMake(32,4,1)];
+        dispatch_prefill_indexer_scores(encoder, n_comp, rows);
 
         [encoder setComputePipelineState:context.indexerTopkPipeline];
         [encoder setBytes:&topk_args length:sizeof(topk_args) atIndex:0];
