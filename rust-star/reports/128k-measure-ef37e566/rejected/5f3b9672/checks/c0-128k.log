@@ -1,0 +1,179 @@
+rust-star: output-only gate completed the native 4K prefix
+rust-star: output-only gate completed native prefill through 8192 tokens
+rust-star: output-only gate completed native prefill through 12288 tokens
+rust-star: output-only gate completed native prefill through 16384 tokens
+rust-star: output-only gate completed native prefill through 20480 tokens
+rust-star: output-only gate completed native prefill through 24576 tokens
+rust-star: output-only gate completed native prefill through 28672 tokens
+rust-star: output-only gate completed native prefill through 32768 tokens
+rust-star: output-only gate completed native prefill through 36864 tokens
+rust-star: output-only gate completed native prefill through 40960 tokens
+rust-star: output-only gate completed native prefill through 45056 tokens
+rust-star: output-only gate completed native prefill through 49152 tokens
+rust-star: output-only gate completed native prefill through 53248 tokens
+rust-star: output-only gate completed native prefill through 57344 tokens
+rust-star: output-only gate completed native prefill through 61440 tokens
+rust-star: output-only gate completed native prefill through 65536 tokens
+rust-star: output-only gate completed native prefill through 69632 tokens
+rust-star: output-only gate completed native prefill through 73728 tokens
+rust-star: output-only gate completed native prefill through 77824 tokens
+rust-star: output-only gate completed native prefill through 81920 tokens
+rust-star: output-only gate completed native prefill through 86016 tokens
+rust-star: output-only gate completed native prefill through 90112 tokens
+rust-star: output-only gate completed native prefill through 94208 tokens
+rust-star: output-only gate completed native prefill through 98304 tokens
+rust-star: output-only gate completed native prefill through 102400 tokens
+rust-star: output-only gate completed native prefill through 106496 tokens
+rust-star: output-only gate completed native prefill through 110592 tokens
+rust-star: output-only gate completed native prefill through 114688 tokens
+rust-star: output-only gate completed native prefill through 118784 tokens
+rust-star: output-only gate completed native prefill through 122880 tokens
+rust-star: output-only gate completed native prefill through 126976 tokens
+rust-star: output-only gate completed native prefill through 131072 tokens
+rust-star: decode position 131072 all 129280 logits exact, token 21294
+rust-star: decode position 131073 all 129280 logits exact, token 16
+rust-star: decode position 131074 all 129280 logits exact, token 342
+rust-star: decode position 131075 all 129280 logits exact, token 201
+rust-star: decode position 131076 all 129280 logits exact, token 35392
+rust-star: decode position 131077 all 129280 logits exact, token 435
+rust-star: decode position 131078 all 129280 logits exact, token 81453
+rust-star: decode position 131079 all 129280 logits exact, token 14
+rust-star: decode position 131080 all 129280 logits exact, token 1639
+rust-star: decode position 131081 all 129280 logits exact, token 14
+rust-star: decode position 131082 all 129280 logits exact, token 716
+rust-star: decode position 131083 all 129280 logits exact, token 93125
+rust-star: decode position 131084 all 129280 logits exact, token 314
+rust-star: decode position 131085 all 129280 logits exact, token 9
+rust-star: decode position 131086 all 129280 logits exact, token 57712
+rust-star: decode position 131087 all 129280 logits exact, token 4178
+rust-star: decode position 131088 all 129280 logits exact, token 41507
+rust-star: decode position 131089 all 129280 logits exact, token 67
+rust-star: decode position 131090 all 129280 logits exact, token 14
+rust-star: decode position 131091 all 129280 logits exact, token 1804
+rust-star: decode position 131092 all 129280 logits exact, token 24305
+rust-star: decode position 131093 all 129280 logits exact, token 581
+rust-star: decode position 131094 all 129280 logits exact, token 54246
+rust-star: decode position 131095 all 129280 logits exact, token 10621
+rust-star: decode position 131096 all 129280 logits exact, token 201
+rust-star: decode position 131097 all 129280 logits exact, token 4830
+rust-star: decode position 131098 all 129280 logits exact, token 591
+rust-star: decode position 131099 all 129280 logits exact, token 295
+rust-star: decode position 131100 all 129280 logits exact, token 38953
+rust-star: decode position 131101 all 129280 logits exact, token 4462
+rust-star: decode position 131102 all 129280 logits exact, token 15811
+rust-star: decode position 131103 all 129280 logits exact, token 14
+rust-star: decode position 131104 all 129280 logits exact, token 4219
+rust-star: decode position 131105 all 129280 logits exact, token 59741
+rust-star: decode position 131106 all 129280 logits exact, token 295
+rust-star: decode position 131107 all 129280 logits exact, token 3125
+rust-star: decode position 131108 all 129280 logits exact, token 353
+rust-star: decode position 131109 all 129280 logits exact, token 42153
+rust-star: decode position 131110 all 129280 logits exact, token 45955
+rust-star: decode position 131111 all 129280 logits exact, token 716
+rust-star: decode position 131112 all 129280 logits exact, token 344
+rust-star: decode position 131113 all 129280 logits exact, token 4607
+rust-star: decode position 131114 all 129280 logits exact, token 591
+rust-star: decode position 131115 all 129280 logits exact, token 201
+rust-star: decode position 131116 all 129280 logits exact, token 321
+rust-star: decode position 131117 all 129280 logits exact, token 852
+rust-star: decode position 131118 all 129280 logits exact, token 52126
+rust-star: decode position 131119 all 129280 logits exact, token 14
+rust-star: decode position 131120 all 129280 logits exact, token 312
+rust-star: decode position 131121 all 129280 logits exact, token 716
+rust-star: decode position 131122 all 129280 logits exact, token 16883
+rust-star: decode position 131123 all 129280 logits exact, token 1550
+rust-star: decode position 131124 all 129280 logits exact, token 492
+rust-star: decode position 131125 all 129280 logits exact, token 3493
+rust-star: decode position 131126 all 129280 logits exact, token 1090
+rust-star: decode position 131127 all 129280 logits exact, token 36688
+rust-star: decode position 131128 all 129280 logits exact, token 28
+rust-star: decode position 131129 all 129280 logits exact, token 107106
+rust-star: decode position 131130 all 129280 logits exact, token 14
+rust-star: decode position 131131 all 129280 logits exact, token 716
+rust-star: decode position 131132 all 129280 logits exact, token 612
+rust-star: decode position 131133 all 129280 logits exact, token 60750
+rust-star: decode position 131134 all 129280 logits exact, token 14
+rust-star: decode position 131135 all 129280 logits exact, token 4219
+rust-star: decode position 131136 all 129280 logits exact, token 59741
+rust-star: decode position 131137 all 129280 logits exact, token 201
+rust-star: decode position 131138 all 129280 logits exact, token 321
+rust-star: decode position 131139 all 129280 logits exact, token 10462
+rust-star: decode position 131140 all 129280 logits exact, token 1639
+rust-star: decode position 131141 all 129280 logits exact, token 847
+rust-star: decode position 131142 all 129280 logits exact, token 91486
+rust-star: decode position 131143 all 129280 logits exact, token 9110
+rust-star: decode position 131144 all 129280 logits exact, token 560
+rust-star: decode position 131145 all 129280 logits exact, token 122731
+rust-star: decode position 131146 all 129280 logits exact, token 5193
+rust-star: decode position 131147 all 129280 logits exact, token 14
+rust-star: decode position 131148 all 129280 logits exact, token 312
+rust-star: decode position 131149 all 129280 logits exact, token 716
+rust-star: decode position 131150 all 129280 logits exact, token 314
+rust-star: decode position 131151 all 129280 logits exact, token 77179
+rust-star: decode position 131152 all 129280 logits exact, token 307
+rust-star: decode position 131153 all 129280 logits exact, token 14
+rust-star: decode position 131154 all 129280 logits exact, token 4057
+rust-star: decode position 131155 all 129280 logits exact, token 6539
+rust-star: decode position 131156 all 129280 logits exact, token 13530
+rust-star: decode position 131157 all 129280 logits exact, token 8611
+rust-star: decode position 131158 all 129280 logits exact, token 307
+rust-star: decode position 131159 all 129280 logits exact, token 260
+rust-star: decode position 131160 all 129280 logits exact, token 201
+rust-star: decode position 131161 all 129280 logits exact, token 85
+rust-star: decode position 131162 all 129280 logits exact, token 2666
+rust-star: decode position 131163 all 129280 logits exact, token 847
+rust-star: decode position 131164 all 129280 logits exact, token 91486
+rust-star: decode position 131165 all 129280 logits exact, token 9110
+rust-star: decode position 131166 all 129280 logits exact, token 560
+rust-star: decode position 131167 all 129280 logits exact, token 14
+rust-star: decode position 131168 all 129280 logits exact, token 1639
+rust-star: decode position 131169 all 129280 logits exact, token 122731
+rust-star: decode position 131170 all 129280 logits exact, token 5193
+rust-star: decode position 131171 all 129280 logits exact, token 1298
+rust-star: decode position 131172 all 129280 logits exact, token 14897
+rust-star: decode position 131173 all 129280 logits exact, token 16
+rust-star: decode position 131174 all 129280 logits exact, token 446
+rust-star: decode position 131175 all 129280 logits exact, token 14
+rust-star: decode position 131176 all 129280 logits exact, token 2822
+rust-star: decode position 131177 all 129280 logits exact, token 1086
+rust-star: decode position 131178 all 129280 logits exact, token 1285
+rust-star: decode position 131179 all 129280 logits exact, token 295
+rust-star: decode position 131180 all 129280 logits exact, token 39503
+rust-star: decode position 131181 all 129280 logits exact, token 1008
+rust-star: decode position 131182 all 129280 logits exact, token 50306
+rust-star: decode position 131183 all 129280 logits exact, token 201
+rust-star: decode position 131184 all 129280 logits exact, token 70
+rust-star: decode position 131185 all 129280 logits exact, token 1370
+rust-star: decode position 131186 all 129280 logits exact, token 17724
+rust-star: decode position 131187 all 129280 logits exact, token 113259
+rust-star: decode position 131188 all 129280 logits exact, token 374
+rust-star: decode position 131189 all 129280 logits exact, token 19203
+rust-star: decode position 131190 all 129280 logits exact, token 68601
+rust-star: decode position 131191 all 129280 logits exact, token 1639
+rust-star: decode position 131192 all 129280 logits exact, token 3493
+rust-star: decode position 131193 all 129280 logits exact, token 10462
+rust-star: decode position 131194 all 129280 logits exact, token 33481
+rust-star: decode position 131195 all 129280 logits exact, token 274
+rust-star: decode position 131196 all 129280 logits exact, token 409
+rust-star: decode position 131197 all 129280 logits exact, token 296
+rust-star: decode position 131198 all 129280 logits exact, token 3693
+rust-star: decode position 131199 all 129280 logits exact, token 2945
+external frontier 131072: all 129280 prefill logits and 128 full decode rows exact
+     1406.64 real        14.87 user       243.93 sys
+         14902345728  maximum resident set size
+                   0  average shared memory size
+                   0  average unshared data size
+                   0  average unshared stack size
+            17498001  page reclaims
+                 269  page faults
+                   0  swaps
+                   0  block input operations
+                   0  block output operations
+                   0  messages sent
+                   0  messages received
+                   0  signals received
+                  23  voluntary context switches
+              201617  involuntary context switches
+       2081420695960  instructions retired
+        766695118176  cycles elapsed
+         23436362696  peak memory footprint

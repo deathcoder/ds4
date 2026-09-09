@@ -1,0 +1,19 @@
+{
+  "scope": "128K/128 characterization, Rust Star versus unchanged oracle-v5",
+  "pairs": 5,
+  "warmups_per_engine": 1,
+  "order": "alternating AB then BA, fresh processes",
+  "correctness": "complete 128K full-logit gate plus timed exact transcripts and shorter controls",
+  "retained_scope": "two 128K transcript-checked cycles; fresh-process C0 independent; not a paired sample",
+  "primary_metric": "gen_steady_tps",
+  "secondary_metrics": [
+    "prefill_ms",
+    "gen_first_ms",
+    "gen_tps",
+    "process_peak_bytes",
+    "process_wall_ms"
+  ],
+  "speedup_required": false,
+  "failure_policy": "stop on first failure; preserve all attempts; no favorable retries",
+  "claim_limit": "128K characterization only; 256K headline and coding-agent corpus remain unmeasured"
+}

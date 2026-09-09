@@ -1,0 +1,7 @@
+START c0-128k
+PASS c0-128k
+START retained-128k
+Traceback (most recent call last):
+  File "$WORKTREE/rust-star/.work/measure128-43bf0dfa/validate.py", line 30, in <module>
+    assert p.returncode==0,(name,p.returncode)
+AssertionError: ('retained-128k', 1)

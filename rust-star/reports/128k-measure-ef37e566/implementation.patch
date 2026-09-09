@@ -1,0 +1,439 @@
+diff --git a/rust-star/fixtures/measurement-131072-v5/manifest.json b/rust-star/fixtures/measurement-131072-v5/manifest.json
+new file mode 100644
+index 00000000..521ee1d5
+--- /dev/null
++++ b/rust-star/fixtures/measurement-131072-v5/manifest.json
+@@ -0,0 +1,21 @@
++{
++  "schema": "rust-star-external-frontier-reference-v1",
++  "frontier": 131072,
++  "decode_steps": 128,
++  "vocabulary": 129280,
++  "repeat_processes": 2,
++  "oracle_source": "ccbd16d36895ef9fe8edf7f793014988ff1ab7f4",
++  "model_sha256": "ca22ae2f838e14077c22bc1c1417b71b45b5e5a3687bd96c2ac6e17fdb6261c0",
++  "prompt_text_sha256": "f53e0d80cb2d4492d24ebd63c7000c397b16ae70f9bf09b3763e5d8323ec209f",
++  "artifacts": {
++    "prompt.u32le.bin": {
++      "sha256": "c27bf8435430e9ecf86c8c74ba6057a92b945a50370be3e3f64bf9c9755feb65",
++      "bytes": 524288
++    },
++    "selected.u32le.bin": {
++      "sha256": "11a49cbd7006129d4d344da6d61086a4adca6526f0f802494aceb73eb0487e1c",
++      "bytes": 516
++    }
++  },
++  "scope": "Timed input/transcript only; full C0 vectors remain in reports/128k-c0-0eb484ea"
++}
+diff --git a/rust-star/fixtures/measurement-131072-v5/prompt.u32le.bin b/rust-star/fixtures/measurement-131072-v5/prompt.u32le.bin
+new file mode 100644
+index 00000000..7390f8c0
+Binary files /dev/null and b/rust-star/fixtures/measurement-131072-v5/prompt.u32le.bin differ
+diff --git a/rust-star/fixtures/measurement-131072-v5/selected.u32le.bin b/rust-star/fixtures/measurement-131072-v5/selected.u32le.bin
+new file mode 100644
+index 00000000..2a466513
+Binary files /dev/null and b/rust-star/fixtures/measurement-131072-v5/selected.u32le.bin differ
+diff --git a/rust-star/runtime/src/frontier_reference.rs b/rust-star/runtime/src/frontier_reference.rs
+index 3fc9741c..1580be1a 100644
+--- a/rust-star/runtime/src/frontier_reference.rs
++++ b/rust-star/runtime/src/frontier_reference.rs
+@@ -69,6 +69,27 @@ impl FrontierReference {
+ #[cfg(test)]
+ mod tests {
+     use super::*;
++    #[test]
++    fn measurement_128k_fixture_extends_exact_32k_prefix() {
++        let prompt = include_bytes!("../../fixtures/measurement-131072-v5/prompt.u32le.bin");
++        let selected = include_bytes!("../../fixtures/measurement-131072-v5/selected.u32le.bin");
++        assert_eq!(prompt.len(), 131072 * 4);
++        assert_eq!(
++            &prompt[..32768 * 4],
++            include_bytes!("../../fixtures/prefill-frontier-32768-v5/token-ids.u32le.bin")
++        );
++        assert_eq!(selected.len(), 129 * 4);
++        assert_eq!(u32::from_le_bytes(selected[..4].try_into().unwrap()), 1110);
++        assert_eq!(
++            u32::from_le_bytes(selected[128 * 4..].try_into().unwrap()),
++            2945
++        );
++        assert!(prompt
++            .chunks_exact(4)
++            .chain(selected.chunks_exact(4))
++            .all(|v| u32::from_le_bytes(v.try_into().unwrap()) < 129280));
++    }
++
+     #[test]
+     fn rejects_invalid_frontier_and_partial_words() {
+         assert!(FrontierReference::from_bytes(&[0], &[], &[]).is_err());
+diff --git a/rust-star/runtime/src/long_prefill.rs b/rust-star/runtime/src/long_prefill.rs
+index 233f7d78..23f733bf 100644
+--- a/rust-star/runtime/src/long_prefill.rs
++++ b/rust-star/runtime/src/long_prefill.rs
+@@ -857,8 +857,14 @@ fn run_long_prefill_with_reference(
+     collect_profile: bool,
+     reference: Option<&crate::frontier_reference::FrontierReference>,
+ ) -> Result<(Context, LongPrefillChunkProbeReport, NativePrefillTiming)> {
++    // Only the pinned 128K timing path bypasses the built-in diagnostic limit.
++    let extended_measurement = frontier == 131072 && !collect_checks && !validate_outputs;
+     if frontier < 12288
+-        || frontier > if reference.is_some() { 131072 } else { 32768 }
++        || frontier > if reference.is_some() || extended_measurement {
++            131072
++        } else {
++            32768
++        }
+         || frontier % 4096 != 0
+     {
+         return Err(Error::invalid(
+@@ -877,6 +883,14 @@ fn run_long_prefill_with_reference(
+             reference.tokens.clone(),
+             reference.logits[..129280].to_vec(),
+         )
++    } else if extended_measurement {
++        (
++            decode_u32_fixture(
++                include_bytes!("../../fixtures/measurement-131072-v5/prompt.u32le.bin"),
++                "128K measurement prompt",
++            )?,
++            Vec::new(),
++        )
+     } else if validate_outputs {
+         prefill_frontier_32768_fixture()?
+     } else {
+diff --git a/rust-star/runtime/src/main.rs b/rust-star/runtime/src/main.rs
+index 966830d5..36fa4b24 100644
+--- a/rust-star/runtime/src/main.rs
++++ b/rust-star/runtime/src/main.rs
+@@ -153,18 +153,34 @@ fn run() -> Result<()> {
+             println!("usage: rust-star long-prefill-reference-probe MODEL.gguf TOKENS.u32le SELECTED.u32le LOGITS.f32le REPORT.json\nCompares every output word with external reference vectors through 128K. Oracle provenance must be verified separately; this is not a throughput command.");
+             return Ok(());
+         }
+-        if args.len() != 5 { return Err(Error::invalid("expected model, prompt tokens, selected tokens, full logits and report paths")); }
+-        if Path::new(&args[4]).exists() { return Err(Error::invalid("reference report already exists")); }
++        if args.len() != 5 {
++            return Err(Error::invalid(
++                "expected model, prompt tokens, selected tokens, full logits and report paths",
++            ));
++        }
++        if Path::new(&args[4]).exists() {
++            return Err(Error::invalid("reference report already exists"));
++        }
+         let reference = rust_star_runtime::frontier_reference::FrontierReference::from_bytes(
+-            &std::fs::read(&args[1])?, &std::fs::read(&args[2])?, &std::fs::read(&args[3])?)?;
++            &std::fs::read(&args[1])?,
++            &std::fs::read(&args[2])?,
++            &std::fs::read(&args[3])?,
++        )?;
+         let model = MappedModel::open(Path::new(&args[0]))?;
+         validate_resident_q2(model.gguf())?;
+-        let report = rust_star_runtime::metal::run_long_prefill_reference_probe(&model, &reference)?;
+-        let mut file = std::fs::OpenOptions::new().write(true).create_new(true).open(&args[4])?;
++        let report =
++            rust_star_runtime::metal::run_long_prefill_reference_probe(&model, &reference)?;
++        let mut file = std::fs::OpenOptions::new()
++            .write(true)
++            .create_new(true)
++            .open(&args[4])?;
+         writeln!(file, "{{\"schema\":\"rust-star-external-frontier-check-v1\",\"frontier_tokens\":{},\"checked_logits\":{},\"checked_decode_steps\":{},\"prefill_logits_checksum\":{},\"decode_logits_checksum\":{},\"decode_tokens_checksum\":{},\"selected_token\":{},\"external_reference_match\":true,\"oracle_provenance_verified_by_runtime\":false,\"throughput_claim\":false}}",
+             report.frontier,report.checked_logits,report.checked_decode_steps,report.logits_checksum,
+             report.decode_logits_checksum,report.decode_tokens_checksum,report.selected_token)?;
+-        println!("external frontier {}: all {} prefill logits and {} full decode rows exact",report.frontier,report.checked_logits,report.checked_decode_steps);
++        println!(
++            "external frontier {}: all {} prefill logits and {} full decode rows exact",
++            report.frontier, report.checked_logits, report.checked_decode_steps
++        );
+         return Ok(());
+     }
+     if command == "long-prefill-chunk-probe" {
+@@ -184,7 +200,10 @@ fn run() -> Result<()> {
+             match flag.to_str() {
+                 Some("--output-only") => output_only = true,
+                 Some("--profile-json") => {
+-                    profile_output = Some(args.next().ok_or_else(|| Error::invalid("missing profile JSON path"))?);
++                    profile_output = Some(
++                        args.next()
++                            .ok_or_else(|| Error::invalid("missing profile JSON path"))?,
++                    );
+                 }
+                 Some("--context") => {
+                     frontier = args
+@@ -206,10 +225,14 @@ fn run() -> Result<()> {
+             }
+         }
+         if profile_output.is_some() && (!output_only || frontier != 32768) {
+-            return Err(Error::invalid("--profile-json requires --output-only and context 32768"));
++            return Err(Error::invalid(
++                "--profile-json requires --output-only and context 32768",
++            ));
+         }
+         if profile_output.is_some() && profile_output == output {
+-            return Err(Error::invalid("profile and conformance JSON paths must differ"));
++            return Err(Error::invalid(
++                "profile and conformance JSON paths must differ",
++            ));
+         }
+         let model = MappedModel::open(Path::new(&model_path))?;
+         validate_resident_q2(model.gguf())?;
+@@ -218,7 +241,8 @@ fn run() -> Result<()> {
+                 return Err(Error::invalid("--output-only requires context 32768"));
+             }
+             if let Some(path) = profile_output {
+-                let (report, profile) = rust_star_runtime::metal::run_long_prefill_profile_probe(&model)?;
++                let (report, profile) =
++                    rust_star_runtime::metal::run_long_prefill_profile_probe(&model)?;
+                 std::fs::write(path, format!("{profile}\n"))?;
+                 report
+             } else {
+@@ -5957,15 +5981,15 @@ fn long_prefill_chunk_probe_usage() -> &'static str {
+ }
+ 
+ fn engine_measurement_usage() -> &'static str {
+-    "usage: rust-star engine-measure MODEL.gguf --context N --gen-tokens 128 --json PATH\n\nRuns exact native 2K or 32K prefill and a timed 128-token closed loop. Prefill and generation execute without diagnostic tensor collection. Command encoding, synchronized execution, GPU lowest-ID argmax, its eight-byte selection readback, and token commitment are included in their declared intervals. The selected-token transcript is validated after timing, and the raw record is eligible for the paired adapter only when both collection paths remain disabled."
++    "usage: rust-star engine-measure MODEL.gguf --context N --gen-tokens 128 --json PATH\n\nRuns exact native 2K, 32K or 128K prefill and a timed 128-token closed loop. Prefill and generation execute without diagnostic tensor collection. Command encoding, synchronized execution, GPU lowest-ID argmax, its eight-byte selection readback, and token commitment are included in their declared intervals. The selected-token transcript is validated after timing, and the raw record is eligible for the paired adapter only when both collection paths remain disabled."
+ }
+ 
+ fn engine_profile_usage() -> &'static str {
+-    "usage: rust-star engine-profile MODEL.gguf --context N --gen-tokens 128 --json PATH\n\nRuns the exact engine workload. At 32K it also records native prefill chunk/layer stages using existing command completions and splits native tails into nine compute encoders for timestamp-counter component attribution; shared bootstrap work is labeled by layer range. At 2K this splits native prefill layers 2 through 42 into synchronized per-layer command buffers. Representative even layer 4 and odd layer 5 are additionally separated into attention/FFN and attention-internal QKV/RoPE, compressor/staging, Flash block preparation, FlashAttention, and output/HC intervals. It also collects every completed decode layer command buffer's GPU timestamps and decode Metal compute-stage counters across eight dispatch families. The selected-token transcript remains exact, but this perturbing mode is deliberately ineligible for paired claims."
++    "usage: rust-star engine-profile MODEL.gguf --context N --gen-tokens 128 --json PATH\n\nRuns the exact engine workload. At 32K and 128K it also records native prefill chunk/layer stages using existing command completions and splits native tails into nine compute encoders for timestamp-counter component attribution; shared bootstrap work is labeled by layer range. At 2K this splits native prefill layers 2 through 42 into synchronized per-layer command buffers. Representative even layer 4 and odd layer 5 are additionally separated into attention/FFN and attention-internal QKV/RoPE, compressor/staging, Flash block preparation, FlashAttention, and output/HC intervals. It also collects every completed decode layer command buffer's GPU timestamps and decode Metal compute-stage counters across eight dispatch families. The selected-token transcript remains exact, but this perturbing mode is deliberately ineligible for paired claims."
+ }
+ 
+ fn retained_engine_measurement_usage() -> &'static str {
+-    "usage: rust-star engine-retained-measure MODEL.gguf --context N --gen-tokens 128 --json PATH\n\nRuns two exact 2K/128 or 32K/128 engine cycles in one process and one Metal context. The first cycle fully charges model-page warming, context creation, and model residency. The second cycle reuses the established model mapping, Metal context, view cache, and residency set. Both transcripts must match the oracle. This lifecycle diagnostic is deliberately ineligible for the fresh-process paired protocol."
++    "usage: rust-star engine-retained-measure MODEL.gguf --context N --gen-tokens 128 --json PATH\n\nRuns two exact 2K/128, 32K/128 or 128K/128 engine cycles in one process and one Metal context. The first cycle fully charges model-page warming, context creation, and model residency. The second cycle reuses the established model mapping, Metal context, view cache, and residency set. Both transcripts must match the oracle. This lifecycle diagnostic is deliberately ineligible for the fresh-process paired protocol."
+ }
+ 
+ fn ratio128_compressor_replay_probe_usage() -> &'static str {
+diff --git a/rust-star/runtime/src/metal.rs b/rust-star/runtime/src/metal.rs
+index 8b349bfb..9cbe8cf3 100644
+--- a/rust-star/runtime/src/metal.rs
++++ b/rust-star/runtime/src/metal.rs
+@@ -6834,7 +6834,7 @@ pub fn write_prefill_decode_frontier_probe_json<W: Write>(
+ }
+ 
+ pub fn write_engine_run_json<W: Write>(output: &mut W, report: &EngineRunReport) -> Result<()> {
+-    if !matches!(report.context, 2048 | 32768)
++    if !matches!(report.context, 2048 | 32768 | 131072)
+         || report.gen_tokens != 128
+         || report.gen_steady_tokens != 127
+         || report.model_warm_bytes == 0
+@@ -7002,10 +7002,10 @@ pub fn write_engine_run_json<W: Write>(output: &mut W, report: &EngineRunReport)
+             })
+         || (report.gen_first_ms + report.gen_steady_ms - report.gen_ms).abs() > 1.0e-6
+         || report.prefill_selected_token
+-            != if report.context == 32768 {
+-                85166
+-            } else {
+-                15342
++            != match report.context {
++                131072 => 1110,
++                32768 => 85166,
++                _ => 15342,
+             }
+         || !report.transcript_match
+         || report.generation_correctness_collection
+@@ -7016,16 +7016,18 @@ pub fn write_engine_run_json<W: Write>(output: &mut W, report: &EngineRunReport)
+             "Rust Star engine run has inconsistent measurement metadata",
+         ));
+     }
+-    if report.context == 32768 {
+-        let tokens = decode_u32_fixture(
+-            include_bytes!("../../fixtures/prefill-decode-32768-v5/token-ids.u32le.bin"),
+-            "32K engine transcript",
+-        )?;
+-        if report.final_selected_token != 14
++    if matches!(report.context, 32768 | 131072) {
++        let bytes: &[u8] = if report.context == 131072 {
++            include_bytes!("../../fixtures/measurement-131072-v5/selected.u32le.bin")
++        } else {
++            include_bytes!("../../fixtures/prefill-decode-32768-v5/token-ids.u32le.bin")
++        };
++        let tokens = decode_u32_fixture(bytes, "engine transcript")?;
++        if report.final_selected_token != tokens[128]
+             || report.selected_tokens_checksum != checksum_u32(&tokens[1..])
+         {
+             return Err(Error::invalid(
+-                "32K engine transcript differs from the pinned oracle",
++                "engine transcript differs from the pinned oracle",
+             ));
+         }
+     }
+@@ -25595,7 +25597,8 @@ mod imp {
+                     error_text(&error)
+                 )));
+             }
+-            if !(matches!(prefill_rows, 2_048 | 4_096) || ((32_768..=131_072).contains(&prefill_rows) && prefill_rows % 4096 == 0))
++            if !(matches!(prefill_rows, 2_048 | 4_096)
++                || ((32_768..=131_072).contains(&prefill_rows) && prefill_rows % 4096 == 0))
+                 || raw.layers != 43
+                 || raw.raw_rows_per_layer != 128
+                 || raw.ratio4_rows_per_layer != prefill_rows / 4
+@@ -56222,9 +56225,9 @@ mod imp {
+     }
+ 
+     fn validate_engine_measurement_shape(context_tokens: u32, gen_tokens: u32) -> Result<()> {
+-        if !matches!(context_tokens, 2048 | 32768) || gen_tokens != 128 {
++        if !matches!(context_tokens, 2048 | 32768 | 131072) || gen_tokens != 128 {
+             return Err(Error::invalid(
+-                "Rust Star engine measurement supports context=2048 or 32768 and gen_tokens=128",
++                "Rust Star engine measurement supports context=2048, 32768 or 131072 and gen_tokens=128",
+             ));
+         }
+         Ok(())
+@@ -56238,7 +56241,12 @@ mod imp {
+         retained_context: Option<Context>,
+         model_warm: crate::model::ModelWarmReport,
+     ) -> Result<(Context, EngineRunReport, bool)> {
+-        let oracle_inputs = if context_tokens == 32768 {
++        let oracle_inputs = if context_tokens == 131072 {
++            decode_u32_fixture(
++                include_bytes!("../../fixtures/measurement-131072-v5/selected.u32le.bin"),
++                "128K engine transcript",
++            )?
++        } else if context_tokens == 32768 {
+             decode_u32_fixture(
+                 include_bytes!("../../fixtures/prefill-decode-32768-v5/token-ids.u32le.bin"),
+                 "32K engine transcript",
+@@ -56254,7 +56262,7 @@ mod imp {
+         }
+         let prefill_started = Instant::now();
+         let (context, prefill_report, prefill_selected_token, prefill_timing) =
+-            if context_tokens == 32768 {
++            if matches!(context_tokens, 32768 | 131072) {
+                 let (context, report, timing) = run_long_prefill_with_context(
+                     model,
+                     context_tokens,
+@@ -58294,9 +58302,13 @@ mod imp {
+ 
+ #[cfg(not(target_os = "macos"))]
+ mod imp {
+-    pub fn run_long_prefill_reference_probe(_model: &crate::model::MappedModel,
+-        _reference: &crate::frontier_reference::FrontierReference) -> crate::Result<super::LongPrefillChunkProbeReport> {
+-        Err(crate::Error::invalid("external frontier comparison requires macOS Metal"))
++    pub fn run_long_prefill_reference_probe(
++        _model: &crate::model::MappedModel,
++        _reference: &crate::frontier_reference::FrontierReference,
++    ) -> crate::Result<super::LongPrefillChunkProbeReport> {
++        Err(crate::Error::invalid(
++            "external frontier comparison requires macOS Metal",
++        ))
+     }
+ 
+     use super::*;
+@@ -59026,23 +59038,23 @@ pub use imp::{
+     run_layers012345_decode_probe, run_layers0123_bench, run_layers0123_chained_probe,
+     run_layers0123_decode_probe, run_layers0123_probe, run_layers012_chained_probe,
+     run_layers012_probe, run_layers01_probe, run_layers0_to_42_decode_probe,
+-    run_long_prefill_bootstrap_probe, run_long_prefill_chunk_probe, run_long_prefill_reference_probe,
++    run_long_prefill_bootstrap_probe, run_long_prefill_chunk_probe,
+     run_long_prefill_continuation_bootstrap_probe, run_long_prefill_output_probe,
+-    run_long_prefill_profile_probe, run_long_prefill_sequential_continuation_probe,
+-    run_long_prefill_transformer_probe, run_moe_output_probe, run_position127_decoder_probe,
+-    run_prefill_decode_frontier_probe, run_prefill_frontier_probe,
+-    run_prefill_layer0_boundary_probe, run_prefill_layers012_attention_loop_probe,
+-    run_prefill_layers012_compressor_loop_probe, run_prefill_layers012_kv_state_loop_probe,
+-    run_prefill_layers012_kvnorm_loop_probe, run_prefill_layers01_boundary_probe,
+-    run_prefill_layers01_complete_boundary_probe, run_prefill_layers01_live_kv_chain_probe,
+-    run_prefill_layers01_live_kv_loop_probe, run_prefill_layers01_row_coverage_probe,
+-    run_prefill_q8_boundary_probe, run_prefill_qkv_boundary_probe, run_probe,
+-    run_q8_projection_probe, run_q_head_kv_fusion_bench, run_q_head_threads_bench,
+-    run_qb_rows_bench, run_qkv_pair_bench, run_ratio128_compressor_replay_probe,
+-    run_retained_decoder_step_probe, run_retained_engine_measurement,
+-    run_retained_sparse_boundary_probe, run_retained_sparse_multimerge_probe,
+-    run_rope_kv_store_probe, run_routed_nsg_bench, run_sparse_indexed_attention_probe,
+-    LayerExecutor,
++    run_long_prefill_profile_probe, run_long_prefill_reference_probe,
++    run_long_prefill_sequential_continuation_probe, run_long_prefill_transformer_probe,
++    run_moe_output_probe, run_position127_decoder_probe, run_prefill_decode_frontier_probe,
++    run_prefill_frontier_probe, run_prefill_layer0_boundary_probe,
++    run_prefill_layers012_attention_loop_probe, run_prefill_layers012_compressor_loop_probe,
++    run_prefill_layers012_kv_state_loop_probe, run_prefill_layers012_kvnorm_loop_probe,
++    run_prefill_layers01_boundary_probe, run_prefill_layers01_complete_boundary_probe,
++    run_prefill_layers01_live_kv_chain_probe, run_prefill_layers01_live_kv_loop_probe,
++    run_prefill_layers01_row_coverage_probe, run_prefill_q8_boundary_probe,
++    run_prefill_qkv_boundary_probe, run_probe, run_q8_projection_probe, run_q_head_kv_fusion_bench,
++    run_q_head_threads_bench, run_qb_rows_bench, run_qkv_pair_bench,
++    run_ratio128_compressor_replay_probe, run_retained_decoder_step_probe,
++    run_retained_engine_measurement, run_retained_sparse_boundary_probe,
++    run_retained_sparse_multimerge_probe, run_rope_kv_store_probe, run_routed_nsg_bench,
++    run_sparse_indexed_attention_probe, LayerExecutor,
+ };
+ 
+ #[cfg(test)]
+@@ -61357,6 +61369,50 @@ mod tests {
+         assert!(write_engine_run_json(&mut Vec::new(), &report).is_err());
+     }
+ 
++    fn set_128k_engine_transcript(report: &mut EngineRunReport) {
++        let tokens = decode_u32_fixture(
++            include_bytes!("../../fixtures/measurement-131072-v5/selected.u32le.bin"),
++            "128K engine transcript",
++        )
++        .unwrap();
++        report.context = 131072;
++        report.prefill_selected_token = tokens[0];
++        report.final_selected_token = tokens[128];
++        report.selected_tokens_checksum = checksum_u32(&tokens[1..]);
++    }
++
++    #[test]
++    fn engine_128k_report_requires_the_full_pinned_transcript() {
++        let mut report = engine_run_report();
++        set_128k_engine_transcript(&mut report);
++        let mut output = Vec::new();
++        write_engine_run_json(&mut output, &report).unwrap();
++        assert!(String::from_utf8(output)
++            .unwrap()
++            .contains("\"context\": 131072"));
++        report.selected_tokens_checksum ^= 1;
++        assert!(write_engine_run_json(&mut Vec::new(), &report).is_err());
++        set_128k_engine_transcript(&mut report);
++        report.final_selected_token = 14;
++        assert!(write_engine_run_json(&mut Vec::new(), &report).is_err());
++        set_128k_engine_transcript(&mut report);
++        report.prefill_selected_token = 85166;
++        assert!(write_engine_run_json(&mut Vec::new(), &report).is_err());
++        set_128k_engine_transcript(&mut report);
++        report.context = 98304;
++        assert!(write_engine_run_json(&mut Vec::new(), &report).is_err());
++    }
++
++    #[test]
++    fn retained_128k_writer_validates_both_cycles() {
++        let mut report = retained_engine_run_report();
++        set_128k_engine_transcript(&mut report.first_load);
++        set_128k_engine_transcript(&mut report.retained);
++        write_retained_engine_run_json(&mut Vec::new(), &report).unwrap();
++        report.retained.selected_tokens_checksum ^= 1;
++        assert!(write_retained_engine_run_json(&mut Vec::new(), &report).is_err());
++    }
++
+     #[test]
+     fn writes_stable_engine_run_json() {
+         let mut output = Vec::new();
+diff --git a/rust-star/tests/test_ruststar_measurement.py b/rust-star/tests/test_ruststar_measurement.py
+index 9cc16ff4..498278b3 100644
+--- a/rust-star/tests/test_ruststar_measurement.py
++++ b/rust-star/tests/test_ruststar_measurement.py
+@@ -93,6 +93,22 @@ class RustStarMeasurementTests(unittest.TestCase):
+         self.assertIsNone(metrics["kvcache_bytes"])
+         self.assertAlmostEqual(metrics["gen_steady_tps"], 127_000 / 6940)
+ 
++    def test_128k_run_preserves_context_and_rejects_profile_collection(self) -> None:
++        with tempfile.TemporaryDirectory() as temporary:
++            path = Path(temporary) / "engine-run.json"
++            run = engine_run()
++            run["context"] = 131072
++            run["metrics"].update(ctx_tokens=131072, prefill_tokens=131072,
++                                  prefill_tps=131072 * 1000 / 20000)
++            path.write_text(json.dumps(run))
++            self.assertEqual(parse_engine_run(path, context=131072, gen_tokens=128)["ctx_tokens"], 131072)
++            with self.assertRaises(MeasurementError):
++                parse_engine_run(path, context=32768, gen_tokens=128)
++            run["timing"]["prefill_correctness_collection"] = True
++            path.write_text(json.dumps(run))
++            with self.assertRaises(MeasurementError):
++                parse_engine_run(path, context=131072, gen_tokens=128)
++
+     def test_ineligible_engine_run_is_rejected_with_blocker(self) -> None:
+         with tempfile.TemporaryDirectory() as temporary:
+             path = Path(temporary) / "engine-run.json"

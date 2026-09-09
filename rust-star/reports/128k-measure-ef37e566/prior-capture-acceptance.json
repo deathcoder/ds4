@@ -1,0 +1,11 @@
+{
+  "passed": true,
+  "frontiers": [
+    65536,
+    98304,
+    131072
+  ],
+  "fresh_processes": 6,
+  "full_128k_rows": 129,
+  "oracle_unchanged": true
+}

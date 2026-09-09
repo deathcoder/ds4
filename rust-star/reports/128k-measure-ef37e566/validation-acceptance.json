@@ -1,0 +1,123 @@
+{
+  "passed": true,
+  "checks": [
+    {
+      "name": "c0-128k",
+      "exit": 0,
+      "seconds": 1408.7820508480072,
+      "peak_rss_bytes": 14901772288,
+      "command": [
+        "/usr/bin/time",
+        "-l",
+        "$WORKTREE/rust-star/.work/measure128-writer-fix/candidate-rust-star",
+        "long-prefill-reference-probe",
+        "$MODEL_DIRECTORY/DeepSeek-V4-Flash-IQ2XXS-w2Q2K-AProjQ8-SExpQ8-OutQ8-chat-v2-imatrix-0731.gguf",
+        "$WORKTREE/rust-star/reports/128k-c0-0eb484ea/reference-131072/prompt.u32le.bin",
+        "$WORKTREE/rust-star/reports/128k-c0-0eb484ea/reference-131072/selected.u32le.bin",
+        "$WORKTREE/rust-star/reports/128k-c0-0eb484ea/reference-131072/logits.f32le.bin",
+        "$WORKTREE/rust-star/.work/measure128-writer-fix/checks/c0-128k.json"
+      ],
+      "finished_utc": "2026-09-08T16:36:22.322929+00:00"
+    },
+    {
+      "name": "retained-128k",
+      "exit": 0,
+      "seconds": 2791.0037109851837,
+      "peak_rss_bytes": 101544525824,
+      "command": [
+        "/usr/bin/time",
+        "-l",
+        "$WORKTREE/rust-star/.work/measure128-writer-fix/candidate-rust-star",
+        "engine-retained-measure",
+        "$MODEL_DIRECTORY/DeepSeek-V4-Flash-IQ2XXS-w2Q2K-AProjQ8-SExpQ8-OutQ8-chat-v2-imatrix-0731.gguf",
+        "--context",
+        "131072",
+        "--gen-tokens",
+        "128",
+        "--json",
+        "$WORKTREE/rust-star/.work/measure128-writer-fix/checks/retained-128k.json"
+      ],
+      "finished_utc": "2026-09-08T17:22:53.327547+00:00"
+    },
+    {
+      "name": "batch-32k-output",
+      "exit": 0,
+      "seconds": 272.60793805122375,
+      "peak_rss_bytes": 3344941056,
+      "command": [
+        "/usr/bin/time",
+        "-l",
+        "$WORKTREE/rust-star/.work/measure128-writer-fix/candidate-rust-star",
+        "long-prefill-chunk-probe",
+        "$MODEL_DIRECTORY/DeepSeek-V4-Flash-IQ2XXS-w2Q2K-AProjQ8-SExpQ8-OutQ8-chat-v2-imatrix-0731.gguf",
+        "--context",
+        "32768",
+        "--output-only",
+        "--json",
+        "$WORKTREE/rust-star/.work/measure128-writer-fix/checks/batch-32k-output.json"
+      ],
+      "finished_utc": "2026-09-08T17:27:25.935874+00:00"
+    },
+    {
+      "name": "batch-2k",
+      "exit": 0,
+      "seconds": 62.89645075798035,
+      "peak_rss_bytes": 27409727488,
+      "command": [
+        "/usr/bin/time",
+        "-l",
+        "$WORKTREE/rust-star/.work/measure128-writer-fix/candidate-rust-star",
+        "prefill-layers012-attention-loop-probe",
+        "$MODEL_DIRECTORY/DeepSeek-V4-Flash-IQ2XXS-w2Q2K-AProjQ8-SExpQ8-OutQ8-chat-v2-imatrix-0731.gguf",
+        "--json",
+        "$WORKTREE/rust-star/.work/measure128-writer-fix/checks/batch-2k.json"
+      ],
+      "finished_utc": "2026-09-08T17:28:28.832799+00:00"
+    },
+    {
+      "name": "retained-32k",
+      "exit": 0,
+      "seconds": 550.2396900653839,
+      "peak_rss_bytes": 90107854848,
+      "command": [
+        "/usr/bin/time",
+        "-l",
+        "$WORKTREE/rust-star/.work/measure128-writer-fix/candidate-rust-star",
+        "engine-retained-measure",
+        "$MODEL_DIRECTORY/DeepSeek-V4-Flash-IQ2XXS-w2Q2K-AProjQ8-SExpQ8-OutQ8-chat-v2-imatrix-0731.gguf",
+        "--context",
+        "32768",
+        "--gen-tokens",
+        "128",
+        "--json",
+        "$WORKTREE/rust-star/.work/measure128-writer-fix/checks/retained-32k.json"
+      ],
+      "finished_utc": "2026-09-08T17:37:39.073864+00:00"
+    },
+    {
+      "name": "batch-32k-profiled",
+      "exit": 0,
+      "seconds": 261.54883193969727,
+      "peak_rss_bytes": 3345809408,
+      "command": [
+        "/usr/bin/time",
+        "-l",
+        "$WORKTREE/rust-star/.work/measure128-writer-fix/candidate-rust-star",
+        "long-prefill-chunk-probe",
+        "$MODEL_DIRECTORY/DeepSeek-V4-Flash-IQ2XXS-w2Q2K-AProjQ8-SExpQ8-OutQ8-chat-v2-imatrix-0731.gguf",
+        "--context",
+        "32768",
+        "--output-only",
+        "--profile-json",
+        "$WORKTREE/rust-star/.work/measure128-writer-fix/checks/components.json",
+        "--json",
+        "$WORKTREE/rust-star/.work/measure128-writer-fix/checks/batch-32k-profiled.json"
+      ],
+      "finished_utc": "2026-09-08T17:42:00.623468+00:00"
+    }
+  ],
+  "candidate": "ef37e56610ef813ed4df3f67f013d62e34995170",
+  "full_128k_c0": true,
+  "retained_128k_transcripts": true,
+  "performance_claim": false
+}

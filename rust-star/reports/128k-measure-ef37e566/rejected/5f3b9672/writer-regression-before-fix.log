@@ -1,0 +1,22 @@
+   Compiling rust-star-runtime v0.1.0 ($WORKTREE/rust-star/runtime)
+    Finished `release` profile [optimized] target(s) in 1m 24s
+     Running unittests src/lib.rs (rust-star/.work/runtime-target/release/deps/rust_star_runtime-7102522419b53573)
+
+running 1 test
+test metal::tests::engine_128k_report_requires_the_full_pinned_transcript ... FAILED
+
+failures:
+
+---- metal::tests::engine_128k_report_requires_the_full_pinned_transcript stdout ----
+
+thread 'metal::tests::engine_128k_report_requires_the_full_pinned_transcript' (650835) panicked at src/metal.rs:61387:53:
+called `Result::unwrap()` on an `Err` value: Invalid("Rust Star engine run has inconsistent measurement metadata")
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    metal::tests::engine_128k_report_requires_the_full_pinned_transcript
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 316 filtered out; finished in 0.00s
+
+error: test failed, to rerun pass `--lib`

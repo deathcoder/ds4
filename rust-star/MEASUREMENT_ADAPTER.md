@@ -82,9 +82,11 @@ python3 rust-star/measure_ruststar.py \
   --output /path/to/results/rust-star-ctx-2048-run-01
 ```
 
-The native producer supports the validated 2K and 32K frontiers. It runs
-prefill without decoding diagnostic output
-fixtures, allocating host boundary tensors, or copying transformer boundaries
+The native producer supports the validated 2K, 32K and 128K frontiers, each
+with exactly 128 decode steps. The [128K report](reports/128k-measure-ef37e566/README.md)
+records full-logit correctness, retained lifecycle and five paired measurements.
+The producer runs prefill without decoding diagnostic output fixtures, allocating
+host boundary tensors, or copying transformer boundaries
 to the host. It then times a 128-token loop without generation tensor
 collection and checks each selection after its timed interval. A failed
 selection triggers a readback of the same completed logits for failure details;

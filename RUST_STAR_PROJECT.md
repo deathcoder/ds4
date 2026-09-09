@@ -380,21 +380,29 @@ The 128K correctness milestone is complete at candidate 0eb484ea. Report:
 oracle captures and eleven native/regression checks pass; both native 128K
 processes match full prefill plus 128 decode steps exactly. 314 tests/build,
 287-tail/2,583-interval profile audit and final input hashes pass. Internal HC
-targets still end at 24K. Built-in measurement commands remain 32K; the separate
-external-reference diagnostic supports the new frontier. No kernel arithmetic
-or RoPE training constants changed.
+targets still end at 24K. At that checkpoint measurement commands remained
+32K; the separate external-reference diagnostic supported the new frontier.
+No kernel arithmetic or RoPE training constants changed.
 
 The prior 14.837GiB allocation preflight and 93.173GiB planning estimate remain
 historical capacity evidence, not bounds. Diagnostic RSS omits engine page
 warming and does not establish total model/Metal residency or a new memory
 reduction. No larger-context throughput claim is made by that correctness report.
-The subsequent 128K measurement/retained-engine milestone is now authorized
-and active. Candidate 5f3b9672 passes full 128K C0 but retained serialization
-found stale 2K/32K writer guards. Corrected ef37e566 adds strict 128K report
-validation and fresh/retained writer regressions; build and live gates precede
-five pinned paired measurements. The failed attempt is preserved. No new timing
-claim until final evidence passes. Attention output and routed
-gate/up remain available for subsequent performance work.
+The subsequent 128K measurement/retained-engine milestone is complete at
+ef37e566. Report: `rust-star/reports/128k-measure-ef37e566/README.md`
+(167 verified artifacts). All 317 Rust tests, 94 Python tests, six live gates,
+five alternating pairs and two warm-ups pass. The earlier stale writer-guard
+failure is preserved; the corrected candidate has no failed timed attempts.
+Rust/oracle median prefill is 1494.551/1079.569s,
+steady decode 14.578/15.618 tokens/s, and fresh peak RSS
+92.345/80.895GiB. This is a measured 128K frontier, not a speedup claim
+or a replacement for the historical 32K comparisons. Final input pins and the
+independent evidence/statistics audit pass. Timed execution checks the exact
+pinned transcript; fresh full-logit C0 is separate. Retained validation covers
+two cycles with request-state reset and shared model/context/residency, not
+arbitrary-prompt serving. The next proposed milestone is to profile the 128K
+remaining-transformer chain and evaluate a focused optimization; it is not
+started. Live profile acceptance remains 32K, with internal HC through 24K.
 
 Current implementation boundaries, evidence, and immediate actions are maintained
 in `RUST_STAR_JOURNAL.md`. As of 2026-09-08, native prefill through all 43 layers

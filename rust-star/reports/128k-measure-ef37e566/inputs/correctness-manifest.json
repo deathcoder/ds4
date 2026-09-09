@@ -1,0 +1,37 @@
+{
+  "schema": "rust-star-correctness-manifest-v1",
+  "correctness_class": "C0",
+  "context": 131072,
+  "gen_tokens": 128,
+  "candidate_commit": "ef37e56610ef813ed4df3f67f013d62e34995170",
+  "candidate_executable_sha256": "50f59a30144d106564d776a8b7a966d06a3d3b3dbe6c6bc3bf30ad69c81fa752",
+  "oracle_commit": "ccbd16d36895ef9fe8edf7f793014988ff1ab7f4",
+  "oracle_executable_sha256": "a4056d7297bd0a6de8e46fac294e7913d9bc8c96465e5d68f1b6ef6471e49aa0",
+  "model_sha256": "ca22ae2f838e14077c22bc1c1417b71b45b5e5a3687bd96c2ac6e17fdb6261c0",
+  "prompt_sha256": "f53e0d80cb2d4492d24ebd63c7000c397b16ae70f9bf09b3763e5d8323ec209f",
+  "candidate_gates": {
+    "c0-128k": "7453701047cbbcb845fd37f6fcb54c54ae8e2a39aeba6fab66408927e23e04ce",
+    "retained-128k": "957ba9f30e741b938e048786a0a6f44fd18b21193992951f372e4fdc1631ebe2",
+    "batch-32k-output": "ea7a152709d145948fd5710ac1b93212dc93d5a1a2c633e09f9ef31ab1ddd1f1",
+    "batch-2k": "2bb5e375ffa5b545fd8fc0c3b0bf22dcf79519d7250f2b2f246e5de7da3c3619",
+    "retained-32k": "2159d6651daa7a62ce3a423b60d53baa2a51e8cd533fdce90077c17c8af09dc4",
+    "batch-32k-profiled": "ea7a152709d145948fd5710ac1b93212dc93d5a1a2c633e09f9ef31ab1ddd1f1"
+  },
+  "candidate_build_sha256": "06dfac6f3e34df2f91adf1ced840c813939d89309c5b2040be82da4d1282d088",
+  "profile_audit_sha256": "798058b2d8512a70b12cbcbbaa7b52a6a0472936f5a3e18e037b1e285023d1d4",
+  "prior_full_repeat_report_manifest_sha256": "9c7da3644e903267d0d11f99acb5a9aee0d5bb409829c705199c49ec2e38a2b0",
+  "reference_manifest_sha256": "10729885fbd9d410c326c3f8c1c1a448a9a9de36d948e8e49eb248de19fbc056",
+  "fixture_manifest_sha256": "0290f8fffb2bf2245ec5e6d316a4d9cfdba1e9fc6babcb591374cc72dee5a1e2",
+  "rust_tests_passed": 317,
+  "python_tests_passed": 94,
+  "acceptance_plan_sha256": "7d91345d20efceeeef2dff0faa6bdd6d67399ddc4739d0d790fb02f1dd6d4f01",
+  "measurement_tools_sha256": {
+    "run_paired_benchmark.py": "f244c63ec619a7ff5ef24960db225062feb2f658bce2e8c2cdc6a41f6ab63b00",
+    "paired_runner_lib.py": "741862f38111b57d65863e68ecf9043beb9f9de58c1dcd8e7a65b90c09b04e7a",
+    "paired_benchmark_lib.py": "c0cdde4e01f0639e23eed5595f6a3d29e25c8fe8f0315f72c239c3c6833da4e9",
+    "measure_dwarfstar.py": "66bbe322721ba5b867a19bac85dd8ff090ea65a2b8f88df7cd8ce9b40c851fb6",
+    "dwarfstar_measurement_lib.py": "2cc745e2dce7d5959af0fc2418e152483d600231b65e716077d674a7a23ad517",
+    "measure_ruststar.py": "88344abcf4457a310b3cb68dfc3e96f71c7b06c3c2e416582a15c5e6f3ff9b86",
+    "ruststar_measurement_lib.py": "902f671cf16554917ae3040204f98e4a8eb7bddfd6017f169577aefd9cfd7af4"
+  }
+}

@@ -1,0 +1,22 @@
+Rust Star retained lifecycle: first-load prompt 1386938.643 ms, retained prompt 1377238.245 ms (1.007x)
+retained prefill: 95.170 tok/s; generation: 14.921 tok/s; both 128-token transcripts exact
+paired protocol: ineligible same-process lifecycle diagnostic
+json: $WORKTREE/rust-star/.work/measure128-writer-fix/checks/retained-128k.json
+     2790.80 real        35.21 user       464.72 sys
+        101544525824  maximum resident set size
+                   0  average shared memory size
+                   0  average unshared data size
+                   0  average unshared stack size
+            40240077  page reclaims
+                   0  page faults
+                   0  swaps
+                   0  block input operations
+                   0  block output operations
+                   0  messages sent
+                   0  messages received
+                   0  signals received
+                  11  voluntary context switches
+              415298  involuntary context switches
+       3833061293023  instructions retired
+       1461954832914  cycles elapsed
+         23350949552  peak memory footprint

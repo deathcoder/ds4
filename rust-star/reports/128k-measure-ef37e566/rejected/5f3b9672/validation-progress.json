@@ -1,0 +1,40 @@
+[
+  {
+    "name": "c0-128k",
+    "exit": 0,
+    "seconds": 1406.6514251232147,
+    "peak_rss_bytes": 14902345728,
+    "command": [
+      "/usr/bin/time",
+      "-l",
+      "$WORKTREE/rust-star/.work/measure128-43bf0dfa/candidate-rust-star",
+      "long-prefill-reference-probe",
+      "$MODEL_DIRECTORY/DeepSeek-V4-Flash-IQ2XXS-w2Q2K-AProjQ8-SExpQ8-OutQ8-chat-v2-imatrix-0731.gguf",
+      "$WORKTREE/rust-star/reports/128k-c0-0eb484ea/reference-131072/prompt.u32le.bin",
+      "$WORKTREE/rust-star/reports/128k-c0-0eb484ea/reference-131072/selected.u32le.bin",
+      "$WORKTREE/rust-star/reports/128k-c0-0eb484ea/reference-131072/logits.f32le.bin",
+      "$WORKTREE/rust-star/.work/measure128-43bf0dfa/checks/c0-128k.json"
+    ],
+    "finished_utc": "2026-09-08T15:17:44.071702+00:00"
+  },
+  {
+    "name": "retained-128k",
+    "exit": 1,
+    "seconds": 2762.92844581604,
+    "peak_rss_bytes": 101563416576,
+    "command": [
+      "/usr/bin/time",
+      "-l",
+      "$WORKTREE/rust-star/.work/measure128-43bf0dfa/candidate-rust-star",
+      "engine-retained-measure",
+      "$MODEL_DIRECTORY/DeepSeek-V4-Flash-IQ2XXS-w2Q2K-AProjQ8-SExpQ8-OutQ8-chat-v2-imatrix-0731.gguf",
+      "--context",
+      "131072",
+      "--gen-tokens",
+      "128",
+      "--json",
+      "$WORKTREE/rust-star/.work/measure128-43bf0dfa/checks/retained-128k.json"
+    ],
+    "finished_utc": "2026-09-08T16:03:47.000991+00:00"
+  }
+]

@@ -11,10 +11,14 @@ The [128K correctness report](reports/128k-c0-0eb484ea/README.md) extends native
 full-output validation to 131,072 prompt tokens plus 128 decode steps, with two
 fresh exact oracle traces and two exact native runs. Repeated 64K/96K prefill,
 314 Rust tests and seven established controls also pass. The separate external
-reference probe is diagnostic; existing benchmark contracts remain 32K and the
-Rust-versus-DwarfStar performance baseline below is unchanged.
+reference probe is diagnostic. The subsequent
+[128K measurement report](reports/128k-measure-ef37e566/README.md) extends fresh
+and retained timed execution to the pinned 128K/128 transcript. All 317 Rust
+tests, 94 Python tests, six live gates and five alternating oracle-v5 pairs
+pass. It adds a 128K performance frontier; the historical 32K comparison below
+remains unchanged.
 
-The [current native-tail report](reports/32k-tail-89e32745/README.md) includes
+The [historical native-tail report](reports/32k-tail-89e32745/README.md) includes
 five pairs, full C0/lifecycle validation, a separate profile and a standalone
 verifier. Rust/reference median prefill 362.284/212.376 s; steady decode 17.064/17.039 tokens/s. Read the report's host-condition limits when comparing
 campaigns. Earlier reports remain immutable evidence.

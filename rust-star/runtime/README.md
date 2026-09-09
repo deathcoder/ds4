@@ -1168,14 +1168,15 @@ model residency, leaving an explicit unattributed remainder. A full 2,048-row
 bootstrap remains rejected because its raw-cache append is not a valid
 unwrapped 2K store.
 
-`--context 32768 --gen-tokens 128` selects the native long-prefill path for
-`engine-measure` and `engine-retained-measure`. Establish C0 with both the
-normal and `--output-only` long-prefill gates before interpreting measurements.
-The 32K path includes prefix rebuilding, history growth, command execution,
-and setup in its declared prefill interval. It omits correctness-tensor
-collection and output-fixture decoding during timed prefill. Its retained
-cycle reuses the Metal context/model residency and records zero context
-creation time. It still rebuilds request-local KV state.
+`--context 32768 --gen-tokens 128` or `--context 131072 --gen-tokens 128`
+selects the native long-prefill path for `engine-measure` and
+`engine-retained-measure`. Establish C0 with the appropriate independent
+full-output gate before interpreting measurements: the built-in 32K controls
+and the external-reference 128K probe. Both paths include prefix rebuilding,
+history growth, command execution and setup in their declared prefill intervals.
+They omit correctness-tensor collection and output-fixture decoding during timed
+prefill. The retained cycle reuses the Metal context/model residency and records
+zero context creation time. It still rebuilds request-local KV state.
 
 Native tails now reuse 22 command-local scratch buffers across layers and
 chunks, write retained HC directly and omit unused routed-mid FP32 conversion.
@@ -1355,9 +1356,16 @@ The output path must not exist. Oracle/model provenance is authenticated by the
 report's evidence runner, not by this runtime input parser.
 
 Native boundary, output and adoption guards now allow the larger diagnostic
-frontier; existing built-in fixture and engine measurement commands retain their
-32K contract. No kernel arithmetic or RoPE training constant changed. Diagnostic
-RSS excludes the benchmark's CPU page-warming policy and is not comparable with
+frontier; built-in diagnostic fixtures retain their earlier contract. The
+subsequent measurement milestone also admits the pinned 128K prompt and complete
+129-selection transcript into fresh and retained engine measurement. No kernel
+arithmetic or RoPE training constant changed. Diagnostic RSS excludes the benchmark's CPU page-warming policy and is not comparable with
 warmed engine RSS or a total Metal/model residency bound. This correctness
-milestone makes no new throughput or memory-reduction claim. The next milestone
-is 128K measurement and retained-engine protocol support with paired benchmarks.
+milestone makes no new throughput or memory-reduction claim. The subsequent
+[128K measurement report](../reports/128k-measure-ef37e566/README.md) records
+317 Rust tests, 94 Python tests, six live gates and five alternating pairs
+against unchanged oracle-v5. Timed runs omit full-logit collection and check
+the exact transcript after timing. The two-cycle retained diagnostic reuses
+model mapping/context/residency while rebuilding request state; it is paired
+ineligible. Profile controls were exercised at 32K; this report does not
+establish a validated 128K profile or arbitrary-prompt serving support.

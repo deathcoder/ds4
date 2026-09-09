@@ -18,6 +18,39 @@ Before changing code:
 Journal entries are reverse chronological. Do not edit old entries to change
 history; add a correction and update the current-state summary.
 
+## 2026-09-09 — 128K measurement and retained-engine milestone COMPLETE
+
+- Candidate ef37e566 passes 317 Rust tests, 94 Python tests, release build,
+  six live gates and the 287-tail/2,583-interval 32K profile audit. Fresh full
+  128K C0 matches every prefill word and all 128 decode rows. Retained 128K
+  completes both exact transcripts with request reset and residency reuse.
+- Five alternating fresh-process pairs and two warm-ups pass on first attempts.
+  Rust/oracle median prefill 1494.551/1079.569s;
+  steady decode 14.578/15.618 tokens/s.
+  Median paired prefill latency ratio 1.342774; steady
+  throughput ratio 0.971815. This is characterization,
+  not a speedup claim. All five samples remain in the report.
+- Fresh median peak RSS 92.345/80.895GiB
+  Rust/oracle; retained two-cycle peak 94.571GiB is a separate diagnostic.
+  These warmed measurements are distinct from prior unwarmed diagnostic RSS
+  and are not universal Metal/model memory bounds.
+- Independent statistics/artifact audit, portable verifier and final model,
+  prompt, oracle source/binary hashes pass. Report:
+  rust-star/reports/128k-measure-ef37e566/README.md (167 verified artifacts).
+  The earlier 5f3b9672 report-writer failure and red regression are preserved
+  under rejected/; the corrected candidate has no failed timed attempts.
+- The paired campaign finished September 8 at 22:02 UTC. A later interruption
+  stopped the read-only final input hash check before it produced a result;
+  the check was resumed September 9 and passed. No paired sample was rerun.
+- Fresh and retained measurements now admit the pinned 2K/32K/128K frontiers,
+  each with 128 decode steps. Full-logit checks remain independent from timing.
+  Retained support covers the fixed transcript/lifecycle, not arbitrary serving;
+  live profile acceptance remains 32K and internal HC acceptance remains 24K.
+- STOP at this completed milestone. Proposed next: profile the dominant 128K
+  transformer-chain prefill cost, validate counters and C0, then select and
+  measure a focused optimization. It is not started. 256K and the coding-agent
+  corpus remain future work. No quota burning or push performed.
+
 ## 2026-09-08 — Four timed 128K pairs pass; final pair active
 
 - Pair 4 BA passes on its first attempt: Rust/oracle prefill
@@ -3673,18 +3706,14 @@ Next:
 
 ## Current State
 
-### Current resume checkpoint (updated 2026-09-08)
+### Current resume checkpoint (updated 2026-09-09)
 
-- ACTIVE: authorized 128K measurement/retained-engine milestone. Earlier
-  candidate 5f3b9672 passed full 128K C0 but failed retained report serialization
-  on stale context/token guards; the error is reproduced by a host regression.
-  Corrected ef37e566 passes 317 Rust tests, 94 unchanged Python tests and build.
-  Work: rust-star/.work/measure128-writer-fix/. Input hashes pass and full 128K
-  C0, retained 128K and all four shorter/profile/lifecycle gates pass, as does
-  the strict audit. Frozen five-pair campaign paired-128k-ef37e566 is running
-  after rehashing inputs; one warm-up per engine precedes timed AB/BA pairs.
-  Earlier failed evidence is copied under the new work's rejected/. Stop after
-  all five pairs, final evidence audit and documentation acceptance.
+- COMPLETE: 128K measurement/retained-engine milestone, candidate ef37e566.
+  317 Rust / 94 Python tests, six live gates, five valid pairs and two warm-ups;
+  portable report has 167 verified artifacts. See the newest completion entry
+  and rust-star/reports/128k-measure-ef37e566/README.md for measured latency,
+  throughput and warmed memory. Independent audits and final pins pass.
+  Earlier writer rejection is preserved. STOP; no next milestone is active.
 
 - 128K correctness milestone COMPLETE and retained at candidate 0eb484ea.
   314 tests/build, six repeated oracle captures and all eleven native checks
@@ -3692,11 +3721,12 @@ Next:
   final input pins match. Report rust-star/reports/128k-c0-0eb484ea/README.md
   contains 117 verified artifacts. All requested work is complete; stopped.
 - Separate external-reference diagnostic execution now reaches 128K. Built-in
-  fixtures/measurement commands retain 32K; internal HC targets retain 24K.
-  No new throughput or total-memory claim. Diagnostic RSS omits benchmark
-  page warming and must not be compared with prior warmed RSS measurements.
-- The subsequent measurement/retained-engine milestone is now authorized and
-  active as recorded above. Keep the prior correctness report immutable.
+  diagnostic fixtures retain 32K; timed fresh/retained support now includes the
+  pinned 128K/128 transcript. Internal HC targets retain 24K.
+  That correctness report made no throughput or total-memory claim. Diagnostic
+  RSS omits benchmark page warming; the new report supplies warmed measurements.
+- The subsequent measurement/retained-engine milestone is complete as recorded
+  above. Keep the prior correctness and performance reports immutable.
 
 - Memory-prefill milestone COMPLETE and retained at de6d2c11. 312 tests/build,
   seven live gates, five valid pairs/two warmups and both profile audits pass.
@@ -4507,15 +4537,16 @@ Next:
 
 ## Immediate Next Actions
 
-1. Complete the authorized 128K measurement/retained-engine milestone, following
-   the newest entry: frozen candidate, full C0/regressions, retained validation,
-   five pinned pairs, portable report/docs. Stop afterward; no usage burning.
-2. Extend measurement and retained-engine
-   protocol to 128K, validate lifecycle reuse at that frontier, then compare
-   performance and warmed memory against the pinned oracle with a paired plan.
+1. STOP at the completed 128K measurement/retained-engine milestone. All five
+   pairs, correctness/lifecycle gates, final audits, portable evidence and
+   documentation are complete. Do not resume quota-burning mode.
+2. Proposed next milestone, awaiting user instruction: profile the dominant
+   128K remaining-transformer prefill chain, validate component counters and
+   C0, then choose a focused optimization and evaluate it with pinned pairs.
+   Do not assume the dominant 32K kernel remains dominant at 128K.
 3. Keep oracle-v5 and historical evidence immutable. Full 32K/128 C0 remains
-   mandatory; accepted internal HC targets end at 24K. Rust-to-Rust improvements
-   do not update the Rust-versus-DwarfStar performance baseline.
+   mandatory; accepted internal HC targets end at 24K. The new 128K comparison
+   adds a frontier and does not rewrite historical 32K performance results.
 4. 256K headline work and the coding-agent corpus remain future. Full KV history
    still scales with context; consider bounded raw history if capacity requires it.
    Do not revive rejected dense-Q8 execution without a new measured hypothesis.

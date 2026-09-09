@@ -92,7 +92,8 @@ queue attachment, and wall/GPU warm times. This work is charged to `prefill_ms`;
 it is not an unreported generation warmup.
 
 `engine-retained-measure` is a separate lifecycle diagnostic with schema
-`rust-star-retained-engine-run-v1`. It executes two exact 2K/128 cycles in one
+`rust-star-retained-engine-run-v1`. It executes two exact cycles at the selected
+2K, 32K or 128K frontier, each with 128 decode steps, in one
 process and one Metal context. The first cycle pays and reports model-page
 warming, context creation, residency-set construction/request, and the coarse
 GPU touch. The second cycle reuses the model mapping, context, view cache, and

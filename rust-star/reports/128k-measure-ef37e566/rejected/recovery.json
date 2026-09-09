@@ -1,0 +1,7 @@
+{
+  "prior_candidate": "5f3b967231a6816b2f537163a9182d0be72d20e3",
+  "reason": "Extend stale context/prefill/transcript guards in report writer; fresh and retained regression tests",
+  "prior_work": "rust-star/.work/measure128-43bf0dfa",
+  "paired_attempts_before_fix": 0,
+  "policy": "new frozen candidate and complete new live gates; original failed evidence preserved"
+}

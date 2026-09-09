@@ -1,0 +1,78 @@
+{
+  "host-observations.jsonl": {
+    "raw_sha256": "b45fc685d1a00f38b7dbf57a3c394d10a7508ed6de95fc3b1dbd22b77aa2f8e2",
+    "stored_sha256": "2ffa487cf5ab44cc48c958ef37a43ae24c2710ab91d8c7fcd519892dadd0e12f"
+  },
+  "release.log": {
+    "raw_sha256": "d82a8fce92beaa9824ced3b2e688830e05adbf1532f23d07ca2f3abeb89c1e64",
+    "stored_sha256": "d35434eae17d20b8435ae54de04d36121556383cba81687f7c2744dd0718c2a5"
+  },
+  "prepare-paired.py": {
+    "raw_sha256": "df0371e8ffab2aa77d23df786914af8e08c044ab18df20a0c9e1d46a7766a6f7",
+    "stored_sha256": "90bc02b213c11e3eda05a380bbb86f3754e413fd6b14346cfec9de842f373b5f"
+  },
+  "final-input-verification.py": {
+    "raw_sha256": "0386d137797ab173222e18e3c9104950ba3ce7b390a294da1c51a22758a81bff",
+    "stored_sha256": "bf43fcb820a052b30c8a18d9617cfea662e8abcd6ca2a9b0b0e5cb1efc145771"
+  },
+  "validate.py": {
+    "raw_sha256": "d8dbd82f502f57cf73f101ecef884858757b8030603f6816114091f32c6b256f",
+    "stored_sha256": "e9520c98a310cf8208766bf86caabe3836ea6c2242d5ec73f5353a6a5eef1571"
+  },
+  "validation-acceptance.json": {
+    "raw_sha256": "40a76f19e118b406b7ebde7c23d8cca8a5f95e13a8262447273e10ccf7da051f",
+    "stored_sha256": "8e9aabc9563684c10b9a5c14de5c561353dd1a9396bec80a85197e82230ab93a"
+  },
+  "tests-final.log": {
+    "raw_sha256": "dac7b86313ee386ddaecb632abf0bc8ae0a5e3ab9f5ded026458a4d908a2415d",
+    "stored_sha256": "45d2c901430d42c6b49f0cb1130b1588b05798ece21378e984caa35eedec508f"
+  },
+  "validation-progress.json": {
+    "raw_sha256": "edcdecdb97003340d691c0535ace254d1b905bdf072ec38088518fc35283f282",
+    "stored_sha256": "8373f697c45cf37056cccaceecc014be9d8ad4ae2ba0354ecf28e1e33928b774"
+  },
+  "campaign.log": {
+    "raw_sha256": "c183e6f1e83940857d810d793fa651ab3e673dde54514c416ac9bf6097afc149",
+    "stored_sha256": "fed7b0f128c466030aace3e27ebfe9be6006bc08cd0c1ef1714f1d1b6ab1b14f"
+  },
+  "checks/retained-32k.log": {
+    "raw_sha256": "dc9751dea08868762801904a18d678a2a57189e72e4f0f7a59f06b977f99ffdf",
+    "stored_sha256": "fb8d72e15b6b5341b202d41ef14869dd78d6a6f331a9c142efae3cd3540976d3"
+  },
+  "checks/retained-128k.log": {
+    "raw_sha256": "e5af83b908ad0afae0113ec26d51f34610862f85bc51a0202b34bb5d61e63008",
+    "stored_sha256": "920d732388992f2be425d04c9115bbd0fe92d2a22d8d6eaedacd6b0641a376fa"
+  },
+  "checks/batch-2k.log": {
+    "raw_sha256": "599df02a761562a6aac863947e1e6f2cd19338fcf7de316a2d86f939b93c3e44",
+    "stored_sha256": "ce46f214b0a2c7bc8f30d99fd9c40f2e20ca7a704d61a91fb0ef717f567f61c3"
+  },
+  "rejected/5f3b9672/host-observations.jsonl": {
+    "raw_sha256": "50e5a601ad7216f50137de93c846dd8091e9c7e6c59104d97f3283c58933e30e",
+    "stored_sha256": "940825bbb4e7f3a8aa2e6d7dfa448e736dd5dee3fb4cfb8543c70a02f5747b40"
+  },
+  "rejected/5f3b9672/release.log": {
+    "raw_sha256": "f3d2e4775c4cf9a07a07073ae2382ef901d5ae47a4177b977d5a6bc31bc34c18",
+    "stored_sha256": "cb2771a1ddd3fde0f9792a0452ac54b56726d9aa4b115564da6deb99fb0e2a9a"
+  },
+  "rejected/5f3b9672/writer-regression-before-fix.log": {
+    "raw_sha256": "f607245c8be19b7873d8da74762d3ec649efeabd5231df513e020a56cb5b0e43",
+    "stored_sha256": "4926479c20578787b6a259e01ec0693bb5e8cc8f81a97f9cbc4614a990185c2c"
+  },
+  "rejected/5f3b9672/validate.log": {
+    "raw_sha256": "6c9a82d9c59cefde4354914660e2a1999561291f0af77c87af32645d26676bc7",
+    "stored_sha256": "9ecdef244eb5e6618152476db4c635bb2d398ce20de04b43537add5cc5a147f1"
+  },
+  "rejected/5f3b9672/tests-final.log": {
+    "raw_sha256": "e351538c558a0ad5a5757feb53b56ac9d37a35434258fbb9a8cf31526b5be6b9",
+    "stored_sha256": "0f6085e729388fc566d8dea92aee45602fc1d781a587b7d778cf6b2f3343a7bb"
+  },
+  "rejected/5f3b9672/validation-progress.json": {
+    "raw_sha256": "d649a45f2bf12cc1f5954fd330d617de1175f18a94a6c927c429f47b5f06cb75",
+    "stored_sha256": "47151bcc8ac7d11b210379e28602cc92973d044071dd2e98b5e1590119f181d0"
+  },
+  "rejected/5f3b9672/campaign.log": {
+    "raw_sha256": "283cae541bb32d83f12b21a3fb4e79ff54c6f45bbcfedcc36cff69c206fe9efd",
+    "stored_sha256": "781600c98ae34bf1e0f2c0f4bfb84eb0a405125b64331c07314185cdcf9f8049"
+  }
+}

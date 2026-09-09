@@ -1,0 +1,44 @@
+{
+  "passed": true,
+  "pairs": 5,
+  "warmups": 2,
+  "failed_attempts": 0,
+  "statistics_independently_recomputed": true,
+  "measurement_tools_unchanged": true,
+  "runtime_sources_unchanged": true,
+  "all_measurement_artifacts_rehashed": true,
+  "all_native_transcripts_match": true,
+  "plan_sha256": "a9b8630fc3be1f1c6dde16cef79b6bc54598337fd231e36b0be5863b4dcfc1e8",
+  "memory_gib": {
+    "oracle": {
+      "count": 5,
+      "median": 80.89521789550781,
+      "mad": 0.00042724609375,
+      "min": 80.89471435546875,
+      "max": 80.89729309082031
+    },
+    "candidate": {
+      "count": 5,
+      "median": 92.34481811523438,
+      "mad": 1.37799072265625,
+      "min": 88.43403625488281,
+      "max": 94.50888061523438
+    }
+  },
+  "prefill_seconds": {
+    "oracle": {
+      "count": 5,
+      "median": 1079.5693600036905,
+      "mad": 48.96545300336379,
+      "min": 1030.6039070003267,
+      "max": 1135.0440159987352
+    },
+    "candidate": {
+      "count": 5,
+      "median": 1494.550685875,
+      "mad": 42.18226245799997,
+      "min": 1333.169510792,
+      "max": 1536.732948333
+    }
+  }
+}

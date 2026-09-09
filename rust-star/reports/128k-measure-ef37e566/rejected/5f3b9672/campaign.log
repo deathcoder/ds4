@@ -1,0 +1,4 @@
+Traceback (most recent call last):
+  File "$WORKTREE/rust-star/.work/measure128-43bf0dfa/campaign.py", line 7, in <module>
+    if 'Traceback (most recent call last)' in log:raise RuntimeError('Validation stopped; inspect preserved evidence')
+RuntimeError: Validation stopped; inspect preserved evidence
