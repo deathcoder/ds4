@@ -18,8 +18,31 @@ Before changing code:
 Journal entries are reverse chronological. Do not edit old entries to change
 history; add a correction and update the current-state summary.
 
+## 2026-09-09 — Correct score-kernel report labels before acceptance
+
+- Stopped candidate 7b1a5b58 validation after six successful numerical gates
+  (2K, 8K, 12K, 32K output, internal and profiled). The retained-32K gate was
+  incomplete and is excluded. No candidate 128K gate or engine timing ran.
+- The 8K writer still named the previous score kernel in two metadata fields.
+  The strengthened writer regression fails with zero new names versus two
+  expected. Correct both labels to rust_star_indexer_scores_tiled64; arithmetic
+  and dispatch remain unchanged. Preserve the stopped attempt and regression.
+- Rebuild and freeze a new candidate in rust-star/.work/score64-metadata-fix/,
+  then rerun all ten gates with explicit kernel metadata assertions. All 317
+  release tests now pass, including the previously failing writer regression;
+  fresh input verification passes at 08:44 UTC. Release build/freeze are pending. Acceptance criteria
+  and the frozen ef37e566 timed baseline remain unchanged.
+
 ## 2026-09-09 — 128K profiling and focused optimization milestone started
 
+- Candidate 7b1a5b58 is frozen (binary SHA-256
+  e576a2abd3d1ccf57fd5428f167b896bf6c3dfa92c500511d8f36a30bfece8c4),
+  including all tracked runtime and 11 imported Metal source hashes. The ten
+  live gates run sequentially in score64-ec5db25e/; the first five pass (2K,
+  8K, 12K, complete 32K output and 32K internal). The 32K profile is active. No engine performance result exists yet. An initial freeze-helper
+  comparison rejected empty lines left by different comments; the preserved
+  pre-model failure was corrected by comparing nonempty code lines. Kernel code
+  and C0/timestamp guards were not changed by that correction.
 - Fenced diagnostic ec5db25e completed at 08:02 UTC: all 129,280 prefill
   logits and all 128 full decode rows match oracle-v5 exactly. The independent
   audit passes all 1,271 tails / 11,439 intervals. Counter-span coverage is
@@ -3773,20 +3796,17 @@ Next:
 
 ### Current resume checkpoint (updated 2026-09-09)
 
-- ACTIVE: authorized 128K profiling and focused optimization milestone. Frozen
-  ef37e566 baseline profile runs first; strict counter/transcript audit precedes
-  choosing a change. Work: rust-star/.work/profile128-9b4d7d0d/. Follow the newest
-  entry through C0, paired validation and portable report. The 64-column score
-  tile is selected and integrated after exact synthetic controls and 14 isolated
-  pairs. 317 release tests, 94 Python tests, fresh hashes and release build pass;
-  freeze the candidate, then ten full-model/shorter/profile/lifecycle gates and
-  five engine pairs remain. Acceptance is prebound in optimization-acceptance.json.
-  External-reference optional prefill profiling is implemented but unvalidated;
-  its first 317 host tests pass. Baseline profile failed on independent-pass
-  overlap; the standalone fenced control, 317 release tests and fresh input
-  hashes pass. Release build and five CLI checks also pass. Frozen diagnostic
-  ec5db25e passes full 128K profiled C0 and component auditing. Continue in
-  rust-star/.work/score64-ec5db25e/ for the score-tile candidate.
+- ACTIVE: authorized 128K profiling and focused optimization milestone.
+  Fenced diagnostic ec5db25e passes full 128K C0 and strict component auditing.
+  The 64-column score tile passes exact synthetic controls and all 14 isolated
+  pairs. Candidate 7b1a5b58 passed six numerical gates but its 8K report used
+  stale kernel labels; validation stopped during retained-32K. Preserve that
+  attempt. Writer regression reproduces the defect; both labels are corrected.
+  All 317 release tests and fresh input hashes pass. Finish build/freeze in
+  rust-star/.work/score64-metadata-fix/, rerun all ten
+  gates, then five engine pairs against frozen ef37e566 using the unchanged
+  optimization-acceptance.json. No engine speedup or acceptance yet. Finish
+  portable evidence/docs and stop at this milestone.
 
 - COMPLETE: 128K measurement/retained-engine milestone, candidate ef37e566.
   317 Rust / 94 Python tests, six live gates, five valid pairs and two warm-ups;
@@ -4619,8 +4639,9 @@ Next:
 
 1. Complete the authorized 128K profiling/optimization milestone, following the
    newest entry and current work directory. Do not resume quota-burning mode.
-2. Build/test the integrated 64-column score tile, freeze it, and require fresh
-   full C0 plus shorter/lifecycle/profile controls. Then evaluate against frozen
+2. Rebuild/test/freeze the metadata-corrected score-tile candidate, then run
+   all ten sequential live gates:
+   fresh full C0 plus shorter/lifecycle/profile controls. Then evaluate against frozen
    ef37e566 with five paired measurements and a prebound acceptance plan.
    Preserve rejected attempts; finish evidence/docs and stop. The diagnostic
    128K profile and synthetic score controls already pass.
