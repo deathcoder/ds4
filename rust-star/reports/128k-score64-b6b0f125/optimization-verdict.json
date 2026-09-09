@@ -1,0 +1,40 @@
+{
+  "accepted": true,
+  "criteria": {
+    "prefill_median": true,
+    "prefill_pairs": true,
+    "steady_decode": true,
+    "peak_rss": true
+  },
+  "prefill_faster_pairs": 5,
+  "prefill_latency_ratio": {
+    "count": 5,
+    "median": 0.9171929261213313,
+    "mad": 0.014318820431417856,
+    "min": 0.8878328014674255,
+    "max": 0.9356514157039102
+  },
+  "steady_decode_throughput_ratio": {
+    "count": 5,
+    "median": 1.0106120212979066,
+    "mad": 0.00936697756000604,
+    "min": 0.9947068369777442,
+    "max": 1.0268190747728119
+  },
+  "first_step_latency_ratio": {
+    "count": 5,
+    "median": 0.9603449002339521,
+    "mad": 0.018601931565200402,
+    "min": 0.9240383890947438,
+    "max": 1.1085186271719538
+  },
+  "peak_rss_ratio": {
+    "count": 5,
+    "median": 1.0000146918624035,
+    "mad": 8.556787721714088e-06,
+    "min": 0.9999985469462299,
+    "max": 1.0000232486501253
+  },
+  "acceptance_plan_sha256": "cd243eb2eb0630334bb9d9538d6f8f42589c8f89bff5977fe2a283d35d8befe3",
+  "scope": "128K/128 Rust-to-Rust development study; unchanged oracle-v5 is separate"
+}

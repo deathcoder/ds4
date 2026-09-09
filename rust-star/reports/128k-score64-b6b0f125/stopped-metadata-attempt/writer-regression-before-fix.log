@@ -1,0 +1,24 @@
+   Compiling rust-star-runtime v0.1.0 ($WORKTREE/rust-star/runtime)
+    Finished `release` profile [optimized] target(s) in 1m 24s
+     Running unittests src/lib.rs (rust-star/.work/runtime-target/release/deps/rust_star_runtime-7102522419b53573)
+
+running 1 test
+test metal::tests::writes_stable_long_prefill_continuation_bootstrap_probe_json ... FAILED
+
+failures:
+
+---- metal::tests::writes_stable_long_prefill_continuation_bootstrap_probe_json stdout ----
+
+thread 'metal::tests::writes_stable_long_prefill_continuation_bootstrap_probe_json' (221338) panicked at src/metal.rs:62433:9:
+assertion `left == right` failed
+  left: 0
+ right: 2
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    metal::tests::writes_stable_long_prefill_continuation_bootstrap_probe_json
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 316 filtered out; finished in 0.00s
+
+error: test failed, to rerun pass `--lib`

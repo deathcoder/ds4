@@ -1,0 +1,9 @@
+{
+  "stage": "pre-freeze source-comment equivalence check",
+  "exit": 1,
+  "reason": "The checker removed comment text but retained different numbers of empty comment lines. Nonempty code lines are identical.",
+  "model_work_started": false,
+  "candidate_copied": false,
+  "correction": "Compare stripped nonempty lines after removing comments; do not alter kernel code or any C0/timestamp guard.",
+  "utc": "2026-09-09T08:15:13.777532+00:00"
+}

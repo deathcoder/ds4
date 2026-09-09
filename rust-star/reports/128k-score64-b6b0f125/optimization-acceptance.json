@@ -1,0 +1,17 @@
+{
+  "scope": "128K prompt / 128 decode steps; optimized Rust versus frozen accepted Rust ef37e566; oracle-v5 remains the separate correctness oracle",
+  "hypothesis": "Widen prefill indexer score tiles to reuse Q staging while preserving every dot-product and head accumulation",
+  "pairs": 5,
+  "warmups_per_engine": 1,
+  "order": "alternating AB/BA, beginning AB; each measurement is a fresh process",
+  "primary_metric": "prefill_ms",
+  "prefill_median_candidate_baseline_ratio_must_be_less_than": 1.0,
+  "prefill_faster_pairs_minimum": 4,
+  "steady_decode_tps_median_candidate_baseline_ratio_minimum": 0.97,
+  "peak_rss_median_candidate_baseline_ratio_maximum": 1.03,
+  "first_step_latency": "Report every pair, median and dispersion as a tradeoff; no selective exclusion",
+  "correctness": "All ten frozen candidate live gates must pass before paired measurement; every timed transcript must also match",
+  "failure_policy": "Stop on failure, preserve every attempt, and do not retry to obtain favorable timings",
+  "profile_policy": "Keep profiling and full-output collection outside timed samples; report perturbation and do not add component shares to parent times",
+  "claim_limit": "No Rust-versus-DwarfStar baseline update and no 256K or coding-agent throughput claim"
+}

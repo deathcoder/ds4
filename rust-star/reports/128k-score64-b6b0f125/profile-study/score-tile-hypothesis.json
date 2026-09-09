@@ -1,0 +1,11 @@
+{
+  "hypothesis": "Double indexer score columns per threadgroup from 32 to 64, preserving 8x8 dot/depth/head arithmetic, to amortize Q staging over twice the output columns.",
+  "basis": "Audited full-C0 128K profile: attention is the largest stage; even-layer indexed attention is the largest parity subgroup.",
+  "profile_sha256": "a30e17d53c705fd37646161ec2fc357c268b4d5aea5b7510175891a4b1d93acf",
+  "profile_audit_sha256": "07b523b0841943dbb1be3880abcfe9057f5c168cc2b6fe0d5e0930115e886762",
+  "stage_gpu_ms": 1186369.5681250396,
+  "attention_gpu_ms": 581774.8262916857,
+  "even_attention_gpu_ms": 383761.07600000483,
+  "microbenchmark_acceptance": "Every score word and causal-mask entry must match the unmodified kernel in seven shapes; require lower median paired GPU latency on both large shapes before runtime integration. Preserve all seven alternating pairs per large shape, no favorable retries.",
+  "engine_acceptance": "Before engine measurements, require full C0 and lifecycle controls and freeze a separate paired acceptance plan. Isolated timings never establish engine speedup."
+}

@@ -18,6 +18,41 @@ Before changing code:
 Journal entries are reverse chronological. Do not edit old entries to change
 history; add a correction and update the current-state summary.
 
+## 2026-09-09 — 128K score-tile optimization accepted; milestone complete
+
+- Retain frozen candidate b6b0f125 against accepted Rust baseline ef37e566.
+  Five alternating pairs and both warmups pass on their first attempts; no
+  retries, exclusions or concurrent model jobs. The campaign exits 0 at 15:06
+  UTC. Independent reconstruction of every native metric, artifact hashes and
+  all distributions passes; the unchanged prebound criteria all pass.
+- Median paired prefill latency ratio is 0.917193 (8.28% lower), with all five
+  pairs faster; candidate/baseline median prefill is 1216.402/1358.855s.
+  Median paired steady throughput ratio is 1.010612 (+1.06%); medians are
+  15.145/14.860 tokens/s. Median peak RSS is 94.513/94.511GiB, paired ratio
+  1.000015. These are Rust-to-Rust development measurements, not an update to
+  the Rust-versus-oracle headline. Ratios of paired observations differ from
+  ratios of separate medians; all dispersion and every first-step latency are
+  preserved. Pair 5 first-step latency is 10.85% slower; median paired latency
+  is 3.97% lower. No outlier was removed.
+- All 317 Rust tests, 94 Python tests, release build and ten live gates pass.
+  Fresh normal and profiled 128K C0 each match all 16,677,120 FP32 words and
+  128 decode steps. Retained 32K/128K each verify two exact transcripts,
+  request reset and same model/context/residency. Internal HC remains accepted
+  through 24K. Strict 32K/128K profiles and seven exact synthetic score shapes
+  pass; the 14 isolated timing pairs remain supporting diagnostic evidence.
+- Full 128K profiling required diagnostic-only fences after independent Metal
+  passes produced overlapping timestamps. The rejected profile, probe limits,
+  first freeze-helper failure, six-gate metadata attempt and red writer
+  regression remain preserved. The corrected b6b0f125 binary reran all ten
+  gates before timing. No timestamp or numerical guard was relaxed.
+- Final model/prompt/oracle-source/oracle-executable/CLI hashes match at
+  15:08 UTC. The observer exits cleanly; no model process remains. The portable
+  report rust-star/reports/128k-score64-b6b0f125/README.md verifies 322 artifacts
+  without the model, including frozen sources, native results, oracle row
+  receipts, profiles, all paired statistics and the retention verdict.
+- Documentation now records the accepted result. Stop at this milestone;
+  no push, 256K run, coding-agent corpus or further optimization is started.
+
 ## 2026-09-09 — Correct score-kernel report labels before acceptance
 
 - Stopped candidate 7b1a5b58 validation after six successful numerical gates
@@ -30,7 +65,22 @@ history; add a correction and update the current-state summary.
 - Rebuild and freeze a new candidate in rust-star/.work/score64-metadata-fix/,
   then rerun all ten gates with explicit kernel metadata assertions. All 317
   release tests now pass, including the previously failing writer regression;
-  fresh input verification passes at 08:44 UTC. Release build/freeze are pending. Acceptance criteria
+  fresh input verification passes at 08:44 UTC. Release build passes. Candidate
+  b6b0f125 is frozen with executable SHA-256
+  99f4971e684ed455841065ca597e9ee10055e3a937bbaeb416a9bb9b70800c4c;
+  all tracked runtime and 11 imported Metal sources are hash-bound. The ten
+  live gates run sequentially from the new executable: seven gates pass through
+  retained-32K, including both corrected 8K labels and the strict 32K profile
+  audit. Both retained transcripts match with request reset/residency reuse.
+  Fresh full-output 128K C0 now passes: all 16,677,120 FP32 words and the
+  128-step transcript match oracle-v5. Profiled 128K also passes full-output
+  C0 and the strict component audit. All ten gates now pass, including both
+  exact retained-128K transcripts and reset/residency checks. The independent
+  gate/lifecycle audit and fresh campaign input hashes also pass. Both warmups
+  pass on their first attempts. Pairs 1–4 pass both exact transcripts; final pair 5
+  baseline passes and its candidate is active (A=accepted Rust, B=candidate) in
+  paired-128k-score64-b6b0f125/. Keep the five alternating pairs and prebound
+  acceptance plan unchanged. No final performance conclusion exists yet. Acceptance criteria
   and the frozen ef37e566 timed baseline remain unchanged.
 
 ## 2026-09-09 — 128K profiling and focused optimization milestone started
@@ -3796,17 +3846,17 @@ Next:
 
 ### Current resume checkpoint (updated 2026-09-09)
 
-- ACTIVE: authorized 128K profiling and focused optimization milestone.
-  Fenced diagnostic ec5db25e passes full 128K C0 and strict component auditing.
-  The 64-column score tile passes exact synthetic controls and all 14 isolated
-  pairs. Candidate 7b1a5b58 passed six numerical gates but its 8K report used
-  stale kernel labels; validation stopped during retained-32K. Preserve that
-  attempt. Writer regression reproduces the defect; both labels are corrected.
-  All 317 release tests and fresh input hashes pass. Finish build/freeze in
-  rust-star/.work/score64-metadata-fix/, rerun all ten
-  gates, then five engine pairs against frozen ef37e566 using the unchanged
-  optimization-acceptance.json. No engine speedup or acceptance yet. Finish
-  portable evidence/docs and stop at this milestone.
+- COMPLETE: authorized 128K profiling and focused optimization milestone.
+  Retain candidate b6b0f125: all ten live gates, 317 Rust/94 Python tests,
+  release build, five first-attempt pairs and two warmups pass. Median paired
+  prefill latency falls 8.28% (5/5 faster); steady throughput rises 1.06%;
+  peak-RSS ratio is 1.000015. All first-step results and dispersion remain
+  reported, including the slower fifth pair. Strict profiles, isolated score
+  controls, independent metrics/artifact audits and final input hashes pass.
+  Report rust-star/reports/128k-score64-b6b0f125/README.md verifies 322 artifacts.
+  Runtime candidate is frozen at b6b0f125; the completion commit adds evidence
+  and documentation. Earlier rejected attempts are preserved. All jobs have
+  ended. Stop here; no next milestone or push is authorized.
 
 - COMPLETE: 128K measurement/retained-engine milestone, candidate ef37e566.
   317 Rust / 94 Python tests, six live gates, five valid pairs and two warm-ups;
@@ -4637,22 +4687,15 @@ Next:
 
 ## Immediate Next Actions
 
-1. Complete the authorized 128K profiling/optimization milestone, following the
-   newest entry and current work directory. Do not resume quota-burning mode.
-2. Rebuild/test/freeze the metadata-corrected score-tile candidate, then run
-   all ten sequential live gates:
-   fresh full C0 plus shorter/lifecycle/profile controls. Then evaluate against frozen
-   ef37e566 with five paired measurements and a prebound acceptance plan.
-   Preserve rejected attempts; finish evidence/docs and stop. The diagnostic
-   128K profile and synthetic score controls already pass.
-3. Keep oracle-v5 and historical evidence immutable. Full 32K/128 C0 remains
-   mandatory; accepted internal HC targets end at 24K. The new 128K comparison
-   adds a frontier and does not rewrite historical 32K performance results.
-4. 256K headline work and the coding-agent corpus remain future. Full KV history
-   still scales with context; consider bounded raw history if capacity requires it.
-   Do not revive rejected dense-Q8 execution without a new measured hypothesis.
-5. Run one model workload at a time, bound disk use and keep this journal current.
-   GitHub Actions billing and secure remote access remain in the manual ledger.
+1. The authorized 128K profiling/optimization milestone is complete. Retain
+   b6b0f125 and stop. See the newest entry and the 322-artifact score-tile report.
+   Do not resume quota-burning mode or start another optimization.
+2. Preserve oracle-v5, the frozen candidates and all historical evidence,
+   including rejected attempts. No model job or observer remains active.
+3. 256K measurements and the coding-agent corpus remain future work requiring
+   a new milestone. Accepted internal HC targets still end at 24K.
+4. Do not push. GitHub Actions billing and secure remote access remain in the
+   manual ledger.
 
 ## Entries
 

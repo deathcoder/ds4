@@ -1,0 +1,12 @@
+{
+  "optimization_retained": true,
+  "candidate_source_commit": "b6b0f12530b83caaeb8dfe5310c4dd346368404d",
+  "candidate_executable_sha256": "99f4971e684ed455841065ca597e9ee10055e3a937bbaeb416a9bb9b70800c4c",
+  "baseline_source_commit": "ef37e56610ef813ed4df3f67f013d62e34995170",
+  "baseline_executable_sha256": "50f59a30144d106564d776a8b7a966d06a3d3b3dbe6c6bc3bf30ad69c81fa752",
+  "acceptance_plan_sha256": "cd243eb2eb0630334bb9d9538d6f8f42589c8f89bff5977fe2a283d35d8befe3",
+  "optimization_verdict_sha256": "568ed3a8486ba200e6b8dfc3f743b029defdad962c4a7252b03323a297fbfc23",
+  "decided_utc": "2026-09-09T15:08:09.423698+00:00",
+  "rationale": "All ten correctness/lifecycle gates and both profiles pass. All five first-attempt paired prefill measurements improve; median latency ratio 0.9171929261213313, steady decode throughput ratio 1.0106120212979066 and peak RSS ratio 1.0000146918624035 meet the frozen criteria. Retain the 64-column prefill score tile; no restoration is needed. First-step latency dispersion remains reported, including the slower fifth pair. Stop at this milestone.",
+  "scope": "128K/128 Rust-to-Rust development comparison; correctness oracle-v5 unchanged; no 256K or coding-agent corpus claim."
+}

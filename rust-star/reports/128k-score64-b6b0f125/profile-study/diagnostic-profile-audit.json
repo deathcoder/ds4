@@ -1,0 +1,1493 @@
+{
+  "counter_span_coverage": {
+    "minimum": 0.9979326819026036,
+    "median": 0.9989592522510564,
+    "maximum": 0.9994286360628163
+  },
+  "tail_component_shares": {
+    "attention_output": {
+      "minimum": 0.31366562494058825,
+      "median": 0.3696892106717125,
+      "maximum": 0.3855588113667588
+    },
+    "ffn_ingress": {
+      "minimum": 0.0068123307734375615,
+      "median": 0.007833887406079229,
+      "maximum": 0.010636547820703099
+    },
+    "router": {
+      "minimum": 0.002187532089501753,
+      "median": 0.0030013367390618402,
+      "maximum": 0.004624476108310855
+    },
+    "routed_map": {
+      "minimum": 0.003302438974297754,
+      "median": 0.0037793926000185035,
+      "maximum": 0.004170391586328926
+    },
+    "routed_gate_up": {
+      "minimum": 0.30808044674825524,
+      "median": 0.35213790938327366,
+      "maximum": 0.368313488850931
+    },
+    "routed_down": {
+      "minimum": 0.16305100296574448,
+      "median": 0.1896038230293499,
+      "maximum": 0.29939846949785087
+    },
+    "routed_sum": {
+      "minimum": 0.001934610021397673,
+      "median": 0.0022072392582173847,
+      "maximum": 0.003232289419129903
+    },
+    "shared_expert": {
+      "minimum": 0.04977405210662273,
+      "median": 0.05766819384236214,
+      "maximum": 0.0616764916746163
+    },
+    "final_hc": {
+      "minimum": 0.01096113361826537,
+      "median": 0.01270717290959434,
+      "maximum": 0.014494507288510499
+    }
+  },
+  "passed": true,
+  "context": 131072,
+  "transcript_exact": true,
+  "native_tails": 1271,
+  "component_intervals": 11439,
+  "paired_eligible": false,
+  "profile_perturbed": true,
+  "stages": {
+    "attention": {
+      "calls": 1271,
+      "gpu_ms": 581774.8262916857,
+      "command_wall_ms": 614525.4590000188,
+      "host_elapsed_ms": 619905.5906269993
+    },
+    "tail": {
+      "calls": 1271,
+      "gpu_ms": 376484.8749583692,
+      "command_wall_ms": 394630.29199999006,
+      "host_elapsed_ms": 395540.03545700054
+    },
+    "bootstrap_ingress": {
+      "calls": 31,
+      "gpu_ms": 148347.12658333092,
+      "command_wall_ms": 148953.50099999798,
+      "host_elapsed_ms": 150515.67841400005
+    },
+    "ingress": {
+      "calls": 620,
+      "gpu_ms": 29395.647791681,
+      "command_wall_ms": 45402.13099999807,
+      "host_elapsed_ms": 56072.97771400001
+    },
+    "boundary": {
+      "calls": 651,
+      "gpu_ms": 26414.213041649004,
+      "command_wall_ms": 54222.51199998998,
+      "host_elapsed_ms": 67197.66156600001
+    },
+    "prefix_layer": {
+      "calls": 40,
+      "gpu_ms": 17179.15658333,
+      "command_wall_ms": 21871.794999998998,
+      "host_elapsed_ms": 23328.678833
+    },
+    "initial_bootstrap": {
+      "calls": 1,
+      "gpu_ms": 4962.131833334,
+      "command_wall_ms": 5166.407000001,
+      "host_elapsed_ms": 5215.217208
+    },
+    "compressor": {
+      "calls": 620,
+      "gpu_ms": 1811.5910416600007,
+      "command_wall_ms": 3773.7520000040026,
+      "host_elapsed_ms": 5622.7835339999965
+    },
+    "bind": {
+      "calls": 1271,
+      "gpu_ms": 0.0,
+      "command_wall_ms": 0.0,
+      "host_elapsed_ms": 6328.966584000005
+    },
+    "host_scratch": {
+      "calls": 651,
+      "gpu_ms": 0.0,
+      "command_wall_ms": 0.0,
+      "host_elapsed_ms": 0.12082700000000009
+    }
+  },
+  "stages_by_parity": {
+    "even/attention": {
+      "calls": 651,
+      "gpu_ms": 383761.07600000483,
+      "command_wall_ms": 404088.5310000087,
+      "host_elapsed_ms": 405909.8881019999
+    },
+    "odd/attention": {
+      "calls": 620,
+      "gpu_ms": 198013.75029168092,
+      "command_wall_ms": 210436.92800000895,
+      "host_elapsed_ms": 213995.70252500003
+    },
+    "even/tail": {
+      "calls": 651,
+      "gpu_ms": 192946.2492083562,
+      "command_wall_ms": 203250.910999989,
+      "host_elapsed_ms": 203939.34215299986
+    },
+    "odd/tail": {
+      "calls": 620,
+      "gpu_ms": 183538.62575001284,
+      "command_wall_ms": 191379.3810000009,
+      "host_elapsed_ms": 191600.69330400001
+    },
+    "multi/bootstrap_ingress": {
+      "calls": 31,
+      "gpu_ms": 148347.12658333092,
+      "command_wall_ms": 148953.50099999798,
+      "host_elapsed_ms": 150515.67841400005
+    },
+    "odd/ingress": {
+      "calls": 620,
+      "gpu_ms": 29395.647791681,
+      "command_wall_ms": 45402.13099999807,
+      "host_elapsed_ms": 56072.97771400001
+    },
+    "even/boundary": {
+      "calls": 651,
+      "gpu_ms": 26414.213041649004,
+      "command_wall_ms": 54222.51199998998,
+      "host_elapsed_ms": 67197.66156600001
+    },
+    "even/prefix_layer": {
+      "calls": 20,
+      "gpu_ms": 8781.971583336,
+      "command_wall_ms": 11102.381000001,
+      "host_elapsed_ms": 12401.635373999998
+    },
+    "odd/prefix_layer": {
+      "calls": 20,
+      "gpu_ms": 8397.184999994,
+      "command_wall_ms": 10769.413999998,
+      "host_elapsed_ms": 10927.043459
+    },
+    "multi/initial_bootstrap": {
+      "calls": 1,
+      "gpu_ms": 4962.131833334,
+      "command_wall_ms": 5166.407000001,
+      "host_elapsed_ms": 5215.217208
+    },
+    "odd/compressor": {
+      "calls": 620,
+      "gpu_ms": 1811.5910416600007,
+      "command_wall_ms": 3773.7520000040026,
+      "host_elapsed_ms": 5622.7835339999965
+    },
+    "even/bind": {
+      "calls": 651,
+      "gpu_ms": 0.0,
+      "command_wall_ms": 0.0,
+      "host_elapsed_ms": 3728.913292
+    },
+    "even/host_scratch": {
+      "calls": 651,
+      "gpu_ms": 0.0,
+      "command_wall_ms": 0.0,
+      "host_elapsed_ms": 0.12082700000000009
+    },
+    "odd/bind": {
+      "calls": 620,
+      "gpu_ms": 0.0,
+      "command_wall_ms": 0.0,
+      "host_elapsed_ms": 2600.0532919999996
+    }
+  },
+  "stages_by_chunk": {
+    "0/initial_bootstrap": {
+      "gpu_ms": 4962.131833334,
+      "command_wall_ms": 5166.407000001,
+      "host_elapsed_ms": 5215.217208
+    },
+    "0/prefix_layer": {
+      "gpu_ms": 17179.15658333,
+      "command_wall_ms": 21871.794999998998,
+      "host_elapsed_ms": 23328.678833
+    },
+    "4096/bootstrap_ingress": {
+      "gpu_ms": 4431.343083333,
+      "command_wall_ms": 4451.457,
+      "host_elapsed_ms": 4461.437375
+    },
+    "4096/bind": {
+      "gpu_ms": 0.0,
+      "command_wall_ms": 0.0,
+      "host_elapsed_ms": 51.35000399999999
+    },
+    "4096/boundary": {
+      "gpu_ms": 817.550666668,
+      "command_wall_ms": 1812.103,
+      "host_elapsed_ms": 1862.3464970000002
+    },
+    "4096/host_scratch": {
+      "gpu_ms": 0.0,
+      "command_wall_ms": 0.0,
+      "host_elapsed_ms": 0.003871999999999999
+    },
+    "4096/attention": {
+      "gpu_ms": 5424.155583338,
+      "command_wall_ms": 6120.5920000020005,
+      "host_elapsed_ms": 6261.719501999999
+    },
+    "4096/tail": {
+      "gpu_ms": 11480.847291667,
+      "command_wall_ms": 12052.029000000999,
+      "host_elapsed_ms": 12090.109713999998
+    },
+    "4096/ingress": {
+      "gpu_ms": 955.2865000020001,
+      "command_wall_ms": 1527.101999998,
+      "host_elapsed_ms": 1603.556126
+    },
+    "4096/compressor": {
+      "gpu_ms": 57.60975,
+      "command_wall_ms": 167.27700000199997,
+      "host_elapsed_ms": 171.95424799999998
+    },
+    "8192/bootstrap_ingress": {
+      "gpu_ms": 4466.079208333,
+      "command_wall_ms": 4491.054,
+      "host_elapsed_ms": 4510.633333
+    },
+    "8192/bind": {
+      "gpu_ms": 0.0,
+      "command_wall_ms": 0.0,
+      "host_elapsed_ms": 128.92516800000004
+    },
+    "8192/boundary": {
+      "gpu_ms": 839.669583335,
+      "command_wall_ms": 1914.013999998,
+      "host_elapsed_ms": 2048.052204
+    },
+    "8192/host_scratch": {
+      "gpu_ms": 0.0,
+      "command_wall_ms": 0.0,
+      "host_elapsed_ms": 0.0041270000000000005
+    },
+    "8192/attention": {
+      "gpu_ms": 6464.106208342998,
+      "command_wall_ms": 7186.4259999979995,
+      "host_elapsed_ms": 7329.457789000001
+    },
+    "8192/tail": {
+      "gpu_ms": 11483.854833337,
+      "command_wall_ms": 12069.786999994001,
+      "host_elapsed_ms": 12140.314411999996
+    },
+    "8192/ingress": {
+      "gpu_ms": 957.8421666690001,
+      "command_wall_ms": 1543.397999998,
+      "host_elapsed_ms": 1655.0554570000004
+    },
+    "8192/compressor": {
+      "gpu_ms": 57.584000003,
+      "command_wall_ms": 154.37100000399997,
+      "host_elapsed_ms": 159.169458
+    },
+    "12288/bootstrap_ingress": {
+      "gpu_ms": 4424.225416667,
+      "command_wall_ms": 4479.602,
+      "host_elapsed_ms": 4505.522333
+    },
+    "12288/bind": {
+      "gpu_ms": 0.0,
+      "command_wall_ms": 0.0,
+      "host_elapsed_ms": 88.29328999999998
+    },
+    "12288/boundary": {
+      "gpu_ms": 820.6033333360001,
+      "command_wall_ms": 1901.628000001,
+      "host_elapsed_ms": 2018.335501
+    },
+    "12288/host_scratch": {
+      "gpu_ms": 0.0,
+      "command_wall_ms": 0.0,
+      "host_elapsed_ms": 0.004083
+    },
+    "12288/attention": {
+      "gpu_ms": 6966.526083335,
+      "command_wall_ms": 7702.038000001,
+      "host_elapsed_ms": 7842.447582000001
+    },
+    "12288/tail": {
+      "gpu_ms": 11468.799083334996,
+      "command_wall_ms": 12045.533999995,
+      "host_elapsed_ms": 12084.872754000002
+    },
+    "12288/ingress": {
+      "gpu_ms": 1010.074416672,
+      "command_wall_ms": 1582.3970000010002,
+      "host_elapsed_ms": 1715.8061689999997
+    },
+    "12288/compressor": {
+      "gpu_ms": 57.54524999800002,
+      "command_wall_ms": 142.025999998,
+      "host_elapsed_ms": 146.960709
+    },
+    "16384/bootstrap_ingress": {
+      "gpu_ms": 4432.34325,
+      "command_wall_ms": 4457.109,
+      "host_elapsed_ms": 4492.441625
+    },
+    "16384/bind": {
+      "gpu_ms": 0.0,
+      "command_wall_ms": 0.0,
+      "host_elapsed_ms": 104.32987200000001
+    },
+    "16384/boundary": {
+      "gpu_ms": 817.2415416649999,
+      "command_wall_ms": 1851.2460000019998,
+      "host_elapsed_ms": 2002.174248
+    },
+    "16384/host_scratch": {
+      "gpu_ms": 0.0,
+      "command_wall_ms": 0.0,
+      "host_elapsed_ms": 0.00404
+    },
+    "16384/attention": {
+      "gpu_ms": 8012.874666666999,
+      "command_wall_ms": 8799.082999997,
+      "host_elapsed_ms": 8942.917377
+    },
+    "16384/tail": {
+      "gpu_ms": 11457.581416668,
+      "command_wall_ms": 12061.450000004003,
+      "host_elapsed_ms": 12116.142708
+    },
+    "16384/ingress": {
+      "gpu_ms": 969.741333334,
+      "command_wall_ms": 1566.051,
+      "host_elapsed_ms": 1723.927748
+    },
+    "16384/compressor": {
+      "gpu_ms": 57.63737499799999,
+      "command_wall_ms": 131.242000002,
+      "host_elapsed_ms": 136.35124700000003
+    },
+    "20480/bootstrap_ingress": {
+      "gpu_ms": 4457.442375,
+      "command_wall_ms": 4480.816,
+      "host_elapsed_ms": 4517.107042
+    },
+    "20480/bind": {
+      "gpu_ms": 0.0,
+      "command_wall_ms": 0.0,
+      "host_elapsed_ms": 125.967334
+    },
+    "20480/boundary": {
+      "gpu_ms": 822.058874999,
+      "command_wall_ms": 1814.4340000000004,
+      "host_elapsed_ms": 1992.375168
+    },
+    "20480/host_scratch": {
+      "gpu_ms": 0.0,
+      "command_wall_ms": 0.0,
+      "host_elapsed_ms": 0.004084
+    },
+    "20480/attention": {
+      "gpu_ms": 8563.980374997003,
+      "command_wall_ms": 9342.691999994002,
+      "host_elapsed_ms": 9486.099500999999
+    },
+    "20480/tail": {
+      "gpu_ms": 11481.900708336998,
+      "command_wall_ms": 12053.093000002002,
+      "host_elapsed_ms": 12101.190333000008
+    },
+    "20480/ingress": {
+      "gpu_ms": 987.4582916690001,
+      "command_wall_ms": 1577.6000000000001,
+      "host_elapsed_ms": 1765.1313310000003
+    },
+    "20480/compressor": {
+      "gpu_ms": 57.69149999899999,
+      "command_wall_ms": 128.911999999,
+      "host_elapsed_ms": 169.22246099999998
+    },
+    "24576/bootstrap_ingress": {
+      "gpu_ms": 4493.913833333,
+      "command_wall_ms": 4517.175,
+      "host_elapsed_ms": 4552.261333
+    },
+    "24576/bind": {
+      "gpu_ms": 0.0,
+      "command_wall_ms": 0.0,
+      "host_elapsed_ms": 99.55416300000002
+    },
+    "24576/boundary": {
+      "gpu_ms": 820.424666665,
+      "command_wall_ms": 1818.295000004,
+      "host_elapsed_ms": 2039.121167
+    },
+    "24576/host_scratch": {
+      "gpu_ms": 0.0,
+      "command_wall_ms": 0.0,
+      "host_elapsed_ms": 0.003999999999999999
+    },
+    "24576/attention": {
+      "gpu_ms": 9555.241458336,
+      "command_wall_ms": 10373.030000002,
+      "host_elapsed_ms": 10538.418748999999
+    },
+    "24576/tail": {
+      "gpu_ms": 11484.156916667998,
+      "command_wall_ms": 12047.510000005,
+      "host_elapsed_ms": 12099.348248999997
+    },
+    "24576/ingress": {
+      "gpu_ms": 945.1545416629999,
+      "command_wall_ms": 1526.793000001,
+      "host_elapsed_ms": 1723.171211
+    },
+    "24576/compressor": {
+      "gpu_ms": 57.668124997999996,
+      "command_wall_ms": 138.56899999899997,
+      "host_elapsed_ms": 150.952796
+    },
+    "28672/bootstrap_ingress": {
+      "gpu_ms": 4465.750125,
+      "command_wall_ms": 4487.443,
+      "host_elapsed_ms": 4529.988791
+    },
+    "28672/bind": {
+      "gpu_ms": 0.0,
+      "command_wall_ms": 0.0,
+      "host_elapsed_ms": 61.025209000000004
+    },
+    "28672/boundary": {
+      "gpu_ms": 836.6468333329999,
+      "command_wall_ms": 1659.429999998,
+      "host_elapsed_ms": 1803.532875
+    },
+    "28672/host_scratch": {
+      "gpu_ms": 0.0,
+      "command_wall_ms": 0.0,
+      "host_elapsed_ms": 0.0036230000000000004
+    },
+    "28672/attention": {
+      "gpu_ms": 10717.663583336996,
+      "command_wall_ms": 11524.460000000001,
+      "host_elapsed_ms": 11702.65312
+    },
+    "28672/tail": {
+      "gpu_ms": 11899.992166665994,
+      "command_wall_ms": 12459.459000001001,
+      "host_elapsed_ms": 12477.321168999999
+    },
+    "28672/ingress": {
+      "gpu_ms": 928.8987083320001,
+      "command_wall_ms": 1454.2690000010002,
+      "host_elapsed_ms": 1597.317874
+    },
+    "28672/compressor": {
+      "gpu_ms": 57.73033333,
+      "command_wall_ms": 125.407000001,
+      "host_elapsed_ms": 161.44741600000003
+    },
+    "32768/bootstrap_ingress": {
+      "gpu_ms": 4792.964875001,
+      "command_wall_ms": 4806.357,
+      "host_elapsed_ms": 4829.610583
+    },
+    "32768/bind": {
+      "gpu_ms": 0.0,
+      "command_wall_ms": 0.0,
+      "host_elapsed_ms": 145.78150200000005
+    },
+    "32768/boundary": {
+      "gpu_ms": 845.3726666680001,
+      "command_wall_ms": 1829.8680000000002,
+      "host_elapsed_ms": 2120.2647880000004
+    },
+    "32768/host_scratch": {
+      "gpu_ms": 0.0,
+      "command_wall_ms": 0.0,
+      "host_elapsed_ms": 0.003335
+    },
+    "32768/attention": {
+      "gpu_ms": 12170.478958336,
+      "command_wall_ms": 13011.391999997999,
+      "host_elapsed_ms": 13235.736163999996
+    },
+    "32768/tail": {
+      "gpu_ms": 12360.588833331,
+      "command_wall_ms": 12952.117000001,
+      "host_elapsed_ms": 12965.864748
+    },
+    "32768/ingress": {
+      "gpu_ms": 955.8638750000002,
+      "command_wall_ms": 1503.6779999989997,
+      "host_elapsed_ms": 1714.442377
+    },
+    "32768/compressor": {
+      "gpu_ms": 58.601250005000004,
+      "command_wall_ms": 130.912000001,
+      "host_elapsed_ms": 193.90204100000003
+    },
+    "36864/bootstrap_ingress": {
+      "gpu_ms": 4704.702374999,
+      "command_wall_ms": 4722.154999999,
+      "host_elapsed_ms": 4747.872958
+    },
+    "36864/bind": {
+      "gpu_ms": 0.0,
+      "command_wall_ms": 0.0,
+      "host_elapsed_ms": 130.922123
+    },
+    "36864/boundary": {
+      "gpu_ms": 842.744624998,
+      "command_wall_ms": 1746.9480000009999,
+      "host_elapsed_ms": 2005.593293
+    },
+    "36864/host_scratch": {
+      "gpu_ms": 0.0,
+      "command_wall_ms": 0.0,
+      "host_elapsed_ms": 0.0033740000000000003
+    },
+    "36864/attention": {
+      "gpu_ms": 12969.925833327998,
+      "command_wall_ms": 13830.943,
+      "host_elapsed_ms": 14007.981212
+    },
+    "36864/tail": {
+      "gpu_ms": 12333.004458336001,
+      "command_wall_ms": 12944.728999995,
+      "host_elapsed_ms": 12960.404746999997
+    },
+    "36864/ingress": {
+      "gpu_ms": 947.7684999989998,
+      "command_wall_ms": 1475.3260000029998,
+      "host_elapsed_ms": 1658.875082
+    },
+    "36864/compressor": {
+      "gpu_ms": 58.374833335,
+      "command_wall_ms": 127.81900000000002,
+      "host_elapsed_ms": 204.521291
+    },
+    "40960/bootstrap_ingress": {
+      "gpu_ms": 4747.407375,
+      "command_wall_ms": 4770.524999999,
+      "host_elapsed_ms": 4801.743083
+    },
+    "40960/bind": {
+      "gpu_ms": 0.0,
+      "command_wall_ms": 0.0,
+      "host_elapsed_ms": 162.269165
+    },
+    "40960/boundary": {
+      "gpu_ms": 840.0754166690001,
+      "command_wall_ms": 1795.437999999,
+      "host_elapsed_ms": 2121.42671
+    },
+    "40960/host_scratch": {
+      "gpu_ms": 0.0,
+      "command_wall_ms": 0.0,
+      "host_elapsed_ms": 0.0042499999999999994
+    },
+    "40960/attention": {
+      "gpu_ms": 13802.564124995999,
+      "command_wall_ms": 14685.329999997002,
+      "host_elapsed_ms": 14866.344167999998
+    },
+    "40960/tail": {
+      "gpu_ms": 12310.539541669,
+      "command_wall_ms": 12881.017000002003,
+      "host_elapsed_ms": 12898.941250000003
+    },
+    "40960/ingress": {
+      "gpu_ms": 956.087166668,
+      "command_wall_ms": 1498.0230000000001,
+      "host_elapsed_ms": 1766.3463739999997
+    },
+    "40960/compressor": {
+      "gpu_ms": 58.406500002,
+      "command_wall_ms": 133.667999997,
+      "host_elapsed_ms": 210.16412300000002
+    },
+    "45056/bootstrap_ingress": {
+      "gpu_ms": 4769.513875,
+      "command_wall_ms": 4788.431,
+      "host_elapsed_ms": 4820.21075
+    },
+    "45056/bind": {
+      "gpu_ms": 0.0,
+      "command_wall_ms": 0.0,
+      "host_elapsed_ms": 144.28617000000003
+    },
+    "45056/boundary": {
+      "gpu_ms": 841.2941666669999,
+      "command_wall_ms": 1797.1950000020004,
+      "host_elapsed_ms": 2147.338291
+    },
+    "45056/host_scratch": {
+      "gpu_ms": 0.0,
+      "command_wall_ms": 0.0,
+      "host_elapsed_ms": 0.004293
+    },
+    "45056/attention": {
+      "gpu_ms": 14456.311583335004,
+      "command_wall_ms": 15354.688000004002,
+      "host_elapsed_ms": 15513.401793
+    },
+    "45056/tail": {
+      "gpu_ms": 12318.048875000002,
+      "command_wall_ms": 12845.239999999001,
+      "host_elapsed_ms": 12866.954667999998
+    },
+    "45056/ingress": {
+      "gpu_ms": 954.295833335,
+      "command_wall_ms": 1482.9020000019998,
+      "host_elapsed_ms": 1755.558335
+    },
+    "45056/compressor": {
+      "gpu_ms": 58.094499997,
+      "command_wall_ms": 129.226,
+      "host_elapsed_ms": 202.44966599999995
+    },
+    "49152/bootstrap_ingress": {
+      "gpu_ms": 4717.401708333,
+      "command_wall_ms": 4735.296,
+      "host_elapsed_ms": 4780.922167
+    },
+    "49152/bind": {
+      "gpu_ms": 0.0,
+      "command_wall_ms": 0.0,
+      "host_elapsed_ms": 131.71829400000004
+    },
+    "49152/boundary": {
+      "gpu_ms": 840.7186666619998,
+      "command_wall_ms": 1739.434000001,
+      "host_elapsed_ms": 2060.192373
+    },
+    "49152/host_scratch": {
+      "gpu_ms": 0.0,
+      "command_wall_ms": 0.0,
+      "host_elapsed_ms": 0.003915999999999999
+    },
+    "49152/attention": {
+      "gpu_ms": 15495.906000004003,
+      "command_wall_ms": 16471.147999995002,
+      "host_elapsed_ms": 16643.462917
+    },
+    "49152/tail": {
+      "gpu_ms": 12334.674541669996,
+      "command_wall_ms": 12915.132999996,
+      "host_elapsed_ms": 12932.134210999999
+    },
+    "49152/ingress": {
+      "gpu_ms": 964.6863333339999,
+      "command_wall_ms": 1509.2680000009998,
+      "host_elapsed_ms": 1828.6312920000005
+    },
+    "49152/compressor": {
+      "gpu_ms": 58.079874999,
+      "command_wall_ms": 125.58100000400002,
+      "host_elapsed_ms": 196.642042
+    },
+    "53248/bootstrap_ingress": {
+      "gpu_ms": 4815.928625,
+      "command_wall_ms": 4829.176000001,
+      "host_elapsed_ms": 4867.2365
+    },
+    "53248/bind": {
+      "gpu_ms": 0.0,
+      "command_wall_ms": 0.0,
+      "host_elapsed_ms": 153.01537299999993
+    },
+    "53248/boundary": {
+      "gpu_ms": 844.7837499999999,
+      "command_wall_ms": 1743.4329999980002,
+      "host_elapsed_ms": 2101.717458
+    },
+    "53248/host_scratch": {
+      "gpu_ms": 0.0,
+      "command_wall_ms": 0.0,
+      "host_elapsed_ms": 0.003665999999999999
+    },
+    "53248/attention": {
+      "gpu_ms": 16256.286166664002,
+      "command_wall_ms": 17234.543000003003,
+      "host_elapsed_ms": 17381.732836
+    },
+    "53248/tail": {
+      "gpu_ms": 12286.403458331995,
+      "command_wall_ms": 12833.253999999002,
+      "host_elapsed_ms": 12848.038123
+    },
+    "53248/ingress": {
+      "gpu_ms": 966.965125003,
+      "command_wall_ms": 1515.648999997,
+      "host_elapsed_ms": 1879.007373
+    },
+    "53248/compressor": {
+      "gpu_ms": 59.827875002000006,
+      "command_wall_ms": 131.80399999899998,
+      "host_elapsed_ms": 203.501003
+    },
+    "57344/bootstrap_ingress": {
+      "gpu_ms": 4815.650125001,
+      "command_wall_ms": 4834.159999999,
+      "host_elapsed_ms": 4889.641041
+    },
+    "57344/bind": {
+      "gpu_ms": 0.0,
+      "command_wall_ms": 0.0,
+      "host_elapsed_ms": 151.803377
+    },
+    "57344/boundary": {
+      "gpu_ms": 842.06525,
+      "command_wall_ms": 1764.251999997,
+      "host_elapsed_ms": 2183.299415
+    },
+    "57344/host_scratch": {
+      "gpu_ms": 0.0,
+      "command_wall_ms": 0.0,
+      "host_elapsed_ms": 0.0034139999999999995
+    },
+    "57344/attention": {
+      "gpu_ms": 17233.872833332996,
+      "command_wall_ms": 18322.471000002995,
+      "host_elapsed_ms": 18469.392418000007
+    },
+    "57344/tail": {
+      "gpu_ms": 12326.040458333002,
+      "command_wall_ms": 12858.718999999,
+      "host_elapsed_ms": 12872.454912000001
+    },
+    "57344/ingress": {
+      "gpu_ms": 963.4049583320001,
+      "command_wall_ms": 1486.955000001,
+      "host_elapsed_ms": 1826.8959999999997
+    },
+    "57344/compressor": {
+      "gpu_ms": 58.810291666000005,
+      "command_wall_ms": 124.285999996,
+      "host_elapsed_ms": 196.56254
+    },
+    "61440/bootstrap_ingress": {
+      "gpu_ms": 4825.757375,
+      "command_wall_ms": 4843.596,
+      "host_elapsed_ms": 4887.43525
+    },
+    "61440/bind": {
+      "gpu_ms": 0.0,
+      "command_wall_ms": 0.0,
+      "host_elapsed_ms": 155.99466500000003
+    },
+    "61440/boundary": {
+      "gpu_ms": 844.7135416660001,
+      "command_wall_ms": 1735.369999999,
+      "host_elapsed_ms": 2140.284998
+    },
+    "61440/host_scratch": {
+      "gpu_ms": 0.0,
+      "command_wall_ms": 0.0,
+      "host_elapsed_ms": 0.0030809999999999995
+    },
+    "61440/attention": {
+      "gpu_ms": 17893.917333333,
+      "command_wall_ms": 18922.451999997997,
+      "host_elapsed_ms": 19069.922960999997
+    },
+    "61440/tail": {
+      "gpu_ms": 12309.241500002,
+      "command_wall_ms": 12856.518999996997,
+      "host_elapsed_ms": 12871.204837
+    },
+    "61440/ingress": {
+      "gpu_ms": 948.7288333339999,
+      "command_wall_ms": 1534.165000001,
+      "host_elapsed_ms": 1880.8050010000002
+    },
+    "61440/compressor": {
+      "gpu_ms": 59.146791663,
+      "command_wall_ms": 122.798999998,
+      "host_elapsed_ms": 195.96770400000003
+    },
+    "65536/bootstrap_ingress": {
+      "gpu_ms": 4833.209375,
+      "command_wall_ms": 4852.356,
+      "host_elapsed_ms": 4896.313875
+    },
+    "65536/bind": {
+      "gpu_ms": 0.0,
+      "command_wall_ms": 0.0,
+      "host_elapsed_ms": 187.03062400000002
+    },
+    "65536/boundary": {
+      "gpu_ms": 843.300999999,
+      "command_wall_ms": 1719.219,
+      "host_elapsed_ms": 2159.777289
+    },
+    "65536/host_scratch": {
+      "gpu_ms": 0.0,
+      "command_wall_ms": 0.0,
+      "host_elapsed_ms": 0.004127
+    },
+    "65536/attention": {
+      "gpu_ms": 18981.678166668004,
+      "command_wall_ms": 19989.234000000997,
+      "host_elapsed_ms": 20143.140414
+    },
+    "65536/tail": {
+      "gpu_ms": 12311.691749998,
+      "command_wall_ms": 12854.698999997001,
+      "host_elapsed_ms": 12899.987582000002
+    },
+    "65536/ingress": {
+      "gpu_ms": 1009.3001249999999,
+      "command_wall_ms": 1567.8369999959998,
+      "host_elapsed_ms": 1941.0749150000001
+    },
+    "65536/compressor": {
+      "gpu_ms": 59.365166665000004,
+      "command_wall_ms": 118.51900000199998,
+      "host_elapsed_ms": 188.25191599999997
+    },
+    "69632/bootstrap_ingress": {
+      "gpu_ms": 4871.999708333,
+      "command_wall_ms": 4889.786,
+      "host_elapsed_ms": 4948.445791
+    },
+    "69632/bind": {
+      "gpu_ms": 0.0,
+      "command_wall_ms": 0.0,
+      "host_elapsed_ms": 177.24387099999998
+    },
+    "69632/boundary": {
+      "gpu_ms": 845.7189583339998,
+      "command_wall_ms": 1717.4449999949998,
+      "host_elapsed_ms": 2155.267416
+    },
+    "69632/host_scratch": {
+      "gpu_ms": 0.0,
+      "command_wall_ms": 0.0,
+      "host_elapsed_ms": 0.003585999999999999
+    },
+    "69632/attention": {
+      "gpu_ms": 19627.161708335,
+      "command_wall_ms": 20727.052999999,
+      "host_elapsed_ms": 20875.822870999997
+    },
+    "69632/tail": {
+      "gpu_ms": 12320.326833333003,
+      "command_wall_ms": 12867.323000001003,
+      "host_elapsed_ms": 12920.646542000002
+    },
+    "69632/ingress": {
+      "gpu_ms": 971.560333336,
+      "command_wall_ms": 1510.397,
+      "host_elapsed_ms": 1914.9787480000002
+    },
+    "69632/compressor": {
+      "gpu_ms": 58.00725000299999,
+      "command_wall_ms": 114.897999997,
+      "host_elapsed_ms": 186.633501
+    },
+    "73728/bootstrap_ingress": {
+      "gpu_ms": 4855.403166666,
+      "command_wall_ms": 4873.327,
+      "host_elapsed_ms": 4930.632458
+    },
+    "73728/bind": {
+      "gpu_ms": 0.0,
+      "command_wall_ms": 0.0,
+      "host_elapsed_ms": 200.43429099999992
+    },
+    "73728/boundary": {
+      "gpu_ms": 840.7352916680002,
+      "command_wall_ms": 1711.259000001,
+      "host_elapsed_ms": 2203.191378
+    },
+    "73728/host_scratch": {
+      "gpu_ms": 0.0,
+      "command_wall_ms": 0.0,
+      "host_elapsed_ms": 0.003832999999999999
+    },
+    "73728/attention": {
+      "gpu_ms": 20758.334083335998,
+      "command_wall_ms": 21861.326000003,
+      "host_elapsed_ms": 22017.060460999994
+    },
+    "73728/tail": {
+      "gpu_ms": 12308.185166664003,
+      "command_wall_ms": 12879.831000005002,
+      "host_elapsed_ms": 12933.567541999999
+    },
+    "73728/ingress": {
+      "gpu_ms": 975.1620416650002,
+      "command_wall_ms": 1462.3510000019996,
+      "host_elapsed_ms": 1832.999125
+    },
+    "73728/compressor": {
+      "gpu_ms": 57.98779166500001,
+      "command_wall_ms": 109.64599999700002,
+      "host_elapsed_ms": 182.79437399999998
+    },
+    "77824/bootstrap_ingress": {
+      "gpu_ms": 4847.09775,
+      "command_wall_ms": 4864.48,
+      "host_elapsed_ms": 4915.841375
+    },
+    "77824/bind": {
+      "gpu_ms": 0.0,
+      "command_wall_ms": 0.0,
+      "host_elapsed_ms": 230.36895499999997
+    },
+    "77824/boundary": {
+      "gpu_ms": 847.3310833310001,
+      "command_wall_ms": 1702.9100000019998,
+      "host_elapsed_ms": 2201.650249
+    },
+    "77824/host_scratch": {
+      "gpu_ms": 0.0,
+      "command_wall_ms": 0.0,
+      "host_elapsed_ms": 0.004124999999999999
+    },
+    "77824/attention": {
+      "gpu_ms": 21390.272458334,
+      "command_wall_ms": 22525.125000002005,
+      "host_elapsed_ms": 22685.088752
+    },
+    "77824/tail": {
+      "gpu_ms": 12277.309541667,
+      "command_wall_ms": 12856.268000002001,
+      "host_elapsed_ms": 12885.716129
+    },
+    "77824/ingress": {
+      "gpu_ms": 967.8790833339999,
+      "command_wall_ms": 1561.257999999,
+      "host_elapsed_ms": 1974.392249
+    },
+    "77824/compressor": {
+      "gpu_ms": 59.36474999700001,
+      "command_wall_ms": 112.11599999900001,
+      "host_elapsed_ms": 185.910375
+    },
+    "81920/bootstrap_ingress": {
+      "gpu_ms": 4838.661166666,
+      "command_wall_ms": 4856.315,
+      "host_elapsed_ms": 4911.206292
+    },
+    "81920/bind": {
+      "gpu_ms": 0.0,
+      "command_wall_ms": 0.0,
+      "host_elapsed_ms": 222.92428999999998
+    },
+    "81920/boundary": {
+      "gpu_ms": 847.7693749990002,
+      "command_wall_ms": 1657.4789999989996,
+      "host_elapsed_ms": 2149.884915
+    },
+    "81920/host_scratch": {
+      "gpu_ms": 0.0,
+      "command_wall_ms": 0.0,
+      "host_elapsed_ms": 0.0045
+    },
+    "81920/attention": {
+      "gpu_ms": 22434.799124996,
+      "command_wall_ms": 23598.256000001016,
+      "host_elapsed_ms": 23748.511545
+    },
+    "81920/tail": {
+      "gpu_ms": 12299.083583330997,
+      "command_wall_ms": 12853.477000004,
+      "host_elapsed_ms": 12902.316498000002
+    },
+    "81920/ingress": {
+      "gpu_ms": 971.076166668,
+      "command_wall_ms": 1629.4150000009997,
+      "host_elapsed_ms": 2062.9649170000007
+    },
+    "81920/compressor": {
+      "gpu_ms": 59.67233333499999,
+      "command_wall_ms": 112.96299999800002,
+      "host_elapsed_ms": 182.229167
+    },
+    "86016/bootstrap_ingress": {
+      "gpu_ms": 4904.466874999,
+      "command_wall_ms": 4915.477,
+      "host_elapsed_ms": 4983.567458
+    },
+    "86016/bind": {
+      "gpu_ms": 0.0,
+      "command_wall_ms": 0.0,
+      "host_elapsed_ms": 282.16529500000007
+    },
+    "86016/boundary": {
+      "gpu_ms": 846.156874999,
+      "command_wall_ms": 1697.6419999989994,
+      "host_elapsed_ms": 2235.561833
+    },
+    "86016/host_scratch": {
+      "gpu_ms": 0.0,
+      "command_wall_ms": 0.0,
+      "host_elapsed_ms": 0.003913999999999999
+    },
+    "86016/attention": {
+      "gpu_ms": 23475.193666667,
+      "command_wall_ms": 24640.039000005,
+      "host_elapsed_ms": 24803.896624999998
+    },
+    "86016/tail": {
+      "gpu_ms": 12280.092291669001,
+      "command_wall_ms": 12850.722000000997,
+      "host_elapsed_ms": 12867.761872999998
+    },
+    "86016/ingress": {
+      "gpu_ms": 927.7986249969999,
+      "command_wall_ms": 1376.925000001,
+      "host_elapsed_ms": 1786.958794
+    },
+    "86016/compressor": {
+      "gpu_ms": 59.18566666900001,
+      "command_wall_ms": 112.93600000100001,
+      "host_elapsed_ms": 186.81170799999998
+    },
+    "90112/bootstrap_ingress": {
+      "gpu_ms": 4936.862666667,
+      "command_wall_ms": 4953.862,
+      "host_elapsed_ms": 5022.987916
+    },
+    "90112/bind": {
+      "gpu_ms": 0.0,
+      "command_wall_ms": 0.0,
+      "host_elapsed_ms": 316.400003
+    },
+    "90112/boundary": {
+      "gpu_ms": 853.997749998,
+      "command_wall_ms": 1693.455000002,
+      "host_elapsed_ms": 2241.420709
+    },
+    "90112/host_scratch": {
+      "gpu_ms": 0.0,
+      "command_wall_ms": 0.0,
+      "host_elapsed_ms": 0.0037909999999999997
+    },
+    "90112/attention": {
+      "gpu_ms": 23953.373041663,
+      "command_wall_ms": 25154.496999999996,
+      "host_elapsed_ms": 25306.190080999997
+    },
+    "90112/tail": {
+      "gpu_ms": 12317.049375008999,
+      "command_wall_ms": 12873.816000002997,
+      "host_elapsed_ms": 12916.498125000002
+    },
+    "90112/ingress": {
+      "gpu_ms": 918.267208335,
+      "command_wall_ms": 1429.2820000029997,
+      "host_elapsed_ms": 1889.3209570000001
+    },
+    "90112/compressor": {
+      "gpu_ms": 59.870000002,
+      "command_wall_ms": 112.617,
+      "host_elapsed_ms": 186.827248
+    },
+    "94208/bootstrap_ingress": {
+      "gpu_ms": 4953.246666667,
+      "command_wall_ms": 4972.142,
+      "host_elapsed_ms": 5040.433625
+    },
+    "94208/bind": {
+      "gpu_ms": 0.0,
+      "command_wall_ms": 0.0,
+      "host_elapsed_ms": 341.79974999999996
+    },
+    "94208/boundary": {
+      "gpu_ms": 854.5817916669998,
+      "command_wall_ms": 1664.9059999999997,
+      "host_elapsed_ms": 2276.769376
+    },
+    "94208/host_scratch": {
+      "gpu_ms": 0.0,
+      "command_wall_ms": 0.0,
+      "host_elapsed_ms": 0.0038759999999999992
+    },
+    "94208/attention": {
+      "gpu_ms": 25049.450791669,
+      "command_wall_ms": 26241.035999999003,
+      "host_elapsed_ms": 26392.329914999995
+    },
+    "94208/tail": {
+      "gpu_ms": 12335.285166664002,
+      "command_wall_ms": 12888.848999999002,
+      "host_elapsed_ms": 12915.989957000002
+    },
+    "94208/ingress": {
+      "gpu_ms": 938.2783333370003,
+      "command_wall_ms": 1398.362999998,
+      "host_elapsed_ms": 1878.5241249999995
+    },
+    "94208/compressor": {
+      "gpu_ms": 58.837833331999995,
+      "command_wall_ms": 107.60399999999998,
+      "host_elapsed_ms": 182.03195700000003
+    },
+    "98304/bootstrap_ingress": {
+      "gpu_ms": 4934.202375,
+      "command_wall_ms": 4964.798,
+      "host_elapsed_ms": 5026.973959
+    },
+    "98304/bind": {
+      "gpu_ms": 0.0,
+      "command_wall_ms": 0.0,
+      "host_elapsed_ms": 338.6350010000001
+    },
+    "98304/boundary": {
+      "gpu_ms": 859.165666667,
+      "command_wall_ms": 1685.9030000000002,
+      "host_elapsed_ms": 2288.379334
+    },
+    "98304/host_scratch": {
+      "gpu_ms": 0.0,
+      "command_wall_ms": 0.0,
+      "host_elapsed_ms": 0.004127
+    },
+    "98304/attention": {
+      "gpu_ms": 25614.940500005,
+      "command_wall_ms": 26844.504000005003,
+      "host_elapsed_ms": 26996.057871
+    },
+    "98304/tail": {
+      "gpu_ms": 12338.302333335998,
+      "command_wall_ms": 12902.875999996999,
+      "host_elapsed_ms": 12917.329664999997
+    },
+    "98304/ingress": {
+      "gpu_ms": 917.4699583319999,
+      "command_wall_ms": 1366.592000001,
+      "host_elapsed_ms": 1827.9087540000003
+    },
+    "98304/compressor": {
+      "gpu_ms": 58.614375001999996,
+      "command_wall_ms": 105.581000004,
+      "host_elapsed_ms": 178.71916700000003
+    },
+    "102400/bootstrap_ingress": {
+      "gpu_ms": 4972.425541667,
+      "command_wall_ms": 4983.417,
+      "host_elapsed_ms": 5047.515958
+    },
+    "102400/bind": {
+      "gpu_ms": 0.0,
+      "command_wall_ms": 0.0,
+      "host_elapsed_ms": 306.9388739999999
+    },
+    "102400/boundary": {
+      "gpu_ms": 860.0622083310001,
+      "command_wall_ms": 1631.206000002,
+      "host_elapsed_ms": 2119.349708
+    },
+    "102400/host_scratch": {
+      "gpu_ms": 0.0,
+      "command_wall_ms": 0.0,
+      "host_elapsed_ms": 0.004000999999999999
+    },
+    "102400/attention": {
+      "gpu_ms": 26520.277500001004,
+      "command_wall_ms": 27806.770999998997,
+      "host_elapsed_ms": 27986.914625999998
+    },
+    "102400/tail": {
+      "gpu_ms": 12331.972416668004,
+      "command_wall_ms": 13007.203999989997,
+      "host_elapsed_ms": 13028.248286
+    },
+    "102400/ingress": {
+      "gpu_ms": 922.1382083340001,
+      "command_wall_ms": 1374.387999997,
+      "host_elapsed_ms": 1903.9186249999998
+    },
+    "102400/compressor": {
+      "gpu_ms": 57.60129166499999,
+      "command_wall_ms": 107.269000001,
+      "host_elapsed_ms": 182.17954400000002
+    },
+    "106496/bootstrap_ingress": {
+      "gpu_ms": 4988.195375,
+      "command_wall_ms": 5000.58,
+      "host_elapsed_ms": 5085.180166
+    },
+    "106496/bind": {
+      "gpu_ms": 0.0,
+      "command_wall_ms": 0.0,
+      "host_elapsed_ms": 323.90537399999994
+    },
+    "106496/boundary": {
+      "gpu_ms": 856.1681249979998,
+      "command_wall_ms": 1659.1740000009997,
+      "host_elapsed_ms": 2307.467789
+    },
+    "106496/host_scratch": {
+      "gpu_ms": 0.0,
+      "command_wall_ms": 0.0,
+      "host_elapsed_ms": 0.003836
+    },
+    "106496/attention": {
+      "gpu_ms": 27372.408166667003,
+      "command_wall_ms": 28680.365000001002,
+      "host_elapsed_ms": 28833.941959
+    },
+    "106496/tail": {
+      "gpu_ms": 12312.328125007,
+      "command_wall_ms": 12932.778000000004,
+      "host_elapsed_ms": 12958.384751000001
+    },
+    "106496/ingress": {
+      "gpu_ms": 913.980541664,
+      "command_wall_ms": 1332.192000001,
+      "host_elapsed_ms": 1793.0134590000002
+    },
+    "106496/compressor": {
+      "gpu_ms": 58.484541664,
+      "command_wall_ms": 107.00200000199999,
+      "host_elapsed_ms": 179.04241600000003
+    },
+    "110592/bootstrap_ingress": {
+      "gpu_ms": 5011.90125,
+      "command_wall_ms": 5027.455,
+      "host_elapsed_ms": 5108.80425
+    },
+    "110592/bind": {
+      "gpu_ms": 0.0,
+      "command_wall_ms": 0.0,
+      "host_elapsed_ms": 321.94307899999984
+    },
+    "110592/boundary": {
+      "gpu_ms": 888.57170833,
+      "command_wall_ms": 1701.051999997,
+      "host_elapsed_ms": 2355.8550020000002
+    },
+    "110592/host_scratch": {
+      "gpu_ms": 0.0,
+      "command_wall_ms": 0.0,
+      "host_elapsed_ms": 0.0039559999999999994
+    },
+    "110592/attention": {
+      "gpu_ms": 28373.818291665997,
+      "command_wall_ms": 29727.476,
+      "host_elapsed_ms": 30006.232622000003
+    },
+    "110592/tail": {
+      "gpu_ms": 12330.821125,
+      "command_wall_ms": 13012.435999997999,
+      "host_elapsed_ms": 13036.908836999997
+    },
+    "110592/ingress": {
+      "gpu_ms": 905.3098333339999,
+      "command_wall_ms": 1335.0540000009998,
+      "host_elapsed_ms": 1852.8664590000003
+    },
+    "110592/compressor": {
+      "gpu_ms": 57.587291666,
+      "command_wall_ms": 106.28799999699999,
+      "host_elapsed_ms": 178.35391800000002
+    },
+    "114688/bootstrap_ingress": {
+      "gpu_ms": 4998.027875,
+      "command_wall_ms": 5014.253,
+      "host_elapsed_ms": 5091.108459
+    },
+    "114688/bind": {
+      "gpu_ms": 0.0,
+      "command_wall_ms": 0.0,
+      "host_elapsed_ms": 335.721209
+    },
+    "114688/boundary": {
+      "gpu_ms": 901.1225833330001,
+      "command_wall_ms": 1710.996999998,
+      "host_elapsed_ms": 2375.0199999999995
+    },
+    "114688/host_scratch": {
+      "gpu_ms": 0.0,
+      "command_wall_ms": 0.0,
+      "host_elapsed_ms": 0.004209000000000001
+    },
+    "114688/attention": {
+      "gpu_ms": 29155.229874999,
+      "command_wall_ms": 30490.890000004005,
+      "host_elapsed_ms": 30758.540585000002
+    },
+    "114688/tail": {
+      "gpu_ms": 12353.627083332003,
+      "command_wall_ms": 12964.284000001,
+      "host_elapsed_ms": 12980.711207000006
+    },
+    "114688/ingress": {
+      "gpu_ms": 911.3249166669999,
+      "command_wall_ms": 1322.1749999999997,
+      "host_elapsed_ms": 1853.4258340000001
+    },
+    "114688/compressor": {
+      "gpu_ms": 59.383124997,
+      "command_wall_ms": 107.200000001,
+      "host_elapsed_ms": 178.66608499999998
+    },
+    "118784/bootstrap_ingress": {
+      "gpu_ms": 5024.166125,
+      "command_wall_ms": 5041.098,
+      "host_elapsed_ms": 5110.217875
+    },
+    "118784/bind": {
+      "gpu_ms": 0.0,
+      "command_wall_ms": 0.0,
+      "host_elapsed_ms": 293.951335
+    },
+    "118784/boundary": {
+      "gpu_ms": 935.047583332,
+      "command_wall_ms": 1742.8449999970003,
+      "host_elapsed_ms": 2381.493669
+    },
+    "118784/host_scratch": {
+      "gpu_ms": 0.0,
+      "command_wall_ms": 0.0,
+      "host_elapsed_ms": 0.003958
+    },
+    "118784/attention": {
+      "gpu_ms": 30191.460958329008,
+      "command_wall_ms": 31590.163000001998,
+      "host_elapsed_ms": 31790.909958999997
+    },
+    "118784/tail": {
+      "gpu_ms": 12358.229750004,
+      "command_wall_ms": 12962.054000002,
+      "host_elapsed_ms": 12975.150124
+    },
+    "118784/ingress": {
+      "gpu_ms": 907.8947083360001,
+      "command_wall_ms": 1307.956999999,
+      "host_elapsed_ms": 1790.5762100000002
+    },
+    "118784/compressor": {
+      "gpu_ms": 57.890750002999994,
+      "command_wall_ms": 105.83100000199998,
+      "host_elapsed_ms": 178.74400000000003
+    },
+    "122880/bootstrap_ingress": {
+      "gpu_ms": 5000.943208333,
+      "command_wall_ms": 5017.544,
+      "host_elapsed_ms": 5091.514459
+    },
+    "122880/bind": {
+      "gpu_ms": 0.0,
+      "command_wall_ms": 0.0,
+      "host_elapsed_ms": 319.83621300000004
+    },
+    "122880/boundary": {
+      "gpu_ms": 889.1512499999999,
+      "command_wall_ms": 1722.694,
+      "host_elapsed_ms": 2471.6814970000005
+    },
+    "122880/host_scratch": {
+      "gpu_ms": 0.0,
+      "command_wall_ms": 0.0,
+      "host_elapsed_ms": 0.0037059999999999992
+    },
+    "122880/attention": {
+      "gpu_ms": 30863.066208331995,
+      "command_wall_ms": 32271.308000001998,
+      "host_elapsed_ms": 32565.604252
+    },
+    "122880/tail": {
+      "gpu_ms": 12353.061333333997,
+      "command_wall_ms": 13020.991999996997,
+      "host_elapsed_ms": 13036.531791999998
+    },
+    "122880/ingress": {
+      "gpu_ms": 916.6914999960002,
+      "command_wall_ms": 1333.108999995,
+      "host_elapsed_ms": 1866.832751
+    },
+    "122880/compressor": {
+      "gpu_ms": 58.584416668,
+      "command_wall_ms": 110.154000003,
+      "host_elapsed_ms": 182.51245500000002
+    },
+    "126976/bootstrap_ingress": {
+      "gpu_ms": 5015.893833333,
+      "command_wall_ms": 5032.259,
+      "host_elapsed_ms": 5110.870334
+    },
+    "126976/bind": {
+      "gpu_ms": 0.0,
+      "command_wall_ms": 0.0,
+      "host_elapsed_ms": 294.4327110000001
+    },
+    "126976/boundary": {
+      "gpu_ms": 929.368208332,
+      "command_wall_ms": 1881.237999997,
+      "host_elapsed_ms": 2628.8364160000006
+    },
+    "126976/host_scratch": {
+      "gpu_ms": 0.0,
+      "command_wall_ms": 0.0,
+      "host_elapsed_ms": 0.004123999999999999
+    },
+    "126976/attention": {
+      "gpu_ms": 32029.550958336993,
+      "command_wall_ms": 33496.128000003,
+      "host_elapsed_ms": 33703.66
+    },
+    "126976/tail": {
+      "gpu_ms": 12321.835000002,
+      "command_wall_ms": 13027.093000003002,
+      "host_elapsed_ms": 13038.989712
+    },
+    "126976/ingress": {
+      "gpu_ms": 909.2596249999999,
+      "command_wall_ms": 1311.260000001,
+      "host_elapsed_ms": 1808.694042
+    },
+    "126976/compressor": {
+      "gpu_ms": 58.346208331999996,
+      "command_wall_ms": 109.229,
+      "host_elapsed_ms": 183.30695799999998
+    }
+  },
+  "tail_components_gpu_ms": {
+    "attention_output": 138348.01291342496,
+    "routed_gate_up": 132121.8631864019,
+    "routed_down": 73033.53674881598,
+    "shared_expert": 21665.533945121002,
+    "final_hc": 4860.713648059995,
+    "ffn_ingress": 3014.5771403420013,
+    "routed_map": 1428.7495804519979,
+    "router": 1148.8919891659978,
+    "routed_sum": 862.9958065380004
+  },
+  "tail_components_by_parity_gpu_ms": {
+    "even/attention_output": 70793.72919793606,
+    "even/routed_gate_up": 67677.71976187,
+    "odd/attention_output": 67554.28371548899,
+    "odd/routed_gate_up": 64444.143424531954,
+    "even/routed_down": 37570.90322416001,
+    "odd/routed_down": 35462.633524656,
+    "even/shared_expert": 11098.501752088,
+    "odd/shared_expert": 10567.032193033006,
+    "even/final_hc": 2494.3122732690003,
+    "odd/final_hc": 2366.401374791001,
+    "even/ffn_ingress": 1551.5493777000006,
+    "odd/ffn_ingress": 1463.027762641999,
+    "even/routed_map": 732.117828341,
+    "odd/routed_map": 696.6317521109997,
+    "even/router": 586.5201842249999,
+    "odd/router": 562.3718049410003,
+    "even/routed_sum": 440.8956087440002,
+    "odd/routed_sum": 422.1001977940002
+  },
+  "decode_stages": []
+}

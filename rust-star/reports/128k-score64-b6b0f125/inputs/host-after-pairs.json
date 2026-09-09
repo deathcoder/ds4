@@ -1,0 +1,8 @@
+{
+  "exit": 0,
+  "finished_utc": "2026-09-09T15:05:56.403829+00:00",
+  "thermal": "Note: No thermal warning level has been recorded\nNote: No performance warning level has been recorded\nNote: No CPU power status has been recorded",
+  "swap": "vm.swapusage: total = 1024.00M  used = 16.19M  free = 1007.81M  (encrypted)",
+  "power": "AC Power:\n Sleep On Power Button 1\n autorestartatconnect 0\n standby              0\n powernap             1\n ttyskeepawake        1\n womp                 1\n displaysleep         10\n networkoversleep     0\n sleep                1\n autorestart          0\n tcpkeepalive         1\n disksleep            10",
+  "uptime": "17:05  up  9:14, 4 users, load averages: 2.27 2.28 2.36"
+}

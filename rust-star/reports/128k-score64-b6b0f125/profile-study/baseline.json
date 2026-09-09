@@ -1,0 +1,11 @@
+{
+  "work_start": "2026-09-09T07:19:36.103789+00:00",
+  "baseline_source_commit": "ef37e56610ef813ed4df3f67f013d62e34995170",
+  "accepted_checkpoint": "9b4d7d0d3b6c82384c498ee5dc746290423932ad",
+  "executable_sha256": "50f59a30144d106564d776a8b7a966d06a3d3b3dbe6c6bc3bf30ad69c81fa752",
+  "oracle": "oracle-v5 unchanged",
+  "profile_context": 131072,
+  "gen_tokens": 128,
+  "selection_checksum": 1079188149413743454,
+  "acceptance": "validate 128K profile and choose one measured optimization; full C0 and shorter/lifecycle controls; five frozen Rust-versus-Rust pairs; preserve rejected hypotheses; no unmeasured speedup claim"
+}

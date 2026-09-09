@@ -1,0 +1,11 @@
+{
+  "passed": true,
+  "full_128k_c0": true,
+  "retained_contexts": [
+    32768,
+    131072
+  ],
+  "retained_cycles_per_context": 2,
+  "retained_validation": "exact greedy transcript and reset/residency invariants; independent fresh full-logit C0",
+  "native_checks": 10
+}

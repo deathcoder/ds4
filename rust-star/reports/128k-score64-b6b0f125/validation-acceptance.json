@@ -1,0 +1,196 @@
+{
+  "passed": true,
+  "checks": [
+    {
+      "name": "batch-2k",
+      "exit": 0,
+      "seconds": 70.19562816619873,
+      "peak_rss_bytes": 27404140544,
+      "command": [
+        "/usr/bin/time",
+        "-l",
+        "$WORKTREE/rust-star/.work/score64-metadata-fix/candidate-rust-star",
+        "prefill-layers012-attention-loop-probe",
+        "$MODEL_DIRECTORY/DeepSeek-V4-Flash-IQ2XXS-w2Q2K-AProjQ8-SExpQ8-OutQ8-chat-v2-imatrix-0731.gguf",
+        "--json",
+        "$WORKTREE/rust-star/.work/score64-metadata-fix/checks/batch-2k.json"
+      ],
+      "finished_utc": "2026-09-09T08:48:49.936516+00:00"
+    },
+    {
+      "name": "batch-8k",
+      "exit": 0,
+      "seconds": 197.15608501434326,
+      "peak_rss_bytes": 18875990016,
+      "command": [
+        "/usr/bin/time",
+        "-l",
+        "$WORKTREE/rust-star/.work/score64-metadata-fix/candidate-rust-star",
+        "long-prefill-continuation-bootstrap-probe",
+        "$MODEL_DIRECTORY/DeepSeek-V4-Flash-IQ2XXS-w2Q2K-AProjQ8-SExpQ8-OutQ8-chat-v2-imatrix-0731.gguf",
+        "--json",
+        "$WORKTREE/rust-star/.work/score64-metadata-fix/checks/batch-8k.json"
+      ],
+      "finished_utc": "2026-09-09T08:52:07.093806+00:00"
+    },
+    {
+      "name": "batch-12k",
+      "exit": 0,
+      "seconds": 132.0168538093567,
+      "peak_rss_bytes": 6128304128,
+      "command": [
+        "/usr/bin/time",
+        "-l",
+        "$WORKTREE/rust-star/.work/score64-metadata-fix/candidate-rust-star",
+        "long-prefill-chunk-probe",
+        "$MODEL_DIRECTORY/DeepSeek-V4-Flash-IQ2XXS-w2Q2K-AProjQ8-SExpQ8-OutQ8-chat-v2-imatrix-0731.gguf",
+        "--context",
+        "12288",
+        "--json",
+        "$WORKTREE/rust-star/.work/score64-metadata-fix/checks/batch-12k.json"
+      ],
+      "finished_utc": "2026-09-09T08:54:19.112341+00:00"
+    },
+    {
+      "name": "batch-32k-output",
+      "exit": 0,
+      "seconds": 260.28235626220703,
+      "peak_rss_bytes": 3344711680,
+      "command": [
+        "/usr/bin/time",
+        "-l",
+        "$WORKTREE/rust-star/.work/score64-metadata-fix/candidate-rust-star",
+        "long-prefill-chunk-probe",
+        "$MODEL_DIRECTORY/DeepSeek-V4-Flash-IQ2XXS-w2Q2K-AProjQ8-SExpQ8-OutQ8-chat-v2-imatrix-0731.gguf",
+        "--context",
+        "32768",
+        "--output-only",
+        "--json",
+        "$WORKTREE/rust-star/.work/score64-metadata-fix/checks/batch-32k-output.json"
+      ],
+      "finished_utc": "2026-09-09T08:58:39.395643+00:00"
+    },
+    {
+      "name": "batch-32k-internal",
+      "exit": 0,
+      "seconds": 363.13462710380554,
+      "peak_rss_bytes": 8692072448,
+      "command": [
+        "/usr/bin/time",
+        "-l",
+        "$WORKTREE/rust-star/.work/score64-metadata-fix/candidate-rust-star",
+        "long-prefill-chunk-probe",
+        "$MODEL_DIRECTORY/DeepSeek-V4-Flash-IQ2XXS-w2Q2K-AProjQ8-SExpQ8-OutQ8-chat-v2-imatrix-0731.gguf",
+        "--context",
+        "32768",
+        "--json",
+        "$WORKTREE/rust-star/.work/score64-metadata-fix/checks/batch-32k-internal.json"
+      ],
+      "finished_utc": "2026-09-09T09:04:42.530677+00:00"
+    },
+    {
+      "name": "batch-32k-profiled",
+      "exit": 0,
+      "seconds": 254.53112721443176,
+      "peak_rss_bytes": 3346022400,
+      "command": [
+        "/usr/bin/time",
+        "-l",
+        "$WORKTREE/rust-star/.work/score64-metadata-fix/candidate-rust-star",
+        "long-prefill-chunk-probe",
+        "$MODEL_DIRECTORY/DeepSeek-V4-Flash-IQ2XXS-w2Q2K-AProjQ8-SExpQ8-OutQ8-chat-v2-imatrix-0731.gguf",
+        "--context",
+        "32768",
+        "--output-only",
+        "--profile-json",
+        "$WORKTREE/rust-star/.work/score64-metadata-fix/checks/components.json",
+        "--json",
+        "$WORKTREE/rust-star/.work/score64-metadata-fix/checks/batch-32k-profiled.json"
+      ],
+      "finished_utc": "2026-09-09T09:08:57.062276+00:00"
+    },
+    {
+      "name": "retained-32k",
+      "exit": 0,
+      "seconds": 513.8195838928223,
+      "peak_rss_bytes": 90109394944,
+      "command": [
+        "/usr/bin/time",
+        "-l",
+        "$WORKTREE/rust-star/.work/score64-metadata-fix/candidate-rust-star",
+        "engine-retained-measure",
+        "$MODEL_DIRECTORY/DeepSeek-V4-Flash-IQ2XXS-w2Q2K-AProjQ8-SExpQ8-OutQ8-chat-v2-imatrix-0731.gguf",
+        "--context",
+        "32768",
+        "--gen-tokens",
+        "128",
+        "--json",
+        "$WORKTREE/rust-star/.work/score64-metadata-fix/checks/retained-32k.json"
+      ],
+      "finished_utc": "2026-09-09T09:17:30.923130+00:00"
+    },
+    {
+      "name": "c0-128k",
+      "exit": 0,
+      "seconds": 1267.7006919384003,
+      "peak_rss_bytes": 14903541760,
+      "command": [
+        "/usr/bin/time",
+        "-l",
+        "$WORKTREE/rust-star/.work/score64-metadata-fix/candidate-rust-star",
+        "long-prefill-reference-probe",
+        "$MODEL_DIRECTORY/DeepSeek-V4-Flash-IQ2XXS-w2Q2K-AProjQ8-SExpQ8-OutQ8-chat-v2-imatrix-0731.gguf",
+        "$WORKTREE/rust-star/reports/128k-c0-0eb484ea/reference-131072/prompt.u32le.bin",
+        "$WORKTREE/rust-star/reports/128k-c0-0eb484ea/reference-131072/selected.u32le.bin",
+        "$WORKTREE/rust-star/reports/128k-c0-0eb484ea/reference-131072/logits.f32le.bin",
+        "$WORKTREE/rust-star/.work/score64-metadata-fix/checks/c0-128k.json"
+      ],
+      "finished_utc": "2026-09-09T09:38:38.624286+00:00"
+    },
+    {
+      "name": "c0-128k-profiled",
+      "exit": 0,
+      "seconds": 1239.080363035202,
+      "peak_rss_bytes": 14908358656,
+      "command": [
+        "/usr/bin/time",
+        "-l",
+        "$WORKTREE/rust-star/.work/score64-metadata-fix/candidate-rust-star",
+        "long-prefill-reference-probe",
+        "$MODEL_DIRECTORY/DeepSeek-V4-Flash-IQ2XXS-w2Q2K-AProjQ8-SExpQ8-OutQ8-chat-v2-imatrix-0731.gguf",
+        "$WORKTREE/rust-star/reports/128k-c0-0eb484ea/reference-131072/prompt.u32le.bin",
+        "$WORKTREE/rust-star/reports/128k-c0-0eb484ea/reference-131072/selected.u32le.bin",
+        "$WORKTREE/rust-star/reports/128k-c0-0eb484ea/reference-131072/logits.f32le.bin",
+        "$WORKTREE/rust-star/.work/score64-metadata-fix/checks/c0-128k-profiled.json",
+        "--profile-json",
+        "$WORKTREE/rust-star/.work/score64-metadata-fix/checks/components-128k.json"
+      ],
+      "finished_utc": "2026-09-09T09:59:17.705109+00:00"
+    },
+    {
+      "name": "retained-128k",
+      "exit": 0,
+      "seconds": 2528.8172030448914,
+      "peak_rss_bytes": 101564252160,
+      "command": [
+        "/usr/bin/time",
+        "-l",
+        "$WORKTREE/rust-star/.work/score64-metadata-fix/candidate-rust-star",
+        "engine-retained-measure",
+        "$MODEL_DIRECTORY/DeepSeek-V4-Flash-IQ2XXS-w2Q2K-AProjQ8-SExpQ8-OutQ8-chat-v2-imatrix-0731.gguf",
+        "--context",
+        "131072",
+        "--gen-tokens",
+        "128",
+        "--json",
+        "$WORKTREE/rust-star/.work/score64-metadata-fix/checks/retained-128k.json"
+      ],
+      "finished_utc": "2026-09-09T10:41:26.633180+00:00"
+    }
+  ],
+  "candidate": "b6b0f12530b83caaeb8dfe5310c4dd346368404d",
+  "full_128k_c0": true,
+  "profiled_128k_c0": true,
+  "retained_128k_transcripts": true,
+  "performance_claim": false
+}

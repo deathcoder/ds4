@@ -1370,12 +1370,18 @@ shares describe this perturbed schedule. Diagnostic `ec5db25e` passes every 128K
 prefill word and all 128 decode rows, plus the audit of 1,271 tail packets and
 11,439 intervals. This validates prefill profiling, not decoder-stage counters.
 
-The current indexer-score candidate stages eight queries against 64 compressed
-columns with 256 threads and 20KiB of shared memory. It preserves half conversion,
+The retained indexer-score implementation stages eight queries against 64
+compressed columns with 256 threads and 20KiB of shared memory. It preserves half conversion,
 each 8x8 dot product and FP32 accumulation over heads while reducing repeated Q
 staging. All 167,815,044 synthetic score words match the original 32-column
-kernel. Isolated timing gains are preliminary; full-model gates and paired
-engine measurements are pending in the current milestone.
+kernel. The [128K score-tile report](../reports/128k-score64-b6b0f125/README.md)
+records ten passing live gates and five first-attempt Rust-to-Rust pairs against
+accepted ef37e566. Median paired prefill latency is 8.28% lower (5/5 faster),
+steady throughput is 1.06% higher and peak-RSS ratio is 1.000015. All first-step
+latencies and dispersion are retained, including the slower fifth pair. Both
+fresh 128K full-logit controls and retained 32K/128K checks pass; the model-free
+verifier checks 322 artifacts. This accepted development comparison leaves the
+historical Rust-versus-oracle results unchanged.
 
 Native boundary, output and adoption guards now allow the larger diagnostic
 frontier; built-in diagnostic fixtures retain their earlier contract. The

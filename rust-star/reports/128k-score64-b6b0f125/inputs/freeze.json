@@ -1,0 +1,15 @@
+{
+  "plan_sha256": "61866e1afc55ec37c7d4788ed4185c3d25608bdb3ec5a8f135939de6fcb03af6",
+  "acceptance_plan_sha256": "cd243eb2eb0630334bb9d9538d6f8f42589c8f89bff5977fe2a283d35d8befe3",
+  "candidate_commit": "b6b0f12530b83caaeb8dfe5310c4dd346368404d",
+  "candidate_sha256": "99f4971e684ed455841065ca597e9ee10055e3a937bbaeb416a9bb9b70800c4c",
+  "oracle_commit": "ef37e56610ef813ed4df3f67f013d62e34995170",
+  "oracle_sha256": "50f59a30144d106564d776a8b7a966d06a3d3b3dbe6c6bc3bf30ad69c81fa752",
+  "c0_oracle_source": "ccbd16d36895ef9fe8edf7f793014988ff1ab7f4",
+  "c0_oracle_sha256": "a4056d7297bd0a6de8e46fac294e7913d9bc8c96465e5d68f1b6ef6471e49aa0",
+  "model_sha256": "ca22ae2f838e14077c22bc1c1417b71b45b5e5a3687bd96c2ac6e17fdb6261c0",
+  "model_size": 86720111488,
+  "model_mtime_ns": 1785574798142694474,
+  "prompt_sha256": "f53e0d80cb2d4492d24ebd63c7000c397b16ae70f9bf09b3763e5d8323ec209f",
+  "comparison": "Rust-to-Rust development improvement; unchanged oracle-v5 is separate"
+}

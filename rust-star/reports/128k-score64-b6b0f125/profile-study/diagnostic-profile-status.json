@@ -1,0 +1,19 @@
+{
+  "exit": 0,
+  "started_utc": "2026-09-09T07:39:28.142453+00:00",
+  "finished_utc": "2026-09-09T08:02:15.233026+00:00",
+  "command": [
+    "/usr/bin/time",
+    "-l",
+    "$WORKTREE/rust-star/.work/profile128-9b4d7d0d/candidate-rust-star",
+    "long-prefill-reference-probe",
+    "$MODEL_DIRECTORY/DeepSeek-V4-Flash-IQ2XXS-w2Q2K-AProjQ8-SExpQ8-OutQ8-chat-v2-imatrix-0731.gguf",
+    "$WORKTREE/rust-star/reports/128k-c0-0eb484ea/reference-131072/prompt.u32le.bin",
+    "$WORKTREE/rust-star/reports/128k-c0-0eb484ea/reference-131072/selected.u32le.bin",
+    "$WORKTREE/rust-star/reports/128k-c0-0eb484ea/reference-131072/logits.f32le.bin",
+    "$WORKTREE/rust-star/.work/profile128-9b4d7d0d/diagnostic-c0.json",
+    "--profile-json",
+    "$WORKTREE/rust-star/.work/profile128-9b4d7d0d/diagnostic-profile.json"
+  ],
+  "build": "ec5db25e9fa028b8377d98b1dc1711cf009590ed"
+}

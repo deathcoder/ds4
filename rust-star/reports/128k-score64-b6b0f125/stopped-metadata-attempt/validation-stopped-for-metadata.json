@@ -1,0 +1,10 @@
+{
+  "reason": "8K diagnostic JSON still reports kernel_dsv4_indexer_scores_tiled instead of the active rust_star_indexer_scores_tiled64. Correct writer labels and rerun final frozen candidate gates.",
+  "completed_gates": 6,
+  "completed_gates_all_passed": true,
+  "active_gate": "retained-32k",
+  "active_gate_complete": false,
+  "timed_samples_started": false,
+  "terminated_process_group": 23125,
+  "utc": "2026-09-09T08:38:44.481564+00:00"
+}

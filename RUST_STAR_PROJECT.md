@@ -400,17 +400,24 @@ or a replacement for the historical 32K comparisons. Final input pins and the
 independent evidence/statistics audit pass. Timed execution checks the exact
 pinned transcript; fresh full-logit C0 is separate. Retained validation covers
 two cycles with request-state reset and shared model/context/residency, not
-arbitrary-prompt serving. The next milestone is now authorized and active: profile the 128K
-remaining-transformer chain, validate counters, and evaluate a focused
-optimization with C0 controls and frozen paired measurements. Diagnostic
-ec5db25e now passes full-output 128K prefill profiling with 1,271 strictly ordered
-tail packets after adding diagnostic-only fences between independent passes.
-This does not establish 128K decoder-stage profiling. Internal HC remains
-accepted through 24K. A wider indexer-score tile is under evaluation; isolated
-kernel gains do not establish engine throughput gains.
+arbitrary-prompt serving.
+
+The subsequent 128K profiling and focused optimization milestone is complete
+at b6b0f125. Diagnostic ec5db25e validates 1,271 strictly ordered tail packets
+with diagnostic-only fences; no 128K decoder-stage profiling is established.
+The retained 64-column indexer-score tile preserves exact arithmetic controls.
+All 317 Rust tests, 94 Python tests, ten live gates, five alternating Rust-to-Rust
+pairs and two warmups pass. Median paired prefill latency is 8.28% lower, with
+all five pairs faster; steady throughput is 1.06% higher and peak-RSS ratio is
+1.000015. First-step dispersion includes a 10.85% slower fifth pair. The report
+`rust-star/reports/128k-score64-b6b0f125/README.md` verifies 322 artifacts,
+including independent statistics, final pins and all rejected attempts. This
+comparison does not replace the historical Rust-versus-oracle results.
+Internal HC remains accepted through 24K. Stop at this completed milestone;
+256K measurements and the coding-agent corpus remain future work.
 
 Current implementation boundaries, evidence, and immediate actions are maintained
-in `RUST_STAR_JOURNAL.md`. As of 2026-09-08, native prefill through all 43 layers
+in `RUST_STAR_JOURNAL.md`. As of 2026-09-09, native prefill through all 43 layers
 and the output head is C0 exact at 128K, with 128 exact full-logit decode steps
 in two fresh runs. The established 32K diagnostic/output-only results remain
 exact against their immutable fixtures; complete 2K prefill/decode and legacy

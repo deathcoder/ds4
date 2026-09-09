@@ -1,0 +1,67 @@
+{
+  "passed": true,
+  "cases": [
+    {
+      "args": [
+        "--help"
+      ],
+      "exit": 0,
+      "stdout": "usage: rust-star long-prefill-reference-probe MODEL.gguf TOKENS.u32le SELECTED.u32le LOGITS.f32le REPORT.json [--profile-json PATH]\nCompares every output word with external reference vectors through 128K. Optional prefill profiling must pass the same full-output check. Oracle provenance must be verified separately; this is not a throughput command.\n",
+      "stderr": ""
+    },
+    {
+      "args": [
+        "a",
+        "b",
+        "c",
+        "d",
+        "e",
+        "--unknown",
+        "f"
+      ],
+      "exit": 1,
+      "stdout": "",
+      "stderr": "rust-star: expected model, prompt tokens, selected tokens, full logits and report paths, optionally --profile-json PATH\n"
+    },
+    {
+      "args": [
+        "a",
+        "b",
+        "c",
+        "d",
+        "e",
+        "--profile-json",
+        "e"
+      ],
+      "exit": 1,
+      "stdout": "",
+      "stderr": "rust-star: profile path must be new and differ from the reference report\n"
+    },
+    {
+      "args": [
+        "a",
+        "b",
+        "c",
+        "d",
+        "e",
+        "--profile-json",
+        "rust-star/.work/profile128-9b4d7d0d/preflight.json"
+      ],
+      "exit": 1,
+      "stdout": "",
+      "stderr": "rust-star: profile path must be new and differ from the reference report\n"
+    },
+    {
+      "args": [
+        "a",
+        "b",
+        "c",
+        "d",
+        "rust-star/.work/profile128-9b4d7d0d/preflight.json"
+      ],
+      "exit": 1,
+      "stdout": "",
+      "stderr": "rust-star: reference report already exists\n"
+    }
+  ]
+}

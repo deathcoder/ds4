@@ -1,0 +1,23 @@
+native complete layers 0-42 at 2K: 2048 raw rows + 512 dense layer-2/layer-4/layer-6/layer-8/layer-10/layer-12/layer-14/layer-16/layer-18/layer-20/layer-22/layer-24/layer-26/layer-28/layer-30/layer-32/layer-34/layer-36/layer-38/layer-40/layer-42 compressed rows + 16 layer-3/layer-5/layer-7/layer-9/layer-11/layer-13/layer-15/layer-17/layer-19/layer-21/layer-23/layer-25/layer-27/layer-29/layer-31/layer-33/layer-35/layer-37/layer-39/layer-41 compressed rows
+terminal attention/FFN schedule: 2391 dispatches, 1216/1216 no-copy model ranges, wall=15063.591 ms gpu=14982.383 ms
+exact output head: 5 dispatches, 5/5 no-copy model ranges, wall=63.941 ms gpu=2.699 ms, selected token 15342
+scope: complete native batched model prefill through exact full logits and greedy selection at the 2K prompt boundary; every retained transformer boundary remains an independent C0 regression control. Sparse post-prompt integration and timing are validated by separate commands
+json: $WORKTREE/rust-star/.work/score64-ec5db25e/checks/batch-2k.json
+       72.19 real        12.50 user        29.78 sys
+         26611417088  maximum resident set size
+                   0  average shared memory size
+                   0  average unshared data size
+                   0  average unshared stack size
+             2960013  page reclaims
+                7226  page faults
+                   0  swaps
+                   0  block input operations
+                   0  block output operations
+                   0  messages sent
+                   0  messages received
+                   0  signals received
+                 582  voluntary context switches
+              128351  involuntary context switches
+        229600698940  instructions retired
+        131968288874  cycles elapsed
+         72006957776  peak memory footprint

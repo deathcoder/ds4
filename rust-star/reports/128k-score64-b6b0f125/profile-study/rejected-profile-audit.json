@@ -1,0 +1,42 @@
+{
+  "passed": true,
+  "rejected_profile_exit": 1,
+  "chunk_start": 57344,
+  "layer": 41,
+  "raw_ticks": [
+    5820702132916,
+    5820804799958,
+    5820835601791,
+    5820838036375,
+    5820838876375,
+    5820839764916,
+    5820839797708,
+    5820840918750,
+    5821774728708,
+    5821889216708,
+    5822027598166,
+    5822112254125,
+    5822112300291,
+    5822112947500,
+    5822050719708,
+    5822094702833,
+    5822112990375,
+    5822116689333
+  ],
+  "backward_boundaries": [
+    14
+  ],
+  "each_component_span_positive": true,
+  "shared_expert_span_contained_in_routed_down_span": true,
+  "unfenced_microprobe_packets_audited": 100,
+  "fenced_microprobe_reported_ordered_packets": 100,
+  "fenced_microprobe_raw_success_packets_emitted": false,
+  "interpretation": "Independent encoder overlap is supported by positive component spans and the controlled fence experiment. The complete baseline profile was rejected; no attribution or performance claim is accepted from it.",
+  "artifacts": {
+    "baseline-profile-status.json": "85368063b4cd5740a148c862dd97802b2ebe7b3d29db95727529f6c3e1154527",
+    "baseline-profile.log": "1ba826d2ca09e18b18ca72369a99c72b49822d6d0482c085f78566f7f2ed6a51",
+    "counter-order-probe.m": "3b552592ad6540f403f09aa85f9c500577975f7602b998f818bb77862ee1de1d",
+    "counter-order-unfenced.jsonl": "3bcbfcd1b63cf022ecfda46c7c2951de3ab65141d5bc7b14b7ff86124136fd46",
+    "counter-order-fenced.jsonl": "183f563fffac004ec54596e0b7e13e7fe48d04c645505fd5762d0f62c35e64ac"
+  }
+}

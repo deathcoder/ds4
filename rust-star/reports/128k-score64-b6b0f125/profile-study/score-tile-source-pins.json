@@ -1,0 +1,7 @@
+{
+  "source": "metal/dsv4_misc.metal",
+  "source_sha256": "da219cb48b0c729985e9bedaba05a76108b10e68d63366ac0bdf2c4cd2522c86",
+  "extracted_baseline_sha256": "2843309f3d52005ab980ca498c88fa7b87f7645ad564f76db200234b5f16f5f2",
+  "baseline_kernel": "kernel_dsv4_indexer_scores_tiled",
+  "purpose": "isolated score-kernel control extracted without arithmetic changes; not a model correctness oracle"
+}

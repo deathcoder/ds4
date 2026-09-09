@@ -1,0 +1,281 @@
+diff --git a/rust-star/runtime/README.md b/rust-star/runtime/README.md
+index 0f00bf43..899c7049 100644
+--- a/rust-star/runtime/README.md
++++ b/rust-star/runtime/README.md
+@@ -1168,14 +1168,15 @@ model residency, leaving an explicit unattributed remainder. A full 2,048-row
+ bootstrap remains rejected because its raw-cache append is not a valid
+ unwrapped 2K store.
+ 
+-`--context 32768 --gen-tokens 128` selects the native long-prefill path for
+-`engine-measure` and `engine-retained-measure`. Establish C0 with both the
+-normal and `--output-only` long-prefill gates before interpreting measurements.
+-The 32K path includes prefix rebuilding, history growth, command execution,
+-and setup in its declared prefill interval. It omits correctness-tensor
+-collection and output-fixture decoding during timed prefill. Its retained
+-cycle reuses the Metal context/model residency and records zero context
+-creation time. It still rebuilds request-local KV state.
++`--context 32768 --gen-tokens 128` or `--context 131072 --gen-tokens 128`
++selects the native long-prefill path for `engine-measure` and
++`engine-retained-measure`. Establish C0 with the appropriate independent
++full-output gate before interpreting measurements: the built-in 32K controls
++and the external-reference 128K probe. Both paths include prefix rebuilding,
++history growth, command execution and setup in their declared prefill intervals.
++They omit correctness-tensor collection and output-fixture decoding during timed
++prefill. The retained cycle reuses the Metal context/model residency and records
++zero context creation time. It still rebuilds request-local KV state.
+ 
+ Native tails now reuse 22 command-local scratch buffers across layers and
+ chunks, write retained HC directly and omit unused routed-mid FP32 conversion.
+@@ -1354,10 +1355,25 @@ token IDs, malformed lengths, non-finite logits and inconsistent greedy choices.
+ The output path must not exist. Oracle/model provenance is authenticated by the
+ report's evidence runner, not by this runtime input parser.
+ 
++Append `--profile-json PROFILE.json` to collect perturbing prefill counters while
++checking the same complete output tensors. Both output paths must be new and
++distinct. The profile is emitted only after output validation succeeds and is
++ineligible for paired throughput claims. Tail component encoders use fences to
++prevent independent routed/shared expert passes from overlapping; their scaled
++shares describe this perturbed schedule. Live 128K validation of this extension
++is pending in the current profiling milestone.
++
+ Native boundary, output and adoption guards now allow the larger diagnostic
+-frontier; existing built-in fixture and engine measurement commands retain their
+-32K contract. No kernel arithmetic or RoPE training constant changed. Diagnostic
+-RSS excludes the benchmark's CPU page-warming policy and is not comparable with
++frontier; built-in diagnostic fixtures retain their earlier contract. The
++subsequent measurement milestone also admits the pinned 128K prompt and complete
++129-selection transcript into fresh and retained engine measurement. No kernel
++arithmetic or RoPE training constant changed. Diagnostic RSS excludes the benchmark's CPU page-warming policy and is not comparable with
+ warmed engine RSS or a total Metal/model residency bound. This correctness
+-milestone makes no new throughput or memory-reduction claim. The next milestone
+-is 128K measurement and retained-engine protocol support with paired benchmarks.
++milestone makes no new throughput or memory-reduction claim. The subsequent
++[128K measurement report](../reports/128k-measure-ef37e566/README.md) records
++317 Rust tests, 94 Python tests, six live gates and five alternating pairs
++against unchanged oracle-v5. Timed runs omit full-logit collection and check
++the exact transcript after timing. The two-cycle retained diagnostic reuses
++model mapping/context/residency while rebuilding request state; it is paired
++ineligible. Profile controls were exercised at 32K; this report does not
++establish a validated 128K profile or arbitrary-prompt serving support.
+diff --git a/rust-star/runtime/src/long_prefill.rs b/rust-star/runtime/src/long_prefill.rs
+index 23f733bf..ecda9826 100644
+--- a/rust-star/runtime/src/long_prefill.rs
++++ b/rust-star/runtime/src/long_prefill.rs
+@@ -130,7 +130,7 @@ impl LongPrefillProfile {
+             "{{\"chunk_start\":{},\"first_layer\":{},\"last_layer\":{},\"stage\":\"{}\",\"calls\":{},\"host_elapsed_ms\":{:.9},\"command_wall_ms\":{:.9},\"gpu_ms\":{:.9}}}",
+             r.chunk,r.first,r.last,r.stage,r.calls,r.elapsed,r.wall,r.gpu)).collect::<Vec<_>>().join(",");
+         let components = self.tail_components.join(",");
+-        Some(format!("{{\"method\":\"existing-command-completion-and-host-stage-timers\",\"paired_ineligible\":true,\"rows\":[{rows}],\"tail_components\":{{\"method\":\"metal-compute-stage-boundary-timestamp-counters\",\"profile_perturbed\":true,\"encoder_splitting\":true,\"scaling\":\"counter shares scaled to each completed tail command GPU interval; do not add to parent rows\",\"rows\":[{components}]}}}}"))
++        Some(format!("{{\"method\":\"existing-command-completion-and-host-stage-timers\",\"paired_ineligible\":true,\"rows\":[{rows}],\"tail_components\":{{\"method\":\"metal-compute-stage-boundary-timestamp-counters\",\"profile_perturbed\":true,\"encoder_splitting\":true,\"encoder_serialization\":\"MTLFence\",\"scaling\":\"counter shares scaled to each completed tail command GPU interval; do not add to parent rows\",\"rows\":[{components}]}}}}"))
+     }
+ }
+ 
+@@ -1293,15 +1293,16 @@ mod tail_profile_tests {
+ pub fn run_long_prefill_reference_probe(
+     model: &MappedModel,
+     reference: &crate::frontier_reference::FrontierReference,
+-) -> Result<LongPrefillChunkProbeReport> {
+-    Ok(run_long_prefill_with_reference(
++    collect_profile: bool,
++) -> Result<(LongPrefillChunkProbeReport, Option<String>)> {
++    let (_, report, timing) = run_long_prefill_with_reference(
+         model,
+         reference.frontier(),
+         None,
+         false,
+         true,
+-        false,
++        collect_profile,
+         Some(reference),
+-    )?
+-    .1)
++    )?;
++    Ok((report, timing.long_prefill_profile))
+ }
+diff --git a/rust-star/runtime/src/main.rs b/rust-star/runtime/src/main.rs
+index 36fa4b24..387e59da 100644
+--- a/rust-star/runtime/src/main.rs
++++ b/rust-star/runtime/src/main.rs
+@@ -150,17 +150,25 @@ fn run() -> Result<()> {
+     if command == "long-prefill-reference-probe" {
+         let args: Vec<_> = arguments.collect();
+         if args.len() == 1 && matches!(args[0].to_str(), Some("--help") | Some("-h")) {
+-            println!("usage: rust-star long-prefill-reference-probe MODEL.gguf TOKENS.u32le SELECTED.u32le LOGITS.f32le REPORT.json\nCompares every output word with external reference vectors through 128K. Oracle provenance must be verified separately; this is not a throughput command.");
++            println!("usage: rust-star long-prefill-reference-probe MODEL.gguf TOKENS.u32le SELECTED.u32le LOGITS.f32le REPORT.json [--profile-json PATH]\nCompares every output word with external reference vectors through 128K. Optional prefill profiling must pass the same full-output check. Oracle provenance must be verified separately; this is not a throughput command.");
+             return Ok(());
+         }
+-        if args.len() != 5 {
++        if args.len() != 5 && !(args.len() == 7 && args[5] == "--profile-json") {
+             return Err(Error::invalid(
+-                "expected model, prompt tokens, selected tokens, full logits and report paths",
++                "expected model, prompt tokens, selected tokens, full logits and report paths, optionally --profile-json PATH",
+             ));
+         }
+         if Path::new(&args[4]).exists() {
+             return Err(Error::invalid("reference report already exists"));
+         }
++        let profile_path = args.get(6);
++        if let Some(path) = profile_path {
++            if path == &args[4] || Path::new(path).exists() {
++                return Err(Error::invalid(
++                    "profile path must be new and differ from the reference report",
++                ));
++            }
++        }
+         let reference = rust_star_runtime::frontier_reference::FrontierReference::from_bytes(
+             &std::fs::read(&args[1])?,
+             &std::fs::read(&args[2])?,
+@@ -168,8 +176,19 @@ fn run() -> Result<()> {
+         )?;
+         let model = MappedModel::open(Path::new(&args[0]))?;
+         validate_resident_q2(model.gguf())?;
+-        let report =
+-            rust_star_runtime::metal::run_long_prefill_reference_probe(&model, &reference)?;
++        let (report, profile) = rust_star_runtime::metal::run_long_prefill_reference_probe(
++            &model,
++            &reference,
++            profile_path.is_some(),
++        )?;
++        if let Some(path) = profile_path {
++            let profile = profile.ok_or_else(|| Error::invalid("missing long-prefill profile"))?;
++            let mut file = std::fs::OpenOptions::new()
++                .write(true)
++                .create_new(true)
++                .open(path)?;
++            writeln!(file, "{profile}")?;
++        }
+         let mut file = std::fs::OpenOptions::new()
+             .write(true)
+             .create_new(true)
+diff --git a/rust-star/runtime/src/metal.rs b/rust-star/runtime/src/metal.rs
+index 9cbe8cf3..b214fa45 100644
+--- a/rust-star/runtime/src/metal.rs
++++ b/rust-star/runtime/src/metal.rs
+@@ -58305,7 +58305,8 @@ mod imp {
+     pub fn run_long_prefill_reference_probe(
+         _model: &crate::model::MappedModel,
+         _reference: &crate::frontier_reference::FrontierReference,
+-    ) -> crate::Result<super::LongPrefillChunkProbeReport> {
++        _collect_profile: bool,
++    ) -> crate::Result<(super::LongPrefillChunkProbeReport, Option<String>)> {
+         Err(crate::Error::invalid(
+             "external frontier comparison requires macOS Metal",
+         ))
+diff --git a/rust-star/runtime/src/metal_shim.m b/rust-star/runtime/src/metal_shim.m
+index 5baf03a3..72b49bc8 100644
+--- a/rust-star/runtime/src/metal_shim.m
++++ b/rust-star/runtime/src/metal_shim.m
+@@ -969,6 +969,23 @@ static int command_succeeded(
+     return [command computeCommandEncoderWithDescriptor:descriptor];
+ }
+ 
++/* The component attribution assumes disjoint intervals. Independent shared and
++ * routed expert passes may overlap even across compute encoders, so only this
++ * perturbing diagnostic orders their boundaries with a fence. */
++static id<MTLComputeCommandEncoder> next_tail_profile_encoder(
++    id<MTLComputeCommandEncoder> previous,
++    id<MTLCommandBuffer> command,
++    id<MTLCounterSampleBuffer> samples,
++    id<MTLFence> fence,
++    NSUInteger stage)
++{
++    [previous updateFence:fence];
++    [previous endEncoding];
++    id<MTLComputeCommandEncoder> encoder = stage_compute_encoder(command, samples, stage);
++    [encoder waitForFence:fence];
++    return encoder;
++}
++
+ static int encode_probe(
+     RustStarMetalContext *context,
+     id<MTLCommandBuffer> command,
+@@ -46782,6 +46799,9 @@ int rust_star_metal_run_prefill_layer2_continuation_tail(
+ 
+         id<MTLCommandBuffer> command = [context.queue commandBuffer];
+         id<MTLCounterSampleBuffer> tail_samples = native_chunk ? context.prefillLayerTailSamples : nil;
++        id<MTLFence> tail_fence = tail_samples ? [context.device newFence] : nil;
++        if (tail_samples && !tail_fence) return fail_with_message(error, error_bytes,
++            @"failed to create tail profile fence");
+         context.prefillLayerTailCommand = nil;
+         id<MTLComputeCommandEncoder> encoder = stage_compute_encoder(command, tail_samples, 0u);
+         if (!command || !encoder) return fail_with_message(error, error_bytes,
+@@ -46832,8 +46852,7 @@ int rust_star_metal_run_prefill_layer2_continuation_tail(
+              threadsPerThreadgroup:MTLSizeMake(256,1,1)];
+ 
+         if (tail_samples) {
+-            [encoder endEncoding];
+-            encoder = stage_compute_encoder(command, tail_samples, 1u);
++            encoder = next_tail_profile_encoder(encoder, command, tail_samples, tail_fence, 1u);
+             if (!encoder) return fail_with_message(error, error_bytes, @"failed to create tail profile encoder");
+         }
+         [encoder setComputePipelineState:context.rmsNormF32Pipeline];
+@@ -46870,8 +46889,7 @@ int rust_star_metal_run_prefill_layer2_continuation_tail(
+              threadsPerThreadgroup:MTLSizeMake(1024,1,1)];
+ 
+         if (tail_samples) {
+-            [encoder endEncoding];
+-            encoder = stage_compute_encoder(command, tail_samples, 2u);
++            encoder = next_tail_profile_encoder(encoder, command, tail_samples, tail_fence, 2u);
+             if (!encoder) return fail_with_message(error, error_bytes, @"failed to create tail profile encoder");
+         }
+         [encoder setComputePipelineState:context.f16PrefillPipeline];
+@@ -46940,8 +46958,7 @@ int rust_star_metal_run_prefill_layer2_continuation_tail(
+              threadsPerThreadgroup:MTLSizeMake(192,1,1)];
+ 
+         if (tail_samples) {
+-            [encoder endEncoding];
+-            encoder = stage_compute_encoder(command, tail_samples, 3u);
++            encoder = next_tail_profile_encoder(encoder, command, tail_samples, tail_fence, 3u);
+             if (!encoder) return fail_with_message(error, error_bytes, @"failed to create tail profile encoder");
+         }
+         [encoder setComputePipelineState:context.routedBatchMapPipeline];
+@@ -46955,8 +46972,7 @@ int rust_star_metal_run_prefill_layer2_continuation_tail(
+              threadsPerThreadgroup:MTLSizeMake(256,1,1)];
+ 
+         if (tail_samples) {
+-            [encoder endEncoding];
+-            encoder = stage_compute_encoder(command, tail_samples, 4u);
++            encoder = next_tail_profile_encoder(encoder, command, tail_samples, tail_fence, 4u);
+             if (!encoder) return fail_with_message(error, error_bytes, @"failed to create tail profile encoder");
+         }
+         [encoder setComputePipelineState:context.routedBatchPairSwigluPipeline];
+@@ -46975,8 +46991,7 @@ int rust_star_metal_run_prefill_layer2_continuation_tail(
+              threadsPerThreadgroup:MTLSizeMake(128,1,1)];
+ 
+         if (tail_samples) {
+-            [encoder endEncoding];
+-            encoder = stage_compute_encoder(command, tail_samples, 5u);
++            encoder = next_tail_profile_encoder(encoder, command, tail_samples, tail_fence, 5u);
+             if (!encoder) return fail_with_message(error, error_bytes, @"failed to create tail profile encoder");
+         }
+         [encoder setComputePipelineState:context.routedBatchDownPipeline];
+@@ -46991,8 +47006,7 @@ int rust_star_metal_run_prefill_layer2_continuation_tail(
+         [encoder dispatchThreadgroups:MTLSizeMake(routed_map_work_cap,64,1)
+              threadsPerThreadgroup:MTLSizeMake(128,1,1)];
+         if (tail_samples) {
+-            [encoder endEncoding];
+-            encoder = stage_compute_encoder(command, tail_samples, 6u);
++            encoder = next_tail_profile_encoder(encoder, command, tail_samples, tail_fence, 6u);
+             if (!encoder) return fail_with_message(error, error_bytes, @"failed to create tail profile encoder");
+         }
+         [encoder setComputePipelineState:context.routedBatchSumPipeline];
+@@ -47013,8 +47027,7 @@ int rust_star_metal_run_prefill_layer2_continuation_tail(
+              threadsPerThreadgroup:MTLSizeMake(128,1,1)]; \
+     } while (0)
+         if (tail_samples) {
+-            [encoder endEncoding];
+-            encoder = stage_compute_encoder(command, tail_samples, 7u);
++            encoder = next_tail_profile_encoder(encoder, command, tail_samples, tail_fence, 7u);
+             if (!encoder) return fail_with_message(error, error_bytes, @"failed to create tail profile encoder");
+         }
+         RUST_STAR_ENCODE_CONTINUATION_SHARED(shared_gate_args, 11,
+@@ -47033,8 +47046,7 @@ int rust_star_metal_run_prefill_layer2_continuation_tail(
+ #undef RUST_STAR_ENCODE_CONTINUATION_SHARED
+ 
+         if (tail_samples) {
+-            [encoder endEncoding];
+-            encoder = stage_compute_encoder(command, tail_samples, 8u);
++            encoder = next_tail_profile_encoder(encoder, command, tail_samples, tail_fence, 8u);
+             if (!encoder) return fail_with_message(error, error_bytes, @"failed to create tail profile encoder");
+         }
+         [encoder setComputePipelineState:context.hcExpand4Pipeline];

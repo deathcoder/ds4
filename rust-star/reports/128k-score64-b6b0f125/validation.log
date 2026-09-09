@@ -1,0 +1,21 @@
+START batch-2k
+PASS batch-2k
+START batch-8k
+PASS batch-8k
+START batch-12k
+PASS batch-12k
+START batch-32k-output
+PASS batch-32k-output
+START batch-32k-internal
+PASS batch-32k-internal
+START batch-32k-profiled
+PASS batch-32k-profiled
+START retained-32k
+PASS retained-32k
+START c0-128k
+PASS c0-128k
+START c0-128k-profiled
+PASS c0-128k-profiled
+START retained-128k
+PASS retained-128k
+ALL TEN GATES PASS

@@ -1,0 +1,150 @@
+rust-star: native 4096-token bootstrap ready for exact prefix rebuild
+rust-star: prefix layer 0 exact
+rust-star: prefix layer 1 exact
+rust-star: prefix layer 2 exact
+rust-star: prefix layer 3 exact
+rust-star: prefix layer 4 exact
+rust-star: prefix layer 5 exact
+rust-star: prefix layer 6 exact
+rust-star: prefix layer 7 exact
+rust-star: prefix layer 8 exact
+rust-star: prefix layer 9 exact
+rust-star: prefix layer 10 exact
+rust-star: prefix layer 11 exact
+rust-star: prefix layer 12 exact
+rust-star: prefix layer 13 exact
+rust-star: prefix layer 14 exact
+rust-star: prefix layer 15 exact
+rust-star: prefix layer 16 exact
+rust-star: prefix layer 17 exact
+rust-star: prefix layer 18 exact
+rust-star: prefix layer 19 exact
+rust-star: prefix layer 20 exact
+rust-star: prefix layer 21 exact
+rust-star: prefix layer 22 exact
+rust-star: prefix layer 23 exact
+rust-star: prefix layer 24 exact
+rust-star: prefix layer 25 exact
+rust-star: prefix layer 26 exact
+rust-star: prefix layer 27 exact
+rust-star: prefix layer 28 exact
+rust-star: prefix layer 29 exact
+rust-star: prefix layer 30 exact
+rust-star: prefix layer 31 exact
+rust-star: prefix layer 32 exact
+rust-star: prefix layer 33 exact
+rust-star: prefix layer 34 exact
+rust-star: prefix layer 35 exact
+rust-star: prefix layer 36 exact
+rust-star: prefix layer 37 exact
+rust-star: prefix layer 38 exact
+rust-star: prefix layer 39 exact
+rust-star: prefix layer 40 exact
+rust-star: prefix layer 41 exact
+rust-star: prefix layer 42 exact
+rust-star: chunk 4096 layer 0 exact
+rust-star: chunk 4096 layer 1 exact
+rust-star: chunk 4096 layer 2 exact
+rust-star: chunk 4096 layer 3 exact
+rust-star: chunk 4096 layer 4 exact
+rust-star: chunk 4096 layer 5 exact
+rust-star: chunk 4096 layer 6 exact
+rust-star: chunk 4096 layer 7 exact
+rust-star: chunk 4096 layer 8 exact
+rust-star: chunk 4096 layer 9 exact
+rust-star: chunk 4096 layer 10 exact
+rust-star: chunk 4096 layer 11 exact
+rust-star: chunk 4096 layer 12 exact
+rust-star: chunk 4096 layer 13 exact
+rust-star: chunk 4096 layer 14 exact
+rust-star: chunk 4096 layer 15 exact
+rust-star: chunk 4096 layer 16 exact
+rust-star: chunk 4096 layer 17 exact
+rust-star: chunk 4096 layer 18 exact
+rust-star: chunk 4096 layer 19 exact
+rust-star: chunk 4096 layer 20 exact
+rust-star: chunk 4096 layer 21 exact
+rust-star: chunk 4096 layer 22 exact
+rust-star: chunk 4096 layer 23 exact
+rust-star: chunk 4096 layer 24 exact
+rust-star: chunk 4096 layer 25 exact
+rust-star: chunk 4096 layer 26 exact
+rust-star: chunk 4096 layer 27 exact
+rust-star: chunk 4096 layer 28 exact
+rust-star: chunk 4096 layer 29 exact
+rust-star: chunk 4096 layer 30 exact
+rust-star: chunk 4096 layer 31 exact
+rust-star: chunk 4096 layer 32 exact
+rust-star: chunk 4096 layer 33 exact
+rust-star: chunk 4096 layer 34 exact
+rust-star: chunk 4096 layer 35 exact
+rust-star: chunk 4096 layer 36 exact
+rust-star: chunk 4096 layer 37 exact
+rust-star: chunk 4096 layer 38 exact
+rust-star: chunk 4096 layer 39 exact
+rust-star: chunk 4096 layer 40 exact
+rust-star: chunk 4096 layer 41 exact
+rust-star: chunk 4096 layer 42 exact
+rust-star: uniform 8192-token full-logit control exact
+rust-star: chunk 8192 layer 0 exact
+rust-star: chunk 8192 layer 1 exact
+rust-star: chunk 8192 layer 2 exact
+rust-star: chunk 8192 layer 3 exact
+rust-star: chunk 8192 layer 4 exact
+rust-star: chunk 8192 layer 5 exact
+rust-star: chunk 8192 layer 6 exact
+rust-star: chunk 8192 layer 7 exact
+rust-star: chunk 8192 layer 8 exact
+rust-star: chunk 8192 layer 9 exact
+rust-star: chunk 8192 layer 10 exact
+rust-star: chunk 8192 layer 11 exact
+rust-star: chunk 8192 layer 12 exact
+rust-star: chunk 8192 layer 13 exact
+rust-star: chunk 8192 layer 14 exact
+rust-star: chunk 8192 layer 15 exact
+rust-star: chunk 8192 layer 16 exact
+rust-star: chunk 8192 layer 17 exact
+rust-star: chunk 8192 layer 18 exact
+rust-star: chunk 8192 layer 19 exact
+rust-star: chunk 8192 layer 20 exact
+rust-star: chunk 8192 layer 21 exact
+rust-star: chunk 8192 layer 22 exact
+rust-star: chunk 8192 layer 23 exact
+rust-star: chunk 8192 layer 24 exact
+rust-star: chunk 8192 layer 25 exact
+rust-star: chunk 8192 layer 26 exact
+rust-star: chunk 8192 layer 27 exact
+rust-star: chunk 8192 layer 28 exact
+rust-star: chunk 8192 layer 29 exact
+rust-star: chunk 8192 layer 30 exact
+rust-star: chunk 8192 layer 31 exact
+rust-star: chunk 8192 layer 32 exact
+rust-star: chunk 8192 layer 33 exact
+rust-star: chunk 8192 layer 34 exact
+rust-star: chunk 8192 layer 35 exact
+rust-star: chunk 8192 layer 36 exact
+rust-star: chunk 8192 layer 37 exact
+rust-star: chunk 8192 layer 38 exact
+rust-star: chunk 8192 layer 39 exact
+rust-star: chunk 8192 layer 40 exact
+rust-star: chunk 8192 layer 41 exact
+rust-star: chunk 8192 layer 42 exact
+native prefill through 12288 tokens: all 43 layers executed, 0 prefill logits and 0 full-logit decode steps checked, selected token 8131
+      134.85 real        33.60 user        29.30 sys
+          6128582656  maximum resident set size
+                   0  average shared memory size
+                   0  average unshared data size
+                   0  average unshared stack size
+             8379092  page reclaims
+                   0  page faults
+                   0  swaps
+                   0  block input operations
+                   0  block output operations
+                   0  messages sent
+                   0  messages received
+                   0  signals received
+                   0  voluntary context switches
+               35679  involuntary context switches
+        375667514206  instructions retired
+        194618450329  cycles elapsed
+         10638465984  peak memory footprint

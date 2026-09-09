@@ -1,0 +1,5 @@
+{
+  "runner_schema_primary_metric": "gen_steady_tps",
+  "study_primary_metric": "prefill_ms",
+  "explanation": "The unchanged runner schema fixes its generic primary metric to steady decode. The separately frozen optimization acceptance evaluates prefill latency and guards decode/RSS using independently recomputed metrics."
+}

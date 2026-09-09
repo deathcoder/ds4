@@ -1,0 +1,19 @@
+rust-star: tail profile chunk=57344 layer=41: invalid tail timestamps: sample=14 component=7 boundary=start reason=non-increasing raw_ticks=[0000054b3ce20ab4,0000054b43009dd6,0000054b44d69d7f,0000054b44fbc397,0000054b450894d7,0000054b451623b4,0000054b4516a3cc,0000054b4527bede,0000054b7cd08e04,0000054b83a380c4,0000054b8be30956,0000054b90eec8ad,0000054b90ef7d03,0000054b90f95d2c,0000054b8d43d7dc,0000054b8fe2f8f1,0000054b90fa04a7,0000054b913275b5]
+      562.51 real         7.26 user       130.16 sys
+         88656543744  maximum resident set size
+                   0  average shared memory size
+                   0  average unshared data size
+                   0  average unshared stack size
+            10834502  page reclaims
+               33478  page faults
+                   0  swaps
+                   0  block input operations
+                   0  block output operations
+                   0  messages sent
+                   0  messages received
+                   0  signals received
+                  46  voluntary context switches
+              211396  involuntary context switches
+        972308868281  instructions retired
+        377188836922  cycles elapsed
+         15095959424  peak memory footprint

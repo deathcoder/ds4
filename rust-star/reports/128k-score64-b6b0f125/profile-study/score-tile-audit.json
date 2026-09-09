@@ -1,0 +1,39 @@
+{
+  "passed": true,
+  "full_score_bitwise_shapes": 7,
+  "total_checked_words": 167815044,
+  "isolated_pairs": {
+    "5": {
+      "pairs": 7,
+      "baseline_median_ms": 178.378416666,
+      "candidate_median_ms": 117.456583333,
+      "paired_ratio_median": 0.6605657168021003,
+      "paired_ratio_range": [
+        0.6483231771566327,
+        0.668401517310019
+      ],
+      "improved_pairs": 7
+    },
+    "6": {
+      "pairs": 7,
+      "baseline_median_ms": 784.684541667,
+      "candidate_median_ms": 485.342708333,
+      "paired_ratio_median": 0.6193796360450914,
+      "paired_ratio_range": [
+        0.6106387094478248,
+        0.627148838974543
+      ],
+      "improved_pairs": 7
+    }
+  },
+  "scope": "Synthetic isolated score kernel; not full-model C0 or engine throughput",
+  "sources": {
+    "score-tile-probe.m": "25cd4f6766bca936906c32b773656e563fe4e6550c0d44ec6f4885c7d01cd75a",
+    "score-tile-baseline.metal": "2843309f3d52005ab980ca498c88fa7b87f7645ad564f76db200234b5f16f5f2",
+    "score-tile-candidate.metal": "1fa8e2eb72e9ec130b9211c62d29357bd810dba1cd63a73e404ad5784c78b219",
+    "score-tile-combined.metal": "7cba9b5231425bede8c8af6baca173dde078b620444f18dc468d382a17240c18",
+    "score-tile-probe.jsonl": "a7ec7d07aab3cad1e9f29d860bb6a937d0f792d434cd6ace2d2428879124275f",
+    "score-tile-probe.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "score-tile-hypothesis.json": "12f7faaa11cb5565a0bf7a273d64067de2a82119297db41cb932514c11299602"
+  }
+}

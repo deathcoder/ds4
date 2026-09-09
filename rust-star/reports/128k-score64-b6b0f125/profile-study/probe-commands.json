@@ -1,0 +1,42 @@
+{
+  "platform": "macOS / Metal, M1 Ultra",
+  "working_directory": "profile-study",
+  "counter_probe_compile": [
+    "clang",
+    "-fobjc-arc",
+    "-O2",
+    "-framework",
+    "Foundation",
+    "-framework",
+    "Metal",
+    "counter-order-probe.m",
+    "-o",
+    "counter-order-probe"
+  ],
+  "counter_probe_runs": [
+    [
+      "./counter-order-probe"
+    ],
+    [
+      "./counter-order-probe",
+      "fenced"
+    ]
+  ],
+  "score_probe_compile": [
+    "clang",
+    "-fobjc-arc",
+    "-O2",
+    "-framework",
+    "Foundation",
+    "-framework",
+    "Metal",
+    "score-tile-probe.m",
+    "-o",
+    "score-tile-probe"
+  ],
+  "score_probe_run": [
+    "./score-tile-probe",
+    "score-tile-combined.metal"
+  ],
+  "model_overlap_policy": "Run isolated GPU probes only when no model workload is active; do not combine them with engine timing."
+}

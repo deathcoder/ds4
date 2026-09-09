@@ -1,0 +1,21 @@
+[package]
+name = "rust-star-runtime"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.74"
+description = "Model-specific host runtime scaffold for DeepSeek V4 Flash on Apple Silicon"
+license = "BSD-3-Clause"
+publish = false
+
+[lib]
+name = "rust_star_runtime"
+path = "src/lib.rs"
+
+[[bin]]
+name = "rust-star"
+path = "src/main.rs"
+
+[profile.release]
+codegen-units = 1
+lto = "thin"
+panic = "abort"

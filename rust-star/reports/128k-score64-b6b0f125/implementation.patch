@@ -1,0 +1,309 @@
+diff --git a/rust-star/runtime/README.md b/rust-star/runtime/README.md
+index 899c7049..1c85bcc9 100644
+--- a/rust-star/runtime/README.md
++++ b/rust-star/runtime/README.md
+@@ -1300,6 +1300,12 @@ boundary/reason and chunk/layer context. Rust also rejects the Metal error
+ sentinel before attribution. Validity remains strict; the original cause is
+ unresolved. See [the preserved failure](../reports/32k-dense-output-92ca3ef3/README.md).
+ 
++A later 128K packet captured independent shared/routed expert passes overlapping.
++A nine-pass control reproduced overlap in 100/100 runs, while a fenced control
++reported 100/100 ordered packets. Diagnostic tail encoders now use fences and
++retain the strict timestamp guard. This does not identify the unlogged historical
++failure. Normal inference keeps its single encoder.
++
+ The [scoped-bootstrap study](../reports/32k-bootstrap-912fae1e/README.md) passes
+ all seven live gates, including profiled full-output C0, and a separate
+ post-paired profile. Its independent counter probe also passes 256 commands
+@@ -1360,8 +1366,16 @@ checking the same complete output tensors. Both output paths must be new and
+ distinct. The profile is emitted only after output validation succeeds and is
+ ineligible for paired throughput claims. Tail component encoders use fences to
+ prevent independent routed/shared expert passes from overlapping; their scaled
+-shares describe this perturbed schedule. Live 128K validation of this extension
+-is pending in the current profiling milestone.
++shares describe this perturbed schedule. Diagnostic `ec5db25e` passes every 128K
++prefill word and all 128 decode rows, plus the audit of 1,271 tail packets and
++11,439 intervals. This validates prefill profiling, not decoder-stage counters.
++
++The current indexer-score candidate stages eight queries against 64 compressed
++columns with 256 threads and 20KiB of shared memory. It preserves half conversion,
++each 8x8 dot product and FP32 accumulation over heads while reducing repeated Q
++staging. All 167,815,044 synthetic score words match the original 32-column
++kernel. Isolated timing gains are preliminary; full-model gates and paired
++engine measurements are pending in the current milestone.
+ 
+ Native boundary, output and adoption guards now allow the larger diagnostic
+ frontier; built-in diagnostic fixtures retain their earlier contract. The
+diff --git a/rust-star/runtime/build.rs b/rust-star/runtime/build.rs
+index adcc2212..b0773cca 100644
+--- a/rust-star/runtime/build.rs
++++ b/rust-star/runtime/build.rs
+@@ -36,6 +36,7 @@ fn main() {
+     println!("cargo:rerun-if-changed=../../metal/dsv4_hc.metal");
+     println!("cargo:rerun-if-changed=../../metal/dsv4_misc.metal");
+     println!("cargo:rerun-if-changed=src/indexer_argsort.metal");
++    println!("cargo:rerun-if-changed=src/indexer_scores.metal");
+     if env::var("CARGO_CFG_TARGET_OS").as_deref() != Ok("macos") {
+         return;
+     }
+@@ -93,6 +94,7 @@ fn main() {
+             manifest.join("src/sparse_indexed_prefix.metal"),
+             manifest.join("../../metal/dsv4_misc.metal"),
+             manifest.join("src/indexer_argsort.metal"),
++            manifest.join("src/indexer_scores.metal"),
+         ],
+         &output.join("sparse_indexed_source.inc"),
+         "kSparseIndexedSource",
+diff --git a/rust-star/runtime/src/indexer_scores.metal b/rust-star/runtime/src/indexer_scores.metal
+new file mode 100644
+index 00000000..8e7754da
+--- /dev/null
++++ b/rust-star/runtime/src/indexer_scores.metal
+@@ -0,0 +1,139 @@
++// M1 prefill: eight queries share Q staging across 64 compressed columns.
++// Preserve each 8x8 dot and the ordered FP32 accumulation over heads.
++kernel void rust_star_indexer_scores_tiled64(
++        constant ds4_metal_args_dsv4_indexer_scores_fused & args,
++        device const char *q,
++        device const char *weights,
++        device const char *index_comp,
++        device       char *scores,
++        threadgroup float *shared [[threadgroup(0)]],
++        uint2  tgpig [[threadgroup_position_in_grid]],
++        ushort tid   [[thread_index_in_threadgroup]],
++        ushort lane  [[thread_index_in_simdgroup]],
++        ushort sg    [[simdgroup_index_in_threadgroup]]) {
++    constexpr uint TM = 8;
++    constexpr uint TN = 64;
++    constexpr uint TS = 8;
++    constexpr uint D  = 128;
++
++    const uint c0 = tgpig.x * TN;
++    const uint t0 = tgpig.y * TM;
++
++    // Preserve the oracle's half-staged Q/K and FP32 dot/score accumulators.
++    threadgroup half *qtg = (threadgroup half *)shared; // [8][128]
++    threadgroup half *ktg = qtg + TM*D;                 // [64][128]
++    threadgroup float *dot = (threadgroup float *)(ktg + TN*D); // [8][64]
++
++    const uint last_token = min(t0 + TM, args.n_tokens);
++    const uint max_visible = last_token > t0 ?
++        min((args.pos0 + last_token) / args.ratio, args.n_comp) : 0u;
++
++    if (c0 >= max_visible) {
++        for (uint i = tid; i < TM*TN; i += 256) {
++            const uint r = i / TN;
++            const uint cc = i - r*TN;
++            const uint token = t0 + r;
++            const uint comp = c0 + cc;
++            if (token < args.n_tokens && comp < args.n_comp) {
++                device float *dst = (device float *)(scores +
++                    (uint64_t)token * args.score_token_stride) + comp;
++                *dst = -INFINITY;
++            }
++        }
++        return;
++    }
++
++    // Stage compressed index rows once. Edge columns are zeroed so the matrix
++    // loads below can stay regular; guarded stores discard them.
++    for (uint i = tid; i < TN*D; i += 256) {
++        const uint cc = i / D;
++        const uint d = i - cc*D;
++        const uint comp = c0 + cc;
++        half v = half(0.0f);
++        if (comp < args.n_comp) {
++            device const float *row = (device const float *)(index_comp +
++                (uint64_t)comp * args.index_row_stride);
++            v = half(row[d]);
++        }
++        ktg[i] = v;
++    }
++
++    const uint cell0 = lane;
++    const uint cell1 = lane + 32u;
++    const uint row0 = cell0 >> 3;
++    const uint row1 = cell1 >> 3;
++    const uint sub0 = cell0 & 7u;
++    const uint sub1 = cell1 & 7u;
++    const uint col0 = (uint)sg * TS + sub0;
++    const uint col1 = (uint)sg * TS + sub1;
++    const uint token0 = t0 + row0;
++    const uint token1 = t0 + row1;
++    const uint comp0 = c0 + col0;
++    const uint comp1 = c0 + col1;
++
++    float acc0 = 0.0f;
++    float acc1 = 0.0f;
++
++    threadgroup_barrier(mem_flags::mem_threadgroup);
++
++    for (uint head = 0; head < args.n_head; head++) {
++        // Stage Q for the eight-token tile. Each 8x8 matrix load below reads a
++        // contiguous depth block from this layout.
++        for (uint i = tid; i < TM*D; i += 256) {
++            const uint r = i / D;
++            const uint d = i - r*D;
++            const uint token = t0 + r;
++            half v = half(0.0f);
++            if (token < args.n_tokens) {
++                device const float *qrow = (device const float *)(q +
++                    (uint64_t)token * args.q_token_stride +
++                    (uint64_t)head  * args.q_head_stride);
++                v = half(qrow[d]);
++            }
++            qtg[i] = v;
++        }
++
++        threadgroup_barrier(mem_flags::mem_threadgroup);
++
++        simdgroup_float8x8 mdot = make_filled_simdgroup_matrix<float, 8>(0.0f);
++        for (uint db = 0; db < D/TS; db++) {
++            simdgroup_half8x8 mq;
++            simdgroup_half8x8 mk;
++            simdgroup_load(mq, qtg + db*TS, D, 0, false);
++            simdgroup_load(mk, ktg + ((uint)sg * TS) * D + db*TS, D, 0, true);
++            simdgroup_multiply_accumulate(mdot, mq, mk, mdot);
++        }
++
++        simdgroup_store(mdot, dot + (uint)sg * TS, TN, 0, false);
++
++        threadgroup_barrier(mem_flags::mem_threadgroup);
++
++        if (token0 < args.n_tokens && comp0 < args.n_comp) {
++            device const float *w = (device const float *)(weights +
++                (uint64_t)token0 * args.weights_token_stride);
++            const float s = dot[row0*TN + col0];
++            acc0 += max(s, 0.0f) * (w[head] * args.scale);
++        }
++        if (token1 < args.n_tokens && comp1 < args.n_comp) {
++            device const float *w = (device const float *)(weights +
++                (uint64_t)token1 * args.weights_token_stride);
++            const float s = dot[row1*TN + col1];
++            acc1 += max(s, 0.0f) * (w[head] * args.scale);
++        }
++
++        threadgroup_barrier(mem_flags::mem_threadgroup);
++    }
++
++    if (token0 < args.n_tokens && comp0 < args.n_comp) {
++        const uint visible = min((args.pos0 + token0 + 1u) / args.ratio, args.n_comp);
++        device float *dst = (device float *)(scores +
++            (uint64_t)token0 * args.score_token_stride) + comp0;
++        *dst = comp0 < visible ? acc0 : -INFINITY;
++    }
++    if (token1 < args.n_tokens && comp1 < args.n_comp) {
++        const uint visible = min((args.pos0 + token1 + 1u) / args.ratio, args.n_comp);
++        device float *dst = (device float *)(scores +
++            (uint64_t)token1 * args.score_token_stride) + comp1;
++        *dst = comp1 < visible ? acc1 : -INFINITY;
++    }
++}
+diff --git a/rust-star/runtime/src/metal.rs b/rust-star/runtime/src/metal.rs
+index b214fa45..d4098fa5 100644
+--- a/rust-star/runtime/src/metal.rs
++++ b/rust-star/runtime/src/metal.rs
+@@ -8927,7 +8927,7 @@ fn write_long_prefill_continuation_bootstrap_probe_json_payload<W: Write>(
+     crate::artifact::write_json_string(output, report.fixture_id)?;
+     write!(
+         output,
+-        ",\n  \"frontier_tokens\": {},\n  \"first_chunk\": {{\"start\": 0, \"tokens\": {}, \"end\": {}, \"complete_transformer_schedule\": true, \"selected_token\": {}}},\n  \"continuation_chunk\": {{\"start\": {}, \"tokens\": {}, \"end\": {}}},\n  \"schedule\": {{\"tile_rows\": {}, \"tiles\": {}, \"dispatches\": {}, \"wrapped_model_ranges\": {}, \"pointer_matches\": {}}},\n  \"retained_state\": {{\"layer0_raw_rows\": {}, \"layer1_raw_rows\": {}, \"layer2_raw_rows\": {}, \"layer2_attention_compressed_rows\": {}, \"layer2_indexer_compressed_rows\": {}, \"compressor_recurrent_state_retained\": true, \"capacity_growth_preserved_prefix\": true}},\n  \"sparse_transition\": {{\"position\": {}, \"compressed_rows\": {}, \"raw_rows\": {}, \"top_k\": {}, \"combined_dispatches\": {}, \"combined_wrapped_model_ranges\": {}, \"combined_pointer_matches\": {}, \"isolated_sparse_dispatches\": 17, \"native_tile_dispatches\": 11, \"native_sparse_dispatches\": 28, \"sparse_attention_wrapped_model_ranges\": 4, \"split_count\": {}, \"q_b_batch_rows\": 4096, \"tile_rows\": 32, \"raw_ring_capacity\": 4352, \"raw_batch_span\": 4224, \"compressed_capacity\": 2048, \"score_kernel\": \"kernel_dsv4_indexer_scores_tiled\", \"selection_kernel\": \"kernel_argsort_f32_i32_desc+kernel_argsort_merge_f32_i32_desc\", \"topk_order_kernel\": \"kernel_dsv4_sort_i32_rows_asc\", \"attention_kernel\": \"kernel_dsv4_indexed_mixed_attention_heads8\", \"q_b_batch_c0_bitwise_match\": true, \"multirow_indexer_c0_bitwise_match\": true, \"multirow_kqv_back_c0_bitwise_match\": true, \"production_sparse_c0_bitwise_match\": true, \"checksums\": {{\"indexer_q\": {}, \"indexer_weights\": {}, \"indexer_scores\": {}, \"indexer_topk\": {}, \"kqv_out\": {}, \"kqv_back\": {}}}, \"wall_ms\": {:.6}, \"gpu_ms\": {:.6}}},\n  \"layer2_continuation_tail\": {{\"fixture\": ",
++        ",\n  \"frontier_tokens\": {},\n  \"first_chunk\": {{\"start\": 0, \"tokens\": {}, \"end\": {}, \"complete_transformer_schedule\": true, \"selected_token\": {}}},\n  \"continuation_chunk\": {{\"start\": {}, \"tokens\": {}, \"end\": {}}},\n  \"schedule\": {{\"tile_rows\": {}, \"tiles\": {}, \"dispatches\": {}, \"wrapped_model_ranges\": {}, \"pointer_matches\": {}}},\n  \"retained_state\": {{\"layer0_raw_rows\": {}, \"layer1_raw_rows\": {}, \"layer2_raw_rows\": {}, \"layer2_attention_compressed_rows\": {}, \"layer2_indexer_compressed_rows\": {}, \"compressor_recurrent_state_retained\": true, \"capacity_growth_preserved_prefix\": true}},\n  \"sparse_transition\": {{\"position\": {}, \"compressed_rows\": {}, \"raw_rows\": {}, \"top_k\": {}, \"combined_dispatches\": {}, \"combined_wrapped_model_ranges\": {}, \"combined_pointer_matches\": {}, \"isolated_sparse_dispatches\": 17, \"native_tile_dispatches\": 11, \"native_sparse_dispatches\": 28, \"sparse_attention_wrapped_model_ranges\": 4, \"split_count\": {}, \"q_b_batch_rows\": 4096, \"tile_rows\": 32, \"raw_ring_capacity\": 4352, \"raw_batch_span\": 4224, \"compressed_capacity\": 2048, \"score_kernel\": \"rust_star_indexer_scores_tiled64\", \"selection_kernel\": \"kernel_argsort_f32_i32_desc+kernel_argsort_merge_f32_i32_desc\", \"topk_order_kernel\": \"kernel_dsv4_sort_i32_rows_asc\", \"attention_kernel\": \"kernel_dsv4_indexed_mixed_attention_heads8\", \"q_b_batch_c0_bitwise_match\": true, \"multirow_indexer_c0_bitwise_match\": true, \"multirow_kqv_back_c0_bitwise_match\": true, \"production_sparse_c0_bitwise_match\": true, \"checksums\": {{\"indexer_q\": {}, \"indexer_weights\": {}, \"indexer_scores\": {}, \"indexer_topk\": {}, \"kqv_out\": {}, \"kqv_back\": {}}}, \"wall_ms\": {:.6}, \"gpu_ms\": {:.6}}},\n  \"layer2_continuation_tail\": {{\"fixture\": ",
+         report.frontier_tokens,
+         report.first_chunk_tokens,
+         report.first_chunk_tokens - 1,
+@@ -9090,7 +9090,7 @@ pub fn write_long_prefill_continuation_bootstrap_probe_json<W: Write>(
+     })?;
+     let boundary = "  \"layer4_continuation_boundary\": ";
+     let insertion = format!(
+-        "  \"continuation_selector_inventory\": {{\"fixture\": \"prefill-indexer-selectors-8192-v5\", \"layer4_topk_checksum\": {}}},\n  \"layer4_prefix_complete\": {{\"start\": 0, \"rows\": 4096, \"sparse_attention\": {{\"dispatches\": {}, \"wrapped_model_ranges\": {}, \"pointer_matches\": {}, \"kernels\": [\"kernel_dsv4_indexer_scores_tiled\", \"kernel_argsort_f32_i32_desc+kernel_argsort_merge_f32_i32_desc\", \"kernel_dsv4_sort_i32_rows_asc\", \"kernel_dsv4_indexed_mixed_attention_heads8\"], \"checksums\": {:?}, \"c0_bitwise_match\": true}}, \"attention_ffn_tail\": {{\"combined_dispatches\": {}, \"combined_wrapped_model_ranges\": {}, \"combined_pointer_matches\": {}, \"hc_after_attention_checksum\": {}, \"hc_after_ffn_checksum\": {}, \"c0_bitwise_match\": true}}, \"complete_prefix_c0_claim\": true}},\n",
++        "  \"continuation_selector_inventory\": {{\"fixture\": \"prefill-indexer-selectors-8192-v5\", \"layer4_topk_checksum\": {}}},\n  \"layer4_prefix_complete\": {{\"start\": 0, \"rows\": 4096, \"sparse_attention\": {{\"dispatches\": {}, \"wrapped_model_ranges\": {}, \"pointer_matches\": {}, \"kernels\": [\"rust_star_indexer_scores_tiled64\", \"kernel_argsort_f32_i32_desc+kernel_argsort_merge_f32_i32_desc\", \"kernel_dsv4_sort_i32_rows_asc\", \"kernel_dsv4_indexed_mixed_attention_heads8\"], \"checksums\": {:?}, \"c0_bitwise_match\": true}}, \"attention_ffn_tail\": {{\"combined_dispatches\": {}, \"combined_wrapped_model_ranges\": {}, \"combined_pointer_matches\": {}, \"hc_after_attention_checksum\": {}, \"hc_after_ffn_checksum\": {}, \"c0_bitwise_match\": true}}, \"complete_prefix_c0_claim\": true}},\n",
+         report.layer4_continuation_checksums[1],
+         report.layer4_prefix_sparse_dispatches,
+         report.layer4_prefix_sparse_wrapped_model_ranges,
+@@ -62430,7 +62430,8 @@ mod tests {
+         assert!(text.contains("\"layer4_prefix_rebuild\": {\"start\": 0"));
+         assert!(text.contains("\"layer4_prefix_complete\": {\"start\": 0"));
+         assert!(text.contains("\"complete_prefix_c0_claim\": true"));
+-        assert!(text.contains("kernel_dsv4_indexer_scores_tiled"));
++        assert_eq!(text.matches("rust_star_indexer_scores_tiled64").count(), 2);
++        assert!(!text.contains("kernel_dsv4_indexer_scores_tiled"));
+         assert!(text.contains("\"complete_layer4_prefix_c0_claim\": true"));
+         assert!(text.contains("\"matching_production_checksums\": 10"));
+         assert!(text.contains("\"compressed_cache_checksum_match\": true"));
+diff --git a/rust-star/runtime/src/metal_shim.m b/rust-star/runtime/src/metal_shim.m
+index 72b49bc8..01b4801a 100644
+--- a/rust-star/runtime/src/metal_shim.m
++++ b/rust-star/runtime/src/metal_shim.m
+@@ -986,6 +986,22 @@ static int command_succeeded(
+     return encoder;
+ }
+ 
++/* Match indexer_scores.metal: eight queries share Q staging across 64 columns.
++ * Each SIMD group still computes the same 8x8 dot, with unchanged depth/head
++ * accumulation order. Centralize geometry for prefix and continuation batches. */
++static void dispatch_prefill_indexer_scores(
++    id<MTLComputeCommandEncoder> encoder, uint32_t compressed_rows, uint32_t query_rows)
++{
++    enum { query_tile = 8, column_tile = 64, depth = 128 };
++    [encoder setThreadgroupMemoryLength:
++        (query_tile*depth+column_tile*depth)*sizeof(uint16_t)+
++            query_tile*column_tile*sizeof(float) atIndex:0];
++    [encoder dispatchThreadgroups:MTLSizeMake(
++        (compressed_rows+column_tile-1u)/column_tile,
++        (query_rows+query_tile-1u)/query_tile,1)
++        threadsPerThreadgroup:MTLSizeMake(32,column_tile/8,1)];
++}
++
+ static int encode_probe(
+     RustStarMetalContext *context,
+     id<MTLCommandBuffer> command,
+@@ -1515,7 +1531,7 @@ static int ensure_sparse_indexed_pipelines(
+     id<MTLFunction> score =
+         [library newFunctionWithName:@"kernel_dsv4_indexer_score_one_direct"];
+     id<MTLFunction> score_batch =
+-        [library newFunctionWithName:@"kernel_dsv4_indexer_scores_tiled"];
++        [library newFunctionWithName:@"rust_star_indexer_scores_tiled64"];
+     id<MTLFunction> topk =
+         [library newFunctionWithName:@"kernel_argsort_f32_i32_desc"];
+     id<MTLFunction> topk_merge =
+@@ -18337,12 +18353,7 @@ int rust_star_metal_run_prefill_layer2_attention(
+             [encoder setBuffer:context.prefillLayer2IndexerCompressed
+                          offset:0 atIndex:3];
+             [encoder setBuffer:layer2_indexer_score_buffer offset:0 atIndex:4];
+-            [encoder setThreadgroupMemoryLength:
+-                (8u*128u+32u*128u)*sizeof(uint16_t)+8u*32u*sizeof(float)
+-                                        atIndex:0];
+-            [encoder dispatchThreadgroups:MTLSizeMake(
+-                     (compressed_rows+31u)/32u,(rows+7u)/8u,1)
+-                 threadsPerThreadgroup:MTLSizeMake(32,4,1)];
++            dispatch_prefill_indexer_scores(encoder, compressed_rows, rows);
+ 
+             layer2_indexer_dispatches = encode_indexer_topk(context, encoder,
+                 layer2_indexer_score_buffer, layer2_indexer_topk_buffer,
+@@ -45729,11 +45740,7 @@ static int rust_star_metal_run_prefill_layer2_indexed_tile(
+     [encoder setBuffer:indexer_weight_buffer offset:0 atIndex:2];
+     [encoder setBuffer:indexer_compressed_buffer offset:0 atIndex:3];
+     [encoder setBuffer:score_buffer offset:0 atIndex:4];
+-    [encoder setThreadgroupMemoryLength:
+-        (8u*128u+32u*128u)*sizeof(uint16_t)+8u*32u*sizeof(float)
+-                                    atIndex:0];
+-    [encoder dispatchThreadgroups:MTLSizeMake((compressed_capacity+31u)/32u,tile_rows/8u,1)
+-         threadsPerThreadgroup:MTLSizeMake(32,4,1)];
++    dispatch_prefill_indexer_scores(encoder, compressed_capacity, tile_rows);
+ 
+     const uint32_t topk_dispatches = encode_indexer_topk(context, encoder,
+         score_buffer, topk_buffer, topk_args, error, error_bytes);
+@@ -46136,11 +46143,7 @@ int rust_star_metal_run_prefill_layer4_prefix_sparse_batch(
+         [encoder setBuffer:indexer_weight_buffer offset:0 atIndex:2];
+         [encoder setBuffer:context.prefillLayer4IndexerCompressed offset:0 atIndex:3];
+         [encoder setBuffer:score_buffer offset:0 atIndex:4];
+-        [encoder setThreadgroupMemoryLength:
+-            (8u*128u+32u*128u)*sizeof(uint16_t)+8u*32u*sizeof(float)
+-                                    atIndex:0];
+-        [encoder dispatchThreadgroups:MTLSizeMake(n_comp/32u,rows/8u,1)
+-             threadsPerThreadgroup:MTLSizeMake(32,4,1)];
++        dispatch_prefill_indexer_scores(encoder, n_comp, rows);
+ 
+         [encoder setComputePipelineState:context.indexerTopkPipeline];
+         [encoder setBytes:&topk_args length:sizeof(topk_args) atIndex:0];

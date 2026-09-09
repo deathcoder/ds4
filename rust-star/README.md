@@ -18,6 +18,14 @@ tests, 94 Python tests, six live gates and five alternating oracle-v5 pairs
 pass. It adds a 128K performance frontier; the historical 32K comparison below
 remains unchanged.
 
+The [128K score-tile report](reports/128k-score64-b6b0f125/README.md) retains the
+64-column prefill indexer-score tile after ten live gates and five first-attempt
+Rust-to-Rust pairs against accepted ef37e566. Median paired prefill latency is
+8.28% lower, with all five pairs faster; steady throughput rises 1.06% and peak
+RSS is essentially unchanged. All 322 artifacts verify, including full-output
+C0, profiles, rejected attempts and every first-step latency. This completes the
+authorized optimization milestone; the Rust-versus-oracle results stay intact.
+
 The [historical native-tail report](reports/32k-tail-89e32745/README.md) includes
 five pairs, full C0/lifecycle validation, a separate profile and a standalone
 verifier. Rust/reference median prefill 362.284/212.376 s; steady decode 17.064/17.039 tokens/s. Read the report's host-condition limits when comparing

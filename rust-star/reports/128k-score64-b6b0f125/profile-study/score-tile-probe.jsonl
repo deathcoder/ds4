@@ -1,0 +1,23 @@
+{"device":"Apple M1 Ultra","scope":"synthetic isolated indexer scores; not engine throughput","warmups_per_shape_per_kernel":1,"large_shape_pairs":7}
+{"shape":0,"tokens":9,"compressed_rows":1,"position":0,"checked_words":9,"bitwise_match":true,"fnv1a_u32":3200487524016353745}
+{"shape":1,"tokens":9,"compressed_rows":33,"position":120,"checked_words":297,"bitwise_match":true,"fnv1a_u32":5912933230044653279}
+{"shape":2,"tokens":9,"compressed_rows":65,"position":248,"checked_words":585,"bitwise_match":true,"fnv1a_u32":3116543436251769088}
+{"shape":3,"tokens":9,"compressed_rows":1025,"position":4092,"checked_words":9225,"bitwise_match":true,"fnv1a_u32":13751646891569741758}
+{"shape":4,"tokens":32,"compressed_rows":1024,"position":4064,"checked_words":32768,"bitwise_match":true,"fnv1a_u32":9869192686084256828}
+{"shape":5,"tokens":4096,"compressed_rows":8192,"position":28672,"checked_words":33554432,"bitwise_match":true,"fnv1a_u32":17500998018087699641}
+{"shape":5,"pair":1,"order":"AB","baseline_gpu_ms":181.067875000,"candidate_gpu_ms":117.390500001,"ratio":0.648323177}
+{"shape":5,"pair":2,"order":"BA","baseline_gpu_ms":175.727583333,"candidate_gpu_ms":117.456583333,"ratio":0.668401517}
+{"shape":5,"pair":3,"order":"AB","baseline_gpu_ms":177.273708333,"candidate_gpu_ms":117.269625001,"ratio":0.661517301}
+{"shape":5,"pair":4,"order":"BA","baseline_gpu_ms":175.597041667,"candidate_gpu_ms":116.970624999,"ratio":0.666130955}
+{"shape":5,"pair":5,"order":"AB","baseline_gpu_ms":180.460375001,"candidate_gpu_ms":117.476583333,"ratio":0.650982706}
+{"shape":5,"pair":6,"order":"BA","baseline_gpu_ms":178.378416666,"candidate_gpu_ms":117.830666667,"ratio":0.660565717}
+{"shape":5,"pair":7,"order":"AB","baseline_gpu_ms":178.458249999,"candidate_gpu_ms":117.573291666,"ratio":0.658827999}
+{"shape":6,"tokens":4096,"compressed_rows":32768,"position":126976,"checked_words":134217728,"bitwise_match":true,"fnv1a_u32":3140767112740202393}
+{"shape":6,"pair":1,"order":"AB","baseline_gpu_ms":794.384416667,"candidate_gpu_ms":485.081874999,"ratio":0.610638709}
+{"shape":6,"pair":2,"order":"BA","baseline_gpu_ms":784.684541667,"candidate_gpu_ms":486.464208333,"ratio":0.619948760}
+{"shape":6,"pair":3,"order":"AB","baseline_gpu_ms":785.773333333,"candidate_gpu_ms":485.678666667,"ratio":0.618090034}
+{"shape":6,"pair":4,"order":"BA","baseline_gpu_ms":789.965041667,"candidate_gpu_ms":485.342708333,"ratio":0.614385046}
+{"shape":6,"pair":5,"order":"AB","baseline_gpu_ms":782.309583334,"candidate_gpu_ms":484.546625000,"ratio":0.619379636}
+{"shape":6,"pair":6,"order":"BA","baseline_gpu_ms":780.190416667,"candidate_gpu_ms":484.647083334,"ratio":0.621190767}
+{"shape":6,"pair":7,"order":"AB","baseline_gpu_ms":777.692250000,"candidate_gpu_ms":487.728791667,"ratio":0.627148839}
+{"passed":true}

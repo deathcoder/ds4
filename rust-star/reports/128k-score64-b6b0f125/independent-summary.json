@@ -1,0 +1,308 @@
+{
+  "candidate": {
+    "backend": "metal",
+    "build_configuration": {
+      "cargo": "cargo 1.91.1 (ea2d97820 2025-10-10)",
+      "command": [
+        "cargo",
+        "build",
+        "--manifest-path",
+        "rust-star/runtime/Cargo.toml",
+        "--release"
+      ],
+      "profile": {
+        "codegen_units": 1,
+        "lto": "thin",
+        "panic": "abort"
+      },
+      "rustc": "rustc 1.91.1 (ed61e7d7e 2025-11-07)",
+      "rustflags": [],
+      "validated_build_sha256": "78b66534a80a5625847787e17a6f1261db89fbd034a3bd10224ac5316901fa5c"
+    },
+    "executable_sha256": "99f4971e684ed455841065ca597e9ee10055e3a937bbaeb416a9bb9b70800c4c",
+    "model_sha256": "ca22ae2f838e14077c22bc1c1417b71b45b5e5a3687bd96c2ac6e17fdb6261c0",
+    "prompt_sha256": "f53e0d80cb2d4492d24ebd63c7000c397b16ae70f9bf09b3763e5d8323ec209f",
+    "runtime_configuration": {
+      "command": "engine-measure",
+      "comparison_role": "optimized Rust",
+      "decode_steps": 128,
+      "even_prefill_attention_retention": "complete chunk written directly to existing tail-input buffer",
+      "even_prefill_attention_tile_rows": 4096,
+      "even_prefill_tail_rows": 4096,
+      "exact_prefix_rebuild": true,
+      "failure_collection": "completed logit readback only after failed token comparison; successful steps keep GPU selection readback",
+      "generation_command_buffers_per_token": 44,
+      "generation_correctness_collection": false,
+      "generation_host_waits_per_token": 2,
+      "indexer_selector": "upstream deterministic block argsort and merge",
+      "initial_bootstrap_last_completed_layer": 2,
+      "initial_bootstrap_output_head": false,
+      "model_residency_queue_attached": true,
+      "model_residency_required": true,
+      "model_warm_policy": "CPU POSIX_MADV_WILLNEED plus one volatile byte touch per tensor-data page before internal timers; Metal residency-set registration and one-mebibyte-stride GPU view touch inside prefill_ms before decode",
+      "native_activation_scratch_rows": 4096,
+      "native_batched_prefill": true,
+      "native_tail_direct_hc_output": true,
+      "native_tail_dispatches": 25,
+      "native_tail_routed_mid_f32_conversion": false,
+      "native_tail_scratch_reuse": true,
+      "odd_prefill_ingress_input": "immutable predecessor buffer alias",
+      "odd_prefill_ingress_rows": 4096,
+      "partial_bootstrap_model_views": 18,
+      "prefill_chunk_tokens": 4096,
+      "prefill_context_tokens": 131072,
+      "prefill_correctness_collection": false,
+      "prefill_indexer_score_columns": 64,
+      "prefill_indexer_score_query_tile": 8,
+      "prefill_indexer_score_shared_bytes": 20480,
+      "prefill_indexer_score_threads": 256,
+      "prefill_stage_profile_collection": false,
+      "sampling": "lowest-ID greedy argmax; full C0 trace establishes identical non-EOS selections to the reference",
+      "sampling_logits_readback": false,
+      "sampling_result_readback_bytes": 8,
+      "transcript_fixture": "measurement-131072-v5",
+      "transcript_fixture_manifest_sha256": "0290f8fffb2bf2245ec5e6d316a4d9cfdba1e9fc6babcb591374cc72dee5a1e2",
+      "transcript_validation": "after each timed step; first failure rejects run"
+    },
+    "source_commit": "b6b0f12530b83caaeb8dfe5310c4dd346368404d",
+    "source_tree": "9d0ef1559f6a80c9b96c505e99a73a1b4764fa42"
+  },
+  "configuration": {
+    "contexts": [
+      131072
+    ],
+    "gen_tokens": 128,
+    "primary_metric": "gen_steady_tps",
+    "repetitions": 5,
+    "sampling": "fixed 128-step lowest-ID greedy transcript; reference excludes EOS, and every reference full-logit argmax equals the same non-EOS transcript"
+  },
+  "contexts": [
+    {
+      "candidate": {
+        "gen_first_ms": {
+          "count": 5,
+          "mad": 2.877791000000002,
+          "max": 77.195709,
+          "median": 73.072917,
+          "min": 68.050125
+        },
+        "gen_ms": {
+          "count": 5,
+          "mad": 66.75915799999893,
+          "max": 8557.177752,
+          "median": 8461.42262,
+          "min": 8389.277129
+        },
+        "gen_steady_ms": {
+          "count": 5,
+          "mad": 62.123742000001585,
+          "max": 8479.982043,
+          "median": 8385.471912,
+          "min": 8321.227004
+        },
+        "gen_steady_tps": {
+          "count": 5,
+          "mad": 0.11304093899999934,
+          "max": 15.262172266,
+          "median": 15.145241834,
+          "min": 14.976446808
+        },
+        "gen_tps": {
+          "count": 5,
+          "mad": 0.12030235900000008,
+          "max": 15.257572021,
+          "median": 15.127479828,
+          "min": 14.958202775
+        },
+        "prefill_ms": {
+          "count": 5,
+          "mad": 18364.473666999955,
+          "max": 1255311.736625,
+          "median": 1216401.917875,
+          "min": 1179244.798917
+        },
+        "prefill_tps": {
+          "count": 5,
+          "mad": 1.651737101000009,
+          "max": 111.149101629,
+          "median": 107.753858387,
+          "min": 104.413904671
+        },
+        "process_wall_ms": {
+          "count": 5,
+          "mad": 18626.123750000028,
+          "max": 1284596.451792,
+          "median": 1245752.044708,
+          "min": 1207522.963667
+        }
+      },
+      "candidate_over_oracle": {
+        "gen_first_ms": {
+          "count": 5,
+          "mad": 0.018601931565200402,
+          "max": 1.1085186271719538,
+          "median": 0.9603449002339521,
+          "min": 0.9240383890947438
+        },
+        "gen_steady_tps": {
+          "count": 5,
+          "mad": 0.00936697756000604,
+          "max": 1.0268190747728119,
+          "median": 1.0106120212979066,
+          "min": 0.9947068369777442
+        },
+        "gen_tps": {
+          "count": 5,
+          "mad": 0.009805691662912785,
+          "max": 1.0269420315920812,
+          "median": 1.0107102970948054,
+          "min": 0.9938756305965408
+        },
+        "prefill_tps": {
+          "count": 5,
+          "mad": 0.017290969651860166,
+          "max": 1.126338200564367,
+          "median": 1.0902831580137742,
+          "min": 1.0687741002886
+        }
+      },
+      "context": 131072,
+      "invalid_pairs": [],
+      "oracle": {
+        "gen_first_ms": {
+          "count": 5,
+          "mad": 4.595792000000003,
+          "max": 79.079958,
+          "median": 74.260083,
+          "min": 68.5155
+        },
+        "gen_ms": {
+          "count": 5,
+          "mad": 27.994918000000325,
+          "max": 8648.827668,
+          "median": 8620.83275,
+          "min": 8407.480714
+        },
+        "gen_steady_ms": {
+          "count": 5,
+          "mad": 23.39912600000025,
+          "max": 8569.971793,
+          "median": 8546.572667,
+          "min": 8336.602923
+        },
+        "gen_steady_tps": {
+          "count": 5,
+          "mad": 0.040572518999999474,
+          "max": 15.23402292,
+          "median": 14.859757817,
+          "min": 14.819185298
+        },
+        "gen_tps": {
+          "count": 5,
+          "mad": 0.04805988299999875,
+          "max": 15.224536856,
+          "median": 14.847753542,
+          "min": 14.799693659
+        },
+        "prefill_ms": {
+          "count": 5,
+          "mad": 11224.963082999922,
+          "max": 1370079.947333,
+          "median": 1358854.98425,
+          "min": 1280431.391542
+        },
+        "prefill_tps": {
+          "count": 5,
+          "mad": 0.7902706010000031,
+          "max": 102.365500304,
+          "median": 96.457680561,
+          "min": 95.66740996
+        },
+        "process_wall_ms": {
+          "count": 5,
+          "mad": 11212.67337600002,
+          "max": 1399666.374709,
+          "median": 1388453.701333,
+          "min": 1309012.573709
+        }
+      },
+      "predeclared_pairs": 5,
+      "valid_pairs": 5
+    }
+  ],
+  "correctness_class": "C0",
+  "correctness_manifest_sha256": "736d46b775a14ca363aede59b4d187c13d235cb1c9224a3e1e2d269a091c2ac5",
+  "headline_eligible": true,
+  "host_manifest_sha256": "4152db6ef292678ca69f7eace7c92fb14054f82e646bd689d8c30ae881383b60",
+  "oracle": {
+    "backend": "metal",
+    "build_configuration": {
+      "cargo": "cargo 1.91.1 (ea2d97820 2025-10-10)",
+      "command": [
+        "cargo",
+        "build",
+        "--manifest-path",
+        "rust-star/runtime/Cargo.toml",
+        "--release"
+      ],
+      "profile": {
+        "codegen_units": 1,
+        "lto": "thin",
+        "panic": "abort"
+      },
+      "rustc": "rustc 1.91.1 (ed61e7d7e 2025-11-07)",
+      "rustflags": [],
+      "validated_build_sha256": "06dfac6f3e34df2f91adf1ced840c813939d89309c5b2040be82da4d1282d088"
+    },
+    "executable_sha256": "50f59a30144d106564d776a8b7a966d06a3d3b3dbe6c6bc3bf30ad69c81fa752",
+    "model_sha256": "ca22ae2f838e14077c22bc1c1417b71b45b5e5a3687bd96c2ac6e17fdb6261c0",
+    "prompt_sha256": "f53e0d80cb2d4492d24ebd63c7000c397b16ae70f9bf09b3763e5d8323ec209f",
+    "runtime_configuration": {
+      "command": "engine-measure",
+      "comparison_role": "accepted Rust baseline; not the C0 oracle",
+      "decode_steps": 128,
+      "even_prefill_attention_retention": "complete chunk written directly to existing tail-input buffer",
+      "even_prefill_attention_tile_rows": 4096,
+      "even_prefill_tail_rows": 4096,
+      "exact_prefix_rebuild": true,
+      "failure_collection": "completed logit readback only after failed token comparison; successful steps keep GPU selection readback",
+      "generation_command_buffers_per_token": 44,
+      "generation_correctness_collection": false,
+      "generation_host_waits_per_token": 2,
+      "indexer_selector": "upstream deterministic block argsort and merge",
+      "initial_bootstrap_last_completed_layer": 2,
+      "initial_bootstrap_output_head": false,
+      "model_residency_queue_attached": true,
+      "model_residency_required": true,
+      "model_warm_policy": "CPU POSIX_MADV_WILLNEED plus one volatile byte touch per tensor-data page before internal timers; Metal residency-set registration and one-mebibyte-stride GPU view touch inside prefill_ms before decode",
+      "native_activation_scratch_rows": 4096,
+      "native_batched_prefill": true,
+      "native_tail_direct_hc_output": true,
+      "native_tail_dispatches": 25,
+      "native_tail_routed_mid_f32_conversion": false,
+      "native_tail_scratch_reuse": true,
+      "odd_prefill_ingress_input": "immutable predecessor buffer alias",
+      "odd_prefill_ingress_rows": 4096,
+      "partial_bootstrap_model_views": 18,
+      "prefill_chunk_tokens": 4096,
+      "prefill_context_tokens": 131072,
+      "prefill_correctness_collection": false,
+      "prefill_indexer_score_columns": 32,
+      "prefill_indexer_score_query_tile": 8,
+      "prefill_indexer_score_shared_bytes": 11264,
+      "prefill_indexer_score_threads": 128,
+      "prefill_stage_profile_collection": false,
+      "sampling": "lowest-ID greedy argmax; full C0 trace establishes identical non-EOS selections to the reference",
+      "sampling_logits_readback": false,
+      "sampling_result_readback_bytes": 8,
+      "transcript_fixture": "measurement-131072-v5",
+      "transcript_fixture_manifest_sha256": "0290f8fffb2bf2245ec5e6d316a4d9cfdba1e9fc6babcb591374cc72dee5a1e2",
+      "transcript_validation": "after each timed step; first failure rejects run"
+    },
+    "source_commit": "ef37e56610ef813ed4df3f67f013d62e34995170",
+    "source_tree": "289e58fe07f278f04d059f0c6393dba7de05c73f"
+  },
+  "protocol": "rust-star-paired-benchmark-v1",
+  "schema": "rust-star-paired-summary-v1",
+  "source_path": "paired-raw.json"
+}
