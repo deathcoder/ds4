@@ -400,9 +400,9 @@ or a replacement for the historical 32K comparisons. Final input pins and the
 independent evidence/statistics audit pass. Timed execution checks the exact
 pinned transcript; fresh full-logit C0 is separate. Retained validation covers
 two cycles with request-state reset and shared model/context/residency, not
-arbitrary-prompt serving. The next proposed milestone is to profile the 128K
-remaining-transformer chain and evaluate a focused optimization; it is not
-started. Live profile acceptance remains 32K, with internal HC through 24K.
+arbitrary-prompt serving. The next milestone is now authorized and active: profile the 128K
+remaining-transformer chain, validate counters, and evaluate a focused
+optimization with C0 controls and frozen paired measurements. Live profile acceptance remains 32K, with internal HC through 24K.
 
 Current implementation boundaries, evidence, and immediate actions are maintained
 in `RUST_STAR_JOURNAL.md`. As of 2026-09-08, native prefill through all 43 layers

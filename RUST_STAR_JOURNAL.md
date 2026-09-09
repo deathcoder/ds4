@@ -18,6 +18,21 @@ Before changing code:
 Journal entries are reverse chronological. Do not edit old entries to change
 history; add a correction and update the current-state summary.
 
+## 2026-09-09 — 128K profiling and focused optimization milestone started
+
+- User authorized the proposed next milestone from 9b4d7d0d. Work remains on
+  agent/rust-star-bootstrap. Work directory: rust-star/.work/profile128-9b4d7d0d/.
+- Start with the frozen accepted ef37e566 executable and pinned 128K transcript.
+  Capture the existing perturbing engine-profile path, audit all 1,271 native
+  tails / 11,439 component intervals and generation counters before using them.
+  Keep oracle-v5 and all old reports immutable. No optimization selected yet.
+- Use measured attribution to select a focused change. Require host tests/build,
+  fresh full 128K C0, shorter output/lifecycle/profile controls, then five pinned
+  alternating Rust-versus-Rust pairs with warm-ups and independent audits.
+  Preserve failures/rejected hypotheses; retain only supported improvements.
+- Keep journal current and complete portable evidence/docs before stopping at
+  this milestone. No quota burning, extra model concurrency or push requested.
+
 ## 2026-09-09 — 128K measurement and retained-engine milestone COMPLETE
 
 - Candidate ef37e566 passes 317 Rust tests, 94 Python tests, release build,
@@ -3708,6 +3723,11 @@ Next:
 
 ### Current resume checkpoint (updated 2026-09-09)
 
+- ACTIVE: authorized 128K profiling and focused optimization milestone. Frozen
+  ef37e566 baseline profile runs first; strict counter/transcript audit precedes
+  choosing a change. Work: rust-star/.work/profile128-9b4d7d0d/. Follow the newest
+  entry through C0, paired validation and portable report. No change selected yet.
+
 - COMPLETE: 128K measurement/retained-engine milestone, candidate ef37e566.
   317 Rust / 94 Python tests, six live gates, five valid pairs and two warm-ups;
   portable report has 167 verified artifacts. See the newest completion entry
@@ -4537,13 +4557,11 @@ Next:
 
 ## Immediate Next Actions
 
-1. STOP at the completed 128K measurement/retained-engine milestone. All five
-   pairs, correctness/lifecycle gates, final audits, portable evidence and
-   documentation are complete. Do not resume quota-burning mode.
-2. Proposed next milestone, awaiting user instruction: profile the dominant
-   128K remaining-transformer prefill chain, validate component counters and
-   C0, then choose a focused optimization and evaluate it with pinned pairs.
-   Do not assume the dominant 32K kernel remains dominant at 128K.
+1. Complete the authorized 128K profiling/optimization milestone, following the
+   newest entry and current work directory. Do not resume quota-burning mode.
+2. Audit the baseline 128K profile, select a focused optimization, preserve full
+   C0 and lifecycle controls, and evaluate frozen candidates with five paired
+   measurements. Preserve rejected attempts; finish evidence/docs and stop.
 3. Keep oracle-v5 and historical evidence immutable. Full 32K/128 C0 remains
    mandatory; accepted internal HC targets end at 24K. The new 128K comparison
    adds a frontier and does not rewrite historical 32K performance results.
