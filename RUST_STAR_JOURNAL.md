@@ -18,6 +18,30 @@ Before changing code:
 Journal entries are reverse chronological. Do not edit old entries to change
 history; add a correction and update the current-state summary.
 
+## 2026-09-10 — 256K capacity and correctness milestone started
+
+- User authorizes the bounded next milestone: memory audit, repeatable oracle-v5
+  256K outputs, exact native prefill plus 128 decode steps, and retained-session
+  reset/reuse validation. Performance pairing remains a later milestone; no push.
+- Start from accepted score-tile b6b0f125, completion a3010176. Work directory:
+  rust-star/.work/frontier256-a3010176/. Existing evidence and oracle-v5 remain
+  immutable. No model process was active at startup; swap is zero, disk 76GiB free.
+- The current Q/HC/norm/split transients are already chunk-bounded. Audit the
+  context-sized FullKv/compressed histories, sparse selector scratch, device
+  limits and decoder adoption before changing the 128K execution guards.
+- Capacity probe passes with 27.267GiB of simultaneous modeled histories and
+  selected transients; planning estimate is 108.443GiB including history/selector
+  growth from the measured 128K peak. Neither is a complete residency bound.
+  Input hashes pass; first 192K oracle capture is running. Zero swap and no
+  thermal warning observed so far.
+- Candidate extends external-reference guards to 256K and adds two full-output
+  retained diagnostic cycles with actual residency metadata checks. All kernel
+  arithmetic, RoPE constants and existing timing-command limits are unchanged.
+  All 318 release Rust tests, 94 Python tests, release build and formatting
+  checks pass. Next: freeze this candidate, collect both
+  repeat oracle references at 192K/256K, then execute eleven sequential native
+  gates. Preserve shorter controls and every attempt.
+
 ## 2026-09-09 — 128K score-tile optimization accepted; milestone complete
 
 - Retain frozen candidate b6b0f125 against accepted Rust baseline ef37e566.
@@ -3844,7 +3868,15 @@ Next:
 
 ## Current State
 
-### Current resume checkpoint (updated 2026-09-09)
+### Current resume checkpoint (updated 2026-09-10)
+
+- ACTIVE: authorized 256K capacity and correctness milestone, based on a3010176.
+  Work in rust-star/.work/frontier256-a3010176/. Allocation/source preflight
+  passes; first 192K oracle capture runs. All 318 Rust/94 Python tests and
+  release build pass. Finish freeze and repeated oracle outputs, validate complete native 256K/128 C0
+  and retained request reset/reuse, preserve shorter controls, audit/report/commit
+  and stop. No performance pairing or push in this milestone.
+
 
 - COMPLETE: authorized 128K profiling and focused optimization milestone.
   Retain candidate b6b0f125: all ten live gates, 317 Rust/94 Python tests,
@@ -4687,15 +4719,14 @@ Next:
 
 ## Immediate Next Actions
 
-1. The authorized 128K profiling/optimization milestone is complete. Retain
-   b6b0f125 and stop. See the newest entry and the 322-artifact score-tile report.
-   Do not resume quota-burning mode or start another optimization.
-2. Preserve oracle-v5, the frozen candidates and all historical evidence,
-   including rejected attempts. No model job or observer remains active.
-3. 256K measurements and the coding-agent corpus remain future work requiring
-   a new milestone. Accepted internal HC targets still end at 24K.
-4. Do not push. GitHub Actions billing and secure remote access remain in the
-   manual ledger.
+1. Complete the authorized 256K capacity/correctness milestone from a3010176.
+   Begin with source/device/memory preflight; use frontier256-a3010176/.
+2. Preserve oracle-v5 and historical fixtures. Require repeatable full 256K
+   prefill plus 128 decode rows, shorter C0 controls and retained-session checks.
+3. Run one model workload at a time and preserve every attempt. Update this
+   journal as results arrive. Finish the portable report and local commits, stop.
+4. Performance pairing, larger frontiers and coding-agent corpus remain future.
+   Do not push or resume quota-burning mode.
 
 ## Entries
 

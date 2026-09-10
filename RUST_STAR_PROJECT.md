@@ -413,8 +413,10 @@ all five pairs faster; steady throughput is 1.06% higher and peak-RSS ratio is
 `rust-star/reports/128k-score64-b6b0f125/README.md` verifies 322 artifacts,
 including independent statistics, final pins and all rejected attempts. This
 comparison does not replace the historical Rust-versus-oracle results.
-Internal HC remains accepted through 24K. Stop at this completed milestone;
-256K measurements and the coding-agent corpus remain future work.
+Internal HC remains accepted through 24K. The next bounded milestone is now
+authorized: audit 256K capacity, establish repeatable oracle-v5 full outputs,
+validate native 256K/128 C0 and retained-session reset/reuse, then report and
+stop. Performance pairing and the coding-agent corpus remain future work.
 
 Current implementation boundaries, evidence, and immediate actions are maintained
 in `RUST_STAR_JOURNAL.md`. As of 2026-09-09, native prefill through all 43 layers

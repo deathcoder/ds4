@@ -4189,6 +4189,7 @@ pub struct LongPrefillChunkProbeReport {
     pub checked_decode_steps: u32,
     pub decode_logits_checksum: u64,
     pub decode_tokens_checksum: u64,
+    pub model_residency_reused: Option<bool>,
     pub selected_token: u32,
     pub checked_logits: u32,
     pub logits_checksum: u64,
@@ -25598,7 +25599,7 @@ mod imp {
                 )));
             }
             if !(matches!(prefill_rows, 2_048 | 4_096)
-                || ((32_768..=131_072).contains(&prefill_rows) && prefill_rows % 4096 == 0))
+                || ((32_768..=262_144).contains(&prefill_rows) && prefill_rows % 4096 == 0))
                 || raw.layers != 43
                 || raw.raw_rows_per_layer != 128
                 || raw.ratio4_rows_per_layer != prefill_rows / 4
@@ -26320,7 +26321,7 @@ mod imp {
             return Err(Error::invalid("invalid prefill boundary tile width"));
         }
         if (prefill_rows != 2048
-            && (prefill_rows < 4096 || prefill_rows > 131072 || prefill_rows % 4096 != 0))
+            && (prefill_rows < 4096 || prefill_rows > 262144 || prefill_rows % 4096 != 0))
             || prefill_rows < rows
             || prefill_rows % rows != 0
             || position_start % rows != 0
@@ -58302,6 +58303,15 @@ mod imp {
 
 #[cfg(not(target_os = "macos"))]
 mod imp {
+    pub fn run_retained_long_prefill_reference_probe(
+        _model: &crate::model::MappedModel,
+        _reference: &crate::frontier_reference::FrontierReference,
+    ) -> crate::Result<[super::LongPrefillChunkProbeReport; 2]> {
+        Err(crate::Error::invalid(
+            "retained external frontier comparison requires macOS Metal",
+        ))
+    }
+
     pub fn run_long_prefill_reference_probe(
         _model: &crate::model::MappedModel,
         _reference: &crate::frontier_reference::FrontierReference,
@@ -59053,9 +59063,10 @@ pub use imp::{
     run_prefill_qkv_boundary_probe, run_probe, run_q8_projection_probe, run_q_head_kv_fusion_bench,
     run_q_head_threads_bench, run_qb_rows_bench, run_qkv_pair_bench,
     run_ratio128_compressor_replay_probe, run_retained_decoder_step_probe,
-    run_retained_engine_measurement, run_retained_sparse_boundary_probe,
-    run_retained_sparse_multimerge_probe, run_rope_kv_store_probe, run_routed_nsg_bench,
-    run_sparse_indexed_attention_probe, LayerExecutor,
+    run_retained_engine_measurement, run_retained_long_prefill_reference_probe,
+    run_retained_sparse_boundary_probe, run_retained_sparse_multimerge_probe,
+    run_rope_kv_store_probe, run_routed_nsg_bench, run_sparse_indexed_attention_probe,
+    LayerExecutor,
 };
 
 #[cfg(test)]
@@ -59072,6 +59083,7 @@ mod tests {
             selected_token: 0,
             checked_logits: 0,
             logits_checksum: 0,
+            model_residency_reused: None,
         };
         let accepted = |report: &super::LongPrefillChunkProbeReport| {
             super::write_long_prefill_chunk_probe_json(&mut Vec::new(), report).is_ok()

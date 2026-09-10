@@ -1353,13 +1353,21 @@ cargo run --release -- long-prefill-reference-probe MODEL.gguf \
   TOKENS.u32le.bin SELECTED.u32le.bin LOGITS.f32le.bin REPORT.json
 ```
 
-Prompt length must be a 4K multiple from 32K through 128K and extend the pinned
+Prompt length must be a 4K multiple from 32K through 256K and extend the pinned
 32K corpus tokens. Each logit row contains 129,280 little-endian FP32 words;
 selected IDs are little-endian u32. Supply one prefill row or 129 rows covering
-prefill and 128 decode steps; 128K requires all 129. The checker rejects invalid
+prefill and 128 decode steps; 128K and 256K require all 129. The checker rejects invalid
 token IDs, malformed lengths, non-finite logits and inconsistent greedy choices.
 The output path must not exist. Oracle/model provenance is authenticated by the
 report's evidence runner, not by this runtime input parser.
+
+Append `--retained` to check two complete output traces in one process. This
+requires all 129 reference rows, warms model pages once, resets request state
+between cycles and requires the same context to reuse model residency. Its JSON
+contains both full-output receipts and explicit lifecycle checks. It cannot be
+combined with profiling and does not produce a paired timing sample. The 256K
+extension is under validation in the current capacity/correctness milestone;
+existing performance commands retain their accepted 128K maximum.
 
 Append `--profile-json PROFILE.json` to collect perturbing prefill counters while
 checking the same complete output tensors. Both output paths must be new and

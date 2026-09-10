@@ -860,11 +860,14 @@ fn run_long_prefill_with_reference(
     // Only the pinned 128K timing path bypasses the built-in diagnostic limit.
     let extended_measurement = frontier == 131072 && !collect_checks && !validate_outputs;
     if frontier < 12288
-        || frontier > if reference.is_some() || extended_measurement {
-            131072
-        } else {
-            32768
-        }
+        || frontier
+            > if reference.is_some() {
+                262144
+            } else if extended_measurement {
+                131072
+            } else {
+                32768
+            }
         || frontier % 4096 != 0
     {
         return Err(Error::invalid(
@@ -1100,27 +1103,31 @@ fn run_long_prefill_with_reference(
             ));
         }
     }
-    let (checked_decode_steps, decode_logits_checksum, decode_tokens_checksum) =
-        if (frontier == 32768 || reference.is_some()) && validate_outputs {
-            if let Some(reference) = reference {
-                if reference.selected.len() == 1 {
-                    (0, 0, 0)
-                } else {
-                    run_long_prefill_decode_reference(
-                        model,
-                        &context,
-                        selected_token,
-                        frontier,
-                        &reference.selected,
-                        &reference.logits[129280..],
-                    )?
-                }
+    let (
+        checked_decode_steps,
+        decode_logits_checksum,
+        decode_tokens_checksum,
+        model_residency_reused,
+    ) = if (frontier == 32768 || reference.is_some()) && validate_outputs {
+        if let Some(reference) = reference {
+            if reference.selected.len() == 1 {
+                (0, 0, 0, None)
             } else {
-                run_long_prefill_decode(model, &context, selected_token)?
+                run_long_prefill_decode_reference(
+                    model,
+                    &context,
+                    selected_token,
+                    frontier,
+                    &reference.selected,
+                    &reference.logits[129280..],
+                )?
             }
         } else {
-            (0, 0, 0)
-        };
+            run_long_prefill_decode(model, &context, selected_token)?
+        }
+    } else {
+        (0, 0, 0, None)
+    };
     timing.long_prefill_profile = profile.json();
     Ok((
         context,
@@ -1131,6 +1138,7 @@ fn run_long_prefill_with_reference(
             checked_decode_steps,
             decode_logits_checksum,
             decode_tokens_checksum,
+            model_residency_reused,
             selected_token,
             checked_logits,
             logits_checksum: if validate_outputs {
@@ -1154,7 +1162,7 @@ fn run_long_prefill_decode(
     model: &MappedModel,
     context: &Context,
     first_token: u32,
-) -> Result<(u32, u64, u64)> {
+) -> Result<(u32, u64, u64, Option<bool>)> {
     let (tokens, expected) = prefill_decode_32768_fixture()?;
     run_long_prefill_decode_reference(model, context, first_token, 32768, &tokens, &expected)
 }
@@ -1166,14 +1174,14 @@ fn run_long_prefill_decode_reference(
     frontier: u32,
     tokens: &[u32],
     expected: &[f32],
-) -> Result<(u32, u64, u64)> {
+) -> Result<(u32, u64, u64, Option<bool>)> {
     if first_token != tokens[0] {
         return Err(Error::invalid(
             "native prefill selection differs from the decode reference",
         ));
     }
     context.adopt_prefill_decoder_state(frontier, frontier + 128)?;
-    context.prepare_model_residency()?;
+    let residency = context.prepare_model_residency()?;
     let mut layers = (0..43)
         .map(|layer| PreparedLayerExecution::new_cold_with_capacity(model, layer, frontier + 128))
         .collect::<Result<Vec<_>>>()?;
@@ -1220,7 +1228,12 @@ fn run_long_prefill_decode_reference(
         input = token;
         eprintln!("rust-star: decode position {position} all 129280 logits exact, token {token}");
     }
-    Ok((128, checksum_f32(&actual_logits), checksum_u32(&selected)))
+    Ok((
+        128,
+        checksum_f32(&actual_logits),
+        checksum_u32(&selected),
+        Some(residency.reused == 1),
+    ))
 }
 
 // This gate exercises the timing path's prefill without internal readbacks,
@@ -1305,4 +1318,48 @@ pub fn run_long_prefill_reference_probe(
         Some(reference),
     )?;
     Ok((report, timing.long_prefill_profile))
+}
+
+/// Two full-output requests share immutable model resources; request state is reset.
+/// This diagnostic warms model pages once and is not a timing sample.
+pub fn run_retained_long_prefill_reference_probe(
+    model: &MappedModel,
+    reference: &crate::frontier_reference::FrontierReference,
+) -> Result<[LongPrefillChunkProbeReport; 2]> {
+    if reference.selected.len() != 129 {
+        return Err(Error::invalid(
+            "retained frontier validation requires all 129 output rows",
+        ));
+    }
+    model.warm_tensor_pages()?;
+    let (context, first, _) = run_long_prefill_with_reference(
+        model,
+        reference.frontier(),
+        None,
+        false,
+        true,
+        false,
+        Some(reference),
+    )?;
+    if first.model_residency_reused != Some(false) {
+        return Err(Error::invalid(
+            "fresh frontier request did not establish model residency",
+        ));
+    }
+    context.reset_request_state()?;
+    let (_, retained, _) = run_long_prefill_with_reference(
+        model,
+        reference.frontier(),
+        Some(context),
+        false,
+        true,
+        false,
+        Some(reference),
+    )?;
+    if retained.model_residency_reused != Some(true) {
+        return Err(Error::invalid(
+            "retained frontier request did not reuse model residency",
+        ));
+    }
+    Ok([first, retained])
 }

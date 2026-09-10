@@ -150,12 +150,13 @@ fn run() -> Result<()> {
     if command == "long-prefill-reference-probe" {
         let args: Vec<_> = arguments.collect();
         if args.len() == 1 && matches!(args[0].to_str(), Some("--help") | Some("-h")) {
-            println!("usage: rust-star long-prefill-reference-probe MODEL.gguf TOKENS.u32le SELECTED.u32le LOGITS.f32le REPORT.json [--profile-json PATH]\nCompares every output word with external reference vectors through 128K. Optional prefill profiling must pass the same full-output check. Oracle provenance must be verified separately; this is not a throughput command.");
+            println!("usage: rust-star long-prefill-reference-probe MODEL.gguf TOKENS.u32le SELECTED.u32le LOGITS.f32le REPORT.json [--profile-json PATH | --retained]\nCompares every output word with external reference vectors through 256K. Optional prefill profiling must pass the same full-output check. --retained checks two full-output cycles with request reset and shared model/context/residency. Oracle provenance must be verified separately; this is not a throughput command.");
             return Ok(());
         }
-        if args.len() != 5 && !(args.len() == 7 && args[5] == "--profile-json") {
+        let retained = args.len() == 6 && args[5] == "--retained";
+        if args.len() != 5 && !(args.len() == 7 && args[5] == "--profile-json") && !retained {
             return Err(Error::invalid(
-                "expected model, prompt tokens, selected tokens, full logits and report paths, optionally --profile-json PATH",
+                "expected model, prompt tokens, selected tokens, full logits and report paths, optionally --profile-json PATH or --retained",
             ));
         }
         if Path::new(&args[4]).exists() {
@@ -176,6 +177,22 @@ fn run() -> Result<()> {
         )?;
         let model = MappedModel::open(Path::new(&args[0]))?;
         validate_resident_q2(model.gguf())?;
+        if retained {
+            let reports = rust_star_runtime::metal::run_retained_long_prefill_reference_probe(
+                &model, &reference,
+            )?;
+            let mut file = std::fs::OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .open(&args[4])?;
+            writeln!(file, "{{\"schema\":\"rust-star-retained-frontier-check-v1\",\"frontier_tokens\":{},\"cycles\":2,\"same_process\":true,\"same_model_mapping\":true,\"same_metal_context\":true,\"request_state_reset_between_cycles\":true,\"model_warm_reused_on_retained_cycle\":true,\"first_model_residency_reused\":false,\"retained_model_residency_reused\":true,\"paired_protocol_eligible\":false,\"throughput_claim\":false,\"checks\":[", reference.frontier())?;
+            write_external_frontier_report(&mut file, &reports[0])?;
+            writeln!(file, ",")?;
+            write_external_frontier_report(&mut file, &reports[1])?;
+            writeln!(file, "]}}")?;
+            println!("retained external frontier {}: both full-output cycles exact; request reset and residency reuse passed", reference.frontier());
+            return Ok(());
+        }
         let (report, profile) = rust_star_runtime::metal::run_long_prefill_reference_probe(
             &model,
             &reference,
@@ -193,9 +210,7 @@ fn run() -> Result<()> {
             .write(true)
             .create_new(true)
             .open(&args[4])?;
-        writeln!(file, "{{\"schema\":\"rust-star-external-frontier-check-v1\",\"frontier_tokens\":{},\"checked_logits\":{},\"checked_decode_steps\":{},\"prefill_logits_checksum\":{},\"decode_logits_checksum\":{},\"decode_tokens_checksum\":{},\"selected_token\":{},\"external_reference_match\":true,\"oracle_provenance_verified_by_runtime\":false,\"throughput_claim\":false}}",
-            report.frontier,report.checked_logits,report.checked_decode_steps,report.logits_checksum,
-            report.decode_logits_checksum,report.decode_tokens_checksum,report.selected_token)?;
+        write_external_frontier_report(&mut file, &report)?;
         println!(
             "external frontier {}: all {} prefill logits and {} full decode rows exact",
             report.frontier, report.checked_logits, report.checked_decode_steps
@@ -6029,4 +6044,14 @@ fn retained_sparse_multimerge_probe_usage() -> &'static str {
 
 fn retained_decoder_step_probe_usage() -> &'static str {
     "usage: rust-star retained-decoder-step-probe MODEL.gguf [--json PATH]\n\nSeeds independently repeated retained state immediately before position 8195, executes layers 0 through 42 with live HC handoffs, and runs the output head. Every layer HC and all 129,280 logits must match DwarfStar bit-for-bit. This is a complete retained decoder step with seeded history; native prefill and throughput claims remain false."
+}
+
+fn write_external_frontier_report<W: Write>(
+    file: &mut W,
+    report: &rust_star_runtime::metal::LongPrefillChunkProbeReport,
+) -> Result<()> {
+    writeln!(file, "{{\"schema\":\"rust-star-external-frontier-check-v1\",\"frontier_tokens\":{},\"checked_logits\":{},\"checked_decode_steps\":{},\"prefill_logits_checksum\":{},\"decode_logits_checksum\":{},\"decode_tokens_checksum\":{},\"selected_token\":{},\"external_reference_match\":true,\"oracle_provenance_verified_by_runtime\":false,\"throughput_claim\":false}}",
+            report.frontier,report.checked_logits,report.checked_decode_steps,report.logits_checksum,
+            report.decode_logits_checksum,report.decode_tokens_checksum,report.selected_token)?;
+    Ok(())
 }

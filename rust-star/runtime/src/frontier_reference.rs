@@ -21,14 +21,16 @@ impl FrontierReference {
         let tokens = words(tokens)?;
         let selected = words(selected)?;
         let n = tokens.len();
-        if !(32768..=131072).contains(&n) || n % 4096 != 0 {
+        if !(32768..=262144).contains(&n) || n % 4096 != 0 {
             return Err(Error::invalid(
-                "external frontier must be aligned 32K through 128K",
+                "external frontier must be aligned 32K through 256K",
             ));
         }
-        if !matches!(selected.len(), 1 | 129) || (n == 131072 && selected.len() != 129) {
+        if !matches!(selected.len(), 1 | 129)
+            || (matches!(n, 131072 | 262144) && selected.len() != 129)
+        {
             return Err(Error::invalid(
-                "reference requires one prefill row or 129 full rows; 128K requires 129",
+                "reference requires one prefill row or 129 full rows; 128K and 256K require 129",
             ));
         }
         if tokens.iter().chain(&selected).any(|&t| t >= 129280) {
@@ -93,10 +95,26 @@ mod tests {
     #[test]
     fn rejects_invalid_frontier_and_partial_words() {
         assert!(FrontierReference::from_bytes(&[0], &[], &[]).is_err());
-        for n in [0, 32767, 32769, 131073] {
+        for n in [0, 32767, 32769, 131073, 262145, 266240] {
             assert!(FrontierReference::from_bytes(&vec![0; n * 4], &[0; 4], &[]).is_err());
         }
     }
+    #[test]
+    fn larger_frontiers_require_complete_decode_traces() {
+        let logits = vec![0; 129280 * 4];
+        for n in [131072, 262144] {
+            assert!(FrontierReference::from_bytes(&vec![0; n * 4], &[0; 4], &logits).is_err());
+        }
+        let reference = FrontierReference::from_bytes(
+            &vec![0; 262144 * 4],
+            &vec![0; 129 * 4],
+            &vec![0; 129 * 129280 * 4],
+        )
+        .unwrap();
+        assert_eq!(reference.frontier(), 262144);
+        assert_eq!(reference.selected.len(), 129);
+    }
+
     #[test]
     fn checks_full_rows_greedy_selection_and_finiteness() {
         let tokens = vec![0; 32768 * 4];
