@@ -18,6 +18,45 @@ Before changing code:
 Journal entries are reverse chronological. Do not edit old entries to change
 history; add a correction and update the current-state summary.
 
+## 2026-09-10 — Correct dense decode SIMD-group selection; revalidation pending
+
+- Native gathered decode now follows oracle-v5: one SIMD group through 2048
+  keys, two through 4096, four above; pipeline constants, shared memory and
+  dispatch dimensions agree. The two additional pipelines are cached lazily.
+  Root Metal kernels, prefill arithmetic and RoPE remain unchanged.
+- Synthetic GPU regression compiles the actual shim factory and separately
+  compiles unmodified oracle-v5 FlashAttention/reduction. All 294,912 FP32 words
+  match across nine shapes (128 through 4097 keys). The previous fixed dispatch
+  matches all short controls and differs above 2048; at 2176 keys, 26,153 words
+  differ. An initial shared-library control and the corrected standalone test
+  wrapper are preserved with build/source/result hashes in
+  rust-star/.work/frontier256-decode-nsg/.
+- 318 release Rust tests, 94 Python tests, formatting and input rehashes pass.
+  Release executable build/freeze and all eleven live native gates are next.
+  Accepted oracle captures are reused after reference rehashing. The rejected
+  c1047756 attempt remains immutable. No new full-model gate has started.
+- Observe system-wide compression from before the first corrected native gate;
+  this is a post-rejection baseline, not a fresh boot. Do not infer total memory
+  or uncompressed residency from process RSS. No performance pairing or push.
+
+## 2026-09-10 — Reject first 256K decode attempt; investigate SIMD-group boundary
+
+- Frozen c1047756 passes eight shorter gates and the complete 256K prefill
+  comparison, then fails at decode position 262144, logit 0: actual c16ca0ca,
+  expected c16ea2a8. No retained gate starts. Preserve the full first attempt in
+  rust-star/.work/frontier256-a3010176/, including failed-attempt.json, all raw
+  outputs, sources/build hashes, host and memory observations. No blind retry.
+- Both observers and the queued validation runner have exited. All four oracle
+  captures remain accepted and immutable. No model workload is active.
+- The oracle's dense decode FlashAttention selects two SIMD groups when the key
+  count exceeds 2048. Rust fixes one SIMD group and 3328 bytes of shared memory.
+  At 256K the odd layers have 128 + 2048 = 2176 keys. Verify this policy mismatch
+  with a small synthetic GPU regression, then correct the native selection and
+  dispatch, freeze a new candidate, and rerun every required live gate.
+- The capacity evidence includes system-wide memory compression and small swap
+  growth; it does not prove uncompressed residency. Preserve this rejected
+  attempt in the final report and do not describe validation as retry-free.
+
 ## 2026-09-10 — 256K capacity and correctness milestone started
 
 - User authorizes the bounded next milestone: memory audit, repeatable oracle-v5
@@ -32,15 +71,38 @@ history; add a correction and update the current-state summary.
 - Capacity probe passes with 27.267GiB of simultaneous modeled histories and
   selected transients; planning estimate is 108.443GiB including history/selector
   growth from the measured 128K peak. Neither is a complete residency bound.
-  Input hashes pass; first 192K oracle capture is running. Zero swap and no
-  thermal warning observed so far.
+  Input hashes pass. Oracle captures show zero recorded swap and no thermal
+  warning.
 - Candidate extends external-reference guards to 256K and adds two full-output
   retained diagnostic cycles with actual residency metadata checks. All kernel
   arithmetic, RoPE constants and existing timing-command limits are unchanged.
   All 318 release Rust tests, 94 Python tests, release build and formatting
-  checks pass. Next: freeze this candidate, collect both
-  repeat oracle references at 192K/256K, then execute eleven sequential native
-  gates. Preserve shorter controls and every attempt.
+  checks pass. Candidate c1047756 is frozen with executable SHA-256
+  f427ceee303921482d3b4550195ee346cb39367525f98916ae4e4a356481d280;
+  all runtime and imported Metal sources are hash-bound. CLI help and mutually
+  exclusive diagnostic options pass. First 192K capture passes at 06:31 UTC:
+  129,280 finite logits, selected token 5164, 1882.664s, 80.894GiB peak RSS.
+  The 192K repeat passes at 07:02 UTC (1837.463s, 80.894GiB peak RSS); both
+  full vectors agree byte for byte. First 256K capture passes at 07:51 UTC:
+  all 129 finite rows (16,677,120 words), prefill token 7221, last token 100464,
+  2987.565s and 80.896GiB peak RSS. The 256K repeat passes at 08:43 UTC:
+  3116.494s, 80.896GiB peak RSS, all 16,677,120 output words and greedy tokens
+  agree byte for byte. All four captures and the capture runner pass.
+  The first six native gates pass from the frozen binary: 2K, 8K (including
+  score-tile metadata), 12K internal state, full 32K output, 32K internal and
+  32K profiled output. The strict 287-packet/2,583-interval audit passes.
+  Fresh full-output 128K control also passes: all 16,677,120 words and 128
+  decode steps match. New 192K prefill-only control also passes all 129,280
+  logits (token 5164). Eight gates pass; full 256K prefill/decode is active,
+  followed by retained 128K/256K. Internal HC remains capped at 24K.
+  First observed host swap is 6.12MiB during native controls; no thermal warning
+  is recorded. Late fresh-256K RSS variation prompts system-memory inspection:
+  an initial vm_stat snapshot reports 20.419GiB compressor storage representing
+  25.338GiB of uncompressed pages. The timed series begins at 10:44:55 UTC and
+  continues through remaining runs. These are system-wide counters with no
+  earlier baseline, not per-process attribution or proof of an uncompressed
+  resident working set. Preserve raw counters and the initial snapshot timing
+  bounds alongside all existing observations and attempts.
 
 ## 2026-09-09 — 128K score-tile optimization accepted; milestone complete
 
@@ -3870,12 +3932,13 @@ Next:
 
 ### Current resume checkpoint (updated 2026-09-10)
 
-- ACTIVE: authorized 256K capacity and correctness milestone, based on a3010176.
-  Work in rust-star/.work/frontier256-a3010176/. Allocation/source preflight
-  passes; first 192K oracle capture runs. All 318 Rust/94 Python tests and
-  release build pass. Finish freeze and repeated oracle outputs, validate complete native 256K/128 C0
-  and retained request reset/reuse, preserve shorter controls, audit/report/commit
-  and stop. No performance pairing or push in this milestone.
+- ACTIVE: authorized 256K capacity/correctness milestone. Rejected c1047756
+  is preserved. Corrected native decode SIMD-group selection passes the separate
+  oracle-shader GPU regression (nine shapes, 294,912 exact words), 318 Rust and
+  94 Python tests. Replacement candidate build/freeze and all eleven native
+  gates are pending in frontier256-decode-nsg/. Reuse rehashed accepted oracle
+  captures. Report both attempts and system memory compression; finish with
+  independent audit, local commit and stop. No push or performance pairs.
 
 
 - COMPLETE: authorized 128K profiling and focused optimization milestone.
@@ -4719,14 +4782,14 @@ Next:
 
 ## Immediate Next Actions
 
-1. Complete the authorized 256K capacity/correctness milestone from a3010176.
-   Begin with source/device/memory preflight; use frontier256-a3010176/.
-2. Preserve oracle-v5 and historical fixtures. Require repeatable full 256K
-   prefill plus 128 decode rows, shorter C0 controls and retained-session checks.
-3. Run one model workload at a time and preserve every attempt. Update this
-   journal as results arrive. Finish the portable report and local commits, stop.
-4. Performance pairing, larger frontiers and coding-agent corpus remain future.
-   Do not push or resume quota-burning mode.
+1. Preserve rejected c1047756 256K decode evidence and unchanged oracle references.
+2. Complete the release build and freeze the corrected candidate; the separate
+   oracle-shader SIMD-group GPU regression and release unit tests now pass.
+3. Rerun all eleven native gates, including both retained full-output cycles at
+   128K and 256K, with one model workload at a time. Record every attempt.
+4. Audit and package all outcomes, process RSS and system-memory counters with
+   coverage/attribution limits, final input hashes and source snapshots. Update
+   documentation, commit locally, stop. No push, performance pairs or new corpus.
 
 ## Entries
 
