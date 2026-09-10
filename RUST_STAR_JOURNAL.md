@@ -18,6 +18,89 @@ Before changing code:
 Journal entries are reverse chronological. Do not edit old entries to change
 history; add a correction and update the current-state summary.
 
+## 2026-09-10 — Bound long-context handoff resources; full-size copy regression passes
+
+- Above 128K, handoff now submits one layer per command, waits for completion,
+  and removes that layer's history and executor-slot aliases. A per-command
+  autorelease pool retires Metal's strong resource references. All 229 copy
+  ranges, shape checks and destination keys match the rejected predecessor.
+  The <=128K one-command schedule remains; model mapping, view cache and
+  attached residency are preserved. Rust validates 43 versus one commands.
+- The production handoff and request reset pass two full-size synthetic cycles
+  at each of 128K and 256K: 2,728,804,352 transferred FP32 words and all
+  untouched destination tails match deterministic GPU-filled values. Weak
+  ownership checks prove completed layer sources retire before the next
+  command, including slot aliases. Final cleanup and model/residency identity
+  through reset pass. The synthetic residency allocation is small; full-model
+  retained C0 is still required and is not claimed by this regression.
+- Evidence is in rust-star/.work/frontier256-handoff-bounded/. Both prior
+  rejected attempts are preserved with source/build hashes and raw logs.
+  Observers and model runner from the prior attempt are stopped and drained.
+  All 318 Rust and 94 Python tests and the input/host preflight pass. The
+  release executable is building, followed by freezing and all eleven gates.
+  Final acceptance, report,
+  documentation and local completion commit remain pending. No push or pairs.
+
+## 2026-09-10 — Reject retained 256K second-cycle handoff after Metal memory failure
+
+- Frozen 0d5f50ff passes ten gates, including fresh 256K full C0 and both retained
+  128K cycles. The first retained 256K cycle also passes all 16,677,120 words.
+  The second cycle passes its 129,280-word prefill comparison, then Metal rejects
+  the prefill-to-decode blit with Insufficient Memory
+  (00000008:kIOGPUCommandBufferCallbackErrorOutOfMemory). No second-cycle decode
+  step runs, and the retained 256K gate is not accepted.
+- Failure finishes at 16:49:50.847831 UTC, after 7973.811s for the retained
+  process, with 109,890,371,584 bytes peak RSS. Complete logs, ten successful
+  outputs, the first retained-256K trace, source/build hashes and all system
+  observations remain in rust-star/.work/frontier256-decode-nsg/. Its
+  failed-attempt.json verifies that the frozen executable and every source
+  remain unchanged. System compression and multi-GiB swap occur; these are
+  whole-system counters and do not prove per-process attribution.
+- Static handoff currently encodes all 43 layers' FullKv/compressed source and
+  destination buffers in one command, and releases prefill state only after
+  it completes. On the second cycle, the model residency set remains attached
+  from the first decode. Investigate a bounded per-layer GPU ownership transfer
+  at long contexts, preserving model/context/residency reuse and exact copies.
+  Do not blindly retry the unchanged candidate or weaken the retained gate.
+- The model runner has exited and the observers are being stopped. Preserve
+  this second rejected attempt alongside c1047756. No final acceptance report
+  or completion documentation was generated. Fix and regress the memory
+  boundary, freeze a new candidate and rerun required gates before acceptance.
+
+## 2026-09-10 — Retained 128K reset and reuse pass; final 256K gate active
+
+- Retained 128K completes at 2026-09-10T14:36:57.035948+00:00: both complete traces match
+  all 16,677,120 FP32 words each. Same process, model mapping, Metal context,
+  request reset, model-warm reuse and retained residency checks pass. The first
+  residency-reused flag is false and the second is true. Diagnostic elapsed
+  time is 2636.090s, with 94.710GiB peak RSS.
+- Ten of eleven corrected gates pass. The final retained 256K process starts
+  immediately afterward and remains active, requiring two complete traces.
+  At 15:23 UTC its first prefill has reached 221,184 tokens; no final output
+  acceptance is claimed yet. System compression fluctuates substantially and
+  swap remains in use; preserve the complete observer time series.
+- Candidate 0d5f50ff remains frozen. Independent final audit, final input hashes,
+  report packaging, documentation completion and a local evidence commit remain
+  pending. No push or performance pairing is authorized.
+
+## 2026-09-10 — Corrected fresh 256K full-output pass; retained gates active
+
+- Frozen 0d5f50ff completes fresh 256K at 13:53:00 UTC: all 129 output rows,
+  16,677,120 FP32 words and 128 decode steps match the accepted oracle-v5
+  reference. Diagnostic process time is 4019.475s and peak RSS 23.327GiB.
+  This validates the dispatch correction at the previous first-decode failure.
+- All nine gates through fresh 256K pass. The explicitly warmed retained 128K
+  gate is running, followed by retained 256K. Each requires two complete traces
+  with request reset and model/context/residency reuse; neither is accepted yet.
+- System swap reaches approximately 2368MiB during corrected fresh 256K and
+  compression also occurs. These are whole-system observations, not attributable
+  solely to the candidate. Fresh process RSS is not total memory use and does
+  not prove an optimization or uncompressed residency. Full time series remain
+  in rust-star/.work/frontier256-decode-nsg/.
+- Keep the candidate frozen. Finish both retained gates, independent audit,
+  final input verification and observation coverage, then package evidence,
+  update documentation, commit locally and stop. No push or performance pairs.
+
 ## 2026-09-10 — Correct dense decode SIMD-group selection; revalidation pending
 
 - Native gathered decode now follows oracle-v5: one SIMD group through 2048
@@ -35,6 +118,10 @@ history; add a correction and update the current-state summary.
   Release executable build/freeze and all eleven live native gates are next.
   Accepted oracle captures are reused after reference rehashing. The rejected
   c1047756 attempt remains immutable. No new full-model gate has started.
+- Candidate 0d5f50ff is frozen; executable SHA-256
+  1ace3c5031d832d34eb0064fdfd71b3feeb0a0c3000d568496b4828eb82548c5.
+  Release build and CLI checks pass. All eleven native gates are now queued
+  sequentially; both observers captured a pre-gate baseline.
 - Observe system-wide compression from before the first corrected native gate;
   this is a post-rejection baseline, not a fresh boot. Do not infer total memory
   or uncompressed residency from process RSS. No performance pairing or push.
@@ -3932,13 +4019,14 @@ Next:
 
 ### Current resume checkpoint (updated 2026-09-10)
 
-- ACTIVE: authorized 256K capacity/correctness milestone. Rejected c1047756
-  is preserved. Corrected native decode SIMD-group selection passes the separate
-  oracle-shader GPU regression (nine shapes, 294,912 exact words), 318 Rust and
-  94 Python tests. Replacement candidate build/freeze and all eleven native
-  gates are pending in frontier256-decode-nsg/. Reuse rehashed accepted oracle
-  captures. Report both attempts and system memory compression; finish with
-  independent audit, local commit and stop. No push or performance pairs.
+- ACTIVE: authorized 256K capacity/correctness milestone. Both c1047756 and
+  0d5f50ff are rejected and preserved. The new >128K per-layer handoff passes
+  the actual copy/reset GPU regression at both 128K and 256K, preserving all
+  copies and model residency while retiring each layer's source ownership.
+  Active evidence: rust-star/.work/frontier256-handoff-bounded/. Build/test,
+  freeze and all eleven full-model gates remain before independent audit,
+  final hashes, report and local completion commit. No push, performance
+  pairs, larger frontier or coding-agent corpus is authorized.
 
 
 - COMPLETE: authorized 128K profiling and focused optimization milestone.
@@ -4782,14 +4870,13 @@ Next:
 
 ## Immediate Next Actions
 
-1. Preserve rejected c1047756 256K decode evidence and unchanged oracle references.
-2. Complete the release build and freeze the corrected candidate; the separate
-   oracle-shader SIMD-group GPU regression and release unit tests now pass.
-3. Rerun all eleven native gates, including both retained full-output cycles at
-   128K and 256K, with one model workload at a time. Record every attempt.
-4. Audit and package all outcomes, process RSS and system-memory counters with
-   coverage/attribution limits, final input hashes and source snapshots. Update
-   documentation, commit locally, stop. No push, performance pairs or new corpus.
+1. Finish release tests/build and input/host preflight; freeze the corrected
+   per-layer handoff candidate. Preserve both rejected attempts.
+2. Rerun all eleven required controls and complete retained cycles with full
+   system compression/swap observation coverage. Keep runtime sources frozen.
+3. Only after all gates pass: independent audit, final input hashes, complete
+   observation coverage, portable evidence report, documentation, local commit
+   and stop. No push or next milestone is authorized.
 
 ## Entries
 

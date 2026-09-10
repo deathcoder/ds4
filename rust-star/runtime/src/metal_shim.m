@@ -43629,6 +43629,134 @@ int rust_star_metal_reset_request_state(
     }
 }
 
+/* Encode the same exact KV/state copies for both handoff schedules. */
+static int encode_prefill_layer_handoff(
+    RustStarMetalContext *context, id<MTLBlitCommandEncoder> blit,
+    uint32_t layer, uint32_t prefill_rows, uint32_t decoder_context_capacity,
+    uint32_t *copies, char *error, size_t error_bytes)
+{
+    const uint32_t raw_rows = 128u;
+    const NSUInteger kv_row_bytes = 512u*sizeof(float);
+    const uint32_t ratio4_rows = prefill_rows/4u;
+    const uint32_t ratio128_rows = prefill_rows/128u;
+    id<MTLBuffer> source_raw = retained_prefill_layer_buffer(
+        context, layer, @"FullKv");
+    id<MTLBuffer> decoder_raw = persistent_buffer(
+        context, [NSString stringWithFormat:@"kv_cache_layer_%u", layer],
+        raw_rows*kv_row_bytes, error, error_bytes);
+    if (!source_raw || source_raw.length != prefill_rows*kv_row_bytes ||
+        !decoder_raw) {
+        return fail_with_message(error, error_bytes,
+            @"prefill-to-decode handoff found invalid raw KV state");
+    }
+    [blit copyFromBuffer:source_raw
+            sourceOffset:(prefill_rows-raw_rows)*kv_row_bytes
+                toBuffer:decoder_raw destinationOffset:0
+                    size:raw_rows*kv_row_bytes];
+    (*copies)++;
+    if (layer < 2u) return 1;
+
+    const uint32_t ratio = layer % 2u == 0u ? 4u : 128u;
+    const uint32_t compressed_rows = ratio == 4u ? ratio4_rows : ratio128_rows;
+    const uint32_t compressed_capacity = decoder_context_capacity/ratio + 2u;
+    const uint32_t state_elements = ratio == 4u ? 8192u : 65536u;
+    id<MTLBuffer> source_attention = retained_prefill_layer_buffer(
+        context, layer, @"AttnCompressed");
+    id<MTLBuffer> source_attention_kv = retained_prefill_layer_buffer(
+        context, layer, @"AttnStateKv");
+    id<MTLBuffer> source_attention_score = retained_prefill_layer_buffer(
+        context, layer, @"AttnStateScore");
+    id<MTLBuffer> decoder_attention = persistent_buffer(
+        context, layer_buffer_key(@"compressed_kv_cache", YES, layer),
+        compressed_capacity*kv_row_bytes, error, error_bytes);
+    id<MTLBuffer> decoder_attention_kv = persistent_buffer(
+        context, layer_buffer_key(@"compressor_state_kv", YES, layer),
+        state_elements*sizeof(float), error, error_bytes);
+    id<MTLBuffer> decoder_attention_score = persistent_buffer(
+        context, layer_buffer_key(@"compressor_state_score", YES, layer),
+        state_elements*sizeof(float), error, error_bytes);
+    if (!source_attention ||
+        source_attention.length != compressed_rows*kv_row_bytes ||
+        !source_attention_kv ||
+        source_attention_kv.length != state_elements*sizeof(float) ||
+        !source_attention_score ||
+        source_attention_score.length != state_elements*sizeof(float) ||
+        !decoder_attention || !decoder_attention_kv ||
+        !decoder_attention_score) {
+        return fail_with_message(error, error_bytes,
+            @"prefill-to-decode handoff found invalid attention-compressor state");
+    }
+    [blit copyFromBuffer:source_attention sourceOffset:0
+                toBuffer:decoder_attention destinationOffset:0
+                    size:compressed_rows*kv_row_bytes];
+    [blit copyFromBuffer:source_attention_kv sourceOffset:0
+                toBuffer:decoder_attention_kv destinationOffset:0
+                    size:state_elements*sizeof(float)];
+    [blit copyFromBuffer:source_attention_score sourceOffset:0
+                toBuffer:decoder_attention_score destinationOffset:0
+                    size:state_elements*sizeof(float)];
+    *copies += 3u;
+    if (ratio != 4u) return 1;
+
+    const NSUInteger indexer_row_bytes = 128u*sizeof(float);
+    const uint32_t indexer_state_elements = 2048u;
+    id<MTLBuffer> source_indexer = retained_prefill_layer_buffer(
+        context, layer, @"IndexerCompressed");
+    id<MTLBuffer> source_indexer_kv = retained_prefill_layer_buffer(
+        context, layer, @"IndexerStateKv");
+    id<MTLBuffer> source_indexer_score = retained_prefill_layer_buffer(
+        context, layer, @"IndexerStateScore");
+    id<MTLBuffer> decoder_indexer = persistent_buffer(
+        context, layer_buffer_key(@"compressed_indexer_cache", YES, layer),
+        compressed_capacity*indexer_row_bytes, error, error_bytes);
+    id<MTLBuffer> decoder_indexer_kv = persistent_buffer(
+        context, layer_buffer_key(@"indexer_state_kv", YES, layer),
+        indexer_state_elements*sizeof(float), error, error_bytes);
+    id<MTLBuffer> decoder_indexer_score = persistent_buffer(
+        context, layer_buffer_key(@"indexer_state_score", YES, layer),
+        indexer_state_elements*sizeof(float), error, error_bytes);
+    if (!source_indexer ||
+        source_indexer.length != ratio4_rows*indexer_row_bytes ||
+        !source_indexer_kv ||
+        source_indexer_kv.length != indexer_state_elements*sizeof(float) ||
+        !source_indexer_score ||
+        source_indexer_score.length != indexer_state_elements*sizeof(float) ||
+        !decoder_indexer || !decoder_indexer_kv ||
+        !decoder_indexer_score) {
+        return fail_with_message(error, error_bytes,
+            @"prefill-to-decode handoff found invalid indexer-compressor state");
+    }
+    [blit copyFromBuffer:source_indexer sourceOffset:0
+                toBuffer:decoder_indexer destinationOffset:0
+                    size:ratio4_rows*indexer_row_bytes];
+    [blit copyFromBuffer:source_indexer_kv sourceOffset:0
+                toBuffer:decoder_indexer_kv destinationOffset:0
+                    size:indexer_state_elements*sizeof(float)];
+    [blit copyFromBuffer:source_indexer_score sourceOffset:0
+                toBuffer:decoder_indexer_score destinationOffset:0
+                    size:indexer_state_elements*sizeof(float)];
+    *copies += 3u;
+    return 1;
+}
+
+static void release_completed_prefill_layer_history(
+    RustStarMetalContext *context, uint32_t layer)
+{
+    NSDictionary *state = context.prefillLayerChunkStates[@(layer)];
+    /* Executor slots can still own the final histories. Clear only aliases of
+     * this completed layer; other layers keep their dictionary ownership. */
+    for (NSString *role in state) {
+        for (uint32_t slot = 0u; slot < 43u; slot++) {
+            NSString *key = [NSString stringWithFormat:@"prefillLayer%u%@", slot, role];
+            if ([context respondsToSelector:NSSelectorFromString(key)] &&
+                [context valueForKey:key] == state[role]) {
+                [context setValue:nil forKey:key];
+            }
+        }
+    }
+    [context.prefillLayerChunkStates removeObjectForKey:@(layer)];
+}
+
 int rust_star_metal_adopt_prefill_decoder_state(
     void *opaque_context,
     uint32_t decoder_context_capacity,
@@ -43638,7 +43766,6 @@ int rust_star_metal_adopt_prefill_decoder_state(
 {
     const uint32_t layers = 43u;
     const uint32_t raw_rows = 128u;
-    const NSUInteger kv_row_bytes = 512u*sizeof(float);
     if (!opaque_context || !result) {
         return fail_with_message(error, error_bytes,
             @"prefill-to-decode handoff received invalid inputs");
@@ -43660,121 +43787,39 @@ int rust_star_metal_adopt_prefill_decoder_state(
                 @"prefill-to-decode handoff requires a completed 2K, 4K, or aligned 32K--256K prefill");
         }
         memset(result, 0, sizeof(*result));
-        id<MTLCommandBuffer> command = [context.queue commandBuffer];
-        id<MTLBlitCommandEncoder> blit = [command blitCommandEncoder];
-        if (!command || !blit) {
-            return fail_with_message(error, error_bytes,
-                @"prefill-to-decode handoff could not create its blit command");
+        /* Above 128K, one command retaining every source history plus the
+         * attached model residency set can exceed the GPU working set on a
+         * repeated request. Bound each command to one layer and retire that
+         * history after completion. Keep the established <=128K schedule. */
+        const uint32_t layers_per_command = prefill_rows > 131072u ? 1u : layers;
+        uint32_t copies = 0u, commands = 0u;
+        double wall_ms = 0.0, gpu_ms = 0.0;
+        for (uint32_t first = 0u; first < layers; first += layers_per_command) {
+            @autoreleasepool {
+                id<MTLCommandBuffer> command = [context.queue commandBuffer];
+                id<MTLBlitCommandEncoder> blit = [command blitCommandEncoder];
+                if (!command || !blit) {
+                    return fail_with_message(error, error_bytes,
+                        @"prefill-to-decode handoff could not create its blit command");
+                }
+                for (uint32_t layer = first; layer < first+layers_per_command; layer++) {
+                    if (!encode_prefill_layer_handoff(context, blit, layer,
+                            prefill_rows, decoder_context_capacity, &copies, error, error_bytes)) {
+                        [blit endEncoding];
+                        return 0;
+                    }
+                }
+                [blit endEncoding];
+                const double wall_start = monotonic_ms();
+                [command commit];
+                if (!command_succeeded(command, error, error_bytes)) return 0;
+                wall_ms += monotonic_ms()-wall_start;
+                gpu_ms += gpu_elapsed_ms(command);
+                commands++;
+                if (layers_per_command == 1u)
+                    release_completed_prefill_layer_history(context, first);
+            }
         }
-
-        uint32_t copies = 0u;
-        for (uint32_t layer = 0u; layer < layers; layer++) {
-            id<MTLBuffer> source_raw = retained_prefill_layer_buffer(
-                context, layer, @"FullKv");
-            id<MTLBuffer> decoder_raw = persistent_buffer(
-                context, [NSString stringWithFormat:@"kv_cache_layer_%u", layer],
-                raw_rows*kv_row_bytes, error, error_bytes);
-            if (!source_raw || source_raw.length != prefill_rows*kv_row_bytes ||
-                !decoder_raw) {
-                [blit endEncoding];
-                return fail_with_message(error, error_bytes,
-                    @"prefill-to-decode handoff found invalid raw KV state");
-            }
-            [blit copyFromBuffer:source_raw
-                    sourceOffset:(prefill_rows-raw_rows)*kv_row_bytes
-                        toBuffer:decoder_raw destinationOffset:0
-                            size:raw_rows*kv_row_bytes];
-            copies++;
-            if (layer < 2u) continue;
-
-            const uint32_t ratio = layer % 2u == 0u ? 4u : 128u;
-            const uint32_t compressed_rows = ratio == 4u ? ratio4_rows : ratio128_rows;
-            const uint32_t compressed_capacity = decoder_context_capacity/ratio + 2u;
-            const uint32_t state_elements = ratio == 4u ? 8192u : 65536u;
-            id<MTLBuffer> source_attention = retained_prefill_layer_buffer(
-                context, layer, @"AttnCompressed");
-            id<MTLBuffer> source_attention_kv = retained_prefill_layer_buffer(
-                context, layer, @"AttnStateKv");
-            id<MTLBuffer> source_attention_score = retained_prefill_layer_buffer(
-                context, layer, @"AttnStateScore");
-            id<MTLBuffer> decoder_attention = persistent_buffer(
-                context, layer_buffer_key(@"compressed_kv_cache", YES, layer),
-                compressed_capacity*kv_row_bytes, error, error_bytes);
-            id<MTLBuffer> decoder_attention_kv = persistent_buffer(
-                context, layer_buffer_key(@"compressor_state_kv", YES, layer),
-                state_elements*sizeof(float), error, error_bytes);
-            id<MTLBuffer> decoder_attention_score = persistent_buffer(
-                context, layer_buffer_key(@"compressor_state_score", YES, layer),
-                state_elements*sizeof(float), error, error_bytes);
-            if (!source_attention ||
-                source_attention.length != compressed_rows*kv_row_bytes ||
-                !source_attention_kv ||
-                source_attention_kv.length != state_elements*sizeof(float) ||
-                !source_attention_score ||
-                source_attention_score.length != state_elements*sizeof(float) ||
-                !decoder_attention || !decoder_attention_kv ||
-                !decoder_attention_score) {
-                [blit endEncoding];
-                return fail_with_message(error, error_bytes,
-                    @"prefill-to-decode handoff found invalid attention-compressor state");
-            }
-            [blit copyFromBuffer:source_attention sourceOffset:0
-                        toBuffer:decoder_attention destinationOffset:0
-                            size:compressed_rows*kv_row_bytes];
-            [blit copyFromBuffer:source_attention_kv sourceOffset:0
-                        toBuffer:decoder_attention_kv destinationOffset:0
-                            size:state_elements*sizeof(float)];
-            [blit copyFromBuffer:source_attention_score sourceOffset:0
-                        toBuffer:decoder_attention_score destinationOffset:0
-                            size:state_elements*sizeof(float)];
-            copies += 3u;
-            if (ratio != 4u) continue;
-
-            const NSUInteger indexer_row_bytes = 128u*sizeof(float);
-            const uint32_t indexer_state_elements = 2048u;
-            id<MTLBuffer> source_indexer = retained_prefill_layer_buffer(
-                context, layer, @"IndexerCompressed");
-            id<MTLBuffer> source_indexer_kv = retained_prefill_layer_buffer(
-                context, layer, @"IndexerStateKv");
-            id<MTLBuffer> source_indexer_score = retained_prefill_layer_buffer(
-                context, layer, @"IndexerStateScore");
-            id<MTLBuffer> decoder_indexer = persistent_buffer(
-                context, layer_buffer_key(@"compressed_indexer_cache", YES, layer),
-                compressed_capacity*indexer_row_bytes, error, error_bytes);
-            id<MTLBuffer> decoder_indexer_kv = persistent_buffer(
-                context, layer_buffer_key(@"indexer_state_kv", YES, layer),
-                indexer_state_elements*sizeof(float), error, error_bytes);
-            id<MTLBuffer> decoder_indexer_score = persistent_buffer(
-                context, layer_buffer_key(@"indexer_state_score", YES, layer),
-                indexer_state_elements*sizeof(float), error, error_bytes);
-            if (!source_indexer ||
-                source_indexer.length != ratio4_rows*indexer_row_bytes ||
-                !source_indexer_kv ||
-                source_indexer_kv.length != indexer_state_elements*sizeof(float) ||
-                !source_indexer_score ||
-                source_indexer_score.length != indexer_state_elements*sizeof(float) ||
-                !decoder_indexer || !decoder_indexer_kv ||
-                !decoder_indexer_score) {
-                [blit endEncoding];
-                return fail_with_message(error, error_bytes,
-                    @"prefill-to-decode handoff found invalid indexer-compressor state");
-            }
-            [blit copyFromBuffer:source_indexer sourceOffset:0
-                        toBuffer:decoder_indexer destinationOffset:0
-                            size:ratio4_rows*indexer_row_bytes];
-            [blit copyFromBuffer:source_indexer_kv sourceOffset:0
-                        toBuffer:decoder_indexer_kv destinationOffset:0
-                            size:indexer_state_elements*sizeof(float)];
-            [blit copyFromBuffer:source_indexer_score sourceOffset:0
-                        toBuffer:decoder_indexer_score destinationOffset:0
-                            size:indexer_state_elements*sizeof(float)];
-            copies += 3u;
-        }
-        [blit endEncoding];
-        const double wall_start = monotonic_ms();
-        [command commit];
-        if (!command_succeeded(command, error, error_bytes)) return 0;
-        const double wall_end = monotonic_ms();
         [context.chainedCommands removeAllObjects];
         [context.chainedWallStarts removeAllObjects];
         context.chainedReady = NO;
@@ -43785,10 +43830,10 @@ int rust_star_metal_adopt_prefill_decoder_state(
         result->ratio4_rows_per_layer = ratio4_rows;
         result->ratio128_rows_per_layer = ratio128_rows;
         result->blit_copies = copies;
-        result->command_buffers = 1u;
-        result->host_waits = 1u;
-        result->wall_ms = wall_end-wall_start;
-        result->gpu_ms = gpu_elapsed_ms(command);
+        result->command_buffers = commands;
+        result->host_waits = commands;
+        result->wall_ms = wall_ms;
+        result->gpu_ms = gpu_ms;
         return 1;
     }
 }

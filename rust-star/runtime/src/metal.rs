@@ -25598,6 +25598,7 @@ mod imp {
                     error_text(&error)
                 )));
             }
+            let expected_commands = if prefill_rows > 131_072 { 43 } else { 1 };
             if !(matches!(prefill_rows, 2_048 | 4_096)
                 || ((32_768..=262_144).contains(&prefill_rows) && prefill_rows % 4096 == 0))
                 || raw.layers != 43
@@ -25605,8 +25606,8 @@ mod imp {
                 || raw.ratio4_rows_per_layer != prefill_rows / 4
                 || raw.ratio128_rows_per_layer != prefill_rows / 128
                 || raw.blit_copies != 229
-                || raw.command_buffers != 1
-                || raw.host_waits != 1
+                || raw.command_buffers != expected_commands
+                || raw.host_waits != expected_commands
                 || !raw.wall_ms.is_finite()
                 || raw.wall_ms <= 0.0
                 || !raw.gpu_ms.is_finite()
