@@ -201,5 +201,6 @@ kernel void rust_star_routed_prefill_gate_up_impl(
     }
 }
 
-typedef decltype(rust_star_routed_prefill_gate_up_impl<block_iq2_xxs, QK_NL, dequantize_iq2_xxs>) rust_star_routed_prefill_gate_up_type;
-template [[host_name("rust_star_routed_prefill_gate_up")]] kernel rust_star_routed_prefill_gate_up_type rust_star_routed_prefill_gate_up_impl<block_iq2_xxs, QK_NL, dequantize_iq2_xxs>;
+// IQ2 uses 16 dequantization slices; the imported file undefines its QK_NL macro.
+typedef decltype(rust_star_routed_prefill_gate_up_impl<block_iq2_xxs, 16, dequantize_iq2_xxs>) rust_star_routed_prefill_gate_up_type;
+template [[host_name("rust_star_routed_prefill_gate_up")]] kernel rust_star_routed_prefill_gate_up_type rust_star_routed_prefill_gate_up_impl<block_iq2_xxs, 16, dequantize_iq2_xxs>;

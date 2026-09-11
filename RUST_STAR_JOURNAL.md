@@ -18,6 +18,44 @@ Before changing code:
 Journal entries are reverse chronological. Do not edit old entries to change
 history; add a correction and update the current-state summary.
 
+## 2026-09-11 — Corrected native-tail Metal library compiles
+
+- Standalone compilation of the assembled native library and new pipeline
+  passes on Apple M1 Ultra: execution width 32, maximum threadgroup size 512.
+  New source audit confirms both IQ2 template arguments are the imported
+  original value 16, and the function body still differs only in grid axes.
+- Rebuilding the release executable; host test evidence is reused explicitly
+  for this Metal-only correction. The failed 9171518a attempt remains unchanged
+  and no corrected full-model gate has started yet.
+
+## 2026-09-11 — Correct shader macro scope before full-model validation
+
+- Candidate 9171518a stops during first library compilation: appended shader
+  references QK_NL after imported moe.metal undefines it. Exit 1, 22.085s process
+  elapsed and 23,887,872-byte peak RSS. No model inference or output comparison
+  completes; neither profile starts. Preserve all logs, build/source/input
+  identities and failed-candidate-shader.metal in the original work directory.
+- Replace only the two IQ2 template arguments with the original fixed value 16.
+  Kernel body, arithmetic, host ABI and dispatch remain unchanged. This is a
+  source-scope correction, not a numerical relaxation or blind retry.
+- Corrected work: rust-star/.work/prefill-route-order-32k-iq2-bound/. Require
+  standalone compilation of the assembled Metal library/new pipeline before
+  the rebuilt executable starts the same three full 32K C0/diagnostic runs.
+  Reuse the unchanged Rust/host test evidence explicitly; all live gates and
+  the Metal compile check apply to the corrected frozen candidate.
+
+## 2026-09-11 — Freeze grid candidate 9171518a; three 32K checks start
+
+- All 318 release Rust tests, formatting, source-equivalence audit and release
+  build pass. Fresh full-model, prompt, oracle source/executables and baseline
+  executable pins pass. Candidate 9171518a8f84b8df30c5e700dfab58cb3c8b6b05 is frozen;
+  executable SHA-256 a907449347b9489845f034d479fcf5e46e9772d047dfa47500da5e67a5e89965.
+  All 40 runtime/imported-source hashes match its committed tree.
+- Run only the declared normal candidate C0 and matched baseline/candidate
+  profiled 32K/128 checks, sequentially with host/memory observations. All are
+  full-output gates. Keep the candidate frozen until all three complete and
+  the strict packet/comparison audit runs. No larger frontier or engine pairs.
+
 ## 2026-09-11 — Native-tail grid candidate implemented; freeze pending
 
 - Added rust-star/runtime/src/routed_prefill.metal. Source audit restores the
@@ -4172,7 +4210,8 @@ Next:
 
 - ACTIVE: bounded 32K real-model validation of the routed-prefill grid-order
   candidate, with three predeclared C0/diagnostic runs. Evidence lives in
-  rust-star/.work/prefill-route-order-32k-653f791c/. No live gate has run yet.
+  rust-star/.work/prefill-route-order-32k-653f791c/. Candidate 9171518a failed shader compilation before inference.
+  The IQ2-argument correction is preparing in prefill-route-order-32k-iq2-bound/.
 
 - COMPLETE: bounded lower-context routed-prefill grid-order screen. Report
   rust-star/reports/prefill-route-order-d6c14fa0/README.md. Synthetic exactness
@@ -5032,8 +5071,9 @@ Next:
 
 ## Immediate Next Actions
 
-1. Finish and freeze the native-tail candidate build, then run only the three
-   declared 32K C0/diagnostic checks in prefill-route-order-32k-653f791c/.
+1. Compile the corrected assembled shader, rebuild/freeze the IQ2-argument
+   correction, then run only the same three 32K C0/diagnostic checks in
+   prefill-route-order-32k-iq2-bound/.
 2. Audit full outputs, ordered profile packets and matched component ratios;
    preserve failures, package the evidence and update the disposition before
    deciding whether a larger engine timing campaign is worthwhile.
