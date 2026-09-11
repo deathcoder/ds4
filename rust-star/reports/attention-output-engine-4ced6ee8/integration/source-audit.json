@@ -1,0 +1,8 @@
+{
+  "passed": true,
+  "host_restores_exactly_to_starting_source": true,
+  "host_operations": 10,
+  "new_shader_is_tested_instantiation_with_names_only": true,
+  "continuation_only": true,
+  "extra_scratch_bytes": 335544320
+}

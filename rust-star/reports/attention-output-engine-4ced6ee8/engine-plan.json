@@ -1,0 +1,39 @@
+{
+  "schema": "rust-star-attention-output-whole-path-plan-v1",
+  "created_utc": "2026-09-11T19:02:48.176355+00:00",
+  "dependency": "All same-arena candidate and contemporary A/A gates, narrow integration source audit, production Metal compilation, release host tests/build, and fresh full 32K/128 C0 must pass before timing.",
+  "context": 32768,
+  "gen_tokens": 128,
+  "baseline_runtime_commit": "9d35953f54d4c1c5c8c85ceebf696d1432025c92",
+  "baseline_executable_sha256": "631b4844599d814ebfcae6706d26c0854169d4573feed86391c41880f71cfd99",
+  "baseline_executable_source": "rust-star/.work/32k-compressed-skip-2f06a2e8/candidate-rust-star",
+  "oracle_source": "ccbd16d36895ef9fe8edf7f793014988ff1ab7f4",
+  "model_sha256": "ca22ae2f838e14077c22bc1c1417b71b45b5e5a3687bd96c2ac6e17fdb6261c0",
+  "warmups": [
+    "baseline",
+    "candidate"
+  ],
+  "orders": [
+    "AB",
+    "BA",
+    "AB",
+    "BA",
+    "AB"
+  ],
+  "role_A": "Frozen accepted Rust 9d35953f, not DwarfStar",
+  "role_B": "Integrated half-input attention output candidate",
+  "measurement": "Existing engine-measure with correctness collection and profiling disabled; parse through existing strict Rust measurement adapter. Fresh process per run with built-in model page warming and residency. Warm-up observations preserved but excluded.",
+  "primary": "paired candidate/baseline prefill latency ratio",
+  "retention_criteria": {
+    "all_runs_exact_transcript": true,
+    "all_five_pairs_prefill_faster": true,
+    "separate_ab_ba_median_prefill_ratio_below": 0.99,
+    "median_steady_decode_tps_ratio_at_least": 0.97,
+    "separate_order_steady_decode_tps_ratio_at_least": 0.95,
+    "median_peak_rss_ratio_at_most": 1.02
+  },
+  "failure_policy": "Stop on correctness, executable/source drift, allocation, command failure or invalid timing metadata; preserve everything. No discretionary repeats or threshold adjustment. Any failed speed criterion means do not select this change as an engine improvement; restore runtime if no other justified reason to retain. No claim of statistical significance or DwarfStar advantage.",
+  "reporting": "All raw runs; each metric median/MAD/min/max, every paired ratio, order subsets, first-token latency, process wall time and peak RSS. State scratch cost and 32K-only validated scope.",
+  "no_256k": true,
+  "no_push": true
+}

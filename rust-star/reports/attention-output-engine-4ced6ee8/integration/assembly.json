@@ -1,0 +1,12 @@
+{
+  "paths": [
+    "src/moe_output_prefix.metal",
+    "../../metal/flash_attn.metal",
+    "../../metal/dense.metal",
+    "../../metal/glu.metal",
+    "../../metal/moe.metal",
+    "src/routed_prefill.metal",
+    "src/attention_output_half.metal",
+    "../../metal/dsv4_hc.metal"
+  ]
+}

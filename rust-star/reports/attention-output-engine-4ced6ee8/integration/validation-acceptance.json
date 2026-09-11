@@ -1,0 +1,16 @@
+{
+  "passed": true,
+  "runs": [
+    {
+      "name": "candidate-32k-output",
+      "exit_code": 0,
+      "started_utc": "2026-09-11T19:14:35.926635+00:00",
+      "finished_utc": "2026-09-11T19:19:28.068310+00:00",
+      "elapsed_seconds": 292.18103575,
+      "peak_rss_bytes": 3339878400,
+      "executable_sha256": "2bf77edb9886f4efa5d011cba963aaef7e2bf140db1b3a09c6193e76bdc77af4"
+    }
+  ],
+  "full_fp32_words_per_run": 16677120,
+  "throughput_claim": false
+}

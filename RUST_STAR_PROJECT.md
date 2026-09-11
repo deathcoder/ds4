@@ -515,6 +515,20 @@ contemporaneous A/A case fails physical-buffer and MAD neutrality limits, with
 candidate and first establish a bounded same-buffer A/A control with an exact
 protected reference. Do not relax the recorded thresholds retrospectively.
 
+The complete attention-output milestone now extends that historical screen.
+Fresh same-arena controls and the candidate/current-control screen pass every
+gate and 53.553 billion isolated FP32 comparisons. Runtime `4ced6ee8` passes
+320 release tests, production Metal/source-scope checks and full 32K/128 C0.
+The candidate is retained. Five alternating unprofiled engine pairs
+against frozen Rust `9d35953f` show median paired prefill latency -4.329%,
+steady decode -0.190% and peak RSS +0.001% (first-step latency
+-1.966%). All 12 normal-engine runs including two excluded warm-ups
+preserve the oracle transcript. Report `rust-star/reports/attention-output-engine-4ced6ee8/README.md`
+contains the complete prospective criteria, every raw pair and a portable
+source/correctness/statistics verifier. Extra transient scratch is 320 MiB.
+All final pins pass and GPU work is finished. This is a 32K Rust-versus-Rust
+result, not DwarfStar parity or a higher-frontier validation; 256K remains paused.
+
 Current implementation boundaries, evidence, and immediate actions are maintained
 in `RUST_STAR_JOURNAL.md`. As of 2026-09-09, native prefill through all 43 layers
 and the output head is C0 exact at 128K, with 128 exact full-logit decode steps

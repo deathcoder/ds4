@@ -1,0 +1,22 @@
+{
+  "integration/baseline-rust-star": {
+    "sha256": "631b4844599d814ebfcae6706d26c0854169d4573feed86391c41880f71cfd99",
+    "bytes": 1426997104,
+    "reason": "Executable omitted; source, build and validation evidence retained."
+  },
+  "integration/candidate-rust-star": {
+    "sha256": "2bf77edb9886f4efa5d011cba963aaef7e2bf140db1b3a09c6193e76bdc77af4",
+    "bytes": 1427014368,
+    "reason": "Executable omitted; source, build and validation evidence retained."
+  },
+  "integration/compile-shader": {
+    "sha256": "120229e3460cd48597ea3a41f237d38f14c7386c5b433e731bbc8d34002760e7",
+    "bytes": 52000,
+    "reason": "Executable omitted; source, build and validation evidence retained."
+  },
+  "probe": {
+    "sha256": "0182e75e60e0dc56d26e26e9f2b2f52eb51cde5ce5e3f0831901fe7a4d2cb6ba",
+    "bytes": 73704,
+    "reason": "Executable omitted; source, build and validation evidence retained."
+  }
+}

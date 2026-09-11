@@ -1,0 +1,22 @@
+Rust Star eligible measurement: prefill 130.675 tok/s, generation 18.205 tok/s, steady 18.228 tok/s
+correctness: exact 128-token oracle transcript; prefill and generation collection disabled
+paired protocol: eligible
+json: $WORK/engine/pair-2-B/engine-run.json
+      280.20 real         4.69 user        76.64 sys
+         90033422336  maximum resident set size
+                   0  average shared memory size
+                   0  average unshared data size
+                   0  average unshared stack size
+             7722684  page reclaims
+                   0  page faults
+                   0  swaps
+                   0  block input operations
+                   0  block output operations
+                   0  messages sent
+                   0  messages received
+                   0  signals received
+                  47  voluntary context switches
+               96436  involuntary context switches
+        562675761152  instructions retired
+        236364083246  cycles elapsed
+         12389779264  peak memory footprint

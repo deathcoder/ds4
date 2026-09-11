@@ -1,0 +1,423 @@
+START session-0 pid=35421 2026-09-11T19:00:18.961472+00:00
+{"exit_code": 0, "started_utc": "2026-09-11T19:00:18.961472+00:00", "finished_utc": "2026-09-11T19:03:03.670321+00:00", "elapsed_seconds": 164.70953725, "peak_rss_bytes": 2513731584}
+START session-1 pid=35864 2026-09-11T19:03:03.764881+00:00
+{"exit_code": 0, "started_utc": "2026-09-11T19:03:03.764881+00:00", "finished_utc": "2026-09-11T19:05:46.556721+00:00", "elapsed_seconds": 162.79253779200002, "peak_rss_bytes": 2585755648}
+{
+  "passed": true,
+  "correctness_passed": true,
+  "fp32_words_compared": 35232153600,
+  "sessions": 2,
+  "total_pairs": 144,
+  "contemporary_null_screen_pass": true,
+  "candidate_speed_criteria_pass": true,
+  "candidate_selected_for_later_c0": true,
+  "statistics": [
+    {
+      "session": 0,
+      "case": 0,
+      "rows": 4096,
+      "protocol": "aa-control",
+      "pairs": 12,
+      "first_second_median": 1.0025226929125481,
+      "first_second_mad": 0.005382045243630118,
+      "ab_role_ratio_median": 0.9974852829693546,
+      "ba_role_ratio_median": 1.0009543718986351,
+      "active_arena_role_medians": {
+        "a": 0.9957045889826184,
+        "b": 1.0007849523232102
+      },
+      "pairs_within_3_percent": 12,
+      "minimum_first_second": 0.9889274502822928,
+      "maximum_first_second": 1.0188796260382562,
+      "role_ratio_median": 0.9979609684502131,
+      "a_median_gpu_ms": 121.5661805557223,
+      "b_median_gpu_ms": 121.93456249830584,
+      "gates": {
+        "first_second": true,
+        "ab_ba": true,
+        "active_arena": true,
+        "mad": true,
+        "pair_dispersion": true
+      },
+      "null_screen_pass": true,
+      "candidate_screen_pass": null,
+      "ab_faster_pairs": 4,
+      "ba_faster_pairs": 3
+    },
+    {
+      "session": 0,
+      "case": 0,
+      "rows": 4096,
+      "protocol": "candidate",
+      "pairs": 12,
+      "first_second_median": 1.094039859941853,
+      "first_second_mad": 0.44053687658094526,
+      "ab_role_ratio_median": 0.650985196742186,
+      "ba_role_ratio_median": 0.6535029833609078,
+      "active_arena_role_medians": {
+        "a": 0.6446946490352241,
+        "b": 0.6592216082676358
+      },
+      "pairs_within_3_percent": 0,
+      "minimum_first_second": 0.6405355287137472,
+      "maximum_first_second": 1.5797281976003184,
+      "role_ratio_median": 0.650985196742186,
+      "a_median_gpu_ms": 121.3755486108615,
+      "b_median_gpu_ms": 79.43876389132735,
+      "gates": {
+        "ab_median": true,
+        "ba_median": true,
+        "ab_faster": true,
+        "ba_faster": true
+      },
+      "null_screen_pass": null,
+      "candidate_screen_pass": true,
+      "ab_faster_pairs": 6,
+      "ba_faster_pairs": 6
+    },
+    {
+      "session": 0,
+      "case": 1,
+      "rows": 4096,
+      "protocol": "aa-control",
+      "pairs": 12,
+      "first_second_median": 1.0013484589570658,
+      "first_second_mad": 0.007029893317997971,
+      "ab_role_ratio_median": 1.0019446870246569,
+      "ba_role_ratio_median": 1.0013484589570658,
+      "active_arena_role_medians": {
+        "a": 1.0030570660877551,
+        "b": 1.0013484589570658
+      },
+      "pairs_within_3_percent": 12,
+      "minimum_first_second": 0.9900801429855322,
+      "maximum_first_second": 1.0102838994595955,
+      "role_ratio_median": 1.0013484589570658,
+      "a_median_gpu_ms": 121.3840625011168,
+      "b_median_gpu_ms": 122.08989583329335,
+      "gates": {
+        "first_second": true,
+        "ab_ba": true,
+        "active_arena": true,
+        "mad": true,
+        "pair_dispersion": true
+      },
+      "null_screen_pass": true,
+      "candidate_screen_pass": null,
+      "ab_faster_pairs": 3,
+      "ba_faster_pairs": 3
+    },
+    {
+      "session": 0,
+      "case": 1,
+      "rows": 4096,
+      "protocol": "candidate",
+      "pairs": 12,
+      "first_second_median": 1.08977494304719,
+      "first_second_mad": 0.437981189379047,
+      "ab_role_ratio_median": 0.6513295978224634,
+      "ba_role_ratio_median": 0.6555049930792559,
+      "active_arena_role_medians": {
+        "a": 0.6444080489843238,
+        "b": 0.6595990911974648
+      },
+      "pairs_within_3_percent": 0,
+      "minimum_first_second": 0.6429886667555277,
+      "maximum_first_second": 1.5609212508613548,
+      "role_ratio_median": 0.6538019120619818,
+      "a_median_gpu_ms": 121.52249999780906,
+      "b_median_gpu_ms": 79.40307639000821,
+      "gates": {
+        "ab_median": true,
+        "ba_median": true,
+        "ab_faster": true,
+        "ba_faster": true
+      },
+      "null_screen_pass": null,
+      "candidate_screen_pass": true,
+      "ab_faster_pairs": 6,
+      "ba_faster_pairs": 6
+    },
+    {
+      "session": 0,
+      "case": 2,
+      "rows": 4096,
+      "protocol": "aa-control",
+      "pairs": 12,
+      "first_second_median": 1.0033272643155202,
+      "first_second_mad": 0.004075369830693343,
+      "ab_role_ratio_median": 0.9968506476201371,
+      "ba_role_ratio_median": 1.004387322808081,
+      "active_arena_role_medians": {
+        "a": 1.0025673828967114,
+        "b": 1.0001690232840477
+      },
+      "pairs_within_3_percent": 12,
+      "minimum_first_second": 0.9950426570383223,
+      "maximum_first_second": 1.0102240402984237,
+      "role_ratio_median": 1.0012910209101205,
+      "a_median_gpu_ms": 121.01004166591642,
+      "b_median_gpu_ms": 121.71577083305843,
+      "gates": {
+        "first_second": true,
+        "ab_ba": true,
+        "active_arena": true,
+        "mad": true,
+        "pair_dispersion": true
+      },
+      "null_screen_pass": true,
+      "candidate_screen_pass": null,
+      "ab_faster_pairs": 4,
+      "ba_faster_pairs": 1
+    },
+    {
+      "session": 0,
+      "case": 2,
+      "rows": 4096,
+      "protocol": "candidate",
+      "pairs": 12,
+      "first_second_median": 1.076368666617107,
+      "first_second_mad": 0.4285729598977603,
+      "ab_role_ratio_median": 0.6580380977530771,
+      "ba_role_ratio_median": 0.6532087203972514,
+      "active_arena_role_medians": {
+        "a": 0.646487387434739,
+        "b": 0.6644014895426387
+      },
+      "pairs_within_3_percent": 0,
+      "minimum_first_second": 0.6454636247011625,
+      "maximum_first_second": 1.5532653843075965,
+      "role_ratio_median": 0.6566965030725731,
+      "a_median_gpu_ms": 120.74590972285174,
+      "b_median_gpu_ms": 79.37256250079372,
+      "gates": {
+        "ab_median": true,
+        "ba_median": true,
+        "ab_faster": true,
+        "ba_faster": true
+      },
+      "null_screen_pass": null,
+      "candidate_screen_pass": true,
+      "ab_faster_pairs": 6,
+      "ba_faster_pairs": 6
+    },
+    {
+      "session": 1,
+      "case": 2,
+      "rows": 4096,
+      "protocol": "aa-control",
+      "pairs": 12,
+      "first_second_median": 1.0002208621934674,
+      "first_second_mad": 0.006558328796848034,
+      "ab_role_ratio_median": 1.002395725240892,
+      "ba_role_ratio_median": 1.0036635153232494,
+      "active_arena_role_medians": {
+        "a": 1.0000966559871263,
+        "b": 1.0026153115475356
+      },
+      "pairs_within_3_percent": 12,
+      "minimum_first_second": 0.9851091433695183,
+      "maximum_first_second": 1.0118917708629658,
+      "role_ratio_median": 1.0026153115475356,
+      "a_median_gpu_ms": 120.32436111136727,
+      "b_median_gpu_ms": 121.06223611044697,
+      "gates": {
+        "first_second": true,
+        "ab_ba": true,
+        "active_arena": true,
+        "mad": true,
+        "pair_dispersion": true
+      },
+      "null_screen_pass": true,
+      "candidate_screen_pass": null,
+      "ab_faster_pairs": 2,
+      "ba_faster_pairs": 2
+    },
+    {
+      "session": 1,
+      "case": 2,
+      "rows": 4096,
+      "protocol": "candidate",
+      "pairs": 12,
+      "first_second_median": 1.0762618891630855,
+      "first_second_mad": 0.4312720822774137,
+      "ab_role_ratio_median": 0.6545068366379961,
+      "ba_role_ratio_median": 0.6540875648651012,
+      "active_arena_role_medians": {
+        "a": 0.6486106426531786,
+        "b": 0.6593359545714603
+      },
+      "pairs_within_3_percent": 0,
+      "minimum_first_second": 0.6419213296360944,
+      "maximum_first_second": 1.5494666075914543,
+      "role_ratio_median": 0.6545068366379961,
+      "a_median_gpu_ms": 120.46098611002284,
+      "b_median_gpu_ms": 79.17276388737568,
+      "gates": {
+        "ab_median": true,
+        "ba_median": true,
+        "ab_faster": true,
+        "ba_faster": true
+      },
+      "null_screen_pass": null,
+      "candidate_screen_pass": true,
+      "ab_faster_pairs": 6,
+      "ba_faster_pairs": 6
+    },
+    {
+      "session": 1,
+      "case": 1,
+      "rows": 4096,
+      "protocol": "aa-control",
+      "pairs": 12,
+      "first_second_median": 0.9979949681065552,
+      "first_second_mad": 0.0016930460683334259,
+      "ab_role_ratio_median": 0.997924247202802,
+      "ba_role_ratio_median": 0.9967322379371204,
+      "active_arena_role_medians": {
+        "a": 0.9982463332766489,
+        "b": 0.9959072812467651
+      },
+      "pairs_within_3_percent": 12,
+      "minimum_first_second": 0.9829821836157018,
+      "maximum_first_second": 1.023130815968974,
+      "role_ratio_median": 0.9967322379371204,
+      "a_median_gpu_ms": 120.20276388648199,
+      "b_median_gpu_ms": 119.81897916606007,
+      "gates": {
+        "first_second": true,
+        "ab_ba": true,
+        "active_arena": true,
+        "mad": true,
+        "pair_dispersion": true
+      },
+      "null_screen_pass": true,
+      "candidate_screen_pass": null,
+      "ab_faster_pairs": 3,
+      "ba_faster_pairs": 6
+    },
+    {
+      "session": 1,
+      "case": 1,
+      "rows": 4096,
+      "protocol": "candidate",
+      "pairs": 12,
+      "first_second_median": 1.0865710635009291,
+      "first_second_mad": 0.4327981628239808,
+      "ab_role_ratio_median": 0.6530930100424579,
+      "ba_role_ratio_median": 0.6567559603982627,
+      "active_arena_role_medians": {
+        "a": 0.6449382377735992,
+        "b": 0.6617277861563822
+      },
+      "pairs_within_3_percent": 0,
+      "minimum_first_second": 0.6443360548340812,
+      "maximum_first_second": 1.5604322453225319,
+      "role_ratio_median": 0.6558823167906058,
+      "a_median_gpu_ms": 120.06643055550133,
+      "b_median_gpu_ms": 78.40221527900817,
+      "gates": {
+        "ab_median": true,
+        "ba_median": true,
+        "ab_faster": true,
+        "ba_faster": true
+      },
+      "null_screen_pass": null,
+      "candidate_screen_pass": true,
+      "ab_faster_pairs": 6,
+      "ba_faster_pairs": 6
+    },
+    {
+      "session": 1,
+      "case": 0,
+      "rows": 4096,
+      "protocol": "aa-control",
+      "pairs": 12,
+      "first_second_median": 1.000509395365099,
+      "first_second_mad": 0.005018809192342932,
+      "ab_role_ratio_median": 0.9994908715610556,
+      "ba_role_ratio_median": 1.0007595531017985,
+      "active_arena_role_medians": {
+        "a": 1.0026781220206649,
+        "b": 0.9973135181555506
+      },
+      "pairs_within_3_percent": 12,
+      "minimum_first_second": 0.987914218583298,
+      "maximum_first_second": 1.0113543351433376,
+      "role_ratio_median": 0.9994908715610556,
+      "a_median_gpu_ms": 119.77620833082861,
+      "b_median_gpu_ms": 119.94997222306363,
+      "gates": {
+        "first_second": true,
+        "ab_ba": true,
+        "active_arena": true,
+        "mad": true,
+        "pair_dispersion": true
+      },
+      "null_screen_pass": true,
+      "candidate_screen_pass": null,
+      "ab_faster_pairs": 4,
+      "ba_faster_pairs": 3
+    },
+    {
+      "session": 1,
+      "case": 0,
+      "rows": 4096,
+      "protocol": "candidate",
+      "pairs": 12,
+      "first_second_median": 1.081942049223914,
+      "first_second_mad": 0.4270166106867256,
+      "ab_role_ratio_median": 0.6531357386723868,
+      "ba_role_ratio_median": 0.660812114003287,
+      "active_arena_role_medians": {
+        "a": 0.6478877414628401,
+        "b": 0.6668366142380067
+      },
+      "pairs_within_3_percent": 0,
+      "minimum_first_second": 0.6462531029195143,
+      "maximum_first_second": 1.5624955070426627,
+      "role_ratio_median": 0.6583629478492656,
+      "a_median_gpu_ms": 119.37012500008373,
+      "b_median_gpu_ms": 78.4411250000024,
+      "gates": {
+        "ab_median": true,
+        "ba_median": true,
+        "ab_faster": true,
+        "ba_faster": true
+      },
+      "null_screen_pass": null,
+      "candidate_screen_pass": true,
+      "ab_faster_pairs": 6,
+      "ba_faster_pairs": 6
+    }
+  ],
+  "diagnostics": [],
+  "output_checksums": {
+    "0": [
+      13730526040267198370,
+      14216287802309721632,
+      9294797670880264975
+    ],
+    "1": [
+      8598066631113621424,
+      5179181198879135728,
+      9558390696845490023
+    ],
+    "2": [
+      1883040239498579953,
+      16291759318653461531,
+      15331158117269709438
+    ]
+  },
+  "runtime_changed": false,
+  "engine_speedup_claim": false,
+  "files": {
+    "session-0/probe.jsonl": "49b81c7ebe2b21b4e6576cb2776c09bb16c6380eb11d59b6b7c5738d7c105aff",
+    "session-1/probe.jsonl": "274e2869bc997475dbdbe6fdccc2aee5ea46cf23ad1ea629003931f8f29317fa"
+  },
+  "protocol_inputs": {
+    "plan.json": "1063592e938670f12e31af18cb637141ae809ec647b4d651752bfbddcef1ecab",
+    "probe.m": "f3e1e97def1df4ccb92cfc21493939ac64fdef63eb40ea92965b961ee0fe648d",
+    "edge-audit.json": "f1f5e17fb41c78765f7a9a84b382950f1b585c84cacb2248ab8a5fb643565ce3"
+  }
+}

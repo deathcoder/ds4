@@ -1,0 +1,14 @@
+{
+  "ctx_tokens": 32768,
+  "prefill_tokens": 32768,
+  "gen_tokens": 128,
+  "gen_steady_tokens": 127,
+  "kvcache_bytes": null,
+  "prefill_tps": 130.163355022,
+  "prefill_ms": 251745.201208,
+  "gen_tps": 18.350319548,
+  "gen_ms": 6975.35537,
+  "gen_first_ms": 67.478875,
+  "gen_steady_tps": 18.384810454,
+  "gen_steady_ms": 6907.876495
+}

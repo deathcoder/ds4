@@ -18,6 +18,78 @@ Before changing code:
 Journal entries are reverse chronological. Do not edit old entries to change
 history; add a correction and update the current-state summary.
 
+## 2026-09-11 — Complete attention-output whole-engine milestone
+
+- Runtime candidate 4ced6ee8 is retained. Verified portable report:
+  rust-star/reports/attention-output-engine-4ced6ee8/README.md.
+- Same-arena A/A and fresh candidate/current-control screens pass all gates
+  and 53,552,873,472 FP32 comparisons. Every candidate pair improves the full
+  isolated chain; separate AB/BA medians are 33.919–34.902% lower. The older
+  failed two-arena study remains immutable and is not retroactively accepted.
+- Narrow integration, 320 release tests, formatting/build, actual production
+  Metal assembly/pipelines and complete-host inverse-edit proof pass. Full
+  32K/128 C0 matches all 16,677,120 FP32 words; prefix/decode/legacy remain intact.
+- Two warm-ups and five alternating unprofiled engine pairs all execute and
+  preserve the exact oracle transcript. Median paired prefill latency changes
+  -4.329%, steady decode -0.190%, peak RSS +0.001% and
+  first-step latency -1.966%. Role-median prefill is
+  262.632s baseline / 251.174s candidate.
+  Every raw pair and preset criterion is retained in the report; no discarded
+  pair, discretionary repeat, threshold revision or statistical-significance claim.
+- This is a measured Rust-versus-Rust 32K decision against frozen 9d35953f;
+  it does not update the DwarfStar comparison or establish higher-frontier C0.
+  Extra FP16 scratch is 320 MiB with existing transient ownership.
+- Full model/prompt/oracle/both-executable and all 42 tested-source pins pass
+  after execution. The portable verifier recomputes source assemblies/scope,
+  isolated intervals/gates, full C0 receipts and all whole-engine statistics.
+  All GPU work is finished; 256K remains paused and nothing is pushed.
+
+## 2026-09-11 — Attention-output timing interim checkpoint
+
+- Five of the twelve planned normal-engine processes have completed: two
+  excluded warm-ups, pair 1 A/B, and pair 2 B. Pair 2 A is active. The frozen
+  runner queues the remaining pairs automatically; do not launch a duplicate.
+- Pair 1 prefill is 262.632459s baseline / 251.745201s candidate, a 4.145435%
+  paired latency decrease. Steady decode is 1.246800% lower in this pair.
+  Pair 2 candidate prefill is 250.759300s; its baseline is still pending.
+- Completed records pass the existing measurement adapter. No process failure
+  or retry has occurred. Observed swap remains 33.25 MiB, with no recorded
+  thermal/performance warning. These are interim observations, not retention.
+- Authoritative live evidence and active process identity remain under
+  `rust-star/.work/attention-output-milestone-08ebd1aa/engine/` in
+  `progress.json`, `active-run.json`, and per-run directories. Frozen plans,
+  engine-runner.py and engine-audit.py must remain unchanged during execution.
+- Finish all five pairs, final full-input/source/binary hashes, portable report
+  verification, and the preset keep-or-restore decision before closing this
+  milestone. The 256K campaign stays paused; no publication is authorized.
+
+## 2026-09-11 — Full 32K C0 passes; begin whole-engine milestone
+
+- Candidate 4ced6ee8 passes full 32K prefill and 128 decode steps: all
+  16,677,120 FP32 logit values and generated tokens are exact. The fresh
+  correctness process completes in 292.181s; this is not a speed measurement.
+- Continue to the prospectively declared engine-measure block: baseline and
+  candidate warm-ups, then five alternating fresh-process pairs at 32K/128.
+  Both correctness collection paths and all profiling are disabled. The strict
+  existing adapter checks normal timing, residency and transcript contracts.
+- Keep all 42 runtime inputs, both executables, plans and runner/auditor files
+  frozen. Report every run and decide from whole-prefill, decode and RSS gates.
+  No additional profile campaign, source tuning, push or 256K resumption.
+
+## 2026-09-11 — Freeze 4ced6ee8 and start full 32K C0
+
+- All 320 release host tests, formatting, release build and production Metal
+  pipeline compilation pass. Final assembly comparison matches the actual
+  build-generated Objective-C source string exactly. Complete host restoration
+  and all unchanged-source checks pass; all 42 source hashes match the commit.
+- Candidate executable SHA-256 is
+  2bf77edb9886f4efa5d011cba963aaef7e2bf140db1b3a09c6193e76bdc77af4.
+  Baseline remains frozen Rust 9d35953f. Full model/prompt/oracle/baseline pins
+  pass before inference. Candidate full 32K/128 output-only C0 starts at
+  2026-09-11T19:14:35Z; source files remain frozen throughout all live runs.
+- Continue to the already declared unprofiled engine block only after the
+  complete output gate passes. C0 harness elapsed time is not engine speed.
+
 ## 2026-09-11 — Candidate passes neutral screen; integrate for full 32K decision
 
 - Both candidate-plus-A/A processes pass all predeclared criteria. Every one
@@ -4728,12 +4800,19 @@ Next:
 
 ### Current resume checkpoint (updated 2026-09-11)
 
-- COMPLETE: standalone attention-output FP16 input-staging screen. Report
-  rust-star/reports/attention-output-half-input-038dded4/README.md verifies 50
-  artifacts. All 19.198 billion FP32 comparisons and candidate timing criteria
-  pass, with observed 34.29–35.09% lower chain time. A/A physical-buffer/MAD
-  gates fail at all six cases, so the candidate is NOT selected for integration
-  or full-model validation. Runtime 9d35953f is unchanged; all GPU work is done.
+- COMPLETE: attention-output whole-engine milestone. Candidate 4ced6ee8 is
+  retained. Report rust-star/reports/attention-output-engine-4ced6ee8/README.md.
+  All neutral-control and candidate gates pass (53.553 billion isolated FP32
+  comparisons); integrated full 32K/128 C0 passes all 16,677,120 FP32 words.
+  All 320 host tests, production Metal and source-scope checks pass.
+- Five complete alternating unprofiled engine pairs against frozen Rust 9d35953f
+  show median paired prefill latency -4.329%, steady decode -0.190% and
+  peak RSS +0.001%. First-step latency changes -1.966%.
+  Two warm-ups are excluded and preserved; all 12 transcripts are exact.
+  See every raw pair and preset retention gate in the verified report.
+- All final input/source/binary pins pass. GPU work is complete. The new path
+  has full-model evidence at 32K only; 256K stays paused. No DwarfStar speedup
+  or new higher-frontier claim follows from this Rust-versus-Rust comparison.
 
 
 - COMPLETE: native compressed run-skip 9d35953f passes all three full 32K/128
@@ -5641,18 +5720,17 @@ Next:
 
 ## Immediate Next Actions
 
-1. Preserve the exact half-input attention-output candidate and its failed
-   control evidence. Its large 34–35% observed chain reduction is promising,
-   but it did not pass the complete prospective screen. Do not integrate or
-   convert that observation into an engine claim yet.
-2. Predeclare a small A/A-only experiment that reuses the same buffer set in
-   both roles, with a protected exact reference and full checks for each role.
-   Test whether the 1.99–2.59% buffer-associated effect disappears; inspect
-   remaining effects without claiming an unmeasured cache/page/clock cause.
-   Only after neutrality passes should a fresh candidate screen be considered.
-3. Keep runtime 9d35953f and its frozen 1711856e comparator intact. Preserve all
-   older rejected/interrupted evidence, including the head-first grid. Keep
-   the work at 32K and 256K paused; no push or automatic broader benchmark.
+1. Preserve the completed whole-engine decision and its verified report:
+   rust-star/reports/attention-output-engine-4ced6ee8/README.md.
+   Keep the exact tested source/binary/input identities and all earlier failed
+   studies available. No additional measurement is queued.
+2. Any next performance milestone should start from current bottleneck evidence
+   and end at a bounded full-model correctness and whole-engine decision. Do
+   not substitute a synthetic/component improvement for an engine result or
+   infer DwarfStar parity from this Rust-versus-Rust comparison.
+3. Keep 256K paused. New larger-frontier correctness, reference comparisons,
+   publication or broader campaigns require their own scope and prospective
+   plans. No automatic push or return to the interrupted long-context campaign.
 
 ## Entries
 
