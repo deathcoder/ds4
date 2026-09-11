@@ -474,6 +474,19 @@ cache blocks while preserving active-block arithmetic order and padding; this
 has not been implemented or measured. Keep future studies bounded and retain
 the contemporaneous A/A requirement.
 
+The empty-block traversal study at starting commit fbbea533 is complete.
+`rust-star/reports/compressed-skip-runs-fbbea533/README.md` verifies 56 artifacts,
+119,150 integer traces, 120 GPU edge cases and 23.089 billion total FP32
+comparisons. A four-zero-block scan consolidates mask-pointer advances while
+preserving original active-block arithmetic/order and the padded-tail path.
+All 72 candidate pairs improve; AB/BA medians are 1.14–6.08% lower, passing every
+preset criterion across three timed shapes and two processes. All contemporary
+A/A gates pass. Select the kernel for narrow native compressed-prefill
+integration, full-output 32K/128 C0 and bounded real-component validation.
+Runtime is unchanged in this isolated report; no engine gain or new model C0
+is established. Keep follow-up cost proportional to the component's modest
+share of total diagnostic time, and do not resume the 256K campaign.
+
 Current implementation boundaries, evidence, and immediate actions are maintained
 in `RUST_STAR_JOURNAL.md`. As of 2026-09-09, native prefill through all 43 layers
 and the output head is C0 exact at 128K, with 128 exact full-logit decode steps

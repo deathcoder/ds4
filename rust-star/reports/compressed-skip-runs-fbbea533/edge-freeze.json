@@ -1,0 +1,21 @@
+{
+  "frozen_utc": "2026-09-11T13:13:15.191536+00:00",
+  "files": {
+    "plan.json": "d2462c4adad7aec34395453e0de5cca4b01fdbc40b429e8417863f18c8d3cd50",
+    "prepare.py": "bf6733698955cfe17671e9a200d78312864c21292dc5c52a97d14f16469e892a",
+    "source-audit.json": "3453e693ebc43033473d11787c5095cd063343f0f6db3ebee157d553a75300d8",
+    "baseline-kernel.metal": "70e3b30f322e625fb27c7e98b1b3dffd8370e1620b22add3b320a3c769d1c610",
+    "candidate-kernel.metal": "01ed9df09aa05ef3bba33b40bf708331fd779bf684f6efb021f7d2bc3e1a7daf",
+    "combined.metal": "ef23577c4bfa6fe658efa6883e679f4aa5604b6b8c9133ae4fab75097670c5ae",
+    "arguments.h": "78fad180f3ae45bf2ed24eb561e866f5f108b0bc93c7d670f51953754f9bcde3",
+    "probe.m": "532fcf5f8bdb6b7ba09084cff8070a90e62e620b66a880b6ebfa2ee31dbc65ea",
+    "probe": "4015116d5cfda910d6015ee1c2fadf9dfb18213c76b5046f77b4b84eb2e87489",
+    "build.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "cpu_trace.py": "050771701f40a02d3eabeff13a51825de66a911f70377b7b56607030dffeb1f0",
+    "edges/probe.m": "1f4c15bad1f65bea34e7a54a3cf322b804d6e873cef6171f02c26eb01848d977",
+    "edges/arguments.h": "78fad180f3ae45bf2ed24eb561e866f5f108b0bc93c7d670f51953754f9bcde3",
+    "edges/edge-probe": "10f8e46e4a46a2c58217f128a60fbf907a4f0f3d1ebcb57baee9b4b64cf15da2",
+    "edges/build.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "toolchain.txt": "31ee4590d8f83c8609b8f07bf7f132d552e3e9793635fcb0299cef8980ed4eb9"
+  }
+}

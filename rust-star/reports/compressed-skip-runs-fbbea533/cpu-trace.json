@@ -1,0 +1,30 @@
+{
+  "passed": true,
+  "cases": 119150,
+  "maximum_blocks": 4096,
+  "exhaustive_lengths": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9
+  ],
+  "block_values": [
+    0,
+    1,
+    2
+  ],
+  "masked_and_unmasked_branches": true,
+  "padded_and_unpadded": true,
+  "seed": 1371664397,
+  "trace_sha256": "07adb64ad8cd984951bf84af38450610a208416ba80e95a44160710b06612181",
+  "four_zero_block_jumps": 49201,
+  "metadata_reads_original": 789678,
+  "metadata_reads_candidate": 2179464,
+  "scope": "Integer traversal/read bounds only; exact active-block order, mask-pointer and padded-KV state match. Metadata reads may increase near active blocks."
+}

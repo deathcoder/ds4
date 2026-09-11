@@ -18,6 +18,77 @@ Before changing code:
 Journal entries are reverse chronological. Do not edit old entries to change
 history; add a correction and update the current-state summary.
 
+## 2026-09-11 — Empty-block run-skip candidate passes the isolated screen
+
+- Report rust-star/reports/compressed-skip-runs-fbbea533/README.md verifies
+  56 artifacts, source/kernel/library/ABI/host-code restoration, frozen inputs,
+  edge receipts, traversal traces and all 2,016 recorded timing intervals.
+- All 119,150 integer trace cases, 120 GPU edge cases (3,932,160 FP32 words),
+  and seven production-shape checks in both processes pass. Timed/initial
+  pairs add 23,085,449,216 exact FP32 comparisons; total 23,089,381,376.
+  Full mask/pad preparation, guards, immutable checksums and inputs pass.
+- Every contemporary A/A gate passes at all six shape/session cases. Maximum
+  first/second median deviation is 0.322%, AB/BA 0.454%, physical buffer 0.301%,
+  and MAD 0.460%; all 72 null pairs remain within 3% of parity.
+- Every candidate shape/session passes the preset AB/BA median <0.99 and 5/6
+  faster-per-order criteria. All 72 candidate pairs improve; order-specific
+  median kernel-time reductions range 1.14–6.08%. Both fresh processes complete
+  normally in 192.964s/191.966s, without retiming or threshold changes.
+- Select the frozen run-skip kernel for later narrow native compressed-prefill
+  integration and full 32K/128 C0, followed by bounded component validation.
+  Runtime 1711856e remains unchanged; no new model/logit C0 or engine gain is
+  established. The component was only about 12.04% of diagnostic GPU stage time;
+  do not equate this kernel percentage with whole-prefill improvement or launch
+  a broad engine campaign before assessing the real-component effect.
+- All 40 runtime/imported source pins and frozen executables/inputs pass final
+  checks. Host swap is unchanged at 49.25MB with no recorded thermal/performance
+  warning. All study GPU work is finished. No push, release or 256K resumption.
+  Report and updated project/journal are ready for a local completion commit.
+
+## 2026-09-11 — First run-skip process is exact with faster candidate medians
+
+- Session 0 completes in 192.964s with all seven production shapes exact.
+  Candidate/original AB/BA medians at 4096/16384/28672 are
+  0.960509/0.970953, 0.947580/0.942933 and 0.988563/0.986260.
+  All 36 candidate pairs improve; each order/shape clears the preset 1% margin.
+- Preserve these preliminary results. The second process is active in reverse
+  shape order; complete its declared run and all contemporary A/A gates before
+  a selection decision. No runtime source has changed or model been loaded.
+
+## 2026-09-11 — Run-skip trace and GPU boundary gates pass; start timed screen
+
+- All 119,150 exhaustive/seeded integer cases preserve active-block ordering,
+  mask-pointer state and padded K/V addressing, with bounded metadata reads.
+  Coverage includes all 0/1/2 marker sequences through length nine, masked and
+  unmasked paths, padded/unpadded tails, and seeded cases through 4,096 blocks.
+- All 120 GPU edge cases pass 3,932,160 FP32 comparisons in 1.911s, including
+  all 15 all-masked positive-zero outputs, long zero runs and both sides of
+  four-block/padded boundaries. CPU/GPU preparation, guards and inputs pass.
+- The run-skip candidate may increase metadata reads near active blocks; its
+  hypothesized gain is fewer loop/padding checks and pointer increments.
+  Source restoration and all 40 runtime pins pass. Freeze the validated kernel,
+  edge receipts, host/audit/runner and predeclared plan before the two timed
+  processes. No speed evidence exists yet and runtime remains untouched.
+
+## 2026-09-11 — Start bounded fully-masked-block run-skip study
+
+- User authorizes the next target. Start fbbea533, runtime 1711856e unchanged;
+  work rust-star/.work/compressed-skip-runs-fbbea533/. Clone the original
+  compressed FlashAttention template and insert four-zero-block run scanning
+  plus scalar leftovers, consolidating mask-pointer advances. Active-block
+  arithmetic and the partial padded tail stay byte-for-byte on the old path.
+- Before timing, compare exhaustive/seeded integer traversal traces and run
+  120 small GPU mask/key-boundary cases (16 query rows, two heads), including
+  all-masked output zeros, every-fourth/seven-zero runs and padded tails.
+  Preserve every failure. Host builds and source restoration proof pass.
+- Then two prospective equal-warm processes, seven correctness shapes and
+  three timed shapes, 12 candidate plus 12 A/A pairs per shape. Inherit all
+  neutral controls and require candidate AB/BA medians below 0.99 and at least
+  5/6 faster pairs per order in every shape/session. No threshold change or
+  extra run. No runtime integration, engine claim, push or 256K in this screen.
+- Plan and edge/build/source inputs are frozen before executing the new GPU
+  kernel. Full output, guard, mask/padding and input checks remain mandatory.
+
 ## 2026-09-11 — Fresh controlled head-first screen is exact and rejected
 
 - Report rust-star/reports/compressed-grid-warm-c21ebfda/README.md verifies
@@ -4476,6 +4547,14 @@ Next:
 
 ### Current resume checkpoint (updated 2026-09-11)
 
+- COMPLETE: isolated empty-block run-skip candidate passes. Report
+  rust-star/reports/compressed-skip-runs-fbbea533/README.md verifies 56 artifacts.
+  All exactness and contemporary A/A gates pass; every candidate pair improves,
+  with 1.14–6.08% lower order-specific median kernel time. Select for later
+  narrow real-model validation; no runtime change or engine gain is accepted.
+  All GPU work is finished.
+
+
 - COMPLETE: fresh controlled head-first screen. Report
   rust-star/reports/compressed-grid-warm-c21ebfda/README.md verifies 41 artifacts.
   Full isolated exactness and every A/A gate pass; candidate medians are
@@ -5364,19 +5443,19 @@ Next:
 
 ## Immediate Next Actions
 
-1. Keep the head-first scheduling candidate rejected and both historical screens
-   unchanged. Retain the validated equal-warm timing method and contemporaneous
-   A/A controls; no more retiming of this unchanged candidate is justified.
-2. Inspect compressed-attention traversal of fully masked cache blocks as the
-   next bounded, unmeasured lead. The current kernel visits block markers and
-   advances mask pointers even when no attention arithmetic is required. Any
-   proposed shortcut must preserve active-block order, padding semantics and
-   exact outputs, and pass an independently declared paired screen plus A/A.
-3. Only a successful new isolated candidate warrants runtime integration,
-   full-model C0 and unprofiled end-to-end prefill evidence. Keep routed-grid
-   45520435 correctness-only and runtime 1711856e diagnostic. Preserve frozen
-   d6c14fa0 and the interrupted/rejected long-context evidence. Keep 256K paused;
-   no push or automatic broader campaign.
+1. Integrate the frozen run-skip candidate narrowly in a Rust-owned native
+   compressed-prefill kernel, preserving the original grid, arithmetic,
+   initial prefix and decode paths. Use the committed report as source proof;
+   keep runtime 1711856e as the frozen comparator for this change.
+2. Require full-output 32K/128 C0 and a bounded real-component validation before
+   accepting or expanding the optimization. The isolated kernel savings cannot
+   establish total prefill gains; assess the component's actual contribution
+   before spending on unprofiled engine pairs. Keep paired criteria predeclared
+   and retain all failures. No automatic broad campaign.
+3. Keep the head-first grid candidate rejected, routed-grid 45520435
+   correctness-only and diagnostic 1711856e intact until the new gate passes.
+   Preserve d6c14fa0 and interrupted/rejected long-context evidence. Keep 256K
+   paused; no push or automatic frontier work.
 
 ## Entries
 

@@ -1,0 +1,12 @@
+{
+  "passed": true,
+  "cases": 120,
+  "compared_fp32_words": 3932160,
+  "all_masked_positive_zero_cases": 15,
+  "aggregate_block_types": [
+    2198,
+    284,
+    542
+  ],
+  "raw_sha256": "c9c930808754b25092b40125613fddb5d9a244e788a41c8a2ed80f7990000402"
+}
