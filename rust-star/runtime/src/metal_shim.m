@@ -372,6 +372,8 @@ static NSString *const kQ8ProjectionSource =
 @property(nonatomic, strong) id<MTLComputePipelineState> sharedDownHcPipeline;
 @property(nonatomic, strong) id<MTLComputePipelineState> attentionOutputBatchMapPipeline;
 @property(nonatomic, strong) id<MTLComputePipelineState> attentionOutputBatchLowPipeline;
+@property(nonatomic, strong) id<MTLComputePipelineState> attentionNativeHalfLowPipeline;
+@property(nonatomic, strong) id<MTLComputePipelineState> attentionNativeHalfOutputPipeline;
 @property(nonatomic, strong) id<MTLComputePipelineState> hcExpand4Pipeline;
 @property(nonatomic, strong) id<MTLComputePipelineState> routedBatchMapPipeline;
 @property(nonatomic, strong) id<MTLComputePipelineState> routedBatchPairSwigluPipeline;
@@ -46653,6 +46655,10 @@ int rust_star_metal_run_prefill_layer2_continuation_tail(
     @autoreleasepool {
         RustStarMetalContext *context = (__bridge RustStarMetalContext *)opaque_context;
         const BOOL native_chunk = context.prefillLayerChunkStart && production_batch;
+        // Only native continuation chunks use preconverted RHS tensors.
+        // Prefix, legacy tiled prefill and decode retain their original dispatches.
+        const BOOL native_attention_half = native_chunk && chunk_start != 0u &&
+            tile_start == chunk_start;
         const BOOL copy_routed_mid = !native_chunk;
         const BOOL layer3 = layer_index == 3u;
         const BOOL layer4 = layer_index == 4u;
@@ -46741,6 +46747,28 @@ int rust_star_metal_run_prefill_layer2_continuation_tail(
         }
         if (!ensure_attention_ingress_pipelines(context, error, error_bytes) ||
             !ensure_moe_output_pipelines(context, error, error_bytes)) return 0;
+        if (native_attention_half && (!context.attentionNativeHalfLowPipeline ||
+            !context.attentionNativeHalfOutputPipeline)) {
+            NSError *compile_error = nil;
+            bool bounds = false;
+            MTLFunctionConstantValues *constants = [MTLFunctionConstantValues new];
+            [constants setConstantValue:&bounds type:MTLDataTypeBool atIndex:700];
+            [constants setConstantValue:&bounds type:MTLDataTypeBool atIndex:701];
+            id<MTLFunction> low = [context.moeOutputLibrary
+                newFunctionWithName:@"kernel_mul_mm_id_q8_0_f16"
+                constantValues:constants error:&compile_error];
+            id<MTLFunction> output = [context.moeOutputLibrary
+                newFunctionWithName:@"rust_star_attention_output_half"
+                constantValues:constants error:&compile_error];
+            if (!low || !output) return fail_with_message(error, error_bytes,
+                compile_error ? compile_error.localizedDescription : @"missing half-input attention output");
+            context.attentionNativeHalfLowPipeline = [context.device
+                newComputePipelineStateWithFunction:low error:&compile_error];
+            context.attentionNativeHalfOutputPipeline = [context.device
+                newComputePipelineStateWithFunction:output error:&compile_error];
+            if (!context.attentionNativeHalfLowPipeline || !context.attentionNativeHalfOutputPipeline)
+                return fail_with_message(error, error_bytes, compile_error.localizedDescription);
+        }
         if (native_chunk && !context.routedNativePairSwigluPipeline) {
             NSError *compile_error = nil;
             id<MTLFunction> function = [context.moeOutputLibrary
@@ -46828,6 +46856,14 @@ int rust_star_metal_run_prefill_layer2_continuation_tail(
         RUST_STAR_NEW_CONTINUATION_TAIL_BUFFER(group_map_buffer, group_map_bytes);
         RUST_STAR_NEW_CONTINUATION_TAIL_BUFFER(attention_low_buffer, attention_low_bytes);
         RUST_STAR_NEW_CONTINUATION_TAIL_BUFFER(output_buffer, output_bytes);
+        id<MTLBuffer> heads_half_buffer = native_attention_half
+            ? persistent_buffer(context, @"prefill_transient_tail_attention_heads_half",
+                (NSUInteger)rows*q_dim*sizeof(uint16_t), error, error_bytes) : nil;
+        id<MTLBuffer> low_half_buffer = native_attention_half
+            ? persistent_buffer(context, @"prefill_transient_tail_attention_low_half",
+                (NSUInteger)rows*8u*output_rank*sizeof(uint16_t), error, error_bytes) : nil;
+        if (native_attention_half && (!heads_half_buffer || !low_half_buffer))
+            return fail_with_message(error, error_bytes, @"failed to allocate half-input attention scratch");
         id<MTLBuffer> after_attention_hc_buffer = [context.device
             newBufferWithLength:hc_bytes options:MTLResourceStorageModeShared];
         RUST_STAR_NEW_CONTINUATION_TAIL_BUFFER(ffn_flat_hc_buffer, hc_bytes);
@@ -46941,6 +46977,16 @@ int rust_star_metal_run_prefill_layer2_continuation_tail(
             .nb13=(uint64_t)rows*8u*output_rank*sizeof(float),
             .ne0=n_embd, .ne1=rows, .r2=1, .r3=1,
         };
+        if (native_attention_half) {
+            low_args.nb10 /= 2u;
+            low_args.nb11 /= 2u;
+            low_args.nb12 /= 2u;
+            low_args.nb13 /= 2u;
+            output_args.nb10 /= 2u;
+            output_args.nb11 /= 2u;
+            output_args.nb12 /= 2u;
+            output_args.nb13 /= 2u;
+        }
         rust_star_hc_expand_args attention_hc_args = {
             .n_embd=n_embd, .n_hc=4, .n_tokens=rows,
             .nb_block0=sizeof(float), .nb_block1=n_embd*sizeof(float),
@@ -47080,6 +47126,16 @@ int rust_star_metal_run_prefill_layer2_continuation_tail(
         if (!command || !encoder) return fail_with_message(error, error_bytes,
             @"failed to create prefill layer-2 continuation tail command");
 
+        if (native_attention_half) {
+            const uint32_t count = rows*q_dim;
+            [encoder setComputePipelineState:context.cpyF32F16Pipeline];
+            [encoder setBytes:&count length:sizeof(count) atIndex:0];
+            [encoder setBuffer:heads_buffer offset:heads_offset atIndex:1];
+            [encoder setBuffer:heads_half_buffer offset:0 atIndex:2];
+            [encoder dispatchThreadgroups:MTLSizeMake((count+1023u)/1024u,1,1)
+                 threadsPerThreadgroup:MTLSizeMake(256,1,1)];
+        }
+
         [encoder setComputePipelineState:context.attentionOutputBatchMapPipeline];
         [encoder setBytes:&map_args length:sizeof(map_args) atIndex:0];
         [encoder setBuffer:group_ids_buffer offset:0 atIndex:1];
@@ -47090,10 +47146,12 @@ int rust_star_metal_run_prefill_layer2_continuation_tail(
         [encoder dispatchThreadgroups:MTLSizeMake(1,1,1)
              threadsPerThreadgroup:MTLSizeMake(8,1,1)];
 
-        [encoder setComputePipelineState:context.attentionOutputBatchLowPipeline];
+        [encoder setComputePipelineState:native_attention_half
+            ? context.attentionNativeHalfLowPipeline : context.attentionOutputBatchLowPipeline];
         [encoder setBytes:&low_args length:sizeof(low_args) atIndex:0];
         [encoder setBuffer:model_buffers[0] offset:inner[0] atIndex:1];
-        [encoder setBuffer:heads_buffer offset:heads_offset atIndex:2];
+        [encoder setBuffer:native_attention_half ? heads_half_buffer : heads_buffer
+                     offset:native_attention_half ? 0u : heads_offset atIndex:2];
         [encoder setBuffer:group_map_buffer offset:0 atIndex:3];
         [encoder setBuffer:group_map_buffer offset:tpe_bytes atIndex:4];
         [encoder setBuffer:attention_low_buffer offset:0 atIndex:5];
@@ -47102,10 +47160,21 @@ int rust_star_metal_run_prefill_layer2_continuation_tail(
         [encoder dispatchThreadgroups:MTLSizeMake(work_cap,output_rank/64u,1)
              threadsPerThreadgroup:MTLSizeMake(128,1,1)];
 
-        [encoder setComputePipelineState:context.q8PrefillPipeline];
+        if (native_attention_half) {
+            const uint32_t count = rows*8u*output_rank;
+            [encoder setComputePipelineState:context.cpyF32F16Pipeline];
+            [encoder setBytes:&count length:sizeof(count) atIndex:0];
+            [encoder setBuffer:attention_low_buffer offset:0 atIndex:1];
+            [encoder setBuffer:low_half_buffer offset:0 atIndex:2];
+            [encoder dispatchThreadgroups:MTLSizeMake((count+1023u)/1024u,1,1)
+                 threadsPerThreadgroup:MTLSizeMake(256,1,1)];
+        }
+
+        [encoder setComputePipelineState:native_attention_half
+            ? context.attentionNativeHalfOutputPipeline : context.q8PrefillPipeline];
         [encoder setBytes:&output_args length:sizeof(output_args) atIndex:0];
         [encoder setBuffer:model_buffers[1] offset:inner[1] atIndex:1];
-        [encoder setBuffer:attention_low_buffer offset:0 atIndex:2];
+        [encoder setBuffer:native_attention_half ? low_half_buffer : attention_low_buffer offset:0 atIndex:2];
         [encoder setBuffer:output_buffer offset:0 atIndex:3];
         [encoder setThreadgroupMemoryLength:6144u atIndex:0];
         [encoder dispatchThreadgroups:MTLSizeMake(rows/32u,n_embd/64u,1)

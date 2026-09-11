@@ -18,6 +18,50 @@ Before changing code:
 Journal entries are reverse chronological. Do not edit old entries to change
 history; add a correction and update the current-state summary.
 
+## 2026-09-11 — Candidate passes neutral screen; integrate for full 32K decision
+
+- Both candidate-plus-A/A processes pass all predeclared criteria. Every one
+  of 72 candidate pairs improves; separate-order medians are 33.92–34.90%
+  lower. All six contemporary A/A cases pass every null gate. The screen adds
+  35,232,153,600 exact FP32 comparisons to 18,320,719,872 A/A-only comparisons.
+- Integrate only native continuation chunks in the shared tail host function:
+  preconvert heads and grouped-low outputs using the existing conversion
+  pipeline; select existing grouped FP16 RHS and a new instantiation of the
+  unchanged dense template. Preserve evaluation order, original map and HC.
+  Two transient buffers reuse existing ownership, adding 320 MiB at 4096 rows.
+- Complete-host inverse-edit audit restores the frozen original exactly, and
+  the new shader is the tested instantiation with symbol renaming only.
+  The exact production-assembled MoE library and both pipelines compile.
+  Release tests/build and fresh full-input preflight are running.
+- Prospective engine-plan.json requires full 32K/128 C0, then two warm-ups and
+  five alternating unprofiled fresh-process pairs against frozen Rust 9d35953f.
+  Preset retention requires all five prefill pairs faster, both order medians
+  below .99, bounded decode regression and memory cost. No 256K or push.
+
+## 2026-09-11 — Same-arena control milestone passes
+
+- Both predeclared fresh A/A-only processes pass all six case/session null
+  screens: temporal, separate AB/BA, each active-arena subset, MAD and pair
+  dispersion. All 18,320,719,872 FP32 comparisons are exact against protected
+  references and match prior frozen checksums. No failed run or retuning.
+- Continue directly to the two prospective candidate-plus-contemporary-A/A
+  processes using the identical frozen harness/library. Runtime sources remain
+  unchanged until all candidate and current-control criteria pass.
+
+## 2026-09-11 — Start attention-output decision through meaningful milestones
+
+- User expands scope to resolve the measurement control, conditionally validate
+  the candidate, integrate it, pass full 32K C0, and reach a bounded unprofiled
+  whole-prefill decision in this task. 256K remains paused; no push.
+- Prospective umbrella plan: rust-star/.work/attention-output-milestone-08ebd1aa/plan.json.
+  Two A/A-only fresh processes come first. Both roles now use identical active
+  buffers with complete per-role comparison to a protected original reference.
+  Both physical arenas and both role orders are balanced. Existing 1% role,
+  temporal and MAD gates remain; replace the inapplicable within-pair physical
+  comparison with separate role-neutrality gates in each active arena subset.
+- No retrospective correction of the previous failed study. No repeat or
+  retuning after a failed stage; dependent milestones require all earlier gates.
+
 ## 2026-09-11 — Half-input attention output is exact; A/A blocks selection
 
 - Portable report rust-star/reports/attention-output-half-input-038dded4/README.md
