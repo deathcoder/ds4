@@ -1,0 +1,48 @@
+{
+  "passed": true,
+  "scope": "Only diagnostic host instrumentation; normal encoder sequence restores exactly after stripping profile guards. All Metal sources unchanged.",
+  "changed_runtime_files": [
+    "rust-star/runtime/src/long_prefill.rs",
+    "rust-star/runtime/src/metal.rs",
+    "rust-star/runtime/src/metal_shim.h",
+    "rust-star/runtime/src/metal_shim.m"
+  ],
+  "paths": {
+    "indexed": {
+      "passed": true,
+      "baseline_sha256": "9f53a31ce14c3141ff2398d15e3c475d3351f76a56b4f4865636c1bcff121ccf",
+      "diagnostic_sha256": "e59411861a2d413038484d34c373499ac5e7bf99398d0435ac79099f9463c0a6",
+      "profile_blocks_removed": 9,
+      "normal_dispatches_bindings_arithmetic_exact": true
+    },
+    "compressed": {
+      "passed": true,
+      "baseline_sha256": "2e3fa2432da0cd574b175e411895c96b3beb2e342720696b2e62ce54c4d78a06",
+      "diagnostic_sha256": "cb9686203dffba6cb71b353e0b72d09b4f7da646c70a23ca44f3f5f4029e9a32",
+      "profile_blocks_removed": 4,
+      "normal_dispatches_bindings_arithmetic_exact": true
+    }
+  },
+  "kernels": {
+    "rust-star/runtime/src/attention_ingress.metal": "76a70b1eb6510f897293c9cdc7257d58a69d3a3cb372a0175af24eb8820187f7",
+    "rust-star/runtime/src/attention_output.metal": "92999a85674740404a174c74755d8c4307697e477ca7755063054fe7fc5c0451",
+    "rust-star/runtime/src/ffn_router.metal": "9ccae569e372358381ca18860c2cc039d69aa2b82b1e0601bef78ccef4d43d69",
+    "rust-star/runtime/src/indexer_argsort.metal": "0c868f5cbf751f889bb73aa5ac8599ff2b4359d9ed9aabd035043550256df790",
+    "rust-star/runtime/src/indexer_scores.metal": "6e95a675e722d24e5befac0d510d12c7e0313a7b6de3ab9521d13fa70f46963d",
+    "rust-star/runtime/src/moe_output_prefix.metal": "fd071235d773bfa72a870df223fac3fdb5ce128e51ac5bd10a3abb503184aa03",
+    "rust-star/runtime/src/q8_projection_pair.metal": "347811e00c5e5e52eea1451dfdbc809aa455b4e2a76134f604f5386d0ab40a52",
+    "rust-star/runtime/src/routed_prefill.metal": "78722daa500da63d25278d4eff97460f6c793d076515597a13ae9f39845a939d",
+    "rust-star/runtime/src/sparse_indexed_prefix.metal": "5fa4a992c13a676aa3a3285bb453865c5c16a227fec34a2c9622eae0cf989f28",
+    "metal/cpy.metal": "88d77cb71d83295be4097f2b820f60daac3bbbc75e1d4caf68327727be382ec4",
+    "metal/dense.metal": "fc1d031785fe3c601b00f0c34b24ef8325ed233bc86cdd2fc224e7c6d5fcff6f",
+    "metal/dsv4_hc.metal": "7ba6007b9212331ba2e737326432fa9ac76671e9875a8dae84b8fd28be78360c",
+    "metal/dsv4_kv.metal": "97b4006868d5f98729897acbeefc44713cfd9e543fd87147df497eda3f2992a0",
+    "metal/dsv4_misc.metal": "da219cb48b0c729985e9bedaba05a76108b10e68d63366ac0bdf2c4cd2522c86",
+    "metal/dsv4_rope.metal": "3613c5ac98cb7c7b07b00c0ebc18324addd928db7dda008e9da52f1d8bec5471",
+    "metal/flash_attn.metal": "095aa88594e1d25e6c23e9bdf7473de8c5de39bc2e2b98c049b48229b309996d",
+    "metal/glu.metal": "59281e30a27cc2eb618800b6e53a57e234f65f1a1e680d6267d9139e1a06b627",
+    "metal/moe.metal": "81090179e8d41c15efb48279c023c2b66935d40c02a39e0fcf26eacd70f2ae33",
+    "metal/softmax.metal": "6eaa6ce78c4b221b3c7fe45647d6eb42f165201992a243d77d04cf2668fb7664",
+    "metal/sum_rows.metal": "7e1f3ad3f945b1f6f59aa2d8ee5bf464052d989a632c33ea95ce50d3c4fbf0fc"
+  }
+}

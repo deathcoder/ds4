@@ -1,0 +1,9 @@
+{
+  "passed": true,
+  "verified_utc": "2026-09-11T10:02:18.388761+00:00",
+  "probe_freeze_sha256": "045e36e28d0e492ebd382f38e9d6243ec4963d903603bb5132ff65d7651fd824",
+  "probe_raw_sha256": "a3bdaa70f4787741f80f1abf8c6ed1a8ece1f4a6c3993d9c1ea04a67971afb47",
+  "runtime_executable_sha256": "a174c1e06ff399056b5946bbac1a34583e43ec7aaac0b078c280e4f04a81f3c8",
+  "runtime_source_count": 40,
+  "model_not_used_by_probe": true
+}

@@ -1,0 +1,11 @@
+{
+  "passed": true,
+  "verified_utc": "2026-09-11T10:06:34.018149+00:00",
+  "runtime_commit": "1711856ea309f70877102d15facb4e1243a9fdcc",
+  "runtime_executable_sha256": "a174c1e06ff399056b5946bbac1a34583e43ec7aaac0b078c280e4f04a81f3c8",
+  "runtime_source_count": 40,
+  "probe_freeze_sha256": "045e36e28d0e492ebd382f38e9d6243ec4963d903603bb5132ff65d7651fd824",
+  "null_control_freeze_sha256": "334c83697e6913abbab9353684e4cc166daa7558acc20777ea08529c983d1900",
+  "model_rehashed_after_full_c0": true,
+  "model_not_used_by_standalone_experiments": true
+}

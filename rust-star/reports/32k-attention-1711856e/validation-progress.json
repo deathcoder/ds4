@@ -1,0 +1,11 @@
+[
+  {
+    "name": "attention-32k-profiled",
+    "exit_code": 0,
+    "started_utc": "2026-09-11T09:46:29.002864+00:00",
+    "finished_utc": "2026-09-11T09:51:11.863224+00:00",
+    "elapsed_seconds": 282.858817458,
+    "peak_rss_bytes": 3334619136,
+    "executable_sha256": "a174c1e06ff399056b5946bbac1a34583e43ec7aaac0b078c280e4f04a81f3c8"
+  }
+]

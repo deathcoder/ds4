@@ -1,0 +1,38 @@
+{
+  "created_utc": "2026-09-11T09:36:41.056410+00:00",
+  "starting_commit": "ce94f3fb",
+  "runtime_baseline": "4552043579bb86b6f94e682e3a154937322169ee",
+  "scope": "Diagnostic-only component attribution for native 4K continuation attention. No arithmetic, kernels, dispatch geometry, normal-path waits, fixtures or frontier changes.",
+  "live_sequence": [
+    "attention-32k-profiled"
+  ],
+  "context_tokens": 32768,
+  "decode_steps": 128,
+  "full_fp32_words": 16677120,
+  "expected_native_attention_packets": 287,
+  "expected_indexed_packets": 147,
+  "expected_compressed_packets": 140,
+  "indexed_components": [
+    "indexer_q_projection",
+    "indexer_q_transform",
+    "indexer_weight_projection",
+    "indexer_scores",
+    "topk_selection",
+    "topk_ordering",
+    "kv_conversion",
+    "indexed_attention",
+    "inverse_rope"
+  ],
+  "compressed_components": [
+    "kv_conversion",
+    "mask_blocks",
+    "compressed_attention",
+    "inverse_rope"
+  ],
+  "expected_attention_intervals": 1883,
+  "expected_tail_intervals": 2583,
+  "acceptance": "Full FP32 output C0 plus strictly ordered counters, complete component/parent coverage and input/source pins. Profiling is perturbed and ineligible for engine speed claims.",
+  "followup": "Rank real-input component attribution, inspect the largest actionable component and predeclare one bounded arithmetic-preserving standalone experiment before measuring it. Advance only a promising exact candidate toward later unprofiled end-to-end timing; no broad engine campaign.",
+  "no_256k": true,
+  "no_push": true
+}

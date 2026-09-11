@@ -18,6 +18,76 @@ Before changing code:
 Journal entries are reverse chronological. Do not edit old entries to change
 history; add a correction and update the current-state summary.
 
+## 2026-09-11 — Attention breakdown and bounded screen complete
+
+- Report rust-star/reports/32k-attention-1711856e/README.md verifies all 74
+  artifacts, full-model output receipts, both component packet families,
+  source/build/input bindings, standalone exactness and the separate A/A
+  control. Hardware recheck confirms Apple M1 Ultra with 48 GPU cores.
+- Retain runtime 1711856e's diagnostic-only attention profiler. Full 32K/128 C0,
+  all 320 Rust tests, release build, source audits and final pins pass. Largest
+  diagnostic components are compressed attention 26.158s, indexed attention
+  18.197s and indexer scoring 11.389s; acknowledge encoder perturbation/gaps.
+- Do not promote the head-first wrapper. It is exact in isolation but fails
+  all three predeclared speed screens. The A/A control establishes first/second
+  order sensitivity in this specific standalone harness; cache versus GPU
+  clock effects remain unresolved. No correction is applied retroactively.
+- All GPU work is finished. Sources and frozen executable remain unchanged.
+  The earlier routed grid candidate stays correctness-only; 256K stays paused.
+  Commit evidence and updated project state locally; no push or release.
+
+## 2026-09-11 — Compressed-attention grid screen fails; A/A explains order bias
+
+- The standalone head-first grid wrapper matches all 4,697,620,480 FP32 words
+  across seven production chunk shapes, including padded/unpadded KV, CPU/GPU
+  mask-block/padding checks, output guards and input immutability. All 21 timed
+  pairs and every warm-up are retained. Process time 26.151s; no model loaded.
+- Candidate paired medians at chunk starts 4096/16384/28672 are
+  0.939445/1.008735/0.988854, with 4/7, 3/7 and 4/7 faster pairs. Every shape
+  fails the predeclared speed screen. No kernel integration or engine timing.
+- Every BA pair has the candidate slower, while 11/12 AB pairs improve.
+  Predeclared a separate A/A null control after observing that concern, using
+  the identical original pipeline object and original grid in both roles.
+  It also passes 4,697,620,480 FP32 comparisons, in 25.154s. First/second
+  median ratios are 1.069804/1.032649/1.036785. This confirms order sensitivity
+  in this standalone timing setup; it does not establish the cache/clock cause
+  or retroactively normalize/accept the failed candidate. All evidence stays.
+- Retain the diagnostic profiler, not the head-first optimization. Runtime
+  1711856e and all 40 sources remain frozen; full model/prompt/oracle pins pass
+  after C0, and both standalone freezes/source/binary checks pass afterward.
+  No GPU job remains active. Portable report and final docs are next.
+
+## 2026-09-11 — Full 32K attention profile passes; select compressed attention
+
+- Diagnostic 1711856e passes full 32K/128 C0: 16,677,120 FP32 words, 287
+  attention packets / 1,883 intervals and 287 tail packets / 2,583 intervals.
+  Component ranking: compressed attention 26.157594s, indexed attention
+  18.197261s, indexer scores 11.388780s, top-k selection 1.600754s. All other
+  attention components are below one second each.
+- Profiling remains perturbing: compressed attention parent rises from the
+  previous unsplit-attention profile's 23.122070s to 26.510443s. Counter-span
+  coverage ranges 82.10–99.94%, median 99.84%; preserve every raw packet.
+  These are diagnostic attributions, not production engine measurements.
+- Bind one standalone compressed FlashAttention grid-order experiment before
+  GPU execution: transpose head/query dispatch traversal with a wrapper into
+  the unchanged original arithmetic. Check all seven native 32K chunk shapes,
+  padded/unpadded KV, full finite bitwise outputs and guards. Time three shapes
+  with two warmups and seven alternating pairs each. Runtime stays frozen.
+- Work/plan: 32k-attention-breakdown-ce94f3fb/compressed-grid-probe/. No model
+  reload, new frontier, broad engine campaign or push. Final input pins are
+  being rechecked before the isolated probe starts.
+
+## 2026-09-11 — Freeze attention diagnostic 1711856e and start 32K C0
+
+- Release build passes. Frozen source 1711856ea309f70877102d15facb4e1243a9fdcc;
+  executable SHA-256 a174c1e06ff399056b5946bbac1a34583e43ec7aaac0b078c280e4f04a81f3c8.
+  All 40 runtime/imported-source hashes match the committed tree. Plan, tests,
+  build, preflight, source audit and toolchain identities are bound in the
+  candidate manifest.
+- Start only attention-32k-profiled, requiring full 32K/128 FP32 C0 and strict
+  attention/tail packet audits. Keep all sources frozen while it runs. No
+  optimization kernel has been selected or measured yet; 256K stays paused.
+
 ## 2026-09-11 — Attention instrumentation passes host/source checks
 
 - Added separate 18-sample indexed and 8-sample compressed attention packets.
@@ -4308,10 +4378,12 @@ Next:
 
 ### Current resume checkpoint (updated 2026-09-11)
 
-- ACTIVE: bounded 32K attention component breakdown from ce94f3fb.
-  Plan in rust-star/.work/32k-attention-breakdown-ce94f3fb/plan.json. Add
-  diagnostic-only instrumentation, then run one full-output C0 profile and
-  use its real-input costs to choose one bounded exact kernel experiment.
+- COMPLETE: 32K attention breakdown and one bounded compressed-grid screen.
+  Report rust-star/reports/32k-attention-1711856e/README.md verifies 74 artifacts.
+  Diagnostic runtime 1711856e passes full C0 and strict component coverage;
+  retain instrumentation only. The head-first wrapper passes isolated exactness
+  but fails speed selection, and A/A confirms this harness's order sensitivity.
+  No engine gain or larger frontier is accepted; no GPU run is active.
 
 - COMPLETE: bounded 32K routed-prefill grid-order validation at 45520435.
   Report rust-star/reports/32k-route-order-45520435/README.md verifies 48
@@ -5179,12 +5251,18 @@ Next:
 
 ## Immediate Next Actions
 
-1. Implement/test diagnostic attention components, freeze source/input pins
-   and run only the declared full-C0 32K profile. Preserve all failures.
-2. Audit ordered packet/component coverage; use the measured breakdown to
-   predeclare and test one bounded arithmetic-preserving candidate in isolation.
-3. Keep 45520435 correctness-only, 256K paused and frozen baseline evidence
-   intact. No push or automatic broader engine timing campaign.
+1. Preserve the failed compressed-grid screen and A/A control unchanged.
+   Before another small standalone speed claim, predeclare an A/A-neutral
+   timing protocol with balanced order and equal preconditioning. Determine
+   whether CPU validation/poisoning gaps, cache state or GPU clocks drive the
+   first/second effect; do not retroactively normalize a candidate into a win.
+2. Use the validated 32K breakdown to target compressed/indexed attention;
+   select one arithmetic-preserving change only after trustworthy isolated
+   timing is available. A later candidate still needs full-model C0 followed
+   by unprofiled end-to-end prefill evidence before performance acceptance.
+3. Keep routed-grid 45520435 correctness-only and runtime 1711856e diagnostic.
+   Preserve frozen d6c14fa0 and the interrupted/rejected long-context evidence.
+   Keep 256K paused; no push or automatic broader campaign.
 
 ## Entries
 

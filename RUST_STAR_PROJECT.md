@@ -436,6 +436,19 @@ cannot materially close the reference gap alone. Any later engine timing must
 use unprofiled alternating pairs and prebound end-to-end criteria. Performance
 pairing at 256K and the coding-agent corpus remain future work.
 
+The following bounded 32K attention study is complete at diagnostic 1711856e.
+Report `rust-star/reports/32k-attention-1711856e/README.md` verifies 74 artifacts,
+320 host tests/build, full 32K/128 C0 and all 1,883 attention plus 2,583 tail
+counter intervals. The largest diagnostic components are compressed attention
+(26.158s), indexed attention (18.197s) and indexer scores (11.389s); encoder
+perturbation and counter gaps limit interpretation as normal engine time.
+Retain the profiler only. A head-first compressed-attention grid wrapper passes
+4.698 billion isolated FP32 comparisons but fails all three prebound speed
+screens. A separate identical-kernel A/A control reproduces 3–7% first/second
+order sensitivity in this standalone setup. Its cache/clock cause is unresolved;
+fix and validate that timing protocol before making another small kernel speed
+claim. No result updates the Rust-versus-reference baseline or resumes 256K.
+
 Current implementation boundaries, evidence, and immediate actions are maintained
 in `RUST_STAR_JOURNAL.md`. As of 2026-09-09, native prefill through all 43 layers
 and the output head is C0 exact at 128K, with 128 exact full-logit decode steps

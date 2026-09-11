@@ -1,0 +1,9 @@
+{
+  "verified_utc": "2026-09-11T10:10:01.413303+00:00",
+  "gpus": [
+    {
+      "name": "Apple M1 Ultra",
+      "cores": "48"
+    }
+  ]
+}

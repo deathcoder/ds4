@@ -1,0 +1,94 @@
+{
+  "created_utc": "2026-09-11T10:03:53.302437+00:00",
+  "parent_diagnostic_commit": "1711856ea309f70877102d15facb4e1243a9fdcc",
+  "parent_audit_sha256": "2440e1ab59620e19897e31a971e7a4e7ce0e7c59e6032c9c8345a0e16a7fffb5",
+  "selected_component": {
+    "component": "compressed/compressed_attention",
+    "gpu_ms": 26157.593924187993,
+    "attention_share": 0.4417199508214994,
+    "recorded_stage_share": 0.1203889908818004
+  },
+  "hypothesis": "Visit adjacent heads first at a fixed query tile, increasing locality of query rows and shared KV/mask accesses. Keep the original compressed FlashAttention template and all per-output arithmetic unchanged.",
+  "change": "Both roles use the same original pipeline object and untransposed dispatch.",
+  "correctness_cases": [
+    {
+      "chunk_start": 4096,
+      "query_rows": 4096,
+      "heads": 64,
+      "width": 512,
+      "key_rows": 4288,
+      "padded": false
+    },
+    {
+      "chunk_start": 8192,
+      "query_rows": 4096,
+      "heads": 64,
+      "width": 512,
+      "key_rows": 4320,
+      "padded": true
+    },
+    {
+      "chunk_start": 12288,
+      "query_rows": 4096,
+      "heads": 64,
+      "width": 512,
+      "key_rows": 4352,
+      "padded": false
+    },
+    {
+      "chunk_start": 16384,
+      "query_rows": 4096,
+      "heads": 64,
+      "width": 512,
+      "key_rows": 4384,
+      "padded": true
+    },
+    {
+      "chunk_start": 20480,
+      "query_rows": 4096,
+      "heads": 64,
+      "width": 512,
+      "key_rows": 4416,
+      "padded": false
+    },
+    {
+      "chunk_start": 24576,
+      "query_rows": 4096,
+      "heads": 64,
+      "width": 512,
+      "key_rows": 4448,
+      "padded": true
+    },
+    {
+      "chunk_start": 28672,
+      "query_rows": 4096,
+      "heads": 64,
+      "width": 512,
+      "key_rows": 4480,
+      "padded": false
+    }
+  ],
+  "timed_chunk_starts": [
+    4096,
+    16384,
+    28672
+  ],
+  "warmups_per_variant_per_case": 2,
+  "alternating_pairs_per_timed_case": 7,
+  "per_case_data_seed": "0x8d351f21 + case_index",
+  "inputs": "Deterministic finite F32 queries and F16 shared K/V, per-head sinks, full production causal window/compressed masks; every production chunk shape and both KV-padding paths.",
+  "checks": "Independent CPU mask/block/padding verification; full bitwise FP32 outputs and finite/nondegenerate output checks after every warm-up pair and timed pair; destination guard regions; invariant output checksum. Retain all failures and timings.",
+  "screening": "Report AB and BA A/A ratios and first/second-run ratios. No candidate verdict or engine claim. All full-output, guard, CPU preparation and input immutability checks remain required.",
+  "diagnostic_perturbation": {
+    "previous_unsplit_attention_parent_ms": 23122.070125008013,
+    "new_split_attention_parent_ms": 26510.442666685012,
+    "note": "Component profiling raises the observed compressed-attention parent duration. All diagnostic component shares and any extrapolation remain perturbed evidence, not normal engine timing."
+  },
+  "no_model_load": true,
+  "no_runtime_change": true,
+  "no_engine_pairs": true,
+  "no_256k": true,
+  "no_push": true,
+  "purpose": "Separate null control after the candidate screen failed: test first/second order sensitivity with the exact same original kernel and grid in both slots. Never use this to retroactively accept or retime the failed candidate.",
+  "candidate_screen_sha256": "a0300b7f4a2e4089aacae1789a524937983dec1a9865dd13066c8b606a453b95"
+}
