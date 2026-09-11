@@ -18,6 +18,124 @@ Before changing code:
 Journal entries are reverse chronological. Do not edit old entries to change
 history; add a correction and update the current-state summary.
 
+## 2026-09-11 — Bounded routed-prefill grid-order screen passes
+
+- Completed the declared standalone experiment on the M1 Ultra in 10.138s.
+  Report: rust-star/reports/prefill-route-order-d6c14fa0/README.md. All 20
+  packaged artifact hashes and the independent arithmetic/coverage/statistics
+  audit pass. The first preparation assertion failure is retained; no frozen
+  GPU attempt failed or was retried, and no timed sample was discarded.
+- Transposing only the work/output grid axes preserves every compared FP16
+  word: 2,270,429,184 comparisons across 64 executions / eight cases. Actual
+  GPU routing maps match independent CPU enumeration; finite/nondegenerate
+  baseline outputs and destination guard bytes pass. Synthetic inputs/weights
+  use all 256 experts and six distinct routes, with empty/partial/full tiles.
+- Seven alternating pairs per timed case, after two warmups per variant:
+  2K balanced median paired GPU ratio 0.992044 (5/7 faster), 4K balanced
+  0.912801 (7/7), 4K skewed 0.980903 (7/7). Both 4K cases meet the prebound
+  screening criteria. Batch sizes are kernel input rows, not full-model context
+  measurements. Peak process RSS is 1.555GiB. Host snapshots are retained.
+- This is a modest candidate, not closure of the reference gap. Routed gate/up
+  contributes 14.52% of recorded stage GPU time in the accepted 32K profile.
+  Applying the synthetic 4K savings unchanged would save roughly 0.28–1.27%
+  of summed stage GPU time; this is extrapolation, not engine measurement.
+- No production optimization is accepted. All 39 frozen source hashes and the
+  frozen d6c14fa0 executable still match; production runtime/imported shaders
+  are unchanged. No real model was loaded, no new full-output C0 or engine
+  throughput result is claimed, and no 256K/retained campaign was restarted.
+- Next bounded step: isolate this mapping in a Rust-owned candidate shader,
+  run the existing full 32K output C0 gate, and collect a matched lower-context
+  diagnostic before deciding on a larger engine timing campaign. Preserve
+  accepted production and the paused 256K evidence; no push.
+
+## 2026-09-11 — Begin bounded lower-context routed-prefill experiment
+
+- User authorizes the next step after recovery. Keep the 256K campaign paused.
+  Work stays at d6c14fa0; runtime and imported production kernels are unchanged.
+- Rehashed the latest accepted 32K component profile and audit from
+  128k-score64-b6b0f125. Tail GPU time is 86.851s, with 32.201s attributed to
+  attention output and 30.598s to routed gate/up. These perturbed estimates
+  partition the tail; they are not separate engine throughput measurements.
+- Freeze one hypothesis: transpose only the fused IQ2_XXS gate/up work/output
+  grid axes. Preserve the 64x32 MMA tile, arithmetic, activation and stores.
+  Baseline shader matches accepted native b6b0f125. Initial preparation rejected
+  an incorrect assumption of textual identity with the newer oracle-v5 template;
+  no build/GPU run occurred, and setup-failure.json preserves this correction.
+- Evidence: rust-star/.work/prefill-route-order-d6c14fa0/. Synthetic controls
+  cover partial 32-row work tiles; fixed timing cases use 2K/4K batches,
+  256 experts, six routes and balanced/skewed routing. Require exact FP16 output
+  words after every execution, finite values and guard bytes. Use two warmups
+  per variant then seven alternating pairs per timed case.
+- Advance only if both 4K cases improve on the paired median with at least five
+  faster pairs each and every exact check passes. This is a kernel hypothesis
+  screen, not full-model C0 or an engine speed claim. No broad model sweep or push.
+
+## 2026-09-11 — Recover context in replacement session
+
+- User reports that the previous conversation stopped persisting new messages;
+  resume from the project charter and this journal. The application persistence
+  issue is user-reported and was not investigated in this repository.
+- Confirmed the correct worktree is /Users/deathcodevision/dev/ds4-rust-star-bootstrap,
+  branch agent/rust-star-bootstrap at d6c14fa0. The parent ds4 checkout remains
+  on codex/dspark-observability-0. Existing uncommitted project/journal edits
+  preserve the user's decision to stop the long-context campaign.
+- Rehashed all 39 frozen runtime/imported-source files and all four artifacts
+  bound by interrupted-attempt.json: every hash matches. Oracle-v5 worktree
+  HEAD remains ccbd16d36895ef9fe8edf7f793014988ff1ab7f4. No matching model runner
+  or observer process was found in the current process inventory. No executable
+  or full-model rehash, live C0 test, or new benchmark was performed this session.
+- Read the manual ledger and existing 32K reference-comparison / 128K score-tile
+  reports. Their historical timings do not establish current-candidate parity.
+  Keep 256K paused and preserve both rejected attempts and interrupted evidence.
+- Next: use the latest accepted lower-context profile to select one bounded
+  prefill bottleneck experiment, preserving oracle-v5 C0. No broad validation
+  campaign, performance acceptance, publication, or push is implied by recovery.
+
+## 2026-09-10 — Stop 256K validation after user challenges performance priority
+
+- The user questioned spending the day on higher-context checks while prefill
+  remains slower at lower contexts. Stop the expensive validation sequence;
+  do not resume 256K or retained cycles automatically. The next useful work is
+  focused prefill performance investigation at a lower context, using existing
+  profiles and a short experiment before another broad validation campaign.
+- Validation group 6856 was terminated with SIGTERM; runner exited 143. Frozen
+  d6c14fa0 passed eight gates, through full 128K/128 C0 and 192K prefill. Its
+  fresh 256K run was interrupted after 151552 prefill tokens,
+  before any decode comparison. Neither retained gate started on this candidate.
+  This is a user-driven interruption, not a correctness failure or acceptance.
+- Evidence: rust-star/.work/frontier256-handoff-bounded/interrupted-attempt.json
+  binds preserved logs/progress/build metadata. Candidate executable and runtime
+  source hashes still match the freeze. Both earlier rejected attempts remain
+  preserved. Final full-model rehash, acceptance audit, packaged report and
+  completion commit were not performed. No 256K performance result exists.
+- Latest direct Rust/oracle paired prefill latency ratios remain 1.72589 at
+  32K (32k-tail-89e32745) and 1.342774 at 128K (128k-measure-ef37e566).
+  The subsequent 8.28% prefill improvement (128k-score64-b6b0f125) is against
+  the previous Rust implementation and does not establish reference parity.
+- Validation and both observers have exited and their sessions are drained.
+  Preserve completed host/memory observations. No model workload remains
+  running, no new benchmark is started, and no push.
+
+## 2026-09-10 — Freeze bounded handoff d6c14fa0 and start full revalidation
+
+- Candidate d6c14fa0918a5130da72aa7be6e56b82696fb8b0 is frozen. Executable
+  SHA-256: 8bdcf022811eca2c2cf0b5c7aca10bc51705a1a18d988129cffbdfd43bb58d11.
+  All 318 Rust/94 Python tests, release build, formatting, CLI and current
+  input/host pins pass. Production handoff/reset regression is independently
+  verified. Runtime and imported shaders remain frozen throughout validation.
+- Host and memory observers start at 17:07:52 UTC before the first gate. The
+  baseline is after prior rejection, regression and compilation, with existing
+  swap; it is not a fresh boot. Preserve complete whole-system observations.
+- An initial runner setup check catches missing copied canonical reference
+  folders before any model gate starts. Preserve its error, restore/re-hash
+  unchanged references, and start the same candidate's first full gate run.
+  The 2K control passes and 8K is active at 17:13 UTC. All eleven gates must
+  pass, including complete retained 128K and 256K cycles; no acceptance yet.
+- Active evidence is rust-star/.work/frontier256-handoff-bounded/. Both prior
+  candidates and corrections remain preserved. Independent full audit, final
+  input verification, observer completion, report/docs and local completion
+  commit remain pending. No push, performance pairs or new milestone.
+
 ## 2026-09-10 — Bound long-context handoff resources; full-size copy regression passes
 
 - Above 128K, handoff now submits one layer per command, waits for completion,
@@ -4017,16 +4135,23 @@ Next:
 
 ## Current State
 
-### Current resume checkpoint (updated 2026-09-10)
+### Current resume checkpoint (updated 2026-09-11)
 
-- ACTIVE: authorized 256K capacity/correctness milestone. Both c1047756 and
-  0d5f50ff are rejected and preserved. The new >128K per-layer handoff passes
-  the actual copy/reset GPU regression at both 128K and 256K, preserving all
-  copies and model residency while retiring each layer's source ownership.
-  Active evidence: rust-star/.work/frontier256-handoff-bounded/. Build/test,
-  freeze and all eleven full-model gates remain before independent audit,
-  final hashes, report and local completion commit. No push, performance
-  pairs, larger frontier or coding-agent corpus is authorized.
+- COMPLETE: bounded lower-context routed-prefill grid-order screen. Report
+  rust-star/reports/prefill-route-order-d6c14fa0/README.md. Synthetic exactness
+  passes 2.270 billion FP16 comparisons; 4K balanced/skewed paired kernel
+  latency falls 8.72%/1.91%, all 14 pairs faster. Production remains d6c14fa0;
+  no engine speedup or new full-model C0 claim. Next is one bounded 32K
+  candidate validation/diagnostic, not a broad measurement campaign.
+
+- PAUSED: 256K capacity/correctness milestone, after the user challenged its
+  priority while lower-context prefill remains slower than the reference.
+  Frozen d6c14fa0 passes eight gates through 128K full C0 and 192K prefill;
+  its fresh 256K run is interrupted, and its retained checks were not started.
+  Preserve both earlier rejected candidates and all current evidence under
+  rust-star/.work/frontier256-handoff-bounded/. See interrupted-attempt.json.
+  Candidate binary/runtime hashes are unchanged. No final acceptance, completed
+  report, performance claim or completion commit. Do not resume automatically.
 
 
 - COMPLETE: authorized 128K profiling and focused optimization milestone.
@@ -4870,13 +4995,14 @@ Next:
 
 ## Immediate Next Actions
 
-1. Finish release tests/build and input/host preflight; freeze the corrected
-   per-layer handoff candidate. Preserve both rejected attempts.
-2. Rerun all eleven required controls and complete retained cycles with full
-   system compression/swap observation coverage. Keep runtime sources frozen.
-3. Only after all gates pass: independent audit, final input hashes, complete
-   observation coverage, portable evidence report, documentation, local commit
-   and stop. No push or next milestone is authorized.
+1. Keep the long-context validation stopped. Preserve frozen d6c14fa0, both
+   rejected attempts and the interrupted-run evidence; no automatic resume.
+2. The bounded routed-prefill kernel screen passes. Isolate the two coordinate
+   changes in a Rust-owned candidate shader, then run one complete 32K output
+   C0 gate and a matched diagnostic before considering broader engine timing.
+3. The expected benefit is modest and unverified in the engine. Do not replace
+   accepted performance baselines or claim reference parity from this screen.
+   Keep oracle-v5, accepted sources and all historical evidence immutable.
 
 ## Entries
 

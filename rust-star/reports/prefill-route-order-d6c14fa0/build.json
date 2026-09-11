@@ -1,0 +1,20 @@
+{
+  "hypothesis_sha256": "37141c4077f30470d0b33cde70068a044ef0d0836dcf86c5ae5abdb6070b8ec5",
+  "probe_source_sha256": "40284c5dd9b55976a0163abf145de3241940717d5b0fe8f4dc625a37453d806b",
+  "executable_sha256": "e2be180c6978f83822e015f4080eea4cf5fc7c14f4a3b0d12d0ebe55faf2e492",
+  "build_log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "compile_argv": [
+    "clang",
+    "-fobjc-arc",
+    "-O2",
+    "-framework",
+    "Foundation",
+    "-framework",
+    "Metal",
+    "route-order-probe.m",
+    "-o",
+    "route-order-probe"
+  ],
+  "compiler": "Apple clang version 21.0.0 (clang-2100.1.1.101)\nTarget: arm64-apple-darwin25.5.0\nThread model: posix\nInstalledDir: /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin\n",
+  "created_utc": "2026-09-11T05:35:45.836087+00:00"
+}

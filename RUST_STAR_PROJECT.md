@@ -413,10 +413,20 @@ all five pairs faster; steady throughput is 1.06% higher and peak-RSS ratio is
 `rust-star/reports/128k-score64-b6b0f125/README.md` verifies 322 artifacts,
 including independent statistics, final pins and all rejected attempts. This
 comparison does not replace the historical Rust-versus-oracle results.
-Internal HC remains accepted through 24K. The next bounded milestone is now
-authorized: audit 256K capacity, establish repeatable oracle-v5 full outputs,
-validate native 256K/128 C0 and retained-session reset/reuse, then report and
-stop. Performance pairing and the coding-agent corpus remain future work.
+Internal HC remains accepted through 24K. The 256K capacity/correctness
+milestone is paused after the user challenged its priority on 2026-09-10:
+lower-context prefill still has no demonstrated advantage over the reference.
+Frozen d6c14fa0 passes eight gates through full 128K C0 and 192K prefill; its
+fresh 256K validation was interrupted, and its retained gates were not started.
+Preserve all evidence and both prior rejected attempts. Do not resume the
+long-context campaign automatically. The bounded lower-context investigation
+on 2026-09-11 found an exact synthetic routed-prefill grid-order candidate:
+4K balanced/skewed kernel latency improves 8.72%/1.91% on paired medians.
+Production remains unchanged; no engine improvement or new full-model C0 is
+claimed. The next bounded step is 32K candidate correctness and diagnostic
+validation before considering a larger measurement campaign. See
+`rust-star/reports/prefill-route-order-d6c14fa0/README.md`. Performance pairing
+at 256K and the coding-agent corpus remain future work.
 
 Current implementation boundaries, evidence, and immediate actions are maintained
 in `RUST_STAR_JOURNAL.md`. As of 2026-09-09, native prefill through all 43 layers

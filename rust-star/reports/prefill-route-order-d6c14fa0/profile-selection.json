@@ -1,0 +1,29 @@
+{
+  "source": "rust-star/reports/128k-score64-b6b0f125/checks/components.json",
+  "source_sha256": "c94563c492cf8c9324a3ca8225deda826757fb14a645743341f0482a890547b4",
+  "stage_gpu_ms": {
+    "tail": 86850.874000012,
+    "attention": 54864.52141662701,
+    "bootstrap_ingress": 32772.182875002,
+    "prefix_layer": 18315.709916672,
+    "ingress": 6485.295583334,
+    "boundary": 5956.2168749990005,
+    "initial_bootstrap": 5125.770916668,
+    "compressor": 410.41520834600016,
+    "bind": 0.0,
+    "host_scratch": 0.0
+  },
+  "tail_attributed_gpu_ms": {
+    "attention_output": 32201.460301966014,
+    "routed_gate_up": 30597.943092473004,
+    "routed_down": 16499.62881117001,
+    "shared_expert": 4965.836464357998,
+    "final_hc": 1102.2094038120001,
+    "ffn_ingress": 707.204686267,
+    "routed_map": 322.5166658669998,
+    "router": 261.38383320599996,
+    "routed_sum": 192.69074089499992
+  },
+  "profile_perturbed": true,
+  "not_engine_throughput": true
+}

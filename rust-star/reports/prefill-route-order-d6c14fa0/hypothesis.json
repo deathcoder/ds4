@@ -1,0 +1,66 @@
+{
+  "status": "predeclared",
+  "created_utc": "2026-09-11T05:32:14.639442+00:00",
+  "candidate_base": "d6c14fa0918a5130da72aa7be6e56b82696fb8b0",
+  "accepted_native_comparator": "b6b0f125",
+  "native_moe_source_matches_accepted": true,
+  "oracle_source": "ccbd16d36895ef9fe8edf7f793014988ff1ab7f4",
+  "hypothesis": "Transpose only grid axes of fused IQ2_XXS routed gate/up to test locality; retain 64x32 MMA tile, arithmetic, activation and stores.",
+  "scope": "Isolated synthetic kernel experiment; not full-model C0 or engine throughput.",
+  "source_sha256": {
+    "rust-star/runtime/src/moe_output_prefix.metal": "fd071235d773bfa72a870df223fac3fdb5ce128e51ac5bd10a3abb503184aa03",
+    "metal/flash_attn.metal": "095aa88594e1d25e6c23e9bdf7473de8c5de39bc2e2b98c049b48229b309996d",
+    "metal/dense.metal": "fc1d031785fe3c601b00f0c34b24ef8325ed233bc86cdd2fc224e7c6d5fcff6f",
+    "metal/glu.metal": "59281e30a27cc2eb618800b6e53a57e234f65f1a1e680d6267d9139e1a06b627",
+    "metal/moe.metal": "81090179e8d41c15efb48279c023c2b66935d40c02a39e0fcf26eacd70f2ae33",
+    "metal/dsv4_hc.metal": "7ba6007b9212331ba2e737326432fa9ac76671e9875a8dae84b8fd28be78360c"
+  },
+  "generated_sha256": {
+    "baseline.metal": "bc25c123edb677e4d6ec18c45431667ca5d1fb7a1663fc91d74c6f3ac0096aed",
+    "candidate.metal": "889da215ee4dd6678fcd973ef741758b2cf883adb6c240e5b240b171d5fcdee2",
+    "kernel-change.patch": "c5b6383fc5b15fe612df802e6ff68bbdcc196950a3f5c2407f5f940ec0746b8e"
+  },
+  "dimensions": {
+    "experts": 256,
+    "top_k": 6,
+    "input_width": 4096,
+    "output_width": 2048,
+    "threadgroup_threads": 128,
+    "threadgroup_bytes": 16384
+  },
+  "controls": [
+    1,
+    31,
+    32,
+    33,
+    127
+  ],
+  "timed_cases": [
+    {
+      "rows": 2048,
+      "routing": "balanced"
+    },
+    {
+      "rows": 4096,
+      "routing": "balanced"
+    },
+    {
+      "rows": 4096,
+      "routing": "skewed"
+    }
+  ],
+  "timing": {
+    "warmups_per_variant": 2,
+    "alternating_pairs": 7,
+    "metric": "Completed command GPU milliseconds",
+    "comparison": "All FP16 output words against baseline on every run; finite outputs and guard bytes required."
+  },
+  "advance_criteria": {
+    "all_outputs_bit_exact": true,
+    "both_4096_case_median_paired_ratio_below": 1.0,
+    "minimum_faster_pairs_per_4096_case": 5,
+    "no_engine_acceptance": true
+  },
+  "runtime_mutation": false,
+  "no_full_model_jobs": true
+}

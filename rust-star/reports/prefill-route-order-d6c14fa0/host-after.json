@@ -1,0 +1,11 @@
+{
+  "utc": "2026-09-11T05:36:14.853442+00:00",
+  "swap": "vm.swapusage: total = 0.00M  used = 0.00M  free = 0.00M  (encrypted)\n",
+  "vm_stat": "Mach Virtual Memory Statistics: (page size of 16384 bytes)\nPages free:                                  5304000.\nPages active:                                1266359.\nPages inactive:                              1133073.\nPages speculative:                            328975.\nPages throttled:                                   0.\nPages wired down:                             301216.\nPages purgeable:                               64721.\n\"Translation faults\":                       11990525.\nPages copy-on-write:                          705731.\nPages zero filled:                          11261415.\nPages reactivated:                             44600.\nPages purged:                                  88642.\nFile-backed pages:                           1656949.\nAnonymous pages:                             1071458.\nPages stored in compressor:                        0.\nPages occupied by compressor:                      0.\nDecompressions:                                    0.\nCompressions:                                      0.\nPageins:                                     1888321.\nPageouts:                                          0.\nSwapins:                                           0.\nSwapouts:                                          0.\n",
+  "thermal": "Note: No thermal warning level has been recorded\nNote: No performance warning level has been recorded\nNote: No CPU power status has been recorded\n",
+  "load": [
+    1.22119140625,
+    1.79736328125,
+    3.515625
+  ]
+}

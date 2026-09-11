@@ -1,0 +1,6 @@
+{
+  "phase": "preparation before compilation or GPU execution",
+  "failure": "Initial setup assumed textual identity of native fused MoE source and oracle-v5 source; assertion failed.",
+  "resolution": "Use the accepted native b6b0f125 shader as synthetic comparator, verified identical to current imported MoE source. Oracle-v5 has additional generic template variants; no source or correctness contract was changed.",
+  "created_utc": "2026-09-11T05:35:12.781770+00:00"
+}
