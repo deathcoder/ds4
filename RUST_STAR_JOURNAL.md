@@ -18,6 +18,76 @@ Before changing code:
 Journal entries are reverse chronological. Do not edit old entries to change
 history; add a correction and update the current-state summary.
 
+## 2026-09-11 — Bounded 32K grid-order validation complete
+
+- Report: rust-star/reports/32k-route-order-45520435/README.md. The portable
+  verifier passes all 48 artifact hashes, source/build/input bindings, rejected
+  compilation attempt, 50,031,360 exact FP32 comparison receipts and 574
+  ordered profile packets. Final full model/prompt/oracle/baseline/candidate
+  hashes and all 40 runtime/imported-source hashes match the frozen inputs.
+- Retain 45520435 as a correctness-validated candidate. Real 32K routed gate/up
+  attribution improves 1.40% raw / 1.42% versus unchanged controls, with matched
+  median ratio 0.985016 and 209/287 matched tails improving. This meets the
+  predeclared selection rule only; no engine speedup is accepted. Its roughly
+  0.43s component saving is too small to materially close the reference gap.
+- All three corrected live runs pass. The initial QK_NL compilation failure,
+  corrective constant binding and explicit reuse of the 318 host-test results
+  remain in the report. Report formatting initially divided by zero for two
+  host-only stages; their GPU ratio now reads n/a. No measurement changed.
+- No further GPU work is active. Larger frontiers remain unvalidated for this
+  candidate; the prior 256K campaign stays paused. Evidence and docs are ready
+  for a local commit; no push or packaged product release is requested.
+
+## 2026-09-11 — Three full 32K gates and diagnostic selection pass
+
+- Candidate 45520435 finishes its profile at 08:41:41 UTC. All three declared
+  runs pass, totaling 50,031,360 exact FP32 comparisons. Independent audit
+  validates both sets of 287 tails / 2,583 ordered component intervals.
+- Routed gate/up attribution falls 30.856877s to 30.425503s: ratio 0.986020
+  (1.40% lower, 0.431374s saved). Against unchanged controls, aggregate ratio
+  is 0.985846 and matched median 0.985016; 209/287 matched tails improve.
+  Both predeclared selection criteria pass. Retain as a correctness-validated
+  candidate eligible for later engine timing, not an accepted speedup.
+- The small gate/up delta is only about 0.20% of baseline summed stage GPU
+  duration, so it cannot materially close the reference gap alone. The two
+  diagnostic stage totals are 212.158813s and 211.657294s; neither is a valid
+  engine throughput measurement. No broader run starts.
+- Final full-input/source pin verification and portable evidence packaging
+  are pending. Preserve the first candidate's compilation failure and keep
+  256K paused.
+
+## 2026-09-11 — Baseline diagnostic passes full 32K C0
+
+- Frozen d6c14fa0 completes the matched profile at 08:37:20 UTC. All
+  16,677,120 FP32 output words and all 128 decode steps match oracle-v5.
+  Process elapsed time is 273.302s, ineligible as headline engine timing.
+- Candidate 45520435 profile starts at 08:37:21 UTC as the final declared
+  live run. Strict profile audit and normalized component comparison remain
+  pending; no benefit or retain/revert decision is accepted yet.
+
+## 2026-09-11 — Corrected grid candidate passes full normal 32K C0
+
+- Frozen 45520435 completes normal 32K/128 at 08:32:46 UTC: all 16,677,120
+  FP32 output words match oracle-v5, including complete prefill and every
+  decode row. Process elapsed time is 289.398s; diagnostic RSS is not an
+  engine memory or throughput measurement. Executable SHA-256:
+  7fe2eb851abe9b5f2b8688bc95a8c998e7c0405fa5814ae34d40366cfa62abdc.
+- The matched baseline profile starts at 08:32:46 UTC, followed by the candidate
+  profile. Both require the same full-output C0 and strict profile validity.
+  No real-input component benefit or engine speedup is accepted yet. Keep the
+  corrected source frozen; retain the earlier shader-compilation failure.
+
+## 2026-09-11 — Freeze corrected grid candidate 45520435
+
+- Release build and assembled Metal pipeline compilation pass. Frozen source:
+  4552043579bb86b6f94e682e3a154937322169ee; executable SHA-256
+  7fe2eb851abe9b5f2b8688bc95a8c998e7c0405fa5814ae34d40366cfa62abdc. All 40 source hashes
+  match the committed tree. Unchanged Rust/host tests are explicitly reused
+  from 9171518a (318 passed); shader compilation and live runs use this candidate.
+- The three full 32K/128 output checks now start sequentially in
+  rust-star/.work/prefill-route-order-32k-iq2-bound/. Keep sources frozen,
+  preserve the first shader-compilation failure and keep 256K paused.
+
 ## 2026-09-11 — Corrected native-tail Metal library compiles
 
 - Standalone compilation of the assembled native library and new pipeline
@@ -4208,17 +4278,20 @@ Next:
 
 ### Current resume checkpoint (updated 2026-09-11)
 
-- ACTIVE: bounded 32K real-model validation of the routed-prefill grid-order
-  candidate, with three predeclared C0/diagnostic runs. Evidence lives in
-  rust-star/.work/prefill-route-order-32k-653f791c/. Candidate 9171518a failed shader compilation before inference.
-  The IQ2-argument correction is preparing in prefill-route-order-32k-iq2-bound/.
+- COMPLETE: bounded 32K routed-prefill grid-order validation at 45520435.
+  Report rust-star/reports/32k-route-order-45520435/README.md verifies 48
+  artifacts, all three full-output C0 runs and both strict profiles. Final
+  input/source pins pass. Normalized aggregate/median gate ratios are
+  0.985846/0.985016; retain as a correctness-validated candidate only.
+  No engine speedup is accepted. Preserve first candidate 9171518a's shader
+  compilation failure. No GPU run remains active.
 
 - COMPLETE: bounded lower-context routed-prefill grid-order screen. Report
   rust-star/reports/prefill-route-order-d6c14fa0/README.md. Synthetic exactness
   passes 2.270 billion FP16 comparisons; 4K balanced/skewed paired kernel
-  latency falls 8.72%/1.91%, all 14 pairs faster. Production remains d6c14fa0;
-  no engine speedup or new full-model C0 claim. Next is one bounded 32K
-  candidate validation/diagnostic, not a broad measurement campaign.
+  latency falls 8.72%/1.91%, all 14 pairs faster. That standalone screen left
+  runtime d6c14fa0 unchanged; the subsequent real-model result is above.
+  Synthetic kernel improvement does not establish engine improvement.
 
 - PAUSED: 256K capacity/correctness milestone, after the user challenged its
   priority while lower-context prefill remains slower than the reference.
@@ -5071,14 +5144,16 @@ Next:
 
 ## Immediate Next Actions
 
-1. Compile the corrected assembled shader, rebuild/freeze the IQ2-argument
-   correction, then run only the same three 32K C0/diagnostic checks in
-   prefill-route-order-32k-iq2-bound/.
-2. Audit full outputs, ordered profile packets and matched component ratios;
-   preserve failures, package the evidence and update the disposition before
-   deciding whether a larger engine timing campaign is worthwhile.
-3. Keep 256K stopped. Preserve frozen d6c14fa0, both rejected attempts and
-   interrupted evidence. No broader validation campaign or push.
+1. Keep 45520435 labeled correctness-validated, not performance-accepted.
+   The bounded 32K selection passes, but the real component saving is small.
+   If this candidate advances, predeclare an alternating unprofiled 32K
+   Rust-to-Rust timing study with end-to-end prefill acceptance; do not spend
+   a broad campaign on the synthetic percentage or infer a reference win.
+2. Continue profile-led lower-context work before resuming capacity. Existing
+   diagnostics still put much larger GPU time in attention and bootstrap
+   ingress; choose a bounded next experiment against a real bottleneck.
+3. Keep 256K stopped. Preserve frozen d6c14fa0, both rejected long-context
+   attempts and interrupted evidence. No push or automatic broader campaign.
 
 ## Entries
 

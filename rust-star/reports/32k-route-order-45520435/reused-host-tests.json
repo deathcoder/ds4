@@ -1,0 +1,6 @@
+{
+  "source_commit": "9171518a",
+  "rust_tests": 318,
+  "tests_log_sha256": "c576b35c568e3601d89a935fb399d53c4a2c93298905a17dbdf2aa9998410e7a",
+  "reason": "Only two Metal template arguments change from the undefined imported macro to its original constant 16; Rust, host ABI and scheduler are unchanged. New Metal compilation and all three live C0 runs are required."
+}

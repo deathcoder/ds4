@@ -1,0 +1,11 @@
+[
+  {
+    "name": "candidate-32k-output",
+    "exit_code": 1,
+    "started_utc": "2026-09-11T08:19:08.269263+00:00",
+    "finished_utc": "2026-09-11T08:19:30.354221+00:00",
+    "elapsed_seconds": 22.084972334,
+    "peak_rss_bytes": 23887872,
+    "executable_sha256": "a907449347b9489845f034d479fcf5e46e9772d047dfa47500da5e67a5e89965"
+  }
+]

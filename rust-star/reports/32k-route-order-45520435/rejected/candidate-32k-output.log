@@ -1,0 +1,25 @@
+rust-star: Metal prefill layer-0 boundary probe failed: program_source:12771:71: error: use of undeclared identifier 'QK_NL'
+typedef decltype(rust_star_routed_prefill_gate_up_impl<block_iq2_xxs, QK_NL, dequantize_iq2_xxs>) rust_star_routed_prefill_gate_up_type;
+                                                                      ^
+program_source:12772:158: error: use of undeclared identifier 'QK_NL'
+template [[host_name("rust_star_routed_prefill_gate_up")]] kernel rust_star_routed_prefill_gate_up_type rust_star_routed_prefill_gate_up_impl<block_iq2_xxs, QK_NL, dequantize_iq2_xxs>;
+                                                                                                                                                             ^
+
+       21.14 real         0.10 user         8.44 sys
+            23887872  maximum resident set size
+                   0  average shared memory size
+                   0  average unshared data size
+                   0  average unshared stack size
+                1674  page reclaims
+                 104  page faults
+                   0  swaps
+                   0  block input operations
+                   0  block output operations
+                   0  messages sent
+                   0  messages received
+                   0  signals received
+                 314  voluntary context switches
+                3251  involuntary context switches
+         51282238407  instructions retired
+         26876450876  cycles elapsed
+            11305632  peak memory footprint

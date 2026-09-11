@@ -1,0 +1,8 @@
+{
+  "passed": true,
+  "kernel_body_diff": "two grid-coordinate expressions plus function name only",
+  "root_metal_unchanged": true,
+  "baseline_kernel_sha256": "bbf3e1cd1378f0c37e4657fcce7224036e5370b306b081a62ce588cfed7e4dd3",
+  "candidate_shader_sha256": "14953ff8630eeeb96ecf792158bc02e39fbc6413178e8c399915fa50462ed8b0",
+  "host_scope": "native_chunk branch of shared continuation tail only; all other routed dispatch sites unchanged"
+}

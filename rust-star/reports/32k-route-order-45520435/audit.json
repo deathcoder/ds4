@@ -1,0 +1,2802 @@
+{
+  "passed": true,
+  "checks": {
+    "candidate-32k-output": {
+      "passed": true,
+      "fp32_words": 16677120,
+      "result_sha256": "ea7a152709d145948fd5710ac1b93212dc93d5a1a2c633e09f9ef31ab1ddd1f1",
+      "log_sha256": "aec789afa8dd6e274294bcf6d86d6c9093dc6c90d247901b62b179826ac8a346"
+    },
+    "baseline-32k-profiled": {
+      "passed": true,
+      "fp32_words": 16677120,
+      "result_sha256": "ea7a152709d145948fd5710ac1b93212dc93d5a1a2c633e09f9ef31ab1ddd1f1",
+      "log_sha256": "35f80ef472d47e56180d93d1f20ab689dc96e532d5928e39ec19200f54a28867"
+    },
+    "candidate-32k-profiled": {
+      "passed": true,
+      "fp32_words": 16677120,
+      "result_sha256": "ea7a152709d145948fd5710ac1b93212dc93d5a1a2c633e09f9ef31ab1ddd1f1",
+      "log_sha256": "2d092ccb5487c70a137e4ee88d5d9afe338bbcf7f2449d47c3a64cc914275bd4"
+    }
+  },
+  "profiles": {
+    "baseline": {
+      "stages": {
+        "initial_bootstrap": {
+          "gpu_ms": 5144.443250001,
+          "host_elapsed_ms": 6877.63975,
+          "command_wall_ms": 5307.479999999,
+          "calls": 1
+        },
+        "prefix_layer": {
+          "gpu_ms": 18417.951958317997,
+          "host_elapsed_ms": 24389.100291000002,
+          "command_wall_ms": 22654.767000011998,
+          "calls": 40
+        },
+        "bootstrap_ingress": {
+          "gpu_ms": 32932.848291666,
+          "host_elapsed_ms": 33236.153082,
+          "command_wall_ms": 33087.883000001,
+          "calls": 7
+        },
+        "bind": {
+          "gpu_ms": 0.0,
+          "host_elapsed_ms": 617.1187490000003,
+          "command_wall_ms": 0.0,
+          "calls": 287
+        },
+        "boundary": {
+          "gpu_ms": 5921.824083332999,
+          "host_elapsed_ms": 13806.866832,
+          "command_wall_ms": 12810.911999996995,
+          "calls": 147
+        },
+        "host_scratch": {
+          "gpu_ms": 0.0,
+          "host_elapsed_ms": 0.01962600000000001,
+          "command_wall_ms": 0.0,
+          "calls": 147
+        },
+        "attention": {
+          "gpu_ms": 55112.39262500797,
+          "host_elapsed_ms": 61177.00366800002,
+          "command_wall_ms": 60138.14500000098,
+          "calls": 287
+        },
+        "tail": {
+          "gpu_ms": 87347.33837500004,
+          "host_elapsed_ms": 91590.63983299996,
+          "command_wall_ms": 91447.85499997092,
+          "calls": 287
+        },
+        "ingress": {
+          "gpu_ms": 6870.314666667002,
+          "host_elapsed_ms": 11504.156582,
+          "command_wall_ms": 10585.537999995007,
+          "calls": 140
+        },
+        "compressor": {
+          "gpu_ms": 411.7002499849999,
+          "host_elapsed_ms": 1080.511667,
+          "command_wall_ms": 938.592000007,
+          "calls": 140
+        }
+      },
+      "components": {
+        "attention_output": 32370.77174606102,
+        "ffn_ingress": 714.5462992390003,
+        "router": 260.29095014099994,
+        "routed_map": 322.52142540399996,
+        "routed_gate_up": 30856.87676160899,
+        "routed_down": 16552.84747075601,
+        "routed_sum": 195.65790122899995,
+        "shared_expert": 4969.659435347993,
+        "final_hc": 1104.1663852120003
+      },
+      "native_tails": 287,
+      "component_intervals": 2583,
+      "profile_sha256": "87dd79d01858e3ce9d60f129fcae2ec32321cbb35e5cf93a5db6bf90107819f1",
+      "coverage": {
+        "minimum": 0.9987391639594553,
+        "median": 0.999074275555909,
+        "maximum": 0.9994193388059397
+      }
+    },
+    "candidate": {
+      "stages": {
+        "initial_bootstrap": {
+          "gpu_ms": 5152.132874999,
+          "host_elapsed_ms": 5347.581667,
+          "command_wall_ms": 5314.85,
+          "calls": 1
+        },
+        "prefix_layer": {
+          "gpu_ms": 18413.262749993002,
+          "host_elapsed_ms": 24290.281331,
+          "command_wall_ms": 22638.149000002006,
+          "calls": 40
+        },
+        "bootstrap_ingress": {
+          "gpu_ms": 32946.824291671,
+          "host_elapsed_ms": 33234.428167000005,
+          "command_wall_ms": 33092.770000002005,
+          "calls": 7
+        },
+        "bind": {
+          "gpu_ms": 0.0,
+          "host_elapsed_ms": 629.7221329999996,
+          "command_wall_ms": 0.0,
+          "calls": 287
+        },
+        "boundary": {
+          "gpu_ms": 5909.292416671001,
+          "host_elapsed_ms": 13795.706,
+          "command_wall_ms": 12766.891999995001,
+          "calls": 147
+        },
+        "host_scratch": {
+          "gpu_ms": 0.0,
+          "host_elapsed_ms": 0.015571000000000007,
+          "command_wall_ms": 0.0,
+          "calls": 147
+        },
+        "attention": {
+          "gpu_ms": 55102.80866668001,
+          "host_elapsed_ms": 61246.43850300001,
+          "command_wall_ms": 60258.25999999499,
+          "calls": 287
+        },
+        "tail": {
+          "gpu_ms": 86921.00179165797,
+          "host_elapsed_ms": 91280.32320300005,
+          "command_wall_ms": 91099.95200000805,
+          "calls": 287
+        },
+        "ingress": {
+          "gpu_ms": 6795.991291663,
+          "host_elapsed_ms": 11515.289796999994,
+          "command_wall_ms": 10539.858000007996,
+          "calls": 140
+        },
+        "compressor": {
+          "gpu_ms": 415.97995831300005,
+          "host_elapsed_ms": 1015.2841670000001,
+          "command_wall_ms": 929.2719999910004,
+          "calls": 140
+        }
+      },
+      "components": {
+        "attention_output": 32374.998397198982,
+        "ffn_ingress": 707.0661404770004,
+        "router": 262.990418775,
+        "routed_map": 322.7053497620002,
+        "routed_gate_up": 30425.502868726006,
+        "routed_down": 16558.326114694002,
+        "routed_sum": 195.89819502799995,
+        "shared_expert": 4969.499824853,
+        "final_hc": 1104.0144821610002
+      },
+      "native_tails": 287,
+      "component_intervals": 2583,
+      "profile_sha256": "10b98ac2dc689d2684e7c45ef6ce041706075124b60afe0296275f01ef64470a",
+      "coverage": {
+        "minimum": 0.9986339825027746,
+        "median": 0.9990477262922484,
+        "maximum": 0.9994409732316026
+      }
+    }
+  },
+  "diagnostic_comparison": {
+    "aggregate_normalized_gate_ratio": 0.9858455550306086,
+    "matched_normalized_gate_ratio": {
+      "median": 0.9850164957593577,
+      "mad": 0.015313388333796696,
+      "minimum": 0.9223503333835449,
+      "maximum": 1.0665156216712701,
+      "improved": 209,
+      "count": 287
+    },
+    "component_total_ratios": {
+      "attention_output": 1.0001305699836607,
+      "ffn_ingress": 0.9895315968049008,
+      "router": 1.0103709661535976,
+      "routed_map": 1.0005702702007158,
+      "routed_gate_up": 0.9860201699538275,
+      "routed_down": 1.0003309789417,
+      "routed_sum": 1.0012281323549452,
+      "shared_expert": 0.9999678830114881,
+      "final_hc": 0.9998624273904417
+    },
+    "matched_tails": [
+      {
+        "chunk_start": 4096,
+        "layer": 2,
+        "baseline_gate_ms": 108.387235926,
+        "candidate_gate_ms": 102.310774405,
+        "gate_ratio": 0.9439374805613769,
+        "control_ratio": 1.0044101117932365,
+        "normalized_gate_ratio": 0.93979288885902
+      },
+      {
+        "chunk_start": 4096,
+        "layer": 3,
+        "baseline_gate_ms": 107.870537275,
+        "candidate_gate_ms": 104.263832687,
+        "gate_ratio": 0.9665645070552932,
+        "control_ratio": 1.0065281451610666,
+        "normalized_gate_ratio": 0.9602955582534869
+      },
+      {
+        "chunk_start": 4096,
+        "layer": 4,
+        "baseline_gate_ms": 108.454431656,
+        "candidate_gate_ms": 108.124351738,
+        "gate_ratio": 0.9969565105550785,
+        "control_ratio": 0.9914526203521645,
+        "normalized_gate_ratio": 1.0055513396101157
+      },
+      {
+        "chunk_start": 4096,
+        "layer": 5,
+        "baseline_gate_ms": 106.123968118,
+        "candidate_gate_ms": 103.316187928,
+        "gate_ratio": 0.9735424500252573,
+        "control_ratio": 0.980196615117566,
+        "normalized_gate_ratio": 0.9932113976015816
+      },
+      {
+        "chunk_start": 4096,
+        "layer": 6,
+        "baseline_gate_ms": 108.846031257,
+        "candidate_gate_ms": 108.998888209,
+        "gate_ratio": 1.0014043410699933,
+        "control_ratio": 0.9814814619215928,
+        "normalized_gate_ratio": 1.0202987829330923
+      },
+      {
+        "chunk_start": 4096,
+        "layer": 7,
+        "baseline_gate_ms": 110.258464136,
+        "candidate_gate_ms": 105.52878867,
+        "gate_ratio": 0.9571037425284094,
+        "control_ratio": 1.0109749400834747,
+        "normalized_gate_ratio": 0.946713617302307
+      },
+      {
+        "chunk_start": 4096,
+        "layer": 8,
+        "baseline_gate_ms": 110.508102691,
+        "candidate_gate_ms": 107.306752583,
+        "gate_ratio": 0.9710306300620187,
+        "control_ratio": 1.0026989054977544,
+        "normalized_gate_ratio": 0.968416964193239
+      },
+      {
+        "chunk_start": 4096,
+        "layer": 9,
+        "baseline_gate_ms": 106.83910318,
+        "candidate_gate_ms": 105.666113234,
+        "gate_ratio": 0.9890209678751817,
+        "control_ratio": 0.9856814865616265,
+        "normalized_gate_ratio": 1.0033879923272215
+      },
+      {
+        "chunk_start": 4096,
+        "layer": 10,
+        "baseline_gate_ms": 109.88837789,
+        "candidate_gate_ms": 107.444798695,
+        "gate_ratio": 0.9777630788449161,
+        "control_ratio": 1.0141929888035486,
+        "normalized_gate_ratio": 0.9640799035678513
+      },
+      {
+        "chunk_start": 4096,
+        "layer": 11,
+        "baseline_gate_ms": 106.48208953,
+        "candidate_gate_ms": 105.157524078,
+        "gate_ratio": 0.9875606737447914,
+        "control_ratio": 1.0084813442479101,
+        "normalized_gate_ratio": 0.9792552726706901
+      },
+      {
+        "chunk_start": 4096,
+        "layer": 12,
+        "baseline_gate_ms": 110.250706257,
+        "candidate_gate_ms": 106.073655306,
+        "gate_ratio": 0.9621131592457731,
+        "control_ratio": 0.9995614989471487,
+        "normalized_gate_ratio": 0.9625352319583933
+      },
+      {
+        "chunk_start": 4096,
+        "layer": 13,
+        "baseline_gate_ms": 107.113207414,
+        "candidate_gate_ms": 105.411173085,
+        "gate_ratio": 0.9841099489960979,
+        "control_ratio": 1.0016080492531274,
+        "normalized_gate_ratio": 0.982529992375683
+      },
+      {
+        "chunk_start": 4096,
+        "layer": 14,
+        "baseline_gate_ms": 106.578640049,
+        "candidate_gate_ms": 108.059104677,
+        "gate_ratio": 1.0138908192797293,
+        "control_ratio": 0.9961943366163264,
+        "normalized_gate_ratio": 1.0177640867980748
+      },
+      {
+        "chunk_start": 4096,
+        "layer": 15,
+        "baseline_gate_ms": 105.378864604,
+        "candidate_gate_ms": 104.133496971,
+        "gate_ratio": 0.9881819979966577,
+        "control_ratio": 0.9938718821981651,
+        "normalized_gate_ratio": 0.9942750325233842
+      },
+      {
+        "chunk_start": 4096,
+        "layer": 16,
+        "baseline_gate_ms": 108.569557586,
+        "candidate_gate_ms": 105.297343952,
+        "gate_ratio": 0.9698606708293159,
+        "control_ratio": 1.0243242838536717,
+        "normalized_gate_ratio": 0.9468297160549051
+      },
+      {
+        "chunk_start": 4096,
+        "layer": 17,
+        "baseline_gate_ms": 104.471219905,
+        "candidate_gate_ms": 104.742889089,
+        "gate_ratio": 1.002600421285853,
+        "control_ratio": 0.9927810808104467,
+        "normalized_gate_ratio": 1.0098907409349405
+      },
+      {
+        "chunk_start": 4096,
+        "layer": 18,
+        "baseline_gate_ms": 106.855451838,
+        "candidate_gate_ms": 104.518266524,
+        "gate_ratio": 0.9781275987907166,
+        "control_ratio": 0.9857858399702002,
+        "normalized_gate_ratio": 0.9922313337552962
+      },
+      {
+        "chunk_start": 4096,
+        "layer": 19,
+        "baseline_gate_ms": 109.298952354,
+        "candidate_gate_ms": 104.892868524,
+        "gate_ratio": 0.9596877761853612,
+        "control_ratio": 1.0061097753796007,
+        "normalized_gate_ratio": 0.9538599064135673
+      },
+      {
+        "chunk_start": 4096,
+        "layer": 20,
+        "baseline_gate_ms": 107.225844609,
+        "candidate_gate_ms": 107.280269746,
+        "gate_ratio": 1.0005075748034298,
+        "control_ratio": 0.9857545275477135,
+        "normalized_gate_ratio": 1.0149662485369637
+      },
+      {
+        "chunk_start": 4096,
+        "layer": 21,
+        "baseline_gate_ms": 105.823811769,
+        "candidate_gate_ms": 103.557176614,
+        "gate_ratio": 0.9785810479030204,
+        "control_ratio": 0.9910175915140284,
+        "normalized_gate_ratio": 0.9874507337533656
+      },
+      {
+        "chunk_start": 4096,
+        "layer": 22,
+        "baseline_gate_ms": 107.190315071,
+        "candidate_gate_ms": 107.862223514,
+        "gate_ratio": 1.0062683689525023,
+        "control_ratio": 0.9984722670643791,
+        "normalized_gate_ratio": 1.0078080304734398
+      },
+      {
+        "chunk_start": 4096,
+        "layer": 23,
+        "baseline_gate_ms": 106.626494328,
+        "candidate_gate_ms": 104.272619344,
+        "gate_ratio": 0.9779241078979948,
+        "control_ratio": 1.0041645925507208,
+        "normalized_gate_ratio": 0.9738683430511412
+      },
+      {
+        "chunk_start": 4096,
+        "layer": 24,
+        "baseline_gate_ms": 107.158476756,
+        "candidate_gate_ms": 104.956676145,
+        "gate_ratio": 0.9794528563893876,
+        "control_ratio": 1.0167325310453763,
+        "normalized_gate_ratio": 0.9633338429550801
+      },
+      {
+        "chunk_start": 4096,
+        "layer": 25,
+        "baseline_gate_ms": 105.909477704,
+        "candidate_gate_ms": 104.309439476,
+        "gate_ratio": 0.9848923980866768,
+        "control_ratio": 1.0105321848087454,
+        "normalized_gate_ratio": 0.974627441750486
+      },
+      {
+        "chunk_start": 4096,
+        "layer": 26,
+        "baseline_gate_ms": 109.018337981,
+        "candidate_gate_ms": 108.845261176,
+        "gate_ratio": 0.9984124064977933,
+        "control_ratio": 1.0050331739772547,
+        "normalized_gate_ratio": 0.9934123891122312
+      },
+      {
+        "chunk_start": 4096,
+        "layer": 27,
+        "baseline_gate_ms": 107.546556418,
+        "candidate_gate_ms": 105.722861913,
+        "gate_ratio": 0.9830427438521429,
+        "control_ratio": 1.0069052491745487,
+        "normalized_gate_ratio": 0.9763011412027417
+      },
+      {
+        "chunk_start": 4096,
+        "layer": 28,
+        "baseline_gate_ms": 109.594955859,
+        "candidate_gate_ms": 109.662473853,
+        "gate_ratio": 1.0006160684446725,
+        "control_ratio": 1.007324295412715,
+        "normalized_gate_ratio": 0.9933405488196886
+      },
+      {
+        "chunk_start": 4096,
+        "layer": 29,
+        "baseline_gate_ms": 106.673959461,
+        "candidate_gate_ms": 105.597705843,
+        "gate_ratio": 0.9899108121284889,
+        "control_ratio": 1.007579108233676,
+        "normalized_gate_ratio": 0.9824646065397681
+      },
+      {
+        "chunk_start": 4096,
+        "layer": 30,
+        "baseline_gate_ms": 109.772676485,
+        "candidate_gate_ms": 108.132771911,
+        "gate_ratio": 0.9850609038012835,
+        "control_ratio": 1.0023391947791493,
+        "normalized_gate_ratio": 0.9827620319869136
+      },
+      {
+        "chunk_start": 4096,
+        "layer": 31,
+        "baseline_gate_ms": 107.564876305,
+        "candidate_gate_ms": 104.989683622,
+        "gate_ratio": 0.97605916753255,
+        "control_ratio": 0.9826591677771559,
+        "normalized_gate_ratio": 0.9932835305861588
+      },
+      {
+        "chunk_start": 4096,
+        "layer": 32,
+        "baseline_gate_ms": 109.054519735,
+        "candidate_gate_ms": 110.383289193,
+        "gate_ratio": 1.012184451054655,
+        "control_ratio": 1.0124023358755465,
+        "normalized_gate_ratio": 0.9997847843558133
+      },
+      {
+        "chunk_start": 4096,
+        "layer": 33,
+        "baseline_gate_ms": 107.906951362,
+        "candidate_gate_ms": 105.164362854,
+        "gate_ratio": 0.9745837643137621,
+        "control_ratio": 1.0047008208111663,
+        "normalized_gate_ratio": 0.9700238559842237
+      },
+      {
+        "chunk_start": 4096,
+        "layer": 34,
+        "baseline_gate_ms": 109.257420343,
+        "candidate_gate_ms": 110.941705911,
+        "gate_ratio": 1.0154157544880007,
+        "control_ratio": 1.0051312300262596,
+        "normalized_gate_ratio": 1.010232021605251
+      },
+      {
+        "chunk_start": 4096,
+        "layer": 35,
+        "baseline_gate_ms": 107.803711554,
+        "candidate_gate_ms": 105.439597229,
+        "gate_ratio": 0.9780701954420578,
+        "control_ratio": 1.005714516439099,
+        "normalized_gate_ratio": 0.9725127553145791
+      },
+      {
+        "chunk_start": 4096,
+        "layer": 36,
+        "baseline_gate_ms": 108.32154627,
+        "candidate_gate_ms": 105.459728387,
+        "gate_ratio": 0.9735803449863364,
+        "control_ratio": 1.0039983759266988,
+        "normalized_gate_ratio": 0.969703107425561
+      },
+      {
+        "chunk_start": 4096,
+        "layer": 37,
+        "baseline_gate_ms": 105.950836143,
+        "candidate_gate_ms": 105.993372537,
+        "gate_ratio": 1.0004014729430033,
+        "control_ratio": 0.9964776064414577,
+        "normalized_gate_ratio": 1.0039377367601447
+      },
+      {
+        "chunk_start": 4096,
+        "layer": 38,
+        "baseline_gate_ms": 106.205405828,
+        "candidate_gate_ms": 107.767468166,
+        "gate_ratio": 1.014707936246953,
+        "control_ratio": 0.9953023385044093,
+        "normalized_gate_ratio": 1.019497188936282
+      },
+      {
+        "chunk_start": 4096,
+        "layer": 39,
+        "baseline_gate_ms": 105.889468237,
+        "candidate_gate_ms": 105.272276643,
+        "gate_ratio": 0.9941713599635932,
+        "control_ratio": 0.9999483228423228,
+        "normalized_gate_ratio": 0.9942227385688205
+      },
+      {
+        "chunk_start": 4096,
+        "layer": 40,
+        "baseline_gate_ms": 108.725043052,
+        "candidate_gate_ms": 110.151044479,
+        "gate_ratio": 1.0131156667035577,
+        "control_ratio": 1.002951387385414,
+        "normalized_gate_ratio": 1.0101343688697026
+      },
+      {
+        "chunk_start": 4096,
+        "layer": 41,
+        "baseline_gate_ms": 108.105045594,
+        "candidate_gate_ms": 105.86136159,
+        "gate_ratio": 0.9792453350195476,
+        "control_ratio": 0.9984006295508859,
+        "normalized_gate_ratio": 0.980814019979179
+      },
+      {
+        "chunk_start": 4096,
+        "layer": 42,
+        "baseline_gate_ms": 110.498954455,
+        "candidate_gate_ms": 106.165292442,
+        "gate_ratio": 0.9607809681605189,
+        "control_ratio": 1.0142438542072547,
+        "normalized_gate_ratio": 0.9472879368950942
+      },
+      {
+        "chunk_start": 8192,
+        "layer": 2,
+        "baseline_gate_ms": 109.218279528,
+        "candidate_gate_ms": 103.571827605,
+        "gate_ratio": 0.9483012189223102,
+        "control_ratio": 1.0047659787732321,
+        "normalized_gate_ratio": 0.9438030735078605
+      },
+      {
+        "chunk_start": 8192,
+        "layer": 3,
+        "baseline_gate_ms": 106.647964019,
+        "candidate_gate_ms": 104.649545191,
+        "gate_ratio": 0.9812615379357457,
+        "control_ratio": 1.0103310299999169,
+        "normalized_gate_ratio": 0.971227754863499
+      },
+      {
+        "chunk_start": 8192,
+        "layer": 4,
+        "baseline_gate_ms": 107.908229049,
+        "candidate_gate_ms": 104.360648825,
+        "gate_ratio": 0.9671240992900636,
+        "control_ratio": 0.9970614905565687,
+        "normalized_gate_ratio": 0.9699743781601737
+      },
+      {
+        "chunk_start": 8192,
+        "layer": 5,
+        "baseline_gate_ms": 108.282158625,
+        "candidate_gate_ms": 105.037848945,
+        "gate_ratio": 0.9700383726996465,
+        "control_ratio": 0.9949786697783596,
+        "normalized_gate_ratio": 0.9749338374416924
+      },
+      {
+        "chunk_start": 8192,
+        "layer": 6,
+        "baseline_gate_ms": 107.450046786,
+        "candidate_gate_ms": 108.263896751,
+        "gate_ratio": 1.007574216943999,
+        "control_ratio": 1.0004959688779402,
+        "normalized_gate_ratio": 1.0070747392155883
+      },
+      {
+        "chunk_start": 8192,
+        "layer": 7,
+        "baseline_gate_ms": 108.595935307,
+        "candidate_gate_ms": 104.802964234,
+        "gate_ratio": 0.9650726239220897,
+        "control_ratio": 1.0027595203310542,
+        "normalized_gate_ratio": 0.9624168151537246
+      },
+      {
+        "chunk_start": 8192,
+        "layer": 8,
+        "baseline_gate_ms": 112.615879308,
+        "candidate_gate_ms": 108.755764613,
+        "gate_ratio": 0.9657231758192577,
+        "control_ratio": 1.0061157896735575,
+        "normalized_gate_ratio": 0.9598529172597465
+      },
+      {
+        "chunk_start": 8192,
+        "layer": 9,
+        "baseline_gate_ms": 106.378124521,
+        "candidate_gate_ms": 105.817287539,
+        "gate_ratio": 0.9947278918055255,
+        "control_ratio": 1.0066934132027405,
+        "normalized_gate_ratio": 0.988114036269347
+      },
+      {
+        "chunk_start": 8192,
+        "layer": 10,
+        "baseline_gate_ms": 110.178303189,
+        "candidate_gate_ms": 104.259220943,
+        "gate_ratio": 0.9462772426632274,
+        "control_ratio": 0.9997163467033197,
+        "normalized_gate_ratio": 0.946545733480988
+      },
+      {
+        "chunk_start": 8192,
+        "layer": 11,
+        "baseline_gate_ms": 107.487005788,
+        "candidate_gate_ms": 106.606802264,
+        "gate_ratio": 0.9918110703936058,
+        "control_ratio": 0.9929076810450004,
+        "normalized_gate_ratio": 0.9988955562814859
+      },
+      {
+        "chunk_start": 8192,
+        "layer": 12,
+        "baseline_gate_ms": 107.111458075,
+        "candidate_gate_ms": 107.588858568,
+        "gate_ratio": 1.00445704410695,
+        "control_ratio": 0.9975141457018994,
+        "normalized_gate_ratio": 1.006960200449253
+      },
+      {
+        "chunk_start": 8192,
+        "layer": 13,
+        "baseline_gate_ms": 109.756069764,
+        "candidate_gate_ms": 105.075141376,
+        "gate_ratio": 0.9573515305525696,
+        "control_ratio": 1.0037330059173368,
+        "normalized_gate_ratio": 0.9537910230197342
+      },
+      {
+        "chunk_start": 8192,
+        "layer": 14,
+        "baseline_gate_ms": 106.700452014,
+        "candidate_gate_ms": 109.429162156,
+        "gate_ratio": 1.0255735574732332,
+        "control_ratio": 1.0225101674518626,
+        "normalized_gate_ratio": 1.002995950670109
+      },
+      {
+        "chunk_start": 8192,
+        "layer": 15,
+        "baseline_gate_ms": 105.447697493,
+        "candidate_gate_ms": 104.582476888,
+        "gate_ratio": 0.9917947890227053,
+        "control_ratio": 1.0008235763994358,
+        "normalized_gate_ratio": 0.9909786424004794
+      },
+      {
+        "chunk_start": 8192,
+        "layer": 16,
+        "baseline_gate_ms": 108.341907367,
+        "candidate_gate_ms": 106.236937858,
+        "gate_ratio": 0.9805710499274342,
+        "control_ratio": 0.9974061073646535,
+        "normalized_gate_ratio": 0.9831211606657383
+      },
+      {
+        "chunk_start": 8192,
+        "layer": 17,
+        "baseline_gate_ms": 105.817496782,
+        "candidate_gate_ms": 104.914044557,
+        "gate_ratio": 0.9914621659699505,
+        "control_ratio": 0.9915899045788509,
+        "normalized_gate_ratio": 0.9998711779856667
+      },
+      {
+        "chunk_start": 8192,
+        "layer": 18,
+        "baseline_gate_ms": 110.563400191,
+        "candidate_gate_ms": 107.489385164,
+        "gate_ratio": 0.9721968117687264,
+        "control_ratio": 1.0044307401626498,
+        "normalized_gate_ratio": 0.9679082617595877
+      },
+      {
+        "chunk_start": 8192,
+        "layer": 19,
+        "baseline_gate_ms": 107.047205735,
+        "candidate_gate_ms": 103.174327406,
+        "gate_ratio": 0.9638208367756232,
+        "control_ratio": 0.9947568256787362,
+        "normalized_gate_ratio": 0.9689009533742028
+      },
+      {
+        "chunk_start": 8192,
+        "layer": 20,
+        "baseline_gate_ms": 106.915273725,
+        "candidate_gate_ms": 106.443946066,
+        "gate_ratio": 0.9955915778674213,
+        "control_ratio": 1.0065200536793746,
+        "normalized_gate_ratio": 0.989142316864921
+      },
+      {
+        "chunk_start": 8192,
+        "layer": 21,
+        "baseline_gate_ms": 104.870633414,
+        "candidate_gate_ms": 102.540092687,
+        "gate_ratio": 0.9777769938911337,
+        "control_ratio": 1.006993731980367,
+        "normalized_gate_ratio": 0.9709861768138563
+      },
+      {
+        "chunk_start": 8192,
+        "layer": 22,
+        "baseline_gate_ms": 106.676945903,
+        "candidate_gate_ms": 108.709036745,
+        "gate_ratio": 1.0190490159312187,
+        "control_ratio": 0.9906880910954716,
+        "normalized_gate_ratio": 1.028627501522085
+      },
+      {
+        "chunk_start": 8192,
+        "layer": 23,
+        "baseline_gate_ms": 105.441224061,
+        "candidate_gate_ms": 104.997153577,
+        "gate_ratio": 0.9957884547722712,
+        "control_ratio": 1.0066898796733945,
+        "normalized_gate_ratio": 0.9891710196742416
+      },
+      {
+        "chunk_start": 8192,
+        "layer": 24,
+        "baseline_gate_ms": 106.476498875,
+        "candidate_gate_ms": 108.086495507,
+        "gate_ratio": 1.0151206759145046,
+        "control_ratio": 1.0075745911200782,
+        "normalized_gate_ratio": 1.0074893559850866
+      },
+      {
+        "chunk_start": 8192,
+        "layer": 25,
+        "baseline_gate_ms": 106.106900306,
+        "candidate_gate_ms": 104.32765379,
+        "gate_ratio": 0.9832315663649691,
+        "control_ratio": 1.0033072359649367,
+        "normalized_gate_ratio": 0.9799905065165212
+      },
+      {
+        "chunk_start": 8192,
+        "layer": 26,
+        "baseline_gate_ms": 107.766473769,
+        "candidate_gate_ms": 109.793957446,
+        "gate_ratio": 1.0188136774461596,
+        "control_ratio": 1.0065974881813193,
+        "normalized_gate_ratio": 1.0121361213476818
+      },
+      {
+        "chunk_start": 8192,
+        "layer": 27,
+        "baseline_gate_ms": 106.369857043,
+        "candidate_gate_ms": 104.335091787,
+        "gate_ratio": 0.9808708471312747,
+        "control_ratio": 1.0092713113252518,
+        "normalized_gate_ratio": 0.9718604265520189
+      },
+      {
+        "chunk_start": 8192,
+        "layer": 28,
+        "baseline_gate_ms": 106.518446085,
+        "candidate_gate_ms": 110.012132183,
+        "gate_ratio": 1.032798883446085,
+        "control_ratio": 0.9833349866123549,
+        "normalized_gate_ratio": 1.0503021833934092
+      },
+      {
+        "chunk_start": 8192,
+        "layer": 29,
+        "baseline_gate_ms": 109.296338934,
+        "candidate_gate_ms": 106.871422085,
+        "gate_ratio": 0.9778133753367135,
+        "control_ratio": 0.9924051185791315,
+        "normalized_gate_ratio": 0.9852965860723194
+      },
+      {
+        "chunk_start": 8192,
+        "layer": 30,
+        "baseline_gate_ms": 109.727237906,
+        "candidate_gate_ms": 109.500607233,
+        "gate_ratio": 0.9979345996734726,
+        "control_ratio": 0.9939575016328817,
+        "normalized_gate_ratio": 1.0040012757427328
+      },
+      {
+        "chunk_start": 8192,
+        "layer": 31,
+        "baseline_gate_ms": 104.339550697,
+        "candidate_gate_ms": 105.374426138,
+        "gate_ratio": 1.0099183428919034,
+        "control_ratio": 1.0046975416932666,
+        "normalized_gate_ratio": 1.0051963909355623
+      },
+      {
+        "chunk_start": 8192,
+        "layer": 32,
+        "baseline_gate_ms": 108.351946448,
+        "candidate_gate_ms": 109.342346039,
+        "gate_ratio": 1.00914057959702,
+        "control_ratio": 1.000711653452748,
+        "normalized_gate_ratio": 1.0084229319356777
+      },
+      {
+        "chunk_start": 8192,
+        "layer": 33,
+        "baseline_gate_ms": 108.98511545,
+        "candidate_gate_ms": 106.888469321,
+        "gate_ratio": 0.9807620873699777,
+        "control_ratio": 1.000490126226123,
+        "normalized_gate_ratio": 0.9802816256362669
+      },
+      {
+        "chunk_start": 8192,
+        "layer": 34,
+        "baseline_gate_ms": 110.999367995,
+        "candidate_gate_ms": 110.529370674,
+        "gate_ratio": 0.9957657657922776,
+        "control_ratio": 0.9849531433540536,
+        "normalized_gate_ratio": 1.0109778038794859
+      },
+      {
+        "chunk_start": 8192,
+        "layer": 35,
+        "baseline_gate_ms": 107.801820926,
+        "candidate_gate_ms": 106.080355009,
+        "gate_ratio": 0.9840311981540488,
+        "control_ratio": 1.0084709766737376,
+        "normalized_gate_ratio": 0.975765511269051
+      },
+      {
+        "chunk_start": 8192,
+        "layer": 36,
+        "baseline_gate_ms": 107.96896519,
+        "candidate_gate_ms": 108.7203532,
+        "gate_ratio": 1.0069592962077365,
+        "control_ratio": 1.0066047275473984,
+        "normalized_gate_ratio": 1.000352242196599
+      },
+      {
+        "chunk_start": 8192,
+        "layer": 37,
+        "baseline_gate_ms": 105.62840679,
+        "candidate_gate_ms": 105.274159968,
+        "gate_ratio": 0.996646292102992,
+        "control_ratio": 1.0080905573421934,
+        "normalized_gate_ratio": 0.9886475821483995
+      },
+      {
+        "chunk_start": 8192,
+        "layer": 38,
+        "baseline_gate_ms": 108.8970026,
+        "candidate_gate_ms": 108.03948611,
+        "gate_ratio": 0.9921254353239656,
+        "control_ratio": 0.9866571564760211,
+        "normalized_gate_ratio": 1.0055422279279616
+      },
+      {
+        "chunk_start": 8192,
+        "layer": 39,
+        "baseline_gate_ms": 107.245906252,
+        "candidate_gate_ms": 105.028342439,
+        "gate_ratio": 0.979322625072613,
+        "control_ratio": 1.0047948262219126,
+        "normalized_gate_ratio": 0.9746493508081878
+      },
+      {
+        "chunk_start": 8192,
+        "layer": 40,
+        "baseline_gate_ms": 108.285699301,
+        "candidate_gate_ms": 109.326150184,
+        "gate_ratio": 1.0096083867926815,
+        "control_ratio": 1.0035197383601857,
+        "normalized_gate_ratio": 1.00606729314806
+      },
+      {
+        "chunk_start": 8192,
+        "layer": 41,
+        "baseline_gate_ms": 106.855720997,
+        "candidate_gate_ms": 105.010418792,
+        "gate_ratio": 0.9827308993118692,
+        "control_ratio": 0.9976796363742858,
+        "normalized_gate_ratio": 0.9850164957593577
+      },
+      {
+        "chunk_start": 8192,
+        "layer": 42,
+        "baseline_gate_ms": 109.071297455,
+        "candidate_gate_ms": 110.305349419,
+        "gate_ratio": 1.0113141769905976,
+        "control_ratio": 1.0025510063940708,
+        "normalized_gate_ratio": 1.008740872574699
+      },
+      {
+        "chunk_start": 12288,
+        "layer": 2,
+        "baseline_gate_ms": 108.433251724,
+        "candidate_gate_ms": 101.921353065,
+        "gate_ratio": 0.9399455558561037,
+        "control_ratio": 0.990925399218204,
+        "normalized_gate_ratio": 0.9485532983589672
+      },
+      {
+        "chunk_start": 12288,
+        "layer": 3,
+        "baseline_gate_ms": 106.952664734,
+        "candidate_gate_ms": 102.966758353,
+        "gate_ratio": 0.9627320516892846,
+        "control_ratio": 0.9881832945266585,
+        "normalized_gate_ratio": 0.97424441095256
+      },
+      {
+        "chunk_start": 12288,
+        "layer": 4,
+        "baseline_gate_ms": 106.481715001,
+        "candidate_gate_ms": 107.863098,
+        "gate_ratio": 1.0129729597141353,
+        "control_ratio": 0.9915846530224048,
+        "normalized_gate_ratio": 1.0215698242470148
+      },
+      {
+        "chunk_start": 12288,
+        "layer": 5,
+        "baseline_gate_ms": 106.941125606,
+        "candidate_gate_ms": 105.165589159,
+        "gate_ratio": 0.983397066031065,
+        "control_ratio": 1.0119535947587133,
+        "normalized_gate_ratio": 0.971780792246252
+      },
+      {
+        "chunk_start": 12288,
+        "layer": 6,
+        "baseline_gate_ms": 108.969021729,
+        "candidate_gate_ms": 104.298627164,
+        "gate_ratio": 0.9571401624893446,
+        "control_ratio": 1.0033469917646076,
+        "normalized_gate_ratio": 0.9539473087032453
+      },
+      {
+        "chunk_start": 12288,
+        "layer": 7,
+        "baseline_gate_ms": 108.92798338,
+        "candidate_gate_ms": 104.645447752,
+        "gate_ratio": 0.9606847065821443,
+        "control_ratio": 1.0155138982129102,
+        "normalized_gate_ratio": 0.9460084281197395
+      },
+      {
+        "chunk_start": 12288,
+        "layer": 8,
+        "baseline_gate_ms": 110.672675409,
+        "candidate_gate_ms": 108.059384176,
+        "gate_ratio": 0.9763872046705082,
+        "control_ratio": 1.0145495256425312,
+        "normalized_gate_ratio": 0.962384960016758
+      },
+      {
+        "chunk_start": 12288,
+        "layer": 9,
+        "baseline_gate_ms": 106.684681758,
+        "candidate_gate_ms": 105.036740523,
+        "gate_ratio": 0.9845531597616036,
+        "control_ratio": 1.010595654376984,
+        "normalized_gate_ratio": 0.9742305495748097
+      },
+      {
+        "chunk_start": 12288,
+        "layer": 10,
+        "baseline_gate_ms": 105.756690399,
+        "candidate_gate_ms": 107.208932663,
+        "gate_ratio": 1.013731918600336,
+        "control_ratio": 0.9974102073878947,
+        "normalized_gate_ratio": 1.016364090813935
+      },
+      {
+        "chunk_start": 12288,
+        "layer": 11,
+        "baseline_gate_ms": 107.908882216,
+        "candidate_gate_ms": 105.892184901,
+        "gate_ratio": 0.9813111092100537,
+        "control_ratio": 0.9973636796578924,
+        "normalized_gate_ratio": 0.9839049979709057
+      },
+      {
+        "chunk_start": 12288,
+        "layer": 12,
+        "baseline_gate_ms": 106.709358587,
+        "candidate_gate_ms": 106.695282071,
+        "gate_ratio": 0.9998680854595473,
+        "control_ratio": 0.993247649122183,
+        "normalized_gate_ratio": 1.0066654437523364
+      },
+      {
+        "chunk_start": 12288,
+        "layer": 13,
+        "baseline_gate_ms": 106.690910698,
+        "candidate_gate_ms": 105.318558357,
+        "gate_ratio": 0.9871371203786554,
+        "control_ratio": 0.9987011217582956,
+        "normalized_gate_ratio": 0.9884209588557578
+      },
+      {
+        "chunk_start": 12288,
+        "layer": 14,
+        "baseline_gate_ms": 107.950936779,
+        "candidate_gate_ms": 107.138985069,
+        "gate_ratio": 0.9924785116810774,
+        "control_ratio": 0.992273475344063,
+        "normalized_gate_ratio": 1.0002066328911425
+      },
+      {
+        "chunk_start": 12288,
+        "layer": 15,
+        "baseline_gate_ms": 105.885731598,
+        "candidate_gate_ms": 103.922352965,
+        "gate_ratio": 0.981457571257532,
+        "control_ratio": 0.9968153524071763,
+        "normalized_gate_ratio": 0.9845931534736525
+      },
+      {
+        "chunk_start": 12288,
+        "layer": 16,
+        "baseline_gate_ms": 109.242496784,
+        "candidate_gate_ms": 107.160369819,
+        "gate_ratio": 0.9809403206051132,
+        "control_ratio": 0.9891915538393534,
+        "normalized_gate_ratio": 0.9916586092934025
+      },
+      {
+        "chunk_start": 12288,
+        "layer": 17,
+        "baseline_gate_ms": 103.680462418,
+        "candidate_gate_ms": 105.655552332,
+        "gate_ratio": 1.01904977917669,
+        "control_ratio": 0.9886697801736555,
+        "normalized_gate_ratio": 1.0307281557626837
+      },
+      {
+        "chunk_start": 12288,
+        "layer": 18,
+        "baseline_gate_ms": 105.783481513,
+        "candidate_gate_ms": 107.715883075,
+        "gate_ratio": 1.0182675171431421,
+        "control_ratio": 0.9722990529719449,
+        "normalized_gate_ratio": 1.0472781126657373
+      },
+      {
+        "chunk_start": 12288,
+        "layer": 19,
+        "baseline_gate_ms": 107.201886245,
+        "candidate_gate_ms": 105.000903523,
+        "gate_ratio": 0.9794688060155038,
+        "control_ratio": 0.9964802925179383,
+        "normalized_gate_ratio": 0.9829284265527727
+      },
+      {
+        "chunk_start": 12288,
+        "layer": 20,
+        "baseline_gate_ms": 107.329080306,
+        "candidate_gate_ms": 103.914119858,
+        "gate_ratio": 0.9681823375522851,
+        "control_ratio": 1.0018470559959387,
+        "normalized_gate_ratio": 0.9663973475370575
+      },
+      {
+        "chunk_start": 12288,
+        "layer": 21,
+        "baseline_gate_ms": 106.328900331,
+        "candidate_gate_ms": 104.128748266,
+        "gate_ratio": 0.9793080521085898,
+        "control_ratio": 1.0032348338663437,
+        "normalized_gate_ratio": 0.9761503678400569
+      },
+      {
+        "chunk_start": 12288,
+        "layer": 22,
+        "baseline_gate_ms": 107.50135608,
+        "candidate_gate_ms": 106.142256056,
+        "gate_ratio": 0.9873573685620431,
+        "control_ratio": 0.9973032765608497,
+        "normalized_gate_ratio": 0.9900271981125897
+      },
+      {
+        "chunk_start": 12288,
+        "layer": 23,
+        "baseline_gate_ms": 106.217900278,
+        "candidate_gate_ms": 105.915796798,
+        "gate_ratio": 0.9971558138580285,
+        "control_ratio": 0.989931178939225,
+        "normalized_gate_ratio": 1.0072981183667185
+      },
+      {
+        "chunk_start": 12288,
+        "layer": 24,
+        "baseline_gate_ms": 108.645519413,
+        "candidate_gate_ms": 106.95535886,
+        "gate_ratio": 0.9844433478515106,
+        "control_ratio": 1.0055157420071323,
+        "normalized_gate_ratio": 0.9790431981566408
+      },
+      {
+        "chunk_start": 12288,
+        "layer": 25,
+        "baseline_gate_ms": 106.612690209,
+        "candidate_gate_ms": 105.879792679,
+        "gate_ratio": 0.9931256070120429,
+        "control_ratio": 0.9931067778168012,
+        "normalized_gate_ratio": 1.0000189598899758
+      },
+      {
+        "chunk_start": 12288,
+        "layer": 26,
+        "baseline_gate_ms": 106.760527166,
+        "candidate_gate_ms": 107.493639546,
+        "gate_ratio": 1.006866886099767,
+        "control_ratio": 1.012964285311083,
+        "normalized_gate_ratio": 0.9939806375212493
+      },
+      {
+        "chunk_start": 12288,
+        "layer": 27,
+        "baseline_gate_ms": 104.568659418,
+        "candidate_gate_ms": 103.928932395,
+        "gate_ratio": 0.9938822298520366,
+        "control_ratio": 1.0058239000337783,
+        "normalized_gate_ratio": 0.9881274742215405
+      },
+      {
+        "chunk_start": 12288,
+        "layer": 28,
+        "baseline_gate_ms": 107.849323511,
+        "candidate_gate_ms": 108.1714622,
+        "gate_ratio": 1.0029869328662702,
+        "control_ratio": 0.9965254213921044,
+        "normalized_gate_ratio": 1.0064840407835651
+      },
+      {
+        "chunk_start": 12288,
+        "layer": 29,
+        "baseline_gate_ms": 106.143337885,
+        "candidate_gate_ms": 105.721925562,
+        "gate_ratio": 0.9960297807531117,
+        "control_ratio": 1.003710977657678,
+        "normalized_gate_ratio": 0.9923472024561376
+      },
+      {
+        "chunk_start": 12288,
+        "layer": 30,
+        "baseline_gate_ms": 110.179576694,
+        "candidate_gate_ms": 108.514181681,
+        "gate_ratio": 0.9848847212616791,
+        "control_ratio": 0.9959278096432205,
+        "normalized_gate_ratio": 0.9889117581870744
+      },
+      {
+        "chunk_start": 12288,
+        "layer": 31,
+        "baseline_gate_ms": 107.1056656,
+        "candidate_gate_ms": 104.507710554,
+        "gate_ratio": 0.9757439998020049,
+        "control_ratio": 0.9962702827359485,
+        "normalized_gate_ratio": 0.979396873228443
+      },
+      {
+        "chunk_start": 12288,
+        "layer": 32,
+        "baseline_gate_ms": 108.069251951,
+        "candidate_gate_ms": 105.076336543,
+        "gate_ratio": 0.9723055785621887,
+        "control_ratio": 1.011320249603951,
+        "normalized_gate_ratio": 0.9614220410823959
+      },
+      {
+        "chunk_start": 12288,
+        "layer": 33,
+        "baseline_gate_ms": 108.287216806,
+        "candidate_gate_ms": 107.316867,
+        "gate_ratio": 0.9910391102974009,
+        "control_ratio": 0.9910778572206959,
+        "normalized_gate_ratio": 0.999960904258921
+      },
+      {
+        "chunk_start": 12288,
+        "layer": 34,
+        "baseline_gate_ms": 106.305245994,
+        "candidate_gate_ms": 105.123043749,
+        "gate_ratio": 0.9888791730460158,
+        "control_ratio": 1.0111135832464837,
+        "normalized_gate_ratio": 0.978009977742483
+      },
+      {
+        "chunk_start": 12288,
+        "layer": 35,
+        "baseline_gate_ms": 107.800688596,
+        "candidate_gate_ms": 105.210439196,
+        "gate_ratio": 0.9759718659153712,
+        "control_ratio": 0.971627566570158,
+        "normalized_gate_ratio": 1.0044711569480769
+      },
+      {
+        "chunk_start": 12288,
+        "layer": 36,
+        "baseline_gate_ms": 108.965421446,
+        "candidate_gate_ms": 105.163236394,
+        "gate_ratio": 0.9651064989099845,
+        "control_ratio": 1.0047091146323583,
+        "normalized_gate_ratio": 0.9605830034329238
+      },
+      {
+        "chunk_start": 12288,
+        "layer": 37,
+        "baseline_gate_ms": 107.481130374,
+        "candidate_gate_ms": 106.28253103,
+        "gate_ratio": 0.988848281183597,
+        "control_ratio": 0.9992836775280052,
+        "normalized_gate_ratio": 0.9895571231882593
+      },
+      {
+        "chunk_start": 12288,
+        "layer": 38,
+        "baseline_gate_ms": 107.111349161,
+        "candidate_gate_ms": 106.20259334,
+        "gate_ratio": 0.9915157840124482,
+        "control_ratio": 1.0144517573125422,
+        "normalized_gate_ratio": 0.9773907698076689
+      },
+      {
+        "chunk_start": 12288,
+        "layer": 39,
+        "baseline_gate_ms": 106.536664595,
+        "candidate_gate_ms": 103.324467606,
+        "gate_ratio": 0.9698489059967177,
+        "control_ratio": 1.0099552275989723,
+        "normalized_gate_ratio": 0.960289010338011
+      },
+      {
+        "chunk_start": 12288,
+        "layer": 40,
+        "baseline_gate_ms": 107.463548106,
+        "candidate_gate_ms": 108.100888812,
+        "gate_ratio": 1.0059307618000044,
+        "control_ratio": 0.988860104141799,
+        "normalized_gate_ratio": 1.017262965293782
+      },
+      {
+        "chunk_start": 12288,
+        "layer": 41,
+        "baseline_gate_ms": 107.887985028,
+        "candidate_gate_ms": 105.051166701,
+        "gate_ratio": 0.9737058920299256,
+        "control_ratio": 1.0084032779532812,
+        "normalized_gate_ratio": 0.9655917561139036
+      },
+      {
+        "chunk_start": 12288,
+        "layer": 42,
+        "baseline_gate_ms": 108.637691196,
+        "candidate_gate_ms": 109.494544497,
+        "gate_ratio": 1.007887256177546,
+        "control_ratio": 1.0068559800850596,
+        "normalized_gate_ratio": 1.0010242538286354
+      },
+      {
+        "chunk_start": 16384,
+        "layer": 2,
+        "baseline_gate_ms": 110.008945853,
+        "candidate_gate_ms": 103.18190728,
+        "gate_ratio": 0.9379410599741347,
+        "control_ratio": 0.9819779647389456,
+        "normalized_gate_ratio": 0.9551548951747426
+      },
+      {
+        "chunk_start": 16384,
+        "layer": 3,
+        "baseline_gate_ms": 106.862596125,
+        "candidate_gate_ms": 104.577997253,
+        "gate_ratio": 0.9786211550641383,
+        "control_ratio": 1.006952203145429,
+        "normalized_gate_ratio": 0.9718645552462245
+      },
+      {
+        "chunk_start": 16384,
+        "layer": 4,
+        "baseline_gate_ms": 108.769165142,
+        "candidate_gate_ms": 109.159342258,
+        "gate_ratio": 1.0035872033723032,
+        "control_ratio": 1.0017401889694753,
+        "normalized_gate_ratio": 1.0018438058322567
+      },
+      {
+        "chunk_start": 16384,
+        "layer": 5,
+        "baseline_gate_ms": 108.730219527,
+        "candidate_gate_ms": 103.578769078,
+        "gate_ratio": 0.952621723092164,
+        "control_ratio": 1.018183125816455,
+        "normalized_gate_ratio": 0.9356094193058649
+      },
+      {
+        "chunk_start": 16384,
+        "layer": 6,
+        "baseline_gate_ms": 108.185179962,
+        "candidate_gate_ms": 102.704830483,
+        "gate_ratio": 0.9493428815210643,
+        "control_ratio": 1.0090813365104323,
+        "normalized_gate_ratio": 0.940799167690532
+      },
+      {
+        "chunk_start": 16384,
+        "layer": 7,
+        "baseline_gate_ms": 106.801914011,
+        "candidate_gate_ms": 105.441367866,
+        "gate_ratio": 0.9872610321865593,
+        "control_ratio": 0.995212282900908,
+        "normalized_gate_ratio": 0.9920104978094001
+      },
+      {
+        "chunk_start": 16384,
+        "layer": 8,
+        "baseline_gate_ms": 111.31335244,
+        "candidate_gate_ms": 108.141257023,
+        "gate_ratio": 0.9715030106679265,
+        "control_ratio": 0.9992662245927384,
+        "normalized_gate_ratio": 0.9722163991521608
+      },
+      {
+        "chunk_start": 16384,
+        "layer": 9,
+        "baseline_gate_ms": 107.547643621,
+        "candidate_gate_ms": 104.772174056,
+        "gate_ratio": 0.9741931159851274,
+        "control_ratio": 1.0075954225320107,
+        "normalized_gate_ratio": 0.9668494856170089
+      },
+      {
+        "chunk_start": 16384,
+        "layer": 10,
+        "baseline_gate_ms": 109.220321194,
+        "candidate_gate_ms": 105.928628537,
+        "gate_ratio": 0.9698619027941402,
+        "control_ratio": 0.9869802441799183,
+        "normalized_gate_ratio": 0.9826558419109982
+      },
+      {
+        "chunk_start": 16384,
+        "layer": 11,
+        "baseline_gate_ms": 106.469650754,
+        "candidate_gate_ms": 107.15299928,
+        "gate_ratio": 1.0064182470888243,
+        "control_ratio": 0.9890000805451314,
+        "normalized_gate_ratio": 1.0176118959809306
+      },
+      {
+        "chunk_start": 16384,
+        "layer": 12,
+        "baseline_gate_ms": 106.575006556,
+        "candidate_gate_ms": 109.064393977,
+        "gate_ratio": 1.023358078985357,
+        "control_ratio": 0.9866180538046108,
+        "normalized_gate_ratio": 1.0372383467331343
+      },
+      {
+        "chunk_start": 16384,
+        "layer": 13,
+        "baseline_gate_ms": 107.467472639,
+        "candidate_gate_ms": 105.027476867,
+        "gate_ratio": 0.9772954949801759,
+        "control_ratio": 1.0032558644344005,
+        "normalized_gate_ratio": 0.9741238796856072
+      },
+      {
+        "chunk_start": 16384,
+        "layer": 14,
+        "baseline_gate_ms": 108.006036545,
+        "candidate_gate_ms": 103.380706669,
+        "gate_ratio": 0.957175265161472,
+        "control_ratio": 0.9938795731526542,
+        "normalized_gate_ratio": 0.9630696625801921
+      },
+      {
+        "chunk_start": 16384,
+        "layer": 15,
+        "baseline_gate_ms": 105.58725188,
+        "candidate_gate_ms": 104.78575156,
+        "gate_ratio": 0.9924091184709409,
+        "control_ratio": 0.9939826577710813,
+        "normalized_gate_ratio": 0.9984169348551122
+      },
+      {
+        "chunk_start": 16384,
+        "layer": 16,
+        "baseline_gate_ms": 105.120869622,
+        "candidate_gate_ms": 106.621780444,
+        "gate_ratio": 1.0142779528688932,
+        "control_ratio": 0.9891940065948891,
+        "normalized_gate_ratio": 1.0253579642686583
+      },
+      {
+        "chunk_start": 16384,
+        "layer": 17,
+        "baseline_gate_ms": 106.468090757,
+        "candidate_gate_ms": 103.73204465,
+        "gate_ratio": 0.9743017265779221,
+        "control_ratio": 0.9984468234140668,
+        "normalized_gate_ratio": 0.9758173432275707
+      },
+      {
+        "chunk_start": 16384,
+        "layer": 18,
+        "baseline_gate_ms": 107.153698653,
+        "candidate_gate_ms": 109.390905021,
+        "gate_ratio": 1.020878480128295,
+        "control_ratio": 0.9989568301442701,
+        "normalized_gate_ratio": 1.0219445418686002
+      },
+      {
+        "chunk_start": 16384,
+        "layer": 19,
+        "baseline_gate_ms": 108.575379874,
+        "candidate_gate_ms": 105.03779038,
+        "gate_ratio": 0.9674181246420199,
+        "control_ratio": 0.9840462709757198,
+        "normalized_gate_ratio": 0.9831022718909219
+      },
+      {
+        "chunk_start": 16384,
+        "layer": 20,
+        "baseline_gate_ms": 105.421905959,
+        "candidate_gate_ms": 103.592284917,
+        "gate_ratio": 0.9826447736326114,
+        "control_ratio": 1.014431278425168,
+        "normalized_gate_ratio": 0.9686656893684283
+      },
+      {
+        "chunk_start": 16384,
+        "layer": 21,
+        "baseline_gate_ms": 105.860241635,
+        "candidate_gate_ms": 104.758116709,
+        "gate_ratio": 0.9895888682192882,
+        "control_ratio": 0.9978133153889199,
+        "normalized_gate_ratio": 0.991757529146195
+      },
+      {
+        "chunk_start": 16384,
+        "layer": 22,
+        "baseline_gate_ms": 107.088498448,
+        "candidate_gate_ms": 105.850960967,
+        "gate_ratio": 0.988443787157956,
+        "control_ratio": 0.9983923776617394,
+        "normalized_gate_ratio": 0.9900353901668568
+      },
+      {
+        "chunk_start": 16384,
+        "layer": 23,
+        "baseline_gate_ms": 105.131783107,
+        "candidate_gate_ms": 104.547109656,
+        "gate_ratio": 0.9944386613284687,
+        "control_ratio": 0.9958137307767665,
+        "normalized_gate_ratio": 0.9986191499416008
+      },
+      {
+        "chunk_start": 16384,
+        "layer": 24,
+        "baseline_gate_ms": 108.825982121,
+        "candidate_gate_ms": 103.634620303,
+        "gate_ratio": 0.9522966692620528,
+        "control_ratio": 0.9893744736755568,
+        "normalized_gate_ratio": 0.9625239932906711
+      },
+      {
+        "chunk_start": 16384,
+        "layer": 25,
+        "baseline_gate_ms": 107.229063822,
+        "candidate_gate_ms": 105.525867347,
+        "gate_ratio": 0.9841162795394045,
+        "control_ratio": 0.9905900758576818,
+        "normalized_gate_ratio": 0.9934647070710131
+      },
+      {
+        "chunk_start": 16384,
+        "layer": 26,
+        "baseline_gate_ms": 107.765798959,
+        "candidate_gate_ms": 103.611950215,
+        "gate_ratio": 0.9614548513153013,
+        "control_ratio": 1.003682920466363,
+        "normalized_gate_ratio": 0.9579268827933821
+      },
+      {
+        "chunk_start": 16384,
+        "layer": 27,
+        "baseline_gate_ms": 106.347842909,
+        "candidate_gate_ms": 105.171755984,
+        "gate_ratio": 0.9889411304185421,
+        "control_ratio": 1.0049984358617836,
+        "normalized_gate_ratio": 0.9840225567819194
+      },
+      {
+        "chunk_start": 16384,
+        "layer": 28,
+        "baseline_gate_ms": 109.073516919,
+        "candidate_gate_ms": 104.296708697,
+        "gate_ratio": 0.9562056092355824,
+        "control_ratio": 0.9958656364093332,
+        "normalized_gate_ratio": 0.9601753231321969
+      },
+      {
+        "chunk_start": 16384,
+        "layer": 29,
+        "baseline_gate_ms": 106.8127872,
+        "candidate_gate_ms": 105.125941121,
+        "gate_ratio": 0.9842074519051591,
+        "control_ratio": 1.003630842783712,
+        "normalized_gate_ratio": 0.9806468772674629
+      },
+      {
+        "chunk_start": 16384,
+        "layer": 30,
+        "baseline_gate_ms": 104.722276438,
+        "candidate_gate_ms": 104.381560917,
+        "gate_ratio": 0.9967464847729727,
+        "control_ratio": 1.00578067426522,
+        "normalized_gate_ratio": 0.9910177340613079
+      },
+      {
+        "chunk_start": 16384,
+        "layer": 31,
+        "baseline_gate_ms": 105.267421804,
+        "candidate_gate_ms": 104.614768048,
+        "gate_ratio": 0.9938000404606168,
+        "control_ratio": 0.993218456034647,
+        "normalized_gate_ratio": 1.0005855553956293
+      },
+      {
+        "chunk_start": 16384,
+        "layer": 32,
+        "baseline_gate_ms": 108.864960929,
+        "candidate_gate_ms": 108.675574378,
+        "gate_ratio": 0.9982603534747647,
+        "control_ratio": 1.0030960376903495,
+        "normalized_gate_ratio": 0.9951792410358643
+      },
+      {
+        "chunk_start": 16384,
+        "layer": 33,
+        "baseline_gate_ms": 107.511074874,
+        "candidate_gate_ms": 105.514950387,
+        "gate_ratio": 0.981433312899723,
+        "control_ratio": 0.998984626215457,
+        "normalized_gate_ratio": 0.9824308474273271
+      },
+      {
+        "chunk_start": 16384,
+        "layer": 34,
+        "baseline_gate_ms": 110.974303064,
+        "candidate_gate_ms": 110.601848481,
+        "gate_ratio": 0.9966437763273431,
+        "control_ratio": 1.0130215627936177,
+        "normalized_gate_ratio": 0.9838327365696843
+      },
+      {
+        "chunk_start": 16384,
+        "layer": 35,
+        "baseline_gate_ms": 108.014826431,
+        "candidate_gate_ms": 106.565174191,
+        "gate_ratio": 0.9865791365139485,
+        "control_ratio": 1.0094405744945372,
+        "normalized_gate_ratio": 0.977352368670106
+      },
+      {
+        "chunk_start": 16384,
+        "layer": 36,
+        "baseline_gate_ms": 107.311863964,
+        "candidate_gate_ms": 109.654794171,
+        "gate_ratio": 1.0218329094328842,
+        "control_ratio": 0.987228286525201,
+        "normalized_gate_ratio": 1.035052300850782
+      },
+      {
+        "chunk_start": 16384,
+        "layer": 37,
+        "baseline_gate_ms": 109.187616665,
+        "candidate_gate_ms": 106.027950047,
+        "gate_ratio": 0.9710620424320259,
+        "control_ratio": 0.9795274500395255,
+        "normalized_gate_ratio": 0.9913576616896668
+      },
+      {
+        "chunk_start": 16384,
+        "layer": 38,
+        "baseline_gate_ms": 107.498167765,
+        "candidate_gate_ms": 106.614766143,
+        "gate_ratio": 0.9917821704279537,
+        "control_ratio": 0.9963365832209129,
+        "normalized_gate_ratio": 0.9954288411469988
+      },
+      {
+        "chunk_start": 16384,
+        "layer": 39,
+        "baseline_gate_ms": 106.526278561,
+        "candidate_gate_ms": 105.40393295,
+        "gate_ratio": 0.989464143250275,
+        "control_ratio": 0.9960097491280421,
+        "normalized_gate_ratio": 0.9934281708753379
+      },
+      {
+        "chunk_start": 16384,
+        "layer": 40,
+        "baseline_gate_ms": 109.05029805,
+        "candidate_gate_ms": 108.620938141,
+        "gate_ratio": 0.9960627351169353,
+        "control_ratio": 1.0001167522138508,
+        "normalized_gate_ratio": 0.9959464561633015
+      },
+      {
+        "chunk_start": 16384,
+        "layer": 41,
+        "baseline_gate_ms": 107.051351475,
+        "candidate_gate_ms": 107.098222421,
+        "gate_ratio": 1.0004378360978559,
+        "control_ratio": 1.004862375635411,
+        "normalized_gate_ratio": 0.9955968701338258
+      },
+      {
+        "chunk_start": 16384,
+        "layer": 42,
+        "baseline_gate_ms": 108.391056087,
+        "candidate_gate_ms": 111.047337383,
+        "gate_ratio": 1.0245064619895201,
+        "control_ratio": 0.9944213956716192,
+        "normalized_gate_ratio": 1.030253840523596
+      },
+      {
+        "chunk_start": 20480,
+        "layer": 2,
+        "baseline_gate_ms": 107.812002646,
+        "candidate_gate_ms": 101.607581227,
+        "gate_ratio": 0.942451477880694,
+        "control_ratio": 1.0065582846936272,
+        "normalized_gate_ratio": 0.9363108845381509
+      },
+      {
+        "chunk_start": 20480,
+        "layer": 3,
+        "baseline_gate_ms": 108.307522427,
+        "candidate_gate_ms": 106.204782685,
+        "gate_ratio": 0.9805854690894877,
+        "control_ratio": 1.000300915703379,
+        "normalized_gate_ratio": 0.9802904842888921
+      },
+      {
+        "chunk_start": 20480,
+        "layer": 4,
+        "baseline_gate_ms": 110.277909088,
+        "candidate_gate_ms": 104.717781874,
+        "gate_ratio": 0.949580770437322,
+        "control_ratio": 0.999866944016057,
+        "normalized_gate_ratio": 0.9497071346545811
+      },
+      {
+        "chunk_start": 20480,
+        "layer": 5,
+        "baseline_gate_ms": 107.545562242,
+        "candidate_gate_ms": 104.880095093,
+        "gate_ratio": 0.9752154613037203,
+        "control_ratio": 0.9849656678543538,
+        "normalized_gate_ratio": 0.9901009681161036
+      },
+      {
+        "chunk_start": 20480,
+        "layer": 6,
+        "baseline_gate_ms": 109.729229336,
+        "candidate_gate_ms": 105.203251484,
+        "gate_ratio": 0.9587532157166522,
+        "control_ratio": 1.0162864306029715,
+        "normalized_gate_ratio": 0.9433887798224518
+      },
+      {
+        "chunk_start": 20480,
+        "layer": 7,
+        "baseline_gate_ms": 106.639389736,
+        "candidate_gate_ms": 103.543900408,
+        "gate_ratio": 0.9709723645675084,
+        "control_ratio": 0.9907501745867607,
+        "normalized_gate_ratio": 0.9800375407175662
+      },
+      {
+        "chunk_start": 20480,
+        "layer": 8,
+        "baseline_gate_ms": 112.239275874,
+        "candidate_gate_ms": 108.09903155,
+        "gate_ratio": 0.9631123393147347,
+        "control_ratio": 0.9937573620130673,
+        "normalized_gate_ratio": 0.9691624697639929
+      },
+      {
+        "chunk_start": 20480,
+        "layer": 9,
+        "baseline_gate_ms": 106.604590667,
+        "candidate_gate_ms": 106.393266416,
+        "gate_ratio": 0.9980176815118581,
+        "control_ratio": 0.9980647065304108,
+        "normalized_gate_ratio": 0.9999528837977688
+      },
+      {
+        "chunk_start": 20480,
+        "layer": 10,
+        "baseline_gate_ms": 109.656689806,
+        "candidate_gate_ms": 105.713401649,
+        "gate_ratio": 0.9640396936659651,
+        "control_ratio": 0.9996701948558,
+        "normalized_gate_ratio": 0.9643577438107229
+      },
+      {
+        "chunk_start": 20480,
+        "layer": 11,
+        "baseline_gate_ms": 106.376214966,
+        "candidate_gate_ms": 104.017292109,
+        "gate_ratio": 0.9778247152546838,
+        "control_ratio": 0.9932668521133542,
+        "normalized_gate_ratio": 0.9844531841309166
+      },
+      {
+        "chunk_start": 20480,
+        "layer": 12,
+        "baseline_gate_ms": 108.46007657,
+        "candidate_gate_ms": 110.035069739,
+        "gate_ratio": 1.0145214093407309,
+        "control_ratio": 0.980076936086182,
+        "normalized_gate_ratio": 1.035144662614038
+      },
+      {
+        "chunk_start": 20480,
+        "layer": 13,
+        "baseline_gate_ms": 106.725284095,
+        "candidate_gate_ms": 105.563935445,
+        "gate_ratio": 0.9891183362982079,
+        "control_ratio": 0.9948810874020682,
+        "normalized_gate_ratio": 0.9942075980970665
+      },
+      {
+        "chunk_start": 20480,
+        "layer": 14,
+        "baseline_gate_ms": 106.066716839,
+        "candidate_gate_ms": 102.968450388,
+        "gate_ratio": 0.9707894564540647,
+        "control_ratio": 1.0067877012858193,
+        "normalized_gate_ratio": 0.9642444531396446
+      },
+      {
+        "chunk_start": 20480,
+        "layer": 15,
+        "baseline_gate_ms": 104.18187118,
+        "candidate_gate_ms": 104.484215445,
+        "gate_ratio": 1.0029020813465486,
+        "control_ratio": 0.9925051060438415,
+        "normalized_gate_ratio": 1.0104754879742128
+      },
+      {
+        "chunk_start": 20480,
+        "layer": 16,
+        "baseline_gate_ms": 104.603443705,
+        "candidate_gate_ms": 107.618455529,
+        "gate_ratio": 1.0288232558815449,
+        "control_ratio": 0.9918257033257202,
+        "normalized_gate_ratio": 1.037302474045356
+      },
+      {
+        "chunk_start": 20480,
+        "layer": 17,
+        "baseline_gate_ms": 104.731849745,
+        "candidate_gate_ms": 103.964798482,
+        "gate_ratio": 0.9926760458746063,
+        "control_ratio": 0.9996329731923123,
+        "normalized_gate_ratio": 0.9930405183659667
+      },
+      {
+        "chunk_start": 20480,
+        "layer": 18,
+        "baseline_gate_ms": 107.704277611,
+        "candidate_gate_ms": 103.369108303,
+        "gate_ratio": 0.959749330257267,
+        "control_ratio": 1.0087780027480506,
+        "normalized_gate_ratio": 0.9513979563816591
+      },
+      {
+        "chunk_start": 20480,
+        "layer": 19,
+        "baseline_gate_ms": 108.598388218,
+        "candidate_gate_ms": 105.92419672,
+        "gate_ratio": 0.9753754034301887,
+        "control_ratio": 1.0012393619912379,
+        "normalized_gate_ratio": 0.9741680565678005
+      },
+      {
+        "chunk_start": 20480,
+        "layer": 20,
+        "baseline_gate_ms": 110.156944573,
+        "candidate_gate_ms": 107.616276049,
+        "gate_ratio": 0.9769359205282213,
+        "control_ratio": 1.0223188532733634,
+        "normalized_gate_ratio": 0.9556078491560335
+      },
+      {
+        "chunk_start": 20480,
+        "layer": 21,
+        "baseline_gate_ms": 103.971696987,
+        "candidate_gate_ms": 104.065685347,
+        "gate_ratio": 1.0009039802438904,
+        "control_ratio": 0.998119111171286,
+        "normalized_gate_ratio": 1.0027901169724487
+      },
+      {
+        "chunk_start": 20480,
+        "layer": 22,
+        "baseline_gate_ms": 106.097033036,
+        "candidate_gate_ms": 102.482405197,
+        "gate_ratio": 0.9659309244041395,
+        "control_ratio": 1.0090143384210104,
+        "normalized_gate_ratio": 0.9573014848487769
+      },
+      {
+        "chunk_start": 20480,
+        "layer": 23,
+        "baseline_gate_ms": 106.192073733,
+        "candidate_gate_ms": 105.654911478,
+        "gate_ratio": 0.9949415974646979,
+        "control_ratio": 1.0055428983391594,
+        "normalized_gate_ratio": 0.9894571371425609
+      },
+      {
+        "chunk_start": 20480,
+        "layer": 24,
+        "baseline_gate_ms": 108.071550168,
+        "candidate_gate_ms": 104.398249678,
+        "gate_ratio": 0.966010476538092,
+        "control_ratio": 1.0241975510579158,
+        "normalized_gate_ratio": 0.9431876453329525
+      },
+      {
+        "chunk_start": 20480,
+        "layer": 25,
+        "baseline_gate_ms": 105.298000058,
+        "candidate_gate_ms": 104.663544902,
+        "gate_ratio": 0.9939746704054158,
+        "control_ratio": 0.9997882615999827,
+        "normalized_gate_ratio": 0.9941851775842384
+      },
+      {
+        "chunk_start": 20480,
+        "layer": 26,
+        "baseline_gate_ms": 107.754773873,
+        "candidate_gate_ms": 105.908920887,
+        "gate_ratio": 0.9828698727707829,
+        "control_ratio": 1.0002291577478255,
+        "normalized_gate_ratio": 0.9826446921262225
+      },
+      {
+        "chunk_start": 20480,
+        "layer": 27,
+        "baseline_gate_ms": 105.770906335,
+        "candidate_gate_ms": 105.611857633,
+        "gate_ratio": 0.9984962906387862,
+        "control_ratio": 0.9942389754124886,
+        "normalized_gate_ratio": 1.004281983840486
+      },
+      {
+        "chunk_start": 20480,
+        "layer": 28,
+        "baseline_gate_ms": 108.95761108,
+        "candidate_gate_ms": 111.204066347,
+        "gate_ratio": 1.0206176993486997,
+        "control_ratio": 0.9941102463759642,
+        "normalized_gate_ratio": 1.0266645003100698
+      },
+      {
+        "chunk_start": 20480,
+        "layer": 29,
+        "baseline_gate_ms": 106.728060801,
+        "candidate_gate_ms": 104.922553547,
+        "gate_ratio": 0.9830831063503865,
+        "control_ratio": 0.9734050573916558,
+        "normalized_gate_ratio": 1.009942468333444
+      },
+      {
+        "chunk_start": 20480,
+        "layer": 30,
+        "baseline_gate_ms": 108.831420833,
+        "candidate_gate_ms": 108.428718379,
+        "gate_ratio": 0.9962997592890207,
+        "control_ratio": 0.9937116294761422,
+        "normalized_gate_ratio": 1.0026045079237353
+      },
+      {
+        "chunk_start": 20480,
+        "layer": 31,
+        "baseline_gate_ms": 105.91923401,
+        "candidate_gate_ms": 105.615960148,
+        "gate_ratio": 0.9971367441916039,
+        "control_ratio": 1.00835756160716,
+        "normalized_gate_ratio": 0.9888721839922815
+      },
+      {
+        "chunk_start": 20480,
+        "layer": 32,
+        "baseline_gate_ms": 109.827273696,
+        "candidate_gate_ms": 107.030131957,
+        "gate_ratio": 0.9745314470179561,
+        "control_ratio": 1.002998851571171,
+        "normalized_gate_ratio": 0.971617709722577
+      },
+      {
+        "chunk_start": 20480,
+        "layer": 33,
+        "baseline_gate_ms": 106.447061218,
+        "candidate_gate_ms": 104.405736545,
+        "gate_ratio": 0.9808230997676917,
+        "control_ratio": 0.9834789535705734,
+        "normalized_gate_ratio": 0.9972995316338601
+      },
+      {
+        "chunk_start": 20480,
+        "layer": 34,
+        "baseline_gate_ms": 107.822834331,
+        "candidate_gate_ms": 110.070775818,
+        "gate_ratio": 1.0208484733400642,
+        "control_ratio": 0.9947806961340641,
+        "normalized_gate_ratio": 1.0262045466978855
+      },
+      {
+        "chunk_start": 20480,
+        "layer": 35,
+        "baseline_gate_ms": 108.438892237,
+        "candidate_gate_ms": 105.826709329,
+        "gate_ratio": 0.9759110144514302,
+        "control_ratio": 1.001448275860765,
+        "normalized_gate_ratio": 0.9744996701028967
+      },
+      {
+        "chunk_start": 20480,
+        "layer": 36,
+        "baseline_gate_ms": 105.838747959,
+        "candidate_gate_ms": 105.364390749,
+        "gate_ratio": 0.9955181139313575,
+        "control_ratio": 0.9790929741980716,
+        "normalized_gate_ratio": 1.0167758733502699
+      },
+      {
+        "chunk_start": 20480,
+        "layer": 37,
+        "baseline_gate_ms": 106.268969366,
+        "candidate_gate_ms": 104.731007256,
+        "gate_ratio": 0.9855276463188128,
+        "control_ratio": 1.0084875774152395,
+        "normalized_gate_ratio": 0.9772333030067925
+      },
+      {
+        "chunk_start": 20480,
+        "layer": 38,
+        "baseline_gate_ms": 108.245872494,
+        "candidate_gate_ms": 108.237438443,
+        "gate_ratio": 0.9999220843178066,
+        "control_ratio": 1.0072703096705893,
+        "normalized_gate_ratio": 0.9927048129164199
+      },
+      {
+        "chunk_start": 20480,
+        "layer": 39,
+        "baseline_gate_ms": 106.606433577,
+        "candidate_gate_ms": 105.792850597,
+        "gate_ratio": 0.9923683500826208,
+        "control_ratio": 0.9968535161735231,
+        "normalized_gate_ratio": 0.9955006768616127
+      },
+      {
+        "chunk_start": 20480,
+        "layer": 40,
+        "baseline_gate_ms": 107.612760041,
+        "candidate_gate_ms": 105.210865244,
+        "gate_ratio": 0.9776802045028407,
+        "control_ratio": 1.0028527171996102,
+        "normalized_gate_ratio": 0.9748990930920924
+      },
+      {
+        "chunk_start": 20480,
+        "layer": 41,
+        "baseline_gate_ms": 106.366194939,
+        "candidate_gate_ms": 105.327584471,
+        "gate_ratio": 0.9902355210826557,
+        "control_ratio": 0.9892139701331639,
+        "normalized_gate_ratio": 1.0010326895700374
+      },
+      {
+        "chunk_start": 20480,
+        "layer": 42,
+        "baseline_gate_ms": 112.103563602,
+        "candidate_gate_ms": 110.398218545,
+        "gate_ratio": 0.9847877712161368,
+        "control_ratio": 1.0060312557373927,
+        "normalized_gate_ratio": 0.9788838722454154
+      },
+      {
+        "chunk_start": 24576,
+        "layer": 2,
+        "baseline_gate_ms": 110.077836288,
+        "candidate_gate_ms": 101.693620772,
+        "gate_ratio": 0.9238337543802722,
+        "control_ratio": 1.0016083053727378,
+        "normalized_gate_ratio": 0.9223503333835449
+      },
+      {
+        "chunk_start": 24576,
+        "layer": 3,
+        "baseline_gate_ms": 106.995456863,
+        "candidate_gate_ms": 103.912149088,
+        "gate_ratio": 0.9711828159306993,
+        "control_ratio": 1.0028732280715293,
+        "normalized_gate_ratio": 0.9684003807721849
+      },
+      {
+        "chunk_start": 24576,
+        "layer": 4,
+        "baseline_gate_ms": 108.839150805,
+        "candidate_gate_ms": 108.817392397,
+        "gate_ratio": 0.9998000865695932,
+        "control_ratio": 1.013854742005123,
+        "normalized_gate_ratio": 0.9861374072110828
+      },
+      {
+        "chunk_start": 24576,
+        "layer": 5,
+        "baseline_gate_ms": 106.108469965,
+        "candidate_gate_ms": 104.948276345,
+        "gate_ratio": 0.98906596598384,
+        "control_ratio": 1.0046051925014716,
+        "normalized_gate_ratio": 0.9845320065697263
+      },
+      {
+        "chunk_start": 24576,
+        "layer": 6,
+        "baseline_gate_ms": 109.068913733,
+        "candidate_gate_ms": 105.181612785,
+        "gate_ratio": 0.9643592219363614,
+        "control_ratio": 1.0149816450328581,
+        "normalized_gate_ratio": 0.9501247896016307
+      },
+      {
+        "chunk_start": 24576,
+        "layer": 7,
+        "baseline_gate_ms": 107.666175361,
+        "candidate_gate_ms": 105.412208303,
+        "gate_ratio": 0.979065225912943,
+        "control_ratio": 0.9916297840048883,
+        "normalized_gate_ratio": 0.9873293861331989
+      },
+      {
+        "chunk_start": 24576,
+        "layer": 8,
+        "baseline_gate_ms": 110.280937919,
+        "candidate_gate_ms": 107.190486037,
+        "gate_ratio": 0.9719765542412244,
+        "control_ratio": 1.0019119715558966,
+        "normalized_gate_ratio": 0.9701217091276146
+      },
+      {
+        "chunk_start": 24576,
+        "layer": 9,
+        "baseline_gate_ms": 105.884144706,
+        "candidate_gate_ms": 104.85775127,
+        "gate_ratio": 0.9903064482520031,
+        "control_ratio": 1.0142663180127147,
+        "normalized_gate_ratio": 0.9763771414517077
+      },
+      {
+        "chunk_start": 24576,
+        "layer": 10,
+        "baseline_gate_ms": 108.595814929,
+        "candidate_gate_ms": 103.980573855,
+        "gate_ratio": 0.9575007464420481,
+        "control_ratio": 0.9986990929145466,
+        "normalized_gate_ratio": 0.9587479884934433
+      },
+      {
+        "chunk_start": 24576,
+        "layer": 11,
+        "baseline_gate_ms": 108.415193096,
+        "candidate_gate_ms": 104.759536629,
+        "gate_ratio": 0.9662809578380498,
+        "control_ratio": 0.993663902862203,
+        "normalized_gate_ratio": 0.97244244764726
+      },
+      {
+        "chunk_start": 24576,
+        "layer": 12,
+        "baseline_gate_ms": 108.413228667,
+        "candidate_gate_ms": 107.77616107,
+        "gate_ratio": 0.9941237097646376,
+        "control_ratio": 1.0126741357063875,
+        "normalized_gate_ratio": 0.9816817421442189
+      },
+      {
+        "chunk_start": 24576,
+        "layer": 13,
+        "baseline_gate_ms": 107.479684605,
+        "candidate_gate_ms": 104.81924275,
+        "gate_ratio": 0.9752470258470014,
+        "control_ratio": 1.0025799670087527,
+        "normalized_gate_ratio": 0.9727373954585383
+      },
+      {
+        "chunk_start": 24576,
+        "layer": 14,
+        "baseline_gate_ms": 104.878967973,
+        "candidate_gate_ms": 104.309972726,
+        "gate_ratio": 0.9945747440311723,
+        "control_ratio": 0.99132417741577,
+        "normalized_gate_ratio": 1.003279014765761
+      },
+      {
+        "chunk_start": 24576,
+        "layer": 15,
+        "baseline_gate_ms": 104.252187892,
+        "candidate_gate_ms": 103.081862643,
+        "gate_ratio": 0.9887740941205724,
+        "control_ratio": 1.0188622736266117,
+        "normalized_gate_ratio": 0.9704688452160062
+      },
+      {
+        "chunk_start": 24576,
+        "layer": 16,
+        "baseline_gate_ms": 105.819044791,
+        "candidate_gate_ms": 107.286867028,
+        "gate_ratio": 1.013871059220947,
+        "control_ratio": 0.9844276510788647,
+        "normalized_gate_ratio": 1.0299091640810927
+      },
+      {
+        "chunk_start": 24576,
+        "layer": 17,
+        "baseline_gate_ms": 105.250221979,
+        "candidate_gate_ms": 103.557981348,
+        "gate_ratio": 0.9839217381286127,
+        "control_ratio": 0.9946445917252605,
+        "normalized_gate_ratio": 0.9892194119529183
+      },
+      {
+        "chunk_start": 24576,
+        "layer": 18,
+        "baseline_gate_ms": 105.469132551,
+        "candidate_gate_ms": 108.168224168,
+        "gate_ratio": 1.0255912943599383,
+        "control_ratio": 1.0009883373169324,
+        "normalized_gate_ratio": 1.0245786650311552
+      },
+      {
+        "chunk_start": 24576,
+        "layer": 19,
+        "baseline_gate_ms": 107.092854218,
+        "candidate_gate_ms": 104.679577671,
+        "gate_ratio": 0.9774655688783167,
+        "control_ratio": 1.0175377679644297,
+        "normalized_gate_ratio": 0.9606184651344423
+      },
+      {
+        "chunk_start": 24576,
+        "layer": 20,
+        "baseline_gate_ms": 106.910062708,
+        "candidate_gate_ms": 102.583952981,
+        "gate_ratio": 0.959535055752275,
+        "control_ratio": 1.009940972366265,
+        "normalized_gate_ratio": 0.9500902349808721
+      },
+      {
+        "chunk_start": 24576,
+        "layer": 21,
+        "baseline_gate_ms": 104.746159911,
+        "candidate_gate_ms": 103.996135691,
+        "gate_ratio": 0.9928396017511546,
+        "control_ratio": 1.0094692417788547,
+        "normalized_gate_ratio": 0.9835263529194849
+      },
+      {
+        "chunk_start": 24576,
+        "layer": 22,
+        "baseline_gate_ms": 105.358819027,
+        "candidate_gate_ms": 106.965981333,
+        "gate_ratio": 1.0152541792024847,
+        "control_ratio": 0.9871859836114318,
+        "normalized_gate_ratio": 1.0284325305028854
+      },
+      {
+        "chunk_start": 24576,
+        "layer": 23,
+        "baseline_gate_ms": 106.148939269,
+        "candidate_gate_ms": 104.672745731,
+        "gate_ratio": 0.9860931861574325,
+        "control_ratio": 0.9822525047025072,
+        "normalized_gate_ratio": 1.003910075501501
+      },
+      {
+        "chunk_start": 24576,
+        "layer": 24,
+        "baseline_gate_ms": 106.169274414,
+        "candidate_gate_ms": 104.704840272,
+        "gate_ratio": 0.9862066106217365,
+        "control_ratio": 1.006690650987247,
+        "normalized_gate_ratio": 0.9796521003295082
+      },
+      {
+        "chunk_start": 24576,
+        "layer": 25,
+        "baseline_gate_ms": 105.934572316,
+        "candidate_gate_ms": 105.476812822,
+        "gate_ratio": 0.9956788470091282,
+        "control_ratio": 1.010391260293758,
+        "normalized_gate_ratio": 0.9854388949481291
+      },
+      {
+        "chunk_start": 24576,
+        "layer": 26,
+        "baseline_gate_ms": 107.936461467,
+        "candidate_gate_ms": 104.438191723,
+        "gate_ratio": 0.9675895457711522,
+        "control_ratio": 1.009252932844759,
+        "normalized_gate_ratio": 0.9587185870679898
+      },
+      {
+        "chunk_start": 24576,
+        "layer": 27,
+        "baseline_gate_ms": 107.968467652,
+        "candidate_gate_ms": 105.717987854,
+        "gate_ratio": 0.9791561383898337,
+        "control_ratio": 1.0037928857576022,
+        "normalized_gate_ratio": 0.9754563439158327
+      },
+      {
+        "chunk_start": 24576,
+        "layer": 28,
+        "baseline_gate_ms": 107.658655894,
+        "candidate_gate_ms": 109.763959464,
+        "gate_ratio": 1.0195553581132655,
+        "control_ratio": 0.9995917791082954,
+        "normalized_gate_ratio": 1.0199717318831683
+      },
+      {
+        "chunk_start": 24576,
+        "layer": 29,
+        "baseline_gate_ms": 108.394972718,
+        "candidate_gate_ms": 104.807905592,
+        "gate_ratio": 0.9669074401141083,
+        "control_ratio": 0.9874563765769817,
+        "normalized_gate_ratio": 0.9791900311241026
+      },
+      {
+        "chunk_start": 24576,
+        "layer": 30,
+        "baseline_gate_ms": 108.426023517,
+        "candidate_gate_ms": 104.499963547,
+        "gate_ratio": 0.9637904274024727,
+        "control_ratio": 1.0144798110858615,
+        "normalized_gate_ratio": 0.9500341129222347
+      },
+      {
+        "chunk_start": 24576,
+        "layer": 31,
+        "baseline_gate_ms": 105.340528215,
+        "candidate_gate_ms": 105.91458584,
+        "gate_ratio": 1.0054495419258611,
+        "control_ratio": 0.9909961990386078,
+        "normalized_gate_ratio": 1.0145846602653723
+      },
+      {
+        "chunk_start": 24576,
+        "layer": 32,
+        "baseline_gate_ms": 108.295405531,
+        "candidate_gate_ms": 108.783669941,
+        "gate_ratio": 1.004508634577856,
+        "control_ratio": 0.9999084877232871,
+        "normalized_gate_ratio": 1.004600567863008
+      },
+      {
+        "chunk_start": 24576,
+        "layer": 33,
+        "baseline_gate_ms": 108.033518573,
+        "candidate_gate_ms": 106.49199478,
+        "gate_ratio": 0.9857310600139496,
+        "control_ratio": 1.0016980198538832,
+        "normalized_gate_ratio": 0.9840601064158411
+      },
+      {
+        "chunk_start": 24576,
+        "layer": 34,
+        "baseline_gate_ms": 108.800380288,
+        "candidate_gate_ms": 104.253765609,
+        "gate_ratio": 0.9582114082049632,
+        "control_ratio": 1.0143526131076845,
+        "normalized_gate_ratio": 0.9446531667812036
+      },
+      {
+        "chunk_start": 24576,
+        "layer": 35,
+        "baseline_gate_ms": 107.405358163,
+        "candidate_gate_ms": 105.879739548,
+        "gate_ratio": 0.9857956936125598,
+        "control_ratio": 0.997860831351606,
+        "normalized_gate_ratio": 0.9879089975676228
+      },
+      {
+        "chunk_start": 24576,
+        "layer": 36,
+        "baseline_gate_ms": 107.259213439,
+        "candidate_gate_ms": 111.370055082,
+        "gate_ratio": 1.03832623334813,
+        "control_ratio": 0.9916767164476337,
+        "normalized_gate_ratio": 1.0470410529225729
+      },
+      {
+        "chunk_start": 24576,
+        "layer": 37,
+        "baseline_gate_ms": 107.579395581,
+        "candidate_gate_ms": 106.137974625,
+        "gate_ratio": 0.9866013287375768,
+        "control_ratio": 1.0043058435982868,
+        "normalized_gate_ratio": 0.9823713911717598
+      },
+      {
+        "chunk_start": 24576,
+        "layer": 38,
+        "baseline_gate_ms": 107.294611683,
+        "candidate_gate_ms": 108.938693699,
+        "gate_ratio": 1.015323062269496,
+        "control_ratio": 0.997648976609353,
+        "normalized_gate_ratio": 1.0177157357693192
+      },
+      {
+        "chunk_start": 24576,
+        "layer": 39,
+        "baseline_gate_ms": 107.006720077,
+        "candidate_gate_ms": 105.177556172,
+        "gate_ratio": 0.9829060838077854,
+        "control_ratio": 1.001083928848102,
+        "normalized_gate_ratio": 0.9818418371162617
+      },
+      {
+        "chunk_start": 24576,
+        "layer": 40,
+        "baseline_gate_ms": 102.862185526,
+        "candidate_gate_ms": 108.849963281,
+        "gate_ratio": 1.0582116520700067,
+        "control_ratio": 0.992213925954267,
+        "normalized_gate_ratio": 1.0665156216712701
+      },
+      {
+        "chunk_start": 24576,
+        "layer": 41,
+        "baseline_gate_ms": 106.471358258,
+        "candidate_gate_ms": 105.812991002,
+        "gate_ratio": 0.9938164848577902,
+        "control_ratio": 0.9870344560072328,
+        "normalized_gate_ratio": 1.0068711166153126
+      },
+      {
+        "chunk_start": 24576,
+        "layer": 42,
+        "baseline_gate_ms": 108.575604153,
+        "candidate_gate_ms": 109.355137122,
+        "gate_ratio": 1.0071796328013198,
+        "control_ratio": 0.9848341354423011,
+        "normalized_gate_ratio": 1.0226896048327803
+      },
+      {
+        "chunk_start": 28672,
+        "layer": 2,
+        "baseline_gate_ms": 108.278676115,
+        "candidate_gate_ms": 103.535417448,
+        "gate_ratio": 0.9561939724682051,
+        "control_ratio": 1.004163599284268,
+        "normalized_gate_ratio": 0.9522292713555303
+      },
+      {
+        "chunk_start": 28672,
+        "layer": 3,
+        "baseline_gate_ms": 107.834329664,
+        "candidate_gate_ms": 104.6695625,
+        "gate_ratio": 0.9706515803097115,
+        "control_ratio": 1.0063094540482782,
+        "normalized_gate_ratio": 0.9645656973656377
+      },
+      {
+        "chunk_start": 28672,
+        "layer": 4,
+        "baseline_gate_ms": 106.413011608,
+        "candidate_gate_ms": 107.967518812,
+        "gate_ratio": 1.0146082436772528,
+        "control_ratio": 0.9975577534224404,
+        "normalized_gate_ratio": 1.017092233704079
+      },
+      {
+        "chunk_start": 28672,
+        "layer": 5,
+        "baseline_gate_ms": 106.674275257,
+        "candidate_gate_ms": 104.084426325,
+        "gate_ratio": 0.9757218980324869,
+        "control_ratio": 0.997022147743424,
+        "normalized_gate_ratio": 0.9786361318460715
+      },
+      {
+        "chunk_start": 28672,
+        "layer": 6,
+        "baseline_gate_ms": 108.851047731,
+        "candidate_gate_ms": 107.991239611,
+        "gate_ratio": 0.9921010579326273,
+        "control_ratio": 0.9985545570137081,
+        "normalized_gate_ratio": 0.9935371592510871
+      },
+      {
+        "chunk_start": 28672,
+        "layer": 7,
+        "baseline_gate_ms": 107.035537628,
+        "candidate_gate_ms": 103.960864227,
+        "gate_ratio": 0.9712742751693744,
+        "control_ratio": 1.0185575625709293,
+        "normalized_gate_ratio": 0.9535781882742024
+      },
+      {
+        "chunk_start": 28672,
+        "layer": 8,
+        "baseline_gate_ms": 108.754439765,
+        "candidate_gate_ms": 107.174605045,
+        "gate_ratio": 0.9854733772394603,
+        "control_ratio": 1.003464134029252,
+        "normalized_gate_ratio": 0.9820713504551949
+      },
+      {
+        "chunk_start": 28672,
+        "layer": 9,
+        "baseline_gate_ms": 105.946540957,
+        "candidate_gate_ms": 105.355946461,
+        "gate_ratio": 0.9944255424418273,
+        "control_ratio": 0.9856887082584977,
+        "normalized_gate_ratio": 1.0088636849647652
+      },
+      {
+        "chunk_start": 28672,
+        "layer": 10,
+        "baseline_gate_ms": 111.216569931,
+        "candidate_gate_ms": 107.628257566,
+        "gate_ratio": 0.9677358116040962,
+        "control_ratio": 0.9992218772179192,
+        "normalized_gate_ratio": 0.9684894152823315
+      },
+      {
+        "chunk_start": 28672,
+        "layer": 11,
+        "baseline_gate_ms": 106.926835181,
+        "candidate_gate_ms": 106.225104475,
+        "gate_ratio": 0.9934372816252145,
+        "control_ratio": 1.0004669223740288,
+        "normalized_gate_ratio": 0.9929736400158703
+      },
+      {
+        "chunk_start": 28672,
+        "layer": 12,
+        "baseline_gate_ms": 108.329111686,
+        "candidate_gate_ms": 108.91646984,
+        "gate_ratio": 1.0054219788647627,
+        "control_ratio": 1.015378885837548,
+        "normalized_gate_ratio": 0.9901938999208435
+      },
+      {
+        "chunk_start": 28672,
+        "layer": 13,
+        "baseline_gate_ms": 106.754208583,
+        "candidate_gate_ms": 105.86297074,
+        "gate_ratio": 0.9916514968840121,
+        "control_ratio": 1.00520986763807,
+        "normalized_gate_ratio": 0.9865119004592385
+      },
+      {
+        "chunk_start": 28672,
+        "layer": 14,
+        "baseline_gate_ms": 108.025310777,
+        "candidate_gate_ms": 104.482323813,
+        "gate_ratio": 0.9672022515971844,
+        "control_ratio": 1.0195187831633499,
+        "normalized_gate_ratio": 0.9486850733599647
+      },
+      {
+        "chunk_start": 28672,
+        "layer": 15,
+        "baseline_gate_ms": 106.423890956,
+        "candidate_gate_ms": 103.86283822,
+        "gate_ratio": 0.9759353589406082,
+        "control_ratio": 1.0026500028135383,
+        "normalized_gate_ratio": 0.973355962900348
+      },
+      {
+        "chunk_start": 28672,
+        "layer": 16,
+        "baseline_gate_ms": 108.364734829,
+        "candidate_gate_ms": 106.173021097,
+        "gate_ratio": 0.9797746588365807,
+        "control_ratio": 1.0012188013937628,
+        "normalized_gate_ratio": 0.9785819617776549
+      },
+      {
+        "chunk_start": 28672,
+        "layer": 17,
+        "baseline_gate_ms": 105.272090858,
+        "candidate_gate_ms": 102.293539859,
+        "gate_ratio": 0.9717061666133552,
+        "control_ratio": 1.006861128449214,
+        "normalized_gate_ratio": 0.9650845972274199
+      },
+      {
+        "chunk_start": 28672,
+        "layer": 18,
+        "baseline_gate_ms": 104.5875806,
+        "candidate_gate_ms": 103.695567419,
+        "gate_ratio": 0.9914711366695483,
+        "control_ratio": 0.9956579176563259,
+        "normalized_gate_ratio": 0.9957949603849554
+      },
+      {
+        "chunk_start": 28672,
+        "layer": 19,
+        "baseline_gate_ms": 108.527492582,
+        "candidate_gate_ms": 103.552482811,
+        "gate_ratio": 0.954158990937333,
+        "control_ratio": 1.003144381029182,
+        "normalized_gate_ratio": 0.9511681558325711
+      },
+      {
+        "chunk_start": 28672,
+        "layer": 20,
+        "baseline_gate_ms": 108.103942987,
+        "candidate_gate_ms": 107.956396335,
+        "gate_ratio": 0.9986351408845675,
+        "control_ratio": 0.9940724067949641,
+        "normalized_gate_ratio": 1.004589941395028
+      },
+      {
+        "chunk_start": 28672,
+        "layer": 21,
+        "baseline_gate_ms": 106.551563606,
+        "candidate_gate_ms": 105.769511206,
+        "gate_ratio": 0.9926603385860031,
+        "control_ratio": 0.9916055725234798,
+        "normalized_gate_ratio": 1.0010636951745229
+      },
+      {
+        "chunk_start": 28672,
+        "layer": 22,
+        "baseline_gate_ms": 105.710961213,
+        "candidate_gate_ms": 106.451914067,
+        "gate_ratio": 1.0070092339100676,
+        "control_ratio": 0.9928567453179747,
+        "normalized_gate_ratio": 1.0142543107641981
+      },
+      {
+        "chunk_start": 28672,
+        "layer": 23,
+        "baseline_gate_ms": 106.075306283,
+        "candidate_gate_ms": 105.984062221,
+        "gate_ratio": 0.9991398180670196,
+        "control_ratio": 1.006756942667362,
+        "normalized_gate_ratio": 0.9924339984384304
+      },
+      {
+        "chunk_start": 28672,
+        "layer": 24,
+        "baseline_gate_ms": 107.541616714,
+        "candidate_gate_ms": 104.171623081,
+        "gate_ratio": 0.9686633534442552,
+        "control_ratio": 1.0093659543500415,
+        "normalized_gate_ratio": 0.9596750804498891
+      },
+      {
+        "chunk_start": 28672,
+        "layer": 25,
+        "baseline_gate_ms": 108.247010744,
+        "candidate_gate_ms": 106.078124322,
+        "gate_ratio": 0.9799635444240642,
+        "control_ratio": 1.0220722951314218,
+        "normalized_gate_ratio": 0.9588006142931962
+      },
+      {
+        "chunk_start": 28672,
+        "layer": 26,
+        "baseline_gate_ms": 107.91522488,
+        "candidate_gate_ms": 105.658340671,
+        "gate_ratio": 0.9790865078443787,
+        "control_ratio": 1.0096314959972097,
+        "normalized_gate_ratio": 0.9697463992813914
+      },
+      {
+        "chunk_start": 28672,
+        "layer": 27,
+        "baseline_gate_ms": 107.976881735,
+        "candidate_gate_ms": 106.48322824,
+        "gate_ratio": 0.9861669139634374,
+        "control_ratio": 1.0013614804941513,
+        "normalized_gate_ratio": 0.9848260924484376
+      },
+      {
+        "chunk_start": 28672,
+        "layer": 28,
+        "baseline_gate_ms": 109.718615775,
+        "candidate_gate_ms": 110.820553302,
+        "gate_ratio": 1.0100433050418693,
+        "control_ratio": 1.0024455931750025,
+        "normalized_gate_ratio": 1.0075791762850719
+      },
+      {
+        "chunk_start": 28672,
+        "layer": 29,
+        "baseline_gate_ms": 107.971470494,
+        "candidate_gate_ms": 106.065632708,
+        "gate_ratio": 0.9823486910266178,
+        "control_ratio": 0.9973246163751082,
+        "normalized_gate_ratio": 0.9849839008256689
+      },
+      {
+        "chunk_start": 28672,
+        "layer": 30,
+        "baseline_gate_ms": 109.085571371,
+        "candidate_gate_ms": 106.288370799,
+        "gate_ratio": 0.9743577401039895,
+        "control_ratio": 1.007227654140273,
+        "normalized_gate_ratio": 0.9673659535645496
+      },
+      {
+        "chunk_start": 28672,
+        "layer": 31,
+        "baseline_gate_ms": 107.624520665,
+        "candidate_gate_ms": 104.810338742,
+        "gate_ratio": 0.9738518517377686,
+        "control_ratio": 1.0071217576452174,
+        "normalized_gate_ratio": 0.9669653588010667
+      },
+      {
+        "chunk_start": 28672,
+        "layer": 32,
+        "baseline_gate_ms": 106.489224052,
+        "candidate_gate_ms": 105.465588047,
+        "gate_ratio": 0.9903874216934838,
+        "control_ratio": 0.9899326003028072,
+        "normalized_gate_ratio": 1.0004594468255086
+      },
+      {
+        "chunk_start": 28672,
+        "layer": 33,
+        "baseline_gate_ms": 107.617491365,
+        "candidate_gate_ms": 105.592794121,
+        "gate_ratio": 0.9811861694756203,
+        "control_ratio": 0.9918628826394339,
+        "normalized_gate_ratio": 0.9892356964347714
+      },
+      {
+        "chunk_start": 28672,
+        "layer": 34,
+        "baseline_gate_ms": 111.382609184,
+        "candidate_gate_ms": 109.462495404,
+        "gate_ratio": 0.9827610989357589,
+        "control_ratio": 1.0007389303487975,
+        "normalized_gate_ratio": 0.9820354431432257
+      },
+      {
+        "chunk_start": 28672,
+        "layer": 35,
+        "baseline_gate_ms": 106.187211341,
+        "candidate_gate_ms": 105.621732066,
+        "gate_ratio": 0.9946746951176253,
+        "control_ratio": 0.9899461725128867,
+        "normalized_gate_ratio": 1.0047765451658202
+      },
+      {
+        "chunk_start": 28672,
+        "layer": 36,
+        "baseline_gate_ms": 109.827804714,
+        "candidate_gate_ms": 109.286000762,
+        "gate_ratio": 0.995066787017997,
+        "control_ratio": 0.9975764014964567,
+        "normalized_gate_ratio": 0.9974842884467846
+      },
+      {
+        "chunk_start": 28672,
+        "layer": 37,
+        "baseline_gate_ms": 107.370201944,
+        "candidate_gate_ms": 106.40477291,
+        "gate_ratio": 0.9910084081381954,
+        "control_ratio": 0.9941447258885766,
+        "normalized_gate_ratio": 0.9968452100899313
+      },
+      {
+        "chunk_start": 28672,
+        "layer": 38,
+        "baseline_gate_ms": 109.038296286,
+        "candidate_gate_ms": 104.811423065,
+        "gate_ratio": 0.9612349663836162,
+        "control_ratio": 1.004691993277285,
+        "normalized_gate_ratio": 0.956745920954428
+      },
+      {
+        "chunk_start": 28672,
+        "layer": 39,
+        "baseline_gate_ms": 106.591612459,
+        "candidate_gate_ms": 105.157272173,
+        "gate_ratio": 0.9865435914429785,
+        "control_ratio": 1.0010231907749,
+        "normalized_gate_ratio": 0.9855352009170609
+      },
+      {
+        "chunk_start": 28672,
+        "layer": 40,
+        "baseline_gate_ms": 110.12146945,
+        "candidate_gate_ms": 106.474608079,
+        "gate_ratio": 0.9668832845292186,
+        "control_ratio": 1.0054535987180433,
+        "normalized_gate_ratio": 0.9616388919011261
+      },
+      {
+        "chunk_start": 28672,
+        "layer": 41,
+        "baseline_gate_ms": 106.223979473,
+        "candidate_gate_ms": 104.844410304,
+        "gate_ratio": 0.9870126389931506,
+        "control_ratio": 1.0104968863621162,
+        "normalized_gate_ratio": 0.9767597033836383
+      },
+      {
+        "chunk_start": 28672,
+        "layer": 42,
+        "baseline_gate_ms": 106.937912036,
+        "candidate_gate_ms": 105.014217373,
+        "gate_ratio": 0.9820111069463148,
+        "control_ratio": 0.9959397371688191,
+        "normalized_gate_ratio": 0.9860145853180841
+      }
+    ]
+  },
+  "later_engine_timing_justified": true,
+  "engine_speedup_claim": false,
+  "all_new_frontiers_claim": false,
+  "complete_32k_c0": true
+}

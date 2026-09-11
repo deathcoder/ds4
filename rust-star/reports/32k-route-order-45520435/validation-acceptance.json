@@ -1,0 +1,34 @@
+{
+  "passed": true,
+  "runs": [
+    {
+      "name": "candidate-32k-output",
+      "exit_code": 0,
+      "started_utc": "2026-09-11T08:27:56.720339+00:00",
+      "finished_utc": "2026-09-11T08:32:46.118848+00:00",
+      "elapsed_seconds": 289.397580709,
+      "peak_rss_bytes": 3336110080,
+      "executable_sha256": "7fe2eb851abe9b5f2b8688bc95a8c998e7c0405fa5814ae34d40366cfa62abdc"
+    },
+    {
+      "name": "baseline-32k-profiled",
+      "exit_code": 0,
+      "started_utc": "2026-09-11T08:32:46.997435+00:00",
+      "finished_utc": "2026-09-11T08:37:20.300507+00:00",
+      "elapsed_seconds": 273.3021935,
+      "peak_rss_bytes": 3340615680,
+      "executable_sha256": "8bdcf022811eca2c2cf0b5c7aca10bc51705a1a18d988129cffbdfd43bb58d11"
+    },
+    {
+      "name": "candidate-32k-profiled",
+      "exit_code": 0,
+      "started_utc": "2026-09-11T08:37:21.182999+00:00",
+      "finished_utc": "2026-09-11T08:41:41.436423+00:00",
+      "elapsed_seconds": 260.25260545800006,
+      "peak_rss_bytes": 3336994816,
+      "executable_sha256": "7fe2eb851abe9b5f2b8688bc95a8c998e7c0405fa5814ae34d40366cfa62abdc"
+    }
+  ],
+  "full_fp32_words_per_run": 16677120,
+  "throughput_claim": false
+}

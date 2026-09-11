@@ -1,0 +1,29 @@
+{
+  "created_utc": "2026-09-11T08:12:48.589539+00:00",
+  "baseline_commit": "d6c14fa0918a5130da72aa7be6e56b82696fb8b0",
+  "baseline_executable_sha256": "8bdcf022811eca2c2cf0b5c7aca10bc51705a1a18d988129cffbdfd43bb58d11",
+  "scope": "Native 4K continuation-tail routed gate/up grid order only; baseline prefix, diagnostics at 32 rows, decode and imported root Metal unchanged.",
+  "live_sequence": [
+    "candidate-32k-output",
+    "baseline-32k-profiled",
+    "candidate-32k-profiled"
+  ],
+  "context_tokens": 32768,
+  "decode_steps": 128,
+  "full_fp32_words_per_run": 16677120,
+  "profile_protocol": "one baseline/candidate diagnostic comparison; no paired-protocol headline claim",
+  "decision": "Require all complete FP32 outputs and strict profile checks. Diagnose the native tail component versus unchanged stages. Retain as correctness-validated candidate only if evidence warrants a later engine timing study; revert if no useful benefit or correctness fails. No broad benchmark campaign.",
+  "no_256k": true,
+  "no_push": true,
+  "diagnostic_assessment": {
+    "created_before_model_runs_utc": "2026-09-11T08:16:26.681507+00:00",
+    "unchanged_tail_controls": [
+      "attention_output",
+      "routed_down",
+      "shared_expert"
+    ],
+    "gate_relative_to_controls": "(candidate gate / candidate controls) / (baseline gate / baseline controls)",
+    "advance_to_later_engine_timing": "All C0/strict-profile checks pass and both aggregate gate/control ratio and median of 287 matched gate/control ratios are below 1.0. This selects further testing, not production speed acceptance.",
+    "record_all_raw_ratios_and_stages": true
+  }
+}

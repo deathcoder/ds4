@@ -1,0 +1,1 @@
+{"passed":true,"device":"Apple M1 Ultra","kernel":"rust_star_routed_prefill_gate_up","thread_execution_width":32,"max_threads":512,"scope":"Metal library and pipeline compilation only"}

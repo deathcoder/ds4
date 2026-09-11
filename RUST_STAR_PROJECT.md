@@ -422,11 +422,19 @@ Preserve all evidence and both prior rejected attempts. Do not resume the
 long-context campaign automatically. The bounded lower-context investigation
 on 2026-09-11 found an exact synthetic routed-prefill grid-order candidate:
 4K balanced/skewed kernel latency improves 8.72%/1.91% on paired medians.
-Production remains unchanged; no engine improvement or new full-model C0 is
-claimed. The next bounded step is 32K candidate correctness and diagnostic
-validation before considering a larger measurement campaign. See
-`rust-star/reports/prefill-route-order-d6c14fa0/README.md`. Performance pairing
-at 256K and the coding-agent corpus remain future work.
+That synthetic screen left production unchanged; see
+`rust-star/reports/prefill-route-order-d6c14fa0/README.md`. The subsequent bounded
+real-model validation at 45520435 passes all three full 32K/128 C0 runs and both
+strict profiles. Report `rust-star/reports/32k-route-order-45520435/README.md`
+verifies 48 artifacts and final input/source pins, preserving the earlier shader
+compilation failure. Gate/up attribution falls 1.40% raw, or 1.42% relative to
+unchanged controls; matched median normalized ratio is 0.985016. Retain the
+candidate under the predeclared selection rule, with correctness established
+at 32K but no accepted engine speedup or new larger-frontier claim. The raw
+component saving is only about 0.20% of summed baseline stage GPU time and
+cannot materially close the reference gap alone. Any later engine timing must
+use unprofiled alternating pairs and prebound end-to-end criteria. Performance
+pairing at 256K and the coding-agent corpus remain future work.
 
 Current implementation boundaries, evidence, and immediate actions are maintained
 in `RUST_STAR_JOURNAL.md`. As of 2026-09-09, native prefill through all 43 layers
