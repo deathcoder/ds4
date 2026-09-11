@@ -18,6 +18,47 @@ Before changing code:
 Journal entries are reverse chronological. Do not edit old entries to change
 history; add a correction and update the current-state summary.
 
+## 2026-09-11 — Equal-warm A/A timing protocol passes both fresh processes
+
+- Report rust-star/reports/compressed-aa-protocol-a6bf9e24/README.md verifies
+  all 39 artifacts, frozen source/plan/run bindings and independent statistics.
+  All 20,937,965,568 final-output FP32 comparisons pass across 144 measured
+  pairs and 12 initial warm-up pairs; full preparation/guard/input checks pass.
+- All six equal-warm shape/session cases pass every predeclared null gate.
+  First/second medians range 0.998509..1.004863; AB/BA medians are within
+  0.487% of parity, physical-buffer medians within 0.324%, and all 72 warmed
+  pair ratios within 3%. The contemporary balanced legacy-style control has
+  first/second penalties 6.60–15.28%, failing every shape/session null screen.
+- Both original processes finish normally in 117.988s/116.902s. No repeat,
+  threshold adjustment or discarded pair. Source checks pass before/after;
+  runtime 1711856e and all 40 runtime/imported sources remain unchanged.
+- Retain four conditioning dispatches plus three queued measured samples per
+  role, with balanced execution/physical-buffer order, as a scoped isolated
+  protocol. Future candidate screens must include contemporaneous A/A and
+  succeed separately in both orders. Warmth, submission and averaging changed
+  together; cache versus GPU clock causality remains unmeasured. This is not
+  normal-engine timing or a retroactive correction of the failed candidate.
+- All GPU work is finished. No runtime integration, model reload, new Rust
+  build/test campaign, engine gain, push/release or 256K resumption. Evidence
+  and journal/project updates are ready for a local completion commit.
+
+## 2026-09-11 — Predeclare bounded compressed-attention A/A mitigation
+
+- User authorizes addressing the standalone first/second timing effect. Start
+  from a6bf9e24; keep runtime 1711856e and the failed candidate report frozen.
+  Work: rust-star/.work/compressed-aa-protocol-a6bf9e24/plan.json.
+- Two fresh processes, three production shapes in reversed session order,
+  twelve balanced pairs per shape per protocol. Compare balanced legacy timing
+  with four identical conditioning dispatches plus three measured samples per
+  role, all queued before a host wait; balance role and physical buffer order.
+- Predeclare per-shape/per-session neutrality: first/second, AB/BA and physical
+  buffer median ratios within 1%, ratio MAD within 1%, and at least 10/12 pairs
+  within 3%. Every warmed case must pass. No retuning or favorable retry.
+- Source audit and Objective-C build pass. GPU runs have not started. Preserve
+  full output, checksum, guard, CPU/GPU preparation and input integrity checks.
+  This compound mitigation cannot identify cache versus GPU clock causality.
+  No runtime change, model load, candidate retest, engine claim, push or 256K.
+
 ## 2026-09-11 — Attention breakdown and bounded screen complete
 
 - Report rust-star/reports/32k-attention-1711856e/README.md verifies all 74
@@ -4376,7 +4417,16 @@ Next:
 
 ## Current State
 
+
 ### Current resume checkpoint (updated 2026-09-11)
+
+- COMPLETE: bounded A/A timing-protocol mitigation. Report
+  rust-star/reports/compressed-aa-protocol-a6bf9e24/README.md verifies 39
+  artifacts. Both fresh processes pass all six preset null screens and
+  20.938 billion FP32 comparisons. Equal-warm order medians stay within 0.487%
+  of parity. Retain this scoped method with A/A controls for later candidates;
+  no optimization or engine gain is accepted. All GPU jobs have finished.
+
 
 - COMPLETE: 32K attention breakdown and one bounded compressed-grid screen.
   Report rust-star/reports/32k-attention-1711856e/README.md verifies 74 artifacts.
@@ -5251,15 +5301,16 @@ Next:
 
 ## Immediate Next Actions
 
-1. Preserve the failed compressed-grid screen and A/A control unchanged.
-   Before another small standalone speed claim, predeclare an A/A-neutral
-   timing protocol with balanced order and equal preconditioning. Determine
-   whether CPU validation/poisoning gaps, cache state or GPU clocks drive the
-   first/second effect; do not retroactively normalize a candidate into a win.
-2. Use the validated 32K breakdown to target compressed/indexed attention;
-   select one arithmetic-preserving change only after trustworthy isolated
-   timing is available. A later candidate still needs full-model C0 followed
-   by unprofiled end-to-end prefill evidence before performance acceptance.
+1. Use the validated equal-warm standalone protocol for the next predeclared
+   compressed-attention candidate screen: four conditioning dispatches plus
+   three queued measured samples per role, balanced AB/BA and physical-buffer
+   assignment, and an accompanying A/A control. Require a new candidate to
+   improve separately in both orders and across shapes. Keep the original
+   failed head-first report unchanged; no retroactive normalization.
+2. A later successful isolated candidate still needs full-model C0 followed by
+   unprofiled end-to-end prefill evidence before performance acceptance. The
+   null screen covers these three compressed-attention shapes, not arbitrary
+   kernels or production scheduling. Cache/clock causality remains unresolved.
 3. Keep routed-grid 45520435 correctness-only and runtime 1711856e diagnostic.
    Preserve frozen d6c14fa0 and the interrupted/rejected long-context evidence.
    Keep 256K paused; no push or automatic broader campaign.

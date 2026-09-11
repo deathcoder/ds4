@@ -449,6 +449,18 @@ order sensitivity in this standalone setup. Its cache/clock cause is unresolved;
 fix and validate that timing protocol before making another small kernel speed
 claim. No result updates the Rust-versus-reference baseline or resumes 256K.
 
+The subsequent bounded A/A protocol study at starting commit a6bf9e24 is
+complete: `rust-star/reports/compressed-aa-protocol-a6bf9e24/README.md` verifies
+39 artifacts, two fresh processes, 144 measured pairs and 20.938 billion FP32
+comparisons. Four conditioning dispatches plus three queued measured samples
+per role pass every preset null gate across three shapes in both processes;
+median order effects stay within 0.487%, compared with 6.60–15.28% in the
+contemporary balanced legacy-style control. Retain this scoped isolated method
+with balanced AB/BA, buffer assignment and contemporaneous A/A controls for
+future candidates. It does not establish neutrality for arbitrary kernels,
+resolve cache versus GPU clock causality, retroactively accept the failed
+candidate or measure an engine gain. Runtime sources remain unchanged.
+
 Current implementation boundaries, evidence, and immediate actions are maintained
 in `RUST_STAR_JOURNAL.md`. As of 2026-09-09, native prefill through all 43 layers
 and the output head is C0 exact at 128K, with 128 exact full-logit decode steps

@@ -1,0 +1,9 @@
+{
+  "passed": true,
+  "parent_probe_sha256": "fe005c36ceee74013f22420827dfe24ecd432b8754ebe608122ace8bc2cbe26f",
+  "unchanged_cpu_preparation_and_full_output_verification": true,
+  "same_pipeline_object": true,
+  "all_dispatches_original_grid": true,
+  "combined_shader_unchanged": true,
+  "runtime_sources_unchanged": true
+}
