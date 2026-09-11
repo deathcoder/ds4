@@ -1,0 +1,1 @@
+{"passed":true,"device":"Apple M1 Ultra","kernel":"rust_star_compressed_prefill","padded_and_unpadded":true,"nsg":8,"head_dim":512,"scope":"Production-assembled Metal library and both pipeline compilation checks"}

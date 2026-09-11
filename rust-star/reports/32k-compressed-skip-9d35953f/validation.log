@@ -1,0 +1,7 @@
+START candidate-32k-output 2026-09-11T17:37:30.658499+00:00
+PASS candidate-32k-output 312.064085292
+START baseline-32k-profiled 2026-09-11T17:42:43.702538+00:00
+PASS baseline-32k-profiled 296.182174041
+START candidate-32k-profiled 2026-09-11T17:47:40.927736+00:00
+PASS candidate-32k-profiled 276.176941834
+ALL THREE 32K C0 RUNS PASS

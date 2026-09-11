@@ -1,0 +1,49 @@
+{
+  "SPDisplaysDataType" : [
+    {
+      "_name" : "Apple M1 Ultra",
+      "spdisplays_mtlgpufamilysupport" : "spdisplays_metal4",
+      "spdisplays_ndrvs" : [
+        {
+          "_name" : "U27B3CF",
+          "_spdisplays_display-product-id" : "2703",
+          "_spdisplays_display-serial-number" : "1ab",
+          "_spdisplays_display-vendor-id" : "5e3",
+          "_spdisplays_display-week" : "46",
+          "_spdisplays_display-year" : "2024",
+          "_spdisplays_displayID" : "9",
+          "_spdisplays_pixels" : "5120 x 2880",
+          "_spdisplays_resolution" : "2560 x 1440 @ 60.00Hz",
+          "spdisplays_ambient_brightness" : "spdisplays_no",
+          "spdisplays_main" : "spdisplays_yes",
+          "spdisplays_mirror" : "spdisplays_off",
+          "spdisplays_online" : "spdisplays_yes",
+          "spdisplays_pixelresolution" : "spdisplays_5k-uhgplus",
+          "spdisplays_resolution" : "2560 x 1440 @ 60.00Hz",
+          "spdisplays_rotation" : "spdisplays_supported"
+        },
+        {
+          "_name" : "VP2768 Series",
+          "_spdisplays_display-product-id" : "2034",
+          "_spdisplays_display-serial-number" : "1010111",
+          "_spdisplays_display-vendor-id" : "5a63",
+          "_spdisplays_display-week" : "45",
+          "_spdisplays_display-year" : "2019",
+          "_spdisplays_displayID" : "1",
+          "_spdisplays_pixels" : "2560 x 1440",
+          "_spdisplays_resolution" : "2560 x 1440 @ 60.00Hz",
+          "spdisplays_mirror" : "spdisplays_off",
+          "spdisplays_online" : "spdisplays_yes",
+          "spdisplays_pixelresolution" : "spdisplays_qhd",
+          "spdisplays_resolution" : "2560 x 1440 @ 60.00Hz",
+          "spdisplays_rotation" : "spdisplays_supported"
+        }
+      ],
+      "spdisplays_vendor" : "sppci_vendor_Apple",
+      "sppci_bus" : "spdisplays_builtin",
+      "sppci_cores" : "48",
+      "sppci_device_type" : "spdisplays_gpu",
+      "sppci_model" : "Apple M1 Ultra"
+    }
+  ]
+}

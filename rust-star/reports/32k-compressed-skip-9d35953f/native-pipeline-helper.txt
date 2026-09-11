@@ -1,0 +1,35 @@
+// Lazily specialize only the native compressed continuation dispatch. Prefix,
+// legacy continuation and decode retain the imported FlashAttention pipelines.
+static int ensure_native_compressed_prefill_pipelines(
+    RustStarMetalContext *context, char *error, size_t error_bytes)
+{
+    if (context.compressedNativePipeline && context.compressedNativeKvpadPipeline) return 1;
+    NSError *compile_error = nil;
+    bool enabled = true, disabled = false;
+    int32_t head_dim = 512, nsg = 8;
+    id<MTLComputePipelineState> pipelines[2];
+    for (unsigned padded = 0; padded < 2; padded++) {
+        bool has_pad = padded != 0;
+        MTLFunctionConstantValues *constants = [MTLFunctionConstantValues new];
+        [constants setConstantValue:&enabled type:MTLDataTypeBool atIndex:300];
+        [constants setConstantValue:&enabled type:MTLDataTypeBool atIndex:301];
+        [constants setConstantValue:&disabled type:MTLDataTypeBool atIndex:302];
+        [constants setConstantValue:&disabled type:MTLDataTypeBool atIndex:303];
+        [constants setConstantValue:&has_pad type:MTLDataTypeBool atIndex:304];
+        [constants setConstantValue:&disabled type:MTLDataTypeBool atIndex:310];
+        [constants setConstantValue:&head_dim type:MTLDataTypeInt atIndex:320];
+        [constants setConstantValue:&head_dim type:MTLDataTypeInt atIndex:321];
+        [constants setConstantValue:&nsg type:MTLDataTypeInt atIndex:322];
+        id<MTLFunction> function = [context.attentionIngressLibrary
+            newFunctionWithName:@"rust_star_compressed_prefill"
+                 constantValues:constants error:&compile_error];
+        pipelines[padded] = function ? [context.device
+            newComputePipelineStateWithFunction:function error:&compile_error] : nil;
+        if (!pipelines[padded]) return fail_with_message(error, error_bytes,
+            [NSString stringWithFormat:@"native compressed prefill pipeline failed: %@", compile_error]);
+    }
+    context.compressedNativePipeline = pipelines[0];
+    context.compressedNativeKvpadPipeline = pipelines[1];
+    return 1;
+}
+

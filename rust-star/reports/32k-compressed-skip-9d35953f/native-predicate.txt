@@ -1,0 +1,4 @@
+
+        const BOOL native_chunk = context.prefillLayerChunkStart &&
+            position_start == chunk_start && position_start != 0u;
+        if (native_chunk && !ensure_native_compressed_prefill_pipelines(context, error, error_bytes)) return 0;

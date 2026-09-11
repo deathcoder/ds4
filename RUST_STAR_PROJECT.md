@@ -487,6 +487,22 @@ Runtime is unchanged in this isolated report; no engine gain or new model C0
 is established. Keep follow-up cost proportional to the component's modest
 share of total diagnostic time, and do not resume the 256K campaign.
 
+Native integration of that candidate is now validated at runtime commit
+`9d35953f`. `rust-star/reports/32k-compressed-skip-9d35953f/README.md` records
+three exact full-output 32K/128 runs (50,031,360 FP32 words), strict complete
+component profiles and the original prospective selection. Compressed-attention
+attributed time is 29.100284s to 27.131982s: 6.76% lower raw, 4.95% lower after
+control normalization, with 126/140 matched normalized packets improving.
+The effect is heterogeneous; two chunk aggregates slightly regress. Retain the
+Rust-owned native-only kernel as a correctness-validated candidate, preserving
+the original prefix/decode/legacy paths and all imported kernels. The roughly
+1.97s raw saving is only 0.828% of recorded GPU stage time; fixed-order perturbed
+profiles do not establish whole-prefill gain, DwarfStar parity or acceptance at
+higher frontiers. All 41 runtime/source and full input pins pass final checks;
+all GPU work is finished. Any engine timing needs a fresh bounded plan, and
+256K stays paused. Attention output remains a larger measured component for a
+separate profile-led investigation; no new optimization there is selected.
+
 Current implementation boundaries, evidence, and immediate actions are maintained
 in `RUST_STAR_JOURNAL.md`. As of 2026-09-09, native prefill through all 43 layers
 and the output head is C0 exact at 128K, with 128 exact full-logit decode steps

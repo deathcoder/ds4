@@ -1,0 +1,54 @@
+{
+  "created_utc": "2026-09-11T17:30:29.285668+00:00",
+  "starting_commit": "2f06a2e8",
+  "runtime_baseline": "1711856ea309f70877102d15facb4e1243a9fdcc",
+  "scope": "Integrate the frozen empty-block run-skip shader only in native compressed 4096-row continuation prefill. Original prefix, legacy and decode dispatches and imported kernels remain unchanged.",
+  "live_sequence": [
+    "candidate-32k-output",
+    "baseline-32k-profiled",
+    "candidate-32k-profiled"
+  ],
+  "context_tokens": 32768,
+  "decode_steps": 128,
+  "full_fp32_words": 16677120,
+  "expected_native_attention_packets": 287,
+  "expected_indexed_packets": 147,
+  "expected_compressed_packets": 140,
+  "indexed_components": [
+    "indexer_q_projection",
+    "indexer_q_transform",
+    "indexer_weight_projection",
+    "indexer_scores",
+    "topk_selection",
+    "topk_ordering",
+    "kv_conversion",
+    "indexed_attention",
+    "inverse_rope"
+  ],
+  "compressed_components": [
+    "kv_conversion",
+    "mask_blocks",
+    "compressed_attention",
+    "inverse_rope"
+  ],
+  "expected_attention_intervals": 1883,
+  "expected_tail_intervals": 2583,
+  "acceptance": "Three full FP32 32K/128 C0 passes, strict 287 attention and tail packets per profile, source/input pins. These profiles are perturbed and cannot establish engine speed.",
+  "followup": "Retain as a correctness-validated candidate only if diagnostic selection passes; otherwise restore the previous runtime and preserve evidence. No further model/timing runs in this step.",
+  "no_256k": true,
+  "no_push": true,
+  "baseline_executable_sha256": "a174c1e06ff399056b5946bbac1a34583e43ec7aaac0b078c280e4f04a81f3c8",
+  "full_fp32_words_per_run": 16677120,
+  "full_fp32_words_total": 50031360,
+  "diagnostic_selection": {
+    "target": "compressed/compressed_attention",
+    "controls": [
+      "tail/attention_output",
+      "tail/routed_down",
+      "tail/shared_expert"
+    ],
+    "matched_packets": 140,
+    "criteria": "Raw target aggregate ratio, target/control aggregate ratio and median of 140 matched target/control ratios must each be <1. This only selects a candidate for later engine timing, never accepts engine performance.",
+    "per_chunk_and_stage_breakdown": true
+  }
+}

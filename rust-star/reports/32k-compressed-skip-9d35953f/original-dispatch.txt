@@ -1,0 +1,3 @@
+        [encoder setComputePipelineState:key_rows%64u != 0u
+            ? context.flashNonvecNsg8KvpadPipeline
+            : context.flashNonvecNsg8Pipeline];

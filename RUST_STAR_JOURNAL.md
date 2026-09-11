@@ -18,6 +18,56 @@ Before changing code:
 Journal entries are reverse chronological. Do not edit old entries to change
 history; add a correction and update the current-state summary.
 
+## 2026-09-11 — Native run-skip passes full 32K C0 and real-component selection
+
+- Runtime 9d35953f is retained as a correctness-validated candidate. Normal
+  candidate, baseline profile and candidate profile all pass full 32K/128 C0:
+  50,031,360 FP32 words in total. Fresh process elapsed times are 312.064s,
+  296.182s and 276.177s; these are harness observations, not engine speed data.
+- Both profiles pass all 287 attention packets (1,883 component intervals)
+  and 287 tail packets (2,583 intervals), complete prefix coverage, strict
+  counter ordering and exact parent attribution. All 320 release host tests,
+  format/build checks and both production Metal specializations pass.
+- Compressed-attention time is 29.100284s baseline / 27.131982s candidate:
+  raw ratio 0.932361 (6.76% lower), normalized aggregate 0.950530 (4.95% lower),
+  and median matched normalized ratio 0.947557. All three prospective criteria
+  pass; 126/140 normalized packets improve, MAD 0.023656. The unchanged
+  control sum is itself 1.91% lower, and normalized chunk aggregates at starts
+  4096/12288 slightly regress by 0.89%/0.24%; do not hide this variation.
+- The 1.968302s raw component saving is only 0.828% of baseline recorded GPU
+  stage time (237.619650s). The pair is profiled/perturbed, fixed baseline-first
+  order, and cannot establish whole-prefill gain or DwarfStar parity. Keep the
+  candidate for a later bounded engine decision; do not launch a broad campaign.
+- Portable report rust-star/reports/32k-compressed-skip-9d35953f/README.md includes
+  raw outputs/profiles, frozen plans and build/input pins, full host restoration,
+  exact tested-kernel renaming, source assembly, constants and a strict verifier.
+  Full model/prompt/oracle/baseline/candidate and all 41 source pins pass final
+  checks. All GPU work is finished; swap stayed 33.25MB with no recorded thermal
+  warning. No push or 256K resumption. Only 32K is validated for this new kernel.
+
+## 2026-09-11 — Native run-skip passes normal full 32K C0
+
+- Candidate 9d35953f completes normal output-only 32K/128 C0 in 312.064s.
+  All 16,677,120 FP32 words and generated tokens match the immutable targets.
+  This validates the actual integrated native dispatch with both padded and
+  unpadded continuation shapes; elapsed time is harness evidence, not speed.
+- The runner starts the fresh baseline component-profiled C0 next, then the
+  candidate profile. All sources remain frozen. Final selection awaits both
+  complete C0 passes and strict profile auditing against the declared criteria.
+
+## 2026-09-11 — Freeze native run-skip executable and start normal 32K C0
+
+- Runtime commit 9d35953f54d4c1c5c8c85ceebf696d1432025c92 is frozen with 41 runtime/imported
+  source hashes. Candidate executable SHA-256:
+  631b4844599d814ebfcae6706d26c0854169d4573feed86391c41880f71cfd99.
+- All 320 release Rust tests, cargo format check, release build, source
+  restoration audit and production Metal compilation for both padding modes
+  pass. Fresh full model, prompt, oracle source/executables and baseline pins
+  pass before inference. The comparator remains runtime 1711856e.
+- Start the declared candidate-32k-output run. Runner proceeds to baseline and
+  candidate profiles only after full output C0; failures are retained and stop
+  the sequence. Preserve sources throughout the three checks. No engine claim.
+
 ## 2026-09-11 — Integrate native compressed run-skip for bounded real-model validation
 
 - User authorizes the next step after isolated candidate 2f06a2e8. Work
@@ -4567,9 +4617,13 @@ Next:
 
 ### Current resume checkpoint (updated 2026-09-11)
 
-- ACTIVE: narrow run-skip integration and three predeclared 32K C0 runs.
-  Work rust-star/.work/32k-compressed-skip-2f06a2e8. Do not change runtime
-  sources after executable freeze. Build/tests precede any model run.
+- COMPLETE: native compressed run-skip 9d35953f passes all three full 32K/128
+  C0 checks and prospective component selection. Report
+  rust-star/reports/32k-compressed-skip-9d35953f/README.md. Retain the candidate;
+  raw component time is 6.76% lower / 4.95% lower after control normalization,
+  with heterogeneous chunks. Only 0.828% of recorded GPU stage time is saved;
+  no accepted engine gain, higher-frontier gate or DwarfStar parity. All GPU
+  work is finished; no additional benchmark is queued.
 
 
 - COMPLETE: isolated empty-block run-skip candidate passes. Report
@@ -5468,19 +5522,19 @@ Next:
 
 ## Immediate Next Actions
 
-1. Integrate the frozen run-skip candidate narrowly in a Rust-owned native
-   compressed-prefill kernel, preserving the original grid, arithmetic,
-   initial prefix and decode paths. Use the committed report as source proof;
-   keep runtime 1711856e as the frozen comparator for this change.
-2. Require full-output 32K/128 C0 and a bounded real-component validation before
-   accepting or expanding the optimization. The isolated kernel savings cannot
-   establish total prefill gains; assess the component's actual contribution
-   before spending on unprofiled engine pairs. Keep paired criteria predeclared
-   and retain all failures. No automatic broad campaign.
-3. Keep the head-first grid candidate rejected, routed-grid 45520435
-   correctness-only and diagnostic 1711856e intact until the new gate passes.
-   Preserve d6c14fa0 and interrupted/rejected long-context evidence. Keep 256K
-   paused; no push or automatic frontier work.
+1. Treat 9d35953f as a full-output 32K/128 C0-validated candidate, with a
+   promising real-component diagnostic rather than accepted engine speed.
+   Preserve the 1711856e comparator and both immutable executables/reports.
+2. Before additional engine timing, weigh the roughly two-second component
+   saving against the full-run cost and declare a small unprofiled paired
+   protocol and decision criterion. No automatic expanded timing campaign.
+   A separate profile-led lead is attention output, the largest measured tail
+   component at 35.918s in this baseline; inspect its actual projections and
+   memory/dispatch cost before selecting or claiming another optimization.
+3. Keep the head-first grid rejected, prior routing evidence scoped correctly,
+   and all old failed/interrupted data intact. Do not infer longer-context
+   acceptance from this 32K-only check. Keep 256K paused; no push or automatic
+   frontier work.
 
 ## Entries
 

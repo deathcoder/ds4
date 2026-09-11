@@ -1,0 +1,29 @@
+[
+  {
+    "name": "candidate-32k-output",
+    "exit_code": 0,
+    "started_utc": "2026-09-11T17:37:30.679929+00:00",
+    "finished_utc": "2026-09-11T17:42:42.764012+00:00",
+    "elapsed_seconds": 312.064085292,
+    "peak_rss_bytes": 3315138560,
+    "executable_sha256": "631b4844599d814ebfcae6706d26c0854169d4573feed86391c41880f71cfd99"
+  },
+  {
+    "name": "baseline-32k-profiled",
+    "exit_code": 0,
+    "started_utc": "2026-09-11T17:42:43.723760+00:00",
+    "finished_utc": "2026-09-11T17:47:39.923295+00:00",
+    "elapsed_seconds": 296.182174041,
+    "peak_rss_bytes": 3333668864,
+    "executable_sha256": "a174c1e06ff399056b5946bbac1a34583e43ec7aaac0b078c280e4f04a81f3c8"
+  },
+  {
+    "name": "candidate-32k-profiled",
+    "exit_code": 0,
+    "started_utc": "2026-09-11T17:47:40.951022+00:00",
+    "finished_utc": "2026-09-11T17:52:17.131019+00:00",
+    "elapsed_seconds": 276.176941834,
+    "peak_rss_bytes": 3341795328,
+    "executable_sha256": "631b4844599d814ebfcae6706d26c0854169d4573feed86391c41880f71cfd99"
+  }
+]
