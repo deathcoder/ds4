@@ -1,0 +1,10 @@
+{
+  "passed": true,
+  "parent_probe_sha256": "6d0f66d0d64af211af4c1adb7770de89b964032ee0dbe0c8aae74b3f8954ddbb",
+  "unchanged_verification_and_preparation": true,
+  "equal_warm_slot_body_restores_parent": true,
+  "combined_shader_unchanged": true,
+  "candidate_wrapper_sha256": "3532509f32f506a9669e1a8be8032e47a9a6bc6f960657bb5040743977dd5d78",
+  "runtime_sources_unchanged": true,
+  "candidate_wrapper_restores_original_arithmetic": true
+}

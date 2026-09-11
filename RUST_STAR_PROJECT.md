@@ -461,6 +461,19 @@ future candidates. It does not establish neutrality for arbitrary kernels,
 resolve cache versus GPU clock causality, retroactively accept the failed
 candidate or measure an engine gain. Runtime sources remain unchanged.
 
+The following fresh head-first screen is complete at starting commit c21ebfda:
+`rust-star/reports/compressed-grid-warm-c21ebfda/README.md` verifies 41 artifacts,
+23.085 billion FP32 comparisons and all 2,016 recorded timing intervals. Both
+fresh processes pass every contemporary A/A gate, but the candidate is
+1.36–2.83% slower separately in AB and BA order, with only 2/72 faster pairs.
+Reject it for integration or a full-model follow-up. The older failed screen
+remains unchanged; the new result uses the prospectively declared equal-warm
+method and is not a retrospective correction. Runtime 1711856e remains intact.
+A possible next lead is avoiding traversal of fully masked compressed-attention
+cache blocks while preserving active-block arithmetic order and padding; this
+has not been implemented or measured. Keep future studies bounded and retain
+the contemporaneous A/A requirement.
+
 Current implementation boundaries, evidence, and immediate actions are maintained
 in `RUST_STAR_JOURNAL.md`. As of 2026-09-09, native prefill through all 43 layers
 and the output head is C0 exact at 128K, with 128 exact full-logit decode steps

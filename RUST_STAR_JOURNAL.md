@@ -18,6 +18,62 @@ Before changing code:
 Journal entries are reverse chronological. Do not edit old entries to change
 history; add a correction and update the current-state summary.
 
+## 2026-09-11 — Fresh controlled head-first screen is exact and rejected
+
+- Report rust-star/reports/compressed-grid-warm-c21ebfda/README.md verifies
+  41 artifacts, plan/source/executable bindings, full schedule/exactness
+  receipts and all 2,016 recorded GPU intervals. Both fresh processes finish
+  normally in 196.957s and 193.930s, with no retries or changed criteria.
+- All 23,085,449,216 final FP32 comparisons pass over seven production shapes,
+  144 measured pairs and 28 initial warm-up pairs. CPU/GPU preparation, output
+  guards, immutable checksums and full input hashes pass. All 40 runtime sources
+  remain pinned to 1711856e before/after; no runtime change or new model run.
+- All six contemporary A/A cases pass every neutral-protocol gate. Maximum
+  first/second median deviation is 0.170%, AB/BA deviation 0.398%, physical
+  buffer deviation 0.561%; 71/72 ratios are within 3%, with every case passing.
+- Candidate AB/BA medians are 1.36–2.83% slower; only 2/72 pairs improve.
+  Every shape/session fails all candidate speed criteria. Reject selection
+  for runtime integration or a full-model candidate gate. This scoped warm
+  kernel regression is not an engine regression; runtime was never changed.
+- Retain both negative reports unchanged and keep the validated method with
+  contemporaneous A/A for future work. A next unmeasured lead is eliminating
+  traversal/pointer advancement across fully masked cache blocks while keeping
+  active-block order and padded-tail behavior exact. No new kernel was written.
+- All GPU work is finished. Host swap usage stayed at 57.25MB, with no recorded
+  thermal/performance warning; GPU clocks remain unmeasured. No push/release,
+  256K resumption or engine performance claim. Evidence and docs are ready for
+  a local completion commit.
+
+## 2026-09-11 — First fresh head-first process is exact but fails speed selection
+
+- Session 0 completes in 196.957s with all seven shape checks and 72 measured
+  pairs exact. Candidate/original AB/BA medians at chunk starts 4096, 16384,
+  28672 are 1.025025/1.025329, 1.016950/1.013566 and 1.022825/1.025588.
+  The candidate is slower in every order/shape median and fails selection.
+- Contemporary A/A AB/BA medians remain within 0.4% of parity in this process.
+  The second predeclared process is active in reverse shape order; preserve
+  both complete runs. No candidate integration, extra run or changed criterion.
+
+## 2026-09-11 — Freeze fresh head-first screen with contemporary A/A controls
+
+- User authorizes the next candidate screen. Starting commit c21ebfda;
+  work rust-star/.work/compressed-grid-warm-c21ebfda/. Existing head-first
+  wrapper is tested prospectively with the validated equal-warm method.
+  Preserve the prior failed screen and its older timing evidence unchanged.
+- Two fresh processes cover seven production shapes for correctness and three
+  for timing. Twelve A/A and twelve candidate pairs per timed shape, balanced
+  AB/BA, physical output buffers and interleaved protocol order. Each role gets
+  four conditioning plus three queued measured dispatches. No runtime edits.
+- All inherited A/A null gates must pass at all six shape/session cases. For
+  candidate selection, every AB and BA median must be below 0.99 with at least
+  5/6 faster pairs per order at every shape/session. No adjustment, discarded
+  pair, favorable repeat or normalization. This selects only a later C0 study.
+- Objective-C build and source equivalence audit pass. Original arithmetic,
+  masks, ABI and CPU/GPU/output guards are unchanged; all 40 runtime sources
+  remain pinned. Target recheck: M1 Ultra 48 GPU cores, 128GB memory.
+  Plan/scripts/binary are frozen before GPU execution. No model, engine pairs,
+  256K, push or packaged release in this standalone screening task.
+
 ## 2026-09-11 — Equal-warm A/A timing protocol passes both fresh processes
 
 - Report rust-star/reports/compressed-aa-protocol-a6bf9e24/README.md verifies
@@ -4420,6 +4476,13 @@ Next:
 
 ### Current resume checkpoint (updated 2026-09-11)
 
+- COMPLETE: fresh controlled head-first screen. Report
+  rust-star/reports/compressed-grid-warm-c21ebfda/README.md verifies 41 artifacts.
+  Full isolated exactness and every A/A gate pass; candidate medians are
+  1.36–2.83% slower in both orders and fail selection. No runtime integration
+  or full-model follow-up for this candidate. All GPU work is finished.
+
+
 - COMPLETE: bounded A/A timing-protocol mitigation. Report
   rust-star/reports/compressed-aa-protocol-a6bf9e24/README.md verifies 39
   artifacts. Both fresh processes pass all six preset null screens and
@@ -5301,19 +5364,19 @@ Next:
 
 ## Immediate Next Actions
 
-1. Use the validated equal-warm standalone protocol for the next predeclared
-   compressed-attention candidate screen: four conditioning dispatches plus
-   three queued measured samples per role, balanced AB/BA and physical-buffer
-   assignment, and an accompanying A/A control. Require a new candidate to
-   improve separately in both orders and across shapes. Keep the original
-   failed head-first report unchanged; no retroactive normalization.
-2. A later successful isolated candidate still needs full-model C0 followed by
-   unprofiled end-to-end prefill evidence before performance acceptance. The
-   null screen covers these three compressed-attention shapes, not arbitrary
-   kernels or production scheduling. Cache/clock causality remains unresolved.
-3. Keep routed-grid 45520435 correctness-only and runtime 1711856e diagnostic.
-   Preserve frozen d6c14fa0 and the interrupted/rejected long-context evidence.
-   Keep 256K paused; no push or automatic broader campaign.
+1. Keep the head-first scheduling candidate rejected and both historical screens
+   unchanged. Retain the validated equal-warm timing method and contemporaneous
+   A/A controls; no more retiming of this unchanged candidate is justified.
+2. Inspect compressed-attention traversal of fully masked cache blocks as the
+   next bounded, unmeasured lead. The current kernel visits block markers and
+   advances mask pointers even when no attention arithmetic is required. Any
+   proposed shortcut must preserve active-block order, padding semantics and
+   exact outputs, and pass an independently declared paired screen plus A/A.
+3. Only a successful new isolated candidate warrants runtime integration,
+   full-model C0 and unprofiled end-to-end prefill evidence. Keep routed-grid
+   45520435 correctness-only and runtime 1711856e diagnostic. Preserve frozen
+   d6c14fa0 and the interrupted/rejected long-context evidence. Keep 256K paused;
+   no push or automatic broader campaign.
 
 ## Entries
 

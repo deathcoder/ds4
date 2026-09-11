@@ -1,0 +1,17 @@
+{
+  "passed": true,
+  "scope": "Unchanged original FlashAttention implementation; standalone wrapper forwards swapped grid axes only. Original wrapper restored exactly.",
+  "sources": {
+    "rust-star/runtime/src/attention_ingress.metal": "76a70b1eb6510f897293c9cdc7257d58a69d3a3cb372a0175af24eb8820187f7",
+    "rust-star/runtime/src/ffn_router.metal": "9ccae569e372358381ca18860c2cc039d69aa2b82b1e0601bef78ccef4d43d69",
+    "metal/dsv4_rope.metal": "3613c5ac98cb7c7b07b00c0ebc18324addd928db7dda008e9da52f1d8bec5471",
+    "metal/dsv4_kv.metal": "97b4006868d5f98729897acbeefc44713cfd9e543fd87147df497eda3f2992a0",
+    "metal/cpy.metal": "88d77cb71d83295be4097f2b820f60daac3bbbc75e1d4caf68327727be382ec4",
+    "metal/flash_attn.metal": "095aa88594e1d25e6c23e9bdf7473de8c5de39bc2e2b98c049b48229b309996d",
+    "metal/softmax.metal": "6eaa6ce78c4b221b3c7fe45647d6eb42f165201992a243d77d04cf2668fb7664",
+    "metal/sum_rows.metal": "7e1f3ad3f945b1f6f59aa2d8ee5bf464052d989a632c33ea95ce50d3c4fbf0fc"
+  },
+  "baseline_wrapper_sha256": "148ca840df3140d17727574b59551451e16ae657182d541a4602ea51e7004fb6",
+  "candidate_wrapper_sha256": "3532509f32f506a9669e1a8be8032e47a9a6bc6f960657bb5040743977dd5d78",
+  "combined_sha256": "994ca6909190801093cb0f7cb2f134b4c090d45cba1bd5a91c72631b333e6e16"
+}
