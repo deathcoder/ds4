@@ -18,6 +18,36 @@ Before changing code:
 Journal entries are reverse chronological. Do not edit old entries to change
 history; add a correction and update the current-state summary.
 
+## 2026-09-11 — Attention instrumentation passes host/source checks
+
+- Added separate 18-sample indexed and 8-sample compressed attention packets.
+  Sampling is enabled only by the profiled long-prefill path after prefix
+  rebuild; native attention uses fences only when its sample buffer exists.
+  A packet must be consumed before another is recorded, and invalid sample
+  counts/counters/durations are rejected with the full raw packet retained.
+- All 320 release Rust tests pass, including two new attribution/invalid-packet
+  tests. Cargo formatting and explicit formatting of included long_prefill.rs
+  pass. Source audit restores both original attention executor bodies after
+  removing guarded instrumentation; every Metal source hash remains unchanged.
+- Fresh full model/prompt/oracle/baseline verification passes. Release binary
+  build is in progress. No model run has started and no optimization is chosen
+  before the new real-input attribution is available.
+
+## 2026-09-11 — Start bounded 32K attention breakdown
+
+- User authorizes the next profile-led step. Starting commit ce94f3fb, runtime
+  candidate 45520435; retain its correctness-only label. Work directory:
+  rust-star/.work/32k-attention-breakdown-ce94f3fb/.
+- Add diagnostic-only timestamp components to the native indexed/compressed
+  continuation attention paths. Preserve normal dispatch, arithmetic and
+  fixtures. Existing tail diagnostics remain intact; all intervals must stay
+  strictly ordered with diagnostic-only fences.
+- Predeclare one full 32K/128 output C0 profile: 147 indexed packets with nine
+  components and 140 compressed packets with four (1,883 intervals), plus the
+  existing 287 tail packets / 2,583 intervals. Build/test, pin and freeze first.
+- Rank the resulting component costs and bind one exact standalone experiment
+  before timing it. No broad engine campaign, push or 256K resumption.
+
 ## 2026-09-11 — Bounded 32K grid-order validation complete
 
 - Report: rust-star/reports/32k-route-order-45520435/README.md. The portable
@@ -4278,6 +4308,11 @@ Next:
 
 ### Current resume checkpoint (updated 2026-09-11)
 
+- ACTIVE: bounded 32K attention component breakdown from ce94f3fb.
+  Plan in rust-star/.work/32k-attention-breakdown-ce94f3fb/plan.json. Add
+  diagnostic-only instrumentation, then run one full-output C0 profile and
+  use its real-input costs to choose one bounded exact kernel experiment.
+
 - COMPLETE: bounded 32K routed-prefill grid-order validation at 45520435.
   Report rust-star/reports/32k-route-order-45520435/README.md verifies 48
   artifacts, all three full-output C0 runs and both strict profiles. Final
@@ -5144,16 +5179,12 @@ Next:
 
 ## Immediate Next Actions
 
-1. Keep 45520435 labeled correctness-validated, not performance-accepted.
-   The bounded 32K selection passes, but the real component saving is small.
-   If this candidate advances, predeclare an alternating unprofiled 32K
-   Rust-to-Rust timing study with end-to-end prefill acceptance; do not spend
-   a broad campaign on the synthetic percentage or infer a reference win.
-2. Continue profile-led lower-context work before resuming capacity. Existing
-   diagnostics still put much larger GPU time in attention and bootstrap
-   ingress; choose a bounded next experiment against a real bottleneck.
-3. Keep 256K stopped. Preserve frozen d6c14fa0, both rejected long-context
-   attempts and interrupted evidence. No push or automatic broader campaign.
+1. Implement/test diagnostic attention components, freeze source/input pins
+   and run only the declared full-C0 32K profile. Preserve all failures.
+2. Audit ordered packet/component coverage; use the measured breakdown to
+   predeclare and test one bounded arithmetic-preserving candidate in isolation.
+3. Keep 45520435 correctness-only, 256K paused and frozen baseline evidence
+   intact. No push or automatic broader engine timing campaign.
 
 ## Entries
 

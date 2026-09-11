@@ -16,6 +16,7 @@ struct LongPrefillProfile {
     enabled: bool,
     rows: Vec<LongPrefillStage>,
     tail_components: Vec<String>,
+    attention_components: Vec<String>,
 }
 impl LongPrefillProfile {
     fn start(&self) -> Option<Instant> {
@@ -122,6 +123,95 @@ impl LongPrefillProfile {
         }
         Ok(())
     }
+    fn record_attention(
+        &mut self,
+        context: &Context,
+        chunk: u32,
+        layer: u32,
+        gpu_ms: f64,
+    ) -> Result<()> {
+        if !self.enabled {
+            return Ok(());
+        }
+        let sample_count = if layer % 2 == 0 { 18 } else { 8 };
+        let mut ticks = [0u64; 18];
+        let mut error = [0 as c_char; ERROR_BYTES];
+        if unsafe {
+            rust_star_metal_copy_prefill_attention_ticks(
+                context.0,
+                sample_count as u32,
+                ticks.as_mut_ptr(),
+                error.as_mut_ptr(),
+                error.len(),
+            )
+        } == 0
+        {
+            return Err(Error::invalid(format!(
+                "attention profile chunk={chunk} layer={layer}: {}",
+                error_text(&error)
+            )));
+        }
+        self.record_attention_ticks(chunk, layer, gpu_ms, &ticks[..sample_count])
+    }
+    fn record_attention_ticks(
+        &mut self,
+        chunk: u32,
+        layer: u32,
+        gpu_ms: f64,
+        ticks: &[u64],
+    ) -> Result<()> {
+        let indexed = layer % 2 == 0;
+        let (path, names): (&str, &[&str]) = if indexed {
+            (
+                "indexed",
+                &[
+                    "indexer_q_projection",
+                    "indexer_q_transform",
+                    "indexer_weight_projection",
+                    "indexer_scores",
+                    "topk_selection",
+                    "topk_ordering",
+                    "kv_conversion",
+                    "indexed_attention",
+                    "inverse_rope",
+                ],
+            )
+        } else {
+            (
+                "compressed",
+                &[
+                    "kv_conversion",
+                    "mask_blocks",
+                    "compressed_attention",
+                    "inverse_rope",
+                ],
+            )
+        };
+        if chunk < 4096
+            || chunk % 4096 != 0
+            || !(2..=42).contains(&layer)
+            || ticks.len() != 2 * names.len()
+            || ticks.contains(&u64::MAX)
+            || ticks.windows(2).any(|p| p[1] <= p[0])
+            || !gpu_ms.is_finite()
+            || gpu_ms <= 0.0
+        {
+            return Err(Error::invalid(format!(
+                "invalid attention profile chunk={chunk} layer={layer} gpu_ms={gpu_ms}: {ticks:x?}"
+            )));
+        }
+        let spans = ticks
+            .chunks_exact(2)
+            .map(|p| p[1] - p[0])
+            .collect::<Vec<_>>();
+        let total = spans.iter().map(|x| u128::from(*x)).sum::<u128>() as f64;
+        for (i, name) in names.iter().enumerate() {
+            self.attention_components.push(format!(
+                "{{\"chunk_start\":{chunk},\"layer\":{layer},\"path\":\"{path}\",\"component\":\"{name}\",\"start_tick\":{},\"end_tick\":{},\"attributed_gpu_ms\":{:.9}}}",
+                ticks[2*i], ticks[2*i+1], gpu_ms * spans[i] as f64 / total));
+        }
+        Ok(())
+    }
     fn json(self) -> Option<String> {
         if !self.enabled {
             return None;
@@ -130,7 +220,8 @@ impl LongPrefillProfile {
             "{{\"chunk_start\":{},\"first_layer\":{},\"last_layer\":{},\"stage\":\"{}\",\"calls\":{},\"host_elapsed_ms\":{:.9},\"command_wall_ms\":{:.9},\"gpu_ms\":{:.9}}}",
             r.chunk,r.first,r.last,r.stage,r.calls,r.elapsed,r.wall,r.gpu)).collect::<Vec<_>>().join(",");
         let components = self.tail_components.join(",");
-        Some(format!("{{\"method\":\"existing-command-completion-and-host-stage-timers\",\"paired_ineligible\":true,\"rows\":[{rows}],\"tail_components\":{{\"method\":\"metal-compute-stage-boundary-timestamp-counters\",\"profile_perturbed\":true,\"encoder_splitting\":true,\"encoder_serialization\":\"MTLFence\",\"scaling\":\"counter shares scaled to each completed tail command GPU interval; do not add to parent rows\",\"rows\":[{components}]}}}}"))
+        let attention = self.attention_components.join(",");
+        Some(format!("{{\"method\":\"existing-command-completion-and-host-stage-timers\",\"paired_ineligible\":true,\"rows\":[{rows}],\"tail_components\":{{\"method\":\"metal-compute-stage-boundary-timestamp-counters\",\"profile_perturbed\":true,\"encoder_splitting\":true,\"encoder_serialization\":\"MTLFence\",\"scaling\":\"counter shares scaled to each completed tail command GPU interval; do not add to parent rows\",\"rows\":[{components}]}},\"attention_components\":{{\"schema\":\"rust-star-attention-components-v1\",\"method\":\"metal-compute-stage-boundary-timestamp-counters\",\"profile_perturbed\":true,\"encoder_splitting\":true,\"encoder_serialization\":\"MTLFence\",\"scaling\":\"counter shares scaled to each completed attention command GPU interval; do not add to parent rows\",\"rows\":[{attention}]}}}}"))
     }
 }
 
@@ -452,6 +543,7 @@ fn run_prefill_chunk_layer(
             before,
             (raw.wall_ms, raw.gpu_ms),
         );
+        profile.record_attention(context, start, layer, raw.gpu_ms - before.1)?;
         let stage_start = profile.start();
         let before = (raw.wall_ms, raw.gpu_ms);
         checked!(rust_star_metal_run_prefill_layer2_continuation_tail(
@@ -605,6 +697,7 @@ fn run_prefill_chunk_layer(
                 (0.0, 0.0),
                 (tile.wall_ms, tile.gpu_ms),
             );
+            profile.record_attention(context, start, layer, tile.gpu_ms)?;
             // 1024-column sorted blocks retain 512 entries; each merge doubles
             // their width until the final 512-index selection is produced.
             let blocks = ((start + 4096) / 4).div_ceil(1024);
@@ -957,6 +1050,16 @@ fn run_long_prefill_with_reference(
         {
             return Err(Error::invalid(error_text(&error)));
         }
+        if unsafe {
+            rust_star_metal_enable_prefill_attention_profiling(
+                context.0,
+                error.as_mut_ptr(),
+                error.len(),
+            )
+        } == 0
+        {
+            return Err(Error::invalid(error_text(&error)));
+        }
     }
     let mut chunks = Vec::new();
     for start in (4096..frontier).step_by(4096) {
@@ -1275,6 +1378,84 @@ mod tail_profile_tests {
         assert!(json.contains("\"profile_perturbed\":true"));
         assert!(json.contains("\"paired_ineligible\":true"));
         assert!(json.contains("\"start_tick\":100,\"end_tick\":110"));
+    }
+
+    #[test]
+    fn attributes_both_attention_packet_shapes_with_exact_boundaries() {
+        let mut profile = LongPrefillProfile {
+            enabled: true,
+            ..Default::default()
+        };
+        let indexed = std::array::from_fn::<_, 18, _>(|i| 100 + 10 * i as u64);
+        profile
+            .record_attention_ticks(4096, 2, 90.0, &indexed)
+            .unwrap();
+        assert_eq!(profile.attention_components.len(), 9);
+        assert!(profile
+            .attention_components
+            .iter()
+            .all(|r| r.contains("\"path\":\"indexed\"")
+                && r.contains("\"attributed_gpu_ms\":10.000000000")));
+        // Unequal spans must receive proportional shares, with no parent rows added.
+        profile
+            .record_attention_ticks(4096, 3, 100.0, &[100, 110, 120, 140, 150, 180, 190, 230])
+            .unwrap();
+        assert_eq!(profile.attention_components.len(), 13);
+        for (row, amount) in profile.attention_components[9..]
+            .iter()
+            .zip([10, 20, 30, 40])
+        {
+            assert!(row.contains("\"path\":\"compressed\""));
+            assert!(row.contains(&format!("\"attributed_gpu_ms\":{amount}.000000000")));
+        }
+        assert!(profile.rows.is_empty());
+        let json = profile.json().unwrap();
+        assert!(json.contains("\"schema\":\"rust-star-attention-components-v1\""));
+        assert!(json.contains(
+            "\"component\":\"compressed_attention\",\"start_tick\":150,\"end_tick\":180"
+        ));
+        assert!(json.contains("\"paired_ineligible\":true"));
+    }
+
+    #[test]
+    fn rejects_attention_packet_shape_overlap_and_invalid_counter_or_duration() {
+        let mut profile = LongPrefillProfile::default();
+        let ticks: Vec<u64> = (1..=18).collect();
+        for (layer, count) in [(2, 18), (3, 8)] {
+            for duration in [0.0, -1.0, f64::NAN, f64::INFINITY] {
+                assert!(profile
+                    .record_attention_ticks(4096, layer, duration, &ticks[..count])
+                    .is_err());
+            }
+            for invalid in [0, 3, u64::MAX] {
+                let mut bad = ticks[..count].to_vec();
+                bad[3] = invalid;
+                let error = profile
+                    .record_attention_ticks(4096, layer, 90.0, &bad)
+                    .unwrap_err();
+                assert!(error
+                    .to_string()
+                    .contains(&format!("chunk=4096 layer={layer}")));
+            }
+            for count in [0, 1, count - 1, count + 1] {
+                let bad = vec![1; count];
+                assert!(profile
+                    .record_attention_ticks(4096, layer, 90.0, &bad)
+                    .is_err());
+            }
+        }
+        assert!(profile
+            .record_attention_ticks(4096, 3, 90.0, &ticks)
+            .is_err());
+        assert!(profile
+            .record_attention_ticks(4096, 2, 90.0, &ticks[..8])
+            .is_err());
+        for (chunk, layer) in [(0, 2), (4097, 2), (4096, 0), (4096, 43)] {
+            assert!(profile
+                .record_attention_ticks(chunk, layer, 90.0, &ticks)
+                .is_err());
+        }
+        assert!(profile.attention_components.is_empty());
     }
 
     #[test]

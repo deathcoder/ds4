@@ -390,6 +390,9 @@ static NSString *const kQ8ProjectionSource =
 @property(nonatomic, assign) BOOL prefillLayerProfiling;
 @property(nonatomic, strong) id<MTLCounterSampleBuffer> prefillLayerTailSamples;
 @property(nonatomic, strong) id<MTLCommandBuffer> prefillLayerTailCommand;
+@property(nonatomic, strong) id<MTLCounterSampleBuffer> prefillLayerAttentionSamples;
+@property(nonatomic, strong) id<MTLCommandBuffer> prefillLayerAttentionCommand;
+@property(nonatomic, strong) NSNumber *prefillLayerAttentionSampleCount;
 @property(nonatomic, strong) NSMutableArray<id<MTLCommandBuffer>> *prefillBoundaryCommands;
 @property(nonatomic, assign) double prefillBoundaryWallStart;
 @property(nonatomic, strong) id<MTLBuffer> prefillLayer0FullKv;
@@ -974,7 +977,8 @@ static id<MTLComputeCommandEncoder> stage_compute_encoder(
 
 /* The component attribution assumes disjoint intervals. Independent shared and
  * routed expert passes may overlap even across compute encoders, so only this
- * perturbing diagnostic orders their boundaries with a fence. */
+ * perturbing diagnostic orders their boundaries with a fence. Native attention
+ * component diagnostics use the same ordering helper. */
 static id<MTLComputeCommandEncoder> next_tail_profile_encoder(
     id<MTLComputeCommandEncoder> previous,
     id<MTLCommandBuffer> command,
@@ -2232,6 +2236,92 @@ int rust_star_metal_copy_prefill_tail_ticks(
                     (unsigned long)i, (unsigned long)(i/2u), i%2u ? @"end" : @"start",
                     value == MTLCounterErrorValue ? @"counter-error" : @"non-increasing"];
                 for (NSUInteger j = 0; j < 18u; j++)
+                    [message appendFormat:@"%@%016llx", j ? @"," : @"",
+                        (unsigned long long)ticks[j]];
+                [message appendString:@"]"];
+                return fail_with_message(error, error_bytes, message);
+            }
+        }
+        return 1;
+    }
+}
+
+int rust_star_metal_enable_prefill_attention_profiling(
+    void *opaque_context,
+    char *error,
+    size_t error_bytes)
+{
+    if (!opaque_context) {
+        return fail_with_message(error, error_bytes,
+            @"stage profiling received a null context");
+    }
+    @autoreleasepool {
+        RustStarMetalContext *context = (__bridge RustStarMetalContext *)opaque_context;
+        if (![context.device supportsCounterSampling:MTLCounterSamplingPointAtStageBoundary]) {
+            return fail_with_message(error, error_bytes,
+                @"Metal device does not support compute-stage counter sampling");
+        }
+        id<MTLCounterSet> timestamp_set = nil;
+        for (id<MTLCounterSet> counter_set in context.device.counterSets) {
+            if ([counter_set.name isEqualToString:MTLCommonCounterSetTimestamp]) {
+                timestamp_set = counter_set;
+                break;
+            }
+        }
+        if (!timestamp_set) {
+            return fail_with_message(error, error_bytes,
+                @"Metal device does not expose the timestamp counter set");
+        }
+        context.prefillLayerAttentionCommand = nil;
+        context.prefillLayerAttentionSampleCount = nil;
+        MTLCounterSampleBufferDescriptor *descriptor =
+            [MTLCounterSampleBufferDescriptor new];
+        descriptor.counterSet = timestamp_set;
+        descriptor.storageMode = MTLStorageModeShared;
+        descriptor.sampleCount = 18u;
+        descriptor.label = @"rust-star native prefill attention timestamps";
+        NSError *sample_error = nil;
+        id<MTLCounterSampleBuffer> samples =
+            [context.device newCounterSampleBufferWithDescriptor:descriptor
+                                                           error:&sample_error];
+        if (!samples) {
+            return fail_with_message(error, error_bytes,
+                sample_error.localizedDescription ?: @"failed to create timestamp sample buffer");
+        }
+        context.prefillLayerAttentionSamples = samples;
+        return 1;
+    }
+}
+
+int rust_star_metal_copy_prefill_attention_ticks(
+    void *opaque_context, uint32_t sample_count, uint64_t *ticks,
+    char *error, size_t error_bytes)
+{
+    if (!opaque_context || !ticks || (sample_count != 8u && sample_count != 18u))
+        return fail_with_message(error, error_bytes, @"invalid attention timing output");
+    @autoreleasepool {
+        RustStarMetalContext *context = (__bridge RustStarMetalContext *)opaque_context;
+        if (!context.prefillLayerAttentionSamples || !context.prefillLayerAttentionCommand ||
+            context.prefillLayerAttentionSampleCount.unsignedIntValue != sample_count ||
+            context.prefillLayerAttentionCommand.status != MTLCommandBufferStatusCompleted)
+            return fail_with_message(error, error_bytes, @"attention timing requires a completed native attention");
+        NSData *resolved = [context.prefillLayerAttentionSamples resolveCounterRange:NSMakeRange(0,sample_count)];
+        if (!resolved || resolved.length < sample_count*sizeof(MTLCounterResultTimestamp))
+            return fail_with_message(error, error_bytes, @"failed to resolve attention timestamps");
+        const MTLCounterResultTimestamp *values = resolved.bytes;
+        /* Preserve the whole packet even when one sample is rejected. */
+        for (NSUInteger i = 0; i < sample_count; i++) ticks[i] = values[i].timestamp;
+        context.prefillLayerAttentionCommand = nil;
+        context.prefillLayerAttentionSampleCount = nil;
+        for (NSUInteger i = 0; i < sample_count; i++) {
+            uint64_t value = values[i].timestamp;
+            if (value == MTLCounterErrorValue ||
+                (i && value <= values[i-1u].timestamp)) {
+                NSMutableString *message = [NSMutableString stringWithFormat:
+                    @"invalid attention timestamps: sample=%lu component=%lu boundary=%@ reason=%@ raw_ticks=[",
+                    (unsigned long)i, (unsigned long)(i/2u), i%2u ? @"end" : @"start",
+                    value == MTLCounterErrorValue ? @"counter-error" : @"non-increasing"];
+                for (NSUInteger j = 0; j < sample_count; j++)
                     [message appendFormat:@"%@%016llx", j ? @"," : @"",
                         (unsigned long long)ticks[j]];
                 [message appendString:@"]"];
@@ -45793,7 +45883,13 @@ static int rust_star_metal_run_prefill_layer2_indexed_tile(
     };
 
     id<MTLCommandBuffer> command = [context.queue commandBuffer];
-    id<MTLComputeCommandEncoder> encoder = [command computeCommandEncoder];
+    id<MTLCounterSampleBuffer> attention_samples = (retain_batch)
+        ? context.prefillLayerAttentionSamples : nil;
+    id<MTLFence> attention_fence = attention_samples ? [context.device newFence] : nil;
+    if (attention_samples && (!attention_fence || context.prefillLayerAttentionCommand))
+        return fail_with_message(error, error_bytes,
+            @"attention profile requires a fence and consumed previous packet");
+    id<MTLComputeCommandEncoder> encoder = stage_compute_encoder(command, attention_samples, 0u);
     if (!command || !encoder) return fail_with_message(error, error_bytes,
         @"failed to create prefill layer-2 indexed tile encoder");
 
@@ -45807,6 +45903,13 @@ static int rust_star_metal_run_prefill_layer2_indexed_tile(
     [encoder setThreadgroupMemoryLength:6144u atIndex:0];
     [encoder dispatchThreadgroups:MTLSizeMake(tile_rows/32u,128,1)
          threadsPerThreadgroup:MTLSizeMake(128,1,1)];
+
+    if (attention_samples) {
+        encoder = next_tail_profile_encoder(encoder, command,
+            attention_samples, attention_fence, 1u);
+        if (!encoder) return fail_with_message(error, error_bytes,
+            @"failed to create attention profile encoder");
+    }
 
     [encoder setComputePipelineState:context.ropeTailPipeline];
     [encoder setBytes:&indexer_rope length:sizeof(indexer_rope) atIndex:0];
@@ -45824,6 +45927,13 @@ static int rust_star_metal_run_prefill_layer2_indexed_tile(
     [encoder dispatchThreadgroups:MTLSizeMake(tile_rows*attention_heads,1,1)
          threadsPerThreadgroup:MTLSizeMake(128,1,1)];
 
+    if (attention_samples) {
+        encoder = next_tail_profile_encoder(encoder, command,
+            attention_samples, attention_fence, 2u);
+        if (!encoder) return fail_with_message(error, error_bytes,
+            @"failed to create attention profile encoder");
+    }
+
     [encoder setComputePipelineState:context.f16AlignedPrefillPipeline];
     [encoder setBytes:&weight_projection length:sizeof(weight_projection) atIndex:0];
     [encoder setBuffer:weight_weights offset:inner[1] atIndex:1];
@@ -45835,6 +45945,13 @@ static int rust_star_metal_run_prefill_layer2_indexed_tile(
     [encoder dispatchThreadgroups:MTLSizeMake(tile_rows/32u,1,1)
          threadsPerThreadgroup:MTLSizeMake(128,1,1)];
 
+    if (attention_samples) {
+        encoder = next_tail_profile_encoder(encoder, command,
+            attention_samples, attention_fence, 3u);
+        if (!encoder) return fail_with_message(error, error_bytes,
+            @"failed to create attention profile encoder");
+    }
+
     [encoder setComputePipelineState:context.indexerScoreBatchPipeline];
     [encoder setBytes:&score_args length:sizeof(score_args) atIndex:0];
     [encoder setBuffer:indexer_q_buffer offset:0 atIndex:1];
@@ -45843,11 +45960,25 @@ static int rust_star_metal_run_prefill_layer2_indexed_tile(
     [encoder setBuffer:score_buffer offset:0 atIndex:4];
     dispatch_prefill_indexer_scores(encoder, compressed_capacity, tile_rows);
 
+    if (attention_samples) {
+        encoder = next_tail_profile_encoder(encoder, command,
+            attention_samples, attention_fence, 4u);
+        if (!encoder) return fail_with_message(error, error_bytes,
+            @"failed to create attention profile encoder");
+    }
+
     const uint32_t topk_dispatches = encode_indexer_topk(context, encoder,
         score_buffer, topk_buffer, topk_args, error, error_bytes);
     if (!topk_dispatches) {
         [encoder endEncoding];
         return 0;
+    }
+
+    if (attention_samples) {
+        encoder = next_tail_profile_encoder(encoder, command,
+            attention_samples, attention_fence, 5u);
+        if (!encoder) return fail_with_message(error, error_bytes,
+            @"failed to create attention profile encoder");
     }
 
     [encoder setComputePipelineState:context.indexedTopkSortPipeline];
@@ -45858,6 +45989,13 @@ static int rust_star_metal_run_prefill_layer2_indexed_tile(
     [encoder dispatchThreadgroups:MTLSizeMake(tile_rows,1,1)
          threadsPerThreadgroup:MTLSizeMake(top_k,1,1)];
 
+    if (attention_samples) {
+        encoder = next_tail_profile_encoder(encoder, command,
+            attention_samples, attention_fence, 6u);
+        if (!encoder) return fail_with_message(error, error_bytes,
+            @"failed to create attention profile encoder");
+    }
+
     uint32_t comp_elements = compressed_capacity*attention_width;
     [encoder setComputePipelineState:context.cpyF32F16Pipeline];
     [encoder setBytes:&comp_elements length:sizeof(comp_elements) atIndex:0];
@@ -45865,6 +46003,13 @@ static int rust_star_metal_run_prefill_layer2_indexed_tile(
     [encoder setBuffer:comp_f16 offset:0 atIndex:2];
     [encoder dispatchThreadgroups:MTLSizeMake((comp_elements+1023u)/1024u,1,1)
          threadsPerThreadgroup:MTLSizeMake(256,1,1)];
+
+    if (attention_samples) {
+        encoder = next_tail_profile_encoder(encoder, command,
+            attention_samples, attention_fence, 7u);
+        if (!encoder) return fail_with_message(error, error_bytes,
+            @"failed to create attention profile encoder");
+    }
 
     [encoder setComputePipelineState:context.indexedAttentionPrefillPipeline];
     [encoder setBytes:&attention_args length:sizeof(attention_args) atIndex:0];
@@ -45877,6 +46022,13 @@ static int rust_star_metal_run_prefill_layer2_indexed_tile(
     [encoder setThreadgroupMemoryLength:128u*4u*sizeof(uint16_t) atIndex:0];
     [encoder dispatchThreadgroups:MTLSizeMake(tile_rows,8,1)
          threadsPerThreadgroup:MTLSizeMake(32,8,1)];
+
+    if (attention_samples) {
+        encoder = next_tail_profile_encoder(encoder, command,
+            attention_samples, attention_fence, 8u);
+        if (!encoder) return fail_with_message(error, error_bytes,
+            @"failed to create attention profile encoder");
+    }
 
     [encoder setComputePipelineState:context.ropeTailPipeline];
     [encoder setBytes:&inverse_rope length:sizeof(inverse_rope) atIndex:0];
@@ -45898,6 +46050,10 @@ static int rust_star_metal_run_prefill_layer2_indexed_tile(
     const double wall_start = monotonic_ms();
     [command commit];
     if (!command_succeeded(command, error, error_bytes)) return 0;
+    if (attention_samples) {
+        context.prefillLayerAttentionCommand = command;
+        context.prefillLayerAttentionSampleCount = @(18u);
+    }
     const float diagnostic_q0 = ((const float *)indexer_q_buffer.contents)[0];
     const float diagnostic_w0 = ((const float *)indexer_weight_buffer.contents)[0];
     const float diagnostic_score0 = ((const float *)score_buffer.contents)[0];
@@ -49019,7 +49175,13 @@ int rust_star_metal_run_prefill_layer3_continuation_batch_attention(
         };
 
         id<MTLCommandBuffer> command = [context.queue commandBuffer];
-        id<MTLComputeCommandEncoder> encoder = [command computeCommandEncoder];
+        id<MTLCounterSampleBuffer> attention_samples = (context.prefillLayerChunkStart && position_start == chunk_start && position_start != 0u)
+            ? context.prefillLayerAttentionSamples : nil;
+        id<MTLFence> attention_fence = attention_samples ? [context.device newFence] : nil;
+        if (attention_samples && (!attention_fence || context.prefillLayerAttentionCommand))
+            return fail_with_message(error, error_bytes,
+                @"attention profile requires a fence and consumed previous packet");
+        id<MTLComputeCommandEncoder> encoder = stage_compute_encoder(command, attention_samples, 0u);
         if (!command || !encoder) return fail_with_message(error, error_bytes,
             @"failed to create layer-3 continuation batch-attention command");
 #define RUST_STAR_ENCODE_L3_BATCH_COPY(input, input_offset, output_offset, elements) do { \
@@ -49039,6 +49201,13 @@ int rust_star_metal_run_prefill_layer3_continuation_batch_attention(
             (NSUInteger)raw_rows*staged_row_bytes, compressed_rows*width);
 #undef RUST_STAR_ENCODE_L3_BATCH_COPY
 
+        if (attention_samples) {
+            encoder = next_tail_profile_encoder(encoder, command,
+                attention_samples, attention_fence, 1u);
+            if (!encoder) return fail_with_message(error, error_bytes,
+                @"failed to create attention profile encoder");
+        }
+
         if (key_rows%64u != 0u) {
             [encoder setComputePipelineState:context.flashPad64Pipeline];
             [encoder setBytes:&pad_args length:sizeof(pad_args) atIndex:0];
@@ -49056,6 +49225,13 @@ int rust_star_metal_run_prefill_layer3_continuation_batch_attention(
         [encoder setBuffer:block_buffer offset:0 atIndex:2];
         [encoder dispatchThreadgroups:MTLSizeMake(key_blocks,query_blocks,1)
              threadsPerThreadgroup:MTLSizeMake(32,1,1)];
+
+        if (attention_samples) {
+            encoder = next_tail_profile_encoder(encoder, command,
+                attention_samples, attention_fence, 2u);
+            if (!encoder) return fail_with_message(error, error_bytes,
+                @"failed to create attention profile encoder");
+        }
 
         [encoder setComputePipelineState:key_rows%64u != 0u
             ? context.flashNonvecNsg8KvpadPipeline
@@ -49075,6 +49251,13 @@ int rust_star_metal_run_prefill_layer3_continuation_batch_attention(
         [encoder dispatchThreadgroups:MTLSizeMake(query_blocks,n_head,1)
              threadsPerThreadgroup:MTLSizeMake(32,8,1)];
 
+        if (attention_samples) {
+            encoder = next_tail_profile_encoder(encoder, command,
+                attention_samples, attention_fence, 3u);
+            if (!encoder) return fail_with_message(error, error_bytes,
+                @"failed to create attention profile encoder");
+        }
+
         [encoder setComputePipelineState:context.ropeTailPipeline];
         [encoder setBytes:&inverse_args length:sizeof(inverse_args) atIndex:0];
         [encoder setBuffer:heads_buffer offset:0 atIndex:1];
@@ -49088,6 +49271,10 @@ int rust_star_metal_run_prefill_layer3_continuation_batch_attention(
         const double wall_start = monotonic_ms();
         [command commit];
         if (!command_succeeded(command, error, error_bytes)) return 0;
+        if (attention_samples) {
+            context.prefillLayerAttentionCommand = command;
+            context.prefillLayerAttentionSampleCount = @(8u);
+        }
         context.prefillLayer3ContinuationHeads = heads_buffer;
         result->dispatches += key_rows%64u != 0u ? 6u : 5u;
         result->wrapped_model_ranges += 1u;

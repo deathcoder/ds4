@@ -22890,6 +22890,18 @@ mod imp {
             error: *mut c_char,
             error_bytes: usize,
         ) -> i32;
+        fn rust_star_metal_enable_prefill_attention_profiling(
+            context: *mut c_void,
+            error: *mut c_char,
+            error_bytes: usize,
+        ) -> i32;
+        fn rust_star_metal_copy_prefill_attention_ticks(
+            context: *mut c_void,
+            sample_count: u32,
+            ticks: *mut u64,
+            error: *mut c_char,
+            error_bytes: usize,
+        ) -> i32;
         fn rust_star_metal_copy_chained_layer_stage_ticks(
             context: *mut c_void,
             layer_count: u32,
