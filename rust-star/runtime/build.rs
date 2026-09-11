@@ -22,6 +22,7 @@ fn main() {
     println!("cargo:rerun-if-changed=src/attention_output.metal");
     println!("cargo:rerun-if-changed=src/ffn_router.metal");
     println!("cargo:rerun-if-changed=src/moe_output_prefix.metal");
+    println!("cargo:rerun-if-changed=src/routed_prefill.metal");
     println!("cargo:rerun-if-changed=src/q8_projection_pair.metal");
     println!("cargo:rerun-if-changed=src/sparse_indexed_prefix.metal");
     println!("cargo:rerun-if-changed=../../metal/dsv4_rope.metal");
@@ -77,6 +78,7 @@ fn main() {
             manifest.join("../../metal/dense.metal"),
             manifest.join("../../metal/glu.metal"),
             manifest.join("../../metal/moe.metal"),
+            manifest.join("src/routed_prefill.metal"),
             manifest.join("../../metal/dsv4_hc.metal"),
         ],
         &output.join("moe_output_source.inc"),

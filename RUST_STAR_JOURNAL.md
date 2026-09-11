@@ -18,6 +18,39 @@ Before changing code:
 Journal entries are reverse chronological. Do not edit old entries to change
 history; add a correction and update the current-state summary.
 
+## 2026-09-11 — Native-tail grid candidate implemented; freeze pending
+
+- Added rust-star/runtime/src/routed_prefill.metal. Source audit restores the
+  accepted fused IQ2 template byte for byte after reversing the two coordinate
+  substitutions and function rename. build.rs concatenates it after the imported
+  MoE definitions. The shared native-tail executor lazily creates its pipeline
+  and transposes the grid only when native_chunk is true. Existing prefix and
+  legacy-tile dispatches, root Metal and decode sources remain unchanged.
+- Formatting, all 318 release Rust tests and fresh model/prompt/oracle/baseline
+  hashes pass. Release executable build is pending; no model gate has started.
+- Before any live run, froze the diagnostic decision rule: compare gate/up
+  against unchanged attention-output, routed-down and shared-expert work.
+  Require both aggregate and median matched-tail normalized ratios below 1.0
+  to justify a later engine timing study. Preserve raw absolute times too.
+  This is selection for further testing, not acceptance of an engine speedup.
+
+## 2026-09-11 — Start bounded 32K grid-order candidate validation
+
+- User authorizes the next step after the synthetic screen. Starting source is
+  653f791c; frozen d6c14fa0 remains the baseline executable. Work directory:
+  rust-star/.work/prefill-route-order-32k-653f791c/.
+- Isolate the candidate in a Rust-owned shader used only by native 4K
+  continuation tails. Keep initial prefill, 32-row diagnostics, decode, root
+  Metal sources and every immutable fixture unchanged. No selector flag.
+- Predeclare three sequential real-model runs: normal candidate full 32K/128
+  output C0, baseline profiled full 32K/128 C0, candidate profiled full 32K/128
+  C0. Rehash model/inputs, build/test and freeze before running. Strict ordered
+  tail-profile audit remains required; no timestamp or numerical tolerance.
+- This is one bounded diagnostic comparison, not headline engine timing. Use
+  component attribution and unchanged stages to decide whether a later timing
+  campaign is worthwhile. Preserve every failure; no blind retry. The 256K
+  campaign remains paused and no push is authorized.
+
 ## 2026-09-11 — Bounded routed-prefill grid-order screen passes
 
 - Completed the declared standalone experiment on the M1 Ultra in 10.138s.
@@ -4137,6 +4170,10 @@ Next:
 
 ### Current resume checkpoint (updated 2026-09-11)
 
+- ACTIVE: bounded 32K real-model validation of the routed-prefill grid-order
+  candidate, with three predeclared C0/diagnostic runs. Evidence lives in
+  rust-star/.work/prefill-route-order-32k-653f791c/. No live gate has run yet.
+
 - COMPLETE: bounded lower-context routed-prefill grid-order screen. Report
   rust-star/reports/prefill-route-order-d6c14fa0/README.md. Synthetic exactness
   passes 2.270 billion FP16 comparisons; 4K balanced/skewed paired kernel
@@ -4995,14 +5032,13 @@ Next:
 
 ## Immediate Next Actions
 
-1. Keep the long-context validation stopped. Preserve frozen d6c14fa0, both
-   rejected attempts and the interrupted-run evidence; no automatic resume.
-2. The bounded routed-prefill kernel screen passes. Isolate the two coordinate
-   changes in a Rust-owned candidate shader, then run one complete 32K output
-   C0 gate and a matched diagnostic before considering broader engine timing.
-3. The expected benefit is modest and unverified in the engine. Do not replace
-   accepted performance baselines or claim reference parity from this screen.
-   Keep oracle-v5, accepted sources and all historical evidence immutable.
+1. Finish and freeze the native-tail candidate build, then run only the three
+   declared 32K C0/diagnostic checks in prefill-route-order-32k-653f791c/.
+2. Audit full outputs, ordered profile packets and matched component ratios;
+   preserve failures, package the evidence and update the disposition before
+   deciding whether a larger engine timing campaign is worthwhile.
+3. Keep 256K stopped. Preserve frozen d6c14fa0, both rejected attempts and
+   interrupted evidence. No broader validation campaign or push.
 
 ## Entries
 

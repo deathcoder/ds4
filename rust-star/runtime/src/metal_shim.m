@@ -373,6 +373,7 @@ static NSString *const kQ8ProjectionSource =
 @property(nonatomic, strong) id<MTLComputePipelineState> hcExpand4Pipeline;
 @property(nonatomic, strong) id<MTLComputePipelineState> routedBatchMapPipeline;
 @property(nonatomic, strong) id<MTLComputePipelineState> routedBatchPairSwigluPipeline;
+@property(nonatomic, strong) id<MTLComputePipelineState> routedNativePairSwigluPipeline;
 @property(nonatomic, strong) id<MTLComputePipelineState> routedBatchDownPipeline;
 @property(nonatomic, strong) id<MTLComputePipelineState> routedBatchSumPipeline;
 @property(nonatomic, strong) id<MTLComputePipelineState> sharedSwigluBatchPipeline;
@@ -46582,6 +46583,17 @@ int rust_star_metal_run_prefill_layer2_continuation_tail(
         }
         if (!ensure_attention_ingress_pipelines(context, error, error_bytes) ||
             !ensure_moe_output_pipelines(context, error, error_bytes)) return 0;
+        if (native_chunk && !context.routedNativePairSwigluPipeline) {
+            NSError *compile_error = nil;
+            id<MTLFunction> function = [context.moeOutputLibrary
+                newFunctionWithName:@"rust_star_routed_prefill_gate_up"];
+            if (!function) return fail_with_message(error, error_bytes,
+                @"missing native routed-prefill function");
+            context.routedNativePairSwigluPipeline = [context.device
+                newComputePipelineStateWithFunction:function error:&compile_error];
+            if (!context.routedNativePairSwigluPipeline)
+                return fail_with_message(error, error_bytes, compile_error.localizedDescription);
+        }
 
         uint64_t offsets[14] = {
             weights->attn_output_a_offset, weights->attn_output_b_offset,
@@ -47078,7 +47090,11 @@ int rust_star_metal_run_prefill_layer2_continuation_tail(
             encoder = next_tail_profile_encoder(encoder, command, tail_samples, tail_fence, 4u);
             if (!encoder) return fail_with_message(error, error_bytes, @"failed to create tail profile encoder");
         }
-        [encoder setComputePipelineState:context.routedBatchPairSwigluPipeline];
+        // The native 4K shader transposes only grid axes. Keep the legacy
+        // 32-row diagnostic and initial-prefix pipeline/geometry unchanged.
+        [encoder setComputePipelineState:native_chunk
+            ? context.routedNativePairSwigluPipeline
+            : context.routedBatchPairSwigluPipeline];
         [encoder setBytes:&routed_gate_args length:sizeof(routed_gate_args) atIndex:0];
         [encoder setBytes:&routed_activation_args length:sizeof(routed_activation_args) atIndex:1];
         [encoder setBuffer:model_buffers[8] offset:inner[8] atIndex:2];
@@ -47090,7 +47106,9 @@ int rust_star_metal_run_prefill_layer2_continuation_tail(
         [encoder setBuffer:router_weights_buffer offset:0 atIndex:8];
         [encoder setBuffer:routed_map_buffer offset:routed_map_work_offset atIndex:9];
         [encoder setThreadgroupMemoryLength:16384u atIndex:0];
-        [encoder dispatchThreadgroups:MTLSizeMake(routed_map_work_cap,32,1)
+        [encoder dispatchThreadgroups:native_chunk
+            ? MTLSizeMake(32,routed_map_work_cap,1)
+            : MTLSizeMake(routed_map_work_cap,32,1)
              threadsPerThreadgroup:MTLSizeMake(128,1,1)];
 
         if (tail_samples) {
