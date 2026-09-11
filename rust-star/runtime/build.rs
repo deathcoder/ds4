@@ -23,6 +23,7 @@ fn main() {
     println!("cargo:rerun-if-changed=src/ffn_router.metal");
     println!("cargo:rerun-if-changed=src/moe_output_prefix.metal");
     println!("cargo:rerun-if-changed=src/routed_prefill.metal");
+    println!("cargo:rerun-if-changed=src/compressed_prefill.metal");
     println!("cargo:rerun-if-changed=src/q8_projection_pair.metal");
     println!("cargo:rerun-if-changed=src/sparse_indexed_prefix.metal");
     println!("cargo:rerun-if-changed=../../metal/dsv4_rope.metal");
@@ -62,6 +63,7 @@ fn main() {
             manifest.join("../../metal/flash_attn.metal"),
             manifest.join("../../metal/softmax.metal"),
             manifest.join("../../metal/sum_rows.metal"),
+            manifest.join("src/compressed_prefill.metal"),
         ],
         &output.join("attention_ingress_source.inc"),
         "kAttentionIngressSource",

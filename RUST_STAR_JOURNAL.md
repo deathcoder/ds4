@@ -18,6 +18,26 @@ Before changing code:
 Journal entries are reverse chronological. Do not edit old entries to change
 history; add a correction and update the current-state summary.
 
+## 2026-09-11 — Integrate native compressed run-skip for bounded real-model validation
+
+- User authorizes the next step after isolated candidate 2f06a2e8. Work
+  rust-star/.work/32k-compressed-skip-2f06a2e8; comparator is frozen runtime
+  1711856e. Copy the tested shader with symbol renaming only into a Rust-owned
+  source, appended solely to the attention-ingress library.
+- Lazy padded/unpadded NSG8 pipelines select the candidate only for native
+  compressed 4096-row continuation chunks. Source restoration proves that
+  prefix, legacy, decode, imported kernels and all other host code are intact.
+  Production-assembled Metal library and both pipelines compile successfully.
+- Predeclare candidate normal 32K/128 C0, then fresh baseline and candidate
+  component-profiled C0. Require all 50,031,360 FP32 words across three runs,
+  complete strict counter coverage and frozen input/source pins. Diagnostic
+  selection requires raw target aggregate, control-normalized aggregate and
+  140 matched normalized median ratios all below one. Controls are attention
+  output, routed down and shared expert on the same compressed-layer packets.
+- This selects only for later engine assessment; a perturbed single profile
+  pair cannot establish engine speed. No extra timing, push or 256K work.
+  Release build/tests and full model/prompt/oracle pins are underway.
+
 ## 2026-09-11 — Empty-block run-skip candidate passes the isolated screen
 
 - Report rust-star/reports/compressed-skip-runs-fbbea533/README.md verifies
@@ -4546,6 +4566,11 @@ Next:
 
 
 ### Current resume checkpoint (updated 2026-09-11)
+
+- ACTIVE: narrow run-skip integration and three predeclared 32K C0 runs.
+  Work rust-star/.work/32k-compressed-skip-2f06a2e8. Do not change runtime
+  sources after executable freeze. Build/tests precede any model run.
+
 
 - COMPLETE: isolated empty-block run-skip candidate passes. Report
   rust-star/reports/compressed-skip-runs-fbbea533/README.md verifies 56 artifacts.

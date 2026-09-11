@@ -330,6 +330,8 @@ static NSString *const kQ8ProjectionSource =
 @property(nonatomic, strong) id<MTLComputePipelineState> flashNonvecPipeline;
 @property(nonatomic, strong) id<MTLComputePipelineState> flashNonvecNsg8Pipeline;
 @property(nonatomic, strong) id<MTLComputePipelineState> flashNonvecNsg8KvpadPipeline;
+@property(nonatomic, strong) id<MTLComputePipelineState> compressedNativePipeline;
+@property(nonatomic, strong) id<MTLComputePipelineState> compressedNativeKvpadPipeline;
 @property(nonatomic, strong) id<MTLComputePipelineState> flashVecPipeline;
 @property(nonatomic, strong) id<MTLComputePipelineState> flashVecNsg2Pipeline;
 @property(nonatomic, strong) id<MTLComputePipelineState> flashVecNsg4Pipeline;
@@ -49015,6 +49017,41 @@ int rust_star_metal_run_prefill_layer3_continuation_batch_compressor(
     }
 }
 
+// Lazily specialize only the native compressed continuation dispatch. Prefix,
+// legacy continuation and decode retain the imported FlashAttention pipelines.
+static int ensure_native_compressed_prefill_pipelines(
+    RustStarMetalContext *context, char *error, size_t error_bytes)
+{
+    if (context.compressedNativePipeline && context.compressedNativeKvpadPipeline) return 1;
+    NSError *compile_error = nil;
+    bool enabled = true, disabled = false;
+    int32_t head_dim = 512, nsg = 8;
+    id<MTLComputePipelineState> pipelines[2];
+    for (unsigned padded = 0; padded < 2; padded++) {
+        bool has_pad = padded != 0;
+        MTLFunctionConstantValues *constants = [MTLFunctionConstantValues new];
+        [constants setConstantValue:&enabled type:MTLDataTypeBool atIndex:300];
+        [constants setConstantValue:&enabled type:MTLDataTypeBool atIndex:301];
+        [constants setConstantValue:&disabled type:MTLDataTypeBool atIndex:302];
+        [constants setConstantValue:&disabled type:MTLDataTypeBool atIndex:303];
+        [constants setConstantValue:&has_pad type:MTLDataTypeBool atIndex:304];
+        [constants setConstantValue:&disabled type:MTLDataTypeBool atIndex:310];
+        [constants setConstantValue:&head_dim type:MTLDataTypeInt atIndex:320];
+        [constants setConstantValue:&head_dim type:MTLDataTypeInt atIndex:321];
+        [constants setConstantValue:&nsg type:MTLDataTypeInt atIndex:322];
+        id<MTLFunction> function = [context.attentionIngressLibrary
+            newFunctionWithName:@"rust_star_compressed_prefill"
+                 constantValues:constants error:&compile_error];
+        pipelines[padded] = function ? [context.device
+            newComputePipelineStateWithFunction:function error:&compile_error] : nil;
+        if (!pipelines[padded]) return fail_with_message(error, error_bytes,
+            [NSString stringWithFormat:@"native compressed prefill pipeline failed: %@", compile_error]);
+    }
+    context.compressedNativePipeline = pipelines[0];
+    context.compressedNativeKvpadPipeline = pipelines[1];
+    return 1;
+}
+
 int rust_star_metal_run_prefill_layer3_continuation_batch_attention(
     void *opaque_context,
     const void *model_mapping,
@@ -49082,6 +49119,9 @@ int rust_star_metal_run_prefill_layer3_continuation_batch_attention(
                 @"prefill layer-3 continuation batch attention requires the complete 8K Q/KV state");
         }
         if (!ensure_attention_ingress_pipelines(context, error, error_bytes)) return 0;
+        const BOOL native_chunk = context.prefillLayerChunkStart &&
+            position_start == chunk_start && position_start != 0u;
+        if (native_chunk && !ensure_native_compressed_prefill_pipelines(context, error, error_bytes)) return 0;
 
         NSUInteger sinks_inner = 0u;
         BOOL sinks_match = NO;
@@ -49233,9 +49273,9 @@ int rust_star_metal_run_prefill_layer3_continuation_batch_attention(
                 @"failed to create attention profile encoder");
         }
 
-        [encoder setComputePipelineState:key_rows%64u != 0u
-            ? context.flashNonvecNsg8KvpadPipeline
-            : context.flashNonvecNsg8Pipeline];
+        [encoder setComputePipelineState:native_chunk
+            ? (key_rows%64u != 0u ? context.compressedNativeKvpadPipeline : context.compressedNativePipeline)
+            : (key_rows%64u != 0u ? context.flashNonvecNsg8KvpadPipeline : context.flashNonvecNsg8Pipeline)];
         [encoder setBytes:&attention_args length:sizeof(attention_args) atIndex:0];
         [encoder setBuffer:context.prefillLayer3FullQ
                      offset:(NSUInteger)(first_position-transient_base)*q_dim*sizeof(float)
