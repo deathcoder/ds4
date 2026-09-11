@@ -18,6 +18,73 @@ Before changing code:
 Journal entries are reverse chronological. Do not edit old entries to change
 history; add a correction and update the current-state summary.
 
+## 2026-09-11 — Half-input attention output is exact; A/A blocks selection
+
+- Portable report rust-star/reports/attention-output-half-input-038dded4/README.md
+  verifies 50 artifacts, source assembly/template instantiations/ABI, frozen
+  plans, edge receipts and all 2,016 timing intervals. Runtime 9d35953f and
+  all 41 source inputs remain unchanged; no model was loaded or code integrated.
+- All 16 edge cases pass 172,605,440 FP32 words, CPU half conversions (including
+  subnormals/ties), map entries, guards and input hashes. The main processes
+  add 19,025,362,944 exact FP32 comparisons across low/dense/HC outputs: total
+  19,197,968,384. Checksums and inputs repeat across both fresh processes.
+- All 72 candidate pairs improve. All six case/session combinations satisfy
+  the preset separate AB/BA candidate criteria, with 34.29–35.09% lower median
+  complete attention-output chain times. Both added conversion passes are
+  timed. The candidate uses 320 MiB additional FP16 scratch at 4096 rows;
+  buffer allocation is outside repeated timing. No new quantization arithmetic
+  is introduced: current projection kernels already round RHS loads to FP16.
+- Every A/A case fails physical-buffer and dispersion-MAD gates: physical A/B
+  medians show 1.99–2.59% differences, and first/second MAD is 2.07–2.56%, above
+  1% limits. Session 1/case 2 also fails AB/BA and within-3% count criteria.
+  Overall candidate selection is FALSE despite the large consistent signal.
+  Do not retroactively relax/normalize the failed controls or infer engine gain.
+- The observed effect tracks buffer-set identity, not a proven cache/clock/page
+  cause. Keep the promising exact candidate for a separate bounded A/A-only
+  same-buffer crossover with a protected exact reference. Establish neutrality
+  before repeating the candidate under a fresh plan or integrating runtime.
+- Main processes finish in 142.612s/143.597s; no failed execution, retry or
+  discarded pair. Swap stays 33.25MB and no thermal warning is recorded. All
+  frozen files/executable and runtime hashes pass final checks; all GPU work
+  is finished. No push, release, full-model C0 or 256K resumption in this study.
+
+## 2026-09-11 — Half-input attention-output edge gates pass
+
+- All 16 edge cases pass 172,605,440 exact FP32 comparisons across grouped
+  projection, dense projection and HC output. Both orders agree, CPU FP16
+  conversion checks (including subnormal and tie cases) and every group-map
+  entry pass. All guards and immutable-input hashes hold. Edge process ends
+  normally in 9.457s; no failed attempt or retry.
+- Freeze the unchanged tested harness/library and prospective plan for the
+  two main processes. Each uses three 4096-row seeded cases, full-chain timing
+  with both conversion costs, balanced AB/BA and physical arena assignments,
+  and contemporaneous A/A. Runtime sources remain unchanged; no model load.
+
+## 2026-09-11 — Start bounded attention-output half-input study
+
+- User authorizes the next profile-led target after 038dded4. Current native
+  run-skip runtime 9d35953f and all 41 source inputs stay unchanged. Work
+  rust-star/.work/attention-output-half-input-038dded4; no model load or full
+  engine benchmark in this standalone study.
+- Source inspection finds two Q8 matrix projections repeatedly casting FP32
+  RHS tiles to FP16. Test preconversion once per RHS, using the unchanged
+  grouped half-input kernel and a half-input instantiation of the unchanged
+  dense template. Keep the group map, arithmetic, accumulator types and HC
+  expansion intact. Full timed chain includes both added conversion passes.
+- At 4096 rows, extra FP16 scratch is 320 MiB. Logical tiled RHS-plus-conversion
+  traffic changes from 16 GiB to 8.9375 GiB; this is not measured DRAM traffic
+  and ignores caches, weights and outputs. Do not assume bandwidth savings
+  translate to latency. Baseline real attention-output attribution was 35.076s.
+- Host build/source/ABI checks pass. Freeze before 16 edge cases (eight row
+  counts, two data patterns including FP16 rounding boundaries), with complete
+  low/dense/HC output comparisons, CPU conversion and map checks, guards and
+  immutable inputs. A failure stops the screen and is preserved.
+- If edges pass, run exactly two fresh equal-warm processes with three 4096-row
+  seeded cases, 12 candidate and 12 A/A pairs each. Inherit neutral-control and
+  separate AB/BA candidate criteria; include one excluded per-stage diagnostic
+  chain per variant/case. New-chain A/A neutrality must be demonstrated anew.
+  No retuning, extra repeats, runtime integration, push or 256K resumption.
+
 ## 2026-09-11 — Native run-skip passes full 32K C0 and real-component selection
 
 - Runtime 9d35953f is retained as a correctness-validated candidate. Normal
@@ -4617,6 +4684,14 @@ Next:
 
 ### Current resume checkpoint (updated 2026-09-11)
 
+- COMPLETE: standalone attention-output FP16 input-staging screen. Report
+  rust-star/reports/attention-output-half-input-038dded4/README.md verifies 50
+  artifacts. All 19.198 billion FP32 comparisons and candidate timing criteria
+  pass, with observed 34.29–35.09% lower chain time. A/A physical-buffer/MAD
+  gates fail at all six cases, so the candidate is NOT selected for integration
+  or full-model validation. Runtime 9d35953f is unchanged; all GPU work is done.
+
+
 - COMPLETE: native compressed run-skip 9d35953f passes all three full 32K/128
   C0 checks and prospective component selection. Report
   rust-star/reports/32k-compressed-skip-9d35953f/README.md. Retain the candidate;
@@ -5522,19 +5597,18 @@ Next:
 
 ## Immediate Next Actions
 
-1. Treat 9d35953f as a full-output 32K/128 C0-validated candidate, with a
-   promising real-component diagnostic rather than accepted engine speed.
-   Preserve the 1711856e comparator and both immutable executables/reports.
-2. Before additional engine timing, weigh the roughly two-second component
-   saving against the full-run cost and declare a small unprofiled paired
-   protocol and decision criterion. No automatic expanded timing campaign.
-   A separate profile-led lead is attention output, the largest measured tail
-   component at 35.918s in this baseline; inspect its actual projections and
-   memory/dispatch cost before selecting or claiming another optimization.
-3. Keep the head-first grid rejected, prior routing evidence scoped correctly,
-   and all old failed/interrupted data intact. Do not infer longer-context
-   acceptance from this 32K-only check. Keep 256K paused; no push or automatic
-   frontier work.
+1. Preserve the exact half-input attention-output candidate and its failed
+   control evidence. Its large 34–35% observed chain reduction is promising,
+   but it did not pass the complete prospective screen. Do not integrate or
+   convert that observation into an engine claim yet.
+2. Predeclare a small A/A-only experiment that reuses the same buffer set in
+   both roles, with a protected exact reference and full checks for each role.
+   Test whether the 1.99–2.59% buffer-associated effect disappears; inspect
+   remaining effects without claiming an unmeasured cache/page/clock cause.
+   Only after neutrality passes should a fresh candidate screen be considered.
+3. Keep runtime 9d35953f and its frozen 1711856e comparator intact. Preserve all
+   older rejected/interrupted evidence, including the head-first grid. Keep
+   the work at 32K and 256K paused; no push or automatic broader benchmark.
 
 ## Entries
 

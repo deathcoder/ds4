@@ -503,6 +503,18 @@ all GPU work is finished. Any engine timing needs a fresh bounded plan, and
 256K stays paused. Attention output remains a larger measured component for a
 separate profile-led investigation; no new optimization there is selected.
 
+The subsequent standalone attention-output screen at `038dded4` is complete:
+`rust-star/reports/attention-output-half-input-038dded4/README.md` verifies 50
+artifacts. Preconverting both projection inputs to FP16 uses the rounding
+already performed by the current kernels, at a cost of 320 MiB extra scratch.
+All 19.198 billion isolated FP32 comparisons pass, and all 72 candidate timing
+pairs improve by roughly 35% including both conversion passes. However, every
+contemporaneous A/A case fails physical-buffer and MAD neutrality limits, with
+1.99–2.59% buffer-associated differences. The overall selection is false; runtime
+9d35953f is unchanged and no full-model or engine claim follows. Preserve the
+candidate and first establish a bounded same-buffer A/A control with an exact
+protected reference. Do not relax the recorded thresholds retrospectively.
+
 Current implementation boundaries, evidence, and immediate actions are maintained
 in `RUST_STAR_JOURNAL.md`. As of 2026-09-09, native prefill through all 43 layers
 and the output head is C0 exact at 128K, with 128 exact full-logit decode steps

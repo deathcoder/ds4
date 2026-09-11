@@ -1,0 +1,9 @@
+{
+  "frozen_utc": "2026-09-11T18:33:49.619070+00:00",
+  "files": {
+    "edge-freeze.json": "2bcc7148f7e9cb7dce1c0967adae48d318104d607ed59271ed158fb08776bacf",
+    "run-edges.py": "6d065f66e880f8e8e8d942326fa88952cba89b9546d87ab63b6920c0dfe02ad0",
+    "hardware.json": "e0a01b92251cb4a50381a905d330b9f7b694f44d0171118337176bcd914a51f8",
+    "toolchain.txt": "ea3037e0630fa16798079372fdc24f6542d021dadda4915cc979799682d78295"
+  }
+}
