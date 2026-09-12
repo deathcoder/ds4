@@ -1,0 +1,10 @@
+{
+  "name": "5-D",
+  "mode": "D",
+  "block": 5,
+  "exit_code": 0,
+  "started_utc": "2026-09-12T16:19:47.978107+00:00",
+  "ended_utc": "2026-09-12T16:19:48.410958+00:00",
+  "wall_seconds": 0.43290483300000204,
+  "executable_sha256": "7854459f2b9dcbe8a546d43052055f702a1f9cc52ae0f2c72b384109fa6c6765"
+}

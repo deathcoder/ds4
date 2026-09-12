@@ -1,0 +1,13 @@
+{
+  "passed": true,
+  "candidate_sha256": "a41d4f3cfd9323ae8ed8702c3c10ef8ba700ba9aa3c3ab51eaa391541d98cf59",
+  "selected_labels": [
+    "attention_back_buffer",
+    "next_attention_back_buffer",
+    "next_q_cur_buffer",
+    "q_cur_buffer"
+  ],
+  "selected_bytes": 536870912,
+  "scope": "Native1024-row branch only, preserving source buffers and every other initialization. This proves destination initial bytes irrelevant; it makes no assertion about full writes of Q-raw, attention-output or the other101 buffers.",
+  "synchronization": "Retain existing prior-command checked completion. Source producer encoder ends before copy; copy encoder ends before any destination read. Failed encoder creation returns without submission/consumption."
+}

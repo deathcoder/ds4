@@ -1,0 +1,10 @@
+rust-star/.work/scratch-rss-706417ca/probe.m:76:20: error: too many arguments provided to function-like macro invocation
+   76 |     assert([@[@"A",@"B",@"C",@"D",@"E"] containsObject:mode]);BOOL reuse=!([mode isEqual:@"A"]||[mode isEqual:@"B"]);BOOL clear=[mode isEqual:@"B"]||[mode isEqual:@"D"]||[mode isEqual:@"E"];
+      |                    ^
+/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/usr/include/assert.h:71:9: note: macro 'assert' defined here
+   71 | #define assert(e) \
+      |         ^
+rust-star/.work/scratch-rss-706417ca/probe.m:76:5: error: use of undeclared identifier 'assert'
+   76 |     assert([@[@"A",@"B",@"C",@"D",@"E"] containsObject:mode]);BOOL reuse=!([mode isEqual:@"A"]||[mode isEqual:@"B"]);BOOL clear=[mode isEqual:@"B"]||[mode isEqual:@"D"]||[mode isEqual:@"E"];
+      |     ^~~~~~
+2 errors generated.

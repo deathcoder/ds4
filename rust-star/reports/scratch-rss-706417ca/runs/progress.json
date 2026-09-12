@@ -1,0 +1,252 @@
+[
+  {
+    "name": "1-A",
+    "mode": "A",
+    "block": 1,
+    "exit_code": 0,
+    "started_utc": "2026-09-12T16:19:15.030809+00:00",
+    "ended_utc": "2026-09-12T16:19:15.520406+00:00",
+    "wall_seconds": 0.4896605000000003,
+    "executable_sha256": "7854459f2b9dcbe8a546d43052055f702a1f9cc52ae0f2c72b384109fa6c6765"
+  },
+  {
+    "name": "1-B",
+    "mode": "B",
+    "block": 1,
+    "exit_code": 0,
+    "started_utc": "2026-09-12T16:19:16.404224+00:00",
+    "ended_utc": "2026-09-12T16:19:17.467907+00:00",
+    "wall_seconds": 1.0637435410000005,
+    "executable_sha256": "7854459f2b9dcbe8a546d43052055f702a1f9cc52ae0f2c72b384109fa6c6765"
+  },
+  {
+    "name": "1-C",
+    "mode": "C",
+    "block": 1,
+    "exit_code": 0,
+    "started_utc": "2026-09-12T16:19:18.325854+00:00",
+    "ended_utc": "2026-09-12T16:19:18.541757+00:00",
+    "wall_seconds": 0.21596700000000002,
+    "executable_sha256": "7854459f2b9dcbe8a546d43052055f702a1f9cc52ae0f2c72b384109fa6c6765"
+  },
+  {
+    "name": "1-D",
+    "mode": "D",
+    "block": 1,
+    "exit_code": 0,
+    "started_utc": "2026-09-12T16:19:19.411430+00:00",
+    "ended_utc": "2026-09-12T16:19:19.845807+00:00",
+    "wall_seconds": 0.43444654200000077,
+    "executable_sha256": "7854459f2b9dcbe8a546d43052055f702a1f9cc52ae0f2c72b384109fa6c6765"
+  },
+  {
+    "name": "1-E",
+    "mode": "E",
+    "block": 1,
+    "exit_code": 0,
+    "started_utc": "2026-09-12T16:19:20.706838+00:00",
+    "ended_utc": "2026-09-12T16:19:21.124462+00:00",
+    "wall_seconds": 0.4176820000000001,
+    "executable_sha256": "7854459f2b9dcbe8a546d43052055f702a1f9cc52ae0f2c72b384109fa6c6765"
+  },
+  {
+    "name": "2-B",
+    "mode": "B",
+    "block": 2,
+    "exit_code": 0,
+    "started_utc": "2026-09-12T16:19:21.986023+00:00",
+    "ended_utc": "2026-09-12T16:19:22.960754+00:00",
+    "wall_seconds": 0.9747941250000007,
+    "executable_sha256": "7854459f2b9dcbe8a546d43052055f702a1f9cc52ae0f2c72b384109fa6c6765"
+  },
+  {
+    "name": "2-C",
+    "mode": "C",
+    "block": 2,
+    "exit_code": 0,
+    "started_utc": "2026-09-12T16:19:23.835527+00:00",
+    "ended_utc": "2026-09-12T16:19:24.048726+00:00",
+    "wall_seconds": 0.21325645800000004,
+    "executable_sha256": "7854459f2b9dcbe8a546d43052055f702a1f9cc52ae0f2c72b384109fa6c6765"
+  },
+  {
+    "name": "2-D",
+    "mode": "D",
+    "block": 2,
+    "exit_code": 0,
+    "started_utc": "2026-09-12T16:19:24.915854+00:00",
+    "ended_utc": "2026-09-12T16:19:25.401469+00:00",
+    "wall_seconds": 0.48567595899999993,
+    "executable_sha256": "7854459f2b9dcbe8a546d43052055f702a1f9cc52ae0f2c72b384109fa6c6765"
+  },
+  {
+    "name": "2-E",
+    "mode": "E",
+    "block": 2,
+    "exit_code": 0,
+    "started_utc": "2026-09-12T16:19:26.243409+00:00",
+    "ended_utc": "2026-09-12T16:19:26.644893+00:00",
+    "wall_seconds": 0.4015558330000015,
+    "executable_sha256": "7854459f2b9dcbe8a546d43052055f702a1f9cc52ae0f2c72b384109fa6c6765"
+  },
+  {
+    "name": "2-A",
+    "mode": "A",
+    "block": 2,
+    "exit_code": 0,
+    "started_utc": "2026-09-12T16:19:27.524304+00:00",
+    "ended_utc": "2026-09-12T16:19:27.994888+00:00",
+    "wall_seconds": 0.4706469999999996,
+    "executable_sha256": "7854459f2b9dcbe8a546d43052055f702a1f9cc52ae0f2c72b384109fa6c6765"
+  },
+  {
+    "name": "3-C",
+    "mode": "C",
+    "block": 3,
+    "exit_code": 0,
+    "started_utc": "2026-09-12T16:19:28.854860+00:00",
+    "ended_utc": "2026-09-12T16:19:29.059901+00:00",
+    "wall_seconds": 0.20510433299999953,
+    "executable_sha256": "7854459f2b9dcbe8a546d43052055f702a1f9cc52ae0f2c72b384109fa6c6765"
+  },
+  {
+    "name": "3-D",
+    "mode": "D",
+    "block": 3,
+    "exit_code": 0,
+    "started_utc": "2026-09-12T16:19:29.930642+00:00",
+    "ended_utc": "2026-09-12T16:19:30.361901+00:00",
+    "wall_seconds": 0.431326207999998,
+    "executable_sha256": "7854459f2b9dcbe8a546d43052055f702a1f9cc52ae0f2c72b384109fa6c6765"
+  },
+  {
+    "name": "3-E",
+    "mode": "E",
+    "block": 3,
+    "exit_code": 0,
+    "started_utc": "2026-09-12T16:19:31.240904+00:00",
+    "ended_utc": "2026-09-12T16:19:31.628507+00:00",
+    "wall_seconds": 0.38766700000000043,
+    "executable_sha256": "7854459f2b9dcbe8a546d43052055f702a1f9cc52ae0f2c72b384109fa6c6765"
+  },
+  {
+    "name": "3-A",
+    "mode": "A",
+    "block": 3,
+    "exit_code": 0,
+    "started_utc": "2026-09-12T16:19:32.511580+00:00",
+    "ended_utc": "2026-09-12T16:19:32.978456+00:00",
+    "wall_seconds": 0.4669474170000001,
+    "executable_sha256": "7854459f2b9dcbe8a546d43052055f702a1f9cc52ae0f2c72b384109fa6c6765"
+  },
+  {
+    "name": "3-B",
+    "mode": "B",
+    "block": 3,
+    "exit_code": 0,
+    "started_utc": "2026-09-12T16:19:33.850954+00:00",
+    "ended_utc": "2026-09-12T16:19:34.840764+00:00",
+    "wall_seconds": 0.989892832999999,
+    "executable_sha256": "7854459f2b9dcbe8a546d43052055f702a1f9cc52ae0f2c72b384109fa6c6765"
+  },
+  {
+    "name": "4-D",
+    "mode": "D",
+    "block": 4,
+    "exit_code": 0,
+    "started_utc": "2026-09-12T16:19:35.709381+00:00",
+    "ended_utc": "2026-09-12T16:19:36.148525+00:00",
+    "wall_seconds": 0.43921054199999787,
+    "executable_sha256": "7854459f2b9dcbe8a546d43052055f702a1f9cc52ae0f2c72b384109fa6c6765"
+  },
+  {
+    "name": "4-E",
+    "mode": "E",
+    "block": 4,
+    "exit_code": 0,
+    "started_utc": "2026-09-12T16:19:36.997553+00:00",
+    "ended_utc": "2026-09-12T16:19:37.382972+00:00",
+    "wall_seconds": 0.38548170800000037,
+    "executable_sha256": "7854459f2b9dcbe8a546d43052055f702a1f9cc52ae0f2c72b384109fa6c6765"
+  },
+  {
+    "name": "4-A",
+    "mode": "A",
+    "block": 4,
+    "exit_code": 0,
+    "started_utc": "2026-09-12T16:19:38.252788+00:00",
+    "ended_utc": "2026-09-12T16:19:38.723509+00:00",
+    "wall_seconds": 0.47078179200000037,
+    "executable_sha256": "7854459f2b9dcbe8a546d43052055f702a1f9cc52ae0f2c72b384109fa6c6765"
+  },
+  {
+    "name": "4-B",
+    "mode": "B",
+    "block": 4,
+    "exit_code": 0,
+    "started_utc": "2026-09-12T16:19:39.591173+00:00",
+    "ended_utc": "2026-09-12T16:19:40.554854+00:00",
+    "wall_seconds": 0.9637534999999993,
+    "executable_sha256": "7854459f2b9dcbe8a546d43052055f702a1f9cc52ae0f2c72b384109fa6c6765"
+  },
+  {
+    "name": "4-C",
+    "mode": "C",
+    "block": 4,
+    "exit_code": 0,
+    "started_utc": "2026-09-12T16:19:41.431976+00:00",
+    "ended_utc": "2026-09-12T16:19:41.640282+00:00",
+    "wall_seconds": 0.20834712499999952,
+    "executable_sha256": "7854459f2b9dcbe8a546d43052055f702a1f9cc52ae0f2c72b384109fa6c6765"
+  },
+  {
+    "name": "5-E",
+    "mode": "E",
+    "block": 5,
+    "exit_code": 0,
+    "started_utc": "2026-09-12T16:19:42.495501+00:00",
+    "ended_utc": "2026-09-12T16:19:42.879197+00:00",
+    "wall_seconds": 0.3837494169999971,
+    "executable_sha256": "7854459f2b9dcbe8a546d43052055f702a1f9cc52ae0f2c72b384109fa6c6765"
+  },
+  {
+    "name": "5-A",
+    "mode": "A",
+    "block": 5,
+    "exit_code": 0,
+    "started_utc": "2026-09-12T16:19:43.746653+00:00",
+    "ended_utc": "2026-09-12T16:19:44.201101+00:00",
+    "wall_seconds": 0.45449470800000213,
+    "executable_sha256": "7854459f2b9dcbe8a546d43052055f702a1f9cc52ae0f2c72b384109fa6c6765"
+  },
+  {
+    "name": "5-B",
+    "mode": "B",
+    "block": 5,
+    "exit_code": 0,
+    "started_utc": "2026-09-12T16:19:45.067310+00:00",
+    "ended_utc": "2026-09-12T16:19:46.050122+00:00",
+    "wall_seconds": 0.9828663749999969,
+    "executable_sha256": "7854459f2b9dcbe8a546d43052055f702a1f9cc52ae0f2c72b384109fa6c6765"
+  },
+  {
+    "name": "5-C",
+    "mode": "C",
+    "block": 5,
+    "exit_code": 0,
+    "started_utc": "2026-09-12T16:19:46.912764+00:00",
+    "ended_utc": "2026-09-12T16:19:47.122652+00:00",
+    "wall_seconds": 0.2099392499999979,
+    "executable_sha256": "7854459f2b9dcbe8a546d43052055f702a1f9cc52ae0f2c72b384109fa6c6765"
+  },
+  {
+    "name": "5-D",
+    "mode": "D",
+    "block": 5,
+    "exit_code": 0,
+    "started_utc": "2026-09-12T16:19:47.978107+00:00",
+    "ended_utc": "2026-09-12T16:19:48.410958+00:00",
+    "wall_seconds": 0.43290483300000204,
+    "executable_sha256": "7854459f2b9dcbe8a546d43052055f702a1f9cc52ae0f2c72b384109fa6c6765"
+  }
+]

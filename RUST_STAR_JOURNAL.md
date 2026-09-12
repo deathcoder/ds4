@@ -18,6 +18,63 @@ Before changing code:
 Journal entries are reverse chronological. Do not edit old entries to change
 history; add a correction and update the current-state summary.
 
+## 2026-09-12 — Close scratch RSS diagnosis with a protocol gap
+
+- All 25 frozen fresh-process cells complete without repeats or exclusions:
+  100 tiles, 249,317,323,300 GPU-verified payload bytes, 550 residency snapshots
+  and 100 identity sets. One 105-buffer logical set remains 2,493,173,233 bytes;
+  pooled identities stay stable and all final weak samples are zero. Fresh
+  modes have no previous-generation buffers at tile entry.
+- CPU clearing adds a paired median 2,493,284,352 bytes of synthetic peak RSS.
+  Omitting only four full-copy destination clears saves 536,805,376 bytes
+  (511.94 MiB), positive in all five blocks and above every frozen measurement
+  threshold. Median footprint saving is only 147,768 bytes and changes sign
+  in one block. This is RSS residency evidence, not reduced allocation or a
+  validated whole-engine prediction. Prior pool candidate remains rejected.
+- Source proof covers q_cur_buffer, attention_back_buffer, next_q_cur_buffer
+  and next_attention_back_buffer: each receives a complete 134,217,728-byte
+  copy before content reads. Preserve source/other 101 initialization, distinct
+  identities, exact lengths and prior checked completion. Guarded copies pass
+  24 cases, 2,147,549,248 payload bytes, 24,576 guard bytes and all 12 deliberately
+  shortened-copy controls. One pre-GPU host compile error and correction remain
+  in the report; no measurement was repeated.
+- PROTOCOL GAP: final source review found that the planned mutation after
+  copying is missing from the guarded GPU proof. Re-poisoning before the next
+  copy does not meet that requirement. The pre-run check and frozen auditor
+  did not enforce it. Preserve their original optimistic output; decision.json
+  supersedes selection with prospective_protocol_pass=false and
+  select_for_integration=false. No threshold/source/result edit or GPU rerun
+  follows discovery. The diagnostic closes with useful measurements and an
+  incomplete prospective proof, not an accepted optimization.
+- Portable report: rust-star/reports/scratch-rss-706417ca/README.md. Verification
+  passes on its first run: 110 artifacts, source/measurement re-audits, protocol
+  gap verdict and rejection of corrupted clear-byte and pooled-identity records.
+  All 42 runtime sources/default executable stay unchanged; no model runs,
+  publication, remote dispatch or 256K. All GPU processes are complete.
+- Staged whitespace check preserves the exact prior-pool-helper.inc final
+  blank line. All other staged files pass; that frozen artifact stays hashed
+  and unchanged.
+- Next milestone, NOT STARTED: close the guarded copy-then-in-place-mutation
+  test gap first; if passing, evaluate only the four destination clear omissions
+  in the bounded pool with fresh full C0/ownership evidence and unchanged
+  engine RSS <=1.02, footprint <=1.15 and all prefill/order/decode gates.
+  Finish local commit and user update, then STOP.
+
+## 2026-09-12 — Start bounded scratch RSS diagnosis
+
+- D approved one diagnostic milestone. Prospective plan:
+  rust-star/.work/scratch-rss-706417ca/plan.json. Runtime stays accepted.
+- Separate fresh/reused allocation from CPU clearing in five modes, plus a
+  selected subset omitting clears for four complete-copy destinations (512 MiB).
+  Use 25 fresh processes in five balanced orders, four tiles per process,
+  fixed 32K scratch lengths and identical synthetic GPU writes/copies.
+- Prove the four destinations are copied completely before reads; run guarded
+  GPU poison/copy checks and a shortened-copy negative control before residency.
+  Capture RSS and footprint independently without reading large buffers on CPU.
+- No model run or integration belongs here. Synthetic results may justify a
+  next candidate but cannot establish C0 or engine acceptance. Preserve failures,
+  unchanged engine gates and all accepted source/default hashes. Report and STOP.
+
 ## 2026-09-12 — Complete explicit scratch reuse: rejected
 
 - All local source/GPU/build proofs pass: 320 Rust tests, optimized production/
@@ -5520,10 +5577,15 @@ Next:
 
 ### Current resume checkpoint (updated 2026-09-12)
 
-- COMPLETED SINGLE MILESTONE: explicit scratch reuse rejected.
-  Full C0/pool proofs and all 12 engine runs complete; all accepted source/default restored.
-  Report: rust-star/reports/pool-1k-fcdfef5f/README.md. 221 artifacts verify.
-  Report this milestone and the next proposal, then STOP.
+- CLOSED SINGLE MILESTONE: scratch RSS diagnostic, with a protocol gap.
+  All 25 measurement cells pass; selected clears save a paired median 511.94 MiB
+  synthetic RSS. The planned after-copy mutation proof is missing, so full
+  protocol/selection is false. Report and authoritative decision:
+  rust-star/reports/scratch-rss-706417ca/README.md (110 artifacts verify).
+  Runtime/default unchanged; no model runs. Close that proof gap before any
+  next candidate; report this milestone and the next proposal, then STOP.
+  Explicit scratch reuse remains rejected on RSS; full C0/pool proofs and all 12
+  engine runs are preserved in rust-star/reports/pool-1k-fcdfef5f/README.md.
   Wide bootstrap c7adfb22 is rejected
   after all 12 engine runs and restored at 179e0c24. Verified report:
   rust-star/reports/wide-bootstrap-c7adfb22/README.md. Median prefill -1.127%,
@@ -6493,11 +6555,15 @@ Next:
 
 ## Immediate Next Actions
 
-1. The explicit scratch-reuse milestone is complete. Preserve the verified
-   report, original sentinel assertion and all raw evidence. All accepted source/default restored.
-2. Report rejected, full C0/pool coverage and engine/memory results.
-3. Next proposal, not started: Diagnose scratch RSS residency and prove which large buffers can safely avoid unconditional clearing before another 32K candidate.
-4. STOP after the update. Keep oracle-v5 immutable,256K paused and publication
+1. The scratch RSS diagnostic is closed with a protocol gap. Preserve all 110
+   verified artifacts and the original optimistic audit; decision.json is the
+   authoritative non-selection verdict. Runtime/default remain unchanged.
+2. Report synthetic RSS savings, source/copy coverage and the missing planned
+   after-copy mutation test. No full-engine acceptance or footprint saving claim.
+3. Next proposal, not started: close the guarded copy-then-in-place-mutation
+   test gap, then conditionally evaluate only four destination clear omissions
+   with fresh full C0/pool evidence and unchanged engine/performance/memory gates.
+4. STOP after the update. Keep oracle-v5 immutable, 256K paused and publication
    deferred; do not begin the next milestone automatically.
 
 ## Entries

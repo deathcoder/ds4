@@ -1,0 +1,422 @@
+[
+  {
+    "label": "token_buffer",
+    "bytes": 4096
+  },
+  {
+    "label": "embedding_buffer",
+    "bytes": 16777216
+  },
+  {
+    "label": "hc_buffer",
+    "bytes": 67108864
+  },
+  {
+    "label": "flat_hc_buffer",
+    "bytes": 67108864
+  },
+  {
+    "label": "mix_buffer",
+    "bytes": 98304
+  },
+  {
+    "label": "split_buffer",
+    "bytes": 98304
+  },
+  {
+    "label": "collapsed_buffer",
+    "bytes": 16777216
+  },
+  {
+    "label": "attn_buffer",
+    "bytes": 16777216
+  },
+  {
+    "label": "q_buffer",
+    "bytes": 4194304
+  },
+  {
+    "label": "q_norm_buffer",
+    "bytes": 4194304
+  },
+  {
+    "label": "kv_raw_buffer",
+    "bytes": 2097152
+  },
+  {
+    "label": "kv_norm_buffer",
+    "bytes": 2097152
+  },
+  {
+    "label": "kv_norm_snapshot_buffer",
+    "bytes": 2097152
+  },
+  {
+    "label": "kv_rope_buffer",
+    "bytes": 2097152
+  },
+  {
+    "label": "kv_half_buffer",
+    "bytes": 1048576
+  },
+  {
+    "label": "raw_cache_buffer",
+    "bytes": 262144
+  },
+  {
+    "label": "q_raw_buffer",
+    "bytes": 134217728
+  },
+  {
+    "label": "q_cur_buffer",
+    "bytes": 134217728
+  },
+  {
+    "label": "full_kv_half_buffer",
+    "bytes": 33554432
+  },
+  {
+    "label": "attention_mask_buffer",
+    "bytes": 67108864
+  },
+  {
+    "label": "attention_block_buffer",
+    "bytes": 65536
+  },
+  {
+    "label": "attention_pad_buffer",
+    "bytes": 1
+  },
+  {
+    "label": "attention_output_buffer",
+    "bytes": 134217728
+  },
+  {
+    "label": "attention_back_buffer",
+    "bytes": 134217728
+  },
+  {
+    "label": "attention_low_buffer",
+    "bytes": 33554432
+  },
+  {
+    "label": "attention_out_buffer",
+    "bytes": 16777216
+  },
+  {
+    "label": "after_attention_hc_buffer",
+    "bytes": 67108864
+  },
+  {
+    "label": "attention_group_ids_buffer",
+    "bytes": 32768
+  },
+  {
+    "label": "attention_group_map_buffer",
+    "bytes": 34856
+  },
+  {
+    "label": "ffn_flat_hc_buffer",
+    "bytes": 67108864
+  },
+  {
+    "label": "ffn_mix_buffer",
+    "bytes": 98304
+  },
+  {
+    "label": "ffn_split_buffer",
+    "bytes": 98304
+  },
+  {
+    "label": "ffn_cur_buffer",
+    "bytes": 16777216
+  },
+  {
+    "label": "ffn_norm_buffer",
+    "bytes": 16777216
+  },
+  {
+    "label": "router_logits_buffer",
+    "bytes": 1048576
+  },
+  {
+    "label": "router_probs_buffer",
+    "bytes": 1048576
+  },
+  {
+    "label": "router_selected_buffer",
+    "bytes": 24576
+  },
+  {
+    "label": "router_weights_buffer",
+    "bytes": 24576
+  },
+  {
+    "label": "router_weight_sums_buffer",
+    "bytes": 4096
+  },
+  {
+    "label": "routed_mid_buffer",
+    "bytes": 25165824
+  },
+  {
+    "label": "routed_experts_buffer",
+    "bytes": 100663296
+  },
+  {
+    "label": "routed_out_buffer",
+    "bytes": 16777216
+  },
+  {
+    "label": "shared_gate_buffer",
+    "bytes": 8388608
+  },
+  {
+    "label": "shared_up_buffer",
+    "bytes": 8388608
+  },
+  {
+    "label": "shared_mid_buffer",
+    "bytes": 8388608
+  },
+  {
+    "label": "shared_out_buffer",
+    "bytes": 16777216
+  },
+  {
+    "label": "after_ffn_hc_buffer",
+    "bytes": 67108864
+  },
+  {
+    "label": "next_flat_hc_buffer",
+    "bytes": 67108864
+  },
+  {
+    "label": "next_mix_buffer",
+    "bytes": 98304
+  },
+  {
+    "label": "next_split_buffer",
+    "bytes": 98304
+  },
+  {
+    "label": "next_cur_buffer",
+    "bytes": 16777216
+  },
+  {
+    "label": "next_norm_buffer",
+    "bytes": 16777216
+  },
+  {
+    "label": "next_q_lora_buffer",
+    "bytes": 4194304
+  },
+  {
+    "label": "next_q_norm_buffer",
+    "bytes": 4194304
+  },
+  {
+    "label": "next_kv_raw_buffer",
+    "bytes": 2097152
+  },
+  {
+    "label": "next_kv_norm_buffer",
+    "bytes": 2097152
+  },
+  {
+    "label": "next_kv_norm_snapshot_buffer",
+    "bytes": 2097152
+  },
+  {
+    "label": "next_kv_rope_buffer",
+    "bytes": 2097152
+  },
+  {
+    "label": "next_kv_half_buffer",
+    "bytes": 1048576
+  },
+  {
+    "label": "next_raw_cache_buffer",
+    "bytes": 262144
+  },
+  {
+    "label": "next_q_raw_buffer",
+    "bytes": 134217728
+  },
+  {
+    "label": "next_q_cur_buffer",
+    "bytes": 134217728
+  },
+  {
+    "label": "next_full_kv_half_buffer",
+    "bytes": 33554432
+  },
+  {
+    "label": "next_attention_output_buffer",
+    "bytes": 134217728
+  },
+  {
+    "label": "next_attention_back_buffer",
+    "bytes": 134217728
+  },
+  {
+    "label": "next_attention_low_buffer",
+    "bytes": 33554432
+  },
+  {
+    "label": "next_attention_out_buffer",
+    "bytes": 16777216
+  },
+  {
+    "label": "next_after_attention_hc_buffer",
+    "bytes": 67108864
+  },
+  {
+    "label": "next_ffn_flat_hc_buffer",
+    "bytes": 67108864
+  },
+  {
+    "label": "next_ffn_mix_buffer",
+    "bytes": 98304
+  },
+  {
+    "label": "next_ffn_split_buffer",
+    "bytes": 98304
+  },
+  {
+    "label": "next_ffn_cur_buffer",
+    "bytes": 16777216
+  },
+  {
+    "label": "next_ffn_norm_buffer",
+    "bytes": 16777216
+  },
+  {
+    "label": "next_router_logits_buffer",
+    "bytes": 1048576
+  },
+  {
+    "label": "next_router_probs_buffer",
+    "bytes": 1048576
+  },
+  {
+    "label": "next_router_selected_buffer",
+    "bytes": 24576
+  },
+  {
+    "label": "next_router_weights_buffer",
+    "bytes": 24576
+  },
+  {
+    "label": "next_routed_mid_buffer",
+    "bytes": 25165824
+  },
+  {
+    "label": "next_routed_out_buffer",
+    "bytes": 16777216
+  },
+  {
+    "label": "next_shared_out_buffer",
+    "bytes": 16777216
+  },
+  {
+    "label": "next_after_ffn_hc_buffer",
+    "bytes": 67108864
+  },
+  {
+    "label": "layer2_flat_hc_buffer",
+    "bytes": 67108864
+  },
+  {
+    "label": "layer2_mix_buffer",
+    "bytes": 98304
+  },
+  {
+    "label": "layer2_split_buffer",
+    "bytes": 98304
+  },
+  {
+    "label": "layer2_cur_buffer",
+    "bytes": 16777216
+  },
+  {
+    "label": "layer2_norm_buffer",
+    "bytes": 16777216
+  },
+  {
+    "label": "layer2_q_lora_buffer",
+    "bytes": 4194304
+  },
+  {
+    "label": "layer2_q_norm_buffer",
+    "bytes": 4194304
+  },
+  {
+    "label": "layer2_kv_raw_buffer",
+    "bytes": 2097152
+  },
+  {
+    "label": "layer2_kv_norm_buffer",
+    "bytes": 2097152
+  },
+  {
+    "label": "layer2_kv_norm_snapshot_buffer",
+    "bytes": 2097152
+  },
+  {
+    "label": "layer2_kv_rope_buffer",
+    "bytes": 2097152
+  },
+  {
+    "label": "layer2_attn_projected_kv_buffer",
+    "bytes": 4194304
+  },
+  {
+    "label": "layer2_attn_projected_score_buffer",
+    "bytes": 4194304
+  },
+  {
+    "label": "layer2_indexer_projected_kv_buffer",
+    "bytes": 1048576
+  },
+  {
+    "label": "layer2_indexer_projected_score_buffer",
+    "bytes": 1048576
+  },
+  {
+    "label": "layer2_attn_packed_kv_buffer",
+    "bytes": 4194304
+  },
+  {
+    "label": "layer2_attn_packed_score_buffer",
+    "bytes": 4194304
+  },
+  {
+    "label": "layer2_attn_softmax_buffer",
+    "bytes": 4194304
+  },
+  {
+    "label": "layer2_indexer_packed_kv_buffer",
+    "bytes": 1048576
+  },
+  {
+    "label": "layer2_indexer_packed_score_buffer",
+    "bytes": 1048576
+  },
+  {
+    "label": "layer2_indexer_softmax_buffer",
+    "bytes": 1048576
+  },
+  {
+    "label": "routed_map_buffer",
+    "bytes": 1053128
+  },
+  {
+    "label": "position_buffer",
+    "bytes": 4096
+  },
+  {
+    "label": "compressed_position_buffer",
+    "bytes": 1024
+  }
+]

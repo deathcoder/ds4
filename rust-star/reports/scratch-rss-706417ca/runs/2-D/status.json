@@ -1,0 +1,10 @@
+{
+  "name": "2-D",
+  "mode": "D",
+  "block": 2,
+  "exit_code": 0,
+  "started_utc": "2026-09-12T16:19:24.915854+00:00",
+  "ended_utc": "2026-09-12T16:19:25.401469+00:00",
+  "wall_seconds": 0.48567595899999993,
+  "executable_sha256": "7854459f2b9dcbe8a546d43052055f702a1f9cc52ae0f2c72b384109fa6c6765"
+}

@@ -1,0 +1,10 @@
+{
+  "name": "4-D",
+  "mode": "D",
+  "block": 4,
+  "exit_code": 0,
+  "started_utc": "2026-09-12T16:19:35.709381+00:00",
+  "ended_utc": "2026-09-12T16:19:36.148525+00:00",
+  "wall_seconds": 0.43921054199999787,
+  "executable_sha256": "7854459f2b9dcbe8a546d43052055f702a1f9cc52ae0f2c72b384109fa6c6765"
+}

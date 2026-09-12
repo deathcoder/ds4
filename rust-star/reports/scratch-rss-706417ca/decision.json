@@ -1,0 +1,13 @@
+{
+  "closed": true,
+  "measurement_criteria_pass": true,
+  "full_copy_source_proof_pass": true,
+  "guarded_copy_proof_pass": true,
+  "prospective_protocol_pass": false,
+  "select_for_integration": false,
+  "engine_acceptance": false,
+  "runtime_changed": false,
+  "model_runs": 0,
+  "protocol_deviation": "The frozen plan required an after-copy mutation in the guarded proof before residency measurements. probe.m verifies full copies into zeroed and poisoned destinations, but does not run an in-place mutation after copying. The pre-run checker and audit.py did not enforce this subcondition. Discovered during final source review after all25 measurements; no GPU rerun or threshold change. Preserve the original optimistic audit and use this decision as the milestone verdict.",
+  "next_milestone": "Close the guarded in-place mutation test gap first. If it passes, evaluate a narrow four-destination clear-elision candidate with other101 initializations and prior checked completion unchanged, fresh full C0 and pool evidence, and unchanged engine RSS/footprint/performance gates. Do not start automatically."
+}

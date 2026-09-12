@@ -610,8 +610,20 @@ unsigned nil-command sentinel correction preserves the original audit failure
 without changing runtime, ownership criteria or performance thresholds. All 12
 fixed engine runs complete: paired median prefill -10.243%, steady decode -0.005%, RSS +2.415%, peak memory footprint +11.663%. All accepted source/default restored.
 221-artifact verified report: `rust-star/reports/pool-1k-fcdfef5f/README.md`.
-Diagnose scratch RSS residency and prove which large buffers can safely avoid unconditional clearing before another 32K candidate. This is not a DwarfStar claim or fresh larger-frontier acceptance.
-The current milestone is complete; stop for the user update.
+The subsequent scratch RSS diagnostic completes 25 fresh processes/100 tiles
+and 249,317,323,300 GPU-verified bytes. CPU clearing costs a paired median
+2,493,284,352 bytes RSS; omitting four full-copy destination clears saves
+536,805,376 bytes (511.94 MiB), with negligible median footprint difference.
+Source and guarded full-copy proofs pass, but final review finds a missing
+planned mutation after the copy. The original auditor failed to enforce that
+precondition: preserve its output; decision.json marks the full prospective
+protocol incomplete and selects no integration. Runtime/default unchanged.
+Verified 110-artifact report: `rust-star/reports/scratch-rss-706417ca/README.md`.
+Next close the guarded in-place mutation gap first; if it passes, evaluate only
+those four destination clears with fresh full C0/pool evidence and unchanged
+engine gates. Synthetic RSS savings do not predict whole-engine acceptance,
+DwarfStar parity or larger-frontier correctness. The diagnostic milestone is
+closed with the gap disclosed; stop for the user update.
 
 Current implementation boundaries, evidence, and immediate actions are maintained
 in `RUST_STAR_JOURNAL.md`. As of 2026-09-09, native prefill through all 43 layers

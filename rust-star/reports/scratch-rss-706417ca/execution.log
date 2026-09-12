@@ -1,0 +1,127 @@
+START 1-A 2026-09-12T16:19:15.030809+00:00
+PASS 1-A
+START 1-B 2026-09-12T16:19:16.404224+00:00
+PASS 1-B
+START 1-C 2026-09-12T16:19:18.325854+00:00
+PASS 1-C
+START 1-D 2026-09-12T16:19:19.411430+00:00
+PASS 1-D
+START 1-E 2026-09-12T16:19:20.706838+00:00
+PASS 1-E
+START 2-B 2026-09-12T16:19:21.986023+00:00
+PASS 2-B
+START 2-C 2026-09-12T16:19:23.835527+00:00
+PASS 2-C
+START 2-D 2026-09-12T16:19:24.915854+00:00
+PASS 2-D
+START 2-E 2026-09-12T16:19:26.243409+00:00
+PASS 2-E
+START 2-A 2026-09-12T16:19:27.524304+00:00
+PASS 2-A
+START 3-C 2026-09-12T16:19:28.854860+00:00
+PASS 3-C
+START 3-D 2026-09-12T16:19:29.930642+00:00
+PASS 3-D
+START 3-E 2026-09-12T16:19:31.240904+00:00
+PASS 3-E
+START 3-A 2026-09-12T16:19:32.511580+00:00
+PASS 3-A
+START 3-B 2026-09-12T16:19:33.850954+00:00
+PASS 3-B
+START 4-D 2026-09-12T16:19:35.709381+00:00
+PASS 4-D
+START 4-E 2026-09-12T16:19:36.997553+00:00
+PASS 4-E
+START 4-A 2026-09-12T16:19:38.252788+00:00
+PASS 4-A
+START 4-B 2026-09-12T16:19:39.591173+00:00
+PASS 4-B
+START 4-C 2026-09-12T16:19:41.431976+00:00
+PASS 4-C
+START 5-E 2026-09-12T16:19:42.495501+00:00
+PASS 5-E
+START 5-A 2026-09-12T16:19:43.746653+00:00
+PASS 5-A
+START 5-B 2026-09-12T16:19:45.067310+00:00
+PASS 5-B
+START 5-C 2026-09-12T16:19:46.912764+00:00
+PASS 5-C
+START 5-D 2026-09-12T16:19:47.978107+00:00
+PASS 5-D
+{
+  "passed": true,
+  "processes": 25,
+  "tiles": 100,
+  "checked_bytes": 249317323300,
+  "gates": {
+    "all_source_and_gpu_proofs_pass": true,
+    "all25_runs_complete_and_exact": true,
+    "pool_clear_positive_every_block": true,
+    "pool_clear_median": true,
+    "selected_saving_every_block": true,
+    "selected_saving_median": true
+  },
+  "select_for_future_candidate": true,
+  "paired_medians": {
+    "fresh_clear_effect": 2493480960,
+    "pool_clear_effect": 2493284352,
+    "selected_saving": 536805376,
+    "selected_initialized_saving": 536788992,
+    "selected_footprint_saving": 147768,
+    "no_clear_reuse_effect": 49152
+  },
+  "pairs": [
+    {
+      "block": 1,
+      "order": "ABCDE",
+      "fresh_clear_effect": 2492907520,
+      "pool_clear_effect": 2493284352,
+      "selected_saving": 536805376,
+      "selected_initialized_saving": 536707072,
+      "selected_footprint_saving": 147768,
+      "no_clear_reuse_effect": -507904
+    },
+    {
+      "block": 2,
+      "order": "BCDEA",
+      "fresh_clear_effect": 2493480960,
+      "pool_clear_effect": 2492841984,
+      "selected_saving": 536969216,
+      "selected_initialized_saving": 536969216,
+      "selected_footprint_saving": 278816,
+      "no_clear_reuse_effect": 49152
+    },
+    {
+      "block": 3,
+      "order": "CDEAB",
+      "fresh_clear_effect": 2493284352,
+      "pool_clear_effect": 2493448192,
+      "selected_saving": 537001984,
+      "selected_initialized_saving": 537001984,
+      "selected_footprint_saving": 344376,
+      "no_clear_reuse_effect": 1015808
+    },
+    {
+      "block": 4,
+      "order": "DEABC",
+      "fresh_clear_effect": 2644230144,
+      "pool_clear_effect": 2492940288,
+      "selected_saving": 536231936,
+      "selected_initialized_saving": 536231936,
+      "selected_footprint_saving": -392832,
+      "no_clear_reuse_effect": -688128
+    },
+    {
+      "block": 5,
+      "order": "EABCD",
+      "fresh_clear_effect": 2644541440,
+      "pool_clear_effect": 2493366272,
+      "selected_saving": 536788992,
+      "selected_initialized_saving": 536788992,
+      "selected_footprint_saving": 131384,
+      "no_clear_reuse_effect": 114688
+    }
+  ],
+  "engine_acceptance": false,
+  "model_runs": 0
+}

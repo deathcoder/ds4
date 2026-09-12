@@ -1,0 +1,16 @@
+{
+  "created_utc": "2026-09-12T16:19:14.157369+00:00",
+  "files": {
+    "plan.json": "a8b57bf6feef33395e4760c69345585d26976f226ae19d921fafc6cfa86643a9",
+    "inventory.json": "2067290cf8944a19a3e24a46c8e2495842facfd5f6d0f000fe253f19fb662a89",
+    "probe.m": "4c1318396160766851b97a8893da412fdef12c80d66b07bbe04037f9e4c794fd",
+    "probe.metal": "400d7758c6a95bc5f5b69b33e055b83a3ea64323a476211922ca71fbf557dbc5",
+    "probe": "7854459f2b9dcbe8a546d43052055f702a1f9cc52ae0f2c72b384109fa6c6765",
+    "audit.py": "3b0c4ec1fd3468df9fe4a6093bc0117933d32af9eba5a86889ad9898b73caf54",
+    "run.py": "0bd6aea27faf3944cfc77a824802ebeb0d9e5dc641e92339384d168573f58a33",
+    "source-proof.py": "f48936aca05cc73092b50e7778457fee99cd10b8249b1c835b7213936728bbc3",
+    "source-proof.json": "93eb7ffbb180a244fc6c25301f9502f54484d4d45b2f2d6bacec33cc2bae3d04",
+    "proof.log": "1dde30d1eb99c408d4b6f62a36a30fa4c3f31af361302c15deea4f7bba37322e",
+    "proof-status.json": "81868a6e94ffc0178bf833deb1c9013d9fab4ee95ddb876a5e8ec4f1d26376d2"
+  }
+}

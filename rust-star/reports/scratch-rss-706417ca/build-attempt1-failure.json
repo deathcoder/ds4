@@ -1,0 +1,6 @@
+{
+  "phase": "before GPU execution/residency freeze",
+  "failure": "assert macro split Objective-C array literal commas into arguments",
+  "correction": "parenthesize the complete assertion expression",
+  "runtime_changes": false
+}

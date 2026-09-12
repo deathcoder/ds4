@@ -12,7 +12,8 @@ project, and no arbitrary percentage gain defines research success.
 | Earlier 1K experiment | 1K bootstrap passes full C0 and every timing/decode/RSS gate; paired prefill latency -11.234%, but separate peak memory footprint +44.722% fails the <=15% gate. Accepted source restored. | Lifetime diagnostic is complete; the prior optimization stays rejected. |
 | Bootstrap lifetime diagnostic | Both fresh 32K/128 runs preserve 33,354,240 exact FP32 words. Four 1K scratch sets overlap; earlier sets release after completion and every chunk pool drains tracked scratch to zero. Verified 60-artifact report; accepted runtime unchanged. | Completed as a separate rejected wait experiment below; OS footprint cause remains unresolved. |
 | Bounded 1K completion experiment | 50,031,360 exact FP32 words, 12K internal and all local/profile checks pass. Real scratch survivors violate the declared lifetime prerequisite despite at most one unfinished command. Verified 116-artifact report; zero engine runs and accepted runtime restored. | Historical rejected wait experiment; explicit scratch-reuse study is complete below. |
-| Explicit scratch reuse | REJECTED: full C0/pool proofs and all 12 engine runs complete; paired median prefill -10.243%, steady decode -0.005%, RSS +2.415%, peak memory footprint +11.663%. Verified 221-artifact report. All accepted source/default restored. | Diagnose scratch RSS residency and prove which large buffers can safely avoid unconditional clearing before another 32K candidate. Not started; stop for the milestone update. |
+| Explicit scratch reuse | REJECTED: full C0/pool proofs and all 12 engine runs complete; paired median prefill -10.243%, steady decode -0.005%, RSS +2.415%, peak memory footprint +11.663%. Verified 221-artifact report. All accepted source/default restored. | Remains rejected; bounded RSS diagnostic is closed below. |
+| Scratch RSS diagnostic | All 25 cells/100 tiles pass 249,317,323,300 synthetic byte checks; four complete-copy destination clears account for median 511.94 MiB RSS, with negligible footprint difference. Source/copy proofs pass, but the planned after-copy mutation is absent: full protocol and integration selection are false. Verified 110-artifact report; runtime unchanged. | First close the guarded mutation gap, then conditionally test only those four clear omissions with fresh full C0/pool and unchanged engine gates. Not started; stop for update. |
 | Larger-frontier correctness on current source | Earlier versions have full 128K evidence; current attention-output changes have fresh full-model evidence at 32K only | Revalidate source-dependent frontiers under a new prospective plan after addressing the lower-context performance priority |
 | Primary 256K operating point | Earlier attempt is preserved as interrupted, not accepted | Keep the interrupted campaign paused; establish a justified new correctness/capacity/performance milestone rather than automatically resuming it |
 | Capacity characterization beyond 256K | Desired when memory permits, not guaranteed by model theoretical capacity | Plan bounded allocation/capacity evidence and preserve infeasible-frontier results |
@@ -25,7 +26,9 @@ are not silently added to the initial executable scope. Any unresolved initial
 requirement must remain visible; research goals without a finite acceptance
 condition must not be declared complete by inventing one.
 
-D authorized one explicit scratch-reuse milestone. It is complete and
-rejected; all accepted source/default restored. Report the verified result and the next
-milestone, then stop. No follow-up implementation or inference has started.
-Publication and256K remain outside this milestone.
+D authorized one bounded scratch RSS diagnostic milestone. It is closed with
+useful measurements and a disclosed missing after-copy mutation proof; no
+candidate is selected for integration. All accepted source/default are unchanged.
+Report the verified evidence and the next milestone, then stop. No follow-up
+implementation or inference has started. Publication and 256K remain outside
+this milestone.
